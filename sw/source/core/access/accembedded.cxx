@@ -20,7 +20,6 @@
 #include <vcl/svapp.hxx>
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <cppuhelper/queryinterface.hxx>
-#include <cppuhelper/supportsservice.hxx>
 #include <flyfrm.hxx>
 #include "accembedded.hxx"
 #include <cntfrm.hxx>
@@ -31,91 +30,39 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::accessibility;
 
-constexpr OUStringLiteral sImplementationName = u"com.sun.star.comp.Writer.SwAccessibleEmbeddedObject";
-
 SwAccessibleEmbeddedObject::SwAccessibleEmbeddedObject(
-        std::shared_ptr<SwAccessibleMap> const& pInitMap,
-        const SwFlyFrame* pFlyFrame  ) :
-    SwAccessibleNoTextFrame( pInitMap, AccessibleRole::EMBEDDED_OBJECT, pFlyFrame )
+    std::shared_ptr<SwAccessibleMap> const& pInitMap, const SwFlyFrame* pFlyFrame)
+    : ImplInheritanceHelper(pInitMap, AccessibleRole::EMBEDDED_OBJECT, pFlyFrame)
 {
 }
 
-SwAccessibleEmbeddedObject::~SwAccessibleEmbeddedObject()
-{
-}
-
-// XInterface
-css::uno::Any SAL_CALL
-    SwAccessibleEmbeddedObject::queryInterface (const css::uno::Type & rType)
-{
-    css::uno::Any aReturn = SwAccessibleNoTextFrame::queryInterface (rType);
-    if ( ! aReturn.hasValue())
-        aReturn = ::cppu::queryInterface (rType,
-         static_cast< css::accessibility::XAccessibleExtendedAttributes* >(this) );
-    return aReturn;
-}
-
-void SAL_CALL
-    SwAccessibleEmbeddedObject::acquire()
-    noexcept
-{
-    SwAccessibleNoTextFrame::acquire ();
-}
-
-void SAL_CALL
-    SwAccessibleEmbeddedObject::release()
-    noexcept
-{
-    SwAccessibleNoTextFrame::release ();
-}
-
-OUString SAL_CALL SwAccessibleEmbeddedObject::getImplementationName()
-{
-    return sImplementationName;
-}
-
-sal_Bool SAL_CALL SwAccessibleEmbeddedObject::supportsService(const OUString& sTestServiceName)
-{
-    return cppu::supportsService(this, sTestServiceName);
-}
-
-uno::Sequence< OUString > SAL_CALL SwAccessibleEmbeddedObject::getSupportedServiceNames()
-{
-    return { "com.sun.star.text.AccessibleTextEmbeddedObject", sAccessibleServiceName };
-}
-
-uno::Sequence< sal_Int8 > SAL_CALL SwAccessibleEmbeddedObject::getImplementationId()
-{
-    return css::uno::Sequence<sal_Int8>();
-}
+SwAccessibleEmbeddedObject::~SwAccessibleEmbeddedObject() {}
 
 // XAccessibleExtendedAttributes
-css::uno::Any SAL_CALL SwAccessibleEmbeddedObject::getExtendedAttributes()
+OUString SAL_CALL SwAccessibleEmbeddedObject::getExtendedAttributes()
 {
     SolarMutexGuard g;
 
-    css::uno::Any strRet;
     OUString style;
     SwFlyFrame* pFFrame = getFlyFrame();
 
-    if( pFFrame )
+    if (pFFrame)
     {
         style = "style:";
         SwContentFrame* pCFrame;
         pCFrame = pFFrame->ContainsContent();
-        if( pCFrame )
+        if (pCFrame)
         {
             assert(pCFrame->IsNoTextFrame());
-            SwContentNode *const pCNode = static_cast<SwNoTextFrame*>(pCFrame)->GetNode();
-            if( pCNode )
+            SwContentNode* const pCNode = static_cast<SwNoTextFrame*>(pCFrame)->GetNode();
+            if (pCNode)
             {
                 style += static_cast<SwOLENode*>(pCNode)->GetOLEObj().GetStyleString();
             }
         }
         style += ";";
     }
-    strRet <<= style;
-    return strRet;
+    return style;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

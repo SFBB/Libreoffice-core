@@ -11,17 +11,12 @@
 #include <cppunit/extensions/HelperMacros.h>
 #include <cppunit/plugin/TestPlugIn.h>
 
-#include <config_features.h>
-
-#include <rtl/strbuf.hxx>
-
 #include <vcl/BitmapTools.hxx>
-#include <vcl/bitmap.hxx>
+#include <vcl/BitmapWriteAccess.hxx>
+#include <vcl/bitmap/BitmapMonochromeFilter.hxx>
 #include <vcl/virdev.hxx>
 #include <vcl/skia/SkiaHelper.hxx>
-#include <vcl/BitmapMonochromeFilter.hxx>
 
-#include <vcl/BitmapWriteAccess.hxx>
 #include <bitmap/Octree.hxx>
 #include <salinst.hxx>
 #include <svdata.hxx>
@@ -120,8 +115,6 @@ void BitmapTest::testCreation()
     }
 
     // Check backend capabilities and return from the test successfully
-    // if the backend doesn't support 32-bit bitmap
-    if (ImplGetSVData()->mpDefInst->supportsBitmap32())
     {
         Bitmap aBmp(Size(10, 10), vcl::PixelFormat::N32_BPP);
         Size aSize = aBmp.GetSizePixel();
@@ -487,11 +480,6 @@ void BitmapTest::testErase()
 
 void BitmapTest::testBitmap32()
 {
-    // Check backend capabilities and return from the test successfully
-    // if the backend doesn't support 32-bit bitmap
-    if (!ImplGetSVData()->mpDefInst->supportsBitmap32())
-        return;
-
     Bitmap aBitmap(Size(3, 3), vcl::PixelFormat::N32_BPP);
     {
         BitmapScopedWriteAccess pWriteAccess(aBitmap);

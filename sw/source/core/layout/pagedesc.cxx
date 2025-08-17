@@ -41,13 +41,13 @@
 #include <poolfmt.hxx>
 #include <calbck.hxx>
 
-SwPageDesc::SwPageDesc(const OUString& rName, SwFrameFormat *pFormat, SwDoc *const pDoc)
+SwPageDesc::SwPageDesc(const UIName& rName, SwFrameFormat *pFormat, SwDoc& rDoc)
     : sw::BroadcastingModify()
     , m_StyleName( rName )
-    , m_Master( pDoc->GetAttrPool(), rName, pFormat )
-    , m_Left( pDoc->GetAttrPool(), rName, pFormat )
-    , m_FirstMaster( pDoc->GetAttrPool(), rName, pFormat )
-    , m_FirstLeft( pDoc->GetAttrPool(), rName, pFormat )
+    , m_Master( rDoc.GetAttrPool(), rName, pFormat )
+    , m_Left( rDoc.GetAttrPool(), rName, pFormat )
+    , m_FirstMaster( rDoc.GetAttrPool(), rName, pFormat )
+    , m_FirstLeft( rDoc.GetAttrPool(), rName, pFormat )
     , m_aStashedHeader()
     , m_aStashedFooter()
     , m_aDepends(*this)
@@ -83,13 +83,13 @@ SwPageDesc::SwPageDesc( const SwPageDesc &rCpy )
     , m_FootnoteInfo( rCpy.GetFootnoteInfo() )
     , m_pdList( nullptr )
 {
-    m_aStashedHeader.m_pStashedFirst = rCpy.m_aStashedHeader.m_pStashedFirst;
-    m_aStashedHeader.m_pStashedLeft = rCpy.m_aStashedHeader.m_pStashedLeft;
-    m_aStashedHeader.m_pStashedFirstLeft = rCpy.m_aStashedHeader.m_pStashedFirstLeft;
+    m_aStashedHeader.m_oStashedFirst = rCpy.m_aStashedHeader.m_oStashedFirst;
+    m_aStashedHeader.m_oStashedLeft = rCpy.m_aStashedHeader.m_oStashedLeft;
+    m_aStashedHeader.m_oStashedFirstLeft = rCpy.m_aStashedHeader.m_oStashedFirstLeft;
 
-    m_aStashedFooter.m_pStashedFirst = rCpy.m_aStashedFooter.m_pStashedFirst;
-    m_aStashedFooter.m_pStashedLeft = rCpy.m_aStashedFooter.m_pStashedLeft;
-    m_aStashedFooter.m_pStashedFirstLeft = rCpy.m_aStashedFooter.m_pStashedFirstLeft;
+    m_aStashedFooter.m_oStashedFirst = rCpy.m_aStashedFooter.m_oStashedFirst;
+    m_aStashedFooter.m_oStashedLeft = rCpy.m_aStashedFooter.m_oStashedLeft;
+    m_aStashedFooter.m_oStashedFirstLeft = rCpy.m_aStashedFooter.m_oStashedFirstLeft;
 
     if (rCpy.m_pTextFormatColl && rCpy.m_aDepends.IsListeningTo(rCpy.m_pTextFormatColl))
     {
@@ -110,13 +110,13 @@ SwPageDesc & SwPageDesc::operator = (const SwPageDesc & rSrc)
     m_FirstMaster = rSrc.m_FirstMaster;
     m_FirstLeft = rSrc.m_FirstLeft;
 
-    m_aStashedHeader.m_pStashedFirst = rSrc.m_aStashedHeader.m_pStashedFirst;
-    m_aStashedHeader.m_pStashedLeft = rSrc.m_aStashedHeader.m_pStashedLeft;
-    m_aStashedHeader.m_pStashedFirstLeft = rSrc.m_aStashedHeader.m_pStashedFirstLeft;
+    m_aStashedHeader.m_oStashedFirst = rSrc.m_aStashedHeader.m_oStashedFirst;
+    m_aStashedHeader.m_oStashedLeft = rSrc.m_aStashedHeader.m_oStashedLeft;
+    m_aStashedHeader.m_oStashedFirstLeft = rSrc.m_aStashedHeader.m_oStashedFirstLeft;
 
-    m_aStashedFooter.m_pStashedFirst = rSrc.m_aStashedFooter.m_pStashedFirst;
-    m_aStashedFooter.m_pStashedLeft = rSrc.m_aStashedFooter.m_pStashedLeft;
-    m_aStashedFooter.m_pStashedFirstLeft = rSrc.m_aStashedFooter.m_pStashedFirstLeft;
+    m_aStashedFooter.m_oStashedFirst = rSrc.m_aStashedFooter.m_oStashedFirst;
+    m_aStashedFooter.m_oStashedLeft = rSrc.m_aStashedFooter.m_oStashedLeft;
+    m_aStashedFooter.m_oStashedFirstLeft = rSrc.m_aStashedFooter.m_oStashedFirstLeft;
 
     m_aDepends.EndListeningAll();
     if (rSrc.m_pTextFormatColl && rSrc.m_aDepends.IsListeningTo(rSrc.m_pTextFormatColl))
@@ -144,7 +144,15 @@ SwPageDesc::~SwPageDesc()
 {
 }
 
-bool SwPageDesc::SetName( const OUString& rNewName )
+bool SwPageDesc::IsUsed() const
+{
+    for(const auto pFrameFormat: { &GetMaster(), &GetLeft(), &GetFirstMaster(), &GetFirstLeft() })
+        if(pFrameFormat->IsUsed())
+            return true;
+    return false;
+}
+
+bool SwPageDesc::SetName( const UIName& rNewName )
 {
     bool renamed = true;
     if (m_pdList) {
@@ -168,8 +176,8 @@ void SwPageDesc::Mirror()
     //Only the margins are mirrored, all other values are just copied.
     SvxLRSpaceItem aLR( RES_LR_SPACE );
     const SvxLRSpaceItem &rLR = m_Master.GetLRSpace();
-    aLR.SetLeft(  rLR.GetRight() );
-    aLR.SetRight( rLR.GetLeft() );
+    aLR.SetLeft(rLR.GetRight());
+    aLR.SetRight(rLR.GetLeft());
     aLR.SetRightGutterMargin(rLR.GetGutterMargin());
 
     SfxItemSet aSet( *m_Master.GetAttrSet().GetPool(),
@@ -196,7 +204,7 @@ void SwPageDesc::ResetAllAttr()
 }
 
 // gets information from Modify
-bool SwPageDesc::GetInfo( SfxPoolItem & rInfo ) const
+bool SwPageDesc::GetInfo( SwFindNearestNode & rInfo ) const
 {
     if (!m_Master.GetInfo(rInfo))
         return false;       // found
@@ -233,12 +241,12 @@ void SwPageDesc::RegisterChange()
     // #117072# - During destruction of the document <SwDoc>
     // the page description is modified. Thus, do nothing, if the document
     // is in destruction respectively if no viewshell exists.
-    SwDoc* pDoc = GetMaster().GetDoc();
-    if ( !pDoc || pDoc->IsInDtor() )
+    SwDoc& rDoc = GetMaster().GetDoc();
+    if ( rDoc.IsInDtor() )
     {
         return;
     }
-    SwViewShell* pSh = pDoc->getIDocumentLayoutAccess().GetCurrentViewShell();
+    SwViewShell* pSh = rDoc.getIDocumentLayoutAccess().GetCurrentViewShell();
     if ( !pSh )
     {
         return;
@@ -282,7 +290,17 @@ void SwPageDesc::RegisterChange()
 /// special handling if the style of the grid alignment changes
 void SwPageDesc::SwClientNotify(const SwModify& rModify, const SfxHint& rHint)
 {
-    if (rHint.GetId() == SfxHintId::SwLegacyModify)
+    if (rHint.GetId() == SfxHintId::SwFormatChange || rHint.GetId() == SfxHintId::SwAttrSetChange)
+    {
+        CallSwClientNotify(rHint);
+        RegisterChange();
+    }
+    else if (rHint.GetId() == SfxHintId::SwObjectDying
+            || rHint.GetId() == SfxHintId::SwUpdateAttr)
+    {
+        CallSwClientNotify(rHint);
+    }
+    else if (rHint.GetId() == SfxHintId::SwLegacyModify)
     {
         auto pLegacyHint = static_cast<const sw::LegacyModifyHint*>(&rHint);
         const sal_uInt16 nWhich = pLegacyHint->m_pOld
@@ -291,21 +309,13 @@ void SwPageDesc::SwClientNotify(const SwModify& rModify, const SfxHint& rHint)
                 ? pLegacyHint->m_pNew->Which()
                 : 0;
         CallSwClientNotify(rHint);
-        if((RES_ATTRSET_CHG == nWhich)
-                || (RES_FMT_CHG == nWhich)
-                || isCHRATR(nWhich)
+        if(isCHRATR(nWhich)
                 || (RES_PARATR_LINESPACING == nWhich))
             RegisterChange();
     }
-    else if(rHint.GetId() == SfxHintId::SwAutoFormatUsedHint)
+    else if(rHint.GetId() == SfxHintId::SwModifyChanged)
     {
-        m_Master.SwClientNotify(rModify, rHint);
-        m_Left.SwClientNotify(rModify, rHint);
-        m_FirstMaster.SwClientNotify(rModify, rHint);
-        m_FirstLeft.SwClientNotify(rModify, rHint);
-    }
-    else if (auto pModifyChangedHint = dynamic_cast<const sw::ModifyChangedHint*>(&rHint))
-    {
+        auto pModifyChangedHint = static_cast<const sw::ModifyChangedHint*>(&rHint);
         if(m_pTextFormatColl == &rModify)
             m_pTextFormatColl = static_cast<const SwTextFormatColl*>(pModifyChangedHint->m_pNew);
         else
@@ -416,30 +426,30 @@ void SwPageDesc::ChgFirstShare( bool bNew )
 void SwPageDesc::StashFrameFormat(const SwFrameFormat& rFormat, bool bHeader, bool bLeft, bool bFirst)
 {
     assert(rFormat.GetRegisteredIn());
-    std::shared_ptr<SwFrameFormat>* pFormat = nullptr;
+    std::optional<SwFrameFormat>* pFormat = nullptr;
 
     if (bHeader)
     {
         if (bLeft && !bFirst)
-            pFormat = &m_aStashedHeader.m_pStashedLeft;
+            pFormat = &m_aStashedHeader.m_oStashedLeft;
         else if (!bLeft && bFirst)
-            pFormat = &m_aStashedHeader.m_pStashedFirst;
+            pFormat = &m_aStashedHeader.m_oStashedFirst;
         else if (bLeft && bFirst)
-            pFormat = &m_aStashedHeader.m_pStashedFirstLeft;
+            pFormat = &m_aStashedHeader.m_oStashedFirstLeft;
     }
     else
     {
         if (bLeft && !bFirst)
-            pFormat = &m_aStashedFooter.m_pStashedLeft;
+            pFormat = &m_aStashedFooter.m_oStashedLeft;
         else if (!bLeft && bFirst)
-            pFormat = &m_aStashedFooter.m_pStashedFirst;
+            pFormat = &m_aStashedFooter.m_oStashedFirst;
         else if (bLeft && bFirst)
-            pFormat = &m_aStashedFooter.m_pStashedFirstLeft;
+            pFormat = &m_aStashedFooter.m_oStashedFirstLeft;
     }
 
     if (pFormat)
     {
-        *pFormat = std::make_shared<SwFrameFormat>(rFormat);
+        pFormat->emplace(rFormat);
     }
     else
     {
@@ -451,24 +461,24 @@ void SwPageDesc::StashFrameFormat(const SwFrameFormat& rFormat, bool bHeader, bo
 
 const SwFrameFormat* SwPageDesc::GetStashedFrameFormat(bool bHeader, bool bLeft, bool bFirst) const
 {
-    std::shared_ptr<SwFrameFormat>* pFormat = nullptr;
+    std::optional<SwFrameFormat>* pFormat = nullptr;
 
     if (bLeft && !bFirst)
     {
-        pFormat = bHeader ? &m_aStashedHeader.m_pStashedLeft : &m_aStashedFooter.m_pStashedLeft;
+        pFormat = bHeader ? &m_aStashedHeader.m_oStashedLeft : &m_aStashedFooter.m_oStashedLeft;
     }
     else if (!bLeft && bFirst)
     {
-        pFormat = bHeader ? &m_aStashedHeader.m_pStashedFirst : &m_aStashedFooter.m_pStashedFirst;
+        pFormat = bHeader ? &m_aStashedHeader.m_oStashedFirst : &m_aStashedFooter.m_oStashedFirst;
     }
     else if (bLeft && bFirst)
     {
-        pFormat = bHeader ? &m_aStashedHeader.m_pStashedFirstLeft : &m_aStashedFooter.m_pStashedFirstLeft;
+        pFormat = bHeader ? &m_aStashedHeader.m_oStashedFirstLeft : &m_aStashedFooter.m_oStashedFirstLeft;
     }
 
     if (pFormat)
     {
-        return pFormat->get();
+        return pFormat->has_value() ? &**pFormat : nullptr;
     }
     else
     {
@@ -483,15 +493,15 @@ bool SwPageDesc::HasStashedFormat(bool bHeader, bool bLeft, bool bFirst) const
     {
         if (bLeft && !bFirst)
         {
-            return m_aStashedHeader.m_pStashedLeft != nullptr;
+            return m_aStashedHeader.m_oStashedLeft.has_value();
         }
         else if (!bLeft && bFirst)
         {
-            return m_aStashedHeader.m_pStashedFirst != nullptr;
+            return m_aStashedHeader.m_oStashedFirst.has_value();
         }
         else if (bLeft && bFirst)
         {
-            return m_aStashedHeader.m_pStashedFirstLeft != nullptr;
+            return m_aStashedHeader.m_oStashedFirstLeft.has_value();
         }
         else
         {
@@ -503,15 +513,15 @@ bool SwPageDesc::HasStashedFormat(bool bHeader, bool bLeft, bool bFirst) const
     {
         if (bLeft && !bFirst)
         {
-            return m_aStashedFooter.m_pStashedLeft != nullptr;
+            return m_aStashedFooter.m_oStashedLeft.has_value();
         }
         else if (!bLeft && bFirst)
         {
-            return m_aStashedFooter.m_pStashedFirst != nullptr;
+            return m_aStashedFooter.m_oStashedFirst.has_value();
         }
         else if (bLeft && bFirst)
         {
-            return m_aStashedFooter.m_pStashedFirstLeft != nullptr;
+            return m_aStashedFooter.m_oStashedFirstLeft.has_value();
         }
         else
         {
@@ -527,15 +537,15 @@ void SwPageDesc::RemoveStashedFormat(bool bHeader, bool bLeft, bool bFirst)
     {
         if (bLeft && !bFirst)
         {
-            m_aStashedHeader.m_pStashedLeft.reset();
+            m_aStashedHeader.m_oStashedLeft.reset();
         }
         else if (!bLeft && bFirst)
         {
-            m_aStashedHeader.m_pStashedFirst.reset();
+            m_aStashedHeader.m_oStashedFirst.reset();
         }
         else if (bLeft && bFirst)
         {
-            m_aStashedHeader.m_pStashedFirstLeft.reset();
+            m_aStashedHeader.m_oStashedFirstLeft.reset();
         }
         else
         {
@@ -546,15 +556,15 @@ void SwPageDesc::RemoveStashedFormat(bool bHeader, bool bLeft, bool bFirst)
     {
         if (bLeft && !bFirst)
         {
-            m_aStashedFooter.m_pStashedLeft.reset();
+            m_aStashedFooter.m_oStashedLeft.reset();
         }
         else if (!bLeft && bFirst)
         {
-            m_aStashedFooter.m_pStashedFirst.reset();
+            m_aStashedFooter.m_oStashedFirst.reset();
         }
         else if (bLeft && bFirst)
         {
-            m_aStashedFooter.m_pStashedFirstLeft.reset();
+            m_aStashedFooter.m_oStashedFirstLeft.reset();
         }
         else
         {
@@ -578,7 +588,7 @@ const TranslateId STR_POOLPAGE[] =
     STR_POOLPAGE_LANDSCAPE
 };
 
-SwPageDesc* SwPageDesc::GetByName(SwDoc& rDoc, std::u16string_view rName)
+SwPageDesc* SwPageDesc::GetByName(SwDoc& rDoc, const UIName& rName)
 {
     const size_t nDCount = rDoc.GetPageDescCnt();
 
@@ -608,7 +618,7 @@ void SwPageDesc::dumpAsXml(xmlTextWriterPtr pWriter) const
     (void)xmlTextWriterStartElement(pWriter, BAD_CAST("SwPageDesc"));
     (void)xmlTextWriterWriteFormatAttribute(pWriter, BAD_CAST("ptr"), "%p", this);
     (void)xmlTextWriterWriteFormatAttribute(pWriter, BAD_CAST("m_StyleName"), "%s",
-                                      BAD_CAST(m_StyleName.toUtf8().getStr()));
+                                      BAD_CAST(m_StyleName.toString().toUtf8().getStr()));
     (void)xmlTextWriterWriteFormatAttribute(pWriter, BAD_CAST("m_pFollow"), "%p", m_pFollow);
     (void)xmlTextWriterWriteFormatAttribute(
         pWriter, BAD_CAST("m_eUse"), "0x%s",
@@ -683,16 +693,16 @@ bool SwPageFootnoteInfo::operator==( const SwPageFootnoteInfo& rCmp ) const
         && m_nBottomDist== rCmp.GetBottomDist();
 }
 
-SwPageDescExt::SwPageDescExt(const SwPageDesc & rPageDesc, SwDoc *const pDoc)
+SwPageDescExt::SwPageDescExt(const SwPageDesc & rPageDesc, SwDoc& rDoc)
     : m_PageDesc(rPageDesc)
-    , m_pDoc(pDoc)
+    , m_rDoc(rDoc)
 {
     SetPageDesc(rPageDesc);
 }
 
 SwPageDescExt::SwPageDescExt(const SwPageDescExt & rSrc)
     : m_PageDesc(rSrc.m_PageDesc)
-    , m_pDoc(rSrc.m_pDoc)
+    , m_rDoc(rSrc.m_rDoc)
 {
     SetPageDesc(rSrc.m_PageDesc);
 }
@@ -701,7 +711,7 @@ SwPageDescExt::~SwPageDescExt()
 {
 }
 
-OUString const & SwPageDescExt::GetName() const
+UIName const & SwPageDescExt::GetName() const
 {
     return m_PageDesc.GetName();
 }
@@ -731,7 +741,7 @@ SwPageDescExt::operator SwPageDesc() const
 {
     SwPageDesc aResult(m_PageDesc);
 
-    SwPageDesc * pPageDesc = m_pDoc->FindPageDesc(m_sFollow);
+    SwPageDesc * pPageDesc = m_rDoc.FindPageDesc(m_sFollow);
 
     if ( nullptr != pPageDesc )
         aResult.SetFollow(pPageDesc);
@@ -751,7 +761,7 @@ SwPageDescs::~SwPageDescs()
         delete *it;
 }
 
-SwPageDescs::iterator SwPageDescs::find_(const OUString &name) const
+SwPageDescs::iterator SwPageDescs::find_(const UIName &name) const
 {
     ByName::iterator it = m_NameIndex.find( name );
     return m_Array.iterator_to( *it );

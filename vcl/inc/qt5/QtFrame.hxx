@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -32,9 +32,12 @@
 #include <vcl/sysdata.hxx>
 
 #include <QtCore/QObject>
+#include <QtCore/QPointer>
 
-#if CHECK_ANY_QT_USING_X11
+#if !defined EMSCRIPTEN
 #include <unx/sessioninhibitor.hxx>
+#endif
+#if CHECK_ANY_QT_USING_X11
 // any better way to get rid of the X11 / Qt type clashes?
 #undef Bool
 #undef CursorShape
@@ -65,7 +68,7 @@ class QPaintDevice;
 class QScreen;
 class QWidget;
 
-class VCLPLUG_QT_PUBLIC QtFrame : public QObject, public SalFrame
+class VCLPLUG_QT_PUBLIC QtFrame final : public QObject, public SalFrame
 {
     Q_OBJECT
 
@@ -90,9 +93,8 @@ class VCLPLUG_QT_PUBLIC QtFrame : public QObject, public SalFrame
 
     SystemEnvData m_aSystemData;
 
-    QtDragSource* m_pDragSource;
-    QtDropTarget* m_pDropTarget;
-    bool m_bInDrag;
+    QPointer<QtDragSource> m_pDragSource;
+    QPointer<QtDropTarget> m_pDropTarget;
 
     bool m_bDefaultSize;
     bool m_bDefaultPos;
@@ -101,8 +103,10 @@ class VCLPLUG_QT_PUBLIC QtFrame : public QObject, public SalFrame
     sal_uInt32 m_nRestoreScreen;
     QRect m_aRestoreGeometry;
 
-#if CHECK_ANY_QT_USING_X11
+#if !defined EMSCRIPTEN
     SessionManagerInhibitor m_SessionManagerInhibitor;
+#endif
+#if CHECK_ANY_QT_USING_X11
     ModKeyFlags m_nKeyModifiers;
 #endif
 
@@ -128,6 +132,7 @@ class VCLPLUG_QT_PUBLIC QtFrame : public QObject, public SalFrame
     bool isWindow() const;
     QWindow* windowHandle() const;
     QScreen* screen() const;
+    sal_Int32 screenNumber() const;
     bool isMinimized() const;
     bool isMaximized() const;
     void SetWindowStateImpl(Qt::WindowStates eState);
@@ -139,11 +144,10 @@ public:
     QtFrame(QtFrame* pParent, SalFrameStyleFlags nSalFrameStyle, bool bUseCairo);
     virtual ~QtFrame() override;
 
-    QWidget* GetQWidget() const { return m_pQWidget; }
+    QWidget& GetQWidget() const { return *m_pQWidget; }
     QtMainWindow* GetTopLevelWindow() const { return m_pTopLevel; }
     QWidget* asChild() const;
     qreal devicePixelRatioF() const;
-    int menuBarOffset() const;
 
     void Damage(sal_Int32 nExtentsX, sal_Int32 nExtentsY, sal_Int32 nExtentsWidth,
                 sal_Int32 nExtentsHeight) const;
@@ -157,14 +161,16 @@ public:
     virtual void SetIcon(sal_uInt16 nIcon) override;
     virtual void SetMenu(SalMenu* pMenu) override;
 
-    virtual void registerDragSource(QtDragSource* pDragSource);
-    virtual void deregisterDragSource(QtDragSource const* pDragSource);
-    virtual void registerDropTarget(QtDropTarget* pDropTarget);
-    virtual void deregisterDropTarget(QtDropTarget const* pDropTarget);
+    void registerDragSource(QtDragSource* pDragSource);
+    void registerDropTarget(QtDropTarget* pDropTarget);
 
+    void handleDragEnter(QDragEnterEvent* pEvent);
     void handleDragLeave();
     void handleDragMove(QDragMoveEvent* pEvent);
     void handleDrop(QDropEvent* pEvent);
+    void handleMoveEvent(QMoveEvent* pEvent);
+    void handlePaintEvent(const QPaintEvent* pEvent, QWidget* pWidget);
+    void handleResizeEvent(const QResizeEvent* pEvent);
 
     virtual void SetExtendedFrameStyle(SalExtStyle nExtStyle) override;
     virtual void Show(bool bVisible, bool bNoActivate = false) override;
@@ -173,10 +179,10 @@ public:
     virtual void SetPosSize(tools::Long nX, tools::Long nY, tools::Long nWidth, tools::Long nHeight,
                             sal_uInt16 nFlags) override;
     virtual void GetClientSize(tools::Long& rWidth, tools::Long& rHeight) override;
+    SalFrameGeometry GetUnmirroredGeometry() const override;
     virtual void GetWorkArea(AbsoluteScreenPixelRectangle& rRect) override;
     virtual SalFrame* GetParent() const override;
     virtual void SetModal(bool bModal) override;
-    virtual bool GetModal() const override;
     virtual void SetWindowState(const vcl::WindowData*) override;
     virtual bool GetWindowState(vcl::WindowData*) override;
     virtual void ShowFullScreen(bool bFullScreen, sal_Int32 nDisplay) override;
@@ -197,7 +203,7 @@ public:
     virtual LanguageType GetInputLanguage() override;
     virtual void UpdateSettings(AllSettings& rSettings) override;
     virtual void Beep() override;
-    virtual const SystemEnvData* GetSystemData() const override { return &m_aSystemData; }
+    virtual const SystemEnvData& GetSystemData() const override { return m_aSystemData; }
     virtual SalPointerState GetPointerState() override;
     virtual KeyIndicatorState GetIndicatorState() override;
     virtual void SimulateKeyPress(sal_uInt16 nKeyCode) override;
@@ -219,7 +225,7 @@ public:
 
     void setInputLanguage(LanguageType);
     inline bool isPopup() const;
-    static void FillSystemEnvData(SystemEnvData&, sal_IntPtr pWindow, QWidget* pWidget);
+    static void FillSystemEnvData(SystemEnvData&, QWidget* pWidget, QtFrame* pFrame = nullptr);
 };
 
 inline bool QtFrame::CallCallback(SalEvent nEvent, const void* pEvent) const
@@ -234,4 +240,4 @@ inline bool QtFrame::isPopup() const
             && !(m_nStyle & SalFrameStyleFlags::OWNERDRAWDECORATION));
 }
 
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

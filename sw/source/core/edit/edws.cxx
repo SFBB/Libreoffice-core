@@ -49,7 +49,7 @@ SwEditShell::SwEditShell( SwDoc& rDoc, vcl::Window *pWindow, const SwViewOption 
     , m_bNbspRunNext(false)
     , m_bDoParagraphSignatureValidation(true)
 {
-    if (!utl::ConfigManager::IsFuzzing() && 0 < officecfg::Office::Common::Undo::Steps::get())
+    if (!comphelper::IsFuzzing() && 0 < officecfg::Office::Common::Undo::Steps::get())
     {
         GetDoc()->GetIDocumentUndoRedo().DoUndo(true);
     }
@@ -81,28 +81,6 @@ void SwEditShell::SetUndoNoResetModified()
 {
     GetDoc()->getIDocumentState().SetModified();
     GetDoc()->GetIDocumentUndoRedo().SetUndoNoResetModified();
-}
-
-void SwEditShell::StartAllAction()
-{
-    for(SwViewShell& rCurrentShell : GetRingContainer())
-    {
-        if (SwEditShell* pEditShell = dynamic_cast<SwEditShell*>(&rCurrentShell))
-            pEditShell->StartAction();
-        else
-            rCurrentShell.StartAction();
-    }
-}
-
-void SwEditShell::EndAllAction()
-{
-    for(SwViewShell& rCurrentShell : GetRingContainer())
-    {
-        if( auto pEditShell = dynamic_cast<SwEditShell *>(&rCurrentShell))
-            pEditShell->EndAction();
-        else
-            rCurrentShell.EndAction();
-    }
 }
 
 void SwEditShell::CalcLayout()

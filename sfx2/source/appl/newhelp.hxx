@@ -32,11 +32,6 @@
 
 #include <srchdlg.hxx>
 
-// context menu ids
-#define MID_OPEN                                1
-#define MID_RENAME                              2
-#define MID_DELETE                              3
-
 namespace com::sun::star::awt { class XWindow; }
 namespace com::sun::star::i18n { class XBreakIterator; }
 namespace com::sun::star::text { class XTextRange; }
@@ -288,7 +283,7 @@ ContentTabPage_Impl* SfxHelpIndexWindow_Impl::GetContentPage()
 {
     if (!xCPage)
     {
-        xCPage.reset(new ContentTabPage_Impl(m_xTabCtrl->get_page("contents"), this));
+        xCPage.reset(new ContentTabPage_Impl(m_xTabCtrl->get_page(u"contents"_ustr), this));
         xCPage->SetDoubleClickHdl(LINK(this, SfxHelpIndexWindow_Impl, ContentTabPageDoubleClickHdl));
     }
     return xCPage.get();
@@ -298,7 +293,7 @@ IndexTabPage_Impl* SfxHelpIndexWindow_Impl::GetIndexPage()
 {
     if (!xIPage)
     {
-        xIPage.reset(new IndexTabPage_Impl(m_xTabCtrl->get_page("index"), this));
+        xIPage.reset(new IndexTabPage_Impl(m_xTabCtrl->get_page(u"index"_ustr), this));
         xIPage->SetDoubleClickHdl( LINK(this, SfxHelpIndexWindow_Impl, IndexTabPageDoubleClickHdl) );
         xIPage->SetKeywordHdl( aIndexKeywordLink );
     }
@@ -309,7 +304,7 @@ SearchTabPage_Impl* SfxHelpIndexWindow_Impl::GetSearchPage()
 {
     if (!xSPage)
     {
-        xSPage.reset(new SearchTabPage_Impl(m_xTabCtrl->get_page("find"), this));
+        xSPage.reset(new SearchTabPage_Impl(m_xTabCtrl->get_page(u"find"_ustr), this));
         xSPage->SetDoubleClickHdl( LINK(this, SfxHelpIndexWindow_Impl, TabPageDoubleClickHdl) );
     }
     return xSPage.get();
@@ -319,7 +314,7 @@ BookmarksTabPage_Impl* SfxHelpIndexWindow_Impl::GetBookmarksPage()
 {
     if (!xBPage)
     {
-        xBPage.reset(new BookmarksTabPage_Impl(m_xTabCtrl->get_page("bookmarks"), this));
+        xBPage.reset(new BookmarksTabPage_Impl(m_xTabCtrl->get_page(u"bookmarks"_ustr), this));
         xBPage->SetDoubleClickHdl( LINK(this, SfxHelpIndexWindow_Impl, TabPageDoubleClickHdl) );
     }
     return xBPage.get();
@@ -336,7 +331,6 @@ public:
 
 // class SfxHelpTextWindow_Impl ------------------------------------------
 
-class SvtMiscOptions;
 class SfxHelpWindow_Impl;
 
 class SfxHelpTextWindow_Impl : public vcl::Window

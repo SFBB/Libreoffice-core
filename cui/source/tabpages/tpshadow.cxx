@@ -50,7 +50,7 @@ const WhichRangesContainer SvxShadowTabPage::pShadowRanges(svl::Items<
 >);
 
 SvxShadowTabPage::SvxShadowTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rInAttrs)
-    : SvxTabPage(pPage, pController, "cui/ui/shadowtabpage.ui", "ShadowTabPage", rInAttrs)
+    : SvxTabPage(pPage, pController, u"cui/ui/shadowtabpage.ui"_ustr, u"ShadowTabPage"_ustr, rInAttrs)
     , m_rOutAttrs(rInAttrs)
     , m_pnColorListState(nullptr)
     , m_nPageType(PageType::Area)
@@ -58,15 +58,15 @@ SvxShadowTabPage::SvxShadowTabPage(weld::Container* pPage, weld::DialogControlle
     , m_aXFillAttr(rInAttrs.GetPool())
     , m_rXFSet(m_aXFillAttr.GetItemSet())
     , m_aCtlPosition(this)
-    , m_xTsbShowShadow(m_xBuilder->weld_check_button("TSB_SHOW_SHADOW"))
-    , m_xGridShadow(m_xBuilder->weld_widget("gridSHADOW"))
-    , m_xMtrDistance(m_xBuilder->weld_metric_spin_button("MTR_FLD_DISTANCE", FieldUnit::CM))
-    , m_xLbShadowColor(new ColorListBox(m_xBuilder->weld_menu_button("LB_SHADOW_COLOR"),
+    , m_xTsbShowShadow(m_xBuilder->weld_check_button(u"TSB_SHOW_SHADOW"_ustr))
+    , m_xGridShadow(m_xBuilder->weld_widget(u"gridSHADOW"_ustr))
+    , m_xMtrDistance(m_xBuilder->weld_metric_spin_button(u"MTR_FLD_DISTANCE"_ustr, FieldUnit::CM))
+    , m_xLbShadowColor(new ColorListBox(m_xBuilder->weld_menu_button(u"LB_SHADOW_COLOR"_ustr),
                 [this]{ return GetDialogController()->getDialog(); }))
-    , m_xMtrTransparent(m_xBuilder->weld_metric_spin_button("MTR_SHADOW_TRANSPARENT", FieldUnit::PERCENT))
-    , m_xLbShadowBlurMetric(m_xBuilder->weld_metric_spin_button("LB_SHADOW_BLUR", FieldUnit::POINT))
-    , m_xCtlPosition(new weld::CustomWeld(*m_xBuilder, "CTL_POSITION", m_aCtlPosition))
-    , m_xCtlXRectPreview(new weld::CustomWeld(*m_xBuilder, "CTL_COLOR_PREVIEW", m_aCtlXRectPreview))
+    , m_xMtrTransparent(m_xBuilder->weld_metric_spin_button(u"MTR_SHADOW_TRANSPARENT"_ustr, FieldUnit::PERCENT))
+    , m_xLbShadowBlurMetric(m_xBuilder->weld_metric_spin_button(u"LB_SHADOW_BLUR"_ustr, FieldUnit::POINT))
+    , m_xCtlPosition(new weld::CustomWeld(*m_xBuilder, u"CTL_POSITION"_ustr, m_aCtlPosition))
+    , m_xCtlXRectPreview(new weld::CustomWeld(*m_xBuilder, u"CTL_COLOR_PREVIEW"_ustr, m_aCtlXRectPreview))
 {
     // this page needs ExchangeSupport
     SetExchangeSupport();
@@ -86,32 +86,32 @@ SvxShadowTabPage::SvxShadowTabPage(weld::Container* pPage, weld::DialogControlle
 
     // determine PoolUnit
     SfxItemPool* pPool = m_rOutAttrs.GetPool();
-    DBG_ASSERT( pPool, "Where is the pool?" );
+    assert(pPool && "Where is the pool?");
     m_ePoolUnit = pPool->GetMetric( SDRATTR_SHADOWXDIST );
 
     // setting the output device
     drawing::FillStyle eXFS = drawing::FillStyle_SOLID;
-    if( m_rOutAttrs.GetItemState( XATTR_FILLSTYLE ) != SfxItemState::DONTCARE )
+    if( m_rOutAttrs.GetItemState( XATTR_FILLSTYLE ) != SfxItemState::INVALID )
     {
         eXFS = m_rOutAttrs.Get( GetWhich( XATTR_FILLSTYLE ) ).GetValue();
         switch( eXFS )
         {
             case drawing::FillStyle_SOLID:
-                if( SfxItemState::DONTCARE != m_rOutAttrs.GetItemState( XATTR_FILLCOLOR ) )
+                if( SfxItemState::INVALID != m_rOutAttrs.GetItemState( XATTR_FILLCOLOR ) )
                 {
                     m_rXFSet.Put( m_rOutAttrs.Get( XATTR_FILLCOLOR ) );
                 }
             break;
 
             case drawing::FillStyle_GRADIENT:
-                if( SfxItemState::DONTCARE != m_rOutAttrs.GetItemState( XATTR_FILLGRADIENT ) )
+                if( SfxItemState::INVALID != m_rOutAttrs.GetItemState( XATTR_FILLGRADIENT ) )
                 {
                     m_rXFSet.Put( m_rOutAttrs.Get( XATTR_FILLGRADIENT ) );
                 }
             break;
 
             case drawing::FillStyle_HATCH:
-                if( SfxItemState::DONTCARE != m_rOutAttrs.GetItemState( XATTR_FILLHATCH ) )
+                if( SfxItemState::INVALID != m_rOutAttrs.GetItemState( XATTR_FILLHATCH ) )
                 {
                     m_rXFSet.Put( m_rOutAttrs.Get( XATTR_FILLHATCH ) );
                 }
@@ -119,7 +119,7 @@ SvxShadowTabPage::SvxShadowTabPage(weld::Container* pPage, weld::DialogControlle
 
             case drawing::FillStyle_BITMAP:
             {
-                if( SfxItemState::DONTCARE != m_rOutAttrs.GetItemState( XATTR_FILLBITMAP ) )
+                if( SfxItemState::INVALID != m_rOutAttrs.GetItemState( XATTR_FILLBITMAP ) )
                 {
                     m_rXFSet.Put( m_rOutAttrs.Get( XATTR_FILLBITMAP ) );
                 }
@@ -257,18 +257,18 @@ bool SvxShadowTabPage::FillItemSet( SfxItemSet* rAttrs )
         case RectPoint::MM: break;
     }
 
-    // If the values of the shadow distances==SfxItemState::DONTCARE and the displayed
+    // If the values of the shadow distances==SfxItemState::INVALID and the displayed
     // string in the respective MetricField=="", then the comparison of the old
     // and the new distance values would return a wrong result because in such a
     // case the new distance values would match the default values of the MetricField !!!!
     if ( !m_xMtrDistance->get_text().isEmpty() ||
-         m_rOutAttrs.GetItemState( SDRATTR_SHADOWXDIST ) != SfxItemState::DONTCARE ||
-         m_rOutAttrs.GetItemState( SDRATTR_SHADOWYDIST ) != SfxItemState::DONTCARE    )
+         m_rOutAttrs.GetItemState( SDRATTR_SHADOWXDIST ) != SfxItemState::INVALID ||
+         m_rOutAttrs.GetItemState( SDRATTR_SHADOWYDIST ) != SfxItemState::INVALID    )
     {
         sal_Int32 nOldX = 9876543; // impossible value, so DontCare
         sal_Int32 nOldY = 9876543;
-        if( m_rOutAttrs.GetItemState( SDRATTR_SHADOWXDIST ) != SfxItemState::DONTCARE &&
-            m_rOutAttrs.GetItemState( SDRATTR_SHADOWYDIST ) != SfxItemState::DONTCARE )
+        if( m_rOutAttrs.GetItemState( SDRATTR_SHADOWXDIST ) != SfxItemState::INVALID &&
+            m_rOutAttrs.GetItemState( SDRATTR_SHADOWYDIST ) != SfxItemState::INVALID )
         {
             nOldX = m_rOutAttrs.Get( SDRATTR_SHADOWXDIST ).GetValue();
             nOldY = m_rOutAttrs.Get( SDRATTR_SHADOWYDIST ).GetValue();
@@ -338,7 +338,7 @@ void SvxShadowTabPage::Reset( const SfxItemSet* rAttrs )
     // at the moment there are only 8 possible positions where a shadow can be set
 
     // has a shadow been set?
-    if( rAttrs->GetItemState( SDRATTR_SHADOW ) != SfxItemState::DONTCARE )
+    if( rAttrs->GetItemState( SDRATTR_SHADOW ) != SfxItemState::INVALID )
     {
         if( rAttrs->Get( SDRATTR_SHADOW ).GetValue() )
             m_xTsbShowShadow->set_state(TRISTATE_TRUE);
@@ -353,8 +353,8 @@ void SvxShadowTabPage::Reset( const SfxItemSet* rAttrs )
     // distance (only 8 possible positions),
     // so there is only one item evaluated
 
-    if( rAttrs->GetItemState( SDRATTR_SHADOWXDIST ) != SfxItemState::DONTCARE &&
-        rAttrs->GetItemState( SDRATTR_SHADOWYDIST ) != SfxItemState::DONTCARE )
+    if( rAttrs->GetItemState( SDRATTR_SHADOWXDIST ) != SfxItemState::INVALID &&
+        rAttrs->GetItemState( SDRATTR_SHADOWYDIST ) != SfxItemState::INVALID )
     {
         sal_Int32 nX = rAttrs->Get( SDRATTR_SHADOWXDIST ).GetValue();
         sal_Int32 nY = rAttrs->Get( SDRATTR_SHADOWYDIST ).GetValue();
@@ -381,41 +381,41 @@ void SvxShadowTabPage::Reset( const SfxItemSet* rAttrs )
         // determine default-distance
         SfxItemPool* pPool = m_rOutAttrs.GetPool();
         {
-            sal_Int32 n = pPool->GetDefaultItem(SDRATTR_SHADOWXDIST).GetValue();
+            sal_Int32 n = pPool->GetUserOrPoolDefaultItem(SDRATTR_SHADOWXDIST).GetValue();
             if (n == 0)
-                n = pPool->GetDefaultItem(SDRATTR_SHADOWYDIST).GetValue();
+                n = pPool->GetUserOrPoolDefaultItem(SDRATTR_SHADOWYDIST).GetValue();
             SetMetricValue(*m_xMtrDistance, std::abs(n), m_ePoolUnit);
         }
 
         // Tristate, e. g. multiple objects have been marked of which some have a shadow and some don't.
         // The text (which shall be displayed) of the MetricFields is set to "" and serves as an
         // identification in the method FillItemSet for the fact that the distance value was NOT changed !!!!
-        m_xMtrDistance->set_text( "" );
+        m_xMtrDistance->set_text( u""_ustr );
         m_aCtlPosition.SetActualRP( RectPoint::MM );
     }
 
-    if( rAttrs->GetItemState( SDRATTR_SHADOWCOLOR ) != SfxItemState::DONTCARE )
+    if( rAttrs->GetItemState( SDRATTR_SHADOWCOLOR ) != SfxItemState::INVALID )
     {
         m_xLbShadowColor->SelectEntry( rAttrs->Get( SDRATTR_SHADOWCOLOR ).GetColorValue() );
     }
     else
         m_xLbShadowColor->SetNoSelection();
 
-    if( rAttrs->GetItemState( SDRATTR_SHADOWTRANSPARENCE ) != SfxItemState::DONTCARE )
+    if( rAttrs->GetItemState( SDRATTR_SHADOWTRANSPARENCE ) != SfxItemState::INVALID )
     {
         sal_uInt16 nTransp = rAttrs->Get( SDRATTR_SHADOWTRANSPARENCE ).GetValue();
         m_xMtrTransparent->set_value(nTransp, FieldUnit::PERCENT);
     }
     else
-        m_xMtrTransparent->set_text("");
+        m_xMtrTransparent->set_text(u""_ustr);
 
-    if( rAttrs->GetItemState( SDRATTR_SHADOWBLUR ) != SfxItemState::DONTCARE )
+    if( rAttrs->GetItemState( SDRATTR_SHADOWBLUR ) != SfxItemState::INVALID )
     {
         sal_uInt16 nBlur = rAttrs->Get( SDRATTR_SHADOWBLUR ).GetValue();
         m_xLbShadowBlurMetric->set_value(nBlur, FieldUnit::MM_100TH);
     }
     else
-        m_xLbShadowBlurMetric->set_text("");
+        m_xLbShadowBlurMetric->set_text(u""_ustr);
 
     //aCtlPosition
     m_xMtrDistance->save_value();

@@ -29,7 +29,8 @@
 
 SfxPoolItem* SfxStringListItem::CreateDefault() { return new SfxStringListItem; }
 
-SfxStringListItem::SfxStringListItem()
+SfxStringListItem::SfxStringListItem() :
+    SfxPoolItem( 0 )
 {
 }
 

@@ -38,6 +38,7 @@
 #include <vcl/sysdata.hxx>
 #include <vcl/virdev.hxx>
 #include <sal/log.hxx>
+#include <o3tl/string_view.hxx>
 
 #include <unx/salunx.h>
 #include <unx/saldisp.hxx>
@@ -87,15 +88,14 @@ X11SalGraphics::X11SalGraphics():
 
 X11SalGraphics::~X11SalGraphics() COVERITY_NOEXCEPT_FALSE
 {
-    DeInit();
+    mxImpl->DeInit();
+    SetDrawable(None, nullptr, m_nXScreen);
     ReleaseFonts();
-    freeResources();
+    FreeColorMap();
 }
 
-void X11SalGraphics::freeResources()
+void X11SalGraphics::FreeColorMap()
 {
-    mxImpl->freeResources();
-
     if( m_pDeleteColormap )
     {
         m_pDeleteColormap.reset();
@@ -125,7 +125,7 @@ void X11SalGraphics::SetDrawable(Drawable aDrawable, cairo_surface_t* pSurface, 
     // free screen specific resources if needed
     if( nXScreen != m_nXScreen )
     {
-        freeResources();
+        FreeColorMap();
         maX11Common.m_pColormap = &vcl_sal::getSalDisplay(GetGenericUnixSalData())->GetColormap( nXScreen );
         m_nXScreen = nXScreen;
     }
@@ -143,13 +143,7 @@ void X11SalGraphics::Init( X11SalFrame& rFrame, Drawable aTarget,
     m_pVDev     = nullptr;
 
     SetDrawable(aTarget, rFrame.GetSurface(), nXScreen);
-    mxImpl->Init();
-}
-
-void X11SalGraphics::DeInit()
-{
-    mxImpl->DeInit();
-    SetDrawable(None, nullptr, m_nXScreen);
+    mxImpl->UpdateX11GeometryProvider();
 }
 
 void X11SalGraphics::GetResolution( sal_Int32 &rDPIX, sal_Int32 &rDPIY ) // const
@@ -157,8 +151,7 @@ void X11SalGraphics::GetResolution( sal_Int32 &rDPIX, sal_Int32 &rDPIY ) // cons
     char* pForceDpi;
     if ((pForceDpi = getenv("SAL_FORCEDPI")))
     {
-        OString sForceDPI(pForceDpi);
-        rDPIX = rDPIY = sForceDPI.toInt32();
+        rDPIX = rDPIY = o3tl::toInt32(std::string_view(pForceDpi));
         return;
     }
 
@@ -186,7 +179,7 @@ void X11SalGraphics::GetResolution( sal_Int32 &rDPIX, sal_Int32 &rDPIY ) // cons
 
     // different x- and y- resolutions are usually artifacts of
     // a wrongly calculated screen size.
-#ifdef DEBUG
+#if OSL_DEBUG_LEVEL >= 2
     SAL_INFO("vcl.gdi", "Forcing Resolution from "
         << std::hex << rDPIX
         << std::dec << rDPIX

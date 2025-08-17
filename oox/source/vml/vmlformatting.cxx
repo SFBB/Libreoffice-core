@@ -29,6 +29,7 @@
 #include <com/sun/star/drawing/EnhancedCustomShapeTextPathMode.hpp>
 #include <com/sun/star/table/ShadowFormat.hpp>
 #include <com/sun/star/text/XTextRange.hpp>
+
 #include <o3tl/float_int_conversion.hxx>
 #include <o3tl/unit_conversion.hxx>
 #include <rtl/strbuf.hxx>
@@ -46,6 +47,8 @@
 #include <svx/svdtrans.hxx>
 #include <comphelper/propertysequence.hxx>
 #include <o3tl/string_view.hxx>
+#include <svx/xbitmap.hxx>
+#include <vcl/BitmapTools.hxx>
 #include <vcl/virdev.hxx>
 
 namespace oox::vml {
@@ -774,15 +777,18 @@ void FillModel::pushToPropMap( ShapePropertyMap& rPropMap, const GraphicHelper& 
                     sal_Int32 nVmlAngle = getIntervalValue< sal_Int32, sal_Int32 >( moAngle.value_or( 0 ), 0, 360 );
 
                     // focus of -50% or 50% is axial gradient
+                    // so approximate anything with a similar focus by using LO's axial gradient,
+                    // (otherwise drop the radial aspect; linear gradient becomes the closest match)
                     if( ((-0.75 <= fFocus) && (fFocus <= -0.25)) || ((0.25 <= fFocus) && (fFocus <= 0.75)) )
                     {
-                        /*  According to spec, focus of 50% is outer-to-inner,
+                        /*  According to spec, a focus of positive 50% is outer-to-inner,
                             and -50% is inner-to-outer (color to color2).
-                            BUT: For angles >= 180 deg., the behaviour is
-                            reversed... that's not spec'ed of course. So,
-                            [0;180) deg. and 50%, or [180;360) deg. and -50% is
-                            outer-to-inner in fact. */
-                        bool bOuterToInner = (fFocus > 0.0) == (nVmlAngle < 180);
+                            If the angle was provided as a negative,
+                            then the colors are also (again) reversed. */
+                        bool bOuterToInner = fFocus > 0.0;
+                        if (moAngle.value_or(0) < 0)
+                            bOuterToInner = !bOuterToInner;
+
                         // simulate axial gradient by 3-step DrawingML gradient
                         const Color& rOuterColor = bOuterToInner ? aColor1 : aColor2;
                         const Color& rInnerColor = bOuterToInner ? aColor2 : aColor1;
@@ -794,20 +800,29 @@ void FillModel::pushToPropMap( ShapePropertyMap& rPropMap, const GraphicHelper& 
                     }
                     else    // focus of -100%, 0%, and 100% is linear gradient
                     {
-                        /*  According to spec, focus of -100% or 100% swaps the
-                            start and stop colors, effectively reversing the
-                            gradient. BUT: For angles >= 180 deg., the
-                            behaviour is reversed. This means that in this case
-                            a focus of 0% swaps the gradient. */
+                        // LO linear gradients: top == start, but for MSO bottom == start == moColor
+                        bool bSwapColors = true;
+
+                        /*  According to spec, a focus of -100% or 100% swaps the
+                            start and stop colors, effectively reversing the gradient.
+                            If the angle was provided as a negative,
+                            then the colors are also (again) reversed. */
                         if( fFocus < -0.5 || fFocus > 0.5 )
-                            nVmlAngle = (nVmlAngle + 180) % 360;
+                            bSwapColors = !bSwapColors;
+                        if (moAngle.value_or(0) < 0)
+                            bSwapColors = !bSwapColors;
+
+                        const Color& rStartColor = bSwapColors ? aColor2 : aColor1;
+                        const Color& rEndColor = bSwapColors ? aColor1 : aColor2;
                         // set the start and stop colors
-                        lcl_setGradientStop( aFillProps.maGradientProps.maGradientStops, 0.0, aColor1 );
-                        lcl_setGradientStop( aFillProps.maGradientProps.maGradientStops, 1.0, aColor2 );
+                        lcl_setGradientStop(aFillProps.maGradientProps.maGradientStops, 0.0,
+                                            rStartColor);
+                        lcl_setGradientStop(aFillProps.maGradientProps.maGradientStops, 1.0,
+                                            rEndColor);
                     }
 
                     // VML counts counterclockwise from bottom, DrawingML clockwise from left
-                    sal_Int32 nDmlAngle = (630 - nVmlAngle) % 360;
+                    sal_Int32 nDmlAngle = NormAngle360(90 - nVmlAngle);
                     aFillProps.maGradientProps.moShadeAngle = nDmlAngle * ::oox::drawingml::PER_DEGREE;
                 }
                 else    // XML_gradientRadial is rectangular gradient
@@ -843,6 +858,51 @@ void FillModel::pushToPropMap( ShapePropertyMap& rPropMap, const GraphicHelper& 
                     aFillProps.maBlipProps.mxFillGraphic = rGraphicHelper.importEmbeddedGraphic(moBitmapPath.value());
                     if (aFillProps.maBlipProps.mxFillGraphic.is())
                     {
+                        if (nFillType == XML_pattern)
+                        {
+                            // VML provides an 8x8 black(background) and white(foreground) pattern
+                            // along with specified background(color2) and foreground(color) colors,
+                            // while LO needs the color applied directly to the pattern.
+                            const Graphic aGraphic(aFillProps.maBlipProps.mxFillGraphic);
+                            ::Color nBackColor;
+                            ::Color nPixelColor;
+                            bool bIs8x8 = vcl::bitmap::isHistorical8x8(Bitmap(aGraphic.GetBitmapEx()),
+                                                                       nBackColor, nPixelColor);
+                            if (bIs8x8)
+                            {
+                                nBackColor
+                                    = ConversionHelper::decodeColor(rGraphicHelper, moColor2,
+                                                                    moOpacity2, API_RGB_WHITE)
+                                          .getColor(rGraphicHelper);
+                                // Documentation says undefined == white; observation says lightgray
+                                nPixelColor
+                                    = ConversionHelper::decodeColor(rGraphicHelper, moColor,
+                                                                    moOpacity, COL_LIGHTGRAY)
+                                          .getColor(rGraphicHelper);
+
+                                XOBitmap aXOB(Bitmap(aGraphic.GetBitmapEx()));
+                                aXOB.Bitmap2Array();
+                                // LO uses the first pixel's color to represent background pixels
+                                if (aXOB.GetBackgroundColor() == COL_WHITE)
+                                {
+                                    // White always represents the foreground in VML => swap
+                                    aXOB.SetPixelColor(nBackColor);
+                                    aXOB.SetBackgroundColor(nPixelColor);
+                                }
+                                else
+                                {
+                                    assert(aXOB.GetBackgroundColor() == COL_BLACK);
+                                    aXOB.SetPixelColor(nPixelColor);
+                                    aXOB.SetBackgroundColor(nBackColor);
+                                }
+                                aXOB.Array2Bitmap();
+
+                                Graphic aLOPattern(aXOB.GetBitmap());
+                                aLOPattern.setOriginURL(aGraphic.getOriginURL());
+                                aFillProps.maBlipProps.mxFillGraphic = aLOPattern.GetXGraphic();
+                            }
+                        }
+
                         aFillProps.moFillType = XML_blipFill;
                         aFillProps.maBlipProps.moBitmapMode = (nFillType == XML_frame) ? XML_stretch : XML_tile;
                         break;  // do not break if bitmap is missing, but run to XML_solid instead
@@ -897,7 +957,7 @@ void ShadowModel::pushToPropMap(ShapePropertyMap& rPropMap, const GraphicHelper&
         ? nOffsetY < 0 ? table::ShadowLocation_TOP_LEFT : table::ShadowLocation_BOTTOM_LEFT
         : nOffsetY < 0 ? table::ShadowLocation_TOP_RIGHT : table::ShadowLocation_BOTTOM_RIGHT;
     // The width of the shadow is the average of the x and y values, see SwWW8ImplReader::MatchSdrItemsIntoFlySet().
-    aFormat.ShadowWidth = ((std::abs(nOffsetX) + std::abs(nOffsetY)) / 2);
+    aFormat.ShadowWidth = std::min<sal_Int32>(o3tl::saturating_add(std::abs(nOffsetX), std::abs(nOffsetY)) / 2, SHRT_MAX);
     rPropMap.setProperty(PROP_ShadowFormat, aFormat);
 }
 
@@ -922,7 +982,7 @@ static beans::PropertyValue lcl_createTextpathProps()
 
 void TextpathModel::pushToPropMap(ShapePropertyMap& rPropMap, const uno::Reference<drawing::XShape>& xShape, const GraphicHelper& rGraphicHelper) const
 {
-    OUString sFont = "";
+    OUString sFont = u""_ustr;
 
     if (moString.has_value())
     {
@@ -930,7 +990,7 @@ void TextpathModel::pushToPropMap(ShapePropertyMap& rPropMap, const uno::Referen
         xTextRange->setString(moString.value());
 
         uno::Reference<beans::XPropertySet> xPropertySet(xShape, uno::UNO_QUERY);
-        uno::Sequence<beans::PropertyValue> aGeomPropSeq = xPropertySet->getPropertyValue("CustomShapeGeometry").get< uno::Sequence<beans::PropertyValue> >();
+        uno::Sequence<beans::PropertyValue> aGeomPropSeq = xPropertySet->getPropertyValue(u"CustomShapeGeometry"_ustr).get< uno::Sequence<beans::PropertyValue> >();
         bool bFound = false;
         for (beans::PropertyValue& rProp : asNonConstRange(aGeomPropSeq))
         {
@@ -965,7 +1025,7 @@ void TextpathModel::pushToPropMap(ShapePropertyMap& rPropMap, const uno::Referen
                         aValue = aValue.substr(1, aValue.size() - 2);
 
                     uno::Reference<beans::XPropertySet> xPropertySet(xShape, uno::UNO_QUERY);
-                    xPropertySet->setPropertyValue("CharFontName", uno::Any(OUString(aValue)));
+                    xPropertySet->setPropertyValue(u"CharFontName"_ustr, uno::Any(OUString(aValue)));
                     sFont = aValue;
                 }
                 else if (aName == u"font-size")
@@ -974,7 +1034,7 @@ void TextpathModel::pushToPropMap(ShapePropertyMap& rPropMap, const uno::Referen
                     float nSize = drawingml::convertEmuToPoints(lclGetEmu(rGraphicHelper, aOptString, 1));
 
                     uno::Reference<beans::XPropertySet> xPropertySet(xShape, uno::UNO_QUERY);
-                    xPropertySet->setPropertyValue("CharHeight", uno::Any(nSize));
+                    xPropertySet->setPropertyValue(u"CharHeight"_ustr, uno::Any(nSize));
                 }
             }
         }

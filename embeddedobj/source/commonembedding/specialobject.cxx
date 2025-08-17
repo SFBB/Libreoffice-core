@@ -29,6 +29,7 @@
 #include <cppuhelper/queryinterface.hxx>
 #include <osl/diagnose.h>
 #include <cppuhelper/supportsservice.hxx>
+#include <officecfg/Office/Common.hxx>
 
 #include <specialobject.hxx>
 
@@ -72,13 +73,13 @@ embed::VisualRepresentation SAL_CALL OSpecialEmbeddedObject::getPreferredVisualR
 
     // TODO: if object is in loaded state it should switch itself to the running state
     if ( m_nObjectState == -1 || m_nObjectState == embed::EmbedStates::LOADED )
-        throw embed::WrongStateException( "The own object has no model!",
+        throw embed::WrongStateException( u"The own object has no model!"_ustr,
                                     static_cast< ::cppu::OWeakObject* >(this) );
 
     OSL_ENSURE( nAspect != embed::Aspects::MSOLE_ICON, "For iconified objects no graphical replacement is required!" );
     if ( nAspect == embed::Aspects::MSOLE_ICON )
         // no representation can be retrieved
-        throw embed::WrongStateException( "Illegal call!",
+        throw embed::WrongStateException( u"Illegal call!"_ustr,
                                     static_cast< ::cppu::OWeakObject* >(this) );
 
     // TODO: return for the aspect of the document
@@ -95,7 +96,7 @@ void SAL_CALL OSpecialEmbeddedObject::setVisualAreaSize( sal_Int64 nAspect, cons
     OSL_ENSURE( nAspect != embed::Aspects::MSOLE_ICON, "For iconified objects no graphical replacement is required!" );
     if ( nAspect == embed::Aspects::MSOLE_ICON )
         // no representation can be retrieved
-        throw embed::WrongStateException( "Illegal call!",
+        throw embed::WrongStateException( u"Illegal call!"_ustr,
                                     static_cast< ::cppu::OWeakObject* >(this) );
 
     maSize = aSize;
@@ -110,11 +111,11 @@ awt::Size SAL_CALL OSpecialEmbeddedObject::getVisualAreaSize( sal_Int64 nAspect 
     OSL_ENSURE( nAspect != embed::Aspects::MSOLE_ICON, "For iconified objects no graphical replacement is required!" );
     if ( nAspect == embed::Aspects::MSOLE_ICON )
         // no representation can be retrieved
-        throw embed::WrongStateException( "Illegal call!",
+        throw embed::WrongStateException( u"Illegal call!"_ustr,
                                     static_cast< ::cppu::OWeakObject* >(this) );
 
     if ( m_nObjectState == -1 )
-        throw embed::WrongStateException( "The own object has no model!",
+        throw embed::WrongStateException( u"The own object has no model!"_ustr,
                                     static_cast< ::cppu::OWeakObject* >(this) );
 
     return maSize;
@@ -129,7 +130,7 @@ sal_Int32 SAL_CALL OSpecialEmbeddedObject::getMapUnit( sal_Int64 nAspect )
     OSL_ENSURE( nAspect != embed::Aspects::MSOLE_ICON, "For iconified objects no graphical replacement is required!" );
     if ( nAspect == embed::Aspects::MSOLE_ICON )
         // no representation can be retrieved
-        throw embed::WrongStateException( "Illegal call!",
+        throw embed::WrongStateException( u"Illegal call!"_ustr,
                                     static_cast< ::cppu::OWeakObject* >(this) );
 
     return embed::EmbedMapUnits::ONE_100TH_MM;
@@ -137,6 +138,10 @@ sal_Int32 SAL_CALL OSpecialEmbeddedObject::getMapUnit( sal_Int64 nAspect )
 
 void SAL_CALL OSpecialEmbeddedObject::changeState( sal_Int32 nNewState )
 {
+    if ( officecfg::Office::Common::Security::Scripting::DisableActiveContent::get()
+         && nNewState != embed::EmbedStates::LOADED )
+        throw embed::UnreachableStateException();
+
     if ( nNewState == embed::EmbedStates::UI_ACTIVE )
         nNewState = embed::EmbedStates::INPLACE_ACTIVE;
     OCommonEmbeddedObject::changeState( nNewState );
@@ -149,7 +154,7 @@ void SAL_CALL OSpecialEmbeddedObject::doVerb( sal_Int32 nVerbID )
         throw lang::DisposedException(); // TODO
 
     if ( m_nObjectState == -1 )
-        throw embed::WrongStateException( "The object has no persistence!",
+        throw embed::WrongStateException( u"The object has no persistence!"_ustr,
                                         static_cast< ::cppu::OWeakObject* >(this) );
 
     if ( nVerbID == -7 )
@@ -174,7 +179,7 @@ void SAL_CALL OSpecialEmbeddedObject::reload(
 
 OUString SAL_CALL OSpecialEmbeddedObject::getImplementationName()
 {
-    return "com.sun.star.comp.embed.OSpecialEmbeddedObject";
+    return u"com.sun.star.comp.embed.OSpecialEmbeddedObject"_ustr;
 }
 
 sal_Bool SAL_CALL OSpecialEmbeddedObject::supportsService(const OUString& ServiceName)
@@ -184,7 +189,7 @@ sal_Bool SAL_CALL OSpecialEmbeddedObject::supportsService(const OUString& Servic
 
 uno::Sequence<OUString> SAL_CALL OSpecialEmbeddedObject::getSupportedServiceNames()
 {
-    return { "com.sun.star.comp.embed.OSpecialEmbeddedObject" };
+    return { u"com.sun.star.comp.embed.OSpecialEmbeddedObject"_ustr };
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

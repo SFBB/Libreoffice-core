@@ -72,13 +72,13 @@ XPdfDecomposer::getDecomposition(const uno::Reference<util::XBinaryDataContainer
 
     BinaryDataContainer aDataContainer = vcl::convertUnoBinaryDataContainer(xDataContainer);
 
-    std::vector<BitmapEx> aBitmaps;
+    std::vector<Bitmap> aBitmaps;
     int rv = vcl::RenderPDFBitmaps(aDataContainer.getData(), aDataContainer.getSize(), aBitmaps,
                                    nPageIndex, 1);
     if (rv == 0)
         return {}; // happens if we do not have PDFium
 
-    BitmapEx aReplacement(aBitmaps[0]);
+    Bitmap aReplacement(aBitmaps[0]);
 
     // short form for scale and translate transformation
     const Size aBitmapSize(aReplacement.GetSizePixel());
@@ -97,7 +97,7 @@ XPdfDecomposer::getDecomposition(const uno::Reference<util::XBinaryDataContainer
 
 OUString SAL_CALL XPdfDecomposer::getImplementationName()
 {
-    return "com.sun.star.comp.PDF.PDFDecomposer";
+    return u"com.sun.star.comp.PDF.PDFDecomposer"_ustr;
 }
 
 sal_Bool SAL_CALL XPdfDecomposer::supportsService(const OUString& rServiceName)
@@ -107,7 +107,7 @@ sal_Bool SAL_CALL XPdfDecomposer::supportsService(const OUString& rServiceName)
 
 uno::Sequence<OUString> SAL_CALL XPdfDecomposer::getSupportedServiceNames()
 {
-    return { "com.sun.star.graphic.PdfTools" };
+    return { u"com.sun.star.graphic.PdfTools"_ustr };
 }
 }
 

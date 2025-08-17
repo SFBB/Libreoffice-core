@@ -22,16 +22,13 @@
 #include <DrawViewWrapper.hxx>
 #include <PositionAndSizeHelper.hxx>
 #include <ChartModel.hxx>
-#include <ChartModelHelper.hxx>
 #include <ChartView.hxx>
 #include "UndoGuard.hxx"
 #include <ObjectNameProvider.hxx>
 #include <DiagramHelper.hxx>
-#include <chartview/ExplicitValueProvider.hxx>
 #include <CommonConverters.hxx>
 #include <svx/ActionDescriptionProvider.hxx>
 
-#include <comphelper/servicehelper.hxx>
 #include <svx/svxids.hrc>
 #include <svx/rectenum.hxx>
 #include <svl/intitem.hxx>
@@ -43,7 +40,6 @@
 namespace chart
 {
 using namespace ::com::sun::star;
-using namespace ::com::sun::star::chart2;
 
 static void lcl_getPositionAndSizeFromItemSet( const SfxItemSet& rItemSet, awt::Rectangle& rPosAndSize, const awt::Size& rOriginalSize )
 {
@@ -176,7 +172,7 @@ void ChartController::executeDispatch_PositionAndSize(const ::css::uno::Sequence
 
             awt::Rectangle aNewObjectRect;
             lcl_getPositionAndSizeFromItemSet( aItemSet, aNewObjectRect, ToSize(aOldObjectRect) );
-            awt::Size aPageSize( ChartModelHelper::getPageSize( getChartModel() ) );
+            awt::Size aPageSize( getChartModel()->getPageSize() );
             awt::Rectangle aPageRect( 0,0,aPageSize.Width,aPageSize.Height );
 
             bool bChanged = false;

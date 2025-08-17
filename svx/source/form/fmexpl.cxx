@@ -47,7 +47,8 @@ using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::container;
 
 FmNavInsertedHint::FmNavInsertedHint( FmEntryData* pInsertedEntryData, sal_uInt32 nRelPos )
-    :pEntryData( pInsertedEntryData )
+    :SfxHint(SfxHintId::FmNavInserted)
+    ,pEntryData( pInsertedEntryData )
     ,nPos( nRelPos )
 
 {
@@ -61,7 +62,7 @@ FmNavInsertedHint::~FmNavInsertedHint()
 
 
 FmNavModelReplacedHint::FmNavModelReplacedHint( FmEntryData* pAffectedEntryData )
-    :pEntryData( pAffectedEntryData )
+    :SfxHint(SfxHintId::FmNavModelReplaced), pEntryData( pAffectedEntryData )
 {
 }
 
@@ -71,7 +72,7 @@ FmNavModelReplacedHint::~FmNavModelReplacedHint()
 }
 
 FmNavRemovedHint::FmNavRemovedHint( FmEntryData* pRemovedEntryData )
-    :pEntryData( pRemovedEntryData )
+    :SfxHint(SfxHintId::FmNavRemoved), pEntryData( pRemovedEntryData )
 {
 }
 
@@ -81,7 +82,7 @@ FmNavRemovedHint::~FmNavRemovedHint()
 }
 
 FmNavNameChangedHint::FmNavNameChangedHint( FmEntryData* pData, OUString _aNewName )
-    :pEntryData( pData )
+    :SfxHint(SfxHintId::FmNavNameChanged), pEntryData( pData )
     ,aNewName(std::move( _aNewName ))
 {
 }
@@ -91,7 +92,7 @@ FmNavNameChangedHint::~FmNavNameChangedHint()
 {
 }
 
-FmNavClearedHint::FmNavClearedHint()
+FmNavClearedHint::FmNavClearedHint() : SfxHint(SfxHintId::FmNavCleared)
 {
 }
 
@@ -167,26 +168,6 @@ void FmEntryData::newObject( const css::uno::Reference< css::uno::XInterface >& 
 }
 
 
-FmEntryData::FmEntryData( const FmEntryData& rEntryData )
-{
-    pChildList.reset( new FmEntryDataList() );
-    aText = rEntryData.GetText();
-    m_aNormalImage = rEntryData.GetNormalImage();
-    pParent = rEntryData.GetParent();
-
-    FmEntryData* pChildData;
-    size_t nEntryCount = rEntryData.GetChildList()->size();
-    for( size_t i = 0; i < nEntryCount; i++ )
-    {
-        pChildData = rEntryData.GetChildList()->at( i );
-        std::unique_ptr<FmEntryData> pNewChildData = pChildData->Clone();
-        pChildList->insert( std::move(pNewChildData), size_t(-1) );
-    }
-
-    m_xNormalizedIFace = rEntryData.m_xNormalizedIFace;
-    m_xProperties = rEntryData.m_xProperties;
-    m_xChild = rEntryData.m_xChild;
-}
 
 
 
@@ -241,19 +222,6 @@ FmFormData::~FmFormData()
 {
 }
 
-FmFormData::FmFormData( const FmFormData& rFormData )
-    :FmEntryData( rFormData )
-{
-    m_xForm = rFormData.GetFormIface();
-}
-
-
-std::unique_ptr<FmEntryData> FmFormData::Clone()
-{
-    return std::unique_ptr<FmEntryData>(new FmFormData( *this ));
-}
-
-
 bool FmFormData::IsEqualWithoutChildren( FmEntryData* pEntryData )
 {
     if(this == pEntryData)
@@ -287,19 +255,6 @@ FmControlData::FmControlData(const Reference< XFormComponent >& _rxComponent, Fm
 
 FmControlData::~FmControlData()
 {
-}
-
-
-FmControlData::FmControlData( const FmControlData& rControlData )
-    :FmEntryData( rControlData )
-{
-    m_xFormComponent = rControlData.GetFormComponent();
-}
-
-
-std::unique_ptr<FmEntryData> FmControlData::Clone()
-{
-    return std::unique_ptr<FmEntryData>(new FmControlData( *this ));
 }
 
 
@@ -439,9 +394,9 @@ namespace svxform
 
     NavigatorFrame::NavigatorFrame( SfxBindings* _pBindings, SfxChildWindow* _pMgr,
                                   vcl::Window* _pParent )
-      : SfxDockingWindow(_pBindings, _pMgr, _pParent, "FormNavigator", "svx/ui/formnavigator.ui")
+      : SfxDockingWindow(_pBindings, _pMgr, _pParent, u"FormNavigator"_ustr, u"svx/ui/formnavigator.ui"_ustr)
       , SfxControllerItem( SID_FM_FMEXPLORER_CONTROL, *_pBindings )
-      , m_xNavigatorTree(new NavigatorTree(m_xBuilder->weld_tree_view("treeview")))
+      , m_xNavigatorTree(new NavigatorTree(m_xBuilder->weld_tree_view(u"treeview"_ustr)))
     {
         SetHelpId( HID_FORM_NAVIGATOR_WIN );
 

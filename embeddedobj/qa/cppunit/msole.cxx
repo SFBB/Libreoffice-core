@@ -105,7 +105,7 @@ CPPUNIT_TEST_FIXTURE(Test, testSaveOnThread)
         comphelper::makePropertyValue("FilterName", OUString("HTML (StarWriter)")),
         comphelper::makePropertyValue("FilterOptions", OUString("xhtmlns=reqif-xhtml")),
     };
-    mxComponent = loadFromDesktop(aURL, "com.sun.star.text.TextDocument", aLoadProperties);
+    loadWithParams(aURL, aLoadProperties);
 
     // When saving that document on a thread:
     OdtExportThread aThread(mxComponent, maTempFile.GetURL());
@@ -126,7 +126,7 @@ CPPUNIT_TEST_FIXTURE(Test, testSaveOnThread)
     // - Expected: 0.1665in
     // - Actual  : 1.9685in
     // i.e. we wrote a hardcoded 5cm width, not the real one.
-    assertXPath(pXmlDoc, "//style:graphic-properties", "visible-area-width", "0.1665in");
+    assertXPath(pXmlDoc, "//style:graphic-properties", "visible-area-width", u"0.1665in");
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();

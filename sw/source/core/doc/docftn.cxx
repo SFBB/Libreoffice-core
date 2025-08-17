@@ -35,6 +35,8 @@
 #include <ndtxt.hxx>
 #include <poolfmt.hxx>
 #include <ftninfo.hxx>
+#include <fmtftntx.hxx>
+#include <unoprnms.hxx>
 
 SwEndNoteInfo& SwEndNoteInfo::operator=(const SwEndNoteInfo& rInfo)
 {
@@ -130,6 +132,23 @@ void SwEndNoteInfo::ChgPageDesc(SwPageDesc* pDesc)
     m_aDepends.StartListening(m_pPageDesc);
 }
 
+SwSection* SwEndNoteInfo::GetSwSection(SwDoc& rDoc) const
+{
+    if (!m_pSwSection)
+    {
+        SwSectionFormat* pFormat = rDoc.MakeSectionFormat();
+        pFormat->SetFormatName(UIName(UNO_NAME_ENDNOTE));
+        pFormat->SetFormatAttr(SwFormatEndAtTextEnd(FTNEND_ATTXTEND));
+        m_pSwSection.reset(new SwSection(SectionType::Content, pFormat->GetName(), *pFormat));
+    }
+    return m_pSwSection.get();
+}
+
+void SwEndNoteInfo::ResetSwSection()
+{
+    m_pSwSection.reset();
+}
+
 void SwEndNoteInfo::SetFootnoteTextColl(SwTextFormatColl& rFormat)
 {
     m_aDepends.EndListening(m_pTextFormatColl);
@@ -154,18 +173,16 @@ namespace
 {
     void lcl_ResetPoolIdForDocAndSync(const sal_uInt16 nId, SwCharFormat* pFormat, const SwEndNoteInfo& rInfo)
     {
-        auto pDoc = pFormat->GetDoc();
-        if(!pDoc)
-            return;
-        for(auto pDocFormat : *pDoc->GetCharFormats())
+        SwDoc& rDoc = pFormat->GetDoc();
+        for(auto pDocFormat : *rDoc.GetCharFormats())
         {
             if(pDocFormat == pFormat)
                 pDocFormat->SetPoolFormatId(nId);
             else if(pDocFormat->GetPoolFormatId() == nId)
                 pDocFormat->SetPoolFormatId(0);
         }
-        rInfo.GetCharFormat(*pDoc);
-        rInfo.GetAnchorCharFormat(*pDoc);
+        rInfo.GetCharFormat(rDoc);
+        rInfo.GetAnchorCharFormat(rDoc);
     }
 }
 
@@ -214,8 +231,8 @@ void SwEndNoteInfo::UpdateFormatOrAttr()
     auto pFormat = GetCurrentCharFormat(m_pCharFormat == nullptr);
     if (!pFormat || !m_aDepends.IsListeningTo(pFormat) || pFormat->IsFormatInDTOR())
         return;
-    SwDoc* pDoc = pFormat->GetDoc();
-    SwFootnoteIdxs& rFootnoteIdxs = pDoc->GetFootnoteIdxs();
+    SwDoc& rDoc = pFormat->GetDoc();
+    SwFootnoteIdxs& rFootnoteIdxs = rDoc.GetFootnoteIdxs();
     for(auto pTextFootnote : rFootnoteIdxs)
     {
         const SwFormatFootnote &rFootnote = pTextFootnote->GetFootnote();
@@ -227,21 +244,18 @@ void SwEndNoteInfo::UpdateFormatOrAttr()
 
 void SwEndNoteInfo::SwClientNotify( const SwModify& rModify, const SfxHint& rHint)
 {
-    if (rHint.GetId() == SfxHintId::SwLegacyModify)
+    if (rHint.GetId() == SfxHintId::SwObjectDying)
     {
-        auto pLegacyHint = static_cast<const sw::LegacyModifyHint*>(&rHint);
-        switch(pLegacyHint->GetWhich())
-        {
-            case RES_ATTRSET_CHG:
-            case RES_FMT_CHG:
-                UpdateFormatOrAttr();
-                break;
-            default:
-                CheckRegistration( pLegacyHint->m_pOld );
-        }
+        auto pDyingHint = static_cast<const sw::ObjectDyingHint*>(&rHint);
+        CheckRegistration( *pDyingHint );
     }
-    else if (auto pModifyChangedHint = dynamic_cast<const sw::ModifyChangedHint*>(&rHint))
+    else if (rHint.GetId() == SfxHintId::SwFormatChange || rHint.GetId() == SfxHintId::SwAttrSetChange)
     {
+        UpdateFormatOrAttr();
+    }
+    else if (rHint.GetId() == SfxHintId::SwModifyChanged)
+    {
+        auto pModifyChangedHint = static_cast<const sw::ModifyChangedHint*>(&rHint);
         auto pNew = const_cast<sw::BroadcastingModify*>(static_cast<const sw::BroadcastingModify*>(pModifyChangedHint->m_pNew));
         if(m_pAnchorFormat == &rModify)
             m_pAnchorFormat = static_cast<SwCharFormat*>(pNew);
@@ -290,6 +304,8 @@ SwFootnoteInfo::SwFootnoteInfo() :
     m_aFormat.SetNumberingType(SVX_NUM_ARABIC);
     m_bEndNote = false;
 }
+
+SwFootnoteInfo::~SwFootnoteInfo() = default;
 
 void SwDoc::SetFootnoteInfo(const SwFootnoteInfo& rInfo)
 {
@@ -435,14 +451,14 @@ bool SwDoc::SetCurFootnote( const SwPaM& rPam, const OUString& rNumStr,
     SwFootnoteIdxs& rFootnoteArr = GetFootnoteIdxs();
     SwRootFrame* pTmpRoot = getIDocumentLayoutAccess().GetCurrentLayout();
 
-    auto [pStt, pEnd] = rPam.StartEnd(); // SwPosition*
-    const SwNodeOffset nSttNd = pStt->GetNodeIndex();
-    const sal_Int32 nSttCnt = pStt->GetContentIndex();
+    auto [pStart, pEnd] = rPam.StartEnd(); // SwPosition*
+    const SwNodeOffset nSttNd = pStart->GetNodeIndex();
+    const sal_Int32 nSttCnt = pStart->GetContentIndex();
     const SwNodeOffset nEndNd = pEnd->GetNodeIndex();
     const sal_Int32 nEndCnt = pEnd->GetContentIndex();
 
     size_t nPos = 0;
-    rFootnoteArr.SeekEntry( pStt->GetNode(), &nPos );
+    rFootnoteArr.SeekEntry( pStart->GetNode(), &nPos );
 
     std::unique_ptr<SwUndoChangeFootNote> pUndo;
     if (GetIDocumentUndoRedo().DoesUndo())
@@ -488,7 +504,7 @@ bool SwDoc::SetCurFootnote( const SwPaM& rPam, const OUString& rNumStr,
     }
 
     nPos = nPosSave;       // There are more in the front!
-    while( nPos )
+    while (nPos > 0)
     {
         SwTextFootnote* pTextFootnote = rFootnoteArr[ --nPos ];
         SwNodeOffset nIdx = SwTextFootnote_GetIndex(pTextFootnote);

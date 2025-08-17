@@ -19,13 +19,11 @@
 
 #pragma once
 
-#include <com/sun/star/accessibility/XAccessible.hpp>
+#include <controls/table/AccessibleGridControl.hxx>
 #include <controls/table/tablemodel.hxx>
 #include <controls/table/tablecontrolinterface.hxx>
 
-#include <vcl/svtaccessiblefactory.hxx>
-#include <vcl/accessibletable.hxx>
-
+#include <com/sun/star/accessibility/XAccessible.hpp>
 #include <vcl/seleng.hxx>
 
 #include <vector>
@@ -131,8 +129,7 @@ namespace svt::table
         RowPos                  m_nAnchor;
         bool                    m_bUpdatingColWidths;
 
-        vcl::AccessibleFactoryAccess     m_aFactoryAccess;
-        rtl::Reference<vcl::table::IAccessibleTableControl> m_pAccessibleTable;
+        rtl::Reference<accessibility::AccessibleGridControl> m_xAccessibleTable;
 
     public:
         void        setModel( const PTableModel& _pModel );
@@ -246,7 +243,19 @@ namespace svt::table
         // ITableControl
         virtual void                hideCursor() override;
         virtual void                showCursor() override;
-        virtual bool                dispatchAction( TableControlAction _eAction ) override;
+
+        /** dispatches an action to the table control
+
+            @return
+                <TRUE/> if the action could be dispatched successfully, <FALSE/> otherwise. Usual
+                failure conditions include some other instance vetoing the action, or impossibility
+                to execute the action at all (for instance moving up one row when already positioned
+                on the very first row).
+
+            @see TableControlAction
+        */
+        bool                        dispatchAction(TableControlAction _eAction);
+
         virtual SelectionEngine*    getSelEngine() override;
         virtual PTableModel         getModel() const override;
         virtual ColPos              getCurrentColumn() const override;
@@ -280,11 +289,9 @@ namespace svt::table
         tools::Rectangle calcCellRect( sal_Int32 nRow, sal_Int32 nCol ) const;
 
         // A11Y
-        rtl::Reference<vcl::table::IAccessibleTableControl>
-                        getAccessible( vcl::Window& i_parentWindow );
+        const rtl::Reference<accessibility::AccessibleGridControl>&
+        getAccessible(const css::uno::Reference<css::accessibility::XAccessible>& rxParent);
         void            disposeAccessible();
-
-        bool     isAccessibleAlive() const { return impl_isAccessibleAlive(); }
 
         // ITableModelListener
         virtual void    rowsInserted( RowPos first, RowPos last ) override;
@@ -297,7 +304,6 @@ namespace svt::table
         virtual void    tableMetricsChanged() override;
 
     private:
-        bool            impl_isAccessibleAlive() const;
         void            impl_commitAccessibleEvent(
                             sal_Int16 const i_eventID,
                             css::uno::Any const & i_newValue
@@ -331,10 +337,6 @@ namespace svt::table
                 counted, too.
         */
         TableSize   impl_getVisibleColumns( bool _bAcceptPartialCol ) const;
-
-        /** determines the rectangle occupied by the given cell
-        */
-        void        impl_getCellRect( ColPos _nColumn, RowPos _nRow, tools::Rectangle& _rCellRect ) const;
 
         /** updates all cached model values
 

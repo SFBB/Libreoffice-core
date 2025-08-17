@@ -24,6 +24,8 @@
 #include <comphelper/lok.hxx>
 #include <comphelper/processfactory.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
+#include <toolkit/controls/unocontrolcontainer.hxx>
+#include <toolkit/controls/unocontrolcontainermodel.hxx>
 #include <svx/svdview.hxx>
 #include <svx/svdpagv.hxx>
 #include <svx/sdrpaintwindow.hxx>
@@ -51,7 +53,7 @@ struct SdrPageWindow::Impl
     SdrPaintWindow* mpOriginalPaintWindow;
 
     // UNO stuff for xControls
-    uno::Reference<awt::XControlContainer> mxControlContainer;
+    rtl::Reference<UnoControlContainer> mxControlContainer;
 
     Impl( SdrPageView& rPageView, SdrPaintWindow& rPaintWindow ) :
         mpObjectContact(nullptr),
@@ -63,7 +65,7 @@ struct SdrPageWindow::Impl
 };
 
 
-uno::Reference<awt::XControlContainer> const & SdrPageWindow::GetControlContainer( bool _bCreateIfNecessary ) const
+rtl::Reference<UnoControlContainer> const & SdrPageWindow::GetControlContainer( bool _bCreateIfNecessary ) const
 {
     if (!mpImpl->mxControlContainer.is() && _bCreateIfNecessary)
     {
@@ -83,33 +85,27 @@ uno::Reference<awt::XControlContainer> const & SdrPageWindow::GetControlContaine
             // UnoControlContainer::setVisible(...) which calls createPeer(...).
             // This will now be called directly from here.
 
-            uno::Reference< awt::XControl > xControl(mpImpl->mxControlContainer, uno::UNO_QUERY);
-            if(xControl.is())
+            if(mpImpl->mxControlContainer.is())
             {
-                uno::Reference< uno::XInterface > xContext = xControl->getContext();
+                uno::Reference< uno::XInterface > xContext = mpImpl->mxControlContainer->getContext();
                 if(!xContext.is())
                 {
-                    xControl->createPeer( uno::Reference<awt::XToolkit>(), uno::Reference<awt::XWindowPeer>() );
+                    mpImpl->mxControlContainer->createPeer( uno::Reference<awt::XToolkit>(), uno::Reference<awt::XWindowPeer>() );
                 }
             }
         }
         else
         {
             // Printer and VirtualDevice, or rather: no OutDev
-            uno::Reference< lang::XMultiServiceFactory > xFactory( ::comphelper::getProcessServiceFactory() );
-            const_cast< SdrPageWindow* >( this )->mpImpl->mxControlContainer.set(xFactory->createInstance("com.sun.star.awt.UnoControlContainer"), uno::UNO_QUERY);
-            uno::Reference< awt::XControlModel > xModel(xFactory->createInstance("com.sun.star.awt.UnoControlContainerModel"), uno::UNO_QUERY);
-            uno::Reference< awt::XControl > xControl(mpImpl->mxControlContainer, uno::UNO_QUERY);
-            if (xControl.is())
-                xControl->setModel(xModel);
+            const_cast< SdrPageWindow* >( this )->mpImpl->mxControlContainer = new UnoControlContainer();
+            rtl::Reference< UnoControlContainerModel > xModel(new UnoControlContainerModel(comphelper::getProcessComponentContext()));
+            mpImpl->mxControlContainer->setModel(xModel);
 
             OutputDevice& rOutDev = rPaintWindow.GetOutputDevice();
             Point aPosPix = rOutDev.GetMapMode().GetOrigin();
             Size aSizePix = rOutDev.GetOutputSizePixel();
 
-            uno::Reference< awt::XWindow > xContComp(mpImpl->mxControlContainer, uno::UNO_QUERY);
-            if( xContComp.is() )
-                xContComp->setPosSize(aPosPix.X(), aPosPix.Y(), aSizePix.Width(), aSizePix.Height(), awt::PosSize::POSSIZE);
+            mpImpl->mxControlContainer->setPosSize(aPosPix.X(), aPosPix.Y(), aSizePix.Width(), aSizePix.Height(), awt::PosSize::POSSIZE);
         }
 
         FmFormView* pViewAsFormView = dynamic_cast< FmFormView* >( &rView );
@@ -140,8 +136,7 @@ SdrPageWindow::~SdrPageWindow()
         pViewAsFormView->RemoveControlContainer(mpImpl->mxControlContainer);
 
     // dispose the control container
-    uno::Reference< lang::XComponent > xComponent(mpImpl->mxControlContainer, uno::UNO_QUERY);
-    xComponent->dispose();
+    mpImpl->mxControlContainer->dispose();
 }
 
 SdrPageView& SdrPageWindow::GetPageView() const
@@ -231,6 +226,7 @@ void SdrPageWindow::PrepareRedraw(const vcl::Region& rReg)
 // clip test
 #ifdef CLIPPER_TEST
 #include <svx/svdopath.hxx>
+#include <basegfx/numeric/ftools.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <tools/helpers.hxx>
 #include <basegfx/polygon/b2dpolygoncutandtouch.hxx>
@@ -262,8 +258,10 @@ namespace
             {
                 const basegfx::B2DPoint aBStart(aCandidate.getB2DPoint(a));
                 const basegfx::B2DPoint aBEnd(aCandidate.getB2DPoint((a + 1) % aCandidate.count()));
-                const Point aStart(FRound(aBStart.getX()), FRound(aBStart.getY()));
-                const Point aEnd(FRound(aBEnd.getX()), FRound(aBEnd.getY()));
+                const Point aStart(basegfx::fround<tools::Long>(aBStart.getX()),
+                                   basegfx::fround<tools::Long>(aBStart.getY()));
+                const Point aEnd(basegfx::fround<tools::Long>(aBEnd.getX()),
+                                 basegfx::fround<tools::Long>(aBEnd.getY()));
                 rOutDev.DrawLine(aStart, aEnd);
             }
         }

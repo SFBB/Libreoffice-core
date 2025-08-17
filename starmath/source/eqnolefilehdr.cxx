@@ -29,8 +29,8 @@ bool GetMathTypeVersion( SotStorage* pStor, sal_uInt8 &nVersion )
 
     // code snippet copied from MathType::Parse
 
-    tools::SvRef<SotStorageStream> xSrc = pStor->OpenSotStream(
-        "Equation Native",
+    rtl::Reference<SotStorageStream> xSrc = pStor->OpenSotStream(
+        u"Equation Native"_ustr,
         StreamMode::STD_READ);
     if ( (!xSrc.is()) || (ERRCODE_NONE != xSrc->GetError()))
         return bSuccess;

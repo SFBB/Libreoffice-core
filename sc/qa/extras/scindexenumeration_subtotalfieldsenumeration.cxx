@@ -12,7 +12,6 @@
 
 #include <com/sun/star/container/XEnumerationAccess.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/sheet/GeneralFunction.hpp>
 #include <com/sun/star/sheet/XSpreadsheet.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
@@ -47,7 +46,7 @@ public:
 };
 
 ScIndexEnumeration_SubTotalFieldsEnumeration::ScIndexEnumeration_SubTotalFieldsEnumeration()
-    : UnoApiTest("/sc/qa/extras/testdocuments")
+    : UnoApiTest(u"/sc/qa/extras/testdocuments"_ustr)
 {
 }
 
@@ -75,7 +74,7 @@ uno::Reference<uno::XInterface> ScIndexEnumeration_SubTotalFieldsEnumeration::in
 void ScIndexEnumeration_SubTotalFieldsEnumeration::setUp()
 {
     UnoApiTest::setUp();
-    mxComponent = loadFromDesktop("private:factory/scalc");
+    loadFromURL(u"private:factory/scalc"_ustr);
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(ScIndexEnumeration_SubTotalFieldsEnumeration);

@@ -32,7 +32,7 @@ namespace com::sun::star {
     namespace uno { template <class E> class Sequence; }
     namespace embed { class XStorage; }
     namespace xml {
-        namespace sax { struct InputSource; class XParser; class XWriter; }
+        namespace sax { struct InputSource; class XWriter; }
     }
 }
 
@@ -62,6 +62,8 @@ class ScXMLImportWrapper
     ScDocument&     rDoc;
     SfxMedium*      pMedium;
     css::uno::Reference< css::embed::XStorage > xStorage;
+
+    std::unordered_map<OString, OUString> maEmbeddedFontFiles;
 
     css::uno::Reference< css::task::XStatusIndicator> GetStatusIndicator() const;
 

@@ -20,7 +20,6 @@
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/accessibility/AccessibleTextType.hpp>
-#include <com/sun/star/accessibility/AccessibleEventObject.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <unotools/accessiblerelationsethelper.hxx>
 
@@ -51,12 +50,11 @@ using namespace com::sun::star::lang;
 using namespace com::sun::star::uno;
 using namespace com::sun::star::accessibility;
 
-SmGraphicAccessible::SmGraphicAccessible(SmGraphicWidget *pGraphicWin) :
-    aAccName            (SmResId(RID_DOCUMENTSTR)),
-    nClientId           (0),
-    pWin                (pGraphicWin)
+SmGraphicAccessible::SmGraphicAccessible(SmGraphicWidget* pGraphicWin)
+    : aAccName(SmResId(RID_DOCUMENTSTR))
+    , pWin(pGraphicWin)
 {
-    OSL_ENSURE( pWin, "SmGraphicAccessible: window missing" );
+    assert(pWin && "SmGraphicAccessible: window missing");
 }
 
 SmGraphicAccessible::~SmGraphicAccessible()
@@ -78,14 +76,11 @@ OUString SmGraphicAccessible::GetAccessibleText_Impl()
     return aTxt;
 }
 
-void SmGraphicAccessible::ClearWin()
+void SAL_CALL SmGraphicAccessible::disposing()
 {
     pWin = nullptr;   // implicitly results in AccessibleStateType::DEFUNC set
 
-    if ( nClientId )
-    {
-        comphelper::AccessibleEventNotifier::revokeClientNotifyDisposing( std::exchange(nClientId, 0), *this );
-    }
+    comphelper::OAccessible::disposing();
 }
 
 void SmGraphicAccessible::LaunchEvent(
@@ -93,115 +88,22 @@ void SmGraphicAccessible::LaunchEvent(
         const uno::Any &rOldVal,
         const uno::Any &rNewVal)
 {
-    AccessibleEventObject aEvt;
-    aEvt.Source     = static_cast<XAccessible *>(this);
-    aEvt.EventId    = nAccessibleEventId;
-    aEvt.OldValue   = rOldVal;
-    aEvt.NewValue   = rNewVal ;
-
-    // pass event on to event-listener's
-    if (nClientId)
-        comphelper::AccessibleEventNotifier::addEvent( nClientId, aEvt );
+    NotifyAccessibleEvent(nAccessibleEventId, rOldVal, rNewVal);
 }
 
-uno::Reference< XAccessibleContext > SAL_CALL SmGraphicAccessible::getAccessibleContext()
-{
-    return this;
-}
-
-sal_Bool SAL_CALL SmGraphicAccessible::containsPoint( const awt::Point& aPoint )
-{
-    //! the arguments coordinates are relative to the current window !
-    //! Thus the top-left point is (0, 0)
-
-    SolarMutexGuard aGuard;
-    if (!pWin)
-        throw RuntimeException();
-
-    Size aSz( pWin->GetOutputSizePixel() );
-    return  aPoint.X >= 0  &&  aPoint.Y >= 0  &&
-            aPoint.X < aSz.Width()  &&  aPoint.Y < aSz.Height();
-}
-
-uno::Reference< XAccessible > SAL_CALL SmGraphicAccessible::getAccessibleAtPoint(
-        const awt::Point& aPoint )
+uno::Reference<XAccessible> SAL_CALL SmGraphicAccessible::getAccessibleAtPoint(const awt::Point&)
 {
     SolarMutexGuard aGuard;
-    XAccessible *pRes = nullptr;
-    if (containsPoint( aPoint ))
-        pRes = this;
-    return pRes;
+    return nullptr;
 }
 
-awt::Rectangle SAL_CALL SmGraphicAccessible::getBounds()
+awt::Rectangle SmGraphicAccessible::implGetBounds()
 {
-    SolarMutexGuard aGuard;
-    if (!pWin)
-        throw RuntimeException();
+    assert(pWin);
 
-    const Point aOutPos;
     const Size aOutSize(pWin->GetOutputSizePixel());
-    css::awt::Rectangle aRet;
 
-    aRet.X = aOutPos.X();
-    aRet.Y = aOutPos.Y();
-    aRet.Width = aOutSize.Width();
-    aRet.Height = aOutSize.Height();
-
-    return aRet;
-}
-
-awt::Point SAL_CALL SmGraphicAccessible::getLocation()
-{
-    SolarMutexGuard aGuard;
-    if (!pWin)
-        throw RuntimeException();
-
-    const css::awt::Rectangle aRect(getBounds());
-    css::awt::Point aRet;
-
-    aRet.X = aRect.X;
-    aRet.Y = aRect.Y;
-
-    return aRet;
-}
-
-awt::Point SAL_CALL SmGraphicAccessible::getLocationOnScreen()
-{
-    SolarMutexGuard aGuard;
-    if (!pWin)
-        throw RuntimeException();
-
-    css::awt::Point aScreenLoc(0, 0);
-
-    css::uno::Reference<css::accessibility::XAccessible> xParent(getAccessibleParent());
-    if (xParent)
-    {
-        css::uno::Reference<css::accessibility::XAccessibleContext> xParentContext(
-            xParent->getAccessibleContext());
-        css::uno::Reference<css::accessibility::XAccessibleComponent> xParentComponent(
-            xParentContext, css::uno::UNO_QUERY);
-        OSL_ENSURE(xParentComponent.is(),
-                   "WeldEditAccessible::getLocationOnScreen: no parent component!");
-        if (xParentComponent.is())
-        {
-            css::awt::Point aParentScreenLoc(xParentComponent->getLocationOnScreen());
-            css::awt::Point aOwnRelativeLoc(getLocation());
-            aScreenLoc.X = aParentScreenLoc.X + aOwnRelativeLoc.X;
-            aScreenLoc.Y = aParentScreenLoc.Y + aOwnRelativeLoc.Y;
-        }
-    }
-
-    return aScreenLoc;
-}
-
-awt::Size SAL_CALL SmGraphicAccessible::getSize()
-{
-    SolarMutexGuard aGuard;
-    if (!pWin)
-        throw RuntimeException();
-    Size aSz(pWin->GetOutputSizePixel());
-    return css::awt::Size(aSz.Width(), aSz.Height());
+    return css::awt::Rectangle(0, 0, aOutSize.Width(), aOutSize.Height());
 }
 
 void SAL_CALL SmGraphicAccessible::grabFocus()
@@ -263,43 +165,6 @@ Reference< XAccessible > SAL_CALL SmGraphicAccessible::getAccessibleParent()
     return pWin->GetDrawingArea()->get_accessible_parent();
 }
 
-sal_Int64 SAL_CALL SmGraphicAccessible::getAccessibleIndexInParent()
-{
-    SolarMutexGuard aGuard;
-
-    // -1 for child not found/no parent (according to specification)
-    sal_Int64 nRet = -1;
-
-    css::uno::Reference<css::accessibility::XAccessible> xParent(getAccessibleParent());
-    if (!xParent)
-        return nRet;
-
-    try
-    {
-        css::uno::Reference<css::accessibility::XAccessibleContext> xParentContext(
-            xParent->getAccessibleContext());
-
-        //  iterate over parent's children and search for this object
-        if (xParentContext.is())
-        {
-            sal_Int64 nChildCount = xParentContext->getAccessibleChildCount();
-            for (sal_Int64 nChild = 0; (nChild < nChildCount) && (-1 == nRet); ++nChild)
-            {
-                css::uno::Reference<css::accessibility::XAccessible> xChild(
-                    xParentContext->getAccessibleChild(nChild));
-                if (xChild.get() == this)
-                    nRet = nChild;
-            }
-        }
-    }
-    catch (const css::uno::Exception&)
-    {
-        TOOLS_WARN_EXCEPTION("svx", "WeldEditAccessible::getAccessibleIndexInParent");
-    }
-
-    return nRet;
-}
-
 sal_Int16 SAL_CALL SmGraphicAccessible::getAccessibleRole()
 {
     return AccessibleRole::DOCUMENT;
@@ -357,40 +222,6 @@ Locale SAL_CALL SmGraphicAccessible::getLocale()
     // should be the document language...
     // We use the language of the localized symbol names here.
     return Application::GetSettings().GetUILanguageTag().getLocale();
-}
-
-
-void SAL_CALL SmGraphicAccessible::addAccessibleEventListener(
-        const Reference< XAccessibleEventListener >& xListener )
-{
-    if (xListener.is())
-    {
-        SolarMutexGuard aGuard;
-        if (pWin)
-        {
-            if (!nClientId)
-                nClientId = comphelper::AccessibleEventNotifier::registerClient( );
-            comphelper::AccessibleEventNotifier::addEventListener( nClientId, xListener );
-        }
-    }
-}
-
-void SAL_CALL SmGraphicAccessible::removeAccessibleEventListener(
-        const Reference< XAccessibleEventListener >& xListener )
-{
-    if (!(xListener.is() && nClientId))
-        return;
-
-    SolarMutexGuard aGuard;
-    sal_Int32 nListenerCount = comphelper::AccessibleEventNotifier::removeEventListener( nClientId, xListener );
-    if ( !nListenerCount )
-    {
-        // no listeners anymore
-        // -> revoke ourself. This may lead to the notifier thread dying (if we were the last client),
-        // and at least to us not firing any events anymore, in case somebody calls
-        // NotifyAccessibleEvent, again
-        comphelper::AccessibleEventNotifier::revokeClient( std::exchange(nClientId, 0) );
-    }
 }
 
 sal_Int32 SAL_CALL SmGraphicAccessible::getCaretPosition()
@@ -723,7 +554,7 @@ sal_Bool SAL_CALL SmGraphicAccessible::scrollSubstringTo( sal_Int32, sal_Int32, 
 
 OUString SAL_CALL SmGraphicAccessible::getImplementationName()
 {
-    return "SmGraphicAccessible";
+    return u"SmGraphicAccessible"_ustr;
 }
 
 sal_Bool SAL_CALL SmGraphicAccessible::supportsService(
@@ -735,10 +566,10 @@ sal_Bool SAL_CALL SmGraphicAccessible::supportsService(
 Sequence< OUString > SAL_CALL SmGraphicAccessible::getSupportedServiceNames()
 {
     return {
-        "css::accessibility::Accessible",
-        "css::accessibility::AccessibleComponent",
-        "css::accessibility::AccessibleContext",
-        "css::accessibility::AccessibleText"
+        u"css::accessibility::Accessible"_ustr,
+        u"css::accessibility::AccessibleComponent"_ustr,
+        u"css::accessibility::AccessibleContext"_ustr,
+        u"css::accessibility::AccessibleText"_ustr
     };
 }
 

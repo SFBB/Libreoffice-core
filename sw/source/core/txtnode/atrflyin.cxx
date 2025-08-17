@@ -41,6 +41,7 @@ SwFormatFlyCnt::SwFormatFlyCnt( SwFrameFormat *pFrameFormat )
     m_pTextAttr( nullptr ),
     m_pFormat( pFrameFormat )
 {
+    setNonShareable();
 }
 
 bool SwFormatFlyCnt::operator==( const SfxPoolItem& rAttr ) const
@@ -68,10 +69,13 @@ void SwFormatFlyCnt::dumpAsXml(xmlTextWriterPtr pWriter) const
     (void)xmlTextWriterEndElement(pWriter);
 }
 
-SwTextFlyCnt::SwTextFlyCnt( SwFormatFlyCnt& rAttr, sal_Int32 nStartPos )
+SwTextFlyCnt::SwTextFlyCnt(
+    const SfxPoolItemHolder& rAttr,
+    sal_Int32 nStartPos )
     : SwTextAttr( rAttr, nStartPos )
 {
-    rAttr.m_pTextAttr = this;
+    SwFormatFlyCnt& rSwFormatFlyCnt(static_cast<SwFormatFlyCnt&>(GetAttr()));
+    rSwFormatFlyCnt.m_pTextAttr = this;
     SetHasDummyChar(true);
 }
 
@@ -113,14 +117,14 @@ void SwTextFlyCnt::CopyFlyFormat( SwDoc& rDoc )
     ::sw::UndoGuard const undoGuard(rDoc.GetIDocumentUndoRedo());
     SwFormatAnchor aAnchor( pFormat->GetAnchor() );
     if ((RndStdIds::FLY_AT_PAGE != aAnchor.GetAnchorId()) &&
-        (&rDoc != pFormat->GetDoc()))   // different documents?
+        (&rDoc != &pFormat->GetDoc()))   // different documents?
     {
         // JP 03.06.96: ensure that the copied anchor points to valid content!
         //              setting it to the correct position is done later.
         SwNodeIndex aIdx( rDoc.GetNodes().GetEndOfExtras(), +2 );
         SwContentNode* pCNd = aIdx.GetNode().GetContentNode();
         if( !pCNd )
-            pCNd = rDoc.GetNodes().GoNext( &aIdx );
+            pCNd = SwNodes::GoNext(&aIdx);
 
         SwPosition pos(aIdx.GetNode());
         aAnchor.SetAnchor( &pos );
@@ -167,15 +171,15 @@ void SwTextFlyCnt::SetAnchor( const SwTextNode *pNode )
         pFormat->DelFrames();
 
     // copy into a different document?
-    if( &rDoc != pFormat->GetDoc() )
+    if( &rDoc != &pFormat->GetDoc() )
     {
         // disable undo while copying attribute
         ::sw::UndoGuard const undoGuard(rDoc.GetIDocumentUndoRedo());
         SwFrameFormat* pNew = rDoc.getIDocumentLayoutAccess().CopyLayoutFormat( *pFormat, aAnchor, false, false );
 
         ::sw::UndoGuard const undoGuardFormat(
-            pFormat->GetDoc()->GetIDocumentUndoRedo());
-        pFormat->GetDoc()->getIDocumentLayoutAccess().DelLayoutFormat( pFormat );
+            pFormat->GetDoc().GetIDocumentUndoRedo());
+        pFormat->GetDoc().getIDocumentLayoutAccess().DelLayoutFormat( pFormat );
         const_cast<SwFormatFlyCnt&>(GetFlyCnt()).SetFlyFormat( pNew );
     }
     else if( pNode->GetpSwpHints() &&
@@ -197,7 +201,8 @@ void SwTextFlyCnt::SetAnchor( const SwTextNode *pNode )
         {
             if (SdrObject const*const pObj = pFormat->FindSdrObject())
             {   // tdf#123259 disconnect with *old* anchor position
-                static_cast<SwDrawContact*>(::GetUserCall(pObj))->DisconnectFromLayout(false);
+                if (SwDrawContact* pContact = static_cast<SwDrawContact*>(::GetUserCall( pObj )))
+                    pContact->DisconnectFromLayout(false);
             }
         }
         pFormat->SetFormatAttr( aAnchor );  // only set the anchor

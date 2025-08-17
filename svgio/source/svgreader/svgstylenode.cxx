@@ -75,36 +75,9 @@ namespace svgio::svgreader
         {
             // aSelectors: CssStyle selectors, any combination, no comma separations, no spaces at start/end
             // rNewStyle: the already prepared style to register on that name
-            if(aSelectors.empty())
-                return;
+            SvgStringVector aSelectorParts;
 
-            std::vector< OUString > aSelectorParts;
-            const sal_Int32 nLen(aSelectors.size());
-            sal_Int32 nPos(0);
-            OUStringBuffer aToken;
-
-            // split into single tokens (currently only space separator)
-            while(nPos < nLen)
-            {
-                const sal_Int32 nInitPos(nPos);
-                copyToLimiter(aSelectors, u' ', nPos, aToken, nLen);
-                skip_char(aSelectors, u' ', nPos, nLen);
-                const OUString aSelectorPart(o3tl::trim(aToken));
-                aToken.setLength(0);
-
-                if(!aSelectorPart.isEmpty())
-                {
-                    aSelectorParts.push_back(aSelectorPart);
-                }
-
-                if(nInitPos == nPos)
-                {
-                    OSL_ENSURE(false, "Could not interpret on current position (!)");
-                    nPos++;
-                }
-            }
-
-            if(aSelectorParts.empty())
+            if(!readSvgStringVector(aSelectors, aSelectorParts, ' '))
                 return;
 
             OUStringBuffer aConcatenatedSelector;
@@ -121,7 +94,7 @@ namespace svgio::svgreader
             // these is in fillCssStyleVectorUsingHierarchyAndSelectors. There, the same string is
             // built up using the priorities of local CssStyle, Id, Class and other info combined
             // with the existing hierarchy. This creates a specificity and priority-sorted local
-            // list for each node which is then chained using get/setCssStyleParent.
+            // list for each node which is then chained using get/setCssStyle.
             // The current solution is capable of solving space-separated selectors which can be
             // mixed between Id, Class and type specifiers.
             // When CssStyles need more specific solving, the start point is here; remember the

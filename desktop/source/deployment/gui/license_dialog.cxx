@@ -77,17 +77,17 @@ LicenseDialogImpl::LicenseDialogImpl(
     weld::Window * pParent,
     std::u16string_view sExtensionName,
     const OUString & sLicenseText)
-    : GenericDialogController(pParent, "desktop/ui/licensedialog.ui", "LicenseDialog")
+    : GenericDialogController(pParent, u"desktop/ui/licensedialog.ui"_ustr, u"LicenseDialog"_ustr)
     , m_bLicenseRead(false)
     , m_aResized("desktop LicenseDialogImpl m_aResized")
     , m_aRepeat("LicenseDialogImpl m_aRepeat")
-    , m_xFtHead(m_xBuilder->weld_label("head"))
-    , m_xArrow1(m_xBuilder->weld_widget("arrow1"))
-    , m_xArrow2(m_xBuilder->weld_widget("arrow2"))
-    , m_xLicense(m_xBuilder->weld_text_view("textview"))
-    , m_xDown(m_xBuilder->weld_button("down"))
-    , m_xAcceptButton(m_xBuilder->weld_button("ok"))
-    , m_xDeclineButton(m_xBuilder->weld_button("cancel"))
+    , m_xFtHead(m_xBuilder->weld_label(u"head"_ustr))
+    , m_xArrow1(m_xBuilder->weld_widget(u"arrow1"_ustr))
+    , m_xArrow2(m_xBuilder->weld_widget(u"arrow2"_ustr))
+    , m_xLicense(m_xBuilder->weld_text_view(u"textview"_ustr))
+    , m_xDown(m_xBuilder->weld_button(u"down"_ustr))
+    , m_xAcceptButton(m_xBuilder->weld_button(u"ok"_ustr))
+    , m_xDeclineButton(m_xBuilder->weld_button(u"cancel"_ustr))
 {
     m_xArrow1->show();
     m_xArrow2->hide();
@@ -102,7 +102,7 @@ LicenseDialogImpl::LicenseDialogImpl(
     m_xAcceptButton->connect_clicked( LINK(this, LicenseDialogImpl, AcceptHdl) );
     m_xDeclineButton->connect_clicked( LINK(this, LicenseDialogImpl, CancelHdl) );
 
-    m_xLicense->connect_vadjustment_changed(LINK(this, LicenseDialogImpl, ScrolledHdl));
+    m_xLicense->connect_vadjustment_value_changed(LINK(this, LicenseDialogImpl, ScrolledHdl));
     m_xDown->connect_mouse_press(LINK(this, LicenseDialogImpl, MousePressHdl));
     m_xDown->connect_mouse_release(LINK(this, LicenseDialogImpl, MouseReleaseHdl));
     m_xDown->connect_key_press(LINK(this, LicenseDialogImpl, KeyInputHdl));
@@ -207,7 +207,7 @@ LicenseDialog::LicenseDialog( Sequence<Any> const& args,
 // XServiceInfo
 OUString LicenseDialog::getImplementationName()
 {
-    return "com.sun.star.comp.deployment.ui.LicenseDialog";
+    return u"com.sun.star.comp.deployment.ui.LicenseDialog"_ustr;
 }
 
 sal_Bool LicenseDialog::supportsService( const OUString& ServiceName )
@@ -217,7 +217,7 @@ sal_Bool LicenseDialog::supportsService( const OUString& ServiceName )
 
 css::uno::Sequence< OUString > LicenseDialog::getSupportedServiceNames()
 {
-    return { "com.sun.star.deployment.ui.LicenseDialog" };
+    return { u"com.sun.star.deployment.ui.LicenseDialog"_ustr };
 }
 
 
@@ -229,14 +229,10 @@ void LicenseDialog::setTitle( OUString const & )
 
 sal_Int16 LicenseDialog::execute()
 {
-    return vcl::solarthread::syncExecute(
-        std::bind(&LicenseDialog::solar_execute, this));
-}
-
-sal_Int16 LicenseDialog::solar_execute()
-{
-    LicenseDialogImpl dlg(Application::GetFrameWeld(m_parent), m_sExtensionName, m_sLicenseText);
-    return dlg.run();
+    return vcl::solarthread::syncExecute([this]() {
+        LicenseDialogImpl dlg(Application::GetFrameWeld(this->m_parent), this->m_sExtensionName, this->m_sLicenseText);
+        return dlg.run();
+    });
 }
 
 } // namespace dp_gui

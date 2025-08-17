@@ -17,7 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <cups/cups.h>
 #include <cups/http.h>
 #include <cups/ipp.h>
 #include <cups/ppd.h>
@@ -43,6 +42,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <iostream>
 #include <string_view>
 
 using namespace psp;
@@ -88,17 +88,12 @@ struct GetPPDAttribs
     {
         // This CUPS method is not at all thread-safe we need
         // to dup the pointer to a static buffer it returns ASAP
-#ifdef __GNUC__
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
+SAL_WNODEPRECATED_DECLARATIONS_PUSH
         const char* pResult = cupsGetPPD(m_aParameter.getStr());
         OString aResult = pResult ? OString(pResult) : OString();
-#ifdef __GNUC__
-#pragma GCC diagnostic pop
-#endif
+SAL_WNODEPRECATED_DECLARATIONS_POP
         MutexGuard aGuard( *m_pSyncMutex );
-        m_aResult = aResult;
+        m_aResult = std::move(aResult);
         m_aCondition.set();
         unref();
     }
@@ -229,10 +224,7 @@ void CUPSManager::runDests()
 
     // n#722902 - do a fast-failing check for cups working *at all* first
     http_t* p_http;
-#ifdef __GNUC__
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
+SAL_WNODEPRECATED_DECLARATIONS_PUSH
     if( (p_http=httpConnectEncrypt(
              cupsServer(),
              ippPort(),
@@ -249,12 +241,10 @@ void CUPSManager::runDests()
     SAL_INFO("vcl.unx.print", "finished cupsGetDests");
 
     httpClose(p_http);
-#ifdef __GNUC__
-#pragma GCC diagnostic pop
-#endif
+SAL_WNODEPRECATED_DECLARATIONS_POP
 }
 
-static void SetIfCustomOption(PPDContext& rContext, const cups_option_t& rOption, rtl_TextEncoding aEncoding)
+static void SetIfCustomOption(const PPDContext& rContext, const cups_option_t& rOption, rtl_TextEncoding aEncoding)
 {
     if (strncmp(rOption.value, RTL_CONSTASCII_STRINGPARAM("Custom.")) == 0)
     {
@@ -393,7 +383,7 @@ void CUPSManager::initialize()
     std::unordered_map< OUString, Printer >::iterator it = m_aPrinters.begin();
     while(it != m_aPrinters.end())
     {
-        if( m_aCUPSDestMap.find( it->first ) != m_aCUPSDestMap.end() )
+        if( m_aCUPSDestMap.contains( it->first ) )
         {
             ++it;
             continue;
@@ -479,14 +469,9 @@ const PPDParser* CUPSManager::createCUPSParser( const OUString& rPrinter )
                     rtl_TextEncoding aEncoding = osl_getThreadTextEncoding();
                     OUString aFileName( OStringToOUString( aPPDFile, aEncoding ) );
                     // update the printer info with context information
-#ifdef __GNUC__
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
+SAL_WNODEPRECATED_DECLARATIONS_PUSH
                     ppd_file_t* pPPD = ppdOpenFile( aPPDFile.getStr() );
-#ifdef __GNUC__
-#pragma GCC diagnostic pop
-#endif
+SAL_WNODEPRECATED_DECLARATIONS_POP
                     if( pPPD )
                     {
                         // create the new parser
@@ -494,14 +479,9 @@ const PPDParser* CUPSManager::createCUPSParser( const OUString& rPrinter )
                         pCUPSParser->m_aFile = rPrinter;
                         pNewParser = pCUPSParser;
 
-#ifdef __GNUC__
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
+SAL_WNODEPRECATED_DECLARATIONS_PUSH
                         /*int nConflicts =*/ cupsMarkOptions( pPPD, pDest->num_options, pDest->options );
-#ifdef __GNUC__
-#pragma GCC diagnostic pop
-#endif
+SAL_WNODEPRECATED_DECLARATIONS_POP
                         SAL_INFO("vcl.unx.print", "processing the following options for printer " << pDest->name << " (instance " << (pDest->instance == nullptr ? "null" : pDest->instance) << "):");
                         for( int k = 0; k < pDest->num_options; k++ )
                             SAL_INFO("vcl.unx.print",
@@ -526,14 +506,9 @@ const PPDParser* CUPSManager::createCUPSParser( const OUString& rPrinter )
                         rInfo.m_aContext = rContext;
 
                         // clean up the mess
-#ifdef __GNUC__
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#endif
+SAL_WNODEPRECATED_DECLARATIONS_PUSH
                         ppdClose( pPPD );
-#ifdef __GNUC__
-#pragma GCC diagnostic pop
-#endif
+SAL_WNODEPRECATED_DECLARATIONS_POP
 
                     }
                     else
@@ -541,7 +516,9 @@ const PPDParser* CUPSManager::createCUPSParser( const OUString& rPrinter )
 
                     // remove temporary PPD file
                     if (!getenv("SAL_CUPS_PPD_RETAIN_TMP"))
-                        unlink( aPPDFile.getStr() );
+                        unlink(aPPDFile.getStr());
+                    else
+                        std::cout << "Saved PPD file as: " << aPPDFile << std::endl;
                 }
                 else
                     SAL_INFO("vcl.unx.print", "cupsGetPPD failed, falling back to generic driver");
@@ -557,7 +534,7 @@ const PPDParser* CUPSManager::createCUPSParser( const OUString& rPrinter )
     if( ! pNewParser )
     {
         // get the default PPD
-        pNewParser = PPDParser::getParser( "SGENPRT" );
+        pNewParser = PPDParser::getParser( u"SGENPRT"_ustr );
         SAL_INFO("vcl.unx.print", "Parsing default SGENPRT PPD" );
 
         PrinterInfo& rInfo = m_aPrinters[ aPrinter ].m_aInfo;
@@ -638,10 +615,11 @@ struct less_ppd_key
 
 }
 
-void CUPSManager::getOptionsFromDocumentSetup( const JobData& rJob, bool bBanner, int& rNumOptions, void** rOptions )
+void CUPSManager::getOptionsFromDocumentSetup(const JobData& rJob, bool bBanner, int& rNumOptions,
+                                              cups_option_t** ppOptions)
 {
     rNumOptions = 0;
-    *rOptions = nullptr;
+    *ppOptions = nullptr;
 
     // emit features ordered to OrderDependency
     // ignore features that are set to default
@@ -661,7 +639,7 @@ void CUPSManager::getOptionsFromDocumentSetup( const JobData& rJob, bool bBanner
             const PPDKey* pKey = aKeys[i];
             const PPDValue* pValue = rJob.m_aContext.getValue( pKey );
             OUString sPayLoad;
-            if (pValue && pValue->m_eType == eInvocation)
+            if (pValue && pValue->m_eType == PPDValueType::Invocation)
             {
                 sPayLoad = pValue->m_bCustomOption ? pValue->m_aCustomOption : pValue->m_aOption;
             }
@@ -670,7 +648,19 @@ void CUPSManager::getOptionsFromDocumentSetup( const JobData& rJob, bool bBanner
             {
                 OString aKey = OUStringToOString( pKey->getKey(), RTL_TEXTENCODING_ASCII_US );
                 OString aValue = OUStringToOString( sPayLoad, RTL_TEXTENCODING_ASCII_US );
-                rNumOptions = cupsAddOption( aKey.getStr(), aValue.getStr(), rNumOptions, reinterpret_cast<cups_option_t**>(rOptions) );
+                rNumOptions = cupsAddOption(aKey.getStr(), aValue.getStr(), rNumOptions, ppOptions);
+
+                // for duplex, also set the corresponding CUPS "sides" option, see section
+                // "Printing On Both Sides of the Paper" at https://www.cups.org/doc/options.html
+                if (aKey == "Duplex")
+                {
+                    if (aValue == "None")
+                        rNumOptions = cupsAddOption("sides", "one-sided", rNumOptions, ppOptions);
+                    else if (aValue == "DuplexTumble")
+                        rNumOptions = cupsAddOption("sides", "two-sided-short-edge", rNumOptions, ppOptions);
+                    else if (aValue == "DuplexNoTumble")
+                        rNumOptions = cupsAddOption("sides", "two-sided-long-edge", rNumOptions, ppOptions);
+                }
             }
         }
     }
@@ -678,13 +668,13 @@ void CUPSManager::getOptionsFromDocumentSetup( const JobData& rJob, bool bBanner
     if( rJob.m_nCopies > 1 )
     {
         OString aVal( OString::number( rJob.m_nCopies ) );
-        rNumOptions = cupsAddOption( "copies", aVal.getStr(), rNumOptions, reinterpret_cast<cups_option_t**>(rOptions) );
+        rNumOptions = cupsAddOption("copies", aVal.getStr(), rNumOptions, ppOptions);
         aVal = OString::boolean(rJob.m_bCollate);
-        rNumOptions = cupsAddOption( "collate", aVal.getStr(), rNumOptions, reinterpret_cast<cups_option_t**>(rOptions) );
+        rNumOptions = cupsAddOption("collate", aVal.getStr(), rNumOptions, ppOptions);
     }
     if( ! bBanner )
     {
-        rNumOptions = cupsAddOption( "job-sheets", "none", rNumOptions, reinterpret_cast<cups_option_t**>(rOptions) );
+        rNumOptions = cupsAddOption("job-sheets", "none", rNumOptions, ppOptions);
     }
 }
 
@@ -738,19 +728,19 @@ namespace
     };
 
     RTSPWDialog::RTSPWDialog(weld::Window* pParent, std::string_view rServer, std::string_view rUserName)
-        : GenericDialogController(pParent, "vcl/ui/cupspassworddialog.ui", "CUPSPasswordDialog")
-        , m_xText(m_xBuilder->weld_label("text"))
-        , m_xDomainLabel(m_xBuilder->weld_label("label3"))
-        , m_xDomainEdit(m_xBuilder->weld_entry("domain"))
-        , m_xUserLabel(m_xBuilder->weld_label("label1"))
-        , m_xUserEdit(m_xBuilder->weld_entry("user"))
-        , m_xPassLabel(m_xBuilder->weld_label("label2"))
-        , m_xPassEdit(m_xBuilder->weld_entry("pass"))
+        : GenericDialogController(pParent, u"vcl/ui/cupspassworddialog.ui"_ustr, u"CUPSPasswordDialog"_ustr)
+        , m_xText(m_xBuilder->weld_label(u"text"_ustr))
+        , m_xDomainLabel(m_xBuilder->weld_label(u"label3"_ustr))
+        , m_xDomainEdit(m_xBuilder->weld_entry(u"domain"_ustr))
+        , m_xUserLabel(m_xBuilder->weld_label(u"label1"_ustr))
+        , m_xUserEdit(m_xBuilder->weld_entry(u"user"_ustr))
+        , m_xPassLabel(m_xBuilder->weld_label(u"label2"_ustr))
+        , m_xPassEdit(m_xBuilder->weld_entry(u"pass"_ustr))
     {
         OUString aText(m_xText->get_label());
         aText = aText.replaceFirst("%s", OStringToOUString(rServer, osl_getThreadTextEncoding()));
         m_xText->set_label(aText);
-        m_xDomainEdit->set_text("WORKGROUP");
+        m_xDomainEdit->set_text(u"WORKGROUP"_ustr);
         if (rUserName.empty())
             m_xUserEdit->grab_focus();
         else
@@ -830,8 +820,7 @@ bool CUPSManager::endSpool( const OUString& rPrintername, const OUString& rJobTi
         // setup cups options
         int nNumOptions = 0;
         cups_option_t* pOptions = nullptr;
-        auto ppOptions = reinterpret_cast<void**>(&pOptions);
-        getOptionsFromDocumentSetup( rDocumentJobData, bBanner, nNumOptions, ppOptions );
+        getOptionsFromDocumentSetup(rDocumentJobData, bBanner, nNumOptions, &pOptions);
 
         PrinterInfo aInfo(getPrinterInfo(rPrintername));
         if (!aInfo.m_aAuthInfoRequired.isEmpty())

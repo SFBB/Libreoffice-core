@@ -384,7 +384,7 @@ namespace
 
             // create content from current extension configuration
             uno::Sequence< uno::Sequence< uno::Reference< deployment::XPackage > > > xAllPackages;
-            uno::Reference< uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+            const uno::Reference< uno::XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
             uno::Reference< deployment::XExtensionManager > m_xExtensionManager = deployment::ExtensionManager::get(xContext);
 
             try
@@ -411,7 +411,7 @@ namespace
                                 e.Context, anyEx );
             }
 
-            for (const uno::Sequence< uno::Reference< deployment::XPackage > > & xPackageList : std::as_const(xAllPackages))
+            for (const uno::Sequence< uno::Reference< deployment::XPackage > > & xPackageList : xAllPackages)
             {
                 for (const uno::Reference< deployment::XPackage > & xPackage : xPackageList)
                 {
@@ -439,8 +439,8 @@ namespace
 
             if (aTagName == "extension")
             {
-                OUString aAttrUrl(rElement->getAttribute("url"));
-                const OUString aAttrRevoked(rElement->getAttribute("revoked"));
+                OUString aAttrUrl(rElement->getAttribute(u"url"_ustr));
+                const OUString aAttrRevoked(rElement->getAttribute(u"revoked"_ustr));
 
                 if (!aAttrUrl.isEmpty())
                 {
@@ -505,7 +505,7 @@ namespace
         {
             if (DirectoryHelper::fileExists(aPath))
             {
-                uno::Reference< uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+                const uno::Reference< uno::XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
                 uno::Reference< xml::dom::XDocumentBuilder > xBuilder(xml::dom::DocumentBuilder::create(xContext));
                 uno::Reference< xml::dom::XDocument > aDocument = xBuilder->parseURI(aPath);
 
@@ -537,8 +537,8 @@ namespace
 
                 if (aTagName == rTagToSearch)
                 {
-                    const OString aAttrUrl(OUStringToOString(rElement->getAttribute("url"), RTL_TEXTENCODING_ASCII_US));
-                    const OUString aAttrRevoked(rElement->getAttribute("revoked"));
+                    const OString aAttrUrl(OUStringToOString(rElement->getAttribute(u"url"_ustr), RTL_TEXTENCODING_ASCII_US));
+                    const OUString aAttrRevoked(rElement->getAttribute(u"revoked"_ustr));
                     const bool bEnabled(aAttrRevoked.isEmpty() || !aAttrRevoked.toBoolean());
 
                     if (!aAttrUrl.isEmpty())
@@ -550,7 +550,7 @@ namespace
                                 if (!bEnabled)
                                 {
                                     // needs to be enabled
-                                    rElement->removeAttribute("revoked");
+                                    rElement->removeAttribute(u"revoked"_ustr);
                                     bChanged = true;
                                 }
                             }
@@ -563,7 +563,7 @@ namespace
                                 if (bEnabled)
                                 {
                                     // needs to be disabled
-                                    rElement->setAttribute("revoked", "true");
+                                    rElement->setAttribute(u"revoked"_ustr, u"true"_ustr);
                                     bChanged = true;
                                 }
                             }
@@ -607,7 +607,7 @@ namespace
             if (!DirectoryHelper::fileExists(rUnoPackagReg))
                 return;
 
-            uno::Reference< uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+            const uno::Reference< uno::XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
             uno::Reference< xml::dom::XDocumentBuilder > xBuilder = xml::dom::DocumentBuilder::create(xContext);
             uno::Reference< xml::dom::XDocument > aDocument = xBuilder->parseURI(rUnoPackagReg);
 
@@ -669,7 +669,7 @@ namespace
 
                 visitNodesXMLChangeOneCase(
                     aUnoPackagReg,
-                    "extension",
+                    u"extension"_ustr,
                     rToBeEnabled,
                     rToBeDisabled);
             }
@@ -680,7 +680,7 @@ namespace
 
                 visitNodesXMLChangeOneCase(
                     aUnoPackagReg,
-                    "configuration",
+                    u"configuration"_ustr,
                     rToBeEnabled,
                     rToBeDisabled);
             }
@@ -691,7 +691,7 @@ namespace
 
                 visitNodesXMLChangeOneCase(
                     aUnoPackagReg,
-                    "script",
+                    u"script"_ustr,
                     rToBeEnabled,
                     rToBeDisabled);
             }
@@ -707,8 +707,7 @@ namespace
                 return false;
             }
 
-            // coverity#1373663 Untrusted loop bound, check file size
-            // isn't utterly broken
+            // Check that file size isn't utterly broken
             sal_uInt64 nFileSize(0);
             rFile->getSize(nFileSize);
             if (nFileSize < nExtEntries)
@@ -896,13 +895,13 @@ namespace
 
                         nSize -= nToTransfer;
                     }
+                }
 
 #if !defined Z_PREFIX
-                    deflateEnd(&zstream);
+                deflateEnd(&zstream);
 #else
-                    z_deflateEnd(&zstream);
+                z_deflateEnd(&zstream);
 #endif
-                }
             }
 
             maFile->close();
@@ -977,13 +976,12 @@ namespace
 
                         nSize -= nToTransfer;
                     }
-
-#if !defined Z_PREFIX
-                    deflateEnd(&zstream);
-#else
-                    z_deflateEnd(&zstream);
-#endif
                 }
+#if !defined Z_PREFIX
+                deflateEnd(&zstream);
+#else
+                z_deflateEnd(&zstream);
+#endif
             }
 
             maFile->close();
@@ -1186,7 +1184,7 @@ namespace
                                         if (aEntry.read_header(aSourceFile))
                                         {
                                             // add to local data
-                                            maPackedFileEntryVector.push_back(aEntry);
+                                            maPackedFileEntryVector.push_back(std::move(aEntry));
                                         }
                                         else
                                         {
@@ -1450,7 +1448,6 @@ namespace
 
 namespace comphelper
 {
-    sal_uInt16 BackupFileHelper::mnMaxAllowedBackups = 10;
     bool BackupFileHelper::mbExitWasCalled = false;
     bool BackupFileHelper::mbSafeModeDirExists = false;
     OUString BackupFileHelper::maInitialBaseURL;
@@ -1465,7 +1462,7 @@ namespace comphelper
         {
             // try to access user layer configuration file URL, the one that
             // points to registrymodifications.xcu
-            OUString conf("${CONFIGURATION_LAYERS}");
+            OUString conf(u"${CONFIGURATION_LAYERS}"_ustr);
             rtl::Bootstrap::expandMacros(conf);
             static constexpr OUString aTokenUser(u"user:"_ustr);
             sal_Int32 nStart(conf.indexOf(aTokenUser));
@@ -1527,7 +1524,7 @@ namespace comphelper
         OUString sTokenOut;
 
         // read configuration item 'SecureUserConfig' -> bool on/off
-        if (rtl::Bootstrap::get("SecureUserConfig", sTokenOut))
+        if (rtl::Bootstrap::get(u"SecureUserConfig"_ustr, sTokenOut))
         {
             mbActive = sTokenOut.toBoolean();
         }
@@ -1541,7 +1538,7 @@ namespace comphelper
             mbActive = !maInitialBaseURL.isEmpty() && !maUserConfigBaseURL.isEmpty() && !maRegModName.isEmpty();
         }
 
-        if (mbActive && rtl::Bootstrap::get("SecureUserConfigNumCopies", sTokenOut))
+        if (mbActive && rtl::Bootstrap::get(u"SecureUserConfigNumCopies"_ustr, sTokenOut))
         {
             const sal_uInt16 nConfigNumCopies(static_cast<sal_uInt16>(sTokenOut.toUInt32()));
 
@@ -1549,7 +1546,7 @@ namespace comphelper
             mnNumBackups = std::clamp(mnNumBackups, nConfigNumCopies, mnMaxAllowedBackups);
         }
 
-        if (mbActive && rtl::Bootstrap::get("SecureUserConfigMode", sTokenOut))
+        if (mbActive && rtl::Bootstrap::get(u"SecureUserConfigMode"_ustr, sTokenOut))
         {
             const sal_uInt16 nMode(static_cast<sal_uInt16>(sTokenOut.toUInt32()));
 
@@ -1557,12 +1554,12 @@ namespace comphelper
             mnMode = std::min(nMode, sal_uInt16(2));
         }
 
-        if (mbActive && rtl::Bootstrap::get("SecureUserConfigExtensions", sTokenOut))
+        if (mbActive && rtl::Bootstrap::get(u"SecureUserConfigExtensions"_ustr, sTokenOut))
         {
             mbExtensions = sTokenOut.toBoolean();
         }
 
-        if (mbActive && rtl::Bootstrap::get("SecureUserConfigCompress", sTokenOut))
+        if (mbActive && rtl::Bootstrap::get(u"SecureUserConfigCompress"_ustr, sTokenOut))
         {
             mbCompress = sTokenOut.toBoolean();
         }
@@ -1571,11 +1568,6 @@ namespace comphelper
     void BackupFileHelper::setExitWasCalled()
     {
         mbExitWasCalled = true;
-    }
-
-    bool BackupFileHelper::getExitWasCalled()
-    {
-        return mbExitWasCalled;
     }
 
     void BackupFileHelper::reactOnSafeMode(bool bSafeMode)
@@ -1835,12 +1827,12 @@ namespace comphelper
     {
         static std::vector< OUString > aDirNames =
         {
-            "config",     // UI config stuff
-            "registry",   // most of the registry stuff
-            "psprint",    // not really needed, can be abandoned
-            "store",      // not really needed, can be abandoned
-            "temp",       // not really needed, can be abandoned
-            "pack"       // own backup dir
+            u"config"_ustr,     // UI config stuff
+            u"registry"_ustr,   // most of the registry stuff
+            u"psprint"_ustr,    // not really needed, can be abandoned
+            u"store"_ustr,      // not really needed, can be abandoned
+            u"temp"_ustr,       // not really needed, can be abandoned
+            u"pack"_ustr       // own backup dir
         };
 
         return aDirNames;
@@ -1850,7 +1842,7 @@ namespace comphelper
     {
         static std::vector< OUString > aFileNames =
         {
-            "registrymodifications.xcu" // personal registry stuff
+            u"registrymodifications.xcu"_ustr // personal registry stuff
         };
 
         return aFileNames;
@@ -1860,14 +1852,14 @@ namespace comphelper
         uno::Reference<XElement> lcl_getConfigElement(const uno::Reference<XDocument>& xDocument, const OUString& rPath,
                                   const OUString& rKey, const OUString& rValue)
         {
-            uno::Reference< XElement > itemElement = xDocument->createElement("item");
-            itemElement->setAttribute("oor:path", rPath);
+            uno::Reference< XElement > itemElement = xDocument->createElement(u"item"_ustr);
+            itemElement->setAttribute(u"oor:path"_ustr, rPath);
 
-            uno::Reference< XElement > propElement = xDocument->createElement("prop");
-            propElement->setAttribute("oor:name", rKey);
-            propElement->setAttribute("oor:op", "replace"); // Replace any other options
+            uno::Reference< XElement > propElement = xDocument->createElement(u"prop"_ustr);
+            propElement->setAttribute(u"oor:name"_ustr, rKey);
+            propElement->setAttribute(u"oor:op"_ustr, u"replace"_ustr); // Replace any other options
 
-            uno::Reference< XElement > valueElement = xDocument->createElement("value");
+            uno::Reference< XElement > valueElement = xDocument->createElement(u"value"_ustr);
             uno::Reference< XText > textElement = xDocument->createTextNode(rValue);
 
             valueElement->appendChild(textElement);
@@ -1884,20 +1876,20 @@ namespace comphelper
         if (!DirectoryHelper::fileExists(aRegistryModifications))
             return;
 
-        uno::Reference< uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+        const uno::Reference< uno::XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
         uno::Reference< XDocumentBuilder > xBuilder = DocumentBuilder::create(xContext);
         uno::Reference< XDocument > xDocument = xBuilder->parseURI(aRegistryModifications);
         uno::Reference< XElement > xRootElement = xDocument->getDocumentElement();
 
-        xRootElement->appendChild(lcl_getConfigElement(xDocument, "/org.openoffice.Office.Common/VCL",
-                                                       "DisableOpenGL", "true"));
-        xRootElement->appendChild(lcl_getConfigElement(xDocument, "/org.openoffice.Office.Common/Misc",
-                                                       "UseOpenCL", "false"));
+        xRootElement->appendChild(lcl_getConfigElement(xDocument, u"/org.openoffice.Office.Common/VCL"_ustr,
+                                                       u"DisableOpenGL"_ustr, u"true"_ustr));
+        xRootElement->appendChild(lcl_getConfigElement(xDocument, u"/org.openoffice.Office.Common/Misc"_ustr,
+                                                       u"UseOpenCL"_ustr, u"false"_ustr));
         // Do not disable Skia entirely, just force its CPU-based raster mode.
-        xRootElement->appendChild(lcl_getConfigElement(xDocument, "/org.openoffice.Office.Common/VCL",
-                                                       "ForceSkia", "false"));
-        xRootElement->appendChild(lcl_getConfigElement(xDocument, "/org.openoffice.Office.Common/VCL",
-                                                       "ForceSkiaRaster", "true"));
+        xRootElement->appendChild(lcl_getConfigElement(xDocument, u"/org.openoffice.Office.Common/VCL"_ustr,
+                                                       u"ForceSkia"_ustr, u"false"_ustr));
+        xRootElement->appendChild(lcl_getConfigElement(xDocument, u"/org.openoffice.Office.Common/VCL"_ustr,
+                                                       u"ForceSkiaRaster"_ustr, u"true"_ustr));
 
         OUString aTempURL;
         {
@@ -2435,31 +2427,31 @@ namespace comphelper
             maFiles.insert(std::pair< OUString, OUString >(maRegModName, maExt));
 
             // User-defined substitution table (Tools/AutoCorrect)
-            maDirs.insert("autocorr");
+            maDirs.insert(u"autocorr"_ustr);
 
             // User-Defined AutoText (Edit/AutoText)
-            maDirs.insert("autotext");
+            maDirs.insert(u"autotext"_ustr);
 
             // User-defined Macros
-            maDirs.insert("basic");
+            maDirs.insert(u"basic"_ustr);
 
             // User-adapted toolbars for modules
-            maDirs.insert("config");
+            maDirs.insert(u"config"_ustr);
 
             // Initial and User-defined Databases
-            maDirs.insert("database");
+            maDirs.insert(u"database"_ustr);
 
             // most part of registry files
-            maDirs.insert("registry");
+            maDirs.insert(u"registry"_ustr);
 
             // User-Defined Scripts
-            maDirs.insert("Scripts");
+            maDirs.insert(u"Scripts"_ustr);
 
             // Template files
-            maDirs.insert("template");
+            maDirs.insert(u"template"_ustr);
 
             // Custom Dictionaries
-            maDirs.insert("wordbook");
+            maDirs.insert(u"wordbook"_ustr);
 
             // Questionable - where and how is Extension stuff held and how
             // does this interact with enabled/disabled states which are extra handled?
@@ -2481,19 +2473,19 @@ namespace comphelper
 
             // should not exist, but for the case an error occurred and it got
             // copied somehow, avoid further recursive copying/saving
-            maDirs.erase("SafeMode");
+            maDirs.erase(u"SafeMode"_ustr);
 
             // not really needed, can be abandoned
-            maDirs.erase("psprint");
+            maDirs.erase(u"psprint"_ustr);
 
             // not really needed, can be abandoned
-            maDirs.erase("store");
+            maDirs.erase(u"store"_ustr);
 
             // not really needed, can be abandoned
-            maDirs.erase("temp");
+            maDirs.erase(u"temp"_ustr);
 
             // exclude own backup dir to avoid recursion
-            maDirs.erase("pack");
+            maDirs.erase(u"pack"_ustr);
 
             break;
         }

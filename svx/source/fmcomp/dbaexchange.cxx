@@ -38,7 +38,6 @@ namespace svx
     using namespace ::com::sun::star::beans;
     using namespace ::com::sun::star::sdb;
     using namespace ::com::sun::star::sdbc;
-    using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::sdbcx;
     using namespace ::com::sun::star::container;
     using namespace ::com::sun::star::datatransfer;
@@ -107,7 +106,7 @@ namespace svx
             try
             {
                 Reference< XTablesSupplier > xSupTab;
-                _rxForm->getPropertyValue("SingleSelectQueryComposer") >>= xSupTab;
+                _rxForm->getPropertyValue(u"SingleSelectQueryComposer"_ustr) >>= xSupTab;
 
                 if(xSupTab.is())
                 {
@@ -146,7 +145,7 @@ namespace svx
         static SotClipboardFormatId s_nFormat = static_cast<SotClipboardFormatId>(-1);
         if (static_cast<SotClipboardFormatId>(-1) == s_nFormat)
         {
-            s_nFormat = SotExchange::RegisterFormatName("application/x-openoffice;windows_formatname=\"dbaccess.ColumnDescriptorTransfer\"");
+            s_nFormat = SotExchange::RegisterFormatName(u"application/x-openoffice;windows_formatname=\"dbaccess.ColumnDescriptorTransfer\""_ustr);
             OSL_ENSURE(static_cast<SotClipboardFormatId>(-1) != s_nFormat, "OColumnTransferable::getDescriptorFormatId: bad exchange id!");
         }
         return s_nFormat;
@@ -576,7 +575,7 @@ namespace svx
         static SotClipboardFormatId s_nFormat = static_cast<SotClipboardFormatId>(-1);
         if (static_cast<SotClipboardFormatId>(-1) == s_nFormat)
         {
-            s_nFormat = SotExchange::RegisterFormatName("application/x-openoffice;windows_formatname=\"dbaccess.MultipleColumnDescriptorTransfer\"");
+            s_nFormat = SotExchange::RegisterFormatName(u"application/x-openoffice;windows_formatname=\"dbaccess.MultipleColumnDescriptorTransfer\""_ustr);
             OSL_ENSURE(static_cast<SotClipboardFormatId>(-1) != s_nFormat, "OColumnTransferable::getDescriptorFormatId: bad exchange id!");
         }
         return s_nFormat;

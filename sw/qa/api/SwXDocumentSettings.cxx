@@ -7,12 +7,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include <test/bootstrapfixture.hxx>
+#include <test/unoapi_test.hxx>
 #include <test/lang/xserviceinfo.hxx>
 #include <test/text/textdocumentsettings.hxx>
 #include <test/text/textprintersettings.hxx>
 #include <test/text/textsettings.hxx>
-#include <unotest/macros_test.hxx>
 
 #include <com/sun/star/frame/Desktop.hpp>
 
@@ -28,22 +27,17 @@ namespace
 /**
  * Test for Java API test of file com.sun.star.comp.Writer.DocumentSettings.csv
  */
-class SwXDocumentSettings final : public test::BootstrapFixture,
-                                  public unotest::MacrosTest,
+class SwXDocumentSettings final : public UnoApiTest,
                                   public apitest::TextDocumentSettings,
                                   public apitest::TextSettings,
                                   public apitest::TextPrinterSettings,
                                   public apitest::XServiceInfo
 {
-private:
-    uno::Reference<lang::XComponent> mxComponent;
-
 public:
-    virtual void setUp() override;
-    virtual void tearDown() override;
-
     SwXDocumentSettings()
-        : apitest::XServiceInfo("SwXDocumentSettings", "com.sun.star.text.DocumentSettings"){};
+        : UnoApiTest(u""_ustr)
+        , apitest::XServiceInfo(u"SwXDocumentSettings"_ustr,
+                                u"com.sun.star.text.DocumentSettings"_ustr){};
     uno::Reference<uno::XInterface> init() override;
 
     CPPUNIT_TEST_SUITE(SwXDocumentSettings);
@@ -56,29 +50,14 @@ public:
     CPPUNIT_TEST_SUITE_END();
 };
 
-void SwXDocumentSettings::setUp()
-{
-    test::BootstrapFixture::setUp();
-
-    mxDesktop.set(frame::Desktop::create(mxComponentContext));
-}
-
-void SwXDocumentSettings::tearDown()
-{
-    if (mxComponent.is())
-        mxComponent->dispose();
-
-    test::BootstrapFixture::tearDown();
-}
-
 uno::Reference<uno::XInterface> SwXDocumentSettings::init()
 {
-    mxComponent = loadFromDesktop("private:factory/swriter", "com.sun.star.text.TextDocument");
+    loadFromURL(u"private:factory/swriter"_ustr);
     uno::Reference<text::XTextDocument> xTextDocument(mxComponent, uno::UNO_QUERY_THROW);
     uno::Reference<lang::XMultiServiceFactory> xFactory(xTextDocument, uno::UNO_QUERY_THROW);
 
     uno::Reference<uno::XInterface> xDocumentSettings(
-        xFactory->createInstance("com.sun.star.text.DocumentSettings"), uno::UNO_SET_THROW);
+        xFactory->createInstance(u"com.sun.star.text.DocumentSettings"_ustr), uno::UNO_SET_THROW);
 
     return xDocumentSettings;
 }

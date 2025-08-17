@@ -97,6 +97,7 @@ class SW_DLLPUBLIC SwNode
     : public sw::BorderCacheOwner, private BigPtrEntry
 {
     friend class SwNodes;
+    friend class SwNodeIndex;
 
     SwNodeType m_nNodeType;
 
@@ -105,6 +106,7 @@ class SW_DLLPUBLIC SwNode
     bool m_bIgnoreDontExpand : 1;     ///< for Text Attributes - ignore the flag
 
     mutable sw::AccessibilityCheckStatus m_aAccessibilityCheckStatus;
+    SwNodeIndex* m_vIndices { nullptr }; ///< ring of indices pointing to this node.
 
 public:
     /// sw_redlinehide: redline node merge state
@@ -114,6 +116,9 @@ public:
     }
     void SetRedlineMergeFlag(Merge const eMerge) { m_eMerge = eMerge; }
     Merge GetRedlineMergeFlag() const { return m_eMerge; }
+
+    using BigPtrEntry::IsDisconnected; // make this public
+
 private:
     Merge m_eMerge;
 
@@ -212,19 +217,19 @@ public:
                     SwSectionNode *FindSectionNode();
     inline    const   SwSectionNode *FindSectionNode() const;
 
-    SwStartNode* FindSttNodeByType( SwStartNodeType eTyp );
-    inline const SwStartNode* FindSttNodeByType( SwStartNodeType eTyp ) const;
+    SwStartNode* FindStartNodeByType( SwStartNodeType eTyp );
+    inline const SwStartNode* FindStartNodeByType( SwStartNodeType eTyp ) const;
 
     const SwStartNode* FindTableBoxStartNode() const
-                        { return FindSttNodeByType( SwTableBoxStartNode ); }
+                        { return FindStartNodeByType( SwTableBoxStartNode ); }
     const SwStartNode* FindFlyStartNode() const
-                        { return FindSttNodeByType( SwFlyStartNode ); }
+                        { return FindStartNodeByType( SwFlyStartNode ); }
     const SwStartNode* FindFootnoteStartNode() const
-                        { return FindSttNodeByType( SwFootnoteStartNode ); }
+                        { return FindStartNodeByType( SwFootnoteStartNode ); }
     const SwStartNode* FindHeaderStartNode() const
-                        { return FindSttNodeByType( SwHeaderStartNode ); }
+                        { return FindStartNodeByType( SwHeaderStartNode ); }
     const SwStartNode* FindFooterStartNode() const
-                        { return FindSttNodeByType( SwFooterStartNode ); }
+                        { return FindStartNodeByType( SwFooterStartNode ); }
 
     /// Node is in which nodes-array/doc?
     inline          SwNodes& GetNodes();
@@ -307,7 +312,7 @@ public:
     SwFrameFormat* GetFlyFormat() const;
 
     /// If node is in a table return the respective table box.
-    SwTableBox* GetTableBox() const;
+    SAL_RET_MAYBENULL SwTableBox* GetTableBox() const;
 
     SwNodeOffset GetIndex() const { return SwNodeOffset(GetPos()); }
 
@@ -391,7 +396,7 @@ class SwEndNode final : public SwNode
 
 // SwContentNode
 
-class SW_DLLPUBLIC SwContentNode: public sw::BroadcastingModify, public SwNode, public SwContentIndexReg
+class SAL_DLLPUBLIC_RTTI SwContentNode: public sw::BroadcastingModify, public SwNode, public SwContentIndexReg
 {
 
     sw::WriterMultiListener m_aCondCollListener;
@@ -430,23 +435,22 @@ public:
     virtual SwContentNode *JoinNext();
     /** Is it possible to join two nodes?
        In pIdx the second position can be returned. */
-    bool CanJoinNext( SwNodeIndex* pIdx = nullptr ) const;
+    SW_DLLPUBLIC bool CanJoinNext( SwNodeIndex* pIdx = nullptr ) const;
     bool CanJoinNext( SwPosition* pIdx ) const;
-    bool CanJoinPrev( SwNodeIndex* pIdx =nullptr ) const;
+    SW_DLLPUBLIC bool CanJoinPrev( SwNodeIndex* pIdx =nullptr ) const;
 
-    bool GoNext(SwContentIndex *, SwCursorSkipMode nMode ) const;
-    bool GoNext(SwPosition*, SwCursorSkipMode nMode ) const;
-    bool GoPrevious(SwContentIndex *, SwCursorSkipMode nMode ) const;
+    bool GoNext(SwContentIndex&, SwCursorSkipMode nMode ) const;
+    bool GoNext(SwPosition&, SwCursorSkipMode nMode ) const;
+    bool GoPrevious(SwContentIndex&, SwCursorSkipMode nMode ) const;
 
     /// @see GetFrameOfModify
-    SwContentFrame *getLayoutFrame( const SwRootFrame*,
+    SW_DLLPUBLIC SwContentFrame *getLayoutFrame( const SwRootFrame*,
             const SwPosition *pPos = nullptr,
             std::pair<Point, bool> const* pViewPosAndCalcFrame = nullptr) const;
     /** @return the real size of the frame or an empty rectangle if
        no layout exists. Needed for export filters. */
-    SwRect FindLayoutRect( const bool bPrtArea = false,
-                            const Point* pPoint = nullptr  ) const;
-    SwRect FindPageFrameRect() const;
+    SW_DLLPUBLIC SwRect FindLayoutRect( const Point* pPoint = nullptr ) const;
+    SW_DLLPUBLIC SwRect FindPageFrameRect() const;
 
     /** Method creates all views of document for given node. The content
        frames that are created are put in the respective layout. */
@@ -464,7 +468,7 @@ public:
     virtual SwContentNode* MakeCopy(SwDoc&, SwNode& rWhere, bool bNewFrames) const = 0;
 
     /// Get information from Client.
-    virtual bool GetInfo( SfxPoolItem& ) const override;
+    virtual bool GetInfo( SwFindNearestNode& ) const override;
 
     /// SS for PoolItems: hard attributation.
 
@@ -473,16 +477,16 @@ public:
     template<class T>
     const T& GetAttr( TypedWhichId<T> nWhich, bool bInParent=true ) const
     { return static_cast<const T&>(GetAttr(sal_uInt16(nWhich), bInParent)); }
-    bool GetAttr( SfxItemSet& rSet ) const;
+    SW_DLLPUBLIC bool GetAttr( SfxItemSet& rSet ) const;
     /// made virtual
-    virtual bool SetAttr( const SfxPoolItem& );
+    SW_DLLPUBLIC virtual bool SetAttr( const SfxPoolItem& );
     virtual bool SetAttr( const SfxItemSet& rSet );
     virtual bool ResetAttr( sal_uInt16 nWhich1, sal_uInt16 nWhich2 = 0 );
     virtual bool ResetAttr( const std::vector<sal_uInt16>& rWhichArr );
     virtual sal_uInt16 ResetAllAttr();
 
     /// Obtains attribute that is not delivered via conditional style!
-    const SfxPoolItem* GetNoCondAttr( sal_uInt16 nWhich, bool bInParents ) const;
+    SW_DLLPUBLIC const SfxPoolItem* GetNoCondAttr( sal_uInt16 nWhich, bool bInParents ) const;
     template<class T>
     const T* GetNoCondAttr( TypedWhichId<T> nWhich, bool bInParents ) const
     { return static_cast<const T*>(GetNoCondAttr(sal_uInt16(nWhich), bInParents)); }
@@ -493,7 +497,7 @@ public:
     const SwAttrSet *GetpSwAttrSet() const { return mpAttrSet.get(); }
     bool  HasSwAttrSet() const { return mpAttrSet != nullptr; }
 
-    virtual SwFormatColl* ChgFormatColl( SwFormatColl* );
+    virtual SwFormatColl* ChgFormatColl( SwFormatColl*, bool bSetListLevel = true );
     SwFormatColl* GetFormatColl() const { return const_cast<SwFormatColl*>(static_cast<const SwFormatColl*>(GetRegisteredIn())); }
 
     inline SwFormatColl& GetAnyFormatColl() const;
@@ -590,13 +594,13 @@ public:
     const SwSection& GetSection() const { return *m_pSection; }
           SwSection& GetSection()       { return *m_pSection; }
 
-    SwFrame *MakeFrame( SwFrame* );
+    SwFrame* MakeFrame(SwFrame* pSib, bool bHidden);
 
     /** Creates the frms for the SectionNode (i.e. the SectionFrames).
        On default the frames are created until the end of the range.
        When another NodeIndex pEnd is passed a MakeFrames is called up to it.
        Used by TableToText. */
-    void MakeOwnFrames(SwNodeIndex* pIdxBehind, SwNodeIndex* pEnd = nullptr);
+    void MakeOwnFrames(SwNodeIndex* pIdxBehind, const SwNodeIndex* pEnd = nullptr);
 
     /** Method deletes all views of document for the node. The
      content frames are removed from the respective layout. */
@@ -672,9 +676,9 @@ inline const SwContentNode *SwNode::GetContentNode() const
      return IsContentNode() ? static_cast<const SwContentNode*>(this) : nullptr;
 }
 
-inline const SwStartNode* SwNode::FindSttNodeByType( SwStartNodeType eTyp ) const
+inline const SwStartNode* SwNode::FindStartNodeByType( SwStartNodeType eTyp ) const
 {
-    return const_cast<SwNode*>(this)->FindSttNodeByType( eTyp );
+    return const_cast<SwNode*>(this)->FindStartNodeByType( eTyp );
 }
 inline const SwTableNode* SwNode::FindTableNode() const
 {

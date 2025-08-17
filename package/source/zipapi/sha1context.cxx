@@ -33,7 +33,7 @@ uno::Reference<xml::crypto::XDigestContext> StarOfficeSHA1DigestContext::Create(
     ::rtl::Reference<StarOfficeSHA1DigestContext> xResult = new StarOfficeSHA1DigestContext();
     xResult->m_pDigest = rtl_digest_createSHA1();
     if ( !xResult->m_pDigest )
-        throw uno::RuntimeException("Can not create cipher!" );
+        throw uno::RuntimeException(u"Can not create cipher!"_ustr );
 
     return xResult;
 }
@@ -102,7 +102,7 @@ void SAL_CALL CorrectSHA1DigestContext::updateDigest(const uno::Sequence<::sal_I
     if (m_bDisposed)
         throw lang::DisposedException();
 
-    m_Hash.update(reinterpret_cast<unsigned char const*>(rData.getConstArray()), rData.getLength());
+    m_Hash.update(rData.getConstArray(), rData.getLength());
 }
 
 uno::Sequence<::sal_Int8> SAL_CALL CorrectSHA1DigestContext::finalizeDigestAndDispose()

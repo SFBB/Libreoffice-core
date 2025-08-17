@@ -209,35 +209,34 @@ bool ImplCurrencyGetValue( const OUString& rStr, BigInt& rValue,
 
 } // namespace
 
-static bool ImplLongCurrencyGetValue( const OUString& rStr, BigInt& rValue,
-                                      sal_uInt16 nDecDigits, const LocaleDataWrapper& rLocaleDataWrapper )
-{
-    return ImplCurrencyGetValue( rStr, rValue, nDecDigits, rLocaleDataWrapper );
-}
-
 namespace weld
 {
-    IMPL_LINK_NOARG(LongCurrencyFormatter, FormatOutputHdl, LinkParamNone*, bool)
+    IMPL_LINK(LongCurrencyFormatter, FormatOutputHdl, double, fValue, std::optional<OUString>)
     {
         const LocaleDataWrapper& rLocaleDataWrapper = Application::GetSettings().GetLocaleDataWrapper();
         const OUString& rCurrencySymbol = !m_aCurrencySymbol.isEmpty() ? m_aCurrencySymbol : rLocaleDataWrapper.getCurrSymbol();
-        double fValue = GetValue() * weld::SpinButton::Power10(GetDecimalDigits());
+        sal_uInt16 nDecimalDigits = GetDecimalDigits();
+        if (nDecimalDigits)
+        {
+            // tdf#158669 round to decimal digits
+            fValue = std::round(fValue * weld::SpinButton::Power10(nDecimalDigits));
+        }
         OUString aText = ImplGetCurr(rLocaleDataWrapper, fValue, GetDecimalDigits(), rCurrencySymbol, m_bThousandSep);
-        ImplSetTextImpl(aText, nullptr);
-        return true;
+        return std::optional<OUString>(aText);
     }
 
-    IMPL_LINK(LongCurrencyFormatter, ParseInputHdl, sal_Int64*, result, TriState)
+    IMPL_LINK(LongCurrencyFormatter, ParseInputHdl, const OUString&, rText, Formatter::ParseResult)
     {
         const LocaleDataWrapper& rLocaleDataWrapper = Application::GetSettings().GetLocaleDataWrapper();
 
         BigInt value;
-        bool bRet = ImplLongCurrencyGetValue(GetEntryText(), value, GetDecimalDigits(), rLocaleDataWrapper);
+        bool bRet = ImplCurrencyGetValue(rText, value, GetDecimalDigits(), rLocaleDataWrapper);
 
+        double fValue = 0;
         if (bRet)
-            *result = double(value);
+            fValue = double(value) / weld::SpinButton::Power10(GetDecimalDigits());
 
-        return bRet ? TRISTATE_TRUE : TRISTATE_FALSE;
+        return Formatter::ParseResult(bRet ? TRISTATE_TRUE : TRISTATE_FALSE, fValue);
     }
 }
 
@@ -268,8 +267,8 @@ void LongCurrencyFormatter::ImpInit()
     mnMin               = 0;
     mnMax               = 0x7FFFFFFF;
     mnMax              *= 0x7FFFFFFF;
-    mnDecimalDigits     = 0;
-    SetDecimalDigits( 0 );
+
+    ReformatAll();
 }
 
 LongCurrencyFormatter::LongCurrencyFormatter(Edit* pEdit)
@@ -322,7 +321,7 @@ BigInt LongCurrencyFormatter::GetValue() const
         return 0;
 
     BigInt nTempValue;
-    if ( ImplLongCurrencyGetValue( GetField()->GetText(), nTempValue, GetDecimalDigits(), GetLocaleDataWrapper() ) )
+    if (ImplCurrencyGetValue(GetField()->GetText(), nTempValue, GetDecimalDigits(), GetLocaleDataWrapper()))
     {
         if ( nTempValue > mnMax )
             nTempValue = mnMax;
@@ -352,7 +351,7 @@ void LongCurrencyFormatter::Reformat()
     {
         GetField()->SetText( aStr );
         MarkToBeReformatted( false );
-        ImplLongCurrencyGetValue( aStr, mnLastValue, GetDecimalDigits(), GetLocaleDataWrapper() );
+        ImplCurrencyGetValue(aStr, mnLastValue, GetDecimalDigits(), GetLocaleDataWrapper());
     }
     else
         SetValue( mnLastValue );
@@ -362,17 +361,6 @@ void LongCurrencyFormatter::ReformatAll()
 {
     Reformat();
 }
-
-void LongCurrencyFormatter::SetDecimalDigits( sal_uInt16 nDigits )
-{
-    if ( nDigits > 9 )
-        nDigits = 9;
-
-    mnDecimalDigits = nDigits;
-    ReformatAll();
-}
-
-
 
 LongCurrencyBox::LongCurrencyBox(vcl::Window* pParent, WinBits nWinStyle)
     : ComboBox(pParent, nWinStyle)

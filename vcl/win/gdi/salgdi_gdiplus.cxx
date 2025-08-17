@@ -26,6 +26,13 @@
 
 #include "gdiimpl.hxx"
 
+#include <prewin.h>
+#include <gdiplus.h>
+#include <postwin.h>
+
+#include <osl/file.hxx>
+#include <o3tl/char16_t2wchar_t.hxx>
+
 void WinSalGraphics::drawPolyPolygon(
     const basegfx::B2DHomMatrix& rObjectToDevice,
     const basegfx::B2DPolyPolygon& rPolyPolygon,
@@ -60,22 +67,6 @@ bool WinSalGraphics::drawPolyLine(
         bPixelSnapHairline);
 }
 
-bool WinSalGraphics::blendBitmap(
-    const SalTwoRect& rTR,
-    const SalBitmap& rBmp)
-{
-    return mpImpl->blendBitmap(rTR, rBmp);
-}
-
-bool WinSalGraphics::blendAlphaBitmap(
-    const SalTwoRect& rTR,
-    const SalBitmap& rSrcBmp,
-    const SalBitmap& rMaskBmp,
-    const SalBitmap& rAlphaBmp)
-{
-    return mpImpl->blendAlphaBitmap(rTR, rSrcBmp, rMaskBmp, rAlphaBmp);
-}
-
 bool WinSalGraphics::drawAlphaBitmap(
     const SalTwoRect& rTR,
     const SalBitmap& rSrcBitmap,
@@ -99,6 +90,23 @@ bool WinSalGraphics::drawTransformedBitmap(
 bool WinSalGraphics::hasFastDrawTransformedBitmap() const
 {
     return mpImpl->hasFastDrawTransformedBitmap();
+}
+
+// static
+OUString WinSalGraphics::getFontFamilyNameFromTTF(const OUString& url)
+{
+    OUString localFileName;
+    osl::FileBase::getSystemPathFromFileURL(url, localFileName);
+    Gdiplus::PrivateFontCollection collection;
+    collection.AddFontFile(o3tl::toW(localFileName.getStr()));
+    if (collection.GetFamilyCount() == 0)
+        return {};
+    Gdiplus::FontFamily aFamily;
+    if (INT ret; collection.GetFamilies(1, &aFamily, &ret) != Gdiplus::Status::Ok || ret < 1)
+        return {};
+    WCHAR familyName[LF_FACESIZE]{};
+    aFamily.GetFamilyName(familyName, LANG_NEUTRAL);
+    return OUString(o3tl::toU(familyName));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

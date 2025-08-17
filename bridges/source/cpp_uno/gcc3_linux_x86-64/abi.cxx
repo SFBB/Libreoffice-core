@@ -55,7 +55,6 @@
 #include "abi.hxx"
 
 #include <o3tl/unreachable.hxx>
-#include <sal/log.hxx>
 
 using namespace x86_64;
 
@@ -224,7 +223,6 @@ classify_argument( typelib_TypeDescriptionReference *pTypeRef, enum x86_64_reg_c
 bool x86_64::examine_argument( typelib_TypeDescriptionReference *pTypeRef, int &nUsedGPR, int &nUsedSSE ) noexcept
 {
     enum x86_64_reg_class classes[MAX_CLASSES];
-    // coverity[uninit_use_in_call : FALSE]
     int n = classify_argument( pTypeRef, classes, 0 );
 
     if ( n == 0 )
@@ -255,13 +253,11 @@ bool x86_64::return_in_hidden_param( typelib_TypeDescriptionReference *pTypeRef 
         return false;
     }
     enum x86_64_reg_class classes[MAX_CLASSES];
-    // coverity[uninit_use_in_call : FALSE]
     return classify_argument(pTypeRef, classes, 0) == 0;
 }
 
 x86_64::ReturnKind x86_64::getReturnKind(typelib_TypeDescriptionReference * type) noexcept {
     x86_64_reg_class classes[MAX_CLASSES];
-    // coverity[uninit_use_in_call : FALSE]
     auto const n = classify_argument(type, classes, 0);
     if (n == 0) {
         return ReturnKind::Memory;
@@ -282,7 +278,6 @@ x86_64::ReturnKind x86_64::getReturnKind(typelib_TypeDescriptionReference * type
 void x86_64::fill_struct( typelib_TypeDescriptionReference *pTypeRef, const sal_uInt64 *pGPR, const double *pSSE, void *pStruct ) noexcept
 {
     enum x86_64_reg_class classes[MAX_CLASSES];
-    // coverity[uninit_use_in_call : FALSE]
     int n = classify_argument( pTypeRef, classes, 0 );
 
     sal_uInt64 *pStructAlign = static_cast<sal_uInt64 *>( pStruct );

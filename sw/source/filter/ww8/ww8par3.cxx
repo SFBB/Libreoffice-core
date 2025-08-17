@@ -69,13 +69,12 @@
 #include "ww8par2.hxx"
 
 #include <IMark.hxx>
-#include <unotools/fltrcfg.hxx>
 #include <rtl/character.hxx>
 #include <xmloff/odffields.hxx>
 #include <comphelper/string.hxx>
+#include <officecfg/Office/Common.hxx>
 
 using namespace com::sun::star;
-using namespace sw::util;
 using namespace sw::types;
 using namespace sw::mark;
 
@@ -110,8 +109,7 @@ eF_ResT SwWW8ImplReader::Read_F_FormTextBox( WW8FieldDesc* pF, OUString& rStr )
     text.
     */
 
-    const SvtFilterOptions& rOpt = SvtFilterOptions::Get();
-    const bool bUseEnhFields = rOpt.IsUseEnhancedFields();
+    const bool bUseEnhFields = m_bFuzzing || officecfg::Office::Common::Filter::Microsoft::Import::ImportWWFieldsAsEnhancedFields::get();
 
     if (!bUseEnhFields)
     {
@@ -121,8 +119,8 @@ eF_ResT SwWW8ImplReader::Read_F_FormTextBox( WW8FieldDesc* pF, OUString& rStr )
             static_cast<SwInputFieldType*>(m_rDoc.getIDocumentFieldsAccess().GetSysFieldType( SwFieldIds::Input )),
             aFormula.msDefault,
             aFormula.msTitle,
-            INP_TXT,
-            0 );
+            SwInputFieldSubType::Text,
+            false );
         aField.SetHelp(aFormula.msHelp);
         aField.SetToolTip(aFormula.msToolTip);
 
@@ -132,7 +130,7 @@ eF_ResT SwWW8ImplReader::Read_F_FormTextBox( WW8FieldDesc* pF, OUString& rStr )
     else
     {
         WW8PLCFx_Book* pB = m_xPlcxMan->GetBook();
-        OUString aBookmarkName;
+        SwMarkName aBookmarkName;
         if (pB!=nullptr) {
             WW8_CP currentCP=pF->nSCode;
             WW8_CP currentLen=pF->nLen;
@@ -149,35 +147,35 @@ eF_ResT SwWW8ImplReader::Read_F_FormTextBox( WW8FieldDesc* pF, OUString& rStr )
                 if (!aBookmarkFind.isEmpty()) {
                     pB->SetStatus(bkmFindIdx, BOOK_FIELD); // mark bookmark as consumed, such that it'll not get inserted as a "normal" bookmark again
                     if (!aBookmarkFind.isEmpty()) {
-                        aBookmarkName=aBookmarkFind;
+                        aBookmarkName=SwMarkName(aBookmarkFind);
                     }
                 }
             }
         }
 
         if (pB!=nullptr && aBookmarkName.isEmpty()) {
-            aBookmarkName=pB->GetUniqueBookmarkName(aFormula.msTitle);
+            aBookmarkName = SwMarkName(pB->GetUniqueBookmarkName(aFormula.msTitle));
         }
 
         if (!aBookmarkName.isEmpty()) {
             m_aFieldStack.back().SetBookmarkName(aBookmarkName);
             m_aFieldStack.back().SetBookmarkType(ODF_FORMTEXT);
             if ( aFormula.msToolTip.getLength() < 139 )
-                m_aFieldStack.back().getParameters()["Description"] <<= aFormula.msToolTip;
-            m_aFieldStack.back().getParameters()["Name"] <<= aFormula.msTitle;
+                m_aFieldStack.back().getParameters()[u"Description"_ustr] <<= aFormula.msToolTip;
+            m_aFieldStack.back().getParameters()[u"Name"_ustr] <<= aFormula.msTitle;
             if (aFormula.mnMaxLen && aFormula.mnMaxLen < 32768 )
-                m_aFieldStack.back().getParameters()["MaxLength"] <<= aFormula.mnMaxLen;
+                m_aFieldStack.back().getParameters()[u"MaxLength"_ustr] <<= aFormula.mnMaxLen;
 
             if ( aFormula.mfType == 1 )
-                m_aFieldStack.back().getParameters()["Type"] <<= OUString("number");
+                m_aFieldStack.back().getParameters()[u"Type"_ustr] <<= u"number"_ustr;
             else if ( aFormula.mfType == 2 )
-                m_aFieldStack.back().getParameters()["Type"] <<= OUString("date");
+                m_aFieldStack.back().getParameters()[u"Type"_ustr] <<= u"date"_ustr;
             else if ( aFormula.mfType == 3 )
-                m_aFieldStack.back().getParameters()["Type"] <<= OUString("currentTime");
+                m_aFieldStack.back().getParameters()[u"Type"_ustr] <<= u"currentTime"_ustr;
             else if ( aFormula.mfType == 4 )
-                m_aFieldStack.back().getParameters()["Type"] <<= OUString("currentDate");
+                m_aFieldStack.back().getParameters()[u"Type"_ustr] <<= u"currentDate"_ustr;
             else if ( aFormula.mfType == 5 )
-                m_aFieldStack.back().getParameters()["Type"] <<= OUString("calculated");
+                m_aFieldStack.back().getParameters()[u"Type"_ustr] <<= u"calculated"_ustr;
         }
         return eF_ResT::TEXT;
     }
@@ -192,8 +190,7 @@ eF_ResT SwWW8ImplReader::Read_F_FormCheckBox( WW8FieldDesc* pF, OUString& rStr )
 
     if (rStr[pF->nLCode-1]==0x01)
         ImportFormulaControl(aFormula,pF->nSCode+pF->nLCode-1, WW8_CT_CHECKBOX);
-    const SvtFilterOptions& rOpt = SvtFilterOptions::Get();
-    const bool bUseEnhFields = rOpt.IsUseEnhancedFields();
+    const bool bUseEnhFields = m_bFuzzing || officecfg::Office::Common::Filter::Microsoft::Import::ImportWWFieldsAsEnhancedFields::get();
 
     if (!bUseEnhFields)
     {
@@ -201,7 +198,7 @@ eF_ResT SwWW8ImplReader::Read_F_FormCheckBox( WW8FieldDesc* pF, OUString& rStr )
         return eF_ResT::OK;
     }
 
-    OUString aBookmarkName;
+    SwMarkName aBookmarkName;
     WW8PLCFx_Book* pB = m_xPlcxMan->GetBook();
     if (pB!=nullptr) {
         WW8_CP currentCP=pF->nSCode;
@@ -213,24 +210,24 @@ eF_ResT SwWW8ImplReader::Read_F_FormCheckBox( WW8FieldDesc* pF, OUString& rStr )
         if (!aBookmarkFind.isEmpty()) {
             pB->SetStatus(bkmFindIdx, BOOK_FIELD); // mark as consumed by field
             if (!aBookmarkFind.isEmpty()) {
-                aBookmarkName=aBookmarkFind;
+                aBookmarkName=SwMarkName(aBookmarkFind);
             }
         }
     }
 
     if (pB!=nullptr && aBookmarkName.isEmpty()) {
-        aBookmarkName=pB->GetUniqueBookmarkName(aFormula.msTitle);
+        aBookmarkName = SwMarkName(pB->GetUniqueBookmarkName(aFormula.msTitle));
     }
 
     if (!aBookmarkName.isEmpty())
     {
         IDocumentMarkAccess* pMarksAccess = m_rDoc.getIDocumentMarkAccess( );
-        IFieldmark* pFieldmark = pMarksAccess->makeNoTextFieldBookmark(
+        Fieldmark* pFieldmark = pMarksAccess->makeNoTextFieldBookmark(
                 *m_pPaM, aBookmarkName, ODF_FORMCHECKBOX );
         OSL_ENSURE(pFieldmark!=nullptr, "hmmm; why was the bookmark not created?");
         if (pFieldmark!=nullptr) {
-            IFieldmark::parameter_map_t* const pParameters = pFieldmark->GetParameters();
-            ICheckboxFieldmark* pCheckboxFm = dynamic_cast<ICheckboxFieldmark*>(pFieldmark);
+            Fieldmark::parameter_map_t* const pParameters = pFieldmark->GetParameters();
+            CheckboxFieldmark* pCheckboxFm = dynamic_cast<CheckboxFieldmark*>(pFieldmark);
             (*pParameters)[ODF_FORMCHECKBOX_HELPTEXT] <<= aFormula.msToolTip;
 
             if(pCheckboxFm)
@@ -248,8 +245,7 @@ eF_ResT SwWW8ImplReader::Read_F_FormListBox( WW8FieldDesc* pF, OUString& rStr)
     if (pF->nLCode > 0 && rStr.getLength() >= pF->nLCode && rStr[pF->nLCode-1] == 0x01)
         ImportFormulaControl(aFormula,pF->nSCode+pF->nLCode-1, WW8_CT_DROPDOWN);
 
-    const SvtFilterOptions& rOpt = SvtFilterOptions::Get();
-    bool bUseEnhFields = rOpt.IsUseEnhancedFields();
+    const bool bUseEnhFields = m_bFuzzing || officecfg::Office::Common::Filter::Microsoft::Import::ImportWWFieldsAsEnhancedFields::get();
 
     if (!bUseEnhFields)
     {
@@ -296,8 +292,8 @@ eF_ResT SwWW8ImplReader::Read_F_FormListBox( WW8FieldDesc* pF, OUString& rStr)
         if (!aBookmarkName.isEmpty())
         {
             IDocumentMarkAccess* pMarksAccess = m_rDoc.getIDocumentMarkAccess( );
-            IFieldmark *pFieldmark =
-                    pMarksAccess->makeNoTextFieldBookmark( *m_pPaM, aBookmarkName, ODF_FORMDROPDOWN );
+            Fieldmark *pFieldmark =
+                    pMarksAccess->makeNoTextFieldBookmark( *m_pPaM, SwMarkName(aBookmarkName), ODF_FORMDROPDOWN );
             OSL_ENSURE(pFieldmark!=nullptr, "hmmm; why was the bookmark not created?");
             if ( pFieldmark != nullptr )
             {
@@ -368,6 +364,8 @@ struct WW8LVL   // only THE entries, WE need!
     short   nDxaLeft1;          // first line indent
 
     sal_uInt8   nNFC;               // number format code
+    /// Legal numbering: whether this level overrides the nfc of all inherited level numbers.
+    bool fLegal;
     // Offset of fieldcodes in Num-X-String
     sal_uInt8   aOfsNumsXCH[WW8ListManager::nMaxLevel];
     sal_uInt8   nLenGrpprlChpx; // length, in bytes, of the LVL's grpprlChpx
@@ -662,7 +660,15 @@ bool WW8ListManager::ReadLVL(SwNumFormat& rNumFormat, std::unique_ptr<SfxItemSet
     m_rSt.ReadUChar( aLVL.nNFC );
     m_rSt.ReadUChar( aBits1 );
     if( ERRCODE_NONE != m_rSt.GetError() ) return false;
+    // 1st..2nd bits.
     aLVL.nAlign = (aBits1 & 0x03);
+
+    if (aBits1 & 0x04)
+    {
+        // 3rd bit.
+        aLVL.fLegal = true;
+    }
+
     if( aBits1 & 0x10 ) aLVL.bV6Prev    = true;
     if( aBits1 & 0x20 ) aLVL.bV6PrSp    = true;
     if( aBits1 & 0x40 ) aLVL.bV6        = true;
@@ -874,6 +880,7 @@ bool WW8ListManager::ReadLVL(SwNumFormat& rNumFormat, std::unique_ptr<SfxItemSet
     switch( aLVL.nAlign )
     {
         case 0:
+        case 3: // Writer here cannot do block justification
             eAdj = SvxAdjust::Left;
             break;
         case 1:
@@ -881,10 +888,6 @@ bool WW8ListManager::ReadLVL(SwNumFormat& rNumFormat, std::unique_ptr<SfxItemSet
             break;
         case 2:
             eAdj = SvxAdjust::Right;
-            break;
-        case 3:
-            // Writer here cannot do block justification
-            eAdj = SvxAdjust::Left;
             break;
          default:
             // undefined value
@@ -898,6 +901,7 @@ bool WW8ListManager::ReadLVL(SwNumFormat& rNumFormat, std::unique_ptr<SfxItemSet
     if( bSetStartNo && 0 <= aLVL.nStartAt)
         rNumFormat.SetStart(o3tl::narrowing<sal_uInt16>(aLVL.nStartAt));
     rNumFormat.SetNumberingType( nType );
+    rNumFormat.SetIsLegal(aLVL.fLegal);
     rNumFormat.SetNumAdjust( eAdj );
 
     if( style::NumberingType::CHAR_SPECIAL == nType )
@@ -1047,11 +1051,11 @@ void WW8ListManager::AdjustLVL( sal_uInt8 nLevel, SwNumRule& rNumRule,
         if (nMaxLevel == nIdenticalItemSetLevel)
         {
             // Define Style
-            const OUString aName( (!sPrefix.isEmpty() ? sPrefix : rNumRule.GetName())
+            const OUString aName( (!sPrefix.isEmpty() ? sPrefix : rNumRule.GetName().toString())
                                   + "z" + OUString::number( nLevel ) );
 
             // remove const by casting
-            pFormat = m_rDoc.MakeCharFormat(aName, m_rDoc.GetDfltCharFormat());
+            pFormat = m_rDoc.MakeCharFormat(UIName(aName), m_rDoc.GetDfltCharFormat());
             bNewCharFormatCreated = true;
             // Set Attributes
             pFormat->SetFormatAttr( *pThisLevelItemSet );
@@ -1100,10 +1104,10 @@ void WW8ListManager::AdjustLVL( sal_uInt8 nLevel, SwNumRule& rNumRule,
 SwNumRule* WW8ListManager::CreateNextRule(bool bSimple)
 {
     // Used to build the Style Name
-    const OUString sPrefix("WW8Num" + OUString::number(m_nUniqueList++));
+    const UIName sPrefix("WW8Num" + OUString::number(m_nUniqueList++));
     // #i86652#
     sal_uInt16 nRul =
-            m_rDoc.MakeNumRule( m_rDoc.GetUniqueNumRuleName(&sPrefix), nullptr, false,
+            m_rDoc.MakeNumRule( m_rDoc.GetUniqueNumRuleName(&sPrefix), nullptr,
                               SvxNumberFormat::LABEL_ALIGNMENT );
     SwNumRule* pMyNumRule = m_rDoc.GetNumRuleTable()[nRul];
     pMyNumRule->SetAutoRule(false);
@@ -1337,7 +1341,7 @@ WW8ListManager::WW8ListManager(SvStream& rSt_, SwWW8ImplReader& rReader_)
                     break;
                 // create name-prefix for NumRule-Name
                 // and (if necessary) for Style-Name
-                const OUString sPrefix("WW8NumSt" + OUString::number( nLfo + 1 ));
+                const UIName sPrefix("WW8NumSt" + OUString::number( nLfo + 1 ));
                 // Now assign pNumRule its actual value!!!
                 // (it contained the parent NumRule up to this point)
 
@@ -1445,7 +1449,7 @@ WW8ListManager::WW8ListManager(SvStream& rSt_, SwWW8ImplReader& rReader_)
                 for (sal_uInt8 nLevel = 0; nLevel < rLFOInfo.nLfoLvl; ++nLevel)
                 {
                     AdjustLVL( nLevel, *rLFOInfo.pNumRule, aItemSet, aCharFormat,
-                        bNewCharFormatCreated, sPrefix );
+                        bNewCharFormatCreated, sPrefix.toString() );
                 }
             }
         }
@@ -1675,8 +1679,8 @@ void UseListIndent(SwWW8StyInf &rStyle, const SwNumFormat &rFormat)
         const tools::Long nListFirstLineIndent = GetListFirstLineIndent(rFormat);
         SvxFirstLineIndentItem firstLine(rStyle.m_pFormat->GetFormatAttr(RES_MARGIN_FIRSTLINE));
         SvxTextLeftMarginItem leftMargin(rStyle.m_pFormat->GetFormatAttr(RES_MARGIN_TEXTLEFT));
-        leftMargin.SetTextLeft(nAbsLSpace);
-        firstLine.SetTextFirstLineOffset(writer_cast<short>(nListFirstLineIndent));
+        leftMargin.SetTextLeft(SvxIndentValue::twips(nAbsLSpace));
+        firstLine.SetTextFirstLineOffset(SvxIndentValue::twips(nListFirstLineIndent));
         rStyle.m_pFormat->SetFormatAttr(firstLine);
         rStyle.m_pFormat->SetFormatAttr(leftMargin);
         rStyle.m_bListRelevantIndentSet = true;
@@ -1697,8 +1701,8 @@ void SetStyleIndent(SwWW8StyInf &rStyle, const SwNumFormat &rFormat)
     }
     else
     {
-        leftMargin.SetTextLeft(0);
-        firstLine.SetTextFirstLineOffset(0);
+        leftMargin.SetTextLeft(SvxIndentValue::zero());
+        firstLine.SetTextFirstLineOffset(SvxIndentValue::zero());
     }
     rStyle.m_pFormat->SetFormatAttr(firstLine);
     rStyle.m_pFormat->SetFormatAttr(leftMargin);
@@ -1797,7 +1801,7 @@ void SwWW8ImplReader::RegisterNumFormatOnTextNode(sal_uInt16 nCurrentLFO,
     // WW8ListManager::nMaxLevel indicates body text, cancelling an inherited numbering.
     if (nCurrentLFO < USHRT_MAX && nCurrentLevel == WW8ListManager::nMaxLevel)
     {
-        pTextNd->SetAttr(SwNumRuleItem(OUString()));
+        pTextNd->SetAttr(SwNumRuleItem(UIName()));
         return;
     }
 
@@ -1820,7 +1824,7 @@ void SwWW8ImplReader::RegisterNumFormatOnTextNode(sal_uInt16 nCurrentLFO,
     {
         // Now this is either not a part of Chapter Numbering,
         // or else it is using a different numRule than the one copied to Chapter Numbering.
-        OUString sName = pRule == m_pChosenWW8OutlineStyle ? m_rDoc.GetOutlineNumRule()->GetName()
+        UIName sName = pRule == m_pChosenWW8OutlineStyle ? m_rDoc.GetOutlineNumRule()->GetName()
                                                            : pRule->GetName();
         pTextNd->SetAttr(SwNumRuleItem(sName));
     }
@@ -2016,8 +2020,8 @@ void SwWW8ImplReader::Read_LFOPosition(sal_uInt16, const sal_uInt8* pData,
                     pFirstLine.reset(pItem->Clone());
 
                 // reset/blank the left indent (and only the left)
-                pFirstLine->SetTextFirstLineOffset(0);
-                SvxTextLeftMarginItem leftMargin(0, RES_MARGIN_TEXTLEFT);
+                pFirstLine->SetTextFirstLineOffset(SvxIndentValue::zero());
+                SvxTextLeftMarginItem leftMargin(SvxIndentValue::zero(), RES_MARGIN_TEXTLEFT);
 
                 // apply the modified SvxLRSpaceItem to the current paragraph
                 pTextNode->SetAttr(*pFirstLine);
@@ -2266,18 +2270,18 @@ awt::Size SwWW8ImplReader::MiserableDropDownFormHack(const OUString &rString,
     struct CtrlFontMapEntry
     {
         sal_uInt16 nWhichId;
-        const char* pPropNm;
+        OUString pPropNm;
     };
-    const CtrlFontMapEntry aMapTable[] =
+    static constexpr CtrlFontMapEntry aMapTable[] =
     {
-        { RES_CHRATR_COLOR,           "TextColor" },
-        { RES_CHRATR_FONT,            "FontName" },
-        { RES_CHRATR_FONTSIZE,        "FontHeight" },
-        { RES_CHRATR_WEIGHT,          "FontWeight" },
-        { RES_CHRATR_UNDERLINE,       "FontUnderline" },
-        { RES_CHRATR_CROSSEDOUT,      "FontStrikeout" },
-        { RES_CHRATR_POSTURE,         "FontSlant" },
-        { 0,                          nullptr }
+        { RES_CHRATR_COLOR,           u"TextColor"_ustr },
+        { RES_CHRATR_FONT,            u"FontName"_ustr },
+        { RES_CHRATR_FONTSIZE,        u"FontHeight"_ustr },
+        { RES_CHRATR_WEIGHT,          u"FontWeight"_ustr },
+        { RES_CHRATR_UNDERLINE,       u"FontUnderline"_ustr },
+        { RES_CHRATR_CROSSEDOUT,      u"FontStrikeout"_ustr },
+        { RES_CHRATR_POSTURE,         u"FontSlant"_ustr },
+        { 0,                          u""_ustr }
     };
 
     vcl::Font aFont;
@@ -2376,8 +2380,8 @@ awt::Size SwWW8ImplReader::MiserableDropDownFormHack(const OUString &rString,
             break;
         }
 
-        if (bSet && xPropSetInfo->hasPropertyByName(OUString::createFromAscii(pMap->pPropNm)))
-            rPropSet->setPropertyValue(OUString::createFromAscii(pMap->pPropNm), aTmp);
+        if (bSet && xPropSetInfo->hasPropertyByName(pMap->pPropNm))
+            rPropSet->setPropertyValue(pMap->pPropNm, aTmp);
     }
     // now calculate the size of the control
     OutputDevice* pOut = Application::GetDefaultDevice();
@@ -2399,7 +2403,7 @@ bool WW8FormulaListBox::Import(const uno::Reference <
     lang::XMultiServiceFactory> &rServiceFactory,
     uno::Reference <form::XFormComponent> &rFComp,awt::Size &rSz )
 {
-    uno::Reference<uno::XInterface> xCreate = rServiceFactory->createInstance("com.sun.star.form.component.ComboBox");
+    uno::Reference<uno::XInterface> xCreate = rServiceFactory->createInstance(u"com.sun.star.form.component.ComboBox"_ustr);
     if( !xCreate.is() )
         return false;
 
@@ -2414,15 +2418,15 @@ bool WW8FormulaListBox::Import(const uno::Reference <
         aTmp <<= msTitle;
     else
         aTmp <<= msName;
-    xPropSet->setPropertyValue("Name", aTmp );
+    xPropSet->setPropertyValue(u"Name"_ustr, aTmp );
 
     if (!msToolTip.isEmpty())
     {
         aTmp <<= msToolTip;
-        xPropSet->setPropertyValue("HelpText", aTmp );
+        xPropSet->setPropertyValue(u"HelpText"_ustr, aTmp );
     }
 
-    xPropSet->setPropertyValue("Dropdown", css::uno::Any(true));
+    xPropSet->setPropertyValue(u"Dropdown"_ustr, css::uno::Any(true));
 
     if (!maListEntries.empty())
     {
@@ -2432,7 +2436,7 @@ bool WW8FormulaListBox::Import(const uno::Reference <
         for (sal_uInt32 nI = 0; nI < nLen; ++nI)
             aListSourceRange[nI] = maListEntries[nI];
         aTmp <<= aListSource;
-        xPropSet->setPropertyValue("StringItemList", aTmp );
+        xPropSet->setPropertyValue(u"StringItemList"_ustr, aTmp );
 
         if (mfDropdownIndex < nLen)
         {
@@ -2443,15 +2447,13 @@ bool WW8FormulaListBox::Import(const uno::Reference <
             aTmp <<= aListSource[0];
         }
 
-        xPropSet->setPropertyValue("DefaultText", aTmp );
+        xPropSet->setPropertyValue(u"DefaultText"_ustr, aTmp );
 
         rSz = mrRdr.MiserableDropDownFormHack(maListEntries[0], xPropSet);
     }
     else
     {
-        static constexpr OUStringLiteral aBlank =
-            u"\u2002\u2002\u2002\u2002\u2002";
-        rSz = mrRdr.MiserableDropDownFormHack(aBlank, xPropSet);
+        rSz = mrRdr.MiserableDropDownFormHack(vEnSpaces, xPropSet);
     }
 
     return true;
@@ -2489,7 +2491,7 @@ bool WW8FormulaCheckBox::Import(const uno::Reference <
     lang::XMultiServiceFactory> &rServiceFactory,
     uno::Reference <form::XFormComponent> &rFComp,awt::Size &rSz )
 {
-    uno::Reference< uno::XInterface > xCreate = rServiceFactory->createInstance("com.sun.star.form.component.CheckBox");
+    uno::Reference< uno::XInterface > xCreate = rServiceFactory->createInstance(u"com.sun.star.form.component.CheckBox"_ustr);
     if( !xCreate.is() )
         return false;
 
@@ -2507,16 +2509,16 @@ bool WW8FormulaCheckBox::Import(const uno::Reference <
         aTmp <<= msTitle;
     else
         aTmp <<= msName;
-    xPropSet->setPropertyValue("Name", aTmp );
+    xPropSet->setPropertyValue(u"Name"_ustr, aTmp );
 
     aTmp <<= static_cast<sal_Int16>(mnChecked);
-    xPropSet->setPropertyValue("DefaultState", aTmp);
+    xPropSet->setPropertyValue(u"DefaultState"_ustr, aTmp);
 
     if (!msToolTip.isEmpty())
-        lcl_AddToPropertyContainer(xPropSet, "HelpText", msToolTip);
+        lcl_AddToPropertyContainer(xPropSet, u"HelpText"_ustr, msToolTip);
 
     if (!msHelp.isEmpty())
-        lcl_AddToPropertyContainer(xPropSet, "HelpF1Text", msHelp);
+        lcl_AddToPropertyContainer(xPropSet, u"HelpF1Text"_ustr, msHelp);
 
     return true;
 
@@ -2542,7 +2544,7 @@ bool SwMSConvertControls::InsertControl(
         return false;
 
     uno::Reference< uno::XInterface > xCreate = rServiceFactory->createInstance(
-        "com.sun.star.drawing.ControlShape");
+        u"com.sun.star.drawing.ControlShape"_ustr);
     if( !xCreate.is() )
         return false;
 
@@ -2562,16 +2564,16 @@ bool SwMSConvertControls::InsertControl(
     else
         nTemp = text::TextContentAnchorType_AS_CHARACTER;
 
-    xShapePropSet->setPropertyValue("AnchorType", uno::Any(static_cast<sal_Int16>(nTemp)) );
+    xShapePropSet->setPropertyValue(u"AnchorType"_ustr, uno::Any(static_cast<sal_Int16>(nTemp)) );
 
-    xShapePropSet->setPropertyValue("VertOrient", uno::Any(sal_Int16(text::VertOrientation::TOP)) );
+    xShapePropSet->setPropertyValue(u"VertOrient"_ustr, uno::Any(sal_Int16(text::VertOrientation::TOP)) );
 
     uno::Reference< text::XText >  xDummyTextRef;
     uno::Reference< text::XTextRange >  xTextRg =
         new SwXTextRange( *m_pPaM, xDummyTextRef );
 
     aTmp <<= xTextRg;
-    xShapePropSet->setPropertyValue("TextRange", aTmp );
+    xShapePropSet->setPropertyValue(u"TextRange"_ustr, aTmp );
 
     // Set the Control-Model for the Control-Shape
     uno::Reference< drawing::XControlShape >  xControlShape( xShape,
@@ -2581,7 +2583,7 @@ bool SwMSConvertControls::InsertControl(
     xControlShape->setControl( xControlModel );
 
     if (pShape)
-        *pShape = xShape;
+        *pShape = std::move(xShape);
 
     return true;
 }

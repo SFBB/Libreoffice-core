@@ -8,7 +8,6 @@
 from optparse import OptionParser
 
 import re
-import sys
 import xml.etree.ElementTree as ET
 
 # foo_component_getFactory functions are split into groups, so that you could
@@ -21,7 +20,6 @@ import xml.etree.ElementTree as ET
 
 core_factory_list = [
     ("libi18npoollo.a", "i18npool_component_getFactory"),
-    ("libvcllo.a", "vcl_component_getFactory"),
     ("libsvtlo.a", "svt_component_getFactory"),
     ]
 
@@ -41,7 +39,7 @@ core_constructor_list = [
 # canvas/source/vcl/vclcanvas.component
     "com_sun_star_comp_rendering_Canvas_VCL_get_implementation",
     "com_sun_star_comp_rendering_SpriteCanvas_VCL_get_implementation",
-# chart2/source/chartcore.component
+# chart2/source/chart2.component
     "com_sun_star_chart2_ExponentialScaling_get_implementation",
     "com_sun_star_chart2_LinearScaling_get_implementation",
     "com_sun_star_chart2_LogarithmicScaling_get_implementation",
@@ -53,6 +51,7 @@ core_constructor_list = [
     "com_sun_star_comp_chart_CandleStickChartType_get_implementation",
     "com_sun_star_comp_chart_ChartTypeManager_get_implementation",
     "com_sun_star_comp_chart_ColumnChartType_get_implementation",
+    "com_sun_star_comp_chart_HistogramChartType_get_implementation",
     "com_sun_star_comp_chart_DataSeries_get_implementation",
     "com_sun_star_comp_chart_DataSource_get_implementation",
     "com_sun_star_comp_chart_FilledNetChartType_get_implementation",
@@ -86,7 +85,6 @@ core_constructor_list = [
     "com_sun_star_comp_chart2_RegressionEquation_get_implementation",
     "com_sun_star_comp_chart2_Title_get_implementation",
     "com_sun_star_comp_chart2_XMLFilter_get_implementation",
-# chart2/source/controller/chartcontroller.component
     "com_sun_star_comp_chart2_ChartDocumentWrapper_get_implementation",
     "com_sun_star_comp_chart2_ChartFrameLoader_get_implementation",
     "com_sun_star_comp_chart2_WizardDialog_get_implementation",
@@ -117,7 +115,7 @@ core_constructor_list = [
 # cppcanvas/source/uno/mtfrenderer.component
     "com_sun_star_comp_rendering_MtfRenderer_get_implementation",
 # cui/util/cui.component
-    "com_sun_star_cui_ColorPicker_get_implementation",
+    ("com_sun_star_cui_GetCreateDialogFactoryService", "#if !ENABLE_FUZZERS"),
 # dbaccess/util/dba.component
     "com_sun_star_comp_dba_DataAccessDescriptorFactory",
     "com_sun_star_comp_dba_OCommandDefinition",
@@ -127,7 +125,7 @@ core_constructor_list = [
     "com_sun_star_comp_dba_ODatabaseSource",
     "com_sun_star_comp_dba_ORowSet_get_implementation",
 # desktop/lokclipboard.component
-    ("desktop_LOKClipboard_get_implementation", "#ifndef IOS"),
+    "desktop_LOKClipboard_get_implementation",
 # drawinglayer/drawinglayer.component
     "drawinglayer_XPrimitive2DRenderer",
 # embeddedobj/util/embobj.component
@@ -144,7 +142,7 @@ core_constructor_list = [
     ("com_sun_star_comp_extensions_PlainTextFormatter", "#ifdef ANDROID"),
     ("com_sun_star_comp_extensions_SimpleTextFormatter", "#ifdef ANDROID"),
 # extensions/source/bibliography/bib.component
-    "extensions_BibliographyLoader_get_implementation",
+    ("extensions_BibliographyLoader_get_implementation", "#if !ENABLE_FUZZERS"),
 # filter/source/config/cache/filterconfig1.component
     "filter_ConfigFlush_get_implementation",
     "filter_TypeDetection_get_implementation",
@@ -239,7 +237,6 @@ core_constructor_list = [
     "com_sun_star_text_DefaultNumberingProvider_get_implementation",
     ("i18npool_BreakIterator_ja_get_implementation", "#if WITH_LOCALE_ALL || WITH_LOCALE_ja"),
     ("i18npool_BreakIterator_ko_get_implementation", "#if WITH_LOCALE_ALL || WITH_LOCALE_ko"),
-    ("i18npool_BreakIterator_th_get_implementation", "#if WITH_LOCALE_ALL || WITH_LOCALE_th"),
     ("i18npool_BreakIterator_zh_get_implementation", "#if WITH_LOCALE_ALL || WITH_LOCALE_zh"),
     ("i18npool_BreakIterator_zh_TW_get_implementation", "#if WITH_LOCALE_ALL || WITH_LOCALE_zh"),
     "i18npool_CalendarImpl_get_implementation",
@@ -656,6 +653,8 @@ calc_constructor_list = [
 # scripting/source/vbaevents/vbaevents.component
     ("ooo_vba_VBAToOOEventDesc_get_implementation", "#if HAVE_FEATURE_SCRIPTING"),
     ("ooo_vba_EventListener_get_implementation", "#if HAVE_FEATURE_SCRIPTING"),
+# sc/util/scui.component
+    ("com_sun_star_sheet_CreateDialogFactoryService_get_implementation", "#if !ENABLE_FUZZERS"),
     ]
 
 draw_factory_list = [
@@ -694,14 +693,10 @@ draw_constructor_list = [
     "sd_DrawingDocument_get_implementation",
     "com_sun_star_comp_Draw_DrawingModule_get_implementation",
     "sd_PresentationDocument_get_implementation",
-    "com_sun_star_comp_Draw_PresenterHelper_get_implementation",
-    "com_sun_star_comp_Draw_PresenterPreviewCache_get_implementation",
-    "com_sun_star_comp_Draw_SlideRenderer_get_implementation",
     "com_sun_star_comp_sd_InsertSlideController_get_implementation",
     "com_sun_star_comp_sd_SlideLayoutController_get_implementation",
     "com_sun_star_comp_sd_DisplayModeController_get_implementation",
     "RandomAnimationNode_get_implementation",
-    "com_sun_star_comp_Draw_framework_ResourceID_get_implementation",
     "org_openoffice_comp_Draw_framework_PanelFactory_get_implementation",
     "css_comp_Impress_oox_PowerPointExport",
 # sd/util/sdd.component
@@ -714,6 +709,8 @@ draw_constructor_list = [
     ("sdext_PDFIRawAdaptor_Draw_get_implementation", "#if HAVE_FEATURE_PDFIMPORT"),
     ("sdext_PDFIRawAdaptor_Impress_get_implementation", "#if HAVE_FEATURE_PDFIMPORT"),
     ("sdext_PDFDetector_get_implementation", "#if HAVE_FEATURE_PDFIMPORT"),
+# sd/source/console/presenter.component
+    ("com_sun_star_presentation_CreateDialogFactoryService_get_implementation", "#if !ENABLE_FUZZERS"),
     ]
 
 writer_factory_list = [
@@ -735,11 +732,13 @@ writer_constructor_list = [
 # sw/util/msword.component
     "com_sun_star_comp_Writer_RtfExport_get_implementation",
     "com_sun_star_comp_Writer_DocxExport_get_implementation",
-# writerfilter/util/writerfilter.component
+# sw/util/sw_writerfilter.component
     "com_sun_star_comp_Writer_RtfFilter_get_implementation",
     "com_sun_star_comp_Writer_WriterFilter_get_implementation",
 # writerperfect/source/writer/wpftwriter.component
     "com_sun_star_comp_Writer_EPUBExportFilter_get_implementation",
+# sw/util/swui.component
+    ("com_sun_star_text_DialogFactoryService_get_implementation", "#if !ENABLE_FUZZERS"),
     ]
 
 factory_map = {
@@ -783,7 +782,7 @@ def limit_rdb(services_rdb, full_factory_map, full_constructor_map):
         # direct
         uri = component.get('uri')
         component_name = None
-        if uri != None:
+        if uri is not None:
             component_name = re.sub(r'^vnd.sun.star.expand:\$LO_LIB_DIR/([^.]*).so$', r'\1.a', uri)
         if component_name in full_factory_map:
             continue
@@ -879,7 +878,7 @@ for constructor in sorted(full_constructor_map.keys()):
     constructor_guard = get_constructor_guard(constructor)
     if constructor_guard:
         print (constructor_guard)
-    print ('void * '+constructor+'( void *, void * );')
+    print ('void '+constructor+'( void );')
     if constructor_guard:
         print ('#endif')
 
@@ -888,7 +887,7 @@ for entry in sorted(custom_widgets):
     print ('void make' + entry + '();')
 print ('typedef void (*custom_widget_func)();')
 print ('#if !ENABLE_FUZZERS')
-print ('static struct { const char *name; custom_widget_func func; } custom_widgets[] = {')
+print ('static struct { const char *name; custom_widget_func func; } const custom_widgets[] = {')
 for entry in sorted(custom_widgets):
     print ('    { "make' + entry + '", make' + entry + ' },')
 print ('};')

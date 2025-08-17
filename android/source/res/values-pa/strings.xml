@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="action_save_as">...ਵਜੋਂ ਸੰਭਾਲੋ</string>
+    <string name="action_save_as">…ਵਜੋਂ ਸੰਭਾਲੋ</string>
     <string name="compress_photo_medium_size">ਮੱਧਮ ਆਕਾਰ</string>
     <string name="app_description">LibreOffice ਦਰਸ਼ਕ LibreOffice ਉੱਤੇ ਅਧਾਰਿਤ ਦਸਤਾਵੇਜ਼ ਦਰਸ਼ਕ ਹੈ।</string>
     <string name="app_credits">https://www.libreoffice.org</string>
@@ -70,7 +70,6 @@
     <string name="tabhost_insert">ਸ਼ਾਮਲ ਕਰੋ</string>
     <string name="alert_ok">ਠੀਕ ਹੈ</string>
     <string name="alert_cancel">ਰੱਦ ਕਰੋ</string>
-    <string name="display_language_summary">ਮੂਲ ਦਿਖਾਉਣ ਵਾਲੀ ਭਾਸ਼ਾ ਵਜੋਂ ਸੈੱਟ ਕਰੋ</string>
     <string name="about_privacy_policy">ਪਰਦੇਦਾਰੀ ਨੀਤੀ</string>
     <string name="default_document_name">ਬਿਨਾਂ-ਨਾਂ</string>
     <string name="select_photo">ਫੋਟੋ ਚੁਣੋ</string>
@@ -92,17 +91,26 @@
     <string name="search_find_previous">ਪਿੱਛੇ ਲੱਭੋ</string>
     <string name="file_icon_desc">ਫਾਈਲ-ਆਈਕਾਨ</string>
     <string name="message_saving">…ਦਸਤਾਵੇਜ਼ ਸੰਭਾਲਿਆ ਜਾ ਰਿਹਾ ਹੈ</string>
-    <string name="save_alert_dialog_title">ਕੀ ਬੰਦ ਕਰਨ ਤੋਂ ਪਹਿਲਾਂ ਦਸਤਾਵੇਜ਼ ਨੂੰ ਸੰਭਾਲਣਾ ਹੈ\?</string>
+    <string name="save_alert_dialog_title">ਕੀ ਬੰਦ ਕਰਨ ਤੋਂ ਪਹਿਲਾਂ ਦਸਤਾਵੇਜ਼ ਨੂੰ ਸੰਭਾਲਣਾ ਹੈ?</string>
     <string name="action_text_copied">ਲਿਖਤ ਨੂੰ ਕਲਿੱਪਬੋਰਡ ਵਿੱਚ ਕਾਪੀ ਗਿਆ</string>
     <string name="action_add_slide">ਸਲਾਈਡ ਜੋੜੋ</string>
     <string name="take_photo">ਫੋਟੋ ਲਵੋ</string>
     <string name="action_rename_worksheet">ਵਰਕਸ਼ੀਟ ਦਾ ਨਾਂ ਬਦਲੋ</string>
     <string name="tabhost_style">ਸਟਾਈਲ</string>
-    <string name="display_language">ਦਿਖਾਉਣ ਲਈ ਭਾਸ਼ਾ</string>
     <string name="pdf_export_finished">PDF ਐਕਸਪੋਰਟ ਕਰਨਾ ਪੂਰਾ ਹੋਇਆ</string>
     <string name="unable_to_save">ਫਾਈਲ ਸੰਭਾਲਣ ਲਈ ਅਸਮਰੱਥ</string>
     <string name="action_rename_slide">ਸਲਾਈਡ ਦਾ ਨਾਂ ਬਦਲੋ</string>
     <string name="calc_optimal_length">ਅਨੁਕੂਲ ਲੰਬਾਈ</string>
     <string name="calc_optimal_height">ਉਚਾਈ ਅਨੁਕੂਲ ਕਰੋ</string>
-    <string name="compress_photo_title">ਕੀ ਤੁਸੀਂ ਫੋਟੋ ਨੂੰ ਕੰਪਰੈੱਸ ਕਰਨਾ ਚਾਹੁੰਦੇ ਹੋ\?</string>
+    <string name="compress_photo_title">ਕੀ ਤੁਸੀਂ ਫੋਟੋ ਨੂੰ ਕੰਪਰੈੱਸ ਕਰਨਾ ਚਾਹੁੰਦੇ ਹੋ?</string>
+    <string name="action_UNO_commands">UNO ਕਮਾਂਡ ਭੇਜੋ</string>
+    <string name="UNO_commands_string_hint">UNO ਕਮਾਂਡ</string>
+    <string name="UNO_commands_string_type_hint">ਕਿਸਮ</string>
+    <string name="UNO_commands_string_value_hint">ਮੁੱਲ</string>
+    <string name="UNO_commands_string_parent_value_hint">ਮੁੱਢਲਾ ਮੁੱਲ</string>
+    <string name="current_uno_command">ਮੌਜੂਦਾ UNO ਕਮਾਂਡ</string>
+    <string name="name_already_used">ਦਿੱਤਾ ਨਾਂ ਪਹਿਲਾਂ ਹੀ ਵਰਤਿਆ ਗਿਆ ਹੈ।</string>
+    <string name="part_name_changed">ਪਾਰਟ ਦਾ ਨਾਂ ਬਦਲਿਆ ਜਾ ਚੁੱਕਾ ਹੈ।</string>
+    <string name="part_deleted">ਪਾਰਟ ਨੂੰ ਹਟਾਇਆ ਜਾ ਚੁੱਕਾ ਹੈ।</string>
+    <string name="bmp_null">bmp ਨਲ ਹੈ!</string>
 </resources>

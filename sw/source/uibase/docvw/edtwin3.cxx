@@ -32,19 +32,20 @@
 #include <uiobject.hxx>
 
 // Core-Notify
-void ScrollMDI( SwViewShell const * pVwSh, const SwRect &rRect,
-                sal_uInt16 nRangeX, sal_uInt16 nRangeY)
+void ScrollMDI( SwViewShell const & rVwSh, const SwRect &rRect,
+                sal_uInt16 nRangeX, sal_uInt16 nRangeY,
+                ScrollSizeMode eScrollSizeMode)
 {
-    SfxViewShell *pSfxViewShell = pVwSh->GetSfxViewShell();
+    SfxViewShell *pSfxViewShell = rVwSh.GetSfxViewShell();
 
     if (SwView* pSwView = dynamic_cast<SwView *>(pSfxViewShell))
-        pSwView->Scroll(rRect.SVRect(), nRangeX, nRangeY);
+        pSwView->Scroll(rRect.SVRect(), nRangeX, nRangeY, eScrollSizeMode);
 }
 
 // Docmdi - movable
-bool IsScrollMDI( SwViewShell const * pVwSh, const SwRect &rRect )
+bool IsScrollMDI( SwViewShell const & rVwSh, const SwRect &rRect )
 {
-    SfxViewShell *pSfxViewShell = pVwSh->GetSfxViewShell();
+    SfxViewShell *pSfxViewShell = rVwSh.GetSfxViewShell();
 
     if (SwView* pSwView = dynamic_cast<SwView *>(pSfxViewShell))
         return pSwView->IsScroll(rRect.SVRect());
@@ -53,9 +54,9 @@ bool IsScrollMDI( SwViewShell const * pVwSh, const SwRect &rRect )
 }
 
 // Notify for size change
-void SizeNotify(SwViewShell const * pVwSh, const Size &rSize)
+void SizeNotify(SwViewShell const & rVwSh, const Size &rSize)
 {
-    SfxViewShell *pSfxViewShell = pVwSh->GetSfxViewShell();
+    SfxViewShell *pSfxViewShell = rVwSh.GetSfxViewShell();
 
     if (SwView* pSwView = dynamic_cast<SwView *>(pSfxViewShell))
         pSwView->DocSzChgd(rSize);
@@ -64,9 +65,9 @@ void SizeNotify(SwViewShell const * pVwSh, const Size &rSize)
 }
 
 // Notify for page number update
-void PageNumNotify(SwViewShell const * pVwSh)
+void PageNumNotify(SwViewShell const & rVwSh)
 {
-    SfxViewShell *pSfxViewShell = pVwSh->GetSfxViewShell();
+    SfxViewShell *pSfxViewShell = rVwSh.GetSfxViewShell();
 
     if (SwView* pSwView = dynamic_cast<SwView *>(pSfxViewShell))
     {
@@ -84,10 +85,14 @@ void FrameNotify( SwViewShell* pVwSh, FlyMode eMode )
 // Notify for page number update
 bool SwEditWin::RulerColumnDrag( const MouseEvent& rMEvt, bool bVerticalMode)
 {
+    // Especially on bigger zoom, changed mouse pointer didn't guarantee
+    // drag & drop any more because of too small hit area in pixel.
+    // Enlarge it 5 pixels to cover the whole hit area.
+    tools::Long nTol = 5L;
     SvxRuler& rRuler = bVerticalMode ?  m_rView.GetVRuler() : m_rView.GetHRuler();
-    return (!rRuler.StartDocDrag( rMEvt, RulerType::Border ) &&
-            !rRuler.StartDocDrag( rMEvt, RulerType::Margin1) &&
-            !rRuler.StartDocDrag( rMEvt, RulerType::Margin2));
+    return (!rRuler.StartDocDrag( rMEvt, RulerType::Border, nTol ) &&
+            !rRuler.StartDocDrag( rMEvt, RulerType::Margin1, nTol ) &&
+            !rRuler.StartDocDrag( rMEvt, RulerType::Margin2, nTol ));
 }
 
 // #i23726#
@@ -102,7 +107,7 @@ bool SwEditWin::RulerMarginDrag( const MouseEvent& rMEvt,
 
 TableChgMode GetTableChgDefaultMode()
 {
-    SwModuleOptions* pOpt = SW_MOD()->GetModuleConfig();
+    SwModuleOptions* pOpt = SwModule::get()->GetModuleConfig();
     return pOpt ? pOpt->GetTableMode() : TableChgMode::VarWidthChangeAbs;
 }
 
@@ -114,7 +119,7 @@ void RepaintPagePreview( SwViewShell const * pVwSh, const SwRect& rRect )
         pSwPagePreview->RepaintCoreRect(rRect);
 }
 
-bool JumpToSwMark( SwViewShell const * pVwSh, std::u16string_view rMark )
+bool JumpToSwMark( SwViewShell const * pVwSh, const SwMarkName& rMark )
 {
     SfxViewShell *pSfxViewShell = pVwSh->GetSfxViewShell();
 

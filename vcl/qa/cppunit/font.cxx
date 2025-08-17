@@ -58,30 +58,30 @@ void VclFontTest::testName()
 
     CPPUNIT_ASSERT_MESSAGE( "Family name should be empty", aFont.GetFamilyName().isEmpty());
     CPPUNIT_ASSERT_MESSAGE( "Style name should be empty", aFont.GetStyleName().isEmpty());
-    aFont.SetFamilyName("Test family name");
-    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Family name should not be empty", OUString("Test family name"), aFont.GetFamilyName());
-    aFont.SetStyleName("Test style name");
-    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Style name should not be empty", OUString("Test style name"), aFont.GetStyleName());
+    aFont.SetFamilyName(u"Test family name"_ustr);
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Family name should not be empty", u"Test family name"_ustr, aFont.GetFamilyName());
+    aFont.SetStyleName(u"Test style name"_ustr);
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Style name should not be empty", u"Test style name"_ustr, aFont.GetStyleName());
 }
 
 void VclFontTest::testWeight()
 {
     vcl::Font aFont;
 
-    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Weight should be WEIGHT_DONTKNOW", FontWeight::WEIGHT_DONTKNOW, aFont.GetWeight());
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Weight should be WEIGHT_DONTKNOW", FontWeight::WEIGHT_DONTKNOW, aFont.GetWeightMaybeAskConfig());
 
     aFont.SetWeight(FontWeight::WEIGHT_BLACK);
-    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Weight should be WEIGHT_BLACK", FontWeight::WEIGHT_BLACK, aFont.GetWeight());
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Weight should be WEIGHT_BLACK", FontWeight::WEIGHT_BLACK, aFont.GetWeightMaybeAskConfig());
 }
 
 void VclFontTest::testWidthType()
 {
     vcl::Font aFont;
 
-    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Font width should be WIDTH_DONTKNOW", FontWidth::WIDTH_DONTKNOW, aFont.GetWidthType());
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Font width should be WIDTH_DONTKNOW", FontWidth::WIDTH_DONTKNOW, aFont.GetWidthTypeMaybeAskConfig());
 
     aFont.SetWidthType(FontWidth::WIDTH_EXPANDED);
-    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Font width should be EXPANDED", FontWidth::WIDTH_EXPANDED, aFont.GetWidthType());
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Font width should be EXPANDED", FontWidth::WIDTH_EXPANDED, aFont.GetWidthTypeMaybeAskConfig());
 }
 
 void VclFontTest::testItalic()
@@ -89,10 +89,10 @@ void VclFontTest::testItalic()
     vcl::Font aFont;
 
     // shouldn't this be set to ITALIC_DONTKNOW? currently it defaults to ITALIC_NONE
-    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Italic should be ITALIC_NONE", FontItalic::ITALIC_NONE, aFont.GetItalic());
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Italic should be ITALIC_NONE", FontItalic::ITALIC_NONE, aFont.GetItalicMaybeAskConfig());
 
     aFont.SetItalic(FontItalic::ITALIC_NORMAL);
-    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Italic should be EXPANDED", FontItalic::ITALIC_NORMAL, aFont.GetItalic());
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Italic should be EXPANDED", FontItalic::ITALIC_NORMAL, aFont.GetItalicMaybeAskConfig());
 }
 
 
@@ -111,10 +111,10 @@ void VclFontTest::testPitch()
 {
     vcl::Font aFont;
 
-    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Pitch should be PITCH_DONTKNOW", FontPitch::PITCH_DONTKNOW, aFont.GetPitch());
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Pitch should be PITCH_DONTKNOW", FontPitch::PITCH_DONTKNOW, aFont.GetPitchMaybeAskConfig());
 
     aFont.SetPitch(FontPitch::PITCH_FIXED);
-    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Pitch should be PITCH_FIXED", FontPitch::PITCH_FIXED, aFont.GetPitch());
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "Pitch should be PITCH_FIXED", FontPitch::PITCH_FIXED, aFont.GetPitchMaybeAskConfig());
 }
 
 void VclFontTest::testQuality()

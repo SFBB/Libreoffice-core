@@ -22,16 +22,6 @@ define gb_Helper_make_url
 file:///$(strip $(1))
 endef
 
-# YaccTarget class
-
-define gb_YaccTarget__command
-$(call gb_Output_announce,$(2),$(true),YAC,3)
-$(call gb_Helper_abbreviate_dirs,\
-	mkdir -p $(dir $(3)) && \
-	$(BISON) $(T_YACCFLAGS) --defines=$(4) -o $(5) $(1) && touch $(3) )
-
-endef
-
 # CObject class
 
 # $(call gb_CObject__compiler,flags,source,compiler)
@@ -50,7 +40,7 @@ endef
 gb_Helper_remove_overridden_flags = \
     $(filter-out -W4 -w -arch:SSE -arch:SSE2 -arch:AVX -arch:AVX2 -Od -O2 -Zc:inline -Zc:inline- \
         -Zc:dllexportInlines -Zc:dllexportInlines- -EHs -EHa -DNOMINMAX -UNOMINMAX -D_X86_=1 -U_X86_ \
-        -D_AMD64_=1 -U_AMD64_,$(1)) \
+        -D_AMD64_=1 -U_AMD64_ $(MSVC_ANALYZE_FLAGS) -analyze-,$(1)) \
     $(lastword $(filter -W4 -w,$(1))) \
     $(lastword $(filter -Od -O2,$(1))) \
     $(lastword $(filter -arch:SSE -arch:SSE2 -arch:AVX -arch:AVX2,$(1))) \
@@ -59,7 +49,14 @@ gb_Helper_remove_overridden_flags = \
     $(lastword $(filter -D_X86_=1 -U_X86_,$(1))) \
     $(lastword $(filter -D_AMD64_=1 -U_AMD64_,$(1))) \
     $(lastword $(filter -Zc:inline -Zc:inline-,$(1))) \
-    $(lastword $(filter -Zc:dllexportInlines -Zc:dllexportInlines-,$(1)))
+    $(lastword $(filter -Zc:dllexportInlines -Zc:dllexportInlines-,$(1))) \
+    $(lastword $(filter $(MSVC_ANALYZE_FLAGS) -analyze-,$(1)))
+
+# When gb_LinkTarget_use_clang is used, filter out MSVC flags that Clang doesn't know.
+# $(call gb_CObject__filter_out_clang_cflags,cflags)
+define gb_CObject__filter_out_clang_cflags
+    $(filter-out $(gb_FilterOutClangCFLAGS),$(1))
+endef
 
 # $(call gb_CObject__command_pattern,object,flags,source,dep-file,compiler-plugins,compiler)
 define gb_CObject__command_pattern
@@ -72,7 +69,8 @@ $(call gb_Helper_abbreviate_dirs,\
 		$(call gb_Helper_remove_overridden_flags, \
 			$(DEFS) \
 			$(if $(filter YES,$(LIBRARY_X64)), ,$(gb_LTOFLAGS)) \
-			$(2) $(if $(WARNINGS_DISABLED),$(gb_CXXFLAGS_DISABLE_WARNINGS)) \
+			$(if $(6), $(call gb_CObject__filter_out_clang_cflags,$(2)),$(2)) \
+			$(if $(WARNINGS_DISABLED),$(gb_CXXFLAGS_DISABLE_WARNINGS)) \
 			$(if $(EXTERNAL_CODE), \
 				$(if $(filter -clr,$(2)),,$(if $(COM_IS_CLANG),-Wno-undef)), \
 				$(gb_DEFS_INTERNAL)) \
@@ -230,11 +228,11 @@ gb_LinkTarget_get_manifestfile = \
  $(WORKDIR)/LinkTarget/$(call gb_LinkTarget__get_workdir_linktargetname,$(1)).manifest
 
 gb_LinkTarget_get_linksearchpath_for_layer = \
-	-LIBPATH:$(WORKDIR)/LinkTarget/StaticLibrary \
+	-LIBPATH:$(gb_StaticLibrary_WORKDIR) \
 	-LIBPATH:$(INSTDIR)/$(SDKDIRNAME)/lib \
 	$(if $(filter OXT,$(1)),\
 		-LIBPATH:$(WORKDIR)/LinkTarget/ExtensionLibrary, \
-		-LIBPATH:$(WORKDIR)/LinkTarget/Library)
+		-LIBPATH:$(gb_Library_DLLDIR))
 
 # avoid fatal error LNK1170 for Library_merged
 define gb_LinkTarget_MergedResponseFile
@@ -259,6 +257,7 @@ $(call gb_Helper_abbreviate_dirs,\
 		$(foreach object,$(CXXCLROBJECTS),$(call gb_CxxClrObject_get_target,$(object))) \
 		$(foreach object,$(GENCXXCLROBJECTS),$(call gb_GenCxxClrObject_get_target,$(object))) \
 		$(foreach object,$(ASMOBJECTS),$(call gb_AsmObject_get_target,$(object))) \
+		$(foreach object,$(GENASMOBJECTS),$(call gb_GenAsmObject_get_target,$(object))) \
 		$(foreach object,$(GENNASMOBJECTS),$(call gb_GenNasmObject_get_target,$(object))) \
 		$(foreach extraobjectlist,$(EXTRAOBJECTLISTS),$(shell cat $(extraobjectlist))) \
 		$(PCHOBJS) $(NATIVERES)) && \
@@ -323,14 +322,14 @@ endef
 gb_Windows_PE_TARGETTYPEFLAGS := \
 	-release \
 	-opt:noref \
-	$(if $(filter 0,$(gb_DEBUGLEVEL)), -incremental:no) \
+	$(if $(ENABLE_DEBUG),, -incremental:no) \
 	$(if $(filter NO,$(LIBRARY_X64)), -safeseh) \
 	-nxcompat \
 	-dynamicbase \
 	-manifest
 
 # link.exe in -LIB mode doesn't understand -debug, use it only for EXEs and DLLs
-ifeq ($(gb_ENABLE_DBGUTIL),$(true))
+ifeq ($(ENABLE_DBGUTIL),TRUE)
 # fastlink is faster but pdb files reference .obj files
 # but don't do that for setup_native DLLs: this produces make error 139 in some configurations
 gb_Windows_PE_TARGETTYPEFLAGS_DEBUGINFO = $(if $(filter -U_DLL,$(1)),-debug,-debug:fastlink)
@@ -599,8 +598,7 @@ $(eval $(call gb_Helper_make_dep_targets,\
 ))
 
 ifeq ($(gb_FULLDEPS),$(true))
-# FIXME this is used before TargetLocations is read?
-gb_WinResTarget__command_target = $(WORKDIR_FOR_BUILD)/LinkTarget/Executable/makedepend.exe
+gb_WinResTarget__command_target := $(gb_Executable_BINDIR_FOR_BUILD)/makedepend.exe
 define gb_WinResTarget__command_dep
 $(call gb_Output_announce,RC:$(2),$(true),DEP,1)
 	$(call gb_Trace_StartRange,RC:$(2),DEP)
@@ -673,7 +671,7 @@ gb_NMAKE_VARS = \
 	INCLUDE="$(gb_ExternalProject_INCLUDE)" \
 	LIB="$(ILIB)" \
 	MAKEFLAGS= \
-	MAKE=
+	MAKE=nmake
 
 # InstallScript class
 
@@ -691,14 +689,6 @@ gb_Extension_LICENSEFILE_DEFAULT := $(INSTROOT)/license.txt
 # UnpackedTarget class
 
 gb_UnpackedTarget_TARFILE_LOCATION := $(shell cygpath -u $(TARFILE_LOCATION))
-
-# UnoApiHeadersTarget class
-
-ifeq ($(DISABLE_DYNLOADING),TRUE)
-gb_UnoApiHeadersTarget_select_variant = $(if $(filter udkapi,$(1)),comprehensive,$(2))
-else
-gb_UnoApiHeadersTarget_select_variant = $(2)
-endif
 
 # UIConfig class
 
@@ -740,7 +730,7 @@ gb_UIMenubarTarget_UIMenubarTarget_platform :=
 
 # Python
 gb_Python_HOME := $(INSTDIR_FOR_BUILD)/program/python-core-$(PYTHON_VERSION)
-gb_Python_PRECOMMAND := PATH="$(shell cygpath -w $(INSTDIR_FOR_BUILD)/program)" PYTHONHOME="$(gb_Python_HOME)" PYTHONPATH="$${PYPATH:+$$PYPATH:}$(gb_Python_HOME)/lib;$(gb_Python_HOME)/lib/lib-dynload:$(INSTDIR_FOR_BUILD)/program"
+gb_Python_PRECOMMAND := PATH="$(shell cygpath -u $(INSTDIR_FOR_BUILD)/program):$(shell cygpath.exe -uS)" PYTHONHOME="$(gb_Python_HOME)" PYTHONPATH="$${PYPATH:+$$PYPATH;}$(gb_Python_HOME)/lib;$(gb_Python_HOME)/lib/lib-dynload:$(INSTDIR_FOR_BUILD)/program"
 gb_Python_INSTALLED_EXECUTABLE := $(INSTROOT_FOR_BUILD)/$(LIBO_BIN_FOLDER)/python.exe
 
 gb_ICU_PRECOMMAND := PATH="$(shell cygpath -w $(WORKDIR_FOR_BUILD)/UnpackedTarball/icu/source/lib)"

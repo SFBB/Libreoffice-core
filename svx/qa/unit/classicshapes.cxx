@@ -17,7 +17,6 @@
 #include <com/sun/star/drawing/XDrawPagesSupplier.hpp>
 #include <com/sun/star/drawing/XDrawPage.hpp>
 #include <com/sun/star/awt/Rectangle.hpp>
-#include <com/sun/star/frame/Desktop.hpp>
 
 using namespace ::com::sun::star;
 
@@ -28,7 +27,7 @@ class ClassicshapesTest : public UnoApiTest
 {
 public:
     ClassicshapesTest()
-        : UnoApiTest("svx/qa/unit/data/")
+        : UnoApiTest(u"svx/qa/unit/data/"_ustr)
     {
     }
 
@@ -59,7 +58,7 @@ CPPUNIT_TEST_FIXTURE(ClassicshapesTest, testTdf98584ShearVertical)
     // They are converted to rotate * shear horizontal * scale.
     // Besides using a wrong sign in shear angle, error was, that TRSetGeometry of SdrPathObj did
     // not consider the additional scaling (tdf#98565).
-    loadFromURL(u"tdf98584_ShearVertical.odg");
+    loadFromFile(u"tdf98584_ShearVertical.odg");
 
     // Tests skewY
     for (sal_uInt8 nPageIndex = 0; nPageIndex < 3; ++nPageIndex)
@@ -128,7 +127,7 @@ CPPUNIT_TEST_FIXTURE(ClassicshapesTest, testTdf98583ShearHorizontal)
     // LT 8000,5000 and RB 14000, 9000, which means width 6001, height 4001.
     // Error was, that not the mathematical matrix was used, but the API matrix, which has
     // wrong sign in shear angle.
-    loadFromURL(u"tdf98583_ShearHorizontal.odp");
+    loadFromFile(u"tdf98583_ShearHorizontal.odp");
 
     for (sal_uInt8 nPageIndex = 0; nPageIndex < 2; ++nPageIndex)
     {
@@ -165,7 +164,7 @@ CPPUNIT_TEST_FIXTURE(ClassicshapesTest, testTdf130076Flip)
     // transformed by a matrix equivalent to a horizontal flip. Error was
     // that the transformation was made before the CircleKind was set,
     // resulting in the flip being performed incorrectly.
-    loadFromURL(u"tdf130076_FlipOnSectorSection.odg");
+    loadFromFile(u"tdf130076_FlipOnSectorSection.odg");
 
     for (sal_uInt8 nPageIndex = 0; nPageIndex < 2; ++nPageIndex)
     {
@@ -174,8 +173,8 @@ CPPUNIT_TEST_FIXTURE(ClassicshapesTest, testTdf130076Flip)
         uno::Reference<beans::XPropertySet> xShapeProps(xShape, uno::UNO_QUERY);
         uno::Reference<drawing::XShape> xShape2(getShape(2, nPageIndex));
         uno::Reference<beans::XPropertySet> xShapeProps2(xShape2, uno::UNO_QUERY);
-        CPPUNIT_ASSERT(xShapeProps->getPropertyValue("CircleStartAngle") >>= nAngle1);
-        CPPUNIT_ASSERT(xShapeProps2->getPropertyValue("CircleStartAngle") >>= nAngle2);
+        CPPUNIT_ASSERT(xShapeProps->getPropertyValue(u"CircleStartAngle"_ustr) >>= nAngle1);
+        CPPUNIT_ASSERT(xShapeProps2->getPropertyValue(u"CircleStartAngle"_ustr) >>= nAngle2);
         CPPUNIT_ASSERT_EQUAL_MESSAGE(OUString("Incorrect vertical flip starting angle on page "
                                               + OUString::number(nPageIndex))
                                          .toUtf8()

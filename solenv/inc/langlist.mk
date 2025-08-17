@@ -17,7 +17,8 @@
 #
 
 # Complete list of all supported localizations (ISO codes)
-completelangiso=af \
+completelangiso=ab \
+af \
 am \
 ar \
 as \
@@ -63,6 +64,7 @@ hsb \
 hi \
 hr \
 hu \
+hy \
 id \
 is \
 it \
@@ -105,6 +107,7 @@ ru \
 rw \
 sa-IN \
 sat \
+sat-Olck \
 sd \
 sr-Latn \
 si \
@@ -122,6 +125,7 @@ ta \
 te \
 tg \
 th \
+tl \
 tn \
 tr \
 ts \
@@ -136,6 +140,15 @@ xh \
 zh-CN \
 zh-TW \
 zu
+
+# languages with low translation percentage, but still wish to have daily builds
+lowcompletion_langs = sun
+ifneq ($(ENABLE_RELEASE_BUILD),TRUE)
+completelangiso += $(lowcompletion_langs)
+else
+# allow to manually specify even in release config
+completelangiso += $(foreach lang,$(WITH_LANG),$(filter $(lang),$(lowcompletion_langs)))
+endif
 
 ifneq ($(WITH_LANG),ALL)
 gb_WITH_LANG=$(WITH_LANG)
@@ -159,7 +172,7 @@ gb_HELP_LANGS += \
 		$(if \
 			$(and \
 				$(wildcard $(SRCDIR)/helpcontent2/source/auxiliary/$(lang)),\
-				$(wildcard $(SRCDIR)/translations/source/$(lang)/helpcontent2)),\
+				$(wildcard $(gb_POLOCATION)/$(lang)/helpcontent2)),\
 			$(lang)))
 
 # Langs that need special handling for registry files. This is done by

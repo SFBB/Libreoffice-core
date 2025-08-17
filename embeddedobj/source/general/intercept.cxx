@@ -32,7 +32,6 @@ constexpr OUString IU2 = u".uno:CloseDoc"_ustr;
 constexpr OUString IU3 = u".uno:CloseWin"_ustr;
 constexpr OUString IU4 = u".uno:CloseFrame"_ustr;
 constexpr OUString IU5 = u".uno:SaveAs"_ustr;
-const uno::Sequence< OUString > Interceptor::m_aInterceptedURL{ IU0, IU1, IU2, IU3, IU4, IU5 };
 
 class StatusChangeListenerContainer
     : public comphelper::OMultiTypeInterfaceContainerHelperVar3<frame::XStatusListener, OUString>
@@ -44,13 +43,17 @@ public:
     }
 };
 
+namespace embeddedobj
+{
+const uno::Sequence< OUString > Interceptor::m_aInterceptedURL{ IU0, IU1, IU2, IU3, IU4, IU5 };
+
 void Interceptor::DisconnectDocHolder()
 {
     osl::MutexGuard aGuard( m_aMutex );
     m_pDocHolder = nullptr;
 }
 
-Interceptor::Interceptor( DocumentHolder* pDocHolder )
+Interceptor::Interceptor( embeddedobj::DocumentHolder* pDocHolder )
     : m_pDocHolder( pDocHolder )
 {
 }
@@ -107,7 +110,7 @@ Interceptor::dispatch(
         }
 
         uno::Reference< frame::XDispatch > xDispatch = m_xSlaveDispatchProvider->queryDispatch(
-            URL, "_self", 0 );
+            URL, u"_self"_ustr, 0 );
         if ( xDispatch.is() )
             xDispatch->dispatch( URL, aNewArgs );
     }
@@ -175,7 +178,7 @@ Interceptor::addStatusListener(
     aStateEvent.FeatureDescriptor = "SaveCopyTo";
     aStateEvent.IsEnabled = true;
     aStateEvent.Requery = false;
-    aStateEvent.State <<= OUString("($3)");
+    aStateEvent.State <<= u"($3)"_ustr;
     Control->statusChanged(aStateEvent);
 
     {
@@ -308,5 +311,7 @@ Interceptor::setMasterDispatchProvider(
     osl::MutexGuard aGuard(m_aMutex);
     m_xMasterDispatchProvider = NewSupplier;
 }
+
+} // namespace embeddedobj
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -19,23 +19,25 @@
 
 #include <vcl/builder.hxx>
 #include <vcl/commandevent.hxx>
+#include <vcl/dndlistenercontainer.hxx>
 #include <vcl/event.hxx>
 #include <vcl/toolkit/lstbox.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/uitest/uiobject.hxx>
 #include <sal/log.hxx>
 
+#include <accessibility/vclxaccessibledropdownlistbox.hxx>
+#include <accessibility/vclxaccessiblelistbox.hxx>
 #include <svdata.hxx>
 #include <listbox.hxx>
 #include <dndeventdispatcher.hxx>
 #include <comphelper/lok.hxx>
 
-#include <com/sun/star/datatransfer/dnd/XDropTarget.hpp>
 #include <boost/property_tree/ptree.hpp>
 #include <tools/json_writer.hxx>
 
-ListBox::ListBox(WindowType nType)
-    : Control(nType)
+ListBox::ListBox(WindowType eType)
+    : Control(eType)
     , mpImplLB(nullptr)
 {
     ImplInitListBoxData();
@@ -109,8 +111,14 @@ void ListBox::ImplInit( vcl::Window* pParent, WinBits nStyle )
         }
 
         mpFloatWin = VclPtr<ImplListBoxFloatingWindow>::Create( this );
-        if (!IsNativeControlSupported(ControlType::Pushbutton, ControlPart::Focus))
-            mpFloatWin->RequestDoubleBuffering(true);
+        // For Kit jsdialogs we don't need or want a buffer the size of
+        // the ListBox dropdown taking up memory which is unnecessary
+        // in that case.
+        if (!comphelper::LibreOfficeKit::isActive())
+        {
+            if (!IsNativeControlSupported(ControlType::Pushbutton, ControlPart::Focus))
+                mpFloatWin->RequestDoubleBuffering(true);
+        }
         mpFloatWin->SetAutoWidth( true );
         mpFloatWin->SetPopupModeEndHdl( LINK( this, ListBox, ImplPopupModeEndHdl ) );
         mpFloatWin->GetDropTarget()->addDropTargetListener(xDrop);
@@ -191,7 +199,7 @@ IMPL_LINK_NOARG(ListBox, ImplSelectHdl, LinkParamNone*, void)
 
 IMPL_LINK( ListBox, ImplFocusHdl, sal_Int32, nPos, void )
 {
-    CallEventListeners( VclEventId::ListboxFocus, reinterpret_cast<void*>(nPos) );
+    CallEventListeners( VclEventId::ListboxFocus, reinterpret_cast<void*>(static_cast<sal_IntPtr>(nPos)) );
 }
 
 IMPL_LINK_NOARG( ListBox, ImplListItemSelectHdl, LinkParamNone*, void )
@@ -309,6 +317,15 @@ void ListBox::ToggleDropDown()
     }
 }
 
+rtl::Reference<comphelper::OAccessible> ListBox::CreateAccessible()
+{
+    const bool bIsDropDownBox = (GetStyle() & WB_DROPDOWN) == WB_DROPDOWN;
+    if (bIsDropDownBox)
+        return new VCLXAccessibleDropDownListBox(this);
+    else
+        return new VCLXAccessibleListBox(this);
+}
+
 void ListBox::ApplySettings(vcl::RenderContext& rRenderContext)
 {
     rRenderContext.SetBackground();
@@ -322,7 +339,7 @@ void ListBox::Draw( OutputDevice* pDev, const Point& rPos, SystemTextColorFlags 
     Size aSize = GetSizePixel();
     vcl::Font aFont = mpImplLB->GetMainWindow()->GetDrawPixelFont( pDev );
 
-    pDev->Push();
+    auto popIt = pDev->ScopedPush();
     pDev->SetMapMode();
     pDev->SetFont( aFont );
     pDev->SetTextFillColor();
@@ -432,8 +449,6 @@ void ListBox::Draw( OutputDevice* pDev, const Point& rPos, SystemTextColorFlags 
                 pDev->SetTextColor( COL_BLACK );
         }
     }
-
-    pDev->Pop();
 }
 
 void ListBox::GetFocus()
@@ -619,7 +634,7 @@ void ListBox::Resize()
 
     // Retain FloatingWindow size even when it's invisible, as we still process KEY_PGUP/DOWN ...
     if ( mpFloatWin )
-        mpFloatWin->SetSizePixel( mpFloatWin->CalcFloatSize() );
+        mpFloatWin->SetSizePixel( mpFloatWin->CalcFloatSize(mpFloatWin->GetParentRect()) );
 
     Control::Resize();
 }
@@ -721,7 +736,7 @@ void ListBox::StateChanged( StateChangedType nType )
             if ( IsNativeControlSupported(ControlType::Listbox, ControlPart::Entire)
                     && ! IsNativeControlSupported(ControlType::Listbox, ControlPart::ButtonDown) )
             {
-                GetWindow( GetWindowType::Border )->Invalidate( InvalidateFlags::NoErase );
+                GetWindow(GetWindowType::Border)->Invalidate();
             }
             else
                 mpImplWin->Invalidate();
@@ -894,7 +909,7 @@ bool ListBox::PreNotify( NotifyEvent& rNEvt )
             if (IsNativeControlSupported(ControlType::Listbox, ControlPart::Entire)
                 && !IsNativeControlSupported(ControlType::Listbox, ControlPart::ButtonDown))
             {
-                GetWindow(GetWindowType::Border)->Invalidate(InvalidateFlags::NoErase);
+                GetWindow(GetWindowType::Border)->Invalidate();
             }
         }
     }
@@ -945,7 +960,7 @@ sal_Int32 ListBox::InsertEntry( const OUString& rStr, sal_Int32 nPos )
 {
     sal_Int32 nRealPos = mpImplLB->InsertEntry( nPos + mpImplLB->GetEntryList().GetMRUCount(), rStr );
     nRealPos = sal::static_int_cast<sal_Int32>(nRealPos - mpImplLB->GetEntryList().GetMRUCount());
-    CallEventListeners( VclEventId::ListboxItemAdded, reinterpret_cast<void*>(nRealPos) );
+    CallEventListeners( VclEventId::ListboxItemAdded, reinterpret_cast<void*>(static_cast<sal_IntPtr>(nRealPos)) );
     return nRealPos;
 }
 
@@ -953,14 +968,14 @@ sal_Int32 ListBox::InsertEntry( const OUString& rStr, const Image& rImage, sal_I
 {
     sal_Int32 nRealPos = mpImplLB->InsertEntry( nPos + mpImplLB->GetEntryList().GetMRUCount(), rStr, rImage );
     nRealPos = sal::static_int_cast<sal_Int32>(nRealPos - mpImplLB->GetEntryList().GetMRUCount());
-    CallEventListeners( VclEventId::ListboxItemAdded, reinterpret_cast<void*>(nRealPos) );
+    CallEventListeners( VclEventId::ListboxItemAdded, reinterpret_cast<void*>(static_cast<sal_IntPtr>(nRealPos)) );
     return nRealPos;
 }
 
 void ListBox::RemoveEntry( sal_Int32 nPos )
 {
     mpImplLB->RemoveEntry( nPos + mpImplLB->GetEntryList().GetMRUCount() );
-    CallEventListeners( VclEventId::ListboxItemRemoved, reinterpret_cast<void*>(nPos) );
+    CallEventListeners( VclEventId::ListboxItemRemoved, reinterpret_cast<void*>(static_cast<sal_IntPtr>(nPos)) );
 }
 
 Image ListBox::GetEntryImage( sal_Int32 nPos ) const
@@ -1043,9 +1058,9 @@ void ListBox::SelectEntryPos( sal_Int32 nPos, bool bSelect )
         //Only when bSelect == true, send both Selection & Focus events
         if (nCurrentPos != nPos && bSelect)
         {
-            CallEventListeners( VclEventId::ListboxSelect, reinterpret_cast<void*>(nPos));
+            CallEventListeners( VclEventId::ListboxSelect, reinterpret_cast<void*>(static_cast<sal_IntPtr>(nPos)));
             if (HasFocus())
-                CallEventListeners( VclEventId::ListboxFocus, reinterpret_cast<void*>(nPos));
+                CallEventListeners( VclEventId::ListboxFocus, reinterpret_cast<void*>(static_cast<sal_IntPtr>(nPos)));
         }
     }
 }

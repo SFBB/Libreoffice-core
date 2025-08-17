@@ -34,9 +34,6 @@
 
 bool SwCursorShell::CallCursorShellFN( FNCursorShell fnCursor )
 {
-    if (SwWrtShell* pWrtSh = dynamic_cast<SwWrtShell*>(this))
-        pWrtSh->addCurrentPosition();
-
     SwCallLink aLk( *this ); // watch Cursor-Moves
     bool bRet = (this->*fnCursor)();
     if( bRet )
@@ -47,6 +44,7 @@ bool SwCursorShell::CallCursorShellFN( FNCursorShell fnCursor )
 
 bool SwCursorShell::CallCursorFN( FNCursor fnCursor )
 {
+    // for footnote anchor<->text recency
     if (SwWrtShell* pWrtSh = dynamic_cast<SwWrtShell*>(this))
         pWrtSh->addCurrentPosition();
 
@@ -74,7 +72,7 @@ bool SwCursor::GotoFootnoteText()
         SwCursorSaveState aSaveState( *this );
         GetPoint()->Assign( *static_cast<SwTextFootnote*>(pFootnote)->GetStartNode() );
 
-        SwContentNode* pCNd = GetDoc().GetNodes().GoNextSection(
+        SwContentNode* pCNd = SwNodes::GoNextSection(
                                             GetPoint(),
                                             true, !IsReadOnlyAvailable() );
         if( pCNd )
@@ -231,7 +229,7 @@ bool SwCursor::GotoNextFootnoteAnchor()
             {
                 // search backwards
                 pTextFootnote = nullptr;
-                while( nPos )
+                while (nPos > 0)
                 {
                     pTextFootnote = rFootnoteArr[ --nPos ];
                     if( CmpLE( *pTextFootnote, nNdPos, nCntPos ) )
@@ -298,13 +296,14 @@ bool SwCursor::GotoPrevFootnoteAnchor()
                 }
             }
         }
-        else if( nPos )
+        else if (nPos > 0)
         {
             // search backwards
             pTextFootnote = nullptr;
-            while( nPos )
+            while (nPos > 0)
             {
-                pTextFootnote = rFootnoteArr[ --nPos ];
+                --nPos;
+                pTextFootnote = rFootnoteArr[nPos];
                 if( CmpL( *pTextFootnote, nNdPos, nCntPos ))
                     break; // found
                 pTextFootnote = nullptr;
@@ -313,7 +312,7 @@ bool SwCursor::GotoPrevFootnoteAnchor()
         else
             pTextFootnote = nullptr;
     }
-    else if( nPos )
+    else if (nPos > 0)
         pTextFootnote = rFootnoteArr[ nPos-1 ];
 
     if( pTextFootnote == nullptr )

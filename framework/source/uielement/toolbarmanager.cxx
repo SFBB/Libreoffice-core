@@ -22,6 +22,7 @@
 #include <cassert>
 
 #include <uielement/toolbarmanager.hxx>
+#include <uielement/popuptoolbarcontroller.hxx>
 
 #include <framework/generictoolbarcontroller.hxx>
 #include <officecfg/Office/Common.hxx>
@@ -106,7 +107,7 @@ static css::uno::Reference< css::frame::XLayoutManager > getLayoutManagerFromFra
     {
         try
         {
-            xPropSet->getPropertyValue("LayoutManager") >>= xLayoutManager;
+            xPropSet->getPropertyValue(u"LayoutManager"_ustr) >>= xLayoutManager;
         }
         catch (const RuntimeException&)
         {
@@ -430,7 +431,7 @@ public:
 
     virtual void InsertSeparator() override
     {
-        m_pWeldedToolBar->append_separator("");
+        m_pWeldedToolBar->append_separator(u""_ustr);
     }
 
     virtual void InsertSpace() override {}
@@ -594,7 +595,7 @@ void ToolBarManager::Init()
     // enables a menu for clipped items and customization
     SvtCommandOptions aCmdOptions;
     ToolBoxMenuType nMenuType = ToolBoxMenuType::ClippedItems;
-    if ( !aCmdOptions.LookupDisabled( "CreateDialog"))
+    if ( !aCmdOptions.LookupDisabled( u"CreateDialog"_ustr))
          nMenuType |= ToolBoxMenuType::Customize;
 
     m_pImpl->SetMenuType( nMenuType );
@@ -644,7 +645,7 @@ void ToolBarManager::CheckAndUpdateImages()
         m_eSymbolSize = eNewSymbolSize;
     }
 
-    const OUString& sCurrentIconTheme = SvtMiscOptions::GetIconTheme();
+    const OUString sCurrentIconTheme = SvtMiscOptions::GetIconTheme();
     if ( m_sIconTheme != sCurrentIconTheme )
     {
         bRefreshImages = true;
@@ -702,7 +703,7 @@ void ToolBarManager::UpdateControllers()
         Reference< XLayoutManager > xLayoutManager;
         Reference< XPropertySet > xFramePropSet( m_xFrame, UNO_QUERY );
         if ( xFramePropSet.is() )
-            a = xFramePropSet->getPropertyValue("LayoutManager");
+            a = xFramePropSet->getPropertyValue(u"LayoutManager"_ustr);
         a >>= xLayoutManager;
         Reference< XDockableWindow > xDockable( m_pImpl->GetInterface(), UNO_QUERY );
         if ( xLayoutManager.is() && xDockable.is() )
@@ -862,7 +863,7 @@ void SAL_CALL ToolBarManager::dispose()
 
         // We have to destroy our toolbar instance now.
         Destroy();
-        m_pToolBar.clear();
+        m_pToolBar.reset();
 
         if ( m_bFrameActionRegistered && m_xFrame.is() )
         {
@@ -1095,8 +1096,7 @@ void ToolBarManager::CreateControllers()
                 }
                 else if ( aCommandURL.startsWith( "private:resource/" ) )
                 {
-                    xController.set( m_xContext->getServiceManager()->createInstanceWithContext(
-                        "com.sun.star.comp.framework.GenericPopupToolbarController", m_xContext ), UNO_QUERY );
+                    xController.set( new framework::GenericPopupToolbarController(m_xContext, {}) );
                 }
                 else if ( m_pToolBar && m_pToolBar->GetItemData( nId ) != nullptr )
                 {
@@ -1182,8 +1182,8 @@ void ToolBarManager::CreateControllers()
                     VclPtr<vcl::Window> pItemWin = VCLUnoHelper::GetWindow( xWindow );
                     if ( pItemWin )
                     {
-                        WindowType nType = pItemWin->GetType();
-                        if ( m_pToolBar && (nType == WindowType::LISTBOX || nType == WindowType::MULTILISTBOX || nType == WindowType::COMBOBOX) )
+                        WindowType eType = pItemWin->GetType();
+                        if ( m_pToolBar && (eType == WindowType::LISTBOX || eType == WindowType::MULTILISTBOX || eType == WindowType::COMBOBOX) )
                             pItemWin->SetAccessibleName( m_pToolBar->GetItemText( nId ) );
                         m_pImpl->SetItemWindow( nId, pItemWin );
                     }
@@ -1198,7 +1198,7 @@ void ToolBarManager::CreateControllers()
             try
             {
                 bool bSupportVisible = true;
-                Any a( xPropSet->getPropertyValue("SupportsVisible") );
+                Any a( xPropSet->getPropertyValue(u"SupportsVisible"_ustr) );
                 a >>= bSupportVisible;
                 if (bSupportVisible)
                 {
@@ -1228,6 +1228,7 @@ void ToolBarManager::AddFrameActionListener()
     }
 }
 
+// static
 ToolBoxItemBits ToolBarManager::ConvertStyleToToolboxItemBits( sal_Int32 nStyle )
 {
     ToolBoxItemBits nItemBits( ToolBoxItemBits::NONE );
@@ -1344,7 +1345,7 @@ void ToolBarManager::FillToolbar( const Reference< XIndexAccess >& rItemContaine
     try
     {
         OUString aUIName;
-        xPropSet->getPropertyValue("UIName") >>= aUIName;
+        xPropSet->getPropertyValue(u"UIName"_ustr) >>= aUIName;
         if ( !aUIName.isEmpty() )
             m_pImpl->SetName( aUIName );
     }
@@ -1372,7 +1373,7 @@ void ToolBarManager::FillToolbarFromContainer( const Reference< XIndexAccess >& 
             if ( rItemContainer->getByIndex( n ) >>= aProps )
             {
                 bool bIsVisible( true );
-                for ( PropertyValue const & prop : std::as_const(aProps) )
+                for (PropertyValue const& prop : aProps)
                 {
                     if ( prop.Name == ITEM_DESCRIPTOR_COMMANDURL )
                         prop.Value >>= aCommandURL;
@@ -1398,7 +1399,7 @@ void ToolBarManager::FillToolbarFromContainer( const Reference< XIndexAccess >& 
                 {
                     auto aProperties = vcl::CommandInfoProvider::GetCommandProperties(aCommandURL, m_aModuleIdentifier);
                     if (!aProperties.hasElements()) // E.g., user-provided macro command?
-                        aProperties = aProps; // Use existing info, including user-provided Label
+                        aProperties = std::move(aProps); // Use existing info, including user-provided Label
 
                     ToolBoxItemBits nItemBits = ConvertStyleToToolboxItemBits( nStyle );
 
@@ -1690,7 +1691,7 @@ void ToolBarManager::notifyRegisteredControllers( const OUString& aUIElementName
     {
         try
         {
-            Reference< XSubToolbarController > xController = aNotifyVector[i];
+            const Reference< XSubToolbarController >& xController = aNotifyVector[i];
             if ( xController.is() )
                 xController->functionSelected( aCommand );
         }
@@ -1854,7 +1855,7 @@ void ToolBarManager::AddCustomizeMenuItems(ToolBox const * pToolBar)
         if (m_pToolBar->IsCustomize())
         {
             pMenu->InsertItem(MENUITEM_TOOLBAR_CUSTOMIZETOOLBAR, FwkResId(STR_TOOLBAR_CUSTOMIZE_TOOLBAR));
-            pMenu->SetItemCommand(MENUITEM_TOOLBAR_CUSTOMIZETOOLBAR, ".uno:ConfigureToolboxVisible");
+            pMenu->SetItemCommand(MENUITEM_TOOLBAR_CUSTOMIZETOOLBAR, u".uno:ConfigureToolboxVisible"_ustr);
         }
         pMenu->InsertSeparator();
     }
@@ -2005,7 +2006,7 @@ void ToolBarManager::ToggleButton( const OUString& rResourceName, std::u16string
                     if ( xPropSet.is() )
                     {
                         Reference< XUIConfigurationPersistence > xUICfgMgr;
-                        if (( xPropSet->getPropertyValue("ConfigurationSource") >>= xUICfgMgr ) && ( xUICfgMgr.is() ))
+                        if (( xPropSet->getPropertyValue(u"ConfigurationSource"_ustr) >>= xUICfgMgr ) && ( xUICfgMgr.is() ))
                             xUICfgMgr->store();
                     }
                 }
@@ -2106,7 +2107,7 @@ IMPL_LINK( ToolBarManager, MenuSelect, Menu*, pMenu, bool )
                 if ( xDisp.is() )
                 {
                     Sequence< PropertyValue > aPropSeq{ comphelper::makePropertyValue(
-                        "ResourceURL", m_aResourceName) };
+                        u"ResourceURL"_ustr, m_aResourceName) };
 
                     xDisp->dispatch( aURL, aPropSeq );
                 }

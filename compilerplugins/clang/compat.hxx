@@ -12,6 +12,7 @@
 #include <string>
 #include <utility>
 
+#include "clang/AST/Decl.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/Basic/SourceManager.h"
@@ -86,6 +87,17 @@ inline std::pair<clang::SourceLocation, clang::SourceLocation> getImmediateExpan
     auto const csr = SM.getImmediateExpansionRange(Loc);
     if (csr.isCharRange()) { /*TODO*/ }
     return {csr.getBegin(), csr.getEnd()};
+}
+
+inline bool isAtLeastAsQualifiedAs(
+    clang::QualType type1, clang::QualType type2, clang::ASTContext const & context)
+{
+#if CLANG_VERSION >= 200000
+    return type1.isAtLeastAsQualifiedAs(type2, context);
+#else
+    (void) context;
+    return type1.isAtLeastAsQualifiedAs(type2);
+#endif
 }
 
 /// Utility method
@@ -238,6 +250,39 @@ inline bool isOrdinary(clang::StringLiteral const * expr) {
     return expr->isOrdinary();
 #else
     return expr->isAscii();
+#endif
+}
+
+inline bool isPureVirtual(clang::FunctionDecl const * decl) {
+#if CLANG_VERSION >= 180000
+    return decl->isPureVirtual();
+#else
+    return decl->isPure();
+#endif
+}
+
+inline bool isUnnamedBitField(clang::FieldDecl const * decl) {
+#if CLANG_VERSION >= 190000
+    return decl->isUnnamedBitField();
+#else
+    return decl->isUnnamedBitfield();
+#endif
+}
+
+inline unsigned getBitWidthValue(clang::FieldDecl const * decl, clang::ASTContext const & context) {
+#if CLANG_VERSION >= 200000
+    (void) context;
+    return decl->getBitWidthValue();
+#else
+    return decl->getBitWidthValue(context);
+#endif
+}
+
+inline clang::Type const * getClass(clang::MemberPointerType const * type) {
+#if CLANG_VERSION >= 210000
+    return type->getQualifier()->getAsType();
+#else
+    return type->getClass();
 #endif
 }
 

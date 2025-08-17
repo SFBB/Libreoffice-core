@@ -20,31 +20,34 @@
 #pragma once
 
 #include <ToolBarManager.hxx>
-#include <com/sun/star/drawing/framework/XConfigurationChangeListener.hpp>
+#include <tools/link.hxx>
+#include <framework/ConfigurationChangeListener.hxx>
+#include <com/sun/star/ui/XContextChangeEventListener.hpp>
 #include <comphelper/compbase.hxx>
 #include <o3tl/deleter.hxx>
 #include <rtl/ref.hxx>
 #include <memory>
-
-namespace com::sun::star::drawing::framework { class XConfigurationController; }
-namespace com::sun::star::frame { class XController; }
 
 namespace sd {
 class DrawController;
 class ViewShellBase;
 }
 
-namespace sd::framework {
+namespace sd::tools
+{
+class EventMultiplexerEvent;
+}
 
-typedef comphelper::WeakComponentImplHelper <
-    css::drawing::framework::XConfigurationChangeListener
-    > ToolBarModuleInterfaceBase;
+namespace sd::framework
+{
+class ConfigurationController;
+class ResourceId;
 
 /** This module is responsible for locking the ToolBarManager during
     configuration updates and for triggering ToolBarManager updates.
 */
 class ToolBarModule final
-    : public ToolBarModuleInterfaceBase
+    : public sd::framework::ConfigurationChangeListener
 {
 public:
     /** Create a new module.
@@ -57,10 +60,10 @@ public:
 
     virtual void disposing(std::unique_lock<std::mutex>&) override;
 
-    // XConfigurationChangeListener
+    // ConfigurationChangeListener
 
-    virtual void SAL_CALL notifyConfigurationChange (
-        const css::drawing::framework::ConfigurationChangeEvent& rEvent) override;
+    virtual void notifyConfigurationChange (
+        const sd::framework::ConfigurationChangeEvent& rEvent) override;
 
     // XEventListener
 
@@ -68,14 +71,24 @@ public:
         const css::lang::EventObject& rEvent) override;
 
 private:
-    css::uno::Reference<
-        css::drawing::framework::XConfigurationController> mxConfigurationController;
+    rtl::Reference<ConfigurationController> mxConfigurationController;
     ViewShellBase* mpBase;
     std::unique_ptr<ToolBarManager::UpdateLock, o3tl::default_delete<ToolBarManager::UpdateLock>> mpToolBarManagerLock;
     bool mbMainViewSwitchUpdatePending;
+    bool mbListeningEventMultiplexer = false;
+
+    /** Update toolbars via ToolbarManager
+
+        @param pViewShell may be nullptr
+    */
+    void UpdateToolbars(const ViewShell* pViewShell);
 
     void HandleUpdateStart();
     void HandleUpdateEnd();
+    void HandlePaneViewShellFocused(
+        const rtl::Reference<sd::framework::ResourceId>& rxResourceId);
+
+    DECL_LINK(EventMultiplexerListener, ::sd::tools::EventMultiplexerEvent&, void);
 };
 
 } // end of namespace sd::framework

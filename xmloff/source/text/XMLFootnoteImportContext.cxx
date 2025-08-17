@@ -19,18 +19,17 @@
 
 #include "XMLFootnoteImportContext.hxx"
 
+#include <comphelper/diagnose_ex.hxx>
 #include <rtl/ustring.hxx>
 #include <sal/log.hxx>
 #include <xmloff/xmlimp.hxx>
 #include <xmloff/txtimp.hxx>
-#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 
 #include "XMLFootnoteBodyImportContext.hxx"
 
 #include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/xml/sax/XAttributeList.hpp>
 #include <com/sun/star/text/XTextContent.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
@@ -77,8 +76,8 @@ void XMLFootnoteImportContext::startFastElement(
 
     Reference<XInterface> xIfc = xFactory->createInstance(
         bIsEndnote ?
-        OUString("com.sun.star.text.Endnote") :
-        OUString("com.sun.star.text.Footnote") );
+        u"com.sun.star.text.Endnote"_ustr :
+        u"com.sun.star.text.Footnote"_ustr );
 
     // attach footnote to document
     Reference<XTextContent> xTextContent(xIfc, UNO_QUERY);
@@ -91,7 +90,7 @@ void XMLFootnoteImportContext::startFastElement(
         {
             // get ID ...
             Reference<XPropertySet> xPropertySet(xTextContent, UNO_QUERY);
-            Any aAny =xPropertySet->getPropertyValue("ReferenceId");
+            Any aAny =xPropertySet->getPropertyValue(u"ReferenceId"_ustr);
             sal_Int16 nID = 0;
             aAny >>= nID;
 
@@ -104,7 +103,16 @@ void XMLFootnoteImportContext::startFastElement(
     // save old cursor and install new one
     xOldCursor = rHelper.GetCursor();
     Reference<XText> xText(xTextContent, UNO_QUERY);
-    rHelper.SetCursor(xText->createTextCursor());
+    try
+    {
+        // May fail e.g. for a nested footnote, which is formally a valid ODF, but is not supported
+        rHelper.SetCursor(xText->createTextCursor());
+    }
+    catch (css::uno::RuntimeException&)
+    {
+        TOOLS_WARN_EXCEPTION("xmloff.text", "skipping the footnote: caught");
+        mbIsValid = false;
+    }
 
     // remember old list item and block (#89891#) and reset them
     // for the footnote
@@ -134,6 +142,8 @@ void XMLFootnoteImportContext::endFastElement(sal_Int32 )
 css::uno::Reference< css::xml::sax::XFastContextHandler > XMLFootnoteImportContext::createFastChildContext(
     sal_Int32 nElement, const css::uno::Reference< css::xml::sax::XFastAttributeList >& xAttrList )
 {
+    if (!mbIsValid)
+        return {};
     SvXMLImportContextRef xContext;
 
     switch(nElement)

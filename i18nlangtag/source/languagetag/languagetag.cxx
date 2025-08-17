@@ -23,6 +23,7 @@
 #include <atomic>
 #include <map>
 #include <mutex>
+#include <optional>
 #include <string_view>
 #include <unordered_set>
 
@@ -224,7 +225,7 @@ void LiblangtagDataRef::setupDataPath()
     maDataPath = OString(lo_get_app_data_dir()) + "/share/liblangtag";
 #else
     // maDataPath is assumed to be empty here.
-    OUString aURL("$BRAND_BASE_DIR/" LIBO_SHARE_FOLDER "/liblangtag");
+    OUString aURL(u"$BRAND_BASE_DIR/" LIBO_SHARE_FOLDER "/liblangtag"_ustr);
     rtl::Bootstrap::expandMacros(aURL); //TODO: detect failure
 
     // Check if data is in our own installation, else assume system
@@ -316,12 +317,12 @@ private:
     bool                isIsoODF() const;
     bool                isValidBcp47() const;
 
-    void                convertLocaleToBcp47();
+    void                convertLocaleToBcp47() const;
     bool                convertLocaleToLang( bool bAllowOnTheFlyID );
     void                convertBcp47ToLocale();
     void                convertBcp47ToLang();
-    void                convertLangToLocale();
-    void                convertLangToBcp47();
+    void                convertLangToLocale() const;
+    void                convertLangToBcp47() const;
 
     /** @return whether BCP 47 language tag string was changed. */
     bool                canonicalize();
@@ -1028,6 +1029,7 @@ LanguageTagImpl const * LanguageTag::getImpl() const
     return mpImpl.get();
 }
 
+
 LanguageTagImpl * LanguageTag::getImpl()
 {
     if (!mpImpl)
@@ -1037,6 +1039,7 @@ LanguageTagImpl * LanguageTag::getImpl()
     }
     return mpImpl.get();
 }
+
 
 void LanguageTag::resetVars()
 {
@@ -1302,9 +1305,9 @@ bool LanguageTagImpl::synCanonicalize()
 }
 
 
-void LanguageTag::syncFromImpl()
+void LanguageTag::syncFromImpl() const
 {
-    LanguageTagImpl* pImpl = getImpl();
+    const LanguageTagImpl* pImpl = getImpl();
     bool bRegister = ((mbInitializedBcp47 && maBcp47 != pImpl->maBcp47) ||
             (mbInitializedLangID && mnLangID != pImpl->mnLangID));
     SAL_INFO_IF( bRegister, "i18nlangtag",
@@ -1351,7 +1354,7 @@ bool LanguageTag::synCanonicalize()
 }
 
 
-void LanguageTagImpl::convertLocaleToBcp47()
+void LanguageTagImpl::convertLocaleToBcp47() const
 {
     if (mbSystemLocale && !mbInitializedLocale)
         convertLangToLocale();
@@ -1498,7 +1501,7 @@ void LanguageTag::convertBcp47ToLang()
 }
 
 
-void LanguageTagImpl::convertLangToLocale()
+void LanguageTagImpl::convertLangToLocale() const
 {
     if (mbSystemLocale && !mbInitializedLangID)
     {
@@ -1511,14 +1514,14 @@ void LanguageTagImpl::convertLangToLocale()
 }
 
 
-void LanguageTag::convertLangToLocale()
+void LanguageTag::convertLangToLocale() const
 {
     getImpl()->convertLangToLocale();
     syncFromImpl();
 }
 
 
-void LanguageTagImpl::convertLangToBcp47()
+void LanguageTagImpl::convertLangToBcp47() const
 {
     if (!mbInitializedLocale)
         convertLangToLocale();
@@ -1572,9 +1575,9 @@ const OUString & LanguageTagImpl::getBcp47() const
     if (!mbInitializedBcp47)
     {
         if (mbInitializedLocale)
-            const_cast<LanguageTagImpl*>(this)->convertLocaleToBcp47();
+            convertLocaleToBcp47();
         else
-            const_cast<LanguageTagImpl*>(this)->convertLangToBcp47();
+            convertLangToBcp47();
     }
     return maBcp47;
 }
@@ -1582,7 +1585,7 @@ const OUString & LanguageTagImpl::getBcp47() const
 
 const OUString & LanguageTag::getBcp47( bool bResolveSystem ) const
 {
-    static const OUString theEmptyBcp47 = u""_ustr;
+    static constexpr OUString theEmptyBcp47 = u""_ustr;
 
     if (!bResolveSystem && mbSystemLocale)
         return theEmptyBcp47;
@@ -1591,7 +1594,7 @@ const OUString & LanguageTag::getBcp47( bool bResolveSystem ) const
     if (!mbInitializedBcp47)
     {
         getImpl()->getBcp47();
-        const_cast<LanguageTag*>(this)->syncFromImpl();
+        syncFromImpl();
     }
     return maBcp47;
 }
@@ -1732,7 +1735,7 @@ const css::lang::Locale & LanguageTag::getLocale( bool bResolveSystem ) const
         if (mbInitializedBcp47)
             const_cast<LanguageTag*>(this)->convertBcp47ToLocale();
         else
-            const_cast<LanguageTag*>(this)->convertLangToLocale();
+            convertLangToLocale();
     }
     return maLocale;
 }
@@ -1863,7 +1866,7 @@ OUString LanguageTag::getLanguage() const
     if (pImpl->mbCachedLanguage)
         return pImpl->maCachedLanguage;
     OUString aRet( pImpl->getLanguage());
-    const_cast<LanguageTag*>(this)->syncFromImpl();
+    syncFromImpl();
     return aRet;
 }
 
@@ -1885,7 +1888,7 @@ OUString LanguageTag::getScript() const
     if (pImpl->mbCachedScript)
         return pImpl->maCachedScript;
     OUString aRet( pImpl->getScript());
-    const_cast<LanguageTag*>(this)->syncFromImpl();
+    syncFromImpl();
     return aRet;
 }
 
@@ -1921,7 +1924,7 @@ OUString LanguageTag::getCountry() const
     if (pImpl->mbCachedCountry)
         return pImpl->maCachedCountry;
     OUString aRet( pImpl->getCountry());
-    const_cast<LanguageTag*>(this)->syncFromImpl();
+    syncFromImpl();
     return aRet;
 }
 
@@ -1949,7 +1952,7 @@ OUString LanguageTag::getVariants() const
     if (pImpl->mbCachedVariants)
         return pImpl->maCachedVariants;
     OUString aRet( pImpl->getVariants());
-    const_cast<LanguageTag*>(this)->syncFromImpl();
+    syncFromImpl();
     return aRet;
 }
 
@@ -2010,7 +2013,7 @@ bool LanguageTagImpl::hasScript() const
 bool LanguageTag::hasScript() const
 {
     bool bRet = getImpl()->hasScript();
-    const_cast<LanguageTag*>(this)->syncFromImpl();
+    syncFromImpl();
     return bRet;
 }
 
@@ -2075,7 +2078,7 @@ bool LanguageTagImpl::isIsoLocale() const
 bool LanguageTag::isIsoLocale() const
 {
     bool bRet = getImpl()->isIsoLocale();
-    const_cast<LanguageTag*>(this)->syncFromImpl();
+    syncFromImpl();
     return bRet;
 }
 
@@ -2110,7 +2113,7 @@ bool LanguageTagImpl::isIsoODF() const
 bool LanguageTag::isIsoODF() const
 {
     bool bRet = getImpl()->isIsoODF();
-    const_cast<LanguageTag*>(this)->syncFromImpl();
+    syncFromImpl();
     return bRet;
 }
 
@@ -2130,7 +2133,7 @@ bool LanguageTagImpl::isValidBcp47() const
 bool LanguageTag::isValidBcp47() const
 {
     bool bRet = getImpl()->isValidBcp47();
-    const_cast<LanguageTag*>(this)->syncFromImpl();
+    syncFromImpl();
     return bRet;
 }
 
@@ -2210,7 +2213,7 @@ LanguageTag & LanguageTag::makeFallback()
             }
             else if (aLanguage == "ca" && aCountry == "XV")
             {
-                ::std::vector< OUString > aRep( LanguageTag( "ca-ES-valencia").getFallbackStrings( true));
+                ::std::vector< OUString > aRep( LanguageTag( u"ca-ES-valencia"_ustr).getFallbackStrings( true));
                 aVec.insert( aVec.end(), aRep.begin(), aRep.end());
                 // Already includes 'ca' language fallback.
             }
@@ -2398,7 +2401,7 @@ LanguageTag & LanguageTag::makeFallback()
 OUString LanguageTag::getBcp47MS() const
 {
     if (getLanguageType() == LANGUAGE_SPANISH_DATED)
-        return "es-ES_tradnl";
+        return u"es-ES_tradnl"_ustr;
     return getBcp47();
 }
 
@@ -2822,7 +2825,22 @@ LanguageType LanguageTag::convertToLanguageType( const css::lang::Locale& rLocal
     if (rLocale.Language.isEmpty() && !bResolveSystem)
         return LANGUAGE_SYSTEM;
 
-    return LanguageTag( rLocale).getLanguageType( bResolveSystem);
+    if (!bResolveSystem)
+    {
+        // single-item cache
+        static std::mutex gMutex;
+        static std::optional<lang::Locale> moCacheKey;
+        static std::optional<LanguageType> moCacheValue;
+        std::unique_lock l(gMutex);
+        if (!moCacheKey || *moCacheKey != rLocale)
+        {
+            moCacheValue = LanguageTag(rLocale).getLanguageType(false);
+            moCacheKey = rLocale;
+        }
+        return *moCacheValue;
+    }
+    else
+        return LanguageTag( rLocale).getLanguageType( bResolveSystem);
 }
 
 
@@ -3153,7 +3171,7 @@ LanguageTag makeLanguageTagFromAppleLanguageId(AppleLanguageId nLanguage)
             nLang = LANGUAGE_AZERI_CYRILLIC;
             break;
         case AppleLanguageId::AZERI_ARABIC:
-            return LanguageTag("az-Arab");
+            return LanguageTag(u"az-Arab"_ustr);
         case AppleLanguageId::ARMENIAN:
             nLang = LANGUAGE_ARMENIAN;
             break;
@@ -3275,7 +3293,7 @@ LanguageTag makeLanguageTagFromAppleLanguageId(AppleLanguageId nLanguage)
             nLang = LANGUAGE_KINYARWANDA_RWANDA;
             break;
         case AppleLanguageId::RUNDI:
-            return LanguageTag("rn");
+            return LanguageTag(u"rn"_ustr);
         case AppleLanguageId::NYANJA:
             nLang = LANGUAGE_USER_NYANJA;
             break;
@@ -3304,7 +3322,7 @@ LanguageTag makeLanguageTagFromAppleLanguageId(AppleLanguageId nLanguage)
             nLang = LANGUAGE_GUARANI_PARAGUAY;
             break;
         case AppleLanguageId::AYMARA:
-            return LanguageTag("ay");
+            return LanguageTag(u"ay"_ustr);
         case AppleLanguageId::TATAR:
             nLang = LANGUAGE_TATAR;
             break;
@@ -3315,9 +3333,9 @@ LanguageTag makeLanguageTagFromAppleLanguageId(AppleLanguageId nLanguage)
             nLang = LANGUAGE_DZONGKHA_BHUTAN;
             break;
         case AppleLanguageId::JAVANESE_LATIN:
-            return LanguageTag("jv-Latn");
+            return LanguageTag(u"jv-Latn"_ustr);
         case AppleLanguageId::SUNDANESE_LATIN:
-            return LanguageTag("su-Latn");
+            return LanguageTag(u"su-Latn"_ustr);
         case AppleLanguageId::GALICIAN:
             nLang = LANGUAGE_GALICIAN;
             break;
@@ -3337,9 +3355,9 @@ LanguageTag makeLanguageTagFromAppleLanguageId(AppleLanguageId nLanguage)
             nLang = LANGUAGE_USER_MANX;
             break;
         case AppleLanguageId::IRISH_GAELIC_WITH_DOT_ABOVE:
-            return LanguageTag("ga-Latg");
+            return LanguageTag(u"ga-Latg"_ustr);
         case AppleLanguageId::TONGAN:
-            return LanguageTag("to");
+            return LanguageTag(u"to"_ustr);
         case AppleLanguageId::GREEK_POLYTONIC:
             nLang = LANGUAGE_USER_ANCIENT_GREEK;
             break;

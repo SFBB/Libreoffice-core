@@ -23,6 +23,7 @@
 #include <unotools/resmgr.hxx>
 
 #include <cmath>
+#include <complex>
 
 #include <memory>
 #include <vector>
@@ -189,7 +190,7 @@ struct FuncDataBase
     const TranslateId*      pDescrID;           // resource ID to description, parameter names and ~ description
     bool                    bDouble;            // name already exist in Calc
     bool                    bWithOpt;           // first parameter is internal
-    const char**            pCompListID;        // list of valid names
+    const char* const*      pCompListID;        // list of valid names
     sal_uInt16              nNumOfParams;       // number of named / described parameters
     FDCategory              eCat;               // function category
     const char*             pSuffix;            // if bDouble, append a suffix other than "_ADD" for UI
@@ -380,8 +381,7 @@ public:
 
 class Complex
 {
-    double                  r;
-    double                  i;
+    std::complex<double>    num;
     sal_Unicode             c;
 
 public:
@@ -492,20 +492,17 @@ enum ConvertDataClass
 };
 
 
-#define INV_MATCHLEV        1764                    // guess, what this is... :-)
-
-
 class ConvertData
 {
 protected:
     friend class ConvertDataList;
     double                  fConst;
-    OUString                  aName;
+    std::u16string_view     aName;
     ConvertDataClass        eClass;
     bool                bPrefixSupport;
 public:
                             ConvertData(
-                                const char      pUnitName[],
+                                std::u16string_view sUnitName,
                                 double              fConvertConstant,
                                 ConvertDataClass    eClass,
                                 bool                bPrefSupport = false );
@@ -522,9 +519,8 @@ public:
     /// @throws css::lang::IllegalArgumentException
     virtual double          Convert( double fVal, const ConvertData& rTo,
                                 sal_Int16 nMatchLevelFrom, sal_Int16 nMatchLevelTo ) const;
-    virtual double          ConvertFromBase( double fVal, sal_Int16 nMatchLevel ) const;
 
-    inline ConvertDataClass Class() const;
+    ConvertDataClass Class() const { return eClass; }
 };
 
 class ConvertDataLinear final : public ConvertData
@@ -532,7 +528,7 @@ class ConvertDataLinear final : public ConvertData
     double                  fOffs;
 public:
     inline                  ConvertDataLinear(
-                                const char      pUnitName[],
+                                std::u16string_view sUnitName,
                                 double              fConvertConstant,
                                 double              fConvertOffset,
                                 ConvertDataClass    eClass,
@@ -548,7 +544,7 @@ public:
                             // throws exception if not from same class
                            // this implementation is for proportional cases only
     double                  ConvertToBase( double fVal, sal_Int16 nMatchLevel ) const;
-    virtual double          ConvertFromBase( double fVal, sal_Int16 nMatchLevel ) const override;
+    double                  ConvertFromBase( double fVal, sal_Int16 nMatchLevel ) const;
 };
 
 
@@ -633,66 +629,59 @@ inline FDCategory FuncData::GetCategory() const
 
 
 inline Complex::Complex( double fReal, double fImag, sal_Unicode cC ) :
-        r( fReal ), i( fImag ), c( cC )
+        c( cC )
 {
+    num = std::complex(fReal, fImag);
 }
 
 
 inline double Complex::Real() const
 {
-    return r;
+    return num.real();
 }
 
 
 inline double Complex::Imag() const
 {
-    return i;
+    return num.imag();
 }
 
 
 inline double Complex::Abs() const
 {
-    return std::hypot(r, i);
+    return std::abs(num);
 }
 
 
 void Complex::Conjugate()
 {
-    i = -i;
+    num = std::conj(num);
 }
 
 
 inline void Complex::Mult( double f )
 {
-    i *= f;
-    r *= f;
+    num = num * f;
 }
 
 
 inline void Complex::Mult( const Complex& rM )
 {
-    double  r_ = r;
-    double  i_ = i;
-
-    r = r_ * rM.r - i_ * rM.i;
-    i = r_ * rM.i + i_ * rM.r;
-
+    num = num * rM.num;
     if( !c ) c = rM.c;
 }
 
 
 inline void Complex::Sub( const Complex& rC )
 {
-    r -= rC.r;
-    i -= rC.i;
+    num = num - rC.num;
     if( !c ) c = rC.c;
 }
 
 
 inline void Complex::Add( const Complex& rAdd )
 {
-    r += rAdd.r;
-    i += rAdd.i;
+    num = num + rAdd.num;
     if( !c ) c = rAdd.c;
 }
 
@@ -709,14 +698,9 @@ inline void ComplexList::Append( Complex&& p )
 }
 
 
-inline ConvertDataClass ConvertData::Class() const
-{
-    return eClass;
-}
-
-inline ConvertDataLinear::ConvertDataLinear( const char p[], double fC, double fO, ConvertDataClass e,
+inline ConvertDataLinear::ConvertDataLinear( std::u16string_view sUnitName, double fC, double fO, ConvertDataClass e,
         bool bPrefSupport ) :
-    ConvertData( p, fC, e, bPrefSupport ),
+    ConvertData( sUnitName, fC, e, bPrefSupport ),
     fOffs( fO )
 {
 }

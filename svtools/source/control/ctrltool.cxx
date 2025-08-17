@@ -27,6 +27,7 @@
 #include <i18nlangtag/languagetag.hxx>
 #include <i18nlangtag/mslangid.hxx>
 #include <utility>
+#include <vcl/embeddedfontsmanager.hxx>
 #include <vcl/outdev.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
@@ -133,8 +134,8 @@ static int sortWeightValue(FontWeight eWeight)
     return 0; // eWeight == WEIGHT_NORMAL
 }
 
-static sal_Int32 ImplCompareFontMetric( ImplFontListFontMetric* pInfo1,
-                                          ImplFontListFontMetric* pInfo2 )
+static sal_Int32 ImplCompareFontMetric(const ImplFontListFontMetric* pInfo1,
+                                       const ImplFontListFontMetric* pInfo2)
 {
     //Sort non italic before italics
     if ( pInfo1->GetItalic() < pInfo2->GetItalic() )
@@ -265,6 +266,13 @@ void FontList::ImplInsertFonts(OutputDevice* pDevice, bool bInsertData)
     {
         FontMetric aFontMetric = pDevice->GetFontMetricFromCollection( i );
         OUString aSearchName(aFontMetric.GetFamilyName());
+
+        // If this font is embedded in a document, is restricted, and is not installed locally
+        // (which is returned from EmbeddedFontsManager::isEmbeddedAndRestricted), we must not
+        // display this family name in the UI.
+        if (EmbeddedFontsManager::isEmbeddedAndRestricted(aSearchName))
+            continue;
+
         ImplFontListNameInfo*   pData;
         sal_uInt32              nIndex;
         aSearchName = ImplMakeSearchString(aSearchName);
@@ -509,11 +517,11 @@ OUString FontList::GetStyleName(const FontMetric& rInfo) const
     return aStyleName;
 }
 
-OUString FontList::GetFontMapText( const FontMetric& rInfo ) const
+const OUString & FontList::GetFontMapText( const FontMetric& rInfo ) const
 {
     if ( rInfo.GetFamilyName().isEmpty() )
     {
-        return OUString();
+        return EMPTY_OUSTRING;
     }
 
     // Search Fontname
@@ -536,8 +544,8 @@ OUString FontList::GetFontMapText( const FontMetric& rInfo ) const
         ImplFontListFontMetric*   pFontMetric = pData->mpFirst;
         while ( pFontMetric )
         {
-            if ( (eWeight == pFontMetric->GetWeight()) &&
-                 (eItalic == pFontMetric->GetItalic()) )
+            if ( (eWeight == pFontMetric->GetWeightMaybeAskConfig()) &&
+                 (eItalic == pFontMetric->GetItalicMaybeAskConfig()) )
             {
                 bNotSynthetic = true;
                 break;
@@ -687,8 +695,8 @@ FontMetric FontList::Get(const OUString& rName,
         pFontNameInfo = pSearchInfo;
         while ( pSearchInfo )
         {
-            if ( (eWeight == pSearchInfo->GetWeight()) &&
-                 (eItalic == pSearchInfo->GetItalic()) )
+            if ( (eWeight == pSearchInfo->GetWeightMaybeAskConfig()) &&
+                 (eItalic == pSearchInfo->GetItalicMaybeAskConfig()) )
             {
                 pFontMetric = pSearchInfo;
                 break;

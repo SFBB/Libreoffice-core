@@ -6,9 +6,58 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #
-import sys, os, uno, unohelper
-import re, random, traceback, itertools
-import threading, time as __time__
+import sys
+import os
+import uno
+import unohelper
+import re
+import random
+import traceback
+import itertools
+import threading
+import time as __time__
+from math import pi, sin, cos, asin, hypot
+
+from com.sun.star.awt import Point as __Point__
+from com.sun.star.awt import Gradient as __Gradient__
+from com.sun.star.awt.GradientStyle import LINEAR as __GradientStyle_LINEAR__
+from com.sun.star.drawing import LineDash as __LineDash__
+from com.sun.star.drawing import Hatch as __Hatch__
+from com.sun.star.drawing import PolyPolygonBezierCoords as __Bezier__
+from com.sun.star.text.TextContentAnchorType import AT_PAGE as __AT_PAGE__
+from com.sun.star.text.WrapTextMode import THROUGH as __THROUGH__
+from com.sun.star.drawing.LineCap import BUTT as __Cap_NONE__
+from com.sun.star.drawing.LineCap import ROUND as __Cap_ROUND__
+from com.sun.star.drawing.LineCap import SQUARE as __Cap_SQUARE__
+from com.sun.star.drawing.LineJoint import NONE as __Joint_NONE__
+from com.sun.star.drawing.LineJoint import BEVEL as __BEVEL__
+from com.sun.star.drawing.LineJoint import MITER as __MITER__
+from com.sun.star.drawing.LineJoint import ROUND as __ROUNDED__
+from com.sun.star.drawing.FillStyle import NONE as __FillStyle_NONE__
+from com.sun.star.drawing.FillStyle import GRADIENT as __FillStyle_GRADIENT__
+from com.sun.star.drawing.LineStyle import NONE as __LineStyle_NONE__
+from com.sun.star.drawing.LineStyle import SOLID as __LineStyle_SOLID__
+from com.sun.star.drawing.LineStyle import DASH as __LineStyle_DASHED__
+from com.sun.star.drawing.DashStyle import RECT as __DashStyle_RECT__
+from com.sun.star.drawing.CircleKind import FULL as __FULL__
+from com.sun.star.drawing.CircleKind import SECTION as __SECTION__
+from com.sun.star.drawing.CircleKind import CUT as __CUT__
+from com.sun.star.drawing.CircleKind import ARC as __ARC__
+from com.sun.star.awt.FontSlant import NONE as __Slant_NONE__
+from com.sun.star.awt.FontSlant import ITALIC as __Slant_ITALIC__
+from com.sun.star.awt.FontUnderline import SINGLE as __Underline_SINGLE__
+from com.sun.star.awt.FontStrikeout import SINGLE as __Strikeout_SINGLE__
+from com.sun.star.awt import Size as __Size__
+from com.sun.star.awt import WindowDescriptor as __WinDesc__
+from com.sun.star.awt.WindowClass import MODALTOP as __MODALTOP__
+from com.sun.star.awt.VclWindowPeerAttribute import OK as __OK__
+from com.sun.star.awt.VclWindowPeerAttribute import OK_CANCEL as __OK_CANCEL__
+from com.sun.star.awt.VclWindowPeerAttribute import YES_NO_CANCEL as __YES_NO_CANCEL__ # OK_CANCEL, YES_NO, RETRY_CANCEL, DEF_OK, DEF_CANCEL, DEF_RETRY, DEF_YES, DEF_NO
+from com.sun.star.awt.PushButtonType import OK as __Button_OK__
+from com.sun.star.awt.PushButtonType import CANCEL as __Button_CANCEL__
+from com.sun.star.util.MeasureUnit import APPFONT as __APPFONT__
+from com.sun.star.beans import PropertyValue as __property__
+from com.sun.star.lang import Locale
 
 __lng__ = {}
 
@@ -21,22 +70,22 @@ def __l12n__(lng):
     global __lng_fallback__
     try:
         return __lng__[lng]
-    except:
+    except Exception:
         try:
             # load resource file
             __lng__[lng] = dict([[i.decode("unicode-escape").split("=")[0].strip(), i.decode("unicode-escape").split("=")[1].strip().strip("|")] for i in open(__lngpath__ + "LibreLogo_" + lng + ".properties", 'rb').readlines() if b"=" in i])
             return __lng__[lng]
-        except:
+        except Exception:
             try:
                 # or use embedded fallback resource dictionary
                 __lng__[lng] = {}
                 for i in __lng_fallback__:
                     try:
                         __lng__[lng][i] = __lng_fallback__[i][lng]
-                    except:
+                    except Exception:
                         try:
                             __lng__[lng][i] = __lng_fallback__[i][lng.split('_')[0]]
-                        except:
+                        except Exception:
                             __lng__[lng][i] = __lng_fallback__[i]["en_US"]
                 return __lng__[lng]
             except Exception:
@@ -45,7 +94,7 @@ def __l12n__(lng):
 
 try:
     urebootstrap = os.environ["URE_BOOTSTRAP"]
-except:
+except Exception:
     # starting in command line updates embedded fallback language dictionary
     print("Update fallback language resource using property file arguments")
     for i in sys.argv[1:]:
@@ -161,7 +210,7 @@ class __Doc__:
         self.secure = False
         try:
             self.drawpage = doc.DrawPage # Writer
-        except:
+        except Exception:
             self.drawpage = doc.DrawPages.getByIndex(0) # Draw, Impress
         self.shapecache = {}
         self.shapecount = itertools.count()
@@ -194,51 +243,6 @@ class __Doc__:
         self.fontstyle = 0
         self.points = []
 
-from math import pi, sin, cos, asin, log10, hypot, sqrt
-
-from com.sun.star.awt import Point as __Point__
-from com.sun.star.awt import Gradient as __Gradient__
-from com.sun.star.awt.GradientStyle import LINEAR as __GradientStyle_LINEAR__
-from com.sun.star.drawing import LineDash as __LineDash__
-from com.sun.star.drawing import Hatch as __Hatch__
-from com.sun.star.drawing import PolyPolygonBezierCoords as __Bezier__
-from com.sun.star.text.TextContentAnchorType import AT_PAGE as __AT_PAGE__
-from com.sun.star.text.WrapTextMode import THROUGH as __THROUGH__
-from com.sun.star.drawing.LineCap import BUTT as __Cap_NONE__
-from com.sun.star.drawing.LineCap import ROUND as __Cap_ROUND__
-from com.sun.star.drawing.LineCap import SQUARE as __Cap_SQUARE__
-from com.sun.star.drawing.LineJoint import NONE as __Joint_NONE__
-from com.sun.star.drawing.LineJoint import BEVEL as __BEVEL__
-from com.sun.star.drawing.LineJoint import MITER as __MITER__
-from com.sun.star.drawing.LineJoint import ROUND as __ROUNDED__
-from com.sun.star.drawing.FillStyle import NONE as __FillStyle_NONE__
-from com.sun.star.drawing.FillStyle import GRADIENT as __FillStyle_GRADIENT__
-from com.sun.star.drawing.LineStyle import NONE as __LineStyle_NONE__
-from com.sun.star.drawing.LineStyle import SOLID as __LineStyle_SOLID__
-from com.sun.star.drawing.LineStyle import DASH as __LineStyle_DASHED__
-from com.sun.star.drawing.DashStyle import RECT as __DashStyle_RECT__
-from com.sun.star.drawing.DashStyle import ROUND as __DashStyle_ROUND__
-from com.sun.star.drawing.DashStyle import ROUNDRELATIVE as __DashStyle_ROUNDRELATIVE__
-from com.sun.star.drawing.CircleKind import FULL as __FULL__
-from com.sun.star.drawing.CircleKind import SECTION as __SECTION__
-from com.sun.star.drawing.CircleKind import CUT as __CUT__
-from com.sun.star.drawing.CircleKind import ARC as __ARC__
-from com.sun.star.awt.FontSlant import NONE as __Slant_NONE__
-from com.sun.star.awt.FontSlant import ITALIC as __Slant_ITALIC__
-from com.sun.star.awt.FontUnderline import SINGLE as __Underline_SINGLE__
-from com.sun.star.awt.FontStrikeout import SINGLE as __Strikeout_SINGLE__
-from com.sun.star.awt import Size as __Size__
-from com.sun.star.awt import WindowDescriptor as __WinDesc__
-from com.sun.star.awt.WindowClass import MODALTOP as __MODALTOP__
-from com.sun.star.awt.VclWindowPeerAttribute import OK as __OK__ 
-from com.sun.star.awt.VclWindowPeerAttribute import OK_CANCEL as __OK_CANCEL__ 
-from com.sun.star.awt.VclWindowPeerAttribute import YES_NO_CANCEL as __YES_NO_CANCEL__ # OK_CANCEL, YES_NO, RETRY_CANCEL, DEF_OK, DEF_CANCEL, DEF_RETRY, DEF_YES, DEF_NO
-from com.sun.star.awt.PushButtonType import OK as __Button_OK__
-from com.sun.star.awt.PushButtonType import CANCEL as __Button_CANCEL__
-from com.sun.star.util.MeasureUnit import APPFONT as __APPFONT__
-from com.sun.star.beans import PropertyValue as __property__
-from com.sun.star.lang import Locale
-
 def __getprop__(name, value):
     p, p.Name, p.Value = __property__(), name, value
     return p
@@ -255,17 +259,30 @@ __bezierdot__.Coordinates = (tuple(__gendots__(32)),)
 __bezierdot__.Flags = ((0,) * 32,)
 
 # turtle shape
-__TURTLESHAPE__ = [tuple([(__Point__(-120, 130), __Point__(-245, 347), __Point__(-291, 176), ), (__Point__(0, -500), __Point__(126, -375), __Point__(0, -250), __Point__(-124, -375), ), (__Point__(295, 170), __Point__(124, 124), __Point__(250, 340), ), (__Point__(466, -204), __Point__(224, -269), __Point__(71, -180), __Point__(313, -116), ), (__Point__(-75, -175), __Point__(-292, -300), __Point__(-417, -83), ), (__Point__(250, 0), __Point__(0, -250), __Point__(-250, 0), __Point__(0, 250), )] + 
+__TURTLESHAPE__ = [tuple([(__Point__(-120, 130), __Point__(-245, 347), __Point__(-291, 176), ), (__Point__(0, -500), __Point__(126, -375), __Point__(0, -250), __Point__(-124, -375), ), (__Point__(295, 170), __Point__(124, 124), __Point__(250, 340), ), (__Point__(466, -204), __Point__(224, -269), __Point__(71, -180), __Point__(313, -116), ), (__Point__(-75, -175), __Point__(-292, -300), __Point__(-417, -83), ), (__Point__(250, 0), __Point__(0, -250), __Point__(-250, 0), __Point__(0, 250), )] +
             [(i,) for i in __gendots__(32)] + # single points for wider selection
             [(__Point__(0, 0),)]), # last point for position handling
             ((__Point__(0, 0),),)] # hidden turtle (single point to draw at the left border of the page area)
 
 def __getdocument__():
     global __docs__, _
-    doc = XSCRIPTCONTEXT.getDocument()
+    # The XSCRIPTCONTEXT object is part of the UNO (Universal Network Objects)
+    # API provided by LibreOffice, which allows scripting languages like Python
+    # to interact with LibreOffice's underlying functionality. It provides a
+    # bridge between the scripting environment and the LibreOffice application,
+    # making it possible for scripts to control and extend the functionality of LibreOffice.
+
+    # Because XSCRIPTCONTEXT is automatically available in LibreOffice Python
+    # scripts, developers can directly use it to access the LibreOffice API
+    # without needing to define it themselves, simplifying script development
+    # and making it easier to work with LibreOffice's features and capabilities._
+
+    # It would be good to use a linter that can be told to ignore this
+    # "undefined variable" in the code (like flake8 or ruff) using # noqa: F821
+    doc = XSCRIPTCONTEXT.getDocument() # noqa: F821
     try:
         _ = __docs__[doc.RuntimeUID]
-    except:
+    except Exception:
         _ = __Doc__(doc)
         __docs__[doc.RuntimeUID] = _
 
@@ -275,7 +292,6 @@ def Input(s):
     try:
         ctx = uno.getComponentContext()
         smgr = ctx.ServiceManager
-        text = ""
 
         # dialog
         d = smgr.createInstanceWithContext("com.sun.star.awt.UnoControlDialogModel", ctx)
@@ -286,8 +302,7 @@ def Input(s):
         # label
         l = d.createInstance("com.sun.star.awt.UnoControlFixedTextModel" )
 
-        if type(s) == list:
-            text = s[1]
+        if type(s) is list:
             s = s[0]
         l.PositionX, l.PositionY, l.Width, l.Height, l.Name, l.TabIndex, l.Label = 5, 4, 140, 14, "l1", 2, s
 
@@ -301,17 +316,17 @@ def Input(s):
         b2 = d.createInstance( "com.sun.star.awt.UnoControlButtonModel" )
         b2.PositionX, b2.PositionY, b2.Width, b2.Height, b2.Name, b2.TabIndex, b2.PushButtonType = 100, 32, 45, 14, "b2", 1, __Button_CANCEL__
 
-        # insert the control models into the dialog model 
+        # insert the control models into the dialog model
         d.insertByName( "l1", l)
         d.insertByName( "b1", b)
-        d.insertByName( "b2", b2) 
-        d.insertByName( "e1", e) 
+        d.insertByName( "b2", b2)
+        d.insertByName( "e1", e)
 
-        # create the dialog control and set the model 
+        # create the dialog control and set the model
         controlContainer = smgr.createInstanceWithContext("com.sun.star.awt.UnoControlDialog", ctx)
         controlContainer.setModel(d)
 
-        # create a peer 
+        # create a peer
         toolkit = smgr.createInstanceWithContext("com.sun.star.awt.ExtToolkit", ctx)
         controlContainer.setVisible(False)
         controlContainer.createPeer(toolkit, None)
@@ -335,10 +350,9 @@ def Input(s):
 def __string__(s, decimal = None): # convert decimal sign, localized BOOL and SET
     if not decimal:
         decimal = _.decimal
-    if decimal == ',' and type(s) == float:
+    if decimal == ',' and type(s) is float:
         return str(s).replace(".", ",")
     if type(s) in [list, tuple, dict, set]:
-        __strings__ = []
         s = re.sub("(?u)(['\"])(([^'\"]|\\['\"])*)(?<!\\\\)\\1", __encodestring__, str(s)) # XXX fix double '\'\"'
         if decimal == ',':
             s = s.replace(".", ",")
@@ -346,7 +360,7 @@ def __string__(s, decimal = None): # convert decimal sign, localized BOOL and SE
             s.replace('set', __locname__('SET')).replace('True', __locname__('TRUE')).replace('False', __locname__('FALSE')))
     if type(s) in [str]:
         return s
-    elif type(s) == bool:
+    elif type(s) is bool:
         return __locname__(str(s).upper())
     return str(s)
 
@@ -360,7 +374,7 @@ def Print(s):
 
 def MessageBox(parent, message, title, msgtype = "messbox", buttons = __OK__):
     msgtypes = ("messbox", "infobox", "errorbox", "warningbox", "querybox")
-    if not (msgtype in msgtypes):
+    if msgtype not in msgtypes:
         msgtype = "messbox"
     d = __WinDesc__()
     d.Type = __MODALTOP__
@@ -378,7 +392,7 @@ def MessageBox(parent, message, title, msgtype = "messbox", buttons = __OK__):
 def Random(r):
     try:
         return r * random.random()
-    except:
+    except Exception:
         return list(r)[int(random.random() * len(r))]
 
 def to_ascii(s):
@@ -403,7 +417,7 @@ def __getcursor__(fulltext):
         if fulltext:
             1/len(text.getString()) # exception, if zero length
         realselection = True
-    except:
+    except Exception:
         text = _.doc.getText().createTextCursorByRange(_.doc.getText().getStart())
         text.gotoEnd(True)
     return text, realselection
@@ -426,7 +440,7 @@ def __translate__(arg = None):
     guess = guess.guessPrimaryLanguage(text, 0, len(text))
     try:
         l = {'cs': 'cs_CZ', 'el': 'el_GR', 'en': 'en_US', 'pt': 'pt_BR'}[guess.Language]
-    except:
+    except Exception:
         l = guess.Language + '_' + guess.Language.upper()
     lang = __l12n__(l)
     if not lang:
@@ -437,7 +451,6 @@ def __translate__(arg = None):
                 lang = __l12n__("en_US")
     lq = '\'' + lang['LEFTSTRING'].replace("|", "")
     rq = '\'' + lang['RIGHTSTRING'].replace("|", "")
-    __strings__ = []
 
     text = re.sub(r"^(([ \t]*[;#][^\n]*))", __encodecomment__, text)
     text = re.sub("(?u)([%s])((?:[^\n%s]|\\\\[%s])*)(?<!\\\\)[%s]" % (lq, rq, rq, rq), __encodestring__, selection.getString())
@@ -525,7 +538,7 @@ class LogoProgram(threading.Thread):
                     for attribute in attributes:
                         if attribute.Name == "EventType" and attribute.Value == "Script":
                             return 2
-            except:
+            except Exception:
                 pass
 
         _.secure = True
@@ -548,15 +561,15 @@ class LogoProgram(threading.Thread):
                 __dispatcher__(".uno:Escape")
                 try:
                     _.doc.CurrentController.getViewCursor().gotoRange(_.origcursor[0], False)
-                except:
+                except Exception:
                     _.doc.CurrentController.getViewCursor().gotoRange(_.origcursor[0].getStart(), False)
-        except Exception as e:
+        except Exception:
             try:
               __unlock__(all_levels = True)
               TRACEPATTERN = '"<string>", line '
               message = traceback.format_exc()
               l = re.findall(TRACEPATTERN + '[0-9]+', message)
-              if len(l) > 0 and not "SystemExit" in message:
+              if len(l) > 0 and "SystemExit" not in message:
                 line = len(re.findall(__LINEBREAK__, ''.join(self.code.split("\n")[:int(l[-1][len(TRACEPATTERN):])]))) + 1
                 caption = __l12n__(_.lng)['LIBRELOGO']
                 if __prevcode__ and "\n" in __prevcode__:
@@ -584,19 +597,19 @@ class LogoProgram(threading.Thread):
                     MessageBox(parent, __l12n__(_.lng)['ERR_ARGUMENTS'] % (__locname__(r.group(1)), r.group(2), r.group(3)), caption, "errorbox")
                 else:
                     origline = __compiled__.split("\n")[line-1]
-                    if not "com.sun.star" in message and not "__repeat__" in message and not "*)" in message and ("[" in origline or "]" in origline):
+                    if "com.sun.star" not in message and "__repeat__" not in message and "*)" not in message and ("[" in origline or "]" in origline):
                         MessageBox(parent, __l12n__(_.lng)['ERR_BLOCK'], caption, "errorbox")
                     else:
                         MessageBox(parent, __l12n__(_.lng)['ERROR'] %line, __l12n__(_.lng)['LIBRELOGO'], "errorbox")
               __trace__()
-            except:
+            except Exception:
               pass
         with __lock__:
             __thread__ = None
 
 # to check LibreLogo program termination (in that case, return value is False)
 def __is_alive__():
-    return __thread__ != None
+    return __thread__ is not None
 
 def __encodestring__(m):
     __strings__.append(re.sub("(\\[^\\]|\\\\(?=[‘’“”»」』]))", "", m.group(2)))
@@ -626,7 +639,7 @@ def __initialize__():
         shape.AnchorType = __AT_PAGE__
         shape.TextWrap = __THROUGH__
         shape.Opaque = True
-        _.drawpage.add(shape) 
+        _.drawpage.add(shape)
         shape.PolyPolygon = __TURTLESHAPE__[0]
         _.shapecache[__TURTLE__] = shape
         shape.Name = __TURTLE__
@@ -695,7 +708,7 @@ def __visible__(shape, visible = -1): # for OOo 3.2 compatibility
         if visible == -1:
             return shape.Visible
         shape.Visible = visible
-    except:
+    except Exception:
         return True
 
 def hideturtle():
@@ -720,7 +733,7 @@ def showturtle():
         z = turtle.getPosition()
         r, turtle.RotateAngle = turtle.RotateAngle, 0
         turtle.PolyPolygon, turtle.RotateAngle = __TURTLESHAPE__[0], r
-        z = __Point__(z.X - turtle.BoundRect.Width / 2.0, z.Y - turtle.BoundRect.Height / 2.0) 
+        z = __Point__(z.X - turtle.BoundRect.Width / 2.0, z.Y - turtle.BoundRect.Height / 2.0)
         turtle.setPosition(z)
         __visible__(turtle, True)
         pencolor(_.pencolor)
@@ -833,11 +846,11 @@ def run(arg=None, arg2 = -1):
         _.doc.CurrentController.select(turtle)
         # set working directory for file operations
         if _.doc.hasLocation():
-          name = os.chdir(unohelper.fileUrlToSystemPath(re.sub("[^/]*$", "", _.doc.getURL())))
+          os.chdir(unohelper.fileUrlToSystemPath(re.sub("[^/]*$", "", _.doc.getURL())))
         else:
-          name = os.chdir(os.path.expanduser('~'))
+          os.chdir(os.path.expanduser('~'))
         __thread__.start()
-    except Exception as e:
+    except Exception:
         __thread__ = None
         __trace__()
     return None
@@ -877,7 +890,6 @@ def home(arg=None):
     _.pencolor = 0
     _.pensize = __LINEWIDTH__
     _.areacolor = __FILLCOLOR__
-    pen = 1
     __removeshape__(__ACTUAL__)
 
 def clearscreen(arg=None):
@@ -917,7 +929,7 @@ def __cs__(select = True):
             _.doc.CurrentController.select(_.drawpage)
 
 def __dispatcher__(s, properties = (), doc = 0):
-    ctx = XSCRIPTCONTEXT.getComponentContext()
+    ctx = XSCRIPTCONTEXT.getComponentContext() # noqa: F821
     d = ctx.ServiceManager.createInstanceWithContext("com.sun.star.frame.DispatchHelper", ctx)
     if doc != 0:
       d.executeDispatch(doc.CurrentController.Frame, s, "", 0, properties)
@@ -929,7 +941,7 @@ def __getshape__(shapename):
         if _.shapecache[shapename].Parent:
             return _.shapecache[shapename]
         _.shapecache.pop(shapename)
-    except:
+    except Exception:
         pass
     return None
 
@@ -951,7 +963,7 @@ def heading(deg = -1, go = False):
     else:
         if deg == u'any':
             turtle.RotateAngle = random.random() * 36000
-        elif type(deg) == list:
+        elif type(deg) is list:
             pos = turtle.getPosition()
             px, py = pos.X + turtle.BoundRect.Width / 2.0, pos.Y + turtle.BoundRect.Height / 2.0
             dx = px * __MM10_TO_TWIP__ - deg[0] * __PT_TO_TWIP__
@@ -972,18 +984,17 @@ def rotate(shapename, deg):
         shape.RotateAngle = shape.RotateAngle + deg
 
 def forward(n):
-    if type(n) == list:
+    if type(n) is list:
         pos = position()
         angle = heading()
         dx = n[1] * sin((pi/180) * angle) + n[0] * sin((pi/180)*(angle + 90))
         dy = n[1] * cos((pi/180) * angle) + n[0] * cos((pi/180)*(angle + 90))
         position([pos[0] + dx, pos[1] - dy])
-    elif type(n) == str:
+    elif type(n) is str:
         siz = label([1, 1, n])
-        shape = __getshape__(__ACTUAL__)
         pos = position()
         angle = heading()
-        w, h = siz.Width / (__PT_TO_TWIP__ / __MM10_TO_TWIP__), siz.Height / (__PT_TO_TWIP__ / __MM10_TO_TWIP__)
+        w, _ = siz.Width / (__PT_TO_TWIP__ / __MM10_TO_TWIP__), siz.Height / (__PT_TO_TWIP__ / __MM10_TO_TWIP__)
         dx = 0 * sin((pi/180) * (angle)) + w * sin((pi/180)*(angle + 90))
         dy = 0 * cos((pi/180) * (angle)) + w * cos((pi/180)*(angle + 90))
         position([pos[0] + dx, pos[1] - dy])
@@ -992,7 +1003,7 @@ def forward(n):
         __go__(__TURTLE__, -n * __PT_TO_TWIP__)
 
 def backward(n):
-    if type(n) == list:
+    if type(n) is list:
         forward([-n[0], -n[1]])
         turnright(180)
     else:
@@ -1048,7 +1059,7 @@ def __go__(shapename, n, dot = False, preciseAngle = -1):
     if shapename == __TURTLE__:
         try:
             turtlepos = turtle.PolyPolygon[-1][-1]
-        except:
+        except Exception:
             pass
     pos = turtle.getPosition()
     dx = n * sin((pi/180)*(max(turtle.RotateAngle, preciseAngle)/100))
@@ -1071,7 +1082,7 @@ def __go__(shapename, n, dot = False, preciseAngle = -1):
     if shape and "LineShape" in shape.ShapeType:
             if _.continuous or dot:
                 last = shape.PolyPolygon[-1][-1]
-                if not (turtlepos and (abs(last.X - turtlepos.X) > 100 or abs(last.Y - turtlepos.Y) > 100) and 
+                if not (turtlepos and (abs(last.X - turtlepos.X) > 100 or abs(last.Y - turtlepos.Y) > 100) and
                   (__group__ == 0 or (shape.getPosition().X > 0 and turtle.getPosition().X > 0))): # picture [ ] keeps hanging shapes
                     if dot or _.linestyle == __LineStyle_DOTTED__:
                          shape.PolyPolygon = tuple( list(shape.PolyPolygon) + __dots__(n, turtlepos, dx, dy))
@@ -1154,12 +1165,12 @@ def __fillit__(filled = True):
             shape.FillBackground = True if shape.FillTransparence != 100 else False
             shape.FillHatch = _.hatch
             shape.FillStyle = 3
-        elif type(_.areacolor) != tuple:
+        elif type(_.areacolor) is not tuple:
             shape.FillStyle = int(filled)
         if shape.LineTransparence == 100:
             shape.LineStyle = 0
         if shape.FillTransparence == 100:
-            shape.FillTransparence = 0 # for hatching and better modifications on UI 
+            shape.FillTransparence = 0 # for hatching and better modifications on UI
             if not _.hatch:
                 shape.FillStyle = 0
         shape.setString(oldshape.getString())
@@ -1209,12 +1220,12 @@ def __boxshape__(shapetype, l):
         shape.FillBackground = True if shape.FillTransparence != 100 else False
         shape.FillHatch = _.hatch
         shape.FillStyle = 3
-    elif type(_.areacolor) != tuple:
+    elif type(_.areacolor) is not tuple:
         shape.FillStyle = 1
     if shape.LineTransparence == 100:
         shape.LineStyle = 0
     if shape.FillTransparence == 100:
-        shape.FillTransparence = 0 # for hatching and better modifications on UI 
+        shape.FillTransparence = 0 # for hatching and better modifications on UI
         if not _.hatch:
             shape.FillStyle = 0
     shape.RotateAngle = turtle.RotateAngle
@@ -1227,7 +1238,7 @@ def __boxshape__(shapetype, l):
             shape.CircleStartAngle = (-l[3] - 270) * 100
             shape.CircleEndAngle = (-l[2] - 270) * 100
             shape.CircleKind = [__FULL__, __SECTION__, __CUT__, __ARC__][l[4]]
-        except:
+        except Exception:
             pass
         pos.X = pos.X + shape.BoundRect.X - oldBoundRect.X
         pos.Y = pos.Y + shape.BoundRect.Y - oldBoundRect.Y
@@ -1238,7 +1249,7 @@ def __boxshape__(shapetype, l):
     __lefthang__(shape)
 
 def ellipse(l):
-    if type(l) != type([]): # default for circle and square
+    if type(l) is not type([]): # default for circle and square
         l = [l, l]
     if _.linestyle == __LineStyle_DOTTED__:
         __groupstart__()
@@ -1256,7 +1267,7 @@ def ellipse(l):
         __boxshape__("Ellipse", l)
 
 def rectangle(l):
-    if type(l) != type([]): # default for circle and square
+    if type(l) is not type([]): # default for circle and square
         l = [l, l]
     if _.linestyle == __LineStyle_DOTTED__:
         __groupstart__()
@@ -1266,7 +1277,7 @@ def rectangle(l):
         _.pencolor, _.linestyle = pc, __LineStyle_DOTTED__
         point()
         shape = __getshape__(__ACTUAL__)
-        if type(l) != type([]):
+        if type(l) is not type([]):
             l = [l, l]
         if len(l) == 2:
             l = l + [0]
@@ -1274,9 +1285,9 @@ def rectangle(l):
         c = shape.PolyPolygon[0][0]
         k = [min(l[0] / 2.0, l[2]), min(l[1] / 2.0, l[2])]
         p = __dots__(l[0] - 2 * k[0], __Point__(c.X - l[0]/2 + k[0], c.Y - l[1]/2), l[0] - 2 * k[0], 0)
-        p = p[:-1] + __dots__(l[1] - 2 * k[1], __Point__(c.X + l[0]/2, c.Y - l[1]/2 + k[1]), 0, l[1] - 2 * k[1]) 
-        p = p[:-1] + __dots__(l[0] - 2 * k[0], __Point__(c.X + l[0]/2 - k[0], c.Y + l[1]/2), -l[0] + 2 * k[0], 0) 
-        p = p[:-1] + __dots__(l[1] - 2 * k[1], __Point__(c.X - l[0]/2, c.Y + l[1]/2 - k[1]), 0, -l[1] + 2 * k[1]) 
+        p = p[:-1] + __dots__(l[1] - 2 * k[1], __Point__(c.X + l[0]/2, c.Y - l[1]/2 + k[1]), 0, l[1] - 2 * k[1])
+        p = p[:-1] + __dots__(l[0] - 2 * k[0], __Point__(c.X + l[0]/2 - k[0], c.Y + l[1]/2), -l[0] + 2 * k[0], 0)
+        p = p[:-1] + __dots__(l[1] - 2 * k[1], __Point__(c.X - l[0]/2, c.Y + l[1]/2 - k[1]), 0, -l[1] + 2 * k[1])
         if l[2] > 0:
                p = p + __dots__(max(k) * 2 * pi, __Point__(c.X - l[0]/2 + k[0], c.Y - l[1]/2 + k[1]), 0, 0, k, 3)[1:]
                p = p + __dots__(max(k) * 2 * pi, __Point__(c.X + l[0]/2 - k[0], c.Y - l[1]/2 + k[1]), 0, 0, k, 2)[1:]
@@ -1290,9 +1301,9 @@ def rectangle(l):
         __boxshape__("Rectangle", l)
 
 def label(st):
-    if type(st) != type([]):
+    if type(st) is not type([]):
         st = [0, 0, st]
-    # get text size 
+    # get text size
     shape = _.doc.createInstance( "com.sun.star.drawing.TextShape")
     shape.TextAutoGrowWidth = True
     shape.Visible = False
@@ -1306,14 +1317,14 @@ def label(st):
     rectangle([z.Width / (__PT_TO_TWIP__ / __MM10_TO_TWIP__), z.Height / (__PT_TO_TWIP__ / __MM10_TO_TWIP__)])
     _.drawpage.remove(shape)
     _.pencolor, _.areacolor = pc, ac
-    lab = __getshape__(__ACTUAL__) 
+    lab = __getshape__(__ACTUAL__)
     text(lab, st[2])
     if st[0] != 0 or st[1] != 0:
         pos = position()
         angle = heading()
         n = [st[0] * z.Width/2, st[1] * z.Height/2]
         dx = n[1] * sin((pi/180) * angle) + n[0] * sin((pi/180)*(angle + 90))
-        dy = n[1] * cos((pi/180) * angle) + n[0] * cos((pi/180)*(angle + 90)) 
+        dy = n[1] * cos((pi/180) * angle) + n[0] * cos((pi/180)*(angle + 90))
         lab.setPosition(__Point__(round(pos[0] * __PT_TO_TWIP__ / __MM10_TO_TWIP__ + dx - lab.BoundRect.Width/2), round(pos[1] * __PT_TO_TWIP__ / __MM10_TO_TWIP__ - dy - lab.BoundRect.Height/2)))
     _.shapecache[__ACTUAL__] = actual
     return z
@@ -1441,7 +1452,7 @@ def text(shape, orig_st):
         c.CharFontName = _.fontfamily
 
         # has HTML-like formatting
-        if formatting != None:
+        if formatting is not None:
             _.fixSVG = True
             prev_format = 0
             prev_extra_data = extra_data[0]
@@ -1514,11 +1525,11 @@ def sleep(t):
 def __removeshape__(shapename):
     try:
         _.shapecache.pop(shapename).Name = ""
-    except:
+    except Exception:
         pass
 
 def __fontweight__(w):
-    if type(w) == int:
+    if type(w) is int:
         return w
     elif re.match(__l12n__(_.lng)['BOLD'], w, flags = re.I):
         return 150
@@ -1527,7 +1538,7 @@ def __fontweight__(w):
     return 100
 
 def __fontstyle__(w):
-    if type(w) == int:
+    if type(w) is int:
         return w
     elif re.match(__l12n__(_.lng)['ITALIC'], w, flags = re.I):
         return __Slant_ITALIC__
@@ -1538,7 +1549,7 @@ def __fontstyle__(w):
 def __color__(c):
     if type(c) in [int, float]:
         return c
-    if type(c) == str:
+    if type(c) is str:
         if c == u'any':
             rc, rv, rgray = __NORMCOLORS__[int(random.random()*7)], random.random(), random.random() ** 0.5
             ratio = 1.0*abs(rc[2])/(abs(rc[2]) + abs(rc[4]))
@@ -1560,7 +1571,7 @@ def __color__(c):
         elif c[0].isdigit():
             return int(c, 0) # recognize hex and decimal numbers as strings
         return __colors__[_.lng][c.lower()]
-    if type(c) == list:
+    if type(c) is list:
         if len(c) == 1: # color index
             return __COLORS__[int(c[0])][1]
         elif len(c) == 3: # RGB
@@ -1576,12 +1587,12 @@ def __linestyle__(s):
         return _.linestyle, __LineDash__(__DashStyle_RECT__, 0, 0, 1, 100, 100)
     elif _.linestyle == __LineStyle_DOTTED__:
         return __LineStyle_DASHED__, __LineDash__(__DashStyle_RECT__, 1, 1, 0, 0, 100000)
-    elif type(s) == list:
+    elif type(s) is list:
         return __LineStyle_DASHED__, __LineDash__((s[5:6] or [0])[0], s[0], s[1] * __PT_TO_TWIP__, s[2], s[3] * __PT_TO_TWIP__, s[4] * __PT_TO_TWIP__)
     return s, __LineDash__()
 
 def fillstyle(s):
-    if type(s) == list:
+    if type(s) is list:
         color, null = __splitcolor__(__color__(s[1]))
         _.hatch = __Hatch__(s[0] - 1, color, s[2] * __PT_TO_TWIP__, s[3] * 10)
     elif s == 0:
@@ -1590,20 +1601,20 @@ def fillstyle(s):
         fillstyle([[1, 0, 5, 0], [1, 0, 5, 45], [1, 0, 5, -45], [1, 0, 5, 90], [2, [127, 0, 0], 5, 45], [2, [127, 0, 0], 5, 0], [2, [0, 0, 127], 5, 45], [2, [0, 0, 127], 5, 0], [3, [0, 0, 127], 5, 0], [1, 0, 25, 45]][s-1])
 
 def __splitcolor__(c, shape = None, angle = None):
-    if shape and (type(c) == tuple or type(_.t10y) == list):
-        angle = heading() if angle == None else -angle / 100 + 360
-        if type(c) == tuple:
+    if shape and (type(c) is tuple or type(_.t10y) is list):
+        angle = heading() if angle is None else -angle / 100 + 360
+        if type(c) is tuple:
             shape.FillStyle = __FillStyle_GRADIENT__
             # gradient color: [color1, color2, style, angle(must be positive for I/O), border, x_percent, y_percent, color1_intensity_percent, color2_intensity_percent]
             d, d[0:len(c)], c = [0, 0, __GradientStyle_LINEAR__, 0, 0, 0, 0, 100, 100], c, c[0]
             shape.FillGradient = __Gradient__(d[2], d[0], d[1], (-angle + d[3]) * 10 % 3600, d[4], d[5], d[6], d[7], d[8], 0)
-        if type(_.t10y) == list: # transparency gradient: [begin_percent, end_percent, style, angle, border, x_percent, y_percent]
+        if type(_.t10y) is list: # transparency gradient: [begin_percent, end_percent, style, angle, border, x_percent, y_percent]
             table = _.doc.createInstance("com.sun.star.drawing.TransparencyGradientTable")
             if not table.hasByName(str(_.t10y) + str(angle)):
                 t, t[0:len(_.t10y)] = [100, __GradientStyle_LINEAR__, 0, 0, 0, 0, 0], _.t10y
                 table.insertByName(str(_.t10y) + str(angle), __Gradient__(t[2], t[0] * 0xffffff / 100.0, t[1] * 0xffffff / 100.0, (-angle + t[3]) * 10 % 3600, t[4], t[5], t[6], 100, 100, 0))
             shape.FillTransparenceGradientName = str(_.t10y) + str(angle)
-            c = 0 if type(c) == tuple else c & 0xffffff
+            c = 0 if type(c) is tuple else c & 0xffffff
         else:
             shape.FillStyle = __FillStyle_GRADIENT__
             c = int(_.t10y * 255.0/100) << 24
@@ -1640,9 +1651,9 @@ def penstyle(n = -1):
     if n == -1:
         try:
             return __locname__(_.linestyle.value)
-        except:
+        except Exception:
             return __locname__('DOTTED')
-    if type(n) == list and len(n) >= 5:
+    if type(n) is list and len(n) >= 5:
         _.linestyle = n
     elif re.match(__l12n__(_.lng)['SOLID'], n, flags = re.I):
         _.linestyle = __LineStyle_SOLID__
@@ -1676,7 +1687,7 @@ def pencap(n = -1):
 def fillcolor(n = -1):
     if n != -1:
         _.areacolor = __color__(n)
-        if type(_.areacolor) != tuple:
+        if type(_.areacolor) is not tuple:
             _.t10y = (int(_.areacolor) >> 24) / (255.0/100)
         else:
             _.t10y = 0
@@ -1691,8 +1702,8 @@ def filltransparency(n = -1):
     if n != -1:
         if n == u'any':
             n = 100 * random.random()
-        if type(n) != list:
-            if type(_.areacolor) != tuple:
+        if type(n) is not list:
+            if type(_.areacolor) is not tuple:
                 fillcolor((_.areacolor & 0xffffff) + (int(n * (255.0/100)) << 24))
             else:
                 _.t10y = n
@@ -1803,12 +1814,12 @@ def __groupend__(name = ""):
     if name and ".SVG" == name[-4:].upper() and g != 0:
       _.doc.CurrentController.select(g)
       __dispatcher__(".uno:Copy")
-      ctx = XSCRIPTCONTEXT.getComponentContext()
+      ctx = XSCRIPTCONTEXT.getComponentContext() # noqa: F821
       d = ctx.ServiceManager.createInstanceWithContext("com.sun.star.frame.Desktop", ctx)
       draw = d.loadComponentFromURL("private:factory/sdraw", "_blank", 0, ())
       drawpage = draw.getDrawPages().getByIndex(0)
-      while XSCRIPTCONTEXT.getDocument() != draw:
-        if XSCRIPTCONTEXT.getDocument() not in [draw, _.doc, None]:
+      while XSCRIPTCONTEXT.getDocument() != draw: # noqa: F821
+        if XSCRIPTCONTEXT.getDocument() not in [draw, _.doc, None]: # noqa: F821
           __halt__ = True
           return
         __time__.sleep(0.1)
@@ -1824,8 +1835,8 @@ def __groupend__(name = ""):
         name = os.getcwd() + os.path.sep + name
       __dispatcher__(".uno:ExportTo", (__getprop__("URL", unohelper.systemPathToFileUrl(name)), __getprop__("FilterName", "draw_svg_Export")), draw)
       draw.close(True)
-      while XSCRIPTCONTEXT.getDocument() != _.doc:
-        if XSCRIPTCONTEXT.getDocument() not in [draw, _.doc, None]:
+      while XSCRIPTCONTEXT.getDocument() != _.doc: # noqa: F821
+        if XSCRIPTCONTEXT.getDocument() not in [draw, _.doc, None]: # noqa: F821
           __halt__ = True
           return
         __time__.sleep(0.1)
@@ -1836,12 +1847,12 @@ def __groupend__(name = ""):
     __removeshape__(__ACTUAL__)
 
 def __int__(x): # handle eg. int("10cm")
-    if type(x) == str:
+    if type(x) is str:
         x = __float__(x)
     return int(x)
 
 def __float__(x): # handle eg. float("10,5cm")
-    if type(x) == str:
+    if type(x) is str:
         for i in __comp__[_.lng]:
             x = re.sub(u"(?iu)" + i[0], i[1], x)
         x = eval(x)
@@ -1880,14 +1891,14 @@ def __loadlang__(lang, a):
         for j in a[i[0]].split("|"):
             __colors__[lang][j.lower()] = i[1]
     for i in a:
-        if not i[0:3] in ["LIB", "ERR", "PT", "INC", "MM", "CM", "HOU", "DEG"] and not i in __STRCONST__: # uppercase native commands
+        if i[0:3] not in ["LIB", "ERR", "PT", "INC", "MM", "CM", "HOU", "DEG"] and i not in __STRCONST__: # uppercase native commands
             a[i] = a[i].upper()
     repcount = a['REPCOUNT'].split('|')[0]
     loopi = itertools.count()
     loop = lambda r: "%(i)s = 1\n%(orig)s%(j)s = %(i)s\n%(i)s += 1\n" % \
         { "i": repcount + str(next(loopi)), "j": repcount, "orig": re.sub( r"(?ui)(?<!:)\b%s\b" % repcount, repcount + str(next(loopi)-1), r.group(0)) }
     __comp__[lang] = [
-    [r"(?i)(?<!:)(\b|(?=[-:]))(?:%s)\b" % "|".join([a[i].lower() for i in a if not "_" in i and i != "DECIMAL"]), lambda s: s.group().upper()], # uppercase all native commands in the source code
+    [r"(?i)(?<!:)(\b|(?=[-:]))(?:%s)\b" % "|".join([a[i].lower() for i in a if "_" not in i and i != "DECIMAL"]), lambda s: s.group().upper()], # uppercase all native commands in the source code
     [r"(?<!:)\b(?:%s) \[(?= |\n)" % a['GROUP'], "\n__groupstart__()\nfor __groupindex__ in range(2):\n[\nif __groupindex__ == 1:\n[\n__groupend__()\nbreak\n]\n"],
     [r"(?<!:)\b(?:%s) (%s[^[]*)\[(?= |\n)" % (a['GROUP'], __DECODE_STRING_REGEX__), "\n__groupstart__(\\1)\nfor __groupindex__ in range(2):\n[\nif __groupindex__ == 1:\n[\n__groupend__(\\1)\nbreak\n]\n"],
     [r"(?<!:)\b(?:%s)\b" % a['GROUP'], "\n__removeshape__(__ACTUAL__)\n"],
@@ -2096,18 +2107,18 @@ def __compil__(s):
         try:
             _.lng = loc.Language + '_' + loc.Country
             __loadlang__(_.lng, __l12n__(_.lng))
-        except:
+        except Exception:
             __trace__()
-            _.lng = loc.Language 
+            _.lng = loc.Language
             __loadlang__(_.lng, __l12n__(_.lng))
-    except:
+    except Exception:
         __trace__()
         # for testing compiling, we create a not document based namespace
         if "_" not in locals():
             _ = lambda: None
         _.lng = 'en_US'
-        if not _.lng in __comp__:
-            __loadlang__(_.lng, __l12n__(_.lng)) 
+        if _.lng not in __comp__:
+            __loadlang__(_.lng, __l12n__(_.lng))
 
     _.decimal = __l12n__(_.lng)['DECIMAL']
 
@@ -2258,7 +2269,7 @@ def __gotoline__(n):
         _.cursor.gotoNextParagraph(False)
     try:
         _.doc.CurrentController.getViewCursor().gotoRange(_.cursor, False)
-    except:
+    except Exception:
         __dispatcher__(".uno:Escape")
         _.doc.CurrentController.getViewCursor().gotoRange(_.cursor.getStart(), False)
 

@@ -16,11 +16,11 @@
 #include <osl/detail/component-mapping.h>
 
 extern "C" {
-void * com_sun_star_i18n_LocaleDataImpl_get_implementation( void *, void * );
-void * com_sun_star_i18n_BreakIterator_Unicode_get_implementation( void *, void * );
-void * com_sun_star_i18n_BreakIterator_get_implementation( void *, void * );
-void * com_sun_star_i18n_NativeNumberSupplier_get_implementation( void *, void * );
-void * com_sun_star_i18n_NumberFormatCodeMapper_get_implementation( void *, void * );
+void com_sun_star_i18n_LocaleDataImpl_get_implementation(void);
+void com_sun_star_i18n_BreakIterator_Unicode_get_implementation(void);
+void com_sun_star_i18n_BreakIterator_get_implementation(void);
+void com_sun_star_i18n_NativeNumberSupplier_get_implementation(void);
+void com_sun_star_i18n_NumberFormatCodeMapper_get_implementation(void);
 }
 
 const lib_to_factory_mapping *
@@ -62,8 +62,8 @@ extern "C" int LLVMFuzzerInitialize(int *argc, char ***argv)
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size)
 {
     SvMemoryStream aStream(const_cast<uint8_t*>(data), size, StreamMode::READ);
-    Graphic aGraphic;
-    (void)ImportMetGraphic(aStream, aGraphic);
+    ImportOutput aImportOutput;
+    (void)ImportMetGraphic(aStream, aImportOutput);
     return 0;
 }
 

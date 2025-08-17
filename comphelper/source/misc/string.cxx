@@ -266,7 +266,7 @@ sal_Int32 getTokenCount(std::u16string_view rIn, sal_Unicode cTok)
 sal_uInt32 decimalStringToNumber(std::u16string_view str)
 {
     sal_uInt32 result = 0;
-    for( sal_Int32 i = 0; i < static_cast<sal_Int32>(str.size()); )
+    for( std::size_t i = 0; i < str.size(); )
     {
         sal_uInt32 c = o3tl::iterateCodePoints(str, &i);
         sal_uInt32 value = 0;
@@ -368,7 +368,7 @@ OUString convertCommaSeparated(
 {
     OUStringBuffer buf;
     ::comphelper::intersperse(
-        i_rSeq.begin(), i_rSeq.end(), ::comphelper::OUStringBufferAppender(buf), OUString( ", " ));
+        i_rSeq.begin(), i_rSeq.end(), ::comphelper::OUStringBufferAppender(buf), u", "_ustr);
     return buf.makeStringAndClear();
 }
 
@@ -525,11 +525,11 @@ OUString reverseString(std::u16string_view rStr)
     return sBuf.makeStringAndClear();
 }
 
-OUString reverseCodePoints(OUString const & str) {
-    auto const len = str.getLength();
+OUString reverseCodePoints(std::u16string_view str) {
+    auto const len = str.size();
     OUStringBuffer buf(len);
-    for (auto i = len; i != 0;) {
-        buf.appendUtf32(str.iterateCodePoints(&i, -1));
+    for (sal_Int32 i = len; i != 0;) {
+        buf.appendUtf32(o3tl::iterateCodePoints(str, &i, -1));
     }
     return buf.makeStringAndClear();
 }

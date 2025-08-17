@@ -17,11 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_IDL_INC_LEX_HXX
-#define INCLUDED_IDL_INC_LEX_HXX
+#pragma once
 
 #include <sal/types.h>
 #include "hash.hxx"
+#include <rtl/strbuf.hxx>
 #include <tools/stream.hxx>
 #include <vector>
 #include <memory>
@@ -49,7 +49,7 @@ public:
             SvToken();
             SvToken( const SvToken & rObj ) = delete;
 
-    SvToken & operator = ( const SvToken & rObj );
+    SvToken & operator = ( const SvToken & rObj ) = default;
 
     OString     GetTokenAsString() const;
 
@@ -111,7 +111,7 @@ class SvTokenStream
     std::vector<std::unique_ptr<SvToken> > aTokList;
     std::vector<std::unique_ptr<SvToken> >::iterator pCurToken;
 
-    OString         aBufStr;
+    OStringBuffer aBufStr;
 
     void            InitCtor();
 
@@ -210,8 +210,5 @@ public:
         pCurToken = aTokList.begin()+nMaxPos;
     }
 };
-
-
-#endif // INCLUDED_IDL_INC_LEX_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

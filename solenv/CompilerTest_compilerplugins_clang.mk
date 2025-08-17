@@ -50,6 +50,7 @@ $(eval $(call gb_CompilerTest_add_exception_objects,compilerplugins_clang, \
     compilerplugins/clang/test/makeshared \
     compilerplugins/clang/test/moveit \
     compilerplugins/clang/test/moveparam \
+    compilerplugins/clang/test/mustoverride \
     compilerplugins/clang/test/noexcept \
     compilerplugins/clang/test/noexceptmove \
     compilerplugins/clang/test/nullptr \
@@ -71,6 +72,7 @@ $(eval $(call gb_CompilerTest_add_exception_objects,compilerplugins_clang, \
     compilerplugins/clang/test/redundantpreprocessor \
     compilerplugins/clang/test/refcounting \
     compilerplugins/clang/test/referencecasting \
+    compilerplugins/clang/test/reftotemp \
     compilerplugins/clang/test/returnconstval \
     compilerplugins/clang/test/salcall \
     compilerplugins/clang/test/sallogareas \
@@ -80,6 +82,7 @@ $(eval $(call gb_CompilerTest_add_exception_objects,compilerplugins_clang, \
     compilerplugins/clang/test/simplifydynamiccast \
     compilerplugins/clang/test/simplifypointertobool \
     compilerplugins/clang/test/singlevalfields \
+    compilerplugins/clang/test/staticconstexpr \
     compilerplugins/clang/test/staticconstfield \
     compilerplugins/clang/test/staticdynamic \
     compilerplugins/clang/test/staticmethods \

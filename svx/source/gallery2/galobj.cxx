@@ -63,7 +63,7 @@ BitmapEx SgaObject::createPreviewBitmapEx(const Size& rSizePixel) const
     {
         if(SgaObjKind::Sound == GetObjKind())
         {
-            aRetval = BitmapEx(RID_SVXBMP_GALLERY_MEDIA);
+            aRetval = Bitmap(RID_SVXBMP_GALLERY_MEDIA);
         }
         else if(IsThumbBitmap())
         {
@@ -101,16 +101,16 @@ bool SgaObject::CreateThumb( const Graphic& rGraphic )
 
     if( rGraphic.GetType() == GraphicType::Bitmap )
     {
-        BitmapEx    aBmpEx( rGraphic.GetBitmapEx() );
-        Size        aBmpSize( aBmpEx.GetSizePixel() );
+        Bitmap      aBmp( rGraphic.GetBitmapEx() );
+        Size        aBmpSize( aBmp.GetSizePixel() );
 
         if( aBmpSize.Width() && aBmpSize.Height() )
         {
-            if( aBmpEx.GetPrefMapMode().GetMapUnit() != MapUnit::MapPixel &&
-                aBmpEx.GetPrefSize().Width() > 0 &&
-                aBmpEx.GetPrefSize().Height() > 0 )
+            if( aBmp.GetPrefMapMode().GetMapUnit() != MapUnit::MapPixel &&
+                aBmp.GetPrefSize().Width() > 0 &&
+                aBmp.GetPrefSize().Height() > 0 )
             {
-                Size aLogSize( OutputDevice::LogicToLogic(aBmpEx.GetPrefSize(), aBmpEx.GetPrefMapMode(), MapMode(MapUnit::Map100thMM)) );
+                Size aLogSize( OutputDevice::LogicToLogic(aBmp.GetPrefSize(), aBmp.GetPrefMapMode(), MapMode(MapUnit::Map100thMM)) );
 
                 if( !aLogSize.IsEmpty() )
                 {
@@ -118,16 +118,16 @@ bool SgaObject::CreateThumb( const Graphic& rGraphic )
                     double  fFactorPix = static_cast< double >( aBmpSize.Width() ) / aBmpSize.Height();
 
                     if( fFactorPix > fFactorLog )
-                        aBmpSize.setWidth( FRound( aBmpSize.Height() * fFactorLog ) );
+                        aBmpSize.setWidth( basegfx::fround<tools::Long>( aBmpSize.Height() * fFactorLog ) );
                     else
-                        aBmpSize.setHeight( FRound( aBmpSize.Width() / fFactorLog ) );
+                        aBmpSize.setHeight( basegfx::fround<tools::Long>( aBmpSize.Width() / fFactorLog ) );
 
-                    aBmpEx.Scale(aBmpSize, BmpScaleFlag::BestQuality);
+                    aBmp.Scale(aBmpSize, BmpScaleFlag::BestQuality);
                 }
             }
 
-            // take over BitmapEx
-            aThumbBmp = aBmpEx;
+            // take over Bitmap
+            aThumbBmp = std::move(aBmp);
 
             if( ( aBmpSize.Width() <= S_THUMB ) && ( aBmpSize.Height() <= S_THUMB ) )
             {
@@ -161,7 +161,7 @@ bool SgaObject::CreateThumb( const Graphic& rGraphic )
             aSize.setHeight( static_cast<sal_Int32>( S_THUMB / fFactor ) );
 
         const GraphicConversionParameters aParameters(aSize, false, true, true /*TODO: extra ", true" post-#i121194#*/);
-        aThumbBmp = rGraphic.GetBitmapEx(aParameters);
+        aThumbBmp = Bitmap(rGraphic.GetBitmapEx(aParameters));
 
         if( !aThumbBmp.IsEmpty() )
         {
@@ -240,7 +240,7 @@ void SgaObject::SetTitle( const OUString& rTitle )
 
 SvStream& WriteSgaObject( SvStream& rOut, const SgaObject& rObj )
 {
-    rObj.WriteData( rOut, "" );
+    rObj.WriteData( rOut, u""_ustr );
     return rOut;
 }
 
@@ -324,7 +324,7 @@ SgaObjectSound::~SgaObjectSound()
 {
 }
 
-BitmapEx SgaObjectSound::GetThumbBmp() const
+Bitmap SgaObjectSound::GetThumbBmp() const
 {
     OUString sId;
 
@@ -344,9 +344,7 @@ BitmapEx SgaObjectSound::GetThumbBmp() const
         break;
     }
 
-    const BitmapEx  aBmpEx(sId);
-
-    return aBmpEx;
+    return Bitmap(sId);
 }
 
 void SgaObjectSound::WriteData( SvStream& rOut, const OUString& rDestDir ) const
@@ -405,7 +403,7 @@ SgaObjectSvDraw::SgaObjectSvDraw( const FmFormModel& rModel, const INetURLObject
 SvxGalleryDrawModel::SvxGalleryDrawModel()
 : mpFormModel( nullptr )
 {
-    mxDoc = SfxObjectShell::CreateObjectByFactoryName( "sdraw" );
+    mxDoc = SfxObjectShell::CreateObjectByFactoryName( u"sdraw"_ustr );
 
     if( !mxDoc.Is() )
         return;
@@ -466,7 +464,7 @@ bool SgaObjectSvDraw::CreateThumb( const FmFormModel& rModel )
 
                 aView.ShowSdrPage(const_cast< FmFormPage* >(pPage));
                 aView.MarkAllObj();
-                aThumbBmp = aView.GetMarkedObjBitmapEx(true);
+                aThumbBmp = aView.GetMarkedObjBitmap(true);
                 aGraphic = Graphic(aThumbBmp);
                 bRet = SgaObject::CreateThumb(aGraphic);
             }

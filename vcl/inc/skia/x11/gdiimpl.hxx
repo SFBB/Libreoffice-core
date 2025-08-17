@@ -7,8 +7,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#ifndef INCLUDED_VCL_INC_SKIA_X11_GDIIMPL_HXX
-#define INCLUDED_VCL_INC_SKIA_X11_GDIIMPL_HXX
+#pragma once
 
 #include <vcl/dllapi.h>
 
@@ -25,8 +24,7 @@ private:
 public:
     X11SkiaSalGraphicsImpl(X11SalGraphics& rParent);
 
-    virtual void Init() override;
-    virtual void freeResources() override;
+    virtual void UpdateX11GeometryProvider() override;
     virtual void Flush() override;
 
     static void prepareSkia();
@@ -34,12 +32,10 @@ public:
 private:
     virtual void createWindowSurfaceInternal(bool forceRaster = false) override;
     virtual bool avoidRecreateByResize() const override;
-    static std::unique_ptr<sk_app::WindowContext>
+    static std::unique_ptr<skwindow::WindowContext>
     createWindowContext(Display* display, Drawable drawable, const XVisualInfo* visual, int width,
                         int height, SkiaHelper::RenderMethod renderMethod, bool temporary);
-    friend std::unique_ptr<sk_app::WindowContext> createVulkanWindowContext(bool);
+    friend std::unique_ptr<skwindow::WindowContext> createVulkanWindowContext(bool);
 };
-
-#endif // INCLUDED_VCL_INC_SKIA_X11_GDIIMPL_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

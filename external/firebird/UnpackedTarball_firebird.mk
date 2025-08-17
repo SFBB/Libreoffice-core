@@ -51,6 +51,8 @@ $(eval $(call gb_UnpackedTarball_add_patches,firebird,\
     external/firebird/0001-extern-cloop-Missing-dependencies-of-compilations-on.patch.1 \
     external/firebird/configure-c99.patch \
     external/firebird/Wincompatible-function-pointer-types.patch \
+    external/firebird/c++26.patch \
+    external/firebird/c++20.patch \
 ))
 
 ifeq ($(OS),WNT)
@@ -77,6 +79,7 @@ endif
 ifneq ($(filter -fsanitize=%,$(CC)),)
 $(eval $(call gb_UnpackedTarball_add_patches,firebird, \
     external/firebird/sanitizer.patch \
+    $(if $(CLANG_16),external/firebird/sanitizer-rtti.patch) \
 ))
 endif
 

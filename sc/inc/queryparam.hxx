@@ -27,10 +27,9 @@
 #include <vector>
 #include <ostream>
 
-class SvNumberFormatter;
+struct ScInterpreterContext;
 
 struct ScDBQueryParamInternal;
-struct ScQueryEntry;
 
 namespace svl {
 
@@ -42,6 +41,7 @@ struct SAL_DLLPUBLIC_RTTI ScQueryParamBase
 {
     utl::SearchParam::SearchType eSearchType;
     bool            bHasHeader;
+    bool            bHasTotals;
     bool            bByRow;
     bool            bInplace;
     bool            bCaseSens;
@@ -57,12 +57,12 @@ struct SAL_DLLPUBLIC_RTTI ScQueryParamBase
     SC_DLLPUBLIC ScQueryEntry& GetEntry(SCSIZE n);
     SC_DLLPUBLIC ScQueryEntry& AppendEntry();
     ScQueryEntry* FindEntryByField(SCCOLROW nField, bool bNew);
-    std::vector<ScQueryEntry*> FindAllEntriesByField(SCCOLROW nField);
+    SC_DLLPUBLIC std::vector<ScQueryEntry*> FindAllEntriesByField(SCCOLROW nField);
     SC_DLLPUBLIC bool RemoveEntryByField(SCCOLROW nField);
     SC_DLLPUBLIC void RemoveAllEntriesByField(SCCOLROW nField);
     void Resize(size_t nNew);
     void FillInExcelSyntax( svl::SharedStringPool& rPool, const OUString& aCellStr, SCSIZE nIndex,
-                            SvNumberFormatter* pFormatter );
+                            ScInterpreterContext* pContext );
 
 protected:
     typedef std::vector<ScQueryEntry> EntriesType;
@@ -88,6 +88,7 @@ inline std::basic_ostream<charT, traits> & operator <<(std::basic_ostream<charT,
     stream << "{" <<
         "searchType=" << rParam.eSearchType <<
         ",hasHeader=" << (rParam.bHasHeader?"YES":"NO") <<
+        ",hasTotals=" << (rParam.bHasTotals?"YES":"NO") <<
         ",byRow=" << (rParam.bByRow?"YES":"NO") <<
         ",inplace=" << (rParam.bInplace?"YES":"NO") <<
         ",caseSens=" << (rParam.bCaseSens?"YES":"NO") <<

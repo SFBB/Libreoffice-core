@@ -24,14 +24,13 @@
 #include <tools/gen.hxx>
 #include <tools/debug.hxx>
 
-class SvStream;
-
 class SVL_DLLPUBLIC SfxPointItem final : public SfxPoolItem
 {
     Point                    aVal;
 
 public:
                              static SfxPoolItem* CreateDefault();
+                             DECLARE_ITEM_TYPE_FUNCTION(SfxPointItem)
                              SfxPointItem();
                              SfxPointItem( sal_uInt16 nWhich, const Point& rVal );
 
@@ -46,10 +45,7 @@ public:
     virtual SfxPointItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
 
     const Point&             GetValue() const { return aVal; }
-            void             SetValue( const Point& rNewVal ) {
-                                 DBG_ASSERT( GetRefCount() == 0, "SetValue() with pooled item" );
-                                 aVal = rNewVal;
-                             }
+            void             SetValue( const Point& rNewVal ) { ASSERT_CHANGE_REFCOUNTED_ITEM; aVal = rNewVal; }
 
     virtual bool             QueryValue( css::uno::Any& rVal,
                                           sal_uInt8 nMemberId = 0 ) const override;

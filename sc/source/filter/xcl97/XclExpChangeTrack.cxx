@@ -37,6 +37,9 @@
 #include <oox/token/tokens.hxx>
 #include <rtl/uuid.h>
 #include <svl/sharedstring.hxx>
+#include <unotools/securityoptions.hxx>
+
+#include <com/sun/star/util/DateTime.hpp>
 
 using namespace oox;
 
@@ -395,7 +398,7 @@ XclExpXmlChTrHeader::XclExpXmlChTrHeader(
     OUString aUserName, const DateTime& rDateTime, const sal_uInt8* pGUID,
     sal_Int32 nLogNumber, const XclExpChTrTabIdBuffer& rBuf ) :
     maUserName(std::move(aUserName)), maDateTime(rDateTime), mnLogNumber(nLogNumber),
-    mnMinAction(0), mnMaxAction(0)
+    mnMinAction(0), mnMaxAction(0), mpAuthorIDs(new SvtSecurityMapPersonalInfo)
 {
     memcpy(maGUID, pGUID, 16);
     if (rBuf.GetBufferCount())
@@ -421,6 +424,14 @@ void XclExpXmlChTrHeader::SaveXml( XclExpXmlStream& rStrm )
             &aRelId);
 
     tools::Guid aGuid(maGUID);
+    bool bRemovePersonalInfo
+        = SvtSecurityOptions::IsOptionSet(SvtSecurityOptions::EOption::DocWarnRemovePersonalInfo)
+          && !SvtSecurityOptions::IsOptionSet(SvtSecurityOptions::EOption::DocWarnKeepRedlineInfo);
+    if (bRemovePersonalInfo)
+    {
+        maDateTime = css::util::DateTime(0, 0, 0, 12, 1, 1, 1970, true);
+        maUserName = "Author" + OUString::number(mpAuthorIDs->GetInfoID(maUserName));
+    }
     rStrm.WriteAttributes(
         XML_guid, aGuid.getString(),
         XML_dateTime, lcl_DateTimeToOString(maDateTime),
@@ -915,7 +926,7 @@ void XclExpChTrCellContent::GetCellData(
                 XclExpHyperlinkHelper aLinkHelper( rRoot, aPosition );
                 if (rScCell.getEditText())
                 {
-                    sCellStr = ScEditUtil::GetString(*rScCell.getEditText(), &GetDoc());
+                    sCellStr = ScEditUtil::GetString(*rScCell.getEditText(), GetDoc());
                     rpData->mpFormattedString = XclExpStringHelper::CreateCellString(
                         rRoot, *rScCell.getEditText(), nullptr, aLinkHelper);
                 }
@@ -1029,7 +1040,7 @@ static void lcl_WriteCell( XclExpXmlStream& rStrm, sal_Int32 nElement, const ScA
     sax_fastparser::FSHelperPtr pStream = rStrm.GetCurrentStream();
 
     pStream->startElement(nElement,
-        XML_r, XclXmlUtils::ToOString(rStrm.GetRoot().GetDoc(), rPosition),
+        XML_r, XclXmlUtils::ToOString(rStrm.GetRoot().GetDoc(), ScRange(rPosition)),
         XML_s, nullptr,   // OOXTODO: not supported
         XML_t, lcl_GetType(pData),
         XML_cm, nullptr,   // OOXTODO: not supported
@@ -1097,7 +1108,7 @@ void XclExpChTrCellContent::SaveXml( XclExpXmlStream& rRevisionLogStrm )
         lcl_WriteCell( rRevisionLogStrm, XML_oc, aPosition, pOldData.get() );
         if (!pNewData)
         {
-            pStream->singleElement(XML_nc, XML_r, XclXmlUtils::ToOString(rRevisionLogStrm.GetRoot().GetDoc(), aPosition));
+            pStream->singleElement(XML_nc, XML_r, XclXmlUtils::ToOString(rRevisionLogStrm.GetRoot().GetDoc(), ScRange(aPosition)));
         }
     }
     if( pNewData )
@@ -1607,7 +1618,7 @@ ScChangeTrack* XclExpChangeTrack::CreateTempChangeTrack()
     if(nOrigCount != xTempDoc->GetTableCount())
         return nullptr;
 
-    return pOrigChangeTrack->Clone(xTempDoc.get());
+    return pOrigChangeTrack->Clone(*xTempDoc);
 }
 
 void XclExpChangeTrack::PushActionRecord( const ScChangeAction& rAction )
@@ -1648,7 +1659,7 @@ void XclExpChangeTrack::PushActionRecord( const ScChangeAction& rAction )
 bool XclExpChangeTrack::WriteUserNamesStream()
 {
     bool bRet = false;
-    tools::SvRef<SotStorageStream> xSvStrm = OpenStream( EXC_STREAM_USERNAMES );
+    rtl::Reference<SotStorageStream> xSvStrm = OpenStream(EXC_STREAM_USERNAMES);
     OSL_ENSURE( xSvStrm.is(), "XclExpChangeTrack::WriteUserNamesStream - no stream" );
     if( xSvStrm.is() )
     {
@@ -1671,7 +1682,7 @@ void XclExpChangeTrack::Write()
     if( !WriteUserNamesStream() )
         return;
 
-    tools::SvRef<SotStorageStream> xSvStrm = OpenStream( EXC_STREAM_REVLOG );
+    rtl::Reference<SotStorageStream> xSvStrm = OpenStream(EXC_STREAM_REVLOG);
     OSL_ENSURE( xSvStrm.is(), "XclExpChangeTrack::Write - no stream" );
     if( xSvStrm.is() )
     {
@@ -1687,7 +1698,7 @@ void XclExpChangeTrack::Write()
 static void lcl_WriteUserNamesXml( XclExpXmlStream& rWorkbookStrm )
 {
     sax_fastparser::FSHelperPtr pUserNames = rWorkbookStrm.CreateOutputStream(
-            "xl/revisions/userNames.xml",
+            u"xl/revisions/userNames.xml"_ustr,
             u"revisions/userNames.xml",
             rWorkbookStrm.GetCurrentStream()->getOutputStream(),
             "application/vnd.openxmlformats-officedocument.spreadsheetml.userNames+xml",
@@ -1710,7 +1721,7 @@ void XclExpChangeTrack::WriteXml( XclExpXmlStream& rWorkbookStrm )
     lcl_WriteUserNamesXml( rWorkbookStrm );
 
     sax_fastparser::FSHelperPtr pRevisionHeaders = rWorkbookStrm.CreateOutputStream(
-            "xl/revisions/revisionHeaders.xml",
+            u"xl/revisions/revisionHeaders.xml"_ustr,
             u"revisions/revisionHeaders.xml",
             rWorkbookStrm.GetCurrentStream()->getOutputStream(),
             "application/vnd.openxmlformats-officedocument.spreadsheetml.revisionHeaders+xml",

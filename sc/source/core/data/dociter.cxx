@@ -30,7 +30,6 @@
 #include <attarray.hxx>
 #include <patattr.hxx>
 #include <docoptio.hxx>
-#include <cellform.hxx>
 #include <segmenttree.hxx>
 #include <progress.hxx>
 #include <queryparam.hxx>
@@ -47,7 +46,6 @@
 #include <editeng/editobj.hxx>
 #include <svl/sharedstring.hxx>
 #include <unotools/collatorwrapper.hxx>
-#include <osl/diagnose.h>
 #include <sal/log.hxx>
 
 #include <algorithm>
@@ -74,11 +72,14 @@ static void ScAttrArray_IterGetNumberFormat( sal_uInt32& nFormat, const ScAttrAr
     const ScPatternAttr* pPattern = pNewArr->GetPatternRange( nRowStart, nRowEnd, nRow );
     if( !pPattern )
     {
-        pPattern = rDoc.GetDefPattern();
+        pPattern = &rDoc.getCellAttributeHelper().getDefaultCellAttribute();
         nRowEnd = rDoc.MaxRow();
     }
 
-    nFormat = pPattern->GetNumberFormat( pContext ? pContext->GetFormatTable() : rDoc.GetFormatTable() );
+    if (pContext)
+        nFormat = pPattern->GetNumberFormat(*pContext);
+    else
+        nFormat = pPattern->GetNumberFormat(rDoc.GetFormatTable());
     rpArr = pNewArr;
     nAttrEndRow = nRowEnd;
 }
@@ -260,7 +261,7 @@ void ScValueIterator::GetCurNumFmtInfo( SvNumFormatType& nType, sal_uInt32& nInd
         SCROW nCurRow = GetRow();
         const ScColumn* pCol = &(mrDoc.maTabs[mnTab])->aCol[mnCol];
         nNumFmtIndex = pCol->GetNumberFormat(mrContext, nCurRow);
-        nNumFmtType = mrContext.GetNumberFormatType( nNumFmtIndex );
+        nNumFmtType = mrContext.NFGetType(nNumFmtIndex);
         bNumValid = true;
     }
 
@@ -451,7 +452,7 @@ bool ScDBQueryDataIterator::DataAccessInternal::getCurrent(Value& rValue)
                         incPos();
                     else
                     {
-                        rValue.maString = aCell.getString(&mrDoc);
+                        rValue.maString = aCell.getString(mrDoc);
                         rValue.mfValue = 0.0;
                         rValue.mnError = FormulaError::NONE;
                         rValue.mbIsNumber = false;
@@ -874,17 +875,29 @@ void ScCellIterator::init()
     while (maEndPos.Tab() > 0 && !mrDoc.maTabs[maEndPos.Tab()])
         maEndPos.IncTab(-1); // Only the tables in use
 
-    if (maStartPos.Tab() > maEndPos.Tab())
-        maStartPos.SetTab(maEndPos.Tab());
-
-    if (!mrDoc.maTabs[maStartPos.Tab()])
+    if (maStartPos.Tab() > maEndPos.Tab() || !mrDoc.maTabs[maStartPos.Tab()])
     {
         assert(!"Table not found");
-        maStartPos = ScAddress(mrDoc.MaxCol()+1, mrDoc.MaxRow()+1, MAXTAB+1); // -> Abort on GetFirst.
+        maStartPos = ScAddress(mrDoc.MaxCol()+1, mrDoc.MaxRow()+1, MAXTAB+1); // -> Abort on first().
     }
     else
     {
-        maStartPos.SetCol(mrDoc.maTabs[maStartPos.Tab()]->ClampToAllocatedColumns(maStartPos.Col()));
+        for (auto tabNo = maStartPos.Tab();; ++tabNo)
+        {
+            const auto& pTab = mrDoc.maTabs[tabNo];
+            if (pTab && maStartPos.Col() < pTab->GetAllocatedColumnsCount())
+            {
+                // Found the first table with allocated columns in range
+                maStartPos.SetTab(tabNo);
+                break;
+            }
+            if (tabNo == maEndPos.Tab())
+            {
+                // No allocated columns found in the range -> return false from first().
+                maStartPos = ScAddress(mrDoc.MaxCol() + 1, mrDoc.MaxRow() + 1, MAXTAB + 1);
+                break;
+            }
+        }
     }
 
     maCurPos = maStartPos;
@@ -968,7 +981,7 @@ bool ScCellIterator::getCurrent()
 
 OUString ScCellIterator::getString() const
 {
-    return maCurCell.getString(&mrDoc);
+    return maCurCell.getString(mrDoc);
 }
 
 ScCellValue ScCellIterator::getCellValue() const
@@ -1402,11 +1415,11 @@ void ScHorizontalAttrIterator::InitForNextRow(bool bInitialization)
             {
                 pNextEnd[nPos] = rDoc.MaxRow();
                 assert( pNextEnd[nPos] >= nRow && "Sequence out of order" );
-                ppPatterns[nPos] = rDoc.GetDefPattern();
+                ppPatterns[nPos] = &rDoc.getCellAttributeHelper().getDefaultCellAttribute();
             }
             else if ( nIndex < pArray.Count() )
             {
-                const ScPatternAttr* pPattern = pArray.mvData[nIndex].pPattern;
+                const ScPatternAttr* pPattern = pArray.mvData[nIndex].getScPatternAttr();
                 SCROW nThisEnd = pArray.mvData[nIndex].nEndRow;
                 pNextEnd[nPos] = nThisEnd;
                 assert( pNextEnd[nPos] >= nRow && "Sequence out of order" );
@@ -1424,7 +1437,7 @@ void ScHorizontalAttrIterator::InitForNextRow(bool bInitialization)
             nMinNextEnd = pNextEnd[nPos];
 
         // store positions of ScHorizontalAttrIterator elements (minimizing expensive ScPatternAttr comparisons)
-        if (i > nStartCol && !SfxPoolItem::areSame(ppPatterns[nThisHead], ppPatterns[nPos]))
+        if (i > nStartCol && !ScPatternAttr::areSame(ppPatterns[nThisHead], ppPatterns[nPos]))
         {
            pHorizEnd[nThisHead] = i - 1;
            nThisHead = nPos; // start position of the next horizontal group
@@ -1579,18 +1592,14 @@ ScDocAttrIterator::ScDocAttrIterator(ScDocument& rDocument, SCTAB nTable,
     nCol( nCol1 )
 {
     if ( ValidTab(nTab) && nTab < rDoc.GetTableCount() && rDoc.maTabs[nTab] )
-        pColIter = rDoc.maTabs[nTab]->GetColumnData(nCol).CreateAttrIterator( nStartRow, nEndRow );
-}
-
-ScDocAttrIterator::~ScDocAttrIterator()
-{
+        moColIter = rDoc.maTabs[nTab]->GetColumnData(nCol).CreateAttrIterator( nStartRow, nEndRow );
 }
 
 const ScPatternAttr* ScDocAttrIterator::GetNext( SCCOL& rCol, SCROW& rRow1, SCROW& rRow2 )
 {
-    while ( pColIter )
+    while ( moColIter )
     {
-        const ScPatternAttr* pPattern = pColIter->Next( rRow1, rRow2 );
+        const ScPatternAttr* pPattern = moColIter->Next( rRow1, rRow2 );
         if ( pPattern )
         {
             rCol = nCol;
@@ -1599,9 +1608,9 @@ const ScPatternAttr* ScDocAttrIterator::GetNext( SCCOL& rCol, SCROW& rRow1, SCRO
 
         ++nCol;
         if ( nCol <= nEndCol )
-            pColIter = rDoc.maTabs[nTab]->GetColumnData(nCol).CreateAttrIterator( nStartRow, nEndRow );
+            moColIter = rDoc.maTabs[nTab]->GetColumnData(nCol).CreateAttrIterator( nStartRow, nEndRow );
         else
-            pColIter.reset();
+            moColIter.reset();
     }
     return nullptr;  // Nothing anymore
 }
@@ -1683,13 +1692,13 @@ void ScDocRowHeightUpdater::updateAll(const bool bOnlyUsedRows)
     ScProgress aProgress(mrDoc.GetDocumentShell(), ScResId(STR_PROGRESS_HEIGHTING), nCellCount, true);
 
     Fraction aZoom(1, 1);
-    sc::RowHeightContext aCxt(mrDoc.MaxRow(), mfPPTX, mfPPTY, aZoom, aZoom, mpOutDev);
     sal_uInt64 nProgressStart = 0;
     for (SCTAB nTab = 0; nTab < mrDoc.GetTableCount(); ++nTab)
     {
         if (!ValidTab(nTab) || !mrDoc.maTabs[nTab])
             continue;
 
+        sc::RowHeightContext aCxt(mrDoc.MaxRow(), mfPPTX, mfPPTY, aZoom, aZoom, mpOutDev);
         SCCOL nEndCol = 0;
         SCROW nEndRow = mrDoc.MaxRow();
         if (!bOnlyUsedRows || mrDoc.GetPrintArea(nTab, nEndCol, nEndRow))
@@ -1711,7 +1720,7 @@ ScAttrRectIterator::ScAttrRectIterator(ScDocument& rDocument, SCTAB nTable,
 {
     if ( ValidTab(nTab) && nTab < rDoc.GetTableCount() && rDoc.maTabs[nTab] )
     {
-        pColIter = rDoc.maTabs[nTab]->GetColumnData(nIterStartCol).CreateAttrIterator( nStartRow, nEndRow );
+        moColIter = rDoc.maTabs[nTab]->GetColumnData(nIterStartCol).CreateAttrIterator( nStartRow, nEndRow );
         while ( nIterEndCol < nEndCol &&
                 rDoc.maTabs[nTab]->GetColumnData(nIterEndCol).IsAllAttrEqual(
                     rDoc.maTabs[nTab]->GetColumnData(nIterEndCol+1), nStartRow, nEndRow ) )
@@ -1719,25 +1728,21 @@ ScAttrRectIterator::ScAttrRectIterator(ScDocument& rDocument, SCTAB nTable,
     }
 }
 
-ScAttrRectIterator::~ScAttrRectIterator()
-{
-}
-
 void ScAttrRectIterator::DataChanged()
 {
-    if (pColIter)
+    if (moColIter)
     {
-        SCROW nNextRow = pColIter->GetNextRow();
-        pColIter = rDoc.maTabs[nTab]->GetColumnData(nIterStartCol).CreateAttrIterator( nNextRow, nEndRow );
+        SCROW nNextRow = moColIter->GetNextRow();
+        moColIter = rDoc.maTabs[nTab]->GetColumnData(nIterStartCol).CreateAttrIterator( nNextRow, nEndRow );
     }
 }
 
 const ScPatternAttr* ScAttrRectIterator::GetNext( SCCOL& rCol1, SCCOL& rCol2,
                                                     SCROW& rRow1, SCROW& rRow2 )
 {
-    while ( pColIter )
+    while ( moColIter )
     {
-        const ScPatternAttr* pPattern = pColIter->Next( rRow1, rRow2 );
+        const ScPatternAttr* pPattern = moColIter->Next( rRow1, rRow2 );
         if ( pPattern )
         {
             rCol1 = nIterStartCol;
@@ -1749,14 +1754,14 @@ const ScPatternAttr* ScAttrRectIterator::GetNext( SCCOL& rCol1, SCCOL& rCol2,
         if ( nIterStartCol <= nEndCol )
         {
             nIterEndCol = nIterStartCol;
-            pColIter = rDoc.maTabs[nTab]->GetColumnData(nIterStartCol).CreateAttrIterator( nStartRow, nEndRow );
+            moColIter = rDoc.maTabs[nTab]->GetColumnData(nIterStartCol).CreateAttrIterator( nStartRow, nEndRow );
             while ( nIterEndCol < nEndCol &&
                     rDoc.maTabs[nTab]->GetColumnData(nIterEndCol).IsAllAttrEqual(
                         rDoc.maTabs[nTab]->GetColumnData(nIterEndCol+1), nStartRow, nEndRow ) )
                 ++nIterEndCol;
         }
         else
-            pColIter.reset();
+            moColIter.reset();
     }
     return nullptr; // Nothing anymore
 }

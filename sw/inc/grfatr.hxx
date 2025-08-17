@@ -41,6 +41,7 @@ class SW_DLLPUBLIC SwMirrorGrf final : public SfxEnumItem<MirrorGraph>
     bool m_bGrfToggle; // Flip graphics on even pages.
 
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwMirrorGrf)
     SwMirrorGrf( MirrorGraph eMiro = MirrorGraph::Dont )
         : SfxEnumItem( RES_GRFATR_MIRRORGRF, eMiro ), m_bGrfToggle( false )
     {}
@@ -49,7 +50,6 @@ public:
     virtual SwMirrorGrf* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     // pure virtual methods of SfxEnumItem
-    virtual sal_uInt16      GetValueCount() const override;
     virtual bool            operator==( const SfxPoolItem& ) const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
@@ -69,6 +69,7 @@ public:
 class SW_DLLPUBLIC SwCropGrf final : public SvxGrfCrop
 {
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwCropGrf)
     SwCropGrf();
     SwCropGrf(  sal_Int32 nLeft,    sal_Int32 nRight,
                 sal_Int32 nTop,     sal_Int32 nBottom );
@@ -87,6 +88,7 @@ private:
     static Degree10 checkAndCorrectValue(Degree10 nValue);
 
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwRotationGrf)
     SwRotationGrf()
         : SfxUInt16Item( RES_GRFATR_ROTATION, 0 )
     {}
@@ -113,6 +115,7 @@ public:
 class SW_DLLPUBLIC SwLuminanceGrf final : public SfxInt16Item
 {
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwLuminanceGrf)
     SwLuminanceGrf( sal_Int16 nVal = 0 )
         : SfxInt16Item( RES_GRFATR_LUMINANCE, nVal )
     {}
@@ -129,6 +132,7 @@ public:
 class SW_DLLPUBLIC SwContrastGrf final : public SfxInt16Item
 {
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwContrastGrf)
     SwContrastGrf( sal_Int16 nVal = 0 )
         : SfxInt16Item( RES_GRFATR_CONTRAST, nVal )
     {}
@@ -149,6 +153,8 @@ protected:
         : SfxInt16Item( nWhichL, nVal )
     {}
 
+    virtual SfxItemType ItemType() const override = 0;
+
 public:
     // pure virtual methods from SfxInt16Item
     virtual bool GetPresentation( SfxItemPresentation ePres,
@@ -161,6 +167,7 @@ public:
 class SwChannelRGrf final : public SwChannelGrf
 {
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwChannelRGrf)
     SwChannelRGrf( sal_Int16 nVal = 0 )
         : SwChannelGrf( nVal, RES_GRFATR_CHANNELR )
     {}
@@ -169,6 +176,7 @@ public:
 class SwChannelGGrf final : public SwChannelGrf
 {
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwChannelGGrf)
     SwChannelGGrf( sal_Int16 nVal = 0 )
         : SwChannelGrf( nVal, RES_GRFATR_CHANNELG )
     {}
@@ -177,6 +185,7 @@ public:
 class SwChannelBGrf final : public SwChannelGrf
 {
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwChannelBGrf)
     SwChannelBGrf( sal_Int16 nVal = 0 )
         : SwChannelGrf( nVal, RES_GRFATR_CHANNELB )
     {}
@@ -187,6 +196,7 @@ class SW_DLLPUBLIC SwGammaGrf final : public SfxPoolItem
 {
     double m_nValue;
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwGammaGrf)
     SwGammaGrf() : SfxPoolItem( RES_GRFATR_GAMMA ), m_nValue( 1.0 )
     {}
 
@@ -197,6 +207,8 @@ public:
     // pure virtual methods from SfxEnumItem
     virtual SwGammaGrf*     Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual bool            operator==( const SfxPoolItem& ) const override;
+    virtual bool            supportsHashCode() const override { return true; }
+    virtual size_t          hashCode() const override { return static_cast<size_t>(m_nValue); }
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,
@@ -214,6 +226,7 @@ public:
 class SwInvertGrf final : public SfxBoolItem
 {
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwInvertGrf)
     SwInvertGrf( bool bVal = false )
         : SfxBoolItem( RES_GRFATR_INVERT, bVal )
     {}
@@ -230,6 +243,7 @@ public:
 class SwTransparencyGrf final : public SfxByteItem
 {
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwTransparencyGrf)
     SwTransparencyGrf( sal_Int8 nVal = 0 )
         : SfxByteItem( RES_GRFATR_TRANSPARENCY, nVal )
     {}
@@ -252,11 +266,14 @@ class SwDrawModeGrf_Base: public SfxEnumItem<GraphicDrawMode> {
 protected:
     SwDrawModeGrf_Base(GraphicDrawMode nMode):
         SfxEnumItem(RES_GRFATR_DRAWMODE, nMode) {}
+
+    virtual SfxItemType ItemType() const override = 0;
 };
 
 class SW_DLLPUBLIC SwDrawModeGrf final : public SwDrawModeGrf_Base
 {
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwDrawModeGrf)
     SwDrawModeGrf( GraphicDrawMode nMode = GraphicDrawMode::Standard )
         : SwDrawModeGrf_Base( nMode )
     {}
@@ -265,7 +282,6 @@ public:
     virtual SwDrawModeGrf*  Clone( SfxItemPool *pPool = nullptr ) const override;
 
     // pure virtual methods of SfxEnumItem
-    virtual sal_uInt16      GetValueCount() const override;
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,
                                   MapUnit ePresMetric,

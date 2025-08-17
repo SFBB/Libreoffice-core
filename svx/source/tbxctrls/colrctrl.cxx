@@ -39,7 +39,6 @@
 #include <editeng/colritem.hxx>
 #include <svx/xlineit0.hxx>
 #include <svx/xlnclit.hxx>
-#include <svx/xtable.hxx>
 #include <svx/dialmgr.hxx>
 #include <helpids.h>
 #include <vcl/virdev.hxx>
@@ -168,8 +167,8 @@ bool SvxColorValueSet_docking::StartDrag()
     color.QueryValue(c, 0);
     style.QueryValue(s, 0);
 
-    uno::Sequence<beans::NamedValue> props{ { "FillColor", std::move(c) },
-                                            { "FillStyle", std::move(s) } };
+    uno::Sequence<beans::NamedValue> props{ { u"FillColor"_ustr, std::move(c) },
+                                            { u"FillStyle"_ustr, std::move(s) } };
     m_xHelper->SetData(props);
 
     return false;
@@ -180,9 +179,9 @@ constexpr sal_uInt16 gnRightSlot = SID_ATTR_LINE_COLOR;
 
 SvxColorDockingWindow::SvxColorDockingWindow(SfxBindings* _pBindings, SfxChildWindow* pCW, vcl::Window* _pParent)
     : SfxDockingWindow(_pBindings, pCW, _pParent,
-        "DockingColorWindow", "svx/ui/dockingcolorwindow.ui")
-    , xColorSet(new SvxColorValueSet_docking(m_xBuilder->weld_scrolled_window("valuesetwin", true)))
-    , xColorSetWin(new weld::CustomWeld(*m_xBuilder, "valueset", *xColorSet))
+        u"DockingColorWindow"_ustr, u"svx/ui/dockingcolorwindow.ui"_ustr)
+    , xColorSet(new SvxColorValueSet_docking(m_xBuilder->weld_scrolled_window(u"valuesetwin"_ustr, true)))
+    , xColorSetWin(new weld::CustomWeld(*m_xBuilder, u"valueset"_ustr, *xColorSet))
 {
     SetText(SvxResId(STR_COLORTABLE));
     SetQuickHelpText(SvxResId(RID_SVXSTR_COLORBAR));
@@ -245,14 +244,16 @@ void SvxColorDockingWindow::dispose()
 
 void SvxColorDockingWindow::Notify( SfxBroadcaster& , const SfxHint& rHint )
 {
-    const SfxPoolItemHint* pPoolItemHint = dynamic_cast<const SfxPoolItemHint*>(&rHint);
-    if ( pPoolItemHint )
+    if (rHint.GetId() == SfxHintId::PoolItem)
+    {
+        const SfxPoolItemHint* pPoolItemHint = static_cast<const SfxPoolItemHint*>(&rHint);
         if (auto pColorListItem = dynamic_cast<const SvxColorListItem*>(pPoolItemHint->GetObject()))
         {
             // The list of colors has changed
             pColorList = pColorListItem->GetColorList();
             FillValueSet();
         }
+    }
 }
 
 void SvxColorDockingWindow::FillValueSet()
@@ -276,7 +277,7 @@ void SvxColorDockingWindow::FillValueSet()
     pVD->DrawLine( Point(), Point( nPtX, nPtY ) );
     pVD->DrawLine( Point( 0, nPtY ), Point( nPtX, 0 ) );
 
-    BitmapEx aBmp( pVD->GetBitmapEx( Point(), aColorSize ) );
+    Bitmap aBmp( pVD->GetBitmap( Point(), aColorSize ) );
 
     xColorSet->InsertItem( sal_uInt16(1), Image(aBmp), SvxResId( RID_SVXSTR_INVISIBLE ) );
 }
@@ -362,7 +363,7 @@ IMPL_LINK_NOARG(SvxColorDockingWindow, SelectHdl, ValueSet*, void)
                     {
                         SfxItemSet aAttrSet(pView->GetModel().GetItemPool());
                         pView->GetAttributes( aAttrSet );
-                        if ( aAttrSet.GetItemState( XATTR_LINESTYLE ) != SfxItemState::DONTCARE )
+                        if ( aAttrSet.GetItemState( XATTR_LINESTYLE ) != SfxItemState::INVALID )
                         {
                             drawing::LineStyle eXLS =
                                 aAttrSet.Get( XATTR_LINESTYLE ).GetValue();

@@ -55,29 +55,29 @@ static int lcl_GetValue(const weld::MetricSpinButton& rMetric, FieldUnit eUnit)
  --------------------------------------------------------------------*/
 
 SvxGrfCropPage::SvxGrfCropPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet &rSet)
-    : SfxTabPage(pPage, pController, "cui/ui/croppage.ui", "CropPage", &rSet)
+    : SfxTabPage(pPage, pController, u"cui/ui/croppage.ui"_ustr, u"CropPage"_ustr, &rSet)
     , m_nOldWidth(0)
     , m_nOldHeight(0)
     , m_bSetOrigSize(false)
     , m_aPreferredDPI(0)
-    , m_xCropFrame(m_xBuilder->weld_widget("cropframe"))
-    , m_xZoomConstRB(m_xBuilder->weld_radio_button("keepscale"))
-    , m_xSizeConstRB(m_xBuilder->weld_radio_button("keepsize"))
-    , m_xLeftMF(m_xBuilder->weld_metric_spin_button("left", FieldUnit::CM))
-    , m_xRightMF(m_xBuilder->weld_metric_spin_button("right", FieldUnit::CM))
-    , m_xTopMF(m_xBuilder->weld_metric_spin_button("top", FieldUnit::CM))
-    , m_xBottomMF(m_xBuilder->weld_metric_spin_button("bottom", FieldUnit::CM))
-    , m_xScaleFrame(m_xBuilder->weld_widget("scaleframe"))
-    , m_xWidthZoomMF(m_xBuilder->weld_metric_spin_button("widthzoom", FieldUnit::PERCENT))
-    , m_xHeightZoomMF(m_xBuilder->weld_metric_spin_button("heightzoom", FieldUnit::PERCENT))
-    , m_xSizeFrame(m_xBuilder->weld_widget("sizeframe"))
-    , m_xWidthMF(m_xBuilder->weld_metric_spin_button("width", FieldUnit::CM))
-    , m_xHeightMF(m_xBuilder->weld_metric_spin_button("height", FieldUnit::CM))
-    , m_xOrigSizeGrid(m_xBuilder->weld_widget("origsizegrid"))
-    , m_xOrigSizeFT(m_xBuilder->weld_label("origsizeft"))
-    , m_xOrigSizePB(m_xBuilder->weld_button("origsize"))
-    , m_xUncropPB(m_xBuilder->weld_button("uncrop"))
-    , m_xExampleWN(new weld::CustomWeld(*m_xBuilder, "preview", m_aExampleWN))
+    , m_xCropFrame(m_xBuilder->weld_widget(u"cropframe"_ustr))
+    , m_xZoomConstRB(m_xBuilder->weld_radio_button(u"keepscale"_ustr))
+    , m_xSizeConstRB(m_xBuilder->weld_radio_button(u"keepsize"_ustr))
+    , m_xLeftMF(m_xBuilder->weld_metric_spin_button(u"left"_ustr, FieldUnit::CM))
+    , m_xRightMF(m_xBuilder->weld_metric_spin_button(u"right"_ustr, FieldUnit::CM))
+    , m_xTopMF(m_xBuilder->weld_metric_spin_button(u"top"_ustr, FieldUnit::CM))
+    , m_xBottomMF(m_xBuilder->weld_metric_spin_button(u"bottom"_ustr, FieldUnit::CM))
+    , m_xScaleFrame(m_xBuilder->weld_widget(u"scaleframe"_ustr))
+    , m_xWidthZoomMF(m_xBuilder->weld_metric_spin_button(u"widthzoom"_ustr, FieldUnit::PERCENT))
+    , m_xHeightZoomMF(m_xBuilder->weld_metric_spin_button(u"heightzoom"_ustr, FieldUnit::PERCENT))
+    , m_xSizeFrame(m_xBuilder->weld_widget(u"sizeframe"_ustr))
+    , m_xWidthMF(m_xBuilder->weld_metric_spin_button(u"width"_ustr, FieldUnit::CM))
+    , m_xHeightMF(m_xBuilder->weld_metric_spin_button(u"height"_ustr, FieldUnit::CM))
+    , m_xOrigSizeGrid(m_xBuilder->weld_widget(u"origsizegrid"_ustr))
+    , m_xOrigSizeFT(m_xBuilder->weld_label(u"origsizeft"_ustr))
+    , m_xOrigSizePB(m_xBuilder->weld_button(u"origsize"_ustr))
+    , m_xUncropPB(m_xBuilder->weld_button(u"uncrop"_ustr))
+    , m_xExampleWN(new weld::CustomWeld(*m_xBuilder, u"preview"_ustr, m_aExampleWN))
 {
     SetExchangeSupport();
 
@@ -124,7 +124,7 @@ void SvxGrfCropPage::Reset( const SfxItemSet *rSet )
     const SfxPoolItem* pItem;
     const SfxItemPool& rPool = *rSet->GetPool();
 
-    if(SfxItemState::SET == rSet->GetItemState( rPool.GetWhich(
+    if(SfxItemState::SET == rSet->GetItemState( rPool.GetWhichIDFromSlotID(
                                     SID_ATTR_GRAF_KEEP_ZOOM ), true, &pItem ))
     {
         if( static_cast<const SfxBoolItem*>(pItem)->GetValue() )
@@ -134,7 +134,7 @@ void SvxGrfCropPage::Reset( const SfxItemSet *rSet )
         m_xZoomConstRB->save_state();
     }
 
-    sal_uInt16 nW = rPool.GetWhich( SID_ATTR_GRAF_CROP );
+    sal_uInt16 nW = rPool.GetWhichIDFromSlotID( SID_ATTR_GRAF_CROP );
     if( SfxItemState::SET == rSet->GetItemState( nW, true, &pItem))
     {
         FieldUnit eUnit = MapToFieldUnit( rSet->GetPool()->GetMetric( nW ));
@@ -164,7 +164,7 @@ void SvxGrfCropPage::Reset( const SfxItemSet *rSet )
     m_xTopMF->save_value();
     m_xBottomMF->save_value();
 
-    nW = rPool.GetWhich( SID_ATTR_PAGE_SIZE );
+    nW = rPool.GetWhichIDFromSlotID( SID_ATTR_PAGE_SIZE );
     if ( SfxItemState::SET == rSet->GetItemState( nW, false, &pItem ) )
     {
         // orientation and size from the PageItem
@@ -257,14 +257,14 @@ bool SvxGrfCropPage::FillItemSet(SfxItemSet *rSet)
 
         if (m_bSetOrigSize)
         {
-            bModified |= nullptr != rSet->Put( SvxSizeItem( rPool.GetWhich(
+            bModified |= nullptr != rSet->Put( SvxSizeItem( rPool.GetWhichIDFromSlotID(
                         SID_ATTR_GRAF_FRMSIZE_PERCENT ), Size( 0, 0 )) );
         }
     }
     if( m_xLeftMF->get_value_changed_from_saved() || m_xRightMF->get_value_changed_from_saved() ||
         m_xTopMF->get_value_changed_from_saved()  || m_xBottomMF->get_value_changed_from_saved() )
     {
-        sal_uInt16 nW = rPool.GetWhich( SID_ATTR_GRAF_CROP );
+        sal_uInt16 nW = rPool.GetWhichIDFromSlotID( SID_ATTR_GRAF_CROP );
         FieldUnit eUnit = MapToFieldUnit( rSet->GetPool()->GetMetric( nW ));
         std::unique_ptr<SvxGrfCrop> pNew(static_cast<SvxGrfCrop*>(rSet->Get( nW ).Clone()));
 
@@ -277,7 +277,7 @@ bool SvxGrfCropPage::FillItemSet(SfxItemSet *rSet)
 
     if( m_xZoomConstRB->get_state_changed_from_saved() )
     {
-        bModified |= nullptr != rSet->Put( SfxBoolItem( rPool.GetWhich(
+        bModified |= nullptr != rSet->Put( SfxBoolItem( rPool.GetWhichIDFromSlotID(
                     SID_ATTR_GRAF_KEEP_ZOOM), m_xZoomConstRB->get_active() ) );
     }
 
@@ -292,7 +292,7 @@ void SvxGrfCropPage::ActivatePage(const SfxItemSet& rSet)
 #endif
 
     auto& aProperties = getAdditionalProperties();
-    auto aIterator = aProperties.find("PreferredDPI");
+    auto aIterator = aProperties.find(u"PreferredDPI"_ustr);
     if (aIterator != aProperties.end())
         m_aPreferredDPI = aIterator->second.get<sal_Int32>();
 
@@ -361,8 +361,8 @@ DeactivateRC SvxGrfCropPage::DeactivatePage(SfxItemSet *_pSet)
 IMPL_LINK( SvxGrfCropPage, ZoomHdl, weld::MetricSpinButton&, rField, void )
 {
     SfxItemPool* pPool = GetItemSet().GetPool();
-    DBG_ASSERT( pPool, "Where is the pool?" );
-    FieldUnit eUnit = MapToFieldUnit( pPool->GetMetric( pPool->GetWhich(
+    assert(pPool && "Where is the pool?");
+    FieldUnit eUnit = MapToFieldUnit( pPool->GetMetric( pPool->GetWhichIDFromSlotID(
                                                     SID_ATTR_GRAF_CROP ) ) );
 
     if (&rField == m_xWidthZoomMF.get())
@@ -390,8 +390,8 @@ IMPL_LINK( SvxGrfCropPage, ZoomHdl, weld::MetricSpinButton&, rField, void )
 IMPL_LINK( SvxGrfCropPage, SizeHdl, weld::MetricSpinButton&, rField, void )
 {
     SfxItemPool* pPool = GetItemSet().GetPool();
-    DBG_ASSERT( pPool, "Where is the pool?" );
-    FieldUnit eUnit = MapToFieldUnit( pPool->GetMetric( pPool->GetWhich(
+    assert(pPool && "Where is the pool?");
+    FieldUnit eUnit = MapToFieldUnit( pPool->GetMetric( pPool->GetWhichIDFromSlotID(
                                                     SID_ATTR_GRAF_CROP ) ) );
 
     Size aSize( lcl_GetValue(*m_xWidthMF, eUnit),
@@ -426,8 +426,8 @@ IMPL_LINK( SvxGrfCropPage, SizeHdl, weld::MetricSpinButton&, rField, void )
 IMPL_LINK( SvxGrfCropPage, CropModifyHdl, weld::MetricSpinButton&, rField, void )
 {
     SfxItemPool* pPool = GetItemSet().GetPool();
-    DBG_ASSERT( pPool, "Where is the pool?" );
-    FieldUnit eUnit = MapToFieldUnit( pPool->GetMetric( pPool->GetWhich(
+    assert(pPool && "Where is the pool?");
+    FieldUnit eUnit = MapToFieldUnit( pPool->GetMetric( pPool->GetWhichIDFromSlotID(
                                                     SID_ATTR_GRAF_CROP ) ) );
 
     bool bZoom = m_xZoomConstRB->get_active();
@@ -511,8 +511,8 @@ IMPL_LINK( SvxGrfCropPage, CropModifyHdl, weld::MetricSpinButton&, rField, void 
 IMPL_LINK_NOARG(SvxGrfCropPage, OrigSizeHdl, weld::Button&, void)
 {
     SfxItemPool* pPool = GetItemSet().GetPool();
-    DBG_ASSERT( pPool, "Where is the pool?" );
-    FieldUnit eUnit = MapToFieldUnit( pPool->GetMetric( pPool->GetWhich(
+    assert(pPool && "Where is the pool?");
+    FieldUnit eUnit = MapToFieldUnit( pPool->GetMetric( pPool->GetWhichIDFromSlotID(
                                                     SID_ATTR_GRAF_CROP ) ) );
 
     tools::Long nWidth = m_aOrigSize.Width() -
@@ -539,8 +539,10 @@ IMPL_LINK_NOARG(SvxGrfCropPage, UncropHdl, weld::Button&, void)
 
     m_xLeftMF->set_value(0, FieldUnit::NONE);
     m_xRightMF->set_value(0, FieldUnit::NONE);
+    ZoomHdl(*m_xWidthZoomMF);
     m_xTopMF->set_value(0, FieldUnit::NONE);
     m_xBottomMF->set_value(0, FieldUnit::NONE);
+    ZoomHdl(*m_xHeightZoomMF);
 
     m_aExampleWN.SetLeft(0);
     m_aExampleWN.SetRight(0);
@@ -560,8 +562,8 @@ IMPL_LINK_NOARG(SvxGrfCropPage, UncropHdl, weld::Button&, void)
 void SvxGrfCropPage::CalcZoom()
 {
     SfxItemPool* pPool = GetItemSet().GetPool();
-    DBG_ASSERT( pPool, "Where is the pool?" );
-    FieldUnit eUnit = MapToFieldUnit( pPool->GetMetric( pPool->GetWhich(
+    assert(pPool && "Where is the pool?");
+    FieldUnit eUnit = MapToFieldUnit( pPool->GetMetric( pPool->GetWhichIDFromSlotID(
                                                     SID_ATTR_GRAF_CROP ) ) );
 
     tools::Long nWidth = lcl_GetValue( *m_xWidthMF, eUnit );
@@ -589,8 +591,8 @@ void SvxGrfCropPage::CalcZoom()
 void SvxGrfCropPage::CalcMinMaxBorder()
 {
     SfxItemPool* pPool = GetItemSet().GetPool();
-    DBG_ASSERT( pPool, "Where is the pool?" );
-    FieldUnit eUnit = MapToFieldUnit( pPool->GetMetric( pPool->GetWhich(
+    assert(pPool && "Where is the pool?");
+    FieldUnit eUnit = MapToFieldUnit( pPool->GetMetric( pPool->GetWhichIDFromSlotID(
                                                     SID_ATTR_GRAF_CROP ) ) );
     tools::Long nR = lcl_GetValue(*m_xRightMF, eUnit );
     tools::Long nMinWidth = (m_aOrigSize.Width() * 10) /11;
@@ -620,8 +622,8 @@ void SvxGrfCropPage::GraphicHasChanged( bool bFound )
     if( bFound )
     {
         SfxItemPool* pPool = GetItemSet().GetPool();
-        DBG_ASSERT( pPool, "Where is the pool?" );
-        FieldUnit eUnit = MapToFieldUnit( pPool->GetMetric( pPool->GetWhich(
+        assert(pPool && "Where is the pool?");
+        FieldUnit eUnit = MapToFieldUnit( pPool->GetMetric( pPool->GetWhichIDFromSlotID(
                                                     SID_ATTR_GRAF_CROP ) ));
 
         sal_Int64 nSpin = m_xLeftMF->normalize(m_aOrigSize.Width()) / 20;
@@ -663,9 +665,9 @@ void SvxGrfCropPage::GraphicHasChanged( bool bFound )
 
         OUString sTemp;
         {
-            std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(GetFrameWeld(), "cui/ui/spinbox.ui"));
-            std::unique_ptr<weld::Dialog> xTopLevel(xBuilder->weld_dialog("SpinDialog"));
-            std::unique_ptr<weld::MetricSpinButton> xFld(xBuilder->weld_metric_spin_button("spin", FieldUnit::CM));
+            std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(GetFrameWeld(), u"cui/ui/spinbox.ui"_ustr));
+            std::unique_ptr<weld::Dialog> xTopLevel(xBuilder->weld_dialog(u"SpinDialog"_ustr));
+            std::unique_ptr<weld::MetricSpinButton> xFld(xBuilder->weld_metric_spin_button(u"spin"_ustr, FieldUnit::CM));
             SetFieldUnit( *xFld, eMetric );
             xFld->set_digits(m_xWidthMF->get_digits());
             xFld->set_max(INT_MAX - 1, FieldUnit::NONE);

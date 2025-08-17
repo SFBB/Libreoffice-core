@@ -29,7 +29,6 @@
 #include <sal/log.hxx>
 
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::beans;
@@ -72,12 +71,12 @@ SbaExternalSourceBrowser::~SbaExternalSourceBrowser()
 
 css::uno::Sequence<OUString> SAL_CALL SbaExternalSourceBrowser::getSupportedServiceNames()
 {
-    return { "com.sun.star.sdb.FormGridView" };
+    return { u"com.sun.star.sdb.FormGridView"_ustr };
 }
 
 OUString SAL_CALL SbaExternalSourceBrowser::getImplementationName()
 {
-    return "org.openoffice.comp.dbu.OFormGridView";
+    return u"org.openoffice.comp.dbu.OFormGridView"_ustr;
 }
 
 Reference< XRowSet >  SbaExternalSourceBrowser::CreateForm()
@@ -158,7 +157,7 @@ void SAL_CALL SbaExternalSourceBrowser::dispatch(const css::util::URL& aURL, con
         // set its properties
         if (xNewColProperties.is())
         {
-            for (const css::beans::PropertyValue& rControlProp : std::as_const(aControlProps))
+            for (const css::beans::PropertyValue& rControlProp : aControlProps)
             {
                 try
                 {

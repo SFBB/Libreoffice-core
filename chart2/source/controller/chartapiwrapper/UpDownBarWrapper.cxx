@@ -20,7 +20,6 @@
 #include "UpDownBarWrapper.hxx"
 #include "Chart2ModelContact.hxx"
 #include <ChartType.hxx>
-#include <DiagramHelper.hxx>
 #include <servicenames_charttypes.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <cppuhelper/propshlp.hxx>
@@ -33,7 +32,6 @@
 #include <comphelper/diagnose_ex.hxx>
 
 using namespace ::com::sun::star;
-using namespace ::com::sun::star::chart2;
 
 using ::com::sun::star::beans::Property;
 using ::com::sun::star::uno::Reference;
@@ -75,7 +73,7 @@ namespace chart::wrapper
 UpDownBarWrapper::UpDownBarWrapper(
     bool bUp, std::shared_ptr<Chart2ModelContact> spChart2ModelContact)
         : m_spChart2ModelContact(std::move( spChart2ModelContact ))
-        , m_aPropertySetName( bUp ? OUString( "WhiteDay" ) : OUString( "BlackDay" ))
+        , m_aPropertySetName( bUp ? u"WhiteDay"_ustr : u"BlackDay"_ustr)
 {
 }
 
@@ -173,7 +171,7 @@ void SAL_CALL UpDownBarWrapper::setPropertyValues( const uno::Sequence< OUString
     sal_Int32 nMinCount = std::min( rValueSeq.getLength(), rNameSeq.getLength() );
     for(sal_Int32 nN=0; nN<nMinCount; nN++)
     {
-        OUString aPropertyName( rNameSeq[nN] );
+        const OUString& aPropertyName( rNameSeq[nN] );
         try
         {
             setPropertyValue( aPropertyName, rValueSeq[nN] );
@@ -194,7 +192,7 @@ uno::Sequence< uno::Any > SAL_CALL UpDownBarWrapper::getPropertyValues( const un
         auto pRetSeq = aRetSeq.getArray();
         for(sal_Int32 nN=0; nN<rNameSeq.getLength(); nN++)
         {
-            OUString aPropertyName( rNameSeq[nN] );
+            const OUString& aPropertyName( rNameSeq[nN] );
             pRetSeq[nN] = getPropertyValue( aPropertyName );
         }
     }
@@ -233,7 +231,7 @@ uno::Sequence< beans::PropertyState > SAL_CALL UpDownBarWrapper::getPropertyStat
         auto pRetSeq = aRetSeq.getArray();
         for(sal_Int32 nN=0; nN<rNameSeq.getLength(); nN++)
         {
-            OUString aPropertyName( rNameSeq[nN] );
+            const OUString& aPropertyName( rNameSeq[nN] );
             pRetSeq[nN] = getPropertyState( aPropertyName );
         }
     }
@@ -285,7 +283,7 @@ uno::Sequence< uno::Any > SAL_CALL UpDownBarWrapper::getPropertyDefaults( const 
         auto pRetSeq = aRetSeq.getArray();
         for(sal_Int32 nN=0; nN<rNameSeq.getLength(); nN++)
         {
-            OUString aPropertyName( rNameSeq[nN] );
+            const OUString& aPropertyName( rNameSeq[nN] );
             pRetSeq[nN] = getPropertyDefault( aPropertyName );
         }
     }
@@ -294,7 +292,7 @@ uno::Sequence< uno::Any > SAL_CALL UpDownBarWrapper::getPropertyDefaults( const 
 
 OUString SAL_CALL UpDownBarWrapper::getImplementationName()
 {
-    return "com.sun.star.comp.chart.ChartArea";
+    return u"com.sun.star.comp.chart.ChartArea"_ustr;
 }
 
 sal_Bool SAL_CALL UpDownBarWrapper::supportsService( const OUString& rServiceName )
@@ -305,10 +303,10 @@ sal_Bool SAL_CALL UpDownBarWrapper::supportsService( const OUString& rServiceNam
 css::uno::Sequence< OUString > SAL_CALL UpDownBarWrapper::getSupportedServiceNames()
 {
     return {
-        "com.sun.star.chart.ChartArea",
-        "com.sun.star.drawing.LineProperties",
-        "com.sun.star.drawing.FillProperties",
-        "com.sun.star.xml.UserDefinedAttributesSupplier"
+        u"com.sun.star.chart.ChartArea"_ustr,
+        u"com.sun.star.drawing.LineProperties"_ustr,
+        u"com.sun.star.drawing.FillProperties"_ustr,
+        u"com.sun.star.xml.UserDefinedAttributesSupplier"_ustr
     };
 }
 

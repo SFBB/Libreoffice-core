@@ -36,8 +36,10 @@
 #include <comphelper/processfactory.hxx>
 #include <comphelper/threadpool.hxx>
 #include <rtl/digest.h>
+#include <rtl/crc.h>
 #include <sal/log.hxx>
 #include <o3tl/safeint.hxx>
+#include <o3tl/string_view.hxx>
 #include <osl/diagnose.h>
 
 #include <algorithm>
@@ -59,6 +61,8 @@
 #include "MemoryByteGrabber.hxx"
 
 #include <CRC32.hxx>
+#include <package/InflateZlib.hxx>
+#include <InflaterBytesZlib.hxx>
 
 using namespace com::sun::star;
 using namespace com::sun::star::io;
@@ -78,31 +82,14 @@ using ZipUtils::Inflater;
 
 /** This class is used to read entries from a zip file
  */
-ZipFile::ZipFile( rtl::Reference<comphelper::RefCountedMutex> aMutexHolder,
-                  uno::Reference < XInputStream > const &xInput,
-                  uno::Reference < XComponentContext > xContext,
-                  bool bInitialise )
-: m_aMutexHolder(std::move( aMutexHolder ))
-, aGrabber( xInput )
-, aInflater( true )
-, xStream(xInput)
-, m_xContext (std::move( xContext ))
-, bRecoveryMode( false )
-{
-    if (bInitialise && readCEN() == -1 )
-    {
-        aEntries.clear();
-        throw ZipException( "stream data looks to be broken" );
-    }
-}
-
 ZipFile::ZipFile( rtl::Reference< comphelper::RefCountedMutex > aMutexHolder,
                   uno::Reference < XInputStream > const &xInput,
                   uno::Reference < XComponentContext > xContext,
-                  bool bInitialise, bool bForceRecovery)
+                  bool bInitialise, bool bForceRecovery,
+                  Checks const checks)
 : m_aMutexHolder(std::move( aMutexHolder ))
+, m_Checks(checks)
 , aGrabber( xInput )
-, aInflater( true )
 , xStream(xInput)
 , m_xContext (std::move( xContext ))
 , bRecoveryMode( bForceRecovery )
@@ -116,7 +103,8 @@ ZipFile::ZipFile( rtl::Reference< comphelper::RefCountedMutex > aMutexHolder,
         else if ( readCEN() == -1 )
         {
             aEntries.clear();
-            throw ZipException("stream data looks to be broken" );
+            m_EntriesInsensitive.clear();
+            throw ZipException(u"stream data looks to be broken"_ustr );
         }
     }
 }
@@ -172,7 +160,7 @@ uno::Reference< xml::crypto::XCipherContext > ZipFile::StaticGetCipher( const un
 
     if (xEncryptionData->m_nDerivedKeySize < 0)
     {
-        throw ZipIOException("Invalid derived key length!" );
+        throw ZipIOException(u"Invalid derived key length!"_ustr );
     }
 
     uno::Sequence< sal_Int8 > aDerivedKey( xEncryptionData->m_nDerivedKeySize );
@@ -212,7 +200,7 @@ uno::Reference< xml::crypto::XCipherContext > ZipFile::StaticGetCipher( const un
         if (rc != ARGON2_OK)
         {
             SAL_WARN("package", "argon2id_ctx failed to derive key: " << argon2_error_message(rc));
-            throw ZipIOException("argon2id_ctx failed to derive key");
+            throw ZipIOException(u"argon2id_ctx failed to derive key"_ustr);
         }
     }
     else if ( rtl_Digest_E_None != rtl_digest_PBKDF2( reinterpret_cast< sal_uInt8* >( aDerivedKey.getArray() ),
@@ -223,7 +211,7 @@ uno::Reference< xml::crypto::XCipherContext > ZipFile::StaticGetCipher( const un
                         xEncryptionData->m_aSalt.getLength(),
                         *xEncryptionData->m_oPBKDFIterationCount) )
     {
-        throw ZipIOException("Can not create derived key!" );
+        throw ZipIOException(u"Can not create derived key!"_ustr );
     }
 
     if (xEncryptionData->m_nEncAlg == xml::crypto::CipherID::AES_CBC_W3C_PADDING
@@ -243,7 +231,7 @@ uno::Reference< xml::crypto::XCipherContext > ZipFile::StaticGetCipher( const un
     }
     else
     {
-        throw ZipIOException("Unknown cipher algorithm is requested!" );
+        throw ZipIOException(u"Unknown cipher algorithm is requested!"_ustr );
     }
 
     return xResult;
@@ -554,16 +542,15 @@ bool ZipFile::StaticHasValidPassword( const uno::Reference< uno::XComponentConte
 
 uno::Reference<io::XInputStream> ZipFile::checkValidPassword(
     ZipEntry const& rEntry, ::rtl::Reference<EncryptionData> const& rData,
+    sal_Int64 const nDecryptedSize,
     rtl::Reference<comphelper::RefCountedMutex> const& rMutex)
 {
-    ::osl::MutexGuard aGuard( m_aMutexHolder->GetMutex() );
-
     if (rData.is() && rData->m_nEncAlg == xml::crypto::CipherID::AES_GCM_W3C)
     {
         try // the only way to find out: decrypt the whole stream, which will
         {   // check the tag
             uno::Reference<io::XInputStream> const xRet =
-                createStreamForZipEntry(rMutex, rEntry, rData, UNBUFF_STREAM_DATA, true);
+                createStreamForZipEntry(rMutex, rEntry, rData, UNBUFF_STREAM_DATA, nDecryptedSize);
             // currently XBufferedStream reads the whole stream in its ctor (to
             // verify the tag) - in case this gets changed, explicitly seek here
             uno::Reference<io::XSeekable> const xSeek(xRet, uno::UNO_QUERY_THROW);
@@ -578,6 +565,8 @@ uno::Reference<io::XInputStream> ZipFile::checkValidPassword(
     }
     else if (rData.is() && rData->m_aKey.hasElements())
     {
+        ::osl::MutexGuard aGuard( m_aMutexHolder->GetMutex() );
+
         css::uno::Reference < css::io::XSeekable > xSeek(xStream, UNO_QUERY_THROW);
         xSeek->seek( rEntry.nOffset );
         sal_Int64 nSize = rEntry.nMethod == DEFLATED ? rEntry.nCompressedSize : rEntry.nSize;
@@ -586,14 +575,15 @@ uno::Reference<io::XInputStream> ZipFile::checkValidPassword(
         if ( nSize > n_ConstDigestDecrypt )
             nSize = n_ConstDigestDecrypt;
 
-        Sequence < sal_Int8 > aReadBuffer ( nSize );
+        assert(nSize <= n_ConstDigestDecrypt && nSize >= 0 && "silence bogus coverity overflow_sink");
+        Sequence<sal_Int8> aReadBuffer(nSize);
 
         xStream->readBytes( aReadBuffer, nSize );
 
         if (StaticHasValidPassword(m_xContext, aReadBuffer, rData))
         {
             return createStreamForZipEntry(
-                    rMutex, rEntry, rData, UNBUFF_STREAM_DATA, true);
+                    rMutex, rEntry, rData, UNBUFF_STREAM_DATA, nDecryptedSize);
         }
     }
 
@@ -602,7 +592,8 @@ uno::Reference<io::XInputStream> ZipFile::checkValidPassword(
 
 namespace {
 
-class XBufferedStream : public cppu::WeakImplHelper<css::io::XInputStream, css::io::XSeekable>
+class XBufferedStream : public cppu::WeakImplHelper<css::io::XInputStream, css::io::XSeekable>,
+                        public comphelper::ByteReader
 {
     std::vector<sal_Int8> maBytes;
     size_t mnPos;
@@ -667,6 +658,22 @@ public:
         return nReadSize;
     }
 
+    virtual sal_Int32 readSomeBytes(sal_Int8* pData, sal_Int32 nBytesToRead) override
+    {
+        if (!hasBytes())
+            return 0;
+
+        sal_Int32 nReadSize = std::min<sal_Int32>(nBytesToRead, remainingSize());
+        std::vector<sal_Int8>::const_iterator it = maBytes.cbegin();
+        std::advance(it, mnPos);
+        for (sal_Int32 i = 0; i < nReadSize; ++i, ++it)
+            pData[i] = *it;
+
+        mnPos += nReadSize;
+
+        return nReadSize;
+    }
+
     virtual sal_Int32 SAL_CALL readSomeBytes( ::css::uno::Sequence<sal_Int8>& rData, sal_Int32 nMaxBytesToRead ) override
     {
         return readBytes(rData, nMaxBytesToRead);
@@ -715,30 +722,37 @@ uno::Reference< XInputStream > ZipFile::createStreamForZipEntry(
             ZipEntry const & rEntry,
             const ::rtl::Reference< EncryptionData > &rData,
             sal_Int8 nStreamMode,
-            bool bIsEncrypted,
+            ::std::optional<sal_Int64> const oDecryptedSize,
             const bool bUseBufferedStream,
             const OUString& aMediaType )
 {
     ::osl::MutexGuard aGuard( m_aMutexHolder->GetMutex() );
 
     rtl::Reference< XUnbufferedStream > xSrcStream = new XUnbufferedStream(
-        m_xContext, aMutexHolder, rEntry, xStream, rData, nStreamMode, bIsEncrypted, aMediaType, bRecoveryMode);
+        m_xContext, aMutexHolder, rEntry, xStream, rData, nStreamMode, oDecryptedSize, aMediaType, bRecoveryMode);
 
     if (!bUseBufferedStream)
         return xSrcStream;
 
-    uno::Reference<io::XInputStream> xBufStream;
 #ifndef EMSCRIPTEN
     static const sal_Int32 nThreadingThreshold = 10000;
 
     // "encrypted-package" is the only data stream, no point in threading it
-    if (rEntry.sPath != "encrypted-package" && nThreadingThreshold < xSrcStream->available())
-        xBufStream = new XBufferedThreadedStream(xSrcStream, xSrcStream->getSize());
-    else
+    if (nThreadingThreshold < xSrcStream->available()
+        && rEntry.sPath != "encrypted-package"
+        // tdf#160888 no threading for AEAD streams:
+        // 1. the whole stream must be read immediately to verify tag
+        // 2. XBufferedThreadedStream uses same m_aMutexHolder->GetMutex()
+        //    => caller cannot read without deadlock
+        && (nStreamMode != UNBUFF_STREAM_DATA
+            || !rData.is()
+            || rData->m_nEncAlg != xml::crypto::CipherID::AES_GCM_W3C))
+    {
+        return new XBufferedThreadedStream(xSrcStream, xSrcStream->getSize());
+    }
 #endif
-        xBufStream = new XBufferedStream(xSrcStream);
 
-    return xBufStream;
+    return new XBufferedStream(xSrcStream);
 }
 
 uno::Reference< XInputStream > ZipFile::StaticGetDataFromRawStream(
@@ -748,14 +762,14 @@ uno::Reference< XInputStream > ZipFile::StaticGetDataFromRawStream(
         const ::rtl::Reference<EncryptionData> &rData)
 {
     if (!rData.is())
-        throw ZipIOException("Encrypted stream without encryption data!" );
+        throw ZipIOException(u"Encrypted stream without encryption data!"_ustr );
 
     if (!rData->m_aKey.hasElements())
         throw packages::WrongPasswordException(THROW_WHERE);
 
     uno::Reference<XSeekable> xSeek(xStream, UNO_QUERY);
     if (!xSeek.is())
-        throw ZipIOException("The stream must be seekable!");
+        throw ZipIOException(u"The stream must be seekable!"_ustr);
 
     // if we have a digest, then this file is an encrypted one and we should
     // check if we can decrypt it or not
@@ -811,7 +825,7 @@ ZipEnumeration ZipFile::entries()
 
 uno::Reference< XInputStream > ZipFile::getInputStream( ZipEntry& rEntry,
         const ::rtl::Reference< EncryptionData > &rData,
-        bool bIsEncrypted,
+        ::std::optional<sal_Int64> const oDecryptedSize,
         const rtl::Reference<comphelper::RefCountedMutex>& aMutexHolder )
 {
     ::osl::MutexGuard aGuard( m_aMutexHolder->GetMutex() );
@@ -824,9 +838,10 @@ uno::Reference< XInputStream > ZipFile::getInputStream( ZipEntry& rEntry,
 
     bool bNeedRawStream = rEntry.nMethod == STORED;
 
-    if (bIsEncrypted && rData.is())
+    if (oDecryptedSize && rData.is())
     {
-        uno::Reference<XInputStream> const xRet(checkValidPassword(rEntry, rData, aMutexHolder));
+        uno::Reference<XInputStream> const xRet(
+            checkValidPassword(rEntry, rData, *oDecryptedSize, aMutexHolder));
         if (xRet.is())
         {
             return xRet;
@@ -838,12 +853,12 @@ uno::Reference< XInputStream > ZipFile::getInputStream( ZipEntry& rEntry,
                                     rEntry,
                                     rData,
                                     bNeedRawStream ? UNBUFF_STREAM_RAW : UNBUFF_STREAM_DATA,
-                                    bIsEncrypted );
+                                    oDecryptedSize);
 }
 
 uno::Reference< XInputStream > ZipFile::getDataStream( ZipEntry& rEntry,
         const ::rtl::Reference< EncryptionData > &rData,
-        bool bIsEncrypted,
+        ::std::optional<sal_Int64> const oDecryptedSize,
         const rtl::Reference<comphelper::RefCountedMutex>& aMutexHolder )
 {
     ::osl::MutexGuard aGuard( m_aMutexHolder->GetMutex() );
@@ -854,18 +869,18 @@ uno::Reference< XInputStream > ZipFile::getDataStream( ZipEntry& rEntry,
     // An exception must be thrown in case stream is encrypted and
     // there is no key or the key is wrong
     bool bNeedRawStream = false;
-    if ( bIsEncrypted )
+    if (oDecryptedSize)
     {
         // in case no digest is provided there is no way
         // to detect password correctness
         if ( !rData.is() )
-            throw ZipException("Encrypted stream without encryption data!" );
+            throw ZipException(u"Encrypted stream without encryption data!"_ustr );
 
         // if we have a digest, then this file is an encrypted one and we should
         // check if we can decrypt it or not
         SAL_WARN_IF(rData->m_nEncAlg != xml::crypto::CipherID::AES_GCM_W3C && !rData->m_aDigest.hasElements(),
             "package", "Can't detect password correctness without digest!");
-        uno::Reference<XInputStream> const xRet(checkValidPassword(rEntry, rData, aMutexHolder));
+        uno::Reference<XInputStream> const xRet(checkValidPassword(rEntry, rData, *oDecryptedSize, aMutexHolder));
         if (!xRet.is())
         {
             throw packages::WrongPasswordException(THROW_WHERE);
@@ -879,12 +894,12 @@ uno::Reference< XInputStream > ZipFile::getDataStream( ZipEntry& rEntry,
                                     rEntry,
                                     rData,
                                     bNeedRawStream ? UNBUFF_STREAM_RAW : UNBUFF_STREAM_DATA,
-                                    bIsEncrypted );
+                                    oDecryptedSize);
 }
 
 uno::Reference< XInputStream > ZipFile::getRawData( ZipEntry& rEntry,
         const ::rtl::Reference< EncryptionData >& rData,
-        bool bIsEncrypted,
+        ::std::optional<sal_Int64> const oDecryptedSize,
         const rtl::Reference<comphelper::RefCountedMutex>& aMutexHolder,
         const bool bUseBufferedStream )
 {
@@ -893,12 +908,14 @@ uno::Reference< XInputStream > ZipFile::getRawData( ZipEntry& rEntry,
     if ( rEntry.nOffset <= 0 )
         readLOC( rEntry );
 
-    return createStreamForZipEntry ( aMutexHolder, rEntry, rData, UNBUFF_STREAM_RAW, bIsEncrypted, bUseBufferedStream );
+    return createStreamForZipEntry(aMutexHolder, rEntry, rData,
+            UNBUFF_STREAM_RAW, oDecryptedSize, bUseBufferedStream);
 }
 
 uno::Reference< XInputStream > ZipFile::getWrappedRawStream(
         ZipEntry& rEntry,
         const ::rtl::Reference< EncryptionData >& rData,
+        sal_Int64 const nDecryptedSize,
         const OUString& aMediaType,
         const rtl::Reference<comphelper::RefCountedMutex>& aMutexHolder )
 {
@@ -910,34 +927,54 @@ uno::Reference< XInputStream > ZipFile::getWrappedRawStream(
     if ( rEntry.nOffset <= 0 )
         readLOC( rEntry );
 
-    return createStreamForZipEntry ( aMutexHolder, rEntry, rData, UNBUFF_STREAM_WRAPPEDRAW, true, true, aMediaType );
+    return createStreamForZipEntry(aMutexHolder, rEntry, rData,
+            UNBUFF_STREAM_WRAPPEDRAW, nDecryptedSize, true, aMediaType);
 }
 
-void ZipFile::readLOC( ZipEntry &rEntry )
+sal_uInt64 ZipFile::readLOC(ZipEntry &rEntry)
+{
+    ::osl::MutexGuard aGuard( m_aMutexHolder->GetMutex() );
+    std::vector<sal_Int8> aNameBuffer;
+    std::vector<sal_Int8> aExtraBuffer;
+    return readLOC_Impl(rEntry, aNameBuffer, aExtraBuffer);
+}
+
+// Pass in a shared name buffer to reduce the number of allocations
+// we do when reading the CEN.
+sal_uInt64 ZipFile::readLOC_Impl(ZipEntry &rEntry, std::vector<sal_Int8>& rNameBuffer, std::vector<sal_Int8>& rExtraBuffer)
 {
     ::osl::MutexGuard aGuard( m_aMutexHolder->GetMutex() );
 
     sal_Int64 nPos = -rEntry.nOffset;
 
     aGrabber.seek(nPos);
-    sal_Int32 nTestSig = aGrabber.ReadInt32();
+    std::array<sal_Int8, 30> aHeader;
+    if (aGrabber.readBytes(aHeader.data(), 30) != 30)
+        throw uno::RuntimeException();
+    MemoryByteGrabber headerMemGrabber(aHeader.data(), 30);
+
+    sal_Int32 nTestSig = headerMemGrabber.ReadInt32();
     if (nTestSig != LOCSIG)
-        throw ZipIOException("Invalid LOC header (bad signature)" );
+        throw ZipIOException(u"Invalid LOC header (bad signature)"_ustr );
 
     // Ignore all (duplicated) information from the local file header.
     // various programs produced "broken" zip files; even LO at some point.
     // Just verify the path and calculate the data offset and otherwise
     // rely on the central directory info.
 
-    aGrabber.ReadInt16(); //version
-    aGrabber.ReadInt16(); //flag
-    aGrabber.ReadInt16(); //how
-    aGrabber.ReadInt32(); //time
-    aGrabber.ReadInt32(); //crc
-    aGrabber.ReadInt32(); //compressed size
-    aGrabber.ReadInt32(); //size
-    sal_Int16 nPathLen = aGrabber.ReadInt16();
-    sal_Int16 nExtraLen = aGrabber.ReadInt16();
+    // version - ignore any mismatch (Maven created JARs)
+    sal_uInt16 const nVersion = headerMemGrabber.ReadUInt16();
+    sal_uInt16 const nLocFlag = headerMemGrabber.ReadUInt16(); // general purpose bit flag
+    sal_uInt16 const nLocMethod = headerMemGrabber.ReadUInt16(); // compression method
+    // Do *not* compare timestamps, since MSO 2010 can produce documents
+    // with timestamp difference in the central directory entry and local
+    // file header.
+    headerMemGrabber.ReadInt32(); //time
+    sal_uInt32 nLocCrc = headerMemGrabber.ReadUInt32(); //crc
+    sal_uInt64 nLocCompressedSize = headerMemGrabber.ReadUInt32(); //compressed size
+    sal_uInt64 nLocSize = headerMemGrabber.ReadUInt32(); //size
+    sal_Int16 nPathLen = headerMemGrabber.ReadInt16();
+    sal_Int16 nExtraLen = headerMemGrabber.ReadInt16();
 
     if (nPathLen < 0)
     {
@@ -947,20 +984,18 @@ void ZipFile::readLOC( ZipEntry &rEntry )
 
     rEntry.nOffset = aGrabber.getPosition() + nPathLen + nExtraLen;
 
+    sal_Int64 nEnd = {}; // avoid -Werror=maybe-uninitialized
     bool bBroken = false;
 
     try
     {
         // read always in UTF8, some tools seem not to set UTF8 bit
         // coverity[tainted_data] - we've checked negative lens, and up to max short is ok here
-        uno::Sequence<sal_Int8> aNameBuffer(nPathLen);
-        sal_Int32 nRead = aGrabber.readBytes(aNameBuffer, nPathLen);
-        if (nRead < aNameBuffer.getLength())
-            aNameBuffer.realloc(nRead);
+        rNameBuffer.resize(nPathLen);
+        sal_Int32 nRead = aGrabber.readBytes(rNameBuffer.data(), nPathLen);
+        std::string_view aNameView(reinterpret_cast<const char *>(rNameBuffer.data()), nRead);
 
-        OUString sLOCPath( reinterpret_cast<const char *>(aNameBuffer.getConstArray()),
-                           aNameBuffer.getLength(),
-                           RTL_TEXTENCODING_UTF8 );
+        OUString sLOCPath( aNameView.data(), aNameView.size(), RTL_TEXTENCODING_UTF8 );
 
         if ( rEntry.nPathLen == -1 ) // the file was created
         {
@@ -968,8 +1003,142 @@ void ZipFile::readLOC( ZipEntry &rEntry )
             rEntry.sPath = sLOCPath;
         }
 
-        bBroken = rEntry.nPathLen != nPathLen
-                        || rEntry.sPath != sLOCPath;
+        if (rEntry.nPathLen != nPathLen || rEntry.sPath != sLOCPath)
+        {
+            SAL_INFO("package", "LOC inconsistent name: \"" << rEntry.sPath << "\"");
+            bBroken = true;
+        }
+
+        bool isZip64{false};
+        ::std::optional<sal_uInt64> oOffset64;
+        if (nExtraLen != 0)
+        {
+            rExtraBuffer.resize(nExtraLen);
+            aGrabber.readBytes(rExtraBuffer.data(), nExtraLen);
+            MemoryByteGrabber extraMemGrabber(rExtraBuffer.data(), nExtraLen);
+
+            isZip64 = readExtraFields(extraMemGrabber, nExtraLen,
+                    nLocSize, nLocCompressedSize, oOffset64, &aNameView);
+        }
+        if (!isZip64 && 45 <= nVersion)
+        {
+            // for Excel compatibility, assume Zip64 - https://rzymek.github.io/post/excel-zip64/
+            isZip64 = true;
+        }
+
+        // Just plain ignore bits 1 & 2 of the flag field - they are either
+        // purely informative, or even fully undefined (depending on method).
+        // Also ignore bit 11 ("Language encoding flag"): tdf125300.docx is
+        // example with mismatch - and the actual file names are compared in
+        // any case and required to be UTF-8.
+        if ((rEntry.nFlag & ~0x806U) != (nLocFlag & ~0x806U))
+        {
+            SAL_INFO("package", "LOC inconsistent flag: \"" << rEntry.sPath << "\"");
+            bBroken = true;
+        }
+
+        // TODO: "older versions with encrypted streams write mismatching DEFLATE/STORE" ???
+        if (rEntry.nMethod != nLocMethod)
+        {
+            SAL_INFO("package", "LOC inconsistent method: \"" << rEntry.sPath << "\"");
+            bBroken = true;
+        }
+
+        if (o3tl::checked_add<sal_Int64>(rEntry.nOffset, rEntry.nCompressedSize, nEnd))
+        {
+            throw ZipException(u"Integer-overflow"_ustr);
+        }
+
+        // read "data descriptor" - this can be 12, 16, 20, or 24 bytes in size
+        if ((rEntry.nFlag & 0x08) != 0)
+        {
+#if 0
+            // Unfortunately every encrypted ODF package entry hits this,
+            // because ODF requires deflated entry with value STORED and OOo/LO
+            // has always written compressed streams with data descriptor.
+            // So it is checked later in ZipPackage::checkZipEntriesWithDD()
+            if (nLocMethod == STORED)
+            {
+                SAL_INFO("package", "LOC STORED with data descriptor: \"" << rEntry.sPath << "\"");
+                bBroken = true;
+            }
+            else
+#endif
+            {
+                decltype(nLocCrc) nDDCrc;
+                decltype(nLocCompressedSize) nDDCompressedSize;
+                decltype(nLocSize) nDDSize;
+                aGrabber.seek(aGrabber.getPosition() + rEntry.nCompressedSize);
+                sal_uInt32 nTemp = aGrabber.ReadUInt32();
+                if (nTemp == 0x08074b50) // APPNOTE says PK78 is optional???
+                {
+                    nDDCrc = aGrabber.ReadUInt32();
+                }
+                else
+                {
+                    nDDCrc = nTemp;
+                }
+                if (isZip64)
+                {
+                    nDDCompressedSize = aGrabber.ReadUInt64();
+                    nDDSize = aGrabber.ReadUInt64();
+                }
+                else
+                {
+                    nDDCompressedSize = aGrabber.ReadUInt32();
+                    nDDSize = aGrabber.ReadUInt32();
+                }
+                if (nEnd < aGrabber.getPosition())
+                {
+                    nEnd = aGrabber.getPosition();
+                }
+                else
+                {
+                    SAL_INFO("package", "LOC invalid size: \"" << rEntry.sPath << "\"");
+                    bBroken = true;
+                }
+                // tdf91429.docx has same values in LOC and in (superfluous) DD
+                if ((nLocCrc == 0 || nLocCrc == nDDCrc)
+                    && (nLocCompressedSize == 0 || nLocCompressedSize == sal_uInt64(-1) || nLocCompressedSize == nDDCompressedSize)
+                    && (nLocSize == 0 || nLocSize == sal_uInt64(-1) || nLocSize == nDDSize))
+
+                {
+                    nLocCrc = nDDCrc;
+                    nLocCompressedSize = nDDCompressedSize;
+                    nLocSize = nDDSize;
+                }
+                else
+                {
+                    SAL_INFO("package", "LOC non-0 with data descriptor: \"" << rEntry.sPath << "\"");
+                    bBroken = true;
+                }
+            }
+        }
+
+        // unit test file export64.zip has nLocCrc/nLocCS/nLocSize = 0 on mimetype
+        if (nLocCrc != 0 && static_cast<sal_uInt32>(rEntry.nCrc) != nLocCrc)
+        {
+            SAL_INFO("package", "LOC inconsistent CRC: \"" << rEntry.sPath << "\"");
+            bBroken = true;
+        }
+
+        if (nLocCompressedSize != 0 && static_cast<sal_uInt64>(rEntry.nCompressedSize) != nLocCompressedSize)
+        {
+            SAL_INFO("package", "LOC inconsistent compressed size: \"" << rEntry.sPath << "\"");
+            bBroken = true;
+        }
+
+        if (nLocSize != 0 && static_cast<sal_uInt64>(rEntry.nSize) != nLocSize)
+        {
+            SAL_INFO("package", "LOC inconsistent size: \"" << rEntry.sPath << "\"");
+            bBroken = true;
+        }
+
+        if (oOffset64 && o3tl::make_unsigned(nPos) != *oOffset64)
+        {
+            SAL_INFO("package", "LOC inconsistent offset: \"" << rEntry.sPath << "\"");
+            bBroken = true;
+        }
     }
     catch(...)
     {
@@ -977,113 +1146,240 @@ void ZipFile::readLOC( ZipEntry &rEntry )
     }
 
     if ( bBroken && !bRecoveryMode )
-        throw ZipIOException("The stream seems to be broken!" );
+        throw ZipIOException(u"The stream seems to be broken!"_ustr );
+
+    return nEnd;
 }
 
-sal_Int32 ZipFile::findEND()
+std::tuple<sal_Int64, sal_Int64, sal_Int64> ZipFile::findCentralDirectory()
 {
     // this method is called in constructor only, no need for mutex
-    sal_Int32 nPos, nEnd;
-    Sequence < sal_Int8 > aBuffer;
     try
     {
-        sal_Int32 nLength = static_cast <sal_Int32 > (aGrabber.getLength());
+        sal_Int64 const nLength = aGrabber.getLength();
         if (nLength < ENDHDR)
-            return -1;
-        nPos = nLength - ENDHDR - ZIP_MAXNAMELEN;
-        nEnd = nPos >= 0 ? nPos : 0 ;
+        {
+            throw ZipException(u"Zip too small!"_ustr);
+        }
+        sal_Int64 nPos = nLength - ENDHDR - ZIP_MAXNAMELEN;
+        sal_Int64 nEnd = nPos >= 0 ? nPos : 0;
 
         aGrabber.seek( nEnd );
 
         auto nSize = nLength - nEnd;
-        if (nSize != aGrabber.readBytes(aBuffer, nSize))
-            throw ZipException("Zip END signature not found!" );
+        std::unique_ptr<sal_Int8[]> aBuffer(new sal_Int8[nSize]);
+        if (nSize != aGrabber.readBytes(aBuffer.get(), nSize))
+            throw ZipException(u"Zip END signature not found!"_ustr );
 
-        const sal_Int8 *pBuffer = aBuffer.getConstArray();
+        const sal_Int8 *pBuffer = aBuffer.get();
 
+        sal_Int64 nEndPos = {};
         nPos = nSize - ENDHDR;
         while ( nPos >= 0 )
         {
             if (pBuffer[nPos] == 'P' && pBuffer[nPos+1] == 'K' && pBuffer[nPos+2] == 5 && pBuffer[nPos+3] == 6 )
-                return nPos + nEnd;
+            {
+                nEndPos = nPos + nEnd;
+                break;
+            }
+            if (nPos == 0)
+            {
+                throw ZipException(u"Zip END signature not found!"_ustr);
+            }
             nPos--;
         }
+
+        aGrabber.seek(nEndPos + 4);
+        sal_uInt16 const nEndDisk = aGrabber.ReadUInt16();
+        if (nEndDisk != 0 && nEndDisk != 0xFFFF)
+        {   // only single disk is supported!
+            throw ZipException(u"invalid end (disk)"_ustr );
+        }
+        sal_uInt16 const nEndDirDisk = aGrabber.ReadUInt16();
+        if (nEndDirDisk != 0 && nEndDisk != 0xFFFF)
+        {
+            throw ZipException(u"invalid end (directory disk)"_ustr );
+        }
+        sal_uInt16 const nEndDiskEntries = aGrabber.ReadUInt16();
+        sal_uInt16 const nEndEntries = aGrabber.ReadUInt16();
+        if (nEndDiskEntries != nEndEntries)
+        {
+            throw ZipException(u"invalid end (entries)"_ustr );
+        }
+        sal_Int32 const nEndDirSize = aGrabber.ReadInt32();
+        sal_Int32 const nEndDirOffset = aGrabber.ReadInt32();
+
+        // Zip64 end of central directory locator must immediately precede
+        // end of central directory record
+        if (20 <= nEndPos)
+        {
+            aGrabber.seek(nEndPos - 20);
+            std::array<sal_Int8, 20> aZip64EndLocator;
+            if (20 != aGrabber.readBytes(aZip64EndLocator.data(), 20))
+                throw uno::RuntimeException();
+            MemoryByteGrabber loc64Grabber(aZip64EndLocator.data(), 20);
+            if (loc64Grabber.ReadUInt8() == 'P'
+                && loc64Grabber.ReadUInt8() == 'K'
+                && loc64Grabber.ReadUInt8() == 6
+                && loc64Grabber.ReadUInt8() == 7)
+            {
+                sal_uInt32 const nLoc64Disk = loc64Grabber.ReadUInt32();
+                if (nLoc64Disk != 0)
+                {
+                    throw ZipException(u"invalid Zip64 end locator (disk)"_ustr);
+                }
+                sal_Int64 const nLoc64End64Offset = loc64Grabber.ReadUInt64();
+                if (nEndPos < 20 + 56 || (nEndPos - 20 - 56) < nLoc64End64Offset
+                    || nLoc64End64Offset < 0)
+                {
+                    throw ZipException(u"invalid Zip64 end locator (offset)"_ustr);
+                }
+                sal_uInt32 const nLoc64Disks = loc64Grabber.ReadUInt32();
+                if (nLoc64Disks != 1)
+                {
+                    throw ZipException(u"invalid Zip64 end locator (number of disks)"_ustr);
+                }
+                aGrabber.seek(nLoc64End64Offset);
+                std::vector<sal_Int8> aZip64EndDirectory(nEndPos - 20 - nLoc64End64Offset);
+                aGrabber.readBytes(aZip64EndDirectory.data(), nEndPos - 20 - nLoc64End64Offset);
+                MemoryByteGrabber end64Grabber(aZip64EndDirectory.data(), nEndPos - 20 - nLoc64End64Offset);
+                if (end64Grabber.ReadUInt8() != 'P'
+                    || end64Grabber.ReadUInt8() != 'K'
+                    || end64Grabber.ReadUInt8() != 6
+                    || end64Grabber.ReadUInt8() != 6)
+                {
+                    throw ZipException(u"invalid Zip64 end (signature)"_ustr);
+                }
+                sal_Int64 const nEnd64Size = end64Grabber.ReadUInt64();
+                if (nEnd64Size != nEndPos - 20 - nLoc64End64Offset - 12)
+                {
+                    throw ZipException(u"invalid Zip64 end (size)"_ustr);
+                }
+                end64Grabber.ReadUInt16(); // ignore version made by
+                end64Grabber.ReadUInt16(); // ignore version needed to extract
+                sal_uInt32 const nEnd64Disk = end64Grabber.ReadUInt32();
+                if (nEnd64Disk != 0)
+                {
+                    throw ZipException(u"invalid Zip64 end (disk)"_ustr);
+                }
+                sal_uInt32 const nEnd64EndDisk = end64Grabber.ReadUInt32();
+                if (nEnd64EndDisk != 0)
+                {
+                    throw ZipException(u"invalid Zip64 end (directory disk)"_ustr);
+                }
+                sal_uInt64 const nEnd64DiskEntries = end64Grabber.ReadUInt64();
+                sal_uInt64 const nEnd64Entries = end64Grabber.ReadUInt64();
+                if (nEnd64DiskEntries != nEnd64Entries)
+                {
+                    throw ZipException(u"invalid Zip64 end (entries)"_ustr);
+                }
+                sal_Int64 const nEnd64DirSize = end64Grabber.ReadUInt64();
+                sal_Int64 const nEnd64DirOffset = end64Grabber.ReadUInt64();
+                if (nEndEntries != sal_uInt16(-1) && nEnd64Entries != nEndEntries)
+                {
+                    throw ZipException(u"inconsistent Zip/Zip64 end (entries)"_ustr);
+                }
+                if (nEndDirSize != -1
+                    && nEnd64DirSize != nEndDirSize)
+                {
+                    throw ZipException(u"inconsistent Zip/Zip64 end (size)"_ustr);
+                }
+                if (nEndDirOffset != -1
+                    && nEnd64DirOffset != nEndDirOffset)
+                {
+                    throw ZipException(u"inconsistent Zip/Zip64 end (offset)"_ustr);
+                }
+
+                sal_Int64 end;
+                if (o3tl::checked_add<sal_Int64>(nEnd64DirOffset, nEnd64DirSize, end)
+                    || nLoc64End64Offset < end
+                    || nEnd64DirOffset < 0
+                    || nLoc64End64Offset - nEnd64DirSize != nEnd64DirOffset)
+                {
+                    throw ZipException(u"Invalid Zip64 end (bad central directory size)"_ustr);
+                }
+
+                return { nEnd64Entries, nEnd64DirSize, nEnd64DirOffset };
+            }
+        }
+
+        sal_Int32 end;
+        if (o3tl::checked_add<sal_Int32>(nEndDirOffset, nEndDirSize, end)
+            || nEndPos < end
+            || nEndDirOffset < 0
+            || nEndPos - nEndDirSize != nEndDirOffset)
+        {
+            throw ZipException(u"Invalid END header (bad central directory size)"_ustr);
+        }
+
+        return { nEndEntries, nEndDirSize, nEndDirOffset };
     }
     catch ( IllegalArgumentException& )
     {
-        throw ZipException("Zip END signature not found!" );
+        throw ZipException(u"Zip END signature not found!"_ustr );
     }
     catch ( NotConnectedException& )
     {
-        throw ZipException("Zip END signature not found!" );
+        throw ZipException(u"Zip END signature not found!"_ustr );
     }
     catch ( BufferSizeExceededException& )
     {
-        throw ZipException("Zip END signature not found!" );
+        throw ZipException(u"Zip END signature not found!"_ustr );
     }
-    throw ZipException("Zip END signature not found!" );
 }
 
 sal_Int32 ZipFile::readCEN()
 {
     // this method is called in constructor only, no need for mutex
-    sal_Int32 nCenPos = -1, nLocPos;
-    sal_uInt16 nCount;
+    sal_Int32 nCenPos = -1;
 
     try
     {
-        sal_Int32 nEndPos = findEND();
-        if (nEndPos == -1)
-            return -1;
-        aGrabber.seek(nEndPos + ENDTOT);
-        sal_uInt16 nTotal = aGrabber.ReadUInt16();
-        sal_Int32 nCenLen = aGrabber.ReadInt32();
-        sal_Int32 nCenOff = aGrabber.ReadInt32();
-
-        if ( nTotal * CENHDR > nCenLen )
-            throw ZipException("invalid END header (bad entry count)" );
+        auto [nTotal, nCenLen, nCenOff] = findCentralDirectory();
+        nCenPos = nCenOff; // data before start of zip is not supported
 
         if ( nTotal > ZIP_MAXENTRIES )
-            throw ZipException("too many entries in ZIP File" );
+            throw ZipException(u"too many entries in ZIP File"_ustr );
 
-        if ( nCenLen < 0 || nCenLen > nEndPos )
-            throw ZipException("Invalid END header (bad central directory size)" );
+        if (nCenLen < nTotal * CENHDR) // prevent overflow with ZIP_MAXENTRIES
+            throw ZipException(u"invalid END header (bad entry count)"_ustr );
 
-        nCenPos = nEndPos - nCenLen;
+        if (nCenLen > SAL_MAX_INT32 || nCenLen < 0)
+            throw ZipException(u"central directory too big"_ustr);
 
-        if ( nCenOff < 0 || nCenOff > nCenPos )
-            throw ZipException("Invalid END header (bad central directory size)" );
+        aGrabber.seek(nCenPos);
+        std::vector<sal_Int8> aCENBuffer(nCenLen);
+        sal_Int64 nRead = aGrabber.readBytes ( aCENBuffer.data(), nCenLen );
+        if (nCenLen != nRead)
+            throw ZipException (u"Error reading CEN into memory buffer!"_ustr );
 
-        nLocPos = nCenPos - nCenOff;
-        aGrabber.seek( nCenPos );
-        Sequence < sal_Int8 > aCENBuffer ( nCenLen );
-        sal_Int64 nRead = aGrabber.readBytes ( aCENBuffer, nCenLen );
-        if ( static_cast < sal_Int64 > ( nCenLen ) != nRead )
-            throw ZipException ("Error reading CEN into memory buffer!" );
-
-        MemoryByteGrabber aMemGrabber(aCENBuffer);
+        MemoryByteGrabber aMemGrabber(aCENBuffer.data(), nCenLen);
 
         ZipEntry aEntry;
         sal_Int16 nCommentLen;
+        ::std::vector<std::pair<sal_uInt64, sal_uInt64>> unallocated = { { 0, nCenPos } };
 
         aEntries.reserve(nTotal);
+        sal_Int64 nCount;
+        std::vector<sal_Int8> aTempNameBuffer;
+        std::vector<sal_Int8> aTempExtraBuffer;
         for (nCount = 0 ; nCount < nTotal; nCount++)
         {
             sal_Int32 nTestSig = aMemGrabber.ReadInt32();
             if ( nTestSig != CENSIG )
-                throw ZipException("Invalid CEN header (bad signature)" );
+                throw ZipException(u"Invalid CEN header (bad signature)"_ustr );
 
-            aMemGrabber.skipBytes ( 2 );
+            sal_uInt16 versionMadeBy = aMemGrabber.ReadUInt16();
             aEntry.nVersion = aMemGrabber.ReadInt16();
             aEntry.nFlag = aMemGrabber.ReadInt16();
 
             if ( ( aEntry.nFlag & 1 ) == 1 )
-                throw ZipException("Invalid CEN header (encrypted entry)" );
+                throw ZipException(u"Invalid CEN header (encrypted entry)"_ustr );
 
             aEntry.nMethod = aMemGrabber.ReadInt16();
 
             if ( aEntry.nMethod != STORED && aEntry.nMethod != DEFLATED)
-                throw ZipException("Invalid CEN header (bad compression method)" );
+                throw ZipException(u"Invalid CEN header (bad compression method)"_ustr );
 
             aEntry.nTime = aMemGrabber.ReadInt32();
             aEntry.nCrc = aMemGrabber.ReadInt32();
@@ -1093,48 +1389,153 @@ sal_Int32 ZipFile::readCEN()
             aEntry.nPathLen = aMemGrabber.ReadInt16();
             aEntry.nExtraLen = aMemGrabber.ReadInt16();
             nCommentLen = aMemGrabber.ReadInt16();
-            aMemGrabber.skipBytes ( 8 );
+            aMemGrabber.skipBytes ( 4 );
+            sal_uInt32 externalFileAttributes = aMemGrabber.ReadUInt32();
             sal_uInt64 nOffset = aMemGrabber.ReadUInt32();
 
             if ( aEntry.nPathLen < 0 )
-                throw ZipException("unexpected name length" );
+                throw ZipException(u"unexpected name length"_ustr );
 
             if ( nCommentLen < 0 )
-                throw ZipException("unexpected comment length" );
+                throw ZipException(u"unexpected comment length"_ustr );
 
             if ( aEntry.nExtraLen < 0 )
-                throw ZipException("unexpected extra header info length" );
+                throw ZipException(u"unexpected extra header info length"_ustr );
 
             if (aEntry.nPathLen > aMemGrabber.remainingSize())
-                throw ZipException("name too long");
+                throw ZipException(u"name too long"_ustr);
 
             // read always in UTF8, some tools seem not to set UTF8 bit
-            aEntry.sPath = OUString( reinterpret_cast<char const *>(aMemGrabber.getCurrentPos()),
-                                     aEntry.nPathLen,
-                                     RTL_TEXTENCODING_UTF8 );
+            std::string_view aPathView(reinterpret_cast<char const *>(aMemGrabber.getCurrentPos()), aEntry.nPathLen);
+            aEntry.sPath = OUString( aPathView.data(), aPathView.size(), RTL_TEXTENCODING_UTF8 );
 
             if ( !::comphelper::OStorageHelper::IsValidZipEntryFileName( aEntry.sPath, true ) )
-                throw ZipException("Zip entry has an invalid name." );
+                throw ZipException(u"Zip entry has an invalid name."_ustr );
 
             aMemGrabber.skipBytes(aEntry.nPathLen);
 
             if (aEntry.nExtraLen>0)
             {
-                readExtraFields(aMemGrabber, aEntry.nExtraLen, nSize, nCompressedSize, &nOffset);
+                ::std::optional<sal_uInt64> oOffset64;
+                readExtraFields(aMemGrabber, aEntry.nExtraLen, nSize, nCompressedSize, oOffset64, &aPathView);
+                if (oOffset64)
+                {
+                    nOffset = *oOffset64;
+                }
             }
             aEntry.nCompressedSize = nCompressedSize;
             aEntry.nSize = nSize;
             aEntry.nOffset = nOffset;
 
-            aEntry.nOffset += nLocPos;
-            aEntry.nOffset *= -1;
+            if (o3tl::checked_multiply<sal_Int64>(aEntry.nOffset, -1, aEntry.nOffset))
+                throw ZipException(u"Integer-overflow"_ustr);
+
+            if (aEntry.nMethod == STORED && aEntry.nCompressedSize != aEntry.nSize)
+            {
+                throw ZipException(u"entry STORED with inconsistent size"_ustr);
+            }
 
             aMemGrabber.skipBytes(nCommentLen);
+
+            // unfortunately readLOC is required now to check the consistency
+            assert(aEntry.nOffset <= 0);
+            sal_uInt64 const nStart{ o3tl::make_unsigned(-aEntry.nOffset) };
+            sal_uInt64 const nEnd = readLOC_Impl(aEntry, aTempNameBuffer, aTempExtraBuffer);
+            assert(nStart < nEnd);
+            for (auto it = unallocated.begin(); ; ++it)
+            {
+                if (it == unallocated.end())
+                {
+                    throw ZipException(u"overlapping entries"_ustr);
+                }
+                if (nStart < it->first)
+                {
+                    throw ZipException(u"overlapping entries"_ustr);
+                }
+                else if (it->first == nStart)
+                {
+                    if (it->second == nEnd)
+                    {
+                        unallocated.erase(it);
+                        break;
+                    }
+                    else if (nEnd < it->second)
+                    {
+                        it->first = nEnd;
+                        break;
+                    }
+                    else
+                    {
+                        throw ZipException(u"overlapping entries"_ustr);
+                    }
+                }
+                else if (nStart < it->second)
+                {
+                    if (nEnd < it->second)
+                    {
+                        auto const temp{it->first};
+                        it->first = nEnd;
+                        unallocated.insert(it, { temp, nStart });
+                        break;
+                    }
+                    else if (nEnd == it->second)
+                    {
+                        it->second = nStart;
+                        break;
+                    }
+                    else
+                    {
+                        throw ZipException(u"overlapping entries"_ustr);
+                    }
+                }
+            }
+
+            // Is this a FAT-compatible empty entry?
+            if (aEntry.nSize == 0 && (versionMadeBy & 0xff00) == 0)
+            {
+                constexpr sal_uInt32 FILE_ATTRIBUTE_DIRECTORY = 16;
+                if (externalFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+                    continue; // This is a directory entry, not a stream - skip it
+            }
+
+            if (aEntries.find(aEntry.sPath) != aEntries.end())
+            {
+                SAL_INFO("package", "Duplicate CEN entry: \"" << aEntry.sPath << "\"");
+                throw ZipException(u"Duplicate CEN entry"_ustr);
+            }
+            if (aEntries.empty() && m_Checks == Checks::TryCheckInsensitive)
+            {
+                if (aEntry.sPath == "mimetype" && aEntry.nSize == 0)
+                {   // tdf#162866 AutoCorrect uses ODF package, directories are
+                    m_Checks = Checks::Default; // user-defined => ignore!
+                }
+                else
+                {
+                    m_Checks = Checks::CheckInsensitive;
+                }
+            }
+            // this is required for OOXML, but not for ODF
+            auto const lowerPath(aEntry.sPath.toAsciiLowerCase());
+            if (!m_EntriesInsensitive.insert(lowerPath).second && m_Checks == Checks::CheckInsensitive)
+            {
+                SAL_INFO("package", "Duplicate CEN entry (case insensitive): \"" << aEntry.sPath << "\"");
+                throw ZipException(u"Duplicate CEN entry (case insensitive)"_ustr);
+            }
             aEntries[aEntry.sPath] = aEntry;
         }
 
         if (nCount != nTotal)
-            throw ZipException("Count != Total" );
+            throw ZipException(u"Count != Total"_ustr );
+        if (!unallocated.empty())
+        {
+            if (std::all_of(unallocated.begin(), unallocated.end(), [](auto const& it) {
+                    return it.second - it.first == 12 || it.second - it.first == 16;
+                }))
+            {
+                throw ZipException(u"Zip file has holes the size of data descriptors; producer forgot to set flag bit 3?"_ustr);
+            }
+            throw ZipException(u"Zip file has holes! It will leak!"_ustr);
+        }
     }
     catch ( IllegalArgumentException & )
     {
@@ -1144,9 +1545,12 @@ sal_Int32 ZipFile::readCEN()
     return nCenPos;
 }
 
-void ZipFile::readExtraFields(MemoryByteGrabber& aMemGrabber, sal_Int16 nExtraLen,
-                              sal_uInt64& nSize, sal_uInt64& nCompressedSize, sal_uInt64* nOffset)
+bool ZipFile::readExtraFields(MemoryByteGrabber& aMemGrabber, sal_Int16 nExtraLen,
+        sal_uInt64& nSize, sal_uInt64& nCompressedSize,
+        std::optional<sal_uInt64> & roOffset,
+        std::string_view const * pCENFilenameToCheck)
 {
+    bool isZip64{false};
     while (nExtraLen > 0) // Extensible data fields
     {
         sal_Int16 nheaderID = aMemGrabber.ReadInt16();
@@ -1160,15 +1564,45 @@ void ZipFile::readExtraFields(MemoryByteGrabber& aMemGrabber, sal_Int16 nExtraLe
             {
                 nCompressedSize = aMemGrabber.ReadUInt64();
                 nReadSize = 16;
-                if (dataSize >= 24 && nOffset)
+                if (dataSize >= 24)
                 {
-                    *nOffset = aMemGrabber.ReadUInt64();
+                    roOffset.emplace(aMemGrabber.ReadUInt64());
                     nReadSize = 24;
                     // 4 byte should be "Disk Start Number" but we not need it
                 }
             }
             if (dataSize > nReadSize)
                 aMemGrabber.skipBytes(dataSize - nReadSize);
+            isZip64 = true;
+        }
+        // Info-ZIP Unicode Path Extra Field - pointless as we expect UTF-8 in CEN already
+        else if (nheaderID == 0x7075 && pCENFilenameToCheck) // ignore in recovery mode
+        {
+            if (aMemGrabber.remainingSize() < dataSize)
+            {
+                SAL_INFO("package", "Invalid Info-ZIP Unicode Path Extra Field: invalid TSize");
+                throw ZipException(u"Invalid Info-ZIP Unicode Path Extra Field"_ustr);
+            }
+            auto const nVersion = aMemGrabber.ReadUInt8();
+            if (nVersion != 1)
+            {
+                SAL_INFO("package", "Invalid Info-ZIP Unicode Path Extra Field: unexpected Version");
+                throw ZipException(u"Invalid Info-ZIP Unicode Path Extra Field"_ustr);
+            }
+            // this CRC32 is actually of the pCENFilenameToCheck
+            // so it's pointless to check it if we require the UnicodeName
+            // to be equal to the CEN name anyway (and pCENFilenameToCheck
+            // is already converted to UTF-16 here)
+            (void) aMemGrabber.ReadUInt32();
+            // this is required to be UTF-8
+            std::string_view unicodePath(reinterpret_cast<char const *>(aMemGrabber.getCurrentPos()),
+                    dataSize - 5);
+            aMemGrabber.skipBytes(dataSize - 5);
+            if (unicodePath != *pCENFilenameToCheck)
+            {
+                SAL_INFO("package", "Invalid Info-ZIP Unicode Path Extra Field: unexpected UnicodeName");
+                throw ZipException(u"Invalid Info-ZIP Unicode Path Extra Field"_ustr);
+            }
         }
         else
         {
@@ -1176,28 +1610,246 @@ void ZipFile::readExtraFields(MemoryByteGrabber& aMemGrabber, sal_Int16 nExtraLe
         }
         nExtraLen -= dataSize + 4;
     }
+    return isZip64;
+}
+
+// PK34: Local file header
+bool ZipFile::HandlePK34(std::span<const sal_Int8> data, sal_Int64 dataOffset, sal_Int64 totalSize)
+{
+    ZipEntry aEntry;
+    Sequence<sal_Int8> aTmpBuffer(data.data() + 4, 26);
+    MemoryByteGrabber aMemGrabber(aTmpBuffer);
+
+    aEntry.nVersion = aMemGrabber.ReadInt16();
+    aEntry.nFlag = aMemGrabber.ReadInt16();
+    if ((aEntry.nFlag & 1) == 1)
+        return false;
+
+    aEntry.nMethod = aMemGrabber.ReadInt16();
+    if (aEntry.nMethod != STORED && aEntry.nMethod != DEFLATED)
+        return false;
+
+    aEntry.nTime = aMemGrabber.ReadInt32();
+    aEntry.nCrc = aMemGrabber.ReadInt32();
+    sal_uInt64 nCompressedSize = aMemGrabber.ReadUInt32();
+    sal_uInt64 nSize = aMemGrabber.ReadUInt32();
+    aEntry.nPathLen = aMemGrabber.ReadInt16();
+    aEntry.nExtraLen = aMemGrabber.ReadInt16();
+
+    const sal_Int32 nDescrLength = (aEntry.nMethod == DEFLATED && (aEntry.nFlag & 8)) ? 16 : 0;
+    const sal_Int64 nBlockHeaderLength = aEntry.nPathLen + aEntry.nExtraLen + 30 + nDescrLength;
+    if (aEntry.nPathLen < 0 || aEntry.nExtraLen < 0 || dataOffset + nBlockHeaderLength > totalSize)
+        return false;
+
+    // read always in UTF8, some tools seem not to set UTF8 bit
+    if (o3tl::make_unsigned(30 + aEntry.nPathLen) <= data.size())
+        aEntry.sPath = OUString(reinterpret_cast<char const*>(data.data() + 30), aEntry.nPathLen,
+                                RTL_TEXTENCODING_UTF8);
+    else
+    {
+        std::vector<sal_Int8> aFileName(aEntry.nPathLen);
+        aGrabber.seek(dataOffset + 30);
+        aEntry.nPathLen = aGrabber.readBytes(aFileName.data(), aEntry.nPathLen);
+        aEntry.sPath = OUString(reinterpret_cast<const char*>(aFileName.data()),
+                                aEntry.nPathLen, RTL_TEXTENCODING_UTF8);
+    }
+    aEntry.sPath = aEntry.sPath.replace('\\', '/');
+
+    // read 64bit header
+    if (aEntry.nExtraLen > 0)
+    {
+        std::vector<sal_Int8> aExtraBuffer(aEntry.nExtraLen);
+        if (o3tl::make_unsigned(30 + aEntry.nPathLen) + aEntry.nExtraLen <= data.size())
+        {
+            auto it = data.begin() + 30 + aEntry.nPathLen;
+            std::copy(it, it + aEntry.nExtraLen, aExtraBuffer.begin());
+        }
+        else
+        {
+            aGrabber.seek(dataOffset + 30 + aEntry.nExtraLen);
+            aGrabber.readBytes(aExtraBuffer.data(), aEntry.nExtraLen);
+        }
+        MemoryByteGrabber aMemGrabberExtra(aExtraBuffer.data(), aEntry.nExtraLen);
+        if (aEntry.nExtraLen > 0)
+        {
+            ::std::optional<sal_uInt64> oOffset64;
+            readExtraFields(aMemGrabberExtra, aEntry.nExtraLen, nSize, nCompressedSize, oOffset64, nullptr);
+        }
+    }
+
+    sal_Int64 nDataSize = (aEntry.nMethod == DEFLATED) ? nCompressedSize : nSize;
+    sal_Int64 nBlockLength = nDataSize + nBlockHeaderLength;
+
+    if (dataOffset + nBlockLength > totalSize)
+        return false;
+
+    aEntry.nCompressedSize = nCompressedSize;
+    aEntry.nSize = nSize;
+
+    aEntry.nOffset = dataOffset + 30 + aEntry.nPathLen + aEntry.nExtraLen;
+
+    if ((aEntry.nSize || aEntry.nCompressedSize) && !checkSizeAndCRC(aEntry))
+    {
+        aEntry.nCrc = 0;
+        aEntry.nCompressedSize = 0;
+        aEntry.nSize = 0;
+    }
+
+    // Do not add this entry, if it is empty and is a directory of an already existing entry
+    if (aEntry.nSize == 0 && aEntry.nCompressedSize == 0
+        && std::find_if(aEntries.begin(), aEntries.end(),
+                        [path = OUString(aEntry.sPath + "/")](const auto& r)
+                        { return r.first.startsWith(path); })
+               != aEntries.end())
+        return false;
+
+    auto const lowerPath(aEntry.sPath.toAsciiLowerCase());
+    if (m_EntriesInsensitive.find(lowerPath) != m_EntriesInsensitive.end())
+    {   // this is required for OOXML, but not for ODF
+        return false;
+    }
+    m_EntriesInsensitive.insert(lowerPath);
+    aEntries.emplace(aEntry.sPath, aEntry);
+
+    // Drop any "directory" entry corresponding to this one's path; since we don't use
+    // central directory, we don't see external file attributes, so sanitize here
+    sal_Int32 i = 0;
+    for (OUString subdir = aEntry.sPath.getToken(0, '/', i); i >= 0;
+         subdir += OUString::Concat("/") + o3tl::getToken(aEntry.sPath, 0, '/', i))
+    {
+        if (auto it = aEntries.find(subdir); it != aEntries.end())
+        {
+            // if not empty, let it fail later in ZipPackage::getZipFileContents
+            if (it->second.nSize == 0 && it->second.nCompressedSize == 0)
+                aEntries.erase(it);
+        }
+    }
+    return (aEntry.nFlag & 8) && (aEntry.nCompressedSize == 0);
+}
+
+// PK78: Data descriptor
+void ZipFile::HandlePK78(std::span<const sal_Int8> data, sal_Int64 dataOffset)
+{
+    sal_Int64 nCompressedSize, nSize;
+    Sequence<sal_Int8> aTmpBuffer(data.data() + 4, 12 + 8 + 4);
+    MemoryByteGrabber aMemGrabber(aTmpBuffer);
+    sal_Int32 nCRC32 = aMemGrabber.ReadInt32();
+
+    // FIXME64: find a better way to recognize if Zip64 mode is used
+    // Now we check if the memory at +16 byte seems to be a signature
+    // if not, then probably Zip64 mode is used here, except
+    // if memory at +24 byte seems not to be a signature.
+    // Normally Data Descriptor should followed by the next Local File header
+    // that should start with PK34, except for the last file, then it may
+    // followed by Central directory that start with PK12, or
+    // followed by "archive decryption header" that don't have a signature.
+    if ((data[16] == 'P' && data[17] == 'K' && data[19] == data[18] + 1
+         && (data[18] == 3 || data[18] == 1))
+        || !(data[24] == 'P' && data[25] == 'K' && data[27] == data[26] + 1
+             && (data[26] == 3 || data[26] == 1)))
+    {
+        nCompressedSize = aMemGrabber.ReadUInt32();
+        nSize = aMemGrabber.ReadUInt32();
+    }
+    else
+    {
+        nCompressedSize = aMemGrabber.ReadUInt64();
+        nSize = aMemGrabber.ReadUInt64();
+    }
+    TryDDImpl(dataOffset, nCRC32, nCompressedSize, nSize);
+}
+
+bool ZipFile::TryDDImpl(sal_Int64 const dataOffset, sal_Int32 const nCRC32,
+        sal_Int64 const nCompressedSize, sal_Int64 const nSize)
+{
+    for (auto& rEntry : aEntries)
+    {
+        // this is a broken package, accept this block not only for DEFLATED streams
+        if ((rEntry.second.nFlag & 8) == 0)
+            continue;
+        sal_Int64 nStreamOffset = dataOffset - nCompressedSize;
+        if (nStreamOffset == rEntry.second.nOffset
+            && nCompressedSize > rEntry.second.nCompressedSize)
+        {
+            // only DEFLATED blocks need to be checked
+            bool bAcceptBlock = (rEntry.second.nMethod == STORED && nCompressedSize == nSize);
+
+            if (!bAcceptBlock)
+            {
+                sal_Int64 nRealSize = 0;
+                sal_Int32 nRealCRC = 0;
+                getSizeAndCRC(nStreamOffset, nCompressedSize, &nRealSize, &nRealCRC);
+                bAcceptBlock = (nRealSize == nSize && nRealCRC == nCRC32);
+            }
+
+            if (bAcceptBlock)
+            {
+                rEntry.second.nCrc = nCRC32;
+                rEntry.second.nCompressedSize = nCompressedSize;
+                rEntry.second.nSize = nSize;
+                return true;
+            }
+        }
+#if 0
+// for now ignore clearly broken streams
+        else if( !rEntry.second.nCompressedSize )
+        {
+            rEntry.second.nCrc = nCRC32;
+            sal_Int32 nRealStreamSize = dataOffset - rEntry.second.nOffset;
+            rEntry.second.nCompressedSize = nRealStreamSize;
+            rEntry.second.nSize = nSize;
+        }
+#endif
+    }
+    return false;
+}
+
+bool ZipFile::TryDDEndAt(std::span<const sal_Int8> const data, sal_Int64 const dataOffset)
+{
+    assert(!aEntries.empty()); // HandlePK34 must ensure this
+
+    Sequence<sal_Int8> const buf32{data.data() + 8, 12};
+    MemoryByteGrabber mbg32{buf32};
+    sal_uInt32 const nCrc32{mbg32.ReadUInt32()};
+    sal_uInt32 const nCompressedSize32{mbg32.ReadUInt32()};
+    sal_uInt32 const nSize32{mbg32.ReadUInt32()};
+
+    if (TryDDImpl(dataOffset + 8, nCrc32, nCompressedSize32, nSize32))
+    {
+        return true;
+    }
+
+    // then try if Zip64 crc/sizes are plausible
+    Sequence<sal_Int8> const buf64{data.data(), 20};
+    MemoryByteGrabber mbg64{buf64};
+    sal_uInt32 const nCrc64{mbg64.ReadUInt32()};
+    sal_uInt64 const nCompressedSize64{mbg64.ReadUInt64()};
+    sal_uInt64 const nSize64{mbg64.ReadUInt64()};
+
+    return TryDDImpl(dataOffset, nCrc64, nCompressedSize64, nSize64);
 }
 
 void ZipFile::recover()
 {
     ::osl::MutexGuard aGuard( m_aMutexHolder->GetMutex() );
 
-    sal_Int64 nLength;
-    Sequence < sal_Int8 > aBuffer;
+    const sal_Int64 nToRead = 32000;
+    std::vector<sal_Int8> aBuffer(nToRead);
 
     try
     {
-        nLength = aGrabber.getLength();
+        const sal_Int64 nLength = aGrabber.getLength();
         if (nLength < ENDHDR)
             return;
 
         aGrabber.seek( 0 );
 
-        const sal_Int64 nToRead = 32000;
-        for( sal_Int64 nGenPos = 0; aGrabber.readBytes( aBuffer, nToRead ) && aBuffer.getLength() > 16; )
+        bool findDD{false};
+        sal_Int32 nRead;
+        for( sal_Int64 nGenPos = 0; (nRead = aGrabber.readBytes( aBuffer.data(), nToRead )) && nRead > 16; )
         {
-            const sal_Int8 *pBuffer = aBuffer.getConstArray();
-            sal_Int32 nBufSize = aBuffer.getLength();
+            const sal_Int8 *pBuffer = aBuffer.data();
+            const sal_Int32 nBufSize = nRead;
 
             sal_Int64 nPos = 0;
             // the buffer should contain at least one header,
@@ -1206,172 +1858,32 @@ void ZipFile::recover()
                 || ( nBufSize < nToRead && nPos < nBufSize - 16 ) )
 
             {
-                if ( nPos < nBufSize - 30 && pBuffer[nPos] == 'P' && pBuffer[nPos+1] == 'K' && pBuffer[nPos+2] == 3 && pBuffer[nPos+3] == 4 )
+                if (pBuffer[nPos] == 'P' && pBuffer[nPos+1] == 'K')
                 {
-                    //PK34: Local file header
-                    ZipEntry aEntry;
-                    Sequence<sal_Int8> aTmpBuffer(&(pBuffer[nPos+4]), 26);
-                    MemoryByteGrabber aMemGrabber(aTmpBuffer);
-
-                    aEntry.nVersion = aMemGrabber.ReadInt16();
-                    aEntry.nFlag = aMemGrabber.ReadInt16();
-
-                    if ( ( aEntry.nFlag & 1 ) != 1 )
+                    if (pBuffer[nPos+2] == 7 && pBuffer[nPos+3] == 8)
                     {
-                        aEntry.nMethod = aMemGrabber.ReadInt16();
-
-                        if ( aEntry.nMethod == STORED || aEntry.nMethod == DEFLATED )
-                        {
-                            aEntry.nTime = aMemGrabber.ReadInt32();
-                            aEntry.nCrc = aMemGrabber.ReadInt32();
-                            sal_uInt64 nCompressedSize = aMemGrabber.ReadUInt32();
-                            sal_uInt64 nSize = aMemGrabber.ReadUInt32();
-                            aEntry.nPathLen = aMemGrabber.ReadInt16();
-                            aEntry.nExtraLen = aMemGrabber.ReadInt16();
-
-                            sal_Int32 nDescrLength =
-                                ( aEntry.nMethod == DEFLATED && ( aEntry.nFlag & 8 ) ) ? 16 : 0;
-
-                            sal_Int64 nBlockHeaderLength = aEntry.nPathLen + aEntry.nExtraLen + 30 + nDescrLength;
-                            if ( aEntry.nPathLen >= 0 && aEntry.nExtraLen >= 0
-                                && ( nGenPos + nPos + nBlockHeaderLength ) <= nLength )
-                            {
-                                // read always in UTF8, some tools seem not to set UTF8 bit
-                                if( nPos + 30 + aEntry.nPathLen <= nBufSize )
-                                    aEntry.sPath = OUString ( reinterpret_cast<char const *>(&pBuffer[nPos + 30]),
-                                                              aEntry.nPathLen,
-                                                              RTL_TEXTENCODING_UTF8 );
-                                else
-                                {
-                                    Sequence < sal_Int8 > aFileName;
-                                    aGrabber.seek( nGenPos + nPos + 30 );
-                                    aGrabber.readBytes( aFileName, aEntry.nPathLen );
-                                    aEntry.sPath = OUString ( reinterpret_cast<const char *>(aFileName.getConstArray()),
-                                                              aFileName.getLength(),
-                                                              RTL_TEXTENCODING_UTF8 );
-                                    aEntry.nPathLen = static_cast< sal_Int16 >(aFileName.getLength());
-                                }
-
-                                // read 64bit header
-                                if (aEntry.nExtraLen > 0)
-                                {
-                                    Sequence<sal_Int8> aExtraBuffer;
-                                    if (nPos + 30 + aEntry.nPathLen + aEntry.nExtraLen <= nBufSize)
-                                    {
-                                        aExtraBuffer = Sequence<sal_Int8>(
-                                            &(pBuffer[nPos + 30 + aEntry.nPathLen]),
-                                            aEntry.nExtraLen);
-                                    }
-                                    else
-                                    {
-                                        aGrabber.seek(nGenPos + nPos + 30 + aEntry.nExtraLen);
-                                        aGrabber.readBytes(aExtraBuffer, aEntry.nExtraLen);
-                                    }
-                                    MemoryByteGrabber aMemGrabberExtra(aExtraBuffer);
-                                    if (aEntry.nExtraLen > 0)
-                                    {
-                                        readExtraFields(aMemGrabberExtra, aEntry.nExtraLen, nSize,
-                                                        nCompressedSize, nullptr);
-                                    }
-                                }
-
-                                sal_Int64 nDataSize = ( aEntry.nMethod == DEFLATED ) ? nCompressedSize : nSize;
-                                sal_Int64 nBlockLength = nDataSize + nBlockHeaderLength;
-
-                                if (( nGenPos + nPos + nBlockLength ) <= nLength )
-                                {
-                                    aEntry.nCompressedSize = nCompressedSize;
-                                    aEntry.nSize = nSize;
-
-                                    aEntry.nOffset = nGenPos + nPos + 30 + aEntry.nPathLen + aEntry.nExtraLen;
-
-                                    if ( ( aEntry.nSize || aEntry.nCompressedSize ) && !checkSizeAndCRC( aEntry ) )
-                                    {
-                                        aEntry.nCrc = 0;
-                                        aEntry.nCompressedSize = 0;
-                                        aEntry.nSize = 0;
-                                    }
-
-                                    aEntries.emplace( aEntry.sPath, aEntry );
-                                }
-                            }
-                        }
-                    }
-
-                    nPos += 4;
-                }
-                else if (pBuffer[nPos] == 'P' && pBuffer[nPos+1] == 'K' && pBuffer[nPos+2] == 7 && pBuffer[nPos+3] == 8 )
-                {
-                    //PK78: Data descriptor
-                    sal_Int64 nCompressedSize, nSize;
-                    Sequence<sal_Int8> aTmpBuffer(&(pBuffer[nPos + 4]), 12 + 8 + 4);
-                    MemoryByteGrabber aMemGrabber(aTmpBuffer);
-                    sal_Int32 nCRC32 = aMemGrabber.ReadInt32();
-
-                    // FIXME64: find a better way to recognize if Zip64 mode is used
-                    // Now we check if the memory at +16 byte seems to be a signature
-                    // if not, then probably Zip64 mode is used here, except
-                    // if memory at +24 byte seems not to be a signature.
-                    // Normally Data Descriptor should followed by the next Local File header
-                    // that should start with PK34, except for the last file, then it may
-                    // followed by Central directory that start with PK12, or
-                    // followed by "archive decryption header" that don't have a signature.
-                    if ((pBuffer[nPos + 16] == 'P' && pBuffer[nPos + 17] == 'K'
-                         && pBuffer[nPos + 19] == pBuffer[nPos + 18] + 1
-                         && (pBuffer[nPos + 18] == 3 || pBuffer[nPos + 18] == 1))
-                        || !(pBuffer[nPos + 24] == 'P' && pBuffer[nPos + 25] == 'K'
-                             && pBuffer[nPos + 27] == pBuffer[nPos + 26] + 1
-                             && (pBuffer[nPos + 26] == 3 || pBuffer[nPos + 26] == 1)))
-                    {
-                        nCompressedSize = aMemGrabber.ReadUInt32();
-                        nSize = aMemGrabber.ReadUInt32();
+                        findDD = false;
+                        HandlePK78(std::span(pBuffer + nPos, nBufSize - nPos), nGenPos + nPos);
+                        nPos += 4;
                     }
                     else
                     {
-                        nCompressedSize = aMemGrabber.ReadUInt64();
-                        nSize = aMemGrabber.ReadUInt64();
-                    }
-
-                    for( auto& rEntry : aEntries )
-                    {
-                        // this is a broken package, accept this block not only for DEFLATED streams
-                        if( rEntry.second.nFlag & 8 )
+                        if (findDD && 30 < nGenPos+nPos
+                            && TryDDEndAt(std::span(pBuffer + nPos - 20, 20), nGenPos + nPos - 20))
                         {
-                            sal_Int64 nStreamOffset = nGenPos + nPos - nCompressedSize;
-                            if ( nStreamOffset == rEntry.second.nOffset && nCompressedSize > rEntry.second.nCompressedSize )
-                            {
-                                // only DEFLATED blocks need to be checked
-                                bool bAcceptBlock = ( rEntry.second.nMethod == STORED && nCompressedSize == nSize );
-
-                                if ( !bAcceptBlock )
-                                {
-                                    sal_Int64 nRealSize = 0;
-                                    sal_Int32 nRealCRC = 0;
-                                    getSizeAndCRC( nStreamOffset, nCompressedSize, &nRealSize, &nRealCRC );
-                                    bAcceptBlock = ( nRealSize == nSize && nRealCRC == nCRC32 );
-                                }
-
-                                if ( bAcceptBlock )
-                                {
-                                    rEntry.second.nCrc = nCRC32;
-                                    rEntry.second.nCompressedSize = nCompressedSize;
-                                    rEntry.second.nSize = nSize;
-                                }
-                            }
-#if 0
-// for now ignore clearly broken streams
-                            else if( !rEntry.second.nCompressedSize )
-                            {
-                                rEntry.second.nCrc = nCRC32;
-                                sal_Int32 nRealStreamSize = nGenPos + nPos - rEntry.second.nOffset;
-                                rEntry.second.nCompressedSize = nRealStreamSize;
-                                rEntry.second.nSize = nSize;
-                            }
-#endif
+                            findDD = false;
+                        }
+                        if (nPos < nBufSize - 30
+                            && pBuffer[nPos+2] == 3 && pBuffer[nPos+3] == 4)
+                        {
+                            findDD = HandlePK34(std::span(pBuffer + nPos, nBufSize - nPos), nGenPos + nPos, nLength);
+                            nPos += 4;
+                        }
+                        else
+                        {
+                            ++nPos;
                         }
                     }
-
-                    nPos += 4;
                 }
                 else
                     nPos++;
@@ -1383,15 +1895,15 @@ void ZipFile::recover()
     }
     catch ( IllegalArgumentException& )
     {
-        throw ZipException("Zip END signature not found!" );
+        throw ZipException(u"Zip END signature not found!"_ustr );
     }
     catch ( NotConnectedException& )
     {
-        throw ZipException("Zip END signature not found!" );
+        throw ZipException(u"Zip END signature not found!"_ustr );
     }
     catch ( BufferSizeExceededException& )
     {
-        throw ZipException("Zip END signature not found!" );
+        throw ZipException(u"Zip END signature not found!"_ustr );
     }
 }
 
@@ -1399,37 +1911,45 @@ bool ZipFile::checkSizeAndCRC( const ZipEntry& aEntry )
 {
     ::osl::MutexGuard aGuard( m_aMutexHolder->GetMutex() );
 
-    sal_Int32 nCRC = 0;
-    sal_Int64 nSize = 0;
-
-    if( aEntry.nMethod == STORED )
-        return ( getCRC( aEntry.nOffset, aEntry.nSize ) == aEntry.nCrc );
-
-    if (aEntry.nCompressedSize < 0)
+    try
     {
-        SAL_WARN("package", "bogus compressed size of: " << aEntry.nCompressedSize);
+        sal_Int32 nCRC = 0;
+        sal_Int64 nSize = 0;
+
+        if( aEntry.nMethod == STORED )
+            return ( getCRC( aEntry.nOffset, aEntry.nSize ) == aEntry.nCrc );
+
+        if (aEntry.nCompressedSize < 0)
+        {
+            SAL_WARN("package", "bogus compressed size of: " << aEntry.nCompressedSize);
+            return false;
+        }
+
+        getSizeAndCRC( aEntry.nOffset, aEntry.nCompressedSize, &nSize, &nCRC );
+        return ( aEntry.nSize == nSize && aEntry.nCrc == nCRC );
+    }
+    catch (uno::Exception const&)
+    {
         return false;
     }
-
-    getSizeAndCRC( aEntry.nOffset, aEntry.nCompressedSize, &nSize, &nCRC );
-    return ( aEntry.nSize == nSize && aEntry.nCrc == nCRC );
 }
 
 sal_Int32 ZipFile::getCRC( sal_Int64 nOffset, sal_Int64 nSize )
 {
     ::osl::MutexGuard aGuard( m_aMutexHolder->GetMutex() );
 
-    Sequence < sal_Int8 > aBuffer;
     CRC32 aCRC;
     sal_Int64 nBlockSize = ::std::min(nSize, static_cast< sal_Int64 >(32000));
+    std::vector<sal_Int8> aBuffer(nBlockSize);
 
     aGrabber.seek( nOffset );
-    for (sal_Int64 ind = 0;
-         aGrabber.readBytes( aBuffer, nBlockSize ) && ind * nBlockSize < nSize;
-         ++ind)
+    sal_Int64 nRead = 0;
+    while (nRead < nSize)
     {
-        sal_Int64 nLen = ::std::min(nBlockSize, nSize - ind * nBlockSize);
-        aCRC.updateSegment(aBuffer, static_cast<sal_Int32>(nLen));
+        sal_Int64 nToRead = std::min(nSize - nRead, nBlockSize);
+        sal_Int64 nReadThisTime = aGrabber.readBytes(aBuffer.data(), nToRead);
+        aCRC.updateSegment(aBuffer.data(), nReadThisTime);
+        nRead += nReadThisTime;
     }
 
     return aCRC.getValue();
@@ -1439,28 +1959,31 @@ void ZipFile::getSizeAndCRC( sal_Int64 nOffset, sal_Int64 nCompressedSize, sal_I
 {
     ::osl::MutexGuard aGuard( m_aMutexHolder->GetMutex() );
 
-    Sequence < sal_Int8 > aBuffer;
     CRC32 aCRC;
     sal_Int64 nRealSize = 0;
-    Inflater aInflaterLocal( true );
+    ZipUtils::InflaterBytesZlib aInflaterLocal;
     sal_Int32 nBlockSize = static_cast< sal_Int32 > (::std::min( nCompressedSize, static_cast< sal_Int64 >( 32000 ) ) );
+    std::vector < sal_Int8 > aBuffer(nBlockSize);
+    std::vector< sal_Int8 > aData( nBlockSize );
 
     aGrabber.seek( nOffset );
+    sal_Int32 nRead;
     for ( sal_Int64 ind = 0;
-          !aInflaterLocal.finished() && aGrabber.readBytes( aBuffer, nBlockSize ) && ind * nBlockSize < nCompressedSize;
+          !aInflaterLocal.finished()
+          && (nRead = aGrabber.readBytes( aBuffer.data(), nBlockSize ))
+          && ind * nBlockSize < nCompressedSize;
           ind++ )
     {
-        Sequence < sal_Int8 > aData( nBlockSize );
         sal_Int32 nLastInflated = 0;
         sal_Int64 nInBlock = 0;
 
-        aInflaterLocal.setInput( aBuffer );
+        aInflaterLocal.setInput( aBuffer.data(), nRead );
         do
         {
-            nLastInflated = aInflaterLocal.doInflateSegment( aData, 0, nBlockSize );
-            aCRC.updateSegment( aData, nLastInflated );
+            nLastInflated = aInflaterLocal.doInflateSegment( aData.data(), nBlockSize, 0, nBlockSize );
+            aCRC.updateSegment( aData.data(), nLastInflated );
             nInBlock += nLastInflated;
-        } while( !aInflater.finished() && nLastInflated );
+        } while( !aInflaterLocal.finished() && nLastInflated );
 
         nRealSize += nInBlock;
     }

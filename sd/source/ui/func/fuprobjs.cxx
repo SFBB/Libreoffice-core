@@ -46,32 +46,32 @@ namespace sd {
 
 
 FuPresentationObjects::FuPresentationObjects (
-    ViewShell* pViewSh,
+    ViewShell& rViewSh,
     ::sd::Window* pWin,
     ::sd::View* pView,
-    SdDrawDocument* pDoc,
+    SdDrawDocument& rDoc,
     SfxRequest& rReq)
-     : FuPoor(pViewSh, pWin, pView, pDoc, rReq)
+     : FuPoor(rViewSh, pWin, pView, rDoc, rReq)
 {
 }
 
-rtl::Reference<FuPoor> FuPresentationObjects::Create( ViewShell* pViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument* pDoc, SfxRequest& rReq )
+rtl::Reference<FuPoor> FuPresentationObjects::Create( ViewShell& rViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument& rDoc, SfxRequest& rReq )
 {
-    rtl::Reference<FuPoor> xFunc( new FuPresentationObjects( pViewSh, pWin, pView, pDoc, rReq ) );
+    rtl::Reference<FuPoor> xFunc( new FuPresentationObjects( rViewSh, pWin, pView, rDoc, rReq ) );
     xFunc->DoExecute(rReq);
     return xFunc;
 }
 
 void FuPresentationObjects::DoExecute( SfxRequest& )
 {
-    OutlineViewShell* pOutlineViewShell = dynamic_cast< OutlineViewShell* >( mpViewShell );
+    OutlineViewShell* pOutlineViewShell = dynamic_cast< OutlineViewShell* >( &mrViewShell );
     DBG_ASSERT( pOutlineViewShell, "sd::FuPresentationObjects::DoExecute(), does not work without an OutlineViewShell!");
     if( !pOutlineViewShell )
         return;
 
     /* does the selections end in a unique presentation layout?
        if not, it is not allowed to edit the templates */
-    SfxItemSetFixed<SID_STATUS_LAYOUT, SID_STATUS_LAYOUT> aSet(mpDoc->GetItemPool() );
+    SfxItemSetFixed<SID_STATUS_LAYOUT, SID_STATUS_LAYOUT> aSet(mrDoc.GetItemPool() );
     pOutlineViewShell->GetStatusBarState( aSet );
     OUString aLayoutName = aSet.Get(SID_STATUS_LAYOUT).GetValue();
     DBG_ASSERT(!aLayoutName.isEmpty(), "Layout not defined");
@@ -80,19 +80,19 @@ void FuPresentationObjects::DoExecute( SfxRequest& )
     sal_Int16   nDepth, nTmp;
     OutlineView* pOlView = static_cast<OutlineView*>(pOutlineViewShell->GetView());
     OutlinerView* pOutlinerView = pOlView->GetViewByWindow( static_cast<Window*>(mpWindow) );
-    ::Outliner* pOutl = pOutlinerView->GetOutliner();
+    ::Outliner& rOutl = pOutlinerView->GetOutliner();
 
     std::vector<Paragraph*> aSelList;
     pOutlinerView->CreateSelectionList(aSelList);
 
     Paragraph* pPara = aSelList.empty() ? nullptr : aSelList.front();
 
-    nDepth = pOutl->GetDepth(pOutl->GetAbsPos( pPara ) );
+    nDepth = rOutl.GetDepth(rOutl.GetAbsPos( pPara ) );
     bool bPage = ::Outliner::HasParaFlag( pPara, ParaFlag::ISPAGE );
 
     for( const auto& rpPara : aSelList )
     {
-        nTmp = pOutl->GetDepth( pOutl->GetAbsPos( rpPara ) );
+        nTmp = rOutl.GetDepth( rOutl.GetAbsPos( rpPara ) );
 
         if( nDepth != nTmp )
         {
@@ -135,17 +135,17 @@ void FuPresentationObjects::DoExecute( SfxRequest& )
     SfxStyleSheetBase& rStyleSheet = *pStyleSheet;
 
     SdAbstractDialogFactory* pFact = SdAbstractDialogFactory::Create();
-    ScopedVclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateSdPresLayoutTemplateDlg(mpDocSh, mpViewShell->GetFrameWeld(),
+    ScopedVclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateSdPresLayoutTemplateDlg(mpDocSh, mrViewShell.GetFrameWeld(),
                                                         false, rStyleSheet, ePO, pStyleSheetPool));
     if( pDlg->Execute() == RET_OK )
     {
         const SfxItemSet* pOutSet = pDlg->GetOutputItemSet();
         // Undo-Action
         mpDocSh->GetUndoManager()->AddUndoAction(
-            std::make_unique<StyleSheetUndoAction>(mpDoc, static_cast<SfxStyleSheet*>(pStyleSheet), pOutSet));
+            std::make_unique<StyleSheetUndoAction>(mrDoc, static_cast<SfxStyleSheet&>(rStyleSheet), pOutSet));
 
-        pStyleSheet->GetItemSet().Put( *pOutSet );
-        static_cast<SfxStyleSheet*>( pStyleSheet )->Broadcast( SfxHint( SfxHintId::DataChanged ) );
+        rStyleSheet.GetItemSet().Put( *pOutSet );
+        static_cast<SfxStyleSheet&>( rStyleSheet ).Broadcast( SfxHint( SfxHintId::DataChanged ) );
     }
 }
 

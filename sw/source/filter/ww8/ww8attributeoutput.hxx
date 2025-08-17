@@ -32,10 +32,10 @@ public:
     virtual void RTLAndCJKState( bool bIsRTL, sal_uInt16 nScript ) override;
 
     /// Start of the paragraph.
-    virtual sal_Int32 StartParagraph( ww8::WW8TableNodeInfo::Pointer_t /*pTextNodeInfo*/, bool /*bGenerateParaId*/ ) override { return 0; }
+    virtual sal_Int32 StartParagraph( const ww8::WW8TableNodeInfo::Pointer_t& /*pTextNodeInfo*/, bool /*bGenerateParaId*/ ) override { return 0; }
 
     /// End of the paragraph.
-    virtual void EndParagraph( ww8::WW8TableNodeInfoInner::Pointer_t pTextNodeInfoInner ) override;
+    virtual void EndParagraph( const ww8::WW8TableNodeInfoInner::Pointer_t& pTextNodeInfoInner ) override;
 
     /// Called in order to output section breaks.
     virtual void SectionBreaks(const SwNode& /*rNode*/) override {}
@@ -76,10 +76,10 @@ public:
     virtual void StartRuby( const SwTextNode& rNode, sal_Int32 nPos, const SwFormatRuby& rRuby ) override;
 
     /// Output ruby end.
-    virtual void EndRuby(const SwTextNode& rNode, sal_Int32 nPos) override;
+    virtual void EndRuby(const SwTextNode& rNode, sal_Int32 nPos, bool bEmptyBaseText) override;
 
     /// Output URL start.
-    virtual bool StartURL( const OUString &rUrl, const OUString &rTarget ) override;
+    virtual bool StartURL(const OUString& rUrl, const OUString& rTarget, const OUString& rName = OUString()) override;
 
     /// Output URL end.
     virtual bool EndURL(bool) override;
@@ -102,7 +102,7 @@ public:
     virtual void TableInfoCell( const ww8::WW8TableNodeInfoInner::Pointer_t& pTableTextNodeInfo ) override;
     virtual void TableInfoRow( const ww8::WW8TableNodeInfoInner::Pointer_t& pTableTextNodeInfo ) override;
     virtual void TableDefinition( const ww8::WW8TableNodeInfoInner::Pointer_t& pTableTextNodeInfo ) override;
-    void TablePositioning(SwFrameFormat* pFlyFormat);
+    void TablePositioning(const SwFrameFormat* pFlyFormat);
     virtual void TableDefaultBorders( const ww8::WW8TableNodeInfoInner::Pointer_t& pTableTextNodeInfo ) override;
     virtual void TableBackgrounds( const ww8::WW8TableNodeInfoInner::Pointer_t& pTableTextNodeInfo ) override;
     virtual void TableRowRedline( const ww8::WW8TableNodeInfoInner::Pointer_t& pTableTextNodeInfo ) override;
@@ -290,9 +290,6 @@ protected:
     /// Sfx item RES_CHRATR_BidiRTL
     virtual void CharBidiRTL( const SfxPoolItem& rHt ) override;
 
-    /// Sfx item RES_CHRATR_IdctHint
-    virtual void CharIdctHint( const SfxPoolItem& rHt ) override;
-
     /// Sfx item RES_CHRATR_ROTATE
     virtual void CharRotate( const SvxCharRotateItem& ) override;
 
@@ -312,10 +309,13 @@ protected:
     virtual void CharHidden( const SvxCharHiddenItem& ) override;
 
     /// Sfx item RES_CHRATR_BOX
-    virtual void CharBorder( const ::editeng::SvxBorderLine* pAllBorder, const sal_uInt16 nDist, const bool bShadow ) override;
+    virtual void CharBorder( const SvxBoxItem& ) override;
 
     /// Sfx item RES_CHRATR_HIGHLIGHT
     virtual void CharHighlight( const SvxBrushItem& ) override;
+
+    /// Sfx item RES_CHRATR_SCRIPT_HINT
+    virtual void CharScriptHint(const SvxScriptHintItem&) override;
 
     /// Sfx item RES_TXTATR_INETFMT
     virtual void TextINetFormat( const SwFormatINetFormat& ) override;
@@ -459,6 +459,7 @@ public:
         , m_nStyleCountPos(0)
         , m_nFieldResults(0)
         , mbOnTOXEnding(false)
+        , mbFillStyleIsSet(false)
     {
     }
 
@@ -504,6 +505,7 @@ private:
     sal_uInt16 m_nFieldResults;
 
     bool mbOnTOXEnding;
+    bool mbFillStyleIsSet;
 
     /// Bookmarks of the current paragraph
     std::multimap<sal_Int32, OUString> m_aBookmarksOfParagraphStart;

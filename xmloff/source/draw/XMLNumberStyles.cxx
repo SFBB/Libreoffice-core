@@ -22,7 +22,6 @@
 #include <utility>
 #include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmltoken.hxx>
 
 #include <o3tl/string_view.hxx>
@@ -41,33 +40,33 @@ struct SdXMLDataStyleNumber
     bool    mbLong;
     bool    mbTextual;
     bool    mbDecimal02;
-    const char* mpText;
+    OUString maText;
 };
 
 }
 
-SdXMLDataStyleNumber const aSdXMLDataStyleNumbers[] =
+SdXMLDataStyleNumber constexpr aSdXMLDataStyleNumbers[] =
 {
-    { XML_DAY,          false,      false,      false,      nullptr },
-    { XML_DAY,          true,       false,      false,      nullptr },
-    { XML_MONTH,        true,       false,      false,      nullptr },
-    { XML_MONTH,        false,      true,       false,      nullptr },
-    { XML_MONTH,        true,       true,       false,      nullptr },
-    { XML_YEAR,         false,      false,      false,      nullptr },
-    { XML_YEAR,         true,       false,      false,      nullptr },
-    { XML_DAY_OF_WEEK,  false,      false,      false,      nullptr },
-    { XML_DAY_OF_WEEK,  true,       false,      false,      nullptr },
-    { XML_TEXT,         false,      false,      false,      "."  },
-    { XML_TEXT,         false,      false,      false,      " "  },
-    { XML_TEXT,         false,      false,      false,      ", " },
-    { XML_TEXT,         false,      false,      false,      ". " },
-    { XML_HOURS,        false,      false,      false,      nullptr },
-    { XML_MINUTES,      false,      false,      false,      nullptr },
-    { XML_TEXT,         false,      false,      false,      ":"  },
-    { XML_AM_PM,        false,      false,      false,      nullptr },
-    { XML_SECONDS,      false,      false,      false,      nullptr },
-    { XML_SECONDS,      false,      false,      true,       nullptr },
-    { XML_TOKEN_INVALID,        false,              false,             false,       nullptr  }
+    { XML_DAY,          false,      false,      false,      u""_ustr },
+    { XML_DAY,          true,       false,      false,      u""_ustr },
+    { XML_MONTH,        true,       false,      false,      u""_ustr },
+    { XML_MONTH,        false,      true,       false,      u""_ustr },
+    { XML_MONTH,        true,       true,       false,      u""_ustr },
+    { XML_YEAR,         false,      false,      false,      u""_ustr },
+    { XML_YEAR,         true,       false,      false,      u""_ustr },
+    { XML_DAY_OF_WEEK,  false,      false,      false,      u""_ustr },
+    { XML_DAY_OF_WEEK,  true,       false,      false,      u""_ustr },
+    { XML_TEXT,         false,      false,      false,      u"."_ustr  },
+    { XML_TEXT,         false,      false,      false,      u" "_ustr  },
+    { XML_TEXT,         false,      false,      false,      u", "_ustr },
+    { XML_TEXT,         false,      false,      false,      u". "_ustr },
+    { XML_HOURS,        false,      false,      false,      u""_ustr },
+    { XML_MINUTES,      false,      false,      false,      u""_ustr },
+    { XML_TEXT,         false,      false,      false,      u":"_ustr  },
+    { XML_AM_PM,        false,      false,      false,      u""_ustr },
+    { XML_SECONDS,      false,      false,      false,      u""_ustr },
+    { XML_SECONDS,      false,      false,      true,       u""_ustr },
+    { XML_TOKEN_INVALID,        false,              false,             false,       u""_ustr  }
 };
 
 // date
@@ -97,15 +96,15 @@ enum class DataStyleNumber : sal_uInt8
 
 struct SdXMLFixedDataStyle
 {
-    const char* mpName;
+    OUString maName;
     bool    mbAutomatic;
     bool    mbDateStyle;
     DataStyleNumber mpFormat[8];
 };
 
-const SdXMLFixedDataStyle aSdXML_Standard_Short =
+constexpr SdXMLFixedDataStyle aSdXML_Standard_Short =
 {
-    "D1", true, true,
+    u"D1"_ustr, true, true,
     {
         DataStyleNumber::DayLong,
         DataStyleNumber::TextPoint,
@@ -116,9 +115,9 @@ const SdXMLFixedDataStyle aSdXML_Standard_Short =
     }
 };
 
-const SdXMLFixedDataStyle aSdXML_Standard_Long =
+constexpr SdXMLFixedDataStyle aSdXML_Standard_Long =
 {
-    "D2", true, true,
+    u"D2"_ustr, true, true,
     {
         DataStyleNumber::DayOfWeekLong,
         DataStyleNumber::TextCommaSpace,
@@ -131,9 +130,9 @@ const SdXMLFixedDataStyle aSdXML_Standard_Long =
     }
 };
 
-const SdXMLFixedDataStyle aSdXML_DateStyle_1 =
+constexpr SdXMLFixedDataStyle aSdXML_DateStyle_1 =
 {
-    "D3", false, true,
+    u"D3"_ustr, false, true,
     {
         DataStyleNumber::DayLong,
         DataStyleNumber::TextPoint,
@@ -144,9 +143,9 @@ const SdXMLFixedDataStyle aSdXML_DateStyle_1 =
     }
 };
 
-const SdXMLFixedDataStyle aSdXML_DateStyle_2 =
+constexpr SdXMLFixedDataStyle aSdXML_DateStyle_2 =
 {
-    "D4", false, true,
+    u"D4"_ustr, false, true,
     {
         DataStyleNumber::DayLong,
         DataStyleNumber::TextPoint,
@@ -157,9 +156,9 @@ const SdXMLFixedDataStyle aSdXML_DateStyle_2 =
     }
 };
 
-const SdXMLFixedDataStyle aSdXML_DateStyle_3 =
+constexpr SdXMLFixedDataStyle aSdXML_DateStyle_3 =
 {
-    "D5", false, true,
+    u"D5"_ustr, false, true,
     {
         DataStyleNumber::Day,
         DataStyleNumber::TextPointSpace,
@@ -170,9 +169,9 @@ const SdXMLFixedDataStyle aSdXML_DateStyle_3 =
     }
 };
 
-const SdXMLFixedDataStyle aSdXML_DateStyle_4 =
+constexpr SdXMLFixedDataStyle aSdXML_DateStyle_4 =
 {
-    "D6", false, true,
+    u"D6"_ustr, false, true,
     {
         DataStyleNumber::Day,
         DataStyleNumber::TextPointSpace,
@@ -183,9 +182,9 @@ const SdXMLFixedDataStyle aSdXML_DateStyle_4 =
     }
 };
 
-const SdXMLFixedDataStyle aSdXML_DateStyle_5 =
+constexpr SdXMLFixedDataStyle aSdXML_DateStyle_5 =
 {
-    "D7", false, true,
+    u"D7"_ustr, false, true,
     {
         DataStyleNumber::DayOfWeek,
         DataStyleNumber::TextCommaSpace,
@@ -198,9 +197,9 @@ const SdXMLFixedDataStyle aSdXML_DateStyle_5 =
     }
 };
 
-const SdXMLFixedDataStyle aSdXML_DateStyle_6 =
+constexpr SdXMLFixedDataStyle aSdXML_DateStyle_6 =
 {
-    "D8", false, true,
+    u"D8"_ustr, false, true,
     {
         DataStyleNumber::DayOfWeekLong,
         DataStyleNumber::TextCommaSpace,
@@ -213,8 +212,8 @@ const SdXMLFixedDataStyle aSdXML_DateStyle_6 =
     }
 };
 
-const SdXMLFixedDataStyle aSdXML_TimeStyle_1 =
-{   "T1", true, false,
+constexpr SdXMLFixedDataStyle aSdXML_TimeStyle_1 =
+{   u"T1"_ustr, true, false,
     {
         DataStyleNumber::Hours,
         DataStyleNumber::TextColon,
@@ -226,8 +225,8 @@ const SdXMLFixedDataStyle aSdXML_TimeStyle_1 =
     }
 };
 
-const SdXMLFixedDataStyle aSdXML_TimeStyle_2 =
-{   "T2", false, false,
+constexpr SdXMLFixedDataStyle aSdXML_TimeStyle_2 =
+{   u"T2"_ustr, false, false,
     {
         DataStyleNumber::Hours,
         DataStyleNumber::TextColon,
@@ -236,8 +235,8 @@ const SdXMLFixedDataStyle aSdXML_TimeStyle_2 =
     }
 };
 
-const SdXMLFixedDataStyle aSdXML_TimeStyle_3 =
-{   "T3", false, false,
+constexpr SdXMLFixedDataStyle aSdXML_TimeStyle_3 =
+{   u"T3"_ustr, false, false,
     {
         DataStyleNumber::Hours,
         DataStyleNumber::TextColon,
@@ -248,8 +247,8 @@ const SdXMLFixedDataStyle aSdXML_TimeStyle_3 =
     }
 };
 
-const SdXMLFixedDataStyle aSdXML_TimeStyle_4 =
-{   "T4", false, false,
+constexpr SdXMLFixedDataStyle aSdXML_TimeStyle_4 =
+{   u"T4"_ustr, false, false,
     {
         DataStyleNumber::Hours,
         DataStyleNumber::TextColon,
@@ -260,8 +259,8 @@ const SdXMLFixedDataStyle aSdXML_TimeStyle_4 =
     }
 };
 
-const SdXMLFixedDataStyle aSdXML_TimeStyle_5 =
-{   "T5", false, false,
+constexpr SdXMLFixedDataStyle aSdXML_TimeStyle_5 =
+{   u"T5"_ustr, false, false,
     {
         DataStyleNumber::Hours,
         DataStyleNumber::TextColon,
@@ -271,8 +270,8 @@ const SdXMLFixedDataStyle aSdXML_TimeStyle_5 =
     }
 };
 
-const SdXMLFixedDataStyle aSdXML_TimeStyle_6 =
-{   "T6", false, false,
+constexpr SdXMLFixedDataStyle aSdXML_TimeStyle_6 =
+{   u"T6"_ustr, false, false,
     {
         DataStyleNumber::Hours,
         DataStyleNumber::TextColon,
@@ -284,8 +283,8 @@ const SdXMLFixedDataStyle aSdXML_TimeStyle_6 =
     }
 };
 
-const SdXMLFixedDataStyle aSdXML_TimeStyle_7 =
-{   "T7", false, false,
+constexpr SdXMLFixedDataStyle aSdXML_TimeStyle_7 =
+{   u"T7"_ustr, false, false,
     {
         DataStyleNumber::Hours,
         DataStyleNumber::TextColon,
@@ -340,19 +339,18 @@ static void SdXMLExportDataStyleNumber( SdXMLExport& rExport, SdXMLDataStyleNumb
     }
 
     SvXMLElementExport aNumberStyle( rExport, XML_NAMESPACE_NUMBER, rElement.meNumberStyle, true, false );
-    if( rElement.mpText )
+    if( !rElement.maText.isEmpty() )
     {
-        OUString sAttrValue( OUString::createFromAscii( rElement.mpText ) );
-        rExport.GetDocHandler()->characters( sAttrValue );
+        rExport.GetDocHandler()->characters( rElement.maText );
     }
 }
 
 static void SdXMLExportStyle( SdXMLExport& rExport, const SdXMLFixedDataStyle* pStyle, const SdXMLFixedDataStyle* pStyle2 = nullptr )
 {
     // name
-    OUString sAttrValue = OUString::createFromAscii( pStyle->mpName );
+    OUString sAttrValue = pStyle->maName;
     if( pStyle2 )
-        sAttrValue += OUString::createFromAscii( pStyle2->mpName );
+        sAttrValue += pStyle2->maName;
 
     rExport.AddAttribute( XML_NAMESPACE_STYLE, XML_NAME, sAttrValue );
 
@@ -440,7 +438,7 @@ void SdXMLNumberStylesExporter::exportDateStyle( SdXMLExport& rExport, sal_Int32
     }
 }
 
-OUString SdXMLNumberStylesExporter::getTimeStyleName(const sal_Int32 nTimeFormat )
+const OUString & SdXMLNumberStylesExporter::getTimeStyleName(const sal_Int32 nTimeFormat )
 {
     sal_Int32 nFormat = nTimeFormat;
     if( nFormat > 1 )
@@ -448,11 +446,11 @@ OUString SdXMLNumberStylesExporter::getTimeStyleName(const sal_Int32 nTimeFormat
 
     if( (nFormat >= 0) && (nFormat < SdXMLTimeFormatCount) )
     {
-        return OUString::createFromAscii(aSdXMLFixedTimeFormats[nFormat]->mpName );
+        return aSdXMLFixedTimeFormats[nFormat]->maName;
     }
     else
     {
-        return OUString();
+        return EMPTY_OUSTRING;
     }
 }
 
@@ -474,7 +472,7 @@ OUString SdXMLNumberStylesExporter::getDateStyleName(const sal_Int32 nDateFormat
 
     if( (nFormat >= 0) && (nFormat < SdXMLDateFormatCount) )
     {
-        return OUString::createFromAscii(aSdXMLFixedDateFormats[nFormat]->mpName );
+        return aSdXMLFixedDateFormats[nFormat]->maName;
     }
     else
     {
@@ -614,8 +612,8 @@ void SdXMLNumberFormatImportContext::add( std::u16string_view rNumberStyle, bool
             (pStyleMember->mbLong == bLong) &&
             (pStyleMember->mbTextual == bTextual) &&
             (pStyleMember->mbDecimal02 == bDecimal02) &&
-            ( ( (pStyleMember->mpText == nullptr) && (rText.empty()) ) ||
-              ( pStyleMember->mpText && (o3tl::equalsAscii( rText, pStyleMember->mpText ) ) ) ) )
+            ( ( (pStyleMember->maText.isEmpty()) && (rText.empty()) ) ||
+              ( !pStyleMember->maText.isEmpty() && rText == pStyleMember->maText ) ) )
         {
             mnElements[mnIndex++] = static_cast<DataStyleNumber>(nIndex + 1);
             return;

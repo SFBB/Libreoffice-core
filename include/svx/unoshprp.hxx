@@ -55,7 +55,7 @@
 #include <com/sun/star/drawing/ShadeMode.hpp>
 #include <com/sun/star/drawing/Position3D.hpp>
 #include <com/sun/star/drawing/NormalsKind.hpp>
-#include <com/sun/star/drawing/TextureKind.hpp>
+#include <com/sun/star/drawing/TextureKind2.hpp>
 #include <com/sun/star/drawing/TextureMode.hpp>
 #include <com/sun/star/drawing/TextureProjectionMode.hpp>
 #include <com/sun/star/drawing/PolyPolygonShape3D.hpp>
@@ -193,11 +193,13 @@
 #define OWN_ATTR_SIGNATURELINE_UNSIGNED_IMAGE   (OWN_ATTR_VALUE_START+102)
 #define OWN_ATTR_SIGNATURELINE_IS_SIGNED        (OWN_ATTR_VALUE_START+103)
 #define OWN_ATTR_QRCODE                         (OWN_ATTR_VALUE_START+104)
-#define OWN_ATTR_TEXTFITTOSIZESCALE             (OWN_ATTR_VALUE_START+105)
-#define OWN_ATTR_TEXTCOLUMNS                    (OWN_ATTR_VALUE_START+106)
-#define OWN_ATTR_HYPERLINK                      (OWN_ATTR_VALUE_START+107)
-#define OWN_ATTR_MISC_OBJ_DECORATIVE            (OWN_ATTR_VALUE_START+108)
-// ATTENTION: current maximum is OWN_ATTR_VALUE_START+108 svx; when adding values, update
+#define OWN_ATTR_TEXTFITTOSIZE_FONT_SCALE       (OWN_ATTR_VALUE_START+105)
+#define OWN_ATTR_TEXTFITTOSIZE_SPACING_SCALE    (OWN_ATTR_VALUE_START+106)
+#define OWN_ATTR_TEXTCOLUMNS                    (OWN_ATTR_VALUE_START+107)
+#define OWN_ATTR_HYPERLINK                      (OWN_ATTR_VALUE_START+108)
+#define OWN_ATTR_MISC_OBJ_DECORATIVE            (OWN_ATTR_VALUE_START+109)
+#define OWN_ATTR_OBJ_ISEMPTYPRESOBJ             (OWN_ATTR_VALUE_START+110)
+// ATTENTION: current maximum is OWN_ATTR_VALUE_START+120 svx; when adding values, update
 // OWN_ATTR_VALUE_END in include/svl/solar.hrc accordingly
 
 // #FontWork#
@@ -222,6 +224,11 @@
 
 #define SOFTEDGE_PROPERTIES \
     { u"SoftEdgeRadius"_ustr,      SDRATTR_SOFTEDGE_RADIUS,       cppu::UnoType<sal_Int32>::get(),      0,      0, PropertyMoreFlags::METRIC_ITEM},
+
+#define GLOW_TEXT_PROPERTIES \
+    { u"GlowTextEffectRadius"_ustr,      SDRATTR_GLOW_TEXT_RADIUS,         ::cppu::UnoType<sal_Int32>::get(),    0,      0, PropertyMoreFlags::METRIC_ITEM}, \
+    { u"GlowTextEffectColor"_ustr,       SDRATTR_GLOW_TEXT_COLOR,       ::cppu::UnoType<sal_Int32>::get(),    0,      0}, \
+    { u"GlowTextEffectTransparency"_ustr,SDRATTR_GLOW_TEXT_TRANSPARENCY,::cppu::UnoType<sal_Int16>::get(),    0,      0},
 
 #define SHADOW_PROPERTIES \
     { UNO_NAME_SHADOW,            SDRATTR_SHADOW,             cppu::UnoType<bool>::get(),    0,      0}, \
@@ -366,7 +373,8 @@
     { UNO_NAME_MISC_OBJ_SIZEPROTECT,  SDRATTR_OBJSIZEPROTECT          , cppu::UnoType<bool>::get(),                      0,  0},\
     { u"UINameSingular"_ustr,          OWN_ATTR_UINAME_SINGULAR        , ::cppu::UnoType<OUString>::get(),    css::beans::PropertyAttribute::READONLY,   0}, \
     { u"UINamePlural"_ustr,            OWN_ATTR_UINAME_PLURAL          , ::cppu::UnoType<OUString>::get(),    css::beans::PropertyAttribute::READONLY,   0}, \
-    { u"TextFitToSizeScale"_ustr, OWN_ATTR_TEXTFITTOSIZESCALE, ::cppu::UnoType<double>::get(), 0, 0}, \
+    { u"TextFitToSizeFontScale"_ustr, OWN_ATTR_TEXTFITTOSIZE_FONT_SCALE, ::cppu::UnoType<double>::get(), 0, 0}, \
+    { u"TextFitToSizeSpacingScale"_ustr, OWN_ATTR_TEXTFITTOSIZE_SPACING_SCALE, ::cppu::UnoType<double>::get(), 0, 0}, \
     /* #i68101# */ \
     { UNO_NAME_MISC_OBJ_TITLE,        OWN_ATTR_MISC_OBJ_TITLE         , ::cppu::UnoType<OUString>::get(),    0,  0}, \
     { UNO_NAME_MISC_OBJ_DESCRIPTION,  OWN_ATTR_MISC_OBJ_DESCRIPTION   , ::cppu::UnoType<OUString>::get(),    0,  0}, \
@@ -477,6 +485,7 @@
     { UNO_NAME_GRAPHOBJ_SIGNATURELINE_CAN_ADD_COMMENT, OWN_ATTR_SIGNATURELINE_CAN_ADD_COMMENT, cppu::UnoType<bool>::get(), 0, 0}, \
     { UNO_NAME_GRAPHOBJ_SIGNATURELINE_UNSIGNED_IMAGE, OWN_ATTR_SIGNATURELINE_UNSIGNED_IMAGE, cppu::UnoType<css::graphic::XGraphic>::get(), 0, 0}, \
     { UNO_NAME_GRAPHOBJ_SIGNATURELINE_IS_SIGNED,     OWN_ATTR_SIGNATURELINE_IS_SIGNED   , cppu::UnoType<bool>::get(), 0, 0}, \
+    { UNO_NAME_OBJ_ISEMPTYPRESOBJ,            OWN_ATTR_OBJ_ISEMPTYPRESOBJ , cppu::UnoType<bool>::get(), 0, 0}, \
     { UNO_NAME_GRAPHOBJ_QRCODE,               OWN_ATTR_QRCODE            , cppu::UnoType<css::drawing::BarCode>::get(), 0, 0},
 
 #define SPECIAL_3DSCENEOBJECT_PROPERTIES_DEFAULTS \
@@ -529,7 +538,7 @@
     { UNO_NAME_3D_NORMALS_KIND             ,SDRATTR_3DOBJ_NORMALS_KIND            , ::cppu::UnoType<css::drawing::NormalsKind>::get(), 0, 0}, \
     { UNO_NAME_3D_SHADOW_3D                ,SDRATTR_3DOBJ_SHADOW_3D               , cppu::UnoType<bool>::get(), 0, 0}, \
     { UNO_NAME_3D_TEXTURE_FILTER           ,SDRATTR_3DOBJ_TEXTURE_FILTER          , cppu::UnoType<bool>::get(), 0, 0}, \
-    { UNO_NAME_3D_TEXTURE_KIND             ,SDRATTR_3DOBJ_TEXTURE_KIND            , ::cppu::UnoType<css::drawing::TextureKind>::get(), 0, 0}, \
+    { UNO_NAME_3D_TEXTURE_KIND             ,SDRATTR_3DOBJ_TEXTURE_KIND            , ::cppu::UnoType<css::drawing::TextureKind2>::get(), 0, 0}, \
     { UNO_NAME_3D_TEXTURE_MODE             ,SDRATTR_3DOBJ_TEXTURE_MODE            , ::cppu::UnoType<css::drawing::TextureMode>::get(), 0, 0}, \
     { UNO_NAME_3D_TEXTURE_PROJ_X           ,SDRATTR_3DOBJ_TEXTURE_PROJ_X          , ::cppu::UnoType<css::drawing::TextureProjectionMode>::get(), 0, 0}, \
     { UNO_NAME_3D_TEXTURE_PROJ_Y           ,SDRATTR_3DOBJ_TEXTURE_PROJ_Y          , ::cppu::UnoType<css::drawing::TextureProjectionMode>::get(), 0, 0}, \

@@ -97,7 +97,7 @@ static int XIOErrorHdl( Display * )
 const struct timeval noyield_ = { 0, 0 };
 const struct timeval yield_   = { 0, 10000 };
 
-static const char* XRequest[] = {
+const char* const XRequest[] = {
     // see /usr/lib/X11/XErrorDB, /usr/openwin/lib/XErrorDB ...
     nullptr,
     "X_CreateWindow",
@@ -388,7 +388,7 @@ static Display *OpenX11Display(OString& rDisplay)
                  * the clipboard build another connection
                  * to the xserver using $DISPLAY
                  */
-                OUString envVar("DISPLAY");
+                OUString envVar(u"DISPLAY"_ustr);
                 osl_setEnvironment(envVar.pData, aParam.pData);
             }
             break;

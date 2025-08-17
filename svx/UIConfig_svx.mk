@@ -13,6 +13,7 @@ $(eval $(call gb_UIConfig_add_uifiles,svx,\
 	svx/uiconfig/ui/absrecbox \
 	svx/uiconfig/ui/acceptrejectchangesdialog \
 	svx/uiconfig/ui/accessibilitycheckentry \
+	svx/uiconfig/ui/accessibilitychecklevel \
 	svx/uiconfig/ui/addconditiondialog \
 	svx/uiconfig/ui/adddataitemdialog \
 	svx/uiconfig/ui/addinstancedialog \
@@ -78,7 +79,9 @@ $(eval $(call gb_UIConfig_add_uifiles,svx,\
 	svx/uiconfig/ui/gallerymenu1 \
 	svx/uiconfig/ui/gallerymenu2 \
 	svx/uiconfig/ui/genericcheckdialog \
+	svx/uiconfig/ui/dropdownfielddialog \
 	svx/uiconfig/ui/genericcheckentry \
+	svx/uiconfig/ui/gotopagedialog \
 	svx/uiconfig/ui/grafctrlbox \
 	svx/uiconfig/ui/grafmodebox \
 	svx/uiconfig/ui/headfootformatpage \
@@ -122,6 +125,7 @@ $(eval $(call gb_UIConfig_add_uifiles,svx,\
 	svx/uiconfig/ui/sidebararea \
 	svx/uiconfig/ui/sidebarempty \
 	svx/uiconfig/ui/sidebareffect \
+	svx/uiconfig/ui/sidebartexteffect \
 	svx/uiconfig/ui/sidebarfontwork \
 	svx/uiconfig/ui/sidebarshadow \
 	svx/uiconfig/ui/sidebargallery \

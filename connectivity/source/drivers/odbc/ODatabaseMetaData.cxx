@@ -32,8 +32,6 @@
 
 using namespace connectivity::odbc;
 using namespace com::sun::star::uno;
-using namespace com::sun::star::lang;
-using namespace com::sun::star::beans;
 using namespace com::sun::star::sdbc;
 
 ODatabaseMetaData::ODatabaseMetaData(const SQLHANDLE _pHandle,OConnection* _pCon)
@@ -42,7 +40,7 @@ ODatabaseMetaData::ODatabaseMetaData(const SQLHANDLE _pHandle,OConnection* _pCon
                         ,m_pConnection(_pCon)
                         ,m_bUseCatalog(true)
 {
-    OSL_ENSURE(m_pConnection,"ODatabaseMetaData::ODatabaseMetaData: No connection set!");
+    assert(m_pConnection && "ODatabaseMetaData::ODatabaseMetaData: No connection set!");
     if(!m_pConnection->isCatalogUsed())
     {
         osl_atomic_increment( &m_refCount );

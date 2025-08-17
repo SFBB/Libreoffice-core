@@ -24,9 +24,9 @@
 #include "attarray.hxx"
 #include "column.hxx"
 #include "colcontainer.hxx"
+#include <sal/types.h>
 #include "sortparam.hxx"
 #include "types.hxx"
-#include "cellvalue.hxx"
 #include <formula/types.hxx>
 #include "calcmacros.hxx"
 #include <formula/errorcodes.hxx>
@@ -34,7 +34,8 @@
 #include "drwlayer.hxx"
 #include "SparklineList.hxx"
 #include "SolverSettings.hxx"
-
+#include "markdata.hxx"
+#include "FilterData.hxx"
 #include <algorithm>
 #include <atomic>
 #include <memory>
@@ -69,7 +70,6 @@ class ColumnSpanSet;
 class RangeColumnSpanSet;
 class ColumnSet;
 struct ColumnBlockPosition;
-class TableColumnBlockPositionSet;
 struct RefUpdateContext;
 struct RefUpdateInsertTabContext;
 struct RefUpdateDeleteTabContext;
@@ -82,7 +82,6 @@ class RowHeightContext;
 class CompileFormulaContext;
 struct SetFormulaDirtyContext;
 class ColumnIterator;
-class ScDrawObjData;
 }
 
 class SfxItemSet;
@@ -99,7 +98,6 @@ class ScPrintSaverTab;
 class ScProgress;
 class ScRangeList;
 class ScSheetEvents;
-class ScSortInfoArray;
 class ScConditionalFormat;
 class ScConditionalFormatList;
 class ScStyleSheet;
@@ -115,7 +113,6 @@ struct ScSetStringParam;
 struct ScColWidthParam;
 class ScRangeName;
 class ScDBData;
-class ScHint;
 class ScPostIt;
 struct ScInterpreterContext;
 
@@ -154,10 +151,16 @@ private:
     const Iterator maEnd;
 };
 
+template <typename T>
+concept ColumnDataApply = std::is_invocable_v<T, ScColumnData&, SCROW, SCROW>;
+
 class ScTable
 {
 private:
     typedef ::std::vector< ScRange > ScRangeVec;
+
+    SCTAB           nTab;
+    ScDocument&     rDocument;
 
     ScColContainer aCol;
 
@@ -169,7 +172,7 @@ private:
     OUString        aLinkFlt;
     OUString        aLinkOpt;
     OUString        aLinkTab;
-    sal_uLong       nLinkRefreshDelay;
+    sal_Int32       nLinkRefreshDelay;
     ScLinkMode      nLinkMode;
 
     // page style template
@@ -190,10 +193,8 @@ private:
 
     std::unique_ptr<ScBitMaskCompressedArray<SCCOL, CRFlags>> mpColFlags;
     std::unique_ptr<ScBitMaskCompressedArray< SCROW, CRFlags>> pRowFlags;
-    std::unique_ptr<ScFlatBoolColSegments>  mpHiddenCols;
-    std::unique_ptr<ScFlatBoolRowSegments>  mpHiddenRows;
-    std::unique_ptr<ScFlatBoolColSegments>  mpFilteredCols;
-    std::unique_ptr<ScFlatBoolRowSegments>  mpFilteredRows;
+
+    FilterData maFilterData;
 
     ::std::set<SCROW>                      maRowPageBreaks;
     ::std::set<SCROW>                      maRowManualBreaks;
@@ -209,8 +210,6 @@ private:
     mutable SCCOL nTableAreaVisibleX;
     mutable SCROW nTableAreaVisibleY;
 
-    SCTAB           nTab;
-    ScDocument&     rDocument;
     std::unique_ptr<utl::TextSearch> pSearchText;
 
     mutable OUString aUpperName;             // #i62977# filled only on demand, reset in SetName
@@ -252,6 +251,7 @@ private:
     bool            bActiveScenario:1;
     bool            mbPageBreaksValid:1;
     bool            mbForceBreaks:1;
+    bool            mbTotalsRowBelow:1;
     /** this is touched from formula group threading context */
     std::atomic<bool> bStreamValid;
 
@@ -377,10 +377,10 @@ public:
     const OUString& GetLinkFlt() const                       { return aLinkFlt; }
     const OUString& GetLinkOpt() const                       { return aLinkOpt; }
     const OUString& GetLinkTab() const                       { return aLinkTab; }
-    sal_uLong   GetLinkRefreshDelay() const                  { return nLinkRefreshDelay; }
+    sal_Int32  GetLinkRefreshDelay() const                  { return nLinkRefreshDelay; }
 
     void        SetLink( ScLinkMode nMode, const OUString& rDoc, const OUString& rFlt,
-                        const OUString& rOpt, const OUString& rTab, sal_uLong nRefreshDelay );
+                        const OUString& rOpt, const OUString& rTab, sal_Int32 nRefreshDelay );
 
     sal_Int64   GetHashCode () const;
 
@@ -393,6 +393,9 @@ public:
     const OUString& GetCodeName() const { return aCodeName; }
     void        SetCodeName( const OUString& rNewName ) { aCodeName = rNewName; }
 
+    bool        GetTotalsRowBelow() const { return mbTotalsRowBelow; }
+    void        SetTotalsRowBelow( bool bNewVal ) { mbTotalsRowBelow = bNewVal; }
+
     const OUString& GetUpperName() const;
 
     const OUString&   GetPageStyle() const                    { return aPageStyle; }
@@ -404,7 +407,8 @@ public:
     const ScTableProtection* GetProtection() const;
     void            GetUnprotectedCells( ScRangeList& rRangeList ) const;
 
-    bool IsEditActionAllowed( sc::ColRowEditAction eAction, SCCOLROW nStart, SCCOLROW nEnd ) const;
+    bool            IsEditActionAllowed( sc::EditAction eAction, SCCOL nStartCol, SCROW nStartRow,
+                                         SCCOL nEndCol, SCROW nEndRow ) const;
 
     Size            GetPageSize() const;
     void            SetPageSize( const Size& rSize );
@@ -425,6 +429,7 @@ public:
 
     // This also includes e.g. notes. Use IsEmptyData() for cell data only.
     bool        IsBlockEmpty( SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2 ) const;
+    bool        IsNotesBlockEmpty( SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2 ) const;
 
     bool        SetString( SCCOL nCol, SCROW nRow, SCTAB nTab, const OUString& rString,
                            const ScSetStringParam * pParam = nullptr );
@@ -439,7 +444,7 @@ public:
     void SetFormula(
         SCCOL nCol, SCROW nRow, const OUString& rFormula, formula::FormulaGrammar::Grammar eGram );
 
-    SC_DLLPUBLIC std::shared_ptr<sc::SolverSettings> GetSolverSettings();
+    SC_DLLPUBLIC const std::shared_ptr<sc::SolverSettings> & GetSolverSettings();
 
     // tdf#156815 Sets the solver settings object to nullptr to force reloading Solver settings the
     // next time the dialog is opened. This is required when sheets are renamed
@@ -467,7 +472,7 @@ public:
     bool        ReservePatternCount( SCCOL nCol, SCSIZE nReserve );
 
     void        SetRawString( SCCOL nCol, SCROW nRow, const svl::SharedString& rStr );
-    OUString    GetString( SCCOL nCol, SCROW nRow, const ScInterpreterContext* pContext = nullptr ) const;
+    OUString    GetString( SCCOL nCol, SCROW nRow, ScInterpreterContext* pContext = nullptr ) const;
     double*     GetValueCell( SCCOL nCol, SCROW nRow );
     // Note that if pShared is set and a value is returned that way, the returned OUString is empty.
     OUString    GetInputString( SCCOL nCol, SCROW nRow, bool bForceSystemLocale = false ) const;
@@ -478,14 +483,6 @@ public:
     const ScFormulaCell* GetFormulaCell( SCCOL nCol, SCROW nRow ) const;
     ScFormulaCell* GetFormulaCell( SCCOL nCol, SCROW nRow );
 
-    CellType    GetCellType( const ScAddress& rPos ) const
-                    {
-                        if (!GetDoc().ValidColRow(rPos.Col(),rPos.Row()))
-                            return CELLTYPE_NONE;
-                        if (rPos.Col() >= aCol.size())
-                            return CELLTYPE_NONE;
-                        return aCol[rPos.Col()].GetCellType( rPos.Row() );
-                    }
     CellType    GetCellType( SCCOL nCol, SCROW nRow ) const;
     ScRefCellValue GetCellValue( SCCOL nCol, sc::ColumnBlockPosition& rBlockPos, SCROW nRow );
     ScRefCellValue GetCellValue( SCCOL nCol, SCROW nRow ) const;
@@ -722,7 +719,7 @@ public:
     void UpdateSelectionFunction( ScFunctionData& rData, const ScMarkData& rMark );
 
     void        AutoFormat( SCCOL nStartCol, SCROW nStartRow, SCCOL nEndCol, SCROW nEndRow,
-                                    sal_uInt16 nFormatNo );
+                                    sal_uInt16 nFormatNo, ScProgress* pProgress );
     void        GetAutoFormatData(SCCOL nStartCol, SCROW nStartRow, SCCOL nEndCol, SCROW nEndRow, ScAutoFormatData& rData);
     bool        SearchAndReplace(
         const SvxSearchItem& rSearchItem, SCCOL& rCol, SCROW& rRow, const ScMarkData& rMark,
@@ -780,7 +777,7 @@ public:
     void        SetAttrEntries( SCCOL nStartCol, SCCOL nEndCol, std::vector<ScAttrEntry> && vNewData);
 
     void        SetPattern( const ScAddress& rPos, const ScPatternAttr& rAttr );
-    const ScPatternAttr* SetPattern( SCCOL nCol, SCROW nRow, std::unique_ptr<ScPatternAttr> );
+    void        SetPattern( SCCOL nCol, SCROW nRow, const CellAttributeHolder& rHolder );
     void        SetPattern( SCCOL nCol, SCROW nRow, const ScPatternAttr& rAttr );
     void        ApplyPatternIfNumberformatIncompatible( const ScRange& rRange,
                             const ScPatternAttr& rPattern, SvNumFormatType nNewType );
@@ -810,7 +807,7 @@ public:
     bool        ApplyFlags( SCCOL nStartCol, SCROW nStartRow, SCCOL nEndCol, SCROW nEndRow, ScMF nFlags );
     bool        RemoveFlags( SCCOL nStartCol, SCROW nStartRow, SCCOL nEndCol, SCROW nEndRow, ScMF nFlags );
 
-    void        ApplySelectionCache( ScItemPoolCache* pCache, const ScMarkData& rMark, ScEditDataArray* pDataArray = nullptr, bool* const pIsChanged = nullptr );
+    void        ApplySelectionCache( ScItemPoolCache& rCache, const ScMarkData& rMark, ScEditDataArray* pDataArray = nullptr, bool* const pIsChanged = nullptr );
     void        DeleteSelection( InsertDeleteFlags nDelFlag, const ScMarkData& rMark, bool bBroadcast = true );
 
     void        ClearSelectionItems( const sal_uInt16* pWhich, const ScMarkData& rMark );
@@ -902,6 +899,16 @@ public:
      * @return SCROW last row of the range within specified height.
      */
     SCROW       GetRowForHeight(tools::Long nHeight) const;
+    /**
+     * Given the height i.e. total vertical distance from the top of the sheet
+     * grid, return the first visible row whose top position is below the
+     * specified height.
+     * Note that this variant uses pixels, not twips.
+     * @param nStartRow the row to start searching at.
+     * @param rStartRowHeightPx this is both the height at nStartRow, and returns the height of the first row
+     *        which has height > nHeight
+     */
+    SCROW       GetRowForHeightPixels( SCROW nStartRow, tools::Long& rStartRowHeightPx, tools::Long nHeightPx, double fPPTY ) const;
 
     sal_uInt16      GetOriginalWidth( SCCOL nCol ) const;
     sal_uInt16      GetOriginalHeight( SCROW nRow ) const;
@@ -972,6 +979,9 @@ public:
     css::uno::Sequence<
         css::sheet::TablePageBreakData> GetRowBreakData() const;
 
+    void updateObjectsForColsChanged(SCCOL nStartCol, SCCOL nEndCol, bool bHidden, bool bChanged);
+    void updateObjectsForRowsChanged(SCROW nStartRow, SCROW nEndRow, bool bHidden, bool bChanged);
+
     bool        RowHidden(SCROW nRow, SCROW* pFirstRow = nullptr, SCROW* pLastRow = nullptr) const;
     bool        RowHiddenLeaf(SCROW nRow, SCROW* pFirstRow = nullptr, SCROW* pLastRow = nullptr) const;
     bool        HasHiddenRows(SCROW nStartRow, SCROW nEndRow) const;
@@ -990,16 +1000,8 @@ public:
 
     SCCOLROW    LastHiddenColRow(SCCOLROW nPos, bool bCol) const;
 
-    bool        RowFiltered(SCROW nRow, SCROW* pFirstRow = nullptr, SCROW* pLastRow = nullptr) const;
-    bool        ColFiltered(SCCOL nCol, SCCOL* pFirstCol = nullptr, SCCOL* pLastCol = nullptr) const;
-    bool        HasFilteredRows(SCROW nStartRow, SCROW nEndRow) const;
-    void        CopyColFiltered(const ScTable& rTable, SCCOL nStartCol, SCCOL nEndCol);
-    void        CopyRowFiltered(const ScTable& rTable, SCROW nStartRow, SCROW nEndRow);
-    void        SetRowFiltered(SCROW nStartRow, SCROW nEndRow, bool bFiltered);
-    void        SetColFiltered(SCCOL nStartCol, SCCOL nEndCol, bool bFiltered);
-    SCROW       FirstNonFilteredRow(SCROW nStartRow, SCROW nEndRow) const;
-    SCROW       LastNonFilteredRow(SCROW nStartRow, SCROW nEndRow) const;
-    SCROW       CountNonFilteredRows(SCROW nStartRow, SCROW nEndRow) const;
+    FilterData& getFilterData() { return maFilterData; }
+    FilterData const& getFilterData() const { return maFilterData; }
 
     Color GetCellBackgroundColor(ScAddress aPos) const;
     Color GetCellTextColor(ScAddress aPos) const;
@@ -1047,7 +1049,7 @@ public:
                                  const ScObjectHandling eObjectHandling = ScObjectHandling::RecalcPosMode);
 
     void SetRangeName(std::unique_ptr<ScRangeName> pNew);
-    ScRangeName* GetRangeName() const;
+    SC_DLLPUBLIC ScRangeName* GetRangeName() const;
 
     void PreprocessRangeNameUpdate(
         sc::EndListeningContext& rEndListenCxt, sc::CompileFormulaContext& rCompileCxt );
@@ -1064,7 +1066,7 @@ public:
 
     void DeleteConditionalFormat(sal_uLong nOldIndex);
 
-    sal_uLong          AddCondFormat( std::unique_ptr<ScConditionalFormat> pNew );
+    sal_uInt32          AddCondFormat( std::unique_ptr<ScConditionalFormat> pNew );
 
     SvtScriptType GetScriptType( SCCOL nCol, SCROW nRow ) const;
     void SetScriptType( SCCOL nCol, SCROW nRow, SvtScriptType nType );
@@ -1313,9 +1315,19 @@ private:
 
     void        SetLoadingMedium(bool bLoading);
 
+    struct FillMaxRotCacheMapHash
+    {
+        size_t operator()(const std::pair<const ScPatternAttr*, const SfxItemSet*>& rPair) const noexcept
+        {
+            return std::hash<const ScPatternAttr*>{}(rPair.first) ^ (std::hash<const SfxItemSet*>{}(rPair.second) << 1);
+        }
+    };
+    typedef std::unordered_map<std::pair<const ScPatternAttr*, const SfxItemSet*>, ScRotateDir, FillMaxRotCacheMapHash> FillMaxRotCacheMap;
+
     SCSIZE      FillMaxRot( RowInfo* pRowInfo, SCSIZE nArrCount, SCCOL nX1, SCCOL nX2,
                             SCCOL nCol, SCROW nAttrRow1, SCROW nAttrRow2, SCSIZE nArrY,
-                            const ScPatternAttr* pPattern, const SfxItemSet* pCondSet );
+                            const ScPatternAttr* pPattern, const SfxItemSet* pCondSet,
+                            FillMaxRotCacheMap* pCache);
 
     // idle calculation of OutputDevice text width for cell
     // also invalidates script type, broadcasts for "calc as shown"
@@ -1427,6 +1439,56 @@ private:
         SCROW mnUBound;
     };
 
+    // Applies a function to the selected ranges; makes sure to only allocate
+    // as few columns as needed, and applies the rest to default column data.
+    // The function looks like
+    //     ApplyDataFunc(ScColumnData& applyTo, SCROW nTop, SCROW nBottom)
+    template <ColumnDataApply ApplyDataFunc>
+    void ApplyWithAllocation(const ScMarkData&, ApplyDataFunc);
+
+    // Applies a function to the selected ranges in a given column.
+    template <ColumnDataApply ApplyDataFunc> void Apply(const ScMarkData&, SCCOL, ApplyDataFunc);
 };
+
+template <ColumnDataApply ApplyDataFunc>
+void ScTable::ApplyWithAllocation(const ScMarkData& rMark, ApplyDataFunc apply)
+{
+    if (!rMark.GetTableSelect(nTab) || !(rMark.IsMultiMarked() || rMark.IsMarked()))
+        return;
+    SCCOL lastChangeCol;
+    if (rMark.GetArea().aEnd.Col() == GetDoc().MaxCol())
+    {
+        // For the same unallocated columns until the end we can change just the default.
+        lastChangeCol = rMark.GetStartOfEqualColumns(GetDoc().MaxCol(), aCol.size()) - 1;
+        // Allocate needed different columns before changing the default.
+        if (lastChangeCol >= 0)
+            CreateColumnIfNotExists(lastChangeCol);
+
+        Apply(rMark, GetDoc().MaxCol(), apply);
+    }
+    else // need to allocate all columns affected
+    {
+        lastChangeCol = rMark.GetArea().aEnd.Col();
+        CreateColumnIfNotExists(lastChangeCol);
+    }
+
+    // The loop should go not to lastChangeCol, but over all columns, to apply to already allocated
+    // in the "StartOfEqualColumns" range
+    for (SCCOL i = 0; i < aCol.size(); i++)
+        Apply(rMark, i, apply);
+}
+
+template <ColumnDataApply ApplyDataFunc>
+void ScTable::Apply(const ScMarkData& rMark, SCCOL nCol, ApplyDataFunc apply)
+{
+    if (rMark.IsMultiMarked())
+    {
+        ScColumnData& rCol = GetColumnData(nCol);
+        ScMultiSelIter aMultiIter(rMark.GetMultiSelData(), nCol);
+        SCROW nTop, nBottom;
+        while (aMultiIter.Next(nTop, nBottom))
+            apply(rCol, nTop, nBottom);
+    }
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

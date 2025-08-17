@@ -32,7 +32,7 @@ private:
     OUString            m_aStrUnknownUser;
     OUString            m_aStrExclusiveAccess;
 
-    ScDocShell*         mpDocShell;
+    ScDocShell&         mrDocShell;
 
     std::unique_ptr<weld::CheckButton> m_xCbShare;
     std::unique_ptr<weld::Label> m_xFtWarning;
@@ -42,7 +42,7 @@ private:
     DECL_LINK(SizeAllocated, const Size&, void);
 
 public:
-    ScShareDocumentDlg(weld::Window* pParent, const ScViewData* pViewData);
+    ScShareDocumentDlg(weld::Window* pParent, ScViewData& rViewData);
     virtual ~ScShareDocumentDlg() override;
 
     bool                IsShareDocumentChecked() const;

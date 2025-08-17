@@ -115,7 +115,7 @@ namespace dlgprov
         if ( xSMgr.is() )
         {
             args.getArray()[0] <<= xModel;
-            mxListener.set( xSMgr->createInstanceWithArgumentsAndContext( "ooo.vba.EventListener", args, m_xContext ), UNO_QUERY );
+            mxListener.set( xSMgr->createInstanceWithArgumentsAndContext( u"ooo.vba.EventListener"_ustr, args, m_xContext ), UNO_QUERY );
         }
         if ( !rxControl.is() )
             return;
@@ -123,9 +123,9 @@ namespace dlgprov
         try
         {
             Reference< XPropertySet > xProps( rxControl->getModel(), UNO_QUERY_THROW );
-            xProps->getPropertyValue("Name") >>= msDialogCodeName;
+            xProps->getPropertyValue(u"Name"_ustr) >>= msDialogCodeName;
             xProps.set( mxListener, UNO_QUERY_THROW );
-            xProps->setPropertyValue("Model", args[ 0 ] );
+            xProps->setPropertyValue(u"Model"_ustr, args[ 0 ] );
         }
         catch( const Exception& )
         {
@@ -161,26 +161,26 @@ namespace dlgprov
         // key listeners by protocol when ScriptType = 'Script'
         // otherwise key is the ScriptType e.g. StarBasic
         if ( rxRTLListener.is() ) // set up handler for RTL_BASIC
-            listenersForTypes[ OUString("StarBasic") ] = rxRTLListener;
+            listenersForTypes[ u"StarBasic"_ustr ] = rxRTLListener;
         else
-            listenersForTypes[ OUString("StarBasic") ] = new DialogLegacyScriptListenerImpl( rxContext, rxModel );
+            listenersForTypes[ u"StarBasic"_ustr ] = new DialogLegacyScriptListenerImpl( rxContext, rxModel );
         // handler for Script & OUString("vnd.sun.star.UNO:")
-        listenersForTypes[ OUString("vnd.sun.star.UNO") ] = new DialogUnoScriptListenerImpl( rxContext, rxModel, rxControl, rxHandler, rxIntrospect, bProviderMode );
-        listenersForTypes[ OUString("vnd.sun.star.script") ] = new DialogSFScriptListenerImpl( rxContext, rxModel );
+        listenersForTypes[ u"vnd.sun.star.UNO"_ustr ] = new DialogUnoScriptListenerImpl( rxContext, rxModel, rxControl, rxHandler, rxIntrospect, bProviderMode );
+        listenersForTypes[ u"vnd.sun.star.script"_ustr ] = new DialogSFScriptListenerImpl( rxContext, rxModel );
 
         // determine the VBA compatibility mode from the Basic library container
         try
         {
             uno::Reference< beans::XPropertySet > xModelProps( rxModel, uno::UNO_QUERY_THROW );
             uno::Reference< script::vba::XVBACompatibility > xVBACompat(
-                xModelProps->getPropertyValue("BasicLibraries"), uno::UNO_QUERY_THROW );
+                xModelProps->getPropertyValue(u"BasicLibraries"_ustr), uno::UNO_QUERY_THROW );
             mbUseFakeVBAEvents = xVBACompat->getVBACompatibilityMode();
         }
         catch( uno::Exception& )
         {
         }
         if ( mbUseFakeVBAEvents )
-            listenersForTypes[ OUString("VBAInterop") ] = new DialogVBAScriptListenerImpl( rxContext, rxControl, rxModel, sDialogLibName );
+            listenersForTypes[ u"VBAInterop"_ustr ] = new DialogVBAScriptListenerImpl( rxContext, rxControl, rxModel, sDialogLibName );
     }
 
 
@@ -203,7 +203,7 @@ namespace dlgprov
         Reference< XMultiComponentFactory > xSMgr( m_xContext->getServiceManager() );
         if ( xSMgr.is() )
         {
-            Reference< ooo::vba::XVBAToOOEventDescGen > xVBAToOOEvtDesc( xSMgr->createInstanceWithContext("ooo.vba.VBAToOOEventDesc", m_xContext ), UNO_QUERY );
+            Reference< ooo::vba::XVBAToOOEventDescGen > xVBAToOOEvtDesc( xSMgr->createInstanceWithContext(u"ooo.vba.VBAToOOEventDesc"_ustr, m_xContext ), UNO_QUERY );
             if ( xVBAToOOEvtDesc.is() )
                 xEventsSupplier = xVBAToOOEvtDesc->getEventSupplier( xControl, sControlName );
 
@@ -281,37 +281,33 @@ namespace dlgprov
             // We know that we have to do with instances of XControl.
             // Otherwise this is not the right implementation for
             // XScriptEventsAttacher and we have to give up.
-            Reference< XControl > xControl( rObject, UNO_QUERY );
-            Reference< XControlContainer > xControlContainer( xControl, UNO_QUERY );
-            Reference< XDialog > xDialog( xControl, UNO_QUERY );
-            if ( !xControl.is() )
-                throw IllegalArgumentException();
+            nestedAttachEvents(rObject.query<XControl>(), Helper, sDialogCodeName);
+        }
+    }
 
-            // get XEventsSupplier from control model
-            Reference< XControlModel > xControlModel = xControl->getModel();
-            Reference< XScriptEventsSupplier > xEventsSupplier( xControlModel, UNO_QUERY );
-            attachEventsToControl( xControl, xEventsSupplier, Helper );
-            if ( mbUseFakeVBAEvents )
-            {
-                xEventsSupplier.set( getFakeVbaEventsSupplier( xControl, sDialogCodeName ) );
-                Any newHelper(xControl );
-                attachEventsToControl( xControl, xEventsSupplier, newHelper );
-            }
-            if ( xControlContainer.is() && !xDialog.is() )
-            {
-                Sequence< Reference< XControl > > aControls = xControlContainer->getControls();
-                sal_Int32 nControlCount = aControls.getLength();
+    void DialogEventsAttacherImpl::nestedAttachEvents(
+        const css::uno::Reference<css::awt::XControl>& xControl, const css::uno::Any& Helper,
+        OUString& sDialogCodeName)
+    {
+        if (!xControl.is())
+            throw IllegalArgumentException();
+        Reference<XControlContainer> xControlContainer(xControl, UNO_QUERY);
+        Reference<XDialog> xDialog(xControl, UNO_QUERY);
 
-                Sequence< Reference< XInterface > > aObjects( nControlCount );
-                Reference< XInterface >* pObjects2 = aObjects.getArray();
-                const Reference< XControl >* pControls = aControls.getConstArray();
-
-                for ( sal_Int32 i2 = 0; i2 < nControlCount; ++i2 )
-                {
-                    pObjects2[i2].set( pControls[i2], UNO_QUERY );
-                }
-                nestedAttachEvents( aObjects, Helper, sDialogCodeName );
-            }
+        // get XEventsSupplier from control model
+        Reference<XControlModel> xControlModel = xControl->getModel();
+        Reference<XScriptEventsSupplier> xEventsSupplier(xControlModel, UNO_QUERY);
+        attachEventsToControl(xControl, xEventsSupplier, Helper);
+        if (mbUseFakeVBAEvents)
+        {
+            xEventsSupplier.set(getFakeVbaEventsSupplier(xControl, sDialogCodeName));
+            Any newHelper(xControl);
+            attachEventsToControl(xControl, xEventsSupplier, newHelper);
+        }
+        if (xControlContainer.is() && !xDialog.is())
+        {
+            for (auto& xChildControl : xControlContainer->getControls())
+                nestedAttachEvents(xChildControl, Helper, sDialogCodeName);
         }
     }
 
@@ -334,7 +330,7 @@ namespace dlgprov
                     throw RuntimeException();
 
                 m_xEventAttacher.set( xSMgr->createInstanceWithContext(
-                    "com.sun.star.script.EventAttacher", m_xContext ), UNO_QUERY );
+                    u"com.sun.star.script.EventAttacher"_ustr, m_xContext ), UNO_QUERY );
 
                 if ( !m_xEventAttacher.is() )
                     throw ServiceNotRegisteredException();
@@ -348,7 +344,7 @@ namespace dlgprov
             Reference< XPropertySet > xProps( xDlgControl->getModel(), UNO_QUERY );
             try
             {
-                xProps->getPropertyValue("Name") >>= sDialogCodeName;
+                xProps->getPropertyValue(u"Name"_ustr) >>= sDialogCodeName;
             }
             catch( Exception& ){}
         }
@@ -468,7 +464,7 @@ namespace dlgprov
                         provider::theMasterScriptProviderFactory::get( m_xContext );
 
                     Any aCtx;
-                    aCtx <<= OUString("user");
+                    aCtx <<= u"user"_ustr;
                     xScriptProvider = xFactory->createScriptProvider( aCtx );
                 }
             }
@@ -491,7 +487,7 @@ namespace dlgprov
 
                     Any aResult = xScript->invoke( aInParams, aOutParamsIndex, aOutParams );
                     if ( pRet )
-                        *pRet = aResult;
+                        *pRet = std::move(aResult);
                 }
             }
         }
@@ -527,8 +523,7 @@ namespace dlgprov
     {
         OUString aMethodName = aScriptEvent.ScriptCode.copy( strlen("vnd.sun.star.UNO:") );
 
-        const Any* pArguments = aScriptEvent.Arguments.getConstArray();
-        Any aEventObject = pArguments[0];
+        Any aEventObject = aScriptEvent.Arguments[0];
 
         bool bHandled = false;
         if( m_xHandler.is() )
@@ -559,19 +554,19 @@ namespace dlgprov
             try
             {
                 // call method
-                const Reference< XIdlMethod >& rxMethod = m_xIntrospectionAccess->
+                const Reference< XIdlMethod > xMethod = m_xIntrospectionAccess->
                     getMethod( aMethodName, MethodConcept::ALL - MethodConcept::DANGEROUS );
 
                 Reference< XMaterialHolder > xMaterialHolder =
                     Reference< XMaterialHolder >::query( m_xIntrospectionAccess );
                 Any aHandlerObject = xMaterialHolder->getMaterial();
 
-                Sequence< Reference< XIdlClass > > aParamTypeSeq = rxMethod->getParameterTypes();
+                Sequence< Reference< XIdlClass > > aParamTypeSeq = xMethod->getParameterTypes();
                 sal_Int32 nParamCount = aParamTypeSeq.getLength();
                 if( nParamCount == 0 )
                 {
                     Sequence<Any> args;
-                    rxMethod->invoke( aHandlerObject, args );
+                    xMethod->invoke( aHandlerObject, args );
                     bHandled = true;
                 }
                 else if( nParamCount == 2 )
@@ -589,8 +584,8 @@ namespace dlgprov
                         Reference< XWindow > xWindow( m_xControl, UNO_QUERY );
                         pArgs[0] <<= xWindow;
                     }
-                    pArgs[1] = aEventObject;
-                    aRet = rxMethod->invoke( aHandlerObject, Args );
+                    pArgs[1] = std::move(aEventObject);
+                    aRet = xMethod->invoke( aHandlerObject, Args );
                     bHandled = true;
                 }
             }
@@ -603,12 +598,12 @@ namespace dlgprov
         if( bHandled )
         {
             if( pRet )
-                *pRet = aRet;
+                *pRet = std::move(aRet);
         }
         else
         {
             OUString aRes(SfxResId(STR_ERRUNOEVENTBINDUNG));
-            OUString aQuoteChar( "\"" );
+            OUString aQuoteChar( u"\""_ustr );
 
             sal_Int32 nIndex = aRes.indexOf( '%' );
 

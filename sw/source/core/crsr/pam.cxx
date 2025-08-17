@@ -104,7 +104,7 @@ SwPosition::SwPosition( const SwNode& rNode, SwNodeOffset nDiff )
 {
 }
 
-SwPosition::SwPosition( SwNodes& rNodes, SwNodeOffset nIndex )
+SwPosition::SwPosition( const SwNodes& rNodes, SwNodeOffset nIndex )
     : nNode( rNodes, nIndex ), nContent( GetNode().GetContentNode() )
 {
 }
@@ -378,42 +378,27 @@ bool CheckNodesRange( const SwNode& rStt,
     return false; // somewhere in between => error
 }
 
-bool GoNext(SwNode* pNd, SwContentIndex * pIdx, SwCursorSkipMode nMode )
+bool GoNext(SwNode& rNd, SwContentIndex& rIdx, SwCursorSkipMode nMode )
 {
-    if( pNd->IsContentNode() )
-        return static_cast<SwContentNode*>(pNd)->GoNext( pIdx, nMode );
+    if( rNd.IsContentNode() )
+        return static_cast<SwContentNode&>(rNd).GoNext( rIdx, nMode );
     return false;
 }
 
-bool GoPrevious( SwNode* pNd, SwContentIndex * pIdx, SwCursorSkipMode nMode )
+bool GoPrevious( SwNode& rNd, SwContentIndex& rIdx, SwCursorSkipMode nMode )
 {
-    if( pNd->IsContentNode() )
-        return static_cast<SwContentNode*>(pNd)->GoPrevious( pIdx, nMode );
+    if( rNd.IsContentNode() )
+        return static_cast<SwContentNode&>(rNd).GoPrevious( rIdx, nMode );
     return false;
 }
 
-SwContentNode* GoNextNds( SwNodeIndex* pIdx, bool bChk )
-{
-    SwNodeIndex aIdx( *pIdx );
-    SwContentNode* pNd = aIdx.GetNodes().GoNext( &aIdx );
-    if( pNd )
-    {
-        if( bChk && SwNodeOffset(1) != aIdx.GetIndex() - pIdx->GetIndex() &&
-            !CheckNodesRange( pIdx->GetNode(), aIdx.GetNode(), true ) )
-                pNd = nullptr;
-        else
-            *pIdx = aIdx;
-    }
-    return pNd;
-}
-
-SwContentNode* GoPreviousNds( SwNodeIndex * pIdx, bool bChk )
+static SwContentNode* GoPreviousNds( SwNodeIndex * pIdx )
 {
     SwNodeIndex aIdx( *pIdx );
     SwContentNode* pNd = SwNodes::GoPrevious( &aIdx );
     if( pNd )
     {
-        if( bChk && SwNodeOffset(1) != pIdx->GetIndex() - aIdx.GetIndex() &&
+        if( SwNodeOffset(1) != pIdx->GetIndex() - aIdx.GetIndex() &&
             !CheckNodesRange( pIdx->GetNode(), aIdx.GetNode(), true ) )
                 pNd = nullptr;
         else
@@ -425,7 +410,7 @@ SwContentNode* GoPreviousNds( SwNodeIndex * pIdx, bool bChk )
 SwContentNode* GoNextPos( SwPosition* pIdx, bool bChk )
 {
     SwNodeIndex aIdx( pIdx->GetNode() );
-    SwContentNode* pNd = aIdx.GetNodes().GoNext( &aIdx );
+    SwContentNode* pNd = SwNodes::GoNext(&aIdx);
     if( pNd )
     {
         if( bChk && SwNodeOffset(1) != aIdx.GetIndex() - pIdx->GetNodeIndex() &&
@@ -600,7 +585,7 @@ SwPaM::SwPaM( const SwNodeIndex& rNodeIdx, sal_Int32 nContent, SwPaM* pRing )
     m_pPoint->nContent.Assign( rNodeIdx.GetNode().GetContentNode(), nContent );
 }
 
-SwPaM::SwPaM( SwNodes& rNodes, SwNodeOffset nNdOffset, SwPaM* pRing )
+SwPaM::SwPaM( const SwNodes& rNodes, SwNodeOffset nNdOffset, SwPaM* pRing )
     : Ring( pRing )
     , m_Bound1( rNodes, nNdOffset )
     , m_Bound2( rNodes ) // default initialize
@@ -722,13 +707,13 @@ static const SwFrame* lcl_FindEditInReadonlyFrame( const SwFrame& rFrame )
 {
     const SwFrame* pRet = nullptr;
 
-    const SwFlyFrame* pFly;
-    const SwSectionFrame* pSectionFrame;
+    const SwFlyFrame* pFly = rFrame.FindFlyFrame();
+    const SwFrame* pLower = nullptr;
+    if(pFly && pFly->GetFormat()->GetEditInReadonly().GetValue())
+        pLower = pFly->Lower();
 
-    if( rFrame.IsInFly() &&
-       (pFly = rFrame.FindFlyFrame())->GetFormat()->GetEditInReadonly().GetValue() &&
-        pFly->Lower() &&
-       !pFly->Lower()->IsNoTextFrame() )
+    const SwSectionFrame* pSectionFrame;
+    if (pLower && !pLower->IsNoTextFrame())
     {
        pRet = pFly;
     }
@@ -869,13 +854,13 @@ bool SwPaM::HasReadonlySel(bool bFormView, bool const isReplace) const
     const SwDoc& rDoc = GetDoc();
     // Legacy text/combo/checkbox: never return read-only when inside these form fields.
     const IDocumentMarkAccess* pMarksAccess = rDoc.getIDocumentMarkAccess();
-    sw::mark::IFieldmark* pA = GetPoint() ? pMarksAccess->getInnerFieldmarkFor(*GetPoint()) : nullptr;
-    sw::mark::IFieldmark* pB = GetMark()  ? pMarksAccess->getInnerFieldmarkFor(*GetMark()) : pA;
+    sw::mark::Fieldmark* pA = GetPoint() ? pMarksAccess->getInnerFieldmarkFor(*GetPoint()) : nullptr;
+    sw::mark::Fieldmark* pB = GetMark()  ? pMarksAccess->getInnerFieldmarkFor(*GetMark()) : pA;
     // prevent the user from accidentally deleting the field itself when modifying the text.
     const bool bAtStartA = (pA != nullptr) && (pA->GetMarkStart() == *GetPoint());
     const bool bAtStartB = (pB != nullptr) && (pB->GetMarkStart() == *GetMark());
 
-    if (!utl::ConfigManager::IsFuzzing() && officecfg::Office::Common::Filter::Microsoft::Import::ForceImportWWFieldsAsGenericFields::get())
+    if (officecfg::Office::Common::Filter::Microsoft::Import::ForceImportWWFieldsAsGenericFields::get())
     {
         ; // allow editing all fields in generic mode
     }
@@ -1060,7 +1045,7 @@ SwContentNode* GetNode( SwPaM & rPam, bool& rbFirst, SwMoveFnCollection const & 
                     (
                         nullptr == pFrame ||
                         ( !bInReadOnly && pFrame->IsProtected() ) ||
-                        (pFrame->IsTextFrame() && static_cast<SwTextFrame const*>(pFrame)->IsHiddenNow())
+                        pFrame->IsHiddenNow()
                     ) ||
                     ( !bInReadOnly && pNd->FindSectionNode() &&
                         pNd->FindSectionNode()->GetSection().IsProtect()
@@ -1076,7 +1061,6 @@ SwContentNode* GetNode( SwPaM & rPam, bool& rbFirst, SwMoveFnCollection const & 
         {
             SwPosition aPos( *rPam.GetPoint() );
             bool bSrchForward = &fnMove == &fnMoveForward;
-            SwNodes& rNodes = aPos.GetNodes();
 
             // go to next/previous ContentNode
             while( true )
@@ -1088,7 +1072,7 @@ SwContentNode* GetNode( SwPaM & rPam, bool& rbFirst, SwMoveFnCollection const & 
                 }
 
                 pNd = bSrchForward
-                        ? rNodes.GoNextSection( &aPos, true, !bInReadOnly )
+                        ? SwNodes::GoNextSection( &aPos, true, !bInReadOnly )
                         : SwNodes::GoPrevSection( &aPos, true, !bInReadOnly );
                 if( pNd )
                 {
@@ -1101,10 +1085,8 @@ SwContentNode* GetNode( SwPaM & rPam, bool& rbFirst, SwMoveFnCollection const & 
                         SwContentFrame const*const pFrame(pNd->getLayoutFrame(pLayout));
                         if (nullptr == pFrame ||
                             ( !bInReadOnly && pFrame->IsProtected() ) ||
-                            ( pFrame->IsTextFrame() &&
-                                static_cast<SwTextFrame const*>(pFrame)->IsHiddenNow()))
+                            pFrame->IsHiddenNow())
                         {
-                            pNd = nullptr;
                             continue;
                         }
                         *rPam.GetPoint() = aPos;
@@ -1125,7 +1107,7 @@ void GoStartDoc( SwPosition * pPos )
     SwNodes& rNodes = pPos->GetNodes();
     pPos->Assign( *rNodes.GetEndOfContent().StartOfSectionNode() );
     // we always need to find a ContentNode!
-    rNodes.GoNext( pPos );
+    SwNodes::GoNext(pPos);
 }
 
 void GoEndDoc( SwPosition * pPos )
@@ -1141,20 +1123,23 @@ void GoStartSection( SwPosition * pPos )
 {
     // jump to section's beginning
     SwNodes& rNodes = pPos->GetNodes();
-    sal_uInt16 nLevel = SwNodes::GetSectionLevel( pPos->GetNode() );
+    int nLevel = SwNodes::GetSectionLevel( pPos->GetNode() );
     if( pPos->GetNode() < *rNodes.GetEndOfContent().StartOfSectionNode() )
+    {
+        assert(nLevel > 0);
         nLevel--;
+    }
     do { SwNodes::GoStartOfSection( &pPos->nNode ); } while( nLevel-- );
 
     // already on a ContentNode
     pPos->AssignStartIndex(*pPos->GetNode().GetContentNode());
 }
 
-void GoStartOfSection( SwPosition * pPos )
+void GoStartOfSection( SwPosition& rPos )
 {
     // jump to section's beginning
-    SwNodes::GoStartOfSection( &pPos->nNode );
-    pPos->nContent.Assign(pPos->GetNode().GetContentNode(), 0);
+    SwNodes::GoStartOfSection( &rPos.nNode );
+    rPos.nContent.Assign(rPos.GetNode().GetContentNode(), 0);
 }
 
 /// go to the end of the current base section
@@ -1162,21 +1147,24 @@ void GoEndSection( SwPosition * pPos )
 {
     // jump to section's beginning/end
     SwNodes& rNodes = pPos->GetNodes();
-    sal_uInt16 nLevel = SwNodes::GetSectionLevel( pPos->GetNode() );
+    int nLevel = SwNodes::GetSectionLevel( pPos->GetNode() );
     if( pPos->GetNode() < *rNodes.GetEndOfContent().StartOfSectionNode() )
+    {
+        assert(nLevel > 0);
         nLevel--;
+    }
     do { SwNodes::GoEndOfSection( &pPos->nNode ); } while( nLevel-- );
 
     // now on an EndNode, thus to the previous ContentNode
-    if( SwContentNode* pCNd = GoPreviousNds( &pPos->nNode, true ) )
+    if( SwContentNode* pCNd = GoPreviousNds( &pPos->nNode ) )
         pPos->AssignEndIndex(*pCNd);
 }
 
-void GoEndOfSection( SwPosition * pPos )
+void GoEndOfSection( SwPosition& rPos )
 {
-    SwNodes::GoEndOfSection( &pPos->nNode );
-    SwContentNode* pCNd = pPos->nNode.GetNode().GetContentNode();
-    pPos->nContent.Assign(pCNd, pCNd ? pCNd->Len() : 0);
+    SwNodes::GoEndOfSection( &rPos.nNode );
+    SwContentNode* pCNd = rPos.nNode.GetNode().GetContentNode();
+    rPos.nContent.Assign(pCNd, pCNd ? pCNd->Len() : 0);
 }
 
 bool GoInDoc( SwPaM & rPam, SwMoveFnCollection const & fnMove )
@@ -1202,32 +1190,32 @@ bool GoInNode( SwPaM & rPam, SwMoveFnCollection const & fnMove )
 
 bool GoInContent( SwPaM & rPam, SwMoveFnCollection const & fnMove )
 {
-    if( (*fnMove.fnNd)( &rPam.GetPoint()->GetNode(),
-                        &rPam.GetPoint()->nContent, SwCursorSkipMode::Chars ))
+    if( (*fnMove.fnNd)( rPam.GetPoint()->GetNode(),
+                        rPam.GetPoint()->nContent, SwCursorSkipMode::Chars ))
         return true;
     return GoInNode( rPam, fnMove );
 }
 
 bool GoInContentCells( SwPaM & rPam, SwMoveFnCollection const & fnMove )
 {
-    if( (*fnMove.fnNd)( &rPam.GetPoint()->GetNode(),
-                         &rPam.GetPoint()->nContent, SwCursorSkipMode::Cells ))
+    if( (*fnMove.fnNd)( rPam.GetPoint()->GetNode(),
+                        rPam.GetPoint()->nContent, SwCursorSkipMode::Cells ))
         return true;
     return GoInNode( rPam, fnMove );
 }
 
 bool GoInContentSkipHidden( SwPaM & rPam, SwMoveFnCollection const & fnMove )
 {
-    if( (*fnMove.fnNd)( &rPam.GetPoint()->GetNode(),
-                        &rPam.GetPoint()->nContent, SwCursorSkipMode::Chars | SwCursorSkipMode::Hidden ) )
+    if( (*fnMove.fnNd)( rPam.GetPoint()->GetNode(),
+                        rPam.GetPoint()->nContent, SwCursorSkipMode::Chars | SwCursorSkipMode::Hidden ) )
         return true;
     return GoInNode( rPam, fnMove );
 }
 
 bool GoInContentCellsSkipHidden( SwPaM & rPam, SwMoveFnCollection const & fnMove )
 {
-    if( (*fnMove.fnNd)( &rPam.GetPoint()->GetNode(),
-                         &rPam.GetPoint()->nContent, SwCursorSkipMode::Cells | SwCursorSkipMode::Hidden ) )
+    if( (*fnMove.fnNd)( rPam.GetPoint()->GetNode(),
+                        rPam.GetPoint()->nContent, SwCursorSkipMode::Cells | SwCursorSkipMode::Hidden ) )
         return true;
     return GoInNode( rPam, fnMove );
 }
@@ -1289,7 +1277,7 @@ bool GoCurrSection( SwPaM & rPam, SwMoveFnCollection const & fnMove )
 {
     SwPosition& rPos = *rPam.GetPoint();
     SwPosition aSavePos( rPos ); // position for comparison
-    (fnMove.fnSection)( &rPos );
+    (fnMove.fnSection)( rPos );
     SwContentNode *pNd;
     if( nullptr == ( pNd = rPos.GetNode().GetContentNode()) &&
         nullptr == ( pNd = (*fnMove.fnPos)( &rPos, true )) )
@@ -1304,8 +1292,13 @@ bool GoCurrSection( SwPaM & rPam, SwMoveFnCollection const & fnMove )
 
 OUString SwPaM::GetText() const
 {
-    OUStringBuffer aResult;
+    OUStringBuffer aResult(256);
+    AppendTextTo(aResult);
+    return aResult.makeStringAndClear();
+}
 
+void SwPaM::AppendTextTo(OUStringBuffer& rResult) const
+{
     SwNodeIndex aNodeIndex = Start()->nNode;
 
     // The first node can be already the end node.
@@ -1321,11 +1314,11 @@ OUString SwPaM::GetText() const
         {
             if (!bIsStartNode)
             {
-                aResult.append(CH_TXTATR_NEWLINE); // use newline for para break
+                rResult.append(CH_TXTATR_NEWLINE); // use newline for para break
             }
             const OUString& aTmpStr = pTextNode->GetText();
 
-            if (bIsStartNode || bIsEndNode)
+            if (!aTmpStr.isEmpty() && (bIsStartNode || bIsEndNode))
             {
                 // Handle corner cases of start/end node(s)
                 const sal_Int32 nStart = bIsStartNode
@@ -1335,11 +1328,11 @@ OUString SwPaM::GetText() const
                     ? End()->GetContentIndex()
                     : aTmpStr.getLength();
 
-                aResult.append(aTmpStr.subView(nStart, nEnd-nStart));
+                rResult.append(aTmpStr.subView(nStart, nEnd-nStart));
             }
             else
             {
-                aResult.append(aTmpStr);
+                rResult.append(aTmpStr);
             }
         }
 
@@ -1351,8 +1344,6 @@ OUString SwPaM::GetText() const
         ++aNodeIndex;
         bIsStartNode = false;
     }
-
-    return aResult.makeStringAndClear();
 }
 
 void SwPaM::InvalidatePaM()
@@ -1371,7 +1362,7 @@ void SwPaM::InvalidatePaM()
                     ? End()->GetContentIndex() - nStart
                     : pTextNode->Len() - nStart,
                 0);
-            pTextNode->TriggerNodeUpdate(sw::LegacyModifyHint(&aHint, &aHint));
+            pTextNode->TriggerNodeUpdate(sw::UpdateAttrHint(&aHint, &aHint));
         }
         // other node types not invalidated
     }

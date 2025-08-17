@@ -33,6 +33,7 @@
 #include <comphelper/servicehelper.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <tools/urlobj.hxx>
+#include <osl/diagnose.h>
 #include <osl/file.hxx>
 #include <sal/log.hxx>
 #include <unotools/pathoptions.hxx>
@@ -113,7 +114,7 @@ static SfxObjectShell* findShellForUrl( const OUString& sMacroURLOrPath )
             {
                 uno::Reference< frame::XFrame > xFrame( xModel->getCurrentController()->getFrame(), uno::UNO_SET_THROW );
                 uno::Reference< beans::XPropertySet > xProps( xFrame, uno::UNO_QUERY_THROW );
-                xProps->getPropertyValue("Title") >>= aName;
+                xProps->getPropertyValue(u"Title"_ustr) >>= aName;
                 aName = o3tl::trim(o3tl::getToken(aName, 0, '-'));
                 if( sMacroURLOrPath.lastIndexOf( aName ) >= 0 )
                 {
@@ -391,11 +392,11 @@ MacroResolvedInfo resolveVBAMacro( SfxObjectShell* pShell, const OUString& Macro
     {
         // Ok, if we have no Container specified then we need to search them in order, this document, template this document created from, global templates,
         // get the name of Project/Library for 'this' document
-            OUString sThisProject( "Standard" );
+            OUString sThisProject( u"Standard"_ustr );
             try
             {
                 uno::Reference< beans::XPropertySet > xProps( pShell->GetModel(), uno::UNO_QUERY_THROW );
-                uno::Reference< script::vba::XVBACompatibility > xVBAMode( xProps->getPropertyValue( "BasicLibraries" ), uno::UNO_QUERY_THROW );
+                uno::Reference< script::vba::XVBACompatibility > xVBAMode( xProps->getPropertyValue( u"BasicLibraries"_ustr ), uno::UNO_QUERY_THROW );
                 sThisProject = xVBAMode->getProjectName();
             }
             catch( const uno::Exception& /*e*/) {}
@@ -465,7 +466,7 @@ MacroResolvedInfo resolveVBAMacro( SfxObjectShell* pShell, const OUString& Macro
 
     for (auto const& search : sSearchList)
     {
-        aRes.mbFound = hasMacro(pShell, search, sModule, sProcedure, /*bOnlyPublic=*/false, "");
+        aRes.mbFound = hasMacro(pShell, search, sModule, sProcedure, /*bOnlyPublic=*/false, u""_ustr);
         if ( aRes.mbFound )
         {
             sContainer = search;
@@ -537,7 +538,7 @@ VBAMacroResolver::~VBAMacroResolver()
 
 OUString SAL_CALL VBAMacroResolver::getImplementationName()
 {
-    return "com.sun.star.comp.vba.VBAMacroResolver";
+    return u"com.sun.star.comp.vba.VBAMacroResolver"_ustr;
 }
 
 sal_Bool SAL_CALL VBAMacroResolver::supportsService( const OUString& rService )
@@ -547,7 +548,7 @@ sal_Bool SAL_CALL VBAMacroResolver::supportsService( const OUString& rService )
 
 uno::Sequence< OUString > SAL_CALL VBAMacroResolver::getSupportedServiceNames()
 {
-    return { "com.sun.star.script.vba.VBAMacroResolver" };
+    return { u"com.sun.star.script.vba.VBAMacroResolver"_ustr };
 }
 
 // com.sun.star.lang.XInitialization interface --------------------------------
@@ -648,8 +649,8 @@ static sal_uInt16 parseChar( sal_Unicode c )
 namespace
 {
 
-constexpr frozen::unordered_map<std::u16string_view, sal_uInt16, 34> s_KeyCodes
-{
+constexpr auto s_KeyCodes = frozen::make_unordered_map<std::u16string_view, sal_uInt16>
+({
     { u"BACKSPACE", KEY_BACKSPACE },
     { u"BS", KEY_BACKSPACE },
     { u"DELETE", KEY_DELETE },
@@ -684,7 +685,7 @@ constexpr frozen::unordered_map<std::u16string_view, sal_uInt16, 34> s_KeyCodes
     { u"F13", KEY_F13 },
     { u"F14", KEY_F14 },
     { u"F15", KEY_F15 }
-};
+});
 
 } // end anonymous namespace
 
@@ -748,7 +749,7 @@ void applyShortCutKeyBinding ( const uno::Reference< frame::XModel >& rxModel, c
         }
         MacroResolvedInfo aMacroInfo = resolveVBAMacro( pShell, aMacroName );
         if( !aMacroInfo.mbFound )
-            throw uno::RuntimeException( "The procedure doesn't exist" );
+            throw uno::RuntimeException( u"The procedure doesn't exist"_ustr );
         MacroName = aMacroInfo.msResolvedMacro;
     }
     uno::Reference< ui::XUIConfigurationManagerSupplier > xCfgSupplier(rxModel, uno::UNO_QUERY_THROW);

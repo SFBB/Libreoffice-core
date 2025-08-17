@@ -52,7 +52,7 @@ namespace dbaccess
         try
         {
             Reference<XMultiServiceFactory> xFac(_rxConnection,UNO_QUERY_THROW);
-            m_xViewAccess.set(xFac->createInstance(lcl_getServiceNameForSetting(_rxConnection,"ViewAccessServiceName")),UNO_QUERY);
+            m_xViewAccess.set(xFac->createInstance(lcl_getServiceNameForSetting(_rxConnection,u"ViewAccessServiceName"_ustr)),UNO_QUERY);
         }
         catch(const Exception& )
         {
@@ -85,13 +85,9 @@ namespace dbaccess
         std::vector<Type> aOwnTypes;
         aOwnTypes.reserve(aTypes.getLength());
 
-        const Type* pIter = aTypes.getConstArray();
-        const Type* pEnd = pIter + aTypes.getLength();
-        for(;pIter != pEnd ;++pIter)
-        {
-            if( *pIter != aAlterType || m_xViewAccess.is() )
-                aOwnTypes.push_back(*pIter);
-        }
+        for (auto& type : aTypes)
+            if (m_xViewAccess || type != aAlterType)
+                aOwnTypes.push_back(type);
 
         return Sequence< Type >(aOwnTypes.data(), aOwnTypes.size());
     }

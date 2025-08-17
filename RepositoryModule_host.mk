@@ -43,7 +43,6 @@ endif
 
 ifneq ($(ENABLE_WASM_STRIP_ACCESSIBILITY),TRUE)
 $(eval $(call gb_Module_add_moduledirs,libreoffice,\
-	accessibility \
 	winaccessibility \
 ))
 endif
@@ -107,6 +106,7 @@ $(eval $(call gb_Module_add_moduledirs,libreoffice,\
 	linguistic \
 	lotuswordpro \
 	$(call gb_Helper_optional,DESKTOP,l10ntools) \
+	net_ure \
 	$(call gb_Helper_optional,NLPSOLVER,nlpsolver) \
 	o3tl \
 	$(call gb_Helper_optional,ODK,odk) \
@@ -186,9 +186,7 @@ $(eval $(call gb_Module_add_moduledirs,libreoffice,\
 	vbahelper \
 	vcl \
 	wizards \
-	writerfilter \
 	writerperfect \
-	xmerge \
     $(call gb_Helper_optional,XMLHELP,xmlhelp) \
 	xmloff \
 	xmlreader \
@@ -229,11 +227,13 @@ $(eval $(call repositorymodule_serialize,\
 	$(call gb_Helper_optional,SCRIPTING,vbaobj) \
 	sc msword \
 	$(call gb_Helper_optional,DESKTOP,swui) \
-	sw sd \
-	$(call gb_Helper_optional,DBCONNECTIVITY,dbu) \
-	writerfilter cui chartcontroller chartcore oox \
+	sw \
+	$(if $(MERGELIBS_MORE),, \
+		sd \
+		$(call gb_Helper_optional,DBCONNECTIVITY,dbu) \
+		cui) \
 	$(if $(MERGELIBS), merged, \
-		svx svxcore xo sfx fwk svt vcl) \
+		chart2 oox svx svxcore xo sfx fwk svt vcl) \
 ))
 endif
 endif # !$(DISABLE_DYNLOADING)

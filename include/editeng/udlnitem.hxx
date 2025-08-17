@@ -34,8 +34,9 @@ class EDITENG_DLLPUBLIC SvxTextLineItem : public SfxEnumItem<FontLineStyle>
     model::ComplexColor maComplexColor;
 
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SvxTextLineItem)
     SvxTextLineItem( const FontLineStyle eSt,
-                     const sal_uInt16 nId );
+                     const sal_uInt16 nId);
 
     // "pure virtual Methods" from SfxPoolItem
     virtual bool GetPresentation( SfxItemPresentation ePres,
@@ -45,7 +46,6 @@ public:
 
     virtual SvxTextLineItem* Clone( SfxItemPool *pPool = nullptr ) const override;
     virtual OUString        GetValueTextByPos( sal_uInt16 nPos ) const;
-    virtual sal_uInt16      GetValueCount() const override;
 
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
@@ -61,7 +61,10 @@ public:
     FontLineStyle           GetLineStyle() const
                                 { return GetValue(); }
     void                    SetLineStyle( FontLineStyle eNew )
-                                { SetValue(eNew); }
+    {
+        ASSERT_CHANGE_REFCOUNTED_ITEM;
+        SetValue(eNew);
+    }
 
     const Color& GetColor() const { return maColor; }
     void SetColor(const Color& rColor) { maColor = rColor; }
@@ -73,6 +76,7 @@ public:
 
     void setComplexColor(model::ComplexColor const& rComplexColor)
     {
+        ASSERT_CHANGE_REFCOUNTED_ITEM;
         maComplexColor = rComplexColor;
     }
 };
@@ -83,9 +87,13 @@ public:
 
 class EDITENG_DLLPUBLIC SvxUnderlineItem final : public SvxTextLineItem
 {
+protected:
+    virtual ItemInstanceManager* getItemInstanceManager() const override;
+
 public:
     static SfxPoolItem* CreateDefault();
 
+    DECLARE_ITEM_TYPE_FUNCTION(SvxUnderlineItem)
     SvxUnderlineItem( const FontLineStyle eSt,
                       const sal_uInt16 nId );
 
@@ -99,9 +107,13 @@ public:
 
 class EDITENG_DLLPUBLIC SvxOverlineItem final : public SvxTextLineItem
 {
+protected:
+    virtual ItemInstanceManager* getItemInstanceManager() const override;
+
 public:
     static SfxPoolItem* CreateDefault();
 
+    DECLARE_ITEM_TYPE_FUNCTION(SvxOverlineItem)
     SvxOverlineItem( const FontLineStyle eSt,
                      const sal_uInt16 nId );
 

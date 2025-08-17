@@ -133,7 +133,7 @@ namespace drawinglayer::texture
         }
 
         void GeoTexSvxGradientLinear::appendTransformationsAndColors(
-            std::function<void(const basegfx::B2DHomMatrix& rMatrix, const basegfx::BColor& rColor)> aCallback)
+            const std::function<void(const basegfx::B2DHomMatrix& rMatrix, const basegfx::BColor& rColor)>& rCallback)
         {
             // no color at all, done
             if (mnColorStops.empty())
@@ -216,7 +216,7 @@ namespace drawinglayer::texture
                     aNew.translate(0.0, fPos);
 
                     // set and add at target
-                    aCallback(
+                    rCallback(
                         maGradientInfo.getTextureTransform() * aNew,
                         1 == nSteps ? aCStart : basegfx::BColor(interpolate(aCStart, aCEnd, double(innerLoop) / double(nSteps - 1))));
                 }
@@ -285,7 +285,7 @@ namespace drawinglayer::texture
         }
 
         void GeoTexSvxGradientAxial::appendTransformationsAndColors(
-            std::function<void(const basegfx::B2DHomMatrix& rMatrix, const basegfx::BColor& rColor)> aCallback)
+            const std::function<void(const basegfx::B2DHomMatrix& rMatrix, const basegfx::BColor& rColor)>& rCallback)
         {
             // no color at all, done
             if (mnColorStops.empty())
@@ -349,7 +349,7 @@ namespace drawinglayer::texture
                     aNew.scale(1.0, 1.0 - fPos);
 
                     // set and add at target
-                    aCallback(
+                    rCallback(
                         maGradientInfo.getTextureTransform() * aNew,
                         1 == nSteps ? aCStart : basegfx::BColor(interpolate(aCStart, aCEnd, double(innerLoop) / double(nSteps - 1))));
                 }
@@ -405,7 +405,7 @@ namespace drawinglayer::texture
         }
 
         void GeoTexSvxGradientRadial::appendTransformationsAndColors(
-            std::function<void(const basegfx::B2DHomMatrix& rMatrix, const basegfx::BColor& rColor)> aCallback)
+            const std::function<void(const basegfx::B2DHomMatrix& rMatrix, const basegfx::BColor& rColor)>& rCallback)
         {
             // no color at all, done
             if (mnColorStops.empty())
@@ -453,7 +453,7 @@ namespace drawinglayer::texture
                     const double fSize(1.0 - (fOffsetStart + (fStripeWidth * innerLoop)));
 
                     // set and add at target
-                    aCallback(
+                    rCallback(
                         maGradientInfo.getTextureTransform() * basegfx::utils::createScaleB2DHomMatrix(fSize, fSize),
                         1 == nSteps ? aCStart : basegfx::BColor(interpolate(aCStart, aCEnd, double(innerLoop) / double(nSteps - 1))));
                 }
@@ -508,7 +508,7 @@ namespace drawinglayer::texture
         }
 
         void GeoTexSvxGradientElliptical::appendTransformationsAndColors(
-            std::function<void(const basegfx::B2DHomMatrix& rMatrix, const basegfx::BColor& rColor)> aCallback)
+            const std::function<void(const basegfx::B2DHomMatrix& rMatrix, const basegfx::BColor& rColor)>& rCallback)
         {
             // no color at all, done
             if (mnColorStops.empty())
@@ -560,7 +560,7 @@ namespace drawinglayer::texture
                     const double fSize(fOffsetStart + (fStripeWidth * innerLoop));
 
                     // set and add at target
-                    aCallback(
+                    rCallback(
                         maGradientInfo.getTextureTransform()
                         * basegfx::utils::createScaleB2DHomMatrix(
                             1.0 - (bMTO ? fSize / fAR : fSize),
@@ -618,7 +618,7 @@ namespace drawinglayer::texture
         }
 
         void GeoTexSvxGradientSquare::appendTransformationsAndColors(
-            std::function<void(const basegfx::B2DHomMatrix& rMatrix, const basegfx::BColor& rColor)> aCallback)
+            const std::function<void(const basegfx::B2DHomMatrix& rMatrix, const basegfx::BColor& rColor)>& rCallback)
         {
             // no color at all, done
             if (mnColorStops.empty())
@@ -666,7 +666,7 @@ namespace drawinglayer::texture
                     const double fSize(1.0 - (fOffsetStart + (fStripeWidth * innerLoop)));
 
                     // set and add at target
-                    aCallback(
+                    rCallback(
                         maGradientInfo.getTextureTransform() * basegfx::utils::createScaleB2DHomMatrix(fSize, fSize),
                         1 == nSteps ? aCStart : basegfx::BColor(interpolate(aCStart, aCEnd, double(innerLoop) / double(nSteps - 1))));
                 }
@@ -721,7 +721,7 @@ namespace drawinglayer::texture
         }
 
         void GeoTexSvxGradientRect::appendTransformationsAndColors(
-            std::function<void(const basegfx::B2DHomMatrix& rMatrix, const basegfx::BColor& rColor)> aCallback)
+            const std::function<void(const basegfx::B2DHomMatrix& rMatrix, const basegfx::BColor& rColor)>& rCallback)
         {
             // no color at all, done
             if (mnColorStops.empty())
@@ -773,7 +773,7 @@ namespace drawinglayer::texture
                     const double fSize(fOffsetStart + (fStripeWidth * innerLoop));
 
                     // set and add at target
-                    aCallback(
+                    rCallback(
                         maGradientInfo.getTextureTransform()
                         * basegfx::utils::createScaleB2DHomMatrix(
                             1.0 - (bMTO ? fSize / fAR : fSize),
@@ -1024,7 +1024,7 @@ namespace drawinglayer::texture
             sal_Int32 nPosX(0);
             sal_Int32 nPosY(0);
 
-            if(basegfx::fTools::more(fStartX, 0.0))
+            if(fStartX > 0.0)
             {
                 const sal_Int32 nDiff(static_cast<sal_Int32>(floor(fStartX / fWidth)) + 1);
 
@@ -1032,7 +1032,7 @@ namespace drawinglayer::texture
                 fStartX -= nDiff * fWidth;
             }
 
-            if(basegfx::fTools::less(fStartX + fWidth, 0.0))
+            if((fStartX + fWidth) < 0.0)
             {
                 const sal_Int32 nDiff(static_cast<sal_Int32>(floor(-fStartX / fWidth)));
 
@@ -1040,7 +1040,7 @@ namespace drawinglayer::texture
                 fStartX += nDiff * fWidth;
             }
 
-            if(basegfx::fTools::more(fStartY, 0.0))
+            if(fStartY > 0.0)
             {
                 const sal_Int32 nDiff(static_cast<sal_Int32>(floor(fStartY / fHeight)) + 1);
 
@@ -1048,7 +1048,7 @@ namespace drawinglayer::texture
                 fStartY -= nDiff * fHeight;
             }
 
-            if(basegfx::fTools::less(fStartY + fHeight, 0.0))
+            if((fStartY + fHeight) < 0.0)
             {
                 const sal_Int32 nDiff(static_cast<sal_Int32>(floor(-fStartY / fHeight)));
 

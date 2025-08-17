@@ -16,8 +16,7 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SFX2_MSG_HXX
-#define INCLUDED_SFX2_MSG_HXX
+#pragma once
 
 #include <sfx2/shell.hxx>
 #include <rtl/ustring.hxx>
@@ -52,12 +51,13 @@ enum class SfxSlotMode {
     ACCELCONFIG     =   0x80000, // configurable keys
 
     CONTAINER       =  0x100000, // Operated by the container at InPlace
-    READONLYDOC     =  0x200000  // also available for read-only Documents
+    READONLYDOC     =  0x200000, // also available for read-only Documents
+    VIEWERAPP       =  0x400000, // also available in Viewer app mode
 };
 
 namespace o3tl
 {
-    template<> struct typed_flags<SfxSlotMode> : is_typed_flags<SfxSlotMode, 0x13ec72cL> {};
+    template<> struct typed_flags<SfxSlotMode> : is_typed_flags<SfxSlotMode, 0x17ec72cL> {};
 }
 
 #define SFX_EXEC_STUB( aShellClass, aExecMethod) \
@@ -91,38 +91,41 @@ enum class SfxSlotKind
 
 struct SfxTypeAttrib
 {
-    sal_uInt16                  nAID;
-    const char* pName;
+    sal_uInt16 nAID;
+    OUString aName;
 };
 
 template<class T> SfxPoolItem* createSfxPoolItem()
 {
     return T::CreateDefault();
 }
+
 struct SfxType
 {
-    std::function<SfxPoolItem* ()> createSfxPoolItemFunc;
+    SfxPoolItem* (*createSfxPoolItemFunc)();
     const std::type_info*   pType;
     sal_uInt16          nAttribs;
-    SfxTypeAttrib   aAttrib[1]; // variable length
 
     const std::type_info* Type() const{return pType;}
     std::unique_ptr<SfxPoolItem> CreateItem() const
                     { return std::unique_ptr<SfxPoolItem>(createSfxPoolItemFunc()); }
+    inline const SfxTypeAttrib& getAttrib(sal_uInt16 idx) const;
 };
 
-struct SfxType0
+struct SfxTypeImpl : public SfxType
 {
-    std::function<SfxPoolItem* ()> createSfxPoolItemFunc;
-    const std::type_info*   pType;
-    sal_uInt16          nAttribs;
-    const std::type_info*    Type() const { return pType;}
+    SfxTypeAttrib   aAttrib[1]; // variable length
 };
-#define SFX_DECL_TYPE(n)    struct SfxType##n                   \
+
+// Some casting to work around the lack of zero-sized trailing arrays in c++
+inline const SfxTypeAttrib& SfxType::getAttrib(sal_uInt16 idx) const
+{ return reinterpret_cast<const SfxTypeImpl*>(this)->aAttrib[idx]; }
+
+struct SfxType0 : public SfxType
+{
+};
+#define SFX_DECL_TYPE(n)    struct SfxType##n : public SfxType \
                             {                                   \
-                                std::function<SfxPoolItem* ()> createSfxPoolItemFunc; \
-                                const std::type_info* pType; \
-                                sal_uInt16          nAttribs;       \
                                 SfxTypeAttrib   aAttrib[n];     \
                             }
 
@@ -136,6 +139,7 @@ SFX_DECL_TYPE(5);
 SFX_DECL_TYPE(6);
 SFX_DECL_TYPE(7);
 SFX_DECL_TYPE(8);
+SFX_DECL_TYPE(9);  // for SvxHyphenZoneItem
 SFX_DECL_TYPE(10); // for SfxDocInfoItem
 SFX_DECL_TYPE(11);
 
@@ -171,7 +175,7 @@ SFX_DECL_TYPE(23); // for SvxSearchItem
 struct SfxFormalArgument
 {
     const SfxType*  pType;    // Type of the parameter (SfxPoolItem subclass)
-    const char*     pName;    // Name of the sParameters
+    OUString        aName;    // Name of the sParameters
     sal_uInt16      nSlotId;  // Slot-Id for identification of the Parameters
 
     std::unique_ptr<SfxPoolItem> CreateItem() const
@@ -201,30 +205,7 @@ public:
     SfxDisableFlags           nDisableFlags; // DisableFlags that need to be
                                              // present, so that the Slot
                                              // can be enabled
-    OUString     pUnoName;      // UnoName for the Slots
-
-public:
-
-    template <size_t N>
-    SfxSlot(sal_uInt16 sId, SfxGroupId gId, SfxSlotMode flags, sal_uInt16 masterSlotId,
-            sal_uInt16 value, SfxExecFunc exec, SfxStateFunc state, const SfxType* type,
-            const SfxSlot* nextSlot, const SfxFormalArgument* firstArgDef, sal_uInt16 argDefCount,
-            SfxDisableFlags disableFlags, const char (&literal)[N])
-        : nSlotId(sId)
-        , nGroupId(gId)
-        , nFlags(flags)
-        , nMasterSlotId(masterSlotId)
-        , nValue(value)
-        , fnExec(exec)
-        , fnState(state)
-        , pType(type)
-        , pNextSlot(nextSlot)
-        , pFirstArgDef(firstArgDef)
-        , nArgDefCount(argDefCount)
-        , nDisableFlags(disableFlags)
-        , pUnoName(literal)
-    {
-    }
+    OUString     aUnoName;      // UnoName for the Slots
 
     SfxSlotKind         GetKind() const;
     sal_uInt16          GetSlotId() const;
@@ -233,7 +214,7 @@ public:
     SfxGroupId          GetGroupId() const;
     sal_uInt16          GetWhich( const SfxItemPool &rPool ) const;
     const SfxType*  GetType() const { return pType; }
-    const OUString&     GetUnoName() const { return pUnoName; }
+    const OUString&     GetUnoName() const { return aUnoName; }
     SFX2_DLLPUBLIC OUString GetCommand() const;
 
     sal_uInt16          GetFormalArgumentCount() const { return nArgDefCount; }
@@ -277,7 +258,5 @@ inline SfxGroupId SfxSlot::GetGroupId() const
     return nGroupId;
 
 }
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

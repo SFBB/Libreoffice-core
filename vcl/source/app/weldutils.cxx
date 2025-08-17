@@ -95,7 +95,7 @@ Dialog* AssistantController::getDialog() { return m_xAssistant.get(); }
 
 AssistantController::~AssistantController() {}
 
-void TriStateEnabled::ButtonToggled(weld::Toggleable& rToggle)
+void TriStateEnabled::CheckButtonToggled(weld::CheckButton& rToggle)
 {
     if (bTriStateEnabled)
     {
@@ -280,7 +280,7 @@ bool DoubleNumericFormatter::CheckText(const OUString& sText) const
 void DoubleNumericFormatter::ResetConformanceTester()
 {
     // the thousands and the decimal separator are language dependent
-    const SvNumberformat* pFormatEntry = GetOrCreateFormatter()->GetEntry(m_nFormatKey);
+    const SvNumberformat* pFormatEntry = GetOrCreateFormatter().GetEntry(m_nFormatKey);
 
     sal_Unicode cSeparatorThousand = ',';
     sal_Unicode cSeparatorDecimal = '.';
@@ -317,8 +317,8 @@ LongCurrencyFormatter::LongCurrencyFormatter(weld::FormattedSpinButton& rSpinBut
 
 void LongCurrencyFormatter::Init()
 {
-    SetOutputHdl(LINK(this, LongCurrencyFormatter, FormatOutputHdl));
-    SetInputHdl(LINK(this, LongCurrencyFormatter, ParseInputHdl));
+    SetFormatValueHdl(LINK(this, LongCurrencyFormatter, FormatOutputHdl));
+    SetParseTextHdl(LINK(this, LongCurrencyFormatter, ParseInputHdl));
 }
 
 void LongCurrencyFormatter::SetUseThousandSep(bool b)
@@ -357,8 +357,8 @@ void TimeFormatter::Init()
 {
     DisableRemainderFactor(); //so with hh::mm::ss, incrementing mm will not reset ss
 
-    SetOutputHdl(LINK(this, TimeFormatter, FormatOutputHdl));
-    SetInputHdl(LINK(this, TimeFormatter, ParseInputHdl));
+    SetFormatValueHdl(LINK(this, TimeFormatter, FormatOutputHdl));
+    SetParseTextHdl(LINK(this, TimeFormatter, ParseInputHdl));
 
     SetMin(tools::Time(0, 0));
     SetMax(tools::Time(23, 59, 59, 999999999));
@@ -441,8 +441,8 @@ DateFormatter::DateFormatter(weld::Entry& rEntry)
 
 void DateFormatter::Init()
 {
-    SetOutputHdl(LINK(this, DateFormatter, FormatOutputHdl));
-    SetInputHdl(LINK(this, DateFormatter, ParseInputHdl));
+    SetFormatValueHdl(LINK(this, DateFormatter, FormatOutputHdl));
+    SetParseTextHdl(LINK(this, DateFormatter, ParseInputHdl));
 
     SetMin(Date(1, 1, 1900));
     SetMax(Date(31, 12, 2200));
@@ -489,19 +489,10 @@ PatternFormatter::~PatternFormatter()
     m_rEntry.connect_focus_out(Link<weld::Widget&, void>());
 }
 
-int GetMinimumEditHeight()
-{
-    // load this little .ui just to measure the height of an Entry
-    std::unique_ptr<weld::Builder> xBuilder(
-        Application::CreateBuilder(nullptr, "cui/ui/namedialog.ui"));
-    std::unique_ptr<weld::Entry> xEntry(xBuilder->weld_entry("name_entry"));
-    return xEntry->get_preferred_size().Height();
-}
-
 WidgetStatusListener::WidgetStatusListener(weld::Widget* widget, const OUString& aCommand)
     : mWidget(widget)
 {
-    css::uno::Reference<css::uno::XComponentContext> xContext
+    const css::uno::Reference<css::uno::XComponentContext>& xContext
         = ::comphelper::getProcessComponentContext();
     css::uno::Reference<css::frame::XDesktop2> xDesktop = css::frame::Desktop::create(xContext);
 
@@ -509,7 +500,7 @@ WidgetStatusListener::WidgetStatusListener(weld::Widget* widget, const OUString&
     if (!xFrame.is())
         xFrame = xDesktop;
 
-    mxFrame = xFrame;
+    mxFrame = std::move(xFrame);
 
     maCommandURL.Complete = aCommand;
     css::uno::Reference<css::util::XURLTransformer> xParser
@@ -527,7 +518,7 @@ void WidgetStatusListener::startListening()
     if (!xDispatchProvider.is())
         return;
 
-    mxDispatch = xDispatchProvider->queryDispatch(maCommandURL, "", 0);
+    mxDispatch = xDispatchProvider->queryDispatch(maCommandURL, u""_ustr, 0);
     if (mxDispatch.is())
         mxDispatch->addStatusListener(this, maCommandURL);
 }
@@ -610,6 +601,8 @@ weld::Window* GetPopupParent(vcl::Window& rOutWin, tools::Rectangle& rRect)
     AbsoluteScreenPixelRectangle aRectAbs = FloatingWindow::ImplConvertToAbsPos(&rOutWin, rRect);
 
     vcl::Window* pWin = rOutWin.GetFrameWindow();
+    // resolve from a possible BorderWindow to the ClientWindow (returns itself if not)
+    pWin = pWin->ImplGetWindow();
 
     rRect = FloatingWindow::ImplConvertToRelPos(pWin, aRectAbs);
     rRect.SetPos(pWin->ScreenToOutputPixel(rRect.TopLeft()));

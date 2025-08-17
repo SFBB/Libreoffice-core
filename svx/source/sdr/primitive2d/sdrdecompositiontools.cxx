@@ -18,6 +18,7 @@
  */
 
 #include <sdr/primitive2d/sdrdecompositiontools.hxx>
+#include <sdr/primitive2d/sdrcellprimitive.hxx>
 #include <drawinglayer/primitive2d/baseprimitive2d.hxx>
 #include <drawinglayer/primitive2d/PolygonStrokeArrowPrimitive2D.hxx>
 #include <drawinglayer/primitive2d/PolyPolygonGradientPrimitive2D.hxx>
@@ -27,6 +28,8 @@
 #include <drawinglayer/primitive2d/softedgeprimitive2d.hxx>
 #include <drawinglayer/primitive2d/unifiedtransparenceprimitive2d.hxx>
 #include <drawinglayer/primitive2d/transparenceprimitive2d.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonRGBAPrimitive2D.hxx>
+#include <drawinglayer/primitive2d/PolyPolygonAlphaGradientPrimitive2D.hxx>
 #include <basegfx/polygon/b2dpolypolygontools.hxx>
 #include <drawinglayer/primitive2d/fillgradientprimitive2d.hxx>
 #include <drawinglayer/attribute/strokeattribute.hxx>
@@ -49,6 +52,7 @@
 #include <drawinglayer/attribute/sdrlinestartendattribute.hxx>
 #include <drawinglayer/attribute/sdrshadowattribute.hxx>
 #include <drawinglayer/attribute/sdrglowattribute.hxx>
+#include <drawinglayer/attribute/sdrglowtextattribute.hxx>
 #include <docmodel/theme/FormatScheme.hxx>
 #include <osl/diagnose.h>
 
@@ -233,8 +237,7 @@ private:
 
 protected:
     // create decomposition data
-    virtual void create2DDecomposition(
-        Primitive2DContainer& rContainer,
+    virtual Primitive2DReference create2DDecomposition(
         const geometry::ViewInformation2D& rViewInformation) const override;
 
 public:
@@ -268,8 +271,7 @@ SlideBackgroundFillPrimitive2D::SlideBackgroundFillPrimitive2D(
 {
 }
 
-void SlideBackgroundFillPrimitive2D::create2DDecomposition(
-    Primitive2DContainer& rContainer,
+Primitive2DReference SlideBackgroundFillPrimitive2D::create2DDecomposition(
     const geometry::ViewInformation2D& rViewInformation) const
 {
     basegfx::B2DVector aPageSize;
@@ -281,21 +283,21 @@ void SlideBackgroundFillPrimitive2D::create2DDecomposition(
 
     // if fill is on default (empty), nothing will be shown, we are done
     if(aFill.isDefault())
-        return;
+        return nullptr;
 
     // Get PolygonRange of own local geometry
     const basegfx::B2DRange aPolygonRange(getB2DPolyPolygon().getB2DRange());
 
     // if local geometry is empty, nothing will be shown, we are done
     if(aPolygonRange.isEmpty())
-        return;
+        return nullptr;
 
     // Get PageRange
     const basegfx::B2DRange aPageRange(0.0, 0.0, aPageSize.getX(), aPageSize.getY());
 
     // if local geometry does not overlap with PageRange, nothing will be shown, we are done
     if(!aPageRange.overlaps(aPolygonRange))
-        return;
+        return nullptr;
 
     // create FillPrimitive2D with the geometry (the PolyPolygon) and
     // the page's definitonRange to:
@@ -310,7 +312,7 @@ void SlideBackgroundFillPrimitive2D::create2DDecomposition(
             aFill,
             aEmptyFillTransparenceGradient));
 
-    rContainer = Primitive2DContainer { aCreatedFill };
+    return aCreatedFill;
 }
 
 void SlideBackgroundFillPrimitive2D::get2DDecomposition(
@@ -320,21 +322,21 @@ void SlideBackgroundFillPrimitive2D::get2DDecomposition(
     basegfx::B2DVector aPageSize;
     drawinglayer::attribute::SdrFillAttribute aFill;
 
-    if(!getBuffered2DDecomposition().empty())
+    if(hasBuffered2DDecomposition())
     {
         aFill = getMasterPageFillAttribute(rViewInformation, aPageSize);
 
         if(!(aFill == maLastFill))
         {
             // conditions of last local decomposition have changed, delete
-            const_cast< SlideBackgroundFillPrimitive2D* >(this)->setBuffered2DDecomposition(Primitive2DContainer());
+            const_cast< SlideBackgroundFillPrimitive2D* >(this)->setBuffered2DDecomposition(nullptr);
         }
     }
 
-    if(getBuffered2DDecomposition().empty())
+    if(!hasBuffered2DDecomposition())
     {
         // remember last Fill
-        const_cast< SlideBackgroundFillPrimitive2D* >(this)->maLastFill = aFill;
+        const_cast< SlideBackgroundFillPrimitive2D* >(this)->maLastFill = std::move(aFill);
     }
 
     // use parent implementation
@@ -369,12 +371,10 @@ sal_uInt32 SlideBackgroundFillPrimitive2D::getPrimitive2DID() const
 
 }; // end of anonymous namespace
 
-        class TransparencePrimitive2D;
-
         Primitive2DReference createPolyPolygonFillPrimitive(
             const basegfx::B2DPolyPolygon& rPolyPolygon,
             const attribute::SdrFillAttribute& rFill,
-            const attribute::FillGradientAttribute& rFillGradient)
+            const attribute::FillGradientAttribute& rAlphaGradient)
         {
             // when we have no given definition range, use the range of the given geometry
             // also for definition (simplest case)
@@ -384,29 +384,56 @@ sal_uInt32 SlideBackgroundFillPrimitive2D::getPrimitive2DID() const
                 rPolyPolygon,
                 aRange,
                 rFill,
-                rFillGradient);
+                rAlphaGradient);
         }
 
         Primitive2DReference createPolyPolygonFillPrimitive(
             const basegfx::B2DPolyPolygon& rPolyPolygon,
             const basegfx::B2DRange& rDefinitionRange,
             const attribute::SdrFillAttribute& rFill,
-            const attribute::FillGradientAttribute& rFillGradient)
+            const attribute::FillGradientAttribute& rAlphaGradient)
         {
             if(basegfx::fTools::moreOrEqual(rFill.getTransparence(), 1.0))
             {
                 return Primitive2DReference();
             }
 
+            // prepare access to FillGradientAttribute
+            const attribute::FillGradientAttribute& rFillGradient(rFill.getGradient());
+
             // prepare fully scaled polygon
             rtl::Reference<BasePrimitive2D> pNewFillPrimitive;
 
-            if(!rFill.getGradient().isDefault())
+            if(!rFillGradient.isDefault())
             {
+                const bool bHasTransparency(!basegfx::fTools::equalZero(rFill.getTransparence()));
+                // note: need to use !bHasTransparency to do the same as below
+                // where embedding to transparency is done. There, simple transparency
+                // gets priority over gradient transparency (and none). Thus here only one
+                // option is used. Note that the implementation of FillGradientPrimitive2D
+                // and PolyPolygonGradientPrimitive2D do support both alphas being used
+                const bool bHasCompatibleAlphaGradient(!bHasTransparency
+                    && !rAlphaGradient.isDefault()
+                    && rFillGradient.sameDefinitionThanAlpha(rAlphaGradient));
+
+                if(bHasTransparency || bHasCompatibleAlphaGradient)
+                {
+                    // SDPR: check early if we have a gradient and an alpha
+                    // gradient that 'fits' in its geometric definition
+                    // so that it can be rendered as RGBA directly. If yes,
+                    // create it and return early
+                    return new PolyPolygonGradientPrimitive2D(
+                        rPolyPolygon,
+                        rDefinitionRange,
+                        rFillGradient,
+                        bHasCompatibleAlphaGradient ? &rAlphaGradient : nullptr,
+                        bHasTransparency ? rFill.getTransparence() : 0.0);
+                }
+
                 pNewFillPrimitive = new PolyPolygonGradientPrimitive2D(
                     rPolyPolygon,
                     rDefinitionRange,
-                    rFill.getGradient());
+                    rFillGradient);
             }
             else if(!rFill.getHatch().isDefault())
             {
@@ -418,6 +445,16 @@ sal_uInt32 SlideBackgroundFillPrimitive2D::getPrimitive2DID() const
             }
             else if(!rFill.getFillGraphic().isDefault())
             {
+                // SDPR: check early if we have alpha and add directly
+                if(0.0 != rFill.getTransparence())
+                {
+                    return new PolyPolygonGraphicPrimitive2D(
+                        rPolyPolygon,
+                        rDefinitionRange,
+                        rFill.getFillGraphic().createFillGraphicAttribute(rDefinitionRange),
+                        rFill.getTransparence());
+                }
+
                 pNewFillPrimitive = new PolyPolygonGraphicPrimitive2D(
                     rPolyPolygon,
                     rDefinitionRange,
@@ -432,7 +469,28 @@ sal_uInt32 SlideBackgroundFillPrimitive2D::getPrimitive2DID() const
             }
             else
             {
-                pNewFillPrimitive = new PolyPolygonColorPrimitive2D(
+                // SDPR: check early if we have alpha and add directly
+                if(0.0 != rFill.getTransparence())
+                {
+                    return new PolyPolygonRGBAPrimitive2D(
+                        rPolyPolygon,
+                        rFill.getColor(),
+                        rFill.getTransparence());
+                }
+
+                // SDPR: check early if we have alpha gradient and add directly
+                // This may be useful for some SDPRs like Cairo: It can render RGBA
+                // gradients quick and direct, so it can use polygon color as RGB
+                // (no real gradient steps) combined with the existing alpha steps
+                if (!rAlphaGradient.isDefault())
+                {
+                    return new PolyPolygonAlphaGradientPrimitive2D(
+                        rPolyPolygon,
+                        rFill.getColor(),
+                        rAlphaGradient);
+                }
+
+                return new PolyPolygonColorPrimitive2D(
                     rPolyPolygon,
                     rFill.getColor());
             }
@@ -441,9 +499,10 @@ sal_uInt32 SlideBackgroundFillPrimitive2D::getPrimitive2DID() const
             {
                 // create simpleTransparencePrimitive, add created fill primitive
                 Primitive2DContainer aContent { pNewFillPrimitive };
-                return Primitive2DReference(new UnifiedTransparencePrimitive2D(std::move(aContent), rFill.getTransparence()));
+                return new UnifiedTransparencePrimitive2D(std::move(aContent), rFill.getTransparence());
             }
-            else if(!rFillGradient.isDefault())
+
+            if(!rAlphaGradient.isDefault())
             {
                 // create sequence with created fill primitive
                 Primitive2DContainer aContent { pNewFillPrimitive };
@@ -451,21 +510,18 @@ sal_uInt32 SlideBackgroundFillPrimitive2D::getPrimitive2DID() const
                 // create FillGradientPrimitive2D for transparence and add to new sequence
                 // fillGradientPrimitive is enough here (compared to PolyPolygonGradientPrimitive2D) since float transparence will be masked anyways
                 Primitive2DContainer aAlpha {
-                    Primitive2DReference(
-                        new FillGradientPrimitive2D(
-                            basegfx::utils::getRange(rPolyPolygon),
-                            rDefinitionRange,
-                            rFillGradient))
+                    new FillGradientPrimitive2D(
+                        basegfx::utils::getRange(rPolyPolygon),
+                        rDefinitionRange,
+                        rAlphaGradient)
                 };
 
                 // create TransparencePrimitive2D using alpha and content
-                return Primitive2DReference(new TransparencePrimitive2D(std::move(aContent), std::move(aAlpha)));
+                return new TransparencePrimitive2D(std::move(aContent), std::move(aAlpha));
             }
-            else
-            {
-                // add to decomposition
-                return pNewFillPrimitive;
-            }
+
+            // add to decomposition
+            return pNewFillPrimitive;
         }
 
         Primitive2DReference createPolygonLinePrimitive(
@@ -496,7 +552,7 @@ sal_uInt32 SlideBackgroundFillPrimitive2D::getPrimitive2DID() const
             {
                 // create simpleTransparencePrimitive, add created fill primitive
                 Primitive2DContainer aContent { pNewLinePrimitive };
-                return Primitive2DReference(new UnifiedTransparencePrimitive2D(std::move(aContent), rLine.getTransparence()));
+                return new UnifiedTransparencePrimitive2D(std::move(aContent), rLine.getTransparence());
             }
             else
             {
@@ -578,8 +634,8 @@ sal_uInt32 SlideBackgroundFillPrimitive2D::getPrimitive2DID() const
                 rObjectTransform.decompose(aScale, aTranslate, fRotate, fShearX);
 
                 // extract mirroring
-                const bool bMirrorX(basegfx::fTools::less(aScale.getX(), 0.0));
-                const bool bMirrorY(basegfx::fTools::less(aScale.getY(), 0.0));
+                const bool bMirrorX(aScale.getX() < 0.0);
+                const bool bMirrorY(aScale.getY() < 0.0);
                 aScale = basegfx::absolute(aScale);
 
                 // Get the real size, since polygon outline and scale
@@ -623,7 +679,8 @@ sal_uInt32 SlideBackgroundFillPrimitive2D::getPrimitive2DID() const
                                     &rText.getSdrText(),
                                     rText.getOutlinerParaObject(),
                                     aAnchorTransform,
-                                    bWordWrap);
+                                    bWordWrap,
+                                    rText.isFixedCellHeight());
                 }
                 else if( rText.isChainable() && !rText.isInEditMode() )
                 {
@@ -659,16 +716,15 @@ sal_uInt32 SlideBackgroundFillPrimitive2D::getPrimitive2DID() const
                 if(0.0 != aAnimationList.getDuration())
                 {
                     // create content sequence
-                    Primitive2DReference xRefA(pNew);
-                    Primitive2DContainer aContent { xRefA };
+                    Primitive2DContainer aContent { pNew };
 
                     // create and add animated switch primitive
-                    return Primitive2DReference(new AnimatedBlinkPrimitive2D(aAnimationList, std::move(aContent)));
+                    return new AnimatedBlinkPrimitive2D(aAnimationList, std::move(aContent));
                 }
                 else
                 {
                     // add to decomposition
-                    return Primitive2DReference(pNew);
+                    return pNew;
                 }
             }
 
@@ -751,19 +807,20 @@ sal_uInt32 SlideBackgroundFillPrimitive2D::getPrimitive2DID() const
                         pNew.clear();
 
                         // create a new animatedInterpolatePrimitive and add it
-                        Primitive2DReference xRefA(new AnimatedInterpolatePrimitive2D({ aLeft, aRight }, aAnimationList, std::move(aAnimSequence)));
-                        Primitive2DContainer aContent { xRefA };
+                        Primitive2DContainer aContent {
+                            new AnimatedInterpolatePrimitive2D({ aLeft, aRight }, aAnimationList, std::move(aAnimSequence))
+                        };
 
                         // scrolling needs an encapsulating clipping primitive
                         const basegfx::B2DRange aClipRange(aClipTopLeft, aClipBottomRight);
                         basegfx::B2DPolygon aClipPolygon(basegfx::utils::createPolygonFromRect(aClipRange));
                         aClipPolygon.transform(aSRT);
-                        return Primitive2DReference(new MaskPrimitive2D(basegfx::B2DPolyPolygon(aClipPolygon), std::move(aContent)));
+                        return new MaskPrimitive2D(basegfx::B2DPolyPolygon(aClipPolygon), std::move(aContent));
                     }
                     else
                     {
                         // add to decomposition
-                        return Primitive2DReference(pNew);
+                        return pNew;
                     }
                 }
             }
@@ -773,11 +830,10 @@ sal_uInt32 SlideBackgroundFillPrimitive2D::getPrimitive2DID() const
                 // #i97628#
                 // encapsulate with TextHierarchyEditPrimitive2D to allow renderers
                 // to suppress actively edited content if needed
-                Primitive2DReference xRefA(pNew);
-                Primitive2DContainer aContent { xRefA };
+                Primitive2DContainer aContent { pNew };
 
                 // create and add TextHierarchyEditPrimitive2D primitive
-                return Primitive2DReference(new TextHierarchyEditPrimitive2D(std::move(aContent)));
+                return new TextHierarchyEditPrimitive2D(std::move(aContent));
             }
             else
             {
@@ -819,50 +875,49 @@ sal_uInt32 SlideBackgroundFillPrimitive2D::getPrimitive2DID() const
             int nContentWithTransparence = std::count_if(
                 rContentForShadow.begin(), rContentForShadow.end(),
                 [](const Primitive2DReference& xChild) {
-                    auto pChild = dynamic_cast<BufferedDecompositionPrimitive2D*>(xChild.get());
+                    auto pChild = dynamic_cast<SdrCellPrimitive2D*>(xChild.get());
                     return pChild && pChild->getTransparenceForShadow() != 0;
                 });
             if (nContentWithTransparence == 0)
             {
                 Primitive2DContainer aRetval(2);
-                aRetval[0] = Primitive2DReference(
+                aRetval[0] =
                     new ShadowPrimitive2D(
                         aShadowOffset,
                         rShadow.getColor(),
                         rShadow.getBlur(),
-                        Primitive2DContainer(pContentForShadow ? *pContentForShadow : rContent)));
+                        Primitive2DContainer(pContentForShadow ? *pContentForShadow : rContent));
 
                 if (0.0 != rShadow.getTransparence())
                 {
                     // create SimpleTransparencePrimitive2D
                     Primitive2DContainer aTempContent{ aRetval[0] };
 
-                    aRetval[0] = Primitive2DReference(
+                    aRetval[0] =
                         new UnifiedTransparencePrimitive2D(
                             std::move(aTempContent),
-                            rShadow.getTransparence()));
+                            rShadow.getTransparence());
                 }
 
-                aRetval[1] = Primitive2DReference(new GroupPrimitive2D(std::move(rContent)));
+                aRetval[1] = new GroupPrimitive2D(std::move(rContent));
                 return aRetval;
             }
 
             Primitive2DContainer aRetval;
             for (const auto& xChild : rContentForShadow)
             {
-                aRetval.push_back(Primitive2DReference(
+                aRetval.emplace_back(
                     new ShadowPrimitive2D(aShadowOffset, rShadow.getColor(), rShadow.getBlur(),
-                                            Primitive2DContainer({ xChild }))));
+                                            Primitive2DContainer({ xChild })));
                 if (rShadow.getTransparence() != 0.0)
                 {
                     Primitive2DContainer aTempContent{ aRetval.back() };
-                    aRetval.back() = Primitive2DReference(new UnifiedTransparencePrimitive2D(
-                            std::move(aTempContent), rShadow.getTransparence()));
+                    aRetval.back() = new UnifiedTransparencePrimitive2D(
+                            std::move(aTempContent), rShadow.getTransparence());
                 }
             }
 
-            aRetval.push_back(
-                    Primitive2DReference(new GroupPrimitive2D(std::move(rContent))));
+            aRetval.push_back(new GroupPrimitive2D(std::move(rContent)));
             return aRetval;
         }
 
@@ -873,9 +928,22 @@ sal_uInt32 SlideBackgroundFillPrimitive2D::getPrimitive2DID() const
             if(rContent.empty())
                 return std::move(rContent);
             Primitive2DContainer aRetval(2);
-            aRetval[0] = Primitive2DReference(
-                new GlowPrimitive2D(rGlow.getColor(), rGlow.getRadius(), Primitive2DContainer(rContent)));
-            aRetval[1] = Primitive2DReference(new GroupPrimitive2D(Primitive2DContainer(rContent)));
+            aRetval[0] = new GlowPrimitive2D(rGlow.getColor(), rGlow.getRadius(), Primitive2DContainer(rContent));
+            aRetval[1] = new GroupPrimitive2D(Primitive2DContainer(std::move(rContent)));
+            return aRetval;
+        }
+
+        Primitive2DContainer createEmbeddedTextGlowPrimitive(
+            Primitive2DContainer&& rContent,
+            const attribute::SdrGlowTextAttribute& rGlow)
+        {
+            if (rContent.empty())
+                return std::move(rContent);
+
+            Primitive2DContainer aRetval(2);
+            aRetval[0] = new GlowPrimitive2D(rGlow.getTextColor(), rGlow.getTextRadius(), Primitive2DContainer(rContent));
+            aRetval[1] = new GroupPrimitive2D(Primitive2DContainer(std::move(rContent)));
+
             return aRetval;
         }
 
@@ -885,7 +953,7 @@ sal_uInt32 SlideBackgroundFillPrimitive2D::getPrimitive2DID() const
             if (aContent.empty() || !nRadius)
                 return std::move(aContent);
             Primitive2DContainer aRetval(1);
-            aRetval[0] = Primitive2DReference(new SoftEdgePrimitive2D(nRadius, std::move(aContent)));
+            aRetval[0] = new SoftEdgePrimitive2D(nRadius, std::move(aContent));
             return aRetval;
         }
 

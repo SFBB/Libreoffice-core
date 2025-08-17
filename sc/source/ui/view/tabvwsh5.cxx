@@ -41,8 +41,9 @@
 
 void ScTabViewShell::Notify( SfxBroadcaster& rBC, const SfxHint& rHint )
 {
-    if (const ScPaintHint* pPaintHint = dynamic_cast<const ScPaintHint*>(&rHint))                    // draw new
+    if (rHint.GetId() == SfxHintId::ScPaint) // draw new
     {
+        const ScPaintHint* pPaintHint = static_cast<const ScPaintHint*>(&rHint);
         PaintPartFlags nParts = pPaintHint->GetParts();
         SCTAB nTab = GetViewData().GetTabNo();
         if (pPaintHint->GetStartTab() <= nTab && pPaintHint->GetEndTab() >= nTab)
@@ -53,16 +54,19 @@ void ScTabViewShell::Notify( SfxBroadcaster& rBC, const SfxHint& rHint )
 
             // if the current sheet has pending row height updates (sheet links refreshed),
             // execute them before invalidating the window
-            GetViewData().GetDocShell()->UpdatePendingRowHeights( GetViewData().GetTabNo() );
+            GetViewData().GetDocShell().UpdatePendingRowHeights( GetViewData().GetTabNo() );
 
             if (nParts & PaintPartFlags::Size)
                 RepeatResize();                     //! InvalidateBorder ???
+            const tools::Long nWidthAffectedHint = pPaintHint->GetMaxWidthAffectedHint();
             if (nParts & PaintPartFlags::Grid)
                 PaintArea( pPaintHint->GetStartCol(), pPaintHint->GetStartRow(),
-                           pPaintHint->GetEndCol(), pPaintHint->GetEndRow() );
+                           pPaintHint->GetEndCol(), pPaintHint->GetEndRow(),
+                           ScUpdateMode::All, nWidthAffectedHint );
             if (nParts & PaintPartFlags::Marks)
                 PaintArea( pPaintHint->GetStartCol(), pPaintHint->GetStartRow(),
-                           pPaintHint->GetEndCol(), pPaintHint->GetEndRow(), ScUpdateMode::Marks );
+                           pPaintHint->GetEndCol(), pPaintHint->GetEndRow(),
+                           ScUpdateMode::Marks, nWidthAffectedHint );
             if (nParts & PaintPartFlags::Left)
                 PaintLeftArea( pPaintHint->GetStartRow(), pPaintHint->GetEndRow() );
             if (nParts & PaintPartFlags::Top)
@@ -72,12 +76,13 @@ void ScTabViewShell::Notify( SfxBroadcaster& rBC, const SfxHint& rHint )
             if (nParts & ( PaintPartFlags::Left | PaintPartFlags::Top ))    // only if widths or heights changed
                 UpdateAllOverlays();
 
-            HideNoteMarker();
+            HideNoteOverlay();
         }
     }
-    else if (auto pEditViewHint = dynamic_cast<const ScEditViewHint*>(&rHint))                 // create Edit-View
+    else if (rHint.GetId() == SfxHintId::ScEditView) // create Edit-View
     {
         //  ScEditViewHint is only received at active view
+        auto pEditViewHint = static_cast<const ScEditViewHint*>(&rHint);
 
         SCTAB nTab = GetViewData().GetTabNo();
         if ( pEditViewHint->GetTab() == nTab )
@@ -85,7 +90,7 @@ void ScTabViewShell::Notify( SfxBroadcaster& rBC, const SfxHint& rHint )
             SCCOL nCol = pEditViewHint->GetCol();
             SCROW nRow = pEditViewHint->GetRow();
             {
-                HideNoteMarker();
+                HideNoteOverlay();
 
                 MakeEditView( pEditViewHint->GetEngine(), nCol, nRow );
 
@@ -105,8 +110,9 @@ void ScTabViewShell::Notify( SfxBroadcaster& rBC, const SfxHint& rHint )
             }
         }
     }
-    else if (auto pTablesHint = dynamic_cast<const ScTablesHint*>(&rHint))               // table insert / deleted
+    else if (rHint.GetId() == SfxHintId::ScTables) // table insert / deleted
     {
+        auto pTablesHint = static_cast<const ScTablesHint*>(&rHint);
         // first fetch current table (can be changed during DeleteTab on ViewData)
         SCTAB nActiveTab = GetViewData().GetTabNo();
 
@@ -218,7 +224,7 @@ void ScTabViewShell::Notify( SfxBroadcaster& rBC, const SfxHint& rHint )
 
             case SfxHintId::ScRefModeChanged:
                 {
-                    bool bRefMode = SC_MOD()->IsFormulaMode();
+                    bool bRefMode = ScModule::get()->IsFormulaMode();
                     if (!bRefMode)
                         StopRefMode();
                     else
@@ -274,9 +280,9 @@ void ScTabViewShell::Notify( SfxBroadcaster& rBC, const SfxHint& rHint )
                 //  from, always switch the design mode when the ReadOnly state
                 //  really was changed:
 
-                if ( GetViewData().GetSfxDocShell()->IsReadOnly() != bReadOnly )
+                if ( GetViewData().GetSfxDocShell().IsReadOnly() != bReadOnly )
                 {
-                    bReadOnly = GetViewData().GetSfxDocShell()->IsReadOnly();
+                    bReadOnly = GetViewData().GetSfxDocShell().IsReadOnly();
 
                     SfxBoolItem aItem( SID_FM_DESIGN_MODE, !bReadOnly);
                     GetViewData().GetDispatcher().ExecuteList(SID_FM_DESIGN_MODE,

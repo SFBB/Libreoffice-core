@@ -12,6 +12,9 @@
 #include <frameformats.hxx>
 #include <frmatr.hxx>
 #include <swtable.hxx>
+#include <docsh.hxx>
+#include <IDocumentRedlineAccess.hxx>
+#include <redline.hxx>
 
 namespace
 {
@@ -28,7 +31,7 @@ class Test : public SwModelTestBase
 {
 public:
     Test()
-        : SwModelTestBase("/sw/qa/filter/xml/data/", "writer8")
+        : SwModelTestBase(u"/sw/qa/filter/xml/data/"_ustr, u"writer8"_ustr)
     {
     }
 };
@@ -42,7 +45,7 @@ CPPUNIT_TEST_FIXTURE(Test, testCoveredCellBackground)
     SwDoc* pDoc = getSwDoc();
     const SwTableFormat* pTableFormat = (*pDoc->GetTableFrameFormats())[0];
     SwTable* pTable = SwTable::FindTable(pTableFormat);
-    SwTableBox* pBox = const_cast<SwTableBox*>(pTable->GetTableBox("A5"));
+    SwTableBox* pBox = const_cast<SwTableBox*>(pTable->GetTableBox(u"A5"_ustr));
     SwFrameFormat* pCellFormat = pBox->GetFrameFormat();
     const SvxBrushItem& rBackground = pCellFormat->GetAttrSet().GetBackground();
 
@@ -53,6 +56,72 @@ CPPUNIT_TEST_FIXTURE(Test, testCoveredCellBackground)
     // - Actual  : rgba[ffffff00]
     // i.e. part of the merged cell had a bad white background.
     CPPUNIT_ASSERT_EQUAL(Color(0xe8f2a1), rBackground.GetColor());
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testRedlineRecordFlatExport)
+{
+    // Given a document with track changes enabled:
+    createSwDoc();
+    dispatchCommand(mxComponent, ".uno:TrackChanges", {});
+
+    // When saving that to FODT:
+    save(u"OpenDocument Text Flat XML"_ustr);
+
+    // Then make sure this is written in the export result:
+    xmlDocUniquePtr pDoc = parseXml(maTempFile);
+    CPPUNIT_ASSERT(pDoc);
+    // Without the accompanying fix in place, this test would have failed with:
+    // - XPath '/office:document/office:body/office:text/text:tracked-changes' number of nodes is incorrect
+    // i.e. the entire XML element was missing.
+    OUString aValue = getXPath(
+        pDoc, "/office:document/office:body/office:text/text:tracked-changes", "track-changes");
+    CPPUNIT_ASSERT_EQUAL(u"true"_ustr, aValue);
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testInsertThenFormatOdtImport)
+{
+    // Given a document with <ins>A<format>B</format>C</ins> style redlines:
+    // When importing that document:
+    createSwDoc("insert-then-format.odt");
+
+    // Then make sure that both the insert and the format on top of it is in the model:
+    SwDoc* pDoc = getSwDocShell()->GetDoc();
+    IDocumentRedlineAccess& rIDRA = pDoc->getIDocumentRedlineAccess();
+    SwRedlineTable& rRedlines = rIDRA.GetRedlineTable();
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(3), rRedlines.size());
+    CPPUNIT_ASSERT_EQUAL(RedlineType::Insert, rRedlines[0]->GetType());
+    const SwRedlineData& rRedlineData1 = rRedlines[1]->GetRedlineData(0);
+    CPPUNIT_ASSERT_EQUAL(RedlineType::Format, rRedlineData1.GetType());
+    // Without the accompanying fix in place, this test would have failed, i.e. the insert under the
+    // format redline was lost.
+    CPPUNIT_ASSERT(rRedlineData1.Next());
+    const SwRedlineData& rInnerRedlineData = *rRedlineData1.Next();
+    CPPUNIT_ASSERT_EQUAL(RedlineType::Insert, rInnerRedlineData.GetType());
+    CPPUNIT_ASSERT_EQUAL(RedlineType::Insert, rRedlines[2]->GetType());
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testDeleteThenFormatOdtImport)
+{
+    // Given a document with <del>A<format>B</format>C</del> style redlines:
+    // When importing that document:
+    createSwDoc("delete-then-format.odt");
+
+    // Then make sure that both the delete and the format on top of it is in the model:
+    SwDoc* pDoc = getSwDocShell()->GetDoc();
+    IDocumentRedlineAccess& rIDRA = pDoc->getIDocumentRedlineAccess();
+    SwRedlineTable& rRedlines = rIDRA.GetRedlineTable();
+    // Without the accompanying fix in place, this test would have failed with:
+    // - Expected: 3
+    // - Actual  : 2
+    // i.e. there was an empty format redline at doc start and a delete redline for "AC".
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(3), rRedlines.size());
+    CPPUNIT_ASSERT_EQUAL(RedlineType::Delete, rRedlines[0]->GetType());
+    const SwRedlineData& rRedlineData1 = rRedlines[1]->GetRedlineData(0);
+    CPPUNIT_ASSERT_EQUAL(RedlineType::Format, rRedlineData1.GetType());
+    CPPUNIT_ASSERT(rRedlineData1.Next());
+    const SwRedlineData& rInnerRedlineData = *rRedlineData1.Next();
+    CPPUNIT_ASSERT_EQUAL(RedlineType::Delete, rInnerRedlineData.GetType());
+    CPPUNIT_ASSERT_EQUAL(RedlineType::Delete, rRedlines[2]->GetType());
 }
 }
 

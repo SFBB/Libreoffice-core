@@ -64,7 +64,7 @@ SwBreakDashedLine::SwBreakDashedLine(SwEditWin* pEditWin, const SwFrame *pFrame)
     , m_pEditWin(pEditWin)
     , m_pFrame(pFrame)
 {
-    set_id("PageBreak"); // for uitest
+    set_id(u"PageBreak"_ustr); // for uitest
 }
 
 SwPageBreakWin& SwBreakDashedLine::GetOrCreateWin()
@@ -123,8 +123,8 @@ bool SwBreakDashedLine::Contains(const Point &rDocPt) const
 }
 
 SwPageBreakWin::SwPageBreakWin(SwBreakDashedLine* pLine, SwEditWin* pEditWin, const SwFrame *pFrame) :
-    InterimItemWindow(pEditWin, "modules/swriter/ui/pbmenubutton.ui", "PBMenuButton"),
-    m_xMenuButton(m_xBuilder->weld_menu_button("menubutton")),
+    InterimItemWindow(pEditWin, u"modules/swriter/ui/pbmenubutton.ui"_ustr, u"PBMenuButton"_ustr),
+    m_xMenuButton(m_xBuilder->weld_menu_button(u"menubutton"_ustr)),
     m_pLine(pLine),
     m_pEditWin(pEditWin),
     m_pFrame(pFrame),
@@ -159,8 +159,8 @@ void SwPageBreakWin::dispose()
     m_aFadeTimer.Stop();
     m_xVirDev.disposeAndClear();
 
-    m_pLine.clear();
-    m_pEditWin.clear();
+    m_pLine.reset();
+    m_pEditWin.reset();
 
     m_xMenuButton.reset();
     InterimItemWindow::dispose();
@@ -193,23 +193,23 @@ void SwPageBreakWin::PaintButton()
 
     bool bRtl = AllSettings::GetLayoutRTL();
 
-    drawinglayer::primitive2d::Primitive2DContainer aSeq(3);
+    drawinglayer::primitive2d::Primitive2DContainer aSeq;
     B2DRectangle aBRect = vcl::unotools::b2DRectangleFromRectangle(aRect);
     B2DPolygon aPolygon = createPolygonFromRect(aBRect, 3.0 / BUTTON_WIDTH, 3.0 / BUTTON_HEIGHT);
 
     // Create the polygon primitives
-    aSeq[0].set(new drawinglayer::primitive2d::PolyPolygonColorPrimitive2D(
+    aSeq.push_back(new drawinglayer::primitive2d::PolyPolygonColorPrimitive2D(
                                         B2DPolyPolygon(aPolygon), aOtherColor));
-    aSeq[1].set(new drawinglayer::primitive2d::PolygonHairlinePrimitive2D(
+    aSeq.push_back(new drawinglayer::primitive2d::PolygonHairlinePrimitive2D(
                                         std::move(aPolygon), aColor));
 
     // Create the primitive for the image
-    BitmapEx aBmpEx(RID_BMP_PAGE_BREAK);
+    Bitmap aBmp(RID_BMP_PAGE_BREAK);
     double nImgOfstX = 3.0;
     if (bRtl)
-        nImgOfstX = aRect.Right() - aBmpEx.GetSizePixel().Width() - 3.0;
-    aSeq[2].set(new drawinglayer::primitive2d::DiscreteBitmapPrimitive2D(
-                                        aBmpEx, B2DPoint(nImgOfstX, 1.0)));
+        nImgOfstX = aRect.Right() - aBmp.GetSizePixel().Width() - 3.0;
+    aSeq.push_back(new drawinglayer::primitive2d::DiscreteBitmapPrimitive2D(
+                                        aBmp, B2DPoint(nImgOfstX, 1.0)));
 
     double nTop = double(aRect.getOpenHeight()) / 2.0;
     double nBottom = nTop + 4.0;
@@ -228,17 +228,16 @@ void SwPageBreakWin::PaintButton()
     if (Application::GetSettings().GetStyleSettings().GetHighContrastMode())
         aTriangleColor = COL_WHITE.getBColor();
 
-    aSeq.emplace_back();
-    aSeq.back().set( new drawinglayer::primitive2d::PolyPolygonColorPrimitive2D(
+    aSeq.push_back( new drawinglayer::primitive2d::PolyPolygonColorPrimitive2D(
                                         B2DPolyPolygon(aTriangle), aTriangleColor));
 
-    drawinglayer::primitive2d::Primitive2DContainer aGhostedSeq(1);
+    drawinglayer::primitive2d::Primitive2DContainer aGhostedSeq;
     double nFadeRate = double(m_nFadeRate) / 100.0;
-    const basegfx::BColorModifierSharedPtr aBColorModifier =
-                std::make_shared<basegfx::BColorModifier_interpolate>(COL_WHITE.getBColor(),
+    basegfx::BColorModifierSharedPtr aBColorModifier =
+          std::make_shared<basegfx::BColorModifier_interpolate>(COL_WHITE.getBColor(),
                                                         1.0 - nFadeRate);
-    aGhostedSeq[0].set( new drawinglayer::primitive2d::ModifiedColorPrimitive2D(
-                            std::move(aSeq), aBColorModifier));
+    aGhostedSeq.push_back( new drawinglayer::primitive2d::ModifiedColorPrimitive2D(
+                            std::move(aSeq), std::move(aBColorModifier)));
 
     // Create the processor and process the primitives
     const drawinglayer::geometry::ViewInformation2D aNewViewInfos;
@@ -313,7 +312,7 @@ void SwBreakDashedLine::execute(std::u16string_view rIdent)
 
             rSh.SetSelection( SwPaM(rNd) );
 
-            SfxStringItem aItem(m_pEditWin->GetView().GetPool().GetWhich(FN_FORMAT_TABLE_DLG), "textflow");
+            SfxStringItem aItem(m_pEditWin->GetView().GetPool().GetWhichIDFromSlotID(FN_FORMAT_TABLE_DLG), u"textflow"_ustr);
             m_pEditWin->GetView().GetViewFrame().GetDispatcher()->ExecuteList(
                     FN_FORMAT_TABLE_DLG,
                     SfxCallMode::SYNCHRON | SfxCallMode::RECORD,
@@ -324,8 +323,8 @@ void SwBreakDashedLine::execute(std::u16string_view rIdent)
         else
         {
             SwPaM aPaM( rNd );
-            SwPaMItem aPaMItem( m_pEditWin->GetView().GetPool( ).GetWhich( FN_PARAM_PAM ), &aPaM );
-            SfxStringItem aItem( SID_PARA_DLG, "textflow" );
+            SwPaMItem aPaMItem( m_pEditWin->GetView().GetPool( ).GetWhichIDFromSlotID( FN_PARAM_PAM ), &aPaM );
+            SfxStringItem aItem( SID_PARA_DLG, u"textflow"_ustr );
             m_pEditWin->GetView().GetViewFrame().GetDispatcher()->ExecuteList(
                     SID_PARA_DLG,
                     SfxCallMode::SYNCHRON | SfxCallMode::RECORD,

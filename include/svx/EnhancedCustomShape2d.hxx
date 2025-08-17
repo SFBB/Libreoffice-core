@@ -104,12 +104,13 @@ class SVXCORE_DLLPUBLIC EnhancedCustomShape2d final : public SfxItemSet
 
         */
         struct SAL_DLLPRIVATE EquationResult {
-            bool bReady;
-            double fValue;
+            mutable bool bParsed = false;
+            bool bReady = false;
+            double fValue = 0;
+            mutable std::shared_ptr< EnhancedCustomShape::ExpressionNode > xNode;
         };
         css::uno::Sequence< OUString >                                                       m_seqEquations;
-        std::vector< std::shared_ptr< EnhancedCustomShape::ExpressionNode > >                           m_vNodesSharedPtr;
-        std::vector< EquationResult >                                                                   m_vEquationResults;
+        std::vector< EquationResult >                                                        m_vEquationResults;
 
         css::uno::Sequence< css::drawing::EnhancedCustomShapeSegment >            m_seqSegments;
         css::uno::Sequence< css::drawing::EnhancedCustomShapeParameterPair>       m_seqCoordinates;
@@ -118,6 +119,7 @@ class SVXCORE_DLLPUBLIC EnhancedCustomShape2d final : public SfxItemSet
         css::uno::Sequence< css::drawing::EnhancedCustomShapeAdjustmentValue >    m_seqAdjustmentValues;
         css::uno::Sequence< css::beans::PropertyValues >                          m_seqHandles;
         css::uno::Sequence< css::awt::Size >                                      m_seqSubViewSize;
+        css::uno::Sequence< double >                                              m_seqGluePointLeavingDirections;
 
         bool                    m_bFilled         : 1;
         bool                    m_bStroked        : 1;
@@ -189,6 +191,7 @@ class SVXCORE_DLLPUBLIC EnhancedCustomShape2d final : public SfxItemSet
 
         rtl::Reference<SdrObject>      CreateLineGeometry();
         rtl::Reference<SdrObject>      CreateObject( bool bLineGeometryNeededOnly );
+        rtl::Reference<SdrObject>      CreateObject( bool bLineGeometryNeededOnly, SfxStyleSheet* pNewStyleSheet );
         void                    ApplyGluePoints( SdrObject* pObj );
         tools::Rectangle        GetTextRect() const;
         const tools::Rectangle& GetLogicRect() const { return m_aLogicRect; }

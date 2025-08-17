@@ -19,12 +19,13 @@
 
 
 #include <algorithm>
+#include <vector>
 
 #include <app.hxx>
 #include <dp_shared.hxx>
+#include <initjsunoscripting.hxx>
 #include "cmdlineargs.hxx"
 #include <strings.hrc>
-#include <com/sun/star/registry/XSimpleRegistry.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/uno/Exception.hpp>
@@ -47,8 +48,6 @@
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
-using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::registry;
 using namespace ::com::sun::star::ucb;
 
 namespace desktop
@@ -83,6 +82,9 @@ void Desktop::InitApplicationServiceManager()
         UNO_QUERY_THROW);
 #endif
     comphelper::setProcessServiceFactory(sm);
+#if defined EMSCRIPTEN
+    initJsUnoScripting();
+#endif
 }
 
 void Desktop::RegisterServices()
@@ -147,9 +149,9 @@ void Desktop::createAcceptor(const OUString& aAcceptString)
     }
 
     Sequence< Any > aSeq{ Any(aAcceptString), Any(bAccept) };
-    Reference< XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+    const Reference< XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
     Reference<XInitialization> rAcceptor(
-        xContext->getServiceManager()->createInstanceWithContext("com.sun.star.office.Acceptor", xContext),
+        xContext->getServiceManager()->createInstanceWithContext(u"com.sun.star.office.Acceptor"_ustr, xContext),
         UNO_QUERY );
     if ( rAcceptor.is() )
     {

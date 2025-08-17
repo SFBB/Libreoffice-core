@@ -39,7 +39,6 @@
 #include <comphelper/types.hxx>
 #include <comphelper/processfactory.hxx>
 #include <tools/debug.hxx>
-#include <svl/itempool.hxx>
 #include <svx/sdrpaintwindow.hxx>
 #include <svx/svdpagv.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
@@ -48,6 +47,7 @@
 #include <xmlscript/xml_helper.hxx>
 #include <xmlscript/xmldlg_imexp.hxx>
 #include <osl/diagnose.h>
+#include <algorithm>
 
 namespace basctl
 {
@@ -66,13 +66,15 @@ constexpr OUString aDecorationPropName = u"Decoration"_ustr;
 
 
 DlgEdHint::DlgEdHint(Kind eHint)
-    : eKind(eHint)
+    : SfxHint(SfxHintId::BasCtlDlgEd)
+    , eKind(eHint)
     , pDlgEdObj(nullptr)
 {
 }
 
 DlgEdHint::DlgEdHint(Kind eHint, DlgEdObj* pObj)
-    : eKind(eHint)
+    : SfxHint(SfxHintId::BasCtlDlgEd)
+    , eKind(eHint)
     , pDlgEdObj(pObj)
 {
 }
@@ -87,7 +89,7 @@ DlgEdHint::~DlgEdHint()
 
 void DlgEditor::ShowDialog()
 {
-    uno::Reference< uno::XComponentContext >  xContext = getProcessComponentContext();
+    const uno::Reference< uno::XComponentContext >&  xContext = getProcessComponentContext();
 
     // create a dialog
     uno::Reference< awt::XUnoControlDialog > xDlg = awt::UnoControlDialog::create( xContext );
@@ -124,7 +126,7 @@ void DlgEditor::ShowDialog()
             if( !bDecoration )
             {
                 xNewDlgModPropSet->setPropertyValue( aDecorationPropName, Any( true ) );
-                xNewDlgModPropSet->setPropertyValue( "Title", Any( OUString() ) );
+                xNewDlgModPropSet->setPropertyValue( u"Title"_ustr, Any( OUString() ) );
             }
         }
         catch(const UnknownPropertyException& )
@@ -183,12 +185,12 @@ DlgEditor::DlgEditor (
     ,pDlgEdModel(new DlgEdModel())
     ,pDlgEdPage(new DlgEdPage(*pDlgEdModel))
     // set clipboard data flavors
-    ,m_ClipboardDataFlavors{ { /* MimeType */ "application/vnd.sun.xml.dialog",
-                               /* HumanPresentableName */ "Dialog 6.0",
+    ,m_ClipboardDataFlavors{ { /* MimeType */ u"application/vnd.sun.xml.dialog"_ustr,
+                               /* HumanPresentableName */ u"Dialog 6.0"_ustr,
                                /* DataType */ cppu::UnoType<Sequence< sal_Int8 >>::get() } }
     ,m_ClipboardDataFlavorsResource{ m_ClipboardDataFlavors[0],
-                                     { /* MimeType */ "application/vnd.sun.xml.dialogwithresource",
-                                       /* HumanPresentableName */ "Dialog 8.0",
+                                     { /* MimeType */ u"application/vnd.sun.xml.dialogwithresource"_ustr,
+                                       /* HumanPresentableName */ u"Dialog 8.0"_ustr,
                                        /* DataType */ cppu::UnoType<Sequence< sal_Int8 >>::get() } }
     ,pObjFac(new DlgEdFactory(xModel))
     ,rWindow(rWindow_)
@@ -203,13 +205,12 @@ DlgEditor::DlgEditor (
     ,mnPaintGuard(0)
     ,m_xDocument( xModel )
 {
-    pDlgEdModel->GetItemPool().FreezeIdRanges();
     pDlgEdView.reset(new DlgEdView(*pDlgEdModel, *rWindow_.GetOutDev(), *this));
     pDlgEdModel->SetScaleUnit( MapUnit::Map100thMM );
 
     SdrLayerAdmin& rAdmin = pDlgEdModel->GetLayerAdmin();
     rAdmin.NewLayer( rAdmin.GetControlLayerName() );
-    rAdmin.NewLayer( "HiddenLayer" );
+    rAdmin.NewLayer( u"HiddenLayer"_ustr );
 
     pDlgEdModel->InsertPage(pDlgEdPage);
 
@@ -219,7 +220,7 @@ DlgEditor::DlgEditor (
     pDlgEdPage->SetSize( rWindow.PixelToLogic( Size(DLGED_PAGE_WIDTH_MIN, DLGED_PAGE_HEIGHT_MIN) ) );
 
     pDlgEdView->ShowSdrPage(pDlgEdView->GetModel().GetPage(0));
-    pDlgEdView->SetLayerVisible( "HiddenLayer", false );
+    pDlgEdView->SetLayerVisible( u"HiddenLayer"_ustr, false );
     pDlgEdView->SetMoveSnapOnlyTopLeft(true);
     pDlgEdView->SetWorkArea( tools::Rectangle( Point( 0, 0 ), pDlgEdPage->GetSize() ) );
 
@@ -354,17 +355,10 @@ void DlgEditor::SetDialog( const uno::Reference< container::XNameContainer >& xU
     if ( m_xUnoControlDialogModel.is() )
     {
         // get sequence of control names
-        Sequence< OUString > aNames = m_xUnoControlDialogModel->getElementNames();
-        const OUString* pNames = aNames.getConstArray();
-        sal_Int32 nCtrls = aNames.getLength();
-
         // create a map of tab indices and control names, sorted by tab index
         IndexToNameMap aIndexToNameMap;
-        for ( sal_Int32 i = 0; i < nCtrls; ++i )
+        for (auto& aName : m_xUnoControlDialogModel->getElementNames())
         {
-            // get name
-            OUString aName( pNames[i] );
-
             // get tab index
             sal_Int16 nTabIndex = -1;
             Any aCtrl = m_xUnoControlDialogModel->getByName( aName );
@@ -421,13 +415,13 @@ Reference< util::XNumberFormatsSupplier > const & DlgEditor::GetNumberFormatsSup
 {
     if ( !m_xSupplier.is() )
     {
-        Reference< uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+        const Reference< uno::XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
         Reference< util::XNumberFormatsSupplier > xSupplier( util::NumberFormatsSupplier::createWithDefaultLocale(xContext) );
 
         ::osl::MutexGuard aGuard( ::osl::Mutex::getGlobalMutex() );
         if ( !m_xSupplier.is() )
         {
-            m_xSupplier = xSupplier;
+            m_xSupplier = std::move(xSupplier);
         }
     }
     return m_xSupplier;
@@ -534,28 +528,20 @@ void DlgEditor::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle
     SdrPageView* pPgView = pDlgEdView->GetSdrPageView();
     const vcl::Region aPaintRectRegion(aPaintRect);
 
-    // #i74769#
-    SdrPaintWindow* pTargetPaintWindow = nullptr;
-
     // mark repaint start
     if (pPgView)
     {
-        pTargetPaintWindow = pPgView->GetView().BeginDrawLayers(&rRenderContext, aPaintRectRegion);
-        OSL_ENSURE(pTargetPaintWindow, "BeginDrawLayers: Got no SdrPaintWindow (!)");
-    }
+        // #i74769#
+        SdrPaintWindow* pTargetPaintWindow(pPgView->GetView().BeginDrawLayers(&rRenderContext, aPaintRectRegion));
+        assert(pTargetPaintWindow && "BeginDrawLayers: Got no SdrPaintWindow (!)");
 
-    // draw background self using wallpaper
-    // #i79128# ...and use correct OutDev for that
-    if (pTargetPaintWindow)
-    {
+        // draw background self using wallpaper
+        // #i79128# ...and use correct OutDev for that
         Color maBackColor = rRenderContext.GetSettings().GetStyleSettings().GetLightColor();
         OutputDevice& rTargetOutDev = pTargetPaintWindow->GetTargetOutputDevice();
         rTargetOutDev.DrawWallpaper(aPaintRect, Wallpaper(maBackColor));
-    }
 
-    // do paint (unbuffered) and mark repaint end
-    if (pPgView)
-    {
+        // do paint (unbuffered) and mark repaint end
         // paint of control layer is done in EndDrawLayers anyway...
         pPgView->GetView().EndDrawLayers(*pTargetPaintWindow, true);
     }
@@ -620,6 +606,8 @@ void DlgEditor::CreateDefaultObject()
 
     // set default property values
     pDlgEdObj->SetDefaults();
+    // set the form to which the new object belongs
+    pDlgEdObj->SetDlgEdForm(pDlgEdForm.get());
 
     // insert object into drawing page
     SdrPageView* pPageView = pDlgEdView->GetSdrPageView();
@@ -649,13 +637,13 @@ static void implCopyStreamToByteSequence( const Reference< XInputStream >& xStre
 
         sal_Int32 nPos = bytes.getLength();
         bytes.realloc( nPos + nRead );
-        memcpy( bytes.getArray() + nPos, readBytes.getConstArray(), static_cast<sal_uInt32>(nRead) );
+        std::copy(readBytes.getConstArray(), readBytes.getConstArray() + static_cast<sal_uInt32>(nRead), bytes.getArray() + nPos);
     }
 }
 
 void DlgEditor::Copy()
 {
-    if( !pDlgEdView->AreObjectsMarked() )
+    if( pDlgEdView->GetMarkedObjectList().GetMarkCount() == 0 )
         return;
 
     // stop all drawing actions
@@ -668,13 +656,9 @@ void DlgEditor::Copy()
 
     if ( xClipDialogModel.is() )
     {
-        Sequence< OUString > aNames = xClipDialogModel->getElementNames();
-        const OUString* pNames = aNames.getConstArray();
-        sal_uInt32 nCtrls = aNames.getLength();
-
-        for ( sal_uInt32 n = 0; n < nCtrls; n++ )
+        for (auto& rName : xClipDialogModel->getElementNames())
         {
-               xClipDialogModel->removeByName( pNames[n] );
+            xClipDialogModel->removeByName(rName);
         }
     }
 
@@ -712,7 +696,7 @@ void DlgEditor::Copy()
     }
 
     // export clipboard dialog model to xml
-    Reference< XComponentContext > xContext(
+    const Reference< XComponentContext >& xContext(
         comphelper::getProcessComponentContext() );
     Reference< XInputStreamProvider > xISP = ::xmlscript::exportDialogModel( xClipDialogModel, xContext, m_xDocument );
     Reference< XInputStream > xStream( xISP->createInputStream() );
@@ -777,8 +761,8 @@ void DlgEditor::Copy()
             pCombinedData[i] = sal_Int8( n & 0xff );
             n >>= 8;
         }
-        memcpy( pCombinedData + 4, DialogModelBytes.getConstArray(), nDialogDataLen );
-        memcpy( pCombinedData + nResOffset, aResData.getConstArray(), nResDataLen );
+        std::copy(DialogModelBytes.getConstArray(), DialogModelBytes.getConstArray() + nDialogDataLen, pCombinedData + 4);
+        std::copy(aResData.getConstArray(), aResData.getConstArray() + nResDataLen, pCombinedData + nResOffset);
 
         Sequence< Any > aSeqData
         {
@@ -841,9 +825,9 @@ void DlgEditor::Paste()
         return;
 
     // create clipboard dialog model from xml
-    Reference< XComponentContext > xContext = comphelper::getProcessComponentContext();
+    const Reference< XComponentContext >& xContext = comphelper::getProcessComponentContext();
     Reference< container::XNameContainer > xClipDialogModel( xContext->getServiceManager()->createInstanceWithContext(
-        "com.sun.star.awt.UnoControlDialogModel", xContext ), uno::UNO_QUERY );
+        u"com.sun.star.awt.UnoControlDialogModel"_ustr, xContext ), uno::UNO_QUERY );
 
     bool bSourceIsLocalized = false;
     Sequence< sal_Int8 > DialogModelBytes;
@@ -855,27 +839,31 @@ void DlgEditor::Paste()
         Any aCombinedDataAny = xTransf->getTransferData( m_ClipboardDataFlavorsResource[1] );
         Sequence< sal_Int8 > aCombinedData;
         aCombinedDataAny >>= aCombinedData;
-        const sal_Int8* pCombinedData = aCombinedData.getConstArray();
 
         sal_Int32 nTotalLen = aCombinedData.getLength();
-
-        // Reading offset
-        sal_Int32 nResOffset = 0;
-        sal_Int32 nFactor = 1;
-        for( sal_Int16 i = 0; i < 4; i++ )
+        if (nTotalLen > 4)
         {
-            nResOffset += nFactor * sal_uInt8( pCombinedData[i] );
-            nFactor *= 256;
+            // Reading offset
+            sal_Int32 nResOffset = 0;
+            sal_Int32 nFactor = 1;
+            for (sal_Int16 i = 0; i < 4; i++)
+            {
+                nResOffset += nFactor * sal_uInt8(aCombinedData[i]);
+                nFactor *= 256;
+            }
+
+            if (nResOffset > nTotalLen || nResOffset < 0)
+                nResOffset = nTotalLen;
+
+            sal_Int32 nResDataLen = nTotalLen - nResOffset;
+            sal_Int32 nDialogDataLen = nTotalLen - nResDataLen - 4;
+
+            DialogModelBytes.realloc(nDialogDataLen);
+            std::copy(aCombinedData.getConstArray() + 4, aCombinedData.getConstArray() + 4 + nDialogDataLen, DialogModelBytes.getArray());
+
+            aResData.realloc(nResDataLen);
+            std::copy(aCombinedData.getConstArray() + nResOffset, aCombinedData.getConstArray() + nResOffset + nResDataLen, aResData.getArray());
         }
-
-        sal_Int32 nResDataLen = nTotalLen - nResOffset;
-        sal_Int32 nDialogDataLen = nTotalLen - nResDataLen - 4;
-
-        DialogModelBytes.realloc( nDialogDataLen );
-        memcpy( DialogModelBytes.getArray(), pCombinedData + 4, nDialogDataLen );
-
-        aResData.realloc( nResDataLen );
-        memcpy( aResData.getArray(), pCombinedData + nResOffset, nResDataLen );
     }
     else
     {
@@ -894,18 +882,16 @@ void DlgEditor::Paste()
         return;
 
     Sequence< OUString > aNames = xClipDialogModel->getElementNames();
-    const OUString* pNames = aNames.getConstArray();
-    sal_uInt32 nCtrls = aNames.getLength();
 
     Reference< resource::XStringResourcePersistence > xStringResourcePersistence;
-    if( nCtrls > 0 && bSourceIsLocalized )
+    if (aNames.hasElements() && bSourceIsLocalized)
     {
         xStringResourcePersistence = css::resource::StringResource::create( getProcessComponentContext() );
         xStringResourcePersistence->importBinary( aResData );
     }
-    for( sal_uInt32 n = 0; n < nCtrls; n++ )
+    for (auto& rName : aNames)
     {
-        Any aA = xClipDialogModel->getByName( pNames[n] );
+        Any aA = xClipDialogModel->getByName(rName);
         Reference< css::awt::XControlModel > xCM;
         aA >>= xCM;
 
@@ -975,7 +961,7 @@ void DlgEditor::Paste()
 
 void DlgEditor::Delete()
 {
-    if( !pDlgEdView->AreObjectsMarked() )
+    if( pDlgEdView->GetMarkedObjectList().GetMarkCount() == 0 )
         return;
 
     // remove control models of marked objects from dialog model

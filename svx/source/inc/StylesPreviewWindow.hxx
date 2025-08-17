@@ -71,7 +71,7 @@ private:
     void DrawText(vcl::RenderContext& rRenderContext);
     void DrawHighlight(vcl::RenderContext& rRenderContext, Color aFontBack);
     static void DrawContentBackground(vcl::RenderContext& rRenderContext,
-                                      const tools::Rectangle& aContentRect, const Color& aColor);
+                                      const tools::Rectangle& rContentRect, const Color& rColor);
 };
 
 class StylesListUpdateTask final : public Idle
@@ -83,7 +83,7 @@ public:
         : Idle("StylesListUpdateTask")
         , m_rStylesList(rStylesList)
     {
-        SetPriority(TaskPriority::HIGH_IDLE);
+        SetPriority(TaskPriority::DEFAULT_IDLE);
     }
 
     virtual void Invoke() override;
@@ -113,17 +113,17 @@ protected:
     DECL_LINK(Selected, weld::IconView&, void);
     DECL_LINK(DoubleClick, weld::IconView&, bool);
     DECL_LINK(DoCommand, const CommandEvent&, bool);
-    DECL_LINK(DoJsonProperty, const weld::json_prop_query&, bool);
+    DECL_LINK(GetPreviewImage, const weld::encoded_image_query&, bool);
 
 public:
     StylesPreviewWindow_Base(weld::Builder& xBuilder,
-                             std::vector<std::pair<OUString, OUString>>&& aDefaultStyles,
+                             std::vector<std::pair<OUString, OUString>>&& rDefaultStyles,
                              const css::uno::Reference<css::frame::XFrame>& xFrame);
     ~StylesPreviewWindow_Base();
 
     void Select(const OUString& rStyleName);
     void RequestStylesListUpdate();
-    static VclPtr<VirtualDevice> GetCachedPreview(const std::pair<OUString, OUString>& rStyle);
+    static Bitmap GetCachedPreview(const std::pair<OUString, OUString>& rStyle);
     static OString GetCachedPreviewJson(const std::pair<OUString, OUString>& rStyle);
 
 private:
@@ -136,7 +136,7 @@ class StylesPreviewWindow_Impl final : public InterimItemWindow, public StylesPr
 {
 public:
     StylesPreviewWindow_Impl(vcl::Window* pParent,
-                             std::vector<std::pair<OUString, OUString>>&& aDefaultStyles,
+                             std::vector<std::pair<OUString, OUString>>&& rDefaultStyles,
                              const css::uno::Reference<css::frame::XFrame>& xFrame);
     ~StylesPreviewWindow_Impl();
 

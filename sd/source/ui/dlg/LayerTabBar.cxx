@@ -39,6 +39,14 @@
 #include <drawview.hxx>
 #include <undolayer.hxx>
 
+#include <svx/sdr/overlay/overlaymanager.hxx>
+#include <svx/sdr/overlay/overlayselection.hxx>
+#include <svx/svditer.hxx>
+#include <sdpage.hxx>
+#include <svx/sdrpaintwindow.hxx>
+
+#include <officecfg/Office/Draw.hxx>
+
 namespace sd {
 
 /**
@@ -47,12 +55,17 @@ namespace sd {
 LayerTabBar::LayerTabBar(DrawViewShell* pViewSh, vcl::Window* pParent)
     : TabBar( pParent, WinBits( WB_BORDER | WB_3DLOOK | WB_SCROLL ) ),
     DropTargetHelper( this ),
-    pDrViewSh(pViewSh)
+    pDrViewSh(pViewSh),
+    m_aBringLayerObjectsToAttentionDelayTimer("LayerTabBar m_aBringLayerObjectsToAttentionDelayTimer")
 {
     EnableEditMode();
     SetSizePixel(Size(0, 0));
     SetMaxPageWidth( 150 );
     SetHelpId( HID_SD_TABBAR_LAYERS );
+
+    m_aBringLayerObjectsToAttentionDelayTimer.SetInvokeHandler(
+                LINK(this, LayerTabBar, BringLayerObjectsToAttentionDelayTimerHdl));
+    m_aBringLayerObjectsToAttentionDelayTimer.SetTimeout(500);
 }
 
 LayerTabBar::~LayerTabBar()
@@ -87,7 +100,7 @@ OUString LayerTabBar::convertToLocalizedName(const OUString& rName)
 }
 
 // Use a method name, that is specific to LayerTabBar to make code better readable
-OUString LayerTabBar::GetLayerName(sal_uInt16 nPageId) const
+const OUString & LayerTabBar::GetLayerName(sal_uInt16 nPageId) const
 {
     return GetAuxiliaryText(nPageId);
 }
@@ -133,8 +146,114 @@ bool LayerTabBar::IsRealNameOfStandardLayer(std::u16string_view rName)
 
 void LayerTabBar::Select()
 {
-    SfxDispatcher* pDispatcher = pDrViewSh->GetViewFrame()->GetDispatcher();
-    pDispatcher->Execute(SID_SWITCHLAYER, SfxCallMode::SYNCHRON);
+    if (SfxViewFrame* pFrame = pDrViewSh->GetViewFrame())
+    {
+        SfxDispatcher* pDispatcher = pFrame->GetDispatcher();
+        pDispatcher->Execute(SID_SWITCHLAYER, SfxCallMode::SYNCHRON);
+    }
+}
+
+void LayerTabBar::MouseMove(const MouseEvent &rMEvt)
+{
+    sal_uInt16 nPageId = 0;
+    if (!rMEvt.IsLeaveWindow())
+        nPageId = GetPageId(rMEvt.GetPosPixel());
+    BringLayerObjectsToAttention(nPageId);
+    return;
+}
+
+void LayerTabBar::BringLayerObjectsToAttention(const sal_uInt16 nPageId)
+{
+    if (nPageId == m_nBringLayerObjectsToAttentionLastPageId)
+        return;
+
+    m_aBringLayerObjectsToAttentionDelayTimer.Stop();
+
+    if (m_xOverlayObject && m_xOverlayObject->getOverlayManager())
+        m_xOverlayObject->getOverlayManager()->remove(*m_xOverlayObject);
+
+    m_nBringLayerObjectsToAttentionLastPageId = nPageId;
+
+    std::vector<basegfx::B2DRange> aRanges;
+
+    if (nPageId != 0)
+    {
+        sal_uInt16 nDisableLayerObjectsOverlay
+            = officecfg::Office::Draw::Misc::DisableLayerHighlighting::get();
+        OUString aLayerName(GetLayerName(nPageId));
+        if (nDisableLayerObjectsOverlay > 0 // don't show tooltip message when 0 - meaning feature is turned off
+            && pDrViewSh->GetView()->GetSdrPageView()->IsLayerVisible(aLayerName))
+        {
+            SdrLayerAdmin& rLayerAdmin = pDrViewSh->GetDoc()->GetLayerAdmin();
+            SdrObjListIter aIter(pDrViewSh->GetActualPage(), SdrIterMode::DeepWithGroups);
+            while (aIter.IsMore())
+            {
+                SdrObject* pObj = aIter.Next();
+                assert(pObj != nullptr);
+                if (!pObj)
+                    continue;
+                const SdrLayer* pSdrLayer = rLayerAdmin.GetLayerPerID(pObj->GetLayer());
+                if (!pSdrLayer)
+                    continue;
+                if (aLayerName == pSdrLayer->GetName())
+                {
+                    ::tools::Rectangle aRect(pObj->GetLogicRect());
+                    if (!aRect.IsEmpty())
+                    {
+                        aRanges.emplace_back(aRect.Left(), aRect.Top(), aRect.Right(), aRect.Bottom());
+                        if (aRanges.size() > nDisableLayerObjectsOverlay)
+                        {
+                            OUString sHelpText = SdResId(STR_LAYER_HIGHLIGHTING_DISABLED);
+                            sHelpText = sHelpText.replaceFirst(
+                                "%1", OUString::number(nDisableLayerObjectsOverlay));
+                            SetQuickHelpText(sHelpText);
+                            m_xOverlayObject.reset();
+                            return;
+                        }
+                    }
+                    // skip over objects in groups
+                    if (pObj->IsGroupObject())
+                    {
+                        SdrObjListIter aSubListIter(pObj->GetSubList(), SdrIterMode::DeepWithGroups);
+                        while (aSubListIter.IsMore())
+                        {
+                            aIter.Next();
+                            aSubListIter.Next();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    SetQuickHelpText(u""_ustr);
+
+    if (aRanges.empty())
+        m_xOverlayObject.reset();
+    else
+    {
+        m_xOverlayObject.reset(new sdr::overlay::OverlaySelection(
+                                   sdr::overlay::OverlayType::Invert,
+                                   Color(), std::move(aRanges), true/*unused for Invert type*/));
+        m_aBringLayerObjectsToAttentionDelayTimer.Start();
+    }
+}
+
+IMPL_LINK_NOARG(LayerTabBar, BringLayerObjectsToAttentionDelayTimerHdl, Timer *, void)
+{
+    m_aBringLayerObjectsToAttentionDelayTimer.Stop();
+    if (m_xOverlayObject)
+    {
+        if (SdrView* pView = pDrViewSh->GetDrawView())
+        {
+            if (SdrPaintWindow* pPaintWindow = pView->GetPaintWindow(0))
+            {
+                const rtl::Reference<sdr::overlay::OverlayManager>& xOverlayManager =
+                        pPaintWindow->GetOverlayManager();
+                xOverlayManager->add(*m_xOverlayObject);
+            }
+        }
+    }
 }
 
 void LayerTabBar::MouseButtonDown(const MouseEvent& rMEvt)
@@ -147,10 +266,13 @@ void LayerTabBar::MouseButtonDown(const MouseEvent& rMEvt)
         sal_uInt16 aTabId = GetPageId( PixelToLogic(aPosPixel) );
         if (aTabId == 0)
         {
-            SfxDispatcher* pDispatcher = pDrViewSh->GetViewFrame()->GetDispatcher();
-            pDispatcher->Execute(SID_INSERTLAYER, SfxCallMode::SYNCHRON);
+            if (SfxViewFrame* pFrame = pDrViewSh->GetViewFrame())
+            {
+                SfxDispatcher* pDispatcher = pFrame->GetDispatcher();
+                pDispatcher->Execute(SID_INSERTLAYER, SfxCallMode::SYNCHRON);
 
-            bSetPageID=true;
+                bSetPageID=true;
+            }
         }
         else if (rMEvt.IsMod2())
         {
@@ -216,7 +338,7 @@ void LayerTabBar::MouseButtonDown(const MouseEvent& rMEvt)
                 {
                     SfxUndoManager* pManager = rDoc.GetDocSh()->GetUndoManager();
                     std::unique_ptr<SdLayerModifyUndoAction> pAction(new SdLayerModifyUndoAction(
-                        &rDoc,
+                        rDoc,
                         pLayer,
                         aName,
                         pLayer->GetTitle(),
@@ -251,8 +373,11 @@ void LayerTabBar::DoubleClick()
 {
     if (GetCurPageId() != 0)
     {
-        SfxDispatcher* pDispatcher = pDrViewSh->GetViewFrame()->GetDispatcher();
-        pDispatcher->Execute( SID_MODIFYLAYER, SfxCallMode::SYNCHRON );
+        if (SfxViewFrame* pFrame = pDrViewSh->GetViewFrame())
+        {
+            SfxDispatcher* pDispatcher = pFrame->GetDispatcher();
+            pDispatcher->Execute( SID_MODIFYLAYER, SfxCallMode::SYNCHRON );
+        }
     }
 }
 
@@ -302,8 +427,12 @@ void  LayerTabBar::Command(const CommandEvent& rCEvt)
 {
     if ( rCEvt.GetCommand() == CommandEventId::ContextMenu )
     {
-        SfxDispatcher* pDispatcher = pDrViewSh->GetViewFrame()->GetDispatcher();
-        pDispatcher->ExecutePopup("layertab");
+        BringLayerObjectsToAttention();
+        if (SfxViewFrame* pFrame = pDrViewSh->GetViewFrame())
+        {
+            SfxDispatcher* pDispatcher = pFrame->GetDispatcher();
+            pDispatcher->ExecutePopup(u"layertab"_ustr);
+        }
     }
 }
 
@@ -344,12 +473,15 @@ TabBarAllowRenamingReturnCode LayerTabBar::AllowRenaming()
     if (aNewName.isEmpty() ||
         (rLayerAdmin.GetLayer( aNewName ) && aLayerName != aNewName) )
     {
-        // Name already exists.
-        std::unique_ptr<weld::MessageDialog> xWarn(Application::CreateMessageDialog(pDrViewSh->GetViewFrame()->GetFrameWeld(),
-                                                   VclMessageType::Warning, VclButtonsType::Ok,
-                                                   SdResId(STR_WARN_NAME_DUPLICATE)));
-        xWarn->run();
-        bOK = false;
+        if (SfxViewFrame* pFrame = pDrViewSh->GetViewFrame())
+        {
+            // Name already exists.
+            std::unique_ptr<weld::MessageDialog> xWarn(Application::CreateMessageDialog(pFrame->GetFrameWeld(),
+                                                       VclMessageType::Warning, VclButtonsType::Ok,
+                                                       SdResId(STR_WARN_NAME_DUPLICATE)));
+            xWarn->run();
+            bOK = false;
+        }
     }
 
     if (bOK)
@@ -386,7 +518,7 @@ void LayerTabBar::EndRenaming()
     {
         SfxUndoManager* pManager = rDoc.GetDocSh()->GetUndoManager();
         std::unique_ptr<SdLayerModifyUndoAction> pAction(new SdLayerModifyUndoAction(
-            &rDoc,
+            rDoc,
             pLayer,
             aLayerName,
             pLayer->GetTitle(),
@@ -415,9 +547,11 @@ void LayerTabBar::ActivatePage()
 {
     if (pDrViewSh!=nullptr)
     {
-
-        SfxDispatcher* pDispatcher = pDrViewSh->GetViewFrame()->GetDispatcher();
-        pDispatcher->Execute(SID_SWITCHLAYER, SfxCallMode::ASYNCHRON);
+        if (SfxViewFrame* pFrame = pDrViewSh->GetViewFrame())
+        {
+            SfxDispatcher* pDispatcher = pFrame->GetDispatcher();
+            pDispatcher->Execute(SID_SWITCHLAYER, SfxCallMode::ASYNCHRON);
+        }
     }
 }
 

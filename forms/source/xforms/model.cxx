@@ -116,7 +116,7 @@ EvaluationContext Model::getEvaluationContext()
     // no element found? Then insert default element 'instanceData'
     if( ! xElement.is() )
     {
-        xElement.set( xInstance->createElement( "instanceData" ), UNO_QUERY_THROW );
+        xElement.set( xInstance->createElement( u"instanceData"_ustr ), UNO_QUERY_THROW );
         xInstance->appendChild( xElement );
     }
 
@@ -205,7 +205,7 @@ MIP Model::queryMIP( const XNode_t& xNode ) const
 
         // inherit from current node (or set if we are at the start node)
         if( xCurrent == xNode )
-            aRet = aMIP;
+            aRet = std::move(aMIP);
         else
             aRet.inherit( aMIP );
     }
@@ -272,7 +272,7 @@ bool Model::setSimpleContent( const XNode_t& xConstNode,
                     UNO_QUERY_THROW );
                 xNode->appendChild( xChild );
             }
-            xNode = xChild;
+            xNode = std::move(xChild);
 
             OSL_ENSURE( xNode.is() &&
                         xNode->getNodeType() == NodeType_TEXT_NODE,
@@ -359,7 +359,7 @@ bool Model::isValid() const
     for( sal_Int32 i = 0; bValid && i < nCount; i++ )
     {
         Binding* pBind = comphelper::getFromUnoTunnel<Binding>( mxBindings->Collection<XPropertySet_t>::getItem( i ) );
-        OSL_ENSURE( pBind != nullptr, "binding?" );
+        assert(pBind != nullptr && "binding?");
         bValid = pBind->isValid();
     }
     return bValid;
@@ -554,18 +554,18 @@ css::uno::Reference<css::container::XSet> Model::getSubmissions()
 
 void Model::initializePropertySet()
 {
-    registerProperty( css::beans::Property("ID", HANDLE_ID, cppu::UnoType<OUString>::get(), css::beans::PropertyAttribute::BOUND ),
+    registerProperty( css::beans::Property(u"ID"_ustr, HANDLE_ID, cppu::UnoType<OUString>::get(), css::beans::PropertyAttribute::BOUND ),
     new APIPropertyAccessor< Model, OUString >(this, &Model::setID, &Model::getID) );
-    registerProperty( css::beans::Property("ForeignSchema", HANDLE_ForeignSchema, cppu::UnoType<css::uno::Reference<css::xml::dom::XDocument>>::get(), css::beans::PropertyAttribute::BOUND ),
+    registerProperty( css::beans::Property(u"ForeignSchema"_ustr, HANDLE_ForeignSchema, cppu::UnoType<css::uno::Reference<css::xml::dom::XDocument>>::get(), css::beans::PropertyAttribute::BOUND ),
     new DirectPropertyAccessor< Model, css::uno::Reference<css::xml::dom::XDocument> >( this, &Model::setForeignSchema, &Model::getForeignSchema) );
 
-    registerProperty( css::beans::Property("SchemaRef", HANDLE_SchemaRef, cppu::UnoType<OUString>::get(), css::beans::PropertyAttribute::BOUND ),
+    registerProperty( css::beans::Property(u"SchemaRef"_ustr, HANDLE_SchemaRef, cppu::UnoType<OUString>::get(), css::beans::PropertyAttribute::BOUND ),
     new DirectPropertyAccessor< Model, OUString >( this, &Model::setSchemaRef, &Model::getSchemaRef) );
 
-    registerProperty( css::beans::Property("Namespaces", HANDLE_Namespaces, cppu::UnoType<css::uno::Reference<css::container::XNameContainer>>::get(), css::beans::PropertyAttribute::BOUND ),
+    registerProperty( css::beans::Property(u"Namespaces"_ustr, HANDLE_Namespaces, cppu::UnoType<css::uno::Reference<css::container::XNameContainer>>::get(), css::beans::PropertyAttribute::BOUND ),
     new DirectPropertyAccessor< Model, css::uno::Reference<css::container::XNameContainer> >( this, &Model::setNamespaces, &Model::getNamespaces) );
 
-    registerProperty( css::beans::Property("ExternalData", HANDLE_ExternalData, cppu::UnoType<sal_Bool>::get(), css::beans::PropertyAttribute::BOUND ),
+    registerProperty( css::beans::Property(u"ExternalData"_ustr, HANDLE_ExternalData, cppu::UnoType<sal_Bool>::get(), css::beans::PropertyAttribute::BOUND ),
     new BooleanPropertyAccessor< Model >( this, &Model::setExternalData, &Model::getExternalData ) );
 }
 
@@ -582,7 +582,7 @@ Sequence<sal_Int8> Model::getImplementationId()
 
 OUString Model::getImplementationName()
 {
-    return "com.sun.star.form.Model";
+    return u"com.sun.star.form.Model"_ustr;
 }
 
 sal_Bool Model::supportsService(OUString const & ServiceName)
@@ -592,7 +592,7 @@ sal_Bool Model::supportsService(OUString const & ServiceName)
 
 css::uno::Sequence<OUString> Model::getSupportedServiceNames()
 {
-    return {"com.sun.star.xforms.Model"};
+    return {u"com.sun.star.xforms.Model"_ustr};
 }
 
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*

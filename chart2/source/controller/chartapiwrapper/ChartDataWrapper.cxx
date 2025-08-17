@@ -20,7 +20,6 @@
 #include "ChartDataWrapper.hxx"
 #include <DiagramHelper.hxx>
 #include <DataSourceHelper.hxx>
-#include <ChartModelHelper.hxx>
 #include <InternalDataProvider.hxx>
 #include <ControllerLockGuard.hxx>
 #include "Chart2ModelContact.hxx"
@@ -121,6 +120,11 @@ struct lcl_AllOperator : public lcl_Operator
 
     virtual bool setsCategories( bool /*bDataInColumns*/ ) override
     {
+        // Do not force creation of categories, when original has no categories
+        if (auto pDataWrapper = dynamic_cast<const ChartDataWrapper*>(m_xDataToApply.get()))
+            if (auto xChartModel = pDataWrapper->getChartModel())
+                if (auto xDiagram = xChartModel->getFirstChartDiagram())
+                    return xDiagram->getCategories().is();
         return true;
     }
 
@@ -570,7 +574,7 @@ void ChartDataWrapper::fireChartDataChangeEvent( css::chart::ChartDataChangeEven
     uno::Reference< uno::XInterface > xSrc( static_cast< cppu::OWeakObject* >( this ));
     OSL_ASSERT( xSrc.is());
     if( xSrc.is() )
-        aEvent.Source = xSrc;
+        aEvent.Source = std::move(xSrc);
 
     m_aEventListenerContainer.forEach( g,
         [&aEvent](const uno::Reference<css::lang::XEventListener>& l)
@@ -600,9 +604,9 @@ void ChartDataWrapper::initDataAccess()
     else
     {
         //create a separate "internal data provider" that is not connected to the model
-        auto xInternal = ChartModelHelper::createInternalDataProvider(
-            xChartDoc, false /*bConnectToModel*/ );
-        m_xDataAccess.set( static_cast<cppu::OWeakObject*>(xInternal.get()), uno::UNO_QUERY_THROW );
+        rtl::Reference<InternalDataProvider> xInternal
+            = new InternalDataProvider( xChartDoc, /*bConnectToModel*/false, /*bDefaultDataInColumns*/ true );
+        m_xDataAccess = xInternal;
     }
 }
 
@@ -622,9 +626,9 @@ void ChartDataWrapper::applyData( lcl_Operator& rDataOperator )
     uno::Reference< beans::XPropertySet > xDiaProp( xOldDoc->getDiagram(), uno::UNO_QUERY );
     if( xDiaProp.is())
     {
-        xDiaProp->getPropertyValue("Stacked") >>= bStacked;
-        xDiaProp->getPropertyValue("Percent") >>= bPercent;
-        xDiaProp->getPropertyValue("Deep") >>= bDeep;
+        xDiaProp->getPropertyValue(u"Stacked"_ustr) >>= bStacked;
+        xDiaProp->getPropertyValue(u"Percent"_ustr) >>= bPercent;
+        xDiaProp->getPropertyValue(u"Deep"_ustr) >>= bDeep;
     }
 
     //detect arguments for the new data source
@@ -682,7 +686,7 @@ void ChartDataWrapper::applyData( lcl_Operator& rDataOperator )
 
 OUString SAL_CALL ChartDataWrapper::getImplementationName()
 {
-    return "com.sun.star.comp.chart.ChartData";
+    return u"com.sun.star.comp.chart.ChartData"_ustr;
 }
 
 sal_Bool SAL_CALL ChartDataWrapper::supportsService( const OUString& rServiceName )
@@ -693,9 +697,14 @@ sal_Bool SAL_CALL ChartDataWrapper::supportsService( const OUString& rServiceNam
 css::uno::Sequence< OUString > SAL_CALL ChartDataWrapper::getSupportedServiceNames()
 {
     return {
-        "com.sun.star.chart.ChartDataArray",
-        "com.sun.star.chart.ChartData"
+        u"com.sun.star.chart.ChartDataArray"_ustr,
+        u"com.sun.star.chart.ChartData"_ustr
     };
+}
+
+rtl::Reference<ChartModel> ChartDataWrapper::getChartModel() const
+{
+    return m_spChart2ModelContact->getDocumentModel();
 }
 
 } //  namespace chart

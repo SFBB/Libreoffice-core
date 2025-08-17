@@ -33,7 +33,6 @@
 
 class XMLTextListsHelper;
 class SvXMLImportContext;
-class SvXMLTokenMap;
 class SvXMLImportPropertyMapper;
 class SvXMLImport;
 class SvXMLStylesContext;
@@ -58,7 +57,6 @@ namespace text {
 namespace frame { class XModel; }
 namespace container { class XNameContainer; class XIndexReplace; }
 namespace beans { class XPropertySet; }
-namespace xml::sax { class XAttributeList; }
 namespace xml::sax { class XFastAttributeList; }
 namespace util { struct DateTime; }
 }
@@ -162,7 +160,7 @@ public:
     void InsertString( std::u16string_view rChars,
                        bool& rIgnoreLeadingSpace );
     // Delete current paragraph
-    void DeleteParagraph();
+    void DeleteParagraph(bool dontCorrectBookmarks = false);
 
     void InsertControlCharacter( sal_Int16 nControl );
     void InsertTextContent( css::uno::Reference< css::text::XTextContent > const & xContent);
@@ -170,7 +168,7 @@ public:
     // Add parameter <bOutlineLevelAttrFound> (#i73509#)
     // Add parameter <bSetListAttrs> in order to suppress the handling of the list attributes (#i80724#)
     OUString SetStyleAndAttrs(
-            SvXMLImport & rImport,
+            const SvXMLImport & rImport,
             const css::uno::Reference< css::text::XTextCursor >& rCursor,
             const OUString& rStyleName,
             bool bPara,
@@ -253,22 +251,22 @@ public:
         const OUString& rNextFrmName,
         const css::uno::Reference< css::beans::XPropertySet >& rFrmPropSet );
 
-    rtl::Reference< SvXMLImportPropertyMapper > const&
+    SvXMLImportPropertyMapper*
         GetParaImportPropertySetMapper() const;
-    rtl::Reference< SvXMLImportPropertyMapper > const&
+    SvXMLImportPropertyMapper*
         GetTextImportPropertySetMapper() const;
-    rtl::Reference< SvXMLImportPropertyMapper > const&
+    SvXMLImportPropertyMapper*
         GetSectionImportPropertySetMapper() const;
-    rtl::Reference< SvXMLImportPropertyMapper > const&
+    SvXMLImportPropertyMapper*
         GetRubyImportPropertySetMapper() const;
 
-    static SvXMLImportPropertyMapper *CreateShapeExtPropMapper(SvXMLImport&);
-    static SvXMLImportPropertyMapper *CreateParaExtPropMapper(SvXMLImport&);
-    static SvXMLImportPropertyMapper* CreateParaDefaultExtPropMapper(SvXMLImport&);
-    static SvXMLImportPropertyMapper* CreateTableDefaultExtPropMapper(SvXMLImport&);
-    static SvXMLImportPropertyMapper* CreateTableRowDefaultExtPropMapper(SvXMLImport&);
-    static SvXMLImportPropertyMapper* CreateTableCellExtPropMapper(SvXMLImport&);
-    static SvXMLImportPropertyMapper* CreateDrawingPageExtPropMapper(SvXMLImport&);
+    static std::unique_ptr<SvXMLImportPropertyMapper> CreateShapeExtPropMapper(SvXMLImport&);
+    static std::unique_ptr<SvXMLImportPropertyMapper> CreateParaExtPropMapper(SvXMLImport&);
+    static std::unique_ptr<SvXMLImportPropertyMapper> CreateParaDefaultExtPropMapper(SvXMLImport&);
+    static std::unique_ptr<SvXMLImportPropertyMapper> CreateTableDefaultExtPropMapper(SvXMLImport&);
+    static std::unique_ptr<SvXMLImportPropertyMapper> CreateTableRowDefaultExtPropMapper(SvXMLImport&);
+    static std::unique_ptr<SvXMLImportPropertyMapper> CreateTableCellExtPropMapper(SvXMLImport&);
+    static std::unique_ptr<SvXMLImportPropertyMapper> CreateDrawingPageExtPropMapper(SvXMLImport&);
 
     SvI18NMap& GetRenameMap();
 

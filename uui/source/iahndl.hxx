@@ -41,9 +41,6 @@ namespace com::sun::star {
     namespace embed {
         class XStorage;
     }
-    namespace lang {
-        class XMultiServiceFactory;
-    }
     namespace security {
         struct DocumentSignatureInformation;
     }
@@ -56,15 +53,6 @@ namespace com::sun::star {
         class NameClashResolveRequest;
     }
 }
-
-struct InteractionHandlerData
-{
-    /** The UNO service name to use to instantiate the content provider.
-     */
-    OUString ServiceName;
-};
-
-typedef std::vector< InteractionHandlerData > InteractionHandlerDataList;
 
 typedef std::unordered_map< OUString, OUString >    StringHashMap;
 
@@ -207,6 +195,9 @@ private:
         bool bObtainErrorStringOnly,
         bool & bHasErrorString,
         OUString & rErrorString);
+
+    bool handleFontsDisallowEditingRequest(
+        const css::uno::Reference<css::task::XInteractionRequest>& rRequest);
 
     bool handleLockedDocumentRequest(
         css::uno::Reference< css::task::XInteractionRequest > const & rRequest);

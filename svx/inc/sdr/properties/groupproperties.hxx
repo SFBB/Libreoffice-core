@@ -49,12 +49,12 @@ namespace sdr::properties
             // get merged ItemSet. Normally, this maps directly to GetObjectItemSet(), but may
             // be overridden e.g for group objects to return a merged ItemSet of the object.
             // When using this method the returned ItemSet may contain items in the state
-            // SfxItemState::DONTCARE which means there were several such items with different
+            // SfxItemState::INVALID which means there were several such items with different
             // values.
             virtual const SfxItemSet& GetMergedItemSet() const override;
 
             // Set merged ItemSet. Normally, this maps to SetObjectItemSet().
-            virtual void SetMergedItemSet(const SfxItemSet& rSet, bool bClearAllItems = false) override;
+            virtual void SetMergedItemSet(const SfxItemSet& rSet, bool bClearAllItems = false, bool bAdjustTextFrameWidthAndHeight = true) override;
 
             // set single item
             virtual void SetObjectItem(const SfxPoolItem& rItem) override;
@@ -76,11 +76,11 @@ namespace sdr::properties
             virtual void ClearMergedItem(const sal_uInt16 nWhich) override;
 
             // set complete item set
-            virtual void SetObjectItemSet(const SfxItemSet& rSet) override;
+            virtual void SetObjectItemSet(const SfxItemSet& rSet, bool bAdjustTextFrameWidthAndHeight = true) override;
 
             // set a new StyleSheet
             virtual void SetStyleSheet(SfxStyleSheet* pNewStyleSheet, bool bDontRemoveHardAttr,
-                bool bBroadcast) override;
+                bool bBroadcast, bool bAdjustTextFrameWidthAndHeight = true) override;
 
             // get the local StyleSheet
             virtual SfxStyleSheet* GetStyleSheet() const override;

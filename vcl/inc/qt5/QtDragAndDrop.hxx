@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -10,28 +10,34 @@
 
 #pragma once
 
+#include <DropTarget.hxx>
+
 #include <com/sun/star/datatransfer/dnd/XDragSource.hpp>
 #include <com/sun/star/datatransfer/dnd/XDropTarget.hpp>
-#include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <cppuhelper/compbase.hxx>
 
+SAL_WNODEPRECATED_DECLARATIONS_PUSH
+#include <QtCore/QObject>
+SAL_WNODEPRECATED_DECLARATIONS_POP
+#include <QtGui/QDragEnterEvent>
+#include <QtGui/QDragMoveEvent>
+#include <QtGui/QDropEvent>
+
 class QtFrame;
 
-class QtDragSource final
-    : public cppu::WeakComponentImplHelper<css::datatransfer::dnd::XDragSource,
-                                           css::lang::XInitialization, css::lang::XServiceInfo>
+class QtDragSource final : public QObject,
+                           public cppu::WeakComponentImplHelper<css::datatransfer::dnd::XDragSource,
+                                                                css::lang::XServiceInfo>
 {
+    Q_OBJECT
+
     osl::Mutex m_aMutex;
     QtFrame* m_pFrame;
     css::uno::Reference<css::datatransfer::dnd::XDragSourceListener> m_xListener;
 
 public:
-    QtDragSource()
-        : WeakComponentImplHelper(m_aMutex)
-        , m_pFrame(nullptr)
-    {
-    }
+    QtDragSource(QtFrame* pFrame);
 
     virtual ~QtDragSource() override;
 
@@ -44,10 +50,6 @@ public:
         const css::uno::Reference<css::datatransfer::XTransferable>& transferable,
         const css::uno::Reference<css::datatransfer::dnd::XDragSourceListener>& listener) override;
 
-    // XInitialization
-    virtual void SAL_CALL initialize(const css::uno::Sequence<css::uno::Any>& rArguments) override;
-    void deinitialize();
-
     OUString SAL_CALL getImplementationName() override;
 
     sal_Bool SAL_CALL supportsService(OUString const& ServiceName) override;
@@ -58,36 +60,19 @@ public:
 };
 
 class QtDropTarget final
-    : public cppu::WeakComponentImplHelper<css::datatransfer::dnd::XDropTarget,
-                                           css::datatransfer::dnd::XDropTargetDragContext,
-                                           css::datatransfer::dnd::XDropTargetDropContext,
-                                           css::lang::XInitialization, css::lang::XServiceInfo>
+    : public QObject,
+      public cppu::ImplInheritanceHelper<DropTarget, css::datatransfer::dnd::XDropTargetDragContext,
+                                         css::datatransfer::dnd::XDropTargetDropContext,
+                                         css::lang::XServiceInfo>
 {
-    osl::Mutex m_aMutex;
-    QtFrame* m_pFrame;
+    Q_OBJECT
+
     sal_Int8 m_nDropAction;
-    bool m_bActive;
-    sal_Int8 m_nDefaultActions;
-    std::vector<css::uno::Reference<css::datatransfer::dnd::XDropTargetListener>> m_aListeners;
     bool m_bDropSuccessful;
 
 public:
     QtDropTarget();
     virtual ~QtDropTarget() override;
-
-    // XInitialization
-    virtual void SAL_CALL initialize(const css::uno::Sequence<css::uno::Any>& rArgs) override;
-    void deinitialize();
-
-    // XDropTarget
-    virtual void SAL_CALL addDropTargetListener(
-        const css::uno::Reference<css::datatransfer::dnd::XDropTargetListener>&) override;
-    virtual void SAL_CALL removeDropTargetListener(
-        const css::uno::Reference<css::datatransfer::dnd::XDropTargetListener>&) override;
-    virtual sal_Bool SAL_CALL isActive() override;
-    virtual void SAL_CALL setActive(sal_Bool active) override;
-    virtual sal_Int8 SAL_CALL getDefaultActions() override;
-    virtual void SAL_CALL setDefaultActions(sal_Int8 actions) override;
 
     // XDropTargetDragContext
     virtual void SAL_CALL acceptDrag(sal_Int8 dragOperation) override;
@@ -103,13 +88,19 @@ public:
     sal_Bool SAL_CALL supportsService(OUString const& ServiceName) override;
     css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 
-    void fire_dragEnter(const css::datatransfer::dnd::DropTargetDragEnterEvent& dtde);
-    void fire_dragExit(const css::datatransfer::dnd::DropTargetEvent& dte);
-    void fire_dragOver(const css::datatransfer::dnd::DropTargetDragEnterEvent& dtde);
-    void fire_drop(const css::datatransfer::dnd::DropTargetDropEvent& dtde);
+    void handleDragEnterEvent(QDragEnterEvent& rEvent, qreal fScaleFactor = 1.0);
+    void handleDragMoveEvent(QDragMoveEvent& rEvent, qreal fScaleFactor = 1.0);
+    void handleDropEvent(QDropEvent& rEvent, qreal fScaleFactor = 1.0);
 
     sal_Int8 proposedDropAction() const { return m_nDropAction; }
     bool dropSuccessful() const { return m_bDropSuccessful; }
+
+private:
+    css::datatransfer::dnd::DropTargetDragEnterEvent
+    createDropTargetDragEnterEvent(const QDragMoveEvent& rEvent, bool bSetDataFlavors,
+                                   qreal fScaleFactor);
+    css::datatransfer::dnd::DropTargetDropEvent createDropTargetDropEvent(const QDropEvent& rEvent,
+                                                                          qreal fScaleFactor);
 };
 
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

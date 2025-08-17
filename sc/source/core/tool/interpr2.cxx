@@ -64,7 +64,7 @@ double ScInterpreter::GetDateSerial( sal_Int16 nYear, sal_Int16 nMonth, sal_Int1
         bool bStrict )
 {
     if ( nYear < 100 && !bStrict )
-        nYear = pFormatter->ExpandTwoDigitYear( nYear );
+        nYear = mrContext.NFExpandTwoDigitYear( nYear );
     // Do not use a default Date ctor here because it asks system time with a
     // performance penalty.
     sal_Int16 nY, nM, nD;
@@ -92,7 +92,7 @@ double ScInterpreter::GetDateSerial( sal_Int16 nYear, sal_Int16 nMonth, sal_Int1
     if (!bStrict)
         aDate.AddDays( nDay - 1 );
     if (aDate.IsValidAndGregorian())
-        return static_cast<double>(aDate - pFormatter->GetNullDate());
+        return static_cast<double>(aDate - mrContext.NFGetNullDate());
     else
     {
         SetError(FormulaError::NoValue);
@@ -104,7 +104,7 @@ void ScInterpreter::ScGetActDate()
 {
     nFuncFmtType = SvNumFormatType::DATE;
     Date aActDate( Date::SYSTEM );
-    tools::Long nDiff = aActDate - pFormatter->GetNullDate();
+    tools::Long nDiff = aActDate - mrContext.NFGetNullDate();
     PushDouble(static_cast<double>(nDiff));
 }
 
@@ -112,7 +112,7 @@ void ScInterpreter::ScGetActTime()
 {
     nFuncFmtType = SvNumFormatType::DATETIME;
     DateTime aActTime( DateTime::SYSTEM );
-    tools::Long nDiff = aActTime - pFormatter->GetNullDate();
+    tools::Long nDiff = aActTime - mrContext.NFGetNullDate();
     double fTime = aActTime.GetHour()    / static_cast<double>(::tools::Time::hourPerDay)   +
                    aActTime.GetMin()     / static_cast<double>(::tools::Time::minutePerDay) +
                    aActTime.GetSec()     / static_cast<double>(::tools::Time::secondPerDay) +
@@ -122,21 +122,21 @@ void ScInterpreter::ScGetActTime()
 
 void ScInterpreter::ScGetYear()
 {
-    Date aDate = pFormatter->GetNullDate();
+    Date aDate = mrContext.NFGetNullDate();
     aDate.AddDays( GetFloor32());
     PushDouble( static_cast<double>(aDate.GetYear()) );
 }
 
 void ScInterpreter::ScGetMonth()
 {
-    Date aDate = pFormatter->GetNullDate();
+    Date aDate = mrContext.NFGetNullDate();
     aDate.AddDays( GetFloor32());
     PushDouble( static_cast<double>(aDate.GetMonth()) );
 }
 
 void ScInterpreter::ScGetDay()
 {
-    Date aDate = pFormatter->GetNullDate();
+    Date aDate = mrContext.NFGetNullDate();
     aDate.AddDays( GetFloor32());
     PushDouble(static_cast<double>(aDate.GetDay()));
 }
@@ -173,9 +173,9 @@ void ScInterpreter::ScGetDateValue()
     OUString aInputString = GetString().getString();
     sal_uInt32 nFIndex = 0;                 // for a default country/language
     double fVal;
-    if (pFormatter->IsNumberFormat(aInputString, nFIndex, fVal))
+    if (mrContext.NFIsNumberFormat(aInputString, nFIndex, fVal))
     {
-        SvNumFormatType eType = pFormatter->GetType(nFIndex);
+        SvNumFormatType eType = mrContext.NFGetType(nFIndex);
         if (eType == SvNumFormatType::DATE || eType == SvNumFormatType::DATETIME)
         {
             nFuncFmtType = SvNumFormatType::DATE;
@@ -200,7 +200,7 @@ void ScInterpreter::ScGetDayOfWeek()
     else
         nFlag = 1;
 
-    Date aDate = pFormatter->GetNullDate();
+    Date aDate = mrContext.NFGetNullDate();
     aDate.AddDays( GetFloor32());
     int nVal = static_cast<int>(aDate.GetDayOfWeek());  // MONDAY = 0
     switch (nFlag)
@@ -241,7 +241,7 @@ void ScInterpreter::ScWeeknumOOo()
     {
         sal_Int16 nFlag = GetInt16();
 
-        Date aDate = pFormatter->GetNullDate();
+        Date aDate = mrContext.NFGetNullDate();
         aDate.AddDays( GetFloor32());
         PushInt( static_cast<int>(aDate.GetWeekOfYear( nFlag == 1 ? SUNDAY : MONDAY )));
     }
@@ -253,9 +253,9 @@ void ScInterpreter::ScGetWeekOfYear()
     if ( !MustHaveParamCount( nParamCount, 1, 2 ) )
         return;
 
-    sal_Int16 nFlag = ( nParamCount == 1 ) ? 1 : GetInt16();
+    sal_Int16 nFlag = (nParamCount == 1) ? 1 : GetInt16WithDefault(1);
 
-    Date aDate = pFormatter->GetNullDate();
+    Date aDate = mrContext.NFGetNullDate();
     aDate.AddDays( GetFloor32());
 
     sal_Int32 nMinimumNumberOfDaysInWeek;
@@ -297,7 +297,7 @@ void ScInterpreter::ScGetIsoWeekOfYear()
 {
     if ( MustHaveParamCount( GetByte(), 1 ) )
     {
-        Date aDate = pFormatter->GetNullDate();
+        Date aDate = mrContext.NFGetNullDate();
         aDate.AddDays( GetFloor32());
         PushInt( static_cast<int>(aDate.GetWeekOfYear()) );
     }
@@ -316,7 +316,7 @@ void ScInterpreter::ScEasterSunday()
         return;
     }
     if ( nYear < 100 )
-        nYear = pFormatter->ExpandTwoDigitYear( nYear );
+        nYear = mrContext.NFExpandTwoDigitYear( nYear );
     if (nYear < 1583 || nYear > 9956)
     {
         // Valid Gregorian and maximum year constraints not met.
@@ -344,7 +344,7 @@ void ScInterpreter::ScEasterSunday()
 }
 
 FormulaError ScInterpreter::GetWeekendAndHolidayMasks(
-    const sal_uInt8 nParamCount, const sal_uInt32 nNullDate, vector< double >& rSortArray,
+    const sal_uInt8 nParamCount, const sal_Int32 nNullDate, vector< double >& rSortArray,
     bool bWeekendMask[ 7 ] )
 {
     if ( nParamCount == 4 )
@@ -384,7 +384,7 @@ FormulaError ScInterpreter::GetWeekendAndHolidayMasks(
 }
 
 FormulaError ScInterpreter::GetWeekendAndHolidayMasks_MS(
-    const sal_uInt8 nParamCount, const sal_uInt32 nNullDate, vector< double >& rSortArray,
+    const sal_uInt8 nParamCount, const sal_Int32 nNullDate, vector< double >& rSortArray,
     bool bWeekendMask[ 7 ], bool bWorkdayFunction )
 {
     FormulaError nErr = FormulaError::NONE;
@@ -508,8 +508,8 @@ void ScInterpreter::ScNetWorkdays( bool bOOXML_Version )
 
     vector<double> nSortArray;
     bool bWeekendMask[ 7 ];
-    const Date& rNullDate = pFormatter->GetNullDate();
-    sal_uInt32 nNullDate = Date::DateToDays( rNullDate.GetDay(), rNullDate.GetMonth(), rNullDate.GetYear() );
+    const Date& rNullDate = mrContext.NFGetNullDate();
+    sal_Int32 nNullDate = rNullDate.GetAsNormalizedDays();
     FormulaError nErr;
     if ( bOOXML_Version )
     {
@@ -525,9 +525,9 @@ void ScInterpreter::ScNetWorkdays( bool bOOXML_Version )
         PushError( nErr );
     else
     {
-        sal_uInt32 nDate2 = GetUInt32();
-        sal_uInt32 nDate1 = GetUInt32();
-        if (nGlobalError != FormulaError::NONE || (nDate1 > SAL_MAX_UINT32 - nNullDate) || nDate2 > (SAL_MAX_UINT32 - nNullDate))
+        sal_Int32 nDate2 = GetFloor32();
+        sal_Int32 nDate1 = GetFloor32();
+        if (nGlobalError != FormulaError::NONE || (nDate1 > SAL_MAX_INT32 - nNullDate) || nDate2 > (SAL_MAX_INT32 - nNullDate))
         {
             PushIllegalArgument();
             return;
@@ -565,8 +565,8 @@ void ScInterpreter::ScWorkday_MS()
     nFuncFmtType = SvNumFormatType::DATE;
     vector<double> nSortArray;
     bool bWeekendMask[ 7 ];
-    const Date& rNullDate = pFormatter->GetNullDate();
-    sal_uInt32 nNullDate = Date::DateToDays( rNullDate.GetDay(), rNullDate.GetMonth(), rNullDate.GetYear() );
+    const Date& rNullDate = mrContext.NFGetNullDate();
+    sal_Int32 nNullDate = rNullDate.GetAsNormalizedDays();
     FormulaError nErr = GetWeekendAndHolidayMasks_MS( nParamCount, nNullDate,
                         nSortArray, bWeekendMask, true );
     if ( nErr != FormulaError::NONE )
@@ -574,8 +574,8 @@ void ScInterpreter::ScWorkday_MS()
     else
     {
         sal_Int32 nDays = GetFloor32();
-        sal_uInt32 nDate = GetUInt32();
-        if (nGlobalError != FormulaError::NONE || (nDate > SAL_MAX_UINT32 - nNullDate))
+        sal_Int32 nDate = GetFloor32();
+        if (nGlobalError != FormulaError::NONE || (nDate > SAL_MAX_INT32 - nNullDate))
         {
             PushIllegalArgument();
             return;
@@ -601,7 +601,7 @@ void ScInterpreter::ScWorkday_MS()
                     while ( nRef < nMax && nSortArray.at( nRef ) < nDate )
                         nRef++;
 
-                    if ( nRef >= nMax || nSortArray.at( nRef ) != nDate || nRef >= nMax )
+                    if ( nRef >= nMax || nSortArray.at( nRef ) != nDate )
                         nDays--;
                 }
             }
@@ -721,9 +721,9 @@ void ScInterpreter::ScGetDiffDate360()
         }
         else
             nSign = 1;
-        Date aDate1 = pFormatter->GetNullDate();
+        Date aDate1 = mrContext.NFGetNullDate();
         aDate1.AddDays( nDate1);
-        Date aDate2 = pFormatter->GetNullDate();
+        Date aDate2 = mrContext.NFGetNullDate();
         aDate2.AddDays( nDate2);
         if (aDate1.GetDay() == 31)
             aDate1.AddDays( -1);
@@ -795,12 +795,12 @@ void ScInterpreter::ScGetDateDif()
     // split dates in day, month, year for use with formats other than "d"
     sal_uInt16 d1, m1, d2, m2;
     sal_Int16 y1, y2;
-    Date aDate1( pFormatter->GetNullDate());
+    Date aDate1( mrContext.NFGetNullDate());
     aDate1.AddDays( nDate1);
     y1 = aDate1.GetYear();
     m1 = aDate1.GetMonth();
     d1 = aDate1.GetDay();
-    Date aDate2( pFormatter->GetNullDate());
+    Date aDate2( mrContext.NFGetNullDate());
     aDate2.AddDays( nDate2);
     y2 = aDate2.GetYear();
     m2 = aDate2.GetMonth();
@@ -916,9 +916,9 @@ void ScInterpreter::ScGetTimeValue()
     OUString aInputString = GetString().getString();
     sal_uInt32 nFIndex = 0;                 // damit default Land/Spr.
     double fVal;
-    if (pFormatter->IsNumberFormat(aInputString, nFIndex, fVal, SvNumInputOptions::LAX_TIME))
+    if (mrContext.NFIsNumberFormat(aInputString, nFIndex, fVal, SvNumInputOptions::LAX_TIME))
     {
-        SvNumFormatType eType = pFormatter->GetType(nFIndex);
+        SvNumFormatType eType = mrContext.NFGetType(nFIndex);
         if (eType == SvNumFormatType::TIME || eType == SvNumFormatType::DATETIME)
         {
             nFuncFmtType = SvNumFormatType::TIME;
@@ -2447,12 +2447,12 @@ void ScInterpreter::ScIntersect()
         ScRefList* pRefList = xRes->GetRefList();
         for (const auto& rRef1 : *x1->GetRefList())
         {
-            const ScAddress& r11 = rRef1.Ref1.toAbs(mrDoc, aPos);
-            const ScAddress& r12 = rRef1.Ref2.toAbs(mrDoc, aPos);
+            const ScAddress r11 = rRef1.Ref1.toAbs(mrDoc, aPos);
+            const ScAddress r12 = rRef1.Ref2.toAbs(mrDoc, aPos);
             for (const auto& rRef2 : *x2->GetRefList())
             {
-                const ScAddress& r21 = rRef2.Ref1.toAbs(mrDoc, aPos);
-                const ScAddress& r22 = rRef2.Ref2.toAbs(mrDoc, aPos);
+                const ScAddress r21 = rRef2.Ref1.toAbs(mrDoc, aPos);
+                const ScAddress r22 = rRef2.Ref2.toAbs(mrDoc, aPos);
                 SCCOL nCol1 = ::std::max( r11.Col(), r21.Col());
                 SCROW nRow1 = ::std::max( r11.Row(), r21.Row());
                 SCTAB nTab1 = ::std::max( r11.Tab(), r21.Tab());
@@ -2498,14 +2498,14 @@ void ScInterpreter::ScIntersect()
                 case svDoubleRef:
                 {
                     {
-                        const ScAddress& r = pt[i]->GetSingleRef()->toAbs(mrDoc, aPos);
+                        const ScAddress r = pt[i]->GetSingleRef()->toAbs(mrDoc, aPos);
                         nC1[i] = r.Col();
                         nR1[i] = r.Row();
                         nT1[i] = r.Tab();
                     }
                     if (sv[i] == svDoubleRef)
                     {
-                        const ScAddress& r = pt[i]->GetSingleRef2()->toAbs(mrDoc, aPos);
+                        const ScAddress r = pt[i]->GetSingleRef2()->toAbs(mrDoc, aPos);
                         nC2[i] = r.Col();
                         nR2[i] = r.Row();
                         nT2[i] = r.Tab();
@@ -2735,8 +2735,8 @@ void ScInterpreter::ScDde()
     sal_uInt8 nMode = SC_DDE_DEFAULT;
     if (nParamCount == 4)
     {
-        sal_uInt32 nTmp = GetUInt32();
-        if (nGlobalError != FormulaError::NONE || nTmp > SAL_MAX_UINT8)
+        sal_Int32 nTmp = GetInt32();
+        if (nGlobalError != FormulaError::NONE || nTmp < 0 || nTmp > SAL_MAX_UINT8)
         {
             PushIllegalArgument();
             return;
@@ -3299,7 +3299,8 @@ static bool lclConvertMoney( std::u16string_view aSearchUnit, double& rfRate, in
         { "EEK", 15.6466,  2 },
         { "LVL", 0.702804, 2 },
         { "LTL", 3.45280,  2 },
-        { "HRK", 7.53450,  2 }
+        { "HRK", 7.53450,  2 },
+        { "BLN", 1.95583,  2 }
     };
 
     for (const auto & i : aConvertTable)
@@ -3602,8 +3603,9 @@ void ScInterpreter::ScGetPivotData()
         aFilters.resize(nFilterCount);
 
         sal_uInt16 i = nFilterCount;
-        while (i-- > 0)
+        while (i > 0)
         {
+            --i;
             /* TODO: also, in case of numeric the entire filter match should
              * not be on a (even if locale independent) formatted string down
              * below in pDPObj->GetPivotData(). */
@@ -3638,12 +3640,12 @@ void ScInterpreter::ScGetPivotData()
                     if (nCurFmtType == SvNumFormatType::UNDEFINED)
                         nNumFormat = 0;
                     else
-                        nNumFormat = pFormatter->GetStandardFormat( nCurFmtType, ScGlobal::eLnge);
+                        nNumFormat = mrContext.NFGetStandardFormat( nCurFmtType, ScGlobal::eLnge);
                 }
                 const Color* pColor;
-                pFormatter->GetOutputString( fDouble, nNumFormat, aFilters[i].MatchValueName, &pColor);
+                mrContext.NFGetOutputString( fDouble, nNumFormat, aFilters[i].MatchValueName, &pColor);
                 aFilters[i].MatchValue = ScDPCache::GetLocaleIndependentFormattedString(
-                        fDouble, *pFormatter, nNumFormat);
+                        fDouble, mrContext, nNumFormat);
             }
             else
             {
@@ -3653,9 +3655,9 @@ void ScInterpreter::ScGetPivotData()
                 // locale independent as MatchValue.
                 sal_uInt32 nNumFormat = 0;
                 double fValue;
-                if (pFormatter->IsNumberFormat( aFilters[i].MatchValueName, nNumFormat, fValue))
+                if (mrContext.NFIsNumberFormat( aFilters[i].MatchValueName, nNumFormat, fValue))
                     aFilters[i].MatchValue = ScDPCache::GetLocaleIndependentFormattedString(
-                            fValue, *pFormatter, nNumFormat);
+                            fValue, mrContext, nNumFormat);
                 else
                     aFilters[i].MatchValue = aFilters[i].MatchValueName;
             }

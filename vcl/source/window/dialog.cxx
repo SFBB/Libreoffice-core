@@ -29,6 +29,7 @@
 #include <comphelper/lok.hxx>
 #include <comphelper/scopeguard.hxx>
 #include <comphelper/processfactory.hxx>
+#include <o3tl/test_info.hxx>
 #include <officecfg/Office/Common.hxx>
 #include <osl/diagnose.h>
 
@@ -69,21 +70,18 @@
 #include <utility>
 #include <vector>
 
-static OString ImplGetDialogText( Dialog* pDialog )
+static OUString ImplGetDialogText(Dialog* pDialog)
 {
     OUString aErrorStr(pDialog->GetText());
 
-    OUString sMessage;
     if (MessageDialog* pMessDialog = dynamic_cast<MessageDialog*>(pDialog))
     {
-        sMessage = pMessDialog->get_primary_text();
+        const OUString sMessage = pMessDialog->get_primary_text();
+        if (!sMessage.isEmpty())
+            aErrorStr += ", " + sMessage;
     }
 
-    if (!sMessage.isEmpty())
-    {
-        aErrorStr += ", " + sMessage;
-    }
-    return OUStringToOString(aErrorStr, RTL_TEXTENCODING_UTF8);
+    return aErrorStr;
 }
 
 static bool ImplIsMnemonicCtrl( vcl::Window* pWindow )
@@ -373,6 +371,11 @@ struct DialogImpl
 
     ~DialogImpl()
     {
+        disposeAndClear();
+    }
+
+    void disposeAndClear()
+    {
         for (VclPtr<PushButton> & pOwnedButton : maOwnedButtons)
             pOwnedButton.disposeAndClear();
     }
@@ -391,8 +394,8 @@ void Dialog::ImplInitDialogData()
     mbInSyncExecute         = false;
     mbInClose               = false;
     mbModalMode             = false;
-    mpContentArea.clear();
-    mpActionArea.clear();
+    mpContentArea.reset();
+    mpActionArea.reset();
     mnMousePositioned       = 0;
     mpDialogImpl.reset(new DialogImpl);
 }
@@ -541,8 +544,8 @@ void Dialog::ImplLOKNotifier(vcl::Window* pParent)
     }
 }
 
-Dialog::Dialog( WindowType nType )
-    : SystemWindow( nType, "vcl::Dialog maLayoutIdle" )
+Dialog::Dialog( WindowType eType )
+    : SystemWindow( eType, "vcl::Dialog maLayoutIdle", true )
     , mnInitFlag(InitFlag::Default)
 {
     ImplInitDialogData();
@@ -556,23 +559,19 @@ void VclBuilderContainer::disposeBuilder()
 
 OUString AllSettings::GetUIRootDir()
 {
-    OUString sShareLayer("$BRAND_BASE_DIR/$BRAND_SHARE_SUBDIR/config/soffice.cfg/");
+    OUString sShareLayer(u"$BRAND_BASE_DIR/$BRAND_SHARE_SUBDIR/config/soffice.cfg/"_ustr);
     rtl::Bootstrap::expandMacros(sShareLayer);
     return sShareLayer;
 }
 
-//we can't change sizeable after the fact, so need to defer until we know and then
-//do the init. Find the real parent stashed in mpDialogParent.
-void Dialog::doDeferredInit(WinBits nBits)
+//we can't change sizeable after the fact, so need to defer until we know and then do the init.
+void Dialog::ImplDeferredInit(vcl::Window* pParent, WinBits nBits)
 {
-    VclPtr<vcl::Window> pParent = mpDialogParent;
-    mpDialogParent = nullptr;
     ImplInitDialog(pParent, nBits | WB_BORDER, mnInitFlag);
-    mbIsDeferredInit = false;
 }
 
 Dialog::Dialog(vcl::Window* pParent, const OUString& rID, const OUString& rUIXMLDescription)
-    : SystemWindow(WindowType::DIALOG, "vcl::Dialog maLayoutIdle")
+    : SystemWindow(WindowType::DIALOG, "vcl::Dialog maLayoutIdle", true)
     , mnInitFlag(InitFlag::Default)
 {
     ImplLOKNotifier(pParent);
@@ -581,7 +580,7 @@ Dialog::Dialog(vcl::Window* pParent, const OUString& rID, const OUString& rUIXML
 }
 
 Dialog::Dialog(vcl::Window* pParent, WinBits nStyle, InitFlag eFlag)
-    : SystemWindow(WindowType::DIALOG, "vcl::Dialog maLayoutIdle")
+    : SystemWindow(WindowType::DIALOG, "vcl::Dialog maLayoutIdle", true)
     , mnInitFlag(eFlag)
 {
     ImplLOKNotifier(pParent);
@@ -591,7 +590,7 @@ Dialog::Dialog(vcl::Window* pParent, WinBits nStyle, InitFlag eFlag)
 
 void Dialog::set_action_area(VclButtonBox* pBox)
 {
-    mpActionArea.set(pBox);
+    mpActionArea.reset(pBox);
     if (pBox)
     {
         const DialogStyle& rDialogStyle =
@@ -602,7 +601,7 @@ void Dialog::set_action_area(VclButtonBox* pBox)
 
 void Dialog::set_content_area(VclBox* pBox)
 {
-    mpContentArea.set(pBox);
+    mpContentArea.reset(pBox);
 }
 
 void Dialog::settingOptimalLayoutSize(Window *pBox)
@@ -622,16 +621,17 @@ void Dialog::dispose()
 {
     bool bTunnelingEnabled = mpDialogImpl->m_bLOKTunneling;
 
-    mpDialogImpl.reset();
+    mpDialogImpl->disposeAndClear();
     RemoveFromDlgList();
-    mpActionArea.clear();
-    mpContentArea.clear();
+    mpActionArea.reset();
+    mpContentArea.reset();
 
-    css::uno::Reference< css::uno::XComponentContext > xContext(
+    const css::uno::Reference< css::uno::XComponentContext >& xContext(
             comphelper::getProcessComponentContext() );
     css::uno::Reference<css::frame::XGlobalEventBroadcaster> xEventBroadcaster(css::frame::theGlobalEventBroadcaster::get(xContext), css::uno::UNO_SET_THROW);
     css::document::DocumentEvent aObject;
     aObject.EventName = "DialogClosed";
+    aObject.Supplement <<= GetText(); // title
     xEventBroadcaster->documentEventOccured(aObject);
     UITestLogger::getInstance().log(u"Close Dialog");
 
@@ -640,7 +640,7 @@ void Dialog::dispose()
         if(const vcl::ILibreOfficeKitNotifier* pNotifier = GetLOKNotifier())
         {
             if (bTunnelingEnabled)
-                pNotifier->notifyWindow(GetLOKWindowId(), "close");
+                pNotifier->notifyWindow(GetLOKWindowId(), u"close"_ustr);
             ReleaseLOKNotifier();
         }
     }
@@ -772,8 +772,8 @@ void Dialog::StateChanged( StateChangedType nType )
 
             if (const vcl::ILibreOfficeKitNotifier* pNotifier = GetLOKNotifier())
             {
-                pNotifier->notifyWindow(GetLOKWindowId(), "created", aItems);
-                pNotifier->notifyWindow(GetLOKWindowId(), "created", aItems);
+                pNotifier->notifyWindow(GetLOKWindowId(), u"created"_ustr, aItems);
+                pNotifier->notifyWindow(GetLOKWindowId(), u"created"_ustr, aItems);
             }
             else
             {
@@ -781,7 +781,7 @@ void Dialog::StateChanged( StateChangedType nType )
                 if (pViewShell)
                 {
                     SetLOKNotifier(pViewShell);
-                    pViewShell->notifyWindow(GetLOKWindowId(), "created", aItems);
+                    pViewShell->notifyWindow(GetLOKWindowId(), u"created"_ustr, aItems);
                 }
             }
         }
@@ -806,7 +806,7 @@ void Dialog::StateChanged( StateChangedType nType )
         {
             std::vector<vcl::LOKPayloadItem> aPayload;
             aPayload.emplace_back("title", GetText().toUtf8());
-            pNotifier->notifyWindow(GetLOKWindowId(), "title_changed", aPayload);
+            pNotifier->notifyWindow(GetLOKWindowId(), u"title_changed"_ustr, aPayload);
         }
     }
 
@@ -825,7 +825,7 @@ void Dialog::StateChanged( StateChangedType nType )
         {
             std::vector<vcl::LOKPayloadItem> aPayload;
             aPayload.emplace_back("title", GetText().toUtf8());
-            pNotifier->notifyWindow(GetLOKWindowId(), IsVisible()? OUString("show"): OUString("hide"), aPayload);
+            pNotifier->notifyWindow(GetLOKWindowId(), IsVisible()? u"show"_ustr: u"hide"_ustr, aPayload);
         }
     }
 }
@@ -904,7 +904,7 @@ bool Dialog::Close()
     }
 }
 
-bool Dialog::ImplStartExecute()
+bool Dialog::ImplStartExecute(bool async)
 {
     setDeferredProperties();
 
@@ -927,18 +927,34 @@ bool Dialog::ImplStartExecute()
     {
         if (bKitActive && !GetLOKNotifier())
         {
-#ifdef IOS
-            // gh#5908 handle pasting disallowed clipboard contents on iOS
-            // When another app owns the current clipboard contents, pasting
-            // will display a "allow or disallow" dialog. If the disallow
-            // option is selected, the data from the UIPasteboard will be
-            // garbage and we will find ourselves here. Since calling
-            // SetLOKNotifier() with a nullptr aborts in an assert(), fix
-            // the crash by failing gracefully.
+            if (auto pNotifier = mpDialogImpl->m_aInstallLOKNotifierHdl.Call(nullptr))
+                SetLOKNotifier(pNotifier);
+            else
+            {
+                // gh#5908 handle pasting disallowed clipboard contents on iOS
+                // When another app owns the current clipboard contents, pasting
+                // will display a "allow or disallow" dialog. If the disallow
+                // option is selected, the data from the UIPasteboard will be
+                // garbage and we will find ourselves here. Since calling
+                // SetLOKNotifier() with a nullptr aborts in an assert(), fix
+                // the crash by failing gracefully.
+
+                // Also pNotifier may be nullptr when a dialog (e.g., "update
+                // links?") is to be shown when loading a document.
+                // Never crash in release builds (assume "cancel"), but allow
+                // to see the not yet async / not properly set up dialogs in
+                // debug builds.
+                assert(!"A dialog without a notifier: make me async / properly set up");
+                return false;
+            }
+        }
+        if (!async && Application::IsUseSystemEventLoop())
+        {
+            // As long as Application::Yield deliberately calls std::abort when trying to
+            // synchronously execute modal dialogs, better cancel them here for now as a hack:
+            SAL_WARN(
+                "vcl", "cancel synchronous execution of modal dialog " << ImplGetDialogText(this));
             return false;
-#else
-            SetLOKNotifier(mpDialogImpl->m_aInstallLOKNotifierHdl.Call(nullptr));
-#endif
         }
 
         switch ( Application::GetDialogCancelMode() )
@@ -960,16 +976,16 @@ bool Dialog::ImplStartExecute()
                     SAL_WARN("lok.dialog", "Dialog \"" << ImplGetDialogText(this) << "\" is being synchronously executed over an existing synchronously executing dialog.");
             }
 
-            if (SalInstance::IsRunningUnitTest())
+            if (o3tl::IsRunningUnitTest())
             { // helps starbasic unit tests show their errors
                 std::cerr << "Dialog \"" << ImplGetDialogText(this)
-                          << "\"cancelled in silent mode";
+                          << "\" cancelled in silent mode\n";
             }
 
             SAL_INFO(
                 "vcl",
                 "Dialog \"" << ImplGetDialogText(this)
-                    << "\"cancelled in silent mode");
+                    << "\" cancelled in silent mode");
             return false;
 
         case DialogCancelMode::LOKSilent:
@@ -1016,7 +1032,7 @@ bool Dialog::ImplStartExecute()
     // FIXME: no layouting, workaround some clipping issues
     ImplAdjustNWFSizes();
 
-    css::uno::Reference< css::uno::XComponentContext > xContext(
+    const css::uno::Reference< css::uno::XComponentContext >& xContext(
         comphelper::getProcessComponentContext());
     bool bForceFocusAndToFront(officecfg::Office::Common::View::NewDocumentHandling::ForceFocusAndToFront::get());
     ShowFlags showFlags = bForceFocusAndToFront ? ShowFlags::ForegroundTask : ShowFlags::NONE;
@@ -1029,6 +1045,7 @@ bool Dialog::ImplStartExecute()
         css::frame::theGlobalEventBroadcaster::get(xContext), css::uno::UNO_SET_THROW);
     css::document::DocumentEvent aObject;
     aObject.EventName = "DialogExecute";
+    aObject.Supplement <<= GetText(); // title
     xEventBroadcaster->documentEventOccured(aObject);
     if (bModal)
         UITestLogger::getInstance().log(Concat2View("Open Modal " + get_id()));
@@ -1047,7 +1064,7 @@ bool Dialog::ImplStartExecute()
             std::vector<vcl::LOKPayloadItem> aItems;
             aItems.emplace_back("size", GetSizePixel().toString());
             aItems.emplace_back("unique_id", this->get_id().toUtf8());
-            pNotifier->notifyWindow(GetLOKWindowId(), "size_changed", aItems);
+            pNotifier->notifyWindow(GetLOKWindowId(), u"size_changed"_ustr, aItems);
         }
     }
 
@@ -1069,7 +1086,7 @@ short Dialog::Execute()
             mbInSyncExecute = false;
         });
 
-    if ( !ImplStartExecute() )
+    if ( !ImplStartExecute(false) )
         return 0;
 
     // Yield util EndDialog is called or dialog gets destroyed
@@ -1082,33 +1099,24 @@ short Dialog::Execute()
     assert (!mpDialogParent || !mpDialogParent->isDisposed());
 #endif
     if ( !xWindow->isDisposed() )
-        xWindow.clear();
+        xWindow.reset();
     else
     {
         OSL_FAIL( "Dialog::Execute() - Dialog destroyed in Execute()" );
     }
 
-    assert(mpDialogImpl);
 
-    if (mpDialogImpl)
-    {
-        tools::Long nRet = mpDialogImpl->mnResult;
-        mpDialogImpl->mnResult = -1;
+    tools::Long nRet = mpDialogImpl->mnResult;
+    mpDialogImpl->mnResult = -1;
 
-        return static_cast<short>(nRet);
-    }
-    else
-    {
-        SAL_WARN( "vcl", "Dialog::Execute() : missing mpDialogImpl " );
-        return 0;
-    }
+    return static_cast<short>(nRet);
 }
 
 // virtual
 bool Dialog::StartExecuteAsync( VclAbstractDialog::AsyncContext &rCtx )
 {
     const bool bModal = GetType() != WindowType::MODELESSDIALOG;
-    if (!ImplStartExecute())
+    if (!ImplStartExecute(true))
     {
         rCtx.mxOwner.disposeAndClear();
         rCtx.mxOwnerDialogController.reset();
@@ -1136,6 +1144,9 @@ void Dialog::EndDialog( tools::Long nResult )
     if (!mbInExecute || isDisposed())
         return;
 
+    // do not let this object be destroyed from underneath us
+    VclPtr<vcl::Window> xWindow = this;
+
     const bool bModal = GetType() != WindowType::MODELESSDIALOG;
 
     Hide();
@@ -1145,7 +1156,7 @@ void Dialog::EndDialog( tools::Long nResult )
         if(const vcl::ILibreOfficeKitNotifier* pNotifier = GetLOKNotifier())
         {
             if (mpDialogImpl->m_bLOKTunneling)
-                pNotifier->notifyWindow(GetLOKWindowId(), "close");
+                pNotifier->notifyWindow(GetLOKWindowId(), u"close"_ustr);
             ReleaseLOKNotifier();
         }
     }
@@ -1179,10 +1190,23 @@ void Dialog::EndDialog( tools::Long nResult )
     if ( mpDialogImpl->mbStartedModal )
         ImplEndExecuteModal();
 
-    // coverity[check_after_deref] - ImplEndExecuteModal might trigger destruction of mpDialogImpl
-    if ( mpDialogImpl && mpDialogImpl->maEndCtx.isSet() )
+    if ( mpDialogImpl->maEndCtx.isSet() )
     {
+        // We have a special case with async-dialogs that re-execute themselves.
+        // In order to prevent overwriting state we need here, we need to extract
+        // all the state we need before calling maEndDialogFn, because
+        // maEndDialogFn might itself call StartExecuteAsync and store new state.
+        std::shared_ptr<weld::DialogController> xOwnerDialogController = std::move(mpDialogImpl->maEndCtx.mxOwnerDialogController);
+        std::shared_ptr<weld::Dialog> xOwnerSelf = std::move(mpDialogImpl->maEndCtx.mxOwnerSelf);
+        auto xOwner = std::move(mpDialogImpl->maEndCtx.mxOwner);
+        if ( mpDialogImpl->mbStartedModal )
+        {
+            mpDialogImpl->mbStartedModal = false;
+            mpDialogImpl->mnResult = -1;
+        }
+        mbInExecute = false;
         auto fn = std::move(mpDialogImpl->maEndCtx.maEndDialogFn);
+
         // std::move leaves maEndDialogFn in a valid state with unspecified
         // value. For the SwSyncBtnDlg case gcc and msvc left maEndDialogFn
         // unset, but clang left maEndDialogFn at its original value, keeping
@@ -1190,23 +1214,26 @@ void Dialog::EndDialog( tools::Long nResult )
         // an inconsistent lifecycle for the dialog. Force it to be unset.
         mpDialogImpl->maEndCtx.maEndDialogFn = nullptr;
         fn(nResult);
-    }
 
-    if ( mpDialogImpl && mpDialogImpl->mbStartedModal )
-    {
-        mpDialogImpl->mbStartedModal = false;
-        mpDialogImpl->mnResult = -1;
+        // Destroy ourselves, if we have a context with VclPtr owner, and
+        // we have not been re-executed.
+        if (!mpDialogImpl->maEndCtx.isSet())
+            xOwner.disposeAndClear();
+        xOwnerDialogController.reset();
+        xOwnerSelf.reset();
     }
-    mbInExecute = false;
-
-    if ( mpDialogImpl )
+    else
     {
+        if ( mpDialogImpl->mbStartedModal )
+        {
+            mpDialogImpl->mbStartedModal = false;
+            mpDialogImpl->mnResult = -1;
+        }
+        mbInExecute = false;
         // Destroy ourselves (if we have a context with VclPtr owner)
         std::shared_ptr<weld::DialogController> xOwnerDialogController = std::move(mpDialogImpl->maEndCtx.mxOwnerDialogController);
         std::shared_ptr<weld::Dialog> xOwnerSelf = std::move(mpDialogImpl->maEndCtx.mxOwnerSelf);
         mpDialogImpl->maEndCtx.mxOwner.disposeAndClear();
-        xOwnerDialogController.reset();
-        xOwnerSelf.reset();
     }
 }
 
@@ -1370,7 +1397,7 @@ void Dialog::Draw( OutputDevice* pDev, const Point& rPos, SystemTextColorFlags )
     if ( !aWallpaper.IsBitmap() )
         ImplInitSettings();
 
-    pDev->Push();
+    auto popIt = pDev->ScopedPush();
     pDev->SetMapMode();
     pDev->SetLineColor();
 
@@ -1392,8 +1419,6 @@ void Dialog::Draw( OutputDevice* pDev, const Point& rPos, SystemTextColorFlags )
 
         aImplWin->Draw( pDev, aPos );
     }
-
-    pDev->Pop();
 }
 
 void Dialog::queue_resize(StateChangedType eReason)
@@ -1417,7 +1442,7 @@ void Dialog::Resize()
         std::vector<vcl::LOKPayloadItem> aItems;
         aItems.emplace_back("size", GetSizePixel().toString());
         aItems.emplace_back("unique_id", this->get_id().toUtf8());
-        pNotifier->notifyWindow(GetLOKWindowId(), "size_changed", aItems);
+        pNotifier->notifyWindow(GetLOKWindowId(), u"size_changed"_ustr, aItems);
     }
 }
 
@@ -1626,11 +1651,12 @@ void Dialog::Activate()
 {
     if (GetType() == WindowType::MODELESSDIALOG)
     {
-        css::uno::Reference< css::uno::XComponentContext > xContext(
+        const css::uno::Reference< css::uno::XComponentContext >& xContext(
                 comphelper::getProcessComponentContext() );
         css::uno::Reference<css::frame::XGlobalEventBroadcaster> xEventBroadcaster(css::frame::theGlobalEventBroadcaster::get(xContext), css::uno::UNO_SET_THROW);
         css::document::DocumentEvent aObject;
         aObject.EventName = "ModelessDialogVisible";
+        aObject.Supplement <<= GetText(); // title
         xEventBroadcaster->documentEventOccured(aObject);
     }
     SystemWindow::Activate();
@@ -1638,7 +1664,7 @@ void Dialog::Activate()
 
 void Dialog::Command(const CommandEvent& rCEvt)
 {
-    if (mpDialogImpl && mpDialogImpl->m_aPopupMenuHdl.Call(rCEvt))
+    if (mpDialogImpl->m_aPopupMenuHdl.Call(rCEvt))
         return;
     SystemWindow::Command(rCEvt);
 }

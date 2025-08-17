@@ -23,23 +23,18 @@
 #include <com/sun/star/accessibility/XAccessible.hpp>
 #include <com/sun/star/accessibility/XAccessibleContext.hpp>
 #include <com/sun/star/accessibility/XAccessibleComponent.hpp>
-#include <com/sun/star/lang/XServiceInfo.hpp>
-#include <com/sun/star/lang/XEventListener.hpp>
-#include <com/sun/star/accessibility/XAccessibleEventBroadcaster.hpp>
-#include <comphelper/accessibleeventnotifier.hxx>
+#include <comphelper/OAccessible.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
-#include <rtl/ref.hxx>
 #include <tools/color.hxx>
 #include <unotools/weakref.hxx>
+#include <vcl/window.hxx>
 
 #include <map>
 #include <vector>
 #include <memory>
 
 namespace com::sun::star::awt { class XWindow; }
-namespace com::sun::star::chart2 { class XChartDocument; }
-namespace com::sun::star::view { class XSelectionSupplier; }
 
 
 class SdrView;
@@ -66,7 +61,7 @@ struct AccessibleElementInfo
     unotools::WeakReference< ::chart::ChartModel > m_xChartDocument;
     unotools::WeakReference< ::chart::ChartController > m_xChartController;
     unotools::WeakReference< ::chart::ChartView >   m_xView;
-    css::uno::WeakReference< css::awt::XWindow >      m_xWindow;
+    VclPtr<vcl::Window> m_pWindow;
 
     std::shared_ptr< ObjectHierarchy > m_spObjectHierarchy;
 
@@ -75,23 +70,9 @@ struct AccessibleElementInfo
     ::accessibility::IAccessibleViewForwarder* m_pViewForwarder;
 };
 
-namespace impl
-{
-typedef ::cppu::WeakComponentImplHelper<
-        css::accessibility::XAccessible,
-        css::accessibility::XAccessibleContext,
-        css::accessibility::XAccessibleComponent,
-        css::accessibility::XAccessibleEventBroadcaster,
-        css::lang::XServiceInfo,
-        css::lang::XEventListener
-        > AccessibleBase_Base;
-}
-
 /** Base class for all Chart Accessibility objects
  */
-class AccessibleBase :
-    public cppu::BaseMutex,
-    public impl::AccessibleBase_Base
+class AccessibleBase : public comphelper::OAccessible
 {
 public:
     enum class EventType
@@ -108,14 +89,6 @@ public:
 protected:
     // for all calls to protected methods it is assumed that the mutex is locked
     // unless calls outside via UNO, e.g. event notification, are done
-
-    /** @param bThrowException if true, a DisposedException is thrown if the
-               object is already disposed
-        @return true, if the component is already disposed and bThrowException is false,
-                false otherwise
-        @throws css::lang::DisposedException
-     */
-    bool             CheckDisposeState( bool bThrowException = true ) const;
 
     /** Events coming from the core have to be processed in this methods.  The
         default implementation returns false, which indicates that the object is
@@ -184,13 +157,6 @@ protected:
      */
     virtual css::awt::Point   GetUpperLeftOnScreen() const;
 
-    /** This method creates an AccessibleEventObject and sends it to all
-        listeners that are currently listening to this object
-     */
-    void         BroadcastAccEvent( sal_Int16 nId,
-                                    const css::uno::Any & rNew,
-                                    const css::uno::Any & rOld ) const;
-
     /** Removes all children from the internal lists and broadcasts child remove
         events.
 
@@ -222,9 +188,6 @@ protected:
     // ________ WeakComponentImplHelper (XComponent::dispose) ________
     virtual void SAL_CALL disposing() override;
 
-    // ________ XAccessible ________
-    virtual css::uno::Reference< css::accessibility::XAccessibleContext > SAL_CALL getAccessibleContext() override;
-
     // ________ XAccessibleContext ________
     virtual sal_Int64 SAL_CALL getAccessibleChildCount() override;
     virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL
@@ -245,35 +208,15 @@ protected:
 //     virtual OUString SAL_CALL getAccessibleDescription()
 //         throw (css::uno::RuntimeException);
 
+    // OAccessible
+    virtual css::awt::Rectangle implGetBounds() override;
+
     // ________ XAccessibleComponent ________
-    virtual sal_Bool SAL_CALL containsPoint(
-        const css::awt::Point& aPoint ) override;
     virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL
         getAccessibleAtPoint( const css::awt::Point& aPoint ) override;
-    // has to be defined in derived classes
-    virtual css::awt::Rectangle SAL_CALL getBounds() override;
-    virtual css::awt::Point SAL_CALL getLocation() override;
-    virtual css::awt::Point SAL_CALL getLocationOnScreen() override;
-    virtual css::awt::Size SAL_CALL getSize() override;
     virtual void SAL_CALL grabFocus() override;
     virtual sal_Int32 SAL_CALL getForeground() override;
     virtual sal_Int32 SAL_CALL getBackground() override;
-
-    // ________ XServiceInfo ________
-    virtual OUString SAL_CALL getImplementationName() override;
-    virtual sal_Bool SAL_CALL supportsService(
-        const OUString& ServiceName ) override;
-    virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
-
-    // ________ XEventListener ________
-    virtual void SAL_CALL disposing(
-        const css::lang::EventObject& Source ) override;
-
-    // ________ XAccessibleEventBroadcaster ________
-    virtual void SAL_CALL addAccessibleEventListener(
-        const css::uno::Reference< css::accessibility::XAccessibleEventListener >& xListener ) override;
-    virtual void SAL_CALL removeAccessibleEventListener(
-        const css::uno::Reference< css::accessibility::XAccessibleEventListener >& xListener ) override;
 
 private:
     enum eColorType
@@ -284,22 +227,16 @@ private:
     Color getColor( eColorType eColType );
 
 private:
-    /** type of the vector containing the accessible children
-     */
-    typedef std::vector< css::uno::Reference< css::accessibility::XAccessible > > ChildListVectorType;
     /** type of the hash containing a vector index for every AccessibleUniqueId
         of the object in the child list
      */
-    typedef std::map< ObjectIdentifier, css::uno::Reference< css::accessibility::XAccessible > > ChildOIDMap;
+    typedef std::map<ObjectIdentifier, rtl::Reference<AccessibleBase>> ChildOIDMap;
 
-    bool                                  m_bIsDisposed;
     const bool                            m_bMayHaveChildren;
     bool                                  m_bChildrenInitialized;
-    ChildListVectorType                   m_aChildList;
+    std::vector<rtl::Reference<AccessibleBase>> m_aChildList;
 
     ChildOIDMap                           m_aChildOIDMap;
-
-    ::comphelper::AccessibleEventNotifier::TClientId      m_nEventNotifierId;
 
     /** for getAccessibleStateSet()
      */
@@ -311,10 +248,8 @@ private:
         state is checked.
 
         This variable is monitored by the solar mutex!
-
-        Note: declared volatile to enable double-check-locking
      */
-    volatile bool          m_bStateSetInitialized;
+    bool          m_bStateSetInitialized;
 };
 
 }  // namespace chart

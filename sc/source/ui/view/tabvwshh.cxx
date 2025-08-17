@@ -37,6 +37,7 @@
 #include <drwlayer.hxx>
 #include <retypepassdlg.hxx>
 #include <tabprotection.hxx>
+#include <onlyactivesheetsaveddlg.hxx>
 
 #include <com/sun/star/embed/EmbedVerbs.hpp>
 
@@ -125,6 +126,8 @@ void ScTabViewShell::ExecuteObject( const SfxRequest& rReq )
 #if HAVE_FEATURE_SCRIPTING
                 if (!bDone)
                     SbxBase::SetError( ERRCODE_BASIC_BAD_PARAMETER );  // basic error
+#else
+                (void)bDone;
 #endif
             }
             break;
@@ -166,7 +169,7 @@ void ScTabViewShell::GetObjectState( SfxItemSet& rSet )
                     uno::Reference < embed::XEmbeddedObject > xOLE = lcl_GetSelectedObj( GetScDrawView() );
                     if (xOLE.is())
                     {
-                        aName = GetViewData().GetSfxDocShell()->GetEmbeddedObjectContainer().GetEmbeddedObjectName( xOLE );
+                        aName = GetViewData().GetSfxDocShell().GetEmbeddedObjectContainer().GetEmbeddedObjectName( xOLE );
                     }
                     rSet.Put( SfxStringItem( nWhich, aName ) );
                 }
@@ -256,6 +259,12 @@ bool ScTabViewShell::ExecuteRetypePassDlg(ScPasswordHash eDesiredHash)
 
     aDlg.WriteNewDataToDocument(rDoc);
     return true;
+}
+
+void ScTabViewShell::ExecuteOnlyActiveSheetSavedDlg()
+{
+    ScOnlyActiveSheetSavedDlg aDlg(GetFrameWeld());
+    aDlg.run();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

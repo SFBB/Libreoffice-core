@@ -22,6 +22,7 @@
 #include <tools/poly.hxx>
 #include <tools/fract.hxx>
 #include <tools/helpers.hxx>
+#include <tools/UnitConversion.hxx>
 #include <unotools/resmgr.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/metaact.hxx>
@@ -215,7 +216,6 @@ private:
     inline void         ImplWriteTextColor( NMode nMode );
     void                ImplWriteColor( NMode nMode );
 
-    static double       ImplGetScaling( const MapMode& );
     void                ImplGetMapMode( const MapMode& );
     static bool         ImplGetBoundingBox( double* nNumb, sal_uInt8* pSource, sal_uInt32 nSize );
     static sal_uInt8*   ImplSearchEntry( sal_uInt8* pSource, sal_uInt8 const * pDest, sal_uInt32 nComp, sal_uInt32 nSize );
@@ -304,20 +304,20 @@ bool PSWriter::WritePS( const Graphic& rGraphic, SvStream& rTargetStream, Filter
     if ( pFilterConfigItem )
     {
 #ifdef UNX // don't put binary tiff preview ahead of postscript code by default on unix as ghostscript is unable to read it
-        mnPreview = pFilterConfigItem->ReadInt32( "Preview", 0 );
+        mnPreview = pFilterConfigItem->ReadInt32( u"Preview"_ustr, 0 );
 #else
         mnPreview = pFilterConfigItem->ReadInt32( "Preview", 1 );
 #endif
-        mnLevel = pFilterConfigItem->ReadInt32( "Version", 2 );
+        mnLevel = pFilterConfigItem->ReadInt32( u"Version"_ustr, 2 );
         if ( mnLevel != 1 )
             mnLevel = 2;
-        mbGrayScale = pFilterConfigItem->ReadInt32( "ColorFormat", 1 ) == 2;
+        mbGrayScale = pFilterConfigItem->ReadInt32( u"ColorFormat"_ustr, 1 ) == 2;
 #ifdef UNX // don't compress by default on unix as ghostscript is unable to read LZW compressed eps
-        mbCompression = pFilterConfigItem->ReadInt32( "CompressionMode", 0 ) != 0;
+        mbCompression = pFilterConfigItem->ReadInt32( u"CompressionMode"_ustr, 0 ) != 0;
 #else
         mbCompression = pFilterConfigItem->ReadInt32( "CompressionMode", 1 ) == 1;
 #endif
-        mnTextMode = pFilterConfigItem->ReadInt32( "TextMode", 0 );
+        mnTextMode = pFilterConfigItem->ReadInt32( u"TextMode"_ustr, 0 );
         if ( mnTextMode > 2 )
             mnTextMode = 0;
     }
@@ -819,7 +819,7 @@ void PSWriter::ImplWriteActions( const GDIMetaFile& rMtf, VirtualDevice& rVDev )
                 Bitmap aBitmap( aBitmapEx.GetBitmap() );
                 if ( mbGrayScale )
                     aBitmap.Convert( BmpConversion::N8BitGreys );
-                AlphaMask aMask( aBitmapEx.GetAlphaMask() );
+                const AlphaMask& aMask( aBitmapEx.GetAlphaMask() );
                 Point aPoint( static_cast<const MetaBmpExAction*>(pMA)->GetPoint() );
                 Size aSize( rVDev.PixelToLogic( aBitmap.GetSizePixel() ) );
                 ImplBmp( &aBitmap, &aMask, aPoint, aSize.Width(), aSize.Height() );
@@ -832,7 +832,7 @@ void PSWriter::ImplWriteActions( const GDIMetaFile& rMtf, VirtualDevice& rVDev )
                 Bitmap aBitmap( aBitmapEx.GetBitmap() );
                 if ( mbGrayScale )
                     aBitmap.Convert( BmpConversion::N8BitGreys );
-                AlphaMask aMask( aBitmapEx.GetAlphaMask() );
+                const AlphaMask& aMask( aBitmapEx.GetAlphaMask() );
                 Point aPoint = static_cast<const MetaBmpExScaleAction*>(pMA)->GetPoint();
                 Size aSize( static_cast<const MetaBmpExScaleAction*>(pMA)->GetSize() );
                 ImplBmp( &aBitmap, &aMask, aPoint, aSize.Width(), aSize.Height() );
@@ -897,8 +897,8 @@ void PSWriter::ImplWriteActions( const GDIMetaFile& rMtf, VirtualDevice& rVDev )
 
                 if ( aWallpaper.IsBitmap() )
                 {
-                    BitmapEx aBitmapEx = aWallpaper.GetBitmap();
-                    Bitmap aBitmap( aBitmapEx.GetBitmap() );
+                    BitmapEx aBitmapEx(aWallpaper.GetBitmap());
+                    const Bitmap& aBitmap( aBitmapEx.GetBitmap() );
                     if ( aBitmapEx.IsAlpha() )
                     {
                         if ( aWallpaper.IsGradient() )
@@ -907,7 +907,7 @@ void PSWriter::ImplWriteActions( const GDIMetaFile& rMtf, VirtualDevice& rVDev )
                         // gradient action
 
                         }
-                        AlphaMask aMask( aBitmapEx.GetAlphaMask() );
+                        const AlphaMask& aMask( aBitmapEx.GetAlphaMask() );
                         ImplBmp( &aBitmap, &aMask, Point( aRect.Left(), aRect.Top() ), aRect.GetWidth(), aRect.GetHeight() );
                     }
                     else
@@ -1176,8 +1176,8 @@ void PSWriter::ImplWriteActions( const GDIMetaFile& rMtf, VirtualDevice& rVDev )
                 if( fScaleX != 1.0 || fScaleY != 1.0 )
                 {
                     aTmpMtf.Scale( fScaleX, fScaleY );
-                    aSrcPt.setX( FRound( aSrcPt.X() * fScaleX ) );
-                    aSrcPt.setY( FRound( aSrcPt.Y() * fScaleY ) );
+                    aSrcPt.setX(basegfx::fround<tools::Long>(aSrcPt.X() * fScaleX));
+                    aSrcPt.setY(basegfx::fround<tools::Long>(aSrcPt.Y() * fScaleY));
                 }
 
                 nMoveX = aDestPt.X() - aSrcPt.X();
@@ -2057,11 +2057,11 @@ void PSWriter::ImplSetAttrForText( const Point& rPoint )
 
     if ( maLastFont != maFont )
     {
-        if ( maFont.GetPitch() == PITCH_FIXED )         // a little bit font selection
+        if ( maFont.GetPitchMaybeAskConfig() == PITCH_FIXED )         // a little bit font selection
             ImplDefineFont( "Courier", "Oblique" );
         else if ( maFont.GetCharSet() == RTL_TEXTENCODING_SYMBOL )
             ImplWriteLine( "/Symbol findfont" );
-        else if ( maFont.GetFamilyType() == FAMILY_SWISS )
+        else if ( maFont.GetFamilyTypeMaybeAskConfig() == FAMILY_SWISS )
             ImplDefineFont( "Helvetica", "Oblique" );
         else
             ImplDefineFont( "Times", "Italic" );
@@ -2091,18 +2091,18 @@ void PSWriter::ImplDefineFont( const char* pOriginalName, const char* pItalic )
 {
     mpPS->WriteUChar( '/' );             //convert the font pOriginalName using ISOLatin1Encoding
     mpPS->WriteOString( pOriginalName );
-    switch ( maFont.GetWeight() )
+    switch ( maFont.GetWeightMaybeAskConfig() )
     {
         case WEIGHT_SEMIBOLD :
         case WEIGHT_BOLD :
         case WEIGHT_ULTRABOLD :
         case WEIGHT_BLACK :
             mpPS->WriteOString( "-Bold" );
-            if ( maFont.GetItalic() != ITALIC_NONE )
+            if ( maFont.GetItalicMaybeAskConfig() != ITALIC_NONE )
                 mpPS->WriteOString( pItalic );
             break;
         default:
-            if ( maFont.GetItalic() != ITALIC_NONE )
+            if ( maFont.GetItalicMaybeAskConfig() != ITALIC_NONE )
                 mpPS->WriteOString( pItalic );
             break;
     }
@@ -2173,9 +2173,14 @@ void PSWriter::ImplWriteColor( NMode nMode )
 void PSWriter::ImplGetMapMode( const MapMode& rMapMode )
 {
     ImplWriteLine( "tm setmatrix" );
-    double fMul = ImplGetScaling(rMapMode);
-    double fScaleX = static_cast<double>(rMapMode.GetScaleX()) * fMul;
-    double fScaleY = static_cast<double>(rMapMode.GetScaleY()) * fMul;
+    double fScaleX(rMapMode.GetScaleX());
+    double fScaleY(rMapMode.GetScaleY());
+    if (o3tl::Length l = MapToO3tlLength(rMapMode.GetMapUnit(), o3tl::Length::invalid);
+        l != o3tl::Length::invalid)
+    {
+        fScaleX = o3tl::convert(fScaleX, l, o3tl::Length::mm100);
+        fScaleY = o3tl::convert(fScaleY, l, o3tl::Length::mm100);
+    }
     ImplTranslate( rMapMode.GetOrigin().X() * fScaleX, rMapMode.GetOrigin().Y() * fScaleY );
     ImplScale( fScaleX, fScaleY );
 }
@@ -2213,53 +2218,6 @@ inline void PSWriter::ImplWriteLine( const char* pString, NMode nMode )
     mnCursorPos += i;
     ImplExecMode( nMode );
 }
-
-double PSWriter::ImplGetScaling( const MapMode& rMapMode )
-{
-    double nMul;
-    switch (rMapMode.GetMapUnit())
-    {
-        case MapUnit::MapPixel :
-        case MapUnit::MapSysFont :
-        case MapUnit::MapAppFont :
-
-        case MapUnit::Map100thMM :
-            nMul = 1;
-            break;
-        case MapUnit::Map10thMM :
-            nMul = 10;
-            break;
-        case MapUnit::MapMM :
-            nMul = 100;
-            break;
-        case MapUnit::MapCM :
-            nMul = 1000;
-            break;
-        case MapUnit::Map1000thInch :
-            nMul = 2.54;
-            break;
-        case MapUnit::Map100thInch :
-            nMul = 25.4;
-            break;
-        case MapUnit::Map10thInch :
-            nMul = 254;
-            break;
-        case MapUnit::MapInch :
-            nMul = 2540;
-            break;
-        case MapUnit::MapTwip :
-            nMul = 1.76388889;
-            break;
-        case MapUnit::MapPoint :
-            nMul = 35.27777778;
-            break;
-        default:
-            nMul = 1.0;
-            break;
-    }
-    return nMul;
-}
-
 
 void PSWriter::ImplWriteLineInfo( double fLWidth, double fMLimit,
                                   SvtGraphicStroke::CapType eLCap,

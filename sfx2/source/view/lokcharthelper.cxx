@@ -9,6 +9,7 @@
 
 #include <sfx2/lokcomponenthelpers.hxx>
 
+#include <comphelper/dispatchcommand.hxx>
 #include <comphelper/lok.hxx>
 #include <comphelper/propertyvalue.hxx>
 #include <LibreOfficeKit/LibreOfficeKitEnums.h>
@@ -26,7 +27,7 @@
 
 using namespace com::sun::star;
 
-css::uno::Reference<css::frame::XController>& LokChartHelper::GetXController()
+css::uno::Reference<css::frame::XController>& LokChartHelper::GetXController() const
 {
     if(!mxController.is() && mpViewShell)
     {
@@ -42,7 +43,7 @@ css::uno::Reference<css::frame::XController>& LokChartHelper::GetXController()
                     ::css::uno::Reference< ::css::frame::XController > xChartController = xChart->getCurrentController();
                     if( xChartController.is() )
                     {
-                        mxController = xChartController;
+                        mxController = std::move(xChartController);
                     }
                 }
             }
@@ -50,24 +51,6 @@ css::uno::Reference<css::frame::XController>& LokChartHelper::GetXController()
     }
 
     return mxController;
-}
-
-css::uno::Reference<css::frame::XDispatch>& LokChartHelper::GetXDispatcher()
-{
-    if( !mxDispatcher.is() )
-    {
-        ::css::uno::Reference< ::css::frame::XController >& xChartController = GetXController();
-        if( xChartController.is() )
-        {
-            ::css::uno::Reference< ::css::frame::XDispatch > xDispatcher( xChartController, uno::UNO_QUERY );
-            if( xDispatcher.is() )
-            {
-                mxDispatcher = xDispatcher;
-            }
-        }
-    }
-
-    return mxDispatcher;
 }
 
 vcl::Window* LokChartHelper::GetWindow()
@@ -85,8 +68,9 @@ vcl::Window* LokChartHelper::GetWindow()
                 if (pParent)
                 {
                     sal_uInt16 nTotChildren = pParent->GetChildCount();
-                    while (nTotChildren--)
+                    while (nTotChildren > 0)
                     {
+                        --nTotChildren;
                         vcl::Window* pChildWin = pParent->GetChild(nTotChildren);
                         if (pChildWin && pChildWin->IsChart())
                         {
@@ -147,10 +131,15 @@ tools::Rectangle LokChartHelper::GetChartBoundingBox()
     return aBBox;
 }
 
+void LokChartHelper::Dispatch(const OUString& cmd,
+                              const css::uno::Sequence<css::beans::PropertyValue>& rArguments) const
+{
+    comphelper::dispatchCommand(cmd, GetXController(), rArguments);
+}
+
 void LokChartHelper::Invalidate()
 {
     mpWindow = nullptr;
-    mxDispatcher.clear();
     mxController.clear();
 }
 
@@ -240,7 +229,7 @@ void LokChartHelper::PaintAllChartsOnTile(VirtualDevice& rDevice,
         return;
 
     // Resizes the virtual device so to contain the entries context
-    rDevice.SetOutputSizePixel(Size(nOutputWidth, nOutputHeight));
+    rDevice.SetOutputSizePixel(Size(nOutputWidth, nOutputHeight), /*bErase*/false);
 
     rDevice.Push(vcl::PushFlags::MAPMODE);
     MapMode aMapMode(rDevice.GetMapMode());
@@ -304,23 +293,17 @@ bool LokChartHelper::setTextSelection(int nType, int nX, int nY)
     tools::Rectangle rChartBBox = GetChartBoundingBox();
     if (rChartBBox.Contains(Point(nX, nY)))
     {
-        css::uno::Reference<css::frame::XDispatch> xDispatcher = GetXDispatcher();
-        if (xDispatcher.is())
-        {
-            int nChartWinX = nX - rChartBBox.Left();
-            int nChartWinY = nY - rChartBBox.Top();
+        int nChartWinX = nX - rChartBBox.Left();
+        int nChartWinY = nY - rChartBBox.Top();
 
-            // no scale here the chart controller expects twips
-            // that are converted to hmm
-            util::URL aURL;
-            aURL.Path = "LOKSetTextSelection";
-            uno::Sequence< beans::PropertyValue > aArgs{
-                comphelper::makePropertyValue({}, static_cast<sal_Int32>(nType)), // Why no name?
-                comphelper::makePropertyValue({}, static_cast<sal_Int32>(nChartWinX)),
-                comphelper::makePropertyValue({}, static_cast<sal_Int32>(nChartWinY))
-            };
-            xDispatcher->dispatch(aURL, aArgs);
-        }
+        // no scale here the chart controller expects twips
+        // that are converted to hmm
+        uno::Sequence< beans::PropertyValue > aArgs{
+            comphelper::makePropertyValue({}, static_cast<sal_Int32>(nType)), // Why no name?
+            comphelper::makePropertyValue({}, static_cast<sal_Int32>(nChartWinX)),
+            comphelper::makePropertyValue({}, static_cast<sal_Int32>(nChartWinY))
+        };
+        Dispatch(u".uno:LOKSetTextSelection"_ustr, aArgs);
         return true;
     }
     return false;

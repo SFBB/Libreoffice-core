@@ -29,6 +29,7 @@
 #include <sdr/contact/objectcontactofobjlistpainter.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <svx/svdpage.hxx>
+#include <svx/svdmodel.hxx>
 #include <svx/unoapi.hxx>
 #include <drawinglayer/primitive2d/pagepreviewprimitive2d.hxx>
 #include <drawinglayer/primitive2d/sdrdecompositiontools2d.hxx>
@@ -143,7 +144,7 @@ drawinglayer::primitive2d::Primitive2DContainer PagePrimitiveExtractor::createPr
         // no time; page previews are not animated
         aNewViewInformation2D.setViewTime(0.0);
 
-        updateViewInformation2D(aNewViewInformation2D);
+        setViewInformation2D2D(aNewViewInformation2D);
 
         // create copy of DisplayInfo to set PagePainting
         DisplayInfo aDisplayInfo;
@@ -230,8 +231,8 @@ void ViewObjectContactOfPageObj::createPrimitive2DSequence(const DisplayInfo& /*
             // Recursion is possible. Create a replacement primitive
             xPageContent.resize(2);
             const Color aDocColor(aColorConfig.GetColorValue(svtools::DOCCOLOR).nColor);
-            svtools::ColorConfigValue aBorderConfig = aColorConfig.GetColorValue(svtools::DOCBOUNDARIES);
-            const Color aBorderColor = aBorderConfig.bIsVisible ? aBorderConfig.nColor : aDocColor;
+            const bool bShowMargin = pPage->getSdrModelFromSdrPage().IsShowMargin();
+            const Color aBorderColor = bShowMargin ? aColorConfig.GetColorValue(svtools::DOCBOUNDARIES).nColor : aDocColor;
             const basegfx::B2DRange aPageBound(0.0, 0.0, fPageWidth, fPageHeight);
             basegfx::B2DPolygon aOutline(basegfx::utils::createPolygonFromRect(aPageBound));
 
@@ -287,7 +288,7 @@ void ViewObjectContactOfPageObj::createPrimitive2DSequence(const DisplayInfo& /*
     // add a gray outline frame, except not when printing
     if(bCreateGrayFrame)
     {
-        const Color aFrameColor(aColorConfig.GetColorValue(svtools::OBJECTBOUNDARIES).nColor);
+        const Color aFrameColor(aColorConfig.GetColorValue(svtools::DOCBOUNDARIES).nColor);
         basegfx::B2DPolygon aOwnOutline(basegfx::utils::createUnitPolygon());
         aOwnOutline.transform(aPageObjectTransform);
 

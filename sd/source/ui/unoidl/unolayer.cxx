@@ -20,7 +20,7 @@
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 
-#include "unolayer.hxx"
+#include <unolayer.hxx>
 
 #include <comphelper/extract.hxx>
 #include <editeng/unoipset.hxx>
@@ -91,7 +91,7 @@ SdLayer::~SdLayer() noexcept
 // XServiceInfo
 OUString SAL_CALL SdLayer::getImplementationName()
 {
-    return "SdUnoLayer";
+    return u"SdUnoLayer"_ustr;
 }
 
 sal_Bool SAL_CALL SdLayer::supportsService( const OUString& ServiceName )
@@ -101,7 +101,7 @@ sal_Bool SAL_CALL SdLayer::supportsService( const OUString& ServiceName )
 
 uno::Sequence< OUString > SAL_CALL SdLayer::getSupportedServiceNames()
 {
-    return { "com.sun.star.drawing.Layer" };
+    return { u"com.sun.star.drawing.Layer"_ustr };
 }
 
 // beans::XPropertySet
@@ -400,7 +400,7 @@ void SAL_CALL SdLayerManager::removeEventListener( const uno::Reference< lang::X
 // XServiceInfo
 OUString SAL_CALL SdLayerManager::getImplementationName()
 {
-    return "SdUnoLayerManager";
+    return u"SdUnoLayerManager"_ustr;
 }
 
 sal_Bool SAL_CALL SdLayerManager::supportsService( const OUString& ServiceName )
@@ -410,7 +410,7 @@ sal_Bool SAL_CALL SdLayerManager::supportsService( const OUString& ServiceName )
 
 uno::Sequence< OUString > SAL_CALL SdLayerManager::getSupportedServiceNames()
 {
-    return {"com.sun.star.drawing.LayerManager"};
+    return {u"com.sun.star.drawing.LayerManager"_ustr};
 }
 
 // XLayerManager
@@ -421,7 +421,7 @@ uno::Reference< drawing::XLayer > SAL_CALL SdLayerManager::insertNewByIndex( sal
     if( mpModel == nullptr )
         throw lang::DisposedException();
 
-    uno::Reference< drawing::XLayer > xLayer;
+    rtl::Reference< SdLayer > xLayer;
 
     if( mpModel->mpDoc )
     {
@@ -495,18 +495,17 @@ uno::Reference< drawing::XLayer > SAL_CALL SdLayerManager::getLayerForShape( con
     if( mpModel == nullptr )
         throw lang::DisposedException();
 
-    uno::Reference< drawing::XLayer >  xLayer;
+    if(!mpModel->mpDoc)
+        return nullptr;
 
-    if(mpModel->mpDoc)
-    {
-        SdrObject* pObj = SdrObject::getSdrObjectFromXShape( xShape );
-        if(pObj)
-        {
-            SdrLayerID aId = pObj->GetLayer();
-            SdrLayerAdmin& rLayerAdmin = mpModel->mpDoc->GetLayerAdmin();
-            xLayer = GetLayer (rLayerAdmin.GetLayerPerID(aId));
-        }
-    }
+    SdrObject* pObj = SdrObject::getSdrObjectFromXShape( xShape );
+    if(!pObj)
+        return nullptr;
+
+    SdrLayerID aId = pObj->GetLayer();
+    SdrLayerAdmin& rLayerAdmin = mpModel->mpDoc->GetLayerAdmin();
+
+    rtl::Reference< SdLayer > xLayer = GetLayer (rLayerAdmin.GetLayerPerID(aId));
     return xLayer;
 }
 
@@ -542,8 +541,8 @@ uno::Any SAL_CALL SdLayerManager::getByIndex( sal_Int32 nLayer )
     if( mpModel->mpDoc )
     {
         SdrLayerAdmin& rLayerAdmin = mpModel->mpDoc->GetLayerAdmin();
-        uno::Reference<drawing::XLayer> xLayer (GetLayer (rLayerAdmin.GetLayer(static_cast<sal_uInt16>(nLayer))));
-        aAny <<= xLayer;
+        rtl::Reference<SdLayer> xLayer (GetLayer (rLayerAdmin.GetLayer(static_cast<sal_uInt16>(nLayer))));
+        aAny <<= uno::Reference<drawing::XLayer>(xLayer);
     }
     return aAny;
 }
@@ -561,7 +560,7 @@ uno::Any SAL_CALL SdLayerManager::getByName( const OUString& aName )
     if( pLayer == nullptr )
         throw container::NoSuchElementException();
 
-    return uno::Any( GetLayer (pLayer) );
+    return uno::Any( css::uno::Reference< css::drawing::XLayer>(GetLayer(pLayer)) );
 }
 
 uno::Sequence< OUString > SAL_CALL SdLayerManager::getElementNames()
@@ -644,57 +643,23 @@ void SdLayerManager::UpdateLayerView() const noexcept
     return nullptr;
 }
 
-namespace
-{
-/** Compare two pointers to <type>SdrLayer</type> objects.
-    @param xRef
-        The implementing SdLayer class provides the first pointer by the
-        <member>SdLayer::GetSdrLayer</member> method.
-    @param pSearchData
-        This void pointer is the second pointer to an <type>SdrLayer</type>
-        object.
-    @return
-        Return </True> if both pointers point to the same object.
-*/
-bool compare_layers (const uno::WeakReference<uno::XInterface>& xRef, void const * pSearchData)
-{
-    uno::Reference<uno::XInterface> xLayer (xRef);
-    if (xLayer.is())
-    {
-        SdLayer* pSdLayer = dynamic_cast<SdLayer*> (xLayer.get());
-        if (pSdLayer != nullptr)
-        {
-            SdrLayer* pSdrLayer = pSdLayer->GetSdrLayer ();
-            if (pSdrLayer == static_cast<SdrLayer const *>(pSearchData))
-                return true;
-        }
-    }
-    return false;
-}
-}
-
 /** Use the <member>mpLayers</member> container of weak references to either
     retrieve and return a previously created <type>XLayer</type> object for
     the given <type>SdrLayer</type> object or create and remember a new one.
 */
-uno::Reference<drawing::XLayer> SdLayerManager::GetLayer (SdrLayer* pLayer)
+rtl::Reference<SdLayer> SdLayerManager::GetLayer (SdrLayer* pLayer)
 {
-    uno::WeakReference<uno::XInterface> xRef;
-    uno::Reference<drawing::XLayer>  xLayer;
+    rtl::Reference<SdLayer> xLayer;
 
     // Search existing xLayer for the given pLayer.
-    if (mpLayers->findRef (xRef, static_cast<void*>(pLayer), compare_layers))
-        xLayer.set(xRef, uno::UNO_QUERY);
+    if (mpLayers->findRef(xLayer, pLayer))
+        return xLayer;
 
     // Create the xLayer if necessary.
-    if ( ! xLayer.is())
-    {
-        xLayer = new SdLayer (this, pLayer);
+    xLayer = new SdLayer (this, pLayer);
 
-        // Remember the new xLayer for future calls.
-        uno::WeakReference<uno::XInterface> wRef(xLayer);
-        mpLayers->insert(wRef);
-    }
+    // Remember the new xLayer for future calls.
+    mpLayers->insert(xLayer);
 
     return xLayer;
 }

@@ -73,16 +73,12 @@
 #include <memory>
 
 class XFTableStyle;
-class XFTable;
-class XFCell;
 class LwpTable;
 class LwpFrame;
 class LwpSuperTableLayout;
 class LwpRowLayout;
 class LwpCellLayout;
 class LwpTableHeadingLayout;
-class LwpRowHeadingLayout;
-class LwpConnectedCellLayout;
 class LwpColumnLayout;
 
 struct TableConvertAttempt
@@ -101,7 +97,7 @@ struct TableConvertAttempt
 class XFCellListener : public SfxListener
 {
 public:
-    XFCellListener(XFCell* pCell)
+    explicit XFCellListener(XFCell* pCell)
         : m_pCell(pCell)
     {
         if (m_pCell)
@@ -244,7 +240,7 @@ public:
     virtual ~LwpColumnLayout() override;
     virtual LWP_LAYOUT_TYPE GetLayoutType () override { return LWP_COLUMN_LAYOUT;}
     sal_uInt32 GetColumnID() const {return ccolid;}
-    double GetWidth() override {return LwpTools::ConvertFromUnitsToMetric(cwidth);}
+    double GetWidth() override { return LwpTools::ConvertFromUnits(cwidth); }
     using LwpVirtualLayout::RegisterStyle;
     void RegisterStyle(double dCalculatedWidth);
     bool IsJustifiable() const {return (( m_nAttributes2 & STYLE2_JUSTIFIABLE) != 0);}

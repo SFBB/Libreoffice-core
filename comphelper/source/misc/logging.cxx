@@ -38,7 +38,6 @@ namespace comphelper
     class EventLogger_Impl
     {
     private:
-        Reference< XComponentContext >  m_aContext;
         Reference< XLogger >            m_xLogger;
 
     public:
@@ -48,22 +47,30 @@ namespace comphelper
         const Reference< XLogger >& getLogger() const { return m_xLogger; }
     };
 
-    EventLogger_Impl::EventLogger_Impl( const Reference< XComponentContext >& _rxContext, const OUString& _rLoggerName )
-        :m_aContext( _rxContext )
+    namespace
     {
-        try
+        Reference<XLogger> createLogger(const Reference<XComponentContext>& rxContext, const OUString& rLoggerName)
         {
-            Reference< XLoggerPool > xPool( LoggerPool::get( m_aContext ) );
-            if ( !_rLoggerName.isEmpty() )
-                m_xLogger = xPool->getNamedLogger( _rLoggerName );
-            else
-                m_xLogger = xPool->getDefaultLogger();
+            try
+            {
+                Reference<XLoggerPool> xPool(LoggerPool::get(rxContext));
+                if (!rLoggerName.isEmpty())
+                    return xPool->getNamedLogger(rLoggerName);
+                else
+                    return xPool->getDefaultLogger();
+            }
+            catch( const Exception& )
+            {
+                TOOLS_WARN_EXCEPTION(
+                    "comphelper", "EventLogger_Impl::impl_createLogger_nothrow: caught an exception!" );
+            }
+            return Reference<XLogger>();
         }
-        catch( const Exception& )
-        {
-            TOOLS_WARN_EXCEPTION(
-                "comphelper", "EventLogger_Impl::impl_createLogger_nothrow: caught an exception!" );
-        }
+    }
+
+    EventLogger_Impl::EventLogger_Impl(const Reference< XComponentContext >& _rxContext, const OUString& rLoggerName)
+        : m_xLogger(createLogger(_rxContext, rLoggerName))
+    {
     }
 
     EventLogger::EventLogger( const Reference< XComponentContext >& _rxContext, const char* _pAsciiLoggerName )

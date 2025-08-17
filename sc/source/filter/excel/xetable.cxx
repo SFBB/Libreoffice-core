@@ -722,7 +722,7 @@ XclExpLabelCell::XclExpLabelCell(
 
 bool XclExpLabelCell::IsMultiLineText() const
 {
-    return mbLineBreak || mxText->IsWrapped();
+    return mbLineBreak || mxText->HasNewline();
 }
 
 void XclExpLabelCell::Init( const XclExpRoot& rRoot,
@@ -744,9 +744,13 @@ void XclExpLabelCell::Init( const XclExpRoot& rRoot,
     // create cell format
     if( GetXFId() == EXC_XFID_NOTFOUND )
     {
-       OSL_ENSURE( nXclFont != EXC_FONT_NOTFOUND, "XclExpLabelCell::Init - leading font not found" );
-       bool bForceLineBreak = pPattern->GetItemSet().Get(ATTR_LINEBREAK ).GetValue();
-       SetXFId( rRoot.GetXFBuffer().InsertWithFont( pPattern, ApiScriptType::WEAK, nXclFont, bForceLineBreak ) );
+        OSL_ENSURE(nXclFont != EXC_FONT_NOTFOUND, "XclExpLabelCell::Init - leading font not found");
+
+        // Buggy Excel behaviour - newlines are ignored unless wrap-text is enabled,
+        // so always force text-wrapping (unless it was imported that way and not modified).
+        bool bForceLineBreak = mxText->HasNewline() && !mxText->IsSingleLineForMultipleParagraphs();
+        SetXFId(rRoot.GetXFBuffer().InsertWithFont(
+            pPattern, ApiScriptType::WEAK, nXclFont, bForceLineBreak));
     }
 
     // get auto-wrap attribute from cell format
@@ -832,7 +836,7 @@ XclExpFormulaCell::XclExpFormulaCell(
 
         // current cell number format
         sal_uInt32 nScNumFmt = pPattern ?
-            pPattern->GetItemSet().Get( ATTR_VALUE_FORMAT ).GetValue() :
+            pPattern->GetItem( ATTR_VALUE_FORMAT ).GetValue() :
             rNumFmtBfr.GetStandardFormat();
 
         // alternative number format passed to XF buffer
@@ -2510,7 +2514,7 @@ XclExpRow& XclExpRowBuffer::GetOrCreateRow( sal_uInt32 nXclRow, bool bRowAlwaysE
             }
             RowRef p = std::make_shared<XclExpRow>(GetRoot(), nFrom, maOutlineBfr, bRowAlwaysEmpty, bHidden, nHeight);
             maRowMap.emplace(nFrom, p);
-            pPrevEntry = p;
+            pPrevEntry = std::move(p);
         }
         ++nFrom;
     }
@@ -2634,7 +2638,7 @@ XclExpCellTable::XclExpCellTable( const XclExpRoot& rRoot ) :
 
                 if (pPattern)
                 {
-                    OUString aUrl = pPattern->GetItemSet().Get(ATTR_HYPERLINK).GetValue();
+                    OUString aUrl = pPattern->GetItem(ATTR_HYPERLINK).GetValue();
                     if (!aUrl.isEmpty())
                     {
                         rtl::Reference<XclExpHyperlink> aLink =
@@ -2646,7 +2650,7 @@ XclExpCellTable::XclExpCellTable( const XclExpRoot& rRoot ) :
                 // try to create a Boolean cell
                 if( pPattern && ((fValue == 0.0) || (fValue == 1.0)) )
                 {
-                    sal_uInt32 nScNumFmt = pPattern->GetItemSet().Get( ATTR_VALUE_FORMAT ).GetValue();
+                    sal_uInt32 nScNumFmt = pPattern->GetItem( ATTR_VALUE_FORMAT ).GetValue();
                     if( rFormatter.GetType( nScNumFmt ) == SvNumFormatType::LOGICAL )
                         xCell = new XclExpBooleanCell(
                             GetRoot(), aXclPos, pPattern, nMergeBaseXFId, fValue != 0.0 );
@@ -2691,7 +2695,7 @@ XclExpCellTable::XclExpCellTable( const XclExpRoot& rRoot ) :
             {
                 if (pPattern)
                 {
-                    OUString aUrl = pPattern->GetItemSet().Get(ATTR_HYPERLINK).GetValue();
+                    OUString aUrl = pPattern->GetItem(ATTR_HYPERLINK).GetValue();
                     if (!aUrl.isEmpty())
                     {
                         rtl::Reference<XclExpHyperlink> aLink =
@@ -2824,10 +2828,10 @@ void XclExpCellTable::SaveXml( XclExpXmlStream& rStrm )
     rWorksheet->startElement( XML_sheetFormatPr,
         // OOXTODO: XML_baseColWidth
         XML_defaultColWidth, OString::number(maColInfoBfr.GetDefColWidth()),
-        // OOXTODO: XML_customHeight
         // OOXTODO: XML_thickTop
         // OOXTODO: XML_thickBottom
         XML_defaultRowHeight, OString::number(static_cast<double> (rDefData.mnHeight) / 20.0),
+        XML_customHeight, ToPsz(true),
         XML_zeroHeight, ToPsz( rDefData.IsHidden() ),
         XML_outlineLevelRow, OString::number(maRowBfr.GetHighestOutlineLevel()),
         XML_outlineLevelCol, OString::number(maColInfoBfr.GetHighestOutlineLevel()) );

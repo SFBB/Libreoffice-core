@@ -9,6 +9,122 @@
 
 #include <mathml/element.hxx>
 
+namespace
+{
+constexpr SmMlAttributePos MlAttributeListMi[] = {
+    // clang-format off
+    { SmMlAttributeValueType::MlHref, 0 },
+    { SmMlAttributeValueType::MlDir, 1 },
+    { SmMlAttributeValueType::MlMathbackground, 2 },
+    { SmMlAttributeValueType::MlMathcolor, 3 },
+    { SmMlAttributeValueType::MlDisplaystyle, 4 },
+    { SmMlAttributeValueType::MlMathsize, 5 },
+    { SmMlAttributeValueType::MlMathvariant, 6 }
+    // clang-format on
+};
+
+constexpr SmMlAttributePos MlAttributeListMerror[] = {
+    // clang-format off
+    { SmMlAttributeValueType::MlHref, 0 },
+    { SmMlAttributeValueType::MlMathbackground, 1 },
+    { SmMlAttributeValueType::MlMathcolor, 2 },
+    { SmMlAttributeValueType::MlDisplaystyle, 3 }
+    // clang-format on
+};
+
+constexpr SmMlAttributePos MlAttributeListMn[] = {
+    // clang-format off
+    { SmMlAttributeValueType::MlHref, 0 },
+    { SmMlAttributeValueType::MlDir, 1 },
+    { SmMlAttributeValueType::MlMathbackground, 2 },
+    { SmMlAttributeValueType::MlMathcolor, 3 },
+    { SmMlAttributeValueType::MlDisplaystyle, 4 },
+    { SmMlAttributeValueType::MlMathsize, 5 },
+    { SmMlAttributeValueType::MlMathvariant, 6 }
+    // clang-format on
+};
+
+constexpr SmMlAttributePos MlAttributeListMo[] = {
+    // clang-format off
+    { SmMlAttributeValueType::MlHref, 0 },
+    { SmMlAttributeValueType::MlDir, 1 },
+    { SmMlAttributeValueType::MlMathbackground, 2 },
+    { SmMlAttributeValueType::MlMathcolor, 3 },
+    { SmMlAttributeValueType::MlDisplaystyle, 4 },
+    { SmMlAttributeValueType::MlMathsize, 5 },
+    { SmMlAttributeValueType::MlMathvariant, 6 },
+    { SmMlAttributeValueType::MlFence, 7 },
+    { SmMlAttributeValueType::MlForm, 8 },
+    { SmMlAttributeValueType::MlMaxsize, 9 },
+    { SmMlAttributeValueType::MlMinsize, 10 },
+    { SmMlAttributeValueType::MlMovablelimits, 11 },
+    { SmMlAttributeValueType::MlLspace, 12 },
+    { SmMlAttributeValueType::MlRspace, 13 },
+    { SmMlAttributeValueType::MlAccent, 14 },
+    { SmMlAttributeValueType::MlStretchy, 15 },
+    { SmMlAttributeValueType::MlSeparator, 16 },
+    { SmMlAttributeValueType::MlSymmetric, 17 }
+    // clang-format on
+};
+
+constexpr SmMlAttributePos MlAttributeListMrow[] = {
+    // clang-format off
+    { SmMlAttributeValueType::MlHref, 0 },
+    { SmMlAttributeValueType::MlDir, 1 },
+    { SmMlAttributeValueType::MlMathbackground, 2 },
+    { SmMlAttributeValueType::MlMathcolor, 3 }
+    // clang-format on
+};
+
+constexpr SmMlAttributePos MlAttributeListMtext[] = {
+    // clang-format off
+    { SmMlAttributeValueType::MlHref, 0 },
+    { SmMlAttributeValueType::MlDir, 1 },
+    { SmMlAttributeValueType::MlMathbackground, 2 },
+    { SmMlAttributeValueType::MlMathcolor, 3 },
+    { SmMlAttributeValueType::MlDisplaystyle, 4 },
+    { SmMlAttributeValueType::MlMathsize, 5 },
+    { SmMlAttributeValueType::MlMathvariant, 6 }
+    // clang-format on
+};
+
+constexpr SmMlAttributePos MlAttributeListMstyle[] = {
+    // clang-format off
+    { SmMlAttributeValueType::MlHref, 0 },
+    { SmMlAttributeValueType::MlDir, 1 },
+    { SmMlAttributeValueType::MlMathbackground, 2 },
+    { SmMlAttributeValueType::MlMathcolor, 3 },
+    { SmMlAttributeValueType::MlDisplaystyle, 4 },
+    { SmMlAttributeValueType::MlMathsize, 5 },
+    { SmMlAttributeValueType::MlMathvariant, 6 },
+    { SmMlAttributeValueType::MlFence, 7 },
+    { SmMlAttributeValueType::MlForm, 8 },
+    { SmMlAttributeValueType::MlMaxsize, 9 },
+    { SmMlAttributeValueType::MlMinsize, 10 },
+    { SmMlAttributeValueType::MlMovablelimits, 11 },
+    { SmMlAttributeValueType::MlLspace, 12 },
+    { SmMlAttributeValueType::MlRspace, 13 },
+    { SmMlAttributeValueType::MlAccent, 14 },
+    { SmMlAttributeValueType::MlStretchy, 15 },
+    { SmMlAttributeValueType::MlSeparator, 16 },
+    { SmMlAttributeValueType::MlSymmetric, 17 }
+    // clang-format on
+};
+
+/// Generates an attribute vector of default values from an attribute position list.
+/// @param aAttributePosList
+/// @return attribute vector
+std::vector<SmMlAttribute> makeMlAttributeList(std::span<SmMlAttributePos> aAttributePosList)
+{
+    std::vector<SmMlAttribute> aAttributeList(aAttributePosList.size());
+    for (size_t i = 0; i < aAttributePosList.size(); ++i)
+    {
+        aAttributeList[i].setMlAttributeValueType(aAttributePosList[i].m_aAttributeValueType);
+    }
+    return aAttributeList;
+}
+}
+
 void SmMlElement::SmImplAttributeType()
 {
     switch (m_aElementType)
@@ -27,45 +143,38 @@ void SmMlElement::SmImplAttributeType()
             //m_aAttributePosList = std::vector<SmMlAttributePos>(std::begin(starmathdatabase::MlAttributeListMath), std::end(starmathdatabase::MlAttributeListMath));
             break;
         case SmMlElementType::MlMi:
-            m_aAttributePosList
-                = std::vector<SmMlAttributePos>(std::begin(starmathdatabase::MlAttributeListMi),
-                                                std::end(starmathdatabase::MlAttributeListMi));
+            m_aAttributePosList = std::vector<SmMlAttributePos>(std::begin(MlAttributeListMi),
+                                                                std::end(MlAttributeListMi));
             break;
         case SmMlElementType::MlMerror:
-            m_aAttributePosList
-                = std::vector<SmMlAttributePos>(std::begin(starmathdatabase::MlAttributeListMerror),
-                                                std::end(starmathdatabase::MlAttributeListMerror));
+            m_aAttributePosList = std::vector<SmMlAttributePos>(std::begin(MlAttributeListMerror),
+                                                                std::end(MlAttributeListMerror));
             break;
         case SmMlElementType::MlMn:
-            m_aAttributePosList
-                = std::vector<SmMlAttributePos>(std::begin(starmathdatabase::MlAttributeListMn),
-                                                std::end(starmathdatabase::MlAttributeListMn));
+            m_aAttributePosList = std::vector<SmMlAttributePos>(std::begin(MlAttributeListMn),
+                                                                std::end(MlAttributeListMn));
             break;
         case SmMlElementType::MlMo:
-            m_aAttributePosList
-                = std::vector<SmMlAttributePos>(std::begin(starmathdatabase::MlAttributeListMo),
-                                                std::end(starmathdatabase::MlAttributeListMo));
+            m_aAttributePosList = std::vector<SmMlAttributePos>(std::begin(MlAttributeListMo),
+                                                                std::end(MlAttributeListMo));
             break;
         case SmMlElementType::MlMrow:
-            m_aAttributePosList
-                = std::vector<SmMlAttributePos>(std::begin(starmathdatabase::MlAttributeListMrow),
-                                                std::end(starmathdatabase::MlAttributeListMrow));
+            m_aAttributePosList = std::vector<SmMlAttributePos>(std::begin(MlAttributeListMrow),
+                                                                std::end(MlAttributeListMrow));
             break;
         case SmMlElementType::MlMtext:
-            m_aAttributePosList
-                = std::vector<SmMlAttributePos>(std::begin(starmathdatabase::MlAttributeListMtext),
-                                                std::end(starmathdatabase::MlAttributeListMtext));
+            m_aAttributePosList = std::vector<SmMlAttributePos>(std::begin(MlAttributeListMtext),
+                                                                std::end(MlAttributeListMtext));
             break;
         case SmMlElementType::MlMstyle:
-            m_aAttributePosList
-                = std::vector<SmMlAttributePos>(std::begin(starmathdatabase::MlAttributeListMstyle),
-                                                std::end(starmathdatabase::MlAttributeListMstyle));
+            m_aAttributePosList = std::vector<SmMlAttributePos>(std::begin(MlAttributeListMstyle),
+                                                                std::end(MlAttributeListMstyle));
             break;
         default:
             break;
     }
     // Create attribute vector with given pattern
-    m_aAttributeList = starmathdatabase::makeMlAttributeList(m_aAttributePosList);
+    m_aAttributeList = makeMlAttributeList(m_aAttributePosList);
 }
 
 SmMlAttribute SmMlElement::getAttribute(SmMlAttributeValueType aAttributeType) const
@@ -120,17 +229,6 @@ void SmMlElement::setSubElement(size_t nPos, SmMlElement* aElement)
     }
     // Assign value
     m_aSubElements[nPos] = aElement;
-}
-
-std::vector<SmMlAttribute>
-starmathdatabase::makeMlAttributeList(std::vector<SmMlAttributePos> aAttributePosList)
-{
-    std::vector<SmMlAttribute> aAttributeList(aAttributePosList.size());
-    for (size_t i = 0; i < aAttributePosList.size(); ++i)
-    {
-        aAttributeList[i].setMlAttributeValueType(aAttributePosList[i].m_aAttributeValueType);
-    }
-    return aAttributeList;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

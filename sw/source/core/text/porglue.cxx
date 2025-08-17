@@ -25,14 +25,14 @@
 #include "porfly.hxx"
 #include <comphelper/string.hxx>
 
-SwGluePortion::SwGluePortion( const sal_uInt16 nInitFixWidth )
+SwGluePortion::SwGluePortion(const SwTwips nInitFixWidth)
     : m_nFixWidth( nInitFixWidth )
 {
     PrtWidth( m_nFixWidth );
     SetWhichPor( PortionType::Glue );
 }
 
-TextFrameIndex SwGluePortion::GetModelPositionForViewPoint(const sal_uInt16 nOfst) const
+TextFrameIndex SwGluePortion::GetModelPositionForViewPoint(const SwTwips nOfst) const
 {
     // FIXME why nOfst > GetLen() ? is that supposed to be > Width() ?
     if( !GetLen() || nOfst > sal_Int32(GetLen()) || !Width() )
@@ -41,12 +41,12 @@ TextFrameIndex SwGluePortion::GetModelPositionForViewPoint(const sal_uInt16 nOfs
         return TextFrameIndex(nOfst / (Width() / sal_Int32(GetLen())));
 }
 
-SwPosSize SwGluePortion::GetTextSize( const SwTextSizeInfo &rInf ) const
+SwPositiveSize SwGluePortion::GetTextSize( const SwTextSizeInfo &rInf ) const
 {
     if (TextFrameIndex(1) >= GetLen() || rInf.GetLen() > GetLen() || !Width() || !GetLen())
-        return SwPosSize(*this);
+        return SwPositiveSize(*this);
     else
-        return SwPosSize((Width() / sal_Int32(GetLen())) * sal_Int32(rInf.GetLen()), Height());
+        return SwPositiveSize((Width() / sal_Int32(GetLen())) * sal_Int32(rInf.GetLen()), Height());
 }
 
 bool SwGluePortion::GetExpText( const SwTextSizeInfo &rInf, OUString &rText ) const
@@ -88,7 +88,7 @@ void SwGluePortion::Paint( const SwTextPaintInfo &rInf ) const
     if (TextFrameIndex(1) == GetLen())
     {
         OUString aBullet( CH_BULLET );
-        SwPosSize aBulletSize( rInf.GetTextSize( aBullet ) );
+        SwPositiveSize aBulletSize( rInf.GetTextSize( aBullet ) );
         Point aPos( rInf.GetPos() );
         aPos.AdjustX((Width()/2) - (aBulletSize.Width()/2) );
         SwTextPaintInfo aInf( rInf, &aBullet );
@@ -145,9 +145,9 @@ void SwGluePortion::dumpAsXml(xmlTextWriterPtr pWriter, const OUString& rText,
  * We're expecting a frame-local SwRect!
  */
 SwFixPortion::SwFixPortion( const SwRect &rRect )
-       :SwGluePortion( sal_uInt16(rRect.Width()) ), m_nFix( sal_uInt16(rRect.Left()) )
+       :SwGluePortion(rRect.Width()), m_nFix(rRect.Left())
 {
-    Height( sal_uInt16(rRect.Height()) );
+    Height(rRect.Height());
     SetWhichPor( PortionType::Fix );
 }
 

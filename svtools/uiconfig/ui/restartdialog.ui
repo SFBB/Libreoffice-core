@@ -23,12 +23,13 @@
             <property name="layout-style">end</property>
             <child>
               <object class="GtkButton" id="yes">
-                <property name="label" translatable="yes" context="restartdialog|yes">Restart Now</property>
+                <property name="label" translatable="yes" context="restartdialog|yes">_Restart Now</property>
                 <property name="visible">True</property>
                 <property name="can-focus">True</property>
                 <property name="can-default">True</property>
                 <property name="has-default">True</property>
                 <property name="receives-default">True</property>
+                <property name="use-underline">True</property>
               </object>
               <packing>
                 <property name="expand">False</property>
@@ -38,10 +39,11 @@
             </child>
             <child>
               <object class="GtkButton" id="no">
-                <property name="label" translatable="yes" context="restartdialog|no">Restart Later</property>
+                <property name="label" translatable="yes" context="restartdialog|no">Restart _Later</property>
                 <property name="visible">True</property>
                 <property name="can-focus">True</property>
                 <property name="receives-default">True</property>
+                <property name="use-underline">True</property>
               </object>
               <packing>
                 <property name="expand">False</property>
@@ -199,6 +201,21 @@
               </packing>
             </child>
             <child>
+              <object class="GtkLabel" id="reason_theme_reload">
+                <property name="can-focus">False</property>
+                <property name="no-show-all">True</property>
+                <property name="label" translatable="yes" context="restartdialog|reason_theme_reload">To apply theme changes, %PRODUCTNAME must be restarted.</property>
+                <property name="wrap">True</property>
+                <property name="max-width-chars">50</property>
+                <property name="xalign">0</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">9</property>
+              </packing>
+            </child>
+            <child>
               <object class="GtkLabel" id="reason_uichange">
                 <property name="can-focus">False</property>
                 <property name="no-show-all">True</property>
@@ -244,21 +261,6 @@
               </packing>
             </child>
             <child>
-              <object class="GtkLabel" id="reason_mscompatible_formsmenu">
-                <property name="can-focus">False</property>
-                <property name="no-show-all">True</property>
-                <property name="label" translatable="yes" context="restartdialog|reason_mscompatible_formsmenu">For restructuring the Form menu, %PRODUCTNAME must be restarted.</property>
-                <property name="wrap">True</property>
-                <property name="max-width-chars">50</property>
-                <property name="xalign">0</property>
-              </object>
-              <packing>
-                <property name="expand">False</property>
-                <property name="fill">True</property>
-                <property name="position">13</property>
-              </packing>
-            </child>
-            <child>
               <object class="GtkLabel" id="label">
                 <property name="visible">True</property>
                 <property name="can-focus">False</property>
@@ -269,7 +271,7 @@
               <packing>
                 <property name="expand">False</property>
                 <property name="fill">True</property>
-                <property name="position">14</property>
+                <property name="position">13</property>
               </packing>
             </child>
             <child>
@@ -284,7 +286,7 @@
               <packing>
                 <property name="expand">False</property>
                 <property name="fill">True</property>
-                <property name="position">15</property>
+                <property name="position">14</property>
               </packing>
             </child>
           </object>

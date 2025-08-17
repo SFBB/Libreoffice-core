@@ -25,12 +25,9 @@
 using namespace dbaccess;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::sdb;
-using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::container;
 using namespace ::osl;
-using namespace ::comphelper;
 using namespace ::cppu;
 
 
@@ -78,7 +75,7 @@ Any SAL_CALL ODataColumn::queryInterface( const Type & _rType )
 // XServiceInfo
 OUString ODataColumn::getImplementationName(  )
 {
-    return "com.sun.star.sdb.ODataColumn";
+    return u"com.sun.star.sdb.ODataColumn"_ustr;
 }
 
 Sequence< OUString > ODataColumn::getSupportedServiceNames(  )

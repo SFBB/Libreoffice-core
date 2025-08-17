@@ -16,8 +16,7 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SW_SOURCE_UIBASE_INC_PGGRID_HXX
-#define INCLUDED_SW_SOURCE_UIBASE_INC_PGGRID_HXX
+#pragma once
 
 #include <sfx2/tabdlg.hxx>
 #include "colex.hxx"
@@ -35,6 +34,7 @@ class SwTextGridPage final : public SfxTabPage
     bool        m_bSquaredMode;
     bool        m_bHRulerChanged;
     bool        m_bVRulerChanged;
+    bool        m_bModified = false;
 
     SwPageGridExample m_aExampleWN;
     std::unique_ptr<weld::RadioButton> m_xNoGridRB;
@@ -77,7 +77,7 @@ public:
     virtual ~SwTextGridPage() override;
 
     static std::unique_ptr<SfxTabPage> Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet *rSet);
-    static WhichRangesContainer GetRanges();
+    static const WhichRangesContainer & GetRanges();
 
     virtual bool    FillItemSet(SfxItemSet *rSet) override;
     virtual void    Reset(const SfxItemSet *rSet) override;
@@ -85,7 +85,5 @@ public:
     virtual void    ActivatePage( const SfxItemSet& rSet ) override;
     virtual DeactivateRC   DeactivatePage( SfxItemSet* pSet ) override;
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

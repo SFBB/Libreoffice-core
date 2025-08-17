@@ -22,6 +22,7 @@
 #include <drawinglayer/processor2d/baseprocessor2d.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <basegfx/color/bcolormodifier.hxx>
+#include <vcl/rendercontext/AntialiasingFlags.hxx>
 #include <vcl/vclptr.hxx>
 
 class OutputDevice;
@@ -32,9 +33,7 @@ class TextSimplePortionPrimitive2D;
 class PolygonHairlinePrimitive2D;
 class BitmapPrimitive2D;
 class FillGraphicPrimitive2D;
-class PolyPolygonGradientPrimitive2D;
 class PolyPolygonGraphicPrimitive2D;
-class MetafilePrimitive2D;
 class MaskPrimitive2D;
 class UnifiedTransparencePrimitive2D;
 class TransparencePrimitive2D;
@@ -43,7 +42,6 @@ class MarkerArrayPrimitive2D;
 class PointArrayPrimitive2D;
 class ModifiedColorPrimitive2D;
 class PolygonStrokePrimitive2D;
-class ControlPrimitive2D;
 class PagePreviewPrimitive2D;
 class EpsPrimitive2D;
 class SvgLinearAtomPrimitive2D;
@@ -74,6 +72,9 @@ protected:
     // stack value (increment and decrement) to count how deep we are in
     // PolygonStrokePrimitive2D's decompositions (normally only one)
     sal_uInt32 mnPolygonStrokePrimitive2D;
+
+    // AntialiasingFlags, saved at construction time
+    const AntialiasingFlags mnOriginalAA;
 
     // common VCL rendering support
     void RenderTextSimpleOrDecoratedPortionPrimitive2D(
@@ -108,10 +109,12 @@ protected:
     void adaptLineToFillDrawMode() const;
     void adaptTextToFillDrawMode() const;
 
+    // allow to react on changes of ViewInformation2D
+    virtual void onViewInformation2DChanged() override;
+
 public:
     // constructor/destructor
-    VclProcessor2D(const geometry::ViewInformation2D& rViewInformation, OutputDevice& rOutDev,
-                   basegfx::BColorModifierStack aInitStack = basegfx::BColorModifierStack());
+    VclProcessor2D(const geometry::ViewInformation2D& rViewInformation, OutputDevice& rOutDev);
     virtual ~VclProcessor2D() override;
 
 private:

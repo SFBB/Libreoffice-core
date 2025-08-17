@@ -20,6 +20,7 @@
 #include <sal/config.h>
 #include <sal/types.h>
 #include <o3tl/char16_t2wchar_t.hxx>
+#include <memory>
 
 #ifdef _WIN32
 
@@ -37,18 +38,10 @@ static bool SHGetSpecialFolderW32( int nFolderID, WCHAR* pszFolder, int nSize )
 
     if( hHdl == NOERROR )
     {
-        WCHAR *lpFolder = static_cast< WCHAR* >( HeapAlloc( GetProcessHeap(), 0, 16000 ));
+        auto xFolder = std::make_unique<WCHAR[]>(16000);
 
-        SHGetPathFromIDListW( pidl, lpFolder );
-        wcsncpy( pszFolder, lpFolder, nSize );
-
-        HeapFree( GetProcessHeap(), 0, lpFolder );
-        IMalloc *pMalloc;
-        if( NOERROR == SHGetMalloc(&pMalloc) )
-        {
-            pMalloc->Free( pidl );
-            pMalloc->Release();
-        }
+        SHGetPathFromIDListW( pidl, xFolder.get() );
+        wcsncpy( pszFolder, xFolder.get(), nSize );
     }
     return true;
 }

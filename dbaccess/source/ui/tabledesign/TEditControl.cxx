@@ -49,14 +49,10 @@ using namespace ::dbaui;
 using namespace ::comphelper;
 using namespace ::svt;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::util;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::sdbcx;
-using namespace ::com::sun::star::sdb;
 
 
 #define HANDLE_ID       0
@@ -274,7 +270,7 @@ void OTableEditorCtrl::dispose()
     pDescrCell.disposeAndClear();
     pHelpTextCell.disposeAndClear();
     pDescrWin = nullptr;
-    m_pView.clear();
+    m_pView.reset();
     OTableRowView::dispose();
 }
 
@@ -774,9 +770,8 @@ void OTableEditorCtrl::InsertRows( sal_Int32 nRow )
     TransferableDataHelper aTransferData(TransferableDataHelper::CreateFromSystemClipboard(GetParent()));
     if(aTransferData.HasFormat(SotClipboardFormatId::SBA_TABED))
     {
-        ::tools::SvRef<SotTempStream> aStreamRef;
-        bool bOk = aTransferData.GetSotStorageStream(SotClipboardFormatId::SBA_TABED,aStreamRef);
-        if (bOk && aStreamRef.is())
+        std::unique_ptr<SvStream> aStreamRef = aTransferData.GetSotStorageStream(SotClipboardFormatId::SBA_TABED);
+        if (aStreamRef)
         {
             aStreamRef->Seek(STREAM_SEEK_TO_BEGIN);
             aStreamRef->ResetError();
@@ -1063,7 +1058,7 @@ OUString OTableEditorCtrl::GetCellText( sal_Int32 nRow, sal_uInt16 nColId ) cons
 
 sal_uInt32 OTableEditorCtrl::GetTotalCellWidth(sal_Int32 nRow, sal_uInt16 nColId)
 {
-    return GetTextWidth(GetCellText(nRow, nColId)) + 2 * GetTextWidth("0");
+    return GetTextWidth(GetCellText(nRow, nColId)) + 2 * GetTextWidth(u"0"_ustr);
 }
 
 OFieldDescription* OTableEditorCtrl::GetFieldDescr( sal_Int32 nRow )
@@ -1388,10 +1383,10 @@ void OTableEditorCtrl::Command(const CommandEvent& rEvt)
 
                             ::tools::Rectangle aRect(aMenuPos, Size(1, 1));
                             weld::Window* pPopupParent = weld::GetPopupParent(*this, aRect);
-                            std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(pPopupParent, "dbaccess/ui/querycolmenu.ui"));
-                            std::unique_ptr<weld::Menu> xContextMenu(xBuilder->weld_menu("menu"));
-                            xContextMenu->remove("delete");
-                            xContextMenu->remove("separator");
+                            std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(pPopupParent, u"dbaccess/ui/querycolmenu.ui"_ustr));
+                            std::unique_ptr<weld::Menu> xContextMenu(xBuilder->weld_menu(u"menu"_ustr));
+                            xContextMenu->remove(u"delete"_ustr);
+                            xContextMenu->remove(u"separator"_ustr);
                             if (xContextMenu->popup_at_rect(pPopupParent, aRect) == "width")
                                 adjustBrowseBoxColumnWidth( this, nColId );
                         }
@@ -1401,17 +1396,17 @@ void OTableEditorCtrl::Command(const CommandEvent& rEvt)
                 {
                     ::tools::Rectangle aRect(aMenuPos, Size(1, 1));
                     weld::Window* pPopupParent = weld::GetPopupParent(*this, aRect);
-                    std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(pPopupParent, "dbaccess/ui/tabledesignrowmenu.ui"));
-                    std::unique_ptr<weld::Menu> xContextMenu(xBuilder->weld_menu("menu"));
+                    std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(pPopupParent, u"dbaccess/ui/tabledesignrowmenu.ui"_ustr));
+                    std::unique_ptr<weld::Menu> xContextMenu(xBuilder->weld_menu(u"menu"_ustr));
 
                     if (!IsCutAllowed())
-                        xContextMenu->remove("cut");
+                        xContextMenu->remove(u"cut"_ustr);
                     if (!IsCopyAllowed())
-                        xContextMenu->remove("copy");
+                        xContextMenu->remove(u"copy"_ustr);
                     if (!IsPasteAllowed())
-                        xContextMenu->remove("paste");
+                        xContextMenu->remove(u"paste"_ustr);
                     if (!IsDeleteAllowed())
-                        xContextMenu->remove("delete");
+                        xContextMenu->remove(u"delete"_ustr);
                     // tdf#71224: WORKAROUND for the moment, we don't implement insert field at specific position
                     // It's not SQL standard and each database has made its choice (some use "BEFORE", other "FIRST" and "AFTER")
                     // and some, like Postgresql, don't allow this.
@@ -1421,15 +1416,15 @@ void OTableEditorCtrl::Command(const CommandEvent& rEvt)
                     // The real fix is to implement the insert for each database + error message for those which don't support this
                     //if (!IsInsertNewAllowed(nRow))
                     if ( GetView()->getController().getTable().is() )
-                        xContextMenu->remove("insert");
+                        xContextMenu->remove(u"insert"_ustr);
 
                     if (IsPrimaryKeyAllowed())
                     {
-                        xContextMenu->set_active("primarykey", IsRowSelected(GetCurRow()) && IsPrimaryKey());
+                        xContextMenu->set_active(u"primarykey"_ustr, IsRowSelected(GetCurRow()) && IsPrimaryKey());
                     }
                     else
                     {
-                        xContextMenu->remove("primarykey");
+                        xContextMenu->remove(u"primarykey"_ustr);
                     }
 
                     if( SetDataPtr(m_nDataPos) )

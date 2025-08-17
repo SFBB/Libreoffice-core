@@ -121,7 +121,6 @@ void GraphCtrl::InitSdrModel()
 
     // Creating a Model
     pModel.reset(new SdrModel(nullptr, nullptr, true));
-    pModel->GetItemPool().FreezeIdRanges();
     pModel->SetScaleUnit(aMap100.GetMapUnit());
     pModel->SetDefaultFontHeight( 500 );
 
@@ -306,12 +305,13 @@ bool GraphCtrl::KeyInput( const KeyEvent& rKEvt )
         {
             if ( mbSdrMode )
             {
+                const SdrMarkList& rMarkList = pView->GetMarkedObjectList();
                 if ( pView->IsAction() )
                 {
                     pView->BrkAction();
                     bProc = true;
                 }
-                else if ( pView->AreObjectsMarked() )
+                else if ( rMarkList.GetMarkCount() != 0 )
                 {
                     pView->UnmarkAllObj();
                     bProc = true;
@@ -411,7 +411,8 @@ bool GraphCtrl::KeyInput( const KeyEvent& rKEvt )
                 nY = 0;
             }
 
-            if (pView->AreObjectsMarked() && !aCode.IsMod1() )
+            const SdrMarkList& rMarkList = pView->GetMarkedObjectList();
+            if (rMarkList.GetMarkCount() != 0 && !aCode.IsMod1() )
             {
                 if(aCode.IsMod2())
                 {
@@ -834,14 +835,12 @@ Point GraphCtrl::GetPositionInDialog() const
     return Point();
 }
 
-css::uno::Reference< css::accessibility::XAccessible > GraphCtrl::CreateAccessible()
+rtl::Reference<comphelper::OAccessible> GraphCtrl::CreateAccessible()
 {
 #if !ENABLE_WASM_STRIP_ACCESSIBILITY
     if(mpAccContext == nullptr )
     {
-        // Disable accessibility if no model/view data available
-        if (pView && pModel)
-            mpAccContext = new SvxGraphCtrlAccessibleContext(*this);
+        mpAccContext = new SvxGraphCtrlAccessibleContext(*this);
     }
 #endif
     return mpAccContext;

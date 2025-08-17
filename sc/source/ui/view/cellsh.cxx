@@ -53,8 +53,6 @@
 #include <clipparam.hxx>
 #include <markdata.hxx>
 #include <gridwin.hxx>
-#include <Sparkline.hxx>
-#include <SparklineGroup.hxx>
 
 #define ShellClass_ScCellShell
 #define ShellClass_CellMovement
@@ -69,7 +67,7 @@ void ScCellShell::InitInterface_Impl()
                                             SfxVisibilityFlags::Standard | SfxVisibilityFlags::Server,
                                             ToolbarId::Objectbar_Format);
 
-    GetStaticInterface()->RegisterPopupMenu("cell");
+    GetStaticInterface()->RegisterPopupMenu(u"cell"_ustr);
 }
 
 ScCellShell::ScCellShell(ScViewData& rData, const VclPtr<vcl::Window>& frameWin) :
@@ -78,7 +76,7 @@ ScCellShell::ScCellShell(ScViewData& rData, const VclPtr<vcl::Window>& frameWin)
     bPastePossible(false),
     pFrameWin(frameWin)
 {
-    SetName("Cell");
+    SetName(u"Cell"_ustr);
     SfxShell::SetContextName(vcl::EnumContext::GetContextName(vcl::EnumContext::Context::Cell));
 }
 
@@ -108,7 +106,7 @@ void ScCellShell::GetBlockState( SfxItemSet& rSet )
     bool bOnlyNotBecauseOfMatrix;
     bool bEditable = pTabViewShell->SelectionEditable( &bOnlyNotBecauseOfMatrix );
     ScDocument& rDoc = GetViewData().GetDocument();
-    ScDocShell* pDocShell = GetViewData().GetDocShell();
+    ScDocShell& rDocShell = GetViewData().GetDocShell();
     ScMarkData& rMark = GetViewData().GetMarkData();
     SCCOL nCol1, nCol2;
     SCROW nRow1, nRow2;
@@ -235,6 +233,7 @@ void ScCellShell::GetBlockState( SfxItemSet& rSet )
                 bDisable = false;
                 break;
             case SID_CUT:               // cut
+            case SID_COPYDELETE:
                 bDisable = !bSimpleArea || GetObjectShell()->isContentExtractionLocked();
                 break;
             case FID_INS_CELL:          // insert cells, just simple selection
@@ -257,15 +256,15 @@ void ScCellShell::GetBlockState( SfxItemSet& rSet )
             case FID_INS_ROWS_BEFORE:           // insert rows
             case FID_INS_ROWS_AFTER:
             {
-                sc::ColRowEditAction eAction = sc::ColRowEditAction::InsertRowsBefore;
+                sc::EditAction eAction = sc::EditAction::InsertRowsBefore;
                 if (nWhich == FID_INS_ROWS_AFTER)
-                    eAction = sc::ColRowEditAction::InsertRowsAfter;
+                    eAction = sc::EditAction::InsertRowsAfter;
 
                 bDisable = (!bSimpleArea) || GetViewData().SimpleColMarked();
                 if (!bEditable && nCol1 == 0 && nCol2 == rDoc.MaxCol())
                 {
                     // See if row insertions are allowed.
-                    bEditable = rDoc.IsEditActionAllowed(eAction, rMark, nRow1, nRow2);
+                    bEditable = rDoc.IsEditActionAllowed(eAction, rMark, nCol1, nRow1, nCol2, nRow2);
                 }
                 break;
             }
@@ -277,16 +276,16 @@ void ScCellShell::GetBlockState( SfxItemSet& rSet )
             case FID_INS_COLUMNS_BEFORE:        // insert columns
             case FID_INS_COLUMNS_AFTER:
             {
-                sc::ColRowEditAction eAction = sc::ColRowEditAction::InsertColumnsBefore;
+                sc::EditAction eAction = sc::EditAction::InsertColumnsBefore;
                 if (nWhich == FID_INS_COLUMNS_AFTER)
-                    eAction = sc::ColRowEditAction::InsertColumnsAfter;
+                    eAction = sc::EditAction::InsertColumnsAfter;
 
                 bDisable = (!bSimpleArea && eMarkType != SC_MARK_SIMPLE_FILTERED)
                            || GetViewData().SimpleRowMarked();
                 if (!bEditable && nRow1 == 0 && nRow2 == rDoc.MaxRow())
                 {
                     // See if row insertions are allowed.
-                    bEditable = rDoc.IsEditActionAllowed(eAction, rMark, nCol1, nCol2);
+                    bEditable = rDoc.IsEditActionAllowed(eAction, rMark, nCol1, nRow1, nCol2, nRow2);
                 }
                 break;
             }
@@ -295,6 +294,7 @@ void ScCellShell::GetBlockState( SfxItemSet& rSet )
                 break;
 
             case SID_COPY:              // copy
+            case SID_COPY_HYPERLINK_LOCATION:
                 // not editable because of matrix only? Do not damage matrix
                 //! is not called, when protected AND matrix, we will have
                 //! to live with this... is caught in Copy-Routine, otherwise
@@ -317,9 +317,10 @@ void ScCellShell::GetBlockState( SfxItemSet& rSet )
                     bNeedEdit = false;
                 break;
 
+            case FID_CURRENTVALIDATION:
             case FID_VALIDATION:
                 {
-                    if ( pDocShell && pDocShell->IsDocShared() )
+                    if ( rDocShell.IsDocShared() )
                     {
                         bDisable = true;
                     }
@@ -358,8 +359,8 @@ void ScCellShell::GetBlockState( SfxItemSet& rSet )
 
 void ScCellShell::GetCellState( SfxItemSet& rSet )
 {
-    ScDocShell* pDocShell = GetViewData().GetDocShell();
-    ScDocument& rDoc = GetViewData().GetDocShell()->GetDocument();
+    ScDocShell& rDocShell = GetViewData().GetDocShell();
+    ScDocument& rDoc = GetViewData().GetDocShell().GetDocument();
     ScAddress aCursor( GetViewData().GetCurX(), GetViewData().GetCurY(),
                         GetViewData().GetTabNo() );
     SfxWhichIter aIter(rSet);
@@ -409,7 +410,7 @@ void ScCellShell::GetCellState( SfxItemSet& rSet )
                     else
                     {
                         bDisable = false;
-                        if ( pDocShell && pDocShell->IsDocShared() )
+                        if ( rDocShell.IsDocShared() )
                         {
                             bDisable = true;
                         }
@@ -635,12 +636,18 @@ void ScCellShell::GetClipState( SfxItemSet& rSet )
         SCCOL nCol = GetViewData().GetCurX();
         SCROW nRow = GetViewData().GetCurY();
         SCTAB nTab = GetViewData().GetTabNo();
-        ScDocument& rDoc = GetViewData().GetDocShell()->GetDocument();
+        ScDocument& rDoc = GetViewData().GetDocShell().GetDocument();
         if (!rDoc.IsBlockEditable( nTab, nCol,nRow, nCol,nRow ))
             bDisable = true;
 
         if (!bDisable && !checkDestRanges(GetViewData()))
             bDisable = true;
+    }
+
+    if (!ScTransferObj::GetOwnClipboard(
+        ScTabViewShell::GetClipData(GetViewData().GetActiveWin())))
+    {
+        rSet.DisableItem( SID_PASTE_TRANSPOSED );
     }
 
     if (bDisable)
@@ -689,7 +696,7 @@ void ScCellShell::GetHLinkState( SfxItemSet& rSet )
 void ScCellShell::GetState(SfxItemSet &rSet)
 {
     ScTabViewShell* pTabViewShell   = GetViewData().GetViewShell();
-    ScDocShell* pDocSh = GetViewData().GetDocShell();
+    ScDocShell& rDocSh = GetViewData().GetDocShell();
     ScViewData& rData       = GetViewData();
     ScDocument& rDoc        = rData.GetDocument();
     ScMarkData& rMark       = rData.GetMarkData();
@@ -884,7 +891,7 @@ void ScCellShell::GetState(SfxItemSet &rSet)
 
                     // In interpreter may happen via rescheduled Basic
                     if ( rDoc.IsInInterpreter() )
-                        rSet.Put( SvxStatusItem( SID_TABLE_CELL, "...", StatusCategory::Formula ) );
+                        rSet.Put( SvxStatusItem( SID_TABLE_CELL, u"..."_ustr, StatusCategory::Formula ) );
                     else
                     {
                         FormulaError nErrCode = FormulaError::NONE;
@@ -999,7 +1006,7 @@ void ScCellShell::GetState(SfxItemSet &rSet)
                             rDoc.GetScenarioData( nScTab, aStr, aDummyCol, nFlags );
                             aList.push_back(aStr);
                             // Protection is sal_True if both Sheet and Scenario are protected
-                            aList.push_back((bSheetProtected && (nFlags & ScScenarioFlags::Protected)) ? OUString("1") : OUString("0"));
+                            aList.push_back((bSheetProtected && (nFlags & ScScenarioFlags::Protected)) ? u"1"_ustr : u"0"_ustr);
                             ++nScTab;
                         }
                     }
@@ -1023,7 +1030,7 @@ void ScCellShell::GetState(SfxItemSet &rSet)
             case FID_COL_OPT_WIDTH:
             case FID_ROW_OPT_HEIGHT:
             case FID_DELETE_CELL:
-                if ( rDoc.IsTabProtected(nTab) || pDocSh->IsReadOnly())
+                if ( rDoc.IsTabProtected(nTab) || rDocSh.IsReadOnly())
                     rSet.DisableItem( nWhich );
                 break;
 
@@ -1081,7 +1088,7 @@ void ScCellShell::GetState(SfxItemSet &rSet)
                 {
                     SfxUInt16Item aWidthItem( FID_COL_WIDTH, rDoc.GetColWidth( nPosX , nTab) );
                     rSet.Put( aWidthItem );
-                    if ( pDocSh->IsReadOnly())
+                    if ( rDocSh.IsReadOnly())
                         rSet.DisableItem( nWhich );
 
                     //XXX disable if not conclusive
@@ -1093,7 +1100,7 @@ void ScCellShell::GetState(SfxItemSet &rSet)
                     SfxUInt16Item aHeightItem( FID_ROW_HEIGHT, rDoc.GetRowHeight( nPosY , nTab) );
                     rSet.Put( aHeightItem );
                     //XXX disable if not conclusive
-                    if ( pDocSh->IsReadOnly())
+                    if ( rDocSh.IsReadOnly())
                         rSet.DisableItem( nWhich );
                 }
                 break;
@@ -1244,7 +1251,7 @@ void ScCellShell::GetState(SfxItemSet &rSet)
 
             case FID_USE_NAME:
                 {
-                    if ( pDocSh && pDocSh->IsDocShared() )
+                    if ( rDocSh.IsDocShared() )
                         rSet.DisableItem( nWhich );
                     else
                     {
@@ -1260,7 +1267,7 @@ void ScCellShell::GetState(SfxItemSet &rSet)
             case FID_ADD_NAME:
             case SID_DEFINE_COLROWNAMERANGES:
                 {
-                    if ( pDocSh && pDocSh->IsDocShared() )
+                    if ( rDocSh.IsDocShared() )
                     {
                         rSet.DisableItem( nWhich );
                     }

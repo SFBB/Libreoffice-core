@@ -16,26 +16,26 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SW_INC_FCHRFMT_HXX
-#define INCLUDED_SW_INC_FCHRFMT_HXX
+#pragma once
 
 #include <svl/poolitem.hxx>
-#include "calbck.hxx"
+#include <svl/listener.hxx>
 #include "format.hxx"
 #include "charfmt.hxx"
 
 class SwTextCharFormat;
-class IntlWrapper;
 
 /// This pool item subclass can appear in the hint array of a text node. It refers to a character
 /// style. It's owned by SwTextCharFormat.
-class SW_DLLPUBLIC SwFormatCharFormat final : public SfxPoolItem, public SwClient
+class SW_DLLPUBLIC SwFormatCharFormat final : public SfxPoolItem, public SvtListener
 {
     friend class SwTextCharFormat;
     SwTextCharFormat* m_pTextAttribute;     ///< My text attribute.
+    SwCharFormat* m_pCharFormat;
 
 public:
     /// single argument ctors shall be explicit.
+    DECLARE_ITEM_TYPE_FUNCTION(SwFormatCharFormat)
     explicit SwFormatCharFormat( SwCharFormat *pFormat );
     virtual ~SwFormatCharFormat() override;
 
@@ -43,7 +43,7 @@ public:
     SwFormatCharFormat( const SwFormatCharFormat& rAttr );
 
 private:
-    virtual void SwClientNotify(const SwModify&, const SfxHint&) override;
+    virtual void Notify(const SfxHint&) override;
 
     /// @@@ public copy ctor, but no copy assignment?
     SwFormatCharFormat & operator= (const SwFormatCharFormat &) = delete;
@@ -62,15 +62,16 @@ public:
     virtual bool QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
-    void SetCharFormat( SwFormat* pFormat )
+    void SetCharFormat( SwCharFormat* pFormat )
     {
         assert(!pFormat->IsDefault()); // expose cases that lead to use-after-free
-        pFormat->Add(this);
+        EndListeningAll();
+        StartListening(pFormat->GetNotifier());
+        m_pCharFormat = pFormat;
     }
-    SwCharFormat* GetCharFormat() const { return const_cast<SwCharFormat*>(static_cast<const SwCharFormat*>(GetRegisteredIn())); }
+    SwCharFormat* GetCharFormat() const { return m_pCharFormat; }
 
     void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

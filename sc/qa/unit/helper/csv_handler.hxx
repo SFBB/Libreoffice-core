@@ -34,9 +34,9 @@ inline OUString getConditionalFormatString(ScDocument* pDoc, SCCOL nCol, SCROW n
 
     const SfxItemSet* pCondSet = pDoc->GetCondResult( nCol, nRow, nTab );
     const ScPatternAttr* pPattern = pDoc->GetPattern(nCol, nRow, nTab);
-    SvNumberFormatter* pFormatter = pDoc->GetFormatTable();
-    sal_uInt32 nFormat = pPattern->GetNumberFormat( pFormatter, pCondSet );
-    aString = ScCellFormat::GetString(*pDoc, ScAddress(nCol, nRow, nTab), nFormat, &pColor, *pFormatter);
+    ScInterpreterContext& rContext = pDoc->GetNonThreadedContext();
+    sal_uInt32 nFormat = pPattern->GetNumberFormat( rContext, pCondSet );
+    aString = ScCellFormat::GetString(*pDoc, ScAddress(nCol, nRow, nTab), nFormat, &pColor, &rContext);
     return aString;
 }
 
@@ -100,6 +100,8 @@ public:
         else if (meStringType == StringType::PureString)
         {
             OUString aCSVString(p, n, RTL_TEXTENCODING_UTF8);
+            if (aCSVString.endsWith("\n"))
+                aCSVString = aCSVString.copy(0, aCSVString.getLength()-1);
             OUString aString = mpDoc->GetString(mnCol, mnRow, mnTab);
 
 #if DEBUG_CSV_HANDLER

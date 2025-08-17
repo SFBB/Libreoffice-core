@@ -115,6 +115,13 @@ void SetCfvoData( ColorScaleRuleModelEntry* pEntry, const AttributeList& rAttrib
 {
     OUString aType = rAttribs.getString( XML_type, OUString() );
     OUString aVal = rAttribs.getString(XML_val, OUString());
+    OUString aGreaterThanOrEqual = rAttribs.getString(XML_gte, OUString());
+
+    if (!aGreaterThanOrEqual.isEmpty())
+    {
+        if (!aGreaterThanOrEqual.toBoolean())
+            pEntry->meMode = ScConditionMode::Greater;
+    }
 
     if (aVal != "\"\"")
     {
@@ -172,7 +179,7 @@ void ColorScaleRule::importCfvo( const AttributeList& rAttribs )
 }
 
 // https://learn.microsoft.com/en-us/dotnet/api/documentformat.openxml.spreadsheet.indexedcolors?view=openxml-2.8.1
-static ::Color IndexedColors[] = {
+const ::Color IndexedColors[] = {
     0x00000000,
     0x00FFFFFF,
     0x00FF0000,
@@ -303,7 +310,7 @@ void ColorScaleRule::importColor( const AttributeList& rAttribs )
 
 namespace {
 
-ScColorScaleEntry* ConvertToModel( const ColorScaleRuleModelEntry& rEntry, ScDocument* pDoc, const ScAddress& rAddr )
+ScColorScaleEntry* ConvertToModel( const ColorScaleRuleModelEntry& rEntry, ScDocument& rDoc, const ScAddress& rAddr )
 {
         ScColorScaleEntry* pEntry = new ScColorScaleEntry(rEntry.mnVal, rEntry.maColor);
 
@@ -321,19 +328,21 @@ ScColorScaleEntry* ConvertToModel( const ColorScaleRuleModelEntry& rEntry, ScDoc
         if(!rEntry.maFormula.isEmpty())
         {
             pEntry->SetType(COLORSCALE_FORMULA);
-            pEntry->SetFormula(rEntry.maFormula, *pDoc, rAddr, formula::FormulaGrammar::GRAM_ENGLISH_XL_A1);
+            pEntry->SetFormula(rEntry.maFormula, rDoc, rAddr, formula::FormulaGrammar::GRAM_ENGLISH_XL_A1);
         }
+
+        pEntry->SetMode(rEntry.meMode);
 
         return pEntry;
 }
 
 }
 
-void ColorScaleRule::AddEntries( ScColorScaleFormat* pFormat, ScDocument* pDoc, const ScAddress& rAddr )
+void ColorScaleRule::AddEntries( ScColorScaleFormat* pFormat, ScDocument& rDoc, const ScAddress& rAddr )
 {
     for(const ColorScaleRuleModelEntry & rEntry : maColorScaleRuleEntries)
     {
-        ScColorScaleEntry* pEntry = ConvertToModel( rEntry, pDoc, rAddr );
+        ScColorScaleEntry* pEntry = ConvertToModel( rEntry, rDoc, rAddr );
 
         pFormat->AddEntry( pEntry );
     }
@@ -379,10 +388,10 @@ void DataBarRule::importAttribs( const AttributeList& rAttribs )
     mxFormat->mnMaxLength = rAttribs.getUnsigned( XML_maxLength, 90);
 }
 
-void DataBarRule::SetData( ScDataBarFormat* pFormat, ScDocument* pDoc, const ScAddress& rAddr )
+void DataBarRule::SetData( ScDataBarFormat* pFormat, ScDocument& rDoc, const ScAddress& rAddr )
 {
-    ScColorScaleEntry* pUpperEntry = ConvertToModel(*mpUpperLimit, pDoc, rAddr);
-    ScColorScaleEntry* pLowerEntry = ConvertToModel(*mpLowerLimit, pDoc, rAddr);
+    ScColorScaleEntry* pUpperEntry = ConvertToModel(*mpUpperLimit, rDoc, rAddr);
+    ScColorScaleEntry* pLowerEntry = ConvertToModel(*mpLowerLimit, rDoc, rAddr);
 
     mxFormat->mpUpperLimit.reset( pUpperEntry );
     mxFormat->mpLowerLimit.reset( pLowerEntry );
@@ -406,7 +415,7 @@ void IconSetRule::importCfvo( const AttributeList& rAttribs )
 
 void IconSetRule::importAttribs( const AttributeList& rAttribs )
 {
-    maIconSetType = rAttribs.getString( XML_iconSet, "3TrafficLights1" );
+    maIconSetType = rAttribs.getString( XML_iconSet, u"3TrafficLights1"_ustr );
     mxFormatData->mbShowValue = rAttribs.getBool( XML_showValue, true );
     mxFormatData->mbReverse = rAttribs.getBool( XML_reverse, false );
     mbCustom = rAttribs.getBool(XML_custom, false);
@@ -430,9 +439,9 @@ ScIconSetType getType(std::u16string_view rName)
 {
     ScIconSetType eIconSetType = IconSet_3TrafficLights1;
     const ScIconSetMap* pIconSetMap = ScIconSetFormat::g_IconSetMap;
-    for(size_t i = 0; pIconSetMap[i].pName; ++i)
+    for(size_t i = 0; !pIconSetMap[i].aName.isEmpty(); ++i)
     {
-        if(OUString::createFromAscii(pIconSetMap[i].pName) == rName)
+        if(pIconSetMap[i].aName == rName)
         {
             eIconSetType = pIconSetMap[i].eType;
             break;
@@ -457,11 +466,11 @@ void IconSetRule::importIcon(const AttributeList& rAttribs)
     mxFormatData->maCustomVector.emplace_back(eIconSetType, nIndex);
 }
 
-void IconSetRule::SetData( ScIconSetFormat* pFormat, ScDocument* pDoc, const ScAddress& rPos )
+void IconSetRule::SetData( ScIconSetFormat* pFormat, ScDocument& rDoc, const ScAddress& rPos )
 {
     for(const ColorScaleRuleModelEntry & rEntry : maEntries)
     {
-        ScColorScaleEntry* pModelEntry = ConvertToModel( rEntry, pDoc, rPos );
+        ScColorScaleEntry* pModelEntry = ConvertToModel( rEntry, rDoc, rPos );
         mxFormatData->m_Entries.emplace_back(pModelEntry);
     }
 
@@ -1028,7 +1037,7 @@ void CondFormatRule::finalizeImport()
         }
 
         ScDocument& rDoc = getScDocument();
-        ScCondDateFormatEntry* pFormatEntry = new ScCondDateFormatEntry(&rDoc);
+        ScCondDateFormatEntry* pFormatEntry = new ScCondDateFormatEntry(rDoc);
         pFormatEntry->SetDateType(eDateType);
         OUString aStyleName = getStyles().createDxfStyle( maModel.mnDxfId );
         pFormatEntry->SetStyleName( aStyleName );
@@ -1038,28 +1047,28 @@ void CondFormatRule::finalizeImport()
     else if( mpColor )
     {
         ScDocument& rDoc = getScDocument();
-        ScColorScaleFormat* pFormatEntry = new ScColorScaleFormat(&rDoc);
+        ScColorScaleFormat* pFormatEntry = new ScColorScaleFormat(rDoc);
 
         mpFormat->AddEntry(pFormatEntry);
 
-        mpColor->AddEntries( pFormatEntry, &rDoc, aPos );
+        mpColor->AddEntries( pFormatEntry, rDoc, aPos );
     }
     else if (mpDataBar)
     {
         ScDocument& rDoc = getScDocument();
-        ScDataBarFormat* pFormatEntry = new ScDataBarFormat(&rDoc);
+        ScDataBarFormat* pFormatEntry = new ScDataBarFormat(rDoc);
 
         mpFormat->AddEntry(pFormatEntry);
-        mpDataBar->SetData( pFormatEntry, &rDoc, aPos );
+        mpDataBar->SetData( pFormatEntry, rDoc, aPos );
 
     }
     else if(mpIconSet)
     {
         ScDocument& rDoc = getScDocument();
-        ScIconSetFormat* pFormatEntry = new ScIconSetFormat(&rDoc);
+        ScIconSetFormat* pFormatEntry = new ScIconSetFormat(rDoc);
 
         mpFormat->AddEntry(pFormatEntry);
-        mpIconSet->SetData( pFormatEntry, &rDoc, aPos );
+        mpIconSet->SetData( pFormatEntry, rDoc, aPos );
     }
 }
 
@@ -1095,13 +1104,14 @@ CondFormatModel::CondFormatModel() :
 CondFormat::CondFormat( const WorksheetHelper& rHelper ) :
     WorksheetHelper( rHelper ),
     mpFormat(nullptr),
-    mbReadyForFinalize(false)
+    mbReadyForFinalize(false),
+    mbOwnsFormat(true)
 {
 }
 
 CondFormat::~CondFormat()
 {
-    if (!mbReadyForFinalize && mpFormat)
+    if (mbOwnsFormat)
         delete mpFormat;
 }
 
@@ -1109,12 +1119,12 @@ void CondFormat::importConditionalFormatting( const AttributeList& rAttribs )
 {
     getAddressConverter().convertToCellRangeList( maModel.maRanges, rAttribs.getString( XML_sqref, OUString() ), getSheetIndex(), true );
     maModel.mbPivot = rAttribs.getBool( XML_pivot, false );
-    mpFormat = new ScConditionalFormat(0, &getScDocument());
+    mpFormat = new ScConditionalFormat(0, getScDocument());
 }
 
-CondFormatRuleRef CondFormat::importCfRule( const AttributeList& rAttribs )
+std::unique_ptr<CondFormatRule> CondFormat::importCfRule( const AttributeList& rAttribs )
 {
-    CondFormatRuleRef xRule = createRule();
+    std::unique_ptr<CondFormatRule> xRule = createRule();
     xRule->importCfRule( rAttribs );
     return xRule;
 }
@@ -1125,14 +1135,14 @@ void CondFormat::importCondFormatting( SequenceInputStream& rStrm )
     rStrm.skip( 8 );
     rStrm >> aRanges;
     getAddressConverter().convertToCellRangeList( maModel.maRanges, aRanges, getSheetIndex(), true );
-    mpFormat = new ScConditionalFormat(0, &getScDocument());
+    mpFormat = new ScConditionalFormat(0, getScDocument());
 }
 
 void CondFormat::importCfRule( SequenceInputStream& rStrm )
 {
-    CondFormatRuleRef xRule = createRule();
+    std::unique_ptr<CondFormatRule> xRule = createRule();
     xRule->importCfRule( rStrm );
-    insertRule( xRule );
+    insertRule( std::move(xRule) );
 }
 
 void CondFormat::finalizeImport()
@@ -1142,30 +1152,31 @@ void CondFormat::finalizeImport()
         return;
     ScDocument& rDoc = getScDocument();
     mpFormat->SetRange(maModel.maRanges);
-    maRules.forEachMem( &CondFormatRule::finalizeImport );
+    for (auto & rPair : maRules)
+        rPair.second->finalizeImport();
 
     if (mpFormat->size() > 0)
     {
         SCTAB nTab = maModel.maRanges.GetTopLeftCorner().Tab();
+        mbOwnsFormat = false; // ownership transferred to std::unique_ptr -> ScDocument
         sal_Int32 nIndex = getScDocument().AddCondFormat(std::unique_ptr<ScConditionalFormat>(mpFormat), nTab);
 
         rDoc.AddCondFormatData( maModel.maRanges, nTab, nIndex );
     }
-    else
-        mbReadyForFinalize = false;
 }
 
-CondFormatRuleRef CondFormat::createRule()
+std::unique_ptr<CondFormatRule> CondFormat::createRule()
 {
-    return std::make_shared<CondFormatRule>( *this, mpFormat );
+    return std::make_unique<CondFormatRule>( *this, mpFormat );
 }
 
-void CondFormat::insertRule( CondFormatRuleRef const & xRule )
+void CondFormat::insertRule( std::unique_ptr<CondFormatRule> xRule )
 {
-    if( xRule && (xRule->getPriority() > 0) )
+    if( xRule->getPriority() > 0 )
     {
+        assert(&xRule->getParentCondFormat() == this);
         OSL_ENSURE( maRules.find( xRule->getPriority() ) == maRules.end(), "CondFormat::insertRule - multiple rules with equal priority" );
-        maRules[ xRule->getPriority() ] = xRule;
+        maRules[ xRule->getPriority() ] = std::move(xRule);
     }
 }
 
@@ -1183,9 +1194,9 @@ CondFormatRef CondFormatBuffer::importConditionalFormatting( const AttributeList
 
 namespace {
 
-ScConditionalFormat* findFormatByRange(const ScRangeList& rRange, const ScDocument* pDoc, SCTAB nTab)
+ScConditionalFormat* findFormatByRange(const ScRangeList& rRange, const ScDocument& rDoc, SCTAB nTab)
 {
-    ScConditionalFormatList* pList = pDoc->GetCondFormList(nTab);
+    ScConditionalFormatList* pList = rDoc.GetCondFormList(nTab);
     for (auto const& it : *pList)
     {
         if (it->GetRange() == rRange)
@@ -1220,40 +1231,16 @@ void CondFormatBuffer::updateImport(const ScDataBarFormatData* pTarget)
     }
 }
 
-bool CondFormatBuffer::insertRule(CondFormatRef const & xCondFmt, CondFormatRuleRef const & xRule)
-{
-    CondFormatRef xFoundFmt;
-    ScRangeList aRanges = xCondFmt->getRanges();
-
-    for (auto& rCondFmt : maCondFormats)
-    {
-        if (xCondFmt == rCondFmt)
-            continue;
-
-        if (aRanges == rCondFmt->getRanges())
-        {
-            xFoundFmt = rCondFmt;
-            break;
-        }
-    }
-
-    if (xFoundFmt)
-    {
-        xRule->mpFormat = xFoundFmt->mpFormat;
-        xFoundFmt->insertRule(xRule);
-    }
-
-    return static_cast<bool>(xFoundFmt);
-}
-
 void CondFormatBuffer::finalizeImport()
 {
+    deduplicateCondFormats();
+
     std::unordered_set<size_t> aDoneExtCFs;
     typedef std::unordered_map<ScRangeList, CondFormat*, ScRangeListHasher> RangeMap;
     RangeMap aRangeMap;
     for (auto& rxCondFormat : maCondFormats)
     {
-        if (aRangeMap.find(rxCondFormat->getRanges()) != aRangeMap.end())
+        if (aRangeMap.contains(rxCondFormat->getRanges()))
             continue;
         aRangeMap[rxCondFormat->getRanges()] = rxCondFormat.get();
     }
@@ -1261,7 +1248,7 @@ void CondFormatBuffer::finalizeImport()
     size_t nExtCFIndex = 0;
     for (const auto& rxExtCondFormat : maExtCondFormats)
     {
-        ScDocument* pDoc = &getScDocument();
+        ScDocument& rDoc = getScDocument();
         const ScRangeList& rRange = rxExtCondFormat->getRange();
         RangeMap::iterator it = aRangeMap.find(rRange);
         if (it != aRangeMap.end())
@@ -1272,15 +1259,15 @@ void CondFormatBuffer::finalizeImport()
             size_t nEntryIdx = 0;
             for (const auto& rxEntry : rEntries)
             {
-                CondFormatRuleRef xRule = rCondFormat.createRule();
+                std::unique_ptr<CondFormatRule> xRule = rCondFormat.createRule();
                 if (ScDataBarFormat *pData = dynamic_cast<ScDataBarFormat*>(rxEntry.get()))
                     updateImport(pData->GetDataBarData());
-                ScFormatEntry* pNewEntry = rxEntry->Clone(pDoc);
+                ScFormatEntry* pNewEntry = rxEntry->Clone(rDoc);
                 sal_Int32 nPriority = rPriorities[nEntryIdx];
                 if (nPriority == -1)
                     nPriority = mnNonPrioritizedRuleNextPriority++;
                 xRule->setFormatEntry(nPriority, pNewEntry);
-                rCondFormat.insertRule(xRule);
+                rCondFormat.insertRule(std::move(xRule));
                 ++nEntryIdx;
             }
 
@@ -1312,10 +1299,9 @@ void CondFormatBuffer::finalizeImport()
     }
 
     for( const auto& rxCondFormat : maCondFormats )
-    {
-        if ( rxCondFormat)
+        if (rxCondFormat)
             rxCondFormat->finalizeImport();
-    }
+
     for ( const auto& rxCfRule : maCfRules )
     {
         if ( rxCfRule )
@@ -1331,30 +1317,230 @@ void CondFormatBuffer::finalizeImport()
             continue;
         }
 
-        ScDocument* pDoc = &getScDocument();
+        ScDocument& rDoc = getScDocument();
         const ScRangeList& rRange = rxExtCondFormat->getRange();
         SCTAB nTab = rRange.front().aStart.Tab();
-        ScConditionalFormat* pFormat = findFormatByRange(rRange, pDoc, nTab);
+        ScConditionalFormat* pFormat = findFormatByRange(rRange, rDoc, nTab);
         if (!pFormat)
         {
             // create new conditional format and insert it
-            auto pNewFormat = std::make_unique<ScConditionalFormat>(0, pDoc);
+            auto pNewFormat = std::make_unique<ScConditionalFormat>(0, rDoc);
             pFormat = pNewFormat.get();
             pNewFormat->SetRange(rRange);
-            sal_uLong nKey = pDoc->AddCondFormat(std::move(pNewFormat), nTab);
-            pDoc->AddCondFormatData(rRange, nTab, nKey);
+            sal_uInt32 nKey = rDoc.AddCondFormat(std::move(pNewFormat), nTab);
+            rDoc.AddCondFormatData(rRange, nTab, nKey);
         }
 
         const std::vector< std::unique_ptr<ScFormatEntry> >& rEntries = rxExtCondFormat->getEntries();
         for (const auto& rxEntry : rEntries)
         {
-            pFormat->AddEntry(rxEntry->Clone(pDoc));
+            pFormat->AddEntry(rxEntry->Clone(rDoc));
         }
 
         ++nExtCFIndex;
     }
 
-    rStyleIdx = 0; // Resets <extlst> <cfRule> style index.
+    gnStyleIdx = 0; // Resets <extlst> <cfRule> style index.
+}
+
+/// Used for deduplicating
+struct CondFormatHash
+{
+    size_t operator()(const CondFormatRef& x) const { return hashCode(*x); }
+
+private:
+    static size_t hashCode(const CondFormat& r)
+    {
+        std::size_t seed(0);
+        // note that we deliberately skip the maRanges field, because, if necessary, we will merge
+        // new entries into that field.
+        o3tl::hash_combine(seed, r.maModel.mbPivot);
+        for (const auto & rPair : r.maRules)
+            o3tl::hash_combine(seed, hashCode(*rPair.second));
+        return seed;
+    }
+    static size_t hashCode(const CondFormatRule& r)
+    {
+        std::size_t seed(0);
+        o3tl::hash_combine(seed, hashCode(r.getRuleModel()));
+        return seed;
+    }
+    static size_t hashCode(const CondFormatRuleModel& r)
+    {
+        std::size_t seed(0);
+        o3tl::hash_combine(seed, r.maText);
+        // we skip mnPriority, see comment in CondFormatEquals
+        o3tl::hash_combine(seed, r.mnType);
+        o3tl::hash_combine(seed, r.mnOperator);
+        o3tl::hash_combine(seed, r.mnTimePeriod);
+        o3tl::hash_combine(seed, r.mnRank);
+        o3tl::hash_combine(seed, r.mnStdDev);
+        // o3tl::hash_combine(seed, r.mnDxfId); if I hash this, need to hash the contents
+        o3tl::hash_combine(seed, r.mbStopIfTrue);
+        o3tl::hash_combine(seed, r.mbBottom);
+        o3tl::hash_combine(seed, r.mbPercent);
+        o3tl::hash_combine(seed, r.mbAboveAverage);
+        o3tl::hash_combine(seed, r.mbEqualAverage);
+        return seed;
+    }
+};
+
+/// Used for deduplicating
+struct CondFormatEquals
+{
+    const StylesBuffer& mrStyles;
+
+    CondFormatEquals(const StylesBuffer& rStyles) : mrStyles(rStyles) {}
+
+    bool operator()(const CondFormatRef& lhs, const CondFormatRef& rhs) const
+    {
+        if (lhs.get() == rhs.get())
+            return true;
+        // note that we deliberately skip the maRanges field, because, if necessary, we will merge
+        // new entries into that field.
+        if (lhs->maModel.mbPivot != rhs->maModel.mbPivot)
+            return false;
+        auto it1 = lhs->maRules.begin();
+        auto it2 = rhs->maRules.begin();
+        while (it1 != lhs->maRules.end() && it2 != rhs->maRules.end())
+        {
+            if (!equals(it1->second, it2->second))
+                return false;
+            ++it1;
+            ++it2;
+        }
+        return it1 == lhs->maRules.end() && it2 == rhs->maRules.end();
+    }
+private:
+    bool equals(const std::unique_ptr<CondFormatRule>& lhs, const std::unique_ptr<CondFormatRule>& rhs) const
+    {
+        if (lhs.get() == rhs.get())
+            return true;
+        if (!equals(lhs->getRuleModel(), rhs->getRuleModel()))
+            return false;
+        if (bool(lhs->mpColor) != bool(rhs->mpColor))
+            return false;
+        if (lhs->mpColor)
+        {
+            if (lhs->mpColor->getModelEntries() != rhs->mpColor->getModelEntries())
+                return false;
+            if (lhs->mpColor->getCfvo() != rhs->mpColor->getCfvo())
+                return false;
+            if (lhs->mpColor->getCol() != rhs->mpColor->getCol())
+                return false;
+        }
+        // todo: I'm not bothering to properly check the following fields
+        // because I ran out of enthusiasm, so we won't detect duplicates if they
+        // contain data here.
+        if (lhs->mpDataBar.get() != rhs->mpDataBar.get())
+            return false;
+        if (lhs->mpIconSet.get() != rhs->mpIconSet.get())
+            return false;
+        return true;
+    }
+    bool equals(const CondFormatRuleModel& lhs, const CondFormatRuleModel& rhs) const
+    {
+        if (lhs.maFormulas != rhs.maFormulas)
+            return false;
+        if (lhs.maText != rhs.maText)
+            return false;
+        // we skip mnPriority, because that is implicitly compared by the ordering of these objects
+        if (lhs.mnType != rhs.mnType)
+            return false;
+        if (lhs.mnOperator != rhs.mnOperator)
+            return false;
+        if (lhs.mnTimePeriod != rhs.mnTimePeriod)
+            return false;
+        if (lhs.mnRank != rhs.mnRank)
+            return false;
+        if (lhs.mnStdDev != rhs.mnStdDev)
+            return false;
+        if (!equalsDxf(lhs.mnDxfId, rhs.mnDxfId))
+            return false;
+        if (lhs.mbStopIfTrue != rhs.mbStopIfTrue)
+            return false;
+        if (lhs.mbBottom != rhs.mbBottom)
+            return false;
+        if (lhs.mbPercent != rhs.mbPercent)
+            return false;
+        if (lhs.mbAboveAverage != rhs.mbAboveAverage)
+            return false;
+        if (lhs.mbEqualAverage != rhs.mbEqualAverage)
+            return false;
+        return true;
+    }
+    bool equalsDxf(sal_Int32 lhsDxfId, sal_Int32 rhsDxfId) const
+    {
+        if (lhsDxfId == rhsDxfId)
+            return true;
+        DxfRef pLhsDxf = mrStyles.getDxf(lhsDxfId);
+        DxfRef pRhsDxf = mrStyles.getDxf(rhsDxfId);
+        if (bool(pLhsDxf) != bool(pRhsDxf))
+            return false;
+        if (pLhsDxf && !equals(*pLhsDxf, *pRhsDxf))
+            return false;
+        return true;
+    }
+    static bool equals(const Dxf& lhs, const Dxf& rhs)
+    {
+        if (bool(lhs.mxFont) != bool(rhs.mxFont))
+            return false;
+        if (lhs.mxFont && lhs.mxFont->getModel() != rhs.mxFont->getModel())
+            return false;
+        if (bool(lhs.mxNumFmt) != bool(rhs.mxNumFmt))
+            return false;
+        if (lhs.mxNumFmt && lhs.mxNumFmt->getModel() != rhs.mxNumFmt->getModel())
+            return false;
+        if (bool(lhs.mxAlignment) != bool(rhs.mxAlignment))
+            return false;
+        if (lhs.mxAlignment && lhs.mxAlignment->getModel() != rhs.mxAlignment->getModel())
+            return false;
+        if (bool(lhs.mxProtection) != bool(rhs.mxProtection))
+            return false;
+        if (lhs.mxProtection && lhs.mxProtection->getModelData() != rhs.mxProtection->getModelData())
+            return false;
+        if (bool(lhs.mxBorder) != bool(rhs.mxBorder))
+            return false;
+        if (lhs.mxBorder && lhs.mxBorder->getModelData() != rhs.mxBorder->getModelData())
+            return false;
+        if (bool(lhs.mxFill) != bool(rhs.mxFill))
+            return false;
+        if (lhs.mxFill)
+        {
+            if (bool(lhs.mxFill->getPatternModel()) != bool(rhs.mxFill->getPatternModel()))
+                return false;
+            if (lhs.mxFill->getPatternModel() && *lhs.mxFill->getPatternModel() != *rhs.mxFill->getPatternModel())
+                return false;
+            if (bool(lhs.mxFill->getGradientModel()) != bool(rhs.mxFill->getGradientModel()))
+                return false;
+            if (lhs.mxFill->getGradientModel() && *lhs.mxFill->getGradientModel() != *rhs.mxFill->getGradientModel())
+                return false;
+        }
+        return true;
+    }
+};
+
+// Excel will sometimes produce files with 100k of duplicate conditional formatting
+// entries, but only 10 unique ones, which will make LO freeze because our ScPatternAttr
+// de-duplication is quite expensive. So rather do it here, where it is considerably cheaper.
+void CondFormatBuffer::deduplicateCondFormats()
+{
+    // remove duplicates as we go
+    std::unordered_set<CondFormatRef, CondFormatHash, CondFormatEquals> aDeduped{5, CondFormatHash(), CondFormatEquals{getStyles()}};
+    for( auto it = maCondFormats.begin(); it != maCondFormats.end(); )
+    {
+        auto pair = aDeduped.insert(*it);
+        // If the insert did not succeed, we have a duplicate, and we need to merge the ranges of this item
+        // into the existing ranges list.
+        if (!pair.second)
+        {
+            for (const auto & rRange : (*it)->maModel.maRanges)
+                (*pair.first)->maModel.maRanges.push_back(rRange);
+            it = maCondFormats.erase(it);
+        }
+        else
+            ++it;
+    }
 }
 
 CondFormatRef CondFormatBuffer::importCondFormatting( SequenceInputStream& rStrm )
@@ -1516,7 +1702,7 @@ void ExtCfDataBarRule::importDataBar( const AttributeList& rAttribs )
 {
     mnRuleType = DATABAR;
     maModel.mbGradient = rAttribs.getBool( XML_gradient, true );
-    maModel.maAxisPosition = rAttribs.getString( XML_axisPosition, "automatic" );
+    maModel.maAxisPosition = rAttribs.getString( XML_axisPosition, u"automatic"_ustr );
 }
 
 void ExtCfDataBarRule::importPositiveFillColor( const AttributeList& rAttribs )

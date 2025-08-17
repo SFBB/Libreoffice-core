@@ -31,7 +31,6 @@ $(eval $(call gb_UnpackedTarball_add_patches,icu,\
 	external/icu/icu4c-scriptrun.patch.1 \
 	external/icu/icu4c-rtti.patch.1 \
 	external/icu/icu4c-clang-cl.patch.1 \
-	external/icu/gcc9.patch \
 	external/icu/c++20-comparison.patch.1 \
 	external/icu/Wdeprecated-copy-dtor.patch \
 	external/icu/icu4c-windows-cygwin-cross.patch.1 \
@@ -40,8 +39,16 @@ $(eval $(call gb_UnpackedTarball_add_patches,icu,\
 	external/icu/icu4c-khmerbreakengine.patch.1 \
 	external/icu/icu4c-$(if $(filter ANDROID,$(OS)),android,rpath).patch.1 \
 	$(if $(filter-out ANDROID,$(OS)),external/icu/icu4c-icudata-stdlibs.patch.1) \
+	external/icu/no-python.patch \
+	external/icu/Wunnecessary-virtual-specifier.patch \
+	external/icu/0001-ICU-23054-const-up-struct-that-gencmn-outputs.patch.2 \
 ))
 
 $(eval $(call gb_UnpackedTarball_add_file,icu,source/data/brkitr/khmerdict.dict,external/icu/khmerdict.dict))
+
+# cannot use post_action since $(file ..) would be run when the recipe is parsed, i.e. would always
+# happen before the tarball is unpacked
+$(gb_UnpackedTarball_workdir)/icu/icu-uc-uninstalled.pc: $(call gb_UnpackedTarball_get_target,icu)
+	$(file >$@,$(call gb_pkgconfig_file,icu-uc,$(ICU_MAJOR).$(ICU_MINOR),$(ICU_CFLAGS),$(ICU_LIBS)))
 
 # vim: set noet sw=4 ts=4:

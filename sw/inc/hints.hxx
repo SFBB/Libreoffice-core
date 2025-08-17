@@ -21,17 +21,16 @@
 
 #include "swatrset.hxx"
 #include "swtypes.hxx"
+#include "names.hxx"
 #include <utility>
 #include <vcl/vclptr.hxx>
 
 class SwFormat;
-class OutputDevice;
 class SwTable;
 class SwNode;
 class SwNodes;
 class SwPageFrame;
 class SwFrame;
-class SwHistory;
 class SwTextNode;
 class SwTextFormatColl;
 class SwFrameFormat;
@@ -39,13 +38,15 @@ class SwTableBox;
 class SwTableBoxFormat;
 class SwTableLine;
 class SwTableLineFormat;
-class SwTableBox;
+class SwAttrSetChg;
+class SwUpdateAttr;
 
 // Base class for all Message-Hints:
 // "Overhead" of SfxPoolItem is handled here
-class SwMsgPoolItem : public SfxPoolItem
+class SwMsgPoolItem final : public SfxPoolItem
 {
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwMsgPoolItem)
     SwMsgPoolItem( sal_uInt16 nWhich );
 
     // "Overhead" of SfxPoolItem
@@ -53,27 +54,16 @@ public:
     virtual SwMsgPoolItem*  Clone( SfxItemPool* pPool = nullptr ) const override;
 };
 
-// SwPtrMsgPoolItem (old SwObjectDying!)
-
-class SwPtrMsgPoolItem final : public SwMsgPoolItem
-{
-public:
-    void * pObject;
-
-    SwPtrMsgPoolItem( sal_uInt16 nId, void * pObj )
-        : SwMsgPoolItem( nId ), pObject( pObj )
-    {}
-};
-
-/*
- * SwFormatChg is sent when a format has changed to another format. 2 Hints are always sent
- * the old and the new format
+/**
+ * SwFormatChg is sent when a format has changed to another format.
  */
-class SwFormatChg final : public SwMsgPoolItem
+class SwFormatChangeHint final : public SfxHint
 {
 public:
-    SwFormat *pChangedFormat;
-    SwFormatChg( SwFormat *pFormat );
+    SwFormat *m_pOldFormat;
+    SwFormat *m_pNewFormat;
+    SwFormatChangeHint(SwFormat* pOldFormat, SwFormat* pNewFormat)
+        : SfxHint(SfxHintId::SwFormatChange), m_pOldFormat(pOldFormat), m_pNewFormat(pNewFormat) {}
 };
 
 
@@ -89,7 +79,8 @@ public:
     sal_Int32 nSourceStart;
     sal_Int32 nLen;
 
-    MoveText(SwTextNode *pD, sal_Int32 nD, sal_Int32 nS, sal_Int32 nL);
+    MoveText(SwTextNode *pD, sal_Int32 nD, sal_Int32 nS, sal_Int32 nL)
+        : SfxHint(SfxHintId::SwMoveText), pDestNode(pD), nDestStart(nD), nSourceStart(nS), nLen(nL) {}
 };
 
 class InsertText final : public SfxHint
@@ -127,7 +118,7 @@ public:
     sal_Int32 nStart;
     sal_Int32 nLen;
 
-    RedlineDelText(sal_Int32 nS, sal_Int32 nL);
+    RedlineDelText(sal_Int32 nS, sal_Int32 nL) : SfxHint(SfxHintId::SwRedlineDelText), nStart(nS), nLen(nL) {}
 };
 
 /// delete redline is removed
@@ -137,7 +128,7 @@ public:
     sal_Int32 nStart;
     sal_Int32 nLen;
 
-    RedlineUnDelText(sal_Int32 nS, sal_Int32 nL);
+    RedlineUnDelText(sal_Int32 nS, sal_Int32 nL) : SfxHint(SfxHintId::SwRedlineUnDelText), nStart(nS), nLen(nL) {}
 };
 
 /** DocPosUpdate is sent to signal that only the frames from or to a specified document-global position
@@ -168,11 +159,13 @@ class CondCollCondChg final : public SfxHint
 {
 public:
     const SwTextFormatColl& m_rColl;
-    CondCollCondChg(const SwTextFormatColl& rColl) : m_rColl(rColl) {};
+    CondCollCondChg(const SwTextFormatColl& rColl) : SfxHint(SfxHintId::SwCondCollCondChg), m_rColl(rColl) {};
 };
 
 class GrfRereadAndInCacheHint final : public SfxHint
 {
+public:
+    GrfRereadAndInCacheHint() : SfxHint(SfxHintId::SwGrfRereadAndInCache) {}
 };
 
 class PreGraphicArrivedHint final : public SfxHint
@@ -183,6 +176,8 @@ public:
 
 class PostGraphicArrivedHint final : public SfxHint
 {
+public:
+    PostGraphicArrivedHint() : SfxHint(SfxHintId::SwPostGraphicArrived) {}
 };
 
 class GraphicPieceArrivedHint final : public SfxHint
@@ -202,7 +197,8 @@ class MoveTableLineHint final : public SfxHint
 public:
     const SwFrameFormat& m_rNewFormat;
     const SwTableLine& m_rTableLine;
-    MoveTableLineHint(const SwFrameFormat& rNewFormat, const SwTableLine& rTableLine): m_rNewFormat(rNewFormat), m_rTableLine(rTableLine) {};
+    MoveTableLineHint(const SwFrameFormat& rNewFormat, const SwTableLine& rTableLine)
+        : SfxHint(SfxHintId::SwMoveTableLine), m_rNewFormat(rNewFormat), m_rTableLine(rTableLine) {};
 };
 
 class MoveTableBoxHint final : public SfxHint
@@ -210,11 +206,14 @@ class MoveTableBoxHint final : public SfxHint
 public:
     const SwFrameFormat& m_rNewFormat;
     const SwTableBox& m_rTableBox;
-    MoveTableBoxHint(const SwFrameFormat& rNewFormat, const SwTableBox& rTableBox): m_rNewFormat(rNewFormat), m_rTableBox(rTableBox) {};
+    MoveTableBoxHint(const SwFrameFormat& rNewFormat, const SwTableBox& rTableBox)
+        : SfxHint(SfxHintId::SwMoveTableBox), m_rNewFormat(rNewFormat), m_rTableBox(rTableBox) {};
 };
 
 class DocumentDyingHint final : public SfxHint
 {
+public:
+    DocumentDyingHint() : SfxHint(SfxHintId::SwDocumentDying) {}
 };
 
 class TableLineFormatChanged final : public SfxHint
@@ -222,21 +221,23 @@ class TableLineFormatChanged final : public SfxHint
 public:
     const SwTableLineFormat& m_rNewFormat;
     const SwTableLine& m_rTabLine;
-    TableLineFormatChanged(const SwTableLineFormat& rNewFormat, const SwTableLine& rTabLine) : m_rNewFormat(rNewFormat), m_rTabLine(rTabLine) {};
+    TableLineFormatChanged(const SwTableLineFormat& rNewFormat, const SwTableLine& rTabLine)
+        : SfxHint(SfxHintId::SwTableLineFormatChanged), m_rNewFormat(rNewFormat), m_rTabLine(rTabLine) {};
 };
 class TableBoxFormatChanged final : public SfxHint
 {
 public:
     const SwTableBoxFormat& m_rNewFormat;
     const SwTableBox& m_rTableBox;
-    TableBoxFormatChanged(const SwTableBoxFormat& rNewFormat, const SwTableBox& rTableBox) : m_rNewFormat(rNewFormat), m_rTableBox(rTableBox) {};
+    TableBoxFormatChanged(const SwTableBoxFormat& rNewFormat, const SwTableBox& rTableBox)
+        : SfxHint(SfxHintId::SwTableBoxFormatChanged), m_rNewFormat(rNewFormat), m_rTableBox(rTableBox) {};
 };
 class NameChanged final : public SfxHint
 {
 public:
-    const OUString m_sOld;
-    const OUString m_sNew;
-    NameChanged(const OUString& rOld, const OUString& rNew) : SfxHint(SfxHintId::SwNameChanged), m_sOld(rOld), m_sNew(rNew) {};
+    const UIName m_sOld;
+    const UIName m_sNew;
+    NameChanged(const UIName& rOld, const UIName& rNew) : SfxHint(SfxHintId::SwNameChanged), m_sOld(rOld), m_sNew(rNew) {};
 };
 class TitleChanged final : public SfxHint
 {
@@ -296,9 +297,40 @@ public:
     void SetUsed() const { m_isUsed = true; }
     void CheckNode(const SwNode*) const;
 };
-}
+class RemoveUnoObjectHint final : public SfxHint
+{
+public:
+    const BroadcasterMixin* m_pObject;
+    RemoveUnoObjectHint(const BroadcasterMixin* pObject) : SfxHint(SfxHintId::SwRemoveUnoObject), m_pObject(pObject) {}
+};
+class PrintHiddenParaHint final : public SfxHint
+{
+public:
+    PrintHiddenParaHint() : SfxHint(SfxHintId::SwHiddenParaPrint) {}
+};
+class AttrSetChangeHint final : public SfxHint
+{
+public:
+    const SwAttrSetChg* m_pOld;
+    const SwAttrSetChg* m_pNew;
+    AttrSetChangeHint(const SwAttrSetChg* pOld, const SwAttrSetChg* pNew) : SfxHint(SfxHintId::SwAttrSetChange), m_pOld(pOld), m_pNew(pNew) {}
+};
+class ObjectDyingHint final : public SfxHint
+{
+public:
+    SwModify* m_pDying;
+    ObjectDyingHint(SwModify* pDead) : SfxHint(SfxHintId::SwObjectDying), m_pDying(pDead) {}
+};
+class UpdateAttrHint final : public SfxHint
+{
+public:
+    const SwUpdateAttr* m_pOld;
+    const SwUpdateAttr* m_pNew;
+    UpdateAttrHint(const SwUpdateAttr* pOld, const SwUpdateAttr* pNew) : SfxHint(SfxHintId::SwUpdateAttr), m_pOld(pOld), m_pNew(pNew) {}
+};
+} // namespace sw
 
-class SwUpdateAttr final : public SwMsgPoolItem
+class SwUpdateAttr final
 {
 private:
     sal_Int32 m_nStart;
@@ -345,7 +377,7 @@ public:
     const SwTable* m_pTable;         ///< Pointer to the current table
     union {
         const SwTable* pDelTable;  ///< Merge: Pointer to the table to be removed
-        const OUString* pNewTableNm; ///< Split: the name of the new table
+        const UIName* pNewTableNm; ///< Split: the name of the new table
     } m_aData;
     sal_uInt16 m_nSplitLine;       ///< Split: from this BaseLine on will be split
     TableFormulaUpdateFlags m_eFlags;
@@ -360,7 +392,7 @@ public:
  * SwAttrSetChg is sent when something has changed in the SwAttrSet rTheChgdSet.
  * 2 Hints are always sent, the old and the new items in the rTheChgdSet.
  */
-class SwAttrSetChg final : public SwMsgPoolItem
+class SwAttrSetChg final
 {
     bool m_bDelSet;
     SwAttrSet* m_pChgSet;           ///< what has changed
@@ -368,7 +400,7 @@ class SwAttrSetChg final : public SwMsgPoolItem
 public:
     SwAttrSetChg( const SwAttrSet& rTheSet, SwAttrSet& rSet );
     SwAttrSetChg( const SwAttrSetChg& );
-    virtual ~SwAttrSetChg() override;
+    ~SwAttrSetChg();
 
     /// What has changed
     const SwAttrSet* GetChgSet() const     { return m_pChgSet; }
@@ -387,11 +419,11 @@ public:
 };
 
 
-class SwFindNearestNode final : public SwMsgPoolItem
+class SwFindNearestNode final
 {
     const SwNode *m_pNode, *m_pFound;
 public:
-    SwFindNearestNode( const SwNode& rNd );
+    SwFindNearestNode( const SwNode& rNd ) : m_pNode(&rNd), m_pFound(nullptr) {}
     void CheckNode( const SwNode& rNd );
 
     const SwNode* GetFoundNode() const { return m_pFound; }

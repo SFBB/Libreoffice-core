@@ -26,7 +26,9 @@ OPENSSL_PLATFORM := \
         $(if $(filter GNU/kFreeBSD,$(shell uname)),\
           debian-kfreebsd-amd64\
         ,\
-          $(if $(filter TRUE, $(ENABLE_DBGUTIL)), debug-linux-generic64, linux-generic64) no-asm\
+          $(if $(filter FreeBSD,$(shell uname)), BSD-x86_64,\
+            $(if $(filter TRUE, $(ENABLE_DBGUTIL)), debug-linux-generic64, linux-generic64) no-asm\
+          )\
         )\
       ,\
         $(if $(filter TRUE, $(ENABLE_DBGUTIL)), debug-linux-generic32, linux-generic32)\
@@ -60,12 +62,14 @@ OPENSSL_PLATFORM := \
 ifeq ($(COM),MSC)
 $(eval $(call gb_ExternalProject_use_nmake,openssl,build))
 
+$(call gb_ExternalProject_get_state_target,openssl,build): export PERL:=$(if $(MSYSTEM),$(STRAWBERRY_PERL),$(shell cygpath -m $(PERL)))
+
+# PARALLELISM_OPTION might be -j 16 -l 24, for jom ignore the load limit/only use the job limit
 $(call gb_ExternalProject_get_state_target,openssl,build):
 	$(call gb_Trace_StartRange,openssl,EXTERNAL)
 	$(call gb_ExternalProject_run,build,\
 		CONFIGURE_INSIST=1 $(PERL) Configure $(OPENSSL_PLATFORM) no-tests no-multilib \
-		&& export PERL="$(shell cygpath -w $(PERL))" \
-		&& nmake -f makefile \
+		&& $(if $(JOM),$(JOM) $(wordlist 1,2,$(PARALLELISM_OPTION)),nmake) -f makefile \
 			$(if $(call gb_Module__symbols_enabled,openssl),DEBUG_FLAGS_VALUE="$(gb_DEBUGINFO_FLAGS)") \
 	)
 	$(call gb_Trace_EndRange,openssl,EXTERNAL)

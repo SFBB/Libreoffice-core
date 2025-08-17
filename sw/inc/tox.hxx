@@ -36,6 +36,7 @@
 #include "hints.hxx"
 #include "swtypes.hxx"
 #include "toxe.hxx"
+#include "chpfld.hxx"
 
 class SwTOXType;
 class SwTOXMark;
@@ -54,11 +55,10 @@ namespace sw {
     };
     struct FindContentFrameHint final : SfxHint {
         SwContentFrame*& m_rpContentFrame;
-        const SwDoc& m_rDoc;
         const SwRootFrame& m_rLayout;
-        FindContentFrameHint(SwContentFrame*& rpContentFrame, const SwDoc& rDoc, const SwRootFrame& rLayout)
-            : m_rpContentFrame(rpContentFrame)
-            , m_rDoc(rDoc)
+        FindContentFrameHint(SwContentFrame*& rpContentFrame,const SwRootFrame& rLayout)
+            : SfxHint(SfxHintId::SwFindContentFrame)
+            , m_rpContentFrame(rpContentFrame)
             , m_rLayout(rLayout)
         {}
     };
@@ -79,11 +79,12 @@ extern const sal_Unicode C_END_PAGE_NUM;
 
 class SW_DLLPUBLIC SwTOXMark final
     : public SfxPoolItem
-    , public sw::BroadcastingModify
     , public SvtListener
 {
     friend void InitCore();
     friend class SwTextTOXMark;
+    friend SwTOXMark* createSwTOXMarkForItemInfoPackage();
+    // friend class ItemInfoPackageSwAttributes;
 
     const SwTOXType* m_pType;
     OUString m_aAltText;    // Text of caption is different.
@@ -111,6 +112,7 @@ class SW_DLLPUBLIC SwTOXMark final
 public:
 
     // single argument ctors shall be explicit.
+    DECLARE_ITEM_TYPE_FUNCTION(SwTOXMark)
     explicit SwTOXMark( const SwTOXType* pTyp );
     virtual ~SwTOXMark() override;
 
@@ -183,10 +185,10 @@ public:
     SwDoc& GetDoc() const { return m_rDoc; }
     void CollectTextMarks(SwTOXMarks& rMarks) const
             { const_cast<SwTOXType*>(this)->GetNotifier().Broadcast(sw::CollectTextMarksHint(rMarks)); }
-    SwContentFrame* FindContentFrame(const SwDoc& rDoc, const SwRootFrame& rLayout) const
+    SwContentFrame* FindContentFrame(const SwRootFrame& rLayout) const
     {
         SwContentFrame* pContentFrame = nullptr;
-        const_cast<SwTOXType*>(this)->GetNotifier().Broadcast(sw::FindContentFrameHint(pContentFrame, rDoc, rLayout));
+        CallSwClientNotify(sw::FindContentFrameHint(pContentFrame, rLayout));
         return pContentFrame;
     }
     void CollectTextTOXMarksForLayout(std::vector<std::reference_wrapper<SwTextTOXMark>>& rMarks, const SwRootFrame* pLayout) const
@@ -243,12 +245,12 @@ enum FormTokenType
 struct SW_DLLPUBLIC SwFormToken
 {
     OUString        sText;
-    OUString        sCharStyleName;
+    UIName          sCharStyleName;
     SwTwips         nTabStopPosition;
     FormTokenType   eTokenType;
     sal_uInt16          nPoolId;
     SvxTabAdjust    eTabAlign;
-    sal_uInt16          nChapterFormat;     //SwChapterFormat;
+    SwChapterFormat     nChapterFormat;     //SwChapterFormat;
     sal_uInt16          nOutlineLevel;//the maximum permitted outline level in numbering
     sal_uInt16          nAuthorityField;    //enum ToxAuthorityField
     sal_Unicode     cTabFillChar;
@@ -261,7 +263,7 @@ struct SW_DLLPUBLIC SwFormToken
         eTokenType(eType),
         nPoolId(USHRT_MAX),
         eTabAlign( SvxTabAdjust::Left ),
-        nChapterFormat(0 /*CF_NUMBER*/),
+        nChapterFormat(SwChapterFormat::Number),
         nOutlineLevel(MAXLEVEL),   //default to maximum outline level
         nAuthorityField(0 /*AUTH_FIELD_IDENTIFIER*/),
         cTabFillChar(' '),
@@ -313,7 +315,7 @@ public:
 class SW_DLLPUBLIC SwForm
 {
     SwFormTokens    m_aPattern[ AUTH_TYPE_END + 1 ]; // #i21237#
-    OUString  m_aTemplate[ AUTH_TYPE_END + 1 ];
+    UIName  m_aTemplate[ AUTH_TYPE_END + 1 ];
 
     TOXTypes    m_eType;
     sal_uInt16      m_nFormMaxLevel;
@@ -327,8 +329,8 @@ public:
 
     SwForm& operator=( const SwForm& rForm );
 
-    inline void SetTemplate(sal_uInt16 nLevel, const OUString& rName);
-    inline OUString const & GetTemplate(sal_uInt16 nLevel) const;
+    inline void SetTemplate(sal_uInt16 nLevel, const UIName& rName);
+    inline UIName const & GetTemplate(sal_uInt16 nLevel) const;
 
     // #i21237#
     void    SetPattern(sal_uInt16 nLevel, SwFormTokens&& rName);
@@ -399,11 +401,11 @@ namespace o3tl {
 }
 
 //which part of the caption is to be displayed
-enum SwCaptionDisplay
+enum class SwCaptionDisplay
 {
-    CAPTION_COMPLETE,
-    CAPTION_NUMBER,
-    CAPTION_TEXT
+    Complete,
+    Number,
+    Text
 };
 
 enum class SwTOOElements : sal_uInt16
@@ -425,14 +427,14 @@ namespace o3tl {
 class SW_DLLPUBLIC SwTOXBase : public SwClient
 {
     SwForm      m_aForm;              // description of the lines
-    OUString    m_aName;              // unique name
+    UIName      m_aName;              // unique name
     OUString    m_aTitle;             // title
     OUString    m_aBookmarkName;      //Bookmark Name
 
-    OUString    m_sMainEntryCharStyle; // name of the character style applied to main index entries
+    UIName      m_sMainEntryCharStyle; // name of the character style applied to main index entries
 
-    OUString    m_aStyleNames[MAXLEVEL]; // (additional) style names TOX_CONTENT, TOX_USER
-    OUString    m_sSequenceName;      // FieldTypeName of a caption sequence
+    UIName      m_aStyleNames[MAXLEVEL]; // (additional) style names TOX_CONTENT, TOX_USER
+    UIName      m_sSequenceName;      // FieldTypeName of a caption sequence
 
     LanguageType    m_eLanguage;
     OUString        m_sSortAlgorithm;
@@ -465,8 +467,8 @@ public:
 
     virtual void SwClientNotify(const SwModify& rMod, const SfxHint& rHint) override
     {
-        if(dynamic_cast<const sw::DocumentDyingHint*>(&rHint))
-            GetRegisteredIn()->Remove(this);
+        if(rHint.GetId() == SfxHintId::SwDocumentDying)
+            GetRegisteredIn()->Remove(*this);
         else
             SwClient::SwClientNotify(rMod, rHint);
     }
@@ -478,8 +480,8 @@ public:
 
     SwTOXElement        GetCreateType() const;      // creation types
 
-    const OUString&     GetTOXName() const {return m_aName;}
-    void                SetTOXName(const OUString& rSet) {m_aName = rSet;}
+    const UIName&       GetTOXName() const {return m_aName;}
+    void                SetTOXName(const UIName& rSet) {m_aName = rSet;}
 
     // for record the TOC field expression of MS Word binary format
     const OUString&     GetMSTOCExpression() const{return maMSTOCExpression;}
@@ -499,8 +501,8 @@ public:
 
     TOXTypes            GetType() const;
 
-    const OUString&     GetMainEntryCharStyle() const {return m_sMainEntryCharStyle;}
-    void                SetMainEntryCharStyle(const OUString& rSet)  {m_sMainEntryCharStyle = rSet;}
+    const UIName&       GetMainEntryCharStyle() const {return m_sMainEntryCharStyle;}
+    void                SetMainEntryCharStyle(const UIName& rSet)  {m_sMainEntryCharStyle = rSet;}
 
     // content index only
     inline void             SetLevel(sal_uInt16);                   // consider outline level
@@ -516,12 +518,12 @@ public:
 
     // index of objects
 
-    OUString const &        GetStyleNames(sal_uInt16 nLevel) const
+    UIName const &          GetStyleNames(sal_uInt16 nLevel) const
                                 {
                                 SAL_WARN_IF( nLevel >= MAXLEVEL, "sw", "Which level?");
                                 return m_aStyleNames[nLevel];
                                 }
-    void                    SetStyleNames(const OUString& rSet, sal_uInt16 nLevel)
+    void                    SetStyleNames(const UIName& rSet, sal_uInt16 nLevel)
                                 {
                                 SAL_WARN_IF( nLevel >= MAXLEVEL, "sw", "Which level?");
                                 m_aStyleNames[nLevel] = rSet;
@@ -538,8 +540,8 @@ public:
     bool                    IsProtected() const { return m_bProtected; }
     void                    SetProtected(bool bSet) { m_bProtected = bSet; }
 
-    const OUString&         GetSequenceName() const {return m_sSequenceName;}
-    void                    SetSequenceName(const OUString& rSet) {m_sSequenceName = rSet;}
+    const UIName&           GetSequenceName() const {return m_sSequenceName;}
+    void                    SetSequenceName(const UIName& rSet) {m_sSequenceName = rSet;}
 
     SwCaptionDisplay        GetCaptionDisplay() const { return m_eCaptionDisplay;}
     void                    SetCaptionDisplay(SwCaptionDisplay eSet) {m_eCaptionDisplay = eSet;}
@@ -663,13 +665,13 @@ inline OUString const & SwTOXMark::GetSecondaryKeyReading() const
 
 //SwForm
 
-inline void SwForm::SetTemplate(sal_uInt16 nLevel, const OUString& rTemplate)
+inline void SwForm::SetTemplate(sal_uInt16 nLevel, const UIName& rTemplate)
 {
     SAL_WARN_IF(nLevel >= GetFormMax(), "sw", "Index >= GetFormMax()");
     m_aTemplate[nLevel] = rTemplate;
 }
 
-inline OUString const & SwForm::GetTemplate(sal_uInt16 nLevel) const
+inline UIName const & SwForm::GetTemplate(sal_uInt16 nLevel) const
 {
     SAL_WARN_IF(nLevel >= GetFormMax(), "sw", "Index >= GetFormMax()");
     return m_aTemplate[nLevel];

@@ -89,6 +89,7 @@
 #include <mathmlimport.hxx>
 #include <cursor.hxx>
 #include "accessibility.hxx"
+#include <svl/hint.hxx>
 #include <ElementsDockingWindow.hxx>
 #include <helpids.h>
 
@@ -105,20 +106,33 @@ using namespace css;
 using namespace css::accessibility;
 using namespace css::uno;
 
+static OUString GetScrollUIName(const SmViewShell& rShell)
+{
+    const SmDocShell* pShell = rShell.GetDoc();
+    if (pShell && pShell->GetCreateMode() == SfxObjectCreateMode::EMBEDDED)
+    {
+        // This one has no border on the scrolledwindow, to maximize the space
+        // available when in embedded mode and minimize the difference from
+        // the ole preview to give a more seamless embedded editing experience.
+        return "modules/smath/ui/embedwindow.ui";
+    }
+    return "modules/smath/ui/mathwindow.ui";
+}
+
 SmGraphicWindow::SmGraphicWindow(SmViewShell& rShell)
-    : InterimItemWindow(&rShell.GetViewFrame().GetWindow(), "modules/smath/ui/mathwindow.ui", "MathWindow")
+    : InterimItemWindow(&rShell.GetViewFrame().GetWindow(), GetScrollUIName(rShell), u"MathWindow"_ustr)
     , nLinePixH(GetSettings().GetStyleSettings().GetScrollBarSize())
     , nColumnPixW(nLinePixH)
     , nZoom(100)
     // continue to use user-scrolling to make this work equivalent to how it 'always' worked
-    , mxScrolledWindow(m_xBuilder->weld_scrolled_window("scrolledwindow", true))
+    , mxScrolledWindow(m_xBuilder->weld_scrolled_window(u"scrolledwindow"_ustr, true))
     , mxGraphic(new SmGraphicWidget(rShell, *this))
-    , mxGraphicWin(new weld::CustomWeld(*m_xBuilder, "mathview", *mxGraphic))
+    , mxGraphicWin(new weld::CustomWeld(*m_xBuilder, u"mathview"_ustr, *mxGraphic))
 {
     InitControlBase(mxGraphic->GetDrawingArea());
 
-    mxScrolledWindow->connect_hadjustment_changed(LINK(this, SmGraphicWindow, ScrollHdl));
-    mxScrolledWindow->connect_vadjustment_changed(LINK(this, SmGraphicWindow, ScrollHdl));
+    mxScrolledWindow->connect_hadjustment_value_changed(LINK(this, SmGraphicWindow, ScrollHdl));
+    mxScrolledWindow->connect_vadjustment_value_changed(LINK(this, SmGraphicWindow, ScrollHdl));
 
     // docking windows are usually hidden (often already done in the
     // resource) and will be shown by the sfx framework.
@@ -221,12 +235,12 @@ void SmGraphicWindow::Resize()
     // resize scrollbars and set their ranges
     if ( bHVisible )
     {
-        mxScrolledWindow->hadjustment_configure(-aPixOffset.X(), 0, aTotPixSz.Width(), nColumnPixW,
+        mxScrolledWindow->hadjustment_configure(-aPixOffset.X(), aTotPixSz.Width(), nColumnPixW,
                                                 aOutPixSz.Width(), aOutPixSz.Width());
     }
     if ( bVVisible )
     {
-        mxScrolledWindow->vadjustment_configure(-aPixOffset.Y(), 0, aTotPixSz.Height(), nLinePixH,
+        mxScrolledWindow->vadjustment_configure(-aPixOffset.Y(), aTotPixSz.Height(), nLinePixH,
                                                 aOutPixSz.Height(), aOutPixSz.Height());
     }
 }
@@ -309,7 +323,8 @@ void SmGraphicWidget::SetDrawingArea(weld::DrawingArea* pDrawingArea)
     OutputDevice& rDevice = GetOutputDevice();
 
     rDevice.EnableRTL(GetDoc()->GetFormat().IsRightToLeft());
-    rDevice.SetBackground(SM_MOD()->GetColorConfig().GetColorValue(svtools::DOCCOLOR).nColor);
+    rDevice.SetBackground(
+        SmModule::get()->GetColorConfig().GetColorValue(svtools::DOCCOLOR).nColor);
 
     if (comphelper::LibreOfficeKit::isActive())
     {
@@ -334,7 +349,7 @@ void SmGraphicWidget::SetDrawingArea(weld::DrawingArea* pDrawingArea)
 SmGraphicWidget::~SmGraphicWidget()
 {
     if (mxAccessible.is())
-        mxAccessible->ClearWin();    // make Accessible nonfunctional
+        mxAccessible->dispose();
     mxAccessible.clear();
     CaretBlinkStop();
 }
@@ -539,12 +554,10 @@ void SmGraphicWidget::SetCursor(const tools::Rectangle &rRect)
     if (SmViewShell::IsInlineEditEnabled())
         return;
 
-    SmModule *pp = SM_MOD();
-
     if (IsCursorVisible())
         ShowCursor(false);      // clean up remainings of old cursor
     aCursorRect = rRect;
-    if (pp->GetConfig()->IsShowFormulaCursor())
+    if (SmModule::get()->GetConfig()->IsShowFormulaCursor())
         ShowCursor(true);       // draw new cursor
 }
 
@@ -599,8 +612,7 @@ void SmGraphicWidget::Paint(vcl::RenderContext& rRenderContext, const tools::Rec
             SmGetLeftSelectionPart(pEdit->GetSelection(), nRow, nCol);
             const SmNode *pFound = SetCursorPos(static_cast<sal_uInt16>(nRow), nCol);
 
-            SmModule *pp = SM_MOD();
-            if (pFound && pp->GetConfig()->IsShowFormulaCursor())
+            if (pFound && SmModule::get()->GetConfig()->IsShowFormulaCursor())
                 ShowCursor(true);
         }
     }
@@ -894,7 +906,7 @@ void SmGraphicWindow::ZoomToFitInWindow()
     }
 }
 
-uno::Reference< XAccessible > SmGraphicWidget::CreateAccessible()
+rtl::Reference<comphelper::OAccessible> SmGraphicWidget::CreateAccessible()
 {
     if (!mxAccessible.is())
     {
@@ -940,13 +952,13 @@ void SmEditController::StateChangedAtToolBoxControl(sal_uInt16 nSID, SfxItemStat
 /**************************************************************************/
 SmCmdBoxWindow::SmCmdBoxWindow(SfxBindings *pBindings_, SfxChildWindow *pChildWindow,
                                vcl::Window *pParent)
-    : SfxDockingWindow(pBindings_, pChildWindow, pParent, "EditWindow", "modules/smath/ui/editwindow.ui")
+    : SfxDockingWindow(pBindings_, pChildWindow, pParent, u"EditWindow"_ustr, u"modules/smath/ui/editwindow.ui"_ustr)
     , m_xEdit(new SmEditWindow(*this, *m_xBuilder))
     , aController(*m_xEdit, SID_TEXT, *pBindings_)
     , bExiting(false)
     , aInitialFocusTimer("SmCmdBoxWindow aInitialFocusTimer")
 {
-    set_id("math_edit");
+    set_id(u"math_edit"_ustr);
 
     SetHelpId( HID_SMA_COMMAND_WIN );
     SetSizePixel(LogicToPixel(Size(292 , 94), MapMode(MapUnit::MapAppFont)));
@@ -977,7 +989,7 @@ void SmCmdBoxWindow::ShowContextMenu(const Point& rPos)
     ToTop();
     SmViewShell *pViewSh = GetView();
     if (pViewSh)
-        pViewSh->GetViewFrame().GetDispatcher()->ExecutePopup("edit", this, &rPos);
+        pViewSh->GetViewFrame().GetDispatcher()->ExecutePopup(u"edit"_ustr, this, &rPos);
 }
 
 void SmCmdBoxWindow::Command(const CommandEvent& rCEvt)
@@ -1223,8 +1235,7 @@ sal_uInt16 SmViewShell::SetPrinter(SfxPrinter *pNewPrinter, SfxPrinterChangeFlag
 
     if ((nDiffFlags & SfxPrinterChangeFlags::OPTIONS) == SfxPrinterChangeFlags::OPTIONS)
     {
-        SmModule *pp = SM_MOD();
-        pp->GetConfig()->ItemSetToConfig(pNewPrinter->GetOptions());
+        SmModule::get()->GetConfig()->ItemSetToConfig(pNewPrinter->GetOptions());
     }
     return 0;
 }
@@ -1298,7 +1309,7 @@ void SmViewShell::Insert( SfxMedium& rMedium )
     uno::Reference <embed::XStorage> xStorage = rMedium.GetStorage();
     if (xStorage.is() && xStorage->getElementNames().hasElements())
     {
-        if (xStorage->hasByName("content.xml"))
+        if (xStorage->hasByName(u"content.xml"_ustr))
         {
             // is this a fabulous math package ?
             rtl::Reference<SmModel> xModel(dynamic_cast<SmModel*>(pDoc->GetModel().get()));
@@ -1368,7 +1379,7 @@ void SmViewShell::Execute(SfxRequest& rReq)
     {
         case SID_FORMULACURSOR:
         {
-            SmModule *pp = SM_MOD();
+            auto* config = SmModule::get()->GetConfig();
 
             const SfxItemSet  *pArgs = rReq.GetArgs();
             const SfxPoolItem *pItem;
@@ -1378,9 +1389,9 @@ void SmViewShell::Execute(SfxRequest& rReq)
                  SfxItemState::SET == pArgs->GetItemState( SID_FORMULACURSOR, false, &pItem))
                 bVal = static_cast<const SfxBoolItem *>(pItem)->GetValue();
             else
-                bVal = !pp->GetConfig()->IsShowFormulaCursor();
+                bVal = !config->IsShowFormulaCursor();
 
-            pp->GetConfig()->SetShowFormulaCursor(bVal);
+            config->SetShowFormulaCursor(bVal);
             if (!IsInlineEditEnabled())
                 GetGraphicWidget().ShowCursor(bVal);
             break;
@@ -1495,27 +1506,21 @@ void SmViewShell::Execute(SfxRequest& rReq)
                     break;
                 }
 
-                bool bCallExec = nullptr == pWin;
-                if( !bCallExec )
+                if( pWin )
                 {
-                    if (pWin)
-                    {
-                        TransferableDataHelper aDataHelper(
-                            TransferableDataHelper::CreateFromClipboard(
-                                                        pWin->GetClipboard()));
+                    TransferableDataHelper aDataHelper(
+                        TransferableDataHelper::CreateFromClipboard(
+                                                    pWin->GetClipboard()));
 
-                        if( aDataHelper.GetTransferable().is() &&
-                            aDataHelper.HasFormat( SotClipboardFormatId::STRING ))
-                            pWin->Paste();
-                        else
-                            bCallExec = true;
+                    if( aDataHelper.GetTransferable().is() &&
+                        aDataHelper.HasFormat( SotClipboardFormatId::STRING ))
+                        pWin->Paste();
+                    else
+                    {
+                        GetViewFrame().GetDispatcher()->ExecuteList(
+                                SID_PASTEOBJECT, SfxCallMode::RECORD,
+                                { new SfxVoidItem(SID_PASTEOBJECT) });
                     }
-                }
-                if( bCallExec )
-                {
-                    GetViewFrame().GetDispatcher()->ExecuteList(
-                            SID_PASTEOBJECT, SfxCallMode::RECORD,
-                            { new SfxVoidItem(SID_PASTEOBJECT) });
                 }
             }
             break;
@@ -1590,7 +1595,7 @@ void SmViewShell::Execute(SfxRequest& rReq)
                     SotClipboardFormatId nId = SotClipboardFormatId::MATHML;
                     if (aDataHelper.HasFormat(nId))
                     {
-                        xStrm = aDataHelper.GetInputStream(nId, "");
+                        xStrm = aDataHelper.GetInputStream(nId, u""_ustr);
                         if (xStrm.is())
                         {
                             SfxMedium aClipboardMedium;
@@ -1751,16 +1756,16 @@ void SmViewShell::Execute(SfxRequest& rReq)
                 const OUString sInput = pEditView->GetSurroundingText();
                 ESelection aSel(  pWin->GetSelection() );
 
-                if ( aSel.nStartPos > aSel.nEndPos )
-                    aSel.nEndPos = aSel.nStartPos;
+                if (aSel.start.nIndex > aSel.end.nIndex)
+                    aSel.end.nIndex = aSel.start.nIndex;
 
                 //calculate a valid end-position by reading logical characters
                 sal_Int32 nUtf16Pos=0;
-                while( (nUtf16Pos < sInput.getLength()) && (nUtf16Pos < aSel.nEndPos) )
+                while ((nUtf16Pos < sInput.getLength()) && (nUtf16Pos < aSel.end.nIndex))
                 {
                     sInput.iterateCodePoints(&nUtf16Pos);
-                    if( nUtf16Pos > aSel.nEndPos )
-                        aSel.nEndPos = nUtf16Pos;
+                    if (nUtf16Pos > aSel.end.nIndex)
+                        aSel.end.nIndex = nUtf16Pos;
                 }
 
                 ToggleUnicodeCodepoint aToggle;
@@ -1771,7 +1776,7 @@ void SmViewShell::Execute(SfxRequest& rReq)
                 {
                     pEditView->SetSelection( aSel );
                     pEditEngine->UndoActionStart(EDITUNDO_REPLACEALL);
-                    aSel.nStartPos = aSel.nEndPos - aToggle.StringToReplace().getLength();
+                    aSel.start.nIndex = aSel.end.nIndex - aToggle.StringToReplace().getLength();
                     pWin->SetSelection( aSel );
                     pEditView->InsertText( sReplacement, true );
                     pEditEngine->UndoActionEnd();
@@ -1783,15 +1788,15 @@ void SmViewShell::Execute(SfxRequest& rReq)
 
         case SID_SYMBOLS_CATALOGUE:
         {
+            SmModule* pp = SmModule::get();
 
             // get device used to retrieve the FontList
             SmDocShell *pDoc = GetDoc();
             OutputDevice *pDev = pDoc->GetPrinter();
             if (!pDev || pDev->GetFontFaceCollectionCount() == 0)
-                pDev = &SM_MOD()->GetDefaultVirtualDev();
+                pDev = &pp->GetDefaultVirtualDev();
             SAL_WARN_IF( !pDev, "starmath", "device for font list missing" );
 
-            SmModule *pp = SM_MOD();
             SmSymbolDialog aDialog(pWin ? pWin->GetFrameWeld() : nullptr, pDev, pp->GetSymbolManager(), *this);
             aDialog.run();
         }
@@ -1815,10 +1820,15 @@ void SmViewShell::Execute(SfxRequest& rReq)
             aSet.Put(SfxBoolItem(FN_PARAM_1, false));
             aSet.Put(SfxStringItem(SID_FONT_NAME,
                                    GetDoc()->GetFormat().GetFont(FNT_VARIABLE).GetFamilyName()));
-            ScopedVclPtr<SfxAbstractDialog> pDialog(
+            VclPtr<SfxAbstractDialog> pDialog(
                 pFact->CreateCharMapDialog(pWin ? pWin->GetFrameWeld() : nullptr, aSet,
                                            GetViewFrame().GetFrame().GetFrameInterface()));
-            pDialog->Execute();
+            pDialog->StartExecuteAsync(
+                [pDialog] (sal_Int32 /*nResult*/)->void
+                {
+                    pDialog->disposeOnce();
+                }
+            );
         }
         break;
 
@@ -1829,6 +1839,39 @@ void SmViewShell::Execute(SfxRequest& rReq)
             GetDoc()->SetRightToLeft(bRTL);
             GetGraphicWindow().GetGraphicWidget().GetOutputDevice().EnableRTL(bRTL);
             GetViewFrame().GetBindings().Invalidate(bRTL ? SID_ATTR_PARA_LEFT_TO_RIGHT : SID_ATTR_PARA_RIGHT_TO_LEFT);
+        }
+        break;
+        case SID_SAVE_FORMULA:
+        {
+            OUString aName = "My Formula 1";
+            OUString aDesc(SmResId(STR_USER_DEFINED_FORMULA));
+            SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
+            ScopedVclPtr<AbstractSvxNameDialog> pDlg(
+                pFact->CreateSvxNameDialog(GetFrameWeld(), aName, aDesc));
+
+            if (pDlg->Execute() == RET_OK)
+            {
+                aName = pDlg->GetName();
+                if (SmModule::get()->GetConfig()->HasUserDefinedFormula(aName))
+                {
+                    std::unique_ptr<weld::MessageDialog> xQuery(Application::CreateMessageDialog(
+                        GetFrameWeld(), VclMessageType::Question, VclButtonsType::YesNo,
+                        SmResId(STR_USER_DEFINED_FORMULA_EXISTS).replaceAll("%1", aName)));
+                    if (xQuery->run() == RET_NO)
+                        break;
+                }
+                if (SmEditWindow* pEditWin = GetEditWindow())
+                    SmModule::get()->GetConfig()->SaveUserDefinedFormula(aName, pEditWin->GetText());
+
+                // Show the Elements sidebar with the "User-defined" entry selected
+                GetViewFrame().ShowChildWindow(SID_SIDEBAR);
+                sfx2::sidebar::Sidebar::ShowPanel(u"MathElementsPanel",
+                                                  GetViewFrame().GetFrame().GetFrameInterface());
+                GetViewFrame().GetBindings().Invalidate( SID_ELEMENTSDOCKINGWINDOW );
+                Broadcast(SfxHint(SfxHintId::SmNewUserFormula));
+                rReq.Ignore ();
+            }
+            pDlg.disposeAndClear();
         }
         break;
     }
@@ -1914,7 +1957,7 @@ void SmViewShell::GetState(SfxItemSet &rSet)
                 if (IsInlineEditEnabled())
                     rSet.DisableItem(nWh);
                 else
-                    rSet.Put(SfxBoolItem(nWh, SM_MOD()->GetConfig()->IsShowFormulaCursor()));
+                    rSet.Put(SfxBoolItem(nWh, SmModule::get()->GetConfig()->IsShowFormulaCursor()));
             }
             break;
         case SID_ELEMENTSDOCKINGWINDOW:
@@ -1939,6 +1982,10 @@ void SmViewShell::GetState(SfxItemSet &rSet)
 
         case SID_ATTR_PARA_RIGHT_TO_LEFT:
             rSet.Put(SfxBoolItem(nWh, GetDoc()->GetFormat().IsRightToLeft()));
+            break;
+        case SID_SAVE_FORMULA:
+            if (!pEditWin || pEditWin->IsEmpty())
+                rSet.DisableItem(nWh);
             break;
         }
     }
@@ -2012,7 +2059,7 @@ public:
     }
 
 private:
-    static OUString GetContextName() { return "Math"; } // Static constant for now
+    static OUString GetContextName() { return u"Math"_ustr; } // Static constant for now
 
     rtl::Reference<svx::sidebar::SelectionChangeHandler> mpSelectionChangeHandler;
 };
@@ -2026,7 +2073,7 @@ SmViewShell::SmViewShell(SfxViewFrame& rFrame_, SfxViewShell *)
 {
     SetStatusText(OUString());
     SetWindow(mxGraphicWindow.get());
-    SfxShell::SetName("SmView");
+    SfxShell::SetName(u"SmView"_ustr);
     SfxShell::SetUndoManager( &GetDoc()->GetEditEngine().GetUndoManager() );
     SetController(new SmController(*this));
 }
@@ -2118,7 +2165,7 @@ void SmViewShell::Notify( SfxBroadcaster& , const SfxHint& rHint )
 bool SmViewShell::IsInlineEditEnabled()
 {
     return comphelper::LibreOfficeKit::isActive()
-           || SM_MOD()->GetConfig()->IsInlineEditEnable();
+           || SmModule::get()->GetConfig()->IsInlineEditEnable();
 }
 
 void SmViewShell::StartMainHelp()
@@ -2217,12 +2264,12 @@ std::optional<OString> SmViewShell::getLOKPayload(int nType, int nViewId) const
 void SmViewShell::SendCaretToLOK() const
 {
     const int nViewId = sal_Int32(GetViewShellId());
-    if (const auto& payload = getLOKPayload(LOK_CALLBACK_INVALIDATE_VISIBLE_CURSOR, nViewId))
+    if (const auto payload = getLOKPayload(LOK_CALLBACK_INVALIDATE_VISIBLE_CURSOR, nViewId))
     {
         libreOfficeKitViewCallbackWithViewId(LOK_CALLBACK_INVALIDATE_VISIBLE_CURSOR,
                                              *payload, nViewId);
     }
-    if (const auto& payload = getLOKPayload(LOK_CALLBACK_TEXT_SELECTION, nViewId))
+    if (const auto payload = getLOKPayload(LOK_CALLBACK_TEXT_SELECTION, nViewId))
     {
         libreOfficeKitViewCallback(LOK_CALLBACK_TEXT_SELECTION, *payload);
     }

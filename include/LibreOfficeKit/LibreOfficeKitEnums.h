@@ -581,7 +581,7 @@ typedef enum
      */
     LOK_CALLBACK_CELL_ADDRESS = 34,
     /**
-     * The key ruler related properties on change are reported by this.
+     * The key horizontal ruler related properties on change are reported by this.
      *
      * The payload format is:
      *
@@ -1033,7 +1033,41 @@ typedef enum
      *
      * Payload is the log to be sent
      */
-    LOK_CALLBACK_CORE_LOG = 70
+    LOK_CALLBACK_CORE_LOG = 70,
+
+    /**
+     * Tooltips shown in the documents, like redline author and date.
+     *
+     *  {
+     *      "text": "text of tooltip",
+     *      "rectangle": "x, y, width, height"
+     *  }
+     */
+    LOK_CALLBACK_TOOLTIP = 71,
+
+    /**
+     * Used for sending the rectangle for text inside a shape/textbox
+     *
+     *  Payload contains the rectangle details
+     */
+    LOK_CALLBACK_SHAPE_INNER_TEXT = 72,
+        /**
+     * The key vertical ruler related properties on change are reported by this.
+     *
+     * The payload format is:
+     *
+     * {
+     *      "margin1": "...",
+     *      "margin2": "...",
+     *      "leftOffset": "...",
+     *      "pageOffset": "...",
+     *      "pageWidth": "...",
+     *      "unit": "..."
+     *  }
+     *
+     * Here all aproperties are same as described in svxruler.
+     */
+    LOK_CALLBACK_VERTICAL_RULER_UPDATE = 73
 
 }
 LibreOfficeKitCallbackType;
@@ -1135,6 +1169,8 @@ static inline const char* lokCallbackTypeToString(int nType)
         return "LOK_CALLBACK_COMMENT";
     case LOK_CALLBACK_RULER_UPDATE:
         return "LOK_CALLBACK_RULER_UPDATE";
+    case LOK_CALLBACK_VERTICAL_RULER_UPDATE:
+        return "LOK_CALLBACK_VERTICAL_RULER_UPDATE";
     case LOK_CALLBACK_WINDOW:
         return "LOK_CALLBACK_WINDOW";
     case LOK_CALLBACK_VALIDITY_LIST_BUTTON:
@@ -1205,6 +1241,10 @@ static inline const char* lokCallbackTypeToString(int nType)
         return "LOK_CALLBACK_A11Y_SELECTION_CHANGED";
     case LOK_CALLBACK_CORE_LOG:
         return "LOK_CALLBACK_CORE_LOG";
+    case LOK_CALLBACK_TOOLTIP:
+        return "LOK_CALLBACK_TOOLTIP";
+    case LOK_CALLBACK_SHAPE_INNER_TEXT:
+        return "LOK_CALLBACK_SHAPE_INNER_TEXT";
     }
 
     assert(!"Unknown LibreOfficeKitCallbackType type.");

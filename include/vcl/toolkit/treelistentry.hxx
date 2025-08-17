@@ -23,6 +23,7 @@
 #error "don't use this in new code"
 #endif
 
+#include <config_options.h>
 #include <vcl/dllapi.h>
 #include <tools/color.hxx>
 #include <vcl/toolkit/treelistbox.hxx>
@@ -52,7 +53,7 @@ namespace o3tl
     template<> struct typed_flags<SvTLEntryFlags> : is_typed_flags<SvTLEntryFlags, 0x801f> {};
 }
 
-class VCL_DLLPUBLIC SvTreeListEntry
+class UNLESS_MERGELIBS_MORE(VCL_DLLPUBLIC) SvTreeListEntry
 {
     friend class SvTreeList;
     friend class SvListView;
@@ -69,6 +70,7 @@ class VCL_DLLPUBLIC SvTreeListEntry
     void*               pUserData;
     SvTLEntryFlags      nEntryFlags;
     std::optional<Color> mxTextColor;
+    OUString m_sAccessibleName;
 
 private:
     void ClearChildren();
@@ -109,11 +111,15 @@ public:
     void        SetUserData( void* pPtr );
     void        EnableChildrenOnDemand( bool bEnable=true );
     bool        HasChildrenOnDemand() const;
+    void        SetSeparator();
+    bool        IsSeparator() const;
 
     SvTLEntryFlags GetFlags() const { return nEntryFlags;}
     void SetFlags( SvTLEntryFlags nFlags );
 
     void SetTextColor( std::optional<Color> xColor ) { mxTextColor = xColor; }
+    OUString GetAccessibleName() { return m_sAccessibleName; }
+    void SetAccessibleName(const OUString& rName) { m_sAccessibleName = rName; };
     std::optional<Color> const & GetTextColor() const { return mxTextColor; }
 
     void SetExtraIndent(sal_uInt32 nExtraIndent) { mnExtraIndent = nExtraIndent; }

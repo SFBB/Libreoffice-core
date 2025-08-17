@@ -135,8 +135,6 @@ bool containsXInterfaceSubclass(const clang::Type* pType0) {
                     .Namespace("sun").Namespace("com").GlobalNamespace())
                 || (dc.Class("Sequence").Namespace("uno").Namespace("star")
                     .Namespace("sun").Namespace("com").GlobalNamespace())
-                || (dc.Class("WeakCppRef").Namespace("accessibility")
-                    .GlobalNamespace())
                 || (dc.Class("OAutoRegistration").Namespace("dba")
                     .GlobalNamespace())
                 || (dc.Class("OMultiInstanceAutoRegistration").Namespace("dbp")
@@ -336,6 +334,8 @@ bool containsSalhelperReferenceObjectSubclass(const clang::Type* pType0) {
             auto const dc = loplugin::DeclCheck(pTemplate);
             if (dc.Class("Reference").Namespace("rtl").GlobalNamespace()
                 || (dc.Class("OStoreHandle").AnonymousNamespace().Namespace("store")
+                    .GlobalNamespace())
+                || (dc.Class("DeleteRtlReferenceOnDeinit").Namespace("tools")
                     .GlobalNamespace()))
             {
                 return false;

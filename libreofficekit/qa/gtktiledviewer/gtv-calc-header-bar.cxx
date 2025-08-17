@@ -199,8 +199,7 @@ void gtv_calc_header_bar_configure(GtvCalcHeaderBar* bar, const boost::property_
                 if (nSize >= bar->m_nPositionPixel)
                 {
                     const int nScrolledSize = nSize - bar->m_nPositionPixel;
-                    GtvCalcHeaderBarPrivateImpl::Header aHeader(nScrolledSize, rValue.second.get<std::string>("text"));
-                    priv->m_aHeaders.push_back(aHeader);
+                    priv->m_aHeaders.emplace_back(nScrolledSize, rValue.second.get<std::string>("text"));
                 }
             }
         }
@@ -209,7 +208,7 @@ void gtv_calc_header_bar_configure(GtvCalcHeaderBar* bar, const boost::property_
             std::cerr << "gtv_calc_header_bar_configure: " << rException.what() << std::endl;
         }
     }
-    gtk_widget_show(GTK_WIDGET(bar));
+    gtk_widget_set_visible(GTK_WIDGET(bar), true);
     gtk_widget_queue_draw(GTK_WIDGET(bar));
 }
 

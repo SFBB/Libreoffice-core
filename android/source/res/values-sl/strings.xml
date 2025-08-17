@@ -73,7 +73,6 @@
     <string name="action_cut">Izreži</string>
     <string name="UNO_commands_string_type_hint">Vrsta</string>
     <string name="tabhost_style">Slog</string>
-    <string name="display_language">Prikaži jezik</string>
     <string name="current_uno_command">Trenutni ukaz UNO</string>
     <string name="action_back">Nazaj</string>
     <string name="action_print">Natisni</string>
@@ -90,7 +89,6 @@
     <string name="select_insert_options">Izberite možnosti vstavljanja:</string>
     <string name="select_delete_options">Izberite možnosti brisanja:</string>
     <string name="enter_part_name">Vnesite ime dela</string>
-    <string name="display_language_summary">Določite privzeti jezik za prikaz</string>
     <string name="pdf_export_finished">Izvoz v PDF je dokončan</string>
     <string name="unable_to_export_pdf">Izvoz v PDF ni možen</string>
     <string name="unable_to_save">Datoteke ni mogoče shraniti</string>
@@ -107,7 +105,7 @@
     <string name="UNO_commands_string_hint">Ukaz UNO</string>
     <string name="message_saving">Shranjevanje dokumenta …</string>
     <string name="calc_optimal_length">Optimalna dolžina</string>
-    <string name="compress_photo_title">Ali želite stisniti fotografijo\?</string>
+    <string name="compress_photo_title">Ali želite stisniti fotografijo?</string>
     <string name="password">Geslo</string>
     <string name="action_copy">Kopiraj</string>
     <string name="calc_insert_before">Vstavi</string>
@@ -115,7 +113,7 @@
     <string name="pref_experimental_editing_summary">Omogočite poskusni način urejanja. Uporabljajte na lastno odgovornost.</string>
     <string name="action_exportToPDF">Izvozi v PDF</string>
     <string name="select_file_to_open">Izberite datoteko, ki jo želite odpreti.</string>
-    <string name="save_alert_dialog_title">Ali želite shraniti dokument pred zapiranjem\?</string>
+    <string name="save_alert_dialog_title">Ali želite shraniti dokument pred zapiranjem?</string>
     <string name="action_text_copied">Besedilo je kopirano v odložišče</string>
     <string name="calc_alert_double_click_optimal_length">Namig: dvakrat tapnite glavo, da nastavite optimalno širino/višino.</string>
 </resources>

@@ -119,29 +119,27 @@ void SwAccessibleChild::Init( vcl::Window* pWindow )
     mpDrawObj = nullptr;
 }
 
+bool SwAccessibleChild::IsFrameAccessible(const SwFrame& rFrame, bool bPagePreview)
+{
+    if (!rFrame.IsAccessibleFrame())
+        return false;
+
+    if (rFrame.IsCellFrame()
+        && static_cast<const SwCellFrame&>(rFrame).GetTabBox()->GetSttNd() == nullptr)
+        return false;
+
+    if (rFrame.IsInCoveredCell())
+        return false;
+
+    return bPagePreview || !rFrame.IsPageFrame();
+}
+
 bool SwAccessibleChild::IsAccessible( bool bPagePreview ) const
 {
-    bool bRet( false );
-
     if ( mpFrame )
-    {
-        bRet = mpFrame->IsAccessibleFrame() &&
-               ( !mpFrame->IsCellFrame() ||
-                 static_cast<const SwCellFrame *>( mpFrame )->GetTabBox()->GetSttNd() != nullptr ) &&
-               !mpFrame->IsInCoveredCell() &&
-               ( bPagePreview ||
-                 !mpFrame->IsPageFrame() );
-    }
-    else if ( mpDrawObj )
-    {
-        bRet = true;
-    }
-    else if ( mpWindow )
-    {
-        bRet = true;
-    }
+        return IsFrameAccessible(*mpFrame, bPagePreview);
 
-    return bRet;
+    return mpDrawObj || mpWindow;
 }
 
 bool SwAccessibleChild::IsBoundAsChar() const
@@ -240,18 +238,21 @@ SwRect SwAccessibleChild::GetBox( const SwAccessibleMap& rAccMap ) const
         // by the mpFrame case above b) for genuine SdrObject this must be set
         // if it's connected to layout
         assert(dynamic_cast<SwDrawContact const*>(pContact));
-        SwPageFrame const*const pPage(const_cast<SwAnchoredObject *>(
-            pContact->GetAnchoredObj(mpDrawObj))->FindPageFrameOfAnchor());
-        if (pPage) // may end up here with partial layout -> not visible
+        if (pContact)
         {
-            aBox = SwRect( mpDrawObj->GetCurrentBoundRect() );
-            // tdf#91260 drawing object may be partially off-page
-            aBox.Intersection(pPage->getFrameArea());
+            SwPageFrame const*const pPage(const_cast<SwAnchoredObject *>(
+                pContact->GetAnchoredObj(mpDrawObj))->FindPageFrameOfAnchor());
+            if (pPage) // may end up here with partial layout -> not visible
+            {
+                aBox = SwRect( mpDrawObj->GetCurrentBoundRect() );
+                // tdf#91260 drawing object may be partially off-page
+                aBox.Intersection(pPage->getFrameArea());
+            }
         }
     }
     else if ( mpWindow )
     {
-        vcl::Window *pWin = rAccMap.GetShell()->GetWin();
+        vcl::Window* pWin = rAccMap.GetShell().GetWin();
         if (pWin)
         {
             aBox = SwRect( pWin->PixelToLogic(
@@ -370,24 +371,18 @@ const SwFrame* SwAccessibleChild::GetParent( const bool bInPagePreview ) const
     }
     else if ( mpWindow )
     {
-        css::uno::Reference < css::accessibility::XAccessible > xAcc =
-                                                    mpWindow->GetAccessible();
-        if ( xAcc.is() )
+        rtl::Reference<comphelper::OAccessible> pAcc = mpWindow->GetAccessible();
+        if (pAcc.is())
         {
-            css::uno::Reference < css::accessibility::XAccessibleContext > xAccContext =
-                                                xAcc->getAccessibleContext();
-            if ( xAccContext.is() )
+            css::uno::Reference<css::accessibility::XAccessible> xAccParent
+                = pAcc->getAccessibleParent();
+            if (xAccParent.is())
             {
-                css::uno::Reference < css::accessibility::XAccessible > xAccParent =
-                                                xAccContext->getAccessibleParent();
-                if ( xAccParent.is() )
+                SwAccessibleContext* pAccParentImpl
+                    = dynamic_cast<SwAccessibleContext*>(xAccParent.get());
+                if (pAccParentImpl)
                 {
-                    SwAccessibleContext* pAccParentImpl =
-                                dynamic_cast< SwAccessibleContext *>( xAccParent.get() );
-                    if ( pAccParentImpl )
-                    {
-                        pParent = pAccParentImpl->GetFrame();
-                    }
+                    pParent = pAccParentImpl->GetFrame();
                 }
             }
         }

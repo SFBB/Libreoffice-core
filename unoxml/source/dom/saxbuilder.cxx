@@ -39,12 +39,12 @@ namespace DOM
 
     Sequence< OUString > SAL_CALL CSAXDocumentBuilder::getSupportedServiceNames()
     {
-        return { "com.sun.star.xml.dom.SAXDocumentBuilder" };
+        return { u"com.sun.star.xml.dom.SAXDocumentBuilder"_ustr };
     }
 
     OUString SAL_CALL CSAXDocumentBuilder::getImplementationName()
     {
-        return "com.sun.star.comp.xml.dom.SAXDocumentBuilder";
+        return u"com.sun.star.comp.xml.dom.SAXDocumentBuilder"_ustr;
     }
 
     sal_Bool SAL_CALL CSAXDocumentBuilder::supportsService(const OUString& aServiceName)
@@ -100,7 +100,7 @@ namespace DOM
         m_aDocument = ownerDoc;
         Reference< XDocumentFragment > aFragment = m_aDocument->createDocumentFragment();
         m_aNodeStack.push(aFragment);
-        m_aFragment = aFragment;
+        m_aFragment = std::move(aFragment);
         m_aState = SAXDocumentBuilderState_BUILDING_FRAGMENT;
     }
 
@@ -132,7 +132,7 @@ namespace DOM
         Reference< XDocumentBuilder > aBuilder(DocumentBuilder::create(m_xContext));
         Reference< XDocument > aDocument = aBuilder->newDocument();
         m_aNodeStack.push(aDocument);
-        m_aDocument = aDocument;
+        m_aDocument = std::move(aDocument);
         m_aState = SAXDocumentBuilderState_BUILDING_DOCUMENT;
     }
 
@@ -180,8 +180,8 @@ namespace DOM
         }
 
         Reference< XElement > aElement;
-        const OUString& aPrefix(SvXMLImport::getNamespacePrefixFromToken(nElement, nullptr));
-        const OUString& aURI( SvXMLImport::getNamespaceURIFromToken( nElement ) );
+        const OUString aPrefix(SvXMLImport::getNamespacePrefixFromToken(nElement, nullptr));
+        const OUString aURI( SvXMLImport::getNamespaceURIFromToken( nElement ) );
         OUString aQualifiedName( SvXMLImport::getNameFromToken( nElement ) );
         if( !aPrefix.isEmpty() )
             aQualifiedName = aPrefix + SvXMLImport::aNamespaceSeparator + aQualifiedName;
@@ -246,8 +246,8 @@ namespace DOM
         for (auto &it : sax_fastparser::castToFastAttributeList( xAttribs ))
         {
             sal_Int32 nAttrToken = it.getToken();
-            const OUString& aAttrPrefix(SvXMLImport::getNamespacePrefixFromToken(nAttrToken, nullptr));
-            const OUString& aAttrURI( SvXMLImport::getNamespaceURIFromToken( nAttrToken ) );
+            const OUString aAttrPrefix(SvXMLImport::getNamespacePrefixFromToken(nAttrToken, nullptr));
+            const OUString aAttrURI( SvXMLImport::getNamespaceURIFromToken( nAttrToken ) );
             OUString aAttrQualifiedName( SvXMLImport::getNameFromToken( nAttrToken ) );
             if( !aAttrPrefix.isEmpty() )
                 aAttrQualifiedName = aAttrPrefix + SvXMLImport::aNamespaceSeparator + aAttrQualifiedName;
@@ -297,7 +297,7 @@ namespace DOM
 
         Reference< XElement > aElement(aNode, UNO_QUERY);
         OUString aRefName;
-        const OUString& aPrefix = aElement->getPrefix();
+        const OUString aPrefix = aElement->getPrefix();
         if (!aPrefix.isEmpty())
             aRefName = aPrefix + SvXMLImport::aNamespaceSeparator + aElement->getTagName();
         else

@@ -13,7 +13,7 @@
     <p>Third Party Code Additional copyright notices and license terms applicable to portions of the Software can be
     found <a href="#thirdparty">below</a> in this document.</p>
     <p>All trademarks and registered trademarks mentioned herein are the property of their respective owners.</p>
-    <p>Copyright © 2000–2023 LibreOffice contributors. All rights reserved.</p>
+    <p>Copyright © 2000–2025 LibreOffice contributors. All rights reserved.</p>
     <p>This product is based on OpenOffice.org. Portions of this software are copyright © 2000-2011, Oracle and/or its
     affiliates.</p>
     <p>This product has been created by The Document Foundation, incorporating many modifications from different
@@ -81,6 +81,25 @@
         LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE AND NON-INFRINGEMENT. IN
         NO EVENT SHALL THE COPYRIGHT HOLDERS OR ANYONE DISTRIBUTING THE SOFTWARE BE LIABLE FOR ANY DAMAGES OR OTHER
         LIABILITY, WHETHER IN CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR
+        THE USE OR OTHER DEALINGS IN THE SOFTWARE.</p>
+    </div>
+    <div class="BOX2D">
+        <h2>Box2D</h2>
+        <p>The following software may be included in this product: Box2D, a 2D Physics Engine for Games. Use of any
+        of this software is governed by the terms of the license below:</p>
+        <p>MIT License</p>
+        <p>Copyright (c) 2019 Erin Catto</p>
+        <p>Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
+        associated documentation files (the "Software"), to deal in the Software without restriction, including
+        without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+        copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the
+        following conditions:</p>
+        <p>The above copyright notice and this permission notice shall be included in all copies or substantial
+        portions of the Software.</p>
+        <p>THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT
+        LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO
+        EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+        IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR
         THE USE OR OTHER DEALINGS IN THE SOFTWARE.</p>
     </div>
     <div class="BREAKPAD">
@@ -204,6 +223,39 @@
         <p>The following software may be included in this product: CoinMP. Use of any of this software is governed by
         the terms of the license below:</p>
         <p><a href="#a__CPL_version_1_0">Jump to Common Public License Version 1.0 (CPL)</a></p>
+    </div>
+    <h2>dtoa.c</h2>
+    <p>The following software may be included in this product: dtoa.c, which provides a function to convert a decimal
+    string to double. Use of any of this software is governed by the terms of the license below:</p>
+    <p>Copyright (c) 1991, 2000, 2001 by Lucent Technologies.</p>
+    <p>Permission to use, copy, modify, and distribute this software for any purpose without fee is hereby granted,
+    provided that this entire notice is included in all copies of any software which is or includes a copy or
+    modification of this software and in all copies of the supporting documentation for such software.</p>
+    <p>THIS SOFTWARE IS BEING PROVIDED "AS IS", WITHOUT ANY EXPRESS OR IMPLIED WARRANTY. IN PARTICULAR, NEITHER THE
+    AUTHOR NOR LUCENT MAKES ANY REPRESENTATION OR WARRANTY OF ANY KIND CONCERNING THE MERCHANTABILITY OF THIS SOFTWARE
+    OR ITS FITNESS FOR ANY PARTICULAR PURPOSE.</p>
+    <div class="DRAGONBOX">
+        <h2>Dragonbox</h2>
+        <p>The following software may be included in this product: Dragonbox.</p>
+        <p>Dragonbox code is covered by the following license:</p>
+        <p><a href="#a__Apache_License_version_2_0">Jump to Apache License Version 2.0</a></p>
+        <blockquote>
+            <p>--- LLVM Exceptions to the Apache 2.0 License ----</p>
+
+            <p>As an exception, if, as a result of your compiling your source code, portions
+            of this Software are embedded into an Object form of such source code, you
+            may redistribute such embedded portions in such Object form without complying
+            with the conditions of Sections 4(a), 4(b) and 4(d) of the License.</p>
+
+            <p>In addition, if you combine or link compiled forms of this Software with
+            software that is licensed under the GPLv2 ("Combined Software") and if a
+            court of competent jurisdiction determines that the patent provision (Section
+            3), the indemnity provision (Section 9) or other Section of the License
+            conflicts with the conditions of the GPLv2, you may retroactively and
+            prospectively choose to deem waived or otherwise exclude such Section(s) of
+            the License, but only in their entirety and only with respect to the Combined
+            Software.</p>
+        </blockquote>
     </div>
     <div class="EPOXY">
         <h2>Epoxy</h2>
@@ -464,7 +516,7 @@
         "http://mozilla.org/MPL">http://mozilla.org/MPL</a>) or under the GNU General Public License, as published by
         the Free Software Foundation; either version 2 of the license or (at your option) any later version.</p>
         <p><a href="#a__LGPL_version_2_1">Jump to LGPL Version 2.1</a></p>
-        <p><a href="#a__MPL_version_1_1">Jump to MPL Version 1.1</a></p>
+        <p><a href="#a__MPL_version_2">Jump to MPL Version 2.0</a></p>
     </div>
     <div class="HARFBUZZ">
         <h2>HarfBuzz</h2>
@@ -680,10 +732,8 @@
         <h2>libcdr</h2>
         <p>The following software may be included in this product: libcdr. Use of any of this software is governed by
         the terms of the license below:</p>
-        <p>MPL 1.1 / LGPL v2+ / GPL v2+</p>
-        <p><a href="#a__GPL_version_2">Jump to GPL Version 2</a></p>
-        <p><a href="#a__LGPL_version_2">Jump to LGPL Version 2</a></p>
-        <p><a href="#a__MPL_version_1_1">Jump to MPL Version 1.1</a></p>
+        <p>MPL 2.0</p>
+        <p><a href="#a__MPL_version_2">Jump to MPL Version 2.0</a></p>
     </div>
     <div class="LIBCMIS" >
         <h2>libcmis</h2>
@@ -757,6 +807,51 @@
         CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
         OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
         DAMAGE.</p>
+    </div>
+    <h2>libfixmath</h2>
+    <p>The following software may be included in this product: libfixmath.</p>
+    <p>libfixmath code is covered by the MIT license:</p>
+    <blockquote>
+    <p>libfixmath is Copyright (c) 2011-2021 Flatmush &lt;Flatmush@gmail.com&gt;,
+    Petteri Aimonen &lt;Petteri.Aimonen@gmail.com&gt;, &amp; libfixmath AUTHORS</p>
+    <p>Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:</p>
+    <p>The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.</p>
+    <p>THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE.</p>
+    </blockquote>
+    <div class ="LIBFFI">
+        <h2>libffi</h2>
+        <p>The following software may be included in this product: libffi</p>
+        <p>The libffi project code is covered by the MIT license:</p>
+        <p>libffi - Copyright (c) 1996-2019  Anthony Green, Red Hat, Inc and others.</p>
+        <p>See source files for details.</p>
+        <p>Permission is hereby granted, free of charge, to any person obtaining
+        a copy of this software and associated documentation files (the
+        ``Software''), to deal in the Software without restriction, including
+        without limitation the rights to use, copy, modify, merge, publish,
+        distribute, sublicense, and/or sell copies of the Software, and to
+        permit persons to whom the Software is furnished to do so, subject to
+        the following conditions:</p>
+        <p>The above copyright notice and this permission notice shall be
+        included in all copies or substantial portions of the Software.</p>
+        <p>THE SOFTWARE IS PROVIDED ``AS IS'', WITHOUT WARRANTY OF ANY KIND,
+        EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+        MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+        IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+        CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+        TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+        SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.</p>
     </div>
     <div class="FREEHAND">
         <h2>libfreehand</h2>
@@ -1001,10 +1096,8 @@
         <h2>libmspub</h2>
         <p>The following software may be included in this product: libmspub. Use of any of this software is governed by
         the terms of the license below:</p>
-        <p>MPL 1.1 / LGPL v2+ / GPL v2+</p>
-        <p><a href="#a__GPL_version_2">Jump to GPL Version 2</a></p>
-        <p><a href="#a__LGPL_version_2">Jump to LGPL Version 2</a></p>
-        <p><a href="#a__MPL_version_1_1">Jump to MPL Version 1.1</a></p>
+        <p>MPL 2.0</p>
+        <p><a href="#a__MPL_version_2">Jump to MPL Version 2.0</a></p>
     </div>
     <div class="MWAW">
         <h2>libmwaw</h2>
@@ -1045,22 +1138,6 @@
         <p>LGPL v2.1+ / MPL 2</p>
         <p><a href="#a__LGPL_version_2_1">Jump to LGPL Version 2.1</a></p>
         <p><a href="#a__MPL_version_2">Jump to MPL Version 2.0</a></p>
-    </div>
-    <div class="LIBORCUS">
-        <h2>liborcus</h2>
-        <p>The following software may be included in this product: liborcus. Use of any of this software is governed by
-        the terms of the license below:</p>
-        <p>Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
-        documentation files (the "Software"), to deal in the Software without restriction, including without limitation
-        the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
-        and to permit persons to whom the Software is furnished to do so, subject to the following conditions:</p>
-        <p>The above copyright notice and this permission notice shall be included in all copies or substantial
-        portions of the Software.</p>
-        <p>THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT
-        LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
-        SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
-        ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-        OTHER DEALINGS IN THE SOFTWARE.</p>
     </div>
     <div class="LIBPNG">
         <h2>libpng</h2>
@@ -1363,6 +1440,28 @@
         governed by the terms of the license below:</p>
         <p><a href="#a__LGPL_version_2_1">Jump to LGPL Version 2.1</a></p>
     </div>
+    <div class="MD4C">
+        <h2>md4c</h2>
+        <p>The following software may be included in this product: md4c. Use of any of this software is governed by
+        the terms of the license below:</p>
+        <p>The MIT License (MIT)</p>
+        <p>Copyright © 2016-2024 Martin Mitáš</p>
+        <p>Permission is hereby granted, free of charge, to any person obtaining a
+        copy of this software and associated documentation files (the “Software”),
+        to deal in the Software without restriction, including without limitation
+        the rights to use, copy, modify, merge, publish, distribute, sublicense,
+        and/or sell copies of the Software, and to permit persons to whom the
+        Software is furnished to do so, subject to the following conditions:</p>
+        <p>The above copyright notice and this permission notice shall be included
+        in all copies or substantial portions of the Software.</p>
+        <p>THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS
+        OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+        FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+        THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+        LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+        FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+        IN THE SOFTWARE.</p>
+    </div>
     <div class="MDDS">
         <h2>mdds</h2>
         <p>The following software may be included in this product: mdds. Use of any of this software is governed by the
@@ -1516,7 +1615,7 @@
         <h2>Network Security Services (NSS)</h2>
         <p>The following software may be included in this product: Network Security Services (NSS). Use of any of this
         software is governed by the terms of the license below:</p>
-        <p><a href="#a__MPL_version_1_1">Jump to MPL 1.1</a></p>
+        <p><a href="#a__MPL_version_2">Jump to MPL 2.0</a></p>
     </div>
     <div class="OPENLDAP">
         <h2>OpenLDAP</h2>
@@ -1684,52 +1783,29 @@
         ON AN "AS IS" BASIS, AND THE UNIVERSITY OF CALIFORNIA HAS NO OBLIGATIONS TO PROVIDE MAINTENANCE, SUPPORT,
         UPDATES, ENHANCEMENTS, OR MODIFICATIONS.</p>
     </div>
-    <div class ="LIBFFI">
-        <h2>libffi</h2>
-        <p>The following software may be included in this product: libffi</p>
-        <p>The libffi project code is covered by the MIT license:</p>
-        <p>libffi - Copyright (c) 1996-2019  Anthony Green, Red Hat, Inc and others.</p>
-        <p>See source files for details.</p>
-        <p>Permission is hereby granted, free of charge, to any person obtaining
-        a copy of this software and associated documentation files (the
-        ``Software''), to deal in the Software without restriction, including
-        without limitation the rights to use, copy, modify, merge, publish,
-        distribute, sublicense, and/or sell copies of the Software, and to
-        permit persons to whom the Software is furnished to do so, subject to
-        the following conditions:</p>
-        <p>The above copyright notice and this permission notice shall be
-        included in all copies or substantial portions of the Software.</p>
-        <p>THE SOFTWARE IS PROVIDED ``AS IS'', WITHOUT WARRANTY OF ANY KIND,
-        EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-        MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-        IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
-        CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
-        TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
-        SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.</p>
-    </div>
     <div class="PYTHON">
         <h2>Python</h2>
         <p>The following software may be included in this product: Python. Use of any of this software is governed by
         the terms of the license below:</p>
-        <h3>PSF LICENSE AGREEMENT FOR PYTHON 2.3</h3>
+        <h3>PYTHON SOFTWARE FOUNDATION LICENSE VERSION 2</h3>
         <p>1. This LICENSE AGREEMENT is between the Python Software Foundation ("PSF"), and the Individual or
-        Organization ("Licensee") accessing and otherwise using Python 2.3 software in source or binary form and its
-        associated documentation.</p>
+        Organization ("Licensee") accessing and otherwise using this software ("Python") in source or binary form and
+        its associated documentation.</p>
         <p>2. Subject to the terms and conditions of this License Agreement, PSF hereby grants Licensee a nonexclusive,
         royalty-free, world-wide license to reproduce, analyze, test, perform and/or display publicly, prepare
-        derivative works, distribute, and otherwise use Python 2.3 alone or in any derivative version, provided,
-        however, that PSF's License Agreement and PSF's notice of copyright, i.e., "Copyright (c) 2001, 2002, 2003,
-        2004 Python Software Foundation; All Rights Reserved" are retained in Python 2.3 alone or in any derivative
-        version prepared by Licensee.</p>
-        <p>3. In the event Licensee prepares a derivative work that is based on or incorporates Python 2.3 or any part
+        derivative works, distribute, and otherwise use Python alone or in any derivative version, provided,
+        however, that PSF's License Agreement and PSF's notice of copyright, i.e., "Copyright © 2001-2024 Python
+        Software Foundation; All Rights Reserved" are retained in Python alone or in any derivative version prepared
+        by Licensee.</p>
+        <p>3. In the event Licensee prepares a derivative work that is based on or incorporates Python or any part
         thereof, and wants to make the derivative work available to others as provided herein, then Licensee hereby
-        agrees to include in any such work a brief summary of the changes made to Python 2.3.</p>
-        <p>4. PSF is making Python 2.3 available to Licensee on an "AS IS" basis.  PSF MAKES NO REPRESENTATIONS OR
+        agrees to include in any such work a brief summary of the changes made to Python.</p>
+        <p>4. PSF is making Python available to Licensee on an "AS IS" basis.  PSF MAKES NO REPRESENTATIONS OR
         WARRANTIES, EXPRESS OR IMPLIED.  BY WAY OF EXAMPLE, BUT NOT LIMITATION, PSF MAKES NO AND DISCLAIMS ANY
         REPRESENTATION OR WARRANTY OF MERCHANTABILITY OR FITNESS FOR ANY PARTICULAR PURPOSE OR THAT THE USE OF PYTHON
-        2.3 WILL NOT INFRINGE ANY THIRD PARTY RIGHTS.</p>
-        <p>5. PSF SHALL NOT BE LIABLE TO LICENSEE OR ANY OTHER USERS OF PYTHON 2.3 FOR ANY INCIDENTAL, SPECIAL, OR
-        CONSEQUENTIAL DAMAGES OR LOSS AS A RESULT OF MODIFYING, DISTRIBUTING, OR OTHERWISE USING PYTHON 2.3, OR ANY
+        WILL NOT INFRINGE ANY THIRD PARTY RIGHTS.</p>
+        <p>5. PSF SHALL NOT BE LIABLE TO LICENSEE OR ANY OTHER USERS OF PYTHON FOR ANY INCIDENTAL, SPECIAL, OR
+        CONSEQUENTIAL DAMAGES OR LOSS AS A RESULT OF MODIFYING, DISTRIBUTING, OR OTHERWISE USING PYTHON, OR ANY
         DERIVATIVE THEREOF, EVEN IF ADVISED OF THE POSSIBILITY THEREOF.</p>
         <p>6. This License Agreement will automatically terminate upon a material breach of its terms and
         conditions.</p>
@@ -1737,7 +1813,7 @@
         joint venture between PSF and Licensee.  This License Agreement does not grant permission to use PSF
         trademarks or trade name in a trademark sense to endorse or promote products or services of Licensee, or any
         third party.</p>
-        <p>8. By copying, installing or otherwise using Python 2.3, Licensee agrees to be bound by the terms and
+        <p>8. By copying, installing or otherwise using Python, Licensee agrees to be bound by the terms and
         conditions of this License Agreement.</p>
         <p>BEOPEN.COM LICENSE AGREEMENT FOR PYTHON 2.0</p>
         <p>BEOPEN PYTHON OPEN SOURCE LICENSE AGREEMENT VERSION 1</p>
@@ -1821,97 +1897,6 @@
         PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION
         WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.</p>
     </div>
-    <h2>zxcvbn-c</h2>
-    <p>The following software may be included in this product: zxcvbn-c.</p>
-    <p>zxcvbn-c code is covered by the MIT license:</p>
-    <blockquote>
-      <p>Copyright (c) 2015-2017 Tony Evans </p>
-
-      <p>Permission is hereby granted, free of charge, to any person obtaining a copy
-      of this software and associated documentation files (the "Software"), to deal
-      in the Software without restriction, including without limitation the rights
-      to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-      copies of the Software, and to permit persons to whom the Software is
-      furnished to do so, subject to the following conditions:</p>
-
-      <p>The above copyright notice and this permission notice shall be included in
-      all copies or substantial portions of the Software.</p>
-
-      <p>THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-      IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-      FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-      AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-      LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-      OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-      THE SOFTWARE.</p>
-    </blockquote>
-    <h2>Dragonbox</h2>
-    <p>The following software may be included in this product: Dragonbox.</p>
-    <p>Dragonbox code is covered by the following license:</p>
-    <p><a href="#a__Apache_License_version_2_0">Jump to Apache License Version 2.0</a></p>
-    <blockquote>
-        <p>--- LLVM Exceptions to the Apache 2.0 License ----</p>
-
-        <p>As an exception, if, as a result of your compiling your source code, portions
-        of this Software are embedded into an Object form of such source code, you
-        may redistribute such embedded portions in such Object form without complying
-        with the conditions of Sections 4(a), 4(b) and 4(d) of the License.</p>
-
-        <p>In addition, if you combine or link compiled forms of this Software with
-        software that is licensed under the GPLv2 ("Combined Software") and if a
-        court of competent jurisdiction determines that the patent provision (Section
-        3), the indemnity provision (Section 9) or other Section of the License
-        conflicts with the conditions of the GPLv2, you may retroactively and
-        prospectively choose to deem waived or otherwise exclude such Section(s) of
-        the License, but only in their entirety and only with respect to the Combined
-        Software.</p>
-    </blockquote>
-    <h2>dtoa</h2>
-    <p>The following software may be included in this product: dtoa.</p>
-    <p>dtoa code is covered by the MIT license:</p>
-    <blockquote>
-    <p> The author of this software is David M. Gay.</p>
-
-    <p> Copyright (c) 1991, 2000, 2001 by Lucent Technologies.</p>
-
-    <p>Permission to use, copy, modify, and distribute this software for any
-    purpose without fee is hereby granted, provided that this entire notice
-    is included in all copies of any software which is or includes a copy
-    or modification of this software and in all copies of the supporting
-    documentation for such software.</p>
-
-    <p>THIS SOFTWARE IS BEING PROVIDED "AS IS", WITHOUT ANY EXPRESS OR IMPLIED
-    WARRANTY.  IN PARTICULAR, NEITHER THE AUTHOR NOR LUCENT MAKES ANY
-    REPRESENTATION OR WARRANTY OF ANY KIND CONCERNING THE MERCHANTABILITY
-    OF THIS SOFTWARE OR ITS FITNESS FOR ANY PARTICULAR PURPOSE.</p>
-    </blockquote>
-
-    <h2>libfixmath</h2>
-    <p>The following software may be included in this product: libfixmath.</p>
-    <p>libfixmath code is covered by the MIT license:</p>
-    <blockquote>
-    <p>libfixmath is Copyright (c) 2011-2021 Flatmush &lt;Flatmush@gmail.com&gt;,
-    Petteri Aimonen &lt;Petteri.Aimonen@gmail.com&gt;, &amp; libfixmath AUTHORS</p>
-
-    <p>Permission is hereby granted, free of charge, to any person obtaining a copy
-    of this software and associated documentation files (the "Software"), to deal
-    in the Software without restriction, including without limitation the rights
-    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-    copies of the Software, and to permit persons to whom the Software is
-    furnished to do so, subject to the following conditions:</p>
-
-    <p>The above copyright notice and this permission notice shall be included in all
-    copies or substantial portions of the Software.</p>
-
-    <p>THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-    SOFTWARE.</p>
-    </blockquote>
-
     <h2>Random123: a Library of Counter-Based Random Number Generators</h2>
     <p>The following software may be included in this product: Random123: a Library of Counter-Based Random Number
     Generators. Use of any of this software is governed by the terms of the license below:</p>
@@ -1981,7 +1966,7 @@
         <h2>Rhino</h2>
         <p>The following software may be included in this product: Rhino. Use of any of this software is governed by
         the terms of the license below:</p>
-        <p><a href="#a__MPL_version_1_1">Jump to MPL Version 1.1</a></p>
+        <p><a href="#a__MPL_version_2">Jump to MPL Version 2.0</a></p>
     </div>
     <div class="SANE">
         <h2>SANE</h2>
@@ -1996,6 +1981,31 @@
         <p>This file declares SANE application interface. See the SANE standard for a detailed explanation of the
         interface.</p>
     </div>
+    <div class="SKIA">
+        <h2>Skia</h2>
+        <p>The following software may be included in this product: Skia. Use of any of this software is governed by
+        the terms of the license below:</p>
+        <p>Copyright (c) 2011 Google Inc. All rights reserved.</p>
+        <p>Redistribution and use in source and binary forms, with or without modification, are permitted provided that
+        the following conditions are met:</p>
+        <ul>
+            <li>Redistributions of source code must retain the above copyright notice, this list of conditions and the
+            following disclaimer.</li>
+            <li>Redistributions in binary form must reproduce the above copyright notice, this list of conditions and
+            the following disclaimer in the documentation and/or other materials provided with the distribution.</li>
+            <li>Neither the name of Google Inc. nor the names of its contributors may be used to endorse or promote
+            products derived from this software without specific prior written permission.</li>
+        </ul>
+        <p>THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
+        WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+        PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY
+        DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
+        PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+        CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
+        OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
+        DAMAGE.</p>
+    </div>
+    <hr />
     <h2>SVGPathSeg polyfill</h2>
     <p>The following software may be included in this product: SVGPathSeg polyfill. Use of any of this software is
     governed by the terms of the license below:</p>
@@ -2232,6 +2242,30 @@
         CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
         IN THE SOFTWARE.</p>
     </div>
+    <div class="YRS">
+        <h2>Y-CRDT</h2>
+        <p>The following software may be included in this product: Y-CRDT Library. Use of any of this software is
+        governed by the terms of the license below:</p>
+        <h3>The MIT License (MIT)</h3>
+        <p>Copyright (c) 2020</p>
+        <p>- Bartosz Sypytkowski (b.sypytkowski@gmail.com)</p>
+        <p>- Kevin Jahns (kevin.jahns@pm.me).</p>
+        <p>Permission is hereby granted, free of charge, to any person obtaining a copy
+          of this software and associated documentation files (the "Software"), to deal
+          in the Software without restriction, including without limitation the rights
+          to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+          copies of the Software, and to permit persons to whom the Software is
+          furnished to do so, subject to the following conditions:</p>
+        <p>The above copyright notice and this permission notice shall be included in all
+          copies or substantial portions of the Software.</p>
+        <p>THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+          IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+          FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+          AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+          LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+          OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+          SOFTWARE.</p>
+    </div>
     <div class="ZLIB">
         <h2>zlib</h2>
         <p>The following software may be included in this product: zlib. Use of any of this software is governed by the
@@ -2248,48 +2282,66 @@
         original software.</p>
         <p>3. This notice may not be removed or altered from any source distribution.</p>
     </div>
-    <div class="SKIA">
-        <h2>Skia</h2>
-        <p>The following software may be included in this product: Skia. Use of any of this software is governed by
-        the terms of the license below:</p>
-        <p>Copyright (c) 2011 Google Inc. All rights reserved.</p>
-        <p>Redistribution and use in source and binary forms, with or without modification, are permitted provided that
-        the following conditions are met:</p>
+    <div class="ZSTD">
+        <h2>Zstandard</h2>
+        <p>The following software may be included in this product: Zstandard or zstd as short version.
+        Zstandard is dual-licensed under BSD or GPLv2.</p>
+        <p>BSD License</p>
+        <p>For Zstandard software</p>
+        <p>Copyright (c) Meta Platforms, Inc. and affiliates. All rights reserved.</p>
+        <p>Redistribution and use in source and binary forms, with or without modification,
+        are permitted provided that the following conditions are met:</p>
         <ul>
-            <li>Redistributions of source code must retain the above copyright notice, this list of conditions and the
-            following disclaimer.</li>
-            <li>Redistributions in binary form must reproduce the above copyright notice, this list of conditions and
-            the following disclaimer in the documentation and/or other materials provided with the distribution.</li>
-            <li>Neither the name of Google Inc. nor the names of its contributors may be used to endorse or promote
-            products derived from this software without specific prior written permission.</li>
+            <li>Redistributions of source code must retain the above copyright notice, this
+            list of conditions and the following disclaimer.</li>
+            <li>Redistributions in binary form must reproduce the above copyright notice,
+           this list of conditions and the following disclaimer in the documentation
+           and/or other materials provided with the distribution.</li>
+            <li>Neither the name Facebook, nor Meta, nor the names of its contributors may
+           be used to endorse or promote products derived from this software without
+           specific prior written permission.</li>
         </ul>
-        <p>THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED
-        WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
-        PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE LIABLE FOR ANY
-        DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,
-        PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-        CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR
-        OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
-        DAMAGE.</p>
+        <p>THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+        ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+        WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+        DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+        ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+        (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+        LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+        ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+        (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+        SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.</p>
+        <div class="no_mpl_subset">
+            <p><a href="#a__GPL_version_2">Jump to GPL Version 2</a></p>
+        </div>
     </div>
-    <hr />
+    <div class="ZXCVBN">
+        <h2>zxcvbn-c</h2>
+        <p>The following software may be included in this product: zxcvbn-c. Use of any of this software is governed
+        by the terms of the license below:</p>
+        <p>MIT License</p>
+        <p>Copyright (c) 2015-2017 Tony Evans</p>
+        <p>Permission is hereby granted, free of charge, to any person obtaining a copy of this software and
+        associated documentation files (the "Software"), to deal in the Software without restriction, including
+        without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+        copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the
+        following conditions:</p>
+        <p>The above copyright notice and this permission notice shall be included in all copies or substantial
+        portions of the Software.</p>
+        <p>THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT
+        LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO
+        EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+        IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR
+        THE USE OR OTHER DEALINGS IN THE SOFTWARE.</p>
+    </div>
+    <div class="ZXING">
+        <h2>ZXing-C++</h2>
+        <p>The following software may be included in this product: ZXing-C++. Use of any of this software is governed
+        by the terms of the license below:</p>
+        <p><a href="#a__Apache_License_version_2_0">Jump to Apache License Version 2.0</a></p>
+    </div>
     <h1><a id="a__Extensions" name="a__Extensions">Extensions</a></h1>
     <p>Only third party extensions are listed here whose source code is not in the LibreOffice tree.</p>
-    <div class="NUMBERTEXT"><!-- FIXME: license_*.xsl written in XSLT 1.0 matches this when LIBNUMBERTEXT is defined -->
-        <h2>Numbertext</h2>
-        <p>The following software may be included in this product: Numbertext. Use of any of this software is governed
-        by the terms of the license below:</p>
-        <p>License: LGPL/BSD dual-license, 2009-2010 (C) László Németh (nemeth at openoffice dot org)</p>
-        <p>Numbertext language data (Soros programs):</p>
-        <p>LGPL/BSD dual-license, 2009-2010 (C) László Németh et al. (see AUTHORS)</p>
-        <p>Serbian modules:</p>
-        <p>CC/LGPL/BSD tri-license, 2009 (C) Goran Rakić (grakic at devbase dot net)</p>
-        <p>Note: for full distribution with specifications, IDE and JavaScript implementation, see <a href=
-        "http://NUMBERTEXT.org/">http://NUMBERTEXT.org</a></p>
-        <p>Software distributed under the License is distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY KIND,
-        either express or implied.</p>
-        <p><a href="#a__LGPL_version_3">Jump to LGPL Version 3</a></p>
-    </div>
     <div class="NLPSOLVER">
         <h2>Solver for Nonlinear Programming</h2>
         <p>The following software may be included in this product: Solver for Nonlinear Programming. Use of any of this
@@ -2300,6 +2352,13 @@
     <div class="MORE_FONTS">
         <hr />
         <h1><a id="a__Fonts" name="a__Fonts">Fonts</a></h1>
+        <h2>Agdasima</h2>
+        <p>The following software may be included in this product: Agdasima fonts. Use of any of this software is governed
+        by the terms of the license below:</p>
+        <p>Copyright 2023 The Agdasima Project Authors (https://github.com/docrepair-fonts/agdasima-fonts).</p>
+        <p>This Font Software is licensed under the SIL Open Font License, Version 1.1. This license is copied below,
+        and is also available with a FAQ at: <a href="http://scripts.sil.org/OFL">http://scripts.sil.org/OFL</a></p>
+        <p><a href="#a__SIL_Open_Font_License__version_1_1">Jump to SIL Open Font License, Version 1.1</a></p>
         <h2>Alef</h2>
         <p>Copyright (c) 2012, HaGilda &amp; Mushon Zer-Aviv (&lt;http://hagilda.com|info@hagilda.com&gt;), with
         Reserved Font Name Alef Regular.</p>
@@ -2311,10 +2370,33 @@
         <p>Copyright (c) 2010-2017, Khaled Hosny (&lt;khaledhosny@eglug.org&gt;)</p>
         <p>This Font Software is licensed under the SIL Open Font License, Version 1.1 as shown below.</p>
         <p><a href="#a__SIL_Open_Font_License__version_1_1">Jump to SIL Open Font License, Version 1.1</a></p>
+        <h2>Bacasime Antique</h2>
+        <p>The following software may be included in this product: Bacasime Antique fonts. Use of any of this software is governed
+        by the terms of the license below:</p>
+        <p>Copyright 2023 The Bacasime Antique Project Authors (https://github.com/docrepair-fonts/bacasime-antique-fonts),
+        with Reserved Font Name "Playfair".</p>
+        <p>This Font Software is licensed under the SIL Open Font License, Version 1.1. This license is copied below,
+        and is also available with a FAQ at: <a href="http://scripts.sil.org/OFL">http://scripts.sil.org/OFL</a></p>
+        <p><a href="#a__SIL_Open_Font_License__version_1_1">Jump to SIL Open Font License, Version 1.1</a></p>
+        <h2>Belanosima</h2>
+        <p>The following software may be included in this product: Belanosima fonts. Use of any of this software is governed
+        by the terms of the license below:</p>
+        <p>Copyright 2023 The Belanosima Project Authors (https://github.com/docrepair-fonts/belanosima-fonts),
+        with Reserved Font Name "Josefin Sans".</p>
+        <p>This Font Software is licensed under the SIL Open Font License, Version 1.1. This license is copied below,
+        and is also available with a FAQ at: <a href="http://scripts.sil.org/OFL">http://scripts.sil.org/OFL</a></p>
+        <p><a href="#a__SIL_Open_Font_License__version_1_1">Jump to SIL Open Font License, Version 1.1</a></p>
         <h2>Caladea</h2>
         <p>Copyright (c) 2012 Huerta Tipográfica</p>
         <p>This Font Software is licensed under the Apache License, Version 2.0 as shown below.</p>
         <p><a href="#a__Apache_License_version_2_0">Jump to Apache License Version 2.0</a></p>
+        <h2>Caprasimo</h2>
+        <p>The following software may be included in this product: Caprasimo fonts. Use of any of this software is governed
+        by the terms of the license below:</p>
+        <p>Copyright 2023 The Caprasimo Project Authors (https://github.com/docrepair-fonts/caprasimo-fonts).</p>
+        <p>This Font Software is licensed under the SIL Open Font License, Version 1.1. This license is copied below,
+        and is also available with a FAQ at: <a href="http://scripts.sil.org/OFL">http://scripts.sil.org/OFL</a></p>
+        <p><a href="#a__SIL_Open_Font_License__version_1_1">Jump to SIL Open Font License, Version 1.1</a></p>
         <h2>Carlito</h2>
         <p>Copyright (c) 2010-2013 by tyPoland Lukasz Dziedzic with Reserved Font Name "Carlito".</p>
         <p>This Font Software is licensed under the SIL Open Font License, Version 1.1 as shown below.</p>
@@ -2623,6 +2705,27 @@
         <p>This Font Software is licensed under the SIL Open Font License, Version 1.1. This license is copied below,
         and is also available with a FAQ at: <a href="http://scripts.sil.org/OFL">http://scripts.sil.org/OFL</a></p>
         <p><a href="#a__SIL_Open_Font_License__version_1_1">Jump to SIL Open Font License, Version 1.1</a></p>
+        <h2>Lugrasimo</h2>
+        <p>The following software may be included in this product: Lugrasimo fonts. Use of any of this software is governed
+        by the terms of the license below:</p>
+        <p>Copyright 2023 The Lugrasimo Project Authors (https://github.com/docrepair-fonts/lugrasimo-fonts).</p>
+        <p>This Font Software is licensed under the SIL Open Font License, Version 1.1. This license is copied below,
+        and is also available with a FAQ at: <a href="http://scripts.sil.org/OFL">http://scripts.sil.org/OFL</a></p>
+        <p><a href="#a__SIL_Open_Font_License__version_1_1">Jump to SIL Open Font License, Version 1.1</a></p>
+        <h2>Lumanosimo</h2>
+        <p>The following software may be included in this product: Lumanosimo fonts. Use of any of this software is governed
+        by the terms of the license below:</p>
+        <p>Copyright 2023 The Lumanosimo Project Authors (https://github.com/docrepair-fonts/lumanosimo-fonts).</p>
+        <p>This Font Software is licensed under the SIL Open Font License, Version 1.1. This license is copied below,
+        and is also available with a FAQ at: <a href="http://scripts.sil.org/OFL">http://scripts.sil.org/OFL</a></p>
+        <p><a href="#a__SIL_Open_Font_License__version_1_1">Jump to SIL Open Font License, Version 1.1</a></p>
+        <h2>Lunasima</h2>
+        <p>The following software may be included in this product: Lunasima fonts. Use of any of this software is governed
+        by the terms of the license below:</p>
+        <p>Copyright 2023 The Lunasima Project Authors (https://github.com/docrepair-fonts/lunasima-fonts).</p>
+        <p>This Font Software is licensed under the SIL Open Font License, Version 1.1. This license is copied below,
+        and is also available with a FAQ at: <a href="http://scripts.sil.org/OFL">http://scripts.sil.org/OFL</a></p>
+        <p><a href="#a__SIL_Open_Font_License__version_1_1">Jump to SIL Open Font License, Version 1.1</a></p>
         <h2>Noto</h2>
         <p>The following software may be included in this product: Google Noto fonts. Use of any of this software is
         governed by the terms of the license below:</p>
@@ -2678,6 +2781,10 @@
         <p>The following software may be included in this product: Albanian spelling dictionary. Use of any of this
         software is governed by the terms of the license below:</p>
         <p><a href="#a__GPL_version_2">Jump to GNU GPL version 2.0</a></p>
+        <h3>Hyphenation patterns</h3>
+        <p>The following software may be included in this product: Albanian hyphenation patterns. Use of any of this
+        software is governed by the terms of the license below:</p>
+        <p><a href="#a__MPL_version_2">Jump to MPL Version 2</a></p>
         <h2>Arabic</h2>
         <h3>Spelling dictionary</h3>
         <p>The following software may be included in this product: Arabic spelling dictionary. Use of any of this
@@ -3552,6 +3659,16 @@
         <p><a href="#a__GPL_version_3">Jump to GPL Version 3</a></p>
         <p><a href="#a__LGPL_version_3">Jump to LGPL Version 3</a></p>
         <p><a href="#a__MPL_version_1_1">Jump to MPL Version 1.1</a></p>
+        <h2>Korean</h2>
+        <h3>Spelling dictionary</h3>
+        <p>The following software may be included in this product: Korean spelling dictionary. Use of any of this
+        software is governed by the terms of the license below:</p>
+        <p>Copyright (C) 2008-2019 hunspell-dict-ko contributors</p>
+        <p>Copyright (C) 2017-2019 National Institute of Korean Language</p>
+        <p>This program is free software: you can redistribute it and/or modify it under the terms of the GNU
+        General Public License as published by the Free Software Foundation, either version 3 of the License,
+        or (at your option) any later version.</p>
+        <p><a href="#a__GPL_version_3">Jump to GPL Version 3</a></p>
         <h2>Lao</h2>
         <h3>Spelling dictionary</h3>
         <p>The following software may be included in this product: Lao spelling dictionary. Use of any of this software
@@ -3725,6 +3842,37 @@
         <p>Copyright (C) 2006 - 2013 by Raimundo Santos Moura &lt;raimundo.smoura@gmail.com&gt;</p>
         <p><a href="#a__LGPL_version_3">Jump to LGPL Version 3</a></p>
         <p><a href="#a__MPL_version_1_1">Jump to MPL Version 1.1</a></p>
+        <h3>Thesaurus</h3>
+        <p>The following software may be included in this product: Portuguese (Brazilian) thesaurus. Use of
+        any of this software is governed by the terms of the license below:</p>
+        <p>Copyright 2003 Kevin B. Hendricks, Stratford, Ontario, Canada
+        And Contributors.  All rights reserved.</p>
+        <p>Redistribution and use in source and binary forms, with or without
+        modification, are permitted provided that the following conditions
+        are met:</p>
+        <ol>
+        <li>Redistributions of source code must retain the above copyright
+        notice, this list of conditions and the following disclaimer.</li>
+        <li>Redistributions in binary form must reproduce the above copyright
+        notice, this list of conditions and the following disclaimer in the
+        documentation and/or other materials provided with the distribution.</li>
+        <li>All modifications to the source code must be clearly marked as
+        such. Binary redistributions based on modified source code
+        must be clearly marked as modified versions in the documentation
+        and/or other materials provided with the distribution.</li>
+        </ol>
+        <p>THIS SOFTWARE IS PROVIDED BY KEVIN B. HENDRICKS AND CONTRIBUTORS
+        ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+        LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+        FOR A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL
+        KEVIN B. HENDRICKS OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+        INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+        BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+        LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+        HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+        LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+        OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+        SUCH DAMAGE.</p>
         <h3>Portuguese Brazilian sentence checker for LibreOffice</h3>
         <p>The following software may be included in this product: Portuguese (Brazilian) sentence checker. Use of any
         of this software is governed by the terms of the license below:</p>
@@ -3891,11 +4039,6 @@
         software is governed by the terms of the license below:</p>
         <p>Copyright (C) 2004 Jason M Githeko</p>
         <p><a href="#a__LGPL_version_2_1">Jump to LGPL Version 2.1</a></p>
-        <h2>Swahili</h2>
-        <h3>Spelling dictionary</h3>
-        <p>The following software may be included in this product: Swahili spelling dictionary. Use of any of this
-        software is governed by the terms of the license below:</p>
-        <p><a href="#a__LGPL_version_3">Jump to LGPL Version 3</a></p>
         <h2>Swedish</h2>
         <h3>Spelling dictionary</h3>
         <p>The following software may be included in this product: Swedish spelling dictionary. Use of any of this
@@ -3903,6 +4046,10 @@
         <p>Copyright © 2003-12 Göran Andersson &lt;<a href="mailto:goran@init.se">goran@init.se</a>&gt;.</p>
         <p>This dictionary is made available subject to the terms of GNU Lesser General Public License Version 3.</p>
         <p><a href="#a__LGPL_version_3">Jump to LGPL Version 3</a></p>
+        <h3>Hyphenation patterns</h3>
+        <p>The following software may be included in this product: Swedish hyphenation patterns. Use of any of this
+        software is governed by the terms of the license below:</p>
+        <p><a href="#a__MPL_version_2">Jump to MPL Version 2.0</a></p>
         <h3>Thesaurus</h3>
         <p>The following software may be included in this product: Swedish thesaurus. Use of any of this software is
         governed by the terms of the license below:</p>
@@ -4139,7 +4286,7 @@
             <p>This work is distributed under the terms of Mozilla Public License version 2.0. To view a copy of this
             licence, visit <a href="https://www.mozilla.org/en-US/MPL/2.0/ ">https://www.mozilla.org/en-US/MPL/2.0/</a>
             </p>
-            <p><a href="a__MPL_version_2">Jump to MPL 2.0</a></p>
+            <p><a href="#a__MPL_version_2">Jump to MPL 2.0</a></p>
         </blockquote>
     </div>
     <div class="no_mpl_subset">

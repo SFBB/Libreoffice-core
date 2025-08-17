@@ -897,12 +897,16 @@ struct GridEntry
 
 typedef boost::multi_array<GridEntry, 2> array_type;
 
-static array_type assembleGrid(const VclGrid &rGrid);
-static bool isNullGrid(const array_type& A);
-static void calcMaxs(const array_type &A, std::vector<VclGrid::Value> &rWidths, std::vector<VclGrid::Value> &rHeights);
-
-array_type assembleGrid(const VclGrid &rGrid)
+#if defined _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4459)
+#pragma warning(disable : 4996)
+#endif
+static array_type assembleGrid(const VclGrid &rGrid)
 {
+#if defined _MSC_VER
+#pragma warning(pop)
+#endif
     array_type A;
 
     for (vcl::Window* pChild = rGrid.GetWindow(GetWindowType::FirstChild); pChild;
@@ -925,7 +929,15 @@ array_type assembleGrid(const VclGrid &rGrid)
             A.resize(boost::extents[nCurrentMaxXPos+1][nCurrentMaxYPos+1]);
         }
 
+#if defined _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4459)
+#pragma warning(disable : 4996)
+#endif
         GridEntry &rEntry = A[nLeftAttach][nTopAttach];
+#if defined _MSC_VER
+#pragma warning(pop)
+#endif
         rEntry.pChild = pChild;
         rEntry.nSpanWidth = nWidth;
         rEntry.nSpanHeight = nHeight;
@@ -954,12 +966,12 @@ array_type assembleGrid(const VclGrid &rGrid)
     {
         for (sal_Int32 y = 0; y < nMaxY; ++y)
         {
-#if defined __GNUC__ && !defined __clang__ && __GNUC__ == 13
+#if defined __GNUC__ && !defined __clang__ && __GNUC__ >= 13 && __GNUC__ <= 16
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdangling-reference"
 #endif
             const GridEntry &rEntry = A[x][y];
-#if defined __GNUC__ && !defined __clang__ && __GNUC__ == 13
+#if defined __GNUC__ && !defined __clang__ && __GNUC__ >= 13 && __GNUC__ <= 16
 #pragma GCC diagnostic pop
 #endif
             const vcl::Window *pChild = rEntry.pChild;
@@ -1045,7 +1057,15 @@ array_type assembleGrid(const VclGrid &rGrid)
     sal_Int32 nNonEmptyRows = std::count(aNonEmptyRows.begin(), aNonEmptyRows.end(), true);
 
     //make new grid without empty rows and columns
+#if defined _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4459)
+#pragma warning(disable : 4996)
+#endif
     array_type B(boost::extents[nNonEmptyCols][nNonEmptyRows]);
+#if defined _MSC_VER
+#pragma warning(pop)
+#endif
     for (sal_Int32 x = 0, x2 = 0; x < nMaxX; ++x)
     {
         if (!aNonEmptyCols[x])
@@ -1084,13 +1104,19 @@ static void calcMaxs(const array_type &A, std::vector<VclGrid::Value> &rWidths, 
     {
         for (sal_Int32 y = 0; y < nMaxY; ++y)
         {
-#if defined __GNUC__ && !defined __clang__ && __GNUC__ == 13
+#if defined __GNUC__ && !defined __clang__ && __GNUC__ >= 13 && __GNUC__ <= 16
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdangling-reference"
+#elif defined _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4459)
+#pragma warning(disable : 4996)
 #endif
             const GridEntry &rEntry = A[x][y];
-#if defined __GNUC__ && !defined __clang__ && __GNUC__ == 13
+#if defined __GNUC__ && !defined __clang__ && __GNUC__ >= 13 && __GNUC__ <= 16
 #pragma GCC diagnostic pop
+#elif defined _MSC_VER
+#pragma warning(pop)
 #endif
             const vcl::Window *pChild = rEntry.pChild;
             if (!pChild || !pChild->IsVisible())
@@ -1122,12 +1148,12 @@ static void calcMaxs(const array_type &A, std::vector<VclGrid::Value> &rWidths, 
     {
         for (sal_Int32 y = 0; y < nMaxY; ++y)
         {
-#if defined __GNUC__ && !defined __clang__ && __GNUC__ == 13
+#if defined __GNUC__ && !defined __clang__ && __GNUC__ >= 13 && __GNUC__ <= 16
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdangling-reference"
 #endif
             const GridEntry &rEntry = A[x][y];
-#if defined __GNUC__ && !defined __clang__ && __GNUC__ == 13
+#if defined __GNUC__ && !defined __clang__ && __GNUC__ >= 13 && __GNUC__ <= 16
 #pragma GCC diagnostic pop
 #endif
             const vcl::Window *pChild = rEntry.pChild;
@@ -1412,11 +1438,6 @@ void VclGrid::DumpAsPropertyTree(tools::JsonWriter& rJsonWriter)
     rJsonWriter.put("type", "grid");
 }
 
-bool toBool(std::u16string_view rValue)
-{
-    return (!rValue.empty() && (rValue[0] == 't' || rValue[0] == 'T' || rValue[0] == '1'));
-}
-
 bool VclGrid::set_property(const OUString &rKey, const OUString &rValue)
 {
     if (rKey == "row-spacing")
@@ -1468,7 +1489,7 @@ VclFrame::~VclFrame()
 
 void VclFrame::dispose()
 {
-    m_pLabel.clear();
+    m_pLabel.reset();
     VclBin::dispose();
 }
 
@@ -2154,6 +2175,11 @@ bool VclScrolledWindow::EventNotify(NotifyEvent& rNEvt)
                                             m_pVScroll->IsVisible() ? m_pVScroll : nullptr);
             }
         }
+        else if (rCEvt.GetCommand() == CommandEventId::GesturePan)
+        {
+            bDone = HandleScrollCommand(rCEvt, m_pHScroll->IsVisible() ? m_pHScroll : nullptr,
+                                        m_pVScroll->IsVisible() ? m_pVScroll : nullptr);
+        }
     }
 
     return bDone || VclBin::EventNotify( rNEvt );
@@ -2173,7 +2199,7 @@ void VclScrolledWindow::Paint(vcl::RenderContext& rRenderContext, const tools::R
 }
 
 namespace {
-void lcl_dumpScrollbar(::tools::JsonWriter& rJsonWriter, ScrollBar& rScrollBar)
+void lcl_dumpScrollbar(::tools::JsonWriter& rJsonWriter, const ScrollBar& rScrollBar)
 {
     rJsonWriter.put("lower", rScrollBar.GetRangeMin());
     rJsonWriter.put("upper", rScrollBar.GetRangeMax());
@@ -2362,10 +2388,10 @@ void MessageDialog::create_message_area()
     VclContainer *pContainer = get_content_area();
     assert(pContainer);
 
-    m_pGrid.set( VclPtr<VclGrid>::Create(pContainer) );
+    m_pGrid.reset( VclPtr<VclGrid>::Create(pContainer) );
     m_pGrid->reorderWithinParent(0);
     m_pGrid->set_column_spacing(12);
-    m_pMessageBox.set(VclPtr<VclVBox>::Create(m_pGrid));
+    m_pMessageBox.reset(VclPtr<VclVBox>::Create(m_pGrid));
     m_pMessageBox->set_grid_left_attach(1);
     m_pMessageBox->set_grid_top_attach(0);
     m_pMessageBox->set_spacing(GetTextHeight());
@@ -2424,26 +2450,26 @@ void MessageDialog::create_message_area()
         case VclButtonsType::NONE:
             break;
         case VclButtonsType::Ok:
-            pBtn.set( VclPtr<OKButton>::Create(pButtonBox) );
+            pBtn.reset( VclPtr<OKButton>::Create(pButtonBox) );
             pBtn->SetStyle(pBtn->GetStyle() & WB_DEFBUTTON);
             pBtn->Show();
-            pBtn->set_id("ok");
+            pBtn->set_id(u"ok"_ustr);
             add_button(pBtn, RET_OK, true);
             nDefaultResponse = RET_OK;
             break;
         case VclButtonsType::Close:
-            pBtn.set( VclPtr<CloseButton>::Create(pButtonBox) );
+            pBtn.reset( VclPtr<CloseButton>::Create(pButtonBox) );
             pBtn->SetStyle(pBtn->GetStyle() & WB_DEFBUTTON);
             pBtn->Show();
-            pBtn->set_id("close");
+            pBtn->set_id(u"close"_ustr);
             add_button(pBtn, RET_CLOSE, true);
             nDefaultResponse = RET_CLOSE;
             break;
         case VclButtonsType::Cancel:
-            pBtn.set( VclPtr<CancelButton>::Create(pButtonBox) );
+            pBtn.reset( VclPtr<CancelButton>::Create(pButtonBox) );
             pBtn->SetStyle(pBtn->GetStyle() & WB_DEFBUTTON);
             pBtn->Show();
-            pBtn->set_id("cancel");
+            pBtn->set_id(u"cancel"_ustr);
             add_button(pBtn, RET_CANCEL, true);
             nDefaultResponse = RET_CANCEL;
             break;
@@ -2451,25 +2477,25 @@ void MessageDialog::create_message_area()
             pBtn = VclPtr<PushButton>::Create(pButtonBox);
             pBtn->SetText(GetStandardText(StandardButtonType::Yes));
             pBtn->Show();
-            pBtn->set_id("yes");
+            pBtn->set_id(u"yes"_ustr);
             add_button(pBtn, RET_YES, true);
 
-            pBtn.set( VclPtr<PushButton>::Create(pButtonBox) );
+            pBtn.reset( VclPtr<PushButton>::Create(pButtonBox) );
             pBtn->SetText(GetStandardText(StandardButtonType::No));
             pBtn->Show();
-            pBtn->set_id("no");
+            pBtn->set_id(u"no"_ustr);
             add_button(pBtn, RET_NO, true);
             nDefaultResponse = RET_NO;
             break;
         case VclButtonsType::OkCancel:
-            pBtn.set( VclPtr<OKButton>::Create(pButtonBox) );
+            pBtn.reset( VclPtr<OKButton>::Create(pButtonBox) );
             pBtn->Show();
-            pBtn->set_id("ok");
+            pBtn->set_id(u"ok"_ustr);
             add_button(pBtn, RET_OK, true);
 
-            pBtn.set( VclPtr<CancelButton>::Create(pButtonBox) );
+            pBtn.reset( VclPtr<CancelButton>::Create(pButtonBox) );
             pBtn->Show();
-            pBtn->set_id("cancel");
+            pBtn->set_id(u"cancel"_ustr);
             add_button(pBtn, RET_CANCEL, true);
             nDefaultResponse = RET_CANCEL;
             break;
@@ -2487,10 +2513,10 @@ void MessageDialog::create_owned_areas()
 #else
     set_border_width(12);
 #endif
-    m_pOwnedContentArea.set(VclPtr<VclVBox>::Create(this, false, 24));
+    m_pOwnedContentArea.reset(VclPtr<VclVBox>::Create(this, false, 24));
     set_content_area(m_pOwnedContentArea);
     m_pOwnedContentArea->Show();
-    m_pOwnedActionArea.set( VclPtr<VclHButtonBox>::Create(m_pOwnedContentArea) );
+    m_pOwnedActionArea.reset( VclPtr<VclHButtonBox>::Create(m_pOwnedContentArea) );
     set_action_area(m_pOwnedActionArea);
     m_pOwnedActionArea->Show();
 }
@@ -2541,6 +2567,7 @@ MessageDialog::MessageDialog(vcl::Window* pParent,
             break;
         case VclMessageType::Error:
             SetText(GetStandardErrorBoxText());
+            SetTaskBarState(VclTaskBarStates::Error);
             break;
         case VclMessageType::Other:
             SetText(Application::GetDisplayName());
@@ -2550,6 +2577,8 @@ MessageDialog::MessageDialog(vcl::Window* pParent,
 
 void MessageDialog::dispose()
 {
+    SetTaskBarState(VclTaskBarStates::Normal);
+
     disposeOwnedButtons();
     m_pPrimaryMessage.disposeAndClear();
     m_pSecondaryMessage.disposeAndClear();
@@ -2624,24 +2653,7 @@ bool MessageDialog::set_property(const OUString &rKey, const OUString &rValue)
     }
     else if (rKey == "buttons")
     {
-        VclButtonsType eMode = VclButtonsType::NONE;
-        if (rValue == "none")
-            eMode = VclButtonsType::NONE;
-        else if (rValue == "ok")
-            eMode = VclButtonsType::Ok;
-        else if (rValue == "cancel")
-            eMode = VclButtonsType::Cancel;
-        else if (rValue == "close")
-            eMode = VclButtonsType::Close;
-        else if (rValue == "yes-no")
-            eMode = VclButtonsType::YesNo;
-        else if (rValue == "ok-cancel")
-            eMode = VclButtonsType::OkCancel;
-        else
-        {
-            SAL_WARN("vcl.layout", "unknown buttons type mode" << rValue);
-        }
-        m_eButtonsType = eMode;
+        m_eButtonsType = BuilderBase::mapGtkToVclButtonsType(rValue);
     }
     else
         return Dialog::set_property(rKey, rValue);
@@ -3035,11 +3047,10 @@ void VclDrawingArea::StartDrag(sal_Int8, const Point&)
     if (m_aStartDragHdl.Call(this))
         return;
 
-    rtl::Reference<TransferDataContainer> xContainer = m_xTransferHelper;
     if (!m_xTransferHelper.is())
         return;
 
-    xContainer->StartDrag(this, m_nDragAction);
+    m_xTransferHelper->StartDrag(this, m_nDragAction);
 }
 
 OUString VclDrawingArea::GetSurroundingText() const
@@ -3102,7 +3113,7 @@ void VclDrawingArea::DumpAsPropertyTree(tools::JsonWriter& rJsonWriter)
 
     Paint(*pDevice, aRect);
 
-    BitmapEx aImage = pDevice->GetBitmapEx(Point(0,0), aRenderSize);
+    Bitmap aImage = pDevice->GetBitmap(Point(0,0), aRenderSize);
     aImage.Scale(aOutputSize);
     rJsonWriter.put("imagewidth", aRenderSize.Width());
     rJsonWriter.put("imageheight", aRenderSize.Height());

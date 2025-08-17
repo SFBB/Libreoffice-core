@@ -36,7 +36,6 @@
 
 using ::editeng::SvxBorderLine;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::table;
@@ -934,7 +933,7 @@ CellRef TableLayouter::getCell( const CellPos& rPos ) const
     CellRef xCell;
     if( mxTable.is() ) try
     {
-        xCell.set( dynamic_cast< Cell* >( mxTable->getCellByPosition( rPos.mnCol, rPos.mnRow ).get() ) );
+        xCell = mxTable->getCell( rPos.mnCol, rPos.mnRow );
     }
     catch( Exception& )
     {
@@ -1049,10 +1048,10 @@ void TableLayouter::ResizeBorderLayout( BorderLineMap& rMap )
     if( sal::static_int_cast<sal_Int32>(rMap.size()) != nColCount )
         rMap.resize( nColCount );
 
-    for( sal_Int32 nCol = 0; nCol < nColCount; nCol++ )
+    for( auto& nCol : rMap )
     {
-        if( sal::static_int_cast<sal_Int32>(rMap[nCol].size()) != nRowCount )
-            rMap[nCol].resize( nRowCount );
+        if( sal::static_int_cast<sal_Int32>(nCol.size()) != nRowCount )
+            nCol.resize( nRowCount );
     }
 }
 

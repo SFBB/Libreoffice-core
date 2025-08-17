@@ -19,13 +19,13 @@
 
 #include <strings.hrc>
 #include <basidesh.hxx>
-#include <basobj.hxx>
 #include <IDEComboBox.hxx>
 #include <iderdll.hxx>
 #include <iderid.hxx>
 #include <localizationmgr.hxx>
 #include <managelang.hxx>
 
+#include <basctl/basctldllpublic.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/frame.hxx>
 #include <sfx2/sfxsids.hrc>
@@ -89,8 +89,8 @@ VclPtr<InterimItemWindow> LibBoxControl::CreateItemWindow(vcl::Window* pParent)
 }
 
 DocListenerBox::DocListenerBox(vcl::Window* pParent)
-    : InterimItemWindow(pParent, "modules/BasicIDE/ui/combobox.ui", "ComboBox")
-    , m_xWidget(m_xBuilder->weld_combo_box("combobox"))
+    : InterimItemWindow(pParent, u"modules/BasicIDE/ui/combobox.ui"_ustr, u"ComboBox"_ustr)
+    , m_xWidget(m_xBuilder->weld_combo_box(u"combobox"_ustr))
     , maNotifier(*this)
 {
     InitControlBase(m_xWidget.get());
@@ -250,13 +250,8 @@ void LibBox::FillBox()
 void LibBox::InsertEntries(const ScriptDocument& rDocument, LibraryLocation eLocation)
 {
     // get a sorted list of library names
-    Sequence<OUString> aLibNames = rDocument.getLibraryNames();
-    sal_Int32 nLibCount = aLibNames.getLength();
-    const OUString* pLibNames = aLibNames.getConstArray();
-
-    for (sal_Int32 i = 0; i < nLibCount; ++i)
+    for (auto& aLibName : rDocument.getLibraryNames())
     {
-        OUString aLibName = pLibNames[i];
         if (eLocation == rDocument.getLibraryLocation(aLibName))
         {
             OUString aName(rDocument.getTitle(eLocation));
@@ -428,19 +423,18 @@ void LanguageBox::FillBox()
         Locale aDefaultLocale = pCurMgr->getStringResourceManager()->getDefaultLocale();
         Locale aCurrentLocale = pCurMgr->getStringResourceManager()->getCurrentLocale();
         Sequence<Locale> aLocaleSeq = pCurMgr->getStringResourceManager()->getLocales();
-        const Locale* pLocale = aLocaleSeq.getConstArray();
         sal_Int32 i, nCount = aLocaleSeq.getLength();
         for (i = 0; i < nCount; ++i)
         {
-            bool bIsDefault = localesAreEqual(aDefaultLocale, pLocale[i]);
-            bool bIsCurrent = localesAreEqual(aCurrentLocale, pLocale[i]);
-            LanguageType eLangType = LanguageTag::convertToLanguageType(pLocale[i]);
+            bool bIsDefault = localesAreEqual(aDefaultLocale, aLocaleSeq[i]);
+            bool bIsCurrent = localesAreEqual(aCurrentLocale, aLocaleSeq[i]);
+            LanguageType eLangType = LanguageTag::convertToLanguageType(aLocaleSeq[i]);
             OUString sLanguage = SvtLanguageTable::GetLanguageString(eLangType);
             if (bIsDefault)
             {
                 sLanguage += " " + msDefaultLanguageStr;
             }
-            LanguageEntry* pEntry = new LanguageEntry(pLocale[i], bIsDefault);
+            LanguageEntry* pEntry = new LanguageEntry(aLocaleSeq[i], bIsDefault);
             OUString sId(weld::toId(pEntry));
             m_xWidget->append(sId, sLanguage);
 

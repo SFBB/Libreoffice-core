@@ -24,7 +24,7 @@
 #include <sfx2/dispatch.hxx>
 
 #include <vcl/help.hxx>
-#include <vcl/lazydelete.hxx>
+#include <tools/lazydelete.hxx>
 #include <vcl/ptrstyle.hxx>
 #include <vcl/svapp.hxx>
 
@@ -86,10 +86,18 @@ constexpr OUString aBigPlaceHolders[] =
     BMP_PLACEHOLDER_MOVIE_LARGE_HOVER
 };
 
-static BitmapEx& getButtonImage( int index, bool large )
+static Bitmap& getButtonImage( int index, bool large )
 {
-    static vcl::DeleteOnDeinit< BitmapEx > gSmallButtonImages[SAL_N_ELEMENTS(aSmallPlaceHolders)] = { vcl::DeleteOnDeinitFlag::Empty, vcl::DeleteOnDeinitFlag::Empty, vcl::DeleteOnDeinitFlag::Empty, vcl::DeleteOnDeinitFlag::Empty, vcl::DeleteOnDeinitFlag::Empty, vcl::DeleteOnDeinitFlag::Empty, vcl::DeleteOnDeinitFlag::Empty, vcl::DeleteOnDeinitFlag::Empty };
-    static vcl::DeleteOnDeinit< BitmapEx > gLargeButtonImages[SAL_N_ELEMENTS(aBigPlaceHolders)] = { vcl::DeleteOnDeinitFlag::Empty, vcl::DeleteOnDeinitFlag::Empty, vcl::DeleteOnDeinitFlag::Empty, vcl::DeleteOnDeinitFlag::Empty, vcl::DeleteOnDeinitFlag::Empty, vcl::DeleteOnDeinitFlag::Empty, vcl::DeleteOnDeinitFlag::Empty, vcl::DeleteOnDeinitFlag::Empty };
+    static ::tools::DeleteOnDeinit< Bitmap > gSmallButtonImages[SAL_N_ELEMENTS(aSmallPlaceHolders)] = {
+            ::tools::DeleteOnDeinitFlag::Empty, ::tools::DeleteOnDeinitFlag::Empty,
+            ::tools::DeleteOnDeinitFlag::Empty, ::tools::DeleteOnDeinitFlag::Empty,
+            ::tools::DeleteOnDeinitFlag::Empty, ::tools::DeleteOnDeinitFlag::Empty,
+            ::tools::DeleteOnDeinitFlag::Empty, ::tools::DeleteOnDeinitFlag::Empty };
+    static ::tools::DeleteOnDeinit< Bitmap > gLargeButtonImages[SAL_N_ELEMENTS(aBigPlaceHolders)] = {
+            ::tools::DeleteOnDeinitFlag::Empty, ::tools::DeleteOnDeinitFlag::Empty,
+            ::tools::DeleteOnDeinitFlag::Empty, ::tools::DeleteOnDeinitFlag::Empty,
+            ::tools::DeleteOnDeinitFlag::Empty, ::tools::DeleteOnDeinitFlag::Empty,
+            ::tools::DeleteOnDeinitFlag::Empty, ::tools::DeleteOnDeinitFlag::Empty };
 
     assert(SAL_N_ELEMENTS(aSmallPlaceHolders) == SAL_N_ELEMENTS(aBigPlaceHolders));
 
@@ -97,8 +105,8 @@ static BitmapEx& getButtonImage( int index, bool large )
     {
         for (size_t i = 0; i < SAL_N_ELEMENTS(aSmallPlaceHolders); i++ )
         {
-            gSmallButtonImages[i].set(aSmallPlaceHolders[i]);
-            gLargeButtonImages[i].set(aBigPlaceHolders[i]);
+            gSmallButtonImages[i].set(Bitmap(aSmallPlaceHolders[i]));
+            gLargeButtonImages[i].set(Bitmap(aBigPlaceHolders[i]));
         }
     }
 
@@ -128,7 +136,7 @@ public:
     /** returns true if the SmartTag consumes this event. */
     virtual bool KeyInput( const KeyEvent& rKEvt ) override;
 
-    BitmapEx createOverlayImage( int nHighlight );
+    Bitmap createOverlayImage( int nHighlight );
 
 protected:
     virtual void addCustomHandles( SdrHdlList& rHandlerList ) override;
@@ -254,8 +262,8 @@ void ImageButtonHdl::CreateB2dIAObject()
     const Point aTagPos( GetPos() );
     basegfx::B2DPoint aPosition( aTagPos.X(), aTagPos.Y() );
 
-    BitmapEx aBitmapEx( mxChangePlaceholderTag->createOverlayImage( mnHighlightId ) ); // maImageMO.GetBitmapEx() : maImage.GetBitmapEx() );
-    maImageSize = aBitmapEx.GetSizePixel();
+    Bitmap aBitmap( mxChangePlaceholderTag->createOverlayImage( mnHighlightId ) ); // maImageMO.GetBitmapEx() : maImage.GetBitmapEx() );
+    maImageSize = aBitmap.GetSizePixel();
     maImageSize.setWidth( maImageSize.Width() >> 1 );
     maImageSize.setHeight( maImageSize.Height() >> 1 );
 
@@ -281,7 +289,7 @@ void ImageButtonHdl::CreateB2dIAObject()
         if(rPaintWindow.OutputToWindow() && xManager.is() )
         {
             std::unique_ptr<sdr::overlay::OverlayObject> pOverlayObject(
-                new sdr::overlay::OverlayBitmapEx( aPosition, aBitmapEx, 0, 0 ));
+                new sdr::overlay::OverlayBitmapEx( aPosition, aBitmap, 0, 0 ));
 
             // OVERLAYMANAGER
             insertNewlyCreatedOverlayObjectForSdrHdl(
@@ -318,8 +326,9 @@ bool ChangePlaceholderTag::MouseButtonDown( const MouseEvent& /*rMEvt*/, SmartHd
 
         if( auto pPlaceholder = mxPlaceholderObj.get() )
         {
+            const SdrMarkList& rMarkList = mrView.GetMarkedObjectList();
             // mark placeholder if it is not currently marked (or if also others are marked)
-            if( !mrView.IsObjMarked( pPlaceholder.get() ) || (mrView.GetMarkedObjectList().GetMarkCount() != 1) )
+            if( !mrView.IsObjMarked( pPlaceholder.get() ) || (rMarkList.GetMarkCount() != 1) )
             {
                 SdrPageView* pPV = mrView.GetSdrPageView();
                 mrView.UnmarkAllObj(pPV );
@@ -351,9 +360,9 @@ bool ChangePlaceholderTag::KeyInput( const KeyEvent& rKEvt )
     }
 }
 
-BitmapEx ChangePlaceholderTag::createOverlayImage( int nHighlight )
+Bitmap ChangePlaceholderTag::createOverlayImage( int nHighlight )
 {
-    BitmapEx aRet;
+    Bitmap aRet;
     if( auto pPlaceholder = mxPlaceholderObj.get() )
     {
         SmartTagReference xThis( this );
@@ -479,8 +488,9 @@ IMPL_LINK_NOARG(ViewOverlayManager, UpdateTagsHdl, void*, void)
     bool bChanges = DisposeTags();
     bChanges |= CreateTags();
 
-    if( bChanges && mrBase.GetDrawView() )
-        static_cast< ::sd::View* >( mrBase.GetDrawView() )->updateHandles();
+    SdrView* pDrawView = mrBase.GetDrawView();
+    if( bChanges && pDrawView )
+        static_cast< ::sd::View* >( pDrawView )->updateHandles();
 }
 
 bool ViewOverlayManager::CreateTags()
@@ -490,14 +500,15 @@ bool ViewOverlayManager::CreateTags()
     std::shared_ptr<ViewShell> aMainShell = mrBase.GetMainViewShell();
 
     SdPage* pPage = aMainShell ? aMainShell->getCurrentPage() : nullptr;
+    SdrView* pDrawView = mrBase.GetDrawView();
 
-    if( pPage && !pPage->IsMasterPage() && (pPage->GetPageKind() == PageKind::Standard) )
+    if( pDrawView && pPage && !pPage->IsMasterPage() && (pPage->GetPageKind() == PageKind::Standard) )
     {
         const std::list< SdrObject* >& rShapes = pPage->GetPresentationShapeList().getList();
 
         for( SdrObject* pShape : rShapes )
         {
-            if( pShape->IsEmptyPresObj() && (pShape->GetObjIdentifier() == SdrObjKind::OutlineText) && (mrBase.GetDrawView()->GetTextEditObject() != pShape) )
+            if( pShape->IsEmptyPresObj() && (pShape->GetObjIdentifier() == SdrObjKind::OutlineText) && (pDrawView->GetTextEditObject() != pShape) )
             {
                 rtl::Reference< SmartTag > xTag( new ChangePlaceholderTag( *mrBase.GetMainViewShell()->GetView(), *pShape ) );
                 maTagVector.push_back(xTag);

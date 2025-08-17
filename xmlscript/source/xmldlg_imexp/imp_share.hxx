@@ -105,8 +105,6 @@ inline bool getLongAttr(
     return false;
 }
 
-class ImportContext;
-
 struct DialogImport
     : public ::cppu::WeakImplHelper< css::xml::input::XRoot >
 {
@@ -493,7 +491,7 @@ public:
         }
         catch(const css::container::ElementExistException &e)
         {
-            throw css::lang::WrappedTargetRuntimeException("", e.Context, css::uno::Any(e));
+            throw css::lang::WrappedTargetRuntimeException(u""_ustr, e.Context, css::uno::Any(e));
         }
     }
 };
@@ -962,7 +960,7 @@ public:
         ElementBase * pParent, DialogImport * pImport )
         : ControlElement( rLocalName, xAttributes, pParent, pImport )
         {
-            m_xContainer.set( m_pImport->_xDialogModelFactory->createInstance( "com.sun.star.awt.UnoMultiPageModel" ), css::uno::UNO_QUERY );
+            m_xContainer.set( m_pImport->_xDialogModelFactory->createInstance( u"com.sun.star.awt.UnoMultiPageModel"_ustr ), css::uno::UNO_QUERY );
         }
 private:
     css::uno::Reference< css::container::XNameContainer > m_xContainer;
@@ -1005,7 +1003,7 @@ public:
         ElementBase * pParent, DialogImport * pImport )
         : ControlElement( rLocalName, xAttributes, pParent, pImport )
         {
-            m_xContainer.set( m_pImport->_xDialogModelFactory->createInstance( "com.sun.star.awt.UnoPageModel" ), css::uno::UNO_QUERY );
+            m_xContainer.set( m_pImport->_xDialogModelFactory->createInstance( u"com.sun.star.awt.UnoPageModel"_ustr ), css::uno::UNO_QUERY );
         }
 private:
     css::uno::Reference< css::container::XNameContainer > m_xContainer;

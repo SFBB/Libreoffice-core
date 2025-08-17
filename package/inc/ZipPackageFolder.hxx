@@ -32,7 +32,6 @@
 #include <vector>
 
 class ZipOutputStream;
-struct ZipEntry;
 class ZipPackageFolder;
 class ZipPackageStream;
 
@@ -55,8 +54,22 @@ struct ZipContentInfo
     ~ZipContentInfo();
 };
 
+struct OUStringHashImpl {
+    using hash_type = std::hash<std::string_view>;
+    using is_transparent = void;
+
+    size_t operator()(const OUString& rString) const
+        { return std::hash<std::u16string_view>{}(rString); }
+
+    size_t operator()(const std::u16string_view aString) const
+        { return std::hash<std::u16string_view>{}(aString); }
+
+};
+
 typedef std::unordered_map < OUString,
-                             ZipContentInfo > ContentHash;
+                             ZipContentInfo,
+                             OUStringHashImpl,
+                             std::equal_to<>> ContentHash;
 
 class ZipPackageFolder final : public cppu::ImplInheritanceHelper
 <
@@ -83,13 +96,18 @@ public:
 
     void setChildStreamsTypeByExtension( const css::beans::StringPair& aPair );
 
+    void removeByName( std::u16string_view aName );
+    css::uno::Any getByName( std::u16string_view aName );
+    bool hasByName( std::u16string_view aName );
+
+
     /// @throws css::lang::IllegalArgumentException
     /// @throws css::container::ElementExistException
     /// @throws css::lang::WrappedTargetException
     /// @throws css::uno::RuntimeException
     void doInsertByName ( ZipPackageEntry *pEntry, bool bSetParent );
 
-    ZipContentInfo& doGetByName( const OUString& aName );
+    ZipContentInfo& doGetByName( std::u16string_view aName );
 
     void setPackageFormat_Impl( sal_Int32 nFormat ) { m_nFormat = nFormat; }
     void setRemoveOnInsertMode_Impl( bool bRemove ) { mbAllowRemoveOnInsert = bRemove; }
@@ -99,8 +117,7 @@ public:
                             ZipOutputStream & rZipOut,
                             const css::uno::Sequence < sal_Int8 >& rEncryptionKey,
                             ::std::optional<sal_Int32> oPBKDF2IterationCount,
-                            ::std::optional<::std::tuple<sal_Int32, sal_Int32, sal_Int32>> oArgon2Args,
-                            const rtlRandomPool &rRandomPool ) override;
+                            ::std::optional<::std::tuple<sal_Int32, sal_Int32, sal_Int32>> oArgon2Args) override;
 
     // Recursive functions
     /// @throws css::uno::RuntimeException
@@ -110,8 +127,7 @@ public:
             ZipOutputStream & rZipOut,
             const css::uno::Sequence< sal_Int8 > &rEncryptionKey,
             ::std::optional<sal_Int32> oPBKDF2IterationCount,
-            ::std::optional<::std::tuple<sal_Int32, sal_Int32, sal_Int32>> oArgon2Args,
-            const rtlRandomPool & rRandomPool) const;
+            ::std::optional<::std::tuple<sal_Int32, sal_Int32, sal_Int32>> oArgon2Args) const;
 
     // XNameContainer
     virtual void SAL_CALL insertByName( const OUString& aName, const css::uno::Any& aElement ) override;

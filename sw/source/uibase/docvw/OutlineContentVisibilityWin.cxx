@@ -26,9 +26,10 @@
 
 SwOutlineContentVisibilityWin::SwOutlineContentVisibilityWin(SwEditWin* pEditWin,
                                                              const SwFrame* pFrame)
-    : InterimItemWindow(pEditWin, "modules/swriter/ui/outlinebutton.ui", "OutlineButton")
-    , m_xShowBtn(m_xBuilder->weld_button("show"))
-    , m_xHideBtn(m_xBuilder->weld_button("hide"))
+    : InterimItemWindow(pEditWin, u"modules/swriter/ui/outlinebutton.ui"_ustr,
+                        u"OutlineButton"_ustr)
+    , m_xShowBtn(m_xBuilder->weld_button(u"show"_ustr))
+    , m_xHideBtn(m_xBuilder->weld_button(u"hide"_ustr))
     , m_pEditWin(pEditWin)
     , m_pFrame(pFrame)
     , m_nDelayAppearing(0)
@@ -60,7 +61,7 @@ void SwOutlineContentVisibilityWin::dispose()
     m_bDestroyed = true;
     m_aDelayTimer.Stop();
 
-    m_pEditWin.clear();
+    m_pEditWin.reset();
     m_pFrame = nullptr;
 
     m_xHideBtn.reset();
@@ -111,12 +112,10 @@ void SwOutlineContentVisibilityWin::Set()
     SwWrtShell& rSh = GetEditWin()->GetView().GetWrtShell();
     const SwOutlineNodes& rOutlineNodes = rSh.GetNodes().GetOutLineNds();
 
-    (void)rOutlineNodes.Seek_Entry(static_cast<SwNode*>(const_cast<SwTextNode*>(pTextNode)),
-                                   &m_nOutlinePos);
+    (void)rOutlineNodes.Seek_Entry(pTextNode, &m_nOutlinePos);
 
     // set symbol displayed on button
-    bool bVisible = true;
-    const_cast<SwTextNode*>(pTextNode)->GetAttrOutlineContentVisible(bVisible);
+    bool bVisible = pTextNode->GetAttrOutlineContentVisible();
     SetSymbol(bVisible ? ButtonSymbol::HIDE : ButtonSymbol::SHOW);
 
     // set quick help

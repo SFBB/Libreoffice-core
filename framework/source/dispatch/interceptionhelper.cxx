@@ -106,7 +106,7 @@ void SAL_CALL InterceptionHelper::registerDispatchProviderInterceptor(const css:
     // reject incorrect calls of this interface method
     css::uno::Reference< css::frame::XDispatchProvider > xThis(this);
     if (!xInterceptor.is())
-        throw css::uno::RuntimeException("NULL references not allowed as in parameter", xThis);
+        throw css::uno::RuntimeException(u"NULL references not allowed as in parameter"_ustr, xThis);
 
     // Fill a new info structure for new interceptor.
     // Save his reference and try to get an additional URL/pattern list from him.
@@ -118,7 +118,7 @@ void SAL_CALL InterceptionHelper::registerDispatchProviderInterceptor(const css:
     if (xInfo.is())
         aInfo.lURLPattern = xInfo->getInterceptedURLs();
     else
-        aInfo.lURLPattern = { "*" };
+        aInfo.lURLPattern = { u"*"_ustr };
 
     // SAFE {
     SolarMutexClearableGuard aWriteLock;
@@ -130,7 +130,7 @@ void SAL_CALL InterceptionHelper::registerDispatchProviderInterceptor(const css:
     {
         xInterceptor->setMasterDispatchProvider(xThis   );
         xInterceptor->setSlaveDispatchProvider (m_xSlave);
-        m_lInterceptionRegs.push_back(aInfo);
+        m_lInterceptionRegs.push_back(std::move(aInfo));
     }
 
     // b) OK - there is at least one interceptor already registered.
@@ -147,7 +147,7 @@ void SAL_CALL InterceptionHelper::registerDispatchProviderInterceptor(const css:
         xInterceptor->setSlaveDispatchProvider (xSlaveD           );
         xSlaveI->setMasterDispatchProvider     (aInfo.xInterceptor);
 
-        m_lInterceptionRegs.push_front(aInfo);
+        m_lInterceptionRegs.push_front(std::move(aInfo));
     }
 
     css::uno::Reference< css::frame::XFrame > xOwner(m_xOwnerWeak.get(), css::uno::UNO_QUERY);
@@ -166,7 +166,7 @@ void SAL_CALL InterceptionHelper::releaseDispatchProviderInterceptor(const css::
     // reject wrong calling of this interface method
     css::uno::Reference< css::frame::XDispatchProvider > xThis(this);
     if (!xInterceptor.is())
-        throw css::uno::RuntimeException("NULL references not allowed as in parameter", xThis);
+        throw css::uno::RuntimeException(u"NULL references not allowed as in parameter"_ustr, xThis);
 
     // SAFE {
     SolarMutexClearableGuard aWriteLock;

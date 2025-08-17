@@ -51,14 +51,13 @@
 
 using namespace com::sun::star;
 
-static SwContentNode* GetContentNode(SwDoc& rDoc, SwPosition& rPos, bool bNext)
+static SwContentNode* GetContentNode(SwPosition& rPos, bool bNext)
 {
     SwContentNode * pCNd = rPos.GetNode().GetContentNode();
-    if(!pCNd && nullptr == (pCNd = bNext ? rDoc.GetNodes().GoNext(&rPos)
+    if (!pCNd && nullptr == (pCNd = bNext ? SwNodes::GoNext(&rPos)
                                      : SwNodes::GoPrevious(&rPos)))
     {
-        pCNd = bNext ? SwNodes::GoPrevious(&rPos)
-                     : rDoc.GetNodes().GoNext(&rPos);
+        pCNd = bNext ? SwNodes::GoPrevious(&rPos) : SwNodes::GoNext(&rPos);
         OSL_ENSURE(pCNd, "no ContentNode found");
     }
     return pCNd;
@@ -102,7 +101,7 @@ void SwFltStackEntry::SetEndPos(const SwPosition& rEndPos)
     m_aPtPos.FromSwPosition(rEndPos);
 }
 
-bool SwFltStackEntry::MakeRegion(SwDoc& rDoc, SwPaM& rRegion, RegionMode const eCheck,
+bool SwFltStackEntry::MakeRegion(SwPaM& rRegion, RegionMode const eCheck,
     const SwFltPosition &rMkPos, const SwFltPosition &rPtPos,
     sal_uInt16 nWhich)
 {
@@ -124,7 +123,7 @@ bool SwFltStackEntry::MakeRegion(SwDoc& rDoc, SwPaM& rRegion, RegionMode const e
     }
     // The content indices always apply to the node!
     rRegion.GetPoint()->Assign( rMkPos.m_nNode.GetIndex() + 1 );
-    SwContentNode* pCNd = GetContentNode(rDoc, *rRegion.GetPoint(), true);
+    SwContentNode* pCNd = GetContentNode(*rRegion.GetPoint(), true);
 
     SAL_WARN_IF(pCNd->Len() < rMkPos.m_nContent, "sw.ww8",
         "invalid content index " << rMkPos.m_nContent << " but text node has only " << pCNd->Len());
@@ -137,7 +136,7 @@ bool SwFltStackEntry::MakeRegion(SwDoc& rDoc, SwPaM& rRegion, RegionMode const e
         if (n >= rNodes.Count())
             return false;
         rRegion.GetPoint()->Assign(n);
-        pCNd = GetContentNode(rDoc, *rRegion.GetPoint(), false);
+        pCNd = GetContentNode(*rRegion.GetPoint(), false);
     }
     SAL_WARN_IF(pCNd->Len() < rPtPos.m_nContent, "sw.ww8",
         "invalid content index " << rPtPos.m_nContent << " but text node has only " << pCNd->Len());
@@ -158,9 +157,9 @@ bool SwFltStackEntry::MakeRegion(SwDoc& rDoc, SwPaM& rRegion, RegionMode const e
     return bRet;
 }
 
-bool SwFltStackEntry::MakeRegion(SwDoc& rDoc, SwPaM& rRegion, RegionMode eCheck) const
+bool SwFltStackEntry::MakeRegion(SwPaM& rRegion, RegionMode eCheck) const
 {
-    return MakeRegion(rDoc, rRegion, eCheck, m_aMkPos, m_aPtPos, m_pAttr->Which());
+    return MakeRegion(rRegion, eCheck, m_aMkPos, m_aPtPos, m_pAttr->Which());
 }
 
 SwFltControlStack::SwFltControlStack(SwDoc& rDo, sal_uLong nFieldFl)
@@ -423,8 +422,7 @@ SwFltStackEntry* SwFltControlStack::SetAttr(const SwPosition& rPos,
     return pRet;
 }
 
-static bool MakePoint(const SwFltStackEntry& rEntry, SwDoc& rDoc,
-    SwPaM& rRegion)
+static bool MakePoint(const SwFltStackEntry& rEntry, SwPaM& rRegion)
 {
     // the anchor is the Pam's Point. It's modified when inserting
     // text, etc.; therefore it is kept on the stack. Only the
@@ -437,7 +435,7 @@ static bool MakePoint(const SwFltStackEntry& rEntry, SwDoc& rDoc,
         return false;
 
     rRegion.GetPoint()->Assign(nMk);
-    GetContentNode(rDoc, *rRegion.GetPoint(), true);
+    GetContentNode(*rRegion.GetPoint(), true);
     rRegion.GetPoint()->SetContent(rEntry.m_aMkPos.m_nContent);
     return true;
 }
@@ -445,10 +443,9 @@ static bool MakePoint(const SwFltStackEntry& rEntry, SwDoc& rDoc,
 // MakeBookRegionOrPoint() behaves like MakeRegionOrPoint, except that
 // it adheres to certain restrictions on bookmarks in tables (cannot
 // span more than one cell)
-static bool MakeBookRegionOrPoint(const SwFltStackEntry& rEntry, SwDoc& rDoc,
-                    SwPaM& rRegion )
+static bool MakeBookRegionOrPoint(const SwFltStackEntry& rEntry, SwPaM& rRegion )
 {
-    if (rEntry.MakeRegion(rDoc, rRegion, SwFltStackEntry::RegionMode::CheckNodes))
+    if (rEntry.MakeRegion(rRegion, SwFltStackEntry::RegionMode::CheckNodes))
     {
         if (rRegion.GetPoint()->GetNode().FindTableBoxStartNode()
               != rRegion.GetMark()->GetNode().FindTableBoxStartNode())
@@ -458,7 +455,7 @@ static bool MakeBookRegionOrPoint(const SwFltStackEntry& rEntry, SwDoc& rDoc,
         }
         return true;
     }
-    return MakePoint(rEntry, rDoc, rRegion);
+    return MakePoint(rEntry, rRegion);
 }
 
 // IterateNumrulePiece() looks for the first range valid for Numrules
@@ -499,7 +496,7 @@ void SwFltControlStack::SetAttrInDoc(const SwPosition& rTmpPos,
             SwFrameFormat* pFormat = static_cast<SwFltAnchor*>(rEntry.m_pAttr.get())->GetFrameFormat();
             if (pFormat != nullptr)
             {
-                MakePoint(rEntry, m_rDoc, aRegion);
+                MakePoint(rEntry, aRegion);
                 SwFormatAnchor aAnchor(pFormat->GetAnchor());
                 aAnchor.SetAnchor(aRegion.GetPoint());
                 pFormat->SetFormatAttr(aAnchor);
@@ -525,10 +522,10 @@ void SwFltControlStack::SetAttrInDoc(const SwPosition& rTmpPos,
     case RES_FLTR_NUMRULE:          // insert Numrule
         {
             const OUString& rNumNm = static_cast<SfxStringItem*>(rEntry.m_pAttr.get())->GetValue();
-            SwNumRule* pNumRule = m_rDoc.FindNumRulePtr( rNumNm );
+            SwNumRule* pNumRule = m_rDoc.FindNumRulePtr( UIName(rNumNm) );
             if( pNumRule )
             {
-                if (rEntry.MakeRegion(m_rDoc, aRegion, SwFltStackEntry::RegionMode::CheckNodes))
+                if (rEntry.MakeRegion(aRegion, SwFltStackEntry::RegionMode::CheckNodes))
                 {
                     SwNodeIndex aTmpStart( aRegion.Start()->GetNode() );
                     SwNodeIndex aTmpEnd( aTmpStart );
@@ -538,14 +535,14 @@ void SwFltControlStack::SetAttrInDoc(const SwPosition& rTmpPos,
                     {
                         SwPaM aTmpPam( aTmpStart, aTmpEnd );
                         // no start of a new list
-                        m_rDoc.SetNumRule( aTmpPam, *pNumRule, false );
+                        m_rDoc.SetNumRule(aTmpPam, *pNumRule, SwDoc::SetNumRuleMode::Default);
 
                         aTmpStart = aTmpEnd;    // here starts the next range
                         ++aTmpStart;
                     }
                 }
                 else
-                    m_rDoc.DelNumRule( rNumNm );
+                    m_rDoc.DelNumRule( UIName(rNumNm) );
             }
         }
         break;
@@ -560,32 +557,32 @@ void SwFltControlStack::SetAttrInDoc(const SwPosition& rTmpPos,
                 SwFieldType* pFT = m_rDoc.getIDocumentFieldsAccess().GetFieldType(SwFieldIds::SetExp, rName, false);
                 if (!pFT)
                 {
-                    SwSetExpFieldType aS(&m_rDoc, rName, nsSwGetSetExpType::GSE_STRING);
+                    SwSetExpFieldType aS(&m_rDoc, UIName(rName), SwGetSetExpType::String);
                     pFT = m_rDoc.getIDocumentFieldsAccess().InsertFieldType(aS);
                 }
                 SwSetExpField aField(static_cast<SwSetExpFieldType*>(pFT), pB->GetValSys());
-                aField.SetSubType( nsSwExtendedSubType::SUB_INVISIBLE );
-                MakePoint(rEntry, m_rDoc, aRegion);
+                aField.SetSubType( SwGetSetExpType::Invisible );
+                MakePoint(rEntry, aRegion);
                 m_rDoc.getIDocumentContentOperations().InsertPoolItem(aRegion, SwFormatField(aField));
                 MoveAttrs( *(aRegion.GetPoint()) );
             }
             if ( ( !IsFlagSet(HYPO) || IsFlagSet(BOOK_AND_REF) ) &&
                  !rEntry.m_bConsumedByField )
             {
-                MakeBookRegionOrPoint(rEntry, m_rDoc, aRegion);
+                MakeBookRegionOrPoint(rEntry, aRegion);
                 // #i120879# - create a cross reference heading bookmark if appropriate.
                 const IDocumentMarkAccess::MarkType eBookmarkType =
                     ( pB->IsTOCBookmark() &&
                       IDocumentMarkAccess::IsLegalPaMForCrossRefHeadingBookmark( aRegion ) )
                     ? IDocumentMarkAccess::MarkType::CROSSREF_HEADING_BOOKMARK
                     : IDocumentMarkAccess::MarkType::BOOKMARK;
-                m_rDoc.getIDocumentMarkAccess()->makeMark(aRegion, rName, eBookmarkType, sw::mark::InsertMode::New);
+                m_rDoc.getIDocumentMarkAccess()->makeMark(aRegion, SwMarkName(rName), eBookmarkType, sw::mark::InsertMode::New);
             }
         }
         break;
     case RES_FLTR_ANNOTATIONMARK:
         {
-            if (MakeBookRegionOrPoint(rEntry, m_rDoc, aRegion))
+            if (MakeBookRegionOrPoint(rEntry, aRegion))
             {
                 SwTextNode const*const pTextNode(
                         aRegion.End()->GetNode().GetTextNode());
@@ -609,7 +606,7 @@ void SwFltControlStack::SetAttrInDoc(const SwPosition& rTmpPos,
                             aRegion.Start()->AdjustContent(-1);
                         }
 
-                        m_rDoc.getIDocumentMarkAccess()->makeAnnotationMark(aRegion, OUString());
+                        m_rDoc.getIDocumentMarkAccess()->makeAnnotationMark(aRegion, SwMarkName());
                     }
                     else
                     {
@@ -627,7 +624,7 @@ void SwFltControlStack::SetAttrInDoc(const SwPosition& rTmpPos,
         break;
     case RES_FLTR_RDFMARK:
         {
-            if (MakeBookRegionOrPoint(rEntry, m_rDoc, aRegion))
+            if (MakeBookRegionOrPoint(rEntry, aRegion))
             {
                 SwFltRDFMark* pMark = static_cast<SwFltRDFMark*>(rEntry.m_pAttr.get());
                 if (aRegion.GetPointNode().IsTextNode())
@@ -651,7 +648,7 @@ void SwFltControlStack::SetAttrInDoc(const SwPosition& rTmpPos,
         break;
     case RES_FLTR_TOX:
         {
-            MakePoint(rEntry, m_rDoc, aRegion);
+            MakePoint(rEntry, aRegion);
 
             SwPosition* pPoint = aRegion.GetPoint();
 
@@ -693,7 +690,7 @@ void SwFltControlStack::SetAttrInDoc(const SwPosition& rTmpPos,
         break;
     case RES_FLTR_REDLINE:
         {
-            if (rEntry.MakeRegion(m_rDoc, aRegion,
+            if (rEntry.MakeRegion(aRegion,
                     SwFltStackEntry::RegionMode::CheckNodes|SwFltStackEntry::RegionMode::CheckFieldmark))
             {
                 m_rDoc.getIDocumentRedlineAccess().SetRedlineFlags( RedlineFlags::On
@@ -717,7 +714,7 @@ void SwFltControlStack::SetAttrInDoc(const SwPosition& rTmpPos,
         break;
     default:
         {
-            if (rEntry.MakeRegion(m_rDoc, aRegion, SwFltStackEntry::RegionMode::NoCheck))
+            if (rEntry.MakeRegion(aRegion, SwFltStackEntry::RegionMode::NoCheck))
             {
                 m_rDoc.getIDocumentContentOperations().InsertPoolItem(aRegion, *rEntry.m_pAttr);
             }
@@ -764,13 +761,13 @@ const SfxPoolItem* SwFltControlStack::GetOpenStackAttr(const SwPosition& rPos, s
 
 void SwFltControlStack::Delete(const SwPaM &rPam)
 {
-    auto [pStt, pEnd] = rPam.StartEnd(); // SwPosition*
+    auto [pStart, pEnd] = rPam.StartEnd(); // SwPosition*
 
-    if( !rPam.HasMark() || *pStt >= *pEnd )
+    if( !rPam.HasMark() || *pStart >= *pEnd )
         return;
 
-    SwNodeIndex aStartNode(pStt->GetNode(), -1);
-    const sal_Int32 nStartIdx = pStt->GetContentIndex();
+    SwNodeIndex aStartNode(pStart->GetNode(), -1);
+    const sal_Int32 nStartIdx = pStart->GetContentIndex();
     SwNodeIndex aEndNode(pEnd->GetNode(), -1);
     const sal_Int32 nEndIdx = pEnd->GetContentIndex();
 
@@ -850,14 +847,16 @@ void SwFltControlStack::Delete(const SwPaM &rPam)
 
 // methods of SwFltAnchor follow
 SwFltAnchor::SwFltAnchor(SwFrameFormat* pFormat) :
-    SfxPoolItem(RES_FLTR_ANCHOR), m_pFrameFormat(pFormat)
+    SfxPoolItem(RES_FLTR_ANCHOR)
+    , m_pFrameFormat(pFormat)
 {
     m_pListener.reset(new SwFltAnchorListener(this));
     m_pListener->StartListening(m_pFrameFormat->GetNotifier());
 }
 
 SwFltAnchor::SwFltAnchor(const SwFltAnchor& rCpy) :
-    SfxPoolItem(RES_FLTR_ANCHOR), m_pFrameFormat(rCpy.m_pFrameFormat)
+    SfxPoolItem(RES_FLTR_ANCHOR)
+    , m_pFrameFormat(rCpy.m_pFrameFormat)
 {
     m_pListener.reset(new SwFltAnchorListener(this));
     m_pListener->StartListening(m_pFrameFormat->GetNotifier());
@@ -899,13 +898,10 @@ void SwFltAnchorListener::Notify(const SfxHint& rHint)
             return;
         m_pFltAnchor->SetFrameFormat(nullptr);
     }
-    else if (rHint.GetId() == SfxHintId::SwLegacyModify)
+    else if (rHint.GetId() == SfxHintId::SwFormatChange)
     {
-        auto pLegacyHint = static_cast<const sw::LegacyModifyHint*>(&rHint);
-        if(pLegacyHint->m_pNew->Which() != RES_FMT_CHG)
-            return;
-        auto pFormatChg = dynamic_cast<const SwFormatChg*>(pLegacyHint->m_pNew);
-        auto pFrameFormat = pFormatChg ? dynamic_cast<SwFrameFormat*>(pFormatChg->pChangedFormat) : nullptr;
+        auto pChangeHint = static_cast<const SwFormatChangeHint*>(&rHint);
+        auto pFrameFormat = dynamic_cast<SwFrameFormat*>(pChangeHint->m_pNewFormat);
         if(pFrameFormat)
             m_pFltAnchor->SetFrameFormat(pFrameFormat);
     }
@@ -1000,7 +996,8 @@ const std::vector< std::pair<OUString, OUString> >& SwFltRDFMark::GetAttributes(
 
 // methods of SwFltTOX follow
 SwFltTOX::SwFltTOX(std::shared_ptr<SwTOXBase> xBase)
-    : SfxPoolItem(RES_FLTR_TOX), m_xTOXBase(std::move(xBase)),
+    : SfxPoolItem(RES_FLTR_TOX)
+    , m_xTOXBase(std::move(xBase)),
       m_bHadBreakItem( false ), m_bHadPageDescItem( false )
 {
 }

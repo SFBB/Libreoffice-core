@@ -23,7 +23,6 @@ $(eval $(call gb_Library_use_custom_headers,ucpchelp1, \
 $(eval $(call gb_Library_use_sdk_api,ucpchelp1))
 
 $(eval $(call gb_Library_use_externals,ucpchelp1,\
-	boost_headers \
 	clucene \
 	expat \
 	libxml2 \
@@ -48,7 +47,6 @@ $(eval $(call gb_Library_add_exception_objects,ucpchelp1,\
     xmlhelp/source/cxxhelp/provider/contentcaps \
     xmlhelp/source/cxxhelp/provider/databases \
     xmlhelp/source/cxxhelp/provider/db \
-    xmlhelp/source/cxxhelp/provider/inputstream \
     xmlhelp/source/cxxhelp/provider/provider \
     xmlhelp/source/cxxhelp/provider/resultset \
     xmlhelp/source/cxxhelp/provider/resultsetbase \

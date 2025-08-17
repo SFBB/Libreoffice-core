@@ -34,7 +34,6 @@
 #include "nodeoffset.hxx"
 
 class Graphic;
-class GraphicObject;
 class SwAttrSet;
 class SfxItemSet;
 class SwContentNode;
@@ -72,7 +71,7 @@ typedef struct _xmlTextWriter *xmlTextWriterPtr;
 
 struct CompareSwOutlineNodes
 {
-    bool operator()( SwNode* const& lhs, SwNode* const& rhs) const;
+    bool operator()(const SwNode* lhs, const SwNode* rhs) const;
 };
 
 class SwOutlineNodes : public o3tl::sorted_vector<SwNode*, CompareSwOutlineNodes>
@@ -80,13 +79,28 @@ class SwOutlineNodes : public o3tl::sorted_vector<SwNode*, CompareSwOutlineNodes
 public:
     static constexpr auto npos = std::numeric_limits<size_type>::max();
 
-    bool Seek_Entry(SwNode* rP, size_type* pnPos) const;
+    bool Seek_Entry(const SwNode* rP, size_type* pnPos) const;
+    static const SwNode* GetRootNode(const SwNode* pNode, bool bCheckInlineHeading = true);
+};
+
+struct CompareSwOutlineNodesInline
+{
+    bool operator()(const SwNode* lhs, const SwNode* rhs) const;
+};
+
+class SwOutlineNodesInline : public o3tl::sorted_vector<SwNode*, CompareSwOutlineNodesInline>
+{
+public:
+    static constexpr auto npos = std::numeric_limits<size_type>::max();
+
+    bool Seek_Entry(const SwNode* rP, size_type* pnPos) const;
+    bool Seek_Entry_By_Anchor(const SwNode* rAnchor, size_type* pnPos) const;
 };
 
 struct SwTableToTextSave;
 using SwTableToTextSaves = std::vector<std::unique_ptr<SwTableToTextSave>>;
 
-class SW_DLLPUBLIC SwNodes final
+class SwNodes final
     : private BigPtrArray
 {
     friend class SwDoc;
@@ -95,7 +109,6 @@ class SW_DLLPUBLIC SwNodes final
     friend class SwStartNode;
     friend class ::sw::DocumentContentOperationsManager;
 
-    SwNodeIndex* m_vIndices; ///< ring of all indices on nodes.
     void RemoveNode( SwNodeOffset nDelPos, SwNodeOffset nLen, bool bDel );
 
     void InsertNode( SwNode* pNode, const SwNodeIndex& rPos );
@@ -145,7 +158,7 @@ public:
         ForEach( SwNodeOffset(0), Count(), fnForEach, pArgs );
     }
     void ForEach( SwNodeOffset nStt, SwNodeOffset nEnd, FnForEach_SwNodes fnForEach, void* pArgs );
-    void ForEach( SwNode& rStart, SwNode& rEnd,
+    void ForEach( const SwNode& rStart, const SwNode& rEnd,
                     FnForEach_SwNodes fnForEach, void* pArgs );
     void ForEach( const SwNodeIndex& rStart, const SwNodeIndex& rEnd,
                     FnForEach_SwNodes fnForEach, void* pArgs );
@@ -166,7 +179,7 @@ public:
 
     /** Is the NodesArray the regular one of Doc? (and not the UndoNds, ...)
        Implementation in doc.hxx (because one needs to know Doc for it) ! */
-    bool IsDocNodes() const;
+    SW_DLLPUBLIC bool IsDocNodes() const;
 
     static sal_uInt16 GetSectionLevel(const SwNode &rIndex);
     void Delete(const SwNodeIndex &rPos, SwNodeOffset nNodes = SwNodeOffset(1));
@@ -186,17 +199,17 @@ public:
     static void GoStartOfSection(SwNodeIndex *);
     static void GoEndOfSection(SwNodeIndex *);
 
-    SwContentNode* GoNext(SwNodeIndex *) const;
-    SwContentNode* GoNext(SwPosition *) const;
-    static SwContentNode* GoPrevious(SwNodeIndex *);
-    static SwContentNode* GoPrevious(SwPosition *);
+    SW_DLLPUBLIC static SwContentNode* GoNext(SwNodeIndex*);
+    static SwContentNode* GoNext(SwPosition*);
+    static SwContentNode* GoPrevious(SwNodeIndex *, bool canCrossBoundary = false);
+    static SwContentNode* GoPrevious(SwPosition *, bool canCrossBoundary = false);
 
     /** Go to next content-node that is not protected or hidden
        (Both set FALSE ==> GoNext/GoPrevious!!!). */
-    SwContentNode* GoNextSection( SwNodeIndex *, bool bSkipHidden  = true,
-                                           bool bSkipProtect = true ) const;
-    SwContentNode* GoNextSection( SwPosition *, bool bSkipHidden  = true,
-                                           bool bSkipProtect = true ) const;
+    static SwContentNode* GoNextSection( SwNodeIndex *, bool bSkipHidden  = true,
+                                           bool bSkipProtect = true );
+    static SwContentNode* GoNextSection( SwPosition *, bool bSkipHidden  = true,
+                                           bool bSkipProtect = true );
     static SwContentNode* GoPrevSection( SwNodeIndex *, bool bSkipHidden  = true,
                                            bool bSkipProtect = true );
     static SwContentNode* GoPrevSection( SwPosition *, bool bSkipHidden  = true,
@@ -205,28 +218,28 @@ public:
     /** Create an empty section of Start- and EndNote. It may be called
        only if a new section with content is to be created,
        e.g. at filters/Undo/... */
-    static SwStartNode* MakeEmptySection( SwNode& rWhere,
+    static SwStartNode* MakeEmptySection( const SwNode& rWhere,
                                     SwStartNodeType = SwNormalStartNode );
 
     /// Implementations of "Make...Node" are in the given .cxx-files.
-    SwTextNode *MakeTextNode( SwNode& rWhere,
+    SW_DLLPUBLIC SwTextNode *MakeTextNode( const SwNode& rWhere,
                             SwTextFormatColl *pColl,
                             bool bNewFrames = true); ///< in ndtxt.cxx
-    SwStartNode* MakeTextSection( const SwNode & rWhere,
+    SW_DLLPUBLIC SwStartNode* MakeTextSection( const SwNode & rWhere,
                             SwStartNodeType eSttNdTyp,
                             SwTextFormatColl *pColl );
 
-    static SwGrfNode *MakeGrfNode( SwNode& rWhere,
+    static SwGrfNode *MakeGrfNode( const SwNode& rWhere,
                             const OUString& rGrfName,
                             const OUString& rFltName,
                             const Graphic* pGraphic,
                             SwGrfFormatColl *pColl,
                             SwAttrSet const * pAutoAttr = nullptr );    ///< in ndgrf.cxx
 
-    SwOLENode *MakeOLENode( SwNode& rWhere,
+    SwOLENode *MakeOLENode( const SwNode& rWhere,
                             const svt::EmbeddedObjectRef&,
                             SwGrfFormatColl *pColl ); ///< in ndole.cxx
-    SwOLENode *MakeOLENode( SwNode& rWhere,
+    SwOLENode *MakeOLENode( const SwNode& rWhere,
                             const OUString &rName,
                             sal_Int64 nAspect,
                             SwGrfFormatColl *pColl,
@@ -246,7 +259,7 @@ public:
        adjust in pContentTextColl or pHeadlineTextColl this adjust item
        overrides the item in pAttrSet. */
 
-    static SwTableNode* InsertTable( SwNode& rNd,
+    static SwTableNode* InsertTable( const SwNode& rNd,
                         sal_uInt16 nBoxes, SwTextFormatColl* pContentTextColl,
                         sal_uInt16 nLines, sal_uInt16 nRepeat,
                         SwTextFormatColl* pHeadlineTextColl,
@@ -279,7 +292,7 @@ public:
     /** Insert a new box in the line before InsPos. Its format
        is taken from the following one (or from the previous one if we are
        at the end). In the line there must be a box already. */
-    bool InsBoxen( SwTableNode*, SwTableLine*, SwTableBoxFormat*,
+    SW_DLLPUBLIC bool InsBoxen( SwTableNode*, SwTableLine*, SwTableBoxFormat*,
                         /// Formats for TextNode of box.
                         SwTextFormatColl*, const SfxItemSet* pAutoAttr,
                         sal_uInt16 nInsPos, sal_uInt16 nCnt = 1 );

@@ -18,6 +18,7 @@
  */
 
 
+#include <controls/table/AccessibleGridControl.hxx>
 #include <controls/table/tablecontrol.hxx>
 #include <controls/table/defaultinputhandler.hxx>
 #include <controls/table/tablemodel.hxx>
@@ -32,7 +33,6 @@
 #include <com/sun/star/accessibility/AccessibleTableModelChangeType.hpp>
 
 #include <comphelper/flagguard.hxx>
-#include <vcl/accessiblefactory.hxx>
 #include <vcl/toolkit/scrbar.hxx>
 #include <vcl/seleng.hxx>
 #include <vcl/settings.hxx>
@@ -55,8 +55,8 @@ namespace svt::table
     using ::com::sun::star::accessibility::XAccessible;
     using ::com::sun::star::uno::Reference;
 
-    namespace AccessibleEventId = ::com::sun::star::accessibility::AccessibleEventId;
-    namespace AccessibleTableModelChangeType = ::com::sun::star::accessibility::AccessibleTableModelChangeType;
+    namespace AccessibleEventId = css::accessibility::AccessibleEventId;
+    namespace AccessibleTableModelChangeType = css::accessibility::AccessibleTableModelChangeType;
 
 
     //= SuppressCursor
@@ -320,12 +320,10 @@ namespace svt::table
         impl_ni_relayout();
 
         // notify A1YY events
-        if ( impl_isAccessibleAlive() )
-        {
-            impl_commitAccessibleEvent( AccessibleEventId::TABLE_MODEL_CHANGED,
-                Any( AccessibleTableModelChange( AccessibleTableModelChangeType::ROWS_INSERTED, i_first, i_last, -1, -1 ) )
-            );
-        }
+        impl_commitAccessibleEvent(
+            AccessibleEventId::TABLE_MODEL_CHANGED,
+            Any(AccessibleTableModelChange(AccessibleTableModelChangeType::ROWS_INSERTED, i_first,
+                                           i_last, -1, -1)));
 
         // schedule repaint
         invalidateRowRange( i_first, ROW_INVALID );
@@ -388,20 +386,11 @@ namespace svt::table
         impl_ni_relayout();
 
         // notify A11Y events
-        if ( impl_isAccessibleAlive() )
-        {
-            commitTableEvent(
-                AccessibleEventId::TABLE_MODEL_CHANGED,
-                Any( AccessibleTableModelChange(
-                    AccessibleTableModelChangeType::ROWS_REMOVED,
-                    firstRemovedRow,
-                    lastRemovedRow,
-                    -1,
-                    -1
-                ) ),
-                Any()
-            );
-        }
+        commitTableEvent(
+            AccessibleEventId::TABLE_MODEL_CHANGED,
+            Any(AccessibleTableModelChange(AccessibleTableModelChangeType::ROWS_REMOVED,
+                                           firstRemovedRow, lastRemovedRow, -1, -1)),
+            Any());
 
         // schedule a repaint
         invalidateRowRange( firstRemovedRow, ROW_INVALID );
@@ -1286,7 +1275,7 @@ namespace svt::table
 
         switch ( _eAction )
         {
-        case cursorDown:
+        case TableControlAction::cursorDown:
         if ( m_pSelEngine->GetSelectionMode() == SelectionMode::Single )
         {
             //if other rows already selected, deselect them
@@ -1314,7 +1303,7 @@ namespace svt::table
         }
             break;
 
-        case cursorUp:
+        case TableControlAction::cursorUp:
         if(m_pSelEngine->GetSelectionMode() == SelectionMode::Single)
         {
             if(!m_aSelectedRows.empty())
@@ -1343,7 +1332,7 @@ namespace svt::table
                 bSuccess = goTo( m_nCurColumn, m_nCurRow - 1 );
         }
         break;
-        case cursorLeft:
+        case TableControlAction::cursorLeft:
             if ( m_nCurColumn > 0 )
                 bSuccess = goTo( m_nCurColumn - 1, m_nCurRow );
             else
@@ -1351,7 +1340,7 @@ namespace svt::table
                     bSuccess = goTo( m_nColumnCount - 1, m_nCurRow - 1 );
             break;
 
-        case cursorRight:
+        case TableControlAction::cursorRight:
             if ( m_nCurColumn < m_nColumnCount - 1 )
                 bSuccess = goTo( m_nCurColumn + 1, m_nCurRow );
             else
@@ -1359,45 +1348,45 @@ namespace svt::table
                     bSuccess = goTo( 0, m_nCurRow + 1 );
             break;
 
-        case cursorToLineStart:
+        case TableControlAction::cursorToLineStart:
             bSuccess = goTo( 0, m_nCurRow );
             break;
 
-        case cursorToLineEnd:
+        case TableControlAction::cursorToLineEnd:
             bSuccess = goTo( m_nColumnCount - 1, m_nCurRow );
             break;
 
-        case cursorToFirstLine:
+        case TableControlAction::cursorToFirstLine:
             bSuccess = goTo( m_nCurColumn, 0 );
             break;
 
-        case cursorToLastLine:
+        case TableControlAction::cursorToLastLine:
             bSuccess = goTo( m_nCurColumn, m_nRowCount - 1 );
             break;
 
-        case cursorPageUp:
+        case TableControlAction::cursorPageUp:
         {
             RowPos nNewRow = ::std::max( RowPos(0), m_nCurRow - impl_getVisibleRows( false ) );
             bSuccess = goTo( m_nCurColumn, nNewRow );
         }
         break;
 
-        case cursorPageDown:
+        case TableControlAction::cursorPageDown:
         {
             RowPos nNewRow = ::std::min( m_nRowCount - 1, m_nCurRow + impl_getVisibleRows( false ) );
             bSuccess = goTo( m_nCurColumn, nNewRow );
         }
         break;
 
-        case cursorTopLeft:
+        case TableControlAction::cursorTopLeft:
             bSuccess = goTo( 0, 0 );
             break;
 
-        case cursorBottomRight:
+        case TableControlAction::cursorBottomRight:
             bSuccess = goTo( m_nColumnCount - 1, m_nRowCount - 1 );
             break;
 
-        case cursorSelectRow:
+        case TableControlAction::cursorSelectRow:
         {
             if(m_pSelEngine->GetSelectionMode() == SelectionMode::NONE)
                 return false;
@@ -1418,7 +1407,7 @@ namespace svt::table
             bSuccess = true;
         }
             break;
-        case cursorSelectRowUp:
+        case TableControlAction::cursorSelectRowUp:
         {
             if(m_pSelEngine->GetSelectionMode() == SelectionMode::NONE)
                 return false;
@@ -1503,7 +1492,7 @@ namespace svt::table
             }
         }
         break;
-        case cursorSelectRowDown:
+        case TableControlAction::cursorSelectRowDown:
         {
             if(m_pSelEngine->GetSelectionMode() == SelectionMode::NONE)
                 bSuccess = false;
@@ -1585,7 +1574,7 @@ namespace svt::table
         }
         break;
 
-        case cursorSelectRowAreaTop:
+        case TableControlAction::cursorSelectRowAreaTop:
         {
             if(m_pSelEngine->GetSelectionMode() == SelectionMode::NONE)
                 bSuccess = false;
@@ -1613,7 +1602,7 @@ namespace svt::table
         }
         break;
 
-        case cursorSelectRowAreaBottom:
+        case TableControlAction::cursorSelectRowAreaBottom:
         {
             if(m_pSelEngine->GetSelectionMode() == SelectionMode::NONE)
                 return false;
@@ -1656,31 +1645,13 @@ namespace svt::table
         PTableRenderer pRenderer = m_pModel ? m_pModel->getRenderer() : PTableRenderer();
         if ( pRenderer )
         {
-            tools::Rectangle aCellRect;
-            impl_getCellRect( m_nCurColumn, m_nCurRow, aCellRect );
+            tools::Rectangle aCellRect = calcCellRect(m_nCurRow, m_nCurColumn);
             if ( _bShow )
                 pRenderer->ShowCellCursor( *m_pDataWindow, aCellRect );
             else
                 pRenderer->HideCellCursor( *m_pDataWindow );
         }
     }
-
-
-    void TableControl_Impl::impl_getCellRect( ColPos _nColumn, RowPos _nRow, tools::Rectangle& _rCellRect ) const
-    {
-        if  (   !m_pModel
-            ||  ( COL_INVALID == _nColumn )
-            ||  ( ROW_INVALID == _nRow )
-            )
-        {
-            _rCellRect.SetEmpty();
-            return;
-        }
-
-        TableCellGeometry aCell( *this, impl_getAllVisibleCellsArea(), _nColumn, _nRow );
-        _rCellRect = aCell.getRect();
-    }
-
 
     RowPos TableControl_Impl::getRowAtPoint( const Point& rPoint ) const
     {
@@ -1824,27 +1795,24 @@ namespace svt::table
         // if only one row is selected
         if ( _nPrevRow == _nCurRow )
         {
-            tools::Rectangle aCellRect;
-            impl_getCellRect( m_nCurColumn, _nCurRow, aCellRect );
+            tools::Rectangle aCellRect = calcCellRect(_nCurRow, m_nCurColumn);
             aInvalidateRect.SetTop( aCellRect.Top() );
             aInvalidateRect.SetBottom( aCellRect.Bottom() );
         }
         //if the region is above the current row
         else if(_nPrevRow < _nCurRow )
         {
-            tools::Rectangle aCellRect;
-            impl_getCellRect( m_nCurColumn, _nPrevRow, aCellRect );
+            tools::Rectangle aCellRect = calcCellRect(_nPrevRow, m_nCurColumn);
             aInvalidateRect.SetTop( aCellRect.Top() );
-            impl_getCellRect( m_nCurColumn, _nCurRow, aCellRect );
+            aCellRect = calcCellRect(_nCurRow, m_nCurColumn);
             aInvalidateRect.SetBottom( aCellRect.Bottom() );
         }
         //if the region is beneath the current row
         else
         {
-            tools::Rectangle aCellRect;
-            impl_getCellRect( m_nCurColumn, _nCurRow, aCellRect );
+            tools::Rectangle aCellRect = calcCellRect(_nCurRow, m_nCurColumn);
             aInvalidateRect.SetTop( aCellRect.Top() );
-            impl_getCellRect( m_nCurColumn, _nPrevRow, aCellRect );
+            aCellRect = calcCellRect(_nPrevRow, m_nCurColumn);
             aInvalidateRect.SetBottom( aCellRect.Bottom() );
         }
 
@@ -2299,15 +2267,15 @@ namespace svt::table
 
     void TableControl_Impl::commitCellEvent( sal_Int16 const i_eventID, const Any& i_newValue, const Any& i_oldValue )
     {
-        if ( impl_isAccessibleAlive() )
-             m_pAccessibleTable->commitCellEvent( i_eventID, i_newValue, i_oldValue );
+        if (m_xAccessibleTable.is())
+            m_xAccessibleTable->commitCellEvent(i_eventID, i_newValue, i_oldValue);
     }
 
 
     void TableControl_Impl::commitTableEvent( sal_Int16 const i_eventID, const Any& i_newValue, const Any& i_oldValue )
     {
-        if ( impl_isAccessibleAlive() )
-             m_pAccessibleTable->commitTableEvent( i_eventID, i_newValue, i_oldValue );
+        if (m_xAccessibleTable.is())
+            m_xAccessibleTable->commitTableEvent(i_eventID, i_newValue, i_oldValue);
     }
 
 
@@ -2342,9 +2310,11 @@ namespace svt::table
 
     tools::Rectangle TableControl_Impl::calcCellRect( sal_Int32 nRow, sal_Int32 nCol ) const
     {
-        tools::Rectangle aCellRect;
-        impl_getCellRect( nRow, nCol, aCellRect );
-        return aCellRect;
+        if (!m_pModel || (nRow == ROW_INVALID) || (nCol == COL_INVALID))
+            return tools::Rectangle();
+
+        TableCellGeometry aCell(*this, impl_getAllVisibleCellsArea(), nCol, nRow);
+        return aCell.getRect();
     }
 
 
@@ -2367,46 +2337,33 @@ namespace svt::table
             impl_ni_ScrollColumns( _pScrollbar->GetDelta() );
     }
 
-
-    rtl::Reference<vcl::table::IAccessibleTableControl> TableControl_Impl::getAccessible( vcl::Window& i_parentWindow )
+    const rtl::Reference<accessibility::AccessibleGridControl>&
+    TableControl_Impl::getAccessible(const css::uno::Reference<css::accessibility::XAccessible>& rxParent)
     {
-        if (m_pAccessibleTable)
-            return m_pAccessibleTable;
+        if (m_xAccessibleTable.is())
+            return m_xAccessibleTable;
 
         DBG_TESTSOLARMUTEX();
-        if ( m_pAccessibleTable == nullptr )
+        if (rxParent.is())
         {
-            Reference< XAccessible > const xAccParent = i_parentWindow.GetAccessible();
-            if ( xAccParent.is() )
-            {
-                m_pAccessibleTable = m_aFactoryAccess.getFactory().createAccessibleTableControl(
-                    xAccParent, m_rAntiImpl
-                );
-            }
+            m_xAccessibleTable = new accessibility::AccessibleGridControl(rxParent, m_rAntiImpl);
         }
 
-        return m_pAccessibleTable;
+        return m_xAccessibleTable;
     }
 
 
     void TableControl_Impl::disposeAccessible()
     {
-        if ( m_pAccessibleTable )
-            m_pAccessibleTable->DisposeAccessImpl();
-        m_pAccessibleTable = nullptr;
+        if (m_xAccessibleTable.is())
+            m_xAccessibleTable->dispose();
+        m_xAccessibleTable.clear();
     }
-
-
-    bool TableControl_Impl::impl_isAccessibleAlive() const
-    {
-        return m_pAccessibleTable && m_pAccessibleTable->isAlive();
-    }
-
 
     void TableControl_Impl::impl_commitAccessibleEvent( sal_Int16 const i_eventID, Any const & i_newValue )
     {
-        if ( impl_isAccessibleAlive() )
-             m_pAccessibleTable->commitEvent( i_eventID, i_newValue );
+        if (m_xAccessibleTable.is())
+            m_xAccessibleTable->commitEvent(i_eventID, i_newValue, css::uno::Any());
     }
 
 

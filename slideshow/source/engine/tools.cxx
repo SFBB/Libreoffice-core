@@ -561,11 +561,8 @@ namespace slideshow::internal
 
             aTransform *= rShapeTransform;
 
-            ::basegfx::B2DRectangle aRes;
-
             // apply shape transformation to unit rect
             return ::canvas::tools::calcTransformedRectBounds(
-                aRes,
                 rUnitBounds,
                 aTransform );
         }
@@ -721,7 +718,7 @@ namespace slideshow::internal
                                                             uno::UNO_QUERY_THROW );
             // read bound rect
             awt::Rectangle aTmpRect;
-            if( !(xPropSet->getPropertyValue("BoundRect") >>= aTmpRect) )
+            if( !(xPropSet->getPropertyValue(u"BoundRect"_ustr) >>= aTmpRect) )
             {
                 ENSURE_OR_THROW( false,
                                   "getAPIShapeBounds(): Could not get \"BoundRect\" property from shape" );
@@ -764,8 +761,7 @@ namespace slideshow::internal
             const basegfx::B2DRange aRect( 0,0,
                                            rSlideSize.getX(),
                                            rSlideSize.getY() );
-            basegfx::B2DRange aTmpRect;
-            canvas::tools::calcTransformedRectBounds( aTmpRect,
+            basegfx::B2DRange aTmpRect = canvas::tools::calcTransformedRectBounds(
                                                       aRect,
                                                       pView->getTransformation() );
 
@@ -776,6 +772,14 @@ namespace slideshow::internal
                 basegfx::fround( aTmpRect.getRange().getX() ) + 1,
                 basegfx::fround( aTmpRect.getRange().getY() ) + 1 );
         }
+
+#if defined(DBG_UTIL)
+bool isShowingMoreDebugInfo()
+{
+    static const bool bMoreInfo = getenv("SLIDESHOW_MORE_DEBUG_INFO") != nullptr;
+    return bMoreInfo;
+}
+#endif
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

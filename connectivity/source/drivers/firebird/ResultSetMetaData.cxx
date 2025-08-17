@@ -75,7 +75,7 @@ OUString OResultSetMetaData::getCharacterSet( sal_Int32 nIndex )
 void OResultSetMetaData::verifyValidColumn(sal_Int32 column)
 {
     if (column>getColumnCount() || column < 1)
-        throw SQLException("Invalid column specified", *this, OUString(), 0, Any());
+        throw SQLException(u"Invalid column specified"_ustr, *this, OUString(), 0, Any());
 }
 
 sal_Int32 SAL_CALL OResultSetMetaData::getColumnCount()
@@ -102,10 +102,7 @@ sal_Int32 SAL_CALL OResultSetMetaData::getColumnType(sal_Int32 column)
         sCharset = getCharacterSet(column);
     }
 
-    ColumnTypeInfo aInfo( m_pSqlda->sqlvar[column-1].sqltype,
-            m_pSqlda->sqlvar[column-1].sqlsubtype,
-            -(m_pSqlda->sqlvar[column-1].sqlscale),
-            sCharset );
+    ColumnTypeInfo aInfo(m_pSqlda, column, sCharset);
 
     return aInfo.getSdbcType();
 }
@@ -141,6 +138,16 @@ OUString SAL_CALL OResultSetMetaData::getColumnName(sal_Int32 column)
     return sRet;
 }
 
+OUString OResultSetMetaData::getColumnNameWithoutAlias(sal_Int32 column)
+{
+    verifyValidColumn(column);
+    char* pColumnName = m_pSqlda->sqlvar[column - 1].sqlname;
+    sal_Int32 nColumnNameLength = m_pSqlda->sqlvar[column - 1].sqlname_length;
+    OUString sRet(pColumnName, nColumnNameLength, RTL_TEXTENCODING_UTF8);
+    sanitizeIdentifier(sRet);
+    return sRet;
+}
+
 OUString SAL_CALL OResultSetMetaData::getTableName(sal_Int32 column)
 {
     verifyValidColumn(column);
@@ -158,9 +165,7 @@ OUString SAL_CALL OResultSetMetaData::getColumnTypeName(sal_Int32 column)
 {
     verifyValidColumn(column);
 
-    ColumnTypeInfo aInfo( m_pSqlda->sqlvar[column-1].sqltype,
-            m_pSqlda->sqlvar[column-1].sqlsubtype,
-            -(m_pSqlda->sqlvar[column-1].sqlscale) );
+    ColumnTypeInfo aInfo(m_pSqlda, column);
 
     return aInfo.getColumnTypeName();
 }
@@ -193,7 +198,7 @@ sal_Bool SAL_CALL OResultSetMetaData::isAutoIncrement(sal_Int32 column)
     if( sTable.isEmpty() )
         return false;
 
-    OUString sColumnName = getColumnName( column );
+    OUString sColumnName = getColumnNameWithoutAlias( column );
 
     OUString sSql = "SELECT RDB$IDENTITY_TYPE FROM RDB$RELATION_FIELDS "
                "WHERE RDB$RELATION_NAME = '"

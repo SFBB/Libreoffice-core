@@ -23,6 +23,7 @@
 #error "don't use this in new code"
 #endif
 
+#include <config_options.h>
 #include <vcl/dllapi.h>
 #include <vcl/ctrl.hxx>
 #include <vcl/scrollable.hxx>
@@ -30,7 +31,7 @@
 
 struct ImplScrollBarData;
 
-class VCL_DLLPUBLIC ScrollBar final : public Control
+class UNLESS_MERGELIBS_MORE(VCL_DLLPUBLIC) ScrollBar final : public Control
                               , public Scrollable
 {
 private:
@@ -57,6 +58,7 @@ private:
     ScrollType      meScrollType;
     bool            mbCalcSize;
     bool            mbFullDrag;
+    bool            mbSwapArrows;
     Link<ScrollBar*,void>       maScrollHdl;
     Link<ScrollBar*,void>       maEndScrollHdl;
 
@@ -79,10 +81,18 @@ private:
     SAL_DLLPRIVATE Size         getCurrentCalcSize() const;
     DECL_DLLPRIVATE_LINK( ImplAutoTimerHdl, Timer*, void );
 
+    bool ImplHitTestBtn1(const Point& rPt) const;
+    bool ImplHitTestBtn2(const Point& rPt) const;
+    bool ImplHitTestPageUp(const Point& rPt) const;
+    bool ImplHitTestPageDown(const Point& rPt) const;
+    bool ImplHitTestThumb(const Point& rPt) const;
+
 public:
     explicit        ScrollBar( vcl::Window* pParent, WinBits nStyle = WB_VERT );
     virtual         ~ScrollBar() override;
     virtual void    dispose() override;
+
+    virtual rtl::Reference<comphelper::OAccessible> CreateAccessible() override;
 
     virtual void MouseButtonDown(const MouseEvent& rMEvt) override;
     virtual void Tracking(const TrackingEvent& rTEvt) override;
@@ -132,10 +142,15 @@ public:
     void            SetEndScrollHdl( const Link<ScrollBar*,void>& rLink ) { maEndScrollHdl = rLink; }
 
     virtual Size    GetOptimalSize() const override;
+
+    void            SetSwapArrows( bool bSwap ) { mbSwapArrows = bSwap; }
+
+    bool            IsHorizontal() const;
+    tools::Rectangle GetScrollbarRegion() const;
 };
 
 
-class VCL_DLLPUBLIC ScrollBarBox final : public vcl::Window
+class UNLESS_MERGELIBS(VCL_DLLPUBLIC) ScrollBarBox final : public vcl::Window
 {
 private:
     using Window::ImplInit;

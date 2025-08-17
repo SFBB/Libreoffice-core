@@ -74,6 +74,9 @@
 #include <vcl/settings.hxx>
 #include <vcl/svapp.hxx>
 #include <cppuhelper/implbase.hxx>
+#include <BasicColorConfig.hxx>
+#include <officecfg/Office/BasicIDE.hxx>
+#include <LineStatusControl.hxx>
 
 namespace basctl
 {
@@ -156,7 +159,7 @@ void basctl_Shell::InitInterface_Impl()
     GetStaticInterface()->RegisterChildWindow(SID_SHOW_PROPERTYBROWSER, false, SfxShellFeature::BasicShowBrowser);
     GetStaticInterface()->RegisterChildWindow(SfxInfoBarContainerChild::GetChildWindowId());
 
-    GetStaticInterface()->RegisterPopupMenu("dialog");
+    GetStaticInterface()->RegisterPopupMenu(u"dialog"_ustr);
 }
 
 unsigned Shell::nShellCount = 0;
@@ -186,15 +189,19 @@ void Shell::Init()
 
     GetExtraData()->ShellInCriticalSection() = true;
 
-    SetName( "BasicIDE" );
+    SetName( u"BasicIDE"_ustr );
 
     LibBoxControl::RegisterControl( SID_BASICIDE_LIBSELECTOR );
     LanguageBoxControl::RegisterControl( SID_BASICIDE_CURRENT_LANG );
     SvxZoomSliderControl::RegisterControl( SID_ATTR_ZOOMSLIDER );
+    LineStatusControl::RegisterControl(SID_BASICIDE_STAT_POS);
 
     GetViewFrame().GetWindow().SetBackground(
         GetViewFrame().GetWindow().GetSettings().GetStyleSettings().GetWindowColor()
     );
+
+    // Used to access color settings of the Basic code editor
+    m_aColorConfig = std::make_shared<BasicColorConfig>();
 
     pCurWin = nullptr;
     m_aCurDocument = ScriptDocument::getApplicationScriptDocument();
@@ -207,7 +214,12 @@ void Shell::Init()
     InitTabBar();
     InitZoomLevel();
 
-    SetCurLib( ScriptDocument::getApplicationScriptDocument(), "Standard", false, false );
+    // Initialize the visibility of the Object Catalog
+    bool bObjCatVisible = ::officecfg::Office::BasicIDE::EditorSettings::ObjectCatalog::get();
+    if (!bObjCatVisible)
+        aObjectCatalog->Show(bObjCatVisible);
+
+    SetCurLib( ScriptDocument::getApplicationScriptDocument(), u"Standard"_ustr, false, false );
 
     ShellCreated(this);
 
@@ -250,8 +262,8 @@ Shell::~Shell()
     aWindowTable.clear();
 
     // Destroy all ContainerListeners for Basic Container.
-    if (ContainerListenerImpl* pListener = static_cast<ContainerListenerImpl*>(m_xLibListener.get()))
-        pListener->removeContainerListener(m_aCurDocument, m_aCurLibName);
+    if (m_xLibListener)
+        m_xLibListener->removeContainerListener(m_aCurDocument, m_aCurLibName);
 
     GetExtraData()->ShellInCriticalSection() = false;
 
@@ -344,7 +356,7 @@ void Shell::onDocumentClosed( const ScriptDocument& _rDocument )
         pData->GetLibInfo().RemoveInfoFor( _rDocument );
 
     if ( bSetCurLib )
-        SetCurLib( ScriptDocument::getApplicationScriptDocument(), "Standard", true, false );
+        SetCurLib( ScriptDocument::getApplicationScriptDocument(), u"Standard"_ustr, true, false );
     else if ( bSetCurWindow )
         SetCurWindow( FindApplicationWindow(), true );
 }
@@ -409,7 +421,7 @@ void Shell::StoreAllWindowData( bool bPersistent )
     for (auto const& window : aWindowTable)
     {
         BaseWindow* pWin = window.second;
-        DBG_ASSERT( pWin, "PrepareClose: NULL-Pointer in Table?" );
+        assert(pWin && "PrepareClose: NULL-Pointer in Table?");
         if ( !pWin->IsSuspended() )
             pWin->StoreData();
     }
@@ -520,11 +532,7 @@ void Shell::Notify( SfxBroadcaster& rBC, const SfxHint& rHint )
         aObjectCatalog->UpdateEntries();
     }
 
-    SbxHint const* pSbxHint = dynamic_cast<SbxHint const*>(&rHint);
-    if (!pSbxHint)
-        return;
-
-    const SfxHintId nHintId = pSbxHint->GetId();
+    const SfxHintId nHintId = rHint.GetId();
     if ( ( nHintId != SfxHintId::BasicStart ) &&
          ( nHintId != SfxHintId::BasicStop ) )
         return;
@@ -666,14 +674,8 @@ void Shell::UpdateWindows()
         StartListening(*doc.getBasicManager(), DuplicateHandling::Prevent /* log on only once */);
 
         // libraries
-        Sequence< OUString > aLibNames( doc.getLibraryNames() );
-        sal_Int32 nLibCount = aLibNames.getLength();
-        const OUString* pLibNames = aLibNames.getConstArray();
-
-        for ( sal_Int32 i = 0 ; i < nLibCount ; i++ )
+        for (auto& aLibName : doc.getLibraryNames())
         {
-            OUString aLibName = pLibNames[ i ];
-
             if ( m_aCurLibName.isEmpty() || ( doc == m_aCurDocument && aLibName == m_aCurLibName ) )
             {
                 // check, if library is password protected and not verified
@@ -704,18 +706,15 @@ void Shell::UpdateWindows()
                         try
                         {
                             Sequence< OUString > aModNames( doc.getObjectNames( E_SCRIPTS, aLibName ) );
-                            sal_Int32 nModCount = aModNames.getLength();
-                            const OUString* pModNames = aModNames.getConstArray();
-                            nTotalTabs += nModCount;
+                            nTotalTabs += aModNames.getLength();
 
-                            for ( sal_Int32 j = 0 ; j < nModCount ; j++ )
+                            for (auto& aModName : aModNames)
                             {
-                                OUString aModName = pModNames[ j ];
                                 VclPtr<ModulWindow> pWin = FindBasWin( doc, aLibName, aModName );
                                 if ( !pWin )
                                     pWin = CreateBasWin( doc, aLibName, aModName );
                                 if ( !pNextActiveWindow && pLibInfoItem && pLibInfoItem->GetCurrentName() == aModName &&
-                                     pLibInfoItem->GetCurrentType() == TYPE_MODULE )
+                                     pLibInfoItem->GetCurrentType() == SBX_TYPE_MODULE )
                                 {
                                     pNextActiveWindow = pWin;
                                 }
@@ -734,20 +733,17 @@ void Shell::UpdateWindows()
                         try
                         {
                             Sequence< OUString > aDlgNames = doc.getObjectNames( E_DIALOGS, aLibName );
-                            sal_Int32 nDlgCount = aDlgNames.getLength();
-                            const OUString* pDlgNames = aDlgNames.getConstArray();
-                            nTotalTabs += nDlgCount;
+                            nTotalTabs += aDlgNames.getLength();
 
-                            for ( sal_Int32 j = 0 ; j < nDlgCount ; j++ )
+                            for (auto& aDlgName : aDlgNames)
                             {
-                                OUString aDlgName = pDlgNames[ j ];
                                 // this find only looks for non-suspended windows;
                                 // suspended windows are handled in CreateDlgWin
                                 VclPtr<DialogWindow> pWin = FindDlgWin( doc, aLibName, aDlgName );
                                 if ( !pWin )
                                     pWin = CreateDlgWin( doc, aLibName, aDlgName );
                                 if ( !pNextActiveWindow && pLibInfoItem && pLibInfoItem->GetCurrentName() == aDlgName &&
-                                     pLibInfoItem->GetCurrentType() == TYPE_DIALOG )
+                                     pLibInfoItem->GetCurrentType() == SBX_TYPE_DIALOG )
                                 {
                                     pNextActiveWindow = pWin;
                                 }
@@ -782,7 +778,7 @@ void Shell::RemoveWindow( BaseWindow* pWindow_, bool bDestroy, bool bAllowChange
 {
     VclPtr<BaseWindow> pWindowTmp( pWindow_ );
 
-    DBG_ASSERT( pWindow_, "Cannot delete NULL-Pointer!" );
+    assert(pWindow_ && "Cannot delete NULL-Pointer!");
     sal_uInt16 nKey = GetWindowId( pWindow_ );
     pTabBar->RemovePage( nKey );
     aWindowTable.erase( nKey );
@@ -944,16 +940,14 @@ void Shell::SetCurLib( const ScriptDocument& rDocument, const OUString& aLibName
     if ( bCheck && rDocument == m_aCurDocument && aLibName == m_aCurLibName )
         return;
 
-    ContainerListenerImpl* pListener = static_cast< ContainerListenerImpl* >( m_xLibListener.get() );
-
-    if (pListener)
-        pListener->removeContainerListener(m_aCurDocument, m_aCurLibName);
+    if (m_xLibListener)
+        m_xLibListener->removeContainerListener(m_aCurDocument, m_aCurLibName);
 
     m_aCurDocument = rDocument;
     m_aCurLibName = aLibName;
 
-    if ( pListener )
-        pListener->addContainerListener( m_aCurDocument, aLibName );
+    if ( m_xLibListener )
+        m_xLibListener->addContainerListener( m_aCurDocument, aLibName );
 
     if ( bUpdateWindows )
         UpdateWindows();

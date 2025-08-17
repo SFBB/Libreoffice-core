@@ -24,6 +24,7 @@
 #include <com/sun/star/util/XModifiable.hpp>
 #include <com/sun/star/util/XCloseable.hpp>
 #include <com/sun/star/util/XUpdatable.hpp>
+#include <com/sun/star/util/DateTime.hpp>
 #include <com/sun/star/document/XDocumentPropertiesSupplier.hpp>
 #include <com/sun/star/document/XUndoManagerSupplier.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
@@ -52,6 +53,8 @@
 #include <cppuhelper/implbase.hxx>
 #include <comphelper/interfacecontainer2.hxx>
 #include <vcl/GraphicObject.hxx>
+#include <svl/lstner.hxx>
+#include <svx/ChartColorPaletteType.hxx>
 
 #include <memory>
 
@@ -68,6 +71,8 @@ namespace com::sun::star::uno { class XAggregation; }
 class SvNumberFormatter;
 class SvNumberFormatsSupplierObj;
 
+namespace model { class Theme; }
+
 namespace chart
 {
 class Diagram;
@@ -78,6 +83,10 @@ class NameContainer;
 class PageBackground;
 class RangeHighlighter;
 class Title;
+class BaseCoordinateSystem;
+class DataSeries;
+class ChartType;
+namespace wrapper { class ChartDocumentWrapper; }
 
 namespace impl
 {
@@ -115,8 +124,8 @@ typedef cppu::WeakImplHelper<
 class UndoManager;
 class ChartView;
 
-class OOO_DLLPUBLIC_CHARTTOOLS SAL_LOPLUGIN_ANNOTATE("crosscast") ChartModel final :
-    public impl::ChartModel_Base
+class SAL_LOPLUGIN_ANNOTATE("crosscast") ChartModel final :
+    public impl::ChartModel_Base, private SfxListener
 {
 
 private:
@@ -142,7 +151,7 @@ private:
     sal_uInt16                                         m_nControllerLockCount;
 
     css::uno::Reference< css::uno::XComponentContext > m_xContext;
-    css::uno::Reference< css::uno::XAggregation >      m_xOldModelAgg;
+    rtl::Reference< wrapper::ChartDocumentWrapper >    m_xOldModelAgg;
 
     css::uno::Reference< css::embed::XStorage >        m_xStorage;
     //the content of this should be always synchronized with the current m_xViewWindow size. The variable is necessary to hold the information as long as no view window exists.
@@ -175,13 +184,18 @@ private:
 
     rtl::Reference< ::chart::NameContainer > m_xXMLNamespaceMap;
 
+    ChartColorPaletteType m_eColorPaletteType;
+    sal_uInt32 m_nColorPaletteIndex;
+
+    std::optional<css::util::DateTime> m_aNullDate;
+
 private:
     //private methods
 
     OUString impl_g_getLocation();
 
     bool
-        impl_isControllerConnected( const css::uno::Reference< com::sun::star::frame::XController >& xController );
+        impl_isControllerConnected( const css::uno::Reference< css::frame::XController >& xController );
 
     /// @throws css::uno::RuntimeException
     css::uno::Reference< css::frame::XController >
@@ -204,7 +218,7 @@ private:
         const css::uno::Sequence< css::beans::PropertyValue >& rMediaDescriptor,
         const css::uno::Reference< css::embed::XStorage >& xStorage );
     void impl_loadGraphics(
-        const css::uno::Reference< ::com::sun::star::embed::XStorage >& xStorage );
+        const css::uno::Reference< css::embed::XStorage >& xStorage );
     css::uno::Reference< css::document::XFilter >
         impl_createFilter( const css::uno::Sequence< css::beans::PropertyValue > & rMediaDescriptor );
 
@@ -456,9 +470,14 @@ public:
     // XDumper
     virtual OUString SAL_CALL dump(OUString const & kind) override;
 
+    // SfxListener
+    virtual void Notify( SfxBroadcaster& rBC, const SfxHint& rHint ) override;
+
     // normal methods
     css::uno::Reference< css::util::XNumberFormatsSupplier > const &
         getNumberFormatsSupplier();
+
+    const rtl::Reference<ChartView> & createChartView();
 
     ChartView* getChartView() const;
 
@@ -478,6 +497,34 @@ public:
 
     rtl::Reference< ::chart::Title > getTitleObject2() const;
     void setTitleObject( const rtl::Reference< ::chart::Title >& Title );
+
+    rtl::Reference< BaseCoordinateSystem > getFirstCoordinateSystem();
+
+    std::vector< rtl::Reference< ::chart::DataSeries > > getDataSeries();
+
+    rtl::Reference< ChartType > getChartTypeOfSeries( const rtl::Reference< ::chart::DataSeries >& xGivenDataSeries );
+
+    static css::awt::Size getDefaultPageSize();
+
+    css::awt::Size getPageSize();
+
+    void triggerRangeHighlighting();
+
+    bool isIncludeHiddenCells();
+    bool setIncludeHiddenCells( bool bIncludeHiddenCells );
+
+    std::shared_ptr<model::Theme> getDocumentTheme() const;
+    ChartColorPaletteType getColorPaletteType() const { return m_eColorPaletteType; }
+    sal_uInt32 getColorPaletteIndex() const { return m_nColorPaletteIndex; }
+    void setColorPalette(ChartColorPaletteType eType, sal_uInt32 nIndex);
+    void clearColorPalette();
+    bool usesColorPalette() const;
+    std::optional<ChartColorPalette> getCurrentColorPalette() const;
+    void applyColorPaletteToDataSeries(const ChartColorPalette& rColorPalette);
+    void onDocumentThemeChanged();
+
+    std::optional<css::util::DateTime> getNullDate() const;
+    void changeNullDate(const css::util::DateTime& aNullDate);
 
 private:
     void dumpAsXml(xmlTextWriterPtr pWriter) const;

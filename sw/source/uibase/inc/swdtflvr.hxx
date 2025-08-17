@@ -35,18 +35,15 @@
 
 #include <swdllapi.h>
 
-class Graphic;
 class ImageMap;
 class INetImage;
 class SfxAbstractPasteDialog;
-class SwDoc;
 class SwDocFac;
 class SwPaM;
 class SwTextBlocks;
 class SwWrtShell;
 class SvxClipboardFormatItem;
 class SwFrameShell;
-class SwView_Impl;
 class SwPasteContext;
 enum class SwPasteSdr;
 
@@ -75,7 +72,7 @@ enum class PasteTableType
 
 class SwTransferDdeLink;
 
-class SW_DLLPUBLIC SwTransferable final : public TransferableHelper
+class SAL_DLLPUBLIC_RTTI SwTransferable final : public TransferableHelper
 {
     friend class SwView_Impl;
     SfxObjectShellLock              m_aDocShellRef;
@@ -114,7 +111,7 @@ class SW_DLLPUBLIC SwTransferable final : public TransferableHelper
 
     static bool PasteFileContent( const TransferableDataHelper&,
                                     SwWrtShell& rSh, SotClipboardFormatId nFormat, bool bMsg, bool bIgnoreComments = false );
-    static bool PasteOLE( TransferableDataHelper& rData, SwWrtShell& rSh,
+    static bool PasteOLE( const TransferableDataHelper& rData, SwWrtShell& rSh,
                             SotClipboardFormatId nFormat, SotExchangeActionFlags nActionFlags, bool bMsg );
     static bool PasteTargetURL( const TransferableDataHelper& rData, SwWrtShell& rSh,
                         SwPasteSdr nAction, const Point* pPt, bool bInsertGRF );
@@ -136,7 +133,7 @@ class SW_DLLPUBLIC SwTransferable final : public TransferableHelper
     static bool PasteAsHyperlink( const TransferableDataHelper& rData,
                                         SwWrtShell& rSh, SotClipboardFormatId nFormat );
 
-    static bool PasteFileName( TransferableDataHelper& rData,
+    static bool PasteFileName( const TransferableDataHelper& rData,
                             SwWrtShell& rSh, SotClipboardFormatId nFormat, SwPasteSdr nAction,
                             const Point* pPt, SotExchangeActionFlags nActionFlags, bool * graphicInserted );
 
@@ -157,7 +154,7 @@ class SW_DLLPUBLIC SwTransferable final : public TransferableHelper
 
     virtual void        AddSupportedFormats() override;
     virtual bool GetData( const css::datatransfer::DataFlavor& rFlavor, const OUString& rDestDoc ) override;
-    virtual bool        WriteObject( tools::SvRef<SotTempStream>& rxOStm,
+    virtual bool        WriteObject( SvStream& rOStm,
                                         void* pUserObject,
                                         sal_uInt32 nUserObjectId,
                                         const css::datatransfer::DataFlavor& rFlavor ) override;
@@ -168,7 +165,7 @@ class SW_DLLPUBLIC SwTransferable final : public TransferableHelper
     using TransferableHelper::StartDrag;
 
 public:
-    SwTransferable( SwWrtShell& );
+    SW_DLLPUBLIC SwTransferable( SwWrtShell& );
     virtual ~SwTransferable() override;
 
     static SotExchangeDest GetSotDestination( const SwWrtShell& rSh );
@@ -178,9 +175,9 @@ public:
     static void InitOle( SfxObjectShell* pDoc );
 
     // copy - methods and helper methods for the copy
-    int  Cut();
-    int  Copy( bool bIsCut = false );
-    int  PrepareForCopy( bool bIsCut = false );
+    SW_DLLPUBLIC int  Cut();
+    SW_DLLPUBLIC int  Copy( bool bIsCut = false, bool bDeleteRedlines = true );
+    int  PrepareForCopy( bool bIsCut = false, bool bDeleteRedlines = true );
     void PrepareForCopyTextRange(SwPaM & rPaM);
     void  CalculateAndCopy();                // special for Calculator
     bool  CopyGlossary( SwTextBlocks& rGlossary, const OUString& rStr );
@@ -192,9 +189,9 @@ public:
 
     // paste - methods and helper methods for the paste
     static bool IsPaste( const SwWrtShell&, const TransferableDataHelper& );
-    static bool Paste( SwWrtShell&, TransferableDataHelper&, RndStdIds nAnchorType = RndStdIds::FLY_AT_PARA,
+    SW_DLLPUBLIC static bool Paste( SwWrtShell&, const TransferableDataHelper&, RndStdIds nAnchorType = RndStdIds::FLY_AT_PARA,
                           bool bIgnoreComments = false, PasteTableType ePasteTable = PasteTableType::PASTE_DEFAULT );
-    static bool PasteData( TransferableDataHelper& rData,
+    static bool PasteData( const TransferableDataHelper& rData,
                           SwWrtShell& rSh, sal_uInt8 nAction, SotExchangeActionFlags nActionFlags,
                           SotClipboardFormatId nFormat,
                           SotExchangeDest nDestination, bool bIsPasteFormat,
@@ -208,14 +205,14 @@ public:
     static bool IsPasteSpecial( const SwWrtShell& rWrtShell,
                                 const TransferableDataHelper& );
     static bool IsPasteOwnFormat( const TransferableDataHelper& );
-    static bool PasteUnformatted( SwWrtShell& rSh, TransferableDataHelper& );
+    static bool PasteUnformatted( SwWrtShell& rSh, const TransferableDataHelper& );
     /**
      * @brief PrePasteSpecial Prepares the given dialog without actually running it
      * @param rSh
      * @param rFormatUsed
      */
-    static void PrePasteSpecial( const SwWrtShell& rSh, TransferableDataHelper&, const VclPtr<SfxAbstractPasteDialog>& pDlg );
-    static bool PasteFormat( SwWrtShell& rSh, TransferableDataHelper& rData,
+    static void PrePasteSpecial( const SwWrtShell& rSh, const TransferableDataHelper&, const VclPtr<SfxAbstractPasteDialog>& pDlg );
+    SW_DLLPUBLIC static bool PasteFormat( SwWrtShell& rSh, const TransferableDataHelper& rData,
                              SotClipboardFormatId nFormat );
 
     static void FillClipFormatItem( const SwWrtShell& rSh,
@@ -229,7 +226,7 @@ public:
     void SetCleanUp( bool bFlag )       { m_bCleanUp = bFlag; }
 
     // public only for testing
-    bool PrivateDrop( SwWrtShell& rSh, const Point& rDragPt, bool bMove,
+    SW_DLLPUBLIC bool PrivateDrop( SwWrtShell& rSh, const Point& rDragPt, bool bMove,
                         bool bIsXSelection );
 
     // Interfaces for Selection
@@ -242,7 +239,7 @@ public:
     // the related SwView is being closed and the SwTransferable is invalid now
     void    Invalidate() {m_pWrtShell = nullptr;}
 
-    static void SelectPasteFormat(TransferableDataHelper& rData, sal_uInt8& nAction,
+    SW_DLLPUBLIC static void SelectPasteFormat(const TransferableDataHelper& rData, sal_uInt8& nAction,
                                   SotClipboardFormatId& nFormat);
 };
 

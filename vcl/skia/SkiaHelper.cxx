@@ -9,6 +9,8 @@
 
 #include <sal/config.h>
 
+#include <config_features.h>
+
 #include <string_view>
 
 #include <vcl/skia/SkiaHelper.hxx>
@@ -34,18 +36,23 @@ bool isAlphaMaskBlendingEnabled() { return false; }
 #include <driverblocklist.hxx>
 #include <skia/utils.hxx>
 #include <config_folders.h>
+#include <config_skia.h>
 #include <osl/file.hxx>
 #include <tools/stream.hxx>
+#include <atomic>
 #include <list>
 #include <o3tl/lru_map.hxx>
 
+#include <com/sun/star/configuration/theDefaultProvider.hpp>
+#include <com/sun/star/util/XFlushable.hpp>
+
 #include <SkBitmap.h>
 #include <SkCanvas.h>
-#include <SkEncodedImageFormat.h>
+#include <include/codec/SkEncodedImageFormat.h>
 #include <SkPaint.h>
 #include <SkSurface.h>
 #include <SkGraphics.h>
-#include <GrDirectContext.h>
+#include <ganesh/GrDirectContext.h>
 #include <SkRuntimeEffect.h>
 #include <SkStream.h>
 #include <SkTileMode.h>
@@ -54,8 +61,12 @@ bool isAlphaMaskBlendingEnabled() { return false; }
 #if defined(MACOSX)
 #include <premac.h>
 #endif
-#include <tools/sk_app/VulkanWindowContext.h>
-#include <tools/sk_app/MetalWindowContext.h>
+#ifdef SK_VULKAN
+#include <tools/window/VulkanWindowContext.h>
+#endif
+#ifdef SK_METAL
+#include <tools/window/MetalWindowContext.h>
+#endif
 #if defined(MACOSX)
 #include <postmac.h>
 #endif
@@ -95,8 +106,8 @@ namespace SkiaHelper
 {
 static OUString getCacheFolder()
 {
-    OUString url("${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER
-                 "/" SAL_CONFIGFILE("bootstrap") ":UserInstallation}/cache/");
+    OUString url(u"${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER
+                 "/" SAL_CONFIGFILE("bootstrap") ":UserInstallation}/cache/"_ustr);
     rtl::Bootstrap::expandMacros(url);
     osl::Directory::create(url);
     return url;
@@ -115,7 +126,7 @@ OUString readLog()
     SvFileStream logFile(getCacheFolder() + "/skia.log", StreamMode::READ);
 
     OUString sResult;
-    OString sLine;
+    OStringBuffer sLine;
     while (logFile.ReadLine(sLine))
         sResult += OStringToOUString(sLine, RTL_TEXTENCODING_UTF8) + "\n";
 
@@ -132,13 +143,11 @@ static void writeToLog(SvStream& stream, const char* key, std::u16string_view va
 
 static OUString getDenylistFile()
 {
-    OUString url("$BRAND_BASE_DIR/" LIBO_SHARE_FOLDER);
+    OUString url(u"$BRAND_BASE_DIR/" LIBO_SHARE_FOLDER ""_ustr);
     rtl::Bootstrap::expandMacros(url);
 
     return url + "/skia/skia_denylist_vulkan.xml";
 }
-
-static uint32_t driverVersion = 0;
 
 static OUString versionAsString(uint32_t version)
 {
@@ -151,27 +160,45 @@ static std::string_view vendorAsString(uint32_t vendor)
     return DriverBlocklist::GetVendorNameFromId(vendor);
 }
 
+// returns old value
+static bool setForceSkiaRaster(bool val)
+{
+    const bool oldValue = officecfg::Office::Common::VCL::ForceSkiaRaster::get();
+    if (oldValue != val && !officecfg::Office::Common::VCL::ForceSkiaRaster::isReadOnly())
+    {
+        auto batch(comphelper::ConfigurationChanges::create());
+        officecfg::Office::Common::VCL::ForceSkiaRaster::set(val, batch);
+        batch->commit();
+
+        // make sure the change is written to the configuration
+        if (auto xFlushable{ css::configuration::theDefaultProvider::get(
+                                 comphelper::getProcessComponentContext())
+                                 .query<css::util::XFlushable>() })
+            xFlushable->flush();
+    }
+    return oldValue;
+}
+
 // Note that this function also logs system information about Vulkan.
 static bool isVulkanDenylisted(const VkPhysicalDeviceProperties& props)
 {
     static const char* const types[]
         = { "other", "integrated", "discrete", "virtual", "cpu", "??" }; // VkPhysicalDeviceType
-    driverVersion = props.driverVersion;
     vendorId = props.vendorID;
     OUString vendorIdStr = "0x" + OUString::number(props.vendorID, 16);
     OUString deviceIdStr = "0x" + OUString::number(props.deviceID, 16);
-    OUString driverVersionString = versionAsString(driverVersion);
+    OUString driverVersionString = versionAsString(props.driverVersion);
     OUString apiVersion = versionAsString(props.apiVersion);
     const char* deviceType = types[std::min<unsigned>(props.deviceType, SAL_N_ELEMENTS(types) - 1)];
 
-    CrashReporter::addKeyValue("VulkanVendor", vendorIdStr, CrashReporter::AddItem);
-    CrashReporter::addKeyValue("VulkanDevice", deviceIdStr, CrashReporter::AddItem);
-    CrashReporter::addKeyValue("VulkanAPI", apiVersion, CrashReporter::AddItem);
-    CrashReporter::addKeyValue("VulkanDriver", driverVersionString, CrashReporter::AddItem);
-    CrashReporter::addKeyValue("VulkanDeviceType", OUString::createFromAscii(deviceType),
+    CrashReporter::addKeyValue(u"VulkanVendor"_ustr, vendorIdStr, CrashReporter::AddItem);
+    CrashReporter::addKeyValue(u"VulkanDevice"_ustr, deviceIdStr, CrashReporter::AddItem);
+    CrashReporter::addKeyValue(u"VulkanAPI"_ustr, apiVersion, CrashReporter::AddItem);
+    CrashReporter::addKeyValue(u"VulkanDriver"_ustr, driverVersionString, CrashReporter::AddItem);
+    CrashReporter::addKeyValue(u"VulkanDeviceType"_ustr, OUString::createFromAscii(deviceType),
                                CrashReporter::AddItem);
-    CrashReporter::addKeyValue("VulkanDeviceName", OUString::createFromAscii(props.deviceName),
-                               CrashReporter::Write);
+    CrashReporter::addKeyValue(u"VulkanDeviceName"_ustr,
+                               OUString::createFromAscii(props.deviceName), CrashReporter::Write);
 
     SvFileStream logFile(getCacheFolder() + "/skia.log", StreamMode::WRITE | StreamMode::TRUNC);
     writeToLog(logFile, "RenderMethod", "vulkan");
@@ -212,10 +239,50 @@ static void writeSkiaRasterInfo()
 }
 
 #if defined(SK_VULKAN) || defined(SK_METAL)
-static std::unique_ptr<sk_app::WindowContext> getTemporaryWindowContext();
+static std::unique_ptr<skwindow::WindowContext> getTemporaryWindowContext();
 #endif
 
-static void checkDeviceDenylisted(bool blockDisable = false)
+static RenderMethod initRenderMethodToUse()
+{
+    if (Application::IsBitmapRendering())
+        return RenderRaster;
+
+    if (const char* env = getenv("SAL_SKIA"))
+    {
+        if (strcmp(env, "raster") == 0)
+            return RenderRaster;
+#if defined SK_METAL
+        if (strcmp(env, "metal") == 0)
+            return RenderMetal;
+#elif defined SK_VULKAN
+        if (strcmp(env, "vulkan") == 0)
+            return RenderVulkan;
+#endif
+        SAL_WARN("vcl.skia", "Unrecognized value of SAL_SKIA");
+        abort();
+    }
+    if (officecfg::Office::Common::VCL::ForceSkiaRaster::get())
+        return RenderRaster;
+#if defined SK_METAL
+    return RenderMetal;
+#elif defined SK_VULKAN
+    return RenderVulkan;
+#else
+    return RenderRaster;
+#endif
+}
+
+static std::atomic<RenderMethod>& accessRenderMethodToUse()
+{
+    static std::atomic<RenderMethod> methodToUse = initRenderMethodToUse();
+    return methodToUse;
+}
+
+RenderMethod renderMethodToUse() { return accessRenderMethodToUse(); }
+
+static void forceRasterRenderMethod() { accessRenderMethodToUse() = RenderRaster; }
+
+static void checkDeviceDenylisted(bool blockDisable)
 {
     static bool done = false;
     if (done)
@@ -229,10 +296,15 @@ static void checkDeviceDenylisted(bool blockDisable = false)
         case RenderVulkan:
         {
 #ifdef SK_VULKAN
+            // Temporarily change config to force software rendering. If the following HW check
+            // crashes, this config change will stay active, and will make sure to avoid use of
+            // faulty HW/driver on the nest start
+            const bool oldForceSkiaRasterValue = setForceSkiaRaster(true);
+
             // First try if a GrDirectContext already exists.
-            std::unique_ptr<sk_app::WindowContext> temporaryWindowContext;
+            std::unique_ptr<skwindow::WindowContext> temporaryWindowContext;
             GrDirectContext* grDirectContext
-                = sk_app::VulkanWindowContext::getSharedGrDirectContext();
+                = skwindow::internal::VulkanWindowContext::getSharedGrDirectContext();
             if (!grDirectContext)
             {
                 // This function is called from isVclSkiaEnabled(), which
@@ -244,22 +316,26 @@ static void checkDeviceDenylisted(bool blockDisable = false)
                 // for just finding out information about Vulkan) and destroying
                 // the temporary context will clean up again.
                 temporaryWindowContext = getTemporaryWindowContext();
-                grDirectContext = sk_app::VulkanWindowContext::getSharedGrDirectContext();
+                grDirectContext
+                    = skwindow::internal::VulkanWindowContext::getSharedGrDirectContext();
             }
             bool denylisted = true; // assume the worst
             if (grDirectContext) // Vulkan was initialized properly
             {
-                denylisted
-                    = isVulkanDenylisted(sk_app::VulkanWindowContext::getPhysDeviceProperties());
+                denylisted = isVulkanDenylisted(
+                    skwindow::internal::VulkanWindowContext::getPhysDeviceProperties());
                 SAL_INFO("vcl.skia", "Vulkan denylisted: " << denylisted);
             }
             else
                 SAL_INFO("vcl.skia", "Vulkan could not be initialized");
             if (denylisted && !blockDisable)
             {
-                disableRenderMethod(RenderVulkan);
+                forceRasterRenderMethod();
                 useRaster = true;
             }
+
+            // The check succeeded; restore the original value
+            setForceSkiaRaster(oldForceSkiaRasterValue);
 #else
             SAL_WARN("vcl.skia", "Vulkan support not built in");
             (void)blockDisable;
@@ -271,14 +347,14 @@ static void checkDeviceDenylisted(bool blockDisable = false)
         {
 #ifdef SK_METAL
             // First try if a GrDirectContext already exists.
-            std::unique_ptr<sk_app::WindowContext> temporaryWindowContext;
-            GrDirectContext* grDirectContext = sk_app::getMetalSharedGrDirectContext();
+            std::unique_ptr<skwindow::WindowContext> temporaryWindowContext;
+            GrDirectContext* grDirectContext = skwindow::internal::getMetalSharedGrDirectContext();
             if (!grDirectContext)
             {
                 // Create a temporary window context just to get the GrDirectContext,
                 // as an initial test of Metal functionality.
                 temporaryWindowContext = getTemporaryWindowContext();
-                grDirectContext = sk_app::getMetalSharedGrDirectContext();
+                grDirectContext = skwindow::internal::getMetalSharedGrDirectContext();
             }
             if (grDirectContext) // Metal was initialized properly
             {
@@ -286,7 +362,7 @@ static void checkDeviceDenylisted(bool blockDisable = false)
                 if (!blockDisable && !DefaultMTLDeviceIsSupported())
                 {
                     SAL_INFO("vcl.skia", "Metal default device not supported");
-                    disableRenderMethod(RenderMetal);
+                    forceRasterRenderMethod();
                     useRaster = true;
                 }
                 else
@@ -299,7 +375,7 @@ static void checkDeviceDenylisted(bool blockDisable = false)
             else
             {
                 SAL_INFO("vcl.skia", "Metal could not be initialized");
-                disableRenderMethod(RenderMetal);
+                forceRasterRenderMethod();
                 useRaster = true;
             }
 #else
@@ -321,41 +397,26 @@ static void checkDeviceDenylisted(bool blockDisable = false)
     done = true;
 }
 
-static bool skiaSupportedByBackend = false;
+static std::atomic<bool> skiaSupportedByBackend = false;
 static bool supportsVCLSkia()
 {
-    if (!skiaSupportedByBackend)
-    {
-        SAL_INFO("vcl.skia", "Skia not supported by VCL backend, disabling");
-        return false;
-    }
-    return getenv("SAL_DISABLESKIA") == nullptr;
+    if (skiaSupportedByBackend)
+        return true;
+    SAL_INFO("vcl.skia", "Skia not supported by VCL backend, disabling");
+    return false;
 }
 
-static void initInternal();
-
-bool isVCLSkiaEnabled()
+static bool initVCLSkiaEnabled()
 {
     /**
-     * The !bSet part should only be called once! Changing the results in the same
+     * Should only be called once! Changing the results in the same
      * run will mix Skia and normal rendering.
      */
 
-    static bool bSet = false;
-    static bool bEnable = false;
-    static bool bForceSkia = false;
-
     // allow global disable when testing SystemPrimitiveRenderer since current Skia on Win does not
     // harmonize with using Direct2D and D2DPixelProcessor2D
-    static const bool bTestSystemPrimitiveRenderer(
-        nullptr != std::getenv("TEST_SYSTEM_PRIMITIVE_RENDERER"));
-    if (bTestSystemPrimitiveRenderer)
+    if (std::getenv("TEST_SYSTEM_PRIMITIVE_RENDERER") != nullptr)
         return false;
-
-    if (bSet)
-    {
-        return bForceSkia || bEnable;
-    }
 
     /*
      * There are a number of cases that these environment variables cover:
@@ -363,123 +424,63 @@ bool isVCLSkiaEnabled()
      *  * SAL_DISABLESKIA avoids the use of Skia regardless of any option
      */
 
-    bSet = true;
-    bForceSkia = !!getenv("SAL_FORCESKIA") || officecfg::Office::Common::VCL::ForceSkia::get();
+    bool bSalDisableSkia = getenv("SAL_DISABLESKIA") != nullptr;
+#if defined(MACOSX) || defined(_WIN32)
+    if (bSalDisableSkia)
+    {
+        SAL_WARN("vcl", "macOS/win requires Skia, so ignoring SAL_DISABLESKIA");
+        bSalDisableSkia = false;
+    }
+#endif
 
     bool bRet = false;
-    bool bSupportsVCLSkia = supportsVCLSkia();
-    if (bForceSkia && bSupportsVCLSkia)
+    if (supportsVCLSkia() && !bSalDisableSkia)
     {
-        bRet = true;
-        initInternal();
-        // don't actually block if denylisted, but log it if enabled, and also get the vendor id
-        checkDeviceDenylisted(true);
-    }
-    else if (getenv("SAL_FORCEGL"))
-    {
-        // Skia usage is checked before GL usage, so if GL is forced (and Skia is not), do not
-        // enable Skia in order to allow GL.
-        bRet = false;
-    }
-    else if (bSupportsVCLSkia)
-    {
-        static bool bEnableSkiaEnv = !!getenv("SAL_ENABLESKIA");
-
-        bEnable = bEnableSkiaEnv;
-
-        if (officecfg::Office::Common::VCL::UseSkia::get())
-            bEnable = true;
-
-        // Force disable in safe mode
-        if (Application::IsSafeModeEnabled())
-            bEnable = false;
-
-        if (bEnable)
+        const bool bForceSkia = getenv("SAL_FORCESKIA") != nullptr
+                                || officecfg::Office::Common::VCL::ForceSkia::get();
+#if defined(MACOSX) || defined(_WIN32)
+        bRet = true; // macOS/win can __only__ render via skia
+#else
+        bRet = bForceSkia;
+        // If not forced, don't enable in safe mode
+        if (!bRet && !Application::IsSafeModeEnabled())
         {
-            initInternal();
-            checkDeviceDenylisted(); // switch to raster if driver is denylisted
+            bRet = getenv("SAL_ENABLESKIA") != nullptr
+                   || officecfg::Office::Common::VCL::UseSkia::get();
         }
+#endif
 
-        bRet = bEnable;
+        if (bRet)
+        {
+            // Set up all things needed for using Skia.
+            SkGraphics::Init();
+            SkLoOpts::Init();
+            // if bForceSkia, don't actually block if denylisted, but log it if enabled,
+            // and also get the vendor id; otherwise, switch to raster if driver is denylisted
+            checkDeviceDenylisted(bForceSkia);
+            WatchdogThread::start();
+        }
     }
 
-    if (bRet)
-        WatchdogThread::start();
-
-    CrashReporter::addKeyValue("UseSkia", OUString::boolean(bRet), CrashReporter::Write);
+    CrashReporter::addKeyValue(u"UseSkia"_ustr, OUString::boolean(bRet), CrashReporter::Write);
 
     return bRet;
 }
 
+bool isVCLSkiaEnabled()
+{
+    static const bool val = initVCLSkiaEnabled();
+    return val;
+}
+
 bool isAlphaMaskBlendingEnabled() { return false; }
-
-static RenderMethod methodToUse = RenderRaster;
-
-static bool initRenderMethodToUse()
-{
-    if (Application::IsBitmapRendering())
-    {
-        methodToUse = RenderRaster;
-        return true;
-    }
-
-    if (const char* env = getenv("SAL_SKIA"))
-    {
-        if (strcmp(env, "raster") == 0)
-        {
-            methodToUse = RenderRaster;
-            return true;
-        }
-#ifdef MACOSX
-        if (strcmp(env, "metal") == 0)
-        {
-            methodToUse = RenderMetal;
-            return true;
-        }
-#else
-        if (strcmp(env, "vulkan") == 0)
-        {
-            methodToUse = RenderVulkan;
-            return true;
-        }
-#endif
-        SAL_WARN("vcl.skia", "Unrecognized value of SAL_SKIA");
-        abort();
-    }
-    methodToUse = RenderRaster;
-    if (officecfg::Office::Common::VCL::ForceSkiaRaster::get())
-        return true;
-#ifdef SK_METAL
-    methodToUse = RenderMetal;
-#endif
-#ifdef SK_VULKAN
-    methodToUse = RenderVulkan;
-#endif
-    return true;
-}
-
-RenderMethod renderMethodToUse()
-{
-    static bool methodToUseInited = initRenderMethodToUse();
-    if (methodToUseInited) // Used just to ensure thread-safe one-time init.
-        return methodToUse;
-    abort();
-}
-
-void disableRenderMethod(RenderMethod method)
-{
-    if (renderMethodToUse() != method)
-        return;
-    // Choose a fallback, right now always raster.
-    methodToUse = RenderRaster;
-}
 
 // If needed, we'll allocate one extra window context so that we have a valid GrDirectContext
 // from Vulkan/MetalWindowContext.
-static std::unique_ptr<sk_app::WindowContext> sharedWindowContext;
+static std::unique_ptr<skwindow::WindowContext> sharedWindowContext;
 
-static std::unique_ptr<sk_app::WindowContext> (*createGpuWindowContextFunction)(bool) = nullptr;
-static void setCreateGpuWindowContext(std::unique_ptr<sk_app::WindowContext> (*function)(bool))
+static std::unique_ptr<skwindow::WindowContext> (*createGpuWindowContextFunction)(bool) = nullptr;
+static void setCreateGpuWindowContext(std::unique_ptr<skwindow::WindowContext> (*function)(bool))
 {
     createGpuWindowContextFunction = function;
 }
@@ -497,13 +498,14 @@ GrDirectContext* getSharedGrDirectContext()
     {
         case RenderVulkan:
 #ifdef SK_VULKAN
-            if (GrDirectContext* context = sk_app::VulkanWindowContext::getSharedGrDirectContext())
+            if (GrDirectContext* context
+                = skwindow::internal::VulkanWindowContext::getSharedGrDirectContext())
                 return context;
 #endif
             break;
         case RenderMetal:
 #ifdef SK_METAL
-            if (GrDirectContext* context = sk_app::getMetalSharedGrDirectContext())
+            if (GrDirectContext* context = skwindow::internal::getMetalSharedGrDirectContext())
                 return context;
 #endif
             break;
@@ -525,12 +527,12 @@ GrDirectContext* getSharedGrDirectContext()
                 "Cannot create Vulkan GPU context, falling back to Raster");
     SAL_WARN_IF(renderMethodToUse() == RenderMetal, "vcl.skia",
                 "Cannot create Metal GPU context, falling back to Raster");
-    disableRenderMethod(renderMethodToUse());
+    forceRasterRenderMethod();
     return nullptr;
 }
 
 #if defined(SK_VULKAN) || defined(SK_METAL)
-static std::unique_ptr<sk_app::WindowContext> getTemporaryWindowContext()
+static std::unique_ptr<skwindow::WindowContext> getTemporaryWindowContext()
 {
     if (createGpuWindowContextFunction == nullptr)
         return nullptr;
@@ -663,6 +665,7 @@ struct ImageCacheItem
     OString key;
     sk_sp<SkImage> image;
     tools::Long size; // cost of the item
+    long long keepInCacheUntilMilliseconds; // don't remove from cache before this timestamp
 };
 } //namespace
 
@@ -672,6 +675,11 @@ struct ImageCacheItem
 static std::list<ImageCacheItem> imageCache;
 static tools::Long imageCacheSize = 0; // sum of all ImageCacheItem.size
 
+// Related: tdf#166994 set the minimum amount of time that an image must
+// remain in the image cache to 5 seconds. 2 seconds appears to be enough
+// on macOS but set it to 5 seconds just to be safe.
+const long long imageMinKeepInCacheMilliseconds = 5000;
+
 void addCachedImage(const OString& key, sk_sp<SkImage> image)
 {
     static bool disabled = getenv("SAL_DISABLE_SKIA_CACHE") != nullptr;
@@ -679,13 +687,28 @@ void addCachedImage(const OString& key, sk_sp<SkImage> image)
         return;
     tools::Long size = static_cast<tools::Long>(image->width()) * image->height()
                        * SkColorTypeBytesPerPixel(image->imageInfo().colorType());
-    imageCache.push_front({ key, image, size });
+    auto time = std::chrono::steady_clock::now().time_since_epoch();
+    auto now = std::chrono::duration_cast<std::chrono::milliseconds>(time).count();
+    imageCache.push_front({ key, image, size, now + imageMinKeepInCacheMilliseconds });
     imageCacheSize += size;
     SAL_INFO("vcl.skia.trace", "addcachedimage " << image << " :" << size << "/" << imageCacheSize);
     const tools::Long maxSize = maxImageCacheSize();
     while (imageCacheSize > maxSize)
     {
         assert(!imageCache.empty());
+
+        // tdf#166994 Don't remove image from cache too quickly
+        // While an animation is running, the same images are drawn in a
+        // repeating cycle but each frame is removed from the cache before
+        // it is drawn again.
+        // Blending a bitmap with an alpha channel can be very slow so
+        // it is much faster to keep all of the frames in the image cache.
+        // So, allow the image cache to temporarily increase in size by
+        // deferring removal of an image if it was cached within the last
+        // few seconds.
+        if (now < imageCache.back().keepInCacheUntilMilliseconds)
+            break;
+
         imageCacheSize -= imageCache.back().size;
         SAL_INFO("vcl.skia.trace",
                  "least used removal " << imageCache.back().image << ":" << imageCache.back().size);
@@ -699,6 +722,9 @@ sk_sp<SkImage> findCachedImage(const OString& key)
     {
         if (it->key == key)
         {
+            auto time = std::chrono::steady_clock::now().time_since_epoch();
+            auto now = std::chrono::duration_cast<std::chrono::milliseconds>(time).count();
+            it->keepInCacheUntilMilliseconds = now + imageMinKeepInCacheMilliseconds;
             sk_sp<SkImage> ret = it->image;
             SAL_INFO("vcl.skia.trace", "findcachedimage " << key << " : " << it->image << " found");
             imageCache.splice(imageCache.begin(), imageCache, it);
@@ -823,13 +849,6 @@ void setBlenderXor(SkPaint* paint)
     paint->setBlender(xorBlender);
 }
 
-static void initInternal()
-{
-    // Set up all things needed for using Skia.
-    SkGraphics::Init();
-    SkLoOpts::Init();
-}
-
 void cleanup()
 {
     sharedWindowContext.reset();
@@ -850,7 +869,7 @@ void setPixelGeometry(SkPixelGeometry pixelGeometry)
 // Skia should not be used from VCL backends that do not actually support it, as there will be setup missing.
 // The code here (that is in the vcl lib) needs a function for creating Vulkan/Metal context that is
 // usually available only in the backend libs.
-void prepareSkia(std::unique_ptr<sk_app::WindowContext> (*createGpuWindowContext)(bool))
+void prepareSkia(std::unique_ptr<skwindow::WindowContext> (*createGpuWindowContext)(bool))
 {
     setCreateGpuWindowContext(createGpuWindowContext);
     skiaSupportedByBackend = true;
@@ -863,7 +882,8 @@ void dump(const SkBitmap& bitmap, const char* file)
 
 void dump(const sk_sp<SkSurface>& surface, const char* file)
 {
-    surface->getCanvas()->flush();
+    if (auto dContext = GrAsDirectContext(surface->getCanvas()->recordingContext()))
+        dContext->flushAndSubmit();
     dump(makeCheckedImageSnapshot(surface), file);
 }
 

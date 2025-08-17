@@ -8,21 +8,15 @@
  *
  */
 
-#ifndef INCLUDED_OOX_CRYPTO_AGILEENGINE_HXX
-#define INCLUDED_OOX_CRYPTO_AGILEENGINE_HXX
+#pragma once
 
 #include <vector>
 
 #include <oox/dllapi.h>
-#include <oox/crypto/CryptTools.hxx>
 #include <oox/crypto/CryptoEngine.hxx>
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
-
-namespace oox {
-    class BinaryXInputStream;
-    class BinaryXOutputStream;
-}
+#include <comphelper/crypto/Crypto.hxx>
 
 namespace oox::crypto {
 
@@ -71,6 +65,7 @@ enum class AgileEncryptionPreset
 {
     AES_128_SHA1,
     AES_128_SHA384,
+    AES_192_SHA384,
     AES_256_SHA512,
 };
 
@@ -80,7 +75,7 @@ private:
     AgileEncryptionInfo mInfo;
     AgileEncryptionPreset meEncryptionPreset;
 
-    void calculateHashFinal(const OUString& rPassword, std::vector<sal_uInt8>& aHashFinal);
+    void calculateHashFinal(std::u16string_view rPassword, std::vector<sal_uInt8>& aHashFinal);
 
     void calculateBlock(
             std::vector<sal_uInt8> const & rBlock,
@@ -94,7 +89,7 @@ private:
             std::vector<sal_uInt8>& rInput,
             std::vector<sal_uInt8>& rOutput);
 
-    static Crypto::CryptoType cryptoType(const AgileEncryptionInfo& rInfo);
+    static comphelper::CryptoType cryptoType(const AgileEncryptionInfo& rInfo);
 
 public:
     AgileEngine();
@@ -108,10 +103,10 @@ public:
 
     // Decryption
 
-    void decryptEncryptionKey(OUString const & rPassword);
-    bool decryptAndCheckVerifierHash(OUString const & rPassword);
+    void decryptEncryptionKey(std::u16string_view rPassword);
+    bool decryptAndCheckVerifierHash(std::u16string_view rPassword);
 
-    bool generateEncryptionKey(OUString const & rPassword) override;
+    bool generateEncryptionKey(std::u16string_view rPassword) override;
     bool readEncryptionInfo(css::uno::Reference<css::io::XInputStream> & rxInputStream) override;
     bool decrypt(BinaryXInputStream& aInputStream,
                  BinaryXOutputStream& aOutputStream) override;
@@ -131,18 +126,16 @@ public:
 
     bool setupEncryption(OUString const & rPassword) override;
 
-    bool generateAndEncryptVerifierHash(OUString const & rPassword);
+    bool generateAndEncryptVerifierHash(std::u16string_view rPassword);
 
     bool encryptHmacKey();
     bool encryptHmacValue();
 
-    bool encryptEncryptionKey(OUString const & rPassword);
+    bool encryptEncryptionKey(std::u16string_view rPassword);
     void setupEncryptionParameters(AgileEncryptionParameters const & rAgileEncryptionParameters);
-    bool setupEncryptionKey(OUString const & rPassword);
+    bool setupEncryptionKey(std::u16string_view rPassword);
 };
 
-} // namespace oox::crypto
-
-#endif
+} // namespace comphelper::crypto
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

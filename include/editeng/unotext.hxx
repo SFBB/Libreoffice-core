@@ -29,6 +29,7 @@
 #include <com/sun/star/text/XTextCursor.hpp>
 #include <com/sun/star/lang/XTypeProvider.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
+#include <com/sun/star/beans/Pair.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/XPropertyState.hpp>
 #include <com/sun/star/beans/XMultiPropertySet.hpp>
@@ -132,8 +133,12 @@ struct SfxItemPropertyMapEntry;
     { UNO_NAME_EDIT_CHAR_POSTURE_COMPLEX,     EE_CHAR_ITALIC_CTL,     ::cppu::UnoType<css::awt::FontSlant>::get(),0, MID_POSTURE }, \
     { UNO_NAME_EDIT_CHAR_WEIGHT_COMPLEX,      EE_CHAR_WEIGHT_CTL,     cppu::UnoType<float>::get(),            0, MID_WEIGHT }, \
     { UNO_NAME_EDIT_CHAR_LOCALE_COMPLEX,      EE_CHAR_LANGUAGE_CTL,   ::cppu::UnoType<css::lang::Locale>::get(),0, MID_LANG_LOCALE }, \
-    { u"CharRelief"_ustr,                      EE_CHAR_RELIEF,         ::cppu::UnoType<sal_Int16>::get(),    0, MID_RELIEF }, \
-    { u"CharInteropGrabBag"_ustr,              EE_CHAR_GRABBAG,        cppu::UnoType<css::uno::Sequence<css::beans::PropertyValue >>::get(), 0, 0}
+    { u"CharRelief"_ustr,                     EE_CHAR_RELIEF,         ::cppu::UnoType<sal_Int16>::get(),    0, MID_RELIEF }, \
+    { u"CharInteropGrabBag"_ustr,             EE_CHAR_GRABBAG,        cppu::UnoType<css::uno::Sequence<css::beans::PropertyValue >>::get(), 0, 0 }, \
+    { UNO_NAME_EDIT_CHAR_RUBY_TEXT,           EE_CHAR_RUBY,           ::cppu::UnoType<OUString>::get(), 0, MID_RUBY_TEXT }, \
+    { UNO_NAME_EDIT_CHAR_RUBY_ADJUST,         EE_CHAR_RUBY,           ::cppu::UnoType<sal_Int16>::get(), 0, MID_RUBY_ADJUST }, \
+    { UNO_NAME_EDIT_CHAR_RUBY_POSITION,       EE_CHAR_RUBY,           ::cppu::UnoType<sal_Int16>::get(), 0, MID_RUBY_POSITION }, \
+    { UNO_NAME_EDIT_CHAR_SCRIPT_HINT,         EE_CHAR_SCRIPT_HINT,    ::cppu::UnoType<sal_Int16>::get(), 0, MID_SCRIPTHINT }
 
 
 #define SVX_UNOEDIT_FONT_PROPERTIES \
@@ -147,18 +152,25 @@ struct SfxItemPropertyMapEntry;
     {u"ParaHyphenationNoLastWord"_ustr, EE_PARA_HYPHENATE_NO_LAST_WORD, ::cppu::UnoType<bool>::get(),       0, 0 }, \
     { UNO_NAME_EDIT_PARA_LASTLINEADJ,  EE_PARA_JUST,               ::cppu::UnoType<sal_Int16>::get(),            0, MID_LAST_LINE_ADJUST }, \
     { UNO_NAME_EDIT_PARA_LMARGIN,      EE_PARA_LRSPACE,    ::cppu::UnoType<sal_Int32>::get(),            0, MID_TXT_LMARGIN, PropertyMoreFlags::METRIC_ITEM }, \
+    { UNO_NAME_EDIT_PARA_LMARGIN_UNIT, EE_PARA_LRSPACE, ::cppu::UnoType<css::beans::Pair<double, sal_Int16>>::get(), 0, MID_L_UNIT_MARGIN }, \
     { UNO_NAME_EDIT_PARA_LINESPACING,  EE_PARA_SBL,                cppu::UnoType<css::style::LineSpacing>::get(),     0, CONVERT_TWIPS}, \
     { UNO_NAME_EDIT_PARA_RMARGIN,      EE_PARA_LRSPACE,    ::cppu::UnoType<sal_Int32>::get(),            0, MID_R_MARGIN, PropertyMoreFlags::METRIC_ITEM }, \
+    { UNO_NAME_EDIT_PARA_RMARGIN_UNIT, EE_PARA_LRSPACE, ::cppu::UnoType<css::beans::Pair<double, sal_Int16>>::get(), 0, MID_R_UNIT_MARGIN }, \
     { UNO_NAME_EDIT_PARA_TABSTOPS,     EE_PARA_TABS,               cppu::UnoType<css::uno::Sequence< css::style::TabStop >>::get(), 0, 0 }, \
     { UNO_NAME_EDIT_PARA_TABSTOP_DEFAULT_DISTANCE, EE_PARA_TABS, ::cppu::UnoType<sal_Int32>::get(), 0, MID_TABSTOP_DEFAULT_DISTANCE }, \
     { UNO_NAME_EDIT_PARA_TMARGIN,      EE_PARA_ULSPACE,            ::cppu::UnoType<sal_Int32>::get(),            0, MID_UP_MARGIN, PropertyMoreFlags::METRIC_ITEM },\
     { UNO_NAME_EDIT_PARA_FIRST_LINE_INDENT,     EE_PARA_LRSPACE,   ::cppu::UnoType<sal_Int32>::get(),            0, MID_FIRST_LINE_INDENT, PropertyMoreFlags::METRIC_ITEM}, \
+    { UNO_NAME_EDIT_PARA_FIRST_LINE_INDENT_UNIT, EE_PARA_LRSPACE, ::cppu::UnoType<css::beans::Pair<double, sal_Int16>>::get(), 0, MID_FIRST_LINE_UNIT_INDENT }, \
     { UNO_NAME_EDIT_PARA_IS_HANGING_PUNCTUATION,EE_PARA_HANGINGPUNCTUATION,  cppu::UnoType<bool>::get(),                0 ,0 }, \
     { UNO_NAME_EDIT_PARA_IS_CHARACTER_DISTANCE, EE_PARA_ASIANCJKSPACING,   cppu::UnoType<bool>::get(),                0 ,0 }, \
     { UNO_NAME_EDIT_PARA_IS_FORBIDDEN_RULES,    EE_PARA_FORBIDDENRULES,     cppu::UnoType<bool>::get(),                0 ,0 },\
+    {u"ParaWordSpacing"_ustr,          EE_PARA_JUST,               ::cppu::UnoType<sal_Int16>::get(),            0, MID_WORD_SPACING }, \
+    {u"ParaWordSpacingMinimum"_ustr,   EE_PARA_JUST,               ::cppu::UnoType<sal_Int16>::get(),            0, MID_WORD_SPACING_MIN }, \
+    {u"ParaWordSpacingMaximum"_ustr,   EE_PARA_JUST,               ::cppu::UnoType<sal_Int16>::get(),            0, MID_WORD_SPACING_MAX }, \
+    {u"ParaLetterSpacingMinimum"_ustr, EE_PARA_JUST,               ::cppu::UnoType<sal_Int16>::get(),            0, MID_LETTER_SPACING_MIN }, \
+    {u"ParaLetterSpacingMaximum"_ustr, EE_PARA_JUST,               ::cppu::UnoType<sal_Int16>::get(),            0, MID_LETTER_SPACING_MAX }, \
     {u"WritingMode"_ustr,              EE_PARA_WRITINGDIR, ::cppu::UnoType<sal_Int16>::get(),            0, 0 }
 
-class SvxFieldItem;
 class SvxFieldData;
 
 EDITENG_DLLPUBLIC void GetSelection( struct ESelection& rSel, SvxTextForwarder const * pForwarder ) noexcept;
@@ -208,8 +220,7 @@ public:
     virtual bool            IsValid() const override;
 
     virtual LanguageType    GetLanguage( sal_Int32, sal_Int32 ) const override;
-    virtual sal_Int32       GetFieldCount( sal_Int32 nPara ) const override;
-    virtual EFieldInfo      GetFieldInfo( sal_Int32 nPara, sal_uInt16 nField ) const override;
+    virtual std::vector<EFieldInfo> GetFieldInfo( sal_Int32 nPara ) const override;
     virtual EBulletInfo     GetBulletInfo( sal_Int32 nPara ) const override;
     virtual tools::Rectangle       GetCharBounds( sal_Int32 nPara, sal_Int32 nIndex ) const override;
     virtual tools::Rectangle       GetParaBounds( sal_Int32 nPara ) const override;
@@ -225,6 +236,7 @@ public:
     virtual bool            Delete( const ESelection& ) override;
     virtual bool            InsertText( const OUString&, const ESelection& ) override;
     virtual bool            QuickFormatDoc( bool bFull = false ) override;
+    virtual bool SupportsOutlineDepth() const override;
     virtual sal_Int16       GetDepth( sal_Int32 nPara ) const override;
     virtual bool            SetDepth( sal_Int32 nPara, sal_Int16 nNewDepth ) override;
 
@@ -268,51 +280,51 @@ protected:
     /// @throws css::lang::IllegalArgumentException
     /// @throws css::lang::WrappedTargetException
     /// @throws css::uno::RuntimeException
-    void _setPropertyValue( const OUString& aPropertyName, const css::uno::Any& aValue, sal_Int32 nPara = -1 );
+    SAL_DLLPRIVATE void _setPropertyValue( const OUString& aPropertyName, const css::uno::Any& aValue, sal_Int32 nPara = -1 );
     /// @throws css::beans::UnknownPropertyException
     /// @throws css::lang::WrappedTargetException
     /// @throws css::uno::RuntimeException
-    css::uno::Any _getPropertyValue( const OUString& PropertyName, sal_Int32 nPara = -1 );
+    SAL_DLLPRIVATE css::uno::Any _getPropertyValue( const OUString& PropertyName, sal_Int32 nPara = -1 );
 
     /// @throws css::beans::PropertyVetoException
     /// @throws css::lang::IllegalArgumentException
     /// @throws css::lang::WrappedTargetException
     /// @throws css::uno::RuntimeException
-    void _setPropertyValues( const css::uno::Sequence< OUString >& aPropertyNames, const css::uno::Sequence< css::uno::Any >& aValues, sal_Int32 nPara = -1 );
+    SAL_DLLPRIVATE void _setPropertyValues( const css::uno::Sequence< OUString >& aPropertyNames, const css::uno::Sequence< css::uno::Any >& aValues, sal_Int32 nPara = -1 );
     /// @throws css::uno::RuntimeException
-    css::uno::Sequence< css::uno::Any > _getPropertyValues( const css::uno::Sequence< OUString >& aPropertyNames, sal_Int32 nPara = -1 );
+    SAL_DLLPRIVATE css::uno::Sequence< css::uno::Any > _getPropertyValues( const css::uno::Sequence< OUString >& aPropertyNames, sal_Int32 nPara = -1 );
 
     /// @throws css::beans::UnknownPropertyException
     /// @throws css::uno::RuntimeException
-    css::beans::PropertyState _getPropertyState( const SfxItemPropertyMapEntry* pMap, sal_Int32 nPara = -1 );
+    SAL_DLLPRIVATE css::beans::PropertyState _getPropertyState( const SfxItemPropertyMapEntry* pMap, sal_Int32 nPara = -1 );
     /// @throws css::beans::UnknownPropertyException
     /// @throws css::uno::RuntimeException
-    css::beans::PropertyState _getPropertyState( std::u16string_view PropertyName, sal_Int32 nPara = -1 );
+    SAL_DLLPRIVATE css::beans::PropertyState _getPropertyState( std::u16string_view PropertyName, sal_Int32 nPara = -1 );
     /// @throws css::beans::UnknownPropertyException
     /// @throws css::uno::RuntimeException
-    css::uno::Sequence< css::beans::PropertyState > _getPropertyStates( const css::uno::Sequence< OUString >& aPropertyName, sal_Int32 nPara = -1  );
+    SAL_DLLPRIVATE css::uno::Sequence< css::beans::PropertyState > _getPropertyStates( const css::uno::Sequence< OUString >& aPropertyName, sal_Int32 nPara = -1  );
     // returns true if property found or false if unknown property
-    static bool _getOnePropertyStates(const SfxItemSet& rSet, const SfxItemPropertyMapEntry* pMap, css::beans::PropertyState& rState);
+    SAL_DLLPRIVATE static bool _getOnePropertyStates(const SfxItemSet& rSet, const SfxItemPropertyMapEntry* pMap, css::beans::PropertyState& rState);
 
     /// @throws css::beans::UnknownPropertyException
     /// @throws css::uno::RuntimeException
-    void _setPropertyToDefault( const OUString& PropertyName, sal_Int32 nPara = -1 );
+    SAL_DLLPRIVATE void _setPropertyToDefault( const OUString& PropertyName, sal_Int32 nPara = -1 );
     /// @throws css::beans::UnknownPropertyException
     /// @throws css::uno::RuntimeException
-    void _setPropertyToDefault( SvxTextForwarder* pForwarder, const SfxItemPropertyMapEntry* pMap, sal_Int32 nPara );
+    SAL_DLLPRIVATE void _setPropertyToDefault( SvxTextForwarder* pForwarder, const SfxItemPropertyMapEntry* pMap, sal_Int32 nPara );
     void SetEditSource( SvxEditSource* _pEditSource ) noexcept;
 
     /// @throws css::beans::UnknownPropertyException
     /// @throws css::uno::RuntimeException
-    void getPropertyValue( const SfxItemPropertyMapEntry* pMap, css::uno::Any& rAny, const SfxItemSet& rSet );
+    SAL_DLLPRIVATE void getPropertyValue( const SfxItemPropertyMapEntry* pMap, css::uno::Any& rAny, const SfxItemSet& rSet );
     /// @throws css::beans::UnknownPropertyException
     /// @throws css::lang::IllegalArgumentException
-    void setPropertyValue( const SfxItemPropertyMapEntry* pMap, const css::uno::Any& rValue, const ESelection& rSelection, const SfxItemSet& rOldSet, SfxItemSet& rNewSet );
+    SAL_DLLPRIVATE void setPropertyValue( const SfxItemPropertyMapEntry* pMap, const css::uno::Any& rValue, const ESelection& rSelection, const SfxItemSet& rOldSet, SfxItemSet& rNewSet );
 
-    SvxUnoTextRangeBase(const SvxItemPropertySet* _pSet);
-    SvxUnoTextRangeBase(const SvxEditSource* pSource, const SvxItemPropertySet* _pSet);
-    SvxUnoTextRangeBase(const SvxUnoTextRangeBase& rRange);
-    virtual ~SvxUnoTextRangeBase() noexcept;
+    SAL_DLLPRIVATE SvxUnoTextRangeBase(const SvxItemPropertySet* _pSet);
+    SAL_DLLPRIVATE SvxUnoTextRangeBase(const SvxEditSource* pSource, const SvxItemPropertySet* _pSet);
+    SAL_DLLPRIVATE SvxUnoTextRangeBase(const SvxUnoTextRangeBase& rRange);
+    SAL_DLLPRIVATE virtual ~SvxUnoTextRangeBase() noexcept;
 
 public:
     // Internal
@@ -324,13 +336,13 @@ public:
     }
     void                    SetSelection( const ESelection& rSelection ) noexcept;
 
-    void            CollapseToStart() noexcept;
-    void            CollapseToEnd() noexcept;
-    bool            IsCollapsed() noexcept;
-    bool            GoLeft(sal_Int32 nCount, bool Expand) noexcept;
-    bool            GoRight(sal_Int32 nCount, bool Expand) noexcept;
-    void            GotoStart(bool Expand) noexcept;
-    void            GotoEnd(bool Expand) noexcept;
+    SAL_DLLPRIVATE void CollapseToStart() noexcept;
+    SAL_DLLPRIVATE void CollapseToEnd() noexcept;
+    SAL_DLLPRIVATE bool IsCollapsed() noexcept;
+    SAL_DLLPRIVATE bool GoLeft(sal_Int32 nCount, bool Expand) noexcept;
+    SAL_DLLPRIVATE bool GoRight(sal_Int32 nCount, bool Expand) noexcept;
+    SAL_DLLPRIVATE void GotoStart(bool Expand) noexcept;
+    SAL_DLLPRIVATE void GotoEnd(bool Expand) noexcept;
 
     //const SfxItemPropertyMapEntry*   getPropertyMapEntries() const throw() { return maPropSet.getPropertyMapEntries(); }
     const SvxItemPropertySet*   getPropertySet() const noexcept { return mpPropSet; }
@@ -345,10 +357,10 @@ public:
     UNO3_GETIMPLEMENTATION_DECL( SvxUnoTextRangeBase )
 
     // css::text::XTextRange
-    virtual css::uno::Reference< css::text::XTextRange > SAL_CALL getStart() override;
-    virtual css::uno::Reference< css::text::XTextRange > SAL_CALL getEnd() override;
-    virtual OUString SAL_CALL getString() override;
-    virtual void SAL_CALL setString( const OUString& aString ) override;
+    SAL_DLLPRIVATE virtual css::uno::Reference< css::text::XTextRange > SAL_CALL getStart() override;
+    SAL_DLLPRIVATE virtual css::uno::Reference< css::text::XTextRange > SAL_CALL getEnd() override;
+    SAL_DLLPRIVATE virtual OUString SAL_CALL getString() override;
+    SAL_DLLPRIVATE virtual void SAL_CALL setString( const OUString& aString ) override;
 
     // css::beans::XPropertySet
     virtual css::uno::Reference< css::beans::XPropertySetInfo > SAL_CALL getPropertySetInfo() override;
@@ -379,13 +391,13 @@ public:
     virtual css::uno::Sequence< css::uno::Any > SAL_CALL getPropertyDefaults( const css::uno::Sequence< OUString >& aPropertyNames ) override;
 
     // XTextRangeCompare
-    virtual ::sal_Int16 SAL_CALL compareRegionStarts( const css::uno::Reference< css::text::XTextRange >& xR1, const css::uno::Reference< css::text::XTextRange >& xR2 ) override;
-    virtual ::sal_Int16 SAL_CALL compareRegionEnds( const css::uno::Reference< css::text::XTextRange >& xR1, const css::uno::Reference< css::text::XTextRange >& xR2 ) override;
+    virtual ::sal_Int16 SAL_CALL compareRegionStarts( const css::uno::Reference< css::text::XTextRange >& xR1, const css::uno::Reference< css::text::XTextRange >& xR2 ) override final;
+    virtual ::sal_Int16 SAL_CALL compareRegionEnds( const css::uno::Reference< css::text::XTextRange >& xR1, const css::uno::Reference< css::text::XTextRange >& xR2 ) override final;
 
     // css::lang::XServiceInfo
     virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
-    virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
-    static  css::uno::Sequence< OUString > getSupportedServiceNames_Static( );
+    SAL_DLLPRIVATE virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
+    SAL_DLLPRIVATE static  css::uno::Sequence< OUString > getSupportedServiceNames_Static( );
 };
 
 
@@ -445,8 +457,8 @@ public:
     virtual css::uno::Any SAL_CALL queryAggregation( const css::uno::Type & rType );
 
     // css::text::XSimpleText
-    virtual css::uno::Reference< css::text::XTextCursor > SAL_CALL createTextCursor(  ) override;
-    virtual css::uno::Reference< css::text::XTextCursor > SAL_CALL createTextCursorByRange( const css::uno::Reference< css::text::XTextRange >& aTextPosition ) override;
+    virtual css::uno::Reference< css::text::XTextCursor > SAL_CALL createTextCursor(  ) override final;
+    virtual css::uno::Reference< css::text::XTextCursor > SAL_CALL createTextCursorByRange( const css::uno::Reference< css::text::XTextRange >& aTextPosition ) override final;
     virtual void SAL_CALL insertString( const css::uno::Reference< css::text::XTextRange >& xRange, const OUString& aString, sal_Bool bAbsorb ) override;
     virtual void SAL_CALL insertControlCharacter( const css::uno::Reference< css::text::XTextRange >& xRange, sal_Int16 nControlCharacter, sal_Bool bAbsorb ) override;
 
@@ -457,31 +469,31 @@ public:
     virtual void SAL_CALL setString( const OUString& aString ) override;
 
     // css::text::XTextRange
-    virtual css::uno::Reference< css::text::XText > SAL_CALL getText(  ) override;
+    virtual css::uno::Reference< css::text::XText > SAL_CALL getText(  ) override final;
     virtual css::uno::Reference< css::text::XTextRange > SAL_CALL getStart() override;
     virtual css::uno::Reference< css::text::XTextRange > SAL_CALL getEnd() override;
 
     // css::container::XEnumerationAccess
-    virtual css::uno::Reference< css::container::XEnumeration > SAL_CALL createEnumeration(  ) override;
+    virtual css::uno::Reference< css::container::XEnumeration > SAL_CALL createEnumeration(  ) override final;
 
     // css::container::XElementAccess
-    virtual css::uno::Type SAL_CALL getElementType(  ) override;
-    virtual sal_Bool SAL_CALL hasElements(  ) override;
+    virtual css::uno::Type SAL_CALL getElementType(  ) override final;
+    virtual sal_Bool SAL_CALL hasElements(  ) override final;
 
     // css::text::XTextRangeMover
-    virtual void SAL_CALL moveTextRange( const css::uno::Reference< css::text::XTextRange >& xRange, sal_Int16 nParagraphs ) override;
+    virtual void SAL_CALL moveTextRange( const css::uno::Reference< css::text::XTextRange >& xRange, sal_Int16 nParagraphs ) override final;
 
     // css::text::XParagraphAppend (new import API)
-    virtual css::uno::Reference< css::text::XTextRange > SAL_CALL finishParagraph( const css::uno::Sequence< css::beans::PropertyValue >& CharacterAndParagraphProperties ) override;
-    virtual css::uno::Reference< css::text::XTextRange > SAL_CALL finishParagraphInsert( const css::uno::Sequence< css::beans::PropertyValue >& CharacterAndParagraphProperties, const css::uno::Reference< css::text::XTextRange >& xInsertPosition ) override;
+    virtual css::uno::Reference< css::text::XTextRange > SAL_CALL finishParagraph( const css::uno::Sequence< css::beans::PropertyValue >& CharacterAndParagraphProperties ) override final;
+    virtual css::uno::Reference< css::text::XTextRange > SAL_CALL finishParagraphInsert( const css::uno::Sequence< css::beans::PropertyValue >& CharacterAndParagraphProperties, const css::uno::Reference< css::text::XTextRange >& xInsertPosition ) override final;
 
     // css::text::XTextPortionAppend (new import API)
-    virtual css::uno::Reference< css::text::XTextRange > SAL_CALL appendTextPortion( const OUString& Text, const css::uno::Sequence< css::beans::PropertyValue >& CharacterAndParagraphProperties ) override;
+    virtual css::uno::Reference< css::text::XTextRange > SAL_CALL appendTextPortion( const OUString& Text, const css::uno::Sequence< css::beans::PropertyValue >& CharacterAndParagraphProperties ) override final;
 
-    virtual css::uno::Reference< css::text::XTextRange > SAL_CALL insertTextPortion( const OUString& Text, const css::uno::Sequence< css::beans::PropertyValue >& CharacterAndParagraphProperties, const css::uno::Reference< css::text::XTextRange>& rTextRange ) override;
+    virtual css::uno::Reference< css::text::XTextRange > SAL_CALL insertTextPortion( const OUString& Text, const css::uno::Sequence< css::beans::PropertyValue >& CharacterAndParagraphProperties, const css::uno::Reference< css::text::XTextRange>& rTextRange ) override final;
 
     // css::text::XTextCopy
-    virtual void SAL_CALL copyText( const css::uno::Reference< css::text::XTextCopy >& xSource ) override;
+    virtual void SAL_CALL copyText( const css::uno::Reference< css::text::XTextCopy >& xSource ) override final;
 
     // css::lang::XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override;
@@ -505,17 +517,17 @@ public:
 
     // Internal
     static const css::uno::Sequence< sal_Int8 > & getUnoTunnelId() noexcept;
-    virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override;
+    virtual sal_Int64 SAL_CALL getSomething( const css::uno::Sequence< sal_Int8 >& aIdentifier ) override final;
 
     // css::uno::XInterface
-    virtual css::uno::Any SAL_CALL queryAggregation( const css::uno::Type & rType ) override;
-    virtual css::uno::Any SAL_CALL queryInterface( const css::uno::Type & rType ) override;
-    virtual void SAL_CALL acquire() noexcept override;
-    virtual void SAL_CALL release() noexcept override;
+    virtual css::uno::Any SAL_CALL queryAggregation( const css::uno::Type & rType ) override final;
+    virtual css::uno::Any SAL_CALL queryInterface( const css::uno::Type & rType ) override final;
+    virtual void SAL_CALL acquire() noexcept override final;
+    virtual void SAL_CALL release() noexcept override final;
 
     // css::lang::XTypeProvider
-    virtual css::uno::Sequence< css::uno::Type > SAL_CALL getTypes(  ) override;
-    virtual css::uno::Sequence< sal_Int8 > SAL_CALL getImplementationId(  ) override;
+    virtual css::uno::Sequence< css::uno::Type > SAL_CALL getTypes(  ) override final;
+    virtual css::uno::Sequence< sal_Int8 > SAL_CALL getImplementationId(  ) override final;
 };
 
 
@@ -643,36 +655,36 @@ public:
     virtual ~SvxUnoTextCursor() noexcept override;
 
     // css::uno::XInterface
-    virtual css::uno::Any SAL_CALL queryAggregation( const css::uno::Type & rType ) override;
-    virtual css::uno::Any SAL_CALL queryInterface( const css::uno::Type & rType ) override;
-    virtual void SAL_CALL acquire() noexcept override;
-    virtual void SAL_CALL release() noexcept override;
+    virtual css::uno::Any SAL_CALL queryAggregation( const css::uno::Type & rType ) override final;
+    virtual css::uno::Any SAL_CALL queryInterface( const css::uno::Type & rType ) override final;
+    virtual void SAL_CALL acquire() noexcept override final;
+    virtual void SAL_CALL release() noexcept override final;
 
     // css::text::XTextRange
     virtual css::uno::Reference< css::text::XText > SAL_CALL getText() override;
-    virtual OUString SAL_CALL getString() override;
-    virtual void SAL_CALL setString( const OUString& aString ) override;
+    virtual OUString SAL_CALL getString() override final;
+    virtual void SAL_CALL setString( const OUString& aString ) override final;
     virtual css::uno::Reference< css::text::XTextRange > SAL_CALL getStart() override;
     virtual css::uno::Reference< css::text::XTextRange > SAL_CALL getEnd() override;
 
     // css::text::XTextCursor -> css::text::XTextRange
-    virtual void SAL_CALL collapseToStart(  ) override;
-    virtual void SAL_CALL collapseToEnd(  ) override;
-    virtual sal_Bool SAL_CALL isCollapsed(  ) override;
-    virtual sal_Bool SAL_CALL goLeft( sal_Int16 nCount, sal_Bool bExpand ) override;
-    virtual sal_Bool SAL_CALL goRight( sal_Int16 nCount, sal_Bool bExpand ) override;
-    virtual void SAL_CALL gotoStart( sal_Bool bExpand ) override;
-    virtual void SAL_CALL gotoEnd( sal_Bool bExpand ) override;
-    virtual void SAL_CALL gotoRange( const css::uno::Reference< css::text::XTextRange >& xRange, sal_Bool bExpand ) override;
+    virtual void SAL_CALL collapseToStart(  ) override final;
+    virtual void SAL_CALL collapseToEnd(  ) override final;
+    virtual sal_Bool SAL_CALL isCollapsed(  ) override final;
+    virtual sal_Bool SAL_CALL goLeft( sal_Int16 nCount, sal_Bool bExpand ) override final;
+    virtual sal_Bool SAL_CALL goRight( sal_Int16 nCount, sal_Bool bExpand ) override final;
+    virtual void SAL_CALL gotoStart( sal_Bool bExpand ) override final;
+    virtual void SAL_CALL gotoEnd( sal_Bool bExpand ) override final;
+    virtual void SAL_CALL gotoRange( const css::uno::Reference< css::text::XTextRange >& xRange, sal_Bool bExpand ) override final;
 
     // css::lang::XServiceInfo
-    virtual OUString SAL_CALL getImplementationName() override;
-    virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
-    virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
+    virtual OUString SAL_CALL getImplementationName() override final;
+    virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override final;
+    virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override final;
 
     // css::lang::XTypeProvider
-    virtual css::uno::Sequence< css::uno::Type > SAL_CALL getTypes(  ) override;
-    virtual css::uno::Sequence< sal_Int8 > SAL_CALL getImplementationId(  ) override;
+    virtual css::uno::Sequence< css::uno::Type > SAL_CALL getTypes(  ) override final;
+    virtual css::uno::Sequence< sal_Int8 > SAL_CALL getImplementationId(  ) override final;
 
 };
 

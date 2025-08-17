@@ -20,6 +20,7 @@
 #include <config_features.h>
 
 #include <DrawViewShell.hxx>
+#include <DrawController.hxx>
 
 #include <sfx2/viewfrm.hxx>
 #include <editeng/eeitem.hxx>
@@ -71,9 +72,8 @@
 #include <ViewShellBase.hxx>
 #include <FormShellManager.hxx>
 #include <LayerTabBar.hxx>
-#include <com/sun/star/drawing/framework/XControllerManager.hpp>
-#include <com/sun/star/drawing/framework/XConfigurationController.hpp>
-#include <com/sun/star/drawing/framework/XConfiguration.hpp>
+#include <framework/ConfigurationController.hxx>
+#include <framework/Configuration.hxx>
 #include <com/sun/star/drawing/XShape.hpp>
 #include <com/sun/star/frame/XFrame.hpp>
 #include <editeng/lspcitem.hxx>
@@ -132,13 +132,16 @@ void  DrawViewShell::ExecCtrl(SfxRequest& rReq)
             }
     }
 
+    const SdrMarkList& rMarkList = mpDrawView->GetMarkedObjectList();
     //  sal_uInt16 nSlot = rReq.GetSlot();
     switch (nSlot)
     {
         case SID_SWITCHPAGE:  // BASIC
         {
             // switch page in running slide show
-            if(SlideShow::IsRunning(GetViewShellBase()) && rReq.GetArgs())
+            if(SlideShow::IsRunning(GetViewShellBase())
+                && !SlideShow::IsInteractiveSlideshow(&GetViewShellBase()) // IASS
+                && rReq.GetArgs())
             {
                 if (const SfxUInt32Item* pWhatPage = rReq.GetArg<SfxUInt32Item>(ID_VAL_WHATPAGE))
                     SlideShow::GetSlideShow(GetViewShellBase())->jumpToPageNumber(static_cast<sal_Int32>((pWhatPage->GetValue()-1)>>1));
@@ -304,10 +307,10 @@ void  DrawViewShell::ExecCtrl(SfxRequest& rReq)
         {
             SdAbstractDialogFactory* pFact = SdAbstractDialogFactory::Create();
             vcl::Window* pWin = GetActiveWindow();
-            VclPtr<AbstractHeaderFooterDialog> pDlg(pFact->CreateHeaderFooterDialog(this, pWin ? pWin->GetFrameWeld() : nullptr, GetDoc(), mpActualPage));
+            VclPtr<AbstractHeaderFooterDialog> pDlg(pFact->CreateHeaderFooterDialog(*this, pWin ? pWin->GetFrameWeld() : nullptr, *GetDoc(), mpActualPage));
             auto xRequest = std::make_shared<SfxRequest>(rReq);
             rReq.Ignore(); // the 'old' request is not relevant any more
-            pDlg->StartExecuteAsync([this, pDlg, xRequest](sal_Int32 /*nResult*/){
+            pDlg->StartExecuteAsync([this, pDlg, xRequest=std::move(xRequest)](sal_Int32 /*nResult*/){
                 GetActiveWindow()->Invalidate();
                 UpdatePreview( mpActualPage );
 
@@ -328,7 +331,7 @@ void  DrawViewShell::ExecCtrl(SfxRequest& rReq)
 
             SdAbstractDialogFactory* pFact = SdAbstractDialogFactory::Create();
             vcl::Window* pWin = GetActiveWindow();
-            ScopedVclPtr<VclAbstractDialog> pDlg(pFact->CreateMasterLayoutDialog(pWin ? pWin->GetFrameWeld() : nullptr, GetDoc(), pPage));
+            ScopedVclPtr<VclAbstractDialog> pDlg(pFact->CreateMasterLayoutDialog(pWin ? pWin->GetFrameWeld() : nullptr, *GetDoc(), pPage));
             pDlg->Execute();
             Invalidate();
             rReq.Done ();
@@ -346,10 +349,8 @@ void  DrawViewShell::ExecCtrl(SfxRequest& rReq)
                     rReq.GetArgs()->Get(SID_OBJECTRESIZE);
                 ::tools::Rectangle aRect( GetActiveWindow()->PixelToLogic( rRect.GetValue() ) );
 
-                if ( mpDrawView->AreObjectsMarked() )
+                if ( rMarkList.GetMarkCount() != 0 )
                 {
-                    const SdrMarkList& rMarkList = mpDrawView->GetMarkedObjectList();
-
                     if (rMarkList.GetMarkCount() == 1)
                     {
                         SdrMark* pMark = rMarkList.GetMark(0);
@@ -380,34 +381,38 @@ void  DrawViewShell::ExecCtrl(SfxRequest& rReq)
                 Reference< XFrame > xFrame( pFrame->GetFrame().GetFrameInterface(), UNO_SET_THROW );
 
                 // Save the current configuration of panes and views.
-                Reference<XControllerManager> xControllerManager (
-                    GetViewShellBase().GetController(), UNO_QUERY_THROW);
-                Reference<XConfigurationController> xConfigurationController (
-                    xControllerManager->getConfigurationController(), UNO_SET_THROW );
-                Reference<XConfiguration> xConfiguration (
-                    xConfigurationController->getRequestedConfiguration(), UNO_SET_THROW );
-
-                SfxChildWindow* pWindow = pFrame->GetChildWindow(nId);
-                if(pWindow)
+                DrawController* pDrawController = GetViewShellBase().GetDrawController();
+                if (pDrawController)
                 {
-                    Svx3DWin* p3DWin = static_cast<Svx3DWin*>(pWindow->GetWindow());
-                    if(p3DWin)
-                        p3DWin->DocumentReload();
+                    rtl::Reference<sd::framework::ConfigurationController> xConfigurationController (
+                        pDrawController->getConfigurationController() );
+                    rtl::Reference<sd::framework::Configuration> xConfiguration (
+                        xConfigurationController->getRequestedConfiguration() );
+
+                    SfxChildWindow* pWindow = pFrame->GetChildWindow(nId);
+                    if(pWindow)
+                    {
+                        Svx3DWin* p3DWin = static_cast<Svx3DWin*>(pWindow->GetWindow());
+                        if(p3DWin)
+                            p3DWin->DocumentReload();
+                    }
+
+                    // normal forwarding to ViewFrame for execution
+                    GetViewFrame()->ExecuteSlot(rReq);
+
+                    // From here on we must cope with this object and the frame already being
+                    // deleted.  Do not call any methods or use data members.
+                    Reference<XController> xController( xFrame->getController(), UNO_SET_THROW );
+
+                    // Restore the configuration.
+                    if (auto pDrawController2 = dynamic_cast<DrawController*>( xController.get() ))
+                    {
+                        xConfigurationController = pDrawController2->getConfigurationController();
+                        if ( ! xConfigurationController.is())
+                            throw RuntimeException();
+                        xConfigurationController->restoreConfiguration(xConfiguration);
+                    }
                 }
-
-                // normal forwarding to ViewFrame for execution
-                GetViewFrame()->ExecuteSlot(rReq);
-
-                // From here on we must cope with this object and the frame already being
-                // deleted.  Do not call any methods or use data members.
-                Reference<XController> xController( xFrame->getController(), UNO_SET_THROW );
-
-                // Restore the configuration.
-                xControllerManager.set( xController, UNO_QUERY_THROW );
-                xConfigurationController.set( xControllerManager->getConfigurationController() );
-                if ( ! xConfigurationController.is())
-                    throw RuntimeException();
-                xConfigurationController->restoreConfiguration(xConfiguration);
             }
             catch (RuntimeException&)
             {
@@ -485,8 +490,6 @@ void  DrawViewShell::ExecCtrl(SfxRequest& rReq)
         case SID_REGENERATE_DIAGRAM:
         case SID_EDIT_DIAGRAM:
         {
-            const SdrMarkList& rMarkList = mpDrawView->GetMarkedObjectList();
-
             if (1 == rMarkList.GetMarkCount())
             {
                 SdrObject* pObj = rMarkList.GetMark(0)->GetMarkedSdrObj();
@@ -503,10 +506,15 @@ void  DrawViewShell::ExecCtrl(SfxRequest& rReq)
                     else // SID_EDIT_DIAGRAM
                     {
                         VclAbstractDialogFactory* pFact = VclAbstractDialogFactory::Create();
-                        ScopedVclPtr<VclAbstractDialog> pDlg = pFact->CreateDiagramDialog(
+                        VclPtr<VclAbstractDialog> pDlg = pFact->CreateDiagramDialog(
                             GetFrameWeld(),
                             *static_cast<SdrObjGroup*>(pObj));
-                        pDlg->Execute();
+                        pDlg->StartExecuteAsync(
+                            [pDlg] (sal_Int32 /*nResult*/)->void
+                            {
+                                pDlg->disposeOnce();
+                            }
+                        );
                     }
                 }
             }
@@ -538,7 +546,7 @@ void  DrawViewShell::ExecRuler(SfxRequest& rReq)
         case SID_ATTR_LONG_LRSPACE:
             if (pArgs)
             {
-                std::unique_ptr<SdUndoGroup> pUndoGroup(new SdUndoGroup(GetDoc()));
+                std::unique_ptr<SdUndoGroup> pUndoGroup(new SdUndoGroup(*GetDoc()));
                 pUndoGroup->SetComment(SdResId(STR_UNDO_CHANGE_PAGEBORDER));
 
                 const SvxLongLRSpaceItem& rLRSpace =
@@ -569,7 +577,7 @@ void  DrawViewShell::ExecRuler(SfxRequest& rReq)
                     for ( i = 0; i < nPageCnt; i++)
                     {
                         SdPage* pPage = GetDoc()->GetSdPage(i, mePageKind);
-                        SdUndoAction* pUndo = new SdPageLRUndoAction(GetDoc(),
+                        SdUndoAction* pUndo = new SdPageLRUndoAction(*GetDoc(),
                                                 pPage,
                                                 pPage->GetLeftBorder(),
                                                 pPage->GetRightBorder(),
@@ -583,7 +591,7 @@ void  DrawViewShell::ExecRuler(SfxRequest& rReq)
                     for (i = 0; i < nPageCnt; i++)
                     {
                         SdPage* pPage = GetDoc()->GetMasterSdPage(i, mePageKind);
-                        SdUndoAction* pUndo = new SdPageLRUndoAction(GetDoc(),
+                        SdUndoAction* pUndo = new SdPageLRUndoAction(*GetDoc(),
                                                 pPage,
                                                 pPage->GetLeftBorder(),
                                                 pPage->GetRightBorder(),
@@ -603,7 +611,7 @@ void  DrawViewShell::ExecRuler(SfxRequest& rReq)
         case SID_ATTR_LONG_ULSPACE:
             if (pArgs)
             {
-                std::unique_ptr<SdUndoGroup> pUndoGroup(new SdUndoGroup(GetDoc()));
+                std::unique_ptr<SdUndoGroup> pUndoGroup(new SdUndoGroup(*GetDoc()));
                 pUndoGroup->SetComment(SdResId(STR_UNDO_CHANGE_PAGEBORDER));
 
                 const SvxLongULSpaceItem& rULSpace =
@@ -635,7 +643,7 @@ void  DrawViewShell::ExecRuler(SfxRequest& rReq)
                     for ( i = 0; i < nPageCnt; i++)
                     {
                         SdPage* pPage = GetDoc()->GetSdPage(i, mePageKind);
-                        SdUndoAction* pUndo = new SdPageULUndoAction(GetDoc(),
+                        SdUndoAction* pUndo = new SdPageULUndoAction(*GetDoc(),
                                                 pPage,
                                                 pPage->GetUpperBorder(),
                                                 pPage->GetLowerBorder(),
@@ -649,7 +657,7 @@ void  DrawViewShell::ExecRuler(SfxRequest& rReq)
                     for (i = 0; i < nPageCnt; i++)
                     {
                         SdPage* pPage = GetDoc()->GetMasterSdPage(i, mePageKind);
-                        SdUndoAction* pUndo = new SdPageULUndoAction(GetDoc(),
+                        SdUndoAction* pUndo = new SdPageULUndoAction(*GetDoc(),
                                                 pPage,
                                                 pPage->GetUpperBorder(),
                                                 pPage->GetLowerBorder(),
@@ -710,7 +718,7 @@ void  DrawViewShell::ExecRuler(SfxRequest& rReq)
             if (pArgs)
             {
                 SvxLineSpacingItem aParaLineSP = pArgs->Get(
-                    GetPool().GetWhich(SID_ATTR_PARA_LINESPACE));
+                    GetPool().GetWhichIDFromSlotID(SID_ATTR_PARA_LINESPACE));
 
                 SfxItemSetFixed<EE_PARA_SBL, EE_PARA_SBL> aEditAttr( GetPool() );
                 aParaLineSP.SetWhich( EE_PARA_SBL );
@@ -808,9 +816,8 @@ void  DrawViewShell::ExecRuler(SfxRequest& rReq)
                 mpDrawView->GetAttributes( aEditAttr );
 
                 nId = EE_PARA_LRSPACE;
-                SvxLRSpaceItem aLRSpaceItem( rItem.GetLeft(),
-                        rItem.GetRight(),
-                        rItem.GetTextFirstLineOffset(), nId );
+                SvxLRSpaceItem aLRSpaceItem(rItem.GetLeft(), rItem.GetRight(),
+                                            rItem.GetTextFirstLineOffset(), nId);
 
                 const sal_Int16 nOutlineLevel = aEditAttr.Get( EE_PARA_OUTLLEVEL ).GetValue();
                 const SvxLRSpaceItem& rOrigLRSpaceItem = aEditAttr.Get( EE_PARA_LRSPACE );
@@ -827,30 +834,28 @@ void  DrawViewShell::ExecRuler(SfxRequest& rReq)
                     // become negative - EditEngine really does not
                     // like that.
                     const auto nAbsLSpace=aFormat.GetAbsLSpace();
-                    const ::tools::Long  nTxtLeft=rItem.GetTextLeft();
+                    const ::tools::Long nTxtLeft = rItem.ResolveTextLeft({});
                     const ::tools::Long  nLeftIndent=std::max(::tools::Long(0),nTxtLeft - nAbsLSpace);
-                    aLRSpaceItem.SetTextLeft(nLeftIndent);
+                    aLRSpaceItem.SetTextLeft(SvxIndentValue::twips(nLeftIndent));
                     // control for clipped left indent - remainder
                     // reduces number format first line indent
                     aFormat.SetAbsLSpace(nTxtLeft - nLeftIndent);
 
                     // negative first line indent goes to the number
                     // format, positive to the lrSpace item
-                    if( rItem.GetTextFirstLineOffset() < 0 )
+                    if (rItem.GetTextFirstLineOffset().m_dValue < 0.0)
                     {
-                        aFormat.SetFirstLineOffset(
-                            rItem.GetTextFirstLineOffset()
-                            - rOrigLRSpaceItem.GetTextFirstLineOffset()
-                            + aFormat.GetCharTextDistance());
-                        aLRSpaceItem.SetTextFirstLineOffset(0);
+                        aFormat.SetFirstLineOffset(rItem.ResolveTextFirstLineOffset({})
+                                                   - rOrigLRSpaceItem.ResolveTextFirstLineOffset({})
+                                                   + aFormat.GetCharTextDistance());
+                        aLRSpaceItem.SetTextFirstLineOffset(SvxIndentValue::zero());
                     }
                     else
                     {
                         aFormat.SetFirstLineOffset(0);
-                        aLRSpaceItem.SetTextFirstLineOffset(
-                            rItem.GetTextFirstLineOffset()
-                            - aFormat.GetFirstLineOffset() //TODO: overflow
-                            + aFormat.GetCharTextDistance());
+                        aLRSpaceItem.SetTextFirstLineOffset(SvxIndentValue::twips(
+                            rItem.ResolveTextFirstLineOffset({}) - aFormat.GetFirstLineOffset()
+                            + aFormat.GetCharTextDistance()));
                     }
 
                     if( rFormat != aFormat )
@@ -921,12 +926,13 @@ void  DrawViewShell::GetRulerState(SfxItemSet& rSet)
 
     const bool bRTL = GetDoc() && GetDoc()->GetDefaultWritingMode() == css::text::WritingMode_RL_TB;
     rSet.Put(SfxBoolItem(SID_RULER_TEXT_RIGHT_TO_LEFT, bRTL));
+    const SdrMarkList& rMarkList = mpDrawView->GetMarkedObjectList();
 
-    if( mpDrawView->AreObjectsMarked() )
+    if( rMarkList.GetMarkCount() != 0 )
     {
         if( mpDrawView->IsTextEdit() )
         {
-            SdrObject* pObj = mpDrawView->GetMarkedObjectList().GetMark( 0 )->GetMarkedSdrObj();
+            SdrObject* pObj = rMarkList.GetMark( 0 )->GetMarkedSdrObj();
             if( pObj->GetObjInventor() == SdrInventor::Default)
             {
                 SfxItemSet aEditAttr( GetDoc()->GetPool() );
@@ -937,9 +943,9 @@ void  DrawViewShell::GetRulerState(SfxItemSet& rSet)
                     rSet.Put( rItem );
 
                     const SvxLRSpaceItem& rLRSpaceItem = aEditAttr.Get( EE_PARA_LRSPACE );
-                    SvxLRSpaceItem aLRSpaceItem( rLRSpaceItem.GetLeft(),
-                            rLRSpaceItem.GetRight(),
-                            rLRSpaceItem.GetTextFirstLineOffset(), SID_ATTR_PARA_LRSPACE );
+                    SvxLRSpaceItem aLRSpaceItem(rLRSpaceItem.GetLeft(), rLRSpaceItem.GetRight(),
+                                                rLRSpaceItem.GetTextFirstLineOffset(),
+                                                SID_ATTR_PARA_LRSPACE);
 
                     const sal_Int16 nOutlineLevel = aEditAttr.Get( EE_PARA_OUTLLEVEL ).GetValue();
                     const SvxNumBulletItem& rNumBulletItem = aEditAttr.Get( EE_PARA_NUMBULLET );
@@ -947,11 +953,11 @@ void  DrawViewShell::GetRulerState(SfxItemSet& rSet)
                         rNumBulletItem.GetNumRule().GetLevelCount() > nOutlineLevel )
                     {
                         const SvxNumberFormat& rFormat = rNumBulletItem.GetNumRule().GetLevel(nOutlineLevel);
-                        aLRSpaceItem.SetTextLeft(rFormat.GetAbsLSpace() + rLRSpaceItem.GetTextLeft());
-                        aLRSpaceItem.SetTextFirstLineOffset(
-                            rLRSpaceItem.GetTextFirstLineOffset() + rFormat.GetFirstLineOffset()
-                                //TODO: overflow
-                            - rFormat.GetCharTextDistance());
+                        aLRSpaceItem.SetTextLeft(SvxIndentValue::twips(
+                            rFormat.GetAbsLSpace() + rLRSpaceItem.ResolveTextLeft({})));
+                        aLRSpaceItem.SetTextFirstLineOffset(SvxIndentValue::twips(
+                            rLRSpaceItem.ResolveTextFirstLineOffset({})
+                            + rFormat.GetFirstLineOffset() - rFormat.GetCharTextDistance()));
                     }
 
                     rSet.Put( aLRSpaceItem );
@@ -1064,6 +1070,13 @@ void  DrawViewShell::ExecStatusBar(SfxRequest& rReq)
         case SID_STATUS_LAYOUT:
         {
             GetViewFrame()->GetDispatcher()->Execute( SID_PRESENTATION_LAYOUT, SfxCallMode::ASYNCHRON );
+        }
+        break;
+
+        case SID_STATUS_PAGE:
+        {
+            GetViewFrame()->GetDispatcher()->Execute(SID_GO_TO_PAGE,
+                                SfxCallMode::SYNCHRON | SfxCallMode::RECORD);
         }
         break;
     }

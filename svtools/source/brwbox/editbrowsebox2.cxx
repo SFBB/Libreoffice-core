@@ -20,10 +20,11 @@
 #include <svtools/editbrowsebox.hxx>
 #include <com/sun/star/accessibility/XAccessible.hpp>
 #include <com/sun/star/accessibility/AccessibleEventId.hpp>
-#include "editbrowseboximpl.hxx"
 #include <comphelper/types.hxx>
+#include <svtools/strings.hrc>
+#include <svtools/svtresid.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
-#include <vcl/accessiblefactory.hxx>
+#include <vcl/accessibility/AccessibleBrowseBoxCheckBoxCell.hxx>
 #include <vcl/svapp.hxx>
 #include <tools/debug.hxx>
 #include <comphelper/diagnose_ex.hxx>
@@ -34,28 +35,16 @@ namespace svt
     using namespace com::sun::star::uno;
     using namespace ::com::sun::star::accessibility::AccessibleEventId;
 
-
-Reference< XAccessible > EditBrowseBox::CreateAccessibleCheckBoxCell(sal_Int32 _nRow, sal_uInt16 _nColumnPos,const TriState& eState)
+rtl::Reference<comphelper::OAccessible>
+EditBrowseBox::CreateAccessibleCheckBoxCell(sal_Int32 _nRow, sal_uInt16 _nColumnPos,
+                                            const TriState& eState)
 {
-    Reference< XAccessible > xAccessible( GetAccessible() );
-    Reference< XAccessibleContext > xAccContext;
-    if ( xAccessible.is() )
-        xAccContext = xAccessible->getAccessibleContext();
+    rtl::Reference<comphelper::OAccessible> pAccessible = GetAccessible();
+    if (!pAccessible.is())
+        return {};
 
-    Reference< XAccessible > xReturn;
-    if ( xAccContext.is() )
-    {
-        xReturn = getAccessibleFactory().createAccessibleCheckBoxCell(
-            xAccContext->getAccessibleChild( ::vcl::BBINDEX_TABLE ),
-            *this,
-            nullptr,
-            _nRow,
-            _nColumnPos,
-            eState,
-            true
-        );
-    }
-    return xReturn;
+    return new AccessibleCheckBoxCell(pAccessible->getAccessibleChild(::vcl::BBINDEX_TABLE),
+                                      *this, _nRow, _nColumnPos, eState, true);
 }
 
 sal_Int32 EditBrowseBox::GetAccessibleControlCount() const
@@ -66,55 +55,41 @@ sal_Int32 EditBrowseBox::GetAccessibleControlCount() const
 void EditBrowseBox::implCreateActiveAccessible( )
 {
     DBG_ASSERT( IsEditing(), "EditBrowseBox::implCreateActiveAccessible: not to be called if we're not editing currently!" );
-    DBG_ASSERT( !m_aImpl->m_xActiveCell.is(), "EditBrowseBox::implCreateActiveAccessible: not to be called if the old one is still alive!" );
+    DBG_ASSERT(!m_pActiveCell.is(), "EditBrowseBox::implCreateActiveAccessible: not to be called "
+                                    "if the old one is still alive!");
 
-    if ( m_aImpl->m_xActiveCell.is() || !IsEditing() )
-         return;
+    if (m_pActiveCell.is() || !IsEditing())
+        return;
 
-    Reference< XAccessible > xCont = aController->GetWindow().GetAccessible();
-    Reference< XAccessible > xMy = GetAccessible();
-    if ( !(xMy.is() && xCont.is()) )
-         return;
+    ControlBase& rControl = aController->GetWindow();
 
-    m_aImpl->m_xActiveCell = getAccessibleFactory().createEditBrowseBoxTableCellAccess(
-         xMy,                                                       // parent accessible
-         xCont,                                                     // control accessible
-         VCLUnoHelper::GetInterface( &aController->GetWindow() ),   // focus window (for notifications)
-         *this,                                                     // the browse box
-         GetCurRow(),
-         GetColumnPos( GetCurColumnId() )
-     );
+    // set accessible name based on current cell (which is the one that is being edited)
+    const sal_uInt16 nCol = GetColumnPos(GetCurColumnId());
+    const sal_Int32 nRow = GetCurRow();
+    OUString sAccName
+        = SvtResId(STR_ACC_COLUMN_NUM).replaceAll("%COLUMNNUMBER", OUString::number(nCol - 1))
+          + ", " + SvtResId(STR_ACC_ROW_NUM).replaceAll("%ROWNUMBER", OUString::number(nRow));
+    rControl.SetAccessibleName(sAccName);
 
-    commitBrowseBoxEvent( CHILD, Any( m_aImpl->m_xActiveCell ), Any() );
+    m_pActiveCell = rControl.GetAccessible();
+
+    commitBrowseBoxEvent(CHILD, Any(css::uno::Reference<XAccessible>(m_pActiveCell)), Any());
 }
 
-
-Reference< XAccessible > EditBrowseBox::CreateAccessibleControl( sal_Int32 _nIndex )
+rtl::Reference<comphelper::OAccessible> EditBrowseBox::CreateAccessibleControl(sal_Int32 _nIndex)
 {
     DBG_ASSERT( 0 == _nIndex, "EditBrowseBox::CreateAccessibleControl: invalid index!" );
 
     if ( isAccessibleAlive() )
     {
-        if ( !m_aImpl->m_xActiveCell.is() )
+        if (!m_pActiveCell.is())
             implCreateActiveAccessible();
     }
 
-    return m_aImpl->m_xActiveCell;
+    return m_pActiveCell;
 }
 
-void EditBrowseBoxImpl::clearActiveCell()
-{
-    try
-    {
-        ::comphelper::disposeComponent(m_xActiveCell);
-    }
-    catch(const Exception&)
-    {
-        TOOLS_WARN_EXCEPTION( "svtools", "EditBrowseBoxImpl::clearActiveCell: caught an exception while disposing the AccessibleCell!" );
-    }
-
-    m_xActiveCell = nullptr;
-}
+void EditBrowseBox::clearActiveCell() { m_pActiveCell.clear(); }
 
 void EditBrowseBox::GrabTableFocus()
 {

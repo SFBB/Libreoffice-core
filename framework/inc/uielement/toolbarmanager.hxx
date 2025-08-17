@@ -48,8 +48,6 @@
 #include <mutex>
 #include <unordered_map>
 
-class PopupMenu;
-class ToolBox;
 class Menu;
 
 namespace framework
@@ -205,7 +203,7 @@ class ToolBarManager final : public ToolbarManager_Base
         //end
         void AddFrameActionListener();
         void RefreshImages();
-        ToolBoxItemBits ConvertStyleToToolboxItemBits( sal_Int32 nStyle );
+        static ToolBoxItemBits ConvertStyleToToolboxItemBits( sal_Int32 nStyle );
         css::uno::Reference< css::frame::XModel > GetModelFromFrame() const;
         bool IsPluginMode() const;
         void HandleClick(ClickAction eAction);

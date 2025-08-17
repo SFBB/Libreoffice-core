@@ -23,7 +23,7 @@
 #include "inftxt.hxx"
 #include "porexp.hxx"
 
-TextFrameIndex SwExpandPortion::GetModelPositionForViewPoint(const sal_uInt16 nOfst) const
+TextFrameIndex SwExpandPortion::GetModelPositionForViewPoint(const SwTwips nOfst) const
 { return SwLinePortion::GetModelPositionForViewPoint( nOfst ); }
 
 bool SwExpandPortion::GetExpText( const SwTextSizeInfo&, OUString &rText ) const
@@ -49,7 +49,7 @@ void SwExpandPortion::dumpAsXml(xmlTextWriterPtr pWriter, const OUString& rText,
     (void)xmlTextWriterEndElement(pWriter);
 }
 
-SwPosSize SwExpandPortion::GetTextSize( const SwTextSizeInfo &rInf ) const
+SwPositiveSize SwExpandPortion::GetTextSize( const SwTextSizeInfo &rInf ) const
 {
     SwTextSlot aDiffText( &rInf, this, false, false );
     return rInf.GetTextSize();
@@ -213,35 +213,34 @@ void SwBlankPortion::Paint( const SwTextPaintInfo &rInf ) const
         rInf.DrawViewOpt(*this, PortionType::Blank);
     SwExpandPortion::Paint(rInf);
 
-    if (m_cChar == CHAR_HARDBLANK)
+    if (rInf.GetOpt().IsViewMetaChars() && rInf.GetOpt().IsHardBlank())
     {
-        if (rInf.GetOpt().IsBlank())
-        {
-            // Draw tilde or degree sign
-            OUString aMarker = (rInf.GetTextFrame()->GetDoc().getIDocumentSettingAccess()
+        // Draw tilde or degree sign
+        OUString aMarker = (m_cChar == CHAR_HARDBLANK ?
+                                rInf.GetTextFrame()->GetDoc().getIDocumentSettingAccess()
                                     .get(DocumentSettingId::USE_VARIABLE_WIDTH_NBSP)
-                                  ? u"~"_ustr
-                                  : u"°"_ustr);
+                                    ? u"~"_ustr
+                                    : u"°"_ustr
+                                : u"-"_ustr); //CHAR_HARDHYPHEN
 
-            SwPosSize aMarkerSize(rInf.GetTextSize(aMarker));
-            Point aPos(rInf.GetPos());
+        SwPositiveSize aMarkerSize(rInf.GetTextSize(aMarker));
+        Point aPos(rInf.GetPos());
 
-            std::shared_ptr<SwRect> pPortionRect = std::make_shared<SwRect>();
-            rInf.CalcRect(*this, pPortionRect.get());
-            aPos.AdjustX((pPortionRect->Width() / 2) - (aMarkerSize.Width() / 2));
+        std::shared_ptr<SwRect> pPortionRect = std::make_shared<SwRect>();
+        rInf.CalcRect(*this, pPortionRect.get());
+        aPos.AdjustX((pPortionRect->Width() / 2) - (aMarkerSize.Width() / 2));
 
-            SwTextPaintInfo aInf(rInf, &aMarker);
-            aInf.SetPos(aPos);
-            SwTextPortion aMarkerPor;
-            aMarkerPor.Width(aMarkerSize.Width());
-            aMarkerPor.Height(aMarkerSize.Height());
-            aMarkerPor.SetAscent(GetAscent());
+        SwTextPaintInfo aInf(rInf, &aMarker);
+        aInf.SetPos(aPos);
+        SwTextPortion aMarkerPor;
+        aMarkerPor.Width(aMarkerSize.Width());
+        aMarkerPor.Height(aMarkerSize.Height());
+        aMarkerPor.SetAscent(GetAscent());
 
-            Color colorBackup = aInf.GetFont()->GetColor();
-            aInf.GetFont()->SetColor(NON_PRINTING_CHARACTER_COLOR);
-            aInf.DrawText(aMarkerPor, TextFrameIndex(aMarker.getLength()), true);
-            aInf.GetFont()->SetColor(colorBackup);
-        }
+        Color colorBackup = aInf.GetFont()->GetColor();
+        aInf.GetFont()->SetColor(SwViewOption::GetCurrentViewOptions().GetNonPrintingCharacterColor());
+        aInf.DrawText(aMarkerPor, TextFrameIndex(aMarker.getLength()), true);
+        aInf.GetFont()->SetColor(colorBackup);
     }
 }
 
@@ -290,7 +289,7 @@ void SwPostItsPortion::Paint( const SwTextPaintInfo &rInf ) const
         rInf.DrawPostIts( IsScript() );
 }
 
-sal_uInt16 SwPostItsPortion::GetViewWidth( const SwTextSizeInfo &rInf ) const
+SwTwips SwPostItsPortion::GetViewWidth(const SwTextSizeInfo& rInf) const
 {
     // Unbelievable: PostIts are always visible
     return rInf.OnWin() ? SwViewOption::GetPostItsWidth( rInf.GetOut() ) : 0;

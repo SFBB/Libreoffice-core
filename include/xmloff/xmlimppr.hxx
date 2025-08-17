@@ -37,9 +37,12 @@ namespace com::sun::star::container { class XNameContainer; }
 namespace com::sun::star::uno { class Any; }
 namespace com::sun::star::uno { template <typename > class Reference; }
 namespace com::sun::star::uno { template <typename > class Sequence; }
-namespace com::sun::star::xml::sax { class XAttributeList; }
 namespace com::sun::star::xml::sax { class XFastAttributeList; }
+#if defined __GNUC__ // gcc does not like visibility annotation on enum
+namespace com::sun::star::drawing { enum class FillStyle; }
+#else
 namespace com::sun::star::drawing { enum class SAL_DLLPUBLIC_RTTI FillStyle; }
+#endif
 
 struct XMLPropertyState;
 class XMLPropertySetMapper;
@@ -61,9 +64,9 @@ struct ContextID_Index_Pair
     css::drawing::FillStyle /*const*/ nExpectedFillStyle;
 };
 
-class XMLOFF_DLLPUBLIC SvXMLImportPropertyMapper : public salhelper::SimpleReferenceObject
+class XMLOFF_DLLPUBLIC SvXMLImportPropertyMapper
 {
-    rtl::Reference< SvXMLImportPropertyMapper> mxNextMapper;
+    std::unique_ptr< SvXMLImportPropertyMapper> mxNextMapper;
 
     SvXMLImport& m_rImport;   // access to error handling
 
@@ -80,13 +83,13 @@ public:
     SvXMLImportPropertyMapper(
             rtl::Reference< XMLPropertySetMapper > xMapper,
             SvXMLImport& rImport);
-    virtual ~SvXMLImportPropertyMapper() override;
+    virtual ~SvXMLImportPropertyMapper();
 
     // Add an ImportPropertyMapper at the end of the import mapper chain.
     // The added mapper MUST not be used outside the Mapper chain any longer,
     // because its PropertyMapper will be replaced.
     void ChainImportMapper(
-        const rtl::Reference< SvXMLImportPropertyMapper>& rMapper );
+        std::unique_ptr< SvXMLImportPropertyMapper> rMapper );
 
     /** fills the given itemset with the attributes in the given list
       * the map is only searched within the range

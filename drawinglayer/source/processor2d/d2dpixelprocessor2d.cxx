@@ -128,7 +128,8 @@ private:
 public:
     SystemDependentData_ID2D1PathGeometry(
         sal::systools::COMReference<ID2D1PathGeometry>& rID2D1PathGeometry)
-        : basegfx::SystemDependentData(Application::GetSystemDependentDataManager())
+        : basegfx::SystemDependentData(Application::GetSystemDependentDataManager(),
+                                       basegfx::SDD_Type::SDDType_ID2D1PathGeometry)
         , mpID2D1PathGeometry(rID2D1PathGeometry)
     {
     }
@@ -239,7 +240,8 @@ getOrCreatePathGeometry(const basegfx::B2DPolygon& rPolygon,
 {
     // try to access buffered data
     std::shared_ptr<SystemDependentData_ID2D1PathGeometry> pSystemDependentData_ID2D1PathGeometry(
-        rPolygon.getSystemDependentData<SystemDependentData_ID2D1PathGeometry>());
+        rPolygon.getSystemDependentData<SystemDependentData_ID2D1PathGeometry>(
+            basegfx::SDD_Type::SDDType_ID2D1PathGeometry));
 
     if (pSystemDependentData_ID2D1PathGeometry)
     {
@@ -302,7 +304,8 @@ getOrCreateFillGeometry(const basegfx::B2DPolyPolygon& rPolyPolygon)
 {
     // try to access buffered data
     std::shared_ptr<SystemDependentData_ID2D1PathGeometry> pSystemDependentData_ID2D1PathGeometry(
-        rPolyPolygon.getSystemDependentData<SystemDependentData_ID2D1PathGeometry>());
+        rPolyPolygon.getSystemDependentData<SystemDependentData_ID2D1PathGeometry>(
+            basegfx::SDD_Type::SDDType_ID2D1PathGeometry));
 
     if (pSystemDependentData_ID2D1PathGeometry)
     {
@@ -361,7 +364,8 @@ private:
 public:
     SystemDependentData_ID2D1Bitmap(sal::systools::COMReference<ID2D1Bitmap>& rD2DBitmap,
                                     const std::shared_ptr<SalBitmap>& rAssociatedAlpha)
-        : basegfx::SystemDependentData(Application::GetSystemDependentDataManager())
+        : basegfx::SystemDependentData(Application::GetSystemDependentDataManager(),
+                                       basegfx::SDD_Type::SDDType_ID2D1Bitmap)
         , mpD2DBitmap(rD2DBitmap)
         , maAssociatedAlpha(rAssociatedAlpha)
     {
@@ -473,8 +477,7 @@ getOrCreateB2DBitmap(sal::systools::COMReference<ID2D1RenderTarget>& rRT, const 
         // try to access SystemDependentDataHolder and buffered data
         pSystemDependentData_ID2D1Bitmap
             = std::static_pointer_cast<SystemDependentData_ID2D1Bitmap>(
-                pHolder->getSystemDependentData(
-                    typeid(SystemDependentData_ID2D1Bitmap).hash_code()));
+                pHolder->getSystemDependentData(basegfx::SDD_Type::SDDType_ID2D1Bitmap));
 
         // check data validity for associated Alpha
         if (pSystemDependentData_ID2D1Bitmap
@@ -588,7 +591,7 @@ public:
                 aInvViewTransform.invert();
                 aViewport.transform(aInvViewTransform);
                 aViewInformation.setViewport(aViewport);
-                updateViewInformation(aViewInformation);
+                setViewInformation2D(aViewInformation);
             }
 
             // clear as render preparation
@@ -1266,8 +1269,7 @@ void D2DPixelProcessor2D::processUnifiedTransparencePrimitive2D(
         increaseError();
 }
 
-void D2DPixelProcessor2D::processMaskPrimitive2DPixel(
-    const primitive2d::MaskPrimitive2D& rMaskCandidate)
+void D2DPixelProcessor2D::processMaskPrimitive2D(const primitive2d::MaskPrimitive2D& rMaskCandidate)
 {
     if (rMaskCandidate.getChildren().empty())
     {
@@ -1389,7 +1391,7 @@ void D2DPixelProcessor2D::processMarkerArrayPrimitive2D(
         return;
     }
 
-    const BitmapEx& rMarker(rMarkerArrayCandidate.getMarker());
+    BitmapEx rMarker(rMarkerArrayCandidate.getMarker());
 
     if (rMarker.IsEmpty())
     {
@@ -1471,13 +1473,13 @@ void D2DPixelProcessor2D::processTransformPrimitive2D(
     geometry::ViewInformation2D aViewInformation2D(getViewInformation2D());
     aViewInformation2D.setObjectTransformation(getViewInformation2D().getObjectTransformation()
                                                * rTransformCandidate.getTransformation());
-    updateViewInformation(aViewInformation2D);
+    setViewInformation2D(aViewInformation2D);
 
     // process content
     process(rTransformCandidate.getChildren());
 
     // restore transformations
-    updateViewInformation(aLastViewInformation2D);
+    setViewInformation2D(aLastViewInformation2D);
 }
 
 void D2DPixelProcessor2D::processPolygonStrokePrimitive2D(
@@ -1801,9 +1803,23 @@ void D2DPixelProcessor2D::processSingleLinePrimitive2D(
 void D2DPixelProcessor2D::processFillGraphicPrimitive2D(
     const primitive2d::FillGraphicPrimitive2D& rFillGraphicPrimitive2D)
 {
-    BitmapEx aPreparedBitmap;
+    if (rFillGraphicPrimitive2D.getTransparency() < 0.0
+        || rFillGraphicPrimitive2D.getTransparency() > 1.0)
+    {
+        // invalid transparence, done
+        return;
+    }
+
+    if (rFillGraphicPrimitive2D.hasTransparency())
+    {
+        // cannot handle yet, use decomposition
+        process(rFillGraphicPrimitive2D);
+        return;
+    }
+
+    Bitmap aPreparedBitmap;
     basegfx::B2DRange aFillUnitRange(rFillGraphicPrimitive2D.getFillGraphic().getGraphicRange());
-    static double fBigDiscreteArea(300.0 * 300.0);
+    constexpr double fBigDiscreteArea(300.0 * 300.0);
 
     // use tooling to do various checks and prepare tiled rendering, see
     // description of method, parameters and return value there
@@ -1826,7 +1842,7 @@ void D2DPixelProcessor2D::processFillGraphicPrimitive2D(
     if (maBColorModifierStack.count())
     {
         // need to apply ColorModifier to Bitmap data
-        aPreparedBitmap = aPreparedBitmap.ModifyBitmapEx(maBColorModifierStack);
+        aPreparedBitmap = aPreparedBitmap.Modify(maBColorModifierStack);
 
         if (aPreparedBitmap.IsEmpty())
         {
@@ -1855,7 +1871,7 @@ void D2DPixelProcessor2D::processFillGraphicPrimitive2D(
 
     bool bDone(false);
     sal::systools::COMReference<ID2D1Bitmap> pD2DBitmap(
-        getOrCreateB2DBitmap(getRenderTarget(), aPreparedBitmap));
+        getOrCreateB2DBitmap(getRenderTarget(), BitmapEx(aPreparedBitmap)));
 
     if (pD2DBitmap)
     {
@@ -1924,6 +1940,14 @@ void D2DPixelProcessor2D::processFillGraphicPrimitive2D(
 void D2DPixelProcessor2D::processFillGradientPrimitive2D(
     const primitive2d::FillGradientPrimitive2D& rFillGradientPrimitive2D)
 {
+    if (rFillGradientPrimitive2D.hasAlphaGradient() || rFillGradientPrimitive2D.hasTransparency())
+    {
+        // SDPR: As long as direct alpha is not supported by this
+        // renderer we need to work on the decomposition, so call it
+        process(rFillGradientPrimitive2D);
+        return;
+    }
+
     // draw all-covering initial BG polygon 1st
     bool bDone(drawPolyPolygonColorTransformed(
         basegfx::B2DHomMatrix(),
@@ -2079,8 +2103,7 @@ void D2DPixelProcessor2D::processBasePrimitive2D(const primitive2d::BasePrimitiv
         }
         case PRIMITIVE2D_ID_MASKPRIMITIVE2D:
         {
-            processMaskPrimitive2DPixel(
-                static_cast<const primitive2d::MaskPrimitive2D&>(rCandidate));
+            processMaskPrimitive2D(static_cast<const primitive2d::MaskPrimitive2D&>(rCandidate));
             break;
         }
         case PRIMITIVE2D_ID_MODIFIEDCOLORPRIMITIVE2D:

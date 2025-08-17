@@ -42,9 +42,9 @@
 #include <com/sun/star/frame/XModel.hpp>
 
 #include <sfx2/objsh.hxx>
+#include <officecfg/Office/Common.hxx>
 #include <unotools/moduleoptions.hxx>
-#include <unotools/configmgr.hxx>
-#include <unotools/fltrcfg.hxx>
+#include <comphelper/configuration.hxx>
 #include <vcl/dibtools.hxx>
 #include <vcl/gdimtf.hxx>
 #include <vcl/outdev.hxx>
@@ -139,7 +139,6 @@ using ::com::sun::star::uno::UNO_QUERY;
 using ::com::sun::star::uno::UNO_QUERY_THROW;
 using ::com::sun::star::uno::UNO_SET_THROW;
 using ::com::sun::star::beans::NamedValue;
-using ::com::sun::star::lang::XMultiServiceFactory;
 using ::com::sun::star::container::XIndexContainer;
 using ::com::sun::star::container::XNameContainer;
 using ::com::sun::star::frame::XModel;
@@ -751,14 +750,14 @@ void XclImpDrawObjBase::ConvertFillStyle( SdrObject& rSdrObj, const XclObjFillDa
             Bitmap aBitmap;
             (void)ReadDIB(aBitmap, aMemStrm, false);
 
-            XOBitmap aXOBitmap(( BitmapEx(aBitmap) ));
+            XOBitmap aXOBitmap( aBitmap );
             aXOBitmap.Bitmap2Array();
             if( aXOBitmap.GetBackgroundColor() == COL_BLACK )
                 ::std::swap( aPattColor, aBackColor );
             aXOBitmap.SetPixelColor( aPattColor );
             aXOBitmap.SetBackgroundColor( aBackColor );
             aXOBitmap.Array2Bitmap();
-            aBitmap = aXOBitmap.GetBitmap().GetBitmap();
+            aBitmap = aXOBitmap.GetBitmap();
 
             rSdrObj.SetMergedItem(XFillStyleItem(drawing::FillStyle_BITMAP));
             rSdrObj.SetMergedItem(XFillBitmapItem(OUString(), Graphic(BitmapEx(aBitmap))));
@@ -1184,17 +1183,16 @@ rtl::Reference<SdrObject> XclImpLineObj::DoCreateSdrObj( XclImpDffConverter& rDf
         }
 #undef EXC_ARROW_POINT
 
-        ::basegfx::B2DPolyPolygon aArrowPolyPoly( aArrowPoly );
         tools::Long nWidth = static_cast< tools::Long >( 125 * fArrowWidth );
         if( bLineStart )
         {
-            xSdrObj->SetMergedItem( XLineStartItem( OUString(), aArrowPolyPoly ) );
+            xSdrObj->SetMergedItem( XLineStartItem( OUString(), basegfx::B2DPolyPolygon(aArrowPoly) ) );
             xSdrObj->SetMergedItem( XLineStartWidthItem( nWidth ) );
             xSdrObj->SetMergedItem( XLineStartCenterItem( false ) );
         }
         if( bLineEnd )
         {
-            xSdrObj->SetMergedItem( XLineEndItem( OUString(), aArrowPolyPoly ) );
+            xSdrObj->SetMergedItem( XLineEndItem( OUString(), basegfx::B2DPolyPolygon(aArrowPoly) ) );
             xSdrObj->SetMergedItem( XLineEndWidthItem( nWidth ) );
             xSdrObj->SetMergedItem( XLineEndCenterItem( false ) );
         }
@@ -1491,7 +1489,7 @@ rtl::Reference<SdrObject> XclImpTextObj::DoCreateSdrObj( XclImpDffConverter& rDf
         new SdrObjCustomShape(
             *GetDoc().GetDrawLayer()));
     xSdrObj->NbcSetSnapRect( rAnchorRect );
-    OUString aRectType = "rectangle";
+    OUString aRectType = u"rectangle"_ustr;
     xSdrObj->MergeDefaultAttributes( &aRectType );
     ConvertRectStyle( *xSdrObj );
     bool bAutoSize = ::get_flag( maTextData.maData.mnFlags, EXC_OBJ_TEXT_AUTOSIZE );
@@ -1511,7 +1509,7 @@ void XclImpTextObj::DoPreProcessSdrObj( XclImpDffConverter& rDffConv, SdrObject&
         {
             if( maTextData.mxString->IsRich() )
             {
-                if (maTextData.mxString->GetText().getLength() > 1024 && utl::ConfigManager::IsFuzzing())
+                if (maTextData.mxString->GetText().getLength() > 1024 && comphelper::IsFuzzing())
                 {
                     SAL_WARN("sc.filter", "truncating slow long rich text for fuzzing performance");
                     maTextData.mxString->SetText(maTextData.mxString->GetText().copy(0, 1024));
@@ -1541,7 +1539,7 @@ void XclImpTextObj::DoPreProcessSdrObj( XclImpDffConverter& rDffConv, SdrObject&
             SdrTextVertAdjust eVerAlign = SDRTEXTVERTADJUST_TOP;
 
             // orientation (this is only a fake, drawing does not support real text orientation)
-            namespace csst = ::com::sun::star::text;
+            namespace csst = css::text;
             csst::WritingMode eWriteMode = csst::WritingMode_LR_TB;
             switch( maTextData.maData.mnOrient )
             {
@@ -1762,7 +1760,7 @@ rtl::Reference<SdrObject> XclImpChartObj::DoCreateSdrObj( XclImpDffConverter& rD
 {
     rtl::Reference<SdrObject> xSdrObj;
     ScDocShell* pDocShell = GetDocShell();
-    if( rDffConv.SupportsOleObjects() && SvtModuleOptions().IsChart() && pDocShell && mxChart && !mxChart->IsPivotChart() )
+    if( rDffConv.SupportsOleObjects() && SvtModuleOptions().IsChartInstalled() && pDocShell && mxChart && !mxChart->IsPivotChart() )
     {
         // create embedded chart object
         OUString aEmbObjName;
@@ -1992,11 +1990,11 @@ void XclImpControlHelper::ProcessControl( const XclImpDrawObjBase& rDrawObj ) co
     ScfPropertySet aPropSet( xCtrlModel );
 
     // #i51348# set object name at control model
-    aPropSet.SetStringProperty( "Name", rDrawObj.GetObjName() );
+    aPropSet.SetStringProperty( u"Name"_ustr, rDrawObj.GetObjName() );
 
     // control visible and printable?
-    aPropSet.SetBoolProperty( "EnableVisible", rDrawObj.IsVisible() );
-    aPropSet.SetBoolProperty( "Printable", rDrawObj.IsPrintable() );
+    aPropSet.SetBoolProperty( u"EnableVisible"_ustr, rDrawObj.IsVisible() );
+    aPropSet.SetBoolProperty( u"Printable"_ustr, rDrawObj.IsPrintable() );
 
     // virtual call for type specific processing
     DoProcessControl( aPropSet );
@@ -2131,7 +2129,7 @@ void XclImpTbxObjBase::ConvertLabel( ScfPropertySet& rPropSet ) const
             if( nPos != -1 )
                 aLabel = aLabel.replaceAt( nPos, 0, u"~" );
         }
-        rPropSet.SetStringProperty( "Label", aLabel );
+        rPropSet.SetStringProperty( u"Label"_ustr, aLabel );
 
         //Excel Alt text <==> Aoo description
         //For TBX control, if user does not operate alt text, alt text will be set label text as default value in Excel.
@@ -2141,7 +2139,7 @@ void XclImpTbxObjBase::ConvertLabel( ScfPropertySet& rPropSet ) const
         Reference< css::beans::XPropertySet > xPropset( mxShape, UNO_QUERY );
         try{
         if(xPropset.is())
-            xPropset->setPropertyValue( "Description", Any(aLabel) );
+            xPropset->setPropertyValue( u"Description"_ustr, Any(aLabel) );
         }catch( ... )
         {
             SAL_WARN("sc.filter", "Can't set a default text for TBX Control ");
@@ -2182,10 +2180,10 @@ void XclImpButtonObj::DoProcessControl( ScfPropertySet& rPropSet ) const
         case EXC_OBJ_HOR_CENTER:    nHorAlign = 1;  break;
         case EXC_OBJ_HOR_RIGHT:     nHorAlign = 2;  break;
     }
-    rPropSet.SetProperty( "Align", nHorAlign );
+    rPropSet.SetProperty( u"Align"_ustr, nHorAlign );
 
     // vertical text alignment
-    namespace csss = ::com::sun::star::style;
+    namespace csss = css::style;
     csss::VerticalAlignment eVerAlign = csss::VerticalAlignment_MIDDLE;
     switch( maTextData.maData.GetVerAlign() )
     {
@@ -2193,17 +2191,17 @@ void XclImpButtonObj::DoProcessControl( ScfPropertySet& rPropSet ) const
         case EXC_OBJ_VER_CENTER:    eVerAlign = csss::VerticalAlignment_MIDDLE; break;
         case EXC_OBJ_VER_BOTTOM:    eVerAlign = csss::VerticalAlignment_BOTTOM; break;
     }
-    rPropSet.SetProperty( "VerticalAlign", eVerAlign );
+    rPropSet.SetProperty( u"VerticalAlign"_ustr, eVerAlign );
 
     // always wrap text automatically
-    rPropSet.SetBoolProperty( "MultiLine", true );
+    rPropSet.SetBoolProperty( u"MultiLine"_ustr, true );
 
     // default button
     bool bDefButton = ::get_flag( maTextData.maData.mnButtonFlags, EXC_OBJ_BUTTON_DEFAULT );
-    rPropSet.SetBoolProperty( "DefaultButton", bDefButton );
+    rPropSet.SetBoolProperty( u"DefaultButton"_ustr, bDefButton );
 
     // button type (flags cannot be combined in OOo)
-    namespace cssa = ::com::sun::star::awt;
+    namespace cssa = css::awt;
     cssa::PushButtonType eButtonType = cssa::PushButtonType_STANDARD;
     if( ::get_flag( maTextData.maData.mnButtonFlags, EXC_OBJ_BUTTON_CLOSE ) )
         eButtonType = cssa::PushButtonType_OK;
@@ -2212,12 +2210,12 @@ void XclImpButtonObj::DoProcessControl( ScfPropertySet& rPropSet ) const
     else if( ::get_flag( maTextData.maData.mnButtonFlags, EXC_OBJ_BUTTON_HELP ) )
         eButtonType = cssa::PushButtonType_HELP;
     // property type is short, not enum
-    rPropSet.SetProperty( "PushButtonType", sal_Int16( eButtonType ) );
+    rPropSet.SetProperty( u"PushButtonType"_ustr, sal_Int16( eButtonType ) );
 }
 
 OUString XclImpButtonObj::DoGetServiceName() const
 {
-    return "com.sun.star.form.component.CommandButton";
+    return u"com.sun.star.form.component.CommandButton"_ustr;
 }
 
 XclTbxEventType XclImpButtonObj::DoGetEventType() const
@@ -2284,32 +2282,32 @@ void XclImpCheckBoxObj::DoProcessControl( ScfPropertySet& rPropSet ) const
         case EXC_OBJ_CHECKBOX_TRISTATE:     nApiState = bSupportsTristate ? 2 : 1;  break;
     }
     if( bSupportsTristate )
-        rPropSet.SetBoolProperty( "TriState", nApiState == 2 );
-    rPropSet.SetProperty( "DefaultState", nApiState );
+        rPropSet.SetBoolProperty( u"TriState"_ustr, nApiState == 2 );
+    rPropSet.SetProperty( u"DefaultState"_ustr, nApiState );
 
     // box style
-    namespace AwtVisualEffect = ::com::sun::star::awt::VisualEffect;
+    namespace AwtVisualEffect = css::awt::VisualEffect;
     sal_Int16 nEffect = ::get_flagvalue( mnCheckBoxFlags, EXC_OBJ_CHECKBOX_FLAT, AwtVisualEffect::FLAT, AwtVisualEffect::LOOK3D );
-    rPropSet.SetProperty( "VisualEffect", nEffect );
+    rPropSet.SetProperty( u"VisualEffect"_ustr, nEffect );
 
     // do not wrap text automatically
-    rPropSet.SetBoolProperty( "MultiLine", false );
+    rPropSet.SetBoolProperty( u"MultiLine"_ustr, false );
 
     // #i40279# always centered vertically
-    namespace csss = ::com::sun::star::style;
-    rPropSet.SetProperty( "VerticalAlign", csss::VerticalAlignment_MIDDLE );
+    namespace csss = css::style;
+    rPropSet.SetProperty( u"VerticalAlign"_ustr, csss::VerticalAlignment_MIDDLE );
 
     // background color
     if( maFillData.IsFilled() )
     {
         sal_Int32 nColor = static_cast< sal_Int32 >( GetSolidFillColor( maFillData ) );
-        rPropSet.SetProperty( "BackgroundColor", nColor );
+        rPropSet.SetProperty( u"BackgroundColor"_ustr, nColor );
     }
 }
 
 OUString XclImpCheckBoxObj::DoGetServiceName() const
 {
-    return "com.sun.star.form.component.CheckBox";
+    return u"com.sun.star.form.component.CheckBox"_ustr;
 }
 
 XclTbxEventType XclImpCheckBoxObj::DoGetEventType() const
@@ -2380,8 +2378,8 @@ void XclImpOptionButtonObj::DoProcessControl( ScfPropertySet& rPropSet ) const
                 ScfPropertySet aProps( xCtrlModel );
                 OUString sGroupName = OUString::number( pLeader->GetDffShapeId() );
 
-                aProps.SetStringProperty( "GroupName", sGroupName );
-                aProps.SetStringProperty( "RefValue", OUString::number( nRefVal++ ) );
+                aProps.SetStringProperty( u"GroupName"_ustr, sGroupName );
+                aProps.SetStringProperty( u"RefValue"_ustr, OUString::number( nRefVal++ ) );
                 if ( pLeader->HasCellLink() && !pTbxObj->HasCellLink() )
                 {
                     // propagate cell link info
@@ -2402,7 +2400,7 @@ void XclImpOptionButtonObj::DoProcessControl( ScfPropertySet& rPropSet ) const
 
 OUString XclImpOptionButtonObj::DoGetServiceName() const
 {
-    return "com.sun.star.form.component.RadioButton";
+    return u"com.sun.star.form.component.RadioButton"_ustr;
 }
 
 XclTbxEventType XclImpOptionButtonObj::DoGetEventType() const
@@ -2426,17 +2424,17 @@ void XclImpLabelObj::DoProcessControl( ScfPropertySet& rPropSet ) const
     ConvertLabel( rPropSet );
 
     // text alignment (always top/left aligned)
-    rPropSet.SetProperty( "Align", sal_Int16( 0 ) );
-    namespace csss = ::com::sun::star::style;
-    rPropSet.SetProperty( "VerticalAlign", csss::VerticalAlignment_TOP );
+    rPropSet.SetProperty( u"Align"_ustr, sal_Int16( 0 ) );
+    namespace csss = css::style;
+    rPropSet.SetProperty( u"VerticalAlign"_ustr, csss::VerticalAlignment_TOP );
 
     // always wrap text automatically
-    rPropSet.SetBoolProperty( "MultiLine", true );
+    rPropSet.SetBoolProperty( u"MultiLine"_ustr, true );
 }
 
 OUString XclImpLabelObj::DoGetServiceName() const
 {
-    return "com.sun.star.form.component.FixedText";
+    return u"com.sun.star.form.component.FixedText"_ustr;
 }
 
 XclTbxEventType XclImpLabelObj::DoGetEventType() const
@@ -2487,7 +2485,7 @@ void XclImpGroupBoxObj::DoProcessControl( ScfPropertySet& rPropSet ) const
 
 OUString XclImpGroupBoxObj::DoGetServiceName() const
 {
-    return "com.sun.star.form.component.GroupBox";
+    return u"com.sun.star.form.component.GroupBox"_ustr;
 }
 
 XclTbxEventType XclImpGroupBoxObj::DoGetEventType() const
@@ -2509,7 +2507,7 @@ void XclImpDialogObj::DoProcessControl( ScfPropertySet& rPropSet ) const
 OUString XclImpDialogObj::DoGetServiceName() const
 {
     // dialog frame faked by a groupbox
-    return "com.sun.star.form.component.GroupBox";
+    return u"com.sun.star.form.component.GroupBox"_ustr;
 }
 
 XclTbxEventType XclImpDialogObj::DoGetEventType() const
@@ -2570,14 +2568,14 @@ void XclImpEditObj::DoProcessControl( ScfPropertySet& rPropSet ) const
         if( IsNumeric() )
         {
             // TODO: OUString::toDouble() does not handle local decimal separator
-            rPropSet.SetProperty( "DefaultValue", aText.toDouble() );
-            rPropSet.SetBoolProperty( "Spin", mnScrollBar != 0 );
+            rPropSet.SetProperty( u"DefaultValue"_ustr, aText.toDouble() );
+            rPropSet.SetBoolProperty( u"Spin"_ustr, mnScrollBar != 0 );
         }
         else
         {
-            rPropSet.SetProperty( "DefaultText", aText );
-            rPropSet.SetBoolProperty( "MultiLine", mnMultiLine != 0 );
-            rPropSet.SetBoolProperty( "VScroll", mnScrollBar != 0 );
+            rPropSet.SetProperty( u"DefaultText"_ustr, aText );
+            rPropSet.SetBoolProperty( u"MultiLine"_ustr, mnMultiLine != 0 );
+            rPropSet.SetBoolProperty( u"VScroll"_ustr, mnScrollBar != 0 );
         }
     }
     ConvertFont( rPropSet );
@@ -2586,8 +2584,8 @@ void XclImpEditObj::DoProcessControl( ScfPropertySet& rPropSet ) const
 OUString XclImpEditObj::DoGetServiceName() const
 {
     return IsNumeric() ?
-        OUString( "com.sun.star.form.component.NumericField" ) :
-        OUString( "com.sun.star.form.component.TextField" );
+        u"com.sun.star.form.component.NumericField"_ustr :
+        u"com.sun.star.form.component.TextField"_ustr;
 }
 
 XclTbxEventType XclImpEditObj::DoGetEventType() const
@@ -2653,19 +2651,19 @@ void XclImpSpinButtonObj::DoReadObj5( XclImpStream& rStrm, sal_uInt16 nNameLen, 
 void XclImpSpinButtonObj::DoProcessControl( ScfPropertySet& rPropSet ) const
 {
     // Calc's "Border" property is not the 3D/flat style effect in Excel (#i34712#)
-    rPropSet.SetProperty( "Border", css::awt::VisualEffect::NONE );
-    rPropSet.SetProperty< sal_Int32 >( "DefaultSpinValue", mnValue );
-    rPropSet.SetProperty< sal_Int32 >( "SpinValueMin", mnMin );
-    rPropSet.SetProperty< sal_Int32 >( "SpinValueMax", mnMax );
-    rPropSet.SetProperty< sal_Int32 >( "SpinIncrement", mnStep );
+    rPropSet.SetProperty( u"Border"_ustr, css::awt::VisualEffect::NONE );
+    rPropSet.SetProperty< sal_Int32 >( u"DefaultSpinValue"_ustr, mnValue );
+    rPropSet.SetProperty< sal_Int32 >( u"SpinValueMin"_ustr, mnMin );
+    rPropSet.SetProperty< sal_Int32 >( u"SpinValueMax"_ustr, mnMax );
+    rPropSet.SetProperty< sal_Int32 >( u"SpinIncrement"_ustr, mnStep );
 
     // Excel spin buttons always vertical
-    rPropSet.SetProperty( "Orientation", css::awt::ScrollBarOrientation::VERTICAL );
+    rPropSet.SetProperty( u"Orientation"_ustr, css::awt::ScrollBarOrientation::VERTICAL );
 }
 
 OUString XclImpSpinButtonObj::DoGetServiceName() const
 {
-    return "com.sun.star.form.component.SpinButton";
+    return u"com.sun.star.form.component.SpinButton"_ustr;
 }
 
 XclTbxEventType XclImpSpinButtonObj::DoGetEventType() const
@@ -2690,22 +2688,22 @@ void XclImpScrollBarObj::DoReadObj5( XclImpStream& rStrm, sal_uInt16 nNameLen, s
 void XclImpScrollBarObj::DoProcessControl( ScfPropertySet& rPropSet ) const
 {
     // Calc's "Border" property is not the 3D/flat style effect in Excel (#i34712#)
-    rPropSet.SetProperty( "Border", css::awt::VisualEffect::NONE );
-    rPropSet.SetProperty< sal_Int32 >( "DefaultScrollValue", mnValue );
-    rPropSet.SetProperty< sal_Int32 >( "ScrollValueMin", mnMin );
-    rPropSet.SetProperty< sal_Int32 >( "ScrollValueMax", mnMax );
-    rPropSet.SetProperty< sal_Int32 >( "LineIncrement", mnStep );
-    rPropSet.SetProperty< sal_Int32 >( "BlockIncrement", mnPageStep );
-    rPropSet.SetProperty( "VisibleSize", ::std::min< sal_Int32 >( mnPageStep, 1 ) );
+    rPropSet.SetProperty( u"Border"_ustr, css::awt::VisualEffect::NONE );
+    rPropSet.SetProperty< sal_Int32 >( u"DefaultScrollValue"_ustr, mnValue );
+    rPropSet.SetProperty< sal_Int32 >( u"ScrollValueMin"_ustr, mnMin );
+    rPropSet.SetProperty< sal_Int32 >( u"ScrollValueMax"_ustr, mnMax );
+    rPropSet.SetProperty< sal_Int32 >( u"LineIncrement"_ustr, mnStep );
+    rPropSet.SetProperty< sal_Int32 >( u"BlockIncrement"_ustr, mnPageStep );
+    rPropSet.SetProperty( u"VisibleSize"_ustr, ::std::min< sal_Int32 >( mnPageStep, 1 ) );
 
-    namespace AwtScrollOrient = ::com::sun::star::awt::ScrollBarOrientation;
+    namespace AwtScrollOrient = css::awt::ScrollBarOrientation;
     sal_Int32 nApiOrient = ::get_flagvalue( mnOrient, EXC_OBJ_SCROLLBAR_HOR, AwtScrollOrient::HORIZONTAL, AwtScrollOrient::VERTICAL );
-    rPropSet.SetProperty( "Orientation", nApiOrient );
+    rPropSet.SetProperty( u"Orientation"_ustr, nApiOrient );
 }
 
 OUString XclImpScrollBarObj::DoGetServiceName() const
 {
-    return "com.sun.star.form.component.ScrollBar";
+    return u"com.sun.star.form.component.ScrollBar"_ustr;
 }
 
 XclTbxEventType XclImpScrollBarObj::DoGetEventType() const
@@ -2735,9 +2733,9 @@ void XclImpTbxObjListBase::ReadLbsData( XclImpStream& rStrm )
 void XclImpTbxObjListBase::SetBoxFormatting( ScfPropertySet& rPropSet ) const
 {
     // border style
-    namespace AwtVisualEffect = ::com::sun::star::awt::VisualEffect;
+    namespace AwtVisualEffect = css::awt::VisualEffect;
     sal_Int16 nApiBorder = ::get_flagvalue( mnListFlags, EXC_OBJ_LISTBOX_FLAT, AwtVisualEffect::FLAT, AwtVisualEffect::LOOK3D );
-    rPropSet.SetProperty( "Border", nApiBorder );
+    rPropSet.SetProperty( u"Border"_ustr, nApiBorder );
 
     // font formatting
     if( mbHasDefFontIdx )
@@ -2799,7 +2797,7 @@ void XclImpListBoxObj::DoProcessControl( ScfPropertySet& rPropSet ) const
     // selection type
     sal_uInt8 nSelType = ::extract_value< sal_uInt8 >( mnListFlags, 4, 2 );
     bool bMultiSel = nSelType != EXC_OBJ_LISTBOX_SINGLE;
-    rPropSet.SetBoolProperty( "MultiSelection", bMultiSel );
+    rPropSet.SetBoolProperty( u"MultiSelection"_ustr, bMultiSel );
 
     // selection (do not set, if listbox is linked to a cell)
     if( HasCellLink() )
@@ -2825,13 +2823,13 @@ void XclImpListBoxObj::DoProcessControl( ScfPropertySet& rPropSet ) const
     if( !aSelVec.empty() )
     {
         Sequence<sal_Int16> aSelSeq(aSelVec.data(), static_cast<sal_Int32>(aSelVec.size()));
-        rPropSet.SetProperty( "DefaultSelection", aSelSeq );
+        rPropSet.SetProperty( u"DefaultSelection"_ustr, aSelSeq );
     }
 }
 
 OUString XclImpListBoxObj::DoGetServiceName() const
 {
-    return "com.sun.star.form.component.ListBox";
+    return u"com.sun.star.form.component.ListBox"_ustr;
 }
 
 XclTbxEventType XclImpListBoxObj::DoGetEventType() const
@@ -2905,15 +2903,15 @@ void XclImpDropDownObj::DoProcessControl( ScfPropertySet& rPropSet ) const
     // dropdown listbox formatting
     SetBoxFormatting( rPropSet );
     // enable dropdown button
-    rPropSet.SetBoolProperty( "Dropdown", true );
+    rPropSet.SetBoolProperty( u"Dropdown"_ustr, true );
     // dropdown line count
-    rPropSet.SetProperty( "LineCount", mnLineCount );
+    rPropSet.SetProperty( u"LineCount"_ustr, mnLineCount );
 
     if( GetDropDownType() == EXC_OBJ_DROPDOWN_COMBOBOX )
     {
         // text of editable combobox
         if( maTextData.mxString )
-            rPropSet.SetStringProperty( "DefaultText", maTextData.mxString->GetText() );
+            rPropSet.SetStringProperty( u"DefaultText"_ustr, maTextData.mxString->GetText() );
     }
     else
     {
@@ -2921,7 +2919,7 @@ void XclImpDropDownObj::DoProcessControl( ScfPropertySet& rPropSet ) const
         if( !HasCellLink() && (mnSelEntry > 0) )
         {
             Sequence< sal_Int16 > aSelSeq{ o3tl::narrowing<sal_Int16>(mnSelEntry - 1) };
-            rPropSet.SetProperty( "DefaultSelection", aSelSeq );
+            rPropSet.SetProperty( u"DefaultSelection"_ustr, aSelSeq );
         }
     }
 }
@@ -2929,8 +2927,8 @@ void XclImpDropDownObj::DoProcessControl( ScfPropertySet& rPropSet ) const
 OUString XclImpDropDownObj::DoGetServiceName() const
 {
     return (GetDropDownType() == EXC_OBJ_DROPDOWN_COMBOBOX) ?
-        OUString( "com.sun.star.form.component.ComboBox" ) :
-        OUString( "com.sun.star.form.component.ListBox" );
+        u"com.sun.star.form.component.ComboBox"_ustr :
+        u"com.sun.star.form.component.ListBox"_ustr;
 }
 
 XclTbxEventType XclImpDropDownObj::DoGetEventType() const
@@ -3349,12 +3347,11 @@ XclImpDffConverter::XclImpDffConverter( const XclImpRoot& rRoot, SvStream& rDffS
     mnOleImpFlags( 0 ),
     mbNotifyMacroEventRead(false)
 {
-    const SvtFilterOptions& rFilterOpt = SvtFilterOptions::Get();
-    if( rFilterOpt.IsMathType2Math() )
+    if( officecfg::Office::Common::Filter::Microsoft::Import::MathTypeToMath::get() )
         mnOleImpFlags |= OLE_MATHTYPE_2_STARMATH;
-    if( rFilterOpt.IsWinWord2Writer() )
+    if( officecfg::Office::Common::Filter::Microsoft::Import::WinWordToWriter::get() )
         mnOleImpFlags |= OLE_WINWORD_2_STARWRITER;
-    if( rFilterOpt.IsPowerPoint2Impress() )
+    if( officecfg::Office::Common::Filter::Microsoft::Import::PowerPointToImpress::get() )
         mnOleImpFlags |= OLE_POWERPOINT_2_STARIMPRESS;
 
     // try to open the 'Ctls' storage stream containing OCX control properties
@@ -3522,7 +3519,7 @@ rtl::Reference<SdrObject> XclImpDffConverter::CreateSdrObject( const XclImpPictu
                      {
                          css::awt::Size aSz;  // not used in import
                          ScfPropertySet aPropSet( xFComp );
-                         aPropSet.SetStringProperty( "Name", rPicObj.GetObjName() );
+                         aPropSet.SetStringProperty( u"Name"_ustr, rPicObj.GetObjName() );
                          InsertControl( xFComp, aSz,&xShape,true);
                          xSdrObj = rPicObj.CreateSdrObjectFromShape( xShape, rAnchorRect );
                      }
@@ -3535,7 +3532,7 @@ rtl::Reference<SdrObject> XclImpDffConverter::CreateSdrObject( const XclImpPictu
         else
         {
             SfxObjectShell* pDocShell = GetDocShell();
-            tools::SvRef<SotStorage> xSrcStrg = GetRootStorage();
+            rtl::Reference<SotStorage> xSrcStrg = GetRootStorage();
             OUString aStrgName = rPicObj.GetOleStorageName();
             if( pDocShell && xSrcStrg.is() && (!aStrgName.isEmpty()) )
             {
@@ -3550,7 +3547,7 @@ rtl::Reference<SdrObject> XclImpDffConverter::CreateSdrObject( const XclImpPictu
                 if( aGraphic.GetType() != GraphicType::NONE )
                 {
                     ErrCode nError = ERRCODE_NONE;
-                    namespace cssea = ::com::sun::star::embed::Aspects;
+                    namespace cssea = css::embed::Aspects;
                     sal_Int64 nAspects = rPicObj.IsSymbol() ? cssea::MSOLE_ICON : cssea::MSOLE_CONTENT;
                     xSdrObj =
                         CreateSdrOLEFromStorage(
@@ -3760,7 +3757,7 @@ bool XclImpDffConverter::InsertControl( const Reference< XFormComponent >& rxFor
         Reference< XControlModel > xCtrlModel( rxFormComp, UNO_QUERY_THROW );
 
         // create the control shape
-        Reference< XShape > xShape( ScfApiHelper::CreateInstance( GetDocShell(), "com.sun.star.drawing.ControlShape" ), UNO_QUERY_THROW );
+        Reference< XShape > xShape( ScfApiHelper::CreateInstance( GetDocShell(), u"com.sun.star.drawing.ControlShape"_ustr ), UNO_QUERY_THROW );
         Reference< XControlShape > xCtrlShape( xShape, UNO_QUERY_THROW );
 
         // insert the new control into the form
@@ -3771,7 +3768,7 @@ bool XclImpDffConverter::InsertControl( const Reference< XFormComponent >& rxFor
 
         // set control model at control shape and pass back shape to caller
         xCtrlShape->setControl( xCtrlModel );
-        if( pxShape ) *pxShape = xShape;
+        if( pxShape ) *pxShape = std::move(xShape);
         return true;
     }
     catch( const Exception& )
@@ -3948,7 +3945,7 @@ void XclImpDffConverter::InitControlForm()
         }
         else if( SfxObjectShell* pDocShell = GetDocShell() )
         {
-            rConvData.mxCtrlForm.set( ScfApiHelper::CreateInstance( pDocShell, "com.sun.star.form.component.Form" ), UNO_QUERY_THROW );
+            rConvData.mxCtrlForm.set( ScfApiHelper::CreateInstance( pDocShell, u"com.sun.star.form.component.Form"_ustr ), UNO_QUERY_THROW );
             xFormsNC->insertByName( gaStdFormName, Any( rConvData.mxCtrlForm ) );
         }
     }
@@ -4112,7 +4109,7 @@ void XclImpDrawing::ApplyGroupBoxes()
         if (!pRadioButton || pRadioButton->IsInGroup())
             continue;
 
-        OUString sGroupName("autoGroup_");
+        OUString sGroupName(u"autoGroup_"_ustr);
         for (auto& rGroupBox : aGroupBoxAreaMap)
         {
             assert(pRadioButton->GetTab() == rGroupBox.second->GetTab() && "impossible right?");
@@ -4125,7 +4122,7 @@ void XclImpDrawing::ApplyGroupBoxes()
             // I ASSUME the smallest box wins in MS Word. (otherwise first? last?)
             break;
         }
-        pRadioButton->SetStringProperty("GroupName", sGroupName);
+        pRadioButton->SetStringProperty(u"GroupName"_ustr, sGroupName);
     }
 }
 

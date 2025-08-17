@@ -54,6 +54,19 @@ are defined to depend on the HOST-USE-REGULAR-EXPRESSIONS or HOST-USE-WILDCARDS
 properties, see ODF v1.3 part4 3.4 Host-Defined Behaviors
 https://docs.oasis-open.org/office/OpenDocument/v1.3/os/part4-formula/OpenDocument-v1.3-os-part4-formula.html#__RefHeading__1017868_715980110
 
+* Array Functions
+  * CHOOSECOLS
+  * CHOOSEROWS
+  * DROP
+  * EXPAND
+  * HSTACK
+  * VSTACK
+  * TAKE
+  * TEXTSPLIT
+  * TOCOL
+  * TOROW
+  * WRAPCOLS
+  * WRAPROWS
 * Database Functions
   * DAVERAGE
   * DCOUNT
@@ -70,12 +83,22 @@ https://docs.oasis-open.org/office/OpenDocument/v1.3/os/part4-formula/OpenDocume
 * Information Functions
   * COUNTIF
   * COUNTIFS
+* Lambda Functions
+  * LET
 * Lookup Functions
   * HLOOKUP
   * LOOKUP
   * MATCH
+  * XMATCH
   * VLOOKUP
+  * XLOOKUP
+  * FILTER
+  * SORT
+  * SORTBY
+  * UNIQUE
 * Mathematical Functions
+  * RANDARRAY
+  * SEQUENCE
   * SUMIF
   * SUMIFS
 * Statistical Functions

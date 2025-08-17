@@ -61,7 +61,7 @@ using namespace linguistic;
 
 static uno::Reference< XLinguServiceManager2 > GetLngSvcMgr_Impl()
 {
-    uno::Reference< XComponentContext > xContext( comphelper::getProcessComponentContext() );
+    const uno::Reference< XComponentContext >& xContext( comphelper::getProcessComponentContext() );
     uno::Reference< XLinguServiceManager2 > xRes = LinguServiceManager::create( xContext ) ;
     return xRes;
 }
@@ -106,9 +106,9 @@ Sequence< Locale > SAL_CALL Thesaurus::getLocales()
         // get list of dictionaries-to-use
         std::vector< SvtLinguConfigDictionaryEntry > aDics;
         uno::Sequence< OUString > aFormatList;
-        aLinguCfg.GetSupportedDictionaryFormatsFor( "Thesauri",
-                "org.openoffice.lingu.new.Thesaurus", aFormatList );
-        for (const auto& rFormat : std::as_const(aFormatList))
+        aLinguCfg.GetSupportedDictionaryFormatsFor( u"Thesauri"_ustr,
+                u"org.openoffice.lingu.new.Thesaurus"_ustr, aFormatList );
+        for (const auto& rFormat : aFormatList)
         {
             std::vector< SvtLinguConfigDictionaryEntry > aTmpDic(
                     aLinguCfg.GetActiveDictionariesByFormat( rFormat ) );
@@ -377,8 +377,7 @@ Sequence < Reference < css::linguistic2::XMeaning > > SAL_CALL Thesaurus::queryM
                             cTerm = sTerm;
                             break;
                     }
-                    OUString aAlt( cTerm + catst);
-                    pStr[i] = aAlt;
+                    pStr[i] = OUString( cTerm + catst);
                 }
                 rtl::Reference<Meaning> pMn = new Meaning(aRTerm);
                 OUString dTerm(pe->defn,strlen(pe->defn),eEnc );
@@ -548,7 +547,7 @@ void SAL_CALL Thesaurus::removeEventListener( const Reference< XEventListener >&
 // Service specific part
 OUString SAL_CALL Thesaurus::getImplementationName()
 {
-    return "org.openoffice.lingu.new.Thesaurus";
+    return u"org.openoffice.lingu.new.Thesaurus"_ustr;
 }
 
 sal_Bool SAL_CALL Thesaurus::supportsService( const OUString& ServiceName )

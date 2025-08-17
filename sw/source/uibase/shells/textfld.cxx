@@ -27,6 +27,7 @@
 #include <txtfld.hxx>
 #include <svl/itempool.hxx>
 #include <svl/numformat.hxx>
+#include <editeng/editobj.hxx>
 #include <tools/lineend.hxx>
 #include <svl/whiter.hxx>
 #include <svl/eitem.hxx>
@@ -37,10 +38,15 @@
 #include <svx/hlnkitem.hxx>
 #include <svx/svxdlg.hxx>
 #include <osl/diagnose.h>
+#include <charatr.hxx>
+#include <fmtfsize.hxx>
 #include <fmthdft.hxx>
 #include <fmtinfmt.hxx>
 #include <fldwrap.hxx>
+#include <frmatr.hxx>
+#include <hfspacingitem.hxx>
 #include <redline.hxx>
+#include <swfont.hxx>
 #include <view.hxx>
 #include <viewopt.hxx>
 #include <wrtsh.hxx>
@@ -59,9 +65,9 @@
 #include <svtools/strings.hrc>
 #include <svtools/svtresid.hxx>
 
-#include <editeng/ulspitem.hxx>
 #include <xmloff/odffields.hxx>
 #include <IDocumentContentOperations.hxx>
+#include <IDocumentLayoutAccess.hxx>
 #include <IDocumentRedlineAccess.hxx>
 #include <IDocumentUndoRedo.hxx>
 #include <svl/zforlist.hxx>
@@ -76,8 +82,6 @@
 #include <translatehelper.hxx>
 #include <sfx2/dispatch.hxx>
 
-
-using namespace nsSwDocInfoSubType;
 
 static OUString lcl_BuildTitleWithRedline( const SwRangeRedline *pRedline )
 {
@@ -109,6 +113,23 @@ static OUString lcl_BuildTitleWithRedline( const SwRangeRedline *pRedline )
     return sTitle + SwResId(pResId);
 }
 
+static bool lcl_canUserModifyAnnotation(const SwView& rView, std::u16string_view sAuthor)
+{
+    return !comphelper::LibreOfficeKit::isActive() || !rView.IsLokReadOnlyView()
+           || sAuthor == rView.GetRedlineAuthor();
+}
+
+static bool lcl_canUserModifyAnnotation(const SwView& rView,
+                                        const sw::annotation::SwAnnotationWin* pAnnotationWin)
+{
+    return pAnnotationWin && lcl_canUserModifyAnnotation(rView, pAnnotationWin->GetAuthor());
+}
+
+static bool lcl_canUserModifyAnnotation(const SwView& rView, sal_uInt32 nPostItId)
+{
+    return lcl_canUserModifyAnnotation(rView, rView.GetPostItMgr()->GetAnnotationWin(nPostItId));
+}
+
 void SwTextShell::ExecField(SfxRequest &rReq)
 {
     SwWrtShell& rSh = GetShell();
@@ -117,7 +138,7 @@ void SwTextShell::ExecField(SfxRequest &rReq)
     sal_uInt16 nSlot = rReq.GetSlot();
     const SfxItemSet* pArgs = rReq.GetArgs();
     if(pArgs)
-        pArgs->GetItemState(GetPool().GetWhich(nSlot), false, &pItem);
+        pArgs->GetItemState(GetPool().GetWhichIDFromSlotID(nSlot), false, &pItem);
 
     bool bMore = false;
     bool bIsText = true;
@@ -151,18 +172,48 @@ void SwTextShell::ExecField(SfxRequest &rReq)
                             }
 
                             SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-                            ScopedVclPtr<SfxAbstractLinksDialog> pDlg(pFact->CreateLinksDialog(GetView().GetFrameWeld(), &rSh.GetLinkManager(), false, &rLink));
-                            pDlg->Execute();
+                            VclPtr<SfxAbstractLinksDialog> pDlg(pFact->CreateLinksDialog(GetView().GetFrameWeld(), &rSh.GetLinkManager(), false, &rLink));
+                            pDlg->StartExecuteAsync(
+                                [pDlg] (sal_Int32 /*nResult*/)->void
+                                {
+                                    pDlg->disposeOnce();
+                                }
+                            );
                         }
                         break;
                     }
                     default:
                     {
                         SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
-                        ScopedVclPtr<SfxAbstractDialog> pDlg(pFact->CreateSwFieldEditDlg( GetView() ));
-                        pDlg->Execute();
+                        VclPtr<SfxAbstractDialog> pDlg(pFact->CreateSwFieldEditDlg( GetView() ));
+                        // without TabPage no dialog
+                        if (pDlg)
+                            pDlg->StartExecuteAsync(
+                                [pDlg] (sal_Int32 /*nResult*/)->void
+                                {
+                                    pDlg->disposeOnce();
+                                }
+                            );
                     }
                 }
+            }
+            break;
+        }
+        case FN_COPY_FIELD:
+        {
+            //call copy field dialog with field string - if there is any!
+            SwField* pField = rSh.GetCurField(true);
+            if( pField && pField->ExpandField(true, nullptr).getLength())
+            {
+                SwAbstractDialogFactory* pFact = SwAbstractDialogFactory::Create();
+                VclPtr<AbstractCopyFieldDlg> pDlg(pFact->CreateCopyFieldDlg(
+                    GetView().GetFrameWeld(), pField->ExpandField(true, nullptr)));
+                pDlg->StartExecuteAsync(
+                    [pDlg] (sal_Int32 /*nResult*/)->void
+                    {
+                        pDlg->disposeOnce();
+                    }
+                );
             }
             break;
         }
@@ -173,6 +224,15 @@ void SwTextShell::ExecField(SfxRequest &rReq)
             if (pField)
             {
                rSh.UpdateOneField(*pField);
+            }
+            break;
+        }
+        case FN_CONVERT_SEL_FIELD:
+        {
+            SwField* pField = rSh.GetCurField();
+            if (pField)
+            {
+               rSh.ConvertOneFieldToText(*pField);
             }
             break;
         }
@@ -232,7 +292,7 @@ void SwTextShell::ExecField(SfxRequest &rReq)
             const SfxStringItem* pName = rReq.GetArg<SfxStringItem>(FN_GOTO_MARK);
             if (pName)
             {
-                rSh.GotoMark(pName->GetValue());
+                rSh.GotoMark(SwMarkName(pName->GetValue()));
             }
         }
         break;
@@ -341,7 +401,14 @@ void SwTextShell::ExecField(SfxRequest &rReq)
                         GetShellPtr()->InsertFootnote(OUString(), /*bEndNote=*/true);
                     }
                 }
-                SwInsertField_Data aData(nType, nSubType, aPar1, aPar2, nFormat, GetShellPtr(), cSeparator );
+                bool bNeverExpand = false;
+                const SfxBoolItem* pNeverExpand = rReq.GetArg<SfxBoolItem>(FN_PARAM_6);
+                if (pNeverExpand)
+                {
+                    bNeverExpand = pNeverExpand->GetValue();
+                }
+                SwInsertField_Data aData(nType, nSubType, aPar1, aPar2, nFormat, GetShellPtr(),
+                                         cSeparator, true, bNeverExpand);
                 bRes = aFieldMgr.InsertField( aData );
             }
             else
@@ -380,12 +447,17 @@ void SwTextShell::ExecField(SfxRequest &rReq)
             const SvxPostItIdItem* pIdItem = rReq.GetArg<SvxPostItIdItem>(SID_ATTR_POSTIT_ID);
             if (pIdItem && !pIdItem->GetValue().isEmpty() && GetView().GetPostItMgr())
             {
-                GetView().GetPostItMgr()->Delete(pIdItem->GetValue().toUInt32());
+                sal_uInt32 nPostItId = pIdItem->GetValue().toUInt32();
+                if (lcl_canUserModifyAnnotation(GetView(), nPostItId))
+                    GetView().GetPostItMgr()->Delete(nPostItId);
             }
             else if ( GetView().GetPostItMgr() &&
                       GetView().GetPostItMgr()->HasActiveSidebarWin() )
             {
-                GetView().GetPostItMgr()->DeleteActiveSidebarWin();
+                sw::annotation::SwAnnotationWin* pAnnotationWin
+                    = GetView().GetPostItMgr()->GetActiveSidebarWin();
+                if (lcl_canUserModifyAnnotation(GetView(), pAnnotationWin))
+                    GetView().GetPostItMgr()->DeleteActiveSidebarWin();
             }
             break;
         }
@@ -394,12 +466,16 @@ void SwTextShell::ExecField(SfxRequest &rReq)
             const SvxPostItIdItem* pIdItem = rReq.GetArg<SvxPostItIdItem>(SID_ATTR_POSTIT_ID);
             if (pIdItem && !pIdItem->GetValue().isEmpty() && GetView().GetPostItMgr())
             {
-                GetView().GetPostItMgr()->DeleteCommentThread(pIdItem->GetValue().toUInt32());
+                sal_uInt32 nPostItId = pIdItem->GetValue().toUInt32();
+                if (lcl_canUserModifyAnnotation(GetView(), nPostItId))
+                    GetView().GetPostItMgr()->DeleteCommentThread(nPostItId);
             }
-            else if ( GetView().GetPostItMgr() &&
-                        GetView().GetPostItMgr()->HasActiveSidebarWin() )
+            else if (GetView().GetPostItMgr() && GetView().GetPostItMgr()->HasActiveSidebarWin())
             {
-                GetView().GetPostItMgr()->DeleteActiveSidebarWin();
+                sw::annotation::SwAnnotationWin* pAnnotationWin
+                    = GetView().GetPostItMgr()->GetActiveSidebarWin();
+                if (lcl_canUserModifyAnnotation(GetView(), pAnnotationWin))
+                    GetView().GetPostItMgr()->DeleteActiveSidebarWin();
             }
             break;
         }
@@ -435,8 +511,9 @@ void SwTextShell::ExecField(SfxRequest &rReq)
         case FN_DELETE_NOTE_AUTHOR:
         {
             const SfxStringItem* pNoteItem = rReq.GetArg<SfxStringItem>(nSlot);
-            if ( pNoteItem && GetView().GetPostItMgr() )
-                GetView().GetPostItMgr()->Delete( pNoteItem->GetValue() );
+            if (pNoteItem && GetView().GetPostItMgr()
+                && lcl_canUserModifyAnnotation(GetView(), pNoteItem->GetValue()))
+                GetView().GetPostItMgr()->Delete(pNoteItem->GetValue());
         }
         break;
         case FN_HIDE_NOTE:
@@ -469,23 +546,20 @@ void SwTextShell::ExecField(SfxRequest &rReq)
                     auto pWin = pMgr->GetAnnotationWin(pIdItem->GetValue().toUInt32());
                     if(pWin)
                     {
+                        if (const SvxPostItTextItem* pHtmlItem = rReq.GetArg<SvxPostItTextItem>(SID_ATTR_POSTIT_HTML))
+                        {
+                            SwDocShell* pDocSh = GetView().GetDocShell();
+                            Outliner aOutliner(&pDocSh->GetPool(), OutlinerMode::TextObject);
+                            SwPostItHelper::ImportHTML(aOutliner, pHtmlItem->GetValue());
+                            if (std::optional<OutlinerParaObject> oPara = aOutliner.CreateParaObject())
+                                pMgr->RegisterAnswer(oPara.value());
+                        }
+
                         OUString sText;
                         if(const auto pTextItem = rReq.GetArg<SvxPostItTextItem>(SID_ATTR_POSTIT_TEXT))
                             sText = pTextItem->GetValue();
                         pMgr->RegisterAnswerText(sText);
                         pWin->ExecuteCommand(nSlot);
-
-                        SwPostItField* pLatestPostItField = pMgr->GetLatestPostItField();
-                        if (pLatestPostItField)
-                        {
-                            // Set the parent postit id of the reply.
-                            pLatestPostItField->SetParentPostItId(pIdItem->GetValue().toUInt32());
-
-                            // If name of the replied comment is empty, we need to set a name in order to connect them in the xml file.
-                            pWin->GeneratePostItName(); // Generates a name if the current name is empty.
-
-                            pLatestPostItField->SetParentName(pWin->GetPostItField()->GetName());
-                        }
                     }
                 }
             }
@@ -501,15 +575,19 @@ void SwTextShell::ExecField(SfxRequest &rReq)
             const SvxPostItIdItem* pIdItem = rReq.GetArg<SvxPostItIdItem>(SID_ATTR_POSTIT_ID);
             if (pIdItem && !pIdItem->GetValue().isEmpty())
             {
-                const SvxPostItTextItem* pTextItem = rReq.GetArg<SvxPostItTextItem>(SID_ATTR_POSTIT_TEXT);
-                OUString sText;
-                if ( pTextItem )
-                    sText = pTextItem->GetValue();
-
                 sw::annotation::SwAnnotationWin* pAnnotationWin = GetView().GetPostItMgr()->GetAnnotationWin(pIdItem->GetValue().toUInt32());
-                if (pAnnotationWin)
+                if (pAnnotationWin && lcl_canUserModifyAnnotation(GetView(), pAnnotationWin))
                 {
-                    pAnnotationWin->UpdateText(sText);
+                    if (const SvxPostItTextItem* pHtmlItem = rReq.GetArg<SvxPostItTextItem>(SID_ATTR_POSTIT_HTML))
+                        pAnnotationWin->UpdateHTML(pHtmlItem->GetValue());
+                    else
+                    {
+                        const SvxPostItTextItem* pTextItem = rReq.GetArg<SvxPostItTextItem>(SID_ATTR_POSTIT_TEXT);
+                        OUString sText;
+                        if (pTextItem)
+                            sText = pTextItem->GetValue();
+                        pAnnotationWin->UpdateText(sText);
+                    }
 
                     // explicit state update to get the Undo state right
                     GetView().AttrChangedNotify(nullptr);
@@ -517,22 +595,17 @@ void SwTextShell::ExecField(SfxRequest &rReq)
             }
         }
         break;
+        case FN_PROMOTE_COMMENT:
+        {
+            const SvxPostItIdItem* pIdItem = rReq.GetArg<SvxPostItIdItem>(SID_ATTR_POSTIT_ID);
+            if (pIdItem && !pIdItem->GetValue().isEmpty() && GetView().GetPostItMgr())
+            {
+                GetView().GetPostItMgr()->PromoteToRoot(pIdItem->GetValue().toUInt32());
+            }
+            break;
+        }
         case FN_REDLINE_COMMENT:
         {
-            /*  this code can be used once we want redline comments in the margin, all other stuff can
-                then be deleted
-            String sComment;
-            const SwRangeRedline *pRedline = rSh.GetCurrRedline();
-
-            if (pRedline)
-            {
-                sComment = pRedline->GetComment();
-                if ( !sComment.Len() )
-                    GetView().GetDocShell()->Broadcast(SwRedlineHint(pRedline,SWREDLINE_INSERTED));
-                const_cast<SwRangeRedline*>(pRedline)->Broadcast(SwRedlineHint(pRedline,SWREDLINE_FOCUS,&GetView()));
-            }
-            */
-
             const SwRangeRedline *pRedline = rSh.GetCurrRedline();
             SwDoc *pDoc = rSh.GetDoc();
             // If index is specified, goto and select the appropriate redline
@@ -667,7 +740,7 @@ void SwTextShell::ExecField(SfxRequest &rReq)
 
                 SwScriptField* pField = static_cast<SwScriptField*>(aMgr.GetCurField());
                 bNew = !pField || (pField->GetTyp()->Which() != SwFieldIds::Script);
-                bUpdate = pField && ( bIsUrl != static_cast<bool>(pField->GetFormat()) || pField->GetPar2() != aType || pField->GetPar1() != aText );
+                bUpdate = pField && ( bIsUrl != pField->IsCodeURL() || pField->GetPar2() != aType || pField->GetPar1() != aText );
             }
             else
             {
@@ -731,22 +804,23 @@ void SwTextShell::ExecField(SfxRequest &rReq)
             bIsText = false;
             goto FIELD_INSERT;
         case FN_INSERT_FLD_PGCOUNT :
+        case FN_INSERT_FLD_RANGE_PGCOUNT:
             nInsertType = SwFieldTypesEnum::DocumentStatistics;
-            nInsertSubType = 0;
+            nInsertSubType = FN_INSERT_FLD_RANGE_PGCOUNT == nSlot ? 1 : 0;
             bIsText = false;
             nInsertFormat = SVX_NUM_PAGEDESC;
             goto FIELD_INSERT;
         case FN_INSERT_FLD_TOPIC   :
             nInsertType = SwFieldTypesEnum::DocumentInfo;
-            nInsertSubType = DI_SUBJECT;
+            nInsertSubType = static_cast<sal_uInt16>(SwDocInfoSubType::Subject);
             goto FIELD_INSERT;
         case FN_INSERT_FLD_TITLE   :
             nInsertType = SwFieldTypesEnum::DocumentInfo;
-            nInsertSubType = DI_TITLE;
+            nInsertSubType = static_cast<sal_uInt16>(SwDocInfoSubType::Title);
             goto FIELD_INSERT;
         case FN_INSERT_FLD_AUTHOR  :
             nInsertType = SwFieldTypesEnum::DocumentInfo;
-            nInsertSubType = DI_CREATE|DI_SUB_AUTHOR;
+            nInsertSubType = static_cast<sal_uInt16>(SwDocInfoSubType::Create | SwDocInfoSubType::SubAuthor);
 
 FIELD_INSERT:
         {
@@ -794,7 +868,6 @@ FIELD_INSERT:
             if(pCursorPos)
             {
                 // Insert five En Space into the text field so the field has extent
-                static constexpr OUStringLiteral vEnSpaces = u"\u2002\u2002\u2002\u2002\u2002";
                 OUString aFieldResult(vEnSpaces);
                 const SfxStringItem* pFieldResult = rReq.GetArg<SfxStringItem>(FN_PARAM_3);
                 if (pFieldResult)
@@ -859,8 +932,8 @@ FIELD_INSERT:
                     *aFieldPam.GetMark() = *pCursorPos->GetPoint();
 
                     IDocumentMarkAccess* pMarksAccess = rSh.GetDoc()->getIDocumentMarkAccess();
-                    sw::mark::IFieldmark* pFieldmark = pMarksAccess->makeFieldBookmark(
-                        aFieldPam, OUString(), aFieldType, aFieldPam.Start());
+                    sw::mark::Fieldmark* pFieldmark = pMarksAccess->makeFieldBookmark(
+                        aFieldPam, SwMarkName(), aFieldType, aFieldPam.Start());
                     if (pFieldmark && !aFieldCode.isEmpty())
                     {
                         pFieldmark->GetParameters()->insert(
@@ -882,7 +955,7 @@ FIELD_INSERT:
             if(pCursorPos)
             {
                 IDocumentMarkAccess* pMarksAccess = rSh.GetDoc()->getIDocumentMarkAccess();
-                pMarksAccess->makeNoTextFieldBookmark(*pCursorPos, OUString(), ODF_FORMCHECKBOX);
+                pMarksAccess->makeNoTextFieldBookmark(*pCursorPos, SwMarkName(), ODF_FORMCHECKBOX);
             }
 
             rSh.GetDoc()->GetIDocumentUndoRedo().EndUndo(SwUndoId::INSERT_FORM_FIELD, nullptr);
@@ -897,7 +970,7 @@ FIELD_INSERT:
             if(pCursorPos)
             {
                 IDocumentMarkAccess* pMarksAccess = rSh.GetDoc()->getIDocumentMarkAccess();
-                pMarksAccess->makeNoTextFieldBookmark(*pCursorPos, OUString(), ODF_FORMDROPDOWN);
+                pMarksAccess->makeNoTextFieldBookmark(*pCursorPos, SwMarkName(), ODF_FORMDROPDOWN);
             }
 
             rSh.GetDoc()->GetIDocumentUndoRedo().EndUndo(SwUndoId::INSERT_FORM_FIELD, nullptr);
@@ -912,18 +985,17 @@ FIELD_INSERT:
         if(pCursorPos)
         {
             // Insert five enspaces into the text field so the field has extent
-            sal_Unicode vEnSpaces[ODF_FORMFIELD_DEFAULT_LENGTH] = {8194, 8194, 8194, 8194, 8194};
-            bool bSuccess = rSh.GetDoc()->getIDocumentContentOperations().InsertString(*pCursorPos, OUString(vEnSpaces, ODF_FORMFIELD_DEFAULT_LENGTH));
+            bool bSuccess = rSh.GetDoc()->getIDocumentContentOperations().InsertString(*pCursorPos, vEnSpaces);
             if(bSuccess)
             {
                 IDocumentMarkAccess* pMarksAccess = rSh.GetDoc()->getIDocumentMarkAccess();
                 SwPaM aFieldPam(pCursorPos->GetPoint()->GetNode(), pCursorPos->GetPoint()->GetContentIndex() - ODF_FORMFIELD_DEFAULT_LENGTH,
                                 pCursorPos->GetPoint()->GetNode(), pCursorPos->GetPoint()->GetContentIndex());
-                sw::mark::IFieldmark* pFieldBM = pMarksAccess->makeFieldBookmark(aFieldPam, OUString(), ODF_FORMDATE,
+                sw::mark::Fieldmark* pFieldBM = pMarksAccess->makeFieldBookmark(aFieldPam, SwMarkName(), ODF_FORMDATE,
                             aFieldPam.Start());
 
                 // Use a default date format and language
-                sw::mark::IFieldmark::parameter_map_t* pParameters = pFieldBM->GetParameters();
+                sw::mark::Fieldmark::parameter_map_t* pParameters = pFieldBM->GetParameters();
                 SvNumberFormatter* pFormatter = rSh.GetDoc()->GetNumberFormatter();
                 sal_uInt32 nStandardFormat = pFormatter->GetStandardFormat(SvNumFormatType::DATE);
                 const SvNumberformat* pFormat = pFormatter->GetEntry(nStandardFormat);
@@ -967,7 +1039,7 @@ FIELD_INSERT:
         sal_Int32 nFieldIndex = 0;
         for (auto it = pMarkAccess->getFieldmarksBegin(); it != pMarkAccess->getFieldmarksEnd(); ++it)
         {
-            auto pFieldmark = dynamic_cast<sw::mark::IFieldmark*>(*it);
+            sw::mark::Fieldmark* pFieldmark = *it;
             assert(pFieldmark);
             if (pFieldmark->GetFieldname() != aFieldType)
             {
@@ -993,7 +1065,7 @@ FIELD_INSERT:
             }
 
             comphelper::SequenceAsHashMap aMap(aFields[nFieldIndex++]);
-            itParam->second = aMap["FieldCommand"];
+            itParam->second = aMap[u"FieldCommand"_ustr];
             SwPaM aPaM(pFieldmark->GetMarkPos(), pFieldmark->GetOtherMarkPos());
             aPaM.Normalize();
             // Skip field start & separator.
@@ -1002,7 +1074,7 @@ FIELD_INSERT:
             aPaM.GetMark()->AdjustContent(-1);
             rSh.GetDoc()->getIDocumentContentOperations().DeleteAndJoin(aPaM);
             OUString aFieldResult;
-            aMap["FieldResult"] >>= aFieldResult;
+            aMap[u"FieldResult"_ustr] >>= aFieldResult;
             SwTranslateHelper::PasteHTMLToPaM(rSh, &aPaM, aFieldResult.toUtf8());
         }
 
@@ -1029,10 +1101,10 @@ FIELD_INSERT:
         rSh.StartAction();
 
         IDocumentMarkAccess* pMarkAccess = rSh.GetDoc()->getIDocumentMarkAccess();
-        std::vector<sw::mark::IMark*> aRemovals;
+        std::vector<sw::mark::MarkBase*> aRemovals;
         for (auto it = pMarkAccess->getFieldmarksBegin(); it != pMarkAccess->getFieldmarksEnd(); ++it)
         {
-            auto pFieldmark = dynamic_cast<sw::mark::IFieldmark*>(*it);
+            sw::mark::Fieldmark* pFieldmark = *it;
             assert(pFieldmark);
             if (pFieldmark->GetFieldname() != aFieldType)
             {
@@ -1080,12 +1152,12 @@ FIELD_INSERT:
         pDlg->StartExecuteAsync([pShell, &rSh, pDlg](int nResult) {
             if ( nResult == RET_OK )
             {
-                auto rDoc = rSh.GetDoc();
+                auto& rDoc = *rSh.GetDoc();
 
                 rSh.LockView(true);
                 rSh.StartAllAction();
                 rSh.SwCursorShell::Push();
-                rDoc->GetIDocumentUndoRedo().StartUndo(SwUndoId::INSERT_PAGE_NUMBER, nullptr);
+                rDoc.GetIDocumentUndoRedo().StartUndo(SwUndoId::INSERT_PAGE_NUMBER, nullptr);
 
                 const size_t nPageDescIndex = rSh.GetCurPageDesc();
                 const SwPageDesc& rDesc = rSh.GetPageDesc(nPageDescIndex);
@@ -1094,18 +1166,18 @@ FIELD_INSERT:
                 const bool bFooterAlreadyOn = rDesc.GetMaster().GetFooter().IsActive();
                 const bool bIsSinglePage = rDesc.GetFollow() != &rDesc;
                 const size_t nMirrorPagesNeeded = rDesc.IsFirstShared() ? 2 : 3;
-                const OUString sBookmarkName = OUString::Concat("PageNumWizard_")
-                    + (bHeader ? "HEADER" : "FOOTER") + "_" + rDesc.GetName();
+                const SwMarkName sBookmarkName( OUString::Concat("PageNumWizard_")
+                    + (bHeader ? "HEADER" : "FOOTER") + "_" + rDesc.GetName().toString()
+                    + OUString::number(rSh.GetVirtPageNum()) );
                 IDocumentMarkAccess& rIDMA = *rSh.getIDocumentMarkAccess();
 
                 // Allow wizard to be re-run: delete previously wizard-inserted page number.
                 // Try before creating non-shared header: avoid copying ODD bookmark onto EVEN page.
-                IDocumentMarkAccess::const_iterator_t ppMark = rIDMA.findMark(
-                    sBookmarkName + OUString::number(rSh.GetVirtPageNum()));
+                auto ppMark = rIDMA.findMark(sBookmarkName);
                 if (ppMark != rIDMA.getAllMarksEnd() && *ppMark)
                 {
                     SwPaM aDeleteOldPageNum((*ppMark)->GetMarkStart(), (*ppMark)->GetMarkEnd());
-                    rDoc->getIDocumentContentOperations().DeleteAndJoin(aDeleteOldPageNum);
+                    rDoc.getIDocumentContentOperations().DeleteAndJoin(aDeleteOldPageNum);
                 }
 
                 SwPageDesc aNewDesc(rDesc);
@@ -1140,6 +1212,72 @@ FIELD_INSERT:
                               : const_cast<SwFrameFormat&>(*rMaster.GetFooter().GetFooterFormat());
                     rFormat.SetFormatAttr(aUL);
                     rFormat.SetFormatAttr(aFill);
+
+                    if (pDlg->GetFitIntoExistingMargins())
+                    {
+                        SvxULSpaceItem aPageUL(aNewDesc.GetMaster().GetULSpace());
+                        tools::Long nPageMargin = bHeader ? aPageUL.GetUpper() : aPageUL.GetLower();
+
+                        // most printers can't print to paper edge - use arbitrary ~14pt as minimum
+                        if (nPageMargin > constTwips_5mm)
+                        {
+                            // reduce existing margin by the "Spacing"
+                            nPageMargin -= constTwips_5mm;
+
+                            // also reduce by the "Height" (as calculated from the font)
+                            tools::Long nFontHeight = constTwips_5mm; // appropriate for 12pt font
+                            const OutputDevice* pOutDev = Application::GetDefaultDevice();
+                            const SwViewShell* pViewSh
+                                = rDoc.getIDocumentLayoutAccess().GetCurrentViewShell();
+                            UIName sParaStyle(bHeader ? "Header" : "Footer");
+                            SwTextFormatColl* pStyle = rDoc.FindTextFormatCollByName(sParaStyle);
+                            if (pStyle && pOutDev)
+                            {
+                                SwFont aFont(
+                                    &pStyle->GetAttrSet(), /*IDocumentSettingAccess=*/nullptr);
+
+                                // sledgehammer approach: since the in-use-font (Latin/CTL/CKJ)
+                                // is not known, use the tallest of the three just to ensure fit.
+                                sal_uInt16 nHeight = aFont.GetHeight(pViewSh, *pOutDev); // Latin
+
+                                aFont.SetActual(SwFontScript::CTL);
+                                nHeight = std::max(nHeight, aFont.GetHeight(pViewSh, *pOutDev));
+
+                                aFont.SetActual(SwFontScript::CJK);
+                                nFontHeight = std::max(nHeight, aFont.GetHeight(pViewSh, *pOutDev));
+
+                                // Spacing: above and below paragraph
+                                const SvxULSpaceItem& rParaStyleUL = pStyle->GetULSpace();
+                                nFontHeight += rParaStyleUL.GetUpper() + rParaStyleUL.GetLower();
+
+                                // Border padding: top and bottom
+                                const SvxBoxItem rBorders = pStyle->GetBox();
+                                nFontHeight += rBorders.CalcLineSpace(SvxBoxItemLine::TOP, true);
+                                nFontHeight += rBorders.CalcLineSpace(SvxBoxItemLine::BOTTOM, true);
+                            }
+                            nPageMargin -= nFontHeight;
+
+                            nPageMargin = std::max(nPageMargin, constTwips_5mm);
+                            if (bHeader)
+                                aPageUL.SetUpper(nPageMargin);
+                            else
+                                aPageUL.SetLower(nPageMargin);
+                            aNewDesc.GetMaster().SetFormatAttr(aPageUL);
+
+                            // force aggressively calculated font height as minimum to ensure
+                            // effective margin stays the same (instead of getting smaller)
+                            SwFormatFrameSize aSize(rFormat.GetFrameSize());
+                            aSize.SetHeightSizeType(SwFrameSize::Minimum);
+                            // frame size property includes both Spacing + Height
+                            aSize.SetHeight(constTwips_5mm + nFontHeight);
+                            rFormat.SetFormatAttr(aSize);
+
+                            // in case the calculated font height isn't actually large enough,
+                            // eat into spacing first before pushing into the content area.
+                            rFormat.SetFormatAttr(SwHeaderAndFooterEatSpacingItem(
+                                RES_HEADER_FOOTER_EAT_SPACING, true));
+                        }
+                    }
 
                     // Might as well turn on margin mirroring too - if appropriate
                     if (pDlg->GetMirrorOnEvenPages() && !bHeaderAlreadyOn && !bFooterAlreadyOn
@@ -1226,11 +1364,11 @@ FIELD_INSERT:
 
                 // Allow wizard to be re-run: delete previously wizard-inserted page number.
                 // Now that the cursor may have moved to a different page, try delete again.
-                ppMark = rIDMA.findMark(sBookmarkName + OUString::number(rSh.GetVirtPageNum()));
+                ppMark = rIDMA.findMark(sBookmarkName);
                 if (ppMark != rIDMA.getAllMarksEnd() && *ppMark)
                 {
                     SwPaM aDeleteOldPageNum((*ppMark)->GetMarkStart(), (*ppMark)->GetMarkEnd());
-                    rDoc->getIDocumentContentOperations().DeleteAndJoin(aDeleteOldPageNum);
+                    rDoc.getIDocumentContentOperations().DeleteAndJoin(aDeleteOldPageNum);
                 }
 
                 SwTextNode* pTextNode = rSh.GetCursor()->GetPoint()->GetNode().GetTextNode();
@@ -1238,7 +1376,7 @@ FIELD_INSERT:
                 // Insert new line if there is already text in header/footer
                 if (pTextNode && !pTextNode->GetText().isEmpty())
                 {
-                    rDoc->getIDocumentContentOperations().SplitNode(*rSh.GetCursor()->GetPoint(), false);
+                    rDoc.getIDocumentContentOperations().SplitNode(*rSh.GetCursor()->GetPoint(), false);
 
                     // Go back to start of header/footer
                     if (bHeader)
@@ -1278,11 +1416,13 @@ FIELD_INSERT:
                 SwInsertField_Data aData(SwFieldTypesEnum::PageNumber, 0,
                             OUString(), OUString(), SVX_NUM_PAGEDESC);
                 aMgr.InsertField(aData);
-                if (pDlg->GetIncludePageTotal())
+                if (pDlg->GetIncludePageTotal() ||
+                    pDlg->GetIncludePageRangeTotal())
                 {
-                    rDoc->getIDocumentContentOperations().InsertString(*rSh.GetCursor(), " / ");
-                    SwInsertField_Data aPageTotalData(SwFieldTypesEnum::DocumentStatistics, DS_PAGE,
-                                                      OUString(), OUString(), SVX_NUM_PAGEDESC);
+                    rDoc.getIDocumentContentOperations().InsertString(*rSh.GetCursor(), u" / "_ustr);
+                    SwInsertField_Data aPageTotalData(SwFieldTypesEnum::DocumentStatistics,
+                        static_cast<sal_uInt16>(pDlg->GetIncludePageTotal() ? SwDocStatSubType::Page : SwDocStatSubType::PageRange),
+                        OUString(), OUString(), SVX_NUM_PAGEDESC);
                     aMgr.InsertField(aPageTotalData);
                 }
 
@@ -1291,8 +1431,8 @@ FIELD_INSERT:
                 aNewBookmarkPaM.SetMark();
                 assert(aNewBookmarkPaM.GetPointContentNode() && "only SetContent on content node");
                 aNewBookmarkPaM.Start()->SetContent(nStartContentIndex);
-                rIDMA.makeMark(aNewBookmarkPaM,
-                               sBookmarkName + OUString::number(rSh.GetVirtPageNum()),
+                sw::mark::MarkBase* pNewMark = rIDMA.makeMark(aNewBookmarkPaM,
+                               sBookmarkName,
                                IDocumentMarkAccess::MarkType::BOOKMARK,
                                sw::mark::InsertMode::New);
 
@@ -1301,11 +1441,10 @@ FIELD_INSERT:
                     && rSh.SetCursorInHdFt(nPageDescIndex, bHeader, /*Even=*/true))
                 {
                     assert(nEvenPage && "what? no even page and yet we got here?");
-                    ppMark = rIDMA.findMark(sBookmarkName + OUString::number(rSh.GetVirtPageNum()));
-                    if (ppMark != rIDMA.getAllMarksEnd() && *ppMark)
+                    if (pNewMark)
                     {
-                        SwPaM aDeleteOldPageNum((*ppMark)->GetMarkStart(), (*ppMark)->GetMarkEnd());
-                        rDoc->getIDocumentContentOperations().DeleteAndJoin(aDeleteOldPageNum);
+                        SwPaM aDeleteOldPageNum(pNewMark->GetMarkStart(), pNewMark->GetMarkEnd());
+                        rDoc.getIDocumentContentOperations().DeleteAndJoin(aDeleteOldPageNum);
                     }
 
                     pTextNode = rSh.GetCursor()->GetPoint()->GetNode().GetTextNode();
@@ -1313,7 +1452,7 @@ FIELD_INSERT:
                     // Insert new line if there is already text in header/footer
                     if (pTextNode && !pTextNode->GetText().isEmpty())
                     {
-                        rDoc->getIDocumentContentOperations().SplitNode(
+                        rDoc.getIDocumentContentOperations().SplitNode(
                             *rSh.GetCursor()->GetPoint(), false);
                         // Go back to start of header/footer
                         rSh.SetCursorInHdFt(nPageDescIndex, bHeader, /*Even=*/true);
@@ -1334,9 +1473,9 @@ FIELD_INSERT:
                     aEvenMgr.InsertField(aData);
                     if (pDlg->GetIncludePageTotal())
                     {
-                        rDoc->getIDocumentContentOperations().InsertString(*rSh.GetCursor(), " / ");
+                        rDoc.getIDocumentContentOperations().InsertString(*rSh.GetCursor(), u" / "_ustr);
                         SwInsertField_Data aPageTotalData(SwFieldTypesEnum::DocumentStatistics,
-                                                          DS_PAGE, OUString(), OUString(),
+                                                          static_cast<sal_uInt16>(SwDocStatSubType::Page), OUString(), OUString(),
                                                           SVX_NUM_PAGEDESC);
                         aMgr.InsertField(aPageTotalData);
                     }
@@ -1346,7 +1485,7 @@ FIELD_INSERT:
                     aNewEvenBookmarkPaM.SetMark();
                     aNewEvenBookmarkPaM.Start()->SetContent(nStartContentIndex);
                     rIDMA.makeMark(aNewEvenBookmarkPaM,
-                                   sBookmarkName + OUString::number(rSh.GetVirtPageNum()),
+                                   sBookmarkName,
                                    IDocumentMarkAccess::MarkType::BOOKMARK,
                                    sw::mark::InsertMode::New);
                 }
@@ -1354,7 +1493,11 @@ FIELD_INSERT:
                 rSh.SwCursorShell::Pop(SwCursorShell::PopMode::DeleteCurrent);
                 rSh.EndAllAction();
                 rSh.LockView(false);
-                rDoc->GetIDocumentUndoRedo().EndUndo(SwUndoId::INSERT_PAGE_NUMBER, nullptr);
+                rDoc.GetIDocumentUndoRedo().EndUndo(SwUndoId::INSERT_PAGE_NUMBER, nullptr);
+
+                // avoid various ways to crash related to undo of SwPageDesc (tdf#161741, tdf#161705)
+                if (bChangePageDesc)
+                    rDoc.GetIDocumentUndoRedo().DelAllUndoObj();
             }
             pDlg->disposeOnce();
         });
@@ -1385,7 +1528,7 @@ FIELD_INSERT:
 
         IDocumentMarkAccess& rIDMA = *rSh.getIDocumentMarkAccess();
         SwPosition& rCursor = *rSh.GetCursor()->GetPoint();
-        sw::mark::IFieldmark* pFieldmark = rIDMA.getInnerFieldmarkFor(rCursor);
+        sw::mark::Fieldmark* pFieldmark = rIDMA.getInnerFieldmarkFor(rCursor);
         if (!pFieldmark)
         {
             break;
@@ -1412,7 +1555,7 @@ FIELD_INSERT:
         rSh.GetDoc()->GetIDocumentUndoRedo().StartUndo(SwUndoId::UPDATE_FORM_FIELD, nullptr);
         rSh.StartAction();
         comphelper::SequenceAsHashMap aMap(aField);
-        itParam->second = aMap["FieldCommand"];
+        itParam->second = aMap[u"FieldCommand"_ustr];
         SwPaM aPaM(pFieldmark->GetMarkPos(), pFieldmark->GetOtherMarkPos());
         aPaM.Normalize();
         // Skip field start & separator.
@@ -1421,7 +1564,7 @@ FIELD_INSERT:
         aPaM.GetMark()->AdjustContent(-1);
         rSh.GetDoc()->getIDocumentContentOperations().DeleteAndJoin(aPaM);
         OUString aFieldResult;
-        aMap["FieldResult"] >>= aFieldResult;
+        aMap[u"FieldResult"_ustr] >>= aFieldResult;
         SwTranslateHelper::PasteHTMLToPaM(rSh, &aPaM, aFieldResult.toUtf8());
 
         rSh.EndAction();
@@ -1490,15 +1633,47 @@ void SwTextShell::StateField( SfxItemSet &rSet )
                 }
             }
             break;
-
+        case FN_COPY_FIELD:
+            {
+                if( !bGetField )
+                {
+                    pField = rSh.GetCurField(true);
+                    bGetField = true;
+                }
+                SwFieldIds nTempWhich = pField ? pField->GetTyp()->Which() : SwFieldIds::Unknown;
+                if (SwFieldIds::Unknown == nTempWhich
+                    || !pField->ExpandField(true, nullptr).getLength())
+                    rSet.DisableItem( nWhich );
+            }
+            break;
         case FN_UPDATE_SEL_FIELD:
             {
                 pField = rSh.GetCurField();
-
                 if (!pField)
                     rSet.DisableItem( nWhich );
             }
-
+            break;
+        case FN_CONVERT_SEL_FIELD:
+            {
+                pField = rSh.GetCurField();
+                SwFieldIds eFieldIds = pField ? pField->GetTyp()->Which() : SwFieldIds::Unknown;
+                bool bInHeaderFooter = rSh.IsInHeaderFooter();
+                if (!pField ||
+                    eFieldIds == SwFieldIds::Postit ||
+                    eFieldIds == SwFieldIds::SetRef ||
+                    eFieldIds == SwFieldIds::SetExp ||
+                    eFieldIds == SwFieldIds::RefPageSet||
+                    eFieldIds == SwFieldIds::Input ||
+                    eFieldIds == SwFieldIds::JumpEdit ||
+                    (bInHeaderFooter &&
+                        (eFieldIds == SwFieldIds::PageNumber ||
+                        eFieldIds == SwFieldIds::Chapter ||
+                        eFieldIds == SwFieldIds::GetExp ||
+                        eFieldIds == SwFieldIds::RefPageGet ||
+                        eFieldIds == SwFieldIds::GetRef
+                        )))
+                    rSet.DisableItem( nWhich );
+            }
             break;
 
         case FN_EXECUTE_MACROFIELD:
@@ -1597,6 +1772,7 @@ void SwTextShell::StateField( SfxItemSet &rSet )
         case FN_INSERT_FLD_AUTHOR:
         case FN_INSERT_FLD_DATE:
         case FN_INSERT_FLD_PGCOUNT:
+        case FN_INSERT_FLD_RANGE_PGCOUNT:
         case FN_INSERT_FLD_PGNUMBER:
         case FN_INSERT_FLD_TIME:
         case FN_INSERT_FLD_TITLE:
@@ -1620,7 +1796,7 @@ void SwTextShell::StateField( SfxItemSet &rSet )
             {
                 // Check whether we are in a text form field
                 SwPosition aCursorPos(*rSh.GetCursor()->GetPoint());
-                sw::mark::IFieldmark* pFieldBM = GetShell().getIDocumentMarkAccess()->getInnerFieldmarkFor(aCursorPos);
+                sw::mark::Fieldmark* pFieldBM = GetShell().getIDocumentMarkAccess()->getInnerFieldmarkFor(aCursorPos);
                 if ((!pFieldBM || pFieldBM->GetFieldname() != ODF_FORMTEXT)
                     && aCursorPos.GetContentIndex() > 0)
                 {

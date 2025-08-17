@@ -119,7 +119,7 @@ bool ScCTB::Read( SvStream &rS )
         {
             ScTBC aTBC;
             aTBC.Read( rS );
-            rTBC.push_back( aTBC );
+            rTBC.push_back(std::move(aTBC));
         }
     }
 
@@ -182,7 +182,7 @@ bool ScCTB::ImportCustomToolBar( ScCTBWrapper& rWrapper, CustomToolBarImportHelp
         uno::Reference< beans::XPropertySet > xProps( xIndexContainer, uno::UNO_QUERY_THROW );
         WString& name = tb.getName();
         // set UI name for toolbar
-        xProps->setPropertyValue("UIName", uno::Any( name.getString() ) );
+        xProps->setPropertyValue(u"UIName"_ustr, uno::Any( name.getString() ) );
 
         OUString sToolBarName = "private:resource/toolbar/custom_" + name.getString();
         for ( auto& rItem : rTBC )
@@ -317,7 +317,7 @@ bool ScTBC::ImportToolBarControl( ScCTBWrapper& rWrapper, const css::uno::Refere
         if ( bBeginGroup )
         {
             // insert spacer
-            uno::Sequence sProps{ comphelper::makePropertyValue("Type",
+            uno::Sequence sProps{ comphelper::makePropertyValue(u"Type"_ustr,
                                                                 ui::ItemType::SEPARATOR_LINE) };
             toolbarcontainer->insertByIndex( toolbarcontainer->getCount(), uno::Any( sProps ) );
         }
@@ -384,7 +384,7 @@ ScCTBWrapper::Read( SvStream &rS)
         ScCTB aCTB( ctbSet.ctbViews );
         if ( !aCTB.Read( rS ) )
             return false;
-        rCTB.push_back( aCTB );
+        rCTB.push_back(std::move(aCTB));
     }
     return true;
 }
@@ -418,13 +418,13 @@ void ScCTBWrapper::ImportCustomToolBar( SfxObjectShell& rDocSh )
     if(rCTB.empty())
         return;
 
-    uno::Reference< uno::XComponentContext > xContext( ::comphelper::getProcessComponentContext() );
+    const uno::Reference< uno::XComponentContext >& xContext( ::comphelper::getProcessComponentContext() );
     uno::Reference< ui::XModuleUIConfigurationManagerSupplier > xAppCfgSupp( ui::theModuleUIConfigurationManagerSupplier::get(xContext) );
 
     for ( auto& rItem : rCTB )
     {
         // for each customtoolbar
-        CustomToolBarImportHelper helper( rDocSh, xAppCfgSupp->getUIConfigurationManager( "com.sun.star.sheet.SpreadsheetDocument" ) );
+        CustomToolBarImportHelper helper( rDocSh, xAppCfgSupp->getUIConfigurationManager( u"com.sun.star.sheet.SpreadsheetDocument"_ustr ) );
         helper.setMSOCommandMap( new  MSOExcelCommandConvertor() );
         // Ignore menu toolbars, excel doesn't ( afaics ) store
         // menu customizations ( but you can have menus in a customtoolbar

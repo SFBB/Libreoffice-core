@@ -9,10 +9,7 @@
 
 #include "op_financial.hxx"
 
-#include <formula/vectortoken.hxx>
 #include <sstream>
-
-using namespace formula;
 
 namespace sc::opencl {
 // Definitions of inline functions

@@ -212,6 +212,7 @@ interface TableDraw
     SID_FONTWORK_KERN_CHARACTER_PAIRS       [ ExecMethod = ExecDrawFunc ; StateMethod = GetDrawFuncState ; ]
     SID_FONTWORK_CHARACTER_SPACING_DIALOG   [ ExecMethod = ExecDrawFunc ; StateMethod = GetDrawFuncState ; ]
 
+    SID_INSERT_HYPERLINK            [ ExecMethod = ExecDrawAttr; StateMethod = GetDrawFuncState; ]
     SID_EDIT_HYPERLINK              [ ExecMethod = ExecDrawAttr; StateMethod = GetDrawFuncState; ]
     SID_REMOVE_HYPERLINK            [ ExecMethod = ExecDrawAttr; StateMethod = GetDrawFuncState; ]
     SID_OPEN_HYPERLINK              [ ExecMethod = ExecDrawAttr; StateMethod = GetDrawFuncState; ]
@@ -221,10 +222,15 @@ interface TableDraw
     SID_ATTR_GLOW_RADIUS            [ ExecMethod = ExecDrawAttr; StateMethod = GetDrawAttrState; ]
     SID_ATTR_GLOW_TRANSPARENCY      [ ExecMethod = ExecDrawAttr; StateMethod = GetDrawAttrState; ]
 
+    SID_ATTR_GLOW_TEXT_COLOR        [ ExecMethod = ExecDrawAttr; StateMethod = GetDrawAttrState; ]
+    SID_ATTR_GLOW_TEXT_RADIUS       [ ExecMethod = ExecDrawAttr; StateMethod = GetDrawAttrState; ]
+    SID_ATTR_GLOW_TEXT_TRANSPARENCY [ ExecMethod = ExecDrawAttr; StateMethod = GetDrawAttrState; ]
+
     SID_ATTR_SOFTEDGE_RADIUS        [ ExecMethod = ExecDrawAttr; StateMethod = GetDrawAttrState; ]
     SID_MOVE_SHAPE_HANDLE           [ ExecMethod = ExecDrawAttr; ]
     SID_ATTR_TEXTCOLUMNS_NUMBER     [ ExecMethod = ExecDrawAttr; StateMethod = GetDrawAttrState; ]
     SID_ATTR_TEXTCOLUMNS_SPACING    [ ExecMethod = ExecDrawAttr; StateMethod = GetDrawAttrState; ]
+    SID_CLICK_CHANGE_ROTATION       [ ExecMethod = ExecDrawAttr; StateMethod = GetState; ]
 }
 
 

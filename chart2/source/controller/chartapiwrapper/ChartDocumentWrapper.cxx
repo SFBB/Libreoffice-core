@@ -30,16 +30,13 @@
 #include <ControllerLockGuard.hxx>
 #include <DisposeHelper.hxx>
 #include "DataSeriesPointWrapper.hxx"
-#include <chartview/ExplicitValueProvider.hxx>
 #include <chartview/DrawModelWrapper.hxx>
 #include "Chart2ModelContact.hxx"
 #include <BaseCoordinateSystem.hxx>
 
 #include <ChartModel.hxx>
 
-#include <DiagramHelper.hxx>
 #include <DataSourceHelper.hxx>
-#include <ChartModelHelper.hxx>
 #include <AxisHelper.hxx>
 #include <ThreeDHelper.hxx>
 
@@ -53,7 +50,6 @@
 #include <cppuhelper/supportsservice.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/sequence.hxx>
-#include <comphelper/servicehelper.hxx>
 #include <utility>
 #include <vcl/settings.hxx>
 
@@ -264,7 +260,7 @@ private: //member
 }
 
 WrappedDataSourceLabelsInFirstRowProperty::WrappedDataSourceLabelsInFirstRowProperty(std::shared_ptr<Chart2ModelContact> spChart2ModelContact)
-            : WrappedProperty("DataSourceLabelsInFirstRow",OUString())
+            : WrappedProperty(u"DataSourceLabelsInFirstRow"_ustr,OUString())
             , m_spChart2ModelContact(std::move( spChart2ModelContact ))
 {
     m_aOuterValue = WrappedDataSourceLabelsInFirstRowProperty::getPropertyDefault( nullptr );
@@ -274,7 +270,7 @@ void WrappedDataSourceLabelsInFirstRowProperty::setPropertyValue( const Any& rOu
 {
     bool bLabelsInFirstRow = true;
     if( ! (rOuterValue >>= bLabelsInFirstRow) )
-        throw lang::IllegalArgumentException("Property DataSourceLabelsInFirstRow requires value of type boolean", nullptr, 0 );
+        throw lang::IllegalArgumentException(u"Property DataSourceLabelsInFirstRow requires value of type boolean"_ustr, nullptr, 0 );
 
     m_aOuterValue = rOuterValue;
     bool bNewValue = bLabelsInFirstRow;
@@ -354,7 +350,7 @@ private: //member
 }
 
 WrappedDataSourceLabelsInFirstColumnProperty::WrappedDataSourceLabelsInFirstColumnProperty(std::shared_ptr<Chart2ModelContact> spChart2ModelContact)
-            : WrappedProperty("DataSourceLabelsInFirstColumn",OUString())
+            : WrappedProperty(u"DataSourceLabelsInFirstColumn"_ustr,OUString())
             , m_spChart2ModelContact(std::move( spChart2ModelContact ))
 {
     m_aOuterValue = WrappedDataSourceLabelsInFirstColumnProperty::getPropertyDefault( nullptr );
@@ -364,7 +360,7 @@ void WrappedDataSourceLabelsInFirstColumnProperty::setPropertyValue( const Any& 
 {
     bool bLabelsInFirstRow = true;
     if( ! (rOuterValue >>= bLabelsInFirstRow) )
-        throw lang::IllegalArgumentException("Property DataSourceLabelsInFirstRow requires value of type boolean", nullptr, 0 );
+        throw lang::IllegalArgumentException(u"Property DataSourceLabelsInFirstRow requires value of type boolean"_ustr, nullptr, 0 );
 
     m_aOuterValue = rOuterValue;
     bool bNewValue = bLabelsInFirstRow;
@@ -443,7 +439,7 @@ private: //member
 }
 
 WrappedHasLegendProperty::WrappedHasLegendProperty(std::shared_ptr<Chart2ModelContact> spChart2ModelContact)
-    : WrappedProperty("HasLegend",OUString())
+    : WrappedProperty(u"HasLegend"_ustr,OUString())
     , m_spChart2ModelContact(std::move( spChart2ModelContact ))
 {
 }
@@ -452,7 +448,7 @@ void WrappedHasLegendProperty::setPropertyValue( const Any& rOuterValue, const R
 {
     bool bNewValue = true;
     if( ! (rOuterValue >>= bNewValue) )
-        throw lang::IllegalArgumentException("Property HasLegend requires value of type boolean", nullptr, 0 );
+        throw lang::IllegalArgumentException(u"Property HasLegend requires value of type boolean"_ustr, nullptr, 0 );
 
     try
     {
@@ -460,10 +456,10 @@ void WrappedHasLegendProperty::setPropertyValue( const Any& rOuterValue, const R
         if(xLegend.is())
         {
             bool bOldValue = true;
-            Any aAOld = xLegend->getPropertyValue("Show");
+            Any aAOld = xLegend->getPropertyValue(u"Show"_ustr);
             aAOld >>= bOldValue;
             if( bOldValue != bNewValue )
-                xLegend->setPropertyValue("Show", uno::Any( bNewValue ));
+                xLegend->setPropertyValue(u"Show"_ustr, uno::Any( bNewValue ));
         }
     }
     catch (const uno::Exception&)
@@ -480,7 +476,7 @@ Any WrappedHasLegendProperty::getPropertyValue( const Reference< beans::XPropert
         rtl::Reference< Legend > xLegend =
             LegendHelper::getLegend( *m_spChart2ModelContact->getDocumentModel() );
         if( xLegend.is())
-            aRet = xLegend->getPropertyValue("Show");
+            aRet = xLegend->getPropertyValue(u"Show"_ustr);
         else
             aRet <<= false;
     }
@@ -519,7 +515,7 @@ private: //member
 }
 
 WrappedHasMainTitleProperty::WrappedHasMainTitleProperty(std::shared_ptr<Chart2ModelContact> spChart2ModelContact)
-    : WrappedProperty("HasMainTitle",OUString())
+    : WrappedProperty(u"HasMainTitle"_ustr,OUString())
     , m_spChart2ModelContact(std::move( spChart2ModelContact ))
 {
 }
@@ -528,12 +524,12 @@ void WrappedHasMainTitleProperty::setPropertyValue( const Any& rOuterValue, cons
 {
     bool bNewValue = true;
     if( ! (rOuterValue >>= bNewValue) )
-        throw lang::IllegalArgumentException("Property HasMainTitle requires value of type boolean", nullptr, 0 );
+        throw lang::IllegalArgumentException(u"Property HasMainTitle requires value of type boolean"_ustr, nullptr, 0 );
 
     try
     {
         if( bNewValue )
-            TitleHelper::createTitle( TitleHelper::MAIN_TITLE, "main-title", m_spChart2ModelContact->getDocumentModel(), m_spChart2ModelContact->m_xContext );
+            TitleHelper::createTitle( TitleHelper::MAIN_TITLE, u"main-title"_ustr, m_spChart2ModelContact->getDocumentModel(), m_spChart2ModelContact->m_xContext );
         else
             TitleHelper::removeTitle( TitleHelper::MAIN_TITLE, m_spChart2ModelContact->getDocumentModel() );
     }
@@ -585,7 +581,7 @@ private: //member
 }
 
 WrappedHasSubTitleProperty::WrappedHasSubTitleProperty(std::shared_ptr<Chart2ModelContact> spChart2ModelContact)
-            : WrappedProperty("HasSubTitle",OUString())
+            : WrappedProperty(u"HasSubTitle"_ustr,OUString())
             , m_spChart2ModelContact(std::move( spChart2ModelContact ))
 {
 }
@@ -594,12 +590,12 @@ void WrappedHasSubTitleProperty::setPropertyValue( const Any& rOuterValue, const
 {
     bool bNewValue = true;
     if( ! (rOuterValue >>= bNewValue) )
-        throw lang::IllegalArgumentException("Property HasSubTitle requires value of type boolean", nullptr, 0 );
+        throw lang::IllegalArgumentException(u"Property HasSubTitle requires value of type boolean"_ustr, nullptr, 0 );
 
     try
     {
         if( bNewValue )
-            TitleHelper::createTitle( TitleHelper::SUB_TITLE, "", m_spChart2ModelContact->getDocumentModel(), m_spChart2ModelContact->m_xContext );
+            TitleHelper::createTitle( TitleHelper::SUB_TITLE, u""_ustr, m_spChart2ModelContact->getDocumentModel(), m_spChart2ModelContact->m_xContext );
         else
             TitleHelper::removeTitle( TitleHelper::SUB_TITLE, m_spChart2ModelContact->getDocumentModel() );
     }
@@ -627,6 +623,72 @@ Any WrappedHasSubTitleProperty::getPropertyDefault( const Reference< beans::XPro
 {
     Any aRet;
     aRet <<= false;
+    return aRet;
+}
+
+namespace {
+
+//PROP_DOCUMENT_NULL_DATE
+class WrappedNullDateProperty : public WrappedProperty
+{
+public:
+    explicit WrappedNullDateProperty(std::shared_ptr<Chart2ModelContact> spChart2ModelContact);
+
+    virtual void setPropertyValue( const css::uno::Any& rOuterValue, const css::uno::Reference< css::beans::XPropertySet >& xInnerPropertySet ) const override;
+
+    virtual css::uno::Any getPropertyValue( const css::uno::Reference< css::beans::XPropertySet >& xInnerPropertySet ) const override;
+
+    virtual css::uno::Any getPropertyDefault( const css::uno::Reference< css::beans::XPropertyState >& xInnerPropertyState ) const override;
+
+private: //member
+    std::shared_ptr< Chart2ModelContact > m_spChart2ModelContact;
+};
+
+}
+
+WrappedNullDateProperty::WrappedNullDateProperty(std::shared_ptr<Chart2ModelContact> spChart2ModelContact)
+            : WrappedProperty(u"NullDate"_ustr, OUString())
+            , m_spChart2ModelContact(std::move( spChart2ModelContact ))
+{
+}
+
+void WrappedNullDateProperty::setPropertyValue( const Any& rOuterValue, const Reference< beans::XPropertySet >& /*xInnerPropertySet*/ ) const
+{
+    util::DateTime aDateTime;
+    if( ! (rOuterValue >>= aDateTime) )
+        throw lang::IllegalArgumentException(u"Property NullDate requires value of type util::DateTime"_ustr, nullptr, 0 );
+
+    try
+    {
+        m_spChart2ModelContact->getDocumentModel()->changeNullDate(aDateTime);
+    }
+    catch (const uno::Exception&)
+    {
+        DBG_UNHANDLED_EXCEPTION("chart2");
+    }
+}
+
+Any WrappedNullDateProperty::getPropertyValue( const Reference< beans::XPropertySet >& /*xInnerPropertySet*/ ) const
+{
+    Any aRet;
+    try
+    {
+        std::optional<css::util::DateTime> moDateTime = m_spChart2ModelContact->getDocumentModel()->getNullDate();
+        if (moDateTime)
+        {
+            aRet <<= *moDateTime;
+        }
+    }
+    catch (const uno::Exception&)
+    {
+        DBG_UNHANDLED_EXCEPTION("chart2");
+    }
+    return aRet;
+}
+
+Any WrappedNullDateProperty::getPropertyDefault( const Reference< beans::XPropertyState >& /*xInnerPropertyState*/ ) const
+{
+    Any aRet;
     return aRet;
 }
 
@@ -712,20 +774,18 @@ Reference< XDiagram > SAL_CALL ChartDocumentWrapper::getDiagram()
     return m_xDiagram;
 }
 
-void SAL_CALL ChartDocumentWrapper::setDiagram( const Reference< XDiagram >& xDiagram )
+void SAL_CALL ChartDocumentWrapper::setDiagram( const Reference< XDiagram >& _xDiagram )
 {
-    uno::Reference< util::XRefreshable > xAddIn( xDiagram, uno::UNO_QUERY );
-    if( xAddIn.is() )
-    {
-        setAddIn( xAddIn );
-    }
-    else if( xDiagram.is() && xDiagram != m_xDiagram )
+    if (!_xDiagram.is())
+        return;
+    auto xDiagram = dynamic_cast<DiagramWrapper*>(_xDiagram.get());
+    assert(xDiagram);
+    if( xDiagram != m_xDiagram )
     {
         // set new wrapped diagram at new chart.  This requires the old
         // diagram given as parameter to implement the new interface.  If
         // this is not possible throw an exception
-        Reference< chart2::XDiagramProvider > xNewDiaProvider( xDiagram, uno::UNO_QUERY_THROW );
-        Reference< chart2::XDiagram > xNewDia( xNewDiaProvider->getDiagram());
+        rtl::Reference< ::chart::Diagram > xNewDia( xDiagram->getUnderlyingDiagram());
 
         try
         {
@@ -863,7 +923,11 @@ void SAL_CALL ChartDocumentWrapper::dispose()
     try
     {
         Reference< lang::XComponent > xFormerDelegator( m_xDelegator, uno::UNO_QUERY );
-        DisposeHelper::DisposeAndClear( m_xTitle );
+        if (m_xTitle)
+        {
+            m_xTitle->dispose();
+            m_xTitle.clear();
+        }
         DisposeHelper::DisposeAndClear( m_xSubTitle );
         DisposeHelper::DisposeAndClear( m_xLegend );
         DisposeHelper::DisposeAndClear( m_xChartData );
@@ -1073,7 +1137,7 @@ uno::Reference< uno::XInterface > SAL_CALL ChartDocumentWrapper::createInstance(
                 if( xChartTypeManager.is())
                 {
                     xTemplate =
-                        xChartTypeManager->createTemplate("com.sun.star.chart2.template.Area");
+                        xChartTypeManager->createTemplate(u"com.sun.star.chart2.template.Area"_ustr);
                     bCreateDiagram = true;
                 }
                 break;
@@ -1083,7 +1147,7 @@ uno::Reference< uno::XInterface > SAL_CALL ChartDocumentWrapper::createInstance(
                     // this is for bar and column (the latter is the default if
                     // no "Vertical=false" property was set)
                     xTemplate =
-                        xChartTypeManager->createTemplate("com.sun.star.chart2.template.Column");
+                        xChartTypeManager->createTemplate(u"com.sun.star.chart2.template.Column"_ustr);
                     bCreateDiagram = true;
                 }
                 break;
@@ -1091,7 +1155,7 @@ uno::Reference< uno::XInterface > SAL_CALL ChartDocumentWrapper::createInstance(
                 if( xChartTypeManager.is())
                 {
                     xTemplate =
-                        xChartTypeManager->createTemplate("com.sun.star.chart2.template.Donut");
+                        xChartTypeManager->createTemplate(u"com.sun.star.chart2.template.Donut"_ustr);
                     bCreateDiagram = true;
                 }
                 break;
@@ -1099,7 +1163,7 @@ uno::Reference< uno::XInterface > SAL_CALL ChartDocumentWrapper::createInstance(
                 if( xChartTypeManager.is())
                 {
                     xTemplate =
-                        xChartTypeManager->createTemplate("com.sun.star.chart2.template.Line");
+                        xChartTypeManager->createTemplate(u"com.sun.star.chart2.template.Line"_ustr);
                     bCreateDiagram = true;
                 }
                 break;
@@ -1107,7 +1171,7 @@ uno::Reference< uno::XInterface > SAL_CALL ChartDocumentWrapper::createInstance(
                 if( xChartTypeManager.is())
                 {
                     xTemplate =
-                        xChartTypeManager->createTemplate("com.sun.star.chart2.template.Net");
+                        xChartTypeManager->createTemplate(u"com.sun.star.chart2.template.Net"_ustr);
                     bCreateDiagram = true;
                 }
                 break;
@@ -1115,7 +1179,7 @@ uno::Reference< uno::XInterface > SAL_CALL ChartDocumentWrapper::createInstance(
                 if( xChartTypeManager.is())
                 {
                     xTemplate =
-                        xChartTypeManager->createTemplate("com.sun.star.chart2.template.FilledNet");
+                        xChartTypeManager->createTemplate(u"com.sun.star.chart2.template.FilledNet"_ustr);
                     bCreateDiagram = true;
                 }
                 break;
@@ -1123,7 +1187,7 @@ uno::Reference< uno::XInterface > SAL_CALL ChartDocumentWrapper::createInstance(
                 if( xChartTypeManager.is())
                 {
                     xTemplate =
-                        xChartTypeManager->createTemplate("com.sun.star.chart2.template.Pie");
+                        xChartTypeManager->createTemplate(u"com.sun.star.chart2.template.Pie"_ustr);
                     bCreateDiagram = true;
                 }
                 break;
@@ -1131,7 +1195,7 @@ uno::Reference< uno::XInterface > SAL_CALL ChartDocumentWrapper::createInstance(
                 if( xChartTypeManager.is())
                 {
                     xTemplate =
-                        xChartTypeManager->createTemplate("com.sun.star.chart2.template.StockLowHighClose");
+                        xChartTypeManager->createTemplate(u"com.sun.star.chart2.template.StockLowHighClose"_ustr);
                     bCreateDiagram = true;
                 }
                 break;
@@ -1139,7 +1203,7 @@ uno::Reference< uno::XInterface > SAL_CALL ChartDocumentWrapper::createInstance(
                 if( xChartTypeManager.is())
                 {
                     xTemplate =
-                        xChartTypeManager->createTemplate("com.sun.star.chart2.template.ScatterLineSymbol");
+                        xChartTypeManager->createTemplate(u"com.sun.star.chart2.template.ScatterLineSymbol"_ustr);
                     bCreateDiagram = true;
                 }
                 break;
@@ -1148,7 +1212,7 @@ uno::Reference< uno::XInterface > SAL_CALL ChartDocumentWrapper::createInstance(
                 if( xChartTypeManager.is())
                 {
                     xTemplate =
-                        xChartTypeManager->createTemplate("com.sun.star.chart2.template.Bubble");
+                        xChartTypeManager->createTemplate(u"com.sun.star.chart2.template.Bubble"_ustr);
                     bCreateDiagram = true;
                 }
                 break;
@@ -1315,7 +1379,7 @@ void SAL_CALL ChartDocumentWrapper::setDelegator(
     if( m_bIsDisposed )
     {
         if( rDelegator.is() )
-            throw lang::DisposedException("ChartDocumentWrapper is disposed",
+            throw lang::DisposedException(u"ChartDocumentWrapper is disposed"_ustr,
                 static_cast< ::cppu::OWeakObject* >( this ));
         return;
     }
@@ -1349,15 +1413,15 @@ uno::Any SAL_CALL ChartDocumentWrapper::queryAggregation( const uno::Type& rType
 // ____ ::utl::OEventListenerAdapter ____
 void ChartDocumentWrapper::_disposing( const lang::EventObject& rSource )
 {
-    if( rSource.Source == m_xTitle )
+    if( rSource.Source == cppu::getXWeak(m_xTitle.get()) )
         m_xTitle.clear();
-    else if( rSource.Source == m_xSubTitle )
+    else if( rSource.Source == cppu::getXWeak(m_xSubTitle.get()) )
         m_xSubTitle.clear();
-    else if( rSource.Source == m_xLegend )
+    else if( rSource.Source == cppu::getXWeak(m_xLegend.get()) )
         m_xLegend.clear();
     else if( rSource.Source == m_xChartData )
         m_xChartData.clear();
-    else if( rSource.Source == m_xDiagram )
+    else if( rSource.Source == cppu::getXWeak(m_xDiagram.get()) )
         m_xDiagram.clear();
     else if( rSource.Source == m_xArea )
         m_xArea.clear();
@@ -1403,16 +1467,16 @@ std::vector< std::unique_ptr<WrappedProperty> > ChartDocumentWrapper::createWrap
     aWrappedProperties.emplace_back( new WrappedBaseDiagramProperty( *this ) );
     aWrappedProperties.emplace_back( new WrappedAdditionalShapesProperty( *this ) );
     aWrappedProperties.emplace_back( new WrappedRefreshAddInAllowedProperty( *this ) );
-    aWrappedProperties.emplace_back( new WrappedIgnoreProperty("NullDate",Any() ) ); // i99104
-    aWrappedProperties.emplace_back( new WrappedIgnoreProperty("EnableComplexChartTypes", uno::Any(true) ) );
-    aWrappedProperties.emplace_back( new WrappedIgnoreProperty("EnableDataTableDialog", uno::Any(true) ) );
+    aWrappedProperties.emplace_back( new WrappedNullDateProperty( m_spChart2ModelContact ) );
+    aWrappedProperties.emplace_back( new WrappedIgnoreProperty(u"EnableComplexChartTypes"_ustr, uno::Any(true) ) );
+    aWrappedProperties.emplace_back( new WrappedIgnoreProperty(u"EnableDataTableDialog"_ustr, uno::Any(true) ) );
 
     return aWrappedProperties;
 }
 
 OUString SAL_CALL ChartDocumentWrapper::getImplementationName()
 {
-    return CHART_CHARTAPIWRAPPER_IMPLEMENTATION_NAME;
+    return u"com.sun.star.comp.chart2.ChartDocumentWrapper"_ustr;
 }
 
 sal_Bool SAL_CALL ChartDocumentWrapper::supportsService( const OUString& rServiceName )
@@ -1423,10 +1487,10 @@ sal_Bool SAL_CALL ChartDocumentWrapper::supportsService( const OUString& rServic
 css::uno::Sequence< OUString > SAL_CALL ChartDocumentWrapper::getSupportedServiceNames()
 {
     return {
-        "com.sun.star.chart.ChartDocument",
-        CHART_CHARTAPIWRAPPER_SERVICE_NAME,
-        "com.sun.star.xml.UserDefinedAttributesSupplier",
-        "com.sun.star.beans.PropertySet"
+        u"com.sun.star.chart.ChartDocument"_ustr,
+        u"com.sun.star.chart2.ChartDocumentWrapper"_ustr,
+        u"com.sun.star.xml.UserDefinedAttributesSupplier"_ustr,
+        u"com.sun.star.beans.PropertySet"_ustr
     };
 }
 

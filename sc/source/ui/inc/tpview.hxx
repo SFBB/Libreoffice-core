@@ -41,12 +41,16 @@ class ScTpContentOptions : public SfxTabPage
     std::unique_ptr<weld::Widget> m_xNilImg;
     std::unique_ptr<weld::CheckButton> m_xAnnotCB;
     std::unique_ptr<weld::Widget> m_xAnnotImg;
+    std::unique_ptr<weld::CheckButton> m_xNoteAuthorCB;
+    std::unique_ptr<weld::Widget> m_xNoteAuthorImg;
     std::unique_ptr<weld::CheckButton> m_xFormulaMarkCB;
     std::unique_ptr<weld::Widget> m_xFormulaMarkImg;
     std::unique_ptr<weld::CheckButton> m_xValueCB;
     std::unique_ptr<weld::Widget> m_xValueImg;
     std::unique_ptr<weld::CheckButton> m_xColRowHighCB;
     std::unique_ptr<weld::Widget> m_xColRowHighImg;
+    std::unique_ptr<weld::CheckButton> m_xEditCellBgHighCB;
+    std::unique_ptr<weld::Widget> m_xEditCellBgHighImg;
     std::unique_ptr<weld::CheckButton> m_xAnchorCB;
     std::unique_ptr<weld::Widget> m_xAnchorImg;
     std::unique_ptr<weld::CheckButton> m_xRangeFindCB;
@@ -131,6 +135,8 @@ class ScTpLayoutOptions : public SfxTabPage
     std::unique_ptr<weld::Widget> m_xLegacyCellSelectionImg;
     std::unique_ptr<weld::CheckButton> m_xEnterPasteModeCB;
     std::unique_ptr<weld::Widget> m_xEnterPasteModeImg;
+    std::unique_ptr<weld::CheckButton> m_xWarnActiveSheetCB;
+    std::unique_ptr<weld::Widget> m_xWarnActiveSheetImg;
 
     DECL_LINK(MetricHdl, weld::ComboBox&, void );
     DECL_LINK( AlignHdl, weld::Toggleable&, void );

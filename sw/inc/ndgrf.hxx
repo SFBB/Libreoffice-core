@@ -29,10 +29,9 @@
 class SwAsyncRetrieveInputStreamThreadConsumer;
 
 class SwGrfFormatColl;
-class SwDoc;
 
 // SwGrfNode
-class SW_DLLPUBLIC SwGrfNode final: public SwNoTextNode
+class SAL_DLLPUBLIC_RTTI SwGrfNode final: public SwNoTextNode
 {
     friend class SwNodes;
 
@@ -52,13 +51,13 @@ class SW_DLLPUBLIC SwGrfNode final: public SwNoTextNode
     css::uno::Reference<css::io::XInputStream> mxInputStream;
     bool mbIsStreamReadOnly;
 
-    SwGrfNode( SwNode& rWhere,
+    SwGrfNode( const SwNode& rWhere,
                const OUString& rGrfName, const OUString& rFltName,
                const Graphic* pGraphic,
                SwGrfFormatColl* pGrfColl,
                SwAttrSet const * pAutoAttr );
     ///< Ctor for reading (SW/G) without graphics.
-    SwGrfNode( SwNode& rWhere,
+    SwGrfNode( const SwNode& rWhere,
                std::u16string_view rGrfName, const OUString& rFltName,
                SwGrfFormatColl* pGrfColl,
                SwAttrSet const * pAutoAttr );
@@ -71,8 +70,8 @@ class SW_DLLPUBLIC SwGrfNode final: public SwNoTextNode
 
 public:
     virtual ~SwGrfNode() override;
-    const Graphic&          GetGrf(bool bWait = false) const;
-    const GraphicObject&    GetGrfObj(bool bWait = false) const;
+    SW_DLLPUBLIC const Graphic& GetGrf(bool bWait = false) const;
+    SW_DLLPUBLIC const GraphicObject& GetGrfObj(bool bWait = false) const;
     const GraphicObject* GetReplacementGrfObj() const;
 
     /// isolated only way to set GraphicObject to allow more actions when doing so
@@ -84,7 +83,7 @@ public:
     { maGrfObj.StartAnimation(*pOut, rPt, rSz, nRendererId, pFirstFrameOutDev); }
     void StopGraphicAnimation(const OutputDevice* pOut, tools::Long nRendererId) { maGrfObj.StopAnimation(pOut, nRendererId); }
 
-    virtual Size GetTwipSize() const override;
+    SW_DLLPUBLIC virtual Size GetTwipSize() const override;
     void SetTwipSize( const Size& rSz );
 
     bool IsTransparent() const;
@@ -127,7 +126,7 @@ public:
     bool IsLinkedFile() const;
     bool IsLinkedDDE() const;
     const tools::SvRef<SwBaseLink>& GetLink() const { return mxLink; }
-    bool GetFileFilterNms( OUString* pFileNm, OUString* pFilterNm ) const;
+    SW_DLLPUBLIC bool GetFileFilterNms( OUString* pFileNm, OUString* pFilterNm ) const;
     void ReleaseLink();
 
     /** Scale an image-map: the image-map becomes zoomed in / out by

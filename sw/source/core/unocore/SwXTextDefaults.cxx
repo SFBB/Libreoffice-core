@@ -37,6 +37,7 @@
 #include <unocrsrhelper.hxx>
 #include <hintids.hxx>
 #include <fmtpdsc.hxx>
+#include <names.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -85,10 +86,10 @@ void SAL_CALL SwXTextDefaults::setPropertyValue( const OUString& rPropertyName, 
         if(!(aValue >>= uStyle))
             throw lang::IllegalArgumentException();
 
-        OUString sStyle;
-        SwStyleNameMapper::FillUIName(uStyle, sStyle, SwGetPoolIdFromName::ChrFmt );
+        UIName sStyle;
+        SwStyleNameMapper::FillUIName(ProgName(uStyle), sStyle, SwGetPoolIdFromName::ChrFmt );
         SwDocStyleSheet* pStyle =
-            static_cast<SwDocStyleSheet*>(m_pDoc->GetDocShell()->GetStyleSheetPool()->Find(sStyle, SfxStyleFamily::Char));
+            static_cast<SwDocStyleSheet*>(m_pDoc->GetDocShell()->GetStyleSheetPool()->Find(sStyle.toString(), SfxStyleFamily::Char));
         std::unique_ptr<SwFormatDrop> pDrop;
         std::unique_ptr<SwFormatCharFormat> pCharFormat;
         if(!pStyle)
@@ -191,7 +192,7 @@ void SAL_CALL SwXTextDefaults::setPropertyToDefault( const OUString& rPropertyNa
     if ( pMap->nFlags & PropertyAttribute::READONLY)
         throw RuntimeException( "setPropertyToDefault: property is read-only: " + rPropertyName, getXWeak() );
     SfxItemPool& rSet (m_pDoc->GetAttrPool());
-    rSet.ResetPoolDefaultItem ( pMap->nWID );
+    rSet.ResetUserDefaultItem ( pMap->nWID );
 }
 
 Any SAL_CALL SwXTextDefaults::getPropertyDefault( const OUString& rPropertyName )
@@ -203,7 +204,7 @@ Any SAL_CALL SwXTextDefaults::getPropertyDefault( const OUString& rPropertyName 
         throw UnknownPropertyException( "Unknown property: " + rPropertyName, getXWeak() );
     Any aRet;
     SfxItemPool& rSet (m_pDoc->GetAttrPool());
-    SfxPoolItem const*const pItem = rSet.GetPoolDefaultItem(pMap->nWID);
+    SfxPoolItem const*const pItem = rSet.GetUserDefaultItem(pMap->nWID);
     if (pItem)
     {
         pItem->QueryValue( aRet, pMap->nMemberId );
@@ -213,7 +214,7 @@ Any SAL_CALL SwXTextDefaults::getPropertyDefault( const OUString& rPropertyName 
 
 OUString SAL_CALL SwXTextDefaults::getImplementationName(  )
 {
-    return "SwXTextDefaults";
+    return u"SwXTextDefaults"_ustr;
 }
 
 sal_Bool SAL_CALL SwXTextDefaults::supportsService( const OUString& rServiceName )
@@ -223,13 +224,13 @@ sal_Bool SAL_CALL SwXTextDefaults::supportsService( const OUString& rServiceName
 
 uno::Sequence< OUString > SAL_CALL SwXTextDefaults::getSupportedServiceNames(  )
 {
-    return { "com.sun.star.text.Defaults",
-             "com.sun.star.style.CharacterProperties",
-             "com.sun.star.style.CharacterPropertiesAsian",
-             "com.sun.star.style.CharacterPropertiesComplex",
-             "com.sun.star.style.ParagraphProperties",
-             "com.sun.star.style.ParagraphPropertiesAsian",
-             "com.sun.star.style.ParagraphPropertiesComplex" };
+    return { u"com.sun.star.text.Defaults"_ustr,
+             u"com.sun.star.style.CharacterProperties"_ustr,
+             u"com.sun.star.style.CharacterPropertiesAsian"_ustr,
+             u"com.sun.star.style.CharacterPropertiesComplex"_ustr,
+             u"com.sun.star.style.ParagraphProperties"_ustr,
+             u"com.sun.star.style.ParagraphPropertiesAsian"_ustr,
+             u"com.sun.star.style.ParagraphPropertiesComplex"_ustr };
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

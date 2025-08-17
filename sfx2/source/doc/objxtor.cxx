@@ -28,6 +28,7 @@
 #include <com/sun/star/util/XCloseable.hpp>
 #include <com/sun/star/frame/XComponentLoader.hpp>
 #include <com/sun/star/frame/Desktop.hpp>
+#include <com/sun/star/util/CloseVetoException.hpp>
 #include <com/sun/star/util/XCloseListener.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/frame/XTitle.hpp>
@@ -45,6 +46,7 @@
 #include <sfx2/signaturestate.hxx>
 #include <sfx2/sfxmodelfactory.hxx>
 
+#include <comphelper/configuration.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/servicehelper.hxx>
 
@@ -112,7 +114,7 @@ OUString lclGetVBAGlobalConstName( const Reference< XInterface >& rxComponent )
     if( xProps.is() ) try
     {
         OUString aConstName;
-        xProps->getPropertyValue("VBAGlobalConstantName") >>= aConstName;
+        xProps->getPropertyValue(u"VBAGlobalConstantName"_ustr) >>= aConstName;
         return aConstName;
     }
     catch (const uno::Exception&) // not supported
@@ -136,8 +138,14 @@ public:
 
 } // namespace
 
-void SAL_CALL SfxModelListener_Impl::queryClosing( const css::lang::EventObject& , sal_Bool )
+void SAL_CALL SfxModelListener_Impl::queryClosing( const css::lang::EventObject& , sal_Bool bDeliverOwnership)
 {
+    if (mpDoc->Get_Impl()->m_nClosingLockLevel)
+    {
+        if (bDeliverOwnership)
+            mpDoc->Get_Impl()->m_bCloseModelScheduled = true;
+        throw util::CloseVetoException(u"Closing document is blocked"_ustr, getXWeak());
+    }
 }
 
 void SAL_CALL SfxModelListener_Impl::notifyClosing( const css::lang::EventObject& )
@@ -304,8 +312,11 @@ SfxObjectShell::~SfxObjectShell()
     if ( pSfxApp && pSfxApp->GetDdeService() )
         pSfxApp->RemoveDdeTopic( this );
 
-    pImpl->pBaseModel.clear();
+    InternalCloseAndRemoveFiles();
+}
 
+void SfxObjectShell::InternalCloseAndRemoveFiles()
+{
     // don't call GetStorage() here, in case of Load Failure it's possible that a storage was never assigned!
     if ( pMedium && pMedium->HasStorage_Impl() && pMedium->GetStorage( false ) == pImpl->m_xDocStorage )
         pMedium->CanDisposeStorage_Impl( false );
@@ -340,6 +351,34 @@ SfxObjectShell::~SfxObjectShell()
     }
 }
 
+SfxCloseVetoLock::SfxCloseVetoLock(const SfxObjectShell* pDocShell)
+    : mpDocShell(pDocShell)
+{
+    if (mpDocShell)
+        osl_atomic_increment(&mpDocShell->Get_Impl()->m_nClosingLockLevel);
+}
+
+SfxCloseVetoLock::~SfxCloseVetoLock()
+{
+    if (mpDocShell && osl_atomic_decrement(&mpDocShell->Get_Impl()->m_nClosingLockLevel) == 0)
+    {
+        if (mpDocShell->Get_Impl()->m_bCloseModelScheduled)
+        {
+            mpDocShell->Get_Impl()->m_bCloseModelScheduled = false; // pass ownership
+            if (rtl::Reference model = static_cast<SfxBaseModel*>(mpDocShell->GetBaseModel().get()))
+            {
+                try
+                {
+                    model->close(true);
+                }
+                catch (const util::CloseVetoException&)
+                {
+                    DBG_UNHANDLED_EXCEPTION("sfx.doc");
+                }
+            }
+        }
+    }
+}
 
 void SfxObjectShell::Stamp_SetPrintCancelState(bool bState)
 {
@@ -479,13 +518,11 @@ SfxObjectShell* SfxObjectShell::GetNext
     return nullptr;
 }
 
-
 SfxObjectShell* SfxObjectShell::Current()
 {
     SfxViewFrame *pFrame = SfxViewFrame::Current();
     return pFrame ? pFrame->GetObjectShell() : nullptr;
 }
-
 
 bool SfxObjectShell::IsInPrepareClose() const
 {
@@ -589,7 +626,7 @@ bool SfxObjectShell::PrepareClose
                 aPoolItem = pFrame->GetBindings().ExecuteSynchron( SID_SAVEDOC, ppArgs );
             }
 
-            if ( nullptr == aPoolItem.getItem() || aPoolItem.getItem()->isVoidItem() )
+            if (!aPoolItem || IsDisabledItem(aPoolItem.getItem()) )
                 return false;
             if ( auto pBoolItem = dynamic_cast< const SfxBoolItem *>( aPoolItem.getItem() ) )
                 if ( !pBoolItem->GetValue() )
@@ -680,8 +717,8 @@ bool SfxObjectShell::HasBasic() const
 #if HAVE_FEATURE_SCRIPTING
 namespace
 {
-    const Reference< XLibraryContainer >&
-    lcl_getOrCreateLibraryContainer( bool _bScript, Reference< XLibraryContainer >& _rxContainer,
+    const Reference< XStorageBasedLibraryContainer >&
+    lcl_getOrCreateLibraryContainer( bool _bScript, Reference< XStorageBasedLibraryContainer >& _rxContainer,
         const Reference< XModel >& _rxDocument )
     {
         if ( !_rxContainer.is() )
@@ -689,14 +726,13 @@ namespace
             try
             {
                 Reference< XStorageBasedDocument > xStorageDoc( _rxDocument, UNO_QUERY );
-                const Reference< XComponentContext > xContext(
+                const Reference< XComponentContext >& xContext(
                     ::comphelper::getProcessComponentContext() );
                 _rxContainer.set (   _bScript
                                 ?   DocumentScriptLibraryContainer::create(
                                         xContext, xStorageDoc )
                                 :   DocumentDialogLibraryContainer::create(
-                                        xContext, xStorageDoc )
-                                ,   UNO_QUERY_THROW );
+                                        xContext, xStorageDoc ));
             }
             catch (const Exception&)
             {
@@ -708,7 +744,7 @@ namespace
 }
 #endif
 
-Reference< XLibraryContainer > SfxObjectShell::GetDialogContainer()
+Reference< XStorageBasedLibraryContainer > SfxObjectShell::GetDialogContainer()
 {
 #if HAVE_FEATURE_SCRIPTING
     try
@@ -730,10 +766,10 @@ Reference< XLibraryContainer > SfxObjectShell::GetDialogContainer()
     return SfxGetpApp()->GetDialogContainer();
 }
 
-Reference< XLibraryContainer > SfxObjectShell::GetBasicContainer()
+Reference< XStorageBasedLibraryContainer > SfxObjectShell::GetBasicContainer()
 {
 #if HAVE_FEATURE_SCRIPTING
-    if (!utl::ConfigManager::IsFuzzing())
+    if (!comphelper::IsFuzzing())
     {
         try
         {
@@ -889,7 +925,7 @@ void SfxObjectShell::SetCurrentComponent( const Reference< XInterface >& _rxComp
         return;
 
     // set "ThisComponent" for Basic
-    pAppMgr->SetGlobalUNOConstant( "ThisComponent", Any( _rxComponent ) );
+    pAppMgr->SetGlobalUNOConstant( u"ThisComponent"_ustr, Any( _rxComponent ) );
 
     // set new current component for VBA compatibility
     if ( _rxComponent.is() )
@@ -924,7 +960,7 @@ OUString SfxObjectShell::GetServiceNameFromFactory( const OUString& rFact )
 {
     //! Remove everything behind name!
     OUString aFact( rFact );
-    OUString aPrefix("private:factory/");
+    OUString aPrefix(u"private:factory/"_ustr);
     if ( aFact.startsWith( aPrefix ) )
         aFact = aFact.copy( aPrefix.getLength() );
     sal_Int32 nPos = aFact.indexOf( '?' );
@@ -1017,7 +1053,7 @@ Reference<lang::XComponent> SfxObjectShell::CreateAndLoadComponent( const SfxIte
     const SfxStringItem* pFileNameItem = rSet.GetItem<SfxStringItem>(SID_FILE_NAME, false);
     const SfxStringItem* pTargetItem = rSet.GetItem<SfxStringItem>(SID_TARGETNAME, false);
     OUString aURL;
-    OUString aTarget("_blank");
+    OUString aTarget(u"_blank"_ustr);
     if ( pFileNameItem )
         aURL = pFileNameItem->GetValue();
     if ( pTargetItem )
@@ -1074,7 +1110,7 @@ SfxObjectShell* SfxObjectShell::GetParentShell(const css::uno::Reference<css::un
 void SfxObjectShell::SetInitialized_Impl( const bool i_fromInitNew )
 {
     pImpl->bInitialized = true;
-    if (utl::ConfigManager::IsFuzzing())
+    if (comphelper::IsFuzzing())
         return;
     if ( i_fromInitNew )
     {
@@ -1088,7 +1124,7 @@ void SfxObjectShell::SetInitialized_Impl( const bool i_fromInitNew )
 }
 
 
-bool SfxObjectShell::IsChangeRecording() const
+bool SfxObjectShell::IsChangeRecording(SfxViewShell* /*pViewShell*/, bool /*bRecordAllViews*/) const
 {
     // currently this function needs to be overwritten by Writer and Calc only
     SAL_WARN( "sfx.doc", "function not implemented" );
@@ -1104,7 +1140,7 @@ bool SfxObjectShell::HasChangeRecordProtection() const
 }
 
 
-void SfxObjectShell::SetChangeRecording( bool /*bActivate*/, bool /*bLockAllViews*/ )
+void SfxObjectShell::SetChangeRecording( bool /*bActivate*/, bool /*bLockAllViews*/, SfxRedlineRecordingMode /*eRedlineRecordingMode*/)
 {
     // currently this function needs to be overwritten by Writer and Calc only
     SAL_WARN( "sfx.doc", "function not implemented" );

@@ -20,6 +20,7 @@
 #include <config_features.h>
 #include <config_version.h>
 
+#include <osl/diagnose.h>
 #include <osl/file.hxx>
 #include <osl/thread.hxx>
 #include <osl/module.hxx>
@@ -32,7 +33,7 @@
 #include <tools/stream.hxx>
 #include <tools/json_writer.hxx>
 
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <unotools/resmgr.hxx>
 #include <unotools/syslocale.hxx>
 #include <unotools/syslocaleoptions.hxx>
@@ -54,6 +55,7 @@
 #include <vcl/scheduler.hxx>
 #include <vcl/skia/SkiaHelper.hxx>
 
+#include <dbggui.hxx>
 #include <salinst.hxx>
 #include <graphic/Manager.hxx>
 #include <salframe.hxx>
@@ -97,32 +99,15 @@ void InitSettings(ImplSVData* pSVData);
 // keycodes handled internally by VCL
 vcl::KeyCode const ReservedKeys[]
 {
-                vcl::KeyCode(KEY_F1,0)                  ,
-                vcl::KeyCode(KEY_F1,KEY_SHIFT)          ,
-                vcl::KeyCode(KEY_F1,KEY_MOD1)           ,
-                vcl::KeyCode(KEY_F2,KEY_SHIFT)          ,
-                vcl::KeyCode(KEY_F4,KEY_MOD1)           ,
-                vcl::KeyCode(KEY_F4,KEY_MOD2)           ,
-                vcl::KeyCode(KEY_F4,KEY_MOD1|KEY_MOD2)  ,
-                vcl::KeyCode(KEY_F6,0)                  ,
-                vcl::KeyCode(KEY_F6,KEY_MOD1)           ,
-                vcl::KeyCode(KEY_F6,KEY_SHIFT)          ,
-                vcl::KeyCode(KEY_F6,KEY_MOD1|KEY_SHIFT) ,
-                vcl::KeyCode(KEY_F10,0)
-#ifdef UNX
-                ,
-                vcl::KeyCode(KEY_1,KEY_SHIFT|KEY_MOD1),
-                vcl::KeyCode(KEY_2,KEY_SHIFT|KEY_MOD1),
-                vcl::KeyCode(KEY_3,KEY_SHIFT|KEY_MOD1),
-                vcl::KeyCode(KEY_4,KEY_SHIFT|KEY_MOD1),
-                vcl::KeyCode(KEY_5,KEY_SHIFT|KEY_MOD1),
-                vcl::KeyCode(KEY_6,KEY_SHIFT|KEY_MOD1),
-                vcl::KeyCode(KEY_7,KEY_SHIFT|KEY_MOD1),
-                vcl::KeyCode(KEY_8,KEY_SHIFT|KEY_MOD1),
-                vcl::KeyCode(KEY_9,KEY_SHIFT|KEY_MOD1),
-                vcl::KeyCode(KEY_0,KEY_SHIFT|KEY_MOD1),
-                vcl::KeyCode(KEY_ADD,KEY_SHIFT|KEY_MOD1)
-#endif
+                vcl::KeyCode(KEY_F1,0)                  , // Help
+                vcl::KeyCode(KEY_F1,KEY_SHIFT)          , // Context help
+                vcl::KeyCode(KEY_F2,KEY_SHIFT)          , // Activate extended tooltips
+                vcl::KeyCode(KEY_F4,KEY_MOD1)           , // Close document
+                vcl::KeyCode(KEY_F4,KEY_MOD2)           , // Close document
+                vcl::KeyCode(KEY_F6,0)                  , // Set focus to next visible subwindow
+                vcl::KeyCode(KEY_F6,KEY_MOD1)           , // Set focus to the document canvas/data source
+                vcl::KeyCode(KEY_F6,KEY_SHIFT)          , // Set focus to previous subwindow
+                vcl::KeyCode(KEY_F10,0)                   // Activate the first menu
 };
 
 extern "C" {
@@ -169,7 +154,7 @@ Application* GetpApp()
 Application::Application()
 {
     // useful for themes at least, perhaps extensions too
-    OUString aVar("LIBO_VERSION"), aValue(LIBO_VERSION_DOTTED);
+    OUString aVar(u"LIBO_VERSION"_ustr), aValue(u"" LIBO_VERSION_DOTTED ""_ustr);
     osl_setEnvironment(aVar.pData, aValue.pData);
 
     ImplGetSVData()->mpApp = this;
@@ -204,13 +189,13 @@ Application::~Application()
     SAL_INFO("vcl.items", "ITEM: " << getAllocatedSfxPoolItemHolderCount() << " SfxPoolItemHolders still allocated at shutdown");
     SAL_INFO("vcl.items", "ITEM: " << getUsedSfxPoolItemHolderCount() << " SfxPoolItemHolders were incarnated during runtime");
 
-    // Same mechanism for SfxPoolItem(s)directly put to a Pool
-    SAL_INFO("vcl.items", "ITEM: " << getRemainingDirectlyPooledSfxPoolItemCount() << " SfxPoolItems still directly put in Pool at shutdown (deleted @Pool destruction)");
-    SAL_INFO("vcl.items", "ITEM: " << getAllDirectlyPooledSfxPoolItemCount() << " SfxPoolItems directly put in Pool");
-
     // Additional call to list still incarnated SfxPoolItems (under 'svl.items')
     listAllocatedSfxPoolItems();
 
+    // List SfxPoolItems with highest RefCounts, these are the best
+    // candidates to add a ItemInstanceManager mechanism
+    listSfxPoolItemsWithHighestUsage(20);
+    listSfxItemSetUsage();
 #endif
 }
 
@@ -289,7 +274,7 @@ void Application::Exception( ExceptionCategory nCategory )
         case ExceptionCategory::UserInterface:
             break;
         default:
-            Abort("Unknown Error");
+            Abort(u"Unknown Error"_ustr);
             break;
     }
 }
@@ -335,6 +320,12 @@ void Application::notifyWindow(vcl::LOKWindowId /*nLOKWindowId*/,
     SAL_WARN("vcl", "Invoked not implemented method: Application::notifyWindow");
 }
 
+OString Application::dumpNotifyState() const
+{
+    SAL_WARN("vcl", "Invoked not implemented method: Application::dumpNotifyState");
+    return "notimpl"_ostr;
+}
+
 void Application::libreOfficeKitViewCallback(int nType, const OString& pPayload) const
 {
     if (!comphelper::LibreOfficeKit::isActive())
@@ -359,13 +350,17 @@ void Application::Execute()
     int nExitCode = 0;
     if (!pSVData->mpDefInst->DoExecute(nExitCode))
     {
-        if (Application::IsOnSystemEventLoop())
+        if (Application::IsUseSystemEventLoop())
         {
             SAL_WARN("vcl.schedule", "Can't omit DoExecute when running on system event loop!");
             std::abort();
         }
         while (!pSVData->maAppData.mbAppQuit)
+        {
             Application::Yield();
+            SolarMutexReleaser releaser; // Give a chance for the waiting threads to lock the mutex
+            pSVData->m_inExecuteCondtion.set();
+        }
     }
 
     pSVData->maAppData.mbInAppExecute = false;
@@ -400,22 +395,42 @@ static bool ImplYield(bool i_bWait, bool i_bAllEvents)
 
 bool Application::Reschedule( bool i_bAllEvents )
 {
-    static const bool bAbort = Application::IsOnSystemEventLoop();
+    static const bool bAbort = Application::IsUseSystemEventLoop();
     if (bAbort)
     {
         SAL_WARN("vcl.schedule", "Application::Reschedule(" << i_bAllEvents << ")");
-        std::abort();
+        return false;
     }
-    return ImplYield(false, i_bAllEvents);
+    int nOldView = -1;
+    if (comphelper::LibreOfficeKit::isActive())
+    {
+        nOldView = comphelper::LibreOfficeKit::getView();
+    }
+    bool bRet = ImplYield(false, i_bAllEvents);
+    if (comphelper::LibreOfficeKit::isActive())
+    {
+        int nNewView = comphelper::LibreOfficeKit::getView();
+        if (nOldView != -1 && nNewView != -1 && nOldView != nNewView)
+        {
+            // Yield changed the current view, restore the old value.
+            comphelper::LibreOfficeKit::setView(nOldView);
+        }
+    }
+    return bRet;
 }
 
-bool Application::IsOnSystemEventLoop()
+bool Application::IsUseSystemEventLoop()
 {
     return ImplGetSVData()->maAppData.m_bUseSystemLoop;
 }
 
 void Scheduler::ProcessEventsToIdle()
 {
+#if OSL_DEBUG_LEVEL > 0
+    const ImplSVData* pSVData = ImplGetSVData();
+    if (pSVData->mpDefInst->IsMainThread())
+        assert(pSVData->maSchedCtx.mnIdlesLockCount == 0);
+#endif
     int nSanity = 1;
     while (ImplYield(false, true))
     {
@@ -428,7 +443,6 @@ void Scheduler::ProcessEventsToIdle()
     // If we yield from a non-main thread we just can guarantee that all idle
     // events were processed at some point, but our check can't prevent further
     // processing in the main thread, which may add new events, so skip it.
-    const ImplSVData* pSVData = ImplGetSVData();
     if ( !pSVData->mpDefInst->IsMainThread() )
         return;
     for (int nTaskPriority = 0; nTaskPriority < PRIO_COUNT; ++nTaskPriority)
@@ -465,7 +479,7 @@ SAL_DLLPUBLIC_EXPORT void unit_lok_process_events_to_idle()
 
 void Application::Yield()
 {
-    static const bool bAbort = Application::IsOnSystemEventLoop();
+    static const bool bAbort = Application::IsUseSystemEventLoop();
     if (bAbort)
     {
         SAL_WARN("vcl.schedule", "Application::Yield()");
@@ -500,7 +514,7 @@ bool Application::IsMainThread()
 sal_uInt32 Application::ReleaseSolarMutex()
 {
     ImplSVData* pSVData = ImplGetSVData();
-    return pSVData->mpDefInst->ReleaseYieldMutexAll();
+    return pSVData->mpDefInst->ReleaseYieldMutex(true);
 }
 
 void Application::AcquireSolarMutex( sal_uInt32 nCount )
@@ -579,7 +593,7 @@ void Application::MergeSystemSettings( AllSettings& rSettings )
     }
 }
 
-void Application::SetSettings( const AllSettings& rSettings )
+void Application::SetSettings(const AllSettings& rSettings, bool bTemporary)
 {
     const SolarMutexGuard aGuard;
 
@@ -598,8 +612,10 @@ void Application::SetSettings( const AllSettings& rSettings )
             pSVData->mbResLocaleSet = false;
         }
         *pSVData->maAppData.mxSettings = rSettings;
-        AllSettingsFlags nChangeFlags = aOldSettings.GetChangeFlags( *pSVData->maAppData.mxSettings );
-        if ( bool(nChangeFlags) )
+        // Don't broadcast temporary changes
+        AllSettingsFlags nChangeFlags = bTemporary ? AllSettingsFlags::NONE
+                                                   : aOldSettings.GetChangeFlags(*pSVData->maAppData.mxSettings);
+        if (nChangeFlags != AllSettingsFlags::NONE)
         {
             DataChangedEvent aDCEvt( DataChangedEventType::SETTINGS, &aOldSettings, nChangeFlags );
 
@@ -691,7 +707,7 @@ void InitSettings(ImplSVData* pSVData)
     assert(!pSVData->maAppData.mxSettings && "initialization should not happen twice!");
 
     pSVData->maAppData.mxSettings.emplace();
-    if (!utl::ConfigManager::IsFuzzing())
+    if (!comphelper::IsFuzzing())
     {
         pSVData->maAppData.mpCfgListener = new LocaleConfigurationListener;
         pSVData->maAppData.mxSettings->GetSysLocale().GetOptions().AddListener( pSVData->maAppData.mpCfgListener );
@@ -1067,8 +1083,8 @@ void Application::RemoveUserEvent( ImplSVEvent * nUserEvent )
         SAL_WARN_IF( !nUserEvent->mbCall, "vcl",
                     "Application::RemoveUserEvent(): Event is already removed" );
 
-        nUserEvent->mpWindow.clear();
-        nUserEvent->mpInstanceRef.clear();
+        nUserEvent->mpWindow.reset();
+        nUserEvent->mpInstanceRef.reset();
         nUserEvent->mbCall = false;
     }
 }
@@ -1158,13 +1174,13 @@ void Application::SetAppName( const OUString& rUniqueName )
     pSVData->maAppData.mxAppName = rUniqueName;
 }
 
-OUString Application::GetAppName()
+const OUString & Application::GetAppName()
 {
     ImplSVData* pSVData = ImplGetSVData();
     if ( pSVData->maAppData.mxAppName )
         return *(pSVData->maAppData.mxAppName);
     else
-        return OUString();
+        return EMPTY_OUSTRING;
 }
 
 enum {hwAll=0, hwEnv=1, hwUI=2};
@@ -1174,7 +1190,7 @@ static OUString Localize(TranslateId aId, const bool bLocalize)
     if (bLocalize)
         return VclResId(aId);
     else
-        return Translate::get(aId, Translate::Create("vcl", LanguageTag("en-US")));
+        return Translate::get(aId, Translate::Create("vcl", LanguageTag(u"en-US"_ustr)));
 }
 
 OUString Application::GetOSVersion()
@@ -1392,13 +1408,13 @@ Help* Application::GetHelp()
     return ImplGetSVData()->maAppData.mpHelp;
 }
 
-OUString Application::GetToolkitName()
+const OUString & Application::GetToolkitName()
 {
     ImplSVData* pSVData = ImplGetSVData();
     if ( pSVData->maAppData.mxToolkitName )
         return *(pSVData->maAppData.mxToolkitName);
     else
-        return OUString();
+        return EMPTY_OUSTRING;
 }
 
 vcl::Window* Dialog::GetDefDialogParent()
@@ -1542,7 +1558,7 @@ void UnoWrapperBase::SetUnoWrapper( UnoWrapperBase* pWrapper )
     pSVData->mpUnoWrapper = pWrapper;
 }
 
-css::uno::Reference< css::awt::XDisplayConnection > Application::GetDisplayConnection()
+rtl::Reference<vcl::DisplayConnectionDispatch> Application::GetDisplayConnection()
 {
     ImplSVData* pSVData = ImplGetSVData();
 
@@ -1635,27 +1651,6 @@ void Application::AddToRecentDocumentList(const OUString& rFileUrl, const OUStri
     pSVData->mpDefInst->AddToRecentDocumentList(rFileUrl, rMimeType, rDocumentService);
 }
 
-bool InitAccessBridge()
-{
-// Disable MSAA bridge on UNIX
-#if defined UNX
-    return true;
-#else
-    bool bRet = ImplInitAccessBridge();
-
-    if( !bRet )
-    {
-        // disable accessibility if the user chooses to continue
-        AllSettings aSettings = Application::GetSettings();
-        MiscSettings aMisc = aSettings.GetMiscSettings();
-        aMisc.SetEnableATToolSupport( false );
-        aSettings.SetMiscSettings( aMisc );
-        Application::SetSettings( aSettings );
-    }
-    return bRet;
-#endif // !UNX
-}
-
 // MT: AppEvent was in oldsv.cxx, but is still needed...
 void Application::AppEvent( const ApplicationEvent& /*rAppEvent*/ )
 {
@@ -1746,37 +1741,59 @@ void dumpState(rtl::OStringBuffer &rState)
     if (!pSVData)
         return;
 
+#ifndef NDEBUG
+    // lo_dumpState deliberately doesn't take SolarMutexGuard
+    // so disable these checks during dumpState
+    DbgGUIDeInitSolarMutexCheck();
+#endif
+
     rState.append("\nWindows:\t");
     rState.append(static_cast<sal_Int32>(Application::GetTopWindowCount()));
 
     vcl::Window *pWin = Application::GetFirstTopLevelWindow();
     while (pWin)
     {
-        tools::JsonWriter props;
-        pWin->DumpAsPropertyTree(props);
+        tools::JsonWriter aProps;
+        pWin->DumpAsPropertyTree(aProps);
 
         rState.append("\n\tWindow: ");
-        rState.append(props.finishAndGetAsOString());
+
+        auto notifier = pWin->GetLOKNotifier();
+        if (notifier)
+        {
+            rState.append(notifier->dumpNotifyState());
+            rState.append(" ");
+        }
+        else
+            rState.append("no notifier ");
+
+        OString aPropStr = aProps.finishAndGetAsOString();
+        if (aPropStr.getLength() > 256)
+        {
+            rState.append(aPropStr.subView(0, 256));
+            rState.append("...");
+        } else
+            rState.append(aPropStr);
 
         pWin = Application::GetNextTopLevelWindow( pWin );
     }
 
-    vcl::graphic::Manager::get().dumpState(rState);
-
     pSVData->dumpState(rState);
+
+#ifndef NDEBUG
+    DbgGUIInitSolarMutexCheck();
+#endif
 }
 
 void trimMemory(int nTarget)
 {
     if (nTarget >= 1000)
     {
+        SolarMutexGuard aGuard;
         ImplSVData* pSVData = ImplGetSVData();
         if (!pSVData) // shutting down
             return;
         pSVData->dropCaches();
-        vcl::graphic::Manager::get().dropCache();
-        // TODO: ideally - free up any deeper dirtied thread stacks.
-        // comphelper::ThreadPool::getSharedOptimalPool().shutdown();
     }
     // else for now caches re-fill themselves as/when used.
 }

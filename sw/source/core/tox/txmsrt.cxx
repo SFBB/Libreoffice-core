@@ -340,7 +340,7 @@ bool SwTOXIndex::sort_lt(const SwTOXSortTabBase& rCmpBase)
     OSL_ENSURE(pTextMark, "pTextMark == 0, No keyword");
 
     const TextAndReading aMyTaR(GetText());
-    const TextAndReading aOtherTaR(rCmpBase.GetText());
+    const TextAndReading& aOtherTaR(rCmpBase.GetText());
 
     bool bRet = GetLevel() == rCmpBase.GetLevel() &&
                 pTOXIntl->IsLess( aMyTaR, GetLocale(),
@@ -361,7 +361,7 @@ bool SwTOXIndex::sort_lt(const SwTOXSortTabBase& rCmpBase)
 
 TextAndReading SwTOXIndex::GetText_Impl(SwRootFrame const*const pLayout) const
 {
-    OSL_ENSURE(pTextMark, "pTextMark == 0, No keyword");
+    assert(pTextMark && "pTextMark == 0, No keyword");
     const SwTOXMark& rTOXMark = pTextMark->GetTOXMark();
 
     TextAndReading aRet;
@@ -427,7 +427,7 @@ void SwTOXIndex::FillText( SwTextNode& rNd, const SwContentIndex& rInsPos, sal_u
 
 sal_uInt16 SwTOXIndex::GetLevel() const
 {
-    OSL_ENSURE(pTextMark, "pTextMark == 0, No keyword");
+    assert(pTextMark && "pTextMark == 0, No keyword");
 
     sal_uInt16 nForm = FORM_PRIMARY_KEY;
 
@@ -592,7 +592,7 @@ TextAndReading SwTOXPara::GetText_Impl(SwRootFrame const*const pLayout) const
             // Find the FlyFormat; the object/graphic name is there
             SwFrameFormat* pFly = pNd->GetFlyFormat();
             if( pFly )
-                return TextAndReading(pFly->GetName(), OUString());
+                return TextAndReading(pFly->GetName().toString(), OUString());
 
             OSL_ENSURE( false, "Graphic/object without name" );
             TranslateId pId = SwTOXElement::Ole == eType
@@ -620,7 +620,7 @@ void SwTOXPara::FillText( SwTextNode& rNd, const SwContentIndex& rInsPos, sal_uI
         {
             pSrc->CopyExpandText( rNd, &rInsPos, nStartIndex,
                     nEndIndex == -1 ? -1 : nEndIndex - nStartIndex,
-                    pLayout, false, false, true );
+                    pLayout, false, true );
         }
         else
         {
@@ -628,7 +628,7 @@ void SwTOXPara::FillText( SwTextNode& rNd, const SwContentIndex& rInsPos, sal_uI
             assert(nEndIndex == -1);
             // sw_redlinehide: this probably won't HideDeletions
             pSrc->CopyExpandText( rNd, &rInsPos, 0, -1,
-                    pLayout, false, false, true );
+                    pLayout, false, true );
             if (pLayout && pLayout->HasMergedParas())
             {
                 if (SwTextFrame const*const pFrame = static_cast<SwTextFrame*>(pSrc->getLayoutFrame(pLayout)))
@@ -646,7 +646,7 @@ void SwTOXPara::FillText( SwTextNode& rNd, const SwContentIndex& rInsPos, sal_uI
 
                                 pTmp->GetTextNode()->CopyExpandText(
                                         rNd, &rInsPos, 0, -1,
-                                        pLayout, false, false, false );
+                                        pLayout, false, false );
                             }
                         }
                     }
@@ -688,10 +688,10 @@ std::pair<OUString, bool> SwTOXPara::GetURL(SwRootFrame const*const) const
             SwDoc& rDoc = const_cast<SwDoc&>( pTextNd->GetDoc() );
             // tdf#123313: this *must not* create a bookmark, its Undo would
             // be screwed! create it as preparatory step, in ctor!
-            ::sw::mark::IMark const * const pMark = rDoc.getIDocumentMarkAccess()->getMarkForTextNode(
+            ::sw::mark::MarkBase const * const pMark = rDoc.getIDocumentMarkAccess()->getMarkForTextNode(
                                 *pTextNd,
                                 IDocumentMarkAccess::MarkType::CROSSREF_HEADING_BOOKMARK);
-            aText = "#" + pMark->GetName();
+            aText = "#" + pMark->GetName().toString();
         }
         break;
 
@@ -703,17 +703,17 @@ std::pair<OUString, bool> SwTOXPara::GetURL(SwRootFrame const*const) const
             SwFrameFormat* pFly = pNd->GetFlyFormat();
             if( pFly )
             {
-                aText = "#" + pFly->GetName() + OUStringChar(cMarkSeparator);
-                const char* pStr;
+                aText = "#" + pFly->GetName().toString() + OUStringChar(cMarkSeparator);
+                std::optional<OUString> pStr;
                 switch( eType )
                 {
-                case SwTOXElement::Ole:       pStr = "ole"; break;
-                case SwTOXElement::Graphic:   pStr = "graphic"; break;
-                case SwTOXElement::Frame:     pStr = "frame"; break;
-                default:            pStr = nullptr;
+                case SwTOXElement::Ole:       pStr = u"ole"_ustr; break;
+                case SwTOXElement::Graphic:   pStr = u"graphic"_ustr; break;
+                case SwTOXElement::Frame:     pStr = u"frame"_ustr; break;
+                default: break;
                 }
                 if( pStr )
-                    aText += OUString::createFromAscii( pStr );
+                    aText += *pStr;
             }
         }
         break;
@@ -757,7 +757,7 @@ TextAndReading SwTOXTable::GetText_Impl(SwRootFrame const*const) const
             pNd->FindTableNode();
         if (pTableNd)
         {
-            return TextAndReading(pTableNd->GetTable().GetFrameFormat()->GetName(), OUString());
+            return TextAndReading(pTableNd->GetTable().GetFrameFormat()->GetName().toString(), OUString());
         }
     }
 
@@ -780,11 +780,11 @@ std::pair<OUString, bool> SwTOXTable::GetURL(SwRootFrame const*const) const
     if (!pNd)
         return std::make_pair(OUString(), false);
 
-    const OUString sName = static_cast<const SwTableNode*>(pNd)->GetTable().GetFrameFormat()->GetName();
+    const UIName sName = static_cast<const SwTableNode*>(pNd)->GetTable().GetFrameFormat()->GetName();
     if ( sName.isEmpty() )
         return std::make_pair(OUString(), false);
 
-    return std::make_pair("#" + sName + OUStringChar(cMarkSeparator) + "table", false);
+    return std::make_pair("#" + sName.toString() + OUStringChar(cMarkSeparator) + "table", false);
 }
 
 SwTOXAuthority::SwTOXAuthority( const SwContentNode& rNd,
@@ -840,8 +840,8 @@ OUString SwTOXAuthority::GetText(sal_uInt16 nAuthField, const SwRootFrame* pLayo
     else if(AUTH_FIELD_AUTHORITY_TYPE == nAuthField)
     {
         sal_uInt16 nLevel = GetLevel();
-        if(nLevel)
-            sText = SwAuthorityFieldType::GetAuthTypeName(static_cast<ToxAuthorityType>(--nLevel));
+        if (nLevel > 0)
+            sText = SwAuthorityFieldType::GetAuthTypeName(static_cast<ToxAuthorityType>(nLevel - 1));
     }
     else
         sText = pField->GetFieldText(static_cast<ToxAuthorityField>(nAuthField));
@@ -883,32 +883,34 @@ void SwTOXAuthority::FillText(SwTextNode& rNd, const SwContentIndex& rInsPos, sa
 
         // Convert URL to a relative one if requested.
         SwDoc* pDoc = static_cast<SwAuthorityFieldType*>(m_rField.GetField()->GetTyp())->GetDoc();
-        SwDocShell* pDocShell = pDoc->GetDocShell();
-        const OUString aBaseURL = pDocShell->getDocumentBaseURL();
-        std::u16string_view aBaseURIScheme;
-        sal_Int32 nSep = aBaseURL.indexOf(':');
-        if (nSep != -1)
+        if (SwDocShell* pDocShell = pDoc->GetDocShell())
         {
-            aBaseURIScheme = aBaseURL.subView(0, nSep);
-        }
+            std::u16string_view aBaseURIScheme;
+            const OUString aBaseURL = pDocShell->getDocumentBaseURL();
+            sal_Int32 nSep = aBaseURL.indexOf(':');
+            if (nSep != -1)
+            {
+                aBaseURIScheme = aBaseURL.subView(0, nSep);
+            }
 
-        uno::Reference<uri::XUriReferenceFactory> xUriReferenceFactory
-            = uri::UriReferenceFactory::create(comphelper::getProcessComponentContext());
-        uno::Reference<uri::XUriReference> xUriRef;
-        try
-        {
-            xUriRef = xUriReferenceFactory->parse(aText);
-        }
-        catch (const uno::Exception& rException)
-        {
-            SAL_WARN("sw.core",
-                     "SwTOXAuthority::FillText: failed to parse url: " << rException.Message);
-        }
+            uno::Reference<uri::XUriReferenceFactory> xUriReferenceFactory
+                = uri::UriReferenceFactory::create(comphelper::getProcessComponentContext());
+            uno::Reference<uri::XUriReference> xUriRef;
+            try
+            {
+                xUriRef = xUriReferenceFactory->parse(aText);
+            }
+            catch (const uno::Exception& rException)
+            {
+                SAL_WARN("sw.core",
+                         "SwTOXAuthority::FillText: failed to parse url: " << rException.Message);
+            }
 
-        bool bSaveRelFSys = officecfg::Office::Common::Save::URL::FileSystem::get();
-        if (xUriRef.is() && bSaveRelFSys && xUriRef->getScheme() == aBaseURIScheme)
-        {
-            aText = INetURLObject::GetRelURL(aBaseURL, aText);
+            bool bSaveRelFSys = officecfg::Office::Common::Save::URL::FileSystem::get();
+            if (xUriRef.is() && bSaveRelFSys && xUriRef->getScheme() == aBaseURIScheme)
+            {
+                aText = INetURLObject::GetRelURL(aBaseURL, aText);
+            }
         }
     }
 

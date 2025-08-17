@@ -48,7 +48,7 @@ VclStatusListener<T>::VclStatusListener(T* widget, const css::uno::Reference<css
     mWidget(widget),
     mxFrame(rFrame)
 {
-    css::uno::Reference<css::uno::XComponentContext> xContext = ::comphelper::getProcessComponentContext();
+    const css::uno::Reference<css::uno::XComponentContext>& xContext = ::comphelper::getProcessComponentContext();
     maCommandURL.Complete = aCommand;
     css::uno::Reference<css::util::XURLTransformer> xParser = css::util::URLTransformer::create(xContext);
     xParser->parseStrict(maCommandURL);
@@ -61,7 +61,7 @@ void VclStatusListener<T>::startListening()
     if (!xDispatchProvider.is())
         return;
 
-    mxDispatch = xDispatchProvider->queryDispatch(maCommandURL, "", 0);
+    mxDispatch = xDispatchProvider->queryDispatch(maCommandURL, u""_ustr, 0);
     if (mxDispatch.is())
         mxDispatch->addStatusListener(this, maCommandURL);
 }
@@ -86,7 +86,7 @@ void VclStatusListener<T>::dispose()
         mxDispatch.clear();
     }
     mxFrame.clear();
-    mWidget.clear();
+    mWidget.reset();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

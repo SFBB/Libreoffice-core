@@ -19,19 +19,17 @@
 
 #pragma once
 
-#include <vcl/graph.hxx>
+#include <vcl/filter/ImportOutput.hxx>
 #include <vcl/bitmap.hxx>
 
 #include <vcl/BitmapWriteAccess.hxx>
-#include <graphic/GraphicReader.hxx>
 
 enum class GraphicFilterImportFlags;
 
 enum ReadState
 {
     JPEGREAD_OK,
-    JPEGREAD_ERROR,
-    JPEGREAD_NEED_MORE
+    JPEGREAD_ERROR
 };
 
 struct JPEGCreateBitmapParam
@@ -45,23 +43,17 @@ struct JPEGCreateBitmapParam
     bool bGray;
 };
 
-class JPEGReader : public GraphicReader
+class JPEGReader
 {
-    SvStream&           mrStream;
+    SvStream& mrStream;
     std::optional<Bitmap> mpBitmap;
-    std::optional<AlphaMask> mpIncompleteAlpha;
-
-    tools::Long                mnLastPos;
-    tools::Long                mnLastLines;
-    bool                mbSetLogSize;
-
-    Graphic CreateIntermediateGraphic(tools::Long nLines);
+    tools::Long mnLastPos;
+    bool mbSetLogSize;
 
 public:
-            JPEGReader( SvStream& rStream, GraphicFilterImportFlags nImportFlags );
-    virtual ~JPEGReader() override;
+    JPEGReader( SvStream& rStream, GraphicFilterImportFlags nImportFlags );
 
-    ReadState Read(Graphic& rGraphic, GraphicFilterImportFlags nImportFlags, BitmapScopedWriteAccess* ppAccess);
+    ReadState Read(ImportOutput& rImportOutput, GraphicFilterImportFlags nImportFlags, BitmapScopedWriteAccess* ppAccess);
 
     bool CreateBitmap(JPEGCreateBitmapParam const & param);
 

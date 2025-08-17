@@ -62,7 +62,7 @@ bool SwEditShell::GetPaMAttr( SwPaM* pPaM, SfxItemSet& rSet,
     // ??? pPaM can be different from the Cursor ???
     if( GetCursorCnt() > getMaxLookup() )
     {
-        rSet.InvalidateAllItems();
+        rSet.ClearItem();
         return false;
     }
 
@@ -92,8 +92,8 @@ bool SwEditShell::GetPaMAttr( SwPaM* pPaM, SfxItemSet& rSet,
                     if (nListLevel >= MAXLEVEL)
                         nListLevel = MAXLEVEL - 1;
 
-                    const OUString & aCharFormatName =
-                        pNumRule->Get(o3tl::narrowing<sal_uInt16>(nListLevel)).GetCharFormatName();
+                    const UIName aCharFormatName(
+                        pNumRule->Get(o3tl::narrowing<sal_uInt16>(nListLevel)).GetCharFormatName() );
                     SwCharFormat * pCharFormat =
                         GetDoc()->FindCharFormatByName(aCharFormatName);
 
@@ -113,7 +113,6 @@ bool SwEditShell::GetPaMAttr( SwPaM* pPaM, SfxItemSet& rSet,
         if( sal_Int32(nEndNd - nSttNd) >= getMaxLookup() )
         {
             rSet.ClearItem();
-            rSet.InvalidateAllItems();
             return false;
         }
 
@@ -294,7 +293,6 @@ std::vector<std::pair< const SfxPoolItem*, std::unique_ptr<SwPaM> >> SwEditShell
         sal_Int32 nSttCnt = rCurrentPaM.Start()->GetContentIndex();
         sal_Int32 nEndCnt = rCurrentPaM.End()->GetContentIndex();
 
-        SwPaM* pNewPaM = nullptr;
         const SfxPoolItem* pItem = nullptr;
 
         // for all the nodes in the current selection
@@ -321,9 +319,8 @@ std::vector<std::pair< const SfxPoolItem*, std::unique_ptr<SwPaM> >> SwEditShell
                 // item from attribute set
                 if( pTextNd->HasSwAttrSet() )
                 {
-                    pNewPaM = new SwPaM(*pNd, nStt, *pNd, nEnd);
                     pItem = pTextNd->GetSwAttrSet().GetItem( nWhich );
-                    vItem.emplace_back( pItem, std::unique_ptr<SwPaM>(pNewPaM) );
+                    vItem.emplace_back( pItem, std::make_unique<SwPaM>(*pNd, nStt, *pNd, nEnd) );
                 }
 
                 if( !pTextNd->HasHints() )
@@ -369,8 +366,7 @@ std::vector<std::pair< const SfxPoolItem*, std::unique_ptr<SwPaM> >> SwEditShell
                                         nStop = nEnd;
                                     else
                                         nStop = *pAttrEnd;
-                                    pNewPaM = new SwPaM(*pNd, nStart, *pNd, nStop);
-                                    vItem.emplace_back( pItem, std::unique_ptr<SwPaM>(pNewPaM) );
+                                    vItem.emplace_back( pItem, std::make_unique<SwPaM>(*pNd, nStart, *pNd, nStop) );
                                     break;
                                 }
                                 pItem = aItemIter.NextItem();
@@ -378,9 +374,8 @@ std::vector<std::pair< const SfxPoolItem*, std::unique_ptr<SwPaM> >> SwEditShell
                             // default item
                             if( !pItem && !pTextNd->HasSwAttrSet() )
                             {
-                                pNewPaM = new SwPaM(*pNd, nStt, *pNd, nEnd);
-                                pItem = pAutoSet->GetPool()->GetPoolDefaultItem( nWhich );
-                                vItem.emplace_back( pItem,  std::unique_ptr<SwPaM>(pNewPaM) );
+                                pItem = pAutoSet->GetPool()->GetUserDefaultItem( nWhich );
+                                vItem.emplace_back( pItem,  std::make_unique<SwPaM>(*pNd, nStt, *pNd, nEnd) );
                             }
                         }
                     }
@@ -461,7 +456,7 @@ size_t SwEditShell::GetSeqFootnoteList( SwSeqFieldList& rList, bool bEndNotes )
             SwNodeIndex aIdx( *pIdx, 1 );
             SwTextNode* pTextNd = aIdx.GetNode().GetTextNode();
             if( !pTextNd )
-                pTextNd = static_cast<SwTextNode*>(mxDoc->GetNodes().GoNext( &aIdx ));
+                pTextNd = static_cast<SwTextNode*>(SwNodes::GoNext(&aIdx));
 
             if( pTextNd )
             {
@@ -516,7 +511,7 @@ bool SwEditShell::IsMoveLeftMargin( bool bRight, bool bModulus ) const
                 const SvxLRSpaceItem& rLS = pCNd->GetAttr( RES_LR_SPACE );
                 if( bRight )
                 {
-                    tools::Long nNext = rLS.GetTextLeft() + nDefDist;
+                    tools::Long nNext = rLS.ResolveTextLeft({}) + nDefDist;
                     if( bModulus )
                         nNext = ( nNext / nDefDist ) * nDefDist;
                     SwFrame* pFrame = pCNd->getLayoutFrame( GetLayout() );
@@ -666,10 +661,10 @@ SvtScriptType SwEditShell::GetScriptType() const
     {
         for(SwPaM& rPaM : GetCursor()->GetRingContainer())
         {
-            auto [pStt, pEnd] = rPaM.StartEnd(); // SwPosition*
-            if( pStt == pEnd || *pStt == *pEnd )
+            auto [pStart, pEnd] = rPaM.StartEnd(); // SwPosition*
+            if( pStart == pEnd || *pStart == *pEnd )
             {
-                const SwTextNode* pTNd = pStt->GetNode().GetTextNode();
+                const SwTextNode* pTNd = pStart->GetNode().GetTextNode();
                 if( pTNd )
                 {
                     // try to get SwScriptInfo
@@ -677,13 +672,13 @@ SvtScriptType SwEditShell::GetScriptType() const
                     const SwScriptInfo *const pScriptInfo =
                         SwScriptInfo::GetScriptInfo(*pTNd, &pFrame);
 
-                    sal_Int32 nPos = pStt->GetContentIndex();
+                    sal_Int32 nPos = pStart->GetContentIndex();
                     //Task 90448: we need the scripttype of the previous
                     //              position, if no selection exist!
                     if( nPos )
                     {
-                        SwContentIndex aIdx( pStt->GetContentNode(), pStt->GetContentIndex() );
-                        if( pTNd->GoPrevious( &aIdx, SwCursorSkipMode::Chars ) )
+                        SwContentIndex aIdx( pStart->GetContentNode(), pStart->GetContentIndex() );
+                        if( pTNd->GoPrevious( aIdx, SwCursorSkipMode::Chars ) )
                             nPos = aIdx.GetIndex();
                     }
 
@@ -705,7 +700,7 @@ SvtScriptType SwEditShell::GetScriptType() const
             else
             {
                 SwNodeOffset nEndIdx = pEnd->GetNodeIndex();
-                SwNodeIndex aIdx( pStt->GetNode() );
+                SwNodeIndex aIdx( pStart->GetNode() );
                 for( ; aIdx.GetIndex() <= nEndIdx; ++aIdx )
                     if( aIdx.GetNode().IsTextNode() )
                     {
@@ -717,8 +712,8 @@ SvtScriptType SwEditShell::GetScriptType() const
                         const SwScriptInfo *const pScriptInfo =
                             SwScriptInfo::GetScriptInfo(*pTNd, &pFrame);
 
-                        sal_Int32 nChg = aIdx == pStt->GetNode()
-                                                ? pStt->GetContentIndex()
+                        sal_Int32 nChg = aIdx == pStart->GetNode()
+                                                ? pStart->GetContentIndex()
                                                 : 0;
                         sal_Int32 nEndPos = aIdx == nEndIdx
                                                 ? pEnd->GetContentIndex()
@@ -821,17 +816,17 @@ LanguageType SwEditShell::GetCurLang() const
 sal_uInt16 SwEditShell::GetScalingOfSelectedText() const
 {
     const SwPaM* pCursor = GetCursor();
-    const SwPosition* pStt = pCursor->Start();
-    const SwTextNode* pTNd = pStt->GetNode().GetTextNode();
+    const SwPosition* pStart = pCursor->Start();
+    const SwTextNode* pTNd = pStart->GetNode().GetTextNode();
     OSL_ENSURE( pTNd, "no textnode available" );
 
     sal_uInt16 nScaleWidth;
     if( pTNd )
     {
         SwTextFrame *const pFrame(static_cast<SwTextFrame *>(
-                    pTNd->getLayoutFrame(GetLayout(), pStt)));
+                    pTNd->getLayoutFrame(GetLayout(), pStart)));
         assert(pFrame); // shell cursor must be positioned in node with frame
-        TextFrameIndex const nStart(pFrame->MapModelToViewPos(*pStt));
+        TextFrameIndex const nStart(pFrame->MapModelToViewPos(*pStart));
         TextFrameIndex const nEnd(
             sw::FrameContainsNode(*pFrame, pCursor->End()->GetNodeIndex())
                 ? pFrame->MapModelToViewPos(*pCursor->End())

@@ -64,6 +64,8 @@
 #include <vcl/uitest/logger.hxx>
 #include <vcl/uitest/eventdescription.hxx>
 
+#include <svx/postattr.hxx>
+
 #include <edtwin.hxx>
 #include <view.hxx>
 #include <docsh.hxx>
@@ -76,9 +78,11 @@
 #include <SwRewriter.hxx>
 #include <txtannotationfld.hxx>
 #include <ndtxt.hxx>
+#include <svtools/colorcfg.hxx>
 
 #include <drawinglayer/processor2d/baseprocessor2d.hxx>
 #include <drawinglayer/processor2d/processor2dtools.hxx>
+#include <officecfg/Office/Writer.hxx>
 #include <osl/diagnose.h>
 #include <unotools/localedatawrapper.hxx>
 #include <unotools/syslocale.hxx>
@@ -167,7 +171,7 @@ void SwAnnotationWin::DrawForPage(OutputDevice* pDev, const Point& rPt)
         dynamic_cast<vcl::PDFExtOutDevData*>(pDev->GetExtOutDevData()));
     if (pPDFExtOutDevData && pPDFExtOutDevData->GetIsExportTaggedPDF())
     {
-        pPDFExtOutDevData->WrapBeginStructureElement(vcl::PDFWriter::NonStructElement, OUString());
+        pPDFExtOutDevData->WrapBeginStructureElement(vcl::pdf::StructElement::NonStructElement, OUString());
     }
 
     pDev->Push();
@@ -175,7 +179,7 @@ void SwAnnotationWin::DrawForPage(OutputDevice* pDev, const Point& rPt)
     pDev->SetFillColor(mColorDark);
     pDev->SetLineColor();
 
-    pDev->SetTextColor(mColorAnchor);
+    pDev->SetTextColor(mColorDark.IsDark() ? COL_WHITE : COL_BLACK);
     vcl::Font aFont = maLabelFont;
     aFont.SetFontHeight(aFont.GetFontHeight() * 20);
     pDev->SetFont(aFont);
@@ -243,7 +247,7 @@ void SwAnnotationWin::DrawForPage(OutputDevice* pDev, const Point& rPt)
         int x, y, width, height;
         mxMenuButton->get_extents_relative_to(*m_xContainer, x, y, width, height);
         Point aPos(rPt + PixelToLogic(Point(x, y)));
-        pDev->DrawText(aPos, "...");
+        pDev->DrawText(aPos, u"..."_ustr);
     }
 
     pDev->Pop();
@@ -301,7 +305,7 @@ void SwAnnotationWin::ShowAnchorOnly(const Point &aPoint)
 void SwAnnotationWin::InitControls()
 {
     // window controls for author and date
-    mxMetadataAuthor = m_xBuilder->weld_label("author");
+    mxMetadataAuthor = m_xBuilder->weld_label(u"author"_ustr);
     mxMetadataAuthor->set_accessible_name( SwResId( STR_ACCESS_ANNOTATION_AUTHOR_NAME ) );
     mxMetadataAuthor->set_direction(AllSettings::GetLayoutRTL());
 
@@ -312,7 +316,7 @@ void SwAnnotationWin::InitControls()
     // with variable meta size height
     mxMetadataAuthor->set_font(maLabelFont);
 
-    mxMetadataDate = m_xBuilder->weld_label("date");
+    mxMetadataDate = m_xBuilder->weld_label(u"date"_ustr);
     mxMetadataDate->set_accessible_name( SwResId( STR_ACCESS_ANNOTATION_DATE_NAME ) );
     mxMetadataDate->set_direction(AllSettings::GetLayoutRTL());
     mxMetadataDate->connect_mouse_move(LINK(this, SwAnnotationWin, MouseMoveHdl));
@@ -321,7 +325,7 @@ void SwAnnotationWin::InitControls()
     // with variable meta size height
     mxMetadataDate->set_font(maLabelFont);
 
-    mxMetadataResolved = m_xBuilder->weld_label("resolved");
+    mxMetadataResolved = m_xBuilder->weld_label(u"resolved"_ustr);
     mxMetadataResolved->set_accessible_name( SwResId( STR_ACCESS_ANNOTATION_RESOLVED_NAME ) );
     mxMetadataResolved->set_direction(AllSettings::GetLayoutRTL());
     mxMetadataResolved->connect_mouse_move(LINK(this, SwAnnotationWin, MouseMoveHdl));
@@ -337,18 +341,18 @@ void SwAnnotationWin::InitControls()
     aShell->GetDoc()->SetCalcFieldValueHdl( mpOutliner.get() );
     mpOutliner->SetUpdateLayout( true );
 
-    mpOutlinerView.reset(new OutlinerView(mpOutliner.get(), nullptr));
+    mpOutlinerView.reset(new OutlinerView(*mpOutliner, nullptr));
     mpOutliner->InsertView(mpOutlinerView.get());
 
     //create Scrollbars
-    mxVScrollbar = m_xBuilder->weld_scrolled_window("scrolledwindow", true);
+    mxVScrollbar = m_xBuilder->weld_scrolled_window(u"scrolledwindow"_ustr, true);
 
-    mxMenuButton = m_xBuilder->weld_menu_button("menubutton");
+    mxMenuButton = m_xBuilder->weld_menu_button(u"menubutton"_ustr);
     mxMenuButton->set_size_request(METABUTTON_WIDTH, METABUTTON_HEIGHT);
 
     // actual window which holds the user text
     mxSidebarTextControl.reset(new SidebarTextControl(*this, mrView, mrMgr));
-    mxSidebarTextControlWin.reset(new weld::CustomWeld(*m_xBuilder, "editview", *mxSidebarTextControl));
+    mxSidebarTextControlWin.reset(new weld::CustomWeld(*m_xBuilder, u"editview"_ustr, *mxSidebarTextControl));
     mxSidebarTextControl->SetPointer(PointerStyle::Text);
 
     Rescale();
@@ -357,7 +361,7 @@ void SwAnnotationWin::InitControls()
     mpOutlinerView->SetOutputArea( PixelToLogic( tools::Rectangle(0,0,1,1) ) );
 
     mxVScrollbar->set_direction(false);
-    mxVScrollbar->connect_vadjustment_changed(LINK(this, SwAnnotationWin, ScrollHdl));
+    mxVScrollbar->connect_vadjustment_value_changed(LINK(this, SwAnnotationWin, ScrollHdl));
     mxVScrollbar->connect_mouse_move(LINK(this, SwAnnotationWin, MouseMoveHdl));
 
     EEControlBits nCntrl = mpOutliner->GetControlWord();
@@ -381,7 +385,7 @@ void SwAnnotationWin::InitControls()
     }
     mpOutliner->SetControlWord(nCntrl);
 
-    std::size_t aIndex = SW_MOD()->InsertRedlineAuthor(GetAuthor());
+    std::size_t aIndex = SwModule::get()->InsertRedlineAuthor(GetAuthor());
     SetColor( SwPostItMgr::GetColorDark(aIndex),
               SwPostItMgr::GetColorLight(aIndex),
               SwPostItMgr::GetColorAnchor(aIndex));
@@ -389,11 +393,11 @@ void SwAnnotationWin::InitControls()
     CheckMetaText();
 
     // expand %1 "Author"
-    OUString aText = mxMenuButton->get_item_label("deleteby");
+    OUString aText = mxMenuButton->get_item_label(u"deleteby"_ustr);
     SwRewriter aRewriter;
     aRewriter.AddRule(UndoArg1, GetAuthor());
     aText = aRewriter.Apply(aText);
-    mxMenuButton->set_item_label("deleteby", aText);
+    mxMenuButton->set_item_label(u"deleteby"_ustr, aText);
 
     mxMenuButton->set_accessible_name(SwResId(STR_ACCESS_ANNOTATION_BUTTON_NAME));
     mxMenuButton->set_accessible_description(SwResId(STR_ACCESS_ANNOTATION_BUTTON_DESC));
@@ -450,26 +454,24 @@ void SwAnnotationWin::CheckMetaText()
     {
         mxMetadataDate->set_label(sMeta);
     }
+    UpdateColors();
+}
 
-    std::size_t aIndex = SW_MOD()->InsertRedlineAuthor(GetAuthor());
+void SwAnnotationWin::UpdateColors()
+{
+    std::size_t aIndex = SwModule::get()->InsertRedlineAuthor(GetAuthor());
     SetColor( SwPostItMgr::GetColorDark(aIndex),
               SwPostItMgr::GetColorLight(aIndex),
               SwPostItMgr::GetColorAnchor(aIndex));
-}
-
-static Color ColorFromAlphaColor(const sal_uInt8 aTransparency, const Color& aFront, const Color& aBack)
-{
-    return Color(sal_uInt8(aFront.GetRed()   * aTransparency / 255.0 + aBack.GetRed()   * (1 - aTransparency / 255.0)),
-                 sal_uInt8(aFront.GetGreen() * aTransparency / 255.0 + aBack.GetGreen() * (1 - aTransparency / 255.0)),
-                 sal_uInt8(aFront.GetBlue()  * aTransparency / 255.0 + aBack.GetBlue()  * (1 - aTransparency / 255.0)));
+    // draw comments either black or white depending on the document background
+    // TODO: make editeng depend on the actual note background
+    mpOutlinerView->SetBackgroundColor(svtools::ColorConfig().GetColorValue(svtools::DOCCOLOR).nColor);
 }
 
 void SwAnnotationWin::SetMenuButtonColors()
 {
     if (!mxMenuButton)
         return;
-
-    mxMenuButton->set_background(mColorDark);
 
     SwWrtShell* pWrtShell = mrView.GetWrtShellPtr();
     if (!pWrtShell)
@@ -483,13 +485,13 @@ void SwAnnotationWin::SetMenuButtonColors()
     xVirDev->SetOutputSizePixel(aSize);
 
     Gradient aGradient(css::awt::GradientStyle_LINEAR,
-                             ColorFromAlphaColor(15, mColorAnchor, mColorDark),
-                             ColorFromAlphaColor(80, mColorAnchor, mColorDark));
+                       mColorLight,
+                       mColorDark);
     xVirDev->DrawGradient(aRect, aGradient);
 
     //draw rect around button
     xVirDev->SetFillColor();
-    xVirDev->SetLineColor(ColorFromAlphaColor(90, mColorAnchor, mColorDark));
+    xVirDev->SetLineColor(mColorDark.IsDark() ? mColorLight : mColorDark);
     xVirDev->DrawRect(aRect);
 
     tools::Rectangle aSymbolRect(aRect);
@@ -497,14 +499,15 @@ void SwAnnotationWin::SetMenuButtonColors()
     const tools::Long nBorderDistanceLeftAndRight = ((aSymbolRect.GetWidth() * 250) + 500) / 1000;
     aSymbolRect.AdjustLeft(nBorderDistanceLeftAndRight );
     aSymbolRect.AdjustRight( -nBorderDistanceLeftAndRight );
-    // 40% distance to the top button border
-    const tools::Long nBorderDistanceTop = ((aSymbolRect.GetHeight() * 400) + 500) / 1000;
+    // 30% distance to the top button border
+    const tools::Long nBorderDistanceTop = ((aSymbolRect.GetHeight() * 300) + 500) / 1000;
     aSymbolRect.AdjustTop(nBorderDistanceTop );
-    // 15% distance to the bottom button border
-    const tools::Long nBorderDistanceBottom = ((aSymbolRect.GetHeight() * 150) + 500) / 1000;
+    // 25% distance to the bottom button border
+    const tools::Long nBorderDistanceBottom = ((aSymbolRect.GetHeight() * 250) + 500) / 1000;
     aSymbolRect.AdjustBottom( -nBorderDistanceBottom );
+
     DecorationView aDecoView(xVirDev.get());
-    aDecoView.DrawSymbol(aSymbolRect, SymbolType::SPIN_DOWN, GetTextColor(),
+    aDecoView.DrawSymbol(aSymbolRect, SymbolType::SPIN_DOWN, mColorDark.IsDark() ? COL_WHITE : COL_BLACK,
                          DrawSymbolFlags::NONE);
     mxMenuButton->set_image(xVirDev);
     mxMenuButton->set_size_request(aSize.Width() + 4, aSize.Height() + 4);
@@ -522,6 +525,9 @@ void SwAnnotationWin::Rescale()
 
     MapMode aMode = GetParent()->GetMapMode();
     aMode.SetOrigin( Point() );
+    // Avoid re-initialising state unless something has changed to invalidate it. speeds up scrolling.
+    if (aMode == GetMapMode())
+        return;
     SetMapMode( aMode );
     mxSidebarTextControl->SetMapMode( aMode );
 
@@ -564,7 +570,10 @@ void SwAnnotationWin::SetPosAndSize()
         {
             bChange = true;
             SetPosPixel(mPosSize.TopLeft());
+        }
 
+        if (bChange)
+        {
             Point aLineStart;
             Point aLineEnd ;
             switch ( meSidebarPosition )
@@ -673,21 +682,21 @@ void SwAnnotationWin::SetPosAndSize()
 
     // text range overlay
     maAnnotationTextRanges.clear();
-    if ( mrSidebarItem.maLayoutInfo.mnStartNodeIdx != SwNodeOffset(0)
-         && mrSidebarItem.maLayoutInfo.mnStartContent != -1 )
+    if ( mpSidebarItem->maLayoutInfo.mnStartNodeIdx != SwNodeOffset(0)
+         && mpSidebarItem->maLayoutInfo.mnStartContent != -1 )
     {
         const SwTextAnnotationField* pTextAnnotationField =
-            dynamic_cast< const SwTextAnnotationField* >( mrSidebarItem.GetFormatField().GetTextField() );
+            dynamic_cast< const SwTextAnnotationField* >( mpSidebarItem->GetFormatField().GetTextField() );
         SwTextNode* pTextNode = pTextAnnotationField ? pTextAnnotationField->GetpTextNode() : nullptr;
         SwContentNode* pContentNd = nullptr;
         if (pTextNode)
         {
             SwNodes& rNds = pTextNode->GetDoc().GetNodes();
-            pContentNd = rNds[mrSidebarItem.maLayoutInfo.mnStartNodeIdx]->GetContentNode();
+            pContentNd = rNds[mpSidebarItem->maLayoutInfo.mnStartNodeIdx]->GetContentNode();
         }
         if (pContentNd)
         {
-            SwPosition aStartPos( *pContentNd, mrSidebarItem.maLayoutInfo.mnStartContent );
+            SwPosition aStartPos( *pContentNd, mpSidebarItem->maLayoutInfo.mnStartContent );
             SwShellCursor* pTmpCursor = nullptr;
             const bool bTableCursorNeeded = pTextNode->FindTableBoxStartNode() != pContentNd->FindTableBoxStartNode();
             if ( bTableCursorNeeded )
@@ -713,7 +722,7 @@ void SwAnnotationWin::SetPosAndSize()
             if (bDisableMapMode)
                 EditWin().EnableMapMode(false);
 
-            if (mrSidebarItem.maLayoutInfo.mPositionFromCommentAnchor)
+            if (mpSidebarItem->maLayoutInfo.mPositionFromCommentAnchor)
                 pTmpCursorForAnnotationTextRange->FillRects();
 
             if (bDisableMapMode)
@@ -823,8 +832,8 @@ void SwAnnotationWin::DoResize()
     */
     nPageSize = std::min(nPageSize, nUpper);
 
-    mxVScrollbar->vadjustment_configure(nCurrentDocPos, 0, nUpper,
-                                        nStepIncrement, nPageIncrement, nPageSize);
+    mxVScrollbar->vadjustment_configure(nCurrentDocPos, nUpper, nStepIncrement, nPageIncrement,
+                                        nPageSize);
 }
 
 void SwAnnotationWin::SetSizePixel( const Size& rNewSize )
@@ -897,11 +906,12 @@ void SwAnnotationWin::SetColor(Color aColorDark,Color aColorLight, Color aColorA
     m_xContainer->set_background(mColorDark);
     SetMenuButtonColors();
 
-    mxMetadataAuthor->set_font_color(aColorAnchor);
+    Color aColor(mColorDark.IsDark() ? COL_WHITE : COL_BLACK);
+    mxMetadataAuthor->set_font_color(aColor);
 
-    mxMetadataDate->set_font_color(aColorAnchor);
+    mxMetadataDate->set_font_color(aColor);
 
-    mxMetadataResolved->set_font_color(aColorAnchor);
+    mxMetadataResolved->set_font_color(aColor);
 
     mxVScrollbar->customize_scrollbars(mColorLight,
                                        mColorAnchor,
@@ -915,8 +925,9 @@ void SwAnnotationWin::SetSidebarPosition(sw::sidebarwindows::SidebarPosition eSi
 
 void SwAnnotationWin::SetReadonly(bool bSet)
 {
-    mbReadonly = bSet;
-    GetOutlinerView()->SetReadOnly(bSet);
+    // the OutlinerView determines if the comment window accepts key input
+    mbReadonly = bSet && getenv("EDIT_COMMENT_IN_READONLY_MODE") == nullptr;
+    GetOutlinerView()->SetReadOnly(mbReadonly);
 }
 
 void SwAnnotationWin::GetFocus()
@@ -927,6 +938,22 @@ void SwAnnotationWin::GetFocus()
 
 void SwAnnotationWin::LoseFocus()
 {
+}
+
+void SwAnnotationWin::queue_draw()
+{
+    if (mxSidebarTextControlWin)
+    {
+        mxSidebarTextControlWin->queue_draw();
+    }
+}
+
+void SwAnnotationWin::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect)
+{
+    if (mxSidebarTextControl)
+    {
+        mxSidebarTextControl->Paint(rRenderContext, rRect);
+    }
 }
 
 void SwAnnotationWin::ShowNote()
@@ -941,7 +968,7 @@ void SwAnnotationWin::ShowNote()
     if (mpTextRangeOverlay && !mpTextRangeOverlay->isVisible())
         mpTextRangeOverlay->setVisible(true);
 
-    collectUIInformation("SHOW",get_id());
+    collectUIInformation(u"SHOW"_ustr,get_id());
 }
 
 void SwAnnotationWin::HideNote()
@@ -950,7 +977,7 @@ void SwAnnotationWin::HideNote()
         Window::Hide();
     if (mpAnchor)
     {
-        if (mrMgr.IsShowAnchor())
+        if (officecfg::Office::Writer::Notes::ShowAnkor::get())
             mpAnchor->SetAnchorState(AnchorState::Tri);
         else
             mpAnchor->setVisible(false);
@@ -959,7 +986,7 @@ void SwAnnotationWin::HideNote()
         mpShadow->setVisible(false);
     if (mpTextRangeOverlay && mpTextRangeOverlay->isVisible())
         mpTextRangeOverlay->setVisible(false);
-    collectUIInformation("HIDE",get_id());
+    collectUIInformation(u"HIDE"_ustr,get_id());
 }
 
 void SwAnnotationWin::ActivatePostIt()
@@ -986,6 +1013,8 @@ void SwAnnotationWin::ActivatePostIt()
     //ctrl+tab cycles between text and button so we don't waste time searching
     //thousands of SwAnnotationWins
     SetStyle(GetStyle() | WB_DIALOGCONTROL);
+
+    mrView.GetDocShell()->Broadcast(SfxHint(SfxHintId::SwNavigatorUpdateTracking));
 }
 
 void SwAnnotationWin::DeactivatePostIt()
@@ -999,8 +1028,7 @@ void SwAnnotationWin::DeactivatePostIt()
     if (GetOutlinerView()->GetEditView().HasSelection())
     {
         ESelection aSelection = GetOutlinerView()->GetEditView().GetSelection();
-        aSelection.nEndPara = aSelection.nStartPara;
-        aSelection.nEndPos = aSelection.nStartPos;
+        aSelection.CollapseToStart();
         GetOutlinerView()->GetEditView().SetSelection(aSelection);
     }
 
@@ -1019,7 +1047,7 @@ void SwAnnotationWin::DeactivatePostIt()
     if ( !Application::GetSettings().GetStyleSettings().GetHighContrastMode() )
         GetOutlinerView()->SetBackgroundColor(COL_TRANSPARENT);
 
-    if (!mnDeleteEventId && !IsReadOnlyOrProtected() && mpOutliner->GetEditEngine().GetText().isEmpty())
+    if (!mnDeleteEventId && !IsReadOnlyOrProtected() && !mpOutliner->GetEditEngine().HasText())
     {
         mnDeleteEventId = Application::PostUserEvent( LINK( this, SwAnnotationWin, DeleteHdl), nullptr, true );
     }
@@ -1049,25 +1077,49 @@ void SwAnnotationWin::ExecuteCommand(sal_uInt16 nSlot)
         case FN_POSTIT:
         case FN_REPLY:
         {
+            const bool bReply = nSlot == FN_REPLY;
             // if this note is empty, it will be deleted once losing the focus, so no reply, but only a new note
             // will be created
-            if (!mpOutliner->GetEditEngine().GetText().isEmpty())
+            if (!mrMgr.IsAnswer() && mpOutliner->GetEditEngine().HasText())
             {
                 OutlinerParaObject aPara(GetOutlinerView()->GetEditView().CreateTextObject());
-                mrMgr.RegisterAnswer(&aPara);
+                mrMgr.RegisterAnswer(aPara);
             }
             if (mrMgr.HasActiveSidebarWin())
                 mrMgr.SetActiveSidebarWin(nullptr);
             SwitchToFieldPos();
-            mrView.GetViewFrame().GetDispatcher()->Execute(FN_POSTIT);
 
-            if (nSlot == FN_REPLY)
+            SwDocShell* pShell = mrView.GetDocShell();
+            if (!bReply)
             {
-                // Get newly created SwPostItField and set its paraIdParent
+                // synchronous dispatch
+                mrView.GetViewFrame().GetDispatcher()->Execute(FN_POSTIT);
+            }
+            else
+            {
+                pShell->GetDoc()->GetIDocumentUndoRedo().StartUndo(SwUndoId::INSERT, nullptr);
+                SvxPostItIdItem parentParaId{SID_ATTR_POSTIT_PARENTPARAID};
+                parentParaId.SetValue(OUString::number(GetParaId()));
+                SvxPostItIdItem parentPostitId{SID_ATTR_POSTIT_PARENTPOSTITID};
+                parentPostitId.SetValue(OUString::number(GetPostItField()->GetPostItId()));
+                this->GeneratePostItName();
+                SfxStringItem const parentName{SID_ATTR_POSTIT_PARENTNAME,
+                    GetPostItField()->GetName().toString()};
+                // transport parent ids to SwWrtShell::InsertPostIt()
+                SfxPoolItem const* items[]{ &parentParaId, &parentPostitId, &parentName, nullptr };
+                mrView.GetViewFrame().GetDispatcher()->Execute(FN_POSTIT, SfxCallMode::SLOT, items);
+
                 auto pPostItField = mrMgr.GetLatestPostItField();
-                pPostItField->SetParentId(GetTopReplyNote()->GetParaId());
-                pPostItField->SetParentPostItId(GetTopReplyNote()->GetPostItField()->GetPostItId());
-                pPostItField->SetParentName(GetTopReplyNote()->GetPostItField()->GetName());
+
+                // In this case, force generating the associated window
+                // synchronously so we can bundle its use of the registered
+                // "Answer" into the same undo group that the synchronous
+                // FN_POSTIT was put in
+                mrMgr.GetOrCreateAnnotationWindowForLatestPostItField();
+
+                SwRewriter aRewriter;
+                aRewriter.AddRule(UndoArg1, pPostItField->GetDescription());
+                pShell->GetDoc()->GetIDocumentUndoRedo().EndUndo(SwUndoId::INSERT, &aRewriter);
             }
             break;
         }
@@ -1107,6 +1159,12 @@ void SwAnnotationWin::ExecuteCommand(sal_uInt16 nSlot)
             aItems[1] = nullptr;
             mrView.GetViewFrame().GetBindings().Execute( nSlot, aItems, SfxCallMode::ASYNCHRON );
         }
+            break;
+        case FN_PROMOTE_COMMENT:
+            SetAsRoot();
+            DoResize();
+            Invalidate();
+            mrMgr.LayoutPostIts();
             break;
         default:
             mrView.GetViewFrame().GetBindings().Execute( nSlot );
@@ -1366,7 +1424,7 @@ void SwAnnotationWin::SwitchToFieldPos()
     if (aCount)
         mrView.GetDocShell()->GetWrtShell()->SwCursorShell::Right(aCount, SwCursorSkipMode::Chars);
     GrabFocusToDocument();
-    collectUIInformation("LEAVE",get_id());
+    collectUIInformation(u"LEAVE"_ustr,get_id());
 }
 
 void SwAnnotationWin::SetChangeTracking( const SwPostItHelper::SwLayoutStatus aLayoutStatus,
@@ -1391,42 +1449,40 @@ bool SwAnnotationWin::IsScrollbarVisible() const
     return HasScrollbar() && mxVScrollbar->get_vpolicy() == VclPolicyType::ALWAYS;
 }
 
-void SwAnnotationWin::ChangeSidebarItem( SwSidebarItem const & rSidebarItem )
+void SwAnnotationWin::ChangeSidebarItem( SwAnnotationItem & rSidebarItem )
 {
 #if !ENABLE_WASM_STRIP_ACCESSIBILITY
     const bool bAnchorChanged = mpAnchorFrame != rSidebarItem.maLayoutInfo.mpAnchorFrame;
-    if ( bAnchorChanged )
+    if (bAnchorChanged && mpAnchorFrame)
     {
         mrMgr.DisconnectSidebarWinFromFrame( *mpAnchorFrame, *this );
     }
 #endif
 
-    mrSidebarItem = rSidebarItem;
-    mpAnchorFrame = mrSidebarItem.maLayoutInfo.mpAnchorFrame;
+    mpSidebarItem = &rSidebarItem;
+    mpAnchorFrame = mpSidebarItem->maLayoutInfo.mpAnchorFrame;
+    assert(mpAnchorFrame);
 
 #if !ENABLE_WASM_STRIP_ACCESSIBILITY
     if (mxSidebarWinAccessible)
-        mxSidebarWinAccessible->ChangeSidebarItem( mrSidebarItem );
+        mxSidebarWinAccessible->ChangeSidebarItem( *mpSidebarItem );
 
     if ( bAnchorChanged )
     {
-        mrMgr.ConnectSidebarWinToFrame( *(mrSidebarItem.maLayoutInfo.mpAnchorFrame),
-                                      mrSidebarItem.GetFormatField(),
+        mrMgr.ConnectSidebarWinToFrame( *(mpSidebarItem->maLayoutInfo.mpAnchorFrame),
+                                      mpSidebarItem->GetFormatField(),
                                       *this );
     }
 #endif
 }
 
-css::uno::Reference< css::accessibility::XAccessible > SwAnnotationWin::CreateAccessible()
+rtl::Reference<comphelper::OAccessible> SwAnnotationWin::CreateAccessible()
 {
 #if !ENABLE_WASM_STRIP_ACCESSIBILITY
-    // This is rather dodgy code. Normally in CreateAccessible, if we want a custom
-    // object, we return a custom object, but we do no override the default toolkit
-    // window peer.
     if (!mxSidebarWinAccessible)
         mxSidebarWinAccessible = new SidebarWinAccessible( *this,
                                                           mrView.GetWrtShell(),
-                                                          mrSidebarItem );
+                                                          *mpSidebarItem );
 #endif
     return mxSidebarWinAccessible;
 }

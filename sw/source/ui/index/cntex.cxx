@@ -39,15 +39,15 @@
 
 #include <SwStyleNameMapper.hxx>
 #include <swuicnttab.hxx>
+#include <unoidxcoll.hxx>
+#include <names.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::text;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::lang;
-using namespace ::com::sun::star::ucb;
 using namespace ::com::sun::star::uno;
-using namespace com::sun::star::ui::dialogs;
 
 static void lcl_SetProp( uno::Reference< XPropertySetInfo > const & xInfo,
                            uno::Reference< XPropertySet > const & xProps,
@@ -88,16 +88,13 @@ IMPL_LINK_NOARG(SwMultiTOXTabDialog, CreateExample_Hdl, SwOneExampleFrame&, void
 {
     try
     {
-        uno::Reference< frame::XModel > & xModel = m_xExampleFrame->GetModel();
-        auto pDoc = comphelper::getFromUnoTunnel<SwXTextDocument>(xModel);
+        rtl::Reference< SwXTextDocument > & xDoc = m_xExampleFrame->GetModel();
 
-        if( pDoc )
-            pDoc->GetDocShell()->LoadStyles_( *m_rWrtShell.GetView().GetDocShell(), true );
+        if( xDoc )
+            xDoc->GetDocShell()->LoadStyles_( *m_rWrtShell.GetView().GetDocShell(), true );
 
-        uno::Reference< text::XTextSectionsSupplier >  xSectionSupplier(
-                                                 xModel, uno::UNO_QUERY);
         uno::Reference< container::XNameAccess >  xSections =
-                                        xSectionSupplier->getTextSections();
+                                        xDoc->getTextSections();
 
         for(int i = 0; i < 7; ++i )
         {
@@ -105,8 +102,7 @@ IMPL_LINK_NOARG(SwMultiTOXTabDialog, CreateExample_Hdl, SwOneExampleFrame&, void
             uno::Any aSection = xSections->getByName( sTmp );
             aSection >>= m_vTypeData[i].m_oIndexSections->xContainerSection;
         }
-        uno::Reference< text::XDocumentIndexesSupplier >  xIdxSupp(xModel, uno::UNO_QUERY);
-        uno::Reference< container::XIndexAccess >  xIdxs = xIdxSupp->getDocumentIndexes();
+        rtl::Reference< SwXDocumentIndexes >  xIdxs = xDoc->getSwDocumentIndexes();
         int n = xIdxs->getCount();
         while(n)
         {
@@ -132,7 +128,7 @@ void SwMultiTOXTabDialog::CreateOrUpdateExample(
 
     try
     {
-        static const char* IndexServiceNames[] =
+        static const char* const IndexServiceNames[] =
         {
             "com.sun.star.text.DocumentIndex",
             "com.sun.star.text.UserIndex",
@@ -146,7 +142,7 @@ void SwMultiTOXTabDialog::CreateOrUpdateExample(
         OSL_ENSURE(m_vTypeData[nTOXIndex].m_oIndexSections &&
                         m_vTypeData[nTOXIndex].m_oIndexSections->xContainerSection.is(),
                             "Section not created");
-        uno::Reference< frame::XModel > & xModel = m_xExampleFrame->GetModel();
+        rtl::Reference< SwXTextDocument > & xModel = m_xExampleFrame->GetModel();
         bool bInitialCreate = true;
         if(!m_vTypeData[nTOXIndex].m_oIndexSections->xDocumentIndex.is())
         {
@@ -157,11 +153,9 @@ void SwMultiTOXTabDialog::CreateOrUpdateExample(
              xAnchor = xAnchor->getStart();
              uno::Reference< text::XTextCursor >  xCursor = xAnchor->getText()->createTextCursorByRange(xAnchor);
 
-             uno::Reference< lang::XMultiServiceFactory >  xFact(xModel, uno::UNO_QUERY);
-
              OUString sIndexTypeName(OUString::createFromAscii( IndexServiceNames[
                     nTOXIndex <= TOX_AUTHORITIES ? nTOXIndex : TOX_USER] ));
-             m_vTypeData[nTOXIndex].m_oIndexSections->xDocumentIndex.set(xFact->createInstance(sIndexTypeName), uno::UNO_QUERY);
+             m_vTypeData[nTOXIndex].m_oIndexSections->xDocumentIndex.set(xModel->createInstance(sIndexTypeName), uno::UNO_QUERY);
              uno::Reference< text::XTextContent >  xContent = m_vTypeData[nTOXIndex].m_oIndexSections->xDocumentIndex;
              xCursor->getText()->insertTextContent(xCursor, xContent, false);
         }
@@ -197,7 +191,7 @@ void SwMultiTOXTabDialog::CreateOrUpdateExample(
                 {
                     OUString sLevel;
                     if(bOn)
-                        sLevel = rDesc.GetStyleNames(i);
+                        sLevel = rDesc.GetStyleNames(i).toString();
                     const sal_Int32 nStyles =
                         comphelper::string::getTokenCount(sLevel, TOX_STYLE_DELIMITER);
                     uno::Sequence<OUString> aStyles(nStyles);
@@ -233,16 +227,16 @@ void SwMultiTOXTabDialog::CreateOrUpdateExample(
             lcl_SetBOOLProp(xInfo, xIdxProps, UNO_NAME_USE_DASH,                    bool(nIdxOptions & SwTOIOptions::Dash             ));
             lcl_SetBOOLProp(xInfo, xIdxProps, UNO_NAME_USE_UPPER_CASE,              bool(nIdxOptions & SwTOIOptions::InitialCaps     ));
 
-            OUString aTmpName( SwStyleNameMapper::GetSpecialExtraProgName( rDesc.GetSequenceName() ) );
-            lcl_SetProp(xInfo, xIdxProps, UNO_NAME_LABEL_CATEGORY, aTmpName );
+            ProgName aTmpName( SwStyleNameMapper::GetSpecialExtraProgName( rDesc.GetSequenceName() ) );
+            lcl_SetProp(xInfo, xIdxProps, UNO_NAME_LABEL_CATEGORY, aTmpName.toString() );
             lcl_SetBOOLProp(xInfo, xIdxProps, UNO_NAME_CREATE_FROM_LABELS,  !rDesc.IsCreateFromObjectNames());
 
             sal_Int16 nSet = text::ChapterFormat::NAME_NUMBER;
             switch (rDesc.GetCaptionDisplay())
             {
-                case CAPTION_COMPLETE:  nSet = text::ChapterFormat::NAME_NUMBER;break;
-                case CAPTION_NUMBER  :  nSet = text::ChapterFormat::NUMBER; break;
-                case CAPTION_TEXT    :  nSet = text::ChapterFormat::NAME;      break;
+                case SwCaptionDisplay::Complete:  nSet = text::ChapterFormat::NAME_NUMBER;break;
+                case SwCaptionDisplay::Number  :  nSet = text::ChapterFormat::NUMBER; break;
+                case SwCaptionDisplay::Text    :  nSet = text::ChapterFormat::NAME;      break;
             }
             lcl_SetProp(xInfo, xIdxProps, UNO_NAME_LABEL_DISPLAY_TYPE, nSet);
 
@@ -320,7 +314,7 @@ void SwMultiTOXTabDialog::CreateOrUpdateExample(
                         pPropValArr[0].Name = "TokenType";
                         pPropValArr[0].Value <<= sTokenType;
                         pPropValArr[1].Name = "CharacterStyleName";
-                        pPropValArr[1].Value <<= aToken.sCharStyleName;
+                        pPropValArr[1].Value <<= aToken.sCharStyleName.toString();
                         if(TOKEN_TAB_STOP == aToken.eTokenType)
                         {
                             pPropValArr[2].Name = "TabStopRightAligned";
@@ -339,7 +333,7 @@ void SwMultiTOXTabDialog::CreateOrUpdateExample(
                             pPropValArr[2].Value <<= aToken.sText;
                         }
                         beans::PropertyValues* pValues = aSequPropVals.getArray();
-                        pValues[nTokenIndex] = aPropVals;
+                        pValues[nTokenIndex] = std::move(aPropVals);
                         nTokenIndex++;
                     }
                     aSequPropVals.realloc(nTokenIndex);
@@ -357,7 +351,7 @@ void SwMultiTOXTabDialog::CreateOrUpdateExample(
         }
         if(bInitialCreate || !nPage || nPage == TOX_PAGE_STYLES)
         {
-            lcl_SetProp(xInfo, xIdxProps, "ParaStyleHeading", pForm->GetTemplate(0));
+            lcl_SetProp(xInfo, xIdxProps, u"ParaStyleHeading"_ustr, pForm->GetTemplate(0).toString());
             sal_uInt16 nOffset = 0;
             sal_uInt16 nEndLevel = 2;
             switch(m_eCurrentTOXType.eType)
@@ -366,7 +360,7 @@ void SwMultiTOXTabDialog::CreateOrUpdateExample(
                 {
                     nOffset = 1;
                     nEndLevel = 4;
-                    lcl_SetProp(xInfo, xIdxProps, "ParaStyleSeparator", pForm->GetTemplate(1));
+                    lcl_SetProp(xInfo, xIdxProps, u"ParaStyleSeparator"_ustr, pForm->GetTemplate(1).toString());
                 }
                 break;
                 case TOX_CONTENT :
@@ -379,7 +373,7 @@ void SwMultiTOXTabDialog::CreateOrUpdateExample(
                 lcl_SetProp(xInfo,
                     xIdxProps,
                     "ParaStyleLevel" + OUString::number( i ),
-                    pForm->GetTemplate(i + nOffset));
+                    pForm->GetTemplate(i + nOffset).toString());
             }
         }
         m_vTypeData[nTOXIndex].m_oIndexSections->xDocumentIndex->update();

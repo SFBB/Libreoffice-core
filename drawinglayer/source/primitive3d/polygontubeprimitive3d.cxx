@@ -517,7 +517,7 @@ using namespace com::sun::star;
 
             if(nPointCount)
             {
-                if(basegfx::fTools::more(getRadius(), 0.0))
+                if(getRadius() > 0.0)
                 {
                     const attribute::MaterialAttribute3D aMaterial(getBColor());
                     static const sal_uInt32 nSegments(8); // default for 3d line segments, for more quality just raise this value (in even steps)
@@ -534,7 +534,7 @@ using namespace com::sun::star;
                         const basegfx::B3DVector aForw(aNext - aCurr);
                         const double fForwLen(aForw.getLength());
 
-                        if(basegfx::fTools::more(fForwLen, 0.0))
+                        if(fForwLen > 0.0)
                         {
                             // find out if linecap is active
                             const bool bFirst(!a);
@@ -747,8 +747,8 @@ using namespace com::sun::star;
 
             if(getLast3DDecomposition().empty())
             {
-                const Primitive3DContainer aNewSequence(impCreate3DDecomposition(rViewInformation));
-                const_cast< PolygonTubePrimitive3D* >(this)->maLast3DDecomposition = aNewSequence;
+                Primitive3DContainer aNewSequence(impCreate3DDecomposition(rViewInformation));
+                const_cast< PolygonTubePrimitive3D* >(this)->maLast3DDecomposition = std::move(aNewSequence);
             }
 
             return getLast3DDecomposition();

@@ -53,7 +53,12 @@ namespace uno
 class XComponentContext;
 }
 }
+namespace svl::crypto
+{
+class SigningContext;
+}
 class PDFSignatureHelper;
+class Xmlsec;
 
 /// Manages signatures (addition, removal), used by DigitalSignaturesDialog.
 class XMLSECURITY_DLLPUBLIC DocumentSignatureManager
@@ -67,6 +72,7 @@ private:
     DocumentSignatureMode const meSignatureMode;
     css::uno::Sequence<css::uno::Sequence<css::beans::PropertyValue>> m_manifest;
     css::uno::Reference<css::io::XStream> mxSignatureStream;
+    css::uno::Reference<css::io::XStream> mxScriptingSignatureStream;
     css::uno::Reference<css::frame::XModel> mxModel;
     rtl::Reference<utl::TempFileFastService> mxTempSignatureStream;
     /// Storage containing all OOXML signatures, unused for ODF.
@@ -75,6 +81,7 @@ private:
     css::uno::Reference<css::xml::crypto::XXMLSecurityContext> mxSecurityContext;
     css::uno::Reference<css::xml::crypto::XSEInitializer> mxGpgSEInitializer;
     css::uno::Reference<css::xml::crypto::XXMLSecurityContext> mxGpgSecurityContext;
+    std::shared_ptr<Xmlsec> mpXmlsecLibrary;
 
 public:
     DocumentSignatureManager(const css::uno::Reference<css::uno::XComponentContext>& xContext,
@@ -90,7 +97,7 @@ public:
 
     SignatureStreamHelper ImplOpenSignatureStream(sal_Int32 nStreamOpenMode, bool bTempStream);
     /// Add a new signature, using xCert as a signing certificate, and rDescription as description.
-    bool add(const css::uno::Reference<css::security::XCertificate>& xCert,
+    bool add(svl::crypto::SigningContext& rSigningContext,
              const css::uno::Reference<css::xml::crypto::XXMLSecurityContext>& xSecurityContext,
              const OUString& rDescription, sal_Int32& nSecurityId, bool bAdESCompliant,
              const OUString& rSignatureLineId = OUString(),
@@ -123,6 +130,15 @@ public:
     void setSignatureStream(const css::uno::Reference<css::io::XStream>& xSignatureStream)
     {
         mxSignatureStream = xSignatureStream;
+    }
+    const css::uno::Reference<css::io::XStream>& getSignatureStream() const
+    {
+        return mxSignatureStream;
+    }
+    void setScriptingSignatureStream(
+        const css::uno::Reference<css::io::XStream>& xScriptingSignatureStream)
+    {
+        mxScriptingSignatureStream = xScriptingSignatureStream;
     }
     void setModel(const css::uno::Reference<css::frame::XModel>& xModel);
     const css::uno::Reference<css::embed::XStorage>& getStore() const { return mxStore; }

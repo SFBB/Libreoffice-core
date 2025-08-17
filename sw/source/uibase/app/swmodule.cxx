@@ -55,6 +55,7 @@
 #include <srcview.hxx>
 #include <glshell.hxx>
 #include <tabsh.hxx>
+#include <tblafmt.hxx>
 #include <listsh.hxx>
 #include <grfsh.hxx>
 #include <mediash.hxx>
@@ -98,7 +99,7 @@
 #include <svx/rubydialog.hxx>
 #include <svtools/colorcfg.hxx>
 
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <unotools/moduleoptions.hxx>
 
 #include <avmedia/mediaplayer.hxx>
@@ -130,12 +131,13 @@ SwModule::SwModule( SfxObjectFactory* pWebFact,
                     SfxObjectFactory* pGlobalFact )
     : SfxModule("sw"_ostr, {pWebFact, pFact, pGlobalFact}),
     m_pView(nullptr),
+    m_eCTLTextNumerals(SvtCTLOptions::GetCTLTextNumerals()),
     m_bAuthorInitialised(false),
     m_bEmbeddedLoadSave( false ),
     m_pDragDrop( nullptr ),
     m_pXSelection( nullptr )
 {
-    SetName( "StarWriter" );
+    SetName( u"StarWriter"_ustr );
     SvxErrorHandler::ensure();
     m_pErrorHandler.reset( new SfxErrorHandler( RID_SW_ERRHDL,
                                      ErrCodeArea::Sw,
@@ -155,7 +157,7 @@ SwModule::SwModule( SfxObjectFactory* pWebFact,
         StartListening( *SfxGetpApp() );
     }
 
-    if (!utl::ConfigManager::IsFuzzing())
+    if (!comphelper::IsFuzzing())
     {
         // init color configuration
         // member <pColorConfig> is created and the color configuration is applied
@@ -167,12 +169,12 @@ SwModule::SwModule( SfxObjectFactory* pWebFact,
 
 OUString SwResId(TranslateId aId)
 {
-    return Translate::get(aId, SW_MOD()->GetResLocale());
+    return Translate::get(aId, SwModule::get()->GetResLocale());
 }
 
 OUString SwResId(TranslateNId aContextSingularPlural, int nCardinality)
 {
-    return Translate::nget(aContextSingularPlural, nCardinality, SW_MOD()->GetResLocale());
+    return Translate::nget(aContextSingularPlural, nCardinality, SwModule::get()->GetResLocale());
 }
 
 uno::Reference< scanner::XScannerManager2 > const &
@@ -202,7 +204,7 @@ uno::Reference< linguistic2::XLanguageGuessing > const & SwModule::GetLanguageGu
 SwModule::~SwModule()
 {
     css::uno::Sequence< css::uno::Any > aArgs;
-    CallAutomationApplicationEventSinks( "Quit", aArgs );
+    CallAutomationApplicationEventSinks( u"Quit"_ustr, aArgs );
     m_pErrorHandler.reset();
     EndListening( *SfxGetpApp() );
 }
@@ -211,13 +213,14 @@ void SwDLL::RegisterFactories()
 {
     // These Id's must not be changed. Through these Id's the View (resume Documentview)
     // is created by Sfx.
-    if (utl::ConfigManager::IsFuzzing() || SvtModuleOptions().IsWriter())
+    SvtModuleOptions aOptions;
+    if (comphelper::IsFuzzing() || aOptions.IsWriterInstalled())
         SwView::RegisterFactory         ( SFX_INTERFACE_SFXDOCSH );
 
 #if HAVE_FEATURE_DESKTOP
     SwWebView::RegisterFactory        ( SFX_INTERFACE_SFXMODULE );
 
-    if (utl::ConfigManager::IsFuzzing() || SvtModuleOptions().IsWriter())
+    if (comphelper::IsFuzzing() || aOptions.IsWriterInstalled())
     {
         SwSrcView::RegisterFactory      ( SfxInterfaceId(6) );
         SwPagePreview::RegisterFactory  ( SfxInterfaceId(7) );
@@ -227,7 +230,7 @@ void SwDLL::RegisterFactories()
 
 void SwDLL::RegisterInterfaces()
 {
-    SwModule* pMod = SW_MOD();
+    SwModule* pMod = SwModule::get();
     SwModule::RegisterInterface( pMod );
     SwDocShell::RegisterInterface( pMod );
     SwWebDocShell::RegisterInterface( pMod );
@@ -264,7 +267,7 @@ void SwDLL::RegisterInterfaces()
 
 void SwDLL::RegisterControls()
 {
-    SwModule* pMod = SW_MOD();
+    SwModule* pMod = SwModule::get();
 
     SvxTbxCtlDraw::RegisterControl(SID_INSERT_DRAW, pMod );
     SvxTbxCtlDraw::RegisterControl(SID_TRACK_CHANGES_BAR, pMod );
@@ -310,9 +313,7 @@ void SwDLL::RegisterControls()
     SwInsertAuthMarkWrapper::RegisterChildWindow( false, pMod );
     SwWordCountWrapper::RegisterChildWindow( false, pMod );
     SvxRubyChildWindow::RegisterChildWindow( false, pMod);
-    SwSpellDialogChildWindow::RegisterChildWindow(
-        false, pMod, comphelper::LibreOfficeKit::isActive() ? SfxChildWindowFlags::NEVERCLONE
-                                                            : SfxChildWindowFlags::NONE);
+    SwSpellDialogChildWindow::RegisterChildWindow(false, pMod);
     DevelopmentToolChildWindow::RegisterChildWindow(false, pMod);
 
     SvxGrafRedToolBoxControl::RegisterControl( SID_ATTR_GRAF_RED, pMod );
@@ -336,21 +337,7 @@ void SwDLL::RegisterControls()
     SwJumpToSpecificPageControl::RegisterControl(SID_JUMP_TO_SPECIFIC_PAGE, pMod);
 }
 
-// Load Module (only dummy for linking of the DLL)
-void    SwModule::InitAttrPool()
-{
-    OSL_ENSURE(!m_pAttrPool, "Pool already exists!");
-    m_pAttrPool = new SwAttrPool(nullptr);
-    SetPool(m_pAttrPool.get());
-}
-
-void    SwModule::RemoveAttrPool()
-{
-    SetPool(nullptr);
-    m_pAttrPool.clear();
-}
-
-std::optional<SfxStyleFamilies> SwModule::CreateStyleFamilies()
+SfxStyleFamilies SwModule::CreateStyleFamilies()
 {
     SfxStyleFamilies aStyleFamilies;
 
@@ -396,6 +383,18 @@ void SwModule::CallAutomationApplicationEventSinks(const OUString& Method, css::
 {
     if (mxAutomationApplicationEventsCaller.is())
         mxAutomationApplicationEventsCaller->CallSinks(Method, Arguments);
+}
+
+const SwTableAutoFormatTable& SwModule::GetAutoFormatTable()
+{
+    if (!m_xTableAutoFormatTable)
+        m_xTableAutoFormatTable = std::make_unique<SwTableAutoFormatTable>();
+    return *m_xTableAutoFormatTable;
+}
+
+void SwModule::InvalidateAutoFormatTable()
+{
+    m_xTableAutoFormatTable.reset();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

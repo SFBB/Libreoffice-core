@@ -28,8 +28,7 @@
 #include <vcl/svapp.hxx>
 #include <vcl/weld.hxx>
 #include <sfx2/filedlghelper.hxx>
-#include <com/sun/star/awt/Size.hpp>
-#include <com/sun/star/frame/XDispatchHelper.hpp>
+#include <com/sun/star/frame/XDispatchProvider.hpp>
 #include <com/sun/star/media/XPlayer.hpp>
 #include <com/sun/star/media/XPlayerNotifier.hpp>
 #include <com/sun/star/ui/dialogs/ExtendedFilePickerElementIds.hpp>
@@ -43,7 +42,7 @@
 #include <sal/log.hxx>
 #include <o3tl/string_view.hxx>
 
-#define AVMEDIA_FRAMEGRABBER_DEFAULTFRAME_MEDIATIME 3.0
+constexpr double AVMEDIA_FRAMEGRABBER_DEFAULTFRAME_MEDIATIME = 3.0;
 
 using namespace ::com::sun::star;
 
@@ -257,7 +256,7 @@ bool MediaWindow::executeMediaURLDialog(weld::Window* pParent, OUString& rURL, b
     }
 
     // add filter for all types
-    aDlg.AddFilter( AvmResId( AVMEDIA_STR_ALL_FILES ), "*.*" );
+    aDlg.AddFilter( AvmResId( AVMEDIA_STR_ALL_FILES ), u"*.*"_ustr );
 
     uno::Reference<ui::dialogs::XFilePicker3> const xFP(aDlg.GetFilePicker());
     uno::Reference<ui::dialogs::XFilePickerControlAccess> const xCtrlAcc(xFP,
@@ -391,16 +390,16 @@ MediaWindow::grabFrame(const uno::Reference<media::XPlayer>& xPlayer,
 
             if( !aPrefSize.Width && !aPrefSize.Height )
             {
-                const BitmapEx aBmpEx(AVMEDIA_BMP_AUDIOLOGO);
-                oGraphic.emplace( aBmpEx );
+                const Bitmap aBmp(AVMEDIA_BMP_AUDIOLOGO);
+                oGraphic.emplace( aBmp );
             }
         }
     }
 
     if (!xRet.is() && !oGraphic)
     {
-        const BitmapEx aBmpEx(AVMEDIA_BMP_EMPTYLOGO);
-        oGraphic.emplace( aBmpEx );
+        const Bitmap aBmp(AVMEDIA_BMP_EMPTYLOGO);
+        oGraphic.emplace( aBmp );
     }
 
     if (oGraphic)
@@ -450,7 +449,7 @@ void MediaWindow::dispatchInsertAVMedia(const css::uno::Reference<css::frame::XD
     css::uno::Reference<css::util::XURLTransformer> xTrans(css::util::URLTransformer::create(::comphelper::getProcessComponentContext()));
     xTrans->parseStrict(aDispatchURL);
 
-    css::uno::Reference<css::frame::XDispatch> xDispatch = rDispatchProvider->queryDispatch(aDispatchURL, "", 0);
+    css::uno::Reference<css::frame::XDispatch> xDispatch = rDispatchProvider->queryDispatch(aDispatchURL, u""_ustr, 0);
     css::uno::Sequence<css::beans::PropertyValue> aArgs(comphelper::InitPropertySequence({
         { "URL", css::uno::Any(rURL) },
         { "Size.Width", uno::Any(rSize.Width)},
@@ -461,28 +460,26 @@ void MediaWindow::dispatchInsertAVMedia(const css::uno::Reference<css::frame::XD
 }
 
 PlayerListener::PlayerListener(std::function<void(const css::uno::Reference<css::media::XPlayer>&)> fn)
-    : PlayerListener_BASE(m_aMutex)
-    , m_aFn(std::move(fn))
+    : m_aFn(std::move(fn))
 {
 }
 
-void PlayerListener::dispose()
+void PlayerListener::disposing(std::unique_lock<std::mutex>& rGuard)
 {
-    stopListening();
-    PlayerListener_BASE::dispose();
+    stopListening(rGuard);
+    WeakComponentImplHelperBase::disposing(rGuard);
 }
 
 void PlayerListener::startListening(const css::uno::Reference<media::XPlayerNotifier>& rNotifier)
 {
-    osl::MutexGuard aGuard(m_aMutex);
+    std::unique_lock aGuard(m_aMutex);
 
     m_xNotifier = rNotifier;
     m_xNotifier->addPlayerListener(this);
 }
 
-void PlayerListener::stopListening()
+void PlayerListener::stopListening(std::unique_lock<std::mutex>&)
 {
-    osl::MutexGuard aGuard(m_aMutex);
     if (!m_xNotifier)
         return;
     m_xNotifier->removePlayerListener(this);
@@ -491,12 +488,14 @@ void PlayerListener::stopListening()
 
 void SAL_CALL PlayerListener::preferredPlayerWindowSizeAvailable(const css::lang::EventObject&)
 {
-    osl::MutexGuard aGuard(m_aMutex);
+    std::unique_lock aGuard(m_aMutex);
 
     css::uno::Reference<media::XPlayer> xPlayer(m_xNotifier, css::uno::UNO_QUERY_THROW);
+    aGuard.unlock();
     callPlayerWindowSizeAvailable(xPlayer);
+    aGuard.lock();
 
-    stopListening();
+    stopListening(aGuard);
 }
 
 void SAL_CALL PlayerListener::disposing(const css::lang::EventObject&)

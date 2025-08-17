@@ -27,18 +27,14 @@
 
 #include <headless/CairoCommon.hxx>
 
-class VCL_DLLPUBLIC SvpGraphicsBackend final : public SalGraphicsImpl
+class SAL_DLLPUBLIC_RTTI SvpGraphicsBackend final : public SalGraphicsImpl
 {
     CairoCommon& m_rCairoCommon;
 
 public:
     SvpGraphicsBackend(CairoCommon& rCairoCommon);
 
-    void Init() override;
-
-    void freeResources() override;
-
-    OUString getRenderBackendName() const override { return "svp"; }
+    OUString getRenderBackendName() const override { return u"svp"_ustr; }
 
     void setClipRegion(vcl::Region const& rRegion) override;
     void ResetClipRegion() override;
@@ -97,7 +93,7 @@ public:
                   Color nMaskColor) override;
 
     std::shared_ptr<SalBitmap> getBitmap(tools::Long nX, tools::Long nY, tools::Long nWidth,
-                                         tools::Long nHeight) override;
+                                         tools::Long nHeight, bool bWithoutAlpha) override;
 
     Color getPixel(tools::Long nX, tools::Long nY) override;
 
@@ -106,22 +102,12 @@ public:
 
     void invert(sal_uInt32 nPoints, const Point* pPtAry, SalInvert nFlags) override;
 
-    bool drawEPS(tools::Long nX, tools::Long nY, tools::Long nWidth, tools::Long nHeight,
-                 void* pPtr, sal_uInt32 nSize) override;
-
-    bool blendBitmap(const SalTwoRect&, const SalBitmap& rBitmap) override;
-
-    bool blendAlphaBitmap(const SalTwoRect&, const SalBitmap& rSrcBitmap,
-                          const SalBitmap& rMaskBitmap, const SalBitmap& rAlphaBitmap) override;
-
     bool drawAlphaBitmap(const SalTwoRect&, const SalBitmap& rSourceBitmap,
                          const SalBitmap& rAlphaBitmap) override;
 
     bool drawTransformedBitmap(const basegfx::B2DPoint& rNull, const basegfx::B2DPoint& rX,
                                const basegfx::B2DPoint& rY, const SalBitmap& rSourceBitmap,
                                const SalBitmap* pAlphaBitmap, double fAlpha) override;
-
-    bool hasFastDrawTransformedBitmap() const override;
 
     bool drawAlphaRect(tools::Long nX, tools::Long nY, tools::Long nWidth, tools::Long nHeight,
                        sal_uInt8 nTransparency) override;
@@ -132,8 +118,8 @@ public:
 
     bool supportsOperation(OutDevSupportType eType) const override;
 
-    void drawBitmapBuffer(const SalTwoRect& rPosAry, const BitmapBuffer* pBuffer,
-                          cairo_operator_t eOp);
+    void VCL_DLLPUBLIC drawBitmapBuffer(const SalTwoRect& rPosAry, const BitmapBuffer* pBuffer,
+                                        cairo_operator_t eOp);
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

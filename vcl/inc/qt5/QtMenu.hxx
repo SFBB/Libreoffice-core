@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -57,7 +57,6 @@ private:
     static OUString m_sCurrentHelpId;
 
     void DoFullMenuUpdate(Menu* pMenuBar);
-    static void NativeItemText(OUString& rItemText);
 
     void InsertMenuItem(QtMenuItem* pSalMenuItem, unsigned nPos);
 
@@ -66,13 +65,13 @@ private:
     void UpdateActionGroupItem(const QtMenuItem* pSalMenuItem);
     bool validateQMenuBar() const;
     QPushButton* ImplAddMenuBarButton(const QIcon& rIcon, const QString& rToolTip, int nId);
-    void ImplRemoveMenuBarButton(int nId);
     void connectHelpShortcut(QMenu* pMenu);
     // set slots that handle signals relevant for help menu
     void connectHelpSignalSlots(QMenu* pMenu, QtMenuItem* pSalMenuItem);
 
 public:
     QtMenu(bool bMenuBar);
+    ~QtMenu();
 
     virtual bool VisibleMenuBar() override; // must return TRUE to actually DISPLAY native menu bars
 
@@ -90,11 +89,12 @@ public:
     virtual void ShowItem(unsigned nPos, bool bShow) override;
     virtual void SetItemText(unsigned nPos, SalMenuItem* pSalMenuItem,
                              const OUString& rText) override;
+
+    virtual void SetItemTooltip(SalMenuItem* pSalMenuItem, const OUString& rTooltip) override;
     virtual void SetItemImage(unsigned nPos, SalMenuItem* pSalMenuItem,
                               const Image& rImage) override;
     virtual void SetAccelerator(unsigned nPos, SalMenuItem* pSalMenuItem,
                                 const vcl::KeyCode& rKeyCode, const OUString& rKeyName) override;
-    virtual void GetSystemMenuData(SystemMenuData* pData) override;
     virtual void ShowCloseButton(bool bShow) override;
     virtual bool AddMenuBarButton(const SalMenuButtonItem&) override;
     virtual void RemoveMenuBarButton(sal_uInt16 nId) override;
@@ -114,6 +114,7 @@ private slots:
     static void slotMenuAboutToHide(QtMenuItem* pQItem);
     void slotCloseDocument();
     void slotMenuBarButtonClicked(QAbstractButton*);
+    void slotShortcutF10();
 };
 
 class QtMenuItem : public SalMenuItem
@@ -135,4 +136,4 @@ public:
     Image maImage; // Item image
 };
 
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

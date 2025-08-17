@@ -79,7 +79,7 @@ std::unique_ptr<SfxHint> SvxEditSourceHelper::EENotification2Hint( EENotify cons
         }
     }
 
-    return std::make_unique<SfxHint>( );
+    return std::make_unique<SfxHint>( SfxHintId::NONE );
 }
 
 void SvxEditSourceHelper::GetAttributeRun( sal_Int32& nStartIndex, sal_Int32& nEndIndex, const EditEngine& rEE, sal_Int32 nPara, sal_Int32 nIndex, bool bInCell )
@@ -160,7 +160,7 @@ void SvxEditSourceHelper::GetAttributeRun( sal_Int32& nStartIndex, sal_Int32& nE
     if ( !bInCell )
         return;
 
-    EPosition aStartPos( nPara, nStartIndex ), aEndPos( nPara, nEndIndex );
+    EPaM aStartPos(nPara, nStartIndex), aEndPos(nPara, nEndIndex);
     sal_Int32 nParaCount = rEE.GetParagraphCount();
     sal_Int32 nCrrntParaLen = rEE.GetTextLen(nPara);
     //need to find closest index in front of nIndex in the previous paragraphs

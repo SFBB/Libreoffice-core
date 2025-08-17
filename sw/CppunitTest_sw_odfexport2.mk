@@ -21,6 +21,7 @@ $(eval $(call gb_CppunitTest_use_libraries,sw_odfexport2, \
     comphelper \
     cppu \
     cppuhelper \
+    editeng \
     sal \
     sfx \
     subsequenttest \
@@ -43,6 +44,7 @@ $(eval $(call gb_CppunitTest_set_include,sw_odfexport2,\
     -I$(SRCDIR)/sw/inc \
     -I$(SRCDIR)/sw/source/core/inc \
     -I$(SRCDIR)/sw/qa/inc \
+    -I$(SRCDIR)/sw/source/uibase/inc \
     $$(INCLUDE) \
 ))
 
@@ -69,6 +71,14 @@ $(eval $(call gb_CppunitTest_use_uiconfigs,sw_odfexport2, \
 ))
 
 $(eval $(call gb_CppunitTest_use_more_fonts,sw_odfexport2))
+
+ifneq ($(filter DICTIONARIES,$(BUILD_TYPE)),)
+$(eval $(call gb_CppunitTest_use_packages,sw_odfexport2,\
+	$(call gb_Dictionary_get_packagename,dict-de) \
+	$(call gb_Dictionary_get_packagename,dict-en) \
+	$(call gb_Dictionary_get_packagename,dict-hu) \
+))
+endif
 
 $(eval $(call gb_CppunitTest_add_arguments,sw_odfexport2, \
     -env:arg-env=$(gb_Helper_LIBRARY_PATH_VAR)"$$$${$(gb_Helper_LIBRARY_PATH_VAR)+=$$$$$(gb_Helper_LIBRARY_PATH_VAR)}" \

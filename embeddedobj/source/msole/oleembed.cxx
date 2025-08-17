@@ -52,7 +52,7 @@
 #include <comphelper/propertyvalue.hxx>
 #include <sal/log.hxx>
 #include <comphelper/diagnose_ex.hxx>
-
+#include <officecfg/Office/Common.hxx>
 
 #include <targetstatecontrol.hxx>
 
@@ -66,7 +66,7 @@ using namespace ::com::sun::star;
 
 #ifdef _WIN32
 
-void OleEmbeddedObject::SwitchComponentToRunningState_Impl()
+void OleEmbeddedObject::SwitchComponentToRunningState_Impl(osl::ResettableMutexGuard& guard)
 {
     if ( !m_pOleComponent )
     {
@@ -78,12 +78,12 @@ void OleEmbeddedObject::SwitchComponentToRunningState_Impl()
     }
     catch( const embed::UnreachableStateException& )
     {
-        GetRidOfComponent();
+        GetRidOfComponent(&guard);
         throw;
     }
     catch( const embed::WrongStateException& )
     {
-        GetRidOfComponent();
+        GetRidOfComponent(&guard);
         throw;
     }
 }
@@ -217,7 +217,7 @@ uno::Reference< embed::XStorage > OleEmbeddedObject::CreateTemporarySubstorage( 
     if ( !xResult.is() )
     {
         o_aStorageName.clear();
-        throw uno::RuntimeException("Failed to create temporary storage for OLE embed object");
+        throw uno::RuntimeException(u"Failed to create temporary storage for OLE embed object"_ustr);
     }
 
     return xResult;
@@ -238,7 +238,7 @@ OUString OleEmbeddedObject::MoveToTemporarySubstream()
     }
 
     if ( aResult.isEmpty() )
-        throw uno::RuntimeException("Failed to rename temporary storage for OLE embed object");
+        throw uno::RuntimeException(u"Failed to rename temporary storage for OLE embed object"_ustr);
 
     return aResult;
 }
@@ -269,7 +269,7 @@ bool OleEmbeddedObject::TryToConvertToOOo( const uno::Reference< io::XStream >& 
               || m_aFilterName == "MS Excel 97 Vorlage/Template" || m_aFilterName == "MS Word 97 Vorlage" ) )
         {
             uno::Reference< container::XNameAccess > xFilterFactory(
-                m_xContext->getServiceManager()->createInstanceWithContext("com.sun.star.document.FilterFactory", m_xContext),
+                m_xContext->getServiceManager()->createInstanceWithContext(u"com.sun.star.document.FilterFactory"_ustr, m_xContext),
                 uno::UNO_QUERY_THROW );
 
             OUString aDocServiceName;
@@ -277,7 +277,7 @@ bool OleEmbeddedObject::TryToConvertToOOo( const uno::Reference< io::XStream >& 
             uno::Sequence< beans::PropertyValue > aFilterData;
             if ( aFilterAnyData >>= aFilterData )
             {
-                for ( beans::PropertyValue const & prop : std::as_const(aFilterData) )
+                for (beans::PropertyValue const& prop : aFilterData)
                     if ( prop.Name == "DocumentService" )
                         prop.Value >>= aDocServiceName;
             }
@@ -286,7 +286,7 @@ bool OleEmbeddedObject::TryToConvertToOOo( const uno::Reference< io::XStream >& 
             {
                 // create the model
                 uno::Sequence< uno::Any > aArguments{ uno::Any(
-                    beans::NamedValue( "EmbeddedObject", uno::Any( true ))) };
+                    beans::NamedValue( u"EmbeddedObject"_ustr, uno::Any( true ))) };
 
                 uno::Reference< util::XCloseable > xDocument( m_xContext->getServiceManager()->createInstanceWithArgumentsAndContext( aDocServiceName, aArguments, m_xContext ), uno::UNO_QUERY_THROW );
                 uno::Reference< frame::XLoadable > xLoadable( xDocument, uno::UNO_QUERY_THROW );
@@ -295,16 +295,16 @@ bool OleEmbeddedObject::TryToConvertToOOo( const uno::Reference< io::XStream >& 
                 // let the model behave as embedded one
                 uno::Reference< frame::XModel > xModel( xDocument, uno::UNO_QUERY_THROW );
                 uno::Sequence< beans::PropertyValue > aSeq{ comphelper::makePropertyValue(
-                    "SetEmbedded", true) };
+                    u"SetEmbedded"_ustr, true) };
                 xModel->attachResource( OUString(), aSeq );
 
                 // load the model from the stream
                 uno::Sequence< beans::PropertyValue > aArgs{
-                    comphelper::makePropertyValue("HierarchicalDocumentName", m_aEntryName),
-                    comphelper::makePropertyValue("ReadOnly", true),
-                    comphelper::makePropertyValue("FilterName", m_aFilterName),
-                    comphelper::makePropertyValue("URL", OUString( "private:stream" )),
-                    comphelper::makePropertyValue("InputStream", xStream->getInputStream())
+                    comphelper::makePropertyValue(u"HierarchicalDocumentName"_ustr, m_aEntryName),
+                    comphelper::makePropertyValue(u"ReadOnly"_ustr, true),
+                    comphelper::makePropertyValue(u"FilterName"_ustr, m_aFilterName),
+                    comphelper::makePropertyValue(u"URL"_ustr, u"private:stream"_ustr),
+                    comphelper::makePropertyValue(u"InputStream"_ustr, xStream->getInputStream())
                 };
 
                 xSeekable->seek( 0 );
@@ -316,7 +316,7 @@ bool OleEmbeddedObject::TryToConvertToOOo( const uno::Reference< io::XStream >& 
                 xDocument->close( true );
                 uno::Reference< beans::XPropertySet > xStorProps( xTmpStorage, uno::UNO_QUERY_THROW );
                 OUString aMediaType;
-                xStorProps->getPropertyValue("MediaType") >>= aMediaType;
+                xStorProps->getPropertyValue(u"MediaType"_ustr) >>= aMediaType;
                 xTmpStorage->dispose();
 
                 // look for the related embedded object factory
@@ -326,7 +326,7 @@ bool OleEmbeddedObject::TryToConvertToOOo( const uno::Reference< io::XStream >& 
                     aEmbedFactory = aConfigHelper.GetFactoryNameByMediaType( aMediaType );
 
                 if ( aEmbedFactory.isEmpty() )
-                    throw uno::RuntimeException("Failed to get OLE embedded object factory");
+                    throw uno::RuntimeException(u"Failed to get OLE embedded object factory"_ustr);
 
                 uno::Reference< uno::XInterface > xFact = m_xContext->getServiceManager()->createInstanceWithContext( aEmbedFactory, m_xContext );
 
@@ -438,6 +438,9 @@ bool OleEmbeddedObject::TryToConvertToOOo( const uno::Reference< io::XStream >& 
 
 void SAL_CALL OleEmbeddedObject::changeState( sal_Int32 nNewState )
 {
+    if ( officecfg::Office::Common::Security::Scripting::DisableActiveContent::get()
+         && nNewState != embed::EmbedStates::LOADED )
+        throw embed::UnreachableStateException();
     // begin wrapping related part ====================
     uno::Reference< embed::XEmbeddedObject > xWrappedObject = m_xWrappedObject;
     if ( xWrappedObject.is() )
@@ -454,7 +457,7 @@ void SAL_CALL OleEmbeddedObject::changeState( sal_Int32 nNewState )
         throw lang::DisposedException(); // TODO
 
     if ( m_nObjectState == -1 )
-        throw embed::WrongStateException( "The object has no persistence!",
+        throw embed::WrongStateException( u"The object has no persistence!"_ustr,
                                         static_cast< ::cppu::OWeakObject* >(this) );
 
     // in case the object is already in requested state
@@ -478,9 +481,7 @@ void SAL_CALL OleEmbeddedObject::changeState( sal_Int32 nNewState )
         //       will behave after activation
 
         sal_Int32 nOldState = m_nObjectState;
-        aGuard.clear();
-        StateChangeNotification_Impl( true, nOldState, nNewState );
-        aGuard.reset();
+        StateChangeNotification_Impl( true, nOldState, nNewState, aGuard );
 
         try
         {
@@ -497,12 +498,10 @@ void SAL_CALL OleEmbeddedObject::changeState( sal_Int32 nNewState )
 
                 {
                     VerbExecutionControllerGuard aVerbGuard( m_aVerbExecutionController );
-                    m_pOleComponent->CloseObject();
+                    ExecUnlocked([p = m_pOleComponent] { p->CloseObject(); }, aGuard);
                 }
 
-                aGuard.clear();
-                StateChangeNotification_Impl( false, nOldState, m_nObjectState );
-                aGuard.reset();
+                StateChangeNotification_Impl( false, nOldState, m_nObjectState, aGuard );
             }
             else if ( nNewState == embed::EmbedStates::RUNNING || nNewState == embed::EmbedStates::ACTIVE )
             {
@@ -515,21 +514,19 @@ void SAL_CALL OleEmbeddedObject::changeState( sal_Int32 nNewState )
                     // it can be created during loading to detect type of object
                     CreateOleComponentAndLoad_Impl( m_pOleComponent );
 
-                    SwitchComponentToRunningState_Impl();
+                    SwitchComponentToRunningState_Impl(aGuard);
                     m_nObjectState = embed::EmbedStates::RUNNING;
-                    aGuard.clear();
-                    StateChangeNotification_Impl( false, nOldState, m_nObjectState );
-                    aGuard.reset();
+                    StateChangeNotification_Impl( false, nOldState, m_nObjectState, aGuard );
 
                     if ( m_pOleComponent && m_bHasSizeToSet )
                     {
-                        aGuard.clear();
                         try {
-                            m_pOleComponent->SetExtent( m_aSizeToSet, m_nAspectToSet );
+                            ExecUnlocked([p = m_pOleComponent, s = m_aSizeToSet,
+                                          a = m_nAspectToSet]() { p->SetExtent(s, a); },
+                                         aGuard);
                             m_bHasSizeToSet = false;
                         }
                         catch( const uno::Exception& ) {}
-                        aGuard.reset();
                     }
 
                     if ( m_nObjectState == nNewState )
@@ -541,30 +538,33 @@ void SAL_CALL OleEmbeddedObject::changeState( sal_Int32 nNewState )
                 if ( m_nObjectState == embed::EmbedStates::RUNNING && nNewState == embed::EmbedStates::ACTIVE )
                 {
                     // execute OPEN verb, if object does not reach active state it is an object's problem
-                    aGuard.clear();
-                    m_pOleComponent->ExecuteVerb( embed::EmbedVerbs::MS_OLEVERB_OPEN );
-                    aGuard.reset();
+                    ExecUnlocked([p = m_pOleComponent]()
+                                 { p->ExecuteVerb(embed::EmbedVerbs::MS_OLEVERB_OPEN); },
+                                 aGuard);
 
                     // some objects do not allow to set the size even in running state
                     if ( m_pOleComponent && m_bHasSizeToSet )
                     {
-                        aGuard.clear();
                         try {
-                            m_pOleComponent->SetExtent( m_aSizeToSet, m_nAspectToSet );
+                            ExecUnlocked([p = m_pOleComponent, s = m_aSizeToSet,
+                                          a = m_nAspectToSet]() { p->SetExtent(s, a); },
+                                         aGuard);
                             m_bHasSizeToSet = false;
                         }
                         catch( uno::Exception& ) {}
-                        aGuard.reset();
                     }
 
                     m_nObjectState = nNewState;
                 }
                 else if ( m_nObjectState == embed::EmbedStates::ACTIVE && nNewState == embed::EmbedStates::RUNNING )
                 {
-                    aGuard.clear();
-                    m_pOleComponent->CloseObject();
-                    m_pOleComponent->RunObject(); // Should not fail, the object already was active
-                    aGuard.reset();
+                    ExecUnlocked(
+                        [p = m_pOleComponent]()
+                        {
+                            p->CloseObject();
+                            p->RunObject(); // Should not fail, the object already was active
+                        },
+                        aGuard);
                     m_nObjectState = nNewState;
                 }
                 else
@@ -577,8 +577,7 @@ void SAL_CALL OleEmbeddedObject::changeState( sal_Int32 nNewState )
         }
         catch( uno::Exception& )
         {
-            aGuard.clear();
-            StateChangeNotification_Impl( false, nOldState, m_nObjectState );
+            StateChangeNotification_Impl( false, nOldState, m_nObjectState, aGuard );
             throw;
         }
     }
@@ -601,12 +600,12 @@ uno::Sequence< sal_Int32 > SAL_CALL OleEmbeddedObject::getReachableStates()
     }
     // end wrapping related part ====================
 
-    ::osl::MutexGuard aGuard( m_aMutex );
+    ::osl::ResettableMutexGuard aGuard( m_aMutex );
     if ( m_bDisposed )
         throw lang::DisposedException(); // TODO
 
     if ( m_nObjectState == -1 )
-        throw embed::WrongStateException( "The object has no persistence!",
+        throw embed::WrongStateException( u"The object has no persistence!"_ustr,
                                         static_cast< ::cppu::OWeakObject* >(this) );
 
 #ifdef _WIN32
@@ -620,7 +619,10 @@ uno::Sequence< sal_Int32 > SAL_CALL OleEmbeddedObject::getReachableStates()
 
         // the list of states can only be guessed based on standard verbs,
         // since there is no way to detect what additional verbs do
-        return GetReachableStatesList_Impl( m_pOleComponent->GetVerbList() );
+        // Pass m_pOleComponent to the lambda by copy, to make sure it doesn't depend on possible
+        // destruction of 'this', while the lock is unset
+        return GetReachableStatesList_Impl(
+            ExecUnlocked([p = m_pOleComponent] { return p->GetVerbList(); }, aGuard));
     }
     else
 #endif
@@ -646,7 +648,7 @@ sal_Int32 SAL_CALL OleEmbeddedObject::getCurrentState()
         throw lang::DisposedException(); // TODO
 
     if ( m_nObjectState == -1 )
-        throw embed::WrongStateException( "The object has no persistence!",
+        throw embed::WrongStateException( u"The object has no persistence!"_ustr,
                                         static_cast< ::cppu::OWeakObject* >(this) );
 
     // TODO: Shouldn't we ask object? ( I guess no )
@@ -690,7 +692,7 @@ namespace
                                          uno::Any(true) }; // do not create copy
         uno::Reference< container::XNameContainer > xNameContainer(
             xContext->getServiceManager()->createInstanceWithArgumentsAndContext(
-                "com.sun.star.embed.OLESimpleStorage",
+                u"com.sun.star.embed.OLESimpleStorage"_ustr,
                 aArgs, xContext ), uno::UNO_QUERY_THROW );
 
         //various stream names that can contain the real document contents for
@@ -725,7 +727,7 @@ namespace
             uno::Reference< io::XStream > xOle10Native;
             try
             {
-                xNameContainer->getByName("\1Ole10Native") >>= xOle10Native;
+                xNameContainer->getByName(u"\1Ole10Native"_ustr) >>= xOle10Native;
             }
             catch (container::NoSuchElementException const&)
             {
@@ -837,7 +839,7 @@ void SAL_CALL OleEmbeddedObject::doVerb( sal_Int32 nVerbID )
         throw lang::DisposedException(); // TODO
 
     if ( m_nObjectState == -1 )
-        throw embed::WrongStateException( "The object has no persistence!",
+        throw embed::WrongStateException( u"The object has no persistence!"_ustr,
                                         static_cast< ::cppu::OWeakObject* >(this) );
 
 #ifdef _WIN32
@@ -851,9 +853,7 @@ void SAL_CALL OleEmbeddedObject::doVerb( sal_Int32 nVerbID )
         {
             // if the target object is in loaded state
             // it must be switched to running state to execute verb
-            aGuard.clear();
-            changeState( embed::EmbedStates::RUNNING );
-            aGuard.reset();
+            ExecUnlocked([this]() { changeState(embed::EmbedStates::RUNNING); }, aGuard);
         }
 
         try {
@@ -863,9 +863,13 @@ void SAL_CALL OleEmbeddedObject::doVerb( sal_Int32 nVerbID )
             // ==== the STAMPIT related solution =============================
             m_aVerbExecutionController.StartControlExecution();
 
-
-            m_pOleComponent->ExecuteVerb( nVerbID );
-            m_pOleComponent->SetHostName( m_aContainerName );
+            ExecUnlocked(
+                [nVerbID, p = m_pOleComponent, name = m_aContainerName]()
+                {
+                    p->ExecuteVerb(nVerbID);
+                    p->SetHostName(name);
+                },
+                aGuard);
 
             // ==== the STAMPIT related solution =============================
             bool bModifiedOnExecution = m_aVerbExecutionController.EndControlExecution_WasModified();
@@ -881,9 +885,7 @@ void SAL_CALL OleEmbeddedObject::doVerb( sal_Int32 nVerbID )
             // ==== the STAMPIT related solution =============================
             m_aVerbExecutionController.EndControlExecution_WasModified();
 
-
-            aGuard.clear();
-            StateChangeNotification_Impl( false, nOldState, m_nObjectState );
+            StateChangeNotification_Impl( false, nOldState, m_nObjectState, aGuard );
             throw;
         }
 
@@ -905,6 +907,7 @@ void SAL_CALL OleEmbeddedObject::doVerb( sal_Int32 nVerbID )
             m_bTriedConversion = true;
             if ( TryToConvertToOOo( m_xObjectStream ) )
             {
+                aGuard.clear();
                 changeState( embed::EmbedStates::ACTIVE );
                 return;
             }
@@ -936,6 +939,7 @@ void SAL_CALL OleEmbeddedObject::doVerb( sal_Int32 nVerbID )
 
             if ( TryToConvertToOOo( xStream ) )
             {
+                aGuard.clear();
                 changeState( embed::EmbedStates::ACTIVE );
                 return;
             }
@@ -972,12 +976,12 @@ uno::Sequence< embed::VerbDescriptor > SAL_CALL OleEmbeddedObject::getSupportedV
     }
     // end wrapping related part ====================
 
-    ::osl::MutexGuard aGuard( m_aMutex );
+    osl::ClearableMutexGuard aGuard(m_aMutex);
     if ( m_bDisposed )
         throw lang::DisposedException(); // TODO
 
     if ( m_nObjectState == -1 )
-        throw embed::WrongStateException( "The object has no persistence!",
+        throw embed::WrongStateException( u"The object has no persistence!"_ustr,
                                         static_cast< ::cppu::OWeakObject* >(this) );
 #ifdef _WIN32
     if ( m_pOleComponent )
@@ -989,6 +993,7 @@ uno::Sequence< embed::VerbDescriptor > SAL_CALL OleEmbeddedObject::getSupportedV
         //  throw embed::NeedsRunningStateException(); // TODO:
         // }
 
+        aGuard.clear();
         return m_pOleComponent->GetVerbList();
     }
     else
@@ -1025,7 +1030,7 @@ void SAL_CALL OleEmbeddedObject::setClientSite(
     {
         if ( m_nObjectState != embed::EmbedStates::LOADED && m_nObjectState != embed::EmbedStates::RUNNING )
             throw embed::WrongStateException(
-                                    "The client site can not be set currently!",
+                                    u"The client site can not be set currently!"_ustr,
                                     static_cast< ::cppu::OWeakObject* >(this) );
 
         m_xClientSite = xClient;
@@ -1049,7 +1054,7 @@ uno::Reference< embed::XEmbeddedClient > SAL_CALL OleEmbeddedObject::getClientSi
         throw lang::DisposedException(); // TODO
 
     if ( m_nObjectState == -1 )
-        throw embed::WrongStateException( "The object has no persistence!",
+        throw embed::WrongStateException( u"The object has no persistence!"_ustr,
                                         static_cast< ::cppu::OWeakObject* >(this) );
 
     return m_xClientSite;
@@ -1073,7 +1078,7 @@ void SAL_CALL OleEmbeddedObject::update()
         throw lang::DisposedException(); // TODO
 
     if ( m_nObjectState == -1 )
-        throw embed::WrongStateException( "The object has no persistence!",
+        throw embed::WrongStateException( u"The object has no persistence!"_ustr,
                                         static_cast< ::cppu::OWeakObject* >(this) );
 
     if ( m_nUpdateMode == embed::EmbedUpdateModes::EXPLICIT_UPDATE )
@@ -1105,7 +1110,7 @@ void SAL_CALL OleEmbeddedObject::setUpdateMode( sal_Int32 nMode )
         throw lang::DisposedException(); // TODO
 
     if ( m_nObjectState == -1 )
-        throw embed::WrongStateException( "The object has no persistence!",
+        throw embed::WrongStateException( u"The object has no persistence!"_ustr,
                                        static_cast< ::cppu::OWeakObject* >(this) );
 
     OSL_ENSURE( nMode == embed::EmbedUpdateModes::ALWAYS_UPDATE
@@ -1128,12 +1133,12 @@ sal_Int64 SAL_CALL OleEmbeddedObject::getStatus( sal_Int64
     }
     // end wrapping related part ====================
 
-    ::osl::MutexGuard aGuard( m_aMutex );
+    osl::ResettableMutexGuard aGuard(m_aMutex);
     if ( m_bDisposed )
         throw lang::DisposedException(); // TODO
 
     if ( m_nObjectState == -1 )
-        throw embed::WrongStateException( "The object must be in running state!",
+        throw embed::WrongStateException( u"The object must be in running state!"_ustr,
                                     static_cast< ::cppu::OWeakObject* >(this) );
 
     sal_Int64 nResult = 0;
@@ -1143,8 +1148,7 @@ sal_Int64 SAL_CALL OleEmbeddedObject::getStatus( sal_Int64
         nResult = m_nStatus;
     else if ( m_pOleComponent )
     {
-
-        m_nStatus = m_pOleComponent->GetMiscStatus( nAspect );
+        m_nStatus = ExecUnlocked([p = m_pOleComponent, nAspect] { return p->GetMiscStatus(nAspect); }, aGuard);
         m_nStatusAspect = nAspect;
         m_bGotStatus = true;
         nResult = m_nStatus;

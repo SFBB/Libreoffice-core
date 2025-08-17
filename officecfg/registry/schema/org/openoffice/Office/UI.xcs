@@ -35,18 +35,24 @@
         </info>
       </prop>
     </group>
+    <!--
+    TODO: Change the labels of the new light/dark/image/imagedrawmode/type entries once everything is working.
+    keeping Color so that things don't break right from the get go, and later once everything is working, we can just
+    remove the Color entry
+    -->
     <group oor:name="ColorScheme">
       <!-- UIHints: Tools / Options / Star|OpenOffice / Application Colors -->
       <info>
         <desc>Defines the templates for color settings used to customize the appearance of the applications.</desc>
       </info>
+      <!-- Group_General -->
       <group oor:name="DocColor">
         <info>
           <desc>Specifies the color settings for the document.</desc>
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color of the document.</desc>
+            <desc>Specifies the color for the document.</desc>
           </info>
         </prop>
       </group>
@@ -54,15 +60,9 @@
         <info>
           <desc>Specifies the settings for the documents boundaries.</desc>
         </info>
-        <prop oor:name="IsVisible" oor:type="xs:boolean" oor:nillable="false">
-          <info>
-            <desc>Specifies the visibility of anchors (true = visible).</desc>
-          </info>
-          <value>true</value>
-        </prop>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for of the document boundaries.</desc>
+            <desc>Specifies the color for the document boundaries.</desc>
           </info>
         </prop>
       </group>
@@ -72,23 +72,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies Color of the application background.</desc>
-          </info>
-        </prop>
-      </group>
-      <group oor:name="ObjectBoundaries">
-        <info>
-          <desc>Specifies the settings for object boundaries.</desc>
-        </info>
-        <prop oor:name="IsVisible" oor:type="xs:boolean" oor:nillable="false">
-          <info>
-            <desc>Specifies the visibility of object boundaries (true = visible).</desc>
-          </info>
-          <value>true</value>
-        </prop>
-        <prop oor:name="Color" oor:type="xs:int">
-          <info>
-            <desc>Specifies the color used for object boundaries.</desc>
+            <desc>Specifies the color for the application background.</desc>
           </info>
         </prop>
       </group>
@@ -96,15 +80,9 @@
         <info>
           <desc>Specifies the settings for table boundaries.</desc>
         </info>
-        <prop oor:name="IsVisible" oor:type="xs:boolean" oor:nillable="false">
-          <info>
-            <desc>Specifies the visibility of table boundaries (true = visible).</desc>
-          </info>
-          <value>true</value>
-        </prop>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for table boundaries.</desc>
+            <desc>Specifies the color for table boundaries.</desc>
           </info>
         </prop>
       </group>
@@ -114,7 +92,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies color of the font.</desc>
+            <desc>Specifies the color for the font color.</desc>
           </info>
         </prop>
       </group>
@@ -130,7 +108,7 @@
         </prop>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for unvisited links.</desc>
+            <desc>Specifies the color for unvisited links.</desc>
           </info>
         </prop>
       </group>
@@ -146,7 +124,7 @@
         </prop>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for visited links.</desc>
+            <desc>Specifies the color for visited links.</desc>
           </info>
         </prop>
       </group>
@@ -156,7 +134,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color of incorrect text found with AutoSpellcheck.</desc>
+            <desc>Specifies the color for spellchecking.</desc>
           </info>
         </prop>
       </group>
@@ -166,7 +144,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color of incorrect grammar found with AutoSpellcheck.</desc>
+            <desc>Specifies the color for the incorrect grammar.</desc>
           </info>
         </prop>
       </group>
@@ -176,7 +154,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color of smart tags.</desc>
+            <desc>Specifies the color for the smart tags.</desc>
           </info>
         </prop>
       </group>
@@ -192,7 +170,7 @@
         </prop>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for shadows.</desc>
+            <desc>Specifies the color for the shadow.</desc>
           </info>
         </prop>
       </group>
@@ -202,7 +180,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for the text grid.</desc>
+            <desc>Specifies the color for the text grid in writer.</desc>
           </info>
         </prop>
       </group>
@@ -218,7 +196,7 @@
         </prop>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for the field shadings.</desc>
+            <desc>Specifies the color for the field shadings.</desc>
           </info>
         </prop>
       </group>
@@ -234,7 +212,7 @@
         </prop>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for the index and table shadings.</desc>
+            <desc>Specifies the color for the index and table shadings in writer.</desc>
           </info>
         </prop>
       </group>
@@ -250,7 +228,7 @@
         </prop>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for the direct cursor.</desc>
+            <desc>Specifies the color for direct cursor.</desc>
           </info>
         </prop>
       </group>
@@ -260,7 +238,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for script indicators.</desc>
+            <desc>Specifies the color for the script indicators in Writer.</desc>
           </info>
         </prop>
       </group>
@@ -268,15 +246,9 @@
         <info>
           <desc>Specifies the settings for section boundaries in Writer.</desc>
         </info>
-        <prop oor:name="IsVisible" oor:type="xs:boolean" oor:nillable="false">
-          <info>
-            <desc>Specifies the visibility of section boundaries (true = visible).</desc>
-          </info>
-          <value>true</value>
-        </prop>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for section boundaries.</desc>
+            <desc>Specifies the color for the section boundaries in Writer.</desc>
           </info>
         </prop>
       </group>
@@ -286,7 +258,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for the header/footer mark.</desc>
+            <desc>Specifies the color for the header/footer mark in Writer.</desc>
           </info>
         </prop>
       </group>
@@ -296,7 +268,17 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for the page break mark.</desc>
+            <desc>Specifies the color for the page break mark in Writer.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="WriterNonPrintChars">
+        <info>
+          <desc>Specifies the settings for the non-printable characters in Writer.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the color for the non-printable characters in Writer.</desc>
           </info>
         </prop>
       </group>
@@ -306,7 +288,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for SGML code.</desc>
+            <desc>Specifies the color for SGML in HTML documents.</desc>
           </info>
         </prop>
       </group>
@@ -316,7 +298,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for comments.</desc>
+            <desc>Specifies the color for the comments in HTML documents.</desc>
           </info>
         </prop>
       </group>
@@ -326,7 +308,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for keywords.</desc>
+            <desc>Specifies the color for the keywords in HTML document.</desc>
           </info>
         </prop>
       </group>
@@ -336,7 +318,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for other text.</desc>
+            <desc>Specifies the color for the other text in HTML documents.</desc>
           </info>
         </prop>
       </group>
@@ -346,7 +328,17 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for the grid.</desc>
+            <desc>Specifies the color for the grid lines in Calc.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="CalcCellFocus">
+        <info>
+        <desc>Specifies the setting to change cell frame, col/row highlight and col/row header color in Calc</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the color for the cell frame, col/row highlight and col/row header color in Calc.</desc>
           </info>
         </prop>
       </group>
@@ -356,7 +348,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for page breaks in the page break preview.</desc>
+            <desc>Specifies the color for the page breaks in the page break preview in Calc.</desc>
           </info>
         </prop>
       </group>
@@ -366,7 +358,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for manual page breaks.</desc>
+            <desc>Specifies the color for the manual page breaks in Calc.</desc>
           </info>
         </prop>
       </group>
@@ -376,7 +368,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for automatic page breaks.</desc>
+            <desc>Specifies the color for the automatic breaks in Calc.</desc>
           </info>
         </prop>
       </group>
@@ -392,7 +384,7 @@
         </prop>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for hidden rows/cols.</desc>
+          <desc>Specifies the color for the hidden row/cols indicator in Calc.</desc>
           </info>
         </prop>
       </group>
@@ -408,7 +400,7 @@
         </prop>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for the text overflow indicator.</desc>
+            <desc>Specifies the color for the text overflow indicator in Calc.</desc>
           </info>
         </prop>
       </group>
@@ -418,7 +410,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for the comments indicator.</desc>
+            <desc>Specifies the color for the comments indicator in Calc.</desc>
           </info>
         </prop>
       </group>
@@ -428,7 +420,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for audition arrows to precedent or dependent cells.</desc>
+            <desc>Specifies the color for the audition arrows in Calc.</desc>
           </info>
         </prop>
       </group>
@@ -438,7 +430,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for audition arrows to cells containing errors.</desc>
+            <desc>Specifies the color for the audition arrows to cells with errors in Calc.</desc>
           </info>
         </prop>
       </group>
@@ -448,7 +440,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for the cursor when editing references.</desc>
+            <desc>Specifies the color for cursor when editing references in Calc.</desc>
           </info>
         </prop>
       </group>
@@ -458,7 +450,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for the background of comments.</desc>
+            <desc>Specifies the color for background of comments in Calc.</desc>
           </info>
         </prop>
       </group>
@@ -468,7 +460,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for values.</desc>
+            <desc>Specifies the color for the values in Calc.</desc>
           </info>
         </prop>
       </group>
@@ -478,7 +470,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for formulas.</desc>
+            <desc>Specifies the color for the formulas in Calc.</desc>
           </info>
         </prop>
       </group>
@@ -488,7 +480,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for the text.</desc>
+            <desc>Specifies the color for the text in Calc.</desc>
           </info>
         </prop>
       </group>
@@ -498,7 +490,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for the background of protected cells.</desc>
+            <desc>Specifies the color for the background of protected cells in Calc.</desc>
           </info>
         </prop>
       </group>
@@ -514,7 +506,97 @@
         </prop>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for the grid.</desc>
+          <desc>Specifies the color for the grid in Draw/Impress.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="Author1">
+        <info>
+          <desc>Specifies the settings used for the comments of author #1.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the color for the comments of author #1.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="Author2">
+        <info>
+          <desc>Specifies the settings used for the comments of author #2.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the color for the comments of author #2.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="Author3">
+        <info>
+          <desc>Specifies the settings used for the comments of author #3.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the color for the comments of author #3.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="Author4">
+        <info>
+          <desc>Specifies the settings used for the comments of author #4.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the color for the comments of author #4.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="Author5">
+        <info>
+          <desc>Specifies the settings used for the comments of author #5.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the color for the comments of author #5.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="Author6">
+        <info>
+          <desc>Specifies the settings used for the comments of author #6.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the color for the comments of author #6.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="Author7">
+        <info>
+          <desc>Specifies the settings used for the comments of author #7.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the color for the comments of author #7.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="Author8">
+        <info>
+          <desc>Specifies the settings used for the comments of author #8.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the color for the comments of author #8.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="Author9">
+        <info>
+          <desc>Specifies the settings used for the comments of author #9.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the color for the comments of author #9.</desc>
           </info>
         </prop>
       </group>
@@ -524,7 +606,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used as background in the Basic code editor.</desc>
+            <desc>Specifies the color for the BASIC code editor.</desc>
           </info>
         </prop>
       </group>
@@ -534,7 +616,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for identifiers.</desc>
+            <desc>Specifies the color for the identifiers in BASIC source code.</desc>
           </info>
         </prop>
       </group>
@@ -544,7 +626,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for comments.</desc>
+            <desc>Specifies the color for the comments in BASIC source code.</desc>
           </info>
         </prop>
       </group>
@@ -554,7 +636,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for numbers.</desc>
+            <desc>Specifies the color for the numbers in BASIC source code.</desc>
           </info>
         </prop>
       </group>
@@ -564,7 +646,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for strings.</desc>
+            <desc>Specifies the color for the strings in BASIC source code.</desc>
           </info>
         </prop>
       </group>
@@ -574,7 +656,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for operators.</desc>
+            <desc>Specifies the color for the operators in BASIC source code.</desc>
           </info>
         </prop>
       </group>
@@ -584,7 +666,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for keywords (reserved expressions).</desc>
+            <desc>Specifies the color for the keywords in BASIC source code.</desc>
           </info>
         </prop>
       </group>
@@ -594,7 +676,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for errors.</desc>
+            <desc>Specifies the color for the errors shown in BASIC source code.</desc>
           </info>
         </prop>
       </group>
@@ -604,7 +686,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for SQL identifiers.</desc>
+            <desc>Specifies the color for the SQL identifiers.</desc>
           </info>
         </prop>
       </group>
@@ -614,7 +696,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for SQL numbers.</desc>
+            <desc>Specifies the color for the SQL numbers.</desc>
           </info>
         </prop>
       </group>
@@ -624,7 +706,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for SQL strings.</desc>
+            <desc>Specifies the color for the SQL strings.</desc>
           </info>
         </prop>
       </group>
@@ -634,7 +716,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for SQL operators.</desc>
+            <desc>Specifies the color for the SQL operators.</desc>
           </info>
         </prop>
       </group>
@@ -644,7 +726,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for SQL keywords.</desc>
+            <desc>Specifies the color for the SQL keywords.</desc>
           </info>
         </prop>
       </group>
@@ -654,7 +736,7 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for SQL parameters.</desc>
+            <desc>Specifies the color for the SQL parameters.</desc>
           </info>
         </prop>
       </group>
@@ -664,10 +746,293 @@
         </info>
         <prop oor:name="Color" oor:type="xs:int">
           <info>
-            <desc>Specifies the color used for SQL parameters.</desc>
+            <desc>Specifies the color for the SQL comments.</desc>
           </info>
         </prop>
       </group>
+      <!-- Group Application -->
+      <group oor:name="WindowColor">
+        <info>
+          <desc>Allows to overwrite the system window color.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the color for the application window.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="WindowTextColor">
+        <info>
+          <desc>Allows to overwrite the system window text.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the color for the window text.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="BaseColor">
+        <info>
+          <desc>Allows to overwrite the system base color.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the base color.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="ButtonColor">
+        <info>
+          <desc>Allows to overwrite the system button color.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the color for the buttons.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="ButtonTextColor">
+        <info>
+          <desc>Allows to overwrite the system button text color.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the color for the button text.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="AccentColor">
+        <info>
+          <desc>Allows to overwrite the system accent color.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the accent color.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="DisabledColor">
+        <info>
+          <desc>Allows to overwrite the system disabled color.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the disabled color.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="DisabledTextColor">
+        <info>
+          <desc>Allows to overwrite the system disabled text color.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the color for the disabled text.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="ShadowColor">
+        <info>
+          <desc>Allows to overwrite the widget shadow color.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the color for the shadow.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="SeparatorColor">
+        <info>
+          <desc>Allows to overwrite the separator color.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the color for the separator.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="FaceColor">
+        <info>
+          <desc>Allows to overwrite the system face color.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the color for the face.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="ActiveColor">
+        <info>
+          <desc>Allows to overwrite the system active color.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the active color.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="ActiveTextColor">
+        <info>
+          <desc>Allows to overwrite the system active text color.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the color for the active text.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="ActiveBorderColor">
+        <info>
+          <desc>Allows to overwrite the system active border color.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the color for the active border.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="FieldColor">
+        <info>
+          <desc>Allows to overwrite the system field color.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the color for the field.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="MenuBarColor">
+        <info>
+          <desc>Allows to overwrite the system menu bar color.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the color for the menu bar.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="MenuBarTextColor">
+        <info>
+          <desc>Allows to overwrite the system menubar text color.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the color for the menu bar text.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="MenuBarHighlightColor">
+        <info>
+          <desc>Allows to overwrite the system menubar highlight color.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the color for the menu bar highlight.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="MenuBarHighlightTextColor">
+        <info>
+          <desc>Allows to overwrite the system menubar highlight text color.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the color for the menu bar highlight text.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="MenuColor">
+        <info>
+          <desc>Allows to overwrite the system menu color.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the color for the menu.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="MenuTextColor">
+        <info>
+          <desc>Allows to overwrite the system menu text color.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the color for the menu text.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="MenuHighlightColor">
+        <info>
+          <desc>Allows to overwrite the system menu highlight color.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the color for the menu highlight.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="MenuHighlightTextColor">
+        <info>
+          <desc>Allows to overwrite the system menu highlight text color.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the color for the menu highlight text.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="MenuBorderColor">
+        <info>
+          <desc>Allows to overwrite the system menu border color.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the color for the menu border.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="InactiveColor">
+        <info>
+          <desc>Allows to overwrite the system inactive color.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the inactive color.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="InactiveTextColor">
+        <info>
+          <desc>Allows to overwrite the system inactive text color.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the color for the inactive text.</desc>
+          </info>
+        </prop>
+      </group>
+      <group oor:name="InactiveBorderColor">
+        <info>
+          <desc>Allows to overwrite the system inactive border color.</desc>
+        </info>
+        <prop oor:name="Color" oor:type="xs:int">
+          <info>
+            <desc>Specifies the color for the inactive border.</desc>
+          </info>
+        </prop>
+      </group>
+    </group>
+    <group oor:name="FilterDialogSettings">
+      <info>
+        <desc>Configuration related to display of a filter's settings dialog</desc>
+      </info>
+      <prop oor:name="show" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>A filter's settings dialog may be set to show or not.</desc>
+          <label>Show settings dialog for this filter</label>
+        </info>
+        <value>true</value>
+      </prop>
     </group>
   </templates>
   <component>
@@ -760,6 +1125,12 @@
           <value>30000</value>
         </prop>
       </group>
+      <set oor:name="ShowFilterDialog" oor:node-type="FilterDialogSettings">
+        <info>
+          <desc>Contains the flags controlling if a filter dialog should be shown for a given filter. The default is true.</desc>
+          <label>Should the settings dialog be shown for this filter</label>
+        </info>
+      </set>
     </group>
   </component>
 </oor:component-schema>

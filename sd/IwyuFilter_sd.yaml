@@ -2,8 +2,6 @@
 assumeFilename: sd/source/core/drawdoc.cxx
 excludelist:
     sd/qa/unit/SdrPdfImportTest.cxx:
-    # Actually used
-    - comphelper/scopeguard.hxx
     # Needed on WIN to compile
     - prewin.h
     - postwin.h
@@ -72,9 +70,6 @@ excludelist:
     - com/sun/star/lang/XServiceInfo.hpp
     - com/sun/star/style/XStyle.hpp
     - com/sun/star/util/XModifyBroadcaster.hpp
-    sd/inc/textapi.hxx:
-    # base class has to be a complete type
-    - editeng/outliner.hxx
     sd/inc/TransitionPreset.hxx:
     # base class has to be a complete type
     - com/sun/star/lang/XMultiServiceFactory.hpp
@@ -84,9 +79,16 @@ excludelist:
     sd/inc/undo/undoobjects.hxx:
     # base class has to be a complete type
     - tools/weakbase.hxx
+    sd/inc/unolayer.hxx:
+    # base class has to be a complete type
+    - com/sun/star/drawing/XLayer.hpp
+    - com/sun/star/drawing/XLayerManager.hpp
     sd/source/filter/eppt/eppt.hxx:
     # base class has to be a complete type
     - escherex.hxx
+    sd/source/filter/html/htmlex.hxx:
+    # Needed in --fwdecl mode, to silence "externally available entity 'HtmlState' is not previously declared in an included file"
+    - class HtmlState
     sd/source/ui/annotations/annotationmanagerimpl.hxx:
     # base class has to be a complete type
     - annotationtag.hxx
@@ -104,32 +106,20 @@ excludelist:
     # Needed on MACOSX
     - svl/intitem.hxx
     - app.hrc
-    sd/source/ui/dlg/sdtreelb.cxx:
-    # comphelper::ScopeGuard is actually used
-    - comphelper/scopeguard.hxx
     sd/source/ui/framework/configuration/ConfigurationTracer.hxx:
     # Needed for css shortcut
     - sal/types.h
     sd/source/ui/framework/configuration/GenericConfigurationChangeRequest.hxx:
     # base class has to be a complete type
     - com/sun/star/container/XNamed.hpp
-    - com/sun/star/drawing/framework/XConfigurationChangeRequest.hpp
     sd/source/ui/framework/configuration/UpdateRequest.hxx:
     # base class has to be a complete type
     - com/sun/star/container/XNamed.hpp
-    - com/sun/star/drawing/framework/XConfigurationChangeRequest.hpp
-    sd/source/ui/framework/factories/BasicToolBarFactory.hxx:
-    # base class has to be a complete type
-    - com/sun/star/drawing/framework/XResourceFactory.hpp
+    sd/source/ui/inc/framework/factories/BasicToolBarFactory.hxx:
     - com/sun/star/lang/XInitialization.hpp
-    sd/source/ui/framework/factories/BasicPaneFactory.hxx:
-    # base class has to be a complete type
-    - com/sun/star/drawing/framework/XConfigurationChangeListener.hpp
-    - com/sun/star/drawing/framework/XResourceFactory.hpp
+    sd/source/ui/inc/framework/factories/BasicPaneFactory.hxx:
     - com/sun/star/lang/XInitialization.hpp
-    sd/source/ui/framework/factories/BasicViewFactory.hxx:
-    # base class has to be a complete type
-    - com/sun/star/drawing/framework/XResourceFactory.hpp
+    sd/source/ui/inc/framework/factories/BasicViewFactory.hxx:
     - com/sun/star/lang/XInitialization.hpp
     sd/source/ui/framework/factories/ChildWindowPane.hxx:
     # base class has to be a complete type
@@ -137,19 +127,14 @@ excludelist:
     - framework/Pane.hxx
     sd/source/ui/framework/module/CenterViewFocusModule.hxx:
     # base class has to be a complete type
-    - com/sun/star/drawing/framework/XConfigurationChangeListener.hpp
     sd/source/ui/framework/module/ShellStackGuard.hxx:
     # base class has to be a complete type
-    - com/sun/star/drawing/framework/XConfigurationChangeListener.hpp
     sd/source/ui/framework/module/ToolBarModule.hxx:
     # base class has to be a complete type
-    - com/sun/star/drawing/framework/XConfigurationChangeListener.hpp
     sd/source/ui/framework/module/SlideSorterModule.hxx:
     # base class has to be a complete type
-    - com/sun/star/drawing/framework/XConfigurationChangeListener.hpp
     sd/source/ui/framework/module/ViewTabBarModule.hxx:
     # base class has to be a complete type
-    - com/sun/star/drawing/framework/XConfigurationChangeListener.hpp
     sd/source/ui/inc/AccessibleDocumentViewBase.hxx:
     # base class has to be a complete type
     - com/sun/star/accessibility/XAccessibleExtendedAttributes.hpp
@@ -186,7 +171,6 @@ excludelist:
     sd/source/ui/inc/DrawController.hxx:
     # base class has to be a complete type
     - com/sun/star/drawing/XDrawView.hpp
-    - com/sun/star/drawing/framework/XControllerManager.hpp
     - com/sun/star/lang/XServiceInfo.hpp
     - com/sun/star/lang/XUnoTunnel.hpp
     - com/sun/star/view/XFormLayerAccess.hpp
@@ -208,18 +192,14 @@ excludelist:
     - com/sun/star/util/XReplaceDescriptor.hpp
     sd/source/ui/inc/ViewTabBar.hxx:
     # base class has to be a complete type
-    - com/sun/star/drawing/framework/XConfigurationChangeListener.hpp
-    - com/sun/star/drawing/framework/XTabBar.hpp
     - com/sun/star/drawing/framework/XToolBar.hpp
     - com/sun/star/lang/XUnoTunnel.hpp
     sd/source/ui/inc/framework/Configuration.hxx:
     # base class has to be a complete type
     - com/sun/star/container/XNamed.hpp
-    - com/sun/star/drawing/framework/XConfiguration.hpp
     - com/sun/star/lang/XServiceInfo.hpp
     sd/source/ui/inc/framework/ConfigurationController.hxx:
     # base class has to be a complete type
-    - com/sun/star/drawing/framework/XConfigurationController.hpp
     - com/sun/star/lang/XInitialization.hpp
     sd/source/ui/inc/framework/DrawModule.hxx:
     # Needed for css shortcut
@@ -229,56 +209,34 @@ excludelist:
     - sal/types.h
     sd/source/ui/inc/framework/ModuleController.hxx:
     # base class has to be a complete type
-    - com/sun/star/drawing/framework/XModuleController.hpp
     - com/sun/star/lang/XInitialization.hpp
     sd/source/ui/inc/framework/Pane.hxx:
     # base class has to be a complete type
-    - com/sun/star/drawing/framework/XPane.hpp
-    - com/sun/star/drawing/framework/XPane2.hpp
+    - com/sun/star/drawing/framework/AbstractPane.hpp
     - com/sun/star/lang/XUnoTunnel.hpp
     sd/source/ui/inc/framework/PresentationModule.hxx:
     # Needed for css shortcut
     - sal/types.h
-    sd/source/ui/inc/framework/PresentationFactory.hxx:
-    # base class has to be a complete type
-    - com/sun/star/drawing/framework/XResourceFactory.hpp
-    - com/sun/star/drawing/framework/XConfigurationChangeListener.hpp
-    sd/source/ui/inc/framework/ResourceId.hxx:
-    # base class has to be a complete type
-    - com/sun/star/drawing/framework/XResourceId.hpp
-    - com/sun/star/lang/XInitialization.hpp
-    - com/sun/star/lang/XServiceInfo.hpp
     sd/source/ui/inc/framework/ViewShellWrapper.hxx:
     # base class has to be a complete type
     - com/sun/star/awt/XWindowListener.hpp
-    - com/sun/star/drawing/framework/XRelocatableResource.hpp
-    - com/sun/star/drawing/framework/XView.hpp
+    - framework/XView.hxx
     - com/sun/star/lang/XUnoTunnel.hpp
     - com/sun/star/view/XSelectionSupplier.hpp
-    sd/source/ui/inc/tools/PropertySet.hxx:
-    # base class has to be a complete type
-    - com/sun/star/beans/XPropertySet.hpp
     sd/source/ui/inc/tools/SlotStateListener.hxx:
     # base class has to be a complete type
     - com/sun/star/frame/XStatusListener.hpp
     sd/source/ui/presenter/PresenterHelper.hxx:
     # base class has to be a complete type
-    - com/sun/star/drawing/XPresenterHelper.hpp
     - com/sun/star/lang/XInitialization.hpp
     sd/source/ui/presenter/PresenterPreviewCache.hxx:
     # base class has to be a complete type
-    - com/sun/star/drawing/XSlidePreviewCache.hpp
     - com/sun/star/lang/XInitialization.hpp
     sd/source/ui/presenter/PresenterCanvas.hxx:
     # base class has to be a complete type
     - com/sun/star/rendering/XSpriteCanvas.hpp
     - com/sun/star/rendering/XBitmap.hpp
     - com/sun/star/awt/XWindowListener.hpp
-    sd/source/ui/presenter/SlideRenderer.hxx:
-    # base class has to be a complete type
-    - com/sun/star/drawing/XSlideRenderer.hpp
-    - com/sun/star/lang/XInitialization.hpp
-    - com/sun/star/lang/XServiceInfo.hpp
     sd/source/ui/remotecontrol/Listener.hxx:
     # base class has to be a complete type
     - com/sun/star/presentation/XSlideShowListener.hpp
@@ -305,19 +263,10 @@ excludelist:
     - com/sun/star/beans/XPropertyChangeListener.hpp
     - com/sun/star/accessibility/XAccessibleEventListener.hpp
     - com/sun/star/frame/XFrameActionListener.hpp
-    sd/source/ui/slidesorter/shell/SlideSorterService.hxx:
-    # base class has to be a complete type
-    - com/sun/star/awt/XWindowListener.hpp
-    - com/sun/star/drawing/XSlideSorterBase.hpp
-    - com/sun/star/lang/XInitialization.hpp
     sd/source/ui/unoidl/sddetect.hxx:
     # base class has to be a complete type
     - com/sun/star/document/XExtendedFilterDetection.hpp
     - com/sun/star/lang/XServiceInfo.hpp
-    sd/source/ui/unoidl/unolayer.hxx:
-    # base class has to be a complete type
-    - com/sun/star/drawing/XLayer.hpp
-    - com/sun/star/drawing/XLayerManager.hpp
     sd/source/ui/unoidl/unocpres.hxx:
     # base class has to be a complete type
     - com/sun/star/container/XIndexContainer.hpp
@@ -333,9 +282,6 @@ excludelist:
     - com/sun/star/beans/XPropertyState.hpp
     - com/sun/star/lang/XServiceInfo.hpp
     - com/sun/star/lang/XUnoTunnel.hpp
-    sd/source/core/annotations/AnnotationEnumeration.cxx:
-    # Avoid loplugin:unreffun error
-    - AnnotationEnumeration.hxx
     sd/source/core/CustomAnimationCloner.cxx:
     # Avoid loplugin:unreffun error
     - CustomAnimationCloner.hxx
@@ -424,9 +370,6 @@ excludelist:
     sd/source/core/drawdoc.cxx:
     # Needed for template
     - com/sun/star/frame/XModel.hpp
-    sd/source/core/text/textapi.cxx:
-    # Needed for macro defines
-    - editeng/unoprnms.hxx
     sd/source/filter/eppt/epptso.cxx:
     # Needed for direct member access
     - com/sun/star/table/XTable.hpp
@@ -458,15 +401,6 @@ excludelist:
     sd/source/filter/xml/sdtransform.cxx:
     # Needed for implicit dtor
     - editeng/outlobj.hxx
-    sd/source/ui/annotations/annotationtag.cxx:
-    # Needed for template
-    - com/sun/star/office/XAnnotation.hpp
-    sd/source/ui/animations/CustomAnimationList.cxx:
-    # Actually used
-    - comphelper/scopeguard.hxx
-    sd/source/ui/animations/CustomAnimationPane.cxx:
-    # Actually used
-    - comphelper/scopeguard.hxx
     sd/source/ui/framework/configuration/ChangeRequestQueueProcessor.cxx:
     # Needed for DEBUG_SD_CONFIGURATION_TRACE
     - ConfigurationTracer.hxx
@@ -477,8 +411,6 @@ excludelist:
     sd/source/ui/framework/configuration/ConfigurationUpdater.cxx:
     # Needed for DEBUG_SD_CONFIGURATION_TRACE
     - ConfigurationTracer.hxx
-    # comphelper::ScopeGuard is actually used
-    - comphelper/scopeguard.hxx
     sd/source/ui/framework/configuration/ResourceFactoryManager.cxx:
     # Needed for VERBOSE mode
     - sal/log.hxx
@@ -535,18 +467,9 @@ excludelist:
     sd/source/ui/view/GraphicObjectBar.cxx:
     # Needed by a sdslots.hxx constant
     - svx/svxids.hrc
-    sd/source/ui/view/Outliner.cxx:
-    # comphelper::ScopeGuard is actually used
-    - comphelper/scopeguard.hxx
     sd/source/ui/view/PresentationViewShellBase.cxx:
     # Needed for template
     - com/sun/star/frame/XFrame.hpp
-    sd/source/ui/view/drviews1.cxx:
-    # comphelper::ScopeGuard is actually used
-    - comphelper/scopeguard.hxx
-    sd/source/ui/view/drviews2.cxx:
-    # comphelper::ScopeGuard is actually used
-    - comphelper/scopeguard.hxx
     sd/source/ui/view/drviewsf.cxx:
     # Needed for template
     - svx/sdmetitm.hxx

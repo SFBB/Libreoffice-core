@@ -30,6 +30,8 @@ public:
     bool AcquireGraphics() const override { return true; }
     void ReleaseGraphics(bool) override {}
     bool UsePolyPolygonForComplexGradient() override { return false; }
+    bool CanAnimate() const override { return false; }
+    virtual bool HasAlpha() const override { return false; }
 };
 
 Animation createAnimation()

@@ -119,13 +119,13 @@ SwDrawView::SwDrawView(
 
     SetHitTolerancePixel( GetMarkHdlSizePixel()/2 );
 
-    SetPrintPreview( rI.GetShell()->IsPreview() );
+    SetPrintPreview( rI.GetShell().IsPreview() );
 
     // #i73602# Use default from the configuration
-    SetBufferedOverlayAllowed(!utl::ConfigManager::IsFuzzing() && officecfg::Office::Common::Drawinglayer::OverlayBuffer_Writer::get());
+    SetBufferedOverlayAllowed(!comphelper::IsFuzzing() && officecfg::Office::Common::Drawinglayer::OverlayBuffer_Writer::get());
 
     // #i74769#, #i75172# Use default from the configuration
-    SetBufferedOutputAllowed(!utl::ConfigManager::IsFuzzing() && officecfg::Office::Common::Drawinglayer::OverlayBuffer_DrawImpress::get());
+    SetBufferedOutputAllowed(!comphelper::IsFuzzing() && officecfg::Office::Common::Drawinglayer::OverlayBuffer_DrawImpress::get());
 }
 
 // #i99665#
@@ -153,7 +153,8 @@ static SdrObject* impLocalHitCorrection(SdrObject* pRetval, const Point& rPnt, s
 
         if(pSwVirtFlyDrawObj)
         {
-            if(pSwVirtFlyDrawObj->GetFlyFrame()->Lower() && pSwVirtFlyDrawObj->GetFlyFrame()->Lower()->IsNoTextFrame())
+            SwFrame* pLower = pSwVirtFlyDrawObj->GetFlyFrame()->Lower();
+            if(pLower && pLower->IsNoTextFrame())
             {
                 // the old method used IsNoTextFrame (should be for SW's own OLE and
                 // graphic's) to accept hit only based on outer bounds; nothing to do
@@ -212,10 +213,14 @@ void SwDrawView::AddCustomHdl()
 {
     const SdrMarkList &rMrkList = GetMarkedObjectList();
 
-    if(rMrkList.GetMarkCount() != 1 || !GetUserCall(rMrkList.GetMark( 0 )->GetMarkedSdrObj()))
+    if(rMrkList.GetMarkCount() != 1)
         return;
 
     SdrObject *pObj = rMrkList.GetMark(0)->GetMarkedSdrObj();
+    SwContact* pContact = ::GetUserCall( pObj );
+    if (!pContact)
+        return;
+
     // make code robust
     SwFrameFormat* pFrameFormat( ::FindFrameFormat( pObj ) );
     if ( !pFrameFormat )
@@ -238,7 +243,7 @@ void SwDrawView::AddCustomHdl()
     {
         // #i28701# - use last character rectangle saved at object
         // in order to avoid a format of the anchor frame
-        SwAnchoredObject* pAnchoredObj = ::GetUserCall( pObj )->GetAnchoredObj( pObj );
+        SwAnchoredObject* pAnchoredObj = pContact->GetAnchoredObj( pObj );
 
         // Invalidate/recalc LastCharRect which can contain invalid frame offset because
         // of later frame changes
@@ -328,8 +333,7 @@ sal_uInt32 SwDrawView::GetMaxChildOrdNum( const SwFlyFrame& _rParentObj,
     sal_uInt32 nMaxChildOrdNum = _rParentObj.GetDrawObj()->GetOrdNum();
 
     const SdrPage* pDrawPage = _rParentObj.GetDrawObj()->getSdrPageFromSdrObject();
-    OSL_ENSURE( pDrawPage,
-            "<SwDrawView::GetMaxChildOrdNum(..) - missing drawing page at parent object - crash!" );
+    assert(pDrawPage && "<SwDrawView::GetMaxChildOrdNum(..) - missing drawing page at parent object - crash!");
 
     const size_t nObjCount = pDrawPage->GetObjCount();
     for ( size_t i = nObjCount-1; i > _rParentObj.GetDrawObj()->GetOrdNum() ; --i )
@@ -362,7 +366,8 @@ void SwDrawView::MoveRepeatedObjs( const SwAnchoredObject& _rMovedAnchoredObj,
     {
         const SwContact* pContact = ::GetUserCall( _rMovedAnchoredObj.GetDrawObj() );
         assert(pContact && "SwDrawView::MoveRepeatedObjs(..) - missing contact object -> crash.");
-        pContact->GetAnchoredObjs( aAnchoredObjs );
+        if (pContact)
+            pContact->GetAnchoredObjs( aAnchoredObjs );
     }
 
     // check, if 'repeated' objects exists.
@@ -404,7 +409,8 @@ void SwDrawView::MoveRepeatedObjs( const SwAnchoredObject& _rMovedAnchoredObj,
         {
             const SwContact* pContact = ::GetUserCall( pChildObj );
             assert(pContact && "SwDrawView::MoveRepeatedObjs(..) - missing contact object -> crash.");
-            pContact->GetAnchoredObjs( aAnchoredObjs );
+            if (pContact)
+                pContact->GetAnchoredObjs( aAnchoredObjs );
         }
         // move 'repeated' ones to the same order number as the already moved one.
         const size_t nTmpNewPos = pChildObj->GetOrdNum();
@@ -451,8 +457,11 @@ void SwDrawView::ObjOrderChanged( SdrObject* pObj, size_t nOldPos,
         pDrawPage->RecalcObjOrdNums();
     const size_t nObjCount = pDrawPage->GetObjCount();
 
-    SwAnchoredObject* pMovedAnchoredObj =
-                                ::GetUserCall( pObj )->GetAnchoredObj( pObj );
+    SwContact* pContact = ::GetUserCall( pObj );
+    if (!pContact)
+        return;
+
+    SwAnchoredObject* pMovedAnchoredObj = pContact->GetAnchoredObj( pObj );
     const SwFlyFrame* pParentAnchoredObj =
                                 pMovedAnchoredObj->GetAnchorFrame()->FindFlyFrame();
 
@@ -495,21 +504,22 @@ void SwDrawView::ObjOrderChanged( SdrObject* pObj, size_t nOldPos,
         if ( pTmpObj )
         {
             size_t nTmpNewPos( nNewPos );
-            if ( bMovedForward )
+            if (const SwContact* pContact2 = ::GetUserCall( pTmpObj ))
             {
-                // move before the top 'repeated' object
-                const sal_uInt32 nTmpMaxOrdNum =
-                                    ::GetUserCall( pTmpObj )->GetMaxOrdNum();
-                if ( nTmpMaxOrdNum > nNewPos )
-                    nTmpNewPos = nTmpMaxOrdNum;
-            }
-            else
-            {
-                // move behind the bottom 'repeated' object
-                const sal_uInt32 nTmpMinOrdNum =
-                                    ::GetUserCall( pTmpObj )->GetMinOrdNum();
-                if ( nTmpMinOrdNum < nNewPos )
-                    nTmpNewPos = nTmpMinOrdNum;
+                if ( bMovedForward )
+                {
+                    // move before the top 'repeated' object
+                    const sal_uInt32 nTmpMaxOrdNum = pContact2->GetMaxOrdNum();
+                    if ( nTmpMaxOrdNum > nNewPos )
+                        nTmpNewPos = nTmpMaxOrdNum;
+                }
+                else
+                {
+                    // move behind the bottom 'repeated' object
+                    const sal_uInt32 nTmpMinOrdNum = pContact2->GetMinOrdNum();
+                    if ( nTmpMinOrdNum < nNewPos )
+                        nTmpNewPos = nTmpMinOrdNum;
+                }
             }
             if ( nTmpNewPos != nNewPos )
             {
@@ -531,18 +541,25 @@ void SwDrawView::ObjOrderChanged( SdrObject* pObj, size_t nOldPos,
         {
             // determine position before the object before its top 'child' object
             const SdrObject* pTmpObj = pDrawPage->GetObj( nMaxChildOrdNum );
-            size_t nTmpNewPos = ::GetUserCall( pTmpObj )->GetMaxOrdNum() + 1;
-            if ( nTmpNewPos >= nObjCount )
+            if (SwContact* pContact2 = ::GetUserCall( pTmpObj ))
             {
-                --nTmpNewPos;
+                size_t nTmpNewPos = pContact2->GetMaxOrdNum() + 1;
+                if ( nTmpNewPos >= nObjCount )
+                {
+                    --nTmpNewPos;
+                }
+                // assure, that determined position isn't between 'repeated' objects
+                pTmpObj = pDrawPage->GetObj( nTmpNewPos );
+                pContact2 = ::GetUserCall( pTmpObj );
+                if (pContact2)
+                {
+                    nTmpNewPos = pContact2->GetMaxOrdNum();
+                    // apply new position
+                    pDrawPage->SetObjectOrdNum( nNewPos, nTmpNewPos );
+                    nNewPos = nTmpNewPos;
+                    pDrawPage->RecalcObjOrdNums();
+                }
             }
-            // assure, that determined position isn't between 'repeated' objects
-            pTmpObj = pDrawPage->GetObj( nTmpNewPos );
-            nTmpNewPos = ::GetUserCall( pTmpObj )->GetMaxOrdNum();
-            // apply new position
-            pDrawPage->SetObjectOrdNum( nNewPos, nTmpNewPos );
-            nNewPos = nTmpNewPos;
-            pDrawPage->RecalcObjOrdNums();
         }
     }
 
@@ -552,7 +569,7 @@ void SwDrawView::ObjOrderChanged( SdrObject* pObj, size_t nOldPos,
     {
         size_t nTmpNewPos( nNewPos );
         const SwFrameFormat* pParentFrameFormat =
-                pParentAnchoredObj ? &(pParentAnchoredObj->GetFrameFormat()) : nullptr;
+                pParentAnchoredObj ? pParentAnchoredObj->GetFrameFormat() : nullptr;
         const SdrObject* pTmpObj = pDrawPage->GetObj( nNewPos + 1 );
         while ( pTmpObj )
         {
@@ -564,18 +581,20 @@ void SwDrawView::ObjOrderChanged( SdrObject* pObj, size_t nOldPos,
             const SwFlyFrame* pTmpParentObj = pTmpAnchorFrame
                                             ? pTmpAnchorFrame->FindFlyFrame() : nullptr;
             if ( pTmpParentObj &&
-                 &(pTmpParentObj->GetFrameFormat()) != pParentFrameFormat )
+                 pTmpParentObj->GetFrameFormat() != pParentFrameFormat )
             {
-                if ( bMovedForward )
+                if (const SwContact* pContact2 = ::GetUserCall( pTmpObj ))
                 {
-                    nTmpNewPos = ::GetUserCall( pTmpObj )->GetMaxOrdNum();
-                    pTmpObj = pDrawPage->GetObj( nTmpNewPos + 1 );
-                }
-                else
-                {
-                    nTmpNewPos = ::GetUserCall( pTmpParentObj->GetDrawObj() )
-                                                            ->GetMinOrdNum();
-                    pTmpObj = pTmpParentObj->GetDrawObj();
+                    if ( bMovedForward )
+                    {
+                        nTmpNewPos = pContact2->GetMaxOrdNum();
+                        pTmpObj = pDrawPage->GetObj( nTmpNewPos + 1 );
+                    }
+                    else
+                    {
+                        nTmpNewPos = pContact2->GetMinOrdNum();
+                        pTmpObj = pTmpParentObj->GetDrawObj();
+                    }
                 }
             }
             else
@@ -692,7 +711,7 @@ const SwFrame* SwDrawView::CalcAnchor()
 
     //Search for paragraph bound objects, otherwise only the
     //current anchor. Search only if we currently drag.
-    const SwFrame* pAnch;
+    const SwFrame* pAnch = nullptr;
     tools::Rectangle aMyRect;
     auto pFlyDrawObj = dynamic_cast<SwVirtFlyDrawObj *>( pObj );
     if ( pFlyDrawObj )
@@ -702,16 +721,18 @@ const SwFrame* SwDrawView::CalcAnchor()
     }
     else
     {
-        SwDrawContact *pC = static_cast<SwDrawContact*>(GetUserCall(pObj));
         // determine correct anchor position for 'virtual' drawing objects.
         // #i26791#
-        pAnch = pC->GetAnchorFrame( pObj );
-        if( !pAnch )
+        if (SwDrawContact* pContact = static_cast<SwDrawContact*>(GetUserCall(pObj)))
         {
-            pC->ConnectToLayout();
-            // determine correct anchor position for 'virtual' drawing objects.
-            // #i26791#
-            pAnch = pC->GetAnchorFrame( pObj );
+            pAnch = pContact->GetAnchorFrame( pObj );
+            if( !pAnch )
+            {
+                pContact->ConnectToLayout();
+                // determine correct anchor position for 'virtual' drawing objects.
+                // #i26791#
+                pAnch = pContact->GetAnchorFrame( pObj );
+            }
         }
         aMyRect = pObj->GetSnapRect();
     }
@@ -746,12 +767,14 @@ const SwFrame* SwDrawView::CalcAnchor()
         {
             const SwRect aRect( aPt.getX(), aPt.getY(), 1, 1 );
 
-            SwDrawContact* pContact = static_cast<SwDrawContact*>(GetUserCall(pObj));
-            if ( pContact->GetAnchorFrame( pObj ) &&
-                 pContact->GetAnchorFrame( pObj )->IsPageFrame() )
-                pAnch = pContact->GetPageFrame();
-            else
-                pAnch = pContact->FindPage( aRect );
+            if (SwDrawContact* pContact = static_cast<SwDrawContact*>(GetUserCall(pObj)))
+            {
+                if ( pContact->GetAnchorFrame( pObj ) &&
+                     pContact->GetAnchorFrame( pObj )->IsPageFrame() )
+                    pAnch = pContact->GetPageFrame();
+                else
+                    pAnch = pContact->FindPage( aRect );
+            }
         }
     }
     if( pAnch && !pAnch->IsProtected() )
@@ -776,7 +799,7 @@ void SwDrawView::ShowDragAnchor()
 
 void SwDrawView::MarkListHasChanged()
 {
-    Imp().GetShell()->DrawSelChanged();
+    Imp().GetShell().DrawSelChanged();
     FmFormView::MarkListHasChanged();
 }
 
@@ -815,8 +838,8 @@ void SwDrawView::ModelHasChanged()
 
 void SwDrawView::MakeVisible( const tools::Rectangle &rRect, vcl::Window & )
 {
-    OSL_ENSURE( m_rImp.GetShell()->GetWin(), "MakeVisible, unknown Window");
-    m_rImp.GetShell()->MakeVisible( SwRect( rRect ) );
+    OSL_ENSURE( m_rImp.GetShell().GetWin(), "MakeVisible, unknown Window");
+    m_rImp.GetShell().MakeVisible( SwRect( rRect ) );
 }
 
 void SwDrawView::CheckPossibilities()
@@ -845,9 +868,10 @@ void SwDrawView::CheckPossibilities()
             if ( pFly  )
             {
                 pFrame = pFly->GetAnchorFrame();
-                if ( pFly->Lower() && pFly->Lower()->IsNoTextFrame() )
+                const SwFrame* pLower = pFly->Lower();
+                if ( pLower && pLower->IsNoTextFrame() )
                 {
-                    const SwNoTextFrame *const pNTF(static_cast<const SwNoTextFrame*>(pFly->Lower()));
+                    const SwNoTextFrame *const pNTF(static_cast<const SwNoTextFrame*>(pLower));
                     const SwOLENode *const pOLENd = pNTF->GetNode()->GetOLENode();
                     const SwGrfNode *const pGrfNd = pNTF->GetNode()->GetGrfNode();
 
@@ -864,7 +888,7 @@ void SwDrawView::CheckPossibilities()
                             bSzProtect |= ( embed::EmbedMisc::EMBED_NEVERRESIZE & xObj->getStatus( embed::Aspects::MSOLE_CONTENT ) ) != 0;
 
                             // #i972: protect position if it is a Math object anchored 'as char' and baseline alignment is activated
-                            SwDoc* pDoc = Imp().GetShell()->GetDoc();
+                            SwDoc* pDoc = Imp().GetShell().GetDoc();
                             const bool bProtectMathPos = SotExchange::IsMath( xObj->getClassID() )
                                     && RndStdIds::FLY_AS_CHAR == pFly->GetFormat()->GetAnchor().GetAnchorId()
                                     && pDoc->GetDocumentSettingManager().get( DocumentSettingId::MATH_BASELINE_ALIGNMENT );
@@ -951,17 +975,17 @@ void SwDrawView::ReplaceMarkedDrawVirtObjs( SdrMarkView& _rMarkView )
         aMarkedObjs.pop_back();
     }
     // sort marked list in order to assure consistent state in drawing layer
-    _rMarkView.SortMarkedObjects();
+    _rMarkView.GetMarkedObjectList().ForceSort();
 }
 
 SfxViewShell* SwDrawView::GetSfxViewShell() const
 {
-    return m_rImp.GetShell()->GetSfxViewShell();
+    return m_rImp.GetShell().GetSfxViewShell();
 }
 
 void SwDrawView::DeleteMarked()
 {
-    SwDoc* pDoc = Imp().GetShell()->GetDoc();
+    SwDoc* pDoc = Imp().GetShell().GetDoc();
     SwRootFrame *pTmpRoot = pDoc->getIDocumentLayoutAccess().GetCurrentLayout();
     if ( pTmpRoot )
         pTmpRoot->StartAllAction();
@@ -979,22 +1003,25 @@ void SwDrawView::DeleteMarked()
     {
         SdrObject *pObject = rMarkList.GetMark(i)->GetMarkedSdrObj();
         SwContact* pContact = GetUserCall(pObject);
-        SwFrameFormat* pFormat = pContact->GetFormat();
-        if (pObject->getChildrenOfSdrObject())
+        if (pContact)
         {
-            auto pChildTextBoxes = SwTextBoxHelper::CollectTextBoxes(pObject, pFormat);
-            for (auto& rChildTextBox : pChildTextBoxes)
-                aTextBoxesToDelete.push_back(rChildTextBox);
-        }
-        else
-            if (SwFrameFormat* pTextBox = SwTextBoxHelper::getOtherTextBoxFormat(pFormat, RES_DRAWFRMFMT))
+            SwFrameFormat* pFormat = pContact->GetFormat();
+            if (pObject->getChildrenOfSdrObject())
+            {
+                auto pChildTextBoxes = SwTextBoxHelper::CollectTextBoxes(pObject, pFormat);
+                for (auto& rChildTextBox : pChildTextBoxes)
+                    aTextBoxesToDelete.push_back(rChildTextBox);
+            }
+            else if (SwFrameFormat* pTextBox
+                     = SwTextBoxHelper::getOtherTextBoxFormat(pFormat, RES_DRAWFRMFMT))
                 aTextBoxesToDelete.push_back(pTextBox);
+        }
     }
 
     if ( pDoc->DeleteSelection( *this ) )
     {
         FmFormView::DeleteMarked();
-        ::FrameNotify( Imp().GetShell(), FLY_DRAG_END );
+        ::FrameNotify( &Imp().GetShell(), FLY_DRAG_END );
     }
 
     // Only delete these now: earlier deletion would clear the mark list as well.

@@ -21,6 +21,8 @@
 
 #include <com/sun/star/presentation/XPresentation2.hpp>
 
+#include <com/sun/star/drawing/FillStyle.hpp>
+#include <com/sun/star/drawing/LineStyle.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <com/sun/star/lang/ServiceNotRegisteredException.hpp>
@@ -29,12 +31,44 @@
 #include <com/sun/star/document/IndexedPropertyValues.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
 #include <com/sun/star/util/XTheme.hpp>
+#include <com/sun/star/animations/AnimationFill.hpp>
+#include <com/sun/star/animations/AnimationRestart.hpp>
+#include <com/sun/star/animations/AnimationEndSync.hpp>
+#include <com/sun/star/animations/AnimationCalcMode.hpp>
+#include <com/sun/star/animations/AnimationAdditiveMode.hpp>
+#include <com/sun/star/animations/AnimationNodeType.hpp>
+#include <com/sun/star/animations/AnimationTransformType.hpp>
+#include <com/sun/star/animations/AnimationColorSpace.hpp>
+#include <com/sun/star/animations/Event.hpp>
+#include <com/sun/star/animations/EventTrigger.hpp>
+#include <com/sun/star/animations/Timing.hpp>
+#include <com/sun/star/animations/TransitionType.hpp>
+#include <com/sun/star/animations/TransitionSubType.hpp>
+#include <com/sun/star/animations/ValuePair.hpp>
+#include <com/sun/star/animations/XAnimate.hpp>
+#include <com/sun/star/animations/XAnimateMotion.hpp>
+#include <com/sun/star/animations/XAnimateColor.hpp>
+#include <com/sun/star/animations/XAnimateTransform.hpp>
+#include <com/sun/star/animations/XIterateContainer.hpp>
+#include <com/sun/star/animations/XTimeContainer.hpp>
+#include <com/sun/star/animations/XTransitionFilter.hpp>
+#include <com/sun/star/presentation/EffectNodeType.hpp>
+#include <com/sun/star/presentation/EffectPresetClass.hpp>
+#include <com/sun/star/presentation/ParagraphTarget.hpp>
+#include <com/sun/star/presentation/ShapeAnimationSubType.hpp>
+#include <com/sun/star/presentation/TextAnimationType.hpp>
+
 
 #include <com/sun/star/embed/Aspects.hpp>
 
+#include <animations/animationnodehelper.hxx>
+
 #include <officecfg/Office/Common.hxx>
+#include <officecfg/Office/Impress.hxx>
+#include <comphelper/dispatchcommand.hxx>
 #include <comphelper/indexedpropertyvalues.hxx>
 #include <comphelper/lok.hxx>
+#include <comphelper/propertysequence.hxx>
 #include <comphelper/propertyvalue.hxx>
 #include <comphelper/sequence.hxx>
 #include <comphelper/servicehelper.hxx>
@@ -55,13 +89,16 @@
 
 #include <editeng/UnoForbiddenCharsTable.hxx>
 #include <svx/svdoutl.hxx>
+#include <o3tl/any.hxx>
 #include <o3tl/safeint.hxx>
 #include <o3tl/string_view.hxx>
+#include <o3tl/test_info.hxx>
 #include <o3tl/unit_conversion.hxx>
 #include <svx/UnoNamespaceMap.hxx>
 #include <svx/svdlayer.hxx>
 #include <svx/svdsob.hxx>
 #include <svx/svdundo.hxx>
+#include <svx/svdomedia.hxx>
 #include <svx/unoapi.hxx>
 #include <svx/unofill.hxx>
 #include <svx/sdrpagewindow.hxx>
@@ -71,12 +108,16 @@
 #include <svx/svdpool.hxx>
 #include <svx/svdpagv.hxx>
 #include <svtools/unoimap.hxx>
-#include <svtools/slidesorterbaropt.hxx>
 #include <svx/unoshape.hxx>
 #include <editeng/unonrule.hxx>
 #include <editeng/eeitem.hxx>
 #include <unotools/datetime.hxx>
+#include <sax/tools/converter.hxx>
 #include <xmloff/autolayout.hxx>
+#include <xmloff/xmltoken.hxx>
+#include <rtl/math.hxx>
+#include <tools/helpers.hxx>
+#include <tools/json_writer.hxx>
 
 // Support creation of GraphicStorageHandler and EmbeddedObjectResolver
 #include <svx/xmleohlp.hxx>
@@ -93,7 +134,7 @@
 
 #include <strings.hrc>
 #include <strings.hxx>
-#include "unolayer.hxx"
+#include <unolayer.hxx>
 #include <unopage.hxx>
 #include "unocpres.hxx"
 #include "unoobj.hxx"
@@ -107,8 +148,11 @@
 #include <ViewShell.hxx>
 #include <Window.hxx>
 #include <optsitem.hxx>
+#include <SlideshowLayerRenderer.hxx>
 
 #include <vcl/pdfextoutdevdata.hxx>
+#include <vcl/pdf/PDFNote.hxx>
+
 #include <com/sun/star/presentation/AnimationSpeed.hpp>
 #include <com/sun/star/presentation/ClickAction.hpp>
 #include <svx/sdr/contact/viewobjectcontact.hxx>
@@ -127,11 +171,19 @@
 #include <sfx2/LokControlHandler.hxx>
 #include <tools/gen.hxx>
 #include <tools/debug.hxx>
+#include <tools/urlobj.hxx>
 #include <comphelper/diagnose_ex.hxx>
-#include <tools/json_writer.hxx>
 #include <tools/UnitConversion.hxx>
 #include <svx/ColorSets.hxx>
 #include <docmodel/theme/Theme.hxx>
+
+#include <frozen/bits/defines.h>
+#include <frozen/bits/elsa_std.h>
+#include <frozen/unordered_map.h>
+#include <SlideSorter.hxx>
+#include <SlideSorterViewShell.hxx>
+#include <controller/SlideSorterController.hxx>
+#include <controller/SlsPageSelector.hxx>
 
 #include <app.hrc>
 
@@ -168,8 +220,6 @@ TranslateId SdTPAction::GetClickActionSdResId( presentation::ClickAction eCA )
     return {};
 }
 
-namespace {
-
 class SdUnoForbiddenCharsTable : public SvxUnoForbiddenCharsTable,
                                  public SfxListener
 {
@@ -186,7 +236,1505 @@ private:
     SdrModel*   mpModel;
 };
 
+namespace {
+
+class SlideBackgroundInfo
+{
+public:
+    SlideBackgroundInfo(const uno::Reference<drawing::XDrawPage>& xDrawPage,
+                        const uno::Reference<drawing::XDrawPage>& xMasterPage);
+    bool slideHasOwnBackground() const { return mbIsCustom; }
+    bool hasBackground() const { return bHasBackground; }
+    bool isSolidColor() const { return mbIsSolidColor; }
+    ::Color getFillColor() const;
+    sal_Int32 getFillTransparency() const;
+    OString getFillColorAsRGBA() const;
+private:
+    bool getFillStyleImpl(const uno::Reference<drawing::XDrawPage>& xDrawPage);
+private:
+    uno::Reference<beans::XPropertySet> mxBackground;
+    bool mbIsCustom;
+    bool bHasBackground;
+    bool mbIsSolidColor;
+    drawing::FillStyle maFillStyle;
+};
+
+SlideBackgroundInfo::SlideBackgroundInfo(
+        const uno::Reference<drawing::XDrawPage>& xDrawPage,
+        const uno::Reference<drawing::XDrawPage>& xMasterPage)
+    : mbIsCustom(false)
+    , bHasBackground(false)
+    , mbIsSolidColor(false)
+    , maFillStyle(drawing::FillStyle_NONE)
+{
+    mbIsCustom = getFillStyleImpl(xDrawPage);
+    bHasBackground = mbIsCustom;
+    if (!bHasBackground)
+    {
+        bHasBackground = getFillStyleImpl(xMasterPage);
+    }
+    if (bHasBackground)
+    {
+        if (maFillStyle == drawing::FillStyle_SOLID)
+        {
+            OUString sGradientName;
+            mxBackground->getPropertyValue("FillTransparenceGradientName") >>= sGradientName;
+            if (sGradientName.isEmpty())
+            {
+                mbIsSolidColor = true;
+            }
+        }
+    }
 }
+
+sal_Int32 SlideBackgroundInfo::getFillTransparency() const
+{
+    if (!mxBackground.is())
+        return 0;
+    sal_Int32 nFillTransparency = 0;
+    mxBackground->getPropertyValue("FillTransparence") >>= nFillTransparency;
+    return nFillTransparency;
+}
+
+::Color SlideBackgroundInfo::getFillColor() const
+{
+    if (!mxBackground.is())
+        return {};
+    if (sal_Int32 nFillColor; mxBackground->getPropertyValue("FillColor") >>= nFillColor)
+    {
+        return ::Color(ColorTransparency, nFillColor & 0xffffff);
+    }
+    return {};
+}
+
+OString SlideBackgroundInfo::getFillColorAsRGBA() const
+{
+    ::Color aColor = getFillColor();
+    OString sColor = aColor.AsRGBHEXString().toUtf8();
+    sal_uInt32 nAlpha = std::round((100 - getFillTransparency()) * 255 / 100.0);
+    std::stringstream ss;
+    ss << std::hex << std::uppercase << std::setfill ('0') << std::setw(2) << nAlpha;
+    sColor += ss.str().c_str();
+    return sColor;
+}
+
+bool SlideBackgroundInfo::getFillStyleImpl(const uno::Reference<drawing::XDrawPage>& xDrawPage)
+{
+    if( xDrawPage.is() )
+    {
+        uno::Reference< beans::XPropertySet > xPropSet( xDrawPage, uno::UNO_QUERY );
+        if( xPropSet.is() )
+        {
+            uno::Reference< beans::XPropertySet > xBackground;
+            if (xPropSet->getPropertySetInfo()->hasPropertyByName("Background"))
+                xPropSet->getPropertyValue( "Background" ) >>= xBackground;
+            if( xBackground.is() )
+            {
+                drawing::FillStyle aFillStyle;
+                if( xBackground->getPropertyValue( "FillStyle" ) >>= aFillStyle )
+                {
+                    maFillStyle = aFillStyle;
+                    if (aFillStyle != drawing::FillStyle_NONE)
+                    {
+                        mxBackground = std::move(xBackground);
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    return false;
+}
+
+using namespace ::css::animations;
+using namespace ::css::beans;
+using namespace ::css::container;
+using namespace ::css::uno;
+using namespace ::xmloff::token;
+using namespace ::css::presentation;
+
+template <typename T, std::size_t N>
+constexpr auto mapEnumToString(std::pair<T, std::string_view> const (&items)[N])
+{
+    return frozen::make_unordered_map<T, std::string_view, N>(items);
+}
+
+constexpr auto constTransitionTypeToString = mapEnumToString<sal_Int16>({
+    { animations::TransitionType::BARWIPE, "BarWipe" }, // Wipe
+    { animations::TransitionType::PINWHEELWIPE, "PineWheelWipe" }, // Wheel
+    { animations::TransitionType::SLIDEWIPE, "SlideWipe" }, // Cover, Uncover
+    { animations::TransitionType::RANDOMBARWIPE, "RandomBarWipe" }, // Bars
+    { animations::TransitionType::CHECKERBOARDWIPE, "CheckerBoardWipe" }, // Checkers
+    { animations::TransitionType::FOURBOXWIPE, "FourBoxWipe" }, // Shape
+    { animations::TransitionType::IRISWIPE, "IrisWipe" }, // Box
+    { animations::TransitionType::FANWIPE, "FanWipe" }, // Wedge
+    { animations::TransitionType::BLINDSWIPE, "BlindWipe"}, // Venetian
+    { animations::TransitionType::FADE, "Fade"},
+    { animations::TransitionType::DISSOLVE, "Dissolve"},
+    { animations::TransitionType::PUSHWIPE, "PushWipe"}, // Comb
+    { animations::TransitionType::ELLIPSEWIPE, "EllipseWipe"}, // Shape
+    { animations::TransitionType::BARNDOORWIPE, "BarnDoorWipe"}, // Split
+    { animations::TransitionType::WATERFALLWIPE, "WaterfallWipe"}, // Diagonal
+    { animations::TransitionType::MISCSHAPEWIPE, "MiscShapeWipe"},
+    { animations::TransitionType::ZOOM, "Zoom"}
+});
+
+constexpr auto constTransitionSubTypeToString = mapEnumToString<sal_Int16>({
+    { animations::TransitionSubType::LEFTTORIGHT, "LeftToRight" },
+    { animations::TransitionSubType::TOPTOBOTTOM, "TopToBottom" },
+    { animations::TransitionSubType::EIGHTBLADE, "8Blade" },
+    { animations::TransitionSubType::FOURBLADE, "4Blade" },
+    { animations::TransitionSubType::THREEBLADE, "3Blade" },
+    { animations::TransitionSubType::TWOBLADEVERTICAL, "2BladeVertical" },
+    { animations::TransitionSubType::ONEBLADE, "1Blade" },
+    { animations::TransitionSubType::FROMTOPLEFT, "FromTopLeft" },
+    { animations::TransitionSubType::FROMTOPRIGHT, "FromTopRight"},
+    { animations::TransitionSubType::FROMBOTTOMLEFT, "FromBottomLeft"},
+    { animations::TransitionSubType::FROMBOTTOMRIGHT, "FromBottomRight"},
+    { animations::TransitionSubType::VERTICAL, "Vertical"},
+    { animations::TransitionSubType::HORIZONTAL, "Horizontal"},
+    { animations::TransitionSubType::DOWN, "Down"},
+    { animations::TransitionSubType::ACROSS, "Across"},
+    { animations::TransitionSubType::CORNERSOUT, "CornersOut"},
+    { animations::TransitionSubType::DIAMOND, "Diamond"},
+    { animations::TransitionSubType::CIRCLE, "Circle"},
+    { animations::TransitionSubType::RECTANGLE, "Rectangle"},
+    { animations::TransitionSubType::CENTERTOP, "CenterTop"},
+    { animations::TransitionSubType::CROSSFADE, "CrossFade"},
+    { animations::TransitionSubType::FADEOVERCOLOR, "FadeOverColor"},
+    { animations::TransitionSubType::FROMLEFT, "FromLeft"},
+    { animations::TransitionSubType::FROMRIGHT, "FromRight"},
+    { animations::TransitionSubType::FROMTOP, "FromTop"},
+    { animations::TransitionSubType::HORIZONTALLEFT, "HorizontalLeft"},
+    { animations::TransitionSubType::HORIZONTALRIGHT, "HorizontalRight"},
+    { animations::TransitionSubType::COMBVERTICAL, "CombVertical"},
+    { animations::TransitionSubType::COMBHORIZONTAL, "CombHorizontal"},
+    { animations::TransitionSubType::TOPLEFT, "TopLeft"},
+    { animations::TransitionSubType::TOPRIGHT, "TopRight"},
+    { animations::TransitionSubType::BOTTOMRIGHT, "BottomRight"},
+    { animations::TransitionSubType::BOTTOMLEFT, "BottomLeft"},
+    { animations::TransitionSubType::TOPCENTER, "TopCenter"},
+    { animations::TransitionSubType::RIGHTCENTER, "RightCenter"},
+    { animations::TransitionSubType::BOTTOMCENTER, "BottomCenter"},
+    { animations::TransitionSubType::FANOUTHORIZONTAL, "FanOutHorizontal"},
+    { animations::TransitionSubType::CORNERSIN, "CornersIn"},
+    { animations::TransitionSubType::HEART, "Heart"},
+    { animations::TransitionSubType::ROTATEIN, "RotateIn"}
+});
+
+constexpr auto constAnimationNodeTypeToString = mapEnumToString<sal_Int16>({
+    { AnimationNodeType::ANIMATE, "Animate" },
+    { AnimationNodeType::ANIMATECOLOR, "AnimateColor" },
+    { AnimationNodeType::ANIMATEMOTION, "AnimateMotion" },
+    { AnimationNodeType::ANIMATEPHYSICS, "Animate" },
+    { AnimationNodeType::ANIMATETRANSFORM, "AnimateTransform" },
+    { AnimationNodeType::AUDIO, "Audio" },
+    { AnimationNodeType::COMMAND, "Command" },
+    { AnimationNodeType::CUSTOM, "Custom" },
+    { AnimationNodeType::ITERATE, "Iterate" },
+    { AnimationNodeType::PAR, "Par" },
+    { AnimationNodeType::SEQ, "Seq" },
+    { AnimationNodeType::SET, "Set" },
+    { AnimationNodeType::TRANSITIONFILTER, "TransitionFilter" },
+});
+
+constexpr auto constFillToString = mapEnumToString<sal_Int16>({
+    { AnimationFill::DEFAULT, "Default" },
+    { AnimationFill::REMOVE, "Remove" },
+    { AnimationFill::FREEZE, "Freeze" },
+    { AnimationFill::HOLD, "Hold" },
+    { AnimationFill::TRANSITION, "Transition" },
+    { AnimationFill::AUTO, "Auto" },
+});
+
+constexpr auto constRestartToString = mapEnumToString<sal_Int16>({
+    { AnimationRestart::DEFAULT, "Default" },
+    { AnimationRestart::ALWAYS, "Always" },
+    { AnimationRestart::WHEN_NOT_ACTIVE, "WhenNotActive" },
+    { AnimationRestart::NEVER, "Never" },
+});
+
+constexpr auto constEndSyncToString = mapEnumToString<sal_Int16>({
+    { AnimationEndSync::FIRST, "First" },
+    { AnimationEndSync::LAST, "Last" },
+    { AnimationEndSync::ALL, "All" },
+    { AnimationEndSync::MEDIA, "Media" },
+});
+
+constexpr auto constCalcModeToString = mapEnumToString<sal_Int16>({
+    { AnimationCalcMode::DISCRETE, "Discrete" },
+    { AnimationCalcMode::LINEAR, "Linear" },
+    { AnimationCalcMode::PACED, "Paced" },
+    { AnimationCalcMode::SPLINE, "Spline" },
+});
+
+constexpr auto constAdditiveModeToString = mapEnumToString<sal_Int16>({
+    { AnimationAdditiveMode::BASE, "Base" },
+    { AnimationAdditiveMode::SUM, "Sum" },
+    { AnimationAdditiveMode::REPLACE, "Replace" },
+    { AnimationAdditiveMode::MULTIPLY, "Multiply" },
+    { AnimationAdditiveMode::NONE, "None" },
+});
+
+constexpr auto constEffectPresetClassToString = mapEnumToString<sal_Int16>({
+    { EffectPresetClass::CUSTOM, "Custom" },
+    { EffectPresetClass::ENTRANCE, "Entrance" },
+    { EffectPresetClass::EXIT, "Exit" },
+    { EffectPresetClass::EMPHASIS, "Emphasis" },
+    { EffectPresetClass::MOTIONPATH, "MotionPath" },
+    { EffectPresetClass::OLEACTION, "OleAction" },
+    { EffectPresetClass::MEDIACALL, "MediaCall" },
+});
+
+constexpr auto constEffectNodeTypeToString = mapEnumToString<sal_Int16>({
+    { EffectNodeType::DEFAULT, "Default" },
+    { EffectNodeType::ON_CLICK, "OnClick" },
+    { EffectNodeType::WITH_PREVIOUS, "WithPrevious" },
+    { EffectNodeType::AFTER_PREVIOUS, "AfterPrevious" },
+    { EffectNodeType::MAIN_SEQUENCE, "MainSequence" },
+    { EffectNodeType::TIMING_ROOT, "TimingRoot" },
+    { EffectNodeType::INTERACTIVE_SEQUENCE, "InteractiveSequence" },
+});
+
+constexpr auto constEventTriggerToString = mapEnumToString<sal_Int16>({
+    { EventTrigger::BEGIN_EVENT, "BeginEvent" },
+    { EventTrigger::END_EVENT, "EndEvent" },
+    { EventTrigger::NONE, "None" },
+    { EventTrigger::ON_BEGIN, "OnBegin" },
+    { EventTrigger::ON_CLICK, "OnClick" },
+    { EventTrigger::ON_DBL_CLICK, "OnDblClick" },
+    { EventTrigger::ON_END, "OnEnd" },
+    { EventTrigger::ON_MOUSE_ENTER, "OnMouseEnter" },
+    { EventTrigger::ON_MOUSE_LEAVE, "OnMouseLeave" },
+    { EventTrigger::ON_NEXT, "OnNext" },
+    { EventTrigger::ON_PREV, "OnPrev" },
+    { EventTrigger::ON_STOP_AUDIO, "OnStopAudio" },
+    { EventTrigger::REPEAT, "Repeat" },
+});
+
+constexpr auto constTimingToString = mapEnumToString<Timing>({
+    { Timing_INDEFINITE, "indefinite" },
+    { Timing_MEDIA, "media" },
+});
+
+constexpr auto constTransformTypeToString = mapEnumToString<sal_Int16>({
+    { AnimationTransformType::TRANSLATE, "Translate" },
+    { AnimationTransformType::SCALE, "Scale" },
+    { AnimationTransformType::ROTATE, "Rotate" },
+    { AnimationTransformType::SKEWX, "SkewX" },
+    { AnimationTransformType::SKEWY, "SkewY" },
+});
+
+constexpr auto constSubItemToString = mapEnumToString<sal_Int16>({
+    { ShapeAnimationSubType::AS_WHOLE, "AsWhole" },
+    { ShapeAnimationSubType::ONLY_BACKGROUND, "OnlyBackground" },
+    { ShapeAnimationSubType::ONLY_TEXT, "OnlyText" },
+});
+
+constexpr auto constIterateTypeToString = mapEnumToString<sal_Int16>({
+    { TextAnimationType::BY_PARAGRAPH, "ByParagraph" },
+    { TextAnimationType::BY_WORD, "ByWord" },
+    { TextAnimationType::BY_LETTER, "ByLetter" },
+});
+
+constexpr auto constFillStyleToString = mapEnumToString<drawing::FillStyle>({
+    { drawing::FillStyle_NONE, "None" },
+    { drawing::FillStyle_SOLID, "Solid" },
+    { drawing::FillStyle_BITMAP, "Bitmap" },
+    { drawing::FillStyle_GRADIENT, "Gradient" },
+    { drawing::FillStyle_HATCH, "Hatch" },
+});
+
+constexpr auto constLineStyleToString = mapEnumToString<drawing::LineStyle>({
+    { drawing::LineStyle_NONE, "None" },
+    { drawing::LineStyle_SOLID, "Solid" },
+    { drawing::LineStyle_DASH, "Dash" },
+});
+
+
+constexpr auto constAttributeNameToXMLEnum
+    = frozen::make_unordered_map<std::string_view, XMLTokenEnum>({
+        { "X", XML_X },
+        { "Y", XML_Y },
+        { "Width", XML_WIDTH },
+        { "Height", XML_HEIGHT },
+        { "Rotate", XML_ROTATE },
+        { "SkewX", XML_SKEWX },
+        { "FillColor", XML_FILL_COLOR },
+        { "FillStyle", XML_FILL },
+        { "LineColor", XML_STROKE_COLOR },
+        { "LineStyle",XML_STROKE  },
+        { "CharColor", XML_COLOR },
+        { "CharRotation", XML_TEXT_ROTATION_ANGLE },
+        { "CharWeight", XML_FONT_WEIGHT },
+        { "CharUnderline", XML_TEXT_UNDERLINE },
+        { "CharFontName", XML_FONT_FAMILY },
+        { "CharHeight", XML_FONT_SIZE },
+        { "CharPosture", XML_FONT_STYLE },
+        { "Visibility", XML_VISIBILITY },
+        { "Opacity", XML_OPACITY },
+        { "DimColor", XML_DIM },
+});
+
+class AnimationsExporter
+{
+public:
+    AnimationsExporter(::tools::JsonWriter& rWriter,
+                       const Reference<drawing::XDrawPage>& xDrawPage);
+    void exportAnimations();
+    void exportTriggers() const;
+    [[nodiscard]] bool hasEffects() const { return mbHasEffects; }
+
+private:
+    void exportNode(const Reference<XAnimationNode>& xNode);
+    void exportNodeImpl(const Reference<XAnimationNode>& xNode);
+    void exportContainer(const Reference<XTimeContainer>& xContainer);
+
+    void exportAnimate(const Reference<XAnimate>& xAnimate);
+
+    void convertValue(XMLTokenEnum eAttributeName, OStringBuffer& sTmp, const Any& rValue) const;
+    void convertTiming(OStringBuffer& sTmp, const Any& rValue);
+
+    void appendTrigger(const css::uno::Any& rTarget, const OString& rTriggerHash);
+    void exportTriggersImpl(const uno::Reference<drawing::XShapes>& xShapes) const;
+
+private:
+    ::tools::JsonWriter& mrWriter;
+    Reference<drawing::XDrawPage> mxDrawPage;
+    Reference<XPropertySet> mxPageProps;
+    Reference<XAnimationNode> mxRootNode;
+    bool mbHasEffects;
+    std::unordered_map<SdrObject*, OString> maEventTriggerSet;
+};
+
+AnimationsExporter::AnimationsExporter(::tools::JsonWriter& rWriter,
+                                       const Reference<drawing::XDrawPage>& xDrawPage)
+    : mrWriter(rWriter)
+    , mxDrawPage(xDrawPage)
+    , mbHasEffects(false)
+{
+    if (!mxDrawPage.is())
+        return;
+
+    try
+    {
+        mxPageProps = Reference<XPropertySet>(xDrawPage, UNO_QUERY);
+        if (!mxPageProps.is())
+            return;
+
+        Reference<XAnimationNodeSupplier> xAnimNodeSupplier(mxDrawPage, UNO_QUERY);
+        if (!xAnimNodeSupplier.is())
+            return;
+
+        Reference<XAnimationNode> xRootNode = xAnimNodeSupplier->getAnimationNode();
+        if (xRootNode.is())
+        {
+            // first check if there are no animations
+            Reference<XEnumerationAccess> xEnumerationAccess(xRootNode, UNO_QUERY_THROW);
+            Reference<XEnumeration> xEnumeration(xEnumerationAccess->createEnumeration(),
+                                                 css::uno::UNO_SET_THROW);
+            if (xEnumeration->hasMoreElements())
+            {
+                // first child node may be an empty main sequence, check this
+                Reference<XAnimationNode> xMainNode(xEnumeration->nextElement(), UNO_QUERY_THROW);
+                Reference<XEnumerationAccess> xMainEnumerationAccess(xMainNode, UNO_QUERY_THROW);
+                Reference<XEnumeration> xMainEnumeration(
+                    xMainEnumerationAccess->createEnumeration(), css::uno::UNO_SET_THROW);
+
+                // only export if the main sequence is not empty or if there are additional
+                // trigger sequences
+                mbHasEffects
+                    = xMainEnumeration->hasMoreElements() || xEnumeration->hasMoreElements();
+            }
+        }
+        if (mbHasEffects)
+            mxRootNode = std::move(xRootNode);
+    }
+    catch (const RuntimeException&)
+    {
+        TOOLS_WARN_EXCEPTION("sd", "unomodel: AnimationsExporter");
+    }
+}
+
+template <typename EnumT, size_t N>
+constexpr bool convertEnum(OStringBuffer& rBuffer, EnumT nValue,
+                           const frozen::unordered_map<EnumT, std::string_view, N>& rMap)
+{
+    auto iterator = rMap.find(nValue);
+    if (iterator == rMap.end())
+        return false;
+    rBuffer.append(iterator->second);
+    return true;
+}
+
+void convertDouble(OStringBuffer& rBuffer, double fValue)
+{
+        ::rtl::math::doubleToStringBuffer(rBuffer, fValue, rtl_math_StringFormat_Automatic,
+                                          rtl_math_DecimalPlaces_Max, '.', true);
+}
+
+void convertBool(OStringBuffer& rBuffer, bool bValue)
+{
+    rBuffer.append( bValue );
+}
+
+void convertPath(OStringBuffer& sTmp, const Any& rPath)
+{
+    OUString aStr;
+    rPath >>= aStr;
+    sTmp = aStr.toUtf8();
+}
+
+void convertColor(OStringBuffer& rBuffer, sal_Int32 nColor)
+{
+    OUStringBuffer aUBuffer;
+    ::sax::Converter::convertColor(aUBuffer, nColor);
+    rBuffer.append(aUBuffer.makeStringAndClear().toUtf8());
+}
+
+void convertColor(OStringBuffer& rBuffer, const Any& rValue)
+{
+    sal_Int32 nColor = 0;
+    if (rValue >>= nColor)
+    {
+        convertColor(rBuffer, nColor);
+    }
+    else
+    {
+        Sequence<double> aHSL;
+        if ((rValue >>= aHSL) && (aHSL.getLength() == 3))
+        {
+            rBuffer.append("hsl(" + OString::number(aHSL[0]) + ","
+                           + OString::number(aHSL[1] * 100.0) + "%,"
+                           + OString::number(aHSL[2] * 100.0) + "%)");
+        }
+    }
+}
+
+bool isValidNode(const Reference<XAnimationNode>& xNode)
+{
+    if (xNode.is())
+    {
+        sal_Int16 nNodeType = xNode->getType();
+        auto iterator = constAnimationNodeTypeToString.find(nNodeType);
+        return iterator != constAnimationNodeTypeToString.end();
+    }
+    return false;
+}
+
+SdrObject* getObjectForShape(uno::Reference<drawing::XShape> const& xShape)
+{
+    if (!xShape.is())
+        return nullptr;
+    SvxShape* pShape = comphelper::getFromUnoTunnel<SvxShape>(xShape);
+    if (pShape)
+        return pShape->GetSdrObject();
+    return nullptr;
+}
+
+SdrObject* getTargetObject(const uno::Any& aTargetAny)
+{
+    SdrObject* pObject = nullptr;
+    uno::Reference<drawing::XShape> xShape;
+
+    if ((aTargetAny >>= xShape) && xShape.is())
+    {
+        pObject = getObjectForShape(xShape);
+    }
+    else // if target is not a shape - could be paragraph target containing a shape
+    {
+        presentation::ParagraphTarget aParagraphTarget;
+        if ((aTargetAny >>= aParagraphTarget) && aParagraphTarget.Shape.is())
+        {
+            pObject = getObjectForShape(aParagraphTarget.Shape);
+        }
+    }
+
+    return pObject;
+}
+
+bool isNodeTargetInShapeGroup(const Reference<XAnimationNode>& xNode)
+{
+    Reference<XAnimate> xAnimate(xNode, UNO_QUERY);
+    if (xAnimate.is())
+    {
+        SdrObject* pObject = getTargetObject(xAnimate->getTarget());
+        if (pObject)
+            return pObject->getParentSdrObjectFromSdrObject() != nullptr;
+    }
+    return false;
+}
+
+bool isNodeTargetAGroup(const Reference<XAnimationNode>& xNode)
+{
+    Reference<XAnimate> xAnimate(xNode, UNO_QUERY);
+    if (xAnimate.is())
+    {
+        SdrObject* pObject = getTargetObject(xAnimate->getTarget());
+        if (pObject)
+            return pObject->getChildrenOfSdrObject() != nullptr;
+    }
+    return false;
+}
+
+bool isEffectValidForTarget(const Reference<XAnimationNode>& xNode)
+{
+    const Sequence<NamedValue> aUserData(xNode->getUserData());
+    for (const auto& rValue : aUserData)
+    {
+        if (!IsXMLToken(rValue.Name, XML_PRESET_ID))
+            continue;
+
+        OUString aPresetId;
+        if (rValue.Value >>= aPresetId)
+        {
+            if (constNonValidEffectsForGroupSet.find(aPresetId.toUtf8())
+                != constNonValidEffectsForGroupSet.end())
+            {
+                // it's in the list, so we need to check if the effect target is a group or not
+                Reference<XTimeContainer> xContainer(xNode, UNO_QUERY);
+                if (xContainer.is())
+                {
+                    Reference<XEnumerationAccess> xEnumerationAccess(xContainer, UNO_QUERY);
+                    Reference<XEnumeration> xEnumeration = xEnumerationAccess->createEnumeration();
+
+                    // target is the same for all children, check the first one
+                    if (xEnumeration.is() && xEnumeration->hasMoreElements())
+                    {
+                        Reference<XAnimationNode> xChildNode(xEnumeration->nextElement(),
+                                                             UNO_QUERY);
+                        if (isNodeTargetAGroup(xChildNode))
+                            return false;
+                    }
+                }
+            }
+        }
+        // preset id found and checked, we can exit
+        break;
+    }
+    return true;
+}
+
+void AnimationsExporter::exportAnimations()
+{
+    if (!mxDrawPage.is() || !mxPageProps.is() || !mxRootNode.is() || !hasEffects())
+        return;
+
+    if (isValidNode(mxRootNode))
+    {
+        auto aNode = mrWriter.startNode("root");
+        exportNodeImpl(mxRootNode);
+    }
+}
+
+void AnimationsExporter::exportNode(const Reference<XAnimationNode>& xNode)
+{
+    // afaics, when a shape is part of a group any applied effect is ignored
+    // moreover, some kind of effect, like the ones based on color animations,
+    // is ignored when applied to a group
+    if (!isValidNode(xNode) || isNodeTargetInShapeGroup(xNode) || !isEffectValidForTarget(xNode))
+        return;
+    auto aStruct = mrWriter.startStruct();
+    exportNodeImpl(xNode);
+}
+
+void AnimationsExporter::exportNodeImpl(const Reference<XAnimationNode>& xNode)
+{
+    try
+    {
+        std::string sId = GetInterfaceHash(xNode);
+        mrWriter.put("id", sId);
+        sal_Int16 nNodeType = xNode->getType();
+        auto iterator = constAnimationNodeTypeToString.find(nNodeType);
+        assert(iterator != constAnimationNodeTypeToString.end() && "must be previously checked with isValidNode");
+        mrWriter.put("nodeName", iterator->second);
+
+        // common properties
+        OStringBuffer sTmp;
+        Any aTemp;
+        double fTemp = 0;
+        sal_Int16 nTemp;
+
+        aTemp = xNode->getBegin();
+        if (aTemp.hasValue())
+        {
+            convertTiming(sTmp, aTemp);
+            mrWriter.put("begin", sTmp.makeStringAndClear());
+        }
+        aTemp = xNode->getDuration();
+        if (aTemp.hasValue())
+        {
+            if (aTemp >>= fTemp)
+            {
+                convertDouble(sTmp, fTemp);
+                sTmp.append('s');
+                mrWriter.put("dur", sTmp.makeStringAndClear());
+            }
+            else
+            {
+                Timing eTiming;
+                if (aTemp >>= eTiming)
+                {
+                    mrWriter.put("dur", eTiming == Timing_INDEFINITE ? "indefinite" : "media");
+                }
+            }
+        }
+        aTemp = xNode->getEnd();
+        if (aTemp.hasValue())
+        {
+            convertTiming(sTmp, aTemp);
+            mrWriter.put("end", sTmp.makeStringAndClear());
+        }
+        nTemp = xNode->getFill();
+        if (nTemp != AnimationFill::DEFAULT)
+        {
+            convertEnum(sTmp, nTemp, constFillToString);
+            mrWriter.put("fill", sTmp.makeStringAndClear());
+        }
+        nTemp = xNode->getFillDefault();
+        if (nTemp != AnimationFill::INHERIT)
+        {
+            convertEnum(sTmp, nTemp, constFillToString);
+            mrWriter.put("fillDefault", sTmp.makeStringAndClear());
+        }
+        nTemp = xNode->getRestart();
+        if (nTemp != AnimationRestart::DEFAULT)
+        {
+            convertEnum(sTmp, nTemp, constRestartToString);
+            mrWriter.put("restart", sTmp.makeStringAndClear());
+        }
+        nTemp = xNode->getRestartDefault();
+        if (nTemp != AnimationRestart::INHERIT)
+        {
+            convertEnum(sTmp, nTemp, constRestartToString);
+            mrWriter.put("restartDefault", sTmp.makeStringAndClear());
+        }
+        fTemp = xNode->getAcceleration();
+        if (fTemp != 0.0)
+        {
+            convertDouble(sTmp, fTemp);
+            mrWriter.put("accelerate", sTmp.makeStringAndClear());
+        }
+        fTemp = xNode->getDecelerate();
+        if (fTemp != 0.0)
+        {
+            convertDouble(sTmp, fTemp);
+            mrWriter.put("decelerate", sTmp.makeStringAndClear());
+        }
+        bool bTemp = xNode->getAutoReverse();
+        if (bTemp)
+        {
+            convertBool(sTmp, bTemp);
+            mrWriter.put("autoreverse", sTmp.makeStringAndClear());
+        }
+        aTemp = xNode->getRepeatCount();
+        if (aTemp.hasValue())
+        {
+            Timing eTiming;
+            if ((aTemp >>= eTiming) && (eTiming == Timing_INDEFINITE))
+            {
+                mrWriter.put("repeatCount", "indefinite");
+            }
+            else if (aTemp >>= fTemp)
+            {
+                convertDouble(sTmp, fTemp);
+                mrWriter.put("repeatCount", sTmp.makeStringAndClear());
+            }
+        }
+        aTemp = xNode->getRepeatDuration();
+        if (aTemp.hasValue())
+        {
+            Timing eTiming;
+            if ((aTemp >>= eTiming) && (eTiming == Timing_INDEFINITE))
+            {
+                mrWriter.put("repeatDur", "indefinite");
+            }
+            else if (aTemp >>= fTemp)
+            {
+                convertDouble(sTmp, fTemp);
+                mrWriter.put("repeatDur", sTmp.makeStringAndClear());
+            }
+        }
+        aTemp = xNode->getEndSync();
+        if (aTemp.hasValue() && (aTemp >>= nTemp))
+        {
+            convertEnum(sTmp, nTemp, constEndSyncToString);
+            mrWriter.put("endSync", sTmp.makeStringAndClear());
+        }
+
+        sal_Int16 nContainerNodeType = EffectNodeType::DEFAULT;
+        const Sequence<NamedValue> aUserData(xNode->getUserData());
+        for (const auto& rValue : aUserData)
+        {
+            if (IsXMLToken(rValue.Name, XML_NODE_TYPE))
+            {
+                if ((rValue.Value >>= nContainerNodeType)
+                    && (nContainerNodeType != EffectNodeType::DEFAULT))
+                {
+                    convertEnum(sTmp, nContainerNodeType, constEffectNodeTypeToString);
+                    mrWriter.put("nodeType", sTmp.makeStringAndClear());
+                }
+            }
+            else if (IsXMLToken(rValue.Name, XML_PRESET_ID))
+            {
+                OUString aPresetId;
+                if (rValue.Value >>= aPresetId)
+                {
+                    mrWriter.put("presetId", aPresetId);
+                }
+            }
+            else if (IsXMLToken(rValue.Name, XML_PRESET_SUB_TYPE))
+            {
+                OUString aPresetSubType;
+                if (rValue.Value >>= aPresetSubType)
+                {
+                    mrWriter.put("presetSubType", aPresetSubType);
+                }
+            }
+            else if (IsXMLToken(rValue.Name, XML_PRESET_CLASS))
+            {
+                sal_Int16 nEffectPresetClass = sal_uInt16(0);
+                if (rValue.Value >>= nEffectPresetClass)
+                {
+                    convertEnum(sTmp, nEffectPresetClass, constEffectPresetClassToString);
+                    mrWriter.put("presetClass", sTmp.makeStringAndClear());
+                }
+            }
+            else if (IsXMLToken(rValue.Name, XML_MASTER_ELEMENT))
+            {
+                Reference<XInterface> xMaster;
+                rValue.Value >>= xMaster;
+                if (xMaster.is())
+                {
+                    const std::string aIdentifier(GetInterfaceHash(xMaster));
+                    if (!aIdentifier.empty())
+                        mrWriter.put("masterElement", aIdentifier);
+                }
+            }
+            else if (IsXMLToken(rValue.Name, XML_GROUP_ID))
+            {
+                sal_Int32 nGroupId = 0;
+                if (rValue.Value >>= nGroupId)
+                    mrWriter.put("groupId", nGroupId);
+            }
+            else
+            {
+                OUString aTmp;
+                if (rValue.Value >>= aTmp)
+                    mrWriter.put(rValue.Name, aTmp);
+            }
+        }
+
+        switch (nNodeType)
+        {
+            case AnimationNodeType::PAR:
+            case AnimationNodeType::SEQ:
+            case AnimationNodeType::ITERATE:
+            {
+                Reference<XTimeContainer> xContainer(xNode, UNO_QUERY_THROW);
+                exportContainer(xContainer);
+            }
+            break;
+
+            case AnimationNodeType::ANIMATE:
+            case AnimationNodeType::SET:
+            case AnimationNodeType::ANIMATEMOTION:
+            case AnimationNodeType::ANIMATEPHYSICS:
+            case AnimationNodeType::ANIMATECOLOR:
+            case AnimationNodeType::ANIMATETRANSFORM:
+            case AnimationNodeType::TRANSITIONFILTER:
+            {
+                Reference<XAnimate> xAnimate(xNode, UNO_QUERY_THROW);
+                exportAnimate(xAnimate);
+            }
+            break;
+            case AnimationNodeType::AUDIO:
+            {
+                SAL_WARN("sd", "AnimationsExporter::exportNode(): Audio Node not supported.");
+            }
+            break;
+            case AnimationNodeType::COMMAND:
+            {
+                SAL_WARN("sd", "AnimationsExporter::exportNode(): Command Node not supported.");
+            }
+            break;
+            default:
+            {
+                OSL_FAIL(
+                    "sd unomodel: AnimationsExporter::exportNode(), invalid AnimationNodeType!");
+            }
+        }
+    }
+    catch (const RuntimeException&)
+    {
+        TOOLS_WARN_EXCEPTION("sd", "unomodel: AnimationsExporter");
+    }
+}
+
+void AnimationsExporter::convertTiming(OStringBuffer& sTmp, const Any& rValue)
+{
+    if (!rValue.hasValue())
+        return;
+
+    if (auto pSequence = o3tl::tryAccess<Sequence<Any>>(rValue))
+    {
+        const sal_Int32 nLength = pSequence->getLength();
+        sal_Int32 nElement;
+        const Any* pAny = pSequence->getConstArray();
+
+        OStringBuffer sTmp2;
+
+        for (nElement = 0; nElement < nLength; nElement++, pAny++)
+        {
+            if (!sTmp.isEmpty())
+                sTmp.append(';');
+            convertTiming(sTmp2, *pAny);
+            sTmp.append(sTmp2);
+            sTmp2.setLength(0);
+        }
+    }
+    else if (auto x = o3tl::tryAccess<double>(rValue))
+    {
+        sTmp.append(*x);
+        sTmp.append('s');
+    }
+    else if (auto pTiming = o3tl::tryAccess<Timing>(rValue))
+    {
+        const auto svTiming = (*pTiming == Timing_MEDIA)
+                                  ? constTimingToString.at(Timing_MEDIA)
+                                  : constTimingToString.at(Timing_INDEFINITE);
+        sTmp.append(svTiming);
+    }
+    else if (auto pEvent = o3tl::tryAccess<Event>(rValue))
+    {
+        OStringBuffer sTmp2;
+
+        if (pEvent->Trigger != EventTrigger::NONE)
+        {
+            if (pEvent->Source.hasValue())
+            {
+                OStringBuffer aTriggerBuffer;
+                // hash must not start with a digit or on client it is parsed as a time in seconds
+                aTriggerBuffer.append("id");
+                anim::convertTarget(aTriggerBuffer, pEvent->Source);
+                OString sTriggerHash(aTriggerBuffer.makeStringAndClear());
+                sTmp.append(sTriggerHash);
+                sTmp.append('.');
+                appendTrigger(pEvent->Source, sTriggerHash);
+            }
+
+            convertEnum(sTmp2, pEvent->Trigger, constEventTriggerToString);
+
+            sTmp.append(sTmp2);
+            sTmp2.setLength(0);
+        }
+
+        if (pEvent->Offset.hasValue())
+        {
+            convertTiming(sTmp2, pEvent->Offset);
+
+            if (!sTmp.isEmpty())
+                sTmp.append('+');
+
+            sTmp.append(sTmp2);
+            sTmp2.setLength(0);
+        }
+    }
+    else
+    {
+        OSL_FAIL("sd.unomodel: AnimationsExporter::convertTiming, invalid value type!");
+    }
+}
+
+void AnimationsExporter::appendTrigger(const css::uno::Any& rTarget, const OString& rTriggerHash)
+{
+    css::uno::Reference<css::uno::XInterface> xRef;
+    rTarget >>= xRef;
+
+    uno::Reference<drawing::XShape> xShape(xRef, uno::UNO_QUERY);
+    if (!xShape.is())
+    {
+        if (auto xParagraphTarget = o3tl::tryAccess<css::presentation::ParagraphTarget>(rTarget))
+        {
+            xShape = xParagraphTarget->Shape;
+        }
+    }
+    if (xShape.is())
+    {
+        auto* pObject = SdrObject::getSdrObjectFromXShape(xShape);
+        maEventTriggerSet[pObject] = rTriggerHash;
+    }
+}
+
+void AnimationsExporter::exportTriggersImpl(const uno::Reference<drawing::XShapes>& xShapes) const
+{
+    if (!xShapes.is())
+        return;
+
+    sal_Int32 nCount = xShapes->getCount();
+    for (sal_Int32 i = 0; i < nCount; ++i)
+    {
+        auto xObject = xShapes->getByIndex(i);
+        uno::Reference<drawing::XShape> xShape(xObject, uno::UNO_QUERY);
+        if (!xShape.is())
+            continue;
+
+        auto* pObject = SdrObject::getSdrObjectFromXShape(xShape);
+        if (maEventTriggerSet.find(pObject) == maEventTriggerSet.end())
+            continue;
+        {
+            auto aShape = mrWriter.startStruct();
+            mrWriter.put("hash", maEventTriggerSet.at(pObject));
+            {
+                auto const& rRectangle = pObject->GetLogicRect();
+                auto aRectangle
+                    = o3tl::convert(rRectangle, o3tl::Length::mm100, o3tl::Length::twip);
+                auto aRect = mrWriter.startNode("bounds");
+                mrWriter.put("x", aRectangle.Left());
+                mrWriter.put("y", aRectangle.Top());
+                mrWriter.put("width", aRectangle.GetWidth());
+                mrWriter.put("height", aRectangle.GetHeight());
+            }
+        }
+    }
+}
+
+void AnimationsExporter::exportTriggers() const
+{
+    uno::Reference<drawing::XShapes> const xShapes(mxDrawPage, uno::UNO_QUERY_THROW);
+    if (!xShapes.is())
+        return;
+
+    auto aTriggerList = mrWriter.startArray("triggers");
+    exportTriggersImpl(xShapes);
+}
+
+void AnimationsExporter::convertValue(XMLTokenEnum eAttributeName, OStringBuffer& sTmp,
+                                      const Any& rValue) const
+{
+    if (!rValue.hasValue())
+        return;
+
+    if (auto pValuePair = o3tl::tryAccess<ValuePair>(rValue))
+    {
+        OStringBuffer sTmp2;
+        convertValue(eAttributeName, sTmp, pValuePair->First);
+        sTmp.append(',');
+        convertValue(eAttributeName, sTmp2, pValuePair->Second);
+        sTmp.append(sTmp2);
+    }
+    else if (auto pSequence = o3tl::tryAccess<Sequence<Any>>(rValue))
+    {
+        const sal_Int32 nLength = pSequence->getLength();
+        sal_Int32 nElement;
+        const Any* pAny = pSequence->getConstArray();
+
+        OStringBuffer sTmp2;
+
+        for (nElement = 0; nElement < nLength; nElement++, pAny++)
+        {
+            if (!sTmp.isEmpty())
+                sTmp.append(';');
+            convertValue(eAttributeName, sTmp2, *pAny);
+            sTmp.append(sTmp2);
+            sTmp2.setLength(0);
+        }
+    }
+    else
+    {
+        switch (eAttributeName)
+        {
+            case XML_X:
+            case XML_Y:
+            case XML_WIDTH:
+            case XML_HEIGHT:
+            case XML_ANIMATETRANSFORM:
+            case XML_ANIMATEMOTION:
+            case XML_ANIMATEPHYSICS:
+            {
+                if (auto sValue = o3tl::tryAccess<OUString>(rValue))
+                {
+                    sTmp.append(sValue->toUtf8());
+                }
+                else if (auto aValue = o3tl::tryAccess<double>(rValue))
+                {
+                    sTmp.append(*aValue);
+                }
+                else
+                {
+                    OSL_FAIL("sd::AnimationsExporter::convertValue(), invalid value type!");
+                }
+                return;
+            }
+            case XML_SKEWX:
+            case XML_ROTATE:
+            case XML_OPACITY:
+            case XML_TRANSITIONFILTER:
+                if (auto aValue = o3tl::tryAccess<double>(rValue))
+                {
+                    sTmp.append(*aValue);
+                }
+                break;
+            case XML_TEXT_ROTATION_ANGLE:
+                if (auto aValue = o3tl::tryAccess<sal_Int16>(rValue))
+                {
+                    // on win and armv7 platforms compiler complains
+                    // that append(sal_Int16) is ambiguous
+                    sTmp.append(static_cast<sal_Int32>(*aValue));
+                }
+                break;
+            case XML_FILL_COLOR:
+            case XML_STROKE_COLOR:
+            case XML_DIM:
+            case XML_COLOR:
+            {
+                convertColor(sTmp, rValue);
+            }
+            break;
+            case XML_FILL:
+                if (auto aValue = o3tl::tryAccess<drawing::FillStyle>(rValue))
+                {
+                    convertEnum(sTmp, *aValue, constFillStyleToString);
+                }
+                break;
+            case XML_STROKE:
+                if (auto aValue = o3tl::tryAccess<drawing::LineStyle>(rValue))
+                {
+                    convertEnum(sTmp, *aValue, constLineStyleToString);
+                }
+                break;
+            case XML_FONTSIZE:
+                if (auto aValue = o3tl::tryAccess<double>(rValue))
+                {
+                    double fValue = *aValue * 100;
+                    fValue += fValue > 0 ? 0.5 : -0.5;
+                    auto nValue = static_cast<sal_Int32>(fValue);
+                    sTmp.append(nValue); // percent
+                }
+                break;
+            case XML_FONT_WEIGHT:
+            case XML_FONT_STYLE:
+            case XML_TEXT_UNDERLINE:
+                SAL_WARN("sd", "AnimationsExporter::convertValue(): value type "
+                                   << GetXMLToken(eAttributeName) << " not supported");
+                break;
+            case XML_VISIBILITY:
+                if (auto aValue = o3tl::tryAccess<bool>(rValue))
+                {
+                    OUString sValue = *aValue ? GetXMLToken(XML_VISIBLE) : GetXMLToken(XML_HIDDEN);
+                    sTmp.append(sValue.toUtf8());
+                }
+                break;
+            default:
+                OSL_FAIL("unomodel: AnimationsExporter::convertValue(), invalid AttributeName!");
+        }
+    }
+}
+
+void AnimationsExporter::exportContainer(const Reference<XTimeContainer>& xContainer)
+{
+    try
+    {
+        const sal_Int32 nNodeType = xContainer->getType();
+
+        if (nNodeType == AnimationNodeType::ITERATE)
+        {
+            OStringBuffer sTmp;
+            Reference<XIterateContainer> xIter(xContainer, UNO_QUERY_THROW);
+
+            Any aTemp(xIter->getTarget());
+            if (aTemp.hasValue())
+            {
+                anim::convertTarget(sTmp, aTemp);
+                mrWriter.put("targetElement", sTmp.makeStringAndClear());
+            }
+            sal_Int16 nTemp = xIter->getSubItem();
+            if (nTemp)
+            {
+                convertEnum(sTmp, nTemp, constSubItemToString);
+                mrWriter.put("subItem", sTmp.makeStringAndClear());
+            }
+            nTemp = xIter->getIterateType();
+            if (nTemp)
+            {
+                convertEnum(sTmp, nTemp, constIterateTypeToString);
+                mrWriter.put("iterateType", sTmp.makeStringAndClear());
+            }
+            double fTemp = xIter->getIterateInterval();
+            if (fTemp != 0)
+            {
+                OUStringBuffer buf;
+                ::sax::Converter::convertDuration(buf, fTemp / (24 * 60 * 60));
+                mrWriter.put("iterateInterval", sTmp.makeStringAndClear());
+            }
+        }
+
+        auto anArray = mrWriter.startArray("children");
+
+        Reference<XEnumerationAccess> xEnumerationAccess(xContainer, UNO_QUERY_THROW);
+        Reference<XEnumeration> xEnumeration(xEnumerationAccess->createEnumeration(),
+                                             css::uno::UNO_SET_THROW);
+        while (xEnumeration->hasMoreElements())
+        {
+            Reference<XAnimationNode> xChildNode(xEnumeration->nextElement(), UNO_QUERY_THROW);
+            exportNode(xChildNode);
+        }
+    }
+    catch (const RuntimeException&)
+    {
+        TOOLS_WARN_EXCEPTION("sd", "unomodel: AnimationsExporter");
+    }
+}
+
+void AnimationsExporter::exportAnimate(const Reference<XAnimate>& xAnimate)
+{
+    try
+    {
+        const sal_Int16 nNodeType = xAnimate->getType();
+
+        OStringBuffer sTmp;
+        sal_Int16 nTemp;
+        bool bTemp;
+
+        Any aTemp(xAnimate->getTarget());
+        if (aTemp.hasValue())
+        {
+            anim::convertTarget(sTmp, aTemp);
+            mrWriter.put("targetElement", sTmp.makeStringAndClear());
+        }
+        nTemp = xAnimate->getSubItem();
+        if (nTemp)
+        {
+            convertEnum(sTmp, nTemp, constSubItemToString);
+            mrWriter.put("subItem", sTmp.makeStringAndClear());
+        }
+
+        XMLTokenEnum eAttributeName = XML_TOKEN_INVALID;
+        if (nNodeType == AnimationNodeType::TRANSITIONFILTER)
+        {
+            eAttributeName = XML_TRANSITIONFILTER;
+        }
+        else if (nNodeType == AnimationNodeType::ANIMATETRANSFORM)
+        {
+            eAttributeName = XML_ANIMATETRANSFORM;
+        }
+        else if (nNodeType == AnimationNodeType::ANIMATEMOTION)
+        {
+            eAttributeName = XML_ANIMATEMOTION;
+        }
+        else if (nNodeType == AnimationNodeType::ANIMATEPHYSICS)
+        {
+            eAttributeName = XML_ANIMATEPHYSICS;
+        }
+        else
+        {
+            OString sTemp(xAnimate->getAttributeName().toUtf8());
+            if (!sTemp.isEmpty())
+            {
+                auto iterator = constAttributeNameToXMLEnum.find(sTemp);
+                if (iterator != constAttributeNameToXMLEnum.end())
+                {
+                    eAttributeName = iterator->second;
+                    mrWriter.put("attributeName", sTemp);
+                }
+                else
+                {
+                    mrWriter.put("attributeName", "invalid");
+                }
+            }
+        }
+
+        Sequence<Any> aValues(xAnimate->getValues());
+        if (aValues.hasElements())
+        {
+            aTemp <<= aValues;
+            convertValue(eAttributeName, sTmp, aTemp);
+            mrWriter.put("values", sTmp.makeStringAndClear());
+        }
+        else
+        {
+            aTemp = xAnimate->getFrom();
+            if (aTemp.hasValue())
+            {
+                convertValue(eAttributeName, sTmp, aTemp);
+                mrWriter.put("from", sTmp.makeStringAndClear());
+            }
+
+            aTemp = xAnimate->getBy();
+            if (aTemp.hasValue())
+            {
+                convertValue(eAttributeName, sTmp, aTemp);
+                mrWriter.put("by", sTmp.makeStringAndClear());
+            }
+
+            aTemp = xAnimate->getTo();
+            if (aTemp.hasValue())
+            {
+                convertValue(eAttributeName, sTmp, aTemp);
+                mrWriter.put("to", sTmp.makeStringAndClear());
+            }
+        }
+
+        if (nNodeType != AnimationNodeType::SET)
+        {
+            const Sequence<double> aKeyTimes(xAnimate->getKeyTimes());
+            if (aKeyTimes.hasElements())
+            {
+                for (const auto& rKeyTime : aKeyTimes)
+                {
+                    if (!sTmp.isEmpty())
+                        sTmp.append(';');
+
+                    sTmp.append(rKeyTime);
+                }
+                mrWriter.put("keyTimes", sTmp.makeStringAndClear());
+            }
+
+            OUString sTemp(xAnimate->getFormula());
+            if (!sTemp.isEmpty())
+            {
+                mrWriter.put("formula", sTemp);
+            }
+
+            if ((nNodeType != AnimationNodeType::TRANSITIONFILTER)
+                && (nNodeType != AnimationNodeType::AUDIO))
+            {
+                // calcMode  = "discrete | linear | paced | spline"
+                nTemp = xAnimate->getCalcMode();
+                if (((nNodeType == AnimationNodeType::ANIMATEMOTION)
+                     && (nTemp != AnimationCalcMode::PACED))
+                    || ((nNodeType != AnimationNodeType::ANIMATEMOTION)
+                        && (nTemp != AnimationCalcMode::LINEAR)))
+                {
+                    convertEnum(sTmp, nTemp, constCalcModeToString);
+                    mrWriter.put("calcMode", sTmp.makeStringAndClear());
+                }
+
+                bTemp = xAnimate->getAccumulate();
+                if (bTemp)
+                {
+                    mrWriter.put("accumulate", "sum");
+                }
+
+                nTemp = xAnimate->getAdditive();
+                if (nTemp != AnimationAdditiveMode::REPLACE)
+                {
+                    convertEnum(sTmp, nTemp, constAdditiveModeToString);
+                    mrWriter.put("additive", sTmp.makeStringAndClear());
+                }
+            }
+
+            const Sequence<TimeFilterPair> aTimeFilter(xAnimate->getTimeFilter());
+            if (aTimeFilter.hasElements())
+            {
+                for (const auto& rPair : aTimeFilter)
+                {
+                    if (!sTmp.isEmpty())
+                        sTmp.append(';');
+
+                    sTmp.append(OString::number(rPair.Time) + ","
+                                + OString::number(rPair.Progress));
+                }
+                mrWriter.put("keySplines", sTmp.makeStringAndClear());
+            }
+        }
+
+        switch (nNodeType)
+        {
+            case AnimationNodeType::ANIMATEMOTION:
+            {
+                Reference<XAnimateMotion> xAnimateMotion(xAnimate, UNO_QUERY_THROW);
+
+                aTemp = xAnimateMotion->getPath();
+                if (aTemp.hasValue())
+                {
+                    convertPath(sTmp, aTemp);
+                    mrWriter.put("path", sTmp.makeStringAndClear());
+                }
+            }
+            break;
+            case AnimationNodeType::ANIMATEPHYSICS:
+            {
+                SAL_WARN(
+                    "sd",
+                    "unomodel: AnimationsExporter::exportAnimate(): AnimatePhysics not supported");
+            }
+            break;
+            case AnimationNodeType::ANIMATECOLOR:
+            {
+                Reference<XAnimateColor> xAnimateColor(xAnimate, UNO_QUERY_THROW);
+
+                nTemp = xAnimateColor->getColorInterpolation();
+                mrWriter.put("colorInterpolation",
+                             (nTemp == AnimationColorSpace::RGB) ? "rgb" : "hsl");
+
+                bTemp = xAnimateColor->getDirection();
+                mrWriter.put("colorInterpolationDirection",
+                             bTemp ? "clockwise" : "counterClockwise");
+            }
+            break;
+            case AnimationNodeType::ANIMATETRANSFORM:
+            {
+                mrWriter.put("attributeName", "transform");
+
+                Reference<XAnimateTransform> xTransform(xAnimate, UNO_QUERY_THROW);
+                nTemp = xTransform->getTransformType();
+                convertEnum(sTmp, nTemp, constTransformTypeToString);
+                mrWriter.put("transformType", sTmp.makeStringAndClear());
+            }
+            break;
+            case AnimationNodeType::TRANSITIONFILTER:
+            {
+                Reference<XTransitionFilter> xTransitionFilter(xAnimate, UNO_QUERY);
+
+                sal_Int16 nTransition = xTransitionFilter->getTransition();
+                convertEnum(sTmp, nTransition, constTransitionTypeToString);
+                mrWriter.put("transitionType", sTmp.makeStringAndClear());
+
+                sal_Int16 nSubtype = xTransitionFilter->getSubtype();
+                if (nSubtype != TransitionSubType::DEFAULT)
+                {
+                    convertEnum(sTmp, nSubtype, constTransitionSubTypeToString);
+                    mrWriter.put("transitionSubType", sTmp.makeStringAndClear());
+                }
+
+                bTemp = xTransitionFilter->getMode();
+                if (!bTemp)
+                    mrWriter.put("transitionMode", "out");
+
+                bTemp = xTransitionFilter->getDirection();
+                if (!bTemp)
+                    mrWriter.put("transitionDirection", "reverse");
+
+                if ((nTransition == TransitionType::FADE)
+                    && ((nSubtype == TransitionSubType::FADETOCOLOR)
+                        || (nSubtype == TransitionSubType::FADEFROMCOLOR)))
+                {
+                    sal_Int32 nColor = xTransitionFilter->getFadeColor();
+                    convertColor(sTmp, nColor);
+                    mrWriter.put("transitionFadeColor", sTmp.makeStringAndClear());
+                }
+            }
+            break;
+            default:
+            {
+                SAL_WARN("sd",
+                         "unomodel: AnimationsExporter::exportAnimate(): not supported node type: "
+                             << nNodeType);
+            }
+        }
+    }
+    catch (const Exception&)
+    {
+        TOOLS_WARN_EXCEPTION("sd", "unomodel: AnimationsExporter");
+    }
+}
+
+void GetDocStructureSlides(::tools::JsonWriter& rJsonWriter, const SdXImpressDocument* pDoc,
+                           const std::map<OUString, OUString>& rArguments)
+{
+    auto it = rArguments.find(u"filter"_ustr);
+    if (it != rArguments.end())
+    {
+        // If filter is present but we are filtering not to slide information
+        if (!it->second.equals(u"slides"_ustr))
+            return;
+    }
+
+    sal_uInt16 nPageCount = pDoc->GetDoc()->GetSdPageCount(PageKind::Standard);
+    sal_uInt16 nMasterPageCount = pDoc->GetDoc()->GetMasterSdPageCount(PageKind::Standard);
+
+    rJsonWriter.put("SlideCount", nPageCount);
+    rJsonWriter.put("MasterSlideCount", nMasterPageCount);
+
+    // write data of every master slide
+    if (nMasterPageCount > 0)
+    {
+        auto aMasterPagesNode = rJsonWriter.startNode("MasterSlides");
+        for (int nMPId = 0; nMPId < nMasterPageCount; nMPId++)
+        {
+            auto aMasterPageNode = rJsonWriter.startNode("MasterSlide " + std::to_string(nMPId));
+            const OUString& aMName
+                = pDoc->GetDoc()->GetMasterSdPage(nMPId, PageKind::Standard)->GetName();
+            rJsonWriter.put("Name", aMName);
+        }
+    }
+
+    // write data of every slide
+    if (nPageCount > 0)
+    {
+        auto aPagesNode = rJsonWriter.startNode("Slides");
+        for (int nPId = 0; nPId < nPageCount; nPId++)
+        {
+            auto aPageNode = rJsonWriter.startNode("Slide " + std::to_string(nPId));
+            SdPage* pPageStandard = pDoc->GetDoc()->GetSdPage(nPId, PageKind::Standard);
+
+            // Slide Name
+            rJsonWriter.put("SlideName", pPageStandard->GetName());
+
+            // MasterSlide Name
+            const FmFormPage* pMasterPage
+                = dynamic_cast<const FmFormPage*>(&pPageStandard->TRG_GetMasterPage());
+
+            if (pMasterPage)
+            {
+                rJsonWriter.put("MasterSlideName", pMasterPage->GetName());
+            }
+
+            // Layout id, and name.
+            AutoLayout nLayout = pPageStandard->GetAutoLayout();
+            rJsonWriter.put("LayoutId", static_cast<int>(nLayout));
+            rJsonWriter.put("LayoutName", SdPage::autoLayoutToString(nLayout));
+
+            // Every Objects in the page
+            int nObjCount = pPageStandard->GetObjCount();
+            rJsonWriter.put("ObjectCount", nObjCount);
+
+            if (nObjCount > 0)
+            {
+                auto aObjectsNode = rJsonWriter.startNode("Objects");
+                for (int nOId = 0; nOId < nObjCount; nOId++)
+                {
+                    auto aObjectNode = rJsonWriter.startNode("Objects " + std::to_string(nOId));
+                    SdrObject* pSdrObj = pPageStandard->GetObj(nOId);
+                    SdrTextObj* pSdrTxtObj = DynCastSdrTextObj(pSdrObj);
+                    if (pSdrTxtObj && pSdrTxtObj->HasText())
+                    {
+                        sal_Int32 nTextCount = pSdrTxtObj->getTextCount();
+                        rJsonWriter.put("TextCount", nTextCount);
+                        if (nTextCount > 0)
+                        {
+                            auto aTextsNode = rJsonWriter.startNode("Texts");
+                            for (int nTId = 0; nTId < nTextCount; nTId++)
+                            {
+                                auto aTextNode
+                                    = rJsonWriter.startNode("Text " + std::to_string(nTId));
+                                SdrText* pSdrTxt = pSdrTxtObj->getText(nTId);
+                                OutlinerParaObject* pOutlinerParaObject
+                                    = pSdrTxt->GetOutlinerParaObject();
+
+                                sal_Int32 nParaCount
+                                    = pOutlinerParaObject->GetTextObject().GetParagraphCount();
+
+                                rJsonWriter.put("ParaCount", nParaCount);
+                                auto aParasNode = rJsonWriter.startArray("Paragraphs");
+                                for (int nParaId = 0; nParaId < nParaCount; nParaId++)
+                                {
+                                    OUString aParaStr(
+                                        pOutlinerParaObject->GetTextObject().GetText(nParaId));
+
+                                    rJsonWriter.putSimpleValue(aParaStr);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+} // end anonymous namespace
 
 SdUnoForbiddenCharsTable::SdUnoForbiddenCharsTable( SdrModel* pModel )
 : SvxUnoForbiddenCharsTable( pModel->GetForbiddenCharsTable() ), mpModel( pModel )
@@ -390,6 +1938,9 @@ sal_Int64 SAL_CALL SdXImpressDocument::getSomething( const css::uno::Sequence< s
     if (comphelper::isUnoTunnelId<SdrModel>(rIdentifier))
         return comphelper::getSomething_cast(mpDoc);
 
+    if (comphelper::isUnoTunnelId<SfxObjectShell>(rIdentifier))
+        return comphelper::getSomething_cast(mpDocShell);
+
     return comphelper::getSomethingImpl(rIdentifier, this,
                                         comphelper::FallbackToGetSomethingOf<SfxBaseModel>{});
 }
@@ -423,7 +1974,7 @@ uno::Sequence< uno::Type > SAL_CALL SdXImpressDocument::getTypes(  )
                     cppu::UnoType<presentation::XCustomPresentationSupplier>::get(),
                     cppu::UnoType<presentation::XHandoutMasterSupplier>::get() });
         }
-        maTypeSequence = aTypes;
+        maTypeSequence = std::move(aTypes);
     }
 
     return maTypeSequence;
@@ -481,6 +2032,20 @@ void SdXImpressDocument::Notify( SfxBroadcaster& rBC, const SfxHint& rHint )
         }
     }
     SfxBaseModel::Notify( rBC, rHint );
+}
+
+void SdXImpressDocument::getCommandValues(::tools::JsonWriter& rJsonWriter, std::string_view rCommand)
+{
+    static constexpr OStringLiteral aExtractDocStructure(".uno:ExtractDocumentStructure");
+
+    std::map<OUString, OUString> aMap
+        = SfxLokHelper::parseCommandParameters(OUString::fromUtf8(rCommand));
+
+    if (o3tl::starts_with(rCommand, aExtractDocStructure))
+    {
+        auto commentsNode = rJsonWriter.startNode("DocStructure");
+        GetDocStructureSlides(rJsonWriter, this, aMap);
+    }
 }
 
 /******************************************************************************
@@ -729,15 +2294,21 @@ uno::Reference< drawing::XDrawPages > SAL_CALL SdXImpressDocument::getDrawPages(
 {
     ::SolarMutexGuard aGuard;
 
+    return getSdDrawPages();
+}
+
+rtl::Reference< SdDrawPagesAccess > SdXImpressDocument::getSdDrawPages()
+{
     if( nullptr == mpDoc )
         throw lang::DisposedException();
 
-    uno::Reference< drawing::XDrawPages >  xDrawPages( mxDrawPagesAccess );
+    rtl::Reference< SdDrawPagesAccess > xDrawPages( mxDrawPagesAccess );
 
     if( !xDrawPages.is() )
     {
         initializeDocument();
-        mxDrawPagesAccess = xDrawPages = new SdDrawPagesAccess(*this);
+        xDrawPages = new SdDrawPagesAccess(*this);
+        mxDrawPagesAccess = xDrawPages.get();
     }
 
     return xDrawPages;
@@ -751,13 +2322,14 @@ uno::Reference< drawing::XDrawPages > SAL_CALL SdXImpressDocument::getMasterPage
     if( nullptr == mpDoc )
         throw lang::DisposedException();
 
-    uno::Reference< drawing::XDrawPages >  xMasterPages( mxMasterPagesAccess );
+    rtl::Reference< SdMasterPagesAccess > xMasterPages( mxMasterPagesAccess );
 
     if( !xMasterPages.is() )
     {
         if ( !hasControllersLocked() )
             initializeDocument();
-        mxMasterPagesAccess = xMasterPages = new SdMasterPagesAccess(*this);
+        xMasterPages = new SdMasterPagesAccess(*this);
+        mxMasterPagesAccess = xMasterPages.get();
     }
 
     return xMasterPages;
@@ -771,10 +2343,13 @@ uno::Reference< container::XNameAccess > SAL_CALL SdXImpressDocument::getLayerMa
     if( nullptr == mpDoc )
         throw lang::DisposedException();
 
-    uno::Reference< container::XNameAccess >  xLayerManager( mxLayerManager );
+    rtl::Reference< SdLayerManager >  xLayerManager( mxLayerManager );
 
     if( !xLayerManager.is() )
-        mxLayerManager = xLayerManager = new SdLayerManager(*this);
+    {
+        xLayerManager = new SdLayerManager(*this);
+        mxLayerManager = xLayerManager.get();
+    }
 
     return xLayerManager;
 }
@@ -787,10 +2362,13 @@ uno::Reference< container::XNameContainer > SAL_CALL SdXImpressDocument::getCust
     if( nullptr == mpDoc )
         throw lang::DisposedException();
 
-    uno::Reference< container::XNameContainer >  xCustomPres( mxCustomPresentationAccess );
+    rtl::Reference< SdXCustomPresentationAccess >  xCustomPres( mxCustomPresentationAccess );
 
     if( !xCustomPres.is() )
-        mxCustomPresentationAccess = xCustomPres = new SdXCustomPresentationAccess(*this);
+    {
+        xCustomPres = new SdXCustomPresentationAccess(*this);
+        mxCustomPresentationAccess = xCustomPres.get();
+    }
 
     return xCustomPres;
 }
@@ -954,7 +2532,7 @@ css::uno::Reference<css::uno::XInterface> SdXImpressDocument::create(
 
     if( aServiceSpecifier == "com.sun.star.xml.NamespaceMap" )
     {
-        static sal_uInt16 aWhichIds[] = { SDRATTR_XMLATTRIBUTES, EE_CHAR_XMLATTRIBS, EE_PARA_XMLATTRIBS, 0 };
+        static const sal_uInt16 aWhichIds[] = { SDRATTR_XMLATTRIBUTES, EE_CHAR_XMLATTRIBS, EE_PARA_XMLATTRIBS, 0 };
 
         return svx::NamespaceMap_createInstance( aWhichIds, &mpDoc->GetItemPool() );
     }
@@ -1107,7 +2685,7 @@ css::uno::Reference<css::uno::XInterface> SdXImpressDocument::create(
 
 uno::Reference< uno::XInterface > SAL_CALL SdXImpressDocument::createInstance( const OUString& aServiceSpecifier )
 {
-    return create(aServiceSpecifier, "");
+    return create(aServiceSpecifier, u""_ustr);
 }
 
 css::uno::Reference<css::uno::XInterface>
@@ -1117,7 +2695,11 @@ SdXImpressDocument::createInstanceWithArguments(
 {
     OUString arg;
     if ((ServiceSpecifier == "com.sun.star.drawing.GraphicObjectShape"
+         || ServiceSpecifier == "com.sun.star.drawing.AppletShape"
+         || ServiceSpecifier == "com.sun.star.drawing.FrameShape"
+         || ServiceSpecifier == "com.sun.star.drawing.OLE2Shape"
          || ServiceSpecifier == "com.sun.star.drawing.MediaShape"
+         || ServiceSpecifier == "com.sun.star.drawing.PluginShape"
          || ServiceSpecifier == "com.sun.star.presentation.MediaShape")
         && Arguments.getLength() == 1 && (Arguments[0] >>= arg))
     {
@@ -1136,50 +2718,50 @@ uno::Sequence< OUString > SAL_CALL SdXImpressDocument::getAvailableServiceNames(
 
     const uno::Sequence< OUString > aSNS_ORG( SvxFmMSFactory::getAvailableServiceNames() );
 
-    uno::Sequence< OUString > aSNS_Common{ "com.sun.star.drawing.DashTable",
-                                           "com.sun.star.drawing.GradientTable",
-                                           "com.sun.star.drawing.HatchTable",
-                                           "com.sun.star.drawing.BitmapTable",
-                                           "com.sun.star.drawing.TransparencyGradientTable",
-                                           "com.sun.star.drawing.MarkerTable",
-                                           "com.sun.star.text.NumberingRules",
-                                           "com.sun.star.drawing.Background",
-                                           "com.sun.star.document.Settings",
+    uno::Sequence< OUString > aSNS_Common{ u"com.sun.star.drawing.DashTable"_ustr,
+                                           u"com.sun.star.drawing.GradientTable"_ustr,
+                                           u"com.sun.star.drawing.HatchTable"_ustr,
+                                           u"com.sun.star.drawing.BitmapTable"_ustr,
+                                           u"com.sun.star.drawing.TransparencyGradientTable"_ustr,
+                                           u"com.sun.star.drawing.MarkerTable"_ustr,
+                                           u"com.sun.star.text.NumberingRules"_ustr,
+                                           u"com.sun.star.drawing.Background"_ustr,
+                                           u"com.sun.star.document.Settings"_ustr,
                                            sUNO_Service_ImageMapRectangleObject,
                                            sUNO_Service_ImageMapCircleObject,
                                            sUNO_Service_ImageMapPolygonObject,
-                                           "com.sun.star.xml.NamespaceMap",
+                                           u"com.sun.star.xml.NamespaceMap"_ustr,
 
                                            // Support creation of GraphicStorageHandler and EmbeddedObjectResolver
-                                           "com.sun.star.document.ExportGraphicStorageHandler",
-                                           "com.sun.star.document.ImportGraphicStorageHandler",
-                                           "com.sun.star.document.ExportEmbeddedObjectResolver",
-                                           "com.sun.star.document.ImportEmbeddedObjectResolver",
-                                           "com.sun.star.drawing.TableShape" };
+                                           u"com.sun.star.document.ExportGraphicStorageHandler"_ustr,
+                                           u"com.sun.star.document.ImportGraphicStorageHandler"_ustr,
+                                           u"com.sun.star.document.ExportEmbeddedObjectResolver"_ustr,
+                                           u"com.sun.star.document.ImportEmbeddedObjectResolver"_ustr,
+                                           u"com.sun.star.drawing.TableShape"_ustr };
 
     uno::Sequence< OUString > aSNS_Specific;
 
     if(mbImpressDoc)
-        aSNS_Specific = { "com.sun.star.presentation.TitleTextShape",
-                          "com.sun.star.presentation.OutlinerShape",
-                          "com.sun.star.presentation.SubtitleShape",
-                          "com.sun.star.presentation.GraphicObjectShape",
-                          "com.sun.star.presentation.ChartShape",
-                          "com.sun.star.presentation.PageShape",
-                          "com.sun.star.presentation.OLE2Shape",
-                          "com.sun.star.presentation.TableShape",
-                          "com.sun.star.presentation.OrgChartShape",
-                          "com.sun.star.presentation.NotesShape",
-                          "com.sun.star.presentation.HandoutShape",
-                          "com.sun.star.presentation.DocumentSettings",
-                          "com.sun.star.presentation.FooterShape",
-                          "com.sun.star.presentation.HeaderShape",
-                          "com.sun.star.presentation.SlideNumberShape",
-                          "com.sun.star.presentation.DateTimeShape",
-                          "com.sun.star.presentation.CalcShape",
-                          "com.sun.star.presentation.MediaShape" };
+        aSNS_Specific = { u"com.sun.star.presentation.TitleTextShape"_ustr,
+                          u"com.sun.star.presentation.OutlinerShape"_ustr,
+                          u"com.sun.star.presentation.SubtitleShape"_ustr,
+                          u"com.sun.star.presentation.GraphicObjectShape"_ustr,
+                          u"com.sun.star.presentation.ChartShape"_ustr,
+                          u"com.sun.star.presentation.PageShape"_ustr,
+                          u"com.sun.star.presentation.OLE2Shape"_ustr,
+                          u"com.sun.star.presentation.TableShape"_ustr,
+                          u"com.sun.star.presentation.OrgChartShape"_ustr,
+                          u"com.sun.star.presentation.NotesShape"_ustr,
+                          u"com.sun.star.presentation.HandoutShape"_ustr,
+                          u"com.sun.star.presentation.DocumentSettings"_ustr,
+                          u"com.sun.star.presentation.FooterShape"_ustr,
+                          u"com.sun.star.presentation.HeaderShape"_ustr,
+                          u"com.sun.star.presentation.SlideNumberShape"_ustr,
+                          u"com.sun.star.presentation.DateTimeShape"_ustr,
+                          u"com.sun.star.presentation.CalcShape"_ustr,
+                          u"com.sun.star.presentation.MediaShape"_ustr };
     else
-        aSNS_Specific = { "com.sun.star.drawing.DocumentSettings" };
+        aSNS_Specific = { u"com.sun.star.drawing.DocumentSettings"_ustr };
 
     return comphelper::concatSequences( aSNS_ORG, aSNS_Common, aSNS_Specific );
 }
@@ -1187,7 +2769,7 @@ uno::Sequence< OUString > SAL_CALL SdXImpressDocument::getAvailableServiceNames(
 // lang::XServiceInfo
 OUString SAL_CALL SdXImpressDocument::getImplementationName()
 {
-    return "SdXImpressDocument";
+    return u"SdXImpressDocument"_ustr;
     /* // Matching the .component information:
        return mbImpressDoc
            ? OUString("com.sun.star.comp.Draw.PresentationDocument")
@@ -1204,10 +2786,10 @@ uno::Sequence< OUString > SAL_CALL SdXImpressDocument::getSupportedServiceNames(
 {
     ::SolarMutexGuard aGuard;
 
-    return { "com.sun.star.document.OfficeDocument",
-             "com.sun.star.drawing.GenericDrawingDocument",
-             "com.sun.star.drawing.DrawingDocumentFactory",
-             mbImpressDoc?OUString("com.sun.star.presentation.PresentationDocument"):OUString("com.sun.star.drawing.DrawingDocument") };
+    return { u"com.sun.star.document.OfficeDocument"_ustr,
+             u"com.sun.star.drawing.GenericDrawingDocument"_ustr,
+             u"com.sun.star.drawing.DrawingDocumentFactory"_ustr,
+             mbImpressDoc?u"com.sun.star.presentation.PresentationDocument"_ustr:u"com.sun.star.drawing.DrawingDocument"_ustr };
 }
 
 // XPropertySet
@@ -1292,11 +2874,7 @@ void SAL_CALL SdXImpressDocument::setPropertyValue( const OUString& aPropertyNam
             setGrabBagItem(aValue);
             break;
         case WID_MODEL_THEME:
-            {
-                SdrModel& rModel = getSdrModelFromUnoModel();
-                std::shared_ptr<model::Theme> pTheme = model::Theme::FromAny(aValue);
-                rModel.setTheme(pTheme);
-            }
+            getSdrModelFromUnoModel().setTheme(model::Theme::FromAny(aValue));
             break;
         default:
             throw beans::UnknownPropertyException( aPropertyName, static_cast<cppu::OWeakObject*>(this));
@@ -1391,13 +2969,13 @@ uno::Any SAL_CALL SdXImpressDocument::getPropertyValue( const OUString& Property
 
                 for(sal_uInt16 nWhichId : aWhichIds)
                 {
-                    const registeredSfxPoolItems& rSurrogates(rPool.GetItemSurrogates(nWhichId));
-                    const sal_uInt32 nItems(rSurrogates.size());
+                    ItemSurrogates aSurrogates = rPool.GetItemSurrogates(nWhichId);
+                    const sal_uInt32 nItems(aSurrogates.size());
 
                     aSeq.realloc( aSeq.getLength() + nItems*5 + 5 );
                     auto pSeq = aSeq.getArray();
 
-                    for (const SfxPoolItem* pItem : rSurrogates)
+                    for (const SfxPoolItem* pItem : aSurrogates)
                     {
                         const SvxFontItem *pFont = static_cast<const SvxFontItem *>(pItem);
 
@@ -1408,7 +2986,7 @@ uno::Any SAL_CALL SdXImpressDocument::getPropertyValue( const OUString& Property
                         pSeq[nSeqIndex++] <<= sal_Int16(pFont->GetCharSet());
                     }
 
-                    const SvxFontItem& rFont = static_cast<const SvxFontItem&>(rPool.GetDefaultItem( nWhichId ));
+                    const SvxFontItem& rFont = static_cast<const SvxFontItem&>(rPool.GetUserOrPoolDefaultItem( nWhichId ));
 
                     pSeq[nSeqIndex++] <<= rFont.GetFamilyName();
                     pSeq[nSeqIndex++] <<= rFont.GetStyleName();
@@ -1418,7 +2996,6 @@ uno::Any SAL_CALL SdXImpressDocument::getPropertyValue( const OUString& Property
 
                 }
 
-                aSeq.realloc( nSeqIndex );
                 aAny <<= aSeq;
                 break;
             }
@@ -1426,20 +3003,9 @@ uno::Any SAL_CALL SdXImpressDocument::getPropertyValue( const OUString& Property
             getGrabBagItem(aAny);
             break;
         case WID_MODEL_THEME:
-            {
-                SdrModel& rModel = getSdrModelFromUnoModel();
-                auto const& pTheme = rModel.getTheme();
-                if (pTheme)
-                {
-                    pTheme->ToAny(aAny);
-                }
-                else
-                {
-                    beans::PropertyValues aValues;
-                    aAny <<= aValues;
-                }
-                break;
-            }
+            if (auto const& pTheme = getSdrModelFromUnoModel().getTheme())
+                pTheme->ToAny(aAny);
+            break;
         default:
             throw beans::UnknownPropertyException( PropertyName, static_cast<cppu::OWeakObject*>(this));
     }
@@ -1460,9 +3026,12 @@ uno::Reference< container::XNameAccess > SAL_CALL SdXImpressDocument::getLinks()
     if( nullptr == mpDoc )
         throw lang::DisposedException();
 
-    uno::Reference< container::XNameAccess > xLinks( mxLinks );
+    rtl::Reference< SdDocLinkTargets > xLinks( mxLinks );
     if( !xLinks.is() )
-        mxLinks = xLinks = new SdDocLinkTargets( *this );
+    {
+        xLinks = new SdDocLinkTargets( *this );
+        mxLinks = xLinks.get();
+    }
     return xLinks;
 }
 
@@ -1543,7 +3112,7 @@ uno::Sequence< beans::PropertyValue > SAL_CALL SdXImpressDocument::getRenderer( 
             const ::tools::Rectangle aVisArea( mpDocShell->GetVisArea( embed::Aspects::MSOLE_DOCPRINT ) );
             aPageSize = awt::Size( aVisArea.GetWidth(), aVisArea.GetHeight() );
         }
-        aRenderer = { comphelper::makePropertyValue("PageSize", aPageSize) };
+        aRenderer = { comphelper::makePropertyValue(u"PageSize"_ustr, aPageSize) };
     }
     return aRenderer;
 }
@@ -1611,31 +3180,56 @@ static void ImplPDFExportComments( const uno::Reference< drawing::XDrawPage >& x
 
         while( xAnnotationEnumeration->hasMoreElements() )
         {
-            uno::Reference< office::XAnnotation > xAnnotation( xAnnotationEnumeration->nextElement() );
+            uno::Reference<office::XAnnotation> xAnnotation(xAnnotationEnumeration->nextElement());
 
-            geometry::RealPoint2D aRealPoint2D( xAnnotation->getPosition() );
+            geometry::RealPoint2D aRealPoint2D(xAnnotation->getPosition());
             geometry::RealSize2D aRealSize2D(xAnnotation->getSize());
-            uno::Reference< text::XText > xText( xAnnotation->getTextRange() );
 
-            vcl::PDFNote aNote;
-            aNote.Title = xAnnotation->getAuthor();
-            aNote.Contents = xText->getString();
+            Point aPoint(aRealPoint2D.X * 100.0, aRealPoint2D.Y * 100.0);
+            Size aSize(aRealSize2D.Width * 100.0, aRealSize2D.Height * 100.0);
+
+            Point aPopupPoint(aPoint.X(), aPoint.Y());
+            Size aPopupSize(aSize.Width() * 10.0, aSize.Height() * 10.0);
+
+            uno::Reference<text::XText> xText(xAnnotation->getTextRange());
+
+            vcl::pdf::PDFNote aNote;
+            aNote.maTitle = xAnnotation->getAuthor();
+            aNote.maContents = xText->getString();
             aNote.maModificationDate = xAnnotation->getDateTime();
             auto* pAnnotation = dynamic_cast<sd::Annotation*>(xAnnotation.get());
-            aNote.isFreeText = pAnnotation && pAnnotation->isFreeText();
-            if (pAnnotation && pAnnotation->hasCustomAnnotationMarker())
+
+            if (pAnnotation && pAnnotation->getCreationInfo().meType != sdr::annotation::AnnotationType::None)
             {
-                aNote.maPolygons = pAnnotation->getCustomAnnotationMarker().maPolygons;
-                aNote.annotColor = pAnnotation->getCustomAnnotationMarker().maLineColor;
-                aNote.interiorColor = pAnnotation->getCustomAnnotationMarker().maFillColor;
+                sdr::annotation::CreationInfo const& rCreation = pAnnotation->getCreationInfo();
+                aNote.maPolygons = rCreation.maPolygons;
+                aNote.maAnnotationColor = rCreation.maColor;
+                aNote.maInteriorColor = rCreation.maFillColor;
+                aNote.mfWidth = rCreation.mnWidth;
+                switch (rCreation.meType)
+                {
+                    case sdr::annotation::AnnotationType::Square:
+                        aNote.meType = vcl::pdf::PDFAnnotationSubType::Square; break;
+                    case sdr::annotation::AnnotationType::Circle:
+                        aNote.meType = vcl::pdf::PDFAnnotationSubType::Circle; break;
+                    case sdr::annotation::AnnotationType::Polygon:
+                        aNote.meType = vcl::pdf::PDFAnnotationSubType::Polygon; break;
+                    case sdr::annotation::AnnotationType::Ink:
+                        aNote.meType = vcl::pdf::PDFAnnotationSubType::Ink; break;
+                    case sdr::annotation::AnnotationType::Highlight:
+                        aNote.meType = vcl::pdf::PDFAnnotationSubType::Highlight; break;
+                    case sdr::annotation::AnnotationType::Line:
+                        aNote.meType = vcl::pdf::PDFAnnotationSubType::Line; break;
+                    case sdr::annotation::AnnotationType::FreeText:
+                        aNote.meType = vcl::pdf::PDFAnnotationSubType::FreeText; break;
+                    default:
+                        aNote.meType = vcl::pdf::PDFAnnotationSubType::Text;
+                        break;
+                }
             }
 
-            rPDFExtOutDevData.CreateNote(
-                ::tools::Rectangle(Point(static_cast<::tools::Long>(aRealPoint2D.X * 100),
-                                         static_cast<::tools::Long>(aRealPoint2D.Y * 100)),
-                                   Size(static_cast<::tools::Long>(aRealSize2D.Width * 100),
-                                        static_cast<::tools::Long>(aRealSize2D.Height * 100))),
-                aNote);
+            rPDFExtOutDevData.CreateNote(::tools::Rectangle(aPoint, aSize), aNote,
+                                         ::tools::Rectangle(aPopupPoint, aPopupSize));
         }
     }
     catch (const uno::Exception&)
@@ -1676,9 +3270,9 @@ static void ImplPDFExportShapeInteraction( const uno::Reference< drawing::XShape
             if (xShape->getShapeType() == "com.sun.star.drawing.MediaShape" || xShape->getShapeType() == "com.sun.star.presentation.MediaShape")
             {
                 OUString title;
-                xShapePropSet->getPropertyValue("Title") >>= title;
+                xShapePropSet->getPropertyValue(u"Title"_ustr) >>= title;
                 OUString description;
-                xShapePropSet->getPropertyValue("Description") >>= description;
+                xShapePropSet->getPropertyValue(u"Description"_ustr) >>= description;
                 OUString const altText(title.isEmpty()
                     ? description
                     : description.isEmpty()
@@ -1686,16 +3280,16 @@ static void ImplPDFExportShapeInteraction( const uno::Reference< drawing::XShape
                         : OUString::Concat(title) + OUString::Concat("\n") + OUString::Concat(description));
 
                 OUString aMediaURL;
-                xShapePropSet->getPropertyValue("MediaURL") >>= aMediaURL;
+                xShapePropSet->getPropertyValue(u"MediaURL"_ustr) >>= aMediaURL;
                 if (!aMediaURL.isEmpty())
                 {
                     SdrObject const*const pSdrObj(SdrObject::getSdrObjectFromXShape(xShape));
-                    OUString const mimeType(xShapePropSet->getPropertyValue("MediaMimeType").get<OUString>());
+                    OUString const mimeType(xShapePropSet->getPropertyValue(u"MediaMimeType"_ustr).get<OUString>());
                     sal_Int32 nScreenId = rPDFExtOutDevData.CreateScreen(aLinkRect, altText, mimeType, rPDFExtOutDevData.GetCurrentPageNumber(), pSdrObj);
                     if (aMediaURL.startsWith("vnd.sun.star.Package:"))
                     {
                         OUString aTempFileURL;
-                        xShapePropSet->getPropertyValue("PrivateTempFileURL") >>= aTempFileURL;
+                        xShapePropSet->getPropertyValue(u"PrivateTempFileURL"_ustr) >>= aTempFileURL;
                         rPDFExtOutDevData.SetScreenStream(nScreenId, aTempFileURL);
                     }
                     else
@@ -1704,7 +3298,7 @@ static void ImplPDFExportShapeInteraction( const uno::Reference< drawing::XShape
             }
 
             presentation::ClickAction eCa;
-            uno::Any aAny( xShapePropSet->getPropertyValue( "OnClick" ) );
+            uno::Any aAny( xShapePropSet->getPropertyValue( u"OnClick"_ustr ) );
             if ( aAny >>= eCa )
             {
                 OUString const actionName(SdResId(SdTPAction::GetClickActionSdResId(eCa)));
@@ -1752,7 +3346,7 @@ static void ImplPDFExportShapeInteraction( const uno::Reference< drawing::XShape
                     case presentation::ClickAction_DOCUMENT :
                     {
                         OUString aBookmark;
-                        xShapePropSet->getPropertyValue( "Bookmark" ) >>= aBookmark;
+                        xShapePropSet->getPropertyValue( u"Bookmark"_ustr ) >>= aBookmark;
                         if( !aBookmark.isEmpty() )
                         {
                             switch( eCa )
@@ -1996,8 +3590,8 @@ void SAL_CALL SdXImpressDocument::render( sal_Int32 nRenderer, const uno::Any& r
 
                         // if necessary, the master page interactions will be exported first
                         bool bIsBackgroundObjectsVisible = false;   // #i39428# IsBackgroundObjectsVisible not available for Draw
-                        if ( mbImpressDoc && xPagePropSet->getPropertySetInfo()->hasPropertyByName( "IsBackgroundObjectsVisible" ) )
-                            xPagePropSet->getPropertyValue( "IsBackgroundObjectsVisible" ) >>= bIsBackgroundObjectsVisible;
+                        if ( mbImpressDoc && xPagePropSet->getPropertySetInfo()->hasPropertyByName( u"IsBackgroundObjectsVisible"_ustr ) )
+                            xPagePropSet->getPropertyValue( u"IsBackgroundObjectsVisible"_ustr ) >>= bIsBackgroundObjectsVisible;
                         if ( bIsBackgroundObjectsVisible && !pPDFExtOutDevData->GetIsExportNotesPages() )
                         {
                             uno::Reference< drawing::XMasterPageTarget > xMasterPageTarget( xPage, uno::UNO_QUERY );
@@ -2229,6 +3823,11 @@ void SAL_CALL SdXImpressDocument::render( sal_Int32 nRenderer, const uno::Any& r
 
 DrawViewShell* SdXImpressDocument::GetViewShell()
 {
+    if (!mpDocShell)
+    {
+        return nullptr;
+    }
+
     DrawViewShell* pViewSh = dynamic_cast<DrawViewShell*>(mpDocShell->GetViewShell());
     if (!pViewSh)
     {
@@ -2297,7 +3896,7 @@ void SdXImpressDocument::paintTile( VirtualDevice& rDevice,
 
     rDevice.SetMapMode( aMapMode );
 
-    rDevice.SetOutputSizePixel( Size(nOutputWidth, nOutputHeight) );
+    rDevice.SetOutputSizePixel( Size(nOutputWidth, nOutputHeight), /*bErase*/false );
 
     Point aPoint(nTilePosXHMM, nTilePosYHMM);
     Size aSize(nTileWidthHMM, nTileHeightHMM);
@@ -2348,6 +3947,14 @@ OString SdXImpressDocument::getViewRenderState(SfxViewShell* pViewShell)
     if (pView)
     {
         const SdViewOptions& pVOpt = pView->GetViewOptions();
+        if (mpDoc->GetOnlineSpell())
+            aState.append('S');
+        if (!ThemeColors::UseOnlyWhiteDocBackground())
+        {
+            if (pVOpt.mnDocBackgroundColor
+                == svtools::ColorConfig::GetDefaultColor(svtools::DOCCOLOR))
+                aState.append('D');
+        }
         aState.append(';');
 
         OString aThemeName = OUStringToOString(pVOpt.msColorSchemeName, RTL_TEXTENCODING_UTF8);
@@ -2368,8 +3975,20 @@ void SdXImpressDocument::selectPart(int nPart, int nSelect)
 void SdXImpressDocument::moveSelectedParts(int nPosition, bool bDuplicate)
 {
     // Duplicating is currently unsupported.
-    if (!bDuplicate)
-        mpDoc->MovePages(nPosition);
+    if (bDuplicate)
+        return;
+
+    DrawViewShell* pViewSh = GetViewShell();
+    if (!pViewSh)
+        return;
+
+    auto pSlideSorter
+        = sd::slidesorter::SlideSorterViewShell::GetSlideSorter(pViewSh->GetViewShellBase());
+    sd::slidesorter::SharedPageSelection pSelectedPage
+        = pSlideSorter ? pSlideSorter->GetPageSelection() : nullptr;
+    if (!pSelectedPage)
+        return;
+    mpDoc->MovePages(nPosition, *pSelectedPage);
 }
 
 OUString SdXImpressDocument::getPartInfo(int nPart)
@@ -2378,22 +3997,30 @@ OUString SdXImpressDocument::getPartInfo(int nPart)
     if (!pViewSh)
         return OUString();
 
-    const SdPage* pSdPage = mpDoc->GetSdPage(nPart, pViewSh->GetPageKind());
-    const bool bIsVisible = pSdPage && !pSdPage->IsExcluded();
-    const bool bIsSelected = pViewSh->IsSelected(nPart);
+    SdPage* pSdPage = mpDoc->GetSdPage(nPart, pViewSh->GetPageKind());
     const sal_Int16 nMasterPageCount= pViewSh->GetDoc()->GetMasterSdPageCount(pViewSh->GetPageKind());
 
-    OUString aPartInfo = "{ \"visible\": \"" +
-        OUString::number(static_cast<unsigned int>(bIsVisible)) +
-        "\", \"selected\": \"" +
-        OUString::number(static_cast<unsigned int>(bIsSelected)) +
-        "\", \"masterPageCount\": \"" +
-        OUString::number(nMasterPageCount) +
-        "\", \"mode\": \"" +
-        OUString::number(getEditMode()) +
-        "\" }";
+    ::tools::JsonWriter jsonWriter;
 
-    return aPartInfo;
+    jsonWriter.put("masterPageCount", nMasterPageCount);
+    jsonWriter.put("mode", getEditMode());
+    jsonWriter.put("gridSnapEnabled", pViewSh->GetDrawView()->IsGridSnap());
+    jsonWriter.put("gridVisible", pViewSh->GetDrawView()->IsGridVisible());
+
+    // Below information is useful when grid snapping is enabled. It let's to calculate the points we can snap to.
+    const Size gridCoarse = pViewSh->GetDrawView()->GetGridCoarse();
+    const Size innerDots = pViewSh->GetDrawView()->GetGridFine();
+    jsonWriter.put("gridCoarseWidth", gridCoarse.getWidth());
+    jsonWriter.put("gridCoarseHeight", gridCoarse.getHeight());
+    jsonWriter.put("innerSpacesX", innerDots.getWidth() ? gridCoarse.getWidth() / innerDots.getWidth() : 0);
+    jsonWriter.put("innerSpacesY", innerDots.getHeight() ? gridCoarse.getHeight() / innerDots.getHeight() : 0);
+
+    if (pSdPage)
+        pSdPage->GetPageInfo(jsonWriter);
+    else
+        SAL_WARN("sd", "getPartInfo request for SdPage " << nPart << " that does not exist!");
+
+    return OStringToOUString(jsonWriter.finishAndGetAsOString(), RTL_TEXTENCODING_UTF8);
 }
 
 void SdXImpressDocument::setPart( int nPart, bool bAllowChangeFocus )
@@ -2456,7 +4083,8 @@ OUString SdXImpressDocument::getPartHash(int nPart)
         return OUString();
     }
 
-    return OUString::number(pPage->GetHashCode());
+    uno::Reference<drawing::XDrawPage> xDrawPage(pPage->getUnoPage(), uno::UNO_QUERY);
+    return OUString::fromUtf8(GetInterfaceHash(xDrawPage));
 }
 
 bool SdXImpressDocument::isMasterViewMode()
@@ -2505,6 +4133,8 @@ void SdXImpressDocument::setPartMode( int nPartMode )
         break;
     }
     pViewSh->SetPageKind( aPageKind );
+    //TODO do the same as setEditMode and then can probably remove the TODOs
+    //from doc_setPartMode
 }
 
 int SdXImpressDocument::getEditMode()
@@ -2550,17 +4180,17 @@ Size SdXImpressDocument::getDocumentSize()
 void SdXImpressDocument::getPostIts(::tools::JsonWriter& rJsonWriter)
 {
     auto commentsNode = rJsonWriter.startNode("comments");
+    if (!mpDoc)
+        return;
     // Return annotations on master pages too ?
     const sal_uInt16 nMaxPages = mpDoc->GetPageCount();
-    SdPage* pPage;
     for (sal_uInt16 nPage = 0; nPage < nMaxPages; ++nPage)
     {
-        pPage = static_cast<SdPage*>(mpDoc->GetPage(nPage));
-        const sd::AnnotationVector& aPageAnnotations = pPage->getAnnotations();
+        SdrPage* pPage = mpDoc->GetPage(nPage);
 
-        for (const rtl::Reference<Annotation>& xAnnotation : aPageAnnotations)
+        for (auto const& xAnnotation : pPage->getAnnotations())
         {
-            sal_uInt32 nID = sd::getAnnotationId(xAnnotation);
+            sal_uInt32 nID = xAnnotation->GetId();
             OString nodeName = "comment" + OString::number(nID);
             auto commentNode = rJsonWriter.startNode(nodeName);
             rJsonWriter.put("id", nID);
@@ -2568,10 +4198,10 @@ void SdXImpressDocument::getPostIts(::tools::JsonWriter& rJsonWriter)
             rJsonWriter.put("dateTime", utl::toISO8601(xAnnotation->getDateTime()));
             uno::Reference<text::XText> xText(xAnnotation->getTextRange());
             rJsonWriter.put("text", xText->getString());
-            rJsonWriter.put("parthash", pPage->GetHashCode());
-            geometry::RealPoint2D const & rPoint = xAnnotation->getPosition();
-            geometry::RealSize2D const & rSize = xAnnotation->getSize();
-            ::tools::Rectangle aRectangle(Point(rPoint.X * 100.0, rPoint.Y * 100.0), Size(rSize.Width * 100.0, rSize.Height * 100.0));
+            rJsonWriter.put("parthash", pPage->GetUniqueID());
+            geometry::RealPoint2D const aPoint = xAnnotation->getPosition();
+            geometry::RealSize2D const aSize = xAnnotation->getSize();
+            ::tools::Rectangle aRectangle(Point(aPoint.X * 100.0, aPoint.Y * 100.0), Size(aSize.Width * 100.0, aSize.Height * 100.0));
             aRectangle = o3tl::toTwips(aRectangle, o3tl::Length::mm100);
             OString sRectangle = aRectangle.toString();
             rJsonWriter.put("rectangle", sRectangle.getStr());
@@ -2582,6 +4212,9 @@ void SdXImpressDocument::getPostIts(::tools::JsonWriter& rJsonWriter)
 void SdXImpressDocument::initializeForTiledRendering(const css::uno::Sequence<css::beans::PropertyValue>& rArguments)
 {
     SolarMutexGuard aGuard;
+
+    OUString sThemeName;
+    OUString sBackgroundThemeName;
 
     if (DrawViewShell* pViewShell = GetViewShell())
     {
@@ -2594,10 +4227,14 @@ void SdXImpressDocument::initializeForTiledRendering(const css::uno::Sequence<cs
                 pDrawView->SetAuthor(rValue.Value.get<OUString>());
             else if (rValue.Name == ".uno:SpellOnline" && rValue.Value.has<bool>())
                 mpDoc->SetOnlineSpell(rValue.Value.get<bool>());
+            else if (rValue.Name == ".uno:ChangeTheme" && rValue.Value.has<OUString>())
+                sThemeName = rValue.Value.get<OUString>();
+            else if (rValue.Name == ".uno:InvertBackground" && rValue.Value.has<OUString>())
+                sBackgroundThemeName = rValue.Value.get<OUString>();
         }
 
         // Disable comments if requested
-        SdOptions* pOptions = SD_MOD()->GetSdOptions(mpDoc->GetDocumentType());
+        SdOptions* pOptions = SdModule::get()->GetSdOptions(mpDoc->GetDocumentType());
         pOptions->SetShowComments(comphelper::LibreOfficeKit::isTiledAnnotations());
 
         pViewShell->SetRuler(false);
@@ -2631,10 +4268,28 @@ void SdXImpressDocument::initializeForTiledRendering(const css::uno::Sequence<cs
     // format
     auto xChanges = comphelper::ConfigurationChanges::create();
     officecfg::Office::Common::Save::Document::WarnAlienFormat::set(false, xChanges);
+
+    if (!o3tl::IsRunningUnitTest() || !comphelper::LibreOfficeKit::isActive())
+        officecfg::Office::Impress::MultiPaneGUI::SlideSorterBar::Visible::ImpressView::set(true,xChanges);
     xChanges->commit();
 
-    if (!getenv("LO_TESTNAME"))
-        SvtSlideSorterBarOptions().SetVisibleImpressView(true);
+    // if we know what theme the user wants, then we can dispatch that now early
+    if (!sThemeName.isEmpty())
+    {
+        css::uno::Sequence<css::beans::PropertyValue> aPropertyValues(comphelper::InitPropertySequence(
+        {
+            { "NewTheme", uno::Any(sThemeName) }
+        }));
+        comphelper::dispatchCommand(u".uno:ChangeTheme"_ustr, aPropertyValues);
+    }
+    if (!sBackgroundThemeName.isEmpty())
+    {
+        css::uno::Sequence<css::beans::PropertyValue> aPropertyValues(comphelper::InitPropertySequence(
+        {
+            { "NewTheme", uno::Any(sBackgroundThemeName) }
+        }));
+        comphelper::dispatchCommand(".uno:InvertBackground", aPropertyValues);
+    }
 }
 
 void SdXImpressDocument::postKeyEvent(int nType, int nCharCode, int nKeyCode)
@@ -2819,12 +4474,13 @@ PointerStyle SdXImpressDocument::getPointer()
 
 uno::Reference< i18n::XForbiddenCharacters > SdXImpressDocument::getForbiddenCharsTable()
 {
-    uno::Reference< i18n::XForbiddenCharacters > xForb(mxForbiddenCharacters);
-
-    if( !xForb.is() )
-        mxForbiddenCharacters = xForb = new SdUnoForbiddenCharsTable( mpDoc );
-
-    return xForb;
+    rtl::Reference<SdUnoForbiddenCharsTable> xRef = mxForbiddenCharacters.get();
+    if( !xRef )
+    {
+        xRef = new SdUnoForbiddenCharsTable( mpDoc );
+        mxForbiddenCharacters = xRef.get();
+    }
+    return xRef;
 }
 
 void SdXImpressDocument::initializeDocument()
@@ -2847,6 +4503,410 @@ void SdXImpressDocument::initializeDocument()
         break;
     }
     }
+}
+
+static
+void getShapeClickAction(const uno::Reference<drawing::XShape> &xShape, ::tools::JsonWriter& rJsonWriter)
+{
+    bool bIsShapeVisible = true;
+    uno::Reference<beans::XPropertySet> xShapeProps(xShape, uno::UNO_QUERY);
+    if (!xShapeProps)
+        return;
+
+    if (!xShapeProps->getPropertySetInfo()->hasPropertyByName( u"Visible"_ustr ))
+        return;
+    xShapeProps->getPropertyValue("Visible") >>= bIsShapeVisible;
+
+    if (!bIsShapeVisible)
+        return;
+
+    if (!xShapeProps->getPropertySetInfo()->hasPropertyByName( u"OnClick"_ustr ))
+        return;
+
+    presentation::ClickAction eClickAction = presentation::ClickAction_NONE;
+    xShapeProps->getPropertyValue(u"OnClick"_ustr) >>= eClickAction;
+
+    if (eClickAction != presentation::ClickAction_NONE)
+    {
+        auto aShape = rJsonWriter.startStruct();
+
+        sal_Int32 nVerb = 0;
+        OUString sBookmark;
+
+        if (xShapeProps->getPropertySetInfo()->hasPropertyByName( u"Bookmark"_ustr ))
+            xShapeProps->getPropertyValue(u"Bookmark"_ustr) >>= sBookmark;
+
+        {
+            auto* pObject = SdrObject::getSdrObjectFromXShape(xShape);
+            auto const& rRectangle = pObject->GetLogicRect();
+            auto aRectangle = o3tl::convert(rRectangle, o3tl::Length::mm100, o3tl::Length::twip);
+            auto aRect = rJsonWriter.startNode("bounds");
+            rJsonWriter.put("x", aRectangle.Left());
+            rJsonWriter.put("y", aRectangle.Top());
+            rJsonWriter.put("width", aRectangle.GetWidth());
+            rJsonWriter.put("height", aRectangle.GetHeight());
+        }
+
+        {
+            auto aInteraction = rJsonWriter.startNode("clickAction");
+            switch (eClickAction)
+            {
+            case presentation::ClickAction_BOOKMARK:
+                rJsonWriter.put("action", "bookmark");
+                rJsonWriter.put("bookmark", sBookmark);
+                break;
+            case presentation::ClickAction_DOCUMENT:
+                rJsonWriter.put("action", "document");
+                rJsonWriter.put("document", sBookmark);
+                break;
+
+            case presentation::ClickAction_PREVPAGE:
+                rJsonWriter.put("action", "prevpage");
+                break;
+            case presentation::ClickAction_NEXTPAGE:
+                rJsonWriter.put("action", "nextpage");
+                break;
+
+            case presentation::ClickAction_FIRSTPAGE:
+                rJsonWriter.put("action", "firstpage");
+                break;
+            case presentation::ClickAction_LASTPAGE:
+                rJsonWriter.put("action", "lastpage");
+                break;
+
+            case presentation::ClickAction_SOUND:
+                rJsonWriter.put("action", "sound");
+                rJsonWriter.put("sound", sBookmark);
+                break;
+
+            case presentation::ClickAction_VERB:
+                rJsonWriter.put("action", "verb");
+                xShapeProps->getPropertyValue(u"Verb"_ustr) >>= nVerb;
+                rJsonWriter.put("verb", nVerb);
+                break;
+
+            case presentation::ClickAction_PROGRAM:
+                rJsonWriter.put("action", "program");
+                rJsonWriter.put("program", sBookmark);
+                break;
+
+            case presentation::ClickAction_MACRO:
+                rJsonWriter.put("action", "macro");
+                rJsonWriter.put("macro", sBookmark);
+                break;
+
+            case presentation::ClickAction_STOPPRESENTATION:
+                rJsonWriter.put("action", "stoppresentation");
+                break;
+
+            default:
+                break;
+            }
+        }
+    }
+}
+
+OString SdXImpressDocument::getPresentationInfo() const
+{
+    ::tools::JsonWriter aJsonWriter;
+
+    try
+    {
+        rtl::Reference<SdDrawPagesAccess> xDrawPages = const_cast<SdXImpressDocument*>(this)->getSdDrawPages();
+        // size in twips
+        Size aDocSize = const_cast<SdXImpressDocument*>(this)->getDocumentSize();
+        aJsonWriter.put("docWidth", aDocSize.getWidth());
+        aJsonWriter.put("docHeight", aDocSize.getHeight());
+
+        sd::PresentationSettings const& rSettings = mpDoc->getPresentationSettings();
+
+        const bool bIsEndless = rSettings.mbEndless;
+        aJsonWriter.put("isEndless", bIsEndless);
+
+        if (bIsEndless) {
+            const sal_Int32 nPauseTimeout = rSettings.mnPauseTimeout;
+            aJsonWriter.put("loopAndRepeatDuration", nPauseTimeout);
+        }
+
+        auto aSlideList = aJsonWriter.startArray("slides");
+        sal_Int32 nSlideCount = xDrawPages->getCount();
+        for (sal_Int32 i = 0; i < nSlideCount; ++i)
+        {
+            SdGenericDrawPage* pSlide(xDrawPages->getDrawPageByIndex(i));
+            bool bIsVisible = true; // default visible
+            pSlide->getPropertyValue("Visible") >>= bIsVisible;
+            if (!bIsVisible)
+            {
+                auto aSlideNode = aJsonWriter.startStruct();
+                std::string sSlideHash = GetInterfaceHash(cppu::getXWeak(pSlide));
+                aJsonWriter.put("hash", sSlideHash);
+                aJsonWriter.put("index", i);
+                aJsonWriter.put("hidden", true);
+            }
+            else
+            {
+                SdPage* pPage = SdPage::getImplementation(pSlide);
+
+                auto aSlideNode = aJsonWriter.startStruct();
+                std::string sSlideHash = GetInterfaceHash(cppu::getXWeak(pSlide));
+                aJsonWriter.put("hash", sSlideHash);
+                aJsonWriter.put("index", i);
+
+                if (pPage)
+                {
+                    auto aName = SdDrawPage::getPageApiNameFromUiName(pPage->GetName());
+                    aJsonWriter.put("name", aName);
+                }
+
+                bool bIsDrawPageEmpty = pSlide->getCount() == 0;
+                aJsonWriter.put("empty", bIsDrawPageEmpty);
+
+                // Notes
+                SdPage* pNotesPage = pPage ? mpDoc->GetSdPage((pPage->GetPageNum() - 1) >> 1, PageKind::Notes) : nullptr;
+                if (pNotesPage)
+                {
+                    SdrObject* pNotes = pNotesPage->GetPresObj(PresObjKind::Notes);
+                    if (pNotes)
+                    {
+                        OUStringBuffer strNotes;
+                        OutlinerParaObject* pPara = pNotes->GetOutlinerParaObject();
+                        if (pPara)
+                        {
+                            const EditTextObject& rText = pPara->GetTextObject();
+                            for (sal_Int32 nNote = 0; nNote < rText.GetParagraphCount(); nNote++)
+                            {
+                                strNotes.append(rText.GetText(nNote));
+                            }
+                            aJsonWriter.put("notes", strNotes.makeStringAndClear());
+                        }
+                    }
+                }
+
+                SdMasterPage* pMasterPage = nullptr;
+                SdDrawPage* pMasterPageTarget(dynamic_cast<SdDrawPage*>(pSlide));
+                if (pMasterPageTarget)
+                {
+                    pMasterPage = pMasterPageTarget->getSdMasterPage();
+                    if (pMasterPage)
+                    {
+                        std::string sMPHash = GetInterfaceHash(cppu::getXWeak(pMasterPage));
+                        aJsonWriter.put("masterPage", sMPHash);
+
+                        bool bBackgroundObjectsVisibility = true; // default visible
+                        pSlide->getPropertyValue("IsBackgroundObjectsVisible") >>= bBackgroundObjectsVisibility;
+                        aJsonWriter.put("masterPageObjectsVisibility", bBackgroundObjectsVisibility);
+                    }
+                }
+
+                bool bBackgroundVisibility = true; // default visible
+                pSlide->getPropertyValue("IsBackgroundVisible")  >>= bBackgroundVisibility;
+                if (bBackgroundVisibility)
+                {
+                    SlideBackgroundInfo aSlideBackgroundInfo(pSlide, static_cast<SvxDrawPage*>(pMasterPage));
+                    if (aSlideBackgroundInfo.hasBackground())
+                    {
+                        auto aBackgroundNode = aJsonWriter.startNode("background");
+                        aJsonWriter.put("isCustom", aSlideBackgroundInfo.slideHasOwnBackground());
+                        if (aSlideBackgroundInfo.isSolidColor())
+                        {
+                            aJsonWriter.put("fillColor", aSlideBackgroundInfo.getFillColorAsRGBA());
+                        }
+                    }
+                }
+
+                {
+                    auto aVideoList = aJsonWriter.startArray("videos");
+                    SdrObjListIter aIterator(pPage, SdrIterMode::DeepWithGroups);
+                    while (aIterator.IsMore())
+                    {
+                        auto* pObject = aIterator.Next();
+                        if (pObject->GetObjIdentifier() == SdrObjKind::Media)
+                        {
+                            auto aVideosNode = aJsonWriter.startStruct();
+                            auto* pMediaObject = static_cast<SdrMediaObj*>(pObject);
+                            auto const& rRectangle = pMediaObject->GetLogicRect();
+                            auto aRectangle = o3tl::convert(rRectangle, o3tl::Length::mm100, o3tl::Length::twip);
+                            aJsonWriter.put("id", reinterpret_cast<sal_uInt64>(pMediaObject));
+                            aJsonWriter.put("url", pMediaObject->getTempURL());
+                            aJsonWriter.put("x", aRectangle.Left());
+                            aJsonWriter.put("y", aRectangle.Top());
+                            aJsonWriter.put("width", aRectangle.GetWidth());
+                            aJsonWriter.put("height", aRectangle.GetHeight());
+                        }
+                    }
+                }
+
+                uno::Reference<drawing::XShapes> const xShapes(cppu::getXWeak(pSlide), uno::UNO_QUERY_THROW);
+                if (xShapes.is())
+                {
+                    auto aInteractions = aJsonWriter.startArray("interactions");
+                    auto count = xShapes->getCount();
+                    for (auto j = 0; j < count; j++)
+                    {
+                        auto xObject = xShapes->getByIndex(j);
+                        uno::Reference<drawing::XShape> xShape(xObject, uno::UNO_QUERY);
+                        if (!xShape.is())
+                        {
+                            continue;
+                        }
+
+                        getShapeClickAction(xShape, aJsonWriter);
+                    }
+                }
+
+                sal_Int32 nTransitionType = 0;
+                pSlide->getPropertyValue("TransitionType") >>= nTransitionType;
+
+                if (nTransitionType != 0)
+                {
+                    auto iterator = constTransitionTypeToString.find(nTransitionType);
+
+                    if (iterator != constTransitionTypeToString.end())
+                    {
+                        aJsonWriter.put("transitionType", iterator->second);
+
+                        sal_Int32 nTransitionSubtype = 0;
+                        pSlide->getPropertyValue("TransitionSubtype") >>= nTransitionSubtype;
+
+                        auto iteratorSubType = constTransitionSubTypeToString.find(nTransitionSubtype);
+                        if (iteratorSubType != constTransitionSubTypeToString.end())
+                        {
+                            aJsonWriter.put("transitionSubtype", iteratorSubType->second);
+                        }
+                        else
+                        {
+                            SAL_WARN("sd", "Transition sub-type unknown: " << nTransitionSubtype);
+                        }
+
+                        bool nTransitionDirection = false;
+                        pSlide->getPropertyValue("TransitionDirection") >>= nTransitionDirection;
+                        aJsonWriter.put("transitionDirection", nTransitionDirection);
+
+                        // fade color
+                        if ((nTransitionType == TransitionType::FADE)
+                                && ((nTransitionSubtype == TransitionSubType::FADETOCOLOR)
+                                    || (nTransitionSubtype == TransitionSubType::FADEFROMCOLOR)
+                                    || (nTransitionSubtype == TransitionSubType::FADEOVERCOLOR)))
+                        {
+                            sal_Int32 nFadeColor = 0;
+                            pSlide->getPropertyValue("TransitionFadeColor") >>= nFadeColor;
+                            OUStringBuffer sTmpBuf;
+                            ::sax::Converter::convertColor(sTmpBuf, nFadeColor);
+                            aJsonWriter.put("transitionFadeColor", sTmpBuf.makeStringAndClear());
+                        }
+                    }
+
+                    double nTransitionDuration(0.0);
+                    if( pSlide->getPropertySetInfo()->hasPropertyByName( "TransitionDuration" ) &&
+                        (pSlide->getPropertyValue( "TransitionDuration" ) >>= nTransitionDuration ) && nTransitionDuration != 0.0 )
+                    {
+                        // convert transitionDuration time to ms
+                        aJsonWriter.put("transitionDuration", nTransitionDuration * 1000);
+                    }
+                }
+
+                sal_Int32 nChange(0);
+                if( pSlide->getPropertySetInfo()->hasPropertyByName( "Change" ) &&
+                        (pSlide->getPropertyValue( "Change" ) >>= nChange ) && nChange == 1 )
+                {
+                    double fSlideDuration(0);
+                    if( pSlide->getPropertySetInfo()->hasPropertyByName( "HighResDuration" ) &&
+                            (pSlide->getPropertyValue( "HighResDuration" ) >>= fSlideDuration) )
+                    {
+                        // convert slide duration time to ms
+                        aJsonWriter.put("nextSlideDuration", fSlideDuration * 1000);
+                    }
+                }
+
+
+                AnimationsExporter aAnimationExporter(aJsonWriter, pSlide);
+                if (aAnimationExporter.hasEffects())
+                {
+                    {
+                        auto aAnimationsNode = aJsonWriter.startNode("animations");
+                        aAnimationExporter.exportAnimations();
+                    }
+                    aAnimationExporter.exportTriggers();
+                }
+            }
+        }
+    }
+    catch (uno::Exception& )
+    {
+        TOOLS_WARN_EXCEPTION("sd", "SdXImpressDocument::getSlideShowInfo ... maybe some property can't be retrieved");
+    }
+    return aJsonWriter.finishAndGetAsOString();
+}
+
+namespace
+{
+bool isRequestedSlideValid(SdDrawDocument* mpDoc, sal_Int32 nSlideNumber, const std::string& slideHash)
+{
+    try
+    {
+        uno::Reference<drawing::XDrawPagesSupplier> xDrawPages(getXWeak(mpDoc->getUnoModel()), uno::UNO_QUERY_THROW);
+        uno::Reference<container::XIndexAccess> xSlides(xDrawPages->getDrawPages(), uno::UNO_QUERY_THROW);
+        uno::Reference<drawing::XDrawPage> xSlide(xSlides->getByIndex(nSlideNumber), uno::UNO_QUERY_THROW);
+        if (xSlide.is())
+        {
+            return slideHash == GetInterfaceHash(xSlide);
+        }
+    }
+    catch (uno::Exception&)
+    {
+        TOOLS_WARN_EXCEPTION( "sd", "SdXImpressDocument::createLOKSlideRenderer: failed" );
+    }
+    return false;
+}
+}
+
+bool SdXImpressDocument::createSlideRenderer(
+    const OString& rSlideHash,
+    sal_Int32 nSlideNumber, sal_Int32& nViewWidth, sal_Int32& nViewHeight,
+    bool bRenderBackground, bool bRenderMasterPage)
+{
+    std::string sSlideHash(rSlideHash);
+    if (!isRequestedSlideValid(mpDoc, nSlideNumber, sSlideHash))
+        return false;
+
+    SdPage* pPage = mpDoc->GetSdPage(sal_uInt16(nSlideNumber), PageKind::Standard);
+    if (!pPage)
+        return false;
+
+    mpSlideshowLayerRenderer.reset(new SlideshowLayerRenderer(*pPage, bRenderBackground, bRenderMasterPage));
+    Size aDesiredSize(nViewWidth, nViewHeight);
+    Size aCalculatedSize = mpSlideshowLayerRenderer->calculateAndSetSizePixel(aDesiredSize);
+    nViewWidth = aCalculatedSize.Width();
+    nViewHeight = aCalculatedSize.Height();
+    return true;
+}
+
+void SdXImpressDocument::postSlideshowCleanup()
+{
+    DrawViewShell* pViewSh = GetViewShell();
+    if (!pViewSh)
+        return;
+
+    pViewSh->destroyXSlideShowInstance();
+}
+
+bool SdXImpressDocument::renderNextSlideLayer(unsigned char* pBuffer, bool& bIsBitmapLayer, double& rScale, OUString& rJsonMsg)
+{
+    bool bDone = true;
+
+    if (!mpSlideshowLayerRenderer)
+        return bDone;
+
+    OString sMsg;
+    bool bOK = mpSlideshowLayerRenderer->render(pBuffer, bIsBitmapLayer, rScale, sMsg);
+
+    if (bOK)
+    {
+        rJsonMsg = OUString::fromUtf8(sMsg);
+        bDone = false;
+    }
+
+    return bDone;
 }
 
 SdrModel& SdXImpressDocument::getSdrModelFromUnoModel() const
@@ -2877,54 +4937,32 @@ void SAL_CALL SdXImpressDocument::dispose()
     SfxBaseModel::dispose();
     mbDisposed = true;
 
-    uno::Reference< container::XNameAccess > xLinks( mxLinks );
+    rtl::Reference< SdDocLinkTargets > xLinks( mxLinks );
     if( xLinks.is() )
     {
-        uno::Reference< lang::XComponent > xComp( xLinks, uno::UNO_QUERY );
-        if( xComp.is() )
-            xComp->dispose();
-
+        xLinks->dispose();
         xLinks = nullptr;
     }
 
-    uno::Reference< drawing::XDrawPages > xDrawPagesAccess( mxDrawPagesAccess );
+    rtl::Reference< SdDrawPagesAccess > xDrawPagesAccess( mxDrawPagesAccess );
     if( xDrawPagesAccess.is() )
     {
-        uno::Reference< lang::XComponent > xComp( xDrawPagesAccess, uno::UNO_QUERY );
-        if( xComp.is() )
-            xComp->dispose();
-
+        xDrawPagesAccess->dispose();
         xDrawPagesAccess = nullptr;
     }
 
-    uno::Reference< drawing::XDrawPages > xMasterPagesAccess( mxMasterPagesAccess );
+    rtl::Reference< SdMasterPagesAccess > xMasterPagesAccess( mxMasterPagesAccess );
     if( xDrawPagesAccess.is() )
     {
-        uno::Reference< lang::XComponent > xComp( xMasterPagesAccess, uno::UNO_QUERY );
-        if( xComp.is() )
-            xComp->dispose();
-
-        xDrawPagesAccess = nullptr;
+        xMasterPagesAccess->dispose();
+        xMasterPagesAccess = nullptr;
     }
 
-    uno::Reference< container::XNameAccess > xLayerManager( mxLayerManager );
+    rtl::Reference< SdLayerManager > xLayerManager( mxLayerManager );
     if( xLayerManager.is() )
     {
-        uno::Reference< lang::XComponent > xComp( xLayerManager, uno::UNO_QUERY );
-        if( xComp.is() )
-            xComp->dispose();
-
+        xLayerManager->dispose();
         xLayerManager = nullptr;
-    }
-
-    uno::Reference< container::XNameContainer > xCustomPresentationAccess( mxCustomPresentationAccess );
-    if( xCustomPresentationAccess.is() )
-    {
-        uno::Reference< lang::XComponent > xComp( xCustomPresentationAccess, uno::UNO_QUERY );
-        if( xComp.is() )
-            xComp->dispose();
-
-        xCustomPresentationAccess = nullptr;
     }
 
     mxDashTable = nullptr;
@@ -2934,8 +4972,8 @@ void SAL_CALL SdXImpressDocument::dispose()
     mxTransGradientTable = nullptr;
     mxMarkerTable = nullptr;
     mxDrawingPool = nullptr;
+    mpDocShell = nullptr;
 }
-
 
 SdDrawPagesAccess::SdDrawPagesAccess( SdXImpressDocument& rMyModel )  noexcept
 :   mpModel( &rMyModel)
@@ -2959,24 +4997,25 @@ sal_Int32 SAL_CALL SdDrawPagesAccess::getCount()
 
 uno::Any SAL_CALL SdDrawPagesAccess::getByIndex( sal_Int32 Index )
 {
+    uno::Reference< drawing::XDrawPage > xDrawPage( getDrawPageByIndex(Index) );
+    return uno::Any(xDrawPage);
+}
+
+SdGenericDrawPage* SdDrawPagesAccess::getDrawPageByIndex( sal_Int32 Index )
+{
     ::SolarMutexGuard aGuard;
 
     if( nullptr == mpModel )
         throw lang::DisposedException();
-
-    uno::Any aAny;
 
     if( (Index < 0) || (Index >= mpModel->mpDoc->GetSdPageCount( PageKind::Standard ) ) )
         throw lang::IndexOutOfBoundsException();
 
     SdPage* pPage = mpModel->mpDoc->GetSdPage( static_cast<sal_uInt16>(Index), PageKind::Standard );
     if( pPage )
-    {
-        uno::Reference< drawing::XDrawPage >  xDrawPage( pPage->getUnoPage(), uno::UNO_QUERY );
-        aAny <<= xDrawPage;
-    }
+        return dynamic_cast<SdGenericDrawPage*>( pPage->getUnoPage().get() );
 
-    return aAny;
+    return nullptr;
 }
 
 // XNameAccess
@@ -3147,7 +5186,7 @@ void SAL_CALL SdDrawPagesAccess::remove( const uno::Reference< drawing::XDrawPag
 
 OUString SAL_CALL SdDrawPagesAccess::getImplementationName(  )
 {
-    return "SdDrawPagesAccess";
+    return u"SdDrawPagesAccess"_ustr;
 }
 
 sal_Bool SAL_CALL SdDrawPagesAccess::supportsService( const OUString& ServiceName )
@@ -3157,7 +5196,7 @@ sal_Bool SAL_CALL SdDrawPagesAccess::supportsService( const OUString& ServiceNam
 
 uno::Sequence< OUString > SAL_CALL SdDrawPagesAccess::getSupportedServiceNames(  )
 {
-    return { "com.sun.star.drawing.DrawPages" };
+    return { u"com.sun.star.drawing.DrawPages"_ustr };
 }
 
 // XComponent
@@ -3254,6 +5293,17 @@ sal_Bool SAL_CALL SdMasterPagesAccess::hasElements()
 // XDrawPages
 uno::Reference< drawing::XDrawPage > SAL_CALL SdMasterPagesAccess::insertNewByIndex( sal_Int32 nInsertPos )
 {
+    return insertNewImpl(nInsertPos, std::nullopt);
+}
+
+// XDrawPages2
+uno::Reference< drawing::XDrawPage > SAL_CALL SdMasterPagesAccess::insertNamedNewByIndex( sal_Int32 nInsertPos, const OUString& sName )
+{
+    return insertNewImpl(nInsertPos, sName);
+}
+
+uno::Reference< drawing::XDrawPage > SdMasterPagesAccess::insertNewImpl( sal_Int32 nInsertPos, std::optional<OUString> oPageName )
+{
     ::SolarMutexGuard aGuard;
 
     if( nullptr == mpModel )
@@ -3271,29 +5321,34 @@ uno::Reference< drawing::XDrawPage > SAL_CALL SdMasterPagesAccess::insertNewByIn
             nInsertPos = nMPageCount;
 
         // now generate a unique name for the new masterpage
-        const OUString aStdPrefix( SdResId(STR_LAYOUT_DEFAULT_NAME) );
-        OUString aPrefix( aStdPrefix );
-
-        bool bUnique = true;
-
-        std::vector<OUString> aPageNames;
-        for (sal_Int32 nMaster = 1; nMaster < nMPageCount; ++nMaster)
+        OUString aPrefix;
+        if (oPageName)
+            aPrefix = *oPageName;
+        else
         {
-            const SdPage* pPage = static_cast<const SdPage*>(pDoc->GetMasterPage(static_cast<sal_uInt16>(nMaster)));
-            if (!pPage)
-                continue;
-            aPageNames.push_back(pPage->GetName());
-            if (aPageNames.back() == aPrefix)
-                bUnique = false;
-        }
+            const OUString aStdPrefix( SdResId(STR_LAYOUT_DEFAULT_NAME) );
+            aPrefix = aStdPrefix;
 
-        sal_Int32 i = 0;
-        while (!bUnique)
-        {
-            aPrefix = aStdPrefix + " " + OUString::number(++i);
-            bUnique = std::find(aPageNames.begin(), aPageNames.end(), aPrefix) == aPageNames.end();
-        }
+            bool bUnique = true;
 
+            std::vector<OUString> aPageNames;
+            for (sal_Int32 nMaster = 1; nMaster < nMPageCount; ++nMaster)
+            {
+                const SdPage* pPage = static_cast<const SdPage*>(pDoc->GetMasterPage(static_cast<sal_uInt16>(nMaster)));
+                if (!pPage)
+                    continue;
+                aPageNames.push_back(pPage->GetName());
+                if (aPageNames.back() == aPrefix)
+                    bUnique = false;
+            }
+
+            sal_Int32 i = 0;
+            while (!bUnique)
+            {
+                aPrefix = aStdPrefix + " " + OUString::number(++i);
+                bUnique = std::find(aPageNames.begin(), aPageNames.end(), aPrefix) == aPageNames.end();
+            }
+        }
         OUString aLayoutName = aPrefix + SD_LT_SEPARATOR + STR_LAYOUT_OUTLINE;
 
         // create styles
@@ -3310,6 +5365,9 @@ uno::Reference< drawing::XDrawPage > SAL_CALL SdMasterPagesAccess::insertNewByIn
                            pPage->GetUpperBorder(),
                            pPage->GetRightBorder(),
                            pPage->GetLowerBorder() );
+        if (oPageName)
+            // no need to update the page URLs on a brand new page
+            pMPage->SetName(*oPageName, /*bUpdatePageRelativeURLs*/false);
         pMPage->SetLayoutName( aLayoutName );
         pDoc->InsertMasterPage(pMPage.get(),  static_cast<sal_uInt16>(nInsertPos));
 
@@ -3394,7 +5452,7 @@ void SAL_CALL SdMasterPagesAccess::remove( const uno::Reference< drawing::XDrawP
 
 OUString SAL_CALL SdMasterPagesAccess::getImplementationName(  )
 {
-    return "SdMasterPagesAccess";
+    return u"SdMasterPagesAccess"_ustr;
 }
 
 sal_Bool SAL_CALL SdMasterPagesAccess::supportsService( const OUString& ServiceName )
@@ -3404,7 +5462,7 @@ sal_Bool SAL_CALL SdMasterPagesAccess::supportsService( const OUString& ServiceN
 
 uno::Sequence< OUString > SAL_CALL SdMasterPagesAccess::getSupportedServiceNames(  )
 {
-    return { "com.sun.star.drawing.MasterPages" };
+    return { u"com.sun.star.drawing.MasterPages"_ustr };
 }
 
 SdDocLinkTargets::SdDocLinkTargets(SdXImpressDocument& rMyModel)
@@ -3511,7 +5569,7 @@ SdPage* SdDocLinkTarget::FindPage( std::u16string_view rName ) const
 // XServiceInfo
 OUString SAL_CALL SdDocLinkTargets::getImplementationName()
 {
-    return "SdDocLinkTargets";
+    return u"SdDocLinkTargets"_ustr;
 }
 
 sal_Bool SAL_CALL SdDocLinkTargets::supportsService( const OUString& ServiceName )
@@ -3521,7 +5579,7 @@ sal_Bool SAL_CALL SdDocLinkTargets::supportsService( const OUString& ServiceName
 
 uno::Sequence< OUString > SAL_CALL SdDocLinkTargets::getSupportedServiceNames()
 {
-    return { "com.sun.star.document.LinkTargets" };
+    return { u"com.sun.star.document.LinkTargets"_ustr };
 }
 
 SdDocLinkTargetType::SdDocLinkTargetType(SdXImpressDocument* pModel, sal_uInt16 nT)
@@ -3580,7 +5638,7 @@ uno::Reference< container::XNameAccess > SAL_CALL SdDocLinkTargetType::getLinks(
 // XServiceInfo
 OUString SAL_CALL SdDocLinkTargetType::getImplementationName()
 {
-    return "SdDocLinkTargetType";
+    return u"SdDocLinkTargetType"_ustr;
 }
 
 sal_Bool SAL_CALL SdDocLinkTargetType::supportsService( const OUString& ServiceName )
@@ -3590,7 +5648,7 @@ sal_Bool SAL_CALL SdDocLinkTargetType::supportsService( const OUString& ServiceN
 
 uno::Sequence< OUString > SAL_CALL SdDocLinkTargetType::getSupportedServiceNames()
 {
-    return { "com.sun.star.document.LinkTargetSupplier" };
+    return { u"com.sun.star.document.LinkTargetSupplier"_ustr };
 }
 
 SdDocLinkTarget::SdDocLinkTarget( SdXImpressDocument* pModel, sal_uInt16 nT )
@@ -3741,7 +5799,7 @@ sal_Bool SAL_CALL SdDocLinkTarget::hasElements()
 // XServiceInfo
 OUString SAL_CALL SdDocLinkTarget::getImplementationName()
 {
-    return "SdDocLinkTarget";
+    return u"SdDocLinkTarget"_ustr;
 }
 
 sal_Bool SAL_CALL SdDocLinkTarget::supportsService( const OUString& ServiceName )
@@ -3751,7 +5809,7 @@ sal_Bool SAL_CALL SdDocLinkTarget::supportsService( const OUString& ServiceName 
 
 uno::Sequence< OUString > SAL_CALL SdDocLinkTarget::getSupportedServiceNames()
 {
-    return { "com.sun.star.document.LinkTargets" };
+    return { u"com.sun.star.document.LinkTargets"_ustr };
 }
 
 rtl::Reference< SdXImpressDocument > SdXImpressDocument::GetModel( SdDrawDocument const & rDocument )
@@ -3768,26 +5826,25 @@ rtl::Reference< SdXImpressDocument > SdXImpressDocument::GetModel( SdDrawDocumen
     return xRet;
 }
 
-void NotifyDocumentEvent( SdDrawDocument const & rDocument, const OUString& rEventName )
+void NotifyDocumentEvent(SdDrawDocument const & rDocument, const OUString& rEventName)
 {
-    rtl::Reference< SdXImpressDocument > xModel( SdXImpressDocument::GetModel( rDocument ) );
+    rtl::Reference<SdXImpressDocument> xModel(SdXImpressDocument::GetModel(rDocument));
 
-    if( xModel.is() )
+    if (xModel.is())
     {
-        uno::Reference< uno::XInterface > xSource( static_cast<uno::XWeak*>( xModel.get() ) );
-        css::document::EventObject aEvent( xSource, rEventName );
-        xModel->notifyEvent(aEvent );
+        uno::Reference<uno::XInterface> xSource(static_cast<uno::XWeak*>(xModel.get()));
+        NotifyDocumentEvent(rDocument, rEventName, xSource);
     }
 }
 
-void NotifyDocumentEvent( SdDrawDocument const & rDocument, const OUString& rEventName, const uno::Reference< uno::XInterface >& xSource )
+void NotifyDocumentEvent(SdDrawDocument const & rDocument, const OUString& rEventName, const uno::Reference<uno::XInterface>& xSource)
 {
-    rtl::Reference< SdXImpressDocument > xModel( SdXImpressDocument::GetModel( rDocument ) );
+    rtl::Reference<SdXImpressDocument> xModel(SdXImpressDocument::GetModel(rDocument));
 
-    if( xModel.is() )
+    if (xModel.is())
     {
-        css::document::EventObject aEvent( xSource, rEventName );
-        xModel->notifyEvent(aEvent );
+        css::document::EventObject aEvent(xSource, rEventName);
+        xModel->notifyEvent(aEvent);
     }
 }
 

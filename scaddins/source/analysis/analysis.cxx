@@ -278,9 +278,9 @@ OUString SAL_CALL AnalysisAddIn::getDisplayCategoryName( const OUString& aProgra
     return aRet;
 }
 
-static const char*          pLang[] = { "de", "en" };
-static const char*          pCoun[] = { "DE", "US" };
-const sal_uInt32     nNumOfLoc = SAL_N_ELEMENTS(pLang);
+const char* const pLang[] = { "de", "en" };
+const char* const pCoun[] = { "DE", "US" };
+constexpr sal_uInt32     nNumOfLoc = std::size(pLang);
 
 void AnalysisAddIn::InitDefLocales()
 {
@@ -407,6 +407,7 @@ sal_Int32 SAL_CALL AnalysisAddIn::getWeeknum( const uno::Reference< beans::XProp
     DaysToDate( nDate, nDay, nMonth, nYear );
 
     sal_Int32   nFirstInYear = DateToDays( 1, 1, nYear );
+    // coverity[ tainted_data_return : FALSE ] version 2023.12.2
     sal_uInt16  nFirstDayInYear = GetDayOfWeek( nFirstInYear );
 
     return ( nDate - nFirstInYear + ( ( nMode == 1 )? ( nFirstDayInYear + 1 ) % 7 : nFirstDayInYear ) ) / 7 + 1;
@@ -522,7 +523,7 @@ double SAL_CALL AnalysisAddIn::getSeriessum( double fX, double fN, double fM, co
 
     // #i32269# 0^0 is undefined, Excel returns #NUM! error
     if( fX == 0.0 && fN == 0 )
-        throw uno::RuntimeException("undefined expression: 0^0");
+        throw uno::RuntimeException(u"undefined expression: 0^0"_ustr);
 
     if( fX != 0.0 )
     {

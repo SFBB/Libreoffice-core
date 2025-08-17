@@ -19,7 +19,6 @@
 #include <utility>
 
 using namespace css;
-using namespace css::uno;
 
 UnoApiXmlTest::UnoApiXmlTest(OUString path)
     : UnoApiTest(std::move(path))
@@ -31,6 +30,12 @@ xmlDocUniquePtr UnoApiXmlTest::parseExport(OUString const& rStreamName)
     std::unique_ptr<SvStream> const pStream(parseExportStream(maTempFile.GetURL(), rStreamName));
     xmlDocUniquePtr pXmlDoc = parseXmlStream(pStream.get());
     return pXmlDoc;
+}
+
+xmlDocUniquePtr UnoApiXmlTest::parseExportedFile()
+{
+    auto stream(SvFileStream(maTempFile.GetURL(), StreamMode::READ | StreamMode::TEMPORARY));
+    return parseXmlStream(&stream);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

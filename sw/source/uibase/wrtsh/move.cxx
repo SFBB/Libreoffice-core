@@ -47,24 +47,24 @@ namespace {
 
 class ShellMoveCursor
 {
-    SwWrtShell* pSh;
-    bool bAct;
+    SwWrtShell* m_pSh;
+    bool m_bAct;
 public:
     ShellMoveCursor( SwWrtShell* pWrtSh, bool bSel )
     {
-        bAct = !pWrtSh->ActionPend() && (pWrtSh->GetFrameType(nullptr,false) & FrameTypeFlags::FLY_ANY);
-        pSh = pWrtSh;
-        pSh->MoveCursor( bSel );
+        m_bAct = !pWrtSh->ActionPend() && (pWrtSh->GetFrameType(nullptr,false) & FrameTypeFlags::FLY_ANY);
+        m_pSh = pWrtSh;
+        m_pSh->MoveCursor( bSel );
         pWrtSh->GetView().GetViewFrame().GetBindings().Invalidate(SID_HYPERLINK_GETLINK);
     }
     ~ShellMoveCursor() COVERITY_NOEXCEPT_FALSE
     {
-        if( bAct )
+        if( m_bAct )
         {
             // The action is used for scrolling in "single paragraph"
             // frames with fixed height.
-            pSh->StartAllAction();
-            pSh->EndAllAction();
+            m_pSh->StartAllAction();
+            m_pSh->EndAllAction();
         }
     }
 };
@@ -84,7 +84,7 @@ void SwWrtShell::MoveCursor( bool bWithSelect )
     else
     {
         EndSelect();
-        (this->*m_fnKillSel)( nullptr, false );
+        (this->*m_fnKillSel)( nullptr, false, ScrollSizeMode::ScrollSizeDefault );
     }
 }
 
@@ -482,7 +482,7 @@ bool SwWrtShell::PushCursor(SwTwips lOffset, bool bSelect)
             EndSelect();
 
         bIsFrameSel = IsFrameSelected();
-        bool bIsObjSel = 0 != IsObjSelected();
+        bool bIsObjSel = 0 != GetSelectedObjCount();
 
         // unselect frame
         if( bIsFrameSel || bIsObjSel )
@@ -498,7 +498,7 @@ bool SwWrtShell::PushCursor(SwTwips lOffset, bool bSelect)
             CallChgLnk();
         }
 
-        (this->*m_fnSetCursor)( &m_aDest, true );
+        (this->*m_fnSetCursor)( &m_aDest, true, ScrollSizeMode::ScrollSizeDefault );
 
         bDiff = aOldRect != GetCharRect();
 
@@ -539,7 +539,7 @@ bool SwWrtShell::PopCursor(bool bUpdate, bool bSelect)
             else
                 EndSelect();
 
-            (this->*m_fnSetCursor)(&m_pCursorStack->aDocPos, !m_pCursorStack->bIsFrameSel);
+            (this->*m_fnSetCursor)(&m_pCursorStack->aDocPos, !m_pCursorStack->bIsFrameSel, ScrollSizeMode::ScrollSizeDefault);
             if( m_pCursorStack->bIsFrameSel && IsObjSelectable(m_pCursorStack->aDocPos))
             {
                 HideCursor();
@@ -624,7 +624,7 @@ bool SwWrtShell::GotoPage(sal_uInt16 nPage, bool bRecord)
     return false;
 }
 
-bool SwWrtShell::GotoMark( const ::sw::mark::IMark* const pMark, bool bSelect )
+bool SwWrtShell::GotoMark( const ::sw::mark::MarkBase* const pMark, bool bSelect )
 {
     ShellMoveCursor aTmp( this, bSelect );
     SwPosition aPos = *GetCursor()->GetPoint();
@@ -634,7 +634,7 @@ bool SwWrtShell::GotoMark( const ::sw::mark::IMark* const pMark, bool bSelect )
     return bRet;
 }
 
-bool SwWrtShell::GotoFly( const OUString& rName, FlyCntType eType, bool bSelFrame )
+bool SwWrtShell::GotoFly( const UIName& rName, FlyCntType eType, bool bSelFrame )
 {
     SwPosition aPos = *GetCursor()->GetPoint();
     bool bRet = SwFEShell::GotoFly(rName, eType, bSelFrame);
@@ -670,32 +670,21 @@ bool SwWrtShell::GotoOutline( const OUString& rName )
 bool SwWrtShell::GotoDrawingObject(std::u16string_view rName)
 {
     SwPosition aPos = *GetCursor()->GetPoint();
-    bool bRet = false;
-    SdrView* pDrawView = GetDrawView();
-    if (pDrawView)
+    SdrPage* pPage = getIDocumentDrawModelAccess().GetDrawModel()->GetPage(0);
+    for (const rtl::Reference<SdrObject>& pObj : *pPage)
     {
-        pDrawView->SdrEndTextEdit();
-        pDrawView->UnmarkAll();
-        SdrPage* pPage = getIDocumentDrawModelAccess().GetDrawModel()->GetPage(0);
-        for (const rtl::Reference<SdrObject>& pObj : *pPage)
+        if (pObj->GetName() == rName)
         {
-            if (pObj->GetName() == rName)
+            bool bRet = SelectObj(Point(), 0, pObj.get());
+            if (bRet)
             {
-                SdrPageView* pPageView = pDrawView->GetSdrPageView();
-                if(pPageView)
-                {
-                    pDrawView->MarkObj(pObj.get(), pPageView);
-                    m_aNavigationMgr.addEntry(aPos);
-                    EnterStdMode();
-                    HideCursor();
-                    EnterSelFrameMode();
-                    bRet = true;
-                }
-                break;
+                m_aNavigationMgr.addEntry(aPos);
+                EnterSelFrameMode();
             }
+            return bRet;
         }
     }
-    return bRet;
+    return false;
 }
 
 bool SwWrtShell::GotoRegion( std::u16string_view rName )
@@ -707,7 +696,7 @@ bool SwWrtShell::GotoRegion( std::u16string_view rName )
     return bRet;
  }
 
-bool SwWrtShell::GotoRefMark( const OUString& rRefMark, sal_uInt16 nSubType,
+bool SwWrtShell::GotoRefMark( const SwMarkName& rRefMark, ReferencesSubtype nSubType,
                                     sal_uInt16 nSeqNo, sal_uInt16 nFlags )
 {
     SwPosition aPos = *GetCursor()->GetPoint();
@@ -717,7 +706,7 @@ bool SwWrtShell::GotoRefMark( const OUString& rRefMark, sal_uInt16 nSubType,
     return bRet;
 }
 
-bool SwWrtShell::GotoNextTOXBase( const OUString* pName )
+bool SwWrtShell::GotoNextTOXBase( const UIName* pName )
 {
     SwPosition aPos = *GetCursor()->GetPoint();
     bool bRet = SwCursorShell::GotoNextTOXBase(pName);
@@ -726,7 +715,7 @@ bool SwWrtShell::GotoNextTOXBase( const OUString* pName )
     return bRet;
 }
 
-bool SwWrtShell::GotoTable( const OUString& rName )
+bool SwWrtShell::GotoTable( const UIName& rName )
 {
     SwPosition aPos = *GetCursor()->GetPoint();
     bool bRet = SwCursorShell::GotoTable(rName);

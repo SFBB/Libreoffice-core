@@ -96,7 +96,6 @@
 using ::editeng::SvxBorderLine;
 using namespace com::sun::star;
 using namespace sw::util;
-using namespace sw::types;
 using ::com::sun::star::beans::XPropertySet;
 using ::com::sun::star::drawing::XShape;
 
@@ -186,8 +185,8 @@ void SwBasicEscherEx::WriteHyperlinkWithinFly( SvMemoryStream& rStrm, const SwFo
     SvMemoryStream tmpStrm;
     OUString tmpTextMark;
 
-    OUString rUrl = pINetFormatArg->GetURL();
-    OUString rTarFrame = pINetFormatArg->GetTargetFrameName();
+    const OUString& rUrl = pINetFormatArg->GetURL();
+    const OUString& rTarFrame = pINetFormatArg->GetTargetFrameName();
     sal_uInt32 nFlags = 0;
 
     INetURLObject aUrlObj( rUrl );
@@ -359,7 +358,7 @@ bool WW8Export::MiserableFormFieldExportHack(const SwFrameFormat& rFrameFormat)
     if (!xInfo.is())
         return false;
 
-    if (xInfo->supportsService("com.sun.star.form.component.ComboBox"))
+    if (xInfo->supportsService(u"com.sun.star.form.component.ComboBox"_ustr))
     {
         DoComboBox(xPropSet);
         return true;
@@ -372,10 +371,10 @@ void WW8Export::DoComboBox(uno::Reference<beans::XPropertySet> const & xPropSet)
 {
     OUString sSelected;
     uno::Sequence<OUString> aListItems;
-    xPropSet->getPropertyValue("StringItemList") >>= aListItems;
+    xPropSet->getPropertyValue(u"StringItemList"_ustr) >>= aListItems;
     if (aListItems.hasElements())
     {
-        uno::Any aTmp = xPropSet->getPropertyValue("DefaultText");
+        uno::Any aTmp = xPropSet->getPropertyValue(u"DefaultText"_ustr);
         auto pStr = o3tl::tryAccess<OUString>(aTmp);
         if (pStr)
             sSelected = *pStr;
@@ -383,7 +382,7 @@ void WW8Export::DoComboBox(uno::Reference<beans::XPropertySet> const & xPropSet)
 
     OUString sName;
     {
-        uno::Any aTmp = xPropSet->getPropertyValue("Name");
+        uno::Any aTmp = xPropSet->getPropertyValue(u"Name"_ustr);
         auto pStr = o3tl::tryAccess<OUString>(aTmp);
         if (pStr)
             sName = *pStr;
@@ -394,7 +393,7 @@ void WW8Export::DoComboBox(uno::Reference<beans::XPropertySet> const & xPropSet)
         // property "Help" does not exist and due to the no-existence an exception is thrown.
         try
         {
-            uno::Any aTmp = xPropSet->getPropertyValue("HelpText");
+            uno::Any aTmp = xPropSet->getPropertyValue(u"HelpText"_ustr);
             auto pStr = o3tl::tryAccess<OUString>(aTmp);
             if (pStr)
                 sHelp = *pStr;
@@ -405,7 +404,7 @@ void WW8Export::DoComboBox(uno::Reference<beans::XPropertySet> const & xPropSet)
 
     OUString sToolTip;
     {
-        uno::Any aTmp = xPropSet->getPropertyValue("Name");
+        uno::Any aTmp = xPropSet->getPropertyValue(u"Name"_ustr);
         auto pStr = o3tl::tryAccess<OUString>(aTmp);
         if (pStr)
             sToolTip = *pStr;
@@ -428,7 +427,7 @@ void WW8Export::DoComboBox(const OUString &rName,
 
     WriteChar( 0x01 );
 
-    static sal_uInt8 aArr1[] =
+    sal_uInt8 aArr1[] =
     {
         0x03, 0x6a, 0,0,0,0,    // sprmCPicLocation
         0x06, 0x08, 0x01,       // sprmCFData
@@ -436,7 +435,7 @@ void WW8Export::DoComboBox(const OUString &rName,
         0x02, 0x08, 0x01        // sprmCFFieldVanish
     };
     sal_uInt8* pDataAdr = aArr1 + 2;
-    Set_UInt32( pDataAdr, nDataStt );
+    Set_UInt32(pDataAdr, nDataStt);
 
     m_pChpPlc->AppendFkpEntry(Strm().Tell(), sizeof(aArr1), aArr1);
 
@@ -471,7 +470,7 @@ void WW8Export::DoFormText(const SwInputField * pField)
     m_pChpPlc->AppendFkpEntry( Strm().Tell() );
 
     WriteChar( 0x01 );
-    static sal_uInt8 aArr1[] = {
+    sal_uInt8 aArr1[] = {
         0x02, 0x08, 0x81,        // sprmCFFieldVanish
         0x03, 0x6a, 0,0,0,0,    // sprmCPicLocation
 
@@ -497,7 +496,7 @@ void WW8Export::DoFormText(const SwInputField * pField)
     const OUString fieldStr( pField->ExpandField(true, nullptr) );
     SwWW8Writer::WriteString16(Strm(), fieldStr, false);
 
-    static sal_uInt8 aArr2[] = {
+    sal_uInt8 aArr2[] = {
         0x55, 0x08, 0x01,  // sprmCFSpec
         0x75, 0x08, 0x01       // ???
     };
@@ -576,6 +575,12 @@ void WW8Export::MiserableRTLFrameFormatHack(SwTwips &rLeft, SwTwips &rRight,
     //Require nasty bidi swap
     if (SvxFrameDirection::Horizontal_RL_TB != m_rDoc.GetTextDirection(rFrameFormat.GetPosition()))
         return;
+
+    if (m_rDoc.getIDocumentSettingAccess().get(DocumentSettingId::DO_NOT_MIRROR_RTL_DRAW_OBJS))
+    {
+        // Swap is handled at a layout-level, no need to compensate for it at export time.
+        return;
+    }
 
     SwTwips nWidth = rRight - rLeft;
     SwTwips nPageLeft, nPageRight;
@@ -887,7 +892,7 @@ bool PlcDrawObj::Append( WW8Export const & rWrt, WW8_CP nCp, const ww8::Frame& r
     {
         DrawObj aObj(rFormat, nCp, rNdTopLeft, rWrt.TrueFrameDirection(rFrameFormat),
             rWrt.GetHdFtIndex());
-        maDrawObjs.push_back(aObj);
+        maDrawObjs.push_back(std::move(aObj));
     }
     return bRet;
 }
@@ -1071,7 +1076,7 @@ void MSWord_SdrAttrIter::SetCharSet(const EECharAttrib& rAttr, bool bStart)
 
     if( bStart )
     {
-        rtl_TextEncoding eChrSet = static_cast<const SvxFontItem&>(rItem).GetCharSet();
+        rtl_TextEncoding eChrSet = rItem.StaticWhichCast(EE_CHAR_FONTINFO).GetCharSet();
         m_aChrSetArr.push_back( eChrSet );
         m_aChrTextAtrArr.push_back( &rAttr );
     }
@@ -1164,7 +1169,7 @@ void MSWord_SdrAttrIter::OutAttr( sal_Int32 nSwPos )
             const sal_uInt16 nSlotId = pSrcPool->GetSlotId(nWhich);
             if (nSlotId && nWhich != nSlotId)
             {
-                nWhich = rDstPool.GetWhich(nSlotId);
+                nWhich = rDstPool.GetWhichIDFromSlotID(nSlotId);
                 if (nWhich && nWhich != nSlotId &&
                     nWhich < RES_UNKNOWNATR_BEGIN &&
                     m_rExport.CollapseScriptsforWordOk(m_nScript,nWhich))
@@ -1295,7 +1300,7 @@ void MSWord_SdrAttrIter::OutParaAttr(bool bCharAttr, const std::set<sal_uInt16>*
         sal_uInt16 nSlotId = pSrcPool->GetSlotId(nWhich);
 
         if ( nSlotId && nWhich != nSlotId &&
-             0 != ( nWhich = pDstPool->GetWhich( nSlotId ) ) &&
+             0 != ( nWhich = pDstPool->GetWhichIDFromSlotID( nSlotId ) ) &&
              nWhich != nSlotId &&
              ( bCharAttr ? ( nWhich >= RES_CHRATR_BEGIN && nWhich < RES_TXTATR_END )
                          : ( nWhich >= RES_PARATR_BEGIN && nWhich < RES_FRMATR_END ) ) )
@@ -1675,9 +1680,9 @@ void SwBasicEscherEx::WriteGrfAttr(const SwNoTextNode& rNd, const SwFrameFormat&
         nBrightness = pItem->GetValue();
     }
 
-    if (const SfxEnumItemInterface* pItem = rNd.GetSwAttrSet().GetItemIfSet(RES_GRFATR_DRAWMODE))
+    if (const SwDrawModeGrf* pItem = rNd.GetSwAttrSet().GetItemIfSet(RES_GRFATR_DRAWMODE))
     {
-        nMode = static_cast<GraphicDrawMode>(pItem->GetEnumValue());
+        nMode = pItem->GetValue();
         if (nMode == GraphicDrawMode::Watermark)
         {
             /*
@@ -1849,8 +1854,9 @@ void SwBasicEscherEx::WriteBrushAttr(const SvxBrushItem &rBrush,
         nOpaque = 255 - pGraphicObject->GetAttr().GetAlpha();
         if (0 != nOpaque)
             bSetOpacity = true;
-
-        rPropOpt.AddOpt( ESCHER_Prop_fillType, ESCHER_FillPicture );
+        const ESCHER_FillStyle eFillType
+            = rBrush.GetGraphicPos() == GPOS_TILED ? ESCHER_FillTexture : ESCHER_FillPicture;
+        rPropOpt.AddOpt(ESCHER_Prop_fillType, eFillType);
         rPropOpt.AddOpt( ESCHER_Prop_fNoFillHitTest, 0x140014 );
         rPropOpt.AddOpt( ESCHER_Prop_fillBackColor, 0 );
     }
@@ -2038,6 +2044,7 @@ sal_Int32 SwBasicEscherEx::WriteFlyFrameAttr(const SwFrameFormat& rFormat,
     const SdrObject* pObj = rFormat.FindRealSdrObject();
 
     if( pObj && (pObj->GetLayer() == GetHellLayerId() ||
+        pObj->GetLayer() == GetHeaderFooterHellLayerId() ||
         pObj->GetLayer() == GetInvisibleHellId() ) && !(bIsInHeader && bIsThrough))
     {
         rPropOpt.AddOpt( ESCHER_Prop_fPrint, 0x200020 );
@@ -2062,10 +2069,8 @@ sal_Int32 SwEscherEx::WriteFlyFrameAttr(const SwFrameFormat& rFormat, MSO_SPT eS
      */
     if (const SvxLRSpaceItem* pItem = rFormat.GetItemIfSet(RES_LR_SPACE))
     {
-        rPropOpt.AddOpt( ESCHER_Prop_dxWrapDistLeft,
-                DrawModelToEmu( pItem->GetLeft() ) );
-        rPropOpt.AddOpt( ESCHER_Prop_dxWrapDistRight,
-                DrawModelToEmu( pItem->GetRight() ) );
+        rPropOpt.AddOpt(ESCHER_Prop_dxWrapDistLeft, DrawModelToEmu(pItem->ResolveLeft({})));
+        rPropOpt.AddOpt(ESCHER_Prop_dxWrapDistRight, DrawModelToEmu(pItem->ResolveRight({})));
     }
     else
     {
@@ -2129,6 +2134,7 @@ void SwBasicEscherEx::Init()
     mnEmuDiv = aFact.GetDenominator();
 
     SetHellLayerId(mrWrt.m_rDoc.getIDocumentDrawModelAccess().GetHellId());
+    SetHeaderFooterHellLayerId(mrWrt.m_rDoc.getIDocumentDrawModelAccess().GetHeaderFooterHellId());
 }
 
 sal_Int32 SwBasicEscherEx::ToFract16(sal_Int32 nVal, sal_uInt32 nMax)
@@ -2200,8 +2206,10 @@ SwEscherEx::SwEscherEx(SvStream* pStrm, WW8Export& rWW8Wrt)
         m_pTextBxs = mrWrt.m_pTextBxs.get();
     }
 
-    for( ; i--; pSdrObjs = mrWrt.m_pSdrObjs.get(), m_pTextBxs = mrWrt.m_pTextBxs.get() )
+    while (i > 0)
     {
+        --i;
+
         // "dummy char" (or any Count ?) - why? Only Microsoft knows it.
         GetStream().WriteChar( i );
 
@@ -2268,13 +2276,15 @@ SwEscherEx::SwEscherEx(SvStream* pStrm, WW8Export& rWW8Wrt)
         {
             OpenContainer( ESCHER_SpContainer );
 
-            AddShape( ESCHER_ShpInst_Rectangle,
-                      ShapeFlag::HaveAnchor | ShapeFlag::HaveShapeProperty | ShapeFlag::Background,
-                      nSecondShapeId );
+            const SwFrameFormat &rDefaultPageStyle = mrWrt.m_rDoc.GetPageDesc(0).GetMaster();
+            const SvxBrushItem* pBrush = rDefaultPageStyle.GetItemIfSet(RES_BACKGROUND);
+            ShapeFlag nFlags = ShapeFlag::HaveAnchor | ShapeFlag::HaveShapeProperty;
+            if (pBrush) // document has background
+                nFlags |= ShapeFlag::Background;
+            AddShape(ESCHER_ShpInst_Rectangle, nFlags, nSecondShapeId);
 
             EscherPropertyContainer aPropOpt;
-            const SwFrameFormat &rFormat = mrWrt.m_rDoc.GetPageDesc(0).GetMaster();
-            if (const SvxBrushItem* pBrush = rFormat.GetItemIfSet(RES_BACKGROUND))
+            if (pBrush)
             {
                 WriteBrushAttr(*pBrush, aPropOpt);
 
@@ -2300,6 +2310,9 @@ SwEscherEx::SwEscherEx(SvStream* pStrm, WW8Export& rWW8Wrt)
             CloseContainer();   // ESCHER_SpContainer
         }
         CloseContainer();   // ESCHER_DgContainer
+
+        pSdrObjs = mrWrt.m_pSdrObjs.get();
+        m_pTextBxs = mrWrt.m_pTextBxs.get();
     }
 }
 
@@ -2381,10 +2394,6 @@ bool WinwordAnchoring::ConvertPosition( SwFormatHoriOrient& _iorHoriOri,
         return false;
     }
 
-    // determine value of attribute 'Follow text flow', because positions aligned
-    // at page areas have to be converted, if it's set.
-    const bool bFollowTextFlow = _rFrameFormat.GetFollowTextFlow().GetValue();
-
     // check, if horizontal and vertical position have to be converted due to
     // the fact, that the object is anchored at a paragraph, which has a "column
     // break before" attribute
@@ -2433,10 +2442,6 @@ bool WinwordAnchoring::ConvertPosition( SwFormatHoriOrient& _iorHoriOri,
             {
                 case text::RelOrientation::PAGE_FRAME:
                 case text::RelOrientation::PAGE_PRINT_AREA:
-                {
-                    if ( bConvDueToOrientation || bFollowTextFlow )
-                        eHoriConv = sw::WW8AnchorConv::CONV2PG;
-                }
                 break;
                 case text::RelOrientation::PAGE_LEFT:
                 case text::RelOrientation::PAGE_RIGHT:
@@ -2499,10 +2504,6 @@ bool WinwordAnchoring::ConvertPosition( SwFormatHoriOrient& _iorHoriOri,
             {
                 case text::RelOrientation::PAGE_FRAME:
                 case text::RelOrientation::PAGE_PRINT_AREA:
-                {
-                    if ( bConvDueToOrientation || bFollowTextFlow )
-                        eVertConv = sw::WW8AnchorConv::CONV2PG;
-                }
                 break;
                 case text::RelOrientation::FRAME:
                 {
@@ -2569,13 +2570,6 @@ void WinwordAnchoring::SetAnchoring(const SwFrameFormat& rFormat)
 {
     const RndStdIds eAnchor = rFormat.GetAnchor().GetAnchorId();
     mbInline = (eAnchor == RndStdIds::FLY_AS_CHAR);
-
-    mnGroupShapeBooleanProperties = 0;
-    if (!rFormat.GetFollowTextFlow().GetValue())
-    {
-        // bit32: fUseLayoutInCell, bit16: fLayoutInCell
-        mnGroupShapeBooleanProperties |= 0x80000000;
-    }
 
     SwFormatHoriOrient rHoriOri = rFormat.GetHoriOrient();
     SwFormatVertOrient rVertOri = rFormat.GetVertOrient();
@@ -2705,6 +2699,35 @@ void WinwordAnchoring::SetAnchoring(const SwFrameFormat& rFormat)
             mnYRelTo = 3;
             break;
     }
+
+    mnGroupShapeBooleanProperties = 0;
+    // LayoutInCell is hugely problematic if the value is false,
+    // so much so that Microsoft, since DOCX compat15, ignores it and always does a layoutInCell.
+
+    // LO (currently) does the obvious thing of always orienting a fly from the cell paragraph,
+    // while MSO orients a non-layoutInCell-fly from the paragraph that contains the entire table.
+    // Thus, during ODF->MSO, ONLY a non-paragraph-oriented-fly can be marked as layoutInCell=false.
+
+    // FOR DOCX and DOC, the absence of the fLayoutInCell property means true - layout in cell,
+    // so do nothing unless "Follow text flow" is disabled (which is the default in native LO).
+    bool bLayoutInCell = rFormat.GetFollowTextFlow().GetValue();
+
+    // Microsoft will treat any orientation to CHAR or TEXT_LINE as if it had to layoutInCell
+    if (!bLayoutInCell)
+        bLayoutInCell = mnYRelTo == 3 || mnXRelTo == 3;
+
+    // If this is already MSO format, then we need to round-trip a false FollowingTextFlow value
+    const bool bIsMSOLayout = rFormat.getIDocumentSettingAccess().get(
+        DocumentSettingId::CONSIDER_WRAP_ON_OBJECT_POSITION);
+
+    // For native LO: if !FollowingTextFlow and the fly is oriented to the pageMargin(0) or page(1),
+    // we must write layoutInCell(false), but paragraph-oriented flies match layoutInCell placement.
+    if (!bLayoutInCell && (bIsMSOLayout || mnYRelTo != 2 || mnXRelTo != 2))
+    {
+        // indicate layoutInCell = false
+        // bit32: fUseLayoutInCell, bit16: fLayoutInCell
+        mnGroupShapeBooleanProperties |= 0x80000000;
+    }
 }
 
 void SwEscherEx::WriteFrameExtraData( const SwFrameFormat& rFormat )
@@ -2789,7 +2812,7 @@ sal_Int32 SwEscherEx::WriteFlyFrame(const DrawObj &rObj, sal_uInt32 &rShapeId,
             //object is in the hidden header/footer. We save the fmt directly
             //in such cases; we copy most of the logic from the block above
             const bool bBrowseMode = rFormat.getIDocumentSettingAccess().get(DocumentSettingId::BROWSE_MODE);
-            if( bBrowseMode && rFormat.GetDoc())
+            if( bBrowseMode)
             {
                 if( !rFormat.GetChain().GetPrev() )//obj in header/footer?
                 {
@@ -2994,7 +3017,7 @@ SwMSConvertControls::SwMSConvertControls( SfxObjectShell const *pDSh, SwPaM *pP 
 
 // in transitioning away old filter for ole/ocx controls, ReadOCXStream has been made pure virtual in
 // filter/source/msocximex.cxx, so... we need an implementation here
-bool  SwMSConvertControls::ReadOCXStream( tools::SvRef<SotStorage> const & rSrc1,
+bool  SwMSConvertControls::ReadOCXStream( rtl::Reference<SotStorage> const & rSrc1,
         css::uno::Reference< css::drawing::XShape > *pShapeRef,
         bool bFloatingCtrl )
 {
@@ -3024,12 +3047,12 @@ void SwMSConvertControls::ExportControl(WW8Export &rWW8Wrt, const SdrUnoObj& rFo
     aSize.Height = convertTwipToMm100(aRect.Bottom());
 
     //Open the ObjectPool
-    tools::SvRef<SotStorage> xObjPool = rWW8Wrt.GetWriter().GetStorage().OpenSotStorage(SL::aObjectPool);
+    rtl::Reference<SotStorage> xObjPool = rWW8Wrt.GetWriter().GetStorage().OpenSotStorage(SL::aObjectPool);
 
     //Create a destination storage for the microsoft control
     sal_uInt32 nObjId = ++mnObjectId;
     OUString sStorageName = "_" + OUString::number( static_cast<sal_Int64>( nObjId ));
-    tools::SvRef<SotStorage> xOleStg = xObjPool->OpenSotStorage(sStorageName);
+    rtl::Reference<SotStorage> xOleStg = xObjPool->OpenSotStorage(sStorageName);
 
     if (!xOleStg.is())
         return;

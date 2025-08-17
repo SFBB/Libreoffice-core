@@ -81,7 +81,7 @@ void ScDrawShell::GetHLinkState( SfxItemSet& rSet )             //  Hyperlink
             uno::Reference< beans::XPropertySet > xPropSet( xControlModel, uno::UNO_QUERY );
             uno::Reference< beans::XPropertySetInfo > xInfo = xPropSet->getPropertySetInfo();
 
-            OUString sPropButtonType( "ButtonType" );
+            OUString sPropButtonType( u"ButtonType"_ustr );
 
             if(xInfo->hasPropertyByName( sPropButtonType ))
             {
@@ -91,7 +91,7 @@ void ScDrawShell::GetHLinkState( SfxItemSet& rSet )             //  Hyperlink
                 {
                     OUString sTmp;
                     // Label
-                    OUString sPropLabel( "Label" );
+                    OUString sPropLabel( u"Label"_ustr );
                     if(xInfo->hasPropertyByName( sPropLabel ))
                     {
                         aAny = xPropSet->getPropertyValue( sPropLabel );
@@ -101,7 +101,7 @@ void ScDrawShell::GetHLinkState( SfxItemSet& rSet )             //  Hyperlink
                         }
                     }
                     // URL
-                    OUString sPropTargetURL( "TargetURL" );
+                    OUString sPropTargetURL( u"TargetURL"_ustr );
                     if(xInfo->hasPropertyByName( sPropTargetURL ))
                     {
                         aAny = xPropSet->getPropertyValue( sPropTargetURL );
@@ -111,7 +111,7 @@ void ScDrawShell::GetHLinkState( SfxItemSet& rSet )             //  Hyperlink
                         }
                     }
                     // Target
-                    OUString sPropTargetFrame( "TargetFrame" );
+                    OUString sPropTargetFrame( u"TargetFrame"_ustr );
                     if(xInfo->hasPropertyByName( sPropTargetFrame ))
                     {
                         aAny = xPropSet->getPropertyValue( sPropTargetFrame );
@@ -168,22 +168,22 @@ void ScDrawShell::ExecuteHLink( const SfxRequest& rReq )
                                 uno::Reference< beans::XPropertySet > xPropSet( xControlModel, uno::UNO_QUERY );
                                 uno::Reference< beans::XPropertySetInfo > xInfo = xPropSet->getPropertySetInfo();
 
-                                OUString sPropTargetURL( "TargetURL" );
+                                OUString sPropTargetURL( u"TargetURL"_ustr );
 
                                 // Is it possible to set a URL in the object?
                                 if (xInfo->hasPropertyByName( sPropTargetURL ))
                                 {
 
-                                    OUString sPropButtonType( "ButtonType");
-                                    OUString sPropTargetFrame( "TargetFrame" );
-                                    OUString sPropLabel( "Label" );
+                                    OUString sPropButtonType( u"ButtonType"_ustr);
+                                    OUString sPropTargetFrame( u"TargetFrame"_ustr );
+                                    OUString sPropLabel( u"Label"_ustr );
 
                                     if ( xInfo->hasPropertyByName( sPropLabel ) )
                                     {
                                         xPropSet->setPropertyValue( sPropLabel, uno::Any(rName) );
                                     }
 
-                                    OUString aTmp = INetURLObject::GetAbsURL( rViewData.GetDocShell()->GetMedium()->GetBaseURL(), rURL );
+                                    OUString aTmp = INetURLObject::GetAbsURL( rViewData.GetDocShell().GetMedium()->GetBaseURL(), rURL );
                                     xPropSet->setPropertyValue( sPropTargetURL, uno::Any(aTmp) );
 
                                     if( !rTarget.isEmpty() && xInfo->hasPropertyByName( sPropTargetFrame ) )
@@ -197,7 +197,7 @@ void ScDrawShell::ExecuteHLink( const SfxRequest& rReq )
                                     }
 
                                     //! Undo ???
-                                    rViewData.GetDocShell()->SetDocumentModified();
+                                    rViewData.GetDocShell().SetDocumentModified();
                                     bDone = true;
                                 }
                             }
@@ -295,10 +295,15 @@ void ScDrawShell::ExecDrawFunc( SfxRequest& rReq )
                         {
                             VclAbstractDialogFactory* pFact = VclAbstractDialogFactory::Create();
                             vcl::Window* pWin = rViewData.GetActiveWin();
-                            ScopedVclPtr<VclAbstractDialog> pDlg = pFact->CreateDiagramDialog(
+                            VclPtr<VclAbstractDialog> pDlg = pFact->CreateDiagramDialog(
                                 pWin ? pWin->GetFrameWeld() : nullptr,
                                 *static_cast<SdrObjGroup*>(pObj));
-                            pDlg->Execute();
+                            pDlg->StartExecuteAsync(
+                                [pDlg] (sal_Int32 /*nResult*/)->void
+                                {
+                                    pDlg->disposeOnce();
+                                }
+                            );
                         }
                     }
                 }
@@ -412,21 +417,7 @@ void ScDrawShell::ExecDrawFunc( SfxRequest& rReq )
             break;
 
         case SID_OBJECT_ROTATE:
-            {
-                SdrDragMode eMode;
-                if (pView->GetDragMode() == SdrDragMode::Rotate)
-                    eMode = SdrDragMode::Move;
-                else
-                    eMode = SdrDragMode::Rotate;
-                pView->SetDragMode( eMode );
-                rBindings.Invalidate( SID_OBJECT_ROTATE );
-                rBindings.Invalidate( SID_OBJECT_MIRROR );
-                if (eMode == SdrDragMode::Rotate && !pView->IsFrameDragSingles())
-                {
-                    pView->SetFrameDragSingles();
-                    rBindings.Invalidate( SID_BEZIER_EDIT );
-                }
-            }
+            rViewData.GetViewShell()->SwitchRotateMode();
             break;
         case SID_OBJECT_MIRROR:
             {
@@ -501,66 +492,73 @@ void ScDrawShell::ExecDrawFunc( SfxRequest& rReq )
 
         case SID_RENAME_OBJECT:
             {
-                if(1 == pView->GetMarkedObjectCount())
+                const SdrMarkList& rMarkList = pView->GetMarkedObjectList();
+                if(1 == rMarkList.GetMarkCount())
                 {
                     // #i68101#
-                    SdrObject* pSelected = pView->GetMarkedObjectByIndex(0);
-                    OSL_ENSURE(pSelected, "ScDrawShell::ExecDrawFunc: nMarkCount, but no object (!)");
+                    SdrObject* pSelected = rMarkList.GetMark(0)->GetMarkedSdrObj();
+                    assert(pSelected && "ScDrawShell::ExecDrawFunc: nMarkCount, but no object (!)");
 
                     if(SC_LAYER_INTERN != pSelected->GetLayer())
                     {
-                        OUString aName = pSelected->GetName();
+                        OUString aOldName = pSelected->GetName();
 
                         SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
                         vcl::Window* pWin = rViewData.GetActiveWin();
-                        ScopedVclPtr<AbstractSvxObjectNameDialog> pDlg(pFact->CreateSvxObjectNameDialog(pWin ? pWin->GetFrameWeld() : nullptr, aName));
+                        VclPtr<AbstractSvxObjectNameDialog> pDlg(pFact->CreateSvxObjectNameDialog(pWin ? pWin->GetFrameWeld() : nullptr, aOldName));
 
                         pDlg->SetCheckNameHdl(LINK(this, ScDrawShell, NameObjectHdl));
 
-                        if(RET_OK == pDlg->Execute())
-                        {
-                            ScDocShell* pDocSh = rViewData.GetDocShell();
-                            pDlg->GetName(aName);
-
-                            if (aName != pSelected->GetName())
+                        pDlg->StartExecuteAsync(
+                            [this, pDlg, pSelected] (sal_Int32 nResult)->void
                             {
-                                // handle name change
-                                const SdrObjKind nObjType(pSelected->GetObjIdentifier());
-
-                                if (SdrObjKind::Graphic == nObjType && aName.isEmpty())
+                                if (nResult == RET_OK)
                                 {
-                                    //  graphics objects must have names
-                                    //  (all graphics are supposed to be in the navigator)
-                                    ScDrawLayer* pModel = rViewData.GetDocument().GetDrawLayer();
+                                    ScDocShell& rDocSh = rViewData.GetDocShell();
+                                    OUString aNewName = pDlg->GetName();
 
-                                    if(pModel)
+                                    if (aNewName != pSelected->GetName())
                                     {
-                                        aName = pModel->GetNewGraphicName();
+                                        // handle name change
+                                        const SdrObjKind nObjType(pSelected->GetObjIdentifier());
+
+                                        if (SdrObjKind::Graphic == nObjType && aNewName.isEmpty())
+                                        {
+                                            //  graphics objects must have names
+                                            //  (all graphics are supposed to be in the navigator)
+                                            ScDrawLayer* pModel = rViewData.GetDocument().GetDrawLayer();
+
+                                            if(pModel)
+                                            {
+                                                aNewName = pModel->GetNewGraphicName();
+                                            }
+                                        }
+
+                                        //  An undo action for renaming is missing in svdraw (99363).
+                                        //  For OLE objects (which can be identified using the persist name),
+                                        //  ScUndoRenameObject can be used until there is a common action for all objects.
+                                        if(SdrObjKind::OLE2 == nObjType)
+                                        {
+                                            const OUString aPersistName = static_cast<SdrOle2Obj*>(pSelected)->GetPersistName();
+
+                                            if(!aPersistName.isEmpty())
+                                            {
+                                                rDocSh.GetUndoManager()->AddUndoAction(
+                                                    std::make_unique<ScUndoRenameObject>(rDocSh, aPersistName, pSelected->GetName(), aNewName));
+                                            }
+                                        }
+
+                                        // set new name
+                                        pSelected->SetName(aNewName);
                                     }
+
+                                    // ChartListenerCollectionNeedsUpdate is needed for Navigator update
+                                    rDocSh.GetDocument().SetChartListenerCollectionNeedsUpdate( true );
+                                    rDocSh.SetDrawModified();
                                 }
-
-                                //  An undo action for renaming is missing in svdraw (99363).
-                                //  For OLE objects (which can be identified using the persist name),
-                                //  ScUndoRenameObject can be used until there is a common action for all objects.
-                                if(SdrObjKind::OLE2 == nObjType)
-                                {
-                                    const OUString aPersistName = static_cast<SdrOle2Obj*>(pSelected)->GetPersistName();
-
-                                    if(!aPersistName.isEmpty())
-                                    {
-                                        pDocSh->GetUndoManager()->AddUndoAction(
-                                            std::make_unique<ScUndoRenameObject>(pDocSh, aPersistName, pSelected->GetName(), aName));
-                                    }
-                                }
-
-                                // set new name
-                                pSelected->SetName(aName);
+                                pDlg->disposeOnce();
                             }
-
-                            // ChartListenerCollectionNeedsUpdate is needed for Navigator update
-                            pDocSh->GetDocument().SetChartListenerCollectionNeedsUpdate( true );
-                            pDocSh->SetDrawModified();
-                        }
+                        );
                     }
                 }
                 break;
@@ -569,10 +567,11 @@ void ScDrawShell::ExecDrawFunc( SfxRequest& rReq )
         // #i68101#
         case SID_TITLE_DESCRIPTION_OBJECT:
             {
-                if(1 == pView->GetMarkedObjectCount())
+                const SdrMarkList& rMarkList = pView->GetMarkedObjectList();
+                if(1 == rMarkList.GetMarkCount())
                 {
-                    SdrObject* pSelected = pView->GetMarkedObjectByIndex(0);
-                    OSL_ENSURE(pSelected, "ScDrawShell::ExecDrawFunc: nMarkCount, but no object (!)");
+                    SdrObject* pSelected = rMarkList.GetMark(0)->GetMarkedSdrObj();
+                    assert(pSelected && "ScDrawShell::ExecDrawFunc: nMarkCount, but no object (!)");
 
                     if(SC_LAYER_INTERN != pSelected->GetLayer())
                     {
@@ -582,25 +581,28 @@ void ScDrawShell::ExecDrawFunc( SfxRequest& rReq )
 
                         SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
                         vcl::Window* pWin = rViewData.GetActiveWin();
-                        ScopedVclPtr<AbstractSvxObjectTitleDescDialog> pDlg(pFact->CreateSvxObjectTitleDescDialog(
+                        VclPtr<AbstractSvxObjectTitleDescDialog> pDlg(pFact->CreateSvxObjectTitleDescDialog(
                                     pWin ? pWin->GetFrameWeld() : nullptr, aTitle, aDescription, isDecorative));
 
-                        if(RET_OK == pDlg->Execute())
-                        {
-                            ScDocShell* pDocSh = rViewData.GetDocShell();
+                        pDlg->StartExecuteAsync(
+                            [this, pDlg, pSelected] (sal_Int32 nResult)->void
+                            {
+                                if (nResult == RET_OK)
+                                {
+                                    ScDocShell& rDocSh = rViewData.GetDocShell();
 
-                            // handle Title and Description
-                            pDlg->GetTitle(aTitle);
-                            pDlg->GetDescription(aDescription);
-                            pDlg->IsDecorative(isDecorative);
-                            pSelected->SetTitle(aTitle);
-                            pSelected->SetDescription(aDescription);
-                            pSelected->SetDecorative(isDecorative);
+                                    // handle Title and Description
+                                    pSelected->SetTitle(pDlg->GetTitle());
+                                    pSelected->SetDescription(pDlg->GetDescription());
+                                    pSelected->SetDecorative(pDlg->IsDecorative());
 
-                            // ChartListenerCollectionNeedsUpdate is needed for Navigator update
-                            pDocSh->GetDocument().SetChartListenerCollectionNeedsUpdate( true );
-                            pDocSh->SetDrawModified();
-                        }
+                                    // ChartListenerCollectionNeedsUpdate is needed for Navigator update
+                                    rDocSh.GetDocument().SetChartListenerCollectionNeedsUpdate( true );
+                                    rDocSh.SetDrawModified();
+                                }
+                                pDlg->disposeOnce();
+                            }
+                        );
                     }
                 }
                 break;
@@ -647,8 +649,7 @@ void ScDrawShell::ExecDrawFunc( SfxRequest& rReq )
 
 IMPL_LINK( ScDrawShell, NameObjectHdl, AbstractSvxObjectNameDialog&, rDialog, bool )
 {
-    OUString aName;
-    rDialog.GetName( aName );
+    OUString aName = rDialog.GetName();
 
     ScDrawLayer* pModel = rViewData.GetDocument().GetDrawLayer();
     if ( !aName.isEmpty() && pModel )
@@ -696,7 +697,7 @@ void ScDrawShell::ExecFormatPaintbrush( const SfxRequest& rReq )
             bLock = pArgs->Get(SID_FORMATPAINTBRUSH).GetValue();
 
         ScDrawView* pDrawView = rViewData.GetScDrawView();
-        if ( pDrawView && pDrawView->AreObjectsMarked() )
+        if ( pDrawView && pDrawView->GetMarkedObjectList().GetMarkCount() != 0 )
         {
             std::unique_ptr<SfxItemSet> pItemSet(new SfxItemSet( pDrawView->GetAttrFromMarked(true/*bOnlyHardAttr*/) ));
             pView->SetDrawBrushSet( std::move(pItemSet), bLock );
@@ -707,7 +708,7 @@ void ScDrawShell::ExecFormatPaintbrush( const SfxRequest& rReq )
 void ScDrawShell::StateFormatPaintbrush( SfxItemSet& rSet )
 {
     ScDrawView* pDrawView = rViewData.GetScDrawView();
-    bool bSelection = pDrawView && pDrawView->AreObjectsMarked();
+    bool bSelection = pDrawView && pDrawView->GetMarkedObjectList().GetMarkCount() != 0;
     bool bHasPaintBrush = rViewData.GetView()->HasPaintBrush();
 
     if ( !bHasPaintBrush && !bSelection )

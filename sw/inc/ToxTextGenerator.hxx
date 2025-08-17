@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef SW_TOXTEXTGENERATOR_HXX_
-#define SW_TOXTEXTGENERATOR_HXX_
+#pragma once
 
 #include <rtl/ustring.hxx>
 #include <sal/types.h>
@@ -26,12 +25,12 @@
 #include "fmtautofmt.hxx"
 
 #include <memory>
+#include <optional>
 #include <vector>
 #include <unordered_map>
 
 class SfxItemSet;
 class SwAttrPool;
-class SwFormatAutoFormat;
 class SwChapterField;
 class SwChapterFieldType;
 class SwContentFrame;
@@ -67,8 +66,8 @@ public:
      * This method will process the entries in @p entries, starting at @p indexOfEntryToProcess and
      * process @p numberOfEntriesToProcess entries.
      */
-    void
-    GenerateText(SwDoc *doc,
+    std::optional<std::pair<SwTextNode *, SvxTabStopItem>>
+    GenerateText(SwDoc& rDoc,
         std::unordered_map<OUString, int> & rMarkURLs,
         const std::vector<std::unique_ptr<SwTOXSortTabBase>>& entries,
         sal_uInt16 indexOfEntryToProcess, sal_uInt16 numberOfEntriesToProcess,
@@ -169,7 +168,5 @@ private:
 };
 
 }
-
-#endif /* SW_TOXTEXTGENERATOR_HXX_ */
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

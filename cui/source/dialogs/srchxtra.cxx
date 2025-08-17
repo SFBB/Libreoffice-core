@@ -35,24 +35,31 @@
 #include <tools/resary.hxx>
 #include <vcl/svapp.hxx>
 
-SvxSearchFormatDialog::SvxSearchFormatDialog(weld::Window* pParent, const SfxItemSet& rSet)
-    : SfxTabDialogController(pParent, "cui/ui/searchformatdialog.ui", "SearchFormatDialog", &rSet)
-{
-    AddTabPage("font", SvxCharNamePage::Create, nullptr);
-    AddTabPage("fonteffects", SvxCharEffectsPage::Create, nullptr);
-    AddTabPage("position", SvxCharPositionPage::Create, nullptr);
-    AddTabPage("asianlayout", SvxCharTwoLinesPage::Create, nullptr);
-    AddTabPage("labelTP_PARA_STD", SvxStdParagraphTabPage::Create, nullptr);
-    AddTabPage("labelTP_PARA_ALIGN", SvxParaAlignTabPage::Create, nullptr);
-    AddTabPage("labelTP_PARA_EXT", SvxExtParagraphTabPage::Create, nullptr);
-    AddTabPage("labelTP_PARA_ASIAN", SvxAsianTabPage::Create, nullptr );
-    AddTabPage("background", SvxBkgTabPage::Create, nullptr);
+#include <vcl/tabs.hrc>
 
-    // remove asian tabpages if necessary
-    if ( !SvtCJKOptions::IsDoubleLinesEnabled() )
-        RemoveTabPage("asianlayout");
-    if ( !SvtCJKOptions::IsAsianTypographyEnabled() )
-        RemoveTabPage("labelTP_PARA_ASIAN");
+SvxSearchFormatDialog::SvxSearchFormatDialog(weld::Window* pParent, const SfxItemSet& rSet)
+    : SfxTabDialogController(pParent, u"cui/ui/searchformatdialog.ui"_ustr, u"SearchFormatDialog"_ustr, &rSet)
+{
+    AddTabPage(u"font"_ustr, TabResId(RID_TAB_FONT.aLabel), SvxCharNamePage::Create,
+               RID_M + RID_TAB_FONT.sIconName);
+    AddTabPage(u"fonteffects"_ustr, TabResId(RID_TAB_FONTEFFECTS.aLabel),
+               SvxCharEffectsPage::Create, RID_M + RID_TAB_FONTEFFECTS.sIconName);
+    AddTabPage(u"position"_ustr, TabResId(RID_TAB_POSITION.aLabel), SvxCharPositionPage::Create,
+               RID_M + RID_TAB_POSITION.sIconName);
+    if (SvtCJKOptions::IsDoubleLinesEnabled())
+        AddTabPage(u"asianlayout"_ustr, TabResId(RID_TAB_ASIANLAYOUT.aLabel),
+                   SvxCharTwoLinesPage::Create, RID_M + RID_TAB_ASIANLAYOUT.sIconName);
+    AddTabPage(u"indents"_ustr, TabResId(RID_TAB_INDENTS.aLabel), SvxStdParagraphTabPage::Create,
+               RID_M + RID_TAB_INDENTS.sIconName);
+    AddTabPage(u"alignment"_ustr, TabResId(RID_TAB_ALIGNMENT.aLabel), SvxParaAlignTabPage::Create,
+               RID_M + RID_TAB_ALIGNMENT.sIconName);
+    AddTabPage(u"textflow"_ustr, TabResId(RID_TAB_TEXTFLOW.aLabel), SvxExtParagraphTabPage::Create,
+               RID_M + RID_TAB_TEXTFLOW.sIconName);
+    if (SvtCJKOptions::IsAsianTypographyEnabled())
+        AddTabPage(u"asiantypo"_ustr, TabResId(RID_TAB_ASIANTYPO.aLabel), SvxAsianTabPage::Create,
+                   RID_M + RID_TAB_ASIANTYPO.sIconName);
+    AddTabPage(u"background"_ustr, TabResId(RID_TAB_HIGHLIGHTING.aLabel), SvxBkgTabPage::Create,
+               RID_M + RID_TAB_HIGHLIGHTING.sIconName);
 }
 
 SvxSearchFormatDialog::~SvxSearchFormatDialog()
@@ -85,11 +92,11 @@ void SvxSearchFormatDialog::PageCreated(const OUString& rId, SfxTabPage& rPage)
                 SetFontList( SvxFontListItem( pList, SID_ATTR_CHAR_FONTLIST ) );
         static_cast<SvxCharNamePage&>(rPage).EnableSearchMode();
     }
-    else if (rId == "labelTP_PARA_STD")
+    else if (rId == "indents")
     {
         static_cast<SvxStdParagraphTabPage&>(rPage).EnableAutoFirstLine();
     }
-    else if (rId == "labelTP_PARA_ALIGN")
+    else if (rId == "alignment")
     {
         static_cast<SvxParaAlignTabPage&>(rPage).EnableJustifyExt();
     }
@@ -103,10 +110,10 @@ void SvxSearchFormatDialog::PageCreated(const OUString& rId, SfxTabPage& rPage)
 
 SvxSearchAttributeDialog::SvxSearchAttributeDialog(weld::Window* pParent,
     SearchAttrItemList& rLst, const WhichRangesContainer& pWhRanges)
-    : GenericDialogController(pParent, "cui/ui/searchattrdialog.ui", "SearchAttrDialog")
+    : GenericDialogController(pParent, u"cui/ui/searchattrdialog.ui"_ustr, u"SearchAttrDialog"_ustr)
     , rList(rLst)
-    , m_xAttrLB(m_xBuilder->weld_tree_view("treeview"))
-    , m_xOKBtn(m_xBuilder->weld_button("ok"))
+    , m_xAttrLB(m_xBuilder->weld_tree_view(u"treeview"_ustr))
+    , m_xOKBtn(m_xBuilder->weld_button(u"ok"_ustr))
 {
     m_xAttrLB->set_size_request(m_xAttrLB->get_approximate_digit_width() * 50,
                                 m_xAttrLB->get_height_rows(12));
@@ -135,7 +142,7 @@ SvxSearchAttributeDialog::SvxSearchAttributeDialog(weld::Window* pParent,
                     if ( nSlot == rList[i].nSlot )
                     {
                         bFound = true;
-                        if ( IsInvalidItem( rList[i].pItemPtr ) )
+                        if ( IsInvalidItem( rList[i].aItemPtr.getItem() ) )
                             bChecked = true;
                     }
                 }
@@ -167,13 +174,16 @@ SvxSearchAttributeDialog::~SvxSearchAttributeDialog()
 
 IMPL_LINK_NOARG(SvxSearchAttributeDialog, OKHdl, weld::Button&, void)
 {
-    SearchAttrInfo aInvalidItem;
-    aInvalidItem.pItemPtr = INVALID_POOL_ITEM;
+    SfxObjectShell* pObjSh = SfxObjectShell::Current();
+    DBG_ASSERT( pObjSh, "No DocShell" );
+    if (!pObjSh)
+        return;
+    SfxItemPool& rPool(pObjSh->GetPool());
 
     for (int i = 0, nCount = m_xAttrLB->n_children(); i < nCount; ++i)
     {
-        sal_uInt16 nSlot = m_xAttrLB->get_id(i).toUInt32();
-        bool bChecked = m_xAttrLB->get_toggle(i) == TRISTATE_TRUE;
+        const sal_uInt16 nSlot(m_xAttrLB->get_id(i).toUInt32());
+        const bool bChecked(TRISTATE_TRUE == m_xAttrLB->get_toggle(i));
 
         sal_uInt16 j;
         for ( j = rList.Count(); j; )
@@ -182,13 +192,9 @@ IMPL_LINK_NOARG(SvxSearchAttributeDialog, OKHdl, weld::Button&, void)
             if( rItem.nSlot == nSlot )
             {
                 if( bChecked )
-                {
-                    if( !IsInvalidItem( rItem.pItemPtr ) )
-                        delete rItem.pItemPtr;
-                    rItem.pItemPtr = INVALID_POOL_ITEM;
-                }
-                else if( IsInvalidItem( rItem.pItemPtr ) )
-                    rItem.pItemPtr = nullptr;
+                    rItem.aItemPtr = SfxPoolItemHolder(rPool, INVALID_POOL_ITEM);
+                else if( IsInvalidItem( rItem.aItemPtr.getItem() ) )
+                    rItem.aItemPtr = SfxPoolItemHolder();
                 j = 1;
                 break;
             }
@@ -196,14 +202,13 @@ IMPL_LINK_NOARG(SvxSearchAttributeDialog, OKHdl, weld::Button&, void)
 
         if ( !j && bChecked )
         {
-            aInvalidItem.nSlot = nSlot;
-            rList.Insert( aInvalidItem );
+            rList.Insert( { nSlot, SfxPoolItemHolder(rPool, INVALID_POOL_ITEM) });
         }
     }
 
     // remove invalid items (pItem == NULL)
     for ( sal_uInt16 n = rList.Count(); n; )
-        if ( !rList[ --n ].pItemPtr )
+        if ( !rList[ --n ].aItemPtr.getItem() )
             rList.Remove( n );
 
     m_xDialog->response(RET_OK);
@@ -213,11 +218,11 @@ IMPL_LINK_NOARG(SvxSearchAttributeDialog, OKHdl, weld::Button&, void)
 
 SvxSearchSimilarityDialog::SvxSearchSimilarityDialog(weld::Window* pParent, bool bRelax,
     sal_uInt16 nOther, sal_uInt16 nShorter, sal_uInt16 nLonger)
-    : GenericDialogController(pParent, "cui/ui/similaritysearchdialog.ui", "SimilaritySearchDialog")
-    , m_xOtherFld(m_xBuilder->weld_spin_button("otherfld"))
-    , m_xLongerFld(m_xBuilder->weld_spin_button("longerfld"))
-    , m_xShorterFld(m_xBuilder->weld_spin_button("shorterfld"))
-    , m_xRelaxBox(m_xBuilder->weld_check_button("relaxbox"))
+    : GenericDialogController(pParent, u"cui/ui/similaritysearchdialog.ui"_ustr, u"SimilaritySearchDialog"_ustr)
+    , m_xOtherFld(m_xBuilder->weld_spin_button(u"otherfld"_ustr))
+    , m_xLongerFld(m_xBuilder->weld_spin_button(u"longerfld"_ustr))
+    , m_xShorterFld(m_xBuilder->weld_spin_button(u"shorterfld"_ustr))
+    , m_xRelaxBox(m_xBuilder->weld_check_button(u"relaxbox"_ustr))
 {
     m_xOtherFld->set_value(nOther);
     m_xShorterFld->set_value(nShorter);

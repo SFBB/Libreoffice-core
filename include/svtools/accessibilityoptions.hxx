@@ -19,28 +19,11 @@
 #pragma once
 
 #include <svtools/svtdllapi.h>
-#include <unotools/options.hxx>
 
-class SvtAccessibilityOptions_Impl;
-
-class SAL_WARN_UNUSED SVT_DLLPUBLIC SvtAccessibilityOptions final :
-    public utl::detail::Options
+namespace SvtAccessibilityOptions
 {
-private:
-    static SvtAccessibilityOptions_Impl* sm_pSingleImplConfig;
-    static sal_Int32                     sm_nAccessibilityRefCount;
-
-public:
-    SvtAccessibilityOptions();
-    virtual ~SvtAccessibilityOptions() override;
-
     // get & set config entries
-    static bool GetIsAllowAnimatedGraphics();
-    static bool GetIsAllowAnimatedText();
-    static bool GetIsAutomaticFontColor();
-    static bool IsSelectionInReadonly();
-
-    static void SetVCLSettings();
+    SVT_DLLPUBLIC void SetVCLSettings();
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

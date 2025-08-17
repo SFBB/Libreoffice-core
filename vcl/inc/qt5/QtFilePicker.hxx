@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -36,7 +36,9 @@
 #include <osl/mutex.hxx>
 #include <unotools/resmgr.hxx>
 
+SAL_WNODEPRECATED_DECLARATIONS_PUSH
 #include <QtCore/QObject>
+SAL_WNODEPRECATED_DECLARATIONS_POP
 #include <QtCore/QString>
 #include <QtCore/QStringList>
 #include <QtCore/QHash>
@@ -167,6 +169,7 @@ private:
     QtFilePicker& operator=(const QtFilePicker&) = delete;
 
     static QString getResString(TranslateId pRedId);
+    void applyTemplate(sal_Int16 nTemplateId);
     static css::uno::Any handleGetListValue(const QComboBox* pWidget, sal_Int16 nControlAction);
     static void handleSetListValue(QComboBox* pQComboBox, sal_Int16 nAction,
                                    const css::uno::Any& rValue);
@@ -183,4 +186,4 @@ private Q_SLOTS:
     void finished(int);
 };
 
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

@@ -17,7 +17,6 @@
 
 #include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/frame/XModel.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/sheet/XSpreadsheetDocument.hpp>
 #include <com/sun/star/sheet/XSpreadsheet.hpp>
 #include <com/sun/star/sheet/XSpreadsheets.hpp>
@@ -76,7 +75,7 @@ private:
 };
 
 ScModelObj::ScModelObj()
-    : UnoApiTest("/sc/qa/extras/testdocuments")
+    : UnoApiTest(u"/sc/qa/extras/testdocuments"_ustr)
 {
 }
 
@@ -94,7 +93,7 @@ uno::Reference<uno::XInterface> ScModelObj::init()
                  xSheet->getCellByPosition(6, 5) };
     m_xCells[0]->setValue(15);
     m_xCells[1]->setValue(10);
-    m_xCells[2]->setFormula("= E6 * F6");
+    m_xCells[2]->setFormula(u"= E6 * F6"_ustr);
 
     return xModel;
 }
@@ -105,7 +104,7 @@ void ScModelObj::setUp()
 {
     UnoApiTest::setUp();
     // create a calc document
-    loadFromURL(u"ScModelObj.ods");
+    loadFromFile(u"ScModelObj.ods");
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(ScModelObj);

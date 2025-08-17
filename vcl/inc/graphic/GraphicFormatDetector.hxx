@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_INC_GRAPHICFORMATDETECTOR_HXX
-#define INCLUDED_VCL_INC_GRAPHICFORMATDETECTOR_HXX
+#pragma once
 
 #include <tools/stream.hxx>
 #include <vector>
@@ -28,105 +27,105 @@ namespace vcl
 {
 static inline OUString getImportFormatShortName(GraphicFileFormat nFormat)
 {
-    const char* pKeyName = nullptr;
+    OUString aKeyName;
 
     switch (nFormat)
     {
         case GraphicFileFormat::BMP:
-            pKeyName = "BMP";
+            aKeyName = u"BMP"_ustr;
             break;
         case GraphicFileFormat::GIF:
-            pKeyName = "GIF";
+            aKeyName = u"GIF"_ustr;
             break;
         case GraphicFileFormat::JPG:
-            pKeyName = "JPG";
+            aKeyName = u"JPG"_ustr;
             break;
         case GraphicFileFormat::PCD:
-            pKeyName = "PCD";
+            aKeyName = u"PCD"_ustr;
             break;
         case GraphicFileFormat::PCX:
-            pKeyName = "PCX";
+            aKeyName = u"PCX"_ustr;
             break;
         case GraphicFileFormat::PNG:
-            pKeyName = "PNG";
+            aKeyName = u"PNG"_ustr;
             break;
         case GraphicFileFormat::APNG:
-            pKeyName = "APNG";
+            aKeyName = u"APNG"_ustr;
             break;
         case GraphicFileFormat::XBM:
-            pKeyName = "XBM";
+            aKeyName = u"XBM"_ustr;
             break;
         case GraphicFileFormat::XPM:
-            pKeyName = "XPM";
+            aKeyName = u"XPM"_ustr;
             break;
         case GraphicFileFormat::PBM:
-            pKeyName = "PBM";
+            aKeyName = u"PBM"_ustr;
             break;
         case GraphicFileFormat::PGM:
-            pKeyName = "PGM";
+            aKeyName = u"PGM"_ustr;
             break;
         case GraphicFileFormat::PPM:
-            pKeyName = "PPM";
+            aKeyName = u"PPM"_ustr;
             break;
         case GraphicFileFormat::RAS:
-            pKeyName = "RAS";
+            aKeyName = u"RAS"_ustr;
             break;
         case GraphicFileFormat::TGA:
-            pKeyName = "TGA";
+            aKeyName = u"TGA"_ustr;
             break;
         case GraphicFileFormat::PSD:
-            pKeyName = "PSD";
+            aKeyName = u"PSD"_ustr;
             break;
         case GraphicFileFormat::EPS:
-            pKeyName = "EPS";
+            aKeyName = u"EPS"_ustr;
             break;
         case GraphicFileFormat::TIF:
-            pKeyName = "TIF";
+            aKeyName = u"TIF"_ustr;
             break;
         case GraphicFileFormat::DXF:
-            pKeyName = "DXF";
+            aKeyName = u"DXF"_ustr;
             break;
         case GraphicFileFormat::MET:
-            pKeyName = "MET";
+            aKeyName = u"MET"_ustr;
             break;
         case GraphicFileFormat::PCT:
-            pKeyName = "PCT";
+            aKeyName = u"PCT"_ustr;
             break;
         case GraphicFileFormat::SVM:
-            pKeyName = "SVM";
+            aKeyName = u"SVM"_ustr;
             break;
         case GraphicFileFormat::WMF:
-            pKeyName = "WMF";
+            aKeyName = u"WMF"_ustr;
             break;
         case GraphicFileFormat::EMF:
-            pKeyName = "EMF";
+            aKeyName = u"EMF"_ustr;
             break;
         case GraphicFileFormat::SVG:
-            pKeyName = "SVG";
+            aKeyName = u"SVG"_ustr;
             break;
         case GraphicFileFormat::WMZ:
-            pKeyName = "WMZ";
+            aKeyName = u"WMZ"_ustr;
             break;
         case GraphicFileFormat::EMZ:
-            pKeyName = "EMZ";
+            aKeyName = u"EMZ"_ustr;
             break;
         case GraphicFileFormat::SVGZ:
-            pKeyName = "SVGZ";
+            aKeyName = u"SVGZ"_ustr;
             break;
         case GraphicFileFormat::WEBP:
-            pKeyName = "WEBP";
+            aKeyName = u"WEBP"_ustr;
             break;
         case GraphicFileFormat::MOV:
-            pKeyName = "MOV";
+            aKeyName = u"MOV"_ustr;
             break;
         case GraphicFileFormat::PDF:
-            pKeyName = "PDF";
+            aKeyName = u"PDF"_ustr;
             break;
         default:
             assert(false);
     }
 
-    return OUString::createFromAscii(pKeyName);
+    return aKeyName;
 }
 /***
  * This function is has two modes:
@@ -166,21 +165,21 @@ public:
     bool checkPNG();
     bool checkAPNG();
     bool checkJPG();
-    bool checkSVM();
-    bool checkPCD();
+    SAL_DLLPRIVATE bool checkSVM();
+    SAL_DLLPRIVATE bool checkPCD();
     bool checkPSD();
     bool checkEPS();
-    bool checkDXF();
-    bool checkPCT();
-    bool checkPBM();
-    bool checkPGM();
-    bool checkPPM();
-    bool checkRAS();
+    SAL_DLLPRIVATE bool checkDXF();
+    SAL_DLLPRIVATE bool checkPCT();
+    SAL_DLLPRIVATE bool checkPBM();
+    SAL_DLLPRIVATE bool checkPGM();
+    SAL_DLLPRIVATE bool checkPPM();
+    SAL_DLLPRIVATE bool checkRAS();
     bool checkXPM();
     bool checkXBM();
     bool checkSVG();
     bool checkTGA();
-    bool checkMOV();
+    SAL_DLLPRIVATE bool checkMOV();
     bool checkPDF();
     bool checkWEBP();
     const GraphicMetadata& getMetadata();
@@ -195,14 +194,13 @@ private:
      * @param nRetSize the amount of bytes actually uncompressed
      * @return sal_uInt8* a pointer to maFirstBytes or aUncompressed buffer
      */
-    sal_uInt8* checkAndUncompressBuffer(sal_uInt8* aUncompressedBuffer, sal_uInt32 nSize,
-                                        sal_uInt64& nDecompressedSize);
+    SAL_DLLPRIVATE sal_uInt8* checkAndUncompressBuffer(sal_uInt8* aUncompressedBuffer,
+                                                       sal_uInt32 nSize,
+                                                       sal_uInt64& nDecompressedSize);
     bool mbExtendedInfo;
     bool mbWasCompressed;
     GraphicMetadata maMetadata;
 };
 }
-
-#endif // INCLUDED_VCL_INC_GRAPHICFORMATDETECTOR_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

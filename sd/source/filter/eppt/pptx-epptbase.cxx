@@ -25,6 +25,7 @@
 #include <vcl/outdev.hxx>
 #include <rtl/ustring.hxx>
 #include <rtl/strbuf.hxx>
+#include <rtl/ustrbuf.hxx>
 #include <sal/log.hxx>
 #include <tools/UnitConversion.hxx>
 #include <com/sun/star/awt/Rectangle.hpp>
@@ -45,7 +46,7 @@
 #include <com/sun/star/style/XStyle.hpp>
 #include <com/sun/star/style/XStyleFamiliesSupplier.hpp>
 #include <com/sun/star/task/XStatusIndicator.hpp>
-
+#include <unomodel.hxx>
 
 using namespace com::sun::star;
 
@@ -115,7 +116,7 @@ PPTWriterBase::PPTWriterBase()
     SAL_INFO("sd.eppt", "PPTWriterBase::PPTWriterBase()");
 }
 
-PPTWriterBase::PPTWriterBase( const Reference< XModel > & rXModel,
+PPTWriterBase::PPTWriterBase( const rtl::Reference< SdXImpressDocument > & rXModel,
                               const Reference< XStatusIndicator > & rXStatInd )
     : mXModel(rXModel)
     , mXStatusIndicator(rXStatInd)
@@ -149,7 +150,7 @@ void PPTWriterBase::exportPPT( const std::vector< css::beans::PropertyValue >& r
     if ( !InitSOIface() )
         return;
 
-    FontCollectionEntry aDefaultFontDesc( "Times New Roman",
+    FontCollectionEntry aDefaultFontDesc( u"Times New Roman"_ustr,
                                           ROMAN,
                                           awt::FontPitch::VARIABLE,
                                                     RTL_TEXTENCODING_MS_1252 );
@@ -159,10 +160,10 @@ void PPTWriterBase::exportPPT( const std::vector< css::beans::PropertyValue >& r
         return;
 
     sal_Int32 nWidth = 21000;
-    if ( ImplGetPropertyValue( mXPagePropSet, "Width" ) )
+    if ( ImplGetPropertyValue( mXPagePropSet, u"Width"_ustr ) )
         mAny >>= nWidth;
     sal_Int32 nHeight = 29700;
-    if ( ImplGetPropertyValue( mXPagePropSet, "Height" ) )
+    if ( ImplGetPropertyValue( mXPagePropSet, u"Height"_ustr ) )
         mAny >>= nHeight;
 
     maNotesPageSize = MapSize( awt::Size( nWidth, nHeight ) );
@@ -171,10 +172,10 @@ void PPTWriterBase::exportPPT( const std::vector< css::beans::PropertyValue >& r
         return;
 
     nWidth = 28000;
-    if ( ImplGetPropertyValue( mXPagePropSet, "Width" ) )
+    if ( ImplGetPropertyValue( mXPagePropSet, u"Width"_ustr ) )
         mAny >>= nWidth;
     nHeight = 21000;
-    if ( ImplGetPropertyValue( mXPagePropSet, "Height" ) )
+    if ( ImplGetPropertyValue( mXPagePropSet, u"Height"_ustr ) )
         mAny >>= nHeight;
     maDestPageSize = MapSize( awt::Size( nWidth, nHeight ) );
     maPageSize = awt::Size(nWidth, nHeight);
@@ -219,18 +220,11 @@ bool PPTWriterBase::InitSOIface()
 {
     while( true )
     {
-        mXDrawPagesSupplier.set( mXModel, UNO_QUERY );
-        if ( !mXDrawPagesSupplier.is() )
-            break;
-
-        mXMasterPagesSupplier.set( mXModel, UNO_QUERY );
-        if ( !mXMasterPagesSupplier.is() )
-            break;
-        mXDrawPages = mXMasterPagesSupplier->getMasterPages();
+        mXDrawPages = mXModel->getMasterPages();
         if ( !mXDrawPages.is() )
             break;
         mnMasterPages = mXDrawPages->getCount();
-        mXDrawPages = mXDrawPagesSupplier->getDrawPages();
+        mXDrawPages = mXModel->getDrawPages();
         if( !mXDrawPages.is() )
             break;
         mnPages =  mXDrawPages->getCount();
@@ -253,7 +247,7 @@ bool PPTWriterBase::GetPageByIndex( sal_uInt32 nIndex, PageType ePageType )
                 case NORMAL :
                 case NOTICE :
                 {
-                    mXDrawPages = mXDrawPagesSupplier->getDrawPages();
+                    mXDrawPages = mXModel->getDrawPages();
                     if( !mXDrawPages.is() )
                         return false;
                 }
@@ -261,7 +255,7 @@ bool PPTWriterBase::GetPageByIndex( sal_uInt32 nIndex, PageType ePageType )
 
                 case MASTER :
                 {
-                    mXDrawPages = mXMasterPagesSupplier->getMasterPages();
+                    mXDrawPages = mXModel->getMasterPages();
                     if( !mXDrawPages.is() )
                         return false;
                 }
@@ -288,7 +282,7 @@ bool PPTWriterBase::GetPageByIndex( sal_uInt32 nIndex, PageType ePageType )
         if ( !mXPagePropSet.is() )
             break;
 
-        if (GetPropertyValue( aAny, mXPagePropSet, "IsBackgroundDark" ) )
+        if (GetPropertyValue( aAny, mXPagePropSet, u"IsBackgroundDark"_ustr ) )
             aAny >>= mbIsBackgroundDark;
 
         mXShapes = mXDrawPage;
@@ -297,7 +291,7 @@ bool PPTWriterBase::GetPageByIndex( sal_uInt32 nIndex, PageType ePageType )
 
         /* try to get the "real" background PropertySet. If the normal page is not supporting this property, it is
            taken the property from the master */
-        bool bHasBackground = GetPropertyValue( aAny, mXPagePropSet, "Background", true );
+        bool bHasBackground = GetPropertyValue( aAny, mXPagePropSet, u"Background"_ustr, true );
         if ( bHasBackground )
             bHasBackground = ( aAny >>= mXBackgroundPropSet );
         if ( !bHasBackground )
@@ -312,7 +306,7 @@ bool PPTWriterBase::GetPageByIndex( sal_uInt32 nIndex, PageType ePageType )
                     aXMasterPagePropSet.set( aXMasterDrawPage, UNO_QUERY );
                     if ( aXMasterPagePropSet.is() )
                     {
-                        bool bBackground = GetPropertyValue( aAny, aXMasterPagePropSet, "Background" );
+                        bool bBackground = GetPropertyValue( aAny, aXMasterPagePropSet, u"Background"_ustr );
                         if ( bBackground )
                         {
                             aAny >>= mXBackgroundPropSet;
@@ -337,7 +331,7 @@ bool PPTWriterBase::CreateSlide( sal_uInt32 nPageNum )
     SetCurrentStyleSheet( nMasterNum );
 
     Reference< XPropertySet > aXBackgroundPropSet;
-    bool bHasBackground = GetPropertyValue( aAny, mXPagePropSet, "Background" );
+    bool bHasBackground = GetPropertyValue( aAny, mXPagePropSet, u"Background"_ustr );
     if ( bHasBackground )
         bHasBackground = ( aAny >>= aXBackgroundPropSet );
 
@@ -356,7 +350,7 @@ bool PPTWriterBase::CreateSlide( sal_uInt32 nPageNum )
         }
     }
 */
-    if ( GetPropertyValue( aAny, mXPagePropSet, "IsBackgroundObjectsVisible" ) )
+    if ( GetPropertyValue( aAny, mXPagePropSet, u"IsBackgroundObjectsVisible"_ustr ) )
     {
         bool bBackgroundObjectsVisible = false;
         if ( aAny >>= bBackgroundObjectsVisible )
@@ -389,7 +383,7 @@ bool PPTWriterBase::CreateSlideMaster( sal_uInt32 nPageNum )
     SetCurrentStyleSheet( nPageNum );
 
     css::uno::Reference< css::beans::XPropertySet > aXBackgroundPropSet;
-    if (ImplGetPropertyValue(mXPagePropSet, "Background"))                // load background shape
+    if (ImplGetPropertyValue(mXPagePropSet, u"Background"_ustr))                // load background shape
         mAny >>= aXBackgroundPropSet;
 
     ImplWriteSlideMaster( nPageNum, aXBackgroundPropSet );
@@ -401,7 +395,7 @@ sal_Int32 PPTWriterBase::GetLayoutOffset( const css::uno::Reference< css::beans:
 {
     css::uno::Any aAny;
     sal_Int32 nLayout = 20;
-    if ( GetPropertyValue( aAny, rXPropSet, "Layout", true ) )
+    if ( GetPropertyValue( aAny, rXPropSet, u"Layout"_ustr, true ) )
         aAny >>= nLayout;
 
     SAL_INFO("sd.eppt", "GetLayoutOffset " << nLayout);
@@ -451,7 +445,7 @@ sal_uInt32 PPTWriterBase::GetMasterIndex( PageType ePageType )
             css::uno::Reference< css::beans::XPropertySet > aXPropertySet( aXDrawPage, css::uno::UNO_QUERY );
             if ( aXPropertySet.is() )
             {
-                if ( ImplGetPropertyValue( aXPropertySet, "Number" ) )
+                if ( ImplGetPropertyValue( aXPropertySet, u"Number"_ustr ) )
                     nRetValue |= *o3tl::doAccess<sal_Int16>(mAny);
                 if ( nRetValue & 0xffff )           // avoid overflow
                     nRetValue--;
@@ -484,13 +478,7 @@ bool PPTWriterBase::GetStyleSheets()
         Reference< XNameAccess >
             aXNameAccess;
 
-        Reference< XStyleFamiliesSupplier >
-            aXStyleFamiliesSupplier( mXModel, UNO_QUERY );
-
-        Reference< XPropertySet >
-            aXPropSet( mXModel, UNO_QUERY );
-
-        sal_uInt16 nDefaultTab = ( aXPropSet.is() && ImplGetPropertyValue( aXPropSet, "TabStop" ) )
+        sal_uInt16 nDefaultTab = ( mXModel.is() && ImplGetPropertyValue( mXModel, u"TabStop"_ustr ) )
             ? static_cast<sal_uInt16>( convertMm100ToMasterUnit(*o3tl::doAccess<sal_Int32>(mAny)) )
             : 1250;
 
@@ -499,10 +487,9 @@ bool PPTWriterBase::GetStyleSheets()
         if ( GetPageByIndex( nPageNum, MASTER ) )
             aXNamed.set( mXDrawPage, UNO_QUERY );
 
-        if ( aXStyleFamiliesSupplier.is() )
-            aXNameAccess = aXStyleFamiliesSupplier->getStyleFamilies();
+        aXNameAccess = mXModel->getStyleFamilies();
 
-        bRetValue = aXNamed.is() && aXNameAccess.is() && aXStyleFamiliesSupplier.is();
+        bRetValue = aXNamed.is() && aXNameAccess.is();
         if  ( bRetValue )
         {
             for ( nInstance = EPP_TEXTTYPE_Title; nInstance <= EPP_TEXTTYPE_CenterTitle; nInstance++ )
@@ -694,14 +681,14 @@ bool PPTWriterBase::GetShapeByIndex( sal_uInt32 nIndex, bool bGroup )
         mType = aTypeBuffer.makeStringAndClear();
 
         mbPresObj = mbEmptyPresObj = false;
-        if ( ImplGetPropertyValue( "IsPresentationObject" ) )
+        if ( ImplGetPropertyValue( u"IsPresentationObject"_ustr ) )
             mAny >>= mbPresObj;
 
-        if ( mbPresObj && ImplGetPropertyValue( "IsEmptyPresentationObject" ) )
+        if ( mbPresObj && ImplGetPropertyValue( u"IsEmptyPresentationObject"_ustr ) )
             mAny >>= mbEmptyPresObj;
 
         mnAngle = ( PropValue::GetPropertyValue( aAny,
-            mXPropSet, "RotateAngle", true ) )
+            mXPropSet, u"RotateAngle"_ustr, true ) )
                 ? *o3tl::doAccess<sal_Int32>(aAny)
                 : 0;
 
@@ -940,6 +927,7 @@ sal_Int8 PPTWriterBase::GetTransition( FadeEffect eEffect, sal_uInt8& nDirection
         nDirection++;
         [[fallthrough]];
     case FadeEffect_FADE_FROM_RIGHT :
+    case FadeEffect_ROLL_FROM_RIGHT :
         nPPTTransitionType = PPT_TRANSITION_TYPE_WIPE;
         break;
 
@@ -952,9 +940,6 @@ sal_Int8 PPTWriterBase::GetTransition( FadeEffect eEffect, sal_uInt8& nDirection
     case FadeEffect_ROLL_FROM_BOTTOM :
         nDirection++;
         [[fallthrough]];
-    case FadeEffect_ROLL_FROM_RIGHT :
-        nPPTTransitionType = PPT_TRANSITION_TYPE_WIPE;
-        break;
 
     case FadeEffect_FADE_TO_CENTER :
         nDirection++;

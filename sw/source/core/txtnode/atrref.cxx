@@ -40,20 +40,20 @@ SwFormatRefMark::~SwFormatRefMark( )
 {
 }
 
-SwFormatRefMark::SwFormatRefMark( OUString aName )
+SwFormatRefMark::SwFormatRefMark( SwMarkName aName )
     : SfxPoolItem(RES_TXTATR_REFMARK)
-    , sw::BroadcastingModify()
     , m_pTextAttr(nullptr)
     , m_aRefName(std::move(aName))
 {
+    setNonShareable();
 }
 
 SwFormatRefMark::SwFormatRefMark( const SwFormatRefMark& rAttr )
     : SfxPoolItem(RES_TXTATR_REFMARK)
-    , sw::BroadcastingModify()
     , m_pTextAttr(nullptr)
     , m_aRefName(rAttr.m_aRefName)
 {
+    setNonShareable();
 }
 
 void SwFormatRefMark::SetXRefMark(rtl::Reference<SwXReferenceMark> const& xMark)
@@ -70,21 +70,13 @@ SwFormatRefMark* SwFormatRefMark::Clone( SfxItemPool* ) const
     return new SwFormatRefMark( *this );
 }
 
-void SwFormatRefMark::SwClientNotify(const SwModify&, const SfxHint& rHint)
-{
-    if (rHint.GetId() != SfxHintId::SwLegacyModify)
-        return;
-    auto pLegacy = static_cast<const sw::LegacyModifyHint*>(&rHint);
-    CallSwClientNotify(rHint);
-    if(RES_REMOVE_UNO_OBJECT == pLegacy->GetWhich())
-        SetXRefMark(nullptr);
-}
-
 void SwFormatRefMark::InvalidateRefMark()
 {
-    SwPtrMsgPoolItem const item(RES_REMOVE_UNO_OBJECT,
-            &static_cast<sw::BroadcastingModify&>(*this)); // cast to base class (void*)
-    CallSwClientNotify(sw::LegacyModifyHint(&item, &item));
+    if (auto xUnoRefMark = m_wXReferenceMark.get())
+    {
+        xUnoRefMark->OnFormatRefMarkDeleted();
+        m_wXReferenceMark.clear();
+    }
 }
 
 void SwFormatRefMark::dumpAsXml(xmlTextWriterPtr pWriter) const
@@ -93,7 +85,7 @@ void SwFormatRefMark::dumpAsXml(xmlTextWriterPtr pWriter) const
     (void)xmlTextWriterWriteFormatAttribute(pWriter, BAD_CAST("ptr"), "%p", this);
     (void)xmlTextWriterWriteFormatAttribute(pWriter, BAD_CAST("m_pTextAttr"), "%p", m_pTextAttr);
     (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("ref-name"),
-                                      BAD_CAST(m_aRefName.toUtf8().getStr()));
+                                      BAD_CAST(m_aRefName.toString().toUtf8().getStr()));
     SfxPoolItem::dumpAsXml(pWriter);
 
 
@@ -102,14 +94,17 @@ void SwFormatRefMark::dumpAsXml(xmlTextWriterPtr pWriter) const
 
 // attribute for content references in the text
 
-SwTextRefMark::SwTextRefMark( SwFormatRefMark& rAttr,
-            sal_Int32 const nStartPos, sal_Int32 const*const pEnd)
+SwTextRefMark::SwTextRefMark(
+    const SfxPoolItemHolder& rAttr,
+    sal_Int32 const nStartPos,
+    sal_Int32 const*const pEnd)
     : SwTextAttr(rAttr, nStartPos)
     , SwTextAttrEnd( rAttr, nStartPos, nStartPos )
     , m_pTextNode( nullptr )
     , m_pEnd( nullptr )
 {
-    rAttr.m_pTextAttr = this;
+    SwFormatRefMark& rSwFormatRefMark(static_cast<SwFormatRefMark&>(GetAttr()));
+    rSwFormatRefMark.m_pTextAttr = this;
     if ( pEnd )
     {
         m_nEnd = *pEnd;
@@ -138,13 +133,13 @@ SwTextRefMark::~SwTextRefMark()
     if (!pViewShell)
         return;
 
-    OUString fieldCommand = GetRefMark().GetRefName();
+    SwMarkName fieldCommand = GetRefMark().GetRefName();
     tools::JsonWriter aJson;
     aJson.put("commandName", ".uno:DeleteField");
     aJson.put("success", true);
     {
         auto result = aJson.startNode("result");
-        aJson.put("DeleteField", fieldCommand);
+        aJson.put("DeleteField", fieldCommand.toString());
     }
 
     pViewShell->libreOfficeKitViewCallback(LOK_CALLBACK_UNO_COMMAND_RESULT, aJson.finishAndGetAsOString());
@@ -157,12 +152,16 @@ const sal_Int32* SwTextRefMark::GetEnd() const
 
 void SwTextRefMark::SetEnd(sal_Int32 n)
 {
-    *m_pEnd = n;
-    if (m_pHints)
-        m_pHints->EndPosChanged();
+    if (*m_pEnd != n)
+    {
+        sal_Int32 nOldEndPos = *m_pEnd;
+        *m_pEnd = n;
+        if (m_pHints)
+            m_pHints->EndPosChanged(Which(), GetStart(), nOldEndPos, *m_pEnd);
+    }
 }
 
-void SwTextRefMark::UpdateFieldContent(SwDoc* pDoc, SwWrtShell& rWrtSh, OUString aContent)
+void SwTextRefMark::UpdateFieldContent(SwDoc* pDoc, SwWrtShell& rWrtSh, const OUString& aContent)
 {
     if (!this->End())
     {
@@ -173,11 +172,14 @@ void SwTextRefMark::UpdateFieldContent(SwDoc* pDoc, SwWrtShell& rWrtSh, OUString
     const SwTextNode& rTextNode = this->GetTextNode();
     SwPaM aMarkers(SwPosition(rTextNode, *this->End()));
     IDocumentContentOperations& rIDCO = pDoc->getIDocumentContentOperations();
-  /* FIXME: see above re: expanding behavior
-   *this->SetLockExpandFlag(false);
-   *this->SetDontExpand(false);
-   */
-    if (rIDCO.InsertString(aMarkers, "XY"))
+
+    bool oldLockValue = this->IsLockExpandFlag();
+    bool oldDontExpandValue = this->DontExpand();
+    bool oldDontExpandStartAttr = this->IsDontExpandStartAttr();
+    this->SetLockExpandFlag(false);
+    this->SetDontExpand(false);
+    this->SetDontExpandStartAttr(false);
+    if (rIDCO.InsertString(aMarkers, u"XY"_ustr))
     {
         SwPaM aPasteEnd(SwPosition(rTextNode, *this->End()));
         aPasteEnd.Move(fnMoveBackward, GoInContent);
@@ -205,11 +207,10 @@ void SwTextRefMark::UpdateFieldContent(SwDoc* pDoc, SwWrtShell& rWrtSh, OUString
         rIDCO.DeleteAndJoin(aStartMarker);
         rIDCO.DeleteAndJoin(aEndMarker);
     }
-    // Restore flags.
-  /* FIXME: see above re: expanding behavior
-   *this->SetDontExpand(true);
-   *this->SetLockExpandFlag(true);
-   */
+    this->SetDontExpand(oldDontExpandValue);
+    this->SetLockExpandFlag(oldLockValue);
+    this->SetDontExpandStartAttr(oldDontExpandStartAttr);
+
 }
 
 

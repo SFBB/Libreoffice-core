@@ -48,7 +48,7 @@ class PtrStdPrinterBase(object):
             self.sequence = None
 
     def to_string(self):
-        if self.sequence != None:
+        if self.sequence is not None:
             length = len(self.sequence)
             if length:
                 return "%s %s" % (self.typename, self.print_size(length))
@@ -79,7 +79,7 @@ class PtrStdPrinterBase(object):
             try:
                 import libstdcxx.v6.printers
                 std = libstdcxx.v6.printers
-            except:
+            except Exception:
                 pass
 
     def _get_sequence_printer(self, typename):
@@ -223,7 +223,7 @@ printer = None
 def build_pretty_printers():
     global printer
 
-    if printer != None:
+    if printer is not None:
         return
 
     printer = printing.Printer("boost.ptr_container")

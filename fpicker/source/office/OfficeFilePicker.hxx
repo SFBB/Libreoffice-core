@@ -33,7 +33,6 @@
 
 #include <vector>
 
-class Dialog;
 struct FilterEntry;
 struct ElementEntry_Impl;
 enum class PickerFlags;
@@ -46,7 +45,8 @@ typedef css::uno::Sequence< UnoFilterEntry >   UnoFilterList;  // can be transpo
 
 // class SvtFilePicker ---------------------------------------------------
 
-typedef ::cppu::ImplHelper5 <   css::ui::dialogs::XFilePicker3
+typedef cppu::ImplInheritanceHelper <svt::OCommonPicker
+                            ,   css::ui::dialogs::XFilePicker3
                             ,   css::ui::dialogs::XFilePickerControlAccess
                             ,   css::ui::dialogs::XFilePreview
                             ,   css::lang::XServiceInfo
@@ -54,7 +54,6 @@ typedef ::cppu::ImplHelper5 <   css::ui::dialogs::XFilePicker3
                             >   SvtFilePicker_Base;
 
 class SvtFilePicker :public SvtFilePicker_Base
-                    ,public ::svt::OCommonPicker
                     ,public ::svt::IFilePickerListener
 {
 protected:
@@ -71,7 +70,6 @@ protected:
     OUString            m_aOldDisplayDirectory;
     OUString            m_aOldHideDirectory;
 
-    OUString            m_aStandardDir;
     css::uno::Sequence< OUString >
                         m_aDenyList;
 
@@ -83,16 +81,6 @@ protected:
 public:
                        SvtFilePicker();
     virtual           ~SvtFilePicker() override;
-
-
-    // disambiguate XInterface
-
-    DECLARE_XINTERFACE( )
-
-
-    // disambiguate XTypeProvider
-
-    DECLARE_XTYPEPROVIDER( )
 
 
     // XExecutableDialog functions
@@ -220,14 +208,6 @@ public:
     SvtRemoteFilePicker();
 
     virtual std::shared_ptr<SvtFileDialog_Base> implCreateDialog( weld::Window* pParent ) override;
-
-    // disambiguate XInterface
-
-    DECLARE_XINTERFACE( )
-
-    // disambiguate XTypeProvider
-
-    DECLARE_XTYPEPROVIDER( )
 
     /* XServiceInfo */
     virtual OUString SAL_CALL getImplementationName() override;

@@ -37,9 +37,10 @@
 #include <sal/log.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
+#include <vcl/unohelp.hxx>
 #include <core_resource.hxx>
 #include <svx/svdundo.hxx>
-#include <toolkit/helper/convert.hxx>
+#include <toolkit/helper/vclunohelper.hxx>
 #include <algorithm>
 #include <cstdlib>
 #include <numeric>
@@ -49,7 +50,6 @@ namespace rptui
 #define DEFAUL_MOVE_SIZE    100
 
 using namespace ::com::sun::star;
-using namespace ::comphelper;
 
 static bool lcl_getNewRectSize(const tools::Rectangle& _aObjRect,tools::Long& _nXMov, tools::Long& _nYMov,SdrObject const * _pObj,SdrView const * _pView, ControlModification _nControlModification)
 {
@@ -185,7 +185,7 @@ void OViewsWindow::dispose()
     for (auto& rxSection : m_aSections)
         rxSection.disposeAndClear();
     m_aSections.clear();
-    m_pParent.clear();
+    m_pParent.reset();
     vcl::Window::dispose();
 }
 
@@ -349,7 +349,7 @@ void OViewsWindow::SetMode( DlgEdMode eNewMode )
 bool OViewsWindow::HasSelection() const
 {
     return std::any_of(m_aSections.begin(), m_aSections.end(),
-        [](const VclPtr<OSectionWindow>& rxSection) { return rxSection->getReportSection().getSectionView().AreObjectsMarked(); });
+        [](const VclPtr<OSectionWindow>& rxSection) { return rxSection->getReportSection().getSectionView().GetMarkedObjectList().GetMarkCount() != 0; });
 }
 
 void OViewsWindow::Delete()
@@ -419,12 +419,12 @@ OSectionWindow* OViewsWindow::getMarkedSection(NearSectionAccess nsa) const
     {
         if ( (*aIter)->getStartMarker().isMarked() )
         {
-            if (nsa == CURRENT)
+            if (nsa == NearSectionAccess::CURRENT)
             {
                 pRet = aIter->get();
                 break;
             }
-            else if ( nsa == PREVIOUS )
+            else if (nsa == NearSectionAccess::PREVIOUS)
             {
                 if (nCurrentPosition > 0)
                 {
@@ -441,7 +441,7 @@ OSectionWindow* OViewsWindow::getMarkedSection(NearSectionAccess nsa) const
                 }
                 break;
             }
-            else if ( nsa == POST )
+            else if (nsa == NearSectionAccess::POST)
             {
                 sal_uInt32 nSize = m_aSections.size();
                 if ((nCurrentPosition + 1) < nSize)
@@ -540,7 +540,7 @@ void OViewsWindow::MouseButtonUp( const MouseEvent& rMEvt )
         return;
 
     auto aIter = std::find_if(m_aSections.begin(), m_aSections.end(),
-        [](const VclPtr<OSectionWindow>& rxSection) { return rxSection->getReportSection().getSectionView().AreObjectsMarked(); });
+        [](const VclPtr<OSectionWindow>& rxSection) { return rxSection->getReportSection().getSectionView().GetMarkedObjectList().GetMarkCount() != 0; });
     if (aIter != m_aSections.end())
     {
         (*aIter)->getReportSection().MouseButtonUp(rMEvt);
@@ -626,13 +626,13 @@ void OViewsWindow::collectRectangles(TRectangleMap& _rSortRectangles)
     for (const auto& rxSection : m_aSections)
     {
         OSectionView& rView = rxSection->getReportSection().getSectionView();
-        if ( rView.AreObjectsMarked() )
+        if ( rView.GetMarkedObjectList().GetMarkCount() != 0 )
         {
-            rView.SortMarkedObjects();
-            const size_t nCount = rView.GetMarkedObjectCount();
+            rView.GetMarkedObjectList().ForceSort();
+            const size_t nCount = rView.GetMarkedObjectList().GetMarkCount();
             for (size_t i=0; i < nCount; ++i)
             {
-                const SdrMark* pM = rView.GetSdrMarkByIndex(i);
+                const SdrMark* pM = rView.GetMarkedObjectList().GetMark(i);
                 SdrObject* pObj = pM->GetMarkedSdrObj();
                 tools::Rectangle aObjRect(pObj->GetSnapRect());
                 _rSortRectangles.emplace(aObjRect,TRectangleMap::mapped_type(pObj,&rView));
@@ -970,7 +970,7 @@ void OViewsWindow::BegDragObj_createInvisibleObjectAtPosition(const tools::Recta
         {
             rtl::Reference<SdrObject> pNewObj = new SdrUnoObj(
                 rView.getSdrModelFromSdrView(),
-                "com.sun.star.form.component.FixedText");
+                u"com.sun.star.form.component.FixedText"_ustr);
 
             pNewObj->SetLogicRect(_aRect);
             pNewObj->Move(Size(0, aNewPos.Y()));
@@ -1023,12 +1023,12 @@ void OViewsWindow::BegDragObj(const Point& _aPnt, SdrHdl* _pHdl,const OSectionVi
 
         OSectionView& rView = rReportSection.getSectionView();
 
-        if ( rView.AreObjectsMarked() )
+        if ( rView.GetMarkedObjectList().GetMarkCount() != 0 )
         {
-            const size_t nCount = rView.GetMarkedObjectCount();
+            const size_t nCount = rView.GetMarkedObjectList().GetMarkCount();
             for (size_t i=0; i < nCount; ++i)
             {
-                const SdrMark* pM = rView.GetSdrMarkByIndex(i);
+                const SdrMark* pM = rView.GetMarkedObjectList().GetMark(i);
                 SdrObject* pObj = pM->GetMarkedSdrObj();
                 if (::std::find(m_aBegDragTempList.begin(),m_aBegDragTempList.end(),pObj) == m_aBegDragTempList.end())
                 {
@@ -1228,7 +1228,7 @@ void OViewsWindow::EndDragObj(bool _bControlKeyPressed, const OSectionView* _pSe
                     aNewPos.setY( 0 );
 
                 Point aPrevious;
-                for (beans::NamedValue const & namedVal : std::as_const(aAllreadyCopiedObjects))
+                for (beans::NamedValue const& namedVal : aAllreadyCopiedObjects)
                 {
                     uno::Sequence< uno::Reference<report::XReportComponent> > aClones;
                     namedVal.Value >>= aClones;
@@ -1239,7 +1239,7 @@ void OViewsWindow::EndDragObj(bool _bControlKeyPressed, const OSectionView* _pSe
                     for (; pColIter != pColEnd; ++pColIter)
                     {
                         uno::Reference< report::XReportComponent> xRC(*pColIter);
-                        aPrevious = VCLPoint(xRC->getPosition());
+                        aPrevious = vcl::unohelper::ConvertToVCLPoint(xRC->getPosition());
                         awt::Size aSize = xRC->getSize();
 
                         if ( aNewPos.X() < nLeftMargin )
@@ -1260,12 +1260,13 @@ void OViewsWindow::EndDragObj(bool _bControlKeyPressed, const OSectionView* _pSe
                             aNewPos.setX( 0 );
                             xRC->setSize(aSize);
                         }
-                        xRC->setPosition(AWTPoint(aNewPos));
+                        xRC->setPosition(vcl::unohelper::ConvertToAWTPoint(aNewPos));
                         if ( (pColIter+1) != pColEnd )
                         {
                             // bring aNewPos to the position of the next object
                             uno::Reference< report::XReportComponent> xRCNext = *(pColIter + 1);
-                            Point aNextPosition = VCLPoint(xRCNext->getPosition());
+                            Point aNextPosition
+                                = vcl::unohelper::ConvertToVCLPoint(xRCNext->getPosition());
                             aNewPos += aNextPosition - aPrevious;
                         }
                     }
@@ -1368,7 +1369,7 @@ sal_uInt32 OViewsWindow::getMarkedObjectCount() const
 {
     return std::accumulate(m_aSections.begin(), m_aSections.end(), sal_uInt32(0),
         [](const sal_uInt32 nCount, const VclPtr<OSectionWindow>& rxSection) {
-            return nCount + static_cast<sal_uInt32>(rxSection->getReportSection().getSectionView().GetMarkedObjectCount()); });
+            return nCount + static_cast<sal_uInt32>(rxSection->getReportSection().getSectionView().GetMarkedObjectList().GetMarkCount()); });
 }
 
 void OViewsWindow::handleKey(const vcl::KeyCode& _rCode)
@@ -1403,7 +1404,7 @@ void OViewsWindow::handleKey(const vcl::KeyCode& _rCode)
         else if ( nCode == KEY_RIGHT )
             nX =  1;
 
-        if ( rReportSection.getSectionView().AreObjectsMarked() )
+        if ( rReportSection.getSectionView().GetMarkedObjectList().GetMarkCount() != 0 )
         {
             if ( _rCode.IsMod2() )
             {

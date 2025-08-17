@@ -101,11 +101,12 @@ ConnectorHelper::getConnectorTransformMatrix(const oox::drawingml::ShapePtr& pCo
         aTransform.scale(1.0, -1.0);
     if (pConnector->getRotation() == 0)
         return aTransform;
-    if (pConnector->getRotation() == 5400000)
+
+    if (pConnector->getRotation() == 5400000 || pConnector->getRotation() == -16200000)
         aTransform *= basegfx::B2DHomMatrix(0, -1, 0, 1, 0, 0);
-    else if (pConnector->getRotation() == 10800000)
+    else if (pConnector->getRotation() == 10800000 || pConnector->getRotation() == -10800000)
         aTransform *= basegfx::B2DHomMatrix(-1, 0, 0, 0, -1, 0);
-    else if (pConnector->getRotation() == 16200000)
+    else if (pConnector->getRotation() == 16200000 || pConnector->getRotation() == -5400000)
         aTransform *= basegfx::B2DHomMatrix(0, 1, 0, -1, 0, 0);
     else
         SAL_WARN("oox", "tdf#157888 LibreOffice cannot handle such connector rotation");
@@ -290,7 +291,7 @@ void ConnectorHelper::getLOCurvedHandlePositionsHmm(
     }
 }
 
-void ConnectorHelper::applyConnections(oox::drawingml::ShapePtr& pConnector,
+void ConnectorHelper::applyConnections(const oox::drawingml::ShapePtr& pConnector,
                                        oox::drawingml::ShapeIdMap& rShapeMap)
 {
     uno::Reference<drawing::XShape> xConnector(pConnector->getXShape());
@@ -301,22 +302,22 @@ void ConnectorHelper::applyConnections(oox::drawingml::ShapePtr& pConnector,
         return;
 
     // MS Office allows route between shapes with small distance. LO default is 5mm.
-    xPropSet->setPropertyValue("EdgeNode1HorzDist", uno::Any(sal_Int32(0)));
-    xPropSet->setPropertyValue("EdgeNode1VertDist", uno::Any(sal_Int32(0)));
-    xPropSet->setPropertyValue("EdgeNode2HorzDist", uno::Any(sal_Int32(0)));
-    xPropSet->setPropertyValue("EdgeNode2VertDist", uno::Any(sal_Int32(0)));
+    xPropSet->setPropertyValue(u"EdgeNode1HorzDist"_ustr, uno::Any(sal_Int32(0)));
+    xPropSet->setPropertyValue(u"EdgeNode1VertDist"_ustr, uno::Any(sal_Int32(0)));
+    xPropSet->setPropertyValue(u"EdgeNode2HorzDist"_ustr, uno::Any(sal_Int32(0)));
+    xPropSet->setPropertyValue(u"EdgeNode2VertDist"_ustr, uno::Any(sal_Int32(0)));
 
     // A OOXML curvedConnector uses a routing method which is basically incompatible with the
     // traditional way of LibreOffice. A compatible way was added and needs to be enabled before
     // connections are set, so that the method is used in the default routing.
-    xPropSet->setPropertyValue("EdgeOOXMLCurve", uno::Any(true));
+    xPropSet->setPropertyValue(u"EdgeOOXMLCurve"_ustr, uno::Any(true));
 
     oox::drawingml::ConnectorShapePropertiesList aConnectorShapeProperties
         = pConnector->getConnectorShapeProperties();
     // It contains maximal two items, each a struct with mbStartShape, maDestShapeId, mnDestGlueId
     for (const auto& aIt : aConnectorShapeProperties)
     {
-        const auto& pItem = rShapeMap.find(aIt.maDestShapeId);
+        const auto pItem = rShapeMap.find(aIt.maDestShapeId);
         if (pItem == rShapeMap.end())
             continue;
 
@@ -325,9 +326,9 @@ void ConnectorHelper::applyConnections(oox::drawingml::ShapePtr& pConnector,
         {
             // Connect to the found shape.
             if (aIt.mbStartShape)
-                xPropSet->setPropertyValue("StartShape", uno::Any(xShape));
+                xPropSet->setPropertyValue(u"StartShape"_ustr, uno::Any(xShape));
             else
-                xPropSet->setPropertyValue("EndShape", uno::Any(xShape));
+                xPropSet->setPropertyValue(u"EndShape"_ustr, uno::Any(xShape));
 
             // The first four glue points are the default glue points, which are set by LibreOffice.
             // They do not belong to the preset geometry of the shape.
@@ -366,9 +367,9 @@ void ConnectorHelper::applyConnections(oox::drawingml::ShapePtr& pConnector,
             }
 
             if (aIt.mbStartShape)
-                xPropSet->setPropertyValue("StartGluePointIndex", uno::Any(nGlueId));
+                xPropSet->setPropertyValue(u"StartGluePointIndex"_ustr, uno::Any(nGlueId));
             else
-                xPropSet->setPropertyValue("EndGluePointIndex", uno::Any(nGlueId));
+                xPropSet->setPropertyValue(u"EndGluePointIndex"_ustr, uno::Any(nGlueId));
         }
     }
 }

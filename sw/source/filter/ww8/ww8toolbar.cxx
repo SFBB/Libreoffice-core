@@ -23,7 +23,7 @@
 #include <o3tl/safeint.hxx>
 #include <sfx2/objsh.hxx>
 #include <comphelper/diagnose_ex.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <rtl/ref.hxx>
 #include <map>
 #include <sal/log.hxx>
@@ -136,7 +136,7 @@ bool SwCTBWrapper::Read( SvStream& rS )
             SwTBC aTBC;
             if ( !aTBC.Read( rS ) )
                 return false;
-            m_rtbdc.push_back( aTBC );
+            m_rtbdc.push_back(std::move(aTBC));
             bytesToRead = m_cbDTBC - ( rS.Tell() - nStart );
         } while ( bytesToRead > 0 );
     }
@@ -163,7 +163,7 @@ bool SwCTBWrapper::Read( SvStream& rS )
             Customization aCust( this );
             if ( !aCust.Read( rS ) )
                 return false;
-            m_rCustomizations.push_back( aCust );
+            m_rCustomizations.push_back(std::move(aCust));
         }
     }
     for ( const auto& rIndex : m_dropDownMenuIndices )
@@ -191,11 +191,11 @@ bool SwCTBWrapper::ImportCustomToolBar( SfxObjectShell& rDocSh )
         try
         {
             css::uno::Reference<css::ui::XUIConfigurationManager> xCfgMgr;
-            if (!utl::ConfigManager::IsFuzzing())
+            if (!comphelper::IsFuzzing())
             {
-                uno::Reference< uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+                const uno::Reference< uno::XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
                 uno::Reference< ui::XModuleUIConfigurationManagerSupplier > xAppCfgSupp( ui::theModuleUIConfigurationManagerSupplier::get(xContext) );
-                xCfgMgr = xAppCfgSupp->getUIConfigurationManager("com.sun.star.text.TextDocument");
+                xCfgMgr = xAppCfgSupp->getUIConfigurationManager(u"com.sun.star.text.TextDocument"_ustr);
             }
             CustomToolBarImportHelper helper(rDocSh, xCfgMgr);
             helper.setMSOCommandMap( new MSOWordCommandConvertor() );
@@ -291,15 +291,15 @@ bool Customization::ImportMenu( SwCTBWrapper& rWrapper, CustomToolBarImportHelpe
                     }
 
                     uno::Reference< lang::XSingleComponentFactory > xSCF( xIndexContainer, uno::UNO_QUERY_THROW );
-                    uno::Reference< uno::XComponentContext > xContext(
+                    const uno::Reference< uno::XComponentContext >& xContext(
                         comphelper::getProcessComponentContext() );
                     uno::Reference< container::XIndexContainer > xMenuContainer( xSCF->createInstanceWithContext( xContext ), uno::UNO_QUERY_THROW );
                     // create the popup menu
                     uno::Sequence< beans::PropertyValue > aPopupMenu{
-                        comphelper::makePropertyValue("CommandURL", "vnd.openoffice.org:" + sMenuName),
-                        comphelper::makePropertyValue("Label", sMenuName),
-                        comphelper::makePropertyValue("Type", sal_Int32( 0 )),
-                        comphelper::makePropertyValue("ItemDescriptorContainer", xMenuContainer)
+                        comphelper::makePropertyValue(u"CommandURL"_ustr, "vnd.openoffice.org:" + sMenuName),
+                        comphelper::makePropertyValue(u"Label"_ustr, sMenuName),
+                        comphelper::makePropertyValue(u"Type"_ustr, sal_Int32( 0 )),
+                        comphelper::makePropertyValue(u"ItemDescriptorContainer"_ustr, xMenuContainer)
                     };
                     if ( pCust->m_customizationDataCTB && !pCust->m_customizationDataCTB->ImportMenuTB( rWrapper, xMenuContainer, helper ) )
                         return false;
@@ -416,7 +416,7 @@ bool SwCTB::Read( SvStream &rS)
             SwTBC aTBC;
             if ( !aTBC.Read( rS ) )
                 return false;
-            m_rTBC.push_back( aTBC );
+            m_rTBC.push_back(std::move(aTBC));
         }
     }
     return rS.good();
@@ -435,7 +435,7 @@ bool SwCTB::ImportCustomToolBar( SwCTBWrapper& rWrapper, CustomToolBarImportHelp
         uno::Reference< beans::XPropertySet > xProps( xIndexContainer, uno::UNO_QUERY_THROW );
 
         // set UI name for toolbar
-        xProps->setPropertyValue( "UIName", uno::Any( m_name.getString() ) );
+        xProps->setPropertyValue( u"UIName"_ustr, uno::Any( m_name.getString() ) );
 
         const OUString sToolBarName = "private:resource/toolbar/custom_" + m_name.getString();
         for ( auto& rItem : m_rTBC )
@@ -591,7 +591,7 @@ SwTBC::ImportToolBarControl( SwCTBWrapper& rWrapper, const css::uno::Reference< 
         {
             // insert spacer
             uno::Sequence< beans::PropertyValue > sProps{ comphelper::makePropertyValue(
-                "Type", ui::ItemType::SEPARATOR_LINE) };
+                u"Type"_ustr, ui::ItemType::SEPARATOR_LINE) };
             toolbarcontainer->insertByIndex( toolbarcontainer->getCount(), uno::Any( sProps ) );
         }
 
@@ -600,12 +600,12 @@ SwTBC::ImportToolBarControl( SwCTBWrapper& rWrapper, const css::uno::Reference< 
     return true;
 }
 
-OUString
+const OUString &
 SwTBC::GetCustomText()
 {
     if ( m_tbcd )
         return m_tbcd->getGeneralInfo().CustomText();
-    return OUString();
+    return EMPTY_OUSTRING;
 }
 
 bool

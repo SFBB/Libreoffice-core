@@ -19,7 +19,6 @@
 
 #include <config_folders.h>
 #include <config_features.h>
-#include <chrono>
 
 #include <dp_misc.h>
 #include <dp_interact.h>
@@ -32,6 +31,7 @@
 #include <rtl/ustrbuf.hxx>
 #include <sal/log.hxx>
 #include <unotools/bootstrap.hxx>
+#include <osl/diagnose.h>
 #include <osl/file.hxx>
 #include <osl/pipe.hxx>
 #include <osl/security.hxx>
@@ -44,17 +44,13 @@
 #include <com/sun/star/deployment/ExtensionManager.hpp>
 #include <com/sun/star/lang/DisposedException.hpp>
 #include <com/sun/star/task/OfficeRestartManager.hpp>
+#include <atomic>
 #include <memory>
 #include <string_view>
 #include <thread>
 #include <comphelper/lok.hxx>
 #include <comphelper/processfactory.hxx>
 #include <salhelper/linkhelper.hxx>
-
-#ifdef _WIN32
-#include <prewin.h>
-#include <postwin.h>
-#endif
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -66,7 +62,7 @@ std::shared_ptr<rtl::Bootstrap> & UnoRc()
 {
     static std::shared_ptr<rtl::Bootstrap> theRc = []()
         {
-            OUString unorc( "$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE("louno") );
+            OUString unorc( u"$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE("louno") ""_ustr );
             ::rtl::Bootstrap::expandMacros( unorc );
             auto ret = std::make_shared<::rtl::Bootstrap>( unorc );
             OSL_ASSERT( ret->getHandle() != nullptr );
@@ -75,53 +71,20 @@ std::shared_ptr<rtl::Bootstrap> & UnoRc()
     return theRc;
 };
 
-OUString generateOfficePipeId()
-{
-    OUString userPath;
-    ::utl::Bootstrap::PathStatus aLocateResult =
-    ::utl::Bootstrap::locateUserInstallation( userPath );
-    if (aLocateResult != ::utl::Bootstrap::PATH_EXISTS &&
-        aLocateResult != ::utl::Bootstrap::PATH_VALID)
-    {
-        throw Exception("Extension Manager: Could not obtain path for UserInstallation.", nullptr);
-    }
-
-    rtlDigest digest = rtl_digest_create( rtl_Digest_AlgorithmMD5 );
-    if (!digest) {
-        throw RuntimeException("cannot get digest rtl_Digest_AlgorithmMD5!", nullptr );
-    }
-
-    sal_uInt8 const * data =
-        reinterpret_cast<sal_uInt8 const *>(userPath.getStr());
-    std::size_t size = userPath.getLength() * sizeof (sal_Unicode);
-    sal_uInt32 md5_key_len = rtl_digest_queryLength( digest );
-    std::unique_ptr<sal_uInt8[]> md5_buf( new sal_uInt8 [ md5_key_len ] );
-
-    rtl_digest_init( digest, data, static_cast<sal_uInt32>(size) );
-    rtl_digest_update( digest, data, static_cast<sal_uInt32>(size) );
-    rtl_digest_get( digest, md5_buf.get(), md5_key_len );
-    rtl_digest_destroy( digest );
-
-    // create hex-value string from the MD5 value to keep
-    // the string size minimal
-    OUStringBuffer buf( "SingleOfficeIPC_" );
-    for ( sal_uInt32 i = 0; i < md5_key_len; ++i ) {
-        buf.append( static_cast<sal_Int32>(md5_buf[ i ]), 0x10 );
-    }
-    return buf.makeStringAndClear();
-}
+#if !defined EMSCRIPTEN
 
 bool existsOfficePipe()
 {
-    static OUString OfficePipeId = generateOfficePipeId();
+    static const OUString OfficePipeId = generateOfficePipeId();
 
-    OUString const & pipeId = OfficePipeId;
-    if (pipeId.isEmpty())
+    if (OfficePipeId.isEmpty())
         return false;
     ::osl::Security sec;
-    ::osl::Pipe pipe( pipeId, osl_Pipe_OPEN, sec );
+    ::osl::Pipe pipe( OfficePipeId, osl_Pipe_OPEN, sec );
     return pipe.is();
 }
+
+#endif
 
 //get modification time
 bool getModifyTimeTargetFile(const OUString &rFileURL, TimeValue &rTime)
@@ -222,11 +185,10 @@ bool needToSyncRepository(std::u16string_view name)
         folder, file);
 }
 
+// True when IPC thread is running in this process. Set in PipeIpcThread::execute. Used to avoid
+// attempts to open the pipe from office_is_running, which could deadlock.
+std::atomic<bool> s_bOfficeIpcThreadRunning = false;
 
-} // anon namespace
-
-
-namespace {
 OUString encodeForRcFile( std::u16string_view str )
 {
     // escape $\{} (=> rtl bootstrap files)
@@ -247,37 +209,34 @@ OUString encodeForRcFile( std::u16string_view str )
     }
     return buf.makeStringAndClear();
 }
-}
+} // anon namespace
 
 
 OUString makeURL( std::u16string_view baseURL, OUString const & relPath_ )
 {
-    OUStringBuffer buf(128);
-    if (baseURL.size() > 1 && baseURL[ baseURL.size() - 1 ] == '/')
-        buf.append( baseURL.substr(0, baseURL.size() - 1) );
-    else
-        buf.append( baseURL );
+    if (baseURL.ends_with('/'))
+        baseURL.remove_suffix(1);
+
     OUString relPath(relPath_);
     if( relPath.startsWith("/") )
         relPath = relPath.copy( 1 );
-    if (!relPath.isEmpty())
-    {
-        buf.append( '/' );
-        if (o3tl::starts_with(baseURL, u"vnd.sun.star.expand:" )) {
-            // encode for macro expansion: relPath is supposed to have no
-            // macros, so encode $, {} \ (bootstrap mimic)
-            relPath = encodeForRcFile(relPath);
 
-            // encode once more for vnd.sun.star.expand schema:
-            // vnd.sun.star.expand:$UNO_...
-            // will expand to file-url
-            relPath = ::rtl::Uri::encode( relPath, rtl_UriCharClassUric,
-                                          rtl_UriEncodeIgnoreEscapes,
-                                          RTL_TEXTENCODING_UTF8 );
-        }
-        buf.append( relPath );
+    if (relPath.isEmpty())
+        return OUString(baseURL);
+
+    if (baseURL.starts_with(u"vnd.sun.star.expand:"))
+    {
+        // encode for macro expansion: relPath is supposed to have no
+        // macros, so encode $, {} \ (bootstrap mimic)
+        relPath = encodeForRcFile(relPath);
+
+        // encode once more for vnd.sun.star.expand schema:
+        // vnd.sun.star.expand:$UNO_...
+        // will expand to file-url
+        relPath = ::rtl::Uri::encode(relPath, rtl_UriCharClassUric, rtl_UriEncodeIgnoreEscapes,
+                                     RTL_TEXTENCODING_UTF8);
     }
-    return buf.makeStringAndClear();
+    return OUString::Concat(baseURL) + "/" + relPath;
 }
 
 OUString makeURLAppendSysPathSegment( std::u16string_view baseURL, OUString const & segment )
@@ -327,49 +286,57 @@ OUString expandUnoRcUrl( OUString const & url )
     }
 }
 
+OUString generateOfficePipeId()
+{
+    // The name of the named pipe is created with the hashcode of the user installation directory
+    // (without /user). We have to retrieve this information from a unotools implementation.
+
+    OUString userPath;
+    ::utl::Bootstrap::PathStatus aLocateResult =
+    ::utl::Bootstrap::locateUserInstallation( userPath );
+    if (aLocateResult != ::utl::Bootstrap::PATH_EXISTS &&
+        aLocateResult != ::utl::Bootstrap::PATH_VALID)
+    {
+        throw Exception(u"Extension Manager: Could not obtain path for UserInstallation."_ustr, nullptr);
+    }
+
+    rtlDigest digest = rtl_digest_create( rtl_Digest_AlgorithmMD5 );
+    if (!digest) {
+        throw RuntimeException(u"cannot get digest rtl_Digest_AlgorithmMD5!"_ustr, nullptr );
+    }
+
+    sal_uInt8 const * data =
+        reinterpret_cast<sal_uInt8 const *>(userPath.getStr());
+    std::size_t size = userPath.getLength() * sizeof (sal_Unicode);
+    sal_uInt32 md5_key_len = rtl_digest_queryLength( digest );
+    std::unique_ptr<sal_uInt8[]> md5_buf( new sal_uInt8 [ md5_key_len ] );
+
+    rtl_digest_init( digest, data, static_cast<sal_uInt32>(size) );
+    rtl_digest_update( digest, data, static_cast<sal_uInt32>(size) );
+    rtl_digest_get( digest, md5_buf.get(), md5_key_len );
+    rtl_digest_destroy( digest );
+
+    // create hex-value string from the MD5 value to keep
+    // the string size minimal
+    OUStringBuffer buf( "SingleOfficeIPC_" );
+    for ( sal_uInt32 i = 0; i < md5_key_len; ++i ) {
+        buf.append( static_cast<sal_Int32>(md5_buf[ i ]), 0x10 );
+    }
+    return buf.makeStringAndClear();
+}
 
 bool office_is_running()
 {
-    //We need to check if we run within the office process. Then we must not use the pipe, because
-    //this could cause a deadlock. This is actually a workaround for i82778
-    OUString sFile;
-    oslProcessError err = osl_getExecutableFile(& sFile.pData);
-    bool ret = false;
-    if (osl_Process_E_None == err)
-    {
-        sFile = sFile.copy(sFile.lastIndexOf('/') + 1);
-        if (
-#if defined _WIN32
-            //osl_getExecutableFile should deliver "soffice.bin" on windows
-            //even if swriter.exe, scalc.exe etc. was started. This is a bug
-            //in osl_getExecutableFile
-            sFile == "soffice.bin" || sFile == "soffice.exe" || sFile == "soffice.com"
-            || sFile == "soffice" || sFile == "swriter.exe" || sFile == "swriter"
-            || sFile == "scalc.exe" || sFile == "scalc" || sFile == "simpress.exe"
-            || sFile == "simpress" || sFile == "sdraw.exe" || sFile == "sdraw"
-            || sFile == "sbase.exe" || sFile == "sbase"
-#elif defined MACOSX
-            sFile == "soffice"
-#elif defined UNIX
-            sFile == "soffice.bin"
+#if defined EMSCRIPTEN
+    return true;
 #else
-#error "Unsupported platform"
+    // i#82778: We need to check if we run within the office process. Then we must not use the pipe,
+    // because this could cause a deadlock (if called from IPC thread).
+    return s_bOfficeIpcThreadRunning || existsOfficePipe();
 #endif
-
-            )
-            ret = true;
-        else
-            ret = existsOfficePipe();
-    }
-    else
-    {
-        OSL_FAIL("NOT osl_Process_E_None ");
-        //if osl_getExecutable file then we take the risk of creating a pipe
-        ret =  existsOfficePipe();
-    }
-    return ret;
 }
 
+void setOfficeIpcThreadRunning(bool bRunning) { s_bOfficeIpcThreadRunning = bRunning; }
 
 oslProcess raiseProcess(
     OUString const & appURL, Sequence<OUString> const & args )
@@ -391,16 +358,16 @@ oslProcess raiseProcess(
     case osl_Process_E_None:
         break;
     case osl_Process_E_NotFound:
-        throw RuntimeException( "image not found!", nullptr );
+        throw RuntimeException( u"image not found!"_ustr, nullptr );
     case osl_Process_E_TimedOut:
-        throw RuntimeException( "timeout occurred!", nullptr );
+        throw RuntimeException( u"timeout occurred!"_ustr, nullptr );
     case osl_Process_E_NoPermission:
-        throw RuntimeException( "permission denied!", nullptr );
+        throw RuntimeException( u"permission denied!"_ustr, nullptr );
     case osl_Process_E_Unknown:
-        throw RuntimeException( "unknown error!", nullptr );
+        throw RuntimeException( u"unknown error!"_ustr, nullptr );
     case osl_Process_E_InvalidError:
     default:
-        throw RuntimeException( "unmapped error!", nullptr );
+        throw RuntimeException( u"unmapped error!"_ustr, nullptr );
     }
 
     return hProcess;
@@ -410,13 +377,10 @@ oslProcess raiseProcess(
 OUString generateRandomPipeId()
 {
     // compute some good pipe id:
-    static rtlRandomPool s_hPool = rtl_random_createPool();
-    if (s_hPool == nullptr)
-        throw RuntimeException( "cannot create random pool!?", nullptr );
     sal_uInt8 bytes[ 32 ];
     if (rtl_random_getBytes(
-            s_hPool, bytes, std::size(bytes) ) != rtl_Random_E_None) {
-        throw RuntimeException( "random pool error!?", nullptr );
+            nullptr, bytes, std::size(bytes) ) != rtl_Random_E_None) {
+        throw RuntimeException( u"random pool error!?"_ustr, nullptr );
     }
     OUStringBuffer buf;
     for (unsigned char byte : bytes) {
@@ -437,7 +401,7 @@ Reference<XInterface> resolveUnoURL(
     for (int i = 0; i <= 40; ++i) // 20 seconds
     {
         if (abortChannel != nullptr && abortChannel->isAborted()) {
-            throw ucb::CommandAbortedException( "abort!" );
+            throw ucb::CommandAbortedException( u"abort!"_ustr );
         }
         try {
             return xUnoUrlResolver->resolve( connectString );
@@ -480,7 +444,7 @@ OUString readConsole()
         OUString value = OStringToOUString(std::string_view(buf), osl_getThreadTextEncoding());
         return value.trim();
     }
-    throw css::uno::RuntimeException("reading from stdin failed");
+    throw css::uno::RuntimeException(u"reading from stdin failed"_ustr);
 }
 
 void TRACE(OUString const & sText)
@@ -492,7 +456,7 @@ void syncRepositories(
     bool force, Reference<ucb::XCommandEnvironment> const & xCmdEnv)
 {
     OUString sDisable;
-    ::rtl::Bootstrap::get( "DISABLE_EXTENSION_SYNCHRONIZATION", sDisable, OUString() );
+    ::rtl::Bootstrap::get( u"DISABLE_EXTENSION_SYNCHRONIZATION"_ustr, sDisable, OUString() );
     if (!sDisable.isEmpty())
         return;
 

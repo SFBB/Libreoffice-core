@@ -38,6 +38,7 @@ class EDITENG_DLLPUBLIC SvxFormatBreakItem final : public SfxEnumItem<SvxBreak>
 public:
     static SfxPoolItem* CreateDefault();
 
+    DECLARE_ITEM_TYPE_FUNCTION(SvxFormatBreakItem)
     inline SvxFormatBreakItem( const SvxBreak eBrk /*= SvxBreak::NONE*/,
                             const sal_uInt16 nWhich );
     SvxFormatBreakItem(SvxFormatBreakItem const &) = default; // SfxPoolItem copy function dichotomy
@@ -54,7 +55,6 @@ public:
     static OUString          GetValueTextByPos( sal_uInt16 nPos );
 
     virtual SvxFormatBreakItem* Clone( SfxItemPool *pPool = nullptr ) const override;
-    virtual sal_uInt16       GetValueCount() const override;
 
     SvxBreak                 GetBreak() const { return GetValue(); }
 };

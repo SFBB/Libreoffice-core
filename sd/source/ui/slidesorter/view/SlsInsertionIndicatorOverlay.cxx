@@ -105,7 +105,7 @@ void InsertionIndicatorOverlay::Create (
     const sal_Int32 nSelectionCount)
 {
     view::Layouter& rLayouter (mrSlideSorter.GetView().GetLayouter());
-    const std::shared_ptr<view::PageObjectLayouter>& pPageObjectLayouter (
+    view::PageObjectLayouter* pPageObjectLayouter (
         rLayouter.GetPageObjectLayouter());
     std::shared_ptr<view::Theme> pTheme (mrSlideSorter.GetTheme());
     const Size aOriginalPreviewSize (pPageObjectLayouter->GetPreviewSize());
@@ -137,7 +137,7 @@ void InsertionIndicatorOverlay::Create (
 
     PaintPageCount(*pContent, nSelectionCount, aPreviewSize, aOffset);
 
-    maIcon = pContent->GetBitmapEx(Point(0,0), aIconSize);
+    maIcon = pContent->GetBitmap(Point(0,0), aIconSize);
     maIcon.Scale(aIconSize);
 }
 
@@ -301,9 +301,9 @@ void InsertionIndicatorOverlay::Paint (
     rDevice.DrawImage(maLocation, Image(maIcon));
 }
 
-void InsertionIndicatorOverlay::SetLayerInvalidator (const SharedILayerInvalidator& rpInvalidator)
+void InsertionIndicatorOverlay::SetLayerInvalidator (std::unique_ptr<ILayerInvalidator> pInvalidator)
 {
-    mpLayerInvalidator = rpInvalidator;
+    mpLayerInvalidator = std::move(pInvalidator);
 
     if (mbIsVisible && mpLayerInvalidator)
         mpLayerInvalidator->Invalidate(GetBoundingBox());

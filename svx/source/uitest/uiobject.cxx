@@ -24,24 +24,29 @@ void SvxShowCharSetUIObject::execute(const OUString& rAction,
 {
     if (rAction == "SELECT")
     {
-        if (rParameters.find("INDEX") != rParameters.end())
+        auto itIndex = rParameters.find(u"INDEX"_ustr);
+        if (itIndex != rParameters.end())
         {
-            OUString aIndexStr = rParameters.find("INDEX")->second;
+            OUString aIndexStr = itIndex->second;
 
             sal_Int32 nIndex = aIndexStr.toInt32();
             mpCharSet->OutputIndex(nIndex);
         }
-        else if (rParameters.find("COLUMN") != rParameters.end() &&
-                rParameters.find("ROW") != rParameters.end())
+        else
         {
-            OUString aColStr = rParameters.find("COLUMN")->second;
-            OUString aRowStr = rParameters.find("ROW")->second;
+            auto itColumn = rParameters.find(u"COLUMN"_ustr);
+            auto itRow = rParameters.find(u"ROW"_ustr);
+            if (itColumn != rParameters.end() && itRow != rParameters.end())
+            {
+                OUString aColStr = itColumn->second;
+                OUString aRowStr = itRow->second;
 
-            sal_Int32 nColumn = aColStr.toInt32();
-            sal_Int32 nRow = aRowStr.toInt32();
+                sal_Int32 nColumn = aColStr.toInt32();
+                sal_Int32 nRow = aRowStr.toInt32();
 
-            sal_Int32 nIndex = nColumn * COLUMN_COUNT + nRow;
-            mpCharSet->OutputIndex(nIndex);
+                sal_Int32 nIndex = nColumn * COLUMN_COUNT + nRow;
+                mpCharSet->OutputIndex(nIndex);
+            }
         }
     }
     else
@@ -55,7 +60,7 @@ std::unique_ptr<UIObject> SvxShowCharSetUIObject::create(vcl::Window* pWindow)
 
 OUString SvxShowCharSetUIObject::get_name() const
 {
-    return "SvxShowCharSetUIObject";
+    return u"SvxShowCharSetUIObject"_ustr;
 }
 
 
@@ -70,9 +75,10 @@ void SvxNumValueSetUIObject::execute(const OUString& rAction,
 {
     if (rAction == "CHOOSE")
     {
-        if (rParameters.find("POS") != rParameters.end())
+        auto itPos = rParameters.find(u"POS"_ustr);
+        if (itPos != rParameters.end())
         {
-            OUString aIndexStr = rParameters.find("POS")->second;
+            OUString aIndexStr = itPos->second;
             sal_Int32 nIndex = aIndexStr.toInt32();
             mpNumValueSet->SelectItem(nIndex);
             mpNumValueSet->Select();
@@ -89,16 +95,16 @@ std::unique_ptr<UIObject> SvxNumValueSetUIObject::create(vcl::Window* pWindow)
 
 OUString SvxNumValueSetUIObject::get_name() const
 {
-    return "SvxNumValueSetUIObject";
+    return u"SvxNumValueSetUIObject"_ustr;
 }
 
 StringMap SvxNumValueSetUIObject::get_state()
 {
     StringMap aMap = WindowUIObject::get_state();
-    aMap["SelectedItemId"] = OUString::number( mpNumValueSet->GetSelectedItemId() );
-    aMap["SelectedItemPos"] = OUString::number( mpNumValueSet->GetSelectItemPos() );
-    aMap["ItemsCount"] = OUString::number(mpNumValueSet->GetItemCount());
-    aMap["ItemText"] = mpNumValueSet->GetItemText(mpNumValueSet->GetSelectedItemId());
+    aMap[u"SelectedItemId"_ustr] = OUString::number( mpNumValueSet->GetSelectedItemId() );
+    aMap[u"SelectedItemPos"_ustr] = OUString::number( mpNumValueSet->GetSelectItemPos() );
+    aMap[u"ItemsCount"_ustr] = OUString::number(mpNumValueSet->GetItemCount());
+    aMap[u"ItemText"_ustr] = mpNumValueSet->GetItemText(mpNumValueSet->GetSelectedItemId());
     return aMap;
 }
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -21,14 +21,12 @@
 #include <ChartModel.hxx>
 #include <MediaDescriptorHelper.hxx>
 #include <ChartViewHelper.hxx>
-#include <ChartModelHelper.hxx>
 #include <ChartTypeManager.hxx>
 #include <ChartTypeTemplate.hxx>
 #include <DataSourceHelper.hxx>
 #include <AxisHelper.hxx>
 #include <ThreeDHelper.hxx>
 #include <Diagram.hxx>
-#include <DiagramHelper.hxx>
 #include <BaseCoordinateSystem.hxx>
 #include <Legend.hxx>
 #include <XMLFilter.hxx>
@@ -47,8 +45,6 @@
 #include <com/sun/star/io/IOException.hpp>
 #include <com/sun/star/lang/XSingleServiceFactory.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
-#include <com/sun/star/io/TempFile.hpp>
-#include <com/sun/star/io/XSeekable.hpp>
 #include <com/sun/star/ucb/CommandFailedException.hpp>
 #include <com/sun/star/ucb/ContentCreationException.hpp>
 
@@ -77,19 +73,6 @@ using ::osl::MutexGuard;
 
 namespace
 {
-struct lcl_PropNameEquals
-{
-    explicit lcl_PropNameEquals( OUString aStrToCompareWith ) :
-            m_aStr(std::move( aStrToCompareWith ))
-    {}
-    bool operator() ( const beans::PropertyValue & rProp )
-    {
-        return rProp.Name == m_aStr;
-    }
-private:
-    OUString m_aStr;
-};
-
 template< typename T >
 T lcl_getProperty(
     const Sequence< beans::PropertyValue > & rMediaDescriptor,
@@ -98,10 +81,9 @@ T lcl_getProperty(
     T aResult;
     if( rMediaDescriptor.hasElements())
     {
-        const beans::PropertyValue * pIt = rMediaDescriptor.getConstArray();
-        const beans::PropertyValue * pEndIt = pIt +  + rMediaDescriptor.getLength();
-        pIt = std::find_if( pIt, pEndIt, lcl_PropNameEquals( rPropName ));
-        if( pIt != pEndIt )
+        auto pIt = std::find_if(rMediaDescriptor.begin(), rMediaDescriptor.end(),
+                                [&rPropName](auto& prop) { return prop.Name == rPropName; });
+        if (pIt != rMediaDescriptor.end())
             (*pIt).Value >>= aResult;
     }
     return aResult;
@@ -113,7 +95,7 @@ void lcl_addStorageToMediaDescriptor(
 {
     rOutMD.realloc( rOutMD.getLength() + 1 );
     rOutMD.getArray()[rOutMD.getLength() - 1] = beans::PropertyValue(
-        "Storage", -1, uno::Any( xStorage ), beans::PropertyState_DIRECT_VALUE );
+        u"Storage"_ustr, -1, uno::Any( xStorage ), beans::PropertyState_DIRECT_VALUE );
 }
 
 Reference< embed::XStorage > lcl_createStorage(
@@ -163,7 +145,7 @@ Reference< document::XFilter > ChartModel::impl_createFilter(
 
     // find FilterName in MediaDescriptor
     OUString aFilterName(
-        lcl_getProperty< OUString >( rMediaDescriptor, "FilterName" ) );
+        lcl_getProperty< OUString >( rMediaDescriptor, u"FilterName"_ustr ) );
 
     // if FilterName was found, get Filter from factory
     if( !aFilterName.isEmpty() )
@@ -172,7 +154,7 @@ Reference< document::XFilter > ChartModel::impl_createFilter(
         {
             Reference< container::XNameAccess > xFilterFact(
                 m_xContext->getServiceManager()->createInstanceWithContext(
-                    "com.sun.star.document.FilterFactory", m_xContext ),
+                    u"com.sun.star.document.FilterFactory"_ustr, m_xContext ),
                 uno::UNO_QUERY_THROW );
             uno::Any aFilterProps( xFilterFact->getByName( aFilterName ));
             Sequence< beans::PropertyValue > aProps;
@@ -181,7 +163,7 @@ Reference< document::XFilter > ChartModel::impl_createFilter(
                 (aFilterProps >>= aProps))
             {
                 OUString aFilterServiceName(
-                    lcl_getProperty< OUString >( aProps, "FilterService" ) );
+                    lcl_getProperty< OUString >( aProps, u"FilterService"_ustr ) );
 
                 if( !aFilterServiceName.isEmpty())
                 {
@@ -223,7 +205,7 @@ void SAL_CALL ChartModel::storeSelf( const Sequence< beans::PropertyValue >& rMe
 // frame::XStorable (base of XStorable2)
 sal_Bool SAL_CALL ChartModel::hasLocation()
 {
-    //@todo guard
+    std::unique_lock aGuard(m_aLifeTimeManager.m_aAccessMutex);
     return !m_aResource.isEmpty();
 }
 
@@ -247,10 +229,10 @@ void SAL_CALL ChartModel::store()
     OUString aLocation = m_aResource;
 
     if( aLocation.isEmpty() )
-        throw io::IOException( "no location specified", static_cast< ::cppu::OWeakObject* >(this));
+        throw io::IOException( u"no location specified"_ustr, static_cast< ::cppu::OWeakObject* >(this));
     //@todo check whether aLocation is something like private:factory...
     if( m_bReadOnly )
-        throw io::IOException( "document is read only", static_cast< ::cppu::OWeakObject* >(this));
+        throw io::IOException( u"document is read only"_ustr, static_cast< ::cppu::OWeakObject* >(this));
 
     aGuard.clear();
 
@@ -267,7 +249,7 @@ void SAL_CALL ChartModel::storeAsURL(
         return; //behave passive if already disposed or closed or throw exception @todo?
 
     apphelper::MediaDescriptorHelper aMediaDescriptorHelper(rMediaDescriptor);
-    uno::Sequence< beans::PropertyValue > aReducedMediaDescriptor(
+    const uno::Sequence< beans::PropertyValue >& aReducedMediaDescriptor(
         aMediaDescriptorHelper.getReducedForModel() );
 
     m_bReadOnly = false;
@@ -295,7 +277,7 @@ void SAL_CALL ChartModel::storeToURL(
     aGuard.clear();
 
     apphelper::MediaDescriptorHelper aMediaDescriptorHelper(rMediaDescriptor);
-    uno::Sequence< beans::PropertyValue > aReducedMediaDescriptor(
+    const uno::Sequence< beans::PropertyValue >& aReducedMediaDescriptor(
         aMediaDescriptorHelper.getReducedForModel() );
 
     if ( rURL == "private:stream" )
@@ -372,7 +354,7 @@ void ChartModel::impl_store(
     try
     {
         xPropSet->setPropertyValue(
-            "SavedObject",
+            u"SavedObject"_ustr,
             uno::Any( aMDHelper.HierarchicalDocumentName ) );
     }
     catch ( const uno::Exception& )
@@ -398,7 +380,7 @@ void ChartModel::insertDefaultChart()
                 bool bSupportsCategories = xTemplate->supportsCategories();
                 if( bSupportsCategories )
                 {
-                    aParam = { beans::PropertyValue( "HasCategories", -1, uno::Any( true ),
+                    aParam = { beans::PropertyValue( u"HasCategories"_ustr, -1, uno::Any( true ),
                                                      beans::PropertyState_DIRECT_VALUE ) };
                 }
 
@@ -413,42 +395,38 @@ void ChartModel::insertDefaultChart()
 
                 // create and attach legend
                 rtl::Reference< Legend > xLegend = new Legend();
-                xLegend->setPropertyValue( "FillStyle", uno::Any( drawing::FillStyle_NONE ));
-                xLegend->setPropertyValue( "LineStyle", uno::Any( drawing::LineStyle_NONE ));
-                xLegend->setPropertyValue( "LineColor", uno::Any( static_cast< sal_Int32 >( 0xb3b3b3 ) ));  // gray30
-                xLegend->setPropertyValue( "FillColor", uno::Any( static_cast< sal_Int32 >( 0xe6e6e6 ) ) ); // gray10
+                xLegend->setPropertyValue( u"FillStyle"_ustr, uno::Any( drawing::FillStyle_NONE ));
+                xLegend->setPropertyValue( u"LineStyle"_ustr, uno::Any( drawing::LineStyle_NONE ));
+                xLegend->setPropertyValue( u"LineColor"_ustr, uno::Any( static_cast< sal_Int32 >( 0xb3b3b3 ) ));  // gray30
+                xLegend->setPropertyValue( u"FillColor"_ustr, uno::Any( static_cast< sal_Int32 >( 0xe6e6e6 ) ) ); // gray10
 
                 if( bIsRTL )
-                    xLegend->setPropertyValue( "AnchorPosition", uno::Any( chart2::LegendPosition_LINE_START ));
+                    xLegend->setPropertyValue( u"AnchorPosition"_ustr, uno::Any( chart2::LegendPosition_LINE_START ));
                 if(xDiagram.is())
+                {
                     xDiagram->setLegend( xLegend );
 
-                // set simple 3D look
-                if( xDiagram.is() )
-                {
-                    xDiagram->setPropertyValue( "RightAngledAxes", uno::Any( true ));
-                    xDiagram->setPropertyValue( "D3DScenePerspective", uno::Any( drawing::ProjectionMode_PARALLEL ));
+                    // set simple 3D look
+                    xDiagram->setPropertyValue( u"RightAngledAxes"_ustr, uno::Any( true ));
+                    xDiagram->setPropertyValue( u"D3DScenePerspective"_ustr, uno::Any( drawing::ProjectionMode_PARALLEL ));
                     xDiagram->setScheme( ThreeDLookScheme::ThreeDLookScheme_Realistic );
-                }
 
-                //set some new 'defaults' for wall and floor
-                if( xDiagram.is() )
-                {
+                    //set some new 'defaults' for wall and floor
                     Reference< beans::XPropertySet > xWall( xDiagram->getWall() );
                     if( xWall.is() )
                     {
-                        xWall->setPropertyValue( "LineStyle", uno::Any( drawing::LineStyle_SOLID ) );
-                        xWall->setPropertyValue( "FillStyle", uno::Any( drawing::FillStyle_NONE ) );
-                        xWall->setPropertyValue( "LineColor", uno::Any( static_cast< sal_Int32 >( 0xb3b3b3 ) ) ); // gray30
-                        xWall->setPropertyValue( "FillColor", uno::Any( static_cast< sal_Int32 >( 0xe6e6e6 ) ) ); // gray10
+                        xWall->setPropertyValue( u"LineStyle"_ustr, uno::Any( drawing::LineStyle_SOLID ) );
+                        xWall->setPropertyValue( u"FillStyle"_ustr, uno::Any( drawing::FillStyle_NONE ) );
+                        xWall->setPropertyValue( u"LineColor"_ustr, uno::Any( static_cast< sal_Int32 >( 0xb3b3b3 ) ) ); // gray30
+                        xWall->setPropertyValue( u"FillColor"_ustr, uno::Any( static_cast< sal_Int32 >( 0xe6e6e6 ) ) ); // gray10
                     }
                     Reference< beans::XPropertySet > xFloor( xDiagram->getFloor() );
                     if( xFloor.is() )
                     {
-                        xFloor->setPropertyValue( "LineStyle", uno::Any( drawing::LineStyle_NONE ) );
-                        xFloor->setPropertyValue( "FillStyle", uno::Any( drawing::FillStyle_SOLID ) );
-                        xFloor->setPropertyValue( "LineColor", uno::Any( static_cast< sal_Int32 >( 0xb3b3b3 ) ) ); // gray30
-                        xFloor->setPropertyValue( "FillColor", uno::Any( static_cast< sal_Int32 >( 0xcccccc ) ) ); // gray20
+                        xFloor->setPropertyValue( u"LineStyle"_ustr, uno::Any( drawing::LineStyle_NONE ) );
+                        xFloor->setPropertyValue( u"FillStyle"_ustr, uno::Any( drawing::FillStyle_SOLID ) );
+                        xFloor->setPropertyValue( u"LineColor"_ustr, uno::Any( static_cast< sal_Int32 >( 0xb3b3b3 ) ) ); // gray30
+                        xFloor->setPropertyValue( u"FillColor"_ustr, uno::Any( static_cast< sal_Int32 >( 0xcccccc ) ) ); // gray20
                     }
 
                 }
@@ -458,7 +436,7 @@ void ChartModel::insertDefaultChart()
                 DBG_UNHANDLED_EXCEPTION("chart2");
             }
         }
-        ChartModelHelper::setIncludeHiddenCells( false, *this );
+        setIncludeHiddenCells( false );
     }
     catch( const uno::Exception & )
     {
@@ -584,8 +562,8 @@ void ChartModel::impl_loadGraphics(
 {
     try
     {
-        const Reference< embed::XStorage >& xGraphicsStorage(
-            xStorage->openStorageElement( "Pictures",
+        const Reference< embed::XStorage > xGraphicsStorage(
+            xStorage->openStorageElement( u"Pictures"_ustr,
                                           embed::ElementModes::READ ) );
 
         if( xGraphicsStorage.is() )
@@ -713,7 +691,7 @@ void SAL_CALL ChartModel::modified( const lang::EventObject& rEvenObject)
         try
         {
             uno::Sequence<beans::PropertyValue> aArguments =
-                DataSourceHelper::createArguments("PivotChart", uno::Sequence<sal_Int32>(), true, true, true);
+                DataSourceHelper::createArguments(u"PivotChart"_ustr, uno::Sequence<sal_Int32>(), true, true, true);
 
             Reference<chart2::data::XDataSource> xDataSource(xDataProvider->createDataSource(aArguments));
             rtl::Reference< ::chart::ChartTypeManager > xChartTypeManager = getTypeManager();

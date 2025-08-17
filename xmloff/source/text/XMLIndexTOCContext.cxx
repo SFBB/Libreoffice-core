@@ -37,7 +37,6 @@
 #include <xmloff/xmlictxt.hxx>
 #include <xmloff/xmlimp.hxx>
 #include <xmloff/txtimp.hxx>
-#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/prstylei.hxx>
@@ -52,21 +51,20 @@ using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::text;
 using namespace ::xmloff::token;
 
-using ::com::sun::star::beans::XPropertySet;
 using ::com::sun::star::uno::Reference;
 using ::com::sun::star::lang::XMultiServiceFactory;
 using ::com::sun::star::lang::IllegalArgumentException;
 
 
-static const char* aIndexServiceMap[] =
+constexpr OUString aIndexServiceMap[]
 {
-    "com.sun.star.text.ContentIndex",
-    "com.sun.star.text.DocumentIndex",
-    "com.sun.star.text.TableIndex",
-    "com.sun.star.text.ObjectIndex",
-    "com.sun.star.text.Bibliography",
-    "com.sun.star.text.UserIndex",
-    "com.sun.star.text.IllustrationsIndex"
+    u"com.sun.star.text.ContentIndex"_ustr,
+    u"com.sun.star.text.DocumentIndex"_ustr,
+    u"com.sun.star.text.TableIndex"_ustr,
+    u"com.sun.star.text.ObjectIndex"_ustr,
+    u"com.sun.star.text.Bibliography"_ustr,
+    u"com.sun.star.text.UserIndex"_ustr,
+    u"com.sun.star.text.IllustrationsIndex"_ustr
 };
 
 const XMLTokenEnum aIndexSourceElementMap[] =
@@ -170,9 +168,7 @@ void XMLIndexTOCContext::startFastElement(
                                              UNO_QUERY);
     if( xFactory.is() )
     {
-        Reference<XInterface> xIfc =
-            xFactory->createInstance(
-                OUString::createFromAscii(aIndexServiceMap[eIndexType]));
+        Reference<XInterface> xIfc = xFactory->createInstance(aIndexServiceMap[eIndexType]);
         if( xIfc.is() )
         {
             // get Property set
@@ -233,11 +229,11 @@ void XMLIndexTOCContext::startFastElement(
         pStyle->FillPropertySet( xTOCPropertySet );
     }
 
-    xTOCPropertySet->setPropertyValue( "IsProtected", Any(bProtected) );
+    xTOCPropertySet->setPropertyValue( u"IsProtected"_ustr, Any(bProtected) );
 
     if (!sIndexName.isEmpty())
     {
-        xTOCPropertySet->setPropertyValue( "Name", Any(sIndexName) );
+        xTOCPropertySet->setPropertyValue( u"Name"_ustr, Any(sIndexName) );
     }
 
 }
@@ -258,13 +254,13 @@ void XMLIndexTOCContext::endFastElement(sal_Int32 )
     {
         rHelper->GetCursor()->goLeft(1, true);
         rHelper->GetText()->insertString(rHelper->GetCursorAsRange(),
-                                         "", true);
+                                         u""_ustr, true);
     }
 
     // and delete second marker
     rHelper->GetCursor()->goRight(1, true);
     rHelper->GetText()->insertString(rHelper->GetCursorAsRange(),
-                                     "", true);
+                                     u""_ustr, true);
 
     // check for Redlines on our end node
     GetImport().GetTextImport()->RedlineAdjustStartNodeCursor();
@@ -286,7 +282,7 @@ css::uno::Reference< css::xml::sax::XFastContextHandler > XMLIndexTOCContext::cr
         xContext = xNewBodyContext;
         if ( !xBodyContextRef.is() || !xBodyContextRef->HasContent() )
         {
-            xBodyContextRef = xNewBodyContext;
+            xBodyContextRef = std::move(xNewBodyContext);
         }
     }
     else if (nElement == XML_ELEMENT(TEXT, aIndexSourceElementMap[eIndexType]))

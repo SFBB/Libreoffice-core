@@ -20,23 +20,22 @@
 #include <tools/fract.hxx>
 #include <tools/debug.hxx>
 #include <o3tl/hash_combine.hxx>
+#include <o3tl/numeric.hxx>
 #include <o3tl/safeint.hxx>
 #include <sal/log.hxx>
 #include <osl/diagnose.h>
 
 #include <algorithm>
+#include <bit>
 #include <cmath>
 #include <numeric>
 
 #include <boost/rational.hpp>
 
-#ifdef _MSC_VER
-#include <intrin.h>
-#endif
-
 static boost::rational<sal_Int32> rational_FromDouble(double dVal);
 static void rational_ReduceInaccurate(boost::rational<sal_Int32>& rRational, unsigned nSignificantBits);
-static int impl_NumberOfBits( sal_uInt32 nNum );
+// Find the number of bits required to represent this number
+static int impl_NumberOfBits(sal_uInt32 nNum) { return o3tl::number_of_bits(nNum); }
 
 static boost::rational<sal_Int32> toRational(sal_Int32 n, sal_Int32 d)
 {
@@ -404,22 +403,6 @@ static boost::rational<sal_Int32> rational_FromDouble(double dVal)
         nDen *= 10;
     }
     return boost::rational<sal_Int32>( sal_Int32(dVal), nDen );
-}
-
-/**
- * Find the number of bits required to represent this number, using the CLZ intrinsic
- */
-static int impl_NumberOfBits( sal_uInt32 nNum )
-{
-    if (nNum == 0)
-        return 0;
-#ifdef _MSC_VER
-    unsigned long r = 0;
-    _BitScanReverse(&r, nNum);
-    return r + 1;
-#else
-    return 32 - __builtin_clz(nNum);
-#endif
 }
 
 /** Inaccurate cancellation for a fraction.

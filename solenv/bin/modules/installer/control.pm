@@ -87,6 +87,8 @@ sub check_system_path
                         map { my $dir = qx{cygpath -m "$_"}; chomp($dir); $dir }
                         split /\Q$local_pathseparator\E\s*/, $pathvariable;
         $local_pathseparator = ';';
+    } elsif ( $^O =~ /MSWin/i ) {
+        $local_pathseparator = ';';
     }
     my $patharrayref = installer::converter::convert_stringlist_into_array(\$pathvariable, $local_pathseparator);
 
@@ -96,7 +98,7 @@ sub check_system_path
 
     if (($installer::globals::iswin) && ($installer::globals::iswindowsbuild))
     {
-        @needed_files_in_path = ("zip.exe", "msiinfo.exe", "msidb.exe", "uuidgen", "makecab.exe", "msitran.exe", "expand.exe");
+        @needed_files_in_path = ("msiinfo.exe", "msidb.exe", "uuidgen.exe", "makecab.exe", "msitran.exe", "expand.exe");
     }
     elsif ($installer::globals::iswin)
     {
@@ -314,7 +316,7 @@ sub check_logfile
         $compareline =~ s/Error\.idl//g;    # removing all occurrences of "Error.idl"
         $compareline =~ s/Error\.html//g;   # removing all occurrences of "Error.html"
         $compareline =~ s/error\.py//g;     # removing all occurrences of "error.py"
-        $compareline =~ s/error\.cpython\-3.(\.opt\-.|)\.py[co]//g;  # removing all occurrences of "error-cpython"
+        $compareline =~ s/error\.cpython\-3\d{1,2}(\.opt\-.|)\.py[co]//g;  # removing all occurrences of "error-cpython"
         $compareline =~ s/libgpg-error//g;
         $compareline =~ s/Error-xref\.html//g;
 

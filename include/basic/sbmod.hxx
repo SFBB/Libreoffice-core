@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_BASIC_SBMOD_HXX
-#define INCLUDED_BASIC_SBMOD_HXX
+#pragma once
 
 #include <config_options.h>
 #include <basic/sbdef.hxx>
@@ -55,7 +54,7 @@ class BASIC_DLLPUBLIC SbModule : public SbxObject
 
     std::vector< OUString > mModuleVariableNames;
 
-    BASIC_DLLPRIVATE static void implClearIfVarDependsOnDeletedBasic( SbxVariable* pVar, StarBASIC* pDeletedBasic );
+    BASIC_DLLPRIVATE static void implClearIfVarDependsOnDeletedBasic(SbxVariable& rVar, StarBASIC* pDeletedBasic);
 
     SbModule(const SbModule&) = delete;
     SbModule& operator=(const SbModule&) = delete;
@@ -63,8 +62,8 @@ protected:
     css::uno::Reference< css::script::XInvocation > mxWrapper;
     OUString            aOUSource;
     OUString            aComment;
-    std::unique_ptr<SbiImage> pImage;        // the Image
-    SbiBreakpoints*     pBreaks;       // Breakpoints
+    std::shared_ptr<SbiImage> pImage;  // the Image
+    std::shared_ptr<SbiBreakpoints> pBreaks; // Breakpoints
     std::unique_ptr<SbClassData> pClassData;
     bool mbVBASupport; // Option VBASupport
     bool mbCompat; // Option Compatible
@@ -144,11 +143,11 @@ typedef std::vector<SbModuleRef> SbModules;
 // Object class for instances of class modules
 class UNLESS_MERGELIBS(BASIC_DLLPUBLIC) SbClassModuleObject final : public SbModule
 {
-    SbModule*   mpClassModule;
+    SbModule&   mrClassModule;
     bool        mbInitializeEventDone;
 
 public:
-    SbClassModuleObject( SbModule* pClassModule );
+    SbClassModuleObject(SbModule& rClassModule);
     virtual ~SbClassModuleObject() override;
 
     // Overridden to support NameAccess etc.
@@ -156,13 +155,13 @@ public:
 
     virtual void Notify( SfxBroadcaster&, const SfxHint& rHint ) override;
 
-    SbModule* getClassModule()
-        { return mpClassModule; }
+    SbModule& getClassModule()
+    {
+        return mrClassModule;
+    }
 
     void triggerInitializeEvent();
     void triggerTerminateEvent();
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

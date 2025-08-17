@@ -34,15 +34,12 @@ class SwAccessibleTableData_Impl;
 class SwTableBox;
 class SwSelBoxes;
 
-namespace sw::access {
-    class SwAccessibleChild;
-}
-
+using SwAccessibleTable_BASE = cppu::ImplInheritanceHelper<SwAccessibleContext,
+                                                           css::accessibility::XAccessibleTable,
+                                                           css::accessibility::XAccessibleSelection,
+                                                           css::accessibility::XAccessibleTableSelection>;
 class SwAccessibleTable :
-        public SwAccessibleContext,
-        public css::accessibility::XAccessibleTable,
-        public css::accessibility::XAccessibleSelection,
-        public css::accessibility::XAccessibleTableSelection,
+        public SwAccessibleTable_BASE,
         public SvtListener
 {
     std::unique_ptr<SwAccessibleTableData_Impl> mpTableData;    // the table's data, protected by SolarMutex
@@ -95,25 +92,6 @@ public:
     SwAccessibleTable(std::shared_ptr<SwAccessibleMap> const& pInitMap,
                       const SwTabFrame* pTableFrame);
 
-    // XInterface
-
-    // (XInterface methods need to be implemented to disambiguate
-    // between those inherited through SwAccessibleContext and
-    // XAccessibleTable).
-
-    virtual css::uno::Any SAL_CALL queryInterface(
-        const css::uno::Type& aType ) override;
-
-    virtual void SAL_CALL acquire(  ) noexcept override
-        { SwAccessibleContext::acquire(); };
-
-    virtual void SAL_CALL release(  ) noexcept override
-        { SwAccessibleContext::release(); };
-
-    // XTypeProvider
-    virtual css::uno::Sequence< css::uno::Type > SAL_CALL getTypes(  ) override;
-    virtual css::uno::Sequence< sal_Int8 > SAL_CALL getImplementationId(  ) override;
-
     // XAccessibleContext
 
     /// Return this object's description.
@@ -164,23 +142,6 @@ public:
     virtual sal_Bool SAL_CALL selectColumn( sal_Int32 column ) override ;
     virtual sal_Bool SAL_CALL unselectRow( sal_Int32 row ) override;
     virtual sal_Bool SAL_CALL unselectColumn( sal_Int32 column ) override;
-    // XServiceInfo
-
-    /** Returns an identifier for the implementation of this object.
-    */
-    virtual OUString SAL_CALL
-        getImplementationName() override;
-
-    /** Return whether the specified service is supported by this class.
-    */
-    virtual sal_Bool SAL_CALL
-        supportsService (const OUString& sServiceName) override;
-
-    /** Returns a list of all supported services.  In this case that is just
-        the AccessibleContext service.
-    */
-    virtual css::uno::Sequence< OUString> SAL_CALL
-        getSupportedServiceNames() override;
 
     // C++ interface
 
@@ -244,11 +205,6 @@ public:
     SwAccessibleTableColHeaders(std::shared_ptr<SwAccessibleMap> const& pMap,
                                 const SwTabFrame *pTabFrame);
 
-    // XInterface
-
-    virtual css::uno::Any SAL_CALL queryInterface(
-        const css::uno::Type& aType ) override;
-
     // XAccessibleContext
 
     /// Return the number of currently visible children.
@@ -266,14 +222,6 @@ public:
     virtual css::uno::Reference<
                 css::accessibility::XAccessibleTable >
         SAL_CALL getAccessibleColumnHeaders(  ) override;
-
-    // XServiceInfo
-
-    /** Returns an identifier for the implementation of this object.
-    */
-    virtual OUString SAL_CALL
-        getImplementationName() override;
-
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

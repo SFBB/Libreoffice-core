@@ -32,10 +32,11 @@ class SdrModel;
 
 class SVXCORE_DLLPUBLIC XLineDashItem final : public NameOrIndex
 {
-    XDash   aDash;
+    XDash   m_aDash;
 
 public:
                             static SfxPoolItem* CreateDefault();
+                            DECLARE_ITEM_TYPE_FUNCTION(XLineDashItem)
                             XLineDashItem() : NameOrIndex(XATTR_LINEDASH, -1) {}
                             XLineDashItem(const OUString& rName, const XDash& rTheDash);
                             XLineDashItem(const XDash& rTheDash);
@@ -54,11 +55,11 @@ public:
     virtual bool            HasMetrics() const override;
     virtual void            ScaleMetrics(tools::Long nMul, tools::Long nDiv) override;
 
-    const XDash&            GetDashValue() const { return aDash;}
-    void                    SetDashValue(const XDash& rNew)   { aDash = rNew; Detach(); } // SetValue -> SetDashValue
+    const XDash&            GetDashValue() const { return m_aDash;}
+    void                    SetDashValue(const XDash& rNew)   { m_aDash = rNew; Detach(); } // SetValue -> SetDashValue
 
     static bool CompareValueFunc( const NameOrIndex* p1, const NameOrIndex* p2 );
-    std::unique_ptr<XLineDashItem> checkForUniqueItem( SdrModel* pModel ) const;
+    std::unique_ptr<XLineDashItem> checkForUniqueItem( SdrModel& rModel ) const;
 };
 
 #endif

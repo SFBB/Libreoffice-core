@@ -19,6 +19,7 @@
 
 #include <com/sun/star/document/EventObject.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
+#include <com/sun/star/uno/XComponentContext.hpp>
 
 #include <cppuhelper/supportsservice.hxx>
 #include <osl/diagnose.h>
@@ -75,51 +76,38 @@ void SvxShapeCollection::dispose()
 
     // Guard dispose against multiple threading
     // Remark: It is an error to call dispose more than once
-    bool bDoDispose = false;
     {
         std::unique_lock aGuard( m_aMutex );
-        if( !bDisposed && !bInDispose )
-        {
-            // only one call go into this section
-            bInDispose = true;
-            bDoDispose = true;
-        }
+        if( bDisposed || bInDispose )
+            return;
+        // only one call go into this section
+        bInDispose = true;
     }
 
     // Do not hold the mutex because we are broadcasting
-    if( bDoDispose )
+    // Create an event with this as sender
+    try
     {
-        // Create an event with this as sender
-        try
-        {
-            document::EventObject aEvt;
-            aEvt.Source = uno::Reference< uno::XInterface >::query( static_cast<lang::XComponent *>(this) );
-            // inform all listeners to release this object
-            // The listener container are automatically cleared
-            std::unique_lock g(m_aMutex);
-            maEventListeners.disposeAndClear( g, aEvt );
-            maShapeContainer.clear();
-        }
-        catch(const css::uno::Exception&)
-        {
-            // catch exception and throw again but signal that
-            // the object was disposed. Dispose should be called
-            // only once.
-            bDisposed = true;
-            bInDispose = false;
-            throw;
-        }
+        document::EventObject aEvt;
+        aEvt.Source = uno::Reference< uno::XInterface >::query( static_cast<lang::XComponent *>(this) );
+        // inform all listeners to release this object
+        // The listener container are automatically cleared
+        std::unique_lock g(m_aMutex);
+        maEventListeners.disposeAndClear( g, aEvt );
+        maShapeContainer.clear();
 
-        // the values bDispose and bInDisposing must set in this order.
-        // No multithread call overcome the "!rBHelper.bDisposed && !rBHelper.bInDispose" guard.
+        // bDisposed and bInDispose must be set in this order.
         bDisposed = true;
         bInDispose = false;
     }
-    else
+    catch(const css::uno::Exception&)
     {
-        // in a multithreaded environment, it can't be avoided, that dispose is called twice.
-        // However this condition is traced, because it MAY indicate an error.
-        SAL_INFO("svx", "dispose called twice" );
+        // catch exception and throw again but signal that
+        // the object was disposed. Dispose should be called
+        // only once.
+        bDisposed = true;
+        bInDispose = false;
+        throw;
     }
 }
 
@@ -159,7 +147,6 @@ sal_Int32 SAL_CALL SvxShapeCollection::getCount()
     return maShapeContainer.size();
 }
 
-
 uno::Any SAL_CALL SvxShapeCollection::getByIndex( sal_Int32 Index )
 {
     if( Index < 0 || Index >= getCount() )
@@ -168,6 +155,12 @@ uno::Any SAL_CALL SvxShapeCollection::getByIndex( sal_Int32 Index )
     std::unique_lock g(m_aMutex);
     Reference<drawing::XShape> xShape = maShapeContainer[Index];
     return uno::Any( xShape );
+}
+
+std::vector<css::uno::Reference<css::drawing::XShape>> SvxShapeCollection::getAllShapes() const
+{
+    std::unique_lock g(m_aMutex);
+    return maShapeContainer;
 }
 
 // XElementAccess
@@ -184,7 +177,7 @@ sal_Bool SAL_CALL SvxShapeCollection::hasElements()
 // XServiceInfo
 OUString SAL_CALL SvxShapeCollection::getImplementationName()
 {
-    return "com.sun.star.drawing.SvxShapeCollection";
+    return u"com.sun.star.drawing.SvxShapeCollection"_ustr;
 }
 
 sal_Bool SAL_CALL SvxShapeCollection::supportsService( const OUString& ServiceName )
@@ -194,12 +187,7 @@ sal_Bool SAL_CALL SvxShapeCollection::supportsService( const OUString& ServiceNa
 
 uno::Sequence< OUString > SAL_CALL SvxShapeCollection::getSupportedServiceNames()
 {
-    return { "com.sun.star.drawing.Shapes", "com.sun.star.drawing.ShapeCollection" };
-}
-
-void SvxShapeCollection::getAllShapes(std::vector<css::uno::Reference<css::drawing::XShape>>& rShapes) const
-{
-    rShapes = maShapeContainer;
+    return { u"com.sun.star.drawing.Shapes"_ustr, u"com.sun.star.drawing.ShapeCollection"_ustr };
 }
 
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface *

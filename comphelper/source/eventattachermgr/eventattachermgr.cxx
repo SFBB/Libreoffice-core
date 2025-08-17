@@ -58,7 +58,6 @@ using namespace com::sun::star::beans;
 using namespace com::sun::star::script;
 using namespace com::sun::star::reflection;
 using namespace cppu;
-using namespace osl;
 
 
 namespace comphelper
@@ -124,7 +123,7 @@ private:
     void insertEntry(std::unique_lock<std::mutex>&, sal_Int32 Index);
 
     /// @throws Exception
-    Reference< XIdlReflection > getReflection(std::unique_lock<std::mutex>&);
+    const Reference< XIdlReflection > & getReflection(std::unique_lock<std::mutex>&);
 
     /** checks if <arg>_nIndex</arg> is a valid index, throws an <type>IllegalArgumentException</type> if not
     @param _nIndex
@@ -195,7 +194,7 @@ void SAL_CALL AttacherAllListener_Impl::firing(const AllEventObject& Event)
 void AttacherAllListener_Impl::convertToEventReturn( Any & rRet, const Type & rRetType )
 {
     // no return value? Set to the specified values
-    if( rRet.getValueType().getTypeClass() == TypeClass_VOID )
+    if( rRet.getValueTypeClass() == TypeClass_VOID )
     {
         switch( rRetType.getTypeClass()  )
         {
@@ -268,7 +267,7 @@ Any SAL_CALL AttacherAllListener_Impl::approveFiring( const AllEventObject& Even
                 convertToEventReturn( aRet, aRetType );
             }
 
-            switch( aRet.getValueType().getTypeClass()  )
+            switch( aRet.getValueTypeClass()  )
             {
                 case TypeClass_INTERFACE:
                     {
@@ -356,7 +355,7 @@ ImplEventAttacherManager::ImplEventAttacherManager( const Reference< XIntrospect
     if ( rContext.is() )
     {
         Reference< XInterface > xIFace( rContext->getServiceManager()->createInstanceWithContext(
-             "com.sun.star.script.EventAttacher", rContext)  );
+             u"com.sun.star.script.EventAttacher"_ustr, rContext)  );
         if ( xIFace.is() )
         {
             xAttacher.set( xIFace, UNO_QUERY );
@@ -371,7 +370,7 @@ ImplEventAttacherManager::ImplEventAttacherManager( const Reference< XIntrospect
     }
 }
 
-Reference< XIdlReflection > ImplEventAttacherManager::getReflection(std::unique_lock<std::mutex>&)
+const Reference< XIdlReflection > & ImplEventAttacherManager::getReflection(std::unique_lock<std::mutex>&)
 {
     // Do we already have a service? If not, create one.
     if( !mxCoreReflection.is() )
@@ -385,7 +384,7 @@ Reference< XIdlReflection > ImplEventAttacherManager::getReflection(std::unique_
 std::deque< AttacherIndex_Impl >::iterator ImplEventAttacherManager::implCheckIndex( sal_Int32 _nIndex )
 {
     if ( (_nIndex < 0) || (o3tl::make_unsigned(_nIndex) >= aIndex.size()) )
-        throw IllegalArgumentException("wrong index", static_cast<cppu::OWeakObject*>(this), 1);
+        throw IllegalArgumentException(u"wrong index"_ustr, static_cast<cppu::OWeakObject*>(this), 1);
 
     std::deque<AttacherIndex_Impl>::iterator aIt = aIndex.begin() + _nIndex;
     return aIt;
@@ -458,10 +457,9 @@ void ImplEventAttacherManager::registerScriptEvents
     for( const auto& rObj : aList )
         detach( l, nIndex, rObj.xTarget );
 
-    const ScriptEventDescriptor* pArray = ScriptEvents.getConstArray();
     sal_Int32 nLen = ScriptEvents.getLength();
     for( sal_Int32 i = 0 ; i < nLen ; i++ )
-        registerScriptEvent( l, nIndex, pArray[ i ] );
+        registerScriptEvent(l, nIndex, ScriptEvents[i]);
 
     for( const auto& rObj : aList )
         attach( l, nIndex, rObj.xTarget, rObj.aHelper );
@@ -521,7 +519,7 @@ void SAL_CALL ImplEventAttacherManager::insertEntry(sal_Int32 nIndex)
 {
     std::unique_lock l(m_aMutex);
     if( nIndex < 0 )
-        throw IllegalArgumentException("negative index", static_cast<cppu::OWeakObject*>(this), 1);
+        throw IllegalArgumentException(u"negative index"_ustr, static_cast<cppu::OWeakObject*>(this), 1);
 
     insertEntry(l, nIndex);
 }
@@ -560,7 +558,7 @@ void SAL_CALL ImplEventAttacherManager::attach(sal_Int32 nIndex, const Reference
 {
     std::unique_lock l(m_aMutex);
     if( nIndex < 0 || !xObject.is() )
-        throw IllegalArgumentException("negative index, or null object", static_cast<cppu::OWeakObject*>(this), -1);
+        throw IllegalArgumentException(u"negative index, or null object"_ustr, static_cast<cppu::OWeakObject*>(this), -1);
     attach(l, nIndex, xObject, Helper);
 }
 
@@ -581,7 +579,7 @@ void ImplEventAttacherManager::attach(std::unique_lock<std::mutex>& l, sal_Int32
     AttachedObject_Impl aTmp;
     aTmp.xTarget = xObject;
     aTmp.aHelper = Helper;
-    aCurrentPosition->aObjList.push_back( aTmp );
+    aCurrentPosition->aObjList.push_back(std::move(aTmp));
 
     AttachedObject_Impl & rCurObj = aCurrentPosition->aObjList.back();
     rCurObj.aAttachedListenerSeq = std::vector< Reference< XEventListener > >( aCurrentPosition->aEventList.size() );
@@ -601,7 +599,7 @@ void ImplEventAttacherManager::attach(std::unique_lock<std::mutex>& l, sal_Int32
         aListener.ListenerType = rEvent.ListenerType;
         aListener.EventMethod = rEvent.EventMethod;
         aListener.AddListenerParam = rEvent.AddListenerParam;
-        p[i++] = aListener;
+        p[i++] = std::move(aListener);
     }
 
     try
@@ -621,7 +619,7 @@ void SAL_CALL ImplEventAttacherManager::detach(sal_Int32 nIndex, const Reference
     std::unique_lock l(m_aMutex);
     //return;
     if( nIndex < 0 || o3tl::make_unsigned(nIndex) >= aIndex.size() || !xObject.is() )
-        throw IllegalArgumentException("bad index or null object", static_cast<cppu::OWeakObject*>(this), 1);
+        throw IllegalArgumentException(u"bad index or null object"_ustr, static_cast<cppu::OWeakObject*>(this), 1);
     detach(l, nIndex, xObject);
 }
 
@@ -668,7 +666,7 @@ void SAL_CALL ImplEventAttacherManager::removeScriptListener(const Reference< XS
 // Methods of XPersistObject
 OUString SAL_CALL ImplEventAttacherManager::getServiceName()
 {
-    return "com.sun.star.uno.script.EventAttacherManager";
+    return u"com.sun.star.uno.script.EventAttacherManager"_ustr;
 }
 
 void SAL_CALL ImplEventAttacherManager::write(const Reference< XObjectOutputStream >& OutStream)

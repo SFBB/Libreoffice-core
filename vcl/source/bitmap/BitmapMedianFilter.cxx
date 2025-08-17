@@ -8,9 +8,7 @@
  *
  */
 
-#include <vcl/bitmap.hxx>
-#include <vcl/bitmapex.hxx>
-#include <vcl/BitmapMedianFilter.hxx>
+#include <vcl/bitmap/BitmapMedianFilter.hxx>
 #include <vcl/BitmapWriteAccess.hxx>
 
 #define S2(a, b)                                                                                   \
@@ -48,18 +46,18 @@
     MN3(a, b, c);                                                                                  \
     MX3(d, e, f);
 
-BitmapEx BitmapMedianFilter::execute(BitmapEx const& rBitmapEx) const
+Bitmap BitmapMedianFilter::execute(Bitmap const& rBitmap) const
 {
-    Bitmap aBitmap(rBitmapEx.GetBitmap());
+    Bitmap aBitmap(rBitmap);
 
     BitmapScopedReadAccess pReadAcc(aBitmap);
     if (!pReadAcc)
-        return BitmapEx();
+        return Bitmap();
 
     Bitmap aNewBmp(aBitmap.GetSizePixel(), vcl::PixelFormat::N24_BPP);
     BitmapScopedWriteAccess pWriteAcc(aNewBmp);
     if (!pWriteAcc)
-        return BitmapEx();
+        return Bitmap();
 
     const sal_Int32 nWidth = pWriteAcc->Width(), nWidth2 = nWidth + 2;
     const sal_Int32 nHeight = pWriteAcc->Height(), nHeight2 = nHeight + 2;
@@ -193,12 +191,12 @@ BitmapEx BitmapMedianFilter::execute(BitmapEx const& rBitmapEx) const
     const MapMode aMap(aBitmap.GetPrefMapMode());
     const Size aPrefSize(aBitmap.GetPrefSize());
 
-    aBitmap = aNewBmp;
+    aBitmap = std::move(aNewBmp);
 
     aBitmap.SetPrefMapMode(aMap);
     aBitmap.SetPrefSize(aPrefSize);
 
-    return BitmapEx(aBitmap);
+    return aBitmap;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

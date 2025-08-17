@@ -20,7 +20,7 @@
 #include <contentcontroldlg.hxx>
 
 #include <vcl/weld.hxx>
-#include <cui/cuicharmap.hxx>
+#include <svx/cuicharmap.hxx>
 #include <svl/numformat.hxx>
 #include <svl/zformat.hxx>
 
@@ -34,34 +34,35 @@
 using namespace com::sun::star;
 
 SwContentControlDlg::SwContentControlDlg(weld::Window* pParent, SwWrtShell& rWrtShell)
-    : SfxDialogController(pParent, "modules/swriter/ui/contentcontroldlg.ui",
-                          "ContentControlDialog")
+    : SfxDialogController(pParent, u"modules/swriter/ui/contentcontroldlg.ui"_ustr,
+                          u"ContentControlDialog"_ustr)
     , m_rWrtShell(rWrtShell)
-    , m_xShowingPlaceHolderCB(m_xBuilder->weld_check_button("showing_place_holder"))
-    , m_xAlias(m_xBuilder->weld_entry("aliasentry"))
-    , m_xTag(m_xBuilder->weld_entry("tagentry"))
-    , m_xId(m_xBuilder->weld_spin_button("idspinbutton"))
-    , m_xTabIndex(m_xBuilder->weld_spin_button("tabindexspinbutton"))
-    , m_xCheckboxFrame(m_xBuilder->weld_frame("checkboxframe"))
-    , m_xCheckedState(m_xBuilder->weld_entry("checkboxcheckedentry"))
-    , m_xCheckedStateBtn(m_xBuilder->weld_button("btncheckboxchecked"))
-    , m_xUncheckedState(m_xBuilder->weld_entry("checkboxuncheckedentry"))
-    , m_xUncheckedStateBtn(m_xBuilder->weld_button("btncheckboxunchecked"))
-    , m_xListItemsFrame(m_xBuilder->weld_frame("listitemsframe"))
-    , m_xListItems(m_xBuilder->weld_tree_view("listitems"))
-    , m_xListItemButtons(m_xBuilder->weld_box("listitembuttons"))
-    , m_xInsertBtn(m_xBuilder->weld_button("add"))
-    , m_xRenameBtn(m_xBuilder->weld_button("modify"))
-    , m_xDeleteBtn(m_xBuilder->weld_button("remove"))
-    , m_xMoveUpBtn(m_xBuilder->weld_button("moveup"))
-    , m_xMoveDownBtn(m_xBuilder->weld_button("movedown"))
-    , m_xDateFrame(m_xBuilder->weld_frame("dateframe"))
-    , m_xDateFormat(new SwNumFormatTreeView(m_xBuilder->weld_tree_view("date_formats_treeview")))
-    , m_xOk(m_xBuilder->weld_button("ok"))
+    , m_xShowingPlaceHolderCB(m_xBuilder->weld_check_button(u"showing_place_holder"_ustr))
+    , m_xAlias(m_xBuilder->weld_entry(u"aliasentry"_ustr))
+    , m_xTag(m_xBuilder->weld_entry(u"tagentry"_ustr))
+    , m_xId(m_xBuilder->weld_spin_button(u"idspinbutton"_ustr))
+    , m_xTabIndex(m_xBuilder->weld_spin_button(u"tabindexspinbutton"_ustr))
+    , m_xCheckboxFrame(m_xBuilder->weld_frame(u"checkboxframe"_ustr))
+    , m_xCheckedState(m_xBuilder->weld_entry(u"checkboxcheckedentry"_ustr))
+    , m_xCheckedStateBtn(m_xBuilder->weld_button(u"btncheckboxchecked"_ustr))
+    , m_xUncheckedState(m_xBuilder->weld_entry(u"checkboxuncheckedentry"_ustr))
+    , m_xUncheckedStateBtn(m_xBuilder->weld_button(u"btncheckboxunchecked"_ustr))
+    , m_xListItemsFrame(m_xBuilder->weld_frame(u"listitemsframe"_ustr))
+    , m_xListItems(m_xBuilder->weld_tree_view(u"listitems"_ustr))
+    , m_xListItemButtons(m_xBuilder->weld_box(u"listitembuttons"_ustr))
+    , m_xInsertBtn(m_xBuilder->weld_button(u"add"_ustr))
+    , m_xRenameBtn(m_xBuilder->weld_button(u"modify"_ustr))
+    , m_xDeleteBtn(m_xBuilder->weld_button(u"remove"_ustr))
+    , m_xMoveUpBtn(m_xBuilder->weld_button(u"moveup"_ustr))
+    , m_xMoveDownBtn(m_xBuilder->weld_button(u"movedown"_ustr))
+    , m_xDateFrame(m_xBuilder->weld_frame(u"dateframe"_ustr))
+    , m_xDateFormat(
+          new SwNumFormatTreeView(m_xBuilder->weld_tree_view(u"date_formats_treeview"_ustr)))
+    , m_xOk(m_xBuilder->weld_button(u"ok"_ustr))
 {
     m_xCheckedStateBtn->connect_clicked(LINK(this, SwContentControlDlg, SelectCharHdl));
     m_xUncheckedStateBtn->connect_clicked(LINK(this, SwContentControlDlg, SelectCharHdl));
-    m_xListItems->connect_changed(LINK(this, SwContentControlDlg, SelectionChangedHdl));
+    m_xListItems->connect_selection_changed(LINK(this, SwContentControlDlg, SelectionChangedHdl));
     m_xOk->connect_clicked(LINK(this, SwContentControlDlg, OkHdl));
 
     // Only 2 items would be visible by default.
@@ -334,7 +335,7 @@ IMPL_LINK_NOARG(SwContentControlDlg, InsertHdl, weld::Button&, void)
     std::shared_ptr<SwContentControlListItem> aItem = std::make_shared<SwContentControlListItem>();
     SwAbstractDialogFactory& rFact = swui::GetFactory();
     m_xListItemDialog = rFact.CreateSwContentControlListItemDlg(m_xDialog.get(), *aItem);
-    m_xListItemDialog->StartExecuteAsync([this, aItem](sal_Int32 nResult) {
+    m_xListItemDialog->StartExecuteAsync([ this, aItem = std::move(aItem) ](sal_Int32 nResult) {
         if (nResult == RET_OK)
         {
             if (aItem->m_aDisplayText.isEmpty() && aItem->m_aValue.isEmpty())
@@ -370,26 +371,27 @@ IMPL_LINK_NOARG(SwContentControlDlg, RenameHdl, weld::Button&, void)
     aItem->m_aValue = m_xListItems->get_text(nRow, 1);
     SwAbstractDialogFactory& rFact = swui::GetFactory();
     m_xListItemDialog = rFact.CreateSwContentControlListItemDlg(m_xDialog.get(), *aItem);
-    m_xListItemDialog->StartExecuteAsync([this, aItem, nRow](sal_Int32 nResult) {
-        if (nResult == RET_OK)
-        {
-            if (aItem->m_aDisplayText.isEmpty() && aItem->m_aValue.isEmpty())
+    m_xListItemDialog->StartExecuteAsync(
+        [ this, aItem = std::move(aItem), nRow ](sal_Int32 nResult) {
+            if (nResult == RET_OK)
             {
-                // Maintain the invariant that value can't be empty.
-                return;
+                if (aItem->m_aDisplayText.isEmpty() && aItem->m_aValue.isEmpty())
+                {
+                    // Maintain the invariant that value can't be empty.
+                    return;
+                }
+
+                if (aItem->m_aValue.isEmpty())
+                {
+                    aItem->m_aValue = aItem->m_aDisplayText;
+                }
+
+                m_xListItems->set_text(nRow, aItem->m_aDisplayText, 0);
+                m_xListItems->set_text(nRow, aItem->m_aValue, 1);
             }
 
-            if (aItem->m_aValue.isEmpty())
-            {
-                aItem->m_aValue = aItem->m_aDisplayText;
-            }
-
-            m_xListItems->set_text(nRow, aItem->m_aDisplayText, 0);
-            m_xListItems->set_text(nRow, aItem->m_aValue, 1);
-        }
-
-        m_xListItemDialog.disposeAndClear();
-    });
+            m_xListItemDialog.disposeAndClear();
+        });
 }
 
 IMPL_LINK_NOARG(SwContentControlDlg, DeleteHdl, weld::Button&, void)

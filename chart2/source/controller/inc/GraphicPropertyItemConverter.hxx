@@ -20,9 +20,13 @@
 
 #include "ItemConverter.hxx"
 
+#include <rtl/ref.hxx>
+
 namespace com::sun::star::lang { class XMultiServiceFactory; }
 
 class SdrModel;
+
+namespace chart { class ChartModel; }
 
 namespace chart::wrapper
 {
@@ -42,7 +46,7 @@ public:
         const css::uno::Reference< css::beans::XPropertySet > & rPropertySet,
         SfxItemPool& rItemPool,
         SdrModel& rDrawModel,
-        css::uno::Reference< css::lang::XMultiServiceFactory > xNamedPropertyContainerFactory,
+        rtl::Reference< ChartModel > xChartModel,
         GraphicObjectType eObjectType );
     virtual ~GraphicPropertyItemConverter() override;
 
@@ -56,7 +60,7 @@ protected:
 private:
     GraphicObjectType              m_GraphicObjectType;
     SdrModel &                      m_rDrawModel;
-    css::uno::Reference< css::lang::XMultiServiceFactory >  m_xNamedPropertyTableFactory;
+    rtl::Reference<ChartModel> m_xChartModel;
 };
 
 } //  namespace chart::wrapper

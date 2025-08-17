@@ -156,7 +156,7 @@ namespace svxform
         StartListening( *m_pNavModel );
 
         m_aSynchronizeTimer.SetInvokeHandler(LINK(this, NavigatorTree, OnSynchronizeTimer));
-        m_xTreeView->connect_changed(LINK(this, NavigatorTree, OnEntrySelDesel));
+        m_xTreeView->connect_selection_changed(LINK(this, NavigatorTree, OnEntrySelDesel));
         m_xTreeView->connect_key_press(LINK(this, NavigatorTree, KeyInputHdl));
         m_xTreeView->connect_popup_menu(LINK(this, NavigatorTree, PopupMenuHdl));
         m_xTreeView->connect_editing(LINK(this, NavigatorTree, EditingEntryHdl),
@@ -359,43 +359,43 @@ namespace svxform
                 FmFormModel* pFormModel = pFormShell ? pFormShell->GetFormModel() : nullptr;
                 if( pFormShell && pFormModel )
                 {
-                    std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(m_xTreeView.get(), "svx/ui/formnavimenu.ui"));
-                    std::unique_ptr<weld::Menu> xContextMenu(xBuilder->weld_menu("menu"));
-                    std::unique_ptr<weld::Menu> xSubMenuNew(xBuilder->weld_menu("submenu"));
+                    std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(m_xTreeView.get(), u"svx/ui/formnavimenu.ui"_ustr));
+                    std::unique_ptr<weld::Menu> xContextMenu(xBuilder->weld_menu(u"menu"_ustr));
+                    std::unique_ptr<weld::Menu> xSubMenuNew(xBuilder->weld_menu(u"submenu"_ustr));
 
                     // menu 'New' only exists, if only the root or only one form is selected
                     bool bShowNew = bSingleSelection && (m_nFormsSelected || m_bRootSelected);
                     if (!bShowNew)
-                        xContextMenu->remove("new");
+                        xContextMenu->remove(u"new"_ustr);
 
                     // 'New'\'Form' under the same terms
                     bool bShowForm = bSingleSelection && (m_nFormsSelected || m_bRootSelected);
                     if (bShowForm)
-                        xSubMenuNew->append("form", SvxResId(RID_STR_FORM), RID_SVXBMP_FORM);
+                        xSubMenuNew->append(u"form"_ustr, SvxResId(RID_STR_FORM), RID_SVXBMP_FORM);
 
                     // 'New'\'hidden...', if exactly one form is selected
                     bool bShowHidden = bSingleSelection && m_nFormsSelected;
                     if (bShowHidden)
-                        xSubMenuNew->append("hidden", SvxResId(RID_STR_HIDDEN), RID_SVXBMP_HIDDEN);
+                        xSubMenuNew->append(u"hidden"_ustr, SvxResId(RID_STR_HIDDEN), RID_SVXBMP_HIDDEN);
 
                     // 'Delete': everything which is not root can be removed
                     if (m_bRootSelected)
-                        xContextMenu->remove("delete");
+                        xContextMenu->remove(u"delete"_ustr);
 
                     // 'Cut', 'Copy' and 'Paste'
                     bool bShowCut = !m_bRootSelected && implAllowExchange(DND_ACTION_MOVE);
                     if (!bShowCut)
-                        xContextMenu->remove("cut");
+                        xContextMenu->remove(u"cut"_ustr);
                     bool bShowCopy = !m_bRootSelected && implAllowExchange(DND_ACTION_COPY);
                     if (!bShowCopy)
-                        xContextMenu->remove("copy");
+                        xContextMenu->remove(u"copy"_ustr);
                     if (!implAcceptPaste())
-                        xContextMenu->remove("paste");
+                        xContextMenu->remove(u"paste"_ustr);
 
                     // TabDialog, if exactly one form
                     bool bShowTabOrder = bSingleSelection && m_nFormsSelected;
                     if (!bShowTabOrder)
-                        xContextMenu->remove("taborder");
+                        xContextMenu->remove(u"taborder"_ustr);
 
                     bool bShowProps = true;
                     // in XML forms, we don't allow for the properties of a form
@@ -412,22 +412,22 @@ namespace svxform
                             (m_nControlsSelected && !m_nFormsSelected) || (!m_nControlsSelected && m_nFormsSelected);
 
                     if (!bShowProps)
-                        xContextMenu->remove("props");
+                        xContextMenu->remove(u"props"_ustr);
 
                     // rename, if one element and no root
                     bool bShowRename = bSingleSelection && !m_bRootSelected;
                     if (!bShowRename)
-                        xContextMenu->remove("rename");
+                        xContextMenu->remove(u"rename"_ustr);
 
                     if (!m_bRootSelected)
                     {
                         // Readonly-entry is only for root
-                        xContextMenu->remove("designmode");
+                        xContextMenu->remove(u"designmode"_ustr);
                         // the same for automatic control focus
-                        xContextMenu->remove("controlfocus");
+                        xContextMenu->remove(u"controlfocus"_ustr);
                     }
 
-                    std::unique_ptr<weld::Menu> xConversionMenu(xBuilder->weld_menu("changemenu"));
+                    std::unique_ptr<weld::Menu> xConversionMenu(xBuilder->weld_menu(u"changemenu"_ustr));
                     // ConvertTo-Slots are enabled, if one control is selected
                     // the corresponding slot is disabled
                     if (!m_bRootSelected && !m_nFormsSelected && (m_nControlsSelected == 1))
@@ -443,13 +443,13 @@ namespace svxform
                         pFormShell->GetImpl()->checkControlConversionSlotsForCurrentSelection_Lock(*xConversionMenu);
                     }
                     else
-                        xContextMenu->remove("change");
+                        xContextMenu->remove(u"change"_ustr);
 
                     if (m_bRootSelected)
                     {
                         // set OpenReadOnly
-                        xContextMenu->set_active("designmode", pFormModel->GetOpenInDesignMode());
-                        xContextMenu->set_active("controlfocus", pFormModel->GetAutoControlFocus());
+                        xContextMenu->set_active(u"designmode"_ustr, pFormModel->GetOpenInDesignMode());
+                        xContextMenu->set_active(u"controlfocus"_ustr, pFormModel->GetAutoControlFocus());
                     }
 
                     OUString sIdent = xContextMenu->popup_at_rect(m_xTreeView.get(), tools::Rectangle(ptWhere, ::Size(1, 1)));
@@ -555,19 +555,22 @@ namespace svxform
 
     void NavigatorTree::Notify( SfxBroadcaster& /*rBC*/, const SfxHint& rHint )
     {
-        if( auto pRemovedHint = dynamic_cast<const FmNavRemovedHint*>(&rHint) )
+        if( rHint.GetId() == SfxHintId::FmNavRemoved )
         {
+            auto pRemovedHint = static_cast<const FmNavRemovedHint*>(&rHint);
             FmEntryData* pEntryData = pRemovedHint->GetEntryData();
             Remove( pEntryData );
         }
-        else if( auto pInsertedHint = dynamic_cast<const FmNavInsertedHint*>(&rHint) )
+        else if( rHint.GetId() == SfxHintId::FmNavInserted )
         {
+            auto pInsertedHint = static_cast<const FmNavInsertedHint*>(&rHint);
             FmEntryData* pEntryData = pInsertedHint->GetEntryData();
             sal_uInt32 nRelPos = pInsertedHint->GetRelPos();
             Insert( pEntryData, nRelPos );
         }
-        else if( auto pReplacedHint = dynamic_cast<const FmNavModelReplacedHint*>(&rHint) )
+        else if( rHint.GetId() == SfxHintId::FmNavModelReplaced )
         {
+            auto pReplacedHint = static_cast<const FmNavModelReplacedHint*>(&rHint);
             FmEntryData* pData = pReplacedHint->GetEntryData();
             std::unique_ptr<weld::TreeIter> xEntry = FindEntry(pData);
             if (xEntry)
@@ -576,13 +579,14 @@ namespace svxform
                 m_xTreeView->set_image(*xEntry, pData->GetNormalImage());
             }
         }
-        else if( auto pNameChangedHint = dynamic_cast<const FmNavNameChangedHint*>(&rHint) )
+        else if( rHint.GetId() == SfxHintId::FmNavNameChanged )
         {
+            auto pNameChangedHint = static_cast<const FmNavNameChangedHint*>(&rHint);
             std::unique_ptr<weld::TreeIter> xEntry = FindEntry(pNameChangedHint->GetEntryData());
             if (xEntry)
                 m_xTreeView->set_text(*xEntry, pNameChangedHint->GetNewName());
         }
-        else if( dynamic_cast<const FmNavClearedHint*>(&rHint) )
+        else if( rHint.GetId() == SfxHintId::FmNavCleared )
         {
             m_aCutEntries.clear();
             if (m_aControlExchange.isDataExchangeActive())
@@ -597,9 +601,10 @@ namespace svxform
             m_xTreeView->set_image(*m_xRootEntry, RID_SVXBMP_FORMS);
             m_xTreeView->set_sensitive(*m_xRootEntry, true);
         }
-        else if (auto pSelectHint = dynamic_cast<FmNavRequestSelectHint*>(const_cast<SfxHint*>(&rHint)))
+        else if (rHint.GetId() == SfxHintId::FmNavRequestSelect)
         {
-            FmEntryDataArray& arredToSelect = pSelectHint->GetItems();
+            auto pSelectHint = static_cast<const FmNavRequestSelectHint*>(&rHint);
+            FmEntryDataArray& arredToSelect = const_cast<FmNavRequestSelectHint*>(pSelectHint)->GetItems();
             SynchronizeSelection(arredToSelect);
 
             if (pSelectHint->IsMixedSelection())
@@ -1275,7 +1280,7 @@ namespace svxform
 
 
         // create new form
-        Reference<XComponentContext> xContext = comphelper::getProcessComponentContext();
+        const Reference<XComponentContext>& xContext = comphelper::getProcessComponentContext();
         Reference< XForm >  xNewForm(xContext->getServiceManager()->createInstanceWithContext(FM_SUN_COMPONENT_FORM, xContext), UNO_QUERY);
         if (!xNewForm.is())
             return;
@@ -1288,7 +1293,7 @@ namespace svxform
 
 
         // set name
-        OUString aName = GenerateName(pNewFormData);
+        OUString aName = GenerateName(*pNewFormData);
         pNewFormData->SetText(aName);
 
         try
@@ -1337,7 +1342,7 @@ namespace svxform
         Reference<XForm>  xParentForm(pParentFormData->GetFormIface());
 
         // create new component
-        Reference<XComponentContext> xContext = comphelper::getProcessComponentContext();
+        const Reference<XComponentContext>& xContext = comphelper::getProcessComponentContext();
         Reference<XFormComponent> xNewComponent( xContext->getServiceManager()->createInstanceWithContext(rServiceName, xContext), UNO_QUERY);
         if (!xNewComponent.is())
             return nullptr;
@@ -1366,21 +1371,21 @@ namespace svxform
         return pNewFormControlData;
     }
 
-    OUString NavigatorTree::GenerateName( FmEntryData const * pEntryData )
+    OUString NavigatorTree::GenerateName(const FmEntryData& rEntryData)
     {
         const sal_uInt16 nMaxCount = 99;
         OUString aNewName;
 
         // create base name
         OUString aBaseName;
-        if( dynamic_cast<const FmFormData*>( pEntryData) !=  nullptr )
+        if( dynamic_cast<const FmFormData*>(&rEntryData) !=  nullptr )
             aBaseName = SvxResId( RID_STR_STDFORMNAME );
-        else if( dynamic_cast<const FmControlData*>( pEntryData) !=  nullptr )
+        else if( dynamic_cast<const FmControlData*>(&rEntryData) !=  nullptr )
             aBaseName = SvxResId( RID_STR_CONTROL );
 
 
         // create new name
-        FmFormData* pFormParentData = static_cast<FmFormData*>(pEntryData->GetParent());
+        FmFormData* pFormParentData = static_cast<FmFormData*>(rEntryData.GetParent());
 
         for( sal_Int32 i=0; i<nMaxCount; i++ )
         {
@@ -1907,7 +1912,7 @@ namespace svxform
     {
         if (pEntryData == nullptr) return false;
 
-        Reference< XPropertySet > xProperties( pEntryData->GetPropertySet() );
+        const Reference< XPropertySet >& xProperties( pEntryData->GetPropertySet() );
         if (::comphelper::hasProperty(FM_PROP_CLASSID, xProperties))
         {
             Any aClassID = xProperties->getPropertyValue( FM_PROP_CLASSID );
@@ -1997,7 +2002,7 @@ namespace svxform
 
         // find and select appropriate SdrObj
         FmFormView*     pFormView       = pFormShell->GetFormView();
-        Reference< XFormComponent >  xFormComponent( pControlData->GetFormComponent());
+        const Reference< XFormComponent >&  xFormComponent( pControlData->GetFormComponent());
         SdrPageView*    pPageView       = pFormView->GetSdrPageView();
         SdrPage*        pPage           = pPageView->GetPage();
 

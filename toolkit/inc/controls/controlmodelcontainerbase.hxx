@@ -32,17 +32,18 @@
 #include <cppuhelper/weak.hxx>
 #include <toolkit/helper/listenermultiplexer.hxx>
 #include <toolkit/controls/unocontrolmodel.hxx>
-#include <controls/unocontrolcontainer.hxx>
+#include <toolkit/controls/unocontrolcontainer.hxx>
 #include <cppuhelper/propshlp.hxx>
 #include <com/sun/star/awt/tab/XTabPageModel.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <comphelper/interfacecontainer4.hxx>
+#include <rtl/ref.hxx>
 #include <mutex>
 #include <vector>
 
 namespace com::sun::star::resource { class XStringResourceResolver; }
 namespace com::sun::star::uno { class XComponentContext; }
-
+class StdTabController;
 
 typedef UnoControlModel     ControlModel_Base;
 typedef ::cppu::AggImplInheritanceHelper8   <   ControlModel_Base
@@ -221,8 +222,8 @@ protected:
     css::uno::Reference< css::uno::XComponentContext >  m_xContext;
     bool                                                                        mbSizeModified;
     bool                                                                        mbPosModified;
-    css::uno::Reference< css::awt::XTabController >   mxTabController;
-    css::uno::Reference< css::util::XModifyListener > mxListener;
+    rtl::Reference< StdTabController >                mxTabController;
+    rtl::Reference< ResourceListener > mxListener;
 
     void        ImplInsertControl( css::uno::Reference< css::awt::XControlModel > const & rxModel, const OUString& rName );
     void        ImplRemoveControl( css::uno::Reference< css::awt::XControlModel > const & rxModel );
@@ -259,7 +260,7 @@ public:
     void SAL_CALL setDesignMode( sal_Bool bOn ) override;
     // XModifyListener
     // Using a dummy/no-op implementation here, not sure if every container control needs
-    // to implement this, certainly Dialog does, lets see about others
+    // to implement this, certainly Dialog does, let's see about others
     virtual void SAL_CALL modified( const css::lang::EventObject& ) override {}
 protected:
     virtual void ImplModelPropertiesChanged( const css::uno::Sequence< css::beans::PropertyChangeEvent >& rEvents ) override;

@@ -441,11 +441,7 @@ OUString ImpVclMEdit::GetTextLines( LineEnd aSeparator ) const
 
 void ImpVclMEdit::Notify( SfxBroadcaster&, const SfxHint& rHint )
 {
-    const TextHint* pTextHint = dynamic_cast<const TextHint*>(&rHint);
-    if ( !pTextHint )
-        return;
-
-    switch (pTextHint->GetId())
+    switch (rHint.GetId())
     {
         case SfxHintId::TextViewScrolled:
             if (mpHScrollBar->IsVisible())
@@ -672,7 +668,7 @@ TextWindow::~TextWindow()
 
 void TextWindow::dispose()
 {
-    mxParent.clear();
+    mxParent.reset();
     mpExtTextView.reset();
     mpExtTextEngine.reset();
     Window::dispose();
@@ -849,7 +845,7 @@ void TextWindow::Command( const CommandEvent& rCEvt )
                 mpExtTextEngine->Broadcast( TextHint( SfxHintId::TextModified ) );
             }
         }
-        pPopup.clear();
+        pPopup.reset();
         mbActivePopup = false;
     }
     else
@@ -1163,7 +1159,7 @@ Size VclMultiLineEdit::CalcMinimumSize() const
     Size aSz = pImpVclMEdit->CalcMinimumSize();
 
     sal_Int32 nLeft, nTop, nRight, nBottom;
-    static_cast<vcl::Window*>(const_cast<VclMultiLineEdit *>(this))->GetBorder( nLeft, nTop, nRight, nBottom );
+    GetBorder(nLeft, nTop, nRight, nBottom);
     aSz.AdjustWidth(nLeft+nRight );
     aSz.AdjustHeight(nTop+nBottom );
 
@@ -1174,7 +1170,7 @@ Size VclMultiLineEdit::CalcAdjustedSize( const Size& rPrefSize ) const
 {
     Size aSz = rPrefSize;
     sal_Int32 nLeft, nTop, nRight, nBottom;
-    static_cast<vcl::Window*>(const_cast<VclMultiLineEdit *>(this))->GetBorder( nLeft, nTop, nRight, nBottom );
+    GetBorder(nLeft, nTop, nRight, nBottom);
 
     // center vertically for whole lines
 
@@ -1195,7 +1191,7 @@ Size VclMultiLineEdit::CalcBlockSize( sal_uInt16 nColumns, sal_uInt16 nLines ) c
     Size aSz = pImpVclMEdit->CalcBlockSize( nColumns, nLines );
 
     sal_Int32 nLeft, nTop, nRight, nBottom;
-    static_cast<vcl::Window*>(const_cast<VclMultiLineEdit *>(this))->GetBorder( nLeft, nTop, nRight, nBottom );
+    GetBorder(nLeft, nTop, nRight, nBottom);
     aSz.AdjustWidth(nLeft+nRight );
     aSz.AdjustHeight(nTop+nBottom );
     return aSz;
@@ -1282,7 +1278,7 @@ void VclMultiLineEdit::Draw( OutputDevice* pDev, const Point& rPos, SystemTextCo
     vcl::Font aFont = pImpVclMEdit->GetTextWindow()->GetDrawPixelFont(pDev);
     aFont.SetTransparent( true );
 
-    pDev->Push();
+    auto popIt = pDev->ScopedPush();
     pDev->SetMapMode();
     pDev->SetFont( aFont );
     pDev->SetTextFillColor();
@@ -1334,8 +1330,6 @@ void VclMultiLineEdit::Draw( OutputDevice* pDev, const Point& rPos, SystemTextCo
     aTE.SetFont( aFont );
     aTE.SetTextAlign( pImpVclMEdit->GetTextWindow()->GetTextEngine()->GetTextAlign() );
     aTE.Draw( pDev, Point( aPos.X() + nOffX, aPos.Y() + nOffY ) );
-
-    pDev->Pop();
 }
 
 bool VclMultiLineEdit::EventNotify( NotifyEvent& rNEvt )

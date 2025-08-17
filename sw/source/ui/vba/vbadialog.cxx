@@ -18,6 +18,7 @@
  */
 #include "vbadialog.hxx"
 #include <ooo/vba/word/WdWordDialog.hpp>
+#include <unotxdoc.hxx>
 
 using namespace ::ooo::vba;
 using namespace ::com::sun::star;
@@ -41,6 +42,17 @@ const WordDialogTable aWordDialogTable[] =
     { 0, nullptr }
 };
 
+SwVbaDialog::SwVbaDialog( const css::uno::Reference< ov::XHelperInterface >& xParent,
+                 const css::uno::Reference< css::uno::XComponentContext > & xContext,
+                 const rtl::Reference< SwXTextDocument >& xModel,
+                 sal_Int32 nIndex )
+    : SwVbaDialog_BASE( xParent, xContext, nIndex ), m_xModel(xModel) {}
+
+css::uno::Reference< css::frame::XModel > SwVbaDialog::getModel() const
+{
+    return static_cast<SfxBaseModel*>(m_xModel.get());
+}
+
 OUString
 SwVbaDialog::mapIndexToName( sal_Int32 nIndex )
 {
@@ -57,7 +69,7 @@ SwVbaDialog::mapIndexToName( sal_Int32 nIndex )
 OUString
 SwVbaDialog::getServiceImplName()
 {
-    return "SwVbaDialog";
+    return u"SwVbaDialog"_ustr;
 }
 
 uno::Sequence< OUString >
@@ -65,7 +77,7 @@ SwVbaDialog::getServiceNames()
 {
     static uno::Sequence< OUString > const aServiceNames
     {
-        "ooo.vba.word.Dialog"
+        u"ooo.vba.word.Dialog"_ustr
     };
     return aServiceNames;
 }

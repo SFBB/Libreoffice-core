@@ -46,17 +46,17 @@ OUString getExpression(sal_Int32 nIndex)
     switch(nIndex)
     {
         case 0:
-            return "=";
+            return u"="_ustr;
         case 1:
-            return "<";
+            return u"<"_ustr;
         case 2:
-            return ">";
+            return u">"_ustr;
         case 3:
-            return "<=";
+            return u"<="_ustr;
         case 4:
-            return ">=";
+            return u">="_ustr;
         case 5:
-            return "!=";
+            return u"!="_ustr;
         case 6:
             return ScResId(STR_COND_BETWEEN);
         case 7:
@@ -128,61 +128,57 @@ OUString getDateString(sal_Int32 nIndex)
 
 }
 
-OUString ScCondFormatHelper::GetExpression(const ScConditionalFormat& rFormat, const ScAddress& rPos)
+OUString ScCondFormatHelper::GetExpression(const ScConditionalFormat& rFormat,
+                                           const ScAddress& rPos)
 {
     OUStringBuffer aBuffer;
-    if(!rFormat.IsEmpty())
+    if (!rFormat.IsEmpty())
     {
-        switch(rFormat.GetEntry(0)->GetType())
+        switch (rFormat.GetEntry(0)->GetType())
         {
             case ScFormatEntry::Type::Condition:
             case ScFormatEntry::Type::ExtCondition:
+            {
+                const ScConditionEntry* pEntry
+                    = static_cast<const ScConditionEntry*>(rFormat.GetEntry(0));
+                ScConditionMode eMode = pEntry->GetOperation();
+                if (eMode == ScConditionMode::Direct)
                 {
-                    const ScConditionEntry* pEntry = static_cast<const ScConditionEntry*>(rFormat.GetEntry(0));
-                    ScConditionMode eMode = pEntry->GetOperation();
-                    if(eMode == ScConditionMode::Direct)
+                    aBuffer.append(getTextForType(FORMULA) + " " + pEntry->GetExpression(rPos, 0));
+                }
+                else
+                {
+                    aBuffer.append(getTextForType(CONDITION) + " "
+                                   + getExpression(static_cast<sal_Int32>(eMode)) + " ");
+                    if (eMode == ScConditionMode::Between || eMode == ScConditionMode::NotBetween)
                     {
-                        aBuffer.append(getTextForType(FORMULA)
-                            + " "
-                            + pEntry->GetExpression(rPos, 0));
+                        aBuffer.append(pEntry->GetExpression(rPos, 0) + " " + ScResId(STR_COND_AND)
+                                       + " " + pEntry->GetExpression(rPos, 1));
                     }
-                    else
+                    else if (eMode <= ScConditionMode::NotEqual
+                             || eMode >= ScConditionMode::BeginsWith)
                     {
-                        aBuffer.append(getTextForType(CONDITION)
-                            + " "
-                            + getExpression(static_cast<sal_Int32>(eMode))
-                            + " ");
-                        if(eMode == ScConditionMode::Between || eMode == ScConditionMode::NotBetween)
-                        {
-                            aBuffer.append(pEntry->GetExpression(rPos, 0)
-                                + " "
-                                + ScResId(STR_COND_AND)
-                                + " "
-                                + pEntry->GetExpression(rPos, 1));
-                        }
-                        else if(eMode <= ScConditionMode::NotEqual || eMode >= ScConditionMode::BeginsWith)
-                        {
-                            aBuffer.append(pEntry->GetExpression(rPos, 0));
-                        }
+                        aBuffer.append(pEntry->GetExpression(rPos, 0));
                     }
+                }
                 }
 
                 break;
-            case ScFormatEntry::Type::Databar:
-                aBuffer.append(getTextForType(DATABAR));
-                break;
-            case ScFormatEntry::Type::Colorscale:
-                aBuffer.append(getTextForType(COLORSCALE));
-                break;
-            case ScFormatEntry::Type::Iconset:
-                aBuffer.append(getTextForType(ICONSET));
-                break;
-            case ScFormatEntry::Type::Date:
+                case ScFormatEntry::Type::Databar:
+                    aBuffer.append(getTextForType(DATABAR));
+                    break;
+                case ScFormatEntry::Type::Colorscale:
+                    aBuffer.append(getTextForType(COLORSCALE));
+                    break;
+                case ScFormatEntry::Type::Iconset:
+                    aBuffer.append(getTextForType(ICONSET));
+                    break;
+                case ScFormatEntry::Type::Date:
                 {
-                    sal_Int32 nDateEntry = static_cast<sal_Int32>(static_cast<const ScCondDateFormatEntry*>(rFormat.GetEntry(0))->GetDateType());
-                    aBuffer.append(getTextForType(DATE)
-                        + " "
-                        + getDateString(nDateEntry));
+                    sal_Int32 nDateEntry = static_cast<sal_Int32>(
+                        static_cast<const ScCondDateFormatEntry*>(rFormat.GetEntry(0))
+                            ->GetDateType());
+                    aBuffer.append(getTextForType(DATE) + " " + getDateString(nDateEntry));
                 }
                 break;
         }

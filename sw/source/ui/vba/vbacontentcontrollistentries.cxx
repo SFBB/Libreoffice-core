@@ -98,7 +98,7 @@ SwVbaContentControlListEntries::SwVbaContentControlListEntries(
           xParent, xContext,
           uno::Reference<container::XIndexAccess>(
               new ContentControlListEntryCollectionHelper(xParent, xContext, pCC)))
-    , m_pCC(pCC)
+    , m_pCC(std::move(pCC))
 {
 }
 
@@ -154,12 +154,12 @@ uno::Any SwVbaContentControlListEntries::createCollectionObject(const uno::Any& 
 
 OUString SwVbaContentControlListEntries::getServiceImplName()
 {
-    return "SwVbaContentControlListEntries";
+    return u"SwVbaContentControlListEntries"_ustr;
 }
 
 uno::Sequence<OUString> SwVbaContentControlListEntries::getServiceNames()
 {
-    static uno::Sequence<OUString> const sNames{ "ooo.vba.word.ContentControlListEntries" };
+    static uno::Sequence<OUString> const sNames{ u"ooo.vba.word.ContentControlListEntries"_ustr };
     return sNames;
 }
 

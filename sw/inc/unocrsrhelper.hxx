@@ -23,6 +23,7 @@
 #include "flyenum.hxx"
 #include "pam.hxx"
 
+#include <optional>
 #include <map>
 #include <string_view>
 
@@ -38,8 +39,9 @@ class SwFormatColl;
 struct SwSortOptions;
 class SwDoc;
 class SwRootFrame;
+class ProgName;
 
-namespace sw::mark { class IMark; }
+namespace sw::mark { class MarkBase; }
 
 namespace com::sun::star{
     namespace beans{
@@ -83,7 +85,7 @@ namespace SwUnoCursorHelper
                                         , css::beans::PropertyState& eState
                                         , const SwTextNode* pNode = nullptr );
 
-    void                    GetCurPageStyle(SwPaM const & rPaM, OUString &rString);
+    void                    GetCurPageStyle(SwPaM const & rPaM, ProgName &rString);
 
     inline bool             IsStartOfPara(SwPaM& rUnoCursor)
                                         { return rUnoCursor.GetPoint()->GetContentIndex() == 0;}
@@ -232,9 +234,9 @@ namespace SwUnoCursorHelper
     SW_DLLPUBLIC void GetSelectableFromAny(
         css::uno::Reference<css::uno::XInterface> const& xIfc,
         SwDoc & rTargetDoc,
-        SwPaM *& o_rpPaM, std::pair<OUString, FlyCntType> & o_rFrame,
-        OUString & o_rTableName, SwUnoTableCursor const*& o_rpTableCursor,
-        ::sw::mark::IMark const*& o_rpMark,
+        std::optional<SwPaM>& o_rpPaM, std::pair<UIName, FlyCntType> & o_rFrame,
+        UIName & o_rTableName, SwUnoTableCursor const*& o_rpTableCursor,
+        ::sw::mark::MarkBase const*& o_rpMark,
         std::vector<SdrObject *> & o_rSdrObjects);
 
     css::uno::Reference<css::text::XFlatParagraphIterator>

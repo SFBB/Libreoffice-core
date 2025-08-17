@@ -44,10 +44,11 @@
 #include <svtools/imagemgr.hxx>
 #include <svtools/restartdialog.hxx>
 #include <sfx2/filedlghelper.hxx>
-#include <sfx2/inputdlg.hxx>
 #include <comphelper/diagnose_ex.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/string.hxx>
+#include <dlgname.hxx>
+#include <o3tl/string_view.hxx>
 #include <com/sun/star/ui/dialogs/ExecutableDialogResults.hpp>
 #include <com/sun/star/ui/dialogs/XAsynchronousExecutableDialog.hpp>
 #include <com/sun/star/ui/dialogs/TemplateDescription.hpp>
@@ -55,33 +56,27 @@
 #include <jvmfwk/framework.hxx>
 #endif
 
-// define ----------------------------------------------------------------
-
-#define CLASSPATH_DELIMITER SAL_PATHSEPARATOR
-
-using namespace ::com::sun::star::lang;
-using namespace ::com::sun::star::ucb;
 using namespace ::com::sun::star::ui::dialogs;
 using namespace ::com::sun::star::uno;
 
 // class SvxJavaOptionsPage ----------------------------------------------
 SvxJavaOptionsPage::SvxJavaOptionsPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet)
-    : SfxTabPage(pPage, pController, "cui/ui/optadvancedpage.ui", "OptAdvancedPage", &rSet)
+    : SfxTabPage(pPage, pController, u"cui/ui/optadvancedpage.ui"_ustr, u"OptAdvancedPage"_ustr, &rSet)
     , m_aResetIdle("cui options SvxJavaOptionsPage Reset")
     , xDialogListener(new ::svt::DialogClosedListener())
-    , m_xJavaEnableCB(m_xBuilder->weld_check_button("javaenabled"))
-    , m_xJavaList(m_xBuilder->weld_tree_view("javas"))
-    , m_xJavaPathText(m_xBuilder->weld_label("javapath"))
-    , m_xAddBtn(m_xBuilder->weld_button("add"))
-    , m_xParameterBtn(m_xBuilder->weld_button("parameters"))
-    , m_xClassPathBtn(m_xBuilder->weld_button("classpath"))
-    , m_xExpertConfigBtn(m_xBuilder->weld_button("expertconfig"))
-    , m_xExperimentalCB(m_xBuilder->weld_check_button("experimental"))
-    , m_xExperimentalImg(m_xBuilder->weld_widget("lockexperimental"))
-    , m_xMacroCB(m_xBuilder->weld_check_button("macrorecording"))
-    , m_xMacroImg(m_xBuilder->weld_widget("lockmacrorecording"))
-    , m_xAddDialogText(m_xBuilder->weld_label("selectruntime"))
-    , m_xJavaFrame(m_xBuilder->weld_widget("javaframe"))
+    , m_xJavaEnableCB(m_xBuilder->weld_check_button(u"javaenabled"_ustr))
+    , m_xJavaList(m_xBuilder->weld_tree_view(u"javas"_ustr))
+    , m_xJavaPathText(m_xBuilder->weld_label(u"javapath"_ustr))
+    , m_xAddBtn(m_xBuilder->weld_button(u"add"_ustr))
+    , m_xParameterBtn(m_xBuilder->weld_button(u"parameters"_ustr))
+    , m_xClassPathBtn(m_xBuilder->weld_button(u"classpath"_ustr))
+    , m_xExpertConfigBtn(m_xBuilder->weld_button(u"expertconfig"_ustr))
+    , m_xExperimentalCB(m_xBuilder->weld_check_button(u"experimental"_ustr))
+    , m_xExperimentalImg(m_xBuilder->weld_widget(u"lockexperimental"_ustr))
+    , m_xMacroCB(m_xBuilder->weld_check_button(u"macrorecording"_ustr))
+    , m_xMacroImg(m_xBuilder->weld_widget(u"lockmacrorecording"_ustr))
+    , m_xAddDialogText(m_xBuilder->weld_label(u"selectruntime"_ustr))
+    , m_xJavaFrame(m_xBuilder->weld_widget(u"javaframe"_ustr))
 {
     m_sInstallText = m_xJavaPathText->get_label();
     m_sAddDialogText = m_xAddDialogText->get_label();
@@ -91,12 +86,12 @@ SvxJavaOptionsPage::SvxJavaOptionsPage(weld::Container* pPage, weld::DialogContr
 
     m_xJavaList->enable_toggle_buttons(weld::ColumnToggleType::Radio);
     m_xJavaList->connect_toggled( LINK( this, SvxJavaOptionsPage, CheckHdl_Impl ) );
-    m_xJavaList->connect_changed( LINK( this, SvxJavaOptionsPage, SelectHdl_Impl ) );
+    m_xJavaList->connect_selection_changed(LINK(this, SvxJavaOptionsPage, SelectHdl_Impl));
 
     std::vector<int> aWidths
     {
         m_xJavaList->get_checkbox_column_width(),
-        o3tl::narrowing<int>(m_xJavaList->get_pixel_size("Sun Microsystems Inc.").Width())
+        o3tl::narrowing<int>(m_xJavaList->get_pixel_size(u"Sun Microsystems Inc."_ustr).Width())
     };
     m_xJavaList->set_column_fixed_widths(aWidths);
 
@@ -162,7 +157,7 @@ IMPL_LINK_NOARG(SvxJavaOptionsPage, AddHdl_Impl, weld::Button&, void)
 {
     try
     {
-        Reference < XComponentContext > xContext( ::comphelper::getProcessComponentContext() );
+        const Reference < XComponentContext >& xContext( ::comphelper::getProcessComponentContext() );
         xFolderPicker = sfx2::createFolderPicker(xContext, GetFrameWeld());
 
         OUString sWorkFolder = SvtPathOptions().GetWorkPath();
@@ -361,10 +356,14 @@ void SvxJavaOptionsPage::AddJRE( JavaInfo const * _pInfo )
     m_xJavaList->append();
     m_xJavaList->set_toggle(nPos, TRISTATE_FALSE);
     m_xJavaList->set_text(nPos, _pInfo->sVendor, 1);
-    m_xJavaList->set_text(nPos, _pInfo->sVersion, 2);
+    // tdf#80662 Add LRM and PDF Unicode characters around version info
+    // to display it correctly, even when UI is RTL (SAL_RTL_ENABLED=1)
+    m_xJavaList->set_text(nPos, u"\u200E" + _pInfo->sVersion + u"\u202C", 2);
 
     INetURLObject aLocObj(_pInfo->sLocation);
-    OUString sLocation = aLocObj.getFSysPath(FSysStyle::Detect);
+    // tdf#80662 Add LRM and PDF Unicode characters around JRE location
+    // to display it correctly, even when UI is RTL (SAL_RTL_ENABLED=1)
+    OUString sLocation = u"\u200E" + aLocObj.getFSysPath(FSysStyle::Detect) + u"\u202C";
     m_xJavaList->set_id(nPos, sLocation);
 #else
     (void) this;
@@ -478,27 +477,27 @@ std::unique_ptr<SfxTabPage> SvxJavaOptionsPage::Create(weld::Container* pPage, w
 OUString SvxJavaOptionsPage::GetAllStrings()
 {
     OUString sAllStrings;
-    OUString labels[] = { "label1", "label2", "javapath", "selectruntime", "label12" };
+    OUString labels[] = { u"label1"_ustr, u"label2"_ustr, u"javapath"_ustr, u"selectruntime"_ustr, u"label12"_ustr };
 
     for (const auto& label : labels)
     {
-        if (const auto& pString = m_xBuilder->weld_label(label))
+        if (const auto pString = m_xBuilder->weld_label(label))
             sAllStrings += pString->get_label() + " ";
     }
 
-    OUString checkButton[] = { "javaenabled", "experimental", "macrorecording" };
+    OUString checkButton[] = { u"javaenabled"_ustr, u"experimental"_ustr, u"macrorecording"_ustr };
 
     for (const auto& check : checkButton)
     {
-        if (const auto& pString = m_xBuilder->weld_check_button(check))
+        if (const auto pString = m_xBuilder->weld_check_button(check))
             sAllStrings += pString->get_label() + " ";
     }
 
-    OUString buttons[] = { "add", "parameters", "classpath", "expertconfig" };
+    OUString buttons[] = { u"add"_ustr, u"parameters"_ustr, u"classpath"_ustr, u"expertconfig"_ustr };
 
     for (const auto& btn : buttons)
     {
-        if (const auto& pString = m_xBuilder->weld_button(btn))
+        if (const auto pString = m_xBuilder->weld_button(btn))
             sAllStrings += pString->get_label() + " ";
     }
 
@@ -640,13 +639,13 @@ void SvxJavaOptionsPage::FillUserData()
 // class SvxJavaParameterDlg ---------------------------------------------
 
 SvxJavaParameterDlg::SvxJavaParameterDlg(weld::Window* pParent)
-    : GenericDialogController(pParent, "cui/ui/javastartparametersdialog.ui",
-        "JavaStartParameters")
-    , m_xParameterEdit(m_xBuilder->weld_entry("parameterfield"))
-    , m_xAssignBtn(m_xBuilder->weld_button("assignbtn"))
-    , m_xAssignedList(m_xBuilder->weld_tree_view("assignlist"))
-    , m_xRemoveBtn(m_xBuilder->weld_button("removebtn"))
-    , m_xEditBtn(m_xBuilder->weld_button("editbtn"))
+    : GenericDialogController(pParent, u"cui/ui/javastartparametersdialog.ui"_ustr,
+        u"JavaStartParameters"_ustr)
+    , m_xParameterEdit(m_xBuilder->weld_entry(u"parameterfield"_ustr))
+    , m_xAssignBtn(m_xBuilder->weld_button(u"assignbtn"_ustr))
+    , m_xAssignedList(m_xBuilder->weld_tree_view(u"assignlist"_ustr))
+    , m_xRemoveBtn(m_xBuilder->weld_button(u"removebtn"_ustr))
+    , m_xEditBtn(m_xBuilder->weld_button(u"editbtn"_ustr))
 {
     m_xAssignedList->set_size_request(m_xAssignedList->get_approximate_digit_width() * 54,
                                       m_xAssignedList->get_height_rows(6));
@@ -655,7 +654,7 @@ SvxJavaParameterDlg::SvxJavaParameterDlg(weld::Window* pParent)
     m_xAssignBtn->connect_clicked( LINK( this, SvxJavaParameterDlg, AssignHdl_Impl ) );
     m_xRemoveBtn->connect_clicked( LINK( this, SvxJavaParameterDlg, RemoveHdl_Impl ) );
     m_xEditBtn->connect_clicked( LINK( this, SvxJavaParameterDlg, EditHdl_Impl ) );
-    m_xAssignedList->connect_changed( LINK( this, SvxJavaParameterDlg, SelectHdl_Impl ) );
+    m_xAssignedList->connect_selection_changed(LINK(this, SvxJavaParameterDlg, SelectHdl_Impl));
     m_xAssignedList->connect_row_activated( LINK( this, SvxJavaParameterDlg, DblClickHdl_Impl ) );
 
     ModifyHdl_Impl(*m_xParameterEdit);
@@ -749,14 +748,17 @@ void SvxJavaParameterDlg::EditParameter()
     if (nPos == -1)
         return;
 
-    InputDialog aParamEditDlg(m_xDialog.get(), CuiResId(RID_CUISTR_JAVA_START_PARAM));
     OUString editableClassPath = m_xAssignedList->get_selected_text();
-    aParamEditDlg.SetEntryText(editableClassPath);
-    aParamEditDlg.HideHelpBtn();
+    SvxNameDialog aNameDialog(m_xDialog.get(), editableClassPath, OUString(),
+                            CuiResId(RID_CUISTR_JAVA_START_PARAM));
 
-    if (!aParamEditDlg.run())
+    aNameDialog.SetCheckName([](const OUString& rNewName) -> bool {
+        return !o3tl::trim(rNewName).empty();
+    });
+
+    if (!aNameDialog.run())
         return;
-    OUString editedClassPath = comphelper::string::strip(aParamEditDlg.GetEntryText(), ' ');
+    OUString editedClassPath = comphelper::string::strip(aNameDialog.GetName(), ' ');
 
     if ( !editedClassPath.isEmpty() && editableClassPath != editedClassPath )
     {
@@ -805,18 +807,18 @@ void SvxJavaParameterDlg::SetParameters( std::vector< OUString > const & rParams
 // class SvxJavaClassPathDlg ---------------------------------------------
 
 SvxJavaClassPathDlg::SvxJavaClassPathDlg(weld::Window* pParent)
-    : GenericDialogController(pParent, "cui/ui/javaclasspathdialog.ui", "JavaClassPath")
-    , m_xPathList(m_xBuilder->weld_tree_view("paths"))
-    , m_xAddArchiveBtn(m_xBuilder->weld_button("archive"))
-    , m_xAddPathBtn(m_xBuilder->weld_button("folder"))
-    , m_xRemoveBtn(m_xBuilder->weld_button("remove"))
+    : GenericDialogController(pParent, u"cui/ui/javaclasspathdialog.ui"_ustr, u"JavaClassPath"_ustr)
+    , m_xPathList(m_xBuilder->weld_tree_view(u"paths"_ustr))
+    , m_xAddArchiveBtn(m_xBuilder->weld_button(u"archive"_ustr))
+    , m_xAddPathBtn(m_xBuilder->weld_button(u"folder"_ustr))
+    , m_xRemoveBtn(m_xBuilder->weld_button(u"remove"_ustr))
 {
     m_xPathList->set_size_request(m_xPathList->get_approximate_digit_width() * 54,
                                   m_xPathList->get_height_rows(8));
     m_xAddArchiveBtn->connect_clicked( LINK( this, SvxJavaClassPathDlg, AddArchiveHdl_Impl ) );
     m_xAddPathBtn->connect_clicked( LINK( this, SvxJavaClassPathDlg, AddPathHdl_Impl ) );
     m_xRemoveBtn->connect_clicked( LINK( this, SvxJavaClassPathDlg, RemoveHdl_Impl ) );
-    m_xPathList->connect_changed( LINK( this, SvxJavaClassPathDlg, SelectHdl_Impl ) );
+    m_xPathList->connect_selection_changed(LINK(this, SvxJavaClassPathDlg, SelectHdl_Impl));
 
     // set initial focus to path list
     m_xPathList->grab_focus();
@@ -830,7 +832,7 @@ IMPL_LINK_NOARG(SvxJavaClassPathDlg, AddArchiveHdl_Impl, weld::Button&, void)
 {
     sfx2::FileDialogHelper aDlg(TemplateDescription::FILEOPEN_SIMPLE, FileDialogFlags::NONE, m_xDialog.get());
     aDlg.SetTitle( CuiResId( RID_CUISTR_ARCHIVE_TITLE ) );
-    aDlg.AddFilter( CuiResId( RID_CUISTR_ARCHIVE_HEADLINE ), "*.jar;*.zip" );
+    aDlg.AddFilter( CuiResId( RID_CUISTR_ARCHIVE_HEADLINE ), u"*.jar;*.zip"_ustr );
     aDlg.SetContext(sfx2::FileDialogHelper::JavaClassPath);
     OUString sFolder;
     if (m_xPathList->count_selected_rows() > 0)
@@ -849,7 +851,7 @@ IMPL_LINK_NOARG(SvxJavaClassPathDlg, AddArchiveHdl_Impl, weld::Button&, void)
             INetURLObject aURL( sURL );
             if ( !IsPathDuplicate( sFile ) )
             {
-                m_xPathList->append("", sFile, SvFileInformationManager::GetImageId(aURL));
+                m_xPathList->append(u""_ustr, sFile, SvFileInformationManager::GetImageId(aURL));
                 m_xPathList->select(m_xPathList->n_children() - 1);
             }
             else
@@ -875,7 +877,7 @@ IMPL_LINK_NOARG(SvxJavaClassPathDlg, AddArchiveHdl_Impl, weld::Button&, void)
 
 IMPL_LINK_NOARG(SvxJavaClassPathDlg, AddPathHdl_Impl, weld::Button&, void)
 {
-    Reference < XComponentContext > xContext( ::comphelper::getProcessComponentContext() );
+    const Reference < XComponentContext >& xContext( ::comphelper::getProcessComponentContext() );
     Reference < XFolderPicker2 > xFolderPicker = sfx2::createFolderPicker(xContext, m_xDialog.get());
 
     OUString sOldFolder;
@@ -897,7 +899,7 @@ IMPL_LINK_NOARG(SvxJavaClassPathDlg, AddPathHdl_Impl, weld::Button&, void)
         {
             if ( !IsPathDuplicate( sNewFolder ) )
             {
-                m_xPathList->append("", sNewFolder, SvFileInformationManager::GetImageId(aURL));
+                m_xPathList->append(u""_ustr, sNewFolder, SvFileInformationManager::GetImageId(aURL));
                 m_xPathList->select(m_xPathList->n_children() - 1);
             }
             else
@@ -962,6 +964,8 @@ bool SvxJavaClassPathDlg::IsPathDuplicate( std::u16string_view _rPath )
 
 OUString SvxJavaClassPathDlg::GetClassPath() const
 {
+    constexpr char CLASSPATH_DELIMITER = SAL_PATHSEPARATOR;
+
     OUStringBuffer sPath;
     int nCount = m_xPathList->n_children();
     for (int i = 0; i < nCount; ++i)
@@ -995,7 +999,7 @@ void SvxJavaClassPathDlg::SetClassPath( const OUString& _rPath )
                 osl::FileBase::getFileURLFromSystemPath(path, sURL);
             }
             INetURLObject aURL( sURL );
-            m_xPathList->append("", path, SvFileInformationManager::GetImageId(aURL));
+            m_xPathList->append(u""_ustr, path, SvFileInformationManager::GetImageId(aURL));
         }
         // select first entry
         m_xPathList->select(0);

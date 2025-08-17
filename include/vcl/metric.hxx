@@ -37,7 +37,7 @@ class VCL_DLLPUBLIC FontMetric : public vcl::Font
 public:
     explicit            FontMetric();
                         FontMetric( const FontMetric& );  // TODO make this explicit
-                        FontMetric(vcl::font::PhysicalFontFace const& rFace);
+    SAL_DLLPRIVATE      FontMetric(vcl::font::PhysicalFontFace const& rFace);
                         ~FontMetric() override;
 
     sal_Int32           GetAscent() const                           { return mnAscent; }
@@ -49,6 +49,10 @@ public:
     sal_Int32           GetBulletOffset() const                     { return mnBulletOffset; }
     sal_Int32           GetHangingBaseline() const                  { return mnHangingBaseline; }
 
+    double GetUnitEm() const { return mdEmSize; }
+    double GetHorCJKAdvance() const { return mdHorCJKAdvanceSize; }
+    double GetVertCJKAdvance() const { return mdVertCJKAdvanceSize; }
+
     void                SetAscent( sal_Int32 nAscent )                   { mnAscent = nAscent; }
     void                SetDescent( sal_Int32 nDescent )                 { mnDescent = nDescent; }
     void                SetExternalLeading( sal_Int32 nExtLeading )      { mnExtLeading = nExtLeading; }
@@ -57,6 +61,10 @@ public:
     void                SetSlant( sal_Int32 nSlant )                     { mnSlant = nSlant; }
     void                SetBulletOffset( sal_Int32 nOffset )             { mnBulletOffset = nOffset; }
     void                SetHangingBaseline( sal_Int32 nBaseline )        { mnHangingBaseline = nBaseline; }
+
+    void SetUnitEm(double dValue) { mdEmSize = dValue; }
+    void SetHorCJKAdvance(double dValue) { mdHorCJKAdvanceSize = dValue; }
+    void SetVertCJKAdvance(double dValue) { mdVertCJKAdvanceSize = dValue; }
 
     bool                IsFullstopCentered() const                  { return mbFullstopCentered; }
 
@@ -69,14 +77,14 @@ public:
     bool                operator!=( const FontMetric& rMetric ) const
                             { return !operator==( rMetric ); }
 
-    bool                EqualIgnoreColor( const FontMetric& ) const;
+    SAL_DLLPRIVATE bool EqualIgnoreColor( const FontMetric& ) const;
 
     // Compute value usable as hash.
     size_t              GetHashValueIgnoreColor() const;
 
 private:
-    bool                EqualNoBase( const FontMetric& ) const;
-    size_t              GetHashValueNoBase() const;
+    SAL_DLLPRIVATE bool EqualNoBase( const FontMetric& ) const;
+    SAL_DLLPRIVATE size_t GetHashValueNoBase() const;
     sal_Int32           mnAscent;                      // Ascent
     sal_Int32           mnDescent;                     // Descent
     sal_Int32           mnIntLeading;                  // Internal Leading
@@ -85,6 +93,9 @@ private:
     sal_Int32           mnSlant;                       // Slant
     sal_Int32           mnBulletOffset;                // Offset for non-printing character
     sal_Int32           mnHangingBaseline;             // Offset from Romn baseline to hanging baseline.
+    double mdEmSize; // Size of an 'em' unit
+    double mdHorCJKAdvanceSize; // Size of an 'ic' unit in horizontal layout
+    double mdVertCJKAdvanceSize; // Size of an 'ic' unit in vertical layout
 
     bool                mbFullstopCentered;
 };

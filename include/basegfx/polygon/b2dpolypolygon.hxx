@@ -54,7 +54,6 @@ namespace basegfx
 
         // compare operators
         bool operator==(const B2DPolyPolygon& rPolyPolygon) const;
-        bool operator!=(const B2DPolyPolygon& rPolyPolygon) const;
 
         // polygon interface
         sal_uInt32 count() const;
@@ -114,6 +113,15 @@ namespace basegfx
         // apply transformation given in matrix form to the polygon
         void transform(const basegfx::B2DHomMatrix& rMatrix);
 
+        /** Translate (ie. move).
+            Much faster equivalent of transform(createTranslateB2DHomMatrix(xx)). */
+        void translate(double fTranslateX, double fTranslateY);
+
+        inline void translate(const B2DTuple& rTranslate)
+        {
+            translate(rTranslate.getX(), rTranslate.getY());
+        }
+
         // polygon iterators (same iterator validity conditions as for vector)
         const B2DPolygon* begin() const;
         const B2DPolygon* end() const;
@@ -122,9 +130,9 @@ namespace basegfx
 
         // exclusive management op's for SystemDependentData at B2DPolygon
         template<class T>
-        std::shared_ptr<T> getSystemDependentData() const
+        std::shared_ptr<T> getSystemDependentData(basegfx::SDD_Type aType) const
         {
-            return std::static_pointer_cast<T>(getSystemDependantDataInternal(typeid(T).hash_code()));
+            return std::static_pointer_cast<T>(getSystemDependantDataInternal(aType));
         }
 
         template<class T, class... Args>
@@ -144,7 +152,7 @@ namespace basegfx
 
     private:
         void addOrReplaceSystemDependentDataInternal(SystemDependentData_SharedPtr& rData) const;
-        SystemDependentData_SharedPtr getSystemDependantDataInternal(size_t hash_code) const;
+        SystemDependentData_SharedPtr getSystemDependantDataInternal(basegfx::SDD_Type aType) const;
     };
 
     // typedef for a vector of B2DPolyPolygons

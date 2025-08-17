@@ -60,6 +60,7 @@ IMPL_LINK(ScXMLConditionalFormatsContext, FormatDeletedHdl, ScConditionalFormat*
 void SAL_CALL ScXMLConditionalFormatsContext::endFastElement( sal_Int32 /*nElement*/ )
 {
     ScDocument* pDoc = GetScImport().GetDocument();
+    assert(pDoc);
 
     SCTAB nTab = GetScImport().GetTables().GetCurrentSheet();
     ScConditionalFormatList* pCondFormatList = pDoc->GetCondFormList(nTab);
@@ -102,7 +103,7 @@ ScXMLConditionalFormatContext::ScXMLConditionalFormatContext( ScXMLImport& rImpo
     ScRangeStringConverter::GetRangeListFromString(aRangeList, sRange, *pDoc,
             formula::FormulaGrammar::CONV_ODF);
 
-    mxFormat.reset(new ScConditionalFormat(0, pDoc));
+    mxFormat.reset(new ScConditionalFormat(0, *pDoc));
     mxFormat->SetRange(aRangeList);
 }
 
@@ -260,7 +261,7 @@ void SAL_CALL ScXMLConditionalFormatContext::endFastElement( sal_Int32 /*nElemen
             aSrcPos.Parse( aSrcString, *pDoc );
         ScCompiler aComp( *pDoc, aSrcPos );
         aComp.SetGrammar( formula::FormulaGrammar::GRAM_ODFF );
-        pTokens = aComp.CompileString( pCondFormatEntry->GetExpression(aSrcPos, 0), "" );
+        pTokens = aComp.CompileString( pCondFormatEntry->GetExpression(aSrcPos, 0), u""_ustr );
         if (HasRelRefIgnoringSheet0Relative( pDoc, pTokens.get() ))
         {
             // In general not eligible, but some might be. We handle one very special case: When the
@@ -339,7 +340,7 @@ void SAL_CALL ScXMLConditionalFormatContext::endFastElement( sal_Int32 /*nElemen
         }
     }
 
-    sal_uLong nIndex = pDoc->AddCondFormat(std::move(pFormat), nTab);
+    sal_uInt32 nIndex = pDoc->AddCondFormat(std::move(pFormat), nTab);
     ScConditionalFormat* pInsertedFormat = pDoc->GetCondFormList(nTab)->GetFormat(nIndex);
     assert(pInsertedFormat && pInsertedFormat->GetKey() == nIndex);
 
@@ -374,7 +375,7 @@ ScXMLColorScaleFormatContext::ScXMLColorScaleFormatContext( ScXMLImport& rImport
     ScXMLImportContext( rImport ),
     pColorScaleFormat(nullptr)
 {
-    pColorScaleFormat = new ScColorScaleFormat(GetScImport().GetDocument());
+    pColorScaleFormat = new ScColorScaleFormat(*GetScImport().GetDocument());
     pFormat->AddEntry(pColorScaleFormat);
 }
 
@@ -450,7 +451,7 @@ ScXMLDataBarFormatContext::ScXMLDataBarFormatContext( ScXMLImport& rImport,
         }
     }
 
-    ScDataBarFormat* pDataBarFormat = new ScDataBarFormat(rImport.GetDocument());
+    ScDataBarFormat* pDataBarFormat = new ScDataBarFormat(*rImport.GetDocument());
     mpFormatData = new ScDataBarFormatData();
     pDataBarFormat->SetDataBarData(mpFormatData);
     if(!sGradient.isEmpty())
@@ -577,17 +578,16 @@ ScXMLIconSetFormatContext::ScXMLIconSetFormatContext(ScXMLImport& rImport,
 
     const ScIconSetMap* pMap = ScIconSetFormat::g_IconSetMap;
     ScIconSetType eType = IconSet_3Arrows;
-    for(; pMap->pName; ++pMap)
+    for(; !pMap->aName.isEmpty(); ++pMap)
     {
-        OUString aName = OUString::createFromAscii(pMap->pName);
-        if(aName ==aIconSetType)
+        if(pMap->aName == aIconSetType)
         {
             eType = pMap->eType;
             break;
         }
     }
 
-    ScIconSetFormat* pIconSetFormat = new ScIconSetFormat(GetScImport().GetDocument());
+    ScIconSetFormat* pIconSetFormat = new ScIconSetFormat(*GetScImport().GetDocument());
     ScIconSetFormatData* pIconSetFormatData = new ScIconSetFormatData;
 
     if(!sShowValue.isEmpty())
@@ -909,6 +909,7 @@ ScXMLFormattingEntryContext::ScXMLFormattingEntryContext( ScXMLImport& rImport,
 {
     OUString sVal;
     OUString sType;
+    ScConditionMode eMode = ScConditionMode::EqGreater;
 
     if ( rAttrList.is() )
     {
@@ -922,6 +923,9 @@ ScXMLFormattingEntryContext::ScXMLFormattingEntryContext( ScXMLImport& rImport,
                 case XML_ELEMENT( CALC_EXT, XML_VALUE ):
                     sVal = aIter.toString();
                 break;
+                case XML_ELEMENT( CALC_EXT, XML_GREATER_EQUAL ):
+                    eMode = aIter.toBoolean() ? eMode : ScConditionMode::Greater;
+                break;
                 default:
                     break;
             }
@@ -934,6 +938,7 @@ ScXMLFormattingEntryContext::ScXMLFormattingEntryContext( ScXMLImport& rImport,
 
     pColorScaleEntry = new ScColorScaleEntry(nVal, Color());
     setColorEntryType(sType, pColorScaleEntry, sVal, GetScImport());
+    pColorScaleEntry->SetMode(eMode);
 }
 
 namespace {
@@ -997,7 +1002,7 @@ ScXMLDateContext::ScXMLDateContext( ScXMLImport& rImport,
         }
     }
 
-    ScCondDateFormatEntry* pFormatEntry = new ScCondDateFormatEntry(GetScImport().GetDocument());
+    ScCondDateFormatEntry* pFormatEntry = new ScCondDateFormatEntry(*GetScImport().GetDocument());
     pFormatEntry->SetStyleName(sStyle);
     pFormatEntry->SetDateType(getDateFromString(sDateType));
     pFormat->AddEntry(pFormatEntry);

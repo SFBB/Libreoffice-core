@@ -74,6 +74,8 @@
 #include <scmatrix.hxx>
 #include <tokenstringcontext.hxx>
 #include <officecfg/Office/Common.hxx>
+#include <sfx2/linkmgr.hxx>
+#include <interpre.hxx>
 
 using namespace formula;
 using namespace ::com::sun::star;
@@ -101,9 +103,186 @@ enum ScanState
     ssStop
 };
 
+constexpr std::array<ScCharFlags, 128> makeCommonCharTable()
+{
+    std::array<ScCharFlags, 128> a;
+    a.fill(ScCharFlags::Illegal);
+
+    // Allow tabs/newlines.
+    // Allow saving whitespace as is (as per OpenFormula specification v.1.2, clause 5.14 "Whitespace").
+    a['\t'] = ScCharFlags::CharDontCare | ScCharFlags::WordSep | ScCharFlags::ValueSep;
+    a['\n'] = ScCharFlags::CharDontCare | ScCharFlags::WordSep | ScCharFlags::ValueSep;
+    a['\r'] = ScCharFlags::CharDontCare | ScCharFlags::WordSep | ScCharFlags::ValueSep;
+
+    a[' '] = ScCharFlags::CharDontCare | ScCharFlags::WordSep | ScCharFlags::ValueSep;
+    a['!'] = ScCharFlags::Char | ScCharFlags::WordSep | ScCharFlags::ValueSep;
+    a['"'] = ScCharFlags::CharString | ScCharFlags::StringSep;
+    a['#'] = ScCharFlags::WordSep | ScCharFlags::CharErrConst;
+    a['$'] = ScCharFlags::CharWord | ScCharFlags::Word | ScCharFlags::CharIdent | ScCharFlags::Ident;
+    a['%'] = ScCharFlags::Char | ScCharFlags::WordSep | ScCharFlags::ValueSep;
+    a['&'] = ScCharFlags::Char | ScCharFlags::WordSep | ScCharFlags::ValueSep;
+    a['\''] = ScCharFlags::NameSep;
+    a['('] = ScCharFlags::Char | ScCharFlags::WordSep | ScCharFlags::ValueSep;
+    a[')'] = ScCharFlags::Char | ScCharFlags::WordSep | ScCharFlags::ValueSep;
+    a['*'] = ScCharFlags::Char | ScCharFlags::WordSep | ScCharFlags::ValueSep;
+    a['+'] = ScCharFlags::Char | ScCharFlags::WordSep | ScCharFlags::ValueExp | ScCharFlags::ValueSign;
+    a[','] = ScCharFlags::CharValue | ScCharFlags::Value;
+    a['-'] = ScCharFlags::Char | ScCharFlags::WordSep | ScCharFlags::ValueExp | ScCharFlags::ValueSign;
+    a['.'] = ScCharFlags::Word | ScCharFlags::CharValue | ScCharFlags::Value | ScCharFlags::Ident | ScCharFlags::Name;
+    a['/'] = ScCharFlags::Char | ScCharFlags::WordSep | ScCharFlags::ValueSep;
+
+    for (int i = '0'; i <= '9'; i++)
+        a[i] = ScCharFlags::CharValue | ScCharFlags::Word | ScCharFlags::Value | ScCharFlags::ValueExp | ScCharFlags::ValueValue | ScCharFlags::Ident | ScCharFlags::Name;
+
+    a[':'] = ScCharFlags::Char | ScCharFlags::Word;
+    a[';'] = ScCharFlags::Char | ScCharFlags::WordSep | ScCharFlags::ValueSep;
+    a['<'] = ScCharFlags::CharBool | ScCharFlags::WordSep | ScCharFlags::ValueSep;
+    a['='] = ScCharFlags::Char | ScCharFlags::Bool | ScCharFlags::WordSep | ScCharFlags::ValueSep;
+    a['>'] = ScCharFlags::CharBool | ScCharFlags::Bool | ScCharFlags::WordSep | ScCharFlags::ValueSep;
+    a['?'] = ScCharFlags::CharWord | ScCharFlags::Word | ScCharFlags::Name;
+    /* @ */ // FREE
+
+    for (int i = 'A'; i <= 'Z'; i++)
+        a[i] = ScCharFlags::CharWord | ScCharFlags::Word | ScCharFlags::CharIdent | ScCharFlags::Ident | ScCharFlags::CharName | ScCharFlags::Name;
+
+    /* [ */ // FREE
+    /* \ */ // FREE
+    /* ] */ // FREE
+
+    a['^'] = ScCharFlags::Char | ScCharFlags::WordSep | ScCharFlags::ValueSep;
+    a['_'] = ScCharFlags::CharWord | ScCharFlags::Word | ScCharFlags::CharIdent | ScCharFlags::Ident | ScCharFlags::CharName | ScCharFlags::Name;
+    /* ` */ // FREE
+
+    for (int i = 'a'; i <= 'z'; i++)
+        a[i] = ScCharFlags::CharWord | ScCharFlags::Word | ScCharFlags::CharIdent | ScCharFlags::Ident | ScCharFlags::CharName | ScCharFlags::Name;
+
+    a['{'] = ScCharFlags::Char | ScCharFlags::WordSep | ScCharFlags::ValueSep; // array open
+    a['|'] = ScCharFlags::Char | ScCharFlags::WordSep | ScCharFlags::ValueSep; // array row sep (Should be OOo specific)
+    a['}'] = ScCharFlags::Char | ScCharFlags::WordSep | ScCharFlags::ValueSep; // array close
+    a['~'] = ScCharFlags::Char;        // OOo specific
+    /* 127 */ // FREE
+
+    return a;
 }
 
-static const char* pInternal[2] = { "TTT", "__DEBUG_VAR" };
+constexpr std::array<ScCharFlags, 128> makeCharTable_OOO_A1()
+{
+    auto a = makeCommonCharTable();
+    a['['] = ScCharFlags::Char;
+    a[']'] = ScCharFlags::Char;
+    return a;
+}
+
+constexpr std::array<ScCharFlags, 128> makeCharTable_OOO_A1_ODF()
+{
+    auto a = makeCommonCharTable();
+    a['!'] |= ScCharFlags::OdfLabelOp;
+    a['$'] |= ScCharFlags::OdfNameMarker;
+    a['['] = ScCharFlags::OdfLBracket;
+    a[']'] = ScCharFlags::OdfRBracket;
+    return a;
+}
+
+constexpr std::array<ScCharFlags, 128> makeCharTable_XL()
+{
+    auto a = makeCommonCharTable();
+    a[' '] |= ScCharFlags::Word;
+    a['!'] |= ScCharFlags::Ident | ScCharFlags::Word;
+    a['"'] |= ScCharFlags::Word;
+    a['#'] &= ~ScCharFlags::WordSep;
+    a['#'] |= ScCharFlags::Word;
+    a['%'] |= ScCharFlags::Word;
+    a['&'] |= ScCharFlags::Word;
+    a['\''] |= ScCharFlags::Word;
+    a['('] |= ScCharFlags::Word;
+    a[')'] |= ScCharFlags::Word;
+    a['*'] |= ScCharFlags::Word;
+    a['+'] |= ScCharFlags::Word;
+#if 0 /* this really needs to be locale specific. */
+    a[','] = ScCharFlags::Char | ScCharFlags::WordSep | ScCharFlags::ValueSep;
+#else
+    a[','] |= ScCharFlags::Word;
+#endif
+    a['-'] |= ScCharFlags::Word;
+
+    a[';'] |= ScCharFlags::Word;
+    a['<'] |= ScCharFlags::Word;
+    a['='] |= ScCharFlags::Word;
+    a['>'] |= ScCharFlags::Word;
+    /* ? */ // question really is not permitted in sheet name
+    a['@'] |= ScCharFlags::Word;
+    a['['] = ScCharFlags::Word;
+    a[']'] = ScCharFlags::Word;
+    a['{'] |= ScCharFlags::Word;
+    a['|'] |= ScCharFlags::Word;
+    a['}'] |= ScCharFlags::Word;
+    a['~'] |= ScCharFlags::Word;
+    return a;
+}
+
+constexpr std::array<ScCharFlags, 128> makeCharTable_XL_A1()
+{
+    auto a = makeCharTable_XL();
+    a['['] |= ScCharFlags::Char;
+    a[']'] |= ScCharFlags::Char;
+    return a;
+}
+
+constexpr std::array<ScCharFlags, 128> makeCharTable_XL_OOX()
+{
+    auto a = makeCharTable_XL_A1();
+    a['['] |= ScCharFlags::CharIdent;
+    a[']'] |= ScCharFlags::Ident;
+    return a;
+}
+
+constexpr std::array<ScCharFlags, 128> makeCharTable_XL_R1C1()
+{
+    auto a = makeCharTable_XL();
+    a['['] |= ScCharFlags::Ident;
+    a[']'] |= ScCharFlags::Ident;
+    return a;
+}
+
+const std::array<ScCharFlags, 128>& getCharTable(FormulaGrammar::AddressConvention eConv)
+{
+    switch (eConv)
+    {
+        case FormulaGrammar::CONV_OOO:
+        {
+            static constexpr auto table_OOO_A1(makeCharTable_OOO_A1());
+            return table_OOO_A1;
+        }
+        case FormulaGrammar::CONV_ODF:
+        {
+            static constexpr auto table_OOO_A1_ODF(makeCharTable_OOO_A1_ODF());
+            return table_OOO_A1_ODF;
+        }
+        case FormulaGrammar::CONV_XL_A1:
+        {
+            static constexpr auto table_XL_A1(makeCharTable_XL_A1());
+            return table_XL_A1;
+        }
+        case FormulaGrammar::CONV_XL_R1C1:
+        {
+            static constexpr auto table_XL_R1C1(makeCharTable_XL_R1C1());
+            return table_XL_R1C1;
+        }
+        case FormulaGrammar::CONV_XL_OOX:
+        {
+            static constexpr auto table_XL_OOX(makeCharTable_XL_OOX());
+            return table_XL_OOX;
+        }
+        case FormulaGrammar::CONV_UNSPECIFIED:
+        default:
+        {
+            assert(!"Unimplemented convention");
+            std::abort();
+        }
+    }
+}
+
+}
 
 using namespace ::com::sun::star::i18n;
 
@@ -185,8 +364,30 @@ void ScCompiler::fillFromAddInCollectionEnglishName( const NonConstOpCodeMapPtr&
     }
 }
 
+void ScCompiler::fillFromAddInCollectionExcelName( const NonConstOpCodeMapPtr& xMap ) const
+{
+    const LanguageTag aDestLang(LANGUAGE_ENGLISH_US);
+    ScUnoAddInCollection* pColl = ScGlobal::GetAddInCollection();
+    tools::Long nCount = pColl->GetFuncCount();
+    for (tools::Long i=0; i < nCount; ++i)
+    {
+        OUString aExcelName;
+        const ScUnoAddInFuncData* pFuncData = pColl->GetFuncData(i);
+        if (pFuncData && pFuncData->GetExcelName( aDestLang, aExcelName, true))
+        {
+            // Note that function names not defined in OOXML but implemented by
+            // Excel should have the "_xlfn." prefix. We have no way to check
+            // though what an Add-In actually implements.
+            xMap->putExternalSoftly( GetCharClassEnglish()->uppercase(aExcelName), pFuncData->GetOriginalName());
+        }
+    }
+}
+
+static std::mutex gCharClassMutex;
+
 void ScCompiler::DeInit()
 {
+    std::scoped_lock aGuard(gCharClassMutex);
     if (pCharClassEnglish)
     {
         delete pCharClassEnglish;
@@ -222,38 +423,26 @@ bool ScCompiler::IsEnglishSymbol( const OUString& rName )
     return !aIntName.isEmpty();       // no valid function name
 }
 
-static std::mutex& getCharClassMutex()
-{
-    static std::mutex aMutex;
-    return aMutex;
-}
-
 const CharClass* ScCompiler::GetCharClassEnglish()
 {
+    std::scoped_lock aGuard(gCharClassMutex);
     if (!pCharClassEnglish)
     {
-        std::scoped_lock aGuard(getCharClassMutex());
-        if (!pCharClassEnglish)
-        {
-            pCharClassEnglish = new CharClass( ::comphelper::getProcessComponentContext(),
-                    LanguageTag( LANGUAGE_ENGLISH_US));
-        }
+        pCharClassEnglish = new CharClass( ::comphelper::getProcessComponentContext(),
+                LanguageTag( LANGUAGE_ENGLISH_US));
     }
     return pCharClassEnglish;
 }
 
 const CharClass* ScCompiler::GetCharClassLocalized()
 {
+    // Switching UI language requires restart; if not, we would have to
+    // keep track of that.
+    std::scoped_lock aGuard(gCharClassMutex);
     if (!pCharClassLocalized)
     {
-        // Switching UI language requires restart; if not, we would have to
-        // keep track of that.
-        std::scoped_lock aGuard(getCharClassMutex());
-        if (!pCharClassLocalized)
-        {
-            pCharClassLocalized = new CharClass( ::comphelper::getProcessComponentContext(),
-                    Application::GetSettings().GetUILanguageTag());
-        }
+        pCharClassLocalized = new CharClass( ::comphelper::getProcessComponentContext(),
+                Application::GetSettings().GetUILanguageTag());
     }
     return pCharClassLocalized;
 }
@@ -309,11 +498,6 @@ std::vector<OUString> &ScCompiler::GetSetupTabNames() const
     return rTabNames;
 }
 
-void ScCompiler::SetNumberFormatter( SvNumberFormatter* pFormatter )
-{
-    mpFormatter = pFormatter;
-}
-
 void ScCompiler::SetFormulaLanguage( const ScCompiler::OpCodeMapPtr & xMap )
 {
     if (!xMap)
@@ -358,143 +542,10 @@ ScCompiler::Convention::~Convention()
 }
 
 ScCompiler::Convention::Convention( FormulaGrammar::AddressConvention eConv )
-        :
-    meConv( eConv )
+    : meConv(eConv)
+    , mrCharTable(getCharTable(eConv))
 {
-    int i;
-    ScCharFlags *t= new ScCharFlags [128];
-
     ScCompiler::pConventions[ meConv ] = this;
-    mpCharTable.reset( t );
-
-    for (i = 0; i < 128; i++)
-        t[i] = ScCharFlags::Illegal;
-
-// Allow tabs/newlines.
-// Allow saving whitespace as is (as per OpenFormula specification v.1.2, clause 5.14 "Whitespace").
-/* tab */   t[ 9] = ScCharFlags::CharDontCare | ScCharFlags::WordSep | ScCharFlags::ValueSep;
-/* lf  */   t[10] = ScCharFlags::CharDontCare | ScCharFlags::WordSep | ScCharFlags::ValueSep;
-/* cr  */   t[13] = ScCharFlags::CharDontCare | ScCharFlags::WordSep | ScCharFlags::ValueSep;
-
-/*   */     t[32] = ScCharFlags::CharDontCare | ScCharFlags::WordSep | ScCharFlags::ValueSep;
-/* ! */     t[33] = ScCharFlags::Char | ScCharFlags::WordSep | ScCharFlags::ValueSep;
-            if (FormulaGrammar::CONV_ODF == meConv)
-/* ! */         t[33] |= ScCharFlags::OdfLabelOp;
-/* " */     t[34] = ScCharFlags::CharString | ScCharFlags::StringSep;
-/* # */     t[35] = ScCharFlags::WordSep | ScCharFlags::CharErrConst;
-/* $ */     t[36] = ScCharFlags::CharWord | ScCharFlags::Word | ScCharFlags::CharIdent | ScCharFlags::Ident;
-            if (FormulaGrammar::CONV_ODF == meConv)
-/* $ */         t[36] |= ScCharFlags::OdfNameMarker;
-/* % */     t[37] = ScCharFlags::Char | ScCharFlags::WordSep | ScCharFlags::ValueSep;
-/* & */     t[38] = ScCharFlags::Char | ScCharFlags::WordSep | ScCharFlags::ValueSep;
-/* ' */     t[39] = ScCharFlags::NameSep;
-/* ( */     t[40] = ScCharFlags::Char | ScCharFlags::WordSep | ScCharFlags::ValueSep;
-/* ) */     t[41] = ScCharFlags::Char | ScCharFlags::WordSep | ScCharFlags::ValueSep;
-/* * */     t[42] = ScCharFlags::Char | ScCharFlags::WordSep | ScCharFlags::ValueSep;
-/* + */     t[43] = ScCharFlags::Char | ScCharFlags::WordSep | ScCharFlags::ValueExp | ScCharFlags::ValueSign;
-/* , */     t[44] = ScCharFlags::CharValue | ScCharFlags::Value;
-/* - */     t[45] = ScCharFlags::Char | ScCharFlags::WordSep | ScCharFlags::ValueExp | ScCharFlags::ValueSign;
-/* . */     t[46] = ScCharFlags::Word | ScCharFlags::CharValue | ScCharFlags::Value | ScCharFlags::Ident | ScCharFlags::Name;
-/* / */     t[47] = ScCharFlags::Char | ScCharFlags::WordSep | ScCharFlags::ValueSep;
-
-            for (i = 48; i < 58; i++)
-/* 0-9 */       t[i] = ScCharFlags::CharValue | ScCharFlags::Word | ScCharFlags::Value | ScCharFlags::ValueExp | ScCharFlags::ValueValue | ScCharFlags::Ident | ScCharFlags::Name;
-
-/* : */     t[58] = ScCharFlags::Char | ScCharFlags::Word;
-/* ; */     t[59] = ScCharFlags::Char | ScCharFlags::WordSep | ScCharFlags::ValueSep;
-/* < */     t[60] = ScCharFlags::CharBool | ScCharFlags::WordSep | ScCharFlags::ValueSep;
-/* = */     t[61] = ScCharFlags::Char | ScCharFlags::Bool | ScCharFlags::WordSep | ScCharFlags::ValueSep;
-/* > */     t[62] = ScCharFlags::CharBool | ScCharFlags::Bool | ScCharFlags::WordSep | ScCharFlags::ValueSep;
-/* ? */     t[63] = ScCharFlags::CharWord | ScCharFlags::Word | ScCharFlags::Name;
-/* @ */     // FREE
-
-    for (i = 65; i < 91; i++)
-/* A-Z */   t[i] = ScCharFlags::CharWord | ScCharFlags::Word | ScCharFlags::CharIdent | ScCharFlags::Ident | ScCharFlags::CharName | ScCharFlags::Name;
-
-    if (FormulaGrammar::CONV_ODF == meConv)
-    {
-/* [ */     t[91] = ScCharFlags::OdfLBracket;
-/* \ */     // FREE
-/* ] */     t[93] = ScCharFlags::OdfRBracket;
-    }
-    else if (FormulaGrammar::CONV_OOO == meConv)
-    {
-/* [ */     t[91] = ScCharFlags::Char;
-/* \ */     // FREE
-/* ] */     t[93] = ScCharFlags::Char;
-    }
-    else if (FormulaGrammar::CONV_XL_OOX == meConv)
-    {
-/* [ */     t[91] = ScCharFlags::Char | ScCharFlags::CharIdent;
-/* \ */     // FREE
-/* ] */     t[93] = ScCharFlags::Char | ScCharFlags::Ident;
-    }
-    else if (FormulaGrammar::CONV_XL_A1 == meConv)
-    {
-/* [ */     t[91] = ScCharFlags::Char;
-/* \ */     // FREE
-/* ] */     t[93] = ScCharFlags::Char;
-    }
-    else if( FormulaGrammar::CONV_XL_R1C1 == meConv )
-    {
-/* [ */     t[91] = ScCharFlags::Ident;
-/* \ */     // FREE
-/* ] */     t[93] = ScCharFlags::Ident;
-    }
-    else
-    {
-/* [ */     // FREE
-/* \ */     // FREE
-/* ] */     // FREE
-    }
-
-/* ^ */     t[94] = ScCharFlags::Char | ScCharFlags::WordSep | ScCharFlags::ValueSep;
-/* _ */     t[95] = ScCharFlags::CharWord | ScCharFlags::Word | ScCharFlags::CharIdent | ScCharFlags::Ident | ScCharFlags::CharName | ScCharFlags::Name;
-/* ` */     // FREE
-
-            for (i = 97; i < 123; i++)
-/* a-z */       t[i] = ScCharFlags::CharWord | ScCharFlags::Word | ScCharFlags::CharIdent | ScCharFlags::Ident | ScCharFlags::CharName | ScCharFlags::Name;
-
-/* { */     t[123] = ScCharFlags::Char | ScCharFlags::WordSep | ScCharFlags::ValueSep; // array open
-/* | */     t[124] = ScCharFlags::Char | ScCharFlags::WordSep | ScCharFlags::ValueSep; // array row sep (Should be OOo specific)
-/* } */     t[125] = ScCharFlags::Char | ScCharFlags::WordSep | ScCharFlags::ValueSep; // array close
-/* ~ */     t[126] = ScCharFlags::Char;        // OOo specific
-/* 127 */   // FREE
-
-    if( !(FormulaGrammar::CONV_XL_A1 == meConv || FormulaGrammar::CONV_XL_R1C1 == meConv || FormulaGrammar::CONV_XL_OOX == meConv) )
-return;
-
-/*   */     t[32] |=   ScCharFlags::Word;
-/* ! */     t[33] |=   ScCharFlags::Ident | ScCharFlags::Word;
-/* " */     t[34] |=   ScCharFlags::Word;
-/* # */     t[35] &=  ~ScCharFlags::WordSep;
-/* # */     t[35] |=   ScCharFlags::Word;
-/* % */     t[37] |=   ScCharFlags::Word;
-/* & */     t[38] |=   ScCharFlags::Word;
-/* ' */     t[39] |=   ScCharFlags::Word;
-/* ( */     t[40] |=   ScCharFlags::Word;
-/* ) */     t[41] |=   ScCharFlags::Word;
-/* * */     t[42] |=   ScCharFlags::Word;
-/* + */     t[43] |=   ScCharFlags::Word;
-#if 0 /* this really needs to be locale specific. */
-/* , */     t[44]  =   ScCharFlags::Char | ScCharFlags::WordSep | ScCharFlags::ValueSep;
-#else
-/* , */     t[44] |=   ScCharFlags::Word;
-#endif
-/* - */     t[45] |=   ScCharFlags::Word;
-
-/* ; */     t[59] |=   ScCharFlags::Word;
-/* < */     t[60] |=   ScCharFlags::Word;
-/* = */     t[61] |=   ScCharFlags::Word;
-/* > */     t[62] |=   ScCharFlags::Word;
-/* ? */     // question really is not permitted in sheet name
-/* @ */     t[64] |=   ScCharFlags::Word;
-/* [ */     t[91] |=   ScCharFlags::Word;
-/* ] */     t[93] |=   ScCharFlags::Word;
-/* { */     t[123]|=   ScCharFlags::Word;
-/* | */     t[124]|=   ScCharFlags::Word;
-/* } */     t[125]|=   ScCharFlags::Word;
-/* ~ */     t[126]|=   ScCharFlags::Word;
 }
 
 static bool lcl_isValidQuotedText( std::u16string_view rFormula, size_t nSrcPos, ParseResult& rRes )
@@ -708,7 +759,7 @@ static bool lcl_parseExternalName(
 static OUString lcl_makeExternalNameStr(const OUString& rFile, const OUString& rName,
         const sal_Unicode cSep, bool bODF )
 {
-    OUString aEscQuote("''");
+    OUString aEscQuote(u"''"_ustr);
     OUString aFile(rFile.replaceAll("'", aEscQuote));
     OUString aName(rName);
     if (bODF)
@@ -779,13 +830,13 @@ struct Convention_A1 : public ScCompiler::Convention
         static constexpr OUString aAddAllowed(u"?#"_ustr);
         return pCharClass->parseAnyToken( rFormula,
                 nSrcPos, nStartFlags, aAddAllowed,
-                (bGroupSeparator ? nContFlags | KParseTokens::GROUP_SEPARATOR_IN_NUMBER : nContFlags),
+                (bGroupSeparator ? nContFlags | KParseTokens::GROUP_SEPARATOR_IN_NUMBER_3 : nContFlags),
                 aAddAllowed );
     }
 
     virtual ScCharFlags getCharTableFlags( sal_Unicode c, sal_Unicode /*cLast*/ ) const override
     {
-        return mpCharTable[static_cast<sal_uInt8>(c)];
+        return mrCharTable[static_cast<sal_uInt8>(c)];
     }
 };
 
@@ -1172,11 +1223,11 @@ struct ConventionXL
             GetTab(rLimits, rPos, rTabNames, rRef.Ref2, aEndTabName);
         }
 
+        const sal_Int32 nQuotePos = rBuf.getLength();
         rBuf.append( aStartTabName );
         if( !bSingleRef && rRef.Ref2.IsFlag3D() && aStartTabName != aEndTabName )
         {
-            rBuf.append( ':' );
-            rBuf.append( aEndTabName );
+            ScCompiler::FormExcelSheetRange( rBuf, nQuotePos, aEndTabName);
         }
 
         rBuf.append( '!' );
@@ -1379,7 +1430,9 @@ struct ConventionXL_A1 : public Convention_A1, public ConventionXL
         }
 
         makeSingleCellStr(rLimits, rBuf, aRef.Ref1, aAbs1);
-        if (!bSingleRef)
+        if (!bSingleRef &&
+                (aAbs1.Row() != aAbs2.Row() || aRef.Ref1.IsRowRel() != aRef.Ref2.IsRowRel() ||
+                 aAbs1.Col() != aAbs2.Col() || aRef.Ref1.IsColRel() != aRef.Ref2.IsColRel()))
         {
             rBuf.append( ':' );
             makeSingleCellStr(rLimits, rBuf, aRef.Ref2, aAbs2);
@@ -1404,7 +1457,7 @@ struct ConventionXL_A1 : public Convention_A1, public ConventionXL
         static constexpr OUString aAddAllowed(u"?!"_ustr);
         return pCharClass->parseAnyToken( rFormula,
                 nSrcPos, nStartFlags, aAddAllowed,
-                (bGroupSeparator ? nContFlags | KParseTokens::GROUP_SEPARATOR_IN_NUMBER : nContFlags),
+                (bGroupSeparator ? nContFlags | KParseTokens::GROUP_SEPARATOR_IN_NUMBER_3 : nContFlags),
                 aAddAllowed );
     }
 
@@ -1722,6 +1775,13 @@ struct ConventionXL_R1C1 : public ScCompiler::Convention, public ConventionXL
 
         r1c1_add_row(rBuf, rRef.Ref1, aAbsRef.aStart);
         r1c1_add_col(rBuf, rRef.Ref1, aAbsRef.aStart);
+        // We can't parse a single col/row reference in the context of a R1C1
+        // 3D reference back yet, otherwise (if Excel understands it) an
+        // additional condition similar to ConventionXL_A1::makeRefStr() could
+        // be
+        //
+        //   && (aAbsRef.aStart.Row() != aAbsRef.aEnd.Row() || rRef.Ref1.IsRowRel() != rRef.Ref2.IsRowRel() ||
+        //       aAbsRef.aStart.Col() != aAbsRef.aEnd.Col() || rRef.Ref1.IsColRel() != rRef.Ref2.IsColRel())
         if (!bSingleRef)
         {
             rBuf.append( ':' );
@@ -1749,7 +1809,7 @@ struct ConventionXL_R1C1 : public ScCompiler::Convention, public ConventionXL
 
         return pCharClass->parseAnyToken( rFormula,
                 nSrcPos, nStartFlags, aAddAllowed,
-                (bGroupSeparator ? nContFlags | KParseTokens::GROUP_SEPARATOR_IN_NUMBER : nContFlags),
+                (bGroupSeparator ? nContFlags | KParseTokens::GROUP_SEPARATOR_IN_NUMBER_3 : nContFlags),
                 aAddAllowed );
     }
 
@@ -1840,7 +1900,7 @@ struct ConventionXL_R1C1 : public ScCompiler::Convention, public ConventionXL
 
     virtual ScCharFlags getCharTableFlags( sal_Unicode c, sal_Unicode cLast ) const override
     {
-        ScCharFlags nFlags = mpCharTable[static_cast<sal_uInt8>(c)];
+        ScCharFlags nFlags = mrCharTable[static_cast<sal_uInt8>(c)];
         if (c == '-' && cLast == '[')
             // '-' can occur within a reference string only after '[' e.g. R[-1]C.
             nFlags |= ScCharFlags::Ident;
@@ -1851,12 +1911,11 @@ struct ConventionXL_R1C1 : public ScCompiler::Convention, public ConventionXL
 }
 
 ScCompiler::ScCompiler( sc::CompileFormulaContext& rCxt, const ScAddress& rPos, ScTokenArray& rArr,
-                        bool bComputeII, bool bMatrixFlag, const ScInterpreterContext* pContext )
+                        bool bComputeII, bool bMatrixFlag, ScInterpreterContext* pContext )
     : FormulaCompiler(rArr, bComputeII, bMatrixFlag),
     rDoc(rCxt.getDoc()),
     aPos(rPos),
-    mpFormatter(pContext ? pContext->GetFormatTable() : rDoc.GetFormatTable()),
-    mpInterpreterContext(pContext),
+    mrInterpreterContext(pContext ? *pContext : rDoc.GetNonThreadedContext()),
     mnCurrentSheetTab(-1),
     mnCurrentSheetEndPos(0),
     pCharClass(&ScGlobal::getCharClass()),
@@ -1871,16 +1930,16 @@ ScCompiler::ScCompiler( sc::CompileFormulaContext& rCxt, const ScAddress& rPos, 
     maTabNames(rCxt.getTabNames())
 {
     SetGrammar(rCxt.getGrammar());
+    m_oODFSavingVersion = rCxt.getODFSavingVersion();
 }
 
 ScCompiler::ScCompiler( ScDocument& rDocument, const ScAddress& rPos, ScTokenArray& rArr,
                         formula::FormulaGrammar::Grammar eGrammar,
-                        bool bComputeII, bool bMatrixFlag, const ScInterpreterContext* pContext )
+                        bool bComputeII, bool bMatrixFlag, ScInterpreterContext* pContext )
     : FormulaCompiler(rArr, bComputeII, bMatrixFlag),
         rDoc( rDocument ),
         aPos( rPos ),
-        mpFormatter(pContext ? pContext->GetFormatTable() : rDoc.GetFormatTable()),
-        mpInterpreterContext(pContext),
+        mrInterpreterContext(pContext ? *pContext : rDoc.GetNonThreadedContext()),
         mnCurrentSheetTab(-1),
         mnCurrentSheetEndPos(0),
         nSrcPos(0),
@@ -1900,12 +1959,11 @@ ScCompiler::ScCompiler( ScDocument& rDocument, const ScAddress& rPos, ScTokenArr
 }
 
 ScCompiler::ScCompiler( sc::CompileFormulaContext& rCxt, const ScAddress& rPos,
-                        bool bComputeII, bool bMatrixFlag, const ScInterpreterContext* pContext )
+                        bool bComputeII, bool bMatrixFlag, ScInterpreterContext* pContext )
     : FormulaCompiler(bComputeII, bMatrixFlag),
     rDoc(rCxt.getDoc()),
     aPos(rPos),
-    mpFormatter(pContext ? pContext->GetFormatTable() : rDoc.GetFormatTable()),
-    mpInterpreterContext(pContext),
+    mrInterpreterContext(pContext ? *pContext : rDoc.GetNonThreadedContext()),
     mnCurrentSheetTab(-1),
     mnCurrentSheetEndPos(0),
     pCharClass(&ScGlobal::getCharClass()),
@@ -1924,12 +1982,11 @@ ScCompiler::ScCompiler( sc::CompileFormulaContext& rCxt, const ScAddress& rPos,
 
 ScCompiler::ScCompiler( ScDocument& rDocument, const ScAddress& rPos,
                         formula::FormulaGrammar::Grammar eGrammar,
-                        bool bComputeII, bool bMatrixFlag, const ScInterpreterContext* pContext )
+                        bool bComputeII, bool bMatrixFlag, ScInterpreterContext* pContext )
         : FormulaCompiler(bComputeII, bMatrixFlag),
         rDoc( rDocument ),
         aPos( rPos ),
-        mpFormatter(pContext ? pContext->GetFormatTable() : rDoc.GetFormatTable()),
-        mpInterpreterContext(pContext),
+        mrInterpreterContext(pContext ? *pContext : rDoc.GetNonThreadedContext()),
         mnCurrentSheetTab(-1),
         mnCurrentSheetEndPos(0),
         nSrcPos(0),
@@ -1989,6 +2046,29 @@ void ScCompiler::CheckTabQuotes( OUString& rString,
     {
         rString = "'" + rString + "'";
     }
+}
+
+void ScCompiler::FormExcelSheetRange( OUStringBuffer& rBuf, sal_Int32 nQuotePos, const OUString& rEndTabName )
+{
+    OUString aEndTabName(rEndTabName);
+    if (nQuotePos < rBuf.getLength())
+    {
+        const bool bQuoted2 = (!aEndTabName.isEmpty() && aEndTabName[0] == '\'');
+        if (bQuoted2)
+            aEndTabName = aEndTabName.subView(1);   //  Sheet2'
+        if (rBuf[nQuotePos] == '\'')                // 'Sheet1'
+        {
+            const sal_Int32 nLast = rBuf.getLength() - 1;
+            if (rBuf[nLast] == '\'')
+                rBuf.remove(nLast, 1);              // 'Sheet1
+        }
+        else if (bQuoted2)                          //  Sheet1
+        {
+            rBuf.insert(nQuotePos, '\'');           // 'Sheet1
+        }
+    }
+    rBuf.append( ':' );
+    rBuf.append( aEndTabName );
 }
 
 sal_Int32 ScCompiler::GetDocTabPos( const OUString& rString )
@@ -2318,7 +2398,8 @@ Label_MaskStateMachine:
                 else if( nMask & ScCharFlags::CharErrConst )
                 {
                     *pSym++ = c;
-                    if (!maTableRefs.empty() && maTableRefs.back().mnLevel == 2)
+                    sal_uInt16 nLevel;
+                    if (!maTableRefs.empty() && ((nLevel = maTableRefs.back().mnLevel) == 2 || nLevel == 1))
                         eState = ssGetTableRefItem;
                     else
                         eState = ssGetErrorConstant;
@@ -2967,7 +3048,7 @@ bool ScCompiler::ParseOpCode( const OUString& rName, bool bInArray )
             // Renamed old names, still accept them:
             { "B",              ocB },              // B -> BINOM.DIST.RANGE
             { "TDIST",          ocTDist },          // TDIST -> LEGACY.TDIST
-            { "EASTERSUNDAY",   ocEasterSunday },   // EASTERSUNDAY -> ORG.OPENOFFICE.EASTERSUNDAY
+            { "ORG.OPENOFFICE.EASTERSUNDAY",   ocEasterSunday },   // ORG.OPENOFFICE.EASTERSUNDAY -> EASTERSUNDAY
             { "ZGZ",            ocRRI },            // ZGZ -> RRI
             { "COLOR",          ocColor },          // COLOR -> ORG.LIBREOFFICE.COLOR
             { "GOALSEEK",       ocBackSolver },     // GOALSEEK -> ORG.OPENOFFICE.GOALSEEK
@@ -3094,13 +3175,15 @@ bool ScCompiler::ParseOpCode( const OUString& rName, bool bInArray )
 
 bool ScCompiler::ParseOpCode2( std::u16string_view rName )
 {
-    for (sal_uInt16 i = ocInternalBegin; i <= ocInternalEnd; i++)
+    if (rName == u"TTT")
     {
-        if (o3tl::equalsAscii(rName, pInternal[i - ocInternalBegin]))
-        {
-            maRawToken.SetOpCode(static_cast<OpCode>(i));
-            return true;
-        }
+        maRawToken.SetOpCode(ocTTT);
+        return true;
+    }
+    if (rName == u"__DEBUG_VAR")
+    {
+        maRawToken.SetOpCode(ocDebugVar);
+        return true;
     }
 
     return false;
@@ -3173,12 +3256,12 @@ bool ScCompiler::ParseValue( const OUString& rSym )
     }
 
     double fVal;
-    sal_uInt32 nIndex = mxSymbols->isEnglishLocale() ? mpFormatter->GetStandardIndex(LANGUAGE_ENGLISH_US) : 0;
+    sal_uInt32 nIndex = mxSymbols->isEnglishLocale() ? mrInterpreterContext.NFGetStandardIndex(LANGUAGE_ENGLISH_US) : 0;
 
-    if (!mpFormatter->IsNumberFormat(rSym, nIndex, fVal))
+    if (!mrInterpreterContext.NFIsNumberFormat(rSym, nIndex, fVal))
         return false;
 
-    SvNumFormatType nType = mpFormatter->GetType(nIndex);
+    SvNumFormatType nType = mrInterpreterContext.NFGetType(nIndex);
 
     // Don't accept 3:3 as time, it is a reference to entire row 3 instead.
     // Dates should never be entered directly and automatically converted
@@ -3235,7 +3318,7 @@ bool ScCompiler::ParsePredetectedReference( const OUString& rName )
     // It could also be a broken invalidated reference that contains #REF!
     // (but is not equal to), which we wrote prior to ODFF and also to ODFF
     // between 2013 and 2016 until 5.1.4
-    constexpr OUString aErrRef(u"#REF!"_ustr);    // not localized in ODFF
+    static constexpr OUString aErrRef(u"#REF!"_ustr);    // not localized in ODFF
     sal_Int32 nPos = rName.indexOf( aErrRef);
     if (nPos != -1)
     {
@@ -3657,6 +3740,29 @@ bool ScCompiler::ParseNamedRange( const OUString& rUpperName, bool onlyCheck )
         }
     }
 
+    return false;
+}
+
+bool ScCompiler::ParseLambdaFuncName( const OUString& aOrg )
+{
+    if (m_aLambda.bInLambdaFunction && !aOrg.isEmpty())
+    {
+        OUString aName = aOrg;
+        if (aOrg.startsWithIgnoreAsciiCase(u"_xlpm."))
+            aName = aName.copy(6);
+
+        if (m_aLambda.nParaPos % 2 == 1 && m_aLambda.nParaCount > m_aLambda.nParaPos)
+            m_aLambda.aNameSet.insert(aName);
+        else
+        {
+            // should already exist the name
+            if (m_aLambda.aNameSet.find(aName) == m_aLambda.aNameSet.end())
+                return false;
+        }
+        svl::SharedString aSS = rDoc.GetSharedStringPool().intern(aName);
+        maRawToken.SetStringName(aSS.getData(), aSS.getDataIgnoreCase());
+        return true;
+    }
     return false;
 }
 
@@ -4355,6 +4461,36 @@ bool ScCompiler::ToUpperAsciiOrI18nIsAscii( OUString& rUpper, const OUString& rO
     }
 }
 
+short ScCompiler::GetPossibleParaCount( std::u16string_view rLambdaFormula ) const
+{
+    sal_Unicode cSep = mxSymbols->getSymbolChar(ocSep);
+    sal_Unicode cOpen = mxSymbols->getSymbolChar(ocOpen);
+    sal_Unicode cClose = mxSymbols->getSymbolChar(ocClose);
+    sal_Unicode cArrayOpen = mxSymbols->getSymbolChar(ocArrayOpen);
+    sal_Unicode cArrayClose = mxSymbols->getSymbolChar(ocArrayClose);
+    short nBrackets = 0;
+
+    short nCount = std::count_if(rLambdaFormula.begin(), rLambdaFormula.end(),
+        [&](sal_Unicode c) {
+            if (c == cOpen || c == cArrayOpen || c == '[') {
+                nBrackets++;
+                return false;
+            }
+            else if (c == cClose || c == cArrayClose || c == ']') {
+                nBrackets--;
+                return false;
+            }
+            else {
+                if (nBrackets == 1)
+                    return c == cSep;
+                else
+                    return false;
+            }
+        });
+
+    return static_cast<short>(nCount + 1);
+}
+
 bool ScCompiler::NextNewToken( bool bInArray )
 {
     if (!maPendingOpCodes.empty())
@@ -4365,7 +4501,7 @@ bool ScCompiler::NextNewToken( bool bInArray )
     }
 
     bool bAllowBooleans = bInArray;
-    const std::vector<Whitespace> & vSpaces = NextSymbol(bInArray);
+    const std::vector<Whitespace> vSpaces = NextSymbol(bInArray);
 
     if (!cSymbol[0])
     {
@@ -4449,8 +4585,9 @@ bool ScCompiler::NextNewToken( bool bInArray )
     bool bAsciiNonAlnum;    // operators, separators, ...
     if ( cSymbol[0] < 128 )
     {
-        bMayBeFuncName = rtl::isAsciiAlpha( cSymbol[0] );
-        if (!bMayBeFuncName && (cSymbol[0] == '_' && cSymbol[1] == '_') && !utl::ConfigManager::IsFuzzing())
+        bMayBeFuncName = rtl::isAsciiAlpha(cSymbol[0])
+            || (cSymbol[0] == '_' && mxSymbols->isOOXML() && rtl::isAsciiAlpha(cSymbol[1]));
+        if (!bMayBeFuncName && (cSymbol[0] == '_' && cSymbol[1] == '_') && !comphelper::IsFuzzing())
         {
             bMayBeFuncName = officecfg::Office::Common::Misc::ExperimentalMode::get();
         }
@@ -4518,7 +4655,8 @@ Label_Rewind:
             if (cSymbol[0] == '#')
             {
                 // Check for TableRef item specifiers first.
-                if (!maTableRefs.empty() && maTableRefs.back().mnLevel == 2)
+                sal_uInt16 nLevel;
+                if (!maTableRefs.empty() && ((nLevel = maTableRefs.back().mnLevel) == 2 || nLevel == 1))
                 {
                     if (ParseTableRefItem( aUpper ))
                         return true;
@@ -4620,6 +4758,9 @@ Label_Rewind:
         if (bMayBeFuncName && ParseMacro( aUpper ))
             return true;
         if (bMayBeFuncName && ParseOpCode2( aUpper ))
+            return true;
+
+        if (ParseLambdaFuncName( aOrg ))
             return true;
 
     } while (mbRewind);
@@ -4738,6 +4879,7 @@ std::unique_ptr<ScTokenArray> ScCompiler::CompileString( const OUString& rFormul
     pFunctionStack[0].eOp = ocNone;
     pFunctionStack[0].nSep = 0;
     size_t nFunction = 0;
+    size_t nHighWatermark = 0;
     short nBrackets = 0;
     bool bInArray = false;
     eLastOp = ocOpen;
@@ -4751,12 +4893,21 @@ std::unique_ptr<ScTokenArray> ScCompiler::CompileString( const OUString& rFormul
         {
             case ocOpen:
             {
+                if (eLastOp == ocLet)
+                {
+                    m_aLambda.bInLambdaFunction = true;
+                    m_aLambda.nBracketPos = nBrackets;
+                    m_aLambda.nParaPos++;
+                    m_aLambda.nParaCount = GetPossibleParaCount(rFormula.subView(nSrcPos - 1));
+                }
+
                 ++nBrackets;
                 if (bUseFunctionStack)
                 {
                     ++nFunction;
                     pFunctionStack[ nFunction ].eOp = eLastOp;
                     pFunctionStack[ nFunction ].nSep = 0;
+                    nHighWatermark = nFunction;
                 }
             }
             break;
@@ -4772,7 +4923,14 @@ std::unique_ptr<ScTokenArray> ScCompiler::CompileString( const OUString& rFormul
                     }
                 }
                 else
+                {
                     nBrackets--;
+                    if (m_aLambda.bInLambdaFunction && m_aLambda.nBracketPos == nBrackets)
+                    {
+                        m_aLambda.bInLambdaFunction = false;
+                        m_aLambda.nBracketPos = nBrackets;
+                    }
+                }
                 if (bUseFunctionStack && nFunction)
                     --nFunction;
             }
@@ -4781,6 +4939,9 @@ std::unique_ptr<ScTokenArray> ScCompiler::CompileString( const OUString& rFormul
             {
                 if (bUseFunctionStack)
                     ++pFunctionStack[ nFunction ].nSep;
+
+                if (m_aLambda.bInLambdaFunction && m_aLambda.nBracketPos + 1 == nBrackets)
+                    m_aLambda.nParaPos++;
             }
             break;
             case ocArrayOpen:
@@ -4795,6 +4956,7 @@ std::unique_ptr<ScTokenArray> ScCompiler::CompileString( const OUString& rFormul
                     ++nFunction;
                     pFunctionStack[ nFunction ].eOp = eOp;
                     pFunctionStack[ nFunction ].nSep = 0;
+                    nHighWatermark = nFunction;
                 }
             }
             break;
@@ -4825,6 +4987,7 @@ std::unique_ptr<ScTokenArray> ScCompiler::CompileString( const OUString& rFormul
                     ++nFunction;
                     pFunctionStack[ nFunction ].eOp = eOp;
                     pFunctionStack[ nFunction ].nSep = 0;
+                    nHighWatermark = nFunction;
                 }
             }
             break;
@@ -4867,9 +5030,9 @@ std::unique_ptr<ScTokenArray> ScCompiler::CompileString( const OUString& rFormul
             // Append a parameter for WEEKNUM, all 1.0
             // Function is already closed, parameter count is nSep+1
             size_t nFunc = nFunction + 1;
-            if (eOp == ocClose &&
-                    (pFunctionStack[ nFunc ].eOp == ocWeek &&   // 2nd week start
-                     pFunctionStack[ nFunc ].nSep == 0))
+            if (eOp == ocClose && nFunc <= nHighWatermark &&
+                     pFunctionStack[ nFunc ].nSep == 0 &&
+                     pFunctionStack[ nFunc ].eOp == ocWeek)   // 2nd week start
             {
                 if (    !static_cast<ScTokenArray*>(pArr)->Add( new FormulaToken( svSep, ocSep)) ||
                         !static_cast<ScTokenArray*>(pArr)->Add( new FormulaDoubleToken( 1.0)))
@@ -4986,7 +5149,7 @@ std::unique_ptr<ScTokenArray> ScCompiler::CompileString( const OUString& rFormul
         delete [] pFunctionStack;
 
     // remember pArr, in case a subsequent CompileTokenArray() is executed.
-    std::unique_ptr<ScTokenArray> pNew(new ScTokenArray( aArr ));
+    std::unique_ptr<ScTokenArray> pNew(new ScTokenArray( std::move(aArr) ));
     pNew->GenHash();
     // coverity[escape : FALSE] - ownership of pNew is retained by caller, so pArr remains valid
     pArr = pNew.get();
@@ -5019,7 +5182,7 @@ std::unique_ptr<ScTokenArray> ScCompiler::CompileString( const OUString& rFormul
         if( ScTokenConversion::ConvertToTokenArray( rDoc, aTokenArray, aTokenSeq ) )
         {
             // remember pArr, in case a subsequent CompileTokenArray() is executed.
-            std::unique_ptr<ScTokenArray> pNew(new ScTokenArray( aTokenArray ));
+            std::unique_ptr<ScTokenArray> pNew(new ScTokenArray( std::move(aTokenArray) ));
             // coverity[escape : FALSE] - ownership of pNew is retained by caller, so pArr remains valid
             pArr = pNew.get();
             maArrIterator = FormulaTokenArrayPlainIterator(*pArr);
@@ -5036,6 +5199,14 @@ std::unique_ptr<ScTokenArray> ScCompiler::CompileString( const OUString& rFormul
 ScRangeData* ScCompiler::GetRangeData( const FormulaToken& rToken ) const
 {
     return rDoc.FindRangeNameBySheetAndIndex( rToken.GetSheet(), rToken.GetIndex());
+}
+
+bool ScCompiler::HandleStringName()
+{
+    ScTokenArray* pNew = new ScTokenArray(rDoc);
+    pNew->AddStringName(mpToken->GetString());
+    PushTokenArray(pNew, true);
+    return GetToken();
 }
 
 bool ScCompiler::HandleRange()
@@ -5359,7 +5530,7 @@ void ScCompiler::CreateStringFromSingleRef( OUStringBuffer& rBuffer, const Formu
         ScAddress aAbs = rRef.toAbs(rDoc, aPos);
         if (rDoc.HasStringData(aAbs.Col(), aAbs.Row(), aAbs.Tab()))
         {
-            OUString aStr = rDoc.GetString(aAbs, mpInterpreterContext);
+            OUString aStr = rDoc.GetString(aAbs, &mrInterpreterContext);
             // Enquote to SingleQuoted.
             aStr = aStr.replaceAll(u"'", u"''");
             rBuffer.append('\'');
@@ -5388,7 +5559,7 @@ void ScCompiler::CreateStringFromSingleRef( OUStringBuffer& rBuffer, const Formu
             {
                 SAL_WARN("sc.core", "ScCompiler::CreateStringFromSingleRef - TableRef falling back to cell: " <<
                         aAbs.Format( ScRefFlags::VALID | ScRefFlags::TAB_3D, &rDoc));
-                aStr = rDoc.GetString(aAbs, mpInterpreterContext);
+                aStr = rDoc.GetString(aAbs, &mrInterpreterContext);
             }
             else
             {
@@ -5505,6 +5676,11 @@ void ScCompiler::CreateStringFromIndex( OUStringBuffer& rBuffer, const FormulaTo
 void ScCompiler::LocalizeString( OUString& rName ) const
 {
     ScGlobal::GetAddInCollection()->LocalizeString( rName );
+}
+
+bool ScCompiler::GetExcelName( OUString& rName ) const
+{
+    return ScGlobal::GetAddInCollection()->GetExcelName( rName, LANGUAGE_ENGLISH_US, rName);
 }
 
 FormulaTokenRef ScCompiler::ExtendRangeReference( FormulaToken & rTok1, FormulaToken & rTok2 )
@@ -6473,6 +6649,8 @@ void ScCompiler::AnnotateTrimOnDoubleRefs()
 
     // OpCode of the "root" operator (which is already in RPN array).
     OpCode eOpCode = (*(pCode - 1))->GetOpCode();
+    // Param number of the "root" operator (which is already in RPN array).
+    sal_uInt8 nRootParam = (*(pCode - 1))->GetByte();
     // eOpCode can be some operator which does not change with operands with or contains zero values.
     if (eOpCode == ocSum)
     {
@@ -6565,6 +6743,9 @@ void ScCompiler::AnnotateTrimOnDoubleRefs()
         // such that one of the operands of ocEqual is a double-ref.
         // Examples of formula that matches this are:
         //   SUMPRODUCT(IF($A:$A=$L12;$D:$D*G:G))
+        // Also in case of DoubleRef arguments around other Binary operators can be trimmable inside one parameter
+        // of the root operator:
+        //   SUMPRODUCT(($D:$D>M47:M47)*($D:$D<M48:M48)*($I:$I=N$41))
         bool bTillClose = true;
         bool bCloseTillIf = false;
         sal_Int16 nToksTillIf = 0;
@@ -6589,12 +6770,51 @@ void ScCompiler::AnnotateTrimOnDoubleRefs()
                             break;
                         FormulaToken* pLHS = *(ppTok - 1);
                         FormulaToken* pRHS = *(ppTok - 2);
-                        StackVar lhsType = pLHS->GetType();
-                        StackVar rhsType = pRHS->GetType();
-                        if (lhsType == svDoubleRef && rhsType == svDoubleRef)
+                        if (pLHS && pRHS)
                         {
-                            pLHS->GetDoubleRef()->SetTrimToData(true);
-                            pRHS->GetDoubleRef()->SetTrimToData(true);
+                            StackVar lhsType = pLHS->GetType();
+                            StackVar rhsType = pRHS->GetType();
+                            if (lhsType == svDoubleRef && rhsType == svDoubleRef)
+                            {
+                                pLHS->GetDoubleRef()->SetTrimToData(true);
+                                pRHS->GetDoubleRef()->SetTrimToData(true);
+                            }
+                        }
+                    }
+                    break;
+                case ocEqual:
+                case ocAdd:
+                case ocSub:
+                case ocAmpersand:
+                case ocPow:
+                case ocNotEqual:
+                case ocLess:
+                case ocGreater:
+                case ocLessEqual:
+                case ocGreaterEqual:
+                case ocAnd:
+                case ocOr:
+                case ocXor:
+                case ocIntersect:
+                    {
+                        // tdf#160616: Double refs with these operators only
+                        // trimmable in case of one parameter
+                        if (!pTok->IsInForceArray() || nRootParam > 1)
+                            break;
+                        FormulaToken* pLHS = *(ppTok - 1);
+                        FormulaToken* pRHS = *(ppTok - 2);
+                        if (pLHS && pRHS)
+                        {
+                            StackVar lhsType = pLHS->GetType();
+                            StackVar rhsType = pRHS->GetType();
+                            if (lhsType == svDoubleRef && (rhsType == svSingleRef || rhsType == svDoubleRef))
+                            {
+                                pLHS->GetDoubleRef()->SetTrimToData(true);
+                            }
+                            if (rhsType == svDoubleRef && (lhsType == svSingleRef || lhsType == svDoubleRef))
+                            {
+                                pRHS->GetDoubleRef()->SetTrimToData(true);
+                            }
                         }
                     }
                     break;
@@ -6642,6 +6862,35 @@ void ScCompiler::AnnotateTrimOnDoubleRefs()
                     break;
                 default:
                     return;
+            }
+            --ppTok;
+        }
+    }
+    else if (eOpCode == ocSubTotal)
+    {
+        // tdf#164843: Double references from relative named ranges can point to large
+        // ranges (MAXCOL/MAXROW) and because of that some function evaluation
+        // like SubTotal can be extremely slow when we call ScTable::CompileHybridFormula
+        // with these large ranges. Since all the SubTotal functions ignore empty cells
+        // its worth to optimize and trim the double references in SubTotal functions.
+        FormulaToken** ppTok = pCode - 2;
+        while (*ppTok)
+        {
+            FormulaToken* pTok = *ppTok;
+            if (pTok->GetType() == svDoubleRef)
+            {
+                ScComplexRefData* pRefData = pTok->GetDoubleRef();
+                // no need to set pRefData->SetTrimToData(true); because we already trim here
+                ScRange rRange = pRefData->toAbs(rDoc, aPos);
+                SCCOL nTempStartCol = rRange.aStart.Col();
+                SCROW nTempStartRow = rRange.aStart.Row();
+                SCCOL nTempEndCol = rRange.aEnd.Col();
+                SCROW nTempEndRow = rRange.aEnd.Row();
+                rDoc.ShrinkToDataArea(rRange.aStart.Tab(), nTempStartCol, nTempStartRow, nTempEndCol, nTempEndRow);
+                rRange.aStart.Set(nTempStartCol, nTempStartRow, rRange.aStart.Tab());
+                rRange.aEnd.Set(nTempEndCol, nTempEndRow, rRange.aEnd.Tab());
+                rRange.PutInOrder();
+                pRefData->SetRange(rDoc.GetSheetLimits(), rRange, aPos);
             }
             --ppTok;
         }

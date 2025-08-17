@@ -75,7 +75,7 @@ namespace cairocanvas
         VclPtr<vcl::Window> pParentWindow = VCLUnoHelper::GetWindow(xParentWindow);
         if( !pParentWindow )
             throw lang::NoSupportException(
-                "Parent window not VCL window, or canvas out-of-process!", nullptr);
+                u"Parent window not VCL window, or canvas out-of-process!"_ustr, nullptr);
 
         bool bHasCairo = pParentWindow->GetOutDev()->SupportsCairo();
         ENSURE_ARG_OR_THROW(bHasCairo,
@@ -133,7 +133,7 @@ namespace cairocanvas
 
     OUString SAL_CALL SpriteCanvas::getServiceName(  )
     {
-        return "com.sun.star.rendering.SpriteCanvas.Cairo";
+        return u"com.sun.star.rendering.SpriteCanvas.Cairo"_ustr;
     }
 
     //  XServiceInfo
@@ -144,7 +144,7 @@ namespace cairocanvas
     }
     OUString SpriteCanvas::getImplementationName()
     {
-        return "com.sun.star.comp.rendering.SpriteCanvas.Cairo";
+        return u"com.sun.star.comp.rendering.SpriteCanvas.Cairo"_ustr;
     }
     css::uno::Sequence< OUString > SpriteCanvas::getSupportedServiceNames()
     {
@@ -165,9 +165,9 @@ namespace cairocanvas
     {
         BitmapSystemData aData;
         if( rBitmap.GetSystemData( aData ) ) {
-            const Size& rSize = rBitmap.GetSizePixel();
+            const Size aSize = rBitmap.GetSizePixel();
 
-            return maDeviceHelper.createSurface( aData, rSize );
+            return maDeviceHelper.createSurface( aData, aSize );
         }
 
         return SurfaceSharedPtr();

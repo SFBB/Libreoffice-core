@@ -33,16 +33,16 @@ CPPUNIT_TEST_FIXTURE(Test, testShiftClickOnImage)
     // Given a document with a fly frame:
     createSwDoc();
     SwDoc* pDoc = getSwDoc();
-    SwWrtShell* pWrtShell = pDoc->GetDocShell()->GetWrtShell();
+    SwWrtShell* pWrtShell = getSwDocShell()->GetWrtShell();
     uno::Reference<lang::XMultiServiceFactory> xMSF(mxComponent, uno::UNO_QUERY);
     uno::Reference<text::XTextDocument> xTextDocument(mxComponent, uno::UNO_QUERY);
     uno::Reference<text::XText> xText = xTextDocument->getText();
     uno::Reference<text::XTextCursor> xCursor = xText->createTextCursor();
     uno::Reference<beans::XPropertySet> xTextGraphic(
-        xMSF->createInstance("com.sun.star.text.TextGraphicObject"), uno::UNO_QUERY);
-    xTextGraphic->setPropertyValue("AnchorType",
+        xMSF->createInstance(u"com.sun.star.text.TextGraphicObject"_ustr), uno::UNO_QUERY);
+    xTextGraphic->setPropertyValue(u"AnchorType"_ustr,
                                    uno::Any(text::TextContentAnchorType_AS_CHARACTER));
-    xTextGraphic->setPropertyValue("Size", uno::Any(awt::Size(5000, 5000)));
+    xTextGraphic->setPropertyValue(u"Size"_ustr, uno::Any(awt::Size(5000, 5000)));
     uno::Reference<text::XTextContent> xTextContent(xTextGraphic, uno::UNO_QUERY);
     xText->insertTextContent(xCursor, xTextContent, false);
     pWrtShell->SttEndDoc(/*bStt=*/false);
@@ -52,7 +52,7 @@ CPPUNIT_TEST_FIXTURE(Test, testShiftClickOnImage)
     auto pFrameFormat = dynamic_cast<SwFlyFrameFormat*>(rSpzFormats[0]);
     CPPUNIT_ASSERT(pFrameFormat);
     SwFlyFrame* pFlyFrame = pFrameFormat->GetFrame();
-    vcl::Window& rEditWin = pDoc->GetDocShell()->GetView()->GetEditWin();
+    vcl::Window& rEditWin = getSwDocShell()->GetView()->GetEditWin();
     Point aFlyCenter = rEditWin.LogicToPixel(pFlyFrame->getFrameArea().Center());
     MouseEvent aClickEvent(aFlyCenter, 1, MouseEventModifiers::SIMPLECLICK, MOUSE_LEFT, KEY_SHIFT);
     rEditWin.MouseButtonDown(aClickEvent);
@@ -143,16 +143,16 @@ CPPUNIT_TEST_FIXTURE(Test, testShiftDoubleClickOnImage)
     // Given a document with a fly frame, and an interceptor to catch the graphic dialog:
     createSwDoc();
     SwDoc* pDoc = getSwDoc();
-    SwWrtShell* pWrtShell = pDoc->GetDocShell()->GetWrtShell();
+    SwWrtShell* pWrtShell = getSwDocShell()->GetWrtShell();
     uno::Reference<lang::XMultiServiceFactory> xMSF(mxComponent, uno::UNO_QUERY);
     uno::Reference<text::XTextDocument> xTextDocument(mxComponent, uno::UNO_QUERY);
     uno::Reference<text::XText> xText = xTextDocument->getText();
     uno::Reference<text::XTextCursor> xCursor = xText->createTextCursor();
     uno::Reference<beans::XPropertySet> xTextGraphic(
-        xMSF->createInstance("com.sun.star.text.TextGraphicObject"), uno::UNO_QUERY);
-    xTextGraphic->setPropertyValue("AnchorType",
+        xMSF->createInstance(u"com.sun.star.text.TextGraphicObject"_ustr), uno::UNO_QUERY);
+    xTextGraphic->setPropertyValue(u"AnchorType"_ustr,
                                    uno::Any(text::TextContentAnchorType_AS_CHARACTER));
-    xTextGraphic->setPropertyValue("Size", uno::Any(awt::Size(5000, 5000)));
+    xTextGraphic->setPropertyValue(u"Size"_ustr, uno::Any(awt::Size(5000, 5000)));
     uno::Reference<text::XTextContent> xTextContent(xTextGraphic, uno::UNO_QUERY);
     xText->insertTextContent(xCursor, xTextContent, false);
     pWrtShell->SttEndDoc(/*bStt=*/false);
@@ -167,7 +167,7 @@ CPPUNIT_TEST_FIXTURE(Test, testShiftDoubleClickOnImage)
     auto pFrameFormat = dynamic_cast<SwFlyFrameFormat*>(rSpzFormats[0]);
     CPPUNIT_ASSERT(pFrameFormat);
     SwFlyFrame* pFlyFrame = pFrameFormat->GetFrame();
-    vcl::Window& rEditWin = pDoc->GetDocShell()->GetView()->GetEditWin();
+    vcl::Window& rEditWin = getSwDocShell()->GetView()->GetEditWin();
     Point aFlyCenter = rEditWin.LogicToPixel(pFlyFrame->getFrameArea().Center());
     MouseEvent aClickEvent(aFlyCenter, 1, MouseEventModifiers::SIMPLECLICK, MOUSE_LEFT, KEY_SHIFT);
     rEditWin.MouseButtonDown(aClickEvent);

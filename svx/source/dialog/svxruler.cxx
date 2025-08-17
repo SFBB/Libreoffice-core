@@ -36,6 +36,7 @@
 #include <svx/dialmgr.hxx>
 #include <svx/ruler.hxx>
 #include <svx/rulritem.hxx>
+#include <sfx2/viewsh.hxx>
 #include <editeng/editids.hrc>
 #include <editeng/tstpitem.hxx>
 #include <editeng/lrspitem.hxx>
@@ -44,9 +45,17 @@
 #include <rtl/math.hxx>
 #include <o3tl/string_view.hxx>
 #include <svl/itemset.hxx>
-
+#include <LibreOfficeKit/LibreOfficeKitEnums.h>
+#include <tools/json_writer.hxx>
+#include <tools/UnitConversion.hxx>
+#include <comphelper/lok.hxx>
 #include "rlrcitem.hxx"
+#include <com/sun/star/frame/XFrame.hpp>
+#include <com/sun/star/lang/XServiceInfo.hpp>
+#include <sfx2/viewfrm.hxx>
 #include <memory>
+
+using namespace css;
 
 #define CTRL_ITEM_COUNT 14
 #define GAP 10
@@ -189,7 +198,6 @@ SvxRuler::SvxRuler(
     bActive(true),
     mbCoarseSnapping(false),
     mbSnapping(true)
-
 {
     /* Constructor; Initialize data buffer; controller items are created */
 
@@ -275,7 +283,6 @@ SvxRuler::SvxRuler(
     ruler_tab_svx.DPIScaleFactor = pParent->GetDPIScaleFactor();
     ruler_tab_svx.height *= ruler_tab_svx.DPIScaleFactor;
     ruler_tab_svx.width  *= ruler_tab_svx.DPIScaleFactor;
-
 }
 
 SvxRuler::~SvxRuler()
@@ -295,7 +302,7 @@ void SvxRuler::dispose()
 
     pBindings->LeaveRegistrations();
 
-    pEditWin.clear();
+    pEditWin.reset();
     Ruler::dispose();
 }
 
@@ -538,7 +545,7 @@ void SvxRuler::MouseMove( const MouseEvent& rMEvt )
 
     if (aSelection.eType == RulerType::DontKnow)
     {
-        SetQuickHelpText("");
+        SetQuickHelpText(u""_ustr);
         return;
     }
 
@@ -558,11 +565,11 @@ void SvxRuler::MouseMove( const MouseEvent& rMEvt )
 
             tools::Long nIndentValue = 0.0;
             if (nIndex == INDENT_LEFT_MARGIN)
-                nIndentValue = mxParaItem->GetTextLeft();
+                nIndentValue = mxParaItem->ResolveTextLeft({});
             else if (nIndex == INDENT_FIRST_LINE)
-                nIndentValue = mxParaItem->GetTextFirstLineOffset();
+                nIndentValue = mxParaItem->ResolveTextFirstLineOffset({});
             else if (nIndex == INDENT_RIGHT_MARGIN)
-                nIndentValue = mxParaItem->GetRight();
+                nIndentValue = mxParaItem->ResolveRight({});
 
             double fValue = OutputDevice::LogicToLogic(Size(nIndentValue, 0), pEditWin->GetMapMode(), GetCurrentMapMode()).Width();
             fValue = rtl::math::round(fValue / aUnitData.nTickUnit, aNoDecimalPlaces);
@@ -624,7 +631,7 @@ void SvxRuler::MouseMove( const MouseEvent& rMEvt )
         }
         default:
         {
-            SetQuickHelpText("");
+            SetQuickHelpText(u""_ustr);
             break;
         }
     }
@@ -838,15 +845,15 @@ void SvxRuler::UpdatePara()
 
         if(bRTLText)
         {
-            leftMargin    = nRightFrameMargin - mxParaItem->GetTextLeft() + lAppNullOffset;
-            leftFirstLine = leftMargin - mxParaItem->GetTextFirstLineOffset();
-            rightMargin   = nLeftFrameMargin + mxParaItem->GetRight() + lAppNullOffset;
+            leftMargin = nRightFrameMargin - mxParaItem->ResolveTextLeft({}) + lAppNullOffset;
+            leftFirstLine = leftMargin - mxParaItem->ResolveTextFirstLineOffset({});
+            rightMargin = nLeftFrameMargin + mxParaItem->ResolveRight({}) + lAppNullOffset;
         }
         else
         {
-            leftMargin    = nLeftFrameMargin + mxParaItem->GetTextLeft() + lAppNullOffset;
-            leftFirstLine = leftMargin + mxParaItem->GetTextFirstLineOffset();
-            rightMargin   = nRightFrameMargin - mxParaItem->GetRight() + lAppNullOffset;
+            leftMargin = nLeftFrameMargin + mxParaItem->ResolveTextLeft({}) + lAppNullOffset;
+            leftFirstLine = leftMargin + mxParaItem->ResolveTextFirstLineOffset({});
+            rightMargin = nRightFrameMargin - mxParaItem->ResolveRight({}) + lAppNullOffset;
         }
 
         mpIndents[INDENT_LEFT_MARGIN].nPos  = ConvertHPosPixel(leftMargin);
@@ -1017,7 +1024,7 @@ void SvxRuler::UpdateTabs()
         const tools::Long nRightFrameMargin = GetRightFrameMargin();
 
         //#i24363# tab stops relative to indent
-        const tools::Long nParaItemTxtLeft = mxParaItem->GetTextLeft();
+        const tools::Long nParaItemTxtLeft = mxParaItem->ResolveTextLeft({});
 
         const tools::Long lParaIndent = nLeftFrameMargin + nParaItemTxtLeft;
         const tools::Long lRightMargin = nRightFrameMargin - nParaItemTxtLeft;
@@ -1026,14 +1033,15 @@ void SvxRuler::UpdateTabs()
                                 ? ConvertHPosPixel(mxTabStopItem->At(mxTabStopItem->Count() - 1).GetTabPos())
                                 : 0;
         const tools::Long lPosPixel = ConvertHPosPixel(lParaIndent) + lLastTab;
-        const tools::Long lRightIndent = ConvertHPosPixel(nRightFrameMargin - mxParaItem->GetRight());
+        const tools::Long lRightIndent
+            = ConvertHPosPixel(nRightFrameMargin - mxParaItem->ResolveRight({}));
 
         tools::Long lCurrentDefTabDist = lDefTabDist;
         if(mxTabStopItem->GetDefaultDistance())
             lCurrentDefTabDist = mxTabStopItem->GetDefaultDistance();
         tools::Long nDefTabDist = ConvertHPosPixel(lCurrentDefTabDist);
 
-        const sal_uInt16 nDefTabBuf = lPosPixel > lRightIndent || lLastTab > lRightIndent
+        const sal_uInt16 nDefTabBuf = lPosPixel > lRightIndent || lLastTab > lRightIndent || nDefTabDist == 0
                     ? 0
                     : static_cast<sal_uInt16>( (lRightIndent - lPosPixel) / nDefTabDist );
 
@@ -1141,6 +1149,101 @@ void SvxRuler::SetNullOffsetLogic(tools::Long lVal) // Setting of the logic Null
     Update();
 }
 
+void SvxRuler::CreateJsonNotification(tools::JsonWriter& rJsonWriter)
+{
+    tools::Long nMargin1 = 0;
+    tools::Long nMargin2 = 0;
+    tools::Long nNullOffset = 0;
+    tools::Long nPageOffset = 0;
+    tools::Long nPageWidthHeight = 0;
+
+    bool bWriter = false;
+
+    // Determine if we are a Ruler for Writer or not
+    if (SfxViewFrame* pFrame = SfxViewFrame::Current())
+    {
+        uno::Reference<frame::XFrame> xFrame = pFrame->GetFrame().GetFrameInterface();
+        uno::Reference<frame::XModel> xModel = xFrame->getController()->getModel();
+        uno::Reference<lang::XServiceInfo> xSI(xModel, uno::UNO_QUERY);
+        if (xSI.is())
+        {
+            bWriter = xSI->supportsService("com.sun.star.text.TextDocument")
+            || xSI->supportsService("com.sun.star.text.WebDocument")
+                || xSI->supportsService("com.sun.star.text.GlobalDocument");
+        }
+    }
+
+    if (bWriter)
+    {
+        // In Writer the ruler values need to be converted first from pixel to twips (default logical unit) and then to 100thmm
+        nMargin1 = convertTwipToMm100(ConvertPosLogic(GetMargin1()));
+        nMargin2 = convertTwipToMm100(ConvertPosLogic(GetMargin2()));
+        nNullOffset = convertTwipToMm100(ConvertPosLogic(GetNullOffset()));
+        nPageOffset = convertTwipToMm100(ConvertPosLogic(GetPageOffset()));
+        nPageWidthHeight = convertTwipToMm100(GetPageWidth());
+    }
+    else
+    {
+        // Only convert from pixel to default logical unit, which is 100thmm for Impress
+        nMargin1 = ConvertPosLogic(GetMargin1());
+        nMargin2 = ConvertPosLogic(GetMargin2());
+        nPageOffset = ConvertPosLogic(GetPageOffset());
+
+        // In LOKit API we expect the ruler 0,0 coordinate is where the document starts.
+        // In Impress and Draw the ruler 0,0 is where the canvas starts, not where the document starts.
+        // The margin to the document is 1 document width (on the left and right) and 0.5 document height
+        // (on the top and bottom).
+        // So the canvas width = 3 * document width, canvas height = 2 * document height
+        if (isHorizontal())
+        {
+            nPageWidthHeight = GetPageWidth() / 3;
+            nNullOffset = ConvertPosLogic(GetNullOffset()) - nPageWidthHeight;
+        }
+        else
+        {
+            nPageWidthHeight = GetPageWidth() / 2;
+            nNullOffset = ConvertPosLogic(GetNullOffset()) - (nPageWidthHeight / 2);
+        }
+    }
+
+    rJsonWriter.put("margin1", nMargin1);
+    rJsonWriter.put("margin2", nMargin2);
+    rJsonWriter.put("leftOffset", nNullOffset);
+    rJsonWriter.put("pageOffset", nPageOffset);
+    rJsonWriter.put("pageWidth", nPageWidthHeight);
+
+    {
+        auto tabsNode = rJsonWriter.startNode("tabs");
+
+        // The RulerTab array elements that GetTabs() returns have their nPos field in twips. So these
+        // too are actual mm100.
+        for (auto const& tab : GetTabs())
+        {
+            auto tabNode = rJsonWriter.startNode("");
+            rJsonWriter.put("position", convertTwipToMm100(tab.nPos));
+            rJsonWriter.put("style", tab.nStyle);
+        }
+    }
+
+    RulerUnitData aUnitData = GetCurrentRulerUnit();
+    rJsonWriter.put("unit", aUnitData.aUnitStr);
+}
+
+void SvxRuler::NotifyKit()
+{
+    if (!comphelper::LibreOfficeKit::isActive())
+        return;
+    SfxViewShell* pViewShell = SfxViewShell::Current();
+    if (!pViewShell)
+        return;
+
+    tools::JsonWriter aJsonWriter;
+    CreateJsonNotification(aJsonWriter);
+    OString pJsonData = aJsonWriter.finishAndGetAsOString();
+    LibreOfficeKitCallbackType eType = isHorizontal() ? LOK_CALLBACK_RULER_UPDATE : LOK_CALLBACK_VERTICAL_RULER_UPDATE;
+    pViewShell->libreOfficeKitViewCallback(eType, pJsonData);
+}
+
 void SvxRuler::Update()
 {
     /* Perform update of view */
@@ -1159,6 +1262,8 @@ void SvxRuler::Update()
 
     if(nFlags & SvxRulerSupportFlags::TABS)
       UpdateTabs();
+
+    NotifyKit();
 }
 
 tools::Long SvxRuler::GetPageWidth() const
@@ -1197,7 +1302,8 @@ tools::Long SvxRuler::GetRightIndent() const
 tools::Long SvxRuler::GetLogicRightIndent() const
 {
     /* Get Right paragraph margin in Logic */
-    return mxParaItem ? GetRightFrameMargin() - mxParaItem->GetRight() : GetRightFrameMargin();
+    return mxParaItem ? GetRightFrameMargin() - mxParaItem->ResolveRight({})
+                      : GetRightFrameMargin();
 }
 
 // Left margin in App values, is either the margin (= 0)  or the left edge of
@@ -1216,7 +1322,7 @@ tools::Long SvxRuler::GetLeftFrameMargin() const
     }
 
     if (mxBorderItem && (!mxColumnItem || mxColumnItem->IsTable()))
-        nLeft += mxBorderItem->GetLeft();
+        nLeft += mxBorderItem->ResolveLeft({});
 
     return nLeft;
 }
@@ -1270,7 +1376,7 @@ tools::Long SvxRuler::GetRightFrameMargin() const
         lResult += mxULSpaceItem->GetLower();
 
     if (bHorz && mxBorderItem && (!mxColumnItem || mxColumnItem->IsTable()))
-        lResult += mxBorderItem->GetRight();
+        lResult += mxBorderItem->ResolveRight({});
 
     if(bHorz)
         lResult = mxPagePosItem->GetWidth() - lResult;
@@ -2090,9 +2196,9 @@ void SvxRuler::ApplyIndents()
         nNewRight           = RoundToCurrentMapMode(nNewRight);
     }
 
-    mxParaItem->SetTextFirstLineOffset(sal::static_int_cast<short>(nNewFirstLineOffset));
-    mxParaItem->SetTextLeft(nNewTxtLeft);
-    mxParaItem->SetRight(nNewRight);
+    mxParaItem->SetTextFirstLineOffset(SvxIndentValue::twips(nNewFirstLineOffset));
+    mxParaItem->SetTextLeft(SvxIndentValue::twips(nNewTxtLeft));
+    mxParaItem->SetRight(SvxIndentValue::twips(nNewRight));
 
     sal_uInt16 nParagraphId  = bHorz ? SID_ATTR_PARA_LRSPACE : SID_ATTR_PARA_LRSPACE_VERTICAL;
     pBindings->GetDispatcher()->ExecuteList(nParagraphId, SfxCallMode::RECORD,
@@ -2153,7 +2259,8 @@ void SvxRuler::ApplyTabs()
                 = lAppNullOffset + (bRTL ? GetRightFrameMargin() : GetLeftFrameMargin());
             if (mxRulerImpl->bIsTabsRelativeToIndent && mxParaItem)
             {
-                nTmpLeftIndentLogic += bRTL ? mxParaItem->GetRight() : mxParaItem->GetTextLeft();
+                nTmpLeftIndentLogic
+                    += bRTL ? mxParaItem->ResolveRight({}) : mxParaItem->ResolveTextLeft({});
             }
             aTabStop.GetTabPos()
                 = mxRulerImpl->lMaxRightLogic - lLogicNullOffset - nTmpLeftIndentLogic;
@@ -3313,8 +3420,8 @@ void SvxRuler::Command( const CommandEvent& rCommandEvent )
 
         tools::Rectangle aRect(rCommandEvent.GetMousePosPixel(), Size(1, 1));
         weld::Window* pPopupParent = weld::GetPopupParent(*this, aRect);
-        std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(pPopupParent, "svx/ui/rulermenu.ui"));
-        std::unique_ptr<weld::Menu> xMenu(xBuilder->weld_menu("menu"));
+        std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(pPopupParent, u"svx/ui/rulermenu.ui"_ustr));
+        std::unique_ptr<weld::Menu> xMenu(xBuilder->weld_menu(u"menu"_ustr));
 
         bool bRTL = mxRulerImpl->pTextRTLItem && mxRulerImpl->pTextRTLItem->GetValue();
         if ( !mpTabs.empty() &&

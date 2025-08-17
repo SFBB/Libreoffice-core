@@ -38,6 +38,7 @@
 #include <vcl/abstdlg.hxx>
 #include <vcl/svapp.hxx>
 #include <sal/log.hxx>
+#include <comphelper/lok.hxx>
 
 #include "authfallbackdlg.hxx"
 #include <strings.hrc>
@@ -108,8 +109,17 @@ executeLoginDialog(
     if ( bCanUseSysCreds )
         aDialog.SetUseSystemCredentials( rInfo.GetIsUseSystemCredentials() );
 
-    rInfo.SetResult(aDialog.run() == RET_OK ? DialogMask::ButtonsOk :
-                                              DialogMask::ButtonsCancel);
+    if (comphelper::LibreOfficeKit::isActive())
+    {
+        // Avoid the password dialog popup in the LOK case: it's not async and the "remember
+        // password" checkbox would not work.
+        rInfo.SetResult(DialogMask::ButtonsCancel);
+    }
+    else
+    {
+        rInfo.SetResult(aDialog.run() == RET_OK ? DialogMask::ButtonsOk :
+                DialogMask::ButtonsCancel);
+    }
     rInfo.SetUserName(aDialog.GetName());
     rInfo.SetPassword(aDialog.GetPassword());
     rInfo.SetAccount(aDialog.GetAccount());
@@ -413,7 +423,15 @@ executeMasterPasswordDialog(
         }
         else
         {
-            MasterPasswordDialog aDialog(pParent, nMode, aResLocale);
+            if (nMode == css::task::PasswordRequestMode_PASSWORD_REENTER)
+            {
+                OUString aErrorMsg(Translate::get(STR_ERROR_MASTERPASSWORD_WRONG, aResLocale));
+                std::unique_ptr<weld::MessageDialog> xErrorBox(Application::CreateMessageDialog(
+                    pParent, VclMessageType::Warning, VclButtonsType::Ok, aErrorMsg));
+                xErrorBox->run();
+            }
+
+            MasterPasswordDialog aDialog(pParent);
             rInfo.SetResult(aDialog.run()
                 == RET_OK ? DialogMask::ButtonsOk : DialogMask::ButtonsCancel);
             aMaster = OUStringToOString(
@@ -521,6 +539,19 @@ executePasswordDialog(
     }
     else // enter password or reenter password
     {
+        if (nMode == task::PasswordRequestMode_PASSWORD_REENTER)
+        {
+            TranslateId pOpenToModifyErrStrId = bIsPasswordToModify
+                                                    ? STR_ERROR_PASSWORD_TO_MODIFY_WRONG
+                                                    : STR_ERROR_PASSWORD_TO_OPEN_WRONG;
+            TranslateId pErrStrId = bIsSimplePasswordRequest ? STR_ERROR_SIMPLE_PASSWORD_WRONG
+                                                             : pOpenToModifyErrStrId;
+            OUString aErrorMsg(Translate::get(pErrStrId, aResLocale));
+            std::unique_ptr<weld::MessageDialog> xBox(Application::CreateMessageDialog(
+                pParent, VclMessageType::Warning, VclButtonsType::Ok, aErrorMsg));
+            xBox->run();
+        }
+
         std::unique_ptr<PasswordDialog> xDialog(new PasswordDialog(pParent, nMode,
             aResLocale, aDocName, bIsPasswordToModify, bIsSimplePasswordRequest));
         xDialog->SetMinLen(0);
@@ -646,7 +677,7 @@ UUIInteractionHelper::handlePasswordRequest(
     // parameters to be filled for the call to handlePasswordRequest_
     uno::Reference<awt::XWindow> xParent = getParentXWindow();
     task::PasswordRequestMode nMode = task::PasswordRequestMode_PASSWORD_ENTER;
-    uno::Sequence< uno::Reference< task::XInteractionContinuation > > const & rContinuations = rRequest->getContinuations();
+    uno::Sequence< uno::Reference< task::XInteractionContinuation > > const aContinuations = rRequest->getContinuations();
     OUString aDocumentName;
     sal_uInt16 nMaxPasswordLen  = 0;        // any length
     bool bIsPasswordToModify    = false;
@@ -705,7 +736,7 @@ UUIInteractionHelper::handlePasswordRequest(
 
     if (bDoHandleRequest)
     {
-        handlePasswordRequest_( Application::GetFrameWeld(xParent), nMode, rContinuations,
+        handlePasswordRequest_( Application::GetFrameWeld(xParent), nMode, aContinuations,
                 aDocumentName, nMaxPasswordLen, bIsPasswordToModify );
         return true;
     }

@@ -16,8 +16,7 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_VCL_STRHELPER_HXX
-#define INCLUDED_VCL_STRHELPER_HXX
+#pragma once
 
 #include <rtl/math.hxx>
 #include <rtl/ustring.hxx>
@@ -33,7 +32,7 @@ namespace psp
     int GetCommandLineTokenCount(const OUString&);
     // returns number of tokens (zero if empty or whitespace only)
 
-    OUString WhitespaceToSpace( std::u16string_view, bool bProtect = true );
+    OUString WhitespaceToSpace(std::u16string_view);
     OString WhitespaceToSpace(std::string_view);
     // returns a string with multiple adjacent occurrences of whitespace
     // converted to a single space. if bProtect is sal_True (nonzero), then
@@ -48,7 +47,5 @@ namespace psp
     }
 
 } // namespace
-
-#endif // INCLUDED_VCL_STRHELPER_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -24,7 +24,7 @@ class Test : public SwModelTestBase
 {
 public:
     Test()
-        : SwModelTestBase("/sw/qa/core/attr/data/")
+        : SwModelTestBase(u"/sw/qa/core/attr/data/"_ustr)
     {
     }
 };
@@ -33,14 +33,13 @@ CPPUNIT_TEST_FIXTURE(Test, testSwAttrSet)
 {
     // Given a document with track changes and the whole document is selected:
     createSwDoc("attr-set.docx");
-    SwDoc* pDoc = getSwDoc();
-    SwDocShell* pDocShell = pDoc->GetDocShell();
+    SwDocShell* pDocShell = getSwDocShell();
     SwWrtShell* pWrtShell = pDocShell->GetWrtShell();
-    dispatchCommand(mxComponent, ".uno:SelectAll", {});
-    dispatchCommand(mxComponent, ".uno:Cut", {});
-    dispatchCommand(mxComponent, ".uno:SelectAll", {});
+    dispatchCommand(mxComponent, u".uno:SelectAll"_ustr, {});
+    dispatchCommand(mxComponent, u".uno:Cut"_ustr, {});
+    dispatchCommand(mxComponent, u".uno:SelectAll"_ustr, {});
     rtl::Reference<SwTransferable> xTransferable(new SwTransferable(*pWrtShell));
-    SwModule* pMod = SW_MOD();
+    SwModule* pMod = SwModule::get();
     SwTransferable* pOldTransferable = pMod->m_pXSelection;
     pMod->m_pXSelection = xTransferable.get();
 

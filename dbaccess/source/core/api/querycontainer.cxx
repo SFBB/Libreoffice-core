@@ -44,7 +44,6 @@ using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::util;
 using namespace ::osl;
@@ -79,13 +78,10 @@ void OQueryContainer::init()
 
     // fill my structures
     ODefinitionContainer_Impl& rDefinitions( getDefinitions() );
-    Sequence< OUString > sDefinitionNames = m_xCommandDefinitions->getElementNames();
-    const OUString* pDefinitionName = sDefinitionNames.getConstArray();
-    const OUString* pEnd = pDefinitionName + sDefinitionNames.getLength();
-    for ( ; pDefinitionName != pEnd; ++pDefinitionName )
+    for (auto& definitionName : m_xCommandDefinitions->getElementNames())
     {
-        rDefinitions.insert( *pDefinitionName, TContentPtr() );
-        m_aDocuments.push_back(m_aDocumentMap.emplace( *pDefinitionName,Documents::mapped_type()).first);
+        rDefinitions.insert(definitionName, TContentPtr());
+        m_aDocuments.push_back(m_aDocumentMap.emplace(definitionName, Documents::mapped_type()).first);
     }
 
     setElementApproval( std::make_shared<ObjectNameApproval>( m_xConnection, ObjectNameApproval::TypeQuery ) );
@@ -134,7 +130,7 @@ void OQueryContainer::disposing()
 // XServiceInfo
 OUString SAL_CALL OQueryContainer::getImplementationName()
     {
-        return "com.sun.star.sdb.dbaccess.OQueryContainer";
+        return u"com.sun.star.sdb.dbaccess.OQueryContainer"_ustr;
     }
 sal_Bool SAL_CALL OQueryContainer::supportsService(const OUString& _rServiceName)
     {
@@ -270,7 +266,7 @@ void SAL_CALL OQueryContainer::elementRemoved( const css::container::ContainerEv
     _rEvent.Accessor >>= sAccessor;
     {
         OSL_ENSURE(!sAccessor.isEmpty(), "OQueryContainer::elementRemoved : invalid name !");
-        OSL_ENSURE(m_aDocumentMap.find(sAccessor) != m_aDocumentMap.end(), "OQueryContainer::elementRemoved : oops... we're inconsistent with our master container !");
+        OSL_ENSURE(m_aDocumentMap.contains(sAccessor), "OQueryContainer::elementRemoved : oops... we're inconsistent with our master container !");
         if ( sAccessor.isEmpty() || !hasByName(sAccessor) )
             return;
     }
@@ -286,7 +282,7 @@ void SAL_CALL OQueryContainer::elementReplaced( const css::container::ContainerE
     {
         MutexGuard aGuard(m_aMutex);
         OSL_ENSURE(!sAccessor.isEmpty(), "OQueryContainer::elementReplaced : invalid name !");
-        OSL_ENSURE(m_aDocumentMap.find(sAccessor) != m_aDocumentMap.end(), "OQueryContainer::elementReplaced         : oops... we're inconsistent with our master container !");
+        OSL_ENSURE(m_aDocumentMap.contains(sAccessor), "OQueryContainer::elementReplaced         : oops... we're inconsistent with our master container !");
         if (sAccessor.isEmpty() || !hasByName(sAccessor))
             return;
 
@@ -302,7 +298,7 @@ Reference< XVeto > SAL_CALL OQueryContainer::approveInsertElement( const Contain
     OSL_VERIFY( Event.Accessor >>= sName );
     Reference< XContent > xElement( Event.Element, UNO_QUERY_THROW );
 
-    Reference< XVeto > xReturn;
+    rtl::Reference< Veto > xReturn;
     try
     {
         getElementApproval()->approveElement( sName );
@@ -349,7 +345,7 @@ void SAL_CALL OQueryContainer::disposing( const css::lang::EventObject& _rSource
 
 OUString OQueryContainer::determineContentType() const
 {
-    return "application/vnd.org.openoffice.DatabaseQueryContainer";
+    return u"application/vnd.org.openoffice.DatabaseQueryContainer"_ustr;
 }
 
 Reference< XContent > OQueryContainer::implCreateWrapper(const OUString& _rName)
@@ -361,7 +357,7 @@ Reference< XContent > OQueryContainer::implCreateWrapper(const OUString& _rName)
 Reference< XContent > OQueryContainer::implCreateWrapper(const Reference< XContent >& _rxCommandDesc)
 {
     Reference<XNameContainer> xContainer(_rxCommandDesc,UNO_QUERY);
-    Reference< XContent > xReturn;
+    rtl::Reference< OContentHelper > xReturn;
     if ( xContainer .is() )
     {
         xReturn = create( xContainer, m_xConnection, m_aContext, m_pWarnings ).

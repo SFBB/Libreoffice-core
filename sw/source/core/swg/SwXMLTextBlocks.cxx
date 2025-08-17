@@ -64,12 +64,11 @@ SwXMLTextBlocks::SwXMLTextBlocks( const OUString& rFile )
     : SwImpBlocks(rFile)
     , m_nFlags(SwXmlFlags::NONE)
 {
-    SwDocShell* pDocSh = new SwDocShell ( SfxObjectCreateMode::INTERNAL );
-    if( !pDocSh->DoInitNew() )
+    m_xDocShellRef = new SwDocShell(SfxObjectCreateMode::INTERNAL);
+    if (!m_xDocShellRef->DoInitNew())
         return;
     m_bReadOnly = true;
-    m_xDoc = pDocSh->GetDoc();
-    m_xDocShellRef = pDocSh;
+    m_xDoc = m_xDocShellRef->GetDoc();
     m_xDoc->SetOle2Link( Link<bool,void>() );
     m_xDoc->GetIDocumentUndoRedo().DoUndo(false);
     uno::Reference< embed::XStorage > refStg;
@@ -106,12 +105,11 @@ SwXMLTextBlocks::SwXMLTextBlocks( const uno::Reference < embed::XStorage >& rStg
     : SwImpBlocks( rName )
     , m_nFlags(SwXmlFlags::NONE)
 {
-    SwDocShell* pDocSh = new SwDocShell ( SfxObjectCreateMode::INTERNAL );
-    if( !pDocSh->DoInitNew() )
+    m_xDocShellRef = new SwDocShell(SfxObjectCreateMode::INTERNAL);
+    if (!m_xDocShellRef->DoInitNew())
         return;
     m_bReadOnly = false;
-    m_xDoc = pDocSh->GetDoc();
-    m_xDocShellRef = pDocSh;
+    m_xDoc = m_xDocShellRef->GetDoc();
     m_xDoc->SetOle2Link( Link<bool,void>() );
     m_xDoc->GetIDocumentUndoRedo().DoUndo(false);
 
@@ -196,7 +194,7 @@ ErrCode SwXMLTextBlocks::Rename( sal_uInt16 nIdx, const OUString& rNewShort )
     {
         if (IsOnlyTextBlock ( nIdx ) )
         {
-            OUString sExt(".xml");
+            OUString sExt(u".xml"_ustr);
             OUString aOldStreamName = aOldName  + sExt;
             OUString aNewStreamName = m_aPackageName + sExt;
 
@@ -295,9 +293,12 @@ ErrCode SwXMLTextBlocks::StartPutBlock( const OUString& rShort, const OUString& 
     {
         m_xRoot = m_xBlkRoot->openStorageElement( rPackageName, embed::ElementModes::READWRITE );
 
-        uno::Reference< beans::XPropertySet > xRootProps( m_xRoot, uno::UNO_QUERY_THROW );
-        OUString aMime( SotExchange::GetFormatMimeType( SotClipboardFormatId::STARWRITER_8 ) );
-        xRootProps->setPropertyValue( "MediaType", uno::Any( aMime ) );
+        uno::Reference< beans::XPropertySet > xRootProps( m_xRoot, uno::UNO_QUERY );
+        if (xRootProps)
+        {
+            OUString aMime( SotExchange::GetFormatMimeType( SotClipboardFormatId::STARWRITER_8 ) );
+            xRootProps->setPropertyValue( u"MediaType"_ustr, uno::Any( aMime ) );
+        }
     }
     catch (const uno::Exception&)
     {
@@ -527,6 +528,8 @@ OUString SwXMLTextBlocks::GeneratePackageName ( std::u16string_view rShort )
             case ':':
             case '.':
             case '\\':
+            // tdf#156769 - escape the question mark in the storage name for auto-texts
+            case '?':
                 aBuf[nPos] = '_';
                 break;
             default:

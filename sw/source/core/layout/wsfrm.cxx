@@ -72,10 +72,10 @@
 using namespace ::com::sun::star;
 
 SwFrameAreaDefinition::SwFrameAreaDefinition()
-:   mbFrameAreaPositionValid(false),
+:   mnFrameId(SwFrameAreaDefinition::snLastFrameId++),
+    mbFrameAreaPositionValid(false),
     mbFrameAreaSizeValid(false),
-    mbFramePrintAreaValid(false),
-    mnFrameId(SwFrameAreaDefinition::snLastFrameId++)
+    mbFramePrintAreaValid(false)
 {
 }
 
@@ -181,10 +181,10 @@ SwRect TransformableSwFrame::getUntransformedFrameArea() const
         const basegfx::B2DVector aAbsScale(basegfx::absolute(aScale));
 
         return SwRect(
-            basegfx::fround(aCenter.getX() - (0.5 * aAbsScale.getX())),
-            basegfx::fround(aCenter.getY() - (0.5 * aAbsScale.getY())),
-            basegfx::fround(aAbsScale.getX()),
-            basegfx::fround(aAbsScale.getY()));
+            basegfx::fround<tools::Long>(aCenter.getX() - (0.5 * aAbsScale.getX())),
+            basegfx::fround<tools::Long>(aCenter.getY() - (0.5 * aAbsScale.getY())),
+            basegfx::fround<tools::Long>(aAbsScale.getX()),
+            basegfx::fround<tools::Long>(aAbsScale.getY()));
     }
 }
 
@@ -206,10 +206,10 @@ SwRect TransformableSwFrame::getUntransformedFramePrintArea() const
         const SwRect aUntransformedFrameArea(getUntransformedFrameArea());
 
         return SwRect(
-            basegfx::fround(aCenter.getX() - (0.5 * aAbsScale.getX())) - aUntransformedFrameArea.Left(),
-            basegfx::fround(aCenter.getY() - (0.5 * aAbsScale.getY())) - aUntransformedFrameArea.Top(),
-            basegfx::fround(aAbsScale.getX()),
-            basegfx::fround(aAbsScale.getY()));
+            basegfx::fround<tools::Long>(aCenter.getX() - (0.5 * aAbsScale.getX())) - aUntransformedFrameArea.Left(),
+            basegfx::fround<tools::Long>(aCenter.getY() - (0.5 * aAbsScale.getY())) - aUntransformedFrameArea.Top(),
+            basegfx::fround<tools::Long>(aAbsScale.getX()),
+            basegfx::fround<tools::Long>(aAbsScale.getY()));
     }
 }
 
@@ -240,8 +240,8 @@ void TransformableSwFrame::adaptFrameAreasToTransformations()
         basegfx::B2DRange aRangeFrameArea(0.0, 0.0, 1.0, 1.0);
         aRangeFrameArea.transform(getLocalFrameAreaTransformation());
         const SwRect aNewFrm(
-            basegfx::fround(aRangeFrameArea.getMinX()), basegfx::fround(aRangeFrameArea.getMinY()),
-            basegfx::fround(aRangeFrameArea.getWidth()), basegfx::fround(aRangeFrameArea.getHeight()));
+            basegfx::fround<tools::Long>(aRangeFrameArea.getMinX()), basegfx::fround<tools::Long>(aRangeFrameArea.getMinY()),
+            basegfx::fround<tools::Long>(aRangeFrameArea.getWidth()), basegfx::fround<tools::Long>(aRangeFrameArea.getHeight()));
 
         if(aNewFrm != mrSwFrameAreaDefinition.getFrameArea())
         {
@@ -256,10 +256,10 @@ void TransformableSwFrame::adaptFrameAreasToTransformations()
     basegfx::B2DRange aRangeFramePrintArea(0.0, 0.0, 1.0, 1.0);
     aRangeFramePrintArea.transform(getLocalFramePrintAreaTransformation());
     const SwRect aNewPrt(
-        basegfx::fround(aRangeFramePrintArea.getMinX()) - mrSwFrameAreaDefinition.getFrameArea().Left(),
-        basegfx::fround(aRangeFramePrintArea.getMinY()) - mrSwFrameAreaDefinition.getFrameArea().Top(),
-        basegfx::fround(aRangeFramePrintArea.getWidth()),
-        basegfx::fround(aRangeFramePrintArea.getHeight()));
+        basegfx::fround<tools::Long>(aRangeFramePrintArea.getMinX()) - mrSwFrameAreaDefinition.getFrameArea().Left(),
+        basegfx::fround<tools::Long>(aRangeFramePrintArea.getMinY()) - mrSwFrameAreaDefinition.getFrameArea().Top(),
+        basegfx::fround<tools::Long>(aRangeFramePrintArea.getWidth()),
+        basegfx::fround<tools::Long>(aRangeFramePrintArea.getHeight()));
 
     if(aNewPrt != mrSwFrameAreaDefinition.getFramePrintArea())
     {
@@ -367,7 +367,7 @@ bool SwFrame::KnowsFormat( const SwFormat& rFormat ) const
 
 void SwFrame::RegisterToFormat( SwFormat& rFormat )
 {
-    rFormat.Add( this );
+    rFormat.Add(*this);
 }
 
 void SwFrame::CheckDir( SvxFrameDirection nDir, bool bVert, bool bOnlyBiDi, bool bBrowse )
@@ -511,26 +511,37 @@ void SwTextFrame::CheckDirection( bool bVert )
 
 void SwFrame::SwClientNotify(const SwModify&, const SfxHint& rHint)
 {
-    if (rHint.GetId() != SfxHintId::SwLegacyModify)
+    if (rHint.GetId() != SfxHintId::SwLegacyModify && rHint.GetId() != SfxHintId::SwFormatChange
+        && rHint.GetId() != SfxHintId::SwAttrSetChange)
         return;
-    auto pLegacy = static_cast<const sw::LegacyModifyHint*>(&rHint);
-    SwFrameInvFlags eInvFlags = SwFrameInvFlags::NONE;
 
-    if(pLegacy->m_pOld && pLegacy->m_pNew && RES_ATTRSET_CHG == pLegacy->m_pNew->Which())
+    SwFrameInvFlags eInvFlags = SwFrameInvFlags::NONE;
+    if (rHint.GetId() == SfxHintId::SwLegacyModify)
     {
-        SfxItemIter aNIter(*static_cast<const SwAttrSetChg*>(pLegacy->m_pNew)->GetChgSet());
-        SfxItemIter aOIter(*static_cast<const SwAttrSetChg*>(pLegacy->m_pOld)->GetChgSet());
-        const SfxPoolItem* pNItem = aNIter.GetCurItem();
-        const SfxPoolItem* pOItem = aOIter.GetCurItem();
-        do
-        {
-            UpdateAttrFrame(pOItem, pNItem, eInvFlags);
-            pNItem = aNIter.NextItem();
-            pOItem = aOIter.NextItem();
-        } while (pNItem);
-    }
-    else
+        auto pLegacy = static_cast<const sw::LegacyModifyHint*>(&rHint);
         UpdateAttrFrame(pLegacy->m_pOld, pLegacy->m_pNew, eInvFlags);
+    }
+    else if (rHint.GetId() == SfxHintId::SwAttrSetChange)
+    {
+        auto pChangeHint = static_cast<const sw::AttrSetChangeHint*>(&rHint);
+        if(pChangeHint->m_pOld && pChangeHint->m_pNew)
+        {
+            SfxItemIter aNIter(*pChangeHint->m_pNew->GetChgSet());
+            SfxItemIter aOIter(*pChangeHint->m_pOld->GetChgSet());
+            const SfxPoolItem* pNItem = aNIter.GetCurItem();
+            const SfxPoolItem* pOItem = aOIter.GetCurItem();
+            do
+            {
+                UpdateAttrFrame(pOItem, pNItem, eInvFlags);
+                pNItem = aNIter.NextItem();
+                pOItem = aOIter.NextItem();
+            } while (pNItem);
+        }
+    }
+    else // rHint.GetId() == SfxHintId::SwFormatChange
+    {
+        UpdateAttrFrameForFormatChange(eInvFlags);
+    }
 
     if(eInvFlags == SwFrameInvFlags::NONE)
         return;
@@ -600,11 +611,6 @@ void SwFrame::UpdateAttrFrame( const SfxPoolItem *pOld, const SfxPoolItem *pNew,
                          | SwFrameInvFlags::NextInvalidatePos;
             break;
 
-        case RES_FMT_CHG:
-            rInvFlags |= SwFrameInvFlags::InvalidatePrt | SwFrameInvFlags::InvalidateSize
-                         | SwFrameInvFlags::InvalidatePos | SwFrameInvFlags::SetCompletePaint;
-            break;
-
         case RES_ROW_SPLIT:
         {
             if ( IsRowFrame() )
@@ -633,6 +639,13 @@ void SwFrame::UpdateAttrFrame( const SfxPoolItem *pOld, const SfxPoolItem *pNew,
             }
             /* do Nothing */;
     }
+}
+
+// static
+void SwFrame::UpdateAttrFrameForFormatChange( SwFrameInvFlags &rInvFlags )
+{
+    rInvFlags |= SwFrameInvFlags::InvalidatePrt | SwFrameInvFlags::InvalidateSize
+                 | SwFrameInvFlags::InvalidatePos | SwFrameInvFlags::SetCompletePaint;
 }
 
 bool SwFrame::Prepare( const PrepareHint, const void *, bool )
@@ -674,7 +687,7 @@ void SwFrame::InvalidatePage( const SwPageFrame *pPage ) const
     if ( !(pPage && pPage->GetUpper()) )
         return;
 
-    if ( pPage->GetFormat()->GetDoc()->IsInDtor() )
+    if ( pPage->GetFormat()->GetDoc().IsInDtor() )
         return;
 
     SwRootFrame *pRoot = const_cast<SwRootFrame*>(static_cast<const SwRootFrame*>(pPage->GetUpper()));
@@ -779,16 +792,16 @@ Size SwFrame::ChgSize( const Size& aNewSize )
     if ( GetUpper() )
     {
         bool bNeighb = IsNeighbourFrame();
-        SwRectFn fnRect = IsVertical() == bNeighb ? fnRectHori : ( IsVertLR() ? (IsVertLRBT() ? fnRectVertL2RB2T : fnRectVertL2R) : fnRectVert );
+        SwRectFnSet fnRect(IsVertical() != bNeighb, IsVertLR(), IsVertLRBT());
         SwRect aNew( Point(0,0), aNewSize );
 
         {
             SwFrameAreaDefinition::FrameAreaWriteAccess aFrm(*this);
-            (aFrm.*fnRect->fnSetWidth)( (aNew.*fnRect->fnGetWidth)() );
+            fnRect.SetWidth(aFrm, fnRect.GetWidth(aNew));
         }
 
-        tools::Long nNew = (aNew.*fnRect->fnGetHeight)();
-        tools::Long nDiff = nNew - (getFrameArea().*fnRect->fnGetHeight)();
+        tools::Long nNew = fnRect.GetHeight(aNew);
+        tools::Long nDiff = nNew - fnRect.GetHeight(getFrameArea());
 
         if( nDiff )
         {
@@ -798,7 +811,7 @@ Size SwFrame::ChgSize( const Size& aNewSize )
             {
                 {
                     SwFrameAreaDefinition::FrameAreaWriteAccess aFrm(*this);
-                    (aFrm.*fnRect->fnSetHeight)( nNew );
+                    fnRect.SetHeight(aFrm, nNew);
                 }
 
                 SwTwips nReal = static_cast<SwLayoutFrame*>(this)->AdjustNeighbourhood(nDiff);
@@ -806,7 +819,7 @@ Size SwFrame::ChgSize( const Size& aNewSize )
                 if ( nReal != nDiff )
                 {
                     SwFrameAreaDefinition::FrameAreaWriteAccess aFrm(*this);
-                    (aFrm.*fnRect->fnSetHeight)( nNew - nDiff + nReal );
+                    fnRect.SetHeight(aFrm, nNew - nDiff + nReal);
                 }
             }
             else
@@ -820,7 +833,7 @@ Size SwFrame::ChgSize( const Size& aNewSize )
                     else
                         Shrink( -nDiff );
 
-                    if ( GetUpper() && (getFrameArea().*fnRect->fnGetHeight)() != nNew )
+                    if (GetUpper() && fnRect.GetHeight(getFrameArea()) != nNew)
                     {
                         GetUpper()->InvalidateSize_();
                     }
@@ -830,7 +843,7 @@ Size SwFrame::ChgSize( const Size& aNewSize )
                 // example when called by ChgColumns to set the column width, we
                 // set the right width now.
                 SwFrameAreaDefinition::FrameAreaWriteAccess aFrm(*this);
-                (aFrm.*fnRect->fnSetHeight)( nNew );
+                fnRect.SetHeight(aFrm, nNew);
             }
         }
     }
@@ -906,7 +919,6 @@ void SwFrame::InsertBefore( SwLayoutFrame* pParent, SwFrame* pBehind )
  */
 void SwFrame::InsertBehind( SwLayoutFrame *pParent, SwFrame *pBefore )
 {
-    OSL_ENSURE( pParent, "No Parent for Insert." );
     OSL_ENSURE( (!pBefore || pParent == pBefore->GetUpper()),
             "Frame tree is inconsistent." );
 
@@ -922,10 +934,11 @@ void SwFrame::InsertBehind( SwLayoutFrame *pParent, SwFrame *pBefore )
     }
     else
     {
+        assert(pParent && "No Parent for Insert.");
         //Insert at the beginning of the chain
         mpNext = pParent->Lower();
-        if ( pParent->Lower() )
-            pParent->Lower()->mpPrev = this;
+        if ( mpNext )
+            mpNext->mpPrev = this;
         pParent->m_pLower = this;
     }
 }
@@ -987,10 +1000,11 @@ bool SwFrame::InsertGroupBefore( SwFrame* pParent, SwFrame* pBehind, SwFrame* pS
                 pBehind->GetUpper()->m_pLower = nullptr;
             pBehind->mpPrev = nullptr;
             SwLayoutFrame* pTmp = static_cast<SwLayoutFrame*>(pSct);
-            if( pTmp->Lower() )
+            SwFrame* pLower = pTmp->Lower();
+            if( pLower )
             {
-                OSL_ENSURE( pTmp->Lower()->IsColumnFrame(), "InsertGrp: Used SectionFrame" );
-                pTmp = static_cast<SwLayoutFrame*>(static_cast<SwLayoutFrame*>(pTmp->Lower())->Lower());
+                OSL_ENSURE( pLower->IsColumnFrame(), "InsertGrp: Used SectionFrame" );
+                pTmp = static_cast<SwLayoutFrame*>(static_cast<SwLayoutFrame*>(pLower)->Lower());
                 OSL_ENSURE( pTmp, "InsertGrp: Missing ColBody" );
             }
             pBehind->mpUpper = pTmp;
@@ -1350,7 +1364,7 @@ void SwContentFrame::Cut()
             }
             else
             {
-
+                assert(pSct);
                 if ( pSct->IsColLocked() || !pSct->IsInFootnote() ||
                      ( pUp->IsFootnoteFrame() && pUp->IsColLocked() ) )
                 {
@@ -1415,15 +1429,18 @@ void SwLayoutFrame::Paste( SwFrame* pParent, SwFrame* pSibling)
     //      in horizontal layout the other way around
     //          --> <fnRect> = fnRectHori
     //SwRectFn fnRect = IsVertical() ? fnRectHori : fnRectVert;
-    SwRectFn fnRect;
+    bool bVert, bVertL2R, bVertL2RB2T;
     if ( IsHeaderFrame() || IsFooterFrame() )
-        fnRect = fnRectHori;
-    else if ( IsCellFrame() || IsColumnFrame() )
-        fnRect = GetUpper()->IsVertical() ? fnRectHori : ( GetUpper()->IsVertLR() ? (GetUpper()->IsVertLRBT() ? fnRectVertL2RB2T : fnRectVertL2R) : fnRectVert );
+        bVert = bVertL2R = bVertL2RB2T = false;
     else
-        fnRect = GetUpper()->IsVertical() ? ( GetUpper()->IsVertLR() ? (GetUpper()->IsVertLRBT() ? fnRectVertL2RB2T : fnRectVertL2R) : fnRectVert ) : fnRectHori;
+    {
+        bVert = (IsCellFrame() || IsColumnFrame()) ? !GetUpper()->IsVertical() : GetUpper()->IsVertical();
+        bVertL2R = GetUpper()->IsVertLR();
+        bVertL2RB2T = GetUpper()->IsVertLRBT();
+    }
+    SwRectFnSet fnRect(bVert, bVertL2R, bVertL2RB2T);
 
-    if( (getFrameArea().*fnRect->fnGetWidth)() != (pParent->getFramePrintArea().*fnRect->fnGetWidth)())
+    if (fnRect.GetWidth(getFrameArea()) != fnRect.GetWidth(pParent->getFramePrintArea()))
         InvalidateSize_();
     InvalidatePos_();
     const SwPageFrame *pPage = FindPageFrame();
@@ -1451,7 +1468,7 @@ void SwLayoutFrame::Paste( SwFrame* pParent, SwFrame* pSibling)
         }
     }
 
-    if( !(getFrameArea().*fnRect->fnGetHeight)() )
+    if (!fnRect.GetHeight(getFrameArea()))
         return;
 
     // AdjustNeighbourhood is now also called in columns which are not
@@ -1459,7 +1476,7 @@ void SwLayoutFrame::Paste( SwFrame* pParent, SwFrame* pSibling)
     SwNeighbourAdjust nAdjust = GetUpper()->IsFootnoteBossFrame() ?
             static_cast<SwFootnoteBossFrame*>(GetUpper())->NeighbourhoodAdjustment()
             : SwNeighbourAdjust::GrowShrink;
-    SwTwips nGrow = (getFrameArea().*fnRect->fnGetHeight)();
+    SwTwips nGrow = fnRect.GetHeight(getFrameArea());
     if( SwNeighbourAdjust::OnlyAdjust == nAdjust )
         AdjustNeighbourhood( nGrow );
     else
@@ -1543,48 +1560,50 @@ void SwLayoutFrame::Cut()
     }
 }
 
-SwTwips SwFrame::Grow( SwTwips nDist, bool bTst, bool bInfo )
+SwTwips SwFrame::Grow(SwTwips nDist, SwResizeLimitReason& reason, bool bTst, bool bInfo)
 {
     OSL_ENSURE( nDist >= 0, "Negative growth?" );
 
     PROTOCOL_ENTER( this, bTst ? PROT::GrowTest : PROT::Grow, DbgAction::NONE, &nDist )
 
-    if ( nDist )
+    if ( !nDist )
     {
-        SwRectFnSet aRectFnSet(this);
+        reason = SwResizeLimitReason::Unspecified;
+        return 0;
+    }
+    if ( IsFlyFrame() )
+        return static_cast<SwFlyFrame*>(this)->Grow_(nDist, reason, bTst);
+    if ( IsSctFrame() )
+        return static_cast<SwSectionFrame*>(this)->Grow_(nDist, reason, bTst);
+    if (IsCellFrame())
+    {
+        const SwCellFrame* pThisCell = static_cast<const SwCellFrame*>(this);
+        const SwTabFrame* pTab = FindTabFrame();
 
-        SwTwips nPrtHeight = aRectFnSet.GetHeight(getFramePrintArea());
-        if( nPrtHeight > 0 && nDist > (LONG_MAX - nPrtHeight) )
-            nDist = LONG_MAX - nPrtHeight;
-
-        if ( IsFlyFrame() )
-            return static_cast<SwFlyFrame*>(this)->Grow_( nDist, bTst );
-        else if( IsSctFrame() )
-            return static_cast<SwSectionFrame*>(this)->Grow_( nDist, bTst );
-        else
+        // NEW TABLES
+        if ( pTab->IsVertical() != IsVertical() ||
+             pThisCell->GetLayoutRowSpan() < 1 )
         {
-            if (IsCellFrame())
-            {
-                const SwCellFrame* pThisCell = static_cast<const SwCellFrame*>(this);
-                const SwTabFrame* pTab = FindTabFrame();
-
-                // NEW TABLES
-                if ( pTab->IsVertical() != IsVertical() ||
-                     pThisCell->GetLayoutRowSpan() < 1 )
-                    return 0;
-            }
-            const SwTwips nReal = GrowFrame( nDist, bTst, bInfo );
-            if( !bTst )
-            {
-                nPrtHeight = aRectFnSet.GetHeight(getFramePrintArea());
-
-                SwFrameAreaDefinition::FramePrintAreaWriteAccess aPrt(*this);
-                aRectFnSet.SetHeight( aPrt, nPrtHeight + ( IsContentFrame() ? nDist : nReal ) );
-            }
-            return nReal;
+            reason = SwResizeLimitReason::FixedSizeFrame;
+            return 0;
         }
     }
-    return 0;
+
+    SwRectFnSet aRectFnSet(this);
+
+    SwTwips nPrtHeight = aRectFnSet.GetHeight(getFramePrintArea());
+    if( nPrtHeight > 0 && nDist > (LONG_MAX - nPrtHeight) )
+        nDist = LONG_MAX - nPrtHeight;
+
+    const SwTwips nReal = GrowFrame(nDist, reason, bTst, bInfo);
+    if( !bTst )
+    {
+        nPrtHeight = aRectFnSet.GetHeight(getFramePrintArea());
+
+        SwFrameAreaDefinition::FramePrintAreaWriteAccess aPrt(*this);
+        aRectFnSet.SetHeight( aPrt, nPrtHeight + ( IsContentFrame() ? nDist : nReal ) );
+    }
+    return nReal;
 }
 
 SwTwips SwFrame::Shrink( SwTwips nDist, bool bTst, bool bInfo )
@@ -2138,7 +2157,7 @@ void SwFrame::ValidateThisAndAllLowers( const sal_uInt16 nStage )
     }
 }
 
-SwTwips SwContentFrame::GrowFrame( SwTwips nDist, bool bTst, bool bInfo )
+SwTwips SwContentFrame::GrowFrame(SwTwips nDist, SwResizeLimitReason& reason, bool bTst, bool bInfo)
 {
     SwRectFnSet aRectFnSet(this);
 
@@ -2180,15 +2199,21 @@ SwTwips SwContentFrame::GrowFrame( SwTwips nDist, bool bTst, bool bInfo )
                 InvalidateNextPos();
             }
         }
+        if (!nDist)
+            reason = SwResizeLimitReason::Unspecified;
+        else if (GetUpper()->IsBodyFrame() // Page / column body
+                 || (GetUpper()->IsFlyFrame()
+                     && static_cast<SwFlyFrame*>(GetUpper())->GetNextLink()))
+            reason = SwResizeLimitReason::FlowToFollow;
+        else
+            reason = SwResizeLimitReason::FixedSizeFrame;
         return 0;
     }
 
+    reason = SwResizeLimitReason::Unspecified;
     SwTwips nReal = aRectFnSet.GetHeight(GetUpper()->getFramePrintArea());
-    SwFrame *pFrame = GetUpper()->Lower();
-    while( pFrame && nReal > 0 )
-    {   nReal -= aRectFnSet.GetHeight(pFrame->getFrameArea());
-        pFrame = pFrame->GetNext();
-    }
+    for (SwFrame* pFrame = GetUpper()->Lower(); pFrame && nReal > 0; pFrame = pFrame->GetNext())
+        nReal -= aRectFnSet.GetHeight(pFrame->getFrameArea());
 
     if ( !bTst )
     {
@@ -2209,9 +2234,10 @@ SwTwips SwContentFrame::GrowFrame( SwTwips nDist, bool bTst, bool bInfo )
         SwTabFrame *pTab = (nOld && IsInTab()) ? FindTabFrame() : nullptr;
         if (pTab)
         {
+            SwDocShell* pShell = pTab->GetFormat()->GetDoc().GetDocShell();
             if ( pTab->GetTable()->GetHTMLTableLayout() &&
                  !pTab->IsJoinLocked() &&
-                 !pTab->GetFormat()->GetDoc()->GetDocShell()->IsReadOnly() )
+                 pShell && !pShell->IsReadOnly() )
             {
                 pTab->InvalidatePos();
                 pTab->SetResizeHTMLTable();
@@ -2225,8 +2251,7 @@ SwTwips SwContentFrame::GrowFrame( SwTwips nDist, bool bTst, bool bInfo )
         if( GetUpper() )
         {
             if( bTst || !GetUpper()->IsFooterFrame() )
-                nReal = GetUpper()->Grow( nDist - std::max<tools::Long>(nReal, 0),
-                                          bTst, bInfo );
+                nReal = GetUpper()->Grow(nDist - std::max(nReal, SwTwips(0)), reason, bTst, bInfo);
             else
             {
                 nReal = 0;
@@ -2276,7 +2301,10 @@ SwTwips SwContentFrame::ShrinkFrame( SwTwips nDist, bool bTst, bool bInfo )
         if( nRstHeight < 0 )
         {
             SwTwips nNextHeight = 0;
-            if( GetUpper()->IsSctFrame() && nDist > LONG_MAX/2 )
+            // i#94666 if WIDOW_MAGIC was set as height, nDist is wrong, need
+            // to take into account all the frames in the section.
+            if (GetUpper()->IsSctFrame()
+                && sw::WIDOW_MAGIC - 20000 - getFrameArea().Top() < nDist)
             {
                 SwFrame *pNxt = GetNext();
                 while( pNxt )
@@ -2306,9 +2334,10 @@ SwTwips SwContentFrame::ShrinkFrame( SwTwips nDist, bool bTst, bool bInfo )
         SwTabFrame *pTab = IsInTab() ? FindTabFrame() : nullptr;
         if (pTab)
         {
+            SwDocShell* pShell = pTab->GetFormat()->GetDoc().GetDocShell();
             if ( pTab->GetTable()->GetHTMLTableLayout() &&
                  !pTab->IsJoinLocked() &&
-                 !pTab->GetFormat()->GetDoc()->GetDocShell()->IsReadOnly() )
+                 pShell && !pShell->IsReadOnly() )
             {
                 pTab->InvalidatePos();
                 pTab->SetResizeHTMLTable();
@@ -2347,8 +2376,8 @@ SwTwips SwContentFrame::ShrinkFrame( SwTwips nDist, bool bTst, bool bInfo )
 
                     if( aBound.Overlaps( aRect ) )
                     {
-                        const SwFrameFormat& rFormat = pAnchoredObj->GetFrameFormat();
-                        if( css::text::WrapTextMode_THROUGH != rFormat.GetSurround().GetSurround() )
+                        const SwFrameFormat* pFormat = pAnchoredObj->GetFrameFormat();
+                        if( css::text::WrapTextMode_THROUGH != pFormat->GetSurround().GetSurround() )
                         {
                             const SwFrame* pAnchor = pAnchoredObj->GetAnchorFrame();
                             if ( pAnchor && pAnchor->FindFooterOrHeader() == GetUpper() )
@@ -2382,31 +2411,44 @@ SwTwips SwContentFrame::ShrinkFrame( SwTwips nDist, bool bTst, bool bInfo )
 
 void SwContentFrame::SwClientNotify(const SwModify& rMod, const SfxHint& rHint)
 {
-    if (rHint.GetId() != SfxHintId::SwLegacyModify)
+    if (rHint.GetId() != SfxHintId::SwLegacyModify && rHint.GetId() != SfxHintId::SwFormatChange
+        && rHint.GetId() != SfxHintId::SwAttrSetChange)
         return;
-    auto pLegacy = static_cast<const sw::LegacyModifyHint*>(&rHint);
+
     SwContentFrameInvFlags eInvFlags = SwContentFrameInvFlags::NONE;
-    if(pLegacy->m_pNew && RES_ATTRSET_CHG == pLegacy->m_pNew->Which() && pLegacy->m_pOld)
+    if (rHint.GetId() == SfxHintId::SwLegacyModify)
     {
-        auto& rOldSetChg = *static_cast<const SwAttrSetChg*>(pLegacy->m_pOld);
-        auto& rNewSetChg = *static_cast<const SwAttrSetChg*>(pLegacy->m_pNew);
-        SfxItemIter aOIter(*rOldSetChg.GetChgSet());
-        SfxItemIter aNIter(*rNewSetChg.GetChgSet());
-        const SfxPoolItem* pNItem = aNIter.GetCurItem();
-        const SfxPoolItem* pOItem = aOIter.GetCurItem();
-        SwAttrSetChg aOldSet(rOldSetChg);
-        SwAttrSetChg aNewSet(rNewSetChg);
-        do
-        {
-            UpdateAttr_(pOItem, pNItem, eInvFlags, &aOldSet, &aNewSet);
-            pNItem = aNIter.NextItem();
-            pOItem = aOIter.NextItem();
-        } while(pNItem);
-        if(aOldSet.Count() || aNewSet.Count())
-            SwFrame::SwClientNotify(rMod, sw::LegacyModifyHint(&aOldSet, &aNewSet));
-    }
-    else
+        auto pLegacy = static_cast<const sw::LegacyModifyHint*>(&rHint);
         UpdateAttr_(pLegacy->m_pOld, pLegacy->m_pNew, eInvFlags);
+    }
+    else if (rHint.GetId() == SfxHintId::SwAttrSetChange)
+    {
+        auto pChangeHint = static_cast<const sw::AttrSetChangeHint*>(&rHint);
+        if(pChangeHint->m_pNew && pChangeHint->m_pOld)
+        {
+            const SwAttrSetChg& rOldSetChg = *pChangeHint->m_pOld;
+            const SwAttrSetChg& rNewSetChg = *pChangeHint->m_pNew;
+            SfxItemIter aOIter(*rOldSetChg.GetChgSet());
+            SfxItemIter aNIter(*rNewSetChg.GetChgSet());
+            const SfxPoolItem* pNItem = aNIter.GetCurItem();
+            const SfxPoolItem* pOItem = aOIter.GetCurItem();
+            SwAttrSetChg aOldSet(rOldSetChg);
+            SwAttrSetChg aNewSet(rNewSetChg);
+            do
+            {
+                UpdateAttr_(pOItem, pNItem, eInvFlags, &aOldSet, &aNewSet);
+                pNItem = aNIter.NextItem();
+                pOItem = aOIter.NextItem();
+            } while(pNItem);
+            if(aOldSet.Count() || aNewSet.Count())
+                SwFrame::SwClientNotify(rMod, sw::AttrSetChangeHint(&aOldSet, &aNewSet));
+        }
+    }
+    else // rHint.GetId() == SfxHintId::SwFormatChange
+    {
+        auto pChangeHint = static_cast<const SwFormatChangeHint*>(&rHint);
+        UpdateAttrForFormatChange(pChangeHint->m_pOldFormat, pChangeHint->m_pNewFormat, eInvFlags);
+    }
 
     if(eInvFlags == SwContentFrameInvFlags::NONE)
         return;
@@ -2463,17 +2505,6 @@ void SwContentFrame::UpdateAttr_( const SfxPoolItem* pOld, const SfxPoolItem* pN
     sal_uInt16 nWhich = pOld ? pOld->Which() : pNew ? pNew->Which() : 0;
     switch ( nWhich )
     {
-        case RES_FMT_CHG:
-            rInvFlags = SwContentFrameInvFlags::SetCompletePaint
-                        | SwContentFrameInvFlags::InvalidatePos
-                        | SwContentFrameInvFlags::InvalidateSize
-                        | SwContentFrameInvFlags::InvalidateSectPrt
-                        | SwContentFrameInvFlags::InvalidateNextPrt
-                        | SwContentFrameInvFlags::InvalidatePrevPrt
-                        | SwContentFrameInvFlags::InvalidateNextPos
-                        | SwContentFrameInvFlags::SetNextCompletePaint;
-            [[fallthrough]];
-
         case RES_PAGEDESC:                      //attribute changes (on/off)
             if ( IsInDocBody() && !IsInTab() )
             {
@@ -2483,7 +2514,7 @@ void SwContentFrame::UpdateAttr_( const SfxPoolItem* pOld, const SfxPoolItem* pN
                     CheckPageDescs( pPage );
                 if (GetPageDescItem().GetNumOffset())
                     static_cast<SwRootFrame*>(pPage->GetUpper())->SetVirtPageNum( true );
-                pPage->GetFormat()->GetDoc()->getIDocumentFieldsAccess().UpdatePageFields(pPage->getFrameArea().Top());
+                pPage->GetFormat()->GetDoc().getIDocumentFieldsAccess().UpdatePageFields(pPage->getFrameArea().Top());
             }
             break;
 
@@ -2590,6 +2621,7 @@ void SwContentFrame::UpdateAttr_( const SfxPoolItem* pOld, const SfxPoolItem* pN
         case RES_CHRATR_FONTSIZE:
         case RES_CHRATR_ESCAPEMENT:
         case RES_CHRATR_CONTOUR:
+        case RES_CHRATR_NOHYPHEN:
         case RES_PARATR_NUMRULE:
             rInvFlags |= SwContentFrameInvFlags::SetCompletePaint;
             break;
@@ -2616,6 +2648,33 @@ void SwContentFrame::UpdateAttr_( const SfxPoolItem* pOld, const SfxPoolItem* pN
         SwModify aMod;
         SwFrame::SwClientNotify(aMod, sw::LegacyModifyHint(pOld, pNew));
     }
+}
+
+void SwContentFrame::UpdateAttrForFormatChange( SwFormat* pOldFormat, SwFormat* pNewFormat,
+                              SwContentFrameInvFlags &rInvFlags )
+{
+    rInvFlags = SwContentFrameInvFlags::SetCompletePaint
+                | SwContentFrameInvFlags::InvalidatePos
+                | SwContentFrameInvFlags::InvalidateSize
+                | SwContentFrameInvFlags::InvalidateSectPrt
+                | SwContentFrameInvFlags::InvalidateNextPrt
+                | SwContentFrameInvFlags::InvalidatePrevPrt
+                | SwContentFrameInvFlags::InvalidateNextPos
+                | SwContentFrameInvFlags::SetNextCompletePaint;
+
+    if ( IsInDocBody() && !IsInTab() )
+    {
+        rInvFlags |= SwContentFrameInvFlags::InvalidatePos;
+        SwPageFrame *pPage = FindPageFrame();
+        if ( !GetPrev() )
+            CheckPageDescs( pPage );
+        if (GetPageDescItem().GetNumOffset())
+            static_cast<SwRootFrame*>(pPage->GetUpper())->SetVirtPageNum( true );
+        pPage->GetFormat()->GetDoc().getIDocumentFieldsAccess().UpdatePageFields(pPage->getFrameArea().Top());
+    }
+
+    SwModify aMod;
+    SwFrame::SwClientNotify(aMod, SwFormatChangeHint(pOldFormat, pNewFormat));
 }
 
 SwLayoutFrame::SwLayoutFrame(SwFrameFormat *const pFormat, SwFrame *const pSib)
@@ -2668,7 +2727,7 @@ SwTwips SwLayoutFrame::InnerHeight() const
     return nRet;
 }
 
-SwTwips SwLayoutFrame::GrowFrame( SwTwips nDist, bool bTst, bool bInfo )
+SwTwips SwLayoutFrame::GrowFrame(SwTwips nDist, SwResizeLimitReason& reason, bool bTst, bool bInfo)
 {
     const SwViewShell *pSh = getRootFrame()->GetCurrShell();
     const bool bBrowse = pSh && pSh->GetViewOptions()->getBrowseMode();
@@ -2676,7 +2735,14 @@ SwTwips SwLayoutFrame::GrowFrame( SwTwips nDist, bool bTst, bool bInfo )
     if (bBrowse)
         nTmpType |= SwFrameType::Body;
     if( !(GetType() & nTmpType) && HasFixSize() )
+    {
+        if (nDist <= 0)
+            reason = SwResizeLimitReason::Unspecified;
+        else
+            reason = IsBodyFrame() ? SwResizeLimitReason::FlowToFollow // Page / column body
+                                   : SwResizeLimitReason::FixedSizeFrame;
         return 0;
+    }
 
     SwRectFnSet aRectFnSet(this);
     const SwTwips nFrameHeight = aRectFnSet.GetHeight(getFrameArea());
@@ -2688,11 +2754,8 @@ SwTwips SwLayoutFrame::GrowFrame( SwTwips nDist, bool bTst, bool bInfo )
     SwTwips nMin = 0;
     if ( GetUpper() && !IsCellFrame() )
     {
-        SwFrame *pFrame = GetUpper()->Lower();
-        while( pFrame )
-        {   nMin += aRectFnSet.GetHeight(pFrame->getFrameArea());
-            pFrame = pFrame->GetNext();
-        }
+        for (SwFrame* pFrame = GetUpper()->Lower(); pFrame; pFrame = pFrame->GetNext())
+            nMin += aRectFnSet.GetHeight(pFrame->getFrameArea());
         nMin = aRectFnSet.GetHeight(GetUpper()->getFramePrintArea()) - nMin;
         if ( nMin < 0 )
             nMin = 0;
@@ -2715,6 +2778,7 @@ SwTwips SwLayoutFrame::GrowFrame( SwTwips nDist, bool bTst, bool bInfo )
         bMoveAccFrame = true;
     }
 
+    reason = SwResizeLimitReason::Unspecified;
     SwTwips nReal = nDist - nMin;
     if ( nReal > 0 )
     {
@@ -2731,7 +2795,7 @@ SwTwips SwLayoutFrame::GrowFrame( SwTwips nDist, bool bTst, bool bInfo )
                     nReal += AdjustNeighbourhood( nReal, bTst );
 
                 SwTwips nGrow = 0;
-                if( 0 < nReal )
+                if( nReal > 0 )
                 {
                     SwFrame* pToGrow = GetUpper();
                     // NEW TABLES
@@ -2747,10 +2811,13 @@ SwTwips SwLayoutFrame::GrowFrame( SwTwips nDist, bool bTst, bool bInfo )
                             if ( -1 == rEndCell.GetTabBox()->getRowSpan() )
                                 pToGrow = rEndCell.GetUpper();
                             else
+                            {
                                 pToGrow = nullptr;
+                                reason = SwResizeLimitReason::FlowToFollow;
+                            }
                         }
                     }
-                    nGrow = pToGrow ? pToGrow->Grow( nReal, bTst, bInfo ) : 0;
+                    nGrow = pToGrow ? pToGrow->Grow(nReal, reason, bTst, bInfo) : 0;
                 }
 
                 if( SwNeighbourAdjust::GrowAdjust == nAdjust && nGrow < nReal )
@@ -2760,11 +2827,13 @@ SwTwips SwLayoutFrame::GrowFrame( SwTwips nDist, bool bTst, bool bInfo )
                 {
                     //Footnotes can replace their successor.
                     SwTwips nSpace = bTst ? 0 : -nDist;
-                    const SwFrame *pFrame = GetUpper()->Lower();
-                    do
-                    {   nSpace += aRectFnSet.GetHeight(pFrame->getFrameArea());
-                        pFrame = pFrame->GetNext();
-                    } while ( pFrame != GetNext() );
+                    if (const SwFrame *pFrame = GetUpper()->Lower())
+                    {
+                        do
+                        {   nSpace += aRectFnSet.GetHeight(pFrame->getFrameArea());
+                            pFrame = pFrame->GetNext();
+                        } while ( pFrame != GetNext() );
+                    }
                     nSpace = aRectFnSet.GetHeight(GetUpper()->getFramePrintArea()) -nSpace;
                     if ( nSpace < 0 )
                         nSpace = 0;
@@ -2836,7 +2905,7 @@ SwTwips SwLayoutFrame::GrowFrame( SwTwips nDist, bool bTst, bool bInfo )
                 InvalidateAll_();
                 InvalidatePage( pPage );
             }
-            if (!(GetType() & (SwFrameType::Row|SwFrameType::Tab|SwFrameType::FtnCont|SwFrameType::Page|SwFrameType::Root)))
+            if (!(GetType() & (SwFrameType::Row|SwFrameType::Tab|SwFrameType::FootnoteContainer|SwFrameType::Page|SwFrameType::Root)))
                 NotifyLowerObjs();
 
             if( IsCellFrame() )
@@ -2863,6 +2932,9 @@ SwTwips SwLayoutFrame::GrowFrame( SwTwips nDist, bool bTst, bool bInfo )
     (void)bMoveAccFrame;
     (void)aOldFrame;
 #endif
+
+    if (reason == SwResizeLimitReason::Unspecified && nReal < nDist && IsBodyFrame()) // Page / column body
+        reason = SwResizeLimitReason::FlowToFollow;
 
     return nReal;
 }
@@ -2900,10 +2972,10 @@ SwTwips SwLayoutFrame::ShrinkFrame( SwTwips nDist, bool bTst, bool bInfo )
 
     SwTwips nMin = 0;
     bool bChgPos = IsVertical();
-    if ( Lower() )
+    if (const SwFrame *pFrame = Lower())
     {
-        if( !Lower()->IsNeighbourFrame() )
-        {   const SwFrame *pFrame = Lower();
+        if( !pFrame->IsNeighbourFrame() )
+        {
             const tools::Long nTmp = aRectFnSet.GetHeight(getFramePrintArea());
             while( pFrame && nMin < nTmp )
             {   nMin += aRectFnSet.GetHeight(pFrame->getFrameArea());
@@ -2993,6 +3065,30 @@ SwTwips SwLayoutFrame::ShrinkFrame( SwTwips nDist, bool bTst, bool bInfo )
             }
         }
 
+        // A table frame may have grown beyond its parent frame after
+        // RemoveFollowFlowLine(), which is a problem in case the parent is a
+        // section: prevent shrinking the section smaller than the contained
+        // table.
+        if (IsTabFrame()
+            && static_cast<SwTabFrame*>(this)->IsRebuildLastLine()
+            && pToShrink == GetUpper()
+            && pToShrink->IsSctFrame()) // not required for page body, unsure about others
+        {
+            SwTwips nUpperMin{0};
+            for (SwFrame const* pFrame = pToShrink->GetLower();
+                 pFrame != GetNext(); pFrame = pFrame->GetNext())
+            {
+                nUpperMin += aRectFnSet.GetHeight(pFrame->getFrameArea());
+            }
+            if (aRectFnSet.GetHeight(pToShrink->getFramePrintArea()) - nShrink < nUpperMin)
+            {
+                nShrink = aRectFnSet.GetHeight(pToShrink->getFramePrintArea()) - nUpperMin;
+                if (nShrink <= 0)
+                {
+                    return 0; // nothing to do
+                }
+            }
+        }
         nReal = pToShrink ? pToShrink->Shrink( nShrink, bTst, bInfo ) : 0;
         if( ( SwNeighbourAdjust::GrowAdjust == nAdjust || SwNeighbourAdjust::AdjustGrow == nAdjust )
             && nReal < nShrink )
@@ -3052,7 +3148,7 @@ SwTwips SwLayoutFrame::ShrinkFrame( SwTwips nDist, bool bTst, bool bInfo )
                 SetCompletePaint();
         }
 
-        if (!(GetType() & (SwFrameType::Row|SwFrameType::Tab|SwFrameType::FtnCont|SwFrameType::Page|SwFrameType::Root)))
+        if (!(GetType() & (SwFrameType::Row|SwFrameType::Tab|SwFrameType::FootnoteContainer|SwFrameType::Page|SwFrameType::Root)))
             NotifyLowerObjs();
 
         if( IsCellFrame() )
@@ -3060,7 +3156,7 @@ SwTwips SwLayoutFrame::ShrinkFrame( SwTwips nDist, bool bTst, bool bInfo )
 
         SwContentFrame *pCnt;
         if( IsFootnoteFrame() && !static_cast<SwFootnoteFrame*>(this)->GetAttr()->GetFootnote().IsEndNote() &&
-            ( GetFormat()->GetDoc()->GetFootnoteInfo().m_ePos != FTNPOS_CHAPTER ||
+            ( GetFormat()->GetDoc().GetFootnoteInfo().m_ePos != FTNPOS_CHAPTER ||
               ( IsInSct() && FindSctFrame()->IsFootnoteAtEnd() ) ) &&
               nullptr != (pCnt = static_cast<SwFootnoteFrame*>(this)->GetRefFromAttr() ) )
         {
@@ -3281,7 +3377,7 @@ void SwLayoutFrame::ChgLowersProp( const Size& rOldSize )
     //      header frames and footer frames.
     // In horizontal layout these are all frames, which aren't neighbour frames.
     const SwFrameType nFixWidth = aRectFnSet.IsVert() ? (FRM_NEIGHBOUR | FRM_HEADFOOT)
-                                   : ~SwFrameType(FRM_NEIGHBOUR);
+                                   : ~FRM_NEIGHBOUR;
 
     // Declare const unsigned short <nFixHeight> and init it this frame types
     // which has fixed height in vertical respectively horizontal layout.
@@ -3542,13 +3638,12 @@ void SwLayoutFrame::Format( vcl::RenderContext* /*pRenderContext*/, const SwBord
     const sal_uInt16 nRight = o3tl::narrowing<sal_uInt16>(pAttrs->CalcRight(this));
     const sal_uInt16 nLower = bHideWhitespace ? 0 : pAttrs->CalcBottom();
 
-    const bool bVert = IsVertical() && !IsPageFrame();
-    SwRectFn fnRect = bVert ? ( IsVertLR() ? (IsVertLRBT() ? fnRectVertL2RB2T : fnRectVertL2R) : fnRectVert ) : fnRectHori;
+    SwRectFnSet fnRect(IsVertical() && !IsPageFrame(), IsVertLR(), IsVertLRBT());
     if ( !isFramePrintAreaValid() )
     {
         setFramePrintAreaValid(true);
-        (this->*fnRect->fnSetXMargins)( nLeft, nRight );
-        (this->*fnRect->fnSetYMargins)( nUpper, nLower );
+        fnRect.SetXMargins(*this, nLeft, nRight);
+        fnRect.SetYMargins(*this, nUpper, nLower);
     }
 
     if ( isFrameAreaSizeValid() )
@@ -3568,20 +3663,20 @@ void SwLayoutFrame::Format( vcl::RenderContext* /*pRenderContext*/, const SwBord
             SwTwips nRemaining = 0;
             SwFrame *pFrame = Lower();
             while ( pFrame )
-            {   nRemaining += (pFrame->getFrameArea().*fnRect->fnGetHeight)();
+            {   nRemaining += fnRect.GetHeight(pFrame->getFrameArea());
                 if( pFrame->IsTextFrame() && static_cast<SwTextFrame*>(pFrame)->IsUndersized() )
                 // This TextFrame would like to be a bit bigger
                     nRemaining += static_cast<SwTextFrame*>(pFrame)->GetParHeight()
-                                  - (pFrame->getFramePrintArea().*fnRect->fnGetHeight)();
+                                  - fnRect.GetHeight(pFrame->getFramePrintArea());
                 else if( pFrame->IsSctFrame() && static_cast<SwSectionFrame*>(pFrame)->IsUndersized() )
                     nRemaining += static_cast<SwSectionFrame*>(pFrame)->Undersize();
                 pFrame = pFrame->GetNext();
             }
             nRemaining += nBorder;
             nRemaining = std::max( nRemaining, nMinHeight );
-            const SwTwips nDiff = nRemaining-(getFrameArea().*fnRect->fnGetHeight)();
-            const tools::Long nOldLeft = (getFrameArea().*fnRect->fnGetLeft)();
-            const tools::Long nOldTop = (getFrameArea().*fnRect->fnGetTop)();
+            const SwTwips nDiff = nRemaining - fnRect.GetHeight(getFrameArea());
+            const tools::Long nOldLeft = fnRect.GetLeft(getFrameArea());
+            const tools::Long nOldTop = fnRect.GetTop(getFrameArea());
             if ( nDiff )
             {
                 if ( nDiff > 0 )
@@ -3592,12 +3687,12 @@ void SwLayoutFrame::Format( vcl::RenderContext* /*pRenderContext*/, const SwBord
                 MakePos();
             }
             //Don't exceed the bottom edge of the Upper.
-            if ( GetUpper() && (getFrameArea().*fnRect->fnGetHeight)() )
+            if (GetUpper() && fnRect.GetHeight(getFrameArea()))
             {
-                const SwTwips nLimit = (GetUpper()->*fnRect->fnGetPrtBottom)();
-                if( (this->*fnRect->fnSetLimit)( nLimit ) &&
-                    nOldLeft == (getFrameArea().*fnRect->fnGetLeft)() &&
-                    nOldTop  == (getFrameArea().*fnRect->fnGetTop)() )
+                const SwTwips nLimit = fnRect.GetPrtBottom(*GetUpper());
+                if( fnRect.SetLimit(*this, nLimit) &&
+                    nOldLeft == fnRect.GetLeft(getFrameArea()) &&
+                    nOldTop  == fnRect.GetTop(getFrameArea()) )
                 {
                     setFrameAreaSizeValid(true);
                     setFramePrintAreaValid(true);
@@ -3626,8 +3721,8 @@ void SwLayoutFrame::Format( vcl::RenderContext* /*pRenderContext*/, const SwBord
     if (!isFramePrintAreaValid())
     {
         setFramePrintAreaValid(true);
-        (this->*fnRect->fnSetXMargins)(nLeft, nRight);
-        (this->*fnRect->fnSetYMargins)(nUpper, nLower);
+        fnRect.SetXMargins(*this, nLeft, nRight);
+        fnRect.SetYMargins(*this, nUpper, nLower);
     }
 }
 
@@ -3735,7 +3830,7 @@ static tools::Long lcl_CalcMinColDiff( SwLayoutFrame *pLayFrame )
         if ( pFrame && pFrame->IsTextFrame() )
         {
             const tools::Long nTmp = static_cast<SwTextFrame*>(pFrame)->FirstLineHeight();
-            if ( nTmp != USHRT_MAX )
+            if (nTmp != std::numeric_limits<SwTwips>::max())
             {
                 if ( pCol == pLayFrame->Lower() )
                     nFirstDiff = nTmp;
@@ -4147,7 +4242,7 @@ void SwLayoutFrame::dumpAsXmlAttributes(xmlTextWriterPtr writer) const
     if (pFormat)
     {
         (void)xmlTextWriterWriteFormatAttribute( writer, BAD_CAST( "format" ), "%p", pFormat);
-        (void)xmlTextWriterWriteFormatAttribute( writer, BAD_CAST( "formatName" ), "%s", BAD_CAST(pFormat->GetName().toUtf8().getStr()));
+        (void)xmlTextWriterWriteFormatAttribute( writer, BAD_CAST( "formatName" ), "%s", BAD_CAST(pFormat->GetName().toString().toUtf8().getStr()));
     }
 }
 
@@ -4327,7 +4422,7 @@ void SwRootFrame::InvalidateAllObjPos()
             const SwSortedObjs& rObjs = *(pPageFrame->GetSortedObjs());
             for (SwAnchoredObject* pAnchoredObj : rObjs)
             {
-                const SwFormatAnchor& rAnch = pAnchoredObj->GetFrameFormat().GetAnchor();
+                const SwFormatAnchor& rAnch = pAnchoredObj->GetFrameFormat()->GetAnchor();
                 if ((rAnch.GetAnchorId() != RndStdIds::FLY_AT_PARA) &&
                     (rAnch.GetAnchorId() != RndStdIds::FLY_AT_CHAR))
                 {
@@ -4365,7 +4460,7 @@ static void AddRemoveFlysForNode(
     {
         // pNode's frame has been deleted by CheckParaRedlineMerge()
         AppendObjsOfNode(&rTable,
-            pNode->GetIndex(), &rFrame, pPage, &rTextNode.GetDoc(),
+            pNode->GetIndex(), &rFrame, pPage, rTextNode.GetDoc(),
             &rIterFirst, &rIterEnd, pFirstNode, pLastNode);
         if (pSkipped)
         {
@@ -4442,7 +4537,7 @@ void AddRemoveFlysAnchoredToFrameStartingAtNode(
 } // namespace sw
 
 static void UnHideRedlines(SwRootFrame & rLayout,
-        SwNodes & rNodes, SwNode const& rEndOfSectionNode,
+        const SwNodes & rNodes, SwNode const& rEndOfSectionNode,
         std::set<SwNodeOffset> *const pSkipped)
 {
     assert(rEndOfSectionNode.IsEndNode());
@@ -4510,7 +4605,7 @@ static void UnHideRedlines(SwRootFrame & rLayout,
                 }
                 else
                 {
-                    if (auto const& pMergedPara = pFrame->GetMergedPara())
+                    if (auto const pMergedPara = pFrame->GetMergedPara())
                     {
                         // invalidate SwInvalidateFlags::Size
                         pFrame->Prepare(PrepareHint::Clear, nullptr, false);
@@ -4572,7 +4667,7 @@ static void UnHideRedlines(SwRootFrame & rLayout,
             SwTableNode * pTableNd = rNode.GetTableNode();
             SwPosition const tmp(rNode);
             SwRangeRedline const*const pRedline(
-                rLayout.GetFormat()->GetDoc()->getIDocumentRedlineAccess().GetRedline(tmp, nullptr));
+                rLayout.GetFormat()->GetDoc().getIDocumentRedlineAccess().GetRedline(tmp, nullptr));
             // pathology: redline that starts on a TableNode; cannot
             // be created in UI but by import filters...
             if (pRedline
@@ -4641,7 +4736,7 @@ static void UnHideRedlines(SwRootFrame & rLayout,
 }
 
 static void UnHideRedlinesExtras(SwRootFrame & rLayout,
-        SwNodes & rNodes, SwNode const& rEndOfExtraSectionNode,
+        const SwNodes & rNodes, SwNode const& rEndOfExtraSectionNode,
         std::set<SwNodeOffset> *const pSkipped)
 {
     assert(rEndOfExtraSectionNode.IsEndNode());
@@ -4685,7 +4780,7 @@ static void UnHideRedlinesExtras(SwRootFrame & rLayout,
 static void UnHide(SwRootFrame & rLayout)
 {
     assert(rLayout.GetCurrShell()->ActionPend()); // tdf#125754 avoid recursive layout
-    SwDoc & rDoc(*rLayout.GetFormat()->GetDoc());
+    SwDoc & rDoc(rLayout.GetFormat()->GetDoc());
     // don't do early return if there are no redlines:
     // Show->Hide must init hidden number trees
     // Hide->Show may be called after all redlines have been deleted but there

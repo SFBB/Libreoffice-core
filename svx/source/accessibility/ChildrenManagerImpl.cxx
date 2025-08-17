@@ -39,7 +39,6 @@
 #include <com/sun/star/view/XSelectionSupplier.hpp>
 #include <com/sun/star/container/XChild.hpp>
 #include <comphelper/lok.hxx>
-#include <comphelper/types.hxx>
 #include <o3tl/safeint.hxx>
 #include <rtl/ustring.hxx>
 #include <tools/debug.hxx>
@@ -68,12 +67,12 @@ void adjustIndexInParentOfShapes(ChildDescriptorListType& _rList)
 
 // AccessibleChildrenManager
 ChildrenManagerImpl::ChildrenManagerImpl (
-    uno::Reference<XAccessible> xParent,
+    rtl::Reference<comphelper::OAccessible> pParent,
     uno::Reference<drawing::XShapes> xShapeList,
     const AccessibleShapeTreeInfo& rShapeTreeInfo,
     AccessibleContextBase& rContext)
     : mxShapeList (std::move(xShapeList)),
-      mxParent (std::move(xParent)),
+      mpParent(std::move(pParent)),
       maShapeTreeInfo (rShapeTreeInfo),
       mrContext (rContext),
       mpFocusedShape(nullptr)
@@ -119,23 +118,20 @@ const css::uno::Reference<css::drawing::XShape>& ChildrenManagerImpl::GetChildSh
 {
     // Check whether the given index is valid.
     if (nIndex < 0 || o3tl::make_unsigned(nIndex) >= maVisibleChildren.size())
-        throw lang::IndexOutOfBoundsException (
-            "no accessible child with index " + OUString::number(nIndex),
-            mxParent);
+        throw lang::IndexOutOfBoundsException("no accessible child with index "
+                                              + OUString::number(nIndex));
     return maVisibleChildren[nIndex].mxShape;
 }
 
 /** Return the requested accessible child object.  Create it if it is not
     yet in the cache.
 */
-uno::Reference<XAccessible>
-    ChildrenManagerImpl::GetChild (sal_Int64 nIndex)
+rtl::Reference<comphelper::OAccessible> ChildrenManagerImpl::GetChild(sal_Int64 nIndex)
 {
     // Check whether the given index is valid.
     if (nIndex < 0 || o3tl::make_unsigned(nIndex) >= maVisibleChildren.size())
-        throw lang::IndexOutOfBoundsException (
-            "no accessible child with index " + OUString::number(nIndex),
-            mxParent);
+        throw lang::IndexOutOfBoundsException("no accessible child with index "
+                                              + OUString::number(nIndex));
 
     return GetChild (maVisibleChildren[nIndex],nIndex);
 }
@@ -144,8 +140,8 @@ uno::Reference<XAccessible>
 /** Return the requested accessible child object.  Create it if it is not
     yet in the cache.
 */
-uno::Reference<XAccessible>
-    ChildrenManagerImpl::GetChild (ChildDescriptor& rChildDescriptor,sal_Int32 _nIndex)
+rtl::Reference<comphelper::OAccessible>
+ChildrenManagerImpl::GetChild(ChildDescriptor& rChildDescriptor, sal_Int32 _nIndex)
 {
     if ( ! rChildDescriptor.mxAccessibleShape.is())
     {
@@ -154,10 +150,7 @@ uno::Reference<XAccessible>
         // created while locking the global mutex.
         if ( ! rChildDescriptor.mxAccessibleShape.is())
         {
-            AccessibleShapeInfo aShapeInfo(
-                        rChildDescriptor.mxShape,
-                        mxParent,
-                        this);
+            AccessibleShapeInfo aShapeInfo(rChildDescriptor.mxShape, mpParent, this);
             // Create accessible object that corresponds to the descriptor's
             // shape.
             rtl::Reference<AccessibleShape> pShape(
@@ -522,7 +515,7 @@ void ChildrenManagerImpl::RemoveShape (const Reference<drawing::XShape>& rxShape
         return;
 
     // Remove descriptor from that list.
-    Reference<XAccessible> xHoldAlive(I->mxAccessibleShape);
+    rtl::Reference<AccessibleShape> xHoldAlive(I->mxAccessibleShape);
 
     UnregisterAsDisposeListener (I->mxShape);
     // Dispose the accessible object.
@@ -711,8 +704,7 @@ void ChildrenManagerImpl::impl_dispose()
             xController, uno::UNO_QUERY);
         if (xSelectionSupplier.is())
         {
-            xSelectionSupplier->removeSelectionChangeListener (
-                static_cast<view::XSelectionChangeListener*>(this));
+            xSelectionSupplier->removeSelectionChangeListener(this);
         }
     }
     catch( uno::RuntimeException&)
@@ -821,14 +813,15 @@ AccessibleControlShape * ChildrenManagerImpl::GetAccControlShapeFromModel(css::b
     }
     return nullptr;
 }
-uno::Reference<XAccessible>
+
+AccessibleShape*
     ChildrenManagerImpl::GetAccessibleCaption (const uno::Reference<drawing::XShape>& xShape)
 {
     auto I = std::find_if(maVisibleChildren.begin(), maVisibleChildren.end(),
         [&xShape](const ChildDescriptor& rChild) { return rChild.mxShape.get() == xShape.get(); });
     if (I != maVisibleChildren.end())
-        return I->mxAccessibleShape;
-    return uno::Reference<XAccessible> ();
+        return I->mxAccessibleShape.get();
+    return nullptr;
 }
 
 /** Update the <const>SELECTED</const> and the <const>FOCUSED</const> state
@@ -872,17 +865,19 @@ void ChildrenManagerImpl::UpdateSelection()
         if (!xSelectedShape.is() && xSelectedShapeAccess.is())
         {
             sal_Int32 nCount = xSelectedShapeAccess->getCount();
-            aSortedSelectedShapes.reserve(nCount);
             if (auto pSvxShape = dynamic_cast<SvxShapeCollection*>(xSelectedShapeAccess.get()))
             {
-                pSvxShape->getAllShapes(aSortedSelectedShapes);
+                aSortedSelectedShapes = pSvxShape->getAllShapes();
             }
             else
+            {
+                aSortedSelectedShapes.reserve(nCount);
                 for (sal_Int32 i = 0; i < nCount; ++i)
                 {
                     css::uno::Reference<css::drawing::XShape> xShape(xSelectedShapeAccess->getByIndex(i), uno::UNO_QUERY);
                     aSortedSelectedShapes.push_back(xShape);
                 }
+            }
             std::sort(aSortedSelectedShapes.begin(), aSortedSelectedShapes.end());
         }
 

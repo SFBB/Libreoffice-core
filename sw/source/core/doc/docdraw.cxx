@@ -54,7 +54,6 @@
 #include <vector>
 
 using namespace ::com::sun::star;
-using namespace ::com::sun::star::linguistic2;
 
 /** local method to determine positioning and alignment attributes for a drawing
  *  object, which is newly connected to the layout.
@@ -67,6 +66,9 @@ static void lcl_AdjustPositioningAttr( SwDrawFrameFormat* _pFrameFormat,
 {
     const SwContact* pContact = GetUserCall( &_rSdrObj );
     OSL_ENSURE( pContact, "<lcl_AdjustPositioningAttr(..)> - missing contact object." );
+
+    if (!pContact)
+        return;
 
     // determine position of new group object relative to its anchor frame position
     SwTwips nHoriRelPos = 0;
@@ -95,7 +97,7 @@ static void lcl_AdjustPositioningAttr( SwDrawFrameFormat* _pFrameFormat,
             // If no anchor frame exist - e.g. because no layout exists - the
             // default layout direction is taken.
             const SvxFrameDirectionItem& rDirItem =
-                _pFrameFormat->GetAttrSet().GetPool()->GetDefaultItem( RES_FRAMEDIR );
+                _pFrameFormat->GetAttrSet().GetPool()->GetUserOrPoolDefaultItem( RES_FRAMEDIR );
             switch ( rDirItem.GetValue() )
             {
                 case SvxFrameDirection::Vertical_LR_TB:
@@ -195,6 +197,9 @@ SwDrawContact* SwDoc::GroupSelection( SdrView& rDrawView )
 
         // Revoke anchor attribute.
         SwDrawContact *pMyContact = static_cast<SwDrawContact*>(GetUserCall(pObj));
+        if (!pMyContact)
+            return pNewContact;
+
         const SwFormatAnchor aAnch( pMyContact->GetFormat()->GetAnchor() );
 
         std::unique_ptr<SwUndoDrawGroup> pUndo;
@@ -215,6 +220,11 @@ SwDrawContact* SwDoc::GroupSelection( SdrView& rDrawView )
         {
             pObj = rMrkList.GetMark( i )->GetMarkedSdrObj();
             SwDrawContact *pContact = static_cast<SwDrawContact*>(GetUserCall(pObj));
+
+            if (!pContact)
+                continue;
+
+            assert(pObj);
 
             // #i53320#
 #if OSL_DEBUG_LEVEL > 0
@@ -270,7 +280,7 @@ SwDrawContact* SwDoc::GroupSelection( SdrView& rDrawView )
         OSL_ENSURE( rMrkList.GetMarkCount() == 1, "GroupMarked more or none groups." );
 
         SdrObject* pNewGroupObj = rMrkList.GetMark( 0 )->GetMarkedSdrObj();
-        pNewGroupObj->SetName(pFormat->GetName());
+        pNewGroupObj->SetName(pFormat->GetName().toString());
         pNewContact = new SwDrawContact( pFormat, pNewGroupObj );
         // #i35635#
         pNewContact->MoveObjToVisibleLayer( pNewGroupObj );
@@ -352,6 +362,9 @@ void SwDoc::UnGroupSelection( SdrView& rDrawView )
                 {
                     SwDrawContact *pContact = static_cast<SwDrawContact*>(GetUserCall(pObj));
 
+                    if (!pContact)
+                        continue;
+
                     std::shared_ptr<SwTextBoxNode> pTextBoxNode;
                     if (auto pGroupFormat = pContact->GetFormat())
                         pTextBoxNode = pGroupFormat->GetOtherTextBoxFormats();
@@ -394,7 +407,7 @@ void SwDoc::UnGroupSelection( SdrView& rDrawView )
                         pFormat->SetPositionLayoutDir(
                             text::PositionLayoutDir::PositionInLayoutDirOfAnchor );
                         if (pSubObj->GetName().isEmpty())
-                            pSubObj->SetName(pFormat->GetName());
+                            pSubObj->SetName(pFormat->GetName().toString());
                         pFormatsAndObjs[i].emplace_back( pFormat, pSubObj );
 
                         if( bUndo )
@@ -463,14 +476,16 @@ bool SwDoc::DeleteSelection( SwDrawView& rDrawView )
             SdrObject *pObj = rMrkList.GetMark( i )->GetMarkedSdrObj();
             if( dynamic_cast<const SwVirtFlyDrawObj*>( pObj) ==  nullptr )
             {
-                SwDrawContact *pC = static_cast<SwDrawContact*>(GetUserCall(pObj));
-                SwDrawFrameFormat *pFrameFormat = static_cast<SwDrawFrameFormat*>(pC->GetFormat());
-                if( pFrameFormat &&
-                    RndStdIds::FLY_AS_CHAR == pFrameFormat->GetAnchor().GetAnchorId() )
+                if (SwDrawContact* pC = static_cast<SwDrawContact*>(GetUserCall(pObj)))
                 {
-                    rDrawView.MarkObj( pObj, rDrawView.Imp().GetPageView(), true );
-                    --i;
-                    getIDocumentLayoutAccess().DelLayoutFormat( pFrameFormat );
+                    SwDrawFrameFormat* pFrameFormat = static_cast<SwDrawFrameFormat*>(pC->GetFormat());
+                    if (pFrameFormat
+                        && RndStdIds::FLY_AS_CHAR == pFrameFormat->GetAnchor().GetAnchorId())
+                    {
+                        rDrawView.MarkObj(pObj, rDrawView.Imp().GetPageView(), true);
+                        --i;
+                        getIDocumentLayoutAccess().DelLayoutFormat(pFrameFormat);
+                    }
                 }
             }
         }
@@ -489,6 +504,7 @@ bool SwDoc::DeleteSelection( SwDrawView& rDrawView )
                 {
                     const SdrMark& rMark = *rMrkList.GetMark( i );
                     pObj = rMark.GetMarkedSdrObj();
+                    assert(pObj);
                     SwDrawContact *pContact = static_cast<SwDrawContact*>(pObj->GetUserCall());
                     if( pContact ) // of course not for grouped objects
                     {
@@ -658,13 +674,11 @@ namespace docfunc
                             dynamic_cast<SwAnchoredDrawObject*>(pDrawContact->GetAnchoredObj( pObj ));
 
                         // error handling
+                        if ( !pAnchoredDrawObj )
                         {
-                            if ( !pAnchoredDrawObj )
-                            {
-                                OSL_FAIL( "<docfunc::AllDrawObjsOnPage() - missing anchored draw object" );
-                                bAllDrawObjsOnPage = false;
-                                break;
-                            }
+                            OSL_FAIL( "<docfunc::AllDrawObjsOnPage() - missing anchored draw object" );
+                            bAllDrawObjsOnPage = false;
+                            break;
                         }
 
                         if ( pAnchoredDrawObj->NotYetPositioned() )

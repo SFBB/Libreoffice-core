@@ -434,7 +434,6 @@
 #include <svl/broadcast.hxx>
 #include <svl/cenumitm.hxx>
 #include <svl/cintitem.hxx>
-#include <svl/custritm.hxx>
 #include <svl/eitem.hxx>
 #include <svl/grabbagitem.hxx>
 #include <svl/hint.hxx>
@@ -545,7 +544,6 @@
 #include <uno/any2.h>
 #include <uno/data.h>
 #include <uno/sequence2.h>
-#include <unotools/fltrcfg.hxx>
 #include <unotools/fontdefs.hxx>
 #include <unotools/localedatawrapper.hxx>
 #include <unotools/options.hxx>

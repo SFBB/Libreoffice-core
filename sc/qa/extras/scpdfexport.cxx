@@ -12,7 +12,6 @@
 
 #include <test/unoapi_test.hxx>
 
-#include <com/sun/star/frame/Desktop.hpp>
 #include <com/sun/star/frame/XStorable.hpp>
 #include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/sheet/XSpreadsheet.hpp>
@@ -24,16 +23,16 @@
 #include <editutil.hxx>
 #include <editeng/eeitem.hxx>
 #include <editeng/fontitem.hxx>
-#include <osl/file.hxx>
-#include <comphelper/processfactory.hxx>
 #include <comphelper/propertyvalue.hxx>
 
 #include <vcl/filter/PDFiumLibrary.hxx>
-#include <vcl/scheduler.hxx>
 
 #if USE_TLS_NSS
 #include <nss.h>
 #endif
+#include <vcl/filter/pdfdocument.hxx>
+#include <tools/zcodec.hxx>
+#include <o3tl/string_view.hxx>
 
 using namespace css::lang;
 using namespace ::com::sun::star;
@@ -58,10 +57,17 @@ private:
 
     // unit tests
 public:
+    void testPopupRectangleSize_Tdf162955();
+    void testMediaShapeScreen_Tdf159094();
     void testExportRange_Tdf120161();
     void testExportFitToPage_Tdf103516();
     void testUnoCommands_Tdf120161();
     void testTdf64703_hiddenPageBreak();
+    void testTdf159068();
+    void testTdf159067();
+    void testTdf159066();
+    void testTdf159065();
+    void testTdf123870();
     void testTdf143978();
     void testTdf120190();
     void testTdf84012();
@@ -69,10 +75,17 @@ public:
     void testForcepoint97();
 
     CPPUNIT_TEST_SUITE(ScPDFExportTest);
+    CPPUNIT_TEST(testPopupRectangleSize_Tdf162955);
+    CPPUNIT_TEST(testMediaShapeScreen_Tdf159094);
     CPPUNIT_TEST(testExportRange_Tdf120161);
     CPPUNIT_TEST(testExportFitToPage_Tdf103516);
     CPPUNIT_TEST(testUnoCommands_Tdf120161);
     CPPUNIT_TEST(testTdf64703_hiddenPageBreak);
+    CPPUNIT_TEST(testTdf159068);
+    CPPUNIT_TEST(testTdf159067);
+    CPPUNIT_TEST(testTdf159066);
+    CPPUNIT_TEST(testTdf159065);
+    CPPUNIT_TEST(testTdf123870);
     CPPUNIT_TEST(testTdf143978);
     CPPUNIT_TEST(testTdf120190);
     CPPUNIT_TEST(testTdf84012);
@@ -82,7 +95,7 @@ public:
 };
 
 ScPDFExportTest::ScPDFExportTest()
-    : UnoApiTest("sc/qa/extras/testdocuments/")
+    : UnoApiTest(u"sc/qa/extras/testdocuments/"_ustr)
 {
 }
 
@@ -147,16 +160,17 @@ void ScPDFExportTest::exportToPDF(const uno::Reference<frame::XModel>& xModel, c
 
     // init special pdf export params
     css::uno::Sequence<css::beans::PropertyValue> aFilterData{
-        comphelper::makePropertyValue("Selection", xCellRange),
-        comphelper::makePropertyValue("Printing", sal_Int32(2)),
-        comphelper::makePropertyValue("ViewPDFAfterExport", true)
+        comphelper::makePropertyValue(u"Selection"_ustr, xCellRange),
+        comphelper::makePropertyValue(u"Printing"_ustr, sal_Int32(2)),
+        comphelper::makePropertyValue(u"ViewPDFAfterExport"_ustr, true),
+        comphelper::makePropertyValue(u"PDFUACompliance"_ustr, true)
     };
 
     // init set of params for storeToURL() call
     css::uno::Sequence<css::beans::PropertyValue> seqArguments{
-        comphelper::makePropertyValue("FilterData", aFilterData),
-        comphelper::makePropertyValue("FilterName", OUString("calc_pdf_Export")),
-        comphelper::makePropertyValue("URL", maTempFile.GetURL())
+        comphelper::makePropertyValue(u"FilterData"_ustr, aFilterData),
+        comphelper::makePropertyValue(u"FilterName"_ustr, u"calc_pdf_Export"_ustr),
+        comphelper::makePropertyValue(u"URL"_ustr, maTempFile.GetURL())
     };
 
     // call storeToURL()
@@ -169,46 +183,89 @@ void ScPDFExportTest::exportToPDFWithUnoCommands(const OUString& rRange)
 {
     uno::Sequence<beans::PropertyValue> aArgs
         = comphelper::InitPropertySequence({ { "ToPoint", uno::Any(rRange) } });
-    dispatchCommand(mxComponent, ".uno:GoToCell", aArgs);
+    dispatchCommand(mxComponent, u".uno:GoToCell"_ustr, aArgs);
 
-    dispatchCommand(mxComponent, ".uno:DefinePrintArea", {});
+    dispatchCommand(mxComponent, u".uno:DefinePrintArea"_ustr, {});
 
     uno::Sequence<beans::PropertyValue> aFilterData(comphelper::InitPropertySequence(
         { { "ViewPDFAfterExport", uno::Any(true) }, { "Printing", uno::Any(sal_Int32(2)) } }));
 
     uno::Sequence<beans::PropertyValue> aDescriptor(
-        comphelper::InitPropertySequence({ { "FilterName", uno::Any(OUString("calc_pdf_Export")) },
+        comphelper::InitPropertySequence({ { "FilterName", uno::Any(u"calc_pdf_Export"_ustr) },
                                            { "FilterData", uno::Any(aFilterData) },
                                            { "URL", uno::Any(maTempFile.GetURL()) } }));
 
-    dispatchCommand(mxComponent, ".uno:ExportToPDF", aDescriptor);
+    dispatchCommand(mxComponent, u".uno:ExportToPDF"_ustr, aDescriptor);
 }
 
 void ScPDFExportTest::setFont(ScFieldEditEngine& rEE, sal_Int32 nStart, sal_Int32 nEnd,
                               const OUString& rFontName)
 {
-    ESelection aSel;
-    aSel.nStartPara = aSel.nEndPara = 0;
-    aSel.nStartPos = nStart;
-    aSel.nEndPos = nEnd;
-
     SfxItemSet aItemSet = rEE.GetEmptyItemSet();
-    SvxFontItem aItem(FAMILY_MODERN, rFontName, "", PITCH_VARIABLE, RTL_TEXTENCODING_UTF8,
+    SvxFontItem aItem(FAMILY_MODERN, rFontName, u""_ustr, PITCH_VARIABLE, RTL_TEXTENCODING_UTF8,
                       EE_CHAR_FONTINFO);
     aItemSet.Put(aItem);
-    rEE.QuickSetAttribs(aItemSet, aSel);
+    rEE.QuickSetAttribs(aItemSet, ESelection(0, nStart, 0, nEnd));
+}
+
+void ScPDFExportTest::testMediaShapeScreen_Tdf159094()
+{
+    loadFromFile(u"tdf159094.ods");
+    uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY);
+
+    // A1:B8
+    ScRange aRange(0, 0, 0, 1, 7, 0);
+
+    // Without the fix, this test would crash on export media file to pdf
+    exportToPDF(xModel, aRange);
+}
+
+void ScPDFExportTest::testPopupRectangleSize_Tdf162955()
+{
+    std::shared_ptr<vcl::pdf::PDFium> pPDFium = vcl::pdf::PDFiumLibrary::get();
+    if (!pPDFium)
+    {
+        return;
+    }
+
+    loadFromFile(u"tdf162955_comment.ods");
+    uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY);
+
+    // A1
+    ScRange aRange(0, 0, 0, 0, 0, 0);
+    exportToPDF(xModel, aRange);
+
+    // Parse the export result with pdfium.
+    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument = parsePDFExport();
+    CPPUNIT_ASSERT_EQUAL(1, pPdfDocument->getPageCount());
+
+    // Get the first page
+    std::unique_ptr<vcl::pdf::PDFiumPage> pPdfPage = pPdfDocument->openPage(0);
+    CPPUNIT_ASSERT(pPdfPage);
+
+    // Popup annotation
+    {
+        auto pAnnotation = pPdfPage->getAnnotation(1);
+        CPPUNIT_ASSERT(pAnnotation);
+        CPPUNIT_ASSERT_EQUAL(vcl::pdf::PDFAnnotationSubType::Popup, pAnnotation->getSubType());
+        CPPUNIT_ASSERT(!pAnnotation->getRectangle().isEmpty());
+        double nWidth = pAnnotation->getRectangle().getWidth();
+        double nHeight = pAnnotation->getRectangle().getHeight();
+        CPPUNIT_ASSERT(nWidth > 0);
+        CPPUNIT_ASSERT(nHeight > 0);
+    }
 }
 
 // Selection was not taken into account during export into PDF
 void ScPDFExportTest::testExportRange_Tdf120161()
 {
     // create test document
-    mxComponent = loadFromDesktop("private:factory/scalc");
+    loadFromURL(u"private:factory/scalc"_ustr);
     uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY);
     uno::Reference<sheet::XSpreadsheetDocument> xDoc(xModel, uno::UNO_QUERY_THROW);
     uno::Reference<sheet::XSpreadsheets> xSheets(xDoc->getSheets(), UNO_SET_THROW);
     uno::Reference<container::XIndexAccess> xIndex(xSheets, uno::UNO_QUERY_THROW);
-    xSheets->insertNewByName("First Sheet", 0);
+    xSheets->insertNewByName(u"First Sheet"_ustr, 0);
     uno::Reference<sheet::XSpreadsheet> rSheet(xIndex->getByIndex(0), UNO_QUERY_THROW);
 
     // 2. Setup data
@@ -227,8 +284,8 @@ void ScPDFExportTest::testExportRange_Tdf120161()
         // set "Text" to H1 cell with "DejaVuSans" font
         ScFieldEditEngine& rEE = rDoc.GetEditEngine();
         rEE.Clear();
-        rEE.SetTextCurrentDefaults("Text");
-        setFont(rEE, 0, 4, "DejaVuSans"); // set font for first 4 chars
+        rEE.SetTextCurrentDefaults(u"Text"_ustr);
+        setFont(rEE, 0, 4, u"DejaVuSans"_ustr); // set font for first 4 chars
         rDoc.SetEditText(ScAddress(7, 0, 0), rEE.CreateTextObject());
     }
 
@@ -263,12 +320,12 @@ void ScPDFExportTest::testExportRange_Tdf120161()
 void ScPDFExportTest::testExportFitToPage_Tdf103516()
 {
     // create test document
-    mxComponent = loadFromDesktop("private:factory/scalc");
+    loadFromURL(u"private:factory/scalc"_ustr);
     uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY);
     uno::Reference<sheet::XSpreadsheetDocument> xDoc(xModel, uno::UNO_QUERY_THROW);
     uno::Reference<sheet::XSpreadsheets> xSheets(xDoc->getSheets(), UNO_SET_THROW);
     uno::Reference<container::XIndexAccess> xIndex(xSheets, uno::UNO_QUERY_THROW);
-    xSheets->insertNewByName("First Sheet", 0);
+    xSheets->insertNewByName(u"First Sheet"_ustr, 0);
     uno::Reference<sheet::XSpreadsheet> rSheet(xIndex->getByIndex(0), UNO_QUERY_THROW);
 
     // 2. Setup data
@@ -307,20 +364,20 @@ void ScPDFExportTest::testExportFitToPage_Tdf103516()
     uno::Reference<style::XStyleFamiliesSupplier> xStyleFamSupp(xDoc, UNO_QUERY_THROW);
     uno::Reference<container::XNameAccess> xStyleFamiliesNames(xStyleFamSupp->getStyleFamilies(),
                                                                UNO_SET_THROW);
-    uno::Reference<container::XNameAccess> xPageStyles(xStyleFamiliesNames->getByName("PageStyles"),
-                                                       UNO_QUERY_THROW);
-    uno::Any aDefaultStyle = xPageStyles->getByName("Default");
+    uno::Reference<container::XNameAccess> xPageStyles(
+        xStyleFamiliesNames->getByName(u"PageStyles"_ustr), UNO_QUERY_THROW);
+    uno::Any aDefaultStyle = xPageStyles->getByName(u"Default"_ustr);
     uno::Reference<beans::XPropertySet> xProp(aDefaultStyle, UNO_QUERY_THROW);
 
     uno::Any aScaleX, aScaleY;
     sal_Int16 nScale;
     aScaleX <<= static_cast<sal_Int16>(1);
-    xProp->setPropertyValue("ScaleToPagesX", aScaleX);
-    aScaleX = xProp->getPropertyValue("ScaleToPagesX");
+    xProp->setPropertyValue(u"ScaleToPagesX"_ustr, aScaleX);
+    aScaleX = xProp->getPropertyValue(u"ScaleToPagesX"_ustr);
     aScaleX >>= nScale;
     CPPUNIT_ASSERT_EQUAL(sal_Int16(1), nScale);
 
-    aScaleY = xProp->getPropertyValue("ScaleToPagesY");
+    aScaleY = xProp->getPropertyValue(u"ScaleToPagesY"_ustr);
     aScaleY >>= nScale;
     CPPUNIT_ASSERT_EQUAL(sal_Int16(0), nScale);
 
@@ -345,11 +402,11 @@ void ScPDFExportTest::testExportFitToPage_Tdf103516()
 
 void ScPDFExportTest::testUnoCommands_Tdf120161()
 {
-    loadFromURL(u"tdf120161.ods");
+    loadFromFile(u"tdf120161.ods");
 
     // A1:G1
     {
-        exportToPDFWithUnoCommands("A1:G1");
+        exportToPDFWithUnoCommands(u"A1:G1"_ustr);
         bool bFound = false;
         CPPUNIT_ASSERT(hasTextInPdf("DejaVuSans", bFound));
         CPPUNIT_ASSERT_EQUAL(false, bFound);
@@ -357,7 +414,7 @@ void ScPDFExportTest::testUnoCommands_Tdf120161()
 
     // G1:H1
     {
-        exportToPDFWithUnoCommands("G1:H1");
+        exportToPDFWithUnoCommands(u"G1:H1"_ustr);
         bool bFound = false;
         CPPUNIT_ASSERT(hasTextInPdf("DejaVuSans", bFound));
         CPPUNIT_ASSERT_EQUAL(true, bFound);
@@ -365,7 +422,7 @@ void ScPDFExportTest::testUnoCommands_Tdf120161()
 
     // H1:I1
     {
-        exportToPDFWithUnoCommands("H1:I1");
+        exportToPDFWithUnoCommands(u"H1:I1"_ustr);
         bool bFound = false;
         CPPUNIT_ASSERT(hasTextInPdf("DejaVuSans", bFound));
         CPPUNIT_ASSERT_EQUAL(true, bFound);
@@ -374,7 +431,7 @@ void ScPDFExportTest::testUnoCommands_Tdf120161()
 
 void ScPDFExportTest::testTdf64703_hiddenPageBreak()
 {
-    loadFromURL(u"tdf64703_hiddenPageBreak.ods");
+    loadFromFile(u"tdf64703_hiddenPageBreak.ods");
 
     uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY);
 
@@ -388,6 +445,288 @@ void ScPDFExportTest::testTdf64703_hiddenPageBreak()
     }
 }
 
+void ScPDFExportTest::testTdf159068()
+{
+    loadFromFile(u"tdf159068.ods");
+    uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY);
+
+    // A1:C3
+    ScRange range1(0, 0, 0, 2, 2, 0);
+    exportToPDF(xModel, range1);
+
+    vcl::filter::PDFDocument aDocument;
+    SvFileStream aStream(maTempFile.GetURL(), StreamMode::READ);
+    CPPUNIT_ASSERT(aDocument.Read(aStream));
+
+    // The document has one page.
+    std::vector<vcl::filter::PDFObjectElement*> aPages = aDocument.GetPages();
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), aPages.size());
+
+    vcl::filter::PDFObjectElement* pContents = aPages[0]->LookupObject("Contents"_ostr);
+    CPPUNIT_ASSERT(pContents);
+    vcl::filter::PDFStreamElement* pStream = pContents->GetStream();
+    CPPUNIT_ASSERT(pStream);
+
+    SvMemoryStream& rObjectStream = pStream->GetMemory();
+    // Uncompress it.
+    SvMemoryStream aUncompressed;
+    ZCodec aZCodec;
+    aZCodec.BeginCompression();
+    rObjectStream.Seek(0);
+    aZCodec.Decompress(rObjectStream, aUncompressed);
+    CPPUNIT_ASSERT(aZCodec.EndCompression());
+
+    auto pStart = static_cast<const char*>(aUncompressed.GetData());
+    const char* const pEnd = pStart + aUncompressed.GetSize();
+
+    auto nArtifact(0);
+    auto nLine(0);
+    while (true)
+    {
+        ++nLine;
+        auto const pLine = ::std::find(pStart, pEnd, '\n');
+        if (pLine == pEnd)
+        {
+            break;
+        }
+        std::string_view const line(pStart, pLine - pStart);
+        pStart = pLine + 1;
+        if (!line.empty() && line[0] != '%')
+        {
+            ::std::cerr << nLine << ": " << line << "\n ";
+            if (o3tl::starts_with(line, "/Artifact BMC"))
+                nArtifact++;
+        }
+    }
+
+    // Without the fix in place, this test would have failed with
+    // - Expected: 5 (Artifact: Header, Footer, Rectangle, DetectiveArrow, ValidationCircle)
+    // - Actual  : 2 (Artifact: Header, Footer)
+    CPPUNIT_ASSERT_EQUAL(static_cast<decltype(nArtifact)>(5), nArtifact);
+}
+
+void ScPDFExportTest::testTdf159067()
+{
+    loadFromFile(u"tdf159067.ods");
+    uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY);
+
+    // A1:B3
+    ScRange range1(0, 0, 0, 1, 2, 0);
+    exportToPDF(xModel, range1);
+
+    vcl::filter::PDFDocument aDocument;
+    SvFileStream aStream(maTempFile.GetURL(), StreamMode::READ);
+    CPPUNIT_ASSERT(aDocument.Read(aStream));
+
+    // The document has one page.
+    std::vector<vcl::filter::PDFObjectElement*> aPages = aDocument.GetPages();
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), aPages.size());
+
+    vcl::filter::PDFObjectElement* pContents = aPages[0]->LookupObject("Contents"_ostr);
+    CPPUNIT_ASSERT(pContents);
+    vcl::filter::PDFStreamElement* pStream = pContents->GetStream();
+    CPPUNIT_ASSERT(pStream);
+
+    SvMemoryStream& rObjectStream = pStream->GetMemory();
+    // Uncompress it.
+    SvMemoryStream aUncompressed;
+    ZCodec aZCodec;
+    aZCodec.BeginCompression();
+    rObjectStream.Seek(0);
+    aZCodec.Decompress(rObjectStream, aUncompressed);
+    CPPUNIT_ASSERT(aZCodec.EndCompression());
+
+    auto pStart = static_cast<const char*>(aUncompressed.GetData());
+    const char* const pEnd = pStart + aUncompressed.GetSize();
+
+    auto nArtifact(0);
+    auto nLine(0);
+    while (true)
+    {
+        ++nLine;
+        auto const pLine = ::std::find(pStart, pEnd, '\n');
+        if (pLine == pEnd)
+        {
+            break;
+        }
+        std::string_view const line(pStart, pLine - pStart);
+        pStart = pLine + 1;
+        if (!line.empty() && line[0] != '%')
+        {
+            ::std::cerr << nLine << ": " << line << "\n ";
+            if (o3tl::starts_with(line, "/Artifact BMC"))
+                nArtifact++;
+        }
+    }
+
+    // Without the fix in place, this test would have failed with
+    // - Expected: 3 (Artifact: Header, Footer, TextBox)
+    // - Actual  : 2 (Artifact: Header, Footer)
+    CPPUNIT_ASSERT_EQUAL(static_cast<decltype(nArtifact)>(3), nArtifact);
+}
+
+void ScPDFExportTest::testTdf159066()
+{
+    loadFromFile(u"tdf159066.ods");
+    uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY);
+
+    // A1:E5
+    ScRange range1(0, 0, 0, 4, 4, 0);
+    exportToPDF(xModel, range1);
+
+    bool bFound = false;
+    CPPUNIT_ASSERT(hasTextInPdf("/Alt<", bFound));
+
+    // The OLE object contains alternative text description
+    CPPUNIT_ASSERT_EQUAL(true, bFound);
+}
+
+void ScPDFExportTest::testTdf159065()
+{
+    loadFromFile(u"tdf159065.ods");
+    uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY);
+
+    // A1:A3
+    ScRange range1(0, 0, 0, 0, 2, 0);
+    exportToPDF(xModel, range1);
+
+    vcl::filter::PDFDocument aDocument;
+    SvFileStream aStream(maTempFile.GetURL(), StreamMode::READ);
+    CPPUNIT_ASSERT(aDocument.Read(aStream));
+
+    // The document has one page.
+    std::vector<vcl::filter::PDFObjectElement*> aPages = aDocument.GetPages();
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), aPages.size());
+
+    vcl::filter::PDFObjectElement* pContents = aPages[0]->LookupObject("Contents"_ostr);
+    CPPUNIT_ASSERT(pContents);
+    vcl::filter::PDFStreamElement* pStream = pContents->GetStream();
+    CPPUNIT_ASSERT(pStream);
+
+    SvMemoryStream& rObjectStream = pStream->GetMemory();
+    // Uncompress it.
+    SvMemoryStream aUncompressed;
+    ZCodec aZCodec;
+    aZCodec.BeginCompression();
+    rObjectStream.Seek(0);
+    aZCodec.Decompress(rObjectStream, aUncompressed);
+    CPPUNIT_ASSERT(aZCodec.EndCompression());
+
+    auto pStart = static_cast<const char*>(aUncompressed.GetData());
+    const char* const pEnd = pStart + aUncompressed.GetSize();
+
+    auto nLink(0);
+    auto nLine(0);
+    while (true)
+    {
+        ++nLine;
+        auto const pLine = ::std::find(pStart, pEnd, '\n');
+        if (pLine == pEnd)
+        {
+            break;
+        }
+        std::string_view const line(pStart, pLine - pStart);
+        pStart = pLine + 1;
+        if (!line.empty() && line[0] != '%')
+        {
+            ::std::cerr << nLine << ": " << line << "\n ";
+            if (o3tl::starts_with(line, "/Link<</MCID") && o3tl::ends_with(line, ">>BDC"))
+                nLink++;
+        }
+    }
+
+    // The tagged PDF file have to contains two link annotation
+    CPPUNIT_ASSERT_EQUAL(static_cast<decltype(nLink)>(2), nLink);
+}
+
+void ScPDFExportTest::testTdf123870()
+{
+    loadFromFile(u"tdf123870.ods");
+    uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY);
+
+    // A1:G4
+    ScRange range1(0, 0, 0, 6, 4, 0);
+    exportToPDF(xModel, range1);
+
+    vcl::filter::PDFDocument aDocument;
+    SvFileStream aStream(maTempFile.GetURL(), StreamMode::READ);
+    CPPUNIT_ASSERT(aDocument.Read(aStream));
+
+    // The document has one page.
+    std::vector<vcl::filter::PDFObjectElement*> aPages = aDocument.GetPages();
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), aPages.size());
+
+    vcl::filter::PDFObjectElement* pContents = aPages[0]->LookupObject("Contents"_ostr);
+    CPPUNIT_ASSERT(pContents);
+    vcl::filter::PDFStreamElement* pStream = pContents->GetStream();
+    CPPUNIT_ASSERT(pStream);
+    SvMemoryStream& rObjectStream = pStream->GetMemory();
+    // Uncompress it.
+    SvMemoryStream aUncompressed;
+    ZCodec aZCodec;
+    aZCodec.BeginCompression();
+    rObjectStream.Seek(0);
+    aZCodec.Decompress(rObjectStream, aUncompressed);
+    CPPUNIT_ASSERT(aZCodec.EndCompression());
+
+    auto pStart = static_cast<const char*>(aUncompressed.GetData());
+    const char* const pEnd = pStart + aUncompressed.GetSize();
+
+    enum
+    {
+        Default,
+        Artifact,
+        Tagged
+    } state
+        = Default;
+
+    auto nLine(0);
+    auto nTagged(0);
+    auto nArtifacts(0);
+    while (true)
+    {
+        ++nLine;
+        auto const pLine = ::std::find(pStart, pEnd, '\n');
+        if (pLine == pEnd)
+        {
+            break;
+        }
+        std::string_view const line(pStart, pLine - pStart);
+        pStart = pLine + 1;
+        if (!line.empty() && line[0] != '%')
+        {
+            ::std::cerr << nLine << ": " << line << "\n ";
+            if (o3tl::ends_with(line, "/Artifact BMC"))
+            {
+                CPPUNIT_ASSERT_EQUAL_MESSAGE("unexpected nesting", Default, state);
+                state = Artifact;
+                ++nArtifacts;
+            }
+            else if ((o3tl::starts_with(line, "/P<</MCID") && o3tl::ends_with(line, ">>BDC"))
+                     || (o3tl::starts_with(line, "/Figure<</MCID")
+                         && o3tl::ends_with(line, ">>BDC")))
+            {
+                CPPUNIT_ASSERT_EQUAL_MESSAGE("unexpected nesting", Default, state);
+                state = Tagged;
+                ++nTagged;
+            }
+            else if (line == "EMC")
+            {
+                CPPUNIT_ASSERT_MESSAGE("unexpected end", state != Default);
+                state = Default;
+            }
+            else if (nLine > 1) // first line is expected "0.1 w"
+            {
+                CPPUNIT_ASSERT_MESSAGE("unexpected content outside MCS", state != Default);
+            }
+        }
+    }
+    // text in cell + 1 shape
+    CPPUNIT_ASSERT_EQUAL(static_cast<decltype(nTagged)>(9), nTagged);
+    // header, footer, background color, color scale, shadow, cell border
+    CPPUNIT_ASSERT(nArtifacts >= 6);
+}
+
 void ScPDFExportTest::testTdf143978()
 {
     std::shared_ptr<vcl::pdf::PDFium> pPDFium = vcl::pdf::PDFiumLibrary::get();
@@ -396,7 +735,7 @@ void ScPDFExportTest::testTdf143978()
         return;
     }
 
-    loadFromURL(u"tdf143978.ods");
+    loadFromFile(u"tdf143978.ods");
     uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY);
 
     // A1:A2
@@ -419,14 +758,14 @@ void ScPDFExportTest::testTdf143978()
     // - Actual  : Dies ist vie
     std::unique_ptr<vcl::pdf::PDFiumPageObject> pPageObject1 = pPdfPage->getObject(0);
     OUString sText1 = pPageObject1->getText(pTextPage);
-    CPPUNIT_ASSERT_EQUAL(OUString("Dies ist viel zu viel Text"), sText1);
+    CPPUNIT_ASSERT_EQUAL(u"Dies ist viel zu viel Text"_ustr, sText1);
 
     // and it would also have failed with
     // - Expected: 2021-11-17
     // - Actual  : ###
     std::unique_ptr<vcl::pdf::PDFiumPageObject> pPageObject2 = pPdfPage->getObject(1);
     OUString sText2 = pPageObject2->getText(pTextPage);
-    CPPUNIT_ASSERT_EQUAL(OUString("2021-11-17"), sText2);
+    CPPUNIT_ASSERT_EQUAL(u"2021-11-17"_ustr, sText2);
 }
 
 void ScPDFExportTest::testTdf120190()
@@ -437,7 +776,7 @@ void ScPDFExportTest::testTdf120190()
         return;
     }
 
-    mxComponent = loadFromDesktop("private:factory/scalc");
+    loadFromURL(u"private:factory/scalc"_ustr);
     uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY);
 
     uno::Reference<sheet::XSpreadsheetDocument> xDoc(mxComponent, uno::UNO_QUERY_THROW);
@@ -447,13 +786,13 @@ void ScPDFExportTest::testTdf120190()
     uno::Reference<container::XIndexAccess> xIA(xSheets, uno::UNO_QUERY_THROW);
     uno::Reference<sheet::XSpreadsheet> xSheet0(xIA->getByIndex(0), uno::UNO_QUERY_THROW);
 
-    xSheet0->getCellByPosition(0, 0)->setFormula("=5&CHAR(10)&6");
+    xSheet0->getCellByPosition(0, 0)->setFormula(u"=5&CHAR(10)&6"_ustr);
 
     uno::Sequence<beans::PropertyValue> aArgs
-        = comphelper::InitPropertySequence({ { "ToPoint", uno::Any(OUString("A1")) } });
-    dispatchCommand(mxComponent, ".uno:GoToCell", aArgs);
+        = comphelper::InitPropertySequence({ { "ToPoint", uno::Any(u"A1"_ustr) } });
+    dispatchCommand(mxComponent, u".uno:GoToCell"_ustr, aArgs);
 
-    dispatchCommand(mxComponent, ".uno:ConvertFormulaToValue", {});
+    dispatchCommand(mxComponent, u".uno:ConvertFormulaToValue"_ustr, {});
 
     // A1
     ScRange range1(0, 0, 0, 0, 0, 0);
@@ -473,15 +812,15 @@ void ScPDFExportTest::testTdf120190()
 
     std::unique_ptr<vcl::pdf::PDFiumPageObject> pPageObject1 = pPdfPage->getObject(0);
     OUString sText1 = pPageObject1->getText(pTextPage);
-    CPPUNIT_ASSERT_EQUAL(OUString("Sheet1"), sText1);
+    CPPUNIT_ASSERT_EQUAL(u"Sheet1"_ustr, sText1);
 
     std::unique_ptr<vcl::pdf::PDFiumPageObject> pPageObject2 = pPdfPage->getObject(1);
     OUString sText2 = pPageObject2->getText(pTextPage);
-    CPPUNIT_ASSERT_EQUAL(OUString("Page "), sText2);
+    CPPUNIT_ASSERT_EQUAL(u"Page "_ustr, sText2);
 
     std::unique_ptr<vcl::pdf::PDFiumPageObject> pPageObject3 = pPdfPage->getObject(2);
     OUString sText3 = pPageObject3->getText(pTextPage);
-    CPPUNIT_ASSERT_EQUAL(OUString("1"), sText3);
+    CPPUNIT_ASSERT_EQUAL(u"1"_ustr, sText3);
 
     std::unique_ptr<vcl::pdf::PDFiumPageObject> pPageObject4 = pPdfPage->getObject(3);
     OUString sText4 = pPageObject4->getText(pTextPage);
@@ -489,11 +828,11 @@ void ScPDFExportTest::testTdf120190()
     // Without the fix in place, this test would have failed with
     // - Expected: 5
     // - Actual  : 56
-    CPPUNIT_ASSERT_EQUAL(OUString("5"), sText4);
+    CPPUNIT_ASSERT_EQUAL(u"5"_ustr, sText4);
 
     std::unique_ptr<vcl::pdf::PDFiumPageObject> pPageObject5 = pPdfPage->getObject(4);
     OUString sText5 = pPageObject5->getText(pTextPage);
-    CPPUNIT_ASSERT_EQUAL(OUString("6"), sText5);
+    CPPUNIT_ASSERT_EQUAL(u"6"_ustr, sText5);
 }
 
 void ScPDFExportTest::testTdf84012()
@@ -504,7 +843,7 @@ void ScPDFExportTest::testTdf84012()
         return;
     }
 
-    loadFromURL(u"tdf84012.ods");
+    loadFromFile(u"tdf84012.ods");
     uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY);
 
     // A1
@@ -528,7 +867,7 @@ void ScPDFExportTest::testTdf84012()
     // Without the fix in place, this test would have failed with
     // - Expected: Blah blah (blah, blah)
     // - Actual  : Blah blah
-    CPPUNIT_ASSERT_EQUAL(OUString("Blah blah (blah, blah)"), aActualText);
+    CPPUNIT_ASSERT_EQUAL(u"Blah blah (blah, blah)"_ustr, aActualText);
 }
 
 void ScPDFExportTest::testTdf78897()
@@ -539,7 +878,7 @@ void ScPDFExportTest::testTdf78897()
         return;
     }
 
-    loadFromURL(u"tdf78897.xls");
+    loadFromFile(u"tdf78897.xls");
     uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY);
 
     // C3:D3
@@ -563,13 +902,13 @@ void ScPDFExportTest::testTdf78897()
     // Without the fix in place, this test would have failed with
     // - Expected:  11.00 11.00
     // - Actual  :  11.00 ###
-    CPPUNIT_ASSERT_EQUAL(OUString(" 11.00 11.00 "), aActualText);
+    CPPUNIT_ASSERT_EQUAL(u" 11.00 11.00 "_ustr, aActualText);
 }
 
 // just needs to not crash on export to pdf
 void ScPDFExportTest::testForcepoint97()
 {
-    loadFromURL(u"forcepoint97.xlsx");
+    loadFromFile(u"forcepoint97.xlsx");
     uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY);
 
     // A1:H81

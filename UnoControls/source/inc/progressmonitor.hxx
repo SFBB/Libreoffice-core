@@ -27,9 +27,9 @@
 #include <vector>
 
 #include <basecontainercontrol.hxx>
+#include <toolkit/controls/unocontrols.hxx>
 
 namespace com::sun::star::awt { class XFixedText; }
-namespace com::sun::star::awt { class XControlModel; }
 
 namespace unocontrols {
 
@@ -50,62 +50,16 @@ struct IMPL_TextlistItem
     OUString sText;          /// Right site of textline in dialog
 };
 
-class ProgressMonitor final : public css::awt::XLayoutConstrains
-                        , public css::awt::XButton
-                        , public css::awt::XProgressMonitor
-                        , public BaseContainerControl
+using ProgressMonitor_BASE = cppu::ImplInheritanceHelper<BaseContainerControl,
+                                                         css::awt::XLayoutConstrains,
+                                                         css::awt::XButton,
+                                                         css::awt::XProgressMonitor>;
+class ProgressMonitor final : public ProgressMonitor_BASE
 {
 public:
     ProgressMonitor( const css::uno::Reference< css::uno::XComponentContext >& rxContext );
 
     virtual ~ProgressMonitor() override;
-
-    //  XInterface
-
-    /**
-        @short      give answer, if interface is supported
-        @descr      The interfaces are searched by type.
-
-        @seealso    XInterface
-
-        @param      "rType" is the type of searched interface.
-
-        @return     Any     information about found interface
-
-        @onerror    A RuntimeException is thrown.
-    */
-
-    virtual css::uno::Any SAL_CALL queryInterface( const css::uno::Type& aType ) override;
-
-    /**
-        @short      increment refcount
-        @seealso    XInterface
-        @seealso    release()
-        @onerror    A RuntimeException is thrown.
-    */
-
-    virtual void SAL_CALL acquire() noexcept override;
-
-    /**
-        @short      decrement refcount
-        @seealso    XInterface
-        @seealso    acquire()
-        @onerror    A RuntimeException is thrown.
-    */
-
-    virtual void SAL_CALL release() noexcept override;
-
-    //  XTypeProvider
-
-    /**
-        @short      get information about supported interfaces
-        @seealso    XTypeProvider
-        @return     Sequence of types of all supported interfaces
-
-        @onerror    A RuntimeException is thrown.
-    */
-
-    virtual css::uno::Sequence< css::uno::Type > SAL_CALL getTypes() override;
 
     //  XProgressMonitor
 
@@ -225,15 +179,15 @@ private:
 
 private:
     ::std::vector < IMPL_TextlistItem > maTextlist_Top;         // Elements before progress
-    css::uno::Reference< css::awt::XFixedText >   m_xTopic_Top;   // (used, if parameter "beforeProgress"=true in "addText, updateText, removeText")
-    css::uno::Reference< css::awt::XFixedText >   m_xText_Top;
+    rtl::Reference< UnoFixedTextControl >   m_xTopic_Top;   // (used, if parameter "beforeProgress"=true in "addText, updateText, removeText")
+    rtl::Reference< UnoFixedTextControl >   m_xText_Top;
 
     ::std::vector < IMPL_TextlistItem > maTextlist_Bottom;      // Elements below of progress
-    css::uno::Reference< css::awt::XFixedText >   m_xTopic_Bottom;   // (used, if parameter "beforeProgress"=false in "addText, updateText, removeText")
-    css::uno::Reference< css::awt::XFixedText >   m_xText_Bottom;
+    rtl::Reference< UnoFixedTextControl >   m_xTopic_Bottom;   // (used, if parameter "beforeProgress"=false in "addText, updateText, removeText")
+    rtl::Reference< UnoFixedTextControl >   m_xText_Bottom;
 
     rtl::Reference<ProgressBar>                   m_xProgressBar;
-    css::uno::Reference< css::awt::XButton >      m_xButton;
+    rtl::Reference< UnoButtonControl >            m_xButton;
     css::awt::Rectangle                           m_a3DLine;
 };
 

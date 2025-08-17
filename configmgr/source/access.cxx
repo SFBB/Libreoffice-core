@@ -20,6 +20,7 @@
 #include <sal/config.h>
 
 #include <cassert>
+#include <cstddef>
 #include <cstdlib>
 #include <utility>
 #include <vector>
@@ -84,6 +85,7 @@
 #include <rtl/ustring.hxx>
 #include <sal/log.hxx>
 #include <sal/types.h>
+#include <o3tl/string_view.hxx>
 
 #include "access.hxx"
 #include "broadcaster.hxx"
@@ -109,9 +111,9 @@ namespace {
 // Conservatively forbid what is either not an XML Char (including lone
 // surrogates, even though they should not appear in well-formed UNO OUString
 // instances anyway), or is a slash (as it causes problems in path syntax):
-bool isValidName(OUString const & name, bool setMember) {
-    for (sal_Int32 i = 0; i != name.getLength();) {
-        sal_uInt32 c = name.iterateCodePoints(&i);
+bool isValidName(std::u16string_view name, bool setMember) {
+    for (std::size_t i = 0; i != name.size();) {
+        sal_uInt32 c = o3tl::iterateCodePoints(name, &i);
         if ((c < 0x20 && !(c == 0x09 || c == 0x0A || c == 0x0D))
             || rtl::isSurrogate(c) || c == 0xFFFE || c == 0xFFFF
             || (!setMember && c == '/'))
@@ -119,7 +121,7 @@ bool isValidName(OUString const & name, bool setMember) {
             return false;
         }
     }
-    return !name.isEmpty();
+    return !name.empty();
 }
 
 }
@@ -129,7 +131,14 @@ oslInterlockedCount Access::acquireCounting() {
 }
 
 void Access::releaseNondeleting() {
+#if defined __GNUC__ && !defined __clang__ && __GNUC__ == 15
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstringop-overflow"
+#endif
     osl_atomic_decrement(&m_refCount);
+#if defined __GNUC__ && !defined __clang__ && __GNUC__ == 15
+#pragma GCC diagnostic pop
+#endif
 }
 
 bool Access::isValue() {
@@ -157,7 +166,7 @@ void Access::markChildAsModified(rtl::Reference< ChildAccess > const & child) {
         parent->modifiedChildren_.emplace(
                 p->getNameInternal(),
                 ModifiedChild(static_cast< ChildAccess * >(p.get()), false));
-        p = parent;
+        p = std::move(parent);
     }
 }
 
@@ -237,7 +246,7 @@ OUString Access::getImplementationName()
     assert(thisIs(IS_ANY));
     osl::MutexGuard g(*lock_);
     checkLocalizedPropertyAccess();
-    return "org.openoffice-configmgr::Access";
+    return u"org.openoffice-configmgr::Access"_ustr;
 }
 
 sal_Bool Access::supportsService(OUString const & ServiceName)
@@ -283,7 +292,7 @@ void Access::dispose() {
         checkLocalizedPropertyAccess();
         if (getParentAccess().is()) {
             throw css::uno::RuntimeException(
-                "configmgr dispose inappropriate Access",
+                u"configmgr dispose inappropriate Access"_ustr,
                 getXWeak());
         }
         if (disposed_) {
@@ -305,7 +314,7 @@ void Access::addEventListener(
         checkLocalizedPropertyAccess();
         if (!xListener.is()) {
             throw css::uno::RuntimeException(
-                "null listener", getXWeak());
+                u"null listener"_ustr, getXWeak());
         }
         if (!disposed_) {
             disposeListeners_.insert(xListener);
@@ -324,7 +333,7 @@ void Access::removeEventListener(
     assert(thisIs(IS_ANY));
     osl::MutexGuard g(*lock_);
     checkLocalizedPropertyAccess();
-    DisposeListeners::iterator i(disposeListeners_.find(aListener));
+    auto i(disposeListeners_.find(aListener));
     if (i != disposeListeners_.end()) {
         disposeListeners_.erase(i);
     }
@@ -349,7 +358,7 @@ css::uno::Type Access::getElementType() {
     default:
         assert(false);
         throw css::uno::RuntimeException(
-            "this cannot happen", getXWeak());
+            u"this cannot happen"_ustr, getXWeak());
     }
 }
 
@@ -533,8 +542,8 @@ void Access::replaceByHierarchicalName(
             break;
         case Node::KIND_SET:
             throw css::lang::IllegalArgumentException(
-                ("configmgr::Access::replaceByHierarchicalName does not"
-                 " currently support set members"),
+                (u"configmgr::Access::replaceByHierarchicalName does not"
+                 " currently support set members"_ustr),
                 getXWeak(), 0);
         case Node::KIND_ROOT:
             throw css::lang::IllegalArgumentException(
@@ -559,7 +568,7 @@ void Access::addContainerListener(
         checkLocalizedPropertyAccess();
         if (!xListener.is()) {
             throw css::uno::RuntimeException(
-                "null listener", getXWeak());
+                u"null listener"_ustr, getXWeak());
         }
         if (!disposed_) {
             containerListeners_.insert(xListener);
@@ -578,7 +587,7 @@ void Access::removeContainerListener(
     assert(thisIs(IS_ANY));
     osl::MutexGuard g(*lock_);
     checkLocalizedPropertyAccess();
-    ContainerListeners::iterator i(containerListeners_.find(xListener));
+    auto i(containerListeners_.find(xListener));
     if (i != containerListeners_.end()) {
         containerListeners_.erase(i);
     }
@@ -652,7 +661,7 @@ OUString Access::composeHierarchicalName(
     checkLocalizedPropertyAccess();
     if (aRelativeName.isEmpty() || aRelativeName[0] == '/') {
         throw css::lang::IllegalArgumentException(
-            "configmgr composeHierarchicalName inappropriate relative name",
+            u"configmgr composeHierarchicalName inappropriate relative name"_ustr,
             getXWeak(), -1);
     }
     OUStringBuffer path(getRelativePathRepresentation());
@@ -727,7 +736,7 @@ void Access::setName(OUString const & aName)
             // renaming a property could only work for an extension property,
             // but a localized property is never an extension property
             throw css::uno::RuntimeException(
-                "configmgr setName inappropriate node",
+                u"configmgr setName inappropriate node"_ustr,
                 getXWeak());
         default:
             assert(false); // this cannot happen
@@ -761,7 +770,7 @@ void Access::setPropertyValue(
         osl::MutexGuard g(*lock_);
         if (!getRootAccess()->isUpdate()) {
             throw css::uno::RuntimeException(
-                "configmgr setPropertyValue on non-update access",
+                u"configmgr setPropertyValue on non-update access"_ustr,
                 getXWeak());
         }
         Modifications localMods;
@@ -796,7 +805,7 @@ void Access::addPropertyChangeListener(
         osl::MutexGuard g(*lock_);
         if (!xListener.is()) {
             throw css::uno::RuntimeException(
-                "null listener", getXWeak());
+                u"null listener"_ustr, getXWeak());
         }
         checkKnownProperty(aPropertyName);
         if (!disposed_) {
@@ -821,7 +830,7 @@ void Access::removePropertyChangeListener(
     PropertyChangeListeners::iterator i(
         propertyChangeListeners_.find(aPropertyName));
     if (i != propertyChangeListeners_.end()) {
-        PropertyChangeListenersElement::iterator j(i->second.find(aListener));
+        auto j(i->second.find(aListener));
         if (j != i->second.end()) {
             i->second.erase(j);
             if (i->second.empty()) {
@@ -841,7 +850,7 @@ void Access::addVetoableChangeListener(
         osl::MutexGuard g(*lock_);
         if (!aListener.is()) {
             throw css::uno::RuntimeException(
-                "null listener", getXWeak());
+                u"null listener"_ustr, getXWeak());
         }
         checkKnownProperty(PropertyName);
         if (!disposed_) {
@@ -867,7 +876,7 @@ void Access::removeVetoableChangeListener(
     VetoableChangeListeners::iterator i(
         vetoableChangeListeners_.find(PropertyName));
     if (i != vetoableChangeListeners_.end()) {
-        VetoableChangeListenersElement::iterator j(i->second.find(aListener));
+        auto j(i->second.find(aListener));
         if (j != i->second.end()) {
             i->second.erase(j);
             if (i->second.empty()) {
@@ -887,20 +896,20 @@ void Access::setPropertyValues(
         osl::MutexGuard g(*lock_);
         if (!getRootAccess()->isUpdate()) {
             throw css::uno::RuntimeException(
-                "configmgr setPropertyValues on non-update access",
+                u"configmgr setPropertyValues on non-update access"_ustr,
                 getXWeak());
         }
         if (aPropertyNames.getLength() != aValues.getLength()) {
             throw css::lang::IllegalArgumentException(
-                ("configmgr setPropertyValues: aPropertyNames/aValues of"
-                 " different length"),
+                (u"configmgr setPropertyValues: aPropertyNames/aValues of"
+                 " different length"_ustr),
                 getXWeak(), -1);
         }
         Modifications localMods;
         for (sal_Int32 i = 0; i < aPropertyNames.getLength(); ++i) {
             if (!setChildProperty(aPropertyNames[i], aValues[i], &localMods)) {
                 throw css::lang::IllegalArgumentException(
-                    "configmgr setPropertyValues inappropriate property name",
+                    u"configmgr setPropertyValues inappropriate property name"_ustr,
                     getXWeak(), -1);
             }
         }
@@ -920,7 +929,7 @@ css::uno::Sequence< css::uno::Any > Access::getPropertyValues(
     {
         if (!getByNameFast(aPropertyNames[i], aValsRange[i]))
             throw css::uno::RuntimeException(
-                "configmgr getPropertyValues inappropriate property name",
+                u"configmgr getPropertyValues inappropriate property name"_ustr,
                 getXWeak());
     }
 
@@ -937,7 +946,7 @@ void Access::addPropertiesChangeListener(
         osl::MutexGuard g(*lock_);
         if (!xListener.is()) {
             throw css::uno::RuntimeException(
-                "null listener", getXWeak());
+                u"null listener"_ustr, getXWeak());
         }
         if (!disposed_) {
             propertiesChangeListeners_.insert(xListener);
@@ -956,8 +965,7 @@ void Access::removePropertiesChangeListener(
 {
     assert(thisIs(IS_GROUP));
     osl::MutexGuard g(*lock_);
-    PropertiesChangeListeners::iterator i(
-        propertiesChangeListeners_.find(xListener));
+    auto i(propertiesChangeListeners_.find(xListener));
     if (i != propertiesChangeListeners_.end()) {
         propertiesChangeListeners_.erase(i);
     }
@@ -997,7 +1005,7 @@ void Access::setHierarchicalPropertyValue(
         osl::MutexGuard g(*lock_);
         if (!getRootAccess()->isUpdate()) {
             throw css::uno::RuntimeException(
-                "configmgr setHierarchicalPropertyName on non-update access",
+                u"configmgr setHierarchicalPropertyName on non-update access"_ustr,
                 getXWeak());
         }
         rtl::Reference< ChildAccess > child(
@@ -1039,13 +1047,13 @@ void Access::setHierarchicalPropertyValues(
         osl::MutexGuard g(*lock_);
         if (!getRootAccess()->isUpdate()) {
             throw css::uno::RuntimeException(
-                "configmgr setPropertyValues on non-update access",
+                u"configmgr setPropertyValues on non-update access"_ustr,
                 getXWeak());
         }
         if (aHierarchicalPropertyNames.getLength() != Values.getLength()) {
             throw css::lang::IllegalArgumentException(
-                ("configmgr setHierarchicalPropertyValues:"
-                 " aHierarchicalPropertyNames/Values of different length"),
+                (u"configmgr setHierarchicalPropertyValues:"
+                 " aHierarchicalPropertyNames/Values of different length"_ustr),
                 getXWeak(), -1);
         }
         Modifications localMods;
@@ -1054,8 +1062,8 @@ void Access::setHierarchicalPropertyValues(
                 getSubChild(aHierarchicalPropertyNames[i]));
             if (!child.is()) {
                 throw css::lang::IllegalArgumentException(
-                    ("configmgr setHierarchicalPropertyValues inappropriate"
-                     " property name"),
+                    (u"configmgr setHierarchicalPropertyValues inappropriate"
+                     " property name"_ustr),
                     getXWeak(), -1);
             }
             child->checkFinalized();
@@ -1079,8 +1087,8 @@ css::uno::Sequence< css::uno::Any > Access::getHierarchicalPropertyValues(
             getSubChild(aHierarchicalPropertyNames[i]));
         if (!child.is()) {
             throw css::lang::IllegalArgumentException(
-                ("configmgr getHierarchicalPropertyValues inappropriate"
-                 " hierarchical property name"),
+                (u"configmgr getHierarchicalPropertyValues inappropriate"
+                 " hierarchical property name"_ustr),
                 getXWeak(), -1);
         }
         aValsRange[i] = child->asValue();
@@ -1267,8 +1275,8 @@ css::uno::Reference< css::uno::XInterface > Access::createInstanceWithArguments(
     assert(thisIs(IS_SET|IS_UPDATE));
     if (aArguments.hasElements()) {
         throw css::uno::Exception(
-            ("configuration SimpleSetUpdate createInstanceWithArguments"
-             " must not specify any arguments"),
+            (u"configuration SimpleSetUpdate createInstanceWithArguments"
+             " must not specify any arguments"_ustr),
             getXWeak());
     }
     return createInstance();
@@ -1283,13 +1291,17 @@ Access::~Access() {}
 
 void Access::initDisposeBroadcaster(Broadcaster * broadcaster) {
     assert(broadcaster != nullptr);
-    for (auto const& disposeListener : disposeListeners_)
+    // make copies when we fire listeners, since the vectors can
+    // be modified by the callees.
+    auto disposeCopy = disposeListeners_;
+    for (auto const& disposeListener : disposeCopy)
     {
         broadcaster->addDisposeNotification(
             disposeListener,
             css::lang::EventObject(getXWeak()));
     }
-    for (auto const& containerListener : containerListeners_)
+    auto containerCopy = containerListeners_;
+    for (auto const& containerListener : containerCopy)
     {
         broadcaster->addDisposeNotification(
             containerListener,
@@ -1297,7 +1309,8 @@ void Access::initDisposeBroadcaster(Broadcaster * broadcaster) {
     }
     for (auto const& propertyChangeListener : propertyChangeListeners_)
     {
-        for (auto const& propertyChangeListenerElement : propertyChangeListener.second)
+        auto propChangeCopy = propertyChangeListener.second;
+        for (auto const& propertyChangeListenerElement : propChangeCopy)
         {
             broadcaster->addDisposeNotification(
                 propertyChangeListenerElement,
@@ -1307,7 +1320,8 @@ void Access::initDisposeBroadcaster(Broadcaster * broadcaster) {
     }
     for (auto const& vetoableChangeListener : vetoableChangeListeners_)
     {
-        for (auto const& vetoableChangeListenerElement : vetoableChangeListener.second)
+        auto vetoCopy = vetoableChangeListener.second;
+        for (auto const& vetoableChangeListenerElement : vetoCopy)
         {
             broadcaster->addDisposeNotification(
                 vetoableChangeListenerElement,
@@ -1315,7 +1329,8 @@ void Access::initDisposeBroadcaster(Broadcaster * broadcaster) {
                     getXWeak()));
         }
     }
-    for (auto const& propertiesChangeListener : propertiesChangeListeners_)
+    auto propCopy = propertiesChangeListeners_;
+    for (auto const& propertiesChangeListener : propCopy)
     {
         broadcaster->addDisposeNotification(
             propertiesChangeListener,
@@ -1413,7 +1428,7 @@ void Access::checkLocalizedPropertyAccess() {
         !Components::allLocales(getRootAccess()->getLocale()))
     {
         throw css::uno::RuntimeException(
-            "configmgr Access to specialized LocalizedPropertyNode",
+            u"configmgr Access to specialized LocalizedPropertyNode"_ustr,
             getXWeak());
     }
 }
@@ -1501,15 +1516,15 @@ rtl::Reference< ChildAccess > Access::getChild(OUString const & name) {
         }
         // Defaults are the "en-US" locale, the "en" locale, the empty string locale, the first child (if
         // any, and if the property is non-nillable), or a null ChildAccess, in that order:
-        rtl::Reference< ChildAccess > child(getChild("en-US"));
+        rtl::Reference< ChildAccess > child(getChild(u"en-US"_ustr));
         if (child.is()) {
             return child;
         }
-        child = getChild("en");
+        child = getChild(u"en"_ustr);
         if (child.is()) {
             return child;
         }
-        child = getChild("");
+        child = getChild(u""_ustr);
         if (child.is()) {
             return child;
         }
@@ -1600,7 +1615,7 @@ void Access::checkValue(css::uno::Any const & value, Type type, bool nillable) {
     }
     if (!ok) {
         throw css::lang::IllegalArgumentException(
-            "configmgr inappropriate property value",
+            u"configmgr inappropriate property value"_ustr,
             getXWeak(), -1);
     }
 }
@@ -1736,7 +1751,7 @@ void Access::initBroadcasterAndChanges(
                                         css::uno::Any()));
                             }
                         }
-                        j = propertyChangeListeners_.find("");
+                        j = propertyChangeListeners_.find(u""_ustr);
                         if (j != propertyChangeListeners_.end()) {
                             for (auto const& propertyChangeListenerElement : j->second)
                             {
@@ -1814,7 +1829,7 @@ void Access::initBroadcasterAndChanges(
                                     css::uno::Any()));
                         }
                     }
-                    j = propertyChangeListeners_.find("");
+                    j = propertyChangeListeners_.find(u""_ustr);
                     if (j != propertyChangeListeners_.end()) {
                         for (auto const& propertyChangeListenerElement : j->second)
                         {
@@ -1933,7 +1948,7 @@ void Access::initBroadcasterAndChanges(
                                     css::uno::Any()));
                         }
                     }
-                    j = propertyChangeListeners_.find("");
+                    j = propertyChangeListeners_.find(u""_ustr);
                     if (j != propertyChangeListeners_.end()) {
                         for (auto const& propertyChangeListenerElement : j->second)
                         {
@@ -2216,7 +2231,7 @@ css::beans::Property Access::asProperty() {
 void Access::checkFinalized() {
     if (isFinalized()) {
         throw css::lang::IllegalArgumentException(
-            "configmgr modification of finalized item",
+            u"configmgr modification of finalized item"_ustr,
             getXWeak(), -1);
     }
 }
@@ -2259,7 +2274,7 @@ rtl::Reference< ChildAccess > Access::getFreeSetMember(
          freeAcc->getRootAccess() != getRootAccess()))
     {
         throw css::lang::IllegalArgumentException(
-            "configmgr inappropriate set element",
+            u"configmgr inappropriate set element"_ustr,
             getXWeak(), 1);
     }
     assert(dynamic_cast< SetNode * >(getNode().get()) != nullptr);
@@ -2267,7 +2282,7 @@ rtl::Reference< ChildAccess > Access::getFreeSetMember(
             freeAcc->getNode()->getTemplateName()))
     {
         throw css::lang::IllegalArgumentException(
-            "configmgr inappropriate set element",
+            u"configmgr inappropriate set element"_ustr,
             getXWeak(), 1);
     }
     return freeAcc;
@@ -2279,7 +2294,7 @@ rtl::Reference< Access > Access::getNotificationRoot() {
         if (!parent.is()) {
             return p;
         }
-        p = parent;
+        p = std::move(parent);
     }
 }
 

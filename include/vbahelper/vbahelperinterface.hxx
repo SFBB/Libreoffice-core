@@ -82,7 +82,7 @@ public:
             // The application could certainly be passed around in the context - seems
             // to make sense
             css::uno::Reference< css::container::XNameAccess > xNameAccess( mxContext, css::uno::UNO_QUERY_THROW );
-            return xNameAccess->getByName( "Application" );
+            return xNameAccess->getByName( u"Application"_ustr );
     }
 
     // XServiceInfo Methods
@@ -129,7 +129,7 @@ public:
 #define VBAHELPER_IMPL_XHELPERINTERFACE( classname, servicename ) \
 OUString classname::getServiceImplName() \
 { \
-    return #classname; \
+    return u"" #classname ""_ustr; \
 } \
 css::uno::Sequence< OUString > classname::getServiceNames() \
 { \

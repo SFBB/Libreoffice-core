@@ -79,10 +79,8 @@ public class SampleSpellChecker extends ComponentBase implements
             {
                 "IsIgnoreControlCharacters",
                 "IsUseDictionaryList",
-                "IsGermanPreReform",
                 "IsSpellUpperCase",
                 "IsSpellWithDigits",
-                "IsSpellCapitalization"
             };
         aPropChgHelper  = new PropChgHelper_Spell( this, aProps );
         aEvtListeners   = new ArrayList<Object>();
@@ -162,12 +160,9 @@ public class SampleSpellChecker extends ComponentBase implements
 
         //!! This code needs to be replaced by code calling the actual
         //!! implementation of your spellchecker
-        boolean bIsGermanPreReform      = GetValueToUse( "IsGermanPreReform", false, aProperties );
         if (IsEqual( aLocale, new Locale( "de", "DE", "" ) ))
         {
-            if (bIsGermanPreReform && aWord.equals( "Schifffahrt" ))
-                nRes = SpellFailure.SPELLING_ERROR;
-            else if (!bIsGermanPreReform && aWord.equals( "Schiffahrt" ))
+            if (aWord.equals( "Schiffahrt" ))
                 nRes = SpellFailure.SPELLING_ERROR;
         }
         else if (IsEqual( aLocale, new Locale( "en", "US", "" ) ))
@@ -205,21 +200,14 @@ public class SampleSpellChecker extends ComponentBase implements
         //! The values for 'IsIgnoreControlCharacters' and 'IsUseDictionaryList'
         //! are handled by the dispatcher! Thus there is no need to access
         //! them here.
-        boolean bIsGermanPreReform      = GetValueToUse( "IsGermanPreReform", false, aProperties );
         boolean bIsSpellWithDigits      = GetValueToUse( "IsSpellWithDigits", false, aProperties );
         boolean bIsSpellUpperCase       = GetValueToUse( "IsSpellUpperCase", false, aProperties );
-        boolean bIsSpellCapitalization  = GetValueToUse( "IsSpellCapitalization", true, aProperties );
 
         //!! This code needs to be replaced by code calling the actual
         //!! implementation of your spellchecker
         if (IsEqual( aLocale, new Locale( "de", "DE", "" ) ))
         {
-            if (bIsGermanPreReform && aWord.equals( "Schifffahrt" ))
-            {
-                nType = SpellFailure.SPELLING_ERROR;
-                aProposals = new String[]{ "Schiffahrt" };
-            }
-            else if (!bIsGermanPreReform && aWord.equals( "Schiffahrt" ))
+            if (aWord.equals( "Schiffahrt" ))
             {
                 nType = SpellFailure.SPELLING_ERROR;
                 aProposals = new String[]{ "Schifffahrt" };
@@ -300,10 +288,8 @@ public class SampleSpellChecker extends ComponentBase implements
         //! The values for 'IsIgnoreControlCharacters' and 'IsUseDictionaryList'
         //! are handled by the dispatcher! Thus there is no need to access
         //! them here.
-        boolean bIsGermanPreReform      = GetValueToUse( "IsGermanPreReform", false, aProperties );
         boolean bIsSpellWithDigits      = GetValueToUse( "IsSpellWithDigits", false, aProperties );
         boolean bIsSpellUpperCase       = GetValueToUse( "IsSpellUpperCase", false, aProperties );
-        boolean bIsSpellCapitalization  = GetValueToUse( "IsSpellCapitalization", true, aProperties );
 
         short nFailure = GetSpellFailure( aWord, aLocale, aProperties );
         if (nFailure != -1)
@@ -311,8 +297,6 @@ public class SampleSpellChecker extends ComponentBase implements
             // postprocess result for errors that should be ignored
             if (   (!bIsSpellUpperCase  && IsUpper( aWord, aLocale ))
                 || (!bIsSpellWithDigits && HasDigits( aWord ))
-                || (!bIsSpellCapitalization
-                    &&  nFailure == SpellFailure.CAPTION_ERROR)
             )
                 nFailure = -1;
         }

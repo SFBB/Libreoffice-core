@@ -73,7 +73,6 @@ using namespace com::sun::star::ucb;
 using namespace com::sun::star::task;
 using namespace com::sun::star::sdbc;
 using namespace com::sun::star::sdb;
-using namespace com::sun::star::lang;
 using namespace com::sun::star::beans;
 using namespace com::sun::star::util;
 using namespace com::sun::star::container;
@@ -89,7 +88,7 @@ namespace
         OSL_ENSURE( pPool, "implCheckItemType: invalid item pool!" );
         if ( pPool )
         {
-            const SfxPoolItem& rDefItem = pPool->GetDefaultItem( _nId );
+            const SfxPoolItem& rDefItem = pPool->GetUserOrPoolDefaultItem( _nId );
             bCorrectType = isItemType(&rDefItem);
         }
         return bCorrectType;
@@ -163,30 +162,30 @@ ODbDataSourceAdministrationHelper::ODbDataSourceAdministrationHelper(const Refer
     m_aIndirectPropTranslator.emplace( DSID_AS_BEFORE_CORRNAME, INFO_AS_BEFORE_CORRELATION_NAME );
     m_aIndirectPropTranslator.emplace( DSID_CHECK_REQUIRED_FIELDS, INFO_FORMS_CHECK_REQUIRED_FIELDS );
     m_aIndirectPropTranslator.emplace( DSID_ESCAPE_DATETIME, INFO_ESCAPE_DATETIME );
-    m_aIndirectPropTranslator.emplace( DSID_PRIMARY_KEY_SUPPORT, OUString("PrimaryKeySupport") );
+    m_aIndirectPropTranslator.emplace( DSID_PRIMARY_KEY_SUPPORT, u"PrimaryKeySupport"_ustr );
     m_aIndirectPropTranslator.emplace( DSID_PARAMETERNAMESUBST, INFO_PARAMETERNAMESUBST );
     m_aIndirectPropTranslator.emplace( DSID_IGNOREDRIVER_PRIV, INFO_IGNOREDRIVER_PRIV );
     m_aIndirectPropTranslator.emplace( DSID_BOOLEANCOMPARISON, PROPERTY_BOOLEANCOMPARISONMODE );
     m_aIndirectPropTranslator.emplace( DSID_ENABLEOUTERJOIN, PROPERTY_ENABLEOUTERJOIN );
     m_aIndirectPropTranslator.emplace( DSID_CATALOG, PROPERTY_USECATALOGINSELECT );
     m_aIndirectPropTranslator.emplace( DSID_SCHEMA, PROPERTY_USESCHEMAINSELECT );
-    m_aIndirectPropTranslator.emplace( DSID_INDEXAPPENDIX, OUString("AddIndexAppendix") );
-    m_aIndirectPropTranslator.emplace( DSID_DOSLINEENDS, OUString("PreferDosLikeLineEnds") );
-    m_aIndirectPropTranslator.emplace( DSID_CONN_SOCKET, OUString("LocalSocket") );
-    m_aIndirectPropTranslator.emplace( DSID_NAMED_PIPE, OUString("NamedPipe") );
-    m_aIndirectPropTranslator.emplace( DSID_RESPECTRESULTSETTYPE, OUString("RespectDriverResultSetType") );
-    m_aIndirectPropTranslator.emplace( DSID_MAX_ROW_SCAN, OUString("MaxRowScan") );
+    m_aIndirectPropTranslator.emplace( DSID_INDEXAPPENDIX, u"AddIndexAppendix"_ustr );
+    m_aIndirectPropTranslator.emplace( DSID_DOSLINEENDS, u"PreferDosLikeLineEnds"_ustr );
+    m_aIndirectPropTranslator.emplace( DSID_CONN_SOCKET, u"LocalSocket"_ustr );
+    m_aIndirectPropTranslator.emplace( DSID_NAMED_PIPE, u"NamedPipe"_ustr );
+    m_aIndirectPropTranslator.emplace( DSID_RESPECTRESULTSETTYPE, u"RespectDriverResultSetType"_ustr );
+    m_aIndirectPropTranslator.emplace( DSID_MAX_ROW_SCAN, u"MaxRowScan"_ustr );
 
     // extra settings for ODBC
     m_aIndirectPropTranslator.emplace( DSID_USECATALOG, INFO_USECATALOG );
     // extra settings for an LDAP address book
     m_aIndirectPropTranslator.emplace( DSID_CONN_LDAP_BASEDN, INFO_CONN_LDAP_BASEDN );
     m_aIndirectPropTranslator.emplace( DSID_CONN_LDAP_ROWCOUNT, INFO_CONN_LDAP_ROWCOUNT );
-    m_aIndirectPropTranslator.emplace( DSID_CONN_LDAP_USESSL, OUString("UseSSL") );
+    m_aIndirectPropTranslator.emplace( DSID_CONN_LDAP_USESSL, u"UseSSL"_ustr );
     m_aIndirectPropTranslator.emplace( DSID_DOCUMENT_URL, PROPERTY_URL );
 
     // Oracle
-    m_aIndirectPropTranslator.emplace( DSID_IGNORECURRENCY, OUString("IgnoreCurrency") );
+    m_aIndirectPropTranslator.emplace( DSID_IGNORECURRENCY, u"IgnoreCurrency"_ustr );
 
     try
     {
@@ -227,7 +226,7 @@ bool ODbDataSourceAdministrationHelper::getCurrentSettings(Sequence< PropertyVal
 
             Reference< XModel > xModel( getDataSourceOrModel( m_xDatasource ), UNO_QUERY_THROW );
             ::comphelper::NamedValueCollection aArgs( xModel->getArgs() );
-            Reference< XInteractionHandler > xHandler( aArgs.getOrDefault( "InteractionHandler", Reference< XInteractionHandler >() ) );
+            Reference< XInteractionHandler > xHandler( aArgs.getOrDefault( u"InteractionHandler"_ustr, Reference< XInteractionHandler >() ) );
 
             if ( !xHandler.is() )
             {
@@ -381,7 +380,7 @@ Reference< XDriver > ODbDataSourceAdministrationHelper::getDriver(const OUString
     {
         css::uno::Any anyEx = cppu::getCaughtException();
         // wrap the exception into an SQLException
-        throw SQLException(sCurrentActionError, getORB(), "S1000", 0, anyEx);
+        throw SQLException(sCurrentActionError, getORB(), u"S1000"_ustr, 0, anyEx);
     }
 
     Reference< XDriver > xDriver = xDriverManager->getDriverByURL(_sURL);
@@ -390,7 +389,7 @@ Reference< XDriver > ODbDataSourceAdministrationHelper::getDriver(const OUString
         sCurrentActionError = DBA_RES(STR_NOREGISTEREDDRIVER);
         sCurrentActionError = sCurrentActionError.replaceFirst("#connurl#", _sURL);
         // will be caught and translated into an SQLContext exception
-        throw SQLException(sCurrentActionError, getORB(), "S1000", 0, Any());
+        throw SQLException(sCurrentActionError, getORB(), u"S1000"_ustr, 0, Any());
     }
     return xDriver;
 }
@@ -432,9 +431,9 @@ Reference< XPropertySet > const & ODbDataSourceAdministrationHelper::getCurrentD
 OUString ODbDataSourceAdministrationHelper::getDatasourceType( const SfxItemSet& _rSet )
 {
     const SfxStringItem* pConnectURL = _rSet.GetItem<SfxStringItem>(DSID_CONNECTURL);
-    OSL_ENSURE( pConnectURL , "ODbDataSourceAdministrationHelper::getDatasourceType: invalid items in the source set!" );
+    assert(pConnectURL && "ODbDataSourceAdministrationHelper::getDatasourceType: invalid items in the source set!");
     const DbuTypeCollectionItem* pTypeCollection = _rSet.GetItem<DbuTypeCollectionItem>(DSID_TYPECOLLECTION);
-    OSL_ENSURE(pTypeCollection, "ODbDataSourceAdministrationHelper::getDatasourceType: invalid items in the source set!");
+    assert(pTypeCollection && "ODbDataSourceAdministrationHelper::getDatasourceType: invalid items in the source set!");
     ::dbaccess::ODsnTypeCollection* pCollection = pTypeCollection->getCollection();
     return pCollection->getType(pConnectURL->GetValue());
 }
@@ -453,10 +452,10 @@ OUString ODbDataSourceAdministrationHelper::getConnectionURL() const
     const SfxStringItem* pUrlItem = m_pItemSetHelper->getOutputSet()->GetItem<SfxStringItem>(DSID_CONNECTURL);
     const DbuTypeCollectionItem* pTypeCollection = m_pItemSetHelper->getOutputSet()->GetItem<DbuTypeCollectionItem>(DSID_TYPECOLLECTION);
 
-    OSL_ENSURE(pUrlItem,"Connection URL is NULL. -> GPF!");
-    OSL_ENSURE(pTypeCollection, "ODbDataSourceAdministrationHelper::getDatasourceType: invalid items in the source set!");
+    assert(pUrlItem && "Connection URL is NULL. -> GPF!");
+    assert(pTypeCollection && "ODbDataSourceAdministrationHelper::getDatasourceType: invalid items in the source set!");
     ::dbaccess::ODsnTypeCollection* pCollection = pTypeCollection->getCollection();
-    OSL_ENSURE(pCollection, "ODbDataSourceAdministrationHelper::getDatasourceType: invalid type collection!");
+    assert(pCollection && "ODbDataSourceAdministrationHelper::getDatasourceType: invalid type collection!");
 
     switch( pCollection->determineType(eType) )
     {
@@ -466,7 +465,6 @@ OUString ODbDataSourceAdministrationHelper::getConnectionURL() const
         case  ::dbaccess::DST_WRITER:
             break;
         case  ::dbaccess::DST_MSACCESS:
-        case  ::dbaccess::DST_MSACCESS_2007:
             {
                 OUString sFileName = pCollection->cutPrefix(pUrlItem->GetValue());
                 OUString sNewFileName;
@@ -526,7 +524,6 @@ OUString ODbDataSourceAdministrationHelper::getConnectionURL() const
             break;
         case ::dbaccess::DST_POSTGRES:
             {
-                sNewUrl = pCollection->cutPrefix(pUrlItem->GetValue());
                 OUString rURL(comphelper::string::stripEnd(pUrlItem->GetValue(), '*'));
                 const SfxStringItem* pHostName = m_pItemSetHelper->getOutputSet()->GetItem<SfxStringItem>(DSID_CONN_HOSTNAME);
                 const SfxInt32Item* pPortNumber = m_pItemSetHelper->getOutputSet()->GetItem<SfxInt32Item>(DSID_POSTGRES_PORTNUMBER);
@@ -553,8 +550,7 @@ OUString ODbDataSourceAdministrationHelper::getConnectionURL() const
                     dbname = "'" + dbname + "'";
                     rURL += " dbname=" + dbname;
                 }
-                sNewUrl = rURL;
-                return sNewUrl;
+                return rURL;
             }
             break;
         case  ::dbaccess::DST_JDBC:
@@ -613,7 +609,7 @@ void ODbDataSourceAdministrationHelper::translateProperties(const Reference< XPr
 
         // collect the names of the additional settings
         PropertyValueSet aInfos;
-        for (const PropertyValue& rAdditionalInfo : std::as_const(aAdditionalInfo))
+        for (const PropertyValue& rAdditionalInfo : aAdditionalInfo)
         {
             if( rAdditionalInfo.Name == "JDBCDRV" )
             {   // compatibility
@@ -800,11 +796,11 @@ void ODbDataSourceAdministrationHelper::fillDatasourceInfo(const SfxItemSet& _rS
     }
 
     Sequence< Any> aTypeSettings;
-    aTypeSettings = aProperties.getOrDefault("TypeInfoSettings",aTypeSettings);
+    aTypeSettings = aProperties.getOrDefault(u"TypeInfoSettings"_ustr,aTypeSettings);
     // here we have a special entry for types from oracle
     if ( aTypeSettings.hasElements() )
     {
-        aRelevantSettings.insert(PropertyValue("TypeInfoSettings", 0, Any(aTypeSettings), PropertyState_DIRECT_VALUE));
+        aRelevantSettings.insert(PropertyValue(u"TypeInfoSettings"_ustr, 0, Any(aTypeSettings), PropertyState_DIRECT_VALUE));
     }
 
     // check which values are still left ('cause they were not present in the original sequence, but are to be set)
@@ -900,7 +896,7 @@ template<class T> static bool checkItemType(const SfxPoolItem* pItem){ return dy
 
 void ODbDataSourceAdministrationHelper::implTranslateProperty( SfxItemSet& _rSet, sal_Int32  _nId, const Any& _rValue )
 {
-    switch ( _rValue.getValueType().getTypeClass() )
+    switch ( _rValue.getValueTypeClass() )
     {
         case TypeClass_STRING:
             if ( implCheckItemType( _rSet, _nId, checkItemType<SfxStringItem> ) )
@@ -963,7 +959,7 @@ void ODbDataSourceAdministrationHelper::implTranslateProperty( SfxItemSet& _rSet
                 TypeDescription aTD(_rValue.getValueType());
                 typelib_IndirectTypeDescription* pSequenceTD =
                     reinterpret_cast< typelib_IndirectTypeDescription* >(aTD.get());
-                OSL_ENSURE(pSequenceTD && pSequenceTD->pType, "ODbDataSourceAdministrationHelper::implTranslateProperty: invalid sequence type!");
+                assert(pSequenceTD && pSequenceTD->pType && "ODbDataSourceAdministrationHelper::implTranslateProperty: invalid sequence type!");
 
                 Type aElementType(pSequenceTD->pType);
                 switch (aElementType.getTypeClass())
@@ -998,7 +994,7 @@ void ODbDataSourceAdministrationHelper::implTranslateProperty( SfxItemSet& _rSet
 OUString ODbDataSourceAdministrationHelper::getDocumentUrl(SfxItemSet const & _rDest)
 {
     const SfxStringItem* pUrlItem = _rDest.GetItem<SfxStringItem>(DSID_DOCUMENT_URL);
-    OSL_ENSURE(pUrlItem,"Document URL is NULL. -> GPF!");
+    assert(pUrlItem && "Document URL is NULL. -> GPF!");
     return pUrlItem->GetValue();
 }
 
@@ -1009,10 +1005,10 @@ void ODbDataSourceAdministrationHelper::convertUrl(SfxItemSet& _rDest)
     const SfxStringItem* pUrlItem = _rDest.GetItem<SfxStringItem>(DSID_CONNECTURL);
     const DbuTypeCollectionItem* pTypeCollection = _rDest.GetItem<DbuTypeCollectionItem>(DSID_TYPECOLLECTION);
 
-    OSL_ENSURE(pUrlItem,"Connection URL is NULL. -> GPF!");
-    OSL_ENSURE(pTypeCollection, "ODbAdminDialog::getDatasourceType: invalid items in the source set!");
+    assert(pUrlItem && "Connection URL is NULL. -> GPF!");
+    assert(pTypeCollection && "ODbAdminDialog::getDatasourceType: invalid items in the source set!");
     ::dbaccess::ODsnTypeCollection* pCollection = pTypeCollection->getCollection();
-    OSL_ENSURE(pCollection, "ODbAdminDialog::getDatasourceType: invalid type collection!");
+    assert(pCollection && "ODbAdminDialog::getDatasourceType: invalid type collection!");
 
     TypedWhichId<SfxInt32Item> nPortNumberId(0);
     sal_Int32 nPortNumber   = -1;
@@ -1083,7 +1079,7 @@ void ODbDataSourceAdministrationHelper::setDataSourceOrName( const Any& _rDataSo
 
 // DbuTypeCollectionItem
 DbuTypeCollectionItem::DbuTypeCollectionItem(sal_Int16 _nWhich, ::dbaccess::ODsnTypeCollection* _pCollection)
-    :SfxPoolItem(_nWhich)
+    :SfxPoolItem(_nWhich )
     ,m_pCollection(_pCollection)
 {
 }

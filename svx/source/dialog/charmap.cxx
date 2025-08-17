@@ -98,7 +98,7 @@ void SvxShowCharSet::init()
     m_nXGap = 0;
     m_nYGap = 0;
 
-    mxScrollArea->connect_vadjustment_changed(LINK(this, SvxShowCharSet, VscrollHdl));
+    mxScrollArea->connect_vadjustment_value_changed(LINK(this, SvxShowCharSet, VscrollHdl));
     getFavCharacterList();
     // other settings depend on selected font => see RecalculateFont
 
@@ -242,15 +242,15 @@ bool SvxShowCharSet::isFavChar(std::u16string_view sTitle, std::u16string_view r
 
 void SvxShowCharSet::createContextMenu(const Point& rPosition)
 {
-    std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(GetDrawingArea(), "svx/ui/charsetmenu.ui"));
-    std::unique_ptr<weld::Menu> xItemMenu(xBuilder->weld_menu("charsetmenu"));
+    std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(GetDrawingArea(), u"svx/ui/charsetmenu.ui"_ustr));
+    std::unique_ptr<weld::Menu> xItemMenu(xBuilder->weld_menu(u"charsetmenu"_ustr));
 
     sal_UCS4 cChar = GetSelectCharacter();
     OUString aOUStr( &cChar, 1 );
     if (isFavChar(aOUStr, mxVirDev->GetFont().GetFamilyName()) || maFavCharList.size() >= 16)
-        xItemMenu->set_visible("add", false);
+        xItemMenu->set_visible(u"add"_ustr, false);
     else
-        xItemMenu->set_visible("remove", false);
+        xItemMenu->set_visible(u"remove"_ustr, false);
 
     ContextMenuSelect(xItemMenu->popup_at_rect(GetDrawingArea(), tools::Rectangle(rPosition, Size(1,1))));
     GrabFocus();
@@ -583,7 +583,7 @@ void SvxShowCharSet::DrawChars_Impl(vcl::RenderContext& rRenderContext, int n1, 
         {
             const Color aLineCol = rRenderContext.GetLineColor();
             rRenderContext.SetLineColor(aHighlightColor);
-            rRenderContext.SetFillColor(COL_TRANSPARENT);
+            rRenderContext.SetFillColor();
             // Outer border
             rRenderContext.DrawRect(tools::Rectangle(Point(x - 1, y - 1), Size(nX + 3, nY + 3)), 1, 1);
             // Inner border
@@ -600,7 +600,6 @@ void SvxShowCharSet::DrawChars_Impl(vcl::RenderContext& rRenderContext, int n1, 
         else
         {
             Color aLineCol = rRenderContext.GetLineColor();
-            Color aFillCol = rRenderContext.GetFillColor();
             rRenderContext.SetLineColor();
             Point aPointUL(x + 1, y + 1);
             if (HasFocus())
@@ -627,7 +626,6 @@ void SvxShowCharSet::DrawChars_Impl(vcl::RenderContext& rRenderContext, int n1, 
                 rRenderContext.DrawText(aPointTxTy, aCharStr);
             }
             rRenderContext.SetLineColor(aLineCol);
-            rRenderContext.SetFillColor(aFillCol);
         }
         rRenderContext.SetTextColor(aTextCol);
     }
@@ -709,7 +707,8 @@ void SvxShowCharSet::RecalculateFont(vcl::RenderContext& rRenderContext)
     nY = aSize.Height() / ROW_COUNT;
 
     const int nLastRow = (mxFontCharMap->GetCharCount() - 1 + COLUMN_COUNT) / COLUMN_COUNT;
-    mxScrollArea->vadjustment_configure(mxScrollArea->vadjustment_get_value(), 0, nLastRow, 1, ROW_COUNT - 1, ROW_COUNT);
+    mxScrollArea->vadjustment_configure(mxScrollArea->vadjustment_get_value(), nLastRow, 1,
+                                        ROW_COUNT - 1, ROW_COUNT);
 
     // restore last selected unicode
     int nMapIndex = mxFontCharMap->GetIndexFromChar(getSelectedChar());
@@ -862,7 +861,7 @@ SvxShowCharSet::~SvxShowCharSet()
 #endif
 }
 
-css::uno::Reference< XAccessible > SvxShowCharSet::CreateAccessible()
+rtl::Reference<comphelper::OAccessible> SvxShowCharSet::CreateAccessible()
 {
 #if !ENABLE_WASM_STRIP_ACCESSIBILITY
     OSL_ENSURE(!m_xAccessible.is(),"Accessible already created!");
@@ -952,7 +951,7 @@ void SubsetMap::InitList()
                     aAllSubsets.emplace_back( 0x0000, 0x007F, SvxResId(RID_SUBSETSTR_BASIC_LATIN) );
                     break;
                 case UBLOCK_LATIN_1_SUPPLEMENT:
-                    aAllSubsets.emplace_back( 0x0080, 0x00FF, SvxResId(RID_SUBSETSTR_LATIN_1) );
+                    aAllSubsets.emplace_back( 0x0080, 0x00FF, SvxResId(RID_SUBSETSTR_LATIN_1_SUPPLEMENT) );
                     break;
                 case UBLOCK_LATIN_EXTENDED_A:
                     aAllSubsets.emplace_back( 0x0100, 0x017F, SvxResId(RID_SUBSETSTR_LATIN_EXTENDED_A) );
@@ -970,7 +969,7 @@ void SubsetMap::InitList()
                     aAllSubsets.emplace_back( 0x0300, 0x036F, SvxResId(RID_SUBSETSTR_COMB_DIACRITICAL) );
                     break;
                 case UBLOCK_GREEK:
-                    aAllSubsets.emplace_back( 0x0370, 0x03FF, SvxResId(RID_SUBSETSTR_BASIC_GREEK) );
+                    aAllSubsets.emplace_back( 0x0370, 0x03FF, SvxResId(RID_SUBSETSTR_GREEK) );
                     break;
                 case UBLOCK_CYRILLIC:
                     aAllSubsets.emplace_back( 0x0400, 0x04FF, SvxResId(RID_SUBSETSTR_CYRILLIC) );
@@ -1922,6 +1921,43 @@ void SubsetMap::InitList()
                     break;
                 case UBLOCK_NAG_MUNDARI:
                     aAllSubsets.emplace_back( 0x1E4D0, 0x1E4FF, SvxResId(RID_SUBSETSTR_NAG_MUNDARI) );
+                    break;
+#endif
+#if (U_ICU_VERSION_MAJOR_NUM >= 74)
+                case UBLOCK_CJK_UNIFIED_IDEOGRAPHS_EXTENSION_I:
+                    aAllSubsets.emplace_back( 0x2EBF0, 0x2EE5F, SvxResId(RID_SUBSETSTR_CJK_UNIFIED_IDEOGRAPHS_EXTENSION_I) );
+                    break;
+#endif
+#if (U_ICU_VERSION_MAJOR_NUM >= 76)
+                case UBLOCK_EGYPTIAN_HIEROGLYPHS_EXTENDED_A:
+                    aAllSubsets.emplace_back( 0x13460, 0x1355F, SvxResId(RID_SUBSETSTR_EGYPTIAN_HIEROGLYPHS_EXTENDED_A) );
+                    break;
+                case UBLOCK_GARAY:
+                    aAllSubsets.emplace_back( 0x10D40, 0x10D8F, SvxResId(RID_SUBSETSTR_GARAY) );
+                    break;
+                case UBLOCK_GURUNG_KHEMA:
+                    aAllSubsets.emplace_back( 0x16100, 0x1613F, SvxResId(RID_SUBSETSTR_GURUNG_KHEMA) );
+                    break;
+                case UBLOCK_KIRAT_RAI:
+                    aAllSubsets.emplace_back( 0x16D40, 0x16D7F, SvxResId(RID_SUBSETSTR_KIRAT_RAI) );
+                    break;
+                case UBLOCK_MYANMAR_EXTENDED_C:
+                    aAllSubsets.emplace_back( 0x116D0, 0x116FF, SvxResId(RID_SUBSETSTR_MYANMAR_EXTENDED_C) );
+                    break;
+                case UBLOCK_OL_ONAL:
+                    aAllSubsets.emplace_back( 0x1E5D0, 0x1E5FF, SvxResId(RID_SUBSETSTR_OL_ONAL) );
+                    break;
+                case UBLOCK_SUNUWAR:
+                    aAllSubsets.emplace_back( 0x11BC0, 0x11BFF, SvxResId(RID_SUBSETSTR_SUNUWAR) );
+                    break;
+                case UBLOCK_SYMBOLS_FOR_LEGACY_COMPUTING_SUPPLEMENT:
+                    aAllSubsets.emplace_back( 0x1CC00, 0x1CEBF, SvxResId(RID_SUBSETSTR_SYMBOLS_FOR_LEGACY_COMPUTING_SUPPLEMENT) );
+                    break;
+                case UBLOCK_TODHRI:
+                    aAllSubsets.emplace_back( 0x105C0, 0x105FF, SvxResId(RID_SUBSETSTR_TODHRI) );
+                    break;
+                case UBLOCK_TULU_TIGALARI:
+                    aAllSubsets.emplace_back( 0x11380, 0x113FF, SvxResId(RID_SUBSETSTR_TULU_TIGALARI) );
                     break;
 #endif
             }

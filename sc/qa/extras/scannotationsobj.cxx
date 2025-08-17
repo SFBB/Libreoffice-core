@@ -14,7 +14,6 @@
 #include <test/sheet/xsheetannotations.hxx>
 
 #include <com/sun/star/container/XIndexAccess.hpp>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/sheet/XSheetAnnotation.hpp>
 #include <com/sun/star/sheet/XSheetAnnotations.hpp>
 #include <com/sun/star/sheet/XSheetAnnotationsSupplier.hpp>
@@ -68,7 +67,7 @@ public:
 
 
 ScAnnontationsObj::ScAnnontationsObj()
-       : UnoApiTest("/sc/qa/extras/testdocuments")
+       : UnoApiTest(u"/sc/qa/extras/testdocuments"_ustr)
        , XElementAccess(cppu::UnoType<sheet::XSheetAnnotation>::get())
        , XIndexAccess(1)
 {
@@ -99,7 +98,7 @@ void ScAnnontationsObj::setUp()
     UnoApiTest::setUp();
 
     // get the test file
-    loadFromURL(u"ScAnnotationObj.ods");
+    loadFromFile(u"ScAnnotationObj.ods");
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(ScAnnontationsObj);

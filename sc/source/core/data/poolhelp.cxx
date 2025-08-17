@@ -30,40 +30,25 @@
 ScPoolHelper::ScPoolHelper( ScDocument& rSourceDoc )
     : pDocPool(new ScDocumentPool)
 {
-    pDocPool->FreezeIdRanges();
-
     mxStylePool = new ScStyleSheetPool( *pDocPool, &rSourceDoc );
 }
 
 ScPoolHelper::~ScPoolHelper()
 {
-    pEnginePool.clear();
-    pEditPool.clear();
+    mpEditEnginePool.clear();
     pFormTable.reset();
     mxStylePool.clear();
     pDocPool.clear();
 }
 
-SfxItemPool* ScPoolHelper::GetEditPool() const
+SfxItemPool* ScPoolHelper::GetEditEnginePool() const
 {
-    if ( !pEditPool )
+    if ( !mpEditEnginePool )
     {
-        pEditPool = EditEngine::CreatePool();
-        pEditPool->SetDefaultMetric( MapUnit::Map100thMM );
-        pEditPool->FreezeIdRanges();
-    }
-    return pEditPool.get();
-}
-
-SfxItemPool* ScPoolHelper::GetEnginePool() const
-{
-    if ( !pEnginePool )
-    {
-        pEnginePool = EditEngine::CreatePool();
-        pEnginePool->SetDefaultMetric( MapUnit::Map100thMM );
-        pEnginePool->FreezeIdRanges();
+        mpEditEnginePool = EditEngine::CreatePool();
+        mpEditEnginePool->SetDefaultMetric( MapUnit::Map100thMM );
     } // ifg ( pEnginePool )
-    return pEnginePool.get();
+    return mpEditEnginePool.get();
 }
 SvNumberFormatter*  ScPoolHelper::GetFormTable() const
 {
@@ -96,7 +81,7 @@ std::unique_ptr<SvNumberFormatter> ScPoolHelper::CreateNumberFormatter() const
     }
     assert(mxStylePool->GetDocument());
     p->SetColorLink( LINK(mxStylePool->GetDocument(), ScDocument, GetUserDefinedColor));
-    p->SetEvalDateFormat(NF_EVALDATEFORMAT_INTL_FORMAT);
+    p->SetEvalDateFormat(NfEvalDateFormat::InternationalThenFormat);
 
     sal_uInt16 d,m;
     sal_Int16 y;

@@ -28,31 +28,8 @@
 #include <svl/itemset.hxx>
 
 class SvxFont;
-class SvxFontItem;
-class SvxWeightItem;
-class SvxPostureItem;
-class SvxShadowedItem;
-class SvxEscapementItem;
-class SvxContourItem;
-class SvxCrossedOutItem;
-class SvxUnderlineItem;
-class SvxOverlineItem;
-class SvxFontHeightItem;
-class SvxCharScaleWidthItem;
-class SvxColorItem;
-class SvxAutoKernItem;
-class SvxKerningItem;
-class SvxWordLineModeItem;
-class SvxFieldItem;
-class SvxLanguageItem;
-class SvxEmphasisMarkItem;
-class SvxCharReliefItem;
-class SfxVoidItem;
 class OutputDevice;
-class SvxCaseMapItem;
-class SfxGrabBagItem;
 
-#define CH_FEATURE_OLD  (sal_uInt8)         0xFF
 #define CH_FEATURE      u'\x0001'
 #define CH_SOFTHYPHEN   u'\x00AD'
 
@@ -60,8 +37,6 @@ class SfxGrabBagItem;
 // GetMetric (nWhich)!
 // => To determine the DefMetric simply use GetMetric(0)
 #define DEF_METRIC  0
-
-
 
 // bFeature: Attribute must not expand/shrink, length is always 1
 // bEdge: Attribute will not expand, if you want to expand just on the edge
@@ -73,6 +48,7 @@ class EditCharAttrib
     sal_Int32               nEnd;
     bool                bFeature    :1;
     bool                bEdge       :1;
+    bool bExpandable : 1;
 
 public:
     EditCharAttrib(SfxItemPool&, const SfxPoolItem&, sal_Int32 nStart, sal_Int32 nEnd);
@@ -105,6 +81,8 @@ public:
 
     bool    IsIn( sal_Int32 nIndex ) const
                 { return ( ( nStart <= nIndex ) && ( nEnd >= nIndex ) ); }
+    bool    IsInLeftClosedRightOpen( sal_Int32 nIndex ) const
+                { return ( ( nStart <= nIndex ) && ( nEnd > nIndex ) ); }
     bool    IsInside( sal_Int32 nIndex ) const
                 { return ( ( nStart < nIndex ) && ( nEnd > nIndex ) ); }
     bool        IsEmpty() const
@@ -115,6 +93,9 @@ public:
 
     bool    IsEdge() const      { return bEdge; }
     void    SetEdge( bool b )   { bEdge = b; }
+
+    bool IsExpandable() const { return !bFeature && bExpandable; }
+    void SetExpandable(bool b) { bExpandable = b; }
 };
 
 inline sal_Int32 EditCharAttrib::GetLen() const
@@ -318,7 +299,21 @@ public:
     virtual void    SetFont( SvxFont& rFont, OutputDevice* pOutDev ) override;
 };
 
+class EditCharAttribRuby final : public EditCharAttrib
+{
+public:
+    EditCharAttribRuby(SfxItemPool&, const SfxPoolItem&, sal_Int32 nStart, sal_Int32 nEnd);
 
+    virtual void SetFont(SvxFont& rFont, OutputDevice* pOutDev) override;
+};
+
+class EditCharAttribScriptHint final : public EditCharAttrib
+{
+public:
+    EditCharAttribScriptHint(SfxItemPool&, const SfxPoolItem&, sal_Int32 nStart, sal_Int32 nEnd);
+
+    virtual void SetFont(SvxFont& rFont, OutputDevice* pOutDev) override;
+};
 
 class EditCharAttribTab final : public EditCharAttrib
 {

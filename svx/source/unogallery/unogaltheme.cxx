@@ -66,7 +66,7 @@ GalleryTheme::~GalleryTheme()
 
 OUString SAL_CALL GalleryTheme::getImplementationName()
 {
-    return "com.sun.star.comp.gallery.GalleryTheme";
+    return u"com.sun.star.comp.gallery.GalleryTheme"_ustr;
 }
 
 sal_Bool SAL_CALL GalleryTheme::supportsService( const OUString& ServiceName )
@@ -76,7 +76,7 @@ sal_Bool SAL_CALL GalleryTheme::supportsService( const OUString& ServiceName )
 
 uno::Sequence< OUString > SAL_CALL GalleryTheme::getSupportedServiceNames()
 {
-    return { "com.sun.star.gallery.GalleryTheme" };
+    return { u"com.sun.star.gallery.GalleryTheme"_ustr };
 }
 
 uno::Sequence< uno::Type > SAL_CALL GalleryTheme::getTypes()
@@ -255,11 +255,13 @@ void SAL_CALL GalleryTheme::update(  )
                 if (pOrigPage && pOrigModel)
                 {
                     FmFormModel* pTmpModel = new FmFormModel(&pOrigModel->GetItemPool());
+                    // tdf#162555: xDrawing should be created before pNewPage, because it controls
+                    // the lifetime of pTmpModel used by the latter
+                    rtl::Reference< GalleryDrawingModel > xDrawing( new GalleryDrawingModel( pTmpModel ) );
                     // Clone to new target SdrModel
                     rtl::Reference<SdrPage> pNewPage = pOrigPage->CloneSdrPage(*pTmpModel);
                     pTmpModel->InsertPage(pNewPage.get(), 0);
 
-                    rtl::Reference< GalleryDrawingModel > xDrawing( new GalleryDrawingModel( pTmpModel ) );
                     pTmpModel->setUnoModel( xDrawing );
 
                     nRet = insertDrawingByIndex( xDrawing, nIndex );

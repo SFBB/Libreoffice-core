@@ -54,7 +54,6 @@ $(eval $(call gb_Library_add_exception_objects,tk,\
     toolkit/source/awt/asynccallback \
     toolkit/source/awt/stylesettings \
     toolkit/source/awt/scrollabledialog \
-    toolkit/source/awt/vclxaccessiblecomponent \
     toolkit/source/awt/vclxbitmap \
     toolkit/source/awt/vclxcontainer \
     toolkit/source/awt/vclxdevice \
@@ -98,6 +97,13 @@ $(eval $(call gb_Library_add_exception_objects,tk,\
     toolkit/source/controls/tkspinbutton \
     toolkit/source/controls/animatedimages \
     toolkit/source/controls/spinningprogress \
+    toolkit/source/controls/table/AccessibleGridControl \
+    toolkit/source/controls/table/AccessibleGridControlBase \
+    toolkit/source/controls/table/AccessibleGridControlHeader \
+    toolkit/source/controls/table/AccessibleGridControlHeaderCell \
+    toolkit/source/controls/table/AccessibleGridControlTable \
+    toolkit/source/controls/table/AccessibleGridControlTableBase \
+    toolkit/source/controls/table/AccessibleGridControlTableCell \
     toolkit/source/controls/table/cellvalueconversion \
     toolkit/source/controls/table/defaultinputhandler \
     toolkit/source/controls/table/gridtablerenderer \
@@ -121,12 +127,10 @@ $(eval $(call gb_Library_add_exception_objects,tk,\
     toolkit/source/hatchwindow/hatchwindow \
     toolkit/source/hatchwindow/hatchwindowfactory \
     toolkit/source/hatchwindow/ipwin \
-    toolkit/source/helper/accessibilityclient \
     toolkit/source/helper/btndlg \
     toolkit/source/helper/imagealign \
     toolkit/source/helper/listenermultiplexer \
     toolkit/source/helper/property \
-    toolkit/source/helper/servicenames \
     toolkit/source/helper/tkresmgr \
     toolkit/source/helper/unopropertyarrayhelper \
     toolkit/source/helper/unowrapper \

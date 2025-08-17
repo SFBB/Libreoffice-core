@@ -181,7 +181,9 @@ public:
 
 } // end sc namespace
 
-struct ScPrintState //  Save Variables from ScPrintFunc
+// Used to save expensive-to-compute data from ScPrintFunc in between
+// uses of ScPrintFunc
+struct ScPrintState
 {
     SCTAB   nPrintTab;
     SCCOL   nStartCol;
@@ -190,21 +192,13 @@ struct ScPrintState //  Save Variables from ScPrintFunc
     SCROW   nEndRow;
     bool    bPrintAreaValid; // the 4 variables above are set
     sal_uInt16  nZoom;
-    size_t  nPagesX;
-    size_t  nPagesY;
     tools::Long    nTabPages;
     tools::Long    nTotalPages;
     tools::Long    nPageStart;
     tools::Long    nDocPages;
 
     // Additional state of page ranges
-    bool bSavedStateRanges;
-    sc::PrintPageRangesInput aPrintPageRangesInput;
-    size_t nTotalY;
-    // use shared_ptr to avoid copying this (potentially large) map back and forth
-    std::shared_ptr<std::vector<SCCOL>> xPageEndX;
-    std::shared_ptr<std::vector<SCROW>> xPageEndY;
-    std::shared_ptr<std::map<size_t, ScPageRowEntry>> xPageRows;
+    sc::PrintPageRanges m_aRanges;
 
     ScPrintState()
         : nPrintTab(0)
@@ -214,21 +208,17 @@ struct ScPrintState //  Save Variables from ScPrintFunc
         , nEndRow(0)
         , bPrintAreaValid(false)
         , nZoom(0)
-        , nPagesX(0)
-        , nPagesY(0)
         , nTabPages(0)
         , nTotalPages(0)
         , nPageStart(0)
         , nDocPages(0)
-        , bSavedStateRanges(false)
-        , nTotalY(0)
     {}
 };
 
 class ScPrintFunc
 {
 private:
-    ScDocShell*         pDocShell;
+    ScDocShell&         rDocShell;
     ScDocument&         rDoc;
     VclPtr<SfxPrinter>   pPrinter;
     VclPtr<OutputDevice> pDev;
@@ -312,31 +302,43 @@ private:
 
     ScPageBreakData*    pPageData;          // for recording the breaks etc.
 
+    Size                aPrintPageSize;         // print page size in Print dialog
+    bool                bPrintPageLandscape;    // print page orientation in Print dialog
+    bool                bUsePrintDialogSetting; // use Print dialog setting
+
 public:
-                    ScPrintFunc( ScDocShell* pShell, SfxPrinter* pNewPrinter, SCTAB nTab,
+                    ScPrintFunc( ScDocShell& rShell, SfxPrinter* pNewPrinter, SCTAB nTab,
                                  tools::Long nPage = 0, tools::Long nDocP = 0,
                                  const ScRange* pArea = nullptr,
                                  const ScPrintOptions* pOptions = nullptr,
-                                 ScPageBreakData* pData = nullptr );
+                                 ScPageBreakData* pData = nullptr,
+                                 Size aPrintPageSize = {},
+                                 bool bPrintPageLandscape = false,
+                                 bool bUsePrintDialogSetting = false );
 
-                    ScPrintFunc( ScDocShell* pShell, SfxPrinter* pNewPrinter,
-                                const ScPrintState& rState, const ScPrintOptions* pOptions );
+                    ScPrintFunc( ScDocShell& rShell, SfxPrinter* pNewPrinter,
+                                const ScPrintState& rState, const ScPrintOptions* pOptions,
+                                Size aPrintPageSize = {},
+                                bool bPrintPageLandscape = false,
+                                bool bUsePrintDialogSetting = false );
 
                     // ctors for device other than printer - for preview and pdf:
 
-                    ScPrintFunc( OutputDevice* pOutDev, ScDocShell* pShell, SCTAB nTab,
+                    ScPrintFunc( OutputDevice* pOutDev, ScDocShell& rShell, SCTAB nTab,
                                  tools::Long nPage = 0, tools::Long nDocP = 0,
                                  const ScRange* pArea = nullptr,
                                  const ScPrintOptions* pOptions = nullptr );
 
-                    ScPrintFunc( OutputDevice* pOutDev, ScDocShell* pShell,
+                    ScPrintFunc( OutputDevice* pOutDev, ScDocShell& rShell,
                                  const ScPrintState& rState,
-                                 const ScPrintOptions* pOptions );
+                                 const ScPrintOptions* pOptions, Size aPrintPageSize = {},
+                                 bool bPrintPageLandscape = false,
+                                 bool bUsePrintDialogSetting = false);
 
                     ~ScPrintFunc();
 
     static void     DrawToDev( ScDocument& rDoc, OutputDevice* pDev, double nPrintFactor,
-                               const tools::Rectangle& rBound, ScViewData* pViewData, bool bMetaFile );
+                               const tools::Rectangle& rBound, ScViewData& rViewData, bool bMetaFile );
 
     void            SetDrawView( FmFormView* pNew );
 
@@ -369,7 +371,7 @@ public:
 
     void            ResetBreaks( SCTAB nTab );
 
-    void            GetPrintState(ScPrintState& rState, bool bSavePageRanges = false);
+    void            GetPrintState(ScPrintState& rState);
     bool            GetLastSourceRange( ScRange& rRange ) const;
     sal_uInt16      GetLeftMargin() const{return nLeftMargin;}
     sal_uInt16      GetRightMargin() const{return nRightMargin;}

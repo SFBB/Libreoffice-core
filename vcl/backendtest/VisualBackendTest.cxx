@@ -7,12 +7,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#include <math.h>
 #include <sal/log.hxx>
 
 #include <comphelper/processfactory.hxx>
 #include <cppuhelper/bootstrap.hxx>
-#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 
@@ -28,7 +26,6 @@
 #include <basegfx/numeric/ftools.hxx>
 #include <comphelper/diagnose_ex.hxx>
 
-#include <chrono>
 #include <iostream>
 
 #include <test/outputdevice.hxx>
@@ -833,7 +830,7 @@ public:
         {
             ScopedVclPtrInstance<VisualBackendTestWindow> aMainWindow;
 
-            aMainWindow->SetText("VCL Test");
+            aMainWindow->SetText(u"VCL Test"_ustr);
             aMainWindow->Show();
 
             Application::Execute();
@@ -860,7 +857,7 @@ protected:
             uno::Reference<lang::XMultiServiceFactory> xMSF(xComponentContext->getServiceManager(), uno::UNO_QUERY);
 
             if (!xMSF.is())
-                Application::Abort("Bootstrap failure - no service manager");
+                Application::Abort(u"Bootstrap failure - no service manager"_ustr);
 
             comphelper::setProcessServiceFactory(xMSF);
         }

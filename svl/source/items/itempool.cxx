@@ -28,20 +28,12 @@
 #include <svl/SfxBroadcaster.hxx>
 #include <svl/hint.hxx>
 #include <svl/itemset.hxx>
-
-#include <poolio.hxx>
+#include <tools/debug.hxx>
 
 #include <cassert>
 #include <vector>
 
-#ifdef DBG_UTIL
-static size_t nAllDirectlyPooledSfxPoolItemCount(0);
-static size_t nRemainingDirectlyPooledSfxPoolItemCount(0);
-size_t getAllDirectlyPooledSfxPoolItemCount() { return nAllDirectlyPooledSfxPoolItemCount; }
-size_t getRemainingDirectlyPooledSfxPoolItemCount() { return nRemainingDirectlyPooledSfxPoolItemCount; }
-#endif
-
-// WhichIDs that need to set _bNeedsPoolRegistration in SfxItemInfo
+// WhichIDs that need to set SFX_ITEMINFOFLAG_SUPPORT_SURROGATE in SfxItemInfo
 // to true to allow a register of all items of that type/with that WhichID
 // to be accessible using SfxItemPool::GetItemSurrogates. Created by
 // grepping for 'GetItemSurrogates' usages & interpreting. Some
@@ -78,7 +70,6 @@ size_t getRemainingDirectlyPooledSfxPoolItemCount() { return nRemainingDirectlyP
 // due to ImpEditEngine::WriteRTF
 //  EE_CHAR_COLOR ok
 // due to ScDocumentPool::StyleDeleted
-//  ATTR_PATTERN ok
 // due to ScDocument::UpdateFontCharSet()
 // due to ScXMLFontAutoStylePool_Impl
 //  ATTR_FONT ok
@@ -195,136 +186,297 @@ size_t getRemainingDirectlyPooledSfxPoolItemCount() { return nRemainingDirectlyP
 //  RES_UNKNOWNATR_CONTAINER ok
 //  RES_TXTATR_UNKNOWN_CONTAINER ok
 
-
-
-#if OSL_DEBUG_LEVEL > 0
-#include <map>
-
-static void
-lcl_CheckSlots2(std::map<sal_uInt16, sal_uInt16> & rSlotMap,
-        SfxItemPool const& rPool, SfxItemInfo const* pInfo)
+ItemInfoUser::ItemInfoUser(const ItemInfo& rItemInfo, const SfxItemPool& rItemPool, const SfxPoolItem& rItem, bool bPassingOwnership)
+: ItemInfo(rItemInfo)
+, m_pItem(implCreateItemEntry(rItemPool, &rItem, bPassingOwnership))
 {
-    if (!pInfo)
-        return; // may not be initialized yet
-    if (rPool.GetName() == "EditEngineItemPool")
-        return; // HACK: this one has loads of duplicates already, ignore it :(
-    sal_uInt16 const nFirst(rPool.GetFirstWhich());
-    sal_uInt16 const nCount(rPool.GetLastWhich() - rPool.GetFirstWhich() + 1);
-    for (sal_uInt16 n = 0; n < nCount; ++n)
+}
+
+ItemInfoUser::~ItemInfoUser()
+{
+    implCleanupItemEntry(m_pItem);
+}
+
+const SlotIDToWhichIDMap& ItemInfoPackage::getSlotIDToWhichIDMap() const
+{
+    if (maSlotIDToWhichIDMap.empty())
     {
-        sal_uInt16 const nSlotId(pInfo[n]._nSID);
-        if (nSlotId != 0
-            && nSlotId != 10883  // preexisting duplicate SID_ATTR_GRAF_CROP
-            && nSlotId != 10023  // preexisting duplicate SID_ATTR_BORDER_INNER
-            && nSlotId != 10024  // preexisting duplicate SID_ATTR_BORDER_OUTER
-            && nSlotId != 11013  // preexisting duplicate SID_ATTR_BORDER_DIAG_TLBR
-            && nSlotId != 11014) // preexisting duplicate SID_ATTR_BORDER_DIAG_BLTR
-        {   // check for duplicate slot-id mapping
-            std::map<sal_uInt16, sal_uInt16>::const_iterator const iter(
-                rSlotMap.find(nSlotId));
-            sal_uInt16 const nWhich(nFirst + n);
-            if (iter != rSlotMap.end())
+        // will be filled only once per office runtime
+        for (size_t a(0); a < size(); a++)
+        {
+            const ItemInfoStatic& rCandidate(getItemInfoStatic(a));
+            if (0 != rCandidate.getSlotID())
             {
-                SAL_WARN("svl", "SfxItemPool: duplicate SlotId " << nSlotId
-                        << " mapped to " << iter->second << " and " << nWhich);
-                assert(false);
+#ifdef DBG_UTIL
+                if (maSlotIDToWhichIDMap.contains(rCandidate.getSlotID()))
+                    assert(false && "ITEM: SlotID used double in ItemInfoPackage (!)");
+#endif
+                maSlotIDToWhichIDMap[rCandidate.getSlotID()] = rCandidate.getWhich();
             }
-            rSlotMap.insert(std::make_pair(nSlotId, nWhich));
         }
     }
+
+    return maSlotIDToWhichIDMap;
 }
 
-#define CHECK_SLOTS() \
-do { \
-    std::map<sal_uInt16, sal_uInt16> slotmap; \
-    for (SfxItemPool * p = pImpl->mpMaster; p; p = p->pImpl->mpSecondary.get()) \
-    { \
-        lcl_CheckSlots2(slotmap, *p, p->pItemInfos); \
-    } \
-} while (false)
+const ItemInfo& ItemInfoPackage::getExistingItemInfo(size_t /*nIndex*/)
+{
+    static ItemInfoStatic EMPTY(0, nullptr, 0, 0);
+    return EMPTY;
+}
 
-#else
-#define CHECK_SLOTS() do {} while (false)
+void SfxItemPool::registerItemInfoPackage(
+    ItemInfoPackage& rPackage,
+    const std::function<SfxPoolItem*(sal_uInt16)>& rCallback)
+{
+    assert(maItemInfos.empty() && "ITEM: registering more than one ItemInfoPackage per Pool is not allowed (!)");
+
+    // we know the size :-)
+    maItemInfos.reserve(rPackage.size());
+
+    // loop over ItemInfoPackage and add ptrs to provided ItemInfos
+    for(size_t a(0); a < rPackage.size(); a++)
+    {
+        // get ItemInfo entry, maybe StaticDefault or DynamicDefault
+        const ItemInfo& rItemInfo(rPackage.getItemInfo(a, *this));
+
+        if (nullptr != rItemInfo.getItem())
+        {
+            // if it has an item, use it, done
+            maItemInfos.push_back(&rItemInfo);
+            continue;
+        }
+
+        // if not, use the callback to create a DynamicDefault. This
+        // *has* to be supported then by the caller
+        SfxPoolItem* pDynamicItem(rCallback(rItemInfo.getWhich()));
+        assert(nullptr != pDynamicItem);
+        maItemInfos.push_back(new ItemInfoDynamic(rItemInfo, pDynamicItem));
+    }
+
+    // use infos to fill local variables
+    mnStart = maItemInfos.front()->getWhich();
+    mnEnd = maItemInfos.back()->getWhich();
+
+    // set mapper for fast SlotIDToWhichID conversion
+    mpSlotIDToWhichIDMap = &rPackage.getSlotIDToWhichIDMap();
+
+#ifdef DBG_UTIL
+    for (size_t a(1); a < maItemInfos.size(); a++)
+        if (maItemInfos[a-1]->getWhich() + 1 != maItemInfos[a]->getWhich())
+            assert(false && "ITEM: Order is wrong (!)");
 #endif
-
-sal_uInt16 SfxItemPool::GetFirstWhich() const
-{
-    return pImpl->mnStart;
 }
 
-sal_uInt16 SfxItemPool::GetLastWhich() const
+const ItemInfo* SfxItemPool::impCheckItemInfoForClone(const ItemInfo* pInfo)
 {
-    return pImpl->mnEnd;
-}
+    const SfxPoolItem* pItem(pInfo->getItem());
+    assert(nullptr != pItem && "ITEM: Missing Item in ItemInfo (!)");
 
-bool SfxItemPool::IsInRange( sal_uInt16 nWhich ) const
-{
-    return nWhich >= pImpl->mnStart && nWhich <= pImpl->mnEnd;
-}
+    if (pItem->isStaticDefault())
+        // noting to do, not ref-counted
+        return pInfo;
 
-sal_uInt16 SfxItemPool::GetIndex_Impl(sal_uInt16 nWhich) const
-{
-    if (nWhich < pImpl->mnStart || nWhich > pImpl->mnEnd)
+    if (pItem->isDynamicDefault())
     {
-        assert(false && "missing bounds check before use");
-        return 0;
+        // need to clone to new Pool as DynamicDefault, owned by the Pool
+        // and not shared. Mainly SfxSetItems. Not RefCounted
+        return new ItemInfoDynamic(*pInfo, pItem->Clone(this));
     }
-    return nWhich - pImpl->mnStart;
+
+    // all Items else that can be in the Pool are UserDefaults. These
+    // are RefCounted, so use implCreateItemEntry to increase reference
+    return new ItemInfoUser(*pInfo, *this, *pItem);
 }
 
-sal_uInt16 SfxItemPool::GetSize_Impl() const
+void SfxItemPool::impClearUserDefault(const userItemInfos::iterator& rHit)
 {
-    return pImpl->mnEnd - pImpl->mnStart + 1;
+    if (rHit == maUserItemInfos.end())
+        // does not exist
+        return;
+
+    // get ItemInfo and Item, HAS to be a UserDefault
+    const sal_uInt16 nIndex(GetIndex_Impl(rHit->first));
+    const ItemInfo* pInfo(maItemInfos[nIndex]);
+    assert(nullptr != pInfo && "ITEM: access error to Defaults in Pool (!)");
+
+    // restore original entry using the remembered one
+    maItemInfos[nIndex] = rHit->second;
+
+    // free Item, delete ItemInfo
+    delete pInfo;
 }
 
-const SfxPoolItem* SfxItemPool::GetPoolDefaultItem( sal_uInt16 nWhich ) const
+void SfxItemPool::impCreateUserDefault(const SfxPoolItem& rItem)
 {
-    const SfxPoolItem* pRet;
-    if( IsInRange( nWhich ) )
-        pRet = pImpl->maPoolDefaults[GetIndex_Impl(nWhich)];
-    else if( pImpl->mpSecondary )
-        pRet = pImpl->mpSecondary->GetPoolDefaultItem( nWhich );
+    const sal_uInt16 nWhich(rItem.Which());
+
+    // make sure by an assert check that none exists
+    assert(maUserItemInfos.end() == maUserItemInfos.find(nWhich));
+
+    const sal_uInt16 nIndex(GetIndex_Impl(nWhich));
+    const ItemInfo* pInfo(maItemInfos[nIndex]);
+    assert(nullptr != pInfo && "ITEM: access error to Defaults in Pool (!)");
+
+    // safe original ItemInfo in UserItemInfos
+    maUserItemInfos.insert({nWhich, pInfo});
+
+    // create new Item by using implCreateItemEntry and new ItemInfo
+    maItemInfos[nIndex] = new ItemInfoUser(*pInfo, *this, rItem);
+}
+
+void SfxItemPool::cleanupItemInfos()
+{
+    // reset all UserDefaultItems & restore original maItemInfos
+    while (!maUserItemInfos.empty())
+    {
+        // get next candidate, cleanup UseDefault and remove data
+        userItemInfos::iterator aHit(maUserItemInfos.begin());
+        impClearUserDefault(aHit);
+        maUserItemInfos.erase(aHit);
+    }
+
+    // delete DynamicDefaults in maItemInfos, these only exist
+    // for Pool lifetime since they are Pool-dependent. There should
+    // be NO MORE UserDefaults after cleanup above
+    for (auto& rInfo : maItemInfos)
+    {
+        if (rInfo->getItem()->isDynamicDefault())
+        {
+            // the whole ItemInfo is owned by the pool, so
+            // delete the Item and the ItemInfo (in that order :-)
+            delete rInfo;
+        }
+#ifdef DBG_UTIL
+        // since there should be NO MORE UserDefaults the item
+        // then *has* to be StaticDefault - check that
+        else if (!rInfo->getItem()->isStaticDefault())
+            assert(false && "ITEM: Error in UserDefault handling (!)");
+#endif
+    }
+}
+
+void SfxItemPool::registerItemSet(SfxItemSet& rSet)
+{
+    registeredSfxItemSets& rTarget(GetMasterPool()->maRegisteredSfxItemSets);
+#ifdef DBG_UTIL
+    const size_t nBefore(rTarget.size());
+#endif
+    rTarget.insert(&rSet);
+#ifdef DBG_UTIL
+    const size_t nAfter(rTarget.size());
+    if (nBefore + 1 != nAfter)
+    {
+        SAL_WARN("svl.items", "SfxItemPool::registerItemSet: ItemSet was already registered (!)");
+    }
+#endif
+}
+
+void SfxItemPool::unregisterItemSet(SfxItemSet& rSet)
+{
+    registeredSfxItemSets& rTarget(GetMasterPool()->maRegisteredSfxItemSets);
+#ifdef DBG_UTIL
+    const size_t nBefore(rTarget.size());
+#endif
+    rTarget.erase(&rSet);
+#ifdef DBG_UTIL
+    const size_t nAfter(rTarget.size());
+    if (nBefore != nAfter + 1)
+    {
+        SAL_WARN("svl.items", "SfxItemPool::unregisterItemSet: ItemSet was not registered (!)");
+    }
+#endif
+}
+
+void SfxItemPool::registerPoolItemHolder(SfxPoolItemHolder& rHolder)
+{
+    registeredSfxPoolItemHolders& rTarget(GetMasterPool()->maRegisteredSfxPoolItemHolders);
+#ifdef DBG_UTIL
+    const size_t nBefore(rTarget.size());
+#endif
+    rTarget.insert(&rHolder);
+#ifdef DBG_UTIL
+    const size_t nAfter(rTarget.size());
+    if (nBefore + 1 != nAfter)
+    {
+        SAL_WARN("svl.items", "SfxItemPool::registerPoolItemHolder: SfxPoolItemHolder was already registered (!)");
+    }
+#endif
+    if (rHolder.is() && rHolder.getItem()->isNameOrIndex())
+        registerNameOrIndex(*rHolder.getItem());
+}
+
+void SfxItemPool::unregisterPoolItemHolder(SfxPoolItemHolder& rHolder)
+{
+    registeredSfxPoolItemHolders& rTarget(GetMasterPool()->maRegisteredSfxPoolItemHolders);
+#ifdef DBG_UTIL
+    const size_t nBefore(rTarget.size());
+#endif
+    rTarget.erase(&rHolder);
+#ifdef DBG_UTIL
+    const size_t nAfter(rTarget.size());
+    if (nBefore != nAfter + 1)
+    {
+        SAL_WARN("svl.items", "SfxItemPool::unregisterPoolItemHolder: SfxPoolItemHolder was not registered (!)");
+    }
+#endif
+    if (rHolder.is() && rHolder.getItem()->isNameOrIndex())
+        unregisterNameOrIndex(*rHolder.getItem());
+}
+
+void SfxItemPool::registerNameOrIndex(const SfxPoolItem& rItem)
+{
+    assert(rItem.isNameOrIndex() && "ITEM: only Items derived from NameOrIndex supported for this mechanism (!)");
+    NameOrIndexContent& rTarget(GetMasterPool()->maRegisteredNameOrIndex[rItem.ItemType()]);
+    NameOrIndexContent::iterator aHit(rTarget.find(&rItem));
+    if (aHit == rTarget.end())
+        rTarget.insert(std::pair<const SfxPoolItem*, sal_uInt32>(&rItem, 0));
     else
-    {
-        assert(false && "unknown WhichId - cannot get pool default");
-        pRet = nullptr;
-    }
-    return pRet;
+        aHit->second++;
 }
 
-
-bool SfxItemPool::NeedsPoolRegistration(sal_uInt16 nWhich) const
+void SfxItemPool::unregisterNameOrIndex(const SfxPoolItem& rItem)
 {
-    if (!IsInRange(nWhich))
-    {
-        // get to correct pool
-        if (pImpl->mpSecondary)
-            return pImpl->mpSecondary->NeedsPoolRegistration(nWhich);
-        return false;
-    }
-
-    return NeedsPoolRegistration_Impl(nWhich - pImpl->mnStart);
+    assert(rItem.isNameOrIndex() && "ITEM: only Items derived from NameOrIndex supported for this mechanism (!)");
+    NameOrIndexContent& rTarget(GetMasterPool()->maRegisteredNameOrIndex[rItem.ItemType()]);
+    NameOrIndexContent::iterator aHit(rTarget.find(&rItem));
+    assert(aHit != rTarget.end() && "ITEM: malformed order of buffered NameOrIndex Items, entry *expected* (!)");
+    if (0 == aHit->second)
+        rTarget.erase(aHit);
+    else
+        aHit->second--;
 }
 
-bool SfxItemPool::Shareable(sal_uInt16 nWhich) const
+SfxItemPool* SfxItemPool::getTargetPool(sal_uInt16 nWhich) const
 {
-    if (!IsInRange(nWhich))
-    {
-        // get to correct pool
-        if (pImpl->mpSecondary)
-            return pImpl->mpSecondary->Shareable(nWhich);
-        return false;
-    }
-
-    return Shareable_Impl(nWhich - pImpl->mnStart);
+    if (IsInRange(nWhich))
+        return const_cast<SfxItemPool*>(this);
+    if (mpSecondary)
+        return mpSecondary->getTargetPool(nWhich);
+    return nullptr;
 }
 
+bool SfxItemPool::CheckItemInfoFlag(sal_uInt16 nWhich, sal_uInt16 nMask) const
+{
+    SfxItemPool* pTarget(getTargetPool(nWhich));
+    if (nullptr == pTarget)
+        return false;
+
+    if (!pTarget->maItemInfos.empty())
+    {
+        const sal_uInt16 nIndex(pTarget->GetIndex_Impl(nWhich));
+        const ItemInfo* pInfo(pTarget->maItemInfos[nIndex]);
+        assert(nullptr != pInfo);
+        return pInfo->getItemInfoFlags() & nMask;
+    }
+
+    return pTarget->CheckItemInfoFlag_Impl(pTarget->GetIndex_Impl(nWhich), nMask);
+}
 
 SfxBroadcaster& SfxItemPool::BC()
 {
-    return pImpl->aBC;
+    return aBC;
 }
-
 
 /**
  * This is the regular ctor to be used for this class.
@@ -342,301 +494,120 @@ SfxBroadcaster& SfxItemPool::BC()
  *
  *  If the Pool is supposed to hold SfxSetItems, the ctor cannot yet contain
  *  static Defaults. This needs to be done afterwards, using
- *  @see SfxItemPool::SetDefaults(std::vector<SfxPoolItem*>*).
+ *  @see SfxItemPool::SetPoolDefaults(std::vector<SfxPoolItem*>*).
  *
- *  @see SfxItemPool::SetDefaults(std::vector<SfxPoolItem*>*)
- *  @see SfxItemPool::ReleaseDefaults(std::vector<SfxPoolItem*>*,bool)
- *  @see SfxItemPool::ReleaseDefaults(bool)
+ *  @see SfxItemPool::SetPoolDefaults(std::vector<SfxPoolItem*>*)
+ *  @see SfxItemPool::ReleasePoolDefaults(std::vector<SfxPoolItem*>*,bool)
+ *  @see SfxItemPool::ReleasePoolDefaults(bool)
  */
-SfxItemPool::SfxItemPool
-(
-    const OUString&     rName,          /* Pool name to identify in the file format */
-    sal_uInt16          nStartWhich,    /* First WhichId of the Pool (must be > 0) */
-    sal_uInt16          nEndWhich,      /* Last WhichId of the Pool */
-    const SfxItemInfo*  pInfo,          /* SID Map and Item flags */
-    std::vector<SfxPoolItem*>*
-                        pDefaults       /* Pointer to static Defaults;
-                                           is directly referenced by the Pool,
-                                           but no transfer of ownership */
-) :
-    pItemInfos(pInfo),
-    pImpl( new SfxItemPool_Impl( this, rName, nStartWhich, nEndWhich ) ),
-    ppRegisteredSfxPoolItems(nullptr)
+SfxItemPool::SfxItemPool(const OUString& rName) /* Pool name to identify in the file format */
+: salhelper::SimpleReferenceObject()
+, aBC()
+, aName(rName)
+, mpMaster(this)
+, mpSecondary()
+, mnStart(0)
+, mnEnd(0)
+, eDefMetric(MapUnit::MapCM)
+, maRegisteredSfxItemSets()
+, maRegisteredSfxPoolItemHolders()
+, maRegisteredNameOrIndex()
+, mbShutdownHintSent(false)
+, maItemInfos()
+, maUserItemInfos()
+, mpSlotIDToWhichIDMap(nullptr)
 {
-    pImpl->eDefMetric = MapUnit::MapTwip;
-
-    if ( pDefaults )
-        SetDefaults(pDefaults);
-
-#ifdef DBG_UTIL
-    if (pItemInfos)
-    {
-        auto p = pItemInfos;
-        auto nWhich = nStartWhich;
-        while (nWhich <= nEndWhich)
-        {
-            if (p->_nSID == nWhich)
-            {
-                SAL_WARN("svl.items", "No point mapping a SID to itself, just put a 0 here in the SfxItemInfo array, at index " << (p - pItemInfos));
-                assert(false);
-            }
-            ++p;
-            ++nWhich;
-        }
-    }
-#endif
+    eDefMetric = MapUnit::MapTwip;
 }
-
 
 /**
  * Copy ctor
  *
  * @see SfxItemPool::Clone() const
 */
-SfxItemPool::SfxItemPool
-(
-    const SfxItemPool&  rPool,                  //  Copy from this instance
-    bool                bCloneStaticDefaults    /*  true
-                                                    Copy static Defaults
-
-                                                    false
-                                                    Take over static Defaults */
-) :
-    salhelper::SimpleReferenceObject(),
-    pItemInfos(rPool.pItemInfos),
-    pImpl( new SfxItemPool_Impl( this, rPool.pImpl->aName, rPool.pImpl->mnStart, rPool.pImpl->mnEnd ) ),
-    ppRegisteredSfxPoolItems(nullptr)
+SfxItemPool::SfxItemPool(const SfxItemPool& rPool) //  Copy from this instance
+: salhelper::SimpleReferenceObject()
+, aBC()
+, aName(rPool.aName)
+, mpMaster(this)
+, mpSecondary()
+, maPoolRanges()
+, mnStart(rPool.mnStart)
+, mnEnd(rPool.mnEnd)
+, eDefMetric(MapUnit::MapCM)
+, maRegisteredSfxItemSets()
+, maRegisteredSfxPoolItemHolders()
+, maRegisteredNameOrIndex()
+, mbShutdownHintSent(false)
+, maItemInfos(rPool.maItemInfos)
+, maUserItemInfos(rPool.maUserItemInfos)
+, mpSlotIDToWhichIDMap(rPool.mpSlotIDToWhichIDMap)
 {
-    pImpl->eDefMetric = rPool.pImpl->eDefMetric;
+    // DynamicDefaults and UserDefaults need to be cloned for the new Pool
+    for (itemInfoVector::iterator aInfo(maItemInfos.begin()); aInfo != maItemInfos.end(); aInfo++)
+        *aInfo = impCheckItemInfoForClone(*aInfo);
 
-    // Take over static Defaults
-    if ( bCloneStaticDefaults )
-    {
-        std::vector<SfxPoolItem *>* ppDefaults = new std::vector<SfxPoolItem*>(pImpl->mnEnd-pImpl->mnStart+1);
-        for ( sal_uInt16 n = 0; n <= pImpl->mnEnd - pImpl->mnStart; ++n )
-        {
-            (*ppDefaults)[n] = (*rPool.pImpl->mpStaticDefaults)[n]->Clone(this);
-            (*ppDefaults)[n]->setStaticDefault();
-        }
+    // DynamicDefaults need to be cloned for the new Pool (no UserDefaults in UserItemInfos)
+    for (auto& rUserItem : maUserItemInfos)
+        rUserItem.second = impCheckItemInfoForClone(rUserItem.second);
 
-        SetDefaults( ppDefaults );
-    }
-    else
-        SetDefaults( rPool.pImpl->mpStaticDefaults );
-
-    // Copy Pool Defaults
-    for (size_t n = 0; n < pImpl->maPoolDefaults.size(); ++n )
-        if (rPool.pImpl->maPoolDefaults[n])
-        {
-            pImpl->maPoolDefaults[n] = rPool.pImpl->maPoolDefaults[n]->Clone(this); //resets kind
-            pImpl->maPoolDefaults[n]->setPoolDefault();
-        }
+    eDefMetric = rPool.eDefMetric;
 
     // Repair linkage
-    if ( rPool.pImpl->mpSecondary )
-        SetSecondaryPool( rPool.pImpl->mpSecondary->Clone().get() );
+    if ( rPool.mpSecondary )
+        SetSecondaryPool( rPool.mpSecondary->Clone().get() );
 }
-
-void SfxItemPool::SetDefaults( std::vector<SfxPoolItem*>* pDefaults )
-{
-    DBG_ASSERT( pDefaults, "first we ask for it, and then we don't give back..." );
-    DBG_ASSERT( !pImpl->mpStaticDefaults, "already have Defaults" );
-
-    pImpl->mpStaticDefaults = pDefaults;
-    //! if ((*mpStaticDefaults)->GetKind() != SfxItemKind::StaticDefault)
-    //! FIXME: Probably doesn't work with SetItems at the end
-    {
-        DBG_ASSERT( (*pImpl->mpStaticDefaults)[0]->GetRefCount() == 0 ||
-                    IsDefaultItem( (*pImpl->mpStaticDefaults)[0] ),
-                    "these are not static" );
-        for ( sal_uInt16 n = 0; n <= pImpl->mnEnd - pImpl->mnStart; ++n )
-        {
-            assert(  ((*pImpl->mpStaticDefaults)[n]->Which() == n + pImpl->mnStart)
-                        && "items ids in pool-ranges and in static-defaults do not match" );
-            (*pImpl->mpStaticDefaults)[n]->setStaticDefault();
-            DBG_ASSERT(nullptr == ppRegisteredSfxPoolItems || nullptr == ppRegisteredSfxPoolItems[n]
-                || ppRegisteredSfxPoolItems[n]->empty(), "defaults with setitems with items?!" );
-        }
-    }
-}
-
-void SfxItemPool::ClearDefaults()
-{
-    pImpl->mpStaticDefaults = nullptr;
-}
-
-/**
- * Frees the static Defaults of the corresponding SfxItemPool instance
- * and deletes them if specified.
- *
- * The SfxItemPool instance MUST NOT BE USED after this function has
- * been called; only the dtor must be called.
- */
-void SfxItemPool::ReleaseDefaults
-(
-    bool    bDelete     /*  true
-                            Deletes the array as well as the single static Defaults
-
-                            false
-                            Neither deletes the array not the single static Defaults */
-)
-
-
-{
-    DBG_ASSERT( pImpl->mpStaticDefaults, "requirements not met" );
-    ReleaseDefaults( pImpl->mpStaticDefaults, bDelete );
-
-    // mpStaticDefaults points to deleted memory if bDelete == true.
-    if ( bDelete )
-        pImpl->mpStaticDefaults = nullptr;
-}
-
-
-/**
- * Frees the specified static Defaults and also deletes them, if so
- * specified.
- *
- * This method MUST be called AFTER all SfxItemPool instances (which
- * use the specified static Defaults 'pDefault') have been destroyed.
- */
-void SfxItemPool::ReleaseDefaults
-(
-    std::vector<SfxPoolItem*>*
-                    pDefaults,  /*  Static Defaults that are to be freed */
-
-    bool            bDelete     /*  true
-                                    Deletes the array as well as the specified
-                                    static Defaults
-
-                                    false
-                                    Neither deletes the array nor the single
-                                    static Defaults */
-)
-{
-    DBG_ASSERT( pDefaults, "we first ask for it and the return nothing ..." );
-
-    for ( auto & rpItem : *pDefaults )
-    {
-        assert(IsStaticDefaultItem(rpItem));
-        rpItem->SetRefCount(0);
-        if ( bDelete )
-        {
-            delete rpItem;
-            rpItem = nullptr;
-        }
-    }
-
-    if ( bDelete )
-    {
-        delete pDefaults;
-        pDefaults = nullptr;
-    }
-}
-
 
 SfxItemPool::~SfxItemPool()
 {
-    // Need to be deleted?
-    // Caution: ppRegisteredSfxPoolItems is on-demand created and can be nullptr
-    if ( nullptr != ppRegisteredSfxPoolItems || !pImpl->maPoolDefaults.empty() )
-        Delete();
+    // cleanup UserDefaults & delete owned DynamicDefaults
+    cleanupItemInfos();
 
-    if (pImpl->mpMaster != nullptr && pImpl->mpMaster != this)
+    // Need to send ShutdownHint?
+    sendShutdownHint();
+
+    if (mpMaster != nullptr && mpMaster != this)
     {
         // This condition indicates an error.
-        // A pImpl->mpMaster->SetSecondaryPool(...) call should have been made
+        // A mpMaster->SetSecondaryPool(...) call should have been made
         // earlier to prevent this. At this point we can only try to
         // prevent a crash later on.
-        DBG_ASSERT( pImpl->mpMaster == this, "destroying active Secondary-Pool" );
-        if (pImpl->mpMaster->pImpl->mpSecondary == this)
-            pImpl->mpMaster->pImpl->mpSecondary = nullptr;
+        DBG_ASSERT( mpMaster == this, "destroying active Secondary-Pool" );
+        if (mpMaster->mpSecondary == this)
+            mpMaster->mpSecondary = nullptr;
     }
 }
 
 void SfxItemPool::SetSecondaryPool( SfxItemPool *pPool )
 {
     // Reset Master in attached Pools
-    if ( pImpl->mpSecondary )
+    if ( mpSecondary )
     {
-#ifdef DBG_UTIL
-        if (nullptr != pImpl->mpStaticDefaults
-            && nullptr != ppRegisteredSfxPoolItems
-            && nullptr != pImpl->mpSecondary->ppRegisteredSfxPoolItems)
-            // Delete() did not yet run?
-        {
-            // Does the Master have SetItems?
-            bool bHasSetItems(false);
-
-            for (sal_uInt16 i(0); !bHasSetItems && i < pImpl->mnEnd - pImpl->mnStart; ++i)
-            {
-                const SfxPoolItem* pStaticDefaultItem((*pImpl->mpStaticDefaults)[i]);
-                bHasSetItems = pStaticDefaultItem->isSetItem();
-            }
-
-            if (bHasSetItems)
-            {
-                // Detached Pools must be empty
-                registeredSfxPoolItems** ppSet(pImpl->mpSecondary->ppRegisteredSfxPoolItems);
-
-                for (sal_uInt16 a(0); a < pImpl->mpSecondary->GetSize_Impl(); a++, ppSet++)
-                {
-                    if (nullptr != *ppSet && (*ppSet)->size() != 0)
-                    {
-                        SAL_WARN("svl.items", "old secondary pool: " << pImpl->mpSecondary->pImpl->aName
-                                        << " of pool: " << pImpl->aName << " must be empty.");
-                        break;
-                    }
-                }
-            }
-        }
-#endif
-
-        pImpl->mpSecondary->pImpl->mpMaster = pImpl->mpSecondary.get();
-        for ( SfxItemPool *p = pImpl->mpSecondary->pImpl->mpSecondary.get(); p; p = p->pImpl->mpSecondary.get() )
-            p->pImpl->mpMaster = pImpl->mpSecondary.get();
+        mpSecondary->mpMaster = mpSecondary.get();
+        for ( SfxItemPool *p = mpSecondary->mpSecondary.get(); p; p = p->mpSecondary.get() )
+            p->mpMaster = mpSecondary.get();
     }
 
     // Set Master of new Secondary Pools
-    DBG_ASSERT( !pPool || pPool->pImpl->mpMaster == pPool, "Secondary is present in two Pools" );
-    SfxItemPool *pNewMaster = GetMasterPool() ? pImpl->mpMaster : this;
-    for ( SfxItemPool *p = pPool; p; p = p->pImpl->mpSecondary.get() )
-        p->pImpl->mpMaster = pNewMaster;
+    DBG_ASSERT( !pPool || pPool->mpMaster == pPool, "Secondary is present in two Pools" );
+    SfxItemPool *pNewMaster = GetMasterPool() ? mpMaster : this;
+    for ( SfxItemPool *p = pPool; p; p = p->mpSecondary.get() )
+        p->mpMaster = pNewMaster;
 
     // Remember new Secondary Pool
-    pImpl->mpSecondary = pPool;
-
-    CHECK_SLOTS();
+    mpSecondary = pPool;
 }
-
-void SfxItemPool::SetItemInfos(SfxItemInfo const*const pInfo)
-{
-    pItemInfos = pInfo;
-    CHECK_SLOTS();
-}
-
 
 MapUnit SfxItemPool::GetMetric( sal_uInt16 ) const
 {
-    return pImpl->eDefMetric;
+    return eDefMetric;
 }
-
 
 void SfxItemPool::SetDefaultMetric( MapUnit eNewMetric )
 {
-//    assert((pImpl->eDefMetric == eNewMetric || !pImpl->mpPoolRanges) && "pool already frozen, cannot change metric");
-    pImpl->eDefMetric = eNewMetric;
+//    assert((pImpl->eDefMetric == eNewMetric || !pImpl->maPoolRanges) && "pool already frozen, cannot change metric");
+    eDefMetric = eNewMetric;
 }
-
-MapUnit SfxItemPool::GetDefaultMetric() const
-{
-    return pImpl->eDefMetric;
-}
-
-const OUString& SfxItemPool::GetName() const
-{
-    return pImpl->aName;
-}
-
 
 bool SfxItemPool::GetPresentation
 (
@@ -650,604 +621,385 @@ bool SfxItemPool::GetPresentation
         SfxItemPresentation::Complete, GetMetric(rItem.Which()), eMetric, rText, rIntlWrapper );
 }
 
-
 rtl::Reference<SfxItemPool> SfxItemPool::Clone() const
 {
     return new SfxItemPool( *this );
 }
 
-
-void SfxItemPool::Delete()
+void SfxItemPool::sendShutdownHint()
 {
-    // Already deleted?
-    // Caution: ppRegisteredSfxPoolItems is on-demand created and can be nullptr
-    if (nullptr == ppRegisteredSfxPoolItems && pImpl->maPoolDefaults.empty())
+    // Already sent?
+    if (mbShutdownHintSent)
         return;
 
+    mbShutdownHintSent = true;
+
     // Inform e.g. running Requests
-    pImpl->aBC.Broadcast( SfxHint( SfxHintId::Dying ) );
-
-    // Iterate through twice: first for the SetItems.
-    if (nullptr != pImpl->mpStaticDefaults && nullptr != ppRegisteredSfxPoolItems)
-    {
-        for (size_t n = 0; n < GetSize_Impl(); ++n)
-        {
-            // *mpStaticDefaultItem could've already been deleted in a class derived
-            // from SfxItemPool
-            // This causes chaos in Itempool!
-            const SfxPoolItem* pStaticDefaultItem((*pImpl->mpStaticDefaults)[n]);
-            if (pStaticDefaultItem->isSetItem() && nullptr != ppRegisteredSfxPoolItems[n])
-            {
-                // SfxSetItem found, remove PoolItems (and defaults) with same ID
-                auto& rArray(*(ppRegisteredSfxPoolItems[n]));
-                for (auto& rItemPtr : rArray)
-                {
-                    ReleaseRef(*rItemPtr, rItemPtr->GetRefCount()); // for RefCount check in dtor
-                    delete rItemPtr;
-                }
-                rArray.clear();
-                // let pImpl->DeleteItems() delete item arrays in maPoolItems
-                auto& rItemPtr = pImpl->maPoolDefaults[n];
-                if (rItemPtr)
-                {
-#ifdef DBG_UTIL
-                    ClearRefCount(*rItemPtr);
-#endif
-                    delete rItemPtr;
-                    rItemPtr = nullptr;
-                }
-            }
-        }
-    }
-
-    if (nullptr != ppRegisteredSfxPoolItems)
-    {
-        registeredSfxPoolItems** ppSet(ppRegisteredSfxPoolItems);
-
-        for (sal_uInt16 a(0); a < GetSize_Impl(); a++, ppSet++)
-        {
-            if (nullptr != *ppSet)
-            {
-                for (auto& rCandidate : **ppSet)
-                {
-                    if (nullptr != rCandidate && !IsDefaultItem(rCandidate))
-                    {
-                        ReleaseRef(*rCandidate, rCandidate->GetRefCount()); // for RefCount check in dtor
-                        delete rCandidate;
-                    }
-                }
-
-                delete *ppSet;
-                *ppSet = nullptr;
-            }
-        }
-
-        delete[] ppRegisteredSfxPoolItems;
-        ppRegisteredSfxPoolItems = nullptr;
-    }
-
-    // default items
-    for (auto rItemPtr : pImpl->maPoolDefaults)
-    {
-        if (rItemPtr)
-        {
-#ifdef DBG_UTIL
-            ClearRefCount(*rItemPtr);
-#endif
-            delete rItemPtr;
-            rItemPtr = nullptr;
-        }
-    }
-
-    pImpl->DeleteItems();
+    aBC.Broadcast( SfxHint( SfxHintId::Dying ) );
+    maPoolRanges.reset();
 }
 
-
-void SfxItemPool::SetPoolDefaultItem(const SfxPoolItem &rItem)
+void SfxItemPool::SetUserDefaultItem(const SfxPoolItem& rItem)
 {
-    if ( IsInRange(rItem.Which()) )
-    {
-        auto& rOldDefault =
-            pImpl->maPoolDefaults[GetIndex_Impl(rItem.Which())];
-        SfxPoolItem *pNewDefault = rItem.Clone(this);
-        pNewDefault->setPoolDefault();
-        if (rOldDefault)
-        {
-            rOldDefault->SetRefCount(0);
-            delete rOldDefault;
-            rOldDefault = nullptr;
-        }
-        rOldDefault = pNewDefault;
-    }
-    else if ( pImpl->mpSecondary )
-        pImpl->mpSecondary->SetPoolDefaultItem(rItem);
-    else
-    {
+    SfxItemPool* pTarget(getTargetPool(rItem.Which()));
+    if (nullptr == pTarget)
         assert(false && "unknown WhichId - cannot set pool default");
+
+    const sal_uInt16 nWhich(rItem.Which());
+    userItemInfos::iterator aHit(pTarget->maUserItemInfos.find(nWhich));
+
+    if (aHit == pTarget->maUserItemInfos.end())
+    {
+        // UserDefault does not exist, create needed entries to safe
+        // original ItemInfo in UserItemInfos and set new, owned
+        // ItemInfo containing an owned clone of the Item in ItemInfos
+        pTarget->impCreateUserDefault(rItem);
+        return;
     }
+
+    // UserDefault does exist, check and evtl. replace
+    const sal_uInt16 nIndex(pTarget->GetIndex_Impl(nWhich));
+    const ItemInfo* pInfo(pTarget->maItemInfos[nIndex]);
+    assert(nullptr != pInfo && "ITEM: access error to Defaults in Pool (!)");
+    const SfxPoolItem* pItem(pInfo->getItem());
+    assert(nullptr != pItem && "ITEM: access error to Defaults in Pool (!)");
+
+    // nothing to do if equal, so check
+    if (SfxPoolItem::areSame(pItem, &rItem))
+        return;
+
+    // need to exchange existing instance and free current one
+    pTarget->maItemInfos[nIndex] = new ItemInfoUser(*pInfo, *pTarget, rItem);
+    delete pInfo;
+}
+
+const SfxPoolItem* SfxItemPool::GetUserDefaultItem( sal_uInt16 nWhich ) const
+{
+    SfxItemPool* pTarget(getTargetPool(nWhich));
+    if (nullptr == pTarget)
+    {
+        assert(false && "unknown WhichId - cannot get pool default");
+        return nullptr;
+    }
+
+    userItemInfos::iterator aHit(pTarget->maUserItemInfos.find(nWhich));
+
+    if (aHit == pTarget->maUserItemInfos.end())
+        // no default item
+        return nullptr;
+
+    const sal_uInt16 nIndex(pTarget->GetIndex_Impl(nWhich));
+    const ItemInfo* pInfo(pTarget->maItemInfos[nIndex]);
+    assert(nullptr != pInfo && "ITEM: access error to Defaults in Pool (!)");
+    const SfxPoolItem* pItem(pInfo->getItem());
+    assert(nullptr != pItem && "ITEM: access error to Defaults in Pool (!)");
+    return pItem;
 }
 
 /**
  * Resets the default of the given WhichId back to the static Default.
  * If a pool default exists, it is removed.
  */
-void SfxItemPool::ResetPoolDefaultItem( sal_uInt16 nWhichId )
+void SfxItemPool::ResetUserDefaultItem( sal_uInt16 nWhich )
 {
-    if ( IsInRange(nWhichId) )
-    {
-        auto& rOldDefault =
-            pImpl->maPoolDefaults[GetIndex_Impl(nWhichId)];
-        if (rOldDefault)
-        {
-            rOldDefault->SetRefCount(0);
-            delete rOldDefault;
-            rOldDefault = nullptr;
-        }
-    }
-    else if ( pImpl->mpSecondary )
-        pImpl->mpSecondary->ResetPoolDefaultItem(nWhichId);
-    else
-    {
+    SfxItemPool* pTarget(getTargetPool(nWhich));
+    if (nullptr == pTarget)
         assert(false && "unknown WhichId - cannot reset pool default");
-    }
-}
 
-const SfxPoolItem& SfxItemPool::DirectPutItemInPoolImpl(const SfxPoolItem& rItem, sal_uInt16 nWhich, bool bPassingOwnership)
-{
-    // CAUTION: Do not register the problematic pool default
-    if (rItem.isExceptionalSCItem() && GetMasterPool()->newItem_UseDirect(rItem))
-        return rItem;
+    userItemInfos::iterator aHit(pTarget->maUserItemInfos.find(nWhich));
 
-#ifdef DBG_UTIL
-    nAllDirectlyPooledSfxPoolItemCount++;
-    nRemainingDirectlyPooledSfxPoolItemCount++;
-#endif
-
-    // make sure to use 'master'-pool, that's the one used by SfxItemSets
-    const SfxPoolItem* pRetval(implCreateItemEntry(*GetMasterPool(), &rItem, nWhich, bPassingOwnership));
-
-    // For the moment, as long as DirectPutItemInPoolImpl is used, make sure that
-    // the changes in implCreateItemEntry do not change anything, that would
-    // risc memory leaks by not (ab)using the garbage collector aspect of the pool.
-    registerSfxPoolItem(*pRetval);
-
-    return *pRetval;
-}
-
-void SfxItemPool::DirectRemoveItemFromPool(const SfxPoolItem& rItem)
-{
-    // CAUTION: Do not remove the problematic pool default
-    if (rItem.isExceptionalSCItem() && GetMasterPool()->newItem_UseDirect(rItem))
-        return;
-
-#ifdef DBG_UTIL
-    nRemainingDirectlyPooledSfxPoolItemCount--;
-#endif
-
-    // make sure to use 'master'-pool, that's the one used by SfxItemSets
-    implCleanupItemEntry(*GetMasterPool(), &rItem);
-}
-
-void SfxItemPool::newItem_Callback(const SfxPoolItem& rItem) const
-{
-    if (!IsInRange(rItem.Which()) && pImpl->mpSecondary)
-        pImpl->mpSecondary->newItem_Callback(rItem);
-}
-
-bool SfxItemPool::newItem_UseDirect(const SfxPoolItem& rItem) const
-{
-    if (!IsInRange(rItem.Which()) && pImpl->mpSecondary)
-        return pImpl->mpSecondary->newItem_UseDirect(rItem);
-    return false;
-}
-
-const SfxPoolItem& SfxItemPool::GetDefaultItem( sal_uInt16 nWhich ) const
-{
-    if ( !IsInRange(nWhich) )
+    if (aHit != pTarget->maUserItemInfos.end())
     {
-        if ( pImpl->mpSecondary )
-            return pImpl->mpSecondary->GetDefaultItem( nWhich );
-        assert(!"unknown which - don't ask me for defaults");
-    }
+        // clear entry, cleanup, restore previous data
+        pTarget->impClearUserDefault(aHit);
 
-    DBG_ASSERT( pImpl->mpStaticDefaults, "no defaults known - don't ask me for defaults" );
-    sal_uInt16 nPos = GetIndex_Impl(nWhich);
-    SfxPoolItem* pDefault = pImpl->maPoolDefaults[nPos];
-    if ( pDefault )
-        return *pDefault;
-    return *(*pImpl->mpStaticDefaults)[nPos];
+        // remove remembered data
+        pTarget->maUserItemInfos.erase(aHit);
+    }
 }
 
-SfxItemPool* SfxItemPool::GetSecondaryPool() const
+const SfxPoolItem& SfxItemPool::GetUserOrPoolDefaultItem( sal_uInt16 nWhich ) const
 {
-    return pImpl->mpSecondary.get();
+    SfxItemPool* pTarget(getTargetPool(nWhich));
+    if (nullptr == pTarget)
+        assert(!"unknown which - don't ask me for defaults");
+
+    const sal_uInt16 nIndex(pTarget->GetIndex_Impl(nWhich));
+    const ItemInfo* pInfo(pTarget->maItemInfos[nIndex]);
+    assert(nullptr != pInfo && "ITEM: access error to Defaults in Pool (!)");
+    const SfxPoolItem* pItem(pInfo->getItem());
+    assert(nullptr != pItem && "ITEM: access error to Defaults in Pool (!)");
+    return *pItem;
 }
 
 /* get the last pool by following the GetSecondaryPool chain */
 SfxItemPool* SfxItemPool::GetLastPoolInChain()
 {
-    SfxItemPool* pLast = this;
+    SfxItemPool* pLast(this);
+
     while(pLast->GetSecondaryPool())
         pLast = pLast->GetSecondaryPool();
+
     return pLast;
 }
 
-SfxItemPool* SfxItemPool::GetMasterPool() const
+const WhichRangesContainer& SfxItemPool::GetMergedIdRanges() const
 {
-    return pImpl->mpMaster;
-}
-
-/**
- * This method should be called at the master pool, when all secondary
- * pools are appended to it.
- *
- * It calculates the ranges of 'which-ids' for fast construction of
- * item-sets, which contains all 'which-ids'.
- */
-void SfxItemPool::FreezeIdRanges()
-{
-    assert(pImpl->mpPoolRanges.empty() && "pool already frozen, cannot freeze twice");
-    FillItemIdRanges_Impl( pImpl->mpPoolRanges );
-}
-
-
-void SfxItemPool::FillItemIdRanges_Impl( WhichRangesContainer& pWhichRanges ) const
-{
-    DBG_ASSERT( pImpl->mpPoolRanges.empty(), "GetFrozenRanges() would be faster!" );
-
-    pWhichRanges.reset();
-
-    // Merge all ranges, keeping them sorted
-    for (const SfxItemPool* pPool = this; pPool; pPool = pPool->pImpl->mpSecondary.get())
-        pWhichRanges = pWhichRanges.MergeRange(pPool->pImpl->mnStart, pPool->pImpl->mnEnd);
-}
-
-const WhichRangesContainer& SfxItemPool::GetFrozenIdRanges() const
-{
-    return pImpl->mpPoolRanges;
-}
-
-const SfxPoolItem *SfxItemPool::GetItem2Default(sal_uInt16 nWhich) const
-{
-    if ( !IsInRange(nWhich) )
+    if (maPoolRanges.empty())
     {
-        if ( pImpl->mpSecondary )
-            return pImpl->mpSecondary->GetItem2Default( nWhich );
+        // Merge all ranges, keeping them sorted
+        for (const SfxItemPool* pPool = this; pPool; pPool = pPool->mpSecondary.get())
+            maPoolRanges = maPoolRanges.MergeRange(pPool->mnStart, pPool->mnEnd);
+    }
+
+    return maPoolRanges;
+}
+
+const SfxPoolItem* SfxItemPool::GetPoolDefaultItem(sal_uInt16 nWhich) const
+{
+    SfxItemPool* pTarget(getTargetPool(nWhich));
+    if (nullptr == pTarget)
         assert(false && "unknown WhichId - cannot resolve surrogate");
-        return nullptr;
+
+    const sal_uInt16 nIndex(pTarget->GetIndex_Impl(nWhich));
+    userItemInfos::iterator aHit(pTarget->maUserItemInfos.find(nWhich));
+
+    if (aHit != pTarget->maUserItemInfos.end())
+    {
+        // If it is a UserDefault Item, check saved ItemInfo and use
+        // Item from there
+        assert(aHit != pTarget->maUserItemInfos.end() && "ITEM: Error in UserDefault handling (!)");
+        return aHit->second->getItem();
     }
-    return (*pImpl->mpStaticDefaults)[ GetIndex_Impl(nWhich) ];
+
+    const ItemInfo* pInfo(pTarget->maItemInfos[nIndex]);
+    assert(nullptr != pInfo && "ITEM: access error to Defaults in Pool (!)");
+    const SfxPoolItem* pItem(pInfo->getItem());
+    assert(nullptr != pItem && "ITEM: access error to Defaults in Pool (!)");
+    return pItem;
 }
 
-#ifdef DBG_UTIL
-static void warnForMissingPoolRegistration(const SfxItemPool& rPool, sal_uInt16 nWhich)
+namespace
 {
-    if (!rPool.NeedsPoolRegistration(nWhich))
-        SAL_INFO("svl.items", "ITEM: ItemSurrogate requested for WhichID " << nWhich <<
-        " class " << typeid(rPool.GetDefaultItem(nWhich)).name() <<
-        ": needs _bNeedsPoolRegistration==true in SfxItemInfo for that slot");
-}
-#endif
-
-const registeredSfxPoolItems& SfxItemPool::GetItemSurrogates(sal_uInt16 nWhich) const
-{
-    static const registeredSfxPoolItems EMPTY;
-
-    if (!IsInRange(nWhich))
+    class SurrogateData_ItemSet : public SfxItemPool::SurrogateData
     {
-        if (pImpl->mpSecondary)
-            return pImpl->mpSecondary->GetItemSurrogates(nWhich);
-        return EMPTY;
-    }
+        const SfxPoolItem*  mpItem;
+        SfxItemSet*         mpSet;
 
-    if (nullptr == ppRegisteredSfxPoolItems)
+    public:
+        SurrogateData_ItemSet(const SfxPoolItem& rItem, SfxItemSet& rSet)
+        : SfxItemPool::SurrogateData()
+        , mpItem(&rItem)
+        , mpSet(&rSet)
+        {
+        }
+
+        SurrogateData_ItemSet(const SurrogateData_ItemSet&) = default;
+
+        virtual const SfxPoolItem& getItem() const override
+        {
+            return *mpItem;
+        }
+
+        virtual const SfxPoolItem* setItem(std::unique_ptr<SfxPoolItem> aNew) override
+        {
+            return mpSet->Put(std::unique_ptr<SfxPoolItem>(aNew.release()));
+        }
+    };
+
+    class SurrogateData_ItemHolder : public SfxItemPool::SurrogateData
     {
-#ifdef DBG_UTIL
-        warnForMissingPoolRegistration(*this, nWhich);
-#endif
-        return EMPTY;
-    }
+        SfxPoolItemHolder*  mpHolder;
 
-    registeredSfxPoolItems* pSet(ppRegisteredSfxPoolItems[nWhich - pImpl->mnStart]);
+    public:
+        SurrogateData_ItemHolder(SfxPoolItemHolder& rHolder)
+        : SfxItemPool::SurrogateData()
+        , mpHolder(&rHolder)
+        {
+        }
 
-    if (nullptr == pSet)
-    {
-#ifdef DBG_UTIL
-        warnForMissingPoolRegistration(*this, nWhich);
-#endif
-        return EMPTY;
-    }
+        SurrogateData_ItemHolder(const SurrogateData_ItemHolder&) = default;
 
-    return *pSet;
-}
+        virtual const SfxPoolItem& getItem() const override
+        {
+            return *mpHolder->getItem();
+        }
 
-std::vector<const SfxPoolItem*> SfxItemPool::FindItemSurrogate(sal_uInt16 nWhich, SfxPoolItem const & rSample) const
-{
-    static const std::vector<const SfxPoolItem*> EMPTY;
-
-    if (nullptr == ppRegisteredSfxPoolItems)
-        return EMPTY;
-
-    if ( !IsInRange(nWhich) )
-    {
-        if ( pImpl->mpSecondary )
-            return pImpl->mpSecondary->FindItemSurrogate( nWhich, rSample );
-        assert(false && "unknown WhichId - cannot resolve surrogate");
-        return EMPTY;
-    }
-
-    // get index (must exist due to checks above)
-    const sal_uInt16 nIndex(rSample.Which() - pImpl->mnStart);
-
-    if (nullptr == ppRegisteredSfxPoolItems)
-    {
-#ifdef DBG_UTIL
-        warnForMissingPoolRegistration(*this, nWhich);
-#endif
-        return EMPTY;
-    }
-
-    // get registeredSfxPoolItems container
-    registeredSfxPoolItems* pSet(ppRegisteredSfxPoolItems[nIndex]);
-
-    if (nullptr == pSet)
-    {
-#ifdef DBG_UTIL
-        warnForMissingPoolRegistration(*this, nWhich);
-#endif
-        return EMPTY;
-    }
-
-    std::vector<const SfxPoolItem*> rv;
-
-    for (const SfxPoolItem* p : *pSet)
-        if (rSample == *p)
-            rv.push_back(p);
-
-    return rv;
+        virtual const SfxPoolItem* setItem(std::unique_ptr<SfxPoolItem> aNew) override
+        {
+            *mpHolder = SfxPoolItemHolder(mpHolder->getPool(), aNew.release(), true);
+            return mpHolder->getItem();
+        }
+    };
 }
 
-sal_uInt16 SfxItemPool::GetWhich( sal_uInt16 nSlotId, bool bDeep ) const
+void SfxItemPool::iterateItemSurrogates(
+    sal_uInt16 nWhich,
+    const std::function<bool(SurrogateData& rCand)>& rItemCallback) const
 {
-    if ( !IsSlot(nSlotId) )
+    // 1st source for surrogates
+    const registeredSfxItemSets& rSets(GetMasterPool()->maRegisteredSfxItemSets);
+
+    if(!rSets.empty())
+    {
+        const SfxPoolItem* pItem(nullptr);
+        std::vector<SurrogateData_ItemSet> aEntries;
+
+        // NOTE: this collects the callback data in a preparing run. This
+        //   is by purpose, else any write change may change the iterators
+        //   used at registeredSfxItemSets. I tied with direct feed and
+        //   that worked most of the time, but failed for ItemHolders due
+        //   to these being changed and being re-registered. I have avoided
+        //   this in SfxPoolItemHolder::operator=, but it's just a question
+        //   that in some scenario someone replaces an Item even with a
+        //   different type/WhichID that this will then break/crash
+        for (const auto& rCand : rSets)
+            if (SfxItemState::SET == rCand->GetItemState(nWhich, false, &pItem))
+                aEntries.emplace_back(*pItem, *rCand);
+
+        if (!aEntries.empty())
+            for (auto& rCand : aEntries)
+                if (!rItemCallback(rCand))
+                    return;
+    }
+
+    // 2nd source for surrogates
+    const registeredSfxPoolItemHolders& rHolders(GetMasterPool()->maRegisteredSfxPoolItemHolders);
+
+    if (!rHolders.empty())
+    {
+        std::vector<SurrogateData_ItemHolder> aEntries;
+
+        // NOTE: same as above, look there
+        for (auto& rCand : rHolders)
+            if (rCand->Which() == nWhich && nullptr != rCand->getItem())
+                aEntries.emplace_back(*rCand);
+
+        if (!aEntries.empty())
+            for (auto& rCand : aEntries)
+                if (!rItemCallback(rCand))
+                    return;
+    }
+}
+
+ItemSurrogates SfxItemPool::GetItemSurrogatesForItem(SfxItemType eItemType) const
+{
+    ItemSurrogates aTarget;
+    const registeredNameOrIndex& rRegistered(GetMasterPool()->maRegisteredNameOrIndex);
+    registeredNameOrIndex::const_iterator aHit(rRegistered.find(eItemType));
+    if (aHit != rRegistered.end())
+    {
+        aTarget.reserve(aHit->second.size());
+        for (const auto& entry : aHit->second)
+            aTarget.push_back(entry.first);
+    }
+    return aTarget;
+}
+
+ItemSurrogates SfxItemPool::GetItemSurrogatesForItem(const SfxPoolItem& rItem) const
+{
+    assert(rItem.isNameOrIndex() && "ITEM: only Items derived from NameOrIndex supported for this mechanism (!)");
+    return GetItemSurrogatesForItem(rItem.ItemType());
+}
+
+ItemSurrogates SfxItemPool::GetItemSurrogates(sal_uInt16 nWhich) const
+{
+    if (0 == nWhich)
+        return {};
+
+    // NOTE: This is pre-collected, in this case mainly to
+    //   remove all double listings of SfxPoolItems which can
+    //   of course be referenced multiple times in multiple
+    //   ItemSets/ItemHolders. It comes handy that
+    //   std::unordered_set does this by definition
+    std::unordered_set<const SfxPoolItem*> aNewSurrogates;
+
+    // 1st source for surrogates
+    const registeredSfxItemSets& rSets(GetMasterPool()->maRegisteredSfxItemSets);
+    const SfxPoolItem* pItem(nullptr);
+    for (const auto& rCand : rSets)
+        if (SfxItemState::SET == rCand->GetItemState(nWhich, false, &pItem))
+            aNewSurrogates.insert(pItem);
+
+    // 2nd source for surrogates
+    const registeredSfxPoolItemHolders& rHolders(GetMasterPool()->maRegisteredSfxPoolItemHolders);
+    for (const auto& rCand : rHolders)
+        if (rCand->Which() == nWhich && nullptr != rCand->getItem())
+            aNewSurrogates.insert(rCand->getItem());
+
+    return ItemSurrogates(aNewSurrogates.begin(), aNewSurrogates.end());
+}
+
+sal_uInt16 SfxItemPool::GetWhichIDFromSlotID(sal_uInt16 nSlotId, bool bDeep) const
+{
+    if (!IsSlot(nSlotId))
         return nSlotId;
 
-    sal_uInt16 nCount = pImpl->mnEnd - pImpl->mnStart + 1;
-    for ( sal_uInt16 nOfs = 0; nOfs < nCount; ++nOfs )
-        if ( pItemInfos[nOfs]._nSID == nSlotId )
-            return nOfs + pImpl->mnStart;
-    if ( pImpl->mpSecondary && bDeep )
-        return pImpl->mpSecondary->GetWhich(nSlotId);
+    if (nullptr != mpSlotIDToWhichIDMap)
+    {
+        // use the static global translation table -> near linear access time
+        SlotIDToWhichIDMap::const_iterator aHit(mpSlotIDToWhichIDMap->find(nSlotId));
+        if (aHit != mpSlotIDToWhichIDMap->end())
+            return aHit->second;
+    }
+
+    if (mpSecondary && bDeep)
+        return mpSecondary->GetWhichIDFromSlotID(nSlotId);
+
     return nSlotId;
 }
 
 
-sal_uInt16 SfxItemPool::GetSlotId( sal_uInt16 nWhich ) const
+sal_uInt16 SfxItemPool::GetSlotId(sal_uInt16 nWhich) const
 {
-    if ( !IsWhich(nWhich) )
+    if (!IsWhich(nWhich))
         return nWhich;
 
-    if ( !IsInRange( nWhich ) )
-    {
-        if ( pImpl->mpSecondary )
-            return pImpl->mpSecondary->GetSlotId(nWhich);
+    SfxItemPool* pTarget(getTargetPool(nWhich));
+    if (nullptr == pTarget)
         assert(false && "unknown WhichId - cannot get slot-id");
-        return 0;
-    }
 
-    sal_uInt16 nSID = pItemInfos[nWhich - pImpl->mnStart]._nSID;
-    return nSID ? nSID : nWhich;
+    const sal_uInt16 nIndex(pTarget->GetIndex_Impl(nWhich));
+    const ItemInfo* pInfo(pTarget->maItemInfos[nIndex]);
+    assert(nullptr != pInfo && "ITEM: access error to Defaults in Pool (!)");
+    const sal_uInt16 nSID(pInfo->getSlotID());
+    return (0 != nSID) ? nSID : nWhich;
 }
 
 
-sal_uInt16 SfxItemPool::GetTrueWhich( sal_uInt16 nSlotId, bool bDeep ) const
+sal_uInt16 SfxItemPool::GetTrueWhichIDFromSlotID( sal_uInt16 nSlotId, bool bDeep ) const
 {
-    if ( !IsSlot(nSlotId) )
+    if (!IsSlot(nSlotId))
         return 0;
 
-    sal_uInt16 nCount = pImpl->mnEnd - pImpl->mnStart + 1;
-    for ( sal_uInt16 nOfs = 0; nOfs < nCount; ++nOfs )
-        if ( pItemInfos[nOfs]._nSID == nSlotId )
-            return nOfs + pImpl->mnStart;
-    if ( pImpl->mpSecondary && bDeep )
-        return pImpl->mpSecondary->GetTrueWhich(nSlotId);
+    if (nullptr != mpSlotIDToWhichIDMap)
+    {
+        // use the static global translation table -> near linear access time
+        SlotIDToWhichIDMap::const_iterator aHit(mpSlotIDToWhichIDMap->find(nSlotId));
+        if (aHit != mpSlotIDToWhichIDMap->end())
+            return aHit->second;
+    }
+
+    if (mpSecondary && bDeep)
+        return mpSecondary->GetTrueWhichIDFromSlotID(nSlotId);
+
     return 0;
 }
 
 
 sal_uInt16 SfxItemPool::GetTrueSlotId( sal_uInt16 nWhich ) const
 {
-    if ( !IsWhich(nWhich) )
+    if (!IsWhich(nWhich))
         return 0;
 
-    if ( !IsInRange( nWhich ) )
-    {
-        if ( pImpl->mpSecondary )
-            return pImpl->mpSecondary->GetTrueSlotId(nWhich);
+    SfxItemPool* pTarget(getTargetPool(nWhich));
+    if (nullptr == pTarget)
         assert(false && "unknown WhichId - cannot get slot-id");
-        return 0;
-    }
-    return pItemInfos[nWhich - pImpl->mnStart]._nSID;
-}
 
-void SfxItemPool::registerSfxPoolItem(const SfxPoolItem& rItem)
-{
-    assert(rItem.Which() != 0);
-
-    if (IsSlot(rItem.Which()))
-        // do not register SlotItems
-        return;
-
-    if (rItem.isRegisteredAtPool())
-        // already registered, done
-        return;
-
-    if (!IsInRange(rItem.Which()))
-    {
-        // get to the right pool
-        if (pImpl->mpSecondary)
-        {
-            pImpl->mpSecondary->registerSfxPoolItem(rItem);
-            return;
-        }
-
-        return;
-    }
-
-    if (nullptr == ppRegisteredSfxPoolItems)
-        // on-demand allocate array of registeredSfxPoolItems and init to nullptr
-        ppRegisteredSfxPoolItems = new registeredSfxPoolItems*[GetSize_Impl()]{};
-
-    // get correct registeredSfxPoolItems
-    const sal_uInt16 nIndex(rItem.Which() - pImpl->mnStart);
-    registeredSfxPoolItems* pSet(ppRegisteredSfxPoolItems[nIndex]);
-
-    if (nullptr == pSet)
-        // on-demand allocate
-        ppRegisteredSfxPoolItems[nIndex] = pSet = new registeredSfxPoolItems;
-
-    // insert to registeredSfxPoolItems and set flag at Item
-    pSet->insert(&rItem);
-    const_cast<SfxPoolItem&>(rItem).setRegisteredAtPool(true);
-}
-
-void SfxItemPool::unregisterSfxPoolItem(const SfxPoolItem& rItem)
-{
-    if (!rItem.isRegisteredAtPool())
-        // Item is not registered, done
-        return;
-
-    if (!IsInRange(rItem.Which()))
-    {
-        // get to the right pool
-        if (pImpl->mpSecondary)
-        {
-            pImpl->mpSecondary->unregisterSfxPoolItem(rItem);
-            return;
-        }
-
-        assert(false && "unknown WhichId - cannot execute unregisterSfxPoolItem");
-        return;
-    }
-
-    // we need a valid WhichID and the array of containers has to exist
-    assert(rItem.Which() != 0);
-    assert(nullptr != ppRegisteredSfxPoolItems);
-
-    // get index (must exist due to checks above)
-    const sal_uInt16 nIndex(rItem.Which() - pImpl->mnStart);
-
-    // a valid registeredSfxPoolItems container has to exist
-    registeredSfxPoolItems* pSet(ppRegisteredSfxPoolItems[nIndex]);
-    assert(nullptr != pSet);
-
-    // remove registered Item and reset flag at Item
-    pSet->erase(&rItem);
-    const_cast<SfxPoolItem&>(rItem).setRegisteredAtPool(false);
-}
-
-bool SfxItemPool::isSfxPoolItemRegisteredAtThisPool(const SfxPoolItem& rItem) const
-{
-    if (!rItem.isRegisteredAtPool())
-        // Item is not registered at all, so also not at this Pool
-        return false;
-
-    if (IsSlot(rItem.Which()))
-        // do not check being registered for SlotItems
-        return false;
-
-    if (!IsInRange(rItem.Which()))
-    {
-        // get to the right pool
-        if (pImpl->mpSecondary)
-            return pImpl->mpSecondary->isSfxPoolItemRegisteredAtThisPool(rItem);
-        return false;
-    }
-
-    // we need a valid WhichID
-    assert(rItem.Which() != 0);
-
-    if (nullptr == ppRegisteredSfxPoolItems)
-        // when no array of containers exists the Item is not registered
-        return false;
-
-    // get index (must exist due to checks above)
-    const sal_uInt16 nIndex(rItem.Which() - pImpl->mnStart);
-
-    // get registeredSfxPoolItems container
-    registeredSfxPoolItems* pSet(ppRegisteredSfxPoolItems[nIndex]);
-
-    if (nullptr == pSet)
-        // when no registeredSfxPoolItems container exists the Item is not registered
-        return false;
-
-    // test if Item is registered
-    return pSet->find(&rItem) != pSet->end();
-}
-
-const SfxPoolItem* SfxItemPool::tryToGetEqualItem(const SfxPoolItem& rItem, sal_uInt16 nWhich) const
-{
-    if (IsSlot(nWhich))
-        // SlotItems are not registered @pool and not in any range
-        return nullptr;
-
-    if (!IsInRange(nWhich))
-    {
-        // get to the right pool
-        if (pImpl->mpSecondary)
-            return pImpl->mpSecondary->tryToGetEqualItem(rItem, nWhich);
-        return nullptr;
-    }
-
-    if (nullptr == ppRegisteredSfxPoolItems)
-        // no Items at all
-        return nullptr;
-
-    // get index (must exist due to checks above)
-    const sal_uInt16 nIndex(nWhich - pImpl->mnStart);
-
-    if (!Shareable_Impl(nIndex))
-        // not shareable
-        return nullptr;
-
-    // get registeredSfxPoolItems container
-    registeredSfxPoolItems* pSet(ppRegisteredSfxPoolItems[nIndex]);
-
-    if (nullptr == pSet)
-        // no registeredSfxPoolItems for this WhichID
-        return nullptr;
-
-    for (const auto& rCandidate : *pSet)
-        if (*rCandidate == rItem)
-            return rCandidate;
-
-    return nullptr;
-}
-
-void SfxItemPool::dumpAsXml(xmlTextWriterPtr pWriter) const
-{
-    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("SfxItemPool"));
-
-    if (nullptr != ppRegisteredSfxPoolItems)
-    {
-        registeredSfxPoolItems** ppSet(ppRegisteredSfxPoolItems);
-
-        for (sal_uInt16 a(0); a < GetSize_Impl(); a++, ppSet++)
-        {
-            if (nullptr != *ppSet)
-            {
-                for (auto& rCandidate : **ppSet)
-                {
-                    if (nullptr != rCandidate)
-                    {
-                        rCandidate->dumpAsXml(pWriter);
-                    }
-                }
-            }
-        }
-    }
-
-    (void)xmlTextWriterEndElement(pWriter);
+    const sal_uInt16 nIndex(pTarget->GetIndex_Impl(nWhich));
+    const ItemInfo* pInfo(pTarget->maItemInfos[nIndex]);
+    assert(nullptr != pInfo && "ITEM: access error to Defaults in Pool (!)");
+    return pInfo->getSlotID();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

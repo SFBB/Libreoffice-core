@@ -39,18 +39,18 @@ namespace sd {
 
 
 FuParagraph::FuParagraph (
-    ViewShell* pViewSh,
+    ViewShell& rViewSh,
     ::sd::Window* pWin,
     ::sd::View* pView,
-    SdDrawDocument* pDoc,
+    SdDrawDocument& rDoc,
     SfxRequest& rReq)
-    : FuPoor(pViewSh, pWin, pView, pDoc, rReq)
+    : FuPoor(rViewSh, pWin, pView, rDoc, rReq)
 {
 }
 
-rtl::Reference<FuPoor> FuParagraph::Create( ViewShell* pViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument* pDoc, SfxRequest& rReq )
+rtl::Reference<FuPoor> FuParagraph::Create( ViewShell& rViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument& rDoc, SfxRequest& rReq )
 {
-    rtl::Reference<FuPoor> xFunc( new FuParagraph( pViewSh, pWin, pView, pDoc, rReq ) );
+    rtl::Reference<FuPoor> xFunc( new FuParagraph( rViewSh, pWin, pView, rDoc, rReq ) );
     xFunc->DoExecute(rReq);
     return xFunc;
 }
@@ -64,17 +64,18 @@ void FuParagraph::DoExecute( SfxRequest& rReq )
 
     if( !pArgs )
     {
-        SfxItemSet aEditAttr( mpDoc->GetPool() );
+        SfxItemSet aEditAttr( mrDoc.GetPool() );
         mpView->GetAttributes( aEditAttr );
         SfxItemPool *pPool =  aEditAttr.GetPool();
-        SfxItemSetFixed<EE_ITEMS_START, EE_ITEMS_END,
-                         SID_ATTR_TABSTOP_OFFSET, SID_ATTR_TABSTOP_OFFSET,
-                         ATTR_PARANUMBERING_START, ATTR_PARANUMBERING_END>  aNewAttr( *pPool );
+        SfxItemSet aNewAttr(SfxItemSet::makeFixedSfxItemSet<
+                    EE_ITEMS_START, EE_ITEMS_END,
+                    SID_ATTR_TABSTOP_OFFSET, SID_ATTR_TABSTOP_OFFSET,
+                    ATTR_PARANUMBERING_START, ATTR_PARANUMBERING_END>(*pPool));
 
         aNewAttr.Put( aEditAttr );
 
         // left border is offset
-        const ::tools::Long nOff = aNewAttr.Get( EE_PARA_LRSPACE ).GetTextLeft();
+        const ::tools::Long nOff = aNewAttr.Get(EE_PARA_LRSPACE).ResolveTextLeft({});
         // conversion since TabulatorTabPage always uses Twips!
         SfxInt32Item aOff( SID_ATTR_TABSTOP_OFFSET, nOff );
         aNewAttr.Put( aOff );
@@ -82,12 +83,12 @@ void FuParagraph::DoExecute( SfxRequest& rReq )
         if( pOutlView && pOutliner )
         {
             ESelection eSelection = pOutlView->GetSelection();
-            aNewAttr.Put( SfxInt16Item( ATTR_NUMBER_NEWSTART_AT, pOutliner->GetNumberingStartValue( eSelection.nStartPara ) ) );
-            aNewAttr.Put( SfxBoolItem( ATTR_NUMBER_NEWSTART, pOutliner->IsParaIsNumberingRestart( eSelection.nStartPara ) ) );
+            aNewAttr.Put( SfxInt16Item( ATTR_NUMBER_NEWSTART_AT, pOutliner->GetNumberingStartValue( eSelection.start.nPara ) ) );
+            aNewAttr.Put( SfxBoolItem( ATTR_NUMBER_NEWSTART, pOutliner->IsParaIsNumberingRestart( eSelection.start.nPara ) ) );
         }
 
         SdAbstractDialogFactory* pFact = SdAbstractDialogFactory::Create();
-        ScopedVclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateSdParagraphTabDlg(mpViewShell->GetFrameWeld(), &aNewAttr));
+        ScopedVclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateSdParagraphTabDlg(mrViewShell.GetFrameWeld(), &aNewAttr));
 
         sal_uInt16 nResult = pDlg->Execute();
 
@@ -114,13 +115,13 @@ void FuParagraph::DoExecute( SfxRequest& rReq )
         if( const SfxBoolItem* pItem = pArgs->GetItemIfSet( ATTR_NUMBER_NEWSTART, false ) )
         {
             const bool bNewStart = pItem->GetValue();
-            pOutliner->SetParaIsNumberingRestart( eSelection.nStartPara, bNewStart );
+            pOutliner->SetParaIsNumberingRestart( eSelection.start.nPara, bNewStart );
         }
 
         if( const SfxInt16Item* pItem = pArgs->GetItemIfSet( ATTR_NUMBER_NEWSTART_AT, false ) )
         {
             const sal_Int16 nStartAt = pItem->GetValue();
-            pOutliner->SetNumberingStartValue( eSelection.nStartPara, nStartAt );
+            pOutliner->SetNumberingStartValue( eSelection.start.nPara, nStartAt );
         }
     }
 
@@ -146,7 +147,7 @@ void FuParagraph::DoExecute( SfxRequest& rReq )
         SID_PARASPACE_DECREASE,
         0 };
 
-    mpViewShell->GetViewFrame()->GetBindings().Invalidate( SidArray );
+    mrViewShell.GetViewFrame()->GetBindings().Invalidate( SidArray );
 }
 
 void FuParagraph::Activate()

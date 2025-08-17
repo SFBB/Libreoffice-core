@@ -18,17 +18,25 @@
  */
 
 #include "loader.hxx"
+#include <algorithm>
 #include <cassert>
-#include <systools/win32/uwinapi.h>
+#include <numeric>
 #include <stdlib.h>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <desktop/exithelper.h>
+#include <systools/win32/extended_max_path.hxx>
+#include <systools/win32/uwinapi.h>
 #include <tools/pathutils.hxx>
 
 #include <fstream>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/ini_parser.hpp>
+
+// For PathCchCanonicalizeEx
+#include <pathcch.h>
+#pragma comment(lib, "Pathcch.lib")
 
 namespace {
 
@@ -43,75 +51,114 @@ void fail()
     TerminateProcess(GetCurrentProcess(), 255);
 }
 
-LPWSTR* GetCommandArgs(int* pArgc) { return CommandLineToArgvW(GetCommandLineW(), pArgc); }
+struct CommandArgs
+{
+    LPWSTR* argv;
+    int argc;
+    CommandArgs() { argv = CommandLineToArgvW(GetCommandLineW(), &argc); }
+    ~CommandArgs() { LocalFree(argv); }
+    auto begin() const { return argv; }
+    auto end() const { return begin() + argc; }
+};
 
 // tdf#120249: quotes in arguments need to be escaped; backslashes before quotes need doubling. See
 // https://docs.microsoft.com/en-us/windows/desktop/api/shellapi/nf-shellapi-commandlinetoargvw
-std::wstring EscapeArg(LPCWSTR sArg)
+std::wstring EscapeArg(std::wstring_view sArg)
 {
-    const size_t nOrigSize = wcslen(sArg);
-    LPCWSTR const end = sArg + nOrigSize;
     std::wstring sResult(L"\"");
-
-    LPCWSTR lastPosQuote = sArg;
-    LPCWSTR posQuote;
-    while ((posQuote = std::find(lastPosQuote, end, L'"')) != end)
+    for (size_t lastPosQuote = 0; lastPosQuote <= sArg.size();)
     {
-        LPCWSTR posBackslash = posQuote;
-        while (posBackslash != lastPosQuote && *(posBackslash - 1) == L'\\')
+        const size_t posQuote = std::min(sArg.find(L'"', lastPosQuote), sArg.size());
+        size_t posBackslash = posQuote;
+        while (posBackslash != lastPosQuote && sArg[posBackslash - 1] == L'\\')
             --posBackslash;
+        // 2n+1 '\' to escape internal '"'; 2n '\' before closing '"'
+        const size_t nEscapes = (posQuote - posBackslash) * 2 + (posQuote < sArg.size() ? 1 : 0);
 
-        sResult.append(lastPosQuote, posBackslash);
-        sResult.append((posQuote - posBackslash) * 2 + 1, L'\\'); // 2n+1 '\' to escape the '"'
+        sResult.append(sArg.begin() + lastPosQuote, sArg.begin() + posBackslash);
+        sResult.append(nEscapes, L'\\');
         sResult.append(1, L'"');
         lastPosQuote = posQuote + 1;
     }
-
-    LPCWSTR posTrailingBackslashSeq = end;
-    while (posTrailingBackslashSeq != lastPosQuote && *(posTrailingBackslashSeq - 1) == L'\\')
-        --posTrailingBackslashSeq;
-    sResult.append(lastPosQuote, posTrailingBackslashSeq);
-    sResult.append((end - posTrailingBackslashSeq) * 2, L'\\'); // 2n '\' before closing '"'
-    sResult.append(1, L'"');
-
     return sResult;
 }
 
-void AddEscapedArg(LPCWSTR sArg, std::vector<std::wstring>& aEscapedArgs,
-                   std::size_t& iLengthAccumulator)
+std::wstring getCWDarg()
 {
-    std::wstring sEscapedArg = EscapeArg(sArg);
-    aEscapedArgs.push_back(sEscapedArg);
-    iLengthAccumulator += sEscapedArg.length() + 1; // a space between args
-}
+    std::wstring s(L" \"-env:OOO_CWD=");
 
-bool HasWildCard(LPCWSTR sArg)
-{
-    while (*sArg != L'\0')
+    DWORD cwdLen = GetCurrentDirectoryW(0, nullptr);
+    std::vector<WCHAR> cwd(cwdLen);
+    cwdLen = GetCurrentDirectoryW(cwdLen, cwd.data());
+    if (cwdLen == 0 || cwdLen >= cwd.size())
     {
-        if (*sArg == L'*' || *sArg == L'?')
-            return true;
-        sArg++;
+        s += L'0';
     }
-    return false;
+    else
+    {
+        s += L'2';
+
+        size_t n = 0; // number of trailing backslashes
+        for (auto* p = cwd.data(); *p; ++p)
+        {
+            WCHAR c = *p;
+            if (c == L'$')
+            {
+                s += L"\\$";
+                n = 0;
+            }
+            else if (c == L'\\')
+            {
+                s += L"\\\\";
+                n += 2;
+            }
+            else
+            {
+                s += c;
+                n = 0;
+            }
+        }
+        // The command line will continue with a double quote, so double any
+        // preceding backslashes as required by Windows:
+        s.append(n, L'\\');
+    }
+    s += L'"';
+    return s;
 }
 
+WCHAR* commandLineAppend(WCHAR* buffer, std::wstring_view text)
+{
+    auto ret = std::copy_n(text.begin(), text.size(), buffer);
+    *ret = 0; // trailing null
+    return ret;
 }
 
-namespace desktop_win32 {
-
-void extendLoaderEnvironment(WCHAR * binPath, WCHAR * iniDirectory) {
-    if (!GetModuleFileNameW(nullptr, iniDirectory, MAX_PATH)) {
-        fail();
+// Set the PATH environment variable in the current (loader) process, so that a
+// following CreateProcess has the necessary environment:
+// returns a pair of strings { binPath, iniDirectory }
+// * binPath is the full path to the "bin" file corresponding to the current executable.
+// * iniDirectory is the full directory path (ending in "\") to the "ini" file corresponding to the
+// current executable.
+[[nodiscard]] std::pair<std::wstring, std::wstring> extendLoaderEnvironment()
+{
+    std::vector<wchar_t> executable_path(EXTENDED_MAX_PATH);
+    DWORD exe_len;
+    for (;;)
+    {
+        exe_len = GetModuleFileNameW(nullptr, executable_path.data(), executable_path.size());
+        if (!exe_len)
+            fail();
+        if (GetLastError() != ERROR_INSUFFICIENT_BUFFER)
+        {
+            executable_path.resize(exe_len + 4); // to accommodate a possible ".bin" in the end
+            break;
+        }
+        executable_path.resize(executable_path.size() * 2);
     }
-    WCHAR * iniDirEnd = tools::filename(iniDirectory);
-    WCHAR name[MAX_PATH + MY_LENGTH(L".bin")];
-        // hopefully std::size_t is large enough to not overflow
-    WCHAR * nameEnd = name;
-    for (WCHAR * p = iniDirEnd; *p != L'\0'; ++p) {
-        *nameEnd++ = *p;
-    }
-    if (!(nameEnd - name >= 4 && nameEnd[-4] == L'.' &&
+    WCHAR* iniDirEnd = tools::filename(executable_path.data());
+    std::wstring_view iniDirView(executable_path.data(), iniDirEnd);
+    WCHAR* nameEnd = executable_path.data() + exe_len;
+    if (!(nameEnd - iniDirEnd >= 4 && nameEnd[-4] == L'.' &&
          (((nameEnd[-3] == L'E' || nameEnd[-3] == L'e') &&
            (nameEnd[-2] == L'X' || nameEnd[-2] == L'x') &&
            (nameEnd[-1] == L'E' || nameEnd[-1] == L'e')) ||
@@ -125,46 +172,41 @@ void extendLoaderEnvironment(WCHAR * binPath, WCHAR * iniDirectory) {
     nameEnd[-3] = 'b';
     nameEnd[-2] = 'i';
     nameEnd[-1] = 'n';
-    tools::buildPath(binPath, iniDirectory, iniDirEnd, name, nameEnd - name);
-    *iniDirEnd = L'\0';
-    std::size_t const maxEnv = 32767;
-    WCHAR env[maxEnv];
-    DWORD n = GetEnvironmentVariableW(L"PATH", env, maxEnv);
-    if ((n >= maxEnv || n == 0) && GetLastError() != ERROR_ENVVAR_NOT_FOUND) {
+    std::wstring_view nameView(iniDirEnd, nameEnd);
+
+    WCHAR env[32767];
+    DWORD n = GetEnvironmentVariableW(L"PATH", env, std::size(env));
+    if ((n >= std::size(env) || n == 0) && GetLastError() != ERROR_ENVVAR_NOT_FOUND) {
         fail();
     }
+    std::wstring_view envView(env, n);
     // must be first in PATH to override other entries
-    assert(*(iniDirEnd - 1) == L'\\'); // hence -1 below
-    if (wcsncmp(env, iniDirectory, iniDirEnd - iniDirectory - 1) != 0
-        || env[iniDirEnd - iniDirectory - 1] != L';')
+    assert(iniDirView.back() == L'\\'); // hence -1 below
+    std::wstring_view iniDirView1(iniDirView.substr(0, iniDirView.size() - 1));
+    if (!envView.starts_with(iniDirView1) || env[iniDirView1.size()] != L';')
     {
-        WCHAR pad[MAX_PATH + maxEnv];
-            // hopefully std::size_t is large enough to not overflow
-        WCHAR * p = commandLineAppend(pad, iniDirectory, iniDirEnd - iniDirectory - 1);
+        std::wstring pad(iniDirView1);
         if (n != 0) {
-            *p++ = L';';
-            for (DWORD i = 0; i <= n; ++i) {
-                *p++ = env[i];
-            }
-        } else {
-            *p++ = L'\0';
+            pad += L';';
+            pad += envView;
         }
-        if (!SetEnvironmentVariableW(L"PATH", pad)) {
+        if (!SetEnvironmentVariableW(L"PATH", pad.data())) {
             fail();
         }
     }
+
+    return { tools::buildPath(iniDirView, nameView), std::wstring(iniDirView) };
 }
+
+}
+
+namespace desktop_win32 {
 
 int officeloader_impl(bool bAllowConsole)
 {
-    WCHAR szTargetFileName[MAX_PATH] = {};
-    WCHAR szIniDirectory[MAX_PATH];
-    STARTUPINFOW aStartupInfo;
+    const auto& [szTargetFileName, szIniDirectory] = extendLoaderEnvironment();
 
-    desktop_win32::extendLoaderEnvironment(szTargetFileName, szIniDirectory);
-
-    ZeroMemory(&aStartupInfo, sizeof(aStartupInfo));
-    aStartupInfo.cb = sizeof(aStartupInfo);
+    STARTUPINFOW aStartupInfo{ .cb = sizeof(aStartupInfo) };
 
     // Create process with same command line, environment and stdio handles which
     // are directed to the created pipes
@@ -173,40 +215,23 @@ int officeloader_impl(bool bAllowConsole)
     DWORD dwExitCode = DWORD(-1);
 
     bool fSuccess = false;
-    LPWSTR lpCommandLine = nullptr;
     bool bFirst = true;
-    WCHAR cwd[MAX_PATH];
-    DWORD cwdLen = GetCurrentDirectoryW(MAX_PATH, cwd);
-    if (cwdLen >= MAX_PATH)
-    {
-        cwdLen = 0;
-    }
-    std::vector<std::wstring> aEscapedArgs;
 
-    // read limit values from bootstrap.ini
+    // read limit values from fundamental.override.ini
     unsigned int nMaxMemoryInMB = 0;
     bool bExcludeChildProcesses = true;
 
-    const WCHAR* szIniFile = L"\\bootstrap.ini";
-    const size_t nDirLen = wcslen(szIniDirectory);
-    if (wcslen(szIniFile) + nDirLen < MAX_PATH)
+    try
     {
-        WCHAR szBootstrapIni[MAX_PATH];
-        wcscpy(szBootstrapIni, szIniDirectory);
-        wcscpy(&szBootstrapIni[nDirLen], szIniFile);
-
-        try
-        {
-            boost::property_tree::ptree pt;
-            std::ifstream aFile(szBootstrapIni);
-            boost::property_tree::ini_parser::read_ini(aFile, pt);
-            nMaxMemoryInMB = pt.get("Win32.LimitMaximumMemoryInMB", nMaxMemoryInMB);
-            bExcludeChildProcesses = pt.get("Win32.ExcludeChildProcessesFromLimit", bExcludeChildProcesses);
-        }
-        catch (...)
-        {
-            nMaxMemoryInMB = 0;
-        }
+        boost::property_tree::ptree pt;
+        std::ifstream aFile(szIniDirectory + L"\\fundamental.override.ini");
+        boost::property_tree::ini_parser::read_ini(aFile, pt);
+        nMaxMemoryInMB = pt.get("Bootstrap.LimitMaximumMemoryInMB", nMaxMemoryInMB);
+        bExcludeChildProcesses = pt.get("Bootstrap.ExcludeChildProcessesFromLimit", bExcludeChildProcesses);
+    }
+    catch (...)
+    {
+        nMaxMemoryInMB = 0;
     }
 
     // create a Windows JobObject with a memory limit
@@ -224,117 +249,89 @@ int officeloader_impl(bool bAllowConsole)
                                     sizeof(JOBOBJECT_EXTENDED_LIMIT_INFORMATION));
     }
 
+    std::vector<std::wstring> aEscapedArgs;
+    bool bHeadlessMode = false;
+    const size_t nPathSize = 32 * 1024;
+    for (std::wstring_view arg : CommandArgs())
+    {
+        // Check command line arguments for "--headless" parameter. We only set the environment
+        // variable "ATTACHED_PARENT_PROCESSID" for the headless mode as self-destruction of the
+        // soffice.bin process can lead to certain side-effects (log-off can result in data-loss,
+        // ".lock" is not deleted). See 138244 for more information.
+        if (arg == L"-headless" || arg == L"--headless")
+            bHeadlessMode = true;
+        // check for wildcards in arguments - Windows does not expand automatically
+        else if (arg.size() < nPathSize && arg.find_first_of(L"*?") != std::wstring_view::npos)
+        {
+            const wchar_t* path(arg.data());
+            // 1. PathCchCanonicalizeEx only works with backslashes, so preprocess to comply
+            wchar_t buf1[nPathSize], buf2[nPathSize];
+            arg.copy(buf1, arg.size());
+            buf1[arg.size()] = '\0';
+            std::replace(buf1, buf1 + arg.size(), '/', '\\');
+            // 2. Canonicalize the path: if needed, drop the .. and . segments; if long, make sure
+            //    that path has \\?\ long path prefix present (required for FindFirstFileW)
+            if (SUCCEEDED(
+                    PathCchCanonicalizeEx(buf2, std::size(buf1), buf1, PATHCCH_ALLOW_LONG_PATHS)))
+                path = buf2;
+            // 3. Expand the wildcards
+            WIN32_FIND_DATAW aFindData;
+            HANDLE h = FindFirstFileW(path, &aFindData);
+            if (h != INVALID_HANDLE_VALUE)
+            {
+                wchar_t drive[3];
+                bool splitted = _wsplitpath_s(path, drive, std::size(drive), buf1, std::size(buf1),
+                                              nullptr, 0, nullptr, 0) == 0;
+                if (splitted)
+                {
+                    do
+                    {
+                        if (_wmakepath_s(buf2, drive, buf1, aFindData.cFileName, nullptr) == 0)
+                            aEscapedArgs.push_back(EscapeArg(buf2));
+                    } while (FindNextFileW(h, &aFindData));
+                }
+                FindClose(h);
+                if (splitted)
+                    continue;
+            }
+        }
+
+        aEscapedArgs.push_back(EscapeArg(arg));
+    }
+    size_t n = std::accumulate(aEscapedArgs.begin(), aEscapedArgs.end(), aEscapedArgs.size(),
+                               [](size_t a, const std::wstring& s) { return a + s.size(); });
+    std::wstring sCWDarg = getCWDarg();
+    n += sCWDarg.size() + 1;
+    LPWSTR lpCommandLine = new WCHAR[n];
+
+    if (bHeadlessMode)
+    {
+        WCHAR szParentProcessId[64]; // This is more than large enough for a 128 bit decimal value
+        if (_ltow(static_cast<long>(GetCurrentProcessId()), szParentProcessId, 10))
+            SetEnvironmentVariableW(L"ATTACHED_PARENT_PROCESSID", szParentProcessId);
+    }
+
     do
     {
-        if (bFirst)
-        {
-            int argc = 0;
-            LPWSTR* argv = GetCommandArgs(&argc);
-            std::size_t n = 0;
-            for (int i = 0; i < argc; ++i)
-            {
-                // check for wildCards in arguments- windows does not expand automatically
-                if (HasWildCard(argv[i]))
-                {
-                    WIN32_FIND_DATAW aFindData;
-                    HANDLE h = FindFirstFileW(argv[i], &aFindData);
-                    if (h == INVALID_HANDLE_VALUE)
-                    {
-                        AddEscapedArg(argv[i], aEscapedArgs, n);
-                    }
-                    else
-                    {
-                        const int nPathSize = 32 * 1024;
-                        wchar_t drive[nPathSize];
-                        wchar_t dir[nPathSize];
-                        wchar_t path[nPathSize];
-                        _wsplitpath_s(argv[i], drive, nPathSize, dir, nPathSize, nullptr, 0,
-                                      nullptr, 0);
-                        _wmakepath_s(path, nPathSize, drive, dir, aFindData.cFileName, nullptr);
-                        AddEscapedArg(path, aEscapedArgs, n);
-
-                        while (FindNextFileW(h, &aFindData))
-                        {
-                            _wmakepath_s(path, nPathSize, drive, dir, aFindData.cFileName, nullptr);
-                            AddEscapedArg(path, aEscapedArgs, n);
-                        }
-                        FindClose(h);
-                    }
-                }
-                else
-                {
-                    AddEscapedArg(argv[i], aEscapedArgs, n);
-                }
-            }
-            LocalFree(argv);
-            n += MY_LENGTH(L" \"-env:OOO_CWD=2") + 4 * cwdLen + MY_LENGTH(L"\"") + 1;
-            // 4 * cwdLen: each char preceded by backslash, each trailing
-            // backslash doubled
-            lpCommandLine = new WCHAR[n];
-        }
-        WCHAR* p = desktop_win32::commandLineAppend(lpCommandLine, aEscapedArgs[0].c_str(),
-                                                    aEscapedArgs[0].length());
+        WCHAR* p = commandLineAppend(lpCommandLine, aEscapedArgs[0]);
         for (size_t i = 1; i < aEscapedArgs.size(); ++i)
         {
             const std::wstring& rArg = aEscapedArgs[i];
-            if (bFirst || EXITHELPER_NORMAL_RESTART == dwExitCode
-                || wcsncmp(rArg.c_str(), MY_STRING(L"\"-env:")) == 0)
+            if (bFirst || EXITHELPER_NORMAL_RESTART == dwExitCode || rArg.starts_with(L"\"-env:"))
             {
-                p = desktop_win32::commandLineAppend(p, MY_STRING(L" "));
-                p = desktop_win32::commandLineAppend(p, rArg.c_str(), rArg.length());
+                p = commandLineAppend(p, L" ");
+                p = commandLineAppend(p, rArg);
             }
         }
 
-        p = desktop_win32::commandLineAppend(p, MY_STRING(L" \"-env:OOO_CWD="));
-        if (cwdLen == 0)
-        {
-            p = desktop_win32::commandLineAppend(p, MY_STRING(L"0"));
-        }
-        else
-        {
-            p = desktop_win32::commandLineAppend(p, MY_STRING(L"2"));
-            p = desktop_win32::commandLineAppendEncoded(p, cwd);
-        }
-        desktop_win32::commandLineAppend(p, MY_STRING(L"\""));
+        commandLineAppend(p, sCWDarg);
         bFirst = false;
-
-        WCHAR szParentProcessId[64]; // This is more than large enough for a 128 bit decimal value
-        bool bHeadlessMode(false);
-
-        {
-            // Check command line arguments for "--headless" parameter. We only
-            // set the environment variable "ATTACHED_PARENT_PROCESSID" for the headless
-            // mode as self-destruction of the soffice.bin process can lead to
-            // certain side-effects (log-off can result in data-loss, ".lock" is not deleted.
-            // See 138244 for more information.
-            int argc2;
-            LPWSTR* argv2 = GetCommandArgs(&argc2);
-
-            if (argc2 > 1)
-            {
-                int n;
-
-                for (n = 1; n < argc2; n++)
-                {
-                    if (0 == wcsnicmp(argv2[n], L"-headless", 9)
-                        || 0 == wcsnicmp(argv2[n], L"--headless", 10))
-                    {
-                        bHeadlessMode = true;
-                    }
-                }
-            }
-
-            LocalFree(argv2);
-        }
-
-        if (_ltow(static_cast<long>(GetCurrentProcessId()), szParentProcessId, 10) && bHeadlessMode)
-            SetEnvironmentVariableW(L"ATTACHED_PARENT_PROCESSID", szParentProcessId);
 
         PROCESS_INFORMATION aProcessInfo;
 
-        fSuccess = CreateProcessW(szTargetFileName, lpCommandLine, nullptr, nullptr, TRUE,
-                                  bAllowConsole ? 0 : DETACHED_PROCESS, nullptr, szIniDirectory,
-                                  &aStartupInfo, &aProcessInfo);
+        fSuccess = CreateProcessW(szTargetFileName.data(), lpCommandLine, nullptr, nullptr, TRUE,
+                                  bAllowConsole ? 0 : DETACHED_PROCESS, nullptr,
+                                  szIniDirectory.data(), &aStartupInfo, &aProcessInfo);
 
         if (fSuccess)
         {
@@ -379,72 +376,38 @@ int officeloader_impl(bool bAllowConsole)
 
 int unopkgloader_impl(bool bAllowConsole)
 {
-    WCHAR        szTargetFileName[MAX_PATH];
-    WCHAR        szIniDirectory[MAX_PATH];
-    desktop_win32::extendLoaderEnvironment(szTargetFileName, szIniDirectory);
+    const auto& [szTargetFileName, szIniDirectory] = extendLoaderEnvironment();
 
-    STARTUPINFOW aStartupInfo{};
-    aStartupInfo.cb = sizeof(aStartupInfo);
+    STARTUPINFOW aStartupInfo{ .cb = sizeof(aStartupInfo) };
     GetStartupInfoW(&aStartupInfo);
 
     DWORD   dwExitCode = DWORD(-1);
 
-    size_t iniDirLen = wcslen(szIniDirectory);
-    WCHAR cwd[MAX_PATH];
-    DWORD cwdLen = GetCurrentDirectoryW(MAX_PATH, cwd);
-    if (cwdLen >= MAX_PATH) {
-        cwdLen = 0;
-    }
-    WCHAR redirect[MAX_PATH];
+    std::wstring sCWDarg = getCWDarg();
     DWORD dummy;
-    bool hasRedirect =
-        tools::buildPath(
-            redirect, szIniDirectory, szIniDirectory + iniDirLen,
-            MY_STRING(L"redirect.ini")) != nullptr &&
-            (GetBinaryTypeW(redirect, &dummy) || // cheaper check for file existence?
+    std::wstring redirect = tools::buildPath(szIniDirectory, L"redirect.ini");
+    bool hasRedirect = !redirect.empty() &&
+            (GetBinaryTypeW(redirect.data(), &dummy) || // cheaper check for file existence?
                 GetLastError() != ERROR_FILE_NOT_FOUND);
     LPWSTR cl1 = GetCommandLineW();
-    WCHAR* cl2 = new WCHAR[
-        wcslen(cl1) +
-            (hasRedirect
-                ? (MY_LENGTH(L" \"-env:INIFILENAME=vnd.sun.star.pathname:") +
-                    iniDirLen + MY_LENGTH(L"redirect.ini\""))
-                : 0) +
-            MY_LENGTH(L" \"-env:OOO_CWD=2") + 4 * cwdLen + MY_LENGTH(L"\"") + 1];
-    // 4 * cwdLen: each char preceded by backslash, each trailing backslash
-    // doubled
-    WCHAR* p = desktop_win32::commandLineAppend(cl2, cl1);
-    if (hasRedirect) {
-        p = desktop_win32::commandLineAppend(
-            p, MY_STRING(L" \"-env:INIFILENAME=vnd.sun.star.pathname:"));
-        p = desktop_win32::commandLineAppend(p, szIniDirectory);
-        p = desktop_win32::commandLineAppend(p, MY_STRING(L"redirect.ini\""));
-    }
-    p = desktop_win32::commandLineAppend(p, MY_STRING(L" \"-env:OOO_CWD="));
-    if (cwdLen == 0) {
-        p = desktop_win32::commandLineAppend(p, MY_STRING(L"0"));
-    }
-    else {
-        p = desktop_win32::commandLineAppend(p, MY_STRING(L"2"));
-        p = desktop_win32::commandLineAppendEncoded(p, cwd);
-    }
-    desktop_win32::commandLineAppend(p, MY_STRING(L"\""));
+    std::wstring cl2 = cl1;
+    if (hasRedirect)
+        cl2 += L" \"-env:INIFILENAME=vnd.sun.star.pathname:" + redirect + L"\"";
+    cl2 += sCWDarg;
 
     PROCESS_INFORMATION aProcessInfo;
 
     bool fSuccess = CreateProcessW(
-        szTargetFileName,
-        cl2,
+        szTargetFileName.data(),
+        cl2.data(),
         nullptr,
         nullptr,
         TRUE,
         bAllowConsole ? 0 : DETACHED_PROCESS,
         nullptr,
-        szIniDirectory,
+        szIniDirectory.data(),
         &aStartupInfo,
         &aProcessInfo);
-
-    delete[] cl2;
 
     if (fSuccess)
     {

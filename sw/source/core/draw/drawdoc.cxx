@@ -63,15 +63,15 @@ SwDrawModel::SwDrawModel(SwDoc& rDoc)
             *pRangeArr; pRangeArr += 2 )
             for( sal_uInt16 nW = *pRangeArr, nEnd = *(pRangeArr+1);
                     nW < nEnd; ++nW )
-                if( nullptr != (pItem = rDocPool.GetPoolDefaultItem( nW )) &&
+                if( nullptr != (pItem = rDocPool.GetUserDefaultItem( nW )) &&
                     0 != (nSlotId = rDocPool.GetSlotId( nW ) ) &&
                     nSlotId != nW &&
-                    0 != (nEdtWhich = pSdrPool->GetWhich( nSlotId )) &&
+                    0 != (nEdtWhich = pSdrPool->GetWhichIDFromSlotID( nSlotId )) &&
                     nSlotId != nEdtWhich )
                 {
                     std::unique_ptr<SfxPoolItem> pCpy(pItem->Clone());
                     pCpy->SetWhich( nEdtWhich );
-                    pSdrPool->SetPoolDefaultItem( *pCpy );
+                    pSdrPool->SetUserDefaultItem( *pCpy );
                 }
     }
 
@@ -118,7 +118,7 @@ SwDrawModel::~SwDrawModel()
 rtl::Reference<SdrPage> SwDrawModel::AllocPage(bool bMasterPage)
 {
     rtl::Reference<SwDPage> pPage = new SwDPage(*this, bMasterPage);
-    pPage->SetName("Controls");
+    pPage->SetName(u"Controls"_ustr);
     return pPage;
 }
 
@@ -133,9 +133,9 @@ uno::Reference< frame::XModel > SwDrawModel::createUnoModel()
 
     try
     {
-        if ( GetDoc().GetDocShell() )
+        if ( SwDocShell* pShell = GetDoc().GetDocShell() )
         {
-            xModel = GetDoc().GetDocShell()->GetModel();
+            xModel = pShell->GetModel();
         }
     }
     catch( uno::RuntimeException& )

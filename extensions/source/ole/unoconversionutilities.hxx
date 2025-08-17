@@ -36,6 +36,7 @@
 #include <o3tl/char16_t2wchar_t.hxx>
 #include "ole2uno.hxx"
 #include <cppuhelper/weakref.hxx>
+#include <systools/win32/oleauto.hxx>
 
 #include "unotypewrapper.hxx"
 #include <unordered_map>
@@ -672,7 +673,7 @@ void UnoConversionUtilities<T>::anyToVariant(VARIANT* pVariant, const Any& rAny,
                 throw BridgeRuntimeError(
                     "[automation bridge]UnoConversionUtilities<T>::anyToVariant \n"
                     "Conversion of any with " +
-                    rAny.getValueType().getTypeName() +
+                    rAny.getValueTypeName() +
                     " to VARIANT with type: " + OUString::number(static_cast<sal_Int32>(type)) +
                     " failed! Error code: " + OUString::number(hr));
 
@@ -849,7 +850,7 @@ void UnoConversionUtilities<T>::anyToVariant(VARIANT* pVariant, const Any& rAny)
             if (rAny >>= value)
             {
                 pVariant->vt = VT_BSTR;
-                pVariant->bstrVal = SysAllocString(o3tl::toW(value.getStr()));
+                pVariant->bstrVal = sal::systools::BStr::newBSTR(value);
             }
             else
             {
@@ -1006,7 +1007,7 @@ void UnoConversionUtilities<T>::anyToVariant(VARIANT* pVariant, const Any& rAny)
         {
             throw IllegalArgumentException(
                       "[automation bridge]UnoConversionUtilities<T>::anyToVariant\n"
-                      "The provided any of type\" " + rAny.getValueType().getTypeName() +
+                      "The provided any of type\" " + rAny.getValueTypeName() +
                 "\" is unappropriate for conversion!", Reference<XInterface>(), -1);
 
         }
@@ -1054,7 +1055,7 @@ SAFEARRAY*  UnoConversionUtilities<T>::createUnoSequenceWrapper(const Any& rSeq,
     SAFEARRAY*  pArray= nullptr;
     // Get the dimensions. This is done by examining the type name string
     // The count of brackets determines the dimensions.
-    OUString sTypeName= rSeq.getValueType().getTypeName();
+    OUString sTypeName= rSeq.getValueTypeName();
     sal_Int32 dims=0;
     for(sal_Int32 lastIndex=0;(lastIndex= sTypeName.indexOf( L'[', lastIndex)) != -1; lastIndex++,dims++);
 
@@ -2042,7 +2043,7 @@ void UnoConversionUtilities<T>::dispatchExObject2Sequence( const VARIANTARG* pva
 
             // If the result is VT_DISPATCH than the Sequence's element type could be Sequence
             // Look that up in the CoreReflection to make clear.
-            // That requires a recursiv conversion
+            // That requires a recursive conversion
             Any any;
             // Destination address within the out-Sequence "anySeq" where to copy the next converted element
             void* pDest= pArray + (i * nelementSize);

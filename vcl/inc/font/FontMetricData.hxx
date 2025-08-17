@@ -40,7 +40,7 @@ class LogicalFontInstance;
 class VCL_DLLPUBLIC FontMetricData final : public FontAttributes, public SvRefBase
 {
 public:
-    explicit        FontMetricData( const vcl::font::FontSelectPattern& );
+    SAL_DLLPRIVATE explicit FontMetricData( const vcl::font::FontSelectPattern& );
 
     // font instance attributes from the font request
     tools::Long            GetWidth() const                                                { return mnWidth; }
@@ -57,6 +57,9 @@ public:
     int             GetSlant() const                                                { return mnSlant; }
     double                 GetMinKashida() const                                           { return mnMinKashida; }
     tools::Long            GetHangingBaseline() const                                      { return mnHangingBaseline; }
+    double GetUnitEm() const { return mdEmSize; }
+    double GetHorCJKAdvance() const { return mdHorCJKAdvanceSize; }
+    double GetVertCJKAdvance() const { return mdVertCJKAdvanceSize; }
 
     void            SetSlant(int nSlant)                                            { mnSlant=nSlant; }
     void            SetMinKashida(double nMinKashida )                                     { mnMinKashida=nMinKashida; }
@@ -94,16 +97,16 @@ public:
     tools::Long            GetDoubleStrikeoutOffset1() const                               { return mnDStrikeoutOffset1; }
     tools::Long            GetDoubleStrikeoutOffset2() const                               { return mnDStrikeoutOffset2; }
 
-    void            ImplInitTextLineSize( const OutputDevice* pDev );
-    void            ImplInitAboveTextLineSize( const OutputDevice* pDev );
-    void            ImplInitFlags( const OutputDevice* pDev );
+    SAL_DLLPRIVATE void ImplInitTextLineSize( const OutputDevice* pDev );
+    SAL_DLLPRIVATE void ImplInitAboveTextLineSize( const OutputDevice* pDev );
+    SAL_DLLPRIVATE void ImplInitFlags( const OutputDevice* pDev );
     void            ImplCalcLineSpacing(LogicalFontInstance *pFontInstance);
     void            ImplInitBaselines(LogicalFontInstance *pFontInstance);
 
 private:
-    bool            ShouldNotUseUnderlineMetrics() const;
-    bool            ImplInitTextLineSizeHarfBuzz(LogicalFontInstance *pFontInstance);
-    bool            ShouldUseWinMetrics(int, int, int, int, int, int) const;
+    SAL_DLLPRIVATE bool ShouldNotUseUnderlineMetrics() const;
+    SAL_DLLPRIVATE bool ImplInitTextLineSizeHarfBuzz(LogicalFontInstance *pFontInstance);
+    SAL_DLLPRIVATE bool ShouldUseWinMetrics(int, int, int, int, int, int) const;
 
     // font instance attributes from the font request
     tools::Long            mnHeight;                   // Font size
@@ -118,6 +121,9 @@ private:
     int             mnSlant;                    // Slant (Italic/Oblique)
     double                 mnMinKashida;               // Minimal width of kashida (Arabic)
     tools::Long            mnHangingBaseline;          // Offset of hanging baseline to Romn baseline
+    double mdEmSize; // Size of an 'em'
+    double mdHorCJKAdvanceSize; // Size of an 'ic' in horizontal text
+    double mdVertCJKAdvanceSize; // Size of an 'ic' in vertical text
 
     // font attributes queried from the font instance
     bool            mbFullstopCentered;

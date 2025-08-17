@@ -99,6 +99,28 @@ public:
         UNLESS_MERGELIBS(VCL_DLLPUBLIC) static SvNumberFormatter* GetFormatter();
     };
 
+    /**
+     * This struct gets returned by the handlers that can be set via Formatter::SetParseTextHdl
+     * and describes the result of trying to convert text to a double value.
+     */
+    struct ParseResult
+    {
+        ParseResult()
+            : ParseResult(TRISTATE_INDET, 0.0)
+        {
+        }
+
+        ParseResult(TriState eState, double fValue)
+            : m_eState(eState)
+            , m_fValue(fValue)
+        {
+        }
+
+        TriState m_eState;
+        // if m_eState is TRISTATE_TRUE, this contains the value
+        double m_fValue;
+    };
+
 protected:
     OUString      m_sLastValidText;
     // Has nothing to do with the current value. It is the last text, which was valid at input (checked by CheckText,
@@ -143,8 +165,8 @@ protected:
 
     bool                m_bUseInputStringForFormatting;
 
-    Link<sal_Int64*, TriState> m_aInputHdl;
-    Link<LinkParamNone*, bool> m_aOutputHdl;
+    Link<const OUString&, ParseResult> m_aParseTextHdl;
+    Link<double, std::optional<OUString>> m_aFormatValueHdl;
 
 public:
     Formatter();
@@ -198,7 +220,7 @@ public:
     sal_uLong   GetFormatKey() const                { return m_nFormatKey; }
     void    SetFormatKey(sal_uLong nFormatKey);
 
-    SvNumberFormatter*  GetOrCreateFormatter() const { return m_pFormatter ? m_pFormatter : const_cast<Formatter*>(this)->CreateFormatter(); }
+    SvNumberFormatter& GetOrCreateFormatter() const { return m_pFormatter ? *m_pFormatter : *const_cast<Formatter*>(this)->CreateFormatter(); }
 
     SvNumberFormatter*  GetFormatter() const    { return m_pFormatter; }
     void    SetFormatter(SvNumberFormatter* pFormatter, bool bResetFormat = true);
@@ -242,8 +264,11 @@ public:
     bool    TreatingAsNumber() const    { return m_bTreatAsNumber; }
     void    TreatAsNumber(bool bDoSo) { m_bTreatAsNumber = bDoSo; }
 
-    void    SetInputHdl(const Link<sal_Int64*,TriState>& rLink) { m_aInputHdl = rLink; }
-    void    SetOutputHdl(const Link<LinkParamNone*, bool>& rLink) { m_aOutputHdl = rLink; }
+    void    SetParseTextHdl(const Link<const OUString&, ParseResult>& rLink) { m_aParseTextHdl = rLink; }
+    void    SetFormatValueHdl(const Link<double, std::optional<OUString>>& rLink) { m_aFormatValueHdl = rLink; }
+
+    OUString FormatValue(double fValue);
+    std::optional<double> ParseText(const OUString& rText);
 public:
 
     //The following methods are interesting, if m_bTreatAsNumber is set to sal_False

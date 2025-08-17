@@ -26,6 +26,7 @@
 #include <com/sun/star/text/XTextContent.hpp>
 
 #include "calbck.hxx"
+#include "names.hxx"
 
 class SwTextRefMark;
 class SwXReferenceMark;
@@ -37,20 +38,19 @@ class SwXReferenceMark;
 /// SwTextRefMark.
 ///
 /// It's Insert -> Cross-reference -> Cross-references -> set reference on the UI.
-class SAL_DLLPUBLIC_RTTI SwFormatRefMark final
-    : public SfxPoolItem
-    , public sw::BroadcastingModify
+class SAL_DLLPUBLIC_RTTI SwFormatRefMark final : public SfxPoolItem
 {
     friend class SwTextRefMark;
     SwTextRefMark* m_pTextAttr;
 
     SwFormatRefMark& operator=(const SwFormatRefMark& rRefMark) = delete;
-    OUString m_aRefName;
+    SwMarkName m_aRefName;
 
     unotools::WeakReference<SwXReferenceMark> m_wXReferenceMark;
 
 public:
-    SwFormatRefMark( OUString aText );
+    DECLARE_ITEM_TYPE_FUNCTION(SwFormatRefMark)
+    SwFormatRefMark( SwMarkName aText );
     SwFormatRefMark( const SwFormatRefMark& rRefMark );
     virtual ~SwFormatRefMark( ) override;
 
@@ -58,15 +58,12 @@ public:
     virtual bool            operator==( const SfxPoolItem& ) const override;
     virtual SwFormatRefMark* Clone( SfxItemPool* pPool = nullptr ) const override;
 
-    // SwClient
-    virtual void SwClientNotify(const SwModify&, const SfxHint&) override;
-
     void InvalidateRefMark();
 
     const SwTextRefMark *GetTextRefMark() const   { return m_pTextAttr; }
 
-    OUString &GetRefName()       { return m_aRefName; }
-    const OUString &GetRefName() const { return m_aRefName; }
+    SwMarkName &GetRefName()       { return m_aRefName; }
+    const SwMarkName &GetRefName() const { return m_aRefName; }
 
     unotools::WeakReference<SwXReferenceMark> const& GetXRefMark() const
         { return m_wXReferenceMark; }

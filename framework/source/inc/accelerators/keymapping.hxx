@@ -45,7 +45,7 @@ class KeyMapping
         struct KeyIdentifierInfo
         {
             sal_Int16       Code;
-            const char*     Identifier;
+            OUString        Identifier;
         };
 
         /** @short  hash structure to map identifier to key codes. */
@@ -117,7 +117,7 @@ class KeyMapping
             @return [boolean]
                     sal_True if conversion was successful.
           */
-        bool impl_st_interpretIdentifierAsPureKeyCode(std::u16string_view sIdentifier,
+        static bool impl_st_interpretIdentifierAsPureKeyCode(std::u16string_view sIdentifier,
                                                                 sal_uInt16&      rCode      );
 };
 

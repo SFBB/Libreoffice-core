@@ -48,16 +48,8 @@ enum class ContentTypeId
 };
 
 // strings for context menus
-#define CONTEXT_COUNT   17
+#define CONTEXT_COUNT 13
 #define GLOBAL_CONTEXT_COUNT 14
-
-// modes for Drag 'n Drop
-enum class RegionMode
-{
-    NONE        = 0,
-    LINK        = 1,
-    EMBEDDED    = 2
-};
 
 //mini rtti
 class SwTypeNumber
@@ -86,6 +78,7 @@ public:
     virtual bool            IsProtect() const;
     const SwContentType*    GetParent() const {return m_pParent;}
     const OUString&         GetName()   const {return m_sContentName;}
+    double                  GetPosition() const { return m_nYPosition; }
     bool operator==(const SwContent& /*rCont*/) const
     {
         // they're never equal, otherwise they'd fall out of the array
@@ -101,6 +94,7 @@ public:
 
     bool        IsInvisible() const {return m_bInvisible;}
     void        SetInvisible(){ m_bInvisible = true;}
+    void        SetName(const OUString& rStr) {m_sContentName = rStr;}
 };
 
 #endif

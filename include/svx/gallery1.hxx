@@ -41,11 +41,11 @@ class SVXCORE_DLLPUBLIC GalleryThemeEntry
 private:
 
     std::unique_ptr<GalleryFileStorageEntry> mpGalleryStorageEngineEntry;
-    OUString                aName;
-    sal_uInt32              nId;
-    bool                    bReadOnly;
-    bool                    bModified;
-    bool                    bThemeNameFromResource;
+    OUString                maName;
+    sal_uInt32              mnId;
+    bool                    mbReadOnly;
+    bool                    mbModified;
+    bool                    mbThemeNameFromResource;
 
 public:
                             GalleryThemeEntry( bool bCreateUniqueURL,
@@ -61,20 +61,20 @@ public:
 
     std::unique_ptr<GalleryFileStorage> createGalleryStorageEngine(GalleryObjectCollection& mrGalleryObjectCollection);
 
-    const OUString&         GetThemeName() const { return aName; }
+    const OUString&         GetThemeName() const { return maName; }
 
-    bool                    IsReadOnly() const { return bReadOnly; }
+    bool                    IsReadOnly() const { return mbReadOnly; }
     bool                    IsDefault() const;
 
-    bool                    IsHidden() const { return aName.match("private://gallery/hidden/"); }
+    bool                    IsHidden() const { return maName.match("private://gallery/hidden/"); }
 
-    bool                    IsModified() const { return bModified; }
-    void                    SetModified( bool bSet ) { bModified = ( bSet && !IsReadOnly() ); }
+    bool                    IsModified() const { return mbModified; }
+    void                    SetModified( bool bSet ) { mbModified = ( bSet && !IsReadOnly() ); }
 
     void                    SetName( const OUString& rNewName );
-    bool                    IsNameFromResource() const { return bThemeNameFromResource; }
+    bool                    IsNameFromResource() const { return mbThemeNameFromResource; }
 
-    sal_uInt32              GetId() const { return nId; }
+    sal_uInt32              GetId() const { return mnId; }
     void                    SetId( sal_uInt32 nNewId, bool bResetThemeName );
 
 
@@ -86,7 +86,6 @@ public:
 };
 
 class SfxListener;
-class GalleryTheme;
 class GalleryThemeCacheEntry;
 
 
@@ -96,11 +95,11 @@ class SVXCORE_DLLPUBLIC Gallery final : public SfxBroadcaster
 
 private:
 
-    std::vector< std::unique_ptr<GalleryThemeEntry> > aThemeList;
-    GalleryCacheThemeList       aThemeCache;
-    INetURLObject               aRelURL;
-    INetURLObject               aUserURL;
-    bool                        bMultiPath;
+    std::vector< std::unique_ptr<GalleryThemeEntry> > m_aThemeList;
+    GalleryCacheThemeList       m_aThemeCache;
+    INetURLObject               m_aRelURL;
+    INetURLObject               m_aUserURL;
+    bool                        m_bMultiPath;
 
     SAL_DLLPRIVATE void         ImplLoad( std::u16string_view rMultiPath );
     SAL_DLLPRIVATE void         ImplLoadSubDirs( const INetURLObject& rBaseURL, bool& rbIsReadOnly );
@@ -120,9 +119,9 @@ public:
 
     static Gallery*             GetGalleryInstance();
 
-    size_t                      GetThemeCount() const { return aThemeList.size(); }
+    size_t                      GetThemeCount() const { return m_aThemeList.size(); }
     SAL_DLLPRIVATE const GalleryThemeEntry* GetThemeInfo( size_t nPos )
-                                { return nPos < aThemeList.size() ? aThemeList[ nPos ].get() : nullptr; }
+                                { return nPos < m_aThemeList.size() ? m_aThemeList[ nPos ].get() : nullptr; }
     const GalleryThemeEntry* GetThemeInfo( std::u16string_view rThemeName ) { return ImplGetThemeEntry( rThemeName ); }
 
     bool                        HasTheme( std::u16string_view rThemeName );
@@ -132,13 +131,13 @@ public:
     void                        RenameTheme( const OUString& rOldName, const OUString& rNewName );
     bool                        RemoveTheme( const OUString& rThemeName );
 
-    GalleryTheme*               AcquireTheme( std::u16string_view rThemeName, SfxListener& rListener );
+    SAL_RET_MAYBENULL GalleryTheme* AcquireTheme( std::u16string_view rThemeName, SfxListener& rListener );
     void                        ReleaseTheme( GalleryTheme* pTheme, SfxListener& rListener );
 
 public:
 
-    SAL_DLLPRIVATE const INetURLObject& GetUserURL() const { return aUserURL; }
-    SAL_DLLPRIVATE const INetURLObject& GetRelativeURL() const { return aRelURL; }
+    SAL_DLLPRIVATE const INetURLObject& GetUserURL() const { return m_aUserURL; }
+    SAL_DLLPRIVATE const INetURLObject& GetRelativeURL() const { return m_aRelURL; }
 };
 
 #endif // INCLUDED_SVX_GALLERY1_HXX

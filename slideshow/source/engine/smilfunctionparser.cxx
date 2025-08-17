@@ -527,15 +527,15 @@ namespace slideshow::internal
             // TODO(Q1): Check if a combination of the RTL_UNICODETOTEXT_FLAGS_*
             // gives better conversion robustness here (we might want to map space
             // etc. to ASCII space here)
-            const OString& rAsciiSmilValue(
+            const OString aAsciiSmilValue(
                 OUStringToOString( rSmilValue, RTL_TEXTENCODING_ASCII_US ) );
 
-            StringIteratorT aStart( rAsciiSmilValue.getStr() );
-            StringIteratorT aEnd( rAsciiSmilValue.getStr()+rAsciiSmilValue.getLength() );
+            StringIteratorT aStart( aAsciiSmilValue.getStr() );
+            StringIteratorT aEnd( aAsciiSmilValue.getStr()+aAsciiSmilValue.getLength() );
 
             // static parser context, because the actual
             // Spirit parser is also a static object
-            ParserContextSharedPtr pContext = getParserContext();
+            const ParserContextSharedPtr& pContext = getParserContext();
 
             pContext->maShapeBounds = rRelativeShapeBounds;
             pContext->mbParseAnimationFunction = false; // parse with '$' disabled
@@ -570,15 +570,15 @@ namespace slideshow::internal
             // TODO(Q1): Check if a combination of the RTL_UNICODETOTEXT_FLAGS_*
             // gives better conversion robustness here (we might want to map space
             // etc. to ASCII space here)
-            const OString& rAsciiSmilFunction(
+            const OString aAsciiSmilFunction(
                 OUStringToOString( rSmilFunction, RTL_TEXTENCODING_ASCII_US ) );
 
-            StringIteratorT aStart( rAsciiSmilFunction.getStr() );
-            StringIteratorT aEnd( rAsciiSmilFunction.getStr()+rAsciiSmilFunction.getLength() );
+            StringIteratorT aStart( aAsciiSmilFunction.getStr() );
+            StringIteratorT aEnd( aAsciiSmilFunction.getStr()+aAsciiSmilFunction.getLength() );
 
             // static parser context, because the actual
             // Spirit parser is also a static object
-            ParserContextSharedPtr pContext = getParserContext();
+            const ParserContextSharedPtr& pContext = getParserContext();
 
             pContext->maShapeBounds = rRelativeShapeBounds;
             pContext->mbParseAnimationFunction = true; // parse with '$' enabled
@@ -606,24 +606,5 @@ namespace slideshow::internal
             return pContext->maOperandStack.top();
         }
 }
-
-#if defined(BOOST_SP_ENABLE_DEBUG_HOOKS)
-
-// debug hooks
-
-namespace boost
-{
-
-void sp_scalar_constructor_hook(void *)
-{
-}
-
-void sp_scalar_destructor_hook(void *)
-{
-}
-
-}
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

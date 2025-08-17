@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_INC_SALMENU_HXX
-#define INCLUDED_VCL_INC_SALMENU_HXX
+#pragma once
 
 #include <utility>
 #include <vcl/menu.hxx>
@@ -71,9 +70,10 @@ public:
     virtual void CheckItem( unsigned nPos, bool bCheck ) = 0;
     virtual void EnableItem( unsigned nPos, bool bEnable ) = 0;
     virtual void SetItemText( unsigned nPos, SalMenuItem* pSalMenuItem, const OUString& rText )= 0;
+    virtual void SetItemTooltip(SalMenuItem* /*pSalMenuItem*/, const OUString& /*rTooltip*/) {};
     virtual void SetItemImage( unsigned nPos, SalMenuItem* pSalMenuItem, const Image& rImage ) = 0;
     virtual void SetAccelerator( unsigned nPos, SalMenuItem* pSalMenuItem, const vcl::KeyCode& rKeyCode, const OUString& rKeyName ) = 0;
-    virtual void GetSystemMenuData( SystemMenuData* pData ) = 0;
+    virtual void GetSystemMenuData(SystemMenuData& rData);
     virtual bool ShowNativePopupMenu(FloatingWindow * pWin, const tools::Rectangle& rRect, FloatWinPopupFlags nFlags);
     virtual void ShowCloseButton(bool bShow);
     virtual bool AddMenuBarButton( const SalMenuButtonItem& ); // return false if not implemented or failure
@@ -92,10 +92,6 @@ public:
     virtual tools::Rectangle GetMenuBarButtonRectPixel( sal_uInt16 i_nItemId, SalFrame* i_pReferenceFrame );
 
     virtual int GetMenuBarHeight() const;
-
-    virtual void ApplyPersona();
 };
-
-#endif // INCLUDED_VCL_INC_SALMENU_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

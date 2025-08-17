@@ -32,6 +32,7 @@
 #include <string.h>
 #include <comphelper/propertysequence.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <officecfg/Office/Common.hxx>
 
 // Cyrillic upper case
 #define C_CYR_A "\xD0\x90"
@@ -85,21 +86,21 @@ using namespace com::sun::star::lang;
 
 namespace i18npool {
 
-const sal_Unicode table_Alphabet_ar[] = {
+constexpr sal_Unicode table_Alphabet_ar[] = {
     0x0623, 0x0628, 0x062A, 0x062B, 0x062C, 0x062D, 0x062E,
     0x062F, 0x0630, 0x0631, 0x0632, 0x0633, 0x0634, 0x0635,
     0x0636, 0x0637, 0x0638, 0x0639, 0x063A, 0x0641, 0x0642,
     0x0643, 0x0644, 0x0645, 0x0646, 0x0647, 0x0648, 0x0649
 };
 
-const sal_Unicode table_Alphabet_ar_abjad[] = {
+constexpr sal_Unicode table_Alphabet_ar_abjad[] = {
     0x0627, 0x0628, 0x062c, 0x062f, 0x0647, 0x0648, 0x0632, 0x062d,
     0x0637, 0x064a, 0x0643, 0x0644, 0x0645, 0x0646, 0x0633, 0x0639,
     0x0641, 0x0635, 0x0642, 0x0631, 0x0634, 0x062a, 0x062b, 0x062e,
     0x0630, 0x0636, 0x0638, 0x063a
 };
 
-const sal_Unicode table_Alphabet_th[] = {
+constexpr sal_Unicode table_Alphabet_th[] = {
     0x0E01, 0x0E02, 0x0E04, 0x0E07,
     0x0E08, 0x0E09, 0x0E0A, 0x0E0B, 0x0E0C, 0x0E0D, 0x0E0E, 0x0E0F,
     0x0E10, 0x0E11, 0x0E12, 0x0E13, 0x0E14, 0x0E15, 0x0E16, 0x0E17,
@@ -108,13 +109,13 @@ const sal_Unicode table_Alphabet_th[] = {
     0x0E28, 0x0E29, 0x0E2A, 0x0E2B, 0x0E2C, 0x0E2D, 0x0E2E
 };
 
-const sal_Unicode table_Alphabet_he[] = {
+constexpr sal_Unicode table_Alphabet_he[] = {
     0x05D0, 0x05D1, 0x05D2, 0x05D3, 0x05D4, 0x05D5, 0x05D6, 0x05D7,
     0x05D8, 0x05D9, 0x05DB, 0x05DC, 0x05DE, 0x05E0, 0x05E1, 0x05E2,
     0x05E4, 0x05E6, 0x05E7, 0x05E8, 0x05E9, 0x05EA
 };
 
-const sal_Unicode table_Alphabet_ne[] = {
+constexpr sal_Unicode table_Alphabet_ne[] = {
     0x0915, 0x0916, 0x0917, 0x0918, 0x0919, 0x091A, 0x091B, 0x091C,
     0x091D, 0x091E, 0x091F, 0x0920, 0x0921, 0x0922, 0x0923, 0x0924,
     0x0925, 0x0926, 0x0927, 0x0928, 0x092A, 0x092B, 0x092C, 0x092D,
@@ -122,7 +123,7 @@ const sal_Unicode table_Alphabet_ne[] = {
     0x0939
 };
 
-const sal_Unicode table_Alphabet_km[] = {
+constexpr sal_Unicode table_Alphabet_km[] = {
     0x1780, 0x1781, 0x1782, 0x1783, 0x1784, 0x1785, 0x1786, 0x1787,
     0x1788, 0x1789, 0x178A, 0x178B, 0x178C, 0x178D, 0x178E, 0x178F,
     0x1790, 0x1791, 0x1792, 0x1793, 0x1794, 0x1795, 0x1796, 0x1797,
@@ -130,21 +131,21 @@ const sal_Unicode table_Alphabet_km[] = {
     0x17A0, 0x17A1, 0x17A2
 };
 
-const sal_Unicode table_Alphabet_lo[] = {
+constexpr sal_Unicode table_Alphabet_lo[] = {
     0x0E81, 0x0E82, 0x0E84, 0x0E87, 0x0E88, 0x0E8A, 0x0E8D, 0x0E94,
     0x0E95, 0x0E96, 0x0E97, 0x0E99, 0x0E9A, 0x0E9B, 0x0E9C,
     0x0E9D, 0x0E9E, 0x0E9F, 0x0EA1, 0x0EA2, 0x0EA3, 0x0EA5, 0x0EA7,
     0x0EAA, 0x0EAB, 0x0EAD, 0x0EAE, 0x0EAF, 0x0EAE, 0x0EDC, 0x0EDD
 };
 
-const sal_Unicode table_Alphabet_dz[] = {
+constexpr sal_Unicode table_Alphabet_dz[] = {
     0x0F40, 0x0F41, 0x0F42, 0x0F44, 0x0F45, 0x0F46, 0x0F47, 0x0F49,
     0x0F4F, 0x0F50, 0x0F51, 0x0F53, 0x0F54, 0x0F55, 0x0F56, 0x0F58,
     0x0F59, 0x0F5A, 0x0F5B, 0x0F5D, 0x0F5E, 0x0F5F, 0x0F60, 0x0F61,
     0x0F62, 0x0F63, 0x0F64, 0x0F66, 0x0F67, 0x0F68
 };
 
-const sal_Unicode table_Alphabet_my[] = {
+constexpr sal_Unicode table_Alphabet_my[] = {
     0x1000, 0x1001, 0x1002, 0x1003, 0x1004, 0x1005, 0x1006, 0x1007,
     0x1008,/*0x1009,*/0x100A, 0x100B, 0x100C, 0x100D, 0x100E, 0x100F,
     0x1010, 0x1011, 0x1012, 0x1013, 0x1014, 0x1015, 0x1016, 0x1017,
@@ -153,7 +154,7 @@ const sal_Unicode table_Alphabet_my[] = {
 };
 
 // Bulgarian Cyrillic upper case letters
-const sal_Unicode table_CyrillicUpperLetter_bg[] = {
+constexpr sal_Unicode table_CyrillicUpperLetter_bg[] = {
     0x0410, 0x0411, 0x0412, 0x0413, 0x0414, 0x0415, 0x0416, 0x0417, 0x0418,
     0x041A, 0x041B, 0x041C, 0x041D, 0x041E, 0x041F, 0x0420, 0x0421, 0x0422,
     0x0423, 0x0424, 0x0425, 0x0426, 0x0427, 0x0428, 0x0429, 0x042A, 0x042E,
@@ -161,7 +162,7 @@ const sal_Unicode table_CyrillicUpperLetter_bg[] = {
 };
 
 // Bulgarian cyrillic lower case letters
-const sal_Unicode table_CyrillicLowerLetter_bg[] = {
+constexpr sal_Unicode table_CyrillicLowerLetter_bg[] = {
     0x0430, 0x0431, 0x0432, 0x0433, 0x0434, 0x0435, 0x0436, 0x0437, 0x0438,
     0x043A, 0x043B, 0x043C, 0x043D, 0x043E, 0x043F, 0x0440, 0x0441, 0x0442,
     0x0443, 0x0444, 0x0445, 0x0446, 0x0447, 0x0448, 0x0449, 0x044A, 0x044E,
@@ -169,7 +170,7 @@ const sal_Unicode table_CyrillicLowerLetter_bg[] = {
 };
 
 // Russian Cyrillic upper letters
-const sal_Unicode table_CyrillicUpperLetter_ru[] = {
+constexpr sal_Unicode table_CyrillicUpperLetter_ru[] = {
     0x0410, 0x0411, 0x0412, 0x0413, 0x0414, 0x0415, 0x0416, 0x0417,
     0x0418, 0x041A, 0x041B, 0x041C, 0x041D, 0x041E, 0x041F, 0x0420,
     0x0421, 0x0422, 0x0423, 0x0424, 0x0425, 0x0426, 0x0427, 0x0428,
@@ -177,7 +178,7 @@ const sal_Unicode table_CyrillicUpperLetter_ru[] = {
 };
 
 // Russian cyrillic lower letters
-const sal_Unicode table_CyrillicLowerLetter_ru[] = {
+constexpr sal_Unicode table_CyrillicLowerLetter_ru[] = {
     0x0430, 0x0431, 0x0432, 0x0433, 0x0434, 0x0435, 0x0436, 0x0437,
     0x0438, 0x043A, 0x043B, 0x043C, 0x043D, 0x043E, 0x043F, 0x0440,
     0x0441, 0x0442, 0x0443, 0x0444, 0x0445, 0x0446, 0x0447, 0x0448,
@@ -185,7 +186,7 @@ const sal_Unicode table_CyrillicLowerLetter_ru[] = {
 };
 
 // Serbian Cyrillic upper letters
-const sal_Unicode table_CyrillicUpperLetter_sr[] = {
+constexpr sal_Unicode table_CyrillicUpperLetter_sr[] = {
     0x0410, 0x0411, 0x0412, 0x0413, 0x0414, 0x0402, 0x0415, 0x0416,
     0x0417, 0x0418, 0x0408, 0x041A, 0x041B, 0x0409, 0x041C, 0x041D,
     0x040A, 0x041E, 0x041F, 0x0420, 0x0421, 0x0422, 0x040B, 0x0423,
@@ -193,7 +194,7 @@ const sal_Unicode table_CyrillicUpperLetter_sr[] = {
 };
 
 // Serbian cyrillic lower letters
-const sal_Unicode table_CyrillicLowerLetter_sr[] = {
+constexpr sal_Unicode table_CyrillicLowerLetter_sr[] = {
     0x0430, 0x0431, 0x0432, 0x0433, 0x0434, 0x0452, 0x0435, 0x0436,
     0x0437, 0x0438, 0x0458, 0x043A, 0x043B, 0x0459, 0x043C, 0x043D,
     0x045A, 0x043E, 0x043F, 0x0440, 0x0441, 0x0442, 0x045B, 0x0443,
@@ -201,7 +202,7 @@ const sal_Unicode table_CyrillicLowerLetter_sr[] = {
 };
 
 // Ukrainian Cyrillic upper letters
-const sal_Unicode table_CyrillicUpperLetter_uk[] = {
+constexpr sal_Unicode table_CyrillicUpperLetter_uk[] = {
     0x0410, 0x0411, 0x0412, 0x0413, 0x0490, 0x0414, 0x0415, 0x0404,
     0x0416, 0x0417, 0x0418, 0x0406, 0x0407, 0x0419, 0x041A, 0x041B,
     0x041C, 0x041D, 0x041E, 0x041F, 0x0420, 0x0421, 0x0422, 0x0423,
@@ -210,7 +211,7 @@ const sal_Unicode table_CyrillicUpperLetter_uk[] = {
 };
 
 // Ukrainian cyrillic lower letters
-const sal_Unicode table_CyrillicLowerLetter_uk[] = {
+constexpr sal_Unicode table_CyrillicLowerLetter_uk[] = {
     0x0430, 0x0431, 0x0432, 0x0433, 0x0491, 0x0434, 0x0435, 0x0454,
     0x0436, 0x0437, 0x0438, 0x0456, 0x0457, 0x0439, 0x043A, 0x043B,
     0x043C, 0x043D, 0x043E, 0x043F, 0x0440, 0x0441, 0x0442, 0x0443,
@@ -218,43 +219,43 @@ const sal_Unicode table_CyrillicLowerLetter_uk[] = {
     0x044F
 };
 
-const sal_Unicode table_GreekUpperLetter[] = {
+constexpr sal_Unicode table_GreekUpperLetter[] = {
     0x0391, 0x0392, 0x0393, 0x0394, 0x0395, 0x03DB, 0x0396, 0x0397, 0x0398,
     0x0399, 0x039A, 0x039B, 0x039C, 0x039D, 0x039E, 0x039F, 0x03A0, 0x03DF,
     0x03A1, 0x03A3, 0x03A4, 0x03A5, 0x03A6, 0x03A7, 0x03A8, 0x03A9, 0x03E0
 };
 
-const sal_Unicode table_GreekLowerLetter[] = {
+constexpr sal_Unicode table_GreekLowerLetter[] = {
     0x03B1, 0x03B2, 0x03B3, 0x03B4, 0x03B5, 0x03DB, 0x03B6, 0x03B7, 0x03B8,
     0x03B9, 0x03BA, 0x03BB, 0x03BC, 0x03BD, 0x03BE, 0x03BF, 0x03C0, 0x03DF,
     0x03C1, 0x03C3, 0x03C4, 0x03C5, 0x03C6, 0x03C7, 0x03C8, 0x03C9, 0x03E1
 };
 
-const sal_Unicode table_Alphabet_fa[] = {
+constexpr sal_Unicode table_Alphabet_fa[] = {
     0x0622, 0x0628, 0x067E, 0x062A, 0x062B, 0x062C, 0x0686, 0x062D,
     0x062E, 0x062F, 0x0630, 0x0631, 0x0632, 0x0698, 0x0633, 0x0634,
     0x0635, 0x0636, 0x0637, 0x0638, 0x0639, 0x0640, 0x0641, 0x0642,
     0x06A9, 0x06AF, 0x0644, 0x0645, 0x0646, 0x0648, 0x0647, 0x06CC
 };
 
-const sal_Unicode upperLetter[] = {
+constexpr sal_Unicode upperLetter[] = {
     0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48, 0x49,
     0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F, 0x50, 0x51, 0x52,
     0x53, 0x54, 0x55, 0x56, 0x57, 0x58, 0x59, 0x5A
 };
 
-const sal_Unicode lowerLetter[] = {
+constexpr sal_Unicode lowerLetter[] = {
     0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x69,
     0x6A, 0x6B, 0x6C, 0x6D, 0x6E, 0x6F, 0x70, 0x71, 0x72,
     0x73, 0x74, 0x75, 0x76, 0x77, 0x78, 0x79, 0x7A
 };
 
-const sal_Unicode table_Chicago[] = {
+constexpr sal_Unicode table_Chicago[] = {
     0x002a, 0x2020, 0x2021, 0x00a7
 };
 
 // Tables used for numbering in persian words
-const sal_Unicode table_PersianWord_decade1[][7]={
+constexpr sal_Unicode table_PersianWord_decade1[][7]={
     {0},                                                 // 0
     {0x06cc, 0x06a9, 0},                                 // 1
     {0x062f, 0x0648, 0},                                 // 2
@@ -277,7 +278,7 @@ const sal_Unicode table_PersianWord_decade1[][7]={
     {0x0646, 0x0648, 0x0632, 0x062f, 0x0647, 0}          // 19
 };
 
-const sal_Unicode table_PersianWord_decade2[][6]={
+constexpr sal_Unicode table_PersianWord_decade2[][6]={
     {0x0628, 0x06cc, 0x0633, 0x062a, 0},                 // 20
     {0x0633, 0x06cc, 0},                                 // 30
     {0x0686, 0x0647, 0x0644, 0},                         // 40
@@ -288,7 +289,7 @@ const sal_Unicode table_PersianWord_decade2[][6]={
     {0x0646, 0x0648, 0x062f, 0}                          // 90
 };
 
-const sal_Unicode table_PersianWord_decade3[][7]={
+constexpr sal_Unicode table_PersianWord_decade3[][7]={
     {0x0635, 0x062f, 0},                                 // 100
     {0x062f, 0x0648, 0x06cc, 0x0633, 0x062a, 0},         // 200
     {0x0633, 0x06cc, 0x0635, 0x062f, 0},                 // 300
@@ -300,13 +301,13 @@ const sal_Unicode table_PersianWord_decade3[][7]={
     {0x0646, 0x0647, 0x0635, 0x062f, 0}                  // 900
 };
 
-const sal_Unicode table_PersianWord_decadeX[][8]={
+constexpr sal_Unicode table_PersianWord_decadeX[][8]={
     {0x0647, 0x0632, 0x0627, 0x0631, 0},                        // 1000
     {0x0645, 0x06cc, 0x0644, 0x06cc, 0x0648, 0x0646, 0},        // 1000000
     {0x0645, 0x06cc, 0x0644, 0x06cc, 0x0627, 0x0631, 0x062f, 0} // 1000000000
 };
 
-const sal_Unicode table_KoreanLegalWord_decade1[][3] = {
+constexpr sal_Unicode table_KoreanLegalWord_decade1[][3] = {
     {0xd558, 0xb098, 0}, // 1
     {0xb458, 0},         // 2
     {0xc14b, 0},         // 3
@@ -318,7 +319,7 @@ const sal_Unicode table_KoreanLegalWord_decade1[][3] = {
     {0xc544, 0xd649, 0}  // 9
 };
 
-const sal_Unicode table_KoreanLegalWord_decade2[][3] = {
+constexpr sal_Unicode table_KoreanLegalWord_decade2[][3] = {
     {0xc5f4, 0},          // 10
     {0xc2a4, 0xbb3c, 0},  // 20
     {0xc11c, 0xb978, 0},  // 30
@@ -460,15 +461,14 @@ static
 void lcl_formatPersianWord( sal_Int32 nNumber, OUString& rsResult )
 {
     OUStringBuffer aTemp(64);
-    static constexpr OUStringLiteral asPersianWord_conjunction_data = u" \u0648 ";
-    OUString asPersianWord_conjunction( asPersianWord_conjunction_data );
+    OUString asPersianWord_conjunction = u" \u0648 "_ustr;
     unsigned char nSection = 0;
 
     while (int nPart = nNumber % 1000)
     {
         if (nSection)
         {
-            if (nSection > SAL_N_ELEMENTS( table_PersianWord_decadeX))
+            if (nSection > std::size( table_PersianWord_decadeX))
                 throw IllegalArgumentException();   // does not happen with sal_Int32
             aTemp.insert( 0, table_PersianWord_decadeX[nSection-1] + asPersianWord_conjunction );
         }
@@ -747,7 +747,7 @@ DefaultNumberingProvider::makeNumberingString( const Sequence<beans::PropertyVal
                break;
           case TRANSLITERATION:
                try {
-                    const OUString &tmp = OUString::number( number );
+                    const OUString tmp = OUString::number( number );
                     OUString transliteration;
                     getPropertyByName(aProperties, "Transliteration") >>= transliteration;
                     if ( !translit )
@@ -816,61 +816,61 @@ DefaultNumberingProvider::makeNumberingString( const Sequence<beans::PropertyVal
 
           case CIRCLE_NUMBER:
               table = table_CircledNumber;
-              tableSize = SAL_N_ELEMENTS(table_CircledNumber);
+              tableSize = std::size(table_CircledNumber);
               break;
           case TIAN_GAN_ZH:
               table = table_TianGan_zh;
-              tableSize = SAL_N_ELEMENTS(table_TianGan_zh);
+              tableSize = std::size(table_TianGan_zh);
               break;
           case DI_ZI_ZH:
               table = table_DiZi_zh;
-              tableSize = SAL_N_ELEMENTS(table_DiZi_zh);
+              tableSize = std::size(table_DiZi_zh);
               break;
           case AIU_FULLWIDTH_JA:
               table = table_AIUFullWidth_ja_JP;
-              tableSize = SAL_N_ELEMENTS(table_AIUFullWidth_ja_JP);
+              tableSize = std::size(table_AIUFullWidth_ja_JP);
               bRecycleSymbol = true;
               break;
           case AIU_HALFWIDTH_JA:
               table = table_AIUHalfWidth_ja_JP;
-              tableSize = SAL_N_ELEMENTS(table_AIUHalfWidth_ja_JP);
+              tableSize = std::size(table_AIUHalfWidth_ja_JP);
               bRecycleSymbol = true;
               break;
           case IROHA_FULLWIDTH_JA:
               table = table_IROHAFullWidth_ja_JP;
-              tableSize = SAL_N_ELEMENTS(table_IROHAFullWidth_ja_JP);
+              tableSize = std::size(table_IROHAFullWidth_ja_JP);
               bRecycleSymbol = true;
               break;
           case IROHA_HALFWIDTH_JA:
               table = table_IROHAHalfWidth_ja_JP;
-              tableSize = SAL_N_ELEMENTS(table_IROHAHalfWidth_ja_JP);
+              tableSize = std::size(table_IROHAHalfWidth_ja_JP);
               bRecycleSymbol = true;
               break;
           case HANGUL_JAMO_KO:
               table = table_HangulJamo_ko;
-              tableSize = SAL_N_ELEMENTS(table_HangulJamo_ko);
+              tableSize = std::size(table_HangulJamo_ko);
               bRecycleSymbol = true;
               break;
           case HANGUL_SYLLABLE_KO:
               table = table_HangulSyllable_ko;
-              tableSize = SAL_N_ELEMENTS(table_HangulSyllable_ko);
+              tableSize = std::size(table_HangulSyllable_ko);
               bRecycleSymbol = true;
               break;
           case HANGUL_CIRCLED_JAMO_KO:
               table = table_HangulCircledJamo_ko;
-              tableSize = SAL_N_ELEMENTS(table_HangulCircledJamo_ko);
+              tableSize = std::size(table_HangulCircledJamo_ko);
               bRecycleSymbol = true;
               break;
           case HANGUL_CIRCLED_SYLLABLE_KO:
               table = table_HangulCircledSyllable_ko;
-              tableSize = SAL_N_ELEMENTS(table_HangulCircledSyllable_ko);
+              tableSize = std::size(table_HangulCircledSyllable_ko);
               bRecycleSymbol = true;
               break;
           case CHARS_ARABIC:
-              lcl_formatChars(table_Alphabet_ar, SAL_N_ELEMENTS(table_Alphabet_ar), number - 1, result);
+              lcl_formatChars(table_Alphabet_ar, std::size(table_Alphabet_ar), number - 1, result);
               break;
           case CHARS_ARABIC_ABJAD:
-              lcl_formatChars(table_Alphabet_ar_abjad, SAL_N_ELEMENTS(table_Alphabet_ar_abjad), number - 1, result);
+              lcl_formatChars(table_Alphabet_ar_abjad, std::size(table_Alphabet_ar_abjad), number - 1, result);
               break;
           case NUMBER_ARABIC_INDIC:
               natNum = NativeNumberMode::NATNUM1;
@@ -885,117 +885,117 @@ DefaultNumberingProvider::makeNumberingString( const Sequence<beans::PropertyVal
               locale.Language = "hi";
               break;
           case CHARS_THAI:
-              lcl_formatChars(table_Alphabet_th, SAL_N_ELEMENTS(table_Alphabet_th), number - 1, result);
+              lcl_formatChars(table_Alphabet_th, std::size(table_Alphabet_th), number - 1, result);
               break;
           case CHARS_HEBREW:
-              lcl_formatChars(table_Alphabet_he, SAL_N_ELEMENTS(table_Alphabet_he), number - 1, result);
+              lcl_formatChars(table_Alphabet_he, std::size(table_Alphabet_he), number - 1, result);
               break;
           case NUMBER_HEBREW:
               natNum = NativeNumberMode::NATNUM1;
               locale.Language = "he";
               break;
           case CHARS_NEPALI:
-              lcl_formatChars(table_Alphabet_ne, SAL_N_ELEMENTS(table_Alphabet_ne), number - 1, result);
+              lcl_formatChars(table_Alphabet_ne, std::size(table_Alphabet_ne), number - 1, result);
               break;
           case CHARS_KHMER:
-              lcl_formatChars(table_Alphabet_km, SAL_N_ELEMENTS(table_Alphabet_km), number - 1, result);
+              lcl_formatChars(table_Alphabet_km, std::size(table_Alphabet_km), number - 1, result);
               break;
           case CHARS_LAO:
-              lcl_formatChars(table_Alphabet_lo, SAL_N_ELEMENTS(table_Alphabet_lo), number - 1, result);
+              lcl_formatChars(table_Alphabet_lo, std::size(table_Alphabet_lo), number - 1, result);
               break;
           case CHARS_MYANMAR:
-              lcl_formatChars(table_Alphabet_my, SAL_N_ELEMENTS(table_Alphabet_my), number - 1, result);
+              lcl_formatChars(table_Alphabet_my, std::size(table_Alphabet_my), number - 1, result);
               break;
          case CHARS_TIBETAN:
-              lcl_formatChars(table_Alphabet_dz, SAL_N_ELEMENTS(table_Alphabet_dz), number - 1, result);
+              lcl_formatChars(table_Alphabet_dz, std::size(table_Alphabet_dz), number - 1, result);
               break;
          case CHARS_CYRILLIC_UPPER_LETTER_BG:
               lcl_formatChars2( table_CyrillicUpperLetter_bg,
                       table_CyrillicLowerLetter_bg,
-                      SAL_N_ELEMENTS(table_CyrillicLowerLetter_bg), number-1,
+                      std::size(table_CyrillicLowerLetter_bg), number-1,
                       result); // 1=>a, 2=>b, ..., 28=>z, 29=>Aa, 30=>Ab, ...
               break;
          case CHARS_CYRILLIC_LOWER_LETTER_BG:
               lcl_formatChars( table_CyrillicLowerLetter_bg,
-                      SAL_N_ELEMENTS(table_CyrillicLowerLetter_bg), number-1,
+                      std::size(table_CyrillicLowerLetter_bg), number-1,
                       result); // 1=>a, 2=>b, ..., 28=>z, 29=>aa, 30=>ab, ...
               break;
          case CHARS_CYRILLIC_UPPER_LETTER_N_BG:
               lcl_formatChars3( table_CyrillicUpperLetter_bg,
                       table_CyrillicLowerLetter_bg,
-                      SAL_N_ELEMENTS(table_CyrillicLowerLetter_bg), number-1,
+                      std::size(table_CyrillicLowerLetter_bg), number-1,
                       result); // 1=>a, 2=>b, ..., 28=>z, 29=>Aa, 30=>Bb, ...
               break;
          case CHARS_CYRILLIC_LOWER_LETTER_N_BG:
               lcl_formatChars1( table_CyrillicLowerLetter_bg,
-                      SAL_N_ELEMENTS(table_CyrillicLowerLetter_bg), number-1,
+                      std::size(table_CyrillicLowerLetter_bg), number-1,
                       result); // 1=>a, 2=>b, ..., 28=>z, 29=>aa, 30=>bb, ...
               break;
          case CHARS_CYRILLIC_UPPER_LETTER_RU:
               lcl_formatChars2( table_CyrillicUpperLetter_ru,
                       table_CyrillicLowerLetter_ru,
-                      SAL_N_ELEMENTS(table_CyrillicLowerLetter_ru), number-1,
+                      std::size(table_CyrillicLowerLetter_ru), number-1,
                       result); // 1=>a, 2=>b, ..., 27=>z, 28=>Aa, 29=>Ab, ...
               break;
          case CHARS_CYRILLIC_LOWER_LETTER_RU:
               lcl_formatChars( table_CyrillicLowerLetter_ru,
-                      SAL_N_ELEMENTS(table_CyrillicLowerLetter_ru), number-1,
+                      std::size(table_CyrillicLowerLetter_ru), number-1,
                       result); // 1=>a, 2=>b, ..., 27=>z, 28=>aa, 29=>ab, ...
               break;
          case CHARS_CYRILLIC_UPPER_LETTER_N_RU:
               lcl_formatChars3( table_CyrillicUpperLetter_ru,
                       table_CyrillicLowerLetter_ru,
-                      SAL_N_ELEMENTS(table_CyrillicLowerLetter_ru), number-1,
+                      std::size(table_CyrillicLowerLetter_ru), number-1,
                       result); // 1=>a, 2=>b, ..., 27=>z, 28=>Aa, 29=>Bb, ...
               break;
          case CHARS_CYRILLIC_LOWER_LETTER_N_RU:
               lcl_formatChars1( table_CyrillicLowerLetter_ru,
-                      SAL_N_ELEMENTS(table_CyrillicLowerLetter_ru), number-1,
+                      std::size(table_CyrillicLowerLetter_ru), number-1,
                       result); // 1=>a, 2=>b, ..., 27=>z, 28=>aa, 29=>bb, ...
               break;
          case CHARS_CYRILLIC_UPPER_LETTER_SR:
               lcl_formatChars2( table_CyrillicUpperLetter_sr,
                       table_CyrillicLowerLetter_sr,
-                      SAL_N_ELEMENTS(table_CyrillicLowerLetter_sr), number-1,
+                      std::size(table_CyrillicLowerLetter_sr), number-1,
                       result); // 1=>a, 2=>b, ..., 27=>z, 28=>Aa, 29=>Ab, ...
               break;
          case CHARS_CYRILLIC_LOWER_LETTER_SR:
               lcl_formatChars( table_CyrillicLowerLetter_sr,
-                      SAL_N_ELEMENTS(table_CyrillicLowerLetter_sr), number-1,
+                      std::size(table_CyrillicLowerLetter_sr), number-1,
                       result); // 1=>a, 2=>b, ..., 27=>z, 28=>aa, 29=>ab, ...
               break;
          case CHARS_CYRILLIC_UPPER_LETTER_N_SR:
               lcl_formatChars3( table_CyrillicUpperLetter_sr,
                       table_CyrillicLowerLetter_sr,
-                      SAL_N_ELEMENTS(table_CyrillicLowerLetter_sr), number-1,
+                      std::size(table_CyrillicLowerLetter_sr), number-1,
                       result); // 1=>a, 2=>b, ..., 27=>z, 28=>Aa, 29=>Bb, ...
               break;
          case CHARS_CYRILLIC_LOWER_LETTER_N_SR:
               lcl_formatChars1( table_CyrillicLowerLetter_sr,
-                      SAL_N_ELEMENTS(table_CyrillicLowerLetter_sr), number-1,
+                      std::size(table_CyrillicLowerLetter_sr), number-1,
                       result); // 1=>a, 2=>b, ..., 27=>z, 28=>aa, 29=>bb, ...
               break;
 
          case CHARS_CYRILLIC_UPPER_LETTER_UK:
               lcl_formatChars2( table_CyrillicUpperLetter_uk,
                       table_CyrillicLowerLetter_uk,
-                      SAL_N_ELEMENTS(table_CyrillicLowerLetter_uk), number-1,
+                      std::size(table_CyrillicLowerLetter_uk), number-1,
                       result);
               break;
          case CHARS_CYRILLIC_LOWER_LETTER_UK:
               lcl_formatChars( table_CyrillicLowerLetter_uk,
-                      SAL_N_ELEMENTS(table_CyrillicLowerLetter_uk), number-1,
+                      std::size(table_CyrillicLowerLetter_uk), number-1,
                       result);
               break;
          case CHARS_CYRILLIC_UPPER_LETTER_N_UK:
               lcl_formatChars3( table_CyrillicUpperLetter_uk,
                       table_CyrillicLowerLetter_uk,
-                      SAL_N_ELEMENTS(table_CyrillicLowerLetter_uk), number-1,
+                      std::size(table_CyrillicLowerLetter_uk), number-1,
                       result);
               break;
          case CHARS_CYRILLIC_LOWER_LETTER_N_UK:
               lcl_formatChars1( table_CyrillicLowerLetter_uk,
-                      SAL_N_ELEMENTS(table_CyrillicLowerLetter_uk), number-1,
+                      std::size(table_CyrillicLowerLetter_uk), number-1,
                       result);
               break;
 
@@ -1008,7 +1008,7 @@ DefaultNumberingProvider::makeNumberingString( const Sequence<beans::PropertyVal
               break;
 
           case CHARS_PERSIAN:
-              lcl_formatChars(table_Alphabet_fa, SAL_N_ELEMENTS(table_Alphabet_fa), number - 1, result);
+              lcl_formatChars(table_Alphabet_fa, std::size(table_Alphabet_fa), number - 1, result);
               break;
 
           case CHARS_PERSIAN_WORD:
@@ -1155,7 +1155,7 @@ const Supported_NumberingType aSupportedTypes[] =
         {style::NumberingType::ARABIC_ZERO4, "0001, 0002, 0003, ...", LANG_ALL},
         {style::NumberingType::ARABIC_ZERO5, "00001, 00002, 00003, ...", LANG_ALL},
 };
-const sal_Int32 nSupported_NumberingTypes = SAL_N_ELEMENTS(aSupportedTypes);
+const sal_Int32 nSupported_NumberingTypes = std::size(aSupportedTypes);
 
 OUString DefaultNumberingProvider::makeNumberingIdentifier(sal_Int16 index)
 {
@@ -1166,7 +1166,7 @@ OUString DefaultNumberingProvider::makeNumberingIdentifier(sal_Int16 index)
         return OUString(aSupportedTypes[index].cSymbol, strlen(aSupportedTypes[index].cSymbol), RTL_TEXTENCODING_UTF8);
     else {
         OUStringBuffer result;
-        Locale aLocale("en", OUString(), OUString());
+        Locale aLocale(u"en"_ustr, OUString(), OUString());
         Sequence<beans::PropertyValue> aProperties(2);
         auto aPropertiesRange = asNonConstRange(aProperties);
         aPropertiesRange[0].Name = "NumberingType";
@@ -1201,23 +1201,8 @@ OUString DefaultNumberingProvider::makeNumberingIdentifier(sal_Int16 index)
 bool
 DefaultNumberingProvider::isScriptFlagEnabled(const OUString& aName)
 {
-    if (! xHierarchicalNameAccess.is()) {
-        Reference< XMultiServiceFactory > xConfigProvider =
-            configuration::theDefaultProvider::get(m_xContext);
-
-        if (! xConfigProvider.is())
-            throw RuntimeException();
-
-        uno::Sequence<uno::Any> aArgs(comphelper::InitAnyPropertySequence(
-        {
-            {"nodepath", uno::Any(OUString("/org.openoffice.Office.Common/I18N"))}
-        }));
-
-        Reference<XInterface> xInterface = xConfigProvider->createInstanceWithArguments(
-            "com.sun.star.configuration.ConfigurationAccess", aArgs);
-
-        xHierarchicalNameAccess.set(xInterface, UNO_QUERY_THROW);
-    }
+    if (! xHierarchicalNameAccess.is())
+        xHierarchicalNameAccess = officecfg::Office::Common::I18N::get();
 
     Any aEnabled = xHierarchicalNameAccess->getByHierarchicalName(aName);
 
@@ -1233,8 +1218,8 @@ Sequence< sal_Int16 > DefaultNumberingProvider::getSupportedNumberingTypes(  )
     Sequence< sal_Int16 > aRet(nSupported_NumberingTypes );
     sal_Int16* pArray = aRet.getArray();
 
-    bool cjkEnabled = isScriptFlagEnabled("CJK/CJKFont");
-    bool ctlEnabled = isScriptFlagEnabled("CTL/CTLFont");
+    bool cjkEnabled = isScriptFlagEnabled(u"CJK/CJKFont"_ustr);
+    bool ctlEnabled = isScriptFlagEnabled(u"CTL/CTLFont"_ustr);
 
     for(sal_Int16 i = 0; i < nSupported_NumberingTypes; i++) {
         if ( (aSupportedTypes[i].langOption & LANG_ALL) ||
@@ -1283,7 +1268,7 @@ OUString DefaultNumberingProvider::getNumberingIdentifier( sal_Int16 nNumberingT
 
 OUString DefaultNumberingProvider::getImplementationName()
 {
-    return "com.sun.star.text.DefaultNumberingProvider";
+    return u"com.sun.star.text.DefaultNumberingProvider"_ustr;
 }
 
 sal_Bool DefaultNumberingProvider::supportsService(const OUString& rServiceName)
@@ -1293,7 +1278,7 @@ sal_Bool DefaultNumberingProvider::supportsService(const OUString& rServiceName)
 
 Sequence< OUString > DefaultNumberingProvider::getSupportedServiceNames()
 {
-    Sequence< OUString > aRet { "com.sun.star.text.DefaultNumberingProvider" };
+    Sequence< OUString > aRet { u"com.sun.star.text.DefaultNumberingProvider"_ustr };
     return aRet;
 }
 

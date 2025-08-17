@@ -38,7 +38,8 @@ SwNumberingTypeListBox::SwNumberingTypeListBox(std::unique_ptr<weld::ComboBox> p
     : m_xWidget(std::move(pWidget))
     , m_xImpl(new SwNumberingTypeListBox_Impl)
 {
-    uno::Reference<uno::XComponentContext> xContext(::comphelper::getProcessComponentContext());
+    const uno::Reference<uno::XComponentContext>& xContext(
+        ::comphelper::getProcessComponentContext());
     uno::Reference<text::XDefaultNumberingProvider> xDefNum
         = text::DefaultNumberingProvider::create(xContext);
     m_xImpl->xInfo.set(xDefNum, uno::UNO_QUERY);
@@ -101,7 +102,7 @@ void SwNumberingTypeListBox::Reload(SwInsertNumTypes nTypeFlags)
     if (!(nTypeFlags & SwInsertNumTypes::Extended))
         return;
 
-    for (sal_Int16 nCurrent : std::as_const(aTypes))
+    for (sal_Int16 nCurrent : aTypes)
     {
         if (nCurrent > style::NumberingType::CHARS_LOWER_LETTER_N)
         {

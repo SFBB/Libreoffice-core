@@ -17,6 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include "accessibletabbar.hxx"
 
 #include <svtools/tabbar.hxx>
 #include <tools/time.hxx>
@@ -30,8 +31,6 @@
 #include <vcl/event.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/commandevent.hxx>
-#include <vcl/svtaccessiblefactory.hxx>
-#include <vcl/accessiblefactory.hxx>
 #include <vcl/ptrstyle.hxx>
 #include <vcl/weldutils.hxx>
 #include <svtools/svtresid.hxx>
@@ -154,7 +153,7 @@ public:
             drawSeparator();
         if (mbProtect)
         {
-            BitmapEx aBitmap(BMP_TAB_LOCK);
+            Bitmap aBitmap(BMP_TAB_LOCK);
             Point aPosition = maRect.TopLeft();
             aPosition.AdjustX(2);
             aPosition.AdjustY((maRect.getOpenHeight() - aBitmap.GetSizePixel().Height()) / 2);
@@ -345,8 +344,8 @@ public:
 }
 
 TabBarEdit::TabBarEdit(TabBar* pParent)
-    : InterimItemWindow(pParent, "svt/ui/tabbaredit.ui", "TabBarEdit")
-    , m_xEntry(m_xBuilder->weld_entry("entry"))
+    : InterimItemWindow(pParent, u"svt/ui/tabbaredit.ui"_ustr, u"TabBarEdit"_ustr)
+    , m_xEntry(m_xBuilder->weld_entry(u"entry"_ustr))
     , maLoseFocusIdle( "svtools::TabBarEdit maLoseFocusIdle" )
 {
     InitControlBase(m_xEntry.get());
@@ -447,14 +446,14 @@ public:
 
     TabButtons(TabBar* pParent, bool bSheets)
         : InterimItemWindow(pParent,
-                            pParent->IsMirrored() ? OUString("svt/ui/tabbuttonsmirrored.ui")
-                                                  : OUString("svt/ui/tabbuttons.ui"),
-                            "TabButtons")
-        , m_xFirstButton(m_xBuilder->weld_button("first"))
-        , m_xPrevButton(m_xBuilder->weld_button("prev"))
-        , m_xNextButton(m_xBuilder->weld_button("next"))
-        , m_xLastButton(m_xBuilder->weld_button("last"))
-        , m_xAddButton(m_xBuilder->weld_button("add"))
+                            pParent->IsMirrored() ? u"svt/ui/tabbuttonsmirrored.ui"_ustr
+                                                  : u"svt/ui/tabbuttons.ui"_ustr,
+                            u"TabButtons"_ustr)
+        , m_xFirstButton(m_xBuilder->weld_button(u"first"_ustr))
+        , m_xPrevButton(m_xBuilder->weld_button(u"prev"_ustr))
+        , m_xNextButton(m_xBuilder->weld_button(u"next"_ustr))
+        , m_xLastButton(m_xBuilder->weld_button(u"last"_ustr))
+        , m_xAddButton(m_xBuilder->weld_button(u"add"_ustr))
     {
         const StyleSettings& rStyleSettings = Application::GetSettings().GetStyleSettings();
         SetPaintTransparent(false);
@@ -510,8 +509,6 @@ struct TabBar_Impl
     ScopedVclPtr<TabButtons>    mxButtonBox;
     ScopedVclPtr<TabBarEdit>    mxEdit;
     std::vector<ImplTabBarItem> maItemList;
-
-    vcl::AccessibleFactoryAccess  maAccessibleFactory;
 
     sal_uInt16 getItemSize() const
     {
@@ -656,7 +653,7 @@ bool TabBar::ImplCalcWidth()
 
     // retrieve width of tabs with bold font
     vcl::Font aFont = GetFont();
-    if (aFont.GetWeight() != WEIGHT_BOLD)
+    if (aFont.GetWeightMaybeAskConfig() != WEIGHT_BOLD)
     {
         aFont.SetWeight(WEIGHT_BOLD);
         SetFont(aFont);
@@ -2215,20 +2212,20 @@ void TabBar::SetPageText(sal_uInt16 nPageId, const OUString& rText)
     }
 }
 
-OUString TabBar::GetPageText(sal_uInt16 nPageId) const
+const OUString & TabBar::GetPageText(sal_uInt16 nPageId) const
 {
     sal_uInt16 nPos = GetPagePos(nPageId);
     if (nPos != PAGE_NOT_FOUND)
         return mpImpl->maItemList[nPos].maText;
-    return OUString();
+    return EMPTY_OUSTRING;
 }
 
-OUString TabBar::GetAuxiliaryText(sal_uInt16 nPageId) const
+const OUString & TabBar::GetAuxiliaryText(sal_uInt16 nPageId) const
 {
     sal_uInt16 nPos = GetPagePos(nPageId);
     if (nPos != PAGE_NOT_FOUND)
         return mpImpl->maItemList[nPos].maAuxiliaryText;
-    return OUString();
+    return EMPTY_OUSTRING;
 }
 
 void TabBar::SetAuxiliaryText(sal_uInt16 nPageId, const OUString& rText )
@@ -2251,7 +2248,7 @@ OUString TabBar::GetHelpText(sal_uInt16 nPageId) const
         {
             Help* pHelp = Application::GetHelp();
             if (pHelp)
-                rItem.maHelpText = pHelp->GetHelpText(OStringToOUString(rItem.maHelpId, RTL_TEXTENCODING_UTF8), this);
+                rItem.maHelpText = pHelp->GetHelpText(OStringToOUString(rItem.maHelpId, RTL_TEXTENCODING_UTF8));
         }
 
         return rItem.maHelpText;
@@ -2534,9 +2531,9 @@ void TabBar::SetAddButtonEnabled(bool bAddButtonEnabled)
     mpImpl->mxButtonBox->m_xAddButton->set_sensitive(bAddButtonEnabled);
 }
 
-css::uno::Reference<css::accessibility::XAccessible> TabBar::CreateAccessible()
+rtl::Reference<comphelper::OAccessible> TabBar::CreateAccessible()
 {
-    return mpImpl->maAccessibleFactory.getFactory().createAccessibleTabBar(*this);
+    return new accessibility::AccessibleTabBar(this);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

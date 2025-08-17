@@ -38,6 +38,7 @@
 
 class SdrObject;
 class SdXImpressDocument;
+class SdMasterPage;
 
 class SdGenericDrawPage : public SvxDrawPage,
                           public SdUnoSearchReplaceShape,
@@ -109,6 +110,8 @@ public:
     virtual css::uno::Reference<css::drawing::XShape>  CreateShape(SdrObject *pObj) const override;
 
     // XInterface
+    virtual void SAL_CALL acquire() noexcept override { SvxDrawPage::acquire(); }
+    virtual void SAL_CALL release() noexcept override { SvxDrawPage::release(); }
     virtual css::uno::Any SAL_CALL queryInterface( const css::uno::Type & rType ) override;
 
     // XShapeCombiner
@@ -209,6 +212,8 @@ public:
     // XShapes
     virtual void SAL_CALL add( const css::uno::Reference< css::drawing::XShape >& xShape ) override;
     virtual void SAL_CALL remove( const css::uno::Reference< css::drawing::XShape >& xShape ) override;
+
+    SdMasterPage* getSdMasterPage();
 };
 
 /***********************************************************************
@@ -272,8 +277,7 @@ class SdPageLinkTargets final : public ::cppu::WeakImplHelper< css::container::X
                                                   css::lang::XServiceInfo >
 {
 private:
-    css::uno::Reference< css::drawing::XDrawPage > mxPage;
-    SdGenericDrawPage* mpUnoPage;
+    rtl::Reference< SdGenericDrawPage > mxPage;
 
 public:
     SdPageLinkTargets( SdGenericDrawPage* pUnoPage ) noexcept;

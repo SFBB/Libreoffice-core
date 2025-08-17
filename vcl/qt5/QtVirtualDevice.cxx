@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -43,13 +43,11 @@ void QtVirtualDevice::ReleaseGraphics(SalGraphics* pGraphics)
     delete pGraphics;
 }
 
-bool QtVirtualDevice::SetSize(tools::Long nNewDX, tools::Long nNewDY)
+bool QtVirtualDevice::SetSize(tools::Long nNewDX, tools::Long nNewDY, bool bAlphaMaskTransparent)
 {
-    return SetSizeUsingBuffer(nNewDX, nNewDY, nullptr);
-}
+    assert(!bAlphaMaskTransparent && "TODO");
+    (void)bAlphaMaskTransparent;
 
-bool QtVirtualDevice::SetSizeUsingBuffer(tools::Long nNewDX, tools::Long nNewDY, sal_uInt8* pBuffer)
-{
     if (nNewDX == 0)
         nNewDX = 1;
     if (nNewDY == 0)
@@ -63,10 +61,7 @@ bool QtVirtualDevice::SetSizeUsingBuffer(tools::Long nNewDX, tools::Long nNewDY,
     nNewDX *= m_fScale;
     nNewDY *= m_fScale;
 
-    if (pBuffer)
-        m_pImage.reset(new QImage(pBuffer, nNewDX, nNewDY, Qt_DefaultFormat32));
-    else
-        m_pImage.reset(new QImage(nNewDX, nNewDY, Qt_DefaultFormat32));
+    m_pImage.reset(new QImage(nNewDX, nNewDY, Qt_DefaultFormat32));
 
     m_pImage->fill(Qt::transparent);
     m_pImage->setDevicePixelRatio(m_fScale);
@@ -82,4 +77,4 @@ tools::Long QtVirtualDevice::GetWidth() const { return m_pImage ? m_aFrameSize.w
 
 tools::Long QtVirtualDevice::GetHeight() const { return m_pImage ? m_aFrameSize.height() : 0; }
 
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

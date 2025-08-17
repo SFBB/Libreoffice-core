@@ -19,9 +19,15 @@
 
 #include <officecfg/Office/Common.hxx>
 #include <sfx2/bindings.hxx>
+#include <sfx2/dispatch.hxx>
+#include <sfx2/viewsh.hxx>
 #include <sfx2/AccessibilityIssue.hxx>
+#include <sfx2/pageids.hxx>
 #include <unotools/configmgr.hxx>
+#include <vcl/ptrstyle.hxx>
 #include <vcl/svapp.hxx>
+#include <o3tl/enumrange.hxx>
+#include <comphelper/lok.hxx>
 
 #include "A11yCheckIssuesPanel.hxx"
 
@@ -31,11 +37,13 @@ namespace sw::sidebar
 {
 AccessibilityCheckEntry::AccessibilityCheckEntry(
     weld::Container* pParent, std::shared_ptr<sfx::AccessibilityIssue> const& rAccessibilityIssue)
-    : m_xBuilder(Application::CreateBuilder(pParent, "svx/ui/accessibilitycheckentry.ui"))
-    , m_xContainer(m_xBuilder->weld_container("accessibilityCheckEntryBox"))
-    , m_xLabel(m_xBuilder->weld_label("accessibilityCheckEntryLabel"))
-    , m_xGotoButton(m_xBuilder->weld_link_button("accessibilityCheckEntryLinkButton"))
-    , m_xFixButton(m_xBuilder->weld_button("accessibilityCheckEntryFixButton"))
+    : m_xBuilder(Application::CreateBuilder(pParent, u"svx/ui/accessibilitycheckentry.ui"_ustr,
+                                            false,
+                                            reinterpret_cast<sal_uInt64>(SfxViewShell::Current())))
+    , m_xContainer(m_xBuilder->weld_container(u"accessibilityCheckEntryBox"_ustr))
+    , m_xLabel(m_xBuilder->weld_label(u"accessibilityCheckEntryLabel"_ustr))
+    , m_xGotoButton(m_xBuilder->weld_link_button(u"accessibilityCheckEntryLinkButton"_ustr))
+    , m_xFixButton(m_xBuilder->weld_button(u"accessibilityCheckEntryFixButton"_ustr))
     , m_pAccessibilityIssue(rAccessibilityIssue)
 {
     // lock in the height as including the button so all rows are the same height
@@ -80,52 +88,130 @@ AccessibilityCheckEntry::AccessibilityCheckEntry(
 
 IMPL_LINK_NOARG(AccessibilityCheckEntry, GotoButtonClicked, weld::LinkButton&, bool)
 {
-    m_pAccessibilityIssue->gotoIssue();
+    if (m_pAccessibilityIssue)
+        m_pAccessibilityIssue->gotoIssue();
     return true;
 }
 
 IMPL_LINK_NOARG(AccessibilityCheckEntry, FixButtonClicked, weld::Button&, void)
 {
-    m_pAccessibilityIssue->quickFixIssue();
+    if (m_pAccessibilityIssue)
+        m_pAccessibilityIssue->quickFixIssue();
 }
 
-std::unique_ptr<PanelLayout> A11yCheckIssuesPanel::Create(weld::Widget* pParent,
-                                                          SfxBindings* pBindings)
+AccessibilityCheckLevel::AccessibilityCheckLevel(weld::Box* pParent,
+                                                 css::uno::Reference<css::ui::XSidebar> xSidebar)
+    : m_xBuilder(Application::CreateBuilder(pParent, u"svx/ui/accessibilitychecklevel.ui"_ustr,
+                                            false,
+                                            reinterpret_cast<sal_uInt64>(SfxViewShell::Current())))
+    , m_xContainer(m_xBuilder->weld_box(u"accessibilityCheckLevelBox"_ustr))
+    , m_xSidebar(std::move(xSidebar))
+{
+    m_xExpanders[0] = m_xBuilder->weld_expander(u"expand_document"_ustr);
+    m_xExpanders[1] = m_xBuilder->weld_expander(u"expand_styles"_ustr);
+    m_xExpanders[2] = m_xBuilder->weld_expander(u"expand_linked"_ustr);
+    m_xExpanders[3] = m_xBuilder->weld_expander(u"expand_no_alt"_ustr);
+    m_xExpanders[4] = m_xBuilder->weld_expander(u"expand_table"_ustr);
+    m_xExpanders[5] = m_xBuilder->weld_expander(u"expand_formatting"_ustr);
+    m_xExpanders[6] = m_xBuilder->weld_expander(u"expand_direct_formatting"_ustr);
+    m_xExpanders[7] = m_xBuilder->weld_expander(u"expand_hyperlink"_ustr);
+    m_xExpanders[8] = m_xBuilder->weld_expander(u"expand_fakes"_ustr);
+    m_xExpanders[9] = m_xBuilder->weld_expander(u"expand_numbering"_ustr);
+    m_xExpanders[10] = m_xBuilder->weld_expander(u"expand_other"_ustr);
+
+    for (const auto& xExpanders : m_xExpanders)
+        xExpanders->connect_expanded(LINK(this, AccessibilityCheckLevel, ExpandHdl));
+
+    m_xBoxes[0] = m_xBuilder->weld_box(u"box_document"_ustr);
+    m_xBoxes[1] = m_xBuilder->weld_box(u"box_styles"_ustr);
+    m_xBoxes[2] = m_xBuilder->weld_box(u"box_linked"_ustr);
+    m_xBoxes[3] = m_xBuilder->weld_box(u"box_no_alt"_ustr);
+    m_xBoxes[4] = m_xBuilder->weld_box(u"box_table"_ustr);
+    m_xBoxes[5] = m_xBuilder->weld_box(u"box_formatting"_ustr);
+    m_xBoxes[6] = m_xBuilder->weld_box(u"box_direct_formatting"_ustr);
+    m_xBoxes[7] = m_xBuilder->weld_box(u"box_hyperlink"_ustr);
+    m_xBoxes[8] = m_xBuilder->weld_box(u"box_fakes"_ustr);
+    m_xBoxes[9] = m_xBuilder->weld_box(u"box_numbering"_ustr);
+    m_xBoxes[10] = m_xBuilder->weld_box(u"box_other"_ustr);
+}
+
+IMPL_LINK_NOARG(AccessibilityCheckLevel, ExpandHdl, weld::Expander&, void)
+{
+    if (m_xSidebar.is())
+        m_xSidebar->requestLayout();
+}
+
+void AccessibilityCheckLevel::removeAllEntries()
+{
+    for (auto eGroup : o3tl::enumrange<AccessibilityCheckGroups>())
+    {
+        auto nGroupIndex = size_t(eGroup);
+        for (auto const& xEntry : m_aEntries[nGroupIndex])
+            m_xBoxes[nGroupIndex]->move(xEntry->get_widget(), nullptr);
+        // remove the entries from the vector
+        if (!m_aEntries[nGroupIndex].empty())
+            m_aEntries[nGroupIndex].clear();
+    }
+}
+
+void AccessibilityCheckLevel::addEntryForGroup(
+    AccessibilityCheckGroups eGroup, std::vector<sal_Int32>& rIndices,
+    std::shared_ptr<sfx::AccessibilityIssue> const& pIssue)
+{
+    auto nGroupIndex = size_t(eGroup);
+    auto xEntry = std::make_unique<AccessibilityCheckEntry>(m_xBoxes[nGroupIndex].get(), pIssue);
+    m_xBoxes[nGroupIndex]->reorder_child(xEntry->get_widget(), rIndices[nGroupIndex]++);
+    m_aEntries[nGroupIndex].push_back(std::move(xEntry));
+}
+
+void AccessibilityCheckLevel::show(size_t nGroupIndex) { m_xExpanders[nGroupIndex]->show(); }
+
+void AccessibilityCheckLevel::hide(size_t nGroupIndex) { m_xExpanders[nGroupIndex]->hide(); }
+
+std::unique_ptr<PanelLayout>
+A11yCheckIssuesPanel::Create(weld::Widget* pParent, SfxBindings* pBindings,
+                             css::uno::Reference<css::ui::XSidebar> xSidebar)
 {
     if (pParent == nullptr)
-        throw ::com::sun::star::lang::IllegalArgumentException(
-            "no parent window given to A11yCheckIssuesPanel::Create", nullptr, 0);
-    return std::make_unique<A11yCheckIssuesPanel>(pParent, pBindings);
+        throw css::lang::IllegalArgumentException(
+            u"no parent window given to A11yCheckIssuesPanel::Create"_ustr, nullptr, 0);
+    return std::make_unique<A11yCheckIssuesPanel>(pParent, pBindings, xSidebar);
 }
 
-A11yCheckIssuesPanel::A11yCheckIssuesPanel(weld::Widget* pParent, SfxBindings* pBindings)
-    : PanelLayout(pParent, "A11yCheckIssuesPanel", "modules/swriter/ui/a11ycheckissuespanel.ui")
-    , m_xExpanderDocument(m_xBuilder->weld_expander("expand_document"))
-    , m_xExpanderStyles(m_xBuilder->weld_expander("expand_styles"))
-    , m_xExpanderLinked(m_xBuilder->weld_expander("expand_linked"))
-    , m_xExpanderNoAlt(m_xBuilder->weld_expander("expand_no_alt"))
-    , m_xExpanderTable(m_xBuilder->weld_expander("expand_table"))
-    , m_xExpanderFormatting(m_xBuilder->weld_expander("expand_formatting"))
-    , m_xExpanderHyperlink(m_xBuilder->weld_expander("expand_hyperlink"))
-    , m_xExpanderFakes(m_xBuilder->weld_expander("expand_fakes"))
-    , m_xExpanderNumbering(m_xBuilder->weld_expander("expand_numbering"))
-    , m_xExpanderOther(m_xBuilder->weld_expander("expand_other"))
-    , m_xBoxDocument(m_xBuilder->weld_box("box_document"))
-    , m_xBoxStyles(m_xBuilder->weld_box("box_styles"))
-    , m_xBoxLinked(m_xBuilder->weld_box("box_linked"))
-    , m_xBoxNoAlt(m_xBuilder->weld_box("box_no_alt"))
-    , m_xBoxTable(m_xBuilder->weld_box("box_table"))
-    , m_xBoxFormatting(m_xBuilder->weld_box("box_formatting"))
-    , m_xBoxHyperlink(m_xBuilder->weld_box("box_hyperlink"))
-    , m_xBoxFakes(m_xBuilder->weld_box("box_fakes"))
-    , m_xBoxNumbering(m_xBuilder->weld_box("box_numbering"))
-    , m_xBoxOther(m_xBuilder->weld_box("box_other"))
+A11yCheckIssuesPanel::A11yCheckIssuesPanel(weld::Widget* pParent, SfxBindings* pBindings,
+                                           css::uno::Reference<css::ui::XSidebar> xSidebar)
+    : PanelLayout(pParent, u"A11yCheckIssuesPanel"_ustr,
+                  u"modules/swriter/ui/a11ycheckissuespanel.ui"_ustr)
+    , m_xOptionsButton(m_xBuilder->weld_button(u"bOptions"_ustr))
+    , mxUpdateBox(m_xBuilder->weld_box(u"updateBox"_ustr))
+    , mxUpdateLinkButton(m_xBuilder->weld_link_button(u"updateLinkButton"_ustr))
+    , m_xListSep(m_xBuilder->weld_widget(u"sep_level"_ustr))
     , mpBindings(pBindings)
     , mpDoc(nullptr)
+    , mxSidebar(std::move(xSidebar))
     , maA11yCheckController(FN_STAT_ACCESSIBILITY_CHECK, *pBindings, *this)
     , mnIssueCount(0)
     , mbAutomaticCheckEnabled(false)
 {
+    // errors
+    m_xLevelExpanders[0] = m_xBuilder->weld_expander(u"expand_errors"_ustr);
+    m_xLevelExpanders[0]->connect_expanded(LINK(this, A11yCheckIssuesPanel, ExpandHdl));
+
+    mxAccessibilityBox[0] = m_xBuilder->weld_box(u"accessibilityBoxErr"_ustr);
+    m_aLevelEntries[0]
+        = std::make_unique<AccessibilityCheckLevel>(mxAccessibilityBox[0].get(), mxSidebar);
+
+    // warnings
+    m_xLevelExpanders[1] = m_xBuilder->weld_expander(u"expand_warnings"_ustr);
+    m_xLevelExpanders[1]->connect_expanded(LINK(this, A11yCheckIssuesPanel, ExpandHdl));
+
+    mxAccessibilityBox[1] = m_xBuilder->weld_box(u"accessibilityBoxWrn"_ustr);
+    m_aLevelEntries[1]
+        = std::make_unique<AccessibilityCheckLevel>(mxAccessibilityBox[1].get(), mxSidebar);
+
+    mxUpdateLinkButton->connect_activate_link(
+        LINK(this, A11yCheckIssuesPanel, UpdateLinkButtonClicked));
+
     SwDocShell* pDocSh = dynamic_cast<SwDocShell*>(SfxObjectShell::Current());
     if (!pDocSh)
         return;
@@ -144,8 +230,50 @@ A11yCheckIssuesPanel::A11yCheckIssuesPanel(weld::Widget* pParent, SfxBindings* p
 
     mpDoc = pDocSh->GetDoc();
 
-    populateIssues();
+    m_xOptionsButton->connect_clicked(LINK(this, A11yCheckIssuesPanel, OptionsButtonClicked));
+
+    // If LOKit is enabled, then enable the update button and don't run the accessibility check.
+    // In desktop don't show the update button and schedule to run the accessibility check async
+    // If LOKit is enabled, hide the Options button and its label.
+    if (comphelper::LibreOfficeKit::isActive())
+    {
+        m_xLevelExpanders[0]->hide();
+        m_xLevelExpanders[1]->hide();
+        mxUpdateBox->show();
+        m_xBuilder->weld_widget(u"gridOptions"_ustr)->hide();
+    }
+    else
+    {
+        m_xLevelExpanders[0]->show();
+        m_xLevelExpanders[1]->show();
+        mxUpdateBox->hide();
+        Application::PostUserEvent(LINK(this, A11yCheckIssuesPanel, PopulateIssuesHdl));
+    }
 }
+
+IMPL_LINK_NOARG(A11yCheckIssuesPanel, OptionsButtonClicked, weld::Button&, void)
+{
+    SfxUInt16Item aPageID(SID_OPTIONS_PAGEID, sal_uInt16(RID_SVXPAGE_ACCESSIBILITYCONFIG));
+    auto pDispatcher = GetBindings()->GetDispatcher();
+    pDispatcher->ExecuteList(SID_OPTIONS_TREEDIALOG, SfxCallMode::SYNCHRON, { &aPageID });
+}
+
+IMPL_LINK_NOARG(A11yCheckIssuesPanel, ExpandHdl, weld::Expander&, void)
+{
+    if (mxSidebar.is())
+        mxSidebar->requestLayout();
+}
+
+IMPL_LINK_NOARG(A11yCheckIssuesPanel, UpdateLinkButtonClicked, weld::LinkButton&, bool)
+{
+    m_xLevelExpanders[0]->show();
+    m_xLevelExpanders[1]->show();
+    mxUpdateBox->hide();
+    Application::PostUserEvent(LINK(this, A11yCheckIssuesPanel, PopulateIssuesHdl));
+    return true;
+}
+
+IMPL_LINK_NOARG(A11yCheckIssuesPanel, PopulateIssuesHdl, void*, void) { populateIssues(); }
 
 void A11yCheckIssuesPanel::ImplDestroy()
 {
@@ -158,93 +286,49 @@ void A11yCheckIssuesPanel::ImplDestroy()
         batch->commit();
         mpBindings->Invalidate(SID_ACCESSIBILITY_CHECK_ONLINE);
     }
-    m_xExpanderDocument.reset();
-    m_xExpanderStyles.reset();
-    m_xExpanderLinked.reset();
-    m_xExpanderNoAlt.reset();
-    m_xExpanderTable.reset();
-    m_xExpanderFormatting.reset();
-    m_xExpanderHyperlink.reset();
-    m_xExpanderFakes.reset();
-    m_xExpanderNumbering.reset();
-    m_xExpanderOther.reset();
-    m_xBoxDocument.reset();
-    m_xBoxStyles.reset();
-    m_xBoxLinked.reset();
-    m_xBoxNoAlt.reset();
-    m_xBoxTable.reset();
-    m_xBoxFormatting.reset();
-    m_xBoxHyperlink.reset();
-    m_xBoxFakes.reset();
-    m_xBoxNumbering.reset();
-    m_xBoxOther.reset();
+
+    for (auto& aLevelEntry : m_aLevelEntries)
+        aLevelEntry.reset();
 }
 
 A11yCheckIssuesPanel::~A11yCheckIssuesPanel() { suppress_fun_call_w_exception(ImplDestroy()); }
 
-void A11yCheckIssuesPanel::removeOldWidgets()
+void A11yCheckIssuesPanel::removeAllEntries()
 {
-    for (auto const& xEntry : m_aDocumentEntries)
-        m_xBoxDocument->move(xEntry->get_widget(), nullptr);
-    m_xExpanderDocument->set_visible(false);
+    for (auto& aLevelEntry : m_aLevelEntries)
+    {
+        aLevelEntry->removeAllEntries();
+    }
+}
 
-    for (auto const& xEntry : m_aStylesEntries)
-        m_xBoxStyles->move(xEntry->get_widget(), nullptr);
-    m_xExpanderStyles->set_visible(false);
-
-    for (auto const& xEntry : m_aLinkedEntries)
-        m_xBoxLinked->move(xEntry->get_widget(), nullptr);
-    m_xExpanderLinked->set_visible(false);
-
-    for (auto const& xEntry : m_aNoAltEntries)
-        m_xBoxNoAlt->move(xEntry->get_widget(), nullptr);
-    m_xExpanderNoAlt->set_visible(false);
-
-    for (auto const& xEntry : m_aTableEntries)
-        m_xBoxTable->move(xEntry->get_widget(), nullptr);
-    m_xExpanderTable->set_visible(false);
-
-    for (auto const& xEntry : m_aFormattingEntries)
-        m_xBoxFormatting->move(xEntry->get_widget(), nullptr);
-    m_xExpanderFormatting->set_visible(false);
-
-    for (auto const& xEntry : m_aHyperlinkEntries)
-        m_xBoxHyperlink->move(xEntry->get_widget(), nullptr);
-    m_xExpanderHyperlink->set_visible(false);
-
-    for (auto const& xEntry : m_aFakesEntries)
-        m_xBoxFakes->move(xEntry->get_widget(), nullptr);
-    m_xExpanderFakes->set_visible(false);
-
-    for (auto const& xEntry : m_aNumberingEntries)
-        m_xBoxNumbering->move(xEntry->get_widget(), nullptr);
-    m_xExpanderNumbering->set_visible(false);
-
-    for (auto const& xEntry : m_aOtherEntries)
-        m_xBoxOther->move(xEntry->get_widget(), nullptr);
-    m_xExpanderOther->set_visible(false);
+void A11yCheckIssuesPanel::addEntryForGroup(AccessibilityCheckGroups eGroup,
+                                            std::vector<std::vector<sal_Int32>>& rIndices,
+                                            std::shared_ptr<sfx::AccessibilityIssue> const& pIssue)
+{
+    size_t nLevel = static_cast<size_t>(pIssue->m_eIssueLvl);
+    m_aLevelEntries[nLevel]->addEntryForGroup(eGroup, rIndices[nLevel], pIssue);
 }
 
 void A11yCheckIssuesPanel::populateIssues()
 {
-    if (!mpDoc)
+    if (!mpDoc || mxUpdateBox->is_visible())
         return;
+
+    SfxViewShell* pViewShell = SfxViewShell::Current();
+    auto* pWindow = pViewShell ? pViewShell->GetWindow() : nullptr;
+
+    if (pWindow)
+        pWindow->SetPointer(PointerStyle::Wait);
+
     sw::AccessibilityCheck aCheck(mpDoc);
     aCheck.check();
     m_aIssueCollection = aCheck.getIssueCollection();
 
-    removeOldWidgets();
+    removeAllEntries();
 
-    sal_Int32 iDocument = 0;
-    sal_Int32 iStyles = 0;
-    sal_Int32 iLinked = 0;
-    sal_Int32 iNoAlt = 0;
-    sal_Int32 iTable = 0;
-    sal_Int32 iFormatting = 0;
-    sal_Int32 iHyperlink = 0;
-    sal_Int32 iFakes = 0;
-    sal_Int32 iNumbering = 0;
-    sal_Int32 iOther = 0;
+    std::vector<std::vector<sal_Int32>> nIndices(2, std::vector<sal_Int32>(11, 0));
+    sal_Int32 nDirectFormats = 0;
+
     for (std::shared_ptr<sfx::AccessibilityIssue> const& pIssue : m_aIssueCollection.getIssues())
     {
         switch (pIssue->m_eIssueID)
@@ -253,101 +337,146 @@ void A11yCheckIssuesPanel::populateIssues()
             case sfx::AccessibilityIssueID::DOCUMENT_LANGUAGE:
             case sfx::AccessibilityIssueID::DOCUMENT_BACKGROUND:
             {
-                auto xEntry
-                    = std::make_unique<AccessibilityCheckEntry>(m_xBoxDocument.get(), pIssue);
-                m_xBoxDocument->reorder_child(xEntry->get_widget(), iDocument++);
-                m_xExpanderDocument->set_visible(true);
-                m_aDocumentEntries.push_back(std::move(xEntry));
+                if (!pIssue->getHidden())
+                    addEntryForGroup(AccessibilityCheckGroups::Document, nIndices, pIssue);
             }
             break;
             case sfx::AccessibilityIssueID::STYLE_LANGUAGE:
             {
-                auto xEntry = std::make_unique<AccessibilityCheckEntry>(m_xBoxStyles.get(), pIssue);
-                m_xBoxStyles->reorder_child(xEntry->get_widget(), iStyles++);
-                m_xExpanderStyles->set_visible(true);
-                m_aStylesEntries.push_back(std::move(xEntry));
+                if (!pIssue->getHidden())
+                    addEntryForGroup(AccessibilityCheckGroups::Styles, nIndices, pIssue);
             }
             break;
             case sfx::AccessibilityIssueID::LINKED_GRAPHIC:
             {
-                auto xEntry = std::make_unique<AccessibilityCheckEntry>(m_xBoxLinked.get(), pIssue);
-                m_xBoxLinked->reorder_child(xEntry->get_widget(), iLinked++);
-                m_xExpanderLinked->set_visible(true);
-                m_aLinkedEntries.push_back(std::move(xEntry));
+                if (!pIssue->getHidden())
+                    addEntryForGroup(AccessibilityCheckGroups::Linked, nIndices, pIssue);
             }
             break;
             case sfx::AccessibilityIssueID::NO_ALT_OLE:
             case sfx::AccessibilityIssueID::NO_ALT_GRAPHIC:
             case sfx::AccessibilityIssueID::NO_ALT_SHAPE:
             {
-                auto xEntry = std::make_unique<AccessibilityCheckEntry>(m_xBoxNoAlt.get(), pIssue);
-                m_xBoxNoAlt->reorder_child(xEntry->get_widget(), iNoAlt++);
-                m_xExpanderNoAlt->set_visible(true);
-                m_aNoAltEntries.push_back(std::move(xEntry));
+                if (!pIssue->getHidden())
+                    addEntryForGroup(AccessibilityCheckGroups::NoAlt, nIndices, pIssue);
             }
             break;
             case sfx::AccessibilityIssueID::TABLE_MERGE_SPLIT:
             {
-                auto xEntry = std::make_unique<AccessibilityCheckEntry>(m_xBoxTable.get(), pIssue);
-                m_xBoxTable->reorder_child(xEntry->get_widget(), iTable++);
-                m_xExpanderTable->set_visible(true);
-                m_aTableEntries.push_back(std::move(xEntry));
+                if (!pIssue->getHidden())
+                    addEntryForGroup(AccessibilityCheckGroups::Table, nIndices, pIssue);
             }
             break;
-            case sfx::AccessibilityIssueID::TEXT_FORMATTING:
+            case sfx::AccessibilityIssueID::TEXT_NEW_LINES:
+            case sfx::AccessibilityIssueID::TEXT_SPACES:
+            case sfx::AccessibilityIssueID::TEXT_TABS:
+            case sfx::AccessibilityIssueID::TEXT_EMPTY_NUM_PARA:
             case sfx::AccessibilityIssueID::TABLE_FORMATTING:
             {
-                auto xEntry
-                    = std::make_unique<AccessibilityCheckEntry>(m_xBoxFormatting.get(), pIssue);
-                m_xBoxFormatting->reorder_child(xEntry->get_widget(), iFormatting++);
-                m_xExpanderFormatting->set_visible(true);
-                m_aFormattingEntries.push_back(std::move(xEntry));
+                if (!pIssue->getHidden())
+                    addEntryForGroup(AccessibilityCheckGroups::Formatting, nIndices, pIssue);
+            }
+            break;
+            case sfx::AccessibilityIssueID::DIRECT_FORMATTING:
+            {
+                if (!pIssue->getHidden())
+                {
+                    addEntryForGroup(AccessibilityCheckGroups::DirectFormatting, nIndices, pIssue);
+                    nDirectFormats++;
+                }
             }
             break;
             case sfx::AccessibilityIssueID::HYPERLINK_IS_TEXT:
             case sfx::AccessibilityIssueID::HYPERLINK_SHORT:
+            case sfx::AccessibilityIssueID::HYPERLINK_NO_NAME:
             {
-                auto xEntry
-                    = std::make_unique<AccessibilityCheckEntry>(m_xBoxHyperlink.get(), pIssue);
-                m_xBoxHyperlink->reorder_child(xEntry->get_widget(), iHyperlink++);
-                m_xExpanderHyperlink->set_visible(true);
-                m_aHyperlinkEntries.push_back(std::move(xEntry));
+                if (!pIssue->getHidden())
+                    addEntryForGroup(AccessibilityCheckGroups::Hyperlink, nIndices, pIssue);
             }
             break;
             case sfx::AccessibilityIssueID::FAKE_FOOTNOTE:
             case sfx::AccessibilityIssueID::FAKE_CAPTION:
             {
-                auto xEntry = std::make_unique<AccessibilityCheckEntry>(m_xBoxFakes.get(), pIssue);
-                m_xBoxFakes->reorder_child(xEntry->get_widget(), iFakes++);
-                m_xExpanderFakes->set_visible(true);
-                m_aFakesEntries.push_back(std::move(xEntry));
+                if (!pIssue->getHidden())
+                    addEntryForGroup(AccessibilityCheckGroups::Fakes, nIndices, pIssue);
             }
             break;
             case sfx::AccessibilityIssueID::MANUAL_NUMBERING:
             {
-                auto xEntry
-                    = std::make_unique<AccessibilityCheckEntry>(m_xBoxNumbering.get(), pIssue);
-                m_xBoxNumbering->reorder_child(xEntry->get_widget(), iNumbering++);
-                m_xExpanderNumbering->set_visible(true);
-                m_aNumberingEntries.push_back(std::move(xEntry));
+                if (!pIssue->getHidden())
+                    addEntryForGroup(AccessibilityCheckGroups::Numbering, nIndices, pIssue);
             }
             break;
-            case sfx::AccessibilityIssueID::UNSPECIFIED:
+
+            case sfx::AccessibilityIssueID::TEXT_CONTRAST:
+            case sfx::AccessibilityIssueID::TEXT_BLINKING:
+            case sfx::AccessibilityIssueID::HEADINGS_NOT_IN_ORDER:
+            case sfx::AccessibilityIssueID::NON_INTERACTIVE_FORMS:
+            case sfx::AccessibilityIssueID::FLOATING_TEXT:
+            case sfx::AccessibilityIssueID::HEADING_IN_TABLE:
+            case sfx::AccessibilityIssueID::HEADING_START:
+            case sfx::AccessibilityIssueID::HEADING_ORDER:
+            case sfx::AccessibilityIssueID::CONTENT_CONTROL:
+            case sfx::AccessibilityIssueID::AVOID_FOOTNOTES:
+            case sfx::AccessibilityIssueID::AVOID_ENDNOTES:
+            case sfx::AccessibilityIssueID::FONTWORKS:
+            case sfx::AccessibilityIssueID::LINK_IN_HEADER_FOOTER:
             {
-                auto xEntry = std::make_unique<AccessibilityCheckEntry>(m_xBoxOther.get(), pIssue);
-                m_xBoxOther->reorder_child(xEntry->get_widget(), iOther++);
-                m_xExpanderOther->set_visible(true);
-                m_aOtherEntries.push_back(std::move(xEntry));
+                if (!pIssue->getHidden())
+                    addEntryForGroup(AccessibilityCheckGroups::Other, nIndices, pIssue);
             }
             break;
+
             default:
             {
                 SAL_WARN("sw.a11y", "Invalid issue ID.");
                 continue;
             }
-            break;
-        };
+        }
     }
+
+    // add DirectFormats (if have) as last element to Formatting AccessibilityCheckGroup on the Warning level
+    if (nDirectFormats > 0)
+    {
+        size_t nGroupFormatIndex = size_t(AccessibilityCheckGroups::Formatting);
+        // Direct Formats are on the warning level
+        size_t nLevel = static_cast<size_t>(sfx::AccessibilityIssueLevel::WARNLEV);
+        nIndices[nLevel][nGroupFormatIndex]++;
+    }
+
+    for (auto eLevel : o3tl::enumrange<sfx::AccessibilityIssueLevel>())
+    {
+        size_t nGroupIndex = 0;
+        auto nLevelIndex = size_t(eLevel);
+        bool bHaveIssue = false;
+        for (sal_Int32 nIndex : nIndices[nLevelIndex])
+        {
+            if (nIndex > 0)
+            {
+                m_aLevelEntries[nLevelIndex]->show(nGroupIndex);
+                if (!bHaveIssue)
+                    bHaveIssue = true;
+            }
+            else
+                m_aLevelEntries[nLevelIndex]->hide(nGroupIndex);
+            nGroupIndex++;
+        }
+        if (!bHaveIssue)
+            m_xLevelExpanders[nLevelIndex]->hide();
+        else
+            m_xLevelExpanders[nLevelIndex]->show();
+    }
+
+    if (m_xLevelExpanders[0]->is_visible() && m_xLevelExpanders[1]->is_visible())
+        m_xListSep->set_visible(true);
+    else
+        m_xListSep->set_visible(false);
+
+    if (pWindow)
+        pWindow->SetPointer(PointerStyle::Arrow);
+
+    if (mxSidebar.is())
+        mxSidebar->requestLayout();
 }
 
 void A11yCheckIssuesPanel::NotifyItemUpdate(const sal_uInt16 nSid, const SfxItemState /* eState */,

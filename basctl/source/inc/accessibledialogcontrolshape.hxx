@@ -21,7 +21,7 @@
 
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
-#include <comphelper/accessiblecomponenthelper.hxx>
+#include <comphelper/OAccessible.hxx>
 #include <cppuhelper/implbase.hxx>
 #include <vcl/vclptr.hxx>
 
@@ -33,13 +33,9 @@ namespace basctl
 class DlgEdObj;
 class DialogWindow;
 
-
-
-class AccessibleDialogControlShape final : public cppu::ImplInheritanceHelper<
-                                               comphelper::OAccessibleExtendedComponentHelper,
-                                               css::accessibility::XAccessible,
-                                               css::lang::XServiceInfo,
-                                               css::beans::XPropertyChangeListener>
+class AccessibleDialogControlShape final
+    : public cppu::ImplInheritanceHelper<comphelper::OAccessible, css::lang::XServiceInfo,
+                                         css::beans::XPropertyChangeListener>
 {
     friend class AccessibleDialogWindow;
 
@@ -67,7 +63,7 @@ private:
 
     void                    FillAccessibleStateSet( sal_Int64& rStateSet );
 
-    // OCommonAccessibleComponent
+    // OAccessible
     virtual css::awt::Rectangle implGetBounds() override;
 
     // XComponent
@@ -88,14 +84,10 @@ public:
     virtual sal_Bool SAL_CALL supportsService( const OUString& rServiceName ) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
-    // XAccessible
-    virtual css::uno::Reference< css::accessibility::XAccessibleContext > SAL_CALL getAccessibleContext(  ) override;
-
     // XAccessibleContext
     virtual sal_Int64 SAL_CALL getAccessibleChildCount(  ) override;
     virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL getAccessibleChild( sal_Int64 i ) override;
     virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL getAccessibleParent(  ) override;
-    virtual sal_Int64 SAL_CALL getAccessibleIndexInParent(  ) override;
     virtual sal_Int16 SAL_CALL getAccessibleRole(  ) override;
     virtual OUString SAL_CALL getAccessibleDescription(  ) override;
     virtual OUString SAL_CALL getAccessibleName(  ) override;
@@ -110,8 +102,6 @@ public:
     virtual sal_Int32 SAL_CALL getBackground(  ) override;
 
     // XAccessibleExtendedComponent
-    virtual css::uno::Reference< css::awt::XFont > SAL_CALL getFont(  ) override;
-    virtual OUString SAL_CALL getTitledBorderText(  ) override;
     virtual OUString SAL_CALL getToolTipText(  ) override;
 };
 

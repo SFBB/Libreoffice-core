@@ -298,7 +298,7 @@ Size CustomAnimationListEntryItem::GetSize(const vcl::RenderContext& rRenderCont
     if (width < (rRenderContext.GetTextWidth( msEffectName ) + 2*nIconWidth))
         width = rRenderContext.GetTextWidth( msEffectName ) + 2*nIconWidth;
 
-    Size aSize(width, rRenderContext.GetTextHeight());
+    Size aSize(width, rRenderContext.GetTextHeight() * 2);
     if (aSize.Height() < nItemMinHeight)
         aSize.setHeight(nItemMinHeight);
     return aSize;
@@ -310,12 +310,10 @@ void CustomAnimationListEntryItem::PaintTrigger(vcl::RenderContext& rRenderConte
 
     ::tools::Rectangle aOutRect(rRect);
 
-    // fill the background
-    Color aColor(rRenderContext.GetSettings().GetStyleSettings().GetDialogColor());
-
     rRenderContext.Push();
-    rRenderContext.SetFillColor(aColor);
+    rRenderContext.SetFillColor(rRenderContext.GetSettings().GetStyleSettings().GetDialogColor());
     rRenderContext.SetLineColor();
+    // fill the background with the dialog bg color
     rRenderContext.DrawRect(aOutRect);
 
     // Erase the four corner pixels to make the rectangle appear rounded.
@@ -335,6 +333,8 @@ void CustomAnimationListEntryItem::PaintTrigger(vcl::RenderContext& rRenderConte
     aOutRect.AdjustTop( nVertBorder );
     aOutRect.AdjustBottom( -nVertBorder );
 
+    // Draw the text with the dialog text color
+    rRenderContext.SetTextColor(rRenderContext.GetSettings().GetStyleSettings().GetDialogTextColor());
     rRenderContext.DrawText(aOutRect, rRenderContext.GetEllipsisString(msDescription, aOutRect.GetWidth()));
     rRenderContext.Pop();
 }
@@ -351,26 +351,33 @@ void CustomAnimationListEntryItem::PaintEffect(vcl::RenderContext& rRenderContex
     Point aPos(rRect.TopLeft());
     int nItemHeight = rRect.GetHeight();
 
+    Size nImageSize = Image(StockImage::Yes, BMP_CUSTOMANIMATION_AFTER_PREVIOUS).GetSizePixel();
+
     sal_Int16 nNodeType = mpEffect->getNodeType();
-    if (nNodeType == EffectNodeType::ON_CLICK )
+    if (nNodeType == EffectNodeType::ON_CLICK)
     {
-        rRenderContext.DrawImage(aPos, Image(StockImage::Yes, BMP_CUSTOMANIMATION_ON_CLICK));
+        Image aImage(Image(StockImage::Yes, BMP_CUSTOMANIMATION_ON_CLICK));
+        nImageSize = aImage.GetSizePixel();
+        aPos.AdjustY(nItemHeight / 4 - nImageSize.Height() / 2);
+        rRenderContext.DrawImage(aPos, aImage);
     }
     else if (nNodeType == EffectNodeType::AFTER_PREVIOUS)
     {
-        rRenderContext.DrawImage(aPos, Image(StockImage::Yes, BMP_CUSTOMANIMATION_AFTER_PREVIOUS));
+        Image aImage(Image(StockImage::Yes, BMP_CUSTOMANIMATION_AFTER_PREVIOUS));
+        nImageSize = aImage.GetSizePixel();
+        aPos.AdjustY(nItemHeight / 4 - nImageSize.Height() / 2);
+        rRenderContext.DrawImage(aPos, aImage);
     }
     else if (nNodeType == EffectNodeType::WITH_PREVIOUS)
     {
         //FIXME With previous image not defined in CustomAnimation.src
     }
 
-    aPos.AdjustX(nIconWidth);
+    aPos = rRect.TopLeft();
+    aPos.AdjustX(nImageSize.Width() + 5);
 
     //TODO, full width of widget ?
     rRenderContext.DrawText(aPos, rRenderContext.GetEllipsisString(msDescription, rRect.GetWidth()));
-
-    aPos.AdjustY(nIconWidth);
 
     OUString sImage;
     switch (mpEffect->getPresetClass())
@@ -404,13 +411,19 @@ void CustomAnimationListEntryItem::PaintEffect(vcl::RenderContext& rRenderContex
     if (!sImage.isEmpty())
     {
         Image aImage(StockImage::Yes, sImage);
+        nImageSize = aImage.GetSizePixel();
         Point aImagePos(aPos);
-        aImagePos.AdjustY((nItemHeight/2 - aImage.GetSizePixel().Height()) >> 1 );
+        aImagePos.AdjustY(nItemHeight * 3 / 4 - nImageSize.Height() / 2);
         rRenderContext.DrawImage(aImagePos, aImage);
     }
+    else
+    {
+        Image aImage(StockImage::Yes, BMP_CUSTOMANIMATION_ENTRANCE_EFFECT);
+        nImageSize = aImage.GetSizePixel();
+    }
 
-    aPos.AdjustX(nIconWidth );
-    aPos.AdjustY((nItemHeight/2 - rRenderContext.GetTextHeight()) >> 1 );
+    aPos.AdjustX(nImageSize.Width() + 5);
+    aPos.AdjustY(nItemHeight / 2);
 
     rRenderContext.DrawText(aPos, rRenderContext.GetEllipsisString(msEffectName, rRect.GetWidth()));
     rRenderContext.Pop();
@@ -440,7 +453,7 @@ CustomAnimationList::CustomAnimationList(std::unique_ptr<weld::TreeView> xTreeVi
     mxEmptyLabel->set_stack_background();
 
     mxTreeView->set_selection_mode(SelectionMode::Multiple);
-    mxTreeView->connect_changed(LINK(this, CustomAnimationList, SelectHdl));
+    mxTreeView->connect_selection_changed(LINK(this, CustomAnimationList, SelectHdl));
     mxTreeView->connect_key_press(LINK(this, CustomAnimationList, KeyInputHdl));
     mxTreeView->connect_popup_menu(LINK(this, CustomAnimationList, CommandHdl));
     mxTreeView->connect_row_activated(LINK(this, CustomAnimationList, DoubleClickHdl));
@@ -449,7 +462,7 @@ CustomAnimationList::CustomAnimationList(std::unique_ptr<weld::TreeView> xTreeVi
     mxTreeView->connect_drag_begin(LINK(this, CustomAnimationList, DragBeginHdl));
     mxTreeView->connect_custom_get_size(LINK(this, CustomAnimationList, CustomGetSizeHdl));
     mxTreeView->connect_custom_render(LINK(this, CustomAnimationList, CustomRenderHdl));
-    mxTreeView->set_column_custom_renderer(0, true);
+    mxTreeView->set_column_custom_renderer(1, true);
 }
 
 CustomAnimationListDropTarget::CustomAnimationListDropTarget(CustomAnimationList& rTreeView)
@@ -578,10 +591,10 @@ IMPL_LINK(CustomAnimationList, KeyInputHdl, const KeyEvent&, rKEvt, bool)
     switch (nKeyCode)
     {
         case KEY_DELETE:
-            mpController->onContextMenu("remove");
+            mpController->onContextMenu(u"remove"_ustr);
             return true;
         case KEY_INSERT:
-            mpController->onContextMenu("create");
+            mpController->onContextMenu(u"create"_ustr);
             return true;
         case KEY_SPACE:
         {
@@ -710,7 +723,7 @@ void CustomAnimationList::update()
                     aSelected.push_back(pEffect);
                     if (nFirstSelOld == -1)
                     {
-                        pFirstSelEffect = pEffect;
+                        pFirstSelEffect = std::move(pEffect);
                         nFirstSelOld = weld::GetAbsPos(*mxTreeView, rEntry);
                     }
                     if (!xLastSelectedEntry)
@@ -915,7 +928,7 @@ void CustomAnimationList::append( CustomAnimationEffectPtr pEffect )
             mxTreeView->insert(nullptr, -1, &aDescription, &sId, nullptr, nullptr, false, xEntry.get());
 
             // and the new root entry becomes the possible next group header
-            mxLastTargetShape = xTargetShape;
+            mxLastTargetShape = std::move(xTargetShape);
             mnLastGroupId = nGroupId;
             mxLastParentEntry = std::move(xEntry);
         }
@@ -1117,9 +1130,8 @@ EffectSequence CustomAnimationList::getSelection() const
 
     mxTreeView->selected_foreach([this, &aSelection](weld::TreeIter& rEntry){
         CustomAnimationListEntryItem* pEntry = weld::fromId<CustomAnimationListEntryItem*>(mxTreeView->get_id(rEntry));
-        CustomAnimationEffectPtr pEffect(pEntry->getEffect());
-        if (pEffect)
-            aSelection.push_back(pEffect);
+        if (CustomAnimationEffectPtr pEffect = pEntry->getEffect())
+            aSelection.push_back(std::move(pEffect));
 
         // if the selected effect is not expanded and has children
         // we say that the children are automatically selected
@@ -1173,8 +1185,8 @@ IMPL_LINK(CustomAnimationList, CommandHdl, const CommandEvent&, rCEvt, bool)
     if (!mxTreeView->get_selected(nullptr))
         return false;
 
-    std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(mxTreeView.get(), "modules/simpress/ui/effectmenu.ui"));
-    std::unique_ptr<weld::Menu> xMenu = xBuilder->weld_menu("menu");
+    std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(mxTreeView.get(), u"modules/simpress/ui/effectmenu.ui"_ustr));
+    std::unique_ptr<weld::Menu> xMenu = xBuilder->weld_menu(u"menu"_ustr);
 
     sal_Int16 nNodeType = -1;
     sal_Int16 nEntries = 0;
@@ -1203,11 +1215,11 @@ IMPL_LINK(CustomAnimationList, CommandHdl, const CommandEvent&, rCEvt, bool)
         return false;
     });
 
-    xMenu->set_active("onclick", nNodeType == EffectNodeType::ON_CLICK);
-    xMenu->set_active("withprev", nNodeType == EffectNodeType::WITH_PREVIOUS);
-    xMenu->set_active("afterprev", nNodeType == EffectNodeType::AFTER_PREVIOUS);
-    xMenu->set_sensitive("options", nEntries == 1);
-    xMenu->set_sensitive("timing", nEntries == 1);
+    xMenu->set_active(u"onclick"_ustr, nNodeType == EffectNodeType::ON_CLICK);
+    xMenu->set_active(u"withprev"_ustr, nNodeType == EffectNodeType::WITH_PREVIOUS);
+    xMenu->set_active(u"afterprev"_ustr, nNodeType == EffectNodeType::AFTER_PREVIOUS);
+    xMenu->set_sensitive(u"options"_ustr, nEntries == 1);
+    xMenu->set_sensitive(u"timing"_ustr, nEntries == 1);
 
     OUString sCommand = xMenu->popup_at_rect(mxTreeView.get(), ::tools::Rectangle(rCEvt.GetMousePosPixel(), Size(1,1)));
     if (!sCommand.isEmpty())

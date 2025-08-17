@@ -27,12 +27,10 @@
 #include <svx/svxdllapi.h>
 #include <tools/degree.hxx>
 
-class IntlWrapper;
-class SfxItemPool;
-
 class SAL_WARN_UNUSED SVX_DLLPUBLIC SvxOrientationItem final : public SfxEnumItem<SvxCellOrientation>
 {
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SvxOrientationItem)
     SvxOrientationItem(
         const SvxCellOrientation eOrientation,
         const TypedWhichId<SvxOrientationItem> nId );
@@ -49,7 +47,6 @@ public:
     virtual bool            QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
     virtual bool            PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId ) override;
 
-    virtual sal_uInt16      GetValueCount() const override;
     static OUString         GetValueText( SvxCellOrientation nVal );
     virtual SvxOrientationItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
@@ -67,6 +64,7 @@ class SAL_WARN_UNUSED SVX_DLLPUBLIC SvxMarginItem final : public SfxPoolItem
     sal_Int16       nBottomMargin;
 public:
     static SfxPoolItem* CreateDefault();
+    DECLARE_ITEM_TYPE_FUNCTION(SvxMarginItem)
     SvxMarginItem( const TypedWhichId<SvxMarginItem> nId  );
     SvxMarginItem( sal_Int16 nLeft, sal_Int16 nTop /*= 0*/,
                    sal_Int16 nRight /*= 0*/, sal_Int16 nBottom /*= 0*/,

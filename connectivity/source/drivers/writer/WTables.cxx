@@ -29,13 +29,13 @@ using namespace ::com::sun::star;
 
 namespace connectivity::writer
 {
-sdbcx::ObjectType OWriterTables::createObject(const OUString& rName)
+css::uno::Reference<css::beans::XPropertySet> OWriterTables::createObject(const OUString& rName)
 {
     rtl::Reference<OWriterTable> pTable
         = new OWriterTable(this,
                            static_cast<OWriterConnection*>(
                                static_cast<file::OFileCatalog&>(m_rParent).getConnection()),
-                           rName, "TABLE");
+                           rName, u"TABLE"_ustr);
     pTable->construct();
     return pTable;
 }

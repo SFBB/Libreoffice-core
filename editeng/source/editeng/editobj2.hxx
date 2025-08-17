@@ -32,12 +32,6 @@
 #include <memory>
 #include <vector>
 
-namespace editeng {
-
-struct Section;
-
-}
-
 namespace svl {
 
 class SharedStringPool;
@@ -55,6 +49,7 @@ public:
     XEditAttribute(SfxItemPool&, const SfxPoolItem&, sal_Int32 nStart, sal_Int32 nEnd );
 
     const SfxPoolItem*      GetItem() const             { return maItemHolder.getItem(); }
+    SfxPoolItemHolder&      GetItemHolder()             { return maItemHolder; }
 
     sal_Int32&              GetStart()                  { return nStart; }
     sal_Int32&              GetEnd()                    { return nEnd; }
@@ -124,7 +119,7 @@ private:
 
     std::vector<XEditAttribute> maCharAttribs;
     SfxStyleFamily      eFamily;
-    SfxItemSetFixed<EE_PARA_START, EE_CHAR_END> aParaAttribs;
+    SfxItemSet aParaAttribs;
     std::unique_ptr<WrongList>
                         mpWrongs;
 
@@ -140,6 +135,7 @@ public:
     const svl::SharedString& GetSharedString() const { return maText;}
     OUString GetText() const;
     void SetText( const OUString& rStr );
+    sal_Int32 GetTextLen() const;
 
     void dumpAsXml(xmlTextWriterPtr pWriter) const;
 
@@ -225,6 +221,8 @@ public:
 
     virtual sal_Int32 GetParagraphCount() const override;
     virtual OUString GetText(sal_Int32 nParagraph) const override;
+    virtual OUString GetText(LineEnd eEnd = LINEEND_LF) const override;
+    virtual sal_Int32 GetTextLen(sal_Int32 nParagraph) const override;
 
     virtual void ClearPortionInfo() override;
 

@@ -25,6 +25,7 @@
 #include <dputil.hxx>
 #include <generalfunction.hxx>
 #include <dptabdat.hxx>
+#include <pivot/PivotTableFormats.hxx>
 
 #include <sal/types.h>
 #include <sal/log.hxx>
@@ -457,14 +458,14 @@ ScDPSaveMember* ScDPSaveDimension::GetExistingMemberByName(const OUString& rName
 
 ScDPSaveMember* ScDPSaveDimension::GetMemberByName(const OUString& rName)
 {
-    auto res = maMemberHash.find (rName);
-    if (res != maMemberHash.end())
-        return res->second.get();
+    ScDPSaveMember* pResult = GetExistingMemberByName(rName);
+    if (pResult)
+        return pResult;
 
-    ScDPSaveMember* pNew = new ScDPSaveMember( rName );
-    maMemberHash[rName] = std::unique_ptr<ScDPSaveMember>(pNew);
-    maMemberList.push_back( pNew );
-    return pNew;
+    pResult = new ScDPSaveMember(rName);
+    maMemberHash[rName] = std::unique_ptr<ScDPSaveMember>(pResult);
+    maMemberList.push_back(pResult);
+    return pResult;
 }
 
 void ScDPSaveDimension::SetMemberPosition( const OUString& rName, sal_Int32 nNewPos )
@@ -516,7 +517,7 @@ void ScDPSaveDimension::WriteToSource( const uno::Reference<uno::XInterface>& xD
     tools::Long nCount = maMemberHash.size();
 
     tools::Long nHierCount = 0;
-    uno::Reference<container::XIndexAccess> xHiers;
+    rtl::Reference<ScNameToIndexAccess> xHiers;
     uno::Reference<sheet::XHierarchiesSupplier> xHierSupp( xDim, uno::UNO_QUERY );
     if ( xHierSupp.is() )
     {
@@ -529,7 +530,7 @@ void ScDPSaveDimension::WriteToSource( const uno::Reference<uno::XInterface>& xD
     for (tools::Long nHier=0; nHier<nHierCount; nHier++)
     {
         tools::Long nLevCount = 0;
-        uno::Reference<container::XIndexAccess> xLevels;
+        rtl::Reference<ScNameToIndexAccess> xLevels;
         uno::Reference<sheet::XLevelsSupplier> xLevSupp(xHiers->getByIndex(nHier), uno::UNO_QUERY);
         if ( xLevSupp.is() )
         {
@@ -648,7 +649,7 @@ void ScDPSaveDimension::RemoveObsoleteMembers(const MemberSetType& rMembers)
 
 void ScDPSaveDimension::Dump(int nIndent) const
 {
-    static const char* pOrientNames[] = { "hidden", "column", "row", "page", "data" };
+    static const char* const pOrientNames[] = { "hidden", "column", "row", "page", "data" };
     std::string aIndent(nIndent*4, ' ');
 
     cout << aIndent << "* dimension name: '" << aName << "'" << endl;
@@ -687,74 +688,76 @@ void ScDPSaveDimension::Dump(int nIndent) const
 
 #endif
 
-ScDPSaveData::ScDPSaveData() :
-    nColumnGrandMode( SC_DPSAVEMODE_DONTKNOW ),
-    nRowGrandMode( SC_DPSAVEMODE_DONTKNOW ),
-    nIgnoreEmptyMode( SC_DPSAVEMODE_DONTKNOW ),
-    nRepeatEmptyMode( SC_DPSAVEMODE_DONTKNOW ),
-    bFilterButton( true ),
-    bDrillDown( true ),
-    bExpandCollapse( false ),
-    mbDimensionMembersBuilt(false)
+ScDPSaveData::ScDPSaveData()
+    : mnColumnGrandMode(SC_DPSAVEMODE_DONTKNOW)
+    , mnRowGrandMode(SC_DPSAVEMODE_DONTKNOW)
+    , mnIgnoreEmptyMode(SC_DPSAVEMODE_DONTKNOW)
+    , mnRepeatEmptyMode(SC_DPSAVEMODE_DONTKNOW)
+    , mbFilterButton(true)
+    , mbDrillDown(true)
+    , mbExpandCollapse(false)
+    , mbDimensionMembersBuilt(false)
 {
 }
 
-ScDPSaveData::ScDPSaveData(const ScDPSaveData& r) :
-    nColumnGrandMode( r.nColumnGrandMode ),
-    nRowGrandMode( r.nRowGrandMode ),
-    nIgnoreEmptyMode( r.nIgnoreEmptyMode ),
-    nRepeatEmptyMode( r.nRepeatEmptyMode ),
-    bFilterButton( r.bFilterButton ),
-    bDrillDown( r.bDrillDown ),
-    bExpandCollapse( r.bExpandCollapse ),
-    mbDimensionMembersBuilt(r.mbDimensionMembersBuilt),
-    mpGrandTotalName(r.mpGrandTotalName)
+ScDPSaveData::ScDPSaveData(const ScDPSaveData& rOther)
+    : mnColumnGrandMode(rOther.mnColumnGrandMode)
+    , mnRowGrandMode(rOther.mnRowGrandMode)
+    , mnIgnoreEmptyMode(rOther.mnIgnoreEmptyMode)
+    , mnRepeatEmptyMode(rOther.mnRepeatEmptyMode)
+    , mbFilterButton(rOther.mbFilterButton)
+    , mbDrillDown(rOther.mbDrillDown)
+    , mbExpandCollapse(rOther.mbExpandCollapse)
+    , mbDimensionMembersBuilt(rOther.mbDimensionMembersBuilt)
+    , mpGrandTotalName(rOther.mpGrandTotalName)
 {
-    if ( r.pDimensionData )
-        pDimensionData.reset( new ScDPDimensionSaveData( *r.pDimensionData ) );
+    if (rOther.mpDimensionData)
+        mpDimensionData.reset(new ScDPDimensionSaveData(*rOther.mpDimensionData));
+    if (rOther.mpFormats)
+        mpFormats.reset(new sc::PivotTableFormats(*rOther.mpFormats));
 
-    for (auto const& it : r.m_DimList)
+    for (auto const& rOtherSaveDimension : rOther.m_DimList)
     {
-        m_DimList.push_back(std::make_unique<ScDPSaveDimension>(*it));
+        m_DimList.push_back(std::make_unique<ScDPSaveDimension>(*rOtherSaveDimension));
     }
 }
 
-ScDPSaveData& ScDPSaveData::operator= ( const ScDPSaveData& r )
+ScDPSaveData& ScDPSaveData::operator=(const ScDPSaveData& rOther)
 {
-    if ( &r != this )
+    if (&rOther != this)
     {
         this->~ScDPSaveData();
-        new( this ) ScDPSaveData ( r );
+        new(this)ScDPSaveData(rOther);
     }
     return *this;
 }
 
-bool ScDPSaveData::operator== ( const ScDPSaveData& r ) const
+bool ScDPSaveData::operator== (const ScDPSaveData& rOther) const
 {
-    if ( nColumnGrandMode != r.nColumnGrandMode ||
-         nRowGrandMode    != r.nRowGrandMode    ||
-         nIgnoreEmptyMode != r.nIgnoreEmptyMode ||
-         nRepeatEmptyMode != r.nRepeatEmptyMode ||
-         bFilterButton    != r.bFilterButton    ||
-         bDrillDown       != r.bDrillDown       ||
-         mbDimensionMembersBuilt != r.mbDimensionMembersBuilt)
+    if (mnColumnGrandMode != rOther.mnColumnGrandMode ||
+        mnRowGrandMode    != rOther.mnRowGrandMode    ||
+        mnIgnoreEmptyMode != rOther.mnIgnoreEmptyMode ||
+        mnRepeatEmptyMode != rOther.mnRepeatEmptyMode ||
+        mbFilterButton    != rOther.mbFilterButton    ||
+        mbDrillDown       != rOther.mbDrillDown       ||
+        mbDimensionMembersBuilt != rOther.mbDimensionMembersBuilt)
         return false;
 
-    if ( pDimensionData || r.pDimensionData )
-        if ( !pDimensionData || !r.pDimensionData || !( *pDimensionData == *r.pDimensionData ) )
+    if (mpDimensionData || rOther.mpDimensionData)
+        if (!mpDimensionData || !rOther.mpDimensionData || !(*mpDimensionData == *rOther.mpDimensionData))
             return false;
 
-    if (!(::comphelper::ContainerUniquePtrEquals(m_DimList, r.m_DimList)))
+    if (!(::comphelper::ContainerUniquePtrEquals(m_DimList, rOther.m_DimList)))
         return false;
 
     if (mpGrandTotalName)
     {
-        if (!r.mpGrandTotalName)
+        if (!rOther.mpGrandTotalName)
             return false;
-        if (*mpGrandTotalName != *r.mpGrandTotalName)
+        if (*mpGrandTotalName != *rOther.mpGrandTotalName)
             return false;
     }
-    else if (r.mpGrandTotalName)
+    else if (rOther.mpGrandTotalName)
         return false;
 
     return true;
@@ -762,6 +765,21 @@ bool ScDPSaveData::operator== ( const ScDPSaveData& r ) const
 
 ScDPSaveData::~ScDPSaveData()
 {
+}
+
+void ScDPSaveData::setFormats(sc::PivotTableFormats const& rPivotTableFormats)
+{
+    mpFormats.reset(new sc::PivotTableFormats(rPivotTableFormats));
+}
+
+bool ScDPSaveData::hasFormats()
+{
+    return bool(mpFormats);
+}
+
+sc::PivotTableFormats const& ScDPSaveData::getFormats()
+{
+    return *mpFormats;
 }
 
 void ScDPSaveData::SetGrandTotalName(const OUString& rName)
@@ -984,37 +1002,37 @@ void ScDPSaveData::SetPosition( ScDPSaveDimension* pDim, tools::Long nNew )
 
 void ScDPSaveData::SetColumnGrand(bool bSet)
 {
-    nColumnGrandMode = sal_uInt16(bSet);
+    mnColumnGrandMode = sal_uInt16(bSet);
 }
 
 void ScDPSaveData::SetRowGrand(bool bSet)
 {
-    nRowGrandMode = sal_uInt16(bSet);
+    mnRowGrandMode = sal_uInt16(bSet);
 }
 
 void ScDPSaveData::SetIgnoreEmptyRows(bool bSet)
 {
-    nIgnoreEmptyMode = sal_uInt16(bSet);
+    mnIgnoreEmptyMode = sal_uInt16(bSet);
 }
 
 void ScDPSaveData::SetRepeatIfEmpty(bool bSet)
 {
-    nRepeatEmptyMode = sal_uInt16(bSet);
+    mnRepeatEmptyMode = sal_uInt16(bSet);
 }
 
 void ScDPSaveData::SetFilterButton(bool bSet)
 {
-    bFilterButton = bSet;
+    mbFilterButton = bSet;
 }
 
 void ScDPSaveData::SetDrillDown(bool bSet)
 {
-    bDrillDown = bSet;
+    mbDrillDown = bSet;
 }
 
 void ScDPSaveData::SetExpandCollapse(bool bSet)
 {
-    bExpandCollapse = bSet;
+    mbExpandCollapse = bSet;
 }
 
 static void lcl_ResetOrient( const uno::Reference<sheet::XDimensionsSupplier>& xSource )
@@ -1048,12 +1066,10 @@ void ScDPSaveData::WriteToSource( const uno::Reference<sheet::XDimensionsSupplie
 
         try
         {
-            if ( nIgnoreEmptyMode != SC_DPSAVEMODE_DONTKNOW )
-                lcl_SetBoolProperty( xSourceProp,
-                    SC_UNO_DP_IGNOREEMPTY, static_cast<bool>(nIgnoreEmptyMode) );
-            if ( nRepeatEmptyMode != SC_DPSAVEMODE_DONTKNOW )
-                lcl_SetBoolProperty( xSourceProp,
-                    SC_UNO_DP_REPEATEMPTY, static_cast<bool>(nRepeatEmptyMode) );
+            if (mnIgnoreEmptyMode != SC_DPSAVEMODE_DONTKNOW)
+                lcl_SetBoolProperty(xSourceProp, SC_UNO_DP_IGNOREEMPTY, bool(mnIgnoreEmptyMode));
+            if (mnRepeatEmptyMode != SC_DPSAVEMODE_DONTKNOW)
+                lcl_SetBoolProperty(xSourceProp, SC_UNO_DP_REPEATEMPTY, bool(mnRepeatEmptyMode));
         }
         catch(uno::Exception&)
         {
@@ -1138,12 +1154,10 @@ void ScDPSaveData::WriteToSource( const uno::Reference<sheet::XDimensionsSupplie
 
         if ( xSourceProp.is() )
         {
-            if ( nColumnGrandMode != SC_DPSAVEMODE_DONTKNOW )
-                lcl_SetBoolProperty( xSourceProp,
-                    SC_UNO_DP_COLGRAND, static_cast<bool>(nColumnGrandMode) );
-            if ( nRowGrandMode != SC_DPSAVEMODE_DONTKNOW )
-                lcl_SetBoolProperty( xSourceProp,
-                    SC_UNO_DP_ROWGRAND, static_cast<bool>(nRowGrandMode) );
+            if (mnColumnGrandMode != SC_DPSAVEMODE_DONTKNOW)
+                lcl_SetBoolProperty(xSourceProp, SC_UNO_DP_COLGRAND, bool(mnColumnGrandMode));
+            if (mnRowGrandMode != SC_DPSAVEMODE_DONTKNOW)
+                lcl_SetBoolProperty(xSourceProp, SC_UNO_DP_ROWGRAND, bool(mnRowGrandMode));
         }
     }
     catch(uno::Exception const &)
@@ -1164,22 +1178,22 @@ bool ScDPSaveData::IsEmpty() const
 
 void ScDPSaveData::RemoveAllGroupDimensions( const OUString& rSrcDimName, std::vector<OUString>* pDeletedNames )
 {
-    if (!pDimensionData)
+    if (!mpDimensionData)
         // No group dimensions exist. Nothing to do.
         return;
 
     // Remove numeric group dimension (exists once at most). No need to delete
     // anything in save data (grouping was done inplace in an existing base
     // dimension).
-    pDimensionData->RemoveNumGroupDimension(rSrcDimName);
+    mpDimensionData->RemoveNumGroupDimension(rSrcDimName);
 
     // Remove named group dimension(s). Dimensions have to be removed from
     // dimension save data and from save data too.
-    const ScDPSaveGroupDimension* pExistingGroup = pDimensionData->GetGroupDimForBase(rSrcDimName);
+    const ScDPSaveGroupDimension* pExistingGroup = mpDimensionData->GetGroupDimForBase(rSrcDimName);
     while ( pExistingGroup )
     {
         OUString aGroupDimName = pExistingGroup->GetGroupDimName();
-        pDimensionData->RemoveGroupDimension(aGroupDimName);     // pExistingGroup is deleted
+        mpDimensionData->RemoveGroupDimension(aGroupDimName);     // pExistingGroup is deleted
 
         // also remove SaveData settings for the dimension that no longer exists
         RemoveDimensionByName(aGroupDimName);
@@ -1188,7 +1202,7 @@ void ScDPSaveData::RemoveAllGroupDimensions( const OUString& rSrcDimName, std::v
             pDeletedNames->push_back(aGroupDimName);
 
         // see if there are more group dimensions
-        pExistingGroup = pDimensionData->GetGroupDimForBase(rSrcDimName);
+        pExistingGroup = mpDimensionData->GetGroupDimForBase(rSrcDimName);
 
         if ( pExistingGroup && pExistingGroup->GetGroupDimName() == aGroupDimName )
         {
@@ -1201,17 +1215,17 @@ void ScDPSaveData::RemoveAllGroupDimensions( const OUString& rSrcDimName, std::v
 
 ScDPDimensionSaveData* ScDPSaveData::GetDimensionData()
 {
-    if (!pDimensionData)
-        pDimensionData.reset( new ScDPDimensionSaveData );
-    return pDimensionData.get();
+    if (!mpDimensionData)
+        mpDimensionData.reset(new ScDPDimensionSaveData);
+    return mpDimensionData.get();
 }
 
-void ScDPSaveData::SetDimensionData( const ScDPDimensionSaveData* pNew )
+void ScDPSaveData::SetDimensionData(const ScDPDimensionSaveData* pNew)
 {
-    if ( pNew )
-        pDimensionData.reset( new ScDPDimensionSaveData( *pNew ) );
+    if (pNew)
+        mpDimensionData.reset(new ScDPDimensionSaveData(*pNew));
     else
-        pDimensionData.reset();
+        mpDimensionData.reset();
 }
 
 void ScDPSaveData::BuildAllDimensionMembers(ScDPTableData* pData)

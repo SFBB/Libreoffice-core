@@ -459,7 +459,7 @@ bool XclImpStream::StartNextRecord()
 
     /*  #i4266# Counter to ignore zero records (id==len==0) (i.e. the application
         "Crystal Report" writes zero records between other records) */
-    std::size_t nZeroRecCount = 5;
+    int nZeroRecCount = 5;
     bool bIsZeroRec = false;
 
     do
@@ -637,7 +637,7 @@ sal_Int16 XclImpStream::ReadInt16()
         {
             SVBT16 pnBuffer{0};
             mxDecrypter->Read( mrStrm, pnBuffer, 2 );
-            nValue = static_cast< sal_Int16 >( SVBT16ToUInt16( pnBuffer ) );
+            nValue = SVBT16ToInt16(pnBuffer);
         }
         else
             mrStrm.ReadInt16( nValue );

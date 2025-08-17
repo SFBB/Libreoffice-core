@@ -7,7 +7,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #
 
-$(eval $(call gb_CustomTarget_CustomTarget,extras/source/autotext))
+$(eval $(call gb_CustomTarget_CustomTarget,extras/source/autotext/share))
 
 extras_AUTOTEXTSHARE_XMLFILES := \
 	af/standard/BlockList.xml \
@@ -3637,38 +3637,39 @@ extras_AUTOTEXTSHARE_XMLFILES_RELATIVE = $(subst $(1)/,,$(filter $(1)/%,$(extras
 .SECONDEXPANSION:
 # secondexpansion since the patterns not just cover a filename portion, but also include a
 # directory portion withdifferent number of elements
-$(call gb_CustomTarget_get_workdir,extras/source/autotext)/%/mimetype : \
-        | $$(dir $(call gb_CustomTarget_get_workdir,extras/source/autotext)/$$*/mimetype).dir
+$(gb_CustomTarget_workdir)/extras/source/autotext/share/%/mimetype : \
+        | $$(dir $(gb_CustomTarget_workdir)/extras/source/autotext/share/$$*/mimetype).dir
 	$(call gb_Output_announce,autotext/$*/mimetype,$(true),TCH,1)
 	$(call gb_Trace_StartRange,autotext/$*/mimetype,TCH)
 	touch $@
 	$(call gb_Trace_EndRange,autotext/$*/mimetype,TCH)
 
 # rule for *.rdf, *.svm, *.png, …
-$(call gb_CustomTarget_get_workdir,extras/source/autotext)/% : $(SRCDIR)/extras/source/autotext/lang/% \
-        | $$(dir $(call gb_CustomTarget_get_workdir,extras/source/autotext)/$$*).dir
+$(gb_CustomTarget_workdir)/extras/source/autotext/share/% : $(SRCDIR)/extras/source/autotext/lang/% \
+        | $$(dir $(gb_CustomTarget_workdir)/extras/source/autotext/share/$$*).dir
 	$(call gb_Output_announce,autotext/$*,$(true),CPY,1)
 	$(call gb_Trace_StartRange,autotext/$*,CPY)
 	cp $< $@
 	$(call gb_Trace_EndRange,autotext/$*,CPY)
 
-$(call gb_CustomTarget_get_workdir,extras/source/autotext)/%.xml : $(SRCDIR)/extras/source/autotext/lang/%.xml \
+$(gb_CustomTarget_workdir)/extras/source/autotext/share/%.xml : $(SRCDIR)/extras/source/autotext/lang/%.xml \
         | $(call gb_ExternalExecutable_get_dependencies,xsltproc) \
-          $$(dir $(call gb_CustomTarget_get_workdir,extras/source/autotext)/$$*.xml).dir
+          $$(dir $(gb_CustomTarget_workdir)/extras/source/autotext/share/$$*.xml).dir
 	$(call gb_Output_announce,autotext/$*.xml,$(true),XSL,1)
 	$(call gb_Trace_StartRange,autotext/$*.xml,XSL)
 	$(call gb_ExternalExecutable_get_command,xsltproc) --nonet -o $@ $(SRCDIR)/extras/util/compact.xsl $<
 	$(call gb_Trace_EndRange,autotext/$*.xml,XSL)
 
-$(call gb_CustomTarget_get_workdir,extras/source/autotext)/%.bau : \
-        $$(addprefix $(call gb_CustomTarget_get_workdir,extras/source/autotext)/$$*/,\
+$(gb_CustomTarget_workdir)/extras/source/autotext/share/%.bau : \
+        $$(addprefix $(gb_CustomTarget_workdir)/extras/source/autotext/share/$$*/,\
             mimetype $$(call extras_AUTOTEXTSHARE_XMLFILES_RELATIVE,$$*))
 	$(call gb_Output_announce,autotext/$*.bau,$(true),ZIP,2)
 	$(call gb_Trace_StartRange,autotext/$*.bau,ZIP)
 	$(call gb_Helper_abbreviate_dirs,\
 		cd $(dir $<) && \
-		zip -q0X --filesync --must-match $@ mimetype && \
-		zip -qrX --must-match $@ $(call extras_AUTOTEXTSHARE_XMLFILES_RELATIVE,$*) \
+		$(call gb_Helper_wsl_path,\
+		$(WSL) zip -q0X --filesync --must-match $@ mimetype && \
+		$(WSL) zip -qrX --must-match $@ $(call extras_AUTOTEXTSHARE_XMLFILES_RELATIVE,$*)) \
 	)
 	$(call gb_Trace_EndRange,autotext/$*.bau,ZIP)
 

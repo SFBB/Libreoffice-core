@@ -49,18 +49,18 @@ using namespace css;
 
 namespace sd
 {
-FuExecuteInteraction::FuExecuteInteraction(ViewShell* pViewSh, ::sd::Window* pWin,
-                                           ::sd::View* pView, SdDrawDocument* pDoc,
+FuExecuteInteraction::FuExecuteInteraction(ViewShell& rViewSh, ::sd::Window* pWin,
+                                           ::sd::View* pView, SdDrawDocument& rDoc,
                                            SfxRequest& rReq)
-    : FuPoor(pViewSh, pWin, pView, pDoc, rReq)
+    : FuPoor(rViewSh, pWin, pView, rDoc, rReq)
 {
 }
 
-rtl::Reference<FuPoor> FuExecuteInteraction::Create(ViewShell* pViewSh, ::sd::Window* pWin,
-                                                    ::sd::View* pView, SdDrawDocument* pDoc,
+rtl::Reference<FuPoor> FuExecuteInteraction::Create(ViewShell& rViewSh, ::sd::Window* pWin,
+                                                    ::sd::View* pView, SdDrawDocument& rDoc,
                                                     SfxRequest& rReq)
 {
-    rtl::Reference<FuPoor> xFunc(new FuExecuteInteraction(pViewSh, pWin, pView, pDoc, rReq));
+    rtl::Reference<FuPoor> xFunc(new FuExecuteInteraction(rViewSh, pWin, pView, rDoc, rReq));
     xFunc->DoExecute(rReq);
     return xFunc;
 }
@@ -78,6 +78,8 @@ void FuExecuteInteraction::DoExecute(SfxRequest&)
         || dynamic_cast<const DrawView*>(mpView) == nullptr)
         return;
 
+    assert(mpDocSh);
+
     SdAnimationInfo* pInfo = SdDrawDocument::GetAnimationInfo(pObj);
     if (!pInfo)
         return;
@@ -88,7 +90,7 @@ void FuExecuteInteraction::DoExecute(SfxRequest&)
         {
             // Jump to Bookmark (Page or Object)
             SfxStringItem aItem(SID_NAVIGATOR_OBJECT, pInfo->GetBookmark());
-            mpViewShell->GetViewFrame()->GetDispatcher()->ExecuteList(
+            mrViewShell.GetViewFrame()->GetDispatcher()->ExecuteList(
                 SID_NAVIGATOR_OBJECT, SfxCallMode::SLOT | SfxCallMode::RECORD, { &aItem });
         }
         break;
@@ -101,7 +103,7 @@ void FuExecuteInteraction::DoExecute(SfxRequest&)
             {
                 SfxStringItem aReferer(SID_REFERER, mpDocSh->GetMedium()->GetName());
                 SfxStringItem aStrItem(SID_FILE_NAME, sBookmark);
-                SfxViewFrame* pFrame = mpViewShell->GetViewFrame();
+                SfxViewFrame* pFrame = mrViewShell.GetViewFrame();
                 SfxFrameItem aFrameItem(SID_DOCFRAME, pFrame);
                 SfxBoolItem aBrowseItem(SID_BROWSE, true);
                 pFrame->GetDispatcher()->ExecuteList(
@@ -115,7 +117,7 @@ void FuExecuteInteraction::DoExecute(SfxRequest&)
         {
             // Jump to the previous page
             SfxUInt16Item aItem(SID_NAVIGATOR_PAGE, PAGE_PREVIOUS);
-            mpViewShell->GetViewFrame()->GetDispatcher()->ExecuteList(
+            mrViewShell.GetViewFrame()->GetDispatcher()->ExecuteList(
                 SID_NAVIGATOR_PAGE, SfxCallMode::SLOT | SfxCallMode::RECORD, { &aItem });
         }
         break;
@@ -124,7 +126,7 @@ void FuExecuteInteraction::DoExecute(SfxRequest&)
         {
             // Jump to the next page
             SfxUInt16Item aItem(SID_NAVIGATOR_PAGE, PAGE_NEXT);
-            mpViewShell->GetViewFrame()->GetDispatcher()->ExecuteList(
+            mrViewShell.GetViewFrame()->GetDispatcher()->ExecuteList(
                 SID_NAVIGATOR_PAGE, SfxCallMode::SLOT | SfxCallMode::RECORD, { &aItem });
         }
         break;
@@ -133,7 +135,7 @@ void FuExecuteInteraction::DoExecute(SfxRequest&)
         {
             // Jump to the first page
             SfxUInt16Item aItem(SID_NAVIGATOR_PAGE, PAGE_FIRST);
-            mpViewShell->GetViewFrame()->GetDispatcher()->ExecuteList(
+            mrViewShell.GetViewFrame()->GetDispatcher()->ExecuteList(
                 SID_NAVIGATOR_PAGE, SfxCallMode::SLOT | SfxCallMode::RECORD, { &aItem });
         }
         break;
@@ -142,7 +144,7 @@ void FuExecuteInteraction::DoExecute(SfxRequest&)
         {
             // Jump to the last page
             SfxUInt16Item aItem(SID_NAVIGATOR_PAGE, PAGE_LAST);
-            mpViewShell->GetViewFrame()->GetDispatcher()->ExecuteList(
+            mrViewShell.GetViewFrame()->GetDispatcher()->ExecuteList(
                 SID_NAVIGATOR_PAGE, SfxCallMode::SLOT | SfxCallMode::RECORD, { &aItem });
         }
         break;
@@ -152,8 +154,9 @@ void FuExecuteInteraction::DoExecute(SfxRequest&)
 #if HAVE_FEATURE_AVMEDIA
             try
             {
-                mxPlayer.set(avmedia::MediaWindow::createPlayer(pInfo->GetBookmark(), "" /*TODO?*/),
-                             uno::UNO_SET_THROW);
+                mxPlayer.set(
+                    avmedia::MediaWindow::createPlayer(pInfo->GetBookmark(), u""_ustr /*TODO?*/),
+                    uno::UNO_SET_THROW);
                 mxPlayer->start();
             }
             catch (uno::Exception&)
@@ -168,7 +171,7 @@ void FuExecuteInteraction::DoExecute(SfxRequest&)
             // Assign verb
             mpView->UnmarkAll();
             mpView->MarkObj(pObj, mpView->GetSdrPageView());
-            DrawViewShell* pDrViewSh = static_cast<DrawViewShell*>(mpViewShell);
+            DrawViewShell* pDrViewSh = static_cast<DrawViewShell*>(&mrViewShell);
             pDrViewSh->DoVerb(static_cast<sal_Int16>(pInfo->mnVerb));
         }
         break;

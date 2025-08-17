@@ -21,6 +21,7 @@
 #define INCLUDED_UNOTOOLS_CONFIGITEM_HXX
 
 #include <sal/types.h>
+#include <rtl/ref.hxx>
 #include <rtl/ustring.hxx>
 #include <com/sun/star/uno/Sequence.h>
 #include <com/sun/star/uno/Reference.h>
@@ -38,9 +39,6 @@ namespace com::sun::star {
     namespace container{
         class XHierarchicalNameAccess;
     }
-    namespace util{
-        class XChangesListener;
-    }
 }
 
 enum class ConfigItemMode
@@ -57,6 +55,7 @@ namespace o3tl
 
 namespace utl
 {
+class ConfigChangeListener_Impl;
 
     enum class ConfigNameFormat
     {
@@ -72,7 +71,7 @@ namespace utl
             const OUString              sSubTree;
             css::uno::Reference< css::container::XHierarchicalNameAccess>
                                         m_xHierarchyAccess;
-            css::uno::Reference< css::util::XChangesListener >
+            rtl::Reference< ConfigChangeListener_Impl >
                                         xChangeLstnr;
             ConfigItemMode              m_nMode;
             bool                        m_bIsModified;
@@ -82,25 +81,6 @@ namespace utl
             void                    RemoveChangesListener();
             void                    CallNotify(
                                 const css::uno::Sequence<OUString>& aPropertyNames);
-
-            // In special mode ALL_LOCALES we must support reading/writing of localized cfg entries as Sequence< PropertyValue >.
-            // These methods are helper to convert given lists of names and Any-values.
-            // format:  PropertyValue.Name  = <locale as ISO string>
-            //          PropertyValue.Value = <value; type depends from cfg entry!>
-            // e.g.
-            //          LOCALIZED NODE
-            //          "UIName"
-            //                      LOCALE      VALUE
-            //                      "de"        "Mein Name"
-            //                      "en-US"     "my name"
-            static void impl_packLocalizedProperties   (   const   css::uno::Sequence< OUString >&                  lInNames    ,
-                                                    const   css::uno::Sequence< css::uno::Any >&  lInValues   ,
-                                                            css::uno::Sequence< css::uno::Any >&  lOutValues  );
-            static void impl_unpackLocalizedProperties (
-                        const   css::uno::Sequence< OUString >&                  lInNames    ,
-                        const   css::uno::Sequence< css::uno::Any >&  lInValues   ,
-                                css::uno::Sequence< OUString >&                  lOutNames   ,
-                                css::uno::Sequence< css::uno::Any >&  lOutValues);
 
             css::uno::Reference< css::container::XHierarchicalNameAccess>
                                         GetTree();
@@ -163,8 +143,8 @@ namespace utl
         public:
             virtual ~ConfigItem() override;
 
-            ConfigItem(ConfigItem const &) = default;
-            ConfigItem(ConfigItem &&) = default;
+            ConfigItem(ConfigItem const &);
+            ConfigItem(ConfigItem &&);
             ConfigItem & operator =(ConfigItem const &) = delete; // due to const sSubTree
             ConfigItem & operator =(ConfigItem &&) = delete; // due to const sSubTree
 

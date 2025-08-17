@@ -42,12 +42,14 @@ class SAL_WARN_UNUSED VCL_DLLPUBLIC Image
 public:
     Image();
     explicit Image(BitmapEx const & rBitmapEx);
+    explicit Image(Bitmap const & rBitmap);
     explicit Image(css::uno::Reference<css::graphic::XGraphic> const & rxGraphic);
     explicit Image(OUString const & rPNGFileUrl);
     explicit Image(StockImage, OUString const & rPNGFilePath);
 
     Size GetSizePixel() const;
-    BitmapEx GetBitmapEx() const;
+    Bitmap GetBitmap() const;
+    void SetOptional(bool bValue);
 
     bool operator!() const
     {
@@ -59,15 +61,15 @@ public:
         return !(Image::operator==(rImage));
     }
 
-    OUString GetStock() const;
+    const OUString & GetStock() const;
 
-    void Draw(OutputDevice* pOutDev, const Point& rPos, DrawImageFlags nStyle, const Size* pSize = nullptr);
+    void Draw(OutputDevice* pOutDev, const Point& rPos, DrawImageFlags nStyle, const Size* pSize = nullptr) const;
 
 private:
 
     std::shared_ptr<ImplImage> mpImplData;
 
-    SAL_DLLPRIVATE void ImplInit(BitmapEx const & rBmpEx);
+    SAL_DLLPRIVATE void ImplInit(Bitmap const & rBmp);
 };
 
 #endif // INCLUDED_VCL_IMAGE_HXX

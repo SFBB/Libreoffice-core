@@ -18,7 +18,6 @@
  */
 
 #include <editeng/outlobj.hxx>
-#include <svx/svdotext.hxx>
 #include <svx/svdouno.hxx>
 #include <svx/svxids.hrc>
 #include <sfx2/dispatch.hxx>
@@ -34,8 +33,8 @@
 #define SC_MAXDRAGMOVE  3
 
 FuConstruct::FuConstruct(ScTabViewShell& rViewSh, vcl::Window* pWin, ScDrawView* pViewP,
-                         SdrModel* pDoc, const SfxRequest& rReq)
-    : FuDraw(rViewSh, pWin, pViewP, pDoc, rReq)
+                         SdrModel& rDoc, const SfxRequest& rReq)
+    : FuDraw(rViewSh, pWin, pViewP, rDoc, rReq)
 {
 }
 
@@ -67,12 +66,13 @@ bool FuConstruct::MouseButtonDown(const MouseEvent& rMEvt)
 
         SdrHdl* pHdl = pView->PickHandle(aMDPos);
 
+        const SdrMarkList& rMarkList = pView->GetMarkedObjectList();
         if ( pHdl != nullptr || pView->IsMarkedHit(aMDPos) )
         {
             pView->BegDragObj(aMDPos, nullptr, pHdl, 1);
             bReturn = true;
         }
-        else if ( pView->AreObjectsMarked() )
+        else if ( rMarkList.GetMarkCount() != 0 )
         {
             pView->UnmarkAll();
             bReturn = true;
@@ -137,9 +137,9 @@ bool FuConstruct::MouseButtonUp(const MouseEvent& rMEvt)
     sal_uInt16 nClicks = rMEvt.GetClicks();
     if ( nClicks == 2 && rMEvt.IsLeft() )
     {
-        if ( pView->AreObjectsMarked() )
+        const SdrMarkList& rMarkList = pView->GetMarkedObjectList();
+        if ( rMarkList.GetMarkCount() != 0 )
         {
-            const SdrMarkList& rMarkList = pView->GetMarkedObjectList();
             if (rMarkList.GetMarkCount() == 1)
             {
                 SdrMark* pMark = rMarkList.GetMark(0);
@@ -148,6 +148,7 @@ bool FuConstruct::MouseButtonUp(const MouseEvent& rMEvt)
                 //  if Uno-Controls no text mode
                 if ( DynCastSdrTextObj( pObj) != nullptr && dynamic_cast<const SdrUnoObj*>( pObj) ==  nullptr )
                 {
+                    assert(pObj);
                     OutlinerParaObject* pOPO = pObj->GetOutlinerParaObject();
                     bool bVertical = ( pOPO && pOPO->IsEffectivelyVertical() );
                     sal_uInt16 nTextSlotId = bVertical ? SID_DRAW_TEXT_VERTICAL : SID_DRAW_TEXT;
@@ -199,12 +200,13 @@ bool FuConstruct::SimpleMouseButtonUp(const MouseEvent& rMEvt)
     {
         pWindow->ReleaseMouse();
 
-        if ( !pView->AreObjectsMarked() && rMEvt.GetClicks() < 2 )
+        const SdrMarkList& rMarkList = pView->GetMarkedObjectList();
+        if ( rMarkList.GetMarkCount() == 0 && rMEvt.GetClicks() < 2 )
         {
             pView->MarkObj(aPnt, -2, false, rMEvt.IsMod1());
 
             SfxDispatcher& rDisp = rViewShell.GetViewData().GetDispatcher();
-            if ( pView->AreObjectsMarked() )
+            if ( rMarkList.GetMarkCount() != 0 )
                 rDisp.Execute(SID_OBJECT_SELECT, SfxCallMode::SLOT | SfxCallMode::RECORD);
             else
                 rDisp.Execute(aSfxRequest.GetSlot(), SfxCallMode::SLOT | SfxCallMode::RECORD);

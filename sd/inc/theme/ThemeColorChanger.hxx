@@ -17,7 +17,7 @@
 
 namespace sd
 {
-class SD_DLLPUBLIC ThemeColorChanger : public svx::IThemeColorChanger
+class SD_DLLPUBLIC ThemeColorChanger final : public svx::IThemeColorChanger
 {
 private:
     SdrPage* mpMasterPage;
@@ -27,7 +27,7 @@ public:
     ThemeColorChanger(SdrPage* pMasterPage, sd::DrawDocShell* pDocShell);
     virtual ~ThemeColorChanger() override;
 
-    void apply(std::shared_ptr<model::ColorSet> const& pColorSet) override;
+    void doApply(std::shared_ptr<model::ColorSet> const& pColorSet) override;
 };
 
 } // end sd namespace

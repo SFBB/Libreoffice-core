@@ -49,7 +49,7 @@ void INetMIMEMessage::SetHeaderField_Impl (
  *   1*DIGIT                                     (delta seconds)
  */
 
-static const char *months[12] =
+const char * const months[12] =
 {
     "Jan", "Feb", "Mar", "Apr", "May", "Jun",
     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
@@ -171,7 +171,7 @@ bool INetMIMEMessage::ParseDateField (
     else if (comphelper::string::isdigitAsciiString(aDateField))
     {
         // Format: delta seconds.
-        tools::Time aDelta (0);
+        tools::Time aDelta(tools::Time::EMPTY);
         aDelta.SetTime (aDateField.toInt32() * 100);
 
         DateTime aNow( DateTime::SYSTEM );
@@ -250,9 +250,9 @@ OUString INetMIMEMessage::GetDefaultContentType()
             aParentCT = pParent->GetDefaultContentType();
 
         if (aParentCT.equalsIgnoreAsciiCase("multipart/digest"))
-            return "message/rfc822";
+            return u"message/rfc822"_ustr;
     }
-    return "text/plain; charset=us-ascii";
+    return u"text/plain; charset=us-ascii"_ustr;
 }
 
 void INetMIMEMessage::EnableAttachMultipartFormDataChild()
@@ -273,10 +273,10 @@ void INetMIMEMessage::EnableAttachMultipartFormDataChild()
     m_aBoundary += sTail;
 
     // Set header fields.
-    SetMIMEVersion("1.0");
+    SetMIMEVersion(u"1.0"_ustr);
     SetContentType(
         "multipart/form-data; boundary=" + OUString::fromUtf8(m_aBoundary));
-    SetContentTransferEncoding("7bit");
+    SetContentTransferEncoding(u"7bit"_ustr);
 }
 
 void INetMIMEMessage::AttachChild(std::unique_ptr<INetMIMEMessage> pChildMsg)

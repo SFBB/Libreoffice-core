@@ -30,19 +30,23 @@
 #include <svl/intitem.hxx>
 #include <svx/flagsdef.hxx>
 
+#include <vcl/tabs.hrc>
+
 ScCharDlg::ScCharDlg(weld::Window* pParent, const SfxItemSet* pAttr, const SfxObjectShell* pDocShell, bool bDrawText)
-    : SfxTabDialogController(pParent, "modules/scalc/ui/chardialog.ui", "CharDialog", pAttr)
+    : SfxTabDialogController(pParent, u"modules/scalc/ui/chardialog.ui"_ustr, u"CharDialog"_ustr, pAttr)
     , m_rDocShell(*pDocShell)
     , m_bDrawText(bDrawText)
 {
-    AddTabPage("font", RID_SVXPAGE_CHAR_NAME);
-    AddTabPage("fonteffects", RID_SVXPAGE_CHAR_EFFECTS);
-    AddTabPage("position", RID_SVXPAGE_CHAR_POSITION);
+    AddTabPage(u"font"_ustr, TabResId(RID_TAB_FONT.aLabel), RID_SVXPAGE_CHAR_NAME,
+               RID_L + RID_TAB_FONT.sIconName);
+    AddTabPage(u"fonteffects"_ustr, TabResId(RID_TAB_FONTEFFECTS.aLabel), RID_SVXPAGE_CHAR_EFFECTS,
+               RID_L + RID_TAB_FONTEFFECTS.sIconName);
+    AddTabPage(u"position"_ustr, TabResId(RID_TAB_POSITION.aLabel), RID_SVXPAGE_CHAR_POSITION,
+               RID_L + RID_TAB_POSITION.sIconName);
 
     if (bDrawText)
-        AddTabPage("background", RID_SVXPAGE_BKG);
-    else
-        RemoveTabPage("background");
+        AddTabPage(u"background"_ustr, TabResId(RID_TAB_HIGHLIGHTING.aLabel), RID_SVXPAGE_BKG,
+                   RID_L + RID_TAB_HIGHLIGHTING.sIconName);
 }
 
 void ScCharDlg::PageCreated(const OUString& rId, SfxTabPage &rPage)
@@ -71,20 +75,22 @@ void ScCharDlg::PageCreated(const OUString& rId, SfxTabPage &rPage)
 }
 
 ScParagraphDlg::ScParagraphDlg(weld::Window* pParent, const SfxItemSet* pAttr)
-    : SfxTabDialogController(pParent, "modules/scalc/ui/paradialog.ui", "ParagraphDialog", pAttr)
+    : SfxTabDialogController(pParent, u"modules/scalc/ui/paradialog.ui"_ustr, u"ParagraphDialog"_ustr, pAttr)
 {
-    AddTabPage("labelTP_PARA_STD", RID_SVXPAGE_STD_PARAGRAPH);
-    AddTabPage("labelTP_PARA_ALIGN", RID_SVXPAGE_ALIGN_PARAGRAPH);
-    if (SvtCJKOptions::IsAsianTypographyEnabled() )
-        AddTabPage("labelTP_PARA_ASIAN", RID_SVXPAGE_PARA_ASIAN);
-    else
-        RemoveTabPage("labelTP_PARA_ASIAN");
-    AddTabPage("labelTP_TABULATOR", RID_SVXPAGE_TABULATOR);
+    AddTabPage(u"indents"_ustr, TabResId(RID_TAB_INDENTS.aLabel), RID_SVXPAGE_STD_PARAGRAPH,
+               RID_L + RID_TAB_INDENTS.sIconName);
+    AddTabPage(u"alignment"_ustr, TabResId(RID_TAB_ALIGNMENT.aLabel), RID_SVXPAGE_ALIGN_PARAGRAPH,
+               RID_L + RID_TAB_ALIGNMENT.sIconName);
+    if (SvtCJKOptions::IsAsianTypographyEnabled())
+        AddTabPage(u"asiantypo"_ustr, TabResId(RID_TAB_ASIANTYPO.aLabel), RID_SVXPAGE_PARA_ASIAN,
+                   RID_L + RID_TAB_ASIANTYPO.sIconName);
+    AddTabPage(u"tabs"_ustr, TabResId(RID_TAB_TABS.aLabel), RID_SVXPAGE_TABULATOR,
+               RID_L + RID_TAB_TABS.sIconName);
 }
 
 void ScParagraphDlg::PageCreated(const OUString& rId, SfxTabPage &rPage)
 {
-    if (rId == "labelTP_TABULATOR")
+    if (rId == "tabs")
     {
         SfxAllItemSet aSet(*(GetInputSetImpl()->GetPool()));
         TabulatorDisableFlags const nFlags((TabulatorDisableFlags::TypeMask &~TabulatorDisableFlags::TypeLeft) |

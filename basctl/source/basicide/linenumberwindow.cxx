@@ -21,11 +21,15 @@ LineNumberWindow::LineNumberWindow(vcl::Window* pParent, ModulWindow* pModulWind
     , m_pModulWindow(pModulWindow)
     , m_nCurYOffset(0)
 {
+    // tdf#153853 The line number window does not need to be affected by RTL
+    EnableRTL(false);
+
     const Wallpaper aBackground(GetSettings().GetStyleSettings().GetWindowColor());
     SetBackground(aBackground);
     GetWindow(GetWindowType::Border)->SetBackground(aBackground);
     m_FontColor = GetSettings().GetStyleSettings().GetWindowTextColor();
-    m_nBaseWidth = GetTextWidth("8");
+    m_HighlightColor = GetSettings().GetStyleSettings().GetFaceColor();
+    m_nBaseWidth = GetTextWidth(u"8"_ustr);
     m_nWidth = m_nBaseWidth * 3 + m_nBaseWidth / 2;
 }
 
@@ -33,14 +37,13 @@ LineNumberWindow::~LineNumberWindow() { disposeOnce(); }
 
 void LineNumberWindow::dispose()
 {
-    m_pModulWindow.clear();
+    m_pModulWindow.reset();
     Window::dispose();
 }
 
 void LineNumberWindow::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle&)
 {
-    if (SyncYOffset())
-        return;
+    SyncYOffset(); // Don't return even if invalidated, to avoid flicker
 
     ExtTextEngine* txtEngine = m_pModulWindow->GetEditEngine();
     if (!txtEngine)
@@ -51,6 +54,7 @@ void LineNumberWindow::Paint(vcl::RenderContext& rRenderContext, const tools::Re
         return;
 
     int windowHeight = rRenderContext.GetOutputSize().Height();
+    int windowWidth = rRenderContext.GetOutputSize().Width();
     int nLineHeight = rRenderContext.GetTextHeight();
     if (!nLineHeight)
     {
@@ -66,7 +70,7 @@ void LineNumberWindow::Paint(vcl::RenderContext& rRenderContext, const tools::Re
 
     // FIXME: it would be best if we could get notified of a font change
     // rather than doing that re-calculation at each Paint event
-    m_nBaseWidth = GetTextWidth("8");
+    m_nBaseWidth = GetTextWidth(u"8"_ustr);
 
     // reserve enough for 3 digit minimum, with a bit to spare for comfort
     m_nWidth = m_nBaseWidth * 3 + m_nBaseWidth / 2;
@@ -78,16 +82,38 @@ void LineNumberWindow::Paint(vcl::RenderContext& rRenderContext, const tools::Re
         m_nWidth += m_nBaseWidth;
     }
 
+    vcl::Font aNormalFont = rRenderContext.GetFont();
+    vcl::Font aBoldFont(aNormalFont);
+    aBoldFont.SetWeight(FontWeight::WEIGHT_BOLD);
+
+    sal_uInt32 nParaEnd = txtView->GetSelection().GetEnd().GetPara() + 1;
     sal_Int64 y = (nStartLine - 1) * static_cast<sal_Int64>(nLineHeight);
-    rRenderContext.SetTextColor(m_FontColor);
+
     for (sal_uInt32 n = nStartLine; n <= nEndLine; ++n, y += nLineHeight)
     {
+        // Font weight for the selected lines is bold
+        if (n == nParaEnd)
+        {
+            tools::Rectangle aRect(Point(0, y - m_nCurYOffset),
+                                   Point(windowWidth, y - m_nCurYOffset + nLineHeight));
+            rRenderContext.SetFillColor(m_HighlightColor);
+            rRenderContext.DrawRect(aRect);
+            rRenderContext.SetFont(aBoldFont);
+        }
+        else
+        {
+            rRenderContext.SetFont(aNormalFont);
+        }
+
+        rRenderContext.SetTextColor(m_FontColor);
         const OUString aLineNumber = OUString::number(n);
         // tdf#153798 - align line numbers to the right
         rRenderContext.DrawText(
             Point(m_nWidth - GetTextWidth(aLineNumber) - m_nBaseWidth / 2, y - m_nCurYOffset),
             aLineNumber);
     }
+    // Restore the original font
+    rRenderContext.SetFont(aNormalFont);
 
     // Resize the parent after calculating the new width and height values
     GetParent()->Resize();
@@ -112,22 +138,18 @@ void LineNumberWindow::DataChanged(DataChangedEvent const& rDCEvt)
 void LineNumberWindow::DoScroll(tools::Long nVertScroll)
 {
     m_nCurYOffset -= nVertScroll;
-    Window::Scroll(0, nVertScroll);
+    Window::Scroll(0, nVertScroll, ScrollFlags::Update);
 }
 
-bool LineNumberWindow::SyncYOffset()
+void LineNumberWindow::SyncYOffset()
 {
-    TextView* pView = m_pModulWindow->GetEditView();
-    if (!pView)
-        return false;
-
-    tools::Long nViewYOffset = pView->GetStartDocPos().Y();
-    if (m_nCurYOffset == nViewYOffset)
-        return false;
-
-    m_nCurYOffset = nViewYOffset;
-    Invalidate();
-    return true;
+    if (TextView* pView = m_pModulWindow->GetEditView())
+    {
+        tools::Long nViewYOffset = pView->GetStartDocPos().Y();
+        if (m_nCurYOffset != nViewYOffset)
+            Invalidate();
+        m_nCurYOffset = nViewYOffset;
+    }
 }
 
 } // namespace basctl

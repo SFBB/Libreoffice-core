@@ -37,13 +37,13 @@ using namespace svx;
 // ParaULSpacingWindow
 
 ParaULSpacingWindow::ParaULSpacingWindow(vcl::Window* pParent)
-    : InterimItemWindow(pParent, "svx/ui/paraulspacing.ui", "ParaULSpacingWindow")
+    : InterimItemWindow(pParent, u"svx/ui/paraulspacing.ui"_ustr, u"ParaULSpacingWindow"_ustr)
     , m_eUnit(MapUnit::MapTwip)
 {
-    m_xAboveSpacing.emplace(m_xBuilder->weld_metric_spin_button("aboveparaspacing", FieldUnit::CM));
-    m_xBelowSpacing.emplace(m_xBuilder->weld_metric_spin_button("belowparaspacing", FieldUnit::CM));
-    m_xAboveContainer = m_xBuilder->weld_container("above");
-    m_xBelowContainer = m_xBuilder->weld_container("below");
+    m_xAboveSpacing.emplace(m_xBuilder->weld_metric_spin_button(u"aboveparaspacing"_ustr, FieldUnit::CM));
+    m_xBelowSpacing.emplace(m_xBuilder->weld_metric_spin_button(u"belowparaspacing"_ustr, FieldUnit::CM));
+    m_xAboveContainer = m_xBuilder->weld_container(u"above"_ustr);
+    m_xBelowContainer = m_xBuilder->weld_container(u"below"_ustr);
 
     Link<weld::MetricSpinButton&,void> aLink = LINK(this, ParaULSpacingWindow, ModifySpacingHdl);
     m_xAboveSpacing->connect_value_changed(aLink);
@@ -133,15 +133,15 @@ ParaBelowSpacingWindow::ParaBelowSpacingWindow(vcl::Window* pParent)
 
 // ParaLRSpacingWindow
 ParaLRSpacingWindow::ParaLRSpacingWindow(vcl::Window* pParent)
-    : InterimItemWindow(pParent, "svx/ui/paralrspacing.ui", "ParaLRSpacingWindow")
+    : InterimItemWindow(pParent, u"svx/ui/paralrspacing.ui"_ustr, u"ParaLRSpacingWindow"_ustr)
     , m_eUnit(MapUnit::MapTwip)
 {
-    m_xBeforeSpacing.emplace(m_xBuilder->weld_metric_spin_button("beforetextindent", FieldUnit::CM));
-    m_xAfterSpacing.emplace(m_xBuilder->weld_metric_spin_button("aftertextindent", FieldUnit::CM));
-    m_xFLSpacing.emplace(m_xBuilder->weld_metric_spin_button("firstlineindent", FieldUnit::CM));
-    m_xBeforeContainer = m_xBuilder->weld_container("before");
-    m_xAfterContainer = m_xBuilder->weld_container("after");
-    m_xFirstLineContainer = m_xBuilder->weld_container("firstline");
+    m_xBeforeSpacing.emplace(m_xBuilder->weld_metric_spin_button(u"beforetextindent"_ustr, FieldUnit::CM));
+    m_xAfterSpacing.emplace(m_xBuilder->weld_metric_spin_button(u"aftertextindent"_ustr, FieldUnit::CM));
+    m_xFLSpacing.emplace(m_xBuilder->weld_metric_spin_button(u"firstlineindent"_ustr, FieldUnit::CM));
+    m_xBeforeContainer = m_xBuilder->weld_container(u"before"_ustr);
+    m_xAfterContainer = m_xBuilder->weld_container(u"after"_ustr);
+    m_xFirstLineContainer = m_xBuilder->weld_container(u"firstline"_ustr);
 
     Link<weld::MetricSpinButton&,void> aLink = LINK(this, ParaLRSpacingWindow, ModifySpacingHdl);
     m_xBeforeSpacing->connect_value_changed(aLink);
@@ -213,9 +213,10 @@ void ParaLRSpacingWindow::SetValue(SfxItemState eState, const SfxPoolItem* pStat
         m_xFLSpacing->set_sensitive(true);
 
         const SvxLRSpaceItem* pSpace = static_cast<const SvxLRSpaceItem*>(pState);
-        tools::Long aTxtLeft = pSpace->GetTextLeft();
-        tools::Long aTxtRight = pSpace->GetRight();
-        tools::Long aTxtFirstLineOfst = pSpace->GetTextFirstLineOffset();
+        // tdf#36709: TODO: Handle font-relative units
+        tools::Long aTxtLeft = pSpace->ResolveTextLeft({});
+        tools::Long aTxtRight = pSpace->ResolveRight({});
+        tools::Long aTxtFirstLineOfst = pSpace->ResolveTextFirstLineOffset({});
 
         aTxtLeft = m_xBeforeSpacing->normalize(aTxtLeft);
 
@@ -267,9 +268,9 @@ void ParaLRSpacingWindow::SetValue(SfxItemState eState, const SfxPoolItem* pStat
     }
     else
     {
-        m_xBeforeSpacing->set_text("");
-        m_xAfterSpacing->set_text("");
-        m_xFLSpacing->set_text("");
+        m_xBeforeSpacing->set_text(u""_ustr);
+        m_xAfterSpacing->set_text(u""_ustr);
+        m_xFLSpacing->set_text(u""_ustr);
     }
 }
 
@@ -292,9 +293,10 @@ IMPL_LINK_NOARG(ParaLRSpacingWindow, ModifySpacingHdl, weld::MetricSpinButton&, 
     if(pDisp)
     {
         SvxLRSpaceItem aMargin(SID_ATTR_PARA_LRSPACE);
-        aMargin.SetTextLeft(m_xBeforeSpacing->GetCoreValue(m_eUnit));
-        aMargin.SetRight(m_xAfterSpacing->GetCoreValue(m_eUnit));
-        aMargin.SetTextFirstLineOffset(m_xFLSpacing->GetCoreValue(m_eUnit));
+        // tdf#36709: TODO: Handle font-relative units from GUI
+        aMargin.SetTextLeft(SvxIndentValue::twips(m_xBeforeSpacing->GetCoreValue(m_eUnit)));
+        aMargin.SetRight(SvxIndentValue::twips(m_xAfterSpacing->GetCoreValue(m_eUnit)));
+        aMargin.SetTextFirstLineOffset(SvxIndentValue::twips(m_xFLSpacing->GetCoreValue(m_eUnit)));
 
         pDisp->ExecuteList(SID_ATTR_PARA_LRSPACE, SfxCallMode::RECORD, {&aMargin});
     }

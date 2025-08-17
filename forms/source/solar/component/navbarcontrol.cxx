@@ -45,7 +45,6 @@ namespace frm
     using namespace ::com::sun::star::awt;
     using namespace ::com::sun::star::lang;
     using namespace ::com::sun::star::frame;
-    using namespace ::com::sun::star::graphic;
     namespace FormFeature = ::com::sun::star::form::runtime::FormFeature;
 
     ONavigationBarControl::ONavigationBarControl( const Reference< XComponentContext >& _rxORB)
@@ -154,14 +153,14 @@ namespace frm
 
     OUString SAL_CALL ONavigationBarControl::getImplementationName()
     {
-        return "com.sun.star.comp.form.ONavigationBarControl";
+        return u"com.sun.star.comp.form.ONavigationBarControl"_ustr;
     }
 
 
     Sequence< OUString > SAL_CALL ONavigationBarControl::getSupportedServiceNames()
     {
-        return { "com.sun.star.awt.UnoControl",
-        "com.sun.star.form.control.NavigationToolBar" };
+        return { u"com.sun.star.awt.UnoControl"_ustr,
+        u"com.sun.star.form.control.NavigationToolBar"_ustr };
     }
 
 
@@ -455,14 +454,6 @@ namespace frm
             connectDispatchers();
             // this will connect if not already connected and just update else
     }
-
-
-    void SAL_CALL ONavigationBarPeer::disposing( const EventObject& _rSource )
-    {
-        VCLXWindow::disposing( _rSource );
-        OFormNavigationHelper::disposing( _rSource );
-    }
-
 
     void ONavigationBarPeer::getSupportedFeatures( ::std::vector< sal_Int16 >& _rFeatureIds )
     {

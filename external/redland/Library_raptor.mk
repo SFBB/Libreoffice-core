@@ -10,13 +10,15 @@
 $(eval $(call gb_Library_Library,raptor2))
 
 $(eval $(call gb_Library_set_include,raptor2, \
-    -I$(call gb_UnpackedTarball_get_dir,raptor)/src \
+    -I$(gb_UnpackedTarball_workdir)/raptor/src \
     $$(INCLUDE) \
 ))
 
 $(eval $(call gb_Library_use_unpacked,raptor2,raptor))
 
 $(eval $(call gb_Library_use_externals,raptor2,\
+	icu_headers \
+	icuuc \
 	libxml2 \
 	libxslt \
 ))

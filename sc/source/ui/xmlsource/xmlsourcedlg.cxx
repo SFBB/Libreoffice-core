@@ -17,7 +17,6 @@
 
 #include <tools/urlobj.hxx>
 #include <sfx2/filedlghelper.hxx>
-#include <sfx2/objsh.hxx>
 
 #include <com/sun/star/ui/dialogs/XFilePicker3.hpp>
 #include <com/sun/star/ui/dialogs/ExecutableDialogResults.hpp>
@@ -64,18 +63,18 @@ OUString getXPath(
 }
 
 ScXMLSourceDlg::ScXMLSourceDlg(
-    SfxBindings* pB, SfxChildWindow* pCW, weld::Window* pParent, ScDocument* pDoc)
-    : ScAnyRefDlgController(pB, pCW, pParent, "modules/scalc/ui/xmlsourcedialog.ui", "XMLSourceDialog")
-    , mpDoc(pDoc)
+    SfxBindings* pB, SfxChildWindow* pCW, weld::Window* pParent, ScDocument& rDoc)
+    : ScAnyRefDlgController(pB, pCW, pParent, u"modules/scalc/ui/xmlsourcedialog.ui"_ustr, u"XMLSourceDialog"_ustr)
+    , mrDoc(rDoc)
     , mbDlgLostFocus(false)
-    , mxBtnSelectSource(m_xBuilder->weld_button("selectsource"))
-    , mxFtSourceFile(m_xBuilder->weld_label("sourcefile"))
-    , mxMapGrid(m_xBuilder->weld_container("mapgrid"))
-    , mxLbTree(m_xBuilder->weld_tree_view("tree"))
-    , mxRefEdit(new formula::RefEdit(m_xBuilder->weld_entry("edit")))
-    , mxRefBtn(new formula::RefButton(m_xBuilder->weld_button("ref")))
-    , mxBtnOk(m_xBuilder->weld_button("ok"))
-    , mxBtnCancel(m_xBuilder->weld_button("cancel"))
+    , mxBtnSelectSource(m_xBuilder->weld_button(u"selectsource"_ustr))
+    , mxFtSourceFile(m_xBuilder->weld_label(u"sourcefile"_ustr))
+    , mxMapGrid(m_xBuilder->weld_container(u"mapgrid"_ustr))
+    , mxLbTree(m_xBuilder->weld_tree_view(u"tree"_ustr))
+    , mxRefEdit(new formula::RefEdit(m_xBuilder->weld_entry(u"edit"_ustr)))
+    , mxRefBtn(new formula::RefButton(m_xBuilder->weld_button(u"ref"_ustr)))
+    , mxBtnOk(m_xBuilder->weld_button(u"ok"_ustr))
+    , mxBtnCancel(m_xBuilder->weld_button(u"cancel"_ustr))
     , maCustomCompare(*mxLbTree)
     , maCellLinks(maCustomCompare)
     , maRangeLinks(maCustomCompare)
@@ -83,7 +82,7 @@ ScXMLSourceDlg::ScXMLSourceDlg(
     mxLbTree->set_size_request(mxLbTree->get_approximate_digit_width() * 40,
                                mxLbTree->get_height_rows(15));
     mxLbTree->set_selection_mode(SelectionMode::Multiple);
-    mxRefEdit->SetReferences(this, nullptr);
+    mxRefEdit->SetReferences(this);
     mxRefBtn->SetReferences(this, mxRefEdit.get());
 
     mpActiveEdit = mxRefEdit.get();
@@ -97,7 +96,7 @@ ScXMLSourceDlg::ScXMLSourceDlg(
     mxBtnOk->connect_clicked(aBtnHdl);
     mxBtnCancel->connect_clicked(aBtnHdl);
 
-    mxLbTree->connect_changed(LINK(this, ScXMLSourceDlg, TreeItemSelectHdl));
+    mxLbTree->connect_selection_changed(LINK(this, ScXMLSourceDlg, TreeItemSelectHdl));
 
     Link<formula::RefEdit&,void> aLink = LINK(this, ScXMLSourceDlg, RefModifiedHdl);
     mxRefEdit->SetModifyHdl(aLink);
@@ -165,20 +164,19 @@ void ScXMLSourceDlg::SelectSourceFile()
                                       FileDialogFlags::NONE, m_xDialog.get());
     aDlgHelper.SetContext(sfx2::FileDialogHelper::CalcXMLSource);
 
-    uno::Reference<ui::dialogs::XFilePicker3> xFilePicker = aDlgHelper.GetFilePicker();
-
     // Use the directory of current source file.
     INetURLObject aURL(maSrcPath);
     aURL.removeSegment();
     aURL.removeFinalSlash();
     OUString aPath = aURL.GetMainURL(INetURLObject::DecodeMechanism::NONE);
-    xFilePicker->setDisplayDirectory(aPath);
 
-    if (xFilePicker->execute() != ui::dialogs::ExecutableDialogResults::OK)
+    if (!aPath.isEmpty())
+        aDlgHelper.SetDisplayFolder(aPath);
+    if (aDlgHelper.Execute() != ERRCODE_NONE)
         // File picker dialog cancelled.
         return;
 
-    uno::Sequence<OUString> aFiles = xFilePicker->getSelectedFiles();
+    uno::Sequence<OUString> aFiles = aDlgHelper.GetSelectedFiles();
     if (!aFiles.hasElements())
         return;
 
@@ -194,7 +192,7 @@ void ScXMLSourceDlg::LoadSourceFileStructure(const OUString& rPath)
     if (!pOrcus)
         return;
 
-    mpXMLContext = pOrcus->createXMLContext(*mpDoc, rPath);
+    mpXMLContext = pOrcus->createXMLContext(mrDoc, rPath);
     if (!mpXMLContext)
         return;
 
@@ -217,7 +215,7 @@ std::unique_ptr<weld::TreeIter> getReferenceEntry(const weld::TreeView& rTree, c
     while (bParent)
     {
         ScOrcusXMLTreeParam::EntryData* pUserData = ScOrcusXMLTreeParam::getUserData(rTree, *xParent);
-        OSL_ASSERT(pUserData);
+        assert(pUserData);
         if (pUserData->meType == ScOrcusXMLTreeParam::ElementRepeat)
         {
             // This is a repeat element - a potential reference entry.
@@ -247,12 +245,12 @@ void ScXMLSourceDlg::TreeItemSelected()
     mxCurRefEntry = getReferenceEntry(*mxLbTree, *xEntry);
 
     ScOrcusXMLTreeParam::EntryData* pUserData = ScOrcusXMLTreeParam::getUserData(*mxLbTree, *mxCurRefEntry);
-    OSL_ASSERT(pUserData);
+    assert(pUserData);
 
     const ScAddress& rPos = pUserData->maLinkedPos;
     if (rPos.IsValid())
     {
-        OUString aStr(rPos.Format(ScRefFlags::ADDR_ABS_3D, mpDoc, mpDoc->GetAddressConvention()));
+        OUString aStr(rPos.Format(ScRefFlags::ADDR_ABS_3D, &mrDoc, mrDoc.GetAddressConvention()));
         mxRefEdit->SetRefString(aStr);
     }
     else
@@ -285,7 +283,7 @@ void ScXMLSourceDlg::DefaultElementSelected(const weld::TreeIter& rEntry)
         do
         {
             ScOrcusXMLTreeParam::EntryData* pUserData = ScOrcusXMLTreeParam::getUserData(*mxLbTree, *xChild);
-            OSL_ASSERT(pUserData);
+            assert(pUserData);
             if (pUserData->meType != ScOrcusXMLTreeParam::Attribute)
             {
                 // This child is not an attribute. Bail out.
@@ -352,7 +350,7 @@ void ScXMLSourceDlg::AttributeSelected(const weld::TreeIter& rEntry)
     mxLbTree->iter_parent(*xParent);
 
     ScOrcusXMLTreeParam::EntryData* pUserData = ScOrcusXMLTreeParam::getUserData(*mxLbTree, *xParent);
-    OSL_ASSERT(pUserData);
+    assert(pUserData);
     if (pUserData->maLinkedPos.IsValid() && pUserData->mbRangeParent)
     {
         // Parent element is range-linked.  Bail out.
@@ -424,7 +422,7 @@ bool ScXMLSourceDlg::IsChildrenDirty(const weld::TreeIter* pEntry) const
     do
     {
         ScOrcusXMLTreeParam::EntryData* pUserData = ScOrcusXMLTreeParam::getUserData(*mxLbTree, *xChild);
-        OSL_ASSERT(pUserData);
+        assert(pUserData);
         if (pUserData->maLinkedPos.IsValid())
             // Already linked.
             return true;
@@ -524,7 +522,7 @@ void ScXMLSourceDlg::OkPressed()
         aRangeLink.maRowGroups.push_back(
             OUStringToOString(aThisEntry, RTL_TEXTENCODING_UTF8));
 
-        aParam.maRangeLinks.push_back(aRangeLink);
+        aParam.maRangeLinks.push_back(std::move(aRangeLink));
     }
 
     // Remove duplicate namespace IDs.
@@ -534,7 +532,7 @@ void ScXMLSourceDlg::OkPressed()
     mpXMLContext->importXML(aParam);
 
     // Don't forget to broadcast the change.
-    ScDocShell* pShell = mpDoc->GetDocumentShell();
+    ScDocShell* pShell = mrDoc.GetDocumentShell();
     pShell->Broadcast(SfxHint(SfxHintId::ScDataChanged));
 
     // Repaint the grid to force repaint the cell values.
@@ -558,7 +556,7 @@ void ScXMLSourceDlg::RefEditModified()
     // Preset current sheet in case only address was entered.
     ScAddress aLinkedPos;
     aLinkedPos.SetTab( ScDocShell::GetCurTab());
-    ScRefFlags nRes = aLinkedPos.Parse(aRefStr, *mpDoc, mpDoc->GetAddressConvention());
+    ScRefFlags nRes = aLinkedPos.Parse(aRefStr, mrDoc, mrDoc.GetAddressConvention());
     bool bValid = ( (nRes & ScRefFlags::VALID) == ScRefFlags::VALID );
 
     // TODO: For some unknown reason, setting the ref invalid will hide the text altogether.

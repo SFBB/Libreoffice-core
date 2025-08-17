@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -24,14 +24,9 @@
 #include <QtInstance.hxx>
 #include <QtPrinter.hxx>
 
-#include <vcl/svapp.hxx>
-#include <vcl/timer.hxx>
-#include <vcl/QueueInfo.hxx>
 #include <printerinfomanager.hxx>
 
-#include <jobset.h>
 #include <print.h>
-#include <salptype.hxx>
 
 #include <unx/genpspgraphics.h>
 
@@ -136,4 +131,4 @@ std::unique_ptr<GenPspGraphics> QtInstance::CreatePrintGraphics()
     return std::make_unique<GenPspGraphics>();
 }
 
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

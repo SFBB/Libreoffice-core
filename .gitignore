@@ -63,6 +63,7 @@
 /lo.xcent
 /vs-code.code-workspace.template
 /Makefile
+/sysui/desktop/macosx/LaunchConstraint.plist
 
 # make id
 /ID
@@ -196,3 +197,6 @@ gdbtrace.log
 # Android builds
 /android/jniLibs/
 /android/obj/
+
+# xml unit tests sometimes leave these lying around
+**/secmod.db

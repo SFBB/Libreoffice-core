@@ -37,11 +37,12 @@
 #include <sortopt.hxx>
 #include <docedt.hxx>
 
-SwUndoRedline::SwUndoRedline( SwUndoId nUsrId, const SwPaM& rRange, sal_Int8 nDepth )
-    : SwUndo( SwUndoId::REDLINE, &rRange.GetDoc() ), SwUndRng( rRange ),
+SwUndoRedline::SwUndoRedline( SwUndoId nUsrId, const SwPaM& rRange, sal_Int8 nDepth, bool bHierarchical )
+    : SwUndo( SwUndoId::REDLINE, rRange.GetDoc() ), SwUndRng( rRange ),
     mnUserId( nUsrId ),
     mbHiddenRedlines( false ),
-    mnDepth( nDepth )
+    mnDepth( nDepth ),
+    mbHierarchical(bHierarchical)
 {
     // consider Redline
     SwDoc& rDoc = rRange.GetDoc();
@@ -62,7 +63,12 @@ SwUndoRedline::SwUndoRedline( SwUndoId nUsrId, const SwPaM& rRange, sal_Int8 nDe
     SwNodeOffset nEndExtra = rDoc.GetNodes().GetEndOfExtras().GetIndex();
 
     mpRedlSaveData.reset( new SwRedlineSaveDatas );
-    if( !FillSaveData( rRange, *mpRedlSaveData, false, SwUndoId::REJECT_REDLINE != mnUserId ))
+    bool bCopyNext = SwUndoId::REJECT_REDLINE != mnUserId;
+    if (mbHierarchical)
+    {
+        bCopyNext = true;
+    }
+    if( !FillSaveData( rRange, *mpRedlSaveData, false, bCopyNext ))
     {
         mpRedlSaveData.reset();
     }
@@ -96,6 +102,36 @@ void SwUndoRedline::SetRedlineCountDontCheck(bool bCheck)
         mpRedlSaveData->SetRedlineCountDontCheck(bCheck);
 }
 #endif
+
+void SwUndoRedline::dumpAsXml(xmlTextWriterPtr pWriter) const
+{
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("SwUndoRedline"));
+    (void)xmlTextWriterWriteFormatAttribute(pWriter, BAD_CAST("ptr"), "%p", this);
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("symbol"), BAD_CAST(typeid(*this).name()));
+
+    const SwRedlineData* pRedlData = mpRedlData.get();
+    while (pRedlData)
+    {
+        pRedlData->dumpAsXml(pWriter);
+        pRedlData = pRedlData->Next();
+    }
+
+    if (mpRedlSaveData)
+    {
+        mpRedlSaveData->dumpAsXml(pWriter);
+    }
+
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("hierarchical"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::boolean(mbHierarchical).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+    (void)xmlTextWriterStartElement(pWriter, BAD_CAST("depth"));
+    (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("value"),
+                                BAD_CAST(OString::number(mnDepth).getStr()));
+    (void)xmlTextWriterEndElement(pWriter);
+
+    (void)xmlTextWriterEndElement(pWriter);
+}
 
 void SwUndoRedline::UndoImpl(::sw::UndoRedoContext & rContext)
 {
@@ -273,7 +309,7 @@ void SwUndoRedlineDelete::UndoRedlineImpl(SwDoc & rDoc, SwPaM & rPam)
     rDoc.getIDocumentRedlineAccess().DeleteRedline(rPam, true, RedlineType::Any);
     if (m_pHistory)
     {
-        m_pHistory->TmpRollback(&rDoc, 0);
+        m_pHistory->TmpRollback(rDoc, 0);
     }
 }
 
@@ -441,8 +477,8 @@ void SwUndoAcceptRedline::RepeatImpl(::sw::RepeatContext & rContext)
     rContext.GetDoc().getIDocumentRedlineAccess().AcceptRedline(rContext.GetRepeatPaM(), true);
 }
 
-SwUndoRejectRedline::SwUndoRejectRedline( const SwPaM& rRange, sal_Int8 nDepth /* = 0 */ )
-    : SwUndoRedline( SwUndoId::REJECT_REDLINE, rRange, nDepth )
+SwUndoRejectRedline::SwUndoRejectRedline( const SwPaM& rRange, sal_Int8 nDepth /* = 0 */, bool bHierarchical /*= false*/ )
+    : SwUndoRedline( SwUndoId::REJECT_REDLINE, rRange, nDepth, bHierarchical )
 {
 }
 
@@ -457,7 +493,7 @@ void SwUndoRejectRedline::RepeatImpl(::sw::RepeatContext & rContext)
 }
 
 SwUndoCompDoc::SwUndoCompDoc( const SwPaM& rRg, bool bIns )
-    : SwUndo( SwUndoId::COMPAREDOC, &rRg.GetDoc() ), SwUndRng( rRg ),
+    : SwUndo( SwUndoId::COMPAREDOC, rRg.GetDoc() ), SwUndRng( rRg ),
     m_bInsert( bIns )
 {
     SwDoc& rDoc = rRg.GetDoc();
@@ -470,7 +506,7 @@ SwUndoCompDoc::SwUndoCompDoc( const SwPaM& rRg, bool bIns )
 }
 
 SwUndoCompDoc::SwUndoCompDoc( const SwRangeRedline& rRedl )
-    : SwUndo( SwUndoId::COMPAREDOC, &rRedl.GetDoc() ), SwUndRng( rRedl ),
+    : SwUndo( SwUndoId::COMPAREDOC, rRedl.GetDoc() ), SwUndRng( rRedl ),
     // for MergeDoc the corresponding inverse is needed
     m_bInsert( RedlineType::Delete == rRedl.GetType() )
 {

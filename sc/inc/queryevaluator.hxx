@@ -56,7 +56,7 @@ class ScQueryEvaluator
     CollatorWrapper* mpCollator;
     const bool mbMatchWholeCell;
     const bool mbCaseSensitive;
-    const ScInterpreterContext* mpContext;
+    ScInterpreterContext* mpContext;
 
     const SCSIZE mnEntryCount;
     bool* mpPasst;
@@ -91,9 +91,9 @@ class ScQueryEvaluator
 
     bool isFastCompareByString(const ScQueryEntry& rEntry) const;
     template <bool bFast = false>
-    std::pair<bool, bool>
-    compareByString(const ScQueryEntry& rEntry, const ScQueryEntry::Item& rItem,
-                    const svl::SharedString* pValueSource1, const OUString* pValueSource2);
+    std::pair<bool, bool> compareByString(const ScQueryEntry& rEntry,
+                                          const ScQueryEntry::Item& rItem,
+                                          const ScRefCellValue& rCell, SCROW nRow);
     std::pair<bool, bool> compareByTextColor(SCCOL nCol, SCROW nRow,
                                              const ScQueryEntry::Item& rItem);
     std::pair<bool, bool> compareByBackgroundColor(SCCOL nCol, SCROW nRow,
@@ -103,13 +103,20 @@ class ScQueryEvaluator
                                                       const ScQueryEntry& rEntry,
                                                       const ScQueryEntry::Item& rItem);
 
-    std::pair<bool, bool> processEntry(SCROW nRow, SCCOL nCol, ScRefCellValue& aCell,
+    std::pair<bool, bool> processEntry(SCROW nRow, SCCOL nCol, const ScRefCellValue& aCell,
                                        const ScQueryEntry& rEntry, size_t nEntryIndex);
+
+    bool equalCellSharedString(const ScRefCellValue& rCell, SCROW nRow, SCCOLROW nField,
+                               bool bCaseSens, const svl::SharedString& rString);
+
+    template <typename TFunctor>
+    auto visitCellSharedString(const ScRefCellValue& rCell, SCROW nRow, SCCOL nCol,
+                               const TFunctor& rOper);
 
 public:
     ScQueryEvaluator(ScDocument& rDoc, const ScTable& rTab, const ScQueryParam& rParam,
-                     const ScInterpreterContext* pContext = nullptr,
-                     bool* pTestEqualCondition = nullptr);
+                     ScInterpreterContext* pContext = nullptr, bool* pTestEqualCondition = nullptr,
+                     bool bNewSearchFunction = false);
 
     bool ValidQuery(SCROW nRow, const ScRefCellValue* pCell = nullptr,
                     sc::TableColumnBlockPositionSet* pBlockPos = nullptr);
@@ -118,8 +125,8 @@ public:
                                const ScRefCellValue& rCell);
     static bool isQueryByString(ScQueryOp eOp, ScQueryEntry::QueryType eType,
                                 const ScRefCellValue& rCell);
-    OUString getCellString(const ScRefCellValue& rCell, SCROW nRow, SCCOL nCol,
-                           const svl::SharedString** sharedString);
+    OUString getCellString(const ScRefCellValue& rCell, SCROW nRow, SCCOL nCol);
+    svl::SharedString getCellSharedString(const ScRefCellValue& rCell, SCROW nRow, SCCOL nCol);
     static bool isMatchWholeCell(const ScDocument& rDoc, ScQueryOp eOp);
 };
 

@@ -22,6 +22,7 @@
 #include "swcont.hxx"
 
 #include <ndarr.hxx>
+#include <fmtfld.hxx>
 #include <tools/long.hxx>
 #include <utility>
 
@@ -31,7 +32,6 @@ class SwContentType;
 class SwFormatField;
 class SwTextINetFormat;
 class SwTOXBase;
-class SwRangeRedline;
 class SwTextFootnote;
 
 //  helper classes
@@ -126,7 +126,7 @@ public:
     const SwTextFootnote* GetTextFootnote() const {return m_pTextFootnote;}
 };
 
-class SwPostItContent final : public SwContent
+class SwPostItContent final : public SwContent, public SfxListener
 {
     const SwFormatField*     m_pField;
 public:
@@ -136,9 +136,21 @@ public:
                             tools::Long nYPos )
         : SwContent(pCnt, rName, nYPos)
         , m_pField(pFormatField)
-    {}
+    {
+        assert(m_pField);
+        StartListening(*const_cast<SwFormatField*>(m_pField));
+    }
+
+    virtual void Notify(SfxBroadcaster &, SfxHint const& rHint) override
+    {
+        if (rHint.GetId() == SfxHintId::Dying)
+        {
+            m_pField = nullptr;
+        }
+    }
 
     const SwFormatField* GetPostIt() const  { return m_pField; }
+    SwPostItField const* GetPostItField() const;
     virtual bool    IsProtect()     const override;
 };
 
@@ -188,6 +200,7 @@ class SwContentType final : public SwTypeNumber
     bool                m_bDataValid :    1;
     bool                m_bEdit:          1;  // can this type be edited?
     bool                m_bDelete:        1;  // can this type be deleted?
+    bool m_bRenamable = false;
 
     bool m_bAlphabeticSort = false;
 
@@ -221,6 +234,7 @@ public:
 
         bool                IsEditable() const {return m_bEdit;}
         bool                IsDeletable() const {return m_bDelete;}
+        bool IsRenamable() const {return m_bRenamable;}
 };
 
 #endif

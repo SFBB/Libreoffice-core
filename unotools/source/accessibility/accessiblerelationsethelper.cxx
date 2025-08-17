@@ -30,17 +30,16 @@ using namespace ::com::sun::star::accessibility;
 
 namespace
 {
-    AccessibleRelation lcl_getRelationByType( std::vector<AccessibleRelation>& raRelations, sal_Int16 aRelationType )
+    AccessibleRelation lcl_getRelationByType( std::vector<AccessibleRelation>& raRelations, AccessibleRelationType eRelationType)
     {
         for (const auto& aRelation: raRelations)
         {
-            if (aRelation.RelationType == aRelationType)
+            if (aRelation.RelationType == eRelationType)
                 return aRelation;
         }
         return AccessibleRelation();
     }
 }
-//=====  internal  ============================================================
 
 AccessibleRelationSetHelper::AccessibleRelationSetHelper ()
 {
@@ -50,6 +49,12 @@ AccessibleRelationSetHelper::AccessibleRelationSetHelper (const AccessibleRelati
     : cppu::WeakImplHelper<XAccessibleRelationSet>(rHelper),
       maRelations(rHelper.maRelations)
 {
+}
+
+css::uno::Reference<css::accessibility::XAccessibleRelationSet> AccessibleRelationSetHelper::Clone() const
+{
+    std::scoped_lock aGuard (maMutex);
+    return new AccessibleRelationSetHelper(*this);
 }
 
 AccessibleRelationSetHelper::~AccessibleRelationSetHelper()
@@ -108,32 +113,31 @@ sal_Int32 SAL_CALL
             given type and <FALSE/> if there is no such relation in the set.
     */
 sal_Bool SAL_CALL
-    AccessibleRelationSetHelper::containsRelation( sal_Int16 aRelationType )
+    AccessibleRelationSetHelper::containsRelation(AccessibleRelationType eRelationType)
 {
     std::scoped_lock aGuard (maMutex);
 
     AccessibleRelation defaultRelation; // default is INVALID
-    AccessibleRelation relationByType = lcl_getRelationByType(maRelations, aRelationType);
+    AccessibleRelation relationByType = lcl_getRelationByType(maRelations, eRelationType);
     return relationByType.RelationType != defaultRelation.RelationType;
 }
 
     /** Retrieve and return the relation with the given relation type.
 
-        @param aRelationType
-            The type of the relation to return.  This has to be one of the
-            constants of <type>AccessibleRelationType</type>.
+        @param eRelationType
+            The type of the relation to return.
 
         @return
-            If a relation with the given type could be found than (a copy
+            If a relation with the given type could be found, then (a copy
             of) this relation is returned.  Otherwise a relation with the
             type INVALID is returned.
     */
 AccessibleRelation SAL_CALL
-        AccessibleRelationSetHelper::getRelationByType( sal_Int16 aRelationType )
+        AccessibleRelationSetHelper::getRelationByType(AccessibleRelationType eRelationType)
 {
     std::scoped_lock aGuard (maMutex);
 
-    return lcl_getRelationByType(maRelations, aRelationType);
+    return lcl_getRelationByType(maRelations, eRelationType);
 }
 
 void AccessibleRelationSetHelper::AddRelation(const AccessibleRelation& rRelation)
@@ -160,11 +164,6 @@ uno::Sequence< css::uno::Type> AccessibleRelationSetHelper::getTypes()
         cppu::UnoType<lang::XTypeProvider>::get()
     };
     return aTypes;
-}
-
-uno::Sequence<sal_Int8> SAL_CALL AccessibleRelationSetHelper::getImplementationId()
-{
-    return css::uno::Sequence<sal_Int8>();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

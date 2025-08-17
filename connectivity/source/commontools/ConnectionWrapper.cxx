@@ -37,14 +37,16 @@ using namespace com::sun::star::sdbc;
 using namespace ::com::sun::star::reflection;
 
 OConnectionWrapper::OConnectionWrapper()
+    : OConnection_BASE(m_aMutex)
 {
 
 }
 
-void OConnectionWrapper::setDelegation(Reference< XAggregation >& _rxProxyConnection,oslInterlockedCount& _rRefCount)
+void OConnectionWrapper::setDelegation(Reference< XAggregation >& _rxProxyConnection)
 {
+    // So far only called from constructors
     OSL_ENSURE(_rxProxyConnection.is(),"OConnectionWrapper: Connection must be valid!");
-    osl_atomic_increment( &_rRefCount );
+    osl_atomic_increment(&m_refCount);
     if (_rxProxyConnection.is())
     {
         // transfer the (one and only) real ref to the aggregate to our member
@@ -60,15 +62,15 @@ void OConnectionWrapper::setDelegation(Reference< XAggregation >& _rxProxyConnec
         m_xProxyConnection->setDelegator( xIf );
 
     }
-    osl_atomic_decrement( &_rRefCount );
+    osl_atomic_decrement(&m_refCount);
 }
 
 void OConnectionWrapper::setDelegation(const Reference< XConnection >& _xConnection
-                                       ,const Reference< XComponentContext>& _rxContext
-                                       ,oslInterlockedCount& _rRefCount)
+                                       ,const Reference< XComponentContext>& _rxContext)
 {
+    // So far only called from constructors
     OSL_ENSURE(_xConnection.is(),"OConnectionWrapper: Connection must be valid!");
-    osl_atomic_increment( &_rRefCount );
+    osl_atomic_increment(&m_refCount);
 
     m_xConnection = _xConnection;
     m_xTypeProvider.set(m_xConnection,UNO_QUERY);
@@ -80,19 +82,21 @@ void OConnectionWrapper::setDelegation(const Reference< XConnection >& _xConnect
     if (xConProxy.is())
     {
         // transfer the (one and only) real ref to the aggregate to our member
-        m_xProxyConnection = xConProxy;
+        m_xProxyConnection = std::move(xConProxy);
 
         // set ourself as delegator
         Reference<XInterface> xIf = static_cast< XUnoTunnel* >( this );
         m_xProxyConnection->setDelegator( xIf );
 
     }
-    osl_atomic_decrement( &_rRefCount );
+    osl_atomic_decrement(&m_refCount);
 }
 
 void OConnectionWrapper::disposing()
 {
-m_xConnection.clear();
+    osl::MutexGuard aGuard(m_aMutex);
+    OConnection_BASE::disposing();
+    m_xConnection.clear();
 }
 
 OConnectionWrapper::~OConnectionWrapper()
@@ -105,19 +109,20 @@ OConnectionWrapper::~OConnectionWrapper()
 
 OUString SAL_CALL OConnectionWrapper::getImplementationName(  )
 {
-    return "com.sun.star.sdbc.drivers.OConnectionWrapper";
+    return u"com.sun.star.sdbc.drivers.OConnectionWrapper"_ustr;
 }
 
 
 css::uno::Sequence< OUString > SAL_CALL OConnectionWrapper::getSupportedServiceNames(  )
 {
+    osl::MutexGuard aGuard(m_aMutex);
     // first collect the services which are supported by our aggregate
     Sequence< OUString > aSupported;
     if ( m_xServiceInfo.is() )
         aSupported = m_xServiceInfo->getSupportedServiceNames();
 
     // append our own service, if necessary
-    OUString sConnectionService( "com.sun.star.sdbc.Connection" );
+    OUString sConnectionService( u"com.sun.star.sdbc.Connection"_ustr );
     if ( ::comphelper::findValue( aSupported, sConnectionService ) == -1 )
     {
         sal_Int32 nLen = aSupported.getLength();
@@ -138,12 +143,14 @@ sal_Bool SAL_CALL OConnectionWrapper::supportsService( const OUString& _rService
 
 Any SAL_CALL OConnectionWrapper::queryInterface( const Type& _rType )
 {
+    osl::MutexGuard aGuard(m_aMutex);
     Any aReturn = OConnection_BASE::queryInterface(_rType);
     return aReturn.hasValue() ? aReturn : (m_xProxyConnection.is() ? m_xProxyConnection->queryAggregation(_rType) : aReturn);
 }
 
 Sequence< Type > SAL_CALL OConnectionWrapper::getTypes(  )
 {
+    osl::MutexGuard aGuard(m_aMutex);
     return ::comphelper::concatSequences(
         OConnection_BASE::getTypes(),
         m_xTypeProvider->getTypes()
@@ -156,6 +163,7 @@ sal_Int64 SAL_CALL OConnectionWrapper::getSomething( const Sequence< sal_Int8 >&
     if (comphelper::isUnoTunnelId<OConnectionWrapper>(rId))
         return comphelper::getSomething_cast(this);
 
+    osl::MutexGuard aGuard(m_aMutex);
     if(m_xUnoTunnel.is())
         return m_xUnoTunnel->getSomething(rId);
     return 0;
@@ -193,16 +201,16 @@ void OConnectionWrapper::createUniqueId( const OUString& _rURL
 {
     // first we create the digest we want to have
     ::comphelper::Hash sha1(::comphelper::HashType::SHA1);
-    sha1.update(reinterpret_cast<unsigned char const*>(_rURL.getStr()), _rURL.getLength() * sizeof(sal_Unicode));
+    sha1.update(_rURL.getStr(), _rURL.getLength() * sizeof(sal_Unicode));
     if ( !_rUserName.isEmpty() )
-        sha1.update(reinterpret_cast<unsigned char const*>(_rUserName.getStr()), _rUserName.getLength() * sizeof(sal_Unicode));
+        sha1.update(_rUserName.getStr(), _rUserName.getLength() * sizeof(sal_Unicode));
     if ( !_rPassword.isEmpty() )
-        sha1.update(reinterpret_cast<unsigned char const*>(_rPassword.getStr()), _rPassword.getLength() * sizeof(sal_Unicode));
+        sha1.update(_rPassword.getStr(), _rPassword.getLength() * sizeof(sal_Unicode));
     // now we need to sort the properties
     auto [begin, end] = asNonConstRange(_rInfo);
     std::sort(begin,end,TPropertyValueLessFunctor());
 
-    for (PropertyValue const & prop : std::as_const(_rInfo))
+    for (PropertyValue const& prop : _rInfo)
     {
         // we only include strings an integer values
         OUString sValue;
@@ -218,15 +226,15 @@ void OConnectionWrapper::createUniqueId( const OUString& _rURL
                 Sequence< OUString> aSeq;
                 if ( prop.Value >>= aSeq )
                 {
-                    for(OUString const & s : std::as_const(aSeq))
-                        sha1.update(reinterpret_cast<unsigned char const*>(s.getStr()), s.getLength() * sizeof(sal_Unicode));
+                    for (OUString const& s : aSeq)
+                        sha1.update(s.getStr(), s.getLength() * sizeof(sal_Unicode));
                 }
             }
         }
         if ( !sValue.isEmpty() )
         {
             // we don't have to convert this into UTF8 because we don't store on a file system
-            sha1.update(reinterpret_cast<unsigned char const*>(sValue.getStr()), sValue.getLength() * sizeof(sal_Unicode));
+            sha1.update(sValue.getStr(), sValue.getLength() * sizeof(sal_Unicode));
         }
     }
 

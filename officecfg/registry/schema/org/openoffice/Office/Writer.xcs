@@ -867,6 +867,13 @@
           </info>
           <value>false</value>
         </prop>
+        <prop oor:name="ShowWordSpacingIndicator" oor:type="xs:boolean" oor:nillable="false">
+          <info>
+            <desc>Enables the word spacing indicator, which shows before each justified text line how much the expanded space in the current line exceeds the maximum word spacing set for the paragraph.</desc>
+            <label>Show word spacing indicator at justified lines.</label>
+          </info>
+          <value>false</value>
+        </prop>
         <prop oor:name="ShowWarningHiddenSection" oor:type="xs:boolean" oor:nillable="false">
           <!-- UIHints: Not accessible via user interface -->
           <info>
@@ -900,6 +907,108 @@
           </constraints>
           <value>1</value>
         </prop>
+        <prop oor:name="TextBoundaries" oor:type="xs:boolean" oor:nillable="false">
+          <!-- UIHints:  Tools - Options - Writer - Formatting Aids -->
+          <info>
+            <desc>Shows text boundaries, if enabled.</desc>
+            <label>Text boundaries</label>
+          </info>
+          <value>true</value>
+        </prop>
+        <prop oor:name="TextBoundariesFull" oor:type="xs:boolean" oor:nillable="false">
+          <!-- UIHints:  Tools - Options - Writer - Formatting Aids -->
+          <info>
+            <desc>Shows text boundaries as full frame (true) or crop marks (false), if enabled.</desc>
+            <label>Show text boundaries as full frame or crop marks</label>
+          </info>
+          <value>false</value>
+        </prop>
+        <prop oor:name="SectionBoundaries" oor:type="xs:boolean" oor:nillable="false">
+          <!-- UIHints:  Tools - Options - Writer - Formatting Aids -->
+          <info>
+            <desc>Shows section boundaries, if enabled.</desc>
+            <label>Section boundaries</label>
+          </info>
+          <value>true</value>
+        </prop>
+        <prop oor:name="TableBoundaries" oor:type="xs:boolean" oor:nillable="false">
+          <!-- UIHints:  Tools - Options - Writer - Formatting Aids -->
+          <info>
+            <desc>Shows table boundaries, if enabled.</desc>
+            <label>Table boundaries</label>
+          </info>
+          <value>true</value>
+        </prop>
+        <prop oor:name="ShowBoundaries" oor:type="xs:boolean" oor:nillable="false">
+          <info>
+            <desc>Toggle all boundaries on/off.</desc>
+            <label>Show boundaries</label>
+          </info>
+          <value>true</value>
+        </prop>
+      </group>
+      <group oor:name="Draw">
+          <prop oor:name="ClickChangeRotation" oor:type="xs:boolean" oor:nillable="false">
+              <!-- UIHints: Configured into draw toolbar -->
+              <info>
+                  <desc>Enables to toggle rotate mode in shapes.</desc>
+                  <label>ClickChangeRotation</label>
+              </info>
+              <value>true</value>
+          </prop>
+      </group>
+        <group oor:name="Zoom">
+          <info>
+              <desc>Contains zoom settings of the document view.</desc>
+          </info>
+          <prop oor:name="DefaultZoom" oor:type="xs:boolean" oor:nillable="false">
+              <!-- UIHints: Tools - Options - Text document  Contents - [Section] ´Zoom-->
+              <info>
+                  <desc>Determines whether zoom settings previously selected are applied to new/loaded document view or predefined zoom values are applied</desc>
+              </info>
+              <value>true</value>
+          </prop>
+          <prop oor:name="ZoomType" oor:type="xs:int" oor:nillable="false">
+              <!-- UIHints: Tools - Options - Text document  Contents - [Section] ´Zoom-->
+              <info>
+                  <desc>Contains predefined zoom type</desc>
+              </info>
+              <constraints>
+                  <enumeration oor:value="0">
+                      <info>
+                          <desc>PERCENT</desc>
+                      </info>
+                  </enumeration>
+                  <enumeration oor:value="1">
+                      <info>
+                          <desc>OPTIMAL</desc>
+                      </info>
+                  </enumeration>
+                  <enumeration oor:value="2">
+                      <info>
+                          <desc>WHOLEPAGE</desc>
+                      </info>
+                  </enumeration>
+                  <enumeration oor:value="3">
+                      <info>
+                          <desc>PAGEWIDTH</desc>
+                      </info>
+                  </enumeration>
+                  <enumeration oor:value="4">
+                      <info>
+                          <desc>PAGEWIDTH_NOBORDER</desc>
+                      </info>
+                  </enumeration>
+              </constraints>
+              <value>0</value>
+          </prop>
+          <prop oor:name="ZoomValue" oor:type="xs:int" oor:nillable="false">
+              <!-- UIHints: Tools - Options - Text document  Contents - [Section] ´Zoom-->
+              <info>
+                  <desc>Contains predefined zoom value in percent.</desc>
+              </info>
+              <value>100</value>
+          </prop>
       </group>
       <group oor:name="NonprintingCharacter">
         <info>
@@ -943,7 +1052,7 @@
             <desc>Specifies whether protected spaces are shown on the screen.</desc>
             <label>Protected Spaces</label>
           </info>
-          <value>false</value>
+          <value>true</value>
         </prop>
         <prop oor:name="Tab" oor:type="xs:boolean" oor:nillable="false">
           <!-- UIHints: Tools - Options - Text document  Contents - [Section] Non-printing Characters -->
@@ -1955,6 +2064,13 @@
           </constraints>
           <value>2</value>
         </prop>
+        <prop oor:name="ApplyTableAutoFormat" oor:type="xs:boolean" oor:nillable="false">
+          <info>
+            <desc>Determines if editing a table causes the table's AutoFormat to be applied automatically to update the formatting of the table and its contents.</desc>
+            <label>Apply table AutoFormat automatically when table is edited.</label>
+          </info>
+          <value>true</value>
+        </prop>
       </group>
       <group oor:name="Input">
         <info>
@@ -2059,7 +2175,27 @@
           </info>
           <value>false</value>
         </prop>
+        <prop oor:name="SelectPastedAnchoredObject" oor:type="xs:boolean" oor:nillable="false">
+          <info>
+            <desc>Specifies if pasted anchored objects will be selected; otherwise, the text cursor will remain at the location of the paste.</desc>
+            <label>Select pasted anchored objects</label>
+          </info>
+          <value>false</value>
+        </prop>
       </group>
+    </group>
+    <group oor:name="FmtAidsAutocomplete">
+      <info>
+        <desc>Contains formatting aids auto complete options.</desc>
+      </info>
+      <prop oor:name="EncloseWithCharacters" oor:type="xs:boolean" oor:nillable="false">
+        <!-- UIHints: Tools - Options - Formatting Aids - Enclose with characters -->
+        <info>
+          <desc>Specifies whether selected text will be enclosed with parentheses, square brackets, curly braces or quotation marks, depending on which button is pressed.</desc>
+          <label>Enclose with characters</label>
+        </info>
+        <value>true</value>
+      </prop>
     </group>
     <group oor:name="Revision">
       <info>
@@ -2360,6 +2496,12 @@
       <prop oor:name="DisplayChangedParagraphNumbering" oor:type="xs:boolean" oor:nillable="false">
         <info>
           <desc>Specifies whether changed paragraph numbering is displayed.</desc>
+        </info>
+        <value>true</value>
+      </prop>
+      <prop oor:name="DisplayMovedTextInGreen" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>Specifies whether moved text is displayed in green.</desc>
         </info>
         <value>true</value>
       </prop>
@@ -4911,6 +5053,17 @@
         </info>
         <value>false</value>
       </prop>
+      <prop oor:name="DisplayWidthFactor" oor:type="xs:double" oor:nillable="false">
+        <!-- UIHints: Can be changed by scaling the comment section width -->
+        <info>
+          <desc>Defines the width of the comment bar in Writer. Factor between 1 and 8.</desc>
+        </info>
+        <value>3.0</value>
+        <constraints>
+          <minInclusive oor:value="1"/>
+          <maxInclusive oor:value="8"/>
+        </constraints>
+      </prop>
     </group>
     <group oor:name="WordCount">
       <info>
@@ -6097,6 +6250,17 @@
             <desc>Whether hidden text (sections, etc) is included in the output.</desc>
           </info>
           <value>true</value>
+        </prop>
+      </group>
+      <group oor:name="Markdown">
+        <info>
+          <desc>Contains settings for the Markdown filter.</desc>
+        </info>
+        <prop oor:name="IncludeHiddenText" oor:type="xs:boolean" oor:nillable="false">
+          <info>
+            <desc>Whether hidden text (sections, etc) is included in the output.</desc>
+          </info>
+          <value>false</value>
         </prop>
       </group>
     </group>

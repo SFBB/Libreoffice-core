@@ -86,14 +86,12 @@ namespace abp
 
                     Sequence< AliasProgrammaticPair > aMapping;
                     bool bSuccess =
-                        xDialogProps->getPropertyValue("FieldMapping") >>= aMapping;
+                        xDialogProps->getPropertyValue(u"FieldMapping"_ustr) >>= aMapping;
                     DBG_ASSERT( bSuccess, "fieldmapping::invokeDialog: invalid property type for FieldMapping!" );
 
                     // and copy it into the map
-                    const AliasProgrammaticPair* pMapping = aMapping.getConstArray();
-                    const AliasProgrammaticPair* pMappingEnd = pMapping + aMapping.getLength();
-                    for (;pMapping != pMappingEnd; ++pMapping)
-                        _rSettings.aFieldMapping[ pMapping->ProgrammaticName ] = pMapping->Alias;
+                    for (auto& rMapping : aMapping)
+                        _rSettings.aFieldMapping[rMapping.ProgrammaticName] = rMapping.Alias;
 
                     return true;
                 }
@@ -211,40 +209,36 @@ namespace abp
             OConfigurationTreeRoot aAddressBookSettings = OConfigurationTreeRoot::createWithComponentContext(
                 _rxContext, sAddressBookNodeName);
 
-            OConfigurationNode aFields = aAddressBookSettings.openNode( OUString( "Fields" ) );
+            OConfigurationNode aFields = aAddressBookSettings.openNode( u"Fields"_ustr );
 
             // loop through all existent fields
-            Sequence< OUString > aExistentFields = aFields.getNodeNames();
-            const OUString* pExistentFields = aExistentFields.getConstArray();
-            const OUString* pExistentFieldsEnd = pExistentFields + aExistentFields.getLength();
-
             static constexpr OUString sProgrammaticNodeName( u"ProgrammaticFieldName"_ustr );
             static constexpr OUString sAssignedNodeName( u"AssignedFieldName"_ustr );
 
-            for ( ; pExistentFields != pExistentFieldsEnd; ++pExistentFields )
+            for (auto& rExistentField : aFields.getNodeNames())
             {
                 SAL_WARN_IF(
-                    ((aFields.openNode(*pExistentFields)
+                    ((aFields.openNode(rExistentField)
                       .getNodeValue(sProgrammaticNodeName).get<OUString>())
-                     != *pExistentFields),
+                     != rExistentField),
                     "extensions.abpilot",
                     "fieldmapping::writeTemplateAddressFieldMapping: inconsistent config data!");
                     // there should be a redundancy in the config data... if this asserts, there isn't anymore!
 
                 // do we have a new alias for the programmatic?
-                MapString2String::iterator aPos = aFieldAssignment.find( *pExistentFields );
+                MapString2String::iterator aPos = aFieldAssignment.find(rExistentField);
                 if ( aFieldAssignment.end() != aPos )
                 {   // yes
                     // -> set a new value
-                    OConfigurationNode aExistentField = aFields.openNode( *pExistentFields );
+                    OConfigurationNode aExistentField = aFields.openNode(rExistentField);
                     aExistentField.setNodeValue( sAssignedNodeName, Any( aPos->second ) );
                     // and remove the mapping entry
-                    aFieldAssignment.erase( *pExistentFields );
+                    aFieldAssignment.erase(rExistentField);
                 }
                 else
                 {   // no
                     // -> remove it
-                    aFields.removeNode( *pExistentFields );
+                    aFields.removeNode(rExistentField);
                 }
             }
 
@@ -282,9 +276,9 @@ namespace abp
             OConfigurationTreeRoot aAddressBookSettings = OConfigurationTreeRoot::createWithComponentContext(
                 _rxContext, sAddressBookNodeName);
 
-            aAddressBookSettings.setNodeValue( OUString( "DataSourceName" ), Any( _rDataSourceName ) );
-            aAddressBookSettings.setNodeValue( OUString( "Command" ), Any( _rTableName ) );
-            aAddressBookSettings.setNodeValue( OUString( "CommandType" ), Any( sal_Int16(CommandType::TABLE) ) );
+            aAddressBookSettings.setNodeValue( u"DataSourceName"_ustr, Any( _rDataSourceName ) );
+            aAddressBookSettings.setNodeValue( u"Command"_ustr, Any( _rTableName ) );
+            aAddressBookSettings.setNodeValue( u"CommandType"_ustr, Any( sal_Int16(CommandType::TABLE) ) );
 
             // commit the changes done
             aAddressBookSettings.commit();
@@ -300,7 +294,7 @@ namespace abp
                 _rxContext, sAddressBookNodeName);
 
             // set the flag
-            aAddressBookSettings.setNodeValue( OUString( "AutoPilotCompleted" ), Any( true ) );
+            aAddressBookSettings.setNodeValue( u"AutoPilotCompleted"_ustr, Any( true ) );
 
             // commit the changes done
             aAddressBookSettings.commit();

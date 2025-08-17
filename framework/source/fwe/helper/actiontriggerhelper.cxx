@@ -30,6 +30,7 @@
 #include <tools/stream.hxx>
 #include <vcl/dibtools.hxx>
 #include <vcl/graph.hxx>
+#include <vcl/graphic/BitmapHelper.hxx>
 #include <vcl/svapp.hxx>
 #include <o3tl/string_view.hxx>
 
@@ -64,22 +65,16 @@ static void GetMenuItemAttributes( const Reference< XPropertySet >& xActionTrigg
                             OUString& aMenuLabel,
                             OUString& aCommandURL,
                             OUString& aHelpURL,
-                            Reference< XBitmap >& xBitmap,
+                            Any& rImage,
                             Reference< XIndexContainer >& xSubContainer )
 {
-    Any a;
-
     try
     {
         // mandatory properties
-        a = xActionTriggerPropertySet->getPropertyValue("Text");
-        a >>= aMenuLabel;
-        a = xActionTriggerPropertySet->getPropertyValue("CommandURL");
-        a >>= aCommandURL;
-        a = xActionTriggerPropertySet->getPropertyValue("Image");
-        a >>= xBitmap;
-        a = xActionTriggerPropertySet->getPropertyValue("SubContainer");
-        a >>= xSubContainer;
+        xActionTriggerPropertySet->getPropertyValue(u"Text"_ustr) >>= aMenuLabel;
+        xActionTriggerPropertySet->getPropertyValue(u"CommandURL"_ustr) >>= aCommandURL;
+        rImage = xActionTriggerPropertySet->getPropertyValue(u"Image"_ustr);
+        xActionTriggerPropertySet->getPropertyValue(u"SubContainer"_ustr) >>= xSubContainer;
     }
     catch (const Exception&)
     {
@@ -88,8 +83,7 @@ static void GetMenuItemAttributes( const Reference< XPropertySet >& xActionTrigg
     // optional properties
     try
     {
-        a = xActionTriggerPropertySet->getPropertyValue("HelpURL");
-        a >>= aHelpURL;
+        xActionTriggerPropertySet->getPropertyValue(u"HelpURL"_ustr) >>= aHelpURL;
     }
     catch (const Exception&)
     {
@@ -103,7 +97,7 @@ static void InsertSubMenuItems(const Reference<XPopupMenu>& rSubMenu, sal_uInt16
         return;
 
     AddonsOptions aAddonOptions;
-    OUString aSlotURL( "slot:" );
+    OUString aSlotURL( u"slot:"_ustr );
 
     for ( sal_Int32 i = 0; i < xActionTriggerContainer->getCount(); i++ )
     {
@@ -115,7 +109,6 @@ static void InsertSubMenuItems(const Reference<XPopupMenu>& rSubMenu, sal_uInt16
                 if ( IsSeparator( xPropSet ))
                 {
                     // Separator
-                    SolarMutexGuard aGuard;
                     rSubMenu->insertSeparator(i);
                 }
                 else
@@ -124,13 +117,12 @@ static void InsertSubMenuItems(const Reference<XPopupMenu>& rSubMenu, sal_uInt16
                     OUString aLabel;
                     OUString aCommandURL;
                     OUString aHelpURL;
-                    Reference< XBitmap > xBitmap;
+                    Any aImage;
                     Reference< XIndexContainer > xSubContainer;
 
                     sal_uInt16 nNewItemId = nItemId++;
-                    GetMenuItemAttributes( xPropSet, aLabel, aCommandURL, aHelpURL, xBitmap, xSubContainer );
+                    GetMenuItemAttributes( xPropSet, aLabel, aCommandURL, aHelpURL, aImage, xSubContainer );
 
-                    SolarMutexGuard aGuard;
                     {
                         // insert new menu item
                         sal_Int32 nIndex = aCommandURL.indexOf( aSlotURL );
@@ -150,43 +142,10 @@ static void InsertSubMenuItems(const Reference<XPopupMenu>& rSubMenu, sal_uInt16
                         }
 
                         // handle bitmap
-                        if ( xBitmap.is() )
+                        if (aImage.hasValue())
                         {
-                            bool bImageSet = false;
-
-                            Reference<css::graphic::XGraphic> xGraphic(xBitmap, UNO_QUERY);
-                            if (xGraphic.is())
-                            {
-                                // we can take the optimized route if XGraphic is supported
+                            if (auto xGraphic = vcl::GetGraphic(aImage))
                                 rSubMenu->setItemImage(nNewItemId, xGraphic, false);
-                                bImageSet = true;
-                            }
-
-                            if ( !bImageSet )
-                            {
-                                // This is an unknown implementation of a XBitmap interface. We have to
-                                // use a more time consuming way to build an Image!
-                                BitmapEx aBitmap;
-
-                                Sequence< sal_Int8 > aDIBSeq;
-                                {
-                                    aDIBSeq = xBitmap->getDIB();
-                                    SvMemoryStream aMem( const_cast<sal_Int8 *>(aDIBSeq.getConstArray()), aDIBSeq.getLength(), StreamMode::READ );
-                                    ReadDIBBitmapEx(aBitmap, aMem);
-                                }
-
-                                aDIBSeq = xBitmap->getMaskDIB();
-                                if ( aDIBSeq.hasElements() )
-                                {
-                                    Bitmap aMaskBitmap;
-                                    SvMemoryStream aMem( const_cast<sal_Int8 *>(aDIBSeq.getConstArray()), aDIBSeq.getLength(), StreamMode::READ );
-                                    ReadDIB(aMaskBitmap, aMem, true);
-                                    aBitmap = BitmapEx(aBitmap.GetBitmap(), aMaskBitmap);
-                                }
-
-                                if (!aBitmap.IsEmpty())
-                                    rSubMenu->setItemImage(nNewItemId, Graphic(aBitmap).GetXGraphic(), false);
-                            }
                         }
                         else
                         {
@@ -235,7 +194,7 @@ static Reference< XPropertySet > CreateActionTrigger(sal_uInt16 nItemId,
     Reference< XMultiServiceFactory > xMultiServiceFactory( rActionTriggerContainer, UNO_QUERY );
     if ( xMultiServiceFactory.is() )
     {
-        xPropSet.set( xMultiServiceFactory->createInstance( "com.sun.star.ui.ActionTrigger" ),
+        xPropSet.set( xMultiServiceFactory->createInstance( u"com.sun.star.ui.ActionTrigger"_ustr ),
                       UNO_QUERY );
 
         Any a;
@@ -245,7 +204,7 @@ static Reference< XPropertySet > CreateActionTrigger(sal_uInt16 nItemId,
             // Retrieve the menu attributes and set them in our PropertySet
             OUString aLabel = rMenu->getItemText(nItemId);
             a <<= aLabel;
-            xPropSet->setPropertyValue("Text", a );
+            xPropSet->setPropertyValue(u"Text"_ustr, a );
 
             OUString aCommandURL = rMenu->getCommand(nItemId);
 
@@ -255,13 +214,13 @@ static Reference< XPropertySet > CreateActionTrigger(sal_uInt16 nItemId,
             }
 
             a <<= aCommandURL;
-            xPropSet->setPropertyValue("CommandURL", a );
+            xPropSet->setPropertyValue(u"CommandURL"_ustr, a );
 
             Reference<XBitmap> xBitmap(rMenu->getItemImage(nItemId), UNO_QUERY);
             if (xBitmap.is())
             {
                 a <<= xBitmap;
-                xPropSet->setPropertyValue("Image", a );
+                xPropSet->setPropertyValue(u"Image"_ustr, a );
             }
         }
         catch (const Exception&)
@@ -279,7 +238,7 @@ static Reference< XPropertySet > CreateActionTriggerSeparator( const Reference< 
     if ( xMultiServiceFactory.is() )
     {
         return Reference< XPropertySet >(   xMultiServiceFactory->createInstance(
-                                                "com.sun.star.ui.ActionTriggerSeparator" ),
+                                                u"com.sun.star.ui.ActionTriggerSeparator"_ustr ),
                                             UNO_QUERY );
     }
 
@@ -293,7 +252,7 @@ static Reference< XIndexContainer > CreateActionTriggerContainer( const Referenc
     if ( xMultiServiceFactory.is() )
     {
         return Reference< XIndexContainer >( xMultiServiceFactory->createInstance(
-                                                "com.sun.star.ui.ActionTriggerContainer" ),
+                                                u"com.sun.star.ui.ActionTriggerContainer"_ustr ),
                                              UNO_QUERY );
     }
 
@@ -303,8 +262,6 @@ static Reference< XIndexContainer > CreateActionTriggerContainer( const Referenc
 static void FillActionTriggerContainerWithMenu(const Reference<XPopupMenu>& rMenu,
                                                const Reference<XIndexContainer>& rActionTriggerContainer)
 {
-    SolarMutexGuard aGuard;
-
     for (sal_uInt16 nPos = 0, nCount = rMenu->getItemCount(); nPos < nCount; ++nPos)
     {
         sal_uInt16 nItemId = rMenu->getItemId(nPos);
@@ -336,7 +293,7 @@ static void FillActionTriggerContainerWithMenu(const Reference<XPopupMenu>& rMen
                     Reference< XIndexContainer > xSubContainer = CreateActionTriggerContainer( rActionTriggerContainer );
 
                     a <<= xSubContainer;
-                    xPropSet->setPropertyValue("SubContainer", a );
+                    xPropSet->setPropertyValue(u"SubContainer"_ustr, a );
                     FillActionTriggerContainerWithMenu(xPopupMenu, xSubContainer);
                 }
             }

@@ -30,6 +30,9 @@
         <entry os="windows" vendor="intel"> <!-- tdf#144923 off-topic comment 14 + tdf#150232 -->
             <device id="0x9a49"/>
         </entry>
+        <entry os="windows" vendor="intel" compare="less_equal" version="0.404.4032"> <!-- tdf#158945 -->
+            <device id="0xa7a0"/>
+        </entry>
         <entry os="all" vendor="amd" compare="less" version="2.0.198"> <!-- tdf#146402 -->
             <device id="all"/>
         </entry>
@@ -47,9 +50,6 @@
         </entry>
         <entry os="windows" vendor="nvidia"> <!-- tdf#153538: GeForce GTX 1070 Ti -->
             <device id="0x1b82"/>
-        </entry>
-        <entry os="windows" vendor="nvidia"> <!-- tdf#158739 : GeForce RTX 4050 (546.132.0) -->
-            <device id="0x28e1"/>
         </entry>
         <entry os="windows" vendor="nvidia"> <!-- tdf#156986: GeForce RTX 4070 (536.396.0) -->
             <device id="0x2786"/>

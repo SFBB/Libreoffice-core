@@ -229,7 +229,6 @@ void OFlatTable::impl_fillColumnInfo_nothrow(QuotedTokenizedString const & aFirs
                 }
                 else
                 {
-                    bNumeric = true;
                     sal_Int32 nDot = 0;
                     sal_Int32 nDecimalDelCount = 0;
                     sal_Int32 nSpaceCount = 0;
@@ -415,7 +414,7 @@ void OFlatTable::construct()
     m_xNumberFormatter.set( NumberFormatter::create( m_pConnection->getDriver()->getComponentContext()), UNO_QUERY_THROW);
     m_xNumberFormatter->attachNumberFormatsSupplier(xSupplier);
     Reference<XPropertySet> xProp = xSupplier->getNumberFormatSettings();
-    xProp->getPropertyValue("NullDate") >>= m_aNullDate;
+    xProp->getPropertyValue(u"NullDate"_ustr) >>= m_aNullDate;
 
     INetURLObject aURL;
     aURL.SetURL(getEntry());
@@ -856,7 +855,7 @@ bool OFlatTable::readLine(sal_Int32 * const pEndPos, sal_Int32 * const pStartPos
     {
         if (pStartPos)
             *pStartPos = static_cast<sal_Int32>(m_pFileStream->Tell());
-        m_pFileStream->ReadByteStringLine(m_aCurrentLine, nEncoding);
+        m_pFileStream->ReadByteStringLine(m_aCurrentLine, nEncoding, 262144);
         if (m_pFileStream->eof())
             return false;
 

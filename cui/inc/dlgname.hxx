@@ -18,19 +18,18 @@
  */
 #pragma once
 
-#include <cui/cuidllapi.h>
-
 #include <vcl/formatter.hxx>
 #include <vcl/weld.hxx>
 #include <sal/log.hxx>
 
 /// Dialog for editing a name
-class CUI_DLLPUBLIC SvxNameDialog final : public weld::GenericDialogController
+class SvxNameDialog final : public weld::GenericDialogController
 {
 private:
     std::unique_ptr<weld::Entry> m_xEdtName;
     std::unique_ptr<weld::Label> m_xFtDescription;
     std::unique_ptr<weld::Button> m_xBtnOK;
+    std::function<bool(const OUString&)> m_aCheckName;
 
     Link<SvxNameDialog&, bool> m_aCheckNameHdl;
     Link<SvxNameDialog&, OUString> m_aCheckNameTooltipHdl;
@@ -39,9 +38,11 @@ private:
 
 public:
     SvxNameDialog(weld::Window* pWindow, const OUString& rName, const OUString& rDesc,
-                  const OUString& rTitle = "");
+                  const OUString& rTitle = u""_ustr);
 
     OUString GetName() const { return m_xEdtName->get_text(); }
+
+    void SetCheckName(const std::function<bool(const OUString&)>& rFunc) { m_aCheckName = rFunc; }
 
     /** add a callback Link that is called whenever the content of the edit
         field is changed.  The Link result determines whether the OK
@@ -62,11 +63,17 @@ public:
         m_xBtnOK->set_tooltip_text(rLink.Call(*this));
     }
 
+    void SetNameText(const OUString& aName)
+    {
+        m_xEdtName->set_text(aName);
+        m_xEdtName->set_position(-1);
+    }
+
     void SetEditHelpId(const OUString& aHelpId) { m_xEdtName->set_help_id(aHelpId); }
 };
 
 /// Dialog for editing a number
-class CUI_DLLPUBLIC SvxNumberDialog final : public weld::GenericDialogController
+class SvxNumberDialog final : public weld::GenericDialogController
 {
 private:
     std::unique_ptr<weld::SpinButton> m_xEdtNumber;
@@ -79,7 +86,7 @@ public:
     sal_Int64 GetNumber() const { return m_xEdtNumber->get_value(); }
 };
 
-class CUI_DLLPUBLIC SvxDecimalNumberDialog final : public weld::GenericDialogController
+class SvxDecimalNumberDialog final : public weld::GenericDialogController
 {
 private:
     std::unique_ptr<weld::FormattedSpinButton> m_xEdtNumber;

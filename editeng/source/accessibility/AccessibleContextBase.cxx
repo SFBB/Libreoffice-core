@@ -20,6 +20,7 @@
 #include <editeng/AccessibleContextBase.hxx>
 
 #include <com/sun/star/accessibility/XAccessibleEventListener.hpp>
+#include <com/sun/star/accessibility/XAccessibleSelection.hpp>
 #include <com/sun/star/accessibility/AccessibleStateType.hpp>
 #include <com/sun/star/accessibility/AccessibleRelationType.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
@@ -31,6 +32,7 @@
 #include <cppuhelper/supportsservice.hxx>
 #include <osl/mutex.hxx>
 #include <rtl/ref.hxx>
+#include <tools/color.hxx>
 
 #include <utility>
 
@@ -44,11 +46,9 @@ namespace accessibility {
 AccessibleContextBase::AccessibleContextBase (
         uno::Reference<XAccessible> xParent,
         const sal_Int16 aRole)
-    :   WeakComponentImplHelper(m_aMutex),
-        mxParent(std::move(xParent)),
+    :   mxParent(std::move(xParent)),
         meDescriptionOrigin(NotSet),
         meNameOrigin(NotSet),
-        mnClientId(0),
         maRole(aRole)
 {
     // Create the state set.
@@ -132,32 +132,22 @@ void AccessibleContextBase::SetRelationSet (
 {
     // Try to emit some meaningful events indicating differing relations in
     // both sets.
-    typedef std::pair<short int,short int> RD;
-    const RD aRelationDescriptors[] = {
-        RD(AccessibleRelationType::CONTROLLED_BY, AccessibleEventId::CONTROLLED_BY_RELATION_CHANGED),
-        RD(AccessibleRelationType::CONTROLLER_FOR, AccessibleEventId::CONTROLLER_FOR_RELATION_CHANGED),
-        RD(AccessibleRelationType::LABELED_BY, AccessibleEventId::LABELED_BY_RELATION_CHANGED),
-        RD(AccessibleRelationType::LABEL_FOR, AccessibleEventId::LABEL_FOR_RELATION_CHANGED),
-        RD(AccessibleRelationType::MEMBER_OF, AccessibleEventId::MEMBER_OF_RELATION_CHANGED),
-        RD(AccessibleRelationType::INVALID, -1),
+    const std::pair<AccessibleRelationType, short int> aRelationDescriptors[] = {
+        { AccessibleRelationType_CONTROLLED_BY, AccessibleEventId::CONTROLLED_BY_RELATION_CHANGED },
+        { AccessibleRelationType_CONTROLLER_FOR, AccessibleEventId::CONTROLLER_FOR_RELATION_CHANGED },
+        { AccessibleRelationType_LABELED_BY, AccessibleEventId::LABELED_BY_RELATION_CHANGED },
+        { AccessibleRelationType_LABEL_FOR, AccessibleEventId::LABEL_FOR_RELATION_CHANGED },
+        { AccessibleRelationType_MEMBER_OF, AccessibleEventId::MEMBER_OF_RELATION_CHANGED },
     };
-    for (int i=0; aRelationDescriptors[i].first!=AccessibleRelationType::INVALID; i++)
-        if (mxRelationSet->containsRelation(aRelationDescriptors[i].first)
-        != rxNewRelationSet->containsRelation(aRelationDescriptors[i].first))
-        CommitChange (aRelationDescriptors[i].second, uno::Any(), uno::Any(), -1);
+    for (const std::pair<AccessibleRelationType, short int>& rPair : aRelationDescriptors)
+    {
+        if (mxRelationSet->containsRelation(rPair.first)
+            != rxNewRelationSet->containsRelation(rPair.first))
+            CommitChange(rPair.second, uno::Any(), uno::Any(), -1);
+    }
 
     mxRelationSet = rxNewRelationSet;
 }
-
-
-// XAccessible
-
-uno::Reference< XAccessibleContext> SAL_CALL
-    AccessibleContextBase::getAccessibleContext()
-{
-    return this;
-}
-
 
 // XAccessibleContext
 
@@ -176,7 +166,7 @@ sal_Int64 SAL_CALL
 uno::Reference<XAccessible> SAL_CALL
     AccessibleContextBase::getAccessibleChild (sal_Int64 nIndex)
 {
-    ThrowIfDisposed ();
+    ensureAlive();
     throw lang::IndexOutOfBoundsException (
         "no child with index " + OUString::number(nIndex),
         nullptr);
@@ -186,50 +176,14 @@ uno::Reference<XAccessible> SAL_CALL
 uno::Reference<XAccessible> SAL_CALL
        AccessibleContextBase::getAccessibleParent()
 {
-    ThrowIfDisposed ();
+    ensureAlive();
     return mxParent;
 }
-
-
-sal_Int64 SAL_CALL
-       AccessibleContextBase::getAccessibleIndexInParent()
-{
-    ThrowIfDisposed ();
-    //  Use a simple but slow solution for now.  Optimize later.
-
-    //  Iterate over all the parent's children and search for this object.
-    if (!mxParent.is())
-        //   Return -1 to indicate that this object's parent does not know about the
-        //   object.
-        return -1;
-
-    uno::Reference<XAccessibleContext> xParentContext (
-        mxParent->getAccessibleContext());
-    if (xParentContext.is())
-    {
-        sal_Int64 nChildCount = xParentContext->getAccessibleChildCount();
-        for (sal_Int64 i=0; i<nChildCount; i++)
-        {
-            uno::Reference<XAccessible> xChild (xParentContext->getAccessibleChild (i));
-            if (xChild.is())
-            {
-                uno::Reference<XAccessibleContext> xChildContext = xChild->getAccessibleContext();
-                if (xChildContext == static_cast<XAccessibleContext*>(this))
-                    return i;
-            }
-        }
-    }
-
-    //   Return -1 to indicate that this object's parent does not know about the
-    //   object.
-    return -1;
-}
-
 
 sal_Int16 SAL_CALL
     AccessibleContextBase::getAccessibleRole()
 {
-    ThrowIfDisposed ();
+    ensureAlive();
     return maRole;
 }
 
@@ -237,7 +191,7 @@ sal_Int16 SAL_CALL
 OUString SAL_CALL
        AccessibleContextBase::getAccessibleDescription()
 {
-    ThrowIfDisposed ();
+    ensureAlive();
 
     return msDescription;
 }
@@ -246,7 +200,7 @@ OUString SAL_CALL
 OUString SAL_CALL
        AccessibleContextBase::getAccessibleName()
 {
-    ThrowIfDisposed ();
+    ensureAlive();
 
     if (meNameOrigin == NotSet)
     {
@@ -265,12 +219,12 @@ OUString SAL_CALL
 uno::Reference<XAccessibleRelationSet> SAL_CALL
        AccessibleContextBase::getAccessibleRelationSet()
 {
-    ThrowIfDisposed ();
+    ensureAlive();
 
     // Create a copy of the relation set and return it.
     if (mxRelationSet)
     {
-        return new ::utl::AccessibleRelationSetHelper(*mxRelationSet);
+        return mxRelationSet->Clone();
     }
     else
         return uno::Reference<XAccessibleRelationSet>(nullptr);
@@ -302,7 +256,7 @@ sal_Int64 SAL_CALL
 lang::Locale SAL_CALL
        AccessibleContextBase::getLocale()
 {
-    ThrowIfDisposed ();
+    ensureAlive();
     // Delegate request to parent.
     if (mxParent.is())
     {
@@ -317,52 +271,42 @@ lang::Locale SAL_CALL
     throw IllegalAccessibleComponentStateException ();
 }
 
+// XAccessibleComponent
 
-// XAccessibleEventListener
-
-void SAL_CALL AccessibleContextBase::addAccessibleEventListener (
-        const uno::Reference<XAccessibleEventListener >& rxListener)
+uno::Reference<XAccessible > SAL_CALL
+AccessibleContextBase::getAccessibleAtPoint (
+    const awt::Point& /*aPoint*/)
 {
-    if (!rxListener.is())
-        return;
+    return uno::Reference<XAccessible>();
+}
 
-    if (rBHelper.bDisposed || rBHelper.bInDispose)
+void SAL_CALL AccessibleContextBase::grabFocus()
+{
+    uno::Reference<XAccessibleSelection> xSelection(getAccessibleParent(), uno::UNO_QUERY);
+    if (xSelection.is())
     {
-        uno::Reference<uno::XInterface> x (static_cast<lang::XComponent *>(this), uno::UNO_QUERY);
-        rxListener->disposing (lang::EventObject (x));
-    }
-    else
-    {
-        if (!mnClientId)
-            mnClientId = comphelper::AccessibleEventNotifier::registerClient( );
-        comphelper::AccessibleEventNotifier::addEventListener( mnClientId, rxListener );
+        // Do a single selection on this object.
+        xSelection->clearAccessibleSelection();
+        xSelection->selectAccessibleChild (getAccessibleIndexInParent());
     }
 }
 
 
-void SAL_CALL AccessibleContextBase::removeAccessibleEventListener (
-        const uno::Reference<XAccessibleEventListener >& rxListener )
+sal_Int32 SAL_CALL AccessibleContextBase::getForeground()
 {
-    ThrowIfDisposed ();
-    if (!(rxListener.is() && mnClientId))
-        return;
+    return sal_Int32(COL_BLACK);
+}
 
-    sal_Int32 nListenerCount = comphelper::AccessibleEventNotifier::removeEventListener( mnClientId, rxListener );
-    if ( !nListenerCount )
-    {
-        // no listeners anymore
-        // -> revoke ourself. This may lead to the notifier thread dying (if we were the last client),
-        // and at least to us not firing any events anymore, in case somebody calls
-        // NotifyAccessibleEvent, again
-        comphelper::AccessibleEventNotifier::revokeClient( mnClientId );
-        mnClientId = 0;
-    }
+
+sal_Int32 SAL_CALL AccessibleContextBase::getBackground()
+{
+    return sal_Int32(COL_WHITE);
 }
 
 // XServiceInfo
 OUString SAL_CALL AccessibleContextBase::getImplementationName()
 {
-    return "AccessibleContextBase";
+    return u"AccessibleContextBase"_ustr;
 }
 
 sal_Bool SAL_CALL AccessibleContextBase::supportsService (const OUString& sServiceName)
@@ -374,20 +318,8 @@ uno::Sequence< OUString > SAL_CALL
        AccessibleContextBase::getSupportedServiceNames()
 {
     return {
-        "com.sun.star.accessibility.Accessible",
-        "com.sun.star.accessibility.AccessibleContext"};
+        u"com.sun.star.accessibility.AccessibleContext"_ustr};
 }
-
-
-// XTypeProvider
-
-uno::Sequence<sal_Int8> SAL_CALL
-    AccessibleContextBase::getImplementationId()
-{
-    return css::uno::Sequence<sal_Int8>();
-}
-
-// internal
 
 void SAL_CALL AccessibleContextBase::disposing()
 {
@@ -395,12 +327,8 @@ void SAL_CALL AccessibleContextBase::disposing()
 
     ::osl::MutexGuard aGuard (m_aMutex);
 
-    // Send a disposing to all listeners.
-    if ( mnClientId )
-    {
-        comphelper::AccessibleEventNotifier::revokeClientNotifyDisposing( mnClientId, *this );
-        mnClientId =  0;
-    }
+    comphelper::OAccessible::disposing();
+
     mxParent.clear();
     mxRelationSet.clear();
 }
@@ -452,7 +380,7 @@ void AccessibleContextBase::SetAccessibleName (
 
 OUString AccessibleContextBase::CreateAccessibleName()
 {
-    return "Empty Name";
+    return u"Empty Name"_ustr;
 }
 
 
@@ -462,43 +390,12 @@ void AccessibleContextBase::CommitChange (
     const uno::Any& rOldValue,
     sal_Int32 nValueIndex)
 {
-    // Do not call FireEvent and do not even create the event object when no
-    // listener has been registered yet.  Creating the event object can
-    // otherwise lead to a crash.  See issue 93419 for details.
-    if (mnClientId != 0)
-    {
-        AccessibleEventObject aEvent (
-            static_cast<XAccessibleContext*>(this),
-            nEventId,
-            rNewValue,
-            rOldValue,
-            nValueIndex);
-
-        FireEvent (aEvent);
-    }
+    NotifyAccessibleEvent(nEventId, rOldValue, rNewValue, nValueIndex);
 }
-
-
-void AccessibleContextBase::FireEvent (const AccessibleEventObject& aEvent)
-{
-    if (mnClientId)
-        comphelper::AccessibleEventNotifier::addEvent( mnClientId, aEvent );
-}
-
-
-void AccessibleContextBase::ThrowIfDisposed()
-{
-    if (rBHelper.bDisposed || rBHelper.bInDispose)
-    {
-        throw lang::DisposedException ("object has been already disposed",
-            getXWeak());
-    }
-}
-
 
 bool AccessibleContextBase::IsDisposed() const
 {
-    return (rBHelper.bDisposed || rBHelper.bInDispose);
+    return !isAlive();
 }
 
 

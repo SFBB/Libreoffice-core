@@ -32,7 +32,7 @@
 #include <editeng/flditem.hxx>
 #include <editeng/editobj.hxx>
 #include <unotools/charclass.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 #include <stringutil.hxx>
 #include <cellform.hxx>
 #include <cellvalue.hxx>
@@ -88,7 +88,7 @@ void XclImpSst::ReadSst( XclImpStream& rStrm )
     {
         XclImpString aString;
         aString.Read( rStrm );
-        maStrings.push_back( aString );
+        maStrings.push_back(std::move(aString));
         --nStrCount;
     }
 }
@@ -166,10 +166,10 @@ void lclInsertUrl( XclImpRoot& rRoot, const OUString& rUrl, SCCOL nScCol, SCROW 
         case CELLTYPE_STRING:
         case CELLTYPE_EDIT:
         {
-            sal_uInt32 nNumFmt = rDoc.getDoc().GetNumberFormat(rDoc.getDoc().GetNonThreadedContext(), aScPos);
-            SvNumberFormatter* pFormatter = rDoc.getDoc().GetFormatTable();
+            ScInterpreterContext& rContext = rDoc.getDoc().GetNonThreadedContext();
+            sal_uInt32 nNumFmt = rDoc.getDoc().GetNumberFormat(rContext, aScPos);
             const Color* pColor;
-            OUString aDisplText = ScCellFormat::GetString(aCell, nNumFmt, &pColor, *pFormatter, rDoc.getDoc());
+            OUString aDisplText = ScCellFormat::GetString(aCell, nNumFmt, &pColor, &rContext, rDoc.getDoc());
             if (aDisplText.isEmpty())
                 aDisplText = rUrl;
 
@@ -180,7 +180,7 @@ void lclInsertUrl( XclImpRoot& rRoot, const OUString& rUrl, SCCOL nScCol, SCROW 
             {
                 const EditTextObject* pEditObj = aCell.getEditText();
                 rEE.SetTextCurrentDefaults( *pEditObj );
-                rEE.QuickInsertField( SvxFieldItem( aUrlField, EE_FEATURE_FIELD ), ESelection( 0, 0, EE_PARA_ALL, 0 ) );
+                rEE.QuickInsertField(SvxFieldItem(aUrlField, EE_FEATURE_FIELD), ESelection::All());
             }
             else
             {
@@ -190,7 +190,7 @@ void lclInsertUrl( XclImpRoot& rRoot, const OUString& rUrl, SCCOL nScCol, SCROW 
                 {
                     SfxItemSet aItemSet( rEE.GetEmptyItemSet() );
                     pPattern->FillEditItemSet( &aItemSet );
-                    rEE.QuickSetAttribs( aItemSet, ESelection( 0, 0, EE_PARA_ALL, 0 ) );
+                    rEE.QuickSetAttribs(aItemSet, ESelection::All());
                 }
             }
 
@@ -203,7 +203,7 @@ void lclInsertUrl( XclImpRoot& rRoot, const OUString& rUrl, SCCOL nScCol, SCROW 
         // Handle other cell types e.g. formulas ( and ? ) that have associated
         // hyperlinks.
         // Ideally all hyperlinks should be treated  as below. For the moment,
-        // given the current absence of ods support lets just handle what we
+        // given the current absence of ods support let's just handle what we
         // previously didn't handle the new way.
         // Unfortunately we won't be able to preserve such hyperlinks when
         // saving to ods. Note: when we are able to save such hyperlinks to ods
@@ -422,7 +422,7 @@ void XclImpHyperlink::InsertUrl( XclImpRoot& rRoot, const XclRange& rXclRange, c
         SCROW nScRow1, nScRow2;
         aScRange.GetVars( nScCol1, nScRow1, nScTab, nScCol2, nScRow2, nScTab );
 
-        if (utl::ConfigManager::IsFuzzing())
+        if (comphelper::IsFuzzing())
         {
             SCROW nRows = nScRow2 - nScRow1;
             if (nRows > 1024)
@@ -688,7 +688,7 @@ void XclImpCondFormat::ReadCF( XclImpStream& rStrm )
 
     if( !mxScCondFmt )
     {
-        mxScCondFmt.reset( new ScConditionalFormat( 0/*nKey*/, &GetDoc() ) );
+        mxScCondFmt.reset( new ScConditionalFormat( 0/*nKey*/, GetDoc() ) );
         if(maRanges.size() > 1)
             maRanges.Join(maRanges[0], true);
         mxScCondFmt->SetRange(maRanges);
@@ -706,7 +706,7 @@ void XclImpCondFormat::Apply()
         ScDocument& rDoc = GetDoc();
 
         SCTAB nTab = maRanges.front().aStart.Tab();
-        sal_uLong nKey = rDoc.AddCondFormat( mxScCondFmt->Clone(), nTab );
+        sal_uInt32 nKey = rDoc.AddCondFormat( mxScCondFmt->Clone(), nTab );
 
         rDoc.AddCondFormatData( maRanges, nTab, nKey );
     }
@@ -933,7 +933,7 @@ void XclImpValidationManager::ReadDV( XclImpStream& rStrm )
 
 void XclImpValidationManager::Apply()
 {
-    const bool bFuzzing = utl::ConfigManager::IsFuzzing();
+    const bool bFuzzing = comphelper::IsFuzzing();
     size_t nPatterns = 0;
 
     ScDocument& rDoc = GetRoot().GetDoc();
@@ -942,8 +942,8 @@ void XclImpValidationManager::Apply()
         DVItem& rItem = *rxDVItem;
         // set the handle ID
         sal_uInt32 nHandle = rDoc.AddValidationEntry( rItem.maValidData );
-        ScPatternAttr aPattern( rDoc.GetPool() );
-        aPattern.GetItemSet().Put( SfxUInt32Item( ATTR_VALIDDATA, nHandle ) );
+        ScPatternAttr aPattern(rDoc.getCellAttributeHelper());
+        aPattern.ItemSetPut(SfxUInt32Item(ATTR_VALIDDATA, nHandle));
 
         // apply all ranges
         for ( size_t i = 0, nRanges = rItem.maRanges.size(); i < nRanges; ++i, ++nPatterns )
@@ -1035,7 +1035,7 @@ void XclImpWebQuery::Apply( ScDocument& rDoc, const OUString& rFilterName )
 {
     if( !maURL.isEmpty() && (meMode != xlWQUnknown) && rDoc.GetDocumentShell() )
     {
-        ScAreaLink* pLink = new ScAreaLink( rDoc.GetDocumentShell(),
+        ScAreaLink* pLink = new ScAreaLink( *rDoc.GetDocumentShell(),
             maURL, rFilterName, OUString(), maTables, maDestRange, mnRefresh * 60UL );
         rDoc.GetLinkManager()->InsertFileLink( *pLink, sfx2::SvBaseLinkObjectType::ClientFile,
             maURL, &rFilterName, &maTables );

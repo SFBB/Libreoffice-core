@@ -25,6 +25,8 @@
 
 class SdPage;
 
+template <typename Arg, typename Ret> class Link;
+
 namespace sd::sidebar
 {
 class MasterPageDescriptor;
@@ -74,10 +76,6 @@ public:
     */
     PreviewSize GetPreviewSize() const { return mePreviewSize; }
 
-    /** Return the preview size in pixels.
-    */
-    Size const& GetPreviewSizePixel() const;
-
     enum PreviewState
     {
         PS_AVAILABLE,
@@ -86,6 +84,8 @@ public:
         PS_NOT_AVAILABLE
     };
     PreviewState GetPreviewState(Token aToken);
+
+    const Size& GetPreviewSizePixel();
 
     /** This method is typically called for entries in the container for
         which GetPreviewState() returns OS_CREATABLE.  The creation of the

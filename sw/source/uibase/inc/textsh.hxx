@@ -25,10 +25,8 @@
 #include <com/sun/star/ui/dialogs/DialogClosedEvent.hpp>
 
 class AbstractSvxPostItDialog;
-class SwFieldMgr;
 class SwFlyFrameAttrMgr;
 class SvxHyperlinkItem;
-class SwInsertChart;
 
 class SW_DLLPUBLIC SwTextShell: public SwBaseShell
 {
@@ -75,15 +73,15 @@ public:
     void    ExecParaAttr(SfxRequest &);
     void    ExecParaAttrArgs(SfxRequest &);
     void    ExecDB(SfxRequest const &);
-    void    ExecTransliteration(SfxRequest const &);
-    void    ExecRotateTransliteration(SfxRequest const &);
+    void    ExecTransliteration(SfxRequest &);
+    void    ExecRotateTransliteration(SfxRequest &);
 
     void    GetAttrState(SfxItemSet &);
 
              SwTextShell(SwView &rView);
     virtual ~SwTextShell() override;
     /// Create item set for the insert frame dialog.
-    SfxItemSet CreateInsertFrameItemSet(SwFlyFrameAttrMgr& rMgr);
+    std::shared_ptr<SfxItemSet> CreateInsertFrameItemSet(SwFlyFrameAttrMgr& rMgr);
 };
 
 #endif

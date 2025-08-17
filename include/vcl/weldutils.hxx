@@ -68,12 +68,12 @@ public:
     // css::awt::XWindow
     void SAL_CALL setPosSize(sal_Int32, sal_Int32, sal_Int32, sal_Int32, sal_Int16) override
     {
-        throw css::uno::RuntimeException("not implemented");
+        throw css::uno::RuntimeException(u"not implemented"_ustr);
     }
 
     css::awt::Rectangle SAL_CALL getPosSize() override
     {
-        throw css::uno::RuntimeException("not implemented");
+        throw css::uno::RuntimeException(u"not implemented"_ustr);
     }
 
     void SAL_CALL setVisible(sal_Bool bVisible) override { m_pWeldWidget->set_visible(bVisible); }
@@ -176,7 +176,7 @@ class SAL_DLLPUBLIC_TEMPLATE WidgetStatusListener_Base
 {
 };
 
-class VCL_DLLPUBLIC WidgetStatusListener final : public WidgetStatusListener_Base
+class UNLESS_MERGELIBS(VCL_DLLPUBLIC) WidgetStatusListener final : public WidgetStatusListener_Base
 {
 public:
     WidgetStatusListener(weld::Widget* widget, const OUString& rCommand);
@@ -255,7 +255,7 @@ private:
     SAL_DLLPRIVATE virtual void UpdateCurrentValue(double dCurrentValue) override;
 };
 
-class VCL_DLLPUBLIC DoubleNumericFormatter final : public EntryFormatter
+class UNLESS_MERGELIBS(VCL_DLLPUBLIC) DoubleNumericFormatter final : public EntryFormatter
 {
 public:
     DoubleNumericFormatter(weld::Entry& rEntry);
@@ -284,8 +284,8 @@ public:
     SAL_DLLPRIVATE virtual ~LongCurrencyFormatter() override;
 
 private:
-    DECL_DLLPRIVATE_LINK(FormatOutputHdl, LinkParamNone*, bool);
-    DECL_DLLPRIVATE_LINK(ParseInputHdl, sal_Int64*, TriState);
+    DECL_DLLPRIVATE_LINK(FormatOutputHdl, double, std::optional<OUString>);
+    DECL_DLLPRIVATE_LINK(ParseInputHdl, const OUString&, Formatter::ParseResult);
 
     SAL_DLLPRIVATE void Init();
 
@@ -312,8 +312,8 @@ public:
     virtual ~TimeFormatter() override;
 
 private:
-    DECL_DLLPRIVATE_LINK(FormatOutputHdl, LinkParamNone*, bool);
-    DECL_DLLPRIVATE_LINK(ParseInputHdl, sal_Int64*, TriState);
+    DECL_DLLPRIVATE_LINK(FormatOutputHdl, double, std::optional<OUString>);
+    DECL_DLLPRIVATE_LINK(ParseInputHdl, const OUString&, Formatter::ParseResult);
     DECL_DLLPRIVATE_LINK(CursorChangedHdl, weld::Entry&, void);
 
     SAL_DLLPRIVATE void Init();
@@ -345,8 +345,8 @@ public:
     virtual ~DateFormatter() override;
 
 private:
-    DECL_DLLPRIVATE_LINK(FormatOutputHdl, LinkParamNone*, bool);
-    DECL_DLLPRIVATE_LINK(ParseInputHdl, sal_Int64*, TriState);
+    DECL_DLLPRIVATE_LINK(FormatOutputHdl, double, std::optional<OUString>);
+    DECL_DLLPRIVATE_LINK(ParseInputHdl, const OUString&, Formatter::ParseResult);
     DECL_DLLPRIVATE_LINK(CursorChangedHdl, weld::Entry&, void);
 
     SAL_DLLPRIVATE void Init();
@@ -454,9 +454,6 @@ VCL_DLLPUBLIC bool IsEntryVisible(const weld::TreeView& rTreeView, const weld::T
 // A Parent's Children are turned into Children of the Parent which comes next in hierarchy
 VCL_DLLPUBLIC void RemoveParentKeepChildren(weld::TreeView& rTreeView,
                                             const weld::TreeIter& rParent);
-
-// return the min height of a weld::Entry
-VCL_DLLPUBLIC int GetMinimumEditHeight();
 
 // return the weld::Window of the SalFrame rOutWin is in, and convert rRect
 // from relative to rOutWin to relative to that weld::Window suitable for use

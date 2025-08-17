@@ -36,8 +36,8 @@
 #include <utility>
 
 SwUndoBookmark::SwUndoBookmark( SwUndoId nUndoId,
-            const ::sw::mark::IMark& rBkmk )
-    : SwUndo( nUndoId, &rBkmk.GetMarkPos().GetDoc() )
+            const ::sw::mark::MarkBase& rBkmk )
+    : SwUndo( nUndoId, rBkmk.GetMarkPos().GetDoc() )
     , m_pHistoryBookmark(new SwHistoryBookmark(rBkmk, true, rBkmk.IsExpanded()))
 {
 }
@@ -46,15 +46,15 @@ SwUndoBookmark::~SwUndoBookmark()
 {
 }
 
-void SwUndoBookmark::SetInDoc( SwDoc* pDoc )
+void SwUndoBookmark::SetInDoc( SwDoc& rDoc )
 {
-    m_pHistoryBookmark->SetInDoc( pDoc, false );
+    m_pHistoryBookmark->SetInDoc( rDoc, false );
 }
 
 void SwUndoBookmark::ResetInDoc( SwDoc& rDoc )
 {
     IDocumentMarkAccess* const pMarkAccess = rDoc.getIDocumentMarkAccess();
-    for ( IDocumentMarkAccess::const_iterator_t ppBkmk = pMarkAccess->getAllMarksBegin();
+    for ( auto ppBkmk = pMarkAccess->getAllMarksBegin();
           ppBkmk != pMarkAccess->getAllMarksEnd();
           ++ppBkmk )
     {
@@ -75,7 +75,7 @@ SwRewriter SwUndoBookmark::GetRewriter() const
     return aResult;
 }
 
-SwUndoInsBookmark::SwUndoInsBookmark( const ::sw::mark::IMark& rBkmk )
+SwUndoInsBookmark::SwUndoInsBookmark( const ::sw::mark::MarkBase& rBkmk )
     : SwUndoBookmark( SwUndoId::INSBOOKMARK, rBkmk )
 {
 }
@@ -87,17 +87,17 @@ void SwUndoInsBookmark::UndoImpl(::sw::UndoRedoContext & rContext)
 
 void SwUndoInsBookmark::RedoImpl(::sw::UndoRedoContext & rContext)
 {
-    SetInDoc( &rContext.GetDoc() );
+    SetInDoc( rContext.GetDoc() );
 }
 
-SwUndoDeleteBookmark::SwUndoDeleteBookmark( const ::sw::mark::IMark& rBkmk )
+SwUndoDeleteBookmark::SwUndoDeleteBookmark( const ::sw::mark::MarkBase& rBkmk )
     : SwUndoBookmark( SwUndoId::DELBOOKMARK, rBkmk )
 {
 }
 
 void SwUndoDeleteBookmark::UndoImpl(::sw::UndoRedoContext & rContext)
 {
-    SetInDoc( &rContext.GetDoc() );
+    SetInDoc( rContext.GetDoc() );
 }
 
 void SwUndoDeleteBookmark::RedoImpl(::sw::UndoRedoContext & rContext)
@@ -105,8 +105,8 @@ void SwUndoDeleteBookmark::RedoImpl(::sw::UndoRedoContext & rContext)
     ResetInDoc( rContext.GetDoc() );
 }
 
-SwUndoRenameBookmark::SwUndoRenameBookmark( OUString aOldName, OUString aNewName, const SwDoc& rDoc )
-    : SwUndo( SwUndoId::BOOKMARK_RENAME, &rDoc )
+SwUndoRenameBookmark::SwUndoRenameBookmark( SwMarkName aOldName, SwMarkName aNewName, const SwDoc& rDoc )
+    : SwUndo( SwUndoId::BOOKMARK_RENAME, rDoc )
     , m_sOldName(std::move( aOldName ))
     , m_sNewName(std::move( aNewName ))
 {
@@ -116,11 +116,11 @@ SwUndoRenameBookmark::~SwUndoRenameBookmark()
 {
 }
 
-static OUString lcl_QuoteName(std::u16string_view rName)
+static OUString lcl_QuoteName(const SwMarkName& rName)
 {
     static const OUString sStart = SwResId(STR_START_QUOTE);
     static const OUString sEnd = SwResId(STR_END_QUOTE);
-    return sStart + rName + sEnd;
+    return sStart + rName.toString() + sEnd;
 }
 
 SwRewriter SwUndoRenameBookmark::GetRewriter() const
@@ -132,10 +132,10 @@ SwRewriter SwUndoRenameBookmark::GetRewriter() const
     return aRewriter;
 }
 
-void SwUndoRenameBookmark::Rename(::sw::UndoRedoContext const & rContext, const OUString& sFrom, const OUString& sTo)
+void SwUndoRenameBookmark::Rename(::sw::UndoRedoContext const & rContext, const SwMarkName& sFrom, const SwMarkName& sTo)
 {
     IDocumentMarkAccess* const pMarkAccess = rContext.GetDoc().getIDocumentMarkAccess();
-    IDocumentMarkAccess::const_iterator_t ppBkmk = pMarkAccess->findMark(sFrom);
+    auto ppBkmk = pMarkAccess->findMark(sFrom);
     if (ppBkmk != pMarkAccess->getAllMarksEnd())
     {
         pMarkAccess->renameMark( *ppBkmk, sTo );
@@ -152,8 +152,8 @@ void SwUndoRenameBookmark::RedoImpl(::sw::UndoRedoContext & rContext)
     Rename(rContext, m_sOldName, m_sNewName);
 }
 
-SwUndoInsNoTextFieldmark::SwUndoInsNoTextFieldmark(const ::sw::mark::IFieldmark& rFieldmark)
-    : SwUndo(SwUndoId::INSERT, &rFieldmark.GetMarkPos().GetDoc())
+SwUndoInsNoTextFieldmark::SwUndoInsNoTextFieldmark(const ::sw::mark::Fieldmark& rFieldmark)
+    : SwUndo(SwUndoId::INSERT, rFieldmark.GetMarkPos().GetDoc())
     , m_pHistoryNoTextFieldmark(new SwHistoryNoTextFieldmark(rFieldmark))
 {
 }
@@ -165,11 +165,11 @@ void SwUndoInsNoTextFieldmark::UndoImpl(::sw::UndoRedoContext & rContext)
 
 void SwUndoInsNoTextFieldmark::RedoImpl(::sw::UndoRedoContext & rContext)
 {
-    m_pHistoryNoTextFieldmark->SetInDoc(&rContext.GetDoc(), false);
+    m_pHistoryNoTextFieldmark->SetInDoc(rContext.GetDoc(), false);
 }
 
-SwUndoDelNoTextFieldmark::SwUndoDelNoTextFieldmark(const ::sw::mark::IFieldmark& rFieldmark)
-    : SwUndo(SwUndoId::DELETE, &rFieldmark.GetMarkPos().GetDoc())
+SwUndoDelNoTextFieldmark::SwUndoDelNoTextFieldmark(const ::sw::mark::Fieldmark& rFieldmark)
+    : SwUndo(SwUndoId::DELETE, rFieldmark.GetMarkPos().GetDoc())
     , m_pHistoryNoTextFieldmark(new SwHistoryNoTextFieldmark(rFieldmark))
 {
 }
@@ -178,7 +178,7 @@ SwUndoDelNoTextFieldmark::~SwUndoDelNoTextFieldmark() = default;
 
 void SwUndoDelNoTextFieldmark::UndoImpl(::sw::UndoRedoContext & rContext)
 {
-    m_pHistoryNoTextFieldmark->SetInDoc(&rContext.GetDoc(), false);
+    m_pHistoryNoTextFieldmark->SetInDoc(rContext.GetDoc(), false);
 }
 
 void SwUndoDelNoTextFieldmark::RedoImpl(::sw::UndoRedoContext & rContext)
@@ -186,8 +186,8 @@ void SwUndoDelNoTextFieldmark::RedoImpl(::sw::UndoRedoContext & rContext)
     m_pHistoryNoTextFieldmark->ResetInDoc(rContext.GetDoc());
 }
 
-SwUndoInsTextFieldmark::SwUndoInsTextFieldmark(const ::sw::mark::IFieldmark& rFieldmark)
-    : SwUndo(SwUndoId::INSERT, &rFieldmark.GetMarkPos().GetDoc())
+SwUndoInsTextFieldmark::SwUndoInsTextFieldmark(const ::sw::mark::Fieldmark& rFieldmark)
+    : SwUndo(SwUndoId::INSERT, rFieldmark.GetMarkPos().GetDoc())
     , m_pHistoryTextFieldmark(new SwHistoryTextFieldmark(rFieldmark))
 {
 }
@@ -199,11 +199,11 @@ void SwUndoInsTextFieldmark::UndoImpl(::sw::UndoRedoContext & rContext)
 
 void SwUndoInsTextFieldmark::RedoImpl(::sw::UndoRedoContext & rContext)
 {
-    m_pHistoryTextFieldmark->SetInDoc(&rContext.GetDoc(), false);
+    m_pHistoryTextFieldmark->SetInDoc(rContext.GetDoc(), false);
 }
 
-SwUndoDelTextFieldmark::SwUndoDelTextFieldmark(const ::sw::mark::IFieldmark& rFieldmark)
-    : SwUndo(SwUndoId::DELETE, &rFieldmark.GetMarkPos().GetDoc())
+SwUndoDelTextFieldmark::SwUndoDelTextFieldmark(const ::sw::mark::Fieldmark& rFieldmark)
+    : SwUndo(SwUndoId::DELETE, rFieldmark.GetMarkPos().GetDoc())
     , m_pHistoryTextFieldmark(new SwHistoryTextFieldmark(rFieldmark))
 {
 }
@@ -212,7 +212,7 @@ SwUndoDelTextFieldmark::~SwUndoDelTextFieldmark() = default;
 
 void SwUndoDelTextFieldmark::UndoImpl(::sw::UndoRedoContext & rContext)
 {
-    m_pHistoryTextFieldmark->SetInDoc(&rContext.GetDoc(), false);
+    m_pHistoryTextFieldmark->SetInDoc(rContext.GetDoc(), false);
 }
 
 void SwUndoDelTextFieldmark::RedoImpl(::sw::UndoRedoContext & rContext)

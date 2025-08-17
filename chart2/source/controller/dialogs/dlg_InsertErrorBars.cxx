@@ -20,19 +20,14 @@
 #include <dlg_InsertErrorBars.hxx>
 #include <res_ErrorBar.hxx>
 #include <chartview/ExplicitScaleValues.hxx>
-#include <chartview/ExplicitValueProvider.hxx>
-#include <ChartModelHelper.hxx>
 #include <ChartModel.hxx>
 #include <ChartView.hxx>
 #include <ObjectIdentifier.hxx>
-#include <DiagramHelper.hxx>
 #include <Diagram.hxx>
 #include <Axis.hxx>
 #include <AxisHelper.hxx>
 #include <ObjectNameProvider.hxx>
 #include <DataSeries.hxx>
-
-#include <comphelper/servicehelper.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::chart2;
@@ -44,7 +39,7 @@ InsertErrorBarsDialog::InsertErrorBarsDialog(
     weld::Window* pParent, const SfxItemSet& rMyAttrs,
     const rtl::Reference<::chart::ChartModel> & xChartDocument,
     ErrorBarResources::tErrorBarType eType /* = ErrorBarResources::ERROR_BAR_Y */ )
-        : GenericDialogController(pParent, "modules/schart/ui/dlg_InsertErrorBars.ui", "dlg_InsertErrorBars")
+        : GenericDialogController(pParent, u"modules/schart/ui/dlg_InsertErrorBars.ui"_ustr, u"dlg_InsertErrorBars"_ustr)
         , m_apErrorBarResources( new ErrorBarResources(
                                    m_xBuilder.get(), this, rMyAttrs,
                                    /* bNoneAvailable = */ true, eType ))
@@ -73,7 +68,7 @@ double InsertErrorBarsDialog::getAxisMinorStepWidthForErrorBarDecimals(
 {
     double fStepWidth = 0.001;
 
-    ExplicitValueProvider* pExplicitValueProvider( xChartView.get() );
+    ChartView* pExplicitValueProvider( xChartView.get() );
     if( pExplicitValueProvider )
     {
         rtl::Reference< Diagram > xDiagram( xChartModel->getFirstChartDiagram() );

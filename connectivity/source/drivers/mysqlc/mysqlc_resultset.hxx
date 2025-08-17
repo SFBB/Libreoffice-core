@@ -37,10 +37,12 @@
 #include <com/sun/star/util/XCancellable.hpp>
 
 #include <cppuhelper/compbase12.hxx>
+#include <unotools/weakref.hxx>
 
 namespace connectivity::mysqlc
 {
 using ::com::sun::star::uno::Any;
+class OResultSetMetaData;
 
 /*
         **  OResultSet
@@ -61,8 +63,8 @@ class OResultSet final : public cppu::BaseMutex,
     std::vector<DataFields> m_aRows;
     std::vector<OUString> m_aFields;
     MYSQL* m_pMysql = nullptr;
-    css::uno::WeakReferenceHelper m_aStatement;
-    css::uno::Reference<css::sdbc::XResultSetMetaData> m_xMetaData;
+    unotools::WeakReference<OCommonStatement> m_aStatement;
+    rtl::Reference<OResultSetMetaData> m_xMetaData;
     MYSQL_RES* m_pResult;
     rtl_TextEncoding m_encoding;
     bool m_bWasNull = false; // did the last getXXX result null?

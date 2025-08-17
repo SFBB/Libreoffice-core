@@ -30,6 +30,59 @@
 #include <osx/salnsmenu.h>
 
 @implementation SalNSMenu
+
++(BOOL)dispatchSpecialKeyEquivalents: (NSEvent*)pEvent
+{
+    if( pEvent && [pEvent type] == NSEventTypeKeyDown )
+    {
+        // Related tdf#126638 and tdf#162010: match against -[NSEvent characters]
+        // When using some non-Western European keyboard layouts, the event's
+        // "characters ignoring modifiers" will be set to the original Unicode
+        // character instead of the resolved key equivalent character so match
+        // against the -[NSEvent characters] instead.
+        NSEventModifierFlags nModMask = ([pEvent modifierFlags] & (NSEventModifierFlagShift|NSEventModifierFlagControl|NSEventModifierFlagOption|NSEventModifierFlagCommand));
+        NSString *pCharacters = [pEvent characters];
+        if( nModMask == NSEventModifierFlagCommand )
+        {
+            if( [pCharacters isEqualToString: @"v"] )
+            {
+                if( [NSApp sendAction: @selector(paste:) to: nil from: nil] )
+                    return YES;
+            }
+            else if( [pCharacters isEqualToString: @"c"] )
+            {
+                if( [NSApp sendAction: @selector(copy:) to: nil from: nil] )
+                    return YES;
+            }
+            else if( [pCharacters isEqualToString: @"x"] )
+            {
+                if( [NSApp sendAction: @selector(cut:) to: nil from: nil] )
+                    return YES;
+            }
+            else if( [pCharacters isEqualToString: @"a"] )
+            {
+                if( [NSApp sendAction: @selector(selectAll:) to: nil from: nil] )
+                    return YES;
+            }
+            else if( [pCharacters isEqualToString: @"z"] )
+            {
+                if( [NSApp sendAction: @selector(undo:) to: nil from: nil] )
+                    return YES;
+            }
+        }
+        else if( nModMask == (NSEventModifierFlagCommand|NSEventModifierFlagShift) )
+        {
+            if( [pCharacters isEqualToString: @"z"] || [pCharacters isEqualToString: @"Z"] )
+            {
+                if( [NSApp sendAction: @selector(redo:) to: nil from: nil] )
+                    return YES;
+            }
+        }
+    }
+
+    return NO;
+}
+
 -(id)initWithMenu: (AquaSalMenu*)pMenu
 {
     mpMenu = pMenu;
@@ -42,6 +95,44 @@
 
     if( mpMenu )
     {
+        // Related: tdf#165448 hide menu items inserted by macOS if child window
+        // For some unknown reason, none of the menu items that macOS inserts
+        // into the windows menu work if the key window is a native child
+        // window of another window. Unfortunately, LibreOffice depends on
+        // a dialog window being a native child window of its parent window
+        // to mimic native modal dialogs so hide all the those menu items.
+        if( pMenu && pMenu == [NSApp windowsMenu] )
+        {
+            NSWindow *pKeyWin = [NSApp keyWindow];
+            bool bHidden = pKeyWin && [pKeyWin parentWindow];
+
+            int nItems = [pMenu numberOfItems];
+            bool bLastItemIsNative = false;
+            for( int n = mpMenu->mbMenuBar ? 1 : 0; n < nItems; n++ )
+            {
+                NSMenuItem* pItem = [pMenu itemAtIndex: n];
+                if( [pItem isKindOfClass: [SalNSMenuItem class]] )
+                {
+                    bLastItemIsNative = false;
+                }
+                else if( [pItem isSeparatorItem] )
+                {
+                    if ( bLastItemIsNative )
+                    {
+                        // Assume that macOS does not insert more than one
+                        // separator item in a row
+                        bLastItemIsNative = false;
+                        [pItem setHidden: bHidden];
+                    }
+                }
+                else
+                {
+                    bLastItemIsNative = true;
+                    [pItem setHidden: bHidden];
+                }
+            }
+        }
+
         const AquaSalFrame* pFrame = mpMenu->getFrame();
         if( pFrame && AquaSalFrame::isAlive( pFrame ) )
         {
@@ -89,8 +180,15 @@
                     action: @selector(menuItemTriggered:)
                     keyEquivalent: [NSString string]];
     [ret setTarget: self];
+    mbReallyEnabled = [ret isEnabled];
     return ret;
 }
+
+-(BOOL)isReallyEnabled
+{
+    return mbReallyEnabled;
+}
+
 -(void)menuItemTriggered: (id)aSender
 {
     (void)aSender;
@@ -112,19 +210,59 @@
     // tdf#49853 Keyboard shortcuts are also handled by the menu bar, but at least some of them
     // must still end up in the view. This is necessary to handle common edit actions in docked
     // windows (e.g. in toolbar fields).
-    NSEvent* pEvent = [NSApp currentEvent];
-    if( pEvent && [pEvent type] == NSEventTypeKeyDown )
+    if( pKeyWin )
     {
-        unsigned int nModMask = ([pEvent modifierFlags] & (NSEventModifierFlagShift|NSEventModifierFlagControl|NSEventModifierFlagOption|NSEventModifierFlagCommand));
-        NSString* charactersIgnoringModifiers = [pEvent charactersIgnoringModifiers];
+        // tdf#162010 match based on key equivalent instead of key event
+        // The original fix for tdf#49853 only looked worked in the
+        // case when both a key shortcut was pressed and the resulting
+        // key event was not an input method event. If either of these
+        // conditions weren't true, tdf#49853 would still occur.
+        // Since we know which menu item is being triggered, check if
+        // this menu item's key equivalent has been set to one of the
+        // edit actions.
+        // This change basically expands the fix for tdf#49853 to
+        // include all cases that trigger a menu item, not just simple
+        // key events.
+        NSEventModifierFlags nModMask = [self keyEquivalentModifierMask];
+        NSString* pCharacters = [self keyEquivalent];
         if( nModMask == NSEventModifierFlagCommand &&
-          ( [charactersIgnoringModifiers isEqualToString: @"v"] ||
-            [charactersIgnoringModifiers isEqualToString: @"c"] ||
-            [charactersIgnoringModifiers isEqualToString: @"x"] ||
-            [charactersIgnoringModifiers isEqualToString: @"a"] ||
-            [charactersIgnoringModifiers isEqualToString: @"z"] ) )
+          ( [pCharacters isEqualToString: @"v"] ||
+            [pCharacters isEqualToString: @"c"] ||
+            [pCharacters isEqualToString: @"x"] ||
+            [pCharacters isEqualToString: @"a"] ||
+            [pCharacters isEqualToString: @"z"] ) )
         {
-            [[[NSApp keyWindow] contentView] keyDown: pEvent];
+            NSEvent* pKeyEvent = nil;
+            NSEvent* pEvent = [NSApp currentEvent];
+            if( pEvent )
+            {
+                switch( [pEvent type] )
+                {
+                    case NSEventTypeKeyDown:
+                    case NSEventTypeKeyUp:
+                    case NSEventTypeFlagsChanged:
+                        // tdf#162843 replace the event's string parameters
+                        // When using the Dvorak - QWERTY keyboard, the
+                        // event's charactersIgnoringModifiers string causes
+                        // pasting to fail so replace both the event's
+                        // characters and charactersIgnoringModifiers strings
+                        // with this menu item's key equivalent.
+                        pKeyEvent = [NSEvent keyEventWithType: [pEvent type] location: [pEvent locationInWindow] modifierFlags: nModMask timestamp: [pEvent timestamp] windowNumber: [pEvent windowNumber] context: nil characters: pCharacters charactersIgnoringModifiers: pCharacters isARepeat: [pEvent isARepeat] keyCode: [pEvent keyCode]];
+                        break;
+                    default:
+                        break;
+                }
+            }
+
+            if( !pKeyEvent )
+            {
+                // Native key events appear to set the location to the
+                // top left corner of the key window
+                NSPoint aPoint = NSMakePoint(0, [pKeyWin frame].size.height);
+                pKeyEvent = [NSEvent keyEventWithType: NSEventTypeKeyDown location: aPoint modifierFlags: nModMask timestamp: [[NSProcessInfo processInfo] systemUptime] windowNumber: [pKeyWin windowNumber] context: nil characters: pCharacters charactersIgnoringModifiers: pCharacters isARepeat: NO keyCode: 0];
+            }
+
+            [[pKeyWin contentView] keyDown: pKeyEvent];
             return;
         }
     }
@@ -166,6 +304,51 @@
         else
             OSL_FAIL( "menubar item without frame !" );
     }
+}
+
+-(void)setReallyEnabled: (BOOL)bEnabled
+{
+    mbReallyEnabled = bEnabled;
+    [self setEnabled: mbReallyEnabled];
+}
+
+-(BOOL)validateMenuItem: (NSMenuItem *)pMenuItem
+{
+    // Related: tdf#126638 disable all menu items when displaying modal windows
+    // For some unknown reason, key shortcuts are dispatched to the LibreOffice
+    // menu items instead of the modal window so disable all LibreOffice menu
+    // items while a native modal dialog such as the native Open, Save, or
+    // Print dialog is displayed.
+    if (!pMenuItem || [NSApp modalWindow])
+        return NO;
+
+    // Related: tdf#161623 the menubar is always visible when in native
+    // full screen mode so disable all menu items when also in LibreOffice
+    // full screen mode to mimic the effect of a hidden menubar.
+    SolarMutexGuard aGuard;
+    const AquaSalFrame* pFrame = mpMenuItem->mpParentMenu ? mpMenuItem->mpParentMenu->getFrame() : nullptr;
+    if (pFrame && AquaSalFrame::isAlive( pFrame ) && pFrame->mbInternalFullScreen)
+    {
+        NSMenu *pMainMenu = [NSApp mainMenu];
+        NSMenu *pParentMenu = [pMenuItem menu];
+        while (pParentMenu && pParentMenu != pMainMenu)
+            pParentMenu = [pParentMenu supermenu];
+        if (pParentMenu && pParentMenu == pMainMenu)
+            return NO;
+    }
+
+    // Related: tdf#126638 return the last enabled state set by the LibreOffice code
+    // Apparently whatever is returned will be passed to
+    // -[NSMenuItem setEnabled:] which can cause the enabled state
+    // to be different than the enabled state that the LibreOffice
+    // code expects. This results in menu items failing to be
+    // reenabled after being temporarily disabled such as when a
+    // native modal dialog is closed. So, return the last enabled
+    // state set by the LibreOffice code.
+    if ([pMenuItem isKindOfClass: [SalNSMenuItem class]])
+        return [static_cast<SalNSMenuItem*>(pMenuItem) isReallyEnabled];
+    else
+        return [pMenuItem isEnabled];
 }
 @end
 
@@ -257,5 +440,53 @@ SAL_WNODEPRECATED_DECLARATIONS_POP
 }
 @end
 
+@implementation SalNSMainMenu
+
+- (id)initWithTitle:(NSString*)pTitle
+{
+    mpLastPerformKeyEquivalentEvent = nil;
+    return [super initWithTitle:pTitle];
+}
+
+- (void)dealloc
+{
+    if (mpLastPerformKeyEquivalentEvent)
+        [mpLastPerformKeyEquivalentEvent release];
+
+    [super dealloc];
+}
+
+- (BOOL)performKeyEquivalent:(NSEvent*)pEvent
+{
+    // Related: tdf#162843 prevent dispatch of the same event more than once
+    // When pressing Command-V with a Dvorak - QWERTY keyboard,
+    // that single event passes through this selector twice which
+    // causes content to be pasted twice in any text fields in the
+    // Find and Replace dialog.
+    if (pEvent == mpLastPerformKeyEquivalentEvent)
+        return false;
+
+    if (mpLastPerformKeyEquivalentEvent)
+        [mpLastPerformKeyEquivalentEvent release];
+    mpLastPerformKeyEquivalentEvent = pEvent;
+    if (mpLastPerformKeyEquivalentEvent)
+        [mpLastPerformKeyEquivalentEvent retain];
+
+    bool bRet = [super performKeyEquivalent: pEvent];
+
+    // tdf#126638 dispatch key shortcut events to modal windows
+    // Some modal windows, such as the native Open and Save dialogs,
+    // return NO from -[NSWindow performKeyEquivalent:]. Fortunately,
+    // the main menu's -[NSMenu performKeyEquivalent:] is then called
+    // so we can catch and redirect any modal window's key shortcut
+    // events without triggering the modal window's "disallowed
+    // action" beep.
+    if( !bRet && [NSApp modalWindow] )
+        bRet = [SalNSMenu dispatchSpecialKeyEquivalents: pEvent];
+
+    return bRet;
+}
+
+@end
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

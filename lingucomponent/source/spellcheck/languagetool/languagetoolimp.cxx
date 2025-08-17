@@ -47,8 +47,13 @@
 #include <sal/log.hxx>
 #include <tools/color.hxx>
 #include <tools/long.hxx>
+#include <framework/interaction.hxx>
+#include <com/sun/star/task/InteractionClassification.hpp>
+#include <com/sun/star/task/InteractionHandler.hpp>
 #include <com/sun/star/text/TextMarkupType.hpp>
+#include <com/sun/star/ucb/InteractiveNetworkConnectException.hpp>
 #include <com/sun/star/uno/Any.hxx>
+#include <comphelper/interaction.hxx>
 #include <comphelper/propertyvalue.hxx>
 #include <unotools/lingucfg.hxx>
 #include <osl/mutex.hxx>
@@ -83,7 +88,7 @@ PropertyValue lcl_GetLineColorPropertyFromErrorId(const std::string& rErrorId)
         constexpr Color COL_ORANGE(0xD1, 0x68, 0x20);
         aColor = COL_ORANGE;
     }
-    return comphelper::makePropertyValue("LineColor", aColor);
+    return comphelper::makePropertyValue(u"LineColor"_ustr, aColor);
 }
 
 OString encodeTextForLT(const OUString& text)
@@ -121,7 +126,7 @@ enum class HTTP_METHOD
 
 std::string makeHttpRequest_impl(std::u16string_view aURL, HTTP_METHOD method,
                                  const OString& aPostData, curl_slist* pHttpHeader,
-                                 tools::Long& nStatusCode)
+                                 tools::Long& nStatusCode, CURLcode& eCURLCode)
 {
     struct curl_cleanup_t
     {
@@ -160,11 +165,12 @@ std::string makeHttpRequest_impl(std::u16string_view aURL, HTTP_METHOD method,
         (void)curl_easy_setopt(curl.get(), CURLOPT_POSTFIELDS, aPostData.getStr());
     }
 
-    CURLcode cc = curl_easy_perform(curl.get());
-    if (cc != CURLE_OK)
+    eCURLCode = curl_easy_perform(curl.get());
+    if (eCURLCode != CURLE_OK)
     {
         SAL_WARN("languagetool",
-                 "CURL request returned with error: " << static_cast<sal_Int32>(cc));
+                 "CURL request returned with error: " << static_cast<sal_Int32>(eCURLCode) << " "
+                                                      << curl_easy_strerror(eCURLCode));
     }
 
     curl_easy_getinfo(curl.get(), CURLINFO_RESPONSE_CODE, &nStatusCode);
@@ -172,7 +178,7 @@ std::string makeHttpRequest_impl(std::u16string_view aURL, HTTP_METHOD method,
 }
 
 std::string makeDudenHttpRequest(std::u16string_view aURL, const OString& aPostData,
-                                 tools::Long& nStatusCode)
+                                 tools::Long& nStatusCode, CURLcode& eCURLCode)
 {
     struct curl_slist* pList = nullptr;
     OString sAccessToken
@@ -186,11 +192,12 @@ std::string makeDudenHttpRequest(std::u16string_view aURL, const OString& aPostD
         pList = curl_slist_append(pList, sAccessToken.getStr());
     }
 
-    return makeHttpRequest_impl(aURL, HTTP_METHOD::HTTP_POST, aPostData, pList, nStatusCode);
+    return makeHttpRequest_impl(aURL, HTTP_METHOD::HTTP_POST, aPostData, pList, nStatusCode,
+                                eCURLCode);
 }
 
 std::string makeHttpRequest(std::u16string_view aURL, HTTP_METHOD method, const OString& aPostData,
-                            tools::Long& nStatusCode)
+                            tools::Long& nStatusCode, CURLcode& eCURLCode)
 {
     OString realPostData(aPostData);
     if (method == HTTP_METHOD::HTTP_POST)
@@ -202,7 +209,7 @@ std::string makeHttpRequest(std::u16string_view aURL, HTTP_METHOD method, const 
             realPostData += "&username=" + encodeTextForLT(username) + "&apiKey=" + apiKey;
     }
 
-    return makeHttpRequest_impl(aURL, method, realPostData, nullptr, nStatusCode);
+    return makeHttpRequest_impl(aURL, method, realPostData, nullptr, nStatusCode, eCURLCode);
 }
 
 template <typename Func>
@@ -210,7 +217,16 @@ uno::Sequence<SingleProofreadingError> parseJson(std::string&& json, std::string
 {
     std::stringstream aStream(std::move(json)); // Optimized in C++20
     boost::property_tree::ptree aRoot;
-    boost::property_tree::read_json(aStream, aRoot);
+
+    // tdf#161858 prevent crashing by catching any JSON exceptions
+    try
+    {
+        boost::property_tree::read_json(aStream, aRoot);
+    }
+    catch (std::runtime_error&)
+    {
+        SAL_WARN("languagetool", "parseJson: read_json() threw exception");
+    }
 
     if (auto tree = aRoot.get_child_optional(path))
     {
@@ -226,28 +242,41 @@ uno::Sequence<SingleProofreadingError> parseJson(std::string&& json, std::string
     return {};
 }
 
+OUString DudenTypeToComment(const std::string& type, const std::locale& loc)
+{
+    // TODO: consider also "errorcode", some values of which are explained
+    // at https://main.dks.epc.de/doc/Relnotes.html
+    TranslateId id = STR_DESCRIPTION_SPELLING_ERROR; // matches both "orth" and "term"
+    if (type == "gram")
+        id = STR_DESCRIPTION_GRAMMAR_ERROR;
+    else if (type == "style")
+        id = STR_DESCRIPTION_STYLE_ERROR;
+    return Translate::get(id, loc);
+}
+
 void parseDudenResponse(ProofreadingResult& rResult, std::string&& aJSONBody)
 {
     rResult.aErrors = parseJson(
         std::move(aJSONBody), "check-positions",
-        [](const boost::property_tree::ptree& rPos, SingleProofreadingError& rError) {
+        [locale = Translate::Create("svt", LanguageTag(rResult.aLocale))](
+            const boost::property_tree::ptree& rPos, SingleProofreadingError& rError) {
             rError.nErrorStart = rPos.get<int>("offset", 0);
             rError.nErrorLength = rPos.get<int>("length", 0);
             rError.nErrorType = text::TextMarkupType::PROOFREADING;
-            //rError.aShortComment = ??
-            //rError.aFullComment = ??
             const std::string sType = rPos.get<std::string>("type", {});
+            rError.aShortComment = DudenTypeToComment(sType, locale);
+            rError.aFullComment = rError.aShortComment;
             rError.aProperties = { lcl_GetLineColorPropertyFromErrorId(sType) };
 
-            const auto proposals = rPos.get_child_optional("proposals");
-            if (!proposals)
-                return;
-            rError.aSuggestions.realloc(std::min(proposals->size(), MAX_SUGGESTIONS_SIZE));
-            auto itProp = proposals->begin();
-            for (auto& rSuggestion : asNonConstRange(rError.aSuggestions))
+            if (const auto proposals = rPos.get_child_optional("proposals"))
             {
-                rSuggestion = OStringToOUString(itProp->second.data(), RTL_TEXTENCODING_UTF8);
-                itProp++;
+                rError.aSuggestions.realloc(std::min(proposals->size(), MAX_SUGGESTIONS_SIZE));
+                auto itProp = proposals->begin();
+                for (auto& rSuggestion : asNonConstRange(rError.aSuggestions))
+                {
+                    rSuggestion = OStringToOUString(itProp->second.data(), RTL_TEXTENCODING_UTF8);
+                    itProp++;
+                }
             }
         });
 }
@@ -301,10 +330,41 @@ OUString getCheckerURL()
             return *oURL + "/check";
     return {};
 }
+
+void lclShowCURLErrorInteraction(const css::uno::Reference<css::uno::XComponentContext>& xContext,
+                                 CURLcode eCURLCode, const OUString& rServer)
+{
+    if (!xContext.is())
+        return;
+
+    css::uno::Reference<task::XInteractionHandler2> xInteractionHandler
+        = task::InteractionHandler::createWithParent(xContext, nullptr);
+    if (!xInteractionHandler.is())
+        return;
+
+    css::uno::Any aInteraction;
+
+    rtl::Reference<comphelper::OInteractionApprove> pApprove
+        = new comphelper::OInteractionApprove();
+    css::uno::Sequence<css::uno::Reference<css::task::XInteractionContinuation>> aContinuations{
+        pApprove
+    };
+
+    ucb::InteractiveNetworkConnectException aException(
+        { "(" + OUString::number(eCURLCode) + ") "
+          + OStringToOUString(curl_easy_strerror(eCURLCode), RTL_TEXTENCODING_UTF8) },
+        {}, task::InteractionClassification_ERROR, rServer);
+
+    aInteraction <<= aException;
+    xInteractionHandler->handle(
+        framework::InteractionRequest::CreateRequest(aInteraction, aContinuations));
+}
 }
 
-LanguageToolGrammarChecker::LanguageToolGrammarChecker()
+LanguageToolGrammarChecker::LanguageToolGrammarChecker(
+    const css::uno::Reference<css::uno::XComponentContext>& xContext)
     : mCachedResults(10)
+    , mxContext(xContext)
 {
 }
 
@@ -317,7 +377,7 @@ sal_Bool SAL_CALL LanguageToolGrammarChecker::hasLocale(const Locale& rLocale)
     if (!m_aSuppLocales.hasElements())
         getLocales();
 
-    for (auto const& suppLocale : std::as_const(m_aSuppLocales))
+    for (auto const& suppLocale : m_aSuppLocales)
         if (rLocale == suppLocale)
             return true;
 
@@ -346,8 +406,9 @@ uno::Sequence<Locale> SAL_CALL LanguageToolGrammarChecker::getLocales()
         aLocaleList.getArray()[2] = "en-GB";
     }
     else
-        aLinguCfg.GetLocaleListFor("GrammarCheckers",
-                                   "org.openoffice.lingu.LanguageToolGrammarChecker", aLocaleList);
+        aLinguCfg.GetLocaleListFor(u"GrammarCheckers"_ustr,
+                                   u"org.openoffice.lingu.LanguageToolGrammarChecker"_ustr,
+                                   aLocaleList);
 
     auto nLength = aLocaleList.getLength();
     m_aSuppLocales.realloc(nLength);
@@ -451,10 +512,22 @@ ProofreadingResult SAL_CALL LanguageToolGrammarChecker::doProofreading(
 
     tools::Long http_code = 0;
     std::string response_body;
+    CURLcode eCURLCode = CURLE_OK;
     if (bDudenProtocol)
-        response_body = makeDudenHttpRequest(checkerURL, postData, http_code);
+        response_body = makeDudenHttpRequest(checkerURL, postData, http_code, eCURLCode);
     else
-        response_body = makeHttpRequest(checkerURL, HTTP_METHOD::HTTP_POST, postData, http_code);
+        response_body
+            = makeHttpRequest(checkerURL, HTTP_METHOD::HTTP_POST, postData, http_code, eCURLCode);
+
+    if (eCURLCode != CURLE_OK)
+    {
+        // show the cURL error only once for a given checkerURL
+        if (maLastErrorCheckerURL != checkerURL)
+        {
+            maLastErrorCheckerURL = checkerURL;
+            lclShowCURLErrorInteraction(mxContext, eCURLCode, checkerURL);
+        }
+    }
 
     if (http_code != 200)
     {
@@ -494,7 +567,7 @@ OUString SAL_CALL LanguageToolGrammarChecker::getServiceDisplayName(const Locale
 
 OUString SAL_CALL LanguageToolGrammarChecker::getImplementationName()
 {
-    return "org.openoffice.lingu.LanguageToolGrammarChecker";
+    return u"org.openoffice.lingu.LanguageToolGrammarChecker"_ustr;
 }
 
 sal_Bool SAL_CALL LanguageToolGrammarChecker::supportsService(const OUString& ServiceName)
@@ -511,9 +584,9 @@ void SAL_CALL LanguageToolGrammarChecker::initialize(const uno::Sequence<uno::An
 
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 lingucomponent_LanguageToolGrammarChecker_get_implementation(
-    css::uno::XComponentContext*, css::uno::Sequence<css::uno::Any> const&)
+    css::uno::XComponentContext* pContext, css::uno::Sequence<css::uno::Any> const&)
 {
-    return cppu::acquire(new LanguageToolGrammarChecker());
+    return cppu::acquire(new LanguageToolGrammarChecker(pContext));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

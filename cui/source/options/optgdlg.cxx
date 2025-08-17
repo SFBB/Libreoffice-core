@@ -34,7 +34,6 @@
 #include <svl/languageoptions.hxx>
 #include <svl/cjkoptions.hxx>
 #include <svl/ctloptions.hxx>
-#include <svtools/miscopt.hxx>
 #include <unotools/syslocaleoptions.hxx>
 #include <sfx2/objsh.hxx>
 #include <comphelper/propertysequence.hxx>
@@ -52,6 +51,7 @@
 #include <GraphicsTestsDialog.hxx>
 #include <unotools/searchopt.hxx>
 #include <sal/log.hxx>
+#include <officecfg/Office/Canvas.hxx>
 #include <officecfg/Office/Common.hxx>
 #include <officecfg/Setup.hxx>
 #include <comphelper/configuration.hxx>
@@ -114,15 +114,17 @@ DeactivateRC OfaMiscTabPage::DeactivatePage( SfxItemSet* pSet_ )
 
 namespace
 {
-OUString impl_SystemFileOpenServiceName()
+const OUString & impl_SystemFileOpenServiceName()
 {
-    #if defined(_WIN32)
-    return "com.sun.star.ui.dialogs.SystemFilePicker";
-    #elif defined MACOSX
-    return "com.sun.star.ui.dialogs.AquaFilePicker";
-    #else
-    return OUString();
-    #endif
+#if defined(_WIN32)
+    static constexpr OUString gPicker = u"com.sun.star.ui.dialogs.SystemFilePicker"_ustr;
+    return gPicker;
+#elif defined MACOSX
+    static constexpr OUString gPicker = u"com.sun.star.ui.dialogs.AquaFilePicker"_ustr;
+    return gPicker;
+#else
+    return EMPTY_OUSTRING;
+#endif
 }
 
 bool lcl_HasSystemFilePicker()
@@ -142,7 +144,7 @@ bool lcl_HasSystemFilePicker()
 
     try
     {
-        OUString aFileService = impl_SystemFileOpenServiceName();
+        const OUString& aFileService = impl_SystemFileOpenServiceName();
         Reference< XEnumeration > xEnum = xEnumAccess->createContentEnumeration( aFileService );
         if ( xEnum.is() && xEnum->hasMoreElements() )
             bRet = true;
@@ -158,23 +160,23 @@ bool lcl_HasSystemFilePicker()
 }
 
 OfaMiscTabPage::OfaMiscTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet)
-    : SfxTabPage(pPage, pController, "cui/ui/optgeneralpage.ui", "OptGeneralPage", &rSet)
-    , m_xExtHelpCB(m_xBuilder->weld_check_button("exthelp"))
-    , m_xExtHelpImg(m_xBuilder->weld_widget("lockexthelp"))
-    , m_xPopUpNoHelpCB(m_xBuilder->weld_check_button("popupnohelp"))
-    , m_xPopUpNoHelpImg(m_xBuilder->weld_widget("lockpopupnohelp"))
-    , m_xShowTipOfTheDay(m_xBuilder->weld_check_button("cbShowTipOfTheDay"))
-    , m_xShowTipOfTheDayImg(m_xBuilder->weld_widget("lockcbShowTipOfTheDay"))
-    , m_xFileDlgFrame(m_xBuilder->weld_widget("filedlgframe"))
-    , m_xFileDlgROImage(m_xBuilder->weld_widget("lockimage"))
-    , m_xFileDlgCB(m_xBuilder->weld_check_button("filedlg"))
-    , m_xDocStatusCB(m_xBuilder->weld_check_button("docstatus"))
-    , m_xDocStatusImg(m_xBuilder->weld_widget("lockdocstatus"))
-    , m_xYearFrame(m_xBuilder->weld_widget("yearframe"))
-    , m_xYearLabel(m_xBuilder->weld_label("yearslabel"))
-    , m_xYearValueField(m_xBuilder->weld_spin_button("year"))
-    , m_xToYearFT(m_xBuilder->weld_label("toyear"))
-    , m_xYearFrameImg(m_xBuilder->weld_widget("lockyears"))
+    : SfxTabPage(pPage, pController, u"cui/ui/optgeneralpage.ui"_ustr, u"OptGeneralPage"_ustr, &rSet)
+    , m_xExtHelpCB(m_xBuilder->weld_check_button(u"exthelp"_ustr))
+    , m_xExtHelpImg(m_xBuilder->weld_widget(u"lockexthelp"_ustr))
+    , m_xPopUpNoHelpCB(m_xBuilder->weld_check_button(u"popupnohelp"_ustr))
+    , m_xPopUpNoHelpImg(m_xBuilder->weld_widget(u"lockpopupnohelp"_ustr))
+    , m_xShowTipOfTheDay(m_xBuilder->weld_check_button(u"cbShowTipOfTheDay"_ustr))
+    , m_xShowTipOfTheDayImg(m_xBuilder->weld_widget(u"lockcbShowTipOfTheDay"_ustr))
+    , m_xFileDlgFrame(m_xBuilder->weld_widget(u"filedlgframe"_ustr))
+    , m_xFileDlgROImage(m_xBuilder->weld_widget(u"lockimage"_ustr))
+    , m_xFileDlgCB(m_xBuilder->weld_check_button(u"filedlg"_ustr))
+    , m_xDocStatusCB(m_xBuilder->weld_check_button(u"docstatus"_ustr))
+    , m_xDocStatusImg(m_xBuilder->weld_widget(u"lockdocstatus"_ustr))
+    , m_xYearFrame(m_xBuilder->weld_widget(u"yearframe"_ustr))
+    , m_xYearLabel(m_xBuilder->weld_label(u"yearslabel"_ustr))
+    , m_xYearValueField(m_xBuilder->weld_spin_button(u"year"_ustr))
+    , m_xToYearFT(m_xBuilder->weld_label(u"toyear"_ustr))
+    , m_xYearFrameImg(m_xBuilder->weld_widget(u"lockyears"_ustr))
 #if HAVE_FEATURE_BREAKPAD
     , m_xPrivacyFrame(m_xBuilder->weld_widget("privacyframe"))
     , m_xCrashReport(m_xBuilder->weld_check_button("crashreport"))
@@ -222,26 +224,26 @@ std::unique_ptr<SfxTabPage> OfaMiscTabPage::Create( weld::Container* pPage, weld
 OUString OfaMiscTabPage::GetAllStrings()
 {
     OUString sAllStrings;
-    OUString labels[] = { "label1", "label2", "label4", "label5", "yearslabel",
-                          "toyear", "label7", "label8", "label9" };
+    OUString labels[] = { u"label1"_ustr, u"label2"_ustr, u"label4"_ustr, u"label5"_ustr, u"yearslabel"_ustr,
+                          u"toyear"_ustr, u"label8"_ustr, u"label9"_ustr };
 
     for (const auto& label : labels)
     {
-        if (const auto& pString = m_xBuilder->weld_label(label))
+        if (const auto pString = m_xBuilder->weld_label(label))
             sAllStrings += pString->get_label() + " ";
     }
 
     OUString checkButton[]
-        = { "exthelp",   "popupnohelp", "cbShowTipOfTheDay", "filedlg",
-            "docstatus", "crashreport", "quicklaunch",       "cbPerformFileExtCheck" };
+        = { u"exthelp"_ustr,   u"popupnohelp"_ustr, u"cbShowTipOfTheDay"_ustr, u"filedlg"_ustr,
+            u"docstatus"_ustr, u"crashreport"_ustr, u"quicklaunch"_ustr,       u"cbPerformFileExtCheck"_ustr };
 
     for (const auto& check : checkButton)
     {
-        if (const auto& pString = m_xBuilder->weld_check_button(check))
+        if (const auto pString = m_xBuilder->weld_check_button(check))
             sAllStrings += pString->get_label() + " ";
     }
 
-    if (const auto& pString = m_xBuilder->weld_button("assocfiles"))
+    if (const auto pString = m_xBuilder->weld_button(u"assocfiles"_ustr))
         sAllStrings += pString->get_label() + " ";
 
     return sAllStrings.replaceAll("_", "");
@@ -372,11 +374,11 @@ void OfaMiscTabPage::Reset( const SfxItemSet* rSet )
 #endif
 
 #if defined(_WIN32)
-    const SfxPoolItem* pItem = nullptr;
-    SfxItemState eState = rSet->GetItemState( SID_ATTR_QUICKLAUNCHER, false, &pItem );
-    if ( SfxItemState::SET == eState )
-        m_xQuickLaunchCB->set_active( static_cast<const SfxBoolItem*>(pItem)->GetValue() );
-    else if ( SfxItemState::DISABLED == eState )
+    if (const SfxBoolItem* pItem = rSet->GetItemIfSet( SID_ATTR_QUICKLAUNCHER, false ))
+    {
+        m_xQuickLaunchCB->set_active( pItem->GetValue() );
+    }
+    else
     {
         // quickstart not installed
         m_xQuickStarterFrame->hide();
@@ -419,10 +421,7 @@ class CanvasSettings
 public:
     CanvasSettings();
 
-    bool    IsHardwareAccelerationEnabled() const;
     bool    IsHardwareAccelerationAvailable() const;
-    bool    IsHardwareAccelerationRO() const;
-    void    EnabledHardwareAcceleration( bool _bEnabled ) const;
 
 private:
     typedef std::vector< std::pair<OUString,Sequence<OUString> > > ServiceVector;
@@ -445,42 +444,37 @@ CanvasSettings::CanvasSettings() :
 
         Sequence<Any> aArgs1(comphelper::InitAnyPropertySequence(
         {
-            {"nodepath", Any(OUString("/org.openoffice.Office.Canvas"))}
+            {"nodepath", Any(u"/org.openoffice.Office.Canvas"_ustr)}
         }));
         mxForceFlagNameAccess.set(
             xConfigProvider->createInstanceWithArguments(
-                "com.sun.star.configuration.ConfigurationUpdateAccess",
+                u"com.sun.star.configuration.ConfigurationUpdateAccess"_ustr,
                 aArgs1 ),
             UNO_QUERY_THROW );
 
         Sequence<Any> aArgs2(comphelper::InitAnyPropertySequence(
         {
-            {"nodepath", Any(OUString("/org.openoffice.Office.Canvas/CanvasServiceList"))}
+            {"nodepath", Any(u"/org.openoffice.Office.Canvas/CanvasServiceList"_ustr)}
         }));
         Reference<XNameAccess> xNameAccess(
             xConfigProvider->createInstanceWithArguments(
-                "com.sun.star.configuration.ConfigurationAccess",
+                u"com.sun.star.configuration.ConfigurationAccess"_ustr,
                 aArgs2 ), UNO_QUERY_THROW );
         Reference<XHierarchicalNameAccess> xHierarchicalNameAccess(
             xNameAccess, UNO_QUERY_THROW);
 
-        Sequence<OUString> serviceNames = xNameAccess->getElementNames();
-        const OUString* pCurr = serviceNames.getConstArray();
-        const OUString* const pEnd = pCurr + serviceNames.getLength();
-        while( pCurr != pEnd )
+        for (auto& serviceName : xNameAccess->getElementNames())
         {
             Reference<XNameAccess> xEntryNameAccess(
-                xHierarchicalNameAccess->getByHierarchicalName(*pCurr),
+                xHierarchicalNameAccess->getByHierarchicalName(serviceName),
                 UNO_QUERY );
 
             if( xEntryNameAccess.is() )
             {
                 Sequence<OUString> preferredImplementations;
-                if( xEntryNameAccess->getByName("PreferredImplementations") >>= preferredImplementations )
-                    maAvailableImplementations.emplace_back(*pCurr,preferredImplementations );
+                if( xEntryNameAccess->getByName(u"PreferredImplementations"_ustr) >>= preferredImplementations )
+                    maAvailableImplementations.emplace_back(serviceName, preferredImplementations);
             }
-
-            ++pCurr;
         }
     }
     catch (const Exception&)
@@ -500,18 +494,15 @@ bool CanvasSettings::IsHardwareAccelerationAvailable() const
         // implementation that presents the "HardwareAcceleration" property
         for (auto const& availableImpl : maAvailableImplementations)
         {
-            const OUString* pCurrImpl = availableImpl.second.getConstArray();
-            const OUString* const pEndImpl = pCurrImpl + availableImpl.second.getLength();
-
-            while( pCurrImpl != pEndImpl )
+            for (auto& currImpl : availableImpl.second)
             {
                 try
                 {
                     Reference<XPropertySet> xPropSet( xFactory->createInstance(
-                                                          pCurrImpl->trim() ),
+                                                          currImpl.trim() ),
                                                       UNO_QUERY_THROW );
                     bool bHasAccel(false);
-                    if( xPropSet->getPropertyValue("HardwareAcceleration") >>= bHasAccel )
+                    if( xPropSet->getPropertyValue(u"HardwareAcceleration"_ustr) >>= bHasAccel )
                         if( bHasAccel )
                         {
                             mbHWAccelAvailable = true;
@@ -521,8 +512,6 @@ bool CanvasSettings::IsHardwareAccelerationAvailable() const
                 catch (const Exception&)
                 {
                 }
-
-                ++pCurrImpl;
             }
         }
     }
@@ -530,141 +519,44 @@ bool CanvasSettings::IsHardwareAccelerationAvailable() const
     return mbHWAccelAvailable;
 }
 
-bool CanvasSettings::IsHardwareAccelerationEnabled() const
-{
-    bool bForceLastEntry(false);
-    if( !mxForceFlagNameAccess.is() )
-        return true;
-
-    if( !(mxForceFlagNameAccess->getByName("ForceSafeServiceImpl") >>= bForceLastEntry) )
-        return true;
-
-    return !bForceLastEntry;
-}
-
-bool CanvasSettings::IsHardwareAccelerationRO() const
-{
-    Reference< XPropertySet > xSet(mxForceFlagNameAccess, UNO_QUERY);
-    if (!xSet.is())
-        return true;
-
-    Reference< XPropertySetInfo > xInfo = xSet->getPropertySetInfo();
-    Property aProp = xInfo->getPropertyByName("ForceSafeServiceImpl");
-    return ((aProp.Attributes & css::beans::PropertyAttribute::READONLY ) == css::beans::PropertyAttribute::READONLY);
-}
-
-void CanvasSettings::EnabledHardwareAcceleration( bool _bEnabled ) const
-{
-    Reference< XNameReplace > xNameReplace(
-        mxForceFlagNameAccess, UNO_QUERY );
-
-    if( !xNameReplace.is() )
-        return;
-
-    xNameReplace->replaceByName( "ForceSafeServiceImpl", Any(!_bEnabled) );
-
-    Reference< XChangesBatch > xChangesBatch(
-        mxForceFlagNameAccess, UNO_QUERY );
-
-    if( !xChangesBatch.is() )
-        return;
-
-    xChangesBatch->commitChanges();
-}
-
 // class OfaViewTabPage --------------------------------------------------
 
-static bool DisplayNameCompareLessThan(const vcl::IconThemeInfo& rInfo1, const vcl::IconThemeInfo& rInfo2)
-{
-    return rInfo1.GetDisplayName().compareTo(rInfo2.GetDisplayName()) < 0;
-}
-
 OfaViewTabPage::OfaViewTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet)
-    : SfxTabPage(pPage, pController, "cui/ui/optviewpage.ui", "OptViewPage", &rSet)
-    , nSizeLB_InitialSelection(0)
-    , nSidebarSizeLB_InitialSelection(0)
-    , nNotebookbarSizeLB_InitialSelection(0)
-    , nStyleLB_InitialSelection(0)
+    : SfxTabPage(pPage, pController, u"cui/ui/optviewpage.ui"_ustr, u"OptViewPage"_ustr, &rSet)
     , pCanvasSettings(new CanvasSettings)
-    , m_xIconSizeLabel(m_xBuilder->weld_label("label14"))
-    , m_xIconSizeLB(m_xBuilder->weld_combo_box("iconsize"))
-    , m_xIconSizeImg(m_xBuilder->weld_widget("lockiconsize"))
-    , m_xSidebarIconSizeLabel(m_xBuilder->weld_label("label9"))
-    , m_xSidebarIconSizeLB(m_xBuilder->weld_combo_box("sidebariconsize"))
-    , m_xSidebarIconSizeImg(m_xBuilder->weld_widget("locksidebariconsize"))
-    , m_xNotebookbarIconSizeLabel(m_xBuilder->weld_label("label8"))
-    , m_xNotebookbarIconSizeLB(m_xBuilder->weld_combo_box("notebookbariconsize"))
-    , m_xNotebookbarIconSizeImg(m_xBuilder->weld_widget("locknotebookbariconsize"))
-    , m_xDarkModeFrame(m_xBuilder->weld_widget("darkmode"))
-    , m_xAppearanceStyleLabel(m_xBuilder->weld_label("label7"))
-    , m_xAppearanceStyleLB(m_xBuilder->weld_combo_box("appearance"))
-    , m_xAppearanceStyleImg(m_xBuilder->weld_widget("lockappearance"))
-    , m_xIconStyleLabel(m_xBuilder->weld_label("label6"))
-    , m_xIconStyleLB(m_xBuilder->weld_combo_box("iconstyle"))
-    , m_xIconStyleImg(m_xBuilder->weld_widget("lockiconstyle"))
-    , m_xFontAntiAliasing(m_xBuilder->weld_check_button("aafont"))
-    , m_xFontAntiAliasingImg(m_xBuilder->weld_widget("lockaafont"))
-    , m_xAAPointLimitLabel(m_xBuilder->weld_label("aafrom"))
-    , m_xAAPointLimitLabelImg(m_xBuilder->weld_widget("lockaafrom"))
-    , m_xAAPointLimit(m_xBuilder->weld_metric_spin_button("aanf", FieldUnit::PIXEL))
-    , m_xFontShowCB(m_xBuilder->weld_check_button("showfontpreview"))
-    , m_xFontShowImg(m_xBuilder->weld_widget("lockshowfontpreview"))
-    , m_xUseHardwareAccell(m_xBuilder->weld_check_button("useaccel"))
-    , m_xUseHardwareAccellImg(m_xBuilder->weld_widget("lockuseaccel"))
-    , m_xUseAntiAliase(m_xBuilder->weld_check_button("useaa"))
-    , m_xUseAntiAliaseImg(m_xBuilder->weld_widget("lockuseaa"))
-    , m_xUseSkia(m_xBuilder->weld_check_button("useskia"))
-    , m_xUseSkiaImg(m_xBuilder->weld_widget("lockuseskia"))
-    , m_xForceSkiaRaster(m_xBuilder->weld_check_button("forceskiaraster"))
-    , m_xForceSkiaRasterImg(m_xBuilder->weld_widget("lockforceskiaraster"))
-    , m_xSkiaStatusEnabled(m_xBuilder->weld_label("skiaenabled"))
-    , m_xSkiaStatusDisabled(m_xBuilder->weld_label("skiadisabled"))
-    , m_xSkiaLog(m_xBuilder->weld_button("btnSkialog"))
-    , m_xMouseMiddleLabel(m_xBuilder->weld_label("label12"))
-    , m_xMouseMiddleLB(m_xBuilder->weld_combo_box("mousemiddle"))
-    , m_xMouseMiddleImg(m_xBuilder->weld_widget("lockmousemiddle"))
-    , m_xMoreIcons(m_xBuilder->weld_button("btnMoreIcons"))
-    , m_xRunGPTests(m_xBuilder->weld_button("btn_rungptest"))
-    , m_sAutoStr(m_xIconStyleLB->get_text(0))
+    , m_xFontAntiAliasing(m_xBuilder->weld_check_button(u"aafont"_ustr))
+    , m_xFontAntiAliasingImg(m_xBuilder->weld_widget(u"lockaafont"_ustr))
+    , m_xAAPointLimitLabel(m_xBuilder->weld_label(u"aafrom"_ustr))
+    , m_xAAPointLimitLabelImg(m_xBuilder->weld_widget(u"lockaafrom"_ustr))
+    , m_xAAPointLimit(m_xBuilder->weld_metric_spin_button(u"aanf"_ustr, FieldUnit::PIXEL))
+    , m_xFontShowCB(m_xBuilder->weld_check_button(u"showfontpreview"_ustr))
+    , m_xFontShowImg(m_xBuilder->weld_widget(u"lockshowfontpreview"_ustr))
+    , m_xUseHardwareAccell(m_xBuilder->weld_check_button(u"useaccel"_ustr))
+    , m_xUseHardwareAccellImg(m_xBuilder->weld_widget(u"lockuseaccel"_ustr))
+    , m_xUseAntiAliase(m_xBuilder->weld_check_button(u"useaa"_ustr))
+    , m_xUseAntiAliaseImg(m_xBuilder->weld_widget(u"lockuseaa"_ustr))
+    , m_xUseSkia(m_xBuilder->weld_check_button(u"useskia"_ustr))
+    , m_xUseSkiaImg(m_xBuilder->weld_widget(u"lockuseskia"_ustr))
+    , m_xForceSkiaRaster(m_xBuilder->weld_check_button(u"forceskiaraster"_ustr))
+    , m_xForceSkiaRasterImg(m_xBuilder->weld_widget(u"lockforceskiaraster"_ustr))
+    , m_xSkiaStatusEnabled(m_xBuilder->weld_label(u"skiaenabled"_ustr))
+    , m_xSkiaStatusDisabled(m_xBuilder->weld_label(u"skiadisabled"_ustr))
+    , m_xSkiaLog(m_xBuilder->weld_button(u"btnSkialog"_ustr))
+    , m_xMouseMiddleLabel(m_xBuilder->weld_label(u"label12"_ustr))
+    , m_xMouseMiddleLB(m_xBuilder->weld_combo_box(u"mousemiddle"_ustr))
+    , m_xMouseMiddleImg(m_xBuilder->weld_widget(u"lockmousemiddle"_ustr))
+    , m_xRunGPTests(m_xBuilder->weld_button(u"btn_rungptest"_ustr))
 {
-    OUString sToolKitName(Application::GetToolkitName());
-    const bool bHasDarkMode = sToolKitName.startsWith("gtk") || sToolKitName == "osx" || sToolKitName == "win";
-    if (!bHasDarkMode)
-        m_xDarkModeFrame->hide();
-
     m_xFontAntiAliasing->connect_toggled( LINK( this, OfaViewTabPage, OnAntialiasingToggled ) );
 
     m_xUseSkia->connect_toggled(LINK(this, OfaViewTabPage, OnUseSkiaToggled));
     m_xSkiaLog->connect_clicked(LINK(this, OfaViewTabPage, OnCopySkiaLog));
 
-    UpdateIconThemes();
+    m_xRunGPTests->connect_clicked(LINK(this, OfaViewTabPage, OnRunGPTestClick));
 
-    m_xIconStyleLB->set_active(0);
-
-    m_xMoreIcons->connect_clicked(LINK(this, OfaViewTabPage, OnMoreIconsClick));
-    m_xRunGPTests->connect_clicked( LINK( this, OfaViewTabPage, OnRunGPTestClick));
-}
-
-void OfaViewTabPage::UpdateIconThemes()
-{
-    // Set known icon themes
-    m_xIconStyleLB->clear();
-    StyleSettings aStyleSettings = Application::GetSettings().GetStyleSettings();
-    mInstalledIconThemes = aStyleSettings.GetInstalledIconThemes();
-    std::sort(mInstalledIconThemes.begin(), mInstalledIconThemes.end(), DisplayNameCompareLessThan);
-
-    // Start with the automatically chosen icon theme
-    OUString autoThemeId = aStyleSettings.GetAutomaticallyChosenIconTheme();
-    const vcl::IconThemeInfo& autoIconTheme = vcl::IconThemeInfo::FindIconThemeById(mInstalledIconThemes, autoThemeId);
-
-    OUString entryForAuto = m_sAutoStr + " (" + autoIconTheme.GetDisplayName() + ")";
-    m_xIconStyleLB->append("auto", entryForAuto); // index 0 means choose style automatically
-
-    // separate auto and other icon themes
-    m_xIconStyleLB->append_separator("");
-
-    for (auto const& installIconTheme : mInstalledIconThemes)
-        m_xIconStyleLB->append(installIconTheme.GetThemeId(), installIconTheme.GetDisplayName());
+    // Hide "Run Graphics Test" button if Experimental Mode is off
+    if (!officecfg::Office::Common::Misc::ExperimentalMode::get())
+        m_xRunGPTests->hide();
 }
 
 OfaViewTabPage::~OfaViewTabPage()
@@ -675,13 +567,6 @@ IMPL_LINK_NOARG(OfaViewTabPage, OnRunGPTestClick, weld::Button&, void)
 {
     GraphicsTestsDialog m_xGraphicsTestDialog(m_xContainer.get());
     m_xGraphicsTestDialog.run();
-}
-
-IMPL_STATIC_LINK_NOARG(OfaViewTabPage, OnMoreIconsClick, weld::Button&, void)
-{
-    css::uno::Sequence<css::beans::PropertyValue> aArgs{ comphelper::makePropertyValue(
-        "AdditionsTag", OUString("Icons")) };
-    comphelper::dispatchCommand(".uno:AdditionsDialog", aArgs);
 }
 
 IMPL_LINK_NOARG( OfaViewTabPage, OnAntialiasingToggled, weld::Toggleable&, void )
@@ -744,7 +629,11 @@ void OfaViewTabPage::UpdateSkiaStatus()
     m_xSkiaStatusEnabled->set_visible(bEnabled);
     m_xSkiaStatusDisabled->set_visible(!bEnabled);
 
+#if defined(MACOSX) || defined(_WIN32)
+    m_xUseSkia->set_sensitive(false); // macOS/win can __only__ render via skia
+#else
     m_xUseSkia->set_sensitive(!officecfg::Office::Common::VCL::UseSkia::isReadOnly());
+#endif
     m_xUseSkiaImg->set_visible(officecfg::Office::Common::VCL::UseSkia::isReadOnly());
     m_xForceSkiaRaster->set_sensitive(m_xUseSkia->get_active() && !officecfg::Office::Common::VCL::ForceSkiaRaster::isReadOnly());
     m_xForceSkiaRasterImg->set_visible(officecfg::Office::Common::VCL::ForceSkiaRaster::isReadOnly());
@@ -766,22 +655,22 @@ std::unique_ptr<SfxTabPage> OfaViewTabPage::Create( weld::Container* pPage, weld
 OUString OfaViewTabPage::GetAllStrings()
 {
     OUString sAllStrings;
-    OUString labels[] = { "label16", "label7",      "label1",       "label6", "label15",
-                          "label14", "label8",      "label9",       "label4", "label12",
-                          "label2",  "skiaenabled", "skiadisabled", "label5", "aafrom" };
+    OUString labels[] = { u"label16"_ustr, u"label1"_ustr,      u"label6"_ustr,       u"label15"_ustr,
+                          u"label14"_ustr, u"label8"_ustr,      u"label9"_ustr,       u"label4"_ustr, u"label12"_ustr,
+                          u"label2"_ustr,  u"skiaenabled"_ustr, u"skiadisabled"_ustr, u"label5"_ustr, u"aafrom"_ustr };
 
     for (const auto& label : labels)
     {
-        if (const auto& pString = m_xBuilder->weld_label(label))
+        if (const auto pString = m_xBuilder->weld_label(label))
             sAllStrings += pString->get_label() + " ";
     }
 
     OUString checkButton[]
-        = { "useaccel", "useaa", "useskia", "forceskiaraster", "showfontpreview", "aafont" };
+        = { u"useaccel"_ustr, u"useaa"_ustr, u"useskia"_ustr, u"forceskiaraster"_ustr, u"showfontpreview"_ustr, u"aafont"_ustr };
 
     for (const auto& check : checkButton)
     {
-        if (const auto& pString = m_xBuilder->weld_check_button(check))
+        if (const auto pString = m_xBuilder->weld_check_button(check))
             sAllStrings += pString->get_label() + " ";
     }
 
@@ -793,66 +682,7 @@ OUString OfaViewTabPage::GetAllStrings()
 bool OfaViewTabPage::FillItemSet( SfxItemSet* )
 {
     bool bModified = false;
-    bool bDarkModeOptModified = false;
     bool bRepaintWindows(false);
-    std::shared_ptr<comphelper::ConfigurationChanges> xChanges(comphelper::ConfigurationChanges::create());
-
-    SvtMiscOptions aMiscOptions;
-    const sal_Int32 nSizeLB_NewSelection = m_xIconSizeLB->get_active();
-    if( nSizeLB_InitialSelection != nSizeLB_NewSelection )
-    {
-        // from now on it's modified, even if via auto setting the same size was set as now selected in the LB
-        sal_Int16 eSet = SFX_SYMBOLS_SIZE_AUTO;
-        switch( nSizeLB_NewSelection )
-        {
-            case 0: eSet = SFX_SYMBOLS_SIZE_AUTO;  break;
-            case 1: eSet = SFX_SYMBOLS_SIZE_SMALL; break;
-            case 2: eSet = SFX_SYMBOLS_SIZE_LARGE; break;
-            case 3: eSet = SFX_SYMBOLS_SIZE_32; break;
-            default:
-                SAL_WARN("cui.options", "OfaViewTabPage::FillItemSet(): This state of m_xIconSizeLB should not be possible!");
-        }
-        aMiscOptions.SetSymbolsSize( eSet );
-    }
-
-    const sal_Int32 nSidebarSizeLB_NewSelection = m_xSidebarIconSizeLB->get_active();
-    if( nSidebarSizeLB_InitialSelection != nSidebarSizeLB_NewSelection )
-    {
-        // from now on it's modified, even if via auto setting the same size was set as now selected in the LB
-        ToolBoxButtonSize eSet = ToolBoxButtonSize::DontCare;
-        switch( nSidebarSizeLB_NewSelection )
-        {
-            case 0: eSet = ToolBoxButtonSize::DontCare;  break;
-            case 1: eSet = ToolBoxButtonSize::Small; break;
-            case 2: eSet = ToolBoxButtonSize::Large; break;
-            default:
-                SAL_WARN("cui.options", "OfaViewTabPage::FillItemSet(): This state of m_xSidebarIconSizeLB should not be possible!");
-        }
-        officecfg::Office::Common::Misc::SidebarIconSize::set(static_cast<sal_Int16>(eSet), xChanges);
-    }
-
-    const sal_Int32 nNotebookbarSizeLB_NewSelection = m_xNotebookbarIconSizeLB->get_active();
-    if( nNotebookbarSizeLB_InitialSelection != nNotebookbarSizeLB_NewSelection )
-    {
-        // from now on it's modified, even if via auto setting the same size was set as now selected in the LB
-        ToolBoxButtonSize eSet = ToolBoxButtonSize::DontCare;
-        switch( nNotebookbarSizeLB_NewSelection )
-        {
-            case 0: eSet = ToolBoxButtonSize::DontCare;  break;
-            case 1: eSet = ToolBoxButtonSize::Small; break;
-            case 2: eSet = ToolBoxButtonSize::Large; break;
-            default:
-                SAL_WARN("cui.options", "OfaViewTabPage::FillItemSet(): This state of m_xNotebookbarIconSizeLB should not be possible!");
-        }
-        officecfg::Office::Common::Misc::NotebookbarIconSize::set(static_cast<sal_Int16>(eSet), xChanges);
-    }
-
-    const sal_Int32 nStyleLB_NewSelection = m_xIconStyleLB->get_active();
-    if( nStyleLB_InitialSelection != nStyleLB_NewSelection )
-    {
-        aMiscOptions.SetIconTheme(m_xIconStyleLB->get_active_id());
-        nStyleLB_InitialSelection = nStyleLB_NewSelection;
-    }
 
     bool bAppearanceChanged = false;
     std::shared_ptr<comphelper::ConfigurationChanges> batch(comphelper::ConfigurationChanges::create());
@@ -883,15 +713,11 @@ bool OfaViewTabPage::FillItemSet( SfxItemSet* )
         bAppearanceChanged = true;
     }
 
+    std::shared_ptr<comphelper::ConfigurationChanges> xChanges(comphelper::ConfigurationChanges::create());
+
     if (m_xFontShowCB->get_state_changed_from_saved())
     {
         officecfg::Office::Common::Font::View::ShowFontBoxWYSIWYG::set(m_xFontShowCB->get_active(), xChanges);
-        bModified = true;
-    }
-
-    if (m_xAppearanceStyleLB->get_value_changed_from_saved())
-    {
-        bDarkModeOptModified = true;
         bModified = true;
     }
 
@@ -900,7 +726,7 @@ bool OfaViewTabPage::FillItemSet( SfxItemSet* )
     {
         if(m_xUseHardwareAccell->get_state_changed_from_saved())
         {
-            pCanvasSettings->EnabledHardwareAcceleration(m_xUseHardwareAccell->get_active());
+            officecfg::Office::Canvas::ForceSafeServiceImpl::set(m_xUseHardwareAccell->get_active(), xChanges);
             bModified = true;
         }
     }
@@ -925,9 +751,6 @@ bool OfaViewTabPage::FillItemSet( SfxItemSet* )
     }
 
     xChanges->commit();
-
-    if (bDarkModeOptModified)
-        MiscSettings::SetDarkMode(m_xAppearanceStyleLB->get_active());
 
     if ( bAppearanceChanged )
     {
@@ -961,82 +784,7 @@ bool OfaViewTabPage::FillItemSet( SfxItemSet* )
 
 void OfaViewTabPage::Reset( const SfxItemSet* )
 {
-    SvtMiscOptions aMiscOptions;
     bool bEnable = true;
-
-    if (SvtMiscOptions::GetSymbolsSize() != SFX_SYMBOLS_SIZE_AUTO)
-    {
-        nSizeLB_InitialSelection = 1;
-
-        if (SvtMiscOptions::GetSymbolsSize() == SFX_SYMBOLS_SIZE_LARGE)
-            nSizeLB_InitialSelection = 2;
-        else if (SvtMiscOptions::GetSymbolsSize() == SFX_SYMBOLS_SIZE_32)
-            nSizeLB_InitialSelection = 3;
-    }
-    bEnable = !officecfg::Office::Common::Misc::SymbolSet::isReadOnly();
-    m_xIconSizeLB->set_active( nSizeLB_InitialSelection );
-    m_xIconSizeLabel->set_sensitive(bEnable);
-    m_xIconSizeLB->set_sensitive(bEnable);
-    m_xMoreIcons->set_sensitive(bEnable);
-    m_xIconSizeImg->set_visible(!bEnable);
-    m_xIconSizeLB->save_value();
-
-    ToolBoxButtonSize eSidebarIconSize = static_cast<ToolBoxButtonSize>(officecfg::Office::Common::Misc::SidebarIconSize::get());
-    if( eSidebarIconSize == ToolBoxButtonSize::DontCare )
-        ; // do nothing
-    else if( eSidebarIconSize == ToolBoxButtonSize::Small )
-        nSidebarSizeLB_InitialSelection = 1;
-    else if( eSidebarIconSize == ToolBoxButtonSize::Large )
-        nSidebarSizeLB_InitialSelection = 2;
-
-    bEnable = !officecfg::Office::Common::Misc::SidebarIconSize::isReadOnly();
-    m_xSidebarIconSizeLB->set_active( nSidebarSizeLB_InitialSelection );
-    m_xSidebarIconSizeLabel->set_sensitive(bEnable);
-    m_xSidebarIconSizeLB->set_sensitive(bEnable);
-    m_xSidebarIconSizeImg->set_visible(!bEnable);
-    m_xSidebarIconSizeLB->save_value();
-
-    ToolBoxButtonSize eNotebookbarIconSize = static_cast<ToolBoxButtonSize>(officecfg::Office::Common::Misc::NotebookbarIconSize::get());
-    if( eNotebookbarIconSize == ToolBoxButtonSize::DontCare )
-        ; // do nothing
-    else if( eNotebookbarIconSize == ToolBoxButtonSize::Small )
-        nNotebookbarSizeLB_InitialSelection = 1;
-    else if( eNotebookbarIconSize == ToolBoxButtonSize::Large )
-        nNotebookbarSizeLB_InitialSelection = 2;
-
-    bEnable = !officecfg::Office::Common::Misc::NotebookbarIconSize::isReadOnly();
-    m_xNotebookbarIconSizeLB->set_active(nNotebookbarSizeLB_InitialSelection);
-    m_xNotebookbarIconSizeLabel->set_sensitive(bEnable);
-    m_xNotebookbarIconSizeLB->set_sensitive(bEnable);
-    m_xNotebookbarIconSizeImg->set_visible(!bEnable);
-    m_xNotebookbarIconSizeLB->save_value();
-
-    // tdf#153497 set name of automatic icon theme, it may have changed due to "Apply" while this page is visible
-    UpdateIconThemes();
-
-    if (aMiscOptions.IconThemeWasSetAutomatically()) {
-        nStyleLB_InitialSelection = 0;
-    }
-    else {
-        const OUString& selected = SvtMiscOptions::GetIconTheme();
-        const vcl::IconThemeInfo& selectedInfo =
-                vcl::IconThemeInfo::FindIconThemeById(mInstalledIconThemes, selected);
-        nStyleLB_InitialSelection = m_xIconStyleLB->find_text(selectedInfo.GetDisplayName());
-    }
-
-    bEnable = !officecfg::Office::Common::Misc::SymbolStyle::isReadOnly();
-    m_xIconStyleLB->set_active(nStyleLB_InitialSelection);
-    m_xIconStyleLabel->set_sensitive(bEnable);
-    m_xIconStyleLB->set_sensitive(bEnable);
-    m_xIconStyleImg->set_visible(!bEnable);
-    m_xIconStyleLB->save_value();
-
-    bEnable = !officecfg::Office::Common::Misc::Appearance::isReadOnly();
-    m_xAppearanceStyleLB->set_active(officecfg::Office::Common::Misc::Appearance::get());
-    m_xAppearanceStyleLabel->set_sensitive(bEnable);
-    m_xAppearanceStyleLB->set_sensitive(bEnable);
-    m_xAppearanceStyleImg->set_visible(!bEnable);
-    m_xAppearanceStyleLB->save_value();
 
     // Middle Mouse Button
     bEnable = !officecfg::Office::Common::View::Dialog::MiddleMouseButton::isReadOnly();
@@ -1069,24 +817,18 @@ void OfaViewTabPage::Reset( const SfxItemSet* )
     m_xUseHardwareAccell->save_state();
 
     { // #i95644# AntiAliasing
-        if(SvtOptionsDrawinglayer::IsAAPossibleOnThisSystem())
-        {
-            m_xUseAntiAliase->set_active(SvtOptionsDrawinglayer::IsAntiAliasing());
-        }
-        else
-        {
-            m_xUseAntiAliase->set_active(false);
-            m_xUseAntiAliase->set_sensitive(false);
-            m_xUseAntiAliaseImg->set_visible(true);
-        }
-
+        m_xUseAntiAliase->set_active(SvtOptionsDrawinglayer::IsAntiAliasing());
         bEnable = !officecfg::Office::Common::Drawinglayer::AntiAliasing::isReadOnly();
         m_xUseAntiAliase->set_sensitive(bEnable);
         m_xUseAntiAliaseImg->set_visible(!bEnable);
         m_xUseAntiAliase->save_state();
     }
 
+#if defined(MACOSX) || defined(_WIN32)
+    m_xUseSkia->set_active(true); // macOS/win can __only__ render via skia
+#else
     m_xUseSkia->set_active(officecfg::Office::Common::VCL::UseSkia::get());
+#endif
     m_xForceSkiaRaster->set_active(officecfg::Office::Common::VCL::ForceSkiaRaster::get());
     m_xUseSkia->save_state();
     m_xForceSkiaRaster->save_state();
@@ -1102,11 +844,12 @@ void OfaViewTabPage::Reset( const SfxItemSet* )
 void OfaViewTabPage::UpdateHardwareAccelStatus()
 {
     // #i95644# HW accel (unified to disable mechanism)
+    bool bHardwareAccRO = officecfg::Office::Canvas::ForceSafeServiceImpl::isReadOnly();
     if(pCanvasSettings->IsHardwareAccelerationAvailable())
     {
-        m_xUseHardwareAccell->set_active(pCanvasSettings->IsHardwareAccelerationEnabled());
-        m_xUseHardwareAccell->set_sensitive(!pCanvasSettings->IsHardwareAccelerationRO());
-        m_xUseHardwareAccellImg->set_visible(pCanvasSettings->IsHardwareAccelerationRO());
+        m_xUseHardwareAccell->set_active(officecfg::Office::Canvas::ForceSafeServiceImpl::get());
+        m_xUseHardwareAccell->set_sensitive(!bHardwareAccRO);
+        m_xUseHardwareAccellImg->set_visible(bHardwareAccRO);
     }
     else
     {
@@ -1115,7 +858,7 @@ void OfaViewTabPage::UpdateHardwareAccelStatus()
         m_xUseHardwareAccellImg->set_visible(true);
     }
 #if HAVE_FEATURE_SKIA
-    m_xUseHardwareAccell->set_sensitive(!m_xUseSkia->get_active());
+    m_xUseHardwareAccell->set_sensitive(!bHardwareAccRO && !m_xUseSkia->get_active());
 #endif
 }
 
@@ -1138,16 +881,15 @@ static Sequence< OUString > seqInstalledLanguages;
 
 static OUString lcl_getDatePatternsConfigString( const LocaleDataWrapper& rLocaleWrapper )
 {
-    Sequence< OUString > aDateAcceptancePatterns = rLocaleWrapper.getDateAcceptancePatterns();
+    const Sequence< OUString >& aDateAcceptancePatterns = rLocaleWrapper.getDateAcceptancePatterns();
     sal_Int32 nPatterns = aDateAcceptancePatterns.getLength();
     OUStringBuffer aBuf( nPatterns * 6 );   // 6 := length of Y-M-D;
     SAL_WARN_IF( !nPatterns, "cui.options", "No date acceptance pattern");
     if (nPatterns)
     {
-        const OUString* pPatterns = aDateAcceptancePatterns.getConstArray();
-        aBuf.append( pPatterns[0]);
+        aBuf.append(aDateAcceptancePatterns[0]);
         for (sal_Int32 i=1; i < nPatterns; ++i)
-            aBuf.append(";" + pPatterns[i]);
+            aBuf.append(";" + aDateAcceptancePatterns[i]);
     }
     return aBuf.makeStringAndClear();
 }
@@ -1163,34 +905,34 @@ namespace
 }
 
 OfaLanguagesTabPage::OfaLanguagesTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet)
-    : SfxTabPage(pPage, pController, "cui/ui/optlanguagespage.ui", "OptLanguagesPage", &rSet)
+    : SfxTabPage(pPage, pController, u"cui/ui/optlanguagespage.ui"_ustr, u"OptLanguagesPage"_ustr, &rSet)
     , pLangConfig(new LanguageConfig_Impl)
     , m_bDatePatternsValid(false)
-    , m_xUserInterfaceLB(m_xBuilder->weld_combo_box("userinterface"))
-    , m_xLocaleSettingFT(m_xBuilder->weld_label("localesettingFT"))
-    , m_xLocaleSettingLB(new SvxLanguageBox(m_xBuilder->weld_combo_box("localesetting")))
-    , m_xLocaleSettingImg(m_xBuilder->weld_widget("locklocalesetting"))
-    , m_xDecimalSeparatorFT(m_xBuilder->weld_label("label6"))
-    , m_xDecimalSeparatorCB(m_xBuilder->weld_check_button("decimalseparator"))
-    , m_xDecimalSeparatorImg(m_xBuilder->weld_widget("lockdecimalseparator"))
-    , m_xCurrencyFT(m_xBuilder->weld_label("defaultcurrency"))
-    , m_xCurrencyLB(m_xBuilder->weld_combo_box("currencylb"))
-    , m_xCurrencyImg(m_xBuilder->weld_widget("lockcurrencylb"))
-    , m_xDatePatternsFT(m_xBuilder->weld_label("dataaccpatterns"))
-    , m_xDatePatternsED(m_xBuilder->weld_entry("datepatterns"))
-    , m_xDatePatternsImg(m_xBuilder->weld_widget("lockdatepatterns"))
-    , m_xWesternLanguageLB(new SvxLanguageBox(m_xBuilder->weld_combo_box("westernlanguage")))
-    , m_xWesternLanguageFT(m_xBuilder->weld_label("western"))
-    , m_xWesternLanguageImg(m_xBuilder->weld_widget("lockwesternlanguage"))
-    , m_xAsianLanguageLB(new SvxLanguageBox(m_xBuilder->weld_combo_box("asianlanguage")))
-    , m_xComplexLanguageLB(new SvxLanguageBox(m_xBuilder->weld_combo_box("complexlanguage")))
-    , m_xCurrentDocCB(m_xBuilder->weld_check_button("currentdoc"))
-    , m_xAsianSupportCB(m_xBuilder->weld_check_button("asiansupport"))
-    , m_xAsianSupportImg(m_xBuilder->weld_widget("lockasiansupport"))
-    , m_xCTLSupportCB(m_xBuilder->weld_check_button("ctlsupport"))
-    , m_xCTLSupportImg(m_xBuilder->weld_widget("lockctlsupport"))
-    , m_xIgnoreLanguageChangeCB(m_xBuilder->weld_check_button("ignorelanguagechange"))
-    , m_xIgnoreLanguageChangeImg(m_xBuilder->weld_widget("lockignorelanguagechange"))
+    , m_xUserInterfaceLB(m_xBuilder->weld_combo_box(u"userinterface"_ustr))
+    , m_xLocaleSettingFT(m_xBuilder->weld_label(u"localesettingFT"_ustr))
+    , m_xLocaleSettingLB(new SvxLanguageBox(m_xBuilder->weld_combo_box(u"localesetting"_ustr)))
+    , m_xLocaleSettingImg(m_xBuilder->weld_widget(u"locklocalesetting"_ustr))
+    , m_xDecimalSeparatorFT(m_xBuilder->weld_label(u"label6"_ustr))
+    , m_xDecimalSeparatorCB(m_xBuilder->weld_check_button(u"decimalseparator"_ustr))
+    , m_xDecimalSeparatorImg(m_xBuilder->weld_widget(u"lockdecimalseparator"_ustr))
+    , m_xCurrencyFT(m_xBuilder->weld_label(u"defaultcurrency"_ustr))
+    , m_xCurrencyLB(m_xBuilder->weld_combo_box(u"currencylb"_ustr))
+    , m_xCurrencyImg(m_xBuilder->weld_widget(u"lockcurrencylb"_ustr))
+    , m_xDatePatternsFT(m_xBuilder->weld_label(u"dataaccpatterns"_ustr))
+    , m_xDatePatternsED(m_xBuilder->weld_entry(u"datepatterns"_ustr))
+    , m_xDatePatternsImg(m_xBuilder->weld_widget(u"lockdatepatterns"_ustr))
+    , m_xWesternLanguageLB(new SvxLanguageBox(m_xBuilder->weld_combo_box(u"westernlanguage"_ustr)))
+    , m_xWesternLanguageFT(m_xBuilder->weld_label(u"western"_ustr))
+    , m_xWesternLanguageImg(m_xBuilder->weld_widget(u"lockwesternlanguage"_ustr))
+    , m_xAsianLanguageLB(new SvxLanguageBox(m_xBuilder->weld_combo_box(u"asianlanguage"_ustr)))
+    , m_xComplexLanguageLB(new SvxLanguageBox(m_xBuilder->weld_combo_box(u"complexlanguage"_ustr)))
+    , m_xCurrentDocCB(m_xBuilder->weld_check_button(u"currentdoc"_ustr))
+    , m_xAsianSupportCB(m_xBuilder->weld_check_button(u"asiansupport"_ustr))
+    , m_xAsianSupportImg(m_xBuilder->weld_widget(u"lockasiansupport"_ustr))
+    , m_xCTLSupportCB(m_xBuilder->weld_check_button(u"ctlsupport"_ustr))
+    , m_xCTLSupportImg(m_xBuilder->weld_widget(u"lockctlsupport"_ustr))
+    , m_xIgnoreLanguageChangeCB(m_xBuilder->weld_check_button(u"ignorelanguagechange"_ustr))
+    , m_xIgnoreLanguageChangeImg(m_xBuilder->weld_widget(u"lockignorelanguagechange"_ustr))
 {
     // tdf#125483 save original default label
     m_sDecimalSeparatorLabel = m_xDecimalSeparatorCB->get_label();
@@ -1202,15 +944,15 @@ OfaLanguagesTabPage::OfaLanguagesTabPage(weld::Container* pPage, weld::DialogCon
                        " - " +
                        SvtLanguageTable::GetLanguageString(GetInstalledLocaleForSystemUILanguage().getLanguageType());
 
-    m_xUserInterfaceLB->append("0", aUILang);
-    m_xUserInterfaceLB->append_separator("");
+    m_xUserInterfaceLB->append(u"0"_ustr, aUILang);
+    m_xUserInterfaceLB->append_separator(u""_ustr);
     try
     {
         Reference< XMultiServiceFactory > theConfigProvider(
             css::configuration::theDefaultProvider::get(
                 comphelper::getProcessComponentContext()));
         // find out which locales are currently installed and add them to the listbox
-        Sequence< Any > theArgs{ Any(NamedValue("nodepath", Any(sInstalledLocalesPath))) };
+        Sequence< Any > theArgs{ Any(NamedValue(u"nodepath"_ustr, Any(sInstalledLocalesPath))) };
         Reference< XNameAccess > theNameAccess(
             theConfigProvider->createInstanceWithArguments(sAccessSrvc, theArgs ), UNO_QUERY_THROW );
         seqInstalledLanguages = theNameAccess->getElementNames();
@@ -1242,7 +984,7 @@ OfaLanguagesTabPage::OfaLanguagesTabPage(weld::Container* pPage, weld::DialogCon
         m_xUserInterfaceLB->set_active(0);
 
         // find out whether the user has a specific locale specified
-        Sequence< Any > theArgs2{ Any(NamedValue("nodepath", Any(sUserLocalePath))) };
+        Sequence< Any > theArgs2{ Any(NamedValue(u"nodepath"_ustr, Any(sUserLocalePath))) };
         theNameAccess.set(
             theConfigProvider->createInstanceWithArguments(sAccessSrvc, theArgs2 ), UNO_QUERY_THROW );
         if (theNameAccess->hasByName(sUserLocaleKey))
@@ -1286,12 +1028,12 @@ OfaLanguagesTabPage::OfaLanguagesTabPage(weld::Container* pPage, weld::DialogCon
     const NfCurrencyEntry& rCurr = SvNumberFormatter::GetCurrencyEntry( LANGUAGE_SYSTEM );
     // insert SYSTEM entry
     OUString aDefaultCurr = m_sSystemDefaultString + " - " + rCurr.GetBankSymbol();
-    m_xCurrencyLB->append("default", aDefaultCurr);
-    m_xCurrencyLB->append_separator("");
+    m_xCurrencyLB->append(u"default"_ustr, aDefaultCurr);
+    m_xCurrencyLB->append_separator(u""_ustr);
 
-    assert(m_xCurrencyLB->find_id("default") != -1);
+    assert(m_xCurrencyLB->find_id(u"default"_ustr) != -1);
     // all currencies
-    OUString aTwoSpace( "  " );
+    OUString aTwoSpace( u"  "_ustr );
     sal_uInt16 nCurrCount = rCurrTab.size();
     std::vector< const NfCurrencyEntry* > aCurrencies;
     // first entry is SYSTEM, skip it
@@ -1374,21 +1116,21 @@ OUString OfaLanguagesTabPage::GetAllStrings()
 {
     OUString sAllStrings;
     OUString labels[]
-        = { "label1", "label4",          "label7", "localesettingFT", "defaultcurrency",
-            "label6", "dataaccpatterns", "label2", "western",         "label3" };
+        = { u"label1"_ustr, u"label4"_ustr,          u"label7"_ustr, u"localesettingFT"_ustr, u"defaultcurrency"_ustr,
+            u"label6"_ustr, u"dataaccpatterns"_ustr, u"label2"_ustr, u"western"_ustr,         u"label3"_ustr };
 
     for (const auto& label : labels)
     {
-        if (const auto& pString = m_xBuilder->weld_label(label))
+        if (const auto pString = m_xBuilder->weld_label(label))
             sAllStrings += pString->get_label() + " ";
     }
 
-    OUString checkButton[] = { "decimalseparator", "asiansupport", "ctlsupport", "currentdoc",
-                               "ignorelanguagechange" };
+    OUString checkButton[] = { u"decimalseparator"_ustr, u"asiansupport"_ustr, u"ctlsupport"_ustr, u"currentdoc"_ustr,
+                               u"ignorelanguagechange"_ustr };
 
     for (const auto& check : checkButton)
     {
-        if (const auto& pString = m_xBuilder->weld_check_button(check))
+        if (const auto pString = m_xBuilder->weld_check_button(check))
             sAllStrings += pString->get_label() + " ";
     }
 
@@ -1438,7 +1180,7 @@ bool OfaLanguagesTabPage::FillItemSet( SfxItemSet* rSet )
         Reference< XMultiServiceFactory > theConfigProvider(
             css::configuration::theDefaultProvider::get(
                 comphelper::getProcessComponentContext()));
-        Sequence< Any > theArgs{ Any(NamedValue("nodepath", Any(sUserLocalePath))) };
+        Sequence< Any > theArgs{ Any(NamedValue(u"nodepath"_ustr, Any(sUserLocalePath))) };
         Reference< XPropertySet >xProp(
             theConfigProvider->createInstanceWithArguments(sAccessUpdSrvc, theArgs ), UNO_QUERY_THROW );
         if ( m_sUserLocaleValue != aLangString)
@@ -1456,7 +1198,7 @@ bool OfaLanguagesTabPage::FillItemSet( SfxItemSet* rSet )
 
             // tell quickstarter to stop being a veto listener
 
-            Reference< XComponentContext > xContext(
+            const Reference< XComponentContext >& xContext(
                 comphelper::getProcessComponentContext());
             css::office::Quickstart::createAndSetVeto(xContext, false, false, false/*DisableVeto*/);
         }
@@ -1494,8 +1236,10 @@ bool OfaLanguagesTabPage::FillItemSet( SfxItemSet* rSet )
 
         SvtScriptType nNewType = SvtLanguageOptions::GetScriptTypeOfLanguage( eNewLocale );
         bool bNewCJK = bool( nNewType & SvtScriptType::ASIAN );
-        SvtCompatibilityOptions aCompatOpts;
-        aCompatOpts.SetDefault( SvtCompatibilityEntry::Index::ExpandWordSpace, !bNewCJK );
+        auto batch = comphelper::ConfigurationChanges::create();
+        SvtCompatibilityDefault aCompatOpts(batch);
+        aCompatOpts.set(u"ExpandWordSpace"_ustr, !bNewCJK);
+        batch->commit();
     }
 
     if(m_xDecimalSeparatorCB->get_state_changed_from_saved())
@@ -1583,6 +1327,11 @@ bool OfaLanguagesTabPage::FillItemSet( SfxItemSet* rSet )
             rSet->Put(SvxLanguageItem(MsLangId::resolveSystemLanguageByScriptType(eSelectLang, css::i18n::ScriptType::COMPLEX),
                 SID_ATTR_CHAR_CTL_LANGUAGE));
         }
+
+        // tdf#163228: Mongolian script supports vertical text
+        pLangConfig->aCTLLanguageOptions.SetCTLVerticalText(
+            MsLangId::getPrimaryLanguage(eSelectLang)
+            == MsLangId::getPrimaryLanguage(LANGUAGE_MONGOLIAN_MONGOLIAN_MONGOLIA));
     }
 
     if(m_xAsianSupportCB->get_state_changed_from_saved() )
@@ -1675,7 +1424,7 @@ void OfaLanguagesTabPage::Reset( const SfxItemSet* rSet )
         pCurr = SvNumberFormatter::GetCurrencyEntry( aAbbrev, eLang );
     }
     // if pCurr==nullptr the SYSTEM entry is selected
-    OUString sId = !pCurr ? OUString("default") : weld::toId(pCurr);
+    OUString sId = !pCurr ? u"default"_ustr : weld::toId(pCurr);
     m_xCurrencyLB->set_active_id(sId);
     bReadonly = pLangConfig->aSysLocaleOptions.IsReadOnly(SvtSysLocaleOptions::EOption::Currency);
     m_xCurrencyLB->set_sensitive(!bReadonly);
@@ -1860,7 +1609,7 @@ IMPL_LINK_NOARG(OfaLanguagesTabPage, LocaleSettingHdl, weld::ComboBox&, void)
 
     const NfCurrencyEntry& rCurr = SvNumberFormatter::GetCurrencyEntry(
             (eLang == LANGUAGE_USER_SYSTEM_CONFIG) ? MsLangId::getConfiguredSystemLanguage() : eLang);
-    constexpr OUString aDefaultID = u"default"_ustr;
+    static constexpr OUString aDefaultID = u"default"_ustr;
     // Update the "Default ..." currency.
     m_xCurrencyLB->remove_id(aDefaultID);
     OUString aDefaultCurr = m_sSystemDefaultString + " - " + rCurr.GetBankSymbol();

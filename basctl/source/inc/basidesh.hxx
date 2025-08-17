@@ -19,10 +19,9 @@
 #pragma once
 
 #include "doceventnotifier.hxx"
-#include "sbxitem.hxx"
+#include <basctl/sbxitem.hxx>
 #include "ObjectCatalog.hxx"
 
-#include <com/sun/star/container/XContainerListener.hpp>
 #include <sfx2/viewsh.hxx>
 #include <svx/ifaceids.hxx>
 #include <svl/srchitem.hxx>
@@ -34,8 +33,6 @@
 class SfxViewFactory;
 class SdrView;
 class TabBar;
-class SbxObject;
-class SbModule;
 class StarBASIC;
 
 namespace basctl
@@ -51,9 +48,9 @@ class ModulWindow;
 class ModulWindowLayout;
 class DialogWindow;
 class DialogWindowLayout;
-class TabBar;
-class BaseWindow;
 class LocalizationMgr;
+class BasicColorConfig;
+class ContainerListenerImpl;
 
 class Shell :
     public SfxViewShell,
@@ -81,6 +78,9 @@ private:
     VclPtr<TabBar>       pTabBar;           // basctl::TabBar
     bool                 bCreatingWindow;
 
+    // Basic editor color configuration
+    std::shared_ptr<BasicColorConfig> m_aColorConfig;
+
     // layout windows
     VclPtr<ModulWindowLayout>   pModulLayout;
     VclPtr<DialogWindowLayout>  pDialogLayout;
@@ -94,7 +94,7 @@ private:
     DocumentEventNotifier m_aNotifier;
 
     friend class ContainerListenerImpl;
-    css::uno::Reference< css::container::XContainerListener > m_xLibListener;
+    rtl::Reference<ContainerListenerImpl> m_xLibListener;
     std::unique_ptr<SvxSearchItem> mpSearchItem;
 
     void                Init();
@@ -196,7 +196,7 @@ public:
     bool                CallBasicErrorHdl( StarBASIC const * pBasic );
     BasicDebugFlags     CallBasicBreakHdl( StarBASIC const * pBasic );
 
-    VclPtr<BaseWindow>   FindWindow( const ScriptDocument& rDocument, std::u16string_view rLibName, std::u16string_view rName, ItemType nType, bool bFindSuspended = false );
+    VclPtr<BaseWindow>   FindWindow( const ScriptDocument& rDocument, std::u16string_view rLibName, std::u16string_view rName, SbxItemType nSbxType, bool bFindSuspended = false );
     VclPtr<DialogWindow> FindDlgWin( const ScriptDocument& rDocument, const OUString& rLibName, const OUString& rName, bool bCreateIfNotExist = false, bool bFindSuspended = false );
     VclPtr<ModulWindow>  FindBasWin( const ScriptDocument& rDocument, const OUString& rLibName, const OUString& rModName, bool bCreateIfNotExist = false, bool bFindSuspended = false );
     VclPtr<BaseWindow>   FindApplicationWindow();
@@ -220,6 +220,8 @@ public:
     void UpdateObjectCatalog () { aObjectCatalog->UpdateEntries(); }
 
     void RemoveWindow (BaseWindow* pWindow, bool bDestroy, bool bAllowChangeCurWindow = true);
+
+    const std::shared_ptr<BasicColorConfig>& GetColorConfig() const { return m_aColorConfig; }
 };
 
 } // namespace basctl

@@ -16,8 +16,7 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SW_INC_SWGETPOOLIDFROMNAME_HXX
-#define INCLUDED_SW_INC_SWGETPOOLIDFROMNAME_HXX
+#pragma once
 
 #include <sal/types.h>
 
@@ -31,10 +30,8 @@ enum class SwGetPoolIdFromName : sal_uInt16
     FrmFmt = 0x04,
     PageDesc = 0x08,
     NumRule = 0x10,
-    TabStyle = 0x20,
+    TableStyle = 0x20,
     CellStyle = 0x40
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

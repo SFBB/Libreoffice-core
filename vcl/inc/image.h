@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_INC_IMAGE_H
-#define INCLUDED_VCL_INC_IMAGE_H
+#pragma once
 
 #include <vcl/bitmapex.hxx>
 #include <vcl/gdimtf.hxx>
@@ -37,13 +36,15 @@ private:
     std::unique_ptr<GDIMetaFile> mxMetaFile;
 
     /// Original bitmap - or cache of a potentially scaled bitmap
-    BitmapEx maBitmapEx;
-    BitmapEx maDisabledBitmapEx;
+    Bitmap maBitmap;
+    Bitmap maDisabledBitmap;
 
-    bool loadStockAtScale(SalGraphics* pGraphics, BitmapEx &rBitmapEx);
+    bool bOptional = false;
+
+    bool loadStockAtScale(SalGraphics* pGraphics, Bitmap &rBitmap);
 
 public:
-    ImplImage(const BitmapEx& rBitmapEx);
+    ImplImage(const Bitmap& rBitmap);
     ImplImage(const GDIMetaFile& rMetaFile);
     ImplImage(OUString aStockName);
 
@@ -60,9 +61,11 @@ public:
     /// get size in co-ordinates not scaled for HiDPI
     Size getSizePixel();
     /// Legacy - the original bitmap
-    BitmapEx const & getBitmapEx(bool bDisabled = false);
+    Bitmap const & getBitmap(bool bDisabled = false);
     /// Taking account of HiDPI scaling
-    BitmapEx const & getBitmapExForHiDPI(bool bDisabled, SalGraphics* pGraphics);
+    Bitmap const & getBitmapForHiDPI(bool bDisabled, SalGraphics* pGraphics);
+
+    void SetOptional(bool bValue);
 
     bool isEqual(const ImplImage &ref) const;
     bool isSizeEmpty() const
@@ -70,7 +73,5 @@ public:
         return maSizePixel == Size();
     }
 };
-
-#endif // INCLUDED_VCL_INC_IMAGE_H
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

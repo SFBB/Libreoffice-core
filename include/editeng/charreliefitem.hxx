@@ -33,16 +33,19 @@
 
 class EDITENG_DLLPUBLIC SvxCharReliefItem final : public SfxEnumItem<FontRelief>
 {
+protected:
+    virtual ItemInstanceManager* getItemInstanceManager() const override;
+
 public:
     static SfxPoolItem* CreateDefault();
 
+    DECLARE_ITEM_TYPE_FUNCTION(SvxCharReliefItem)
     SvxCharReliefItem( FontRelief eValue /*= FontRelief::NONE*/,
                        const sal_uInt16 nId );
 
     virtual SvxCharReliefItem* Clone( SfxItemPool *pPool = nullptr ) const override;
 
     static OUString         GetValueTextByPos( sal_uInt16 nPos );
-    virtual sal_uInt16      GetValueCount() const override;
 
     virtual bool GetPresentation( SfxItemPresentation ePres,
                                   MapUnit eCoreMetric,

@@ -176,12 +176,10 @@ namespace cppcanvas::internal
 
                 // determine overall transformation matrix (render, view,
                 // and passed transformation)
-                ::basegfx::B2DHomMatrix aTransform;
-                ::canvas::tools::getRenderStateTransform( aTransform, maState );
+                ::basegfx::B2DHomMatrix aTransform = ::canvas::tools::getRenderStateTransform( maState );
                 aTransform = rTransformation * aTransform;
 
-                ::basegfx::B2DHomMatrix aTotalTransform;
-                ::canvas::tools::getViewStateTransform( aTotalTransform, mpCanvas->getViewState() );
+                ::basegfx::B2DHomMatrix aTotalTransform = ::canvas::tools::getViewStateTransform( mpCanvas->getViewState() );
                 aTotalTransform = aTotalTransform * aTransform;
 
                 // since pure translational changes to the transformation
@@ -246,8 +244,8 @@ namespace cppcanvas::internal
                     }
 
                     // output size of metafile
-                    ::Size aOutputSizePixel( ::basegfx::fround( aScale.getX() * maDstSize.getWidth() ),
-                                             ::basegfx::fround( aScale.getY() * maDstSize.getHeight() ) );
+                    ::Size aOutputSizePixel( ::basegfx::fround<::tools::Long>( aScale.getX() * maDstSize.getWidth() ),
+                                             ::basegfx::fround<::tools::Long>( aScale.getY() * maDstSize.getHeight() ) );
 
                     sal_Int32 nBitmapExtra;
                     if ( bHasTextActions )
@@ -385,7 +383,7 @@ namespace cppcanvas::internal
                     // update buffered bitmap and transformation
                     BitmapSharedPtr aBmp( VCLFactory::createBitmap(
                                               mpCanvas,
-                                              aVDev->GetBitmapEx(
+                                              aVDev->GetBitmap(
                                                   aBitmapPoint,
                                                   aBitmapSizePixel ) ) );
                     mxBufferBitmap = aBmp->getUNOBitmap();

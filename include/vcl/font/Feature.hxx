@@ -14,6 +14,7 @@
 #include <rtl/character.hxx>
 #include <rtl/ustring.hxx>
 #include <unotools/resmgr.hxx>
+#include <cstdint>
 #include <vector>
 
 namespace vcl::font
@@ -114,7 +115,7 @@ struct Feature
 // headers here, so the member types should remain compatible.
 struct FeatureSetting
 {
-    FeatureSetting(OString feature);
+    FeatureSetting(const OString& feature);
 
     uint32_t m_nTag;
     uint32_t m_nValue;

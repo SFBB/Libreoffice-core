@@ -22,16 +22,15 @@
 #include <file/FPreparedStatement.hxx>
 
 namespace connectivity::dbase
+{
+    class ODbasePreparedStatement : public file::OPreparedStatement
     {
-        class OConnection;
-        class ODbasePreparedStatement : public file::OPreparedStatement
-        {
-        protected:
-            virtual rtl::Reference<file::OResultSet> createResultSet() override;
-        public:
-            ODbasePreparedStatement( file::OConnection* _pConnection) : file::OPreparedStatement( _pConnection){}
-            DECLARE_SERVICE_INFO();
-        };
+    protected:
+        virtual rtl::Reference<file::OResultSet> createResultSet() override;
+    public:
+        ODbasePreparedStatement( file::OConnection* _pConnection) : file::OPreparedStatement( _pConnection){}
+        DECLARE_SERVICE_INFO();
+    };
 
 }
 

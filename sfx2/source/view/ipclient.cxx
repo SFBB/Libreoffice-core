@@ -43,6 +43,7 @@
 #include <com/sun/star/embed/EmbedMisc.hpp>
 #include <svtools/embedhlp.hxx>
 #include <vcl/svapp.hxx>
+#include <vcl/unohelp.hxx>
 
 #include <sfx2/ipclient.hxx>
 #include <sfx2/viewsh.hxx>
@@ -55,7 +56,6 @@
 #include <vcl/timer.hxx>
 #include <vcl/window.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
-#include <toolkit/helper/convert.hxx>
 #include <tools/debug.hxx>
 #include <comphelper/diagnose_ex.hxx>
 #include <tools/fract.hxx>
@@ -234,7 +234,7 @@ void SAL_CALL SfxInPlaceClient_Impl::saveObject()
     uno::Reference< frame::XFrame >              xFrame;
     uno::Reference< task::XStatusIndicator >     xStatusIndicator;
     uno::Reference< frame::XModel >              xModel( m_xObject->getComponent(), uno::UNO_QUERY );
-    uno::Reference< uno::XComponentContext >     xContext( ::comphelper::getProcessComponentContext() );
+    const uno::Reference< uno::XComponentContext >&     xContext( ::comphelper::getProcessComponentContext() );
 
     if ( xModel.is() )
     {
@@ -256,7 +256,7 @@ void SAL_CALL SfxInPlaceClient_Impl::saveObject()
             try
             {
                 xStatusIndicator = xStatusIndicatorFactory->createStatusIndicator();
-                xPropSet->setPropertyValue( "IndicatorInterception" , uno::Any( xStatusIndicator ));
+                xPropSet->setPropertyValue( u"IndicatorInterception"_ustr , uno::Any( xStatusIndicator ));
             }
             catch ( const uno::RuntimeException& )
             {
@@ -285,7 +285,7 @@ void SAL_CALL SfxInPlaceClient_Impl::saveObject()
         if ( xPropSet.is() )
         {
             xStatusIndicator.clear();
-            xPropSet->setPropertyValue( "IndicatorInterception" , uno::Any( xStatusIndicator ));
+            xPropSet->setPropertyValue( u"IndicatorInterception"_ustr , uno::Any( xStatusIndicator ));
         }
     }
     catch ( const uno::RuntimeException& )
@@ -407,7 +407,7 @@ uno::Reference< css::frame::XLayoutManager > SAL_CALL SfxInPlaceClient_Impl::get
     uno::Reference< css::frame::XLayoutManager > xMan;
     try
     {
-        uno::Any aAny = xFrame->getPropertyValue( "LayoutManager" );
+        uno::Any aAny = xFrame->getPropertyValue( u"LayoutManager"_ustr );
         aAny >>= xMan;
     }
     catch ( uno::Exception& ex )
@@ -458,7 +458,7 @@ awt::Rectangle SAL_CALL SfxInPlaceClient_Impl::getPlacement()
         aRealObjArea = pEditWin->LogicToPixel(aRealObjArea);
     }
 
-    return AWTRectangle( aRealObjArea );
+    return vcl::unohelper::ConvertToAWTRect(aRealObjArea);
 }
 
 
@@ -488,7 +488,7 @@ awt::Rectangle SAL_CALL SfxInPlaceClient_Impl::getClipRectangle()
         aRealObjArea = pEditWin->LogicToPixel(aRealObjArea);
     }
 
-    return AWTRectangle( aRealObjArea );
+    return vcl::unohelper::ConvertToAWTRect(aRealObjArea);
 }
 
 
@@ -516,8 +516,8 @@ void SAL_CALL SfxInPlaceClient_Impl::changedPlacement( const awt::Rectangle& aPo
 
     // check if the change is at least one pixel in size
     awt::Rectangle aOldRect = getPlacement();
-    tools::Rectangle aNewPixelRect = VCLRectangle( aPosRect );
-    tools::Rectangle aOldPixelRect = VCLRectangle( aOldRect );
+    tools::Rectangle aNewPixelRect = vcl::unohelper::ConvertToVCLRect(aPosRect);
+    tools::Rectangle aOldPixelRect = vcl::unohelper::ConvertToVCLRect(aOldRect);
     if ( aOldPixelRect == aNewPixelRect )
         // nothing has changed
         return;
@@ -906,7 +906,7 @@ ErrCodeMsg SfxInPlaceClient::DoVerb(sal_Int32 nVerb)
         {
             svt::EmbeddedObjectRef::TryRunningState( m_xImp->m_xObject );
             // TODO/LATER: this special verb should disappear when outplace activation is completely available
-            uno::Reference< frame::XModel > xEmbModel( m_xImp->m_xObject->getComponent(), uno::UNO_QUERY );
+            uno::Reference< frame::XModel2 > xEmbModel( m_xImp->m_xObject->getComponent(), uno::UNO_QUERY );
             if ( xEmbModel.is() )
             {
                 bSaveCopyAs = true;
@@ -915,13 +915,14 @@ ErrCodeMsg SfxInPlaceClient::DoVerb(sal_Int32 nVerb)
                 {
                     SfxStoringHelper aHelper;
                     uno::Sequence< beans::PropertyValue > aDispatchArgs{
-                        comphelper::makePropertyValue("SaveTo", true)
+                        comphelper::makePropertyValue(u"SaveTo"_ustr, true)
                     };
 
                     aHelper.GUIStoreModel( xEmbModel,
                                             u"SaveAs",
                                             aDispatchArgs,
                                             false,
+                                            SignatureState::NOSIGNATURES,
                                             SignatureState::NOSIGNATURES,
                                             false );
                 }

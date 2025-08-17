@@ -28,6 +28,7 @@
 SfxPoolItem* SfxIntegerListItem::CreateDefault() { return new SfxIntegerListItem; }
 
 SfxIntegerListItem::SfxIntegerListItem()
+    : SfxPoolItem(0)
 {
 }
 

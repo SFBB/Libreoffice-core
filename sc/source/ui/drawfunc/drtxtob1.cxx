@@ -43,10 +43,10 @@ bool ScDrawTextObjectBar::ExecuteCharDlg( const SfxItemSet& rArgs,
     ScAbstractDialogFactory* pFact = ScAbstractDialogFactory::Create();
     ScopedVclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateScCharDlg(
         mrViewData.GetDialogParent(), &rArgs,
-        mrViewData.GetSfxDocShell(), true));
+        &mrViewData.GetSfxDocShell(), true));
     if (nSlot == SID_CHAR_DLG_EFFECT)
     {
-        pDlg->SetCurPageId("fonteffects");
+        pDlg->SetCurPageId(u"fonteffects"_ustr);
     }
     bool bRet = ( pDlg->Execute() == RET_OK );
 
@@ -64,9 +64,8 @@ bool ScDrawTextObjectBar::ExecuteParaDlg( const SfxItemSet& rArgs,
                                                 SfxItemSet& rOutSet )
 {
     SfxItemPool* pArgPool = rArgs.GetPool();
-    SfxItemSetFixed<
-            EE_ITEMS_START, EE_ITEMS_END,
-            SID_ATTR_PARA_PAGEBREAK, SID_ATTR_PARA_WIDOWS>  aNewAttr(*pArgPool);
+    SfxItemSet aNewAttr(SfxItemSet::makeFixedSfxItemSet<EE_ITEMS_START, EE_ITEMS_END,
+                                                        SID_ATTR_PARA_PAGEBREAK, SID_ATTR_PARA_WIDOWS>(*pArgPool));
     aNewAttr.Put( rArgs );
 
     // Values have been taken over once to show the dialog.

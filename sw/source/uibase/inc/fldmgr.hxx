@@ -22,6 +22,7 @@
 #include <fldbas.hxx>
 #include <pam.hxx>
 #include <swdllapi.h>
+#include <names.hxx>
 #include <com/sun/star/uno/Reference.h>
 #include <com/sun/star/uno/Any.h>
 #include <memory>
@@ -30,9 +31,6 @@
 #include <vector>
 
 namespace com::sun::star{
-    namespace container{
-        class XNameAccess;
-    }
     namespace text{
         class XNumberingTypeInfo;
     }
@@ -41,9 +39,6 @@ namespace com::sun::star{
 class SwWrtShell;
 class SwField;
 class SwFieldType;
-class SwPaM;
-class SbModule;
-class SvxMacroItem;
 class SvNumberFormatter;
 namespace weld { class Widget; class Window; }
 enum class SwFieldIds : sal_uInt16;
@@ -83,18 +78,24 @@ struct SwInsertField_Data
     weld::Widget* m_pParent; // parent widget used for SwWrtShell::StartInputFieldDlg()
     /// Marks the PostIt field's annotation start/end if it differs from the cursor selection.
     std::optional<SwPaM> m_oAnnotationRange;
+    std::optional<std::tuple<sal_uInt32, sal_uInt32, SwMarkName>> m_oParentId;
+    bool m_bNeverExpand;
 
     SwInsertField_Data(SwFieldTypesEnum nType, sal_uInt16 nSub, OUString aPar1, OUString aPar2,
-                    sal_uInt32 nFormatId, SwWrtShell* pShell = nullptr, sal_Unicode cSep = ' ', bool bIsAutoLanguage = true) :
-        m_nTypeId(nType),
-        m_nSubType(nSub),
-        m_sPar1(std::move(aPar1)),
-        m_sPar2(std::move(aPar2)),
-        m_nFormatId(nFormatId),
-        m_pSh(pShell),
-        m_cSeparator(cSep),
-        m_bIsAutomaticLanguage(bIsAutoLanguage),
-        m_pParent(nullptr) {}
+                       sal_uInt32 nFormatId, SwWrtShell* pShell = nullptr, sal_Unicode cSep = ' ',
+                       bool bIsAutoLanguage = true, bool bNeverExpand = false)
+        : m_nTypeId(nType)
+        , m_nSubType(nSub)
+        , m_sPar1(std::move(aPar1))
+        , m_sPar2(std::move(aPar2))
+        , m_nFormatId(nFormatId)
+        , m_pSh(pShell)
+        , m_cSeparator(cSep)
+        , m_bIsAutomaticLanguage(bIsAutoLanguage)
+        , m_pParent(nullptr)
+        , m_bNeverExpand(bNeverExpand)
+    {
+    }
 };
 
 class SW_DLLPUBLIC SwFieldMgr
@@ -154,7 +155,7 @@ public:
                                     bool bIsTable, const OUString& rFieldName);
 
     // organise RefMark with names
-    bool            CanInsertRefMark( std::u16string_view rStr );
+    bool            CanInsertRefMark( const SwMarkName& rStr );
 
     // access to field types via ResId
     size_t          GetFieldTypeCount() const;
@@ -184,6 +185,7 @@ public:
 
     // format to a type
     sal_uInt16          GetFormatCount(SwFieldTypesEnum nTypeId, bool bHtmlMode) const;
+    OUString            GetFormatStr(const SwField&) const;
     OUString            GetFormatStr(SwFieldTypesEnum nTypeId, sal_uInt32 nFormatId) const;
     sal_uInt16          GetFormatId(SwFieldTypesEnum nTypeId, sal_uInt32 nFormatId) const;
     sal_uInt32          GetDefaultFormat(SwFieldTypesEnum nTypeId, bool bIsText, SvNumberFormatter* pFormatter);

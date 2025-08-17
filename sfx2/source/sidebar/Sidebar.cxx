@@ -20,11 +20,13 @@
 #include <sfx2/sidebar/Sidebar.hxx>
 #include <sfx2/sidebar/SidebarController.hxx>
 #include <sfx2/sidebar/ResourceManager.hxx>
+#include <sfx2/sidebar/SidebarDockingWindow.hxx>
 #include <sidebar/PanelDescriptor.hxx>
 #include <sidebar/Tools.hxx>
 #include <sfx2/sidebar/FocusManager.hxx>
 #include <sfx2/childwin.hxx>
 #include <sfx2/sfxsids.hrc>
+#include <sfx2/viewsh.hxx>
 #include <com/sun/star/frame/XDispatch.hpp>
 
 using namespace css;
@@ -49,7 +51,7 @@ void Sidebar::ShowDeck(std::u16string_view rsDeckId, SfxViewFrame* pViewFrame, b
     if (bToggle && bInitiallyVisible && pController->IsDeckVisible(rsDeckId))
     {
         // close the sidebar if it was already visible and showing this sidebar deck
-        const util::URL aURL(Tools::GetURL(".uno:Sidebar"));
+        const util::URL aURL(Tools::GetURL(u".uno:Sidebar"_ustr));
         css::uno::Reference<frame::XDispatch> xDispatch(Tools::GetDispatch(pViewFrame->GetFrame().GetFrameInterface(), aURL));
         if (xDispatch.is())
             xDispatch->dispatch(aURL, css::uno::Sequence<beans::PropertyValue>());
@@ -78,7 +80,7 @@ void Sidebar::ShowPanel (
     // - Make the deck switching asynchronous
     // - Make sure to use a context that really shows the panel
 
-    // All that is not necessary for the current use cases so lets
+    // All that is not necessary for the current use cases so let's
     // keep it simple for the time being.
     pController->OpenThenSwitchToDeck(xPanelDescriptor->msDeckId);
 
@@ -103,7 +105,7 @@ void Sidebar::TogglePanel (
     // - Make the deck switching asynchronous
     // - Make sure to use a context that really shows the panel
 
-    // All that is not necessary for the current use cases so lets
+    // All that is not necessary for the current use cases so let's
     // keep it simple for the time being.
     pController->OpenThenToggleDeck(xPanelDescriptor->msDeckId);
 }
@@ -121,6 +123,50 @@ bool Sidebar::IsPanelVisible(
         return false;
 
     return pController->IsDeckVisible(xPanelDescriptor->msDeckId);
+}
+
+bool Sidebar::Setup(std::u16string_view sidebarDeckId)
+{
+    SfxViewShell* pViewShell = SfxViewShell::Current();
+    SfxViewFrame* pViewFrame = pViewShell ? &pViewShell->GetViewFrame() : nullptr;
+    if (pViewFrame)
+    {
+        if (!pViewFrame->GetChildWindow(SID_SIDEBAR))
+            pViewFrame->SetChildWindow(SID_SIDEBAR, false /* create it */, true /* focus */);
+
+        pViewFrame->ShowChildWindow(SID_SIDEBAR, true);
+
+        // Force synchronous population of panels
+        SfxChildWindow *pChild = pViewFrame->GetChildWindow(SID_SIDEBAR);
+        if (!pChild)
+            return false;
+
+        auto pDockingWin = dynamic_cast<sfx2::sidebar::SidebarDockingWindow *>(pChild->GetWindow());
+        if (!pDockingWin)
+            return false;
+
+        pViewFrame->ShowChildWindow( SID_SIDEBAR );
+
+        const rtl::Reference<sfx2::sidebar::SidebarController>& xController
+            = pDockingWin->GetOrCreateSidebarController();
+
+        xController->FadeIn();
+        xController->RequestOpenDeck();
+
+        if (!sidebarDeckId.empty())
+        {
+            xController->SwitchToDeck(sidebarDeckId);
+        }
+        else
+        {
+            xController->SwitchToDefaultDeck();
+        }
+
+        pDockingWin->SyncUpdate();
+        return true;
+    }
+    else
+        return false;
 }
 
 } // end of namespace sfx2::sidebar

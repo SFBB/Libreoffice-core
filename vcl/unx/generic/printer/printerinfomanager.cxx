@@ -17,8 +17,17 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <config_cpdb.h>
+#include <config_cups.h>
+
+#if ENABLE_CPDB
 #include <unx/cpdmgr.hxx>
+#endif
+
+#if ENABLE_CUPS
 #include <unx/cupsmgr.hxx>
+#endif
+
 #include <unx/gendata.hxx>
 #include <unx/helper.hxx>
 
@@ -81,9 +90,13 @@ PrinterInfoManager& PrinterInfoManager::get()
     if (pPIM)
         return *pPIM;
 
+#if ENABLE_CPDB
     pPIM = CPDManager::tryLoadCPD();
+#endif
+#if ENABLE_CUPS
     if (!pPIM)
         pPIM = CUPSManager::tryLoadCUPS();
+#endif
     if (!pPIM)
         pPIM = new PrinterInfoManager();
     pSalData->m_pPrinterInfoManager.reset(pPIM);
@@ -96,7 +109,7 @@ PrinterInfoManager& PrinterInfoManager::get()
 
 PrinterInfoManager::PrinterInfoManager( Type eType ) :
     m_eType( eType ),
-    m_aSystemDefaultPaper( "A4" )
+    m_aSystemDefaultPaper( u"A4"_ustr )
 {
     if( eType == Type::Default )
         m_pQueueInfo.reset( new SystemQueueInfo );
@@ -184,7 +197,7 @@ void PrinterInfoManager::initialize()
     m_aGlobalDefaults = PrinterInfo();
 
     // need a parser for the PPDContext. generic printer should do.
-    m_aGlobalDefaults.m_pParser = PPDParser::getParser( "SGENPRT" );
+    m_aGlobalDefaults.m_pParser = PPDParser::getParser( u"SGENPRT"_ustr );
     m_aGlobalDefaults.m_aContext.setParser( m_aGlobalDefaults.m_pParser );
 
     if( ! m_aGlobalDefaults.m_pParser )
@@ -443,7 +456,7 @@ void PrinterInfoManager::initialize()
                     aPrinter.m_aAlternateFiles = find_it->second.m_aAlternateFiles;
                     aPrinter.m_aAlternateFiles.insert( find_it->second.m_aFile );
                 }
-                m_aPrinters[ aPrinterName ] = aPrinter;
+                m_aPrinters[ aPrinterName ] = std::move(aPrinter);
             }
         }
     }
@@ -471,8 +484,8 @@ void PrinterInfoManager::initialize()
     {
         PrinterInfo aDefaultInfo( getPrinterInfo( m_aDefaultPrinter ) );
 
-        const PPDKey* pDefKey           = aDefaultInfo.m_pParser->getKey( "PageSize" );
-        const PPDKey* pMergeKey         = aMergeInfo.m_pParser->getKey( "PageSize" );
+        const PPDKey* pDefKey           = aDefaultInfo.m_pParser->getKey( u"PageSize"_ustr );
+        const PPDKey* pMergeKey         = aMergeInfo.m_pParser->getKey( u"PageSize"_ustr );
         const PPDValue* pDefValue       = aDefaultInfo.m_aContext.getValue( pDefKey );
         const PPDValue* pMergeValue     = pMergeKey ? pMergeKey->getValue( pDefValue->m_aOption ) : nullptr;
         if( pMergeKey && pMergeValue )
@@ -505,7 +518,7 @@ void PrinterInfoManager::initialize()
         aPrinter.m_aInfo.m_aComment         = printQueue.m_aComment;
         aPrinter.m_aInfo.m_aLocation        = printQueue.m_aLocation;
 
-        m_aPrinters[ aPrinterName ] = aPrinter;
+        m_aPrinters[aPrinterName] = std::move(aPrinter);
     }
 }
 
@@ -571,7 +584,7 @@ void PrinterInfoManager::setDefaultPaper( PPDContext& rContext ) const
     if(  ! rContext.getParser() )
         return;
 
-    const PPDKey* pPageSizeKey = rContext.getParser()->getKey( "PageSize" );
+    const PPDKey* pPageSizeKey = rContext.getParser()->getKey( u"PageSize"_ustr );
     if( ! pPageSizeKey )
         return;
 
@@ -683,8 +696,8 @@ static void lpgetSysQueueTokenHandler(
     rtl_TextEncoding aEncoding = osl_getThreadTextEncoding();
     std::unordered_set< OUString > aUniqueSet;
     std::unordered_set< OUString > aOnlySet;
-    aUniqueSet.insert( OUString( "_all" ) );
-    aUniqueSet.insert( OUString( "_default" ) );
+    aUniqueSet.insert( u"_all"_ustr );
+    aUniqueSet.insert( u"_default"_ustr );
 
     // the eventual "all" attribute of the "_all" queue tells us, which
     // printers are to be used for this user at all
@@ -851,7 +864,7 @@ void SystemQueueInfo::run()
                 rParm.pHandler( aLines, aSysPrintQueues, &rParm );
                 std::unique_lock aGuard( m_aMutex );
                 m_bChanged  = true;
-                m_aQueues   = aSysPrintQueues;
+                m_aQueues   = std::move(aSysPrintQueues);
                 m_aCommand  = OUString::createFromAscii( rParm.pPrintCommand );
 #if OSL_DEBUG_LEVEL > 1
                 SAL_INFO("vcl.unx.print", "printing queue command: success.");

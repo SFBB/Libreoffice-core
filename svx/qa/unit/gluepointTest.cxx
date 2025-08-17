@@ -28,7 +28,7 @@ class GluePointTest : public UnoApiTest
 {
 public:
     GluePointTest()
-        : UnoApiTest("svx/qa/unit/data/")
+        : UnoApiTest(u"svx/qa/unit/data/"_ustr)
     {
     }
 
@@ -57,12 +57,12 @@ bool lcl_getGeometryGluePoints(
     const uno::Reference<drawing::XShape>& xShape)
 {
     uno::Reference<beans::XPropertySet> xShapeProps(xShape, uno::UNO_QUERY_THROW);
-    uno::Any anotherAny = xShapeProps->getPropertyValue("CustomShapeGeometry");
+    uno::Any anotherAny = xShapeProps->getPropertyValue(u"CustomShapeGeometry"_ustr);
     uno::Sequence<beans::PropertyValue> aCustomShapeGeometry;
     if (!(anotherAny >>= aCustomShapeGeometry))
         return false;
     uno::Sequence<beans::PropertyValue> aPathProps;
-    for (beans::PropertyValue const& rProp : std::as_const(aCustomShapeGeometry))
+    for (beans::PropertyValue const& rProp : aCustomShapeGeometry)
     {
         if (rProp.Name == "Path")
         {
@@ -71,7 +71,7 @@ bool lcl_getGeometryGluePoints(
         }
     }
 
-    for (beans::PropertyValue const& rProp : std::as_const(aPathProps))
+    for (beans::PropertyValue const& rProp : aPathProps)
     {
         if (rProp.Name == "GluePoints")
         {
@@ -87,7 +87,7 @@ bool lcl_getGeometryGluePoints(
 
 CPPUNIT_TEST_FIXTURE(GluePointTest, testTdf157543_5PointStar)
 {
-    loadFromURL(u"tdf157543_5PointStar.ppt");
+    loadFromFile(u"tdf157543_5PointStar.ppt");
     uno::Sequence<drawing::EnhancedCustomShapeParameterPair> aGluePoints;
     CPPUNIT_ASSERT(lcl_getGeometryGluePoints(aGluePoints, getShape(0)));
     // Without fix only two glue points exist.

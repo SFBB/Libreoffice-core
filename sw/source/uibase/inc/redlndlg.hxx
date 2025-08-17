@@ -16,8 +16,8 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SW_SOURCE_UIBASE_INC_REDLNDLG_HXX
-#define INCLUDED_SW_SOURCE_UIBASE_INC_REDLNDLG_HXX
+#pragma once
+
 #include <swdllapi.h>
 #include "chldwrap.hxx"
 #include <docary.hxx>
@@ -30,8 +30,6 @@
 
 #include <memory>
 #include <vector>
-
-class SwChildWinWrapper;
 
 struct SwRedlineDataChild
 {
@@ -51,9 +49,10 @@ struct SwRedlineDataParent
                         { return (pData && pData->GetSeqNo() <  rObj.pData->GetSeqNo()); }
 };
 
-class SwRedlineDataParentSortArr : public o3tl::sorted_vector<SwRedlineDataParent*, o3tl::less_ptr_to<SwRedlineDataParent> > {};
+class SwRedlineDataParentSortArr : public o3tl::sorted_vector<SwRedlineDataParent*, o3tl::less_ptr_to > {};
+class SwView;
 
-class SW_DLLPUBLIC SwRedlineAcceptDlg final
+class SW_DLLPUBLIC SwRedlineAcceptDlg final : public SfxListener
 {
     std::shared_ptr<weld::Window> m_xParentDlg;
     std::vector<std::unique_ptr<SwRedlineDataParent>> m_RedlineParents;
@@ -85,6 +84,10 @@ class SW_DLLPUBLIC SwRedlineAcceptDlg final
     SvxTPView* m_pTPView;
     SvxRedlinTable* m_pTable; // PB 2006/02/02 #i48648 now SvHeaderTabListBox
 
+    bool m_bInitialSelect = true;
+
+    DECL_DLLPRIVATE_LINK(SortByComboBoxChangedHdl, SvxTPView*, void);
+
     DECL_DLLPRIVATE_LINK( AcceptHdl,     SvxTPView*, void );
     DECL_DLLPRIVATE_LINK( AcceptAllHdl,  SvxTPView*, void );
     DECL_DLLPRIVATE_LINK( RejectHdl,     SvxTPView*, void );
@@ -99,10 +102,11 @@ class SW_DLLPUBLIC SwRedlineAcceptDlg final
     SAL_DLLPRIVATE void          InsertParents(SwRedlineTable::size_type nStart, SwRedlineTable::size_type nEnd = SwRedlineTable::npos);
     SAL_DLLPRIVATE void          RemoveParents(SwRedlineTable::size_type nStart, SwRedlineTable::size_type nEnd);
     SAL_DLLPRIVATE void          InitAuthors();
+    SAL_DLLPRIVATE void          EnableControls(const SwView* pView);
 
-    SAL_DLLPRIVATE static OUString GetActionImage(const SwRangeRedline& rRedln, sal_uInt16 nStack = 0,
+    SAL_DLLPRIVATE static const OUString & GetActionImage(const SwRangeRedline& rRedln, sal_uInt16 nStack = 0,
                                                   bool bTableChanges = false, bool bRowChanges = false);
-    SAL_DLLPRIVATE OUString      GetActionText(const SwRangeRedline& rRedln, sal_uInt16 nStack = 0);
+    SAL_DLLPRIVATE const OUString & GetActionText(const SwRangeRedline& rRedln, sal_uInt16 nStack = 0);
     SAL_DLLPRIVATE SwRedlineTable::size_type GetRedlinePos(const weld::TreeIter& rEntry);
 
     SwRedlineAcceptDlg(SwRedlineAcceptDlg const&) = delete;
@@ -124,6 +128,8 @@ public:
     void            FillInfo(OUString &rExtraData) const;
 
     void            Activate();
+
+    virtual void Notify(SfxBroadcaster& rBC, const SfxHint& rHint) override;
 };
 
 class SwModelessRedlineAcceptDlg final : public SfxModelessDialogController
@@ -131,6 +137,7 @@ class SwModelessRedlineAcceptDlg final : public SfxModelessDialogController
     std::unique_ptr<weld::Container> m_xContentArea;
     std::unique_ptr<SwRedlineAcceptDlg> m_xImplDlg;
     SwChildWinWrapper*      m_pChildWin;
+    bool mbInDestruction = false;
 
 public:
     SwModelessRedlineAcceptDlg(SfxBindings*, SwChildWinWrapper*, weld::Window *pParent);
@@ -150,8 +157,6 @@ public:
                          SfxChildWinInfo*);
 
     SFX_DECL_CHILDWINDOW_WITHID( SwRedlineAcceptChild );
-
-    virtual bool    ReInitDlg(SwDocShell *pDocSh) override;
 };
 
 /// Redline (Manage Changes) panel for the sidebar.
@@ -166,7 +171,5 @@ public:
     /// We need to be a SfxListener to be able to update the list of changes when we get SfxHintId::DocChanged.
     virtual void Notify(SfxBroadcaster& rBC, const SfxHint& rHint) override;
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

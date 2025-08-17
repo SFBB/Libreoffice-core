@@ -83,13 +83,13 @@ void ScViewFunc::PasteRTF( SCCOL nStartCol, SCROW nStartRow,
     {
         HideAllCursors();
 
-        ScDocShell* pDocSh = GetViewData().GetDocShell();
-        ScDocument& rDoc = pDocSh->GetDocument();
+        ScDocShell& rDocSh = GetViewData().GetDocShell();
+        ScDocument& rDoc = rDocSh.GetDocument();
         SCTAB nTab = GetViewData().GetTabNo();
         const bool bRecord (rDoc.IsUndoEnabled());
 
         const ScPatternAttr* pPattern = rDoc.GetPattern( nStartCol, nStartRow, nTab );
-        std::optional<ScTabEditEngine> pEngine(std::in_place, *pPattern, rDoc.GetEnginePool(), &rDoc );
+        std::optional<ScTabEditEngine> pEngine(std::in_place, *pPattern, rDoc.GetEditEnginePool(), rDoc );
         pEngine->EnableUndo( false );
 
         vcl::Window* pActWin = GetActiveWin();
@@ -97,7 +97,7 @@ void ScViewFunc::PasteRTF( SCCOL nStartCol, SCROW nStartRow,
         {
             pEngine->SetPaperSize(Size(100000,100000));
             ScopedVclPtrInstance< vcl::Window > aWin( pActWin );
-            EditView aEditView( &*pEngine, aWin.get() );
+            EditView aEditView(*pEngine, aWin.get());
             aEditView.SetOutputArea(tools::Rectangle(0,0,100000,100000));
 
             // same method now for clipboard or drag&drop
@@ -143,8 +143,8 @@ void ScViewFunc::PasteRTF( SCCOL nStartCol, SCROW nStartRow,
                 ScRange aMarkRange(nStartCol, nStartRow, nTab, nStartCol, nEndRow, nTab);
                 ScMarkData aDestMark(rDoc.GetSheetLimits());
                 aDestMark.SetMarkArea( aMarkRange );
-                pDocSh->GetUndoManager()->AddUndoAction(
-                    std::make_unique<ScUndoPaste>( pDocSh, aMarkRange, aDestMark,
+                rDocSh.GetUndoManager()->AddUndoAction(
+                    std::make_unique<ScUndoPaste>( rDocSh, aMarkRange, aDestMark,
                                      std::move(pUndoDoc), std::move(pRedoDoc), InsertDeleteFlags::ALL, nullptr));
             }
         }
@@ -156,24 +156,24 @@ void ScViewFunc::PasteRTF( SCCOL nStartCol, SCROW nStartRow,
     else
     {
         HideAllCursors();
-        ScDocShell* pDocSh = GetViewData().GetDocShell();
-        ScImportExport aImpEx( pDocSh->GetDocument(),
+        ScDocShell& rDocSh = GetViewData().GetDocShell();
+        ScImportExport aImpEx( rDocSh.GetDocument(),
             ScAddress( nStartCol, nStartRow, GetViewData().GetTabNo() ) );
 
         OUString aStr;
-        tools::SvRef<SotTempStream> xStream;
-        if ( aDataHelper.GetSotStorageStream( SotClipboardFormatId::RTF, xStream ) && xStream.is() )
+        std::unique_ptr<SvStream> xStream;
+        if ( (xStream = aDataHelper.GetSotStorageStream( SotClipboardFormatId::RTF )) )
             // mba: clipboard always must contain absolute URLs (could be from alien source)
             aImpEx.ImportStream( *xStream, OUString(), SotClipboardFormatId::RTF );
         else if ( aDataHelper.GetString( SotClipboardFormatId::RTF, aStr ) )
             aImpEx.ImportString( aStr, SotClipboardFormatId::RTF );
-        else if ( aDataHelper.GetSotStorageStream( SotClipboardFormatId::RICHTEXT, xStream ) && xStream.is() )
+        else if ( (xStream = aDataHelper.GetSotStorageStream( SotClipboardFormatId::RICHTEXT)) )
             aImpEx.ImportStream( *xStream, OUString(), SotClipboardFormatId::RICHTEXT );
         else if ( aDataHelper.GetString( SotClipboardFormatId::RICHTEXT, aStr ) )
             aImpEx.ImportString( aStr, SotClipboardFormatId::RICHTEXT );
 
         AdjustRowHeight( nStartRow, aImpEx.GetRange().aEnd.Row(), true );
-        pDocSh->UpdateOle(GetViewData());
+        rDocSh.UpdateOle(GetViewData());
         ShowAllCursors();
     }
 }
@@ -206,7 +206,7 @@ void ScViewFunc::DoRefConversion()
         return;
     }
 
-    ScDocShell* pDocSh = GetViewData().GetDocShell();
+    ScDocShell& rDocSh = GetViewData().GetDocShell();
     bool bOk = false;
 
     ScDocumentUniquePtr pUndoDoc;
@@ -293,14 +293,14 @@ void ScViewFunc::DoRefConversion()
         aCopyRange.aEnd.SetTab(nTabCount-1);
         rDoc.CopyToDocument( aCopyRange, InsertDeleteFlags::ALL, bMulti, *pRedoDoc, &rMark );
 
-        pDocSh->GetUndoManager()->AddUndoAction(
-            std::make_unique<ScUndoRefConversion>( pDocSh,
+        rDocSh.GetUndoManager()->AddUndoAction(
+            std::make_unique<ScUndoRefConversion>( rDocSh,
                                     aMarkRange, rMark, std::move(pUndoDoc), std::move(pRedoDoc), bMulti) );
     }
 
-    pDocSh->PostPaint( aMarkRange, PaintPartFlags::Grid );
-    pDocSh->UpdateOle(GetViewData());
-    pDocSh->SetDocumentModified();
+    rDocSh.PostPaint( aMarkRange, PaintPartFlags::Grid );
+    rDocSh.UpdateOle(GetViewData());
+    rDocSh.SetDocumentModified();
     CellContentChanged();
 
     if (!bOk)
@@ -313,8 +313,8 @@ void ScViewFunc::DoThesaurus()
     SCCOL nCol;
     SCROW nRow;
     SCTAB nTab;
-    ScDocShell* pDocSh = GetViewData().GetDocShell();
-    ScDocument& rDoc = pDocSh->GetDocument();
+    ScDocShell& rDocSh = GetViewData().GetDocShell();
+    ScDocument& rDoc = rDocSh.GetDocument();
     ScMarkData& rMark = GetViewData().GetMarkData();
     ScSplitPos eWhich = GetViewData().GetActivePart();
     EESpellState eState;
@@ -329,7 +329,7 @@ void ScViewFunc::DoThesaurus()
     {
         GetViewData().GetEditView(eWhich, pEditView, nCol, nRow);
         pEditSel.reset(new ESelection(pEditView->GetSelection()));
-        SC_MOD()->InputEnterHandler();
+        ScModule::get()->InputEnterHandler();
         GetViewData().GetBindings().Update();          // otherwise the Sfx becomes mixed-up...
     }
     else
@@ -357,17 +357,16 @@ void ScViewFunc::DoThesaurus()
 
     uno::Reference<linguistic2::XSpellChecker1> xSpeller = LinguMgr::GetSpellChecker();
 
-    pThesaurusEngine.reset(new ScEditEngineDefaulter(rDoc.GetEnginePool()));
-    pThesaurusEngine->SetEditTextObjectPool( rDoc.GetEditPool() );
+    pThesaurusEngine.reset(new ScEditEngineDefaulter(rDoc.GetEditEnginePool()));
     pThesaurusEngine->SetRefDevice(GetViewData().GetActiveWin()->GetOutDev());
     pThesaurusEngine->SetSpeller(xSpeller);
-    MakeEditView(pThesaurusEngine.get(), nCol, nRow );
-    SfxItemSet aEditDefaults(pThesaurusEngine->GetEmptyItemSet());
+    MakeEditView(*pThesaurusEngine, nCol, nRow);
     const ScPatternAttr* pPattern = rDoc.GetPattern(nCol, nRow, nTab);
     if (pPattern)
     {
-        pPattern->FillEditItemSet( &aEditDefaults );
-        pThesaurusEngine->SetDefaults( aEditDefaults );
+        SfxItemSet aEditDefaults(pThesaurusEngine->GetEmptyItemSet());
+        pPattern->FillEditItemSet(&aEditDefaults);
+        pThesaurusEngine->SetDefaults(std::move(aEditDefaults));
     }
 
     if (aOldText.getType() == CELLTYPE_EDIT)
@@ -379,7 +378,7 @@ void ScViewFunc::DoThesaurus()
     if (pEditSel)
         pEditView->SetSelection(*pEditSel);
     else
-        pEditView->SetSelection(ESelection(0,0,0,0));
+        pEditView->SetSelection(ESelection());
 
     pThesaurusEngine->ClearModifyFlag();
 
@@ -417,17 +416,17 @@ void ScViewFunc::DoThesaurus()
             rDoc.SetString(nCol, nRow, nTab, aStr);
         }
 
-        pDocSh->SetDocumentModified();
+        rDocSh.SetDocumentModified();
         if (bRecord)
         {
-            GetViewData().GetDocShell()->GetUndoManager()->AddUndoAction(
+            GetViewData().GetDocShell().GetUndoManager()->AddUndoAction(
                 std::make_unique<ScUndoThesaurus>(
                     GetViewData().GetDocShell(), nCol, nRow, nTab, aOldText, aNewText));
         }
     }
 
     KillEditView(true);
-    pDocSh->PostPaintGridAll();
+    rDocSh.PostPaintGridAll();
 }
 
 void ScViewFunc::DoHangulHanjaConversion()
@@ -442,8 +441,8 @@ void ScViewFunc::DoSheetConversion( const ScConversionParam& rConvParam )
     SCROW nRow;
     SCTAB nTab;
     ScViewData& rViewData = GetViewData();
-    ScDocShell* pDocSh = rViewData.GetDocShell();
-    ScDocument& rDoc = pDocSh->GetDocument();
+    ScDocShell& rDocSh = rViewData.GetDocShell();
+    ScDocument& rDoc = rDocSh.GetDocument();
     ScMarkData& rMark = rViewData.GetMarkData();
     ScSplitPos eWhich = rViewData.GetActivePart();
     EditView* pEditView = nullptr;
@@ -454,7 +453,7 @@ void ScViewFunc::DoSheetConversion( const ScConversionParam& rConvParam )
     if (bIsEditMode)                                            // edit mode active
     {
         rViewData.GetEditView(eWhich, pEditView, nCol, nRow);
-        SC_MOD()->InputEnterHandler();
+        ScModule::get()->InputEnterHandler();
     }
     else
     {
@@ -509,18 +508,18 @@ void ScViewFunc::DoSheetConversion( const ScConversionParam& rConvParam )
     {
         case SC_CONVERSION_SPELLCHECK:
             pEngine.reset(new ScSpellingEngine(
-                rDoc.GetEnginePool(), rViewData, pUndoDoc.get(), pRedoDoc.get(), LinguMgr::GetSpellChecker() ));
+                rDoc.GetEditEnginePool(), rViewData, pUndoDoc.get(), pRedoDoc.get(), LinguMgr::GetSpellChecker() ));
         break;
         case SC_CONVERSION_HANGULHANJA:
         case SC_CONVERSION_CHINESE_TRANSL:
             pEngine.reset(new ScTextConversionEngine(
-                rDoc.GetEnginePool(), rViewData, rConvParam, pUndoDoc.get(), pRedoDoc.get() ));
+                rDoc.GetEditEnginePool(), rViewData, rConvParam, pUndoDoc.get(), pRedoDoc.get() ));
         break;
-        default:
-            OSL_FAIL( "ScViewFunc::DoSheetConversion - unknown conversion type" );
     }
 
-    MakeEditView( pEngine.get(), nCol, nRow );
+    assert(pEngine && "all cases result in pEngine set");
+
+    MakeEditView(*pEngine, nCol, nRow);
     pEngine->SetRefDevice( rViewData.GetActiveWin()->GetOutDev() );
                                         // simulate dummy cell:
     pEditView = rViewData.GetEditView( rViewData.GetActivePart() );
@@ -545,9 +544,9 @@ void ScViewFunc::DoSheetConversion( const ScConversionParam& rConvParam )
         {
             SCCOL nNewCol = rViewData.GetCurX();
             SCROW nNewRow = rViewData.GetCurY();
-            rViewData.GetDocShell()->GetUndoManager()->AddUndoAction(
+            rViewData.GetDocShell().GetUndoManager()->AddUndoAction(
                 std::make_unique<ScUndoConversion>(
-                        pDocSh, rMark,
+                        rDocSh, rMark,
                         nCol, nRow, nTab, std::move(pUndoDoc),
                         nNewCol, nNewRow, nTab, std::move(pRedoDoc), rConvParam ) );
         }
@@ -555,7 +554,7 @@ void ScViewFunc::DoSheetConversion( const ScConversionParam& rConvParam )
         sc::SetFormulaDirtyContext aCxt;
         rDoc.SetAllFormulasDirty(aCxt);
 
-        pDocSh->SetDocumentModified();
+        rDocSh.SetDocumentModified();
     }
     else
     {
@@ -568,7 +567,7 @@ void ScViewFunc::DoSheetConversion( const ScConversionParam& rConvParam )
     rViewData.SetSpellingView( nullptr );
     KillEditView(true);
     pEngine.reset();
-    pDocSh->PostPaintGridAll();
+    rDocSh.PostPaintGridAll();
     rViewData.GetViewShell()->UpdateInputHandler();
     rDoc.EnableIdle(bOldEnabled);
 }
@@ -584,13 +583,13 @@ bool ScViewFunc::PasteFile( const Point& rPos, const OUString& rFile, bool bLink
 
     // is it a media URL?
 #if HAVE_FEATURE_AVMEDIA
-    if( ::avmedia::MediaWindow::isMediaURL( aStrURL, ""/*TODO?*/ ) )
+    if( ::avmedia::MediaWindow::isMediaURL( aStrURL, u""_ustr/*TODO?*/ ) )
     {
         const SfxStringItem aMediaURLItem( SID_INSERT_AVMEDIA, aStrURL );
         const SfxPoolItemHolder aResult(GetViewData().GetDispatcher().ExecuteList(
             SID_INSERT_AVMEDIA, SfxCallMode::SYNCHRON,
             { &aMediaURLItem }));
-        return (nullptr != aResult.getItem());
+        return aResult.is();
     }
 #endif
 
@@ -614,14 +613,14 @@ bool ScViewFunc::PasteFile( const Point& rPos, const OUString& rFile, bool bLink
             SfxStringItem aFileNameItem( SID_FILE_NAME, aStrURL );
             SfxStringItem aFilterItem( SID_FILTER_NAME, pFlt->GetName() );
             // #i69524# add target, as in SfxApplication when the Open dialog is used
-            SfxStringItem aTargetItem( SID_TARGETNAME, "_default" );
+            SfxStringItem aTargetItem( SID_TARGETNAME, u"_default"_ustr );
 
             // Open Asynchronously, because it can also happen from D&D
             // and that is not so good for the MAC...
             const SfxPoolItemHolder aResult(rDispatcher.ExecuteList(SID_OPENDOC,
                 SfxCallMode::ASYNCHRON,
                 { &aFileNameItem, &aFilterItem, &aTargetItem}));
-            return (nullptr != aResult.getItem());
+            return aResult.is();
         }
     }
 
@@ -664,7 +663,7 @@ bool ScViewFunc::PasteFile( const Point& rPos, const OUString& rFile, bool bLink
 
         //TODO/LATER: what about "bLink"?
 
-        uno::Sequence < beans::PropertyValue > aMedium{ comphelper::makePropertyValue("URL",
+        uno::Sequence < beans::PropertyValue > aMedium{ comphelper::makePropertyValue(u"URL"_ustr,
                                                                                       aStrURL) };
 
         comphelper::EmbeddedObjectContainer aCnt( xStorage );
@@ -716,7 +715,7 @@ void ScViewFunc::InsertBookmark( const OUString& rDescription, const OUString& r
     ScDocument& rDoc = GetViewData().GetDocument();
     SCTAB nTab = GetViewData().GetTabNo();
     ScAddress aCellPos( nPosX, nPosY, nTab );
-    EditEngine aEngine( rDoc.GetEnginePool() );
+    EditEngine aEngine( rDoc.GetEditEnginePool() );
 
     const EditTextObject* pOld = rDoc.GetEditText(aCellPos);
     if (pOld)
@@ -728,11 +727,7 @@ void ScViewFunc::InsertBookmark( const OUString& rDescription, const OUString& r
             aEngine.SetText(aOld);
     }
 
-    sal_Int32 nPara = aEngine.GetParagraphCount();
-    if (nPara)
-        --nPara;
-    sal_Int32 nTxtLen = aEngine.GetTextLen(nPara);
-    ESelection aInsSel( nPara, nTxtLen, nPara, nTxtLen );
+    ESelection aInsSel(ESelection::AtEnd());
 
     if ( bTryReplace && HasBookmarkAtCursor( nullptr ) )
     {
@@ -754,7 +749,7 @@ void ScViewFunc::InsertBookmark( const OUString& rDescription, const OUString& r
 bool ScViewFunc::HasBookmarkAtCursor( SvxHyperlinkItem* pContent )
 {
     ScAddress aPos( GetViewData().GetCurX(), GetViewData().GetCurY(), GetViewData().GetTabNo() );
-    ScDocument& rDoc = GetViewData().GetDocShell()->GetDocument();
+    ScDocument& rDoc = GetViewData().GetDocShell().GetDocument();
 
     const EditTextObject* pData = rDoc.GetEditText(aPos);
     if (!pData)

@@ -52,7 +52,6 @@ using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::ucb;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::sdb;
-using namespace ::com::sun::star::io;
 using namespace ::osl;
 using namespace ::comphelper;
 using namespace ::cppu;
@@ -127,7 +126,7 @@ css::uno::Sequence< css::uno::Type > ODocumentContainer::getTypes()
 }
 OUString SAL_CALL ODocumentContainer::getImplementationName()
     {
-        return "com.sun.star.comp.dba.ODocumentContainer";
+        return u"com.sun.star.comp.dba.ODocumentContainer"_ustr;
     };
 sal_Bool SAL_CALL ODocumentContainer::supportsService(const OUString& _rServiceName)
     {
@@ -216,10 +215,10 @@ Reference< XInterface > SAL_CALL ODocumentContainer::createInstanceWithArguments
         lcl_extractAndRemove( aArgs, PROPERTY_ACTIVE_CONNECTION, xConnection );
         lcl_extractAndRemove( aArgs, PROPERTY_AS_TEMPLATE, bAsTemplate );
         lcl_extractAndRemove( aArgs, INFO_MEDIATYPE, sMediaType );
-        lcl_extractAndRemove( aArgs, "DocumentServiceName" , sDocServiceName );
+        lcl_extractAndRemove( aArgs, u"DocumentServiceName"_ustr , sDocServiceName );
 
         // ClassID has two allowed types, so a special treatment here
-        Any aClassIDArg = aArgs.get( "ClassID" );
+        Any aClassIDArg = aArgs.get( u"ClassID"_ustr );
         if ( aClassIDArg.hasValue() )
         {
             if ( !( aClassIDArg >>= aClassID ) )
@@ -236,7 +235,7 @@ Reference< XInterface > SAL_CALL ODocumentContainer::createInstanceWithArguments
             OUString sClassIDString = ::comphelper::MimeConfigurationHelper::GetStringClassIDRepresentation( aClassID );
             (void)sClassIDString;
 #endif
-            aArgs.remove( "ClassID" );
+            aArgs.remove( u"ClassID"_ustr );
         }
         // Everything which now is still present in the arguments is passed to the embedded object
         const Sequence< PropertyValue > aCreationArgs( aArgs.getPropertyValues() );
@@ -278,7 +277,7 @@ Reference< XInterface > SAL_CALL ODocumentContainer::createInstanceWithArguments
                         ::comphelper::MimeConfigurationHelper aConfigHelper( m_aContext );
                         const Sequence< NamedValue > aProps( aConfigHelper.GetObjectPropsByDocumentName( sDocServiceName ) );
                         const ::comphelper::NamedValueCollection aMediaTypeProps( aProps );
-                        aClassID = aMediaTypeProps.getOrDefault( "ClassID", Sequence< sal_Int8 >() );
+                        aClassID = aMediaTypeProps.getOrDefault( u"ClassID"_ustr, Sequence< sal_Int8 >() );
                     }
                 }
             }
@@ -325,14 +324,12 @@ Reference< XInterface > SAL_CALL ODocumentContainer::createInstanceWithArguments
     }
     else if ( ServiceSpecifier == SERVICE_NAME_FORM_COLLECTION || SERVICE_NAME_REPORT_COLLECTION == ServiceSpecifier )
     {
-        const Any* pBegin = _aArguments.getConstArray();
-        const Any* pEnd = pBegin + _aArguments.getLength();
-        PropertyValue aValue;
         OUString sName;
         Reference<XNameAccess> xCopyFrom;
-        for(;pBegin != pEnd;++pBegin)
+        for (auto& arg : _aArguments)
         {
-            *pBegin >>= aValue;
+            PropertyValue aValue;
+            arg >>= aValue;
             if ( aValue.Name == PROPERTY_NAME)
             {
                 aValue.Value >>= sName;
@@ -360,21 +357,18 @@ Reference< XInterface > SAL_CALL ODocumentContainer::createInstanceWithArguments
         // copy children
         if ( xCopyFrom.is() )
         {
-            Sequence< OUString> aSeq = xCopyFrom->getElementNames();
-            const OUString* elements = aSeq.getConstArray();
-            const OUString* elementsEnd = elements + aSeq.getLength();
             Reference<XContent> xObjectToCopy;
 
             Reference<XMultiServiceFactory> xORB(xContent,UNO_QUERY);
             OSL_ENSURE(xORB.is(),"No service factory given");
             if ( xORB.is() )
             {
-                for(;elements != elementsEnd;++elements)
+                for (auto& element : xCopyFrom->getElementNames())
                 {
-                    xCopyFrom->getByName(*elements) >>= xObjectToCopy;
+                    xCopyFrom->getByName(element) >>= xObjectToCopy;
                     Sequence<Any> aArguments(comphelper::InitAnyPropertySequence(
                     {
-                        {"Name", Any(*elements)}, // set as folder
+                        {"Name", Any(element)}, // set as folder
                         {"Parent", Any(xContent)},
                         {PROPERTY_EMBEDDEDOBJECT, Any(xObjectToCopy)},
                     }));
@@ -393,7 +387,7 @@ Reference< XInterface > SAL_CALL ODocumentContainer::createInstanceWithArguments
                     Reference<XContent > xNew(xORB->createInstanceWithArguments(sServiceName,aArguments),UNO_QUERY);
                     Reference<XNameContainer> xNameContainer(xContent,UNO_QUERY);
                     if ( xNameContainer.is() )
-                        xNameContainer->insertByName(*elements,Any(xNew));
+                        xNameContainer->insertByName(element, Any(xNew));
                 }
             }
         }
@@ -478,11 +472,8 @@ Any SAL_CALL ODocumentContainer::execute( const Command& aCommand, sal_Int32 Com
     else if ( aCommand.Name == "delete" )
     {
         // delete
-        Sequence< OUString> aSeq = getElementNames();
-        const OUString* pIter = aSeq.getConstArray();
-        const OUString* pEnd   = pIter + aSeq.getLength();
-        for(;pIter != pEnd;++pIter)
-            removeByName(*pIter);
+        for (auto& name : getElementNames())
+            removeByName(name);
 
         dispose();
     }
@@ -551,12 +542,12 @@ Reference< XComponent > SAL_CALL ODocumentContainer::loadComponentFromURL( const
             Command aCommand;
 
             ::comphelper::NamedValueCollection aArgs( Arguments );
-            aCommand.Name = aArgs.getOrDefault( "OpenMode", OUString("open") );
-            aArgs.remove( "OpenMode" );
+            aCommand.Name = aArgs.getOrDefault( u"OpenMode"_ustr, u"open"_ustr );
+            aArgs.remove( u"OpenMode"_ustr );
 
             OpenCommandArgument2 aOpenCommand;
             aOpenCommand.Mode = OpenMode::DOCUMENT;
-            aArgs.put( "OpenCommandArgument", aOpenCommand );
+            aArgs.put( u"OpenCommandArgument"_ustr, aOpenCommand );
 
             aCommand.Argument <<= aArgs.getPropertyValues();
             xComp.set(xContent->execute(aCommand,xContent->createCommandIdentifier(),Reference< XCommandEnvironment >()),UNO_QUERY);

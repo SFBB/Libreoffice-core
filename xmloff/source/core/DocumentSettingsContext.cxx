@@ -48,7 +48,6 @@
 #include <sal/log.hxx>
 #include <osl/diagnose.h>
 #include <comphelper/diagnose_ex.hxx>
-#include <unotools/configmgr.hxx>
 #include "xmlenums.hxx"
 
 using namespace com::sun::star;
@@ -313,7 +312,7 @@ void XMLDocumentSettingsContext::endFastElement(sal_Int32 )
     uno::Sequence<beans::PropertyValue> aSeqConfigProps;
     if ( maConfigProps >>= aSeqConfigProps )
     {
-        if (!utl::ConfigManager::IsFuzzing() && !officecfg::Office::Common::Save::Document::LoadPrinter::get())
+        if (!comphelper::IsFuzzing() && !officecfg::Office::Common::Save::Document::LoadPrinter::get())
         {
             auto aSeqConfigPropsRange = asNonConstRange(aSeqConfigProps);
             sal_Int32 i = aSeqConfigProps.getLength() - 1;
@@ -583,7 +582,7 @@ void XMLConfigItemMapIndexedContext::endFastElement(sal_Int32 )
             uno::Reference< lang::XMultiServiceFactory > xFac( GetImport().GetModel(), uno::UNO_QUERY );
             if( xFac.is() )
             {
-                uno::Reference< beans::XPropertySet > xProps( xFac->createInstance( "com.sun.star.document.Settings" ), uno::UNO_QUERY );
+                uno::Reference< beans::XPropertySet > xProps( xFac->createInstance( u"com.sun.star.document.Settings"_ustr ), uno::UNO_QUERY );
                 if( xProps.is() && xProps->getPropertySetInfo()->hasPropertyByName( maConfigItemName ) )
                 {
                     xProps->getPropertyValue( maConfigItemName ) >>= xForbChars;

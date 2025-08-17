@@ -148,7 +148,7 @@ public:
     SwSectionFormat & GetSectionFormatOrThrow() const {
         SwSectionFormat *const pFormat( GetSectionFormat() );
         if (!pFormat) {
-            throw uno::RuntimeException("SwXTextSection: disposed or invalid", nullptr);
+            throw uno::RuntimeException(u"SwXTextSection: disposed or invalid"_ustr, nullptr);
         }
         return *pFormat;
     }
@@ -216,6 +216,8 @@ SwXTextSection::CreateXTextSection(
     return xSection;
 }
 
+SwXSection::~SwXSection() {}
+
 SwXTextSection::SwXTextSection(
         SwSectionFormat *const pFormat, const bool bIndexHeader)
     : m_pImpl( new SwXTextSection::Impl(*this, pFormat, bIndexHeader) )
@@ -234,9 +236,9 @@ SwXTextSection::getParentSection()
     SwSectionFormat & rSectionFormat( m_pImpl->GetSectionFormatOrThrow() );
 
     SwSectionFormat *const pParentFormat = rSectionFormat.GetParent();
-    const uno::Reference< text::XTextSection > xRet =
-        pParentFormat ? CreateXTextSection(pParentFormat) : nullptr;
-    return xRet;
+    if (!pParentFormat)
+        return nullptr;
+    return CreateXTextSection(pParentFormat);
 }
 
 uno::Sequence< uno::Reference< text::XTextSection > > SAL_CALL
@@ -324,7 +326,7 @@ SwXTextSection::attach(const uno::Reference< text::XTextRange > & xTextRange)
         }
     }
 
-    SwSectionData aSect(eType, pDoc->GetUniqueSectionName(&m_pImpl->m_sName));
+    SwSectionData aSect(eType, UIName(pDoc->GetUniqueSectionName(&m_pImpl->m_sName)));
     aSect.SetCondition(m_pImpl->m_pProps->m_sCondition);
     aSect.SetLinkFileName(m_pImpl->m_pProps->m_sLinkFileName +
         OUStringChar(sfx2::cTokenSeparator) +
@@ -388,7 +390,7 @@ SwXTextSection::attach(const uno::Reference< text::XTextRange > & xTextRange)
         // shouldn't have created an undo object yet
         pDoc->GetIDocumentUndoRedo().EndUndo( SwUndoId::INSSECTION, nullptr );
         throw lang::IllegalArgumentException(
-                "SwXTextSection::attach(): invalid TextRange",
+                u"SwXTextSection::attach(): invalid TextRange"_ustr,
                 getXWeak(), 0);
     }
     m_pImpl->Attach(pRet->GetFormat());
@@ -453,12 +455,12 @@ SwXTextSection::getAnchor()
             if (isMoveIntoTable)
             {
                 css::uno::Reference<SwXText> const xParentText =
-                    ::sw::CreateParentXText(*pSectFormat->GetDoc(), SwPosition(*pIdx));
+                    ::sw::CreateParentXText(pSectFormat->GetDoc(), SwPosition(*pIdx));
                 xRet = new SwXTextRange(*pSectFormat);
             }
             else // for compatibility, keep the old way in this case
             {
-                xRet = SwXTextRange::CreateXTextRange(*pSectFormat->GetDoc(),
+                xRet = SwXTextRange::CreateXTextRange(pSectFormat->GetDoc(),
                     *aPaM.Start(), aEnd.Start());
             }
         }
@@ -473,7 +475,7 @@ void SAL_CALL SwXTextSection::dispose()
     SwSectionFormat *const pSectFormat = m_pImpl->GetSectionFormat();
     if (pSectFormat)
     {
-        pSectFormat->GetDoc()->DelSectionFormat( pSectFormat );
+        pSectFormat->GetDoc().DelSectionFormat( pSectFormat );
     }
 }
 
@@ -525,20 +527,20 @@ lcl_UpdateSection(SwSectionFormat *const pFormat,
         return;
 
     SwSection & rSection = *pFormat->GetSection();
-    SwDoc *const pDoc = pFormat->GetDoc();
-    SwSectionFormats const& rFormats = pDoc->GetSections();
-    UnoActionContext aContext(pDoc);
+    SwDoc& rDoc = pFormat->GetDoc();
+    SwSectionFormats const& rFormats = rDoc.GetSections();
+    UnoActionContext aContext(&rDoc);
     for (size_t i = 0; i < rFormats.size(); ++i)
     {
         if (rFormats[i]->GetSection()->GetSectionName()
                 == rSection.GetSectionName())
         {
-            pDoc->UpdateSection(i, *pSectionData, oItemSet ? &*oItemSet : nullptr,
-                    pDoc->IsInReading());
+            rDoc.UpdateSection(i, *pSectionData, oItemSet ? &*oItemSet : nullptr,
+                    rDoc.IsInReading());
             {
                 // temporarily remove actions to allow cursor update
                 // TODO: why? no table cursor here!
-                UnoActionRemoveContext aRemoveContext( pDoc );
+                UnoActionRemoveContext aRemoveContext( &rDoc );
             }
 
             if (bLinkModeChanged)
@@ -678,11 +680,14 @@ void SwXTextSection::Impl::SetPropertyValues_Impl(
                     {
                         pSectionData->SetType(SectionType::FileLink);
                     }
-                    const OUString sTmp(!aLink.FileURL.isEmpty()
-                        ? URIHelper::SmartRel2Abs(
-                            pFormat->GetDoc()->GetDocShell()->GetMedium()->GetURLObject(),
-                            aLink.FileURL, URIHelper::GetMaybeFileHdl())
-                        : OUString());
+                    OUString sTmp;
+                    SwDocShell* pShell = pFormat->GetDoc().GetDocShell();
+                    if (pShell && !aLink.FileURL.isEmpty())
+                    {
+                        sTmp = URIHelper::SmartRel2Abs(
+                            pShell->GetMedium()->GetURLObject(),
+                            aLink.FileURL, URIHelper::GetMaybeFileHdl());
+                    }
                     const OUString sFileName(
                         sTmp + OUStringChar(sfx2::cTokenSeparator) +
                         aLink.FilterName + OUStringChar(sfx2::cTokenSeparator) +
@@ -803,7 +808,7 @@ void SwXTextSection::Impl::SetPropertyValues_Impl(
                 pValues[nProperty] >>= aSeq;
                 if (m_bIsDescriptor)
                 {
-                    m_pProps->m_Password = aSeq;
+                    m_pProps->m_Password = std::move(aSeq);
                 }
                 else
                 {
@@ -818,7 +823,7 @@ void SwXTextSection::Impl::SetPropertyValues_Impl(
                     const SfxItemSet& rOldAttrSet = pFormat->GetAttrSet();
                     oItemSet.emplace(*rOldAttrSet.GetPool(), pEntry->nWID, pEntry->nWID);
                     oItemSet->Put(rOldAttrSet);
-                    m_rPropSet.setPropertyValue(*pEntry,
+                    SfxItemPropertySet::setPropertyValue(*pEntry,
                             pValues[nProperty], *oItemSet);
                 }
                 else
@@ -946,7 +951,7 @@ SwXTextSection::Impl::GetPropertyValues_Impl(
     SwSectionFormat *const pFormat = GetSectionFormat();
     if (!pFormat && !m_bIsDescriptor)
     {
-        throw uno::RuntimeException( "non-descriptor section without format");
+        throw uno::RuntimeException( u"non-descriptor section without format"_ustr);
     }
 
     uno::Sequence< uno::Any > aRet(rPropertyNames.getLength());
@@ -1076,7 +1081,7 @@ SwXTextSection::Impl::GetPropertyValues_Impl(
             {
                 if (pFormat)
                 {
-                    pRet[nProperty] <<= pFormat->GetSection()->GetSectionName();
+                    pRet[nProperty] <<= pFormat->GetSection()->GetSectionName().toString();
                 }
             }
             break;
@@ -1094,10 +1099,10 @@ SwXTextSection::Impl::GetPropertyValues_Impl(
                 if (pTOXBaseSect)
                 {
                     // convert section to TOXBase and get SwXDocumentIndex
-                    const uno::Reference<text::XDocumentIndex> xIndex =
+                    const rtl::Reference<SwXDocumentIndex> xIndex =
                         SwXDocumentIndex::CreateXDocumentIndex(
-                            *pTOXBaseSect->GetFormat()->GetDoc(), pTOXBaseSect);
-                    pRet[nProperty] <<= xIndex;
+                            pTOXBaseSect->GetFormat()->GetDoc(), pTOXBaseSect);
+                    pRet[nProperty] <<= uno::Reference<text::XDocumentIndex>(xIndex);
                 }
                 // else: no enclosing index found -> empty return value
             }
@@ -1108,11 +1113,10 @@ SwXTextSection::Impl::GetPropertyValues_Impl(
                 pRet[nProperty] <<= bRet;
             }
             break;
-            case  FN_UNO_ANCHOR_TYPES:
-            case  FN_UNO_TEXT_WRAP:
-            case  FN_UNO_ANCHOR_TYPE:
-                ::sw::GetDefaultTextContentValue(
-                        pRet[nProperty], u"", pEntry->nWID);
+            case FN_UNO_ANCHOR_TYPES:
+            case FN_UNO_TEXT_WRAP:
+            case FN_UNO_ANCHOR_TYPE:
+                (void)::sw::GetDefaultTextContentValue(pRet[nProperty], u"", pEntry->nWID);
             break;
             case FN_UNO_REDLINE_NODE_START:
             case FN_UNO_REDLINE_NODE_END:
@@ -1125,7 +1129,7 @@ SwXTextSection::Impl::GetPropertyValues_Impl(
                     pSectNode = pSectNode->EndOfSectionNode();
                 }
                 const SwRedlineTable& rRedTable =
-                    pFormat->GetDoc()->getIDocumentRedlineAccess().GetRedlineTable();
+                    pFormat->GetDoc().getIDocumentRedlineAccess().GetRedlineTable();
                 for (SwRangeRedline* pRedline : rRedTable)
                 {
                     const SwNode& rRedPointNode = pRedline->GetPointNode();
@@ -1156,7 +1160,7 @@ SwXTextSection::Impl::GetPropertyValues_Impl(
             {
                 if (pFormat)
                 {
-                    m_rPropSet.getPropertyValue(*pEntry,
+                    SfxItemPropertySet::getPropertyValue(*pEntry,
                             pFormat->GetAttrSet(), pRet[nProperty]);
                 }
                 else
@@ -1259,13 +1263,13 @@ SwXTextSection::getPropertyValues(
     catch (beans::UnknownPropertyException &)
     {
         css::uno::Any anyEx = cppu::getCaughtException();
-        throw lang::WrappedTargetRuntimeException("Unknown property exception caught",
+        throw lang::WrappedTargetRuntimeException(u"Unknown property exception caught"_ustr,
                 getXWeak(), anyEx );
     }
     catch (lang::WrappedTargetException &)
     {
         css::uno::Any anyEx = cppu::getCaughtException();
-        throw lang::WrappedTargetRuntimeException("WrappedTargetException caught",
+        throw lang::WrappedTargetRuntimeException(u"WrappedTargetException caught"_ustr,
                 getXWeak(), anyEx );
     }
 
@@ -1450,8 +1454,9 @@ SwXTextSection::setPropertyToDefault(const OUString& rPropertyName)
             getXWeak());
     }
 
-    std::unique_ptr<SwSectionData> const pSectionData(
-        pFormat ? new SwSectionData(*pFormat->GetSection()) : nullptr);
+    std::unique_ptr<SwSectionData> pSectionData;
+    if (pFormat)
+        pSectionData.reset(new SwSectionData(*pFormat->GetSection()));
 
     std::optional<SfxItemSet> oNewAttrSet;
     bool bLinkModeChanged = false;
@@ -1606,14 +1611,14 @@ SwXTextSection::getPropertyDefault(const OUString& rPropertyName)
         case  FN_UNO_ANCHOR_TYPES:
         case  FN_UNO_TEXT_WRAP:
         case  FN_UNO_ANCHOR_TYPE:
-            ::sw::GetDefaultTextContentValue(aRet, u"", pEntry->nWID);
+            (void)::sw::GetDefaultTextContentValue(aRet, u"", pEntry->nWID);
         break;
         default:
         if(pFormat && SfxItemPool::IsWhich(pEntry->nWID))
         {
-            SwDoc *const pDoc = pFormat->GetDoc();
+            SwDoc& rDoc = pFormat->GetDoc();
             const SfxPoolItem& rDefItem =
-                pDoc->GetAttrPool().GetDefaultItem(pEntry->nWID);
+                rDoc.GetAttrPool().GetUserOrPoolDefaultItem(pEntry->nWID);
             rDefItem.QueryValue(aRet, pEntry->nMemberId);
         }
     }
@@ -1628,7 +1633,7 @@ OUString SAL_CALL SwXTextSection::getName()
     SwSectionFormat const*const pFormat = m_pImpl->GetSectionFormat();
     if(pFormat)
     {
-        sRet = pFormat->GetSection()->GetSectionName();
+        sRet = pFormat->GetSection()->GetSectionName().toString();
     }
     else if (m_pImpl->m_bIsDescriptor)
     {
@@ -1650,9 +1655,9 @@ void SAL_CALL SwXTextSection::setName(const OUString& rName)
     {
         SwSection *const pSect = pFormat->GetSection();
         SwSectionData aSection(*pSect);
-        aSection.SetSectionName(rName);
+        aSection.SetSectionName(UIName(rName));
 
-        const SwSectionFormats& rFormats = pFormat->GetDoc()->GetSections();
+        const SwSectionFormats& rFormats = pFormat->GetDoc().GetSections();
         size_t nApplyPos = SIZE_MAX;
         for( size_t i = 0; i < rFormats.size(); ++i )
         {
@@ -1668,13 +1673,13 @@ void SAL_CALL SwXTextSection::setName(const OUString& rName)
         if (nApplyPos != SIZE_MAX)
         {
             {
-                UnoActionContext aContext(pFormat->GetDoc());
-                pFormat->GetDoc()->UpdateSection(nApplyPos, aSection);
+                UnoActionContext aContext(&pFormat->GetDoc());
+                pFormat->GetDoc().UpdateSection(nApplyPos, aSection);
             }
             {
                 // temporarily remove actions to allow cursor update
                 // TODO: why? no table cursor here!
-                UnoActionRemoveContext aRemoveContext( pFormat->GetDoc() );
+                UnoActionRemoveContext aRemoveContext( &pFormat->GetDoc() );
             }
         }
     }
@@ -1691,7 +1696,7 @@ void SAL_CALL SwXTextSection::setName(const OUString& rName)
 OUString SAL_CALL
 SwXTextSection::getImplementationName()
 {
-    return "SwXTextSection";
+    return u"SwXTextSection"_ustr;
 }
 
 sal_Bool SAL_CALL SwXTextSection::supportsService(const OUString& rServiceName)
@@ -1703,9 +1708,9 @@ uno::Sequence< OUString > SAL_CALL
 SwXTextSection::getSupportedServiceNames()
 {
     return {
-        "com.sun.star.text.TextContent",
-        "com.sun.star.text.TextSection",
-        "com.sun.star.document.LinkTarget"
+        u"com.sun.star.text.TextContent"_ustr,
+        u"com.sun.star.text.TextSection"_ustr,
+        u"com.sun.star.document.LinkTarget"_ustr
     };
 }
 
@@ -1721,7 +1726,7 @@ uno::Reference<frame::XModel> SwXTextSection::GetModel()
     SwSectionFormat *const pSectionFormat( m_pImpl->GetSectionFormat() );
     if (pSectionFormat)
     {
-        SwDocShell const*const pShell( pSectionFormat->GetDoc()->GetDocShell() );
+        SwDocShell const*const pShell( pSectionFormat->GetDoc().GetDocShell() );
         return pShell ? pShell->GetModel() : nullptr;
     }
     return nullptr;

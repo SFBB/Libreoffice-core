@@ -28,11 +28,11 @@
 #include "PresenterTimer.hxx"
 #include "PresenterWindowManager.hxx"
 #include <DrawController.hxx>
+#include <framework/ConfigurationController.hxx>
 
 #include <cppuhelper/compbase.hxx>
 #include <com/sun/star/awt/XWindowPeer.hpp>
-#include <com/sun/star/drawing/framework/XConfigurationController.hpp>
-#include <com/sun/star/drawing/framework/XPane.hpp>
+#include <framework/AbstractPane.hxx>
 #include <com/sun/star/geometry/AffineMatrix2D.hpp>
 #include <com/sun/star/rendering/CompositeOperation.hpp>
 #include <com/sun/star/rendering/RenderState.hpp>
@@ -52,298 +52,280 @@ const sal_Int32 gnGapSize (20);
 
 namespace {
 
-    class Text
-    {
-    public:
-        Text();
-        Text (
-            OUString sText,
-            PresenterTheme::SharedFontDescriptor pFont);
+class Text
+{
+public:
+    Text();
+    Text (
+        OUString sText,
+        PresenterTheme::SharedFontDescriptor pFont);
 
-        void SetText (const OUString& rsText);
-        const OUString& GetText() const;
-        const PresenterTheme::SharedFontDescriptor& GetFont() const;
+    void SetText (const OUString& rsText);
+    const OUString& GetText() const;
+    const PresenterTheme::SharedFontDescriptor& GetFont() const;
 
-        void Paint (
-            const Reference<rendering::XCanvas>& rxCanvas,
-            const rendering::ViewState& rViewState,
-            const awt::Rectangle& rBoundingBox);
+    void Paint (
+        const Reference<rendering::XCanvas>& rxCanvas,
+        const rendering::ViewState& rViewState,
+        const awt::Rectangle& rBoundingBox);
 
-        geometry::RealRectangle2D GetBoundingBox (
-            const Reference<rendering::XCanvas>& rxCanvas);
+    geometry::RealRectangle2D GetBoundingBox (
+        const Reference<rendering::XCanvas>& rxCanvas);
 
-    private:
-        OUString msText;
-        PresenterTheme::SharedFontDescriptor mpFont;
-    };
+private:
+    OUString msText;
+    PresenterTheme::SharedFontDescriptor mpFont;
+};
 
-    class ElementMode
-    {
-    public:
-        ElementMode();
-        ElementMode(const ElementMode&) = delete;
-        ElementMode& operator=(const ElementMode&) = delete;
+class ElementMode
+{
+public:
+    ElementMode();
+    ElementMode(const ElementMode&) = delete;
+    ElementMode& operator=(const ElementMode&) = delete;
 
-        SharedBitmapDescriptor mpIcon;
-        OUString msAction;
-        Text maText;
+    SharedBitmapDescriptor mpIcon;
+    OUString msAction;
+    Text maText;
 
-        void ReadElementMode (
-            const Reference<beans::XPropertySet>& rxProperties,
-            const OUString& rsModeName,
-            std::shared_ptr<ElementMode> const & rpDefaultMode,
-            ::sdext::presenter::PresenterToolBar::Context const & rContext);
-    };
-    typedef std::shared_ptr<ElementMode> SharedElementMode;
+    void ReadElementMode (
+        const Reference<beans::XPropertySet>& rxProperties,
+        const OUString& rsModeName,
+        const ElementMode& rDefaultMode,
+        const css::uno::Reference<css::rendering::XCanvas>& rxCanvas);
+};
+typedef std::shared_ptr<ElementMode> SharedElementMode;
 
 }  // end of anonymous namespace
 
-class PresenterToolBar::Context
-{
-public:
-    Context() = default;
-    Context(const Context&) = delete;
-    Context& operator=(const Context&) = delete;
-    Reference<drawing::XPresenterHelper> mxPresenterHelper;
-    css::uno::Reference<css::rendering::XCanvas> mxCanvas;
-};
-
 //===== PresenterToolBar::Element =============================================
 
-namespace {
-    typedef cppu::WeakComponentImplHelper<
-        css::document::XEventListener,
-        css::frame::XStatusListener
-        > ElementInterfaceBase;
+typedef cppu::WeakComponentImplHelper<
+    css::document::XEventListener,
+    css::frame::XStatusListener
+    > ElementInterfaceBase;
 
-    class Element
-        : private ::cppu::BaseMutex,
-          public ElementInterfaceBase
-    {
-    public:
-        explicit Element (::rtl::Reference<PresenterToolBar> pToolBar);
-        Element(const Element&) = delete;
-        Element& operator=(const Element&) = delete;
-
-        virtual void SAL_CALL disposing() override;
-
-        virtual void SetModes (
-            const SharedElementMode& rpNormalMode,
-            const SharedElementMode& rpMouseOverMode,
-            const SharedElementMode& rpSelectedMode,
-            const SharedElementMode& rpDisabledMode,
-            const SharedElementMode& rpMouseOverSelectedMode);
-        void CurrentSlideHasChanged();
-        void SetLocation (const awt::Point& rLocation);
-        void SetSize (const geometry::RealSize2D& rSize);
-        virtual void Paint (
-            const Reference<rendering::XCanvas>& rxCanvas,
-            const rendering::ViewState& rViewState) = 0;
-        awt::Size const & GetBoundingSize (
-            const Reference<rendering::XCanvas>& rxCanvas);
-        awt::Rectangle GetBoundingBox() const;
-        virtual bool SetState (const bool bIsOver, const bool bIsPressed);
-        void Invalidate (const bool bSynchronous);
-        bool IsOutside (const awt::Rectangle& rBox);
-        virtual bool IsFilling() const;
-        void UpdateState();
-
-        // lang::XEventListener
-
-        virtual void SAL_CALL disposing (const css::lang::EventObject& rEvent) override;
-
-        // document::XEventListener
-
-        virtual void SAL_CALL notifyEvent (const css::document::EventObject& rEvent) override;
-
-        // frame::XStatusListener
-
-        virtual void SAL_CALL statusChanged (const css::frame::FeatureStateEvent& rEvent) override;
-
-    protected:
-        ::rtl::Reference<PresenterToolBar> mpToolBar;
-        awt::Point maLocation;
-        awt::Size maSize;
-        SharedElementMode mpNormal;
-        SharedElementMode mpMouseOver;
-        SharedElementMode mpSelected;
-        SharedElementMode mpDisabled;
-        SharedElementMode mpMouseOverSelected;
-        SharedElementMode mpMode;
-        bool mbIsOver;
-        bool mbIsPressed;
-        bool mbIsSelected;
-
-        virtual awt::Size CreateBoundingSize (
-            const Reference<rendering::XCanvas>& rxCanvas) = 0;
-
-        bool IsEnabled() const { return mbIsEnabled;}
-    private:
-        bool mbIsEnabled;
-    };
-
-} // end of anonymous namespace
-
-class PresenterToolBar::ElementContainerPart
-    : public ::std::vector<rtl::Reference<Element> >
+class PresenterToolBar::Element
+    : private ::cppu::BaseMutex,
+      public ElementInterfaceBase
 {
+public:
+    explicit Element (::rtl::Reference<PresenterToolBar> pToolBar);
+    Element(const Element&) = delete;
+    Element& operator=(const Element&) = delete;
+
+    virtual void SAL_CALL disposing() override;
+
+    virtual void SetModes (
+        const SharedElementMode& rpNormalMode,
+        const SharedElementMode& rpMouseOverMode,
+        const SharedElementMode& rpSelectedMode,
+        const SharedElementMode& rpDisabledMode,
+        const SharedElementMode& rpMouseOverSelectedMode);
+    void CurrentSlideHasChanged();
+    void SetLocation (const awt::Point& rLocation);
+    void SetSize (const geometry::RealSize2D& rSize);
+    virtual void Paint (
+        const Reference<rendering::XCanvas>& rxCanvas,
+        const rendering::ViewState& rViewState) = 0;
+    awt::Size const & GetBoundingSize (
+        const Reference<rendering::XCanvas>& rxCanvas);
+    awt::Rectangle GetBoundingBox() const;
+    virtual bool SetState (const bool bIsOver, const bool bIsPressed);
+    void Invalidate (const bool bSynchronous);
+    bool IsOutside (const awt::Rectangle& rBox);
+    virtual bool IsFilling() const;
+    void UpdateState();
+
+    // lang::XEventListener
+
+    virtual void SAL_CALL disposing (const css::lang::EventObject& rEvent) override;
+
+    // document::XEventListener
+
+    virtual void SAL_CALL notifyEvent (const css::document::EventObject& rEvent) override;
+
+    // frame::XStatusListener
+
+    virtual void SAL_CALL statusChanged (const css::frame::FeatureStateEvent& rEvent) override;
+
+protected:
+    ::rtl::Reference<PresenterToolBar> mpToolBar;
+    awt::Point maLocation;
+    awt::Size maSize;
+    SharedElementMode mpNormal;
+    SharedElementMode mpMouseOver;
+    SharedElementMode mpSelected;
+    SharedElementMode mpDisabled;
+    SharedElementMode mpMouseOverSelected;
+    SharedElementMode mpMode;
+    bool mbIsOver;
+    bool mbIsPressed;
+    bool mbIsSelected;
+
+    virtual awt::Size CreateBoundingSize (
+        const Reference<rendering::XCanvas>& rxCanvas) = 0;
+
+    bool IsEnabled() const { return mbIsEnabled;}
+private:
+    bool mbIsEnabled;
 };
 
 //===== Button ================================================================
 
 namespace {
 
-    class Button : public Element
-    {
-    public:
-        static ::rtl::Reference<Element> Create (
-            const ::rtl::Reference<PresenterToolBar>& rpToolBar);
+class Button : public PresenterToolBar::Element
+{
+public:
+    static ::rtl::Reference<Element> Create (
+        const ::rtl::Reference<PresenterToolBar>& rpToolBar);
 
-        virtual void SAL_CALL disposing() override;
+    virtual void SAL_CALL disposing() override;
 
-        virtual void Paint (
-            const Reference<rendering::XCanvas>& rxCanvas,
-            const rendering::ViewState& rViewState) override;
+    virtual void Paint (
+        const Reference<rendering::XCanvas>& rxCanvas,
+        const rendering::ViewState& rViewState) override;
 
-        // lang::XEventListener
+    // lang::XEventListener
 
-        virtual void SAL_CALL disposing (const css::lang::EventObject& rEvent) override;
+    virtual void SAL_CALL disposing (const css::lang::EventObject& rEvent) override;
 
-    protected:
-        virtual awt::Size CreateBoundingSize (
-            const Reference<rendering::XCanvas>& rxCanvas) override;
+protected:
+    virtual awt::Size CreateBoundingSize (
+        const Reference<rendering::XCanvas>& rxCanvas) override;
 
-    private:
-        bool mbIsListenerRegistered;
+private:
+    bool mbIsListenerRegistered;
 
-        Button (const ::rtl::Reference<PresenterToolBar>& rpToolBar);
-        void Initialize();
-        void PaintIcon (
-            const Reference<rendering::XCanvas>& rxCanvas,
-            const sal_Int32 nTextHeight,
-            const rendering::ViewState& rViewState);
-        PresenterBitmapDescriptor::Mode GetMode() const;
-    };
+    Button (const ::rtl::Reference<PresenterToolBar>& rpToolBar);
+    void Initialize();
+    void PaintIcon (
+        const Reference<rendering::XCanvas>& rxCanvas,
+        const sal_Int32 nTextHeight,
+        const rendering::ViewState& rViewState);
+    PresenterBitmapDescriptor::Mode GetMode() const;
+};
 
 //===== Label =================================================================
 
-    class Label : public Element
-    {
-    public:
-        explicit Label (const ::rtl::Reference<PresenterToolBar>& rpToolBar);
+class Label : public PresenterToolBar::Element
+{
+public:
+    explicit Label (const ::rtl::Reference<PresenterToolBar>& rpToolBar);
 
-        void SetText (const OUString& rsText);
-        virtual void Paint (
-            const Reference<rendering::XCanvas>& rxCanvas,
-            const rendering::ViewState& rViewState) override;
-        virtual bool SetState (const bool bIsOver, const bool bIsPressed) override;
+    void SetText (const OUString& rsText);
+    virtual void Paint (
+        const Reference<rendering::XCanvas>& rxCanvas,
+        const rendering::ViewState& rViewState) override;
+    virtual bool SetState (const bool bIsOver, const bool bIsPressed) override;
 
-    protected:
-        virtual awt::Size CreateBoundingSize (
-            const Reference<rendering::XCanvas>& rxCanvas) override;
-    };
+protected:
+    virtual awt::Size CreateBoundingSize (
+        const Reference<rendering::XCanvas>& rxCanvas) override;
+};
 
 // Some specialized controls.
 
-    class TimeFormatter
-    {
-    public:
-        static OUString FormatTime (const oslDateTime& rTime);
-    };
+class TimeFormatter
+{
+public:
+    static OUString FormatTime (const oslDateTime& rTime);
+};
 
-    class TimeLabel : public Label
+class TimeLabel : public Label
+{
+public:
+    void ConnectToTimer();
+    virtual void TimeHasChanged (const oslDateTime& rCurrentTime) = 0;
+protected:
+    explicit TimeLabel(const ::rtl::Reference<PresenterToolBar>& rpToolBar);
+    using PresenterToolBar::Element::disposing;
+    virtual void SAL_CALL disposing() override;
+private:
+    class Listener : public PresenterClockTimer::Listener
     {
     public:
-        void ConnectToTimer();
-        virtual void TimeHasChanged (const oslDateTime& rCurrentTime) = 0;
-    protected:
-        explicit TimeLabel(const ::rtl::Reference<PresenterToolBar>& rpToolBar);
-        using Element::disposing;
-        virtual void SAL_CALL disposing() override;
+        explicit Listener (::rtl::Reference<TimeLabel> xLabel)
+            : mxLabel(std::move(xLabel)) {}
+        virtual ~Listener() {}
+        virtual void TimeHasChanged (const oslDateTime& rCurrentTime) override
+        { if (mxLabel.is()) mxLabel->TimeHasChanged(rCurrentTime); }
     private:
-        class Listener : public PresenterClockTimer::Listener
-        {
-        public:
-            explicit Listener (::rtl::Reference<TimeLabel> xLabel)
-                : mxLabel(std::move(xLabel)) {}
-            virtual ~Listener() {}
-            virtual void TimeHasChanged (const oslDateTime& rCurrentTime) override
-            { if (mxLabel.is()) mxLabel->TimeHasChanged(rCurrentTime); }
-        private:
-            ::rtl::Reference<TimeLabel> mxLabel;
-        };
-        std::shared_ptr<PresenterClockTimer::Listener> mpListener;
+        ::rtl::Reference<TimeLabel> mxLabel;
     };
+    std::shared_ptr<PresenterClockTimer::Listener> mpListener;
+};
 
-    class CurrentTimeLabel : public TimeLabel
-    {
-    public:
-        static ::rtl::Reference<Element> Create (
-            const ::rtl::Reference<PresenterToolBar>& rpToolBar);
-        virtual void SetModes (
-            const SharedElementMode& rpNormalMode,
-            const SharedElementMode& rpMouseOverMode,
-            const SharedElementMode& rpSelectedMode,
-            const SharedElementMode& rpDisabledMode,
-            const SharedElementMode& rpMouseOverSelectedMode) override;
-    private:
-        CurrentTimeLabel (const ::rtl::Reference<PresenterToolBar>& rpToolBar);
-        virtual ~CurrentTimeLabel() override;
-        virtual void TimeHasChanged (const oslDateTime& rCurrentTime) override;
-    };
+class CurrentTimeLabel : public TimeLabel
+{
+public:
+    static ::rtl::Reference<Element> Create (
+        const ::rtl::Reference<PresenterToolBar>& rpToolBar);
+    virtual void SetModes (
+        const SharedElementMode& rpNormalMode,
+        const SharedElementMode& rpMouseOverMode,
+        const SharedElementMode& rpSelectedMode,
+        const SharedElementMode& rpDisabledMode,
+        const SharedElementMode& rpMouseOverSelectedMode) override;
+private:
+    CurrentTimeLabel (const ::rtl::Reference<PresenterToolBar>& rpToolBar);
+    virtual ~CurrentTimeLabel() override;
+    virtual void TimeHasChanged (const oslDateTime& rCurrentTime) override;
+};
 
-    class PresentationTimeLabel : public TimeLabel, public IPresentationTime
-    {
-    public:
-        static ::rtl::Reference<Element> Create (
-            const ::rtl::Reference<PresenterToolBar>& rpToolBar);
-        virtual void SetModes (
-            const SharedElementMode& rpNormalMode,
-            const SharedElementMode& rpMouseOverMode,
-            const SharedElementMode& rpSelectedMode,
-            const SharedElementMode& rpDisabledMode,
-            const SharedElementMode& rpMouseOverSelectedMode) override;
-        virtual void restart() override;
-        virtual bool isPaused() override;
-        virtual void setPauseStatus(const bool pauseStatus) override;
-        const TimeValue& getPauseTimeValue() const;
-        void setPauseTimeValue(const TimeValue pauseTime);
-    private:
-        TimeValue maStartTimeValue;
-        TimeValue pauseTimeValue;
-        PresentationTimeLabel (const ::rtl::Reference<PresenterToolBar>& rpToolBar);
-        bool paused;
-        virtual ~PresentationTimeLabel() override;
-        virtual void TimeHasChanged (const oslDateTime& rCurrentTime) override;
-    };
+class PresentationTimeLabel : public TimeLabel, public IPresentationTime
+{
+public:
+    static ::rtl::Reference<Element> Create (
+        const ::rtl::Reference<PresenterToolBar>& rpToolBar);
+    virtual void SetModes (
+        const SharedElementMode& rpNormalMode,
+        const SharedElementMode& rpMouseOverMode,
+        const SharedElementMode& rpSelectedMode,
+        const SharedElementMode& rpDisabledMode,
+        const SharedElementMode& rpMouseOverSelectedMode) override;
+    virtual void restart() override final;
+    virtual bool isPaused() override final;
+    virtual void setPauseStatus(const bool pauseStatus) override final;
+    const TimeValue& getPauseTimeValue() const;
+    void setPauseTimeValue(const TimeValue pauseTime);
+private:
+    TimeValue maStartTimeValue;
+    TimeValue pauseTimeValue;
+    PresentationTimeLabel (const ::rtl::Reference<PresenterToolBar>& rpToolBar);
+    bool paused;
+    virtual ~PresentationTimeLabel() override;
+    virtual void TimeHasChanged (const oslDateTime& rCurrentTime) override;
+};
 
-    class VerticalSeparator : public Element
-    {
-    public:
-        explicit VerticalSeparator (const ::rtl::Reference<PresenterToolBar>& rpToolBar);
-        virtual void Paint (
-            const Reference<rendering::XCanvas>& rxCanvas,
-            const rendering::ViewState& rViewState) override;
-        virtual bool IsFilling() const override;
+class VerticalSeparator : public PresenterToolBar::Element
+{
+public:
+    explicit VerticalSeparator (const ::rtl::Reference<PresenterToolBar>& rpToolBar);
+    virtual void Paint (
+        const Reference<rendering::XCanvas>& rxCanvas,
+        const rendering::ViewState& rViewState) override;
+    virtual bool IsFilling() const override;
 
-    protected:
-        virtual awt::Size CreateBoundingSize (
-            const Reference<rendering::XCanvas>& rxCanvas) override;
-    };
+protected:
+    virtual awt::Size CreateBoundingSize (
+        const Reference<rendering::XCanvas>& rxCanvas) override;
+};
 
-    class HorizontalSeparator : public Element
-    {
-    public:
-        explicit HorizontalSeparator (const ::rtl::Reference<PresenterToolBar>& rpToolBar);
-        virtual void Paint (
-            const Reference<rendering::XCanvas>& rxCanvas,
-            const rendering::ViewState& rViewState) override;
-        virtual bool IsFilling() const override;
+class HorizontalSeparator : public PresenterToolBar::Element
+{
+public:
+    explicit HorizontalSeparator (const ::rtl::Reference<PresenterToolBar>& rpToolBar);
+    virtual void Paint (
+        const Reference<rendering::XCanvas>& rxCanvas,
+        const rendering::ViewState& rViewState) override;
+    virtual bool IsFilling() const override;
 
-    protected:
-        virtual awt::Size CreateBoundingSize (
-            const Reference<rendering::XCanvas>& rxCanvas) override;
-    };
+protected:
+    virtual awt::Size CreateBoundingSize (
+        const Reference<rendering::XCanvas>& rxCanvas) override;
+};
 } // end of anonymous namespace
 
 //===== PresenterToolBar ======================================================
@@ -412,18 +394,14 @@ void SAL_CALL PresenterToolBar::disposing()
         mxWindow = nullptr;
     }
 
-    // Dispose tool bar elements.
+    // Dispose tool bar PresenterToolBar::Elements.
     for (const auto& rxPart : maElementContainer)
     {
         OSL_ASSERT(rxPart != nullptr);
         for (const rtl::Reference<Element>& pElement : *rxPart)
         {
             if (pElement)
-            {
-                Reference<lang::XComponent> xComponent = pElement;
-                if (xComponent.is())
-                    xComponent->dispose();
-            }
+                pElement->dispose();
         }
     }
 
@@ -458,7 +436,7 @@ void PresenterToolBar::RequestLayout()
 geometry::RealSize2D const & PresenterToolBar::GetMinimalSize()
 {
     if (mbIsLayoutPending)
-        Layout(mxCanvas);
+        Layout();
     return maMinimalSize;
 }
 
@@ -510,7 +488,7 @@ void SAL_CALL PresenterToolBar::windowPaint (const css::awt::PaintEvent& rEvent)
         PresenterGeometryHelper::CreatePolygon(rEvent.UpdateRect, mxCanvas->getDevice()));
 
     if (mbIsLayoutPending)
-        Layout(mxCanvas);
+        Layout();
 
     Paint(rEvent.UpdateRect, aViewState);
 
@@ -584,7 +562,7 @@ void PresenterToolBar::CreateControls (
     // Expand the macro in the bitmap file names.
     PresenterConfigurationAccess aConfiguration (
         mxComponentContext,
-        "/org.openoffice.Office.PresenterScreen/",
+        u"/org.openoffice.Office.PresenterScreen/"_ustr,
         PresenterConfigurationAccess::READ_ONLY);
 
     mpCurrentContainerPart = std::make_shared<ElementContainerPart>();
@@ -598,34 +576,28 @@ void PresenterToolBar::CreateControls (
         return;
 
     Reference<container::XNameAccess> xEntries (
-        PresenterConfigurationAccess::GetConfigurationNode(xToolBarNode, "Entries"),
+        PresenterConfigurationAccess::GetConfigurationNode(xToolBarNode, u"Entries"_ustr),
         UNO_QUERY);
-    Context aContext;
-    aContext.mxPresenterHelper = mpPresenterController->GetPresenterHelper();
-    aContext.mxCanvas = mxCanvas;
-    if (xEntries.is()
-        && aContext.mxPresenterHelper.is()
-        && aContext.mxCanvas.is())
+    if (xEntries.is() && mxCanvas.is())
     {
         PresenterConfigurationAccess::ForAll(
             xEntries,
-            [this, &aContext] (OUString const&, uno::Reference<beans::XPropertySet> const& xProps)
+            [this] (OUString const&, uno::Reference<beans::XPropertySet> const& xProps)
             {
-                return this->ProcessEntry(xProps, aContext);
+                return this->ProcessEntry(xProps);
             });
     }
 }
 
 void PresenterToolBar::ProcessEntry (
-    const Reference<beans::XPropertySet>& rxProperties,
-    Context const & rContext)
+    const Reference<beans::XPropertySet>& rxProperties)
 {
     if ( ! rxProperties.is())
         return;
 
     // Type has to be present.
     OUString sType;
-    if ( ! (PresenterConfigurationAccess::GetProperty(rxProperties, "Type") >>= sType))
+    if ( ! (PresenterConfigurationAccess::GetProperty(rxProperties, u"Type"_ustr) >>= sType))
         return;
 
     // Read mode specific values.
@@ -634,11 +606,11 @@ void PresenterToolBar::ProcessEntry (
     SharedElementMode pSelectedMode = std::make_shared<ElementMode>();
     SharedElementMode pDisabledMode = std::make_shared<ElementMode>();
     SharedElementMode pMouseOverSelectedMode = std::make_shared<ElementMode>();
-    pNormalMode->ReadElementMode(rxProperties, "Normal", pNormalMode, rContext);
-    pMouseOverMode->ReadElementMode(rxProperties, "MouseOver", pNormalMode, rContext);
-    pSelectedMode->ReadElementMode(rxProperties, "Selected", pNormalMode, rContext);
-    pDisabledMode->ReadElementMode(rxProperties, "Disabled", pNormalMode, rContext);
-    pMouseOverSelectedMode->ReadElementMode(rxProperties, "MouseOverSelected", pSelectedMode, rContext);
+    pNormalMode->ReadElementMode(rxProperties, u"Normal"_ustr, *pNormalMode, mxCanvas);
+    pMouseOverMode->ReadElementMode(rxProperties, u"MouseOver"_ustr, *pNormalMode, mxCanvas);
+    pSelectedMode->ReadElementMode(rxProperties, u"Selected"_ustr, *pNormalMode, mxCanvas);
+    pDisabledMode->ReadElementMode(rxProperties, u"Disabled"_ustr, *pNormalMode, mxCanvas);
+    pMouseOverSelectedMode->ReadElementMode(rxProperties, u"MouseOverSelected"_ustr, *pSelectedMode, mxCanvas);
 
     // Create new element.
     ::rtl::Reference<Element> pElement;
@@ -669,8 +641,7 @@ void PresenterToolBar::ProcessEntry (
     }
 }
 
-void PresenterToolBar::Layout (
-    const Reference<rendering::XCanvas>& rxCanvas)
+void PresenterToolBar::Layout()
 {
     if (maElementContainer.empty())
         return;
@@ -678,18 +649,17 @@ void PresenterToolBar::Layout (
     mbIsLayoutPending = false;
 
     const awt::Rectangle aWindowBox (mxWindow->getPosSize());
-    ::std::vector<geometry::RealSize2D> aPartSizes (maElementContainer.size());
+    std::unordered_map<SharedElementContainerPart, geometry::RealSize2D> aPartSizes;
     geometry::RealSize2D aTotalSize (0,0);
     bool bIsHorizontal (true);
-    sal_Int32 nIndex (0);
     double nTotalHorizontalGap (0);
     sal_Int32 nGapCount (0);
     for (const auto& rxPart : maElementContainer)
     {
-        geometry::RealSize2D aSize (CalculatePartSize(rxCanvas, rxPart, bIsHorizontal));
+        geometry::RealSize2D aSize  = CalculatePartSize(rxPart, bIsHorizontal);
 
         // Remember the size of each part for later.
-        aPartSizes[nIndex] = aSize;
+        aPartSizes[rxPart] = aSize;
 
         // Add gaps between elements.
         if (rxPart->size()>1 && bIsHorizontal)
@@ -704,7 +674,6 @@ void PresenterToolBar::Layout (
         aTotalSize.Width += aSize.Width;
         // Height is the maximum height of all parts.
         aTotalSize.Height = ::std::max(aTotalSize.Height, aSize.Height);
-        ++nIndex;
     }
     // Add gaps between parts.
     if (maElementContainer.size() > 1)
@@ -742,45 +711,25 @@ void PresenterToolBar::Layout (
     double nY ((aWindowBox.Height - aTotalSize.Height) / 2);
     bIsHorizontal = true;
 
-    /* push front or back ? ... */
-    /// check whether RTL interface or not
-    if(!AllSettings::GetLayoutRTL()){
-        nIndex = 0;
-        for (const auto& rxPart : maElementContainer)
-        {
-            geometry::RealRectangle2D aBoundingBox(
-                nX, nY,
-                nX+aPartSizes[nIndex].Width, nY+aTotalSize.Height);
+    auto aFunc = [&](const SharedElementContainerPart& rxPart)
+    {
+        geometry::RealRectangle2D aBoundingBox(nX, nY, nX + aPartSizes[rxPart].Width,
+                                               nY + aTotalSize.Height);
 
-            // Add space for gaps between elements.
-            if (rxPart->size() > 1 && bIsHorizontal)
-                aBoundingBox.X2 += (rxPart->size() - 1) * nGapWidth;
+        // Add space for gaps between elements.
+        if (rxPart->size() > 1 && bIsHorizontal)
+            aBoundingBox.X2 += (rxPart->size() - 1) * nGapWidth;
 
-            LayoutPart(rxCanvas, rxPart, aBoundingBox, aPartSizes[nIndex], bIsHorizontal);
-            bIsHorizontal = !bIsHorizontal;
-            nX += aBoundingBox.X2 - aBoundingBox.X1 + nGapWidth;
-            ++nIndex;
-        }
-    }
-    else {
-        ElementContainer::iterator iPart;
-        ElementContainer::iterator iBegin (maElementContainer.begin());
-        for (iPart=maElementContainer.end()-1, nIndex=2; iPart!=iBegin-1; --iPart, --nIndex)
-        {
-            geometry::RealRectangle2D aBoundingBox(
-                nX, nY,
-                nX+aPartSizes[nIndex].Width, nY+aTotalSize.Height);
+        LayoutPart(rxPart, aBoundingBox, aPartSizes[rxPart], bIsHorizontal);
+        bIsHorizontal = !bIsHorizontal;
+        nX += aBoundingBox.X2 - aBoundingBox.X1 + nGapWidth;
+    };
 
-            // Add space for gaps between elements.
-            if ((*iPart)->size() > 1)
-                if (bIsHorizontal)
-                    aBoundingBox.X2 += ((*iPart)->size()-1) * nGapWidth;
-
-            LayoutPart(rxCanvas, *iPart, aBoundingBox, aPartSizes[nIndex], bIsHorizontal);
-            bIsHorizontal = !bIsHorizontal;
-            nX += aBoundingBox.X2 - aBoundingBox.X1 + nGapWidth;
-        }
-    }
+    // process in reverse order for RTL
+    if (!AllSettings::GetLayoutRTL())
+        std::for_each(maElementContainer.begin(), maElementContainer.end(), aFunc);
+    else
+        std::for_each(maElementContainer.rbegin(), maElementContainer.rend(), aFunc);
 
     // The whole window has to be repainted.
     std::shared_ptr<PresenterPaintManager> xManager(mpPresenterController->GetPaintManager());
@@ -789,8 +738,7 @@ void PresenterToolBar::Layout (
     xManager->Invalidate(mxWindow);
 }
 
-geometry::RealSize2D PresenterToolBar::CalculatePartSize (
-    const Reference<rendering::XCanvas>& rxCanvas,
+geometry::RealSize2D PresenterToolBar::CalculatePartSize(
     const SharedElementContainerPart& rpPart,
     const bool bIsHorizontal)
 {
@@ -804,7 +752,7 @@ geometry::RealSize2D PresenterToolBar::CalculatePartSize (
             if (!rxElement)
                 continue;
 
-            const awt::Size aBSize (rxElement->GetBoundingSize(rxCanvas));
+            const awt::Size aBSize = rxElement->GetBoundingSize(mxCanvas);
             if (bIsHorizontal)
             {
                 aTotalSize.Width += aBSize.Width;
@@ -822,8 +770,7 @@ geometry::RealSize2D PresenterToolBar::CalculatePartSize (
     return aTotalSize;
 }
 
-void PresenterToolBar::LayoutPart (
-    const Reference<rendering::XCanvas>& rxCanvas,
+void PresenterToolBar::LayoutPart(
     const SharedElementContainerPart& rpPart,
     const geometry::RealRectangle2D& rBoundingBox,
     const geometry::RealSize2D& rPartSize,
@@ -843,13 +790,13 @@ void PresenterToolBar::LayoutPart (
     double nY (rBoundingBox.Y1);
 
     /// check whether RTL interface or not
-    if(!AllSettings::GetLayoutRTL()){
+    if (!AllSettings::GetLayoutRTL() || !bIsHorizontal){
         for (auto& rxElement : *rpPart)
         {
             if (!rxElement)
                 continue;
 
-            const awt::Size aElementSize (rxElement->GetBoundingSize(rxCanvas));
+            const awt::Size aElementSize = rxElement->GetBoundingSize(mxCanvas);
             if (bIsHorizontal)
             {
                 if (rxElement->IsFilling())
@@ -876,54 +823,24 @@ void PresenterToolBar::LayoutPart (
             }
         }
     }
-    else {
-        ElementContainerPart::const_iterator iElement;
-        ElementContainerPart::const_iterator iBegin (rpPart->begin());
-
-        for (iElement=rpPart->end()-1; iElement!=iBegin-1; --iElement)
+    else
+    {
+        ElementContainerPart::const_reverse_iterator iElement;
+        for (iElement= rpPart->rbegin(); iElement!= rpPart->rend(); ++iElement)
         {
             if (iElement->get() == nullptr)
                 continue;
 
-            const awt::Size aElementSize ((*iElement)->GetBoundingSize(rxCanvas));
-            if (bIsHorizontal)
+            const awt::Size aElementSize ((*iElement)->GetBoundingSize(mxCanvas));
+            if ((*iElement)->IsFilling())
             {
-                if ((*iElement)->IsFilling())
-                {
-                    nY = rBoundingBox.Y1;
-                    (*iElement)->SetSize(geometry::RealSize2D(aElementSize.Width, rBoundingBox.Y2 - rBoundingBox.Y1));
-                }
-                else
-                    nY = rBoundingBox.Y1 + (rBoundingBox.Y2-rBoundingBox.Y1 - aElementSize.Height) / 2;
-                (*iElement)->SetLocation(awt::Point(sal_Int32(0.5 + nX), sal_Int32(0.5 + nY)));
-                nX += aElementSize.Width + nGap;
+                nY = rBoundingBox.Y1;
+                (*iElement)->SetSize(geometry::RealSize2D(aElementSize.Width, rBoundingBox.Y2 - rBoundingBox.Y1));
             }
             else
-            {
-                // reverse presentation time with current time
-                if (iElement==iBegin){
-                    iElement=iBegin+2;
-                }
-                else if (iElement==iBegin+2){
-                    iElement=iBegin;
-                }
-                const awt::Size aNewElementSize ((*iElement)->GetBoundingSize(rxCanvas));
-                if ((*iElement)->IsFilling())
-                {
-                    nX = rBoundingBox.X1;
-                    (*iElement)->SetSize(geometry::RealSize2D(rBoundingBox.X2 - rBoundingBox.X1, aNewElementSize.Height));
-                }
-                else
-                    nX = rBoundingBox.X1 + (rBoundingBox.X2-rBoundingBox.X1 - aNewElementSize.Width) / 2;
-                (*iElement)->SetLocation(awt::Point(sal_Int32(0.5 + nX), sal_Int32(0.5 + nY)));
-                nY += aNewElementSize.Height + nGap;
-
-                // return the index as it was before the reversing
-                if (iElement==iBegin)
-                    iElement=iBegin+2;
-                else if (iElement==iBegin+2)
-                    iElement=iBegin;
-            }
+                nY = rBoundingBox.Y1 + (rBoundingBox.Y2-rBoundingBox.Y1 - aElementSize.Height) / 2;
+            (*iElement)->SetLocation(awt::Point(sal_Int32(0.5 + nX), sal_Int32(0.5 + nY)));
+            nX += aElementSize.Width + nGap;
         }
     }
 }
@@ -997,7 +914,7 @@ void PresenterToolBar::ThrowIfDisposed() const
     if (rBHelper.bDisposed || rBHelper.bInDispose)
     {
         throw lang::DisposedException (
-            "PresenterToolBar has already been disposed",
+            u"PresenterToolBar has already been disposed"_ustr,
             const_cast<uno::XWeak*>(static_cast<const uno::XWeak*>(this)));
     }
 }
@@ -1006,17 +923,16 @@ void PresenterToolBar::ThrowIfDisposed() const
 
 PresenterToolBarView::PresenterToolBarView (
     const Reference<XComponentContext>& rxContext,
-    const Reference<XResourceId>& rxViewId,
+    const rtl::Reference<sd::framework::ResourceId>& rxViewId,
     const rtl::Reference<::sd::DrawController>& rxController,
     const ::rtl::Reference<PresenterController>& rpPresenterController)
-    : PresenterToolBarViewInterfaceBase(m_aMutex),
-      mxViewId(rxViewId),
+    : mxViewId(rxViewId),
       mpPresenterController(rpPresenterController)
 {
     try
     {
-        Reference<XConfigurationController> xCC(rxController->getConfigurationController(),UNO_SET_THROW);
-        mxPane.set(xCC->getResource(rxViewId->getAnchor()), UNO_QUERY_THROW);
+        rtl::Reference<sd::framework::ConfigurationController> xCC(rxController->getConfigurationController());
+        mxPane = dynamic_cast<sd::framework::AbstractPane*>(xCC->getResource(rxViewId->getAnchor()).get());
 
         mxWindow = mxPane->getWindow();
         mxCanvas = mxPane->getCanvas();
@@ -1027,7 +943,7 @@ PresenterToolBarView::PresenterToolBarView (
             mxCanvas,
             rpPresenterController,
             PresenterToolBar::Center);
-        mpToolBar->Initialize("PresenterScreenSettings/ToolBars/ToolBar");
+        mpToolBar->Initialize(u"PresenterScreenSettings/ToolBars/ToolBar"_ustr);
 
         if (mxWindow.is())
         {
@@ -1051,10 +967,9 @@ PresenterToolBarView::~PresenterToolBarView()
 {
 }
 
-void SAL_CALL PresenterToolBarView::disposing()
+void PresenterToolBarView::disposing(std::unique_lock<std::mutex>&)
 {
-    Reference<lang::XComponent> xComponent = mpToolBar;
-    mpToolBar = nullptr;
+    rtl::Reference<PresenterToolBar> xComponent = std::move(mpToolBar);
     if (xComponent.is())
         xComponent->dispose();
 
@@ -1095,14 +1010,14 @@ void SAL_CALL PresenterToolBarView::disposing (const lang::EventObject& rEventOb
         mxWindow = nullptr;
 }
 
-//----- XResourceId -----------------------------------------------------------
+//----- ResourceId -----------------------------------------------------------
 
-Reference<XResourceId> SAL_CALL PresenterToolBarView::getResourceId()
+rtl::Reference<sd::framework::ResourceId> PresenterToolBarView::getResourceId()
 {
     return mxViewId;
 }
 
-sal_Bool SAL_CALL PresenterToolBarView::isAnchorOnly()
+bool PresenterToolBarView::isAnchorOnly()
 {
     return false;
 }
@@ -1111,9 +1026,8 @@ sal_Bool SAL_CALL PresenterToolBarView::isAnchorOnly()
 
 void SAL_CALL PresenterToolBarView::setCurrentPage (const Reference<drawing::XDrawPage>& rxSlide)
 {
-    Reference<drawing::XDrawView> xToolBar = mpToolBar;
-    if (xToolBar.is())
-        xToolBar->setCurrentPage(rxSlide);
+    if (mpToolBar.is())
+        mpToolBar->setCurrentPage(rxSlide);
 }
 
 Reference<drawing::XDrawPage> SAL_CALL PresenterToolBarView::getCurrentPage()
@@ -1123,9 +1037,7 @@ Reference<drawing::XDrawPage> SAL_CALL PresenterToolBarView::getCurrentPage()
 
 //===== PresenterToolBar::Element =============================================
 
-namespace {
-
-Element::Element (
+PresenterToolBar::Element::Element (
     ::rtl::Reference<PresenterToolBar> pToolBar)
     : ElementInterfaceBase(m_aMutex),
       mpToolBar(std::move(pToolBar)),
@@ -1141,7 +1053,7 @@ Element::Element (
     }
 }
 
-void Element::SetModes (
+void PresenterToolBar::Element::SetModes (
     const SharedElementMode& rpNormalMode,
     const SharedElementMode& rpMouseOverMode,
     const SharedElementMode& rpSelectedMode,
@@ -1156,38 +1068,38 @@ void Element::SetModes (
     mpMode = rpNormalMode;
 }
 
-void Element::disposing()
+void PresenterToolBar::Element::disposing()
 {
 }
 
-awt::Size const & Element::GetBoundingSize (
+awt::Size const & PresenterToolBar::Element::GetBoundingSize (
     const Reference<rendering::XCanvas>& rxCanvas)
 {
     maSize = CreateBoundingSize(rxCanvas);
     return maSize;
 }
 
-awt::Rectangle Element::GetBoundingBox() const
+awt::Rectangle PresenterToolBar::Element::GetBoundingBox() const
 {
     return awt::Rectangle(maLocation.X,maLocation.Y, maSize.Width, maSize.Height);
 }
 
-void Element::CurrentSlideHasChanged()
+void PresenterToolBar::Element::CurrentSlideHasChanged()
 {
     UpdateState();
 }
 
-void Element::SetLocation (const awt::Point& rLocation)
+void PresenterToolBar::Element::SetLocation (const awt::Point& rLocation)
 {
     maLocation = rLocation;
 }
 
-void Element::SetSize (const geometry::RealSize2D& rSize)
+void PresenterToolBar::Element::SetSize (const geometry::RealSize2D& rSize)
 {
     maSize = awt::Size(sal_Int32(0.5+rSize.Width), sal_Int32(0.5+rSize.Height));
 }
 
-bool Element::SetState (
+bool PresenterToolBar::Element::SetState (
     const bool bIsOver,
     const bool bIsPressed)
 {
@@ -1240,13 +1152,13 @@ bool Element::SetState (
     return bModified;
 }
 
-void Element::Invalidate (const bool bSynchronous)
+void PresenterToolBar::Element::Invalidate (const bool bSynchronous)
 {
     OSL_ASSERT(mpToolBar.is());
     mpToolBar->InvalidateArea(GetBoundingBox(), bSynchronous);
 }
 
-bool Element::IsOutside (const awt::Rectangle& rBox)
+bool PresenterToolBar::Element::IsOutside (const awt::Rectangle& rBox)
 {
     if (rBox.X >= maLocation.X+maSize.Width)
         return true;
@@ -1261,12 +1173,12 @@ bool Element::IsOutside (const awt::Rectangle& rBox)
 }
 
 
-bool Element::IsFilling() const
+bool PresenterToolBar::Element::IsFilling() const
 {
     return false;
 }
 
-void Element::UpdateState()
+void PresenterToolBar::Element::UpdateState()
 {
     OSL_ASSERT(mpToolBar);
     OSL_ASSERT(mpToolBar->GetPresenterController());
@@ -1285,18 +1197,18 @@ void Element::UpdateState()
 
 //----- lang::XEventListener --------------------------------------------------
 
-void SAL_CALL Element::disposing (const css::lang::EventObject&) {}
+void SAL_CALL PresenterToolBar::Element::disposing (const css::lang::EventObject&) {}
 
 //----- document::XEventListener ----------------------------------------------
 
-void SAL_CALL Element::notifyEvent (const css::document::EventObject&)
+void SAL_CALL PresenterToolBar::Element::notifyEvent (const css::document::EventObject&)
 {
     UpdateState();
 }
 
 //----- frame::XStatusListener ------------------------------------------------
 
-void SAL_CALL Element::statusChanged (const css::frame::FeatureStateEvent& rEvent)
+void SAL_CALL PresenterToolBar::Element::statusChanged (const css::frame::FeatureStateEvent& rEvent)
 {
     bool bIsSelected (mbIsSelected);
     bool bIsEnabled (rEvent.IsEnabled);
@@ -1311,7 +1223,6 @@ void SAL_CALL Element::statusChanged (const css::frame::FeatureStateEvent& rEven
     }
 }
 
-} // end of anonymous namespace
 
 //===== ElementMode ===========================================================
 
@@ -1324,46 +1235,44 @@ ElementMode::ElementMode()
 void ElementMode::ReadElementMode (
     const Reference<beans::XPropertySet>& rxElementProperties,
     const OUString& rsModeName,
-    std::shared_ptr<ElementMode> const & rpDefaultMode,
-    ::sdext::presenter::PresenterToolBar::Context const & rContext)
+    const ElementMode& rDefaultMode,
+    const css::uno::Reference<css::rendering::XCanvas>& rxCanvas)
 {
     try
     {
-    Reference<container::XHierarchicalNameAccess> xNode (
-        PresenterConfigurationAccess::GetProperty(rxElementProperties, rsModeName),
-        UNO_QUERY);
-    Reference<beans::XPropertySet> xProperties (
-        PresenterConfigurationAccess::GetNodeProperties(xNode, OUString()));
-    if (!xProperties.is() && rpDefaultMode != nullptr)
-    {
-        // The mode is not specified.  Use the given, possibly empty,
-        // default mode instead.
-        mpIcon = rpDefaultMode->mpIcon;
-        msAction = rpDefaultMode->msAction;
-        maText = rpDefaultMode->maText;
-    }
+        Reference<container::XHierarchicalNameAccess> xNode (
+            PresenterConfigurationAccess::GetProperty(rxElementProperties, rsModeName),
+            UNO_QUERY);
+        Reference<beans::XPropertySet> xProperties (
+            PresenterConfigurationAccess::GetNodeProperties(xNode, OUString()));
+        if (!xProperties.is())
+        {
+            // The mode is not specified.  Use the given, possibly empty,
+            // default mode instead.
+            mpIcon = rDefaultMode.mpIcon;
+            msAction = rDefaultMode.msAction;
+            maText = rDefaultMode.maText;
+        }
 
-    // Read action.
-    if ( ! (PresenterConfigurationAccess::GetProperty(xProperties, "Action") >>= msAction))
-        if (rpDefaultMode != nullptr)
-            msAction = rpDefaultMode->msAction;
+        // Read action.
+        if ( ! (PresenterConfigurationAccess::GetProperty(xProperties, u"Action"_ustr) >>= msAction))
+            msAction = rDefaultMode.msAction;
 
-    // Read text and font
-    OUString sText(rpDefaultMode != nullptr ? rpDefaultMode->maText.GetText() : OUString());
-    PresenterConfigurationAccess::GetProperty(xProperties, "Text") >>= sText;
-    Reference<container::XHierarchicalNameAccess> xFontNode (
-        PresenterConfigurationAccess::GetProperty(xProperties, "Font"), UNO_QUERY);
-    PresenterTheme::SharedFontDescriptor pFont(PresenterTheme::ReadFont(
-        xFontNode, rpDefaultMode != nullptr ? rpDefaultMode->maText.GetFont()
-                                            : PresenterTheme::SharedFontDescriptor()));
-    maText = Text(sText,pFont);
+        // Read text and font
+        {
+            OUString sText = rDefaultMode.maText.GetText();
+            PresenterConfigurationAccess::GetProperty(xProperties, u"Text"_ustr) >>= sText;
+            Reference<container::XHierarchicalNameAccess> xFontNode (
+                PresenterConfigurationAccess::GetProperty(xProperties, u"Font"_ustr), UNO_QUERY);
+            PresenterTheme::SharedFontDescriptor pFont(PresenterTheme::ReadFont(
+                xFontNode, rDefaultMode.maText.GetFont()));
+            maText = Text(std::move(sText), std::move(pFont));
+        }
 
-    // Read bitmaps to display as icons.
-    Reference<container::XHierarchicalNameAccess> xIconNode (
-        PresenterConfigurationAccess::GetProperty(xProperties, "Icon"), UNO_QUERY);
-    mpIcon = PresenterBitmapContainer::LoadBitmap(
-        xIconNode, "", rContext.mxPresenterHelper, rContext.mxCanvas,
-        rpDefaultMode != nullptr ? rpDefaultMode->mpIcon : SharedBitmapDescriptor());
+        // Read bitmaps to display as icons.
+        Reference<container::XHierarchicalNameAccess> xIconNode (
+            PresenterConfigurationAccess::GetProperty(xProperties, u"Icon"_ustr), UNO_QUERY);
+        mpIcon = PresenterBitmapContainer::LoadBitmap(xIconNode, u""_ustr, rxCanvas, rDefaultMode.mpIcon);
     }
     catch(Exception&)
     {
@@ -1377,7 +1286,7 @@ void ElementMode::ReadElementMode (
 
 namespace {
 
-::rtl::Reference<Element> Button::Create (
+::rtl::Reference<PresenterToolBar::Element> Button::Create (
     const ::rtl::Reference<PresenterToolBar>& rpToolBar)
 {
     ::rtl::Reference<Button> pElement (new Button(rpToolBar));
@@ -1387,7 +1296,7 @@ namespace {
 
 Button::Button (
     const ::rtl::Reference<PresenterToolBar>& rpToolBar)
-    : Element(rpToolBar),
+    : PresenterToolBar::Element(rpToolBar),
       mbIsListenerRegistered(false)
 {
     OSL_ASSERT(mpToolBar);
@@ -1412,7 +1321,7 @@ void Button::disposing()
         mbIsListenerRegistered = false;
         mpToolBar->GetPresenterController()->GetWindowManager()->RemoveLayoutListener(this);
     }
-    Element::disposing();
+    PresenterToolBar::Element::disposing();
 }
 
 void Button::Paint (
@@ -1533,7 +1442,7 @@ PresenterBitmapDescriptor::Mode Button::GetMode() const
 void SAL_CALL Button::disposing (const css::lang::EventObject& rEvent)
 {
     mbIsListenerRegistered = false;
-    Element::disposing(rEvent);
+    PresenterToolBar::Element::disposing(rEvent);
 }
 
 } // end of anonymous namespace
@@ -1543,7 +1452,7 @@ void SAL_CALL Button::disposing (const css::lang::EventObject& rEvent)
 namespace {
 
 Label::Label (const ::rtl::Reference<PresenterToolBar>& rpToolBar)
-    : Element(rpToolBar)
+    : PresenterToolBar::Element(rpToolBar)
 {
 }
 
@@ -1591,7 +1500,7 @@ void Label::Paint (
 bool Label::SetState (const bool, const bool)
 {
     // For labels there is no mouse over effect.
-    return Element::SetState(false, false);
+    return PresenterToolBar::Element::SetState(false, false);
 }
 
 } // end of anonymous namespace
@@ -1736,7 +1645,7 @@ void TimeLabel::ConnectToTimer()
 
 //===== CurrentTimeLabel ======================================================
 
-::rtl::Reference<Element> CurrentTimeLabel::Create (
+::rtl::Reference<PresenterToolBar::Element> CurrentTimeLabel::Create (
     const ::rtl::Reference<PresenterToolBar>& rpToolBar)
 {
     ::rtl::Reference<TimeLabel> pElement(new CurrentTimeLabel(rpToolBar));
@@ -1773,7 +1682,7 @@ void CurrentTimeLabel::SetModes (
 
 //===== PresentationTimeLabel =================================================
 
-::rtl::Reference<Element> PresentationTimeLabel::Create (
+::rtl::Reference<PresenterToolBar::Element> PresentationTimeLabel::Create (
     const ::rtl::Reference<PresenterToolBar>& rpToolBar)
 {
     ::rtl::Reference<TimeLabel> pElement(new PresentationTimeLabel(rpToolBar));
@@ -1916,7 +1825,7 @@ void PresentationTimeLabel::SetModes (
 
 VerticalSeparator::VerticalSeparator (
     const ::rtl::Reference<PresenterToolBar>& rpToolBar)
-    : Element(rpToolBar)
+    : PresenterToolBar::Element(rpToolBar)
 {
 }
 
@@ -1940,7 +1849,7 @@ void VerticalSeparator::Paint (
             PresenterCanvasHelper::SetDeviceColor(aRenderState, pFont->mnColor);
     }
 
-    Reference<rendering::XBitmap> xBitmap(mpToolBar->GetPresenterController()->GetPresenterHelper()->loadBitmap("bitmaps/Separator.png", rxCanvas));
+    Reference<rendering::XBitmap> xBitmap(sd::presenter::PresenterHelper::loadBitmap(u"bitmaps/Separator.png", rxCanvas));
     if (!xBitmap.is())
         return;
 
@@ -1965,7 +1874,7 @@ bool VerticalSeparator::IsFilling() const
 
 HorizontalSeparator::HorizontalSeparator (
     const ::rtl::Reference<PresenterToolBar>& rpToolBar)
-    : Element(rpToolBar)
+    : PresenterToolBar::Element(rpToolBar)
 {
 }
 

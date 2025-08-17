@@ -39,7 +39,6 @@ using namespace ::com::sun::star::lang      ;   // XMultiServiceFactory
 using namespace ::com::sun::star::beans     ;   // PropertyValue
 using namespace ::com::sun::star::uno       ;   // Reference
 using namespace ::com::sun::star::util      ;   // XChangesBatch
-using namespace ::com::sun::star::awt       ;   // Size
 using namespace ::com::sun::star::container ;
 using namespace ::com::sun::star::configuration;
 using namespace ::com::sun::star::task      ;   // XStatusIndicator
@@ -54,7 +53,7 @@ static bool ImpIsTreeAvailable( Reference< XMultiServiceFactory > const & rXCfgP
             ++nIdx;
 
         // creation arguments: nodepath
-        PropertyValue aPathArgument = comphelper::makePropertyValue("nodepath",
+        PropertyValue aPathArgument = comphelper::makePropertyValue(u"nodepath"_ustr,
                                                                     OUString(o3tl::getToken(rTree, 0, '/', nIdx)));
         Sequence< Any > aArguments{ Any(aPathArgument) };
 
@@ -62,7 +61,7 @@ static bool ImpIsTreeAvailable( Reference< XMultiServiceFactory > const & rXCfgP
         try
         {
             xReadAccess = rXCfgProv->createInstanceWithArguments(
-                    "com.sun.star.configuration.ConfigurationAccess",
+                    u"com.sun.star.configuration.ConfigurationAccess"_ustr,
                     aArguments );
         }
         catch (const css::uno::Exception&)
@@ -100,7 +99,7 @@ void FilterConfigItem::ImpInitTree( std::u16string_view rSubTree )
 {
     bModified = false;
 
-    Reference< XComponentContext > xContext( comphelper::getProcessComponentContext() );
+    const Reference< XComponentContext >& xContext( comphelper::getProcessComponentContext() );
 
     Reference< XMultiServiceFactory > xCfgProv = theDefaultProvider::get( xContext );
 
@@ -118,7 +117,7 @@ void FilterConfigItem::ImpInitTree( std::u16string_view rSubTree )
     try
     {
         xUpdatableView = xCfgProv->createInstanceWithArguments(
-                "com.sun.star.configuration.ConfigurationUpdateAccess",
+                u"com.sun.star.configuration.ConfigurationUpdateAccess"_ustr,
                 aArguments );
         if ( xUpdatableView.is() )
             xPropSet.set( xUpdatableView, UNO_QUERY );

@@ -37,23 +37,15 @@ class SwXTextFieldTypes final : public UnoApiTest,
 {
 public:
     SwXTextFieldTypes()
-        : UnoApiTest("")
+        : UnoApiTest(u""_ustr)
         , XElementAccess(cppu::UnoType<text::XDependentTextField>::get())
     {
     }
 
-    virtual void setUp() override
-    {
-        UnoApiTest::setUp();
-        mxDesktop.set(frame::Desktop::create(mxComponentContext));
-        mxComponent = loadFromDesktop("private:factory/swriter");
-        CPPUNIT_ASSERT(mxComponent.is());
-    }
-
     Reference<XInterface> init() override
     {
-        component_ = loadFromDesktop("private:factory/swriter", "com.sun.star.text.TextDocument");
-        Reference<text::XTextDocument> xTextDocument(component_, UNO_QUERY_THROW);
+        loadFromURL(u"private:factory/swriter"_ustr);
+        Reference<text::XTextDocument> xTextDocument(mxComponent, UNO_QUERY_THROW);
 
         Reference<text::XTextFieldsSupplier> xTFS;
 
@@ -74,9 +66,6 @@ public:
     CPPUNIT_TEST(testCreateEnumeration);
     CPPUNIT_TEST(testRefreshListener);
     CPPUNIT_TEST_SUITE_END();
-
-private:
-    Reference<lang::XComponent> component_;
 };
 
 CPPUNIT_TEST_SUITE_REGISTRATION(SwXTextFieldTypes);

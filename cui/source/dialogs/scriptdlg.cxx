@@ -123,7 +123,7 @@ void SvxScriptOrgDialog::Init( std::u16string_view language  )
     deleteAllTree();
 
     Reference< browse::XBrowseNode > rootNode;
-    Reference< XComponentContext > xCtx(
+    const Reference< XComponentContext >& xCtx(
         comphelper::getProcessComponentContext() );
 
     Sequence< Reference< browse::XBrowseNode > > children;
@@ -147,7 +147,7 @@ void SvxScriptOrgDialog::Init( std::u16string_view language  )
     }
 
     Reference<XModel> xDocumentModel;
-    for ( const Reference< browse::XBrowseNode >& childNode : std::as_const(children) )
+    for (const Reference<browse::XBrowseNode>& childNode : children)
     {
         bool app = false;
         OUString uiName = childNode->getName();
@@ -178,7 +178,7 @@ void SvxScriptOrgDialog::Init( std::u16string_view language  )
                 } catch(const uno::Exception&)
                     {}
 
-                for ( const beans::PropertyValue& prop : std::as_const(moduleDescr))
+                for (const beans::PropertyValue& prop : moduleDescr)
                 {
                     if ( prop.Name == "ooSetupFactoryEmptyDocumentURL" )
                     {
@@ -278,7 +278,7 @@ void SvxScriptOrgDialog::RequestSubEntries(const weld::TreeIter& rRootEntry, Ref
         // if we catch an exception in getChildNodes then no entries are added
     }
 
-    for ( const Reference< browse::XBrowseNode >& childNode : std::as_const(children) )
+    for (const Reference<browse::XBrowseNode>& childNode : children)
     {
         OUString name( childNode->getName() );
         if (  childNode->getType() !=  browse::BrowseNodeTypes::SCRIPT)
@@ -339,27 +339,27 @@ IMPL_LINK(SvxScriptOrgDialog, ExpandingHdl, const weld::TreeIter&, rIter, bool)
 
 // CuiInputDialog ------------------------------------------------------------
 CuiInputDialog::CuiInputDialog(weld::Window * pParent, InputDialogMode nMode)
-    : GenericDialogController(pParent, "cui/ui/newlibdialog.ui", "NewLibDialog")
-    , m_xEdit(m_xBuilder->weld_entry("entry"))
+    : GenericDialogController(pParent, u"cui/ui/newlibdialog.ui"_ustr, u"NewLibDialog"_ustr)
+    , m_xEdit(m_xBuilder->weld_entry(u"entry"_ustr))
 {
     m_xEdit->grab_focus();
 
-    std::unique_ptr<weld::Label> xNewLibFT(m_xBuilder->weld_label("newlibft"));
+    std::unique_ptr<weld::Label> xNewLibFT(m_xBuilder->weld_label(u"newlibft"_ustr));
 
     if ( nMode == InputDialogMode::NEWMACRO )
     {
         xNewLibFT->hide();
-        std::unique_ptr<weld::Label> xNewMacroFT(m_xBuilder->weld_label("newmacroft"));
+        std::unique_ptr<weld::Label> xNewMacroFT(m_xBuilder->weld_label(u"newmacroft"_ustr));
         xNewMacroFT->show();
-        std::unique_ptr<weld::Label> xAltTitle(m_xBuilder->weld_label("altmacrotitle"));
+        std::unique_ptr<weld::Label> xAltTitle(m_xBuilder->weld_label(u"altmacrotitle"_ustr));
         m_xDialog->set_title(xAltTitle->get_label());
     }
     else if ( nMode == InputDialogMode::RENAME )
     {
         xNewLibFT->hide();
-        std::unique_ptr<weld::Label> xRenameFT(m_xBuilder->weld_label("renameft"));
+        std::unique_ptr<weld::Label> xRenameFT(m_xBuilder->weld_label(u"renameft"_ustr));
         xRenameFT->show();
-        std::unique_ptr<weld::Label> xAltTitle(m_xBuilder->weld_label("altrenametitle"));
+        std::unique_ptr<weld::Label> xAltTitle(m_xBuilder->weld_label(u"altrenametitle"_ustr));
         m_xDialog->set_title(xAltTitle->get_label());
     }
 }
@@ -367,7 +367,7 @@ CuiInputDialog::CuiInputDialog(weld::Window * pParent, InputDialogMode nMode)
 // ScriptOrgDialog ------------------------------------------------------------
 
 SvxScriptOrgDialog::SvxScriptOrgDialog(weld::Window* pParent, OUString language)
-    : SfxDialogController(pParent, "cui/ui/scriptorganizer.ui", "ScriptOrganizerDialog")
+    : SfxDialogController(pParent, u"cui/ui/scriptorganizer.ui"_ustr, u"ScriptOrganizerDialog"_ustr)
     , m_pParent(pParent)
     , m_sLanguage(std::move(language))
     , m_delErrStr(CuiResId(RID_CUISTR_DELFAILED))
@@ -381,14 +381,14 @@ SvxScriptOrgDialog::SvxScriptOrgDialog(weld::Window* pParent, OUString language)
     , m_renameErrTitleStr(CuiResId(RID_CUISTR_RENAMEFAILED_TITLE))
     , m_sMyMacros(CuiResId(RID_CUISTR_MYMACROS))
     , m_sProdMacros(CuiResId(RID_CUISTR_PRODMACROS))
-    , m_xScriptsBox(m_xBuilder->weld_tree_view("scripts"))
+    , m_xScriptsBox(m_xBuilder->weld_tree_view(u"scripts"_ustr))
     , m_xScratchIter(m_xScriptsBox->make_iterator())
-    , m_xRunButton(m_xBuilder->weld_button("ok"))
-    , m_xCloseButton(m_xBuilder->weld_button("close"))
-    , m_xCreateButton(m_xBuilder->weld_button("create"))
-    , m_xEditButton(m_xBuilder->weld_button("edit"))
-    , m_xRenameButton(m_xBuilder->weld_button("rename"))
-    , m_xDelButton(m_xBuilder->weld_button("delete"))
+    , m_xRunButton(m_xBuilder->weld_button(u"ok"_ustr))
+    , m_xCloseButton(m_xBuilder->weld_button(u"close"_ustr))
+    , m_xCreateButton(m_xBuilder->weld_button(u"create"_ustr))
+    , m_xEditButton(m_xBuilder->weld_button(u"edit"_ustr))
+    , m_xRenameButton(m_xBuilder->weld_button(u"rename"_ustr))
+    , m_xDelButton(m_xBuilder->weld_button(u"delete"_ustr))
 {
     // must be a neater way to deal with the strings than as above
     // append the language to the dialog title
@@ -399,7 +399,7 @@ SvxScriptOrgDialog::SvxScriptOrgDialog(weld::Window* pParent, OUString language)
     m_xScriptsBox->set_size_request(m_xScriptsBox->get_approximate_digit_width() * 45,
                                     m_xScriptsBox->get_height_rows(12));
 
-    m_xScriptsBox->connect_changed( LINK( this, SvxScriptOrgDialog, ScriptSelectHdl ) );
+    m_xScriptsBox->connect_selection_changed(LINK(this, SvxScriptOrgDialog, ScriptSelectHdl));
     m_xScriptsBox->connect_expanding(LINK( this, SvxScriptOrgDialog, ExpandingHdl ) );
     m_xRunButton->connect_clicked( LINK( this, SvxScriptOrgDialog, ButtonHdl ) );
     m_xCloseButton->connect_clicked( LINK( this, SvxScriptOrgDialog, ButtonHdl ) );
@@ -465,7 +465,7 @@ void SvxScriptOrgDialog::CheckButtons( Reference< browse::XBrowseNode > const & 
             return;
         }
 
-        OUString sName("Editable");
+        OUString sName(u"Editable"_ustr);
 
         if ( getBoolProperty( xProps, sName ) )
         {
@@ -602,7 +602,7 @@ IMPL_LINK(SvxScriptOrgDialog, ButtonHdl, weld::Button&, rButton, void)
             mspNode.set( mspUserData->GetNode() , UNO_QUERY );
             bParent = m_xScriptsBox->iter_parent(*xParentIter);
         }
-        xProp->getPropertyValue("URI") >>= tmpString;
+        xProp->getPropertyValue(u"URI"_ustr) >>= tmpString;
         const OUString scriptURL( tmpString );
 
         if ( mspNode.is() )
@@ -650,7 +650,7 @@ IMPL_LINK(SvxScriptOrgDialog, ButtonHdl, weld::Button&, rButton, void)
             try
             {
                 // ISSUE need code to run script here
-                xInv->invoke( "Editable", args, outIndex, outArgs );
+                xInv->invoke( u"Editable"_ustr, args, outIndex, outArgs );
             }
             catch( Exception const & )
             {
@@ -751,7 +751,7 @@ void SvxScriptOrgDialog::createEntry(const weld::TreeIter& rEntry)
                 if(extnPos>0)
                     extn = nodeName.copy(extnPos);
             }
-            for( const Reference< browse::XBrowseNode >& n : std::as_const(childNodes) )
+            for (const Reference<browse::XBrowseNode>& n : childNodes)
             {
                 if (Concat2View(aNewName+extn) == n->getName())
                 {
@@ -778,7 +778,7 @@ void SvxScriptOrgDialog::createEntry(const weld::TreeIter& rEntry)
             {
                 OUString aUserSuppliedName = aNewDlg.GetObjectName();
                 bValid = true;
-                for( const Reference< browse::XBrowseNode >& n : std::as_const(childNodes) )
+                for (const Reference<browse::XBrowseNode>& n : childNodes)
                 {
                     if (Concat2View(aUserSuppliedName+extn) == n->getName())
                     {
@@ -813,7 +813,7 @@ void SvxScriptOrgDialog::createEntry(const weld::TreeIter& rEntry)
         Sequence< sal_Int16 > outIndex;
         try
         {
-            Any aResult = xInv->invoke( "Creatable", args, outIndex, outArgs );
+            Any aResult = xInv->invoke( u"Creatable"_ustr, args, outIndex, outArgs );
             aChildNode.set(aResult, UNO_QUERY);
 
         }
@@ -893,7 +893,7 @@ void SvxScriptOrgDialog::renameEntry(const weld::TreeIter& rEntry)
         Sequence< sal_Int16 > outIndex;
         try
         {
-            Any aResult = xInv->invoke( "Renamable", args, outIndex, outArgs );
+            Any aResult = xInv->invoke( u"Renamable"_ustr, args, outIndex, outArgs );
             aChildNode.set(aResult, UNO_QUERY);
 
         }
@@ -942,7 +942,7 @@ void SvxScriptOrgDialog::deleteEntry(const weld::TreeIter& rEntry)
         Sequence< sal_Int16 > outIndex;
         try
         {
-            Any aResult = xInv->invoke( "Deletable", args, outIndex, outArgs );
+            Any aResult = xInv->invoke( u"Deletable"_ustr, args, outIndex, outArgs );
             aResult >>= result; // or do we just assume true if no exception ?
         }
         catch( Exception const & )
@@ -1130,7 +1130,7 @@ OUString GetErrorMessage(
 {
     OUString unformatted = CuiResId( RID_CUISTR_ERROR_AT_LINE );
 
-    OUString unknown("UNKNOWN");
+    OUString unknown(u"UNKNOWN"_ustr);
     OUString language = unknown;
     OUString script = unknown;
     OUString line = unknown;
@@ -1169,7 +1169,7 @@ OUString GetErrorMessage(
 {
     OUString unformatted = CuiResId( RID_CUISTR_EXCEPTION_AT_LINE );
 
-    OUString unknown("UNKNOWN");
+    OUString unknown(u"UNKNOWN"_ustr);
     OUString language = unknown;
     OUString script = unknown;
     OUString line = unknown;
@@ -1214,9 +1214,9 @@ OUString GetErrorMessage(
 {
     OUString unformatted = CuiResId( RID_CUISTR_FRAMEWORK_ERROR_RUNNING );
 
-    OUString language("UNKNOWN");
+    OUString language(u"UNKNOWN"_ustr);
 
-    OUString script("UNKNOWN");
+    OUString script(u"UNKNOWN"_ustr);
 
     OUString message;
 

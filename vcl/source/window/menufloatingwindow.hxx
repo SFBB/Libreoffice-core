@@ -24,7 +24,6 @@
 #include <vcl/toolkit/floatwin.hxx>
 #include <vcl/menu.hxx>
 
-#define EXTRASPACEY         2
 #define GUTTERBORDER        8
 
 /** Class that implements the actual window of the floating menu.
@@ -35,7 +34,7 @@ class MenuFloatingWindow : public FloatingWindow, public MenuWindow
     friend void Menu::dispose();
 
 private:
-    VclPtr<Menu> pMenu;
+    VclPtr<PopupMenu> pMenu;
     VclPtr<PopupMenu> pActivePopup;
     Timer aHighlightChangedTimer;
     Timer aSubmenuCloseTimer;
@@ -83,7 +82,7 @@ protected:
     void InvalidateItem( sal_uInt16 nPos );
 
 public:
-    MenuFloatingWindow(Menu* pMenu, vcl::Window* pParent, WinBits nStyle);
+    MenuFloatingWindow(PopupMenu* pMenu, vcl::Window* pParent, WinBits nStyle);
     virtual ~MenuFloatingWindow() override;
 
     virtual void dispose() override;
@@ -113,7 +112,7 @@ public:
     void EndExecute( sal_uInt16 nSelectId );
 
     PopupMenu* GetActivePopup() const  { return pActivePopup; }
-    void KillActivePopup( PopupMenu* pThisOnly = nullptr );
+    void KillActivePopup();
 
     void ChangeHighlightItem(sal_uInt16 n, bool bStartPopupTimer);
     sal_uInt16 GetHighlightedItem() const { return nHighlightedItem; }
@@ -122,7 +121,7 @@ public:
 
     bool MenuInHierarchyHasFocus() const;
 
-    virtual css::uno::Reference<css::accessibility::XAccessible> CreateAccessible() override;
+    virtual rtl::Reference<comphelper::OAccessible> CreateAccessible() override;
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

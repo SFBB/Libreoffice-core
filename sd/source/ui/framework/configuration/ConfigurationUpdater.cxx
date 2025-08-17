@@ -23,10 +23,12 @@
 #include "ConfigurationControllerBroadcaster.hxx"
 #include "ConfigurationControllerResourceManager.hxx"
 #include <framework/Configuration.hxx>
+#include <framework/ConfigurationChangeEvent.hxx>
+#include <framework/ConfigurationController.hxx>
 #include <framework/FrameworkHelper.hxx>
+#include <framework/ResourceFactory.hxx>
 #include <DrawController.hxx>
 
-#include <com/sun/star/drawing/framework/XControllerManager.hpp>
 #include <comphelper/scopeguard.hxx>
 #include <comphelper/diagnose_ex.hxx>
 #include <sal/log.hxx>
@@ -68,7 +70,7 @@ ConfigurationUpdater::ConfigurationUpdater (
     std::shared_ptr<ConfigurationControllerResourceManager> pResourceManager,
     const rtl::Reference<::sd::DrawController>& rxControllerManager)
     : mpBroadcaster(std::move(pBroadcaster)),
-      mxCurrentConfiguration(Reference<XConfiguration>(new Configuration(nullptr, false))),
+      mxCurrentConfiguration(new Configuration(nullptr, false)),
       mbUpdatePending(false),
       mbUpdateBeingProcessed(false),
       mnLockCount(0),
@@ -90,7 +92,7 @@ ConfigurationUpdater::~ConfigurationUpdater()
 }
 
 void ConfigurationUpdater::RequestUpdate (
-    const Reference<XConfiguration>& rxRequestedConfiguration)
+    const rtl::Reference<Configuration>& rxRequestedConfiguration)
 {
     mxRequestedConfiguration = rxRequestedConfiguration;
 
@@ -147,7 +149,7 @@ void ConfigurationUpdater::UpdateConfiguration()
 #endif
             // Notify the beginning of the update.
             ConfigurationChangeEvent aEvent;
-            aEvent.Type = FrameworkHelper::msConfigurationUpdateStartEvent;
+            aEvent.Type = ConfigurationChangeEventType::ConfigurationUpdateStart;
             aEvent.Configuration = mxRequestedConfiguration;
             mpBroadcaster->NotifyListeners(aEvent);
 
@@ -163,7 +165,7 @@ void ConfigurationUpdater::UpdateConfiguration()
             }
 
             // Notify the end of the update.
-            aEvent.Type = FrameworkHelper::msConfigurationUpdateEndEvent;
+            aEvent.Type = ConfigurationChangeEventType::ConfigurationUpdateEnd;
             mpBroadcaster->NotifyListeners(aEvent);
 
             CheckUpdateSuccess();
@@ -194,11 +196,11 @@ void ConfigurationUpdater::CleanRequestedConfiguration()
         return;
 
     // Request the deactivation of pure anchors that have no child.
-    vector<Reference<XResourceId> > aResourcesToDeactivate;
+    vector<rtl::Reference<ResourceId> > aResourcesToDeactivate;
     CheckPureAnchors(mxRequestedConfiguration, aResourcesToDeactivate);
     if (!aResourcesToDeactivate.empty())
     {
-        Reference<XConfigurationController> xCC (
+        rtl::Reference<ConfigurationController> xCC (
             mxControllerManager->getConfigurationController());
         for (const auto& rxId : aResourcesToDeactivate)
             if (rxId.is())
@@ -257,7 +259,7 @@ void ConfigurationUpdater::UpdateCore (const ConfigurationClassifier& rClassifie
 #endif
 
         // Deactivate pure anchors that have no child.
-        vector<Reference<XResourceId> > aResourcesToDeactivate;
+        vector<rtl::Reference<ResourceId> > aResourcesToDeactivate;
         CheckPureAnchors(mxCurrentConfiguration, aResourcesToDeactivate);
         if (!aResourcesToDeactivate.empty())
             mpResourceManager->DeactivateResources(aResourcesToDeactivate, mxCurrentConfiguration);
@@ -269,18 +271,17 @@ void ConfigurationUpdater::UpdateCore (const ConfigurationClassifier& rClassifie
 }
 
 void ConfigurationUpdater::CheckPureAnchors (
-    const Reference<XConfiguration>& rxConfiguration,
-    vector<Reference<XResourceId> >& rResourcesToDeactivate)
+    const rtl::Reference<Configuration>& rxConfiguration,
+    vector<rtl::Reference<ResourceId> >& rResourcesToDeactivate)
 {
     if ( ! rxConfiguration.is())
         return;
 
     // Get a list of all resources in the configuration.
-    Sequence<Reference<XResourceId> > aResources(
+    std::vector<rtl::Reference<ResourceId> > aResources(
         rxConfiguration->getResources(
-            nullptr, OUString(), AnchorBindingMode_INDIRECT));
-    auto aResourcesRange = asNonConstRange(aResources);
-    sal_Int32 nCount (aResources.getLength());
+            nullptr, u"", AnchorBindingMode_INDIRECT));
+    sal_Int32 nCount (aResources.size());
 
     // Prepare the list of pure anchors that have to be deactivated.
     rResourcesToDeactivate.clear();
@@ -291,8 +292,8 @@ void ConfigurationUpdater::CheckPureAnchors (
     sal_Int32 nIndex (nCount-1);
     while (nIndex >= 0)
     {
-        const Reference<XResourceId> xResourceId (aResources[nIndex]);
-        const Reference<XResource> xResource (
+        const rtl::Reference<ResourceId>& xResourceId (aResources[nIndex]);
+        const rtl::Reference<AbstractResource> xResource (
             mpResourceManager->GetResource(xResourceId).mxResource);
         bool bDeactiveCurrentResource (false);
 
@@ -309,7 +310,7 @@ void ConfigurationUpdater::CheckPureAnchors (
             }
             else
             {
-                const Reference<XResourceId> xPrevResourceId (aResources[nIndex+1]);
+                const rtl::Reference<ResourceId>& xPrevResourceId (aResources[nIndex+1]);
                 if ( ! xPrevResourceId.is()
                     || ! xPrevResourceId->isBoundTo(xResourceId, AnchorBindingMode_DIRECT))
                 {
@@ -325,12 +326,11 @@ void ConfigurationUpdater::CheckPureAnchors (
             SAL_INFO("sd.fwk", __func__ << ": deactivating pure anchor " <<
                     FrameworkHelper::ResourceIdToString(xResourceId) <<
                     "because it has no children");
+            rResourcesToDeactivate.push_back(xResourceId);
             // Erase element from current configuration.
             for (sal_Int32 nI=nIndex; nI<nCount-2; ++nI)
-                aResourcesRange[nI] = aResources[nI+1];
+                aResources[nI] = aResources[nI+1];
             nCount -= 1;
-
-            rResourcesToDeactivate.push_back(xResourceId);
         }
         nIndex -= 1;
     }

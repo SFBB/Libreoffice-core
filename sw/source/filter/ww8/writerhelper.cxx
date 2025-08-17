@@ -59,6 +59,7 @@
 #include <IDocumentMarkAccess.hxx>
 #include <IMark.hxx>
 #include <grfatr.hxx>
+#include <poolfmt.hxx>
 
 using namespace com::sun::star;
 
@@ -113,12 +114,21 @@ namespace
         for(const auto& rFly : rFlys)
         {
             const SwFrameFormat &rEntry = rFly.GetFormat();
-
-            if (const SwNode* pAnchor = rEntry.GetAnchor().GetAnchorNode())
+            const SwFormat* pParent = rEntry.DerivedFrom();
+            const SwFormatAnchor& rAnchor = rEntry.GetAnchor();
+            // keep only Inline Heading frames from the frames anchored as characters
+            bool bAsChar = rAnchor.GetAnchorId() ==
+                    static_cast<RndStdIds>(css::text::TextContentAnchorType_AS_CHARACTER);
+            if ( bAsChar &&
+                    !(pParent && pParent->GetPoolFormatId() == RES_POOLFRM_INLINE_HEADING) )
+            {
+                continue;
+            }
+            if (const SwNode* pAnchor = rAnchor.GetAnchorNode())
             {
                 // the anchor position will be invalidated by SetRedlineFlags
                 // so set a dummy position and fix it in UpdateFramePositions
-                SwPosition const dummy(const_cast<SwNodes&>(pAnchor->GetNodes()));
+                SwPosition const dummy(pAnchor->GetNodes());
                 aRet.emplace_back(rEntry, dummy);
             }
             else
@@ -259,7 +269,7 @@ namespace sw
         {
             sal_uInt16 nSlotId = rSrcPool.GetSlotId(nWhich);
             if (IsValidSlotWhich(nSlotId, nWhich))
-                nWhich = rDestPool.GetWhich(nSlotId);
+                nWhich = rDestPool.GetWhichIDFromSlotID(nSlotId);
             else
                 nWhich = 0;
             return nWhich;
@@ -381,25 +391,17 @@ namespace sw
         {
             if( bExportParentItemSet )
             {
-                sal_uInt16 nTotal = rSet.TotalCount();
-                for( sal_uInt16 nItem =0; nItem < nTotal; ++nItem )
+                for (SfxItemIter aIter(rSet); !aIter.IsAtEnd(); aIter.NextItem())
                 {
-                    const SfxPoolItem* pItem = nullptr;
-                    if( SfxItemState::SET == rSet.GetItemState( rSet.GetWhichByOffset( nItem ), true, &pItem ) )
-                    {
-                        rItems[pItem->Which()] = pItem;
-                    }
+                    const SfxPoolItem* pItem(nullptr);
+                    if(SfxItemState::SET == aIter.GetItemState(true, &pItem))
+                        rItems[aIter.GetCurWhich()] = pItem;
                 }
             }
             else if( rSet.Count())
             {
-                SfxItemIter aIter(rSet);
-                if (const SfxPoolItem *pItem = aIter.GetCurItem())
-                {
-                    do
-                        rItems[pItem->Which()] = pItem;
-                    while ((pItem = aIter.NextItem()));
-                }
+                for (SfxItemIter aIter(rSet); !aIter.IsAtEnd(); aIter.NextItem())
+                    rItems[aIter.GetCurWhich()] = aIter.GetCurItem();
             }
 //            DeduplicateItems(rItems);
         }
@@ -441,7 +443,7 @@ namespace sw
             return aStyles;
         }
 
-        SwTextFormatColl* GetParaStyle(SwDoc &rDoc, const OUString& rName)
+        SwTextFormatColl* GetParaStyle(SwDoc &rDoc, const UIName& rName)
         {
             // Search first in the Doc-Styles
             SwTextFormatColl* pColl = rDoc.FindTextFormatCollByName(rName);
@@ -456,7 +458,7 @@ namespace sw
             return pColl;
         }
 
-        SwCharFormat* GetCharStyle(SwDoc &rDoc, const OUString& rName)
+        SwCharFormat* GetCharStyle(SwDoc &rDoc, const UIName& rName)
         {
             SwCharFormat *pFormat = rDoc.FindCharFormatByName(rName);
             if (!pFormat)
@@ -482,7 +484,7 @@ namespace sw
            */
         ww8::Frames GetFrames(const SwDoc &rDoc, SwPaM const *pPaM /*, bool bAll*/)
         {
-            SwPosFlyFrames aFlys(rDoc.GetAllFlyFormats(pPaM, true));
+            SwPosFlyFrames aFlys(rDoc.GetAllFlyFormats(pPaM, /*bDrawAlso=*/true, /*bAsCharAlso=*/true));
             ww8::Frames aRet(SwPosFlyFramesToFrames(aFlys));
             return aRet;
         }
@@ -605,11 +607,10 @@ namespace sw
                 // for reducing to a single polygon will just need more power and
                 // cannot create more correct results.
                 sal_uInt32 nPointCount(0);
-                sal_uInt16 a;
 
-                for(a = 0; a < rPolyPoly.Count(); a++)
+                for( auto const& rPoly : rPolyPoly )
                 {
-                    nPointCount += static_cast<sal_uInt32>(rPolyPoly[a].GetSize());
+                    nPointCount += static_cast<sal_uInt32>(rPoly.GetSize());
                 }
 
                 if(nPointCount > 0x0000ffff)
@@ -621,10 +622,8 @@ namespace sw
                 tools::Polygon aRetval(o3tl::narrowing<sal_uInt16>(nPointCount));
                 sal_uInt32 nAppendIndex(0);
 
-                for(a = 0; a < rPolyPoly.Count(); a++)
+                for( auto const& rCandidate : rPolyPoly )
                 {
-                    const tools::Polygon& rCandidate = rPolyPoly[a];
-
                     for(sal_uInt16 b(0); nAppendIndex <= nPointCount && b < rCandidate.GetSize(); b++)
                     {
                         aRetval[o3tl::narrowing<sal_uInt16>(nAppendIndex++)] = rCandidate[b];
@@ -638,7 +637,7 @@ namespace sw
         tools::Polygon CorrectWordWrapPolygonForExport(const tools::PolyPolygon& rPolyPoly, const SwNoTextNode* pNd, bool bCorrectCrop)
         {
             tools::Polygon aPoly(PolygonFromPolyPolygon(rPolyPoly));
-            const Size &rOrigSize = pNd->GetGraphic().GetPrefSize();
+            const Size aOrigSize = pNd->GetGraphic().GetPrefSize();
 
             const SwAttrSet* pAttrSet = pNd->GetpSwAttrSet();
             if (bCorrectCrop && pAttrSet)
@@ -654,14 +653,14 @@ namespace sw
                     sal_Int32 nCropBottom = convertTwipToMm100(rCrop.GetBottom());
                     aPoly.Move(-nCropLeft, -nCropTop);
 
-                    Fraction aScaleX(rOrigSize.getWidth(), rOrigSize.getWidth() - nCropLeft - nCropRight);
-                    Fraction aScaleY(rOrigSize.getHeight(), rOrigSize.getHeight() - nCropTop - nCropBottom);
+                    Fraction aScaleX(aOrigSize.getWidth(), aOrigSize.getWidth() - nCropLeft - nCropRight);
+                    Fraction aScaleY(aOrigSize.getHeight(), aOrigSize.getHeight() - nCropTop - nCropBottom);
                     aPoly.Scale(double(aScaleX), double(aScaleY));
                 }
             }
 
-            Fraction aMapPolyX(ww::nWrap100Percent, rOrigSize.Width());
-            Fraction aMapPolyY(ww::nWrap100Percent, rOrigSize.Height());
+            Fraction aMapPolyX(ww::nWrap100Percent, aOrigSize.Width());
+            Fraction aMapPolyY(ww::nWrap100Percent, aOrigSize.Height());
             aPoly.Scale(double(aMapPolyX), double(aMapPolyY));
 
             /*
@@ -671,8 +670,8 @@ namespace sw
 
              See the import for details
             */
-            const Size &rSize = pNd->GetTwipSize();
-            Fraction aMoveHack(ww::nWrap100Percent, rSize.Width());
+            const Size aSize = pNd->GetTwipSize();
+            Fraction aMoveHack(ww::nWrap100Percent, aSize.Width());
             aMoveHack *= Fraction(15, 1);
             tools::Long nMove(aMoveHack);
 
@@ -727,7 +726,7 @@ namespace sw
                 {
                     SwPosition const end(*rPos.GetNode().GetTextNode(),
                                          nIndex - 1);
-                    sw::mark::IFieldmark *const pFieldMark(
+                    sw::mark::Fieldmark *const pFieldMark(
                         rPos.GetDoc().getIDocumentMarkAccess()->getFieldmarkAt(end));
                     SAL_WARN_IF(!pFieldMark, "sw.ww8", "expected a field mark");
                     if (pFieldMark && pFieldMark->GetMarkPos().GetNodeIndex() == (*aResult)->m_aMkPos.m_nNode.GetIndex()+1
@@ -790,7 +789,7 @@ namespace sw
         void SetInDocAndDelete::operator()(std::unique_ptr<SwFltStackEntry>& pEntry)
         {
             SwPaM aRegion(pEntry->m_aMkPos.m_nNode);
-            if (pEntry->MakeRegion(mrDoc, aRegion,
+            if (pEntry->MakeRegion(aRegion,
                     SwFltStackEntry::RegionMode::CheckNodes|SwFltStackEntry::RegionMode::CheckFieldmark) &&
                 (*aRegion.GetPoint() != *aRegion.GetMark())
             )
@@ -831,10 +830,15 @@ namespace sw
                 return (pOne->m_aStamp < pTwo->m_aStamp);
         }
 
-        RedlineStack::~RedlineStack()
+        void RedlineStack::ImplDestroy()
         {
             std::stable_sort(maStack.begin(), maStack.end(), CompareRedlines());
             std::for_each(maStack.begin(), maStack.end(), SetInDocAndDelete(mrDoc));
+        }
+
+        RedlineStack::~RedlineStack()
+        {
+            suppress_fun_call_w_exception(ImplDestroy());
         }
 
         sal_uInt16 WrtRedlineAuthor::AddName( const OUString& rNm )

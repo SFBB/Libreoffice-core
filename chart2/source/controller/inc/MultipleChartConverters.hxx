@@ -23,7 +23,6 @@
 #include <rtl/ref.hxx>
 #include <optional>
 
-namespace com::sun::star::frame { class XModel; }
 namespace com::sun::star::lang { class XMultiServiceFactory; }
 namespace chart { class ChartModel; }
 class SdrModel;
@@ -51,8 +50,7 @@ public:
     AllGridItemConverter(
         const rtl::Reference<::chart::ChartModel>& xChartModel,
         SfxItemPool& rItemPool,
-        SdrModel& rDrawModel,
-        const css::uno::Reference<css::lang::XMultiServiceFactory> & xNamedPropertyContainerFactory );
+        SdrModel& rDrawModel );
     virtual ~AllGridItemConverter() override;
 
 protected:
@@ -65,8 +63,7 @@ public:
     AllDataLabelItemConverter(
         const rtl::Reference<::chart::ChartModel>& xChartModel,
         SfxItemPool& rItemPool,
-        SdrModel& rDrawModel,
-        const css::uno::Reference<css::lang::XMultiServiceFactory>& xNamedPropertyContainerFactory );
+        SdrModel& rDrawModel );
 
     virtual ~AllDataLabelItemConverter() override;
 
@@ -79,8 +76,7 @@ class AllTitleItemConverter final : public MultipleItemConverter
 public:
     AllTitleItemConverter(
         const rtl::Reference<::chart::ChartModel>& xChartModel,
-        SfxItemPool& rItemPool, SdrModel& rDrawModel,
-        const css::uno::Reference<css::lang::XMultiServiceFactory>& xNamedPropertyContainerFactory );
+        SfxItemPool& rItemPool, SdrModel& rDrawModel );
 
     virtual ~AllTitleItemConverter() override;
 

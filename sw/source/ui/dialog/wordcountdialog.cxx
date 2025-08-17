@@ -33,7 +33,13 @@
 #include <comphelper/lok.hxx>
 #include <PostItMgr.hxx>
 
-#define IS_MOBILE_PHONE (comphelper::LibreOfficeKit::isActive() && SfxViewShell::Current() && SfxViewShell::Current()->isLOKMobilePhone())
+static bool isLOKMobilePhone()
+{
+    if (!comphelper::LibreOfficeKit::isActive())
+        return false;
+    SfxViewShell* pCurrent = SfxViewShell::Current();
+    return pCurrent && pCurrent->isLOKMobilePhone();
+}
 
 SwWordCountFloatDlg::~SwWordCountFloatDlg()
 {
@@ -67,9 +73,10 @@ void SwWordCountFloatDlg::SetValues(const SwDocStat& rCurrent, const SwDocStat& 
     setValue(*m_xDocCjkcharsFT, rDoc.nAsianWord, rLocaleData);
     setValue(*m_xDocComments, rCurrent.nComments, rLocaleData);
 
-    if (m_xStandardizedPagesLabelFT->get_visible())
+    const sal_Int64 nCharsPerStandardizedPage = m_xStandardizedPagesLabelFT->get_visible() ?
+        officecfg::Office::Writer::WordCount::StandardizedPageSize::get() : 0;
+    if (nCharsPerStandardizedPage)
     {
-        sal_Int64 nCharsPerStandardizedPage = officecfg::Office::Writer::WordCount::StandardizedPageSize::get();
         setDoubleValue(*m_xCurrentStandardizedPagesFT,
             static_cast<double>(rCurrent.nChar) / nCharsPerStandardizedPage);
         setDoubleValue(*m_xDocStandardizedPagesFT,
@@ -89,7 +96,7 @@ void SwWordCountFloatDlg::showCJK(bool bShowCJK)
 {
     m_xCurrentCjkcharsFT->set_visible(bShowCJK);
     m_xDocCjkcharsFT->set_visible(bShowCJK);
-    if (IS_MOBILE_PHONE && m_xCjkcharsLabelFT2)
+    if (isLOKMobilePhone() && m_xCjkcharsLabelFT2)
         m_xCjkcharsLabelFT2->set_visible(bShowCJK);
     m_xCjkcharsLabelFT->set_visible(bShowCJK);
 }
@@ -98,7 +105,7 @@ void SwWordCountFloatDlg::showStandardizedPages(bool bShowStandardizedPages)
 {
     m_xCurrentStandardizedPagesFT->set_visible(bShowStandardizedPages);
     m_xDocStandardizedPagesFT->set_visible(bShowStandardizedPages);
-    if (IS_MOBILE_PHONE && m_xStandardizedPagesLabelFT2)
+    if (isLOKMobilePhone() && m_xStandardizedPagesLabelFT2)
         m_xStandardizedPagesLabelFT2->set_visible(bShowStandardizedPages);
     m_xStandardizedPagesLabelFT->set_visible(bShowStandardizedPages);
 }
@@ -107,22 +114,22 @@ SwWordCountFloatDlg::SwWordCountFloatDlg(SfxBindings* _pBindings,
                                          SfxChildWindow* pChild,
                                          weld::Window *pParent,
                                          SfxChildWinInfo const * pInfo)
-    : SfxModelessDialogController(_pBindings, pChild, pParent, IS_MOBILE_PHONE ? OUString("modules/swriter/ui/wordcount-mobile.ui") : OUString("modules/swriter/ui/wordcount.ui"), "WordCountDialog")
-    , m_xCurrentWordFT(m_xBuilder->weld_label("selectwords"))
-    , m_xCurrentCharacterFT(m_xBuilder->weld_label("selectchars"))
-    , m_xCurrentCharacterExcludingSpacesFT(m_xBuilder->weld_label("selectcharsnospaces"))
-    , m_xCurrentCjkcharsFT(m_xBuilder->weld_label("selectcjkchars"))
-    , m_xCurrentStandardizedPagesFT(m_xBuilder->weld_label("selectstandardizedpages"))
-    , m_xDocWordFT(m_xBuilder->weld_label("docwords"))
-    , m_xDocCharacterFT(m_xBuilder->weld_label("docchars"))
-    , m_xDocCharacterExcludingSpacesFT(m_xBuilder->weld_label("doccharsnospaces"))
-    , m_xDocCjkcharsFT(m_xBuilder->weld_label("doccjkchars"))
-    , m_xDocStandardizedPagesFT(m_xBuilder->weld_label("docstandardizedpages"))
-    , m_xCjkcharsLabelFT(m_xBuilder->weld_label("cjkcharsft"))
-    , m_xCjkcharsLabelFT2(m_xBuilder->weld_label("cjkcharsft2"))
-    , m_xStandardizedPagesLabelFT(m_xBuilder->weld_label("standardizedpages"))
-    , m_xStandardizedPagesLabelFT2(m_xBuilder->weld_label("standardizedpages2"))
-    , m_xDocComments(m_xBuilder->weld_label("docComments"))
+    : SfxModelessDialogController(_pBindings, pChild, pParent, isLOKMobilePhone() ? u"modules/swriter/ui/wordcount-mobile.ui"_ustr : u"modules/swriter/ui/wordcount.ui"_ustr, u"WordCountDialog"_ustr)
+    , m_xCurrentWordFT(m_xBuilder->weld_label(u"selectwords"_ustr))
+    , m_xCurrentCharacterFT(m_xBuilder->weld_label(u"selectchars"_ustr))
+    , m_xCurrentCharacterExcludingSpacesFT(m_xBuilder->weld_label(u"selectcharsnospaces"_ustr))
+    , m_xCurrentCjkcharsFT(m_xBuilder->weld_label(u"selectcjkchars"_ustr))
+    , m_xCurrentStandardizedPagesFT(m_xBuilder->weld_label(u"selectstandardizedpages"_ustr))
+    , m_xDocWordFT(m_xBuilder->weld_label(u"docwords"_ustr))
+    , m_xDocCharacterFT(m_xBuilder->weld_label(u"docchars"_ustr))
+    , m_xDocCharacterExcludingSpacesFT(m_xBuilder->weld_label(u"doccharsnospaces"_ustr))
+    , m_xDocCjkcharsFT(m_xBuilder->weld_label(u"doccjkchars"_ustr))
+    , m_xDocStandardizedPagesFT(m_xBuilder->weld_label(u"docstandardizedpages"_ustr))
+    , m_xCjkcharsLabelFT(m_xBuilder->weld_label(u"cjkcharsft"_ustr))
+    , m_xCjkcharsLabelFT2(m_xBuilder->weld_label(u"cjkcharsft2"_ustr))
+    , m_xStandardizedPagesLabelFT(m_xBuilder->weld_label(u"standardizedpages"_ustr))
+    , m_xStandardizedPagesLabelFT2(m_xBuilder->weld_label(u"standardizedpages2"_ustr))
+    , m_xDocComments(m_xBuilder->weld_label(u"docComments"_ustr))
 {
     showCJK(SvtCJKOptions::IsAnyEnabled());
     showStandardizedPages(officecfg::Office::Writer::WordCount::ShowStandardizedPageCount::get());

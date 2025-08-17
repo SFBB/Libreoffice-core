@@ -72,7 +72,7 @@ DateTime DTTM2DateTime( tools::Long lDTTM )
                                             Friday=5
                                             Saturday=6)
     */
-    DateTime aDateTime(Date( 0 ), ::tools::Time( 0 ));
+    DateTime aDateTime(Date( 0 ), ::tools::Time( tools::Time::EMPTY ));
     if( lDTTM )
     {
         sal_uInt16 lMin = static_cast<sal_uInt16>(lDTTM & 0x0000003F);
@@ -167,11 +167,19 @@ OUString ConvertColorOU( const Color &rColor )
     return OUString( pBuffer );
 }
 
-#define IN2MM100( v )    static_cast< sal_Int32 >( (v) * 2540.0 + 0.5 )
-#define MM2MM100( v )    static_cast< sal_Int32 >( (v) * 100.0 + 0.5 )
+namespace
+{
+struct ApiPaperSize
+{
+    sal_Int32 mnWidth;
+    sal_Int32 mnHeight;
+};
+
+constexpr sal_Int32 IN2MM100(double v) { return o3tl::convert(v, o3tl::Length::in, o3tl::Length::mm100) + 0.5; }
+constexpr sal_Int32 MM2MM100(double v) { return o3tl::convert(v, o3tl::Length::mm, o3tl::Length::mm100) + 0.5; }
 
 // see XclPaperSize pPaperSizeTable in calc and aDinTab in i18nutil
-const ApiPaperSize spPaperSizeTable[] =
+constexpr ApiPaperSize spPaperSizeTable[] =
 {
     { 0, 0 },                                                //  0 - (undefined)
     { IN2MM100( 8.5 ),       IN2MM100( 11 )      },          //  1 - Letter paper
@@ -248,7 +256,7 @@ const ApiPaperSize spPaperSizeTable[] =
     { MM2MM100( 297 ),       MM2MM100( 420 )     },          // 67 - A3 transverse paper
     { MM2MM100( 322 ),       MM2MM100( 445 )     },          // 68 - A3 extra transverse paper
     { MM2MM100( 200 ),       MM2MM100( 148 )     },          // 69 - Japanese double postcard
-    { MM2MM100( 105 ),       MM2MM100( 148 ),    },          // 70 - A6 paper
+    { MM2MM100( 105 ),       MM2MM100( 148 )     },          // 70 - A6 paper
     { 0, 0 },                                                // 71 - Japanese Envelope Kaku #2
     { 0, 0 },                                                // 72 - Japanese Envelope Kaku #3
     { 0, 0 },                                                // 73 - Japanese Envelope Chou #3
@@ -268,63 +276,101 @@ const ApiPaperSize spPaperSizeTable[] =
     { 0, 0 },                                                // 87 - Japanese Envelope Chou #4 Rotated
     { MM2MM100( 128 ),       MM2MM100( 182 )     },          // 88 - B6 (JIS)
     { MM2MM100( 182 ),       MM2MM100( 128 )     },          // 89 - B6 (JIS) Rotated
-    { IN2MM100( 12 ),        IN2MM100( 11 )      }           // 90 - 12x11
+    { IN2MM100( 12 ),        IN2MM100( 11 )      },          // 90 - 12x11
 };
+} // unnamed namespace
 
 sal_Int32 PaperSizeConv::getMSPaperSizeIndex( const css::awt::Size& rSize )
 {
     // Need to find the best match for current size
-    sal_Int32 nDeltaWidth = 0;
-    sal_Int32 nDeltaHeight = 0;
+    sal_Int32 nDeltaWidth = rSize.Width;
+    sal_Int32 nDeltaHeight = rSize.Height;
+    sal_Int32 nTol = 10; // hmm not sure is this the best way
 
     sal_Int32 nPaperSizeIndex = 0; // Undefined
-    const ApiPaperSize* pItem = spPaperSizeTable;
-    const ApiPaperSize* pEnd =  spPaperSizeTable + SAL_N_ELEMENTS( spPaperSizeTable );
-    for ( ; pItem != pEnd; ++pItem )
+    for (size_t i = 1; i < std::size(spPaperSizeTable); ++i)
     {
-        sal_Int32 nCurDeltaHeight = std::abs( pItem->mnHeight - rSize.Height );
-        sal_Int32 nCurDeltaWidth = std::abs( pItem->mnWidth - rSize.Width );
-        if ( pItem == spPaperSizeTable ) // initialize delta with first item
+        sal_Int32 nCurDeltaHeight = std::abs(spPaperSizeTable[i].mnHeight - rSize.Height);
+        sal_Int32 nCurDeltaWidth = std::abs(spPaperSizeTable[i].mnWidth - rSize.Width);
+        if (nCurDeltaWidth <= nTol && nCurDeltaHeight <= nTol
+            && nCurDeltaWidth + nCurDeltaHeight < nDeltaWidth + nDeltaHeight)
         {
             nDeltaWidth = nCurDeltaWidth;
             nDeltaHeight = nCurDeltaHeight;
-        }
-        else
-        {
-            if ( nCurDeltaWidth < nDeltaWidth && nCurDeltaHeight < nDeltaHeight )
-            {
-                nDeltaWidth = nCurDeltaWidth;
-                nDeltaHeight = nCurDeltaHeight;
-                nPaperSizeIndex = (pItem - spPaperSizeTable);
-            }
+            nPaperSizeIndex = i;
         }
     }
-    sal_Int32 nTol = 10; // hmm not sure is this the best way
-    if ( nDeltaWidth <= nTol && nDeltaHeight <= nTol )
-        return nPaperSizeIndex;
-    return 0;
+    return nPaperSizeIndex;
 }
 
-const ApiPaperSize& PaperSizeConv::getApiSizeForMSPaperSizeIndex( sal_Int32 nMSOPaperIndex )
+css::awt::Size PaperSizeConv::getApiSizeForMSPaperSizeIndex(sal_Int32 nMSOPaperIndex)
 {
-    if ( nMSOPaperIndex  < 0 || nMSOPaperIndex > sal_Int32(SAL_N_ELEMENTS( spPaperSizeTable )) - 1 )
-        return spPaperSizeTable[ 0 ];
-    return spPaperSizeTable[ nMSOPaperIndex ];
+    if (nMSOPaperIndex < 0 || nMSOPaperIndex >= std::ssize(spPaperSizeTable))
+        nMSOPaperIndex = 0;
+    return { spPaperSizeTable[nMSOPaperIndex].mnWidth, spPaperSizeTable[nMSOPaperIndex].mnHeight };
 }
 
 OUString CreateDOCXStyleId(std::u16string_view const aName)
 {
+    // tdf#161509: some special style names have standard style IDs that don't match case
+    static constexpr std::pair<std::u16string_view, OUString> specialCases[] = {
+        { u"heading 1", u"Heading1"_ustr },
+        { u"heading 2", u"Heading2"_ustr },
+        { u"heading 3", u"Heading3"_ustr },
+        { u"heading 4", u"Heading4"_ustr },
+        { u"heading 5", u"Heading5"_ustr },
+        { u"heading 6", u"Heading6"_ustr },
+        { u"heading 7", u"Heading7"_ustr },
+        { u"heading 8", u"Heading8"_ustr },
+        { u"heading 9", u"Heading9"_ustr },
+        { u"index 1", u"Index1"_ustr },
+        { u"index 2", u"Index2"_ustr },
+        { u"index 3", u"Index3"_ustr },
+        { u"index 4", u"Index4"_ustr },
+        { u"index 5", u"Index5"_ustr },
+        { u"index 6", u"Index6"_ustr },
+        { u"index 7", u"Index7"_ustr },
+        { u"index 8", u"Index8"_ustr },
+        { u"index 9", u"Index9"_ustr },
+        { u"toc 1", u"TOC1"_ustr },
+        { u"toc 2", u"TOC2"_ustr },
+        { u"toc 3", u"TOC3"_ustr },
+        { u"toc 4", u"TOC4"_ustr },
+        { u"toc 5", u"TOC5"_ustr },
+        { u"toc 6", u"TOC6"_ustr },
+        { u"toc 7", u"TOC7"_ustr },
+        { u"toc 8", u"TOC8"_ustr },
+        { u"toc 9", u"TOC9"_ustr },
+        { u"footnote text", u"FootnoteText"_ustr },
+        { u"annotation text", u"CommentText"_ustr },
+        { u"header", u"Header"_ustr },
+        { u"footer", u"Footer"_ustr },
+        { u"index heading", u"IndexHeading"_ustr },
+        { u"caption", u"Caption"_ustr },
+        { u"table of figures", u"TableofFigures"_ustr },
+        { u"envelope address", u"EnvelopeAddress"_ustr },
+        { u"envelope return", u"EnvelopeReturn"_ustr },
+        { u"footnote reference", u"FootnoteReference"_ustr },
+        { u"annotation reference", u"CommentReference"_ustr },
+        { u"line number", u"LineNumber"_ustr },
+        { u"page number", u"PageNumber"_ustr },
+        { u"endnote reference", u"EndnoteReference"_ustr },
+        { u"endnote text", u"EndnoteText"_ustr },
+        { u"table of authorities", u"TableofAuthorities"_ustr },
+        { u"macro", u"MacroText"_ustr },
+    };
+    for (const auto& [stiName, id] : specialCases)
+        if (aName == stiName)
+            return id;
+
     OUStringBuffer aStyleIdBuf(aName.size());
     for (size_t i = 0; i < aName.size(); ++i)
     {
         sal_Unicode nChar = aName[i];
         if (rtl::isAsciiAlphanumeric(nChar) || nChar == '-')
         {
-            // first letter should be uppercase
-            if (aStyleIdBuf.isEmpty())
-                aStyleIdBuf.append(char(rtl::toAsciiUpperCase(nChar)));
-            else
-                aStyleIdBuf.append(char(nChar));
+            // do not uppercase first letter
+            aStyleIdBuf.append(char(nChar));
         }
     }
     return aStyleIdBuf.makeStringAndClear();
@@ -1016,7 +1062,6 @@ OString GetOOXMLPresetGeometry( std::u16string_view rShapeType )
         { u"ooxml-cloudCallout", "cloudCallout" },
         { u"ooxml-callout1", "callout1" },
         { u"ooxml-ribbon", "ribbon" },
-        { u"ooxml-rect", "rect" },
     };
     auto i(aCustomShapeTypeTranslationHashMap.find(rShapeType));
     return i == aCustomShapeTypeTranslationHashMap.end() ? "rect"_ostr : i->second;
@@ -1229,6 +1274,7 @@ MSO_SPT GETVMLShapeType(std::u16string_view aType)
         {"actionButtonMovie", mso_sptActionButtonMovie},
         {"hostControl", mso_sptHostControl},
         {"textBox", mso_sptTextBox},
+        {"roundRect", mso_sptRoundRectangle},
     };
 
     auto i(aDMLToVMLMap.find(GetOOXMLPresetGeometry(aType)));

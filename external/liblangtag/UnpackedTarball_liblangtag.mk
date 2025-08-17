@@ -12,12 +12,16 @@ $(eval $(call gb_UnpackedTarball_UnpackedTarball,liblangtag))
 $(eval $(call gb_UnpackedTarball_set_tarball,liblangtag,$(LIBLANGTAG_TARBALL),,liblangtag))
 
 $(eval $(call gb_UnpackedTarball_set_pre_action,liblangtag,\
-	$(GNUTAR) -x -j -f $(gb_UnpackedTarget_TARFILE_LOCATION)/$(LANGTAGREG_TARBALL) \
+	$(GNUTAR) -x -j --no-same-owner -f $(call gb_Helper_cyg_path,$(gb_UnpackedTarget_TARFILE_LOCATION)/$(LANGTAGREG_TARBALL)) \
 ))
 
 $(eval $(call gb_UnpackedTarball_update_autoconf_configs,liblangtag))
 
 $(eval $(call gb_UnpackedTarball_set_patchlevel,liblangtag,0))
+
+# 0001-const-up-__lt_localealias_tables.patch
+# upstreaming attempt at:
+# https://bitbucket.org/tagoh/liblangtag/pull-requests/14
 
 ifneq ($(OS),MACOSX)
 ifneq ($(OS),WNT)
@@ -30,6 +34,7 @@ endif
 $(eval $(call gb_UnpackedTarball_add_patches,liblangtag, \
 	$(if $(SYSTEM_LIBXML),,external/liblangtag/langtag-libtool-rpath.patch.0) \
     external/liblangtag/clang-cl.patch.0 \
+    external/liblangtag/0001-const-up-__lt_localealias_tables.patch.1 \
 ))
 
 # vim: set noet sw=4 ts=4:

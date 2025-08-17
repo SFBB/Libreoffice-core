@@ -202,16 +202,14 @@ uno::Reference< XPropertySet > SwXMLTextImportHelper::createAndInsertOLEObject(
     // this method will modify the document directly -> lock SolarMutex
     SolarMutexGuard aGuard;
 
-    uno::Reference < XPropertySet > xPropSet;
-
     sal_Int32 nPos = rHRef.indexOf( ':' );
     if( -1 == nPos )
-        return xPropSet;
+        return nullptr;
 
     OUString aObjName( rHRef.copy( nPos+1) );
 
     if( aObjName.isEmpty() )
-        return xPropSet;
+        return nullptr;
 
     OTextCursorHelper* pTextCursor = dynamic_cast<OTextCursorHelper*>(GetCursor().get());
     SAL_WARN_IF(!pTextCursor, "sw.uno", "SwXTextCursor missing");
@@ -251,7 +249,7 @@ uno::Reference< XPropertySet > SwXMLTextImportHelper::createAndInsertOLEObject(
                         { "DefaultParentBaseURL", Any(GetXMLImport().GetBaseURL()) }
                     }));
                 uno::Reference < embed::XEmbeddedObject > xObj( xFactory->createInstanceInitNew(
-                    aClass, OUString(), xStorage, "DummyName", aObjArgs), uno::UNO_QUERY );
+                    aClass, OUString(), xStorage, u"DummyName"_ustr, aObjArgs), uno::UNO_QUERY );
                 if ( xObj.is() )
                 {
                     //TODO/LATER: is it enough to only set the VisAreaSize?
@@ -322,7 +320,7 @@ uno::Reference< XPropertySet > SwXMLTextImportHelper::createAndInsertOLEObject(
     }
 
     if( !pFrameFormat )
-        return xPropSet;
+        return nullptr;
 
     if( IsInsertMode() )
     {
@@ -332,7 +330,7 @@ uno::Reference< XPropertySet > SwXMLTextImportHelper::createAndInsertOLEObject(
             pOLENd->SetOLESizeInvalid( true );
     }
 
-    xPropSet = SwXTextEmbeddedObject::CreateXTextEmbeddedObject(
+    rtl::Reference<SwXTextEmbeddedObject> xPropSet = SwXTextEmbeddedObject::CreateXTextEmbeddedObject(
                 *pDoc, pFrameFormat);
     if( pDoc->getIDocumentDrawModelAccess().GetDrawModel() )
     {
@@ -411,7 +409,7 @@ uno::Reference< XPropertySet > SwXMLTextImportHelper::createAndInsertOLEObject(
         if( !bError )
         {
             OUString sTableName( aBuffer.makeStringAndClear() );
-            pOLENode->SetChartTableName( GetRenameMap().Get( XML_TEXT_RENAME_TYPE_TABLE, sTableName ) );
+            pOLENode->SetChartTableName( UIName(GetRenameMap().Get( XML_TEXT_RENAME_TYPE_TABLE, sTableName )) );
         }
     }
 
@@ -423,14 +421,14 @@ uno::Reference< XPropertySet > SwXMLTextImportHelper::createAndInsertOLEObject(
         pStyle = FindAutoFrameStyle( rStyleName );
         if( pStyle )
         {
-            rtl::Reference < SvXMLImportPropertyMapper > xImpPrMap =
+            SvXMLImportPropertyMapper* pImpPrMap =
                 pStyle->GetStyles()
                       ->GetImportPropertyMapper(pStyle->GetFamily());
-            OSL_ENSURE( xImpPrMap.is(), "Where is the import prop mapper?" );
-            if( xImpPrMap.is() )
+            OSL_ENSURE( pImpPrMap, "Where is the import prop mapper?" );
+            if( pImpPrMap )
             {
                 rtl::Reference<XMLPropertySetMapper> rPropMapper =
-                xImpPrMap->getPropertySetMapper();
+                    pImpPrMap->getPropertySetMapper();
 
                 sal_Int32 nCount = pStyle->GetProperties().size();
                 for( sal_Int32 i=0; i < nCount; i++ )
@@ -511,8 +509,6 @@ uno::Reference< XPropertySet > SwXMLTextImportHelper::createAndInsertOOoLink(
     // this method will modify the document directly -> lock SolarMutex
     SolarMutexGuard aGuard;
 
-    uno::Reference < XPropertySet > xPropSet;
-
     OTextCursorHelper* pTextCursor = dynamic_cast<OTextCursorHelper*>(GetCursor().get());
     assert( pTextCursor && "SwXTextCursor missing" );
     SwDoc *pDoc = static_cast<SwXMLImport&>(rImport).getDoc();
@@ -529,8 +525,9 @@ uno::Reference< XPropertySet > SwXMLTextImportHelper::createAndInsertOOoLink(
                      aURLObj.SetURL( URIHelper::SmartRel2Abs(
                                 INetURLObject( GetXMLImport().GetBaseURL() ), rHRef ) );
     if( !bValidURL )
-        return xPropSet;
+        return nullptr;
 
+    rtl::Reference < SwXTextEmbeddedObject > xPropSet;
     uno::Reference < embed::XStorage > xStorage = comphelper::OStorageHelper::GetTemporaryStorage();
     try
     {
@@ -539,9 +536,10 @@ uno::Reference< XPropertySet > SwXMLTextImportHelper::createAndInsertOOoLink(
                 embed::OOoEmbeddedObjectFactory::create(::comphelper::getProcessComponentContext());
 
         uno::Sequence< beans::PropertyValue > aMediaDescriptor{ comphelper::makePropertyValue(
-            "URL", aURLObj.GetMainURL( INetURLObject::DecodeMechanism::NONE )) };
+            u"URL"_ustr, aURLObj.GetMainURL( INetURLObject::DecodeMechanism::NONE )) };
 
-        if (SfxMedium* pMedium = pDoc->GetDocShell() ? pDoc->GetDocShell()->GetMedium() : nullptr)
+        SwDocShell* pShell = pDoc->GetDocShell();
+        if (SfxMedium* pMedium = pShell ? pShell->GetMedium() : nullptr)
         {
             uno::Reference< task::XInteractionHandler > xInteraction = pMedium->GetInteractionHandler();
             if ( xInteraction.is() )
@@ -561,7 +559,7 @@ uno::Reference< XPropertySet > SwXMLTextImportHelper::createAndInsertOOoLink(
 
         uno::Reference < embed::XEmbeddedObject > xObj(
             xFactory->createInstanceLink(
-                xStorage, "DummyName", aMediaDescriptor, uno::Sequence< beans::PropertyValue >() ),
+                xStorage, u"DummyName"_ustr, aMediaDescriptor, uno::Sequence< beans::PropertyValue >() ),
             uno::UNO_QUERY_THROW );
 
         {
@@ -601,7 +599,6 @@ uno::Reference< XPropertySet > SwXMLTextImportHelper::createAndInsertApplet(
     // this method will modify the document directly -> lock SolarMutex
     SolarMutexGuard aGuard;
 
-    uno::Reference < XPropertySet > xPropSet;
     OTextCursorHelper* pTextCursor = dynamic_cast<OTextCursorHelper*>(GetCursor().get());
     assert( pTextCursor && "SwXTextCursor missing" );
     SwDoc *pDoc = pTextCursor->GetDoc();
@@ -627,7 +624,7 @@ uno::Reference< XPropertySet > SwXMLTextImportHelper::createAndInsertApplet(
         pDoc->getIDocumentContentOperations().InsertEmbObject( *pTextCursor->GetPaM(),
         ::svt::EmbeddedObjectRef(aAppletImpl.GetApplet(), embed::Aspects::MSOLE_CONTENT),
         &aAppletImpl.GetItemSet());
-    xPropSet = SwXTextEmbeddedObject::CreateXTextEmbeddedObject(
+    rtl::Reference<SwXTextEmbeddedObject> xPropSet = SwXTextEmbeddedObject::CreateXTextEmbeddedObject(
                 *pDoc, pFrameFormat);
     if( pDoc->getIDocumentDrawModelAccess().GetDrawModel() )
     {
@@ -643,7 +640,6 @@ uno::Reference< XPropertySet > SwXMLTextImportHelper::createAndInsertPlugin(
         const OUString& rHRef,
         sal_Int32 nWidth, sal_Int32 nHeight )
 {
-    uno::Reference < XPropertySet > xPropSet;
     OTextCursorHelper* pTextCursor = dynamic_cast<OTextCursorHelper*>(GetCursor().get());
     assert( pTextCursor && "SwXTextCursor missing" );
     SwDoc *pDoc = pTextCursor->GetDoc();
@@ -660,8 +656,9 @@ uno::Reference< XPropertySet > SwXMLTextImportHelper::createAndInsertPlugin(
                      aURLObj.SetURL( URIHelper::SmartRel2Abs( INetURLObject( GetXMLImport().GetBaseURL() ), rHRef ) );
     bool bValidMimeType = !rMimeType.isEmpty();
     if( !bValidURL && !bValidMimeType )
-        return xPropSet;
+        return nullptr;
 
+    rtl::Reference < SwXTextEmbeddedObject > xPropSet;
     uno::Reference < embed::XStorage > xStorage = comphelper::OStorageHelper::GetTemporaryStorage();
     try
     {
@@ -669,7 +666,7 @@ uno::Reference< XPropertySet > SwXMLTextImportHelper::createAndInsertPlugin(
         uno::Sequence < sal_Int8 > aClass( SvGlobalName( SO3_PLUGIN_CLASSID ).GetByteSequence() );
         uno::Reference < embed::XEmbeddedObjectCreator > xFactory =  embed::EmbeddedObjectCreator::create( ::comphelper::getProcessComponentContext() );
         uno::Reference < embed::XEmbeddedObject > xObj( xFactory->createInstanceInitNew(
-            aClass, OUString(), xStorage, "DummyName",
+            aClass, OUString(), xStorage, u"DummyName"_ustr,
             uno::Sequence < beans::PropertyValue >() ), uno::UNO_QUERY );
 
         // set size to the object
@@ -684,10 +681,10 @@ uno::Reference< XPropertySet > SwXMLTextImportHelper::createAndInsertPlugin(
             if ( xSet.is() )
             {
                 if( bValidURL )
-                    xSet->setPropertyValue("PluginURL",
+                    xSet->setPropertyValue(u"PluginURL"_ustr,
                         Any( aURLObj.GetMainURL( INetURLObject::DecodeMechanism::NONE ) ) );
                 if( bValidMimeType )
-                    xSet->setPropertyValue("PluginMimeType",
+                    xSet->setPropertyValue(u"PluginMimeType"_ustr,
                         Any( rMimeType ) );
             }
 
@@ -720,7 +717,7 @@ uno::Reference< XPropertySet > SwXMLTextImportHelper::createAndInsertFloatingFra
     // this method will modify the document directly -> lock SolarMutex
     SolarMutexGuard aGuard;
 
-    uno::Reference < XPropertySet > xPropSet;
+    rtl::Reference < SwXTextEmbeddedObject > xPropSet;
     OTextCursorHelper* pTextCursor = dynamic_cast<OTextCursorHelper*>(GetCursor().get());
     assert( pTextCursor && "SwXTextCursor missing" );
     SwDoc *pDoc = pTextCursor->GetDoc();
@@ -738,14 +735,14 @@ uno::Reference< XPropertySet > SwXMLTextImportHelper::createAndInsertFloatingFra
         pStyle = FindAutoFrameStyle( rStyleName );
         if( pStyle )
         {
-            rtl::Reference < SvXMLImportPropertyMapper > xImpPrMap =
+            SvXMLImportPropertyMapper* pImpPrMap =
                 pStyle->GetStyles()
                       ->GetImportPropertyMapper(pStyle->GetFamily());
-            OSL_ENSURE( xImpPrMap.is(), "Where is the import prop mapper?" );
-            if( xImpPrMap.is() )
+            OSL_ENSURE( pImpPrMap, "Where is the import prop mapper?" );
+            if( pImpPrMap )
             {
                 rtl::Reference<XMLPropertySetMapper> rPropMapper =
-                xImpPrMap->getPropertySetMapper();
+                    pImpPrMap->getPropertySetMapper();
 
                 sal_Int32 nCount = pStyle->GetProperties().size();
                 for( sal_Int32 i=0; i < nCount; i++ )
@@ -796,7 +793,7 @@ uno::Reference< XPropertySet > SwXMLTextImportHelper::createAndInsertFloatingFra
         uno::Sequence < sal_Int8 > aClass( SvGlobalName( SO3_IFRAME_CLASSID ).GetByteSequence() );
         uno::Reference < embed::XEmbeddedObjectCreator > xFactory = embed::EmbeddedObjectCreator::create( ::comphelper::getProcessComponentContext() );
         uno::Reference < embed::XEmbeddedObject > xObj( xFactory->createInstanceInitNew(
-            aClass, OUString(), xStorage, "DummyName",
+            aClass, OUString(), xStorage, u"DummyName"_ustr,
             uno::Sequence < beans::PropertyValue >() ), uno::UNO_QUERY );
 
         // set size to the object
@@ -816,30 +813,30 @@ uno::Reference< XPropertySet > SwXMLTextImportHelper::createAndInsertFloatingFra
                 if (INetURLObject(sHRef).IsExoticProtocol())
                     GetXMLImport().NotifyMacroEventRead();
 
-                xSet->setPropertyValue("FrameURL",
+                xSet->setPropertyValue(u"FrameURL"_ustr,
                     Any( sHRef ) );
 
-                xSet->setPropertyValue("FrameName",
+                xSet->setPropertyValue(u"FrameName"_ustr,
                     Any( rName ) );
 
                 if ( eScrollMode == ScrollingMode::Auto )
-                    xSet->setPropertyValue("FrameIsAutoScroll",
+                    xSet->setPropertyValue(u"FrameIsAutoScroll"_ustr,
                         Any( true ) );
                 else
-                    xSet->setPropertyValue("FrameIsScrollingMode",
+                    xSet->setPropertyValue(u"FrameIsScrollingMode"_ustr,
                         Any( eScrollMode == ScrollingMode::Yes ) );
 
                 if ( bIsBorderSet )
-                    xSet->setPropertyValue("FrameIsBorder",
+                    xSet->setPropertyValue(u"FrameIsBorder"_ustr,
                         Any( bHasBorder ) );
                 else
-                    xSet->setPropertyValue("FrameIsAutoBorder",
+                    xSet->setPropertyValue(u"FrameIsAutoBorder"_ustr,
                         Any( true ) );
 
-                xSet->setPropertyValue("FrameMarginWidth",
+                xSet->setPropertyValue(u"FrameMarginWidth"_ustr,
                     Any( sal_Int32( aMargin.Width() ) ) );
 
-                xSet->setPropertyValue("FrameMarginHeight",
+                xSet->setPropertyValue(u"FrameMarginHeight"_ustr,
                     Any( sal_Int32( aMargin.Height() ) ) );
             }
 
@@ -901,7 +898,7 @@ void SwXMLTextImportHelper::endAppletOrPlugin(
                    });
 
     // unfortunately the names of the properties are depending on the object
-    OUString aParaName("AppletCommands");
+    OUString aParaName(u"AppletCommands"_ustr);
     try
     {
         xSet->setPropertyValue( aParaName, Any( aCommandSequence ) );

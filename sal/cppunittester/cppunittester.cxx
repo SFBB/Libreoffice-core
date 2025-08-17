@@ -22,6 +22,7 @@
 # define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#include <systools/win32/test_desktop.hxx>
 #endif
 #if defined(_WIN32) && defined(_DEBUG)
 #include <dbghelp.h>
@@ -355,7 +356,8 @@ double get_time(timeval* time)
 OString generateTestName(std::u16string_view rPath)
 {
     size_t nPathSep = rPath.rfind('/');
-    std::u16string_view aTestName = rPath.substr(nPathSep+1);
+    size_t nAfterPathSep = (nPathSep != std::string_view::npos) ? (nPathSep + 1) : 0;
+    std::u16string_view aTestName = rPath.substr(nAfterPathSep);
     return OUStringToOString(aTestName, RTL_TEXTENCODING_UTF8);
 }
 
@@ -401,12 +403,7 @@ static bool main2()
 #endif
     // Create a desktop, to avoid popups interfering with active user session,
     // because on Windows, we don't use svp vcl plugin for unit testing
-    if (getenv("CPPUNIT_DEFAULT_DESKTOP") == nullptr)
-    {
-        if (HDESK hDesktop
-            = CreateDesktopW(L"LO_CPPUNIT_DESKTOP", nullptr, nullptr, 0, GENERIC_ALL, nullptr))
-            SetThreadDesktop(hDesktop);
-    }
+    sal::systools::maybeCreateTestDesktop();
 #endif
 
     std::vector<CppUnit::Protector *> protectors;

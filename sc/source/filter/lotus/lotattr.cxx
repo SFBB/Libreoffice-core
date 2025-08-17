@@ -49,8 +49,6 @@ LotAttrCache::ENTRY::~ENTRY ()
 LotAttrCache::LotAttrCache (LotusContext& rContext)
     : mrContext(rContext)
 {
-    pDocPool = rContext.rDoc.GetPool();
-
     pColTab.reset( new Color [ 8 ] );
     pColTab[ 0 ] = COL_WHITE;
     pColTab[ 1 ] = COL_LIGHTBLUE;
@@ -88,9 +86,9 @@ const ScPatternAttr& LotAttrCache::GetPattAttr( const LotAttrWK3& rAttr )
         return *((*iter)->pPattAttr);
 
     // generate new Pattern Attribute
-    ScPatternAttr*  pNewPatt = new ScPatternAttr(pDocPool);
+    ScPatternAttr*  pNewPatt = new ScPatternAttr(mrContext.rDoc.getCellAttributeHelper());
 
-    SfxItemSet&     rItemSet = pNewPatt->GetItemSet();
+    SfxItemSet&     rItemSet = pNewPatt->GetItemSetWritable();
     ENTRY *pCurrent = new ENTRY( std::unique_ptr<ScPatternAttr>(pNewPatt) );
 
     pCurrent->nHash0 = nRefHash;
@@ -189,7 +187,7 @@ void LotAttrCol::SetAttr( const ScDocument* pDoc, const SCROW nRow, const ScPatt
 
     if(iterLast != aEntries.rend())
     {
-        if( ( (*iterLast)->nLastRow == nRow - 1 ) && SfxPoolItem::areSame( &rAttr, (*iterLast)->pPattAttr ) )
+        if( ( (*iterLast)->nLastRow == nRow - 1 ) && ScPatternAttr::areSame( &rAttr, (*iterLast)->pPattAttr ) )
             (*iterLast)->nLastRow = nRow;
         else
         {

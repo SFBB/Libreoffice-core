@@ -1,3 +1,12 @@
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
+/*
+ * This file is part of the LibreOffice project.
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/.
+ */
+
 #include <docfunc.hxx>
 #include <condformateasydlg.hxx>
 #include <stlpool.hxx>
@@ -43,23 +52,25 @@ void ConditionalFormatEasyDialog::SetDescription(std::u16string_view rCondition)
 ConditionalFormatEasyDialog::ConditionalFormatEasyDialog(SfxBindings* pBindings,
                                                          SfxChildWindow* pChildWindow,
                                                          weld::Window* pParent,
-                                                         ScViewData* pViewData)
+                                                         ScViewData& rViewData)
     : ScAnyRefDlgController(pBindings, pChildWindow, pParent,
-                            "modules/scalc/ui/conditionaleasydialog.ui", "CondFormatEasyDlg")
-    , mpViewData(pViewData)
-    , mpDocument(&mpViewData->GetDocument())
-    , mxNumberEntry(m_xBuilder->weld_entry("entryNumber"))
-    , mxNumberEntry2(m_xBuilder->weld_entry("entryNumber2"))
-    , mxRangeEntry(new formula::RefEdit(m_xBuilder->weld_entry("entryRange")))
-    , mxButtonRangeEdit(new formula::RefButton(m_xBuilder->weld_button("rbassign")))
-    , mxStyles(m_xBuilder->weld_combo_box("themeCombo"))
-    , mxDescription(m_xBuilder->weld_label("description"))
-    , mxButtonOk(m_xBuilder->weld_button("ok"))
-    , mxButtonCancel(m_xBuilder->weld_button("cancel"))
+                            u"modules/scalc/ui/conditionaleasydialog.ui"_ustr,
+                            u"CondFormatEasyDlg"_ustr)
+    , mrViewData(rViewData)
+    , mrDocument(mrViewData.GetDocument())
+    , mxNumberEntry(m_xBuilder->weld_entry(u"entryNumber"_ustr))
+    , mxNumberEntry2(m_xBuilder->weld_entry(u"entryNumber2"_ustr))
+    , mxAllInputs(m_xBuilder->weld_container(u"allInputs"_ustr))
+    , mxRangeEntry(new formula::RefEdit(m_xBuilder->weld_entry(u"entryRange"_ustr)))
+    , mxButtonRangeEdit(new formula::RefButton(m_xBuilder->weld_button(u"rbassign"_ustr)))
+    , mxStyles(m_xBuilder->weld_combo_box(u"themeCombo"_ustr))
+    , mxDescription(m_xBuilder->weld_label(u"description"_ustr))
+    , mxButtonOk(m_xBuilder->weld_button(u"ok"_ustr))
+    , mxButtonCancel(m_xBuilder->weld_button(u"cancel"_ustr))
 {
     mxButtonRangeEdit->SetReferences(this, mxRangeEntry.get());
     const ScConditionMode* pCurrentMode
-        = pViewData->GetDocument().GetEasyConditionalFormatDialogData();
+        = rViewData.GetDocument().GetEasyConditionalFormatDialogData();
     if (!pCurrentMode)
     {
         SAL_WARN(
@@ -96,26 +107,62 @@ ConditionalFormatEasyDialog::ConditionalFormatEasyDialog(SfxBindings* pBindings,
             SetDescription(ScResId(STR_CONDITION_BETWEEN));
             mxNumberEntry2->show();
             break;
-        // NotBetween
-        // Duplicate
-        // NotDuplicate
-        // Direct
-        // Top10
-        // Bottom10
-        // TopPercent
-        // BottomPercent
-        // AboveAverage
-        // BelowAverage
-        // AboveEqualAverage
-        // BelowEqualAverage
+        case ScConditionMode::NotBetween:
+            SetDescription(ScResId(STR_CONDITION_NOT_BETWEEN));
+            mxNumberEntry2->show();
+            break;
+        case ScConditionMode::Duplicate:
+            SetDescription(ScResId(STR_CONDITION_DUPLICATE));
+            mxAllInputs->hide();
+            break;
+        case ScConditionMode::NotDuplicate:
+            SetDescription(ScResId(STR_CONDITION_NOT_DUPLICATE));
+            mxAllInputs->hide();
+            break;
+        // TODO: Direct
+        case ScConditionMode::Top10:
+            SetDescription(ScResId(STR_CONDITION_TOP_N_ELEMENTS));
+            break;
+        case ScConditionMode::Bottom10:
+            SetDescription(ScResId(STR_CONDITION_BOTTOM_N_ELEMENTS));
+            break;
+
+        case ScConditionMode::TopPercent:
+            SetDescription(ScResId(STR_CONDITION_TOP_N_PERCENT));
+            break;
+        case ScConditionMode::BottomPercent:
+            SetDescription(ScResId(STR_CONDITION_BOTTOM_N_PERCENT));
+            break;
+
+        case ScConditionMode::AboveAverage:
+            SetDescription(ScResId(STR_CONDITION_ABOVE_AVERAGE));
+            mxAllInputs->hide();
+            break;
+        case ScConditionMode::BelowAverage:
+            SetDescription(ScResId(STR_CONDITION_BELOW_AVERAGE));
+            mxAllInputs->hide();
+            break;
+
+        case ScConditionMode::AboveEqualAverage:
+            SetDescription(ScResId(STR_CONDITION_ABOVE_OR_EQUAL_AVERAGE));
+            mxAllInputs->hide();
+            break;
+        case ScConditionMode::BelowEqualAverage:
+            SetDescription(ScResId(STR_CONDITION_BELOW_OR_EQUAL_AVERAGE));
+            mxAllInputs->hide();
+            break;
         case ScConditionMode::Error:
             SetDescription(ScResId(STR_CONDITION_ERROR));
             break;
         case ScConditionMode::NoError:
             SetDescription(ScResId(STR_CONDITION_NOERROR));
             break;
-        // BeginsWith
-        // EndsWith
+        case ScConditionMode::BeginsWith:
+            SetDescription(ScResId(STR_CONDITION_BEGINS_WITH));
+            break;
+        case ScConditionMode::EndsWith:
+            SetDescription(ScResId(STR_CONDITION_ENDS_WITH));
+            break;
         case ScConditionMode::ContainsText:
             SetDescription(ScResId(STR_CONDITION_CONTAINS_TEXT));
             break;
@@ -132,20 +179,20 @@ ConditionalFormatEasyDialog::ConditionalFormatEasyDialog(SfxBindings* pBindings,
     mxButtonCancel->connect_clicked(LINK(this, ConditionalFormatEasyDialog, ButtonPressed));
 
     ScRangeList aRange;
-    mpViewData->GetMarkData().FillRangeListWithMarks(&aRange, false);
+    mrViewData.GetMarkData().FillRangeListWithMarks(&aRange, false);
     if (aRange.empty())
     {
-        ScAddress aPosition(mpViewData->GetCurX(), mpViewData->GetCurY(), mpViewData->GetTabNo());
+        ScAddress aPosition(mrViewData.GetCurX(), mrViewData.GetCurY(), mrViewData.GetTabNo());
         aRange.push_back(ScRange(aPosition));
     }
     maPosition = aRange.GetTopLeftCorner();
 
     OUString sRangeString;
-    aRange.Format(sRangeString, ScRefFlags::VALID, *mpDocument, mpDocument->GetAddressConvention());
+    aRange.Format(sRangeString, ScRefFlags::VALID, mrDocument, mrDocument.GetAddressConvention());
     mxRangeEntry->SetText(sRangeString);
 
-    StartListening(*mpDocument->GetStyleSheetPool(), DuplicateHandling::Prevent);
-    FillStyleListBox(mpDocument, *mxStyles);
+    StartListening(*(mrDocument.GetStyleSheetPool()), DuplicateHandling::Prevent);
+    FillStyleListBox(&mrDocument, *mxStyles);
 
     mxStyles->set_active(1);
 }
@@ -154,8 +201,9 @@ ConditionalFormatEasyDialog::~ConditionalFormatEasyDialog() {}
 
 void ConditionalFormatEasyDialog::Notify(SfxBroadcaster&, const SfxHint& rHint)
 {
-    if (rHint.GetId() == SfxHintId::StyleSheetModified)
-        UpdateStyleList(mpDocument, *mxStyles);
+    if (rHint.GetId() == SfxHintId::StyleSheetModified
+        || rHint.GetId() == SfxHintId::StyleSheetModifiedExtended)
+        UpdateStyleList(&mrDocument, *mxStyles);
 }
 
 void ConditionalFormatEasyDialog::SetReference(const ScRange& rRange, ScDocument&)
@@ -165,9 +213,9 @@ void ConditionalFormatEasyDialog::SetReference(const ScRange& rRange, ScDocument
         RefInputStart(pEdit);
 
     ScRefFlags nFlags = ScRefFlags::RANGE_ABS;
-    const ScDocument& rDoc = mpViewData->GetDocument();
+    const ScDocument& rDoc = mrViewData.GetDocument();
     OUString sRange(
-        rRange.Format(rDoc, nFlags, ScAddress::Details(mpDocument->GetAddressConvention(), 0, 0)));
+        rRange.Format(rDoc, nFlags, ScAddress::Details(mrDocument.GetAddressConvention(), 0, 0)));
     pEdit->SetRefString(sRange);
     maPosition = rRange.aStart;
 }
@@ -187,10 +235,14 @@ IMPL_LINK(ConditionalFormatEasyDialog, ButtonPressed, weld::Button&, rButton, vo
 {
     if (&rButton == mxButtonOk.get())
     {
-        std::unique_ptr<ScConditionalFormat> pFormat(new ScConditionalFormat(0, mpDocument));
+        std::unique_ptr<ScConditionalFormat> pFormat(new ScConditionalFormat(0, mrDocument));
 
-        OUString sExpression1 = mxNumberEntry->get_text();
-        OUString sExpression2 = mxNumberEntry2->get_text();
+        OUString sExpression1 = (mxNumberEntry->get_visible() && mxAllInputs->get_visible()
+                                     ? mxNumberEntry->get_text()
+                                     : u""_ustr);
+        OUString sExpression2 = (mxNumberEntry2->get_visible() && mxAllInputs->get_visible()
+                                     ? mxNumberEntry2->get_text()
+                                     : u""_ustr);
 
         switch (meMode)
         {
@@ -205,20 +257,20 @@ IMPL_LINK(ConditionalFormatEasyDialog, ButtonPressed, weld::Button&, rButton, vo
                 break;
         }
 
-        ScFormatEntry* pEntry
-            = new ScCondFormatEntry(meMode, sExpression1, sExpression2, *mpDocument, maPosition,
-                                    mxStyles->get_active_text());
+        std::unique_ptr<ScFormatEntry> pEntry
+            = std::make_unique<ScCondFormatEntry>(meMode, sExpression1, sExpression2, mrDocument,
+                                                  maPosition, mxStyles->get_active_text());
 
         ScRangeList aRange;
         ScRefFlags nFlags
-            = aRange.Parse(mxRangeEntry->GetText(), mpViewData->GetDocument(),
-                           mpViewData->GetDocument().GetAddressConvention(), maPosition.Tab());
+            = aRange.Parse(mxRangeEntry->GetText(), mrViewData.GetDocument(),
+                           mrViewData.GetDocument().GetAddressConvention(), maPosition.Tab());
         if ((nFlags & ScRefFlags::VALID) && !aRange.empty())
         {
-            pFormat->AddEntry(pEntry);
+            pFormat->AddEntry(pEntry.release());
             pFormat->SetRange(aRange);
             auto& rRangeList = pFormat->GetRange();
-            mpViewData->GetDocShell()->GetDocFunc().ReplaceConditionalFormat(
+            mrViewData.GetDocShell().GetDocFunc().ReplaceConditionalFormat(
                 0, std::move(pFormat), maPosition.Tab(), rRangeList);
         }
         m_xDialog->response(RET_OK);
@@ -228,3 +280,5 @@ IMPL_LINK(ConditionalFormatEasyDialog, ButtonPressed, weld::Button&, rButton, vo
 }
 
 } // namespace sc
+
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

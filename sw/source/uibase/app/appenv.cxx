@@ -177,7 +177,7 @@ void SwModule::InsertEnv( SfxRequest& rReq )
     if(pOldSh )
     {
         const SwPageDesc& rCurPageDesc = pOldSh->GetPageDesc(pOldSh->GetCurPageDesc());
-        OUString sEnvelope;
+        UIName sEnvelope;
         SwStyleNameMapper::FillUIName( RES_POOLPAGE_ENVELOPE, sEnvelope );
         bEnvChange = rCurPageDesc.GetName() == sEnvelope;
 
@@ -235,8 +235,8 @@ void SwModule::InsertEnv( SfxRequest& rReq )
         const SwPageDesc* pFollow = nullptr;
         SwTextFormatColl *pSend = pTmp->GetTextCollFromPool(RES_POOLCOLL_SEND_ADDRESS),
                      *pAddr = pTmp->GetTextCollFromPool(RES_POOLCOLL_ENVELOPE_ADDRESS);
-        const OUString sSendMark = pSend->GetName();
-        const OUString sAddrMark = pAddr->GetName();
+        const UIName sSendMark = pSend->GetName();
+        const UIName sAddrMark = pAddr->GetName();
 
         if (nMode == ENV_INSERT)
         {
@@ -291,7 +291,7 @@ void SwModule::InsertEnv( SfxRequest& rReq )
             }
             else
             {
-                OUString sFollowName(pFollow->GetName());
+                UIName sFollowName(pFollow->GetName());
                 pSh->InsertPageBreak(&sFollowName, std::nullopt);
             }
             pSh->SttEndDoc(true);
@@ -355,9 +355,9 @@ void SwModule::InsertEnv( SfxRequest& rReq )
         }
         SvxLRSpaceItem aLRMargin( RES_LR_SPACE );
         SvxULSpaceItem aULMargin( RES_UL_SPACE );
-        aLRMargin.SetLeft (o3tl::narrowing<sal_uInt16>(lLeft) );
+        aLRMargin.SetLeft(SvxIndentValue::twips(o3tl::narrowing<sal_uInt16>(lLeft)));
         aULMargin.SetUpper(o3tl::narrowing<sal_uInt16>(lUpper));
-        aLRMargin.SetRight(0);
+        aLRMargin.SetRight(SvxIndentValue::zero());
         aULMargin.SetLower(0);
         rFormat.SetFormatAttr(aLRMargin);
         rFormat.SetFormatAttr(aULMargin);

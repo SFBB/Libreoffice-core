@@ -29,11 +29,12 @@ $(eval $(call gb_Module_add_targets,odk,\
 	Package_settings_generated \
 	Package_share_readme \
 	Package_share_readme_generated \
+	Package_scripts \
 ))
 
 ifeq ($(OS),WNT)
 $(eval $(call gb_Module_add_targets,odk,\
-	$(if $(filter-out AARCH64_TRUE,$(CPUNAME)_$(CROSS_COMPILING)),Package_cli) \
+	$(if $(ENABLE_CLI),$(if $(filter-out AARCH64_TRUE,$(CPUNAME)_$(CROSS_COMPILING)),Package_cli)) \
 	CustomTarget_config_win \
 	Package_config_win \
 ))

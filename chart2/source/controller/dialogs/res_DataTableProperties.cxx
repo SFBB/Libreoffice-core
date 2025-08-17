@@ -17,10 +17,10 @@ using namespace css;
 namespace chart
 {
 DataTablePropertiesResources::DataTablePropertiesResources(weld::Builder& rBuilder)
-    : m_xCbHorizontalBorder(rBuilder.weld_check_button("horizontalBorderCB"))
-    , m_xCbVerticalBorder(rBuilder.weld_check_button("verticalBorderCB"))
-    , m_xCbOutilne(rBuilder.weld_check_button("outlineCB"))
-    , m_xCbKeys(rBuilder.weld_check_button("keysCB"))
+    : m_xCbHorizontalBorder(rBuilder.weld_check_button(u"horizontalBorderCB"_ustr))
+    , m_xCbVerticalBorder(rBuilder.weld_check_button(u"verticalBorderCB"_ustr))
+    , m_xCbOutilne(rBuilder.weld_check_button(u"outlineCB"_ustr))
+    , m_xCbKeys(rBuilder.weld_check_button(u"keysCB"_ustr))
 {
 }
 
@@ -38,7 +38,7 @@ void DataTablePropertiesResources::initFromItemSet(const SfxItemSet& rInAttrs)
     SfxItemState aState;
 
     aState = rInAttrs.GetItemState(SCHATTR_DATA_TABLE_HORIZONTAL_BORDER, false, &pPoolItem);
-    if (aState == SfxItemState::DONTCARE)
+    if (aState == SfxItemState::INVALID)
     {
         m_xCbHorizontalBorder->set_state(TRISTATE_INDET);
     }
@@ -50,7 +50,7 @@ void DataTablePropertiesResources::initFromItemSet(const SfxItemSet& rInAttrs)
     }
 
     aState = rInAttrs.GetItemState(SCHATTR_DATA_TABLE_VERTICAL_BORDER, false, &pPoolItem);
-    if (aState == SfxItemState::DONTCARE)
+    if (aState == SfxItemState::INVALID)
     {
         m_xCbVerticalBorder->set_state(TRISTATE_INDET);
     }
@@ -61,7 +61,7 @@ void DataTablePropertiesResources::initFromItemSet(const SfxItemSet& rInAttrs)
     }
 
     aState = rInAttrs.GetItemState(SCHATTR_DATA_TABLE_OUTLINE, false, &pPoolItem);
-    if (aState == SfxItemState::DONTCARE)
+    if (aState == SfxItemState::INVALID)
     {
         m_xCbOutilne->set_state(TRISTATE_INDET);
     }
@@ -72,7 +72,7 @@ void DataTablePropertiesResources::initFromItemSet(const SfxItemSet& rInAttrs)
     }
 
     aState = rInAttrs.GetItemState(SCHATTR_DATA_TABLE_KEYS, false, &pPoolItem);
-    if (aState == SfxItemState::DONTCARE)
+    if (aState == SfxItemState::INVALID)
     {
         m_xCbKeys->set_state(TRISTATE_INDET);
     }

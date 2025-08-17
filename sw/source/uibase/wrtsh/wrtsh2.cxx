@@ -61,11 +61,23 @@
 #include <sfx2/event.hxx>
 #include <sal/log.hxx>
 
-bool SwWrtShell::InsertField2(SwField const& rField, SwPaM* pAnnotationRange)
+#include <fldmgr.hxx>
+#include <vcl/weldutils.hxx>
+#include <strings.hrc>
+#include <officecfg/Office/Common.hxx>
+
+bool SwWrtShell::InsertField2(SwField const& rField,
+    SwPaM* pAnnotationRange, ::std::optional<SwPosition> *const poAnchorStart)
 {
     ResetCursorStack();
     if(!CanInsert())
         return false;
+    return InsertField2Impl(rField, pAnnotationRange, poAnchorStart);
+}
+
+bool SwWrtShell::InsertField2Impl(SwField const& rField,
+        SwPaM* pAnnotationRange, ::std::optional<SwPosition> *const poAnchorStart)
+{
     StartAllAction();
 
     SwRewriter aRewriter;
@@ -130,7 +142,11 @@ bool SwWrtShell::InsertField2(SwField const& rField, SwPaM* pAnnotationRange)
                     pAnnotationTextRange->Start()->AdjustContent(-1);
             }
             IDocumentMarkAccess* pMarksAccess = GetDoc()->getIDocumentMarkAccess();
-            pMarksAccess->makeAnnotationMark( *pAnnotationTextRange, OUString() );
+            auto pMark{pMarksAccess->makeAnnotationMark(*pAnnotationTextRange, SwMarkName())};
+            if (poAnchorStart)
+            {
+                poAnchorStart->emplace(pMark->GetMarkStart());
+            }
         }
         pAnnotationTextRange.reset();
     }
@@ -361,19 +377,21 @@ void SwWrtShell::ClickToField(const SwField& rField, bool bExecHyperlinks)
     case SwFieldIds::JumpEdit:
         {
             sal_uInt16 nSlotId = 0;
-            switch( rField.GetFormat() )
+            switch( static_cast<const SwJumpEditField&>(rField).GetFormat() )
             {
-            case JE_FMT_TABLE:
+            case SwJumpEditFormat::Table:
                 nSlotId = FN_INSERT_TABLE;
                 break;
-
-            case JE_FMT_FRAME:
+            case SwJumpEditFormat::Frame:
                 nSlotId = FN_INSERT_FRAME;
                 break;
-
-            case JE_FMT_GRAPHIC:    nSlotId = SID_INSERT_GRAPHIC;       break;
-            case JE_FMT_OLE:        nSlotId = SID_INSERT_OBJECT;        break;
-
+            case SwJumpEditFormat::Graphic:
+                nSlotId = SID_INSERT_GRAPHIC;
+                break;
+            case SwJumpEditFormat::OLE:
+                nSlotId = SID_INSERT_OBJECT;
+                break;
+            default: break;
             }
 
             if( nSlotId )
@@ -419,9 +437,9 @@ void SwWrtShell::ClickToField(const SwField& rField, bool bExecHyperlinks)
                 || targetType == SwAuthorityField::TargetType::UseTargetURL)
             {
                 // Since the user selected target type with URL, try to use it if not empty
-                if (const OUString& rURL = pField->GetAbsoluteURL();
-                    rURL.getLength() > 0)
-                    ::LoadURL(*this, rURL, LoadUrlFlags::NewView, /*rTargetFrameName=*/OUString());
+                if (const OUString aURL = pField->GetAbsoluteURL();
+                    aURL.getLength() > 0)
+                    ::LoadURL(*this, aURL, LoadUrlFlags::NewView, /*rTargetFrameName=*/OUString());
             }
             else if (targetType == SwAuthorityField::TargetType::BibliographyTableRow)
             {
@@ -553,22 +571,22 @@ bool SwWrtShell::ClickToINetGrf( const Point& rDocPt, LoadUrlFlags nFilter )
     return bRet;
 }
 
-static void LoadURL(SwView& rView, const OUString& rURL, LoadUrlFlags nFilter,
+static bool LoadURL(const SfxViewShell& rView, const OUString& rURL, LoadUrlFlags nFilter,
                     const OUString& rTargetFrameName)
 {
-    SwDocShell* pDShell = rView.GetDocShell();
-    OSL_ENSURE( pDShell, "No DocShell?!");
     SfxViewFrame& rViewFrame = rView.GetViewFrame();
+    SfxObjectShell* pDShell = rViewFrame.GetObjectShell();
+    OSL_ENSURE( pDShell, "No DocShell?!");
 
     if (!SfxObjectShell::AllowedLinkProtocolFromDocument(rURL, pDShell, rViewFrame.GetFrameWeld()))
-        return;
+        return false;
 
     // We are doing tiledRendering, let the client handles the URL loading,
     // unless we are jumping to a TOC mark.
     if (comphelper::LibreOfficeKit::isActive() && !rURL.startsWith("#"))
     {
         rView.libreOfficeKitViewCallback(LOK_CALLBACK_HYPERLINK_CLICKED, rURL.toUtf8());
-        return;
+        return true;
     }
 
     OUString sTargetFrame(rTargetFrameName);
@@ -595,49 +613,195 @@ static void LoadURL(SwView& rView, const OUString& rURL, LoadUrlFlags nFilter,
     SfxBoolItem aBrowse( SID_BROWSE, true );
 
     if ((nFilter & LoadUrlFlags::NewView) && !comphelper::LibreOfficeKit::isActive())
-        aTargetFrameName.SetValue( "_blank" );
+        aTargetFrameName.SetValue( u"_blank"_ustr );
 
-    rViewFrame.GetDispatcher()->ExecuteList(SID_OPENDOC,
-            SfxCallMode::ASYNCHRON|SfxCallMode::RECORD,
-            {
+    const SfxPoolItem* aArr[] = {
                 &aName,
                 &aNewView, /*&aSilent,*/
                 &aReferer,
                 &aView, &aTargetFrameName,
-                &aBrowse
-            });
+                &aBrowse,
+                nullptr
+            };
+    rViewFrame.GetDispatcher()->GetBindings()->Execute(
+        SID_OPENDOC, aArr, SfxCallMode::ASYNCHRON | SfxCallMode::RECORD);
+    return true;
 }
 
-void LoadURL( SwViewShell& rVSh, const OUString& rURL, LoadUrlFlags nFilter,
+bool LoadURL( SwWrtShell& rVSh, const OUString& rURL, LoadUrlFlags nFilter,
               const OUString& rTargetFrameName )
 {
     OSL_ENSURE( !rURL.isEmpty(), "what should be loaded here?" );
     if( rURL.isEmpty() )
-        return ;
+        return false;
 
-    // The shell could be 0 also!!!!!
-    if (auto pSh = dynamic_cast<SwWrtShell*>(&rVSh))
-        ::LoadURL(pSh->GetView(), rURL, nFilter, rTargetFrameName);
+    return ::LoadURL(rVSh.GetView(), rURL, nFilter, rTargetFrameName);
 }
 
-void SwWrtShell::NavigatorPaste( const NaviContentBookmark& rBkmk,
-                                    const sal_uInt16 nAction )
+bool LoadURL( SwViewShell& rVSh, const OUString& rURL, LoadUrlFlags nFilter,
+              const OUString& rTargetFrameName )
 {
-    if( EXCHG_IN_ACTION_COPY == nAction )
+    if (auto pSh = dynamic_cast<SwWrtShell*>(&rVSh))
+        return ::LoadURL(*pSh, rURL, nFilter, rTargetFrameName);
+    return false;
+}
+
+void SwWrtShell::NavigatorPaste(const NaviContentBookmark& rBkmk)
+{
+    const OUString& rsCrossRef = rBkmk.GetCrossRef();
+    const OUString& rsURL = rBkmk.GetURL();
+
+    if (rsURL.isEmpty() && rsCrossRef.isEmpty())
+        return;
+
+    bool bSensitiveHyperlinkEntry = false;
+    bool bSensitiveSectionLinkEntry = false;
+    bool bSensitiveSectionCopyEntry = false;
+    bool bSensitiveRefPageEntry = false;
+    bool bSensitiveRefChapterEntry = false;
+    bool bSensitiveRefContentEntry = false;
+    bool bSensitiveRefUpDownEntry = false;
+    bool bSensitiveRefPagePgDscEntry = false;
+    bool bSensitiveRefNumberEntry = false;
+    bool bSensitiveRefNumberNoContextEntry = false;
+    bool bSensitiveRefNumberFullContextEntry = false;
+    bool bSensitiveRefOnlyNumberEntry = false;
+    bool bSensitiveRefOnlyCaptionEntry = false;
+    bool bSensitiveRefOnlySeqNoEntry = false;
+
+    if (!rsURL.isEmpty())
     {
-        // Insert
+        bSensitiveHyperlinkEntry = true;
+
+        OUString sType = rsURL.getToken(1, '|');
+        if (sType == "outline" || sType == "table")
+        {
+            bSensitiveSectionLinkEntry = true;
+            bSensitiveSectionCopyEntry = true;
+        }
+    }
+
+    std::optional<ReferencesSubtype> oeRefSubType;
+    std::optional<OUString> osName;
+    std::optional<OUString> osVal;
+
+    if (!rsCrossRef.isEmpty())
+    {
+        sal_Int32 nPos = 0;
+        oeRefSubType = static_cast<ReferencesSubtype>(
+                    o3tl::toInt32(o3tl::getToken(rsCrossRef, 0, '|', nPos)));
+        osName = rsCrossRef.getToken(0, '|', nPos);
+        if (oeRefSubType == ReferencesSubtype::SequenceField
+                || oeRefSubType == ReferencesSubtype::Footnote
+                || oeRefSubType == ReferencesSubtype::Endnote)
+        {
+            // sequence number
+            osVal = rsCrossRef.getToken(0, '|', nPos);
+        }
+        else
+            osVal = rBkmk.GetDescription();
+
+        bSensitiveRefPageEntry = true;
+        bSensitiveRefChapterEntry = true;
+        bSensitiveRefContentEntry = true;
+        bSensitiveRefUpDownEntry = true;
+        bSensitiveRefPagePgDscEntry = true;
+
+        if (oeRefSubType == ReferencesSubtype::Outline)
+        {
+            bSensitiveRefNumberEntry = true;
+            bSensitiveRefNumberNoContextEntry = true;
+            bSensitiveRefNumberFullContextEntry = true;
+        }
+        if (oeRefSubType == ReferencesSubtype::SequenceField)
+        {
+            bSensitiveRefOnlyNumberEntry = true;
+            bSensitiveRefOnlyCaptionEntry = true;
+            bSensitiveRefOnlySeqNoEntry = true;
+        }
+    }
+
+    vcl::Window* pWin = GetWin();
+
+    std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(
+        pWin->GetFrameWeld(), u"modules/swriter/ui/navigatordraginsertmenu.ui"_ustr));
+    std::unique_ptr<weld::Menu> xPop = xBuilder->weld_menu(u"insertmenu"_ustr);
+
+    xPop->append(u"hyperlink"_ustr, SwResId(STR_HYPERLINK));
+    xPop->append(u"sectionlink"_ustr, SwResId(STR_SECTIONLINK));
+    xPop->append(u"sectioncopy"_ustr, SwResId(STR_SECTIONCOPY));
+    xPop->append(u"refpage"_ustr, SwResId(FMT_REF_PAGE));
+    xPop->append(u"refchapter"_ustr, SwResId(FMT_REF_CHAPTER));
+    xPop->append(u"refcontent"_ustr, SwResId(FMT_REF_TEXT));
+    xPop->append(u"refupdown"_ustr, SwResId(FMT_REF_UPDOWN));
+    xPop->append(u"refpagepgdsc"_ustr, SwResId(FMT_REF_PAGE_PGDSC));
+    xPop->append(u"refnumberentry"_ustr, SwResId(FMT_REF_NUMBER));
+    xPop->append(u"refnumbernocontext"_ustr, SwResId(FMT_REF_NUMBER_NO_CONTEXT));
+    xPop->append(u"refnumberfullcontext"_ustr, SwResId(FMT_REF_NUMBER_FULL_CONTEXT));
+    xPop->append(u"refonlynumber"_ustr, SwResId(FMT_REF_ONLYNUMBER));
+    xPop->append(u"refonlycaption"_ustr, SwResId(FMT_REF_ONLYCAPTION));
+    xPop->append(u"refonlyseqnoentry"_ustr, SwResId(FMT_REF_ONLYSEQNO));
+
+    if (!officecfg::Office::Common::View::Menu::DontHideDisabledEntry::get()
+            || Application::GetSettings().GetStyleSettings().GetHideDisabledMenuItems())
+    {
+        xPop->set_visible(u"hyperlink"_ustr, bSensitiveHyperlinkEntry);
+        xPop->set_visible(u"sectionlink"_ustr, bSensitiveSectionLinkEntry);
+        xPop->set_visible(u"sectioncopy"_ustr, bSensitiveSectionCopyEntry);
+        xPop->set_visible(u"refpage"_ustr, bSensitiveRefPageEntry);
+        xPop->set_visible(u"refchapter"_ustr, bSensitiveRefChapterEntry);
+        xPop->set_visible(u"refcontent"_ustr, bSensitiveRefContentEntry);
+        xPop->set_visible(u"refupdown"_ustr, bSensitiveRefUpDownEntry);
+        xPop->set_visible(u"refpagepgdsc"_ustr, bSensitiveRefPagePgDscEntry);
+        xPop->set_visible(u"refnumberentry"_ustr, bSensitiveRefNumberEntry);
+        xPop->set_visible(u"refnumbernocontext"_ustr, bSensitiveRefNumberNoContextEntry);
+        xPop->set_visible(u"refnumberfullcontext"_ustr, bSensitiveRefNumberFullContextEntry);
+        xPop->set_visible(u"refonlynumber"_ustr, bSensitiveRefOnlyNumberEntry);
+        xPop->set_visible(u"refonlycaption"_ustr, bSensitiveRefOnlyCaptionEntry);
+        xPop->set_visible(u"refonlyseqnoentry"_ustr, bSensitiveRefOnlySeqNoEntry);
+    }
+    else
+    {
+        xPop->set_sensitive(u"hyperlink"_ustr, bSensitiveHyperlinkEntry);
+        xPop->set_sensitive(u"sectionlink"_ustr, bSensitiveSectionLinkEntry);
+        xPop->set_sensitive(u"sectioncopy"_ustr, bSensitiveSectionCopyEntry);
+        xPop->set_sensitive(u"refpage"_ustr, bSensitiveRefPageEntry);
+        xPop->set_sensitive(u"refchapter"_ustr, bSensitiveRefChapterEntry);
+        xPop->set_sensitive(u"refcontent"_ustr, bSensitiveRefContentEntry);
+        xPop->set_sensitive(u"refupdown"_ustr, bSensitiveRefUpDownEntry);
+        xPop->set_sensitive(u"refpagepgdsc"_ustr, bSensitiveRefPagePgDscEntry);
+        xPop->set_sensitive(u"refnumberentry"_ustr, bSensitiveRefNumberEntry);
+        xPop->set_sensitive(u"refnumbernocontext"_ustr, bSensitiveRefNumberNoContextEntry);
+        xPop->set_sensitive(u"refnumberfullcontext"_ustr, bSensitiveRefNumberFullContextEntry);
+        xPop->set_sensitive(u"refonlynumber"_ustr, bSensitiveRefOnlyNumberEntry);
+        xPop->set_sensitive(u"refonlycaption"_ustr, bSensitiveRefOnlyCaptionEntry);
+        xPop->set_sensitive(u"refonlyseqnoentry"_ustr, bSensitiveRefOnlySeqNoEntry);
+    }
+
+    tools::Rectangle aRect(pWin->LogicToPixel(GetCursorDocPos()), Size(1, 1));
+    weld::Window* pParent = weld::GetPopupParent(*pWin, aRect);
+
+    OUString sInsert = xPop->popup_at_rect(pParent, aRect);
+
+    if (sInsert.isEmpty())
+        return;
+
+    pWin->GrabFocus();
+
+    if (sInsert == "hyperlink")
+    {
         OUString sURL = rBkmk.GetURL();
         // Is this is a jump within the current Doc?
         const SwDocShell* pDocShell = GetView().GetDocShell();
         if(pDocShell->HasName())
         {
-            const OUString rName = pDocShell->GetMedium()->GetURLObject().GetURLNoMark();
+            const OUString aName = pDocShell->GetMedium()->GetURLObject().GetURLNoMark();
 
-            if (sURL.startsWith(rName))
+            if (sURL.startsWith(aName))
             {
-                if (sURL.getLength()>rName.getLength())
+                if (sURL.getLength()>aName.getLength())
                 {
-                    sURL = sURL.copy(rName.getLength());
+                    sURL = sURL.copy(aName.getLength());
                 }
                 else
                 {
@@ -648,17 +812,17 @@ void SwWrtShell::NavigatorPaste( const NaviContentBookmark& rBkmk,
         SwFormatINetFormat aFormat( sURL, OUString() );
         InsertURL( aFormat, rBkmk.GetDescription() );
     }
-    else
+    else if (sInsert == "sectionlink" || sInsert == "sectioncopy")
     {
-        SwSectionData aSection( SectionType::FileLink, GetUniqueSectionName() );
-        OUString aLinkFile = o3tl::getToken(rBkmk.GetURL(), 0, '#')
-            + OUStringChar(sfx2::cTokenSeparator)
-            + OUStringChar(sfx2::cTokenSeparator)
-            + o3tl::getToken(rBkmk.GetURL(), 1, '#');
+        SwSectionData aSection( SectionType::FileLink, UIName(GetUniqueSectionName()) );
+        OUString aLinkFile = o3tl::getToken(rsURL, 0, '#')
+                + OUStringChar(sfx2::cTokenSeparator)
+                + OUStringChar(sfx2::cTokenSeparator)
+                + o3tl::getToken(rsURL, 1, '#');
         aSection.SetLinkFileName( aLinkFile );
         aSection.SetProtectFlag( true );
         const SwSection* pIns = InsertSection( aSection );
-        if( EXCHG_IN_ACTION_MOVE == nAction && pIns )
+        if (sInsert == "sectioncopy" && pIns)
         {
             aSection = SwSectionData(*pIns);
             aSection.SetLinkFileName( OUString() );
@@ -680,6 +844,49 @@ void SwWrtShell::NavigatorPaste( const NaviContentBookmark& rBkmk,
             UpdateSection( GetSectionFormatPos( *pIns->GetFormat() ), aSection );
             DoUndo( bDoesUndo );
         }
+    }
+    else // insert is for a reference mark type
+    {
+        RefFieldFormat eRefMarkType;
+
+        if (sInsert == "refpage")
+            eRefMarkType = RefFieldFormat::Page;
+        else if (sInsert == "refchapter")
+            eRefMarkType = RefFieldFormat::Chapter;
+        else if (sInsert == "refcontent")
+            eRefMarkType = RefFieldFormat::Content;
+        else if (sInsert == "refupdown")
+            eRefMarkType = RefFieldFormat::UpDown;
+        else if (sInsert == "refpagepgdsc")
+            eRefMarkType = RefFieldFormat::AsPageStyle;
+        else if (sInsert == "refnumberentry")
+            eRefMarkType = RefFieldFormat::Number;
+        else if (sInsert == "refnumbernocontext")
+            eRefMarkType = RefFieldFormat::NumberNoContext;
+        else if (sInsert == "refnumberfullcontext")
+            eRefMarkType = RefFieldFormat::NumberFullContext;
+        else if (sInsert == "refonlynumber")
+            eRefMarkType = RefFieldFormat::CategoryAndNumber;
+        else if (sInsert == "refonlycaption")
+            eRefMarkType = RefFieldFormat::CaptionText;
+        else if (sInsert == "refonlyseqnoentry")
+            eRefMarkType = RefFieldFormat::Numbering;
+        else
+        {
+            assert(false && "unknown reference mark type");
+            return;
+        }
+
+        // Change ReferencesSubtype::Outline to ReferencesSubtype::Bookmark. It is used to show
+        // different options for headings reference and a regular bookmark in the reference mark
+        // type popup menu. See related comment in SwContentTree::FillTransferData.
+        if (oeRefSubType == ReferencesSubtype::Outline)
+            oeRefSubType = ReferencesSubtype::Bookmark;
+
+        SwInsertField_Data aData(SwFieldTypesEnum::GetRef, static_cast<sal_uInt16>(oeRefSubType.value()), osName.value(),
+                                 osVal.value(), static_cast<sal_uInt16>(eRefMarkType));
+        SwFieldMgr aFieldMgr(this);
+        aFieldMgr.InsertField(aData);
     }
 }
 

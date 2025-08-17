@@ -33,10 +33,7 @@
 #include <map>
 
 namespace com::sun::star::beans { class XPropertySet; }
-namespace com::sun::star::chart2 { class XChartType; }
-namespace com::sun::star::chart2 { class XDataSeries; }
 namespace com::sun::star::chart2::data { class XDataSequence; }
-namespace com::sun::star::drawing { class XShapes; }
 
 namespace chart
 {
@@ -112,6 +109,7 @@ public:
 
     css::awt::Point getLabelPosition( css::awt::Point aTextShapePos, sal_Int32 nPointIndex ) const;
     bool isLabelCustomPos( sal_Int32 nPointIndex ) const;
+    css::awt::Size getLabelCustomSize(sal_Int32 nPointIndex) const;
 
     css::uno::Reference<css::beans::XPropertySet> getPropertiesOfPoint( sal_Int32 index ) const;
 

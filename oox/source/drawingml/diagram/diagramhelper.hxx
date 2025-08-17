@@ -26,10 +26,6 @@
 #include <svx/svdogrp.hxx>
 #include <svx/diagram/IDiagramHelper.hxx>
 
-namespace svx { namespace diagram {
-    class DiagramDataState;
-}}
-
 namespace oox::drawingml {
 
 class Diagram;
@@ -60,7 +56,8 @@ public:
     AdvancedDiagramHelper(
         std::shared_ptr< Diagram > xDiagramPtr,
         std::shared_ptr<::oox::drawingml::Theme> xTheme,
-        css::awt::Size aImportSize);
+        css::awt::Size aImportSize,
+        bool bSelfCreated);
     virtual ~AdvancedDiagramHelper();
 
     // re-create XShapes
@@ -84,7 +81,7 @@ public:
 
     void doAnchor(SdrObjGroup& rTarget, ::oox::drawingml::Shape& rRootShape);
     const std::shared_ptr< ::oox::drawingml::Theme >& getOrCreateThemePtr(
-        rtl::Reference< oox::shape::ShapeFilterBase>& rxFilter ) const;
+        const rtl::Reference< oox::shape::ShapeFilterBase>& rxFilter ) const;
 };
 
 }

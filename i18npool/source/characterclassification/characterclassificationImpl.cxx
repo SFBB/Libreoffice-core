@@ -32,8 +32,7 @@ namespace i18npool {
 CharacterClassificationImpl::CharacterClassificationImpl(
         const Reference < XComponentContext >& rxContext ) : m_xContext( rxContext )
 {
-    static constexpr OUStringLiteral sUnicode = u"Unicode";
-    if (createLocaleSpecificCharacterClassification(sUnicode, Locale()))
+    if (createLocaleSpecificCharacterClassification(u"Unicode"_ustr, Locale()))
         xUCI = cachedItem->xCI;
 }
 
@@ -191,7 +190,7 @@ CharacterClassificationImpl::getLocaleSpecificCharacterClassification(const Loca
 OUString SAL_CALL
 CharacterClassificationImpl::getImplementationName()
 {
-    return "com.sun.star.i18n.CharacterClassification";
+    return u"com.sun.star.i18n.CharacterClassification"_ustr;
 }
 
 sal_Bool SAL_CALL
@@ -203,7 +202,7 @@ CharacterClassificationImpl::supportsService(const OUString& rServiceName)
 Sequence< OUString > SAL_CALL
 CharacterClassificationImpl::getSupportedServiceNames()
 {
-    return { "com.sun.star.i18n.CharacterClassification" };
+    return { u"com.sun.star.i18n.CharacterClassification"_ustr };
 }
 
 }

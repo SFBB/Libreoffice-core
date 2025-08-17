@@ -33,13 +33,8 @@ namespace
     void lcl_convert(const uno::Sequence< OUString >& _aSource,uno::Any& _rDest)
     {
         uno::Sequence<uno::Any> aRet(_aSource.getLength());
-        uno::Any* pAny = aRet.getArray();
-        const OUString* pIter = _aSource.getConstArray();
-        const OUString* pEnd  = pIter + _aSource.getLength();
-        for (;pIter != pEnd ; ++pIter,++pAny)
-        {
-            *pAny <<= *pIter;
-        }
+        std::transform(_aSource.begin(), _aSource.end(), aRet.getArray(),
+                       [](auto& str) { return uno::Any(str); });
         _rDest <<= aRet;
     }
     void lcl_fillValues(const ::utl::OConfigurationNode& _aURLPatternNode,const OUString& _sNode,::comphelper::NamedValueCollection& _rValues)
@@ -49,17 +44,14 @@ namespace
             return;
 
         uno::Sequence< OUString > aStringSeq;
-        const uno::Sequence< OUString > aProperties = aPropertiesNode.getNodeNames();
-        const OUString* pPropertiesIter = aProperties.getConstArray();
-        const OUString* pPropertiesEnd  = pPropertiesIter + aProperties.getLength();
-        for (;pPropertiesIter != pPropertiesEnd ; ++pPropertiesIter)
+        for (auto& prop : aPropertiesNode.getNodeNames())
         {
-            uno::Any aValue = aPropertiesNode.getNodeValue(*pPropertiesIter + "/Value");
+            uno::Any aValue = aPropertiesNode.getNodeValue(prop + "/Value");
             if ( aValue >>= aStringSeq )
             {
                 lcl_convert(aStringSeq,aValue);
             }
-            _rValues.put(*pPropertiesIter,aValue);
+            _rValues.put(prop, aValue);
         } // for (;pPropertiesIter != pPropertiesEnd ; ++pPropertiesIter,++pNamedIter)
     }
     void lcl_readURLPatternNode(const ::utl::OConfigurationTreeRoot& _aInstalled,const OUString& _sEntry,TInstalledDriver& _rInstalledDriver)
@@ -69,24 +61,24 @@ namespace
             return;
 
         OUString sParentURLPattern;
-        aURLPatternNode.getNodeValue("ParentURLPattern") >>= sParentURLPattern;
+        aURLPatternNode.getNodeValue(u"ParentURLPattern"_ustr) >>= sParentURLPattern;
         if ( !sParentURLPattern.isEmpty() )
             lcl_readURLPatternNode(_aInstalled,sParentURLPattern,_rInstalledDriver);
 
         OUString sDriverFactory;
-        aURLPatternNode.getNodeValue("Driver") >>= sDriverFactory;
+        aURLPatternNode.getNodeValue(u"Driver"_ustr) >>= sDriverFactory;
         if ( !sDriverFactory.isEmpty() )
             _rInstalledDriver.sDriverFactory = sDriverFactory;
 
         OUString sDriverTypeDisplayName;
-        aURLPatternNode.getNodeValue("DriverTypeDisplayName") >>= sDriverTypeDisplayName;
+        aURLPatternNode.getNodeValue(u"DriverTypeDisplayName"_ustr) >>= sDriverTypeDisplayName;
         OSL_ENSURE(!sDriverTypeDisplayName.isEmpty(),"No valid DriverTypeDisplayName property!");
         if ( !sDriverTypeDisplayName.isEmpty() )
             _rInstalledDriver.sDriverTypeDisplayName = sDriverTypeDisplayName;
 
-        lcl_fillValues(aURLPatternNode,"Properties",_rInstalledDriver.aProperties);
-        lcl_fillValues(aURLPatternNode,"Features",_rInstalledDriver.aFeatures);
-        lcl_fillValues(aURLPatternNode,"MetaData",_rInstalledDriver.aMetaData);
+        lcl_fillValues(aURLPatternNode,u"Properties"_ustr,_rInstalledDriver.aProperties);
+        lcl_fillValues(aURLPatternNode,u"Features"_ustr,_rInstalledDriver.aFeatures);
+        lcl_fillValues(aURLPatternNode,u"MetaData"_ustr,_rInstalledDriver.aMetaData);
     }
 }
 
@@ -101,20 +93,17 @@ const TInstalledDrivers& DriversConfigImpl::getInstalledDrivers(const uno::Refer
         if ( !m_aInstalled.isValid() )
         {
             m_aInstalled = ::utl::OConfigurationTreeRoot::createWithComponentContext(_rxORB,
-                             "org.openoffice.Office.DataAccess.Drivers/Installed", -1, ::utl::OConfigurationTreeRoot::CM_READONLY);
+                             u"org.openoffice.Office.DataAccess.Drivers/Installed"_ustr, -1, ::utl::OConfigurationTreeRoot::CM_READONLY);
         }
 
         if ( m_aInstalled.isValid() )
         {
-            const uno::Sequence< OUString > aURLPatterns = m_aInstalled.getNodeNames();
-            const OUString* pPatternIter = aURLPatterns.getConstArray();
-            const OUString* pPatternEnd  = pPatternIter + aURLPatterns.getLength();
-            for (;pPatternIter != pPatternEnd ; ++pPatternIter)
+            for (auto& pattern : m_aInstalled.getNodeNames())
             {
                 TInstalledDriver aInstalledDriver;
-                lcl_readURLPatternNode(m_aInstalled,*pPatternIter,aInstalledDriver);
+                lcl_readURLPatternNode(m_aInstalled, pattern, aInstalledDriver);
                 if ( !aInstalledDriver.sDriverFactory.isEmpty() )
-                    m_aDrivers.emplace(*pPatternIter,aInstalledDriver);
+                    m_aDrivers.emplace(pattern, aInstalledDriver);
             }
         } // if ( m_aInstalled.isValid() )
     }

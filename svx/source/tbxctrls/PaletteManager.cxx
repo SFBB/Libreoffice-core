@@ -19,9 +19,9 @@
 
 #include <svx/PaletteManager.hxx>
 
-#include <basegfx/color/bcolortools.hxx>
 #include <comphelper/propertyvalue.hxx>
 #include <tools/urlobj.hxx>
+#include <tools/json_writer.hxx>
 #include <osl/file.hxx>
 #include <unotools/pathoptions.hxx>
 #include <sfx2/objsh.hxx>
@@ -42,15 +42,12 @@
 #include <com/sun/star/util/URLTransformer.hpp>
 #include <docmodel/color/ComplexColor.hxx>
 #include <docmodel/color/ComplexColorJSON.hxx>
-#include <editeng/colritem.hxx>
-#include <editeng/memberids.h>
 
 #include <palettes.hxx>
 
 #include <memory>
 #include <array>
 #include <stack>
-#include <set>
 
 PaletteManager::PaletteManager() :
     mnMaxRecentColors(Application::GetSettings().GetStyleSettings().GetColorValueSetColumnCount()),
@@ -66,32 +63,12 @@ PaletteManager::PaletteManager() :
     {
         const SfxPoolItem* pItem = nullptr;
         if( nullptr != ( pItem = pDocSh->GetItem(SID_COLOR_TABLE) ) )
-            pColorList = static_cast<const SvxColorListItem*>(pItem)->GetColorList();
+            mpColorList = pItem->StaticWhichCast(SID_COLOR_TABLE).GetColorList();
     }
-    if(!pColorList.is())
-        pColorList = XColorList::CreateStdColorList();
+    if(!mpColorList.is())
+        mpColorList = XColorList::CreateStdColorList();
     LoadPalettes();
     mnNumOfPalettes += m_Palettes.size();
-
-}
-
-PaletteManager::PaletteManager(const PaletteManager* pClone)
-    : mnMaxRecentColors(pClone->mnMaxRecentColors)
-    , mnNumOfPalettes(pClone->mnNumOfPalettes)
-    , mnCurrentPalette(pClone->mnCurrentPalette)
-    , mnColorCount(pClone->mnColorCount)
-    , mpBtnUpdater(nullptr)
-    , pColorList(pClone->pColorList)
-    , maRecentColors(pClone->maRecentColors)
-    , maColorSelectFunction(PaletteManager::DispatchColorCommand)
-{
-    for (const auto& a : pClone->m_Palettes)
-        m_Palettes.emplace_back(a->Clone());
-}
-
-PaletteManager* PaletteManager::Clone() const
-{
-    return new PaletteManager(this);
 }
 
 PaletteManager::~PaletteManager()
@@ -140,12 +117,31 @@ void PaletteManager::LoadPalettes()
                         if( aFName.endsWithIgnoreAsciiCase(".gpl") )
                             pPalette.reset(new PaletteGPL(aFileStat.getFileURL(), aFNameWithoutExt));
                         else if( aFName.endsWithIgnoreAsciiCase(".soc") )
+                        {
+                            if (aFNameWithoutExt == "standard")
+                                aFNameWithoutExt = SvxResId(RID_SVXSTR_COLOR_PALETTE_STANDARD);
+                            else if (aFNameWithoutExt == "tonal")
+                                aFNameWithoutExt = SvxResId(RID_SVXSTR_COLOR_PALETTE_TONAL);
+                            else if (aFNameWithoutExt == "html")
+                                aFNameWithoutExt = SvxResId(RID_SVXSTR_COLOR_PALETTE_HTML);
+                            else if (aFNameWithoutExt == "chart-palettes")
+                                aFNameWithoutExt = SvxResId(RID_SVXSTR_COLOR_PALETTE_CHARTPALETTES);
+                            else if (aFNameWithoutExt == "compatibility")
+                                aFNameWithoutExt = SvxResId(RID_SVXSTR_COLOR_PALETTE_COMPATIBILITY);
+                            else if (aFNameWithoutExt == "material")
+                                aFNameWithoutExt = SvxResId(RID_SVXSTR_COLOR_PALETTE_MATERIAL);
+                            else if (aFNameWithoutExt == "libreoffice")
+                                aFNameWithoutExt = "LibreOffice";
+                            else if (aFNameWithoutExt == "freecolour-hlc")
+                                aFNameWithoutExt = SvxResId(RID_SVXSTR_COLOR_PALETTE_FREECOLOURHLC);
                             pPalette.reset(new PaletteSOC(aFileStat.getFileURL(), aFNameWithoutExt));
+                        }
                         else if ( aFName.endsWithIgnoreAsciiCase(".ase") )
                             pPalette.reset(new PaletteASE(aFileStat.getFileURL(), aFNameWithoutExt));
 
                         if( pPalette && pPalette->IsValid() )
                             m_Palettes.push_back( std::move(pPalette) );
+
                         aNames.insert(aFNameWithoutExt);
                     }
                 }
@@ -289,17 +285,17 @@ void PaletteManager::SetPalette( sal_Int32 nPos )
     mnCurrentPalette = nPos;
     if( nPos != mnNumOfPalettes - 1 && nPos != 0)
     {
-        pColorList = XPropertyList::AsColorList(
+        mpColorList = XPropertyList::AsColorList(
                             XPropertyList::CreatePropertyListFromURL(
                             XPropertyListType::Color, GetSelectedPalettePath()));
         auto name = GetPaletteName(); // may change pColorList
-        pColorList->SetName(name);
-        if(pColorList->Load())
+        mpColorList->SetName(name);
+        if(mpColorList->Load())
         {
             SfxObjectShell* pShell = SfxObjectShell::Current();
             if (pShell != nullptr)
             {
-                SvxColorListItem aColorItem(pColorList, SID_COLOR_TABLE);
+                SvxColorListItem aColorItem(mpColorList, SID_COLOR_TABLE);
                 pShell->PutItem( aColorItem );
             }
         }
@@ -328,18 +324,18 @@ OUString PaletteManager::GetPaletteName()
         {
             const SfxPoolItem* pItem = nullptr;
             if( nullptr != ( pItem = pDocSh->GetItem(SID_COLOR_TABLE) ) )
-                pColorList = static_cast<const SvxColorListItem*>(pItem)->GetColorList();
+                mpColorList = pItem->StaticWhichCast(SID_COLOR_TABLE).GetColorList();
         }
     }
     return aNames[mnCurrentPalette];
 }
 
-OUString PaletteManager::GetSelectedPalettePath()
+const OUString & PaletteManager::GetSelectedPalettePath()
 {
     if (mnCurrentPalette < m_Palettes.size() && mnCurrentPalette != 0)
         return m_Palettes[mnCurrentPalette - 1]->GetPath();
     else
-        return OUString();
+        return EMPTY_OUSTRING;
 }
 
 tools::Long PaletteManager::GetColorCount() const
@@ -402,11 +398,11 @@ void PaletteManager::PopupColorPicker(weld::Window* pParent, const OUString& aCo
 {
     // The calling object goes away during aColorDlg.Execute(), so we must copy this
     OUString aCommandCopy = aCommand;
-    m_pColorDlg = std::make_unique<SvColorDialog>();
+    m_pColorDlg = std::make_unique<ColorDialog>(pParent, vcl::ColorPickerMode::Modify);
     m_pColorDlg->SetColor(rInitialColor);
-    m_pColorDlg->SetMode(svtools::ColorPickerMode::Modify);
     std::shared_ptr<PaletteManager> xSelf(shared_from_this());
-    m_pColorDlg->ExecuteAsync(pParent, [xSelf, aCommandCopy] (sal_Int32 nResult) {
+    m_pColorDlg->ExecuteAsync([xSelf=std::move(xSelf),
+                               aCommandCopy=std::move(aCommandCopy)] (sal_Int32 nResult) {
         if (nResult == RET_OK)
         {
             Color aLastColor = xSelf->m_pColorDlg->GetColor();
@@ -427,7 +423,7 @@ void PaletteManager::DispatchColorCommand(const OUString& aCommand, const NamedC
     using namespace css::beans;
     using namespace css::util;
 
-    Reference<XComponentContext> xContext(comphelper::getProcessComponentContext());
+    const Reference<XComponentContext>& xContext(comphelper::getProcessComponentContext());
     Reference<XDesktop2> xDesktop = Desktop::create(xContext);
     Reference<XFrame> xFrame(xDesktop->getCurrentFrame());
     Reference<XDispatchProvider> xDispatchProvider(xFrame, UNO_QUERY);
@@ -466,6 +462,72 @@ void PaletteManager::DispatchColorCommand(const OUString& aCommand, const NamedC
         xDispatch->dispatch(aTargetURL, comphelper::containerToSequence(aArgs));
         if (xFrame->getContainerWindow().is())
             xFrame->getContainerWindow()->setFocus();
+    }
+}
+
+void PaletteManager::generateColorNamesJSON(tools::JsonWriter& aTree)
+{
+    XColorListRef xUserColorList;
+    OUString aPaletteStandard = SvxResId(RID_SVXSTR_COLOR_PALETTE_STANDARD);
+    PaletteManager aPaletteManager;
+    std::vector<OUString> aPaletteNames = aPaletteManager.GetPaletteList();
+    for (size_t i = 0, nLen = aPaletteNames.size(); i < nLen; ++i)
+    {
+        if (aPaletteStandard == aPaletteNames[i])
+        {
+            aPaletteManager.SetPalette(i);
+            xUserColorList
+                = XPropertyList::AsColorList(XPropertyList::CreatePropertyListFromURL(
+                    XPropertyListType::Color, aPaletteManager.GetSelectedPalettePath()));
+            if (!xUserColorList->Load())
+                xUserColorList = nullptr;
+            break;
+        }
+    }
+    if (xUserColorList)
+    {
+        auto colorNames = aTree.startArray("ColorNames");
+        int nCount = xUserColorList->Count();
+
+        for (int i = 0; i < nCount; i++)
+        {
+            XColorEntry* pColorEntry = xUserColorList->GetColor(i);
+            if (pColorEntry)
+            {
+                auto aColorTree = aTree.startStruct();
+                aTree.put("hexCode", pColorEntry->GetColor().AsRGBHEXString());
+                aTree.put("name", pColorEntry->GetName());
+            }
+        }
+    }
+}
+
+// TODO: make it generic, send any palette
+void PaletteManager::generateJSON(tools::JsonWriter& aTree, const std::set<Color>& rColors)
+{
+    auto aColorListTree = aTree.startArray("DocumentColors");
+    sal_uInt32 nStartIndex = 1;
+
+    const StyleSettings& rStyleSettings = Application::GetSettings().GetStyleSettings();
+    sal_uInt32 nColumnCount = rStyleSettings.GetColorValueSetColumnCount();
+    const OUString aNamePrefix(Concat2View(SvxResId(RID_SVXSTR_DOC_COLOR_PREFIX) + " "));
+
+    auto aColorIt = rColors.begin();
+    while (aColorIt != rColors.end())
+    {
+        auto aColorRowTree = aTree.startAnonArray();
+
+        for (sal_uInt32 nColumn = 0; nColumn < nColumnCount; nColumn++)
+        {
+            auto aColorTree = aTree.startStruct();
+            OUString sName = aNamePrefix + OUString::number(nStartIndex++);
+            aTree.put("Value", aColorIt->AsRGBHexString().toUtf8());
+            aTree.put("Name", sName);
+
+            aColorIt++;
+            if (aColorIt == rColors.end())
+                break;
+        }
     }
 }
 

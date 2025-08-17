@@ -13,6 +13,14 @@ $(eval $(call gb_UnpackedTarball_set_tarball,lpsolve,$(LPSOLVE_TARBALL)))
 
 $(eval $(call gb_UnpackedTarball_set_patchlevel,lpsolve,3))
 
+# external/lpsolve/0001-const-up-some-statics.patch.1
+# upstreaming attempt as:
+# https://github.com/lp-solve/lp_solve/pull/1
+
+$(eval $(call gb_UnpackedTarball_add_patches,lpsolve,\
+	external/lpsolve/0001-const-up-some-statics.patch.1 \
+))
+
 ifeq ($(OS_FOR_BUILD),WNT)
 
 $(eval $(call gb_UnpackedTarball_set_patchflags,lpsolve,--binary))
@@ -23,9 +31,9 @@ $(eval $(call gb_UnpackedTarball_add_patches,lpsolve,\
 else
 
 $(eval $(call gb_UnpackedTarball_add_patches,lpsolve,\
-	external/lpsolve/lp_solve-fixed-warn.patch \
 	external/lpsolve/lp_solve_5.5.patch \
 	external/lpsolve/lpsolve-ubsan.patch.0 \
+	external/lpsolve/system-colamd.diff \
 ))
 
 $(eval $(call gb_UnpackedTarball_add_file,lpsolve,lpsolve55/ccc.static,external/lpsolve/ccc.static))

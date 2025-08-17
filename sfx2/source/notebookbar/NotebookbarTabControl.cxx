@@ -57,7 +57,7 @@ public:
         {
             if (SfxViewFrame* pViewFrm = SfxViewFrame::Current())
             {
-                Reference<XComponentContext> xContext = comphelper::getProcessComponentContext();
+                const Reference<XComponentContext>& xContext = comphelper::getProcessComponentContext();
                 const Reference<XModuleManager> xModuleManager  = ModuleManager::create( xContext );
                 Reference<XFrame> xFrame = pViewFrm->GetFrame().GetFrameInterface();
                 OUString aModuleName = xModuleManager->identify( xFrame );
@@ -99,7 +99,7 @@ public:
         {
             if (SfxViewFrame* pViewFrm = SfxViewFrame::Current())
             {
-                Reference<XComponentContext> xContext = comphelper::getProcessComponentContext();
+                const Reference<XComponentContext>& xContext = comphelper::getProcessComponentContext();
                 const Reference<XModuleManager> xModuleManager  = ModuleManager::create( xContext );
                 Reference<XFrame> xFrame = pViewFrm->GetFrame().GetFrameInterface();
                 OUString aModuleName = xModuleManager->identify( xFrame );
@@ -114,7 +114,7 @@ public:
         }
         catch( const css::uno::RuntimeException& ) {}
 
-        m_pParent.clear();
+        m_pParent.reset();
     }
 };
 
@@ -245,7 +245,7 @@ void NotebookbarTabControl::StateChanged(StateChangedType nStateChange)
         VclPtr<ShortcutsToolBox> pShortcuts = VclPtr<ShortcutsToolBox>::Create( this );
         pShortcuts->Show();
 
-        SetToolBox( static_cast<ToolBox*>( pShortcuts.get() ) );
+        SetToolBox(pShortcuts.get());
         SetIconClickHdl( LINK( this, NotebookbarTabControl, OpenNotebookbarPopupMenu ) );
 
         m_pListener = new ChangedUIEventListener( this );
@@ -260,7 +260,7 @@ void NotebookbarTabControl::StateChanged(StateChangedType nStateChange)
 
         pToolBox->Clear();
 
-        Reference<XComponentContext> xContext = comphelper::getProcessComponentContext();
+        const Reference<XComponentContext>& xContext = comphelper::getProcessComponentContext();
         const Reference<XModuleManager> xModuleManager  = ModuleManager::create( xContext );
         m_xFrame = pViewFrm->GetFrame().GetFrameInterface();
         OUString aModuleName = xModuleManager->identify( m_xFrame );
@@ -283,7 +283,7 @@ void NotebookbarTabControl::FillShortcutsToolBox(Reference<XComponentContext> co
                                           ToolBox* pShortcuts
 )
 {
-    Reference<::com::sun::star::container::XIndexAccess> xIndex;
+    Reference<css::container::XIndexAccess> xIndex;
 
     try
     {
@@ -309,7 +309,7 @@ void NotebookbarTabControl::FillShortcutsToolBox(Reference<XComponentContext> co
                 sal_uInt16 nType = ItemType::DEFAULT;
                 bool bVisible = true;
 
-                for ( const auto& aProp: std::as_const(aPropSequence) )
+                for (const auto& aProp : aPropSequence)
                 {
                     if ( aProp.Name == "CommandURL" )
                         aProp.Value >>= aCommandURL;
@@ -335,13 +335,13 @@ IMPL_LINK(NotebookbarTabControl, OpenNotebookbarPopupMenu, NotebookBar*, pNotebo
         return;
 
     Sequence<Any> aArgs {
-        Any(comphelper::makePropertyValue("Value", OUString("notebookbar"))),
-        Any(comphelper::makePropertyValue("Frame", m_xFrame)) };
+        Any(comphelper::makePropertyValue(u"Value"_ustr, u"notebookbar"_ustr)),
+        Any(comphelper::makePropertyValue(u"Frame"_ustr, m_xFrame)) };
 
-    Reference<XComponentContext> xContext = comphelper::getProcessComponentContext();
+    const Reference<XComponentContext>& xContext = comphelper::getProcessComponentContext();
     Reference<XPopupMenuController> xPopupController(
         xContext->getServiceManager()->createInstanceWithArgumentsAndContext(
-        "com.sun.star.comp.framework.ResourceMenuController", aArgs, xContext), UNO_QUERY);
+        u"com.sun.star.comp.framework.ResourceMenuController"_ustr, aArgs, xContext), UNO_QUERY);
 
     rtl::Reference<VCLXPopupMenu> xPopupMenu = new VCLXPopupMenu();
 
@@ -349,8 +349,10 @@ IMPL_LINK(NotebookbarTabControl, OpenNotebookbarPopupMenu, NotebookBar*, pNotebo
         return;
 
     xPopupController->setPopupMenu(xPopupMenu);
-    Point aPos(pNotebookbar->GetSizePixel().getWidth(), NotebookbarTabControl::GetHeaderHeight() - ICON_SIZE + 10);
-    xPopupMenu->execute(pNotebookbar->GetComponentInterface(),
+    Control* pOpenMenuButton = GetOpenMenu();
+    assert(pOpenMenuButton);
+    Point aPos(pOpenMenuButton->GetSizePixel().getWidth(), pOpenMenuButton->GetSizePixel().getHeight());
+    xPopupMenu->execute(pOpenMenuButton->GetComponentInterface(),
                         css::awt::Rectangle(aPos.X(), aPos.Y(), 1, 1),
                         css::awt::PopupMenuDirection::EXECUTE_DOWN);
 

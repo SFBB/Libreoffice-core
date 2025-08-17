@@ -36,15 +36,15 @@
 namespace sd {
 
 
-FuLineEnd::FuLineEnd(ViewShell* pViewSh, ::sd::Window* pWin, ::sd::View* pView,
-                    SdDrawDocument* pDoc, SfxRequest& rReq)
-    : FuPoor(pViewSh, pWin, pView, pDoc, rReq)
+FuLineEnd::FuLineEnd(ViewShell& rViewSh, ::sd::Window* pWin, ::sd::View* pView,
+                    SdDrawDocument& rDoc, SfxRequest& rReq)
+    : FuPoor(rViewSh, pWin, pView, rDoc, rReq)
 {
 }
 
-rtl::Reference<FuPoor> FuLineEnd::Create( ViewShell* pViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument* pDoc, SfxRequest& rReq )
+rtl::Reference<FuPoor> FuLineEnd::Create( ViewShell& rViewSh, ::sd::Window* pWin, ::sd::View* pView, SdDrawDocument& rDoc, SfxRequest& rReq )
 {
-    rtl::Reference<FuPoor> xFunc( new FuLineEnd( pViewSh, pWin, pView, pDoc, rReq ) );
+    rtl::Reference<FuPoor> xFunc( new FuLineEnd( rViewSh, pWin, pView, rDoc, rReq ) );
     xFunc->DoExecute(rReq);
     return xFunc;
 }
@@ -57,6 +57,7 @@ void FuLineEnd::DoExecute( SfxRequest& )
         return;
 
     const SdrObject* pObj = rMarkList.GetMark(0)->GetMarkedSdrObj();
+    assert(pObj);
     const SdrObject* pNewObj;
     rtl::Reference<SdrObject> pConvPolyObj;
 
@@ -90,7 +91,7 @@ void FuLineEnd::DoExecute( SfxRequest& )
     // Delete the created poly-object
     pConvPolyObj.clear();
 
-    XLineEndListRef pLineEndList = mpDoc->GetLineEndList();
+    XLineEndListRef pLineEndList = mrDoc.GetLineEndList();
 
     OUString aNewName( SdResId( STR_LINEEND ) );
     OUString aDesc( SdResId( STR_DESC_LINEEND ) );
@@ -119,7 +120,7 @@ void FuLineEnd::DoExecute( SfxRequest& )
     if( pDlg->Execute() != RET_OK )
         return;
 
-    pDlg->GetName( aName );
+    aName = pDlg->GetName();
     bDifferent = true;
 
     for( ::tools::Long i = 0; i < nCount && bDifferent; i++ )

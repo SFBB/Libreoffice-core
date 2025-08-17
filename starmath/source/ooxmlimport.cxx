@@ -20,6 +20,7 @@
 #include <rtl/ustrbuf.hxx>
 #include <sal/log.hxx>
 #include <o3tl/string_view.hxx>
+#include <parse5.hxx>
 
 using namespace oox::formulaimport;
 
@@ -298,9 +299,9 @@ OUString SmOoxmlImport::handleBorderBox()
 OUString SmOoxmlImport::handleD()
 {
     m_rStream.ensureOpeningTag( M_TOKEN( d ));
-    OUString opening = "(";
-    OUString closing = ")";
-    OUString separator = "|";
+    OUString opening = u"("_ustr;
+    OUString closing = u")"_ustr;
+    OUString separator = u"|"_ustr;
     if( XmlStream::Tag dPr = m_rStream.checkOpeningTag( M_TOKEN( dPr )))
     {
         if( XmlStream::Tag begChr = m_rStream.checkOpeningTag( M_TOKEN( begChr )))
@@ -461,7 +462,7 @@ OUString SmOoxmlImport::handleGroupChr()
         }
         if( XmlStream::Tag posTag = m_rStream.checkOpeningTag( M_TOKEN( pos )))
         {
-            if( posTag.attribute( M_TOKEN( val ), OUString( "bot" )) == "top" )
+            if( posTag.attribute( M_TOKEN( val ), u"bot"_ustr) == "top" )
                 pos = top;
             m_rStream.ensureClosingTag( M_TOKEN( pos ));
         }
@@ -594,17 +595,19 @@ OUString SmOoxmlImport::handleR()
         m_rStream.ensureClosingTag( M_TOKEN( rPr ));
     }
     OUStringBuffer text;
+    bool isTagT = false;
     while( !m_rStream.atEnd() && m_rStream.currentToken() != CLOSING( m_rStream.currentToken()))
     {
         switch( m_rStream.currentToken())
         {
             case OPENING( M_TOKEN( t )):
             {
+                isTagT = true;
                 XmlStream::Tag rtag = m_rStream.ensureOpeningTag( M_TOKEN( t ));
+                OUString sTagText = rtag.text;
                 if( rtag.attribute( OOX_TOKEN( xml, space )) != "preserve" )
-                    text.append(o3tl::trim(rtag.text));
-                else
-                    text.append(rtag.text);
+                    sTagText = o3tl::trim(sTagText);
+                text.append(sTagText);
                 m_rStream.ensureClosingTag( M_TOKEN( t ));
                 break;
             }
@@ -614,12 +617,11 @@ OUString SmOoxmlImport::handleR()
         }
     }
     m_rStream.ensureClosingTag( M_TOKEN( r ));
-    if( normal || literal )
+    if (normal || literal || isTagT)
     {
-        text.insert(0, "\"");
-        text.append("\"");
+        return encloseOrEscapeLiteral(text.makeStringAndClear(), normal || literal);
     }
-    return text.makeStringAndClear().replaceAll("{", "\\{").replaceAll("}", "\\}");
+    return text.makeStringAndClear();
 }
 
 OUString SmOoxmlImport::handleRad()

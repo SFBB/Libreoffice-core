@@ -23,46 +23,33 @@
 #include <rtl/ustrbuf.hxx>
 #include <sal/log.hxx>
 #include <unotools/useroptions.hxx>
+#include <unotools/datetime.hxx>
 #include <svx/svdocapt.hxx>
 #include <svx/svdpage.hxx>
-#include <svx/unoshape.hxx>
 #include <editeng/outlobj.hxx>
 #include <editeng/editobj.hxx>
-#include <basegfx/polygon/b2dpolygon.hxx>
 #include <osl/diagnose.h>
 #include <comphelper/lok.hxx>
 
-#include <scitems.hxx>
-#include <svx/xfillit0.hxx>
-#include <svx/xlnstit.hxx>
-#include <svx/xlnstwit.hxx>
-#include <svx/xlnstcit.hxx>
-#include <svx/sxcecitm.hxx>
-#include <svx/xflclit.hxx>
-#include <svx/sdshitm.hxx>
 #include <svx/sdsxyitm.hxx>
-#include <svx/sdtditm.hxx>
 #include <svx/sdtagitm.hxx>
 #include <svx/sdtmfitm.hxx>
 #include <tools/gen.hxx>
 
 #include <document.hxx>
-#include <docpool.hxx>
 #include <stlpool.hxx>
 #include <stylehelper.hxx>
-#include <patattr.hxx>
 #include <drwlayer.hxx>
 #include <userdat.hxx>
-#include <detfunc.hxx>
 #include <editutil.hxx>
 #include <globstr.hrc>
 #include <scresid.hxx>
 #include <utility>
 #include <strings.hrc>
+#include <officecfg/Office/Calc.hxx>
 
 #include <com/sun/star/text/XText.hpp>
 #include <com/sun/star/text/XTextAppend.hpp>
-#include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/awt/FontWeight.hpp>
 #include <comphelper/propertyvalue.hxx>
 
@@ -110,7 +97,7 @@ void ScCaptionUtil::SetCaptionUserData( SdrCaptionObj& rCaption, const ScAddress
 {
     // pass true to ScDrawLayer::GetObjData() to create the object data entry
     ScDrawObjData* pObjData = ScDrawLayer::GetObjData( &rCaption, true );
-    OSL_ENSURE( pObjData, "ScCaptionUtil::SetCaptionUserData - missing drawing object user data" );
+    assert(pObjData && "ScCaptionUtil::SetCaptionUserData - missing drawing object user data");
     pObjData->maStart = rPos;
     pObjData->meType = ScDrawObjData::CellNote;
 }
@@ -127,7 +114,7 @@ void ScCaptionUtil::SetExtraItems( SdrCaptionObj& rCaption, const SfxItemSet& rE
     aItemSet.Put( makeSdrShadowXDistItem( 100 ) );
     aItemSet.Put( makeSdrShadowYDistItem( 100 ) );
 
-    rCaption.SetMergedItemSet( aItemSet );
+    rCaption.SetMergedItemSet( aItemSet, /*bClearAllItems*/false, /*bAdjustTextFrameWidthAndHeight*/false );
 }
 
 /** Helper for creation and manipulation of caption drawing objects independent
@@ -228,7 +215,7 @@ void ScCaptionCreator::FitCaptionToRect( const tools::Rectangle* pVisRect )
     aCaptPos.setY( ::std::max< tools::Long >( aCaptPos.Y(), rVisRect.Top() ) );
     // update caption
     aCaptRect.SetPos( aCaptPos );
-    mxCaption->SetLogicRect( aCaptRect );
+    mxCaption->NbcSetLogicRect( aCaptRect, /*bAdaptTextMinSize*/false );
 }
 
 void ScCaptionCreator::AutoPlaceCaption( const tools::Rectangle* pVisRect )
@@ -381,7 +368,7 @@ public:
     /** Create a new caption object and inserts it into the document. */
     explicit            ScNoteCaptionCreator( ScDocument& rDoc, const ScAddress& rPos, ScNoteData& rNoteData );
     /** Manipulate an existing caption. */
-    explicit            ScNoteCaptionCreator( ScDocument& rDoc, const ScAddress& rPos, rtl::Reference<SdrCaptionObj>& xCaption, bool bShown );
+    explicit            ScNoteCaptionCreator( ScDocument& rDoc, const ScAddress& rPos, const rtl::Reference<SdrCaptionObj>& xCaption, bool bShown );
 };
 
 ScNoteCaptionCreator::ScNoteCaptionCreator( ScDocument& rDoc, const ScAddress& rPos, ScNoteData& rNoteData ) :
@@ -405,7 +392,7 @@ ScNoteCaptionCreator::ScNoteCaptionCreator( ScDocument& rDoc, const ScAddress& r
     }
 }
 
-ScNoteCaptionCreator::ScNoteCaptionCreator( ScDocument& rDoc, const ScAddress& rPos, rtl::Reference<SdrCaptionObj>& xCaption, bool bShown ) :
+ScNoteCaptionCreator::ScNoteCaptionCreator( ScDocument& rDoc, const ScAddress& rPos, const rtl::Reference<SdrCaptionObj>& xCaption, bool bShown ) :
     ScCaptionCreator( rDoc, rPos, xCaption )
 {
     SdrPage* pDrawPage = GetDrawPage();
@@ -484,8 +471,9 @@ ScPostIt::~ScPostIt()
 
 std::unique_ptr<ScPostIt> ScPostIt::Clone( const ScAddress& rOwnPos, ScDocument& rDestDoc, const ScAddress& rDestPos, bool bCloneCaption ) const
 {
-    // tdf#117307: Don't clone comment, if it is in the same position
-    if ( (rOwnPos == rDestPos) && !mrDoc.IsClipboard() )
+    // tdf#117307: Don't clone comment, if it is in the same position in the same document
+    const bool bIsSameDoc = mrDoc.GetPool() == rDestDoc.GetPool();
+    if (bIsSameDoc && !mrDoc.IsClipboard() && rOwnPos == rDestPos)
         bCloneCaption = false;
     CreateCaptionFromInitData( rOwnPos );
     sal_uInt32 nPostItId = comphelper::LibreOfficeKit::isActive() ? 0 : mnPostItId;
@@ -502,10 +490,15 @@ void ScPostIt::SetAuthor( const OUString& rAuthor )
     maNoteData.maAuthor = rAuthor;
 }
 
-void ScPostIt::AutoStamp()
+void ScPostIt::AutoStamp(bool bCreate)
 {
-    maNoteData.maDate = ScGlobal::getLocaleData().getDate( Date( Date::SYSTEM ) ) + " " +
-        ScGlobal::getLocaleData().getTime(DateTime(DateTime::SYSTEM), false);
+    if (bCreate)
+    {
+        DateTime aNow(DateTime::SYSTEM);
+        maNoteData.maDate =  utl::toISO8601(aNow.GetUNODateTime());
+    }
+    if (!maNoteData.maAuthor.isEmpty())
+        return;
     const OUString aAuthor = SvtUserOptions().GetFullName();
     maNoteData.maAuthor = !aAuthor.isEmpty() ? aAuthor : ScResId(STR_CHG_UNKNOWN_AUTHOR);
 }
@@ -662,7 +655,10 @@ void ScPostIt::CreateCaptionFromInitData( const ScAddress& rPos ) const
         OSL_ENSURE( xInitData->mxOutlinerObj || !xInitData->maSimpleText.isEmpty(),
             "ScPostIt::CreateCaptionFromInitData - need either outliner para object or simple text" );
         if (xInitData->mxOutlinerObj)
-            maNoteData.mxCaption->SetOutlinerParaObject( std::move(xInitData->mxOutlinerObj) );
+            maNoteData.mxCaption->NbcSetOutlinerParaObjectForText(
+                std::move(xInitData->mxOutlinerObj),
+                maNoteData.mxCaption->getActiveText(),
+                /*bAdjustTextFrameWidthAndHeight*/false );
         else
             maNoteData.mxCaption->SetText( xInitData->maSimpleText );
     }
@@ -670,15 +666,16 @@ void ScPostIt::CreateCaptionFromInitData( const ScAddress& rPos ) const
     if (!xInitData->maStyleName.isEmpty())
     {
         if (auto pStyleSheet = mrDoc.GetStyleSheetPool()->Find(xInitData->maStyleName, SfxStyleFamily::Frame))
-            maNoteData.mxCaption->SetStyleSheet(static_cast<SfxStyleSheet*>(pStyleSheet), true);
+            maNoteData.mxCaption->NbcSetStyleSheet(static_cast<SfxStyleSheet*>(pStyleSheet), true, /*bAdjustTextFrameWidthAndHeight*/false);
 
         if (xInitData->moItemSet)
-            maNoteData.mxCaption->SetMergedItemSet(*xInitData->moItemSet);
+            maNoteData.mxCaption->SetMergedItemSet(*xInitData->moItemSet,
+                    /*bClearAllItems*/false, /*bAdjustTextFrameWidthAndHeight*/false);
     }
     else
     {
         if (auto pStyleSheet = mrDoc.GetStyleSheetPool()->Find(ScResId(STR_STYLENAME_NOTE), SfxStyleFamily::Frame))
-            maNoteData.mxCaption->SetStyleSheet(static_cast<SfxStyleSheet*>(pStyleSheet), true);
+            maNoteData.mxCaption->NbcSetStyleSheet(static_cast<SfxStyleSheet*>(pStyleSheet), true, /*bAdjustTextFrameWidthAndHeight*/false);
 
         // copy all items and reset shadow items
         if (xInitData->moItemSet)
@@ -701,7 +698,7 @@ void ScPostIt::CreateCaptionFromInitData( const ScAddress& rPos ) const
         tools::Long nPosX = bNegPage ? (aCellRect.Left() - xInitData->maCaptionOffset.X()) : (aCellRect.Right() + xInitData->maCaptionOffset.X());
         tools::Long nPosY = aCellRect.Top() + xInitData->maCaptionOffset.Y();
         tools::Rectangle aCaptRect( Point( nPosX, nPosY ), xInitData->maCaptionSize );
-        maNoteData.mxCaption->SetLogicRect( aCaptRect );
+        maNoteData.mxCaption->NbcSetLogicRect( aCaptRect, /*bAdaptTextMinSize*/false );
         aCreator.FitCaptionToRect();
     }
 
@@ -790,8 +787,7 @@ void ScPostIt::RemoveCaption()
         {
             pDrawPage->RecalcObjOrdNums();
             // create drawing undo action (before removing the object to have valid draw page in undo action)
-            bool bRecording = (pDrawLayer && pDrawLayer->IsRecording());
-            if (bRecording)
+            if (pDrawLayer->IsRecording())
                 pDrawLayer->AddCalcUndo( std::make_unique<SdrUndoDelObj>( *maNoteData.mxCaption ));
             // remove the object from the drawing page
             rtl::Reference<SdrObject> pRemovedObj = pDrawPage->RemoveObject( maNoteData.mxCaption->GetOrdNum() );
@@ -826,9 +822,9 @@ static void lcl_FormatAndInsertAuthorAndDatepara(SdrCaptionObj* pCaption, OUStri
         }
         else
         {
-            xBodyTextAppend->insertTextPortion("\n--------\n", aArgs, xText->getStart());
+            xBodyTextAppend->insertTextPortion(u"\n--------\n"_ustr, aArgs, xText->getStart());
             aArgs = {
-                comphelper::makePropertyValue("CharWeight", uno::Any(awt::FontWeight::BOLD)),
+                comphelper::makePropertyValue(u"CharWeight"_ustr, uno::Any(awt::FontWeight::BOLD)),
             };
             xBodyTextAppend->insertTextPortion(aUserData.makeStringAndClear(), aArgs, xText->getStart());
         }
@@ -854,8 +850,7 @@ rtl::Reference<SdrCaptionObj> ScNoteUtil::CreateTempCaption(
         else
         {
             aBuffer.append(pNote->GetAuthor()
-                + ", "
-                + pNote->GetDate());
+                           + (!pNote->GetDate().isEmpty() ? ", " + pNote->GetDate() : OUString()));
         }
         pNoteCaption = pNote->GetOrCreateCaption( rPos );
     }
@@ -880,7 +875,8 @@ rtl::Reference<SdrCaptionObj> ScNoteUtil::CreateTempCaption(
         if( OutlinerParaObject* pOPO = pNoteCaption->GetOutlinerParaObject() )
             pCaption->SetOutlinerParaObject( *pOPO );
         // Setting and formatting rUserText: Author name and date time
-        lcl_FormatAndInsertAuthorAndDatepara(pCaption.get(), aBuffer, bUserWithTrackText);
+        if (officecfg::Office::Calc::Content::Display::NoteAuthor::get())
+           lcl_FormatAndInsertAuthorAndDatepara(pCaption.get(), aBuffer, bUserWithTrackText);
         // set formatting (must be done after setting text) and resize the box to fit the text
         if (auto pStyleSheet = pNoteCaption->GetStyleSheet())
             pCaption->SetStyleSheet(pStyleSheet, true);
@@ -935,7 +931,7 @@ ScPostIt* ScNoteUtil::CreateNoteFromCaption(
     return pNote;
 }
 
-ScNoteData ScNoteUtil::CreateNoteData(ScDocument& rDoc, const ScAddress& rPos,
+ScNoteData ScNoteUtil::CreateNoteData(const ScDocument& rDoc, const ScAddress& rPos,
                                       const tools::Rectangle& rCaptionRect, bool bShown)
 {
     ScNoteData aNoteData( bShown );
@@ -983,17 +979,19 @@ ScPostIt* ScNoteUtil::CreateNoteFromGenerator(
     // simple text now to supply any queries for that which don't require
     // creation of a full Caption
     rInitData.maSimpleText = rInitData.mxGenerator->GetSimpleText();
-
-    return InsertNote(rDoc, rPos, std::move(aNoteData), /*bAlwaysCreateCaption*/false, 0/*nPostItId*/);
+    aNoteData.maAuthor = rInitData.mxGenerator->GetAuthorName();
+    return InsertNote(rDoc, rPos, std::move(aNoteData), /*bAlwaysCreateCaption*/ false,
+                      0 /*nPostItId*/, false /*bShouldAutoStamp*/);
 }
 
 ScPostIt* ScNoteUtil::InsertNote(ScDocument& rDoc, const ScAddress& rPos, ScNoteData&& rNoteData,
-                                 bool bAlwaysCreateCaption, sal_uInt32 nPostItId)
+                                 bool bAlwaysCreateCaption, sal_uInt32 nPostItId,
+                                 bool bShouldAutoStamp)
 {
     /*  Create the note and insert it into the document. If the note is
         visible, the caption object will be created automatically. */
     ScPostIt* pNote = new ScPostIt( rDoc, rPos, std::move(rNoteData), bAlwaysCreateCaption, nPostItId );
-    pNote->AutoStamp();
+    pNote->AutoStamp(bShouldAutoStamp);
     //insert takes ownership
     rDoc.SetNote(rPos, std::unique_ptr<ScPostIt>(pNote));
     return pNote;

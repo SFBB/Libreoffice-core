@@ -34,7 +34,7 @@ namespace dbaui
     {
         css::uno::Reference< css::container::XNameAccess >    m_xTables;
         std::unique_ptr<weld::WaitObject> m_xWaitObject;
-        sal_uLong       m_nThreadEvent;
+        sal_Int32      m_nThreadEvent;
         bool            m_bRelationsPossible;
     protected:
         // all the features which should be handled by this class
@@ -70,7 +70,7 @@ namespace dbaui
         // ask the user if the design should be saved when it is modified
         virtual short saveModified() override;
         virtual void reset() override;
-        virtual void impl_initialize() override;
+        virtual void impl_initialize(const ::comphelper::NamedValueCollection& rArguments) override;
         virtual OUString getPrivateTitle( ) const override;
         DECL_LINK( OnThreadFinished, void*, void );
     };

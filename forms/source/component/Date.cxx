@@ -39,11 +39,7 @@ using namespace ::com::sun::star::sdb;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::util;
-using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::form;
-using namespace ::com::sun::star::awt;
-using namespace ::com::sun::star::io;
-using namespace ::com::sun::star::lang;
 
 
 ODateControl::ODateControl(const Reference<XComponentContext>& _rxFactory)
@@ -73,7 +69,7 @@ Sequence<Type> ODateModel::_getTypes()
 ODateModel::ODateModel(const Reference<XComponentContext>& _rxFactory)
     : OEditBaseModel(_rxFactory, VCL_CONTROLMODEL_DATEFIELD,
         FRM_SUN_CONTROL_DATEFIELD, true, true)
-    // use the old control name for compytibility reasons
+    // use the old control name for compatibility reasons
     , OLimitedFormats(_rxFactory, FormComponentType::DATEFIELD)
     , m_bDateTimeField(false)
 {
@@ -123,7 +119,7 @@ css::uno::Reference< css::util::XCloneable > SAL_CALL ODateModel::createClone()
 
 css::uno::Sequence<OUString> SAL_CALL ODateModel::getSupportedServiceNames()
 {
-    const css::uno::Sequence<OUString> vals {
+    static constexpr OUString vals[] {
        BINDABLE_CONTROL_MODEL,
        DATA_AWARE_CONTROL_MODEL,
        VALIDATABLE_CONTROL_MODEL,
@@ -254,7 +250,7 @@ bool ODateModel::commitControlValueToDbColumn( bool /*_bPostReset*/ )
             return false;
         }
     }
-    m_aSaveValue = aControlValue;
+    m_aSaveValue = std::move(aControlValue);
     return true;
 }
 

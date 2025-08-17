@@ -37,43 +37,42 @@ using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::sdbc;
 using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::lang;
 using namespace dbtools;
 
-sdbcx::ObjectType OTables::createObject(const OUString& _rName)
+css::uno::Reference< css::beans::XPropertySet > OTables::createObject(const OUString& _rName)
 {
     OUString sCatalog,sSchema,sTable;
     ::dbtools::qualifiedNameComponents(m_xMetaData,_rName,sCatalog,sSchema,sTable,::dbtools::EComposeRule::InDataManipulation);
 
-    Sequence< OUString > sTableTypes {"VIEW", "TABLE", "%"};    // this last one just to be sure to include anything else...
+    Sequence< OUString > sTableTypes {u"VIEW"_ustr, u"TABLE"_ustr, u"%"_ustr};    // this last one just to be sure to include anything else...
 
     Any aCatalog;
     if ( !sCatalog.isEmpty() )
         aCatalog <<= sCatalog;
     Reference< XResultSet > xResult = m_xMetaData->getTables(aCatalog,sSchema,sTable,sTableTypes);
 
-    sdbcx::ObjectType xRet;
-    if ( xResult.is() )
-    {
-        Reference< XRow > xRow(xResult,UNO_QUERY);
-        if ( xResult->next() ) // there can be only one table with this name
-        {
-            sal_Int32 nPrivileges = ::dbtools::getTablePrivileges( m_xMetaData, sCatalog, sSchema, sTable );
-            if ( m_xMetaData->isReadOnly() )
-                nPrivileges &= ~( Privilege::INSERT | Privilege::UPDATE | Privilege::DELETE | Privilege::CREATE | Privilege::ALTER | Privilege::DROP );
+    if ( !xResult.is() )
+        return nullptr;
 
-            // obtain privileges
-            xRet = new OHSQLTable( this
-                                                ,static_cast<OHCatalog&>(m_rParent).getConnection()
-                                                ,sTable
-                                                ,xRow->getString(4)
-                                                ,xRow->getString(5)
-                                                ,sSchema
-                                                ,sCatalog
-                                                ,nPrivileges);
-        }
-        ::comphelper::disposeComponent(xResult);
+    rtl::Reference< OHSQLTable > xRet;
+    Reference< XRow > xRow(xResult,UNO_QUERY);
+    if ( xResult->next() ) // there can be only one table with this name
+    {
+        sal_Int32 nPrivileges = ::dbtools::getTablePrivileges( m_xMetaData, sCatalog, sSchema, sTable );
+        if ( m_xMetaData->isReadOnly() )
+            nPrivileges &= ~( Privilege::INSERT | Privilege::UPDATE | Privilege::DELETE | Privilege::CREATE | Privilege::ALTER | Privilege::DROP );
+
+        // obtain privileges
+        xRet = new OHSQLTable( this
+                                ,static_cast<OHCatalog&>(m_rParent).getConnection()
+                                ,sTable
+                                ,xRow->getString(4)
+                                ,xRow->getString(5)
+                                ,sSchema
+                                ,sCatalog
+                                ,nPrivileges);
     }
+    ::comphelper::disposeComponent(xResult);
 
     return xRet;
 }
@@ -95,7 +94,7 @@ Reference< XPropertySet > OTables::createDescriptor()
 }
 
 // XAppend
-sdbcx::ObjectType OTables::appendObject( const OUString& _rForName, const Reference< XPropertySet >& descriptor )
+css::uno::Reference< css::beans::XPropertySet > OTables::appendObject( const OUString& _rForName, const Reference< XPropertySet >& descriptor )
 {
     createTable(descriptor);
     return createObject( _rForName );
@@ -115,7 +114,7 @@ void OTables::dropObject(sal_Int32 _nPos,const OUString& _sElementName)
     OUString sCatalog,sSchema,sTable;
     ::dbtools::qualifiedNameComponents(m_xMetaData,_sElementName,sCatalog,sSchema,sTable,::dbtools::EComposeRule::InDataManipulation);
 
-    OUString aSql(  "DROP " );
+    OUString aSql(  u"DROP "_ustr );
 
     Reference<XPropertySet> xProp(xObject,UNO_QUERY);
     bool bIsView;
@@ -166,7 +165,7 @@ void OTables::appendNew(const OUString& _rsNewTable)
         aListenerLoop.next()->elementInserted(aEvent);
 }
 
-OUString OTables::getNameForObject(const sdbcx::ObjectType& _xObject)
+OUString OTables::getNameForObject(const css::uno::Reference< css::beans::XPropertySet >& _xObject)
 {
     OSL_ENSURE(_xObject.is(),"OTables::getNameForObject: Object is NULL!");
     return ::dbtools::composeTableName( m_xMetaData, _xObject, ::dbtools::EComposeRule::InDataManipulation, false );

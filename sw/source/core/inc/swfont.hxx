@@ -28,6 +28,7 @@
 #include <swtypes.hxx>
 #include "drawfont.hxx"
 #include <editeng/borderline.hxx>
+#include <editeng/lrspitem.hxx>
 #include <optional>
 #include <o3tl/enumarray.hxx>
 
@@ -47,6 +48,8 @@ const sal_Unicode CH_BULLET = 0xB7;     // centered dot
 const sal_Unicode CH_FULL_BLANK = 0x3000;
 const sal_Unicode CH_NB_SPACE = 0xA0;
 const sal_Unicode CH_SIX_PER_EM = 0x2006; // six-per-em space
+const sal_Unicode CH_EN_SPACE = 0x2002;
+const sal_Unicode CH_DEGREE =  0xb0;
 
 Degree10 UnMapDirection( Degree10 nDir, const bool bVertFormat, const bool bVertFormatLRBT );
 
@@ -172,6 +175,7 @@ class SwFont
     bool m_bFontChg       :1;
     bool m_bOrgChg        :1;  // nOrgHeight/Ascent are invalid
     bool m_bGreyWave      :1;  // for the extended TextInput: gray waveline
+    bool m_bURL : 1 = false;
 
 public:
     SwFont( const SwAttrSet* pSet, const IDocumentSettingAccess* pIDocumentSettingAccess );
@@ -262,6 +266,8 @@ public:
     inline void SetGreyWave( const bool bNew );
     bool IsGreyWave() const { return m_bGreyWave; }
     bool IsPaintBlank() const { return m_bPaintBlank; }
+    void SetURL(const bool bURL) { m_bURL = bURL; }
+    bool IsURL() const { return m_bURL; }
 
     // setting of the base class font for SwTextCharFormat
     void SetDiffFnt( const SfxItemSet* pSet,
@@ -414,6 +420,9 @@ public:
     sal_uInt16 CalcShadowSpace(
         const SvxShadowItemSide nShadow, const bool bVertLayout, const bool bVertLayoutLRBT,
         const bool bSkipLeft, const bool bSkipRight ) const;
+
+    // Extract metrics for font-relative unit conversion
+    SvxFontUnitMetrics GetFontUnitMetrics() const;
 
     void dumpAsXml( xmlTextWriterPtr writer ) const;
 };

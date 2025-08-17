@@ -19,9 +19,6 @@
 -o sw.SwXDrawPage
 -o sw.SwXEndnoteProperties
 -o sw.SwXFieldMaster
--o sw.SwXFootnote
--o sw.SwXFootnoteProperties
--o sw.SwXFootnoteText
 -o sw.SwXFrames
 -o sw.SwXHeadFootText
 -o sw.SwXLineNumberingProperties
@@ -34,6 +31,5 @@
 -o sw.SwXPropertySetInfo
 #i111190 -o sw.SwXShape
 -o sw.SwXStyleFamily
--o sw.SwXTableCellText
 -o sw.SwXTableColumns
 -o sw.SwXTableRows

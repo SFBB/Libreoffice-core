@@ -69,10 +69,9 @@ class SwXRedline final
     , public SwXText
     , public SvtListener
 {
-    SwDoc*      m_pDoc;
     SwRangeRedline*  m_pRedline;
 public:
-    SwXRedline(SwRangeRedline& rRedline, SwDoc& rDoc);
+    SwXRedline(SwRangeRedline& rRedline);
     virtual ~SwXRedline() override;
 
 
@@ -114,7 +113,8 @@ namespace sw
     {
         const SwRangeRedline& m_rRedline;
         SwXRedline** m_ppXRedline;
-        FindRedlineHint(const SwRangeRedline& rRedline, SwXRedline** ppXRedline) : m_rRedline(rRedline), m_ppXRedline(ppXRedline) {}
+        FindRedlineHint(const SwRangeRedline& rRedline, SwXRedline** ppXRedline)
+            : SfxHint(SfxHintId::SwFindRedline), m_rRedline(rRedline), m_ppXRedline(ppXRedline) {}
     };
 }
 

@@ -82,17 +82,17 @@ void ShapeMacroAttacher::attachMacro( const OUString& rMacroUrl )
     {
         Reference< XEventsSupplier > xSupplier( mxShape, UNO_QUERY_THROW );
         Reference< XNameReplace > xEvents( xSupplier->getEvents(), UNO_SET_THROW );
-        Sequence aEventProps{ comphelper::makePropertyValue("EventType", OUString( "Script" )),
-                              comphelper::makePropertyValue("Script", rMacroUrl) };
-        xEvents->replaceByName( "OnClick", Any( aEventProps ) );
+        Sequence aEventProps{ comphelper::makePropertyValue(u"EventType"_ustr, u"Script"_ustr),
+                              comphelper::makePropertyValue(u"Script"_ustr, rMacroUrl) };
+        xEvents->replaceByName( u"OnClick"_ustr, Any( aEventProps ) );
     }
     catch( Exception& )
     {
     }
 }
 
-Shape::Shape( const WorksheetHelper& rHelper, const AttributeList& rAttribs, const char* pcServiceName ) :
-    ::oox::drawingml::Shape( pcServiceName ),
+Shape::Shape( const WorksheetHelper& rHelper, const AttributeList& rAttribs, const OUString& rServiceName ) :
+    ::oox::drawingml::Shape( rServiceName ),
     WorksheetHelper( rHelper )
 {
     OUString aMacro = rAttribs.getXString( XML_macro, OUString() );
@@ -134,32 +134,38 @@ GroupShapeContext::GroupShapeContext( const FragmentHandler2& rParent,
     {
         case XDR_TOKEN( sp ):
         {
-            ShapePtr xShape = std::make_shared<Shape>( rHelper, rAttribs, "com.sun.star.drawing.CustomShape" );
+            ShapePtr xShape = std::make_shared<Shape>( rHelper, rAttribs, u"com.sun.star.drawing.CustomShape"_ustr );
             if( pxShape ) *pxShape = xShape;
-            return new ShapeContext( rParent, rxParentShape, xShape );
+
+            xShape->setMacro(rAttribs.getXString(XML_macro, OUString()));
+            xShape->setTextLinkAttr(rAttribs.getXString(XML_textlink, OUString()));
+            xShape->setFLocksText(rAttribs.getBool(XML_fLocksText, true));  // default="true"
+            xShape->setFPublished(rAttribs.getBool(XML_fPublished, false)); // default="false"
+
+            return new ShapeContext( rParent, rxParentShape, std::move(xShape) );
         }
         case XDR_TOKEN( cxnSp ):
         {
-            ShapePtr xShape = std::make_shared<Shape>( rHelper, rAttribs, "com.sun.star.drawing.ConnectorShape" );
+            ShapePtr xShape = std::make_shared<Shape>( rHelper, rAttribs, u"com.sun.star.drawing.ConnectorShape"_ustr );
             if( pxShape ) *pxShape = xShape;
             return new ConnectorShapeContext(rParent, rxParentShape, xShape,
                                              xShape->getConnectorShapeProperties());
         }
         case XDR_TOKEN( pic ):
         {
-            ShapePtr xShape = std::make_shared<Shape>( rHelper, rAttribs, "com.sun.star.drawing.GraphicObjectShape" );
+            ShapePtr xShape = std::make_shared<Shape>( rHelper, rAttribs, u"com.sun.star.drawing.GraphicObjectShape"_ustr );
             if( pxShape ) *pxShape = xShape;
             return new GraphicShapeContext( rParent, rxParentShape, xShape );
         }
         case XDR_TOKEN( graphicFrame ):
         {
-            ShapePtr xShape = std::make_shared<Shape>( rHelper, rAttribs, "com.sun.star.drawing.GraphicObjectShape" );
+            ShapePtr xShape = std::make_shared<Shape>( rHelper, rAttribs, u"com.sun.star.drawing.GraphicObjectShape"_ustr );
             if( pxShape ) *pxShape = xShape;
             return new GraphicalObjectFrameContext( rParent, rxParentShape, xShape, rHelper.getSheetType() != WorksheetType::Chart );
         }
         case XDR_TOKEN( grpSp ):
         {
-            ShapePtr xShape = std::make_shared<Shape>( rHelper, rAttribs, "com.sun.star.drawing.GroupShape" );
+            ShapePtr xShape = std::make_shared<Shape>( rHelper, rAttribs, u"com.sun.star.drawing.GroupShape"_ustr );
             if( pxShape ) *pxShape = xShape;
             return new GroupShapeContext( rParent, rHelper, rxParentShape, xShape );
         }
@@ -477,6 +483,26 @@ const ::oox::vml::ShapeBase* VmlDrawing::getNoteShape( const ScAddress& rPos ) c
     return getShapes().findShape( VmlFindNoteFunc( rPos ) );
 }
 
+VmlDrawing::NoteShapesMap VmlDrawing::buildNoteShapesMap() const
+{
+    VmlDrawing::NoteShapesMap aMap;
+    for (const std::shared_ptr<oox::vml::ShapeBase> & rxShape : getShapes().getAllShapes())
+    {
+        const ::oox::vml::ClientData* pClientData = rxShape->getClientData();
+        if (pClientData)
+            aMap[std::make_pair(pClientData->mnCol, pClientData->mnRow)] = rxShape.get();
+    }
+    return aMap;
+}
+
+size_t VmlDrawing::NoteShapesMapHash::operator()(const std::pair<sal_Int32, sal_Int32>& rKey) const
+{
+    std::size_t seed = 0;
+    o3tl::hash_combine(seed, rKey.first);
+    o3tl::hash_combine(seed, rKey.second);
+    return seed;
+}
+
 bool VmlDrawing::isShapeSupported( const ::oox::vml::ShapeBase& rShape ) const
 {
     const ::oox::vml::ClientData* pClientData = rShape.getClientData();
@@ -489,19 +515,19 @@ OUString VmlDrawing::getShapeBaseName( const ::oox::vml::ShapeBase& rShape ) con
     {
         switch( pClientData->mnObjType )
         {
-            case XML_Button:    return "Button";
-            case XML_Checkbox:  return "Check Box";
-            case XML_Dialog:    return "Dialog Frame";
-            case XML_Drop:      return "Drop Down";
-            case XML_Edit:      return "Edit Box";
-            case XML_GBox:      return "Group Box";
-            case XML_Label:     return "Label";
-            case XML_List:      return "List Box";
-            case XML_Note:      return "Comment";
-            case XML_Pict:      return (pClientData->mbDde || getOleObjectInfo( rShape.getShapeId() )) ? OUString( "Object" ) : OUString( "Picture" );
-            case XML_Radio:     return "Option Button";
-            case XML_Scroll:    return "Scroll Bar";
-            case XML_Spin:      return "Spinner";
+            case XML_Button:    return u"Button"_ustr;
+            case XML_Checkbox:  return u"Check Box"_ustr;
+            case XML_Dialog:    return u"Dialog Frame"_ustr;
+            case XML_Drop:      return u"Drop Down"_ustr;
+            case XML_Edit:      return u"Edit Box"_ustr;
+            case XML_GBox:      return u"Group Box"_ustr;
+            case XML_Label:     return u"Label"_ustr;
+            case XML_List:      return u"List Box"_ustr;
+            case XML_Note:      return u"Comment"_ustr;
+            case XML_Pict:      return (pClientData->mbDde || getOleObjectInfo( rShape.getShapeId() )) ? u"Object"_ustr : u"Picture"_ustr;
+            case XML_Radio:     return u"Option Button"_ustr;
+            case XML_Scroll:    return u"Scroll Bar"_ustr;
+            case XML_Spin:      return u"Spinner"_ustr;
         }
     }
     return ::oox::vml::Drawing::getShapeBaseName( rShape );

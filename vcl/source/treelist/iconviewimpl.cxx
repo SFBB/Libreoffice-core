@@ -20,41 +20,41 @@
 #include <vcl/svapp.hxx>
 #include <vcl/toolkit/treelistentry.hxx>
 #include <tools/debug.hxx>
-#include <iconview.hxx>
 #include "iconviewimpl.hxx"
 
-IconViewImpl::IconViewImpl( SvTreeListBox* pTreeListBox, SvTreeList* pTreeList, WinBits nWinStyle )
-: SvImpLBox( pTreeListBox, pTreeList, nWinStyle )
+IconViewImpl::IconViewImpl(IconView* pIconView, SvTreeList* pTreeList, WinBits nWinStyle)
+    : SvImpLBox(pIconView, pTreeList, nWinStyle)
 {
 }
 
-static bool IsSeparator(const SvTreeListEntry* entry)
+IconView& IconViewImpl::GetIconView() const
 {
-    return entry && entry->GetFlags() & SvTLEntryFlags::IS_SEPARATOR;
+    assert(m_pView);
+    return static_cast<IconView&>(*m_pView);
 }
 
 Size IconViewImpl::GetEntrySize(const SvTreeListEntry& entry) const
 {
-    return static_cast<const IconView*>(m_pView.get())->GetEntrySize(entry);
+    return GetIconView().GetEntrySize(entry);
 }
 
 void IconViewImpl::IterateVisibleEntryAreas(const IterateEntriesFunc& f, bool fromStartEntry) const
 {
     tools::Long x = 0, y = 0;
     short column = 0;
-    const tools::Long rowWidth = m_pView->GetEntryWidth() * m_pView->GetColumnsCount();
+    const tools::Long rowWidth = m_pView->GetEntryWidth() * GetIconView().GetColumnCount();
     tools::Long nPrevHeight = 0;
     for (auto entry = fromStartEntry ? m_pStartEntry : m_pView->FirstVisible(); entry;
          entry = m_pView->NextVisible(entry))
     {
         const Size s = GetEntrySize(*entry);
-        if (x >= rowWidth || IsSeparator(entry))
+        if (x >= rowWidth || entry->IsSeparator())
         {
             column = 0;
             x = 0;
             y += nPrevHeight;
         }
-        EntryAreaInfo info{ entry, column, tools::Rectangle{ Point{ x, y }, s } };
+        EntryAreaInfo info{ *entry, column, tools::Rectangle{ Point{ x, y }, s } };
         const auto result = f(info);
         if (result == CallbackResult::Stop)
             return;
@@ -69,9 +69,9 @@ tools::Long IconViewImpl::GetEntryRow(const SvTreeListEntry* entry) const
     tools::Long nEntryRow = -1;
     auto GetRow = [entry, &nEntryRow, row = -1](const EntryAreaInfo& info) mutable
     {
-        if (info.column == 0 && !IsSeparator(info.entry))
+        if (info.column == 0 && !info.entry.IsSeparator())
             ++row;
-        if (info.entry != entry)
+        if (&info.entry != entry)
             return CallbackResult::Continue;
         nEntryRow = row;
         return CallbackResult::Stop;
@@ -86,12 +86,12 @@ void IconViewImpl::SetStartEntry(SvTreeListEntry* entry)
     tools::Long row = -1;
     auto GetEntryAndRow = [&entry, &row, max, found = entry](const EntryAreaInfo& info) mutable
     {
-        if (info.column == 0 && !IsSeparator(info.entry))
+        if (info.column == 0 && !info.entry.IsSeparator())
         {
-            found = info.entry;
+            found = &info.entry;
             ++row;
         }
-        if (row >= max || info.entry == entry)
+        if (row >= max || &info.entry == entry)
         {
             entry = found;
             return CallbackResult::Stop;
@@ -105,14 +105,14 @@ void IconViewImpl::SetStartEntry(SvTreeListEntry* entry)
     m_pView->Invalidate(GetVisibleArea());
 }
 
-void IconViewImpl::ScrollTo(SvTreeListEntry* entry)
+void IconViewImpl::ScrollTo(SvTreeListEntry& rEntry)
 {
     if (!m_aVerSBar->IsVisible())
         return;
-    const tools::Long entryRow = GetEntryRow(entry);
+    const tools::Long entryRow = GetEntryRow(&rEntry);
     const tools::Long oldStartRow = m_aVerSBar->GetThumbPos();
     if (entryRow < oldStartRow)
-        IconViewImpl::SetStartEntry(entry);
+        IconViewImpl::SetStartEntry(&rEntry);
     const tools::Long visibleRows = m_aVerSBar->GetVisibleSize();
     const tools::Long posRelativeToBottom = entryRow - (oldStartRow + visibleRows) + 1;
     if (posRelativeToBottom > 0)
@@ -125,9 +125,9 @@ SvTreeListEntry* IconViewImpl::GoToPrevRow(SvTreeListEntry* pEntry, int nRows) c
     auto FindPrev = [this, pEntry, nRows, &pPrev,
                      prevs = std::vector<SvTreeListEntry*>()](const EntryAreaInfo& info) mutable
     {
-        if (info.column == 0 && !IsSeparator(info.entry))
-            prevs.push_back(info.entry);
-        if (pEntry == info.entry)
+        if (info.column == 0 && !info.entry.IsSeparator())
+            prevs.push_back(&info.entry);
+        if (pEntry == &info.entry)
         {
             if (prevs.size() > 1)
             {
@@ -136,7 +136,7 @@ SvTreeListEntry* IconViewImpl::GoToPrevRow(SvTreeListEntry* pEntry, int nRows) c
                 for (short column = info.column; column; --column)
                 {
                     SvTreeListEntry* pNext = m_pView->NextVisible(pPrev);
-                    if (!pNext || IsSeparator(pNext))
+                    if (!pNext || pNext->IsSeparator())
                         break;
                     pPrev = pNext;
                 }
@@ -153,18 +153,17 @@ SvTreeListEntry* IconViewImpl::GoToPrevRow(SvTreeListEntry* pEntry, int nRows) c
 SvTreeListEntry* IconViewImpl::GoToNextRow(SvTreeListEntry* pEntry, int nRows) const
 {
     SvTreeListEntry* pNext = pEntry;
-    auto FindNext
-        = [pEntry, nRows, &pNext, column = -1](const EntryAreaInfo& info) mutable
+    auto FindNext = [pEntry, nRows, &pNext, column = -1](const EntryAreaInfo& info) mutable
     {
-        if (info.column <= column && !IsSeparator(info.entry))
+        if (info.column <= column && !info.entry.IsSeparator())
         {
             if (info.column == 0 && --nRows < 0)
                 return CallbackResult::Stop;
-            pNext = info.entry;
+            pNext = &info.entry;
             if (info.column == column && nRows == 0)
                 return CallbackResult::Stop;
         }
-        else if (pEntry == info.entry)
+        else if (pEntry == &info.entry)
         {
             column = info.column;
         }
@@ -293,7 +292,7 @@ Point IconViewImpl::GetEntryPosition(const SvTreeListEntry* pEntry) const
     Point result{ -m_pView->GetEntryWidth(), -m_pView->GetEntryHeight() }; // invisible
     auto FindEntryPos = [pEntry, &result](const EntryAreaInfo& info)
     {
-        if (pEntry == info.entry)
+        if (pEntry == &info.entry)
         {
             result = info.area.TopLeft();
             return CallbackResult::Stop;
@@ -319,7 +318,7 @@ SvTreeListEntry* IconViewImpl::GetClickedEntry( const Point& rPoint ) const
     {
         if (info.area.Contains(rPoint))
         {
-            pEntry = info.entry;
+            pEntry = &info.entry;
             return CallbackResult::Stop;
         }
         else if (info.area.Top() > rPoint.Y())
@@ -328,7 +327,7 @@ SvTreeListEntry* IconViewImpl::GetClickedEntry( const Point& rPoint ) const
         }
         else if (info.area.Bottom() > rPoint.Y())
         {
-            pEntry = info.entry; // Same row; store the entry in case the click is past all entries
+            pEntry = &info.entry; // Same row; store the entry in case the click is past all entries
         }
         return CallbackResult::Continue;
     };
@@ -369,14 +368,14 @@ void IconViewImpl::AdjustScrollBars( Size& rSize )
 
     // number of entries visible within the view
     const tools::Long nVisibleRows = aOSize.Height() / nEntryHeight;
-    m_nVisibleCount = nVisibleRows * m_pView->GetColumnsCount();
+    m_nVisibleCount = nVisibleRows * GetIconView().GetColumnCount();
 
     tools::Long nTotalRows = 0;
     tools::Long totalHeight = 0;
     auto CountRowsAndHeight = [&nTotalRows, &totalHeight](const EntryAreaInfo& info)
     {
         totalHeight = std::max(totalHeight, info.area.Bottom());
-        if (info.column == 0 && !IsSeparator(info.entry))
+        if (info.column == 0 && !info.entry.IsSeparator())
             ++nTotalRows;
         return CallbackResult::Continue;
     };
@@ -445,7 +444,7 @@ SvTreeListEntry* IconViewImpl::GetEntry( const Point& rPoint ) const
     {
         if (info.area.Contains(rPoint))
         {
-            pEntry = info.entry;
+            pEntry = &info.entry;
             return CallbackResult::Stop;
         }
         else if (info.area.Top() > rPoint.Y())
@@ -467,6 +466,7 @@ void IconViewImpl::SyncVerThumb()
 void IconViewImpl::UpdateAll()
 {
     FindMostRight();
+    AdjustScrollBars(m_aOutputSize);
     SyncVerThumb();
     FillView();
     ShowVerSBar();
@@ -511,12 +511,12 @@ void IconViewImpl::Paint(vcl::RenderContext& rRenderContext, const tools::Rectan
         SetCursor(m_pStartEntry, bNotSelect);
     }
 
-    auto PaintEntry = [iconView = static_cast<IconView*>(m_pView.get()), &rRect,
+    auto PaintEntry = [&rIconView = GetIconView(), &rRect,
                        &rRenderContext](const EntryAreaInfo& info)
     {
         if (!info.area.GetIntersection(rRect).IsEmpty())
         {
-            iconView->PaintEntry(*info.entry, info.area.Left(), info.area.Top(), rRenderContext);
+            rIconView.PaintEntry(info.entry, info.area.Left(), info.area.Top(), rRenderContext);
         }
         else if (info.area.Top() > rRect.Bottom())
         {
@@ -635,7 +635,7 @@ bool IconViewImpl::KeyInput( const KeyEvent& rKEvt )
             {
                 m_aSelEng.CursorPosChanging( bShift, bMod1 );
                 SetCursor( pNewCursor, bMod1 );     // no selection, when Ctrl is on
-                ScrollTo(pNewCursor);
+                ScrollTo(*pNewCursor);
             }
             break;
         }
@@ -647,7 +647,7 @@ bool IconViewImpl::KeyInput( const KeyEvent& rKEvt )
             if( pNewCursor )
             {
                 m_aSelEng.CursorPosChanging( bShift, bMod1 );
-                ScrollTo(pNewCursor);
+                ScrollTo(*pNewCursor);
                 SetCursor(pNewCursor, bMod1); // no selection, when Ctrl is on
             }
             else
@@ -665,7 +665,7 @@ bool IconViewImpl::KeyInput( const KeyEvent& rKEvt )
                 if (pNewCursor)
                 {
                     m_aSelEng.CursorPosChanging(bShift, bMod1);
-                    ScrollTo(pNewCursor);
+                    ScrollTo(*pNewCursor);
                     SetCursor(pNewCursor);
                 }
             }
@@ -682,7 +682,7 @@ bool IconViewImpl::KeyInput( const KeyEvent& rKEvt )
                 if (pNewCursor)
                 {
                     m_aSelEng.CursorPosChanging(bShift, bMod1);
-                    ScrollTo(pNewCursor);
+                    ScrollTo(*pNewCursor);
                     SetCursor(pNewCursor);
                 }
                 else

@@ -23,13 +23,8 @@
 #include <sfx2/sidebar/PanelLayout.hxx>
 #include <svx/svxdllapi.h>
 
-class SfxBindings;
-
 class Gallery;
-class GalleryBrowser1;
-class GalleryBrowser2;
-class FmFormModel;
-class Splitter;
+class GalleryBrowser;
 
 namespace svx::sidebar
 {
@@ -41,8 +36,7 @@ public:
 
 private:
     Gallery* mpGallery;
-    std::unique_ptr<GalleryBrowser1> mxBrowser1;
-    std::unique_ptr<GalleryBrowser2> mxBrowser2;
+    std::unique_ptr<GalleryBrowser> mpBrowser;
 };
 
 } // end of namespace svx::sidebar

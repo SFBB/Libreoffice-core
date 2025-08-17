@@ -42,6 +42,7 @@
 #include <com/sun/star/task/XStatusIndicator.hpp>
 #include <comphelper/sequence.hxx>
 #include <tools/zcodec.hxx>
+#include <unotools/securityoptions.hxx>
 #include <filter/msfilter/classids.hxx>
 #include <filter/msfilter/msoleexp.hxx>
 #include <filter/msfilter/msdffimp.hxx>
@@ -53,6 +54,7 @@
 #include <sdfilter.hxx>
 #include <memory>
 #include <utility>
+#include <unomodel.hxx>
 
 class SfxObjectShell;
     // complete SfxObjectShell for SaveVBA under -fsanitize=function
@@ -65,8 +67,8 @@ using ::com::sun::star::beans::XPropertySet;
 
 //============================ PPTWriter ==================================
 
-PPTWriter::PPTWriter( tools::SvRef<SotStorage> xSvStorage,
-            css::uno::Reference< css::frame::XModel > const & rXModel,
+PPTWriter::PPTWriter( rtl::Reference<SotStorage> xSvStorage,
+            rtl::Reference< SdXImpressDocument > const & rXModel,
             css::uno::Reference< css::task::XStatusIndicator > const & rXStatInd,
             SvMemoryStream* pVBA, sal_uInt32 nCnvrtFlags ) :
     PPTWriterBase           ( rXModel, rXStatInd ),
@@ -82,6 +84,7 @@ PPTWriter::PPTWriter( tools::SvRef<SotStorage> xSvStorage,
     mpVBA                   ( pVBA ),
     mnExEmbed               ( 0 ),
     mpExEmbed               ( new SvMemoryStream ),
+    mpAuthorIDs             ( new SvtSecurityMapPersonalInfo ),
     mnPagesWritten          ( 0 ),
     mnTxId                  ( 0x7a2f64 ),
     mnDiaMode               ( 0 ),
@@ -99,21 +102,21 @@ void PPTWriter::exportPPTPre( const std::vector< css::beans::PropertyValue >& rM
     {
         mbStatusIndicator = true;
         mnStatMaxValue = ( mnPages + mnMasterPages ) * 5;
-        mXStatusIndicator->start( "PowerPoint Export", mnStatMaxValue + ( mnStatMaxValue >> 3 ) );
+        mXStatusIndicator->start( u"PowerPoint Export"_ustr, mnStatMaxValue + ( mnStatMaxValue >> 3 ) );
     }
 
     SvGlobalName aGName(MSO_PPT8_CLASSID);
-    mrStg->SetClass( aGName, SotClipboardFormatId::NONE, "MS PowerPoint 97" );
+    mrStg->SetClass( aGName, SotClipboardFormatId::NONE, u"MS PowerPoint 97"_ustr );
 
     if ( !ImplCreateCurrentUserStream() )
         return;
 
-    mpStrm = mrStg->OpenSotStream( "PowerPoint Document" );
+    mpStrm = mrStg->OpenSotStream( u"PowerPoint Document"_ustr );
     if ( !mpStrm )
         return;
 
     if ( !mpPicStrm )
-        mpPicStrm = mrStg->OpenSotStream( "Pictures" );
+        mpPicStrm = mrStg->OpenSotStream( u"Pictures"_ustr );
 
     auto aIter = std::find_if(rMediaData.begin(), rMediaData.end(),
         [](const css::beans::PropertyValue& rProp) { return rProp.Name == "BaseURI"; });
@@ -129,7 +132,7 @@ void PPTWriter::exportPPTPost( )
 
     if ( mbStatusIndicator )
     {
-        mXStatusIndicator->setText( "PowerPoint Export" );
+        mXStatusIndicator->setText( u"PowerPoint Export"_ustr );
         sal_uInt32 nValue = mnStatMaxValue + ( mnStatMaxValue >> 3 );
         if ( nValue > mnLatestStatValue )
         {
@@ -148,8 +151,6 @@ void PPTWriter::exportPPTPost( )
 
     mbStatus = true;
 };
-
-static void ImplExportComments( const uno::Reference< drawing::XDrawPage >& xPage, SvMemoryStream& rBinaryTagData10Atom );
 
 void PPTWriter::ImplWriteSlide( sal_uInt32 nPageNum, sal_uInt32 nMasterNum, sal_uInt16 nMode,
                                 bool bHasBackground, Reference< XPropertySet > const & aXBackgroundPropSet )
@@ -171,9 +172,9 @@ void PPTWriter::ImplWriteSlide( sal_uInt32 nPageNum, sal_uInt32 nMasterNum, sal_
     bool bVisible = true;
     css::presentation::FadeEffect eFe = css::presentation::FadeEffect_NONE;
 
-    if ( GetPropertyValue( aAny, mXPagePropSet, "Visible" ) )
+    if ( GetPropertyValue( aAny, mXPagePropSet, u"Visible"_ustr ) )
         aAny >>= bVisible;
-    if ( GetPropertyValue( aAny, mXPagePropSet, "Change" ) )
+    if ( GetPropertyValue( aAny, mXPagePropSet, u"Change"_ustr ) )
     {
         switch ( *o3tl::doAccess<sal_Int32>(aAny) )
         {
@@ -188,7 +189,7 @@ void PPTWriter::ImplWriteSlide( sal_uInt32 nPageNum, sal_uInt32 nMasterNum, sal_
             break;
         }
     }
-    if ( GetPropertyValue( aAny, mXPagePropSet, "Effect" ) )
+    if ( GetPropertyValue( aAny, mXPagePropSet, u"Effect"_ustr ) )
         aAny >>= eFe;
 
     sal_uInt32  nSoundRef = 0;
@@ -196,7 +197,7 @@ void PPTWriter::ImplWriteSlide( sal_uInt32 nPageNum, sal_uInt32 nMasterNum, sal_
     bool    bStopSound = false;
     bool    bLoopSound = false;
 
-    if ( GetPropertyValue( aAny, mXPagePropSet, "Sound" ) )
+    if ( GetPropertyValue( aAny, mXPagePropSet, u"Sound"_ustr ) )
     {
         OUString aSoundURL;
         if ( aAny >>= aSoundURL )
@@ -207,7 +208,7 @@ void PPTWriter::ImplWriteSlide( sal_uInt32 nPageNum, sal_uInt32 nMasterNum, sal_
         else
             aAny >>= bStopSound;
     }
-    if ( GetPropertyValue( aAny, mXPagePropSet, "LoopSound" ) )
+    if ( GetPropertyValue( aAny, mXPagePropSet, u"LoopSound"_ustr ) )
         aAny >>= bLoopSound;
 
     bool bNeedsSSSlideInfoAtom = !bVisible
@@ -223,7 +224,7 @@ void PPTWriter::ImplWriteSlide( sal_uInt32 nPageNum, sal_uInt32 nMasterNum, sal_
         sal_Int32   nSlideTime = 0;         // still has to !!!
         sal_uInt8   nSpeed = 1;
 
-        if ( GetPropertyValue( aAny, mXPagePropSet, "TransitionDuration" ) )
+        if ( GetPropertyValue( aAny, mXPagePropSet, u"TransitionDuration"_ustr ) )
         {
             css::presentation::AnimationSpeed aAs;
             double fTransitionDuration = -1.0;
@@ -250,11 +251,11 @@ void PPTWriter::ImplWriteSlide( sal_uInt32 nPageNum, sal_uInt32 nMasterNum, sal_
             nSpeed = static_cast<sal_uInt8>(aAs);
         }
         sal_Int16 nTT = 0;
-        if ( GetPropertyValue( aAny, mXPagePropSet, "TransitionType" )
+        if ( GetPropertyValue( aAny, mXPagePropSet, u"TransitionType"_ustr )
             && ( aAny >>= nTT ) )
         {
             sal_Int16 nTST = 0;
-            if ( GetPropertyValue( aAny, mXPagePropSet, "TransitionSubtype" )
+            if ( GetPropertyValue( aAny, mXPagePropSet, u"TransitionSubtype"_ustr )
                 && ( aAny >>= nTST ) )
                 nTransitionType = GetTransition( nTT, nTST, eFe, 0, nDirection );
 
@@ -272,7 +273,7 @@ void PPTWriter::ImplWriteSlide( sal_uInt32 nPageNum, sal_uInt32 nMasterNum, sal_
         if ( bStopSound )
             nBuildFlags |= 256;
 
-        if ( GetPropertyValue( aAny, mXPagePropSet, "Duration" ) )// duration of this slide
+        if ( GetPropertyValue( aAny, mXPagePropSet, u"Duration"_ustr ) )// duration of this slide
             nSlideTime = *o3tl::doAccess<sal_Int32>(aAny) << 10;        // in ticks
 
         mpPptEscherEx->AddAtom( 16, EPP_SSSlideInfoAtom );
@@ -461,7 +462,7 @@ PPTWriter::~PPTWriter()
 
 bool PPTWriter::ImplCreateCurrentUserStream()
 {
-    mpCurUserStrm = mrStg->OpenSotStream( "Current User" );
+    mpCurUserStrm = mrStg->OpenSotStream( u"Current User"_ustr );
     if ( !mpCurUserStrm )
         return false;
     char pUserName[] = "Current User";
@@ -491,10 +492,8 @@ bool PPTWriter::ImplCreateCurrentUserStream()
 
 void PPTWriter::ImplCreateDocumentSummaryInformation()
 {
-    uno::Reference<document::XDocumentPropertiesSupplier> xDPS(
-        mXModel, uno::UNO_QUERY_THROW);
     uno::Reference<document::XDocumentProperties> xDocProps(
-        xDPS->getDocumentProperties());
+        mXModel->getDocumentProperties());
 
     if (!xDocProps.is())
         return;
@@ -522,7 +521,7 @@ void PPTWriter::ImplCreateDocumentSummaryInformation()
     if ( mnCnvrtFlags & 0x8000 )
     {
         uno::Sequence<sal_Int8> aThumbSeq;
-        if ( GetPageByIndex( 0, NORMAL ) && ImplGetPropertyValue( mXPagePropSet, "PreviewBitmap" ) )
+        if ( GetPageByIndex( 0, NORMAL ) && ImplGetPropertyValue( mXPagePropSet, u"PreviewBitmap"_ustr ) )
         {
             aThumbSeq = *o3tl::doAccess<uno::Sequence<sal_Int8>>(mAny);
         }
@@ -556,17 +555,17 @@ void PPTWriter::ImplCreateHeaderFooterStrings( SvStream& rStrm, css::uno::Refere
 
     OUString aString;
     css::uno::Any aAny;
-    if ( PropValue::GetPropertyValue( aAny, rXPagePropSet, "HeaderText", true ) )
+    if ( PropValue::GetPropertyValue( aAny, rXPagePropSet, u"HeaderText"_ustr, true ) )
     {
         if ( aAny >>= aString )
             PPTWriter::WriteCString( rStrm, aString, 1 );
     }
-    if ( PropValue::GetPropertyValue( aAny, rXPagePropSet, "FooterText", true ) )
+    if ( PropValue::GetPropertyValue( aAny, rXPagePropSet, u"FooterText"_ustr, true ) )
     {
         if ( aAny >>= aString )
             PPTWriter::WriteCString( rStrm, aString, 2 );
     }
-    if ( PropValue::GetPropertyValue( aAny, rXPagePropSet, "DateTimeText", true ) )
+    if ( PropValue::GetPropertyValue( aAny, rXPagePropSet, u"DateTimeText"_ustr, true ) )
     {
         if ( aAny >>= aString )
             PPTWriter::WriteCString( rStrm, aString );
@@ -581,34 +580,34 @@ void PPTWriter::ImplCreateHeaderFooters( css::uno::Reference< css::beans::XPrope
     bool bVal = false;
     sal_uInt32 nVal = 0;
     css::uno::Any aAny;
-    if ( PropValue::GetPropertyValue( aAny, rXPagePropSet, "IsHeaderVisible", true ) )
+    if ( PropValue::GetPropertyValue( aAny, rXPagePropSet, u"IsHeaderVisible"_ustr, true ) )
     {
         if ( ( aAny >>= bVal ) && bVal )
             nVal |= 0x100000;
     }
-    if ( PropValue::GetPropertyValue( aAny, rXPagePropSet, "IsFooterVisible", true ) )
+    if ( PropValue::GetPropertyValue( aAny, rXPagePropSet, u"IsFooterVisible"_ustr, true ) )
     {
         if ( ( aAny >>= bVal ) && bVal )
             nVal |= 0x200000;
     }
-    if ( PropValue::GetPropertyValue( aAny, rXPagePropSet, "IsDateTimeVisible", true ) )
+    if ( PropValue::GetPropertyValue( aAny, rXPagePropSet, u"IsDateTimeVisible"_ustr, true ) )
     {
         if ( ( aAny >>= bVal ) && bVal )
             nVal |= 0x010000;
     }
-    if ( PropValue::GetPropertyValue( aAny, rXPagePropSet, "IsPageNumberVisible", true ) )
+    if ( PropValue::GetPropertyValue( aAny, rXPagePropSet, u"IsPageNumberVisible"_ustr, true ) )
     {
         if ( ( aAny >>= bVal ) && bVal )
             nVal |= 0x080000;
     }
-    if ( PropValue::GetPropertyValue( aAny, rXPagePropSet, "IsDateTimeFixed", true ) )
+    if ( PropValue::GetPropertyValue( aAny, rXPagePropSet, u"IsDateTimeFixed"_ustr, true ) )
     {
         if ( ( aAny >>= bVal ) && !bVal )
             nVal |= 0x20000;
         else
             nVal |= 0x40000;
     }
-    if ( PropValue::GetPropertyValue( aAny, rXPagePropSet, "DateTimeFormat", true ) )
+    if ( PropValue::GetPropertyValue( aAny, rXPagePropSet, u"DateTimeFormat"_ustr, true ) )
     {
         sal_Int32 nFormat = *o3tl::doAccess<sal_Int32>(aAny);
         SvxDateFormat eDateFormat = static_cast<SvxDateFormat>( nFormat & 0xf );
@@ -744,161 +743,153 @@ bool PPTWriter::ImplCreateDocument()
     }
     mpPptEscherEx->CloseContainer();        // EPP_SlideListWithText
 
-    css::uno::Reference< css::presentation::XPresentationSupplier >
-        aXPresSupplier( mXModel, css::uno::UNO_QUERY );
-    if ( aXPresSupplier.is() )
+    css::uno::Reference< css::presentation::XPresentation > aXPresentation( mXModel->getPresentation() );
+    if ( aXPresentation.is() )
     {
-        css::uno::Reference< css::presentation::XPresentation > aXPresentation( aXPresSupplier->getPresentation() );
-        if ( aXPresentation.is() )
+        mXPropSet.set( aXPresentation, css::uno::UNO_QUERY );
+        if ( mXPropSet.is() )
         {
-            mXPropSet.set( aXPresentation, css::uno::UNO_QUERY );
-            if ( mXPropSet.is() )
+            OUString aCustomShow;
+            sal_uInt32 const nPenColor = 0x1000000;
+            sal_Int32 const  nRestartTime = 0x7fffffff;
+            sal_Int16   nStartSlide = 0;
+            sal_Int16   nEndSlide = 0;
+            sal_uInt32  nFlags = 0;             // Bit 0:   Auto advance
+                                                // Bit 1    Skip builds ( do not allow slide effects )
+                                                // Bit 2    Use slide range
+                                                // Bit 3    Use named show
+                                                // Bit 4    Browse mode on
+                                                // Bit 5    Kiosk mode on
+                                                // Bit 6    Skip narration
+                                                // Bit 7    loop continuously
+                                                // Bit 8    show scrollbar
+
+            if ( ImplGetPropertyValue( u"CustomShow"_ustr ) )
             {
-                OUString aCustomShow;
-                sal_uInt32 const nPenColor = 0x1000000;
-                sal_Int32 const  nRestartTime = 0x7fffffff;
-                sal_Int16   nStartSlide = 0;
-                sal_Int16   nEndSlide = 0;
-                sal_uInt32  nFlags = 0;             // Bit 0:   Auto advance
-                                                    // Bit 1    Skip builds ( do not allow slide effects )
-                                                    // Bit 2    Use slide range
-                                                    // Bit 3    Use named show
-                                                    // Bit 4    Browse mode on
-                                                    // Bit 5    Kiosk mode on
-                                                    // Bit 6    Skip narration
-                                                    // Bit 7    loop continuously
-                                                    // Bit 8    show scrollbar
-
-                if ( ImplGetPropertyValue( "CustomShow" ) )
+                aCustomShow = *o3tl::doAccess<OUString>(mAny);
+                if ( !aCustomShow.isEmpty() )
                 {
-                    aCustomShow = *o3tl::doAccess<OUString>(mAny);
-                    if ( !aCustomShow.isEmpty() )
+                    nFlags |= 8;
+                }
+            }
+            if ( ( nFlags & 8 ) == 0 )
+            {
+                if ( ImplGetPropertyValue( u"FirstPage"_ustr ) )
+                {
+                    auto aSlideName = o3tl::doAccess<OUString>(mAny);
+
+                    std::vector<OUString>::const_iterator pIter = std::find(
+                                maSlideNameList.begin(),maSlideNameList.end(), *aSlideName);
+
+                    if (pIter != maSlideNameList.end())
                     {
-                        nFlags |= 8;
+                        nStartSlide = pIter - maSlideNameList.begin() + 1;
+                        nFlags |= 4;
+                        nEndSlide = static_cast<sal_uInt16>(mnPages);
                     }
                 }
-                if ( ( nFlags & 8 ) == 0 )
+            }
+
+            if ( ImplGetPropertyValue( u"IsAutomatic"_ustr ) )
+            {
+                bool bBool = false;
+                mAny >>= bBool;
+                if ( !bBool )
+                    nFlags |= 1;
+            }
+
+            if ( ImplGetPropertyValue( u"IsEndless"_ustr ) )
+            {
+                bool bBool = false;
+                mAny >>= bBool;
+                if ( bBool )
+                    nFlags |= 0x80;
+            }
+            if ( ImplGetPropertyValue( u"IsFullScreen"_ustr ) )
+            {
+                bool bBool = false;
+                mAny >>= bBool;
+                if ( !bBool )
+                    nFlags |= 0x11;
+            }
+
+            mpPptEscherEx->AddAtom( 80, EPP_SSDocInfoAtom, 1 );
+            mpStrm->WriteUInt32( nPenColor ).WriteInt32( nRestartTime ).WriteInt16( nStartSlide ).WriteInt16( nEndSlide );
+
+            sal_uInt32 nCustomShowNameLen = aCustomShow.getLength();
+            if ( nCustomShowNameLen > 31 )
+                nCustomShowNameLen = 31;
+            if ( nCustomShowNameLen )       // named show identifier
+            {
+                const sal_Unicode* pCustomShow = aCustomShow.getStr();
+                for ( i = 0; i < nCustomShowNameLen; i++ )
                 {
-                    if ( ImplGetPropertyValue( "FirstPage" ) )
+                    mpStrm->WriteUInt16( pCustomShow[ i ] );
+                }
+            }
+            for ( i = nCustomShowNameLen; i < 32; i++, mpStrm->WriteUInt16( 0 ) ) ;
+
+            mpStrm->WriteUInt32( nFlags );
+            css::uno::Reference< css::container::XNameContainer > aXCont( mXModel->getCustomPresentations() );
+            if ( aXCont.is() )
+            {
+                const css::uno::Sequence< OUString> aNameSeq( aXCont->getElementNames() );
+                if ( aNameSeq.hasElements() )
+                {
+                    mpPptEscherEx->OpenContainer( EPP_NamedShows );
+                    sal_uInt32 nCustomShowIndex = 0;
+                    for( OUString const & customShowName : aNameSeq )
                     {
-                        auto aSlideName = o3tl::doAccess<OUString>(mAny);
-
-                        std::vector<OUString>::const_iterator pIter = std::find(
-                                    maSlideNameList.begin(),maSlideNameList.end(), *aSlideName);
-
-                        if (pIter != maSlideNameList.end())
+                        if ( !customShowName.isEmpty() )
                         {
-                            nStartSlide = pIter - maSlideNameList.begin() + 1;
-                            nFlags |= 4;
-                            nEndSlide = static_cast<sal_uInt16>(mnPages);
-                        }
-                    }
-                }
+                            mpPptEscherEx->OpenContainer( EPP_NamedShow, nCustomShowIndex++ );
 
-                if ( ImplGetPropertyValue( "IsAutomatic" ) )
-                {
-                    bool bBool = false;
-                    mAny >>= bBool;
-                    if ( !bBool )
-                        nFlags |= 1;
-                }
-
-                if ( ImplGetPropertyValue( "IsEndless" ) )
-                {
-                    bool bBool = false;
-                    mAny >>= bBool;
-                    if ( bBool )
-                        nFlags |= 0x80;
-                }
-                if ( ImplGetPropertyValue( "IsFullScreen" ) )
-                {
-                    bool bBool = false;
-                    mAny >>= bBool;
-                    if ( !bBool )
-                        nFlags |= 0x11;
-                }
-
-                mpPptEscherEx->AddAtom( 80, EPP_SSDocInfoAtom, 1 );
-                mpStrm->WriteUInt32( nPenColor ).WriteInt32( nRestartTime ).WriteInt16( nStartSlide ).WriteInt16( nEndSlide );
-
-                sal_uInt32 nCustomShowNameLen = aCustomShow.getLength();
-                if ( nCustomShowNameLen > 31 )
-                    nCustomShowNameLen = 31;
-                if ( nCustomShowNameLen )       // named show identifier
-                {
-                    const sal_Unicode* pCustomShow = aCustomShow.getStr();
-                    for ( i = 0; i < nCustomShowNameLen; i++ )
-                    {
-                        mpStrm->WriteUInt16( pCustomShow[ i ] );
-                    }
-                }
-                for ( i = nCustomShowNameLen; i < 32; i++, mpStrm->WriteUInt16( 0 ) ) ;
-
-                mpStrm->WriteUInt32( nFlags );
-                css::uno::Reference< css::presentation::XCustomPresentationSupplier > aXCPSup( mXModel, css::uno::UNO_QUERY );
-                if ( aXCPSup.is() )
-                {
-                    css::uno::Reference< css::container::XNameContainer > aXCont( aXCPSup->getCustomPresentations() );
-                    if ( aXCont.is() )
-                    {
-                        const css::uno::Sequence< OUString> aNameSeq( aXCont->getElementNames() );
-                        if ( aNameSeq.hasElements() )
-                        {
-                            mpPptEscherEx->OpenContainer( EPP_NamedShows );
-                            sal_uInt32 nCustomShowIndex = 0;
-                            for( OUString const & customShowName : aNameSeq )
+                            sal_uInt32 nNamedShowLen = customShowName.getLength();
+                            if ( nNamedShowLen > 31 )
+                                nNamedShowLen = 31;
+                            mpPptEscherEx->AddAtom( nNamedShowLen << 1, EPP_CString );
+                            const sal_Unicode* pCustomShowName = customShowName.getStr();
+                            for ( sal_uInt32 k = 0; k < nNamedShowLen; ++k )
+                                mpStrm->WriteUInt16( pCustomShowName[ k ] );
+                            mAny = aXCont->getByName( customShowName );
+                            css::uno::Reference< css::container::XIndexContainer > aXIC;
+                            if ( mAny >>= aXIC )
                             {
-                                if ( !customShowName.isEmpty() )
+                                mpPptEscherEx->BeginAtom();
+
+                                sal_Int32 nSlideCount = aXIC->getCount();
+                                for ( sal_Int32 j = 0; j < nSlideCount; j++ )   // number of slides
                                 {
-                                    mpPptEscherEx->OpenContainer( EPP_NamedShow, nCustomShowIndex++ );
-
-                                    sal_uInt32 nNamedShowLen = customShowName.getLength();
-                                    if ( nNamedShowLen > 31 )
-                                        nNamedShowLen = 31;
-                                    mpPptEscherEx->AddAtom( nNamedShowLen << 1, EPP_CString );
-                                    const sal_Unicode* pCustomShowName = customShowName.getStr();
-                                    for ( sal_uInt32 k = 0; k < nNamedShowLen; ++k )
-                                        mpStrm->WriteUInt16( pCustomShowName[ k ] );
-                                    mAny = aXCont->getByName( customShowName );
-                                    css::uno::Reference< css::container::XIndexContainer > aXIC;
-                                    if ( mAny >>= aXIC )
+                                    mAny = aXIC->getByIndex( j );
+                                    css::uno::Reference< css::drawing::XDrawPage > aXDrawPage;
+                                    if ( mAny >>= aXDrawPage )
                                     {
-                                        mpPptEscherEx->BeginAtom();
-
-                                        sal_Int32 nSlideCount = aXIC->getCount();
-                                        for ( sal_Int32 j = 0; j < nSlideCount; j++ )   // number of slides
+                                        css::uno::Reference< css::container::XNamed > aXName( aXDrawPage, css::uno::UNO_QUERY );
+                                        if ( aXName.is() )
                                         {
-                                            mAny = aXIC->getByIndex( j );
-                                            css::uno::Reference< css::drawing::XDrawPage > aXDrawPage;
-                                            if ( mAny >>= aXDrawPage )
-                                            {
-                                                css::uno::Reference< css::container::XNamed > aXName( aXDrawPage, css::uno::UNO_QUERY );
-                                                if ( aXName.is() )
-                                                {
-                                                    OUString aSlideName( aXName->getName() );
-                                                    std::vector<OUString>::const_iterator pIter = std::find(
-                                                        maSlideNameList.begin(),maSlideNameList.end(),aSlideName);
+                                            OUString aSlideName( aXName->getName() );
+                                            std::vector<OUString>::const_iterator pIter = std::find(
+                                                maSlideNameList.begin(),maSlideNameList.end(),aSlideName);
 
-                                                    if (pIter != maSlideNameList.end())
-                                                    {
-                                                        sal_uInt32 nPageNumber = pIter - maSlideNameList.begin();
-                                                        mpStrm->WriteUInt32( nPageNumber + 0x100 ); // unique slide id
-                                                    }
-                                                }
+                                            if (pIter != maSlideNameList.end())
+                                            {
+                                                sal_uInt32 nPageNumber = pIter - maSlideNameList.begin();
+                                                mpStrm->WriteUInt32( nPageNumber + 0x100 ); // unique slide id
                                             }
                                         }
-                                        mpPptEscherEx->EndAtom( EPP_NamedShowSlides );
                                     }
-                                    mpPptEscherEx->CloseContainer();            // EPP_NamedShow
                                 }
+                                mpPptEscherEx->EndAtom( EPP_NamedShowSlides );
                             }
-                            mpPptEscherEx->CloseContainer();                // EPP_NamedShows
+                            mpPptEscherEx->CloseContainer();            // EPP_NamedShow
                         }
                     }
+                    mpPptEscherEx->CloseContainer();                // EPP_NamedShows
                 }
             }
         }
     }
+
     mpPptEscherEx->AddAtom( 0, EPP_EndDocument );
     mpPptEscherEx->CloseContainer();    // EPP_Document
     return true;
@@ -1024,44 +1015,18 @@ bool PPTWriter::ImplCreateMainNotes()
     return true;
 }
 
-static OUString getInitials( const OUString& rName )
-{
-    OUStringBuffer sInitials;
-
-    const sal_Unicode * pStr = rName.getStr();
-    sal_Int32 nLength = rName.getLength();
-
-    while( nLength )
-    {
-        // skip whitespace
-        while( nLength && (*pStr <= ' ') )
-        {
-            nLength--; pStr++;
-        }
-
-        // take letter
-        if( nLength )
-        {
-            sInitials.append( *pStr );
-            nLength--; pStr++;
-        }
-
-        // skip letters until whitespace
-        while( nLength && (*pStr > ' ') )
-        {
-            nLength--; pStr++;
-        }
-    }
-
-    return sInitials.makeStringAndClear();
-}
-
-void ImplExportComments( const uno::Reference< drawing::XDrawPage >& xPage, SvMemoryStream& rBinaryTagData10Atom )
+void PPTWriter::ImplExportComments( const uno::Reference< drawing::XDrawPage >& xPage, SvMemoryStream& rBinaryTagData10Atom )
 {
     try
     {
         uno::Reference< office::XAnnotationAccess > xAnnotationAccess( xPage, uno::UNO_QUERY_THROW );
         uno::Reference< office::XAnnotationEnumeration > xAnnotationEnumeration( xAnnotationAccess->createAnnotationEnumeration() );
+
+        bool bRemoveCommentAuthorDates
+            = SvtSecurityOptions::IsOptionSet(
+                  SvtSecurityOptions::EOption::DocWarnRemovePersonalInfo)
+              && !SvtSecurityOptions::IsOptionSet(
+                     SvtSecurityOptions::EOption::DocWarnKeepNoteAuthorDateInfo);
 
         sal_Int32 nIndex = 1;
 
@@ -1075,11 +1040,18 @@ void ImplExportComments( const uno::Reference< drawing::XDrawPage >& xPage, SvMe
                 Point aPoint(o3tl::convert(aRealPoint2D.X, o3tl::Length::mm, o3tl::Length::master),
                              o3tl::convert(aRealPoint2D.Y, o3tl::Length::mm, o3tl::Length::master));
 
-                OUString sAuthor( xAnnotation->getAuthor() );
+                OUString sAuthor( bRemoveCommentAuthorDates
+                            ? "Author" + OUString::number(mpAuthorIDs->GetInfoID(xAnnotation->getAuthor() ))
+                            : xAnnotation->getAuthor() );
                 uno::Reference< text::XText > xText( xAnnotation->getTextRange() );
                 OUString sText( xText->getString() );
-                OUString sInitials( getInitials( sAuthor ) );
-                util::DateTime aDateTime( xAnnotation->getDateTime() );
+                OUString sInitials(
+                    bRemoveCommentAuthorDates
+                        ? "A" + OUString::number(mpAuthorIDs->GetInfoID(xAnnotation->getAuthor()))
+                        : xAnnotation->getInitials());
+                util::DateTime aEmptyDateTime;
+                util::DateTime aDateTime(bRemoveCommentAuthorDates ? aEmptyDateTime
+                                                                   : xAnnotation->getDateTime());
                 if ( !sAuthor.isEmpty() )
                     PPTWriter::WriteCString( rBinaryTagData10Atom, sAuthor );
                 if ( !sText.isEmpty() )
@@ -1168,7 +1140,7 @@ void PPTWriter::ImplWriteBackground( css::uno::Reference< css::beans::XPropertyS
     EscherPropertyContainer aPropOpt( mpPptEscherEx->GetGraphicProvider(), mpPicStrm.get(), aRect );
     aPropOpt.AddOpt( ESCHER_Prop_fillType, ESCHER_FillSolid );
     css::drawing::FillStyle aFS( css::drawing::FillStyle_NONE );
-    if ( ImplGetPropertyValue( rXPropSet, "FillStyle" ) )
+    if ( ImplGetPropertyValue( rXPropSet, u"FillStyle"_ustr ) )
         mAny >>= aFS;
 
     switch( aFS )
@@ -1183,16 +1155,16 @@ void PPTWriter::ImplWriteBackground( css::uno::Reference< css::beans::XPropertyS
         break;
 
         case css::drawing::FillStyle_BITMAP :
-            aPropOpt.CreateGraphicProperties( rXPropSet, "FillBitmap", true );
+            aPropOpt.CreateGraphicProperties( rXPropSet, u"FillBitmap"_ustr, true );
         break;
 
         case css::drawing::FillStyle_HATCH :
-            aPropOpt.CreateGraphicProperties( rXPropSet, "FillHatch", true );
+            aPropOpt.CreateGraphicProperties( rXPropSet, u"FillHatch"_ustr, true );
         break;
 
         case css::drawing::FillStyle_SOLID :
         {
-            if ( ImplGetPropertyValue( rXPropSet, "FillColor" ) )
+            if ( ImplGetPropertyValue( rXPropSet, u"FillColor"_ustr ) )
             {
                 nFillColor = EscherEx::GetColor( *o3tl::doAccess<sal_uInt32>(mAny) );
                 nFillBackColor = nFillColor ^ 0xffffff;
@@ -1251,16 +1223,16 @@ void PPTWriter::ImplWriteOLE( )
                     const ::uno::Reference < embed::XEmbeddedObject >& xObj( pSdrOle2Obj->GetObjRef() );
                     if( xObj.is() )
                     {
-                        tools::SvRef<SotStorage> xTempStorage( new SotStorage( new SvMemoryStream(), true ) );
+                        rtl::Reference<SotStorage> xTempStorage( new SotStorage( new SvMemoryStream(), true ) );
                         aOleExport.ExportOLEObject( xObj, *xTempStorage );
 
                         //TODO/MBA: testing
                         SvMemoryStream aStream;
-                        tools::SvRef<SotStorage> xCleanStorage( new SotStorage( false, aStream ) );
+                        rtl::Reference<SotStorage> xCleanStorage(new SotStorage(false, aStream));
                         xTempStorage->CopyTo( xCleanStorage.get() );
                         // create a dummy content stream, the dummy content is necessary for ppt, but not for
                         // doc files, so we can't share code.
-                        tools::SvRef<SotStorageStream> xStm = xCleanStorage->OpenSotStream( SVEXT_PERSIST_STREAM );
+                        rtl::Reference<SotStorageStream> xStm = xCleanStorage->OpenSotStream( SVEXT_PERSIST_STREAM );
                         xStm->WriteUInt32( 0 )        // no ClipboardId
                                .WriteUInt32( 4 )        // no target device
                                .WriteUInt32( 1 )        // aspect ratio
@@ -1283,7 +1255,7 @@ void PPTWriter::ImplWriteOLE( )
                     OUString aName;
                     //Initialize the graphic size which will be used on export
                     css::awt::Size  aSize( pPtr->xShape->getSize() );
-                    tools::SvRef<SotStorage> xDest( new SotStorage( new SvMemoryStream(), true ) );
+                    rtl::Reference<SotStorage> xDest(new SotStorage(new SvMemoryStream(), true));
                     bool bOk = oox::ole::MSConvertOCXControls::WriteOCXStream( mXModel, xDest, pPtr->xControlModel, aSize, aName );
                     if ( bOk )
                         pStrm = xDest->CreateMemoryStream();
@@ -1419,13 +1391,15 @@ void PPTWriter::ImplWriteAtomEnding()
 // - exported function -
 
 SAL_DLLPUBLIC_EXPORT bool ExportPPT( const std::vector< css::beans::PropertyValue >& rMediaData,
-                    tools::SvRef<SotStorage> const & rSvStorage,
+                    rtl::Reference<SotStorage> const & rSvStorage,
                     css::uno::Reference< css::frame::XModel > const & rXModel,
                     css::uno::Reference< css::task::XStatusIndicator > const & rXStatInd,
                     SvMemoryStream* pVBA,
                     sal_uInt32 nCnvrtFlags )
 {
-    PPTWriter aPPTWriter( rSvStorage, rXModel, rXStatInd, pVBA, nCnvrtFlags );
+    auto pDoc = dynamic_cast<SdXImpressDocument*>(rXModel.get());
+    assert(pDoc);
+    PPTWriter aPPTWriter( rSvStorage, pDoc, rXStatInd, pVBA, nCnvrtFlags );
     aPPTWriter.exportPPT(rMediaData);
     bool bStatus = aPPTWriter.IsValid();
     return bStatus;
@@ -1433,17 +1407,17 @@ SAL_DLLPUBLIC_EXPORT bool ExportPPT( const std::vector< css::beans::PropertyValu
 
 SAL_DLLPUBLIC_EXPORT bool SaveVBA( SfxObjectShell& rDocShell, SvMemoryStream*& pBas )
 {
-    tools::SvRef<SotStorage> xDest( new SotStorage( new SvMemoryStream(), true ) );
+    rtl::Reference<SotStorage> xDest(new SotStorage(new SvMemoryStream(), true));
     SvxImportMSVBasic aMSVBas( rDocShell, *xDest );
-    aMSVBas.SaveOrDelMSVBAStorage( true, "_MS_VBA_Overhead" );
+    aMSVBas.SaveOrDelMSVBAStorage( true, u"_MS_VBA_Overhead"_ustr );
 
-    tools::SvRef<SotStorage> xOverhead = xDest->OpenSotStorage( "_MS_VBA_Overhead" );
+    rtl::Reference<SotStorage> xOverhead = xDest->OpenSotStorage(u"_MS_VBA_Overhead"_ustr);
     if ( xOverhead.is() && ( xOverhead->GetError() == ERRCODE_NONE ) )
     {
-        tools::SvRef<SotStorage> xOverhead2 = xOverhead->OpenSotStorage( "_MS_VBA_Overhead" );
+        rtl::Reference<SotStorage> xOverhead2 = xOverhead->OpenSotStorage(u"_MS_VBA_Overhead"_ustr);
         if ( xOverhead2.is() && ( xOverhead2->GetError() == ERRCODE_NONE ) )
         {
-            tools::SvRef<SotStorageStream> xTemp = xOverhead2->OpenSotStream( "_MS_VBA_Overhead2" );
+            rtl::Reference<SotStorageStream> xTemp = xOverhead2->OpenSotStream(u"_MS_VBA_Overhead2"_ustr);
             if ( xTemp.is() && ( xTemp->GetError() == ERRCODE_NONE ) )
             {
                 sal_uInt32 nLen = xTemp->GetSize();

@@ -12,12 +12,14 @@ my_example_dirs = \
     CLI/VB.NET/WriterDemo \
     DevelopersGuide/FirstSteps/FirstUnoContact/cxx \
     DevelopersGuide/FirstSteps/FirstLoadComponent/cxx \
+    DevelopersGuide/FirstSteps/HelloTextTableShape/cxx \
     DevelopersGuide/BasicAndDialogs/ToolkitControls \
     DevelopersGuide/Components/Addons/ProtocolHandlerAddon_cpp \
     DevelopersGuide/Components/CppComponent \
     DevelopersGuide/Database/DriverSkeleton \
     DevelopersGuide/Extensions/DialogWithHelp \
     DevelopersGuide/OfficeDev/FilterDevelopment/FlatXmlFilter_cpp \
+    DevelopersGuide/OfficeDev/TerminationTest/cxx \
     DevelopersGuide/ProfUNO/CppBinding \
     DevelopersGuide/ProfUNO/SimpleBootstrap_cpp \
     OLE/activex \
@@ -28,6 +30,7 @@ my_example_dirs = \
     cpp/counter \
     cpp/remoteclient \
     python/toolpanel \
+    python/minimal-extension \
 
 
 #    cpp/custompanel \

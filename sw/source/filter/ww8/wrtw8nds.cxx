@@ -50,6 +50,7 @@
 #include <svl/grabbagitem.hxx>
 #include <svl/urihelper.hxx>
 #include <svl/whiter.hxx>
+#include <unotools/securityoptions.hxx>
 #include <fmtpdsc.hxx>
 #include <fmtlsplt.hxx>
 #include <fmtanchr.hxx>
@@ -109,6 +110,8 @@
 #include <ndgrf.hxx>
 #include <ndole.hxx>
 #include <formatflysplit.hxx>
+#include <annotationmark.hxx>
+#include <poolfmt.hxx>
 
 #include <cstdio>
 
@@ -119,28 +122,28 @@ using namespace sw::types;
 using namespace sw::mark;
 using namespace ::oox::vml;
 
-static OUString lcl_getFieldCode( const IFieldmark* pFieldmark )
+static OUString lcl_getFieldCode( const Fieldmark* pFieldmark )
 {
     assert(pFieldmark);
 
     if ( pFieldmark->GetFieldname( ) == ODF_FORMTEXT )
-        return " FORMTEXT ";
+        return u" FORMTEXT "_ustr;
     if ( pFieldmark->GetFieldname( ) == ODF_FORMDROPDOWN )
-        return " FORMDROPDOWN ";
+        return u" FORMDROPDOWN "_ustr;
     if ( pFieldmark->GetFieldname( ) == ODF_FORMCHECKBOX )
-        return " FORMCHECKBOX ";
+        return u" FORMCHECKBOX "_ustr;
     if ( pFieldmark->GetFieldname( ) == ODF_FORMDATE )
-        return " ODFFORMDATE ";
+        return u" ODFFORMDATE "_ustr;
     if ( pFieldmark->GetFieldname( ) == ODF_TOC )
-        return " TOC ";
+        return u" TOC "_ustr;
     if ( pFieldmark->GetFieldname( ) == ODF_HYPERLINK )
-        return " HYPERLINK ";
+        return u" HYPERLINK "_ustr;
     if ( pFieldmark->GetFieldname( ) == ODF_PAGEREF )
-        return " PAGEREF ";
+        return u" PAGEREF "_ustr;
     return pFieldmark->GetFieldname();
 }
 
-static ww::eField lcl_getFieldId(const IFieldmark*const pFieldmark)
+static ww::eField lcl_getFieldId(const Fieldmark*const pFieldmark)
 {
     assert(pFieldmark);
 
@@ -166,15 +169,21 @@ lcl_getLinkChainName(const uno::Reference<beans::XPropertySet>& rPropertySet,
                      const uno::Reference<beans::XPropertySetInfo>& rPropertySetInfo)
 {
     OUString sLinkChainName;
-    if (rPropertySetInfo->hasPropertyByName("LinkDisplayName"))
+    if (rPropertySetInfo->hasPropertyByName(u"LinkDisplayName"_ustr))
     {
-        rPropertySet->getPropertyValue("LinkDisplayName") >>= sLinkChainName;
+        rPropertySet->getPropertyValue(u"LinkDisplayName"_ustr) >>= sLinkChainName;
         if (!sLinkChainName.isEmpty())
             return sLinkChainName;
     }
-    if (rPropertySetInfo->hasPropertyByName("ChainName"))
-        rPropertySet->getPropertyValue("ChainName") >>= sLinkChainName;
+    if (rPropertySetInfo->hasPropertyByName(u"ChainName"_ustr))
+        rPropertySet->getPropertyValue(u"ChainName"_ustr) >>= sLinkChainName;
     return sLinkChainName;
+}
+
+static bool lcl_IsInlineHeading(const ww8::Frame &rFrame)
+{
+    const SwFormat* pParent = rFrame.GetFrameFormat().DerivedFrom();
+    return pParent && pParent->GetPoolFormatId() == RES_POOLFRM_INLINE_HEADING;
 }
 
 MSWordAttrIter::MSWordAttrIter( MSWordExportBase& rExport )
@@ -255,43 +264,30 @@ SwWW8AttrIter::SwWW8AttrIter(MSWordExportBase& rWr, const SwTextNode& rTextNd) :
     m_nCurrentSwPos = SearchNext(1);
 }
 
-static sal_Int32 lcl_getMinPos( sal_Int32 pos1, sal_Int32 pos2 )
-{
-    if ( pos1 >= 0 && pos2 >= 0 )
-    {
-        // both valid: return minimum one
-        return std::min(pos1, pos2);
-    }
-
-    // return the valid one, if any, or -1
-    return std::max(pos1, pos2);
-}
-
 sal_Int32 SwWW8AttrIter::SearchNext( sal_Int32 nStartPos )
 {
-    const OUString aText = m_rNode.GetText();
-    sal_Int32 fieldEndPos = aText.indexOf(CH_TXT_ATR_FIELDEND, nStartPos - 1);
+    assert(nStartPos > 0); // it uses nStartPos - 1 in searches
+    std::u16string_view aText = m_rNode.GetText();
+    auto fieldEndPos = aText.find(CH_TXT_ATR_FIELDEND, nStartPos - 1);
     // HACK: for (so far) mysterious reasons the sdtContent element closes
     // too late in testDateFormField() unless an empty run is exported at
     // the end of the fieldmark; hence find *also* the position after the
     // CH_TXT_ATR_FIELDEND here
-    if (0 <= fieldEndPos && fieldEndPos < nStartPos)
+    if (fieldEndPos < o3tl::make_unsigned(nStartPos))
     {
         ++fieldEndPos;
     }
-    sal_Int32 fieldSepPos = aText.indexOf(CH_TXT_ATR_FIELDSEP, nStartPos);
-    sal_Int32 fieldStartPos = aText.indexOf(CH_TXT_ATR_FIELDSTART, nStartPos);
-    sal_Int32 formElementPos = aText.indexOf(CH_TXT_ATR_FORMELEMENT, nStartPos - 1);
-    if (0 <= formElementPos && formElementPos < nStartPos)
+    auto fieldSepPos = aText.find(CH_TXT_ATR_FIELDSEP, nStartPos);
+    auto fieldStartPos = aText.find(CH_TXT_ATR_FIELDSTART, nStartPos);
+    auto formElementPos = aText.find(CH_TXT_ATR_FORMELEMENT, nStartPos - 1);
+    if (formElementPos < o3tl::make_unsigned(nStartPos))
     {
         ++formElementPos; // tdf#133604 put this in its own run
     }
 
-    const sal_Int32 pos = lcl_getMinPos(
-        lcl_getMinPos(lcl_getMinPos(fieldEndPos, fieldSepPos), fieldStartPos),
-        formElementPos );
+    const auto pos = std::min({ fieldEndPos, fieldSepPos, fieldStartPos, formElementPos });
 
-    sal_Int32 nMinPos = (pos>=0) ? pos : SAL_MAX_INT32;
+    sal_Int32 nMinPos = (pos != std::u16string_view::npos) ? pos : SAL_MAX_INT32;
 
     // first the redline, then the attributes
     if( m_pCurRedline )
@@ -318,11 +314,11 @@ sal_Int32 SwWW8AttrIter::SearchNext( sal_Int32 nStartPos )
         {
             const SwRangeRedline* pRedl = m_rExport.m_rDoc.getIDocumentRedlineAccess().GetRedlineTable()[ nRedLinePos ];
 
-            auto [pStt, pEnd] = pRedl->StartEnd(); // SwPosition*
+            auto [pStart, pEnd] = pRedl->StartEnd(); // SwPosition*
 
-            if( pStt->GetNode() == m_rNode )
+            if( pStart->GetNode() == m_rNode )
             {
-                const sal_Int32 i = pStt->GetContentIndex();
+                const sal_Int32 i = pStart->GetContentIndex();
                 if( i >= nStartPos && i < nMinPos )
                     nMinPos = i;
             }
@@ -499,15 +495,13 @@ void SwWW8AttrIter::OutAttr(sal_Int32 nSwPos, bool bWriteCombChars)
     {
         if (const SfxGrabBagItem *pCharFmtGrabBag = aExportSet.GetItem<SfxGrabBagItem>(RES_CHRATR_GRABBAG, false))
         {
-            std::unique_ptr<SfxGrabBagItem> pNewCharFmtGrabBag(pCharFmtGrabBag->Clone());
-            assert(pNewCharFmtGrabBag);
-            auto & rNewFmtMap = pNewCharFmtGrabBag->GetGrabBag();
+            std::map<OUString, css::uno::Any> aNewGrabBagMap = pCharFmtGrabBag->GetGrabBag();
             for (auto const & item : pAutoFmtGrabBag->GetGrabBag())
             {
                 if (item.second.hasValue())
-                    rNewFmtMap.erase(item.first);
+                    aNewGrabBagMap.erase(item.first);
             }
-            aExportSet.Put(std::move(pNewCharFmtGrabBag));
+            aExportSet.Put(std::make_unique<SfxGrabBagItem>(RES_CHRATR_GRABBAG, std::move(aNewGrabBagMap)));
         }
     }
 
@@ -658,7 +652,7 @@ void SwWW8AttrIter::handleToggleProperty(SfxItemSet& rExportSet, const SwFormatC
             if (hasWeightComplexPropertyInCharStyle && (pItem = pFormat->GetAttrSet().GetItem(RES_CHRATR_CTL_WEIGHT)) &&
                 *pItem == aBoldProperty)
             {
-                rExportSet.Put(aBoldProperty, RES_CHRATR_CTL_WEIGHT);
+                rExportSet.PutAsTargetWhich(aBoldProperty, RES_CHRATR_CTL_WEIGHT);
             }
 
             if (hasPosturePropertyInCharStyle && (pItem = pFormat->GetAttrSet().GetItem(RES_CHRATR_POSTURE)) &&
@@ -668,7 +662,7 @@ void SwWW8AttrIter::handleToggleProperty(SfxItemSet& rExportSet, const SwFormatC
             if (hasPostureComplexPropertyInCharStyle && (pItem = pFormat->GetAttrSet().GetItem(RES_CHRATR_CTL_POSTURE)) &&
                 *pItem == aPostureProperty)
             {
-                rExportSet.Put(aPostureProperty, RES_CHRATR_CTL_POSTURE);
+                rExportSet.PutAsTargetWhich(aPostureProperty, RES_CHRATR_CTL_POSTURE);
             }
 
             if (hasContouredPropertyInCharStyle && (pItem = pFormat->GetAttrSet().GetItem(RES_CHRATR_CONTOUR)) && *pItem == aContouredProperty)
@@ -737,7 +731,7 @@ bool SwWW8AttrIter::IsAnchorLinkedToThisNode( SwNodeOffset nNodePos )
     return nNodePos == maFlyIter->GetPosition().GetNodeIndex();
 }
 
-bool SwWW8AttrIter::HasFlysAt(sal_Int32 nSwPos) const
+bool SwWW8AttrIter::HasFlysAt(sal_Int32 nSwPos, const ww8::Frame** pInlineHeading) const
 {
     for (const auto& rFly : maFlyFrames)
     {
@@ -745,7 +739,16 @@ bool SwWW8AttrIter::HasFlysAt(sal_Int32 nSwPos) const
         const sal_Int32 nPos = rAnchor.GetContentIndex();
         if (nPos == nSwPos)
         {
-            return true;
+            if ( pInlineHeading )
+            {
+                if ( lcl_IsInlineHeading(rFly) )
+                {
+                    *pInlineHeading = &rFly;
+                    return true;
+                }
+            }
+            else
+                return true;
         }
     }
 
@@ -773,10 +776,10 @@ FlyProcessingState SwWW8AttrIter::OutFlys(sal_Int32 nSwPos)
 
             const OUString sLinkChainName = lcl_getLinkChainName(xPropertySet, xPropertySetInfo);
 
-            if( xPropertySetInfo->hasPropertyByName("ChainNextName") )
-                xPropertySet->getPropertyValue("ChainNextName") >>= aLinkedTextboxInfo.sNextChain;
-            if( xPropertySetInfo->hasPropertyByName("ChainPrevName") )
-                xPropertySet->getPropertyValue("ChainPrevName") >>= aLinkedTextboxInfo.sPrevChain;
+            if( xPropertySetInfo->hasPropertyByName(u"ChainNextName"_ustr) )
+                xPropertySet->getPropertyValue(u"ChainNextName"_ustr) >>= aLinkedTextboxInfo.sNextChain;
+            if( xPropertySetInfo->hasPropertyByName(u"ChainPrevName"_ustr) )
+                xPropertySet->getPropertyValue(u"ChainPrevName"_ustr) >>= aLinkedTextboxInfo.sPrevChain;
 
             //collect a list of linked textboxes: those with a NEXT or PREVIOUS link
             if( !aLinkedTextboxInfo.sNextChain.isEmpty() || !aLinkedTextboxInfo.sPrevChain.isEmpty() )
@@ -806,7 +809,7 @@ FlyProcessingState SwWW8AttrIter::OutFlys(sal_Int32 nSwPos)
                     }
                 }
                 m_rExport.m_bLinkedTextboxesHelperInitialized = false;
-                m_rExport.m_aLinkedTextboxesHelper[sLinkChainName] = aLinkedTextboxInfo;
+                m_rExport.m_aLinkedTextboxesHelper[sLinkChainName] = std::move(aLinkedTextboxInfo);
             }
         }
         ++linkedTextboxesIter;
@@ -848,6 +851,10 @@ FlyProcessingState SwWW8AttrIter::OutFlys(sal_Int32 nSwPos)
                  {
                        // Should not write watermark object in the main body text
                  }
+            }
+            else if ( lcl_IsInlineHeading(*maFlyIter) )
+            {
+                 // Should not write inline heading again
             }
             else
             {
@@ -1024,7 +1031,7 @@ void WW8AttributeOutput::StartRuby( const SwTextNode& rNode, sal_Int32 /*nPos*/,
             FieldFlags::Start | FieldFlags::CmdStart );
 }
 
-void WW8AttributeOutput::EndRuby(const SwTextNode& /*rNode*/, sal_Int32 /*nPos*/)
+void WW8AttributeOutput::EndRuby(const SwTextNode& /*rNode*/, sal_Int32 /*nPos*/, bool /*bEmptyBaseText*/)
 {
     m_rWW8Export.WriteChar( ')' );
     m_rWW8Export.OutputField( nullptr, ww::eEQ, OUString(), FieldFlags::End | FieldFlags::Close );
@@ -1092,8 +1099,8 @@ bool AttributeOutputBase::AnalyzeURL( const OUString& rUrl, const OUString& /*rT
     else
     {
         INetURLObject aURL( rUrl, INetProtocol::NotValid );
-        sURL = aURL.GetURLNoMark( INetURLObject::DecodeMechanism::Unambiguous );
-        sMark = aURL.GetMark( INetURLObject::DecodeMechanism::Unambiguous );
+        sURL = aURL.GetURLNoMark( INetURLObject::DecodeMechanism::NONE );
+        sMark = aURL.GetMark( INetURLObject::DecodeMechanism::NONE );
         INetProtocol aProtocol = aURL.GetProtocol();
 
         if ( aProtocol == INetProtocol::File || aProtocol == INetProtocol::NotValid )
@@ -1146,7 +1153,7 @@ void WW8AttributeOutput::WriteBookmarkInActParagraph( const OUString& rName, sal
     m_aBookmarksOfParagraphEnd.insert(std::pair<sal_Int32, OUString>(nLastRunPos, rName));
 }
 
-bool WW8AttributeOutput::StartURL( const OUString &rUrl, const OUString &rTarget )
+bool WW8AttributeOutput::StartURL(const OUString& rUrl, const OUString& rTarget, const OUString& /*rName*/)
 {
     INetURLObject aURL( rUrl );
     OUString sURL;
@@ -1163,7 +1170,7 @@ bool WW8AttributeOutput::StartURL( const OUString &rUrl, const OUString &rTarget
     // WinWord 2000 doesn't write this - so it's a temp solution by W97 ?
     m_rWW8Export.WriteChar( 0x01 );
 
-    static sal_uInt8 aArr1[] = {
+    sal_uInt8 aArr1[] = {
         0x03, 0x6a, 0,0,0,0,    // sprmCPicLocation
 
         0x06, 0x08, 0x01,       // sprmCFData
@@ -1187,7 +1194,7 @@ bool WW8AttributeOutput::StartURL( const OUString &rUrl, const OUString &rTarget
         sRelativeURL = URIHelper::simpleNormalizedMakeRelative( m_rWW8Export.GetWriter().GetBaseURL(), rUrl );
     bool bAbsolute = sRelativeURL == rUrl;
 
-    static sal_uInt8 aURLData1[] = {
+    static const sal_uInt8 aURLData1[] = {
         0,0,0,0,        // len of struct
         0x44,0,         // the start of "next" data
         0,0,0,0,0,0,0,0,0,0,                // PIC-Structure!
@@ -1196,7 +1203,7 @@ bool WW8AttributeOutput::StartURL( const OUString &rUrl, const OUString &rTarget
         0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,    //  |
         0,0,0,0,                            // /
     };
-    static sal_uInt8 MAGIC_A[] = {
+    static const sal_uInt8 MAGIC_A[] = {
         // start of "next" data
         0xD0,0xC9,0xEA,0x79,0xF9,0xBA,0xCE,0x11,
         0x8C,0x82,0x00,0xAA,0x00,0x4B,0xA9,0x0B
@@ -1224,13 +1231,13 @@ bool WW8AttributeOutput::StartURL( const OUString &rUrl, const OUString &rTarget
     {
         // version 1 (for a document)
 
-        static sal_uInt8 MAGIC_C[] = {
+        static const sal_uInt8 MAGIC_C[] = {
             0x03, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46,
             0x00, 0x00
         };
 
-        static sal_uInt8 MAGIC_D[] = {
+        static const sal_uInt8 MAGIC_D[] = {
             0xFF, 0xFF, 0xAD, 0xDE, 0x00, 0x00, 0x00, 0x00,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
@@ -1277,7 +1284,7 @@ bool WW8AttributeOutput::StartURL( const OUString &rUrl, const OUString &rTarget
         // and write some data to the data stream, but don't ask
         // what the data mean, except for the URL.
         // The First piece is the WW8_PIC structure.
-        static sal_uInt8 MAGIC_B[] = {
+        static const sal_uInt8 MAGIC_B[] = {
             0xE0,0xC9,0xEA,0x79,0xF9,0xBA,0xCE,0x11,
             0x8C,0x82,0x00,0xAA,0x00,0x4B,0xA9,0x0B
         };
@@ -1313,9 +1320,9 @@ OUString BookmarkToWriter(std::u16string_view rBookmark)
 
 void SwWW8AttrIter::OutSwFormatRefMark(const SwFormatRefMark& rAttr)
 {
-    if(m_rExport.HasRefToAttr(rAttr.GetRefName()))
-        m_rExport.AppendBookmark( m_rExport.GetBookmarkName( REF_SETREFATTR,
-                                            &rAttr.GetRefName(), 0 ));
+    if(m_rExport.HasRefToAttr(rAttr.GetRefName().toString()))
+        m_rExport.AppendBookmark( m_rExport.GetBookmarkName( ReferencesSubtype::SetRefAttr,
+                                            &rAttr.GetRefName().toString(), 0 ));
 }
 
 void SwWW8AttrIter::SplitRun( sal_Int32 nSplitEndPos )
@@ -1471,7 +1478,7 @@ int SwWW8AttrIter::OutAttrWithRange(const SwTextNode& rNode, sal_Int32 nPos)
                     pEnd = pHt->End();
                     if (nPos == *pEnd && nPos != pHt->GetStart())
                     {
-                        m_rExport.AttrOutput().EndRuby(rNode, nPos);
+                        m_rExport.AttrOutput().EndRuby(rNode, nPos, false);
                         --nRet;
                     }
                     break;
@@ -1489,7 +1496,7 @@ int SwWW8AttrIter::OutAttrWithRange(const SwTextNode& rNode, sal_Int32 nPos)
                     if ( nPos == pHt->GetStart() )
                     {
                         const SwFormatINetFormat *rINet = static_cast< const SwFormatINetFormat* >( pItem );
-                        if ( m_rExport.AttrOutput().StartURL( rINet->GetValue(), rINet->GetTargetFrame() ) )
+                        if (m_rExport.AttrOutput().StartURL(rINet->GetValue(), rINet->GetTargetFrame(), rINet->GetName()))
                             ++nRet;
                     }
                     pEnd = pHt->End();
@@ -1525,7 +1532,7 @@ int SwWW8AttrIter::OutAttrWithRange(const SwTextNode& rNode, sal_Int32 nPos)
                     pEnd = pHt->End();
                     if (nPos == *pEnd && nPos == pHt->GetStart())
                     {   // special case: empty must be handled here
-                        m_rExport.AttrOutput().EndRuby( m_rNode, nPos );
+                        m_rExport.AttrOutput().EndRuby(m_rNode, nPos, true);
                         --nRet;
                     }
                     break;
@@ -1648,13 +1655,13 @@ const SwRedlineData* SwWW8AttrIter::GetRunLevelRedline( sal_Int32 nPos )
     {
         const SwRangeRedline* pRedl = m_rExport.m_rDoc.getIDocumentRedlineAccess().GetRedlineTable()[ m_nCurRedlinePos ];
 
-        auto [pStt, pEnd] = pRedl->StartEnd(); // SwPosition*
+        auto [pStart, pEnd] = pRedl->StartEnd(); // SwPosition*
 
-        if( pStt->GetNode() == m_rNode )
+        if( pStart->GetNode() == m_rNode )
         {
-            if( pStt->GetContentIndex() >= nPos )
+            if( pStart->GetContentIndex() >= nPos )
             {
-                if( pStt->GetContentIndex() == nPos )
+                if( pStart->GetContentIndex() == nPos )
                 {
                         switch( pRedl->GetType() )
                         {
@@ -1777,7 +1784,7 @@ const SvxBrushItem* WW8Export::GetCurrentPageBgBrush() const
     if (!pRet ||
         (!pRet->GetGraphic() && pRet->GetColor() == COL_TRANSPARENT))
     {
-        pRet = &m_rDoc.GetAttrPool().GetDefaultItem(RES_BACKGROUND);
+        pRet = &m_rDoc.GetAttrPool().GetUserOrPoolDefaultItem(RES_BACKGROUND);
     }
     return pRet;
 }
@@ -1896,6 +1903,7 @@ OUString SwWW8AttrIter::GetSnippet(const OUString &rStr, sal_Int32 nCurrentPos,
     Because of the different style handling for delete operations,
     the track changes have to be analysed. A deletion, starting in paragraph A
     with style A, ending in paragraph B with style B, needs a hack.
+    If paragraph B is not deleted completely, we should preserve the style here.
 */
 static SwTextFormatColl& lcl_getFormatCollection( MSWordExportBase& rExport, const SwTextNode* pTextNode )
 {
@@ -1904,13 +1912,14 @@ static SwTextFormatColl& lcl_getFormatCollection( MSWordExportBase& rExport, con
     while( nPos < nMax )
     {
         const SwRangeRedline* pRedl = rExport.m_rDoc.getIDocumentRedlineAccess().GetRedlineTable()[ nPos++ ];
-        auto [pStt, pEnd] = pRedl->StartEnd(); // SwPosition*
+        auto [pStart, pEnd] = pRedl->StartEnd(); // SwPosition*
         // Looking for deletions, which ends in current pTextNode
         if( RedlineType::Delete == pRedl->GetRedlineData().GetType() &&
-            pEnd->GetNode() == *pTextNode && pStt->GetNode() != *pTextNode &&
-            pStt->GetNode().IsTextNode() )
+            pEnd->GetNode() == *pTextNode && pStart->GetNode() != *pTextNode &&
+            pStart->GetNode().IsTextNode() &&
+            pEnd->GetContentIndex() == pEnd->GetNode().GetTextNode()->GetText().getLength())
         {
-            pTextNode = pStt->GetNode().GetTextNode();
+            pTextNode = pStart->GetNode().GetTextNode();
             nMax = nPos;
             nPos = 0;
         }
@@ -2019,7 +2028,7 @@ bool MSWordExportBase::GetBookmarks( const SwTextNode& rNd, sal_Int32 nStt,
     const sal_Int32 nMarks = pMarkAccess->getAllMarksCount();
     for ( sal_Int32 i = 0; i < nMarks; i++ )
     {
-        IMark* pMark = pMarkAccess->getAllMarksBegin()[i];
+        MarkBase* pMark = pMarkAccess->getAllMarksBegin()[i];
 
         switch (IDocumentMarkAccess::GetType( *pMark ))
         {
@@ -2067,7 +2076,7 @@ bool MSWordExportBase::GetAnnotationMarks( const SwWW8AttrIter& rAttrs, sal_Int3
     const sal_Int32 nMarks = pMarkAccess->getAnnotationMarksCount();
     for ( sal_Int32 i = 0; i < nMarks; i++ )
     {
-        IMark* pMark = pMarkAccess->getAnnotationMarksBegin()[i];
+        AnnotationMark* pMark = pMarkAccess->getAnnotationMarksBegin()[i];
 
         // Only keep the bookmarks starting or ending in this node
         if ( pMark->GetMarkStart().GetNode() == rNd ||
@@ -2109,7 +2118,7 @@ namespace {
 class CompareMarksEnd
 {
 public:
-    bool operator() ( const IMark * pOneB, const IMark * pTwoB ) const
+    bool operator() ( const MarkBase * pOneB, const MarkBase * pTwoB ) const
     {
         const sal_Int32 nOEnd = pOneB->GetMarkEnd().GetContentIndex();
         const sal_Int32 nTEnd = pTwoB->GetMarkEnd().GetContentIndex();
@@ -2126,7 +2135,7 @@ bool MSWordExportBase::NearestBookmark( sal_Int32& rNearest, const sal_Int32 nCu
 
     if ( !m_rSortedBookmarksStart.empty() )
     {
-        IMark* pMarkStart = m_rSortedBookmarksStart.front();
+        MarkBase* pMarkStart = m_rSortedBookmarksStart.front();
         const sal_Int32 nNext = pMarkStart->GetMarkStart().GetContentIndex();
         if( !bNextPositionOnly || (nNext > nCurrentPos ))
         {
@@ -2137,7 +2146,7 @@ bool MSWordExportBase::NearestBookmark( sal_Int32& rNearest, const sal_Int32 nCu
 
     if ( !m_rSortedBookmarksEnd.empty() )
     {
-        IMark* pMarkEnd = m_rSortedBookmarksEnd[0];
+        MarkBase* pMarkEnd = m_rSortedBookmarksEnd[0];
         const sal_Int32 nNext = pMarkEnd->GetMarkEnd().GetContentIndex();
         if( !bNextPositionOnly || nNext > nCurrentPos )
         {
@@ -2158,7 +2167,7 @@ void MSWordExportBase::NearestAnnotationMark( sal_Int32& rNearest, const sal_Int
 
     if ( !m_rSortedAnnotationMarksStart.empty() )
     {
-        IMark* pMarkStart = m_rSortedAnnotationMarksStart.front();
+        MarkBase* pMarkStart = m_rSortedAnnotationMarksStart.front();
         const sal_Int32 nNext = pMarkStart->GetMarkStart().GetContentIndex();
         if( !bNextPositionOnly || (nNext > nCurrentPos ))
         {
@@ -2169,7 +2178,7 @@ void MSWordExportBase::NearestAnnotationMark( sal_Int32& rNearest, const sal_Int
 
     if ( !m_rSortedAnnotationMarksEnd.empty() )
     {
-        IMark* pMarkEnd = m_rSortedAnnotationMarksEnd[0];
+        MarkBase* pMarkEnd = m_rSortedAnnotationMarksEnd[0];
         const sal_Int32 nNext = pMarkEnd->GetMarkEnd().GetContentIndex();
         if( !bNextPositionOnly || nNext > nCurrentPos )
         {
@@ -2188,7 +2197,7 @@ void MSWordExportBase::GetSortedAnnotationMarks( const SwWW8AttrIter& rAttrs, sa
     {
         IMarkVector aSortedEnd;
         IMarkVector aSortedStart;
-        for ( IMark* pMark : aMarksStart )
+        for ( MarkBase* pMark : aMarksStart )
         {
             // Remove the positions equal to the current pos
             const sal_Int32 nStart = pMark->GetMarkStart().GetContentIndex();
@@ -2222,7 +2231,7 @@ void MSWordExportBase::GetSortedBookmarks( const SwTextNode& rNode, sal_Int32 nC
     {
         IMarkVector aSortedEnd;
         IMarkVector aSortedStart;
-        for ( IMark* pMark : aMarksStart )
+        for ( MarkBase* pMark : aMarksStart )
         {
             // Remove the positions equal to the current pos
             const sal_Int32 nStart = pMark->GetMarkStart().GetContentIndex();
@@ -2319,6 +2328,32 @@ void MSWordExportBase::OutputTextNode( SwTextNode& rNode )
 {
     SAL_INFO( "sw.ww8", "<OutWW8_SwTextNode>" );
 
+    if (IsDummyFloattableAnchor(rNode))
+    {
+        // Emit their floating tables
+        AttrOutput().CheckAndWriteFloatingTables(rNode);
+        return;
+    }
+
+    SwWW8AttrIter aWatermarkAttrIter( *this, rNode );
+
+    // export inline heading
+    const ww8::Frame* pInlineHeading;
+    if (aWatermarkAttrIter.HasFlysAt(0, &pInlineHeading))
+    {
+        if (pInlineHeading->GetContent()->IsTextNode())
+        {
+            SwTextNode *pTextNode =
+                const_cast<SwTextNode*>(pInlineHeading->GetContent()->GetTextNode());
+            if (pTextNode)
+            {
+                m_bParaInlineHeading = true;
+                OutputTextNode(*pTextNode);
+                m_bParaInlineHeading = false;
+            }
+        }
+    }
+
     ww8::WW8TableNodeInfo::Pointer_t pTextNodeInfo( m_pTableInfo->getTableNodeInfo( &rNode ) );
 
     //For i120928,identify the last node
@@ -2333,7 +2368,6 @@ void MSWordExportBase::OutputTextNode( SwTextNode& rNode )
 
     // In order to make sure watermark is stored in 'header.xml', check nTextTyp.
     // if it is document.xml, don't write the tags (watermark should be only in the 'header')
-    SwWW8AttrIter aWatermarkAttrIter( *this, rNode );
     if (( TXT_HDFT != m_nTextTyp) && aWatermarkAttrIter.IsWatermarkFrame())
     {
         return;
@@ -2439,7 +2473,7 @@ void MSWordExportBase::OutputTextNode( SwTextNode& rNode )
                 {
                     pTOXSect = &pTOXSectNd->GetSection();
 
-                    const SwNode* pNxt = rNode.GetNodes().GoNext( &aIdx );
+                    const SwNode* pNxt = SwNodes::GoNext(&aIdx);
                     if( pNxt && pNxt->FindSectionNode() == pTOXSectNd )
                         pTOXSect = nullptr;
                 }
@@ -2477,6 +2511,14 @@ void MSWordExportBase::OutputTextNode( SwTextNode& rNode )
             bool bPostponeWritingText    = false ;
             bool bStartedPostponedRunProperties = false;
             OUString aSavedSnippet ;
+
+            // Don't redline content-controls--Word doesn't do them.
+            SwTextAttr* pAttr = rNode.GetTextAttrAt(nCurrentPos, RES_TXTATR_CONTENTCONTROL,
+                                                    sw::GetTextAttrMode::Default);
+            if (pAttr && pAttr->GetStart() == nCurrentPos)
+            {
+                pRedlineData = nullptr;
+            }
 
             sal_Int32 nNextAttr = GetNextPos( &aAttrIter, rNode, nCurrentPos );
 
@@ -2532,7 +2574,7 @@ void MSWordExportBase::OutputTextNode( SwTextNode& rNode )
 
             // At the moment smarttags are only written for paragraphs, at the
             // beginning of the paragraph.
-            if (nCurrentPos == 0)
+            if (nCurrentPos == 0 && m_bHasBailsMetaData)
                 AppendSmartTags(rNode);
 
             bool bTextAtr = aAttrIter.IsTextAttr( nCurrentPos );
@@ -2563,7 +2605,7 @@ void MSWordExportBase::OutputTextNode( SwTextNode& rNode )
                 if ( ch == CH_TXT_ATR_FIELDSTART )
                 {
                     SwPosition aPosition( rNode, nCurrentPos );
-                    ::sw::mark::IFieldmark const*const pFieldmark = pMarkAccess->getFieldmarkAt(aPosition);
+                    ::sw::mark::Fieldmark const*const pFieldmark = pMarkAccess->getFieldmarkAt(aPosition);
                     assert(pFieldmark);
 
                     // Date field is exported as content control, not as a simple field
@@ -2583,13 +2625,13 @@ void MSWordExportBase::OutputTextNode( SwTextNode& rNode )
                         if (pFieldmark->GetFieldname() == ODF_FORMTEXT
                              && GetExportFormat() != MSWordExportBase::ExportFormat::DOCX )
                         {
-                           AppendBookmark( pFieldmark->GetName() );
+                           AppendBookmark( pFieldmark->GetName().toString() );
                         }
                         ww::eField eFieldId = lcl_getFieldId( pFieldmark );
                         OUString sCode = lcl_getFieldCode( pFieldmark );
                         if (pFieldmark->GetFieldname() == ODF_UNHANDLED )
                         {
-                            IFieldmark::parameter_map_t::const_iterator it = pFieldmark->GetParameters()->find( ODF_ID_PARAM );
+                            Fieldmark::parameter_map_t::const_iterator it = pFieldmark->GetParameters()->find( ODF_ID_PARAM );
                             if ( it != pFieldmark->GetParameters()->end() )
                             {
                                 OUString sFieldId;
@@ -2616,7 +2658,7 @@ void MSWordExportBase::OutputTextNode( SwTextNode& rNode )
                 {
                     SwPosition aPosition(rNode, nCurrentPos);
                     // the innermost field is the correct one
-                    sw::mark::IFieldmark const*const pFieldmark = pMarkAccess->getInnerFieldmarkFor(aPosition);
+                    sw::mark::Fieldmark const*const pFieldmark = pMarkAccess->getInnerFieldmarkFor(aPosition);
                     assert(pFieldmark);
                     // DateFieldmark / ODF_FORMDATE is not a field...
                     if (pFieldmark->GetFieldname() != ODF_FORMDATE)
@@ -2631,7 +2673,7 @@ void MSWordExportBase::OutputTextNode( SwTextNode& rNode )
                         if (pFieldmark->GetFieldname() == ODF_UNHANDLED)
                         {
                             // Check for the presence of a linked OLE object
-                            IFieldmark::parameter_map_t::const_iterator it = pFieldmark->GetParameters()->find( ODF_OLE_PARAM );
+                            Fieldmark::parameter_map_t::const_iterator it = pFieldmark->GetParameters()->find( ODF_OLE_PARAM );
                             if ( it != pFieldmark->GetParameters()->end() )
                             {
                                 OUString sOleId;
@@ -2646,50 +2688,53 @@ void MSWordExportBase::OutputTextNode( SwTextNode& rNode )
                 else if ( ch == CH_TXT_ATR_FIELDEND )
                 {
                     SwPosition aPosition( rNode, nCurrentPos );
-                    ::sw::mark::IFieldmark const*const pFieldmark = pMarkAccess->getFieldmarkAt(aPosition);
+                    ::sw::mark::Fieldmark const*const pFieldmark = pMarkAccess->getFieldmarkAt(aPosition);
 
                     assert(pFieldmark);
 
-                    if (pFieldmark->GetFieldname() == ODF_FORMDATE)
+                    if (pFieldmark)
                     {
-                        if(GetExportFormat() == MSWordExportBase::ExportFormat::DOCX) // supported by DOCX only
+                        if (pFieldmark->GetFieldname() == ODF_FORMDATE)
                         {
-                            OutputField( nullptr, ww::eFORMDATE, OUString(), FieldFlags::Close );
-                        }
-                    }
-                    else
-                    {
-                        ww::eField eFieldId = lcl_getFieldId( pFieldmark );
-                        if (pFieldmark->GetFieldname() == ODF_UNHANDLED)
-                        {
-                            IFieldmark::parameter_map_t::const_iterator it = pFieldmark->GetParameters()->find( ODF_ID_PARAM );
-                            if ( it != pFieldmark->GetParameters()->end() )
+                            if(GetExportFormat() == MSWordExportBase::ExportFormat::DOCX) // supported by DOCX only
                             {
-                                OUString sFieldId;
-                                it->second >>= sFieldId;
-                                eFieldId = static_cast<ww::eField>(sFieldId.toInt32());
+                                OutputField( nullptr, ww::eFORMDATE, OUString(), FieldFlags::Close );
                             }
                         }
-
-                        OutputField( nullptr, eFieldId, OUString(), FieldFlags::Close );
-
-                        if (pFieldmark->GetFieldname() == ODF_FORMTEXT
-                             && GetExportFormat() != MSWordExportBase::ExportFormat::DOCX )
+                        else
                         {
-                            AppendBookmark( pFieldmark->GetName() );
+                            ww::eField eFieldId = lcl_getFieldId( pFieldmark );
+                            if (pFieldmark->GetFieldname() == ODF_UNHANDLED)
+                            {
+                                Fieldmark::parameter_map_t::const_iterator it = pFieldmark->GetParameters()->find( ODF_ID_PARAM );
+                                if ( it != pFieldmark->GetParameters()->end() )
+                                {
+                                    OUString sFieldId;
+                                    it->second >>= sFieldId;
+                                    eFieldId = static_cast<ww::eField>(sFieldId.toInt32());
+                                }
+                            }
+
+                            OutputField( nullptr, eFieldId, OUString(), FieldFlags::Close );
+
+                            if (pFieldmark->GetFieldname() == ODF_FORMTEXT
+                                    && GetExportFormat() != MSWordExportBase::ExportFormat::DOCX )
+                            {
+                                AppendBookmark( pFieldmark->GetName().toString() );
+                            }
                         }
                     }
                 }
                 else if ( ch == CH_TXT_ATR_FORMELEMENT )
                 {
                     SwPosition aPosition( rNode, nCurrentPos );
-                    ::sw::mark::IFieldmark const*const pFieldmark = pMarkAccess->getFieldmarkAt(aPosition);
+                    ::sw::mark::Fieldmark const*const pFieldmark = pMarkAccess->getFieldmarkAt(aPosition);
                     assert(pFieldmark);
 
                     bool const isDropdownOrCheckbox(pFieldmark->GetFieldname() == ODF_FORMDROPDOWN ||
                                                     pFieldmark->GetFieldname() == ODF_FORMCHECKBOX);
                     if ( isDropdownOrCheckbox )
-                        AppendBookmark( pFieldmark->GetName() );
+                        AppendBookmark( pFieldmark->GetName().toString() );
                     OutputField( nullptr, lcl_getFieldId( pFieldmark ),
                             lcl_getFieldCode( pFieldmark ),
                             FieldFlags::Start | FieldFlags::CmdStart );
@@ -2699,7 +2744,7 @@ void MSWordExportBase::OutputTextNode( SwTextNode& rNode )
                     OutputField(nullptr, lcl_getFieldId(pFieldmark), OUString(),
                             FieldFlags::CmdEnd | FieldFlags::Close);
                     if ( isDropdownOrCheckbox )
-                        AppendBookmark( pFieldmark->GetName() );
+                        AppendBookmark( pFieldmark->GetName().toString() );
                 }
                 nLen -= ofs;
 
@@ -2711,7 +2756,8 @@ void MSWordExportBase::OutputTextNode( SwTextNode& rNode )
 
                 OUString aSnippet( aAttrIter.GetSnippet( aStr, nCurrentPos + ofs, nLen ) );
                 const SwTextNode* pTextNode( rNode.GetTextNode() );
-                if ( ( m_nTextTyp == TXT_EDN || m_nTextTyp == TXT_FTN ) && nCurrentPos == 0 && nLen > 0 )
+                if (m_bAddFootnoteTab && (m_nTextTyp == TXT_EDN || m_nTextTyp == TXT_FTN)
+                    && nCurrentPos == 0 && nLen > 0 && aSnippet[0] != 0x09)
                 {
                     // Allow MSO to emulate LO footnote text starting at left margin - only meaningful with hanging indent
                     sal_Int32 nFirstLineIndent=0;
@@ -2721,11 +2767,11 @@ void MSWordExportBase::OutputTextNode( SwTextNode& rNode )
                     {
                         const SvxFirstLineIndentItem *const pFirstLine(aSet.GetItem<SvxFirstLineIndentItem>(RES_MARGIN_FIRSTLINE));
                         if (pFirstLine)
-                            nFirstLineIndent = pFirstLine->GetTextFirstLineOffset();
+                            nFirstLineIndent = pFirstLine->ResolveTextFirstLineOffset({});
                     }
 
                     // Insert tab for aesthetic purposes #i24762#
-                    if ( m_bAddFootnoteTab && nFirstLineIndent < 0 && aSnippet[0] != 0x09 )
+                    if (nFirstLineIndent < 0)
                         aSnippet = "\x09" + aSnippet;
                     m_bAddFootnoteTab = false;
                 }
@@ -3015,7 +3061,8 @@ void MSWordExportBase::OutputTextNode( SwTextNode& rNode )
                 if ( pFormat->GetPositionAndSpaceMode() ==
                                         SvxNumberFormat::LABEL_WIDTH_AND_POSITION )
                 {
-                    leftMargin.SetTextLeft(leftMargin.GetTextLeft() + pFormat->GetAbsLSpace());
+                    leftMargin.SetTextLeft(SvxIndentValue::twips(leftMargin.ResolveTextLeft({})
+                                                                 + pFormat->GetAbsLSpace()));
                 }
 
                 if( rNode.IsNumbered() && rNode.IsCountedInList() )
@@ -3026,11 +3073,15 @@ void MSWordExportBase::OutputTextNode( SwTextNode& rNode )
                     {
                         if (bParaRTL)
                         {
-                            firstLine.SetTextFirstLineOffsetValue(firstLine.GetTextFirstLineOffset() + pFormat->GetAbsLSpace() - pFormat->GetFirstLineOffset()); //TODO: overflow
+                            firstLine.SetTextFirstLineOffset(SvxIndentValue::twips(
+                                firstLine.ResolveTextFirstLineOffset({}) + pFormat->GetAbsLSpace()
+                                - pFormat->GetFirstLineOffset()));
                         }
                         else
                         {
-                            firstLine.SetTextFirstLineOffset(firstLine.GetTextFirstLineOffset() + GetWordFirstLineOffset(*pFormat));
+                            firstLine.SetTextFirstLineOffset(
+                                SvxIndentValue::twips(firstLine.ResolveTextFirstLineOffset({})
+                                                      + GetWordFirstLineOffset(*pFormat)));
                         }
                     }
 
@@ -3104,7 +3155,7 @@ void MSWordExportBase::OutputTextNode( SwTextNode& rNode )
 
                 const SvxAdjustItem* pAdjust = rNode.GetSwAttrSet().GetItem(RES_PARATR_ADJUST);
                 if ( pAdjust && (pAdjust->GetAdjust() == SvxAdjust::Left || pAdjust->GetAdjust() == SvxAdjust::Right ) )
-                    oTmpSet->Put( *pAdjust, RES_PARATR_ADJUST );
+                    oTmpSet->Put( *pAdjust );
             }
             // move code for handling of numbered,
             // but not counted paragraphs to this place. Otherwise, the paragraph
@@ -3129,10 +3180,11 @@ void MSWordExportBase::OutputTextNode( SwTextNode& rNode )
                 const SvxTextLeftMarginItem *const pTextLeftMargin(oTmpSet->GetItemIfSet(RES_MARGIN_TEXTLEFT));
                 SvxFirstLineIndentItem firstLine(pFirstLineIndent
                         ? *pFirstLineIndent
-                        : SvxFirstLineIndentItem(0, RES_MARGIN_FIRSTLINE));
-                SvxTextLeftMarginItem leftMargin(pTextLeftMargin
+                        : SvxFirstLineIndentItem(RES_MARGIN_FIRSTLINE));
+                SvxTextLeftMarginItem leftMargin(
+                    pTextLeftMargin
                         ? *pTextLeftMargin
-                        : SvxTextLeftMarginItem(0, RES_MARGIN_TEXTLEFT));
+                        : SvxTextLeftMarginItem(SvxIndentValue::zero(), RES_MARGIN_TEXTLEFT));
 
                 // new left margin = old left + label space
                 const SwNumRule* pRule = rNode.GetNumRule();
@@ -3150,18 +3202,22 @@ void MSWordExportBase::OutputTextNode( SwTextNode& rNode )
                 if ( rNumFormat.GetPositionAndSpaceMode() ==
                                         SvxNumberFormat::LABEL_WIDTH_AND_POSITION )
                 {
-                    leftMargin.SetTextLeft(leftMargin.GetLeft(firstLine) + rNumFormat.GetAbsLSpace());
+                    leftMargin.SetTextLeft(
+                        SvxIndentValue::twips(leftMargin.ResolveLeft(firstLine, /*metrics*/ {})
+                                              + rNumFormat.GetAbsLSpace()));
                 }
                 else
                 {
-                    leftMargin.SetTextLeft(leftMargin.GetLeft(firstLine) + rNumFormat.GetIndentAt());
+                    leftMargin.SetTextLeft(
+                        SvxIndentValue::twips(leftMargin.ResolveLeft(firstLine, /*metrics*/ {})
+                                              + rNumFormat.GetIndentAt()));
                 }
 
                 // new first line indent = 0
                 // (first line indent is ignored)
                 if (!bParaRTL)
                 {
-                    firstLine.SetTextFirstLineOffset(0);
+                    firstLine.SetTextFirstLineOffset(SvxIndentValue::zero());
                 }
 
                 // put back the new item
@@ -3417,6 +3473,17 @@ void MSWordExportBase::OutputSectionNode( const SwSectionNode& rSectionNode )
     }
 }
 
+// don't need to broadcast modification
+static void SetAttrNoBroadcast(SwContentNode& rNode, const SfxPoolItem& rItem)
+{
+    const bool bModifyNotifyDisabled = rNode.IsModifyLocked();
+    if (!bModifyNotifyDisabled)
+        rNode.LockModify();
+    rNode.SetAttr(rItem);
+    if (!bModifyNotifyDisabled)
+        rNode.UnlockModify();
+}
+
 // tdf#121561: During export of the ODT file with TOC inside into DOCX format,
 // the TOC title is being exported as regular paragraph. We should surround it
 // with <w:sdt><w:sdtPr><w:sdtContent> to make it (TOC title) recognizable
@@ -3466,8 +3533,8 @@ void MSWordExportBase::UpdateTocSectionNodeProperties(const SwSectionNode& rSect
     {
         uno::Sequence<beans::PropertyValue> aDocPropertyValues(comphelper::InitPropertySequence(
         {
-            {"ooxml:CT_SdtDocPart_docPartGallery", uno::Any(OUString("Table of Contents"))},
-            {"ooxml:CT_SdtDocPart_docPartUnique",  uno::Any(OUString("true"))},
+            {"ooxml:CT_SdtDocPart_docPartGallery", uno::Any(u"Table of Contents"_ustr)},
+            {"ooxml:CT_SdtDocPart_docPartUnique",  uno::Any(u"true"_ustr)},
         }));
 
         uno::Sequence<beans::PropertyValue> aSdtPrPropertyValues(comphelper::InitPropertySequence(
@@ -3475,15 +3542,11 @@ void MSWordExportBase::UpdateTocSectionNodeProperties(const SwSectionNode& rSect
             {"ooxml:CT_SdtPr_docPartObj", uno::Any(aDocPropertyValues)},
         }));
 
-        SfxGrabBagItem aGrabBag(RES_PARATR_GRABBAG);
-        aGrabBag.GetGrabBag()["SdtPr"] <<= aSdtPrPropertyValues;
-
-        // create temp attr set
-        SwAttrSet aSet(pNode->GetSwAttrSet());
-        aSet.Put(aGrabBag);
+        SfxGrabBagItem aGrabBag(RES_PARATR_GRABBAG,
+            std::map<OUString, css::uno::Any>{{ u"SdtPr"_ustr, uno::Any(aSdtPrPropertyValues) }});
 
         // set new attr to node
-        const_cast<SwContentNode*>(pNode)->SetAttr(aSet);
+        SetAttrNoBroadcast(*const_cast<SwContentNode*>(pNode), aGrabBag);
     }
 
     // set flag for the next node after TOC
@@ -3495,15 +3558,11 @@ void MSWordExportBase::UpdateTocSectionNodeProperties(const SwSectionNode& rSect
         const SwContentNode* pNodeAfterToc = rEndTocNextNode.GetContentNode();
         if (pNodeAfterToc)
         {
-            SfxGrabBagItem aGrabBag(RES_PARATR_GRABBAG);
-            aGrabBag.GetGrabBag()["ParaSdtEndBefore"] <<= true;
-
-            // create temp attr set
-            SwAttrSet aSet(pNodeAfterToc->GetSwAttrSet());
-            aSet.Put(aGrabBag);
+            SfxGrabBagItem aGrabBag(RES_PARATR_GRABBAG,
+                std::map<OUString, css::uno::Any>{{u"ParaSdtEndBefore"_ustr, uno::Any(true)}});
 
             // set new attr to node
-            const_cast<SwContentNode*>(pNodeAfterToc)->SetAttr(aSet);
+            SetAttrNoBroadcast(*const_cast<SwContentNode*>(pNodeAfterToc), aGrabBag);
         }
     }
 }
@@ -3607,10 +3666,10 @@ void WW8AttributeOutput::OutputFlyFrame_Impl( const ww8::Frame& rFormat, const P
                 // because we deliver the normal content of the table cell, and no border
                 // ( Flag was deleted above in aSaveData() )
                 m_rWW8Export.m_bOutTable = true;
-                const OUString& aName = rFrameFormat.GetName();
-                m_rWW8Export.StartCommentOutput(aName);
+                const UIName& aName = rFrameFormat.GetName();
+                m_rWW8Export.StartCommentOutput(aName.toString());
                 m_rWW8Export.WriteText();
-                m_rWW8Export.EndCommentOutput(aName);
+                m_rWW8Export.EndCommentOutput(aName.toString());
             }
             else
                 m_rWW8Export.WriteText();
@@ -3657,6 +3716,11 @@ void WW8AttributeOutput::Redline( const SwRedlineData* pRedline )
         NS_sprm::CFRMarkDel::val, NS_sprm::CIbstRMarkDel::val, NS_sprm::CDttmRMarkDel::val,
     };
 
+    bool bRemovePersonalInfo
+        = SvtSecurityOptions::IsOptionSet(SvtSecurityOptions::EOption::DocWarnRemovePersonalInfo)
+          && !SvtSecurityOptions::IsOptionSet(
+                 SvtSecurityOptions::EOption::DocWarnKeepRedlineInfo);
+
     const sal_uInt16* pSprmIds = nullptr;
     switch( pRedline->GetType() )
     {
@@ -3673,7 +3737,8 @@ void WW8AttributeOutput::Redline( const SwRedlineData* pRedline )
         m_rWW8Export.m_pO->push_back( 7 );       // len
         m_rWW8Export.m_pO->push_back( 1 );
         m_rWW8Export.InsUInt16( m_rWW8Export.AddRedlineAuthor( pRedline->GetAuthor() ) );
-        m_rWW8Export.InsUInt32( sw::ms::DateTime2DTTM( pRedline->GetTimeStamp() ));
+        m_rWW8Export.InsUInt32(sw::ms::DateTime2DTTM(
+            bRemovePersonalInfo ? DateTime(DateTime::EMPTY) : pRedline->GetTimeStamp()));
         break;
     default:
         OSL_ENSURE(false, "Unhandled redline type for export");
@@ -3689,7 +3754,8 @@ void WW8AttributeOutput::Redline( const SwRedlineData* pRedline )
         m_rWW8Export.InsUInt16( m_rWW8Export.AddRedlineAuthor( pRedline->GetAuthor() ) );
 
         m_rWW8Export.InsUInt16( pSprmIds[2] );
-        m_rWW8Export.InsUInt32( sw::ms::DateTime2DTTM( pRedline->GetTimeStamp() ));
+        m_rWW8Export.InsUInt32(sw::ms::DateTime2DTTM(
+            bRemovePersonalInfo ? DateTime(DateTime::EMPTY) : pRedline->GetTimeStamp()));
     }
 }
 
@@ -3698,7 +3764,7 @@ void MSWordExportBase::OutputContentNode( SwContentNode& rNode )
     switch ( rNode.GetNodeType() )
     {
         case SwNodeType::Text:
-            OutputTextNode( *rNode.GetTextNode() );
+            OutputTextNode(*rNode.GetTextNode());
             break;
         case SwNodeType::Grf:
             OutputGrfNode( *rNode.GetGrfNode() );
@@ -3783,11 +3849,11 @@ WW8Ruby::WW8Ruby(const SwTextNode& rNode, const SwFormatRuby& rRuby, const MSWor
 
 
         const SvxFontItem& rFont
-            = pPool->GetDefaultItem( GetWhichOfScript(RES_CHRATR_FONT, nRubyScript) );
+            = pPool->GetUserOrPoolDefaultItem( GetWhichOfScript(RES_CHRATR_FONT, nRubyScript) );
         m_sFontFamily = rFont.GetFamilyName();
 
         const SvxFontHeightItem& rHeight =
-            pPool->GetDefaultItem( GetWhichOfScript(RES_CHRATR_FONTSIZE, nRubyScript));
+            pPool->GetUserOrPoolDefaultItem( GetWhichOfScript(RES_CHRATR_FONTSIZE, nRubyScript));
         m_nRubyHeight = rHeight.GetHeight();
     }
 

@@ -43,7 +43,7 @@ public:
 
 class SvxGraphCtrlAccessibleContext;
 
-class SVX_DLLPUBLIC GraphCtrl : public weld::CustomWidgetController
+class SAL_DLLPUBLIC_RTTI GraphCtrl : public weld::CustomWidgetController
 {
     friend class GraphCtrlView;
     friend class GraphCtrlUserCall;
@@ -65,7 +65,7 @@ class SVX_DLLPUBLIC GraphCtrl : public weld::CustomWidgetController
     bool                mbInIdleUpdate;
     weld::Dialog*       mpDialog;
 
-                        DECL_DLLPRIVATE_LINK( UpdateHdl, Timer*, void );
+    DECL_LINK( UpdateHdl, Timer*, void );
 
     rtl::Reference<SvxGraphCtrlAccessibleContext> mpAccContext;
 
@@ -93,11 +93,11 @@ protected:
 
 public:
 
-    GraphCtrl(weld::Dialog* pDialog);
+    SVX_DLLPUBLIC GraphCtrl(weld::Dialog* pDialog);
     virtual void SetDrawingArea(weld::DrawingArea* pDrawingArea) override;
-    virtual ~GraphCtrl() override;
+    SVX_DLLPUBLIC virtual ~GraphCtrl() override;
 
-    void                SetGraphic( const Graphic& rGraphic, bool bNewModel = true );
+    SVX_DLLPUBLIC void  SetGraphic( const Graphic& rGraphic, bool bNewModel = true );
     const Graphic&      GetGraphic() const { return aGraphic; }
     const Size&         GetGraphicSize() const { return aGraphSize; }
 
@@ -125,7 +125,7 @@ public:
     void                SetSdrMode(bool b);
 
     Point               GetPositionInDialog() const;
-    virtual css::uno::Reference< css::accessibility::XAccessible > CreateAccessible() override;
+    virtual rtl::Reference<comphelper::OAccessible> CreateAccessible() override;
 };
 
 class GraphCtrlView final : public SdrView

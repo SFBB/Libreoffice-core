@@ -26,6 +26,7 @@
 #include <compare.hxx>
 #include <matrixoperators.hxx>
 #include <math.hxx>
+#include <jumpmatrix.hxx>
 
 #include <svl/numformat.hxx>
 #include <svl/zforlist.hxx>
@@ -260,13 +261,17 @@ public:
 
     void PutDouble(double fVal, SCSIZE nC, SCSIZE nR);
     void PutDouble( double fVal, SCSIZE nIndex);
+    void PutDoubleTrans( double fVal, SCSIZE nIndex);
     void PutDouble(const double* pArray, size_t nLen, SCSIZE nC, SCSIZE nR);
 
     void PutString(const svl::SharedString& rStr, SCSIZE nC, SCSIZE nR);
     void PutString(const svl::SharedString& rStr, SCSIZE nIndex);
+    void PutStringTrans(const svl::SharedString& rStr, SCSIZE nIndex);
     void PutString(const svl::SharedString* pArray, size_t nLen, SCSIZE nC, SCSIZE nR);
 
     void PutEmpty(SCSIZE nC, SCSIZE nR);
+    void PutEmpty(SCSIZE nIndex);
+    void PutEmptyTrans(SCSIZE nIndex);
     void PutEmptyPath(SCSIZE nC, SCSIZE nR);
     void PutError( FormulaError nErrorCode, SCSIZE nC, SCSIZE nR );
     void PutBoolean(bool bVal, SCSIZE nC, SCSIZE nR);
@@ -276,7 +281,7 @@ public:
     double GetDoubleWithStringConversion(SCSIZE nC, SCSIZE nR) const;
     svl::SharedString GetString(SCSIZE nC, SCSIZE nR) const;
     svl::SharedString GetString( SCSIZE nIndex) const;
-    svl::SharedString GetString( SvNumberFormatter& rFormatter, SCSIZE nC, SCSIZE nR) const;
+    svl::SharedString GetString( ScInterpreterContext& rContext, SCSIZE nC, SCSIZE nR) const;
     ScMatrixValue Get(SCSIZE nC, SCSIZE nR) const;
     bool IsStringOrEmpty( SCSIZE nIndex ) const;
     bool IsStringOrEmpty( SCSIZE nC, SCSIZE nR ) const;
@@ -314,6 +319,7 @@ public:
     size_t Count(bool bCountStrings, bool bCountErrors, bool bIgnoreEmptyStrings) const;
     size_t MatchDoubleInColumns(double fValue, size_t nCol1, size_t nCol2) const;
     size_t MatchStringInColumns(const svl::SharedString& rStr, size_t nCol1, size_t nCol2) const;
+    void IfJump( ScJumpMatrix& rJumpMatrix, const short* pJump, short nJumpCount ) const ;
 
     double GetMaxValue( bool bTextAsZero, bool bIgnoreErrorValues ) const;
     double GetMinValue( bool bTextAsZero, bool bIgnoreErrorValues ) const;
@@ -337,7 +343,7 @@ public:
     ScMatrix::IterateResultMultiple<tRes> ApplyCollectOperation(const std::vector<T>& aOp);
 
     void MatConcat(SCSIZE nMaxCol, SCSIZE nMaxRow, const ScMatrixRef& xMat1, const ScMatrixRef& xMat2,
-            SvNumberFormatter& rFormatter, svl::SharedStringPool& rPool);
+            ScInterpreterContext& rContext, svl::SharedStringPool& rPool);
 
     void ExecuteBinaryOp(SCSIZE nMaxCol, SCSIZE nMaxRow, const ScMatrix& rInputMat1, const ScMatrix& rInputMat2,
             ScInterpreter* pInterpreter, const ScMatrix::CalculateOpFunction& op);
@@ -355,6 +361,7 @@ public:
 
 private:
     void CalcPosition(SCSIZE nIndex, SCSIZE& rC, SCSIZE& rR) const;
+    void CalcTransPosition(SCSIZE nIndex, SCSIZE& rC, SCSIZE& rR) const;
 };
 
 static std::once_flag bElementsMaxFetched;
@@ -537,6 +544,13 @@ void ScMatrixImpl::PutDouble( double fVal, SCSIZE nIndex)
     PutDouble(fVal, nC, nR);
 }
 
+void ScMatrixImpl::PutDoubleTrans(double fVal, SCSIZE nIndex)
+{
+    SCSIZE nC, nR;
+    CalcTransPosition(nIndex, nC, nR);
+    PutDouble(fVal, nC, nR);
+}
+
 void ScMatrixImpl::PutString(const svl::SharedString& rStr, SCSIZE nC, SCSIZE nR)
 {
     if (ValidColRow( nC, nR))
@@ -564,6 +578,13 @@ void ScMatrixImpl::PutString(const svl::SharedString& rStr, SCSIZE nIndex)
     PutString(rStr, nC, nR);
 }
 
+void ScMatrixImpl::PutStringTrans(const svl::SharedString& rStr, SCSIZE nIndex)
+{
+    SCSIZE nC, nR;
+    CalcTransPosition(nIndex, nC, nR);
+    PutString(rStr, nC, nR);
+}
+
 void ScMatrixImpl::PutEmpty(SCSIZE nC, SCSIZE nR)
 {
     if (ValidColRow( nC, nR))
@@ -575,6 +596,20 @@ void ScMatrixImpl::PutEmpty(SCSIZE nC, SCSIZE nR)
     {
         OSL_FAIL("ScMatrixImpl::PutEmpty: dimension error");
     }
+}
+
+void ScMatrixImpl::PutEmpty(SCSIZE nIndex)
+{
+    SCSIZE nC, nR;
+    CalcPosition(nIndex, nC, nR);
+    PutEmpty(nC, nR);
+}
+
+void ScMatrixImpl::PutEmptyTrans(SCSIZE nIndex)
+{
+    SCSIZE nC, nR;
+    CalcTransPosition(nIndex, nC, nR);
+    PutEmpty(nC, nR);
 }
 
 void ScMatrixImpl::PutEmptyPath(SCSIZE nC, SCSIZE nR)
@@ -701,7 +736,7 @@ svl::SharedString ScMatrixImpl::GetString( SCSIZE nIndex) const
     return GetString(nC, nR);
 }
 
-svl::SharedString ScMatrixImpl::GetString( SvNumberFormatter& rFormatter, SCSIZE nC, SCSIZE nR) const
+svl::SharedString ScMatrixImpl::GetString( ScInterpreterContext& rContext, SCSIZE nC, SCSIZE nR) const
 {
     if (!ValidColRowOrReplicated( nC, nR ))
     {
@@ -722,11 +757,11 @@ svl::SharedString ScMatrixImpl::GetString( SvNumberFormatter& rFormatter, SCSIZE
                 return svl::SharedString::getEmptyString();
 
             // result of empty FALSE jump path
-            sal_uInt32 nKey = rFormatter.GetStandardFormat( SvNumFormatType::LOGICAL,
+            sal_uInt32 nKey = rContext.NFGetStandardFormat( SvNumFormatType::LOGICAL,
                     ScGlobal::eLnge);
             OUString aStr;
             const Color* pColor = nullptr;
-            rFormatter.GetOutputString( 0.0, nKey, aStr, &pColor);
+            rContext.NFGetOutputString( 0.0, nKey, aStr, &pColor);
             return svl::SharedString( aStr);    // string not interned
         }
         case mdds::mtm::element_numeric:
@@ -744,11 +779,9 @@ svl::SharedString ScMatrixImpl::GetString( SvNumberFormatter& rFormatter, SCSIZE
         return svl::SharedString( ScGlobal::GetErrorString( nError));   // string not interned
     }
 
-    sal_uInt32 nKey = rFormatter.GetStandardFormat( SvNumFormatType::NUMBER,
+    sal_uInt32 nKey = rContext.NFGetStandardFormat( SvNumFormatType::NUMBER,
             ScGlobal::eLnge);
-    OUString aStr;
-    rFormatter.GetInputLineString( fVal, nKey, aStr);
-    return svl::SharedString( aStr);    // string not interned
+    return svl::SharedString(rContext.NFGetInputLineString( fVal, nKey )); // string not interned
 }
 
 ScMatrixValue ScMatrixImpl::Get(SCSIZE nC, SCSIZE nR) const
@@ -1103,11 +1136,12 @@ double EvalMatrix(const MatrixImplType& rMat)
 {
     Evaluator aEval;
     size_t nRows = rMat.size().row, nCols = rMat.size().column;
-    for (size_t i = 0; i < nRows; ++i)
+
+    MatrixImplType::const_position_type aPos = rMat.position(0, 0);
+    for (size_t nC = 0; nC < nCols; ++nC)
     {
-        for (size_t j = 0; j < nCols; ++j)
+        for (size_t nR = 0; nR < nRows; ++nR)
         {
-            MatrixImplType::const_position_type aPos = rMat.position(i, j);
             mdds::mtm::element_t eType = rMat.get_type(aPos);
             if (eType != mdds::mtm::element_numeric && eType != mdds::mtm::element_boolean)
                 // assuming a CompareMat this is an error
@@ -1119,8 +1153,11 @@ double EvalMatrix(const MatrixImplType& rMat)
                 return fVal;
 
             aEval.operate(fVal);
+
+            aPos = MatrixImplType::next_position(aPos);
         }
     }
+
     return aEval.result();
 }
 
@@ -2141,6 +2178,96 @@ size_t ScMatrixImpl::MatchStringInColumns(const svl::SharedString& rStr, size_t 
     return aFunc.getMatching();
 }
 
+void ScMatrixImpl::IfJump( ScJumpMatrix& rJumpMatrix, const short* pJump, short nJumpCount ) const
+{
+    const MatrixImplType::size_pair_type aSize = maMat.size();
+    const SCSIZE nRows = aSize.row;
+    const SCSIZE nCols = aSize.column;
+    MatrixImplType::const_position_type aPos = maMat.position(0, 0);
+    for (SCSIZE nC = 0; nC < nCols; ++nC)
+    {
+        for (SCSIZE nR = 0; nR < nRows; ++nR)
+        {
+            bool bIsValue;
+            bool bTrue;
+            double fVal;
+            mdds::mtm::element_t eType = maMat.get_type(aPos);
+            switch (eType)
+            {
+                case mdds::mtm::element_boolean:
+                    fVal = maMat.get_boolean(aPos) ? 1.0 : 0.0;
+                    bIsValue = std::isfinite(fVal);
+                    bTrue = bIsValue && (fVal != 0.0);
+                    if (bTrue)
+                        fVal = 1.0;
+                break;
+                case mdds::mtm::element_numeric:
+                    fVal = maMat.get_numeric(aPos);
+                    bIsValue = std::isfinite(fVal);
+                    bTrue = bIsValue && (fVal != 0.0);
+                    if (bTrue)
+                        fVal = 1.0;
+                break;
+                case mdds::mtm::element_string:
+                    // Treat empty and empty path as 0, but string
+                    // as error. ScMatrix::IsValueOrEmpty() returns
+                    // true for any empty, empty path, empty cell,
+                    // empty result.
+                    bIsValue = false;
+                    bTrue = false;
+                    fVal = CreateDoubleError(FormulaError::NoValue);
+                break;
+                case mdds::mtm::element_empty:
+                    // Treat empty and empty path as 0, but string
+                    // as error. ScMatrix::IsValueOrEmpty() returns
+                    // true for any empty, empty path, empty cell,
+                    // empty result.
+                    bIsValue = true;
+                    bTrue = false;
+                    fVal = 0.0;
+                break;
+                default:
+                    assert(false);
+                    bIsValue = true;
+                    bTrue = false;
+                    fVal = 0;
+            }
+            if ( bTrue )
+            {   // TRUE
+                if( nJumpCount >= 2 )
+                {   // THEN path
+                    rJumpMatrix.SetJump( nC, nR, fVal,
+                            pJump[ 1 ],
+                            pJump[ nJumpCount ]);
+                }
+                else
+                {   // no parameter given for THEN
+                    rJumpMatrix.SetJump( nC, nR, fVal,
+                            pJump[ nJumpCount ],
+                            pJump[ nJumpCount ]);
+                }
+            }
+            else
+            {   // FALSE
+                if( nJumpCount == 3 && bIsValue )
+                {   // ELSE path
+                    rJumpMatrix.SetJump( nC, nR, fVal,
+                            pJump[ 2 ],
+                            pJump[ nJumpCount ]);
+                }
+                else
+                {   // no parameter given for ELSE,
+                    // or DoubleError
+                    rJumpMatrix.SetJump( nC, nR, fVal,
+                            pJump[ nJumpCount ],
+                            pJump[ nJumpCount ]);
+                }
+            }
+            aPos = MatrixImplType::next_position(aPos);
+        }
+    }
+}
+
 double ScMatrixImpl::GetMaxValue( bool bTextAsZero, bool bIgnoreErrorValues ) const
 {
     CalcMaxMinValue<MaxOp> aFunc(bTextAsZero, bIgnoreErrorValues);
@@ -2287,11 +2414,25 @@ public:
         return *this;
     }
 
+    wrapped_iterator operator++(int)
+    {
+        auto const old = *this;
+        ++it;
+        return old;
+    }
+
     wrapped_iterator& operator--()
     {
         --it;
 
         return *this;
+    }
+
+    wrapped_iterator operator--(int)
+    {
+        auto const old = *this;
+        --it;
+        return old;
     }
 
     value_type& operator*() const
@@ -2641,6 +2782,14 @@ void ScMatrixImpl::CalcPosition(SCSIZE nIndex, SCSIZE& rC, SCSIZE& rR) const
     rR = nIndex - rC*nRowSize;
 }
 
+void ScMatrixImpl::CalcTransPosition(SCSIZE nIndex, SCSIZE& rC, SCSIZE& rR) const
+{
+    SCSIZE nColSize = maMat.size().column;
+    SAL_WARN_IF(!nColSize, "sc.core", "ScMatrixImpl::CalcPosition: 0 cols!");
+    rR = nColSize > 1 ? nIndex / nColSize : nIndex;
+    rC = nIndex - rR * nColSize;
+}
+
 namespace {
 
 size_t get_index(SCSIZE nMaxRow, size_t nRow, size_t nCol, size_t nRowOffset, size_t nColOffset)
@@ -2651,14 +2800,14 @@ size_t get_index(SCSIZE nMaxRow, size_t nRow, size_t nCol, size_t nRowOffset, si
 }
 
 void ScMatrixImpl::MatConcat(SCSIZE nMaxCol, SCSIZE nMaxRow, const ScMatrixRef& xMat1, const ScMatrixRef& xMat2,
-            SvNumberFormatter& rFormatter, svl::SharedStringPool& rStringPool)
+            ScInterpreterContext& rContext, svl::SharedStringPool& rStringPool)
 {
     SCSIZE nC1, nC2;
     SCSIZE nR1, nR2;
     xMat1->GetDimensions(nC1, nR1);
     xMat2->GetDimensions(nC2, nR2);
 
-    sal_uInt32 nKey = rFormatter.GetStandardFormat( SvNumFormatType::NUMBER,
+    sal_uInt32 nKey = rContext.NFGetStandardFormat( SvNumFormatType::NUMBER,
             ScGlobal::eLnge);
 
     std::vector<OUString> aString(nMaxCol * nMaxRow);
@@ -2677,16 +2826,14 @@ void ScMatrixImpl::MatConcat(SCSIZE nMaxCol, SCSIZE nMaxRow, const ScMatrixRef& 
                 nErrors[get_index(nMaxRow, nRow, nCol, nRowOffset, nColOffset)] = nErr;
                 return;
             }
-            OUString aStr;
-            rFormatter.GetInputLineString( nVal, nKey, aStr);
+            OUString aStr = rContext.NFGetInputLineString( nVal, nKey );
             aString[get_index(nMaxRow, nRow, nCol, nRowOffset, nColOffset)] = aString[get_index(nMaxRow, nRow, nCol, nRowOffset, nColOffset)] + aStr;
         };
 
     std::function<void(size_t, size_t, bool)> aBoolFunc =
         [&](size_t nRow, size_t nCol, bool nVal)
         {
-            OUString aStr;
-            rFormatter.GetInputLineString( nVal ? 1.0 : 0.0, nKey, aStr);
+            OUString aStr = rContext.NFGetInputLineString( nVal ? 1.0 : 0.0, nKey);
             aString[get_index(nMaxRow, nRow, nCol, nRowOffset, nColOffset)] = aString[get_index(nMaxRow, nRow, nCol, nRowOffset, nColOffset)] + aStr;
         };
 
@@ -2739,16 +2886,14 @@ void ScMatrixImpl::MatConcat(SCSIZE nMaxCol, SCSIZE nMaxRow, const ScMatrixRef& 
                 nErrors[get_index(nMaxRow, nRow, nCol, nRowOffset, nColOffset)] = nErr;
                 return;
             }
-            OUString aStr;
-            rFormatter.GetInputLineString( nVal, nKey, aStr);
+            OUString aStr = rContext.NFGetInputLineString( nVal, nKey );
             aSharedString[get_index(nMaxRow, nRow, nCol, nRowOffset, nColOffset)] = rStringPool.intern(aString[get_index(nMaxRow, nRow, nCol, nRowOffset, nColOffset)] + aStr);
         };
 
     std::function<void(size_t, size_t, bool)> aBoolFunc2 =
         [&](size_t nRow, size_t nCol, bool nVal)
         {
-            OUString aStr;
-            rFormatter.GetInputLineString( nVal ? 1.0 : 0.0, nKey, aStr);
+            OUString aStr = rContext.NFGetInputLineString( nVal ? 1.0 : 0.0, nKey);
             aSharedString[get_index(nMaxRow, nRow, nCol, nRowOffset, nColOffset)] = rStringPool.intern(aString[get_index(nMaxRow, nRow, nCol, nRowOffset, nColOffset)] + aStr);
         };
 
@@ -3182,6 +3327,11 @@ void ScMatrix::PutDouble( double fVal, SCSIZE nIndex)
     pImpl->PutDouble(fVal, nIndex);
 }
 
+void ScMatrix::PutDoubleTrans(double fVal, SCSIZE nIndex)
+{
+    pImpl->PutDoubleTrans(fVal, nIndex);
+}
+
 void ScMatrix::PutDouble(const double* pArray, size_t nLen, SCSIZE nC, SCSIZE nR)
 {
     pImpl->PutDouble(pArray, nLen, nC, nR);
@@ -3197,6 +3347,11 @@ void ScMatrix::PutString(const svl::SharedString& rStr, SCSIZE nIndex)
     pImpl->PutString(rStr, nIndex);
 }
 
+void ScMatrix::PutStringTrans(const svl::SharedString& rStr, SCSIZE nIndex)
+{
+    pImpl->PutStringTrans(rStr, nIndex);
+}
+
 void ScMatrix::PutString(const svl::SharedString* pArray, size_t nLen, SCSIZE nC, SCSIZE nR)
 {
     pImpl->PutString(pArray, nLen, nC, nR);
@@ -3205,6 +3360,16 @@ void ScMatrix::PutString(const svl::SharedString* pArray, size_t nLen, SCSIZE nC
 void ScMatrix::PutEmpty(SCSIZE nC, SCSIZE nR)
 {
     pImpl->PutEmpty(nC, nR);
+}
+
+void ScMatrix::PutEmpty(SCSIZE nIndex)
+{
+    pImpl->PutEmpty(nIndex);
+}
+
+void ScMatrix::PutEmptyTrans(SCSIZE nIndex)
+{
+    pImpl->PutEmptyTrans(nIndex);
 }
 
 void ScMatrix::PutEmptyPath(SCSIZE nC, SCSIZE nR)
@@ -3252,9 +3417,9 @@ svl::SharedString ScMatrix::GetString( SCSIZE nIndex) const
     return pImpl->GetString(nIndex);
 }
 
-svl::SharedString ScMatrix::GetString( SvNumberFormatter& rFormatter, SCSIZE nC, SCSIZE nR) const
+svl::SharedString ScMatrix::GetString( ScInterpreterContext& rContext, SCSIZE nC, SCSIZE nR) const
 {
-    return pImpl->GetString(rFormatter, nC, nR);
+    return pImpl->GetString(rContext, nC, nR);
 }
 
 ScMatrixValue ScMatrix::Get(SCSIZE nC, SCSIZE nR) const
@@ -3410,6 +3575,11 @@ ScMatrix::KahanIterateResult ScMatrix::Sum(bool bTextAsZero, bool bIgnoreErrorVa
 ScMatrix::KahanIterateResult ScMatrix::SumSquare(bool bTextAsZero, bool bIgnoreErrorValues) const
 {
     return pImpl->SumSquare(bTextAsZero, bIgnoreErrorValues);
+}
+
+void ScMatrix::IfJump(ScJumpMatrix& rJumpMatrix, const short* pJump, short nJumpCount) const
+{
+    return pImpl->IfJump(rJumpMatrix, pJump, nJumpCount);
 }
 
 ScMatrix::DoubleIterateResult ScMatrix::Product(bool bTextAsZero, bool bIgnoreErrorValues) const
@@ -3632,9 +3802,9 @@ void ScMatrix::Dump() const
 #endif
 
 void ScMatrix::MatConcat(SCSIZE nMaxCol, SCSIZE nMaxRow,
-        const ScMatrixRef& xMat1, const ScMatrixRef& xMat2, SvNumberFormatter& rFormatter, svl::SharedStringPool& rPool)
+        const ScMatrixRef& xMat1, const ScMatrixRef& xMat2, ScInterpreterContext& rContext, svl::SharedStringPool& rPool)
 {
-    pImpl->MatConcat(nMaxCol, nMaxRow, xMat1, xMat2, rFormatter, rPool);
+    pImpl->MatConcat(nMaxCol, nMaxRow, xMat1, xMat2, rContext, rPool);
 }
 
 void ScMatrix::ExecuteBinaryOp(SCSIZE nMaxCol, SCSIZE nMaxRow, const ScMatrix& rInputMat1, const ScMatrix& rInputMat2,

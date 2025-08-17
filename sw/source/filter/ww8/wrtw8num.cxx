@@ -35,12 +35,10 @@
 #include "ww8par.hxx"
 
 using namespace ::com::sun::star;
-using namespace sw::types;
-using namespace sw::util;
 
 SwNumRule* MSWordExportBase::DuplicateNumRuleImpl(const SwNumRule *pRule)
 {
-    const OUString sPrefix("WW8TempExport" + OUString::number( m_nUniqueList++ ));
+    const UIName sPrefix("WW8TempExport" + OUString::number( m_nUniqueList++ ));
     SwNumRule* pMyNumRule =
             new SwNumRule( m_rDoc.GetUniqueNumRuleName( &sPrefix ),
                            SvxNumberFormat::LABEL_WIDTH_AND_POSITION );
@@ -119,7 +117,7 @@ void MSWordExportBase::AddListLevelOverride(sal_uInt16 nListId,
     m_ListLevelOverrides[nListId][nLevelNum] = nStartAt;
 }
 
-sal_uInt16 MSWordExportBase::GetNumberingId( const SwNumRule& rNumRule )
+void MSWordExportBase::EnsureUsedNumberingTable()
 {
     if ( !m_pUsedNumTable )
     {
@@ -148,6 +146,11 @@ sal_uInt16 MSWordExportBase::GetNumberingId( const SwNumRule& rNumRule )
             m_pUsedNumTable->push_back( pR );
         }
     }
+}
+
+sal_uInt16 MSWordExportBase::GetNumberingId( const SwNumRule& rNumRule )
+{
+    EnsureUsedNumberingTable();
     SwNumRule* p = const_cast<SwNumRule*>(&rNumRule);
     sal_uInt16 nRet = o3tl::narrowing<sal_uInt16>(m_pUsedNumTable->GetPos(p));
 
@@ -279,7 +282,7 @@ void WW8AttributeOutput::NumberingLevel( sal_uInt8 /*nLevel*/,
         sal_Int16 nListTabPos,
         const OUString &rNumberingString,
         const SvxBrushItem* pBrush, //For i120928,to transfer graphic of bullet
-        bool /*isLegal*/
+        bool isLegal
     )
 {
     // Start value
@@ -303,6 +306,13 @@ void WW8AttributeOutput::NumberingLevel( sal_uInt8 /*nLevel*/,
         nAlign = 0;
         break;
     }
+
+    if (isLegal)
+    {
+        // 3rd bit.
+        nAlign |= 0x04;
+    }
+
     m_rWW8Export.m_pTableStrm->WriteUChar( nAlign );
 
     // Write the rgbxchNums[9], positions of placeholders for paragraph
@@ -408,6 +418,35 @@ void MSWordExportBase::AbstractNumberingDefinitions()
     }
 }
 
+std::pair<OUString, std::unique_ptr<wwFont>>
+MSWordExportBase::GetNumberingLevelBulletStringAndFont(const SwNumFormat& rLevelFormat)
+{
+    assert(rLevelFormat.GetNumberingType() == SVX_NUM_CHAR_SPECIAL
+           || rLevelFormat.GetNumberingType() == SVX_NUM_BITMAP);
+
+    sal_UCS4 cBullet = rLevelFormat.GetBulletChar();
+    OUString sNumStr(&cBullet, 1);
+
+    std::optional<vcl::Font> pBulletFont = rLevelFormat.GetBulletFont();
+    if (!pBulletFont)
+    {
+        pBulletFont = numfunc::GetDefBulletFont();
+    }
+
+    rtl_TextEncoding eChrSet = pBulletFont->GetCharSet();
+    OUString sFontName = pBulletFont->GetFamilyName();
+    FontFamily eFamily = pBulletFont->GetFamilyTypeMaybeAskConfig();
+
+    if (IsOpenSymbol(sFontName))
+        SubstituteBullet(sNumStr, eChrSet, sFontName);
+
+    if (sFontName.isEmpty())
+        sFontName = pBulletFont->GetFamilyName();
+
+    return { sNumStr, std::make_unique<wwFont>(sFontName, pBulletFont->GetPitchMaybeAskConfig(),
+                                               eFamily, eChrSet) };
+}
+
 void MSWordExportBase::NumberingLevel(
         SwNumRule const& rRule, sal_uInt8 const nLvl)
 {
@@ -457,61 +496,6 @@ void MSWordExportBase::NumberingLevel(
 
     // Build the NumString for this Level
     OUString sNumStr;
-    OUString sFontName;
-    bool bWriteBullet = false;
-    std::optional<vcl::Font> pBulletFont;
-    rtl_TextEncoding eChrSet=0;
-    FontFamily eFamily=FAMILY_DECORATIVE;
-    if (SVX_NUM_CHAR_SPECIAL == rFormat.GetNumberingType() ||
-        SVX_NUM_BITMAP == rFormat.GetNumberingType())
-    {
-        // Use bullet
-        sal_UCS4 cBullet = rFormat.GetBulletChar();
-        sNumStr = OUString(&cBullet, 1);
-    }
-    else
-    {
-        // Create level string
-        if (rFormat.HasListFormat())
-        {
-            sal_uInt8* pLvlPos = aNumLvlPos;
-            sNumStr = rFormat.GetListFormat();
-
-            // now search the nums in the string
-            for (sal_uInt8 i = 0; i <= nLvl; ++i)
-            {
-                OUString sSrch("%" + OUString::number(i+1) + "%");
-                sal_Int32 nFnd = sNumStr.indexOf(sSrch);
-                if (-1 != nFnd)
-                {
-                    *pLvlPos = static_cast<sal_uInt8>(nFnd + 1);
-                    ++pLvlPos;
-                    sNumStr = sNumStr.replaceAt(nFnd, sSrch.getLength(), rtl::OUStringChar(static_cast<char>(i)));
-                }
-            }
-        }
-        else if (rFormat.GetNumberingType() != SVX_NUM_NUMBER_NONE)
-            assert(false && "deprecated format still exists and is unhandled. Inform Vasily or Justin");
-    }
-
-    if (SVX_NUM_CHAR_SPECIAL == rFormat.GetNumberingType() ||
-        SVX_NUM_BITMAP == rFormat.GetNumberingType())
-    {
-        bWriteBullet = true;
-
-        pBulletFont = rFormat.GetBulletFont();
-        if (!pBulletFont)
-        {
-            pBulletFont = numfunc::GetDefBulletFont();
-        }
-
-        eChrSet = pBulletFont->GetCharSet();
-        sFontName = pBulletFont->GetFamilyName();
-        eFamily = pBulletFont->GetFamilyType();
-
-        if (IsOpenSymbol(sFontName))
-            SubstituteBullet(sNumStr, eChrSet, sFontName);
-    }
 
     // Attributes of the numbering
     std::unique_ptr<wwFont> pPseudoFont;
@@ -519,26 +503,98 @@ void MSWordExportBase::NumberingLevel(
 
     // cbGrpprlChpx
     SfxItemSetFixed<RES_CHRATR_BEGIN, RES_CHRATR_END> aSet( m_rDoc.GetAttrPool() );
-    if (rFormat.GetCharFormat() || bWriteBullet)
+
+    if (SVX_NUM_CHAR_SPECIAL == rFormat.GetNumberingType() ||
+        SVX_NUM_BITMAP == rFormat.GetNumberingType())
     {
-        if (bWriteBullet)
-        {
-            pOutSet = &aSet;
+        // Use bullet
+        std::tie(sNumStr, pPseudoFont) = GetNumberingLevelBulletStringAndFont(rFormat);
 
-            if (rFormat.GetCharFormat())
-                aSet.Put( rFormat.GetCharFormat()->GetAttrSet() );
-            aSet.ClearItem( RES_CHRATR_CJK_FONT );
-            aSet.ClearItem( RES_CHRATR_FONT );
-
-            if (sFontName.isEmpty())
-                sFontName = pBulletFont->GetFamilyName();
-
-            pPseudoFont.reset(new wwFont( sFontName, pBulletFont->GetPitch(),
-                eFamily, eChrSet));
-        }
-        else
-            pOutSet = &rFormat.GetCharFormat()->GetAttrSet();
+        pOutSet = &aSet;
+        if (rFormat.GetCharFormat())
+            aSet.Put( rFormat.GetCharFormat()->GetAttrSet() );
+        aSet.ClearItem( RES_CHRATR_CJK_FONT );
+        aSet.ClearItem( RES_CHRATR_FONT );
     }
+    else
+    {
+        // Create level string
+        if (rFormat.HasListFormat())
+        {
+            sal_uInt8* pLvlPos = aNumLvlPos;
+            OUString const sLevelFormat{rFormat.GetListFormat()};
+            OUStringBuffer buf;
+            ::std::optional<sal_Int32> oEraseFrom;
+
+            for (sal_Int32 nPosition{0}; nPosition < sLevelFormat.getLength(); )
+            {
+                if (sLevelFormat[nPosition] == '%'
+                    && (nPosition+3) < sLevelFormat.getLength()
+                    && sLevelFormat[nPosition] == '%'
+                    && sLevelFormat[nPosition+1] == '1'
+                    && sLevelFormat[nPosition+2] == '0'
+                    && sLevelFormat[nPosition+3] == '%')
+                {
+                    // WW8 does not support this level and breaks => erase it
+                    nPosition = nPosition + 4;
+                    oEraseFrom.emplace(nPosition);
+                }
+                else if (sLevelFormat[nPosition] == '%'
+                    && (nPosition+2) < sLevelFormat.getLength()
+                    && '1' <= sLevelFormat[nPosition+1]
+                    && sLevelFormat[nPosition+1] <= '9'
+                    && sLevelFormat[nPosition+2] == '%')
+                {
+                    sal_uInt8 const i(sLevelFormat[nPosition+1] - '1'); // need to subtract 1
+                    // because the result here is for RTF/DOC which is 0 based
+                    // not DOCX which is 1 based so it's converted there again
+                    nPosition = nPosition + 3;
+                    if (pLvlPos != ::std::end(aNumLvlPos) && i <= nLvl)
+                    {
+                        // this just contains the positions in order, level
+                        // doesn't matter here.
+                        // and yes, this index is 1-based in RTF/DOC!
+                        *pLvlPos = static_cast<sal_uInt8>(buf.getLength() + 1);
+                        ++pLvlPos;
+                    }
+                    if (i < nLvl && rRule.Get(i).GetNumberingType() == SVX_NUM_NUMBER_NONE)
+                    {
+                        // LO doesn't show this level, so don't export its separator
+                        oEraseFrom.emplace(nPosition);
+                        buf.append(static_cast<sal_Unicode>(i));
+                    }
+                    else if (nLvl < i)
+                    { // Word 2013 won't show label at all => erase completely
+                        oEraseFrom.emplace(nPosition);
+                    }
+                    else
+                    {
+                        oEraseFrom.reset();
+                        buf.append(static_cast<sal_Unicode>(i));
+                    }
+                }
+                else
+                {
+                    if (!oEraseFrom)
+                    {
+                        buf.append(sLevelFormat[nPosition]);
+                    }
+                    ++nPosition;
+                }
+            }
+            if (oEraseFrom)
+            {
+                // a suffix is *not* erased, only in the middle!
+                buf.append(sLevelFormat.subView(*oEraseFrom));
+            }
+            sNumStr = buf.makeStringAndClear();
+        }
+        else if (rFormat.GetNumberingType() != SVX_NUM_NUMBER_NONE)
+            assert(false && "deprecated format still exists and is unhandled. Inform Vasily or Justin");
+    }
+
+    if (!pOutSet && rFormat.GetCharFormat())
+        pOutSet = &rFormat.GetCharFormat()->GetAttrSet();
 
     sal_Int16 nIndentAt = 0;
     sal_Int16 nFirstLineIndex = 0;
@@ -611,13 +667,13 @@ void WW8Export::OutListNamesTab()
     for( ; nNms < nCount; ++nNms )
     {
         const SwNumRule& rRule = *(*m_pUsedNumTable)[ nNms ];
-        OUString sNm;
+        UIName sNm;
         if( !rRule.IsAutoRule() )
             sNm = rRule.GetName();
 
-        m_pTableStrm->WriteUInt16( sNm.getLength() );
+        m_pTableStrm->WriteUInt16( sNm.toString().getLength() );
         if (!sNm.isEmpty())
-            SwWW8Writer::WriteString16(*m_pTableStrm, sNm, false);
+            SwWW8Writer::WriteString16(*m_pTableStrm, sNm.toString(), false);
     }
 
     SwWW8Writer::WriteLong( *m_pTableStrm, m_pFib->m_fcSttbListNames + 2, nNms );

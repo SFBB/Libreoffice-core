@@ -27,9 +27,6 @@
 #include <drawinglayer/primitive2d/drawinglayer_primitivetypes2d.hxx>
 
 
-using namespace com::sun::star;
-
-
 namespace drawinglayer::primitive2d
 {
         UnifiedTransparencePrimitive2D::UnifiedTransparencePrimitive2D(
@@ -89,8 +86,8 @@ namespace drawinglayer::primitive2d
                 const basegfx::BColor aGray(getTransparence(), getTransparence(), getTransparence());
                 Primitive2DContainer aTransparenceContent(2);
 
-                aTransparenceContent[0] = Primitive2DReference(new PolyPolygonColorPrimitive2D(basegfx::B2DPolyPolygon(aPolygon), aGray));
-                aTransparenceContent[1] = Primitive2DReference(new PolygonHairlinePrimitive2D(std::move(aPolygon), aGray));
+                aTransparenceContent[0] = new PolyPolygonColorPrimitive2D(basegfx::B2DPolyPolygon(aPolygon), aGray);
+                aTransparenceContent[1] = new PolygonHairlinePrimitive2D(std::move(aPolygon), aGray);
 
                 // create sub-transparence group with a gray-colored rectangular fill polygon
                 rVisitor.visit(new TransparencePrimitive2D(Primitive2DContainer(getChildren()), std::move(aTransparenceContent)));

@@ -22,6 +22,8 @@
 #include <com/sun/star/io/IOException.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 
+#include <osl/diagnose.h>
+
 #include "filinpstr.hxx"
 #include "filerror.hxx"
 
@@ -36,8 +38,8 @@ using namespace com::sun::star;
 
 XInputStream_impl::XInputStream_impl( const OUString& aUncPath, bool bLock )
     : m_aFile( aUncPath ),
-      m_nErrorCode( TASKHANDLER_NO_ERROR ),
-      m_nMinorErrorCode( TASKHANDLER_NO_ERROR )
+      m_nErrorCode( TaskHandlerErr::NO_ERROR ),
+      m_nMinorErrorCode( 0 )
 {
     sal_uInt32 nFlags = osl_File_OpenFlag_Read;
     if ( !bLock )
@@ -49,7 +51,7 @@ XInputStream_impl::XInputStream_impl( const OUString& aUncPath, bool bLock )
         m_nIsOpen = false;
         m_aFile.close();
 
-        m_nErrorCode = TASKHANDLING_OPEN_FOR_INPUTSTREAM;
+        m_nErrorCode = TaskHandlerErr::OPEN_FOR_INPUTSTREAM;
         m_nMinorErrorCode = err;
     }
     else
@@ -94,6 +96,24 @@ XInputStream_impl::readBytes(
     // if any code relies on this, so be conservative---SB):
     if (sal::static_int_cast<sal_Int32>(nrc) != nBytesToRead)
         aData.realloc(sal_Int32(nrc));
+    return static_cast<sal_Int32>(nrc);
+}
+
+sal_Int32
+XInputStream_impl::readSomeBytes(
+                 sal_Int8* aData,
+                 sal_Int32 nBytesToRead )
+{
+    if( ! m_nIsOpen ) throw io::IOException( THROW_WHERE );
+
+        //TODO! translate memory exhaustion (if it were detectable...) into
+        // io::BufferSizeExceededException
+
+    sal_uInt64 nrc(0);
+    if(m_aFile.read( aData, sal_uInt64(nBytesToRead),nrc )
+       != osl::FileBase::E_None)
+        throw io::IOException( THROW_WHERE );
+
     return static_cast<sal_Int32>(nrc);
 }
 

@@ -17,9 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SW_SOURCE_CORE_INC_UNOFOOTNOTE_HXX
-#define INCLUDED_SW_SOURCE_CORE_INC_UNOFOOTNOTE_HXX
+#pragma once
 
+#include <swdllapi.h>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/container/XEnumerationAccess.hpp>
@@ -31,6 +31,7 @@
 
 class SwDoc;
 class SwFormatFootnote;
+class SwUnoInternalPaM;
 
 typedef ::cppu::WeakImplHelper
 <   css::lang::XServiceInfo
@@ -39,7 +40,7 @@ typedef ::cppu::WeakImplHelper
 ,   css::text::XFootnote
 > SwXFootnote_Base;
 
-class SwXFootnote final
+class SW_DLLPUBLIC SwXFootnote final
     : public SwXFootnote_Base
     , public SwXText
 {
@@ -129,8 +130,11 @@ public:
     virtual rtl::Reference< SwXTextCursor > createXTextCursor() override;
     virtual rtl::Reference< SwXTextCursor > createXTextCursorByRange(
             const ::css::uno::Reference< ::css::text::XTextRange >& aTextPosition ) override;
-};
 
-#endif // INCLUDED_SW_SOURCE_CORE_INC_UNOFOOTNOTE_HXX
+    void OnFormatFootnoteDeleted();
+
+private:
+    rtl::Reference< SwXTextCursor > createXTextCursorByRangeImpl(SwUnoInternalPaM& rPam);
+};
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

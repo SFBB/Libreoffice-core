@@ -114,66 +114,6 @@ namespace svt::table
         return delegateMouseEvent( i_tableControl, i_event, &MouseFunction::handleMouseUp );
     }
 
-
-    bool DefaultInputHandler::KeyInput( ITableControl& _rControl, const KeyEvent& rKEvt )
-    {
-        bool bHandled = false;
-
-        const vcl::KeyCode& rKeyCode = rKEvt.GetKeyCode();
-        sal_uInt16 nKeyCode = rKeyCode.GetCode();
-
-        struct ActionMapEntry
-        {
-            sal_uInt16              nKeyCode;
-            sal_uInt16              nKeyModifier;
-            TableControlAction  eAction;
-        }
-        static const aKnownActions[] = {
-            { KEY_DOWN,     0,          cursorDown },
-            { KEY_UP,       0,          cursorUp },
-            { KEY_LEFT,     0,          cursorLeft },
-            { KEY_RIGHT,    0,          cursorRight },
-            { KEY_HOME,     0,          cursorToLineStart },
-            { KEY_END,      0,          cursorToLineEnd },
-            { KEY_PAGEUP,   0,          cursorPageUp },
-            { KEY_PAGEDOWN, 0,          cursorPageDown },
-            { KEY_PAGEUP,   KEY_MOD1,   cursorToFirstLine },
-            { KEY_PAGEDOWN, KEY_MOD1,   cursorToLastLine },
-            { KEY_HOME,     KEY_MOD1,   cursorTopLeft },
-            { KEY_END,      KEY_MOD1,   cursorBottomRight },
-            { KEY_SPACE,    KEY_MOD1,   cursorSelectRow },
-            { KEY_UP,       KEY_SHIFT,  cursorSelectRowUp },
-            { KEY_DOWN,     KEY_SHIFT,  cursorSelectRowDown },
-            { KEY_END,      KEY_SHIFT,  cursorSelectRowAreaBottom },
-            { KEY_HOME,     KEY_SHIFT,  cursorSelectRowAreaTop }
-        };
-        for (const ActionMapEntry& rAction : aKnownActions)
-        {
-            if ( ( rAction.nKeyCode == nKeyCode ) && ( rAction.nKeyModifier == rKeyCode.GetModifier() ) )
-            {
-                bHandled = _rControl.dispatchAction( rAction.eAction );
-                break;
-            }
-        }
-
-        return bHandled;
-    }
-
-
-    bool DefaultInputHandler::GetFocus( ITableControl& _rControl )
-    {
-        _rControl.showCursor();
-        return false;   // continue processing
-    }
-
-
-    bool DefaultInputHandler::LoseFocus( ITableControl& _rControl )
-    {
-        _rControl.hideCursor();
-        return false;   // continue processing
-    }
-
-
 } // namespace svt::table
 
 

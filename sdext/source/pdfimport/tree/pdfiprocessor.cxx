@@ -28,15 +28,24 @@
 
 #include <sal/log.hxx>
 
+#include <com/sun/star/geometry/AffineMatrix2D.hpp>
+
 #include <comphelper/sequence.hxx>
 #include <basegfx/polygon/b2dpolygonclipper.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
+#include <basegfx/polygon/b2dpolypolygoncutter.hxx>
 #include <basegfx/utils/canvastools.hxx>
+#include <basegfx/vector/b2enums.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <i18nutil/unicode.hxx>
+#include <o3tl/string_view.hxx>
 
 using namespace com::sun::star;
 
+#include <drawinglayer/primitive2d/PolyPolygonStrokePrimitive2D.hxx>
+#include <drawinglayer/processor2d/linegeometryextractor2d.hxx>
+
+#include <iostream>
 
 namespace pdfi
 {
@@ -77,8 +86,8 @@ void PDFIProcessor::setPageNum( sal_Int32 nPages )
 
 void PDFIProcessor::pushState()
 {
-    GraphicsContextStack::value_type const a(m_aGCStack.back());
-    m_aGCStack.push_back(a);
+    GraphicsContextStack::value_type a(m_aGCStack.back());
+    m_aGCStack.push_back(std::move(a));
 }
 
 void PDFIProcessor::popState()
@@ -106,7 +115,7 @@ void PDFIProcessor::setLineDash( const uno::Sequence<double>& dashes,
     comphelper::sequenceToContainer(rContext.DashArray,dashes);
 }
 
-void PDFIProcessor::setLineJoin(sal_Int8 nJoin)
+void PDFIProcessor::setLineJoin(basegfx::B2DLineJoin nJoin)
 {
     getCurrentContext().LineJoin = nJoin;
 }
@@ -161,7 +170,7 @@ void PDFIProcessor::setFont( const FontAttributes& i_rFont )
     else
     {
         m_aFontToId[ aChangedFont ] = m_nNextFontId;
-        m_aIdToFont[ m_nNextFontId ] = aChangedFont;
+        m_aIdToFont[ m_nNextFontId ] = std::move(aChangedFont);
         rGC.FontId = m_nNextFontId;
         m_nNextFontId++;
     }
@@ -309,7 +318,7 @@ void PDFIProcessor::drawGlyphs( const OUString&             rGlyphs,
 
     CharGlyph aGlyph(m_pCurElement, getCurrentContext(), charWidth, prevSpaceWidth, rGlyphs);
     aGlyph.getGC().Transformation = totalTextMatrix1;
-    m_GlyphsList.push_back(aGlyph);
+    m_GlyphsList.push_back(std::move(aGlyph));
 
     prevCharWidth = charWidth;
     prevTextMatrix = totalTextMatrix1;
@@ -383,16 +392,81 @@ void PDFIProcessor::drawAlphaMaskedImage(const uno::Sequence<beans::PropertyValu
 
 }
 
+void PDFIProcessor::tilingPatternFill(int nX0, int nY0, int nX1, int nY1,
+                                      double nxStep, double nyStep,
+                                      int /* nPaintType */,
+                                      css::geometry::AffineMatrix2D& rMat,
+                                      const css::uno::Sequence<css::beans::PropertyValue>& xTile)
+{
+    const GraphicsContext& rGC(getCurrentContext());
+    auto nTile = m_aImages.addImage(xTile);
+
+    basegfx::B2DTuple aScale, aTranslation;
+    double fRotate, fShearX;
+    rGC.Transformation.decompose(aScale, aTranslation, fRotate, fShearX);
+
+    // Build a poly covering the whole fill area
+    double np0x = nX0 * nxStep;
+    double np0y = nY0 * nyStep;
+    double np1x = nX1 * nxStep;
+    double np1y = nY1 * nyStep;
+
+    // Transform with the rMat passed in
+    double tmpx, tmpy;
+    tmpx = np0x * rMat.m00 + np0y * rMat.m01 + rMat.m02;
+    tmpy = np0x * rMat.m10 + np0y * rMat.m11 + rMat.m12;
+    np0x = tmpx;
+    np0y = tmpy;
+    tmpx = np1x * rMat.m00 + np1y * rMat.m01 + rMat.m02;
+    tmpy = np1x * rMat.m10 + np1y * rMat.m11 + rMat.m12;
+    np1x = tmpx;
+    np1y = tmpy;
+
+    auto aB2DPoly = basegfx::B2DPolyPolygon(basegfx::utils::createPolygonFromRect(basegfx::B2DRange(np0x, np0y, np1x, np1y)));
+    aB2DPoly.transform(getCurrentContext().Transformation);
+
+    // Clip against current clip path, if any
+    basegfx::B2DPolyPolygon aCurClip = getCurrentContext().Clip;
+    if( aCurClip.count() ) {
+        aB2DPoly = basegfx::utils::clipPolyPolygonOnPolyPolygon( aB2DPoly, aCurClip,
+                       true, /* bInside, keep parts inside the clip */
+                       false /* bStroke, filled not stroked */ );
+    }
+    // TODO: That clipping might shift the fill pattern offsets
+
+    double transformedxStep = nxStep * rMat.m00 + nyStep * rMat.m01;
+    double transformedyStep = nxStep * rMat.m10 + nyStep * rMat.m11;
+
+    auto pPolyElement = ElementFactory::createPolyPolyElement(
+        m_pCurElement,
+        getGCId(getCurrentContext()),
+        aB2DPoly,
+        PATH_EOFILL, // Hmm how do I know if this should be EO or not?
+        nTile,
+        transformedxStep * aScale.getX(),
+        transformedyStep * -aScale.getY());
+    pPolyElement->updateGeometry();
+    pPolyElement->ZOrder = m_nNextZOrder++;
+}
+
 void PDFIProcessor::strokePath( const uno::Reference< rendering::XPolyPolygon2D >& rPath )
 {
     basegfx::B2DPolyPolygon aPoly=basegfx::unotools::b2DPolyPolygonFromXPolyPolygon2D(rPath);
+    basegfx::B2DPolyPolygon aCurClip = getCurrentContext().Clip;
     aPoly.transform(getCurrentContext().Transformation);
+
+    if( aCurClip.count() ) {
+        aPoly = basegfx::utils::clipPolyPolygonOnPolyPolygon( aPoly, aCurClip,
+                    true, /* bInside, keep parts inside the clip */
+                    !aPoly.isClosed() /* bStroke */ );
+    }
 
     PolyPolyElement* pPoly = ElementFactory::createPolyPolyElement(
         m_pCurElement,
         getGCId(getCurrentContext()),
         aPoly,
-        PATH_STROKE );
+        PATH_STROKE,
+        -1, 0, 0 );
     pPoly->updateGeometry();
     pPoly->ZOrder = m_nNextZOrder++;
 }
@@ -400,13 +474,23 @@ void PDFIProcessor::strokePath( const uno::Reference< rendering::XPolyPolygon2D 
 void PDFIProcessor::fillPath( const uno::Reference< rendering::XPolyPolygon2D >& rPath )
 {
     basegfx::B2DPolyPolygon aPoly=basegfx::unotools::b2DPolyPolygonFromXPolyPolygon2D(rPath);
+    aPoly = basegfx::utils::createNonzeroConform(aPoly);
+
     aPoly.transform(getCurrentContext().Transformation);
+
+    basegfx::B2DPolyPolygon aCurClip = getCurrentContext().Clip;
+    if( aCurClip.count() ) {
+        aPoly = basegfx::utils::clipPolyPolygonOnPolyPolygon( aPoly, aCurClip,
+                    true, /* bInside, keep parts inside the clip */
+                    false /* bStroke, filled not stroked */ );
+    }
 
     PolyPolyElement* pPoly = ElementFactory::createPolyPolyElement(
         m_pCurElement,
         getGCId(getCurrentContext()),
         aPoly,
-        PATH_FILL );
+        PATH_FILL,
+        -1, 0, 0 );
     pPoly->updateGeometry();
     pPoly->ZOrder = m_nNextZOrder++;
 }
@@ -416,11 +500,19 @@ void PDFIProcessor::eoFillPath( const uno::Reference< rendering::XPolyPolygon2D 
     basegfx::B2DPolyPolygon aPoly=basegfx::unotools::b2DPolyPolygonFromXPolyPolygon2D(rPath);
     aPoly.transform(getCurrentContext().Transformation);
 
+    basegfx::B2DPolyPolygon aCurClip = getCurrentContext().Clip;
+    if( aCurClip.count() ) {
+        aPoly = basegfx::utils::clipPolyPolygonOnPolyPolygon( aPoly, aCurClip,
+                    true, /* bInside, keep parts inside the clip */
+                    false /* bStroke, filled not stroked */ );
+    }
+
     PolyPolyElement* pPoly = ElementFactory::createPolyPolyElement(
         m_pCurElement,
         getGCId(getCurrentContext()),
         aPoly,
-        PATH_EOFILL );
+        PATH_EOFILL,
+        -1, 0, 0 );
     pPoly->updateGeometry();
     pPoly->ZOrder = m_nNextZOrder++;
 }
@@ -435,7 +527,7 @@ void PDFIProcessor::intersectClip(const uno::Reference< rendering::XPolyPolygon2
     if( aCurClip.count() )  // #i92985# adapted API from (..., false, false) to (..., true, false)
         aNewClip = basegfx::utils::clipPolyPolygonOnPolyPolygon( aCurClip, aNewClip, true, false );
 
-    getCurrentContext().Clip = aNewClip;
+    getCurrentContext().Clip = std::move(aNewClip);
 }
 
 void PDFIProcessor::intersectEoClip(const uno::Reference< rendering::XPolyPolygon2D >& rPath)
@@ -448,7 +540,72 @@ void PDFIProcessor::intersectEoClip(const uno::Reference< rendering::XPolyPolygo
     if( aCurClip.count() )  // #i92985# adapted API from (..., false, false) to (..., true, false)
         aNewClip = basegfx::utils::clipPolyPolygonOnPolyPolygon( aCurClip, aNewClip, true, false );
 
-    getCurrentContext().Clip = aNewClip;
+    getCurrentContext().Clip = std::move(aNewClip);
+}
+
+void PDFIProcessor::intersectClipToStroke(const uno::Reference< rendering::XPolyPolygon2D >& rPath)
+{
+    // TODO(F3): interpret fill mode
+    basegfx::B2DPolyPolygon aNewClip = basegfx::unotools::b2DPolyPolygonFromXPolyPolygon2D(rPath);
+    const GraphicsContext& rGC(getCurrentContext());
+    aNewClip.transform(rGC.Transformation);
+    basegfx::B2DPolyPolygon aCurClip = rGC.Clip;
+    double nScale = GetAverageTransformationScale(rGC.Transformation);
+
+
+    // We need to get a path that corresponds to a 'stroked path' - i.e. with whatever line
+    // thickness etc is set.  PolyPolygonStrokePrimitive2D::create2DDecomposition does most
+    // of the work.
+    const basegfx::BColor aBlack(0.0, 0.0, 0.0);
+    drawinglayer::attribute::LineAttribute aLineAttribute(aBlack, rGC.LineWidth * nScale,
+                                                          rGC.LineJoin);
+    rtl::Reference<drawinglayer::primitive2d::PolyPolygonStrokePrimitive2D> aStrokePrimitive(
+        new drawinglayer::primitive2d::PolyPolygonStrokePrimitive2D(aNewClip, aLineAttribute));
+    drawinglayer::primitive2d::Primitive2DContainer aPrimitiveContainer;
+    const drawinglayer::geometry::ViewInformation2D aViewInformation2D;
+    aStrokePrimitive->get2DDecomposition(aPrimitiveContainer, aViewInformation2D);
+
+    // Based on extractLineContourFromPrimitive2DSequence and ImpConvertToContourObj
+    drawinglayer::processor2d::LineGeometryExtractor2D aExtractor(aViewInformation2D);
+    aExtractor.process(aPrimitiveContainer);
+
+    basegfx::B2DPolygonVector aHairlines = aExtractor.getExtractedHairlines();
+    auto aFills = aExtractor.getExtractedLineFills();
+
+    basegfx::B2DPolyPolygon aTmpClip = basegfx::utils::mergeToSinglePolyPolygon(std::move(aFills));
+
+    for (const basegfx::B2DPolygon & rExtractedHairline : aHairlines)
+        aTmpClip.append(rExtractedHairline);
+
+    aNewClip = std::move(aTmpClip);
+
+    if( aCurClip.count() )  // #i92985# adapted API from (..., false, false) to (..., true, false)
+        aNewClip = basegfx::utils::clipPolyPolygonOnPolyPolygon( aCurClip, aNewClip, true, false );
+
+    getCurrentContext().Clip = std::move(aNewClip);
+}
+
+void PDFIProcessor::beginTransparencyGroup(const bool bForSoftMask)
+{
+    const GraphicsContext& rGC(getCurrentContext());
+    const sal_Int32 nGCId = getGCId(rGC);
+    GroupElement* pGroup = ElementFactory::createGroupElement( m_pCurElement, nGCId );
+    pGroup->ZOrder = m_nNextZOrder++;
+    pGroup->isTransparencyGroup = true;
+    pGroup->isForSoftMask = bForSoftMask;
+    pGroup->w = 0;
+    pGroup->h = 0;
+    m_pCurElement = pGroup;
+
+}
+
+void PDFIProcessor::endTransparencyGroup()
+{
+    GroupElement* pGroup = dynamic_cast<GroupElement*>(m_pCurElement);
+    if( pGroup )
+    {
+        m_pCurElement = pGroup->Parent;
+    }
 }
 
 void PDFIProcessor::hyperLink( const geometry::RealRectangle2D& rBounds,
@@ -522,7 +679,7 @@ void PDFIProcessor::startPage( const geometry::RealSize2D& rSize )
     if( m_xStatusIndicator.is() )
     {
         if( nNextPageNr == 1 )
-            startIndicator( " " );
+            startIndicator( u" "_ustr );
         m_xStatusIndicator->setValue( nNextPageNr );
     }
     m_pCurPage = ElementFactory::createPageElement(m_pDocument.get(), nNextPageNr);
@@ -544,7 +701,7 @@ void PDFIProcessor::emit( XmlEmitter&               rEmitter,
     ElementTreeVisitorSharedPtr optimizingVisitor(
         rVisitorFactory.createOptimizingVisitor(*this));
     // FIXME: localization
-    startIndicator( " " );
+    startIndicator( u" "_ustr );
     m_pDocument->visitedBy( *optimizingVisitor, std::list<std::unique_ptr<Element>>::const_iterator());
 
 #if OSL_DEBUG_LEVEL > 0
@@ -566,25 +723,25 @@ void PDFIProcessor::emit( XmlEmitter&               rEmitter,
     PropertyMap aProps;
     // document prolog
     #define OASIS_STR "urn:oasis:names:tc:opendocument:xmlns:"
-    aProps[ "xmlns:office" ]      = OASIS_STR "office:1.0" ;
-    aProps[ "xmlns:style" ]       = OASIS_STR "style:1.0" ;
-    aProps[ "xmlns:text" ]        = OASIS_STR "text:1.0" ;
-    aProps[ "xmlns:svg" ]         = OASIS_STR "svg-compatible:1.0" ;
-    aProps[ "xmlns:table" ]       = OASIS_STR "table:1.0" ;
-    aProps[ "xmlns:draw" ]        = OASIS_STR "drawing:1.0" ;
-    aProps[ "xmlns:fo" ]          = OASIS_STR "xsl-fo-compatible:1.0" ;
-    aProps[ "xmlns:xlink"]        = "http://www.w3.org/1999/xlink";
-    aProps[ "xmlns:dc"]           = "http://purl.org/dc/elements/1.1/";
-    aProps[ "xmlns:number"]       = OASIS_STR "datastyle:1.0" ;
-    aProps[ "xmlns:presentation"] = OASIS_STR "presentation:1.0" ;
-    aProps[ "xmlns:math"]         = "http://www.w3.org/1998/Math/MathML";
-    aProps[ "xmlns:form"]         = OASIS_STR "form:1.0" ;
-    aProps[ "xmlns:script"]       = OASIS_STR "script:1.0" ;
-    aProps[ "xmlns:dom"]          = "http://www.w3.org/2001/xml-events";
-    aProps[ "xmlns:xforms"]       = "http://www.w3.org/2002/xforms";
-    aProps[ "xmlns:xsd"]          = "http://www.w3.org/2001/XMLSchema";
-    aProps[ "xmlns:xsi"]          = "http://www.w3.org/2001/XMLSchema-instance";
-    aProps[ "office:version" ]    = "1.0";
+    aProps[ u"xmlns:office"_ustr ]      = OASIS_STR "office:1.0" ;
+    aProps[ u"xmlns:style"_ustr ]       = OASIS_STR "style:1.0" ;
+    aProps[ u"xmlns:text"_ustr ]        = OASIS_STR "text:1.0" ;
+    aProps[ u"xmlns:svg"_ustr ]         = OASIS_STR "svg-compatible:1.0" ;
+    aProps[ u"xmlns:table"_ustr ]       = OASIS_STR "table:1.0" ;
+    aProps[ u"xmlns:draw"_ustr ]        = OASIS_STR "drawing:1.0" ;
+    aProps[ u"xmlns:fo"_ustr ]          = OASIS_STR "xsl-fo-compatible:1.0" ;
+    aProps[ u"xmlns:xlink"_ustr]        = "http://www.w3.org/1999/xlink";
+    aProps[ u"xmlns:dc"_ustr]           = "http://purl.org/dc/elements/1.1/";
+    aProps[ u"xmlns:number"_ustr]       = OASIS_STR "datastyle:1.0" ;
+    aProps[ u"xmlns:presentation"_ustr] = OASIS_STR "presentation:1.0" ;
+    aProps[ u"xmlns:math"_ustr]         = "http://www.w3.org/1998/Math/MathML";
+    aProps[ u"xmlns:form"_ustr]         = OASIS_STR "form:1.0" ;
+    aProps[ u"xmlns:script"_ustr]       = OASIS_STR "script:1.0" ;
+    aProps[ u"xmlns:dom"_ustr]          = "http://www.w3.org/2001/xml-events";
+    aProps[ u"xmlns:xforms"_ustr]       = "http://www.w3.org/2002/xforms";
+    aProps[ u"xmlns:xsd"_ustr]          = "http://www.w3.org/2001/XMLSchema";
+    aProps[ u"xmlns:xsi"_ustr]          = "http://www.w3.org/2001/XMLSchema-instance";
+    aProps[ u"office:version"_ustr ]    = "1.0";
 
     aContext.rEmitter.beginTag( "office:document", aProps );
 
@@ -700,13 +857,13 @@ void PDFIProcessor::sortElements(Element* pEle)
 /* Produce mirrored-image for each code point which has the Bidi_Mirrored property, within a string.
    This need to be done in forward order.
 */
-OUString PDFIProcessor::SubstituteBidiMirrored(const OUString& rString)
+OUString PDFIProcessor::SubstituteBidiMirrored(std::u16string_view rString)
 {
-    const sal_Int32 nLen = rString.getLength();
+    const sal_Int32 nLen = rString.size();
     OUStringBuffer aMirror(nLen);
 
     for (sal_Int32 i = 0; i < nLen;) {
-        const sal_uInt32 nCodePoint = rString.iterateCodePoints(&i);
+        const sal_uInt32 nCodePoint = o3tl::iterateCodePoints(rString, &i);
         aMirror.appendUtf32(unicode::GetMirroredChar(nCodePoint));
     }
     return aMirror.makeStringAndClear();

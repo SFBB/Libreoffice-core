@@ -118,11 +118,12 @@ SAXHelper::SAXHelper( )
      * compile error:
      * xmlLoadExtDtdDefaultValue = XML_DETECT_IDS | XML_COMPLETE_ATTRS ;
      */
+SAL_WNODEPRECATED_DECLARATIONS_PUSH
     xmlSubstituteEntitiesDefault(0) ;
-
 #ifndef XMLSEC_NO_XSLT
     xmlIndentTreeOutput = 1 ;
 #endif /* XMLSEC_NO_XSLT */
+SAL_WNODEPRECATED_DECLARATIONS_POP
 
     m_pParserCtxt = xmlNewParserCtxt() ;
 

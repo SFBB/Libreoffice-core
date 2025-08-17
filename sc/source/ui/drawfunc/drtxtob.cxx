@@ -23,6 +23,7 @@
 #include <i18nutil/transliteration.hxx>
 #include <editeng/adjustitem.hxx>
 #include <svx/clipfmtitem.hxx>
+#include <editeng/colritem.hxx>
 #include <editeng/contouritem.hxx>
 #include <editeng/crossedoutitem.hxx>
 #include <editeng/eeitem.hxx>
@@ -42,12 +43,13 @@
 #include <svx/svdoutl.hxx>
 #include <svx/sdooitm.hxx>
 #include <editeng/postitem.hxx>
-#include <editeng/scripttypeitem.hxx>
+#include <editeng/scriptsetitem.hxx>
 #include <editeng/shdditem.hxx>
 #include <editeng/udlnitem.hxx>
 #include <editeng/wghtitem.hxx>
 #include <editeng/writingmodeitem.hxx>
 #include <sfx2/dispatch.hxx>
+#include <sfx2/namedcolor.hxx>
 #include <sfx2/objface.hxx>
 #include <sfx2/objsh.hxx>
 #include <sfx2/request.hxx>
@@ -89,7 +91,7 @@ void ScDrawTextObjectBar::InitInterface_Impl()
                                             SfxVisibilityFlags::Standard | SfxVisibilityFlags::Server,
                                             ToolbarId::Text_Toolbox_Sc);
 
-    GetStaticInterface()->RegisterPopupMenu("drawtext");
+    GetStaticInterface()->RegisterPopupMenu(u"drawtext"_ustr);
 
     GetStaticInterface()->RegisterChildWindow(ScGetFontWorkId());
 }
@@ -117,14 +119,14 @@ ScDrawTextObjectBar::ScDrawTextObjectBar(ScViewData& rData) :
     SetPool( mrViewData.GetScDrawView()->GetDefaultAttr().GetPool() );
 
     //  At the switching-over the UndoManager is changed to edit mode
-    SfxUndoManager* pMgr = mrViewData.GetSfxDocShell()->GetUndoManager();
+    SfxUndoManager* pMgr = mrViewData.GetSfxDocShell().GetUndoManager();
     SetUndoManager( pMgr );
     if ( !mrViewData.GetDocument().IsUndoEnabled() )
     {
         pMgr->SetMaxUndoActionCount( 0 );
     }
 
-    SetName("DrawText");
+    SetName(u"DrawText"_ustr);
     SfxShell::SetContextName(vcl::EnumContext::GetContextName(vcl::EnumContext::Context::DrawText));
 }
 
@@ -226,8 +228,8 @@ void ScDrawTextObjectBar::Execute( SfxRequest &rReq )
                         const OUString& aFontName(pFontItem->GetValue());
                         vcl::Font aFont(aFontName, Size(1,1)); // Size only because of CTOR
                         aNewItem = std::make_shared<SvxFontItem>(
-                            aFont.GetFamilyType(), aFont.GetFamilyName(),
-                            aFont.GetStyleName(), aFont.GetPitch(),
+                            aFont.GetFamilyTypeMaybeAskConfig(), aFont.GetFamilyName(),
+                            aFont.GetStyleName(), aFont.GetPitchMaybeAskConfig(),
                             aFont.GetCharSet(), ATTR_FONT);
                     }
                     else
@@ -241,17 +243,11 @@ void ScDrawTextObjectBar::Execute( SfxRequest &rReq )
                 if ( !aString.isEmpty() )
                 {
                     SfxItemSet aSet( pOutliner->GetEmptyItemSet() );
-                    // tdf#125054
-                    // checked against original, indeed aNewItem looks as if it can have
-                    // either WhichID EE_CHAR_FONTINFO or ATTR_FONT when it was reset
-                    // above, original uses '= SvxFontItem(..., ATTR_FONT).
-                    // BUT beware: the operator=() did not copy the WhichID when resetting,
-                    // so it indeed has WhichID of EE_CHAR_FONTINFO despite copying an Item
-                    // that was constructed using ATTR_FONT as WhichID (!)
-                    aSet.Put( *aNewItem, EE_CHAR_FONTINFO );
+                    // tdf#125054 set and force to needed WhichID
+                    aSet.PutAsTargetWhich( *aNewItem, EE_CHAR_FONTINFO );
 
                     //  If nothing is selected, then SetAttribs of the View selects a word
-                    pOutView->GetOutliner()->QuickSetAttribs( aSet, pOutView->GetSelection() );
+                    pOutView->GetOutliner().QuickSetAttribs( aSet, pOutView->GetSelection() );
                     pOutView->InsertText(aString);
                 }
 
@@ -301,6 +297,10 @@ void ScDrawTextObjectBar::Execute( SfxRequest &rReq )
                     ScGlobal::OpenURL(pURLField->GetURL(), pURLField->GetTargetFrame(), true);
                 }
             }
+            break;
+
+        case SID_INSERT_HYPERLINK:
+            mrViewData.GetViewShell()->GetViewFrame().GetDispatcher()->Execute(SID_HYPERLINK_DIALOG);
             break;
 
         case SID_EDIT_HYPERLINK:
@@ -407,6 +407,7 @@ void ScDrawTextObjectBar::GetState( SfxItemSet& rSet )
     }
 
     if (rSet.GetItemState(SID_OPEN_HYPERLINK) != SfxItemState::UNKNOWN
+        || rSet.GetItemState(SID_INSERT_HYPERLINK) != SfxItemState::UNKNOWN
         || rSet.GetItemState(SID_EDIT_HYPERLINK) != SfxItemState::UNKNOWN
         || rSet.GetItemState(SID_COPY_HYPERLINK_LOCATION) != SfxItemState::UNKNOWN
         || rSet.GetItemState(SID_REMOVE_HYPERLINK) != SfxItemState::UNKNOWN)
@@ -418,6 +419,10 @@ void ScDrawTextObjectBar::GetState( SfxItemSet& rSet )
             rSet.DisableItem( SID_EDIT_HYPERLINK );
             rSet.DisableItem( SID_COPY_HYPERLINK_LOCATION );
             rSet.DisableItem( SID_REMOVE_HYPERLINK );
+        }
+        else
+        {
+            rSet.DisableItem( SID_INSERT_HYPERLINK );
         }
     }
 
@@ -591,23 +596,22 @@ static void lcl_RemoveFields( OutlinerView& rOutView )
 {
     //! Outliner should have RemoveFields with a selection
 
-    Outliner* pOutliner = rOutView.GetOutliner();
-    if (!pOutliner) return;
+    Outliner& rOutliner = rOutView.GetOutliner();
 
     ESelection aOldSel = rOutView.GetSelection();
     ESelection aSel = aOldSel;
     aSel.Adjust();
-    sal_Int32 nNewEnd = aSel.nEndPos;
+    sal_Int32 nNewEnd = aSel.end.nIndex;
 
-    bool bUpdate = pOutliner->IsUpdateLayout();
+    bool bUpdate = rOutliner.IsUpdateLayout();
     bool bChanged = false;
 
     //! GetPortions and GetAttribs should be const!
-    EditEngine& rEditEng = const_cast<EditEngine&>(pOutliner->GetEditEngine());
+    EditEngine& rEditEng = const_cast<EditEngine&>(rOutliner.GetEditEngine());
 
-    sal_Int32 nParCount = pOutliner->GetParagraphCount();
+    sal_Int32 nParCount = rOutliner.GetParagraphCount();
     for (sal_Int32 nPar=0; nPar<nParCount; nPar++)
-        if ( nPar >= aSel.nStartPara && nPar <= aSel.nEndPara )
+        if (nPar >= aSel.start.nPara && nPar <= aSel.end.nPara)
         {
             std::vector<sal_Int32> aPortions;
             rEditEng.GetPortions( nPar, aPortions );
@@ -619,8 +623,8 @@ static void lcl_RemoveFields( OutlinerView& rOutView )
                 sal_Int32 nStart = nPos ? aPortions[ nPos - 1 ] : 0;
                 // fields are single characters
                 if ( nEnd == nStart+1 &&
-                     ( nPar > aSel.nStartPara || nStart >= aSel.nStartPos ) &&
-                     ( nPar < aSel.nEndPara   || nEnd   <= aSel.nEndPos ) )
+                     ( nPar > aSel.start.nPara || nStart >= aSel.start.nIndex ) &&
+                     ( nPar < aSel.end.nPara   || nEnd   <= aSel.end.nIndex ) )
                 {
                     ESelection aFieldSel( nPar, nStart, nPar, nEnd );
                     SfxItemSet aSet = rEditEng.GetAttribs( aFieldSel );
@@ -629,18 +633,18 @@ static void lcl_RemoveFields( OutlinerView& rOutView )
                         if (!bChanged)
                         {
                             if (bUpdate)
-                                pOutliner->SetUpdateLayout( false );
+                                rOutliner.SetUpdateLayout( false );
                             OUString aName = ScResId( STR_UNDO_DELETECONTENTS );
                             ViewShellId nViewShellId(-1);
                             if (ScTabViewShell* pViewSh = ScTabViewShell::GetActiveViewShell())
                                 nViewShellId = pViewSh->GetViewShellId();
-                            pOutliner->GetUndoManager().EnterListAction( aName, aName, 0, nViewShellId );
+                            rOutliner.GetUndoManager().EnterListAction( aName, aName, 0, nViewShellId );
                             bChanged = true;
                         }
 
                         OUString aFieldText = rEditEng.GetText( aFieldSel );
-                        pOutliner->QuickInsertText( aFieldText, aFieldSel );
-                        if ( nPar == aSel.nEndPara )
+                        rOutliner.QuickInsertText( aFieldText, aFieldSel );
+                        if (nPar == aSel.end.nPara)
                         {
                             nNewEnd = nNewEnd + aFieldText.getLength();
                             --nNewEnd;
@@ -652,14 +656,14 @@ static void lcl_RemoveFields( OutlinerView& rOutView )
 
     if (bUpdate && bChanged)
     {
-        pOutliner->GetUndoManager().LeaveListAction();
-        pOutliner->SetUpdateLayout( true );
+        rOutliner.GetUndoManager().LeaveListAction();
+        rOutliner.SetUpdateLayout( true );
     }
 
     if ( aOldSel == aSel )          // aSel is adjusted
-        aOldSel.nEndPos = nNewEnd;
+        aOldSel.end.nIndex = nNewEnd;
     else
-        aOldSel.nStartPos = nNewEnd;        // if aOldSel is backwards
+        aOldSel.start.nIndex = nNewEnd;        // if aOldSel is backwards
     rOutView.SetSelection( aOldSel );
 }
 
@@ -727,7 +731,7 @@ void ScDrawTextObjectBar::ExecuteAttr( SfxRequest &rReq )
         case SID_SET_SUPER_SCRIPT:
             {
                 SvxEscapementItem aItem(EE_CHAR_ESCAPEMENT);
-                SvxEscapement eEsc = static_cast<SvxEscapement>(aEditAttr.Get( EE_CHAR_ESCAPEMENT ).GetEnumValue());
+                SvxEscapement eEsc = aEditAttr.Get(EE_CHAR_ESCAPEMENT).GetEscapement();
 
                 if( eEsc == SvxEscapement::Superscript )
                     aItem.SetEscapement( SvxEscapement::Off );
@@ -740,7 +744,7 @@ void ScDrawTextObjectBar::ExecuteAttr( SfxRequest &rReq )
         case SID_SET_SUB_SCRIPT:
             {
                 SvxEscapementItem aItem(EE_CHAR_ESCAPEMENT);
-                SvxEscapement eEsc = static_cast<SvxEscapement>(aEditAttr.Get( EE_CHAR_ESCAPEMENT ).GetEnumValue());
+                SvxEscapement eEsc = aEditAttr.Get(EE_CHAR_ESCAPEMENT).GetEscapement();
 
                 if( eEsc == SvxEscapement::Subscript )
                     aItem.SetEscapement( SvxEscapement::Off );
@@ -804,7 +808,7 @@ void ScDrawTextObjectBar::ExecuteAttr( SfxRequest &rReq )
                 OutlinerView* pOutView = pView->IsTextEdit() ?
                                 pView->GetTextEditOutlinerView() : nullptr;
                 if ( pOutView )
-                    pOutView->Paint( tools::Rectangle() );
+                    pOutView->DrawText_ToEditView( tools::Rectangle() );
 
                 SfxItemSetFixed<EE_ITEMS_START, EE_ITEMS_END> aEmptyAttr( *aEditAttr.GetPool() );
                 SfxItemSetFixed<SDRATTR_TEXT_MINFRAMEHEIGHT, SDRATTR_TEXT_MINFRAMEHEIGHT,
@@ -893,21 +897,50 @@ void ScDrawTextObjectBar::ExecuteAttr( SfxRequest &rReq )
             case SID_DRAWTEXT_ATTR_DLG:
                 {
                     SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-                    ScopedVclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateTextTabDialog(mrViewData.GetDialogParent(), &aEditAttr, pView));
+                    VclPtr<SfxAbstractTabDialog> pDlg(pFact->CreateTextTabDialog(mrViewData.GetDialogParent(), &aEditAttr, pView));
+                    auto xRequest = std::make_shared<SfxRequest>(rReq);
+                    rReq.Ignore(); // the 'old' request is not relevant any more
+                    pDlg->StartExecuteAsync(
+                        [this, pDlg, pArgs, aNewAttr, bSet, xRequest=std::move(xRequest), pView] (sal_Int32 nResult) mutable -> void
+                        {
+                            if ( RET_OK == nResult )
+                                aNewAttr.Put( *pDlg->GetOutputItemSet() );
 
-                    bDone = ( RET_OK == pDlg->Execute() );
+                            pDlg->disposeOnce();
 
-                    if ( bDone )
-                        aNewAttr.Put( *pDlg->GetOutputItemSet() );
+                            SfxBindings& rBindings = mrViewData.GetBindings();
+                            rBindings.Invalidate( SID_TABLE_VERT_NONE );
+                            rBindings.Invalidate( SID_TABLE_VERT_CENTER );
+                            rBindings.Invalidate( SID_TABLE_VERT_BOTTOM );
 
-                    pDlg.disposeAndClear();
-
-                    SfxBindings& rBindings = mrViewData.GetBindings();
-                    rBindings.Invalidate( SID_TABLE_VERT_NONE );
-                    rBindings.Invalidate( SID_TABLE_VERT_CENTER );
-                    rBindings.Invalidate( SID_TABLE_VERT_BOTTOM );
+                            if ( bSet || RET_OK == nResult )
+                            {
+                                xRequest->Done( aNewAttr );
+                                pArgs = xRequest->GetArgs();
+                            }
+                            if (pArgs)
+                            {
+                                // use args directly
+                                pView->SetAttributes( *pArgs );
+                                mrViewData.GetScDrawView()->InvalidateDrawTextAttrs();
+                            }
+                        }
+                    );
                 }
                 break;
+            case SID_ATTR_CHAR_COLOR:
+            case SID_ATTR_CHAR_BACK_COLOR:
+            {
+                const sal_uInt16 nEEWhich = GetPool().GetWhichIDFromSlotID(nSlot);
+                const std::optional<NamedColor> oColor
+                    = mrViewData.GetDocShell().GetRecentColor(nSlot);
+                if (oColor.has_value())
+                {
+                    const model::ComplexColor aCol = (*oColor).getComplexColor();
+                    aNewAttr.Put(SvxColorItem(aCol.getFinalColor(), aCol, nEEWhich));
+                }
+                break;
+            }
         }
     }
 
@@ -933,7 +966,7 @@ void ScDrawTextObjectBar::ExecuteAttr( SfxRequest &rReq )
 
         SfxItemPool& rPool = GetPool();
         SvxScriptSetItem aSetItem( nSlot, rPool );
-        sal_uInt16 nWhich = rPool.GetWhich( nSlot );
+        sal_uInt16 nWhich = rPool.GetWhichIDFromSlotID( nSlot );
         aSetItem.PutItemForScriptType( nScript, pArgs->Get( nWhich ) );
 
         pView->SetAttributes( aSetItem.GetItemSet() );
@@ -945,15 +978,15 @@ void ScDrawTextObjectBar::ExecuteAttr( SfxRequest &rReq )
             pArgs->Get( nId ));
         SfxItemSetFixed<EE_PARA_LRSPACE, EE_PARA_LRSPACE> aAttr( GetPool() );
         nId = EE_PARA_LRSPACE;
-        SvxLRSpaceItem aLRSpaceItem( rItem.GetLeft(),
-            rItem.GetRight(), rItem.GetTextFirstLineOffset(), nId );
+        SvxLRSpaceItem aLRSpaceItem(rItem.GetLeft(), rItem.GetRight(),
+                                    rItem.GetTextFirstLineOffset(), nId);
         aAttr.Put( aLRSpaceItem );
         pView->SetAttributes( aAttr );
     }
     else if( nSlot == SID_ATTR_PARA_LINESPACE )
     {
         SvxLineSpacingItem aLineSpaceItem = static_cast<const SvxLineSpacingItem&>(pArgs->Get(
-                                                            GetPool().GetWhich(nSlot)));
+                                                            GetPool().GetWhichIDFromSlotID(nSlot)));
         SfxItemSetFixed<EE_PARA_SBL, EE_PARA_SBL> aAttr( GetPool() );
         aAttr.Put( aLineSpaceItem );
         pView->SetAttributes( aAttr );
@@ -961,7 +994,7 @@ void ScDrawTextObjectBar::ExecuteAttr( SfxRequest &rReq )
     else if( nSlot == SID_ATTR_PARA_ULSPACE )
     {
         SvxULSpaceItem aULSpaceItem = static_cast<const SvxULSpaceItem&>(pArgs->Get(
-                                                            GetPool().GetWhich(nSlot)));
+                                                            GetPool().GetWhichIDFromSlotID(nSlot)));
         SfxItemSetFixed<EE_PARA_ULSPACE, EE_PARA_ULSPACE> aAttr( GetPool() );
         aULSpaceItem.SetWhich(EE_PARA_ULSPACE);
         aAttr.Put( aULSpaceItem );
@@ -1061,7 +1094,7 @@ void ScDrawTextObjectBar::GetAttrState( SfxItemSet& rDestSet )
     rDestSet.Put(aLR);
     Invalidate( SID_ATTR_PARA_LRSPACE );
     SfxItemState eState = aAttrSet.GetItemState( EE_PARA_LRSPACE );
-    if ( eState == SfxItemState::DONTCARE )
+    if ( eState == SfxItemState::INVALID )
         rDestSet.InvalidateItem(SID_ATTR_PARA_LRSPACE);
     //xuxu for Line Space
     SvxLineSpacingItem aLineSP = aAttrSet.Get( EE_PARA_SBL );
@@ -1069,7 +1102,7 @@ void ScDrawTextObjectBar::GetAttrState( SfxItemSet& rDestSet )
     rDestSet.Put(aLineSP);
     Invalidate(SID_ATTR_PARA_LINESPACE);
     eState = aAttrSet.GetItemState( EE_PARA_SBL );
-    if ( eState == SfxItemState::DONTCARE )
+    if ( eState == SfxItemState::INVALID )
         rDestSet.InvalidateItem(SID_ATTR_PARA_LINESPACE);
     //xuxu for UL Space
     SvxULSpaceItem aULSP = aAttrSet.Get( EE_PARA_ULSPACE );
@@ -1108,13 +1141,13 @@ void ScDrawTextObjectBar::GetAttrState( SfxItemSet& rDestSet )
     }
 
     //  super-/subscript
-    SvxEscapement eEsc = static_cast<SvxEscapement>(aAttrSet.Get( EE_CHAR_ESCAPEMENT ).GetEnumValue());
+    SvxEscapement eEsc = aAttrSet.Get(EE_CHAR_ESCAPEMENT).GetEscapement();
     rDestSet.Put(SfxBoolItem(SID_SET_SUPER_SCRIPT, eEsc == SvxEscapement::Superscript));
     rDestSet.Put(SfxBoolItem(SID_SET_SUB_SCRIPT, eEsc == SvxEscapement::Subscript));
 
     //  Underline
     eState = aAttrSet.GetItemState( EE_CHAR_UNDERLINE );
-    if ( eState == SfxItemState::DONTCARE )
+    if ( eState == SfxItemState::INVALID )
     {
         rDestSet.InvalidateItem( SID_ULINE_VAL_NONE );
         rDestSet.InvalidateItem( SID_ULINE_VAL_SINGLE );
@@ -1162,7 +1195,7 @@ void ScDrawTextObjectBar::GetAttrState( SfxItemSet& rDestSet )
         rDestSet.DisableItem( SID_ATTR_PARA_LEFT_TO_RIGHT );
         rDestSet.DisableItem( SID_ATTR_PARA_RIGHT_TO_LEFT );
     }
-    else if ( aAttrSet.GetItemState( EE_PARA_WRITINGDIR ) == SfxItemState::DONTCARE )
+    else if ( aAttrSet.GetItemState( EE_PARA_WRITINGDIR ) == SfxItemState::INVALID )
     {
         rDestSet.InvalidateItem( SID_ATTR_PARA_LEFT_TO_RIGHT );
         rDestSet.InvalidateItem( SID_ATTR_PARA_RIGHT_TO_LEFT );
@@ -1225,7 +1258,7 @@ void ScDrawTextObjectBar::GetStatePropPanelAttr(SfxItemSet &rSet)
             case SID_TABLE_VERT_BOTTOM:
                 bool bContour = false;
                 SfxItemState eConState = aEditAttr.GetItemState( SDRATTR_TEXT_CONTOURFRAME );
-                if( eConState != SfxItemState::DONTCARE )
+                if( eConState != SfxItemState::INVALID )
                 {
                     bContour = aEditAttr.Get( SDRATTR_TEXT_CONTOURFRAME ).GetValue();
                 }
@@ -1234,8 +1267,8 @@ void ScDrawTextObjectBar::GetStatePropPanelAttr(SfxItemSet &rSet)
                 SfxItemState eVState = aEditAttr.GetItemState( SDRATTR_TEXT_VERTADJUST );
                 //SfxItemState eHState = aAttrs.GetItemState( SDRATTR_TEXT_HORZADJUST );
 
-                //if(SfxItemState::DONTCARE != eVState && SfxItemState::DONTCARE != eHState)
-                if(SfxItemState::DONTCARE != eVState)
+                //if(SfxItemState::INVALID != eVState && SfxItemState::INVALID != eHState)
+                if(SfxItemState::INVALID != eVState)
                 {
                     SdrTextVertAdjust eTVA = aEditAttr.Get(SDRATTR_TEXT_VERTADJUST).GetValue();
                     bool bSet = (nSlotId == SID_TABLE_VERT_NONE && eTVA == SDRTEXTVERTADJUST_TOP) ||

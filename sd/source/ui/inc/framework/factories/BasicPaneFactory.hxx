@@ -19,16 +19,13 @@
 
 #pragma once
 
-#include <com/sun/star/drawing/framework/XResourceFactory.hpp>
-#include <com/sun/star/drawing/framework/XConfigurationChangeListener.hpp>
-#include <com/sun/star/lang/XInitialization.hpp>
-#include <comphelper/compbase.hxx>
-#include <cppuhelper/weakref.hxx>
+#include <framework/ResourceFactory.hxx>
+#include <framework/ConfigurationChangeListener.hxx>
+#include <unotools/weakref.hxx>
 #include <rtl/ref.hxx>
 
 #include <memory>
 
-namespace com::sun::star::drawing::framework { class XConfigurationController; }
 namespace com::sun::star::uno { class XComponentContext; }
 
 namespace sd {
@@ -37,85 +34,89 @@ class ViewShellBase;
 }
 
 namespace sd::framework {
+class ConfigurationController;
 
-typedef comphelper::WeakComponentImplHelper <
-    css::drawing::framework::XResourceFactory,
-    css::drawing::framework::XConfigurationChangeListener
-    > BasicPaneFactoryInterfaceBase;
 
 /** This factory provides the frequently used standard panes
         private:resource/pane/CenterPane
         private:resource/pane/FullScreenPane
         private:resource/pane/LeftImpressPane
+        private:resource/pane/BottomImpressPane
         private:resource/pane/LeftDrawPane
     There are two left panes because this is (seems to be) the only way to
     show different titles for the left pane in Draw and Impress.
 */
 class BasicPaneFactory final
-    : public BasicPaneFactoryInterfaceBase
+    : public sd::framework::ResourceFactory
 {
 public:
-    explicit BasicPaneFactory (
-        const css::uno::Reference<css::uno::XComponentContext>& rxContext,
+    explicit BasicPaneFactory(
         const rtl::Reference<::sd::DrawController>& rxController);
     virtual ~BasicPaneFactory() override;
 
     virtual void disposing(std::unique_lock<std::mutex>&) override;
 
-    // XResourceFactory
+    // ResourceFactory
 
-    virtual css::uno::Reference<css::drawing::framework::XResource>
-        SAL_CALL createResource (
-            const css::uno::Reference<css::drawing::framework::XResourceId>& rxPaneId) override;
+    virtual rtl::Reference<sd::framework::AbstractResource>
+        createResource (
+            const rtl::Reference<sd::framework::ResourceId>& rxPaneId) override;
 
-    virtual void SAL_CALL
+    virtual void
         releaseResource (
-            const css::uno::Reference<css::drawing::framework::XResource>& rxPane) override;
-
-    // XConfigurationChangeListener
-
-    virtual void SAL_CALL notifyConfigurationChange (
-        const css::drawing::framework::ConfigurationChangeEvent& rEvent) override;
-
-    // lang::XEventListener
-
-    virtual void SAL_CALL disposing (
-        const css::lang::EventObject& rEventObject) override;
+            const rtl::Reference<sd::framework::AbstractResource>& rxPane) override;
 
 private:
-    css::uno::Reference<css::uno::XComponentContext> mxComponentContext;
-    css::uno::WeakReference<css::drawing::framework::XConfigurationController>
+    class Listener : public sd::framework::ConfigurationChangeListener
+    {
+    public:
+        Listener(BasicPaneFactory& rParent) : mrParent(rParent) {}
+
+        using WeakComponentImplHelperBase::disposing;
+
+        // ConfigurationChangeListener
+        virtual void notifyConfigurationChange (
+            const sd::framework::ConfigurationChangeEvent& rEvent) override;
+
+        // lang::XEventListener
+        virtual void SAL_CALL disposing (
+            const css::lang::EventObject& rEventObject) override;
+
+        BasicPaneFactory& mrParent;
+    };
+
+    rtl::Reference<Listener> mxListener;
+    unotools::WeakReference<sd::framework::ConfigurationController>
         mxConfigurationControllerWeak;
     ViewShellBase* mpViewShellBase;
     class PaneDescriptor;
-    class PaneContainer;
-    std::unique_ptr<PaneContainer> mpPaneContainer;
+    using PaneContainer = std::vector<PaneDescriptor>;
+
+    PaneContainer maPaneContainer;
 
     /** Create a new instance of FrameWindowPane.
         @param rPaneId
             There is only one frame window so this id is just checked to
             have the correct value.
     */
-    css::uno::Reference<css::drawing::framework::XResource>
+    rtl::Reference<sd::framework::AbstractResource>
         CreateFrameWindowPane (
-            const css::uno::Reference<css::drawing::framework::XResourceId>& rxPaneId);
+            const rtl::Reference<sd::framework::ResourceId>& rxPaneId);
 
     /** Create a new pane that represents the center pane in full screen
         mode.
     */
-    css::uno::Reference<css::drawing::framework::XResource>
+    rtl::Reference<sd::framework::AbstractResource>
         CreateFullScreenPane (
-            const css::uno::Reference<css::uno::XComponentContext>& rxComponentContext,
-            const css::uno::Reference<css::drawing::framework::XResourceId>& rxPaneId);
+            const rtl::Reference<sd::framework::ResourceId>& rxPaneId);
 
     /** Create a new instance of ChildWindowPane.
         @param rPaneId
             The ResourceURL member defines which side pane to create.
     */
-    css::uno::Reference<css::drawing::framework::XResource>
+    rtl::Reference<sd::framework::AbstractResource>
         CreateChildWindowPane (
-            const css::uno::Reference<
-                css::drawing::framework::XResourceId>& rxPaneId,
+            const rtl::Reference<ResourceId>& rxPaneId,
             const PaneDescriptor& rDescriptor);
 
     /// @throws css::lang::DisposedException

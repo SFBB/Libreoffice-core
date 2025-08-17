@@ -29,11 +29,10 @@ using namespace connectivity;
 using namespace connectivity::sdbcx;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::sdbcx;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::lang;
 
-IMPLEMENT_SERVICE_INFO(OView,"com.sun.star.sdbcx.VView","com.sun.star.sdbcx.View");
+IMPLEMENT_SERVICE_INFO(OView,u"com.sun.star.sdbcx.VView"_ustr,u"com.sun.star.sdbcx.View"_ustr);
 
 OView::OView(bool _bCase,
             const OUString& Name,

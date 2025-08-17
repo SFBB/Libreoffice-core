@@ -543,6 +543,7 @@ void VistaFilePickerImpl::impl_sta_enableFeatures(::sal_Int32 nFeatures, ::sal_I
             break;
 
         case css::ui::dialogs::TemplateDescription::FILEOPEN_READONLY_VERSION :
+        case css::ui::dialogs::TemplateDescription::FILEOPEN_READONLY_VERSION_FILTEROPTIONS :
         case css::ui::dialogs::TemplateDescription::FILESAVE_AUTOEXTENSION_PASSWORD_FILTEROPTIONS :
             aGUID = CLIENTID_FILEDIALOG_OPTIONS;
             break;
@@ -638,6 +639,13 @@ void VistaFilePickerImpl::impl_sta_enableFeatures(::sal_Int32 nFeatures, ::sal_I
     {
         nControlId = css::ui::dialogs::ExtendedFilePickerElementIds::CHECKBOX_GPGENCRYPTION;
         iCustom->AddCheckButton (nControlId, L"GpgPassword", false);
+        setLabelToControl(iCustom, nControlId);
+    }
+
+    if ((nFeatures & FEATURE_GPGSIGN) == FEATURE_GPGSIGN)
+    {
+        nControlId = css::ui::dialogs::ExtendedFilePickerElementIds::CHECKBOX_GPGSIGN;
+        iCustom->AddCheckButton (nControlId, L"GpgSign", false);
         setLabelToControl(iCustom, nControlId);
     }
 
@@ -946,7 +954,6 @@ void VistaFilePickerImpl::impl_sta_ShowDialogModal(Request& rRequest)
     {
         // tdf#146007: Make sure we don't hold solar mutex: COM may need to forward
         // the execution to the main thread, and holding solar mutex could deadlock
-        SolarMutexGuard g; // First acquire, to avoid releaser failure
         SolarMutexReleaser r;
         // show dialog and wait for user decision
         hResult = iDialog->Show(m_hParentWindow ? m_hParentWindow
@@ -1094,6 +1101,7 @@ void VistaFilePickerImpl::impl_sta_GetControlValue(Request& rRequest)
         {
         case css::ui::dialogs::ExtendedFilePickerElementIds::CHECKBOX_PASSWORD :
         case css::ui::dialogs::ExtendedFilePickerElementIds::CHECKBOX_GPGENCRYPTION :
+        case css::ui::dialogs::ExtendedFilePickerElementIds::CHECKBOX_GPGSIGN :
         case css::ui::dialogs::ExtendedFilePickerElementIds::CHECKBOX_READONLY :
         case css::ui::dialogs::ExtendedFilePickerElementIds::CHECKBOX_FILTEROPTIONS :
         case css::ui::dialogs::ExtendedFilePickerElementIds::CHECKBOX_LINK :

@@ -17,7 +17,8 @@
 #   the License at http://www.apache.org/licenses/LICENSE-2.0 .
 #
 
-import getopt,sys
+import getopt
+import sys
 import uno
 
 from unohelper import Base,systemPathToFileUrl
@@ -45,7 +46,6 @@ def main():
 
     try:
         opts, args = getopt.getopt(sys.argv[1:], "hc:", ["help", "connection-string=", "html"])
-        format = None
         url = "uno:socket,host=localhost,port=2002;urp;StarOffice.ComponentContext"
         filterName = "Text (Encoded)"
         for o, a in opts:

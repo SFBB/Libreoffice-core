@@ -24,6 +24,7 @@
 #include <svx/svxids.hrc>
 #include <svx/sdmetitm.hxx>
 #include <svx/hlnkitem.hxx>
+#include <editeng/cmapitem.hxx>
 #include <editeng/eeitem.hxx>
 #include <editeng/flditem.hxx>
 #include <editeng/udlnitem.hxx>
@@ -63,7 +64,6 @@
 #include <svx/nbdtmg.hxx>
 #include <memory>
 
-using namespace com::sun::star::drawing;
 using namespace svx::sidebar;
 using namespace ::com::sun::star;
 
@@ -95,6 +95,7 @@ void DrawViewShell::GetCtrlState(SfxItemSet &rSet)
                 aHLinkItem.SetName(pUrlField->GetRepresentation());
                 aHLinkItem.SetURL(pUrlField->GetURL());
                 aHLinkItem.SetTargetFrame(pUrlField->GetTargetFrame());
+                aHLinkItem.SetIntName(pUrlField->GetName());
             }
             else
             {
@@ -107,11 +108,12 @@ void DrawViewShell::GetCtrlState(SfxItemSet &rSet)
         }
         else
         {
-            if (mpDrawView->GetMarkedObjectList().GetMarkCount() > 0)
+            const SdrMarkList& rMarkList = mpDrawView->GetMarkedObjectList();
+            if (rMarkList.GetMarkCount() > 0)
             {
                 bool bFound = false;
 
-                SdrObject* pMarkedObj = mpDrawView->GetMarkedObjectList().GetMark(0)->GetMarkedSdrObj();
+                SdrObject* pMarkedObj = rMarkList.GetMark(0)->GetMarkedSdrObj();
                 if( pMarkedObj && (SdrInventor::FmForm == pMarkedObj->GetObjInventor()) )
                 {
                     SdrUnoObj* pUnoCtrl = dynamic_cast< SdrUnoObj* >( pMarkedObj );
@@ -265,6 +267,7 @@ void DrawViewShell::GetAttrState( SfxItemSet& rSet )
     bool    bAttr = false;
     SfxAllItemSet aAllSet( *rSet.GetPool() );
 
+    const SdrMarkList& rMarkList = mpDrawView->GetMarkedObjectList();
     while ( nWhich )
     {
         sal_uInt16 nSlotId = SfxItemPool::IsWhich(nWhich)
@@ -438,9 +441,13 @@ void DrawViewShell::GetAttrState( SfxItemSet& rSet )
             case SID_ATTR_GLOW_COLOR:
             case SID_ATTR_GLOW_RADIUS:
             case SID_ATTR_GLOW_TRANSPARENCY:
+            case SID_ATTR_GLOW_TEXT_COLOR:
+            case SID_ATTR_GLOW_TEXT_RADIUS:
+            case SID_ATTR_GLOW_TEXT_TRANSPARENCY:
             case SID_ATTR_SOFTEDGE_RADIUS:
             case SID_SET_SUB_SCRIPT:
             case SID_SET_SUPER_SCRIPT:
+            case SID_SET_SMALL_CAPS:
             {
                 bAttr = true;
             }
@@ -470,21 +477,6 @@ void DrawViewShell::GetAttrState( SfxItemSet& rSet )
             }
             break;
 
-            case SID_THEME_DIALOG:
-            {
-                bool bDisable = true;
-                SdrPageView* pPageView = mpDrawView->GetSdrPageView();
-                if (pPageView)
-                {
-                    SdPage* pPage = dynamic_cast<SdPage*>(pPageView->GetPage());
-                    if (pPage && pPage->IsMasterPage())
-                        bDisable = false;
-                }
-                if (bDisable)
-                    rSet.DisableItem(nWhich);
-            }
-            break;
-
             case SID_STYLE_FAMILY2:
             case SID_STYLE_FAMILY3:
             case SID_STYLE_FAMILY5:
@@ -493,10 +485,10 @@ void DrawViewShell::GetAttrState( SfxItemSet& rSet )
                 SfxStyleSheet* pStyleSheet = mpDrawView->GetStyleSheet();
                 if( pStyleSheet )
                 {
-                    if( nSlotId != SID_STYLE_APPLY && !mpDrawView->AreObjectsMarked() )
+                    if( nSlotId != SID_STYLE_APPLY && rMarkList.GetMarkCount() == 0 )
                     {
                         SfxTemplateItem aTmpItem( nWhich, OUString() );
-                        aAllSet.Put( aTmpItem, aTmpItem.Which()  );
+                        aAllSet.Put( aTmpItem );
                     }
                     else
                     {
@@ -512,26 +504,26 @@ void DrawViewShell::GetAttrState( SfxItemSet& rSet )
                                 (eFamily == SfxStyleFamily::Pseudo &&   nSlotId == SID_STYLE_FAMILY5))
                             {
                                 SfxTemplateItem aTmpItem ( nWhich, pStyleSheet->GetName() );
-                                aAllSet.Put( aTmpItem, aTmpItem.Which()  );
+                                aAllSet.Put( aTmpItem );
                             }
                             else
                             {
                                 SfxTemplateItem aTmpItem(nWhich, OUString());
-                                aAllSet.Put(aTmpItem,aTmpItem.Which()  );
+                                aAllSet.Put( aTmpItem );
                             }
                         }
                     }
                 }
                 else
                 {   SfxTemplateItem aItem( nWhich, OUString() );
-                    aAllSet.Put( aItem, aItem.Which() );
+                    aAllSet.Put( aItem );
                 }
             }
             break;
 
             case SID_SET_DEFAULT:
             {
-                if( !mpDrawView->GetMarkedObjectList().GetMarkCount() ||
+                if( !rMarkList.GetMarkCount() ||
                     ( !mpDrawView->IsTextEdit() && !mpDrawView->GetStyleSheet() )
                   )
                     rSet.DisableItem( nWhich );
@@ -546,6 +538,18 @@ void DrawViewShell::GetAttrState( SfxItemSet& rSet )
             }
             break;
 
+            case SID_INSERT_HYPERLINK:
+            {
+                // Disable when no text selected or when cursor is at URL field
+                if (!HasSelection(true)
+                    || URLFieldHelper::IsCursorAtURLField(mpDrawView->GetTextEditOutlinerView(),
+                                                          /*AlsoCheckBeforeCursor=*/true))
+                {
+                    rSet.DisableItem(nWhich);
+                }
+            }
+            break;
+
             case SID_STYLE_WATERCAN:
             {
                 std::unique_ptr<SfxUInt16Item> pFamilyItem;
@@ -554,8 +558,8 @@ void DrawViewShell::GetAttrState( SfxItemSet& rSet )
                     rSet.Put(SfxBoolItem(nWhich,false));
                 else
                 {
-                    SfxBoolItem aItem(nWhich, SD_MOD()->GetWaterCan());
-                    aAllSet.Put( aItem, aItem.Which());
+                    SfxBoolItem aItem(nWhich, SdModule::get()->GetWaterCan());
+                    aAllSet.Put( aItem );
                 }
             }
             break;
@@ -595,7 +599,7 @@ void DrawViewShell::GetAttrState( SfxItemSet& rSet )
                     }
                     else if (static_cast<SfxStyleFamily>(pFamilyItem->GetValue()) == SfxStyleFamily::Para)
                     {
-                        if (!mpDrawView->AreObjectsMarked())
+                        if (rMarkList.GetMarkCount() == 0)
                         {
                             rSet.DisableItem(nWhich);
                         }
@@ -605,7 +609,7 @@ void DrawViewShell::GetAttrState( SfxItemSet& rSet )
                 // view state; an actual set family can not be considered
                 else
                 {
-                    if (!mpDrawView->AreObjectsMarked())
+                    if (rMarkList.GetMarkCount() == 0)
                     {
                         rSet.DisableItem(nWhich);
                     }
@@ -615,7 +619,7 @@ void DrawViewShell::GetAttrState( SfxItemSet& rSet )
 
             case SID_STYLE_UPDATE_BY_EXAMPLE:
             {
-                if (!mpDrawView->AreObjectsMarked())
+                if (rMarkList.GetMarkCount() == 0)
                 {
                     rSet.DisableItem(nWhich);
                 }
@@ -698,7 +702,6 @@ void DrawViewShell::GetAttrState( SfxItemSet& rSet )
             case FN_NUM_NUMBERING_ON:
             {
                 bool bEnable = false;
-                const SdrMarkList& rMarkList = mpDrawView->GetMarkedObjectList();
                 const size_t nMarkCount = rMarkList.GetMarkCount();
                 for (size_t nIndex = 0; nIndex < nMarkCount; ++nIndex)
                 {
@@ -714,8 +717,15 @@ void DrawViewShell::GetAttrState( SfxItemSet& rSet )
                 }
                 if (bEnable)
                 {
-                    rSet.Put(SfxBoolItem(FN_NUM_BULLET_ON, false));
-                    rSet.Put(SfxBoolItem(FN_NUM_NUMBERING_ON, false));
+                    bool bIsBullet = false;
+                    bool bIsNumbering = false;
+                    OutlinerView* pOlView = mpDrawView->GetTextEditOutlinerView();
+                    if (pOlView)
+                    {
+                        pOlView->IsBulletOrNumbering(bIsBullet, bIsNumbering);
+                    }
+                    rSet.Put(SfxBoolItem(FN_NUM_BULLET_ON, bIsBullet));
+                    rSet.Put(SfxBoolItem(FN_NUM_NUMBERING_ON, bIsNumbering));
                 }
                 else
                 {
@@ -745,7 +755,7 @@ void DrawViewShell::GetAttrState( SfxItemSet& rSet )
 
     // if the view owns selected objects, corresponding items have to be
     // changed from SfxItemState::DEFAULT (_ON) to SfxItemState::DISABLED
-    if( mpDrawView->AreObjectsMarked() )
+    if( rMarkList.GetMarkCount() != 0 )
     {
         SfxWhichIter aNewIter( *pSet );
         nWhich = aNewIter.FirstWhich();
@@ -762,30 +772,33 @@ void DrawViewShell::GetAttrState( SfxItemSet& rSet )
     }
 
     SfxItemState eState = pSet->GetItemState( EE_PARA_LRSPACE );
-    if ( eState == SfxItemState::DONTCARE )
+    if ( eState == SfxItemState::INVALID )
     {
         rSet.InvalidateItem(EE_PARA_LRSPACE);
         rSet.InvalidateItem(SID_ATTR_PARA_LRSPACE);
     }
     eState = pSet->GetItemState( EE_PARA_SBL );
-    if ( eState == SfxItemState::DONTCARE )
+    if ( eState == SfxItemState::INVALID )
     {
         rSet.InvalidateItem(EE_PARA_SBL);
         rSet.InvalidateItem(SID_ATTR_PARA_LINESPACE);
     }
     eState = pSet->GetItemState( EE_PARA_ULSPACE );
-    if ( eState == SfxItemState::DONTCARE )
+    if ( eState == SfxItemState::INVALID )
     {
         rSet.InvalidateItem(EE_PARA_ULSPACE);
         rSet.InvalidateItem(SID_ATTR_PARA_ULSPACE);
     }
 
-    SvxEscapement eEsc = static_cast<SvxEscapement>(pSet->Get( EE_CHAR_ESCAPEMENT ).GetEnumValue());
+    SvxEscapement eEsc = pSet->Get(EE_CHAR_ESCAPEMENT).GetEscapement();
     rSet.Put(SfxBoolItem(SID_SET_SUPER_SCRIPT, eEsc == SvxEscapement::Superscript));
     rSet.Put(SfxBoolItem(SID_SET_SUB_SCRIPT, eEsc == SvxEscapement::Subscript));
 
+    SvxCaseMap eCaseMap = pSet->Get(EE_CHAR_CASEMAP).GetCaseMap();
+    rSet.Put(SfxBoolItem(SID_SET_SMALL_CAPS, eCaseMap == SvxCaseMap::SmallCaps));
+
     eState = pSet->GetItemState( EE_CHAR_KERNING );
-    if ( eState == SfxItemState::DONTCARE )
+    if ( eState == SfxItemState::INVALID )
     {
         rSet.InvalidateItem(EE_CHAR_KERNING);
         rSet.InvalidateItem(SID_ATTR_CHAR_KERNING);
@@ -805,8 +818,8 @@ OUString DrawViewShell::GetSelectionText(bool bCompleteWords)
             ESelection aSel = pOlView->GetSelection();
             OUString aStrCurrentDelimiters = pOl->GetWordDelimiters();
 
-            pOl->SetWordDelimiters(" .,;\"'");
-            aStrSelection = pOl->GetWord( aSel.nEndPara, aSel.nEndPos );
+            pOl->SetWordDelimiters(u" .,;\"'"_ustr);
+            aStrSelection = pOl->GetWord(aSel.end);
             pOl->SetWordDelimiters( aStrCurrentDelimiters );
         }
         else
@@ -822,6 +835,7 @@ bool DrawViewShell::HasSelection(bool bText) const
 {
     bool bReturn = false;
 
+    const SdrMarkList& rMarkList = mpDrawView->GetMarkedObjectList();
     if (bText)
     {
         OutlinerView* pOlView = mpDrawView->GetTextEditOutlinerView();
@@ -831,7 +845,7 @@ bool DrawViewShell::HasSelection(bool bText) const
             bReturn = true;
         }
     }
-    else if (mpDrawView->GetMarkedObjectList().GetMarkCount() != 0)
+    else if (rMarkList.GetMarkCount() != 0)
     {
         bReturn = true;
     }

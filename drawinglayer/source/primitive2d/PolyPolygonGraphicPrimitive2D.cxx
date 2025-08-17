@@ -24,6 +24,7 @@
 #include <drawinglayer/primitive2d/drawinglayer_primitivetypes2d.hxx>
 #include <drawinglayer/primitive2d/fillgraphicprimitive2d.hxx>
 #include <drawinglayer/primitive2d/maskprimitive2d.hxx>
+#include <drawinglayer/primitive2d/graphicprimitivehelper2d.hxx>
 #include <utility>
 #include <vcl/graph.hxx>
 
@@ -31,31 +32,45 @@ using namespace com::sun::star;
 
 namespace drawinglayer::primitive2d
 {
-void PolyPolygonGraphicPrimitive2D::create2DDecomposition(
-    Primitive2DContainer& rContainer, const geometry::ViewInformation2D& /*rViewInformation*/) const
+Primitive2DReference PolyPolygonGraphicPrimitive2D::create2DDecomposition(
+    const geometry::ViewInformation2D& /*rViewInformation*/) const
 {
-    if (getFillGraphic().isDefault())
-        return;
+    if (basegfx::fTools::equal(getTransparency(), 1.0))
+    {
+        // completely transparent, done
+        return nullptr;
+    }
 
-    const Graphic& rGraphic = getFillGraphic().getGraphic();
+    if (getFillGraphic().isDefault())
+    {
+        // no geometry data, done
+        return nullptr;
+    }
+
+    const Graphic& rGraphic(getFillGraphic().getGraphic());
     const GraphicType aType(rGraphic.GetType());
 
     // is there a bitmap or a metafile (do we have content)?
     if (GraphicType::Bitmap != aType && GraphicType::GdiMetafile != aType)
-        return;
+    {
+        // no geometry data, done
+        return nullptr;
+    }
 
     const Size aPrefSize(rGraphic.GetPrefSize());
 
     // does content have a size?
     if (!(aPrefSize.Width() && aPrefSize.Height()))
-        return;
+    {
+        // no geometry data with size, done
+        return nullptr;
+    }
 
     // create SubSequence with FillGraphicPrimitive2D based on polygon range
     const basegfx::B2DRange aOutRange(getB2DPolyPolygon().getB2DRange());
-    const basegfx::B2DHomMatrix aNewObjectTransform(
-        basegfx::utils::createScaleTranslateB2DHomMatrix(aOutRange.getRange(),
-                                                         aOutRange.getMinimum()));
-    Primitive2DReference xSubRef;
+    const basegfx::B2DHomMatrix aTransform(basegfx::utils::createScaleTranslateB2DHomMatrix(
+        aOutRange.getRange(), aOutRange.getMinimum()));
+    drawinglayer::attribute::FillGraphicAttribute aFillGraphicAttribute(getFillGraphic());
 
     if (aOutRange != getDefinitionRange())
     {
@@ -81,27 +96,27 @@ void PolyPolygonGraphicPrimitive2D::create2DDecomposition(
 
         aAdaptedRange.transform(aFromGlobalToOutRange);
 
-        const drawinglayer::attribute::FillGraphicAttribute aAdaptedFillGraphicAttribute(
+        aFillGraphicAttribute = drawinglayer::attribute::FillGraphicAttribute(
             getFillGraphic().getGraphic(), aAdaptedRange, getFillGraphic().getTiling(),
             getFillGraphic().getOffsetX(), getFillGraphic().getOffsetY());
+    }
 
-        xSubRef = new FillGraphicPrimitive2D(aNewObjectTransform, aAdaptedFillGraphicAttribute);
-    }
-    else
-    {
-        xSubRef = new FillGraphicPrimitive2D(aNewObjectTransform, getFillGraphic());
-    }
+    // use tooling due to evtl. animation info needs to be created if
+    // the Graphic is animated somehow
+    Primitive2DReference aContent(
+        createFillGraphicPrimitive2D(aTransform, aFillGraphicAttribute, getTransparency()));
 
     // embed to mask primitive
-    rContainer.push_back(new MaskPrimitive2D(getB2DPolyPolygon(), Primitive2DContainer{ xSubRef }));
+    return new MaskPrimitive2D(getB2DPolyPolygon(), Primitive2DContainer{ aContent });
 }
 
 PolyPolygonGraphicPrimitive2D::PolyPolygonGraphicPrimitive2D(
     basegfx::B2DPolyPolygon aPolyPolygon, const basegfx::B2DRange& rDefinitionRange,
-    const attribute::FillGraphicAttribute& rFillGraphic)
+    const attribute::FillGraphicAttribute& rFillGraphic, double fTransparency)
     : maPolyPolygon(std::move(aPolyPolygon))
     , maDefinitionRange(rDefinitionRange)
     , maFillGraphic(rFillGraphic)
+    , mfTransparency(std::max(0.0, std::min(1.0, fTransparency)))
 {
 }
 
@@ -114,7 +129,8 @@ bool PolyPolygonGraphicPrimitive2D::operator==(const BasePrimitive2D& rPrimitive
 
         return (getB2DPolyPolygon() == rCompare.getB2DPolyPolygon()
                 && getDefinitionRange() == rCompare.getDefinitionRange()
-                && getFillGraphic() == rCompare.getFillGraphic());
+                && getFillGraphic() == rCompare.getFillGraphic()
+                && basegfx::fTools::equal(getTransparency(), rCompare.getTransparency()));
     }
 
     return false;

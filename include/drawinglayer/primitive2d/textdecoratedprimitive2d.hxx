@@ -40,6 +40,12 @@ namespace drawinglayer::primitive2d
         class DRAWINGLAYER_DLLPUBLIC TextDecoratedPortionPrimitive2D final : public TextSimplePortionPrimitive2D
         {
         private:
+            /// a sequence used for buffering broken up text for WordLineMode
+            mutable Primitive2DContainer                maBufferedBrokenUpText;
+
+            /// a sequence used for buffering getOrCreateDecorationGeometryContent
+            mutable Primitive2DContainer                maBufferedDecorationGeometry;
+
             /// decoration definitions
             basegfx::BColor                             maOverlineColor;
             basegfx::BColor                             maTextlineColor;
@@ -67,7 +73,7 @@ namespace drawinglayer::primitive2d
                 const attribute::FontAttribute& rFontAttribute) const;
 
             /// local decomposition.
-            virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& rViewInformation) const override;
+            virtual Primitive2DReference create2DDecomposition(const geometry::ViewInformation2D& rViewInformation) const override;
 
         public:
             /// constructor
@@ -112,13 +118,21 @@ namespace drawinglayer::primitive2d
             bool getEmphasisMarkBelow() const { return mbEmphasisMarkBelow; }
             bool getShadow() const { return mbShadow; }
 
-            void CreateDecorationGeometryContent(
-                Primitive2DContainer& rTarget,
+            /// helper top create DecorationGeometry as Primitives
+            const Primitive2DContainer& getOrCreateDecorationGeometryContent(
                 basegfx::utils::B2DHomMatrixBufferedOnDemandDecompose const & rDecTrans,
                 const OUString& rText,
                 sal_Int32 nTextPosition,
                 sal_Int32 nTextLength,
                 const std::vector< double >& rDXArray) const;
+
+            /// helper for break-up text if needed
+            const Primitive2DContainer& getOrCreateBrokenUpText() const;
+
+            /// helpers for determining various decoration states
+            virtual bool hasTextRelief() const override;
+            virtual bool hasShadow() const override;
+            virtual bool hasTextDecoration() const override;
 
             /// compare operator
             virtual bool operator==( const BasePrimitive2D& rPrimitive ) const override;

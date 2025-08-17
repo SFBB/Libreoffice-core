@@ -30,7 +30,6 @@
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 
-#include <vcl/event.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/wrkwin.hxx>
 #include <vcl/gradient.hxx>
@@ -39,10 +38,6 @@
 #include <vcl/metric.hxx>
 #include <vcl/vclptr.hxx>
 #include <vcl/BitmapWriteAccess.hxx>
-
-#include <rtl/ustrbuf.hxx>
-
-#include <math.h>
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
@@ -61,7 +56,7 @@ SAL_IMPLEMENT_MAIN()
         Reference< XMultiServiceFactory > xServiceManager( xContext->getServiceManager(), UNO_QUERY );
 
         if( !xServiceManager.is() )
-            Application::Abort( "Failed to bootstrap" );
+            Application::Abort( u"Failed to bootstrap"_ustr );
 
         comphelper::setProcessServiceFactory( xServiceManager );
 
@@ -99,7 +94,7 @@ public:
 void Main()
 {
     ScopedVclPtrInstance< MyWin > aMainWin( nullptr, WB_APP | WB_STDWORK );
-    aMainWin->SetText( "VCL - Workbench" );
+    aMainWin->SetText( u"VCL - Workbench"_ustr );
     aMainWin->Show();
 
     Application::Execute();
@@ -205,7 +200,7 @@ void MyWin::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle& rR
 {
     WorkWindow::Paint(rRenderContext, rRect);
 
-    rRenderContext.Push();
+    auto popIt = rRenderContext.ScopedPush();
     MapMode aMapMode(MapUnit::Map100thMM);
 
     rRenderContext.SetMapMode(aMapMode);
@@ -244,7 +239,7 @@ void MyWin::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle& rR
 
         rRenderContext.DrawText(tools::Rectangle(Point((aPaperSize.Width() - 4000) / 2, 2000),
                                 Size(aPaperSize.Width() - 2100, aPaperSize.Height() - 4000)),
-                                "SVP test program",
+                                u"SVP test program"_ustr,
                                 DrawTextFlags::MultiLine);
     }
 
@@ -320,7 +315,6 @@ void MyWin::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle& rR
         aPoint.setY( static_cast<int>((static_cast<double>(aP2.Y())*cosd + static_cast<double>(aP2.X())*sind)*factor) );
         aP2 = aPoint;
     }
-    rRenderContext.Pop();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

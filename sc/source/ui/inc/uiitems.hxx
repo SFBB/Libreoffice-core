@@ -21,16 +21,13 @@
 
 #include <scdllapi.h>
 #include <sortparam.hxx>
+#include <spellcheckcontext.hxx>
 #include <subtotalparam.hxx>
 #include <paramisc.hxx>
 #include <svl/poolitem.hxx>
 
 #include <memory>
 #include <vector>
-
-namespace editeng {
-    struct MisspellRanges;
-}
 
 class ScEditEngineDefaulter;
 class EditTextObject;
@@ -47,10 +44,11 @@ class ScInputStatusItem : public SfxPoolItem
     ScAddress           aEndPos;
     OUString            aString;
     std::unique_ptr<EditTextObject>             pEditData;
-    const std::vector<editeng::MisspellRanges>* mpMisspellRanges;
+    sc::MisspellRangeResult maMisspellRanges;
 
 public:
 
+                            DECLARE_ITEM_TYPE_FUNCTION(ScInputStatusItem)
                             ScInputStatusItem( sal_uInt16 nWhich,
                                                const ScAddress& rCurPos,
                                                const ScAddress& rStartPos,
@@ -68,8 +66,8 @@ public:
     const OUString&         GetString() const   { return aString; }
     const EditTextObject*   GetEditData() const { return pEditData.get(); }
 
-    void SetMisspellRanges( const std::vector<editeng::MisspellRanges>* pRanges );
-    const std::vector<editeng::MisspellRanges>* GetMisspellRanges() const { return mpMisspellRanges;}
+    void SetMisspellRanges( const sc::MisspellRangeResult& rRanges );
+    const sc::MisspellRangeResult& GetMisspellRanges() const { return maMisspellRanges;}
 };
 
 #define SC_TAB_INSERTED     1
@@ -80,7 +78,7 @@ public:
 #define SC_TABS_INSERTED    6
 #define SC_TABS_DELETED     7
 
-class ScTablesHint : public SfxHint
+class ScTablesHint final : public SfxHint
 {
     sal_uInt16 nId;
     SCTAB nTab1;
@@ -95,20 +93,20 @@ public:
     SCTAB           GetTab2() const         { return nTab2; }
 };
 
-class ScEditViewHint : public SfxHint
+class ScEditViewHint final : public SfxHint
 {
-    ScEditEngineDefaulter*  pEditEngine;
+    ScEditEngineDefaulter&  rEditEngine;
     ScAddress                   aCursorPos;
 
 public:
                     ScEditViewHint() = delete;
-                    ScEditViewHint( ScEditEngineDefaulter* pEngine, const ScAddress& rCurPos );
+                    ScEditViewHint(ScEditEngineDefaulter& rEngine, const ScAddress& rCurPos);
                     virtual ~ScEditViewHint() override;
 
     SCCOL           GetCol() const      { return aCursorPos.Col(); }
     SCROW           GetRow() const      { return aCursorPos.Row(); }
     SCTAB           GetTab() const      { return aCursorPos.Tab(); }
-    ScEditEngineDefaulter*  GetEngine() const   { return pEditEngine; }
+    ScEditEngineDefaulter&  GetEngine() const   { return rEditEngine; }
 };
 
 class ScIndexHint : public SfxHint
@@ -127,10 +125,9 @@ public:
 class SC_DLLPUBLIC ScSortItem : public SfxPoolItem
 {
 public:
+                            DECLARE_ITEM_TYPE_FUNCTION(ScSortItem)
                             ScSortItem( sal_uInt16              nWhich,
                                         ScViewData*         ptrViewData,
-                                        const ScSortParam*  pSortData );
-                            ScSortItem( sal_uInt16              nWhich,
                                         const ScSortParam*  pSortData );
 
     virtual bool            operator==( const SfxPoolItem& ) const override;
@@ -148,9 +145,7 @@ private:
 class SC_DLLPUBLIC ScQueryItem : public SfxPoolItem
 {
 public:
-                            ScQueryItem( sal_uInt16                 nWhich,
-                                         ScViewData*            ptrViewData,
-                                         const ScQueryParam*    pQueryData );
+                            DECLARE_ITEM_TYPE_FUNCTION(ScQueryItem)
                             ScQueryItem( sal_uInt16                 nWhich,
                                          const ScQueryParam*    pQueryData );
                             ScQueryItem( const ScQueryItem& rItem );
@@ -159,7 +154,6 @@ public:
     virtual bool            operator==( const SfxPoolItem& ) const override;
     virtual ScQueryItem*    Clone( SfxItemPool *pPool = nullptr ) const override;
 
-    ScViewData*         GetViewData () const { return pViewData; }
     const ScQueryParam& GetQueryData() const;
 
     bool        GetAdvancedQuerySource(ScRange& rSource) const;
@@ -167,7 +161,6 @@ public:
 
 private:
     std::unique_ptr<ScQueryParam> mpQueryData;
-    ScViewData*     pViewData;
     ScRange         aAdvSource;
     bool            bIsAdvanced;
 };
@@ -175,6 +168,7 @@ private:
 class SC_DLLPUBLIC ScSubTotalItem : public SfxPoolItem
 {
 public:
+                DECLARE_ITEM_TYPE_FUNCTION(ScSubTotalItem)
                 ScSubTotalItem( sal_uInt16                  nWhich,
                                 ScViewData*             ptrViewData,
                                 const ScSubTotalParam*  pSubTotalData );
@@ -194,6 +188,7 @@ private:
 class SC_DLLPUBLIC ScUserListItem : public SfxPoolItem
 {
 public:
+                DECLARE_ITEM_TYPE_FUNCTION(ScUserListItem)
                 ScUserListItem( sal_uInt16 nWhich );
                 ScUserListItem( const ScUserListItem& rItem );
                 virtual ~ScUserListItem() override;
@@ -211,6 +206,7 @@ private:
 class ScConsolidateItem : public SfxPoolItem
 {
 public:
+                DECLARE_ITEM_TYPE_FUNCTION(ScConsolidateItem)
                 ScConsolidateItem( sal_uInt16                    nWhich,
                                    const ScConsolidateParam* pParam );
 
@@ -226,6 +222,7 @@ private:
 class ScPivotItem : public SfxPoolItem
 {
 public:
+                DECLARE_ITEM_TYPE_FUNCTION(ScPivotItem)
                 ScPivotItem( sal_uInt16 nWhich, const ScDPSaveData* pData,
                              const ScRange* pRange, bool bNew );
                 ScPivotItem( const ScPivotItem& rItem );
@@ -247,6 +244,7 @@ private:
 class ScSolveItem : public SfxPoolItem
 {
 public:
+                DECLARE_ITEM_TYPE_FUNCTION(ScSolveItem)
                 ScSolveItem( sal_uInt16              nWhich,
                              const ScSolveParam* pParam );
 
@@ -262,6 +260,7 @@ private:
 class ScTabOpItem : public SfxPoolItem
 {
 public:
+                DECLARE_ITEM_TYPE_FUNCTION(ScTabOpItem)
                 ScTabOpItem( sal_uInt16              nWhich,
                              const ScTabOpParam* pParam );
 

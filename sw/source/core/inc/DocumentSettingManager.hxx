@@ -132,6 +132,7 @@ class DocumentSettingManager final :
     // non-ui-compatibility flags:
     bool mbOldNumbering                             : 1;
     bool mbIgnoreFirstLineIndentInNumbering         : 1;   // #i47448#
+    bool mbNoGapAfterNoteNumber                     : 1 = false; // tdf#159382
     bool mbDoNotJustifyLinesWithManualBreak         : 1;   // #i49277#
     bool mbDoNotResetParaAttrsForNumFont            : 1;   // #i53199#
     bool mbTableRowKeep                             : 1;
@@ -177,10 +178,22 @@ class DocumentSettingManager final :
     bool mbDoNotBreakWrappedTables = false;
     bool mbAllowTextAfterFloatingTableBreak = false;
     bool mbJustifyLinesWithShrinking = false;
+    bool mbApplyTextAttrToEmptyLineAtEndOfParagraph = false; // this was a mistake
+    bool mbApplyParagraphMarkFormatToEmptyLineAtEndOfParagraph = false;
+    bool mbIgnoreHiddenCharsForLineCalculation = true;
+    bool mbDoNotMirrorRtlDrawObjs = false;
     // If this is on as_char flys wrapping will be handled the same like in Word
     bool mbNoNumberingShowFollowBy;
     bool mbDropCapPunctuation; // tdf#150200, tdf#150438
     bool mbUseVariableWidthNBSP : 1; // tdf#41652
+    bool mbPaintHellOverHeaderFooter : 1; // tdf#160198
+    bool mbMinRowHeightInclBorder : 1; // tdf#155229
+    bool mbMsWordCompGridMetrics : 1; // tdf#129808
+    bool mbNoClippingWithWrapPolygon : 1; // tdf#161233
+    bool mbMsWordUlTrailSpace : 1 = false;
+    bool mbBalanceSpacesAndIdeographicSpaces : 1 = false; // tdf#88908
+    bool mbForceTopAlignmentInCellWithFloatingAnchor : 1 = false; // tdf#37153
+    bool mbAdjustTableLineHeightsToGridHeight : 1 = true; // tdf#167583
 
 public:
 

@@ -42,12 +42,9 @@ enum class GraphicType
 namespace com::sun::star::graphic { class XGraphic; }
 namespace vcl { class Font; }
 
-class Bitmap;
 class GDIMetaFile;
-class SvStream;
 class ImpGraphic;
 class OutputDevice;
-class GraphicReader;
 
 class SAL_WARN_UNUSED VCL_DLLPUBLIC GraphicConversionParameters
 {
@@ -84,17 +81,19 @@ class VCL_DLLPUBLIC Graphic
 private:
     std::shared_ptr<ImpGraphic> mxImpGraphic;
     SAL_DLLPRIVATE void ImplTestRefCount();
+    basegfx::B2DSize GetPPUnit(const MapMode& unit) const;
 
 public:
     SAL_DLLPRIVATE ImpGraphic* ImplGetImpGraphic() const { return mxImpGraphic.get(); }
 
                     Graphic();
-                    Graphic(std::shared_ptr<GfxLink> const & rGfxLink, sal_Int32 nPageIndex = 0);
+    SAL_DLLPRIVATE  Graphic(std::shared_ptr<GfxLink> const & rGfxLink, sal_Int32 nPageIndex = 0);
                     Graphic( const GraphicExternalLink& rGraphicLink );
                     Graphic( const Graphic& rGraphic );
                     Graphic( Graphic&& rGraphic ) noexcept;
                     Graphic( const Image& rImage );
                     Graphic( const BitmapEx& rBmpEx );
+                    Graphic( const Bitmap& rBmp );
                     Graphic( const std::shared_ptr<VectorGraphicData>& rVectorGraphicDataPtr );
                     Graphic( const Animation& rAnimation );
                     Graphic( const GDIMetaFile& rMtf );
@@ -116,7 +115,7 @@ public:
     bool            IsTransparent() const;
     bool            IsAlpha() const;
     bool            IsAnimated() const;
-    bool            IsEPS() const;
+    SAL_DLLPRIVATE bool IsEPS() const;
 
     bool isAvailable() const;
     bool makeAvailable();
@@ -127,8 +126,9 @@ public:
     // MetaFile when played. Defaults will use a no-AAed, not snapped conversion as
     // before.
     BitmapEx        GetBitmapEx(const GraphicConversionParameters& rParameters = GraphicConversionParameters()) const;
+    Bitmap          GetBitmap(const GraphicConversionParameters& rParameters = GraphicConversionParameters()) const;
     /// Gives direct access to the contained BitmapEx.
-    const BitmapEx& GetBitmapExRef() const;
+    const Bitmap&   GetBitmapRef() const;
 
     Animation       GetAnimation() const;
     const GDIMetaFile& GetGDIMetaFile() const;
@@ -141,13 +141,15 @@ public:
     MapMode         GetPrefMapMode() const;
     void            SetPrefMapMode( const MapMode& rPrefMapMode );
 
+    /** pixels per inch i.e. DPI */
     basegfx::B2DSize GetPPI() const;
+    /** pixels per meter */
+    basegfx::B2DSize GetPPM() const;
 
     Size            GetSizePixel( const OutputDevice* pRefDevice = nullptr ) const;
 
     sal_uLong       GetSizeBytes() const;
 
-    void            Draw(OutputDevice& rOutDev, const Point& rDestPt) const;
     void            Draw(OutputDevice& rOutDev, const Point& rDestPt,
                          const Size& rDestSize) const;
     static void     DrawEx(OutputDevice& rOutDev, const OUString& rText,
@@ -162,22 +164,20 @@ public:
     void            StopAnimation( const OutputDevice* pOutputDevice,
                           tools::Long nExtraData );
 
-    void            SetAnimationNotifyHdl( const Link<Animation*,void>& rLink );
-    Link<Animation*,void> GetAnimationNotifyHdl() const;
+    SAL_DLLPRIVATE void SetAnimationNotifyHdl( const Link<Animation*,void>& rLink );
+    SAL_DLLPRIVATE Link<Animation*,void> GetAnimationNotifyHdl() const;
 
-    sal_uInt32      GetAnimationLoopCount() const;
+    SAL_DLLPRIVATE sal_uInt32 GetAnimationLoopCount() const;
 
     BitmapChecksum  GetChecksum() const;
 
-    OUString getOriginURL() const;
+    const OUString & getOriginURL() const;
     void setOriginURL(OUString const & rOriginURL);
 
-    OString getUniqueID() const;
+    SAL_DLLPRIVATE OString getUniqueID() const;
 
-    std::shared_ptr<GraphicReader>& GetReaderContext();
-    void                            SetReaderContext( const std::shared_ptr<GraphicReader> &pReader );
-    void                            SetDummyContext(bool value);
-    bool                            IsDummyContext() const;
+    SAL_DLLPRIVATE void             SetDummyContext(bool value);
+    SAL_DLLPRIVATE bool             IsDummyContext() const;
 
     void            SetGfxLink(const std::shared_ptr<GfxLink>& rGfxLink);
     const std::shared_ptr<GfxLink> & GetSharedGfxLink() const;

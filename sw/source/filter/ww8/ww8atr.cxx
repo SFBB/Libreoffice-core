@@ -76,6 +76,7 @@
 #include <editeng/blinkitem.hxx>
 #include <editeng/charhiddenitem.hxx>
 #include <editeng/paperinf.hxx>
+#include <editeng/scripthintitem.hxx>
 #include <svx/xfillit0.hxx>
 #include <svx/xflgrit.hxx>
 #include <o3tl/string_view.hxx>
@@ -129,6 +130,7 @@
 #include <authfld.hxx>
 #include <dbfld.hxx>
 #include <docsh.hxx>
+#include <flddat.hxx>
 
 #include "sprmids.hxx"
 
@@ -141,12 +143,11 @@
 #include "fields.hxx"
 #include <i18nlangtag/mslangid.hxx>
 #include <i18nlangtag/languagetag.hxx>
-#include <unotools/fltrcfg.hxx>
+#include <officecfg/Office/Common.hxx>
 
 
 using ::editeng::SvxBorderLine;
 using namespace ::com::sun::star;
-using namespace nsSwDocInfoSubType;
 using namespace sw::util;
 using namespace sw::types;
 
@@ -324,9 +325,9 @@ void MSWordExportBase::OutputItemSet( const SfxItemSet& rSet, bool bPapFormat, b
     if ( bPapFormat && SfxItemState::SET == rSet.GetItemState( RES_FRAMEDIR, bExportParentItemSet ) )
     {
         // No explicit adjust set ?
-        if ( SfxItemState::SET != rSet.GetItemState( RES_PARATR_ADJUST, bExportParentItemSet ) )
+        const SvxAdjustItem* pItem = nullptr;
+        if ( SfxItemState::SET != rSet.GetItemState( RES_PARATR_ADJUST, bExportParentItemSet, &pItem ) )
         {
-            const SvxAdjustItem* pItem = rSet.GetItem( RES_PARATR_ADJUST, bExportParentItemSet );
             if ( nullptr != pItem )
             {
                 // then set the adjust used by the parent format
@@ -341,20 +342,19 @@ void MSWordExportBase::OutputItemSet( const SfxItemSet& rSet, bool bPapFormat, b
         AttrOutput().OutputItem( *pRuleItem );
 
         // switch off the numbering?
-        const SfxPoolItem* pLRItem;
         if ( pRuleItem->GetValue().isEmpty() &&
-             SfxItemState::SET != rSet.GetItemState(RES_MARGIN_FIRSTLINE, false) &&
-             (pLRItem = rSet.GetItemIfSet(RES_MARGIN_FIRSTLINE)) )
+             SfxItemState::SET != rSet.GetItemState(RES_MARGIN_FIRSTLINE, false))
         {
-            // set the LR-Space of the parentformat!
-            AttrOutput().OutputItem( *pLRItem );
+            if (auto pLRItem = rSet.GetItemIfSet(RES_MARGIN_FIRSTLINE))
+                // set the LR-Space of the parentformat!
+                AttrOutput().OutputItem( *pLRItem );
         }
         if ( pRuleItem->GetValue().isEmpty() &&
-             SfxItemState::SET != rSet.GetItemState(RES_MARGIN_TEXTLEFT, false) &&
-             (pLRItem = rSet.GetItemIfSet(RES_MARGIN_TEXTLEFT)) )
+             SfxItemState::SET != rSet.GetItemState(RES_MARGIN_TEXTLEFT, false))
         {
-            // set the LR-Space of the parentformat!
-            AttrOutput().OutputItem( *pLRItem );
+             if (auto pLRItem = rSet.GetItemIfSet(RES_MARGIN_TEXTLEFT))
+                // set the LR-Space of the parentformat!
+                AttrOutput().OutputItem( *pLRItem );
         }
     }
 
@@ -366,6 +366,13 @@ void MSWordExportBase::OutputItemSet( const SfxItemSet& rSet, bool bPapFormat, b
     {
         const bool bAlreadyOutputBrushItem = AttrOutput().MaybeOutputBrushItem(rSet);
 
+        // ITEM: if we have no XATTR_FILLSTYLE also exclude XATTR_FILLGRADIENT to
+        // avoid errors (and to not assert there)
+        if (!aItems.contains(XATTR_FILLSTYLE))
+            aItems.erase(XATTR_FILLGRADIENT);
+
+        // ITEM: here XATTR_FILLSTYLE will be executed before XATTR_FILLGRADIENT due to
+        // ww8::PoolItems *is* sorted ascending due to using ItemSort::operator()
         for ( const auto& rItem : aItems )
         {
             const SfxPoolItem* pItem = rItem.second;
@@ -542,7 +549,7 @@ void MSWordExportBase::OutputSectionBreaks( const SfxItemSet *pSet, const SwNode
                 SwNodeIndex aDocEnd(m_rDoc.GetNodes().GetEndOfContent());
                 SwNodeIndex aStart(*aDocEnd.GetNode().StartOfSectionNode());
                 // Set aStart to the first content node in the section
-                m_rDoc.GetNodes().GoNext(&aStart);
+                SwNodes::GoNext(&aStart);
                 assert(aStart <= aDocEnd && "impossible: end section must have one content node");
                 if (rNd.GetIndex() > aStart.GetNode().GetIndex())
                    AttrOutput().OutputItem(SvxFormatBreakItem(SvxBreak::PageBefore, RES_BREAK));
@@ -637,7 +644,7 @@ void MSWordExportBase::OutputSectionBreaks( const SfxItemSet *pSet, const SwNode
 
     /*
     #i9301#
-    No explicit page break, lets see if the style had one and we've moved to a
+    No explicit page break, let's see if the style had one and we've moved to a
     new page style because of it, if we have to then we take the opportunity to
     set the equivalent word section here. We *could* do it for every paragraph
     that moves onto a new page because of layout, but that would be insane.
@@ -747,7 +754,7 @@ void WW8Export::PrepareNewPageDesc( const SfxItemSet*pSet,
     }
     else if ( pNewPgDesc )
     {
-        m_pSepx->AppendSep( Fc2Cp( nFcPos ), pNewPgDesc, rNd, pFormat, nLnNm );
+        m_pSepx->AppendSep( Fc2Cp( nFcPos ), SwFormatPageDesc(pNewPgDesc), rNd, pFormat, nLnNm );
     }
 }
 
@@ -759,18 +766,19 @@ void MSWordExportBase::CorrectTabStopInSet( SfxItemSet& rSet, sal_Int32 nAbsLeft
 
     // then it must be corrected for the output
     SvxTabStopItem aTStop(*pItem);
-    for ( sal_uInt16 nCnt = 0; nCnt < aTStop.Count(); ++nCnt )
+    sal_uInt16 nCnt = 0;
+    while (nCnt < aTStop.Count())
     {
         SvxTabStop& rTab = const_cast<SvxTabStop&>(aTStop[ nCnt ]);
         if ( SvxTabAdjust::Default != rTab.GetAdjustment() &&
             rTab.GetTabPos() >= nAbsLeft )
         {
             rTab.GetTabPos() -= nAbsLeft;
+            ++nCnt;
         }
         else
         {
-            aTStop.Remove( nCnt );
-            --nCnt;
+            aTStop.Remove(nCnt);
         }
     }
     rSet.Put( aTStop );
@@ -785,7 +793,7 @@ tools::Long MSWordExportBase::GetParaTabStopOffset() const
         // don't do it for editengine text, it doesn't implement this anyway
         if (!m_pISet || m_pISet->GetRanges()[0].first < RES_WHICHHINT_END)
         {
-            nOffset = GetItem(RES_MARGIN_TEXTLEFT).GetTextLeft();
+            nOffset = GetItem(RES_MARGIN_TEXTLEFT).ResolveTextLeft({});
         }
     }
     return nOffset;
@@ -863,7 +871,7 @@ bool WW8Export::DisallowInheritingOutlineNumbering(const SwFormat &rFormat)
     bool bRet( false );
 
     //If there is no numbering on this fmt, but its parent was outline
-    //numbered, then in writer this is no inheritied, but in word it would
+    //numbered, then in writer this is not inherited, but in word it would
     //be, so we must export "no numbering" and "body level" to make word
     //behave like writer (see #i25755)
     if (SfxItemState::SET != rFormat.GetItemState(RES_PARATR_NUMRULE, false))
@@ -918,8 +926,10 @@ void MSWordExportBase::OutputFormat( const SwFormat& rFormat, bool bPapFormat, b
                     SvxFirstLineIndentItem firstLine(aSet.Get(RES_MARGIN_FIRSTLINE));
                     SvxTextLeftMarginItem leftMargin(aSet.Get(RES_MARGIN_TEXTLEFT));
 
-                    leftMargin.SetTextLeft(leftMargin.GetTextLeft() + rNFormat.GetAbsLSpace());
-                    firstLine.SetTextFirstLineOffset(GetWordFirstLineOffset(rNFormat));
+                    leftMargin.SetTextLeft(SvxIndentValue::twips(leftMargin.ResolveTextLeft({})
+                                                                 + rNFormat.GetAbsLSpace()));
+                    firstLine.SetTextFirstLineOffset(
+                        SvxIndentValue::twips(GetWordFirstLineOffset(rNFormat)));
 
                     aSet.Put(firstLine);
                     aSet.Put(leftMargin);
@@ -1025,7 +1035,7 @@ bool MSWordExportBase::HasRefToAttr(const OUString& rName)
 {
     SwFieldType* pType = m_rDoc.getIDocumentFieldsAccess().GetSysFieldType(SwFieldIds::GetRef);
     std::vector<SwGetRefField*> vpRFields;
-    pType->GatherRefFields(vpRFields, REF_SETREFATTR);
+    pType->GatherRefFields(vpRFields, ReferencesSubtype::SetRefAttr);
     return std::any_of(vpRFields.begin(), vpRFields.end(),
             [rName](SwGetRefField* pF) { return rName == pF->GetSetRefName(); });
 }
@@ -1034,40 +1044,41 @@ bool MSWordExportBase::HasRefToFootOrEndnote(const bool isEndNote, const sal_uIn
 {
     SwFieldType* pType = m_rDoc.getIDocumentFieldsAccess().GetSysFieldType(SwFieldIds::GetRef);
     std::vector<SwGetRefField*> vpRFields;
-    pType->GatherRefFields(vpRFields, isEndNote ? REF_ENDNOTE : REF_FOOTNOTE);
+    pType->GatherRefFields(vpRFields, isEndNote ? ReferencesSubtype::Endnote : ReferencesSubtype::Footnote);
     return std::any_of(vpRFields.begin(), vpRFields.end(),
             [nSeqNo](SwGetRefField* pF) { return nSeqNo == pF->GetSeqNo(); });
 }
 
-OUString MSWordExportBase::GetBookmarkName( sal_uInt16 nTyp, const OUString* pName, sal_uInt16 nSeqNo )
+OUString MSWordExportBase::GetBookmarkName( ReferencesSubtype nTyp, const OUString* pName, sal_uInt16 nSeqNo )
 {
     OUString sRet;
     switch ( nTyp )
     {
-        case REF_SETREFATTR:
+        case ReferencesSubtype::SetRefAttr:
             if ( pName )
             {
                 sRet = "Ref_" + *pName;
             }
             break;
-        case REF_SEQUENCEFLD:
+        case ReferencesSubtype::SequenceField:
         {
             assert(pName);
             sRet = "Ref_" + *pName;
             break;
         }
-        case REF_BOOKMARK:
+        case ReferencesSubtype::Bookmark:
             if ( pName )
                 sRet = *pName;
             break;
-        case REF_OUTLINE:
+        case ReferencesSubtype::Outline:
             break;      // ???
-        case REF_FOOTNOTE:
+        case ReferencesSubtype::Footnote:
             sRet = "_RefF" + OUString::number( nSeqNo );
             break;
-        case REF_ENDNOTE:
+        case ReferencesSubtype::Endnote:
             sRet = "_RefE" + OUString::number( nSeqNo );
             break;
+        default: break; // ReferencesSubtype::Style not handled?
     }
     return BookmarkToWord( sRet ); // #i43956# - encode bookmark accordingly
 }
@@ -1075,7 +1086,7 @@ OUString MSWordExportBase::GetBookmarkName( sal_uInt16 nTyp, const OUString* pNa
 OUString MSWordExportBase::GetStyleRefName(const OUString& rName)
 {
     SwTextFormatColls* pTextFormatColls = m_rDoc.GetTextFormatColls();
-    SwTextFormatColl* pTextFormat = pTextFormatColls->FindFormatByName(rName);
+    SwTextFormatColl* pTextFormat = pTextFormatColls->FindFormatByName(UIName(rName));
 
     if (pTextFormat == nullptr)
         return "\"" + rName + "\"";
@@ -1105,7 +1116,7 @@ void WW8AttributeOutput::RTLAndCJKState( bool bIsRTL, sal_uInt16 nScript )
     }
 }
 
-void WW8AttributeOutput::EndParagraph( ww8::WW8TableNodeInfoInner::Pointer_t pTextNodeInfoInner )
+void WW8AttributeOutput::EndParagraph( const ww8::WW8TableNodeInfoInner::Pointer_t& pTextNodeInfoInner )
 {
     m_rWW8Export.m_pPapPlc->AppendFkpEntry( m_rWW8Export.Strm().Tell() - (mbOnTOXEnding?2:0), m_rWW8Export.m_pO->size(), m_rWW8Export.m_pO->data() );
     mbOnTOXEnding = false;
@@ -1374,8 +1385,10 @@ void WW8AttributeOutput::CharHidden( const SvxCharHiddenItem& rHidden )
     OutputWW8Attribute( 7, rHidden.GetValue() );
 }
 
-void WW8AttributeOutput::CharBorder( const SvxBorderLine* pAllBorder, const sal_uInt16 /*nDist*/, const bool bShadow )
+void WW8AttributeOutput::CharBorder( const SvxBoxItem& rBox )
 {
+    const auto [ pAllBorder, nDist, bShadow ] = FormatCharBorder(rBox);
+    (void)nDist;
     WW8Export::Out_BorderLine( *m_rWW8Export.m_pO, pAllBorder, 0, NS_sprm::CBrc80::val, NS_sprm::CBrc::val, bShadow );
 }
 
@@ -1384,6 +1397,27 @@ void WW8AttributeOutput::CharHighlight( const SvxBrushItem& rBrush )
     sal_uInt8 nColor = msfilter::util::TransColToIco( rBrush.GetColor() );
     m_rWW8Export.InsUInt16( NS_sprm::CHighlight::val );
     m_rWW8Export.m_pO->push_back( nColor );
+}
+
+void WW8AttributeOutput::CharScriptHint(const SvxScriptHintItem& rHint)
+{
+    sal_uInt8 nHint = 0;
+    switch (rHint.GetValue())
+    {
+        case i18nutil::ScriptHintType::Asian:
+            nHint = 1;
+            break;
+
+        case i18nutil::ScriptHintType::Complex:
+            nHint = 2;
+            break;
+
+        default:
+            break;
+    }
+
+    m_rWW8Export.InsUInt16(NS_sprm::CIdctHint::val);
+    m_rWW8Export.m_pO->push_back(nHint);
 }
 
 void WW8AttributeOutput::CharUnderline( const SvxUnderlineItem& rUnderline )
@@ -1586,7 +1620,7 @@ void WW8AttributeOutput::CharFontSize( const SvxFontHeightItem& rHeight )
     {
         m_rWW8Export.InsUInt16( nId );
 
-        m_rWW8Export.InsUInt16( o3tl::narrowing<sal_uInt16>(( rHeight.GetHeight() + 5 ) / 10 ) );
+        m_rWW8Export.InsUInt16( ( rHeight.GetHeight() + 5 ) / 10 );
     }
 }
 
@@ -1629,13 +1663,6 @@ void WW8AttributeOutput::CharBidiRTL( const SfxPoolItem& rHt )
         m_rWW8Export.InsUInt16(0x85a);
         m_rWW8Export.m_pO->push_back(sal_uInt8(1));
     }
-}
-
-void WW8AttributeOutput::CharIdctHint( const SfxPoolItem& rHt )
-{
-    const SfxInt16Item& rAttr = static_cast<const SfxInt16Item&>(rHt);
-    m_rWW8Export.InsUInt16(0x286F);
-    m_rWW8Export.m_pO->push_back(static_cast<sal_uInt8>(rAttr.GetValue()));
 }
 
 void WW8AttributeOutput::CharRotate( const SvxCharRotateItem& rRotate )
@@ -1748,7 +1775,7 @@ const SwCharFormat* GetSwCharFormat(const SwFormatINetFormat& rINet, SwDoc& rDoc
         return nullptr;
 
     const sal_uInt16 nId = rINet.GetINetFormatId();
-    const OUString& rStr = rINet.GetINetFormat();
+    const UIName& rStr = rINet.GetINetFormat();
     if (rStr.isEmpty())
     {
         OSL_ENSURE( false, "WW8AttributeOutput::TextINetFormat(..) - missing unvisited character format at hyperlink attribute" );
@@ -1947,20 +1974,20 @@ void WW8Export::OutputField( const SwField* pField, ww::eField eFieldType,
         {
             // retrieve reference destination - the name of the bookmark
             OUString aLinkStr;
-            const sal_uInt16 nSubType = pField->GetSubType();
             const SwGetRefField& rRField = *static_cast<const SwGetRefField*>(pField);
-            if ( nSubType == REF_SETREFATTR ||
-                 nSubType == REF_BOOKMARK )
+            const ReferencesSubtype nSubType = rRField.GetSubType();
+            if ( nSubType == ReferencesSubtype::SetRefAttr ||
+                 nSubType == ReferencesSubtype::Bookmark )
             {
-                const OUString& aRefName(rRField.GetSetRefName());
-                aLinkStr = GetBookmarkName( nSubType, &aRefName, 0 );
+                const SwMarkName& aRefName(rRField.GetSetRefName());
+                aLinkStr = GetBookmarkName( nSubType, &aRefName.toString(), 0 );
             }
-            else if ( nSubType == REF_FOOTNOTE ||
-                      nSubType == REF_ENDNOTE )
+            else if ( nSubType == ReferencesSubtype::Footnote ||
+                      nSubType == ReferencesSubtype::Endnote )
             {
                 aLinkStr = GetBookmarkName( nSubType, nullptr, rRField.GetSeqNo() );
             }
-            else if ( nSubType == REF_SEQUENCEFLD )
+            else if ( nSubType == ReferencesSubtype::SequenceField )
             {
                 aLinkStr = pField->GetPar2();
             }
@@ -2018,17 +2045,18 @@ void WW8Export::OutputField( const SwField* pField, ww::eField eFieldType,
         if (pField->GetTyp()->Which() == SwFieldIds::Input &&
             eFieldType == ww::eFORMTEXT)
         {
-            sal_uInt16 nSubType = pField->GetSubType();
+            SwInputFieldSubType nSubType = static_cast<const SwInputField*>(pField)->GetSubType();
 
-            if (nSubType == REF_SEQUENCEFLD)
+            if (nSubType == SwInputFieldSubType::Text)
                 aField15[0] |= (0x4 << 5);
         }
         // This ought to apply to any field, but just to be safe, start off with DATE/TIME only.
-        if (pField->GetTyp()->Which() == SwFieldIds::DateTime
-            && (pField->GetSubType() & FIXEDFLD))
+        if (pField->GetTyp()->Which() == SwFieldIds::DateTime)
         {
-            //bit 5 - Locked: do not recalculate field
-            aField15[1] |= 0x10;
+            SwDateTimeSubType nSubType = static_cast<const SwDateTimeField*>(pField)->GetSubType();
+            if (nSubType & SwDateTimeSubType::Fixed)
+                //bit 5 - Locked: do not recalculate field
+                aField15[1] |= 0x10;
         }
     }
 
@@ -2168,10 +2196,10 @@ void AttributeOutputBase::GenerateBookmarksForSequenceField(const SwTextNode& rN
             const SwFormatField& rField = static_cast<const SwFormatField&>(pHt->GetAttr());
             const SwField* pField = rField.GetField();
             // Need to have bookmarks only for sequence fields
-            if (pField && pField->GetTyp()->Which() == SwFieldIds::SetExp && pField->GetSubType() == nsSwGetSetExpType::GSE_SEQ)
+            if (pField && pField->GetTyp()->Which() == SwFieldIds::SetExp && static_cast<const SwSetExpField*>(pField)->GetSubType() == SwGetSetExpType::Sequence)
             {
                 const sal_uInt16 nSeqFieldNumber = static_cast<const SwSetExpField*>(pField)->GetSeqNumber();
-                const OUString sObjectName = static_cast<const SwSetExpFieldType*>(pField->GetTyp())->GetName();
+                const UIName sObjectName = static_cast<const SwSetExpFieldType*>(pField->GetTyp())->GetName();
                 const SwFieldTypes* pFieldTypes = GetExport().m_rDoc.getIDocumentFieldsAccess().GetFieldTypes();
                 bool bHaveFullBkm = false;
                 bool bHaveLabelAndNumberBkm = false;
@@ -2187,12 +2215,12 @@ void AttributeOutputBase::GenerateBookmarksForSequenceField(const SwTextNode& rN
                         {
                             SwGetRefField* pRefField = static_cast<SwGetRefField*>(pFormatField->GetField());
                             // If we have a reference to the current sequence field
-                            if(pRefField->GetSeqNo() == nSeqFieldNumber && pRefField->GetSetRefName() == sObjectName)
+                            if(pRefField->GetSeqNo() == nSeqFieldNumber && pRefField->GetSetRefName() == SwMarkName(sObjectName.toString()))
                             {
                                 // Need to create a separate run for separator character
                                 SwWW8AttrIter aLocalAttrIter( GetExport(), rNode ); // We need a local iterator having the right number of runs
                                 const OUString& aText = rNode.GetText();
-                                const sal_Int32 nCategoryStart = aText.indexOf(pRefField->GetSetRefName());
+                                const sal_Int32 nCategoryStart = aText.indexOf(pRefField->GetSetRefName().toString());
                                 const sal_Int32 nPosBeforeSeparator = std::max(nCategoryStart, pHt->GetStart());
                                 bool bCategoryFirst = nCategoryStart < pHt->GetStart();
                                 sal_Int32 nSeparatorPos = 0;
@@ -2207,7 +2235,7 @@ void AttributeOutputBase::GenerateBookmarksForSequenceField(const SwTextNode& rN
                                 }
                                 else
                                 {
-                                    nSeparatorPos = nCategoryStart + pRefField->GetSetRefName().getLength();
+                                    nSeparatorPos = nCategoryStart + pRefField->GetSetRefName().toString().getLength();
                                 }
                                 sal_Int32 nRefTextPos = 0;
                                 if(nSeparatorPos < aText.getLength())
@@ -2237,13 +2265,13 @@ void AttributeOutputBase::GenerateBookmarksForSequenceField(const SwTextNode& rN
                                     }
                                 }
                                 // Generate bookmarks on the right position
-                                OUString sName("Ref_" + pRefField->GetSetRefName() + OUString::number(pRefField->GetSeqNo()));
+                                OUString sName("Ref_" + pRefField->GetSetRefName().toString() + OUString::number(pRefField->GetSeqNo()));
                                 switch (pRefField->GetFormat())
                                 {
-                                    case REF_PAGE:
-                                    case REF_PAGE_PGDESC:
-                                    case REF_CONTENT:
-                                    case REF_UPDOWN:
+                                    case RefFieldFormat::Page:
+                                    case RefFieldFormat::AsPageStyle:
+                                    case RefFieldFormat::Content:
+                                    case RefFieldFormat::UpDown:
                                         if(!bHaveFullBkm)
                                         {
                                             sal_Int32 nLastAttrStart = 0;
@@ -2258,7 +2286,7 @@ void AttributeOutputBase::GenerateBookmarksForSequenceField(const SwTextNode& rN
                                             bHaveFullBkm = true;
                                         }
                                         break;
-                                    case REF_ONLYNUMBER:
+                                    case RefFieldFormat::CategoryAndNumber:
                                     {
                                         if(!bHaveLabelAndNumberBkm)
                                         {
@@ -2283,7 +2311,7 @@ void AttributeOutputBase::GenerateBookmarksForSequenceField(const SwTextNode& rN
                                         }
                                         break;
                                     }
-                                    case REF_ONLYCAPTION:
+                                    case RefFieldFormat::CaptionText:
                                     {
                                         if(!bHaveCaptionOnlyBkm)
                                         {
@@ -2301,7 +2329,7 @@ void AttributeOutputBase::GenerateBookmarksForSequenceField(const SwTextNode& rN
                                         }
                                         break;
                                     }
-                                    case REF_ONLYSEQNO:
+                                    case RefFieldFormat::Numbering:
                                     {
                                         if(!bHaveNumberOnlyBkm)
                                         {
@@ -2310,6 +2338,7 @@ void AttributeOutputBase::GenerateBookmarksForSequenceField(const SwTextNode& rN
                                         }
                                         break;
                                     }
+                                    default: break;
                                 }
                             }
                         }
@@ -2330,9 +2359,9 @@ static auto GetSeparatorForLocale() -> OUString
         case sal_uInt16(LANGUAGE_GERMAN_LIECHTENSTEIN):
         case sal_uInt16(LANGUAGE_GERMAN_LUXEMBOURG):
         case sal_uInt16(LANGUAGE_GERMAN_SWISS):
-            return ";";
+            return u";"_ustr;
         default:
-            return ",";
+            return u","_ustr;
     }
 }
 
@@ -2418,10 +2447,10 @@ void AttributeOutputBase::StartTOX( const SwSection& rSect )
                 if (!pTOX->IsFromObjectNames())
                 {
                     sStr = FieldString(eCode) + "\\c ";
-                    const OUString& seqName = pTOX->GetSequenceName();
+                    const UIName& seqName = pTOX->GetSequenceName();
                     if(!seqName.isEmpty())
                     {
-                        sStr += "\"" + seqName + sEntryEnd;
+                        sStr += "\"" + seqName.toString() + sEntryEnd;
                     }
                     OUString aText;
                     int nRet = ::lcl_CheckForm( pTOX->GetTOXForm(), 1, aText );
@@ -2438,8 +2467,8 @@ void AttributeOutputBase::StartTOX( const SwSection& rSect )
                 }
                 if (pTOX->GetCreateType() & SwTOXElement::Template)
                 {
-                    OUString const& rStyle(pTOX->GetStyleNames(0));
-                    assert(rStyle.indexOf(TOX_STYLE_DELIMITER) == -1);
+                    UIName const& rStyle(pTOX->GetStyleNames(0));
+                    assert(rStyle.toString().indexOf(TOX_STYLE_DELIMITER) == -1);
                     SwTextFormatColl const*const pColl = GetExport().m_rDoc.FindTextFormatCollByName(rStyle);
                     if (pColl)
                     {
@@ -2568,7 +2597,7 @@ void AttributeOutputBase::StartTOX( const SwSection& rSect )
                                 {
                                     if (!sTOption.isEmpty())
                                         sTOption += tsep;
-                                    sTOption += pColl->GetName() + tsep + OUString::number(nTestLvl + 1);
+                                    sTOption += pColl->GetName().toString() + tsep + OUString::number(nTestLvl + 1);
                                 }
                             }
                         }
@@ -2584,16 +2613,16 @@ void AttributeOutputBase::StartTOX( const SwSection& rSect )
                         // #i99641# - Consider additional styles regardless of TOX-outlinelevel
                         for( n = 0; n < MAXLEVEL; ++n )
                         {
-                            const OUString& rStyles = pTOX->GetStyleNames( n );
+                            const UIName& rStyles = pTOX->GetStyleNames( n );
                             if( !rStyles.isEmpty() )
                             {
                                 sal_Int32 nPos = 0;
                                 const OUString sLvl{tsep + OUString::number(n + 1)};
                                 do {
-                                    const OUString sStyle( rStyles.getToken( 0, TOX_STYLE_DELIMITER, nPos ));
+                                    const OUString sStyle( rStyles.toString().getToken( 0, TOX_STYLE_DELIMITER, nPos ));
                                     if( !sStyle.isEmpty() )
                                     {
-                                        SwTextFormatColl* pColl = GetExport().m_rDoc.FindTextFormatCollByName(sStyle);
+                                        SwTextFormatColl* pColl = GetExport().m_rDoc.FindTextFormatCollByName(UIName(sStyle));
                                         if (pColl)
                                         {
                                             OUString const converted(GetExport().m_pStyles->GetStyleWWName(pColl));
@@ -2724,7 +2753,7 @@ bool MSWordExportBase::GetNumberFormat(const SwField& rField, OUString& rStr)
     // Returns a date or time format string by using the US NfKeywordTable
     bool bHasFormat = false;
     SvNumberFormatter* pNFormatr = m_rDoc.GetNumberFormatter();
-    sal_uInt32 nFormatIdx = rField.GetFormat();
+    sal_uInt32 nFormatIdx = rField.GetUntypedFormat();
     const SvNumberformat* pNumFormat = pNFormatr->GetEntry( nFormatIdx );
     if( pNumFormat )
     {
@@ -2734,11 +2763,10 @@ bool MSWordExportBase::GetNumberFormat(const SwField& rField, OUString& rStr)
         {
             nLng = pNumFormat->GetLanguage();
         }
-        LocaleDataWrapper aLocDat(pNFormatr->GetComponentContext(),
-                                  LanguageTag(nLng));
+        const LocaleDataWrapper* pLocDat = LocaleDataWrapper::get(LanguageTag(nLng));
 
         OUString sFormat(pNumFormat->GetMappedFormatstring(GetNfKeywordTable(),
-            aLocDat));
+            *pLocDat));
 
         if (!sFormat.isEmpty())
         {
@@ -2753,7 +2781,7 @@ bool MSWordExportBase::GetNumberFormat(const SwField& rField, OUString& rStr)
 
 void AttributeOutputBase::GetNumberPara( OUString& rStr, const SwField& rField )
 {
-    switch(rField.GetFormat())
+    switch(rField.GetUntypedFormat())
     {
         case SVX_NUM_CHARS_UPPER_LETTER:
         case SVX_NUM_CHARS_UPPER_LETTER_N:
@@ -2779,7 +2807,7 @@ void AttributeOutputBase::GetNumberPara( OUString& rStr, const SwField& rField )
             rStr += "\\* Cardtext ";
             break;
         default:
-            OSL_ENSURE(rField.GetFormat() == SVX_NUM_ARABIC,
+            OSL_ENSURE(rField.GetUntypedFormat() == SVX_NUM_ARABIC,
                 "Unknown numbering type exported as default of Arabic");
             [[fallthrough]];
         case SVX_NUM_ARABIC:
@@ -2813,7 +2841,7 @@ OUString FieldString(ww::eField eIndex)
 {
     if (const char *pField = ww::GetEnglishFieldName(eIndex))
         return " " + OUString::createFromAscii(pField) + " ";
-    return "  ";
+    return u"  "_ustr;
 }
 
 void WW8AttributeOutput::HiddenField( const SwField& rField )
@@ -2823,7 +2851,7 @@ void WW8AttributeOutput::HiddenField( const SwField& rField )
 
     m_rWW8Export.m_pChpPlc->AppendFkpEntry(m_rWW8Export.Strm().Tell());
     SwWW8Writer::WriteString16(m_rWW8Export.Strm(), sExpand, false);
-    static sal_uInt8 aArr[] =
+    static const sal_uInt8 aArr[] =
     {
         0x3C, 0x08, 0x1
     };
@@ -2833,7 +2861,7 @@ void WW8AttributeOutput::HiddenField( const SwField& rField )
 void WW8AttributeOutput::SetField( const SwField& rField, ww::eField eType, const OUString& rCmd )
 {
     const SwSetExpField* pSet = static_cast<const SwSetExpField*>(&rField);
-    const OUString &rVar = pSet->GetPar2();
+    const OUString aVar = pSet->GetPar2();
 
     sal_uLong nFrom = m_rWW8Export.Fc2Cp(m_rWW8Export.Strm().Tell());
 
@@ -2850,9 +2878,9 @@ void WW8AttributeOutput::SetField( const SwField& rField, ww::eField eType, cons
     */
     m_rWW8Export.MoveFieldMarks(nFrom,m_rWW8Export.Fc2Cp(m_rWW8Export.Strm().Tell()));
 
-    if (!rVar.isEmpty())
+    if (!aVar.isEmpty())
     {
-        SwWW8Writer::WriteString16(m_rWW8Export.Strm(), rVar, false);
+        SwWW8Writer::WriteString16(m_rWW8Export.Strm(), aVar, false);
     }
     GetExport().OutputField(&rField, eType, rCmd, FieldFlags::Close);
 }
@@ -2943,61 +2971,65 @@ void AttributeOutputBase::TextField( const SwFormatField& rField )
 {
     const SwField* pField = rField.GetField();
     bool bWriteExpand = false;
-    const sal_uInt16 nSubType = pField->GetSubType();
 
     switch (pField->GetTyp()->Which())
     {
     case SwFieldIds::GetExp:
-        if (nSubType == nsSwGetSetExpType::GSE_STRING)
         {
             const SwGetExpField *pGet = static_cast<const SwGetExpField*>(pField);
-            RefField( *pGet, pGet->GetFormula() );
+            if (pGet->GetSubType() == SwGetSetExpType::String)
+            {
+                RefField( *pGet, pGet->GetFormula() );
+            }
+            else
+                bWriteExpand = true;
         }
-        else
-            bWriteExpand = true;
         break;
     case SwFieldIds::SetExp:
-        if (nsSwGetSetExpType::GSE_SEQ == nSubType)
         {
-            OUString sStr;
-            if (GetExport().FieldsQuoted())
-                sStr = FieldString(ww::eSEQ) + pField->GetTyp()->GetName() + " ";
-            else
-                sStr = FieldString(ww::eSEQ) + "\"" + pField->GetTyp()->GetName() +"\" ";
-            GetNumberPara( sStr, *pField );
-            GetExport().OutputField(pField, ww::eSEQ, sStr);
-        }
-        else if (nSubType & nsSwGetSetExpType::GSE_STRING)
-        {
-            bool bShowAsWell = false;
-            ww::eField eFieldNo;
             const SwSetExpField *pSet = static_cast<const SwSetExpField*>(pField);
-            const OUString sVar = pSet->GetPar2();
-            OUString sStr;
-            if (pSet->GetInputFlag())
+            SwGetSetExpType nSubType = pSet->GetSubType();
+            if (SwGetSetExpType::Sequence == nSubType)
             {
-                sStr = FieldString(ww::eASK) + "\""
-                    + pSet->GetPar1() + "\" "
-                    + pSet->GetPromptText() + " \\d "
-                    + sVar;
-                eFieldNo = ww::eASK;
+                OUString sStr;
+                if (GetExport().FieldsQuoted())
+                    sStr = FieldString(ww::eSEQ) + pField->GetTyp()->GetName().toString() + " ";
+                else
+                    sStr = FieldString(ww::eSEQ) + "\"" + pField->GetTyp()->GetName().toString() +"\" ";
+                GetNumberPara( sStr, *pField );
+                GetExport().OutputField(pField, ww::eSEQ, sStr);
+            }
+            else if (nSubType & SwGetSetExpType::String)
+            {
+                bool bShowAsWell = false;
+                ww::eField eFieldNo;
+                const OUString sVar = pSet->GetPar2();
+                OUString sStr;
+                if (pSet->GetInputFlag())
+                {
+                    sStr = FieldString(ww::eASK) + "\""
+                        + pSet->GetPar1() + "\" "
+                        + pSet->GetPromptText() + " \\d "
+                        + sVar;
+                    eFieldNo = ww::eASK;
+                }
+                else
+                {
+                    sStr = FieldString(ww::eSET)
+                        + pSet->GetPar1() + " \""
+                        + sVar + "\" ";
+                    eFieldNo = ww::eSET;
+                    bShowAsWell = !(nSubType & SwGetSetExpType::Invisible);
+                }
+
+                SetField( *pField, eFieldNo, sStr );
+
+                if (bShowAsWell)
+                    RefField( *pSet, pSet->GetPar1() );
             }
             else
-            {
-                sStr = FieldString(ww::eSET)
-                    + pSet->GetPar1() + " \""
-                    + sVar + "\" ";
-                eFieldNo = ww::eSET;
-                bShowAsWell = (nSubType & nsSwExtendedSubType::SUB_INVISIBLE) == 0;
-            }
-
-            SetField( *pField, eFieldNo, sStr );
-
-            if (bShowAsWell)
-                RefField( *pSet, pSet->GetPar1() );
+                bWriteExpand = true;
         }
-        else
-            bWriteExpand = true;
         break;
     case SwFieldIds::PageNumber:
         {
@@ -3009,7 +3041,7 @@ void AttributeOutputBase::TextField( const SwFormatField& rField )
     case SwFieldIds::Filename:
         {
             OUString sStr = FieldString(ww::eFILENAME);
-            if (pField->GetFormat() == FF_PATHNAME)
+            if (static_cast<const SwFileNameField*>(pField)->GetFormat() == SwFileNameFormat::PathName)
                 sStr += "\\p ";
             GetExport().OutputField(pField, ww::eFILENAME, sStr);
         }
@@ -3034,7 +3066,7 @@ void AttributeOutputBase::TextField( const SwFormatField& rField )
     case SwFieldIds::Author:
         {
             ww::eField eField =
-                ((AF_SHORTCUT & pField->GetFormat()) ? ww::eUSERINITIALS : ww::eUSERNAME);
+                ((SwAuthorFormat::Shortcut & static_cast<const SwAuthorField*>(pField)->GetFormat()) ? ww::eUSERINITIALS : ww::eUSERNAME);
             GetExport().OutputField(pField, eField, FieldString(eField));
         }
         break;
@@ -3042,34 +3074,36 @@ void AttributeOutputBase::TextField( const SwFormatField& rField )
         GetExport().OutputField(pField, ww::eTEMPLATE, FieldString(ww::eTEMPLATE));
         break;
     case SwFieldIds::DocInfo:    // Last printed, last edited,...
-        if( DI_SUB_FIXED & nSubType )
-            bWriteExpand = true;
-
         {
+            auto pDocInfoField = static_cast<const SwDocInfoField*>(pField);
+            const SwDocInfoSubType nSubType = pDocInfoField->GetSubType();
+            if( SwDocInfoSubType::SubFixed & nSubType )
+                bWriteExpand = true;
+
             OUString sStr;
             ww::eField eField(ww::eNONE);
-            switch (0xff & nSubType)
+            switch (SwDocInfoSubType::LowerMask & nSubType)
             {
-                case DI_TITLE:
+                case SwDocInfoSubType::Title:
                     eField = ww::eTITLE;
                     break;
-                case DI_SUBJECT:
+                case SwDocInfoSubType::Subject:
                     eField = ww::eSUBJECT;
                     break;
-                case DI_KEYS:
+                case SwDocInfoSubType::Keys:
                     eField = ww::eKEYWORDS;
                     break;
-                case DI_COMMENT:
+                case SwDocInfoSubType::Comment:
                     eField = ww::eCOMMENTS;
                     break;
-                case DI_DOCNO:
+                case SwDocInfoSubType::DocNo:
                     eField = ww::eREVNUM;
                     break;
-                case DI_EDIT:
+                case SwDocInfoSubType::Edit:
                     eField = ww::eEDITTIME;
                     break;
-                case DI_CREATE:
-                    if (DI_SUB_AUTHOR == (nSubType & DI_SUB_MASK))
+                case SwDocInfoSubType::Create:
+                    if (SwDocInfoSubType::SubAuthor == (nSubType & SwDocInfoSubType::SubMask))
                         eField = ww::eAUTHOR;
                     else if (GetExport().GetNumberFormat(*pField, sStr) || sStr.isEmpty())
                         eField = ww::eCREATEDATE;
@@ -3078,8 +3112,8 @@ void AttributeOutputBase::TextField( const SwFormatField& rField )
                     bWriteExpand = false;
                     break;
 
-                case DI_CHANGE:
-                    if (DI_SUB_AUTHOR == (nSubType & DI_SUB_MASK))
+                case SwDocInfoSubType::Change:
+                    if (SwDocInfoSubType::SubAuthor == (nSubType & SwDocInfoSubType::SubMask))
                     {
                         eField = ww::eLASTSAVEDBY;
                         bWriteExpand=false;
@@ -3088,22 +3122,15 @@ void AttributeOutputBase::TextField( const SwFormatField& rField )
                         eField = ww::eSAVEDATE;
                     break;
 
-                case DI_PRINT:
-                    if (DI_SUB_AUTHOR != (nSubType & DI_SUB_MASK) &&
+                case SwDocInfoSubType::Print:
+                    if (SwDocInfoSubType::SubAuthor != (nSubType & SwDocInfoSubType::SubMask) &&
                         (GetExport().GetNumberFormat(*pField, sStr) || sStr.isEmpty()))
                         eField = ww::ePRINTDATE;
                     break;
-                case DI_CUSTOM:
+                case SwDocInfoSubType::Custom:
                     eField = ww::eDOCPROPERTY;
-                    {
-                        const SwDocInfoField * pDocInfoField =
-                        dynamic_cast<const SwDocInfoField *> (pField);
-
-                        if (pDocInfoField != nullptr)
-                            sStr = "\"" + pDocInfoField->GetName() + "\"";
-
-                        bWriteExpand = false;
-                    }
+                    sStr = "\"" + pDocInfoField->GetName() + "\"";
+                    bWriteExpand = false;
                     break;
                 default:
                     break;
@@ -3119,31 +3146,36 @@ void AttributeOutputBase::TextField( const SwFormatField& rField )
         break;
     case SwFieldIds::DateTime:
         {
+            auto pDateTimeField = static_cast<const SwDateTimeField*>(pField);
+            const SwDateTimeSubType nSubType = pDateTimeField->GetSubType();
             OUString sStr;
             if (!GetExport().GetNumberFormat(*pField, sStr))
                 bWriteExpand = true;
             else
             {
-                ww::eField eField = (DATEFLD & nSubType) ? ww::eDATE : ww::eTIME;
+                ww::eField eField = (SwDateTimeSubType::Date & nSubType) ? ww::eDATE : ww::eTIME;
                 GetExport().OutputField(pField, eField, FieldString(eField) + sStr);
             }
         }
         break;
     case SwFieldIds::DocStat:
         {
+            auto pDocStatField = static_cast<const SwDocStatField*>(pField);
+            const SwDocStatSubType nSubType = pDocStatField->GetSubType();
             ww::eField eField = ww::eNONE;
 
             switch (nSubType)
             {
-                case DS_PAGE:
+                case SwDocStatSubType::Page:
                     eField = ww::eNUMPAGES;
                     break;
-                case DS_WORD:
+                case SwDocStatSubType::Word:
                     eField = ww::eNUMWORDS;
                     break;
-                case DS_CHAR:
+                case SwDocStatSubType::Character:
                     eField = ww::eNUMCHARS;
                     break;
+                default: break;
             }
 
             if (eField != ww::eNONE)
@@ -3158,22 +3190,25 @@ void AttributeOutputBase::TextField( const SwFormatField& rField )
         break;
     case SwFieldIds::ExtUser:
         {
+            auto pExtUserField = static_cast<const SwExtUserField*>(pField);
+            const SwExtUserSubType nSubType = pExtUserField->GetSubType();
             ww::eField eField = ww::eNONE;
-            switch (0xFF & nSubType)
+            switch (static_cast<SwExtUserSubType>(0xFF & static_cast<sal_uInt16>(nSubType)))
             {
-                case EU_FIRSTNAME:
-                case EU_NAME:
+                case SwExtUserSubType::Firstname:
+                case SwExtUserSubType::Name:
                     eField = ww::eUSERNAME;
                     break;
-                case EU_SHORTCUT:
+                case SwExtUserSubType::Shortcut:
                     eField = ww::eUSERINITIALS;
                     break;
-                case EU_STREET:
-                case EU_COUNTRY:
-                case EU_ZIP:
-                case EU_CITY:
+                case SwExtUserSubType::Street:
+                case SwExtUserSubType::Country:
+                case SwExtUserSubType::Zip:
+                case SwExtUserSubType::City:
                     eField = ww::eUSERADDRESS;
                     break;
+                default: break;
             }
 
             if (eField != ww::eNONE)
@@ -3225,14 +3260,15 @@ void AttributeOutputBase::TextField( const SwFormatField& rField )
             ww::eField eField = ww::eNONE;
             OUString sStr;
             const SwGetRefField& rRField = *static_cast<const SwGetRefField*>(pField);
+            const ReferencesSubtype nSubType = rRField.GetSubType();
             switch (nSubType)
             {
-                case REF_SETREFATTR:
-                case REF_BOOKMARK:
-                    switch (pField->GetFormat())
+                case ReferencesSubtype::SetRefAttr:
+                case ReferencesSubtype::Bookmark:
+                    switch (rRField.GetFormat())
                     {
-                        case REF_PAGE_PGDESC:
-                        case REF_PAGE:
+                        case RefFieldFormat::AsPageStyle:
+                        case RefFieldFormat::Page:
                             eField = ww::ePAGEREF;
                             break;
                         default:
@@ -3240,33 +3276,34 @@ void AttributeOutputBase::TextField( const SwFormatField& rField )
                             break;
                     }
                     {
-                        const OUString& aRefName(rRField.GetSetRefName());
+                        const SwMarkName& aRefName(rRField.GetSetRefName());
                         sStr = FieldString(eField)
-                               + GetExport().GetBookmarkName(nSubType, &aRefName, 0);
+                               + GetExport().GetBookmarkName(nSubType, &aRefName.toString(), 0);
                     }
-                    switch (pField->GetFormat())
+                    switch (rRField.GetFormat())
                     {
-                        case REF_NUMBER:
+                        case RefFieldFormat::Number:
                             sStr += " \\r";
                             break;
-                        case REF_NUMBER_NO_CONTEXT:
+                        case RefFieldFormat::NumberNoContext:
                             sStr += " \\n";
                             break;
-                        case REF_NUMBER_FULL_CONTEXT:
+                        case RefFieldFormat::NumberFullContext:
                             sStr += " \\w";
                             break;
+                        default: break;
                     }
                     break;
-                case REF_SEQUENCEFLD:
+                case ReferencesSubtype::SequenceField:
                 {
                     // Not implemented for RTF
                     if(GetExport().GetExportFormat() == MSWordExportBase::ExportFormat::RTF)
                         break;
 
-                    switch (pField->GetFormat())
+                    switch (rRField.GetFormat())
                     {
-                        case REF_PAGE:
-                        case REF_PAGE_PGDESC:
+                        case RefFieldFormat::Page:
+                        case RefFieldFormat::AsPageStyle:
                             eField = ww::ePAGEREF;
                             break;
                         default:
@@ -3275,22 +3312,22 @@ void AttributeOutputBase::TextField( const SwFormatField& rField )
                     }
                     // Generate a unique bookmark name
                     {
-                        OUString sName{rRField.GetSetRefName() + OUString::number(rRField.GetSeqNo())};
-                        switch (pField->GetFormat())
+                        OUString sName{rRField.GetSetRefName().toString() + OUString::number(rRField.GetSeqNo())};
+                        switch (rRField.GetFormat())
                         {
-                            case REF_PAGE:
-                            case REF_PAGE_PGDESC:
-                            case REF_CONTENT:
-                            case REF_UPDOWN:
+                            case RefFieldFormat::Page:
+                            case RefFieldFormat::AsPageStyle:
+                            case RefFieldFormat::Content:
+                            case RefFieldFormat::UpDown:
                                     sName += "_full";
                                     break;
-                            case REF_ONLYNUMBER:
+                            case RefFieldFormat::CategoryAndNumber:
                                     sName += "_label_and_number";
                                     break;
-                            case REF_ONLYCAPTION:
+                            case RefFieldFormat::CaptionText:
                                     sName += "_caption_only";
                                     break;
-                            case REF_ONLYSEQNO:
+                            case RefFieldFormat::Numbering:
                                     sName += "_number_only";
                                     break;
                             default: // Ignore other types of reference fields
@@ -3299,47 +3336,49 @@ void AttributeOutputBase::TextField( const SwFormatField& rField )
                         }
                         sStr = FieldString(eField) + GetExport().GetBookmarkName(nSubType, &sName, 0);
                     }
-                    switch (pField->GetFormat())
+                    switch (rRField.GetFormat())
                     {
-                        case REF_NUMBER:
+                        case RefFieldFormat::Number:
                             sStr += " \\r";
                             break;
-                        case REF_NUMBER_NO_CONTEXT:
+                        case RefFieldFormat::NumberNoContext:
                             sStr += " \\n";
                             break;
-                        case REF_NUMBER_FULL_CONTEXT:
+                        case RefFieldFormat::NumberFullContext:
                             sStr += " \\w";
                             break;
+                        default: break;
                     }
                     break;
                 }
-                case REF_FOOTNOTE:
-                case REF_ENDNOTE:
-                    switch (pField->GetFormat())
+                case ReferencesSubtype::Footnote:
+                case ReferencesSubtype::Endnote:
+                    switch (rRField.GetFormat())
                     {
-                        case REF_PAGE_PGDESC:
-                        case REF_PAGE:
+                        case RefFieldFormat::AsPageStyle:
+                        case RefFieldFormat::Page:
                             eField = ww::ePAGEREF;
                             break;
-                        case REF_UPDOWN:
+                        case RefFieldFormat::UpDown:
                             eField = ww::eREF;
                             break;
                         default:
                             eField =
-                                REF_ENDNOTE == nSubType ? ww::eNOTEREF : ww::eFOOTREF;
+                                ReferencesSubtype::Endnote == nSubType ? ww::eNOTEREF : ww::eFOOTREF;
                             break;
                     }
                     sStr = FieldString(eField)
                            + GetExport().GetBookmarkName(nSubType, nullptr, rRField.GetSeqNo());
                     break;
-                case REF_STYLE:
+                case ReferencesSubtype::Style:
                     sStr = FieldString(ww::eSTYLEREF)
                            + GetExport().GetStyleRefName(pField->GetPar1());
                     eField = ww::eSTYLEREF;
                     break;
+                default: break; // ReferencesSubtype::Outline not handled ?
             }
 
-            OUString sExtraFlags = "\\h "; // by default, include a hyperlink
+            OUString sExtraFlags = u"\\h "_ustr; // by default, include a hyperlink
 
             switch (eField)
             {
@@ -3361,19 +3400,19 @@ void AttributeOutputBase::TextField( const SwFormatField& rField )
 
                     [[fallthrough]];
                 default:
-                    switch (pField->GetFormat())
+                    switch (rRField.GetFormat())
                     {
-                        case REF_NUMBER:
+                        case RefFieldFormat::Number:
                             sStr += " \\r " + sExtraFlags;
                             break;
-                        case REF_NUMBER_FULL_CONTEXT:
+                        case RefFieldFormat::NumberFullContext:
                             sStr += " \\w " + sExtraFlags;
                             break;
-                        case REF_UPDOWN:
+                        case RefFieldFormat::UpDown:
                             sStr += " \\p " + sExtraFlags;
                             break;
-                        case REF_NUMBER_NO_CONTEXT:
-                        case REF_CHAPTER:
+                        case RefFieldFormat::NumberNoContext:
+                        case RefFieldFormat::Chapter:
                             sStr += " \\n " + sExtraFlags;
                             break;
                         default:
@@ -3460,7 +3499,7 @@ void AttributeOutputBase::TextField( const SwFormatField& rField )
                     // Sometimes we can't find the outline node, in that case let's just fallback to exporting the text
 
                     sStr = FieldString(ww::eSTYLEREF)
-                         + GetExport().GetStyleRefName(pOutlineNd->GetFormatColl()->GetName());
+                         + GetExport().GetStyleRefName(pOutlineNd->GetFormatColl()->GetName().toString());
                 }
 
                 GetExport().OutputField(pField, ww::eSTYLEREF, sStr);
@@ -3473,7 +3512,7 @@ void AttributeOutputBase::TextField( const SwFormatField& rField )
             OUString sExpand(pField->GetPar2());
             if (!sExpand.isEmpty())
             {
-                auto eSubType = static_cast<SwFieldTypesEnum>(pField->GetSubType());
+                auto eSubType = static_cast<const SwHiddenTextField*>(pField)->GetSubType();
                 if (eSubType == SwFieldTypesEnum::ConditionalText)
                 {
                     OUString aCond = pField->GetPar1();
@@ -3546,7 +3585,7 @@ void AttributeOutputBase::TextFlyContent( const SwFormatFlyCnt& rFlyContent )
     if ( auto pTextNd = dynamic_cast< const SwContentNode *>( GetExport().m_pOutFormatNode )  )
     {
         Point const origin;
-        Point aLayPos = pTextNd->FindLayoutRect( false, &origin ).Pos();
+        Point aLayPos = pTextNd->FindLayoutRect( &origin ).Pos();
 
         SwPosition aPos( *pTextNd );
         ww8::Frame aFrame( *rFlyContent.GetFrameFormat(), std::move(aPos) );
@@ -3735,16 +3774,16 @@ static bool lcl_IsAtTextEnd(const SwFormatFootnote& rFootnote)
 
 void AttributeOutputBase::TextFootnote( const SwFormatFootnote& rFootnote )
 {
-    sal_uInt16 nTyp;
+    ReferencesSubtype nTyp;
     if ( rFootnote.IsEndNote() )
     {
-        nTyp = REF_ENDNOTE;
+        nTyp = ReferencesSubtype::Endnote;
         if ( GetExport().m_bEndAtTextEnd )
             GetExport().m_bEndAtTextEnd = lcl_IsAtTextEnd( rFootnote );
     }
     else
     {
-        nTyp = REF_FOOTNOTE;
+        nTyp = ReferencesSubtype::Footnote;
         if ( GetExport().m_bFootnoteAtTextEnd )
             GetExport().m_bFootnoteAtTextEnd = lcl_IsAtTextEnd( rFootnote );
     }
@@ -4009,7 +4048,7 @@ void WW8AttributeOutput::FormatFrameSize( const SwFormatFrameSize& rSize )
         {
             //"sprmPDxaWidth"
             m_rWW8Export.InsUInt16( NS_sprm::PDxaWidth::val );
-            m_rWW8Export.InsUInt16( o3tl::narrowing<sal_uInt16>(rSize.GetWidth()) );
+            m_rWW8Export.InsUInt16( rSize.GetWidth() );
         }
 
         if ( rSize.GetHeight() )
@@ -4291,13 +4330,13 @@ void WW8AttributeOutput::FormatTextGrid( const SwTextGridItem& rGrid )
         default:
             OSL_FAIL("Unknown grid type");
             [[fallthrough]];
-        case GRID_NONE:
+        case SwTextGrid::NONE:
             nGridType = 0;
             break;
-        case GRID_LINES_ONLY:
+        case SwTextGrid::LinesOnly:
             nGridType = 2;
             break;
-        case GRID_LINES_CHARS:
+        case SwTextGrid::LinesAndChars:
             if ( rGrid.IsSnapToChars() )
                 nGridType = 3;
             else
@@ -4340,28 +4379,66 @@ void WW8AttributeOutput::FormatPaperBin( const SvxPaperBinItem& rPaperBin )
 
 void WW8AttributeOutput::FormatFirstLineIndent(SvxFirstLineIndentItem const& rFirstLine)
 {
-    // sprmPDxaLeft1
-    m_rWW8Export.InsUInt16( 0x8460 );        //asian version ?
-    m_rWW8Export.InsUInt16( rFirstLine.GetTextFirstLineOffset() );
+    auto stOffset = rFirstLine.GetTextFirstLineOffset();
+    if (stOffset.m_nUnit == css::util::MeasureUnit::FONT_CJK_ADVANCE)
+    {
+        // sprmPDxcLeft1
+        m_rWW8Export.InsUInt16(0x4457);
+        m_rWW8Export.InsInt16(stOffset.m_dValue * 100.0);
+    }
+    else
+    {
+        // sprmPDxaLeft1
+        m_rWW8Export.InsUInt16(0x8460);
+        m_rWW8Export.InsUInt16(rFirstLine.ResolveTextFirstLineOffset({}));
+    }
 }
 
 void WW8AttributeOutput::FormatTextLeftMargin(SvxTextLeftMarginItem const& rTextLeftMargin)
-{                                          // normal paragraphs
-    // sprmPDxaLeft
-    m_rWW8Export.InsUInt16( 0x845E );        //asian version ?
-    m_rWW8Export.InsUInt16( o3tl::narrowing<sal_uInt16>(rTextLeftMargin.GetTextLeft()) );
+{
+    auto stOffset = rTextLeftMargin.GetTextLeft();
+    if (stOffset.m_nUnit == css::util::MeasureUnit::FONT_CJK_ADVANCE)
+    {
+        // tdf#80596: DOC stores sprmPDxaLeft and sprmPDxcLeft differently with
+        // hanging indentation. The left margin must be adjusted before exporting.
+        const SfxItemSet* pSet = GetExport().m_pISet;
+        if (pSet && pSet->HasItem(RES_MARGIN_FIRSTLINE))
+        {
+            const SvxFirstLineIndentItem* pItem = pSet->GetItem(RES_MARGIN_FIRSTLINE);
+            auto stFirstLine = pItem->GetTextFirstLineOffset();
+            if (stFirstLine.m_nUnit == css::util::MeasureUnit::FONT_CJK_ADVANCE
+                && stFirstLine.m_dValue < 0.0)
+            {
+                stOffset.m_dValue += stFirstLine.m_dValue;
+            }
+        }
+
+        // sprmPDxcLeft
+        m_rWW8Export.InsUInt16(0x4456);
+        m_rWW8Export.InsInt16(stOffset.m_dValue * 100.0);
+    }
+    else
+    {
+        // sprmPDxaLeft
+        m_rWW8Export.InsUInt16(0x845E);
+        m_rWW8Export.InsUInt16(rTextLeftMargin.ResolveTextLeft({}));
+    }
 }
 
 void WW8AttributeOutput::FormatRightMargin(SvxRightMarginItem const& rRightMargin)
 {
-    // (paragraph case, this will be an else branch once others are converted)
-#if 0
+    auto stOffset = rRightMargin.GetRight();
+    if (stOffset.m_nUnit == css::util::MeasureUnit::FONT_CJK_ADVANCE)
+    {
+        // sprmPDxcRight
+        m_rWW8Export.InsUInt16(0x4455);
+        m_rWW8Export.InsInt16(stOffset.m_dValue * 100.0);
+    }
     else
-#endif
-    {                                          // normal paragraphs
+    {
         // sprmPDxaRight
-        m_rWW8Export.InsUInt16( 0x845D );        //asian version ?
-        m_rWW8Export.InsUInt16( o3tl::narrowing<sal_uInt16>(rRightMargin.GetRight()) );
+        m_rWW8Export.InsUInt16(0x845D);
+        m_rWW8Export.InsUInt16(rRightMargin.ResolveRight({}));
     }
 }
 
@@ -4374,7 +4451,8 @@ void WW8AttributeOutput::FormatLRSpace( const SvxLRSpaceItem& rLR )
         // sprmPDxaFromText10
         m_rWW8Export.InsUInt16( NS_sprm::LN_PDxaFromText10 );
         // use average, since WW only knows one value
-        m_rWW8Export.InsUInt16( o3tl::narrowing<sal_uInt16>( ( rLR.GetLeft() + rLR.GetRight() ) / 2 ) );
+        m_rWW8Export.InsUInt16(
+            (rLR.ResolveLeft({}) + rLR.ResolveRight({})) / 2);
     }
     else if ( m_rWW8Export.m_bOutPageDescs )                // PageDescs
     {
@@ -4387,8 +4465,8 @@ void WW8AttributeOutput::FormatLRSpace( const SvxLRSpaceItem& rLR )
             m_pageMargins.nRight = pBoxItem->CalcLineSpace( SvxBoxItemLine::RIGHT, /*bEvenIfNoLine*/true );
         }
 
-        m_pageMargins.nLeft += sal::static_int_cast<sal_uInt16>(rLR.GetLeft());
-        m_pageMargins.nRight += sal::static_int_cast<sal_uInt16>(rLR.GetRight());
+        m_pageMargins.nLeft += sal::static_int_cast<sal_uInt16>(rLR.ResolveLeft({}));
+        m_pageMargins.nRight += sal::static_int_cast<sal_uInt16>(rLR.ResolveRight({}));
         sal_uInt16 nGutter = rLR.GetGutterMargin();
 
         // sprmSDxaLeft
@@ -4408,17 +4486,45 @@ void WW8AttributeOutput::FormatLRSpace( const SvxLRSpaceItem& rLR )
     }
     else
     {                                          // normal paragraphs
-        // sprmPDxaLeft
-        m_rWW8Export.InsUInt16( 0x845E );        //asian version ?
-        m_rWW8Export.InsUInt16( o3tl::narrowing<sal_uInt16>(rLR.GetTextLeft()) );
+        if (rLR.GetTextLeft().m_nUnit == css::util::MeasureUnit::FONT_CJK_ADVANCE)
+        {
+            // sprmPDxcLeft
+            m_rWW8Export.InsUInt16(0x4456);
+            m_rWW8Export.InsUInt16(rLR.GetTextLeft().m_dValue * 100.0);
+        }
+        else
+        {
+            // sprmPDxaLeft
+            m_rWW8Export.InsUInt16(0x845E);
+            m_rWW8Export.InsUInt16(rLR.ResolveTextLeft({}));
+        }
 
-        // sprmPDxaRight
-        m_rWW8Export.InsUInt16( 0x845D );        //asian version ?
-        m_rWW8Export.InsUInt16( o3tl::narrowing<sal_uInt16>(rLR.GetRight()) );
+        if (rLR.GetRight().m_nUnit == css::util::MeasureUnit::FONT_CJK_ADVANCE)
+        {
+            // sprmPDxcRight
+            m_rWW8Export.InsUInt16(0x4455);
+            m_rWW8Export.InsUInt16(rLR.GetRight().m_dValue * 100.0);
+        }
+        else
+        {
+            // sprmPDxaRight
+            m_rWW8Export.InsUInt16(0x845D);
+            m_rWW8Export.InsUInt16(rLR.ResolveRight({}));
+        }
 
-        // sprmPDxaLeft1
-        m_rWW8Export.InsUInt16( 0x8460 );        //asian version ?
-        m_rWW8Export.InsUInt16( rLR.GetTextFirstLineOffset() );
+        if (rLR.GetTextFirstLineOffset().m_nUnit == css::util::MeasureUnit::FONT_CJK_ADVANCE)
+        {
+            // sprmPDxcLeft1
+            m_rWW8Export.InsUInt16(0x4457);
+            m_rWW8Export.InsUInt16(
+                rLR.GetTextFirstLineOffset().m_dValue * 100.0);
+        }
+        else
+        {
+            // sprmPDxaLeft1
+            m_rWW8Export.InsUInt16(0x8460);
+            m_rWW8Export.InsUInt16(rLR.ResolveTextFirstLineOffset({}));
+        }
     }
 }
 
@@ -4453,7 +4559,7 @@ void WW8AttributeOutput::FormatULSpace( const SvxULSpaceItem& rUL )
         // sprmPDyaFromText
         m_rWW8Export.InsUInt16( NS_sprm::PDyaFromText::val );
         // use average, since WW only knows one value
-        m_rWW8Export.InsUInt16( o3tl::narrowing<sal_uInt16>( ( rUL.GetUpper() + rUL.GetLower() ) / 2 ) );
+        m_rWW8Export.InsUInt16( ( rUL.GetUpper() + rUL.GetLower() ) / 2 );
     }
     else if ( m_rWW8Export.m_bOutPageDescs )            // Page-UL
     {
@@ -4650,6 +4756,8 @@ void WW8AttributeOutput::FormatBackground( const SvxBrushItem& rBrush )
 
 void WW8AttributeOutput::FormatFillStyle( const XFillStyleItem& rFillStyle )
 {
+    mbFillStyleIsSet = true;
+
     // WW cannot have background in a section
     if ( m_rWW8Export.m_bOutPageDescs )
         return;
@@ -4672,6 +4780,7 @@ void WW8AttributeOutput::FormatFillStyle( const XFillStyleItem& rFillStyle )
 
 void WW8AttributeOutput::FormatFillGradient( const XFillGradientItem& /*rFillGradient*/ )
 {
+    assert(mbFillStyleIsSet && "ITEM: FormatFillStyle *has* to be called before FormatFillGradient(!)");
 }
 
 WW8_BRCVer9 WW8Export::TranslateBorderLine(const SvxBorderLine& rLine,
@@ -4962,8 +5071,8 @@ SwTwips WW8Export::CurrentPageWidth(SwTwips &rLeft, SwTwips &rRight) const
 
     const SvxLRSpaceItem& rLR = pFormat->GetLRSpace();
     SwTwips nPageSize = pFormat->GetFrameSize().GetWidth();
-    rLeft = rLR.GetLeft();
-    rRight = rLR.GetRight();
+    rLeft = rLR.ResolveLeft({});
+    rRight = rLR.ResolveRight({});
     return nPageSize;
 }
 
@@ -5052,7 +5161,7 @@ void AttributeOutputBase::FormatColumns( const SwFormatCol& rCol )
     {
         const SvxLRSpaceItem &rLR = pFormat->GetLRSpace();
         nPageSize = pFormat->GetFrameSize().GetWidth();
-        nPageSize -= rLR.GetLeft() + rLR.GetRight();
+        nPageSize -= rLR.ResolveLeft({}) + rLR.ResolveRight({});
         //i120133: The Section width should consider page indent value.
         nPageSize -= rCol.GetAdjustValue();
 
@@ -5152,7 +5261,7 @@ void AttributeOutputBase::ParaLineSpacing( const SvxLineSpacingItem& rSpacing )
             else // Proportional
             {
                 if ( rSpacing.GetInterLineSpaceRule() != SvxInterLineSpaceRule::Off )
-                    nSpace = static_cast<short>( ( 240L * rSpacing.GetPropLineSpace() ) / 100L );
+                    nSpace = static_cast<short>(round(240.0 * rSpacing.GetPropLineSpace() / 100));
                 nMulti = 1;
             }
         }
@@ -5521,17 +5630,21 @@ static void ParaTabStopDelAdd( WW8Export& rWrt,
             aTab.Add(*pTN, nLParaMgn);              // must be inserted
             nN++;
         }
-        else if (lcl_IsEqual(nOP, *pTO, nNP, *pTN)) // tabs are equal
+        else
         {
-            nO++;                                   // nothing to do
-            nN++;
-        }
-        else                                        // tabs same position, different type
-        {
-            aTab.Del(*pTO, nLStypeMgn);             // delete old one
-            aTab.Add(*pTN, nLParaMgn);              // insert new one
-            nO++;
-            nN++;
+            assert(pTO && pTN);
+            if (lcl_IsEqual(nOP, *pTO, nNP, *pTN)) // tabs are equal
+            {
+                nO++;                                   // nothing to do
+                nN++;
+            }
+            else                                        // tabs same position, different type
+            {
+                aTab.Del(*pTO, nLStypeMgn);             // delete old one
+                aTab.Add(*pTN, nLParaMgn);              // insert new one
+                nO++;
+                nN++;
+            }
         }
     } while( true );
 
@@ -5549,7 +5662,7 @@ void WW8AttributeOutput::ParaTabStop( const SvxTabStopItem& rTabStops )
         {
             if (const auto pLeft = pItem->DynamicWhichCast(RES_MARGIN_TEXTLEFT))
             {
-                nCurrentLeft = pLeft->GetTextLeft();
+                nCurrentLeft = pLeft->ResolveTextLeft({});
             }
             else
                 // FIXME: This fails in sw.ww8export/testCommentExport::Load_Verify_Reload_Verify
@@ -5576,7 +5689,7 @@ void WW8AttributeOutput::ParaTabStop( const SvxTabStopItem& rTabStops )
         if ( bTabsRelativeToIndex )
         {
             SvxTextLeftMarginItem const& rLeftMargin(pParentStyle->GetAttrSet().Get(RES_MARGIN_TEXTLEFT));
-            nParentLeft = rLeftMargin.GetTextLeft();
+            nParentLeft = rLeftMargin.ResolveTextLeft({});
         }
 
         ParaTabStopDelAdd( m_rWW8Export, aParentTabs, nParentLeft, rTabStops, nCurrentLeft );
@@ -5599,7 +5712,7 @@ void WW8AttributeOutput::ParaTabStop( const SvxTabStopItem& rTabStops )
         if ( bTabsRelativeToIndex )
         {
             SvxTextLeftMarginItem const& rLeftMargin(m_rWW8Export.m_pStyAttr->Get(RES_MARGIN_TEXTLEFT));
-            nStyleLeft = rLeftMargin.GetTextLeft();
+            nStyleLeft = rLeftMargin.ResolveTextLeft({});
         }
 
         ParaTabStopDelAdd( m_rWW8Export,
@@ -5663,35 +5776,35 @@ void AttributeOutputBase::OutputItem( const SfxPoolItem& rHt )
             break;
 
         case RES_CHRATR_CJK_FONT:
-            CharFontCJK( static_cast< const SvxFontItem& >( rHt ) );
+            CharFontCJK(rHt.StaticWhichCast(RES_CHRATR_CJK_FONT));
             break;
         case RES_CHRATR_CJK_FONTSIZE:
-            CharFontSizeCJK( static_cast< const SvxFontHeightItem& >( rHt ) );
+            CharFontSizeCJK(rHt.StaticWhichCast(RES_CHRATR_CJK_FONTSIZE));
             break;
         case RES_CHRATR_CJK_LANGUAGE:
-            CharLanguageCJK( static_cast< const SvxLanguageItem& >( rHt ) );
+            CharLanguageCJK(rHt.StaticWhichCast(RES_CHRATR_CJK_LANGUAGE));
             break;
         case RES_CHRATR_CJK_POSTURE:
-            CharPostureCJK( static_cast< const SvxPostureItem& >( rHt ) );
+            CharPostureCJK(rHt.StaticWhichCast(RES_CHRATR_CJK_POSTURE));
             break;
         case RES_CHRATR_CJK_WEIGHT:
-            CharWeightCJK( static_cast< const SvxWeightItem& >( rHt ) );
+            CharWeightCJK( rHt.StaticWhichCast(RES_CHRATR_CJK_WEIGHT));
             break;
 
         case RES_CHRATR_CTL_FONT:
-            CharFontCTL( static_cast< const SvxFontItem& >( rHt ) );
+            CharFontCTL(rHt.StaticWhichCast(RES_CHRATR_CTL_FONT));
             break;
         case RES_CHRATR_CTL_FONTSIZE:
-            CharFontSizeCTL( static_cast< const SvxFontHeightItem& >( rHt ) );
+            CharFontSizeCTL(rHt.StaticWhichCast(RES_CHRATR_CTL_FONTSIZE));
             break;
         case RES_CHRATR_CTL_LANGUAGE:
-            CharLanguageCTL( static_cast< const SvxLanguageItem& >( rHt ) );
+            CharLanguageCTL(rHt.StaticWhichCast(RES_CHRATR_CTL_LANGUAGE));
             break;
         case RES_CHRATR_CTL_POSTURE:
-            CharPostureCTL( static_cast< const SvxPostureItem& >( rHt ) );
+            CharPostureCTL(rHt.StaticWhichCast(RES_CHRATR_CTL_POSTURE));
             break;
         case RES_CHRATR_CTL_WEIGHT:
-            CharWeightCTL( static_cast< const SvxWeightItem& >( rHt ) );
+            CharWeightCTL(rHt.StaticWhichCast(RES_CHRATR_CTL_WEIGHT));
             break;
 
         case RES_CHRATR_ROTATE:
@@ -5713,7 +5826,7 @@ void AttributeOutputBase::OutputItem( const SfxPoolItem& rHt )
             CharHidden(rHt.StaticWhichCast(RES_CHRATR_HIDDEN));
             break;
         case RES_CHRATR_BOX:
-            FormatCharBorder(rHt.StaticWhichCast(RES_CHRATR_BOX));
+            CharBorder(rHt.StaticWhichCast(RES_CHRATR_BOX));
             break;
         case RES_CHRATR_HIGHLIGHT:
             CharHighlight(rHt.StaticWhichCast(RES_CHRATR_HIGHLIGHT));
@@ -5721,8 +5834,8 @@ void AttributeOutputBase::OutputItem( const SfxPoolItem& rHt )
         case RES_CHRATR_BIDIRTL:
             CharBidiRTL( rHt );
             break;
-        case RES_CHRATR_IDCTHINT:
-            CharIdctHint( rHt );
+        case RES_CHRATR_SCRIPT_HINT:
+            CharScriptHint(rHt.StaticWhichCast(RES_CHRATR_SCRIPT_HINT));
             break;
         case RES_TXTATR_INETFMT:
             TextINetFormat( static_cast< const SwFormatINetFormat& >( rHt ) );
@@ -5745,25 +5858,25 @@ void AttributeOutputBase::OutputItem( const SfxPoolItem& rHt )
             break;
 
         case RES_PARATR_LINESPACING:
-            ParaLineSpacing( static_cast< const SvxLineSpacingItem& >( rHt ) );
+            ParaLineSpacing(rHt.StaticWhichCast(RES_PARATR_LINESPACING));
             break;
         case RES_PARATR_ADJUST:
-            ParaAdjust( static_cast< const SvxAdjustItem& >( rHt ) );
+            ParaAdjust(rHt.StaticWhichCast(RES_PARATR_ADJUST));
             break;
         case RES_PARATR_SPLIT:
-            ParaSplit( static_cast< const SvxFormatSplitItem& >( rHt ) );
+            ParaSplit(rHt.StaticWhichCast(RES_PARATR_SPLIT));
             break;
         case RES_PARATR_WIDOWS:
-            ParaWidows( static_cast< const SvxWidowsItem& >( rHt ) );
+            ParaWidows(rHt.StaticWhichCast(RES_PARATR_WIDOWS));
             break;
         case RES_PARATR_TABSTOP:
-            ParaTabStop( static_cast< const SvxTabStopItem& >( rHt ) );
+            ParaTabStop(rHt.StaticWhichCast(RES_PARATR_TABSTOP));
             break;
         case RES_PARATR_HYPHENZONE:
-            ParaHyphenZone( static_cast< const SvxHyphenZoneItem& >( rHt ) );
+            ParaHyphenZone(rHt.StaticWhichCast(RES_PARATR_HYPHENZONE));
             break;
         case RES_PARATR_NUMRULE:
-            ParaNumRule( static_cast< const SwNumRuleItem& >( rHt ) );
+            ParaNumRule(rHt.StaticWhichCast(RES_PARATR_NUMRULE));
             break;
         case RES_PARATR_SCRIPTSPACE:
             ParaScriptSpace( static_cast< const SfxBoolItem& >( rHt ) );
@@ -5775,38 +5888,38 @@ void AttributeOutputBase::OutputItem( const SfxPoolItem& rHt )
             ParaForbiddenRules( static_cast< const SfxBoolItem& >( rHt ) );
             break;
         case RES_PARATR_VERTALIGN:
-            ParaVerticalAlign( static_cast< const SvxParaVertAlignItem& >( rHt ) );
+            ParaVerticalAlign(rHt.StaticWhichCast(RES_PARATR_VERTALIGN));
             break;
         case RES_PARATR_SNAPTOGRID:
-            ParaSnapToGrid( static_cast< const SvxParaGridItem& >( rHt ) );
+            ParaSnapToGrid(rHt.StaticWhichCast(RES_PARATR_SNAPTOGRID));
             break;
 
         case RES_FRM_SIZE:
             FormatFrameSize( static_cast< const SwFormatFrameSize& >( rHt ) );
             break;
         case RES_PAPER_BIN:
-            FormatPaperBin( static_cast< const SvxPaperBinItem& >( rHt ) );
+            FormatPaperBin(rHt.StaticWhichCast(RES_PAPER_BIN));
             break;
         case RES_MARGIN_FIRSTLINE:
-            FormatFirstLineIndent(static_cast<const SvxFirstLineIndentItem &>(rHt));
+            FormatFirstLineIndent(rHt.StaticWhichCast(RES_MARGIN_FIRSTLINE));
             break;
         case RES_MARGIN_TEXTLEFT:
-            FormatTextLeftMargin(static_cast<const SvxTextLeftMarginItem &>(rHt));
+            FormatTextLeftMargin(rHt.StaticWhichCast(RES_MARGIN_TEXTLEFT));
             break;
         case RES_MARGIN_RIGHT:
-            FormatRightMargin(static_cast<const SvxRightMarginItem &>(rHt));
+            FormatRightMargin(rHt.StaticWhichCast(RES_MARGIN_RIGHT));
             break;
         case RES_LR_SPACE:
-            FormatLRSpace( static_cast< const SvxLRSpaceItem& >( rHt ) );
+            FormatLRSpace(rHt.StaticWhichCast(RES_LR_SPACE));
             break;
         case RES_UL_SPACE:
-            FormatULSpace( static_cast< const SvxULSpaceItem& >( rHt ) );
+            FormatULSpace(rHt.StaticWhichCast(RES_UL_SPACE));
             break;
         case RES_PAGEDESC:
             FormatPageDescription( static_cast< const SwFormatPageDesc& >( rHt ) );
             break;
         case RES_BREAK:
-            FormatBreak( static_cast< const SvxFormatBreakItem& >( rHt ) );
+            FormatBreak(rHt.StaticWhichCast(RES_BREAK));
             break;
         case RES_SURROUND:
             FormatSurround( static_cast< const SwFormatSurround& >( rHt ) );
@@ -5821,7 +5934,7 @@ void AttributeOutputBase::OutputItem( const SfxPoolItem& rHt )
             FormatAnchor( static_cast< const SwFormatAnchor& >( rHt ) );
             break;
         case RES_BACKGROUND:
-            FormatBackground( static_cast< const SvxBrushItem& >( rHt ) );
+            FormatBackground(rHt.StaticWhichCast(RES_BACKGROUND));
             break;
         case XATTR_FILLSTYLE:
             FormatFillStyle( static_cast< const XFillStyleItem& >( rHt ) );
@@ -5830,34 +5943,34 @@ void AttributeOutputBase::OutputItem( const SfxPoolItem& rHt )
             FormatFillGradient( static_cast< const XFillGradientItem& >( rHt ) );
             break;
         case RES_BOX:
-            FormatBox( static_cast< const SvxBoxItem& >( rHt ) );
+            FormatBox(rHt.StaticWhichCast(RES_BOX));
             break;
         case RES_COL:
             FormatColumns( static_cast< const SwFormatCol& >( rHt ) );
             break;
         case RES_KEEP:
-            FormatKeep( static_cast< const SvxFormatKeepItem& >( rHt ) );
+            FormatKeep(rHt.StaticWhichCast(RES_KEEP));
             break;
         case RES_TEXTGRID:
-            FormatTextGrid( static_cast< const SwTextGridItem& >( rHt ) );
+            FormatTextGrid(rHt.StaticWhichCast(RES_TEXTGRID));
             break;
         case RES_LINENUMBER:
             FormatLineNumberingBase(static_cast<const SwFormatLineNumber&>(rHt));
             break;
         case RES_FRAMEDIR:
-            FormatFrameDirection( static_cast< const SvxFrameDirectionItem& >( rHt ) );
+            FormatFrameDirection(rHt.StaticWhichCast(RES_FRAMEDIR));
             break;
         case RES_PARATR_GRABBAG:
-            ParaGrabBag(static_cast<const SfxGrabBagItem&>(rHt));
+            ParaGrabBag(rHt.StaticWhichCast(RES_PARATR_GRABBAG));
             break;
         case RES_PARATR_OUTLINELEVEL:
-            ParaOutlineLevelBase(static_cast<const SfxUInt16Item&>(rHt));
+            ParaOutlineLevelBase(rHt.StaticWhichCast(RES_PARATR_OUTLINELEVEL));
             break;
         case RES_CHRATR_GRABBAG:
-            CharGrabBag(static_cast<const SfxGrabBagItem&>(rHt));
+            CharGrabBag(rHt.StaticWhichCast(RES_CHRATR_GRABBAG));
             break;
         case RES_RTL_GUTTER:
-            SectionRtlGutter(static_cast<const SfxBoolItem&>(rHt));
+            SectionRtlGutter(rHt.StaticWhichCast(RES_RTL_GUTTER));
             break;
         case RES_TXTATR_LINEBREAK:
             TextLineBreak(static_cast<const SwFormatLineBreak&>(rHt));
@@ -5888,11 +6001,49 @@ void AttributeOutputBase::OutputStyleItemSet( const SfxItemSet& rSet, bool bTest
     if ( !pSet->GetParent() )
     {
         assert(rSet.Count() && "Was already handled or?");
-        SfxItemIter aIter( *pSet );
-        pItem = aIter.GetCurItem();
-        do {
-            OutputItem( *pItem );
-        } while ((pItem = aIter.NextItem()));
+        // ITEM: Here SfxItemIter is used, but the called functionality
+        // is dependent on the 'order' in which the Items are processed. This has
+        // mainly to do with ::OutputItem and it's use of FormatFillGradient/FormatFillStyle
+        // overloads -> XFillStyleItem *needs* to be known before XFillGradientItem
+        // since it is locally 'remembered' in the processor (see m_oFillStyle).
+        // This implicitly relies on a specific order of the Items: even with the situation
+        // that WhichIDs are sorted and thus was the output of SfxItemIter before this
+        // change, this is a risky assumption - the WhichIDs and thus the order of the
+        // Items are not necessarily fixed (and were not designed to have a specific
+        // 'order' to be made use of, it's coincidence).
+        // Thus in the long run OutputItem itself might have to becorrected to work without
+        // that assumption: hand a access method to it (callback/ItemSet) so that it might
+        // ask e.g. for current FillStyle when FillGradient is processed.
+        // I will now loop and remember XATTR_FILLSTYLE and XATTR_FILLGRADIENT when set,
+        // executing when *both* are set and in the needed order.
+        // Added asserts to ::FormatFillGradient impls when before not ::FormatFillStyle
+        // was called
+        const SfxPoolItem* pFillStyle(nullptr);
+        const SfxPoolItem* pGradient(nullptr);
+
+        for (SfxItemIter aIter(*pSet); !aIter.IsAtEnd(); aIter.NextItem())
+        {
+            pItem = aIter.GetCurItem();
+
+            if (nullptr != pItem)
+            {
+                const sal_uInt16 nWhich(pItem->Which());
+
+                if (XATTR_FILLSTYLE == nWhich)
+                    pFillStyle = pItem;
+                else if (XATTR_FILLGRADIENT == nWhich)
+                    pGradient = pItem;
+                else
+                    OutputItem(*pItem);
+            }
+        }
+
+        if (nullptr != pFillStyle && nullptr != pGradient)
+        {
+            // ITEM: execute when both are set and do so in needed order
+            OutputItem(*pFillStyle);
+            OutputItem(*pGradient);
+        }
     }
     else
     {
@@ -5904,7 +6055,7 @@ void AttributeOutputBase::OutputStyleItemSet( const SfxItemSet& rSet, bool bTest
                  ( !bTestForDefault ||
                    nWhich == RES_UL_SPACE ||
                    nWhich == RES_LR_SPACE ||
-                   *pItem != rPool.GetDefaultItem( nWhich ) ||
+                   *pItem != rPool.GetUserOrPoolDefaultItem( nWhich ) ||
                    ( pSet->GetParent() && *pItem != pSet->GetParent()->Get( nWhich ) ) ) )
             {
                 OutputItem( *pItem );
@@ -5914,7 +6065,8 @@ void AttributeOutputBase::OutputStyleItemSet( const SfxItemSet& rSet, bool bTest
     }
 }
 
-void AttributeOutputBase::FormatCharBorder( const SvxBoxItem& rBox )
+std::tuple<const ::editeng::SvxBorderLine*, sal_uInt16, bool>
+AttributeOutputBase::FormatCharBorder(const SvxBoxItem& rBox, const SfxItemSet* pItemSet) const
 {
     // Get one of the borders (if there is any border then in docx also will be)
     const SvxBorderLine* pBorderLine = nullptr;
@@ -5940,17 +6092,17 @@ void AttributeOutputBase::FormatCharBorder( const SvxBoxItem& rBox )
        nDist = rBox.GetDistance( SvxBoxItemLine::RIGHT );
     }
 
-    // RTF: avoid regressions since RTF doesn't know how to export a border_NONE style-override
-    if( pBorderLine || GetExport().GetExportFormat() != MSWordExportBase::ExportFormat::RTF )
-    {
-        const SfxPoolItem* pItem = GetExport().HasItem( RES_CHRATR_SHADOW );
-        const SvxShadowItem* pShadowItem = static_cast<const SvxShadowItem*>(pItem);
-        const bool bShadow = pBorderLine &&
-            pShadowItem && pShadowItem->GetLocation() != SvxShadowLocation::NONE &&
-            pShadowItem->GetWidth() > 0;
+    const SfxPoolItem* pItem;
+    if (pItemSet)
+        pItem = pItemSet->GetItemIfSet(RES_CHRATR_SHADOW);
+    else
+        pItem = GetExport().HasItem(RES_CHRATR_SHADOW);
+    const SvxShadowItem* pShadowItem = static_cast<const SvxShadowItem*>(pItem);
+    const bool bShadow = pBorderLine &&
+        pShadowItem && pShadowItem->GetLocation() != SvxShadowLocation::NONE &&
+        pShadowItem->GetWidth() > 0;
 
-        CharBorder( pBorderLine, nDist, bShadow );
-    }
+    return { pBorderLine, nDist, bShadow };
 }
 
 /*
@@ -5981,7 +6133,7 @@ const SwRedlineData* AttributeOutputBase::GetParagraphMarkerRedline( const SwTex
 
 void AttributeOutputBase::CharBackgroundBase( const SvxBrushItem& rBrush )
 {
-    bool bConvertToShading = SvtFilterOptions::Get().IsCharBackground2Shading();
+    bool bConvertToShading = !officecfg::Office::Common::Filter::Microsoft::Export::CharBackgroundToHighlighting::get();
     bool bHasShadingMarker = false;
 
     // MS Word doesn't support highlight in character styles. Always export those as shading.
@@ -5997,7 +6149,7 @@ void AttributeOutputBase::CharBackgroundBase( const SvxBrushItem& rBrush )
     {
         const SfxGrabBagItem aGrabBag = static_cast< const SfxGrabBagItem& >(*pItem);
         const std::map<OUString, css::uno::Any>& rMap = aGrabBag.GetGrabBag();
-        auto aIterator = rMap.find("CharShadingMarker");
+        auto aIterator = rMap.find(u"CharShadingMarker"_ustr);
         if( aIterator != rMap.end() )
         {
             aIterator->second >>= bHasShadingMarker;

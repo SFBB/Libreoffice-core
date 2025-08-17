@@ -25,9 +25,15 @@
 #include <tools/debug.hxx>
 #include <vcl/virdev.hxx>
 #include <sfx2/docfile.hxx>
+#include <svx/svdpntv.hxx>
 #include <svx/xoutbmp.hxx>
 #include <vcl/graphicfilter.hxx>
 #include <vcl/cvtgrf.hxx>
+#include <vcl/gdimtf.hxx>
+#include <vcl/svapp.hxx>
+
+#include <UnoGraphicExporter.hxx>
+
 #include <memory>
 
 #include <com/sun/star/beans/XPropertySet.hpp>
@@ -121,6 +127,10 @@ static OUString isKnownVectorFormat(const Graphic& rGraphic, std::u16string_view
     if (!pData || pData->getBinaryDataContainer().getSize() == 0)
         return {};
 
+    if (FORMAT_EMF.equalsIgnoreAsciiCase(rFilter)
+        && (pData->getType() == VectorGraphicDataType::Emf || rGraphic.GetGfxLink().IsEMF()))
+        return FORMAT_EMF;
+
     // Does the filter name match the original format?
     switch (pData->getType())
     {
@@ -129,13 +139,10 @@ static OUString isKnownVectorFormat(const Graphic& rGraphic, std::u16string_view
         case VectorGraphicDataType::Wmf:
             return match(rFilter, FORMAT_WMF, false);
         case VectorGraphicDataType::Emf:
-            return match(rFilter, FORMAT_EMF, false);
+            break;
         case VectorGraphicDataType::Pdf:
             return match(rFilter, FORMAT_PDF, false);
     }
-
-    if (rGraphic.GetGfxLink().IsEMF())
-        return match(rFilter, FORMAT_EMF, false);
 
     return {};
 }
@@ -200,7 +207,7 @@ ErrCode XOutBitmap::WriteGraphic( const Graphic& rGraphic, OUString& rFileName,
         rFileName = aURL.GetMainURL(INetURLObject::DecodeMechanism::NONE);
         if (pMediaType)
             if (auto xGraphic = rGraphic.GetXGraphic().query<css::beans::XPropertySet>())
-                xGraphic->getPropertyValue("MimeType") >>= *pMediaType;
+                xGraphic->getPropertyValue(u"MimeType"_ustr) >>= *pMediaType;
 
         SfxMedium aMedium(aURL.GetMainURL(INetURLObject::DecodeMechanism::NONE), StreamMode::WRITE | StreamMode::SHARE_DENYNONE | StreamMode::TRUNC);
         SvStream* pOStm = aMedium.GetOutStream();
@@ -229,7 +236,7 @@ ErrCode XOutBitmap::WriteGraphic( const Graphic& rGraphic, OUString& rFileName,
             rFileName = aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE );
             if (pMediaType)
                 if (auto xGraphic = rGraphic.GetXGraphic().query<css::beans::XPropertySet>())
-                    xGraphic->getPropertyValue("MimeType") >>= *pMediaType;
+                    xGraphic->getPropertyValue(u"MimeType"_ustr) >>= *pMediaType;
 
             SfxMedium   aMedium(aURL.GetMainURL(INetURLObject::DecodeMechanism::NONE), StreamMode::WRITE | StreamMode::SHARE_DENYNONE | StreamMode::TRUNC);
             SvStream*   pOStm = aMedium.GetOutStream();
@@ -269,65 +276,59 @@ ErrCode XOutBitmap::WriteGraphic( const Graphic& rGraphic, OUString& rFileName,
     if( GRFILTER_FORMAT_NOTFOUND != nFilter )
     {
         Graphic aGraphic;
-        OUString aExt = rFilter.GetExportFormatShortName( nFilter ).toAsciiLowerCase();
 
-        if( bWriteTransGrf )
+        if (bAnimated)
+            aGraphic = rGraphic;
+        else if (rGraphic.GetType() == GraphicType::GdiMetafile
+                 && rGraphic.GetGDIMetaFile().GetActionSize())
         {
-            if( bAnimated  )
-                aGraphic = rGraphic;
-            else
+            Size aSize;
+            const Size* pSize = nullptr;
+            if (pMtfSize_100TH_MM)
             {
-                if( pMtfSize_100TH_MM && ( rGraphic.GetType() != GraphicType::Bitmap ) )
+                aSize = Application::GetDefaultDevice()->LogicToPixel(*pMtfSize_100TH_MM,
+                                                                      MapMode(MapUnit::Map100thMM));
+                pSize = &aSize;
+            }
+            aGraphic = GetBitmapFromMetaFile(rGraphic.GetGDIMetaFile(), pSize);
+        }
+        else if (pMtfSize_100TH_MM && (rGraphic.GetType() != GraphicType::Bitmap))
+        {
+            ScopedVclPtrInstance< VirtualDevice > pVDev;
+            const Size aSize(pVDev->LogicToPixel(*pMtfSize_100TH_MM, MapMode(MapUnit::Map100thMM)));
+
+            if( pVDev->SetOutputSizePixel( aSize ) )
+            {
+                if (bWriteTransGrf)
                 {
-                    ScopedVclPtrInstance< VirtualDevice > pVDev;
-                    const Size aSize(pVDev->LogicToPixel(*pMtfSize_100TH_MM, MapMode(MapUnit::Map100thMM)));
+                    const Wallpaper aWallpaper( pVDev->GetBackground() );
+                    const Point     aPt;
 
-                    if( pVDev->SetOutputSizePixel( aSize ) )
-                    {
-                        const Wallpaper aWallpaper( pVDev->GetBackground() );
-                        const Point     aPt;
+                    pVDev->SetBackground( Wallpaper( COL_BLACK ) );
+                    pVDev->Erase();
+                    rGraphic.Draw(*pVDev, aPt, aSize);
 
-                        pVDev->SetBackground( Wallpaper( COL_BLACK ) );
-                        pVDev->Erase();
-                        rGraphic.Draw(*pVDev, aPt, aSize);
+                    const Bitmap aBitmap( pVDev->GetBitmap( aPt, aSize ) );
 
-                        const Bitmap aBitmap( pVDev->GetBitmap( aPt, aSize ) );
+                    pVDev->SetBackground( aWallpaper );
+                    pVDev->Erase();
+                    rGraphic.Draw(*pVDev, aPt, aSize);
 
-                        pVDev->SetBackground( aWallpaper );
-                        pVDev->Erase();
-                        rGraphic.Draw(*pVDev, aPt, aSize);
-
-                        pVDev->SetRasterOp( RasterOp::Xor );
-                        pVDev->DrawBitmap( aPt, aSize, aBitmap );
-                        aGraphic = BitmapEx( aBitmap, pVDev->GetBitmap( aPt, aSize ) );
-                    }
-                    else
-                        aGraphic = rGraphic.GetBitmapEx();
+                    pVDev->SetRasterOp( RasterOp::Xor );
+                    pVDev->DrawBitmap( aPt, aSize, aBitmap );
+                    aGraphic = BitmapEx( aBitmap, pVDev->GetBitmap( aPt, aSize ) );
                 }
                 else
-                    aGraphic = rGraphic.GetBitmapEx();
-            }
-        }
-        else
-        {
-            if (bAnimated)
-                aGraphic = rGraphic;
-            else if( pMtfSize_100TH_MM && ( rGraphic.GetType() != GraphicType::Bitmap ) )
-            {
-                ScopedVclPtrInstance< VirtualDevice > pVDev;
-                const Size aSize(pVDev->LogicToPixel(*pMtfSize_100TH_MM, MapMode(MapUnit::Map100thMM)));
-
-                if( pVDev->SetOutputSizePixel( aSize ) )
                 {
                     rGraphic.Draw(*pVDev, Point(), aSize);
                     aGraphic = BitmapEx(pVDev->GetBitmap(Point(), aSize));
                 }
-                else
-                    aGraphic = rGraphic.GetBitmapEx();
             }
             else
                 aGraphic = rGraphic.GetBitmapEx();
         }
+        else
+            aGraphic = rGraphic.GetBitmapEx();
 
         // mirror?
         if( ( nFlags & XOutFlags::MirrorHorz ) || ( nFlags & XOutFlags::MirrorVert ) )
@@ -343,7 +344,7 @@ ErrCode XOutBitmap::WriteGraphic( const Graphic& rGraphic, OUString& rFileName,
         if (aGraphic.GetType() != GraphicType::NONE)
         {
             if( !(nFlags & XOutFlags::DontAddExtension) )
-                aURL.setExtension( aExt );
+                aURL.setExtension(rFilter.GetExportFormatShortName(nFilter).toAsciiLowerCase());
             rFileName = aURL.GetMainURL( INetURLObject::DecodeMechanism::NONE );
             if (pMediaType)
                 *pMediaType = rFilter.GetExportFormatMediaType(nFilter);

@@ -24,6 +24,7 @@
 #include <passwdomdlg.hxx>
 #include <strings.hrc>
 #include <dialmgr.hxx>
+#include <bitmaps.hlst>
 
 IMPL_LINK_NOARG(PasswordToOpenModifyDialog, OkBtnClickHdl, weld::Button&, void)
 {
@@ -71,15 +72,15 @@ IMPL_LINK_NOARG(PasswordToOpenModifyDialog, OkBtnClickHdl, weld::Button&, void)
                 weld::Entry* pRepeatEdit = !bToOpenMatch? m_xReenterPasswdToOpenED.get() : m_xReenterPasswdToModifyED.get();
                 if (nMismatch == 1)
                 {
-                    pEdit->set_text( "" );
-                    pRepeatEdit->set_text( "" );
+                    pEdit->set_text( u""_ustr );
+                    pRepeatEdit->set_text( u""_ustr );
                 }
                 else if (nMismatch == 2)
                 {
-                    m_xPasswdToOpenED->set_text( "" );
-                    m_xReenterPasswdToOpenED->set_text( "" );
-                    m_xPasswdToModifyED->set_text( "" );
-                    m_xReenterPasswdToModifyED->set_text( "" );
+                    m_xPasswdToOpenED->set_text( u""_ustr );
+                    m_xReenterPasswdToOpenED->set_text( u""_ustr );
+                    m_xPasswdToModifyED->set_text( u""_ustr );
+                    m_xReenterPasswdToModifyED->set_text( u""_ustr );
                 }
                 pEdit->grab_focus();
             });
@@ -140,22 +141,22 @@ IMPL_LINK(PasswordToOpenModifyDialog, ChangeHdl, weld::Entry&, rEntry, void)
 }
 
 PasswordToOpenModifyDialog::PasswordToOpenModifyDialog(weld::Window * pParent, sal_uInt16 nMaxPasswdLen, bool bIsPasswordToModify)
-    : SfxDialogController(pParent, "cui/ui/password.ui", "PasswordDialog")
-    , m_xPasswdToOpenED(m_xBuilder->weld_entry("newpassEntry"))
-    , m_xPasswdToOpenInd(m_xBuilder->weld_label("newpassIndicator"))
-    , m_xPasswdToOpenBar(m_xBuilder->weld_level_bar("passlevelbar"))
-    , m_xReenterPasswdToOpenED(m_xBuilder->weld_entry("confirmpassEntry"))
-    , m_xReenterPasswdToOpenInd(m_xBuilder->weld_label("confirmpassIndicator"))
-    , m_xOptionsExpander(m_xBuilder->weld_expander("expander"))
-    , m_xOk(m_xBuilder->weld_button("ok"))
-    , m_xOpenReadonlyCB(m_xBuilder->weld_check_button("readonly"))
-    , m_xPasswdToModifyFT(m_xBuilder->weld_label("label7"))
-    , m_xPasswdToModifyED(m_xBuilder->weld_entry("newpassroEntry"))
-    , m_xPasswdToModifyInd(m_xBuilder->weld_label("newpassroIndicator"))
-    , m_xPasswdToModifyBar(m_xBuilder->weld_level_bar("ropasslevelbar"))
-    , m_xReenterPasswdToModifyFT(m_xBuilder->weld_label("label8"))
-    , m_xReenterPasswdToModifyED(m_xBuilder->weld_entry("confirmropassEntry"))
-    , m_xReenterPasswdToModifyInd(m_xBuilder->weld_label("confirmropassIndicator"))
+    : SfxDialogController(pParent, u"cui/ui/password.ui"_ustr, u"PasswordDialog"_ustr)
+    , m_xPasswdToOpenED(m_xBuilder->weld_entry(u"newpassEntry"_ustr))
+    , m_xPasswdToOpenInd(m_xBuilder->weld_label(u"newpassIndicator"_ustr))
+    , m_xPasswdToOpenBar(m_xBuilder->weld_level_bar(u"passlevelbar"_ustr))
+    , m_xReenterPasswdToOpenED(m_xBuilder->weld_entry(u"confirmpassEntry"_ustr))
+    , m_xReenterPasswdToOpenInd(m_xBuilder->weld_label(u"confirmpassIndicator"_ustr))
+    , m_xOptionsExpander(m_xBuilder->weld_expander(u"expander"_ustr))
+    , m_xOk(m_xBuilder->weld_button(u"ok"_ustr))
+    , m_xOpenReadonlyCB(m_xBuilder->weld_check_button(u"readonly"_ustr))
+    , m_xPasswdToModifyFT(m_xBuilder->weld_label(u"label7"_ustr))
+    , m_xPasswdToModifyED(m_xBuilder->weld_entry(u"newpassroEntry"_ustr))
+    , m_xPasswdToModifyInd(m_xBuilder->weld_label(u"newpassroIndicator"_ustr))
+    , m_xPasswdToModifyBar(m_xBuilder->weld_level_bar(u"ropasslevelbar"_ustr))
+    , m_xReenterPasswdToModifyFT(m_xBuilder->weld_label(u"label8"_ustr))
+    , m_xReenterPasswdToModifyED(m_xBuilder->weld_entry(u"confirmropassEntry"_ustr))
+    , m_xReenterPasswdToModifyInd(m_xBuilder->weld_label(u"confirmropassIndicator"_ustr))
     , m_aOneMismatch( CuiResId( RID_CUISTR_ONE_PASSWORD_MISMATCH ) )
     , m_aTwoMismatch( CuiResId( RID_CUISTR_TWO_PASSWORDS_MISMATCH ) )
     , m_aInvalidStateForOkButton( CuiResId( RID_CUISTR_INVALID_STATE_FOR_OK_BUTTON ) )
@@ -168,6 +169,23 @@ PasswordToOpenModifyDialog::PasswordToOpenModifyDialog(weld::Window * pParent, s
     m_xOk->connect_clicked(LINK(this, PasswordToOpenModifyDialog, OkBtnClickHdl));
     m_xPasswdToOpenED->connect_changed(LINK(this, PasswordToOpenModifyDialog, ChangeHdl));
     m_xPasswdToModifyED->connect_changed(LINK(this, PasswordToOpenModifyDialog, ChangeHdl));
+
+    m_xPass[0] = m_xBuilder->weld_toggle_button(u"togglebt1"_ustr);
+    m_xPass[1] = m_xBuilder->weld_toggle_button(u"togglebt2"_ustr);
+    m_xPass[2] = m_xBuilder->weld_toggle_button(u"togglebt3"_ustr);
+    m_xPass[3] = m_xBuilder->weld_toggle_button(u"togglebt4"_ustr);
+
+    Link<weld::Toggleable&, void> aToggleLink = LINK(this, PasswordToOpenModifyDialog, ShowHdl);
+
+    for (auto& aPass : m_xPass)
+    {
+        if (aPass->get_active())
+            aPass->set_from_icon_name(RID_SVXBMP_SHOWPASS);
+        else
+            aPass->set_from_icon_name(RID_SVXBMP_HIDEPASS);
+        aPass->connect_toggled(aToggleLink);
+    }
+
     if(m_oPasswordPolicy || nMaxPasswdLen)
     {
         m_xReenterPasswdToOpenED->connect_changed(LINK(this, PasswordToOpenModifyDialog, ChangeHdl));
@@ -268,6 +286,71 @@ IMPL_LINK_NOARG(PasswordToOpenModifyDialog, ReadonlyOnOffHdl, weld::Toggleable&,
     m_xPasswdToModifyFT->set_sensitive(bEnable);
     m_xReenterPasswdToModifyED->set_sensitive(bEnable);
     m_xReenterPasswdToModifyFT->set_sensitive(bEnable);
+}
+
+IMPL_LINK(PasswordToOpenModifyDialog, ShowHdl, weld::Toggleable&, rToggleable, void)
+{
+    bool bChecked = rToggleable.get_active();
+    if (&rToggleable == m_xPass[0].get())
+    {
+        if (bChecked)
+        {
+            m_xPass[0]->set_from_icon_name(RID_SVXBMP_SHOWPASS);
+            m_xPasswdToOpenED->set_visibility(true);
+            m_xPasswdToOpenED->grab_focus();
+        }
+        else
+        {
+            m_xPass[0]->set_from_icon_name(RID_SVXBMP_HIDEPASS);
+            m_xPasswdToOpenED->set_visibility(false);
+            m_xPasswdToOpenED->grab_focus();
+        }
+    }
+    else if (&rToggleable == m_xPass[1].get())
+    {
+        if (bChecked)
+        {
+            m_xPass[1]->set_from_icon_name(RID_SVXBMP_SHOWPASS);
+            m_xReenterPasswdToOpenED->set_visibility(true);
+            m_xReenterPasswdToOpenED->grab_focus();
+        }
+        else
+        {
+            m_xPass[1]->set_from_icon_name(RID_SVXBMP_HIDEPASS);
+            m_xReenterPasswdToOpenED->set_visibility(false);
+            m_xReenterPasswdToOpenED->grab_focus();
+        }
+    }
+    else if (&rToggleable == m_xPass[2].get())
+    {
+        if (bChecked)
+        {
+            m_xPass[2]->set_from_icon_name(RID_SVXBMP_SHOWPASS);
+            m_xPasswdToModifyED->set_visibility(true);
+            m_xPasswdToModifyED->grab_focus();
+        }
+        else
+        {
+            m_xPass[2]->set_from_icon_name(RID_SVXBMP_HIDEPASS);
+            m_xPasswdToModifyED->set_visibility(false);
+            m_xPasswdToModifyED->grab_focus();
+        }
+    }
+    else if (&rToggleable == m_xPass[3].get())
+    {
+        if (bChecked)
+        {
+            m_xPass[3]->set_from_icon_name(RID_SVXBMP_SHOWPASS);
+            m_xReenterPasswdToModifyED->set_visibility(true);
+            m_xReenterPasswdToModifyED->grab_focus();
+        }
+        else
+        {
+            m_xPass[3]->set_from_icon_name(RID_SVXBMP_HIDEPASS);
+            m_xReenterPasswdToModifyED->set_visibility(false);
+            m_xReenterPasswdToModifyED->grab_focus();
+        }
+    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

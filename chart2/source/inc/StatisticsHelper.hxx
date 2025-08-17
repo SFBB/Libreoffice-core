@@ -18,19 +18,17 @@
  */
 #pragma once
 
+#include <config_options.h>
 #include <com/sun/star/uno/Reference.h>
 #include <rtl/ustring.hxx>
 #include <rtl/ref.hxx>
-#include "charttoolsdllapi.hxx"
 
 namespace com::sun::star::beans { class XPropertySet; }
-namespace com::sun::star::chart2 { class XDataSeries; }
 namespace com::sun::star::chart2::data { class XDataProvider; }
 namespace com::sun::star::chart2::data { class XDataSequence; }
 namespace com::sun::star::chart2::data { class XDataSource; }
 namespace com::sun::star::chart2::data { class XLabeledDataSequence; }
 namespace com::sun::star::uno { template <typename > class Sequence; }
-namespace chart { class LabeledDataSequence; }
 namespace chart { class DataSeries; }
 
 namespace chart::StatisticsHelper
@@ -39,33 +37,33 @@ namespace chart::StatisticsHelper
 
         @see http://mathworld.wolfram.com/Variance.html
      */
-    OOO_DLLPUBLIC_CHARTTOOLS double getVariance( const css::uno::Sequence< double > & rData );
+    double getVariance( const css::uno::Sequence< double > & rData );
 
     // square root of the variance
-    OOO_DLLPUBLIC_CHARTTOOLS double getStandardDeviation( const css::uno::Sequence< double > & rData );
+    double getStandardDeviation( const css::uno::Sequence< double > & rData );
 
     // also called "Standard deviation of the mean (SDOM)"
-    OOO_DLLPUBLIC_CHARTTOOLS double getStandardError( const css::uno::Sequence< double > & rData );
+    double getStandardError( const css::uno::Sequence< double > & rData );
 
-    OOO_DLLPUBLIC_CHARTTOOLS css::uno::Reference< css::chart2::data::XLabeledDataSequence >
+    css::uno::Reference< css::chart2::data::XLabeledDataSequence >
         getErrorLabeledDataSequenceFromDataSource(
             const css::uno::Reference< css::chart2::data::XDataSource > & xDataSource,
             bool bPositiveValue,
             bool bYError = true );
 
-    OOO_DLLPUBLIC_CHARTTOOLS css::uno::Reference< css::chart2::data::XDataSequence >
+    css::uno::Reference< css::chart2::data::XDataSequence >
         getErrorDataSequenceFromDataSource(
             const css::uno::Reference< css::chart2::data::XDataSource > & xDataSource,
             bool bPositiveValue,
             bool bYError = true );
 
-    OOO_DLLPUBLIC_CHARTTOOLS double getErrorFromDataSource(
+    double getErrorFromDataSource(
         const css::uno::Reference< css::chart2::data::XDataSource > & xDataSource,
         sal_Int32 nIndex,
         bool bPositiveValue,
         bool bYError = true );
 
-    OOO_DLLPUBLIC_CHARTTOOLS void setErrorDataSequence(
+    void setErrorDataSequence(
         const css::uno::Reference< css::chart2::data::XDataSource > & xDataSource,
         const css::uno::Reference< css::chart2::data::XDataProvider > & xDataProvider,
         const OUString & rNewRange,
@@ -74,26 +72,26 @@ namespace chart::StatisticsHelper
         OUString const * pXMLRange = nullptr );
 
     /// @return the newly created or existing error bar object
-    OOO_DLLPUBLIC_CHARTTOOLS css::uno::Reference< css::beans::XPropertySet >
+    css::uno::Reference< css::beans::XPropertySet >
         addErrorBars(
             const rtl::Reference< ::chart::DataSeries > & xDataSeries,
             sal_Int32 nStyle,
             bool bYError = true );
 
-    OOO_DLLPUBLIC_CHARTTOOLS css::uno::Reference< css::beans::XPropertySet >
+    css::uno::Reference< css::beans::XPropertySet >
         getErrorBars(
             const rtl::Reference< ::chart::DataSeries > & xDataSeries,
             bool bYError = true );
 
-    OOO_DLLPUBLIC_CHARTTOOLS bool hasErrorBars(
+    bool hasErrorBars(
         const rtl::Reference< ::chart::DataSeries > & xDataSeries,
         bool bYError = true );
 
-    OOO_DLLPUBLIC_CHARTTOOLS void removeErrorBars(
+    void removeErrorBars(
         const rtl::Reference< ::chart::DataSeries > & xDataSeries,
         bool bYError = true );
 
-    OOO_DLLPUBLIC_CHARTTOOLS bool usesErrorBarRanges(
+    bool usesErrorBarRanges(
         const rtl::Reference< ::chart::DataSeries > & xDataSeries,
         bool bYError = true );
 

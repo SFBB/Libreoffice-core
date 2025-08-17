@@ -33,7 +33,6 @@ BEGIN
     $installer::globals::product = "";
     $installer::globals::languagelist = "";
     $installer::globals::added_english = 0;
-    $installer::globals::set_office_start_language = 0;
 
     $installer::globals::destdir = "";
     $installer::globals::rootpath = "";
@@ -265,7 +264,7 @@ BEGIN
     @installer::globals::removedirs = ();
     @installer::globals::removefiletable = ();
 
-    if ( $^O =~ /cygwin/i )
+    if ( $^O =~ /cygwin/i || $^O =~ /MSWin/i )
     {
         $installer::globals::zippath = "zip";                   # Has to be in the path: /usr/bin/zip
         $installer::globals::separator = "/";

@@ -188,17 +188,11 @@ void TableListFacade::updateTableObjectList( bool _bAllowViews )
         // if no views are allowed remove the views also out the table name filter
         if ( !_bAllowViews )
         {
-            const OUString* pTableBegin  = sTables.getConstArray();
-            const OUString* pTableEnd    = pTableBegin + sTables.getLength();
-            std::vector< OUString > aTables(pTableBegin,pTableEnd);
+            std::vector<OUString> aTables(sTables.begin(), sTables.end());
 
-            const OUString* pViewBegin = sViews.getConstArray();
-            const OUString* pViewEnd   = pViewBegin + sViews.getLength();
-            ::comphelper::UStringMixEqual aEqualFunctor;
-            for(;pViewBegin != pViewEnd;++pViewBegin)
-                std::erase_if(aTables,
-                                             [&aEqualFunctor, pViewBegin](const OUString& lhs)
-                                             { return aEqualFunctor(lhs, *pViewBegin); } );
+            for (auto& view : sViews)
+                std::erase_if(aTables, [Equal = comphelper::UStringMixEqual(), &view](auto& s)
+                              { return Equal(s, view); });
             sTables = Sequence< OUString>(aTables.data(), aTables.size());
             sViews = Sequence< OUString>();
         }
@@ -273,7 +267,7 @@ void QueryListFacade::_elementInserted( const container::ContainerEvent& _rEvent
     if ( _rEvent.Accessor >>= sName )
     {
         OUString aQueryImage(ImageProvider::getDefaultImageResourceID(css::sdb::application::DatabaseObject::QUERY));
-        m_rQueryList.append("", sName, aQueryImage);
+        m_rQueryList.append(u""_ustr, sName, aQueryImage);
     }
 }
 
@@ -303,7 +297,7 @@ void QueryListFacade::updateTableObjectList( bool /*_bAllowViews*/ )
         const Sequence< OUString > aQueryNames = xQueries->getElementNames();
 
         for ( auto const & name : aQueryNames )
-            m_rQueryList.append("", name, aQueryImage);
+            m_rQueryList.append(u""_ustr, name, aQueryImage);
     }
     catch( const Exception& )
     {
@@ -330,15 +324,15 @@ bool QueryListFacade::isLeafSelected() const
 }
 
 OAddTableDlg::OAddTableDlg(weld::Window* pParent, IAddTableDialogContext& _rContext)
-   : GenericDialogController(pParent, "dbaccess/ui/tablesjoindialog.ui", "TablesJoinDialog")
+   : GenericDialogController(pParent, u"dbaccess/ui/tablesjoindialog.ui"_ustr, u"TablesJoinDialog"_ustr)
    , m_rContext(_rContext)
-   , m_xCaseTables(m_xBuilder->weld_radio_button("tables"))
-   , m_xCaseQueries(m_xBuilder->weld_radio_button("queries"))
+   , m_xCaseTables(m_xBuilder->weld_radio_button(u"tables"_ustr))
+   , m_xCaseQueries(m_xBuilder->weld_radio_button(u"queries"_ustr))
    // false means: do not show any buttons
-   , m_xTableList(new OTableTreeListBox(m_xBuilder->weld_tree_view("tablelist"), false))
-   , m_xQueryList(m_xBuilder->weld_tree_view("querylist"))
-   , m_xAddButton(m_xBuilder->weld_button("add"))
-   , m_xCloseButton(m_xBuilder->weld_button("close"))
+   , m_xTableList(new OTableTreeListBox(m_xBuilder->weld_tree_view(u"tablelist"_ustr), false))
+   , m_xQueryList(m_xBuilder->weld_tree_view(u"querylist"_ustr))
+   , m_xAddButton(m_xBuilder->weld_button(u"add"_ustr))
+   , m_xCloseButton(m_xBuilder->weld_button(u"close"_ustr))
 {
     weld::TreeView& rTableList = m_xTableList->GetWidget();
     Size aSize(rTableList.get_approximate_digit_width() * 23,
@@ -350,9 +344,9 @@ OAddTableDlg::OAddTableDlg(weld::Window* pParent, IAddTableDialogContext& _rCont
     m_xAddButton->connect_clicked( LINK( this, OAddTableDlg, AddClickHdl ) );
     m_xCloseButton->connect_clicked( LINK( this, OAddTableDlg, CloseClickHdl ) );
     rTableList.connect_row_activated( LINK( this, OAddTableDlg, TableListDoubleClickHdl ) );
-    rTableList.connect_changed( LINK( this, OAddTableDlg, TableListSelectHdl ) );
+    rTableList.connect_selection_changed(LINK(this, OAddTableDlg, TableListSelectHdl));
     m_xQueryList->connect_row_activated( LINK( this, OAddTableDlg, TableListDoubleClickHdl ) );
-    m_xQueryList->connect_changed( LINK( this, OAddTableDlg, TableListSelectHdl ) );
+    m_xQueryList->connect_selection_changed(LINK(this, OAddTableDlg, TableListSelectHdl));
 
     rTableList.set_selection_mode(SelectionMode::Single);
     m_xTableList->SuppressEmptyFolders();

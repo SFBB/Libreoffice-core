@@ -36,7 +36,7 @@ SmEditEngine::SmEditEngine(SfxItemPool* pItemPool)
     EnableUndo(true);
 
     // Length in pixel of a tabulation
-    SetDefTab(sal_uInt16(Application::GetDefaultDevice()->GetTextWidth("XXXX")));
+    SetDefTab(sal_uInt16(Application::GetDefaultDevice()->GetTextWidth(u"XXXX"_ustr)));
 
     // Set default background color by theme
     SetBackgroundColor(
@@ -48,7 +48,7 @@ SmEditEngine::SmEditEngine(SfxItemPool* pItemPool)
                    & EEControlBits(~EEControlBits::PASTESPECIAL));
 
     // Word delimiters for auto word selection by double click
-    SetWordDelimiters(" .=+-*/(){}[];\"");
+    SetWordDelimiters(u" .=+-*/(){}[];\""_ustr);
 
     // Default mapping mode
     SetRefMapMode(MapMode(MapUnit::MapPixel));
@@ -59,7 +59,7 @@ SmEditEngine::SmEditEngine(SfxItemPool* pItemPool)
 
 bool SmEditEngine::checkZoom()
 {
-    return m_nOldZoom != (m_nNewZoom = SM_MOD()->GetConfig()->GetSmEditWindowZoomFactor());
+    return m_nOldZoom != (m_nNewZoom = SmModule::get()->GetConfig()->GetSmEditWindowZoomFactor());
 }
 
 void SmEditEngine::executeZoom(EditView* pEditView)
@@ -101,9 +101,9 @@ void SmEditEngine::updateZoom()
 void SmEditEngine::updateAllESelection()
 {
     sal_Int32 paracount = GetParagraphCount();
-    m_aAllSelection.nEndPara = paracount > 0 ? paracount - 1 : 0;
-    sal_Int32 textlength = GetTextLen(m_aAllSelection.nEndPara);
-    m_aAllSelection.nEndPos = textlength > 0 ? textlength : 0;
+    m_aAllSelection.end.nPara = paracount > 0 ? paracount - 1 : 0;
+    sal_Int32 textlength = GetTextLen(m_aAllSelection.end.nPara);
+    m_aAllSelection.end.nIndex = textlength > 0 ? textlength : 0;
 }
 
 void SmEditEngine::setSmItemPool(SfxItemPool* mpItemPool, const SvtLinguOptions& maLangOptions)
@@ -139,20 +139,20 @@ void SmEditEngine::setSmItemPool(SfxItemPool* mpItemPool, const SvtLinguOptions&
         vcl::Font aFont = OutputDevice::GetDefaultFont(aFontData.nFontType, nLang,
                                                        GetDefaultFontFlags::OnlyOne);
         aFont.SetColor(aTextColor);
-        mpItemPool->SetPoolDefaultItem(SvxFontItem(aFont.GetFamilyType(), aFont.GetFamilyName(),
-                                                   aFont.GetStyleName(), aFont.GetPitch(),
-                                                   aFont.GetCharSet(), aFontData.nFontInfoId));
+        mpItemPool->SetUserDefaultItem(SvxFontItem(
+            aFont.GetFamilyTypeMaybeAskConfig(), aFont.GetFamilyName(), aFont.GetStyleName(),
+            aFont.GetPitchMaybeAskConfig(), aFont.GetCharSet(), aFontData.nFontInfoId));
     }
 
     // Set font heights
     SvxFontHeightItem aFontHeight(
         aDefaultDevice->LogicToPixel(Size(0, 11), MapMode(MapUnit::MapPoint)).Height(), 100,
         EE_CHAR_FONTHEIGHT);
-    mpItemPool->SetPoolDefaultItem(aFontHeight);
+    mpItemPool->SetUserDefaultItem(aFontHeight);
     aFontHeight.SetWhich(EE_CHAR_FONTHEIGHT_CJK);
-    mpItemPool->SetPoolDefaultItem(aFontHeight);
+    mpItemPool->SetUserDefaultItem(aFontHeight);
     aFontHeight.SetWhich(EE_CHAR_FONTHEIGHT_CTL);
-    mpItemPool->SetPoolDefaultItem(aFontHeight);
+    mpItemPool->SetUserDefaultItem(aFontHeight);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

@@ -34,14 +34,14 @@ $(eval $(call gb_Jar_add_manifest_classpath,libreoffice, \
 
 # ugly: the module-info.class is manually added here since it's not in "com" dir
 $(eval $(call gb_Jar_add_packagedirs,libreoffice,\
-    $(call gb_CustomTarget_get_workdir,ridljar/javamaker)/com \
-    $(call gb_CustomTarget_get_workdir,unoil/javamaker)/com \
-	$(call gb_JavaClassSet_get_classdir,$(call gb_Jar_get_classsetname,libreoffice))/module-info.class \
+    $(gb_CustomTarget_workdir)/ridljar/javamaker/com \
+    $(gb_CustomTarget_workdir)/unoil/javamaker/com \
+	$(if $(MODULAR_JAVA),$(call gb_JavaClassSet_get_classdir,$(call gb_Jar_get_classsetname,libreoffice))/module-info.class) \
 ))
 
-$(eval $(call gb_Jar_add_sourcefiles_java9,libreoffice,\
+$(if $(MODULAR_JAVA),$(eval $(call gb_Jar_add_sourcefiles_java9,libreoffice,\
     ridljar/source/libreoffice/module-info \
-))
+)))
 
 $(eval $(call gb_Jar_add_sourcefiles,libreoffice,\
     ridljar/com/sun/star/comp/bridgefactory/BridgeFactory \

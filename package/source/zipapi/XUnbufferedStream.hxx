@@ -19,6 +19,8 @@
 #ifndef INCLUDED_PACKAGE_SOURCE_ZIPAPI_XUNBUFFEREDSTREAM_HXX
 #define INCLUDED_PACKAGE_SOURCE_ZIPAPI_XUNBUFFEREDSTREAM_HXX
 
+#include <optional>
+
 #include <com/sun/star/io/XSeekable.hpp>
 #include <com/sun/star/io/XInputStream.hpp>
 #include <com/sun/star/xml/crypto/XCipherContext.hpp>
@@ -27,6 +29,7 @@
 #include <cppuhelper/implbase.hxx>
 #include <rtl/ref.hxx>
 #include <package/Inflater.hxx>
+#include <memory>
 #include <ZipEntry.hxx>
 #include <CRC32.hxx>
 
@@ -52,7 +55,7 @@ class XUnbufferedStream final : public cppu::WeakImplHelper
     ZipEntry maEntry;
     sal_Int32 mnBlockSize;
     css::uno::Reference< css::xml::crypto::XCipherContext > m_xCipherContext;
-    ZipUtils::Inflater maInflater;
+    std::unique_ptr<ZipUtils::Inflater> maInflater;
     bool mbRawStream, mbWrappedRaw;
     sal_Int16 mnHeaderToRead;
     sal_Int64 mnZipCurrent, mnZipEnd, mnZipSize, mnMyCurrent;
@@ -67,7 +70,7 @@ public:
                  css::uno::Reference < css::io::XInputStream > const & xNewZipStream,
                  const ::rtl::Reference< EncryptionData >& rData,
                  sal_Int8 nStreamMode,
-                 bool bIsEncrypted,
+                 ::std::optional<sal_Int64> oDecryptedSize,
                  const OUString& aMediaType,
                  bool bRecoveryMode );
 

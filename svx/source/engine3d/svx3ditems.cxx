@@ -20,7 +20,7 @@
 #include <svx/svx3ditems.hxx>
 #include <com/sun/star/drawing/NormalsKind.hpp>
 #include <com/sun/star/drawing/TextureProjectionMode.hpp>
-#include <com/sun/star/drawing/TextureKind.hpp>
+#include <com/sun/star/drawing/TextureKind2.hpp>
 #include <com/sun/star/drawing/TextureMode.hpp>
 #include <com/sun/star/drawing/ProjectionMode.hpp>
 #include <com/sun/star/drawing/ShadeMode.hpp>
@@ -191,13 +191,13 @@ Svx3DTextureProjectionYItem* Svx3DTextureProjectionYItem::Clone(SfxItemPool* /*p
 // Svx3DTextureKindItem: use drawing::TextureKind
 bool Svx3DTextureKindItem::QueryValue(uno::Any& rVal, sal_uInt8 /*nMemberId*/) const
 {
-    rVal <<= static_cast<drawing::TextureKind>(GetValue());
+    rVal <<= static_cast<drawing::TextureKind2>(GetValue());
     return true;
 }
 
 bool Svx3DTextureKindItem::PutValue(const uno::Any& rVal, sal_uInt8 /*nMemberId*/)
 {
-    drawing::TextureKind eVar;
+    drawing::TextureKind2 eVar;
     if (!(rVal >>= eVar))
         return false;
     SetValue(static_cast<sal_Int16>(eVar));
@@ -271,7 +271,5 @@ Svx3DShadeModeItem* Svx3DShadeModeItem::Clone(SfxItemPool* /*pPool*/) const
 {
     return new Svx3DShadeModeItem(*this);
 }
-
-// EOF
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

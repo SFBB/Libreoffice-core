@@ -22,7 +22,6 @@
 #include "XYDataInterpreter.hxx"
 #include <ChartType.hxx>
 #include <Diagram.hxx>
-#include <DiagramHelper.hxx>
 #include <DataSeries.hxx>
 #include <DataSeriesHelper.hxx>
 #include <PropertyHelper.hxx>
@@ -176,11 +175,11 @@ void ScatterChartTypeTemplate::applyStyle2(
 
     try
     {
-        DataSeriesHelper::switchSymbolsOnOrOff( xSeries, m_bHasSymbols, nSeriesIndex );
-        DataSeriesHelper::switchLinesOnOrOff( xSeries, m_bHasLines );
-        DataSeriesHelper::makeLinesThickOrThin( xSeries, m_nDim==2 );
+        xSeries->switchSymbolsOnOrOff( m_bHasSymbols, nSeriesIndex );
+        xSeries->switchLinesOnOrOff( m_bHasLines );
+        xSeries->makeLinesThickOrThin( m_nDim==2 );
         if( m_nDim==3 )
-            DataSeriesHelper::setPropertyAlsoToAllAttributedDataPoints( xSeries, "BorderStyle", uno::Any( drawing::LineStyle_NONE ) );
+            xSeries->setPropertyAlsoToAllAttributedDataPoints( u"BorderStyle"_ustr, uno::Any( drawing::LineStyle_NONE ) );
     }
     catch( const uno::Exception & )
     {
@@ -218,7 +217,7 @@ bool ScatterChartTypeTemplate::matchesTemplate2(
                 chart2::Symbol aSymbProp;
                 drawing::LineStyle eLineStyle;
 
-                bool bCurrentHasSymbol = (series->getPropertyValue( "Symbol") >>= aSymbProp) &&
+                bool bCurrentHasSymbol = (series->getPropertyValue( u"Symbol"_ustr) >>= aSymbProp) &&
                     (aSymbProp.Style != chart2::SymbolStyle_NONE);
 
                 if( bCurrentHasSymbol )
@@ -230,7 +229,7 @@ bool ScatterChartTypeTemplate::matchesTemplate2(
                     break;
                 }
 
-                bool bCurrentHasLine = (series->getPropertyValue( "LineStyle") >>= eLineStyle) &&
+                bool bCurrentHasLine = (series->getPropertyValue( u"LineStyle"_ustr) >>= eLineStyle) &&
                     ( eLineStyle != drawing::LineStyle_NONE );
 
                 if( bCurrentHasLine )

@@ -29,7 +29,8 @@
 #include <tabvwsh.hxx>
 
 ScMoveTableDlg::ScMoveTableDlg(weld::Window* pParent, OUString aDefault)
-    : GenericDialogController(pParent, "modules/scalc/ui/movecopysheet.ui", "MoveCopySheetDialog")
+    : GenericDialogController(pParent, u"modules/scalc/ui/movecopysheet.ui"_ustr,
+                              u"MoveCopySheetDialog"_ustr)
     , maDefaultName(std::move(aDefault))
     , mnCurrentDocPos(0)
     , nDocument(0)
@@ -37,17 +38,17 @@ ScMoveTableDlg::ScMoveTableDlg(weld::Window* pParent, OUString aDefault)
     , bCopyTable(false)
     , bRenameTable(false)
     , mbEverEdited(false)
-    , m_xBtnMove(m_xBuilder->weld_radio_button("move"))
-    , m_xBtnCopy(m_xBuilder->weld_radio_button("copy"))
-    , m_xFtDoc(m_xBuilder->weld_label("toDocumentLabel"))
-    , m_xLbDoc(m_xBuilder->weld_combo_box("toDocument"))
-    , m_xLbTable(m_xBuilder->weld_tree_view("insertBefore"))
-    , m_xEdTabName(m_xBuilder->weld_entry("newName"))
-    , m_xFtWarn(m_xBuilder->weld_label("newNameWarn"))
-    , m_xBtnOk(m_xBuilder->weld_button("ok"))
-    , m_xUnusedLabel(m_xBuilder->weld_label("warnunused"))
-    , m_xEmptyLabel(m_xBuilder->weld_label("warnempty"))
-    , m_xInvalidLabel(m_xBuilder->weld_label("warninvalid"))
+    , m_xBtnMove(m_xBuilder->weld_radio_button(u"move"_ustr))
+    , m_xBtnCopy(m_xBuilder->weld_radio_button(u"copy"_ustr))
+    , m_xFtDoc(m_xBuilder->weld_label(u"toDocumentLabel"_ustr))
+    , m_xLbDoc(m_xBuilder->weld_combo_box(u"toDocument"_ustr))
+    , m_xLbTable(m_xBuilder->weld_tree_view(u"insertBefore"_ustr))
+    , m_xEdTabName(m_xBuilder->weld_entry(u"newName"_ustr))
+    , m_xFtWarn(m_xBuilder->weld_label(u"newNameWarn"_ustr))
+    , m_xBtnOk(m_xBuilder->weld_button(u"ok"_ustr))
+    , m_xUnusedLabel(m_xBuilder->weld_label(u"warnunused"_ustr))
+    , m_xEmptyLabel(m_xBuilder->weld_label(u"warnempty"_ustr))
+    , m_xInvalidLabel(m_xBuilder->weld_label(u"warninvalid"_ustr))
 {
     assert(m_xLbDoc->get_count() == 2);
     msCurrentDoc = m_xLbDoc->get_text(0);
@@ -191,9 +192,9 @@ void ScMoveTableDlg::Init()
     m_xEdTabName->connect_changed(LINK(this, ScMoveTableDlg, CheckNameHdl));
 
     // tdf#96854 - remember last used option for copy/move sheet
-    const bool bIsCopyActive
-        = ScTabViewShell::GetActiveViewShell()->GetViewData().GetOptions().GetOption(
-            VOPT_COPY_SHEET);
+    bool bIsCopyActive = false;
+    if (ScTabViewShell* pViewSh = ScTabViewShell::GetActiveViewShell())
+        bIsCopyActive = pViewSh->GetViewData().GetOptions().GetOption(sc::ViewOption::COPY_SHEET);
     m_xBtnMove->set_active(!bIsCopyActive);
     m_xBtnCopy->set_active(bIsCopyActive);
     m_xEdTabName->set_sensitive(false);
@@ -251,10 +252,12 @@ void ScMoveTableDlg::SetOkBtnLabel()
     // tdf#139464 Write "Copy" or "Move" on OK button
     m_xBtnOk->set_label(bIsCopyActive ? m_xBtnCopy->get_label() : m_xBtnMove->get_label());
     // tdf#96854 - remember last used option for copy/move sheet
-    ScTabViewShell* pScViewShell = ScTabViewShell::GetActiveViewShell();
-    ScViewOptions aViewOpt(pScViewShell->GetViewData().GetOptions());
-    aViewOpt.SetOption(VOPT_COPY_SHEET, bIsCopyActive);
-    pScViewShell->GetViewData().SetOptions(aViewOpt);
+    if (ScTabViewShell* pScViewShell = ScTabViewShell::GetActiveViewShell())
+    {
+        ScViewOptions aViewOpt(pScViewShell->GetViewData().GetOptions());
+        aViewOpt.SetOption(sc::ViewOption::COPY_SHEET, bIsCopyActive);
+        pScViewShell->GetViewData().SetOptions(aViewOpt);
+    }
 }
 
 // Handler:

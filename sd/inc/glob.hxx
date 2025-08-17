@@ -39,6 +39,8 @@
 #define SD_IF_SDDRAWTABLEOBJECTBAR      SFX_INTERFACE_SD_START + SfxInterfaceId(27)
 #define SD_IF_SDTOOLPANELPANESHELL      SFX_INTERFACE_SD_START + SfxInterfaceId(29)
 #define SD_IF_SDTOOLPANELSHELL          SFX_INTERFACE_SD_START + SfxInterfaceId(30)
+#define SD_IF_SDBOTTOMIMPRESSPANESHELL  SFX_INTERFACE_SD_START + SfxInterfaceId(31)
+#define SD_IF_SDNOTESPANELVIEWSHELL     SFX_INTERFACE_SD_START + SfxInterfaceId(32)
 
 
 // Object-Ids for StarDraw UserData
@@ -47,9 +49,5 @@
 
 // Separator between layout name and template name of presentation templates
 inline constexpr OUString SD_LT_SEPARATOR = u"~LT~"_ustr;
-
-// option-stream identifier
-#define SD_OPTION_MORPHING  u"Morph"
-#define SD_OPTION_VECTORIZE u"Vectorize"
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

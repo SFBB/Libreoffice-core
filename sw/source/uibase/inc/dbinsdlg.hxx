@@ -73,7 +73,7 @@ struct SwInsDBColumn
     bool operator<( const SwInsDBColumn& rCmp ) const;
 };
 
-class SwInsDBColumns : public o3tl::sorted_vector<std::unique_ptr<SwInsDBColumn>, o3tl::less_uniqueptr_to<SwInsDBColumn> >
+class SwInsDBColumns : public o3tl::sorted_vector<std::unique_ptr<SwInsDBColumn>, o3tl::less_ptr_to >
 {
 };
 
@@ -84,7 +84,7 @@ class SwInsertDBColAutoPilot final : public SfxDialogController, public utl::Con
 
     OUString        m_sNoTmpl;
 
-    SwView*         m_pView;
+    SwView&         m_rView;
     std::unique_ptr<SwTableAutoFormat> m_xTAutoFormat;
 
     std::unique_ptr<SfxItemSet>  m_pTableSet;

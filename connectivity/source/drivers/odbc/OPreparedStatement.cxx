@@ -40,22 +40,12 @@ using namespace connectivity;
 using namespace connectivity::odbc;
 using namespace com::sun::star::uno;
 using namespace com::sun::star::lang;
-using namespace com::sun::star::beans;
 using namespace com::sun::star::sdbc;
-using namespace com::sun::star::sdbcx;
 using namespace com::sun::star::container;
 using namespace com::sun::star::io;
 using namespace com::sun::star::util;
 
-IMPLEMENT_SERVICE_INFO(OPreparedStatement,"com.sun.star.sdbcx.OPreparedStatement","com.sun.star.sdbc.PreparedStatement");
-
-namespace
-{
-    // for now, never use wchar,
-    // but most of code is prepared to handle it
-    // in case we make this configurable
-    const bool bUseWChar = false;
-}
+IMPLEMENT_SERVICE_INFO(OPreparedStatement,u"com.sun.star.sdbcx.OPreparedStatement"_ustr,u"com.sun.star.sdbc.PreparedStatement"_ustr);
 
 OPreparedStatement::OPreparedStatement( OConnection* _pConnection,const OUString& sql)
     :OStatement_BASE2(_pConnection)
@@ -92,6 +82,11 @@ css::uno::Sequence< css::uno::Type > SAL_CALL OPreparedStatement::getTypes(  )
 
 
 Reference< XResultSetMetaData > SAL_CALL OPreparedStatement::getMetaData(  )
+{
+    return getMetaDataImpl();
+}
+
+const rtl::Reference< OResultSetMetaData > & OPreparedStatement::getMetaDataImpl()
 {
     ::osl::MutexGuard aGuard( m_aMutex );
     checkDisposed(OStatement_BASE::rBHelper.bDisposed);
@@ -149,7 +144,7 @@ sal_Bool SAL_CALL OPreparedStatement::execute(  )
     OSL_ENSURE(m_aStatementHandle,"StatementHandle is null!");
     try
     {
-        SQLRETURN nReturn = N3SQLExecute(m_aStatementHandle);
+        SQLRETURN nReturn = functions().Execute(m_aStatementHandle);
 
         OTools::ThrowException(m_pConnection.get(),nReturn,m_aStatementHandle,SQL_HANDLE_STMT,*this);
         bool needData = nReturn == SQL_NEED_DATA;
@@ -163,7 +158,7 @@ sal_Bool SAL_CALL OPreparedStatement::execute(  )
             // Get the parameter number that requires data
 
             sal_Int32* paramIndex = nullptr;
-            N3SQLParamData(m_aStatementHandle, reinterpret_cast<SQLPOINTER*>(&paramIndex));
+            functions().ParamData(m_aStatementHandle, reinterpret_cast<SQLPOINTER*>(&paramIndex));
 
             // If the parameter index is -1, there is no
             // more data required
@@ -236,7 +231,7 @@ Reference< XResultSet > SAL_CALL OPreparedStatement::executeQuery(  )
     ::osl::MutexGuard aGuard( m_aMutex );
     checkDisposed(OStatement_BASE::rBHelper.bDisposed);
 
-    Reference< XResultSet > rs;
+    rtl::Reference< OResultSet > rs;
 
     prepareStatement();
 
@@ -316,36 +311,21 @@ void OPreparedStatement::setParameter(const sal_Int32 parameterIndex, const sal_
          *
          * Our internal OUString storage is always UTF-16, so no conversion to do here.
          */
-        static_assert(sizeof (SQLWCHAR) == 2 || sizeof (SQLWCHAR) == 4, "must be 2 or 4");
-        if (sizeof (SQLWCHAR) == 2)
-        {
-            nCharLen = _sData.getLength();
-            nByteLen = 2 * nCharLen;
-            pData = allocBindBuf(parameterIndex, nByteLen);
-            memcpy(pData, _sData.getStr(), nByteLen);
-        }
-        else
-        {
-            pData = allocBindBuf(parameterIndex, _sData.getLength() * 4);
-            sal_uInt32* pCursor = static_cast<sal_uInt32*>(pData);
-            nCharLen = 0;
-            for (sal_Int32 i = 0; i != _sData.getLength();)
-            {
-                *pCursor++ = _sData.iterateCodePoints(&i);
-                nCharLen += 1;
-            }
-            nByteLen = 4 * nCharLen;
-        }
+        SQLWChars data(_sData);
+        nCharLen = data.cch();
+        nByteLen = data.cb();
+        pData = allocBindBuf(parameterIndex, nByteLen);
+        memcpy(pData, data.get(), nByteLen);
     }
     else
     {
         assert(getOwnConnection()->getTextEncoding() != RTL_TEXTENCODING_UCS2 &&
                getOwnConnection()->getTextEncoding() != RTL_TEXTENCODING_UCS4);
-        OString sOData(
-            OUStringToOString(_sData, getOwnConnection()->getTextEncoding()));
-        nCharLen = nByteLen = sOData.getLength();
+        SQLChars data(_sData, getOwnConnection()->getTextEncoding());
+        nCharLen = data.cch();
+        nByteLen = data.cb();
         pData = allocBindBuf(parameterIndex, nByteLen);
-        memcpy(pData, sOData.getStr(), nByteLen);
+        memcpy(pData, data.get(), nByteLen);
     }
 
     setParameter( parameterIndex, _nType, nCharLen, _nScale, pData, nByteLen, nByteLen );
@@ -369,13 +349,13 @@ void OPreparedStatement::setParameter(const sal_Int32 parameterIndex, const sal_
 void OPreparedStatement::setParameter(const sal_Int32 parameterIndex, const sal_Int32 _nType, const SQLULEN _nColumnSize, const sal_Int32 _nScale, const void* const _pData, const SQLULEN _nDataLen, const SQLLEN _nDataAllocLen)
 {
     SQLSMALLINT fCType, fSqlType;
-    OTools::getBindTypes(bUseWChar, m_pConnection->useOldDateFormat(), OTools::jdbcTypeToOdbc(_nType), fCType, fSqlType);
+    OTools::getBindTypes(m_pConnection->useOldDateFormat(), OTools::jdbcTypeToOdbc(_nType), fCType, fSqlType);
 
     SQLLEN& rDataLen = boundParams[parameterIndex-1].getBindLengthBuffer();
     rDataLen = _nDataLen;
 
     SQLRETURN nRetcode;
-    nRetcode = (*reinterpret_cast<T3SQLBindParameter>(m_pConnection->getOdbcFunction(ODBC3SQLFunctionId::BindParameter)))(
+    nRetcode = functions().BindParameter(
                   m_aStatementHandle,
                   // checkParameterIndex guarantees this is safe
                   static_cast<SQLUSMALLINT>(parameterIndex),
@@ -509,13 +489,12 @@ void SAL_CALL OPreparedStatement::setNull( sal_Int32 parameterIndex, const sal_I
     SQLSMALLINT fCType;
     SQLSMALLINT fSqlType;
 
-    OTools::getBindTypes(   bUseWChar,
-                            m_pConnection->useOldDateFormat(),
+    OTools::getBindTypes(   m_pConnection->useOldDateFormat(),
                             OTools::jdbcTypeToOdbc(_nType),
                             fCType,
                             fSqlType);
 
-    SQLRETURN nReturn = N3SQLBindParameter( m_aStatementHandle,
+    SQLRETURN nReturn = functions().BindParameter( m_aStatementHandle,
                                             static_cast<SQLUSMALLINT>(parameterIndex),
                                             SQL_PARAM_INPUT,
                                             fCType,
@@ -546,13 +525,13 @@ void SAL_CALL OPreparedStatement::setBlob( sal_Int32 parameterIndex, const Refer
 
 void SAL_CALL OPreparedStatement::setArray( sal_Int32 /*parameterIndex*/, const Reference< XArray >& /*x*/ )
 {
-    ::dbtools::throwFunctionNotSupportedSQLException( "XParameters::setArray", *this );
+    ::dbtools::throwFunctionNotSupportedSQLException( u"XParameters::setArray"_ustr, *this );
 }
 
 
 void SAL_CALL OPreparedStatement::setRef( sal_Int32 /*parameterIndex*/, const Reference< XRef >& /*x*/ )
 {
-    ::dbtools::throwFunctionNotSupportedSQLException( "XParameters::setRef", *this );
+    ::dbtools::throwFunctionNotSupportedSQLException( u"XParameters::setRef"_ustr, *this );
 }
 
 void SAL_CALL OPreparedStatement::setObjectWithInfo( sal_Int32 parameterIndex, const Any& x, sal_Int32 sqlType, sal_Int32 scale )
@@ -582,9 +561,21 @@ void SAL_CALL OPreparedStatement::setObjectWithInfo( sal_Int32 parameterIndex, c
         case DataType::NUMERIC:
             if(x.hasValue())
             {
+                // NB: sqlType and scale are not to be sent to the database, but to be used here.
+                // XParameters::setObjectWithInfo is required to convert the given object to the
+                // required type before being sent to the database; and scale may be needed for
+                // that conversion. But here we convert any object to a decimal string; and ODBC
+                // (or at least some drivers - see tdf#162219) needs DecimalDigits value passed
+                // to SQLBindParameter equal to the number of decimals in the string, otherwise
+                // the conversion from string to decimal fails. It may be not equal to the scale
+                // of the target parameter; ODBC driver handles that. Therefore, here we ignore
+                // the originally passed value of scale.
                 ORowSetValue aValue;
                 aValue.fill(x);
-                setParameter(parameterIndex, sqlType, scale, aValue.getString());
+                OUString number(aValue.getString());
+                sal_Int32 nIndex = number.indexOf('.');
+                sal_Int32 decimals = nIndex < 0 ? 0 : (number.getLength() - nIndex - 1);
+                setParameter(parameterIndex, sqlType, decimals, number);
             }
             else
                 setNull(parameterIndex,sqlType);
@@ -641,13 +632,13 @@ void SAL_CALL OPreparedStatement::clearParameters(  )
     ::osl::MutexGuard aGuard( m_aMutex );
     prepareStatement();
     OSL_ENSURE(m_aStatementHandle,"StatementHandle is null!");
-    N3SQLFreeStmt (m_aStatementHandle, SQL_RESET_PARAMS);
-    N3SQLFreeStmt (m_aStatementHandle, SQL_UNBIND);
+    functions().FreeStmt (m_aStatementHandle, SQL_RESET_PARAMS);
+    functions().FreeStmt (m_aStatementHandle, SQL_UNBIND);
 }
 
 void SAL_CALL OPreparedStatement::clearBatch(  )
 {
-    ::dbtools::throwFunctionNotSupportedSQLException( "XPreparedBatchExecution::clearBatch", *this );
+    ::dbtools::throwFunctionNotSupportedSQLException( u"XPreparedBatchExecution::clearBatch"_ustr, *this );
     //  clearParameters(  );
     //  m_aBatchVector.erase();
 }
@@ -655,17 +646,13 @@ void SAL_CALL OPreparedStatement::clearBatch(  )
 
 void SAL_CALL OPreparedStatement::addBatch( )
 {
-    ::dbtools::throwFunctionNotSupportedSQLException( "XPreparedBatchExecution::addBatch", *this );
+    ::dbtools::throwFunctionNotSupportedSQLException( u"XPreparedBatchExecution::addBatch"_ustr, *this );
 }
-
 
 Sequence< sal_Int32 > SAL_CALL OPreparedStatement::executeBatch(  )
 {
-    ::dbtools::throwFunctionNotSupportedSQLException( "XPreparedBatchExecution::executeBatch", *this );
-    // not reached, but keep -Werror happy
-    return Sequence< sal_Int32 > ();
+    ::dbtools::throwFunctionNotSupportedSQLException( u"XPreparedBatchExecution::executeBatch"_ustr, *this );
 }
-
 
 // methods
 
@@ -679,7 +666,7 @@ void OPreparedStatement::initBoundParam ()
     OSL_ENSURE(m_aStatementHandle,"StatementHandle is null!");
     // Get the number of parameters
     numParams = 0;
-    N3SQLNumParams (m_aStatementHandle,&numParams);
+    functions().NumParams (m_aStatementHandle,&numParams);
 
     // There are parameter markers, allocate the bound
     // parameter objects
@@ -778,7 +765,7 @@ void OPreparedStatement::putParamData (sal_Int32 index)
 
             // Put the data
             OSL_ENSURE( m_aStatementHandle, "OPreparedStatement::putParamData: StatementHandle is null!" );
-            N3SQLPutData ( m_aStatementHandle, buf.getArray(), buf.getLength() );
+            functions().PutData ( m_aStatementHandle, buf.getArray(), buf.getLength() );
 
             // decrement the number of bytes still needed
             maxBytesLeft -= haveRead;
@@ -825,11 +812,11 @@ void OPreparedStatement::setStream(
     *lenBuf = SQL_LEN_DATA_AT_EXEC (length);
 
     SQLSMALLINT fCType, fSqlType;
-    OTools::getBindTypes(bUseWChar, m_pConnection->useOldDateFormat(), OTools::jdbcTypeToOdbc(_nType), fCType, fSqlType);
+    OTools::getBindTypes(m_pConnection->useOldDateFormat(), OTools::jdbcTypeToOdbc(_nType), fCType, fSqlType);
 
 
     OSL_ENSURE(m_aStatementHandle,"StatementHandle is null!");
-    N3SQLBindParameter(m_aStatementHandle,
+    functions().BindParameter(m_aStatementHandle,
                        static_cast<SQLUSMALLINT>(ParameterIndex),
                        SQL_PARAM_INPUT,
                        fCType,
@@ -888,8 +875,17 @@ void OPreparedStatement::prepareStatement()
     if(!isPrepared())
     {
         OSL_ENSURE(m_aStatementHandle,"StatementHandle is null!");
-        OString aSql(OUStringToOString(m_sSqlStatement,getOwnConnection()->getTextEncoding()));
-        SQLRETURN nReturn = N3SQLPrepare(m_aStatementHandle, reinterpret_cast<SDB_ODBC_CHAR *>(const_cast<char *>(aSql.getStr())), aSql.getLength());
+        SQLRETURN nReturn;
+        if (bUseWChar && functions().has(ODBC3SQLFunctionId::PrepareW))
+        {
+            SQLWChars aSql(m_sSqlStatement);
+            nReturn = functions().PrepareW(m_aStatementHandle, aSql.get(), aSql.cch());
+        }
+        else
+        {
+            SQLChars aSql(m_sSqlStatement, getOwnConnection()->getTextEncoding());
+            nReturn = functions().Prepare(m_aStatementHandle, aSql.get(), aSql.cch());
+        }
         OTools::ThrowException(m_pConnection.get(),nReturn,m_aStatementHandle,SQL_HANDLE_STMT,*this);
         m_bPrepared = true;
         initBoundParam();
@@ -916,7 +912,7 @@ void OPreparedStatement::checkParameterIndex(sal_Int32 _parameterIndex)
 rtl::Reference<OResultSet> OPreparedStatement::createResultSet()
 {
     rtl::Reference<OResultSet> pReturn = new OResultSet(m_aStatementHandle,this);
-    pReturn->setMetaData(getMetaData());
+    pReturn->setMetaData(getMetaDataImpl());
     return pReturn;
 }
 

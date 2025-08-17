@@ -16,13 +16,13 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SW_SOURCE_UIBASE_INC_CAPTION_HXX
-#define INCLUDED_SW_SOURCE_UIBASE_INC_CAPTION_HXX
+#pragma once
 
 #include <rtl/ustring.hxx>
 #include <tools/globname.hxx>
 #include <SwCapObjType.hxx>
 #include <swdllapi.h>
+#include <names.hxx>
 
 class SW_DLLPUBLIC InsCaptionOpt
 {
@@ -37,7 +37,7 @@ private:
     sal_uInt16      m_nPos;
     sal_uInt16      m_nLevel;
     OUString        m_sSeparator;
-    OUString        m_sCharacterStyle;
+    UIName          m_sCharacterStyle;
 
     bool         m_bIgnoreSeqOpts;    // is not being saved
     bool         m_bCopyAttributes;   //          -""-
@@ -73,8 +73,8 @@ public:
     const OUString&  GetSeparator() const                { return m_sSeparator; }
     void             SetSeparator(const OUString& rSep)    { m_sSeparator = rSep; }
 
-    const OUString&         GetCharacterStyle() const { return m_sCharacterStyle; }
-    void                    SetCharacterStyle(const OUString& rStyle)
+    const UIName&         GetCharacterStyle() const { return m_sCharacterStyle; }
+    void                    SetCharacterStyle(const UIName& rStyle)
                                     { m_sCharacterStyle = rStyle; }
 
     bool&            IgnoreSeqOpts()                 { return m_bIgnoreSeqOpts; }
@@ -83,7 +83,5 @@ public:
     bool&            CopyAttributes()                { return m_bCopyAttributes; }
     bool             CopyAttributes() const          { return m_bCopyAttributes; }
 };
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

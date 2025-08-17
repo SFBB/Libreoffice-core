@@ -222,14 +222,13 @@ namespace URLEncoder
     }
 }
 
-void HelpLinker::addBookmark( FILE* pFile_DBHelp, std::string thishid,
+void HelpLinker::addBookmark( FILE* pFile_DBHelp,
+        const std::string& thishid,
         const std::string& fileB, const std::string& anchorB,
         const std::string& jarfileB, const std::string& titleB)
 {
     HCDBG(std::cerr << "HelpLinker::addBookmark " << thishid << " " <<
         fileB << " " << anchorB << " " << jarfileB << " " << titleB << std::endl);
-
-    thishid = URLEncoder::encode(thishid);
 
     int fileLen = fileB.length();
     if (!anchorB.empty())
@@ -258,7 +257,7 @@ void HelpLinker::addBookmark( FILE* pFile_DBHelp, std::string thishid,
     if( pFile_DBHelp != nullptr )
     {
         std::string aValueStr( dataB.begin(), dataB.end() );
-        writeKeyValue_DBHelp( pFile_DBHelp, thishid, aValueStr );
+        writeKeyValue_DBHelp( pFile_DBHelp, URLEncoder::encode(thishid), aValueStr );
     }
 }
 
@@ -502,11 +501,11 @@ void HelpLinker::main( std::vector<std::string> &args,
             std::string token;
             fileReader >> token;
             if (!token.empty())
-                stringList.push_back(token);
+                stringList.push_back(std::move(token));
         }
         fileReader.close();
 
-        args = stringList;
+        args = std::move(stringList);
     }
 
     size_t i = 0;
@@ -671,7 +670,7 @@ void HelpLinker::main( std::vector<std::string> &args,
             }
             addFile = args[i];
             if (!addFileUnderPath.empty() && !addFile.empty())
-                additionalFiles[addFileUnderPath] = addFile;
+                additionalFiles[addFileUnderPath] = std::move(addFile);
         }
         else if (args[i].compare("-nolangroot") == 0)
             m_bUseLangRoot = false;
@@ -709,7 +708,9 @@ void HelpLinker::main( std::vector<std::string> &args,
             }
         }
         else
-        { //called from extension manager
+        {
+            assert(pExtensionPath);
+            //called from extension manager
             extensionPath = *pExtensionPath;
             sourceRoot = fs::path(extensionPath);
             extensionDestination = *pDestination;
@@ -825,7 +826,9 @@ static void StructuredXMLErrorFunction(SAL_UNUSED_PARAMETER void *, xmlErrorPtr 
     if( error->file != nullptr )
         aXMLParsingFile = error->file;
     int nXMLParsingLine = error->line;
-    GpXMLParsingException = new HelpProcessingException(error->message, aXMLParsingFile, nXMLParsingLine);
+    GpXMLParsingException = new HelpProcessingException(error->message,
+                                                        std::move(aXMLParsingFile),
+                                                        nXMLParsingLine);
 
     // Reset error handler
     xmlSetStructuredErrorFunc( nullptr, nullptr );

@@ -30,8 +30,6 @@ using namespace ::com::sun::star::accessibility;
 
 namespace accessibility
 {
-//=====  internal  ============================================================
-
 AccessiblePresentationGraphicShape::AccessiblePresentationGraphicShape(
     const AccessibleShapeInfo& rShapeInfo, const AccessibleShapeTreeInfo& rShapeTreeInfo)
     : AccessibleGraphicShape(rShapeInfo, rShapeTreeInfo)
@@ -44,7 +42,7 @@ AccessiblePresentationGraphicShape::~AccessiblePresentationGraphicShape() {}
 
 OUString SAL_CALL AccessiblePresentationGraphicShape::getImplementationName()
 {
-    return "AccessiblePresentationGraphicShape";
+    return u"AccessiblePresentationGraphicShape"_ustr;
 }
 
 /// Set this object's name if is different to the current name.

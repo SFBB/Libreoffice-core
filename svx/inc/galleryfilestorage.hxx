@@ -23,7 +23,6 @@
 #include <svx/svxdllapi.h>
 #include <svx/fmmodel.hxx>
 #include "gallerystoragelocations.hxx"
-#include "galleryfilestorage.hxx"
 #include <tools/urlobj.hxx>
 #include <sot/storage.hxx>
 #include <vcl/salctype.hxx>
@@ -42,10 +41,10 @@ class FmFormModel;
 class GalleryTheme;
 class GalleryThemeEntry;
 
-class SVXCORE_DLLPUBLIC GalleryFileStorage final
+class GalleryFileStorage final
 {
 private:
-    tools::SvRef<SotStorage> m_aSvDrawStorageRef;
+    rtl::Reference<SotStorage> m_aSvDrawStorageRef;
     const GalleryStorageLocations& maGalleryStorageLocations;
     GalleryObjectCollection& mrGalleryObjectCollection;
     bool mbReadOnly;
@@ -59,32 +58,31 @@ private:
 public:
     GalleryFileStorage(const GalleryStorageLocations& rGalleryStorageLocations,
                        GalleryObjectCollection& rGalleryObjectCollection, bool bReadOnly);
-    SAL_DLLPRIVATE ~GalleryFileStorage();
+    ~GalleryFileStorage();
 
     void clearSotStorage();
 
     void setDestDir(const OUString& rDestDir, bool bRelative);
 
-    SAL_DLLPRIVATE void ImplCreateSvDrawStorage();
-    SAL_DLLPRIVATE const tools::SvRef<SotStorage>& GetSvDrawStorage() const;
+    void ImplCreateSvDrawStorage();
+    const rtl::Reference<SotStorage>& GetSvDrawStorage() const;
 
     const INetURLObject& getThemeURL() const { return maGalleryStorageLocations.getThemeURL(); }
 
-    SAL_DLLPRIVATE bool implWrite(const GalleryTheme& rTheme, const GalleryThemeEntry* pThm);
+    bool implWrite(const GalleryTheme& rTheme, const GalleryThemeEntry* pThm);
 
     void insertObject(const SgaObject& rObj, GalleryObject* pFoundEntry, sal_uInt32 nInsertPos);
     void removeObject(const std::unique_ptr<GalleryObject>& pEntry);
 
+    UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC)
     std::unique_ptr<SgaObject> implReadSgaObject(GalleryObject const* pEntry);
     bool implWriteSgaObject(const SgaObject& rObj, sal_uInt32 nPos, GalleryObject* pExistentEntry);
 
     bool readModel(const GalleryObject* pObject, SdrModel& rModel);
     SgaObjectSvDraw insertModel(const FmFormModel& rModel, const INetURLObject& rUserURL);
 
-    bool readModelStream(const GalleryObject* pObject,
-                         tools::SvRef<SotTempStream> const& rxModelStream);
-    SgaObjectSvDraw insertModelStream(const tools::SvRef<SotTempStream>& rxModelStream,
-                                      const INetURLObject& rUserURL);
+    bool readModelStream(const GalleryObject* pObject, SvStream& rModelStream);
+    SgaObjectSvDraw insertModelStream(SvStream& rModelStream, const INetURLObject& rUserURL);
 
     INetURLObject implCreateUniqueURL(SgaObjKind eObjKind, const INetURLObject& rUserURL,
                                       ConvertDataFormat nFormat = ConvertDataFormat::Unknown);

@@ -46,6 +46,9 @@ class SwTable;
 class SwTableBox;
 class SwTableLine;
 class SwTableCursor;
+class SwUnoInternalPaM;
+struct SwXParagraphEnumeration;
+class SwXTableRows;
 class SfxItemPropertySet;
 
 typedef
@@ -57,7 +60,7 @@ cppu::WeakImplHelper
     css::container::XEnumerationAccess
 >
 SwXCellBaseClass;
-class SwXCell final : public SwXCellBaseClass,
+class SW_DLLPUBLIC SwXCell final : public SwXCellBaseClass,
     public SwXText,
     public SvtListener
 {
@@ -133,12 +136,15 @@ public:
     virtual css::uno::Type SAL_CALL getElementType(  ) override;
     virtual sal_Bool SAL_CALL hasElements(  ) override;
 
+    rtl::Reference< SwXParagraphEnumeration > createSwEnumeration();
     SwTableBox* GetTableBox() const { return m_pBox; }
     static rtl::Reference<SwXCell> CreateXCell(SwFrameFormat* pTableFormat, SwTableBox* pBox, SwTable *pTable = nullptr );
     SwTableBox* FindBox(SwTable* pTable, SwTableBox* pBox);
     SwFrameFormat* GetFrameFormat() const { return m_pTableFormat; }
     double GetForcedNumericalValue() const;
     css::uno::Any GetAny() const;
+private:
+    rtl::Reference< SwXTextCursor > createXTextCursorByRangeImpl(SwUnoInternalPaM& rPam);
 };
 
 class SwXTextTableRow final
@@ -338,6 +344,9 @@ public:
     virtual sal_Bool SAL_CALL supportsService(const OUString& ServiceName) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
+    rtl::Reference< SwXTableRows > getSwRows();
+    rtl::Reference< SwXCell > getSwCellByPosition( sal_Int32 nColumn, sal_Int32 nRow );
+    rtl::Reference< SwXCell > getSwCellByName( const OUString& aCellName );
 };
 
 class SwXCellRange final : public cppu::WeakImplHelper
@@ -412,7 +421,7 @@ public:
 };
 
 /// UNO API wrapper for SwTableLines.
-class SwXTableRows final : public cppu::WeakImplHelper
+class SAL_DLLPUBLIC_RTTI SwXTableRows final : public cppu::WeakImplHelper
 <
     css::table::XTableRows,
     css::lang::XServiceInfo
@@ -428,7 +437,7 @@ public:
     SwXTableRows(SwFrameFormat& rFrameFormat);
 
     //XIndexAccess
-    virtual sal_Int32 SAL_CALL getCount() override;
+    SW_DLLPUBLIC virtual sal_Int32 SAL_CALL getCount() override;
     virtual css::uno::Any SAL_CALL getByIndex(sal_Int32 nIndex) override;
 
     //XElementAccess

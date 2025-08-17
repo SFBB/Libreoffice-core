@@ -171,13 +171,13 @@ sal_uInt16 ScAutoFmtPreview::GetFormatIndex( size_t nCol, size_t nRow ) const
 
 const SvxBoxItem& ScAutoFmtPreview::GetBoxItem( size_t nCol, size_t nRow ) const
 {
-    OSL_ENSURE( pCurData, "ScAutoFmtPreview::GetBoxItem - no format data found" );
+    assert(pCurData && "ScAutoFmtPreview::GetBoxItem - no format data found");
     return * pCurData->GetItem( GetFormatIndex( nCol, nRow ), ATTR_BORDER );
 }
 
 const SvxLineItem& ScAutoFmtPreview::GetDiagItem( size_t nCol, size_t nRow, bool bTLBR ) const
 {
-    OSL_ENSURE( pCurData, "ScAutoFmtPreview::GetDiagItem - no format data found" );
+    assert(pCurData && "ScAutoFmtPreview::GetDiagItem - no format data found");
     return * pCurData->GetItem( GetFormatIndex( nCol, nRow ), bTLBR ? ATTR_BORDER_TLBR : ATTR_BORDER_BLTR );
 }
 
@@ -249,7 +249,7 @@ void ScAutoFmtPreview::DrawString(vcl::RenderContext& rRenderContext, size_t nCo
     Size aStrSize;
     sal_uInt16 nFmtIndex = GetFormatIndex( nCol, nRow );
     const basegfx::B2DRange cellRange(maArray.GetCellRange( nCol, nRow ));
-    Point aPos(basegfx::fround(cellRange.getMinX()), basegfx::fround(cellRange.getMinY()));
+    Point aPos(basegfx::fround<tools::Long>(cellRange.getMinX()), basegfx::fround<tools::Long>(cellRange.getMinY()));
     sal_uInt16 nRightX = 0;
     bool bJustify = pCurData->GetIncludeJustify();
     SvxCellHorJustify eJustification;
@@ -269,7 +269,7 @@ void ScAutoFmtPreview::DrawString(vcl::RenderContext& rRenderContext, size_t nCo
 
         MakeFonts(rRenderContext, nFmtIndex, aFont, aCJKFont, aCTLFont);
 
-        theMaxStrSize = Size(basegfx::fround(cellRange.getWidth()), basegfx::fround(cellRange.getHeight()));
+        theMaxStrSize = Size(basegfx::fround<tools::Long>(cellRange.getWidth()), basegfx::fround<tools::Long>(cellRange.getHeight()));
         theMaxStrSize.AdjustWidth( -(FRAME_OFFSET) );
         theMaxStrSize.AdjustHeight( -(FRAME_OFFSET) );
 
@@ -370,13 +370,16 @@ void ScAutoFmtPreview::DrawBackground(vcl::RenderContext& rRenderContext)
 
             rRenderContext.Push( vcl::PushFlags::LINECOLOR | vcl::PushFlags::FILLCOLOR );
             rRenderContext.SetLineColor();
-            rRenderContext.SetFillColor( pItem->GetColor() );
+            if (pItem->GetColor() == COL_TRANSPARENT)
+                rRenderContext.SetFillColor();
+            else
+                rRenderContext.SetFillColor( pItem->GetColor() );
 
             const basegfx::B2DRange aCellRange(maArray.GetCellRange( nCol, nRow ));
             rRenderContext.DrawRect(
                 tools::Rectangle(
-                    basegfx::fround(aCellRange.getMinX()), basegfx::fround(aCellRange.getMinY()),
-                    basegfx::fround(aCellRange.getMaxX()), basegfx::fround(aCellRange.getMaxY())));
+                    basegfx::fround<tools::Long>(aCellRange.getMinX()), basegfx::fround<tools::Long>(aCellRange.getMinY()),
+                    basegfx::fround<tools::Long>(aCellRange.getMaxX()), basegfx::fround<tools::Long>(aCellRange.getMaxY())));
 
             rRenderContext.Pop();
         }
@@ -499,7 +502,7 @@ void ScAutoFmtPreview::DoPaint(vcl::RenderContext& rRenderContext)
 
     Size aWndSize(GetOutputSizePixel());
     vcl::Font aFont(aVD->GetFont());
-    const Color& aBackCol = SC_MOD()->GetColorConfig().GetColorValue( ::svtools::DOCCOLOR ).nColor;
+    const Color& aBackCol = ScModule::get()->GetColorConfig().GetColorValue( ::svtools::DOCCOLOR ).nColor;
     tools::Rectangle aRect(Point(), aWndSize);
 
     aFont.SetTransparent( true );

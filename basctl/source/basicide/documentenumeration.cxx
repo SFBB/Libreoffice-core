@@ -117,14 +117,14 @@ namespace basctl::docs {
 
                     // create a DocumentDescriptor
                     DocumentDescriptor aDescriptor;
-                    aDescriptor.xModel = xModel;
+                    aDescriptor.xModel = std::move(xModel);
                     lcl_getDocumentControllers_nothrow( aDescriptor );
 
                     // consult filter, if there is one
                     if ( _pFilter && !_pFilter->includeDocument( aDescriptor ) )
                         continue;
 
-                    _out_rDocuments.push_back( aDescriptor );
+                    _out_rDocuments.push_back(std::move(aDescriptor));
                 }
                 catch( const Exception& )
                 {

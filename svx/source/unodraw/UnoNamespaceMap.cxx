@@ -47,11 +47,11 @@ namespace svx
     class NamespaceMap : public WeakImplHelper< XNameAccess, XServiceInfo >
     {
     private:
-        sal_uInt16* mpWhichIds;
+        const sal_uInt16* mpWhichIds;
         SfxItemPool* mpPool;
 
     public:
-        NamespaceMap( sal_uInt16* pWhichIds, SfxItemPool* pPool );
+        NamespaceMap( const sal_uInt16* pWhichIds, SfxItemPool* pPool );
 
         // XNameAccess
         virtual Any SAL_CALL getByName( const OUString& aName ) override;
@@ -70,7 +70,7 @@ namespace svx
 
     }
 
-    Reference< XInterface > NamespaceMap_createInstance( sal_uInt16* pWhichIds, SfxItemPool* pPool )
+    Reference< XInterface > NamespaceMap_createInstance( const sal_uInt16* pWhichIds, SfxItemPool* pPool )
     {
         return getXWeak(new NamespaceMap( pWhichIds, pPool ));
     }
@@ -78,14 +78,14 @@ namespace svx
     static Sequence< OUString > NamespaceMap_getSupportedServiceNames()
         noexcept
     {
-        Sequence<OUString> aSupportedServiceNames { "com.sun.star.xml.NamespaceMap" };
+        Sequence<OUString> aSupportedServiceNames { u"com.sun.star.xml.NamespaceMap"_ustr };
         return aSupportedServiceNames;
     }
 
     static OUString NamespaceMap_getImplementationName()
         noexcept
     {
-        return "com.sun.star.comp.Svx.NamespaceMap";
+        return u"com.sun.star.comp.Svx.NamespaceMap"_ustr;
     }
 
     namespace {
@@ -95,7 +95,7 @@ namespace svx
     private:
         SfxItemPool* mpPool;
 
-        sal_uInt16* mpWhichId;
+        const sal_uInt16* mpWhichId;
 
         std::vector<const SvXMLAttrContainerItem*> mvItems;
         sal_Int32 mnItem;
@@ -105,7 +105,7 @@ namespace svx
 
     public:
 
-        NamespaceIteratorImpl( sal_uInt16* pWhichIds, SfxItemPool* pPool );
+        NamespaceIteratorImpl( const sal_uInt16* pWhichIds, SfxItemPool* pPool );
 
         bool next( OUString& rPrefix, OUString& rURL );
     };
@@ -116,7 +116,7 @@ namespace svx
 using namespace ::svx;
 
 
-NamespaceIteratorImpl::NamespaceIteratorImpl( sal_uInt16* pWhichIds, SfxItemPool* pPool )
+NamespaceIteratorImpl::NamespaceIteratorImpl( const sal_uInt16* pWhichIds, SfxItemPool* pPool )
 {
     mpPool = pPool;
     mpCurrentAttr = nullptr;
@@ -127,9 +127,9 @@ NamespaceIteratorImpl::NamespaceIteratorImpl( sal_uInt16* pWhichIds, SfxItemPool
     mnItem = -1;
     if (mpWhichId && (0 != *mpWhichId) && mpPool)
     {
-        const registeredSfxPoolItems& rSurrogates(mpPool->GetItemSurrogates(*mpWhichId));
-        mvItems.reserve(rSurrogates.size());
-        for (const SfxPoolItem* pItem : rSurrogates)
+        ItemSurrogates aSurrogates = mpPool->GetItemSurrogates(*mpWhichId);
+        mvItems.reserve(aSurrogates.size());
+        for (const SfxPoolItem* pItem : aSurrogates)
             mvItems.push_back(static_cast<const SvXMLAttrContainerItem*>(pItem));
     }
 }
@@ -163,9 +163,9 @@ bool NamespaceIteratorImpl::next( OUString& rPrefix, OUString& rURL )
         mvItems.clear();
         if (mpPool)
         {
-            const registeredSfxPoolItems& rSurrogates(mpPool->GetItemSurrogates(*mpWhichId));
-            mvItems.reserve(rSurrogates.size());
-            for (const SfxPoolItem* pItem2 : rSurrogates)
+            ItemSurrogates aSurrogates = mpPool->GetItemSurrogates(*mpWhichId);
+            mvItems.reserve(aSurrogates.size());
+            for (const SfxPoolItem* pItem2 : aSurrogates)
                 mvItems.push_back(static_cast<const SvXMLAttrContainerItem*>(pItem2));
         }
         return next( rPrefix, rURL );
@@ -182,7 +182,7 @@ bool NamespaceIteratorImpl::next( OUString& rPrefix, OUString& rURL )
 }
 
 
-NamespaceMap::NamespaceMap( sal_uInt16* pWhichIds, SfxItemPool* pPool )
+NamespaceMap::NamespaceMap( const sal_uInt16* pWhichIds, SfxItemPool* pPool )
 : mpWhichIds( pWhichIds ), mpPool( pPool )
 {
 }

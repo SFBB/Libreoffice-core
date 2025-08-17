@@ -302,7 +302,6 @@ enum TabBarAllowRenamingReturnCode {
 };
 
 class MouseEvent;
-class DataChangedEvent;
 
 struct ImplTabBarItem;
 struct TabBar_Impl;
@@ -376,7 +375,7 @@ private:
 
 protected:
     virtual void AddTabClick();
-    OUString     GetAuxiliaryText(sal_uInt16 nPageId) const; // needed in derived class LayerTabBar
+    const OUString & GetAuxiliaryText(sal_uInt16 nPageId) const; // needed in derived class LayerTabBar
     void         SetAuxiliaryText(sal_uInt16 nPageId, const OUString& rText );
 
 public:
@@ -477,7 +476,7 @@ public:
     void            EndSwitchPage();
 
     virtual void    SetPageText( sal_uInt16 nPageId, const OUString& rText );
-    OUString        GetPageText( sal_uInt16 nPageId ) const;
+    const OUString & GetPageText( sal_uInt16 nPageId ) const;
     OUString        GetHelpText( sal_uInt16 nPageId ) const;
 
     tools::Long            GetSplitSize() const { return mnSplitSize; }
@@ -500,7 +499,7 @@ public:
     void            SetAddButtonEnabled(bool bAddButtonEnabled);
 
     // accessibility
-    virtual css::uno::Reference<css::accessibility::XAccessible> CreateAccessible() override;
+    virtual rtl::Reference<comphelper::OAccessible> CreateAccessible() override;
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

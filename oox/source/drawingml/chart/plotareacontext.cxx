@@ -116,7 +116,7 @@ PlotAreaContext::~PlotAreaContext()
 {
 }
 
-ContextHandlerRef PlotAreaContext::onCreateContext( sal_Int32 nElement, const AttributeList& )
+ContextHandlerRef PlotAreaContext::onCreateContext( sal_Int32 nElement, [[maybe_unused]]const AttributeList& rAttribs)
 {
     bool bMSO2007Doc = getFilter().isMSO2007Document();
     switch( getCurrentElement() )
@@ -136,8 +136,9 @@ ContextHandlerRef PlotAreaContext::onCreateContext( sal_Int32 nElement, const At
                 case C_TOKEN( lineChart ):
                 case C_TOKEN( stockChart ):
                     return new LineTypeGroupContext( *this, mrModel.maTypeGroups.create( nElement, bMSO2007Doc ) );
-                case C_TOKEN( doughnutChart ):
                 case C_TOKEN( ofPieChart ):
+                    return new OfPieTypeGroupContext( *this, mrModel.maTypeGroups.create( nElement, bMSO2007Doc ) );
+                case C_TOKEN( doughnutChart ):
                 case C_TOKEN( pie3DChart ):
                 case C_TOKEN( pieChart ):
                     return new PieTypeGroupContext( *this, mrModel.maTypeGroups.create( nElement, bMSO2007Doc ) );
@@ -161,11 +162,30 @@ ContextHandlerRef PlotAreaContext::onCreateContext( sal_Int32 nElement, const At
                 case C_TOKEN( layout ):
                     return new LayoutContext( *this, mrModel.mxLayout.create() );
                 case C_TOKEN( spPr ):
-                    return new ShapePropertiesContext( *this, mrModel.mxShapeProp.getOrCreate() );
+                    return new ShapePropertiesContext( *this, mrModel.mxShapeProp.create() );
                 case C_TOKEN(dTable):
                     return new DataTableContext( *this, mrModel.mxDataTable.create() );
             }
-        break;
+            break;
+        case CX_TOKEN(plotArea) :
+            switch (nElement) {
+                case CX_TOKEN(plotAreaRegion) :
+                    return new ChartexTypeGroupContext(*this, mrModel.maTypeGroups.create(nElement, false));
+                case CX_TOKEN(axis) :
+                    if (rAttribs.hasAttribute(XML_id)) {
+                        sal_Int32 nId = rAttribs.getInteger(XML_id, -1);
+                        // TODO: also handle attribute "hidden"
+                        return new CxAxisContext(*this, mrModel.maAxes.create(nElement, false), nId);
+                    } else {
+                        return nullptr;
+                    }
+                case CX_TOKEN(spPr) :
+                    return new ShapePropertiesContext( *this, mrModel.mxShapeProp.getOrCreate() );
+                case CX_TOKEN(extLst) :
+                    // TODO
+                    return nullptr;
+            }
+            break;
     }
     return nullptr;
 }

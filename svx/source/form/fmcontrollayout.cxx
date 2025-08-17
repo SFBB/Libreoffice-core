@@ -104,20 +104,20 @@ namespace svxform
             Reference< XServiceInfo > xDocumentSI( _rxDocument, UNO_QUERY );
             if ( xDocumentSI.is() )
             {
-                if (  xDocumentSI->supportsService("com.sun.star.text.TextDocument")
-                   || xDocumentSI->supportsService("com.sun.star.text.WebDocument")
+                if (  xDocumentSI->supportsService(u"com.sun.star.text.TextDocument"_ustr)
+                   || xDocumentSI->supportsService(u"com.sun.star.text.WebDocument"_ustr)
                    )
                 {
                     _rFamilyName = "ParagraphStyles";
                     _rStyleName = "Standard";
                 }
-                else if ( xDocumentSI->supportsService("com.sun.star.sheet.SpreadsheetDocument") )
+                else if ( xDocumentSI->supportsService(u"com.sun.star.sheet.SpreadsheetDocument"_ustr) )
                 {
                     _rFamilyName = "CellStyles";
                     _rStyleName = "Default";
                 }
-                else if (  xDocumentSI->supportsService("com.sun.star.drawing.DrawingDocument")
-                        || xDocumentSI->supportsService("com.sun.star.presentation.PresentationDocument")
+                else if (  xDocumentSI->supportsService(u"com.sun.star.drawing.DrawingDocument"_ustr)
+                        || xDocumentSI->supportsService(u"com.sun.star.presentation.PresentationDocument"_ustr)
                         )
                 {
                     _rFamilyName = "graphics";
@@ -144,24 +144,23 @@ namespace svxform
 
                 // depending on this script type, use the right property from the document's style which controls the
                 // default locale for document content
-                const char* pCharLocalePropertyName = "CharLocale";
+                OUString sCharLocalePropertyName = u"CharLocale"_ustr;
                 switch ( eSysLocaleScriptType )
                 {
                 case ScriptType::LATIN:
                     // already defaulted above
                     break;
                 case ScriptType::ASIAN:
-                    pCharLocalePropertyName = "CharLocaleAsian";
+                    sCharLocalePropertyName = u"CharLocaleAsian"_ustr;
                     break;
                 case ScriptType::COMPLEX:
-                    pCharLocalePropertyName = "CharLocaleComplex";
+                    sCharLocalePropertyName = u"CharLocaleComplex"_ustr;
                     break;
                 default:
                     OSL_FAIL( "lcl_initializeControlFont: unexpected script type for system locale!" );
                     break;
                 }
 
-                OUString sCharLocalePropertyName = OUString::createFromAscii( pCharLocalePropertyName );
                 Locale aDocumentCharLocale;
                 if ( xStylePSI->hasPropertyByName( sCharLocalePropertyName ) )
                 {
@@ -185,7 +184,7 @@ namespace svxform
                 // retrieve a default font for this locale, and set it at the control
                 vcl::Font aFont = OutputDevice::GetDefaultFont( DefaultFontType::SANS, LanguageTag::convertToLanguageType( aDocumentCharLocale ), GetDefaultFontFlags::OnlyOne );
                 FontDescriptor aFontDesc = VCLUnoHelper::CreateFontDescriptor( aFont );
-                _rxModel->setPropertyValue("FontDescriptor", Any( aFontDesc )
+                _rxModel->setPropertyValue(u"FontDescriptor"_ustr, Any( aFontDesc )
                 );
             }
             catch( const Exception& )
@@ -208,7 +207,7 @@ namespace svxform
         // the names of the family, and the style - depends on the document type we live in
         OUString sFamilyName, sStyleName;
         if ( !lcl_getDocumentDefaultStyleAndFamily( xSuppStyleFamilies, sFamilyName, sStyleName ) )
-            throw RuntimeException("unknown document type!");
+            throw RuntimeException(u"unknown document type!"_ustr);
 
         // the concrete style
         Reference< XNameAccess > xStyleFamily( xStyleFamilies->getByName( sFamilyName ), UNO_QUERY_THROW );
@@ -236,7 +235,7 @@ namespace svxform
 
             // let's see what the configuration says about the visual effect
             OConfigurationNode  aConfig = getLayoutSettings( _eDocType );
-            Any aVisualEffect = aConfig.getNodeValue( OUString( "VisualEffect" ) );
+            Any aVisualEffect = aConfig.getNodeValue( u"VisualEffect"_ustr );
             if ( aVisualEffect.hasValue() )
             {
                 OUString sVisualEffect;
@@ -272,7 +271,7 @@ namespace svxform
             }
 
             // the font (only if we use the document's ref devices for rendering control text, otherwise, the
-            // default font of VCL controls is assumed to be fine)
+            // default font from application or standard style is assumed to be fine)
             if  (   useDocumentReferenceDevice( _eDocType )
                 &&  xPSI->hasPropertyByName( FM_PROP_FONT )
                 )
@@ -287,7 +286,7 @@ namespace svxform
     bool ControlLayouter::useDynamicBorderColor( DocumentType _eDocType )
     {
         OConfigurationNode aConfig = getLayoutSettings( _eDocType );
-        Any aDynamicBorderColor = aConfig.getNodeValue( OUString( "DynamicBorderColors" ) );
+        Any aDynamicBorderColor = aConfig.getNodeValue( u"DynamicBorderColors"_ustr );
         bool bDynamicBorderColor = false;
         OSL_VERIFY( aDynamicBorderColor >>= bDynamicBorderColor );
         return bDynamicBorderColor;
@@ -299,7 +298,7 @@ namespace svxform
         if ( _eDocType == eUnknownDocumentType )
             return false;
         OConfigurationNode aConfig = getLayoutSettings( _eDocType );
-        Any aUseRefDevice = aConfig.getNodeValue( OUString( "UseDocumentTextMetrics" ) );
+        Any aUseRefDevice = aConfig.getNodeValue( u"UseDocumentTextMetrics"_ustr );
         bool bUseRefDevice = false;
         OSL_VERIFY( aUseRefDevice >>= bUseRefDevice );
         return bUseRefDevice;

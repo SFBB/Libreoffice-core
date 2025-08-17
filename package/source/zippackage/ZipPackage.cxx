@@ -80,6 +80,8 @@
 #include <comphelper/servicehelper.hxx>
 #include <utility>
 
+using namespace std::literals;
+
 using namespace osl;
 using namespace cppu;
 using namespace ucbhelper;
@@ -135,6 +137,20 @@ class DummyInputStream : public ::cppu::WeakImplHelper< XInputStream >
         {}
 };
 
+} // namespace
+
+sal_Int32 GetDefaultDerivedKeySize(sal_Int32 const nCipherID)
+{
+    switch (nCipherID)
+    {
+        case css::xml::crypto::CipherID::BLOWFISH_CFB_8:
+            return 16;
+        case css::xml::crypto::CipherID::AES_CBC_W3C_PADDING:
+        case css::xml::crypto::CipherID::AES_GCM_W3C:
+            return 32;
+        default:
+            O3TL_UNREACHABLE;
+    }
 }
 
 ZipPackage::ZipPackage ( uno::Reference < XComponentContext > xContext )
@@ -165,12 +181,46 @@ bool ZipPackage::isLocalFile() const
     return comphelper::isFileUrl(m_aURL);
 }
 
+// note: don't check for StorageFormats::ZIP, it breaks signing!
+void ZipPackage::checkZipEntriesWithDD()
+{
+    if (!m_bForceRecovery)
+    {
+        ZipEnumeration entries{m_pZipFile->entries()};
+        while (entries.hasMoreElements())
+        {
+            ZipEntry const& rEntry{*entries.nextElement()};
+            if ((rEntry.nFlag & 0x08) != 0 && rEntry.nMethod == STORED)
+            {
+                uno::Reference<XPropertySet> xStream;
+                getByHierarchicalName(rEntry.sPath) >>= xStream;
+                uno::Reference<XServiceInfo> const xStreamSI{xStream, uno::UNO_QUERY_THROW};
+                if (!xStreamSI->supportsService("com.sun.star.packages.PackageStream"))
+                {
+                    SAL_INFO("package", "entry STORED with data descriptor is folder: \"" << rEntry.sPath << "\"");
+                    throw ZipIOException(
+                        THROW_WHERE
+                        "entry STORED with data descriptor is folder");
+                }
+                if (!xStream->getPropertyValue("WasEncrypted").get<bool>())
+                {
+                    SAL_INFO("package", "entry STORED with data descriptor but not encrypted: \"" << rEntry.sPath << "\"");
+                    throw ZipIOException(
+                        THROW_WHERE
+                        "entry STORED with data descriptor but not encrypted");
+                }
+            }
+        }
+    }
+}
+
 void ZipPackage::parseManifest()
 {
     if ( m_nFormat != embed::StorageFormats::PACKAGE )
         return;
 
     bool bManifestParsed = false;
+    ::std::optional<OUString> oFirstVersion;
     static constexpr OUString sMeta (u"META-INF"_ustr);
     if ( m_xRootFolder->hasByName( sMeta ) )
     {
@@ -188,20 +238,6 @@ void ZipPackage::parseManifest()
                 {
                     uno::Reference < XManifestReader > xReader = ManifestReader::create( m_xContext );
 
-                    static constexpr OUStringLiteral sPropFullPath (u"FullPath");
-                    static constexpr OUStringLiteral sPropVersion (u"Version");
-                    static constexpr OUStringLiteral sPropMediaType (u"MediaType");
-                    static constexpr OUStringLiteral sPropInitialisationVector (u"InitialisationVector");
-                    static constexpr OUStringLiteral sPropSalt (u"Salt");
-                    static constexpr OUStringLiteral sPropIterationCount (u"IterationCount");
-                    static constexpr OUStringLiteral sPropSize (u"Size");
-                    static constexpr OUStringLiteral sPropDigest (u"Digest");
-                    static constexpr OUStringLiteral sPropDerivedKeySize (u"DerivedKeySize");
-                    static constexpr OUStringLiteral sPropDigestAlgorithm (u"DigestAlgorithm");
-                    static constexpr OUStringLiteral sPropEncryptionAlgorithm (u"EncryptionAlgorithm");
-                    static constexpr OUStringLiteral sPropStartKeyAlgorithm (u"StartKeyAlgorithm");
-                    static constexpr OUStringLiteral sKeyInfo (u"KeyInfo");
-
                     const uno::Sequence < uno::Sequence < PropertyValue > > aManifestSequence = xReader->readManifestSequence ( xSink->getInputStream() );
                     const Any *pKeyInfo = nullptr;
 
@@ -213,35 +249,41 @@ void ZipPackage::parseManifest()
                         uno::Any const* pArgon2Args = nullptr;
                         for ( const PropertyValue& rValue : rSequence )
                         {
-                            if ( rValue.Name == sPropFullPath )
+                            if ( rValue.Name == u"FullPath" )
                                 rValue.Value >>= sPath;
-                            else if ( rValue.Name == sPropVersion )
+                            else if ( rValue.Name == u"Version" )
+                            {
                                 rValue.Value >>= sVersion;
-                            else if ( rValue.Name == sPropMediaType )
+                                if (!oFirstVersion)
+                                {
+                                    oFirstVersion.emplace(sVersion);
+                                }
+                            }
+                            else if ( rValue.Name == u"MediaType" )
                                 rValue.Value >>= sMediaType;
-                            else if ( rValue.Name == sPropSalt )
+                            else if ( rValue.Name == u"Salt" )
                                 pSalt = &( rValue.Value );
-                            else if ( rValue.Name == sPropInitialisationVector )
+                            else if ( rValue.Name == u"InitialisationVector" )
                                 pVector = &( rValue.Value );
-                            else if ( rValue.Name == sPropIterationCount )
+                            else if ( rValue.Name == u"IterationCount" )
                                 pCount = &( rValue.Value );
-                            else if ( rValue.Name == sPropSize )
+                            else if ( rValue.Name == u"Size" )
                                 pSize = &( rValue.Value );
-                            else if ( rValue.Name == sPropDigest )
+                            else if ( rValue.Name == u"Digest" )
                                 pDigest = &( rValue.Value );
-                            else if ( rValue.Name == sPropDigestAlgorithm )
+                            else if ( rValue.Name == u"DigestAlgorithm" )
                                 pDigestAlg = &( rValue.Value );
-                            else if ( rValue.Name == sPropEncryptionAlgorithm )
+                            else if ( rValue.Name == u"EncryptionAlgorithm" )
                                 pEncryptionAlg = &( rValue.Value );
-                            else if ( rValue.Name == sPropStartKeyAlgorithm )
+                            else if ( rValue.Name == u"StartKeyAlgorithm" )
                                 pStartKeyAlg = &( rValue.Value );
-                            else if ( rValue.Name == sPropDerivedKeySize )
+                            else if ( rValue.Name == u"DerivedKeySize" )
                                 pDerivedKeySize = &( rValue.Value );
-                            else if ( rValue.Name == sKeyInfo )
+                            else if ( rValue.Name == u"KeyInfo" )
                                 pKeyInfo = &( rValue.Value );
-                            else if (rValue.Name == "KeyDerivationFunction") {
+                            else if (rValue.Name == u"KeyDerivationFunction") {
                                 pKDF = &rValue.Value;
-                            } else if (rValue.Name == "Argon2Args") {
+                            } else if (rValue.Name == u"Argon2Args") {
                                 pArgon2Args = &rValue.Value;
                             }
                         }
@@ -288,11 +330,9 @@ void ZipPackage::parseManifest()
 
                                         assert(pDigestAlg->has<sal_Int32>());
                                         oDigestAlg.emplace(pDigestAlg->get<sal_Int32>());
-                                        pStream->SetImportedChecksumAlgorithm(oDigestAlg);
                                     }
 
                                     *pEncryptionAlg >>= nEncryptionAlg;
-                                    pStream->SetImportedEncryptionAlgorithm( nEncryptionAlg );
 
                                     *pKeyInfo >>= m_aGpgProps;
 
@@ -306,7 +346,14 @@ void ZipPackage::parseManifest()
                                     // c.f. ZipPackageStream::GetEncryptionKey()
                                     // trying to get key value from properties
                                     const sal_Int32 nStartKeyAlg = xml::crypto::DigestID::SHA256;
-                                    pStream->SetImportedStartKeyAlgorithm( nStartKeyAlg );
+
+                                    pStream->SetImportedAlgorithms({
+                                        .nImportedStartKeyAlgorithm = nStartKeyAlg,
+                                        .nImportedEncryptionAlgorithm = nEncryptionAlg,
+                                        .oImportedChecksumAlgorithm = oDigestAlg,
+                                        // note m_nCommonEncryptionID is not inited yet here
+                                        .nImportedDerivedKeySize = ::GetDefaultDerivedKeySize(nEncryptionAlg),
+                                        });
 
                                     if (!m_bHasEncryptedEntries
                                         && (pStream->getName() == "content.xml"
@@ -373,19 +420,22 @@ void ZipPackage::parseManifest()
 
                                         assert(pDigestAlg->has<sal_Int32>());
                                         oDigestAlg.emplace(pDigestAlg->get<sal_Int32>());
-                                        pStream->SetImportedChecksumAlgorithm(oDigestAlg);
                                     }
 
                                     *pEncryptionAlg >>= nEncryptionAlg;
-                                    pStream->SetImportedEncryptionAlgorithm( nEncryptionAlg );
 
                                     if ( pDerivedKeySize )
                                         *pDerivedKeySize >>= nDerivedKeySize;
-                                    pStream->SetImportedDerivedKeySize( nDerivedKeySize );
 
                                     if ( pStartKeyAlg )
                                         *pStartKeyAlg >>= nStartKeyAlg;
-                                    pStream->SetImportedStartKeyAlgorithm( nStartKeyAlg );
+
+                                    pStream->SetImportedAlgorithms({
+                                        .nImportedStartKeyAlgorithm = nStartKeyAlg,
+                                        .nImportedEncryptionAlgorithm = nEncryptionAlg,
+                                        .oImportedChecksumAlgorithm = oDigestAlg,
+                                        .nImportedDerivedKeySize = nDerivedKeySize,
+                                        });
 
                                     pStream->SetToBeCompressed ( true );
                                     pStream->SetToBeEncrypted ( true );
@@ -411,6 +461,8 @@ void ZipPackage::parseManifest()
 
                     bManifestParsed = true;
                 }
+
+                checkZipEntriesWithDD(); // check before removing entries!
 
                 // now hide the manifest.xml file from user
                 xMetaInfFolder->removeByName( sManifest );
@@ -457,10 +509,15 @@ void ZipPackage::parseManifest()
             {
                 // accept only types that look similar to own mediatypes
                 m_xRootFolder->SetMediaType( aPackageMediatype );
+                // also set version explicitly
+                if (oFirstVersion && m_xRootFolder->GetVersion().isEmpty())
+                {
+                    m_xRootFolder->SetVersion(*oFirstVersion);
+                }
                 // if there is an encrypted inner package, there is no root
                 // document, because instead there is a package, and it is not
                 // an error
-                if (!m_xRootFolder->hasByName("encrypted-package"))
+                if (!m_xRootFolder->hasByName(u"encrypted-package"sv))
                 {
                     m_bMediaTypeFallbackUsed = true;
                 }
@@ -469,8 +526,8 @@ void ZipPackage::parseManifest()
         else if ( !m_bForceRecovery )
         {
             // the mimetype stream should contain the same information as manifest.xml
-            OUString const mediaTypeXML(m_xRootFolder->hasByName("encrypted-package")
-                ? m_xRootFolder->doGetByName("encrypted-package").xPackageEntry->GetMediaType()
+            OUString const mediaTypeXML(m_xRootFolder->hasByName(u"encrypted-package"sv)
+                ? m_xRootFolder->doGetByName(u"encrypted-package").xPackageEntry->GetMediaType()
                 : m_xRootFolder->GetMediaType());
             if (mediaTypeXML != aPackageMediatype)
             {
@@ -486,7 +543,7 @@ void ZipPackage::parseManifest()
     }
 
     m_bInconsistent = m_xRootFolder->LookForUnexpectedODF12Streams(
-        std::u16string_view(), m_xRootFolder->hasByName("encrypted-package"));
+        std::u16string_view(), m_xRootFolder->hasByName(u"encrypted-package"sv));
 
     bool bODF12AndNewer = ( m_xRootFolder->GetVersion().compareTo( ODFVER_012_TEXT ) >= 0 );
     if ( !m_bForceRecovery && bODF12AndNewer )
@@ -516,7 +573,7 @@ void ZipPackage::parseContentType()
         return;
 
     try {
-        static constexpr OUString aContentTypes(u"[Content_Types].xml"_ustr);
+        static constexpr std::u16string_view aContentTypes(u"[Content_Types].xml");
         // the content type must exist in OFOPXML format!
         if ( !m_xRootFolder->hasByName( aContentTypes ) )
             throw io::IOException(THROW_WHERE "Wrong format!" );
@@ -576,13 +633,10 @@ void ZipPackage::parseContentType()
 void ZipPackage::getZipFileContents()
 {
     ZipEnumeration aEnum = m_pZipFile->entries();
-    OUString sTemp, sDirName;
-    sal_Int32 nOldIndex, nStreamIndex;
-    FolderHash::iterator aIter;
+    OUString sDirName;
 
     while (aEnum.hasMoreElements())
     {
-        nOldIndex = 0;
         ZipPackageFolder* pCurrent = m_xRootFolder.get();
         const ZipEntry & rEntry = *aEnum.nextElement();
         OUString rName = rEntry.sPath;
@@ -594,11 +648,11 @@ void ZipPackage::getZipFileContents()
             rName = rName.replace( '\\', '/' );
         }
 
-        nStreamIndex = rName.lastIndexOf ( '/' );
+        sal_Int32 nStreamIndex = rName.lastIndexOf ( '/' );
         if ( nStreamIndex != -1 )
         {
             sDirName = rName.copy ( 0, nStreamIndex );
-            aIter = m_aRecent.find ( sDirName );
+            FolderHash::iterator aIter = m_aRecent.find ( sDirName );
             if ( aIter != m_aRecent.end() )
                 pCurrent = ( *aIter ).second;
         }
@@ -606,15 +660,20 @@ void ZipPackage::getZipFileContents()
         if ( pCurrent == m_xRootFolder.get() )
         {
             sal_Int32 nIndex;
+            sal_Int32 nOldIndex = 0;
             while ( ( nIndex = rName.indexOf( '/', nOldIndex ) ) != -1 )
             {
-                sTemp = rName.copy ( nOldIndex, nIndex - nOldIndex );
+                std::u16string_view sTemp = rName.subView( nOldIndex, nIndex - nOldIndex );
                 if ( nIndex == nOldIndex )
                     break;
                 if ( !pCurrent->hasByName( sTemp ) )
                 {
                     rtl::Reference<ZipPackageFolder> pPkgFolder = new ZipPackageFolder(m_xContext, m_nFormat, m_bAllowRemoveOnInsert);
-                    pPkgFolder->setName( sTemp );
+                    try {
+                        pPkgFolder->setName( OUString(sTemp) );
+                    } catch (uno::RuntimeException const& e) {
+                        throw css::packages::zip::ZipIOException(e.Message);
+                    }
                     pPkgFolder->doSetParent( pCurrent );
                     pCurrent = pPkgFolder.get();
                 }
@@ -622,7 +681,7 @@ void ZipPackage::getZipFileContents()
                 {
                     ZipContentInfo& rInfo = pCurrent->doGetByName(sTemp);
                     if (!rInfo.bFolder)
-                        throw css::packages::zip::ZipIOException("Bad Zip File, stream as folder");
+                        throw css::packages::zip::ZipIOException(u"Bad Zip File, stream as folder"_ustr);
                     pCurrent = rInfo.pFolder;
                 }
                 nOldIndex = nIndex+1;
@@ -633,14 +692,14 @@ void ZipPackage::getZipFileContents()
         if ( rName.getLength() -1 != nStreamIndex )
         {
             nStreamIndex++;
-            sTemp = rName.copy( nStreamIndex );
+            std::u16string_view sTemp = rName.subView( nStreamIndex );
 
             if (!pCurrent->hasByName(sTemp))
             {
                 rtl::Reference<ZipPackageStream> pPkgStream = new ZipPackageStream(*this, m_xContext, m_nFormat, m_bAllowRemoveOnInsert);
                 pPkgStream->SetPackageMember(true);
                 pPkgStream->setZipEntryOnLoading(rEntry);
-                pPkgStream->setName(sTemp);
+                pPkgStream->setName(OUString(sTemp));
                 pPkgStream->doSetParent(pCurrent);
             }
         }
@@ -649,7 +708,10 @@ void ZipPackage::getZipFileContents()
     if ( m_nFormat == embed::StorageFormats::PACKAGE )
         parseManifest();
     else if ( m_nFormat == embed::StorageFormats::OFOPXML )
+    {
         parseContentType();
+        checkZipEntriesWithDD();
+    }
 }
 
 void SAL_CALL ZipPackage::initialize( const uno::Sequence< Any >& aArguments )
@@ -705,7 +767,7 @@ void SAL_CALL ZipPackage::initialize( const uno::Sequence< Any >& aArguments )
                 Content aContent(
                     m_aURL, uno::Reference< XCommandEnvironment >(),
                     m_xContext );
-                Any aAny = aContent.getPropertyValue("Size");
+                Any aAny = aContent.getPropertyValue(u"Size"_ustr);
                 sal_uInt64 aSize = 0;
                 // kind of optimization: treat empty files as nonexistent files
                 // and write to such files directly. Note that "Size" property is optional.
@@ -828,7 +890,13 @@ void SAL_CALL ZipPackage::initialize( const uno::Sequence< Any >& aArguments )
     OUString message;
     try
     {
-        m_pZipFile.emplace(m_aMutexHolder, m_xContentStream, m_xContext, true, m_bForceRecovery);
+        m_pZipFile.emplace(m_aMutexHolder, m_xContentStream, m_xContext, true,
+            m_bForceRecovery,
+            m_nFormat == embed::StorageFormats::ZIP
+                ? ZipFile::Checks::Default
+                : m_nFormat == embed::StorageFormats::OFOPXML
+                    ? ZipFile::Checks::CheckInsensitive
+                    : ZipFile::Checks::TryCheckInsensitive);
         getZipFileContents();
     }
     catch ( IOException & e )
@@ -860,15 +928,14 @@ void SAL_CALL ZipPackage::initialize( const uno::Sequence< Any >& aArguments )
 
 Any SAL_CALL ZipPackage::getByHierarchicalName( const OUString& aName )
 {
-    OUString sTemp, sDirName;
+    OUString sDirName;
     sal_Int32 nOldIndex, nStreamIndex;
-    FolderHash::iterator aIter;
-
-    sal_Int32 nIndex = aName.getLength();
 
     if (aName == "/")
         // root directory.
         return Any ( uno::Reference( cppu::getXWeak(m_xRootFolder.get()) ) );
+
+    sal_Int32 nIndex = aName.getLength();
 
     nStreamIndex = aName.lastIndexOf ( '/' );
     bool bFolder = nStreamIndex == nIndex-1; // last character is '/'.
@@ -877,7 +944,7 @@ Any SAL_CALL ZipPackage::getByHierarchicalName( const OUString& aName )
     {
         // The name contains '/'.
         sDirName = aName.copy ( 0, nStreamIndex );
-        aIter = m_aRecent.find ( sDirName );
+        FolderHash::iterator aIter = m_aRecent.find ( sDirName );
         if ( aIter != m_aRecent.end() )
         {
             // There is a cached entry for this name.
@@ -888,7 +955,7 @@ Any SAL_CALL ZipPackage::getByHierarchicalName( const OUString& aName )
             {
                 // Determine the directory name.
                 sal_Int32 nDirIndex = aName.lastIndexOf ( '/', nStreamIndex );
-                sTemp = aName.copy ( nDirIndex == -1 ? 0 : nDirIndex+1, nStreamIndex-nDirIndex-1 );
+                std::u16string_view sTemp = aName.subView ( nDirIndex == -1 ? 0 : nDirIndex+1, nStreamIndex-nDirIndex-1 );
 
                 if (pFolder && sTemp == pFolder->getName())
                     return Any(uno::Reference(cppu::getXWeak(pFolder)));
@@ -896,7 +963,7 @@ Any SAL_CALL ZipPackage::getByHierarchicalName( const OUString& aName )
             else
             {
                 // Determine the file name.
-                sTemp = aName.copy ( nStreamIndex + 1 );
+                std::u16string_view sTemp = aName.subView( nStreamIndex + 1 );
 
                 if (pFolder && pFolder->hasByName(sTemp))
                     return pFolder->getByName(sTemp);
@@ -919,7 +986,7 @@ Any SAL_CALL ZipPackage::getByHierarchicalName( const OUString& aName )
 
     while ( ( nIndex = aName.indexOf( '/', nOldIndex )) != -1 )
     {
-        sTemp = aName.copy ( nOldIndex, nIndex - nOldIndex );
+        std::u16string_view sTemp = aName.subView ( nOldIndex, nIndex - nOldIndex );
         if ( nIndex == nOldIndex )
             break;
         if ( !pCurrent->hasByName( sTemp ) )
@@ -928,7 +995,7 @@ Any SAL_CALL ZipPackage::getByHierarchicalName( const OUString& aName )
         pPrevious = pCurrent;
         ZipContentInfo& rInfo = pCurrent->doGetByName(sTemp);
         if (!rInfo.bFolder)
-            throw css::packages::zip::ZipIOException("Bad Zip File, stream as folder");
+            throw css::packages::zip::ZipIOException(u"Bad Zip File, stream as folder"_ustr);
         pCurrent = rInfo.pFolder;
         nOldIndex = nIndex+1;
     }
@@ -940,7 +1007,7 @@ Any SAL_CALL ZipPackage::getByHierarchicalName( const OUString& aName )
         return Any ( uno::Reference( cppu::getXWeak(pCurrent) ) );
     }
 
-    sTemp = aName.copy( nOldIndex );
+    std::u16string_view sTemp = aName.subView( nOldIndex );
 
     if ( pCurrent->hasByName ( sTemp ) )
     {
@@ -954,12 +1021,6 @@ Any SAL_CALL ZipPackage::getByHierarchicalName( const OUString& aName )
 
 sal_Bool SAL_CALL ZipPackage::hasByHierarchicalName( const OUString& aName )
 {
-    OUString sTemp;
-    sal_Int32 nOldIndex;
-    FolderHash::iterator aIter;
-
-    sal_Int32 nIndex = aName.getLength();
-
     if (aName == "/")
         // root directory
         return true;
@@ -969,17 +1030,17 @@ sal_Bool SAL_CALL ZipPackage::hasByHierarchicalName( const OUString& aName )
         OUString sDirName;
         sal_Int32 nStreamIndex;
         nStreamIndex = aName.lastIndexOf ( '/' );
-        bool bFolder = nStreamIndex == nIndex-1;
+        bool bFolder = nStreamIndex == aName.getLength()-1;
         if ( nStreamIndex != -1 )
         {
             sDirName = aName.copy ( 0, nStreamIndex );
-            aIter = m_aRecent.find ( sDirName );
+            FolderHash::iterator aIter = m_aRecent.find ( sDirName );
             if ( aIter != m_aRecent.end() )
             {
                 if ( bFolder )
                 {
                     sal_Int32 nDirIndex = aName.lastIndexOf ( '/', nStreamIndex );
-                    sTemp = aName.copy ( nDirIndex == -1 ? 0 : nDirIndex+1, nStreamIndex-nDirIndex-1 );
+                    std::u16string_view sTemp = aName.subView ( nDirIndex == -1 ? 0 : nDirIndex+1, nStreamIndex-nDirIndex-1 );
                     if ( sTemp == ( *aIter ).second->getName() )
                         return true;
                     else
@@ -987,7 +1048,7 @@ sal_Bool SAL_CALL ZipPackage::hasByHierarchicalName( const OUString& aName )
                 }
                 else
                 {
-                    sTemp = aName.copy ( nStreamIndex + 1 );
+                    std::u16string_view sTemp = aName.subView( nStreamIndex + 1 );
                     if ( ( *aIter ).second->hasByName( sTemp ) )
                         return true;
                     else
@@ -1002,18 +1063,21 @@ sal_Bool SAL_CALL ZipPackage::hasByHierarchicalName( const OUString& aName )
         }
         ZipPackageFolder * pCurrent = m_xRootFolder.get();
         ZipPackageFolder * pPrevious = nullptr;
-        nOldIndex = 0;
+        sal_Int32 nOldIndex = 0;
+        sal_Int32 nIndex;
         while ( ( nIndex = aName.indexOf( '/', nOldIndex )) != -1 )
         {
-            sTemp = aName.copy ( nOldIndex, nIndex - nOldIndex );
             if ( nIndex == nOldIndex )
                 break;
+
+            std::u16string_view sTemp = aName.subView ( nOldIndex, nIndex - nOldIndex );
+
             if ( pCurrent->hasByName( sTemp ) )
             {
                 pPrevious = pCurrent;
                 ZipContentInfo& rInfo = pCurrent->doGetByName(sTemp);
                 if (!rInfo.bFolder)
-                    throw css::packages::zip::ZipIOException("Bad Zip File, stream as folder");
+                    throw css::packages::zip::ZipIOException(u"Bad Zip File, stream as folder"_ustr);
                 pCurrent = rInfo.pFolder;
             }
             else
@@ -1027,7 +1091,7 @@ sal_Bool SAL_CALL ZipPackage::hasByHierarchicalName( const OUString& aName )
         }
         else
         {
-            sTemp = aName.copy( nOldIndex );
+            std::u16string_view sTemp = aName.subView( nOldIndex );
 
             if ( pCurrent->hasByName( sTemp ) )
             {
@@ -1043,7 +1107,7 @@ sal_Bool SAL_CALL ZipPackage::hasByHierarchicalName( const OUString& aName )
     catch (const uno::Exception&)
     {
         uno::Any e(::cppu::getCaughtException());
-        throw lang::WrappedTargetRuntimeException("ZipPackage::hasByHierarchicalName", nullptr, e);
+        throw lang::WrappedTargetRuntimeException(u"ZipPackage::hasByHierarchicalName"_ustr, nullptr, e);
     }
     return false;
 }
@@ -1070,11 +1134,11 @@ uno::Reference< XInterface > SAL_CALL ZipPackage::createInstanceWithArguments( c
 
 void ZipPackage::WriteMimetypeMagicFile( ZipOutputStream& aZipOut )
 {
-    static constexpr OUString sMime (u"mimetype"_ustr);
+    static constexpr std::u16string_view sMime (u"mimetype" );
     if ( m_xRootFolder->hasByName( sMime ) )
         m_xRootFolder->removeByName( sMime );
 
-    ZipEntry * pEntry = new ZipEntry;
+    auto pEntry = std::make_unique<ZipEntry>();
     sal_Int32 nBufferLength = m_xRootFolder->GetMediaType().getLength();
     OString sMediaType = OUStringToOString( m_xRootFolder->GetMediaType(), RTL_TEXTENCODING_ASCII_US );
     const uno::Sequence< sal_Int8 > aType( reinterpret_cast<sal_Int8 const *>(sMediaType.getStr()),
@@ -1091,8 +1155,8 @@ void ZipPackage::WriteMimetypeMagicFile( ZipOutputStream& aZipOut )
 
     try
     {
-        ZipOutputStream::setEntry(pEntry);
-        aZipOut.writeLOC(pEntry);
+        ZipOutputStream::setEntry(*pEntry);
+        aZipOut.writeLOC(std::move(pEntry));
         aZipOut.rawWrite(aType);
         aZipOut.rawCloseEntry();
     }
@@ -1110,7 +1174,7 @@ void ZipPackage::WriteManifest( ZipOutputStream& aZipOut, const std::vector< uno
 {
     // Write the manifest
     uno::Reference < XManifestWriter > xWriter = ManifestWriter::create( m_xContext );
-    ZipEntry * pEntry = new ZipEntry;
+    auto pEntry = std::make_unique<ZipEntry>();
     rtl::Reference<ZipPackageBuffer> pBuffer = new ZipPackageBuffer;
 
     pEntry->sPath = "META-INF/manifest.xml";
@@ -1125,9 +1189,10 @@ void ZipPackage::WriteManifest( ZipOutputStream& aZipOut, const std::vector< uno
     pBuffer->realloc( nBufferLength );
 
     // the manifest.xml is never encrypted - so pass an empty reference
-    ZipOutputStream::setEntry(pEntry);
-    aZipOut.writeLOC(pEntry);
-    ZipOutputEntry aZipEntry(aZipOut.getStream(), m_xContext, *pEntry, nullptr, /*bEncrypt*/false);
+    ZipOutputStream::setEntry(*pEntry);
+    auto p = pEntry.get();
+    aZipOut.writeLOC(std::move(pEntry));
+    ZipOutputEntry aZipEntry(aZipOut.getStream(), m_xContext, p, nullptr, /*bEncrypt*/false);
     aZipEntry.write(pBuffer->getSequence());
     aZipEntry.closeEntry();
     aZipOut.rawCloseEntry();
@@ -1135,7 +1200,7 @@ void ZipPackage::WriteManifest( ZipOutputStream& aZipOut, const std::vector< uno
 
 void ZipPackage::WriteContentTypes( ZipOutputStream& aZipOut, const std::vector< uno::Sequence < PropertyValue > >& aManList )
 {
-    ZipEntry* pEntry = new ZipEntry;
+    auto pEntry = std::make_unique<ZipEntry>();
     rtl::Reference<ZipPackageBuffer> pBuffer = new ZipPackageBuffer;
 
     pEntry->sPath = "[Content_Types].xml";
@@ -1148,10 +1213,11 @@ void ZipPackage::WriteContentTypes( ZipOutputStream& aZipOut, const std::vector<
     // Add at least the standard default entries.
     uno::Sequence< beans::StringPair > aDefaultsSequence
     {
-        { "xml", "application/xml" },
-        { "rels", "application/vnd.openxmlformats-package.relationships+xml" },
-        { "png", "image/png" },
-        { "jpeg", "image/jpeg" }
+        { u"xml"_ustr, u"application/xml"_ustr },
+        { u"rels"_ustr, u"application/vnd.openxmlformats-package.relationships+xml"_ustr },
+        { u"png"_ustr, u"image/png"_ustr },
+        { u"jpeg"_ustr, u"image/jpeg"_ustr },
+        { u"fntdata"_ustr, u"application/x-fontdata"_ustr }
     };
 
     uno::Sequence< beans::StringPair > aOverridesSequence(aManList.size());
@@ -1183,9 +1249,10 @@ void ZipPackage::WriteContentTypes( ZipOutputStream& aZipOut, const std::vector<
     pBuffer->realloc( nBufferLength );
 
     // there is no encryption in this format currently
-    ZipOutputStream::setEntry(pEntry);
-    aZipOut.writeLOC(pEntry);
-    ZipOutputEntry aZipEntry(aZipOut.getStream(), m_xContext, *pEntry, nullptr, /*bEncrypt*/false);
+    ZipOutputStream::setEntry(*pEntry);
+    auto p = pEntry.get();
+    aZipOut.writeLOC(std::move(pEntry));
+    ZipOutputEntry aZipEntry(aZipOut.getStream(), m_xContext, p, nullptr, /*bEncrypt*/false);
     aZipEntry.write(pBuffer->getSequence());
     aZipEntry.closeEntry();
     aZipOut.rawCloseEntry();
@@ -1193,6 +1260,7 @@ void ZipPackage::WriteContentTypes( ZipOutputStream& aZipOut, const std::vector<
 
 void ZipPackage::ConnectTo( const uno::Reference< io::XInputStream >& xInStream )
 {
+    assert(dynamic_cast<comphelper::ByteReader*>(xInStream.get()));
     m_xContentSeek.set( xInStream, uno::UNO_QUERY_THROW );
     m_xContentStream = xInStream;
 
@@ -1201,29 +1269,13 @@ void ZipPackage::ConnectTo( const uno::Reference< io::XInputStream >& xInStream 
     if ( m_pZipFile )
         m_pZipFile->setInputStream( m_xContentStream );
     else
-        m_pZipFile.emplace(m_aMutexHolder, m_xContentStream, m_xContext, false);
-}
-
-namespace
-{
-    class RandomPool
-    {
-    private:
-        rtlRandomPool m_aRandomPool;
-    public:
-        RandomPool() : m_aRandomPool(rtl_random_createPool ())
-        {
-        }
-        rtlRandomPool get()
-        {
-            return m_aRandomPool;
-        }
-        ~RandomPool()
-        {
-            // Clean up random pool memory
-            rtl_random_destroyPool(m_aRandomPool);
-        }
-    };
+        m_pZipFile.emplace(m_aMutexHolder, m_xContentStream, m_xContext, false,
+            false,
+            m_nFormat == embed::StorageFormats::ZIP
+                ? ZipFile::Checks::Default
+                : m_nFormat == embed::StorageFormats::OFOPXML
+                    ? ZipFile::Checks::CheckInsensitive
+                    : ZipFile::Checks::TryCheckInsensitive);
 }
 
 uno::Reference< io::XInputStream > ZipPackage::writeTempFile()
@@ -1279,7 +1331,7 @@ uno::Reference< io::XInputStream > ZipPackage::writeTempFile()
             // Remove the old manifest.xml file as the
             // manifest will be re-generated and the
             // META-INF directory implicitly created if does not exist
-            static constexpr OUString sMeta (u"META-INF"_ustr);
+            static constexpr std::u16string_view sMeta (u"META-INF");
 
             if ( m_xRootFolder->hasByName( sMeta ) )
             {
@@ -1300,7 +1352,7 @@ uno::Reference< io::XInputStream > ZipPackage::writeTempFile()
             // Remove the old [Content_Types].xml file as the
             // file will be re-generated
 
-            static constexpr OUString aContentTypes(u"[Content_Types].xml"_ustr);
+            static constexpr std::u16string_view aContentTypes(u"[Content_Types].xml");
 
             if ( m_xRootFolder->hasByName( aContentTypes ) )
                 m_xRootFolder->removeByName( aContentTypes );
@@ -1326,7 +1378,7 @@ uno::Reference< io::XInputStream > ZipPackage::writeTempFile()
             pPropSeq [PKG_MNFST_VERSION].Name = sVersion;
             pPropSeq [PKG_MNFST_VERSION].Value <<= m_xRootFolder->GetVersion();
             pPropSeq [PKG_MNFST_FULLPATH].Name = sFullPath;
-            pPropSeq [PKG_MNFST_FULLPATH].Value <<= OUString("/");
+            pPropSeq [PKG_MNFST_FULLPATH].Value <<= u"/"_ustr;
 
             if( bIsGpgEncrypt )
             {
@@ -1337,10 +1389,6 @@ uno::Reference< io::XInputStream > ZipPackage::writeTempFile()
         }
 
         {
-            // This will be used to generate random salt and initialisation vectors
-            // for encrypted streams
-            RandomPool aRandomPool;
-
             ::std::optional<sal_Int32> oPBKDF2IterationCount;
             ::std::optional<::std::tuple<sal_Int32, sal_Int32, sal_Int32>> oArgon2Args;
 
@@ -1348,7 +1396,7 @@ uno::Reference< io::XInputStream > ZipPackage::writeTempFile()
             {
                 if (m_nKeyDerivationFunctionID == xml::crypto::KDFID::PBKDF2)
                 {   // if there is only one KDF invocation, increase the safety margin
-                    oPBKDF2IterationCount.emplace(officecfg::Office::Common::Misc::ExperimentalMode::get() ? 600000 : 100000);
+                    oPBKDF2IterationCount.emplace(m_xRootFolder->hasByName(u"encrypted-package"sv) ? 600000 : 100000);
                 }
                 else
                 {
@@ -1358,8 +1406,8 @@ uno::Reference< io::XInputStream > ZipPackage::writeTempFile()
             }
 
             // call saveContents - it will recursively save sub-directories
-            m_xRootFolder->saveContents("", aManList, aZipOut, GetEncryptionKey(),
-                oPBKDF2IterationCount, oArgon2Args, aRandomPool.get());
+            m_xRootFolder->saveContents(u""_ustr, aManList, aZipOut, GetEncryptionKey(),
+                oPBKDF2IterationCount, oArgon2Args);
         }
 
         if( m_nFormat == embed::StorageFormats::PACKAGE )
@@ -1374,7 +1422,7 @@ uno::Reference< io::XInputStream > ZipPackage::writeTempFile()
         aZipOut.finish();
 
         if( bUseTemp )
-            xResult = xTempIn;
+            xResult = std::move(xTempIn);
 
         // Update our References to point to the new temp file
         if( !bUseTemp )
@@ -1448,7 +1496,7 @@ uno::Reference< XActiveDataStreamer > ZipPackage::openOriginalForOutput()
             try
             {
                 Exception aDetect;
-                Any aAny = aOriginalContent.setPropertyValue("Size", Any( sal_Int64(0) ) );
+                Any aAny = aOriginalContent.setPropertyValue(u"Size"_ustr, Any( sal_Int64(0) ) );
                 if( !( aAny >>= aDetect ) )
                     bTruncSuccess = true;
             }
@@ -1471,7 +1519,7 @@ uno::Reference< XActiveDataStreamer > ZipPackage::openOriginalForOutput()
             aArg.Sink       = xSink;
             aArg.Properties = uno::Sequence< Property >( 0 ); // unused
 
-            aOriginalContent.executeCommand("open", Any( aArg ) );
+            aOriginalContent.executeCommand(u"open"_ustr, Any( aArg ) );
         }
         catch( Exception& )
         {
@@ -1639,7 +1687,7 @@ void SAL_CALL ZipPackage::commitChanges()
                         m_xContext );
 
                     OUString sTempURL;
-                    Any aAny = xPropSet->getPropertyValue ("Uri");
+                    Any aAny = xPropSet->getPropertyValue (u"Uri"_ustr);
                     aAny >>= sTempURL;
 
                     TransferInfo aInfo;
@@ -1650,7 +1698,7 @@ void SAL_CALL ZipPackage::commitChanges()
                                                         rtl_UriDecodeWithCharset,
                                                         RTL_TEXTENCODING_UTF8 );
                     // if the file is still not corrupted, it can become after the next step
-                    aContent.executeCommand ("transfer", Any(aInfo) );
+                    aContent.executeCommand (u"transfer"_ustr, Any(aInfo) );
                 }
                 catch ( const css::uno::Exception& )
                 {
@@ -1682,9 +1730,9 @@ void ZipPackage::DisconnectFromTargetAndThrowException_Impl( const uno::Referenc
     OUString aTempURL;
     try {
         uno::Reference< beans::XPropertySet > xTempFile( xTempStream, uno::UNO_QUERY_THROW );
-        uno::Any aUrl = xTempFile->getPropertyValue("Uri");
+        uno::Any aUrl = xTempFile->getPropertyValue(u"Uri"_ustr);
         aUrl >>= aTempURL;
-        xTempFile->setPropertyValue("RemoveFile",
+        xTempFile->setPropertyValue(u"RemoveFile"_ustr,
                                      uno::Any( false ) );
     }
     catch ( uno::Exception& )
@@ -1713,9 +1761,14 @@ uno::Sequence< sal_Int8 > ZipPackage::GetEncryptionKey()
         else
             throw uno::RuntimeException(THROW_WHERE "No expected key is provided!" );
 
-        for ( const auto& rKey : std::as_const(m_aStorageEncryptionKeys) )
+        for (const auto& rKey : m_aStorageEncryptionKeys)
             if ( rKey.Name == aNameToFind )
                 rKey.Value >>= aResult;
+
+        if (!aResult.hasElements() && m_aStorageEncryptionKeys.hasElements())
+        {   // tdf#159519 sanity check
+            throw uno::RuntimeException(THROW_WHERE "Expected key is missing!");
+        }
     }
     else
         aResult = m_aEncryptionKey;
@@ -1735,12 +1788,12 @@ Sequence< ElementChange > SAL_CALL ZipPackage::getPendingChanges()
 
 OUString ZipPackage::getImplementationName()
 {
-    return "com.sun.star.packages.comp.ZipPackage";
+    return u"com.sun.star.packages.comp.ZipPackage"_ustr;
 }
 
 Sequence< OUString > ZipPackage::getSupportedServiceNames()
 {
-    return { "com.sun.star.packages.Package" };
+    return { u"com.sun.star.packages.Package"_ustr };
 }
 
 sal_Bool SAL_CALL ZipPackage::supportsService( OUString const & rServiceName )
@@ -1789,7 +1842,7 @@ void SAL_CALL ZipPackage::setPropertyValue( const OUString& aPropertyName, const
             throw IllegalArgumentException(THROW_WHERE "unexpected algorithms list is provided.", uno::Reference< uno::XInterface >(), 2 );
         }
 
-        for ( const auto& rAlgorithm : std::as_const(aAlgorithms) )
+        for (const auto& rAlgorithm : aAlgorithms)
         {
             if ( rAlgorithm.Name == "StartKeyGenerationAlgorithm" )
             {
@@ -1858,7 +1911,7 @@ void SAL_CALL ZipPackage::setPropertyValue( const OUString& aPropertyName, const
             throw IllegalArgumentException(THROW_WHERE "unexpected Gpg properties are provided.", uno::Reference< uno::XInterface >(), 2 );
         }
 
-        m_aGpgProps = aGpgProps;
+        m_aGpgProps = std::move(aGpgProps);
 
         // override algorithm defaults (which are some legacy ODF
         // defaults) with reasonable values
@@ -1885,16 +1938,16 @@ Any SAL_CALL ZipPackage::getPropertyValue( const OUString& PropertyName )
     else if ( PropertyName == ENCRYPTION_ALGORITHMS_PROPERTY )
     {
         ::comphelper::SequenceAsHashMap aAlgorithms;
-        aAlgorithms["StartKeyGenerationAlgorithm"] <<= m_nStartKeyGenerationID;
-        aAlgorithms["KeyDerivationFunction"] <<= m_nKeyDerivationFunctionID;
-        aAlgorithms["EncryptionAlgorithm"] <<= m_nCommonEncryptionID;
+        aAlgorithms[u"StartKeyGenerationAlgorithm"_ustr] <<= m_nStartKeyGenerationID;
+        aAlgorithms[u"KeyDerivationFunction"_ustr] <<= m_nKeyDerivationFunctionID;
+        aAlgorithms[u"EncryptionAlgorithm"_ustr] <<= m_nCommonEncryptionID;
         if (m_oChecksumDigestID)
         {
-            aAlgorithms["ChecksumAlgorithm"] <<= *m_oChecksumDigestID;
+            aAlgorithms[u"ChecksumAlgorithm"_ustr] <<= *m_oChecksumDigestID;
         }
         else
         {
-            aAlgorithms["ChecksumAlgorithm"];
+            aAlgorithms[u"ChecksumAlgorithm"_ustr];
         }
         return Any(aAlgorithms.getAsConstNamedValueList());
     }
@@ -1953,7 +2006,7 @@ extern "C" bool TestImportZip(SvStream& rStream)
     // explicitly tests the "RepairPackage" recovery mode
     rtl::Reference<ZipPackage> xPackage(new ZipPackage(comphelper::getProcessComponentContext()));
     css::uno::Reference<css::io::XInputStream> xStream(new utl::OInputStreamWrapper(rStream));
-    css::uno::Sequence<Any> aArgs{ Any(xStream), Any(NamedValue("RepairPackage", Any(true))) };
+    css::uno::Sequence<Any> aArgs{ Any(xStream), Any(NamedValue(u"RepairPackage"_ustr, Any(true))) };
     xPackage->initialize(aArgs);
     return true;
 }

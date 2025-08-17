@@ -19,14 +19,16 @@
 
 #include <UriBindingHelper.hxx>
 
-#include <tools/solar.h>
-#include <unotools/streamhelper.hxx>
+#include <tools/stream.hxx>
+#include <unotools/streamwrap.hxx>
 
 #include <com/sun/star/embed/XStorage.hpp>
 #include <com/sun/star/embed/ElementModes.hpp>
 #include <osl/diagnose.h>
 #include <rtl/uri.hxx>
 #include <sal/log.hxx>
+
+#include <documentsignaturehelper.hxx>
 
 using namespace com::sun::star;
 
@@ -36,9 +38,10 @@ UriBindingHelper::UriBindingHelper()
 {
 }
 
-UriBindingHelper::UriBindingHelper( const css::uno::Reference < css::embed::XStorage >& rxStorage )
+UriBindingHelper::UriBindingHelper( const css::uno::Reference < css::embed::XStorage >& rxStorage, const uno::Reference<io::XStream>& xScriptingSignatureStream )
 {
     mxStorage = rxStorage;
+    mxScriptingSignatureStream = xScriptingSignatureStream;
 }
 
 void SAL_CALL UriBindingHelper::setUriBinding( const OUString& /*uri*/, const uno::Reference< io::XInputStream >&)
@@ -50,19 +53,17 @@ uno::Reference< io::XInputStream > SAL_CALL UriBindingHelper::getUriBinding( con
     uno::Reference< io::XInputStream > xInputStream;
     if ( mxStorage.is() )
     {
-        xInputStream = OpenInputStream( mxStorage, uri );
+        xInputStream = OpenInputStream( mxStorage, uri, mxScriptingSignatureStream );
     }
     else
     {
-        SvFileStream* pStream = new SvFileStream( uri, StreamMode::READ );
-        sal_uInt64 nBytes = pStream->TellEnd();
-        SvLockBytesRef xLockBytes = new SvLockBytes( pStream, true );
-        xInputStream = new utl::OInputStreamHelper( xLockBytes, nBytes );
+        std::unique_ptr<SvFileStream> pStream(new SvFileStream( uri, StreamMode::READ ));
+        xInputStream = new utl::OInputStreamWrapper( std::move(pStream) );
     }
     return xInputStream;
 }
 
-uno::Reference < io::XInputStream > UriBindingHelper::OpenInputStream( const uno::Reference < embed::XStorage >& rxStore, const OUString& rURI )
+uno::Reference < io::XInputStream > UriBindingHelper::OpenInputStream( const uno::Reference < embed::XStorage >& rxStore, const OUString& rURI, const css::uno::Reference<css::io::XStream>& xScriptingSignatureStream )
 {
     OSL_ASSERT(!rURI.isEmpty());
     uno::Reference < io::XInputStream > xInStream;
@@ -85,11 +86,27 @@ uno::Reference < io::XInputStream > UriBindingHelper::OpenInputStream( const uno
         const OUString sName = ::rtl::Uri::decode(
             aURI, rtl_UriDecodeStrict, rtl_UriCharClassRelSegment);
         if (sName.isEmpty() && !aURI.isEmpty())
-            throw uno::Exception("Could not decode URI for stream element.", nullptr);
+            throw uno::Exception(u"Could not decode URI for stream element."_ustr, nullptr);
 
         uno::Reference< io::XStream > xStream;
         if (!rxStore->hasByName(sName))
-            SAL_WARN("xmlsecurity.helper", "expected stream, but not found: " << sName);
+        {
+            if (xScriptingSignatureStream.is() && sName == DocumentSignatureHelper::GetScriptingContentSignatureDefaultStreamName())
+            {
+                xStream = xScriptingSignatureStream;
+                uno::Reference<io::XSeekable> xSeekable(xScriptingSignatureStream, uno::UNO_QUERY);
+                if (xSeekable.is())
+                {
+                    // Cloned streams are always positioned at the start, do the same in the overlay
+                    // case.
+                    xSeekable->seek(0);
+                }
+            }
+            else
+            {
+                SAL_WARN("xmlsecurity.helper", "expected stream, but not found: " << sName);
+            }
+        }
         else
             xStream = rxStore->cloneStreamElement( sName );
         if ( !xStream.is() )
@@ -101,11 +118,11 @@ uno::Reference < io::XInputStream > UriBindingHelper::OpenInputStream( const uno
         const OUString aStoreName = ::rtl::Uri::decode(
             aURI.copy( 0, nSepPos ), rtl_UriDecodeStrict, rtl_UriCharClassRelSegment);
         if (aStoreName.isEmpty() && !aURI.isEmpty())
-            throw uno::Exception("Could not decode URI for stream element.", nullptr);
+            throw uno::Exception(u"Could not decode URI for stream element."_ustr, nullptr);
 
         OUString aElement = aURI.copy( nSepPos+1 );
         uno::Reference < embed::XStorage > xSubStore = rxStore->openStorageElement( aStoreName, embed::ElementModes::READ );
-        xInStream = OpenInputStream( xSubStore, aElement );
+        xInStream = OpenInputStream( xSubStore, aElement, xScriptingSignatureStream );
     }
     return xInStream;
 }

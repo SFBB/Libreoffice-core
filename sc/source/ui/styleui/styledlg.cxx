@@ -39,44 +39,58 @@
 #include <editeng/flstitem.hxx>
 #include <svx/flagsdef.hxx>
 
+#include <vcl/tabs.hrc>
+
 ScStyleDlg::ScStyleDlg(weld::Window* pParent,
                        SfxStyleSheetBase& rStyleBase,
                        bool bPage)
     : SfxStyleDialogController(pParent,
                         bPage ?
-                          OUString("modules/scalc/ui/pagetemplatedialog.ui") :
-                          OUString("modules/scalc/ui/paratemplatedialog.ui"),
+                          u"modules/scalc/ui/pagetemplatedialog.ui"_ustr :
+                          u"modules/scalc/ui/paratemplatedialog.ui"_ustr,
                         bPage ?
-                          OUString("PageTemplateDialog") :
-                          OUString("ParaTemplateDialog"),
+                          u"PageTemplateDialog"_ustr :
+                          u"ParaTemplateDialog"_ustr,
                         rStyleBase )
     , m_bPage(bPage)
 {
-    SfxAbstractDialogFactory* pFact = SfxAbstractDialogFactory::Create();
     if (m_bPage) // page styles
     {
-        AddTabPage("page", pFact->GetTabPageCreatorFunc( RID_SVXPAGE_PAGE ), pFact->GetTabPageRangesFunc( RID_SVXPAGE_PAGE ) );
-        AddTabPage("borders", pFact->GetTabPageCreatorFunc( RID_SVXPAGE_BORDER ), pFact->GetTabPageRangesFunc( RID_SVXPAGE_BORDER ) );
-        AddTabPage("background", pFact->GetTabPageCreatorFunc( RID_SVXPAGE_BKG ), pFact->GetTabPageRangesFunc( RID_SVXPAGE_BKG ) );
-        AddTabPage("header", &ScHeaderPage::Create,      &ScHeaderPage::GetRanges );
-        AddTabPage("footer", &ScFooterPage::Create,      &ScFooterPage::GetRanges );
-        AddTabPage("sheet", &ScTablePage::Create,     &ScTablePage::GetRanges );
+        AddTabPage(u"page"_ustr, TabResId(RID_TAB_PAGE.aLabel), RID_SVXPAGE_PAGE,
+                   RID_M + RID_TAB_PAGE.sIconName);
+        AddTabPage(u"borders"_ustr, TabResId(RID_TAB_BORDER.aLabel), RID_SVXPAGE_BORDER,
+                   RID_M + RID_TAB_BORDER.sIconName);
+        AddTabPage(u"background"_ustr, TabResId(RID_TAB_BACKGROUND.aLabel), RID_SVXPAGE_BKG,
+                   RID_M + RID_TAB_BACKGROUND.sIconName);
+        AddTabPage(u"header"_ustr, TabResId(RID_TAB_HEADER.aLabel), &ScHeaderPage::Create,
+                   &ScHeaderPage::GetRanges, RID_M + RID_TAB_HEADER.sIconName);
+        AddTabPage(u"footer"_ustr, TabResId(RID_TAB_FOOTER.aLabel), &ScFooterPage::Create,
+                   &ScFooterPage::GetRanges, RID_M + RID_TAB_FOOTER.sIconName);
+        AddTabPage(u"sheet"_ustr, TabResId(RID_TAB_SHEET.aLabel), &ScTablePage::Create,
+                   &ScTablePage::GetRanges, RID_M + RID_TAB_SHEET.sIconName);
     }
     else // cell format styles
     {
-        AddTabPage("numbers", pFact->GetTabPageCreatorFunc( RID_SVXPAGE_NUMBERFORMAT ), pFact->GetTabPageRangesFunc( RID_SVXPAGE_NUMBERFORMAT ));
-        AddTabPage("font", pFact->GetTabPageCreatorFunc( RID_SVXPAGE_CHAR_NAME ), pFact->GetTabPageRangesFunc( RID_SVXPAGE_CHAR_NAME ));
-        AddTabPage("fonteffects", pFact->GetTabPageCreatorFunc( RID_SVXPAGE_CHAR_EFFECTS ), pFact->GetTabPageRangesFunc( RID_SVXPAGE_CHAR_EFFECTS ));
-        AddTabPage("alignment", pFact->GetTabPageCreatorFunc( RID_SVXPAGE_ALIGNMENT ), pFact->GetTabPageRangesFunc( RID_SVXPAGE_ALIGNMENT ));
-        if ( SvtCJKOptions::IsAsianTypographyEnabled() )
+        AddTabPage(u"numbers"_ustr, TabResId(RID_TAB_NUMBERS.aLabel), RID_SVXPAGE_NUMBERFORMAT,
+                   RID_M + RID_TAB_NUMBERS.sIconName);
+        AddTabPage(u"font"_ustr, TabResId(RID_TAB_FONT.aLabel), RID_SVXPAGE_CHAR_NAME,
+                   RID_M + RID_TAB_FONT.sIconName);
+        AddTabPage(u"fonteffects"_ustr, TabResId(RID_TAB_FONTEFFECTS.aLabel),
+                   RID_SVXPAGE_CHAR_EFFECTS, RID_M + RID_TAB_FONTEFFECTS.sIconName);
+        AddTabPage(u"alignment"_ustr, TabResId(RID_TAB_ALIGNMENT.aLabel), RID_SVXPAGE_ALIGNMENT,
+                   RID_M + RID_TAB_ALIGNMENT.sIconName);
+        if (SvtCJKOptions::IsAsianTypographyEnabled())
         {
-            AddTabPage("asiantypo", pFact->GetTabPageCreatorFunc(RID_SVXPAGE_PARA_ASIAN),       pFact->GetTabPageRangesFunc(RID_SVXPAGE_PARA_ASIAN));
+            AddTabPage(u"asiantypo"_ustr, TabResId(RID_TAB_ASIANTYPO.aLabel),
+                       RID_SVXPAGE_PARA_ASIAN, RID_M + RID_TAB_ASIANTYPO.sIconName);
         }
-        else
-            RemoveTabPage("asiantypo");
-        AddTabPage("borders", pFact->GetTabPageCreatorFunc( RID_SVXPAGE_BORDER ), pFact->GetTabPageRangesFunc( RID_SVXPAGE_BORDER ));
-        AddTabPage("background", pFact->GetTabPageCreatorFunc( RID_SVXPAGE_BKG ), pFact->GetTabPageRangesFunc( RID_SVXPAGE_BKG ));
-        AddTabPage("protection", &ScTabPageProtection::Create,    &ScTabPageProtection::GetRanges);
+        AddTabPage(u"borders"_ustr, TabResId(RID_TAB_BORDER.aLabel), RID_SVXPAGE_BORDER,
+                   RID_M + RID_TAB_BORDER.sIconName);
+        AddTabPage(u"background"_ustr, TabResId(RID_TAB_BACKGROUND.aLabel), RID_SVXPAGE_BKG,
+                   RID_M + RID_TAB_BACKGROUND.sIconName);
+        AddTabPage(u"protection"_ustr, TabResId(RID_TAB_PROTECTION.aLabel),
+                   &ScTabPageProtection::Create, &ScTabPageProtection::GetRanges,
+                   RID_M + RID_TAB_PROTECTION.sIconName);
     }
 }
 
@@ -140,26 +154,38 @@ void ScStyleDlg::RefreshInputSet()
 }
 
 ScDrawStyleDlg::ScDrawStyleDlg(weld::Window* pParent, SfxStyleSheetBase& rStyleBase, SdrView* pView)
-    : SfxStyleDialogController(pParent, "modules/scalc/ui/drawtemplatedialog.ui", "DrawTemplateDialog", rStyleBase)
+    : SfxStyleDialogController(pParent, u"modules/scalc/ui/drawtemplatedialog.ui"_ustr, u"DrawTemplateDialog"_ustr, rStyleBase)
     , mpView(pView)
 {
-    AddTabPage("line", RID_SVXPAGE_LINE);
-    AddTabPage("area", RID_SVXPAGE_AREA);
-    AddTabPage("shadowing", RID_SVXPAGE_SHADOW);
-    AddTabPage("transparency", RID_SVXPAGE_TRANSPARENCE);
-    AddTabPage("font", RID_SVXPAGE_CHAR_NAME);
-    AddTabPage("fonteffect", RID_SVXPAGE_CHAR_EFFECTS);
-    AddTabPage("background", RID_SVXPAGE_BKG);
-    AddTabPage("indents", RID_SVXPAGE_STD_PARAGRAPH);
-    AddTabPage("text", RID_SVXPAGE_TEXTATTR);
-    AddTabPage("animation", RID_SVXPAGE_TEXTANIMATION);
-    AddTabPage("dimensioning", RID_SVXPAGE_MEASURE);
-    AddTabPage("alignment", RID_SVXPAGE_ALIGN_PARAGRAPH);
-    AddTabPage("tabs", RID_SVXPAGE_TABULATOR);
+    AddTabPage(u"line"_ustr, TabResId(RID_TAB_LINE.aLabel), RID_SVXPAGE_LINE,
+               RID_M + RID_TAB_LINE.sIconName);
+    AddTabPage(u"area"_ustr, TabResId(RID_TAB_AREA.aLabel), RID_SVXPAGE_AREA,
+               RID_M + RID_TAB_AREA.sIconName);
+    AddTabPage(u"shadowing"_ustr, TabResId(RID_TAB_SHADOW.aLabel), RID_SVXPAGE_SHADOW,
+               RID_M + RID_TAB_SHADOW.sIconName);
+    AddTabPage(u"transparency"_ustr, TabResId(RID_TAB_TRANSPARENCE.aLabel),
+               RID_SVXPAGE_TRANSPARENCE, RID_M + RID_TAB_TRANSPARENCE.sIconName);
+    AddTabPage(u"font"_ustr, TabResId(RID_TAB_FONT.aLabel), RID_SVXPAGE_CHAR_NAME,
+               RID_M + RID_TAB_FONT.sIconName);
+    AddTabPage(u"fonteffect"_ustr, TabResId(RID_TAB_FONTEFFECTS.aLabel), RID_SVXPAGE_CHAR_EFFECTS,
+               RID_M + RID_TAB_FONTEFFECTS.sIconName);
+    AddTabPage(u"indents"_ustr, TabResId(RID_TAB_INDENTS.aLabel), RID_SVXPAGE_STD_PARAGRAPH,
+               RID_M + RID_TAB_INDENTS.sIconName);
+    AddTabPage(u"text"_ustr, TabResId(RID_TAB_TEXT.aLabel), RID_SVXPAGE_TEXTATTR,
+               RID_M + RID_TAB_TEXT.sIconName);
+    AddTabPage(u"animation"_ustr, TabResId(RID_TAB_TEXTANIMATION.aLabel), RID_SVXPAGE_TEXTANIMATION,
+               RID_M + RID_TAB_TEXTANIMATION.sIconName);
+    AddTabPage(u"dimensioning"_ustr, TabResId(RID_TAB_DIMENSIONING.aLabel), RID_SVXPAGE_MEASURE,
+               RID_M + RID_TAB_DIMENSIONING.sIconName);
+    AddTabPage(u"alignment"_ustr, TabResId(RID_TAB_ALIGNMENT.aLabel), RID_SVXPAGE_ALIGN_PARAGRAPH,
+               RID_M + RID_TAB_ALIGNMENT.sIconName);
     if (SvtCJKOptions::IsAsianTypographyEnabled())
-        AddTabPage("asiantypo", RID_SVXPAGE_PARA_ASIAN);
-    else
-        RemoveTabPage("asiantypo");
+        AddTabPage(u"asiantypo"_ustr, TabResId(RID_TAB_ASIANTYPO.aLabel), RID_SVXPAGE_PARA_ASIAN,
+                   RID_M + RID_TAB_ASIANTYPO.sIconName);
+    AddTabPage(u"tabs"_ustr, TabResId(RID_TAB_TABS.aLabel), RID_SVXPAGE_TABULATOR,
+               RID_M + RID_TAB_TABS.sIconName);
+    AddTabPage(u"background"_ustr, TabResId(RID_TAB_HIGHLIGHTING.aLabel), RID_SVXPAGE_BKG,
+               RID_M + RID_TAB_HIGHLIGHTING.sIconName);
 }
 
 void ScDrawStyleDlg::PageCreated(const OUString& rPageId, SfxTabPage& rTabPage)

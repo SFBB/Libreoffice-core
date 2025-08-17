@@ -80,7 +80,6 @@ public:
     void set_sensitive(bool bSensitive) { m_xControl->set_sensitive(bSensitive); }
     void grab_focus() { m_xControl->grab_focus(); }
     int get_active() const { return m_xControl->get_active(); }
-    void set_active(int nActive) { m_xControl->set_active(nActive); }
     void show() { m_xControl->show(); }
     void hide() { m_xControl->hide(); }
 };
@@ -132,7 +131,10 @@ public:
 
     rtl_TextEncoding    GetSelectTextEncoding() const;
 
-    void connect_changed(const Link<weld::TreeView&, void>& rLink) { m_xControl->connect_changed(rLink); }
+    void connect_changed(const Link<weld::TreeView&, void>& rLink)
+    {
+        m_xControl->connect_selection_changed(rLink);
+    }
     void connect_row_activated(const Link<weld::TreeView&, bool>& rLink) { m_xControl->connect_row_activated(rLink); }
     void grab_focus() { m_xControl->grab_focus(); }
     void show() { m_xControl->show(); }

@@ -44,7 +44,7 @@ class MysqlCDriver : public ODriver_BASE
 protected:
     Reference<css::lang::XMultiServiceFactory> m_xFactory;
     ::osl::Mutex m_aMutex; // mutex is need to control member access
-    OWeakRefArray m_xConnections; // vector containing a list
+    std::vector<unotools::WeakReference<OConnection>> m_xConnections; // vector containing a list
         // of all the Connection objects
         // for this Driver
 public:

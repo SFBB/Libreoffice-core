@@ -22,6 +22,7 @@
 #include <editeng/langitem.hxx>
 #include <vcl/scheduler.hxx>
 #include <comphelper/propertyvalue.hxx>
+#include <comphelper/scopeguard.hxx>
 
 #include <wrtsh.hxx>
 #include <fmtanchr.hxx>
@@ -41,13 +42,15 @@
 #include <pagefrm.hxx>
 #include <sortedobjs.hxx>
 #include <itabenum.hxx>
+#include <redline.hxx>
+#include <UndoRedline.hxx>
 
 /// Covers sw/source/core/doc/ fixes.
 class SwCoreDocTest : public SwModelTestBase
 {
 public:
     SwCoreDocTest()
-        : SwModelTestBase("/sw/qa/core/doc/data/")
+        : SwModelTestBase(u"/sw/qa/core/doc/data/"_ustr)
     {
     }
 };
@@ -59,7 +62,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testMathInsertAnchorType)
     SwDoc* pDoc = getSwDoc();
 
     // When inserting an a math object.
-    SwWrtShell* pShell = pDoc->GetDocShell()->GetWrtShell();
+    SwWrtShell* pShell = getSwDocShell()->GetWrtShell();
     SvGlobalName aGlobalName(SO3_SM_CLASSID);
     pShell->InsertObject(svt::EmbeddedObjectRef(), &aGlobalName);
 
@@ -99,8 +102,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testTextboxTextRotateAngle)
 CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testNumDownIndent)
 {
     createSwDoc("num-down-indent.docx");
-    SwDoc* pDoc = getSwDoc();
-    SwDocShell* pDocShell = pDoc->GetDocShell();
+    SwDocShell* pDocShell = getSwDocShell();
     SwWrtShell* pWrtShell = pDocShell->GetWrtShell();
     pWrtShell->Down(/*bSelect=*/false);
     SwEditWin& rEditWin = pDocShell->GetView()->GetEditWin();
@@ -112,7 +114,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testNumDownIndent)
     // - Expected: \tB
     // - Actual  : B
     // i.e. pressing <tab> at the start of the paragraph did not change the layout.
-    CPPUNIT_ASSERT_EQUAL(OUString("\tB"), pTextNode->GetText());
+    CPPUNIT_ASSERT_EQUAL(u"\tB"_ustr, pTextNode->GetText());
     ErrorRegistry::Reset();
 }
 
@@ -123,8 +125,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testBulletsOnSpaceOff)
     pAutoCorrect->GetSwFlags().bSetNumRuleAfterSpace = false;
 
     createSwDoc();
-    SwDoc* pDoc = getSwDoc();
-    SwDocShell* pDocShell = pDoc->GetDocShell();
+    SwDocShell* pDocShell = getSwDocShell();
     SwWrtShell* pWrtShell = pDocShell->GetWrtShell();
     pWrtShell->Down(/*bSelect=*/false);
     SwEditWin& rEditWin = pDocShell->GetView()->GetEditWin();
@@ -136,7 +137,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testBulletsOnSpaceOff)
     rEditWin.KeyInput(aKeyEvent3);
     SwTextNode* pTextNode = pWrtShell->GetCursor()->GetPointNode().GetTextNode();
 
-    CPPUNIT_ASSERT_EQUAL(OUString("- a"), pTextNode->GetText());
+    CPPUNIT_ASSERT_EQUAL(u"- a"_ustr, pTextNode->GetText());
     ErrorRegistry::Reset();
 }
 
@@ -147,8 +148,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testBulletsOnSpace)
     pAutoCorrect->GetSwFlags().bSetNumRuleAfterSpace = true;
 
     createSwDoc();
-    SwDoc* pDoc = getSwDoc();
-    SwDocShell* pDocShell = pDoc->GetDocShell();
+    SwDocShell* pDocShell = getSwDocShell();
     SwWrtShell* pWrtShell = pDocShell->GetWrtShell();
     pWrtShell->Down(/*bSelect=*/false);
     SwEditWin& rEditWin = pDocShell->GetView()->GetEditWin();
@@ -161,15 +161,14 @@ CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testBulletsOnSpace)
     SwTextNode* pTextNode = pWrtShell->GetCursor()->GetPointNode().GetTextNode();
 
     // '- ' was converted into bullet
-    CPPUNIT_ASSERT_EQUAL(OUString("a"), pTextNode->GetText());
+    CPPUNIT_ASSERT_EQUAL(u"a"_ustr, pTextNode->GetText());
     ErrorRegistry::Reset();
 }
 
 CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testLocaleIndependentTemplate)
 {
     createSwDoc("locale-independent-template.odt");
-    SwDoc* pDoc = getSwDoc();
-    SwDocShell* pDocShell = pDoc->GetDocShell();
+    SwDocShell* pDocShell = getSwDocShell();
     SwWrtShell* pWrtShell = pDocShell->GetWrtShell();
     SfxItemSet aSet(pWrtShell->GetAttrPool(), svl::Items<RES_CHRATR_LANGUAGE, RES_CHRATR_LANGUAGE>);
     pWrtShell->GetCurAttr(aSet);
@@ -195,7 +194,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testTextBoxZOrder)
     const sw::SpzFrameFormat* pEllipse = rFormats[2];
     const SdrObject* pEllipseShape = pEllipse->FindRealSdrObject();
     // Make sure we test the right shape.
-    CPPUNIT_ASSERT_EQUAL(OUString("Shape3"), pEllipseShape->GetName());
+    CPPUNIT_ASSERT_EQUAL(u"Shape3"_ustr, pEllipseShape->GetName());
     // Without the accompanying fix in place, this test would have failed with:
     // - Expected: 2
     // - Actual  : 1
@@ -207,30 +206,27 @@ CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testTextBoxMakeFlyFrame)
 {
     // Given a document with an as-char textbox (as-char draw format + at-char fly format):
     createSwDoc("textbox-makeflyframe.docx");
-    SwDoc* pDoc = getSwDoc();
 
     // When cutting the textbox and pasting it to a new document:
     selectShape(1);
-    SwDocShell* pDocShell = pDoc->GetDocShell();
+    SwDocShell* pDocShell = getSwDocShell();
     SwWrtShell* pWrtShell = pDocShell->GetWrtShell();
     rtl::Reference<SwTransferable> pTransfer = new SwTransferable(*pWrtShell);
     pTransfer->Cut();
     TransferableDataHelper aHelper(pTransfer);
-    uno::Reference<lang::XComponent> xDoc2
-        = loadFromDesktop("private:factory/swriter", "com.sun.star.text.TextDocument", {});
-    SwXTextDocument* pTextDoc2 = dynamic_cast<SwXTextDocument*>(xDoc2.get());
+    mxComponent2 = loadFromDesktop(u"private:factory/swriter"_ustr,
+                                   u"com.sun.star.text.TextDocument"_ustr, {});
+    SwXTextDocument* pTextDoc2 = dynamic_cast<SwXTextDocument*>(mxComponent2.get());
     SwDocShell* pDocShell2 = pTextDoc2->GetDocShell();
     SwWrtShell* pWrtShell2 = pDocShell2->GetWrtShell();
     SwTransferable::Paste(*pWrtShell2, aHelper);
 
     // Then make sure its fly frame is created.
-    mxComponent->dispose();
-    mxComponent = xDoc2;
-    xmlDocUniquePtr pLayout = parseLayoutDump();
+    xmlDocUniquePtr pLayout = parseLayoutDump(mxComponent2);
     // Without the accompanying fix in place, this test would have failed, because the first text
     // frame in the body frame had an SwAnchoredDrawObject anchored to it, but not a fly frame, so
     // a blank square was painted, not the image.
-    assertXPath(pLayout, "/root/page/body/txt/anchored/fly"_ostr, 1);
+    assertXPath(pLayout, "/root/page/body/txt/anchored/fly", 1);
 }
 
 CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testIMEGrouping)
@@ -245,17 +241,17 @@ CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testIMEGrouping)
     Scheduler::ProcessEventsToIdle();
 
     // When pressing two keys via IME:
-    SwDocShell* pDocShell = pDoc->GetDocShell();
+    SwDocShell* pDocShell = getSwDocShell();
     SwEditWin& rEditWin = pDocShell->GetView()->GetEditWin();
-    rEditWin.PostExtTextInputEvent(VclEventId::ExtTextInput, "a");
-    rEditWin.PostExtTextInputEvent(VclEventId::EndExtTextInput, "");
-    rEditWin.PostExtTextInputEvent(VclEventId::ExtTextInput, "b");
-    rEditWin.PostExtTextInputEvent(VclEventId::EndExtTextInput, "");
+    rEditWin.PostExtTextInputEvent(VclEventId::ExtTextInput, u"a"_ustr);
+    rEditWin.PostExtTextInputEvent(VclEventId::EndExtTextInput, u""_ustr);
+    rEditWin.PostExtTextInputEvent(VclEventId::ExtTextInput, u"b"_ustr);
+    rEditWin.PostExtTextInputEvent(VclEventId::EndExtTextInput, u""_ustr);
 
     // Then make sure that gets grouped together to a single undo action:
     SwWrtShell* pWrtShell = pDocShell->GetWrtShell();
     SwTextNode* pTextNode = pWrtShell->GetCursor()->GetPointNode().GetTextNode();
-    CPPUNIT_ASSERT_EQUAL(OUString("ab"), pTextNode->GetText());
+    CPPUNIT_ASSERT_EQUAL(u"ab"_ustr, pTextNode->GetText());
     // Without the accompanying fix in place, this test would have failed with:
     // - Expected: 1
     // - Actual  : 2
@@ -273,17 +269,17 @@ CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testImageHyperlinkStyle)
     uno::Reference<text::XText> xText = xDocument->getText();
     uno::Reference<text::XTextCursor> xCursor = xText->createTextCursor();
     uno::Reference<text::XTextContent> xImage(
-        xFactory->createInstance("com.sun.star.text.TextGraphicObject"), uno::UNO_QUERY);
+        xFactory->createInstance(u"com.sun.star.text.TextGraphicObject"_ustr), uno::UNO_QUERY);
     xText->insertTextContent(xCursor, xImage, /*bAbsorb=*/false);
     uno::Reference<beans::XPropertySet> xImageProps(xImage, uno::UNO_QUERY);
-    OUString aExpected = "http://www.example.com";
-    xImageProps->setPropertyValue("HyperLinkURL", uno::Any(aExpected));
+    OUString aExpected = u"http://www.example.com"_ustr;
+    xImageProps->setPropertyValue(u"HyperLinkURL"_ustr, uno::Any(aExpected));
 
     // When applying a frame style on it:
-    xImageProps->setPropertyValue("FrameStyleName", uno::Any(OUString("Frame")));
+    xImageProps->setPropertyValue(u"FrameStyleName"_ustr, uno::Any(u"Frame"_ustr));
 
     // Then make sure that the hyperlink is not lost:
-    auto aActual = getProperty<OUString>(xImageProps, "HyperLinkURL");
+    auto aActual = getProperty<OUString>(xImageProps, u"HyperLinkURL"_ustr);
     // Without the accompanying fix in place, this test would have failed with:
     // - Expected: http://www.example.com
     // - Actual  :
@@ -296,20 +292,19 @@ CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testContentControlDelete)
 {
     // Given a document with a content control:
     createSwDoc();
-    SwDoc* pDoc = getSwDoc();
     uno::Reference<lang::XMultiServiceFactory> xMSF(mxComponent, uno::UNO_QUERY);
     uno::Reference<text::XTextDocument> xTextDocument(mxComponent, uno::UNO_QUERY);
     uno::Reference<text::XText> xText = xTextDocument->getText();
     uno::Reference<text::XTextCursor> xCursor = xText->createTextCursor();
-    xText->insertString(xCursor, "test", /*bAbsorb=*/false);
+    xText->insertString(xCursor, u"test"_ustr, /*bAbsorb=*/false);
     xCursor->gotoStart(/*bExpand=*/false);
     xCursor->gotoEnd(/*bExpand=*/true);
     uno::Reference<text::XTextContent> xContentControl(
-        xMSF->createInstance("com.sun.star.text.ContentControl"), uno::UNO_QUERY);
+        xMSF->createInstance(u"com.sun.star.text.ContentControl"_ustr), uno::UNO_QUERY);
     xText->insertTextContent(xCursor, xContentControl, /*bAbsorb=*/true);
 
     // When deleting the dummy character at the end of the content control:
-    SwWrtShell* pWrtShell = pDoc->GetDocShell()->GetWrtShell();
+    SwWrtShell* pWrtShell = getSwDocShell()->GetWrtShell();
     pWrtShell->SttEndDoc(/*bStt=*/false);
     pWrtShell->DelLeft();
 
@@ -320,7 +315,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testContentControlDelete)
     // - Expected: ^Atest^A
     // - Actual  : ^Atest
     // i.e. the end dummy character got deleted, but not the first one, which is inconsistent.
-    CPPUNIT_ASSERT_EQUAL(OUString("\x0001test\x0001"), pTextNode->GetText());
+    CPPUNIT_ASSERT_EQUAL(u"\x0001test\x0001"_ustr, pTextNode->GetText());
 }
 
 CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testCopyBookmarks)
@@ -334,7 +329,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testCopyBookmarks)
     for (auto it = pDoc->getIDocumentMarkAccess()->getBookmarksBegin();
          it != pDoc->getIDocumentMarkAccess()->getBookmarksEnd(); ++it)
     {
-        if ((*it)->GetName().indexOf("Copy") == -1)
+        if ((*it)->GetName().toString().indexOf("Copy") == -1)
         {
             ++nActual;
         }
@@ -351,7 +346,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testCopyBookmarks)
     nActual = 0;
     for (auto pSpz : *pDoc->GetSpzFrameFormats())
     {
-        if (pSpz->GetName().indexOf("Copy") == -1)
+        if (pSpz->GetName().toString().indexOf("Copy") == -1)
         {
             ++nActual;
         }
@@ -371,25 +366,25 @@ CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testLinkedStyleDelete)
     createSwDoc();
     uno::Reference<lang::XMultiServiceFactory> xFactory(mxComponent, uno::UNO_QUERY);
     uno::Reference<beans::XPropertySet> xParaStyle(
-        xFactory->createInstance("com.sun.star.style.ParagraphStyle"), uno::UNO_QUERY);
+        xFactory->createInstance(u"com.sun.star.style.ParagraphStyle"_ustr), uno::UNO_QUERY);
     uno::Reference<beans::XPropertySet> xCharStyle(
-        xFactory->createInstance("com.sun.star.style.CharacterStyle"), uno::UNO_QUERY);
-    uno::Reference<container::XNameContainer> xParaStyles(getStyles("ParagraphStyles"),
+        xFactory->createInstance(u"com.sun.star.style.CharacterStyle"_ustr), uno::UNO_QUERY);
+    uno::Reference<container::XNameContainer> xParaStyles(getStyles(u"ParagraphStyles"_ustr),
                                                           uno::UNO_QUERY);
-    xParaStyles->insertByName("myparastyle", uno::Any(xParaStyle));
-    uno::Reference<container::XNameContainer> xCharStyles(getStyles("CharacterStyles"),
+    xParaStyles->insertByName(u"myparastyle"_ustr, uno::Any(xParaStyle));
+    uno::Reference<container::XNameContainer> xCharStyles(getStyles(u"CharacterStyles"_ustr),
                                                           uno::UNO_QUERY);
-    xCharStyles->insertByName("mycharstyle", uno::Any(xCharStyle));
-    xParaStyle->setPropertyValue("LinkStyle", uno::Any(OUString("mycharstyle")));
-    xCharStyle->setPropertyValue("LinkStyle", uno::Any(OUString("myparastyle")));
+    xCharStyles->insertByName(u"mycharstyle"_ustr, uno::Any(xCharStyle));
+    xParaStyle->setPropertyValue(u"LinkStyle"_ustr, uno::Any(u"mycharstyle"_ustr));
+    xCharStyle->setPropertyValue(u"LinkStyle"_ustr, uno::Any(u"myparastyle"_ustr));
 
     // When deleting the paragraph style (and only that):
-    xParaStyles->removeByName("myparastyle");
+    xParaStyles->removeByName(u"myparastyle"_ustr);
 
     // Then make sure we don't crash on save:
     uno::Reference<frame::XStorable> xStorable(mxComponent, uno::UNO_QUERY);
     uno::Sequence<beans::PropertyValue> aArgs = {
-        comphelper::makePropertyValue("FilterName", OUString("writer8")),
+        comphelper::makePropertyValue(u"FilterName"_ustr, u"writer8"_ustr),
     };
     xStorable->storeAsURL(maTempFile.GetURL(), aArgs);
 }
@@ -440,25 +435,25 @@ CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testBookmarkDeleteListeners)
     uno::Reference<text::XText> xText = xTextDocument->getText();
     uno::Reference<text::XTextCursor> xCursor = xText->createTextCursor();
     {
-        xText->insertString(xCursor, "test", /*bAbsorb=*/false);
+        xText->insertString(xCursor, u"test"_ustr, /*bAbsorb=*/false);
         xCursor->gotoStart(/*bExpand=*/false);
         xCursor->gotoEnd(/*bExpand=*/true);
         uno::Reference<lang::XMultiServiceFactory> xFactory(mxComponent, uno::UNO_QUERY);
         uno::Reference<text::XTextContent> xBookmark(
-            xFactory->createInstance("com.sun.star.text.Bookmark"), uno::UNO_QUERY);
+            xFactory->createInstance(u"com.sun.star.text.Bookmark"_ustr), uno::UNO_QUERY);
         uno::Reference<container::XNamed> xBookmarkNamed(xBookmark, uno::UNO_QUERY);
-        xBookmarkNamed->setName("mybookmark");
+        xBookmarkNamed->setName(u"mybookmark"_ustr);
         xText->insertTextContent(xCursor, xBookmark, /*bAbsorb=*/true);
     }
     {
         xCursor->gotoEnd(/*bExpand=*/false);
-        xText->insertString(xCursor, "test2", /*bAbsorb=*/false);
+        xText->insertString(xCursor, u"test2"_ustr, /*bAbsorb=*/false);
         xCursor->goLeft(4, /*bExpand=*/true);
         uno::Reference<lang::XMultiServiceFactory> xFactory(mxComponent, uno::UNO_QUERY);
         uno::Reference<text::XTextContent> xBookmark(
-            xFactory->createInstance("com.sun.star.text.Bookmark"), uno::UNO_QUERY);
+            xFactory->createInstance(u"com.sun.star.text.Bookmark"_ustr), uno::UNO_QUERY);
         uno::Reference<container::XNamed> xBookmarkNamed(xBookmark, uno::UNO_QUERY);
-        xBookmarkNamed->setName("mybookmark2");
+        xBookmarkNamed->setName(u"mybookmark2"_ustr);
         xText->insertTextContent(xCursor, xBookmark, /*bAbsorb=*/true);
     }
     uno::Reference<text::XBookmarksSupplier> xBookmarksSupplier(mxComponent, uno::UNO_QUERY);
@@ -471,7 +466,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testBookmarkDeleteListeners)
     xController->addSelectionChangeListener(new SelectionChangeListener(xBookmarks));
 
     // Then make sure that deleting a bookmark doesn't crash:
-    uno::Reference<lang::XComponent> xBookmark(xBookmarks->getByName("mybookmark2"),
+    uno::Reference<lang::XComponent> xBookmark(xBookmarks->getByName(u"mybookmark2"_ustr),
                                                uno::UNO_QUERY);
     // Without the accompanying fix in place, this test would have crashed, an invalidated iterator
     // was used with erase().
@@ -546,7 +541,7 @@ CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testSplitExpandGlossary)
     pWrtShell->SttEndDoc(/*bStt=*/false);
 
     // When expanding 'dt' to an actual dummy text:
-    dispatchCommand(mxComponent, ".uno:ExpandGlossary", {});
+    dispatchCommand(mxComponent, u".uno:ExpandGlossary"_ustr, {});
 
     // Then make sure the 2 fly frames stay on the 2 pages:
     SwDoc* pDoc = getSwDoc();
@@ -580,9 +575,9 @@ CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testSplitFlyInsertUndo)
     pWrtShell->InsertTable(aTableOptions, /*nRows=*/2, /*nCols=*/1);
     pWrtShell->MoveTable(GotoPrevTable, fnTableStart);
     pWrtShell->GoPrevCell();
-    pWrtShell->Insert("A1");
+    pWrtShell->Insert(u"A1"_ustr);
     pWrtShell->GoNextCell();
-    pWrtShell->Insert("A2");
+    pWrtShell->Insert(u"A2"_ustr);
     // Select cell:
     pWrtShell->SelAll();
     // Select table:
@@ -607,6 +602,495 @@ CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testSplitFlyInsertUndo)
 
     // Then make sure we again have a frame:
     CPPUNIT_ASSERT(!rFlyFormats.empty());
+}
+
+CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testVirtPageNumReset)
+{
+    createSwDoc("tdf160843.odt");
+    auto pWrtShell = getSwDocShell()->GetWrtShell();
+    sal_uInt16 nPhys = 0;
+    sal_uInt16 nVirt = 0;
+
+    pWrtShell->GotoPage(1, false);
+    pWrtShell->GetPageNum(nPhys, nVirt, true, false);
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_uInt16>(1), nPhys);
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_uInt16>(1), nVirt);
+
+    pWrtShell->GotoPage(3, false);
+    pWrtShell->GetPageNum(nPhys, nVirt, true, false);
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_uInt16>(3), nPhys);
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_uInt16>(1), nVirt);
+
+    pWrtShell->GotoPage(5, false);
+    pWrtShell->GetPageNum(nPhys, nVirt, true, false);
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_uInt16>(5), nPhys);
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_uInt16>(1), nVirt);
+}
+
+CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testDefaultPageDescUsed)
+{
+    createSwDoc();
+    auto pDoc = getSwDocShell()->GetDoc();
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), pDoc->GetPageDescCnt());
+    const SwPageDesc& rPageDesc = pDoc->GetPageDesc(0);
+    CPPUNIT_ASSERT(rPageDesc.IsUsed());
+}
+
+CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testTextBoxWordWrap)
+{
+    // Given a document with a shape in the header that extends horizontally when there is enough
+    // content:
+    createSwDoc("text-box-word-wrap.docx");
+
+    // When checking the layout size of the shape:
+    xmlDocUniquePtr pXmlDoc = parseLayoutDump();
+    auto nFlyHeight = getXPath(pXmlDoc, "//anchored/fly/infos/bounds", "height").toInt32();
+
+    // Then make sure it has a small height, hosting just one line:
+    // Without the accompanying fix in place, this test would have failed with:
+    // - Expected: 773
+    // - Actual  : 5183
+    // i.e. the shape had new lines for each character instead of 1 line.
+    CPPUNIT_ASSERT_LESS(static_cast<sal_Int32>(1000), nFlyHeight);
+}
+
+CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testAtCharImageCopy)
+{
+    // Given a document with 2 pages, one draw object on both pages:
+    createSwDoc("at-char-image-copy.odt");
+    SwWrtShell* pWrtShell1 = getSwDocShell()->GetWrtShell();
+    pWrtShell1->SelAll();
+    rtl::Reference<SwTransferable> xTransfer = new SwTransferable(*pWrtShell1);
+    xTransfer->Copy();
+    // Don't use createSwDoc(), UnoApiTest::loadWithParams() would dispose the first document.
+    mxComponent2 = loadFromDesktop(u"private:factory/swriter"_ustr);
+
+    // When copying the body text from that document to a new one:
+    auto pXTextDocument2 = dynamic_cast<SwXTextDocument*>(mxComponent2.get());
+    SwDocShell* pDocShell2 = pXTextDocument2->GetDocShell();
+    SwWrtShell* pWrtShell2 = pDocShell2->GetWrtShell();
+    TransferableDataHelper aHelper(xTransfer);
+    SwTransferable::Paste(*pWrtShell2, aHelper);
+
+    // Then make sure the new document also has the 2 images on the 2 pages:
+    SwDoc* pDoc2 = pDocShell2->GetDoc();
+    SwRootFrame* pLayout2 = pDoc2->getIDocumentLayoutAccess().GetCurrentLayout();
+    auto pPage1 = pLayout2->GetLower()->DynCastPageFrame();
+    CPPUNIT_ASSERT(pPage1);
+    CPPUNIT_ASSERT(pPage1->GetSortedObjs());
+    const SwSortedObjs& rPage1Objs = *pPage1->GetSortedObjs();
+    // Without the accompanying fix in place, this test would have failed with:
+    // - Expected: 1
+    // - Actual  : 2
+    // i.e. both images went to page 1.
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), rPage1Objs.size());
+    auto pPage2 = pPage1->GetNext()->DynCastPageFrame();
+    CPPUNIT_ASSERT(pPage2);
+    CPPUNIT_ASSERT(pPage2->GetSortedObjs());
+    const SwSortedObjs& rPage2Objs = *pPage2->GetSortedObjs();
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), rPage2Objs.size());
+}
+
+CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testEditListAutofmt)
+{
+    // Given a document with a number portion in para 2, para marker is formatted to be red:
+    createSwDoc("edit-list-autofmt.docx");
+    SwWrtShell* pWrtShell = getSwDocShell()->GetWrtShell();
+    pWrtShell->Down(/*bSelect=*/false);
+    pWrtShell->EndPara();
+
+    // When changing that red to be black:
+    uno::Sequence<beans::PropertyValue> aArgs = {
+        comphelper::makePropertyValue("Color.Color", static_cast<sal_Int32>(COL_BLACK)),
+    };
+    dispatchCommand(mxComponent, ".uno:Color", aArgs);
+
+    // Then make sure the layout turns into red:
+    xmlDocUniquePtr pXmlDoc = parseLayoutDump();
+    // Without the accompanying fix in place, this test would have failed with:
+    // - Expected: 00000000
+    // - Actual  : 00ff0000
+    // i.e. clicking on the toolbar button didn't result in a layout update because the doc model
+    // became inconsistent.
+    assertXPath(pXmlDoc, "/root/page/body/txt[2]/SwParaPortion/SwLineLayout/SwFieldPortion/SwFont",
+                "color", u"00000000");
+}
+
+CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testInsThenDelRejectUndo)
+{
+    // Given a document with an outer insert redline and an inner delete redline:
+    createSwDoc("ins-then-del.docx");
+
+    // When rejecting the insert, undo, then re-rejecting:
+    SwWrtShell* pWrtShell = getSwDocShell()->GetWrtShell();
+    pWrtShell->RejectRedline(0);
+    SwDoc* pDoc = getSwDocShell()->GetDoc();
+    IDocumentRedlineAccess& rIDRA = pDoc->getIDocumentRedlineAccess();
+    SwRedlineTable& rRedlines = rIDRA.GetRedlineTable();
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(0), rRedlines.size());
+    pWrtShell->Undo();
+    pWrtShell->SttEndDoc(/*bStt=*/true);
+    pWrtShell->RejectRedline(0);
+
+    // Then make sure that the reject of insert also gets rid of the delete on top of it:
+    // Without the accompanying fix in place, this test would have failed with:
+    // - Expected: 0
+    // - Actual  : 2
+    // i.e. initially the doc had no redlines after insert, but undo + doing it again resulted in
+    // redlines, which is inconsistent.
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(0), rRedlines.size());
+
+    // And given a reset state, matching the one after import:
+    pWrtShell->Undo();
+    {
+        CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(3), rRedlines.size());
+        CPPUNIT_ASSERT_EQUAL(RedlineType::Insert, rRedlines[0]->GetType());
+        const SwRedlineData& rRedlineData1 = rRedlines[1]->GetRedlineData(0);
+        CPPUNIT_ASSERT_EQUAL(RedlineType::Delete, rRedlineData1.GetType());
+        CPPUNIT_ASSERT(rRedlineData1.Next());
+        const SwRedlineData& rInnerRedlineData = *rRedlineData1.Next();
+        CPPUNIT_ASSERT_EQUAL(RedlineType::Insert, rInnerRedlineData.GetType());
+        CPPUNIT_ASSERT_EQUAL(RedlineType::Insert, rRedlines[2]->GetType());
+    }
+
+    // When rejecting the insert-then-delete + undo:
+    SwCursor* pCursor = pWrtShell->GetCursor();
+    pCursor->DeleteMark();
+    pWrtShell->SttEndDoc(/*bStt=*/true);
+    pWrtShell->Right(SwCursorSkipMode::Chars, /*bSelect=*/false, 4, /*bBasicCall=*/false);
+    SwRedlineTable::size_type nRedline{};
+    rRedlines.FindAtPosition(*pCursor->Start(), nRedline);
+    // A redline is found.
+    CPPUNIT_ASSERT_LESS(rRedlines.size(), nRedline);
+    pWrtShell->RejectRedline(nRedline);
+    pWrtShell->Undo();
+
+    // Then make sure that the restored redline has 2 redlines data: delete and insert:
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(3), rRedlines.size());
+    CPPUNIT_ASSERT_EQUAL(RedlineType::Insert, rRedlines[0]->GetType());
+    const SwRedlineData& rRedlineData1 = rRedlines[1]->GetRedlineData(0);
+    CPPUNIT_ASSERT_EQUAL(RedlineType::Delete, rRedlineData1.GetType());
+    // The insert "under" the delete was lost.
+    CPPUNIT_ASSERT(rRedlineData1.Next());
+    const SwRedlineData& rInnerRedlineData = *rRedlineData1.Next();
+    CPPUNIT_ASSERT_EQUAL(RedlineType::Insert, rInnerRedlineData.GetType());
+    CPPUNIT_ASSERT_EQUAL(RedlineType::Insert, rRedlines[2]->GetType());
+
+    // And when rejecting the "ins" part of ins-then-del:
+    pWrtShell->RejectRedline(0);
+
+    // Then make sure "reject" (and no accept) was created on the undo stack:
+    sw::UndoManager& rUndoManager = pDoc->GetUndoManager();
+    int nAccepts = 0;
+    auto pListUndoAction = dynamic_cast<SfxListUndoAction*>(rUndoManager.GetUndoAction());
+    if (pListUndoAction)
+    {
+        for (const auto& rMarkedAction : pListUndoAction->maUndoActions)
+        {
+            auto pUndo = dynamic_cast<SwUndoRedline*>(rMarkedAction.pAction.get());
+            if (!pUndo)
+            {
+                continue;
+            }
+
+            if (pUndo->GetUserId() == SwUndoId::ACCEPT_REDLINE)
+            {
+                ++nAccepts;
+            }
+        }
+    }
+    // Without the accompanying fix in place, this test would have failed with:
+    // - Expected: 0
+    // - Actual  : 1
+    // i.e. an "accept" undo action was created by RejectRedline().
+    CPPUNIT_ASSERT_EQUAL(0, nAccepts);
+}
+
+CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testInsThenFormat)
+{
+    // Given a document with <ins>A<format>B</format>C</ins> style redlines:
+    // When importing that document:
+    createSwDoc("ins-then-format.docx");
+
+    // Then make sure that both the insert and the format on top of it is in the model:
+    SwDocShell* pDocShell = getSwDocShell();
+    SwDoc* pDoc = pDocShell->GetDoc();
+    IDocumentRedlineAccess& rIDRA = pDoc->getIDocumentRedlineAccess();
+    SwRedlineTable& rRedlines = rIDRA.GetRedlineTable();
+    // Without the accompanying fix in place, this test would have failed with:
+    // - Expected: 3
+    // - Actual  : 1
+    // i.e. a single insert redline was created, format redline was lost on import.
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(3), rRedlines.size());
+    CPPUNIT_ASSERT_EQUAL(RedlineType::Insert, rRedlines[0]->GetType());
+    const SwRedlineData& rRedlineData1 = rRedlines[1]->GetRedlineData(0);
+    CPPUNIT_ASSERT_EQUAL(RedlineType::Format, rRedlineData1.GetType());
+    CPPUNIT_ASSERT(rRedlineData1.Next());
+    const SwRedlineData& rInnerRedlineData = *rRedlineData1.Next();
+    CPPUNIT_ASSERT_EQUAL(RedlineType::Insert, rInnerRedlineData.GetType());
+    CPPUNIT_ASSERT_EQUAL(RedlineType::Insert, rRedlines[2]->GetType());
+
+    // And when accepting the insert:
+    SwWrtShell* pWrtShell = pDocShell->GetWrtShell();
+    pWrtShell->AcceptRedline(0);
+
+    // Then make sure only the format on top of insert remains:
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), rRedlines.size());
+    CPPUNIT_ASSERT_EQUAL(RedlineType::Format, rRedlines[0]->GetType());
+    const SwRedlineData& rRedlineData = rRedlines[0]->GetRedlineData(0);
+    // Without the accompanying fix in place, this test would have failed, the insert under format
+    // was not accepted.
+    CPPUNIT_ASSERT(!rRedlineData.Next());
+
+    // And when rejecting the insert:
+    pWrtShell->Undo();
+    SwTextNode* pTextNode = pWrtShell->GetCursor()->GetPointNode().GetTextNode();
+    CPPUNIT_ASSERT_EQUAL(u"AAABBBCCC"_ustr, pTextNode->GetText());
+    pWrtShell->RejectRedline(0);
+
+    // Then make sure no redlines and no content remain:
+    // Without the accompanying fix in place, this test would have failed with:
+    // - Expected: 0
+    // - Actual  : 1
+    // i.e. a format-on-insert redline remained.
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(0), rRedlines.size());
+    // Also make sure the text of the format-on-insert redline is removed.
+    CPPUNIT_ASSERT(pTextNode->GetText().isEmpty());
+
+    // And when accepting the format-on-insert:
+    pWrtShell->Undo();
+    CPPUNIT_ASSERT_EQUAL(u"AAABBBCCC"_ustr, pTextNode->GetText());
+    SwPaM* pCursor = pWrtShell->GetCursor();
+    pCursor->DeleteMark();
+    pWrtShell->SttEndDoc(/*bStt=*/true);
+    // Move inside "BBB".
+    pWrtShell->Right(SwCursorSkipMode::Chars, /*bSelect=*/false, 4, /*bBasicCall=*/false);
+    SwRedlineTable::size_type nRedline{};
+    rRedlines.FindAtPosition(*pCursor->Start(), nRedline);
+    pWrtShell->AcceptRedline(nRedline);
+
+    // Then make sure the format is kept and the insert is accepted:
+    pWrtShell->SttEndDoc(/*bStt=*/true);
+    // Move inside "BBB".
+    pWrtShell->Right(SwCursorSkipMode::Chars, /*bSelect=*/false, 4, /*bBasicCall=*/false);
+    // Search from start in the table again, for a redline that covers the cursor position.
+    nRedline = 0;
+    const SwRangeRedline* pRedline = rRedlines.FindAtPosition(*pCursor->Start(), nRedline);
+    // Without the accompanying fix in place, this test would have failed, there was no redline for
+    // "BBB".
+    CPPUNIT_ASSERT(pRedline);
+    CPPUNIT_ASSERT_EQUAL(RedlineType::Format, pRedline->GetType());
+    CPPUNIT_ASSERT(!pRedline->GetRedlineData().Next());
+
+    // Without the accompanying fix in place, this test would have failed with:
+    // - Expected: 1
+    // - Actual  : 3
+    // i.e. the insert redlines before/after BBB were not accepted.
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), rRedlines.size());
+
+    // And when rejecting the format-on-insert:
+    pWrtShell->Undo();
+    CPPUNIT_ASSERT_EQUAL(u"AAABBBCCC"_ustr, pTextNode->GetText());
+    // Undo() creates a new cursor.
+    pCursor = pWrtShell->GetCursor();
+    pCursor->DeleteMark();
+    pWrtShell->SttEndDoc(/*bStt=*/true);
+    // Move inside "BBB".
+    pWrtShell->Right(SwCursorSkipMode::Chars, /*bSelect=*/false, 4, /*bBasicCall=*/false);
+    nRedline = 0;
+    rRedlines.FindAtPosition(*pCursor->Start(), nRedline);
+    // A redline is found.
+    CPPUNIT_ASSERT_LESS(rRedlines.size(), nRedline);
+    pWrtShell->RejectRedline(nRedline);
+
+    // Then make sure the format-on-insert is rejected, i.e. neither the format-on-insert BBB, nor
+    // the surrounding AAA and CCC inserts are in the text anymore:
+    // Without the accompanying fix in place, this test would have failed, the text was AAABBBCCC,
+    // just the format of BBB was dropped.
+    CPPUNIT_ASSERT(pTextNode->GetText().isEmpty());
+
+    // And given a state where you're just after the undo for the accept of insert-then-format's
+    // format:
+    pWrtShell->Undo();
+    // Undo() creates a new cursor.
+    pCursor = pWrtShell->GetCursor();
+    pCursor->DeleteMark();
+    pWrtShell->SttEndDoc(/*bStt=*/true);
+    // Move inside "BBB".
+    pWrtShell->Right(SwCursorSkipMode::Chars, /*bSelect=*/false, 4, /*bBasicCall=*/false);
+    nRedline = 0;
+    rRedlines.FindAtPosition(*pCursor->Start(), nRedline);
+    // A redline is found.
+    CPPUNIT_ASSERT_LESS(rRedlines.size(), nRedline);
+    pWrtShell->AcceptRedline(nRedline);
+    pWrtShell->Undo();
+
+    // When redoing that accept:
+    pWrtShell->Redo();
+
+    // Then make sure we have a single format redline as a result:
+    pCursor = pWrtShell->GetCursor();
+    pCursor->DeleteMark();
+    pWrtShell->SttEndDoc(/*bStt=*/true);
+    // Move inside "BBB".
+    pWrtShell->Right(SwCursorSkipMode::Chars, /*bSelect=*/false, 4, /*bBasicCall=*/false);
+    nRedline = 0;
+    pRedline = rRedlines.FindAtPosition(*pCursor->Start(), nRedline);
+    // Without the accompanying fix in place, this test would have failed with:
+    // - Expected: 1
+    // - Actual  : 0
+    // i.e. everything was accepted, even the format redline was gone from the document, instead of
+    // just accepting the underlying insert.
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), rRedlines.size());
+    CPPUNIT_ASSERT(pRedline);
+    CPPUNIT_ASSERT_EQUAL(RedlineType::Format, pRedline->GetType());
+    CPPUNIT_ASSERT(!pRedline->GetRedlineData().Next());
+}
+
+CPPUNIT_TEST_FIXTURE(SwCoreDocTest, testDelThenFormat)
+{
+    // Given a document with <del>A<format>B</format>C</del> style redlines:
+    // When importing that document:
+    createSwDoc("del-then-format.docx");
+
+    // When accepting the delete:
+    SwDocShell* pDocShell = getSwDocShell();
+    SwWrtShell* pWrtShell = pDocShell->GetWrtShell();
+    pWrtShell->AcceptRedline(0);
+
+    // Then make sure no redlines and no content remain:
+    SwDoc* pDoc = pDocShell->GetDoc();
+    IDocumentRedlineAccess& rIDRA = pDoc->getIDocumentRedlineAccess();
+    SwRedlineTable& rRedlines = rIDRA.GetRedlineTable();
+    // Without the accompanying fix in place, this test would have failed with:
+    // - Expected: 0
+    // - Actual  : 1
+    // i.e. the delete-then-format redline remained in the document.
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(0), rRedlines.size());
+    SwTextNode* pTextNode = pWrtShell->GetCursor()->GetPointNode().GetTextNode();
+    // Also make sure the text of the format-on-delete redline is removed.
+    CPPUNIT_ASSERT(pTextNode->GetText().isEmpty());
+
+    // And when rejecting the delete:
+    pWrtShell->Undo();
+    CPPUNIT_ASSERT_EQUAL(u"AAABBBCCC"_ustr, pTextNode->GetText());
+    pWrtShell->RejectRedline(0);
+
+    // Then make sure the delete goes away, but the text node string and the format redline stays:
+    // Without the accompanying fix in place, this test would have failed with:
+    // - Expected: 1
+    // - Actual  : 0
+    // i.e. the format redline on top of the delete was lost.
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), rRedlines.size());
+    CPPUNIT_ASSERT_EQUAL(RedlineType::Format, rRedlines[0]->GetType());
+    const SwRedlineData& rRedlineData = rRedlines[0]->GetRedlineData();
+    CPPUNIT_ASSERT(!rRedlineData.Next());
+    // This was AAACCC.
+    CPPUNIT_ASSERT_EQUAL(u"AAABBBCCC"_ustr, pTextNode->GetText());
+
+    // And when accepting the delete with the cursor inside BBB:
+    pWrtShell->Undo();
+    CPPUNIT_ASSERT_EQUAL(u"AAABBBCCC"_ustr, pTextNode->GetText());
+    pWrtShell->KillPams();
+    SwPaM* pCursor = pWrtShell->GetCursor();
+    pCursor->DeleteMark();
+    pWrtShell->SttEndDoc(/*bStt=*/true);
+    // Move inside "BBB".
+    pWrtShell->Right(SwCursorSkipMode::Chars, /*bSelect=*/false, 4, /*bBasicCall=*/false);
+    SwRedlineTable::size_type nRedline{};
+    rRedlines.FindAtPosition(*pCursor->Start(), nRedline);
+    CPPUNIT_ASSERT_LESS(rRedlines.size(), nRedline);
+    pWrtShell->AcceptRedline(nRedline);
+
+    // Then make sure the format-on-delete is accepted, i.e. neither the format-on-delete BBB, nor
+    // the surrounding AAA and CCC deletes are in the text anymore:
+    // Without the accompanying fix in place, this test would have failed, the text was AAABBBCCC,
+    // just the format of BBB was dropped.
+    CPPUNIT_ASSERT(pTextNode->GetText().isEmpty());
+
+    // And when rejecting the delete with the cursor inside BBB:
+    pWrtShell->Undo();
+    CPPUNIT_ASSERT_EQUAL(u"AAABBBCCC"_ustr, pTextNode->GetText());
+    // Undo() creates a new cursor.
+    pCursor = pWrtShell->GetCursor();
+    pCursor->DeleteMark();
+    pWrtShell->SttEndDoc(/*bStt=*/true);
+    // Move inside "BBB".
+    pWrtShell->Right(SwCursorSkipMode::Chars, /*bSelect=*/false, 4, /*bBasicCall=*/false);
+    nRedline = 0;
+    const SwRangeRedline* pRedline = rRedlines.FindAtPosition(*pCursor->Start(), nRedline);
+    // A redline is found.
+    CPPUNIT_ASSERT_LESS(rRedlines.size(), nRedline);
+    pWrtShell->RejectRedline(nRedline);
+
+    // Then make sure the format-on-delete is rejected, i.e. the delete part is gone but the format
+    // part is kept:
+    nRedline = 0;
+    pRedline = rRedlines.FindAtPosition(*pCursor->Start(), nRedline);
+    // Without the accompanying fix in place, this test would have failed, the redline over BBB was
+    // gone completely.
+    CPPUNIT_ASSERT(pRedline);
+    CPPUNIT_ASSERT_EQUAL(RedlineType::Format, pRedline->GetType());
+    CPPUNIT_ASSERT(!pRedline->GetRedlineData().Next());
+    // Without the accompanying fix in place, this test would have failed with:
+    // - Expected: 1
+    // - Actual  : 3
+    // i.e. the surrounding delete redlines were not combined on reject.
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), rRedlines.size());
+
+    // Reset to the state after file load:
+    pWrtShell->Undo();
+    // And when we do a reject for the first "delete" part, undo, redo:
+    pWrtShell->RejectRedline(0);
+    pWrtShell->Undo();
+    pWrtShell->Redo();
+
+    // Then make sure get a single format redline, matching the state right after reject:
+    {
+        // Without the accompanying fix in place, this test would have failed with:
+        // - Expected: 1
+        // - Actual  : 0
+        // i.e. the format redline was lost on redo.
+        CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), rRedlines.size());
+        const SwRedlineData& rRedlineData1 = rRedlines[0]->GetRedlineData(0);
+        CPPUNIT_ASSERT_EQUAL(RedlineType::Format, rRedlineData1.GetType());
+        CPPUNIT_ASSERT(!rRedlineData1.Next());
+    }
+
+    // And given a reset state + reject on BBB + undo:
+    pWrtShell->Undo();
+    // Undo() creates a new cursor.
+    pCursor = pWrtShell->GetCursor();
+    pCursor->DeleteMark();
+    pWrtShell->SttEndDoc(/*bStt=*/true);
+    // Move inside "BBB".
+    pWrtShell->Right(SwCursorSkipMode::Chars, /*bSelect=*/false, 4, /*bBasicCall=*/false);
+    nRedline = 0;
+    rRedlines.FindAtPosition(*pCursor->Start(), nRedline);
+    // A redline is found.
+    CPPUNIT_ASSERT_LESS(rRedlines.size(), nRedline);
+    pWrtShell->RejectRedline(nRedline);
+    pWrtShell->Undo();
+
+    // When executing redo:
+    pWrtShell->Redo();
+
+    // Then make sure that the delete is gone, but the format is preserved:
+    pCursor = pWrtShell->GetCursor();
+    pCursor->DeleteMark();
+    pWrtShell->SttEndDoc(/*bStt=*/true);
+    // Move inside "BBB".
+    pWrtShell->Right(SwCursorSkipMode::Chars, /*bSelect=*/false, 4, /*bBasicCall=*/false);
+    nRedline = 0;
+    pRedline = rRedlines.FindAtPosition(*pCursor->Start(), nRedline);
+    // Without the accompanying fix in place, this test would have failed with:
+    // - Expected: 1
+    // - Actual  : 0
+    // i.e. the format redline was lost on redo.
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), rRedlines.size());
+    CPPUNIT_ASSERT(pRedline);
+    CPPUNIT_ASSERT_EQUAL(RedlineType::Format, pRedline->GetType());
+    CPPUNIT_ASSERT(!pRedline->GetRedlineData().Next());
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();

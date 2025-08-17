@@ -81,9 +81,6 @@ void OutputDevice::DrawRect( const tools::Rectangle& rRect )
         InitFillColor();
 
     mpGraphics->DrawRect( aRect.Left(), aRect.Top(), aRect.GetWidth(), aRect.GetHeight(), *this );
-
-    if( mpAlphaVDev )
-        mpAlphaVDev->DrawRect( rRect );
 }
 
 void OutputDevice::DrawRect( const tools::Rectangle& rRect,
@@ -140,9 +137,6 @@ void OutputDevice::DrawRect( const tools::Rectangle& rRect,
                 mpGraphics->DrawPolygon( aRoundRectPoly.GetSize(), pPtAry, *this );
         }
     }
-
-    if( mpAlphaVDev )
-        mpAlphaVDev->DrawRect( rRect, nHorzRound, nVertRound );
 }
 
 void OutputDevice::Invert( const tools::Rectangle& rRect, InvertFlags nFlags )
@@ -216,7 +210,7 @@ void OutputDevice::DrawCheckered(const Point& rPos, const Size& rSize, sal_uInt3
     const sal_uInt32 nMaxX(rPos.X() + rSize.Width());
     const sal_uInt32 nMaxY(rPos.Y() + rSize.Height());
 
-    Push(vcl::PushFlags::LINECOLOR|vcl::PushFlags::FILLCOLOR);
+    auto popIt = ScopedPush(vcl::PushFlags::LINECOLOR | vcl::PushFlags::FILLCOLOR);
     SetLineColor();
 
     for(sal_uInt32 x(0), nX(rPos.X()); nX < nMaxX; x++, nX += nLen)
@@ -231,8 +225,6 @@ void OutputDevice::DrawCheckered(const Point& rPos, const Size& rSize, sal_uInt3
             DrawRect(tools::Rectangle(nX, nY, nRight, nBottom));
         }
     }
-
-    Pop();
 }
 
 void OutputDevice::DrawGrid( const tools::Rectangle& rRect, const Size& rDist, DrawGridFlags nFlags )
@@ -332,9 +324,6 @@ void OutputDevice::DrawGrid( const tools::Rectangle& rRect, const Size& rDist, D
     }
 
     EnableMapMode( bOldMap );
-
-    if( mpAlphaVDev )
-        mpAlphaVDev->DrawGrid( rRect, rDist, nFlags );
 }
 
 BmpMirrorFlags AdjustTwoRect( SalTwoRect& rTwoRect, const Size& rSizePix )
@@ -377,10 +366,10 @@ BmpMirrorFlags AdjustTwoRect( SalTwoRect& rTwoRect, const Size& rSizePix )
             const double fFactorX = ( rTwoRect.mnSrcWidth > 1 ) ? static_cast<double>( rTwoRect.mnDestWidth - 1 ) / ( rTwoRect.mnSrcWidth - 1 ) : 0.0;
             const double fFactorY = ( rTwoRect.mnSrcHeight > 1 ) ? static_cast<double>( rTwoRect.mnDestHeight - 1 ) / ( rTwoRect.mnSrcHeight - 1 ) : 0.0;
 
-            const tools::Long nDstX1 = rTwoRect.mnDestX + FRound( fFactorX * ( aCropRect.Left() - rTwoRect.mnSrcX ) );
-            const tools::Long nDstY1 = rTwoRect.mnDestY + FRound( fFactorY * ( aCropRect.Top() - rTwoRect.mnSrcY ) );
-            const tools::Long nDstX2 = rTwoRect.mnDestX + FRound( fFactorX * ( aCropRect.Right() - rTwoRect.mnSrcX ) );
-            const tools::Long nDstY2 = rTwoRect.mnDestY + FRound( fFactorY * ( aCropRect.Bottom() - rTwoRect.mnSrcY ) );
+            const tools::Long nDstX1 = rTwoRect.mnDestX + basegfx::fround<tools::Long>( fFactorX * ( aCropRect.Left() - rTwoRect.mnSrcX ) );
+            const tools::Long nDstY1 = rTwoRect.mnDestY + basegfx::fround<tools::Long>( fFactorY * ( aCropRect.Top() - rTwoRect.mnSrcY ) );
+            const tools::Long nDstX2 = rTwoRect.mnDestX + basegfx::fround<tools::Long>( fFactorX * ( aCropRect.Right() - rTwoRect.mnSrcX ) );
+            const tools::Long nDstY2 = rTwoRect.mnDestY + basegfx::fround<tools::Long>( fFactorY * ( aCropRect.Bottom() - rTwoRect.mnSrcY ) );
 
             rTwoRect.mnSrcX = aCropRect.Left();
             rTwoRect.mnSrcY = aCropRect.Top();
@@ -419,10 +408,10 @@ void AdjustTwoRect( SalTwoRect& rTwoRect, const tools::Rectangle& rValidSrcRect 
         const double fFactorX = ( rTwoRect.mnSrcWidth > 1 ) ? static_cast<double>( rTwoRect.mnDestWidth - 1 ) / ( rTwoRect.mnSrcWidth - 1 ) : 0.0;
         const double fFactorY = ( rTwoRect.mnSrcHeight > 1 ) ? static_cast<double>( rTwoRect.mnDestHeight - 1 ) / ( rTwoRect.mnSrcHeight - 1 ) : 0.0;
 
-        const tools::Long nDstX1 = rTwoRect.mnDestX + FRound( fFactorX * ( aCropRect.Left() - rTwoRect.mnSrcX ) );
-        const tools::Long nDstY1 = rTwoRect.mnDestY + FRound( fFactorY * ( aCropRect.Top() - rTwoRect.mnSrcY ) );
-        const tools::Long nDstX2 = rTwoRect.mnDestX + FRound( fFactorX * ( aCropRect.Right() - rTwoRect.mnSrcX ) );
-        const tools::Long nDstY2 = rTwoRect.mnDestY + FRound( fFactorY * ( aCropRect.Bottom() - rTwoRect.mnSrcY ) );
+        const tools::Long nDstX1 = rTwoRect.mnDestX + basegfx::fround<tools::Long>( fFactorX * ( aCropRect.Left() - rTwoRect.mnSrcX ) );
+        const tools::Long nDstY1 = rTwoRect.mnDestY + basegfx::fround<tools::Long>( fFactorY * ( aCropRect.Top() - rTwoRect.mnSrcY ) );
+        const tools::Long nDstX2 = rTwoRect.mnDestX + basegfx::fround<tools::Long>( fFactorX * ( aCropRect.Right() - rTwoRect.mnSrcX ) );
+        const tools::Long nDstY2 = rTwoRect.mnDestY + basegfx::fround<tools::Long>( fFactorY * ( aCropRect.Bottom() - rTwoRect.mnSrcY ) );
 
         rTwoRect.mnSrcX = aCropRect.Left();
         rTwoRect.mnSrcY = aCropRect.Top();

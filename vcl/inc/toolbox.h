@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_INC_TOOLBOX_H
-#define INCLUDED_VCL_INC_TOOLBOX_H
+#pragma once
 
 #include <vcl/ctrl.hxx>
 #include <vcl/toolbox.hxx>
@@ -31,8 +30,6 @@
 #define TB_MENUBUTTON_SIZE      12
 #define TB_MENUBUTTON_OFFSET    2
 
-namespace vcl { class Window; }
-
 struct ImplToolItem
 {
     VclPtr<vcl::Window> mpWindow; //don't dispose mpWindow - we get copied around
@@ -44,6 +41,7 @@ struct ImplToolItem
     OUString            maText;
     OUString            maQuickHelpText;
     OUString            maHelpText;
+    OUString            maAccessibleName;
     OUString            maCommandStr;
     OUString            maHelpId;
     tools::Rectangle           maRect;
@@ -154,7 +152,5 @@ struct ImplToolBoxPrivateData
             mbWillUsePopupMode:1,   // this toolbox will be opened in popup mode
             mbDropDownByKeyboard:1; // tells whether a dropdown was started by key input
 };
-
-#endif // INCLUDED_VCL_INC_TOOLBOX_H
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -87,6 +87,7 @@ $(eval $(call gb_Library_use_libraries,svxcore,\
 
 $(eval $(call gb_Library_use_externals,svxcore,\
 	boost_headers \
+	frozen \
 	icuuc \
 	icu_headers \
 	libxml2 \
@@ -105,8 +106,13 @@ $(eval $(call gb_Library_use_system_darwin_frameworks,svxcore,\
 endif
 
 $(eval $(call gb_Library_add_exception_objects,svxcore,\
+    svx/source/annotation/Annotation \
+    svx/source/annotation/AnnotationEnumeration \
+    svx/source/annotation/AnnotationObject \
+    svx/source/annotation/TextAPI \
     svx/source/core/extedit \
     svx/source/core/graphichelper \
+    svx/source/core/extendedprimitive2dxmldump \
     svx/source/customshapes/EnhancedCustomShape2d \
     svx/source/customshapes/EnhancedCustomShapeFunctionParser \
     svx/source/customshapes/EnhancedCustomShapeGeometry \
@@ -193,7 +199,6 @@ $(eval $(call gb_Library_add_exception_objects,svxcore,\
     svx/source/form/xfm_addcondition \
     svx/source/gallery2/codec \
     svx/source/gallery2/galbrws1 \
-    svx/source/gallery2/galbrws2 \
     svx/source/gallery2/galctrl \
     svx/source/gallery2/galexpl \
     svx/source/gallery2/galini \
@@ -401,6 +406,7 @@ $(eval $(call gb_Library_add_exception_objects,svxcore,\
     svx/source/svdraw/svdview \
     svx/source/svdraw/svdviter \
     svx/source/svdraw/svdxcgv \
+    svx/source/svdraw/sxelditm \
     svx/source/svdraw/textchain \
     svx/source/svdraw/textchainflow \
     svx/source/svdraw/textchaincursor \
@@ -470,7 +476,6 @@ $(eval $(call gb_Library_add_exception_objects,svxcore,\
     svx/source/xoutdev/xattrbmp \
     svx/source/xoutdev/_xoutbmp \
     svx/source/xoutdev/_xpoly \
-    svx/source/xoutdev/xpool \
     svx/source/xoutdev/xtabbtmp \
     svx/source/xoutdev/xtabcolr \
     svx/source/xoutdev/xtabdash \

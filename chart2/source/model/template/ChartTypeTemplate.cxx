@@ -22,10 +22,8 @@
 #include <CommonConverters.hxx>
 #include <ChartTypeHelper.hxx>
 #include <ChartType.hxx>
-#include <DataSeries.hxx>
 #include <DataSeriesProperties.hxx>
 #include <DataSource.hxx>
-#include <GridProperties.hxx>
 
 #include <Axis.hxx>
 #include <AxisHelper.hxx>
@@ -68,7 +66,7 @@ void lcl_applyDefaultStyle(
         Reference< chart2::XColorScheme > xColorScheme( xDiagram->getDefaultColorScheme());
         if( xColorScheme.is() )
             xSeries->setPropertyValue(
-                "Color",
+                u"Color"_ustr,
                 uno::Any( xColorScheme->getColorByIndex( nIndex )));
     }
 }
@@ -76,7 +74,7 @@ void lcl_applyDefaultStyle(
 void lcl_ensureCorrectLabelPlacement( const Reference< beans::XPropertySet >& xProp, const uno::Sequence < sal_Int32 >& rAvailablePlacements )
 {
     sal_Int32 nLabelPlacement=0;
-    if( !(xProp.is() && (xProp->getPropertyValue( "LabelPlacement" ) >>= nLabelPlacement)) )
+    if( !(xProp.is() && (xProp->getPropertyValue( u"LabelPlacement"_ustr ) >>= nLabelPlacement)) )
         return;
 
     bool bValid = false;
@@ -94,7 +92,7 @@ void lcl_ensureCorrectLabelPlacement( const Reference< beans::XPropertySet >& xP
         //otherwise use the first supported one
         if( rAvailablePlacements.hasElements() )
             aNewValue <<=rAvailablePlacements[0];
-        xProp->setPropertyValue( "LabelPlacement", aNewValue );
+        xProp->setPropertyValue( u"LabelPlacement"_ustr, aNewValue );
     }
 }
 
@@ -102,10 +100,10 @@ void lcl_resetLabelPlacementIfDefault( const Reference< beans::XPropertySet >& x
 {
 
     sal_Int32 nLabelPlacement=0;
-    if( xProp.is() && (xProp->getPropertyValue( "LabelPlacement" ) >>= nLabelPlacement) )
+    if( xProp.is() && (xProp->getPropertyValue( u"LabelPlacement"_ustr ) >>= nLabelPlacement) )
     {
         if( nDefaultPlacement == nLabelPlacement )
-            xProp->setPropertyValue( "LabelPlacement", uno::Any() );
+            xProp->setPropertyValue( u"LabelPlacement"_ustr, uno::Any() );
     }
 }
 
@@ -117,9 +115,9 @@ void lcl_ensureCorrectMissingValueTreatment( const rtl::Reference< ::chart::Diag
             ::chart::ChartTypeHelper::getSupportedMissingValueTreatments( xChartType ) );
 
         if( aAvailableMissingValueTreatment.hasElements() )
-            xDiagram->setPropertyValue( "MissingValueTreatment", uno::Any( aAvailableMissingValueTreatment[0] ) );
+            xDiagram->setPropertyValue( u"MissingValueTreatment"_ustr, uno::Any( aAvailableMissingValueTreatment[0] ) );
         else
-            xDiagram->setPropertyValue( "MissingValueTreatment", uno::Any() );
+            xDiagram->setPropertyValue( u"MissingValueTreatment"_ustr, uno::Any() );
     }
 }
 
@@ -210,7 +208,7 @@ void ChartTypeTemplate::changeDiagram( const rtl::Reference< Diagram >& xDiagram
             Sequence< beans::PropertyValue > aParam;
             if( aData.Categories.is())
             {
-                aParam = { beans::PropertyValue( "HasCategories", -1, uno::Any( true ),
+                aParam = { beans::PropertyValue( u"HasCategories"_ustr, -1, uno::Any( true ),
                                                  beans::PropertyState_DIRECT_VALUE ) };
             }
             aData = xInterpreter->interpretDataSource( xSource, aParam, aFlatSeriesSeq );
@@ -218,11 +216,12 @@ void ChartTypeTemplate::changeDiagram( const rtl::Reference< Diagram >& xDiagram
         aSeriesSeq = aData.Series;
 
         sal_Int32 nIndex = 0;
-        for( auto const & i : std::as_const(aSeriesSeq) )
+        for (auto const& i : aSeriesSeq)
             for( auto const & j : i )
             {
                 if( nIndex >= nFormerSeriesCount )
-                    lcl_applyDefaultStyle( j, nIndex++, xDiagram );
+                    lcl_applyDefaultStyle( j, nIndex, xDiagram );
+                nIndex++;
             }
 
         // remove charttype groups from all coordinate systems
@@ -301,7 +300,7 @@ bool ChartTypeTemplate::matchesTemplate2(
 
     try
     {
-        const std::vector< rtl::Reference< BaseCoordinateSystem > > & aCooSysSeq(
+        const std::vector< rtl::Reference< BaseCoordinateSystem > > aCooSysSeq(
             xDiagram->getBaseCoordinateSystems());
 
         // need to have at least one coordinate system
@@ -318,13 +317,13 @@ bool ChartTypeTemplate::matchesTemplate2(
             for( std::size_t nCooSysIdx=0; bResult && (nCooSysIdx < aCooSysSeq.size()); ++nCooSysIdx )
             {
                 // match dimension
-                bResult = bResult && (aCooSysSeq[nCooSysIdx]->getDimension() == nDimensionToMatch);
+                bResult = aCooSysSeq[nCooSysIdx]->getDimension() == nDimensionToMatch;
 
                 const std::vector< rtl::Reference< ChartType > > & aChartTypeSeq( aCooSysSeq[nCooSysIdx]->getChartTypes2());
                 for( std::size_t nCTIdx=0; bResult && (nCTIdx < aChartTypeSeq.size()); ++nCTIdx )
                 {
                     // match chart type
-                    bResult = bResult && aChartTypeSeq[nCTIdx]->getChartType() == aChartTypeToMatch;
+                    bResult = aChartTypeSeq[nCTIdx]->getChartType() == aChartTypeToMatch;
                     bool bFound=false;
                     bool bAmbiguous=false;
                     // match stacking mode
@@ -373,7 +372,7 @@ void ChartTypeTemplate::applyStyle2(
             : (eStackMode == StackMode::ZStacked )
             ? chart2::StackingDirection_Z_STACKING
             : chart2::StackingDirection_NO_STACKING );
-        xSeries->setPropertyValue( "StackingDirection", aPropValue );
+        xSeries->setPropertyValue( u"StackingDirection"_ustr, aPropValue );
 
         //ensure valid label placement
         {
@@ -509,18 +508,15 @@ void ChartTypeTemplate::createCoordinateSystems(
     {
         bool bOk = true;
         for( std::size_t i=0; bOk && i<aCoordinateSystems.size(); ++i )
-            bOk = bOk && ( xCooSys->getCoordinateSystemType() == aCoordinateSystems[i]->getCoordinateSystemType() &&
+            bOk = ( xCooSys->getCoordinateSystemType() == aCoordinateSystems[i]->getCoordinateSystemType() &&
                            (xCooSys->getDimension() == aCoordinateSystems[i]->getDimension()) );
         // coordinate systems are ok
         if( bOk )
             return;
         // there are coordinate systems but they do not fit.  So overwrite them.
-    }
 
-    //copy as much info from former coordinate system as possible:
-    if( !aCoordinateSystems.empty() )
-    {
-        rtl::Reference< BaseCoordinateSystem > xOldCooSys( aCoordinateSystems[0] );
+        //copy as much info from former coordinate system as possible:
+        const rtl::Reference< BaseCoordinateSystem >& xOldCooSys( aCoordinateSystems[0] );
         sal_Int32 nMaxDimensionCount = std::min( xCooSys->getDimension(), xOldCooSys->getDimension() );
 
         for(sal_Int32 nDimensionIndex=0; nDimensionIndex<nMaxDimensionCount; nDimensionIndex++)
@@ -571,9 +567,16 @@ void ChartTypeTemplate::adaptScales(
                             rtl::Reference< ChartType > xChartType = getChartTypeForNewSeries2({});
                             if( aData.AxisType == AxisType::CATEGORY )
                             {
-                                aData.ShiftedCategoryPosition = m_aServiceName.indexOf("Column") != -1 || m_aServiceName.indexOf("Bar") != -1 || m_aServiceName.endsWith("Close");
+                                // Shift for Column, Hi-Lo-Close, and regular
+                                // Bar types, but not BarOfPie
+                                aData.ShiftedCategoryPosition =
+                                    m_aServiceName.indexOf("Column") != -1 ||
+                                    m_aServiceName.indexOf("Histogram") != -1 ||
+                                    (m_aServiceName.indexOf("Bar") != -1 &&
+                                     !m_aServiceName.indexOf("BarOfPie")) ||
+                                    m_aServiceName.endsWith("Close");
                             }
-                            bool bSupportsDates = ::chart::ChartTypeHelper::isSupportingDateAxis( xChartType, nDimensionX );
+                            bool bSupportsDates = xChartType.is() ? xChartType->isSupportingDateAxis(nDimensionX) : true;
                             if( aData.AxisType != AxisType::CATEGORY && ( aData.AxisType != AxisType::DATE || !bSupportsDates) )
                             {
                                 aData.AxisType = AxisType::CATEGORY;
@@ -630,7 +633,7 @@ void ChartTypeTemplate::createAxes(
     if( rCoordSys.empty() )
         return;
 
-    rtl::Reference< BaseCoordinateSystem > xCooSys( rCoordSys[0] );
+    const rtl::Reference< BaseCoordinateSystem >& xCooSys( rCoordSys[0] );
     if(!xCooSys.is())
         return;
 
@@ -645,12 +648,12 @@ void ChartTypeTemplate::createAxes(
             nAxisCount = 2;
         for( sal_Int32 nAxisIndex = 0; nAxisIndex < nAxisCount; ++nAxisIndex )
         {
-            Reference< XAxis > xAxis = AxisHelper::getAxis( nDim, nAxisIndex, xCooSys );
+            rtl::Reference< Axis > xAxis = AxisHelper::getAxis( nDim, nAxisIndex, xCooSys );
             if( !xAxis.is())
             {
                 // create and add axis
-                xAxis.set( AxisHelper::createAxis(
-                               nDim, nAxisIndex, xCooSys, GetComponentContext() ));
+                xAxis = AxisHelper::createAxis(
+                               nDim, nAxisIndex, xCooSys, GetComponentContext() );
             }
         }
     }
@@ -797,7 +800,7 @@ void ChartTypeTemplate::copyPropertiesFromOldToNewCoordinateSystem(
 
     OUString aNewChartType( xNewChartType->getChartType() );
 
-    Reference< beans::XPropertySet > xSource;
+    rtl::Reference< ChartType > xSource;
     for( rtl::Reference< ChartType > const & xOldType : rOldChartTypesSeq )
     {
         if( xOldType.is() && xOldType->getChartType() == aNewChartType )

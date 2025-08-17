@@ -38,7 +38,7 @@ private:
     std::unique_ptr<WinSalGraphics> mpGraphics;     // current VirDev graphics
     WinSalVirtualDevice*    mpNext;                 // next VirDev
     sal_uInt16              mnBitCount;             // BitCount (0 or 1)
-    bool                    mbGraphics;             // is Graphics used
+    bool                    mbGraphicsAcquired;     // is Graphics used
     bool                    mbForeignDC;            // uses a foreign DC instead of a bitmap
     tools::Long                    mnWidth;
     tools::Long                    mnHeight;
@@ -49,14 +49,15 @@ public:
     void setGraphics(WinSalGraphics* pVirGraphics) { mpGraphics.reset(pVirGraphics); }
     WinSalVirtualDevice* getNext() const { return mpNext; }
 
-    WinSalVirtualDevice(HDC hDC = nullptr, HBITMAP hBMP = nullptr, sal_uInt16 nBitCount = 0, bool bForeignDC = false, tools::Long nWidth = 0, tools::Long nHeight = 0);
+    WinSalVirtualDevice(HDC hDC, HBITMAP hBMP, sal_uInt16 nBitCount, bool bForeignDC, tools::Long nWidth, tools::Long nHeight, bool bIsScreen);
     virtual ~WinSalVirtualDevice() override;
 
     virtual SalGraphics*    AcquireGraphics() override;
     virtual void            ReleaseGraphics( SalGraphics* pGraphics ) override;
-    virtual bool            SetSize( tools::Long nNewDX, tools::Long nNewDY ) override;
+    virtual bool            SetSize( tools::Long nNewDX, tools::Long nNewDY, bool bAlphaMaskTransparent ) override;
 
-    static HBITMAP ImplCreateVirDevBitmap(HDC hDC, tools::Long nDX, tools::Long nDY, sal_uInt16 nBitCount, void **ppDummy);
+    static HBITMAP ImplCreateVirDevBitmap(HDC hDC, tools::Long nDX, tools::Long nDY, sal_uInt16 nBitCount,
+                                           void **ppDummy, bool bAlphaMaskTransparent = false);
 
     // SalGeometryProvider
     virtual tools::Long GetWidth() const override { return mnWidth; }

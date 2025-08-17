@@ -17,6 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <vcl/dndlistenercontainer.hxx>
 #include <vcl/syswin.hxx>
 #include <vcl/window.hxx>
 #include <vcl/taskpanelist.hxx>
@@ -32,7 +33,6 @@
 #include <com/sun/star/awt/XVclWindowPeer.hpp>
 
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::lang;
 using namespace ::com::sun::star::datatransfer::clipboard;
 using namespace ::com::sun::star::datatransfer::dnd;
 using namespace ::com::sun::star;
@@ -48,9 +48,9 @@ struct ImplCalcToTopData
 
 namespace vcl {
 
-vcl::Window* Window::ImplGetTopmostFrameWindow()
+vcl::Window* Window::ImplGetTopmostFrameWindow() const
 {
-    vcl::Window *pTopmostParent = this;
+    const vcl::Window *pTopmostParent = this;
     while( pTopmostParent->ImplGetParent() )
         pTopmostParent = pTopmostParent->ImplGetParent();
     return pTopmostParent->mpWindowImpl->mpFrameWindow;
@@ -201,7 +201,10 @@ void Window::ImplToBottomChild()
     if ( mpWindowImpl->mpPrev )
         mpWindowImpl->mpPrev->mpWindowImpl->mpNext = mpWindowImpl->mpNext;
     else
+    {
+        // coverity[copy_paste_error : FALSE] - this is correct mpFirstChild, not mpNext
         mpWindowImpl->mpParent->mpWindowImpl->mpFirstChild = mpWindowImpl->mpNext;
+    }
     mpWindowImpl->mpNext->mpWindowImpl->mpPrev = mpWindowImpl->mpPrev;
     mpWindowImpl->mpPrev = mpWindowImpl->mpParent->mpWindowImpl->mpLastChild;
     mpWindowImpl->mpParent->mpWindowImpl->mpLastChild = this;
@@ -229,7 +232,7 @@ void Window::ImplCalcToTop( ImplCalcToTopData* pPrevData )
         ImplCalcToTopData* pData    = new ImplCalcToTopData;
         pPrevData->mpNext.reset(pData);
         pData->mpWindow             = this;
-        pData->mpInvalidateRegion.reset(new vcl::Region( aInvalidateRegion ));
+        pData->mpInvalidateRegion.reset(new vcl::Region(std::move(aInvalidateRegion)));
     }
 }
 
@@ -269,7 +272,10 @@ void Window::ImplToTop( ToTopFlags nFlags )
             if ( mpWindowImpl->mpNext )
                 mpWindowImpl->mpNext->mpWindowImpl->mpPrev = mpWindowImpl->mpPrev;
             else
+            {
+                // coverity[copy_paste_error : FALSE] - this is correct mpLastOverlap, not mpPrev
                 mpWindowImpl->mpOverlapWindow->mpWindowImpl->mpLastOverlap = mpWindowImpl->mpPrev;
+            }
 
             // take AlwaysOnTop into account
             bool    bOnTop = IsAlwaysOnTopEnabled();
@@ -836,6 +842,12 @@ void Window::SetParent( vcl::Window* pNewParent )
 
     if( !pNewParent || pNewParent == this )
         return;
+
+    if (!mpWindowImpl)
+    {
+        SAL_WARN("vcl", "Window::SetParent(): mpWindowImpl == NULL");
+        return;
+    }
 
     // check if the taskpanelist would change and move the window pointer accordingly
     SystemWindow *pSysWin = ImplGetLastSystemWindow(this);

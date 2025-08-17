@@ -39,6 +39,7 @@
 #include <com/sun/star/datatransfer/dnd/XDragSourceListener.hpp>
 #include <com/sun/star/datatransfer/dnd/XDropTargetListener.hpp>
 #include <com/sun/star/embed/Aspects.hpp>
+#include <rtl/ref.hxx>
 #include <memory>
 #include <mutex>
 #include <utility>
@@ -47,18 +48,16 @@ namespace com::sun::star::datatransfer::dnd { class XDragGestureRecognizer; }
 namespace com::sun::star::io { class XInputStream; }
 namespace com::sun::star::datatransfer::dnd { class XDropTarget; }
 
-namespace tools { template <typename T> class SvRef; }
 template <typename Arg, typename Ret> class Link;
 
-class BitmapEx;
+class Bitmap;
 class GDIMetaFile;
 class Graphic;
 class ImageMap;
 class INetBookmark;
 class INetImage;
 class FileList;
-class SotStorageStream;
-class SotTempStream;
+class TransferableClipboardNotifier;
 namespace vcl { class Window; }
 
 // Drag&Drop defines
@@ -134,7 +133,7 @@ class VCL_DLLPUBLIC TransferableHelper : public cppu::WeakImplHelper< css::datat
 private:
 
     // nested class to implement the XTerminateListener interface
-    class VCL_DLLPRIVATE TerminateListener final : public cppu::WeakImplHelper< css::frame::XTerminateListener, css::lang::XServiceInfo >
+    class SAL_DLLPRIVATE TerminateListener final : public cppu::WeakImplHelper< css::frame::XTerminateListener, css::lang::XServiceInfo >
     {
     private:
 
@@ -167,7 +166,7 @@ private:
     css::uno::Any                                                             maAny;
     OUString                                                                  maLastFormat;
     mutable css::uno::Reference< css::datatransfer::clipboard::XClipboard >   mxClipboard;
-    css::uno::Reference< css::frame::XTerminateListener >                     mxTerminateListener;
+    rtl::Reference< TerminateListener >                                       mxTerminateListener;
     DataFlavorExVector                                                        maFormats;
     std::unique_ptr<TransferableObjectDescriptor>                             mxObjDesc;
 
@@ -219,7 +218,7 @@ protected:
 
 private:
 
-    VCL_DLLPRIVATE void             ImplFlush();
+    SAL_DLLPRIVATE void             ImplFlush();
 
 protected:
 
@@ -232,7 +231,7 @@ protected:
 
     bool                SetAny( const css::uno::Any& rAny );
     bool                SetString( const OUString& rString );
-    bool                SetBitmapEx( const BitmapEx& rBitmap, const css::datatransfer::DataFlavor& rFlavor );
+    bool                SetBitmapEx( const Bitmap& rBitmap, const css::datatransfer::DataFlavor& rFlavor );
     bool                SetGDIMetaFile( const GDIMetaFile& rMtf );
     bool                SetGraphic( const Graphic& rGraphic );
     bool                SetImageMap( const ImageMap& rIMap );
@@ -245,27 +244,25 @@ protected:
 
     virtual void        AddSupportedFormats() = 0;
     virtual bool        GetData( const css::datatransfer::DataFlavor& rFlavor, const OUString& rDestDoc ) = 0;
-    virtual bool        WriteObject( tools::SvRef<SotTempStream>& rxOStm, void* pUserObject, sal_uInt32 nUserObjectId, const css::datatransfer::DataFlavor& rFlavor );
+    virtual bool        WriteObject( SvStream& rOStm, void* pUserObject, sal_uInt32 nUserObjectId, const css::datatransfer::DataFlavor& rFlavor );
     virtual void        DragFinished( sal_Int8 nDropAction );
     virtual void        ObjectReleased();
 
-    void                CopyToSelection(const css::uno::Reference<css::datatransfer::clipboard::XClipboard> &rClipboard) const;
+    void                CopyToSelection(const css::uno::Reference<css::datatransfer::clipboard::XClipboard>& rClipboard);
 public:
 
     void                PrepareOLE( const TransferableObjectDescriptor& rObjDesc );
 
-    void                CopyToClipboard(const css::uno::Reference<css::datatransfer::clipboard::XClipboard> &rClipboard) const;
+    void                CopyToClipboard(const css::uno::Reference<css::datatransfer::clipboard::XClipboard>& rClipboard);
 
     // convenience versions of the above which extract the XClipboard from the pWindow
-    void                CopyToClipboard( vcl::Window *pWindow ) const;
-    void                CopyToPrimarySelection() const;
+    void                CopyToClipboard(vcl::Window* pWindow);
+    void                CopyToPrimarySelection();
 
     void                StartDrag( vcl::Window* pWindow, sal_Int8 nDragSourceActions );
 
     static void         ClearPrimarySelection();
 };
-
-struct TransferableDataHelper_Impl;
 
 class VCL_DLLPUBLIC TransferableDataHelper final
 {
@@ -275,7 +272,7 @@ class VCL_DLLPUBLIC TransferableDataHelper final
     css::uno::Reference< css::datatransfer::clipboard::XClipboard >   mxClipboard;
     DataFlavorExVector                                                maFormats;
     std::unique_ptr<TransferableObjectDescriptor>                     mxObjDesc;
-    std::unique_ptr<TransferableDataHelper_Impl>                      mxImpl;
+    rtl::Reference<TransferableClipboardNotifier> mxClipboardListener;
 
     void                        InitFormats();
 
@@ -317,8 +314,8 @@ public:
     bool                        GetString( SotClipboardFormatId nFormat, OUString& rStr ) const;
     bool                        GetString( const css::datatransfer::DataFlavor& rFlavor, OUString& rStr ) const;
 
-    bool                        GetBitmapEx( SotClipboardFormatId nFormat, BitmapEx& rBmp ) const;
-    bool                        GetBitmapEx( const css::datatransfer::DataFlavor& rFlavor, BitmapEx& rBmp ) const;
+    bool                        GetBitmapEx( SotClipboardFormatId nFormat, Bitmap& rBmp ) const;
+    bool                        GetBitmapEx( const css::datatransfer::DataFlavor& rFlavor, Bitmap& rBmp ) const;
 
     /** Return as GDI metafile.
 
@@ -352,8 +349,8 @@ public:
     css::uno::Sequence<sal_Int8> GetSequence( SotClipboardFormatId nFormat, const OUString& rDestDoc ) const;
     css::uno::Sequence<sal_Int8> GetSequence( const css::datatransfer::DataFlavor& rFlavor, const OUString& rDestDoc ) const;
 
-    bool                        GetSotStorageStream( SotClipboardFormatId nFormat, tools::SvRef<SotTempStream>& rStreamRef ) const;
-    bool                        GetSotStorageStream( const css::datatransfer::DataFlavor& rFlavor, tools::SvRef<SotTempStream>& rStreamRef ) const;
+    std::unique_ptr<SvStream>    GetSotStorageStream( SotClipboardFormatId nFormat ) const;
+    std::unique_ptr<SvStream>    GetSotStorageStream( const css::datatransfer::DataFlavor& rFlavor ) const;
 
     css::uno::Reference<css::io::XInputStream> GetInputStream( SotClipboardFormatId nFormat, const OUString& rDestDoc ) const;
     css::uno::Reference<css::io::XInputStream> GetInputStream( const css::datatransfer::DataFlavor& rFlavor, const OUString& rDestDoc ) const;
@@ -363,6 +360,10 @@ public:
     static TransferableDataHelper   CreateFromPrimarySelection();
     static bool                     IsEqual( const css::datatransfer::DataFlavor& rInternalFlavor,
                                              const css::datatransfer::DataFlavor& rRequestFlavor );
+    static bool WriteDDELink(SvStream& stream, std::u16string_view application,
+                             std::u16string_view topic, std::u16string_view item,
+                             std::u16string_view extra = {});
+    bool ReadDDELink(OUString& application, OUString& topic, OUString& item, OUString& rest) const;
 };
 
 class VCL_DLLPUBLIC SAL_LOPLUGIN_ANNOTATE("crosscast") DragSourceHelper
@@ -396,7 +397,7 @@ private:
     std::mutex                                                            maMutex;
     css::uno::Reference< css::datatransfer::dnd::XDragGestureRecognizer > mxDragGestureRecognizer;
 
-    css::uno::Reference< css::datatransfer::dnd::XDragGestureListener >   mxDragGestureListener;
+    rtl::Reference< DragSourceHelper::DragGestureListener >   mxDragGestureListener;
 
     DragSourceHelper&   operator=( const DragSourceHelper& rDragSourceHelper ) = delete;
     bool                operator==( const DragSourceHelper& rDragSourceHelper ) const = delete;
@@ -445,7 +446,7 @@ private:
     std::mutex                                                            maMutex;
     css::uno::Reference< css::datatransfer::dnd::XDropTarget >            mxDropTarget;
 
-    css::uno::Reference< css::datatransfer::dnd::XDropTargetListener >    mxDropTargetListener;
+    rtl::Reference< DropTargetHelper::DropTargetListener >                mxDropTargetListener;
     DataFlavorExVector                                                    maFormats;
 
                         DropTargetHelper() = delete;
@@ -455,14 +456,14 @@ private:
     void                ImplConstruct();
 
                         // called by our own implementation of XDropTargetListener (DropTargetListener instance)
-    void                ImplBeginDrag( const css::uno::Sequence< css::datatransfer::DataFlavor >& rSupportedDataFlavors );
-    void                ImplEndDrag();
+    SAL_DLLPRIVATE void ImplBeginDrag( const css::uno::Sequence< css::datatransfer::DataFlavor >& rSupportedDataFlavors );
+    SAL_DLLPRIVATE void ImplEndDrag();
 
 public:
 
                         // to be overridden by the application
-    virtual sal_Int8    AcceptDrop( const AcceptDropEvent& rEvt );
-    virtual sal_Int8    ExecuteDrop( const ExecuteDropEvent& rEvt );
+    SAL_DLLPRIVATE virtual sal_Int8    AcceptDrop( const AcceptDropEvent& rEvt );
+    SAL_DLLPRIVATE virtual sal_Int8    ExecuteDrop( const ExecuteDropEvent& rEvt );
 
                         DropTargetHelper( vcl::Window* pWindow );
                         DropTargetHelper( const css::uno::Reference< css::datatransfer::dnd::XDropTarget >& rxDropTarget );

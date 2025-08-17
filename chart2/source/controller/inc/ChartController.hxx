@@ -20,6 +20,7 @@
 
 #include <LifeTime.hxx>
 #include <ReferenceSizeProvider.hxx>
+#include "AccessibleChartView.hxx"
 #include "CommandDispatchContainer.hxx"
 #include "SelectionHelper.hxx"
 
@@ -43,7 +44,6 @@
 #include <string_view>
 
 namespace com::sun::star::accessibility { class XAccessible; }
-namespace com::sun::star::accessibility { class XAccessibleContext; }
 namespace com::sun::star::awt { class XFocusListener; }
 namespace com::sun::star::awt { class XKeyListener; }
 namespace com::sun::star::awt { class XMouseListener; }
@@ -56,9 +56,7 @@ namespace com::sun::star::document { class XUndoManager; }
 namespace com::sun::star::frame { class XDispatch; }
 namespace com::sun::star::frame { class XLayoutManagerEventBroadcaster; }
 namespace com::sun::star::graphic { class XGraphic; }
-namespace com::sun::star::lang { class XInitialization; }
 namespace com::sun::star::uno { class XComponentContext; }
-namespace com::sun::star::util { class XCloseable; }
 namespace com::sun::star::view { class XSelectionSupplier; }
 
 class SdrModel;
@@ -87,9 +85,7 @@ class ChartWindow;
 class DrawModelWrapper;
 class DrawViewWrapper;
 class ViewElementListProvider;
-class ViewElementListProvider;
 class Diagram;
-class AccessibleChartView;
 class AccessibleTextHelper;
 
 enum ChartDrawMode { CHARTDRAW_INSERT, CHARTDRAW_SELECT };
@@ -307,7 +303,7 @@ public:
         ::Point aAtLogicPosition, bool bIsBalloonHelp,
         OUString & rOutQuickHelpText, css::awt::Rectangle & rOutEqualRect );
 
-    css::uno::Reference< css::accessibility::XAccessible > CreateAccessible();
+    rtl::Reference<AccessibleChartView> CreateAccessible();
 
     /** Creates a helper accessibility class that must be initialized via initialize().  For
         parameters see
@@ -323,6 +319,7 @@ public:
     void setDrawMode( ChartDrawMode eMode ) { m_eDrawMode = eMode; }
 
     bool isShapeContext() const;
+    bool IsTextEdit() const;
 
     ViewElementListProvider getViewElementListProvider();
     DrawModelWrapper* GetDrawModelWrapper();
@@ -339,6 +336,8 @@ public:
 
     rtl::Reference<::chart::ChartModel> getChartModel();
     rtl::Reference<::chart::Diagram> getFirstDiagram();
+
+    const Selection& getSelectionMember() const { return m_aSelection; }
 
 private:
     class TheModel : public salhelper::SimpleReferenceObject
@@ -430,7 +429,7 @@ private:
     void executeDispatch_ObjectProperties();
     void executeDispatch_FormatObject( std::u16string_view rDispatchCommand );
     void executeDlg_ObjectProperties( const OUString& rObjectCID );
-    bool executeDlg_ObjectProperties_withoutUndoGuard( const OUString& rObjectCID, bool bSuccessOnUnchanged );
+    void executeDlg_ObjectProperties_withUndoGuard( std::shared_ptr<UndoGuard> aUndoGuard, const OUString& rObjectCID, bool bSuccessOnUnchanged );
 
     void executeDispatch_ChartType();
 
@@ -484,6 +483,8 @@ private:
     void executeDispatch_MoveSeries( bool bForward );
 
     bool EndTextEdit();
+    css::uno::Sequence< css::uno::Reference<css::chart2::XFormattedString >> GetFormattedTitle(
+        const EditTextObject& aEdit, const css::uno::Reference< css::drawing::XShape >& xShape );
 
     void executeDispatch_View3D();
     void executeDispatch_PositionAndSize( const ::css::uno::Sequence< ::css::beans::PropertyValue >* pArgs = nullptr );
@@ -492,6 +493,40 @@ private:
 
     void executeDispatch_NewArrangement();
     void executeDispatch_ScaleText();
+
+    static void executeDispatch_FontBold(
+        const std::vector<css::uno::Reference<css::beans::XPropertySet>>& xProperties);
+    static void executeDispatch_FontName(
+        const std::vector<css::uno::Reference<css::beans::XPropertySet>>& xProperties,
+        const css::uno::Sequence<css::beans::PropertyValue>& rArgs);
+    static void executeDispatch_FontHeight(
+        const std::vector<css::uno::Reference<css::beans::XPropertySet>>& xProperties,
+        const css::uno::Sequence<css::beans::PropertyValue>& rArgs);
+    static void executeDispatch_FontItalic(
+        const std::vector<css::uno::Reference<css::beans::XPropertySet>>& xProperties);
+    static void executeDispatch_FontUnderline(
+        const std::vector<css::uno::Reference<css::beans::XPropertySet>>& xProperties,
+        const css::uno::Sequence<css::beans::PropertyValue>& rArgs);
+    static void executeDispatch_FontStrikeout(
+        const std::vector<css::uno::Reference<css::beans::XPropertySet>>& xProperties);
+    static void executeDispatch_FontShadowed(
+        const std::vector<css::uno::Reference<css::beans::XPropertySet>>& xProperties);
+    static void executeDispatch_FontColor(
+        const std::vector<css::uno::Reference<css::beans::XPropertySet>>& xProperties,
+        const css::uno::Sequence<css::beans::PropertyValue>& rArgs);
+    static void executeDispatch_FontGrow(
+        const std::vector<css::uno::Reference<css::beans::XPropertySet>>& xProperties);
+    static void executeDispatch_FontShrink(
+        const std::vector<css::uno::Reference<css::beans::XPropertySet>>& xProperties);
+    static void executeDispatch_FontReset(
+        const std::vector<css::uno::Reference<css::beans::XPropertySet>>& xProperties);
+    static void executeDispatch_FontSpacing(
+        const std::vector<css::uno::Reference<css::beans::XPropertySet>>& xProperties,
+        const css::uno::Sequence<css::beans::PropertyValue>& rArgs);
+    static void executeDispatch_FontSuperScript(
+        const std::vector<css::uno::Reference<css::beans::XPropertySet>>& xProperties);
+    static void executeDispatch_FontSubScript(
+        const std::vector<css::uno::Reference<css::beans::XPropertySet>>& xProperties);
 
     void executeDispatch_Paste();
     void executeDispatch_Copy();
@@ -503,10 +538,10 @@ private:
 
     void executeDispatch_LOKSetTextSelection(int nType, int nX, int nY);
     void executeDispatch_LOKPieSegmentDragging(int nOffset);
-    void executeDispatch_FillColor(sal_uInt32 nColor);
+    void executeDispatch_FillColor(const css::uno::Any& rColor);
     void executeDispatch_FillGradient(std::u16string_view sJSONGradient);
-    void executeDispatch_LineColor(sal_uInt32 nColor);
-    void executeDispatch_LineWidth(sal_uInt32 nWidth);
+    void executeDispatch_LineColor(const css::uno::Any& rColor);
+    void executeDispatch_LineWidth(const css::uno::Any& rWidth);
 
     void sendPopupRequest(std::u16string_view rCID, tools::Rectangle aRectangle);
 
@@ -514,7 +549,7 @@ private:
         const css::uno::Sequence< css::beans::PropertyValue >& rArgs );
 
     DECL_LINK( DoubleClickWaitingHdl, Timer*, void );
-    void execute_DoubleClick( const Point* pMousePixel );
+    void execute_DoubleClick( const Point* pMousePixel, bool &bEditText );
     void startDoubleClickWaiting();
     void stopDoubleClickWaiting();
 
@@ -538,7 +573,7 @@ private:
         const OUString & rCID, eMoveOrResizeType eType, double fAmountLogicX, double fAmountLogicY );
     bool impl_DragDataPoint( std::u16string_view rCID, double fOffset );
 
-    static const o3tl::sorted_vector< OUString >& impl_getAvailableCommands();
+    static const o3tl::sorted_vector< std::u16string_view >& impl_getAvailableCommands();
 
     void impl_PasteGraphic( css::uno::Reference< css::graphic::XGraphic > const & xGraphic,
                             const ::Point & aPosition );

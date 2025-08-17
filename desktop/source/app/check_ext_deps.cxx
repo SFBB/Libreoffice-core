@@ -218,9 +218,9 @@ static sal_Int16 impl_showExtensionDialog( uno::Reference< uno::XComponentContex
     uno::Reference< lang::XMultiComponentFactory > xServiceManager( xContext->getServiceManager() );
     if( !xServiceManager.is() )
         throw uno::RuntimeException(
-            "impl_showExtensionDialog(): unable to obtain service manager from component context", uno::Reference< uno::XInterface > () );
+            u"impl_showExtensionDialog(): unable to obtain service manager from component context"_ustr, uno::Reference< uno::XInterface > () );
 
-    xService = xServiceManager->createInstanceWithContext( "com.sun.star.deployment.ui.UpdateRequiredDialog", xContext );
+    xService = xServiceManager->createInstanceWithContext( u"com.sun.star.deployment.ui.UpdateRequiredDialog"_ustr, xContext );
     uno::Reference< ui::dialogs::XExecutableDialog > xExecutable( xService, uno::UNO_QUERY );
     if ( xExecutable.is() )
         nRet = xExecutable->execute();
@@ -255,13 +255,13 @@ static bool impl_checkDependencies( const uno::Reference< uno::XComponentContext
                         e.Context, anyEx );
     }
 
-#ifdef DEBUG
+#if OSL_DEBUG_LEVEL >= 2
     sal_Int32 const nMax = 3;
 #else
     sal_Int32 const nMax = 2;
 #endif
 
-    for ( uno::Sequence< uno::Reference< deployment::XPackage > > const & xPackageList : std::as_const(xAllPackages) )
+    for (uno::Sequence<uno::Reference<deployment::XPackage>> const& xPackageList : xAllPackages)
     {
         for ( sal_Int32 j = 0; (j<nMax) && (j < xPackageList.getLength()); ++j )
         {
@@ -316,15 +316,15 @@ static void impl_setNeedsCompatCheck()
             configuration::theDefaultProvider::get(
                 comphelper::getProcessComponentContext() ) );
 
-        beans::NamedValue v( "nodepath",
-                      Any( OUString("org.openoffice.Setup/Office") ) );
+        beans::NamedValue v( u"nodepath"_ustr,
+                      Any( u"org.openoffice.Setup/Office"_ustr ) );
         Sequence< Any > theArgs{ Any(v) };
         Reference< beans::XPropertySet > pset(
             theConfigProvider->createInstanceWithArguments( aAccessSrvc, theArgs ), UNO_QUERY_THROW );
 
-        Any value( OUString("never") );
+        Any value( u"never"_ustr );
 
-        pset->setPropertyValue("LastCompatibilityCheckID", value );
+        pset->setPropertyValue(u"LastCompatibilityCheckID"_ustr, value );
         Reference< util::XChangesBatch >( pset, UNO_QUERY_THROW )->commitChanges();
     }
     catch (const Exception&) {}
@@ -338,7 +338,7 @@ static bool impl_needsCompatCheck()
 {
     bool bNeedsCheck = false;
     OUString aLastCheckBuildID;
-    OUString aCurrentBuildID( "${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE("version") ":buildid}" );
+    OUString aCurrentBuildID( u"${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER "/" SAL_CONFIGFILE("version") ":buildid}"_ustr );
     rtl::Bootstrap::expandMacros( aCurrentBuildID );
 
     try {
@@ -346,23 +346,23 @@ static bool impl_needsCompatCheck()
             configuration::theDefaultProvider::get(
                 comphelper::getProcessComponentContext() ) );
 
-        beans::NamedValue v( "nodepath",
-                      Any( OUString("org.openoffice.Setup/Office") ) );
+        beans::NamedValue v( u"nodepath"_ustr,
+                      Any( u"org.openoffice.Setup/Office"_ustr ) );
         Sequence< Any > theArgs{ Any(v) };
         Reference< beans::XPropertySet > pset(
             theConfigProvider->createInstanceWithArguments( aAccessSrvc, theArgs ), UNO_QUERY_THROW );
 
-        Any result = pset->getPropertyValue("LastCompatibilityCheckID");
+        Any result = pset->getPropertyValue(u"LastCompatibilityCheckID"_ustr);
 
         result >>= aLastCheckBuildID;
         if ( aLastCheckBuildID != aCurrentBuildID )
         {
             bNeedsCheck = true;
             result <<= aCurrentBuildID;
-            pset->setPropertyValue("LastCompatibilityCheckID", result );
+            pset->setPropertyValue(u"LastCompatibilityCheckID"_ustr, result );
             Reference< util::XChangesBatch >( pset, UNO_QUERY_THROW )->commitChanges();
         }
-#ifdef DEBUG
+#if OSL_DEBUG_LEVEL >= 2
         bNeedsCheck = true;
 #endif
     }
@@ -381,7 +381,7 @@ bool Desktop::CheckExtensionDependencies()
         return false;
     }
 
-    uno::Reference< uno::XComponentContext > xContext(
+    const uno::Reference< uno::XComponentContext >& xContext(
         comphelper::getProcessComponentContext());
 
     bool bDependenciesValid = impl_checkDependencies( xContext );
@@ -402,13 +402,13 @@ bool Desktop::CheckExtensionDependencies()
 
 void Desktop::SynchronizeExtensionRepositories(bool bCleanedExtensionCache, Desktop* pDesktop)
 {
-    uno::Reference< uno::XComponentContext > context(
+    const uno::Reference< uno::XComponentContext >& context(
         comphelper::getProcessComponentContext());
     uno::Reference< ucb::XCommandEnvironment > silent(
         new SilentCommandEnv(context, pDesktop));
     if (bCleanedExtensionCache) {
         deployment::ExtensionManager::get(context)->reinstallDeployedExtensions(
-            true, "user", Reference<task::XAbortChannel>(), silent);
+            true, u"user"_ustr, Reference<task::XAbortChannel>(), silent);
 #if !HAVE_FEATURE_MACOSX_SANDBOX
         if (!comphelper::LibreOfficeKit::isActive())
             task::OfficeRestartManager::get(context)->requestRestart(

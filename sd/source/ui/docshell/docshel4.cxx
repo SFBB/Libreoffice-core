@@ -38,10 +38,12 @@
 #include <sfx2/docfile.hxx>
 #include <sfx2/docfilt.hxx>
 #include <sfx2/dispatch.hxx>
+#include <sfx2/infobar.hxx>
 #include <svx/svdotext.hxx>
 #include <sfx2/printer.hxx>
 #include <svtools/ctrltool.hxx>
 #include <comphelper/classids.hxx>
+#include <comphelper/scopeguard.hxx>
 #include <sot/formats.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <vcl/syswin.hxx>
@@ -77,6 +79,8 @@
 
 #include <Window.hxx>
 #include <svl/intitem.hxx>
+#include <DrawController.hxx>
+#include <ResourceId.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -102,7 +106,7 @@ SfxPrinter* DrawDocShell::GetPrinter(bool bCreate)
                             SID_PRINTER_CHANGESTODOC,   SID_PRINTER_CHANGESTODOC,
                             ATTR_OPTIONS_PRINT,         ATTR_OPTIONS_PRINT>>( GetPool() );
         // set PrintOptionsSet
-        SdOptionsPrintItem aPrintItem( SD_MOD()->GetSdOptions(mpDoc->GetDocumentType()) );
+        SdOptionsPrintItem aPrintItem(SdModule::get()->GetSdOptions(mpDoc->GetDocumentType()));
         SfxFlagItem aFlagItem( SID_PRINTER_CHANGESTODOC );
         SfxPrinterChangeFlags nFlags =
                 (aPrintItem.GetOptionsPrint().IsWarningSize() ? SfxPrinterChangeFlags::CHG_SIZE : SfxPrinterChangeFlags::NONE) |
@@ -165,7 +169,7 @@ void DrawDocShell::UpdateFontList()
     if ( mpDoc->GetPrinterIndependentLayout() == css::document::PrinterIndependentLayout::DISABLED )
         pRefDevice = GetPrinter(true);
     else
-        pRefDevice = SD_MOD()->GetVirtualRefDevice();
+        pRefDevice = SdModule::get()->GetVirtualRefDevice();
     mpFontList.reset( new FontList(pRefDevice, nullptr) );
     SvxFontListItem aFontListItem( mpFontList.get(), SID_ATTR_CHAR_FONTLIST );
     PutItem( aFontListItem );
@@ -215,7 +219,7 @@ void DrawDocShell::UpdateRefDevice()
             break;
 
         case css::document::PrinterIndependentLayout::ENABLED:
-            pRefDevice = SD_MOD()->GetVirtualRefDevice();
+            pRefDevice = SdModule::get()->GetVirtualRefDevice();
             break;
 
         default:
@@ -284,13 +288,6 @@ bool DrawDocShell::Load( SfxMedium& rMedium )
         mpDoc->SetStarDrawPreviewMode( true );
     }
 
-    if( SfxItemState::SET == rSet.GetItemState(SID_DOC_STARTPRESENTATION)&&
-        rSet.Get( SID_DOC_STARTPRESENTATION ).GetValue() )
-    {
-        bStartPresentation = true;
-        mpDoc->SetStartWithPresentation( true );
-    }
-
     bRet = SfxObjectShell::Load( rMedium );
     if (bRet)
     {
@@ -301,8 +298,10 @@ bool DrawDocShell::Load( SfxMedium& rMedium )
 
     if( bRet )
     {
+        SdDrawDocument* pDoc = GetDoc();
+
         // for legacy markup in OOoXML filter, convert the animations now
-        EffectMigration::DocumentLoaded(*GetDoc());
+        EffectMigration::DocumentLoaded(*pDoc);
         UpdateTablePointers();
 
         // If we're an embedded OLE object, use tight bounds
@@ -322,6 +321,15 @@ bool DrawDocShell::Load( SfxMedium& rMedium )
 
         const INetURLObject aUrl;
         SfxObjectShell::SetAutoLoad( aUrl, 0, false );
+
+        const sal_uInt16 nMasterPages = pDoc->GetMasterSdPageCount(PageKind::Standard);
+        if (nMasterPages > 100)
+        {
+            const LocaleDataWrapper& rLocaleData = Application::GetSettings().GetLocaleDataWrapper();
+            OUString sMasterPages = rLocaleData.getNum(nMasterPages, 0, true, false);
+            AppendInfoBarWhenReady(u"toomanymasterpages"_ustr, SdResId(STR_MANY_MASTER_PAGES).replaceFirst("%n", sMasterPages),
+                                   SdResId(STR_MANY_MASTER_PAGES_DETAIL), InfobarType::INFO);
+        }
     }
     else
     {
@@ -332,6 +340,25 @@ bool DrawDocShell::Load( SfxMedium& rMedium )
         //pStore->SetError(SVSTREAM_WRONGVERSION);
         else
             SetError(ERRCODE_ABORT);
+    }
+
+    if (SfxItemState::SET == rSet.GetItemState(SID_DOC_STARTPRESENTATION))
+    {
+        sal_uInt16 nStartingSlide = rSet.Get(SID_DOC_STARTPRESENTATION).GetValue();
+        if (nStartingSlide == 0)
+        {
+            OUString sStartPage = mpDoc->getPresentationSettings().maPresPage;
+            if (!sStartPage.isEmpty())
+            {
+                bool bIsMasterPage = false;
+                sal_uInt16 nPageNumb = mpDoc->GetPageByName(sStartPage, bIsMasterPage);
+                nStartingSlide = (nPageNumb + 1) / 2;
+            }
+            else
+                nStartingSlide = 1;
+        }
+        bStartPresentation = nStartingSlide;
+        mpDoc->SetStartWithPresentation(nStartingSlide);
     }
 
     // tell SFX to change viewshell when in preview mode
@@ -418,18 +445,41 @@ bool DrawDocShell::ImportFrom(SfxMedium &rMedium,
         mpDoc->SetDefaultTabulator( 2540 );
     }
 
+    comphelper::ScopeGuard undoGuard([this, wasUndo = mpDoc->IsUndoEnabled()]
+                                     { mpDoc->EnableUndo(wasUndo); });
+    if (xInsertPosition) // insert mode
+    {
+        undoGuard.dismiss();
+    }
+    else // initial loading of the document
+    {
+        mpDoc->EnableUndo(false);
+    }
+
     const bool bRet = SfxObjectShell::ImportFrom(rMedium, xInsertPosition);
 
     SfxItemSet& rSet = rMedium.GetItemSet();
-    if( SfxItemState::SET == rSet.GetItemState(SID_DOC_STARTPRESENTATION)&&
-        rSet.Get( SID_DOC_STARTPRESENTATION ).GetValue() )
+    if (SfxItemState::SET == rSet.GetItemState(SID_DOC_STARTPRESENTATION))
     {
-        mpDoc->SetStartWithPresentation( true );
+        sal_uInt16 nStartingSlide = rSet.Get(SID_DOC_STARTPRESENTATION).GetValue();
+        if (nStartingSlide == 0)
+        {
+            OUString sStartPage = mpDoc->getPresentationSettings().maPresPage;
+            if (!sStartPage.isEmpty())
+            {
+                bool bIsMasterPage = false;
+                sal_uInt16 nPageNumb = mpDoc->GetPageByName(sStartPage, bIsMasterPage);
+                nStartingSlide = (nPageNumb + 1) / 2;
+            }
+            else
+                nStartingSlide = 1;
+        }
+        mpDoc->SetStartWithPresentation(nStartingSlide);
 
         // tell SFX to change viewshell when in preview mode
-        if( IsPreview() )
+        if (IsPreview())
         {
-            GetMedium()->GetItemSet().Put( SfxUInt16Item( SID_VIEW_ID, 1 ) );
+            GetMedium()->GetItemSet().Put(SfxUInt16Item(SID_VIEW_ID, 1));
         }
     }
 
@@ -453,11 +503,23 @@ bool DrawDocShell::ConvertFrom( SfxMedium& rMedium )
         mpDoc->SetStarDrawPreviewMode( true );
     }
 
-    if( SfxItemState::SET == rSet.GetItemState(SID_DOC_STARTPRESENTATION)&&
-        rSet.Get( SID_DOC_STARTPRESENTATION ).GetValue() )
+    if (SfxItemState::SET == rSet.GetItemState(SID_DOC_STARTPRESENTATION))
     {
-        bStartPresentation = true;
-        mpDoc->SetStartWithPresentation( true );
+        sal_uInt16 nStartingSlide = rSet.Get(SID_DOC_STARTPRESENTATION).GetValue();
+        if (nStartingSlide == 0)
+        {
+            OUString sStartPage = mpDoc->getPresentationSettings().maPresPage;
+            if (!sStartPage.isEmpty())
+            {
+                bool bIsMasterPage = false;
+                sal_uInt16 nPageNumb = mpDoc->GetPageByName(sStartPage, bIsMasterPage);
+                nStartingSlide = (nPageNumb + 1) / 2;
+            }
+            else
+                nStartingSlide = 1;
+        }
+        bStartPresentation = nStartingSlide;
+        mpDoc->SetStartWithPresentation(nStartingSlide);
     }
 
     if( aFilterName == pFilterPowerPoint97
@@ -814,16 +876,16 @@ void DrawDocShell::GotoBookmark(std::u16string_view rBookmark)
             // little things to be done.  Especially writing the view
             // data to the frame view.
             sal_uInt16 nSdPgNum = (nPageNumber - 1) / 2;
-            Reference<drawing::XDrawView> xController (rBase.GetController(), UNO_QUERY);
-            if (xController.is())
+            DrawController* pDrawController = rBase.GetDrawController();
+            if (pDrawController)
             {
                 Reference<drawing::XDrawPage> xDrawPage (pPage->getUnoPage(), UNO_QUERY);
-                xController->setCurrentPage (xDrawPage);
+                pDrawController->setCurrentPage (xDrawPage);
             }
             else
             {
                 // As a fall back switch to the page via the core.
-                DBG_ASSERT (xController.is(),
+                DBG_ASSERT (pDrawController,
                     "DrawDocShell::GotoBookmark: can't switch page via API");
                 pDrawViewShell->SwitchPage(nSdPgNum);
             }
@@ -957,7 +1019,9 @@ void DrawDocShell::OpenBookmark( const OUString& rBookmarkURL )
 {
     SfxStringItem   aStrItem( SID_FILE_NAME, rBookmarkURL );
     SfxStringItem   aReferer( SID_REFERER, GetMedium()->GetName() );
-    const SfxPoolItem* ppArgs[] = { &aStrItem, &aReferer, nullptr };
+    SfxUInt16Item   aPresentation( SID_DOC_STARTPRESENTATION );
+    const SfxPoolItem* ppArgs[] = { &aStrItem, &aReferer, &aPresentation, nullptr };
+
     if (SfxViewFrame* pFrame = mpViewShell ? mpViewShell->GetViewFrame() : SfxViewFrame::Current())
         pFrame->GetBindings().Execute( SID_OPENHYPERLINK, ppArgs );
 }

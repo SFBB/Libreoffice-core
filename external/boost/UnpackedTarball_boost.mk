@@ -20,22 +20,21 @@ boost_patches += rtti.patch.0
 
 # https://svn.boost.org/trac/boost/ticket/11505
 boost_patches += boost_1_59_0.mpl.config.wundef.patch
-# https://svn.boost.org/trac/boost/ticket/11501
-boost_patches += boost_1_59_0.property_tree.wreturn-type.patch
 
 boost_patches += clang-cl.patch.0
 
 boost_patches += boost_1_63_0.undef.warning.patch.1
+boost_patches += windows-no-utf8-locales.patch.0
 
 boost_patches += msvc2017.patch.0
 
 boost_patches += boost-ios.patch.0
 
-# <https://github.com/boostorg/phoenix/pull/116> "Avoid boost::phoenix::placeholders::uarg1..10 ODR
-# violations":
-boost_patches += 0001-Avoid-boost-phoenix-placeholders-uarg1.10-ODR-violat.patch.2
-
 boost_patches += boost.file_iterator.sharing_win.patch
+
+boost_patches += Wundef.patch.0
+
+boost_patches += boost.spirit.noreturn.patch
 
 $(eval $(call gb_UnpackedTarball_UnpackedTarball,boost))
 
@@ -45,7 +44,6 @@ $(eval $(call gb_UnpackedTarball_set_patchlevel,boost,3))
 
 $(eval $(call gb_UnpackedTarball_add_patches,boost,\
 	$(foreach patch,$(boost_patches),external/boost/$(patch)) \
-    external/boost/boost-emscripten-noshm.patch.0 \
     external/boost/boost-emscripten-nowasm.patch.0 \
 ))
 

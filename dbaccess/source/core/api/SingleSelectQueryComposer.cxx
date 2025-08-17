@@ -281,7 +281,7 @@ void SAL_CALL OSingleSelectQueryComposer::disposing()
 IMPLEMENT_FORWARD_XINTERFACE3(OSingleSelectQueryComposer,OSubComponent,OSingleSelectQueryComposer_BASE,OPropertyContainer)
 OUString SAL_CALL OSingleSelectQueryComposer::getImplementationName()
     {
-        return "org.openoffice.comp.dba.OSingleSelectQueryComposer";
+        return u"org.openoffice.comp.dba.OSingleSelectQueryComposer"_ustr;
     }
 sal_Bool SAL_CALL OSingleSelectQueryComposer::supportsService(const OUString& _rServiceName)
     {
@@ -496,13 +496,13 @@ OUString OSingleSelectQueryComposer::impl_getColumnRealName_throw(const Referenc
         m_aCurrentColumns[SelectColumns]->getByName(aName) >>= xColumn;
         OSL_ENSURE(xColumn->getPropertySetInfo()->hasPropertyByName(PROPERTY_REALNAME),"Property REALNAME not available!");
         OSL_ENSURE(xColumn->getPropertySetInfo()->hasPropertyByName(PROPERTY_TABLENAME),"Property TABLENAME not available!");
-        OSL_ENSURE(xColumn->getPropertySetInfo()->hasPropertyByName("Function"),"Property FUNCTION not available!");
+        OSL_ENSURE(xColumn->getPropertySetInfo()->hasPropertyByName(u"Function"_ustr),"Property FUNCTION not available!");
 
         OUString sRealName, sTableName;
         xColumn->getPropertyValue(PROPERTY_REALNAME)    >>= sRealName;
         xColumn->getPropertyValue(PROPERTY_TABLENAME)   >>= sTableName;
         bool bFunction = false;
-        xColumn->getPropertyValue("Function") >>= bFunction;
+        xColumn->getPropertyValue(u"Function"_ustr) >>= bFunction;
         if ( sRealName == aName )
         {
             if ( bFunction )
@@ -926,13 +926,13 @@ Reference< XNameAccess > SAL_CALL OSingleSelectQueryComposer::getColumns(  )
                 // we can now only look if we found it under the realname property
                 // here we have to make the assumption that the position is correct
                 OSQLColumns::Vector::const_iterator aFind2 = aSelectColumns->begin() + i-1;
-                Reference<XPropertySet> xProp = *aFind2;
+                const Reference<XPropertySet>& xProp = *aFind2;
                 if ( !xProp.is() || !xProp->getPropertySetInfo()->hasPropertyByName( PROPERTY_REALNAME ) )
                     continue;
 
                 rtl::Reference<::connectivity::parse::OParseColumn> pColumn = new ::connectivity::parse::OParseColumn(xProp,bCase);
-                pColumn->setFunction(::comphelper::getBOOL(xProp->getPropertyValue("Function")));
-                pColumn->setAggregateFunction(::comphelper::getBOOL(xProp->getPropertyValue("AggregateFunction")));
+                pColumn->setFunction(::comphelper::getBOOL(xProp->getPropertyValue(u"Function"_ustr)));
+                pColumn->setAggregateFunction(::comphelper::getBOOL(xProp->getPropertyValue(u"AggregateFunction"_ustr)));
 
                 OUString sRealName;
                 xProp->getPropertyValue(PROPERTY_REALNAME) >>= sRealName;
@@ -1364,8 +1364,8 @@ OUString OSingleSelectQueryComposer::getTableAlias(const Reference< XPropertySet
         column->getPropertyValue(PROPERTY_NAME)         >>= aColumnName;
 
         Sequence< OUString> aNames(m_pTables->getElementNames());
-        const OUString* pBegin     = aNames.getConstArray();
-        const OUString* const pEnd = pBegin + aNames.getLength();
+        const OUString* pBegin     = aNames.begin();
+        const OUString* const pEnd = aNames.end();
 
         if(aTable.isEmpty())
         { // we haven't found a table name, now we must search every table for this column
@@ -1564,21 +1564,22 @@ namespace
         std::u16string_view rQuoteString)
     {
         OUStringBuffer sRet;
-        const Sequence< PropertyValue >* pOrIter = filter.getConstArray();
-        const Sequence< PropertyValue >* pOrEnd = pOrIter + filter.getLength();
-        while ( pOrIter != pOrEnd )
+        for (auto& rOr : filter)
         {
-            if ( pOrIter->hasElements() )
+            if (rOr.hasElements())
             {
+                if (!sRet.isEmpty())
+                    sRet.append(STR_OR);
                 sRet.append(L_BRACKET);
-                const PropertyValue* pAndIter = pOrIter->getConstArray();
-                const PropertyValue* pAndEnd = pAndIter + pOrIter->getLength();
-                while ( pAndIter != pAndEnd )
+                OUStringBuffer sAnd;
+                for (auto& rAnd : rOr)
                 {
-                    sRet.append(pAndIter->Name);
+                    if (!sAnd.isEmpty())
+                        sAnd.append(STR_AND);
+                    sAnd.append(rAnd.Name);
                     OUString sValue;
-                    pAndIter->Value >>= sValue;
-                    const OUString sColumnName = lcl_getDecomposedColumnName( pAndIter->Name, rQuoteString );
+                    rAnd.Value >>= sValue;
+                    const OUString sColumnName = lcl_getDecomposedColumnName( rAnd.Name, rQuoteString );
                     if ( i_xSelectColumns.is() && i_xSelectColumns->hasByName(sColumnName) )
                     {
                         Reference<XPropertySet> xColumn(i_xSelectColumns->getByName(sColumnName),UNO_QUERY);
@@ -1586,18 +1587,12 @@ namespace
                     }
                     else
                     {
-                        sValue = i_aPredicateInputController.getPredicateValueStr(pAndIter->Name,sValue);
+                        sValue = i_aPredicateInputController.getPredicateValueStr(rAnd.Name,sValue);
                     }
-                    lcl_addFilterCriteria_throw(pAndIter->Handle,sValue,sRet);
-                    ++pAndIter;
-                    if ( pAndIter != pAndEnd )
-                        sRet.append(STR_AND);
+                    lcl_addFilterCriteria_throw(rAnd.Handle, sValue, sAnd);
                 }
-                sRet.append(R_BRACKET);
+                sRet.append(OUString::unacquired(sAnd) + R_BRACKET);
             }
-            ++pOrIter;
-            if ( pOrIter != pOrEnd && !sRet.isEmpty() )
-                sRet.append(STR_OR);
         }
         return sRet.makeStringAndClear();
     }
@@ -1653,7 +1648,7 @@ void OSingleSelectQueryComposer::setConditionByColumn( const Reference< XPropert
             m_aCurrentColumns[SelectColumns]->getByName(aName) >>= xColumn;
             OSL_ENSURE(xColumn->getPropertySetInfo()->hasPropertyByName(PROPERTY_REALNAME),"Property REALNAME not available!");
             OSL_ENSURE(xColumn->getPropertySetInfo()->hasPropertyByName(PROPERTY_TABLENAME),"Property TABLENAME not available!");
-            OSL_ENSURE(xColumn->getPropertySetInfo()->hasPropertyByName("AggregateFunction"),"Property AggregateFunction not available!");
+            OSL_ENSURE(xColumn->getPropertySetInfo()->hasPropertyByName(u"AggregateFunction"_ustr),"Property AggregateFunction not available!");
 
             OUString sRealName,sTableName;
             xColumn->getPropertyValue(PROPERTY_REALNAME)    >>= sRealName;
@@ -1667,7 +1662,7 @@ void OSingleSelectQueryComposer::setConditionByColumn( const Reference< XPropert
             else
                 sTableName = ::dbtools::quoteName(aQuote,sTableName);
 
-            if ( !::comphelper::getBOOL(xColumn->getPropertyValue("Function")) )
+            if ( !::comphelper::getBOOL(xColumn->getPropertyValue(u"Function"_ustr)) )
             {
                 aSQL =  sTableName + "." + ::dbtools::quoteName( aQuote, sRealName );
             }
@@ -1726,12 +1721,8 @@ void OSingleSelectQueryComposer::setConditionByColumn( const Reference< XPropert
                         aSQL.append( "\'" );
                     }
                     aSQL.append( "0x" );
-                    const sal_Int8* pBegin  = aSeq.getConstArray();
-                    const sal_Int8* pEnd    = pBegin + aSeq.getLength();
-                    for(;pBegin != pEnd;++pBegin)
-                    {
-                        aSQL.append( static_cast<sal_Int32>(*pBegin), 16 );
-                    }
+                    for (sal_Int32 byte : aSeq)
+                        aSQL.append(byte, 16);
                     if(nSearchable == ColumnSearch::CHAR)
                         aSQL.append( "\'" );
                 }

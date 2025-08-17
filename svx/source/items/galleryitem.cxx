@@ -32,7 +32,8 @@
 SfxPoolItem* SvxGalleryItem::CreateDefault() { return new SvxGalleryItem; }
 
 SvxGalleryItem::SvxGalleryItem()
-    : m_nType( css::gallery::GalleryItemType::EMPTY )
+    : SfxPoolItem( 0 )
+    , m_nType( css::gallery::GalleryItemType::EMPTY )
 {
 }
 
@@ -80,7 +81,7 @@ bool SvxGalleryItem::PutValue( const css::uno::Any& rVal, sal_uInt8 /* nMemberId
     css::uno::Reference< css::lang::XComponent > xDrawing;
     css::uno::Reference< css::graphic::XGraphic > xGraphic;
 
-    for ( const css::beans::PropertyValue& rProp : std::as_const(aSeq) )
+    for (const css::beans::PropertyValue& rProp : aSeq)
     {
         if ( rProp.Name == SVXGALLERYITEM_TYPE )
         {
@@ -114,8 +115,8 @@ bool SvxGalleryItem::PutValue( const css::uno::Any& rVal, sal_uInt8 /* nMemberId
 
     m_nType = nType;
     m_aURL = aURL;
-    m_xDrawing = xDrawing;
-    m_xGraphic = xGraphic;
+    m_xDrawing = std::move(xDrawing);
+    m_xGraphic = std::move(xGraphic);
 
     return true;
 }

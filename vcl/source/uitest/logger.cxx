@@ -26,15 +26,15 @@ namespace
 {
 bool isDialogWindow(vcl::Window const* pWindow)
 {
-    WindowType nType = pWindow->GetType();
-    if (nType == WindowType::DIALOG || nType == WindowType::MODELESSDIALOG)
+    WindowType eType = pWindow->GetType();
+    if (eType == WindowType::DIALOG || eType == WindowType::MODELESSDIALOG)
         return true;
 
     // MESSBOX, INFOBOX, WARNINGBOX, ERRORBOX, QUERYBOX
-    if (nType >= WindowType::MESSBOX && nType <= WindowType::QUERYBOX)
+    if (eType >= WindowType::MESSBOX && eType <= WindowType::QUERYBOX)
         return true;
 
-    if (nType == WindowType::TABDIALOG)
+    if (eType == WindowType::TABDIALOG)
         return true;
 
     return false;
@@ -68,8 +68,8 @@ UITestLogger::UITestLogger()
     static const char* pFile = std::getenv("LO_COLLECT_UIINFO");
     if (pFile)
     {
-        OUString aDirPath("${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER
-                          "/" SAL_CONFIGFILE("bootstrap") ":UserInstallation}/uitest/");
+        OUString aDirPath(u"${$BRAND_BASE_DIR/" LIBO_ETC_FOLDER
+                          "/" SAL_CONFIGFILE("bootstrap") ":UserInstallation}/uitest/"_ustr);
         rtl::Bootstrap::expandMacros(aDirPath);
         osl::Directory::createPath(aDirPath);
         OUString aFilePath = aDirPath + OUString::fromUtf8(pFile);
@@ -77,51 +77,6 @@ UITestLogger::UITestLogger()
         maStream.Open(aFilePath, StreamMode::READWRITE | StreamMode::TRUNC);
         mbValid = true;
     }
-}
-
-void UITestLogger::logCommand(std::u16string_view rAction,
-                              const css::uno::Sequence<css::beans::PropertyValue>& rArgs)
-{
-    if (!mbValid)
-        return;
-
-    OUStringBuffer aBuffer(rAction);
-
-    if (rArgs.hasElements())
-    {
-        aBuffer.append(" {");
-        for (const css::beans::PropertyValue& rProp : rArgs)
-        {
-            OUString aTypeName = rProp.Value.getValueTypeName();
-
-            if (aTypeName == "long" || aTypeName == "short")
-            {
-                sal_Int32 nValue = 0;
-                rProp.Value >>= nValue;
-                aBuffer.append("\"" + rProp.Name + "\": " + OUString::number(nValue) + ", ");
-            }
-            else if (aTypeName == "unsigned long")
-            {
-                sal_uInt32 nValue = 0;
-                rProp.Value >>= nValue;
-                aBuffer.append("\"" + rProp.Name + "\": " + OUString::number(nValue) + ", ");
-            }
-            else if (aTypeName == "boolean")
-            {
-                bool bValue = false;
-                rProp.Value >>= bValue;
-                aBuffer.append("\"" + rProp.Name + "\": ");
-                if (bValue)
-                    aBuffer.append("True, ");
-                else
-                    aBuffer.append("False, ");
-            }
-        }
-        aBuffer.append("}");
-    }
-
-    OUString aCommand(aBuffer.makeStringAndClear());
-    maStream.WriteLine(OUStringToOString(aCommand, RTL_TEXTENCODING_UTF8));
 }
 
 namespace
@@ -320,7 +275,7 @@ namespace
 OUString StringMapToOUString(const std::map<OUString, OUString>& rParameters)
 {
     if (rParameters.empty())
-        return "";
+        return u""_ustr;
 
     OUStringBuffer aParameterString(static_cast<int>(rParameters.size() * 32));
     aParameterString.append(" {");

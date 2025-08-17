@@ -38,6 +38,7 @@
 #include <dflyobj.hxx>
 #include <docsh.hxx>
 #include <flyfrm.hxx>
+#include <unotxdoc.hxx>
 #include <com/sun/star/drawing/XDrawPageSupplier.hpp>
 #include <com/sun/star/frame/XModel.hpp>
 
@@ -122,11 +123,11 @@ const SdrPageGridFrameList*  SwDPage::GetGridFrameList(
             //The drawing demands all pages which overlap with the rest.
             const SwRect aRect( *pRect );
             const SwFrame *pPg = pSh->GetLayout()->Lower();
-            do
+            while (pPg)
             {   if ( pPg->getFrameArea().Overlaps( aRect ) )
                     ::InsertGridFrame( const_cast<SwDPage*>(this)->m_pGridLst.get(), pPg );
                 pPg = pPg->GetNext();
-            } while ( pPg );
+            }
         }
         else
         {
@@ -222,9 +223,12 @@ bool SwDPage::RequestHelp( vcl::Window* pWindow, SdrView const * pView,
         if (!sText.isEmpty())
         {
             // #i80029#
-            bool bExecHyperlinks = m_pDoc->GetDocShell()->IsReadOnly();
-            if (!bExecHyperlinks && !bTooltip)
-                sText = SfxHelp::GetURLHelpText(sText);
+            if (SwDocShell* pDocShell = m_pDoc->GetDocShell())
+            {
+                bool bExecHyperlinks = pDocShell->IsReadOnly();
+                if (!bExecHyperlinks && !bTooltip)
+                    sText = SfxHelp::GetURLHelpText(sText);
+            }
 
             // then display the help:
             tools::Rectangle aScreenRect(pWindow->OutputToScreenPixel(aPixRect.TopLeft()),
@@ -252,9 +256,8 @@ Reference< XInterface > SwDPage::createUnoPage()
     SwDocShell* pDocShell = m_pDoc->GetDocShell();
     if ( pDocShell )
     {
-        Reference<XModel> xModel = pDocShell->GetBaseModel();
-        Reference<XDrawPageSupplier> xPageSupp(xModel, UNO_QUERY);
-        xRet = xPageSupp->getDrawPage();
+        rtl::Reference<SwXTextDocument> xModel = pDocShell->GetBaseModel();
+        xRet = xModel->getDrawPage();
     }
     return xRet;
 }

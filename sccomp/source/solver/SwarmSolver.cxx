@@ -25,8 +25,8 @@
 #include <cppuhelper/implbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
 
-#include <comphelper/broadcasthelper.hxx>
-#include <comphelper/propertycontainer.hxx>
+#include <comphelper/compbase.hxx>
+#include <comphelper/propertycontainer2.hxx>
 #include <comphelper/proparrhlp.hxx>
 
 #include <cmath>
@@ -96,13 +96,12 @@ enum
 
 } // end anonymous namespace
 
-typedef cppu::WeakImplHelper<sheet::XSolver, sheet::XSolverDescription, lang::XServiceInfo>
+typedef comphelper::WeakImplHelper<sheet::XSolver, sheet::XSolverDescription, lang::XServiceInfo>
     SwarmSolver_Base;
 
 namespace
 {
-class SwarmSolver : public comphelper::OMutexAndBroadcastHelper,
-                    public comphelper::OPropertyContainer,
+class SwarmSolver : public comphelper::OPropertyContainer2,
                     public comphelper::OPropertyArrayUsageHelper<SwarmSolver>,
                     public SwarmSolver_Base
 {
@@ -138,8 +137,7 @@ private:
 
 public:
     SwarmSolver()
-        : OPropertyContainer(GetBroadcastHelper())
-        , mbMaximize(true)
+        : mbMaximize(true)
         , mbNonNegative(false)
         , mbInteger(false)
         , mnTimeout(60000)
@@ -147,13 +145,13 @@ public:
         , mbSuccess(false)
         , mfResultValue(0.0)
     {
-        registerProperty("NonNegative", PROP_NONNEGATIVE, 0, &mbNonNegative,
+        registerProperty(u"NonNegative"_ustr, PROP_NONNEGATIVE, 0, &mbNonNegative,
                          cppu::UnoType<decltype(mbNonNegative)>::get());
-        registerProperty("Integer", PROP_INTEGER, 0, &mbInteger,
+        registerProperty(u"Integer"_ustr, PROP_INTEGER, 0, &mbInteger,
                          cppu::UnoType<decltype(mbInteger)>::get());
-        registerProperty("Timeout", PROP_TIMEOUT, 0, &mnTimeout,
+        registerProperty(u"Timeout"_ustr, PROP_TIMEOUT, 0, &mnTimeout,
                          cppu::UnoType<decltype(mnTimeout)>::get());
-        registerProperty("Algorithm", PROP_ALGORITHM, 0, &mnAlgorithm,
+        registerProperty(u"Algorithm"_ustr, PROP_ALGORITHM, 0, &mnAlgorithm,
                          cppu::UnoType<decltype(mnAlgorithm)>::get());
     }
 
@@ -165,10 +163,7 @@ public:
         return createPropertySetInfo(getInfoHelper());
     }
     // OPropertySetHelper
-    virtual cppu::IPropertyArrayHelper& SAL_CALL getInfoHelper() override
-    {
-        return *getArrayHelper();
-    }
+    virtual cppu::IPropertyArrayHelper& getInfoHelper() override { return *getArrayHelper(); }
     // OPropertyArrayUsageHelper
     virtual cppu::IPropertyArrayHelper* createArrayHelper() const override
     {
@@ -257,7 +252,7 @@ public:
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return "com.sun.star.comp.Calc.SwarmSolver";
+        return u"com.sun.star.comp.Calc.SwarmSolver"_ustr;
     }
 
     sal_Bool SAL_CALL supportsService(const OUString& rServiceName) override
@@ -267,7 +262,7 @@ public:
 
     uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override
     {
-        return { "com.sun.star.sheet.Solver" };
+        return { u"com.sun.star.sheet.Solver"_ustr };
     }
 
 private:
@@ -309,8 +304,8 @@ double SwarmSolver::getValue(const table::CellAddress& rPosition)
     return getCell(rPosition)->getValue();
 }
 
-IMPLEMENT_FORWARD_XINTERFACE2(SwarmSolver, SwarmSolver_Base, OPropertyContainer)
-IMPLEMENT_FORWARD_XTYPEPROVIDER2(SwarmSolver, SwarmSolver_Base, OPropertyContainer)
+IMPLEMENT_FORWARD_XINTERFACE2(SwarmSolver, SwarmSolver_Base, comphelper::OPropertyContainer2)
+IMPLEMENT_FORWARD_XTYPEPROVIDER2(SwarmSolver, SwarmSolver_Base, comphelper::OPropertyContainer2)
 
 void SwarmSolver::applyVariables(std::vector<double> const& rVariables)
 {
@@ -522,14 +517,14 @@ void SAL_CALL SwarmSolver::solve()
     }
 
     // Determine variable bounds
-    for (sheet::SolverConstraint const& rConstraint : std::as_const(maConstraints))
+    for (sheet::SolverConstraint const& rConstraint : maConstraints)
     {
         table::CellAddress aLeftCellAddress = rConstraint.Left;
         sheet::SolverConstraintOperator eOp = rConstraint.Operator;
 
         size_t index = 0;
         bool bFoundVariable = false;
-        for (const table::CellAddress& rVariableCell : std::as_const(maVariables))
+        for (const table::CellAddress& rVariableCell : maVariables)
         {
             if (aLeftCellAddress == rVariableCell)
             {

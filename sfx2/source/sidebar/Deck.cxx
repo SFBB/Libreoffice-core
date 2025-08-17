@@ -33,7 +33,6 @@
 #include <tools/json_writer.hxx>
 
 using namespace css;
-using namespace css::uno;
 
 namespace sfx2::sidebar {
 
@@ -42,13 +41,13 @@ void Deck::LOKSendSidebarFullUpdate()
     if (comphelper::LibreOfficeKit::isActive())
     {
         sal_uInt64 nShellId = reinterpret_cast<sal_uInt64>(SfxViewShell::Current());
-        jsdialog::SendFullUpdate(OUString::number(nShellId) + "sidebar", "Panel");
+        jsdialog::SendSidebarForView(nShellId);
     }
 }
 
 Deck::Deck(const DeckDescriptor& rDeckDescriptor, SidebarDockingWindow* pParentWindow,
            const std::function<void()>& rCloserAction)
-    : InterimItemWindow(pParentWindow, "sfx/ui/deck.ui", "Deck")
+    : InterimItemWindow(pParentWindow, u"sfx/ui/deck.ui"_ustr, u"Deck"_ustr)
     , msId(rDeckDescriptor.msId)
     , mnMinimalWidth(0)
     , mnScrolledWindowExtraWidth(0)
@@ -57,8 +56,8 @@ Deck::Deck(const DeckDescriptor& rDeckDescriptor, SidebarDockingWindow* pParentW
     , mxParentWindow(pParentWindow)
     , mxTitleBar(new DeckTitleBar(rDeckDescriptor.msTitle, *m_xBuilder,
                  rDeckDescriptor.msHelpId, rCloserAction))
-    , mxVerticalScrollBar(m_xBuilder->weld_scrolled_window("scrolledwindow"))
-    , mxContents(m_xBuilder->weld_box("contents"))
+    , mxVerticalScrollBar(m_xBuilder->weld_scrolled_window(u"scrolledwindow"_ustr))
+    , mxContents(m_xBuilder->weld_box(u"contents"_ustr))
 {
     SetStyle(GetStyle() | WB_DIALOGCONTROL);
 
@@ -98,7 +97,7 @@ void Deck::dispose()
     mxContents.reset();
     mxVerticalScrollBar.reset();
 
-    mxParentWindow.clear();
+    mxParentWindow.reset();
 
     InterimItemWindow::dispose();
 }
@@ -153,7 +152,9 @@ void Deck::DumpAsPropertyTree(tools::JsonWriter& rJsonWriter)
             continue;
 
         auto childNode = rJsonWriter.startStruct();
-        rJsonWriter.put("id", it->GetId());
+        // JSDialog references widget by vcl id
+        rJsonWriter.put("id", it->GetContainer()->get_buildable_name());
+        rJsonWriter.put("name", it->GetId());
         rJsonWriter.put("type", "panel");
         rJsonWriter.put("text", it->GetTitle());
         rJsonWriter.put("enabled", true);

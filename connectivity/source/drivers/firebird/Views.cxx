@@ -24,7 +24,8 @@ connectivity::firebird::Views::Views(
 {
 }
 
-connectivity::sdbcx::ObjectType connectivity::firebird::Views::createObject(const OUString& _rName)
+css::uno::Reference<css::beans::XPropertySet>
+connectivity::firebird::Views::createObject(const OUString& _rName)
 {
     OUString sCatalog, sSchema, sTable;
     ::dbtools::qualifiedNameComponents(m_xMetaData, _rName, sCatalog, sSchema, sTable,
@@ -43,7 +44,7 @@ css::uno::Reference<css::beans::XPropertySet> connectivity::firebird::Views::cre
 }
 
 // XAppend
-connectivity::sdbcx::ObjectType connectivity::firebird::Views::appendObject(
+css::uno::Reference<css::beans::XPropertySet> connectivity::firebird::Views::appendObject(
     const OUString& _rForName, const css::uno::Reference<css::beans::XPropertySet>& descriptor)
 {
     createView(descriptor);
@@ -60,7 +61,7 @@ void connectivity::firebird::Views::dropObject(sal_Int32 _nPos, const OUString& 
     bool bIsNew = connectivity::sdbcx::ODescriptor::isNew(xObject);
     if (!bIsNew)
     {
-        OUString aSql("DROP VIEW");
+        OUString aSql(u"DROP VIEW"_ustr);
 
         css::uno::Reference<css::beans::XPropertySet> xProp(xObject, css::uno::UNO_QUERY);
         aSql += ::dbtools::composeTableName(m_xMetaData, xProp,

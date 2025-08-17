@@ -38,13 +38,11 @@
 #include <comphelper/diagnose_ex.hxx>
 
 using namespace ::cppu;
-using namespace ::osl;
 using namespace ::sax;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::io;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
-using namespace ::com::sun::star::registry;
 using namespace ::com::sun::star::xml;
 using namespace ::com::sun::star::xml::sax;
 
@@ -87,7 +85,7 @@ namespace filter::odfflatxml {
                      const Sequence< OUString >& userData) override;
 
             OUString SAL_CALL getImplementationName() override
-            { return "com.sun.star.comp.filter.OdfFlatXml"; }
+            { return u"com.sun.star.comp.filter.OdfFlatXml"_ustr; }
 
             sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
             { return cppu::supportsService(this, ServiceName); }
@@ -95,8 +93,8 @@ namespace filter::odfflatxml {
             css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override
             {
                 return css::uno::Sequence<OUString>{
-                    "com.sun.star.document.ImportFilter",
-                        "com.sun.star.document.ExportFilter"};
+                    u"com.sun.star.document.ImportFilter"_ustr,
+                        u"com.sun.star.document.ExportFilter"_ustr};
             }
 
         };

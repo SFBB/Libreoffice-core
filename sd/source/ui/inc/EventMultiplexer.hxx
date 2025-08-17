@@ -22,6 +22,8 @@
 #include <sal/config.h>
 
 #include <rtl/ref.hxx>
+#include <com/sun/star/uno/XInterface.hpp>
+#include <ResourceId.hxx>
 
 template <typename Arg, typename Ret> class Link;
 
@@ -112,6 +114,10 @@ enum class EventMultiplexerEventId
     /** Edit mode was (or is being) switched to master mode.
     */
     EditModeMaster,
+
+    /** Focus shifted between views.
+     */
+    FocusShifted,
 };
 
 namespace sd::tools
@@ -121,8 +127,10 @@ class EventMultiplexerEvent
 public:
     EventMultiplexerEventId meEventId;
     const void* mpUserData;
+    rtl::Reference<sd::framework::ResourceId> mxUserData;
 
-    EventMultiplexerEvent(EventMultiplexerEventId eEventId, const void* pUserData);
+    EventMultiplexerEvent(EventMultiplexerEventId eEventId, const void* pUserData,
+                          const rtl::Reference<sd::framework::ResourceId>& xUserData = {});
 };
 
 /** This convenience class makes it easy to listen to various events that
@@ -160,7 +168,8 @@ public:
         @param pUserData
             Some data sent to the listeners along with the event.
     */
-    void MultiplexEvent(EventMultiplexerEventId eEventId, void const* pUserData);
+    void MultiplexEvent(EventMultiplexerEventId eEventId, void const* pUserData,
+                        const rtl::Reference<sd::framework::ResourceId>& xUserData = {});
 
 private:
     class Implementation;

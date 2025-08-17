@@ -31,11 +31,8 @@ enum class DragOrDrop
     Drag,
     Drop
 };
-VCL_DLLPUBLIC css::uno::Reference<css::uno::XInterface>
-OleDnDHelper(const css::uno::Reference<css::lang::XInitialization>&, sal_IntPtr pWin, DragOrDrop);
-
-VCL_DLLPUBLIC css::uno::Reference<css::uno::XInterface>
-X11DnDHelper(const css::uno::Reference<css::lang::XInitialization>&, sal_IntPtr pWin);
+VCL_DLLPUBLIC void OleDnDHelper(const css::uno::Reference<css::lang::XInitialization>&,
+                                sal_IntPtr pWin, DragOrDrop);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

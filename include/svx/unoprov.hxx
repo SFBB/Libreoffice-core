@@ -79,10 +79,10 @@ public:
  * SvxUnoPropertyMapProvider
  */
 
-class SVXCORE_DLLPUBLIC SvxUnoPropertyMapProvider
+class UNLESS_MERGELIBS_MORE(SVXCORE_DLLPUBLIC) SvxUnoPropertyMapProvider
 {
-    std::span<SfxItemPropertyMapEntry const> aMapArr[SVXMAP_END];
-    std::unique_ptr<SvxItemPropertySet> aSetArr[SVXMAP_END];
+    std::span<SfxItemPropertyMapEntry const> m_aMapArr[SVXMAP_END];
+    std::unique_ptr<SvxItemPropertySet> m_aSetArr[SVXMAP_END];
 public:
     SvxUnoPropertyMapProvider();
     ~SvxUnoPropertyMapProvider();

@@ -31,7 +31,6 @@
 #include <customshowlist.hxx>
 
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::lang;
 
 namespace
 {
@@ -45,40 +44,41 @@ enum PresenterConsoleMode
 
 SdStartPresentationDlg::SdStartPresentationDlg(weld::Window* pWindow, const SfxItemSet& rInAttrs,
                                   const std::vector<OUString> &rPageNames, SdCustomShowList* pCSList)
-    : GenericDialogController(pWindow, "modules/simpress/ui/presentationdialog.ui", "PresentationDialog")
+    : GenericDialogController(pWindow, u"modules/simpress/ui/presentationdialog.ui"_ustr, u"PresentationDialog"_ustr)
     , pCustomShowList(pCSList)
     , rOutAttrs(rInAttrs)
     , mnMonitors(0)
-    , m_xRbtAll(m_xBuilder->weld_radio_button("allslides"))
-    , m_xRbtAtDia(m_xBuilder->weld_radio_button("from"))
-    , m_xRbtCustomshow(m_xBuilder->weld_radio_button("customslideshow"))
-    , m_xLbDias(m_xBuilder->weld_combo_box("from_cb"))
-    , m_xLbCustomshow(m_xBuilder->weld_combo_box("customslideshow_cb"))
-    , m_xRbtStandard(m_xBuilder->weld_radio_button("default"))
-    , m_xRbtWindow(m_xBuilder->weld_radio_button("window"))
-    , m_xRbtAuto(m_xBuilder->weld_radio_button("auto"))
-    , m_xTmfPause(m_xBuilder->weld_formatted_spin_button("pauseduration"))
+    , m_xRbtAll(m_xBuilder->weld_radio_button(u"allslides"_ustr))
+    , m_xRbtAtDia(m_xBuilder->weld_radio_button(u"from"_ustr))
+    , m_xRbtCustomshow(m_xBuilder->weld_radio_button(u"customslideshow"_ustr))
+    , m_xLbDias(m_xBuilder->weld_combo_box(u"from_cb"_ustr))
+    , m_xLbCustomshow(m_xBuilder->weld_combo_box(u"customslideshow_cb"_ustr))
+    , m_xRbtStandard(m_xBuilder->weld_radio_button(u"default"_ustr))
+    , m_xRbtWindow(m_xBuilder->weld_radio_button(u"window"_ustr))
+    , m_xCbxAuto(m_xBuilder->weld_check_button(u"auto"_ustr))
+    , m_xTmfPause(m_xBuilder->weld_formatted_spin_button(u"pauseduration"_ustr))
     , m_xFormatter(new weld::TimeFormatter(*m_xTmfPause))
-    , m_xCbxAutoLogo(m_xBuilder->weld_check_button("showlogo"))
-    , m_xCbxManuel(m_xBuilder->weld_check_button("manualslides"))
-    , m_xCbxMousepointer(m_xBuilder->weld_check_button("pointervisible"))
-    , m_xCbxPen(m_xBuilder->weld_check_button("pointeraspen"))
-    , m_xCbxAnimationAllowed(m_xBuilder->weld_check_button("animationsallowed"))
-    , m_xCbxChangePage(m_xBuilder->weld_check_button("changeslidesbyclick"))
-    , m_xCbxAlwaysOnTop(m_xBuilder->weld_check_button("alwaysontop"))
-    , m_xCbxShowNavigationButton(m_xBuilder->weld_check_button("shownavigationbutton"))
-    , m_xLbNavigationButtonsSize(m_xBuilder->weld_combo_box("navigation_buttons_size_cb"))
-    , m_xFtNavigationButtonsSize(m_xBuilder->weld_label("navbar_btn_size_label"))
-    , m_xFrameEnableRemote(m_xBuilder->weld_frame("frameremote"))
-    , m_xCbxEnableRemote(m_xBuilder->weld_check_button("enableremote"))
-    , m_xCbxEnableRemoteInsecure(m_xBuilder->weld_check_button("enableremoteinsecure"))
-    , m_xLbConsole(m_xBuilder->weld_combo_box("console_cb"))
-    , m_xFtMonitor(m_xBuilder->weld_label("presdisplay_label"))
-    , m_xLBMonitor(m_xBuilder->weld_combo_box("presdisplay_cb"))
-    , m_xMonitor(m_xBuilder->weld_label("monitor_str"))
-    , m_xAllMonitors(m_xBuilder->weld_label("allmonitors_str"))
-    , m_xMonitorExternal(m_xBuilder->weld_label("externalmonitor_str"))
-    , m_xExternal(m_xBuilder->weld_label("external_str"))
+    , m_xCbxAutoLogo(m_xBuilder->weld_check_button(u"showlogo"_ustr))
+    , m_xCbxManuel(m_xBuilder->weld_check_button(u"manualslides"_ustr))
+    , m_xCbxMousepointer(m_xBuilder->weld_check_button(u"pointervisible"_ustr))
+    , m_xCbxPen(m_xBuilder->weld_check_button(u"pointeraspen"_ustr))
+    , m_xCbxAnimationAllowed(m_xBuilder->weld_check_button(u"animationsallowed"_ustr))
+    , m_xCbxChangePage(m_xBuilder->weld_check_button(u"changeslidesbyclick"_ustr))
+    , m_xCbxAlwaysOnTop(m_xBuilder->weld_check_button(u"alwaysontop"_ustr))
+    , m_xCbxShowNavigationButton(m_xBuilder->weld_check_button(u"shownavigationbutton"_ustr))
+    , m_xLbNavigationButtonsSize(m_xBuilder->weld_combo_box(u"navigation_buttons_size_cb"_ustr))
+    , m_xFtNavigationButtonsSize(m_xBuilder->weld_label(u"navbar_btn_size_label"_ustr))
+    , m_xFrameEnableRemote(m_xBuilder->weld_frame(u"frameremote"_ustr))
+    , m_xCbxEnableRemote(m_xBuilder->weld_check_button(u"enableremote"_ustr))
+    , m_xCbxEnableRemoteInsecure(m_xBuilder->weld_check_button(u"enableremoteinsecure"_ustr))
+    , m_xCbxInteractiveMode(m_xBuilder->weld_check_button(u"enableinteractivemode"_ustr))
+    , m_xLbConsole(m_xBuilder->weld_combo_box(u"console_cb"_ustr))
+    , m_xFtMonitor(m_xBuilder->weld_label(u"presdisplay_label"_ustr))
+    , m_xLBMonitor(m_xBuilder->weld_combo_box(u"presdisplay_cb"_ustr))
+    , m_xMonitor(m_xBuilder->weld_label(u"monitor_str"_ustr))
+    , m_xAllMonitors(m_xBuilder->weld_label(u"allmonitors_str"_ustr))
+    , m_xMonitorExternal(m_xBuilder->weld_label(u"externalmonitor_str"_ustr))
+    , m_xExternal(m_xBuilder->weld_label(u"external_str"_ustr))
 {
     m_xFormatter->SetExtFormat(ExtTimeFieldFormat::LongDuration);
     m_xFormatter->EnableEmptyField(false);
@@ -92,7 +92,7 @@ SdStartPresentationDlg::SdStartPresentationDlg(weld::Window* pWindow, const SfxI
     aLink = LINK( this, SdStartPresentationDlg, ClickWindowPresentationHdl );
     m_xRbtStandard->connect_toggled( aLink );
     m_xRbtWindow->connect_toggled( aLink );
-    m_xRbtAuto->connect_toggled( aLink );
+    m_xCbxAuto->connect_toggled( aLink );
     m_xCbxShowNavigationButton->connect_toggled( aLink );
 
     m_xTmfPause->connect_value_changed( LINK( this, SdStartPresentationDlg, ChangePauseHdl ) );
@@ -155,10 +155,11 @@ SdStartPresentationDlg::SdStartPresentationDlg(weld::Window* pWindow, const SfxI
 
     if( bWindow )
         m_xRbtWindow->set_active(true);
-    else if( bEndless )
-        m_xRbtAuto->set_active(true);
     else
         m_xRbtStandard->set_active(true);
+
+    if( bEndless )
+        m_xCbxAuto->set_active(true);
 
     if (!officecfg::Office::Impress::Misc::Start::EnablePresenterScreen::get())
         m_xLbConsole->set_active(PresenterConsoleMode::Disabled);
@@ -176,6 +177,8 @@ SdStartPresentationDlg::SdStartPresentationDlg(weld::Window* pWindow, const SfxI
 #else
     m_xFrameEnableRemote->hide();
 #endif
+
+    m_xCbxInteractiveMode->set_active( static_cast<const SfxBoolItem&>( rOutAttrs.Get( ATTR_PRESENT_INTERACTIVE ) ).GetValue() );
 
     InitMonitorSettings();
 
@@ -333,9 +336,10 @@ void SdStartPresentationDlg::GetAttr( SfxItemSet& rAttr )
     rAttr.Put( SfxBoolItem ( ATTR_PRESENT_CHANGE_PAGE, m_xCbxChangePage->get_active() ) );
     rAttr.Put( SfxBoolItem ( ATTR_PRESENT_ALWAYS_ON_TOP, m_xCbxAlwaysOnTop->get_active() ) );
     rAttr.Put( SfxBoolItem ( ATTR_PRESENT_FULLSCREEN, !m_xRbtWindow->get_active() ) );
-    rAttr.Put( SfxBoolItem ( ATTR_PRESENT_ENDLESS, m_xRbtAuto->get_active() ) );
+    rAttr.Put( SfxBoolItem ( ATTR_PRESENT_ENDLESS, m_xCbxAuto->get_active() ) );
     rAttr.Put( SfxUInt32Item ( ATTR_PRESENT_PAUSE_TIMEOUT, m_xFormatter->GetTime().GetMSFromTime() / 1000 ) );
     rAttr.Put( SfxBoolItem ( ATTR_PRESENT_SHOW_PAUSELOGO, m_xCbxAutoLogo->get_active() ) );
+    rAttr.Put( SfxBoolItem ( ATTR_PRESENT_INTERACTIVE, m_xCbxInteractiveMode->get_active() ) );
 
     int nPos = m_xLBMonitor->get_active();
     if (nPos != -1)
@@ -365,7 +369,7 @@ IMPL_LINK_NOARG(SdStartPresentationDlg, ChangeRangeHdl, weld::Toggleable&, void)
  */
 IMPL_LINK_NOARG(SdStartPresentationDlg, ClickWindowPresentationHdl, weld::Toggleable&, void)
 {
-    const bool bAuto = m_xRbtAuto->get_active();
+    const bool bAuto = m_xCbxAuto->get_active();
     const bool bWindow = m_xRbtWindow->get_active();
 
     m_xTmfPause->set_sensitive( bAuto );
@@ -398,7 +402,7 @@ IMPL_LINK_NOARG(SdStartPresentationDlg, ChangePauseHdl, weld::FormattedSpinButto
 
 void SdStartPresentationDlg::ChangePause()
 {
-    m_xCbxAutoLogo->set_sensitive(m_xRbtAuto->get_active() && ( m_xFormatter->GetTime().GetMSFromTime() > 0 ));
+    m_xCbxAutoLogo->set_sensitive(m_xCbxAuto->get_active() && ( m_xFormatter->GetTime().GetMSFromTime() > 0 ));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -119,7 +119,7 @@ SortedResultSet::~SortedResultSet()
 
 OUString SAL_CALL SortedResultSet::getImplementationName()
 {
-    return "com.sun.star.comp.ucb.SortedResultSet";
+    return u"com.sun.star.comp.ucb.SortedResultSet"_ustr;
 }
 
 sal_Bool SAL_CALL SortedResultSet::supportsService( const OUString& ServiceName )
@@ -236,6 +236,7 @@ sal_Bool SAL_CALL SortedResultSet::next()
 
 sal_Bool SAL_CALL SortedResultSet::isBeforeFirst()
 {
+    std::unique_lock aGuard( maMutex );
     if ( mnCurEntry )
         return false;
     else
@@ -245,6 +246,7 @@ sal_Bool SAL_CALL SortedResultSet::isBeforeFirst()
 
 sal_Bool SAL_CALL SortedResultSet::isAfterLast()
 {
+    std::unique_lock aGuard( maMutex );
     if ( mnCurEntry > mnCount )
         return true;
     else
@@ -254,6 +256,7 @@ sal_Bool SAL_CALL SortedResultSet::isAfterLast()
 
 sal_Bool SAL_CALL SortedResultSet::isFirst()
 {
+    std::unique_lock aGuard( maMutex );
     if ( mnCurEntry == 1 )
         return true;
     else
@@ -263,6 +266,7 @@ sal_Bool SAL_CALL SortedResultSet::isFirst()
 
 sal_Bool SAL_CALL SortedResultSet::isLast()
 {
+    std::unique_lock aGuard( maMutex );
     if ( mnCurEntry == mnCount )
         return true;
     else
@@ -324,6 +328,7 @@ sal_Bool SAL_CALL SortedResultSet::last()
 
 sal_Int32 SAL_CALL SortedResultSet::getRow()
 {
+    std::unique_lock aGuard( maMutex );
     return mnCurEntry;
 }
 
@@ -763,7 +768,7 @@ Any SAL_CALL SortedResultSet::getPropertyValue( const OUString& PropertyName )
         if ( bOrgFinal )
         {
             aOrgRet = Reference< XPropertySet >::query(mxOriginal)->
-                getPropertyValue("RowCount");
+                getPropertyValue(u"RowCount"_ustr);
             sal_uInt32  nOrgCount = 0;
             aOrgRet >>= nOrgCount;
             if ( nOrgCount == maS2O.Count() )
@@ -1141,24 +1146,21 @@ sal_Int32 SortedResultSet::FindPos( SortListData const *pEntry,
         return nMid+1;
 }
 
-
-void SortedResultSet::PropertyChanged( const PropertyChangeEvent& rEvt )
+void SortedResultSet::PropertyChangedImpl(std::unique_lock<std::mutex>& rGuard, const PropertyChangeEvent& rEvt)
 {
-    std::unique_lock aGuard( maMutex );
-
-    if ( !maPropChangeListeners.hasContainedTypes(aGuard) )
+    if ( !maPropChangeListeners.hasContainedTypes(rGuard) )
         return;
 
     // Notify listeners interested especially in the changed property.
     OInterfaceContainerHelper4<XPropertyChangeListener>* pPropsContainer =
-            maPropChangeListeners.getContainer( aGuard, rEvt.PropertyName );
+            maPropChangeListeners.getContainer( rGuard, rEvt.PropertyName );
     if ( pPropsContainer )
-        pPropsContainer->notifyEach( aGuard, &XPropertyChangeListener::propertyChange, rEvt );
+        pPropsContainer->notifyEach( rGuard, &XPropertyChangeListener::propertyChange, rEvt );
 
     // Notify listeners interested in all properties.
-    pPropsContainer = maPropChangeListeners.getContainer( aGuard, OUString() );
+    pPropsContainer = maPropChangeListeners.getContainer( rGuard, OUString() );
     if ( pPropsContainer )
-        pPropsContainer->notifyEach( aGuard, &XPropertyChangeListener::propertyChange, rEvt );
+        pPropsContainer->notifyEach( rGuard, &XPropertyChangeListener::propertyChange, rEvt );
 }
 
 
@@ -1167,6 +1169,9 @@ void SortedResultSet::PropertyChanged( const PropertyChangeEvent& rEvt )
 
 void SortedResultSet::CopyData( SortedResultSet *pSource )
 {
+    std::unique_lock aGuard(maMutex);
+    std::unique_lock aSrcGuard(pSource->maMutex);
+
     const SortedEntryList& rSrcS2O = pSource->maS2O;
 
     sal_IntPtr i, nCount;
@@ -1264,9 +1269,9 @@ void SortedResultSet::CheckProperties( sal_Int32 nOldCount, bool bWasFinal )
             aEvt.OldValue <<= nOldCount;
             aEvt.NewValue <<= GetCount();
 
-            PropertyChanged( aEvt );
+            PropertyChangedImpl(aGuard, aEvt);
 
-            OUString aName = "IsRowCountFinal";
+            OUString aName = u"IsRowCountFinal"_ustr;
             Any aRet = getPropertyValue( aName );
             if ( (aRet >>= bIsFinal) && bIsFinal != bWasFinal )
             {
@@ -1275,7 +1280,7 @@ void SortedResultSet::CheckProperties( sal_Int32 nOldCount, bool bWasFinal )
                 aEvt.PropertyHandle = -1;
                 aEvt.OldValue <<= bWasFinal;
                 aEvt.NewValue <<= bIsFinal;
-                PropertyChanged( aEvt );
+                PropertyChangedImpl(aGuard, aEvt);
             }
         }
     }

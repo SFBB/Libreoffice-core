@@ -17,7 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <dndlistenercontainer.hxx>
+#include <vcl/dndlistenercontainer.hxx>
 
 using namespace ::cppu;
 using namespace ::com::sun::star::uno;
@@ -384,11 +384,12 @@ sal_uInt32 DNDListenerContainer::fireDragGestureEvent( sal_Int8 dragAction, sal_
 
 void SAL_CALL DNDListenerContainer::acceptDrag( sal_Int8 dragOperation )
 {
-    if( m_xDropTargetDragContext.is() )
-    {
-        m_xDropTargetDragContext->acceptDrag( dragOperation );
-        m_xDropTargetDragContext.clear();
-    }
+    std::unique_lock g(m_aMutex);
+    if( !m_xDropTargetDragContext )
+        return;
+    auto xTmpDragContext = std::move(m_xDropTargetDragContext);
+    g.unlock();
+    xTmpDragContext->acceptDrag( dragOperation );
 }
 
 void SAL_CALL DNDListenerContainer::rejectDrag(  )
@@ -414,42 +415,6 @@ void SAL_CALL DNDListenerContainer::dropComplete( sal_Bool success )
         m_xDropTargetDropContext->dropComplete( success );
         m_xDropTargetDropContext.clear();
     }
-}
-
-/*
- *  GenericDropTargetDropContext
- */
-
-GenericDropTargetDropContext::GenericDropTargetDropContext()
-{
-}
-
-void GenericDropTargetDropContext::acceptDrop( sal_Int8 /*dragOperation*/ )
-{
-}
-
-void GenericDropTargetDropContext::rejectDrop()
-{
-}
-
-void GenericDropTargetDropContext::dropComplete( sal_Bool /*success*/ )
-{
-}
-
-/*
- *  GenericDropTargetDragContext
- */
-
-GenericDropTargetDragContext::GenericDropTargetDragContext()
-{
-}
-
-void GenericDropTargetDragContext::acceptDrag( sal_Int8 /*dragOperation*/ )
-{
-}
-
-void GenericDropTargetDragContext::rejectDrag()
-{
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

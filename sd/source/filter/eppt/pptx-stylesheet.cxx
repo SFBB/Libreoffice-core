@@ -109,7 +109,7 @@ void PPTExCharSheet::Write( SvStream& rSt, sal_uInt16 nLev, bool bSimpleText,
     {
         bool bIsDark = false;
         css::uno::Any aAny;
-        if ( PropValue::GetPropertyValue( aAny, rPagePropSet, "IsBackgroundDark", true ) )
+        if ( PropValue::GetPropertyValue( aAny, rPagePropSet, u"IsBackgroundDark"_ustr, true ) )
             aAny >>= bIsDark;
         nFontColor = Color(ColorTransparency, bIsDark ? 0xffffff : 0x000000);
     }
@@ -239,7 +239,7 @@ void PPTExParaSheet::SetStyleSheet( const css::uno::Reference< css::beans::XProp
         if ( nLineSpacing > 0 ) // if nLinespacing is < 0 the linespacing is an absolute spacing
         {
             bool bFixedLineSpacing = false;
-            uno::Any aAny = rXPropSet->getPropertyValue("FontIndependentLineSpacing");
+            uno::Any aAny = rXPropSet->getPropertyValue(u"FontIndependentLineSpacing"_ustr);
             if( !(aAny >>= bFixedLineSpacing) || !bFixedLineSpacing )
             {
                 const FontCollectionEntry* pDesc = rFontCollection.GetById( rCharLevel.mnFont );
@@ -249,7 +249,7 @@ void PPTExParaSheet::SetStyleSheet( const css::uno::Reference< css::beans::XProp
         }
         else
         {
-            if ( rCharLevel.mnFontHeight > static_cast<sal_uInt16>( static_cast<double>(-nLineSpacing) * 0.001 * 72.0 / 2.54 ) ) // 1/100mm to point
+            if ( rCharLevel.mnFontHeight > o3tl::make_unsigned(o3tl::convert(-nLineSpacing, o3tl::Length::mm100, o3tl::Length::pt) ) )
             {
                 const FontCollectionEntry* pDesc = rFontCollection.GetById( rCharLevel.mnFont );
                 if ( pDesc )
@@ -351,7 +351,7 @@ void PPTExParaSheet::Write( SvStream& rSt, sal_uInt16 nLev, bool bSimpleText,
     {
         bool bIsDark = false;
         css::uno::Any aAny;
-        if ( PropValue::GetPropertyValue( aAny, rPagePropSet, "IsBackgroundDark", true ) )
+        if ( PropValue::GetPropertyValue( aAny, rPagePropSet, u"IsBackgroundDark"_ustr, true ) )
             aAny >>= bIsDark;
         nBulletColor = bIsDark ? 0xffffff : 0x000000;
     }

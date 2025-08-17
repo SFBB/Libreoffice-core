@@ -76,7 +76,7 @@ static vcl::Window* ImplGetCurTabWindow(const vcl::Window* pWindow)
     // Check if the TabPage is a Child of the TabControl and still exists (by
     // walking all child windows); because it could be that the TabPage has been
     // destroyed already by a Dialog-Dtor, event that the TabControl still exists.
-    const TabPage* pTempTabPage = pTabControl->GetTabPage(pTabControl->GetCurPageId());
+    TabPage* pTempTabPage = pTabControl->GetTabPage(pTabControl->GetCurPageId());
     if (pTempTabPage)
     {
         vcl::Window* pTempWindow = pTabControl->GetWindow(GetWindowType::FirstChild);
@@ -84,7 +84,7 @@ static vcl::Window* ImplGetCurTabWindow(const vcl::Window* pWindow)
         {
             if (pTempWindow->ImplGetWindow() == pTempTabPage)
             {
-                return const_cast<TabPage*>(pTempTabPage);
+                return pTempTabPage;
             }
             pTempWindow = nextLogicalChildOfParent(pTabControl, pTempWindow);
         }
@@ -324,8 +324,8 @@ vcl::Window* Window::ImplGetDlgWindow( sal_uInt16 nIndex, GetDlgWindowType nType
 
 } /* namespace vcl */
 
-vcl::Window* ImplFindDlgCtrlWindow( vcl::Window* pParent, vcl::Window* pWindow, sal_uInt16& rIndex,
-                               sal_uInt16& rFormStart, sal_uInt16& rFormEnd )
+vcl::Window* ImplFindDlgCtrlWindow(vcl::Window* pParent, const vcl::Window* pWindow,
+                                   sal_uInt16& rIndex, sal_uInt16& rFormStart, sal_uInt16& rFormEnd)
 {
     vcl::Window* pSWindow;
     vcl::Window* pSecondWindow = nullptr;
@@ -941,7 +941,7 @@ bool Window::ImplDlgCtrl( const KeyEvent& rKEvt, bool bKeyInput )
                 }
             }
         }
-        else if (aKeyCode.IsMod2()) // tdf#151385
+        else
         {
             sal_Unicode c = rKEvt.GetCharCode();
             if ( c )
@@ -952,8 +952,17 @@ bool Window::ImplDlgCtrl( const KeyEvent& rKEvt, bool bKeyInput )
                     GetFocusFlags nGetFocusFlags = GetFocusFlags::Mnemonic;
                     if ( pSWindow == ::ImplFindAccelWindow( this, i, c, nFormStart, nFormEnd ) )
                         nGetFocusFlags |= GetFocusFlags::UniqueMnemonic;
-                    pSWindow->ImplControlFocus( nGetFocusFlags );
-                    return true;
+#ifdef _WIN32
+                    // tdf#157649 Allow omitting the Alt key when focus is in the dialog action area:
+                    bool bIsButtonBox = dynamic_cast<VclButtonBox*>(pSWindow->GetParent()) != nullptr;
+                    if ((bIsButtonBox && pSWindow->GetParent()->HasChildPathFocus(true)) || aKeyCode.IsMod2())
+#else
+                    if (aKeyCode.IsMod2())
+#endif
+                    {
+                        pSWindow->ImplControlFocus( nGetFocusFlags );
+                        return true;
+                    }
                 }
             }
         }
@@ -1031,7 +1040,7 @@ void Window::ImplDlgCtrlNextWindow()
         pWindow->ImplControlFocus();
 }
 
-static void ImplDlgCtrlUpdateDefButton( vcl::Window* pParent, vcl::Window* pFocusWindow,
+static void ImplDlgCtrlUpdateDefButton( vcl::Window* pParent, const vcl::Window* pFocusWindow,
                                         bool bGetFocus )
 {
     PushButton* pOldDefButton   = nullptr;
@@ -1088,7 +1097,7 @@ static void ImplDlgCtrlUpdateDefButton( vcl::Window* pParent, vcl::Window* pFocu
     }
 }
 
-void Window::ImplDlgCtrlFocusChanged( vcl::Window* pWindow, bool bGetFocus )
+void Window::ImplDlgCtrlFocusChanged( const vcl::Window* pWindow, bool bGetFocus )
 {
     if ( mpWindowImpl->mpDlgCtrlDownWindow && !bGetFocus )
     {
@@ -1099,7 +1108,7 @@ void Window::ImplDlgCtrlFocusChanged( vcl::Window* pWindow, bool bGetFocus )
     ImplDlgCtrlUpdateDefButton( this, pWindow, bGetFocus );
 }
 
-vcl::Window* Window::ImplFindDlgCtrlWindow( vcl::Window* pWindow )
+vcl::Window* Window::ImplFindDlgCtrlWindow( const vcl::Window* pWindow )
 {
     sal_uInt16  nIndex;
     sal_uInt16  nFormStart;

@@ -261,9 +261,13 @@ void DrawViewShell::ExecBmpMask( SfxRequest const & rReq )
 
         case SID_BMPMASK_EXEC :
         {
+            if (!mpDrawView)
+                return;
+
             SdrGrafObj* pObj = nullptr;
-            if( mpDrawView && mpDrawView->GetMarkedObjectList().GetMarkCount() )
-                pObj = dynamic_cast< SdrGrafObj* >( mpDrawView->GetMarkedObjectList().GetMark(0)->GetMarkedSdrObj() );
+            const SdrMarkList&  rMarkList = mpDrawView->GetMarkedObjectList();
+            if( rMarkList.GetMarkCount() )
+                pObj = dynamic_cast< SdrGrafObj* >( rMarkList.GetMark(0)->GetMarkedSdrObj() );
 
             if ( pObj && !mpDrawView->IsTextEdit() )
             {
@@ -272,8 +276,8 @@ void DrawViewShell::ExecBmpMask( SfxRequest const & rReq )
 
                 if (xNewObj->IsLinkedGraphic())
                 {
-                    std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(GetFrameWeld(), "modules/sdraw/ui/queryunlinkimagedialog.ui"));
-                    std::unique_ptr<weld::MessageDialog> xQueryBox(xBuilder->weld_message_dialog("QueryUnlinkImageDialog"));
+                    std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(GetFrameWeld(), u"modules/sdraw/ui/queryunlinkimagedialog.ui"_ustr));
+                    std::unique_ptr<weld::MessageDialog> xQueryBox(xBuilder->weld_message_dialog(u"QueryUnlinkImageDialog"_ustr));
 
                     if (RET_YES == xQueryBox->run())
                         xNewObj->ReleaseGraphicLink();
@@ -297,7 +301,7 @@ void DrawViewShell::ExecBmpMask( SfxRequest const & rReq )
                         xNewObj->SetEmptyPresObj(false);
                         xNewObj->SetGraphic(pBmpMask->Mask(xNewObj->GetGraphic()));
 
-                        OUString aStr = mpDrawView->GetDescriptionOfMarkedObjects() +
+                        OUString aStr = rMarkList.GetMarkDescription() +
                             " " + SdResId(STR_EYEDROPPER);
 
                         mpDrawView->BegUndo( aStr );

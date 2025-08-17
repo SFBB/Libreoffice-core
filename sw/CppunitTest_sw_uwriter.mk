@@ -56,6 +56,7 @@ $(eval $(call gb_CppunitTest_use_libraries,sw_uwriter, \
     svxcore \
     swd \
 	test \
+	textconversiondlgs \
     tk \
     tl \
     ucbhelper \
@@ -74,6 +75,8 @@ $(eval $(call gb_CppunitTest_use_externals,sw_uwriter,\
 	icuuc \
 	icu_headers \
 	libxml2 \
+	yrs \
+        md4c \
 ))
 
 $(eval $(call gb_CppunitTest_set_include,sw_uwriter,\

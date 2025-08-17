@@ -28,6 +28,7 @@
 #include <o3tl/temporary.hxx>
 #include <officecfg/Office/Common.hxx>
 #include <unotools/configmgr.hxx>
+#include <vcl/rendercontext/DrawModeFlags.hxx>
 
 #include <atomic>
 #include <utility>
@@ -46,12 +47,6 @@ constexpr OUStringLiteral g_PropertyName_VisualizedPage = u"VisualizedPage";
 constexpr OUStringLiteral g_PropertyName_ReducedDisplayQuality = u"ReducedDisplayQuality";
 constexpr OUStringLiteral g_PropertyName_UseAntiAliasing = u"UseAntiAliasing";
 constexpr OUStringLiteral g_PropertyName_PixelSnapHairline = u"PixelSnapHairline";
-}
-
-namespace
-{
-bool bForwardsAreInitialized(false);
-bool bForwardPixelSnapHairline(true);
 }
 
 class ImpViewInformation2D
@@ -87,6 +82,22 @@ protected:
     // the point in time
     double mfViewTime;
 
+    // color to use for automatic color
+    Color maAutoColor;
+
+    // DrawModeFlags to use, these may ask to modify the
+    // colors/Bitmap paint according to the flags
+    DrawModeFlags maDrawModeFlags;
+
+    // a hint that the View that is being painted has an active TextEdit. This
+    // is important for handling of TextHierarchyEditPrimitive2D to suppress
+    // the text for objects in TextEdit - the text is visualized by the
+    // active EditEngine/Outliner overlay, so it would be double visualized
+    bool mbTextEditActive : 1;
+
+    // processed view is an EditView
+    bool mbEditViewActive : 1;
+
     // allow to reduce DisplayQuality (e.g. sw 3d fallback renderer for interactions)
     bool mbReducedDisplayQuality : 1;
 
@@ -106,10 +117,19 @@ public:
         , maDiscreteViewport()
         , mxVisualizedPage()
         , mfViewTime(0.0)
+        , maAutoColor(COL_AUTO)
+        , maDrawModeFlags(DrawModeFlags::Default)
+        , mbTextEditActive(false)
+        , mbEditViewActive(false)
         , mbReducedDisplayQuality(false)
         , mbUseAntiAliasing(ViewInformation2D::getGlobalAntiAliasing())
-        , mbPixelSnapHairline(mbUseAntiAliasing && bForwardPixelSnapHairline)
     {
+        if (comphelper::IsFuzzing())
+            mbPixelSnapHairline = false;
+        else
+            mbPixelSnapHairline
+                = mbUseAntiAliasing
+                  && officecfg::Office::Common::Drawinglayer::SnapHorVerLinesToDiscrete::get();
     }
 
     const basegfx::B2DHomMatrix& getObjectTransformation() const { return maObjectTransformation; }
@@ -190,6 +210,18 @@ public:
         mxVisualizedPage = rNew;
     }
 
+    Color getAutoColor() const { return maAutoColor; }
+    void setAutoColor(Color aNew) { maAutoColor = aNew; }
+
+    DrawModeFlags getDrawModeFlags() const { return maDrawModeFlags; }
+    void setDrawModeFlags(DrawModeFlags aNew) { maDrawModeFlags = aNew; }
+
+    bool getTextEditActive() const { return mbTextEditActive; }
+    void setTextEditActive(bool bNew) { mbTextEditActive = bNew; }
+
+    bool getEditViewActive() const { return mbEditViewActive; }
+    void setEditViewActive(bool bNew) { mbEditViewActive = bNew; }
+
     bool getReducedDisplayQuality() const { return mbReducedDisplayQuality; }
     void setReducedDisplayQuality(bool bNew) { mbReducedDisplayQuality = bNew; }
 
@@ -205,7 +237,10 @@ public:
                 && maViewTransformation == rCandidate.maViewTransformation
                 && maViewport == rCandidate.maViewport
                 && mxVisualizedPage == rCandidate.mxVisualizedPage
-                && mfViewTime == rCandidate.mfViewTime
+                && mfViewTime == rCandidate.mfViewTime && maAutoColor == rCandidate.maAutoColor
+                && maDrawModeFlags == rCandidate.maDrawModeFlags
+                && mbTextEditActive == rCandidate.mbTextEditActive
+                && mbEditViewActive == rCandidate.mbEditViewActive
                 && mbReducedDisplayQuality == rCandidate.mbReducedDisplayQuality
                 && mbUseAntiAliasing == rCandidate.mbUseAntiAliasing
                 && mbPixelSnapHairline == rCandidate.mbPixelSnapHairline);
@@ -224,18 +259,11 @@ ViewInformation2D::ImplType& theGlobalDefault()
 ViewInformation2D::ViewInformation2D()
     : mpViewInformation2D(theGlobalDefault())
 {
-    if (!bForwardsAreInitialized)
-    {
-        bForwardsAreInitialized = true;
-        if (!utl::ConfigManager::IsFuzzing())
-        {
-            bForwardPixelSnapHairline
-                = officecfg::Office::Common::Drawinglayer::SnapHorVerLinesToDiscrete::get();
-        }
-    }
-
     setUseAntiAliasing(ViewInformation2D::getGlobalAntiAliasing());
-    setPixelSnapHairline(bForwardPixelSnapHairline);
+    if (!comphelper::IsFuzzing())
+        setPixelSnapHairline(
+            getUseAntiAliasing()
+            && officecfg::Office::Common::Drawinglayer::SnapHorVerLinesToDiscrete::get());
 }
 
 ViewInformation2D::ViewInformation2D(const ViewInformation2D&) = default;
@@ -342,6 +370,40 @@ void ViewInformation2D::setUseAntiAliasing(bool bNew)
         mpViewInformation2D->setUseAntiAliasing(bNew);
 }
 
+Color ViewInformation2D::getAutoColor() const { return mpViewInformation2D->getAutoColor(); }
+
+void ViewInformation2D::setAutoColor(Color aNew) { mpViewInformation2D->setAutoColor(aNew); }
+
+DrawModeFlags ViewInformation2D::getDrawModeFlags() const
+{
+    return mpViewInformation2D->getDrawModeFlags();
+}
+
+void ViewInformation2D::setDrawModeFlags(DrawModeFlags aNew)
+{
+    mpViewInformation2D->setDrawModeFlags(aNew);
+}
+
+bool ViewInformation2D::getTextEditActive() const
+{
+    return mpViewInformation2D->getTextEditActive();
+}
+
+void ViewInformation2D::setTextEditActive(bool bNew)
+{
+    mpViewInformation2D->setTextEditActive(bNew);
+}
+
+bool ViewInformation2D::getEditViewActive() const
+{
+    return mpViewInformation2D->getEditViewActive();
+}
+
+void ViewInformation2D::setEditViewActive(bool bNew)
+{
+    mpViewInformation2D->setEditViewActive(bNew);
+}
+
 bool ViewInformation2D::getPixelSnapHairline() const
 {
     return mpViewInformation2D->getPixelSnapHairline();
@@ -356,8 +418,7 @@ void ViewInformation2D::setPixelSnapHairline(bool bNew)
 static std::atomic<bool>& globalAntiAliasing()
 {
     static std::atomic<bool> g_GlobalAntiAliasing
-        = utl::ConfigManager::IsFuzzing()
-          || officecfg::Office::Common::Drawinglayer::AntiAliasing::get();
+        = comphelper::IsFuzzing() || officecfg::Office::Common::Drawinglayer::AntiAliasing::get();
     return g_GlobalAntiAliasing;
 }
 
@@ -377,11 +438,6 @@ void ViewInformation2D::setGlobalAntiAliasing(bool bAntiAliasing, bool bTemporar
     }
 }
 bool ViewInformation2D::getGlobalAntiAliasing() { return globalAntiAliasing(); }
-
-void ViewInformation2D::forwardPixelSnapHairline(bool bPixelSnapHairline)
-{
-    bForwardPixelSnapHairline = bPixelSnapHairline;
-}
 
 ViewInformation2D
 createViewInformation2D(const css::uno::Sequence<css::beans::PropertyValue>& rViewParameters)

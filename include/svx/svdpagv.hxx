@@ -20,6 +20,7 @@
 #pragma once
 
 #include <com/sun/star/awt/XControlContainer.hpp>
+#include <rtl/ref.hxx>
 #include <rtl/ustring.hxx>
 #include <tools/color.hxx>
 #include <svx/svdhlpln.hxx>
@@ -36,16 +37,12 @@ namespace vcl { class Region; }
 class SdrObjList;
 class SdrObject;
 class SdrPage;
-class SdrUnoObj;
 class SdrPaintWindow;
 class SdrView;
-class SdrPageObj;
-class SdrPageView;
+class UnoControlContainer;
 
 namespace sdr::contact
 {
-    class ViewObjectContactRedirector;
-    class DisplayInfo;
     class ViewObjectContactRedirector;
 }
 
@@ -59,19 +56,19 @@ private:
     SdrPage*     mpPage;
     Point        maPageOrigin;   // The Page's point of origin
 
-    tools::Rectangle    aMarkBound;
-    tools::Rectangle    aMarkSnap;
+    tools::Rectangle    m_aMarkBound;
+    tools::Rectangle    m_aMarkSnap;
     bool         mbHasMarked;
     bool         mbVisible;
 
-    SdrLayerIDSet    aLayerVisi;   // Set of visible Layers
-    SdrLayerIDSet    aLayerLock;   // Set of non-editable Layers
-    SdrLayerIDSet    aLayerPrn;    // Set of printable Layers
+    SdrLayerIDSet    m_aLayerVisi;   // Set of visible Layers
+    SdrLayerIDSet    m_aLayerLock;   // Set of non-editable Layers
+    SdrLayerIDSet    m_aLayerPrn;    // Set of printable Layers
 
-    SdrObjList*  pCurrentList;     // Current List, usually the Page
-    SdrObject*   pCurrentGroup;    // Current Group; nullptr means none
+    SdrObjList*  m_pCurrentList;     // Current List, usually the Page
+    SdrObject*   m_pCurrentGroup;    // Current Group; nullptr means none
 
-    SdrHelpLineList aHelpLines; // Helper lines and points
+    SdrHelpLineList m_aHelpLines; // Helper lines and points
 
     // #103911# Use one reserved slot (bReserveBool2) for the document color
     Color         maDocumentColor;
@@ -102,7 +99,8 @@ public:
 private:
     void ImpInvalidateHelpLineArea(sal_uInt16 nNum) const;
 
-    void SetLayer(const OUString& rName, SdrLayerIDSet& rBS, bool bJa);
+    // return true if changed, false if unchanged
+    bool SetLayer(const OUString& rName, SdrLayerIDSet& rBS, bool bJa);
     bool IsLayer(const OUString& rName, const SdrLayerIDSet& rBS) const;
 
     /// Let's see if the current Group (pCurrentGroup) is still inserted
@@ -137,7 +135,7 @@ public:
      *      SdrPageView instance, the XControlContainer for this output device is returned, <NULL/>
      *      otherwise.
      */
-    css::uno::Reference< css::awt::XControlContainer >
+    rtl::Reference< UnoControlContainer >
         GetControlContainer( const OutputDevice& _rDevice ) const;
 
     /// Sets all elements in the view which support a design and an alive mode into the given mode
@@ -166,10 +164,10 @@ public:
     SdrPage* GetPage() const { return mpPage; }
 
     /// Return current List
-    SdrObjList* GetObjList() const { return pCurrentList; }
+    SdrObjList* GetObjList() const { return m_pCurrentList; }
 
     /// Return current Group
-    SdrObject* GetCurrentGroup() const { return pCurrentGroup; }
+    SdrObject* GetCurrentGroup() const { return m_pCurrentGroup; }
 
     /// Set current Group and List
     void SetCurrentGroupAndList(SdrObject* pNewGroup, SdrObjList* pNewList);
@@ -177,23 +175,26 @@ public:
     bool HasMarkedObjPageView() const { return mbHasMarked; }
     void SetHasMarkedObj(bool bOn) { mbHasMarked = bOn; }
 
-    const tools::Rectangle& MarkBound() const { return aMarkBound; }
-    const tools::Rectangle& MarkSnap() const { return aMarkSnap; }
-    tools::Rectangle& MarkBound() { return aMarkBound; }
-    tools::Rectangle& MarkSnap() { return aMarkSnap; }
+    const tools::Rectangle& MarkBound() const { return m_aMarkBound; }
+    const tools::Rectangle& MarkSnap() const { return m_aMarkSnap; }
+    tools::Rectangle& MarkBound() { return m_aMarkBound; }
+    tools::Rectangle& MarkSnap() { return m_aMarkSnap; }
 
-    void SetLayerVisible(const OUString& rName, bool bShow) {
-        SetLayer(rName, aLayerVisi, bShow);
+    bool SetLayerVisible(const OUString& rName, bool bShow) {
+        const bool bChanged = SetLayer(rName, m_aLayerVisi, bShow);
+        if (!bChanged)
+            return false;
         if(!bShow) AdjHdl();
         InvalidateAllWin();
+        return true;
     }
-    bool IsLayerVisible(const OUString& rName) const { return IsLayer(rName, aLayerVisi); }
+    bool IsLayerVisible(const OUString& rName) const { return IsLayer(rName, m_aLayerVisi); }
 
-    void SetLayerLocked(const OUString& rName, bool bLock) { SetLayer(rName, aLayerLock, bLock); if(bLock) AdjHdl(); }
-    bool IsLayerLocked(const OUString& rName) const { return IsLayer(rName,aLayerLock); }
+    void SetLayerLocked(const OUString& rName, bool bLock) { SetLayer(rName, m_aLayerLock, bLock); if(bLock) AdjHdl(); }
+    bool IsLayerLocked(const OUString& rName) const { return IsLayer(rName,m_aLayerLock); }
 
-    void SetLayerPrintable(const OUString& rName, bool bPrn) { SetLayer(rName, aLayerPrn, bPrn); }
-    bool IsLayerPrintable(const OUString& rName) const { return IsLayer(rName, aLayerPrn); }
+    void SetLayerPrintable(const OUString& rName, bool bPrn) { SetLayer(rName, m_aLayerPrn, bPrn); }
+    bool IsLayerPrintable(const OUString& rName) const { return IsLayer(rName, m_aLayerPrn); }
 
     /// PV represents a RefPage or a SubList of a RefObj, or the Model is ReadOnly
     bool IsReadOnly() const;
@@ -206,14 +207,14 @@ public:
     void LogicToPagePos(tools::Rectangle& rRect) const { rRect.Move(-maPageOrigin.X(),-maPageOrigin.Y()); }
     void PagePosToLogic(Point& rPnt) const { rPnt+=maPageOrigin; }
 
-    void SetVisibleLayers(const SdrLayerIDSet& rSet) { aLayerVisi=rSet; }
-    const SdrLayerIDSet& GetVisibleLayers() const { return aLayerVisi; }
-    void SetPrintableLayers(const SdrLayerIDSet& rSet) { aLayerPrn=rSet; }
-    const SdrLayerIDSet& GetPrintableLayers() const { return aLayerPrn;  }
-    void SetLockedLayers(const SdrLayerIDSet& rSet) { aLayerLock=rSet; }
-    const SdrLayerIDSet& GetLockedLayers() const { return aLayerLock; }
+    void SetVisibleLayers(const SdrLayerIDSet& rSet) { m_aLayerVisi=rSet; }
+    const SdrLayerIDSet& GetVisibleLayers() const { return m_aLayerVisi; }
+    void SetPrintableLayers(const SdrLayerIDSet& rSet) { m_aLayerPrn=rSet; }
+    const SdrLayerIDSet& GetPrintableLayers() const { return m_aLayerPrn;  }
+    void SetLockedLayers(const SdrLayerIDSet& rSet) { m_aLayerLock=rSet; }
+    const SdrLayerIDSet& GetLockedLayers() const { return m_aLayerLock; }
 
-    const SdrHelpLineList& GetHelpLines() const { return aHelpLines; }
+    const SdrHelpLineList& GetHelpLines() const { return m_aHelpLines; }
     void SetHelpLines(const SdrHelpLineList& rHLL);
     //void SetHelpLinePos(sal_uInt16 nNum, const Point& rNewPos);
     void SetHelpLine(sal_uInt16 nNum, const SdrHelpLine& rNewHelpLine);
@@ -249,6 +250,8 @@ public:
     // #103911# Set/Get document color for svx at SdrPageViews
     void SetApplicationDocumentColor(Color aDocumentColor);
     const Color& GetApplicationDocumentColor() const { return maDocumentColor;}
+
+    void resetGridOffsetsOfAllPageWindows() const;
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

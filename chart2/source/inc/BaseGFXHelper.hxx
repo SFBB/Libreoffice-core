@@ -18,6 +18,7 @@
  */
 #pragma once
 
+#include <config_options.h>
 #include <basegfx/matrix/b3dhommatrix.hxx>
 #include <basegfx/range/b2irectangle.hxx>
 #include <basegfx/tuple/b3dtuple.hxx>
@@ -28,7 +29,6 @@
 #include <com/sun/star/drawing/HomogenMatrix.hpp>
 #include <com/sun/star/drawing/Direction3D.hpp>
 #include <com/sun/star/drawing/Position3D.hpp>
-#include "charttoolsdllapi.hxx"
 
 namespace com::sun::star::awt { struct Rectangle; }
 namespace com::sun::star::drawing { struct PolyPolygonShape3D; }
@@ -36,23 +36,23 @@ namespace com::sun::star::drawing { struct PolyPolygonShape3D; }
 namespace chart::BaseGFXHelper
 {
 
-OOO_DLLPUBLIC_CHARTTOOLS ::basegfx::B3DRange getBoundVolume( const css::drawing::PolyPolygonShape3D& rPolyPoly );
+::basegfx::B3DRange getBoundVolume( const css::drawing::PolyPolygonShape3D& rPolyPoly );
 
-OOO_DLLPUBLIC_CHARTTOOLS ::basegfx::B3DRange getBoundVolume( const std::vector<std::vector<css::drawing::Position3D>>& rPolyPoly );
+::basegfx::B3DRange getBoundVolume( const std::vector<std::vector<css::drawing::Position3D>>& rPolyPoly );
 
-OOO_DLLPUBLIC_CHARTTOOLS ::basegfx::B2IRectangle makeRectangle(
+::basegfx::B2IRectangle makeRectangle(
             const css::awt::Point& rPosition,
             const css::awt::Size& rSize );
 
-OOO_DLLPUBLIC_CHARTTOOLS ::basegfx::B2IRectangle makeRectangle( const css::awt::Rectangle& rRect );
+::basegfx::B2IRectangle makeRectangle( const css::awt::Rectangle& rRect );
 
-OOO_DLLPUBLIC_CHARTTOOLS css::awt::Point B2IRectangleToAWTPoint(
+css::awt::Point B2IRectangleToAWTPoint(
             const ::basegfx::B2IRectangle& rB2IRectangle );
 
-OOO_DLLPUBLIC_CHARTTOOLS css::awt::Size B2IRectangleToAWTSize(
+css::awt::Size B2IRectangleToAWTSize(
             const ::basegfx::B2IRectangle& rB2IRectangle );
 
-OOO_DLLPUBLIC_CHARTTOOLS css::awt::Rectangle toAwtRectangle(const basegfx::B2IRectangle& rB2IRectangle);
+css::awt::Rectangle toAwtRectangle(const basegfx::B2IRectangle& rB2IRectangle);
 
 ::basegfx::B3DVector Direction3DToB3DVector(
     const css::drawing::Direction3D& rDirection );
@@ -66,17 +66,16 @@ css::drawing::Direction3D B3DVectorToDirection3D(
 css::drawing::Position3D B3DVectorToPosition3D(
     const ::basegfx::B3DVector& rB3DVector );
 
-OOO_DLLPUBLIC_CHARTTOOLS ::basegfx::B3DHomMatrix HomogenMatrixToB3DHomMatrix(
+::basegfx::B3DHomMatrix HomogenMatrixToB3DHomMatrix(
     const css::drawing::HomogenMatrix & rHomogenMatrix );
 
-OOO_DLLPUBLIC_CHARTTOOLS
 css::drawing::HomogenMatrix B3DHomMatrixToHomogenMatrix(
     const ::basegfx::B3DHomMatrix & rB3DMatrix );
 
-OOO_DLLPUBLIC_CHARTTOOLS ::basegfx::B3DTuple GetRotationFromMatrix(
+::basegfx::B3DTuple GetRotationFromMatrix(
     const ::basegfx::B3DHomMatrix & rB3DMatrix );
 
-OOO_DLLPUBLIC_CHARTTOOLS ::basegfx::B3DTuple GetScaleFromMatrix(
+::basegfx::B3DTuple GetScaleFromMatrix(
     const ::basegfx::B3DHomMatrix & rB3DMatrix );
 
 void ReduceToRotationMatrix( ::basegfx::B3DHomMatrix & rB3DMatrix );

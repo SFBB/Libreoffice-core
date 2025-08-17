@@ -7,8 +7,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#ifndef INCLUDED_SW_QA_INC_SWMODELTESTBASE_HXX
-#define INCLUDED_SW_QA_INC_SWMODELTESTBASE_HXX
+#pragma once
 
 #include <memory>
 #include <string_view>
@@ -28,18 +27,6 @@
 
 #include <doc.hxx>
 
-/**
- * Macro to declare a new test (with full round-trip. To test
- * import only use the CPPUNIT_TEST_FIXTURE macro directly).
- * In order to add a new test, one only needs to use this macro
- * and then specify the test content, like this:
- *
- * DECLARE_SW_ROUNDTRIP_TEST(MyTest, "myfilename.docx", Test)
- * {
- *      CPPUNIT_ASSERT_EQUAL(blabla);
- * }
- *
- */
 #define DECLARE_SW_ROUNDTRIP_TEST(TestName, filename, password, BaseClass) \
     class TestName : public BaseClass { \
         public:\
@@ -56,27 +43,14 @@
     void TestName::verify()
 
 #define DECLARE_OOXMLEXPORT_TEST(TestName, filename) DECLARE_SW_ROUNDTRIP_TEST(TestName, filename, nullptr, Test)
-#define DECLARE_RTFEXPORT_TEST(TestName, filename) DECLARE_SW_ROUNDTRIP_TEST(TestName, filename, nullptr, Test)
 #define DECLARE_ODFEXPORT_TEST(TestName, filename) DECLARE_SW_ROUNDTRIP_TEST(TestName, filename, nullptr, Test)
-#define DECLARE_FODFEXPORT_TEST(TestName, filename) DECLARE_SW_ROUNDTRIP_TEST(TestName, filename, nullptr, Test)
 #define DECLARE_WW8EXPORT_TEST(TestName, filename) DECLARE_SW_ROUNDTRIP_TEST(TestName, filename, nullptr, Test)
 
-#define DECLARE_SW_EXPORT_TEST(TestName, filename, password, BaseClass) \
-    class TestName : public BaseClass { \
-        public:\
-    CPPUNIT_TEST_SUITE(TestName); \
-    CPPUNIT_TEST(Import_Export); \
-    CPPUNIT_TEST_SUITE_END(); \
-    \
-    void Import_Export() {\
-        executeImportExport(filename, password);\
-    }\
-    void verify() override;\
-    }; \
-    CPPUNIT_TEST_SUITE_REGISTRATION(TestName); \
-    void TestName::verify()
-
 class SwXTextDocument;
+namespace comphelper
+{
+class ConfigurationChanges;
+}
 namespace vcl
 {
 namespace pdf
@@ -85,52 +59,36 @@ class PDFiumDocument;
 }
 }
 
+/// Temporarily enables the ExportFormFields setting.
+class SWQAHELPER_DLLPUBLIC SwExportFormFieldsGuard
+{
+    std::shared_ptr<comphelper::ConfigurationChanges> m_pBatch;
+    bool m_bValue;
+public:
+    SwExportFormFieldsGuard();
+    ~SwExportFormFieldsGuard();
+};
+
 /// Base class for filter tests loading or roundtripping a document, then asserting the document model.
 class SWQAHELPER_DLLPUBLIC SwModelTestBase : public UnoApiXmlTest
 {
-private:
-    bool mbExported; ///< Does maTempFile already contain something useful?
-
 protected:
     xmlBufferPtr mpXmlBuffer;
     OUString mpFilter;
 
-    sal_uInt32 mnStartTime;
-
     /// Copy&paste helper.
-    void paste(std::u16string_view aFilename, OUString aInstance, css::uno::Reference<css::text::XTextRange> const& xTextRange);
+    void paste(std::u16string_view aFilename, const OUString& aInstance, css::uno::Reference<css::text::XTextRange> const& xTextRange);
 
 public:
     SwModelTestBase(const OUString& pTestDocumentPath = OUString(), const OUString& pFilter = {});
 
 protected:
     /**
-     * Helper func used by each unit test to test the 'import' code.
-     * (Loads the requested file and then calls 'verify' method)
-     */
-    void executeImportTest(const char* filename, const char* pPassword = nullptr);
-
-    /**
      * Helper func used by each unit test to test the 'export' code.
      * (Loads the requested file, calls 'verify' function, save it to temp file, load the
      * temp file and then calls 'verify' function again)
      */
     void executeLoadVerifyReloadVerify(const char* filename, const char* pPassword = nullptr);
-
-    /**
-     * Helper func used by each unit test to test the 'export' code.
-     * (Loads the requested file, save it to temp file, load the
-     * temp file and then calls 'verify' method)
-     */
-    void executeLoadReloadVerify(const char* filename, const char* pPassword = nullptr);
-
-    /**
-     * Helper func used by each unit test to test the 'export' code.
-     * (Loads the requested file for document base (this represents
-     * the initial document condition), exports with the desired
-     * export filter and then calls 'verify' method)
-     */
-    void executeImportExport(const char* filename, const char* pPassword);
 
     /**
      * Function overridden by unit test. See DECLARE_SW_*_TEST macros
@@ -140,19 +98,8 @@ protected:
         CPPUNIT_FAIL( "verify method must be overridden" );
     }
 
-    /// Override this function if some special file-specific setup is needed during export test: after load, but before save.
-    virtual void postLoad(const char* /*pFilename*/)
-    {
-    }
+    void calcLayout(bool bRecalc = false);
 
-    void dumpLayout(const css::uno::Reference< css::lang::XComponent > & rComponent);
-
-    void discardDumpedLayout();
-
-    void calcLayout();
-
-    /// Get the length of the whole document. @deprecated why use this?
-    int getLength() const;
     /// Get the body text of the whole document.
     OUString getBodyText() const;
 
@@ -163,14 +110,7 @@ protected:
     css::uno::Reference<css::style::XAutoStyleFamily> getAutoStyles(const OUString& aFamily);
 
     /// Similar to parseExport(), but this gives the xmlDocPtr of the layout dump.
-    xmlDocUniquePtr parseLayoutDump();
-
-    /**
-     * Extract a value from the layout dump using an XPath expression and an attribute name.
-     *
-     * If the attribute is omitted, the text of the node is returned.
-     */
-    OUString parseDump(const OString& aXPath, const OString& aAttribute = OString());
+    xmlDocUniquePtr parseLayoutDump(const css::uno::Reference< css::lang::XComponent >& xComponent = nullptr);
 
     template< typename T >
     T getProperty( const css::uno::Any& obj, const OUString& name ) const
@@ -264,20 +204,11 @@ protected:
     /// Combines load() and saveAndReload().
     void loadAndReload(const char* pName);
 
-    void finish();
-
     /// Get page count.
     int getPages() const;
 
     /// Get shape count.
     int getShapes() const;
-
-    /**
-     * Returns an xml stream of an exported file.
-     * To be used when the exporter doesn't create zip archives, but single files
-     * (like Flat ODF Export)
-     */
-    xmlDocUniquePtr parseExportedFile();
 
     /**
      * Creates a new document to be used with the internal sw/ API.
@@ -310,18 +241,21 @@ protected:
     SwDocShell* getSwDocShell();
 
     /**
+     * Gets SwXTextDocument from loaded component
+     */
+    SwXTextDocument* getSwTextDoc();
+
+    /**
      * Wraps a reqif-xhtml fragment into an XHTML file, and XML-parses it.
      */
     xmlDocUniquePtr WrapReqifFromTempFile();
 
-    void WrapFromTempFile(SvMemoryStream& rStream);
-
-    bool isExported(){ return mbExported; }
-
-    void emulateTyping(SwXTextDocument& rTextDoc, const std::u16string_view& rStr);
+    void emulateTyping(std::u16string_view rStr);
 
 private:
     void loadURL(OUString const& rURL, const char* pPassword = nullptr);
+
+    void dumpLayout(SwDoc* pDoc);
 };
 
 /**
@@ -348,7 +282,5 @@ inline void assertBorderEqual(
 
 #define CPPUNIT_ASSERT_BORDER_EQUAL(aExpected, aActual) \
         assertBorderEqual( aExpected, aActual, CPPUNIT_SOURCELINE() ) \
-
-#endif // INCLUDED_SW_QA_INC_SWMODELTESTBASE_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

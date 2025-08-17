@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_VCL_IMPDEL_HXX
-#define INCLUDED_VCL_IMPDEL_HXX
+#pragma once
 
 #include <algorithm>
 #include <vector>
@@ -57,6 +56,12 @@ class DeletionListener
            if( m_pNotifier )
                m_pNotifier->addDel( this );
        }
+    DeletionListener(const DeletionListener& rOther)
+    :  m_pNotifier(rOther.m_pNotifier)
+       {
+           if (m_pNotifier)
+               m_pNotifier->addDel(this);
+       }
    ~DeletionListener()
    {
        if( m_pNotifier )
@@ -75,7 +80,5 @@ inline void DeletionNotifier::notifyDelete()
 }
 
 } // namespace vcl
-
-#endif // INCLUDED_VCL_IMPDEL_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

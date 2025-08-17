@@ -169,8 +169,6 @@ namespace vclcanvas
             uno::Sequence<double>(4),
             rendering::CompositeOperation::SOURCE);
 
-        KernArray aOffsets(setupTextOffsets(maLogicalAdvancements, aViewState, aRenderState));
-
         std::vector< ::tools::Rectangle > aMetricVector;
         uno::Sequence<geometry::RealRectangle2D> aBoundingBoxes;
         if (pVDev->GetGlyphBoundRects(
@@ -249,7 +247,7 @@ namespace vclcanvas
 
         // need metrics for Y offset, the XCanvas always renders
         // relative to baseline
-        const ::FontMetric& aMetric( pVDev->GetFontMetric() );
+        const ::FontMetric aMetric( pVDev->GetFontMetric() );
 
         setupLayoutMode( *pVDev, mnTextDirection );
 
@@ -434,7 +432,7 @@ namespace vclcanvas
 
     OUString SAL_CALL TextLayout::getImplementationName()
     {
-        return "VCLCanvas::TextLayout";
+        return u"VCLCanvas::TextLayout"_ustr;
     }
 
     sal_Bool SAL_CALL TextLayout::supportsService( const OUString& ServiceName )
@@ -444,7 +442,7 @@ namespace vclcanvas
 
     uno::Sequence< OUString > SAL_CALL TextLayout::getSupportedServiceNames()
     {
-        return { "com.sun.star.rendering.TextLayout" };
+        return { u"com.sun.star.rendering.TextLayout"_ustr };
     }
 }
 

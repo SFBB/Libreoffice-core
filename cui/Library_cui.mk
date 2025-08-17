@@ -9,8 +9,6 @@
 
 $(eval $(call gb_Library_Library,cui))
 
-$(eval $(call gb_Library_set_plugin_for,cui,vcl))
-
 $(eval $(call gb_Library_set_componentfile,cui,cui/util/cui,services))
 
 $(eval $(call gb_Library_set_include,cui,\
@@ -34,6 +32,7 @@ $(eval $(call gb_Library_use_sdk_api,cui))
 
 $(eval $(call gb_Library_use_libraries,cui,\
 	$(call gb_Helper_optional,AVMEDIA,avmedia) \
+    $(call gb_Helper_optional,SCRIPTING,basctl) \
     basegfx \
     comphelper \
     cppu \
@@ -62,6 +61,7 @@ $(eval $(call gb_Library_use_libraries,cui,\
     tl \
     ucbhelper \
     utl \
+    vcl \
     $(if $(ENABLE_BREAKPAD), \
         crashreport \
     ) \
@@ -118,7 +118,6 @@ $(eval $(call gb_Library_add_exception_objects,cui,\
     $(call gb_Helper_optional,EXTENSIONS, \
         cui/source/dialogs/AdditionsDialog) \
     cui/source/dialogs/colorpicker \
-    cui/source/dialogs/cuicharmap \
     cui/source/dialogs/cuifmsearch \
     cui/source/dialogs/cuigaldlg \
     cui/source/dialogs/cuigrfflt \
@@ -145,10 +144,13 @@ $(eval $(call gb_Library_add_exception_objects,cui,\
     cui/source/dialogs/screenshotannotationdlg \
     cui/source/dialogs/pastedlg \
     cui/source/dialogs/postdlg \
+    cui/source/dialogs/querydialog \
     cui/source/dialogs/QrCodeGenDialog \
     cui/source/dialogs/GraphicTestsDialog \
     cui/source/dialogs/ImageViewerDialog \
     cui/source/dialogs/scriptdlg \
+    $(call gb_Helper_optional,SCRIPTING, \
+        cui/source/dialogs/MacroManagerDialog) \
     cui/source/dialogs/SignatureLineDialogBase \
     cui/source/dialogs/SignatureLineDialog \
     cui/source/dialogs/SignSignatureLineDialog \
@@ -158,7 +160,11 @@ $(eval $(call gb_Library_add_exception_objects,cui,\
     cui/source/dialogs/splitcelldlg \
     cui/source/dialogs/srchxtra \
     cui/source/dialogs/thesdlg \
-    cui/source/dialogs/toolbarmodedlg \
+    cui/source/dialogs/uipickerdlg \
+    cui/source/dialogs/whatsnewtabpage \
+    cui/source/dialogs/uitabpage \
+    cui/source/dialogs/toolbartabpage \
+    cui/source/dialogs/welcomedlg \
     cui/source/dialogs/zoom \
     cui/source/factory/cuiexp \
     cui/source/factory/cuiresmgr \
@@ -181,7 +187,6 @@ $(eval $(call gb_Library_add_exception_objects,cui,\
     $(call gb_Helper_optional,SCRIPTING, \
         cui/source/options/optbasic) \
     cui/source/options/optchart \
-    cui/source/options/optcolor \
     cui/source/options/optctl \
     cui/source/options/optdict \
     cui/source/options/optfltr \
@@ -199,8 +204,7 @@ $(eval $(call gb_Library_add_exception_objects,cui,\
     cui/source/options/optpath \
     cui/source/options/optsave \
     cui/source/options/optupdt \
-    $(call gb_Helper_optional,DESKTOP,\
-        cui/source/options/personalization) \
+    cui/source/options/appearance \
     cui/source/options/sdbcdriverenum \
     cui/source/options/securityoptions \
     cui/source/options/treeopt \

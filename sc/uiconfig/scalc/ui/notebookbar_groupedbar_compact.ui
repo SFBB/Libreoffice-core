@@ -663,14 +663,20 @@
       </object>
     </child>
     <child>
-      <object class="GtkMenuItem" id="MenuFile-NewGlobalDoc">
+      <object class="GtkSeparatorMenuItem" id="MenuFile-separator1">
         <property name="visible">True</property>
         <property name="can_focus">False</property>
-        <property name="action_name">.uno:NewGlobalDoc</property>
       </object>
     </child>
     <child>
-      <object class="GtkSeparatorMenuItem" id="MenuFile-separator1">
+      <object class="GtkMenuItem" id="MenuFile-Reload">
+        <property name="visible">True</property>
+        <property name="can_focus">False</property>
+        <property name="action_name">.uno:Reload</property>
+      </object>
+    </child>
+    <child>
+      <object class="GtkSeparatorMenuItem" id="MenuFile-separator2">
         <property name="visible">True</property>
         <property name="can_focus">False</property>
       </object>
@@ -690,7 +696,7 @@
       </object>
     </child>
     <child>
-      <object class="GtkSeparatorMenuItem" id="MenuFile-separator2">
+      <object class="GtkSeparatorMenuItem" id="MenuFile-separator3">
         <property name="visible">True</property>
         <property name="can_focus">False</property>
       </object>
@@ -717,7 +723,7 @@
       </object>
     </child>
     <child>
-      <object class="GtkSeparatorMenuItem" id="MenuFile-separator3">
+      <object class="GtkSeparatorMenuItem" id="MenuFile-separator4">
         <property name="visible">True</property>
         <property name="can_focus">False</property>
       </object>
@@ -751,7 +757,7 @@
       </object>
     </child>
     <child>
-      <object class="GtkSeparatorMenuItem" id="MenuFile-separator4">
+      <object class="GtkSeparatorMenuItem" id="MenuFile-separator5">
         <property name="visible">True</property>
         <property name="can_focus">False</property>
       </object>
@@ -1923,10 +1929,10 @@
       </object>
     </child>
     <child>
-      <object class="GtkMenuItem" id="MenuSettings-ToolbarModeUI">
+      <object class="GtkMenuItem" id="MenuSettings-UIPicker">
         <property name="visible">True</property>
         <property name="can_focus">False</property>
-        <property name="action_name">.uno:ToolbarModeUI</property>
+        <property name="action_name">.uno:UIPicker</property>
       </object>
     </child>
     <child>
@@ -4898,6 +4904,9 @@
                       <class name="context-default"/>
                       <class name="context-Empty"/>
                       <class name="context-EditCell"/>
+                      <class name="context-Pivot"/>
+                      <class name="context-Sparkline"/>
+                      <class name="context-Trendline"/>
                     </style>
                   </object>
                   <packing>

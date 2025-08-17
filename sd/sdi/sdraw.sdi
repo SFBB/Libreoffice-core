@@ -294,24 +294,6 @@ SfxVoidItem ChangePolygon SID_CHANGEPOLYGON
     GroupId = SfxGroupId::Drawing;
 ]
 
-SfxBoolItem ClickChangeRotation SID_CLICK_CHANGE_ROTATION
-
-[
-    AutoUpdate = FALSE,
-    FastCall = FALSE,
-    ReadOnlyDoc = FALSE,
-    Toggle = FALSE,
-    Container = FALSE,
-    RecordAbsolute = FALSE,
-    RecordPerSet;
-
-
-    AccelConfig = TRUE,
-    MenuConfig = TRUE,
-    ToolBoxConfig = TRUE,
-    GroupId = SfxGroupId::Options;
-]
-
 SfxVoidItem CloseObject SID_OBJECT_CLOSE
 ()
 [
@@ -2195,8 +2177,25 @@ SfxVoidItem InsertLayer SID_INSERTLAYER
     GroupId = SfxGroupId::Insert;
 ]
 
+SfxVoidItem TransformDocumentStructure FN_TRANSFORM_DOCUMENT_STRUCTURE
+(SfxStringItem DataJson FN_PARAM_1)
+[
+    AutoUpdate = FALSE,
+    FastCall = FALSE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = TRUE,
+    MenuConfig = TRUE,
+    ToolBoxConfig = TRUE,
+    GroupId = SfxGroupId::Edit;
+]
+
 SfxVoidItem InsertPage SID_INSERTPAGE
-(SfxStringItem PageName ID_VAL_PAGENAME,SfxUInt32Item WhatLayout ID_VAL_WHATLAYOUT,SfxBoolItem IsPageBack ID_VAL_ISPAGEBACK,SfxBoolItem IsPageObj ID_VAL_ISPAGEOBJ)
+(SfxStringItem PageName ID_VAL_PAGENAME,SfxUInt32Item WhatLayout ID_VAL_WHATLAYOUT,SfxBoolItem IsPageBack ID_VAL_ISPAGEBACK,SfxBoolItem IsPageObj ID_VAL_ISPAGEOBJ,SfxUInt16Item InsertPos ID_INSERT_POS)
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
@@ -2613,6 +2612,22 @@ SfxBoolItem ToggleLayerVisibility SID_TOGGLELAYERVISIBILITY
     FastCall = FALSE,
     ReadOnlyDoc = FALSE,
     Toggle = TRUE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = TRUE,
+    MenuConfig = TRUE,
+    ToolBoxConfig = TRUE,
+    GroupId = SfxGroupId::Modify;
+]
+
+SfxVoidItem SetLayer SID_SETLAYER
+[
+    AutoUpdate = FALSE,
+    FastCall = FALSE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,
     RecordPerSet;
@@ -3176,7 +3191,7 @@ SfxBoolItem PickThrough SID_PICK_THROUGH
 ]
 
 SfxVoidItem Presentation SID_PRESENTATION
-()
+(SfxUInt16Item StartingSlide FN_PARAM_1)
 [
     AutoUpdate = FALSE,
     FastCall = FALSE,
@@ -4372,12 +4387,12 @@ SfxBoolItem LeftPaneDraw SID_LEFT_PANE_DRAW
     GroupId = SfxGroupId::Modify;
 ]
 
-SfxVoidItem NotesChildWindow SID_NOTES_WINDOW
+SfxBoolItem BottomPaneImpress SID_BOTTOM_PANE_IMPRESS
 
 [
     AutoUpdate = TRUE,
     FastCall = FALSE,
-    ReadOnlyDoc = FALSE,
+    ReadOnlyDoc = TRUE,
     Toggle = FALSE,
     Container = TRUE,
     RecordAbsolute = FALSE,
@@ -4385,9 +4400,9 @@ SfxVoidItem NotesChildWindow SID_NOTES_WINDOW
     Asynchron;
 
 
-    AccelConfig = FALSE,
-    MenuConfig = FALSE,
-    ToolBoxConfig = FALSE,
+    AccelConfig = TRUE,
+    MenuConfig = TRUE,
+    ToolBoxConfig = TRUE,
     GroupId = SfxGroupId::View;
 ]
 
@@ -4703,4 +4718,54 @@ SfxBoolItem UnderlineDotted SID_ULINE_VAL_DOTTED
     MenuConfig = TRUE,
     ToolBoxConfig = TRUE,
     GroupId = SfxGroupId::Format;
+]
+
+SfxVoidItem AlignOnPage SID_ALIGN_PAGE
+[
+    AutoUpdate = TRUE,
+    FastCall = FALSE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = TRUE,
+    MenuConfig = TRUE,
+    ToolBoxConfig = TRUE,
+    GroupId = SfxGroupId::Modify;
+]
+
+SfxVoidItem CopySlide SID_COPY_SLIDE
+()
+[
+    AutoUpdate = FALSE,
+    FastCall = FALSE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = TRUE,
+    MenuConfig = TRUE,
+    ToolBoxConfig = TRUE,
+    GroupId = SfxGroupId::Edit;
+]
+
+SfxVoidItem PasteSlide SID_PASTE_SLIDE
+()
+[
+    AutoUpdate = FALSE,
+    FastCall = FALSE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = TRUE,
+    MenuConfig = TRUE,
+    ToolBoxConfig = TRUE,
+    GroupId = SfxGroupId::Edit;
 ]

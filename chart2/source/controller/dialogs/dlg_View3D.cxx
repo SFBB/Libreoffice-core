@@ -18,38 +18,39 @@
  */
 
 #include <dlg_View3D.hxx>
-#include <strings.hrc>
-#include <ResId.hxx>
+
 #include "tp_3D_SceneGeometry.hxx"
 #include "tp_3D_SceneAppearance.hxx"
 #include "tp_3D_SceneIllumination.hxx"
-#include <ChartModelHelper.hxx>
 #include <ChartModel.hxx>
 #include <Diagram.hxx>
+
+#include <vcl/tabs.hrc>
 
 namespace chart
 {
 
 using namespace ::com::sun::star;
-using namespace ::com::sun::star::chart2;
 
 sal_uInt16 View3DDialog::m_nLastPageId = 0;
 
 View3DDialog::View3DDialog(weld::Window* pParent, const rtl::Reference<::chart::ChartModel> & xChartModel)
-    : GenericDialogController(pParent, "modules/schart/ui/3dviewdialog.ui", "3DViewDialog")
+    : GenericDialogController(pParent, u"modules/schart/ui/3dviewdialog.ui"_ustr, u"3DViewDialog"_ustr)
     , m_aControllerLocker(xChartModel)
-    , m_xTabControl(m_xBuilder->weld_notebook("tabcontrol"))
+    , m_xTabControl(m_xBuilder->weld_notebook(u"tabcontrol"_ustr))
 {
     rtl::Reference< Diagram > xSceneProperties = xChartModel->getFirstChartDiagram();
+    OUString aStr = RID_L + RID_TAB_CHART_PERSPECTIVE.sIconName;
+    m_xTabControl->append_page(u"geometry"_ustr, TabResId(RID_TAB_CHART_PERSPECTIVE.aLabel), &aStr);
+    m_xGeometry.reset(new ThreeD_SceneGeometry_TabPage(m_xTabControl->get_page(u"geometry"_ustr), xSceneProperties, m_aControllerLocker));
 
-    m_xTabControl->append_page("geometry", SchResId(STR_PAGE_PERSPECTIVE));
-    m_xGeometry.reset(new ThreeD_SceneGeometry_TabPage(m_xTabControl->get_page("geometry"), xSceneProperties, m_aControllerLocker));
+    aStr = RID_L + RID_TAB_CHART_APPEARANCE.sIconName;
+    m_xTabControl->append_page(u"appearance"_ustr, TabResId(RID_TAB_CHART_APPEARANCE.aLabel), &aStr);
+    m_xAppearance.reset(new ThreeD_SceneAppearance_TabPage(m_xTabControl->get_page(u"appearance"_ustr), xChartModel, m_aControllerLocker));
 
-    m_xTabControl->append_page("appearance", SchResId(STR_PAGE_APPEARANCE));
-    m_xAppearance.reset(new ThreeD_SceneAppearance_TabPage(m_xTabControl->get_page("appearance"), xChartModel, m_aControllerLocker));
-
-    m_xTabControl->append_page("illumination", SchResId(STR_PAGE_ILLUMINATION));
-    m_xIllumination.reset(new ThreeD_SceneIllumination_TabPage(m_xTabControl->get_page("illumination"), m_xDialog.get(),
+    aStr = RID_L + RID_TAB_CHART_ILLUMINATION.sIconName;
+    m_xTabControl->append_page(u"illumination"_ustr, TabResId(RID_TAB_CHART_ILLUMINATION.aLabel), &aStr);
+    m_xIllumination.reset(new ThreeD_SceneIllumination_TabPage(m_xTabControl->get_page(u"illumination"_ustr), m_xDialog.get(),
         xSceneProperties, xChartModel));
 
     m_xTabControl->connect_enter_page(LINK(this, View3DDialog, ActivatePageHdl));

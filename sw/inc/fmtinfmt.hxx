@@ -23,11 +23,11 @@
 #include "swdllapi.h"
 #include <memory>
 #include "calbck.hxx"
+#include "names.hxx"
 
 class SvxMacro;
 class SvxMacroTableDtor;
 class SwTextINetFormat;
-class IntlWrapper;
 enum class SvMacroItemId : sal_uInt16;
 
 /// SfxPoolItem subclass that contains data about an inserted hyperlink / URL in Writer text. Its
@@ -40,14 +40,15 @@ class SW_DLLPUBLIC SwFormatINetFormat final
 
     OUString msURL;                  ///< URL.
     OUString msTargetFrame;          ///< Target frame for URL.
-    OUString msINetFormatName;
-    OUString msVisitedFormatName;
+    UIName msINetFormatName;
+    UIName msVisitedFormatName;
     OUString msHyperlinkName;        ///< Name of the link.
     std::unique_ptr<SvxMacroTableDtor> mpMacroTable;
     SwTextINetFormat* mpTextAttr;         ///< My TextAttribute.
     sal_uInt16 mnINetFormatId;
     sal_uInt16 mnVisitedFormatId;
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwFormatINetFormat)
     SwFormatINetFormat( OUString aURL, OUString aTarget );
     SwFormatINetFormat( const SwFormatINetFormat& rAttr );
     SwFormatINetFormat();                     ///< For TypeInfo.
@@ -92,14 +93,14 @@ public:
     }
 
     void SetINetFormatAndId(
-            const OUString& rNm,
+            const UIName& rNm,
             const sal_uInt16 nId )
     {
         msINetFormatName = rNm;
         mnINetFormatId = nId;
     }
 
-    const OUString& GetINetFormat() const
+    const UIName& GetINetFormat() const
     {
         return msINetFormatName;
     }
@@ -110,14 +111,14 @@ public:
     }
 
     void SetVisitedFormatAndId(
-            const OUString& rNm,
+            const UIName& rNm,
             const sal_uInt16 nId )
     {
         msVisitedFormatName = rNm;
         mnVisitedFormatId = nId;
     }
 
-    const OUString& GetVisitedFormat() const
+    const UIName& GetVisitedFormat() const
     {
         return msVisitedFormatName;
     }

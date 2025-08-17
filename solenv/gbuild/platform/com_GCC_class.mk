@@ -12,13 +12,13 @@ ifneq (,$(CCACHE_HARDLINK))
 # cannot move hardlink over itself, so create dep file directly, even if that
 # might leave a broken file behind in case the build is interrupted forcefully
 define gb_cxx_dep_generation_options
--MMD -MT $(1) -MP -MF $(2)
+$(if $(DEPS_SYSINCLUDES),-MD,-MMD) -MT $(1) -MP -MF $(2)
 endef
 define gb_cxx_dep_copy
 endef
 else
 define gb_cxx_dep_generation_options
--MMD -MT $(1) -MP -MF $(2)_
+$(if $(DEPS_SYSINCLUDES),-MD,-MMD) -MT $(1) -MP -MF $(2)_
 endef
 define gb_cxx_dep_copy
 && mv $(1)_ $(1)
@@ -82,7 +82,7 @@ $(call gb_Helper_abbreviate_dirs,\
 		$(if $(6), $(call gb_CObject__filter_out_clang_cflags,$(2)),$(2)) \
 		$(if $(WARNINGS_DISABLED),$(gb_CXXFLAGS_DISABLE_WARNINGS)) \
 		$(if $(EXTERNAL_CODE),$(gb_CXXFLAGS_Wundef),$(gb_DEFS_INTERNAL)) \
-		-c $(3) \
+		$(if $(COMPILER_TEST),,-c) $(3) \
 		-o $(1) \
 		$(if $(COMPILER_TEST),,$(call gb_cxx_dep_generation_options,$(1),$(4))) \
 		$(INCLUDE) \
@@ -188,16 +188,6 @@ endif
 gb_PrecompiledHeader__create_reuse_files =
 gb_PrecompiledHeader__copy_reuse_files =
 
-# YaccTarget class
-
-define gb_YaccTarget__command
-$(call gb_Output_announce,$(2),$(true),YAC,3)
-$(call gb_Helper_abbreviate_dirs,\
-	mkdir -p $(dir $(3)) && \
-	$(BISON) $(T_YACCFLAGS) -v --defines=$(4) -o $(5) $(1) && touch $(3) )
-
-endef
-
 # CppunitTest class
 
 ifeq ($(strip $(DEBUGCPPUNIT)),TRUE)
@@ -222,7 +212,7 @@ gb_StaticLibrary_PLAINEXT := .a
 gb_StaticLibrary_StaticLibrary_platform :=
 
 gb_LinkTarget_get_linksearchpath_for_layer = \
-	-L$(WORKDIR)/LinkTarget/StaticLibrary \
+	-L$(gb_StaticLibrary_WORKDIR) \
 	-L$(call gb_Library_get_sdk_link_dir) \
 	$(foreach layer,\
 		$(subst +, ,$(patsubst $(1):%.,%,\

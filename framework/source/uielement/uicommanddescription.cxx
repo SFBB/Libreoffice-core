@@ -42,6 +42,7 @@
 #include <comphelper/propertyvalue.hxx>
 #include <comphelper/sequence.hxx>
 #include <comphelper/string.hxx>
+#include <rtl/ref.hxx>
 
 using namespace com::sun::star::uno;
 using namespace com::sun::star::lang;
@@ -120,7 +121,7 @@ class ConfigurationAccess_UICommand : // Order is necessary for right initializa
 
         Any                       getSequenceFromCache( const OUString& aCommandURL );
         Any                       getInfoFromCommand( const OUString& rCommandURL );
-        void                      fillInfoFromResult( CmdToInfoMap& rCmdInfo, const OUString& aLabel );
+        static void               fillInfoFromResult( CmdToInfoMap& rCmdInfo, const OUString& aLabel );
         Sequence< OUString > getAllCommands();
         void                  fillCache();
         void                  addGenericInfoToCache();
@@ -141,9 +142,9 @@ class ConfigurationAccess_UICommand : // Order is necessary for right initializa
         Reference< XNameAccess >          m_xGenericUICommands;
         Reference< XMultiServiceFactory > m_xConfigProvider;
         Reference< XNameAccess >          m_xConfigAccess;
-        Reference< XContainerListener >   m_xConfigListener;
+        rtl::Reference< WeakContainerListener >   m_xConfigListener;
         Reference< XNameAccess >          m_xConfigAccessPopups;
-        Reference< XContainerListener >   m_xConfigAccessListener;
+        rtl::Reference< WeakContainerListener >   m_xConfigAccessListener;
         Sequence< OUString >         m_aCommandImageList;
         Sequence< OUString >         m_aCommandRotateImageList;
         Sequence< OUString >         m_aCommandMirrorImageList;
@@ -164,7 +165,7 @@ ConfigurationAccess_UICommand::ConfigurationAccess_UICommand( std::u16string_vie
         OUString::Concat(CONFIGURATION_ROOT_ACCESS) + aModuleName + "/UserInterface/Commands"),
     m_aConfigPopupAccess(
         OUString::Concat(CONFIGURATION_ROOT_ACCESS) + aModuleName + "/UserInterface/Popups"),
-    m_aPropProperties( "Properties" ),
+    m_aPropProperties( u"Properties"_ustr ),
     m_xGenericUICommands( rGenericUICommands ),
     m_xConfigProvider( theDefaultProvider::get( rxContext ) ),
     m_bConfigAccessInitialized( false ),
@@ -249,6 +250,7 @@ sal_Bool SAL_CALL ConfigurationAccess_UICommand::hasElements()
     return true;
 }
 
+// static
 void ConfigurationAccess_UICommand::fillInfoFromResult( CmdToInfoMap& rCmdInfo, const OUString& aLabel )
 {
     OUString aStr(aLabel.replaceAll("%PRODUCTNAME", utl::ConfigManager::getProductName()));
@@ -310,12 +312,12 @@ void ConfigurationAccess_UICommand::impl_fill(const Reference< XNameAccess >& _x
                 CmdToInfoMap aCmdToInfo;
 
                 aCmdToInfo.bPopup = _bPopup;
-                xNameAccess->getByName( "Label" )           >>= aCmdToInfo.aLabel;
-                xNameAccess->getByName( "ContextLabel" )    >>= aCmdToInfo.aContextLabel;
-                xNameAccess->getByName( "PopupLabel" )      >>= aCmdToInfo.aPopupLabel;
-                xNameAccess->getByName( "TooltipLabel" )    >>= aCmdToInfo.aTooltipLabel;
-                xNameAccess->getByName( "TargetURL" )       >>= aCmdToInfo.aTargetURL;
-                xNameAccess->getByName( "IsExperimental" )  >>= aCmdToInfo.bIsExperimental;
+                xNameAccess->getByName( u"Label"_ustr )           >>= aCmdToInfo.aLabel;
+                xNameAccess->getByName( u"ContextLabel"_ustr )    >>= aCmdToInfo.aContextLabel;
+                xNameAccess->getByName( u"PopupLabel"_ustr )      >>= aCmdToInfo.aPopupLabel;
+                xNameAccess->getByName( u"TooltipLabel"_ustr )    >>= aCmdToInfo.aTooltipLabel;
+                xNameAccess->getByName( u"TargetURL"_ustr )       >>= aCmdToInfo.aTargetURL;
+                xNameAccess->getByName( u"IsExperimental"_ustr )  >>= aCmdToInfo.bIsExperimental;
                 xNameAccess->getByName( m_aPropProperties ) >>= aCmdToInfo.nProperties;
 
                 m_aCmdInfoCache.emplace( aNameSeq[i], aCmdToInfo );
@@ -483,7 +485,7 @@ void ConfigurationAccess_UICommand::initializeConfigAccess()
             {"nodepath", Any(m_aConfigCmdAccess)}
         }));
         m_xConfigAccess.set( m_xConfigProvider->createInstanceWithArguments(
-                    "com.sun.star.configuration.ConfigurationAccess", aArgs ),UNO_QUERY );
+                    u"com.sun.star.configuration.ConfigurationAccess"_ustr, aArgs ),UNO_QUERY );
         if ( m_xConfigAccess.is() )
         {
             // Add as container listener
@@ -500,7 +502,7 @@ void ConfigurationAccess_UICommand::initializeConfigAccess()
             {"nodepath", Any(m_aConfigPopupAccess)}
         }));
         m_xConfigAccessPopups.set( m_xConfigProvider->createInstanceWithArguments(
-                    "com.sun.star.configuration.ConfigurationAccess", aArgs2 ),UNO_QUERY );
+                    u"com.sun.star.configuration.ConfigurationAccess"_ustr, aArgs2 ),UNO_QUERY );
         if ( m_xConfigAccessPopups.is() )
         {
             // Add as container listener
@@ -584,7 +586,7 @@ UICommandDescription::UICommandDescription(const Reference< XComponentContext >&
 
     // insert generic commands
     auto& rMap = m_aUICommandsHashMap[rCurrentLanguage];
-    UICommandsHashMap::iterator pIter = rMap.find( "GenericCommands" );
+    UICommandsHashMap::iterator pIter = rMap.find( u"GenericCommands"_ustr );
     if ( pIter != rMap.end() )
         pIter->second = m_xGenericUICommands[rCurrentLanguage];
 }
@@ -614,7 +616,7 @@ void UICommandDescription::impl_fillElements(const char* _pName)
         if ( m_xModuleManager->getByName( aModuleIdentifier ) >>= aSeq )
         {
             OUString aCommandStr;
-            for ( PropertyValue const & prop : std::as_const(aSeq) )
+            for (PropertyValue const& prop : aSeq)
             {
                 if ( prop.Name.equalsAscii(_pName) )
                 {

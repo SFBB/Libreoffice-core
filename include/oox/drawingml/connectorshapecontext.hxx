@@ -27,9 +27,6 @@
 #include <sal/types.h>
 #include <vector>
 
-namespace oox { class AttributeList; }
-namespace oox::core { class ContextHandler2Helper; }
-
 namespace oox::drawingml {
 
     struct ConnectorShapeProperties
@@ -40,14 +37,14 @@ namespace oox::drawingml {
     };
 
 /// Handles CT_NonVisualConnectorProperties, used for cNvCnPr (Word) and cNvCxnSpPr (PP) elements.
-class ConnectorShapePropertiesContext : public ::oox::core::ContextHandler2
+class ConnectorShapePropertiesContext final : public ::oox::core::ContextHandler2
 {
     std::vector<ConnectorShapeProperties>& mrConnectorShapePropertiesList;
     ShapePtr mpConnectorShapePtr;
 
 public:
     ConnectorShapePropertiesContext(
-        ::oox::core::ContextHandler2Helper const& rParent, ShapePtr& pShapePtr,
+        ::oox::core::ContextHandler2Helper const& rParent, const ShapePtr& pShapePtr,
         std::vector<ConnectorShapeProperties>& rConnectorShapePropertiesList);
 
     virtual ::oox::core::ContextHandlerRef onCreateContext(sal_Int32 aElementToken,

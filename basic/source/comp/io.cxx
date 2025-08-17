@@ -38,7 +38,7 @@ bool SbiParser::Channel( bool bAlways )
         bRes = true;
     }
     else if( bAlways )
-        Error( ERRCODE_BASIC_EXPECTED, "#" );
+        Error( ERRCODE_BASIC_EXPECTED, u"#"_ustr );
     return bRes;
 }
 
@@ -53,9 +53,7 @@ void SbiParser::Print()
     {
         if( !IsEoln( Peek() ) )
         {
-            auto pExpr = std::make_unique<SbiExpression>(this);
-            pExpr->Gen();
-            pExpr.reset();
+            SbiExpression(this).Gen();
             Peek();
             aGen.Gen( eCurTok == COMMA ? SbiOpcode::PRINTF_ : SbiOpcode::BPRINT_ );
         }
@@ -82,9 +80,7 @@ void SbiParser::Write()
 
     while( !bAbort )
     {
-        auto pExpr = std::make_unique<SbiExpression>(this);
-        pExpr->Gen();
-        pExpr.reset();
+        SbiExpression(this).Gen();
         aGen.Gen( SbiOpcode::BWRITE_ );
         if( Peek() == COMMA )
         {
@@ -130,14 +126,15 @@ void SbiParser::Line()
 void SbiParser::LineInput()
 {
     Channel( true );
-    auto pExpr = std::make_unique<SbiExpression>( this, SbOPERAND );
-    if( !pExpr->IsVariable() )
-        Error( ERRCODE_BASIC_VAR_EXPECTED );
-    if( pExpr->GetType() != SbxVARIANT && pExpr->GetType() != SbxSTRING )
-        Error( ERRCODE_BASIC_CONVERSION );
-    pExpr->Gen();
-    aGen.Gen( SbiOpcode::LINPUT_ );
-    pExpr.reset();
+    {
+        SbiExpression aExpr(this, SbOPERAND);
+        if (!aExpr.IsVariable())
+            Error(ERRCODE_BASIC_VAR_EXPECTED);
+        if (aExpr.GetType() != SbxVARIANT && aExpr.GetType() != SbxSTRING)
+            Error(ERRCODE_BASIC_CONVERSION);
+        aExpr.Gen();
+        aGen.Gen(SbiOpcode::LINPUT_);
+    }
     aGen.Gen( SbiOpcode::CHAN0_ );     // ResetChannel() not in StepLINPUT() anymore
 }
 
@@ -147,21 +144,17 @@ void SbiParser::Input()
 {
     aGen.Gen( SbiOpcode::RESTART_ );
     Channel( true );
-    auto pExpr = std::make_unique<SbiExpression>( this, SbOPERAND );
     while( !bAbort )
     {
-        if( !pExpr->IsVariable() )
+        SbiExpression aExpr(this, SbOPERAND);
+        if (!aExpr.IsVariable())
             Error( ERRCODE_BASIC_VAR_EXPECTED );
-        pExpr->Gen();
+        aExpr.Gen();
         aGen.Gen( SbiOpcode::INPUT_ );
-        if( Peek() == COMMA )
-        {
-            Next();
-            pExpr.reset(new SbiExpression( this, SbOPERAND ));
-        }
-        else break;
+        if (Peek() != COMMA)
+            break;
+        Next();
     }
-    pExpr.reset();
     aGen.Gen( SbiOpcode::CHAN0_ );
 }
 
@@ -236,7 +229,7 @@ void SbiParser::Open()
     }
     TestToken( AS );
     // channel number
-    auto pChan = std::make_unique<SbiExpression>( this );
+    SbiExpression aChan( this );
     std::unique_ptr<SbiExpression> pLen;
     if( Peek() == SYMBOL )
     {
@@ -253,7 +246,7 @@ void SbiParser::Open()
     // channel number
     // file name
     pLen->Gen();
-    pChan->Gen();
+    aChan.Gen();
     aFileName.Gen();
     aGen.Gen( SbiOpcode::OPEN_, static_cast<sal_uInt32>(nMode), static_cast<sal_uInt32>(nFlags) );
     bInStatement = false;

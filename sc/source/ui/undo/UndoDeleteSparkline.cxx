@@ -13,12 +13,11 @@
 #include <scresid.hxx>
 
 #include <Sparkline.hxx>
-#include <SparklineGroup.hxx>
 
 namespace sc
 {
-UndoDeleteSparkline::UndoDeleteSparkline(ScDocShell& rDocShell, ScAddress const& rSparklinePosition)
-    : ScSimpleUndo(&rDocShell)
+UndoDeleteSparkline::UndoDeleteSparkline(ScDocShell& rShell, ScAddress const& rSparklinePosition)
+    : ScSimpleUndo(rShell)
     , maSparklinePosition(rSparklinePosition)
 {
 }
@@ -29,7 +28,7 @@ void UndoDeleteSparkline::Undo()
 {
     BeginUndo();
 
-    ScDocument& rDocument = pDocShell->GetDocument();
+    ScDocument& rDocument = rDocShell.GetDocument();
     auto pSparkline = rDocument.GetSparkline(maSparklinePosition);
     if (!pSparkline)
     {
@@ -40,7 +39,7 @@ void UndoDeleteSparkline::Undo()
         SAL_WARN("sc", "Can't undo deletion if the sparkline at that address already exists.");
     }
 
-    pDocShell->PostPaintCell(maSparklinePosition);
+    rDocShell.PostPaintCell(maSparklinePosition);
 
     EndUndo();
 }
@@ -49,7 +48,7 @@ void UndoDeleteSparkline::Redo()
 {
     BeginRedo();
 
-    ScDocument& rDocument = pDocShell->GetDocument();
+    ScDocument& rDocument = rDocShell.GetDocument();
     if (auto pSparkline = rDocument.GetSparkline(maSparklinePosition))
     {
         mpSparklineGroup = pSparkline->getSparklineGroup();
@@ -60,7 +59,7 @@ void UndoDeleteSparkline::Redo()
         SAL_WARN("sc", "Can't delete a sparkline that donesn't exist.");
     }
 
-    pDocShell->PostPaintCell(maSparklinePosition);
+    rDocShell.PostPaintCell(maSparklinePosition);
 
     EndRedo();
 }

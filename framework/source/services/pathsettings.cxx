@@ -33,6 +33,7 @@
 #include <com/sun/star/util/XChangesNotifier.hpp>
 #include <com/sun/star/util/PathSubstitution.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
+#include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/util/XStringSubstitution.hpp>
 #include <com/sun/star/util/XChangesListener.hpp>
@@ -43,12 +44,11 @@
 #include <rtl/ref.hxx>
 #include <sal/log.hxx>
 
-#include <cppuhelper/basemutex.hxx>
-#include <cppuhelper/propshlp.hxx>
-#include <cppuhelper/compbase.hxx>
-#include <cppuhelper/supportsservice.hxx>
+#include <comphelper/propshlp.hxx>
+#include <comphelper/compbase.hxx>
 #include <comphelper/sequence.hxx>
 #include <comphelper/configurationhelper.hxx>
+#include <cppuhelper/supportsservice.hxx>
 #include <unotools/configpaths.hxx>
 #include <o3tl/string_view.hxx>
 
@@ -86,15 +86,15 @@ sal_Int32 impl_getPropGroup(sal_Int32 nID)
    disable it in case only the new schema must be used.
  */
 
-typedef ::cppu::WeakComponentImplHelper<
+typedef ::comphelper::WeakComponentImplHelper<
             css::lang::XServiceInfo,
+            css::lang::XInitialization,
             css::util::XChangesListener,    // => XEventListener
             css::util::XPathSettings>       // => XPropertySet
                 PathSettings_BASE;
 
-class PathSettings : private cppu::BaseMutex
-                   , public  PathSettings_BASE
-                   , public  ::cppu::OPropertySetHelper
+class PathSettings : public PathSettings_BASE
+                   , public comphelper::OPropertySetHelper
 {
     struct PathInfo
     {
@@ -156,7 +156,7 @@ private:
     css::uno::Reference< css::container::XNameAccess > m_xCfgNew;
 
     /** helper to listen for configuration changes without ownership cycle problems */
-    css::uno::Reference< css::util::XChangesListener > m_xCfgNewListener;
+    rtl::Reference< WeakChangesListener > m_xCfgNewListener;
 
     std::unique_ptr<::cppu::OPropertyArrayHelper> m_pPropHelp;
 
@@ -173,7 +173,7 @@ public:
 
     virtual OUString SAL_CALL getImplementationName() override
     {
-        return "com.sun.star.comp.framework.PathSettings";
+        return u"com.sun.star.comp.framework.PathSettings"_ustr;
     }
 
     virtual sal_Bool SAL_CALL supportsService(OUString const & ServiceName) override
@@ -183,7 +183,7 @@ public:
 
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override
     {
-        return {"com.sun.star.util.PathSettings"};
+        return {u"com.sun.star.util.PathSettings"_ustr};
     }
 
     // XInterface
@@ -206,130 +206,137 @@ public:
      * XPathSettings attribute methods
      */
     virtual OUString SAL_CALL getAddin() override
-        { return getStringProperty("Addin"); }
+        { return getStringProperty(u"Addin"_ustr); }
     virtual void SAL_CALL setAddin(const OUString& p1) override
-        { setStringProperty("Addin", p1); }
+        { setStringProperty(u"Addin"_ustr, p1); }
     virtual OUString SAL_CALL getAutoCorrect() override
-        { return getStringProperty("AutoCorrect"); }
+        { return getStringProperty(u"AutoCorrect"_ustr); }
     virtual void SAL_CALL setAutoCorrect(const OUString& p1) override
-        { setStringProperty("AutoCorrect", p1); }
+        { setStringProperty(u"AutoCorrect"_ustr, p1); }
     virtual OUString SAL_CALL getAutoText() override
-        { return getStringProperty("AutoText"); }
+        { return getStringProperty(u"AutoText"_ustr); }
     virtual void SAL_CALL setAutoText(const OUString& p1) override
-        { setStringProperty("AutoText", p1); }
+        { setStringProperty(u"AutoText"_ustr, p1); }
     virtual OUString SAL_CALL getBackup() override
-        { return getStringProperty("Backup"); }
+        { return getStringProperty(u"Backup"_ustr); }
     virtual void SAL_CALL setBackup(const OUString& p1) override
-        { setStringProperty("Backup", p1); }
+        { setStringProperty(u"Backup"_ustr, p1); }
     virtual OUString SAL_CALL getBasic() override
-        { return getStringProperty("Basic"); }
+        { return getStringProperty(u"Basic"_ustr); }
     virtual void SAL_CALL setBasic(const OUString& p1) override
-        { setStringProperty("Basic", p1); }
+        { setStringProperty(u"Basic"_ustr, p1); }
     virtual OUString SAL_CALL getBitmap() override
-        { return getStringProperty("Bitmap"); }
+        { return getStringProperty(u"Bitmap"_ustr); }
     virtual void SAL_CALL setBitmap(const OUString& p1) override
-        { setStringProperty("Bitmap", p1); }
+        { setStringProperty(u"Bitmap"_ustr, p1); }
     virtual OUString SAL_CALL getConfig() override
-        { return getStringProperty("Config"); }
+        { return getStringProperty(u"Config"_ustr); }
     virtual void SAL_CALL setConfig(const OUString& p1) override
-        { setStringProperty("Config", p1); }
+        { setStringProperty(u"Config"_ustr, p1); }
     virtual OUString SAL_CALL getDictionary() override
-        { return getStringProperty("Dictionary"); }
+        { return getStringProperty(u"Dictionary"_ustr); }
     virtual void SAL_CALL setDictionary(const OUString& p1) override
-        { setStringProperty("Dictionary", p1); }
+        { setStringProperty(u"Dictionary"_ustr, p1); }
     virtual OUString SAL_CALL getFavorite() override
-        { return getStringProperty("Favorite"); }
+        { return getStringProperty(u"Favorite"_ustr); }
     virtual void SAL_CALL setFavorite(const OUString& p1) override
-        { setStringProperty("Favorite", p1); }
+        { setStringProperty(u"Favorite"_ustr, p1); }
     virtual OUString SAL_CALL getFilter() override
-        { return getStringProperty("Filter"); }
+        { return getStringProperty(u"Filter"_ustr); }
     virtual void SAL_CALL setFilter(const OUString& p1) override
-        { setStringProperty("Filter", p1); }
+        { setStringProperty(u"Filter"_ustr, p1); }
     virtual OUString SAL_CALL getGallery() override
-        { return getStringProperty("Gallery"); }
+        { return getStringProperty(u"Gallery"_ustr); }
     virtual void SAL_CALL setGallery(const OUString& p1) override
-        { setStringProperty("Gallery", p1); }
+        { setStringProperty(u"Gallery"_ustr, p1); }
     virtual OUString SAL_CALL getGraphic() override
-        { return getStringProperty("Graphic"); }
+        { return getStringProperty(u"Graphic"_ustr); }
     virtual void SAL_CALL setGraphic(const OUString& p1) override
-        { setStringProperty("Graphic", p1); }
+        { setStringProperty(u"Graphic"_ustr, p1); }
     virtual OUString SAL_CALL getHelp() override
-        { return getStringProperty("Help"); }
+        { return getStringProperty(u"Help"_ustr); }
     virtual void SAL_CALL setHelp(const OUString& p1) override
-        { setStringProperty("Help", p1); }
+        { setStringProperty(u"Help"_ustr, p1); }
     virtual OUString SAL_CALL getLinguistic() override
-        { return getStringProperty("Linguistic"); }
+        { return getStringProperty(u"Linguistic"_ustr); }
     virtual void SAL_CALL setLinguistic(const OUString& p1) override
-        { setStringProperty("Linguistic", p1); }
+        { setStringProperty(u"Linguistic"_ustr, p1); }
     virtual OUString SAL_CALL getModule() override
-        { return getStringProperty("Module"); }
+        { return getStringProperty(u"Module"_ustr); }
     virtual void SAL_CALL setModule(const OUString& p1) override
-        { setStringProperty("Module", p1); }
+        { setStringProperty(u"Module"_ustr, p1); }
     virtual OUString SAL_CALL getPalette() override
-        { return getStringProperty("Palette"); }
+        { return getStringProperty(u"Palette"_ustr); }
     virtual void SAL_CALL setPalette(const OUString& p1) override
-        { setStringProperty("Palette", p1); }
+        { setStringProperty(u"Palette"_ustr, p1); }
     virtual OUString SAL_CALL getPlugin() override
-        { return getStringProperty("Plugin"); }
+        { return getStringProperty(u"Plugin"_ustr); }
     virtual void SAL_CALL setPlugin(const OUString& p1) override
-        { setStringProperty("Plugin", p1); }
+        { setStringProperty(u"Plugin"_ustr, p1); }
     virtual OUString SAL_CALL getStorage() override
-        { return getStringProperty("Storage"); }
+        { return getStringProperty(u"Storage"_ustr); }
     virtual void SAL_CALL setStorage(const OUString& p1) override
-        { setStringProperty("Storage", p1); }
+        { setStringProperty(u"Storage"_ustr, p1); }
     virtual OUString SAL_CALL getTemp() override
-        { return getStringProperty("Temp"); }
+        { return getStringProperty(u"Temp"_ustr); }
     virtual void SAL_CALL setTemp(const OUString& p1) override
-        { setStringProperty("Temp", p1); }
+        { setStringProperty(u"Temp"_ustr, p1); }
     virtual OUString SAL_CALL getTemplate() override
-        { return getStringProperty("Template"); }
+        { return getStringProperty(u"Template"_ustr); }
     virtual void SAL_CALL setTemplate(const OUString& p1) override
-        { setStringProperty("Template", p1); }
+        { setStringProperty(u"Template"_ustr, p1); }
     virtual OUString SAL_CALL getUIConfig() override
-        { return getStringProperty("UIConfig"); }
+        { return getStringProperty(u"UIConfig"_ustr); }
     virtual void SAL_CALL setUIConfig(const OUString& p1) override
-        { setStringProperty("UIConfig", p1); }
+        { setStringProperty(u"UIConfig"_ustr, p1); }
     virtual OUString SAL_CALL getUserConfig() override
-        { return getStringProperty("UserConfig"); }
+        { return getStringProperty(u"UserConfig"_ustr); }
     virtual void SAL_CALL setUserConfig(const OUString& p1) override
-        { setStringProperty("UserConfig", p1); }
+        { setStringProperty(u"UserConfig"_ustr, p1); }
     virtual OUString SAL_CALL getUserDictionary() override
-        { return getStringProperty("UserDictionary"); }
+        { return getStringProperty(u"UserDictionary"_ustr); }
     virtual void SAL_CALL setUserDictionary(const OUString& p1) override
-        { setStringProperty("UserDictionary", p1); }
+        { setStringProperty(u"UserDictionary"_ustr, p1); }
     virtual OUString SAL_CALL getWork() override
-        { return getStringProperty("Work"); }
+        { return getStringProperty(u"Work"_ustr); }
     virtual void SAL_CALL setWork(const OUString& p1) override
-        { setStringProperty("Work", p1); }
+        { setStringProperty(u"Work"_ustr, p1); }
     virtual OUString SAL_CALL getBasePathShareLayer() override
-        { return getStringProperty("UIConfig"); }
+        { return getStringProperty(u"UIConfig"_ustr); }
     virtual void SAL_CALL setBasePathShareLayer(const OUString& p1) override
-        { setStringProperty("UIConfig", p1); }
+        { setStringProperty(u"UIConfig"_ustr, p1); }
     virtual OUString SAL_CALL getBasePathUserLayer() override
-        { return getStringProperty("UserConfig"); }
+        { return getStringProperty(u"UserConfig"_ustr); }
     virtual void SAL_CALL setBasePathUserLayer(const OUString& p1) override
-        { setStringProperty("UserConfig", p1); }
+        { setStringProperty(u"UserConfig"_ustr, p1); }
 
     /**
      * overrides to resolve inheritance ambiguity
      */
     virtual void SAL_CALL setPropertyValue(const OUString& p1, const css::uno::Any& p2) override
-        { ::cppu::OPropertySetHelper::setPropertyValue(p1, p2); }
+        { ::comphelper::OPropertySetHelper::setPropertyValue(p1, p2); }
     virtual css::uno::Any SAL_CALL getPropertyValue(const OUString& p1) override
-        { return ::cppu::OPropertySetHelper::getPropertyValue(p1); }
+        { return ::comphelper::OPropertySetHelper::getPropertyValue(p1); }
     virtual void SAL_CALL addPropertyChangeListener(const OUString& p1, const css::uno::Reference<css::beans::XPropertyChangeListener>& p2) override
-        { ::cppu::OPropertySetHelper::addPropertyChangeListener(p1, p2); }
+        { ::comphelper::OPropertySetHelper::addPropertyChangeListener(p1, p2); }
     virtual void SAL_CALL removePropertyChangeListener(const OUString& p1, const css::uno::Reference<css::beans::XPropertyChangeListener>& p2) override
-        { ::cppu::OPropertySetHelper::removePropertyChangeListener(p1, p2); }
+        { ::comphelper::OPropertySetHelper::removePropertyChangeListener(p1, p2); }
     virtual void SAL_CALL addVetoableChangeListener(const OUString& p1, const css::uno::Reference<css::beans::XVetoableChangeListener>& p2) override
-        { ::cppu::OPropertySetHelper::addVetoableChangeListener(p1, p2); }
+        { ::comphelper::OPropertySetHelper::addVetoableChangeListener(p1, p2); }
     virtual void SAL_CALL removeVetoableChangeListener(const OUString& p1, const css::uno::Reference<css::beans::XVetoableChangeListener>& p2) override
-        { ::cppu::OPropertySetHelper::removeVetoableChangeListener(p1, p2); }
+        { ::comphelper::OPropertySetHelper::removeVetoableChangeListener(p1, p2); }
+
+    // XInitialization
+    virtual void SAL_CALL initialize(const css::uno::Sequence<css::uno::Any>& rArguments) override;
+
     /** read all configured paths and create all needed internal structures. */
-    void impl_readAll();
+    void readAll();
 
 private:
-    virtual void SAL_CALL disposing() final override;
+    virtual void disposing(std::unique_lock<std::mutex>& g) final override;
+
+    /** read all configured paths and create all needed internal structures. */
+    void impl_readAll(std::unique_lock<std::mutex>&);
 
     /// @throws css::uno::RuntimeException
     OUString getStringProperty(const OUString& p1);
@@ -340,110 +347,111 @@ private:
     /** read a path info using the old cfg schema.
         This is needed for "migration on demand" reasons only.
         Can be removed for next major release .-) */
-    std::vector<OUString> impl_readOldFormat(const OUString& sPath);
+    std::vector<OUString> impl_readOldFormat(std::unique_lock<std::mutex>& g, const OUString& sPath);
 
     /** read a path info using the new cfg schema. */
-    PathSettings::PathInfo impl_readNewFormat(const OUString& sPath);
+    PathSettings::PathInfo impl_readNewFormat(std::unique_lock<std::mutex>& g, const OUString& sPath);
 
     /** filter "real user defined paths" from the old configuration schema
         and set it as UserPaths on the new schema.
         Can be removed with new major release ... */
-
-    void impl_mergeOldUserPaths(      PathSettings::PathInfo& rPath,
+    static void impl_mergeOldUserPaths(      PathSettings::PathInfo& rPath,
                                  const std::vector<OUString>& lOld );
 
     /** reload one path directly from the new configuration schema (because
         it was updated by any external code) */
-    PathSettings::EChangeOp impl_updatePath(const OUString& sPath          ,
-                                                  bool         bNotifyListener);
+    PathSettings::EChangeOp impl_updatePath(std::unique_lock<std::mutex>& g,
+                                            const OUString& sPath          ,
+                                            bool         bNotifyListener);
 
     /** replace all might existing placeholder variables inside the given path ...
         or check if the given path value uses paths, which can be replaced with predefined
         placeholder variables ...
      */
-    void impl_subst(std::vector<OUString>& lVals   ,
+    static void impl_subst(std::vector<OUString>& lVals   ,
                     const css::uno::Reference< css::util::XStringSubstitution >& xSubst  ,
                           bool                                               bReSubst);
 
-    void impl_subst(PathSettings::PathInfo& aPath   ,
+    void impl_subst(std::unique_lock<std::mutex>& g,
+                    PathSettings::PathInfo& aPath   ,
                     bool                bReSubst);
 
     /** converts our new string list schema to the old ";" separated schema ... */
-    OUString impl_convertPath2OldStyle(const PathSettings::PathInfo& rPath        ) const;
-    std::vector<OUString> impl_convertOldStyle2Path(std::u16string_view sOldStylePath) const;
+    static OUString impl_convertPath2OldStyle(const PathSettings::PathInfo& rPath );
+    static std::vector<OUString> impl_convertOldStyle2Path(std::u16string_view sOldStylePath);
 
     /** remove still known paths from the given lList argument.
         So real user defined paths can be extracted from the list of
         fix internal paths !
      */
-    void impl_purgeKnownPaths(PathSettings::PathInfo& rPath,
+    static void impl_purgeKnownPaths(PathSettings::PathInfo& rPath,
                               std::vector<OUString>& lList);
 
     /** rebuild the member m_lPropDesc using the path list m_lPaths. */
-    void impl_rebuildPropertyDescriptor();
+    void impl_rebuildPropertyDescriptor(std::unique_lock<std::mutex>& g);
 
     /** provides direct access to the list of path values
         using its internal property id.
      */
-    css::uno::Any impl_getPathValue(      sal_Int32      nID ) const;
-    void          impl_setPathValue(      sal_Int32      nID ,
+    css::uno::Any impl_getPathValue(std::unique_lock<std::mutex>& g, sal_Int32 nID ) const;
+    void          impl_setPathValue(std::unique_lock<std::mutex>& g, sal_Int32 nID,
                                     const css::uno::Any& aVal);
 
     /** check the given handle and return the corresponding PathInfo reference.
         These reference can be used then directly to manipulate these path. */
-          PathSettings::PathInfo* impl_getPathAccess     (sal_Int32 nHandle);
-    const PathSettings::PathInfo* impl_getPathAccessConst(sal_Int32 nHandle) const;
+          PathSettings::PathInfo* impl_getPathAccess     (std::unique_lock<std::mutex>& g, sal_Int32 nHandle);
+    const PathSettings::PathInfo* impl_getPathAccessConst(std::unique_lock<std::mutex>& g, sal_Int32 nHandle) const;
 
     /** it checks, if the given path value seems to be a valid URL or system path. */
-    bool impl_isValidPath(std::u16string_view sPath) const;
-    bool impl_isValidPath(const std::vector<OUString>& lPath) const;
+    static bool impl_isValidPath(std::u16string_view sPath);
+    static bool impl_isValidPath(const std::vector<OUString>& lPath);
 
-    void impl_storePath(const PathSettings::PathInfo& aPath);
+    void impl_storePath(std::unique_lock<std::mutex>& g, const PathSettings::PathInfo& aPath);
 
     css::uno::Sequence< sal_Int32 > impl_mapPathName2IDList(std::u16string_view sPath);
 
-    void impl_notifyPropListener( std::u16string_view    sPath   ,
+    void impl_notifyPropListener( std::unique_lock<std::mutex>& g,
+                                  std::u16string_view    sPath   ,
                                   const PathSettings::PathInfo* pPathOld,
                                   const PathSettings::PathInfo* pPathNew);
 
     //  OPropertySetHelper
-    virtual sal_Bool SAL_CALL convertFastPropertyValue( css::uno::Any&  aConvertedValue,
+    virtual bool convertFastPropertyValue( std::unique_lock<std::mutex>& g, css::uno::Any&  aConvertedValue,
             css::uno::Any& aOldValue,
             sal_Int32 nHandle,
             const css::uno::Any& aValue ) override;
-    virtual void SAL_CALL setFastPropertyValue_NoBroadcast( sal_Int32 nHandle,
+    virtual void setFastPropertyValue_NoBroadcast( std::unique_lock<std::mutex>& g, sal_Int32 nHandle,
             const css::uno::Any&  aValue ) override;
-    virtual void SAL_CALL getFastPropertyValue( css::uno::Any&  aValue,
+    virtual void getFastPropertyValue( std::unique_lock<std::mutex>& g, css::uno::Any&  aValue,
             sal_Int32 nHandle ) const override;
     // Avoid:
     // warning: 'virtual css::uno::Any cppu::OPropertySetHelper::getFastPropertyValue(sal_Int32)' was hidden [-Woverloaded-virtual]
     // warning:   by ‘virtual void {anonymous}::PathSettings::getFastPropertyValue(css::uno::Any&, sal_Int32) const’ [-Woverloaded-virtual]
-    using cppu::OPropertySetHelper::getFastPropertyValue;
-    virtual ::cppu::IPropertyArrayHelper& SAL_CALL getInfoHelper() override;
+    using comphelper::OPropertySetHelper::getFastPropertyValue;
+    virtual ::cppu::IPropertyArrayHelper& getInfoHelper() override;
     virtual css::uno::Reference< css::beans::XPropertySetInfo > SAL_CALL getPropertySetInfo() override;
 
     /** factory methods to guarantee right (but on demand) initialized members ... */
-    css::uno::Reference< css::util::XStringSubstitution > fa_getSubstitution();
-    css::uno::Reference< css::container::XNameAccess >    fa_getCfgOld();
-    css::uno::Reference< css::container::XNameAccess >    fa_getCfgNew();
+    css::uno::Reference< css::util::XStringSubstitution > fa_getSubstitution(std::unique_lock<std::mutex>& g);
+    css::uno::Reference< css::container::XNameAccess >    fa_getCfgOld(std::unique_lock<std::mutex>& g);
+    css::uno::Reference< css::container::XNameAccess >    fa_getCfgNew(std::unique_lock<std::mutex>& g);
 };
 
 PathSettings::PathSettings( css::uno::Reference< css::uno::XComponentContext >  xContext )
-    : PathSettings_BASE(m_aMutex)
-    , ::cppu::OPropertySetHelper(cppu::WeakComponentImplHelperBase::rBHelper)
+    : PathSettings_BASE()
+    , comphelper::OPropertySetHelper()
     ,   m_xContext (std::move(xContext))
 {
 }
 
 PathSettings::~PathSettings()
 {
-    disposing();
+    std::unique_lock g(m_aMutex);
+    disposing(g);
 }
 
-void SAL_CALL PathSettings::disposing()
+void PathSettings::disposing(std::unique_lock<std::mutex>& /*g*/)
 {
-    osl::MutexGuard g(cppu::WeakComponentImplHelperBase::rBHelper.rMutex);
-
     css::uno::Reference< css::util::XChangesNotifier >
         xBroadcaster(m_xCfgNew, css::uno::UNO_QUERY);
     if (xBroadcaster.is())
@@ -461,7 +469,7 @@ css::uno::Any SAL_CALL PathSettings::queryInterface( const css::uno::Type& _rTyp
 {
     css::uno::Any aRet = PathSettings_BASE::queryInterface( _rType );
     if ( !aRet.hasValue() )
-        aRet = ::cppu::OPropertySetHelper::queryInterface( _rType );
+        aRet = ::comphelper::OPropertySetHelper::queryInterface( _rType );
     return aRet;
 }
 
@@ -469,12 +477,14 @@ css::uno::Sequence< css::uno::Type > SAL_CALL PathSettings::getTypes(  )
 {
     return comphelper::concatSequences(
         PathSettings_BASE::getTypes(),
-        ::cppu::OPropertySetHelper::getTypes()
+        ::comphelper::OPropertySetHelper::getTypes()
     );
 }
 
 void SAL_CALL PathSettings::changesOccurred(const css::util::ChangesEvent& aEvent)
 {
+    std::unique_lock g(m_aMutex);
+
     sal_Int32 c                 = aEvent.Changes.getLength();
     sal_Int32 i                 = 0;
     bool  bUpdateDescriptor = false;
@@ -489,7 +499,7 @@ void SAL_CALL PathSettings::changesOccurred(const css::util::ChangesEvent& aEven
         OUString sPath = ::utl::extractFirstFromConfigurationPath(sChanged);
         if (!sPath.isEmpty())
         {
-            PathSettings::EChangeOp eOp = impl_updatePath(sPath, true);
+            PathSettings::EChangeOp eOp = impl_updatePath(g, sPath, true);
             if (
                 (eOp == PathSettings::E_ADDED  ) ||
                 (eOp == PathSettings::E_REMOVED)
@@ -499,12 +509,12 @@ void SAL_CALL PathSettings::changesOccurred(const css::util::ChangesEvent& aEven
     }
 
     if (bUpdateDescriptor)
-        impl_rebuildPropertyDescriptor();
+        impl_rebuildPropertyDescriptor(g);
 }
 
 void SAL_CALL PathSettings::disposing(const css::lang::EventObject& aSource)
 {
-    osl::MutexGuard g(cppu::WeakComponentImplHelperBase::rBHelper.rMutex);
+    std::unique_lock g(m_aMutex);
 
     if (aSource.Source == m_xCfgNew)
         m_xCfgNew.clear();
@@ -512,7 +522,7 @@ void SAL_CALL PathSettings::disposing(const css::lang::EventObject& aSource)
 
 OUString PathSettings::getStringProperty(const OUString& p1)
 {
-    css::uno::Any a = ::cppu::OPropertySetHelper::getPropertyValue(p1);
+    css::uno::Any a = ::comphelper::OPropertySetHelper::getPropertyValue(p1);
     OUString s;
     a >>= s;
     return s;
@@ -520,35 +530,41 @@ OUString PathSettings::getStringProperty(const OUString& p1)
 
 void PathSettings::setStringProperty(const OUString& p1, const OUString& p2)
 {
-    ::cppu::OPropertySetHelper::setPropertyValue(p1, css::uno::Any(p2));
+    ::comphelper::OPropertySetHelper::setPropertyValue(p1, css::uno::Any(p2));
 }
 
-void PathSettings::impl_readAll()
+void PathSettings::readAll()
+{
+    std::unique_lock g(m_aMutex);
+    impl_readAll(g);
+}
+
+void PathSettings::impl_readAll(std::unique_lock<std::mutex>& g)
 {
     try
     {
         // TODO think about me
-        css::uno::Reference< css::container::XNameAccess > xCfg    = fa_getCfgNew();
+        css::uno::Reference< css::container::XNameAccess > xCfg    = fa_getCfgNew(g);
         css::uno::Sequence< OUString >              lPaths = xCfg->getElementNames();
 
         sal_Int32 c = lPaths.getLength();
         for (sal_Int32 i = 0; i < c; ++i)
         {
             const OUString& sPath = lPaths[i];
-            impl_updatePath(sPath, false);
+            impl_updatePath(g, sPath, false);
         }
     }
     catch(const css::uno::RuntimeException& )
     {
     }
 
-    impl_rebuildPropertyDescriptor();
+    impl_rebuildPropertyDescriptor(g);
 }
 
 // NO substitution here ! It's done outside ...
-std::vector<OUString> PathSettings::impl_readOldFormat(const OUString& sPath)
+std::vector<OUString> PathSettings::impl_readOldFormat(std::unique_lock<std::mutex>& g, const OUString& sPath)
 {
-    css::uno::Reference< css::container::XNameAccess > xCfg( fa_getCfgOld() );
+    css::uno::Reference< css::container::XNameAccess > xCfg( fa_getCfgOld(g) );
     std::vector<OUString> aPathVal;
 
     if( xCfg->hasByName(sPath) )
@@ -572,9 +588,9 @@ std::vector<OUString> PathSettings::impl_readOldFormat(const OUString& sPath)
 }
 
 // NO substitution here ! It's done outside ...
-PathSettings::PathInfo PathSettings::impl_readNewFormat(const OUString& sPath)
+PathSettings::PathInfo PathSettings::impl_readNewFormat(std::unique_lock<std::mutex>& g, const OUString& sPath)
 {
-    css::uno::Reference< css::container::XNameAccess > xCfg = fa_getCfgNew();
+    css::uno::Reference< css::container::XNameAccess > xCfg = fa_getCfgNew(g);
 
     // get access to the "queried" path
     css::uno::Reference< css::container::XNameAccess > xPath;
@@ -584,7 +600,7 @@ PathSettings::PathInfo PathSettings::impl_readNewFormat(const OUString& sPath)
 
     // read internal path list
     css::uno::Reference< css::container::XNameAccess > xIPath;
-    xPath->getByName("InternalPaths") >>= xIPath;
+    xPath->getByName(u"InternalPaths"_ustr) >>= xIPath;
     aPathVal.lInternalPaths = comphelper::sequenceToContainer<std::vector<OUString>>(xIPath->getElementNames());
 
     // read user defined path list
@@ -602,7 +618,7 @@ PathSettings::PathInfo PathSettings::impl_readNewFormat(const OUString& sPath)
         aPathVal.lUserPaths.erase(aI);
 
     // read state props
-    xPath->getByName("IsSinglePath") >>= aPathVal.bIsSinglePath;
+    xPath->getByName(u"IsSinglePath"_ustr) >>= aPathVal.bIsSinglePath;
 
     // analyze finalized/mandatory states
     aPathVal.bIsReadonly = false;
@@ -621,16 +637,19 @@ PathSettings::PathInfo PathSettings::impl_readNewFormat(const OUString& sPath)
     return aPathVal;
 }
 
-void PathSettings::impl_storePath(const PathSettings::PathInfo& aPath)
+void PathSettings::impl_storePath(std::unique_lock<std::mutex>& g, const PathSettings::PathInfo& aPath)
 {
-    css::uno::Reference< css::container::XNameAccess > xCfgNew = fa_getCfgNew();
-    css::uno::Reference< css::container::XNameAccess > xCfgOld = fa_getCfgOld();
+    css::uno::Reference< css::container::XNameAccess > xCfgNew = fa_getCfgNew(g);
+    css::uno::Reference< css::container::XNameAccess > xCfgOld = fa_getCfgOld(g);
 
     // try to replace path-parts with well known and supported variables.
     // So an office can be moved easily to another location without losing
     // its related paths.
     PathInfo aResubstPath(aPath);
-    impl_subst(aResubstPath, true);
+    impl_subst(g, aResubstPath, true);
+
+    // unlock because writeRelativeKey and friends might trigger a listener which calls back into us
+    g.unlock();
 
     // update new configuration
     if (! aResubstPath.bIsSinglePath)
@@ -660,8 +679,11 @@ void PathSettings::impl_storePath(const PathSettings::PathInfo& aPath)
         xProps->setPropertyValue(aResubstPath.sPathName, css::uno::Any());
         ::comphelper::ConfigurationHelper::flush(xCfgOld);
     }
+
+    g.lock();
 }
 
+// static
 void PathSettings::impl_mergeOldUserPaths(      PathSettings::PathInfo& rPath,
                                           const std::vector<OUString>& lOld )
 {
@@ -685,11 +707,11 @@ void PathSettings::impl_mergeOldUserPaths(      PathSettings::PathInfo& rPath,
     }
 }
 
-PathSettings::EChangeOp PathSettings::impl_updatePath(const OUString& sPath          ,
-                                                            bool         bNotifyListener)
+PathSettings::EChangeOp PathSettings::impl_updatePath(std::unique_lock<std::mutex>& g,
+                                                      const OUString& sPath          ,
+                                                      bool         bNotifyListener)
 {
     // SAFE ->
-    osl::MutexGuard g(cppu::WeakComponentImplHelperBase::rBHelper.rMutex);
 
     PathSettings::PathInfo* pPathOld = nullptr;
     PathSettings::PathInfo* pPathNew = nullptr;
@@ -698,13 +720,13 @@ PathSettings::EChangeOp PathSettings::impl_updatePath(const OUString& sPath     
 
     try
     {
-        aPath = impl_readNewFormat(sPath);
+        aPath = impl_readNewFormat(g, sPath);
         aPath.sPathName = sPath;
         // replace all might existing variables with real values
         // Do it before these old paths will be compared against the
         // new path configuration. Otherwise some strings uses different variables ... but substitution
         // will produce strings with same content (because some variables are redundant!)
-        impl_subst(aPath, false);
+        impl_subst(g, aPath, false);
     }
     catch(const css::uno::RuntimeException&)
         { throw; }
@@ -717,12 +739,12 @@ PathSettings::EChangeOp PathSettings::impl_updatePath(const OUString& sPath     
     {
         // migration of old user defined values on demand
         // can be disabled for a new major
-        std::vector<OUString> lOldVals = impl_readOldFormat(sPath);
+        std::vector<OUString> lOldVals = impl_readOldFormat(g, sPath);
         // replace all might existing variables with real values
         // Do it before these old paths will be compared against the
         // new path configuration. Otherwise some strings uses different variables ... but substitution
         // will produce strings with same content (because some variables are redundant!)
-        impl_subst(lOldVals, fa_getSubstitution(), false);
+        impl_subst(lOldVals, fa_getSubstitution(g), false);
         impl_mergeOldUserPaths(aPath, lOldVals);
     }
     catch(const css::uno::RuntimeException&)
@@ -751,9 +773,9 @@ PathSettings::EChangeOp PathSettings::impl_updatePath(const OUString& sPath     
                 {
                     pPathOld = nullptr;
                     pPathNew = &aPath;
-                    impl_notifyPropListener(sPath, pPathOld, pPathNew);
+                    impl_notifyPropListener(g, sPath, pPathOld, pPathNew);
                 }
-                m_lPaths[sPath] = aPath;
+                m_lPaths[sPath] = std::move(aPath);
              }
              break;
 
@@ -763,9 +785,9 @@ PathSettings::EChangeOp PathSettings::impl_updatePath(const OUString& sPath     
                 {
                     pPathOld = &(pPath->second);
                     pPathNew = &aPath;
-                    impl_notifyPropListener(sPath, pPathOld, pPathNew);
+                    impl_notifyPropListener(g, sPath, pPathOld, pPathNew);
                 }
-                m_lPaths[sPath] = aPath;
+                m_lPaths[sPath] = std::move(aPath);
              }
              break;
 
@@ -777,7 +799,7 @@ PathSettings::EChangeOp PathSettings::impl_updatePath(const OUString& sPath     
                     {
                         pPathOld = &(pPath->second);
                         pPathNew = nullptr;
-                        impl_notifyPropListener(sPath, pPathOld, pPathNew);
+                        impl_notifyPropListener(g, sPath, pPathOld, pPathNew);
                     }
                     m_lPaths.erase(pPath);
                 }
@@ -832,7 +854,8 @@ css::uno::Sequence< sal_Int32 > PathSettings::impl_mapPathName2IDList(std::u16st
     return lIDs;
 }
 
-void PathSettings::impl_notifyPropListener( std::u16string_view           sPath,
+void PathSettings::impl_notifyPropListener( std::unique_lock<std::mutex>& g,
+                                            std::u16string_view           sPath,
                                             const PathSettings::PathInfo* pPathOld,
                                             const PathSettings::PathInfo* pPathNew)
 {
@@ -903,7 +926,8 @@ void PathSettings::impl_notifyPropListener( std::u16string_view           sPath,
                  break;
         }
 
-        fire(plHandles,
+        fire(g,
+             plHandles,
              plNewVals,
              plOldVals,
              1,
@@ -911,6 +935,7 @@ void PathSettings::impl_notifyPropListener( std::u16string_view           sPath,
     }
 }
 
+// static
 void PathSettings::impl_subst(std::vector<OUString>& lVals   ,
                               const css::uno::Reference< css::util::XStringSubstitution >& xSubst  ,
                                     bool                                               bReSubst)
@@ -927,10 +952,11 @@ void PathSettings::impl_subst(std::vector<OUString>& lVals   ,
     }
 }
 
-void PathSettings::impl_subst(PathSettings::PathInfo& aPath   ,
+void PathSettings::impl_subst(std::unique_lock<std::mutex>& g,
+                              PathSettings::PathInfo& aPath   ,
                               bool                bReSubst)
 {
-    css::uno::Reference< css::util::XStringSubstitution > xSubst = fa_getSubstitution();
+    css::uno::Reference< css::util::XStringSubstitution > xSubst = fa_getSubstitution(g);
 
     impl_subst(aPath.lInternalPaths, xSubst, bReSubst);
     impl_subst(aPath.lUserPaths    , xSubst, bReSubst);
@@ -940,7 +966,8 @@ void PathSettings::impl_subst(PathSettings::PathInfo& aPath   ,
         aPath.sWritePath = xSubst->substituteVariables(aPath.sWritePath, false);
 }
 
-OUString PathSettings::impl_convertPath2OldStyle(const PathSettings::PathInfo& rPath) const
+// static
+OUString PathSettings::impl_convertPath2OldStyle(const PathSettings::PathInfo& rPath)
 {
     OUStringBuffer sPathVal(256);
 
@@ -966,7 +993,8 @@ OUString PathSettings::impl_convertPath2OldStyle(const PathSettings::PathInfo& r
     return sPathVal.makeStringAndClear();
 }
 
-std::vector<OUString> PathSettings::impl_convertOldStyle2Path(std::u16string_view sOldStylePath) const
+// static
+std::vector<OUString> PathSettings::impl_convertOldStyle2Path(std::u16string_view sOldStylePath)
 {
     std::vector<OUString> lList;
     sal_Int32    nToken = 0;
@@ -981,6 +1009,7 @@ std::vector<OUString> PathSettings::impl_convertOldStyle2Path(std::u16string_vie
     return lList;
 }
 
+// static
 void PathSettings::impl_purgeKnownPaths(PathSettings::PathInfo& rPath,
                                         std::vector<OUString>& lList)
 {
@@ -1016,10 +1045,8 @@ void PathSettings::impl_purgeKnownPaths(PathSettings::PathInfo& rPath,
         lList.erase(pItem);
 }
 
-void PathSettings::impl_rebuildPropertyDescriptor()
+void PathSettings::impl_rebuildPropertyDescriptor(std::unique_lock<std::mutex>& /*g*/)
 {
-    // SAFE ->
-    osl::MutexGuard g(cppu::WeakComponentImplHelperBase::rBHelper.rMutex);
 
     sal_Int32 c = static_cast<sal_Int32>(m_lPaths.size());
     sal_Int32 i = 0;
@@ -1068,13 +1095,11 @@ void PathSettings::impl_rebuildPropertyDescriptor()
     }
 
     m_pPropHelp.reset(new ::cppu::OPropertyArrayHelper(m_lPropDesc, false)); // false => not sorted ... must be done inside helper
-
-    // <- SAFE
 }
 
-css::uno::Any PathSettings::impl_getPathValue(sal_Int32 nID) const
+css::uno::Any PathSettings::impl_getPathValue(std::unique_lock<std::mutex>& g, sal_Int32 nID) const
 {
-    const PathSettings::PathInfo* pPath = impl_getPathAccessConst(nID);
+    const PathSettings::PathInfo* pPath = impl_getPathAccessConst(g, nID);
     if (! pPath)
         throw css::lang::IllegalArgumentException();
 
@@ -1110,10 +1135,11 @@ css::uno::Any PathSettings::impl_getPathValue(sal_Int32 nID) const
     return aVal;
 }
 
-void PathSettings::impl_setPathValue(      sal_Int32      nID ,
+void PathSettings::impl_setPathValue(std::unique_lock<std::mutex>& g,
+                                     sal_Int32      nID ,
                                      const css::uno::Any& aVal)
 {
-    PathSettings::PathInfo* pOrgPath = impl_getPathAccess(nID);
+    PathSettings::PathInfo* pOrgPath = impl_getPathAccess(g, nID);
     if (! pOrgPath)
         throw css::container::NoSuchElementException();
 
@@ -1128,7 +1154,7 @@ void PathSettings::impl_setPathValue(      sal_Int32      nID ,
                 OUString sVal;
                 aVal >>= sVal;
                 std::vector<OUString> lList = impl_convertOldStyle2Path(sVal);
-                impl_subst(lList, fa_getSubstitution(), false);
+                impl_subst(lList, fa_getSubstitution(g), false);
                 impl_purgeKnownPaths(aChangePath, lList);
                 if (! impl_isValidPath(lList))
                     throw css::lang::IllegalArgumentException();
@@ -1166,7 +1192,7 @@ void PathSettings::impl_setPathValue(      sal_Int32      nID ,
                 std::vector<OUString> lList = comphelper::sequenceToContainer<std::vector<OUString>>(lTmpList);
                 if (! impl_isValidPath(lList))
                     throw css::lang::IllegalArgumentException();
-                aChangePath.lInternalPaths = lList;
+                aChangePath.lInternalPaths = std::move(lList);
              }
              break;
 
@@ -1185,7 +1211,7 @@ void PathSettings::impl_setPathValue(      sal_Int32      nID ,
                 std::vector<OUString> lList = comphelper::sequenceToContainer<std::vector<OUString>>(lTmpList);
                 if (! impl_isValidPath(lList))
                     throw css::lang::IllegalArgumentException();
-                aChangePath.lUserPaths = lList;
+                aChangePath.lUserPaths = std::move(lList);
              }
              break;
 
@@ -1207,11 +1233,12 @@ void PathSettings::impl_setPathValue(      sal_Int32      nID ,
     // In case an error occurs on saving time an exception is thrown ...
     // If no exception occurs we can update our internal cache (means
     // we can overwrite pOrgPath !
-    impl_storePath(aChangePath);
+    impl_storePath(g, aChangePath);
     *pOrgPath = std::move(aChangePath);
 }
 
-bool PathSettings::impl_isValidPath(const std::vector<OUString>& lPath) const
+// static
+bool PathSettings::impl_isValidPath(const std::vector<OUString>& lPath)
 {
     for (auto const& path : lPath)
     {
@@ -1222,7 +1249,8 @@ bool PathSettings::impl_isValidPath(const std::vector<OUString>& lPath) const
     return true;
 }
 
-bool PathSettings::impl_isValidPath(std::u16string_view sPath) const
+// static
+bool PathSettings::impl_isValidPath(std::u16string_view sPath)
 {
     // allow empty path to reset a path.
 // idea by LLA to support empty paths
@@ -1249,11 +1277,8 @@ OUString impl_extractBaseFromPropName(const OUString& sPropName)
     return sPropName;
 }
 
-PathSettings::PathInfo* PathSettings::impl_getPathAccess(sal_Int32 nHandle)
+PathSettings::PathInfo* PathSettings::impl_getPathAccess(std::unique_lock<std::mutex>& /*g*/, sal_Int32 nHandle)
 {
-    // SAFE ->
-    osl::MutexGuard g(cppu::WeakComponentImplHelperBase::rBHelper.rMutex);
-
     if (nHandle > (m_lPropDesc.getLength()-1))
         return nullptr;
 
@@ -1265,14 +1290,10 @@ PathSettings::PathInfo* PathSettings::impl_getPathAccess(sal_Int32 nHandle)
        return &(rPath->second);
 
     return nullptr;
-    // <- SAFE
 }
 
-const PathSettings::PathInfo* PathSettings::impl_getPathAccessConst(sal_Int32 nHandle) const
+const PathSettings::PathInfo* PathSettings::impl_getPathAccessConst(std::unique_lock<std::mutex>& /*g*/, sal_Int32 nHandle) const
 {
-    // SAFE ->
-    osl::MutexGuard g(cppu::WeakComponentImplHelperBase::rBHelper.rMutex);
-
     if (nHandle > (m_lPropDesc.getLength()-1))
         return nullptr;
 
@@ -1284,16 +1305,16 @@ const PathSettings::PathInfo* PathSettings::impl_getPathAccessConst(sal_Int32 nH
        return &(rPath->second);
 
     return nullptr;
-    // <- SAFE
 }
 
-sal_Bool SAL_CALL PathSettings::convertFastPropertyValue(      css::uno::Any& aConvertedValue,
-                                                               css::uno::Any& aOldValue      ,
-                                                               sal_Int32      nHandle        ,
-                                                         const css::uno::Any& aValue         )
+bool PathSettings::convertFastPropertyValue(std::unique_lock<std::mutex>& g,
+                                            css::uno::Any& aConvertedValue,
+                                            css::uno::Any& aOldValue      ,
+                                            sal_Int32      nHandle        ,
+                                            const css::uno::Any& aValue         )
 {
     // throws NoSuchElementException !
-    css::uno::Any aCurrentVal = impl_getPathValue(nHandle);
+    css::uno::Any aCurrentVal = impl_getPathValue(g, nHandle);
 
     return PropHelper::willPropertyBeChanged(
                 aCurrentVal,
@@ -1302,20 +1323,22 @@ sal_Bool SAL_CALL PathSettings::convertFastPropertyValue(      css::uno::Any& aC
                 aConvertedValue);
 }
 
-void SAL_CALL PathSettings::setFastPropertyValue_NoBroadcast(      sal_Int32      nHandle,
-                                                             const css::uno::Any& aValue )
+void PathSettings::setFastPropertyValue_NoBroadcast(std::unique_lock<std::mutex>& g,
+                                                    sal_Int32      nHandle,
+                                                    const css::uno::Any& aValue )
 {
     // throws NoSuchElement- and IllegalArgumentException !
-    impl_setPathValue(nHandle, aValue);
+    impl_setPathValue(g, nHandle, aValue);
 }
 
-void SAL_CALL PathSettings::getFastPropertyValue(css::uno::Any& aValue ,
+void PathSettings::getFastPropertyValue(std::unique_lock<std::mutex>& g,
+                                                 css::uno::Any& aValue ,
                                                  sal_Int32      nHandle) const
 {
-    aValue = impl_getPathValue(nHandle);
+    aValue = impl_getPathValue(g, nHandle);
 }
 
-::cppu::IPropertyArrayHelper& SAL_CALL PathSettings::getInfoHelper()
+::cppu::IPropertyArrayHelper& PathSettings::getInfoHelper()
 {
     return *m_pPropHelp;
 }
@@ -1325,83 +1348,82 @@ css::uno::Reference< css::beans::XPropertySetInfo > SAL_CALL PathSettings::getPr
     return ::cppu::OPropertySetHelper::createPropertySetInfo(getInfoHelper());
 }
 
-css::uno::Reference< css::util::XStringSubstitution > PathSettings::fa_getSubstitution()
+css::uno::Reference< css::util::XStringSubstitution > PathSettings::fa_getSubstitution(std::unique_lock<std::mutex>& g)
 {
-    css::uno::Reference< css::util::XStringSubstitution > xSubst;
-    { // SAFE ->
-    osl::MutexGuard g(cppu::WeakComponentImplHelperBase::rBHelper.rMutex);
-    xSubst = m_xSubstitution;
-    }
+    css::uno::Reference< css::util::XStringSubstitution > xSubst = m_xSubstitution;
+
 
     if (! xSubst.is())
     {
+        g.unlock();
+
         // create the needed substitution service.
         // We must replace all used variables inside read path values.
         // In case we can't do so... the whole office can't work really.
         // That's why it seems to be OK to throw a RuntimeException then.
         xSubst = css::util::PathSubstitution::create(m_xContext);
 
-        { // SAFE ->
-        osl::MutexGuard g(cppu::WeakComponentImplHelperBase::rBHelper.rMutex);
+        g.lock();
         m_xSubstitution = xSubst;
-        }
     }
 
     return xSubst;
 }
 
-css::uno::Reference< css::container::XNameAccess > PathSettings::fa_getCfgOld()
+css::uno::Reference< css::container::XNameAccess > PathSettings::fa_getCfgOld(std::unique_lock<std::mutex>& g)
 {
-    css::uno::Reference< css::container::XNameAccess > xCfg;
-    { // SAFE ->
-    osl::MutexGuard g(cppu::WeakComponentImplHelperBase::rBHelper.rMutex);
-    xCfg = m_xCfgOld;
-    } // <- SAFE
+    css::uno::Reference< css::container::XNameAccess > xCfg = m_xCfgOld;
 
     if (! xCfg.is())
     {
+        g.unlock();
+
         xCfg.set(  ::comphelper::ConfigurationHelper::openConfig(
                         m_xContext,
-                        "org.openoffice.Office.Common/Path/Current",
+                        u"org.openoffice.Office.Common/Path/Current"_ustr,
                         ::comphelper::EConfigurationModes::Standard), // not readonly! Sometimes we need write access there !!!
                    css::uno::UNO_QUERY_THROW);
 
-        { // SAFE ->
-        osl::MutexGuard g(cppu::WeakComponentImplHelperBase::rBHelper.rMutex);
+        g.lock();
+
         m_xCfgOld = xCfg;
-        }
     }
 
     return xCfg;
 }
 
-css::uno::Reference< css::container::XNameAccess > PathSettings::fa_getCfgNew()
+css::uno::Reference< css::container::XNameAccess > PathSettings::fa_getCfgNew(std::unique_lock<std::mutex>& g)
 {
-    css::uno::Reference< css::container::XNameAccess > xCfg;
-    { // SAFE ->
-    osl::MutexGuard g(cppu::WeakComponentImplHelperBase::rBHelper.rMutex);
-    xCfg = m_xCfgNew;
-    } // <- SAFE
+    css::uno::Reference< css::container::XNameAccess > xCfg = m_xCfgNew;
 
     if (! xCfg.is())
     {
+        g.unlock();
+
         xCfg.set(  ::comphelper::ConfigurationHelper::openConfig(
                         m_xContext,
-                        "org.openoffice.Office.Paths/Paths",
+                        u"org.openoffice.Office.Paths/Paths"_ustr,
                         ::comphelper::EConfigurationModes::Standard),
                    css::uno::UNO_QUERY_THROW);
 
-        { // SAFE ->
-        osl::MutexGuard g(cppu::WeakComponentImplHelperBase::rBHelper.rMutex);
+        g.lock();
+
         m_xCfgNew = xCfg;
         m_xCfgNewListener = new WeakChangesListener(this);
-        }
 
         css::uno::Reference< css::util::XChangesNotifier > xBroadcaster(xCfg, css::uno::UNO_QUERY_THROW);
         xBroadcaster->addChangesListener(m_xCfgNewListener);
     }
 
     return xCfg;
+}
+
+// XInitialization
+void SAL_CALL PathSettings::initialize(const css::uno::Sequence<css::uno::Any>& /*rArguments*/)
+{
+    // so we can reinitialize/reset all path variables to default
+    std::unique_lock g(m_aMutex);
+    impl_readAll(g);
 }
 
 }
@@ -1413,7 +1435,7 @@ com_sun_star_comp_framework_PathSettings_get_implementation(
 {
     rtl::Reference<PathSettings> xPathSettings = new PathSettings(context);
     // fill cache
-    xPathSettings->impl_readAll();
+    xPathSettings->readAll();
 
     return cppu::acquire(xPathSettings.get());
 }

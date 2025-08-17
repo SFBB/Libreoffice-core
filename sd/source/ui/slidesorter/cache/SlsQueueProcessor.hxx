@@ -58,8 +58,6 @@ public:
     */
     void Start (int nPriorityClass);
     void Stop();
-    void Pause();
-    void Resume();
 
     void SetPreviewSize (
         const Size& rSize,
@@ -85,7 +83,6 @@ private:
     RequestQueue& mrQueue;
     std::shared_ptr<BitmapCache> mpCache;
     BitmapFactory maBitmapFactory;
-    bool mbIsPaused;
 
     void ProcessRequests();
     void ProcessOneRequest (

@@ -55,9 +55,7 @@
 #include <PostItMgr.hxx>
 
 using namespace com::sun::star;
-using namespace ::com::sun::star::i18n;
 using namespace ::com::sun::star::lang;
-using namespace ::com::sun::star::util;
 
 //Search Parameter
 
@@ -120,12 +118,14 @@ static void lcl_emitSearchResultCallbacks(SvxSearchItem const * pSearchItem, SwW
     boost::property_tree::write_json(aStream, aTree);
     OString aPayload( aStream.str() );
 
-    pWrtShell->GetSfxViewShell()->libreOfficeKitViewCallback(LOK_CALLBACK_SEARCH_RESULT_SELECTION, aPayload);
+    SfxViewShell* pNotifySh = pWrtShell->GetSfxViewShell();
+    if (pNotifySh)
+        pNotifySh->libreOfficeKitViewCallback(LOK_CALLBACK_SEARCH_RESULT_SELECTION, aPayload);
 
     if(bHighlightAll)
     {   // FindAll disables this during find, do it once when done.
-        SfxLokHelper::notifyUpdate(pWrtShell->GetSfxViewShell(),LOK_CALLBACK_TEXT_SELECTION);
-        SfxLokHelper::notifyOtherViewsUpdatePerViewId(pWrtShell->GetSfxViewShell(), LOK_CALLBACK_TEXT_VIEW_SELECTION);
+        SfxLokHelper::notifyUpdate(pNotifySh,LOK_CALLBACK_TEXT_SELECTION);
+        SfxLokHelper::notifyOtherViewsUpdatePerViewId(pNotifySh, LOK_CALLBACK_TEXT_VIEW_SELECTION);
     }
 }
 
@@ -155,8 +155,12 @@ void SwView::ExecSearch(SfxRequest& rReq)
     // for now do nothing
     case SID_SEARCH_ITEM:
     {
-        delete s_pSrchItem;
-        s_pSrchItem = pArgs->Get(SID_SEARCH_ITEM).Clone();
+        OSL_ENSURE(pArgs, "Args missing");
+        if (pArgs)
+        {
+            delete s_pSrchItem;
+            s_pSrchItem = pArgs->Get(SID_SEARCH_ITEM).Clone();
+        }
     }
     break;
 
@@ -230,6 +234,18 @@ void SwView::ExecSearch(SfxRequest& rReq)
                     s_pSrchItem = pArgs->Get(SID_SEARCH_ITEM).Clone();
                 }
             }
+
+            // tdf#115665 Format in the CTRL+H search affects the CTRL+F search
+            if (pArgs)
+            {
+                if (const SfxBoolItem* pUseAttrItemListItem
+                    = pArgs->GetItemIfSet(SID_SEARCH_USE_ATTR_ITEM_LIST, false))
+                {
+                    if (!pUseAttrItemListItem->GetValue())
+                        s_xSearchList.reset();
+                }
+            }
+
             SvxSearchCmd eCommand = s_pSrchItem->GetCommand();
             switch (eCommand)
             {
@@ -264,7 +280,8 @@ void SwView::ExecSearch(SfxRequest& rReq)
 #if HAVE_FEATURE_DESKTOP
                     if( !bQuiet )
                     {
-                        m_pWrtShell->GetSfxViewShell()->libreOfficeKitViewCallback(LOK_CALLBACK_SEARCH_NOT_FOUND, s_pSrchItem->GetSearchString().toUtf8());
+                        if (SfxViewShell* pNotifySh = m_pWrtShell->GetSfxViewShell())
+                            pNotifySh->libreOfficeKitViewCallback(LOK_CALLBACK_SEARCH_NOT_FOUND, s_pSrchItem->GetSearchString().toUtf8());
                         SvxSearchDialogWrapper::SetSearchLabel(SearchLabel::NotFound);
                     }
 #endif
@@ -276,7 +293,7 @@ void SwView::ExecSearch(SfxRequest& rReq)
                         lcl_emitSearchResultCallbacks(s_pSrchItem, m_pWrtShell.get(), /* bHighlightAll = */ true);
                     if (!bQuiet)
                     {
-                        OUString sText(SwResId(STR_SEARCH_KEY_FOUND_TIMES));
+                        OUString sText(SwResId(STR_SEARCH_KEY_FOUND_TIMES, nFound));
                         sText = sText.replaceFirst("%1", OUString::number(nFound));
                         SvxSearchDialogWrapper::SetSearchLabel(sText);
                     }
@@ -336,7 +353,7 @@ void SwView::ExecSearch(SfxRequest& rReq)
                 {
                     SwSearchOptions aOpts( m_pWrtShell.get(), s_pSrchItem->GetBackward() );
                     s_bExtra = false;
-                    sal_uLong nFound;
+                    sal_Int32 nFound;
 
                     {   //Scope for SwWait-Object
                         SwWait aWait( *GetDocShell(), true );
@@ -367,13 +384,14 @@ void SwView::ExecSearch(SfxRequest& rReq)
                         m_pWrtShell->EndAllAction();
                     }
 
-                    rReq.SetReturnValue(SfxBoolItem(nSlot, nFound != 0 && ULONG_MAX != nFound));
+                    rReq.SetReturnValue(SfxBoolItem(nSlot, nFound != 0 && SAL_MAX_INT32 != nFound));
                     if( !nFound )
                     {
 #if HAVE_FEATURE_DESKTOP
                         if( !bQuiet )
                         {
-                            m_pWrtShell->GetSfxViewShell()->libreOfficeKitViewCallback(LOK_CALLBACK_SEARCH_NOT_FOUND, s_pSrchItem->GetSearchString().toUtf8());
+                            if (SfxViewShell* pNotifySh = m_pWrtShell->GetSfxViewShell())
+                                pNotifySh->libreOfficeKitViewCallback(LOK_CALLBACK_SEARCH_NOT_FOUND, s_pSrchItem->GetSearchString().toUtf8());
                             SvxSearchDialogWrapper::SetSearchLabel(SearchLabel::NotFound);
                         }
 #endif
@@ -382,7 +400,7 @@ void SwView::ExecSearch(SfxRequest& rReq)
                         return;
                     }
 
-                    if( !bQuiet && ULONG_MAX != nFound)
+                    if (!bQuiet && SAL_MAX_INT32 != nFound)
                     {
                         OUString sText( SwResId( STR_NB_REPLACED ) );
                         sText = sText.replaceFirst("XX", OUString::number( nFound ));
@@ -542,7 +560,8 @@ bool SwView::SearchAndWrap(bool bApi)
         if( !bApi )
         {
 #if HAVE_FEATURE_DESKTOP
-            m_pWrtShell->GetSfxViewShell()->libreOfficeKitViewCallback(LOK_CALLBACK_SEARCH_NOT_FOUND, s_pSrchItem->GetSearchString().toUtf8());
+            if (SfxViewShell* pNotifySh = m_pWrtShell->GetSfxViewShell())
+                pNotifySh->libreOfficeKitViewCallback(LOK_CALLBACK_SEARCH_NOT_FOUND, s_pSrchItem->GetSearchString().toUtf8());
             SvxSearchDialogWrapper::SetSearchLabel(SearchLabel::NotFound);
 #endif
         }
@@ -597,14 +616,15 @@ bool SwView::SearchAndWrap(bool bApi)
     }
     else if(!bApi)
     {
-        m_pWrtShell->GetSfxViewShell()->libreOfficeKitViewCallback(LOK_CALLBACK_SEARCH_NOT_FOUND, s_pSrchItem->GetSearchString().toUtf8());
+        if (SfxViewShell* pNotifySh = m_pWrtShell->GetSfxViewShell())
+            pNotifySh->libreOfficeKitViewCallback(LOK_CALLBACK_SEARCH_NOT_FOUND, s_pSrchItem->GetSearchString().toUtf8());
         SvxSearchDialogWrapper::SetSearchLabel(SearchLabel::NotFound);
     }
 #endif
     return s_bFound;
 }
 
-sal_uInt16 SwView::SearchAll()
+sal_Int32 SwView::SearchAll()
 {
     SwWait aWait( *GetDocShell(), true );
     m_pWrtShell->StartAllAction();
@@ -622,7 +642,7 @@ sal_uInt16 SwView::SearchAll()
             m_pWrtShell->StartOfSection();
     }
     s_bExtra = false;
-    sal_uInt16 nFound = o3tl::narrowing<sal_uInt16>(FUNC_Search( aOpts ));
+    auto nFound = FUNC_Search(aOpts);
     s_bFound = 0 != nFound;
 
     m_pWrtShell->EndAllAction();
@@ -645,7 +665,7 @@ void SwView::Replace()
         m_pWrtShell->StartUndo(SwUndoId::UI_REPLACE_STYLE, &aRewriter);
 
         m_pWrtShell->SetTextFormatColl( m_pWrtShell->GetParaStyle(
-                            s_pSrchItem->GetReplaceString(),
+                            UIName(s_pSrchItem->GetReplaceString()),
                             SwWrtShell::GETSTYLE_CREATESOME ));
 
         m_pWrtShell->EndUndo();
@@ -680,13 +700,13 @@ void SwView::Replace()
 
                 if(! s_pSrchItem->GetBackward() )
                 {
-                    (* m_pWrtShell->GetCursor()->Start()) = aStartPos;
-                    (* m_pWrtShell->GetCursor()->End()) = aEndPos;
+                    (* m_pWrtShell->GetCursor()->Start()) = std::move(aStartPos);
+                    (* m_pWrtShell->GetCursor()->End()) = std::move(aEndPos);
                 }
                 else
                 {
-                    (* m_pWrtShell->GetCursor()->Start()) = aEndPos;
-                    (* m_pWrtShell->GetCursor()->End()) = aStartPos;
+                    (* m_pWrtShell->GetCursor()->Start()) = std::move(aEndPos);
+                    (* m_pWrtShell->GetCursor()->End()) = std::move(aStartPos);
                 }
                 bReqReplace = false;
             }
@@ -738,7 +758,7 @@ SwSearchOptions::SwSearchOptions( SwWrtShell const * pSh, bool bBackward )
     }
 }
 
-sal_uLong SwView::FUNC_Search( const SwSearchOptions& rOptions )
+sal_Int32 SwView::FUNC_Search(const SwSearchOptions& rOptions)
 {
 #if HAVE_FEATURE_DESKTOP
     SvxSearchDialogWrapper::SetSearchLabel(SearchLabel::Empty);
@@ -807,8 +827,8 @@ sal_uLong SwView::FUNC_Search( const SwSearchOptions& rOptions )
     else if( s_pSrchItem->GetPattern() )
     {
         // Searching (and replacing) templates
-        const OUString& sRplStr( s_pSrchItem->GetReplaceString() );
-        nFound = m_pWrtShell->SearchTempl( s_pSrchItem->GetSearchString(),
+        const UIName sRplStr( s_pSrchItem->GetReplaceString() );
+        nFound = m_pWrtShell->SearchTempl( UIName(s_pSrchItem->GetSearchString()),
             rOptions.eStart,
             rOptions.eEnd,
             eRanges,
@@ -855,7 +875,7 @@ void SwView::StateSearch(SfxItemSet &rSet)
             case SID_SEARCH_OPTIONS:
             {
                 SearchOptionFlags nOpt = SearchOptionFlags::ALL;
-                if( GetDocShell()->IsReadOnly() )
+                if (GetDocShell()->IsReadOnly() || IsCurrentLokViewReadOnly())
                     nOpt &= ~SearchOptionFlags( SearchOptionFlags::REPLACE |
                                SearchOptionFlags::REPLACE_ALL );
                 rSet.Put( SfxUInt16Item( SID_SEARCH_OPTIONS, static_cast<sal_uInt16>(nOpt) ));

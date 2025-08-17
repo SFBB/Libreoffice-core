@@ -31,9 +31,14 @@ namespace utl {
 namespace com::sun::star::i18n { struct NativeNumberXmlAttributes2; }
 
 class Color;
+class CalendarWrapper;
+
+class SvNFLanguageData;
 
 class ImpSvNumberformatScan;            // format code string scanner
 class ImpSvNumberInputScan;             // input string scanner
+class NativeNumberWrapper;
+class SvNFFormatData;
 class SvNumberFormatter;
 
 enum SvNumberformatLimitOps
@@ -171,6 +176,7 @@ public:
     SvNumberformat( OUString& rString,
                    ImpSvNumberformatScan* pSc,
                    ImpSvNumberInputScan* pISc,
+                   const NativeNumberWrapper& rNatNum,
                    sal_Int32& nCheckPos,
                    LanguageType& eLan,
                    bool bReplaceBooleanEquivalent = true );
@@ -235,16 +241,15 @@ public:
                                     LanguageType nOriginalLang = LANGUAGE_DONTKNOW,
                                     bool bSystemLanguage = false ) const;
 
-    void SetStarFormatSupport( bool b )         { bStarFlag = b; }
-
     /**
      * Get output string from a numeric value that fits the number of
      * characters specified.
      */
-    bool GetOutputString( double fNumber, sal_uInt16 nCharCount, OUString& rOutString ) const;
+    bool GetOutputString( double fNumber, sal_uInt16 nCharCount, OUString& rOutString, const NativeNumberWrapper& rNatNum ) const;
 
-    bool GetOutputString( double fNumber, OUString& OutString, const Color** ppColor );
-    void GetOutputString( std::u16string_view sString, OUString& OutString, const Color** ppColor );
+    // bStarFlag: Take *n format as ESC n
+    bool GetOutputString( double fNumber, OUString& OutString, const Color** ppColor, const NativeNumberWrapper& rNatNum, const SvNFLanguageData& rCurrentLang, bool bStarFlag = false) const;
+    void GetOutputString( std::u16string_view sString, OUString& OutString, const Color** ppColor, bool bStarFlag = false) const;
 
     // True if type text
     bool IsTextFormat() const { return bool(eType & SvNumFormatType::TEXT); }
@@ -284,7 +289,7 @@ public:
 
     //! Read/write access on a special sal_uInt16 component, may only be used on the
     //! standard format 0, 10000, ... and only by the number formatter!
-    struct FormatterPrivateAccess { friend SvNumberFormatter; private: FormatterPrivateAccess() {} };
+    struct FormatterPrivateAccess { friend SvNumberFormatter; friend SvNFFormatData; private: FormatterPrivateAccess() {} };
     sal_uInt16 GetLastInsertKey( const FormatterPrivateAccess& ) const
         { return NumFor[0].Info().nThousand; }
     void SetLastInsertKey( sal_uInt16 nKey, const FormatterPrivateAccess& )
@@ -458,7 +463,8 @@ public:
     // rAttr.Number not empty if NatNum attributes are to be stored
     void GetNatNumXml(
             css::i18n::NativeNumberXmlAttributes2& rAttr,
-            sal_uInt16 nNumFor ) const;
+            sal_uInt16 nNumFor,
+            const NativeNumberWrapper& rNatNum ) const;
     /** Return empty string if no NatNum modifier or invalid nNumFor
         otherwise return "[NatNum1]" or "[NatNum12 ...]" */
     OUString GetNatNumModifierString( sal_uInt16 nNumFor = 0 ) const;
@@ -466,13 +472,13 @@ public:
     /** Switches to the first non-"gregorian" calendar, but only if the current
         calendar is "gregorian"; original calendar name and date/time returned,
         but only if calendar switched and rOrgCalendar was empty. */
-    void SwitchToOtherCalendar( OUString& rOrgCalendar, double& fOrgDateTime ) const;
+    void SwitchToOtherCalendar( OUString& rOrgCalendar, double& fOrgDateTime, CalendarWrapper& rCal ) const;
 
     /** Switches to the "gregorian" calendar, but only if the current calendar
         is non-"gregorian" and rOrgCalendar is not empty. Thus a preceding
         ImpSwitchToOtherCalendar() call should have been placed prior to
         calling this method. */
-    void SwitchToGregorianCalendar( std::u16string_view rOrgCalendar, double fOrgDateTime ) const;
+    void SwitchToGregorianCalendar( std::u16string_view rOrgCalendar, double fOrgDateTime, CalendarWrapper& rCal ) const;
 
 #ifdef THE_FUTURE
     /** Switches to the first specified calendar, if any, in subformat nNumFor
@@ -513,13 +519,10 @@ private:
     SvNumberformatLimitOps eOp2;    // Operator for second condition
     SvNumFormatType eType;          // Type of format
     bool bAdditionalBuiltin;        // If this is an additional built-in format defined by i18n
-    bool bStarFlag;                 // Take *n format as ESC n
     bool bStandard;                 // If this is a default standard format
     bool bIsUsed;                   // Flag as used for storing
 
     SVL_DLLPRIVATE sal_uInt16 ImpGetNumForStringElementCount( sal_uInt16 nNumFor ) const;
-
-    SVL_DLLPRIVATE bool ImpIsOtherCalendar( const ImpSvNumFor& rNumFor ) const;
 
 #ifdef THE_FUTURE
     SVL_DLLPRIVATE bool ImpSwitchToSpecifiedCalendar( OUString& rOrgCalendar,
@@ -552,8 +555,7 @@ private:
 
     const CharClass& rChrCls() const;
     const LocaleDataWrapper& rLoc() const;
-    CalendarWrapper& GetCal() const;
-    const SvNumberFormatter& GetFormatter() const;
+    const SvNFLanguageData& GetCurrentLanguageData() const;
 
     // divide in substrings and color conditions
     SVL_DLLPRIVATE short ImpNextSymbol( OUStringBuffer& rString,
@@ -608,9 +610,12 @@ private:
                                                           const LocaleType & aTmpLocale );
 
     // standard number output
-    SVL_DLLPRIVATE void ImpGetOutputStandard( double& fNumber, OUString& OutString ) const;
-    SVL_DLLPRIVATE void ImpGetOutputStandard( double& fNumber, OUStringBuffer& OutString ) const;
-    SVL_DLLPRIVATE void ImpGetOutputStdToPrecision( double& rNumber, OUString& rOutString, sal_uInt16 nPrecision ) const;
+    SVL_DLLPRIVATE void ImpGetOutputStandard(double& fNumber, OUString& OutString,
+                                             const NativeNumberWrapper& rNatNum) const;
+    SVL_DLLPRIVATE void ImpGetOutputStandard(double& fNumber, OUStringBuffer& OutString,
+                                             const NativeNumberWrapper& rNatNum) const;
+    SVL_DLLPRIVATE void ImpGetOutputStdToPrecision(double& rNumber, OUString& rOutString, sal_uInt16 nPrecision,
+                                                   const NativeNumberWrapper& rNatNum) const;
     // numbers in input line
     SVL_DLLPRIVATE void ImpGetOutputInputLine( double fNumber, OUString& OutString ) const;
 
@@ -623,22 +628,28 @@ private:
 
     // Helper function for number strings
     // append string symbols, insert leading 0 or ' ', or ...
-    SVL_DLLPRIVATE bool ImpNumberFill( OUStringBuffer& sStr,
+    SVL_DLLPRIVATE bool ImpNumberFill(
+                    const NativeNumberWrapper& rNatNum,
+                    OUStringBuffer& sStr,
                     double& rNumber,
                     sal_Int32& k,
                     sal_uInt16& j,
                     sal_uInt16 nIx,
                     short eSymbolType,
-                    bool bInsertRightBlank = false );
+                    bool bStarFlag,
+                    bool bInsertRightBlank = false ) const;
 
     // Helper function to fill in the integer part and the group (AKA thousand) separators
-    SVL_DLLPRIVATE bool ImpNumberFillWithThousands( OUStringBuffer& sStr,
+    SVL_DLLPRIVATE bool ImpNumberFillWithThousands(
+                                 const NativeNumberWrapper& rNatNum,
+                                 OUStringBuffer& sStr,
                                  double& rNumber,
                                  sal_Int32 k,
                                  sal_uInt16 j,
                                  sal_uInt16 nIx,
                                  sal_Int32 nDigCnt,
-                                 bool bAddDecSep = true );
+                                 bool bStarFlag,
+                                 bool bAddDecSep = true ) const;
 
     // Helper function to fill in the group (AKA thousand) separators
     // or to skip additional digits
@@ -647,14 +658,16 @@ private:
                                       sal_Int32& k,
                                       sal_uInt16 nIx,
                                       sal_Int32 & nDigitCount,
-                                      utl::DigitGroupingIterator & );
+                                      utl::DigitGroupingIterator & ) const;
 
-    SVL_DLLPRIVATE bool ImpDecimalFill( OUStringBuffer& sStr,
+    SVL_DLLPRIVATE bool ImpDecimalFill(const NativeNumberWrapper& rNatNum,
+                                 OUStringBuffer& sStr,
                                  double& rNumber,
                                  sal_Int32 nDecPos,
                                  sal_uInt16 j,
                                  sal_uInt16 nIx,
-                                 bool bInteger );
+                                 bool bInteger,
+                                 bool bStarFlag) const;
 
     /** Calculate each element of fraction:
      * integer part, numerator part, denominator part
@@ -671,27 +684,42 @@ private:
                                                 sal_Int64& nDiv ) const;
     SVL_DLLPRIVATE bool ImpGetFractionOutput(double fNumber,
                                              sal_uInt16 nIx,
-                                             OUStringBuffer& OutString);
+                                             bool bStarFlag,
+                                             const NativeNumberWrapper& rNatNum,
+                                             OUStringBuffer& OutString) const;
     SVL_DLLPRIVATE bool ImpGetScientificOutput(double fNumber,
                                                sal_uInt16 nIx,
-                                               OUStringBuffer& OutString);
+                                               bool bStarFlag,
+                                               const NativeNumberWrapper& rNatNum,
+                                               OUStringBuffer& OutString) const;
 
     SVL_DLLPRIVATE bool ImpGetDateOutput( double fNumber,
                                           sal_uInt16 nIx,
-                                          OUStringBuffer& OutString );
+                                          bool bStarFlag,
+                                          const NativeNumberWrapper& rNatNum,
+                                          const SvNFLanguageData& rCurrentLang,
+                                          OUStringBuffer& OutString ) const;
     SVL_DLLPRIVATE bool ImpGetTimeOutput( double fNumber,
                                           sal_uInt16 nIx,
-                                          OUStringBuffer& OutString );
+                                          bool bStarFlag,
+                                          const NativeNumberWrapper& rNatNum,
+                                          const SvNFLanguageData& rCurrentLang,
+                                          OUStringBuffer& OutString ) const;
     SVL_DLLPRIVATE bool ImpGetDateTimeOutput( double fNumber,
                                               sal_uInt16 nIx,
-                                              OUStringBuffer& OutString );
+                                              bool bStarFlag,
+                                              const NativeNumberWrapper& rNatNum,
+                                              const SvNFLanguageData& rCurrentLang,
+                                              OUStringBuffer& OutString ) const;
 
     // Switches to the "gregorian" calendar if the current calendar is
     // non-"gregorian" and the era is a "Dummy" era of a calendar which doesn't
     // know a "before" era (like zh_TW ROC or ja_JP Gengou). If switched and
     // rOrgCalendar was "gregorian" the string is emptied. If rOrgCalendar was
     // empty the previous calendar name and date/time are returned.
-    SVL_DLLPRIVATE bool ImpFallBackToGregorianCalendar( OUString& rOrgCalendar, double& fOrgDateTime );
+    SVL_DLLPRIVATE bool ImpFallBackToGregorianCalendar(OUString& rOrgCalendar,
+                                                       double& fOrgDateTime,
+                                                       CalendarWrapper& rCal) const;
 
     // Append a "G" short era string of the given calendar. In the case of a
     // Gengou calendar this is a one character abbreviation, for other
@@ -701,25 +729,28 @@ private:
 
     SVL_DLLPRIVATE bool ImpGetLogicalOutput( double fNumber,
                                              sal_uInt16 nIx,
-                                             OUStringBuffer& OutString );
+                                             const NativeNumberWrapper& rNatNum,
+                                             OUStringBuffer& OutString) const;
 
     SVL_DLLPRIVATE bool ImpGetNumberOutput( double fNumber,
                                             sal_uInt16 nIx,
-                                            OUStringBuffer& OutString );
+                                            bool bStarFlag,
+                                            const NativeNumberWrapper& rNatNum,
+                                            OUStringBuffer& OutString) const;
 
     SVL_DLLPRIVATE void ImpCopyNumberformat( const SvNumberformat& rFormat );
 
     // normal digits or other digits, depending on ImpSvNumFor.aNatNum,
     // [NatNum1], [NatNum2], ...
-    SVL_DLLPRIVATE OUString ImpGetNatNumString( const SvNumberNatNum& rNum, sal_Int64 nVal,
-                                              sal_uInt16 nMinDigits  ) const;
+    SVL_DLLPRIVATE static OUString ImpGetNatNumString(const SvNumberNatNum& rNum, sal_Int64 nVal,
+                                                      sal_uInt16 nMinDigits, const NativeNumberWrapper& rNatNum);
 
-    OUString ImpIntToString( sal_uInt16 nIx, sal_Int64 nVal, sal_uInt16 nMinDigits = 0 ) const
+    OUString ImpIntToString(const NativeNumberWrapper& rNatNum, sal_uInt16 nIx, sal_Int64 nVal, sal_uInt16 nMinDigits = 0 ) const
     {
         const SvNumberNatNum& rNum = NumFor[nIx].GetNatNum();
         if ( nMinDigits || rNum.IsComplete() )
         {
-            return ImpGetNatNumString( rNum, nVal, nMinDigits );
+            return ImpGetNatNumString( rNum, nVal, nMinDigits, rNatNum );
         }
         return OUString::number(nVal);
     }
@@ -731,29 +762,15 @@ private:
     // nFractionDecimals, unless nMinimumInputLineDecimals>0 is given for input
     // line string where extra trailing "0" are discarded.
     SVL_DLLPRIVATE sal_uInt16 ImpGetFractionOfSecondString( OUStringBuffer& rBuf, double fFractionOfSecond,
-            int nFractionDecimals, bool bAddOneRoundingDecimal, sal_uInt16 nIx, sal_uInt16 nMinimumInputLineDecimals );
+            int nFractionDecimals, bool bAddOneRoundingDecimal, sal_uInt16 nIx, sal_uInt16 nMinimumInputLineDecimals,
+            const NativeNumberWrapper& rNatNum) const;
 
     // transliterate according to NativeNumber
-    SVL_DLLPRIVATE OUString impTransliterateImpl(const OUString& rStr, const SvNumberNatNum& rNum) const;
-    SVL_DLLPRIVATE void impTransliterateImpl(OUStringBuffer& rStr, const SvNumberNatNum& rNum) const;
-    SVL_DLLPRIVATE OUString impTransliterateImpl(const OUString& rStr, const SvNumberNatNum& rNum, sal_uInt16 nDateKey) const;
+    SVL_DLLPRIVATE OUString impTransliterateImpl(const OUString& rStr, const SvNumberNatNum& rNum, sal_uInt16 nDateKey, const NativeNumberWrapper& rNatNum) const;
 
-    OUString impTransliterate(const OUString& rStr, const SvNumberNatNum& rNum) const
+    OUString impTransliterate(const OUString& rStr, const SvNumberNatNum& rNum, sal_uInt16 nDateKey, const NativeNumberWrapper& rNatNum) const
     {
-        return rNum.IsComplete() ? impTransliterateImpl(rStr, rNum) : rStr;
-    }
-
-    SVL_DLLPRIVATE void impTransliterate(OUStringBuffer& rStr, const SvNumberNatNum& rNum) const
-    {
-        if(rNum.IsComplete())
-        {
-            impTransliterateImpl(rStr, rNum);
-        }
-    }
-
-    OUString impTransliterate(const OUString& rStr, const SvNumberNatNum& rNum, sal_uInt16 nDateKey) const
-    {
-        return rNum.IsComplete() ? impTransliterateImpl(rStr, rNum, nDateKey) : rStr;
+        return rNum.IsComplete() ? impTransliterateImpl(rStr, rNum, nDateKey, rNatNum) : rStr;
     }
 
 };

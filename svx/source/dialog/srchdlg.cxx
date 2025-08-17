@@ -22,6 +22,7 @@
 #include <svl/slstitm.hxx>
 #include <svl/itemiter.hxx>
 #include <svl/style.hxx>
+#include <svl/whiter.hxx>
 #include <unotools/intlwrapper.hxx>
 #include <unotools/moduleoptions.hxx>
 #include <unotools/searchopt.hxx>
@@ -77,14 +78,18 @@
 #include <svx/xdef.hxx>
 #include <officecfg/Office/Common.hxx>
 
-using namespace com::sun::star::i18n;
 using namespace com::sun::star::uno;
-using namespace com::sun::star::accessibility;
 using namespace com::sun::star;
 using namespace comphelper;
 
 
-#define IS_MOBILE (comphelper::LibreOfficeKit::isActive() && SfxViewShell::Current() && SfxViewShell::Current()->isLOKMobilePhone())
+static bool IsMobile()
+{
+    if (!comphelper::LibreOfficeKit::isActive())
+        return false;
+    SfxViewShell* pCurrent = SfxViewShell::Current();
+    return pCurrent && pCurrent->isLOKMobilePhone();
+}
 
 enum class ModifyFlags {
     NONE         = 0x000000,
@@ -174,20 +179,14 @@ static void StrArrToList_Impl( TypedWhichId<SfxStringListItem> nId, const std::v
     SfxGetpApp()->PutItem( SfxStringListItem( nId, &rStrLst ) );
 }
 
-SearchAttrItemList::SearchAttrItemList( SearchAttrItemList&& rList ) :
+SearchAttrItemList::SearchAttrItemList( SearchAttrItemList&& rList ) noexcept :
     SrchAttrInfoList(std::move(rList))
 {
-    for ( size_t i = 0; i < size(); ++i )
-        if ( !IsInvalidItem( (*this)[i].pItemPtr ) )
-            (*this)[i].pItemPtr = (*this)[i].pItemPtr->Clone();
 }
 
 SearchAttrItemList::SearchAttrItemList( const SearchAttrItemList& rList ) :
     SrchAttrInfoList(rList)
 {
-    for ( size_t i = 0; i < size(); ++i )
-        if ( !IsInvalidItem( (*this)[i].pItemPtr ) )
-            (*this)[i].pItemPtr = (*this)[i].pItemPtr->Clone();
 }
 
 SearchAttrItemList::~SearchAttrItemList()
@@ -201,30 +200,13 @@ void SearchAttrItemList::Put( const SfxItemSet& rSet )
         return;
 
     SfxItemPool* pPool = rSet.GetPool();
-    SfxItemIter aIter( rSet );
-    SearchAttrInfo aItem;
-    const SfxPoolItem* pItem = aIter.GetCurItem();
-    sal_uInt16 nWhich;
 
-    do
+    for (SfxItemIter aIter(rSet); !aIter.IsAtEnd(); aIter.NextItem())
     {
-        // only test that it is available?
-        if( IsInvalidItem( pItem ) )
-        {
-            nWhich = rSet.GetWhichByOffset( aIter.GetCurPos() );
-            aItem.pItemPtr = pItem;
-        }
-        else
-        {
-            nWhich = pItem->Which();
-            aItem.pItemPtr = pItem->Clone();
-        }
-
-        aItem.nSlot = pPool->GetSlotId( nWhich );
-        Insert( aItem );
-
-        pItem = aIter.NextItem();
-    } while (pItem);
+        const sal_uInt16 nWhich(aIter.GetCurWhich());
+        const sal_uInt16 nSlot(pPool->GetSlotId(nWhich));
+        emplace_back(nSlot, SfxPoolItemHolder(*pPool, aIter.GetCurItem()));
+    }
 }
 
 
@@ -233,19 +215,16 @@ SfxItemSet& SearchAttrItemList::Get( SfxItemSet& rSet )
     SfxItemPool* pPool = rSet.GetPool();
 
     for ( size_t i = 0; i < size(); ++i )
-        if ( IsInvalidItem( (*this)[i].pItemPtr ) )
-            rSet.InvalidateItem( pPool->GetWhich( (*this)[i].nSlot ) );
+        if ( IsInvalidItem( (*this)[i].aItemPtr.getItem() ) )
+            rSet.InvalidateItem( pPool->GetWhichIDFromSlotID( (*this)[i].nSlot ) );
         else
-            rSet.Put( *(*this)[i].pItemPtr );
+            rSet.Put( *(*this)[i].aItemPtr.getItem() );
     return rSet;
 }
 
 
 void SearchAttrItemList::Clear()
 {
-    for ( size_t i = 0; i < size(); ++i )
-        if ( !IsInvalidItem( (*this)[i].pItemPtr ) )
-            delete (*this)[i].pItemPtr;
     SrchAttrInfoList::clear();
 }
 
@@ -257,78 +236,74 @@ void SearchAttrItemList::Remove(size_t nPos)
     if ( nPos + nLen > size() )
         nLen = size() - nPos;
 
-    for ( size_t i = nPos; i < nPos + nLen; ++i )
-        if ( !IsInvalidItem( (*this)[i].pItemPtr ) )
-            delete (*this)[i].pItemPtr;
-
     SrchAttrInfoList::erase( begin() + nPos, begin() + nPos + nLen );
 }
 
 SvxSearchDialog::SvxSearchDialog(weld::Window* pParent, SfxChildWindow* pChildWin, SfxBindings& rBind)
     : SfxModelessDialogController(&rBind, pChildWin, pParent,
-                                  IS_MOBILE ? OUString("svx/ui/findreplacedialog-mobile.ui") : OUString("svx/ui/findreplacedialog.ui"),
-                                  "FindReplaceDialog")
-    , rBindings(rBind)
+                                  IsMobile() ? u"svx/ui/findreplacedialog-mobile.ui"_ustr : u"svx/ui/findreplacedialog.ui"_ustr,
+                                  u"FindReplaceDialog"_ustr)
+    , m_rBindings(rBind)
     , m_aPresentIdle("Bring SvxSearchDialog to Foreground")
-    , bWriter(false)
-    , bSearch(true)
-    , bFormat(false)
-    , bReplaceBackwards(false)
-    , nOptions(SearchOptionFlags::ALL)
-    , bSet(false)
-    , bConstruct(true)
-    , nModifyFlag(ModifyFlags::NONE)
-    , pReplaceList(new SearchAttrItemList)
-    , nTransliterationFlags(TransliterationFlags::NONE)
-    , m_xSearchFrame(m_xBuilder->weld_frame("searchframe"))
-    , m_xSearchLB(m_xBuilder->weld_combo_box("searchterm"))
-    , m_xSearchTmplLB(m_xBuilder->weld_combo_box("searchlist"))
-    , m_xSearchAttrText(m_xBuilder->weld_label("searchdesc"))
-    , m_xSearchLabel(m_xBuilder->weld_label("searchlabel"))
-    , m_xSearchIcon(m_xBuilder->weld_image("searchicon"))
-    , m_xSearchBox(m_xBuilder->weld_box("searchbox"))
-    , m_xReplaceFrame(m_xBuilder->weld_frame("replaceframe"))
-    , m_xReplaceLB(m_xBuilder->weld_combo_box("replaceterm"))
-    , m_xReplaceTmplLB(m_xBuilder->weld_combo_box("replacelist"))
-    , m_xReplaceAttrText(m_xBuilder->weld_label("replacedesc"))
-    , m_xSearchBtn(m_xBuilder->weld_button("search"))
-    , m_xBackSearchBtn(m_xBuilder->weld_button("backsearch"))
-    , m_xSearchAllBtn(m_xBuilder->weld_button("searchall"))
-    , m_xReplaceBtn(m_xBuilder->weld_button("replace"))
-    , m_xReplaceAllBtn(m_xBuilder->weld_button("replaceall"))
-    , m_xComponentFrame(m_xBuilder->weld_frame("componentframe"))
-    , m_xSearchComponent1PB(m_xBuilder->weld_button("component1"))
-    , m_xSearchComponent2PB(m_xBuilder->weld_button("component2"))
-    , m_xMatchCaseCB(m_xBuilder->weld_check_button("matchcase"))
-    , m_xSearchFormattedCB(m_xBuilder->weld_check_button("searchformatted"))
-    , m_xWordBtn(m_xBuilder->weld_check_button("wholewords"))
-    , m_xCloseBtn(m_xBuilder->weld_button("close"))
-    , m_xHelpBtn(m_xBuilder->weld_button("help"))
-    , m_xIncludeDiacritics(m_xBuilder->weld_check_button("includediacritics"))
-    , m_xIncludeKashida(m_xBuilder->weld_check_button("includekashida"))
-    , m_xOtherOptionsExpander(m_xBuilder->weld_expander("OptionsExpander"))
-    , m_xSelectionBtn(m_xBuilder->weld_check_button("selection"))
-    , m_xRegExpBtn(m_xBuilder->weld_check_button("regexp"))
-    , m_xWildcardBtn(m_xBuilder->weld_check_button("wildcard"))
-    , m_xSimilarityBox(m_xBuilder->weld_check_button("similarity"))
-    , m_xSimilarityBtn(m_xBuilder->weld_button("similaritybtn"))
-    , m_xLayoutBtn(m_xBuilder->weld_check_button("layout"))
-    , m_xNotesBtn(m_xBuilder->weld_check_button("notes"))
-    , m_xJapMatchFullHalfWidthCB(m_xBuilder->weld_check_button("matchcharwidth"))
-    , m_xJapOptionsCB(m_xBuilder->weld_check_button("soundslike"))
-    , m_xReplaceBackwardsCB(m_xBuilder->weld_check_button("replace_backwards"))
-    , m_xJapOptionsBtn(m_xBuilder->weld_button("soundslikebtn"))
-    , m_xAttributeBtn(m_xBuilder->weld_button("attributes"))
-    , m_xFormatBtn(m_xBuilder->weld_button("format"))
-    , m_xNoFormatBtn(m_xBuilder->weld_button("noformat"))
-    , m_xCalcGrid(m_xBuilder->weld_widget("calcgrid"))
-    , m_xCalcSearchInFT(m_xBuilder->weld_label("searchinlabel"))
-    , m_xCalcSearchInLB(m_xBuilder->weld_combo_box("calcsearchin"))
-    , m_xCalcSearchDirFT(m_xBuilder->weld_label("searchdir"))
-    , m_xRowsBtn(m_xBuilder->weld_radio_button("rows"))
-    , m_xColumnsBtn(m_xBuilder->weld_radio_button("cols"))
-    , m_xAllSheetsCB(m_xBuilder->weld_check_button("allsheets"))
-    , m_xCalcStrFT(m_xBuilder->weld_label("entirecells"))
+    , m_bWriter(false)
+    , m_bSearch(true)
+    , m_bFormat(false)
+    , m_bReplaceBackwards(false)
+    , m_nOptions(SearchOptionFlags::ALL)
+    , m_bSet(false)
+    , m_bConstruct(true)
+    , m_nModifyFlag(ModifyFlags::NONE)
+    , m_pReplaceList(new SearchAttrItemList)
+    , m_nTransliterationFlags(TransliterationFlags::NONE)
+    , m_xSearchFrame(m_xBuilder->weld_frame(u"searchframe"_ustr))
+    , m_xSearchLB(m_xBuilder->weld_combo_box(u"searchterm"_ustr))
+    , m_xSearchTmplLB(m_xBuilder->weld_combo_box(u"searchlist"_ustr))
+    , m_xSearchAttrText(m_xBuilder->weld_label(u"searchdesc"_ustr))
+    , m_xSearchLabel(m_xBuilder->weld_label(u"searchlabel"_ustr))
+    , m_xSearchIcon(m_xBuilder->weld_image(u"searchicon"_ustr))
+    , m_xSearchBox(m_xBuilder->weld_container(u"searchbox"_ustr))
+    , m_xReplaceFrame(m_xBuilder->weld_frame(u"replaceframe"_ustr))
+    , m_xReplaceLB(m_xBuilder->weld_combo_box(u"replaceterm"_ustr))
+    , m_xReplaceTmplLB(m_xBuilder->weld_combo_box(u"replacelist"_ustr))
+    , m_xReplaceAttrText(m_xBuilder->weld_label(u"replacedesc"_ustr))
+    , m_xSearchBtn(m_xBuilder->weld_button(u"search"_ustr))
+    , m_xBackSearchBtn(m_xBuilder->weld_button(u"backsearch"_ustr))
+    , m_xSearchAllBtn(m_xBuilder->weld_button(u"searchall"_ustr))
+    , m_xReplaceBtn(m_xBuilder->weld_button(u"replace"_ustr))
+    , m_xReplaceAllBtn(m_xBuilder->weld_button(u"replaceall"_ustr))
+    , m_xComponentFrame(m_xBuilder->weld_frame(u"componentframe"_ustr))
+    , m_xSearchComponent1PB(m_xBuilder->weld_button(u"component1"_ustr))
+    , m_xSearchComponent2PB(m_xBuilder->weld_button(u"component2"_ustr))
+    , m_xMatchCaseCB(m_xBuilder->weld_check_button(u"matchcase"_ustr))
+    , m_xSearchFormattedCB(m_xBuilder->weld_check_button(u"searchformatted"_ustr))
+    , m_xWordBtn(m_xBuilder->weld_check_button(u"wholewords"_ustr))
+    , m_xCloseBtn(m_xBuilder->weld_button(u"close"_ustr))
+    , m_xHelpBtn(m_xBuilder->weld_button(u"help"_ustr))
+    , m_xIncludeDiacritics(m_xBuilder->weld_check_button(u"includediacritics"_ustr))
+    , m_xIncludeKashida(m_xBuilder->weld_check_button(u"includekashida"_ustr))
+    , m_xOtherOptionsExpander(m_xBuilder->weld_expander(u"OptionsExpander"_ustr))
+    , m_xSelectionBtn(m_xBuilder->weld_check_button(u"selection"_ustr))
+    , m_xRegExpBtn(m_xBuilder->weld_check_button(u"regexp"_ustr))
+    , m_xWildcardBtn(m_xBuilder->weld_check_button(u"wildcard"_ustr))
+    , m_xSimilarityBox(m_xBuilder->weld_check_button(u"similarity"_ustr))
+    , m_xSimilarityBtn(m_xBuilder->weld_button(u"similaritybtn"_ustr))
+    , m_xLayoutBtn(m_xBuilder->weld_check_button(u"layout"_ustr))
+    , m_xNotesBtn(m_xBuilder->weld_check_button(u"notes"_ustr))
+    , m_xJapMatchFullHalfWidthCB(m_xBuilder->weld_check_button(u"matchcharwidth"_ustr))
+    , m_xJapOptionsCB(m_xBuilder->weld_check_button(u"soundslike"_ustr))
+    , m_xReplaceBackwardsCB(m_xBuilder->weld_check_button(u"replace_backwards"_ustr))
+    , m_xJapOptionsBtn(m_xBuilder->weld_button(u"soundslikebtn"_ustr))
+    , m_xAttributeBtn(m_xBuilder->weld_button(u"attributes"_ustr))
+    , m_xFormatBtn(m_xBuilder->weld_button(u"format"_ustr))
+    , m_xNoFormatBtn(m_xBuilder->weld_button(u"noformat"_ustr))
+    , m_xCalcGrid(m_xBuilder->weld_widget(u"calcgrid"_ustr))
+    , m_xCalcSearchInFT(m_xBuilder->weld_label(u"searchinlabel"_ustr))
+    , m_xCalcSearchInLB(m_xBuilder->weld_combo_box(u"calcsearchin"_ustr))
+    , m_xCalcSearchDirFT(m_xBuilder->weld_label(u"searchdir"_ustr))
+    , m_xRowsBtn(m_xBuilder->weld_radio_button(u"rows"_ustr))
+    , m_xColumnsBtn(m_xBuilder->weld_radio_button(u"cols"_ustr))
+    , m_xAllSheetsCB(m_xBuilder->weld_check_button(u"allsheets"_ustr))
+    , m_xCalcStrFT(m_xBuilder->weld_label(u"entirecells"_ustr))
 {
     if (comphelper::LibreOfficeKit::isActive())
     {
@@ -342,22 +317,24 @@ SvxSearchDialog::SvxSearchDialog(weld::Window* pParent, SfxChildWindow* pChildWi
     m_xSearchTmplLB->make_sorted();
     m_xSearchAttrText->hide();
 
-    m_xSearchLabel->set_font_color(Color(0x00, 0x47, 0x85));
-    this->SetSearchLabel(""); // hide the message but keep the box height
-    m_xSearchIcon->set_size_request(24, 24); // vcl/res/infobar.png is 32x32 - too large here
+    this->SetSearchLabel(u""_ustr); // hide the message but keep the box height
+
+    //weird findreplacedialog-mobile.ui case doesn't have searchicon or searchbox
+    if (m_xSearchIcon)
+        m_xSearchIcon->set_size_request(24, 24); // vcl/res/infobar.png is 32x32 - too large here
 
     m_xReplaceTmplLB->make_sorted();
     m_xReplaceAttrText->hide();
 
-    aCalcStr = m_xCalcStrFT->get_label();
+    m_sCalcStr = m_xCalcStrFT->get_label();
 
     // m_xSimilarityBtn->set_height_request(m_xSimilarityBox->get_preferred_size().Height());
     // m_xJapOptionsBtn->set_height_request(m_xJapOptionsCB->get_preferred_size().Height());
 
     //tdf#122322
-    nRememberSize = officecfg::Office::Common::Misc::FindReplaceRememberedSearches::get();
-    if (nRememberSize<1)
-        nRememberSize = 1; //0 crashes with no results found
+    m_nRememberSize = officecfg::Office::Common::Misc::FindReplaceRememberedSearches::get();
+    if (m_nRememberSize < 1)
+        m_nRememberSize = 1; //0 crashes with no results found
 
     auto nTermWidth = m_xSearchLB->get_approximate_digit_width() * 28;
     m_xSearchLB->set_size_request(nTermWidth, -1);
@@ -382,70 +359,67 @@ void SvxSearchDialog::Present()
 
 void SvxSearchDialog::ChildWinDispose()
 {
-    rBindings.EnterRegistrations();
-    pSearchController.reset();
-    pOptionsController.reset();
-    pFamilyController.reset();
-    rBindings.LeaveRegistrations();
+    m_rBindings.EnterRegistrations();
+    m_pSearchController.reset();
+    m_pOptionsController.reset();
+    m_pFamilyController.reset();
+    m_rBindings.LeaveRegistrations();
     SfxModelessDialogController::ChildWinDispose();
 }
 
 SvxSearchDialog::~SvxSearchDialog()
 {
     m_aPresentIdle.Stop();
-    pSearchItem.reset();
-    pImpl.reset();
+    m_pSearchItem.reset();
+    m_pImpl.reset();
 }
 
 void SvxSearchDialog::Construct_Impl()
 {
-    pImpl.reset( new SearchDlg_Impl() );
-    pImpl->aSelectionTimer.SetTimeout( 500 );
-    pImpl->aSelectionTimer.SetInvokeHandler(
-        LINK( this, SvxSearchDialog, TimeoutHdl_Impl ) );
+    m_pImpl.reset(new SearchDlg_Impl());
+    m_pImpl->aSelectionTimer.SetTimeout(500);
+    m_pImpl->aSelectionTimer.SetInvokeHandler(LINK(this, SvxSearchDialog, TimeoutHdl_Impl));
     EnableControls_Impl( SearchOptionFlags::NONE );
 
     // Store old Text from m_xWordBtn
-    aCalcStr += "#";
-    aCalcStr += m_xWordBtn->get_label();
+    m_sCalcStr += "#";
+    m_sCalcStr += m_xWordBtn->get_label();
 
-    aLayoutStr = SvxResId( RID_SVXSTR_SEARCH_STYLES );
-    aLayoutWriterStr = SvxResId( RID_SVXSTR_WRITER_STYLES );
-    aLayoutCalcStr = SvxResId( RID_SVXSTR_CALC_STYLES );
-    aStylesStr = m_xLayoutBtn->get_label();
+    m_sLayoutStr = SvxResId(RID_SVXSTR_SEARCH_STYLES);
+    m_sLayoutWriterStr = SvxResId(RID_SVXSTR_WRITER_STYLES);
+    m_sLayoutCalcStr = SvxResId(RID_SVXSTR_CALC_STYLES);
+    m_sStylesStr = m_xLayoutBtn->get_label();
 
     // Get stored search-strings from the application
-    ListToStrArr_Impl(SID_SEARCHDLG_SEARCHSTRINGS,
-                       aSearchStrings, *m_xSearchLB, nRememberSize);
-    ListToStrArr_Impl(SID_SEARCHDLG_REPLACESTRINGS,
-                       aReplaceStrings, *m_xReplaceLB, nRememberSize);
+    ListToStrArr_Impl(SID_SEARCHDLG_SEARCHSTRINGS, m_aSearchStrings, *m_xSearchLB, m_nRememberSize);
+    ListToStrArr_Impl(SID_SEARCHDLG_REPLACESTRINGS, m_aReplaceStrings, *m_xReplaceLB,
+                      m_nRememberSize);
 
     InitControls_Impl();
 
     // Get attribute sets only once in constructor()
-    const SfxPoolItem* ppArgs[] = { pSearchItem.get(), nullptr };
-    SfxPoolItemHolder aResult(rBindings.GetDispatcher()->Execute(FID_SEARCH_SEARCHSET, SfxCallMode::SLOT, ppArgs));
+    const SfxPoolItem* ppArgs[] = { m_pSearchItem.get(), nullptr };
+    SfxPoolItemHolder aResult(
+        m_rBindings.GetDispatcher()->Execute(FID_SEARCH_SEARCHSET, SfxCallMode::SLOT, ppArgs));
     const SvxSetItem* pSrchSetItem(static_cast<const SvxSetItem*>(aResult.getItem()));
 
     if ( pSrchSetItem )
         InitAttrList_Impl( &pSrchSetItem->GetItemSet(), nullptr );
 
-    aResult = rBindings.GetDispatcher()->Execute(FID_SEARCH_REPLACESET, SfxCallMode::SLOT, ppArgs);
+    aResult
+        = m_rBindings.GetDispatcher()->Execute(FID_SEARCH_REPLACESET, SfxCallMode::SLOT, ppArgs);
     const SvxSetItem* pReplSetItem(static_cast<const SvxSetItem*>(aResult.getItem()));
 
     if ( pReplSetItem )
         InitAttrList_Impl( nullptr, &pReplSetItem->GetItemSet() );
 
     // Create controller and update at once
-    rBindings.EnterRegistrations();
-    pSearchController.reset(
-        new SvxSearchController( SID_SEARCH_ITEM, rBindings, *this ) );
-    pOptionsController.reset(
-        new SvxSearchController( SID_SEARCH_OPTIONS, rBindings, *this ) );
-    rBindings.LeaveRegistrations();
-    rBindings.GetDispatcher()->Execute( FID_SEARCH_ON, SfxCallMode::SLOT, ppArgs );
-    pImpl->aSelectionTimer.Start();
-
+    m_rBindings.EnterRegistrations();
+    m_pSearchController.reset(new SvxSearchController(SID_SEARCH_ITEM, m_rBindings, *this));
+    m_pOptionsController.reset(new SvxSearchController(SID_SEARCH_OPTIONS, m_rBindings, *this));
+    m_rBindings.LeaveRegistrations();
+    m_rBindings.GetDispatcher()->Execute(FID_SEARCH_ON, SfxCallMode::SLOT, ppArgs);
+    m_pImpl->aSelectionTimer.Start();
 
     if(!SvtCJKOptions::IsJapaneseFindEnabled())
     {
@@ -470,19 +444,21 @@ void SvxSearchDialog::Construct_Impl()
     }
     //component extension - show component search buttons if the commands
     // vnd.sun.star::SearchViaComponent1 and 2 are supported
-    const uno::Reference< frame::XFrame >xFrame = rBindings.GetActiveFrame();
+    const uno::Reference<frame::XFrame> xFrame = m_rBindings.GetActiveFrame();
     const uno::Reference< frame::XDispatchProvider > xDispatchProv(xFrame, uno::UNO_QUERY);
 
     bool bSearchComponent1 = false;
     bool bSearchComponent2 = false;
     if(xDispatchProv.is())
     {
-        OUString sTarget("_self");
-        pImpl->xCommand1Dispatch = xDispatchProv->queryDispatch(pImpl->aCommand1URL, sTarget, 0);
-        if (pImpl->xCommand1Dispatch.is())
+        OUString sTarget(u"_self"_ustr);
+        m_pImpl->xCommand1Dispatch
+            = xDispatchProv->queryDispatch(m_pImpl->aCommand1URL, sTarget, 0);
+        if (m_pImpl->xCommand1Dispatch.is())
             bSearchComponent1 = true;
-        pImpl->xCommand2Dispatch = xDispatchProv->queryDispatch(pImpl->aCommand2URL, sTarget, 0);
-        if (pImpl->xCommand2Dispatch.is())
+        m_pImpl->xCommand2Dispatch
+            = xDispatchProv->queryDispatch(m_pImpl->aCommand2URL, sTarget, 0);
+        if (m_pImpl->xCommand2Dispatch.is())
             bSearchComponent2 = true;
     }
 
@@ -494,22 +470,22 @@ void SvxSearchDialog::Construct_Impl()
         uno::Reference< lang::XMultiServiceFactory > xConfigurationProvider =
                 configuration::theDefaultProvider::get( comphelper::getProcessComponentContext() );
         uno::Sequence< uno::Any > aArgs {
-                    Any(OUString( "/org.openoffice.Office.Common/SearchOptions/")) };
+                    Any(u"/org.openoffice.Office.Common/SearchOptions/"_ustr) };
 
         uno::Reference< uno::XInterface > xIFace = xConfigurationProvider->createInstanceWithArguments(
-                    "com.sun.star.configuration.ConfigurationUpdateAccess",
+                    u"com.sun.star.configuration.ConfigurationUpdateAccess"_ustr,
                     aArgs);
         uno::Reference< container::XNameAccess> xDirectAccess(xIFace, uno::UNO_QUERY);
         if(xDirectAccess.is())
         {
             OUString sTemp;
-            uno::Any aRet = xDirectAccess->getByName("ComponentSearchGroupLabel");
+            uno::Any aRet = xDirectAccess->getByName(u"ComponentSearchGroupLabel"_ustr);
             aRet >>= sTemp;
             m_xComponentFrame->set_label(sTemp);
-            aRet = xDirectAccess->getByName("ComponentSearchCommandLabel1");
+            aRet = xDirectAccess->getByName(u"ComponentSearchCommandLabel1"_ustr);
             aRet >>= sTemp;
             m_xSearchComponent1PB->set_label( sTemp );
-            aRet = xDirectAccess->getByName("ComponentSearchCommandLabel2");
+            aRet = xDirectAccess->getByName(u"ComponentSearchCommandLabel2"_ustr);
             aRet >>= sTemp;
             m_xSearchComponent2PB->set_label( sTemp );
         }
@@ -531,11 +507,11 @@ void SvxSearchDialog::Construct_Impl()
 void SvxSearchDialog::Close()
 {
     // remember strings
-    if (!aSearchStrings.empty())
-        StrArrToList_Impl( SID_SEARCHDLG_SEARCHSTRINGS, aSearchStrings );
+    if (!m_aSearchStrings.empty())
+        StrArrToList_Impl(SID_SEARCHDLG_SEARCHSTRINGS, m_aSearchStrings);
 
-    if (!aReplaceStrings.empty())
-        StrArrToList_Impl( SID_SEARCHDLG_REPLACESTRINGS, aReplaceStrings );
+    if (!m_aReplaceStrings.empty())
+        StrArrToList_Impl(SID_SEARCHDLG_REPLACESTRINGS, m_aReplaceStrings);
 
     // save settings to configuration
     SvtSearchOptions aOpt;
@@ -555,9 +531,9 @@ void SvxSearchDialog::Close()
     if (IsClosing())
         return;
 
-    const SfxPoolItem* ppArgs[] = { pSearchItem.get(), nullptr };
-    rBindings.GetDispatcher()->Execute( FID_SEARCH_OFF, SfxCallMode::SLOT, ppArgs );
-    rBindings.Invalidate(SID_SEARCH_DLG);
+    const SfxPoolItem* ppArgs[] = { m_pSearchItem.get(), nullptr };
+    m_rBindings.GetDispatcher()->Execute(FID_SEARCH_OFF, SfxCallMode::SLOT, ppArgs);
+    m_rBindings.Invalidate(SID_SEARCH_DLG);
 
     SfxViewFrame* pViewFrame = SfxViewFrame::Current();
     if (pViewFrame)
@@ -567,20 +543,17 @@ void SvxSearchDialog::Close()
 TransliterationFlags SvxSearchDialog::GetTransliterationFlags() const
 {
     if (!m_xMatchCaseCB->get_active())
-        nTransliterationFlags |=  TransliterationFlags::IGNORE_CASE;
+        m_nTransliterationFlags |= TransliterationFlags::IGNORE_CASE;
     else
-        nTransliterationFlags &= ~TransliterationFlags::IGNORE_CASE;
+        m_nTransliterationFlags &= ~TransliterationFlags::IGNORE_CASE;
     if ( !m_xJapMatchFullHalfWidthCB->get_active())
-        nTransliterationFlags |=  TransliterationFlags::IGNORE_WIDTH;
+        m_nTransliterationFlags |= TransliterationFlags::IGNORE_WIDTH;
     else
-        nTransliterationFlags &= ~TransliterationFlags::IGNORE_WIDTH;
-    return nTransliterationFlags;
+        m_nTransliterationFlags &= ~TransliterationFlags::IGNORE_WIDTH;
+    return m_nTransliterationFlags;
 }
 
-void SvxSearchDialog::SetSaveToModule(bool b)
-{
-    pImpl->bSaveToModule = b;
-}
+void SvxSearchDialog::SetSaveToModule(bool b) { m_pImpl->bSaveToModule = b; }
 
 void SvxSearchDialog::SetSearchLabel(const OUString& rStr)
 {
@@ -588,22 +561,35 @@ void SvxSearchDialog::SetSearchLabel(const OUString& rStr)
     if (!rStr.isEmpty())
     {
         m_xSearchLabel->show();
-        m_xSearchIcon->show();
-        m_xSearchBox->set_background(Color(0xBD, 0xE5, 0xF8)); // same as InfobarType::INFO
+        if (m_xSearchIcon)
+        {
+            m_xSearchIcon->show();
+            const StyleSettings& rStyleSettings = Application::GetSettings().GetStyleSettings();
+            if (rStyleSettings.GetDialogColor().IsDark())
+                m_xSearchBox->set_background(Color(0x00, 0x56, 0x80));
+            else
+                m_xSearchBox->set_background(Color(0xBD, 0xE5, 0xF8)); // same as InfobarType::INFO
+        }
     }
     else
     {
-        const Size aSize = m_xSearchBox->get_preferred_size();
         m_xSearchLabel->hide();
-        m_xSearchIcon->hide();
-        m_xSearchBox->set_size_request(-1, aSize.Height());
-        m_xSearchBox->set_background(COL_TRANSPARENT);
+        if (m_xSearchIcon)
+        {
+            const Size aSize = m_xSearchBox->get_preferred_size();
+            m_xSearchIcon->hide();
+            m_xSearchBox->set_size_request(-1, aSize.Height());
+            m_xSearchBox->set_background(COL_TRANSPARENT);
+        }
     }
+
+    if (rStr == SvxResId(RID_SVXSTR_SEARCH_NOT_FOUND))
+        m_xSearchLB->set_entry_message_type(weld::EntryMessageType::Error);
 }
 
 void SvxSearchDialog::ApplyTransliterationFlags_Impl( TransliterationFlags nSettings )
 {
-    nTransliterationFlags = nSettings;
+    m_nTransliterationFlags = nSettings;
     bool bVal(nSettings & TransliterationFlags::IGNORE_CASE);
     m_xMatchCaseCB->set_active( !bVal );
     bVal = bool(nSettings & TransliterationFlags::IGNORE_WIDTH);
@@ -629,10 +615,10 @@ bool SvxSearchDialog::IsOtherOptionsExpanded() const
 void SvxSearchDialog::Activate()
 {
     // apply possible transliteration changes of the SvxSearchItem member
-    if (pSearchItem)
+    if (m_pSearchItem)
     {
-        m_xMatchCaseCB->set_active( pSearchItem->GetExact() );
-        m_xJapMatchFullHalfWidthCB->set_active( !pSearchItem->IsMatchFullHalfWidthForms() );
+        m_xMatchCaseCB->set_active(m_pSearchItem->GetExact());
+        m_xJapMatchFullHalfWidthCB->set_active(!m_pSearchItem->IsMatchFullHalfWidthForms());
     }
 
     SfxModelessDialogController::Activate();
@@ -720,9 +706,9 @@ namespace
 
 void SvxSearchDialog::ShowOptionalControls_Impl()
 {
-    DBG_ASSERT( pSearchItem, "no search item" );
+    DBG_ASSERT(m_pSearchItem, "no search item");
 
-    SvtModuleOptions::EFactory eFactory = getModule(rBindings);
+    SvtModuleOptions::EFactory eFactory = getModule(m_rBindings);
     bool bDrawApp = eFactory == SvtModuleOptions::EFactory::DRAW;
     bool bWriterApp =
         eFactory == SvtModuleOptions::EFactory::WRITER ||
@@ -744,7 +730,7 @@ void SvxSearchDialog::ShowOptionalControls_Impl()
     m_xJapOptionsCB->set_visible(SvtCJKOptions::IsJapaneseFindEnabled());
     m_xJapOptionsBtn->set_visible(SvtCJKOptions::IsJapaneseFindEnabled());
 
-    if (bWriter)
+    if (m_bWriter)
     {
         m_xAttributeBtn->show();
         m_xFormatBtn->show();
@@ -788,44 +774,44 @@ private:
 
 void SvxSearchDialog::Init_Impl( bool bSearchPattern )
 {
-    DBG_ASSERT( pSearchItem, "SearchItem == 0" );
+    DBG_ASSERT(m_pSearchItem, "SearchItem == 0");
 
     // We don't want to save any intermediate state to the module while the
     // dialog is being initialized.
     ToggleSaveToModule aNoModuleSave(*this, false);
     SvtSearchOptions aOpt;
 
-    bWriter = ( pSearchItem->GetAppFlag() == SvxSearchApp::WRITER );
+    m_bWriter = (m_pSearchItem->GetAppFlag() == SvxSearchApp::WRITER);
 
-    if ( !( nModifyFlag & ModifyFlags::Word ) )
-         m_xWordBtn->set_active( pSearchItem->GetWordOnly() );
-    if ( !( nModifyFlag & ModifyFlags::Exact ) )
-        m_xMatchCaseCB->set_active( pSearchItem->GetExact() );
-    if ( !( nModifyFlag & ModifyFlags::Backwards ) )
-        m_xReplaceBackwardsCB->set_active( bReplaceBackwards ); //adjustment to replace backwards
-    if ( !( nModifyFlag & ModifyFlags::Notes ) )
-        m_xNotesBtn->set_active( pSearchItem->GetNotes() );
-    if ( !( nModifyFlag & ModifyFlags::Selection ) )
-        m_xSelectionBtn->set_active( pSearchItem->GetSelection() );
-    if ( !( nModifyFlag & ModifyFlags::Regexp ) )
-        m_xRegExpBtn->set_active( pSearchItem->GetRegExp() );
-    if ( !( nModifyFlag & ModifyFlags::Wildcard ) )
-        m_xWildcardBtn->set_active( pSearchItem->GetWildcard() );
-    if ( !( nModifyFlag & ModifyFlags::Layout ) )
-        m_xLayoutBtn->set_active( pSearchItem->GetPattern() );
+    if (!(m_nModifyFlag & ModifyFlags::Word))
+        m_xWordBtn->set_active(m_pSearchItem->GetWordOnly());
+    if (!(m_nModifyFlag & ModifyFlags::Exact))
+        m_xMatchCaseCB->set_active(m_pSearchItem->GetExact());
+    if (!(m_nModifyFlag & ModifyFlags::Backwards))
+        m_xReplaceBackwardsCB->set_active(m_bReplaceBackwards); //adjustment to replace backwards
+    if (!(m_nModifyFlag & ModifyFlags::Notes))
+        m_xNotesBtn->set_active(m_pSearchItem->GetNotes());
+    if (!(m_nModifyFlag & ModifyFlags::Selection))
+        m_xSelectionBtn->set_active(m_pSearchItem->GetSelection());
+    if (!(m_nModifyFlag & ModifyFlags::Regexp))
+        m_xRegExpBtn->set_active(m_pSearchItem->GetRegExp());
+    if (!(m_nModifyFlag & ModifyFlags::Wildcard))
+        m_xWildcardBtn->set_active(m_pSearchItem->GetWildcard());
+    if (!(m_nModifyFlag & ModifyFlags::Layout))
+        m_xLayoutBtn->set_active(m_pSearchItem->GetPattern());
     if (m_xNotesBtn->get_active())
         m_xLayoutBtn->set_sensitive(false);
-    m_xSimilarityBox->set_active( pSearchItem->IsLevenshtein() );
+    m_xSimilarityBox->set_active(m_pSearchItem->IsLevenshtein());
     if ( m_xJapOptionsCB->get_visible() )
-        m_xJapOptionsCB->set_active( pSearchItem->IsUseAsianOptions() );
+        m_xJapOptionsCB->set_active(m_pSearchItem->IsUseAsianOptions());
     m_xIncludeDiacritics->set_active( !aOpt.IsIgnoreDiacritics_CTL() );
     if ( m_xIncludeKashida->get_visible() )
         m_xIncludeKashida->set_active( !aOpt.IsIgnoreKashida_CTL() );
-    ApplyTransliterationFlags_Impl( pSearchItem->GetTransliterationFlags() );
+    ApplyTransliterationFlags_Impl(m_pSearchItem->GetTransliterationFlags());
 
     ShowOptionalControls_Impl();
 
-    if ( pSearchItem->GetAppFlag() == SvxSearchApp::CALC )
+    if (m_pSearchItem->GetAppFlag() == SvxSearchApp::CALC)
     {
         m_xCalcGrid->show();
         m_xSearchFormattedCB->set_active( aOpt.IsSearchFormatted() );
@@ -837,7 +823,7 @@ void SvxSearchDialog::Init_Impl( bool bSearchPattern )
         m_xSearchFormattedCB->connect_toggled( aLink );
 
         ModifyFlags nModifyFlagCheck;
-        switch ( pSearchItem->GetCellType() )
+        switch (m_pSearchItem->GetCellType())
         {
             case SvxSearchCellType::FORMULA:
                 nModifyFlagCheck = ModifyFlags::Formulas;
@@ -854,20 +840,18 @@ void SvxSearchDialog::Init_Impl( bool bSearchPattern )
             default:
                 std::abort(); // cannot happen
         }
-        if ( !(nModifyFlag & nModifyFlagCheck) )
-            m_xCalcSearchInLB->set_active( static_cast<sal_Int32>(pSearchItem->GetCellType()) );
+        if (!(m_nModifyFlag & nModifyFlagCheck))
+            m_xCalcSearchInLB->set_active(static_cast<sal_Int32>(m_pSearchItem->GetCellType()));
 
-        m_xWordBtn->set_label( aCalcStr.getToken( 0, '#' ) );
+        m_xWordBtn->set_label(m_sCalcStr.getToken(0, '#'));
 
-        if ( pSearchItem->GetRowDirection() &&
-             !( nModifyFlag & ModifyFlags::Rows ) )
+        if (m_pSearchItem->GetRowDirection() && !(m_nModifyFlag & ModifyFlags::Rows))
             m_xRowsBtn->set_active(true);
-        else if ( !pSearchItem->GetRowDirection() &&
-                  !( nModifyFlag & ModifyFlags::Columns ) )
+        else if (!m_pSearchItem->GetRowDirection() && !(m_nModifyFlag & ModifyFlags::Columns))
             m_xColumnsBtn->set_active(true);
 
-        if ( !( nModifyFlag & ModifyFlags::AllTables ) )
-            m_xAllSheetsCB->set_active( pSearchItem->IsAllTables() );
+        if (!(m_nModifyFlag & ModifyFlags::AllTables))
+            m_xAllSheetsCB->set_active(m_pSearchItem->IsAllTables());
 
         // only look for formatting in Writer
         m_xFormatBtn->hide();
@@ -877,9 +861,9 @@ void SvxSearchDialog::Init_Impl( bool bSearchPattern )
     else
     {
         m_xSearchFormattedCB->hide();
-        m_xWordBtn->set_label( aCalcStr.getToken( 1, '#' ) );
+        m_xWordBtn->set_label(m_sCalcStr.getToken(1, '#'));
 
-        if ( pSearchItem->GetAppFlag() == SvxSearchApp::DRAW )
+        if (m_pSearchItem->GetAppFlag() == SvxSearchApp::DRAW)
         {
             m_xSearchAllBtn->hide();
 
@@ -896,17 +880,19 @@ void SvxSearchDialog::Init_Impl( bool bSearchPattern )
         {
             m_xWildcardBtn->hide(); /* TODO:WILDCARD do not hide for other apps if they handle it */
 
-            if ( !pSearchList )
+            if (!m_pSearchList)
             {
                 // Get attribute sets, if it not has been done already
-                const SfxPoolItem* ppArgs[] = { pSearchItem.get(), nullptr };
-                SfxPoolItemHolder aResult(rBindings.GetDispatcher()->Execute(FID_SEARCH_SEARCHSET, SfxCallMode::SLOT, ppArgs));
+                const SfxPoolItem* ppArgs[] = { m_pSearchItem.get(), nullptr };
+                SfxPoolItemHolder aResult(m_rBindings.GetDispatcher()->Execute(
+                    FID_SEARCH_SEARCHSET, SfxCallMode::SLOT, ppArgs));
                 const SvxSetItem* pSrchSetItem(static_cast<const SvxSetItem*>(aResult.getItem()));
 
                 if ( pSrchSetItem )
                     InitAttrList_Impl( &pSrchSetItem->GetItemSet(), nullptr );
 
-                aResult = rBindings.GetDispatcher()->Execute(FID_SEARCH_REPLACESET, SfxCallMode::SLOT, ppArgs);
+                aResult = m_rBindings.GetDispatcher()->Execute(FID_SEARCH_REPLACESET,
+                                                               SfxCallMode::SLOT, ppArgs);
                 const SvxSetItem* pReplSetItem(static_cast<const SvxSetItem*>(aResult.getItem()));
 
                 if ( pReplSetItem )
@@ -916,9 +902,9 @@ void SvxSearchDialog::Init_Impl( bool bSearchPattern )
     }
 
     // similarity search?
-    if ( !( nModifyFlag & ModifyFlags::Similarity ) )
-        m_xSimilarityBox->set_active( pSearchItem->IsLevenshtein() );
-    bSet = true;
+    if (!(m_nModifyFlag & ModifyFlags::Similarity))
+        m_xSimilarityBox->set_active(m_pSearchItem->IsLevenshtein());
+    m_bSet = true;
 
     FlagHdl_Impl(*m_xSimilarityBox);
     FlagHdl_Impl(*m_xJapOptionsCB);
@@ -950,7 +936,7 @@ void SvxSearchDialog::Init_Impl( bool bSearchPattern )
             m_xSearchTmplLB->clear();
             m_xReplaceTmplLB->clear();
             SfxStyleSheetBasePool* pStylePool = pShell->GetStyleSheetPool();
-            SfxStyleSheetBase* pBase = pStylePool->First(pSearchItem->GetFamily());
+            SfxStyleSheetBase* pBase = pStylePool->First(m_pSearchItem->GetFamily());
 
             while ( pBase )
             {
@@ -959,13 +945,12 @@ void SvxSearchDialog::Init_Impl( bool bSearchPattern )
                 m_xReplaceTmplLB->append_text( pBase->GetName() );
                 pBase = pStylePool->Next();
             }
-            m_xSearchTmplLB->set_active_text( pSearchItem->GetSearchString() );
-            m_xReplaceTmplLB->set_active_text( pSearchItem->GetReplaceString() );
-
+            m_xSearchTmplLB->set_active_text(m_pSearchItem->GetSearchString());
+            m_xReplaceTmplLB->set_active_text(m_pSearchItem->GetReplaceString());
         }
         m_xSearchTmplLB->show();
 
-        if ( bConstruct )
+        if (m_bConstruct)
             // Grab focus only after creating
             m_xSearchTmplLB->grab_focus();
         m_xReplaceTmplLB->show();
@@ -981,31 +966,30 @@ void SvxSearchDialog::Init_Impl( bool bSearchPattern )
     }
     else
     {
-        bool bSetSearch = !( nModifyFlag & ModifyFlags::Search );
-        bool bSetReplace = !( nModifyFlag & ModifyFlags::Replace );
+        bool bSetSearch = !(m_nModifyFlag & ModifyFlags::Search);
+        bool bSetReplace = !(m_nModifyFlag & ModifyFlags::Replace);
 
-        if ( !(pSearchItem->GetSearchString().isEmpty()) && bSetSearch )
-            m_xSearchLB->set_entry_text( pSearchItem->GetSearchString() );
-        else if (!aSearchStrings.empty())
+        if (!(m_pSearchItem->GetSearchString().isEmpty()) && bSetSearch)
+            m_xSearchLB->set_entry_text(m_pSearchItem->GetSearchString());
+        else if (!m_aSearchStrings.empty())
         {
-            bool bAttributes =
-                ( ( pSearchList && pSearchList->Count() ) ||
-                  ( pReplaceList && pReplaceList->Count() ) );
+            bool bAttributes = ((m_pSearchList && m_pSearchList->Count())
+                                || (m_pReplaceList && m_pReplaceList->Count()));
 
             if ( bSetSearch && !bAttributes )
-                m_xSearchLB->set_entry_text(aSearchStrings[0]);
+                m_xSearchLB->set_entry_text(m_aSearchStrings[0]);
 
-            OUString aReplaceTxt = pSearchItem->GetReplaceString();
+            OUString aReplaceTxt = m_pSearchItem->GetReplaceString();
 
-            if (!aReplaceStrings.empty())
-                aReplaceTxt = aReplaceStrings[0];
+            if (!m_aReplaceStrings.empty())
+                aReplaceTxt = m_aReplaceStrings[0];
 
             if ( bSetReplace && !bAttributes )
                 m_xReplaceLB->set_entry_text( aReplaceTxt );
         }
         m_xSearchLB->show();
 
-        if ( bConstruct )
+        if (m_bConstruct)
             // Grab focus only after creating
             m_xSearchLB->grab_focus();
         m_xReplaceLB->show();
@@ -1040,12 +1024,12 @@ void SvxSearchDialog::Init_Impl( bool bSearchPattern )
         EnableControl_Impl(*m_xSearchBtn);
         EnableControl_Impl(*m_xBackSearchBtn);
         EnableControl_Impl(*m_xReplaceBtn);
-        if (!bWriter || !m_xNotesBtn->get_active())
+        if (!m_bWriter || !m_xNotesBtn->get_active())
         {
             EnableControl_Impl(*m_xSearchAllBtn);
             EnableControl_Impl(*m_xReplaceAllBtn);
         }
-        if (bWriter && pSearchItem->GetNotes())
+        if (m_bWriter && m_pSearchItem->GetNotes())
         {
             m_xSearchAllBtn->set_sensitive(false);
             m_xReplaceAllBtn->set_sensitive(false);
@@ -1057,7 +1041,7 @@ void SvxSearchDialog::Init_Impl( bool bSearchPattern )
     else
         m_xNoFormatBtn->set_sensitive(false);
 
-    if ( !pSearchList )
+    if (!m_pSearchList)
     {
         m_xAttributeBtn->set_sensitive(false);
         m_xFormatBtn->set_sensitive(false);
@@ -1065,9 +1049,9 @@ void SvxSearchDialog::Init_Impl( bool bSearchPattern )
 
     if ( m_xLayoutBtn->get_active() )
     {
-        pImpl->bSaveToModule = false;
+        m_pImpl->bSaveToModule = false;
         TemplateHdl_Impl(*m_xLayoutBtn);
-        pImpl->bSaveToModule = true;
+        m_pImpl->bSaveToModule = true;
     }
 }
 
@@ -1078,8 +1062,8 @@ void SvxSearchDialog::InitAttrList_Impl( const SfxItemSet* pSSet,
     if ( !pSSet && !pRSet )
         return;
 
-    if ( pImpl->pRanges.empty() && pSSet )
-        pImpl->pRanges = pSSet->GetRanges();
+    if (m_pImpl->pRanges.empty() && pSSet)
+        m_pImpl->pRanges = pSSet->GetRanges();
 
     bool bSetOptimalLayoutSize = false;
 
@@ -1088,11 +1072,11 @@ void SvxSearchDialog::InitAttrList_Impl( const SfxItemSet* pSSet,
 
     if ( pSSet )
     {
-        pSearchList.reset(new SearchAttrItemList);
+        m_pSearchList.reset(new SearchAttrItemList);
 
         if ( pSSet->Count() )
         {
-            pSearchList->Put( *pSSet );
+            m_pSearchList->Put(*pSSet);
 
             m_xSearchAttrText->set_label( BuildAttrText_Impl( aDesc, true ) );
 
@@ -1103,18 +1087,18 @@ void SvxSearchDialog::InitAttrList_Impl( const SfxItemSet* pSSet,
                     m_xSearchAttrText->show();
                     bSetOptimalLayoutSize = true;
                 }
-                bFormat |= true;
+                m_bFormat |= true;
             }
         }
     }
 
     if ( pRSet )
     {
-        pReplaceList.reset(new SearchAttrItemList);
+        m_pReplaceList.reset(new SearchAttrItemList);
 
         if ( pRSet->Count() )
         {
-            pReplaceList->Put( *pRSet );
+            m_pReplaceList->Put(*pRSet);
 
             m_xReplaceAttrText->set_label( BuildAttrText_Impl( aDesc, false ) );
 
@@ -1125,7 +1109,7 @@ void SvxSearchDialog::InitAttrList_Impl( const SfxItemSet* pSSet,
                     m_xReplaceAttrText->show();
                     bSetOptimalLayoutSize = true;
                 }
-                bFormat |= true;
+                m_bFormat |= true;
             }
         }
     }
@@ -1146,10 +1130,10 @@ IMPL_LINK( SvxSearchDialog, FlagHdl_Impl, weld::Toggleable&, rCtrl, void )
 
 void SvxSearchDialog::ClickHdl_Impl(const weld::Widget* pCtrl)
 {
-    if ( pCtrl && !bSet )
+    if (pCtrl && !m_bSet)
         SetModifyFlag_Impl(pCtrl);
     else
-        bSet = false;
+        m_bSet = false;
 
     if (pCtrl == m_xSimilarityBox.get())
     {
@@ -1186,7 +1170,7 @@ void SvxSearchDialog::ClickHdl_Impl(const weld::Widget* pCtrl)
             EnableControl_Impl(*m_xAttributeBtn);
             m_xSimilarityBtn->set_sensitive(false);
         }
-        pSearchItem->SetLevenshtein( bIsChecked );
+        m_pSearchItem->SetLevenshtein(bIsChecked);
     }
     else if (pCtrl == m_xNotesBtn.get())
     {
@@ -1204,7 +1188,7 @@ void SvxSearchDialog::ClickHdl_Impl(const weld::Widget* pCtrl)
     }
     else
     {
-        if ( m_xLayoutBtn->get_active() && !bFormat )
+        if (m_xLayoutBtn->get_active() && !m_bFormat)
         {
             m_xWordBtn->set_active( false );
             m_xWordBtn->set_sensitive(false);
@@ -1257,14 +1241,14 @@ void SvxSearchDialog::ClickHdl_Impl(const weld::Widget* pCtrl)
             }
 
             // Search-string in place? then enable Buttons
-            bSet = true;
+            m_bSet = true;
             ModifyHdl_Impl(*m_xSearchLB);
         }
     }
 
     if (pCtrl == m_xAllSheetsCB.get())
     {
-        bSet = true;
+        m_bSet = true;
         ModifyHdl_Impl(*m_xSearchLB);
     }
 
@@ -1276,13 +1260,13 @@ void SvxSearchDialog::ClickHdl_Impl(const weld::Widget* pCtrl)
         m_xJapOptionsBtn->set_sensitive( bEnableJapOpt );
     }
 
-    if ( pImpl->bSaveToModule )
+    if (m_pImpl->bSaveToModule)
         SaveToModule_Impl();
 }
 
 IMPL_LINK(SvxSearchDialog, CommandHdl_Impl, weld::Button&, rBtn, void)
 {
-    bool bInclusive = ( m_xLayoutBtn->get_label() == aLayoutStr );
+    bool bInclusive = (m_xLayoutBtn->get_label() == m_sLayoutStr);
 
     if ( ( &rBtn == m_xSearchBtn.get() )   ||
          (&rBtn == m_xBackSearchBtn.get())  ||
@@ -1292,36 +1276,36 @@ IMPL_LINK(SvxSearchDialog, CommandHdl_Impl, weld::Button&, rBtn, void)
     {
         if ( m_xLayoutBtn->get_active() && !bInclusive )
         {
-            pSearchItem->SetSearchString ( m_xSearchTmplLB->get_active_text() );
-            pSearchItem->SetReplaceString( m_xReplaceTmplLB->get_active_text() );
+            m_pSearchItem->SetSearchString(m_xSearchTmplLB->get_active_text());
+            m_pSearchItem->SetReplaceString(m_xReplaceTmplLB->get_active_text());
         }
         else
         {
-            pSearchItem->SetSearchString ( m_xSearchLB->get_active_text() );
-            pSearchItem->SetReplaceString( m_xReplaceLB->get_active_text() );
+            m_pSearchItem->SetSearchString(m_xSearchLB->get_active_text());
+            m_pSearchItem->SetReplaceString(m_xReplaceLB->get_active_text());
 
             if ( &rBtn == m_xReplaceBtn.get() )
-                Remember_Impl( m_xReplaceLB->get_active_text(), false );
+                Remember_Impl(false);
             else
             {
-                Remember_Impl( m_xSearchLB->get_active_text(), true );
+                Remember_Impl(true);
 
                 if ( &rBtn == m_xReplaceAllBtn.get() )
-                    Remember_Impl( m_xReplaceLB->get_active_text(), false );
+                    Remember_Impl(false);
             }
         }
 
-        pSearchItem->SetRegExp( false );
-        pSearchItem->SetWildcard( false );
-        pSearchItem->SetLevenshtein( false );
+        m_pSearchItem->SetRegExp(false);
+        m_pSearchItem->SetWildcard(false);
+        m_pSearchItem->SetLevenshtein(false);
         if (GetCheckBoxValue(*m_xRegExpBtn))
-            pSearchItem->SetRegExp( true );
+            m_pSearchItem->SetRegExp(true);
         else if (GetCheckBoxValue(*m_xWildcardBtn))
-            pSearchItem->SetWildcard( true );
+            m_pSearchItem->SetWildcard(true);
         else if (GetCheckBoxValue(*m_xSimilarityBox))
-            pSearchItem->SetLevenshtein( true );
+            m_pSearchItem->SetLevenshtein(true);
 
-        pSearchItem->SetWordOnly(GetCheckBoxValue(*m_xWordBtn));
+        m_pSearchItem->SetWordOnly(GetCheckBoxValue(*m_xWordBtn));
 
         bool bSetBackwards = false;
         if( &rBtn == m_xBackSearchBtn.get())
@@ -1331,69 +1315,64 @@ IMPL_LINK(SvxSearchDialog, CommandHdl_Impl, weld::Button&, rBtn, void)
         else if( &rBtn == m_xReplaceBtn.get())
         {
             bSetBackwards = GetCheckBoxValue(*m_xReplaceBackwardsCB);
-            bReplaceBackwards = GetCheckBoxValue(*m_xReplaceBackwardsCB);
+            m_bReplaceBackwards = GetCheckBoxValue(*m_xReplaceBackwardsCB);
         }
 
-        pSearchItem->SetBackward(bSetBackwards);
+        m_pSearchItem->SetBackward(bSetBackwards);
 
-        pSearchItem->SetNotes(GetCheckBoxValue(*m_xNotesBtn));
-        pSearchItem->SetPattern(GetCheckBoxValue(*m_xLayoutBtn));
-        pSearchItem->SetSelection(GetCheckBoxValue(*m_xSelectionBtn));
-        pSearchItem->SetUseAsianOptions(GetCheckBoxValue(*m_xJapOptionsCB));
+        m_pSearchItem->SetNotes(GetCheckBoxValue(*m_xNotesBtn));
+        m_pSearchItem->SetPattern(GetCheckBoxValue(*m_xLayoutBtn));
+        m_pSearchItem->SetSelection(GetCheckBoxValue(*m_xSelectionBtn));
+        m_pSearchItem->SetUseAsianOptions(GetCheckBoxValue(*m_xJapOptionsCB));
         TransliterationFlags nFlags = GetTransliterationFlags();
-        if( !pSearchItem->IsUseAsianOptions())
+        if (!m_pSearchItem->IsUseAsianOptions())
             nFlags &= TransliterationFlags::IGNORE_CASE |
                       TransliterationFlags::IGNORE_WIDTH;
         if (GetNegatedCheckBoxValue(*m_xIncludeDiacritics))
             nFlags |= TransliterationFlags::IGNORE_DIACRITICS_CTL;
         if (GetNegatedCheckBoxValue(*m_xIncludeKashida))
             nFlags |= TransliterationFlags::IGNORE_KASHIDA_CTL;
-        pSearchItem->SetTransliterationFlags( nFlags );
+        m_pSearchItem->SetTransliterationFlags(nFlags);
 
-        if ( !bWriter )
+        if (!m_bWriter)
         {
             if ( m_xCalcSearchInLB->get_active() != -1)
-                pSearchItem->SetCellType( static_cast<SvxSearchCellType>(m_xCalcSearchInLB->get_active()) );
+                m_pSearchItem->SetCellType(
+                    static_cast<SvxSearchCellType>(m_xCalcSearchInLB->get_active()));
 
-            pSearchItem->SetRowDirection( m_xRowsBtn->get_active() );
-            pSearchItem->SetAllTables( m_xAllSheetsCB->get_active() );
-            pSearchItem->SetSearchFormatted( m_xSearchFormattedCB->get_active() );
+            m_pSearchItem->SetRowDirection(m_xRowsBtn->get_active());
+            m_pSearchItem->SetAllTables(m_xAllSheetsCB->get_active());
+            m_pSearchItem->SetSearchFormatted(m_xSearchFormattedCB->get_active());
         }
 
         if ((&rBtn == m_xSearchBtn.get()) ||  (&rBtn == m_xBackSearchBtn.get()))
-            pSearchItem->SetCommand( SvxSearchCmd::FIND );
+            m_pSearchItem->SetCommand(SvxSearchCmd::FIND);
         else if ( &rBtn == m_xSearchAllBtn.get() )
-            pSearchItem->SetCommand( SvxSearchCmd::FIND_ALL );
+            m_pSearchItem->SetCommand(SvxSearchCmd::FIND_ALL);
         else if ( &rBtn == m_xReplaceBtn.get() )
-            pSearchItem->SetCommand( SvxSearchCmd::REPLACE );
+            m_pSearchItem->SetCommand(SvxSearchCmd::REPLACE);
         else if ( &rBtn == m_xReplaceAllBtn.get() )
-            pSearchItem->SetCommand( SvxSearchCmd::REPLACE_ALL );
+            m_pSearchItem->SetCommand(SvxSearchCmd::REPLACE_ALL);
 
         // when looking for templates, delete format lists
-        if ( !bFormat && pSearchItem->GetPattern() )
+        if (!m_bFormat && m_pSearchItem->GetPattern())
         {
-            if ( pSearchList )
-                pSearchList->Clear();
+            if (m_pSearchList)
+                m_pSearchList->Clear();
 
-            if ( pReplaceList )
-                pReplaceList->Clear();
+            if (m_pReplaceList)
+                m_pReplaceList->Clear();
         }
-        nModifyFlag = ModifyFlags::NONE;
-        const SfxPoolItem* ppArgs[] = { pSearchItem.get(), nullptr };
-        rBindings.ExecuteSynchron( FID_SEARCH_NOW, ppArgs );
+        m_nModifyFlag = ModifyFlags::NONE;
+        const SfxPoolItem* ppArgs[] = { m_pSearchItem.get(), nullptr };
+        m_rBindings.ExecuteSynchron(FID_SEARCH_NOW, ppArgs);
     }
     else if ( &rBtn == m_xCloseBtn.get() )
     {
         if ( !m_xLayoutBtn->get_active() || bInclusive )
         {
-            OUString aStr( m_xSearchLB->get_active_text() );
-
-            if ( !aStr.isEmpty() )
-                Remember_Impl( aStr, true );
-            aStr = m_xReplaceLB->get_active_text();
-
-            if ( !aStr.isEmpty() )
-                Remember_Impl( aStr, false );
+            Remember_Impl(true);
+            Remember_Impl(false);
         }
         SaveToModule_Impl();
         Close();
@@ -1401,32 +1380,30 @@ IMPL_LINK(SvxSearchDialog, CommandHdl_Impl, weld::Button&, rBtn, void)
     else if (&rBtn == m_xSimilarityBtn.get())
     {
         SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-        ScopedVclPtr<AbstractSvxSearchSimilarityDialog> pDlg(pFact->CreateSvxSearchSimilarityDialog(m_xDialog.get(),
-                                                                    pSearchItem->IsLEVRelaxed(),
-                                                                    pSearchItem->GetLEVOther(),
-                                                                    pSearchItem->GetLEVShorter(),
-                                                                    pSearchItem->GetLEVLonger() ));
+        ScopedVclPtr<AbstractSvxSearchSimilarityDialog> pDlg(pFact->CreateSvxSearchSimilarityDialog(
+            m_xDialog.get(), m_pSearchItem->IsLEVRelaxed(), m_pSearchItem->GetLEVOther(),
+            m_pSearchItem->GetLEVShorter(), m_pSearchItem->GetLEVLonger()));
         if ( executeSubDialog(pDlg.get()) == RET_OK )
         {
-            pSearchItem->SetLEVRelaxed( pDlg->IsRelaxed() );
-            pSearchItem->SetLEVOther( pDlg->GetOther() );
-            pSearchItem->SetLEVShorter( pDlg->GetShorter() );
-            pSearchItem->SetLEVLonger( pDlg->GetLonger() );
+            m_pSearchItem->SetLEVRelaxed(pDlg->IsRelaxed());
+            m_pSearchItem->SetLEVOther(pDlg->GetOther());
+            m_pSearchItem->SetLEVShorter(pDlg->GetShorter());
+            m_pSearchItem->SetLEVLonger(pDlg->GetLonger());
             SaveToModule_Impl();
         }
     }
     else if (&rBtn == m_xJapOptionsBtn.get())
     {
         SfxItemSet aSet( SfxGetpApp()->GetPool() );
-        pSearchItem->SetTransliterationFlags( GetTransliterationFlags() );
+        m_pSearchItem->SetTransliterationFlags(GetTransliterationFlags());
         SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-        ScopedVclPtr<AbstractSvxJSearchOptionsDialog> aDlg(pFact->CreateSvxJSearchOptionsDialog(m_xDialog.get(), aSet,
-                pSearchItem->GetTransliterationFlags() ));
+        ScopedVclPtr<AbstractSvxJSearchOptionsDialog> aDlg(pFact->CreateSvxJSearchOptionsDialog(
+            m_xDialog.get(), aSet, m_pSearchItem->GetTransliterationFlags()));
         int nRet = executeSubDialog(aDlg.get());
         if (RET_OK == nRet) //! true only if FillItemSet of SvxJSearchOptionsPage returns true
         {
             TransliterationFlags nFlags = aDlg->GetTransliterationFlags();
-            pSearchItem->SetTransliterationFlags( nFlags );
+            m_pSearchItem->SetTransliterationFlags(nFlags);
             ApplyTransliterationFlags_Impl( nFlags );
         }
     }
@@ -1440,13 +1417,13 @@ IMPL_LINK(SvxSearchDialog, CommandHdl_Impl, weld::Button&, rBtn, void)
         pArgs[1].Value <<= m_xDialog->GetXWindow();
         if (&rBtn == m_xSearchComponent1PB.get())
         {
-            if ( pImpl->xCommand1Dispatch.is() )
-                pImpl->xCommand1Dispatch->dispatch(pImpl->aCommand1URL, aArgs);
+            if (m_pImpl->xCommand1Dispatch.is())
+                m_pImpl->xCommand1Dispatch->dispatch(m_pImpl->aCommand1URL, aArgs);
         }
         else
         {
-            if ( pImpl->xCommand2Dispatch.is() )
-                pImpl->xCommand2Dispatch->dispatch(pImpl->aCommand2URL, aArgs);
+            if (m_pImpl->xCommand2Dispatch.is())
+                m_pImpl->xCommand2Dispatch->dispatch(m_pImpl->aCommand2URL, aArgs);
         }
     }
 }
@@ -1454,13 +1431,13 @@ IMPL_LINK(SvxSearchDialog, CommandHdl_Impl, weld::Button&, rBtn, void)
 
 IMPL_LINK( SvxSearchDialog, ModifyHdl_Impl, weld::ComboBox&, rEd, void )
 {
-    if ( !bSet )
+    if (!m_bSet)
         SetModifyFlag_Impl( &rEd );
     else
-        bSet = false;
+        m_bSet = false;
 
     // Calc allows searching for empty cells.
-    bool bAllowEmptySearch = (pSearchItem->GetAppFlag() == SvxSearchApp::CALC);
+    bool bAllowEmptySearch = (m_pSearchItem->GetAppFlag() == SvxSearchApp::CALC);
 
     if (&rEd != m_xSearchLB.get() && &rEd != m_xReplaceLB.get())
         return;
@@ -1476,7 +1453,7 @@ IMPL_LINK( SvxSearchDialog, ModifyHdl_Impl, weld::ComboBox&, rEd, void )
         EnableControl_Impl(*m_xSearchBtn);
         EnableControl_Impl(*m_xBackSearchBtn);
         EnableControl_Impl(*m_xReplaceBtn);
-        if (!bWriter || !m_xNotesBtn->get_active())
+        if (!m_bWriter || !m_xNotesBtn->get_active())
         {
             EnableControl_Impl(*m_xSearchAllBtn);
             EnableControl_Impl(*m_xReplaceAllBtn);
@@ -1495,21 +1472,21 @@ IMPL_LINK( SvxSearchDialog, ModifyHdl_Impl, weld::ComboBox&, rEd, void )
 
 IMPL_LINK_NOARG(SvxSearchDialog, TemplateHdl_Impl, weld::Toggleable&, void)
 {
-    if ( pImpl->bSaveToModule )
+    if (m_pImpl->bSaveToModule)
         SaveToModule_Impl();
 
-    if ( bFormat )
+    if (m_bFormat)
         return;
     OUString sDesc;
 
     if ( m_xLayoutBtn->get_active() )
     {
-        if ( !pFamilyController )
+        if (!m_pFamilyController)
         {
             sal_uInt16 nId = 0;
 
             // Enable templates controller
-            switch ( pSearchItem->GetFamily() )
+            switch (m_pSearchItem->GetFamily())
             {
                 case SfxStyleFamily::Char:
                     nId = SID_STYLE_FAMILY1; break;
@@ -1530,10 +1507,9 @@ IMPL_LINK_NOARG(SvxSearchDialog, TemplateHdl_Impl, weld::Toggleable&, void)
                     OSL_FAIL( "StyleSheetFamily was changed?" );
             }
 
-            rBindings.EnterRegistrations();
-            pFamilyController.reset(
-                new SvxSearchController( nId, rBindings, *this ) );
-            rBindings.LeaveRegistrations();
+            m_rBindings.EnterRegistrations();
+            m_pFamilyController.reset(new SvxSearchController(nId, m_rBindings, *this));
+            m_rBindings.LeaveRegistrations();
             m_xSearchTmplLB->clear();
             m_xReplaceTmplLB->clear();
 
@@ -1547,7 +1523,7 @@ IMPL_LINK_NOARG(SvxSearchDialog, TemplateHdl_Impl, weld::Toggleable&, void)
 
             if(!sDesc.isEmpty())
             {
-                if (!m_xReplaceAttrText->get_visible() || !m_xReplaceAttrText->get_visible())
+                if (!m_xSearchAttrText->get_visible() || !m_xReplaceAttrText->get_visible())
                 {
                     m_xSearchAttrText->show();
                     m_xReplaceAttrText->show();
@@ -1564,9 +1540,9 @@ IMPL_LINK_NOARG(SvxSearchDialog, TemplateHdl_Impl, weld::Toggleable&, void)
     else
     {
         // Disable templates controller
-        rBindings.EnterRegistrations();
-        pFamilyController.reset();
-        rBindings.LeaveRegistrations();
+        m_rBindings.EnterRegistrations();
+        m_pFamilyController.reset();
+        m_rBindings.LeaveRegistrations();
 
         m_xSearchLB->show();
         m_xReplaceLB->show();
@@ -1578,7 +1554,7 @@ IMPL_LINK_NOARG(SvxSearchDialog, TemplateHdl_Impl, weld::Toggleable&, void)
 
         if(!sDesc.isEmpty())
         {
-            if (!m_xReplaceAttrText->get_visible() || !m_xReplaceAttrText->get_visible())
+            if (!m_xSearchAttrText->get_visible() || !m_xReplaceAttrText->get_visible())
             {
                 m_xSearchAttrText->show();
                 m_xReplaceAttrText->show();
@@ -1590,38 +1566,43 @@ IMPL_LINK_NOARG(SvxSearchDialog, TemplateHdl_Impl, weld::Toggleable&, void)
         EnableControl_Impl(*m_xAttributeBtn);
         EnableControl_Impl(*m_xSimilarityBox);
 
-        FocusHdl_Impl( bSearch ? *m_xSearchLB : *m_xReplaceLB );
+        FocusHdl_Impl(m_bSearch ? *m_xSearchLB : *m_xReplaceLB);
     }
-    bSet = true;
-    pImpl->bSaveToModule = false;
+    m_bSet = true;
+    m_pImpl->bSaveToModule = false;
     FlagHdl_Impl(*m_xLayoutBtn);
-    pImpl->bSaveToModule = true;
+    m_pImpl->bSaveToModule = true;
 }
 
-void SvxSearchDialog::Remember_Impl( const OUString &rStr, bool _bSearch )
+void SvxSearchDialog::Remember_Impl(bool _bSearch)
 {
-    if ( rStr.isEmpty() )
+    std::vector<OUString>& rArr = _bSearch ? m_aSearchStrings : m_aReplaceStrings;
+    weld::ComboBox& rListBox = _bSearch ? *m_xSearchLB : *m_xReplaceLB;
+
+    const OUString sText = rListBox.get_active_text();
+    if (sText.isEmpty())
         return;
 
-    std::vector<OUString>* pArr = _bSearch ? &aSearchStrings : &aReplaceStrings;
-    weld::ComboBox* pListBox = _bSearch ? m_xSearchLB.get() : m_xReplaceLB.get();
-
     // tdf#154818 - rearrange the search items
-    const auto nPos = pListBox->find_text(rStr);
+    const int nPos = rListBox.find_text(sText);
+    if (nPos == 0 && !rArr.empty() && rArr.at(0) == sText)
+        // nothing to do, is already the first item
+        return;
+
     if (nPos != -1)
     {
-        pListBox->remove(nPos);
-        pArr->erase(pArr->begin() + nPos);
+        rListBox.remove(nPos);
+        rArr.erase(rArr.begin() + nPos);
     }
-    else if (pListBox->get_count() >= nRememberSize)
+    else if (rListBox.get_count() >= m_nRememberSize)
     {
         // delete oldest entry at maximum occupancy (ListBox and Array)
-        pListBox->remove(nRememberSize - 1);
-        pArr->erase(pArr->begin() + nRememberSize - 1);
+        rListBox.remove(m_nRememberSize - 1);
+        rArr.erase(rArr.begin() + m_nRememberSize - 1);
     }
 
-    pArr->insert(pArr->begin(), rStr);
-    pListBox->insert_text(0, rStr);
+    rArr.insert(rArr.begin(), sText);
+    rListBox.insert_text(0, sText);
 }
 
 void SvxSearchDialog::TemplatesChanged_Impl( SfxStyleSheetBasePool& rPool )
@@ -1632,7 +1613,7 @@ void SvxSearchDialog::TemplatesChanged_Impl( SfxStyleSheetBasePool& rPool )
     m_xReplaceTmplLB->clear();
     m_xSearchTmplLB->freeze();
     m_xReplaceTmplLB->freeze();
-    SfxStyleSheetBase* pBase = rPool.First(pSearchItem->GetFamily());
+    SfxStyleSheetBase* pBase = rPool.First(m_pSearchItem->GetFamily());
 
     while ( pBase )
     {
@@ -1665,29 +1646,28 @@ void SvxSearchDialog::TemplatesChanged_Impl( SfxStyleSheetBasePool& rPool )
 
 void SvxSearchDialog::EnableControls_Impl( const SearchOptionFlags nFlags )
 {
-    if ( nFlags == nOptions )
+    if (nFlags == m_nOptions)
         return;
     else
-        nOptions = nFlags;
+        m_nOptions = nFlags;
 
     bool bNoSearch = true;
 
-    bool bEnableSearch = bool( SearchOptionFlags::SEARCH & nOptions );
+    bool bEnableSearch = bool(SearchOptionFlags::SEARCH & m_nOptions);
     m_xSearchBtn->set_sensitive(bEnableSearch);
     m_xBackSearchBtn->set_sensitive(bEnableSearch);
 
     if( bEnableSearch )
         bNoSearch = false;
 
-
-    if ( SearchOptionFlags::SEARCHALL & nOptions )
+    if (SearchOptionFlags::SEARCHALL & m_nOptions)
     {
         m_xSearchAllBtn->set_sensitive(true);
         bNoSearch = false;
     }
     else
         m_xSearchAllBtn->set_sensitive(false);
-    if ( SearchOptionFlags::REPLACE & nOptions )
+    if (SearchOptionFlags::REPLACE & m_nOptions)
     {
         m_xReplaceBtn->set_sensitive(true);
         m_xReplaceFrame->set_sensitive(true);
@@ -1702,7 +1682,7 @@ void SvxSearchDialog::EnableControls_Impl( const SearchOptionFlags nFlags )
         m_xReplaceLB->set_sensitive(false);
         m_xReplaceTmplLB->set_sensitive(false);
     }
-    if ( SearchOptionFlags::REPLACE_ALL & nOptions )
+    if (SearchOptionFlags::REPLACE_ALL & m_nOptions)
     {
         m_xReplaceAllBtn->set_sensitive(true);
         bNoSearch = false;
@@ -1716,11 +1696,11 @@ void SvxSearchDialog::EnableControls_Impl( const SearchOptionFlags nFlags )
     m_xSearchLB->set_sensitive( !bNoSearch );
     m_xNotesBtn->set_sensitive(true);
 
-    if ( SearchOptionFlags::WHOLE_WORDS & nOptions )
+    if (SearchOptionFlags::WHOLE_WORDS & m_nOptions)
         m_xWordBtn->set_sensitive(true);
     else
         m_xWordBtn->set_sensitive(false);
-    if ( SearchOptionFlags::BACKWARDS & nOptions )
+    if (SearchOptionFlags::BACKWARDS & m_nOptions)
     {
         m_xBackSearchBtn->set_sensitive(true);
         m_xReplaceBackwardsCB->set_sensitive(true);
@@ -1730,27 +1710,27 @@ void SvxSearchDialog::EnableControls_Impl( const SearchOptionFlags nFlags )
         m_xBackSearchBtn->set_sensitive(false);
         m_xReplaceBackwardsCB->set_sensitive(false);
     }
-    if ( SearchOptionFlags::REG_EXP & nOptions )
+    if (SearchOptionFlags::REG_EXP & m_nOptions)
         m_xRegExpBtn->set_sensitive(true);
     else
         m_xRegExpBtn->set_sensitive(false);
-    if ( SearchOptionFlags::WILDCARD & nOptions )
+    if (SearchOptionFlags::WILDCARD & m_nOptions)
         m_xWildcardBtn->set_sensitive(true);
     else
         m_xWildcardBtn->set_sensitive(false);
-    if ( SearchOptionFlags::EXACT & nOptions )
+    if (SearchOptionFlags::EXACT & m_nOptions)
         m_xMatchCaseCB->set_sensitive(true);
     else
         m_xMatchCaseCB->set_sensitive(false);
-    if ( SearchOptionFlags::SELECTION & nOptions )
+    if (SearchOptionFlags::SELECTION & m_nOptions)
         m_xSelectionBtn->set_sensitive(true);
     else
         m_xSelectionBtn->set_sensitive(false);
-    if ( SearchOptionFlags::FAMILIES & nOptions )
+    if (SearchOptionFlags::FAMILIES & m_nOptions)
         m_xLayoutBtn->set_sensitive(true);
     else
         m_xLayoutBtn->set_sensitive(false);
-    if ( SearchOptionFlags::FORMAT & nOptions )
+    if (SearchOptionFlags::FORMAT & m_nOptions)
     {
         m_xAttributeBtn->set_sensitive(true);
         m_xFormatBtn->set_sensitive(true);
@@ -1763,7 +1743,7 @@ void SvxSearchDialog::EnableControls_Impl( const SearchOptionFlags nFlags )
         m_xNoFormatBtn->set_sensitive(false);
     }
 
-    if ( SearchOptionFlags::SIMILARITY & nOptions )
+    if (SearchOptionFlags::SIMILARITY & m_nOptions)
     {
         m_xSimilarityBox->set_sensitive(true);
         m_xSimilarityBtn->set_sensitive(true);
@@ -1774,10 +1754,9 @@ void SvxSearchDialog::EnableControls_Impl( const SearchOptionFlags nFlags )
         m_xSimilarityBtn->set_sensitive(false);
     }
 
-    if ( pSearchItem )
+    if (m_pSearchItem)
     {
-        Init_Impl( pSearchItem->GetPattern() &&
-                   ( !pSearchList || !pSearchList->Count() ) );
+        Init_Impl(m_pSearchItem->GetPattern() && (!m_pSearchList || !m_pSearchList->Count()));
         if (SvxSearchDialog::IsOtherOptionsExpanded())
             m_xOtherOptionsExpander->set_expanded(true);
     }
@@ -1785,35 +1764,33 @@ void SvxSearchDialog::EnableControls_Impl( const SearchOptionFlags nFlags )
 
 void SvxSearchDialog::EnableControl_Impl(const weld::Widget& rCtrl)
 {
-    if (m_xSearchBtn.get() == &rCtrl && ( SearchOptionFlags::SEARCH & nOptions ) )
+    if (m_xSearchBtn.get() == &rCtrl && (SearchOptionFlags::SEARCH & m_nOptions))
     {
         m_xComponentFrame->set_sensitive(true);
         m_xSearchBtn->set_sensitive(true);
         return;
     }
-    if ( m_xSearchAllBtn.get() == &rCtrl &&
-         ( SearchOptionFlags::SEARCHALL & nOptions )  )
+    if (m_xSearchAllBtn.get() == &rCtrl && (SearchOptionFlags::SEARCHALL & m_nOptions))
     {
         m_xSearchAllBtn->set_sensitive(true);
         return;
     }
-    if ( m_xReplaceBtn.get() == &rCtrl && ( SearchOptionFlags::REPLACE & nOptions )  )
+    if (m_xReplaceBtn.get() == &rCtrl && (SearchOptionFlags::REPLACE & m_nOptions))
     {
         m_xReplaceBtn->set_sensitive(true);
         return;
     }
-    if ( m_xReplaceAllBtn.get() == &rCtrl &&
-         ( SearchOptionFlags::REPLACE_ALL & nOptions ) )
+    if (m_xReplaceAllBtn.get() == &rCtrl && (SearchOptionFlags::REPLACE_ALL & m_nOptions))
     {
         m_xReplaceAllBtn->set_sensitive(true);
         return;
     }
-    if ( m_xWordBtn.get() == &rCtrl && ( SearchOptionFlags::WHOLE_WORDS & nOptions ) )
+    if (m_xWordBtn.get() == &rCtrl && (SearchOptionFlags::WHOLE_WORDS & m_nOptions))
     {
         m_xWordBtn->set_sensitive(true);
         return;
     }
-    if ( SearchOptionFlags::BACKWARDS & nOptions )
+    if (SearchOptionFlags::BACKWARDS & m_nOptions)
     {
         if( m_xBackSearchBtn.get() == &rCtrl )
         {
@@ -1831,51 +1808,50 @@ void SvxSearchDialog::EnableControl_Impl(const weld::Widget& rCtrl)
         m_xNotesBtn->set_sensitive(true);
         return;
     }
-    if ( m_xRegExpBtn.get() == &rCtrl && ( SearchOptionFlags::REG_EXP & nOptions )
+    if (m_xRegExpBtn.get() == &rCtrl && (SearchOptionFlags::REG_EXP & m_nOptions)
         && !m_xSimilarityBox->get_active() && !m_xWildcardBtn->get_active())
     {
         m_xRegExpBtn->set_sensitive(true);
         return;
     }
-    if ( m_xWildcardBtn.get() == &rCtrl && ( SearchOptionFlags::WILDCARD & nOptions )
+    if (m_xWildcardBtn.get() == &rCtrl && (SearchOptionFlags::WILDCARD & m_nOptions)
         && !m_xSimilarityBox->get_active() && !m_xRegExpBtn->get_active())
     {
         m_xWildcardBtn->set_sensitive(true);
         return;
     }
-    if ( m_xMatchCaseCB.get() == &rCtrl && ( SearchOptionFlags::EXACT & nOptions ) )
+    if (m_xMatchCaseCB.get() == &rCtrl && (SearchOptionFlags::EXACT & m_nOptions))
     {
         if (!m_xJapOptionsCB->get_active())
             m_xMatchCaseCB->set_sensitive(true);
         return;
     }
-    if ( m_xSelectionBtn.get() == &rCtrl && ( SearchOptionFlags::SELECTION & nOptions ) )
+    if (m_xSelectionBtn.get() == &rCtrl && (SearchOptionFlags::SELECTION & m_nOptions))
     {
         m_xSelectionBtn->set_sensitive(true);
         return;
     }
-    if ( m_xLayoutBtn.get() == &rCtrl && ( SearchOptionFlags::FAMILIES & nOptions ) )
+    if (m_xLayoutBtn.get() == &rCtrl && (SearchOptionFlags::FAMILIES & m_nOptions))
     {
         m_xLayoutBtn->set_sensitive(true);
         return;
     }
-    if ( m_xAttributeBtn.get() == &rCtrl
-         && ( SearchOptionFlags::FORMAT & nOptions )
-         && pSearchList )
+    if (m_xAttributeBtn.get() == &rCtrl && (SearchOptionFlags::FORMAT & m_nOptions)
+        && m_pSearchList)
     {
-        m_xAttributeBtn->set_sensitive( pImpl->bFocusOnSearch );
+        m_xAttributeBtn->set_sensitive(m_pImpl->bFocusOnSearch);
     }
-    if ( m_xFormatBtn.get() == &rCtrl && ( SearchOptionFlags::FORMAT & nOptions ) )
+    if (m_xFormatBtn.get() == &rCtrl && (SearchOptionFlags::FORMAT & m_nOptions))
     {
         m_xFormatBtn->set_sensitive(true);
         return;
     }
-    if ( m_xNoFormatBtn.get() == &rCtrl && ( SearchOptionFlags::FORMAT & nOptions ) )
+    if (m_xNoFormatBtn.get() == &rCtrl && (SearchOptionFlags::FORMAT & m_nOptions))
     {
         m_xNoFormatBtn->set_sensitive(true);
         return;
     }
-    if ( m_xSimilarityBox.get() == &rCtrl && ( SearchOptionFlags::SIMILARITY & nOptions )
+    if (m_xSimilarityBox.get() == &rCtrl && (SearchOptionFlags::SIMILARITY & m_nOptions)
         && !m_xRegExpBtn->get_active() && !m_xWildcardBtn->get_active())
     {
         m_xSimilarityBox->set_sensitive(true);
@@ -1890,9 +1866,8 @@ void SvxSearchDialog::SetItem_Impl( const SvxSearchItem* pItem )
     //TODO: save pItem and process later if m_executingSubDialog?
     if ( pItem && !m_executingSubDialog )
     {
-        pSearchItem.reset(pItem->Clone());
-        Init_Impl( pSearchItem->GetPattern() &&
-                   ( !pSearchList || !pSearchList->Count() ) );
+        m_pSearchItem.reset(pItem->Clone());
+        Init_Impl(m_pSearchItem->GetPattern() && (!m_pSearchList || !m_pSearchList->Count()));
     }
 }
 
@@ -1903,9 +1878,9 @@ IMPL_LINK(SvxSearchDialog, FocusHdl_Impl, weld::Widget&, rControl, void)
     if (pCtrl == m_xSearchLB.get())
     {
         if (pCtrl->has_focus())
-            pImpl->bFocusOnSearch = true;
+            m_pImpl->bFocusOnSearch = true;
         pCtrl = m_xSearchLB.get();
-        bSearch = true;
+        m_bSearch = true;
 
         if( nTxtLen )
             EnableControl_Impl(*m_xNoFormatBtn);
@@ -1915,9 +1890,9 @@ IMPL_LINK(SvxSearchDialog, FocusHdl_Impl, weld::Widget&, rControl, void)
     }
     else
     {
-        pImpl->bFocusOnSearch = false;
+        m_pImpl->bFocusOnSearch = false;
         pCtrl = m_xReplaceLB.get();
-        bSearch = false;
+        m_bSearch = false;
 
         if (!m_xReplaceAttrText->get_label().isEmpty())
             EnableControl_Impl(*m_xNoFormatBtn);
@@ -1925,17 +1900,17 @@ IMPL_LINK(SvxSearchDialog, FocusHdl_Impl, weld::Widget&, rControl, void)
             m_xNoFormatBtn->set_sensitive(false);
         m_xAttributeBtn->set_sensitive(false);
     }
-    bSet = true;
+    m_bSet = true;
 
     weld::ComboBox &rComboBox = dynamic_cast<weld::ComboBox&>(*pCtrl);
     rComboBox.select_entry_region(0, -1);
     ModifyHdl_Impl(rComboBox);
 
-    if (bFormat && nTxtLen)
-        m_xLayoutBtn->set_label(aLayoutStr);
+    if (m_bFormat && nTxtLen)
+        m_xLayoutBtn->set_label(m_sLayoutStr);
     else
     {
-        SvtModuleOptions::EFactory eFactory = getModule(rBindings);
+        SvtModuleOptions::EFactory eFactory = getModule(m_rBindings);
         bool bWriterApp =
             eFactory == SvtModuleOptions::EFactory::WRITER ||
             eFactory == SvtModuleOptions::EFactory::WRITERWEB ||
@@ -1943,13 +1918,13 @@ IMPL_LINK(SvxSearchDialog, FocusHdl_Impl, weld::Widget&, rControl, void)
         bool bCalcApp = eFactory == SvtModuleOptions::EFactory::CALC;
 
         if (bWriterApp)
-            m_xLayoutBtn->set_label(aLayoutWriterStr);
+            m_xLayoutBtn->set_label(m_sLayoutWriterStr);
         else
         {
             if (bCalcApp)
-                m_xLayoutBtn->set_label(aLayoutCalcStr);
+                m_xLayoutBtn->set_label(m_sLayoutCalcStr);
             else
-                m_xLayoutBtn->set_label(aStylesStr);
+                m_xLayoutBtn->set_label(m_sStylesStr);
         }
     }
 }
@@ -1965,37 +1940,43 @@ IMPL_LINK_NOARG(SvxSearchDialog, FormatHdl_Impl, weld::Button&, void)
 
     DBG_ASSERT( pSh, "no DocShell" );
 
-    if ( !pSh || pImpl->pRanges.empty() )
+    if (!pSh || m_pImpl->pRanges.empty())
         return;
 
     SfxItemPool& rPool = pSh->GetPool();
-    SfxItemSet aSet(rPool, pImpl->pRanges);
+    SfxItemSet aSet(rPool, m_pImpl->pRanges);
 
     aSet.MergeRange(SID_ATTR_PARA_MODEL, SID_ATTR_PARA_MODEL);
 
-    sal_uInt16 nBrushWhich = pSh->GetPool().GetWhich(SID_ATTR_BRUSH);
+    sal_uInt16 nBrushWhich = pSh->GetPool().GetWhichIDFromSlotID(SID_ATTR_BRUSH);
     aSet.MergeRange(nBrushWhich, nBrushWhich);
 
     aSet.MergeRange(XATTR_FILL_FIRST, XATTR_FILL_LAST);
 
     OUString aTxt;
 
-    aSet.InvalidateAllItems();
+    // ITEM: here we have a problem due to the hand-made ItemSet-like
+    // SearchAttrItemList. The state 'invalid' seems to be used as unused
+    // marker. It should be changed to use SfxPoolItemHolder and not need
+    // that. For now, set by using an own loop to set to that state
+    SfxWhichIter aIter(aSet);
+    for ( sal_uInt16 nWh = aIter.FirstWhich(); nWh != 0; nWh = aIter.NextWhich() )
+        aSet.InvalidateItem(nWh);
     aSet.Put(SvxBrushItem(nBrushWhich));
 
-    if ( bSearch )
+    if (m_bSearch)
     {
         aTxt = SvxResId( RID_SVXSTR_SEARCH );
-        pSearchList->Get( aSet );
+        m_pSearchList->Get(aSet);
     }
     else
     {
         aTxt = SvxResId( RID_SVXSTR_REPLACE );
-        pReplaceList->Get( aSet );
+        m_pReplaceList->Get(aSet);
     }
     aSet.DisableItem(SID_ATTR_PARA_MODEL);
-    aSet.DisableItem(rPool.GetWhich(SID_ATTR_PARA_PAGEBREAK));
-    aSet.DisableItem(rPool.GetWhich(SID_ATTR_PARA_KEEP));
+    aSet.DisableItem(rPool.GetWhichIDFromSlotID(SID_ATTR_PARA_PAGEBREAK));
+    aSet.DisableItem(rPool.GetWhichIDFromSlotID(SID_ATTR_PARA_KEEP));
 
 
     SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
@@ -2008,19 +1989,18 @@ IMPL_LINK_NOARG(SvxSearchDialog, FormatHdl_Impl, weld::Button&, void)
     DBG_ASSERT( pDlg->GetOutputItemSet(), "invalid Output-Set" );
     SfxItemSet aOutSet( *pDlg->GetOutputItemSet() );
 
-    SearchAttrItemList* pList = bSearch ? pSearchList.get() : pReplaceList.get();
+    SearchAttrItemList* pList = m_bSearch ? m_pSearchList.get() : m_pReplaceList.get();
 
     const SfxPoolItem* pItem;
     for( sal_uInt16 n = 0; n < pList->Count(); ++n )
     {
         SearchAttrInfo* pAItem = &pList->GetObject(n);
-        if( !IsInvalidItem( pAItem->pItemPtr ) &&
+        if( !IsInvalidItem( pAItem->aItemPtr.getItem() ) &&
             SfxItemState::SET == aOutSet.GetItemState(
-                pAItem->pItemPtr->Which(), false, &pItem ) )
+                pAItem->aItemPtr.Which(), false, &pItem ) )
         {
-            delete pAItem->pItemPtr;
-            pAItem->pItemPtr = pItem->Clone();
-            aOutSet.ClearItem( pAItem->pItemPtr->Which() );
+            pAItem->aItemPtr = SfxPoolItemHolder(*aOutSet.GetPool(), pItem);
+            aOutSet.ClearItem( pAItem->aItemPtr.Which() );
         }
     }
 
@@ -2032,7 +2012,7 @@ IMPL_LINK_NOARG(SvxSearchDialog, FormatHdl_Impl, weld::Button&, void)
 
 IMPL_LINK_NOARG(SvxSearchDialog, NoFormatHdl_Impl, weld::Button&, void)
 {
-    SvtModuleOptions::EFactory eFactory = getModule(rBindings);
+    SvtModuleOptions::EFactory eFactory = getModule(m_rBindings);
     bool bWriterApp =
         eFactory == SvtModuleOptions::EFactory::WRITER ||
         eFactory == SvtModuleOptions::EFactory::WRITERWEB ||
@@ -2040,24 +2020,24 @@ IMPL_LINK_NOARG(SvxSearchDialog, NoFormatHdl_Impl, weld::Button&, void)
     bool bCalcApp = eFactory == SvtModuleOptions::EFactory::CALC;
 
     if (bCalcApp)
-        m_xLayoutBtn->set_label( aLayoutCalcStr );
+        m_xLayoutBtn->set_label(m_sLayoutCalcStr);
     else
     {
         if (bWriterApp)
-            m_xLayoutBtn->set_label( aLayoutWriterStr);
+            m_xLayoutBtn->set_label(m_sLayoutWriterStr);
         else
-            m_xLayoutBtn->set_label( aStylesStr );
+            m_xLayoutBtn->set_label(m_sStylesStr);
     }
 
-    bFormat = false;
+    m_bFormat = false;
     m_xLayoutBtn->set_active( false );
 
     bool bSetOptimalLayoutSize = false;
 
-    if ( bSearch )
+    if (m_bSearch)
     {
-        pSearchList->Clear();
-        m_xSearchAttrText->set_label( "" );
+        m_pSearchList->Clear();
+        m_xSearchAttrText->set_label( u""_ustr );
         if (m_xSearchAttrText->get_visible())
         {
             m_xSearchAttrText->hide();
@@ -2066,8 +2046,8 @@ IMPL_LINK_NOARG(SvxSearchDialog, NoFormatHdl_Impl, weld::Button&, void)
     }
     else
     {
-        pReplaceList->Clear();
-        m_xReplaceAttrText->set_label( "" );
+        m_pReplaceList->Clear();
+        m_xReplaceAttrText->set_label( u""_ustr );
         if (m_xReplaceAttrText->get_visible())
         {
             m_xReplaceAttrText->hide();
@@ -2078,19 +2058,20 @@ IMPL_LINK_NOARG(SvxSearchDialog, NoFormatHdl_Impl, weld::Button&, void)
     if (bSetOptimalLayoutSize)
         m_xDialog->resize_to_request();
 
-    pImpl->bSaveToModule = false;
+    m_pImpl->bSaveToModule = false;
     TemplateHdl_Impl(*m_xLayoutBtn);
-    pImpl->bSaveToModule = true;
+    m_pImpl->bSaveToModule = true;
     m_xNoFormatBtn->set_sensitive(false);
 }
 
 IMPL_LINK_NOARG(SvxSearchDialog, AttributeHdl_Impl, weld::Button&, void)
 {
-    if ( !pSearchList || pImpl->pRanges.empty() )
+    if (!m_pSearchList || m_pImpl->pRanges.empty())
         return;
 
     SvxAbstractDialogFactory* pFact = SvxAbstractDialogFactory::Create();
-    ScopedVclPtr<VclAbstractDialog> pDlg(pFact->CreateSvxSearchAttributeDialog(m_xDialog.get(), *pSearchList, pImpl->pRanges));
+    ScopedVclPtr<VclAbstractDialog> pDlg(
+        pFact->CreateSvxSearchAttributeDialog(m_xDialog.get(), *m_pSearchList, m_pImpl->pRanges));
     executeSubDialog(pDlg.get());
     PaintAttrText_Impl();
 }
@@ -2125,7 +2106,7 @@ OUString& SvxSearchDialog::BuildAttrText_Impl( OUString& rStr,
         return rStr;
 
     SfxItemPool& rPool = pSh->GetPool();
-    SearchAttrItemList* pList = bSrchFlag ? pSearchList.get() : pReplaceList.get();
+    SearchAttrItemList* pList = bSrchFlag ? m_pSearchList.get() : m_pReplaceList.get();
 
     if ( !pList )
         return rStr;
@@ -2157,10 +2138,10 @@ OUString& SvxSearchDialog::BuildAttrText_Impl( OUString& rStr,
         if ( !rStr.isEmpty() )
             rStr += ", ";
 
-        if ( !IsInvalidItem( rItem.pItemPtr ) )
+        if ( !IsInvalidItem( rItem.aItemPtr.getItem() ) )
         {
             OUString aStr;
-            rPool.GetPresentation(*rItem.pItemPtr, eMapUnit, aStr, aIntlWrapper);
+            rPool.GetPresentation(*rItem.aItemPtr.getItem(), eMapUnit, aStr, aIntlWrapper);
             if (aStr.isEmpty())
             {
                 if (rStr.endsWith(", "))
@@ -2188,14 +2169,14 @@ OUString& SvxSearchDialog::BuildAttrText_Impl( OUString& rStr,
 void SvxSearchDialog::PaintAttrText_Impl()
 {
     OUString aDesc;
-    BuildAttrText_Impl( aDesc, bSearch );
+    BuildAttrText_Impl(aDesc, m_bSearch);
 
-    if ( !bFormat && !aDesc.isEmpty() )
-        bFormat = true;
+    if (!m_bFormat && !aDesc.isEmpty())
+        m_bFormat = true;
 
     bool bSetOptimalLayoutSize = false;
 
-    if ( bSearch )
+    if (m_bSearch)
     {
         m_xSearchAttrText->set_label( aDesc );
         if (!aDesc.isEmpty() && !m_xSearchAttrText->get_visible())
@@ -2226,78 +2207,78 @@ void SvxSearchDialog::SetModifyFlag_Impl( const weld::Widget* pCtrl )
 {
     if (m_xSearchLB.get() == pCtrl)
     {
-        nModifyFlag |= ModifyFlags::Search;
+        m_nModifyFlag |= ModifyFlags::Search;
         m_xSearchLB->set_entry_message_type(weld::EntryMessageType::Normal);
         if (!SvxSearchDialogWrapper::GetSearchLabel().isEmpty())
-            SvxSearchDialogWrapper::SetSearchLabel("");
+            SvxSearchDialogWrapper::SetSearchLabel(u""_ustr);
     }
     else if ( m_xReplaceLB.get() == pCtrl )
-        nModifyFlag |= ModifyFlags::Replace;
+        m_nModifyFlag |= ModifyFlags::Replace;
     else if ( m_xWordBtn.get() == pCtrl )
-        nModifyFlag |= ModifyFlags::Word;
+        m_nModifyFlag |= ModifyFlags::Word;
     else if ( m_xMatchCaseCB.get() == pCtrl )
-        nModifyFlag |= ModifyFlags::Exact;
+        m_nModifyFlag |= ModifyFlags::Exact;
     else if ( m_xReplaceBackwardsCB.get() == pCtrl )
-        nModifyFlag |= ModifyFlags::Backwards;
+        m_nModifyFlag |= ModifyFlags::Backwards;
     else if ( m_xNotesBtn.get() == pCtrl )
-        nModifyFlag |= ModifyFlags::Notes;
+        m_nModifyFlag |= ModifyFlags::Notes;
     else if ( m_xSelectionBtn.get() == pCtrl )
-        nModifyFlag |= ModifyFlags::Selection;
+        m_nModifyFlag |= ModifyFlags::Selection;
     else if ( m_xRegExpBtn.get() == pCtrl )
-        nModifyFlag |= ModifyFlags::Regexp;
+        m_nModifyFlag |= ModifyFlags::Regexp;
     else if ( m_xWildcardBtn.get() == pCtrl )
-        nModifyFlag |= ModifyFlags::Wildcard;
+        m_nModifyFlag |= ModifyFlags::Wildcard;
     else if ( m_xLayoutBtn.get() == pCtrl )
-        nModifyFlag |= ModifyFlags::Layout;
+        m_nModifyFlag |= ModifyFlags::Layout;
     else if ( m_xSimilarityBox.get() == pCtrl )
-        nModifyFlag |= ModifyFlags::Similarity;
+        m_nModifyFlag |= ModifyFlags::Similarity;
     else if ( m_xCalcSearchInLB.get() == pCtrl )
     {
-        nModifyFlag |= ModifyFlags::Formulas;
-        nModifyFlag |= ModifyFlags::Values;
-        nModifyFlag |= ModifyFlags::CalcNotes;
+        m_nModifyFlag |= ModifyFlags::Formulas;
+        m_nModifyFlag |= ModifyFlags::Values;
+        m_nModifyFlag |= ModifyFlags::CalcNotes;
     }
     else if ( m_xRowsBtn.get() == pCtrl )
-        nModifyFlag |= ModifyFlags::Rows;
+        m_nModifyFlag |= ModifyFlags::Rows;
     else if ( m_xColumnsBtn.get() == pCtrl )
-        nModifyFlag |= ModifyFlags::Columns;
+        m_nModifyFlag |= ModifyFlags::Columns;
     else if ( m_xAllSheetsCB.get() == pCtrl )
-        nModifyFlag |= ModifyFlags::AllTables;
+        m_nModifyFlag |= ModifyFlags::AllTables;
 }
 
 void SvxSearchDialog::SaveToModule_Impl()
 {
-    if ( !pSearchItem )
+    if (!m_pSearchItem)
         return;
 
     if ( m_xLayoutBtn->get_active() )
     {
-        pSearchItem->SetSearchString ( m_xSearchTmplLB->get_active_text() );
-        pSearchItem->SetReplaceString( m_xReplaceTmplLB->get_active_text() );
+        m_pSearchItem->SetSearchString(m_xSearchTmplLB->get_active_text());
+        m_pSearchItem->SetReplaceString(m_xReplaceTmplLB->get_active_text());
     }
     else
     {
-        pSearchItem->SetSearchString ( m_xSearchLB->get_active_text() );
-        pSearchItem->SetReplaceString( m_xReplaceLB->get_active_text() );
-        Remember_Impl( m_xSearchLB->get_active_text(), true );
+        m_pSearchItem->SetSearchString(m_xSearchLB->get_active_text());
+        m_pSearchItem->SetReplaceString(m_xReplaceLB->get_active_text());
+        Remember_Impl(true);
     }
 
-    pSearchItem->SetRegExp( false );
-    pSearchItem->SetWildcard( false );
-    pSearchItem->SetLevenshtein( false );
+    m_pSearchItem->SetRegExp(false);
+    m_pSearchItem->SetWildcard(false);
+    m_pSearchItem->SetLevenshtein(false);
     if (GetCheckBoxValue(*m_xRegExpBtn))
-        pSearchItem->SetRegExp( true );
+        m_pSearchItem->SetRegExp(true);
     else if (GetCheckBoxValue(*m_xWildcardBtn))
-        pSearchItem->SetWildcard( true );
+        m_pSearchItem->SetWildcard(true);
     else if (GetCheckBoxValue(*m_xSimilarityBox))
-        pSearchItem->SetLevenshtein( true );
+        m_pSearchItem->SetLevenshtein(true);
 
-    pSearchItem->SetWordOnly(GetCheckBoxValue(*m_xWordBtn));
-    pSearchItem->SetBackward(GetCheckBoxValue(*m_xReplaceBackwardsCB));
-    pSearchItem->SetNotes(GetCheckBoxValue(*m_xNotesBtn));
-    pSearchItem->SetPattern(GetCheckBoxValue(*m_xLayoutBtn));
-    pSearchItem->SetSelection(GetCheckBoxValue(*m_xSelectionBtn));
-    pSearchItem->SetUseAsianOptions(GetCheckBoxValue(*m_xJapOptionsCB));
+    m_pSearchItem->SetWordOnly(GetCheckBoxValue(*m_xWordBtn));
+    m_pSearchItem->SetBackward(GetCheckBoxValue(*m_xReplaceBackwardsCB));
+    m_pSearchItem->SetNotes(GetCheckBoxValue(*m_xNotesBtn));
+    m_pSearchItem->SetPattern(GetCheckBoxValue(*m_xLayoutBtn));
+    m_pSearchItem->SetSelection(GetCheckBoxValue(*m_xSelectionBtn));
+    m_pSearchItem->SetUseAsianOptions(GetCheckBoxValue(*m_xJapOptionsCB));
 
     SvtSearchOptions aOpt;
     aOpt.SetIgnoreDiacritics_CTL(GetNegatedCheckBoxValue(*m_xIncludeDiacritics));
@@ -2305,29 +2286,30 @@ void SvxSearchDialog::SaveToModule_Impl()
     aOpt.Commit();
 
     TransliterationFlags nFlags = GetTransliterationFlags();
-    if( !pSearchItem->IsUseAsianOptions())
+    if (!m_pSearchItem->IsUseAsianOptions())
         nFlags &= TransliterationFlags::IGNORE_CASE |
                    TransliterationFlags::IGNORE_WIDTH;
     if (GetNegatedCheckBoxValue(*m_xIncludeDiacritics))
         nFlags |= TransliterationFlags::IGNORE_DIACRITICS_CTL;
     if (GetNegatedCheckBoxValue(*m_xIncludeKashida))
         nFlags |= TransliterationFlags::IGNORE_KASHIDA_CTL;
-    pSearchItem->SetTransliterationFlags( nFlags );
+    m_pSearchItem->SetTransliterationFlags(nFlags);
 
-    if ( !bWriter )
+    if (!m_bWriter)
     {
         if (m_xCalcSearchInLB->get_active() != -1)
-            pSearchItem->SetCellType( static_cast<SvxSearchCellType>(m_xCalcSearchInLB->get_active()) );
+            m_pSearchItem->SetCellType(
+                static_cast<SvxSearchCellType>(m_xCalcSearchInLB->get_active()));
 
-        pSearchItem->SetRowDirection( m_xRowsBtn->get_active() );
-        pSearchItem->SetAllTables( m_xAllSheetsCB->get_active() );
-        pSearchItem->SetSearchFormatted( m_xSearchFormattedCB->get_active() );
+        m_pSearchItem->SetRowDirection(m_xRowsBtn->get_active());
+        m_pSearchItem->SetAllTables(m_xAllSheetsCB->get_active());
+        m_pSearchItem->SetSearchFormatted(m_xSearchFormattedCB->get_active());
     }
 
-    pSearchItem->SetCommand( SvxSearchCmd::FIND );
-    nModifyFlag = ModifyFlags::NONE;
-    const SfxPoolItem* ppArgs[] = { pSearchItem.get(), nullptr };
-    rBindings.GetDispatcher()->Execute( SID_SEARCH_ITEM, SfxCallMode::SLOT, ppArgs );
+    m_pSearchItem->SetCommand(SvxSearchCmd::FIND);
+    m_nModifyFlag = ModifyFlags::NONE;
+    const SfxPoolItem* ppArgs[] = { m_pSearchItem.get(), nullptr };
+    m_rBindings.GetDispatcher()->Execute(SID_SEARCH_ITEM, SfxCallMode::SLOT, ppArgs);
 }
 
 short SvxSearchDialog::executeSubDialog(VclAbstractDialog * dialog) {
@@ -2353,7 +2335,7 @@ SvxSearchDialogWrapper::SvxSearchDialogWrapper( vcl::Window* _pParent, sal_uInt1
     pBindings->Update( SID_SEARCH_OPTIONS );
     pBindings->Update( SID_SEARCH_SEARCHSET );
     pBindings->Update( SID_SEARCH_REPLACESET );
-    dialog->bConstruct = false;
+    dialog->m_bConstruct = false;
 }
 
 SvxSearchDialogWrapper::~SvxSearchDialogWrapper ()
@@ -2368,14 +2350,14 @@ SfxChildWinInfo SvxSearchDialogWrapper::GetInfo() const
     return aInfo;
 }
 
-static void lcl_SetSearchLabelWindow(const OUString& rStr, SfxViewFrame& rViewFrame)
+static void lcl_SetSearchLabelWindow(const OUString& rStr, const SfxViewFrame& rViewFrame)
 {
     css::uno::Reference< css::beans::XPropertySet > xPropSet(
             rViewFrame.GetFrame().GetFrameInterface(), css::uno::UNO_QUERY_THROW);
     css::uno::Reference< css::frame::XLayoutManager > xLayoutManager;
-    xPropSet->getPropertyValue("LayoutManager") >>= xLayoutManager;
+    xPropSet->getPropertyValue(u"LayoutManager"_ustr) >>= xLayoutManager;
     css::uno::Reference< css::ui::XUIElement > xUIElement =
-        xLayoutManager->getElement("private:resource/toolbar/findbar");
+        xLayoutManager->getElement(u"private:resource/toolbar/findbar"_ustr);
     if (!xUIElement.is())
         return;
     css::uno::Reference< css::awt::XWindow > xWindow(
@@ -2391,6 +2373,18 @@ static void lcl_SetSearchLabelWindow(const OUString& rStr, SfxViewFrame& rViewFr
             pSearchLabel->set_label(rStr, LabelItemWindowType::Info);
             pSearchLabel->SetOptimalSize();
         }
+
+        if (pToolBox->IsFloatingMode() && pToolBox->GetItemCommand(id) == ".uno:FindText")
+        {
+            FindTextFieldControl* pFindText = dynamic_cast<FindTextFieldControl*>(pToolBox->GetItemWindow(id));
+            assert(pFindText);
+            if (rStr == SvxResId(RID_SVXSTR_SEARCH_NOT_FOUND))
+                pFindText->set_entry_message_type(weld::EntryMessageType::Error);
+            else if (rStr == SvxResId(RID_SVXSTR_SEARCH_END) || rStr == SvxResId(RID_SVXSTR_SEARCH_START))
+                pFindText->set_entry_message_type(weld::EntryMessageType::Warning);
+            else
+                pFindText->set_entry_message_type(weld::EntryMessageType::Normal);
+        }
     }
     xLayoutManager->doLayout();
     pToolBox->Resize();
@@ -2405,11 +2399,11 @@ OUString SvxSearchDialogWrapper::GetSearchLabel()
     css::uno::Reference< css::beans::XPropertySet > xPropSet(
             pViewFrame->GetFrame().GetFrameInterface(), css::uno::UNO_QUERY_THROW);
     css::uno::Reference< css::frame::XLayoutManager > xLayoutManager;
-    xPropSet->getPropertyValue("LayoutManager") >>= xLayoutManager;
+    xPropSet->getPropertyValue(u"LayoutManager"_ustr) >>= xLayoutManager;
     if (!xLayoutManager.is())
         return OUString();
     css::uno::Reference< css::ui::XUIElement > xUIElement =
-        xLayoutManager->getElement("private:resource/toolbar/findbar");
+        xLayoutManager->getElement(u"private:resource/toolbar/findbar"_ustr);
     if (!xUIElement.is())
         return OUString();
     css::uno::Reference< css::awt::XWindow > xWindow(

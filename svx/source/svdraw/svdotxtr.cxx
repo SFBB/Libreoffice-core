@@ -36,7 +36,7 @@
 #include <svx/xlnclit.hxx>
 #include <svx/xlnwtit.hxx>
 #include <svx/sdshitm.hxx>
-#include <unotools/configmgr.hxx>
+#include <comphelper/configuration.hxx>
 
 using namespace com::sun::star;
 
@@ -72,12 +72,13 @@ const tools::Rectangle& SdrTextObj::GetLogicRect() const
     return getRectangle();
 }
 
-void SdrTextObj::NbcSetLogicRect(const tools::Rectangle& rRect)
+void SdrTextObj::NbcSetLogicRect(const tools::Rectangle& rRect, bool bAdaptTextMinSize)
 {
     setRectangle(rRect);
     ImpJustifyRect(maRectangle);
 
-    AdaptTextMinSize();
+    if (bAdaptTextMinSize)
+        AdaptTextMinSize();
 
     SetBoundAndSnapRectsDirty();
 }
@@ -261,9 +262,10 @@ void SdrTextObj::NbcMirror(const Point& rRef1, const Point& rRef2)
     tools::Rectangle aRectangle = svx::polygonToRectangle(aPol, maGeo);
     setRectangle(aRectangle);
 
-    if (bRotate90) {
+    if (bRotate90)
+    {
         bool bRota90=maGeo.m_nRotationAngle.get() % 9000 ==0;
-        if (bRotate90 && !bRota90) { // there's seems to be a rounding error occurring: correct it
+        if (!bRota90) { // there's seems to be a rounding error occurring: correct it
             Degree100 a=NormAngle36000(maGeo.m_nRotationAngle);
             if (a<4500_deg100) a=0_deg100;
             else if (a<13500_deg100) a=9000_deg100;
@@ -359,7 +361,7 @@ rtl::Reference<SdrObject> SdrTextObj::ImpConvertContainedTextToSdrPathObjs(bool 
                     pPathObj = new SdrPathObj(
                         getSdrModelFromSdrObject(),
                         SdrObjKind::PathFill,
-                        aPolyPolygon);
+                        std::move(aPolyPolygon));
                 }
                 else
                 {
@@ -419,7 +421,7 @@ rtl::Reference<SdrObject> SdrTextObj::DoConvertToPolyObj(bool bBezier, bool bAdd
 
 bool SdrTextObj::ImpCanConvTextToCurve() const
 {
-    return !IsOutlText() && !utl::ConfigManager::IsFuzzing();
+    return !IsOutlText() && !comphelper::IsFuzzing();
 }
 
 rtl::Reference<SdrPathObj> SdrTextObj::ImpConvertMakeObj(const basegfx::B2DPolyPolygon& rPolyPolygon, bool bClosed, bool bBezier) const
@@ -456,7 +458,7 @@ rtl::Reference<SdrPathObj> SdrTextObj::ImpConvertMakeObj(const basegfx::B2DPolyP
     return pPathObj;
 }
 
-rtl::Reference<SdrObject> SdrTextObj::ImpConvertAddText(rtl::Reference<SdrObject> pObj, bool bBezier) const
+rtl::Reference<SdrObject> SdrTextObj::ImpConvertAddText(const rtl::Reference<SdrObject> & pObj, bool bBezier) const
 {
     if(!ImpCanConvTextToCurve())
     {

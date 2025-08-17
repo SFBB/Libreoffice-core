@@ -57,7 +57,7 @@ PresenterWindowManager::PresenterWindowManager (
       mpPaneContainer(std::move(pPaneContainer)),
       mbIsLayoutPending(true),
       mbIsLayouting(false),
-      meLayoutMode(LM_Generic),
+      meLayoutMode(LayoutMode::Generic),
       mbIsSlideSorterActive(false),
       mbIsHelpViewActive(false),
       mbisPaused(false),
@@ -93,7 +93,7 @@ void SAL_CALL PresenterWindowManager::disposing()
 }
 
 void PresenterWindowManager::SetParentPane (
-    const Reference<drawing::framework::XPane>& rxPane)
+    const rtl::Reference<sd::framework::AbstractPane>& rxPane)
 {
     if (mxParentWindow.is())
     {
@@ -137,11 +137,11 @@ void PresenterWindowManager::SetTheme (const std::shared_ptr<PresenterTheme>& rp
 
     if (mpTheme != nullptr)
     {
-        mpBackgroundBitmap = mpTheme->GetBitmap(OUString(), "Background");
+        mpBackgroundBitmap = mpTheme->GetBitmap(OUString(), u"Background"_ustr);
     }
 }
 
-void PresenterWindowManager::NotifyViewCreation (const Reference<XView>& rxView)
+void PresenterWindowManager::NotifyViewCreation (const rtl::Reference<sd::framework::AbstractView>& rxView)
 {
     PresenterPaneContainer::SharedPaneDescriptor pDescriptor (
         mpPaneContainer->FindPaneId(rxView->getResourceId()->getAnchor()));
@@ -363,7 +363,7 @@ void PresenterWindowManager::SetLayoutMode (const LayoutMode eMode)
 
     mpPresenterController->RequestViews(
         mbIsSlideSorterActive,
-        meLayoutMode==LM_Notes,
+        meLayoutMode == LayoutMode::Notes,
         mbIsHelpViewActive);
     Layout();
     NotifyLayoutModeChange();
@@ -381,7 +381,7 @@ void PresenterWindowManager::SetSlideSorterState (bool bIsActive)
 
     mpPresenterController->RequestViews(
         mbIsSlideSorterActive,
-        meLayoutMode==LM_Notes,
+        meLayoutMode == LayoutMode::Notes,
         mbIsHelpViewActive);
     Layout();
     NotifyLayoutModeChange();
@@ -399,7 +399,7 @@ void PresenterWindowManager::SetHelpViewState (bool bIsActive)
 
     mpPresenterController->RequestViews(
         mbIsSlideSorterActive,
-        meLayoutMode==LM_Notes,
+        meLayoutMode == LayoutMode::Notes,
         mbIsHelpViewActive);
     Layout();
     NotifyLayoutModeChange();
@@ -422,13 +422,13 @@ void PresenterWindowManager::SetViewMode (const ViewMode eMode)
         case VM_Standard:
             SetSlideSorterState(false);
             SetHelpViewState(false);
-            SetLayoutMode(LM_Standard);
+            SetLayoutMode(LayoutMode::Standard);
             break;
 
         case VM_Notes:
             SetSlideSorterState(false);
             SetHelpViewState(false);
-            SetLayoutMode(LM_Notes);
+            SetLayoutMode(LayoutMode::Notes);
             break;
 
         case VM_SlideOverview:
@@ -451,7 +451,7 @@ PresenterWindowManager::ViewMode PresenterWindowManager::GetViewMode() const
         return VM_Help;
     else if (mbIsSlideSorterActive)
         return VM_SlideOverview;
-    else if (meLayoutMode == LM_Notes)
+    else if (meLayoutMode == LayoutMode::Notes)
         return VM_Notes;
     else
         return VM_Standard;
@@ -462,9 +462,9 @@ void PresenterWindowManager::RestoreViewMode()
     sal_Int32 nMode (0);
     PresenterConfigurationAccess aConfiguration (
         mxComponentContext,
-        "/org.openoffice.Office.PresenterScreen/",
+        u"/org.openoffice.Office.PresenterScreen/"_ustr,
         PresenterConfigurationAccess::READ_ONLY);
-    aConfiguration.GetConfigurationNode("Presenter/InitialViewMode") >>= nMode;
+    aConfiguration.GetConfigurationNode(u"Presenter/InitialViewMode"_ustr) >>= nMode;
     switch (nMode)
     {
         default:
@@ -488,9 +488,9 @@ void PresenterWindowManager::StoreViewMode (const ViewMode eViewMode)
     {
         PresenterConfigurationAccess aConfiguration (
             mxComponentContext,
-            "/org.openoffice.Office.PresenterScreen/",
+            u"/org.openoffice.Office.PresenterScreen/"_ustr,
             PresenterConfigurationAccess::READ_WRITE);
-        aConfiguration.GoToChild("Presenter");
+        aConfiguration.GoToChild(u"Presenter"_ustr);
         Any aValue;
         switch (eViewMode)
         {
@@ -508,7 +508,7 @@ void PresenterWindowManager::StoreViewMode (const ViewMode eViewMode)
                 break;
         }
 
-        aConfiguration.SetProperty ("InitialViewMode", aValue);
+        aConfiguration.SetProperty (u"InitialViewMode"_ustr, aValue);
         aConfiguration.CommitChanges();
     }
     catch (Exception&)
@@ -550,12 +550,12 @@ void PresenterWindowManager::Layout()
         else
             switch (meLayoutMode)
             {
-                case LM_Standard:
+                case LayoutMode::Standard:
                 default:
                     LayoutStandardMode();
                     break;
 
-                case LM_Notes:
+                case LayoutMode::Notes:
                     LayoutNotesMode();
                     break;
             }
@@ -765,7 +765,7 @@ geometry::RealRectangle2D PresenterWindowManager::LayoutToolBar()
                         0,
                         PresenterGeometryHelper::Round(aSize.Width),
                         PresenterGeometryHelper::Round(aSize.Height)),
-                    css::drawing::framework::BorderType_TOTAL_BORDER));
+                    BorderType::TOTAL));
 
                 nToolBarWidth = aBox.Width;
                 nToolBarHeight = aBox.Height;
@@ -804,7 +804,7 @@ awt::Size PresenterWindowManager::CalculatePaneSize (
         rsPaneURL,
         awt::Rectangle(0,0,
             sal_Int32(nOuterWidth+0.5),sal_Int32(nOuterWidth)),
-        drawing::framework::BorderType_TOTAL_BORDER));
+        BorderType::TOTAL));
 
     // Calculate the inner height with the help of the slide aspect ratio.
     const double nCurrentSlideInnerHeight (
@@ -815,7 +815,7 @@ awt::Size PresenterWindowManager::CalculatePaneSize (
         rsPaneURL,
         awt::Rectangle(0,0,
             aInnerBox.Width,sal_Int32(nCurrentSlideInnerHeight+0.5)),
-        drawing::framework::BorderType_TOTAL_BORDER));
+        BorderType::TOTAL));
 
     return awt::Size(aOuterBox.Width, aOuterBox.Height);
 }
@@ -982,7 +982,7 @@ void PresenterWindowManager::ProvideBackgroundBitmap()
     }
     else
     {
-        mxScaledBackgroundBitmap = xBitmap;
+        mxScaledBackgroundBitmap = std::move(xBitmap);
     }
 }
 
@@ -1034,7 +1034,7 @@ void PresenterWindowManager::ThrowIfDisposed() const
     if (rBHelper.bDisposed || rBHelper.bInDispose)
     {
         throw lang::DisposedException (
-            "PresenterWindowManager has already been disposed",
+            u"PresenterWindowManager has already been disposed"_ustr,
             const_cast<uno::XWeak*>(static_cast<const uno::XWeak*>(this)));
     }
 }

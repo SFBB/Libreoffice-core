@@ -19,20 +19,18 @@
 
 #pragma once
 
-#include <com/sun/star/drawing/framework/XConfiguration.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/container/XNamed.hpp>
+#include <com/sun/star/drawing/framework/AnchorBindingMode.hpp>
 #include <comphelper/compbase.hxx>
-
+#include <rtl/ref.hxx>
 #include <memory>
 
-namespace com::sun::star::util { class XCloneable; }
-namespace com::sun::star::drawing::framework { class XConfigurationControllerBroadcaster; }
-
 namespace sd::framework {
+class ConfigurationController;
+class ResourceId;
 
 typedef comphelper::WeakComponentImplHelper <
-    css::drawing::framework::XConfiguration,
     css::container::XNamed
     > ConfigurationInterfaceBase;
 
@@ -71,36 +69,95 @@ public:
             then events with type "ResourceActivationEvent" and
             "ResourceDeactivationEvent" are broadcasted.
     */
-    Configuration (const css::uno::Reference<css::drawing::framework::XConfigurationControllerBroadcaster>& rxBroadcaster,
+    Configuration (const rtl::Reference<ConfigurationController>& rxBroadcaster,
         bool bBroadcastRequestEvents);
     virtual ~Configuration() override;
 
     virtual void disposing(std::unique_lock<std::mutex>&) override;
 
-    // XConfiguration
 
-    virtual void SAL_CALL addResource (
-        const css::uno::Reference<css::drawing::framework::XResourceId>&
-            rxResourceId) override;
+    /** Add a resource to the configuration.
+        <p>This method should be used only by objects that implement the
+        XConfigurationRequest interface or by the configuration
+        controller.</p>
+        @param xResourceId
+            The resource to add to the configuration.  When the specified
+            resource is already part of the configuration then this call is
+            silently ignored.
+        @throws IllegalArgumentException
+            When an empty resource id is given then an
+            IllegalArgumentException is thrown.
+    */
+    void addResource (
+        const rtl::Reference<sd::framework::ResourceId>&
+            rxResourceId);
 
-    virtual void SAL_CALL removeResource(
-        const css::uno::Reference<css::drawing::framework::XResourceId>&
-            rxResourceId) override;
+    /** Remove a resource from the configuration.
+        <p>This method should be used only by objects that implement the
+        XConfigurationRequest interface or by the configuration
+        controller.</p>
+        @param xResourceId
+            The resource to remove from the configuration. When the
+            specified resource is not part of the configuration then this
+            call is silently ignored.
+        @throws IllegalArgumentException
+            When an empty resource id is given then an
+            IllegalArgumentException is thrown.
+    */
+    void removeResource(
+        const rtl::Reference<sd::framework::ResourceId>&
+            rxResourceId);
 
-    virtual css::uno::Sequence< css::uno::Reference<
-        css::drawing::framework::XResourceId> > SAL_CALL getResources (
-        const css::uno::Reference<css::drawing::framework::XResourceId>& rxAnchorId,
-        const OUString& rsResourceURLPrefix,
-        css::drawing::framework::AnchorBindingMode eMode) override;
+    /** Returns the list of resources that are bound directly and/or
+        indirectly to the given anchor.  A URL filter can reduce the set of
+        returned resource ids.
+        @param xAnchorId
+            This anchor typically is either a pane or an empty
+            ResourceId object.  An
+            empty reference is treated like an ResourceId object.
+        @param sTargetURLPrefix
+            When a non-empty string is given then resource ids are returned
+            only when their resource URL matches this prefix, i.e. when it
+            begins with this prefix or is equal to it.  Characters with
+            special meaning to URLs are not interpreted.  In the typical
+            usage the prefix specifies the type of a resource.  A typical
+            value is "private:resource/floater/", which is the prefix for
+            pane URLs.  In a recursive search, only resource ids at the top
+            level are matched against this prefix.
+            <p>Use an empty string to prevent filtering out resource ids.</p>
+        @param eSearchMode
+            This flag defines whether to return only resources that are
+            directly bound to the given anchor or a recursive search is to
+            be made.  Note that for the recursive search and an empty anchor
+            all resource ids are returned that belong to the configuration.
+        @return
+            The set of returned resource ids may be empty when there are no
+            resource ids that match all conditions.  The resources in the
+            sequence are ordered with respect to the
+            ResourceId::compareTo() method.
+    */
+    std::vector< rtl::Reference<sd::framework::ResourceId> > getResources (
+        const rtl::Reference<sd::framework::ResourceId>& rxAnchorId,
+        std::u16string_view rsResourceURLPrefix,
+        css::drawing::framework::AnchorBindingMode eMode);
 
-    virtual sal_Bool SAL_CALL hasResource (
-        const css::uno::Reference<css::drawing::framework::XResourceId>&
-            rxResourceId) override;
+    /** <p>Returns whether the specified resource is part of the
+        configuration.</p>
+        This is independent of whether the resource does really exist and is
+        active, i.e. has a visible representation in the GUI.
+        @param xResourceId
+            The id of a resource.  May be empty (empty reference or empty
+            ResourceId object) in which case `FALSE` is
+            returned.
+        @return
+            Returns `TRUE` when the resource is part of the configuration
+            and `FALSE` when it is not.
+    */
+    bool hasResource (
+        const rtl::Reference<sd::framework::ResourceId>&
+            rxResourceId);
 
-    // XCloneable
-
-    virtual css::uno::Reference<css::util::XCloneable>
-        SAL_CALL createClone() override;
+    rtl::Reference<Configuration> createClone();
 
     // XNamed
 
@@ -124,8 +181,7 @@ private:
     /** The broadcaster used for notifying listeners of requests for
         configuration changes.
     */
-    css::uno::Reference<css::drawing::framework::XConfigurationControllerBroadcaster>
-        mxBroadcaster;
+    rtl::Reference<ConfigurationController> mxBroadcaster;
 
     bool mbBroadcastRequestEvents;
 
@@ -135,7 +191,7 @@ private:
             The new Configuration is created with a copy of the elements in
             this container.
     */
-    Configuration (const css::uno::Reference<css::drawing::framework::XConfigurationControllerBroadcaster>& rxBroadcaster,
+    Configuration (const rtl::Reference<ConfigurationController>& rxBroadcaster,
         bool bBroadcastRequestEvents,
         const ResourceContainer& rResourceContainer);
 
@@ -150,7 +206,7 @@ private:
             into account when the actual event type field is determined.
     */
     void PostEvent (
-        const css::uno::Reference<css::drawing::framework::XResourceId>& rxResourceId,
+        const rtl::Reference<sd::framework::ResourceId>& rxResourceId,
         const bool bActivation);
 
     /** When the called object has already been disposed this method throws
@@ -166,8 +222,8 @@ private:
     treated like empty configurations.
 */
 bool AreConfigurationsEquivalent (
-        const css::uno::Reference<css::drawing::framework::XConfiguration>& rxConfiguration1,
-        const css::uno::Reference<css::drawing::framework::XConfiguration>& rxConfiguration2);
+        const rtl::Reference<Configuration>& rxConfiguration1,
+        const rtl::Reference<Configuration>& rxConfiguration2);
 
 } // end of namespace sd::framework
 

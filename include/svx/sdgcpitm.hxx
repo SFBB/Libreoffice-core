@@ -31,8 +31,7 @@
 class UNLESS_MERGELIBS(SVXCORE_DLLPUBLIC) SdrGrafCropItem final : public SvxGrfCrop
 {
 public:
-
-
+                            DECLARE_ITEM_TYPE_FUNCTION(SdrGrafCropItem)
                             SdrGrafCropItem( sal_Int32 nLeftCrop = 0, sal_Int32 nTopCrop = 0,
                                              sal_Int32 nRightCrop = 0, sal_Int32 nBottomCrop = 0 ) :
                                 SvxGrfCrop( nLeftCrop, nRightCrop, nTopCrop, nBottomCrop, SDRATTR_GRAFCROP ) {}

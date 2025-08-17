@@ -36,8 +36,6 @@
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::ui::dialogs;
-using namespace ::sfx2;
 
 bool SwTextShell::InsertMediaDlg( SfxRequest const & rReq )
 {
@@ -80,12 +78,12 @@ bool SwTextShell::InsertMediaDlg( SfxRequest const & rReq )
             css::uno::Reference<css::frame::XDispatchProvider> xDispatchProvider(GetView().GetViewFrame().GetFrame().GetFrameInterface(), css::uno::UNO_QUERY);
 
             rtl::Reference<avmedia::PlayerListener> xPlayerListener(new avmedia::PlayerListener(
-                [xDispatchProvider, aURL, bLink](const css::uno::Reference<css::media::XPlayer>& rPlayer){
+                [xDispatchProvider=std::move(xDispatchProvider), aURL, bLink](const css::uno::Reference<css::media::XPlayer>& rPlayer){
                     css::awt::Size aSize = rPlayer->getPreferredPlayerWindowSize();
                     avmedia::MediaWindow::dispatchInsertAVMedia(xDispatchProvider, aSize, aURL, bLink);
                 }));
 
-            const bool bIsMediaURL = ::avmedia::MediaWindow::isMediaURL(aURL, "", true, xPlayerListener);
+            const bool bIsMediaURL = ::avmedia::MediaWindow::isMediaURL(aURL, u""_ustr, true, xPlayerListener);
 
             rWindow.LeaveWait();
 
@@ -130,17 +128,20 @@ bool SwTextShell::InsertMediaDlg( SfxRequest const & rReq )
         }
         else
         {
-            uno::Reference<frame::XModel> const xModel(
-                    rSh.GetDoc()->GetDocShell()->GetModel());
-            bRet = ::avmedia::EmbedMedia(xModel, aURL, realURL);
-            if (!bRet) { return bRet; }
+            if (SwDocShell* pShell = rSh.GetDoc()->GetDocShell())
+            {
+                uno::Reference<frame::XModel> const xModel(
+                        pShell->GetModel());
+                bRet = ::avmedia::EmbedMedia(xModel, aURL, realURL);
+                if (!bRet) { return bRet; }
+            }
         }
 
         rtl::Reference<SdrMediaObj> pObj = new SdrMediaObj(
             *rSh.GetDoc()->getIDocumentDrawModelAccess().GetDrawModel(),
             tools::Rectangle(aPos, aSize));
 
-        pObj->setURL( realURL, "" );
+        pObj->setURL( realURL, u""_ustr );
         rSh.EnterStdMode();
         rSh.SwFEShell::InsertDrawObj( *pObj, aPos );
         bRet = true;

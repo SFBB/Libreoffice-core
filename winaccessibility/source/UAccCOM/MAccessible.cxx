@@ -42,7 +42,10 @@
 #include <vcl/svapp.hxx>
 #include <o3tl/char16_t2wchar_t.hxx>
 #include <comphelper/AccessibleImplementationHelper.hxx>
+#include <systools/win32/oleauto.hxx>
 
+#include <com/sun/star/accessibility/AccessibleRelationType.hpp>
+#include <com/sun/star/accessibility/XAccessibleContext2.hpp>
 #include <com/sun/star/accessibility/XAccessibleText.hpp>
 #include <com/sun/star/accessibility/XAccessibleEditableText.hpp>
 #include <com/sun/star/accessibility/XAccessibleImage.hpp>
@@ -83,6 +86,13 @@ enum class XInterfaceType {
     XI_HYPERTEXT,
     XI_HYPERLINK,
     XI_ATTRIBUTE
+};
+
+enum class NavigationDirection {
+    FIRST_CHILD,
+    LAST_CHILD,
+    NEXT_CHILD,
+    PREVIOUS_CHILD,
 };
 
 template <class Interface>
@@ -191,9 +201,7 @@ void lcl_addIA2State(AccessibleStates& rStates, sal_Int64 nUnoState, sal_Int16 n
 AccObjectWinManager* CMAccessible::g_pAccObjectManager = nullptr;
 
 CMAccessible::CMAccessible():
-m_pszName(nullptr),
 m_pszValue(nullptr),
-m_pszActionDescription(nullptr),
 m_iRole(0x00),
 m_dState(0x00),
 m_pIParent(nullptr),
@@ -210,18 +218,9 @@ CMAccessible::~CMAccessible()
 {
     SolarMutexGuard g;
 
-    if(m_pszName!=nullptr)
-    {
-        SysFreeString(std::exchange(m_pszName, nullptr));
-    }
     if(m_pszValue!=nullptr)
     {
         SysFreeString(std::exchange(m_pszValue, nullptr));
-    }
-
-    if(m_pszActionDescription!=nullptr)
-    {
-        SysFreeString(std::exchange(m_pszActionDescription, nullptr));
     }
 
     if(m_pIParent)
@@ -300,9 +299,13 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CMAccessible::get_accChildCount(long *pcountCh
             sal_Int64 nChildCount = pRContext->getAccessibleChildCount();
             if (nChildCount > std::numeric_limits<long>::max())
             {
-                SAL_WARN("iacc2", "CMAccessible::get_accChildCount: Child count exceeds maximum long value, "
-                                  "returning max long.");
-                nChildCount = std::numeric_limits<long>::max();
+                // return error code if child count exceeds max long value
+                // (for Calc sheets which report all cells as children);
+                // tdf#153131: Windows Speech Recognition and apparently some other
+                // tools querying information via the a11y API seem to query all children unconditionally,
+                // so returning a large number (like std::numeric_limits<long>::max) would cause a freeze
+                SAL_WARN("iacc2", "CMAccessible::get_accChildCount: Child count exceeds maximum long value");
+                return S_FALSE;
             }
 
             *pcountChildren = nChildCount;
@@ -373,14 +376,22 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CMAccessible::get_accName(VARIANT varChild, BS
         {
             if(varChild.lVal==CHILDID_SELF)
             {
+                if (!m_xAccessible.is())
+                    return S_FALSE;
+
+                Reference<XAccessibleContext> xContext = m_xAccessible->getAccessibleContext();
+                if (!xContext.is())
+                    return S_FALSE;
+
+                const OUString sName = xContext->getAccessibleName();
                 SysFreeString(*pszName);
-                *pszName = SysAllocString(m_pszName);
+                *pszName = sal::systools::BStr::newBSTR(sName);
                 return S_OK;
             }
 
             long lVal = varChild.lVal;
             varChild.lVal = CHILDID_SELF;
-            IMAccessible *pChild = this->GetChildInterface(lVal);
+            IMAccessible* pChild = GetChildInterface(lVal);
             if(!pChild)
                 return E_FAIL;
             return pChild->get_accName(varChild,pszName);
@@ -425,7 +436,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CMAccessible::get_accValue(VARIANT varChild, B
 
             long lVal = varChild.lVal;
             varChild.lVal = CHILDID_SELF;
-            IMAccessible *pChild = this->GetChildInterface(lVal);
+            IMAccessible* pChild = GetChildInterface(lVal);
             if(!pChild)
                 return E_FAIL;
             return pChild->get_accValue(varChild,pszValue);
@@ -466,13 +477,13 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CMAccessible::get_accDescription(VARIANT varCh
 
                 const OUString sDescription = xContext->getAccessibleDescription();
                 SysFreeString(*pszDescription);
-                *pszDescription = SysAllocString(o3tl::toW(sDescription.getStr()));
+                *pszDescription = sal::systools::BStr::newBSTR(sDescription);
                 return S_OK;
             }
 
             long lVal = varChild.lVal;
             varChild.lVal = CHILDID_SELF;
-            IMAccessible *pChild = this->GetChildInterface(lVal);
+            IMAccessible* pChild = GetChildInterface(lVal);
             if(!pChild)
                 return E_FAIL;
             return pChild->get_accDescription(varChild,pszDescription);
@@ -519,7 +530,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CMAccessible::get_accRole(VARIANT varChild, VA
 
             long lVal = varChild.lVal;
             varChild.lVal = CHILDID_SELF;
-            IMAccessible *pChild = this->GetChildInterface(lVal);
+            IMAccessible* pChild = GetChildInterface(lVal);
             if(!pChild)
                 return E_FAIL;
             return pChild->get_accRole(varChild,pvarRole);
@@ -579,7 +590,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CMAccessible::get_accState(VARIANT varChild, V
 
             long lVal = varChild.lVal;
             varChild.lVal = CHILDID_SELF;
-            IMAccessible *pChild = this->GetChildInterface(lVal);
+            IMAccessible* pChild = GetChildInterface(lVal);
             if(!pChild)
                 return E_FAIL;
             return pChild->get_accState(varChild,pvarState);
@@ -706,7 +717,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CMAccessible::get_accKeyboardShortcut(VARIANT 
                         AccessibleRelation accRelation;
                         for(int i=0; i<nRelCount ; i++)
                         {
-                            if( pRrelationSet->getRelation(i).RelationType == 6 )
+                            if (pRrelationSet->getRelation(i).RelationType == AccessibleRelationType_LABELED_BY)
                             {
                                 accRelation = pRrelationSet->getRelation(i);
                                 paccRelation = &accRelation;
@@ -716,22 +727,20 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CMAccessible::get_accKeyboardShortcut(VARIANT 
                         if(paccRelation == nullptr)
                             return S_FALSE;
 
-                        Sequence< Reference< XInterface > > xTargets = paccRelation->TargetSet;
-                        Reference<XInterface> pRAcc = xTargets[0];
+                        Sequence<Reference<XAccessible>> xTargets = paccRelation->TargetSet;
+                        Reference<XAccessible> xAcc = xTargets[0];
 
-                        XAccessible* pXAcc = static_cast<XAccessible*>(pRAcc.get());
-
-                        Reference<XAccessibleContext> pRLebelContext = pXAcc->getAccessibleContext();
-                        if(!pRLebelContext.is())
+                        Reference<XAccessibleContext> xLabelContext = xAcc->getAccessibleContext();
+                        if (!xLabelContext.is())
                             return S_FALSE;
 
-                        pRrelationSet = pRLebelContext->getAccessibleRelationSet();
+                        pRrelationSet = xLabelContext->getAccessibleRelationSet();
                         nRelCount = pRrelationSet->getRelationCount();
 
                         paccRelation = nullptr;
                         for(int j=0; j<nRelCount ; j++)
                         {
-                            if( pRrelationSet->getRelation(j).RelationType == 5 )
+                            if (pRrelationSet->getRelation(j).RelationType == AccessibleRelationType_LABEL_FOR)
                             {
                                 accRelation = pRrelationSet->getRelation(j);
                                 paccRelation = &accRelation;
@@ -741,12 +750,12 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CMAccessible::get_accKeyboardShortcut(VARIANT 
                         if(paccRelation)
                         {
                             xTargets = paccRelation->TargetSet;
-                            pRAcc = xTargets[0];
-                            if (m_xAccessible.get() != static_cast<XAccessible*>(pRAcc.get()))
+                            xAcc = xTargets[0];
+                            if (m_xAccessible.get() != xAcc.get())
                                 return S_FALSE;
                         }
 
-                        Reference<XAccessibleExtendedComponent> pRXIE(pRLebelContext,UNO_QUERY);
+                        Reference<XAccessibleExtendedComponent> pRXIE(xLabelContext, UNO_QUERY);
                         if(!pRXIE.is())
                             return S_FALSE;
 
@@ -761,7 +770,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CMAccessible::get_accKeyboardShortcut(VARIANT 
                     }
 
                     SysFreeString(*pszKeyboardShortcut);
-                    *pszKeyboardShortcut = SysAllocString(o3tl::toW(wString.getStr()));
+                    *pszKeyboardShortcut = sal::systools::BStr::newBSTR(wString);
 
                     return S_OK;
                 }
@@ -773,7 +782,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CMAccessible::get_accKeyboardShortcut(VARIANT 
 
             long lVal = varChild.lVal;
             varChild.lVal = CHILDID_SELF;
-            IMAccessible *pChild = this->GetChildInterface(lVal);
+            IMAccessible* pChild = GetChildInterface(lVal);
             if(!pChild)
                 return E_FAIL;
 
@@ -1064,38 +1073,12 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CMAccessible::put_accValue(VARIANT varChild, B
 
             long lVal = varChild.lVal;
             varChild.lVal = CHILDID_SELF;
-            IMAccessible *pChild = this->GetChildInterface(lVal);
+            IMAccessible* pChild = GetChildInterface(lVal);
             if(!pChild)
                 return E_FAIL;
             return pChild->put_accValue(varChild,szValue);
         }
         return E_FAIL;
-
-        } catch(...) { return E_FAIL; }
-}
-
-/**
-* Set the accessible name of the current COM object self from UNO.
-* @param    pszName, the name value used to set the name of the current object.
-* @return   S_OK if successful and E_FAIL if failure.
-*/
-COM_DECLSPEC_NOTHROW STDMETHODIMP CMAccessible::Put_XAccName(const OLECHAR __RPC_FAR *pszName)
-{
-    // internal IMAccessible - no mutex meeded
-
-    try {
-        if (m_isDestroy) return S_FALSE;
-
-        if(pszName == nullptr)
-        {
-            return E_INVALIDARG;
-        }
-
-        SysFreeString(m_pszName);
-        m_pszName = SysAllocString(pszName);
-        if(m_pszName==nullptr)
-            return E_FAIL;
-        return S_OK;
 
         } catch(...) { return E_FAIL; }
 }
@@ -1239,7 +1222,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CMAccessible::Put_XAccParent(IMAccessible __RP
 {
     // internal IMAccessible - no mutex meeded
 
-    this->m_pIParent = pIParent;
+    m_pIParent = pIParent;
 
     if(pIParent)
         m_pIParent->AddRef();
@@ -1256,7 +1239,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CMAccessible::Put_XAccChildID(long dChildID)
 {
     // internal IMAccessible - no mutex meeded
 
-    this->m_dChildID = dChildID;
+    m_dChildID = dChildID;
     return S_OK;
 }
 
@@ -1343,10 +1326,10 @@ IMAccessible* CMAccessible::GetChildInterface(long dChildID)//for test
 /**
 * for descendantmanager circumstance,provide child interface when navigate
 * @param    varCur, the current child.
-* @param    flags, the navigation direction.
+* @param eDirection, the navigation direction.
 * @return  IMAccessible*, the child of the end up node.
 */
-IMAccessible* CMAccessible::GetNavigateChildForDM(VARIANT varCur, short flags)
+IMAccessible* CMAccessible::GetNavigateChildForDM(VARIANT varCur, NavigationDirection eDirection)
 {
 
     XAccessibleContext* pXContext = GetContextByXAcc(m_xAccessible.get());
@@ -1361,49 +1344,45 @@ IMAccessible* CMAccessible::GetNavigateChildForDM(VARIANT varCur, short flags)
         return nullptr;
     }
 
-    IMAccessible* pCurChild = nullptr;
-    union {
-        XAccessible* pChildXAcc;
-        hyper nHyper = 0;
-    };
     Reference<XAccessible> pRChildXAcc;
-    XAccessibleContext* pChildContext = nullptr;
-    sal_Int64 index = 0, delta = 0;
-    switch(flags)
+    switch(eDirection)
     {
-    case DM_FIRSTCHILD:
+    case NavigationDirection::FIRST_CHILD:
         pRChildXAcc = pXContext->getAccessibleChild(0);
         break;
-    case DM_LASTCHILD:
+    case NavigationDirection::LAST_CHILD:
         pRChildXAcc = pXContext->getAccessibleChild(count-1);
         break;
-    case DM_NEXTCHILD:
-    case DM_PREVCHILD:
-        pCurChild = GetChildInterface(varCur.lVal);
+    case NavigationDirection::NEXT_CHILD:
+    case NavigationDirection::PREVIOUS_CHILD:
+    {
+        IMAccessible* pCurChild = GetChildInterface(varCur.lVal);
         if(pCurChild==nullptr)
         {
             return nullptr;
         }
-        pCurChild->GetUNOInterface(&nHyper);
-        if(pChildXAcc==nullptr)
-        {
+
+        CMAccessible* pChildCMAcc = static_cast<CMAccessible*>(pCurChild);
+        XAccessible* pChildXAcc = pChildCMAcc->m_xAccessible.get();
+        if (!pChildXAcc)
             return nullptr;
-        }
-        pChildContext = GetContextByXAcc(pChildXAcc);
+
+        XAccessibleContext* pChildContext = GetContextByXAcc(pChildXAcc);
         if(pChildContext == nullptr)
         {
             return nullptr;
         }
-        delta = (flags==DM_NEXTCHILD)?1:-1;
+        const sal_Int64 delta = (eDirection == NavigationDirection::NEXT_CHILD) ? 1 : -1;
         //currently, getAccessibleIndexInParent is error in UNO for
         //some kind of List,such as ValueSet, the index will be less 1 than
         //what should be, need to fix UNO code
-        index = pChildContext->getAccessibleIndexInParent()+delta;
+        const sal_Int64 index = pChildContext->getAccessibleIndexInParent() + delta;
         if((index>=0)&&(index<=count-1))
         {
             pRChildXAcc = pXContext->getAccessibleChild(index);
         }
         break;
+    }
     default:
         break;
     }
@@ -1412,9 +1391,8 @@ IMAccessible* CMAccessible::GetNavigateChildForDM(VARIANT varCur, short flags)
     {
         return nullptr;
     }
-    pChildXAcc = pRChildXAcc.get();
-    g_pAccObjectManager->InsertAccObj(pChildXAcc, m_xAccessible.get());
-    return g_pAccObjectManager->GetIAccessibleFromXAccessible(pChildXAcc);
+    g_pAccObjectManager->InsertAccObj(pRChildXAcc.get(), m_xAccessible.get());
+    return g_pAccObjectManager->GetIAccessibleFromXAccessible(pRChildXAcc.get());
 }
 
 /**
@@ -1444,7 +1422,7 @@ HRESULT CMAccessible::GetFirstChild(VARIANT varStart,VARIANT* pvarEndUpAt)
             return E_INVALIDARG;
         }
 
-        pvarEndUpAt->pdispVal = GetNavigateChildForDM(varStart, DM_FIRSTCHILD);
+        pvarEndUpAt->pdispVal = GetNavigateChildForDM(varStart, NavigationDirection::FIRST_CHILD);
         if(pvarEndUpAt->pdispVal)
         {
             pvarEndUpAt->pdispVal->AddRef();
@@ -1481,7 +1459,7 @@ HRESULT CMAccessible::GetLastChild(VARIANT varStart,VARIANT* pvarEndUpAt)
             return E_INVALIDARG;
         }
 
-        pvarEndUpAt->pdispVal = GetNavigateChildForDM(varStart, DM_LASTCHILD);
+        pvarEndUpAt->pdispVal = GetNavigateChildForDM(varStart, NavigationDirection::LAST_CHILD);
         if(pvarEndUpAt->pdispVal)
         {
             pvarEndUpAt->pdispVal->AddRef();
@@ -1791,10 +1769,10 @@ static XAccessible* getTheParentOfMember(XAccessible* pXAcc)
     for(sal_Int32 i=0 ; i<nRelations ; i++)
     {
         AccessibleRelation accRelation = pRrelationSet->getRelation(i);
-        if(accRelation.RelationType == 7)
+        if (accRelation.RelationType == AccessibleRelationType_MEMBER_OF)
         {
-            Sequence< Reference< XInterface > > xTargets = accRelation.TargetSet;
-            return static_cast<XAccessible*>(xTargets[0].get());
+            Sequence<Reference<XAccessible>> xTargets = accRelation.TargetSet;
+            return xTargets[0].get();
         }
     }
     return nullptr;
@@ -1860,17 +1838,17 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CMAccessible::get_groupPosition(long __RPC_FAR
             for(int i=0 ; i<nRel ; i++)
             {
                 AccessibleRelation accRelation = pRrelationSet->getRelation(i);
-                if(accRelation.RelationType == 7)
+                if (accRelation.RelationType == AccessibleRelationType_MEMBER_OF)
                 {
-                    Sequence< Reference< XInterface > > xTargets = accRelation.TargetSet;
+                    Sequence<Reference<XAccessible>> xTargets = accRelation.TargetSet;
 
-                    Reference<XInterface> pRAcc = xTargets[0];
+                    Reference<XAccessible> xTarget = xTargets[0];
                     sal_Int64 nChildCount = pRParentContext->getAccessibleChildCount();
                     assert(nChildCount < std::numeric_limits<long>::max());
                     for (sal_Int64 j = 0; j< nChildCount; j++)
                     {
                         if( getTheParentOfMember(pRParentContext->getAccessibleChild(j).get())
-                            == static_cast<XAccessible*>(pRAcc.get()) &&
+                            == xTarget.get() &&
                             pRParentContext->getAccessibleChild(j)->getAccessibleContext()->getAccessibleRole() == AccessibleRole::RADIO_BUTTON)
                             number++;
                         if (pRParentContext->getAccessibleChild(j).get() == m_xAccessible.get())
@@ -2119,16 +2097,12 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CMAccessible::accSelect(long flagsSelect, VARI
 
         if( flagsSelect&SELFLAG_TAKEFOCUS )
         {
-            union {
-                XAccessible* pTempUNO;
-                hyper nHyper = 0;
-            };
-            pSelectAcc->GetUNOInterface(&nHyper);
-
-            if( pTempUNO == nullptr )
+            CMAccessible* pSelectCMAcc = static_cast<CMAccessible*>(pSelectAcc);
+            Reference<XAccessible> xSelectAcc = pSelectCMAcc->m_xAccessible;
+            if (!xSelectAcc.is())
                 return 0;
 
-            Reference<XAccessibleContext> pRContext = pTempUNO->getAccessibleContext();
+            Reference<XAccessibleContext> pRContext = xSelectAcc->getAccessibleContext();
             Reference< XAccessibleComponent > pRComponent(pRContext,UNO_QUERY);
             Reference< XAccessible > pRParentXAcc = pRContext->getAccessibleParent();
             Reference< XAccessibleContext > pRParentContext = pRParentXAcc->getAccessibleContext();
@@ -2174,35 +2148,6 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CMAccessible::accSelect(long flagsSelect, VARI
 }
 
 /**
-* Return XAccessible interface pointer when needed
-* @param pXAcc, [in, out] the Uno interface of the current object.
-* @return S_OK if successful.
-*/
-COM_DECLSPEC_NOTHROW STDMETHODIMP CMAccessible::GetUNOInterface(hyper * pXAcc)
-{
-    // internal IMAccessible - no mutex meeded
-
-    if(pXAcc == nullptr)
-        return E_INVALIDARG;
-
-    *pXAcc = reinterpret_cast<hyper>(m_xAccessible.get());
-    return S_OK;
-}
-
-/**
-* Helper method for Implementation of get_accDefaultAction
-* @param pAction, the default action point of the current object.
-* @return S_OK if successful.
-*/
-COM_DECLSPEC_NOTHROW STDMETHODIMP CMAccessible::SetDefaultAction(hyper pAction)
-{
-    // internal IMAccessible - no mutex meeded
-
-    m_xAction = reinterpret_cast<XAccessibleAction*>(pAction);
-    return S_OK;
-}
-
-/**
 * This method is called when AT open some UI elements initially
 * the UI element takes the default action defined here
 * @param varChild, the child id of the defaultaction.
@@ -2224,16 +2169,19 @@ COM_DECLSPEC_NOTHROW HRESULT STDMETHODCALLTYPE CMAccessible::get_accDefaultActio
         {
             if(varChild.lVal==CHILDID_SELF)
             {
-                if (!m_xAction.is())
-                    return DISP_E_MEMBERNOTFOUND;
+                Reference<XAccessibleAction> xAction(m_xContext, UNO_QUERY);
+                if (!xAction.is() || xAction->getAccessibleActionCount() < 1)
+                    return S_FALSE;
+
+                const OUString sActionDescription = xAction->getAccessibleActionDescription(0);
                 SysFreeString(*pszDefaultAction);
-                *pszDefaultAction = SysAllocString(m_pszActionDescription);
+                *pszDefaultAction = sal::systools::BStr::newBSTR(sActionDescription);
                 return S_OK;
             }
 
             long lVal = varChild.lVal;
             varChild.lVal = CHILDID_SELF;
-            IMAccessible *pChild = this->GetChildInterface(lVal);
+            IMAccessible* pChild = GetChildInterface(lVal);
             if(!pChild)
                 return E_FAIL;
             return pChild->get_accDefaultAction(varChild,pszDefaultAction);
@@ -2256,49 +2204,25 @@ COM_DECLSPEC_NOTHROW HRESULT STDMETHODCALLTYPE CMAccessible::accDoDefaultAction(
         if (m_isDestroy) return S_FALSE;
         if( varChild.vt != VT_I4 )
             return E_INVALIDARG;
-        if (!m_xAction.is())
-            return E_FAIL;
-        if (m_xAction->getAccessibleActionCount() == 0)
-            return E_FAIL;
 
-        if(varChild.lVal==CHILDID_SELF)
+        if (varChild.lVal == CHILDID_SELF)
         {
-            if (m_xAction->getAccessibleActionCount() > 0)
-                m_xAction->doAccessibleAction(0);
+            Reference<XAccessibleAction> xAction(m_xContext, UNO_QUERY);
+            if (!xAction.is() || xAction->getAccessibleActionCount() < 1)
+                return S_FALSE;
+
+            xAction->doAccessibleAction(0);
             return S_OK;
         }
 
         long lVal = varChild.lVal;
         varChild.lVal = CHILDID_SELF;
-        IMAccessible *pChild = this->GetChildInterface(lVal);
+        IMAccessible* pChild = GetChildInterface(lVal);
         if(!pChild)
             return E_FAIL;
         return pChild->accDoDefaultAction( varChild );
 
     } catch(...) { return E_FAIL; }
-}
-
-/**
-* UNO set description information for action to COM.
-* @param szAction, the action description of the current object.
-* @return S_OK if successful.
-*/
-COM_DECLSPEC_NOTHROW STDMETHODIMP CMAccessible::Put_ActionDescription( const OLECHAR* szAction)
-{
-    // internal IMAccessible - no mutex meeded
-
-    try {
-        if (m_isDestroy) return S_FALSE;
-
-        if(szAction == nullptr)
-        {
-            return E_INVALIDARG;
-        }
-        SysFreeString(m_pszActionDescription );
-        m_pszActionDescription = SysAllocString( szAction );
-        return S_OK;
-
-        } catch(...) { return E_FAIL; }
 }
 
 bool CMAccessible::GetXInterfaceFromXAccessible(XAccessible* pXAcc, XInterface** ppXI, XInterfaceType eType)
@@ -2512,7 +2436,7 @@ void CMAccessible::ConvertAnyToVariant(const css::uno::Any &rAnyVal, VARIANT *pv
                 pvData->vt = VT_BSTR;
                 OUString val;
                 rAnyVal >>= val;
-                pvData->bstrVal = SysAllocString(o3tl::toW(val.getStr()));
+                pvData->bstrVal = sal::systools::BStr::newBSTR(val);
                 break;
             }
 
@@ -2564,7 +2488,7 @@ void CMAccessible::ConvertAnyToVariant(const css::uno::Any &rAnyVal, VARIANT *pv
         case TypeClass::TypeClass_MAKE_FIXED_SIZE:
             // Output the type string, if there is other uno value type.
             pvData->vt = VT_BSTR;
-            pvData->bstrVal = SysAllocString(o3tl::toW(rAnyVal.getValueTypeName().getStr()));
+            pvData->bstrVal = sal::systools::BStr::newBSTR(rAnyVal.getValueTypeName());
             break;
 
         default:
@@ -2662,9 +2586,9 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CMAccessible::get_locale( IA2Locale __RPC_FAR 
             return E_FAIL;
 
         css::lang::Locale unoLoc = m_xContext->getLocale();
-        locale->language = SysAllocString(o3tl::toW(unoLoc.Language.getStr()));
-        locale->country = SysAllocString(o3tl::toW(unoLoc.Country.getStr()));
-        locale->variant = SysAllocString(o3tl::toW(unoLoc.Variant.getStr()));
+        locale->language = sal::systools::BStr::newBSTR(unoLoc.Language);
+        locale->country = sal::systools::BStr::newBSTR(unoLoc.Country);
+        locale->variant = sal::systools::BStr::newBSTR(unoLoc.Variant);
 
         return S_OK;
 
@@ -2681,7 +2605,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CMAccessible::get_appName(BSTR __RPC_FAR *name
             return E_INVALIDARG;
 
         static const OUString sAppName = utl::ConfigManager::getProductName();
-        *name = SysAllocString(o3tl::toW(sAppName.getStr()));
+        *name = sal::systools::BStr::newBSTR(sAppName);
         return S_OK;
     } catch(...) { return E_FAIL; }
 }
@@ -2694,7 +2618,7 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CMAccessible::get_appVersion(BSTR __RPC_FAR *v
         if(version == nullptr)
             return E_INVALIDARG;
         static const OUString sVersion = utl::ConfigManager::getProductVersion();
-        *version=SysAllocString(o3tl::toW(sVersion.getStr()));
+        *version = sal::systools::BStr::newBSTR(sVersion);
         return S_OK;
     } catch(...) { return E_FAIL; }
 }
@@ -2733,15 +2657,10 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CMAccessible::get_attributes(/*[out]*/ BSTR *p
         }
 
         OUString sAttributes;
-        Reference<XAccessibleExtendedAttributes> pRXI(pRContext,UNO_QUERY);
-        if (pRXI.is())
+        Reference<XAccessibleExtendedAttributes> xExtendedAttributes(pRContext, UNO_QUERY);
+        if (xExtendedAttributes.is())
         {
-            css::uno::Reference<css::accessibility::XAccessibleExtendedAttributes> pRXAttr;
-            pRXAttr = pRXI.get();
-            css::uno::Any  anyVal = pRXAttr->getExtendedAttributes();
-
-            OUString val;
-            anyVal >>= val;
+            const OUString val = xExtendedAttributes->getExtendedAttributes();
             sAttributes += val;
         }
 
@@ -2756,12 +2675,102 @@ COM_DECLSPEC_NOTHROW STDMETHODIMP CMAccessible::get_attributes(/*[out]*/ BSTR *p
                 xText, IA2AttributeType::ObjectAttributes, 0, nStartOffset, nEndOffset);
         }
 
+        // report accessible ID as "id" object attribute as specified in the
+        // IAccessible2 object attribute spec
+        Reference<XAccessibleContext2> xContext2(pRContext, UNO_QUERY);
+        if (xContext2.is())
+        {
+            const OUString sId = xContext2->getAccessibleId();
+            if (!sId.isEmpty())
+                sAttributes += "id:" + sId + ";";
+        }
+
         if (*pAttr)
             SysFreeString(*pAttr);
-        *pAttr = SysAllocString(o3tl::toW(sAttributes.getStr()));
+        *pAttr = sal::systools::BStr::newBSTR(sAttributes);
 
         return S_OK;
     } catch(...) { return E_FAIL; }
+}
+
+// IAccessible2_2 methods
+COM_DECLSPEC_NOTHROW STDMETHODIMP CMAccessible::get_attribute(BSTR, VARIANT*)
+{
+    return E_NOTIMPL;
+}
+
+COM_DECLSPEC_NOTHROW STDMETHODIMP CMAccessible::get_accessibleWithCaret(IUnknown**, long*)
+{
+    return E_NOTIMPL;
+}
+
+COM_DECLSPEC_NOTHROW STDMETHODIMP CMAccessible::get_relationTargetsOfType(BSTR type,
+                                                                          long maxTargets,
+                                                                          IUnknown*** targets,
+                                                                          long* nTargets)
+{
+    SolarMutexGuard g;
+
+    if (!type || !targets || !nTargets || maxTargets <= 0)
+        return E_INVALIDARG;
+
+    if (m_isDestroy)
+        return S_FALSE;
+
+    if (!m_xContext.is())
+        return E_FAIL;
+
+    try
+    {
+        Reference<XAccessibleRelationSet> xRelationSet = m_xContext->getAccessibleRelationSet();
+        if (!xRelationSet.is())
+            return S_FALSE;
+
+        const AccessibleRelationType eUnoRelationType = CAccRelation::mapToUnoRelationType(type);
+        if (eUnoRelationType == AccessibleRelationType_INVALID)
+            return S_FALSE;
+
+        AccessibleRelation aRelation = xRelationSet->getRelationByType(eUnoRelationType);
+        if (aRelation.RelationType != eUnoRelationType || !aRelation.TargetSet.hasElements())
+            return S_FALSE;
+
+        const sal_Int32 nRetCount
+            = std::min(sal_Int32(maxTargets), aRelation.TargetSet.getLength());
+        *targets = static_cast<IUnknown**>(CoTaskMemAlloc(nRetCount * sizeof(IUnknown*)));
+        assert(*targets && "Failed to allocate memory for relation targets");
+
+        for (sal_Int32 i = 0; i < nRetCount; i++)
+        {
+            Reference<XAccessible> xTarget = aRelation.TargetSet[i];
+            assert(xTarget.is());
+
+            IAccessible* pIAccessible = CMAccessible::get_IAccessibleFromXAccessible(xTarget.get());
+            if (!pIAccessible)
+            {
+                Reference<XAccessibleContext> xTargetContext = xTarget->getAccessibleContext();
+                if (!xTargetContext.is())
+                {
+                    SAL_WARN("iacc2", "Relation target doesn't have an accessible context");
+                    CoTaskMemFree(*targets);
+                    return E_FAIL;
+                }
+                Reference<XAccessible> xParent = xTargetContext->getAccessibleParent();
+                CMAccessible::g_pAccObjectManager->InsertAccObj(xTarget.get(), xParent.get());
+                pIAccessible = CMAccessible::get_IAccessibleFromXAccessible(xTarget.get());
+            }
+            assert(pIAccessible && "Couldn't retrieve IAccessible object for relation target.");
+
+            pIAccessible->AddRef();
+            (*targets)[i] = pIAccessible;
+        }
+
+        *nTargets = nRetCount;
+        return S_OK;
+    }
+    catch (...)
+    {
+        return E_FAIL;
+    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

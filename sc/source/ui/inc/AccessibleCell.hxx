@@ -22,12 +22,13 @@
 #include <memory>
 #include "AccessibleCellBase.hxx"
 #include "viewdata.hxx"
+#include <com/sun/star/accessibility/AccessibleRelationType.hpp>
 #include <com/sun/star/accessibility/XAccessibleExtendedAttributes.hpp>
+#include <cppuhelper/implbase1.hxx>
 #include <rtl/ref.hxx>
 #include <editeng/AccessibleStaticTextBase.hxx>
 #include <comphelper/uno3.hxx>
 
-namespace com::sun::star::accessibility { class XAccessibleRelationSet; }
 namespace utl { class AccessibleRelationSetHelper; }
 
 class ScTabViewShell;
@@ -36,11 +37,13 @@ class ScAccessibleDocument;
 typedef cppu::ImplHelper1< css::accessibility::XAccessibleExtendedAttributes>
                     ScAccessibleCellAttributeImpl;
 
+using css::accessibility::AccessibleRelationType;
+
 /** @descr
         This base class provides an implementation of the
         <code>AccessibleCell</code> service.
 */
-class ScAccessibleCell
+class ScAccessibleCell final
     :   public  ScAccessibleCellBase,
         public  accessibility::AccessibleStaticTextBase,
         public  ScAccessibleCellAttributeImpl
@@ -62,8 +65,6 @@ private:
         sal_Int64 nIndex,
         ScSplitPos eSplitPos,
         ScAccessibleDocument* pAccDoc);
-
-    virtual void Init() override;
 
     using ScAccessibleCellBase::disposing;
     virtual void SAL_CALL disposing() override;
@@ -91,10 +92,10 @@ public:
 
 protected:
     /// Return the object's current bounding box relative to the desktop.
-    virtual AbsoluteScreenPixelRectangle GetBoundingBoxOnScreen() const override;
+    virtual AbsoluteScreenPixelRectangle GetBoundingBoxOnScreen() override;
 
     /// Return the object's current bounding box relative to the parent object.
-    virtual tools::Rectangle GetBoundingBox() const override;
+    virtual tools::Rectangle GetBoundingBox() override;
 
 public:
     ///=====  XAccessibleContext  ==============================================
@@ -117,19 +118,7 @@ public:
         css::accessibility::XAccessibleRelationSet> SAL_CALL
            getAccessibleRelationSet() override;
 
-    ///=====  XServiceInfo  ====================================================
-
-    /** Returns an identifier for the implementation of this object.
-    */
-    virtual OUString SAL_CALL
-        getImplementationName() override;
-
-    /** Returns a list of all supported services.
-    */
-    virtual css::uno::Sequence< OUString> SAL_CALL
-        getSupportedServiceNames() override;
-
-    virtual css::uno::Any SAL_CALL getExtendedAttributes() override;
+    virtual OUString SAL_CALL getExtendedAttributes() override;
 
     // Override this method to handle cell's ParaIndent attribute specially.
     virtual css::uno::Sequence< css::beans::PropertyValue > SAL_CALL getCharacterAttributes( sal_Int32 nIndex, const css::uno::Sequence< OUString >& aRequestedAttributes ) override;
@@ -152,10 +141,10 @@ private:
     void FillDependents(utl::AccessibleRelationSetHelper* pRelationSet);
     void FillPrecedents(utl::AccessibleRelationSetHelper* pRelationSet);
     void AddRelation(const ScAddress& rCell,
-        const sal_uInt16 aRelationType,
+        const AccessibleRelationType eRelationType,
         ::utl::AccessibleRelationSetHelper* pRelationSet);
     void AddRelation(const ScRange& rRange,
-        const sal_uInt16 aRelationType,
+        const AccessibleRelationType eRelationType,
         ::utl::AccessibleRelationSetHelper* pRelationSet);
     bool IsFormulaMode();
     bool IsDropdown() const;

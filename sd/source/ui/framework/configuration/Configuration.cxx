@@ -18,11 +18,12 @@
  */
 
 #include <framework/Configuration.hxx>
-
+#include <framework/ConfigurationChangeEvent.hxx>
 #include <framework/FrameworkHelper.hxx>
+#include <framework/ConfigurationController.hxx>
+#include <framework/AbstractPane.hxx>
+#include <framework/AbstractView.hxx>
 
-#include <com/sun/star/drawing/framework/ConfigurationChangeEvent.hpp>
-#include <com/sun/star/drawing/framework/XConfigurationControllerBroadcaster.hpp>
 #include <comphelper/sequence.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <rtl/ustrbuf.hxx>
@@ -34,13 +35,13 @@ using namespace ::com::sun::star::drawing::framework;
 using ::sd::framework::FrameworkHelper;
 
 namespace {
-/** Use the XResourceId::compareTo() method to implement a compare operator
+/** Use the ResourceId::compareTo() method to implement a compare operator
     for STL containers.
 */
 class XResourceIdLess
 {
 public:
-    bool operator () (const Reference<XResourceId>& rId1, const Reference<XResourceId>& rId2) const
+    bool operator () (const rtl::Reference<sd::framework::ResourceId>& rId1, const rtl::Reference<sd::framework::ResourceId>& rId2) const
     {
         return rId1->compareTo(rId2) == -1;
     }
@@ -51,7 +52,7 @@ public:
 namespace sd::framework {
 
 class Configuration::ResourceContainer
-    : public ::std::set<Reference<XResourceId>, XResourceIdLess>
+    : public ::std::set<rtl::Reference<ResourceId>, XResourceIdLess>
 {
 public:
     ResourceContainer() {}
@@ -60,7 +61,7 @@ public:
 //===== Configuration =========================================================
 
 Configuration::Configuration (
-    const Reference<XConfigurationControllerBroadcaster>& rxBroadcaster,
+    const rtl::Reference<ConfigurationController>& rxBroadcaster,
     bool bBroadcastRequestEvents)
     : mpResourceContainer(new ResourceContainer()),
       mxBroadcaster(rxBroadcaster),
@@ -69,7 +70,7 @@ Configuration::Configuration (
 }
 
 Configuration::Configuration (
-    const Reference<XConfigurationControllerBroadcaster>& rxBroadcaster,
+    const rtl::Reference<ConfigurationController>& rxBroadcaster,
     bool bBroadcastRequestEvents,
     const ResourceContainer& rResourceContainer)
     : mpResourceContainer(new ResourceContainer(rResourceContainer)),
@@ -88,9 +89,9 @@ void Configuration::disposing(std::unique_lock<std::mutex>&)
     mxBroadcaster = nullptr;
 }
 
-//----- XConfiguration --------------------------------------------------------
+//----- Configuration --------------------------------------------------------
 
-void SAL_CALL Configuration::addResource (const Reference<XResourceId>& rxResourceId)
+void Configuration::addResource (const rtl::Reference<ResourceId>& rxResourceId)
 {
     ThrowIfDisposed();
 
@@ -105,7 +106,7 @@ void SAL_CALL Configuration::addResource (const Reference<XResourceId>& rxResour
     }
 }
 
-void SAL_CALL Configuration::removeResource (const Reference<XResourceId>& rxResourceId)
+void Configuration::removeResource (const rtl::Reference<ResourceId>& rxResourceId)
 {
     ThrowIfDisposed();
 
@@ -122,18 +123,18 @@ void SAL_CALL Configuration::removeResource (const Reference<XResourceId>& rxRes
     }
 }
 
-Sequence<Reference<XResourceId> > SAL_CALL Configuration::getResources (
-    const Reference<XResourceId>& rxAnchorId,
-    const OUString& rsResourceURLPrefix,
+std::vector<rtl::Reference<ResourceId> > Configuration::getResources (
+    const rtl::Reference<ResourceId>& rxAnchorId,
+    std::u16string_view rsResourceURLPrefix,
     AnchorBindingMode eMode)
 {
     std::unique_lock aGuard (m_aMutex);
     ThrowIfDisposed();
 
-    const bool bFilterResources (!rsResourceURLPrefix.isEmpty());
+    const bool bFilterResources (!rsResourceURLPrefix.empty());
 
     // Collect the matching resources in a vector.
-    ::std::vector<Reference<XResourceId> > aResources;
+    ::std::vector<rtl::Reference<ResourceId> > aResources;
     for (const auto& rxResource : *mpResourceContainer)
     {
         if ( ! rxResource->isBoundTo(rxAnchorId,eMode))
@@ -160,10 +161,10 @@ Sequence<Reference<XResourceId> > SAL_CALL Configuration::getResources (
         aResources.push_back(rxResource);
     }
 
-    return comphelper::containerToSequence(aResources);
+    return aResources;
 }
 
-sal_Bool SAL_CALL Configuration::hasResource (const Reference<XResourceId>& rxResourceId)
+bool Configuration::hasResource (const rtl::Reference<ResourceId>& rxResourceId)
 {
     std::unique_lock aGuard (m_aMutex);
     ThrowIfDisposed();
@@ -172,9 +173,7 @@ sal_Bool SAL_CALL Configuration::hasResource (const Reference<XResourceId>& rxRe
         && mpResourceContainer->find(rxResourceId) != mpResourceContainer->end();
 }
 
-//----- XCloneable ------------------------------------------------------------
-
-Reference<util::XCloneable> SAL_CALL Configuration::createClone()
+rtl::Reference<Configuration> Configuration::createClone()
 {
     std::unique_lock aGuard (m_aMutex);
     ThrowIfDisposed();
@@ -216,7 +215,7 @@ void SAL_CALL Configuration::setName (const OUString&)
 }
 
 void Configuration::PostEvent (
-    const Reference<XResourceId>& rxResourceId,
+    const rtl::Reference<ResourceId>& rxResourceId,
     const bool bActivation)
 {
     OSL_ASSERT(rxResourceId.is());
@@ -228,14 +227,14 @@ void Configuration::PostEvent (
     aEvent.ResourceId = rxResourceId;
     if (bActivation)
         if (mbBroadcastRequestEvents)
-            aEvent.Type = FrameworkHelper::msResourceActivationRequestEvent;
+            aEvent.Type = ConfigurationChangeEventType::ResourceActivationRequest;
         else
-            aEvent.Type = FrameworkHelper::msResourceActivationEvent;
+            aEvent.Type = ConfigurationChangeEventType::ResourceActivation;
     else
         if (mbBroadcastRequestEvents)
-            aEvent.Type = FrameworkHelper::msResourceDeactivationRequestEvent;
+            aEvent.Type = ConfigurationChangeEventType::ResourceDeactivationRequest;
         else
-            aEvent.Type = FrameworkHelper::msResourceDeactivationEvent;
+            aEvent.Type = ConfigurationChangeEventType::ResourceDeactivation;
     aEvent.Configuration = this;
 
     mxBroadcaster->notifyEvent(aEvent);
@@ -245,14 +244,14 @@ void Configuration::ThrowIfDisposed() const
 {
     if (m_bDisposed)
     {
-        throw lang::DisposedException ("Configuration object has already been disposed",
+        throw lang::DisposedException (u"Configuration object has already been disposed"_ustr,
             const_cast<uno::XWeak*>(static_cast<const uno::XWeak*>(this)));
     }
 }
 
 bool AreConfigurationsEquivalent (
-    const Reference<XConfiguration>& rxConfiguration1,
-    const Reference<XConfiguration>& rxConfiguration2)
+    const rtl::Reference<Configuration>& rxConfiguration1,
+    const rtl::Reference<Configuration>& rxConfiguration2)
 {
     if (rxConfiguration1.is() != rxConfiguration2.is())
         return false;
@@ -260,24 +259,34 @@ bool AreConfigurationsEquivalent (
         return true;
 
     // Get the lists of resources from the two given configurations.
-    const Sequence<Reference<XResourceId> > aResources1(
+    const std::vector<rtl::Reference<ResourceId> > aResources1(
         rxConfiguration1->getResources(
-            nullptr, OUString(), AnchorBindingMode_INDIRECT));
-    const Sequence<Reference<XResourceId> > aResources2(
+            nullptr, u"", AnchorBindingMode_INDIRECT));
+    const std::vector<rtl::Reference<ResourceId> > aResources2(
         rxConfiguration2->getResources(
-            nullptr, OUString(), AnchorBindingMode_INDIRECT));
+            nullptr, u"", AnchorBindingMode_INDIRECT));
 
     // When the number of resources differ then the configurations can not
     // be equivalent.
     // Comparison of the two lists of resource ids relies on their
     // ordering.
     return std::equal(aResources1.begin(), aResources1.end(), aResources2.begin(), aResources2.end(),
-        [](const Reference<XResourceId>& a, const Reference<XResourceId>& b) {
+        [](const rtl::Reference<ResourceId>& a, const rtl::Reference<ResourceId>& b) {
             if (a.is() && b.is())
                 return a->compareTo(b) == 0;
             return a.is() == b.is();
         });
 }
+
+ConfigurationChangeListener::~ConfigurationChangeListener() {}
+
+ConfigurationChangeRequest::~ConfigurationChangeRequest() {}
+
+AbstractPane::~AbstractPane() {}
+
+AbstractView::~AbstractView() {}
+
+AbstractResource::~AbstractResource() {}
 
 } // end of namespace sd::framework
 

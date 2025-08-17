@@ -51,9 +51,9 @@ protected:
         : SfxEnumItem( nWhichL, ePos ), m_nOffset( 0 )
     {}
 
-public:
-    virtual sal_uInt16       GetValueCount() const override;
+    virtual SfxItemType ItemType() const override = 0;
 
+public:
     virtual bool             operator==( const SfxPoolItem& ) const override;
 
     virtual bool             QueryValue( css::uno::Any& rVal, sal_uInt8 nMemberId = 0 ) const override;
@@ -91,6 +91,7 @@ public:
 class SW_DLLPUBLIC SwFormatFootnoteAtTextEnd final : public SwFormatFootnoteEndAtTextEnd
 {
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwFormatFootnoteAtTextEnd)
     SwFormatFootnoteAtTextEnd( SwFootnoteEndPosEnum ePos = FTNEND_ATPGORDOCEND )
         : SwFormatFootnoteEndAtTextEnd( RES_FTN_AT_TXTEND, ePos )
     {}
@@ -103,6 +104,7 @@ public:
 class SW_DLLPUBLIC SwFormatEndAtTextEnd final : public SwFormatFootnoteEndAtTextEnd
 {
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SwFormatEndAtTextEnd)
     SwFormatEndAtTextEnd( SwFootnoteEndPosEnum ePos = FTNEND_ATPGORDOCEND )
         : SwFormatFootnoteEndAtTextEnd( RES_END_AT_TXTEND, ePos )
     {
@@ -110,6 +112,7 @@ public:
     }
 
     virtual SwFormatEndAtTextEnd* Clone( SfxItemPool *pPool = nullptr ) const override;
+    void dumpAsXml(xmlTextWriterPtr pWriter) const override;
 };
 
 inline const SwFormatFootnoteAtTextEnd &SwAttrSet::GetFootnoteAtTextEnd(bool bInP) const

@@ -26,6 +26,7 @@ class ScInputOptions
 private:
     sal_uInt16  nMoveDir;           // enum ScDirection
     bool        bMoveSelection;
+    bool        bMoveKeepEdit;
     bool        bEnterEdit;
     bool        bExtendFormat;
     bool        bRangeFinder;
@@ -37,6 +38,7 @@ private:
     bool        bReplCellsWarn;
     bool        bLegacyCellSelection;
     bool        bEnterPasteMode;
+    bool        bWarnActiveSheet;
 
 public:
                 ScInputOptions();
@@ -47,6 +49,8 @@ public:
     bool        GetMoveSelection() const        { return bMoveSelection; }
     void        SetEnterEdit(bool bSet)         { bEnterEdit = bSet;     }
     bool        GetEnterEdit() const            { return bEnterEdit;     }
+    void        SetMoveKeepEdit(bool bSet)      { bMoveKeepEdit = bSet;  }
+    bool        GetMoveKeepEdit() const         { return bMoveKeepEdit;  }
     void        SetExtendFormat(bool bSet)      { bExtendFormat = bSet;  }
     bool        GetExtendFormat() const         { return bExtendFormat;  }
     void        SetRangeFinder(bool bSet)       { bRangeFinder = bSet;   }
@@ -67,6 +71,8 @@ public:
     bool        GetLegacyCellSelection() const      { return bLegacyCellSelection; }
     void        SetEnterPasteMode(bool bSet)    { bEnterPasteMode = bSet; }
     bool        GetEnterPasteMode() const       { return bEnterPasteMode; }
+    void        SetWarnActiveSheet(bool bSet)    { bWarnActiveSheet = bSet; }
+    bool        GetWarnActiveSheet() const       { return bWarnActiveSheet; }
 };
 
 // CfgItem for input options

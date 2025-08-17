@@ -89,12 +89,9 @@
 #define RID_GALLERY_THEME_TRANSPORT      (RID_GALLERY_THEME_START + 43)
 #define RID_GALLERY_THEME_TXTSHAPES      (RID_GALLERY_THEME_START + 44)
 
-#define RID_GALLERY_THEME_FIRST          RID_GALLERY_THEME_3D
-#define RID_GALLERY_THEME_LAST           RID_GALLERY_THEME_TXTSHAPES
-
 class SdrModel;
 class Graphic;
-class BitmapEx;
+class Bitmap;
 
 class SVXCORE_DLLPUBLIC GalleryExplorer
 {
@@ -121,9 +118,9 @@ public:
     static sal_uInt32           GetSdrObjCount( sal_uInt32 nThemeId );
 
     static bool                 GetSdrObj( std::u16string_view rThemeName, sal_uInt32 nSdrModelPos,
-                                           SdrModel* pModel, BitmapEx* pThumb = nullptr );
+                                           SdrModel* pModel, Bitmap* pThumb = nullptr );
     static bool                 GetSdrObj( sal_uInt32 nThemeId, sal_uInt32 nSdrModelPos,
-                                           SdrModel* pModel, BitmapEx* pThumb = nullptr );
+                                           SdrModel* pModel, Bitmap* pThumb = nullptr );
 
     static bool                 BeginLocking( std::u16string_view rThemeName );
     static bool                 BeginLocking( sal_uInt32 nThemeId );

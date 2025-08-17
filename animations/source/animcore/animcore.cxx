@@ -45,16 +45,12 @@
 #include <com/sun/star/container/ElementExistException.hpp>
 #include <com/sun/star/container/XEnumerationAccess.hpp>
 #include <com/sun/star/util/XChangesNotifier.hpp>
-#include <comphelper/servicehelper.hxx>
-#include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/queryinterface.hxx>
 #include <comphelper/interfacecontainer4.hxx>
 #include <cppuhelper/supportsservice.hxx>
-#include <cppuhelper/weakref.hxx>
 
 #include <cppuhelper/implbase.hxx>
 
-#include <o3tl/safeint.hxx>
 #include <sal/log.hxx>
 #include <unotools/weakref.hxx>
 #include <array>
@@ -512,122 +508,122 @@ AnimationNode::AnimationNode( const AnimationNode& rNode )
 
 static Sequence<OUString> getSupportedServiceNames_PAR()
 {
-    return { "com.sun.star.animations.ParallelTimeContainer" };
+    return { u"com.sun.star.animations.ParallelTimeContainer"_ustr };
 }
 
 static OUString getImplementationName_PAR()
 {
-    return "animcore::ParallelTimeContainer";
+    return u"animcore::ParallelTimeContainer"_ustr;
 }
 
 static Sequence<OUString> getSupportedServiceNames_SEQ()
 {
-    return { "com.sun.star.animations.SequenceTimeContainer" };
+    return { u"com.sun.star.animations.SequenceTimeContainer"_ustr };
 }
 
 static OUString getImplementationName_SEQ()
 {
-    return "animcore::SequenceTimeContainer";
+    return u"animcore::SequenceTimeContainer"_ustr;
 }
 
 static Sequence<OUString> getSupportedServiceNames_ITERATE()
 {
-    return { "com.sun.star.animations.IterateContainer" };
+    return { u"com.sun.star.animations.IterateContainer"_ustr };
 }
 
 static OUString getImplementationName_ITERATE()
 {
-    return "animcore::IterateContainer";
+    return u"animcore::IterateContainer"_ustr;
 }
 
 static Sequence<OUString> getSupportedServiceNames_ANIMATE()
 {
-    return { "com.sun.star.animations.Animate" };
+    return { u"com.sun.star.animations.Animate"_ustr };
 }
 
 static OUString getImplementationName_ANIMATE()
 {
-        return "animcore::Animate";
+        return u"animcore::Animate"_ustr;
 }
 
 static Sequence<OUString> getSupportedServiceNames_SET()
 {
-    return { "com.sun.star.animations.AnimateSet" };
+    return { u"com.sun.star.animations.AnimateSet"_ustr };
 }
 
 static OUString getImplementationName_SET()
 {
-    return "animcore::AnimateSet";
+    return u"animcore::AnimateSet"_ustr;
 }
 
 static Sequence<OUString> getSupportedServiceNames_ANIMATECOLOR()
 {
-    return { "com.sun.star.animations.AnimateColor" };
+    return { u"com.sun.star.animations.AnimateColor"_ustr };
 }
 
 static OUString getImplementationName_ANIMATECOLOR()
 {
-    return "animcore::AnimateColor";
+    return u"animcore::AnimateColor"_ustr;
 }
 
 static Sequence<OUString> getSupportedServiceNames_ANIMATEMOTION()
 {
-    return { "com.sun.star.animations.AnimateMotion" };
+    return { u"com.sun.star.animations.AnimateMotion"_ustr };
 }
 
 static OUString getImplementationName_ANIMATEMOTION()
 {
-    return "animcore::AnimateMotion";
+    return u"animcore::AnimateMotion"_ustr;
 }
 
 static Sequence<OUString> getSupportedServiceNames_ANIMATEPHYSICS()
 {
-    return { "com.sun.star.animations.AnimatePhysics" };
+    return { u"com.sun.star.animations.AnimatePhysics"_ustr };
 }
 
 static OUString getImplementationName_ANIMATEPHYSICS()
 {
-    return "animcore::AnimatePhysics";
+    return u"animcore::AnimatePhysics"_ustr;
 }
 
 static Sequence<OUString> getSupportedServiceNames_ANIMATETRANSFORM()
 {
-    return { "com.sun.star.animations.AnimateTransform" };
+    return { u"com.sun.star.animations.AnimateTransform"_ustr };
 }
 
 static OUString getImplementationName_ANIMATETRANSFORM()
 {
-    return "animcore::AnimateTransform";
+    return u"animcore::AnimateTransform"_ustr;
 }
 
 static Sequence<OUString> getSupportedServiceNames_TRANSITIONFILTER()
 {
-    return { "com.sun.star.animations.TransitionFilter" };
+    return { u"com.sun.star.animations.TransitionFilter"_ustr };
 }
 
 static OUString getImplementationName_TRANSITIONFILTER()
 {
-        return "animcore::TransitionFilter";
+        return u"animcore::TransitionFilter"_ustr;
 }
 
 static Sequence<OUString> getSupportedServiceNames_AUDIO()
 {
-    return { "com.sun.star.animations.Audio" };
+    return { u"com.sun.star.animations.Audio"_ustr };
 }
 
 static OUString getImplementationName_AUDIO()
 {
-        return "animcore::Audio";
+        return u"animcore::Audio"_ustr;
 }
 
 static Sequence<OUString> getSupportedServiceNames_COMMAND()
 {
-    return { "com.sun.star.animations.Command" };
+    return { u"com.sun.star.animations.Command"_ustr };
 }
 
 static OUString getImplementationName_COMMAND()
 {
-    return "animcore::Command";
+    return u"animcore::Command"_ustr;
 }
 
 // XInterface
@@ -1218,29 +1214,25 @@ Reference< XCloneable > SAL_CALL AnimationNode::createClone()
 {
     std::unique_lock aGuard( m_aMutex );
 
-    Reference< XCloneable > xNewNode;
+    rtl::Reference< AnimationNode > xNewNode;
     try
     {
         xNewNode = new AnimationNode( *this );
 
         if( !maChildren.empty() )
         {
-            Reference< XTimeContainer > xContainer( xNewNode, UNO_QUERY );
-            if( xContainer.is() )
+            for (auto const& child : maChildren)
             {
-                for (auto const& child : maChildren)
+                Reference< XCloneable > xCloneable(child, UNO_QUERY );
+                if( xCloneable.is() ) try
                 {
-                    Reference< XCloneable > xCloneable(child, UNO_QUERY );
-                    if( xCloneable.is() ) try
-                    {
-                        Reference< XAnimationNode > xNewChildNode( xCloneable->createClone(), UNO_QUERY );
-                        if( xNewChildNode.is() )
-                            xContainer->appendChild( xNewChildNode );
-                    }
-                    catch(const Exception&)
-                    {
-                        SAL_INFO("animations", "animations::AnimationNode::createClone(), exception caught!");
-                    }
+                    Reference< XAnimationNode > xNewChildNode( xCloneable->createClone(), UNO_QUERY );
+                    if( xNewChildNode.is() )
+                        xNewNode->appendChild( xNewChildNode );
+                }
+                catch(const Exception&)
+                {
+                    SAL_INFO("animations", "animations::AnimationNode::createClone(), exception caught!");
                 }
             }
         }
@@ -1897,7 +1889,7 @@ Reference< XAnimationNode > SAL_CALL AnimationNode::insertBefore( const Referenc
     std::unique_lock l( m_aMutex );
 
     if( !newChild.is() || !refChild.is() )
-        throw IllegalArgumentException("no child", static_cast<cppu::OWeakObject*>(this), -1);
+        throw IllegalArgumentException(u"no child"_ustr, static_cast<cppu::OWeakObject*>(this), -1);
 
     if( std::find(maChildren.begin(), maChildren.end(), newChild) != maChildren.end() )
         throw ElementExistException();
@@ -1922,7 +1914,7 @@ Reference< XAnimationNode > SAL_CALL AnimationNode::insertAfter( const Reference
     std::unique_lock l( m_aMutex );
 
     if( !newChild.is() || !refChild.is() )
-        throw IllegalArgumentException("no child", static_cast<cppu::OWeakObject*>(this), -1);
+        throw IllegalArgumentException(u"no child"_ustr, static_cast<cppu::OWeakObject*>(this), -1);
 
     if( std::find(maChildren.begin(), maChildren.end(), newChild) != maChildren.end() )
         throw ElementExistException();
@@ -1951,7 +1943,7 @@ Reference< XAnimationNode > SAL_CALL AnimationNode::replaceChild( const Referenc
     std::unique_lock l( m_aMutex );
 
     if( !newChild.is() || !oldChild.is() )
-        throw IllegalArgumentException("no child", static_cast<cppu::OWeakObject*>(this), -1);
+        throw IllegalArgumentException(u"no child"_ustr, static_cast<cppu::OWeakObject*>(this), -1);
 
     if( std::find(maChildren.begin(), maChildren.end(), newChild) != maChildren.end() )
         throw ElementExistException();
@@ -1977,7 +1969,7 @@ Reference< XAnimationNode > SAL_CALL AnimationNode::removeChild( const Reference
     std::unique_lock l( m_aMutex );
 
     if( !oldChild.is() )
-        throw IllegalArgumentException("no child", static_cast<cppu::OWeakObject*>(this), 1);
+        throw IllegalArgumentException(u"no child"_ustr, static_cast<cppu::OWeakObject*>(this), 1);
 
     auto old = std::find(maChildren.begin(), maChildren.end(), oldChild);
     if( old == maChildren.end() )
@@ -2000,13 +1992,13 @@ Reference< XAnimationNode > SAL_CALL AnimationNode::appendChild( const Reference
         std::unique_lock aGuard( m_aMutex );
 
         if( !newChild.is() )
-            throw IllegalArgumentException("no child", xThis, 1);
+            throw IllegalArgumentException(u"no child"_ustr, xThis, 1);
 
         if( std::find(maChildren.begin(), maChildren.end(), newChild) != maChildren.end() )
             throw ElementExistException({}, xThis);
 
         if( xThis == newChild )
-            throw IllegalArgumentException("cannot append self", xThis, -1);
+            throw IllegalArgumentException(u"cannot append self"_ustr, xThis, -1);
 
         maChildren.push_back( newChild );
     }

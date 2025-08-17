@@ -82,7 +82,6 @@ $(eval $(call gb_Library_use_externals,vclplug_gtk3,\
 
 $(eval $(call gb_Library_add_exception_objects,vclplug_gtk3,\
     vcl/unx/gtk3/a11y/atkaction \
-    vcl/unx/gtk3/a11y/atkbridge \
     vcl/unx/gtk3/a11y/atkcomponent \
     vcl/unx/gtk3/a11y/atkeditabletext \
     vcl/unx/gtk3/a11y/atkfactory \
@@ -95,7 +94,6 @@ $(eval $(call gb_Library_add_exception_objects,vclplug_gtk3,\
     vcl/unx/gtk3/a11y/atktablecell \
     vcl/unx/gtk3/a11y/atktextattributes \
     vcl/unx/gtk3/a11y/atktext \
-    vcl/unx/gtk3/a11y/atkutil \
     vcl/unx/gtk3/a11y/atkvalue \
     vcl/unx/gtk3/a11y/atkwrapper \
     vcl/unx/gtk3/fpicker/resourceprovider \
@@ -107,6 +105,7 @@ $(eval $(call gb_Library_add_exception_objects,vclplug_gtk3,\
     vcl/unx/gtk3/gtkinst \
     vcl/unx/gtk3/gtksys \
     vcl/unx/gtk3/gtkcairo \
+    vcl/unx/gtk3/custom-theme \
     vcl/unx/gtk3/salnativewidgets-gtk \
     vcl/unx/gtk3/gtkframe \
     vcl/unx/gtk3/gtkobject \

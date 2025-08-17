@@ -25,7 +25,7 @@
 namespace xcl::exp
 {
 /** Export for sparkline type of <ext> element - top sparkline element. */
-class SparklineExt : public XclExpExt
+class SparklineExt final : public XclExpExt
 {
 public:
     SparklineExt(const XclExpRoot& rRoot);
@@ -35,16 +35,16 @@ public:
                            std::vector<std::shared_ptr<sc::Sparkline>> const& rSparklines);
 
     static void
-    addSparklineGroupAttributes(rtl::Reference<sax_fastparser::FastAttributeList>& pAttrList,
-                                sc::SparklineAttributes& rSparklineAttributes);
+    addSparklineGroupAttributes(const rtl::Reference<sax_fastparser::FastAttributeList>& pAttrList,
+                                const sc::SparklineAttributes& rSparklineAttributes);
     static void addSparklineGroupColors(XclExpXmlStream& rStream,
-                                        sc::SparklineAttributes& rSparklineAttributes);
+                                        const sc::SparklineAttributes& rSparklineAttributes);
 
     XclExpExtType GetType() override { return XclExpExtSparklineType; }
 };
 
 /** Determines if sparklines needs to be exported and initiates the export. */
-class SparklineBuffer : public XclExpRecordBase, protected XclExpRoot
+class SparklineBuffer final : public XclExpRecordBase, protected XclExpRoot
 {
 public:
     explicit SparklineBuffer(const XclExpRoot& rRoot, const XclExtLstRef& xExtLst);

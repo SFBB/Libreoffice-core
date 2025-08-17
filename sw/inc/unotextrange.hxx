@@ -30,14 +30,19 @@
 #include <com/sun/star/text/XRedline.hpp>
 
 #include <cppuhelper/implbase.hxx>
+#include <svl/listener.hxx>
 
 #include "pam.hxx"
 #include "unobaseclass.hxx"
+#include <optional>
 
 class SwDoc;
 class SwUnoCursor;
 class SwFrameFormat;
 class SwXText;
+class SfxItemPropertySet;
+
+namespace sw::mark { class MarkBase; }
 
 class SW_DLLPUBLIC SwUnoInternalPaM final
     : public SwPaM
@@ -93,15 +98,15 @@ private:
 
     friend class SwXText;
 
-    class Impl;
-    ::sw::UnoImplPtr<Impl> m_pImpl;
-
     void    SetPositions(SwPaM const& rPam);
     //TODO: new exception type for protected content
     /// @throws css::uno::RuntimeException
     void    DeleteAndInsert(
                 std::u16string_view aText, ::sw::DeleteAndInsertMode eMode);
     void    Invalidate();
+    void    GetStartPaM(std::optional<SwPaM>& roPaM);
+    void    SetMark(::sw::mark::MarkBase& rMark);
+    void    InvalidateImpl();
 
     virtual ~SwXTextRange() override;
 
@@ -110,27 +115,31 @@ public:
     enum RangePosition
     {
         RANGE_IN_TEXT,  // "ordinary" css::text::TextRange
-        RANGE_IN_CELL,  // position created with a cell that has no uno object
         RANGE_IS_TABLE, // anchor of a table
         RANGE_IS_SECTION, // anchor of a section
+        RANGE_IS_BOOKMARK, ///< anchor of a bookmark
     };
 
     SwXTextRange(SwPaM const & rPam,
             const css::uno::Reference< css::text::XText > & xParent,
-            const enum RangePosition eRange = RANGE_IN_TEXT);
+            const enum RangePosition eRange = RANGE_IN_TEXT,
+            bool isInCell = false);
     // only for RANGE_IS_TABLE
     SwXTextRange(SwTableFormat& rTableFormat);
     // only for RANGE_IS_SECTION
     SwXTextRange(SwSectionFormat& rSectionFormat);
 
-    const SwDoc& GetDoc() const;
-          SwDoc& GetDoc();
+    const SwDoc& GetDoc() const { return m_rDoc; }
+          SwDoc& GetDoc() { return m_rDoc; }
     bool GetPositions(SwPaM & rToFill,
         ::sw::TextRangeMode eMode = ::sw::TextRangeMode::RequireTextNode) const;
 
+    sal_Int16 compareRegionStarts(SwXTextRange& rhs);
+
     static rtl::Reference< SwXTextRange > CreateXTextRange(
             SwDoc & rDoc,
-            const SwPosition& rPos, const SwPosition *const pMark);
+            const SwPosition& rPos, const SwPosition *const pMark,
+            RangePosition eRange = RANGE_IN_TEXT);
 
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override;
@@ -200,6 +209,23 @@ public:
             const OUString& rRedlineType,
             const css::uno::Sequence< css::beans::PropertyValue >& RedlineProperties) override;
 
+private:
+    const SfxItemPropertySet& m_rPropSet;
+    const enum RangePosition m_eRangePosition;
+    bool const m_isRangeInCell; //< position created with a cell that has no uno object
+    SwDoc& m_rDoc;
+    css::uno::Reference<css::text::XText> m_xParentText;
+    const SwFrameFormat* m_pTableOrSectionFormat;
+    const ::sw::mark::MarkBase* m_pMark;
+    struct MySvtListener : public SvtListener
+    {
+        SwXTextRange& mrTextRange;
+
+        MySvtListener(SwXTextRange& rTextRange) : mrTextRange(rTextRange) {}
+
+        virtual void Notify(const SfxHint&) override;
+    };
+    std::optional<MySvtListener> moSvtListener;
 };
 
 typedef ::cppu::WeakImplHelper

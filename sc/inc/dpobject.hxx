@@ -63,7 +63,6 @@ class ScSheetSourceDesc;
 class ScDPTableData;
 class ScDPDimensionSaveData;
 class ScRangeList;
-class ScDPCache;
 class ScDocument;
 
 struct ScDPServiceDesc
@@ -80,45 +79,46 @@ struct ScDPServiceDesc
     bool operator== ( const ScDPServiceDesc& rOther ) const;
 };
 
-class SC_DLLPUBLIC ScDPObject
+class ScDPObject
 {
 private:
-    ScDocument*             pDoc;
-                                            // settings
-    std::unique_ptr<ScDPSaveData> pSaveData;
-    OUString aTableName;
-    OUString aTableTag;
-    ScRange                 aOutRange;
-    std::unique_ptr<ScSheetSourceDesc>  pSheetDesc;     //  for sheet data
-    std::unique_ptr<ScImportSourceDesc> pImpDesc;       //  for database data
-    std::unique_ptr<ScDPServiceDesc> pServDesc;      //  for external service
-    std::shared_ptr<ScDPTableData>  mpTableData;
-                                            // cached data
-    css::uno::Reference<css::sheet::XDimensionsSupplier> xSource;
-    std::unique_ptr<ScDPOutput> pOutput;
+    ScDocument* mpDocument;
+
+    // Settings
+    std::unique_ptr<ScDPSaveData> mpSaveData;
+    OUString maTableName;
+    OUString maTableTag;
+    ScRange maOutputRange;
+    std::unique_ptr<ScSheetSourceDesc> mpSheetDescription; //  for sheet data
+    std::unique_ptr<ScImportSourceDesc> mpImportDescription; //  for database data
+    std::unique_ptr<ScDPServiceDesc> mpServiceDescription; //  for external service
+    std::shared_ptr<ScDPTableData> mpTableData; // cached data
+
+    css::uno::Reference<css::sheet::XDimensionsSupplier> mxSource;
+    std::unique_ptr<ScDPOutput> mpOutput;
 
     // name -> sequence of sequences of css::xml::FastAttribute or css::xml::Attribute
     // see PivotTable::putToInteropGrabBag in sc/source/filter/oox/pivottablebuffer.cxx for details
     std::map<OUString, css::uno::Any> maInteropGrabBag;
 
-    sal_Int32               nHeaderRows;    // page fields plus filter button
-    bool                    mbHeaderLayout:1;  // true : grid, false : standard
-    bool                    bAllowMove:1;
-    bool                    bSettingsChanged:1;
-    bool                    mbEnableGetPivotData:1;
+    sal_Int32 mnHeaderRows;    // page fields plus filter button
+    bool mbHeaderLayout : 1;  // true : grid, false : standard
+    bool mbAllowMove : 1;
+    bool mbSettingsChanged : 1;
+    bool mbEnableGetPivotData : 1;
+    bool mbHideHeader : 1 = false;
 
-    SAL_DLLPRIVATE ScDPTableData*    GetTableData();
-    SAL_DLLPRIVATE void              CreateObjects();
-    SAL_DLLPRIVATE void              CreateOutput();
-    SAL_DLLPRIVATE void ClearSource();
-    SAL_DLLPRIVATE void FillLabelDataForDimension(
+    void              CreateObjects();
+    void              CreateOutput();
+    void ClearSource();
+    void FillLabelDataForDimension(
         const css::uno::Reference< css::container::XIndexAccess>& xDims,
         sal_Int32 nDim, ScDPLabelData& rLabelData);
 
 public:
-    ScDPObject(ScDocument* pD);
+    SC_DLLPUBLIC ScDPObject(ScDocument* pD);
     ScDPObject(const ScDPObject& r);
-    ~ScDPObject();
+    SC_DLLPUBLIC ~ScDPObject();
 
     ScDPObject& operator= (const ScDPObject& r);
 
@@ -129,44 +129,50 @@ public:
     void                InvalidateData();
     void Clear();
     void ClearTableData();
-    void ReloadGroupTableData();
+    ScDPTableData* GetTableData();
 
-    void                Output( const ScAddress& rPos );
+    SC_DLLPUBLIC void ReloadGroupTableData();
+
+    SC_DLLPUBLIC void   Output( const ScAddress& rPos );
     ScRange             GetNewOutputRange( bool& rOverflow );
 
-    ScRange GetOutputRangeByType( sal_Int32 nType );
-    ScRange GetOutputRangeByType( sal_Int32 nType ) const;
+    SC_DLLPUBLIC ScRange GetOutputRangeByType( sal_Int32 nType );
+    SC_DLLPUBLIC ScRange GetOutputRangeByType( sal_Int32 nType ) const;
 
-    void                SetSaveData(const ScDPSaveData& rData);
-    ScDPSaveData*       GetSaveData() const     { return pSaveData.get(); }
+    SC_DLLPUBLIC void SetSaveData(const ScDPSaveData& rData);
+    ScDPSaveData* GetSaveData() const { return mpSaveData.get(); }
 
-    void                SetOutRange(const ScRange& rRange);
-    const ScRange&      GetOutRange() const;
+    SC_DLLPUBLIC void SetOutRange(const ScRange& rRange);
+    SC_DLLPUBLIC const ScRange& GetOutRange() const;
 
-    void                SetHeaderLayout(bool bUseGrid);
+    SC_DLLPUBLIC void   SetHeaderLayout(bool bUseGrid);
     bool                GetHeaderLayout() const { return mbHeaderLayout;}
 
-    void                SetSheetDesc(const ScSheetSourceDesc& rDesc);
+    SC_DLLPUBLIC void SetHideHeader(bool bHideHeader);
+    bool GetHideHeader() const { return mbHideHeader; }
+
+    SC_DLLPUBLIC void   SetSheetDesc(const ScSheetSourceDesc& rDesc);
     void                SetImportDesc(const ScImportSourceDesc& rDesc);
     void                SetServiceData(const ScDPServiceDesc& rDesc);
 
     void                WriteSourceDataTo( ScDPObject& rDest ) const;
     void                WriteTempDataTo( ScDPObject& rDest ) const;
 
-    const ScSheetSourceDesc* GetSheetDesc() const   { return pSheetDesc.get(); }
-    const ScImportSourceDesc* GetImportSourceDesc() const   { return pImpDesc.get(); }
-    const ScDPServiceDesc* GetDPServiceDesc() const { return pServDesc.get(); }
+    const ScSheetSourceDesc* GetSheetDesc() const { return mpSheetDescription.get(); }
+    const ScImportSourceDesc* GetImportSourceDesc() const { return mpImportDescription.get(); }
+    const ScDPServiceDesc* GetDPServiceDesc() const { return mpServiceDescription.get(); }
 
-    css::uno::Reference<css::sheet::XDimensionsSupplier> const & GetSource();
+    SC_DLLPUBLIC css::uno::Reference<css::sheet::XDimensionsSupplier> const & GetSource();
 
     bool                IsSheetData() const;
-    bool                IsImportData() const { return(pImpDesc != nullptr); }
-    bool                IsServiceData() const { return(pServDesc != nullptr); }
+    bool IsImportData() const { return mpImportDescription != nullptr; }
+    bool IsServiceData() const { return mpServiceDescription != nullptr; }
 
-    void SetName(const OUString& rNew);
-    const OUString& GetName() const { return aTableName; }
+
+    SC_DLLPUBLIC void SetName(const OUString& rNew);
+    const OUString& GetName() const { return maTableName; }
     void SetTag(const OUString& rNew);
-    const OUString& GetTag() const { return aTableTag; }
+    const OUString& GetTag() const { return maTableTag; }
 
     /**
      *  Data description cell displays the description of a data dimension if
@@ -176,17 +182,18 @@ public:
     bool                IsDataDescriptionCell(const ScAddress& rPos);
 
     bool                IsDimNameInUse(std::u16string_view rName) const;
-    OUString GetDimName( tools::Long nDim, bool& rIsDataLayout, sal_Int32* pFlags = nullptr );
-    bool                IsDuplicated( tools::Long nDim );
-    tools::Long                GetDimCount();
+    SC_DLLPUBLIC OUString GetDimName( tools::Long nDim, bool& rIsDataLayout, sal_Int32* pFlags = nullptr );
+    SC_DLLPUBLIC bool   IsDuplicated( tools::Long nDim );
+    SC_DLLPUBLIC tools::Long GetDimCount();
     void                GetHeaderPositionData(const ScAddress& rPos, css::sheet::DataPilotTableHeaderData& rData);
-    tools::Long                GetHeaderDim( const ScAddress& rPos, css::sheet::DataPilotFieldOrientation& rOrient );
+    SC_DLLPUBLIC tools::Long GetHeaderDim( const ScAddress& rPos, css::sheet::DataPilotFieldOrientation& rOrient );
     bool                GetHeaderDrag( const ScAddress& rPos, bool bMouseLeft, bool bMouseTop,
                                        tools::Long nDragDim,
                                        tools::Rectangle& rPosRect, css::sheet::DataPilotFieldOrientation& rOrient, tools::Long& rDimPos );
     bool                IsFilterButton( const ScAddress& rPos );
 
-    OUString            GetFormattedString( std::u16string_view rDimName, const double fValue );
+    static OUString GetFormattedString(const ScDPTableData* pTableData, tools::Long nDimension, const double fValue);
+    SC_DLLPUBLIC OUString GetFormattedString( std::u16string_view rDimName, const double fValue );
 
     double GetPivotData(
         const OUString& rDataFieldName,
@@ -212,13 +219,13 @@ public:
     bool                GetHierarchiesNA( sal_Int32 nDim, css::uno::Reference< css::container::XNameAccess >& xHiers );
     void                GetHierarchies( sal_Int32 nDim, css::uno::Sequence< OUString >& rHiers );
 
-    sal_Int32           GetUsedHierarchy( sal_Int32 nDim );
+    SC_DLLPUBLIC sal_Int32 GetUsedHierarchy( sal_Int32 nDim );
 
     bool                GetMembersNA( sal_Int32 nDim, css::uno::Reference< css::sheet::XMembersAccess >& xMembers );
     bool                GetMembersNA( sal_Int32 nDim, sal_Int32 nHier, css::uno::Reference< css::sheet::XMembersAccess >& xMembers );
 
     bool                GetMemberNames( sal_Int32 nDim, css::uno::Sequence< OUString >& rNames );
-    bool                GetMembers( sal_Int32 nDim, sal_Int32 nHier, ::std::vector<ScDPLabelData::Member>& rMembers );
+    SC_DLLPUBLIC bool   GetMembers( sal_Int32 nDim, sal_Int32 nHier, ::std::vector<ScDPLabelData::Member>& rMembers );
 
     void                UpdateReference( UpdateRefMode eUpdateRefMode,
                                          const ScRange& r, SCCOL nDx, SCROW nDy, SCTAB nDz );
@@ -234,17 +241,17 @@ public:
     void                GetDrillDownData(const ScAddress& rPos,
                                          css::uno::Sequence< css::uno::Sequence< css::uno::Any > >& rTableData);
 
-    // apply drop-down attribute, initialize nHeaderRows, without accessing the source
+    // apply drop-down attribute, initialize mnHeaderRows, without accessing the source
     // (button attribute must be present)
     void                RefreshAfterLoad();
 
-    void                BuildAllDimensionMembers();
+    SC_DLLPUBLIC void BuildAllDimensionMembers();
 
     /**
      * Remove in the save data entries for members that don't exist anymore.
      * This is called during pivot table refresh.
      */
-    bool SyncAllDimensionMembers();
+    SC_DLLPUBLIC bool SyncAllDimensionMembers();
 
     static bool         HasRegisteredSources();
     static std::vector<OUString> GetRegisteredSources();
@@ -260,7 +267,7 @@ public:
         const ScPivotFieldVector* pRefRowFields = nullptr,
         const ScPivotFieldVector* pRefPageFields = nullptr );
 
-    static bool         IsOrientationAllowed( css::sheet::DataPilotFieldOrientation nOrient, sal_Int32 nDimFlags );
+    SC_DLLPUBLIC static bool IsOrientationAllowed( css::sheet::DataPilotFieldOrientation nOrient, sal_Int32 nDimFlags );
 
     void PutInteropGrabBag(std::map<OUString, css::uno::Any>&& val)
     {

@@ -79,6 +79,7 @@ SfxAppData_Impl::SfxAppData_Impl()
     , pViewFrame( nullptr )
     , bDowning( true )
     , bInQuit( false )
+    , bClosingDocs( false )
 
 {
     pBasic = new BasicDLL;
@@ -120,8 +121,33 @@ void SfxAppData_Impl::OnApplicationBasicManagerCreated( BasicManager& _rBasicMan
     // global constants, additionally to the ones already added by createApplicationBasicManager:
     // ThisComponent
     Reference< XInterface > xCurrentComponent = SfxObjectShell::GetCurrentComponent();
-    _rBasicManager.SetGlobalUNOConstant( "ThisComponent", css::uno::Any( xCurrentComponent ) );
+    _rBasicManager.SetGlobalUNOConstant( u"ThisComponent"_ustr, css::uno::Any( xCurrentComponent ) );
 #endif
+}
+
+void SfxAppData_Impl::MoveShellToFirstShell(SfxViewShell& rShell)
+{
+    // Move associated ViewShell to the top of the ViewShells stack
+    // so the ViewShells are in order of most recently active
+    // ViewFrames. SfxViewShell::Current() should be equal to
+    // SfxViewShell::GetFirst(false) if SfxViewShell::Current() is
+    // not-null.
+    const auto shellIt = std::find(maViewShells.begin(), maViewShells.end(), &rShell);
+    if (shellIt != maViewShells.end() && shellIt != maViewShells.begin())
+    {
+        maViewShells.erase(shellIt);
+        maViewShells.insert(maViewShells.begin(), &rShell);
+    }
+}
+
+void SfxAppData_Impl::MoveFrameToFirstFrame(SfxViewFrame& rFrame)
+{
+    const auto frameIt = std::find(maViewFrames.begin(), maViewFrames.end(), &rFrame);
+    if (frameIt != maViewFrames.end() && frameIt != maViewFrames.begin())
+    {
+        maViewFrames.erase(frameIt);
+        maViewFrames.insert(maViewFrames.begin(), &rFrame);
+    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

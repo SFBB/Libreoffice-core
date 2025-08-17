@@ -17,17 +17,14 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <config_features.h>
 #include <sal/config.h>
 
 #include <mutex>
 
 #include <pthread.h>
 #include <sys/time.h>
-#include <poll.h>
 
 #include <sal/types.h>
-#include <sal/log.hxx>
 
 #include <vcl/virdev.hxx>
 #include <vcl/inputtypes.hxx>
@@ -51,8 +48,13 @@
 #include <svdata.hxx>
 // FIXME: remove when we re-work the svp mainloop
 #include <unx/salunxtime.h>
-#include <comphelper/lok.hxx>
 #include <tools/debug.hxx>
+#include <comphelper/lok.hxx>
+#include <o3tl/unreachable.hxx>
+
+#if defined EMSCRIPTEN
+#include <emscripten.h>
+#endif
 
 SvpSalInstance* SvpSalInstance::s_pDefaultInstance = nullptr;
 
@@ -97,6 +99,9 @@ SvpSalInstance::SvpSalInstance( std::unique_ptr<SalYieldMutex> pMutex )
         s_pDefaultInstance = this;
 #if !defined(ANDROID) && !defined(IOS) && !defined(EMSCRIPTEN)
     pthread_atfork(nullptr, nullptr, atfork_child);
+#endif
+#if defined EMSCRIPTEN
+    ImplGetSVData()->maAppData.m_bUseSystemLoop = true;
 #endif
 }
 
@@ -193,9 +198,22 @@ void SvpSalInstance::DestroyObject( SalObject* pObject )
 #ifndef IOS
 
 std::unique_ptr<SalVirtualDevice> SvpSalInstance::CreateVirtualDevice(SalGraphics& rGraphics,
+                                                       tools::Long nDX, tools::Long nDY,
+                                                       DeviceFormat /*eFormat*/,
+                                                       bool bAlphaMaskTransparent)
+{
+    SvpSalGraphics *pSvpSalGraphics = dynamic_cast<SvpSalGraphics*>(&rGraphics);
+    assert(pSvpSalGraphics);
+    std::unique_ptr<SalVirtualDevice> xNew(new SvpSalVirtualDevice(pSvpSalGraphics->getSurface(), /*pPreExistingTarget*/nullptr));
+    if (!xNew->SetSize(nDX, nDY, bAlphaMaskTransparent))
+        xNew.reset();
+    return xNew;
+}
+
+std::unique_ptr<SalVirtualDevice> SvpSalInstance::CreateVirtualDevice(SalGraphics& rGraphics,
                                                        tools::Long &nDX, tools::Long &nDY,
                                                        DeviceFormat /*eFormat*/,
-                                                       const SystemGraphicsData* pGd)
+                                                       const SystemGraphicsData& rGd)
 {
     SvpSalGraphics *pSvpSalGraphics = dynamic_cast<SvpSalGraphics*>(&rGraphics);
     assert(pSvpSalGraphics);
@@ -203,14 +221,14 @@ std::unique_ptr<SalVirtualDevice> SvpSalInstance::CreateVirtualDevice(SalGraphic
     // tdf#127529 normally pPreExistingTarget is null and we are a true virtualdevice drawing to a backing buffer.
     // Occasionally, for canvas/slideshow, pPreExistingTarget is pre-provided as a hack to use the vcl drawing
     // apis to render onto a preexisting cairo surface. The necessity for that precedes the use of cairo in vcl proper
-    cairo_surface_t* pPreExistingTarget = pGd ? static_cast<cairo_surface_t*>(pGd->pSurface) : nullptr;
+    cairo_surface_t* pPreExistingTarget = static_cast<cairo_surface_t*>(rGd.pSurface);
 #else
     //ANDROID case
-    (void)pGd;
+    (void)rGd;
     cairo_surface_t* pPreExistingTarget = nullptr;
 #endif
     std::unique_ptr<SalVirtualDevice> xNew(new SvpSalVirtualDevice(pSvpSalGraphics->getSurface(), pPreExistingTarget));
-    if (!xNew->SetSize(nDX, nDY))
+    if (!xNew->SetSize(nDX, nDY, /*bAlphaMaskTransparent*/false))
         xNew.reset();
     return xNew;
 }
@@ -274,6 +292,30 @@ void SvpSalInstance::ProcessEvent( SalUserEvent aEvent )
     SvpSalYieldMutex *const pMutex(static_cast<SvpSalYieldMutex*>(GetYieldMutex()));
     pMutex->m_NonMainWaitingYieldCond.set();
 }
+
+#if defined EMSCRIPTEN
+
+static void loop(void * arg) {
+    SolarMutexGuard g;
+    static_cast<SvpSalInstance *>(arg)->ImplYield(comphelper::LibreOfficeKit::isActive(), false);
+}
+
+bool SvpSalInstance::DoExecute(int &) {
+    assert(Application::IsUseSystemEventLoop());
+    // emscripten_set_main_loop will unwind the stack by throwing a JavaScript exception, so we need
+    // to manually undo the call of AcquireYieldMutex() done in InitVCL:
+    ReleaseYieldMutex(false);
+    // Somewhat randomly use an fps=100 argument so the loop callback is called 100 times per
+    // second:
+    emscripten_set_main_loop_arg(loop, this, 100, 1);
+    O3TL_UNREACHABLE;
+}
+
+void SvpSalInstance::DoQuit() {
+    assert(Application::IsUseSystemEventLoop());
+}
+
+#endif
 
 SvpSalYieldMutex::SvpSalYieldMutex()
 {
@@ -396,12 +438,15 @@ bool SvpSalInstance::ImplYield(bool bWait, bool bHandleAllCurrentEvents)
     if (!bHandleAllCurrentEvents && bWasEvent)
         return true;
 
+    // CheckTimeout() invokes the sal timer, which invokes the scheduler.
     bWasEvent = CheckTimeout() || bWasEvent;
     const bool bMustSleep = bWait && !bWasEvent;
 
     // This is wrong and must be removed!
     // We always want to drop the SolarMutex on yield; that is the whole point of yield.
-    if (!bMustSleep)
+    // If we know the LOK client has pending input events, then don't yet return, so those events
+    // can be processed as well.
+    if (!bMustSleep && !comphelper::LibreOfficeKit::anyInput())
         return bWasEvent;
 
     sal_Int64 nTimeoutMicroS = 0;
@@ -503,11 +548,6 @@ bool SvpSalInstance::AnyInput( VclInputFlags nType )
     if( nType & VclInputFlags::TIMER )
         return CheckTimeout( false );
     return false;
-}
-
-OUString SvpSalInstance::GetConnectionIdentifier()
-{
-    return OUString();
 }
 
 void SvpSalInstance::StopTimer()

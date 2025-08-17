@@ -608,7 +608,7 @@ void VCartesianAxis::createAllTickInfosFromComplexCategories( TickInfoArraysType
                 if( nCatIndex + 1.0 >= m_aScale.Maximum )
                     break;
             }
-            rAllTickInfos.push_back(aTickInfoVector);
+            rAllTickInfos.push_back(std::move(aTickInfoVector));
         }
     }
     else //bShiftedPosition==false
@@ -651,7 +651,7 @@ void VCartesianAxis::createAllTickInfosFromComplexCategories( TickInfoArraysType
                 aTickInfo.fScaledTickValue = m_aScale.Maximum;
                 aTickInfoVector.push_back(aTickInfo);
             }
-            rAllTickInfos.push_back(aTickInfoVector);
+            rAllTickInfos.push_back(std::move(aTickInfoVector));
         }
     }
 }
@@ -1687,6 +1687,13 @@ void VCartesianAxis::createDataTableShape(std::unique_ptr<TickFactory2D> const& 
             nDistance *= 2;
     }
 
+    if (nDistance <= 0)
+    {
+        // we only have one data series so we have no TickMarks, therefore calculate and use the table size
+        auto rDelta = aEnd - aStart;
+        nDistance = basegfx::fround(rDelta.getX());
+    }
+
     if (nDistance > 0)
     {
         m_pDataTableView->createShapes(aStart, aEnd, nDistance);
@@ -1848,7 +1855,7 @@ void VCartesianAxis::updatePositions()
                 //set new position
                 try
                 {
-                    xShape2DText->SvxShape::setPropertyValue( "Transformation", aATransformation );
+                    xShape2DText->SvxShape::setPropertyValue( u"Transformation"_ustr, aATransformation );
                 }
                 catch( const uno::Exception& )
                 {
@@ -1985,7 +1992,7 @@ void VCartesianAxis::createShapes()
                     m_xGroupShape_Shapes, aPoints
                     , &m_aAxisProperties.m_aLineProperties );
             //because of this name this line will be used for marking the axis
-            ::chart::ShapeFactory::setShapeName( xShape, "MarkHandles" );
+            ::chart::ShapeFactory::setShapeName( xShape, u"MarkHandles"_ustr );
         }
         //create an additional line at NULL
         if( !AxisHelper::isAxisPositioningEnabled() )

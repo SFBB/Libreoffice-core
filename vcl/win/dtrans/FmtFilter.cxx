@@ -36,6 +36,7 @@
 #include <iomanip>
 
 #include <systools/win32/comtools.hxx>
+#include <systools/win32/extended_max_path.hxx>
 
 using namespace com::sun::star::uno;
 
@@ -148,20 +149,22 @@ Sequence< sal_Int8 > WinENHMFPictToOOMFPict( HENHMETAFILE hEnhMetaFile )
 
 HMETAFILEPICT OOMFPictToWinMFPict( Sequence< sal_Int8 > const & aOOMetaFilePict )
 {
-    HMETAFILEPICT   hPict = nullptr;
     HMETAFILE       hMtf = SetMetaFileBitsEx( aOOMetaFilePict.getLength(), reinterpret_cast<unsigned char const *>(aOOMetaFilePict.getConstArray()) );
 
-    if( hMtf )
-    {
-        METAFILEPICT* pPict = static_cast<METAFILEPICT*>(GlobalLock( hPict = GlobalAlloc( GHND, sizeof( METAFILEPICT ) ) ));
+    if (!hMtf)
+        return nullptr;
 
-        pPict->mm = 8;
-        pPict->xExt = 0;
-        pPict->yExt = 0;
-        pPict->hMF = hMtf;
+    HMETAFILEPICT hPict = nullptr;
+    METAFILEPICT* pPict = static_cast<METAFILEPICT*>(GlobalLock( hPict = GlobalAlloc( GHND, sizeof( METAFILEPICT ) ) ));
+    if (!pPict)
+        return nullptr;
 
-        GlobalUnlock( hPict );
-    }
+    pPict->mm = 8;
+    pPict->xExt = 0;
+    pPict->yExt = 0;
+    pPict->hMF = hMtf;
+
+    GlobalUnlock( hPict );
 
     return hPict;
 }
@@ -322,9 +325,9 @@ static std::wstring getShellLinkTarget(const std::wstring& aLnkFile)
         if (FAILED(hr))
             return target;
 
-        wchar_t pathW[MAX_PATH];
+        wchar_t pathW[EXTENDED_MAX_PATH];
         WIN32_FIND_DATAW wfd;
-        hr = pIShellLink->GetPath(pathW, MAX_PATH, &wfd, SLGP_RAWPATH);
+        hr = pIShellLink->GetPath(pathW, std::size(pathW), &wfd, SLGP_RAWPATH);
         if (FAILED(hr))
             return target;
 
@@ -381,8 +384,8 @@ css::uno::Sequence<sal_Int8> CF_HDROPToFileList(HGLOBAL hGlobal)
 
     for (UINT i = 0; i < nFiles; i++)
     {
-        wchar_t buff[MAX_PATH];
-        /*UINT size =*/ DragQueryFileW(static_cast<HDROP>(hGlobal), i, buff, MAX_PATH);
+        wchar_t buff[EXTENDED_MAX_PATH];
+        /*UINT size =*/ DragQueryFileW(static_cast<HDROP>(hGlobal), i, buff, std::size(buff));
         std::wstring filename = buff;
         if (isShellLink(filename))
             filename = getShellLinkTarget(filename);

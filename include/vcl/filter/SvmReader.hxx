@@ -22,8 +22,9 @@
 #include <vcl/gdimtf.hxx>
 
 class SvStream;
+struct ImplMetaReadData;
 
-class VCL_DLLPUBLIC SvmReader
+class SvmReader
 {
 private:
     SvStream& mrStream;
@@ -31,9 +32,9 @@ private:
     void ReadColor(::Color& rColor);
 
 public:
-    SvmReader(SvStream& rIStm);
+    VCL_DLLPUBLIC SvmReader(SvStream& rIStm);
 
-    SvStream& Read(GDIMetaFile& rMetaFile, ImplMetaReadData* pData = nullptr);
+    VCL_DLLPUBLIC SvStream& Read(GDIMetaFile& rMetaFile, ImplMetaReadData* pData = nullptr);
     rtl::Reference<MetaAction> MetaActionHandler(ImplMetaReadData* pData);
     rtl::Reference<MetaAction> LineColorHandler();
     rtl::Reference<MetaAction> FillColorHandler();

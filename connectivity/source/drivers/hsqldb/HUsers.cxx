@@ -31,8 +31,6 @@ using namespace connectivity::hsqldb;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::lang;
 
 OUsers::OUsers( ::cppu::OWeakObject& _rParent,
                 ::osl::Mutex& _rMutex,
@@ -46,7 +44,7 @@ OUsers::OUsers( ::cppu::OWeakObject& _rParent,
 }
 
 
-sdbcx::ObjectType OUsers::createObject(const OUString& _rName)
+css::uno::Reference< css::beans::XPropertySet > OUsers::createObject(const OUString& _rName)
 {
     return new OHSQLUser(m_xConnection,_rName);
 }
@@ -62,7 +60,7 @@ Reference< XPropertySet > OUsers::createDescriptor()
 }
 
 // XAppend
-sdbcx::ObjectType OUsers::appendObject( const OUString& _rForName, const Reference< XPropertySet >& descriptor )
+css::uno::Reference< css::beans::XPropertySet > OUsers::appendObject( const OUString& _rForName, const Reference< XPropertySet >& descriptor )
 {
     OUString aQuote  = m_xConnection->getMetaData()->getIdentifierQuoteString(  );
     OUString sPassword;
@@ -85,7 +83,7 @@ sdbcx::ObjectType OUsers::appendObject( const OUString& _rForName, const Referen
 // XDrop
 void OUsers::dropObject(sal_Int32 /*nPos*/,const OUString& _sElementName)
 {
-    OUString aSql(  "REVOKE ALL ON * FROM " );
+    OUString aSql(  u"REVOKE ALL ON * FROM "_ustr );
     OUString aQuote  = m_xConnection->getMetaData()->getIdentifierQuoteString(  );
     aSql += ::dbtools::quoteName(aQuote,_sElementName);
 

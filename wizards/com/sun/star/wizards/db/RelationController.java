@@ -20,6 +20,7 @@ package com.sun.star.wizards.db;
 import java.util.ArrayList;
 
 import com.sun.star.sdbc.SQLException;
+import com.sun.star.sdbc.XCloseable;
 import com.sun.star.sdbc.XResultSet;
 import com.sun.star.sdbc.XRow;
 import com.sun.star.uno.UnoRuntime;
@@ -55,7 +56,7 @@ public class RelationController extends CommandName
         try
         {
             ArrayList<String> aReferencedTableVector = new ArrayList<String>();
-            XResultSet xResultSet = super.getCommandMetaData().xDBMetaData.getExportedKeys(getCatalogName(this), getSchemaName(), getTableName());
+            XResultSet xResultSet = super.getCommandMetaData().getDBMetaData().getExportedKeys(getCatalogName(this), getSchemaName(), getTableName());
             XRow xRow = UnoRuntime.queryInterface(XRow.class, xResultSet);
             while (xResultSet.next())
             {
@@ -64,6 +65,11 @@ public class RelationController extends CommandName
                 String sForeignTableName = xRow.getString(FKTABLE_NAME);
                 CommandName oCommandName = new CommandName(getCommandMetaData(), sForeignCatalog, sForeignScheme, sForeignTableName, false);
                 aReferencedTableVector.add(oCommandName.getComposedName());
+            }
+            XCloseable xCloseable = UnoRuntime.queryInterface(XCloseable.class, xResultSet);
+            if (xCloseable != null)
+            {
+                xCloseable.close();
             }
             sReferencedTableNames = new String[aReferencedTableVector.size()];
             aReferencedTableVector.toArray(sReferencedTableNames);
@@ -96,7 +102,7 @@ public class RelationController extends CommandName
         try
         {
             CommandName oLocCommandName = new CommandName(super.getCommandMetaData(), _sreferencedtablename);
-            XResultSet xResultSet = super.getCommandMetaData().xDBMetaData.getImportedKeys(getCatalogName(oLocCommandName), oLocCommandName.getSchemaName(), oLocCommandName.getTableName());
+            XResultSet xResultSet = super.getCommandMetaData().getDBMetaData().getImportedKeys(getCatalogName(oLocCommandName), oLocCommandName.getSchemaName(), oLocCommandName.getTableName());
             XRow xRow = UnoRuntime.queryInterface(XRow.class, xResultSet);
             boolean bleaveLoop = false;
             ArrayList<String> aMasterFieldNamesVector = new ArrayList<String>();
@@ -105,11 +111,11 @@ public class RelationController extends CommandName
             {
                 String sPrimaryCatalog = null;
                 String sPrimarySchema = null;
-                if (super.getCommandMetaData().xDBMetaData.supportsCatalogsInDataManipulation())
+                if (super.getCommandMetaData().getDBMetaData().supportsCatalogsInDataManipulation())
                 {
                     sPrimaryCatalog = xRow.getString(PKTABLE_CAT);
                 }
-                if (super.getCommandMetaData().xDBMetaData.supportsSchemasInDataManipulation())
+                if (super.getCommandMetaData().getDBMetaData().supportsSchemasInDataManipulation())
                 {
                     sPrimarySchema = xRow.getString(PKTABLE_SCHEM);
                 }
@@ -129,6 +135,11 @@ public class RelationController extends CommandName
                     }
 
                 }
+            }
+            XCloseable xCloseable = UnoRuntime.queryInterface(XCloseable.class, xResultSet);
+            if (xCloseable != null)
+            {
+                xCloseable.close();
             }
             sKeyColumnNames = new String[2][aMasterFieldNamesVector.size()];
             sKeyColumnNames[0] = new String[aSlaveFieldNamesVector.size()];

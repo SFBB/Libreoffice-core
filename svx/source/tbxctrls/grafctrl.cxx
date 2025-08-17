@@ -22,7 +22,6 @@
 #include <comphelper/propertyvalue.hxx>
 #include <o3tl/string_view.hxx>
 #include <vcl/toolbox.hxx>
-#include <vcl/idle.hxx>
 #include <svl/intitem.hxx>
 #include <svl/itempool.hxx>
 #include <svl/eitem.hxx>
@@ -60,9 +59,7 @@
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::frame;
-using namespace ::com::sun::star::util;
 using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::lang;
 
 constexpr OUString TOOLBOX_NAME = u"colorbar"_ustr;
 #define RID_SVXSTR_UNDO_GRAFCROP    RID_SVXSTR_GRAFCROP
@@ -163,7 +160,6 @@ struct CommandToRID
 
 static OUString ImplGetRID( std::u16string_view aCommand )
 {
-    static constexpr OUString EMPTY = u""_ustr;
     static constexpr CommandToRID aImplCommandToResMap[] =
     {
         { ".uno:GrafRed",           RID_SVXBMP_GRAF_RED             },
@@ -173,7 +169,7 @@ static OUString ImplGetRID( std::u16string_view aCommand )
         { ".uno:GrafContrast",      RID_SVXBMP_GRAF_CONTRAST        },
         { ".uno:GrafGamma",         RID_SVXBMP_GRAF_GAMMA           },
         { ".uno:GrafTransparence",  RID_SVXBMP_GRAF_TRANSPARENCE    },
-        { nullptr, EMPTY }
+        { nullptr, EMPTY_OUSTRING }
     };
 
     OUString sRID;
@@ -196,11 +192,11 @@ ImplGrafControl::ImplGrafControl(
     vcl::Window* pParent,
     const OUString& rCmd,
     const Reference< XFrame >& rFrame)
-    : InterimItemWindow(pParent, "svx/ui/grafctrlbox.ui", "GrafCtrlBox")
+    : InterimItemWindow(pParent, u"svx/ui/grafctrlbox.ui"_ustr, u"GrafCtrlBox"_ustr)
     , maCommand(rCmd)
     , mxFrame(rFrame)
-    , mxImage(m_xBuilder->weld_image("image"))
-    , mxField(m_xBuilder->weld_metric_spin_button("spinfield", FieldUnit::NONE))
+    , mxImage(m_xBuilder->weld_image(u"image"_ustr))
+    , mxField(m_xBuilder->weld_metric_spin_button(u"spinfield"_ustr, FieldUnit::NONE))
 {
     InitControlBase(&mxField->get_widget());
 
@@ -289,10 +285,10 @@ public:
 }
 
 ImplGrafModeControl::ImplGrafModeControl(vcl::Window* pParent, const Reference<XFrame>& rFrame)
-    : InterimItemWindow(pParent, "svx/ui/grafmodebox.ui", "GrafModeBox")
+    : InterimItemWindow(pParent, u"svx/ui/grafmodebox.ui"_ustr, u"GrafModeBox"_ustr)
     , mnCurPos(0)
     , mxFrame(rFrame)
-    , m_xWidget(m_xBuilder->weld_combo_box("grafmode"))
+    , m_xWidget(m_xBuilder->weld_combo_box(u"grafmode"_ustr))
 {
     InitControlBase(m_xWidget.get());
 
@@ -321,7 +317,7 @@ ImplGrafModeControl::~ImplGrafModeControl()
 
 IMPL_LINK(ImplGrafModeControl, SelectHdl, weld::ComboBox&, rBox, void)
 {
-    Sequence< PropertyValue > aArgs{ comphelper::makePropertyValue("GrafMode",
+    Sequence< PropertyValue > aArgs{ comphelper::makePropertyValue(u"GrafMode"_ustr,
                                                                    sal_Int16(rBox.get_active())) };
 
     /*  #i33380# DR 2004-09-03 Moved the following line above the Dispatch() call.
@@ -331,7 +327,7 @@ IMPL_LINK(ImplGrafModeControl, SelectHdl, weld::ComboBox&, rBox, void)
 
     SfxToolBoxControl::Dispatch(
         Reference< XDispatchProvider >( mxFrame->getController(), UNO_QUERY ),
-        ".uno:GrafMode",
+        u".uno:GrafMode"_ustr,
         aArgs );
 }
 
@@ -356,9 +352,9 @@ IMPL_LINK_NOARG(ImplGrafModeControl, FocusInHdl, weld::Widget&, void)
 
 void ImplGrafModeControl::ImplReleaseFocus()
 {
-    if( SfxViewShell::Current() )
+    if (const SfxViewShell* pViewShell = SfxViewShell::Current())
     {
-        vcl::Window* pShellWnd = SfxViewShell::Current()->GetWindow();
+        vcl::Window* pShellWnd = pViewShell->GetWindow();
 
         if( pShellWnd )
             pShellWnd->GrabFocus();
@@ -506,7 +502,7 @@ void SvxGrafAttrHelper::ExecuteGrafAttr( SfxRequest& rReq, SdrView& rView )
 
     if( bUndo )
     {
-        aUndoStr = rView.GetDescriptionOfMarkedObjects() + " ";
+        aUndoStr = rView.GetMarkedObjectList().GetMarkDescription() + " ";
     }
 
     const SfxItemSet*   pArgs = rReq.GetArgs();
@@ -643,7 +639,8 @@ void SvxGrafAttrHelper::ExecuteGrafAttr( SfxRequest& rReq, SdrView& rView )
                     aCropDlgAttr.Put( SdrGrafCropItem( aLTSize.Width(), aLTSize.Height(),
                                                     aRBSize.Width(), aRBSize.Height() ) );
 
-                    vcl::Window* pParent(SfxViewShell::Current() ? SfxViewShell::Current()->GetWindow() : nullptr);
+                    SfxViewShell* pCurrentSh = SfxViewShell::Current();
+                    vcl::Window* pParent(pCurrentSh ? pCurrentSh->GetWindow() : nullptr);
                     SfxSingleTabDialogController aCropDialog(pParent ? pParent->GetFrameWeld() : nullptr,
                         &aCropDlgAttr);
                     const OUString aCropStr(SvxResId(RID_SVXSTR_GRAFCROP));

@@ -20,8 +20,6 @@
 #include "XMLIndexBibliographyEntryContext.hxx"
 #include "XMLIndexTemplateContext.hxx"
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/txtimp.hxx>
-#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include <xmloff/xmluconv.hxx>
@@ -42,7 +40,7 @@ XMLIndexBibliographyEntryContext::XMLIndexBibliographyEntryContext(
     SvXMLImport& rImport,
     XMLIndexTemplateContext& rTemplate ) :
         XMLIndexSimpleEntryContext(rImport,
-                                   "TokenBibliographyDataField",
+                                   u"TokenBibliographyDataField"_ustr,
                                    rTemplate),
         nBibliographyInfo(BibliographyDataField::IDENTIFIER),
         bBibliographyInfoOK(false)

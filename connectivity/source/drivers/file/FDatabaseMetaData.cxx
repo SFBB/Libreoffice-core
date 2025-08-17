@@ -37,7 +37,6 @@ using namespace com::sun::star::ucb;
 using namespace connectivity::file;
 using namespace connectivity;
 using namespace com::sun::star::uno;
-using namespace com::sun::star::lang;
 using namespace com::sun::star::beans;
 using namespace com::sun::star::sdbc;
 using namespace com::sun::star::sdbcx;
@@ -85,7 +84,7 @@ namespace
             {
                 ::ucbhelper::Content aFolderOrDoc( _rFolderOrDoc, Reference< XCommandEnvironment >(), comphelper::getProcessComponentContext() );
                 if ( aFolderOrDoc.isDocument() )
-                    aContent1 = aFolderOrDoc;
+                    aContent1 = std::move(aFolderOrDoc);
                 else
                 {
                     aContentURL = INetURLObject( _rFolderOrDoc, INetURLObject::EncodeMechanism::WasEncoded );
@@ -302,7 +301,7 @@ Reference< XResultSet > SAL_CALL ODatabaseMetaData::getTables(
             aRow.push_back(new ORowSetValueDecorator(aTable));
             aRow.push_back(ODatabaseMetaDataResultSet::getEmptyValue());
 
-            aRows.push_back(aRow);
+            aRows.push_back(std::move(aRow));
         }
     }
 
@@ -394,7 +393,7 @@ Reference< XResultSet > SAL_CALL ODatabaseMetaData::getTablePrivileges(
 
                 aRow[2] = new ORowSetValueDecorator(*pBegin);
                 aRow[6] = ODatabaseMetaDataResultSet::getSelectValue();
-                aRow[7] = new ORowSetValueDecorator(OUString("NO"));
+                aRow[7] = new ORowSetValueDecorator(u"NO"_ustr);
                 aRows.push_back(aRow);
 
                 Reference< XPropertySet> xTable(
@@ -420,7 +419,7 @@ Reference< XResultSet > SAL_CALL ODatabaseMetaData::getTablePrivileges(
                         aRow[6] = ODatabaseMetaDataResultSet::getAlterValue();
                         aRows.push_back(aRow);
                         aRow[6] = ODatabaseMetaDataResultSet::getDropValue();
-                        aRows.push_back(aRow);
+                        aRows.push_back(std::move(aRow));
                     }
                 }
             }
@@ -493,7 +492,7 @@ OUString SAL_CALL ODatabaseMetaData::getCatalogTerm(  )
 
 OUString ODatabaseMetaData::impl_getIdentifierQuoteString_throw(  )
 {
-    return "\"";
+    return u"\""_ustr;
 }
 
 OUString SAL_CALL ODatabaseMetaData::getExtraNameCharacters(  )
@@ -620,7 +619,7 @@ Reference< XResultSet > SAL_CALL ODatabaseMetaData::getTableTypes(  )
 {
     rtl::Reference<ODatabaseMetaDataResultSet> pResult = new ODatabaseMetaDataResultSet( ODatabaseMetaDataResultSet::eTableTypes );
     ODatabaseMetaDataResultSet::ORows aRows;
-    aRows.push_back( { ODatabaseMetaDataResultSet::getEmptyValue(), new ORowSetValueDecorator(OUString("TABLE")) } );
+    aRows.push_back( { ODatabaseMetaDataResultSet::getEmptyValue(), new ORowSetValueDecorator(u"TABLE"_ustr) } );
     pResult->setRows(std::move(aRows));
     return pResult;
 }
@@ -837,7 +836,7 @@ sal_Bool SAL_CALL ODatabaseMetaData::supportsANSI92IntermediateSQL(  )
 
 OUString SAL_CALL ODatabaseMetaData::getURL(  )
 {
-    return "sdbc:file:";
+    return u"sdbc:file:"_ustr;
 }
 
 OUString SAL_CALL ODatabaseMetaData::getUserName(  )
@@ -902,12 +901,12 @@ OUString SAL_CALL ODatabaseMetaData::getSearchStringEscape(  )
 
 OUString SAL_CALL ODatabaseMetaData::getStringFunctions(  )
 {
-    return "UCASE,LCASE,ASCII,LENGTH,OCTET_LENGTH,CHAR_LENGTH,CHARACTER_LENGTH,CHAR,CONCAT,LOCATE,SUBSTRING,LTRIM,RTRIM,SPACE,REPLACE,REPEAT,INSERT,LEFT,RIGHT";
+    return u"UCASE,LCASE,ASCII,LENGTH,OCTET_LENGTH,CHAR_LENGTH,CHARACTER_LENGTH,CHAR,CONCAT,LOCATE,SUBSTRING,LTRIM,RTRIM,SPACE,REPLACE,REPEAT,INSERT,LEFT,RIGHT"_ustr;
 }
 
 OUString SAL_CALL ODatabaseMetaData::getTimeDateFunctions(  )
 {
-    return "DAYOFWEEK,DAYOFMONTH,DAYOFYEAR,MONTH,DAYNAME,MONTHNAME,QUARTER,WEEK,YEAR,HOUR,MINUTE,SECOND,CURDATE,CURTIME,NOW";
+    return u"DAYOFWEEK,DAYOFMONTH,DAYOFYEAR,MONTH,DAYNAME,MONTHNAME,QUARTER,WEEK,YEAR,HOUR,MINUTE,SECOND,CURDATE,CURTIME,NOW"_ustr;
 }
 
 OUString SAL_CALL ODatabaseMetaData::getSystemFunctions(  )
@@ -917,7 +916,7 @@ OUString SAL_CALL ODatabaseMetaData::getSystemFunctions(  )
 
 OUString SAL_CALL ODatabaseMetaData::getNumericFunctions(  )
 {
-    return "ABS,SIGN,MOD,FLOOR,CEILING,ROUND,EXP,LN,LOG,LOG10,POWER,SQRT,PI,COS,SIN,TAN,ACOS,ASIN,ATAN,ATAN2,DEGREES,RADIANS";
+    return u"ABS,SIGN,MOD,FLOOR,CEILING,ROUND,EXP,LN,LOG,LOG10,POWER,SQRT,PI,COS,SIN,TAN,ACOS,ASIN,ATAN,ATAN2,DEGREES,RADIANS"_ustr;
 }
 
 sal_Bool SAL_CALL ODatabaseMetaData::supportsExtendedSQLGrammar(  )

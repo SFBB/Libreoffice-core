@@ -58,7 +58,7 @@ namespace drawinglayer::primitive2d
             Primitive2DContainer createContent(const geometry::ViewInformation2D& rViewInformation) const;
 
             /// create local decomposition
-            virtual void create2DDecomposition(Primitive2DContainer& rContainer, const geometry::ViewInformation2D& rViewInformation) const override;
+            virtual Primitive2DReference create2DDecomposition(const geometry::ViewInformation2D& rViewInformation) const override;
 
         public:
             /// constructor
@@ -89,7 +89,7 @@ namespace drawinglayer::primitive2d
 
             /// helper which creates the content - checks if clipping is needed and eventually
             /// creates buffered content to speed up rendering
-            BitmapEx createTileImage(sal_uInt32 nWidth, sal_uInt32 nHeight) const;
+            Bitmap createTileImage(sal_uInt32 nWidth, sal_uInt32 nHeight) const;
 
             /// helper that is capable to calculate the needed discrete buffer size for
             /// eventually buffered content

@@ -45,6 +45,7 @@
 #include <reffact.hxx>
 #include <tabprotection.hxx>
 #include <protectiondlg.hxx>
+#include <duplicaterecordsdlg.hxx>
 #include <markdata.hxx>
 
 #include <svl/ilstitem.hxx>
@@ -54,14 +55,14 @@
 #include <svx/svxdlg.hxx>
 #include <comphelper/lok.hxx>
 #include <comphelper/string.hxx>
+#include <com/sun/star/uno/Reference.h>
+#include <com/sun/star/sheet/XCellRangeData.hpp>
 #include <sfx2/lokhelper.hxx>
 #include <scabstdlg.hxx>
 #include <officecfg/Office/Calc.hxx>
 
 #include <basegfx/utils/zoomtools.hxx>
 
-#include <svx/svdpagv.hxx>
-#include <svx/svdpage.hxx>
 #include <svx/dialog/ThemeDialog.hxx>
 #include <ThemeColorChanger.hxx>
 
@@ -170,11 +171,196 @@ namespace
     }
 }
 
+void ScTabViewShell::ExecGoToTab( SfxRequest& rReq, SfxBindings& rBindings )
+{
+    SCTAB nTab;
+    ScViewData& rViewData = GetViewData();
+    ScDocument& rDoc = rViewData.GetDocument();
+    SCTAB nTabCount = rDoc.GetTableCount();
+    const SfxItemSet* pReqArgs = rReq.GetArgs();
+    sal_uInt16 nSlot = rReq.GetSlot();
+
+    if ( pReqArgs ) // command from Navigator with nTab
+    {
+        // sheet for basic is one-based
+        nTab = static_cast<const SfxUInt16Item&>(pReqArgs->Get(nSlot)).GetValue() - 1;
+        if ( nTab < nTabCount )
+        {
+            SetTabNo( nTab );
+            rBindings.Update( nSlot );
+
+            if( ! rReq.IsAPI() )
+                rReq.Done();
+        }
+    }
+    else            // command from Menu: ask for nTab
+    {
+        auto xRequest = std::make_shared<SfxRequest>(rReq);
+        rReq.Ignore();
+
+        ScAbstractDialogFactory* pFact = ScAbstractDialogFactory::Create();
+
+        VclPtr<AbstractScGoToTabDlg> pDlg(pFact->CreateScGoToTabDlg(GetFrameWeld()));
+        pDlg->SetDescription(
+            ScResId( STR_DLG_SELECTTABLE_TITLE ),
+            ScResId( STR_DLG_SELECTTABLE_MASK ),
+            ScResId( STR_DLG_SELECTTABLE_LBNAME ),
+            GetStaticInterface()->GetSlot(SID_CURRENTTAB)->GetCommand(), HID_GOTOTABLEMASK, HID_GOTOTABLE );
+
+        // fill all table names and select current tab
+        OUString aTabName;
+        for( nTab = 0; nTab < nTabCount; ++nTab )
+        {
+            if( rDoc.IsVisible( nTab ) )
+            {
+                rDoc.GetName( nTab, aTabName );
+                pDlg->Insert( aTabName, rViewData.GetTabNo() == nTab );
+            }
+        }
+
+        pDlg->StartExecuteAsync([this, nTab, nTabCount, pDlg,
+                                 xRequest=std::move(xRequest)](sal_Int32 response) {
+            if( response == RET_OK )
+            {
+                auto nTab2 = nTab;
+                if( !GetViewData().GetDocument().GetTable( pDlg->GetSelectedEntry(), nTab2 ) )
+                    nTab2 = nTabCount;
+                if ( nTab2 < nTabCount )
+                {
+                    SetTabNo( nTab2 );
+
+                    if ( !xRequest->IsAPI() )
+                        xRequest->Done();
+                }
+            }
+            else
+            {
+                xRequest->Ignore();
+            }
+            pDlg->disposeOnce();
+        });
+    }
+}
+
+void ScTabViewShell::FinishProtectTable()
+{
+    TabChanged();
+    UpdateInputHandler(true);   // to immediately enable input again
+    SelectionChanged();
+}
+
+void ScTabViewShell::ExecProtectTable( SfxRequest& rReq )
+{
+    ScModule* pScMod = ScModule::get();
+    const SfxItemSet*   pReqArgs    = rReq.GetArgs();
+    ScDocument&         rDoc = GetViewData().GetDocument();
+    SCTAB               nTab = GetViewData().GetTabNo();
+    bool                bOldProtection = rDoc.IsTabProtected(nTab);
+
+    if( pReqArgs )
+    {
+        const SfxPoolItem* pItem;
+        bool bNewProtection = !bOldProtection;
+        if( pReqArgs->HasItem( FID_PROTECT_TABLE, &pItem ) )
+            bNewProtection = static_cast<const SfxBoolItem*>(pItem)->GetValue();
+        if( bNewProtection == bOldProtection )
+        {
+            rReq.Ignore();
+            return;
+        }
+    }
+
+    if (bOldProtection)
+    {
+        // Unprotect a protected sheet.
+
+        const ScTableProtection* pProtect = rDoc.GetTabProtection(nTab);
+        if (pProtect && pProtect->isProtectedWithPass())
+        {
+            std::shared_ptr<SfxRequest> xRequest;
+            if (!pReqArgs)
+            {
+                xRequest = std::make_shared<SfxRequest>(rReq);
+                rReq.Ignore(); // the 'old' request is not relevant any more
+            }
+
+            OUString aText( ScResId(SCSTR_PASSWORDOPT) );
+            auto pDlg = std::make_shared<SfxPasswordDialog>(GetFrameWeld(), &aText);
+            pDlg->set_title(ScResId(SCSTR_UNPROTECTTAB));
+            pDlg->SetMinLen(0);
+            pDlg->set_help_id(GetStaticInterface()->GetSlot(FID_PROTECT_TABLE)->GetCommand());
+            pDlg->SetEditHelpId(HID_PASSWD_TABLE);
+
+            pDlg->PreRun();
+
+            weld::DialogController::runAsync(pDlg, [this, nTab, pDlg,
+                                                    xRequest=std::move(xRequest)](sal_Int32 response) {
+                if (response == RET_OK)
+                {
+                    OUString aPassword = pDlg->GetPassword();
+                    Unprotect(nTab, aPassword);
+                }
+                if (xRequest)
+                {
+                    xRequest->AppendItem( SfxBoolItem(FID_PROTECT_TABLE, false) );
+                    xRequest->Done();
+                }
+                FinishProtectTable();
+            });
+            return;
+        }
+        else
+            // this sheet is not password-protected.
+            Unprotect(nTab, std::u16string_view());
+
+        if (!pReqArgs)
+        {
+            rReq.AppendItem( SfxBoolItem(FID_PROTECT_TABLE, false) );
+            rReq.Done();
+        }
+    }
+    else
+    {
+        // Protect a current sheet.
+        std::shared_ptr<SfxRequest> xRequest;
+        if (!pReqArgs)
+        {
+            xRequest = std::make_shared<SfxRequest>(rReq);
+            rReq.Ignore(); // the 'old' request is not relevant any more
+        }
+
+        auto pDlg = std::make_shared<ScTableProtectionDlg>(GetFrameWeld());
+
+        const ScTableProtection* pProtect = rDoc.GetTabProtection(nTab);
+        if (pProtect)
+            pDlg->SetDialogData(*pProtect);
+        weld::DialogController::runAsync(pDlg, [this, pDlg, pScMod, nTab,
+                                               xRequest=std::move(xRequest)](sal_uInt32 nResult) {
+            if (nResult == RET_OK)
+            {
+                pScMod->InputEnterHandler();
+
+                ScTableProtection aNewProtect;
+                pDlg->WriteData(aNewProtect);
+                ProtectSheet(nTab, aNewProtect);
+                if (xRequest)
+                {
+                    xRequest->AppendItem( SfxBoolItem(FID_PROTECT_TABLE, true) );
+                    xRequest->Done();
+                }
+            }
+            FinishProtectTable();
+        });
+        return;
+    }
+    FinishProtectTable();
+}
+
 void ScTabViewShell::Execute( SfxRequest& rReq )
 {
     SfxViewFrame&       rThisFrame  = GetViewFrame();
     SfxBindings&        rBindings   = rThisFrame.GetBindings();
-    ScModule*           pScMod      = SC_MOD();
+    ScModule* pScMod = ScModule::get();
     const SfxItemSet*   pReqArgs    = rReq.GetArgs();
     sal_uInt16              nSlot       = rReq.GetSlot();
 
@@ -294,7 +480,7 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
         case SID_FORMATPAGE:
         case SID_STATUS_PAGESTYLE:
         case SID_HFEDIT:
-            GetViewData().GetDocShell()->
+            GetViewData().GetDocShell().
                 ExecutePageStyle( *this, rReq, GetViewData().GetTabNo() );
             break;
 
@@ -523,56 +709,7 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
 
         case SID_CURRENTTAB:
             {
-                SCTAB nTab;
-                ScViewData& rViewData = GetViewData();
-                ScDocument& rDoc = rViewData.GetDocument();
-                SCTAB nTabCount = rDoc.GetTableCount();
-                if ( pReqArgs ) // command from Navigator with nTab
-                {
-                    // sheet for basic is one-based
-                    nTab = static_cast<const SfxUInt16Item&>(pReqArgs->Get(nSlot)).GetValue() - 1;
-                }
-                else            // command from Menu: ask for nTab
-                {
-                    ScAbstractDialogFactory* pFact = ScAbstractDialogFactory::Create();
-
-                    ScopedVclPtr<AbstractScGoToTabDlg> pDlg(pFact->CreateScGoToTabDlg(GetFrameWeld()));
-                    pDlg->SetDescription(
-                        ScResId( STR_DLG_SELECTTABLE_TITLE ),
-                        ScResId( STR_DLG_SELECTTABLE_MASK ),
-                        ScResId( STR_DLG_SELECTTABLE_LBNAME ),
-                        GetStaticInterface()->GetSlot(SID_CURRENTTAB)->GetCommand(), HID_GOTOTABLEMASK, HID_GOTOTABLE );
-
-                    // fill all table names and select current tab
-                    OUString aTabName;
-                    for( nTab = 0; nTab < nTabCount; ++nTab )
-                    {
-                        if( rDoc.IsVisible( nTab ) )
-                        {
-                            rDoc.GetName( nTab, aTabName );
-                            pDlg->Insert( aTabName, rViewData.GetTabNo() == nTab );
-                        }
-                    }
-
-                    if( pDlg->Execute() == RET_OK )
-                    {
-                        if( !rDoc.GetTable( pDlg->GetSelectedEntry(), nTab ) )
-                            nTab = nTabCount;
-                        pDlg.disposeAndClear();
-                    }
-                    else
-                    {
-                        rReq.Ignore();
-                    }
-                }
-                if ( nTab < nTabCount )
-                {
-                    SetTabNo( nTab );
-                    rBindings.Update( nSlot );
-
-                    if( ! rReq.IsAPI() )
-                        rReq.Done();
-                }
+                ExecGoToTab( rReq, rBindings );
                 //! otherwise an error ?
             }
             break;
@@ -697,6 +834,115 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
                 rReq.Done();
             }
             break;
+        case FID_HANDLEDUPLICATERECORDS:
+            {
+                using namespace com::sun::star;
+                table::CellRangeAddress aCellRange;
+                uno::Reference<sheet::XSpreadsheet> xActiveSheet;
+                DuplicatesResponse aResponse;
+                bool bHasData = true;
+
+                if (pReqArgs)
+                {
+                    const SfxPoolItem* pItem;
+
+                    if (pReqArgs->HasItem(FID_HANDLEDUPLICATERECORDS, &pItem))
+                        aResponse.bRemove = static_cast<const SfxBoolItem*>(pItem)->GetValue();
+                    if (pReqArgs->HasItem(FN_PARAM_1, &pItem))
+                        aResponse.bIncludesHeaders = static_cast<const SfxBoolItem*>(pItem)->GetValue();
+                    if (pReqArgs->HasItem(FN_PARAM_2, &pItem))
+                        aResponse.bDuplicateRows = static_cast<const SfxBoolItem*>(pItem)->GetValue();
+                    if (pReqArgs->HasItem(FN_PARAM_3, &pItem))
+                        aCellRange.StartColumn = static_cast<const SfxInt32Item*>(pItem)->GetValue();
+                    if (pReqArgs->HasItem(FN_PARAM_4, &pItem))
+                        aCellRange.StartRow = static_cast<const SfxInt32Item*>(pItem)->GetValue();
+                    if (pReqArgs->HasItem(FN_PARAM_5, &pItem))
+                        aCellRange.EndColumn = static_cast<const SfxInt32Item*>(pItem)->GetValue();
+                    if (pReqArgs->HasItem(FN_PARAM_6, &pItem))
+                        aCellRange.EndRow = static_cast<const SfxInt32Item*>(pItem)->GetValue();
+                    if (pReqArgs->HasItem(FN_PARAM_7, &pItem))
+                        aCellRange.Sheet = static_cast<const SfxInt32Item*>(pItem)->GetValue();
+
+                    // check for the tab range here
+                    if (aCellRange.StartColumn < 0 || aCellRange.StartRow < 0
+                        || aCellRange.EndColumn < 0 || aCellRange.EndRow < 0
+                        || aCellRange.StartRow > aCellRange.EndRow
+                        || aCellRange.StartColumn > aCellRange.EndColumn || aCellRange.Sheet < 0
+                        || aCellRange.Sheet >= GetViewData().GetDocument().GetTableCount())
+                    {
+                        rReq.Done();
+                        break;
+                    }
+                    xActiveSheet = GetViewData().GetViewShell()->GetRangeWithSheet(aCellRange,
+                                                                                   bHasData, true);
+                    if (!bHasData)
+                    {
+                        rReq.Done();
+                        break;
+                    }
+                    int nLenEntries
+                        = (aResponse.bDuplicateRows ? aCellRange.EndColumn - aCellRange.StartColumn
+                                                   : aCellRange.EndRow - aCellRange.StartRow);
+                    for (int i = 0; i <= nLenEntries; ++i)
+                        aResponse.vEntries.push_back(i);
+                }
+                else
+                {
+                    xActiveSheet = GetViewData().GetViewShell()->GetRangeWithSheet(aCellRange,
+                                                                                   bHasData, false);
+                    if (bHasData)
+                    {
+                        if (!GetViewData().GetMarkData().IsMarked())
+                            GetViewData().GetViewShell()->ExtendSingleSelection(aCellRange);
+
+                        uno::Reference<frame::XModel> xModel(GetViewData().GetDocShell().GetModel());
+                        uno::Reference<sheet::XSheetCellRange> xSheetRange(
+                                xActiveSheet->getCellRangeByPosition(
+                                    aCellRange.StartColumn, aCellRange.StartRow, aCellRange.EndColumn,
+                                    aCellRange.EndRow),
+                                uno::UNO_QUERY);
+
+                        ScRange aRange(ScAddress(aCellRange.StartColumn, aCellRange.StartRow,
+                                    GetViewData().GetTabNo()),
+                                ScAddress(aCellRange.EndColumn, aCellRange.EndRow,
+                                    GetViewData().GetTabNo()));
+
+                        uno::Reference<sheet::XCellRangeData> xCellRangeData(xSheetRange,
+                                uno::UNO_QUERY);
+                        uno::Sequence<uno::Sequence<uno::Any>> aDataArray
+                            = xCellRangeData->getDataArray();
+
+                        ScDuplicateRecordsDlg aDlg(GetFrameWeld(), aDataArray, GetViewData(), aRange);
+
+                        bHasData = aDlg.run();
+                        if (bHasData)
+                            aResponse = aDlg.GetDialogData();
+                        else
+                        {
+                            rReq.Done();
+                            break;
+                        }
+                    }
+                    else
+                    {
+                        std::unique_ptr<weld::MessageDialog> aDialog(
+                            Application::CreateMessageDialog(GetFrameWeld(),
+                                                             VclMessageType::Warning,
+                                                             VclButtonsType::Ok,
+                                                             ScResId(STR_DUPLICATERECORDSDLG_NODATAFOUND)));
+                        aDialog->set_title(ScResId(STR_DUPLICATERECORDSDLG_WARNING));
+                        aDialog->run();
+                    }
+                }
+
+                if (bHasData)
+                    GetViewData().GetViewShell()->HandleDuplicateRecords(
+                            xActiveSheet, aCellRange, aResponse.bRemove, aResponse.bIncludesHeaders,
+                            aResponse.bDuplicateRows, aResponse.vEntries);
+
+                rReq.Done();
+            }
+            break;
         case FID_TOGGLECOLROWHIGHLIGHTING:
             {
                 bool bNewVal = !officecfg::Office::Calc::Content::Display::ColumnRowHighlighting::get();
@@ -727,18 +973,18 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
             {
                 ScViewData& rViewData = GetViewData();
                 const ScViewOptions& rOpts = rViewData.GetOptions();
-                bool bFormulaMode = !rOpts.GetOption( VOPT_FORMULAS );
+                bool bFormulaMode = !rOpts.GetOption(sc::ViewOption::FORMULAS);
                 const SfxPoolItem *pItem;
                 if( pReqArgs && pReqArgs->GetItemState(nSlot, true, &pItem) == SfxItemState::SET )
                     bFormulaMode = static_cast<const SfxBoolItem *>(pItem)->GetValue();
 
                 ScViewOptions aSetOpts = rOpts;
-                aSetOpts.SetOption( VOPT_FORMULAS, bFormulaMode );
+                aSetOpts.SetOption(sc::ViewOption::FORMULAS, bFormulaMode);
                 rViewData.SetOptions( aSetOpts );
                 ScDocument& rDoc = rViewData.GetDocument();
                 rDoc.SetViewOptions(aSetOpts);
 
-                rViewData.GetDocShell()->PostPaintGridAll();
+                rViewData.GetDocShell().PostPaintGridAll();
 
                 rBindings.Invalidate( FID_TOGGLEFORMULA );
                 rReq.AppendItem( SfxBoolItem( nSlot, bFormulaMode ) );
@@ -767,7 +1013,7 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
         case SID_ZOOM_IN:
         case SID_ZOOM_OUT:
             {
-                HideNoteMarker();
+                HideNoteOverlay();
 
                 if (!GetViewData().GetViewShell()->GetViewFrame().GetFrame().IsInPlace())
                 {
@@ -783,7 +1029,7 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
                         nNew = std::min(MAXZOOM, basegfx::zoomtools::zoomIn(nOld));
                     if ( nNew != nOld)
                     {
-                        bool bSyncZoom = SC_MOD()->GetAppOptions().GetSynchronizeZoom();
+                        bool bSyncZoom = pScMod->GetAppOptions().GetSynchronizeZoom();
                         SetZoomType(SvxZoomType::PERCENT, bSyncZoom);
                         Fraction aFract(nNew, 100);
                         SetZoom(aFract, aFract, bSyncZoom);
@@ -803,7 +1049,7 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
         case SID_ATTR_ZOOM: // status row
         case FID_SCALE:
             {
-                bool bSyncZoom = SC_MOD()->GetAppOptions().GetSynchronizeZoom();
+                bool bSyncZoom = pScMod->GetAppOptions().GetSynchronizeZoom();
                 SvxZoomType eOldZoomType = GetZoomType();
                 SvxZoomType eNewZoomType = eOldZoomType;
                 const Fraction& rOldY = GetViewData().GetZoomY();  // Y is shown
@@ -904,7 +1150,7 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
         case SID_ATTR_ZOOMSLIDER:
             {
                 const SfxPoolItem* pItem = nullptr;
-                bool bSyncZoom = SC_MOD()->GetAppOptions().GetSynchronizeZoom();
+                bool bSyncZoom = pScMod->GetAppOptions().GetSynchronizeZoom();
                 if ( pReqArgs && pReqArgs->GetItemState(SID_ATTR_ZOOMSLIDER, true, &pItem) == SfxItemState::SET )
                 {
                     const sal_uInt16 nCurrentZoom = static_cast<const SvxZoomSliderItem *>(pItem)->GetValue();
@@ -1015,7 +1261,7 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
                         SetTabNo( nFirstVisTab );
                     }
 
-                    rViewData.GetDocShell()->PostPaintExtras();
+                    rViewData.GetDocShell().PostPaintExtras();
                     SfxBindings& rBind = rViewData.GetBindings();
                     rBind.Invalidate( FID_FILL_TAB );
                     rBind.Invalidate( FID_TAB_DESELECTALL );
@@ -1098,8 +1344,8 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
                             rOtherBind.Invalidate( SID_WINDOW_FIX_COL );
                             rOtherBind.Invalidate( SID_WINDOW_FIX_ROW );
                         });
-                        if (!GetViewData().GetDocShell()->IsReadOnly())
-                            GetViewData().GetDocShell()->SetDocumentModified();
+                        if (!GetViewData().GetDocShell().IsReadOnly())
+                            GetViewData().GetDocShell().SetDocumentModified();
                     }
                 }
             }
@@ -1110,7 +1356,7 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
             {
                 bool bIsCol = (nSlot == SID_WINDOW_FIX_COL);
                 sal_Int32 nFreezeIndex = 1;
-                if (const SfxInt32Item* pItem = rReq.GetArg<SfxInt32Item>(nSlot))
+                if (const SfxInt32Item* pItem = rReq.GetArg<SfxInt32Item>(FN_PARAM_1))
                 {
                     nFreezeIndex = pItem->GetValue();
                     if (nFreezeIndex < 0)
@@ -1137,8 +1383,8 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
                             rOtherBind.Invalidate( SID_WINDOW_FIX );
                             rOtherBind.Invalidate(nSlot);
                         });
-                        if (!GetViewData().GetDocShell()->IsReadOnly())
-                            GetViewData().GetDocShell()->SetDocumentModified();
+                        if (!GetViewData().GetDocShell().IsReadOnly())
+                            GetViewData().GetDocShell().SetDocumentModified();
                     }
                 }
                 else
@@ -1178,9 +1424,9 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
             {
                 ScViewData& rData = GetViewData();
                 ScAddress aCursorPos( rData.GetCurX(), rData.GetCurY(), rData.GetTabNo() );
-                ScDocShell* pDocSh = rData.GetDocShell();
+                ScDocShell& rDocSh = rData.GetDocShell();
 
-                ScChangeAction* pAction = pDocSh->GetChangeAction( aCursorPos );
+                ScChangeAction* pAction = rDocSh.GetChangeAction( aCursorPos );
                 if ( pAction )
                 {
                     const SfxPoolItem* pItem;
@@ -1189,12 +1435,12 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
                          dynamic_cast<const SfxStringItem*>( pItem) !=  nullptr )
                     {
                         OUString aComment = static_cast<const SfxStringItem*>(pItem)->GetValue();
-                        pDocSh->SetChangeComment( pAction, aComment );
+                        rDocSh.SetChangeComment( pAction, aComment );
                         rReq.Done();
                     }
                     else
                     {
-                        pDocSh->ExecuteChangeCommentDialog(pAction, GetFrameWeld());
+                        rDocSh.ExecuteChangeCommentDialog(pAction, GetFrameWeld());
                         rReq.Done();
                     }
                 }
@@ -1206,7 +1452,7 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
             //  the extras
             if (!GetScDrawView())
             {
-                GetViewData().GetDocShell()->MakeDrawLayer();
+                GetViewData().GetDocShell().MakeDrawLayer();
                 rBindings.InvalidateAll(false);
             }
             break;
@@ -1279,83 +1525,9 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
             break;
 
         case FID_PROTECT_TABLE:
-        {
-            ScDocument& rDoc = GetViewData().GetDocument();
-            SCTAB       nTab = GetViewData().GetTabNo();
-            bool        bOldProtection = rDoc.IsTabProtected(nTab);
+            ExecProtectTable( rReq );
+            break;
 
-            if( pReqArgs )
-            {
-                const SfxPoolItem* pItem;
-                bool bNewProtection = !bOldProtection;
-                if( pReqArgs->HasItem( FID_PROTECT_TABLE, &pItem ) )
-                    bNewProtection = static_cast<const SfxBoolItem*>(pItem)->GetValue();
-                if( bNewProtection == bOldProtection )
-                {
-                    rReq.Ignore();
-                    break;
-                }
-            }
-
-            if (bOldProtection)
-            {
-                // Unprotect a protected sheet.
-
-                const ScTableProtection* pProtect = rDoc.GetTabProtection(nTab);
-                if (pProtect && pProtect->isProtectedWithPass())
-                {
-                    OUString aText( ScResId(SCSTR_PASSWORDOPT) );
-                    SfxPasswordDialog aDlg(GetFrameWeld(), &aText);
-                    aDlg.set_title(ScResId(SCSTR_UNPROTECTTAB));
-                    aDlg.SetMinLen(0);
-                    aDlg.set_help_id(GetStaticInterface()->GetSlot(FID_PROTECT_TABLE)->GetCommand());
-                    aDlg.SetEditHelpId(HID_PASSWD_TABLE);
-
-                    if (aDlg.run() == RET_OK)
-                    {
-                        OUString aPassword = aDlg.GetPassword();
-                        Unprotect(nTab, aPassword);
-                    }
-                }
-                else
-                    // this sheet is not password-protected.
-                    Unprotect(nTab, OUString());
-
-                if (!pReqArgs)
-                {
-                    rReq.AppendItem( SfxBoolItem(FID_PROTECT_TABLE, false) );
-                    rReq.Done();
-                }
-            }
-            else
-            {
-                // Protect a current sheet.
-
-                ScTableProtectionDlg aDlg(GetFrameWeld());
-
-                const ScTableProtection* pProtect = rDoc.GetTabProtection(nTab);
-                if (pProtect)
-                    aDlg.SetDialogData(*pProtect);
-
-                if (aDlg.run() == RET_OK)
-                {
-                    pScMod->InputEnterHandler();
-
-                    ScTableProtection aNewProtect;
-                    aDlg.WriteData(aNewProtect);
-                    ProtectSheet(nTab, aNewProtect);
-                    if (!pReqArgs)
-                    {
-                        rReq.AppendItem( SfxBoolItem(FID_PROTECT_TABLE, true) );
-                        rReq.Done();
-                    }
-                }
-            }
-            TabChanged();
-            UpdateInputHandler(true);   // to immediately enable input again
-            SelectionChanged();
-        }
-        break;
         case SID_THEME_DIALOG:
         {
             MakeDrawLayer();
@@ -1374,7 +1546,7 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
                     auto pColorSet = pDialog->getCurrentColorSet();
                     if (pColorSet)
                     {
-                        sc::ThemeColorChanger aChanger(*GetViewData().GetDocShell());
+                        sc::ThemeColorChanger aChanger(GetViewData().GetDocShell());
                         aChanger.apply(pColorSet);
                     }
                 });

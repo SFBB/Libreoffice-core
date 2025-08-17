@@ -17,6 +17,7 @@
 
 #include <vcl/uitest/uitest.hxx>
 #include <vcl/svapp.hxx>
+#include <vcl/toolkit/unowrap.hxx>
 #include <vcl/window.hxx>
 
 #include "uiobject_uno.hxx"
@@ -43,6 +44,9 @@ public:
     css::uno::Reference<css::ui::test::XUIObject> SAL_CALL getTopFocusWindow() override;
 
     css::uno::Reference<css::ui::test::XUIObject> SAL_CALL getFloatWindow() override;
+
+    css::uno::Reference<css::ui::test::XUIObject>
+        SAL_CALL getWindow(const css::uno::Reference<css::awt::XWindow>& xWindow) override;
 
     OUString SAL_CALL getImplementationName() override;
 
@@ -80,6 +84,8 @@ css::uno::Reference<css::ui::test::XUIObject> SAL_CALL UITestUnoObj::getTopFocus
 {
     SolarMutexGuard aGuard;
     std::unique_ptr<UIObject> pObj = UITest::getFocusTopWindow();
+    if (!pObj)
+        throw css::uno::RuntimeException(u"UITest::getFocusTopWindow did not find a window"_ustr);
     return new UIObjectUnoObj(std::move(pObj));
 }
 
@@ -87,12 +93,28 @@ css::uno::Reference<css::ui::test::XUIObject> SAL_CALL UITestUnoObj::getFloatWin
 {
     SolarMutexGuard aGuard;
     std::unique_ptr<UIObject> pObj = UITest::getFloatWindow();
+    if (!pObj)
+        throw css::uno::RuntimeException(u"UITest::getFloatWindow did not find a window"_ustr);
     return new UIObjectUnoObj(std::move(pObj));
+}
+
+css::uno::Reference<css::ui::test::XUIObject>
+    SAL_CALL UITestUnoObj::getWindow(const css::uno::Reference<::css::awt::XWindow>& xWindow)
+{
+    if (!xWindow.is())
+        return {};
+
+    UnoWrapperBase* pWrapper = UnoWrapperBase::GetUnoWrapper();
+    assert(pWrapper);
+    VclPtr<vcl::Window> pWindow = pWrapper->GetWindow(xWindow);
+    assert(pWindow);
+
+    return new UIObjectUnoObj(pWindow->GetUITestFactory()(pWindow));
 }
 
 OUString SAL_CALL UITestUnoObj::getImplementationName()
 {
-    return "org.libreoffice.uitest.UITest";
+    return u"org.libreoffice.uitest.UITest"_ustr;
 }
 
 sal_Bool UITestUnoObj::supportsService(OUString const & ServiceName)
@@ -102,7 +124,7 @@ sal_Bool UITestUnoObj::supportsService(OUString const & ServiceName)
 
 css::uno::Sequence<OUString> UITestUnoObj::getSupportedServiceNames()
 {
-    return { "com.sun.star.ui.test.UITest" };
+    return { u"com.sun.star.ui.test.UITest"_ustr };
 }
 
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*

@@ -263,9 +263,11 @@ REM ----------------------------------------------------------------------------
 Public Function CreateBaseDocument(Optional ByVal FileName As Variant _
 							, Optional ByVal EmbeddedDatabase As Variant _
 							, Optional ByVal RegistrationName As Variant _
+							, Optional ByVal DataFileName As Variant _
 							, Optional ByVal CalcFileName As Variant _
 							) As Object
 &apos;&apos;&apos; Create a new LibreOffice Base document embedding an empty database of the given type
+&apos;&apos;&apos;	or finding its datasource in an external database file (Calc or Firebird).
 &apos;&apos;&apos;	Args:
 &apos;&apos;&apos;		FileName: Identifies the file to create. It must follow the SF_FileSystem.FileNaming notation
 &apos;&apos;&apos;			If the file already exists, it is overwritten without warning
@@ -273,11 +275,14 @@ Public Function CreateBaseDocument(Optional ByVal FileName As Variant _
 &apos;&apos;&apos;		RegistrationName: the name used to store the new database in the databases register
 &apos;&apos;&apos;			If &quot;&quot; (default), no registration takes place
 &apos;&apos;&apos;			If the name already exists it is overwritten without warning
-&apos;&apos;&apos;		CalcFileName: only when EmbedddedDatabase = &quot;CALC&quot;, the name of the file containing the tables as Calc sheets
+&apos;&apos;&apos;		DataFileName: when EmbedddedDatabase = &quot;CALC&quot;, the name of the file containing the tables as Calc sheets,
+&apos;&apos;&apos;			when EmbeddedDatabase = &quot;FIREBIRD_EXTERNAL&quot;, the Firebird external database file.
 &apos;&apos;&apos;			The name of the file must be given in SF_FileSystem.FileNaming notation
 &apos;&apos;&apos;			The file must exist
+&apos;&apos;&apos;		CalcFileName: only when EmbedddedDatabase = &quot;CALC&quot;, the name of the file containing the tables as Calc sheets
+&apos;&apos;&apos;			The argument is obsolete as from SF 25.8.
 &apos;&apos;&apos;	Returns:
-&apos;&apos;&apos;		 A SFDocuments.SF_Document object or one of its subclasses
+&apos;&apos;&apos;		 A SFDocuments.SF_Base object or Nothing
 &apos;&apos;&apos;	Exceptions
 &apos;&apos;&apos;		UNKNOWNFILEERROR				Calc datasource does not exist
 &apos;&apos;&apos;	Examples:
@@ -288,12 +293,13 @@ Public Function CreateBaseDocument(Optional ByVal FileName As Variant _
 Dim oCreate As Variant				&apos;	Return value
 Dim oDBContext As Object			&apos;	com.sun.star.sdb.DatabaseContext
 Dim oDatabase As Object				&apos;	com.sun.star.comp.dba.ODatabaseSource
-Dim oComp As Object					&apos;	Loaded component com.sun.star.lang.XComponent
+Dim sTarget As String				&apos;	sdbc abbreviation
 Dim sFileName As String				&apos;	Alias of FileName
 Dim FSO As Object					&apos;	Alias for FileSystem service
 Const cstDocType = &quot;private:factory/s&quot;
 Const cstThisSub = &quot;UI.CreateBaseDocument&quot;
-Const cstSubArgs = &quot;FileName, [EmbeddedDatabase=&quot;&quot;HSQLDB&quot;&quot;|&quot;&quot;FIREBIRD&quot;&quot;|&quot;&quot;CALC&quot;&quot;], [RegistrationName=&quot;&quot;&quot;&quot;], [CalcFileName]&quot;
+Const cstSubArgs = &quot;FileName, [EmbeddedDatabase=&quot;&quot;HSQLDB&quot;&quot;|&quot;&quot;FIREBIRD&quot;&quot;|&quot;&quot;FIREBIRD_EXTERNAL&quot;&quot;|&quot;&quot;CALC&quot;&quot;], &quot; _
+					&amp; &quot;[RegistrationName=&quot;&quot;&quot;&quot;], [DataFileName]&quot;
 
 	If SF_Utils._ErrorHandling() Then On Local Error GoTo Catch
 	Set oCreate = Nothing
@@ -302,34 +308,43 @@ Const cstSubArgs = &quot;FileName, [EmbeddedDatabase=&quot;&quot;HSQLDB&quot;&qu
 Check:
 	If IsMissing(EmbeddedDatabase) Or IsEmpty(EmbeddedDatabase) Then EmbeddedDatabase = &quot;HSQLDB&quot;
 	If IsMissing(RegistrationName) Or IsEmpty(RegistrationName) Then RegistrationName = &quot;&quot;
+	If IsMissing(DataFileName) Or IsEmpty(DataFileName) Then DataFileName = &quot;&quot;
 	If IsMissing(CalcFileName) Or IsEmpty(CalcFileName) Then CalcFileName = &quot;&quot;
 	If SF_Utils._EnterFunction(cstThisSub, cstSubArgs) Then
 		If Not SF_Utils._ValidateFile(FileName, &quot;FileName&quot;) Then GoTo Finally
-		If Not SF_Utils._Validate(EmbeddedDatabase, &quot;EmbeddedDatabase&quot;, V_STRING, Array(&quot;CALC&quot;, &quot;HSQLDB&quot;, &quot;FIREBIRD&quot;)) Then GoTo Finally
+		If Not SF_Utils._Validate(EmbeddedDatabase, &quot;EmbeddedDatabase&quot;, V_STRING, _
+									Array(&quot;CALC&quot;, &quot;HSQLDB&quot;, &quot;FIREBIRD&quot;, &quot;FIREBIRD_EXTERNAL&quot;)) Then GoTo Finally
 		If Not SF_Utils._Validate(RegistrationName, &quot;RegistrationName&quot;, V_STRING) Then GoTo Finally
-		If UCase(EmbeddedDatabase) = &quot;CALC&quot; Then
-			If Not SF_Utils._ValidateFile(CalcFileName, &quot;CalcFileName&quot;) Then GoTo Finally
-			If Not FSO.FileExists(CalcFileName) Then GoTo CatchNotExists
+		If InStr(UCase(EmbeddedDatabase), &quot;CALC,FIREBIRD_EXTERNAL&quot;) &gt; 0 Then
+			If Len(CalcFileName) &gt; 0 And Len(DataFileName) = 0 Then DataFileName = CalcFileName
+			If Not SF_Utils._ValidateFile(DataFileName, &quot;DataFileName&quot;) Then GoTo Finally
+			If Not FSO.FileExists(DataFileName) Then GoTo CatchNotExists
 		End If
 	End If
 
 Try:
+	sFileName = FSO._ConvertToUrl(FileName)
+
 	Set oDBContext = SF_Utils._GetUNOService(&quot;DatabaseContext&quot;)
 	With oDBContext
 		Set oDatabase = .createInstance()
-		&apos;	Build the url link to the database
+
+		&apos;	Build the url links in the database descriptors
+		oDatabase.URL = sFileName
 		Select Case UCase(EmbeddedDatabase)
 			Case &quot;HSQLDB&quot;, &quot;FIREBIRD&quot;
-				oDatabase.URL = &quot;sdbc:embedded:&quot; &amp; LCase(EmbeddedDatabase)
-			Case &quot;CALC&quot;
-				oDatabase.URL = &quot;sdbc:calc:&quot; &amp; FSO._ConvertToUrl(CalcFileName)
+				oDatabase.DatabaseDocument.DataSource.URL = &quot;sdbc:embedded:&quot; &amp; LCase(EmbeddedDatabase)
+			Case &quot;CALC&quot;, &quot;FIREBIRD_EXTERNAL&quot;
+				If UCase(EmbeddedDatabase) = &quot;CALC&quot; Then sTarget = &quot;calc&quot; Else sTarget = &quot;firebird&quot;
+				oDatabase.DatabaseDocument.DataSource.URL = &quot;sdbc:&quot; &amp; sTarget &amp; &quot;:&quot; &amp; FSO._ConvertToUrl(DataFileName)
 		End Select
+
 		&apos;	Create empty Base document
-		sFileName = FSO._ConvertToUrl(FileName)
 		&apos;	An existing file is overwritten without warning
 		If FSO.FileExists(FileName) Then FSO.DeleteFile(FileName)
 		If FSO.FileExists(FileName &amp; &quot;.lck&quot;) Then FSO.DeleteFile(FileName &amp; &quot;.lck&quot;)
 		oDatabase.DatabaseDocument.storeAsURL(sFileName, Array(SF_Utils._MakePropertyValue(&quot;Overwrite&quot;, True)))
+
 		&apos;	Register database if requested
 		If Len(RegistrationName) &gt; 0 Then
 			If .hasRegisteredDatabase(RegistrationName) Then
@@ -349,7 +364,7 @@ Finally:
 Catch:
 	GoTo Finally
 CatchNotExists:
-	SF_Exception.RaiseFatal(UNKNOWNFILEERROR, &quot;CalcFileName&quot;, CalcFileName)
+	SF_Exception.RaiseFatal(UNKNOWNFILEERROR, &quot;DataFileName&quot;, DataFileName)
 	GoTo Finally
 End Function    &apos;   ScriptForge.SF_UI.CreateBaseDocument
 
@@ -1078,21 +1093,19 @@ Check:
 
 Try:
 	Set oStatusbar = _SF_.Statusbar
-	With oStatusbar
-		If IsNull(oStatusbar) Then		&apos;	Initial call
-			Set oComp = StarDesktop.CurrentComponent
-			If Not IsNull(oComp) Then
-				Set oControl = Nothing
-				If SF_Session.HasUnoProperty(oComp, &quot;CurrentController&quot;) Then Set oControl = oComp.CurrentController
-				If Not IsNull(oControl) Then
-					If SF_Session.HasUnoMethod(oControl, &quot;getStatusIndicator&quot;) Then oStatusbar = oControl.getStatusIndicator()
-				End If
-			End If
-			If Not IsNull(oStatusbar) Then
-				.start(&quot;&quot;, 100)
+	If IsNull(oStatusbar) Then		&apos;	Initial call
+		Set oComp = StarDesktop.CurrentComponent
+		If Not IsNull(oComp) Then
+			Set oControl = Nothing
+			If SF_Session.HasUnoProperty(oComp, &quot;CurrentController&quot;) Then Set oControl = oComp.CurrentController
+			If Not IsNull(oControl) Then
+				If SF_Session.HasUnoMethod(oControl, &quot;getStatusIndicator&quot;) Then oStatusbar = oControl.getStatusIndicator()
 			End If
 		End If
-		If Not IsNull(oStatusbar) Then
+		If Not IsNull(oStatusbar) Then oStatusBar.start(&quot;&quot;, 100)
+	End If
+	If Not IsNull(oStatusbar) Then
+		With oStatusbar
 			If Len(Text) = 0 And Percentage = -1 Then
 				.end()
 				Set oStatusbar = Nothing
@@ -1100,8 +1113,8 @@ Try:
 				If Len(Text) &gt; 0 Then .setText(Text)
 				If Percentage &gt;= 0 And Percentage &lt;= 100 Then .setValue(Percentage)
 			End If
-		End If
-	End With
+		End With
+	End If
 
 Finally:
 	Set _SF_.Statusbar = oStatusbar
@@ -1160,14 +1173,15 @@ Try:
 		Set oFixedText = .ProgressBarText
 		Set oProgressBar = .ProgressBarBar
 	End With
-	With oDialog
-		bFirstCall = ( IsNull(oDialog) )
-		If Not bFirstCall Then bFirstCall = Not ._IsStillAlive(False)	&apos;	False to not raise an error
-		If bFirstCall Then Set oDialog = CreateScriptService(&quot;SFDialogs.Dialog&quot;, &quot;GlobalScope&quot;, &quot;ScriptForge&quot;, &quot;dlgProgress&quot;, _Context)
 
+	bFirstCall = ( IsNull(oDialog) )
+	If Not bFirstCall Then bFirstCall = Not oDialog._IsStillAlive(False)	&apos;	False to not raise an error
+	If bFirstCall Then Set oDialog = CreateScriptService(&quot;SFDialogs.Dialog&quot;, &quot;GlobalScope&quot;, &quot;ScriptForge&quot;, &quot;dlgProgress&quot;, _Context)
+	With oDialog
 		If Not IsNull(oDialog) Then
 			If Len(Title) = 0 And Len(Text) = 0 And Percentage = -1 Then
-				Set oDialog = .Dispose()
+				.Terminate()
+				Set oDialog = Nothing
 			Else
 				.Caption = Iif(Len(Title) &gt; 0, Title, &quot;ScriptForge&quot;)
 				If bFirstCall Then
@@ -1254,6 +1268,53 @@ Public Sub _CloseProgressBar(Optional ByRef poEvent As Object)
 	ShowProgressBar()	&apos;	Without arguments =&gt; close the dialog
 
 End Sub			&apos;	ScriptForge.SF_UI._CloseProgressBar
+
+REM -----------------------------------------------------------------------------
+Function _GetConfigurationManager(ByRef poComponent) As String
+&apos;&apos;&apos;	Derives the argument to be passed to a configuration manager
+&apos;&apos;&apos;	(managing the user interface elements like menus, toolbars, ...)
+&apos;&apos;&apos;	from the nature of the component
+&apos;&apos;&apos;	Args:
+&apos;&apos;&apos;		poComponent: any component in desktop, typically a document but not only
+
+Dim sConfigurationManager As String			&apos;	Return value
+Dim oWindow As Object						&apos;	Window type
+
+Check:
+&apos;	On Local Error GoTo Catch
+	If IsNull(poComponent) Then GoTo Catch
+
+Try:
+	Set oWindow = _IdentifyWindow(poComponent)
+
+	&apos;		Derive the name of the UI configuration manager from the component type
+	With oWindow
+		Select Case .WindowName
+			Case BASICIDE		:	sConfigurationManager = &quot;com.sun.star.script.BasicIDE&quot;
+			Case WELCOMESCREEN	:	sConfigurationManager = &quot;com.sun.star.frame.StartModule&quot;
+			Case Else
+				Select Case .DocumentType
+					Case BASEDOCUMENT		:	sConfigurationManager = &quot;com.sun.star.sdb.OfficeDatabaseDocument&quot;
+					Case CALCDOCUMENT		:	sConfigurationManager = &quot;com.sun.star.sheet.SpreadsheetDocument&quot;
+					Case DRAWDOCUMENT		:	sConfigurationManager = &quot;com.sun.star.drawing.DrawingDocument&quot;
+					Case FORMDOCUMENT		:	sConfigurationManager = &quot;com.sun.star.sdb.FormDesign&quot;
+					Case IMPRESSDOCUMENT	:	sConfigurationManager = &quot;com.sun.star.presentation.PresentationDocument&quot;
+					Case MATHDOCUMENT		:	sConfigurationManager = &quot;com.sun.star.formula.FormulaProperties&quot;
+					Case WRITERDOCUMENT		:	sConfigurationManager = &quot;com.sun.star.text.TextDocument&quot;
+					Case TABLEDATA, QUERYDATA, SQLDATA
+												sConfigurationManager = &quot;com.sun.star.sdb.DataSourceBrowser&quot;
+					Case Else				:	sConfigurationManager = &quot;&quot;
+				End Select
+		End Select
+	End With
+
+Finally:
+	_GetConfigurationManager = sConfigurationManager
+	Exit Function
+Catch:
+	On Local Error GoTo 0
+	GoTo Finally
+End Function		&apos;	ScriptForge.SF_UI._GetConfigurationManager
 
 REM -----------------------------------------------------------------------------
 Public Function _IdentifyWindow(ByRef poComponent As Object) As Object
@@ -1362,7 +1423,6 @@ Public Function _ListToolbars(ByRef poComponent As Object) As Object
 &apos;&apos;&apos;		poComponent: any component in desktop, typically a document but not only
 
 Dim oToolbarsDict As Object					&apos;	Return value
-Dim oWindow As Object						&apos;	Window type
 Dim oConfigMgr As Object					&apos;	com.sun.star.ui.ModuleUIConfigurationManagerSupplier
 Dim sConfigurationManager As String			&apos;	Derived from the component&apos;s type
 Dim oUIConfigMgr As Object					&apos;	com.sun.star.comp.framework.ModuleUIConfigurationManager
@@ -1381,31 +1441,13 @@ Check:
 	If IsNull(poComponent) Then GoTo Catch
 
 Try:
-	Set oToolbarsDict = CreateScriptService(&quot;Dictionary&quot;)
-	Set oWindow = _IdentifyWindow(poComponent)
+	Set oToolbarsDict = CreateScriptService(&quot;Dictionary&quot;, True)	&apos;	with case-sensitive comparison of keys
 
 	&apos;	1. Collect all builtin and custom toolbars stored in the LibreOffice configuration files
 
 	&apos;		Derive the name of the UI configuration manager from the component type
-	With oWindow
-		Select Case .WindowName
-			Case BASICIDE		:	sConfigurationManager = &quot;com.sun.star.script.BasicIDE&quot;
-			Case WELCOMESCREEN	:	sConfigurationManager = &quot;com.sun.star.frame.StartModule&quot;
-			Case Else
-				Select Case .DocumentType
-					Case BASEDOCUMENT		:	sConfigurationManager = &quot;com.sun.star.sdb.OfficeDatabaseDocument&quot;
-					Case CALCDOCUMENT		:	sConfigurationManager = &quot;com.sun.star.sheet.SpreadsheetDocument&quot;
-					Case DRAWDOCUMENT		:	sConfigurationManager = &quot;com.sun.star.drawing.DrawingDocument&quot;
-					Case FORMDOCUMENT		:	sConfigurationManager = &quot;com.sun.star.sdb.FormDesign&quot;
-					Case IMPRESSDOCUMENT	:	sConfigurationManager = &quot;com.sun.star.presentation.PresentationDocument&quot;
-					Case MATHDOCUMENT		:	sConfigurationManager = &quot;com.sun.star.formula.FormulaProperties&quot;
-					Case WRITERDOCUMENT		:	sConfigurationManager = &quot;com.sun.star.text.TextDocument&quot;
-					Case TABLEDATA, QUERYDATA, SQLDATA
-												sConfigurationManager = &quot;com.sun.star.sdb.DataSourceBrowser&quot;
-					Case Else				:	sConfigurationManager = &quot;&quot;
-				End Select
-		End Select
-	End With
+	sConfigurationManager = _GetConfigurationManager(poComponent)
+
 	Set oConfigMgr = SF_Utils._GetUNOService(&quot;ModuleUIConfigurationManagerSupplier&quot;)
 	Set oUIConfigMgr = oConfigMgr.getUIConfigurationManager(sConfigurationManager)
 	vCommandBars = oUIConfigMgr.getUIElementsInfo(com.sun.star.ui.UIElementType.TOOLBAR)

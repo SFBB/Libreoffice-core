@@ -33,12 +33,8 @@
 
 namespace com::sun::star {
     namespace document { class XDocumentProperties; }
-    namespace io { class XInputStream; }
+    namespace drawing { class XShape; }
     namespace io { class XOutputStream; }
-    namespace io { class XStream; }
-    namespace text { class XText; }
-    namespace text { class XTextCursor; }
-    namespace text { class XTextField; }
     namespace uno { class XComponentContext; }
     namespace xml::dom { class XDocument; }
     namespace xml::sax { class XFastSAXSerializable; }
@@ -61,8 +57,6 @@ namespace sax_fastparser {
 
     typedef std::shared_ptr< FastSerializerHelper > FSHelperPtr;
 }
-
-namespace utl { class MediaDescriptor; }
 
 namespace oox::drawingml
 {
@@ -207,12 +201,17 @@ public:
             The media type string, used in [Content_Types].xml stream in base
             storage.
 
+        @param bNoHeader
+            If true, do not include a header line in the output. If false,
+            potentially include a header line based on the media type string.
+
         @return newly created serializer helper.
      */
     ::sax_fastparser::FSHelperPtr
                         openFragmentStreamWithSerializer(
                             const OUString& rStreamName,
-                            const OUString& rMediaType );
+                            const OUString& rMediaType,
+                            bool bNoHeader = false);
 
     /** Returns new unique ID for exported document.
 

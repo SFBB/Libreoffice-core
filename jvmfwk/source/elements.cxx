@@ -24,6 +24,7 @@
 #include <memory>
 
 #include <elements.hxx>
+#include <osl/diagnose.h>
 #include <osl/mutex.hxx>
 #include <osl/file.hxx>
 #include <fwkutil.hxx>
@@ -683,7 +684,7 @@ void CNodeJavaInfo::loadFromNode(xmlDoc * pDoc, xmlNode * pJavaInfo)
     OString sExcMsg("[Java framework] Error in function NodeJavaInfo::loadFromNode "
                          "(elements.cxx)."_ostr);
 
-    OSL_ASSERT(pJavaInfo && pDoc);
+    assert(pJavaInfo && pDoc);
     if (pJavaInfo->children == nullptr)
         return;
     //Get the xsi:nil attribute;
@@ -784,7 +785,7 @@ void CNodeJavaInfo::writeToNode(xmlDoc* pDoc,
                                 xmlNode* pJavaInfoNode) const
 
 {
-    OSL_ASSERT(pJavaInfoNode && pDoc);
+    assert(pJavaInfoNode && pDoc);
     //write the attribute vendorSettings
 
     //javaInfo@vendorUpdate

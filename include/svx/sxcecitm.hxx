@@ -32,13 +32,14 @@ enum class SdrCaptionEscDir { Horizontal, Vertical, BestFit };
 
 class SVXCORE_DLLPUBLIC SdrCaptionEscDirItem final : public SfxEnumItem<SdrCaptionEscDir> {
 public:
-    SdrCaptionEscDirItem(SdrCaptionEscDir eDir=SdrCaptionEscDir::Horizontal): SfxEnumItem(SDRATTR_CAPTIONESCDIR, eDir) {}
-    virtual SdrCaptionEscDirItem* Clone(SfxItemPool* pPool=nullptr) const override;
-    virtual sal_uInt16       GetValueCount() const override; // { return 3; }
+    DECLARE_ITEM_TYPE_FUNCTION(SdrCaptionEscDirItem)
+    SdrCaptionEscDirItem(SdrCaptionEscDir eDir=SdrCaptionEscDir::Horizontal)
+        : SfxEnumItem(SDRATTR_CAPTIONESCDIR, eDir) {}
+    SAL_DLLPRIVATE virtual SdrCaptionEscDirItem* Clone(SfxItemPool* pPool=nullptr) const override;
 
-    static OUString GetValueTextByPos(sal_uInt16 nPos);
+    SAL_DLLPRIVATE static OUString GetValueTextByPos(sal_uInt16 nPos);
 
-    virtual bool GetPresentation(SfxItemPresentation ePres, MapUnit eCoreMetric, MapUnit ePresMetric, OUString& rText, const IntlWrapper&) const override;
+    SAL_DLLPRIVATE virtual bool GetPresentation(SfxItemPresentation ePres, MapUnit eCoreMetric, MapUnit ePresMetric, OUString& rText, const IntlWrapper&) const override;
 };
 
 
@@ -48,6 +49,7 @@ public:
 
 class SVXCORE_DLLPUBLIC SdrCaptionEscIsRelItem final : public SdrYesNoItem {
 public:
+    DECLARE_ITEM_TYPE_FUNCTION(SdrCaptionEscIsRelItem)
     SdrCaptionEscIsRelItem(bool bRel=true): SdrYesNoItem(SDRATTR_CAPTIONESCISREL,bRel) {}
     virtual ~SdrCaptionEscIsRelItem() override;
     virtual SdrCaptionEscIsRelItem* Clone(SfxItemPool* pPool=nullptr) const override;
@@ -67,7 +69,8 @@ public:
 
 class SVXCORE_DLLPUBLIC SdrCaptionEscRelItem final : public SfxInt32Item {
 public:
-    SdrCaptionEscRelItem(sal_Int32 nEscRel=5000): SfxInt32Item(SDRATTR_CAPTIONESCREL,nEscRel) {}
+    DECLARE_ITEM_TYPE_FUNCTION(SdrCaptionEscRelItem)
+    SdrCaptionEscRelItem(sal_Int32 nEscRel=5000): SfxInt32Item(SDRATTR_CAPTIONESCREL, nEscRel) {}
     virtual ~SdrCaptionEscRelItem() override;
     virtual SdrCaptionEscRelItem* Clone(SfxItemPool* pPool=nullptr) const override;
 
@@ -86,7 +89,8 @@ public:
 
 class SdrCaptionEscAbsItem final : public SdrMetricItem {
 public:
-    SdrCaptionEscAbsItem(tools::Long nEscAbs=0): SdrMetricItem(SDRATTR_CAPTIONESCABS,nEscAbs) {}
+    DECLARE_ITEM_TYPE_FUNCTION(SdrCaptionEscAbsItem)
+    SdrCaptionEscAbsItem(tools::Long nEscAbs=0): SdrMetricItem(SDRATTR_CAPTIONESCABS, nEscAbs) {}
     virtual SdrCaptionEscAbsItem* Clone(SfxItemPool*) const override
     {
         return new SdrCaptionEscAbsItem(*this);

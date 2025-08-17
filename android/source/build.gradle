@@ -21,7 +21,7 @@ buildscript {
         google()
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:8.2.0'
+        classpath 'com.android.tools.build:gradle:8.11.1'
     }
 }
 
@@ -32,14 +32,18 @@ dependencies {
             "libreoffice.jar",
             "unoloader.jar"
     ])
-    implementation 'com.google.android.material:material:1.10.0'
-    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
-    implementation "androidx.multidex:multidex:2.0.1"
+    implementation 'com.google.android.material:material:1.12.0'
+    implementation 'androidx.constraintlayout:constraintlayout:2.2.1'
+    implementation 'androidx.preference:preference:1.2.1'
+}
+
+base {
+    archivesName = "LibreOfficeViewer"
 }
 
 android {
     namespace 'org.libreoffice'
-    compileSdk 34
+    compileSdk 35
     buildFeatures {
         buildConfig = true
     }
@@ -51,17 +55,12 @@ android {
         main.res.srcDirs = ['res', 'res_generated']
         main.java.srcDirs = ['../Bootstrap/src', 'src/java']
         main.jniLibs.srcDirs = ["${liboJniLibsdir}"]
-        // the configuration data that might be stripped or not
-        fullUI.assets.srcDirs 'assets_fullUI'
         strippedUI.assets.srcDirs 'assets_strippedUI'
         strippedUIEditing.assets.srcDirs 'assets_strippedUI'
     }
     defaultConfig {
         // minSdkVersion is set in liboSettings.gradle
-        targetSdkVersion 34
-        // multidex needed when > 65,536 methods referenced with minSdKVersion < 21
-        // s. https://developer.android.com/studio/build/multidex
-        multiDexEnabled true
+        targetSdkVersion 35
         vectorDrawables.useSupportLibrary = true
     }
     buildTypes {
@@ -86,12 +85,11 @@ android {
             dimension "default"
             buildConfigField 'boolean', 'ALLOW_EDITING', 'true'
         }
-        fullUI.dimension "default"
     }
     lint {
         warningsAsErrors true
         // ignore missing or extra translations, since these are tracked/managed via Weblate
-        ignore 'ExtraTranslation', 'MissingTranslation'
+        disable 'ExtraTranslation', 'MissingTranslation'
         // don't error-out on external updates (new gradle plugin, library versions
         // or target API become available)
         // don't error-out on TypographyEllipsis, since this can be introduced with
@@ -180,6 +178,7 @@ task copyAssets(type: Copy) {
                         '**/pbmenubutton.ui',
                         '**/scrollbars.ui',
                         '**/tabbuttons.ui',
+                        '**/tabbuttonsmirrored.ui',
                         '**/tabviewbar.ui'
                         ]
         }
@@ -216,13 +215,6 @@ task copyAppResources(type: Copy) {
         rename "LICENSE", "license.txt"
         rename "NOTICE", "notice.txt"
     }
-}
-
-task createFullConfig(type: Copy) {
-    // grab dir to clear whole hierarchy on clean target
-    outputs.dir "assets_fullUI"
-    into 'assets_fullUI/share/config/soffice.cfg'
-    from "${liboInstdir}/share/config/soffice.cfg"
 }
 
 task createStrippedConfig {
@@ -316,9 +308,7 @@ task createRCfiles {
 preBuild.dependsOn 'createRCfiles',
         'createStrippedConfigMain',
         'createStrippedConfigRegistry',
-        'createFullConfig',
         'copyAppResources'
 
 clean.dependsOn 'cleanCopyAssets',
-        'cleanCreateStrippedConfig',
-        'cleanCreateFullConfig'
+        'cleanCreateStrippedConfig'

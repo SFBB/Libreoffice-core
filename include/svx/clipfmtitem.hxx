@@ -28,7 +28,6 @@
 #include <svl/poolitem.hxx>
 #include <svx/svxdllapi.h>
 
-class SfxItemPool;
 struct SvxClipboardFormatItem_Impl;
 
 class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC SvxClipboardFormatItem final : public SfxPoolItem
@@ -38,6 +37,7 @@ class SAL_WARN_UNUSED SVXCORE_DLLPUBLIC SvxClipboardFormatItem final : public Sf
 
 public:
     static SfxPoolItem* CreateDefault();
+    DECLARE_ITEM_TYPE_FUNCTION(SvxClipboardFormatItem)
     SvxClipboardFormatItem(TypedWhichId<SvxClipboardFormatItem> nId);
     SvxClipboardFormatItem(const SvxClipboardFormatItem&);
     virtual ~SvxClipboardFormatItem() override;
@@ -54,7 +54,7 @@ public:
     OUString const& GetClipbrdFormatName(sal_uInt16 nPos) const;
 
 private:
-    std::unique_ptr<SvxClipboardFormatItem_Impl> pImpl;
+    std::unique_ptr<SvxClipboardFormatItem_Impl> m_pImpl;
 };
 
 #endif

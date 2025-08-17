@@ -33,6 +33,7 @@
 #include <comphelper/attributelist.hxx>
 #include <comphelper/servicehelper.hxx>
 
+#include <eventdispatcher.hxx>
 #include <node.hxx>
 #include "attr.hxx"
 #include "elementlist.hxx"
@@ -65,7 +66,7 @@ namespace DOM
                 strlen(reinterpret_cast<const char*>(pPrefix)),
                 RTL_TEXTENCODING_UTF8);
             OUString name = (prefix.isEmpty())
-                ? OUString( "xmlns" ) : "xmlns:" + prefix;
+                ? u"xmlns"_ustr : "xmlns:" + prefix;
             const xmlChar *pHref = pNs->href;
             OUString val(reinterpret_cast<const char*>(pHref),
                 strlen(reinterpret_cast<const char*>(pHref)),
@@ -191,14 +192,14 @@ namespace DOM
                                              strlen(reinterpret_cast<char const *>(pPrefix)),
                                              RTL_TEXTENCODING_UTF8 );
 
-                i_rContext.mxCurrentHandler->endUnknownElement( "", aElementName );
+                i_rContext.mxCurrentHandler->endUnknownElement( u""_ustr, aElementName );
             }
         }
         catch( Exception& )
         {}
 
         // restore after children have been processed
-        i_rContext.mxCurrentHandler = xParentHandler;
+        i_rContext.mxCurrentHandler = std::move(xParentHandler);
         popContext(i_rContext);
     }
 
@@ -563,8 +564,8 @@ namespace DOM
         // dispatch DOMAttrModified event
         Reference< XDocumentEvent > docevent(getOwnerDocument(), UNO_QUERY);
         Reference< XMutationEvent > event(docevent->createEvent(
-            "DOMAttrModified"), UNO_QUERY);
-        event->initMutationEvent("DOMAttrModified",
+            u"DOMAttrModified"_ustr), UNO_QUERY);
+        event->initMutationEvent(u"DOMAttrModified"_ustr,
             true, false, xAttr,
             OUString(), xAttr->getValue(), xAttr->getName(),
             AttrChangeType_ADDITION);
@@ -622,18 +623,22 @@ namespace DOM
             xmlSetProp(m_aNodePtr, pName, pValue);
         }
 
-        // dispatch DOMAttrModified event
-        Reference< XDocumentEvent > docevent(getOwnerDocument(), UNO_QUERY);
-        Reference< XMutationEvent > event(docevent->createEvent(
-            "DOMAttrModified"), UNO_QUERY);
-        event->initMutationEvent("DOMAttrModified",
-            true, false,
-            getAttributeNode(name),
-            oldValue, value, name, aChangeType);
+        CDocument& rDocument(GetOwnerDocument());
+        if (rDocument.GetEventDispatcher().hasListeners())
+        {
+            // dispatch DOMAttrModified event
+            Reference< XDocumentEvent > docevent(getOwnerDocument(), UNO_QUERY);
+            Reference< XMutationEvent > event(docevent->createEvent(
+                u"DOMAttrModified"_ustr), UNO_QUERY);
+            event->initMutationEvent(u"DOMAttrModified"_ustr,
+                true, false,
+                getAttributeNode(name),
+                oldValue, value, name, aChangeType);
 
-        guard.clear(); // release mutex before calling event handlers
-        dispatchEvent(event);
-        dispatchSubtreeModified();
+            guard.clear(); // release mutex before calling event handlers
+            dispatchEvent(event);
+            dispatchSubtreeModified();
+        }
     }
 
     /**
@@ -703,18 +708,23 @@ namespace DOM
                         RTL_TEXTENCODING_UTF8);
             xmlSetNsProp(m_aNodePtr, pNs, pLName, pValue);
         }
-        // dispatch DOMAttrModified event
-        Reference< XDocumentEvent > docevent(getOwnerDocument(), UNO_QUERY);
-        Reference< XMutationEvent > event(docevent->createEvent(
-            "DOMAttrModified"), UNO_QUERY);
-        event->initMutationEvent(
-            "DOMAttrModified", true, false,
-            getAttributeNodeNS(namespaceURI, OUString(reinterpret_cast<char const *>(pLName), strlen(reinterpret_cast<char const *>(pLName)), RTL_TEXTENCODING_UTF8)),
-            oldValue, value, qualifiedName, aChangeType);
 
-        guard.clear(); // release mutex before calling event handlers
-        dispatchEvent(event);
-        dispatchSubtreeModified();
+        CDocument& rDocument(GetOwnerDocument());
+        if (rDocument.GetEventDispatcher().hasListeners())
+        {
+            // dispatch DOMAttrModified event
+            Reference< XDocumentEvent > docevent(getOwnerDocument(), UNO_QUERY);
+            Reference< XMutationEvent > event(docevent->createEvent(
+                u"DOMAttrModified"_ustr), UNO_QUERY);
+            event->initMutationEvent(
+                u"DOMAttrModified"_ustr, true, false,
+                getAttributeNodeNS(namespaceURI, OUString(reinterpret_cast<char const *>(pLName), strlen(reinterpret_cast<char const *>(pLName)), RTL_TEXTENCODING_UTF8)),
+                oldValue, value, qualifiedName, aChangeType);
+
+            guard.clear(); // release mutex before calling event handlers
+            dispatchEvent(event);
+            dispatchSubtreeModified();
+        }
     }
 
     Reference< XNamedNodeMap > SAL_CALL

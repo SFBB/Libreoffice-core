@@ -22,119 +22,57 @@
 
 #include <viewsh.hxx>
 #include <accmap.hxx>
-#include <toolkit/awt/vclxaccessiblecomponent.hxx>
+#include <vcl/svapp.hxx>
 
 #include <com/sun/star/accessibility/AccessibleRole.hpp>
-#include <mutex>
 
-namespace sw::sidebarwindows {
-
-namespace {
-
-// declaration and implementation of accessible context for <SidebarWinAccessible> instance
-class SidebarWinAccessibleContext : public VCLXAccessibleComponent
+namespace sw::sidebarwindows
 {
-    public:
-        explicit SidebarWinAccessibleContext( sw::annotation::SwAnnotationWin& rSidebarWin,
-                                              SwViewShell& rViewShell,
-                                              const SwFrame* pAnchorFrame )
-            : VCLXAccessibleComponent( dynamic_cast<VCLXWindow*>(rSidebarWin.CreateAccessible().get()) )
-            , mrViewShell( rViewShell )
-            , mpAnchorFrame( pAnchorFrame )
-        {
-            rSidebarWin.SetAccessibleRole( css::accessibility::AccessibleRole::COMMENT );
-        }
-
-        void ChangeAnchor( const SwFrame* pAnchorFrame )
-        {
-            std::scoped_lock aGuard(maMutex);
-
-            mpAnchorFrame = pAnchorFrame;
-        }
-
-        virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL
-            getAccessibleParent() override
-        {
-            std::scoped_lock aGuard(maMutex);
-
-            css::uno::Reference< css::accessibility::XAccessible > xAccParent;
-
-            if ( mpAnchorFrame &&
-                 mrViewShell.GetAccessibleMap() )
-            {
-                xAccParent = mrViewShell.GetAccessibleMap()->GetContext( mpAnchorFrame, false );
-            }
-
-            return xAccParent;
-        }
-
-        virtual sal_Int64 SAL_CALL getAccessibleIndexInParent() override
-        {
-            std::scoped_lock aGuard(maMutex);
-
-            sal_Int64 nIndex( -1 );
-
-            if ( mpAnchorFrame && GetWindow() &&
-                 mrViewShell.GetAccessibleMap() )
-            {
-                nIndex = mrViewShell.GetAccessibleMap()->GetChildIndex( *mpAnchorFrame,
-                                                                        *GetWindow() );
-            }
-
-            return nIndex;
-        }
-
-    private:
-        SwViewShell& mrViewShell;
-        const SwFrame* mpAnchorFrame;
-
-        std::mutex maMutex;
-};
-
+SidebarWinAccessible::SidebarWinAccessible(sw::annotation::SwAnnotationWin& rSidebarWin,
+                                           SwViewShell& rViewShell,
+                                           const SwAnnotationItem& rSidebarItem)
+    : VCLXAccessibleComponent(&rSidebarWin)
+    , mrViewShell(rViewShell)
+    , mpAnchorFrame(rSidebarItem.maLayoutInfo.mpAnchorFrame)
+{
+    rSidebarWin.SetAccessibleRole(css::accessibility::AccessibleRole::COMMENT);
 }
 
-// implementation of accessible for <SwAnnotationWin> instance
-SidebarWinAccessible::SidebarWinAccessible( sw::annotation::SwAnnotationWin& rSidebarWin,
-                                            SwViewShell& rViewShell,
-                                            const SwSidebarItem& rSidebarItem )
-    : mrSidebarWin( rSidebarWin )
-    , mrViewShell( rViewShell )
-    , mpAnchorFrame( rSidebarItem.maLayoutInfo.mpAnchorFrame )
-    , m_bAccContextCreated( false )
+SidebarWinAccessible::~SidebarWinAccessible() {}
+
+void SidebarWinAccessible::ChangeSidebarItem(const SwAnnotationItem& rSidebarItem)
 {
-    SetWindow( &mrSidebarWin );
+    SolarMutexGuard aGuard;
+
+    mpAnchorFrame = rSidebarItem.maLayoutInfo.mpAnchorFrame;
 }
 
-SidebarWinAccessible::~SidebarWinAccessible()
+css::uno::Reference<css::accessibility::XAccessible> SidebarWinAccessible::getAccessibleParent()
 {
-}
+    SolarMutexGuard aGuard;
 
-void SidebarWinAccessible::ChangeSidebarItem( const SwSidebarItem& rSidebarItem )
-{
-    if ( !m_bAccContextCreated )
-        return;
+    css::uno::Reference<css::accessibility::XAccessible> xAccParent;
 
-    css::uno::Reference< css::accessibility::XAccessibleContext > xAcc
-                                                = getAccessibleContext();
-    if ( xAcc.is() )
+    if (mpAnchorFrame && mrViewShell.GetAccessibleMap())
     {
-        SidebarWinAccessibleContext* pAccContext =
-                    dynamic_cast<SidebarWinAccessibleContext*>(xAcc.get());
-        if ( pAccContext )
-        {
-            pAccContext->ChangeAnchor( rSidebarItem.maLayoutInfo.mpAnchorFrame );
-        }
+        xAccParent = mrViewShell.GetAccessibleMap()->GetContext(mpAnchorFrame, false);
     }
+
+    return xAccParent;
 }
 
-css::uno::Reference< css::accessibility::XAccessibleContext > SidebarWinAccessible::CreateAccessibleContext()
+sal_Int64 SAL_CALL SidebarWinAccessible::getAccessibleIndexInParent()
 {
-    rtl::Reference<SidebarWinAccessibleContext> pAccContext =
-                                new SidebarWinAccessibleContext( mrSidebarWin,
-                                                                 mrViewShell,
-                                                                 mpAnchorFrame );
-    m_bAccContextCreated = true;
-    return pAccContext;
+    SolarMutexGuard aGuard;
+
+    sal_Int64 nIndex(-1);
+
+    if (mpAnchorFrame && GetWindow() && mrViewShell.GetAccessibleMap())
+    {
+        nIndex = mrViewShell.GetAccessibleMap()->GetChildIndex(*mpAnchorFrame, *GetWindow());
+    }
+
+    return nIndex;
 }
 
 } // end of namespace sw::sidebarwindows

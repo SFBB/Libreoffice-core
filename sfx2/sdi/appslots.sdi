@@ -67,6 +67,11 @@ interface Application
     FN_CHANGE_THEME // ole(no) api(final/play/rec)
     [
         ExecMethod = MiscExec_Impl ;
+        StateMethod = MiscState_Impl ;
+    ]
+    FN_INVERT_BACKGROUND // ole(no) api(final/play/rec)
+    [
+        ExecMethod = MiscExec_Impl ;
     ]
     SID_CONFIG // ole(no) api(final/play/rec)
     [
@@ -147,6 +152,10 @@ interface Application
     [
         ExecMethod = MiscExec_Impl ;
     ]
+    SID_CREDITS
+    [
+        ExecMethod = MiscExec_Impl ;
+    ]
     SID_HYPHENATIONMISSING
     [
         ExecMethod = MiscExec_Impl ;
@@ -167,7 +176,7 @@ interface Application
         ExecMethod = MiscExec_Impl ;
         StateMethod = MiscState_Impl ;
     ]
-    SID_TOOLBAR_MODE_UI
+    SID_UI_PICKER
     [
         ExecMethod = MiscExec_Impl ;
     ]
@@ -284,6 +293,11 @@ shell SfxApplication
     [
         ExecMethod = OfaExec_Impl;
     ]
+    SID_MACROMANAGER
+    [
+        ExecMethod = OfaExec_Impl;
+        StateMethod = OfaState_Impl;
+    ]
     SID_INET_DLG  // status(final)
     [
         ExecMethod = OfaExec_Impl;
@@ -334,6 +348,14 @@ shell SfxApplication
         ExecMethod = OfaExec_Impl ;
     ]
     SID_MORE_DICTIONARIES
+    [
+        ExecMethod = OfaExec_Impl ;
+    ]
+    SID_OPTIONS_SECURITY
+    [
+        ExecMethod = OfaExec_Impl ;
+    ]
+    SID_ADDITIONS_DIALOG
     [
         ExecMethod = OfaExec_Impl ;
     ]

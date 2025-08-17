@@ -28,15 +28,11 @@
 #include <vcl/toolkit/unowrap.hxx>
 #include <vcl/window.hxx>
 
-#include <helper/accessibilityclient.hxx>
-
-
 
 class UnoWrapper final : public UnoWrapperBase
 {
 private:
     css::uno::Reference< css::awt::XToolkit>  mxToolkit;
-    ::toolkit::AccessibilityClient            maAccessibleFactoryAccess;
 
 public:
     UnoWrapper( const css::uno::Reference< css::awt::XToolkit>& rxToolkit );
@@ -60,12 +56,8 @@ public:
 
     void                WindowDestroyed( vcl::Window* pWindow ) override;
 
-    // Accessibility
-    virtual css::uno::Reference< css::accessibility::XAccessible >
-                        CreateAccessible( Menu* pMenu, bool bIsMenuBar ) override;
-
 private:
-    virtual ~UnoWrapper();
+    ~UnoWrapper();
 };
 
 #endif // INCLUDED_TOOLKIT_INC_HELPER_UNOWRAPPER_HXX

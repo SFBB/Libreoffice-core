@@ -20,6 +20,7 @@
 #ifndef INCLUDED_XMLOFF_XMLNUMFE_HXX
 #define INCLUDED_XMLOFF_XMLNUMFE_HXX
 
+#include <config_options.h>
 #include <sal/config.h>
 #include <xmloff/dllapi.h>
 #include <sal/types.h>
@@ -36,7 +37,6 @@ inline constexpr OUString XML_WRITTENNUMBERSTYLES = u"WrittenNumberStyles"_ustr;
 
 class Color;
 class LocaleDataWrapper;
-class CharClass;
 class SvXMLExport;
 class SvNumberFormatter;
 class SvNumberformat;
@@ -44,7 +44,7 @@ class SvXMLNumUsedList_Impl;
 
 class SvXMLEmbeddedTextEntryArr;
 
-class XMLOFF_DLLPUBLIC SvXMLNumFmtExport final
+class UNLESS_MERGELIBS_MORE(XMLOFF_DLLPUBLIC) SvXMLNumFmtExport final
 {
 private:
     SvXMLExport&                m_rExport;
@@ -54,7 +54,7 @@ private:
     OUStringBuffer              m_sBlankWidthString;
     bool                        m_bHasText;
     std::unique_ptr<SvXMLNumUsedList_Impl>      m_pUsedList;
-    std::unique_ptr<LocaleDataWrapper>          m_pLocaleData;
+    const LocaleDataWrapper*    m_pLocaleData { nullptr };
 
     SAL_DLLPRIVATE void AddCalendarAttr_Impl( const OUString& rCalendar );
     SAL_DLLPRIVATE void AddStyleAttr_Impl( bool bLong );

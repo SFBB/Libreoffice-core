@@ -24,17 +24,16 @@
  */
 namespace tools
 {
-class ScopedJsonWriterNode;
-class ScopedJsonWriterArray;
-class ScopedJsonWriterStruct;
-
 class TOOLS_DLLPUBLIC JsonWriter
 {
-    friend class ScopedJsonWriterNode;
-    friend class ScopedJsonWriterArray;
-    friend class ScopedJsonWriterStruct;
+    // Auto-closes the node.
+    template <char closing> struct ScopedJsonWriterNode
+    {
+        JsonWriter& mrWriter;
+        ~ScopedJsonWriterNode() { mrWriter.endNode(closing); }
+    };
 
-    char* mpBuffer;
+    rtl_String* mpBuffer;
     char* mPos;
     int mSpaceAllocated;
     int mStartNodeCount;
@@ -45,11 +44,12 @@ public:
     JsonWriter();
     ~JsonWriter();
 
-    [[nodiscard]] ScopedJsonWriterNode startNode(std::string_view);
-    [[nodiscard]] ScopedJsonWriterArray startArray(std::string_view);
-    [[nodiscard]] ScopedJsonWriterStruct startStruct();
+    [[nodiscard]] ScopedJsonWriterNode<'}'> startNode(std::string_view nodeName);
+    [[nodiscard]] ScopedJsonWriterNode<']'> startArray(std::string_view nodeName);
+    [[nodiscard]] ScopedJsonWriterNode<']'> startAnonArray();
+    [[nodiscard]] ScopedJsonWriterNode<'}'> startStruct();
 
-    void put(std::u16string_view pPropName, const OUString& rPropValue);
+    void put(std::u16string_view pPropName, std::u16string_view rPropValue);
 
     void put(std::string_view pPropName, const OUString& rPropValue);
     // Assumes utf-8 property value encoding
@@ -70,7 +70,7 @@ public:
     }
     void put(std::string_view pPropName, bool);
 
-    void putSimpleValue(const OUString& rPropValue);
+    void putSimpleValue(std::u16string_view rPropValue);
 
     /// This assumes that this data belongs at this point in the stream, and is valid, and properly encoded
     void putRaw(std::string_view);
@@ -79,15 +79,10 @@ public:
      * After this no more document modifications may be written. */
     OString finishAndGetAsOString();
 
-    /** returns true if the current JSON data matches the string */
-    bool isDataEquals(std::string_view) const;
-
 private:
-    void endNode();
-    void endArray();
-    void endStruct();
+    void endNode(char closing);
     void addCommaBeforeField();
-    void writeEscapedOUString(const OUString& rPropVal);
+    void writeEscapedOUString(std::u16string_view rPropVal);
     void closeDocument();
     void ensureSpace(int noMoreBytesRequired);
     void ensureSpaceAndWriteNameColon(std::string_view name, int valSize);
@@ -99,71 +94,17 @@ private:
     inline void addValidationMark()
     {
 #ifndef NDEBUG
-        *(mpBuffer + mSpaceAllocated - 1) = JSON_WRITER_DEBUG_MARKER;
+        *(mpBuffer->buffer + mSpaceAllocated - 1) = JSON_WRITER_DEBUG_MARKER;
 #endif
     }
 
     inline void validate()
     {
 #ifndef NDEBUG
-        unsigned char c = *(mpBuffer + mSpaceAllocated - 1);
+        unsigned char c = *(mpBuffer->buffer + mSpaceAllocated - 1);
         assert(c == JSON_WRITER_DEBUG_MARKER);
 #endif
     }
-};
-
-/**
- * Auto-closes the node.
- */
-class ScopedJsonWriterNode
-{
-    friend class JsonWriter;
-
-    JsonWriter& mrWriter;
-
-    ScopedJsonWriterNode(JsonWriter& rWriter)
-        : mrWriter(rWriter)
-    {
-    }
-
-public:
-    ~ScopedJsonWriterNode() { mrWriter.endNode(); }
-};
-
-/**
- * Auto-closes the node.
- */
-class ScopedJsonWriterArray
-{
-    friend class JsonWriter;
-
-    JsonWriter& mrWriter;
-
-    ScopedJsonWriterArray(JsonWriter& rWriter)
-        : mrWriter(rWriter)
-    {
-    }
-
-public:
-    ~ScopedJsonWriterArray() { mrWriter.endArray(); }
-};
-
-/**
- * Auto-closes the node.
- */
-class ScopedJsonWriterStruct
-{
-    friend class JsonWriter;
-
-    JsonWriter& mrWriter;
-
-    ScopedJsonWriterStruct(JsonWriter& rWriter)
-        : mrWriter(rWriter)
-    {
-    }
-
-public:
-    ~ScopedJsonWriterStruct() { mrWriter.endStruct(); }
 };
 }
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

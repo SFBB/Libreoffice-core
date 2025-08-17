@@ -21,7 +21,9 @@
 #include <svl/intitem.hxx>
 #include <sfx2/frame.hxx>
 #include <sfx2/viewfrm.hxx>
+#include <unotools/localedatawrapper.hxx>
 #include <unotools/moduleoptions.hxx>
+#include <unotools/syslocale.hxx>
 #include <framework/FrameworkHelper.hxx>
 #include <osl/diagnose.h>
 #include <vcl/commandevent.hxx>
@@ -52,6 +54,10 @@
 #include <FactoryIds.hxx>
 #include <memory>
 #include <slideshow.hxx>
+#include <ResourceId.hxx>
+
+#include <officecfg/Office/Draw.hxx>
+#include <officecfg/Office/Impress.hxx>
 
 using ::sd::framework::FrameworkHelper;
 using ::com::sun::star::uno::Reference;
@@ -65,7 +71,7 @@ public:
     OutlineToImpressFinalizer (
         ::sd::ViewShellBase& rBase,
         SdDrawDocument& rDocument,
-        SvLockBytes const & rBytes);
+        css::uno::Sequence<sal_Int8> const & rBytes);
     void operator() (bool bEventSeen);
 private:
     ::sd::ViewShellBase& mrBase;
@@ -126,9 +132,21 @@ void SdModule::Execute(SfxRequest& rReq)
                                 DocumentType eDocType = pDocSh->GetDoc()->GetDocumentType();
 
                                 PutItem( *pItem );
-                                SdOptions* pOptions = GetSdOptions( eDocType );
-                                if(pOptions)
-                                    pOptions->SetMetric( static_cast<sal_uInt16>(eUnit) );
+                                SvtSysLocale aSysLocale;
+                                std::shared_ptr<comphelper::ConfigurationChanges> batch(
+                                    comphelper::ConfigurationChanges::create());
+
+                                if (eDocType == DocumentType::Impress)
+                                    if (aSysLocale.GetLocaleData().getMeasurementSystemEnum() == MeasurementSystem::Metric)
+                                        officecfg::Office::Impress::Layout::Other::MeasureUnit::Metric::set(static_cast<sal_uInt16>(eUnit), batch);
+                                    else
+                                        officecfg::Office::Impress::Layout::Other::MeasureUnit::NonMetric::set(static_cast<sal_uInt16>(eUnit), batch);
+                                else
+                                    if (aSysLocale.GetLocaleData().getMeasurementSystemEnum() == MeasurementSystem::Metric)
+                                        officecfg::Office::Draw::Layout::Other::MeasureUnit::Metric::set(static_cast<sal_uInt16>(eUnit), batch);
+                                else
+                                        officecfg::Office::Draw::Layout::Other::MeasureUnit::NonMetric::set(static_cast<sal_uInt16>(eUnit), batch);
+                                batch->commit();
                                 rReq.Done();
                             }
                         }
@@ -196,7 +214,8 @@ void SdModule::Execute(SfxRequest& rReq)
             ::sd::ViewShell* pViewShell = pDocShell ? pDocShell->GetViewShell() : nullptr;
             if (pViewShell)
             {
-                if( sd::SlideShow::IsRunning( pViewShell->GetViewShellBase() ) )
+                if( sd::SlideShow::IsRunning( pViewShell->GetViewShellBase() )
+                    && !sd::SlideShow::IsInteractiveSlideshow( &pViewShell->GetViewShellBase() ) ) // IASS
                 {
                     // Prevent documents from opening while the slide
                     // show is running, except when this request comes
@@ -250,14 +269,13 @@ bool SdModule::OutlineToImpress(SfxRequest const & rRequest)
 
     if (pSet)
     {
-        SvLockBytes* pBytes = static_cast<const SfxLockBytesItem&>(pSet->Get(SID_OUTLINE_TO_IMPRESS)).GetValue();
+        css::uno::Sequence<sal_Int8> pBytes = static_cast<const SfxLockBytesItem&>(pSet->Get(SID_OUTLINE_TO_IMPRESS)).GetValue();
 
-        if (pBytes)
+        if (pBytes.getLength())
         {
-            SfxObjectShellLock xDocShell;
-            ::sd::DrawDocShell* pDocSh;
-            xDocShell = pDocSh = new ::sd::DrawDocShell(
+            rtl::Reference<sd::DrawDocShell> pDocSh = new ::sd::DrawDocShell(
                 SfxObjectCreateMode::STANDARD, false, DocumentType::Impress);
+            SfxObjectShellLock xDocShell(pDocSh.get());
 
             pDocSh->DoInitNew();
             SdDrawDocument* pDoc = pDocSh->GetDoc();
@@ -277,26 +295,27 @@ bool SdModule::OutlineToImpress(SfxRequest const & rRequest)
                 // AutoLayouts have to be finished
                 pDoc->StopWorkStartupDelay();
 
-                SfxViewFrame* pViewFrame = pViewSh->GetViewFrame();
-
-                // When the view frame has not been just created we have
-                // to switch synchronously to the outline view.
-                // (Otherwise the request will be ignored anyway.)
-                ::sd::ViewShellBase* pBase
-                    = dynamic_cast< ::sd::ViewShellBase*>(pViewFrame->GetViewShell());
-                if (pBase != nullptr)
+                if (SfxViewFrame* pViewFrame = pViewSh->GetViewFrame())
                 {
-                    std::shared_ptr<FrameworkHelper> pHelper (
-                        FrameworkHelper::Instance(*pBase));
-                    pHelper->RequestView(
-                        FrameworkHelper::msOutlineViewURL,
-                        FrameworkHelper::msCenterPaneURL);
+                    // When the view frame has not been just created we have
+                    // to switch synchronously to the outline view.
+                    // (Otherwise the request will be ignored anyway.)
+                    ::sd::ViewShellBase* pBase
+                        = dynamic_cast< ::sd::ViewShellBase*>(pViewFrame->GetViewShell());
+                    if (pBase != nullptr)
+                    {
+                        std::shared_ptr<FrameworkHelper> pHelper (
+                            FrameworkHelper::Instance(*pBase));
+                        pHelper->RequestView(
+                            FrameworkHelper::msOutlineViewURL,
+                            FrameworkHelper::msCenterPaneURL);
 
-                    pHelper->RunOnResourceActivation(
-                        FrameworkHelper::CreateResourceId(
-                        FrameworkHelper::msOutlineViewURL,
-                        FrameworkHelper::msCenterPaneURL),
-                        OutlineToImpressFinalizer(*pBase, *pDoc, *pBytes));
+                        pHelper->RunOnResourceActivation(
+                            new ::sd::framework::ResourceId(
+                                FrameworkHelper::msOutlineViewURL,
+                                FrameworkHelper::msCenterPaneURL),
+                            OutlineToImpressFinalizer(*pBase, *pDoc, pBytes));
+                    }
                 }
             }
         }
@@ -313,9 +332,18 @@ void SdModule::GetState(SfxItemSet& rItemSet)
         if(pDocSh)
         {
             DocumentType eDocType = pDocSh->GetDoc()->GetDocumentType();
+            SvtSysLocale aSysLocale;
 
-            SdOptions* pOptions = GetSdOptions(eDocType);
-            rItemSet.Put( SfxUInt16Item( SID_ATTR_METRIC, pOptions->GetMetric() ) );
+            if (eDocType == DocumentType::Impress)
+                if (aSysLocale.GetLocaleData().getMeasurementSystemEnum() == MeasurementSystem::Metric)
+                    rItemSet.Put( SfxUInt16Item( SID_ATTR_METRIC, officecfg::Office::Impress::Layout::Other::MeasureUnit::Metric::get() ) );
+                else
+                    rItemSet.Put( SfxUInt16Item( SID_ATTR_METRIC, officecfg::Office::Impress::Layout::Other::MeasureUnit::NonMetric::get() ) );
+            else
+                if (aSysLocale.GetLocaleData().getMeasurementSystemEnum() == MeasurementSystem::Metric)
+                    rItemSet.Put( SfxUInt16Item( SID_ATTR_METRIC, officecfg::Office::Draw::Layout::Other::MeasureUnit::Metric::get() ) );
+                else
+                    rItemSet.Put( SfxUInt16Item( SID_ATTR_METRIC, officecfg::Office::Draw::Layout::Other::MeasureUnit::NonMetric::get() ) );
         }
     }
 
@@ -323,7 +351,7 @@ void SdModule::GetState(SfxItemSet& rItemSet)
     if (rItemSet.GetItemState(SID_OPENDOC) != SfxItemState::UNKNOWN)
     {
         const SfxPoolItemHolder aItem(SfxGetpApp()->GetSlotState(SID_OPENDOC, SfxGetpApp()->GetInterface()));
-        if (nullptr != aItem.getItem())
+        if (aItem)
             rItemSet.Put(*aItem.getItem());
     }
 
@@ -331,7 +359,7 @@ void SdModule::GetState(SfxItemSet& rItemSet)
     if (rItemSet.GetItemState(SID_OPENHYPERLINK) != SfxItemState::UNKNOWN)
     {
         const SfxPoolItemHolder aItem(SfxGetpApp()->GetSlotState(SID_OPENHYPERLINK, SfxGetpApp()->GetInterface()));
-        if (nullptr != aItem.getItem())
+        if (aItem)
             rItemSet.Put(*aItem.getItem());
     }
 
@@ -452,7 +480,7 @@ SfxFrame* SdModule::CreateFromTemplate(const OUString& rTemplatePath, const Refe
 SfxFrame* SdModule::ExecuteNewDocument( SfxRequest const & rReq )
 {
     SfxFrame* pFrame = nullptr;
-    if ( SvtModuleOptions().IsImpress() )
+    if (SvtModuleOptions().IsImpressInstalled())
     {
         Reference< XFrame > xTargetFrame;
         const SfxUnoFrameItem* pFrmItem = rReq.GetArg<SfxUnoFrameItem>(SID_FILLFRAME);
@@ -517,9 +545,8 @@ SfxFrame* SdModule::CreateEmptyDocument( const Reference< XFrame >& i_rFrame )
 {
     SfxFrame* pFrame = nullptr;
 
-    SfxObjectShellLock xDocShell;
-    ::sd::DrawDocShell* pNewDocSh;
-    xDocShell = pNewDocSh = new ::sd::DrawDocShell(SfxObjectCreateMode::STANDARD,false,DocumentType::Impress);
+    rtl::Reference<sd::DrawDocShell> pNewDocSh = new ::sd::DrawDocShell(SfxObjectCreateMode::STANDARD,false,DocumentType::Impress);
+    SfxObjectShellLock xDocShell(pNewDocSh.get());
     pNewDocSh->DoInitNew();
     SdDrawDocument* pDoc = pNewDocSh->GetDoc();
     if (pDoc)
@@ -544,58 +571,13 @@ namespace {
 OutlineToImpressFinalizer::OutlineToImpressFinalizer (
     ::sd::ViewShellBase& rBase,
     SdDrawDocument& rDocument,
-    SvLockBytes const & rBytes)
+    css::uno::Sequence<sal_Int8> const & rBytes)
     : mrBase(rBase),
       mrDocument(rDocument)
 {
-    // The given stream has a lifetime shorter than this new
-    // OutlineToImpressFinalizer object.  Therefore a local copy of the
-    // stream is created.
-    const SvStream* pStream (rBytes.GetStream());
-    if (pStream == nullptr)
-        return;
-
-    // Create a memory stream and prepare to fill it with the content of
+    // Create a memory stream to fill it with the content of
     // the original stream.
-    mpStream = std::make_shared<SvMemoryStream>();
-    static const std::size_t nBufferSize = 4096;
-    ::std::unique_ptr<sal_Int8[]> pBuffer (new sal_Int8[nBufferSize]);
-
-    sal_uInt64 nReadPosition(0);
-    bool bLoop (true);
-    while (bLoop)
-    {
-        // Read the next part of the original stream.
-        std::size_t nReadByteCount (0);
-        const ErrCode nErrorCode (
-            rBytes.ReadAt(
-                nReadPosition,
-                pBuffer.get(),
-                nBufferSize,
-                &nReadByteCount));
-
-        // Check the error code and stop copying the stream data when an
-        // error has occurred.
-        if (nErrorCode == ERRCODE_NONE)
-        {
-            if (nReadByteCount == 0)
-                bLoop = false;
-        }
-        else if (nErrorCode == ERRCODE_IO_PENDING)
-            ;
-        else
-        {
-            bLoop = false;
-            nReadByteCount = 0;
-        }
-
-        // Append the read bytes to the end of the memory stream.
-        if (nReadByteCount > 0)
-        {
-            mpStream->WriteBytes(pBuffer.get(), nReadByteCount);
-            nReadPosition += nReadByteCount;
-        }
-    }
+    mpStream = std::make_shared<SvMemoryStream>(static_cast<void*>(const_cast<sal_Int8*>(rBytes.getConstArray())), rBytes.getLength(), StreamMode::READ);
 
     // Rewind the memory stream so that in the operator() method its
     // content is properly read.

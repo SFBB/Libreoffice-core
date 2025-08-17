@@ -48,7 +48,6 @@ namespace basegfx
 
         // compare operators
         bool operator==(const B2DCubicBezier& rBezier) const;
-        bool operator!=(const B2DCubicBezier& rBezier) const;
         bool equal(const B2DCubicBezier& rBezier) const;
 
         // test if vectors are used
@@ -160,7 +159,7 @@ namespace basegfx
         void split(double t, B2DCubicBezier* pBezierA, B2DCubicBezier* pBezierB) const;
 
         // extract snippet from fStart to fEnd from this bezier
-        SAL_DLLPRIVATE B2DCubicBezier snippet(double fStart, double fEnd) const;
+        B2DCubicBezier snippet(double fStart, double fEnd) const;
 
         // get range including control points
         B2DRange getRange() const;

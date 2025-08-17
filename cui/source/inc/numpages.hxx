@@ -25,9 +25,10 @@
 #include <editeng/numdef.hxx>
 #include <editeng/svxenum.hxx>
 #include <svtools/ctrlbox.hxx>
+#include <svx/numberingpreview.hxx>
 #include <vcl/customweld.hxx>
 #include <vcl/timer.hxx>
-#include <cui/numberingpreview.hxx>
+#include <svx/dlgutil.hxx>
 
 #define MN_GALLERY_ENTRY 100
 
@@ -35,7 +36,6 @@ class ColorListBox;
 class SvxNumValueSet;
 class SvxNumRule;
 class SvxBmpNumValueSet;
-class SvxBrushItem;
 struct ImplSVEvent;
 
 struct SvxNumSettings_Impl
@@ -95,11 +95,15 @@ class SvxBulletPickTabPage final : public SfxTabPage
 
     OUString            sBulletCharFormatName;
 
+    std::unique_ptr<weld::Button> m_xBtChangeBullet;
     std::unique_ptr<SvxNumValueSet> m_xExamplesVS;
     std::unique_ptr<weld::CustomWeld> m_xExamplesVSWin;
+    css::uno::Sequence<OUString> m_aBulletSymbols;
+    css::uno::Sequence<OUString> m_aBulletSymbolsFonts;
 
     DECL_LINK(NumSelectHdl_Impl, ValueSet*, void);
     DECL_LINK(DoubleClickHdl_Impl, ValueSet*, void);
+    DECL_LINK(ClickAddChangeHdl_Impl, weld::Button&, void);
 public:
     SvxBulletPickTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet);
     virtual ~SvxBulletPickTabPage() override;
@@ -213,11 +217,20 @@ class SvxNumOptionsTabPage : public SfxTabPage
     std::vector<OUString> aGrfNames;
     vcl::Font             aActBulletFont;
 
-    sal_uInt8           nBullet;
+    enum class NumberType {
+        SHOW_NUMBERING =             0,
+        SHOW_BULLET    =             1,
+        SHOW_BITMAP    =             2,
+        NONE = 0xff
+    };
+    NumberType           nBullet;
+
     sal_uInt16          nActNumLvl;
     TypedWhichId<SvxNumBulletItem> nNumItemId;
     MapUnit             eCoreUnit;
 
+    SvxRatioConnector m_aRatioTop;
+    SvxRatioConnector m_aRatioBottom;
     SvxNumberingPreview m_aPreviewWIN;
     std::unique_ptr<weld::Widget> m_xGrid;
     std::unique_ptr<weld::TreeView> m_xLevelLB;
@@ -247,6 +260,9 @@ class SvxNumOptionsTabPage : public SfxTabPage
     std::unique_ptr<weld::Label> m_xHeightFT;
     std::unique_ptr<weld::MetricSpinButton> m_xHeightMF;
     std::unique_ptr<weld::CheckButton> m_xRatioCB;
+    std::unique_ptr<weld::Image> m_xCbxScaleImg;
+    std::unique_ptr<weld::CustomWeld> m_xImgRatioTop;
+    std::unique_ptr<weld::CustomWeld> m_xImgRatioBottom;
     std::unique_ptr<weld::Label> m_xOrientFT;
     std::unique_ptr<weld::ComboBox> m_xOrientLB;
     std::unique_ptr<weld::Widget> m_xAllLevelsFrame;
@@ -255,11 +271,8 @@ class SvxNumOptionsTabPage : public SfxTabPage
     std::unique_ptr<weld::CustomWeld> m_xPreviewWIN;
 
     void                InitControls();
-    /** To switch between the numbering type
-        0 - Number;
-        1 - Bullet;
-        2 - Bitmap; */
-    void                SwitchNumberType( sal_uInt8 nType );
+
+    void                SwitchNumberType( NumberType nType );
     void                CheckForStartValue_Impl(sal_uInt16 nNumberingType);
 
     DECL_LINK(NumberTypeSelectHdl_Impl, weld::ComboBox&, void);

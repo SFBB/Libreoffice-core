@@ -32,19 +32,20 @@
 #include <unotools/localedatawrapper.hxx>
 
 ScTpFormulaOptions::ScTpFormulaOptions(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rCoreAttrs)
-    : SfxTabPage(pPage, pController, "modules/scalc/ui/optformula.ui", "OptFormula", &rCoreAttrs)
+    : SfxTabPage(pPage, pController, u"modules/scalc/ui/optformula.ui"_ustr, u"OptFormula"_ustr, &rCoreAttrs)
     , mnDecSep(0)
-    , mxLbFormulaSyntax(m_xBuilder->weld_combo_box("formulasyntax"))
-    , mxCbEnglishFuncName(m_xBuilder->weld_check_button("englishfuncname"))
-    , mxBtnCustomCalcDefault(m_xBuilder->weld_radio_button("calcdefault"))
-    , mxBtnCustomCalcCustom(m_xBuilder->weld_radio_button("calccustom"))
-    , mxBtnCustomCalcDetails(m_xBuilder->weld_button("details"))
-    , mxEdSepFuncArg(m_xBuilder->weld_entry("function"))
-    , mxEdSepArrayCol(m_xBuilder->weld_entry("arraycolumn"))
-    , mxEdSepArrayRow(m_xBuilder->weld_entry("arrayrow"))
-    , mxBtnSepReset(m_xBuilder->weld_button("reset"))
-    , mxLbOOXMLRecalcOptions(m_xBuilder->weld_combo_box("ooxmlrecalc"))
-    , mxLbODFRecalcOptions(m_xBuilder->weld_combo_box("odfrecalc"))
+    , mxLbFormulaSyntax(m_xBuilder->weld_combo_box(u"formulasyntax"_ustr))
+    , mxCbEnglishFuncName(m_xBuilder->weld_check_button(u"englishfuncname"_ustr))
+    , mxBtnCustomCalcDefault(m_xBuilder->weld_radio_button(u"calcdefault"_ustr))
+    , mxBtnCustomCalcCustom(m_xBuilder->weld_radio_button(u"calccustom"_ustr))
+    , mxBtnCustomCalcDetails(m_xBuilder->weld_button(u"details"_ustr))
+    , mxEdSepFuncArg(m_xBuilder->weld_entry(u"function"_ustr))
+    , mxEdSepArrayCol(m_xBuilder->weld_entry(u"arraycolumn"_ustr))
+    , mxEdSepArrayRow(m_xBuilder->weld_entry(u"arrayrow"_ustr))
+    , mxBtnSepReset(m_xBuilder->weld_button(u"reset"_ustr))
+    , mxLbOOXMLRecalcOptions(m_xBuilder->weld_combo_box(u"ooxmlrecalc"_ustr))
+    , mxLbODFRecalcOptions(m_xBuilder->weld_combo_box(u"odfrecalc"_ustr))
+    , mxLbRowHeightReCalcOptions(m_xBuilder->weld_combo_box(u"rowheightrecalc"_ustr))
 {
     mxLbFormulaSyntax->append_text(ScResId(SCSTR_FORMULA_SYNTAX_CALC_A1));
     mxLbFormulaSyntax->append_text(ScResId(SCSTR_FORMULA_SYNTAX_XL_A1));
@@ -261,31 +262,31 @@ std::unique_ptr<SfxTabPage> ScTpFormulaOptions::Create(weld::Container* pPage, w
 OUString ScTpFormulaOptions::GetAllStrings()
 {
     OUString sAllStrings;
-    OUString labels[] = { "label1", "formulasyntaxlabel",
-                          "label3", "label6",
-                          "label7", "label8",
-                          "label2", "label4",
-                          "label9", "label10" };
+    OUString labels[] = { u"label1"_ustr, u"formulasyntaxlabel"_ustr,
+                          u"label3"_ustr, u"label6"_ustr,
+                          u"label7"_ustr, u"label8"_ustr,
+                          u"label2"_ustr, u"label4"_ustr,
+                          u"label9"_ustr, u"label10"_ustr };
 
     for (const auto& label : labels)
     {
-        if (const auto& pString = m_xBuilder->weld_label(label))
+        if (const auto pString = m_xBuilder->weld_label(label))
             sAllStrings += pString->get_label() + " ";
     }
 
-    OUString radioButton[] = { "calcdefault", "calccustom" };
+    OUString radioButton[] = { u"calcdefault"_ustr, u"calccustom"_ustr };
 
     for (const auto& radio : radioButton)
     {
-        if (const auto& pString = m_xBuilder->weld_radio_button(radio))
+        if (const auto pString = m_xBuilder->weld_radio_button(radio))
             sAllStrings += pString->get_label() + " ";
     }
 
-    OUString buttons[] = { "reset", "details" };
+    OUString buttons[] = { u"reset"_ustr, u"details"_ustr };
 
     for (const auto& btn : buttons)
     {
-        if (const auto& pString = m_xBuilder->weld_button(btn))
+        if (const auto pString = m_xBuilder->weld_button(btn))
             sAllStrings += pString->get_label() + " ";
     }
 
@@ -306,6 +307,7 @@ bool ScTpFormulaOptions::FillItemSet(SfxItemSet* rCoreSet)
     OUString aSepArrayRow     = mxEdSepArrayRow->get_text();
     sal_Int16 nOOXMLRecalcMode = mxLbOOXMLRecalcOptions->get_active();
     sal_Int16 nODFRecalcMode = mxLbODFRecalcOptions->get_active();
+    sal_Int16 nReCalcOptRowHeights = mxLbRowHeightReCalcOptions->get_active();
 
     if (mxBtnCustomCalcDefault->get_active())
     {
@@ -320,6 +322,7 @@ bool ScTpFormulaOptions::FillItemSet(SfxItemSet* rCoreSet)
          || mxEdSepArrayRow->get_saved_value() != aSepArrayRow
          || mxLbOOXMLRecalcOptions->get_saved_value() != mxLbOOXMLRecalcOptions->get_text(nOOXMLRecalcMode)
          || mxLbODFRecalcOptions->get_saved_value() != mxLbODFRecalcOptions->get_text(nODFRecalcMode)
+         || mxLbRowHeightReCalcOptions->get_saved_value() != mxLbRowHeightReCalcOptions->get_text(nReCalcOptRowHeights)
          || maSavedConfig != maCurrentConfig
          || maSavedDocOptions != maCurrentDocOptions )
     {
@@ -340,6 +343,7 @@ bool ScTpFormulaOptions::FillItemSet(SfxItemSet* rCoreSet)
 
         ScRecalcOptions eOOXMLRecalc = static_cast<ScRecalcOptions>(nOOXMLRecalcMode);
         ScRecalcOptions eODFRecalc = static_cast<ScRecalcOptions>(nODFRecalcMode);
+        ScRecalcOptions eReCalcOptRowHeights = static_cast<ScRecalcOptions>(nReCalcOptRowHeights);
 
         aOpt.SetFormulaSyntax(eGram);
         aOpt.SetUseEnglishFuncName(bEnglishFuncName);
@@ -349,6 +353,7 @@ bool ScTpFormulaOptions::FillItemSet(SfxItemSet* rCoreSet)
         aOpt.SetCalcConfig(maCurrentConfig);
         aOpt.SetOOXMLRecalcOptions(eOOXMLRecalc);
         aOpt.SetODFRecalcOptions(eODFRecalc);
+        aOpt.SetReCalcOptiRowHeights(eReCalcOptRowHeights);
         aOpt.SetWriteCalcConfig( maCurrentDocOptions.IsWriteCalcConfig());
 
         rCoreSet->Put( ScTpFormulaItem( std::move(aOpt) ) );
@@ -395,6 +400,13 @@ void ScTpFormulaOptions::Reset(const SfxItemSet* rCoreSet)
     mxLbODFRecalcOptions->set_active(static_cast<sal_uInt16>(eODFRecalc));
     mxLbODFRecalcOptions->save_value();
     mxLbODFRecalcOptions->set_sensitive( !officecfg::Office::Calc::Formula::Load::ODFRecalcMode::isReadOnly() );
+
+    // Recalc optimal row heights at load
+    ScRecalcOptions eReCalcOptRowHeights = aOpt.GetReCalcOptiRowHeights();
+    mxLbRowHeightReCalcOptions->set_active(static_cast<sal_uInt16>(eReCalcOptRowHeights));
+    mxLbRowHeightReCalcOptions->save_value();
+    mxLbRowHeightReCalcOptions->set_sensitive(
+        !officecfg::Office::Calc::Formula::Load::RecalcOptimalRowHeightMode::isReadOnly() );
 
     // english function name.
     mxCbEnglishFuncName->set_active( aOpt.GetUseEnglishFuncName() );

@@ -16,13 +16,13 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SW_INC_SWSTYLENAMEMAPPER_HXX
-#define INCLUDED_SW_INC_SWSTYLENAMEMAPPER_HXX
+#pragma once
 
 #include <sal/types.h>
 #include <rtl/ustring.hxx>
 #include "SwGetPoolIdFromName.hxx"
 #include "swdllapi.h"
+#include "names.hxx"
 
 #include <unordered_map>
 #include <vector>
@@ -71,6 +71,7 @@
  * " (user)", we simply remove it.
  */
 
+
 typedef std::unordered_map<OUString, sal_uInt16> NameToIdHash;
 
 class SwStyleNameMapper final
@@ -78,7 +79,8 @@ class SwStyleNameMapper final
     friend void InitCore();
     friend void FinitCore();
 
-    static void fillNameFromId(sal_uInt16 nId, OUString &rName, bool bProgName);
+    static void fillProgNameFromId(sal_uInt16 nId, ProgName &rName);
+    static void fillUINameFromId(sal_uInt16 nId, UIName &rName);
     static const OUString& getNameFromId(sal_uInt16 nId, const OUString &rName,
                                          bool bProgName);
     static const NameToIdHash& getHashTable ( SwGetPoolIdFromName, bool bProgName );
@@ -88,32 +90,38 @@ class SwStyleNameMapper final
 
 public:
     // This gets the UI Name from the programmatic name
-    static const OUString& GetUIName(const OUString& rName, SwGetPoolIdFromName);
-    static         void FillUIName(const OUString& rName, OUString& rFillName,
+    SAL_WARN_UNUSED_RESULT
+    static UIName GetUIName(const ProgName& rName, SwGetPoolIdFromName);
+    static         void FillUIName(const ProgName& rName, UIName& rFillName,
                             SwGetPoolIdFromName);
 
     // Get the programmatic Name from the UI name
-    static const OUString& GetProgName(const OUString& rName,
+    SAL_WARN_UNUSED_RESULT
+    static ProgName GetProgName(const UIName& rName,
                                        SwGetPoolIdFromName);
-    static         void FillProgName(const OUString& rName, OUString& rFillName,
+    static         void FillProgName(const UIName& rName, ProgName& rFillName,
                             SwGetPoolIdFromName);
 
     // This gets the UI Name from the Pool ID
-    SW_DLLPUBLIC static void FillUIName(sal_uInt16 nId, OUString& rFillName);
-    SW_DLLPUBLIC static const OUString& GetUIName(sal_uInt16 nId,
-                                                  const OUString& rName);
+    SW_DLLPUBLIC static void FillUIName(sal_uInt16 nId, UIName& rFillName);
+    SAL_WARN_UNUSED_RESULT
+    SW_DLLPUBLIC static UIName GetUIName(sal_uInt16 nId,
+                                                  const ProgName& rName);
 
     // This gets the programmatic Name from the Pool ID
-    static         void FillProgName(sal_uInt16 nId, OUString& rFillName);
-    SW_DLLPUBLIC static const OUString& GetProgName(sal_uInt16 nId,
-                                                    const OUString& rName);
+    static         void FillProgName(sal_uInt16 nId, ProgName& rFillName);
+    SAL_WARN_UNUSED_RESULT
+    SW_DLLPUBLIC static ProgName GetProgName(sal_uInt16 nId,
+                                                    const UIName& rName);
 
     // This gets the PoolId from the UI Name
-    SW_DLLPUBLIC static sal_uInt16 GetPoolIdFromUIName(const OUString& rName,
+    SAL_WARN_UNUSED_RESULT
+    SW_DLLPUBLIC static sal_uInt16 GetPoolIdFromUIName(const UIName& rName,
                                                        SwGetPoolIdFromName);
 
     // Get the Pool ID from the programmatic name
-    static sal_uInt16 GetPoolIdFromProgName(const OUString& rName,
+    SAL_WARN_UNUSED_RESULT
+    SW_DLLPUBLIC static sal_uInt16 GetPoolIdFromProgName(const ProgName& rName,
                                             SwGetPoolIdFromName);
 
     // used to convert the 4 special ExtraProg/UINames for
@@ -121,9 +129,11 @@ public:
     // RES_POOLCOLL_LABEL_TABLE, RES_POOLCOLL_LABEL_FRAME
     // forth and back.
     // Non-matching names remain unchanged.
-    SW_DLLPUBLIC static const OUString & GetSpecialExtraProgName(
-                    const OUString& rExtraUIName);
-    static const OUString & GetSpecialExtraUIName(const OUString& rExtraProgName);
+    SAL_WARN_UNUSED_RESULT
+    SW_DLLPUBLIC static ProgName GetSpecialExtraProgName(
+                    const UIName& rExtraUIName);
+    SAL_WARN_UNUSED_RESULT
+    static UIName GetSpecialExtraUIName(const ProgName& rExtraProgName);
 
     static const std::vector<OUString>& GetTextUINameArray();
     static const std::vector<OUString>& GetListsUINameArray();
@@ -153,6 +163,5 @@ public:
     static const std::vector<OUString>& GetTableStyleProgNameArray();
     static const std::vector<OUString>& GetCellStyleProgNameArray();
 };
-#endif // _NAME_MAPPER_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

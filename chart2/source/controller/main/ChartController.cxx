@@ -27,20 +27,17 @@
 #include <ResId.hxx>
 #include <dlg_DataSource.hxx>
 #include <ChartModel.hxx>
-#include <ChartModelHelper.hxx>
 #include <ChartType.hxx>
-#include "ControllerCommandDispatch.hxx"
+#include <ControllerCommandDispatch.hxx>
 #include <DataSeries.hxx>
 #include <Diagram.hxx>
 #include <strings.hrc>
-#include <chartview/ExplicitValueProvider.hxx>
 #include <ChartViewHelper.hxx>
 
 #include <ChartWindow.hxx>
 #include <chartview/DrawModelWrapper.hxx>
 #include <DrawViewWrapper.hxx>
 #include <ObjectIdentifier.hxx>
-#include <DiagramHelper.hxx>
 #include <ControllerLockGuard.hxx>
 #include "UndoGuard.hxx"
 #include "ChartDropTargetHelper.hxx"
@@ -54,14 +51,11 @@
 #include "UndoActions.hxx"
 #include <ViewElementListProvider.hxx>
 
-#include <cppuhelper/supportsservice.hxx>
-#include <comphelper/servicehelper.hxx>
+#include <comphelper/dispatchcommand.hxx>
 #include <BaseCoordinateSystem.hxx>
 
-#include <com/sun/star/awt/XVclWindowPeer.hpp>
 #include <com/sun/star/frame/XController2.hpp>
 #include <com/sun/star/util/CloseVetoException.hpp>
-#include <com/sun/star/util/XModeChangeBroadcaster.hpp>
 #include <com/sun/star/frame/LayoutManagerEvents.hpp>
 #include <com/sun/star/frame/XLayoutManagerEventBroadcaster.hpp>
 #include <com/sun/star/ui/XSidebar.hpp>
@@ -73,13 +67,14 @@
 #include <svx/sidebar/SelectionChangeHandler.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
 #include <utility>
+#include <vcl/dndlistenercontainer.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/weld.hxx>
 #include <osl/mutex.hxx>
 #include <comphelper/lok.hxx>
 
 #include <sfx2/sidebar/SidebarController.hxx>
-
+#include <com/sun/star/awt/XVclWindowPeer.hpp>
 #include <com/sun/star/frame/XLayoutManager.hpp>
 
 // this is needed to properly destroy the unique_ptr to the AcceleratorExecute
@@ -87,6 +82,8 @@
 #include <svtools/acceleratorexecute.hxx>
 #include <svx/ActionDescriptionProvider.hxx>
 #include <comphelper/diagnose_ex.hxx>
+
+#include <editeng/fontitem.hxx>
 
 // enable the following define to let the controller listen to model changes and
 // react on this by rebuilding the view
@@ -237,7 +234,7 @@ rtl::Reference<ChartType> getChartType(const rtl::Reference<ChartModel>& xChartD
     if (!xDiagram.is())
         return nullptr;
 
-    const std::vector< rtl::Reference< BaseCoordinateSystem > > & xCooSysSequence( xDiagram->getBaseCoordinateSystems());
+    const std::vector< rtl::Reference< BaseCoordinateSystem > > xCooSysSequence( xDiagram->getBaseCoordinateSystems());
     if (xCooSysSequence.empty())
         return nullptr;
 
@@ -253,42 +250,49 @@ OUString ChartController::GetContextName()
 
     uno::Any aAny = getSelection();
     if (!aAny.hasValue())
-        return "Chart";
+        return u"Chart"_ustr;
 
     OUString aCID;
     aAny >>= aCID;
 
     if (aCID.isEmpty())
-        return "Chart";
+        return u"Chart"_ustr;
 
     ObjectType eObjectID = ObjectIdentifier::getObjectType(aCID);
     switch (eObjectID)
     {
         case OBJECTTYPE_DATA_SERIES:
-            return "Series";
+            return u"Series"_ustr;
         case OBJECTTYPE_DATA_ERRORS_X:
         case OBJECTTYPE_DATA_ERRORS_Y:
         case OBJECTTYPE_DATA_ERRORS_Z:
-            return "ErrorBar";
+            return u"ErrorBar"_ustr;
         case OBJECTTYPE_AXIS:
-            return "Axis";
+            return u"Axis"_ustr;
         case OBJECTTYPE_GRID:
-            return "Grid";
+            return u"Grid"_ustr;
         case OBJECTTYPE_DIAGRAM:
             {
                 rtl::Reference<ChartType> xChartType = getChartType(getChartModel());
                 if (xChartType.is() && xChartType->getChartType() == "com.sun.star.chart2.PieChartType")
-                    return "ChartElements";
+                    return u"ChartElements"_ustr;
                 break;
             }
         case OBJECTTYPE_DATA_CURVE:
         case OBJECTTYPE_DATA_AVERAGE_LINE:
-            return "Trendline";
+            return u"Trendline"_ustr;
+        case OBJECTTYPE_TITLE:
+            return u"ChartTitle"_ustr;
+        case OBJECTTYPE_LEGEND:
+            return u"ChartLegend"_ustr;
+        case OBJECTTYPE_DATA_LABEL:
+        case OBJECTTYPE_DATA_LABELS:
+            return u"ChartLabel"_ustr;
         default:
         break;
     }
 
-    return "Chart";
+    return u"Chart"_ustr;
 }
 
 // private methods
@@ -406,23 +410,23 @@ void SAL_CALL ChartController::attachFrame(
             try
             {
                 uno::Reference< css::frame::XLayoutManager > xLayoutManager;
-                xPropSet->getPropertyValue( "LayoutManager" ) >>= xLayoutManager;
+                xPropSet->getPropertyValue( u"LayoutManager"_ustr ) >>= xLayoutManager;
                 if ( xLayoutManager.is() )
                 {
                     xLayoutManager->lock();
-                    xLayoutManager->requestElement( "private:resource/menubar/menubar" );
+                    xLayoutManager->requestElement( u"private:resource/menubar/menubar"_ustr );
                     //@todo: createElement should become unnecessary, remove when #i79198# is fixed
-                    xLayoutManager->createElement( "private:resource/toolbar/standardbar" );
-                    xLayoutManager->requestElement( "private:resource/toolbar/standardbar" );
+                    xLayoutManager->createElement( u"private:resource/toolbar/standardbar"_ustr );
+                    xLayoutManager->requestElement( u"private:resource/toolbar/standardbar"_ustr );
                     //@todo: createElement should become unnecessary, remove when #i79198# is fixed
-                    xLayoutManager->createElement( "private:resource/toolbar/toolbar" );
-                    xLayoutManager->requestElement( "private:resource/toolbar/toolbar" );
+                    xLayoutManager->createElement( u"private:resource/toolbar/toolbar"_ustr );
+                    xLayoutManager->requestElement( u"private:resource/toolbar/toolbar"_ustr );
 
                     // #i12587# support for shapes in chart
-                    xLayoutManager->createElement( "private:resource/toolbar/drawbar" );
-                    xLayoutManager->requestElement( "private:resource/toolbar/drawbar" );
+                    xLayoutManager->createElement( u"private:resource/toolbar/drawbar"_ustr );
+                    xLayoutManager->requestElement( u"private:resource/toolbar/drawbar"_ustr );
 
-                    xLayoutManager->requestElement( "private:resource/statusbar/statusbar" );
+                    xLayoutManager->requestElement( u"private:resource/statusbar/statusbar"_ustr );
                     xLayoutManager->unlock();
 
                     // add as listener to get notified when
@@ -476,23 +480,18 @@ void SAL_CALL ChartController::modeChanged( const util::ModeChangeEvent& rEvent 
                 GetDrawModelWrapper();
                 if(m_pDrawModelWrapper)
                 {
-                    {
-                        if( m_pDrawViewWrapper )
-                            m_pDrawViewWrapper->ReInit();
-                    }
+                    if( m_pDrawViewWrapper )
+                        m_pDrawViewWrapper->ReInit();
 
                     //reselect object
                     if( m_aSelection.hasSelection() )
                         this->impl_selectObjectAndNotiy();
                     else
-                        ChartModelHelper::triggerRangeHighlighting( getChartModel() );
+                        getChartModel()->triggerRangeHighlighting();
 
                     impl_initializeAccessible();
 
-                    {
-                        if( pChartWindow )
-                            pChartWindow->Invalidate();
-                    }
+                    pChartWindow->Invalidate();
                 }
 
                 m_bConnectingToView = false;
@@ -544,9 +543,9 @@ sal_Bool SAL_CALL ChartController::attachModel( const uno::Reference< frame::XMo
     pDispatch->initialize();
 
     // the dispatch container will return "this" for all commands returned by
-    // impl_getAvailableCommands().  That means, for those commands dispatch()
-    // is called here at the ChartController.
-    m_aDispatchContainer.setChartDispatch( pDispatch, o3tl::sorted_vector(impl_getAvailableCommands()) );
+    // impl_getAvailableCommands(), and also for which ControllerCommandDispatch::commandHandled()
+    // gives true. That means, for those commands dispatch() is called here at the ChartController.
+    m_aDispatchContainer.setChartDispatch( pDispatch, impl_getAvailableCommands() );
 
     rtl::Reference<DrawCommandDispatch> pDrawDispatch = new DrawCommandDispatch( m_xCC, this );
     pDrawDispatch->initialize();
@@ -569,7 +568,7 @@ sal_Bool SAL_CALL ChartController::attachModel( const uno::Reference< frame::XMo
     rtl::Reference< ChartModel > xFact = getChartModel();
     if( xFact.is())
     {
-        m_xChartView = dynamic_cast<::chart::ChartView*>(xFact->createInstance( CHART_VIEW_SERVICE_NAME ).get());
+        m_xChartView = xFact->createChartView();
         GetDrawModelWrapper();
         m_xChartView->addModeChangeListener(this);
     }
@@ -807,7 +806,7 @@ void SAL_CALL ChartController::dispose()
 
         if( aModelRef.is())
         {
-            uno::Reference< frame::XModel > xModel( aModelRef->getModel() );
+            rtl::Reference< ChartModel > xModel( aModelRef->getModel() );
             if(xModel.is())
                 xModel->disconnectController( uno::Reference< frame::XController >( this ));
 
@@ -954,8 +953,8 @@ void SAL_CALL ChartController::layoutEvent(
         Reference< frame::XLayoutManager > xLM( aSource.Source, uno::UNO_QUERY );
         if( xLM.is())
         {
-            xLM->createElement(  "private:resource/statusbar/statusbar" );
-            xLM->requestElement( "private:resource/statusbar/statusbar" );
+            xLM->createElement(  u"private:resource/statusbar/statusbar"_ustr );
+            xLM->requestElement( u"private:resource/statusbar/statusbar"_ustr );
         }
     }
 }
@@ -1028,7 +1027,7 @@ uno::Reference<frame::XDispatch> SAL_CALL
 
     if ( !m_aLifeTimeManager.impl_isDisposed() && getModel().is() )
     {
-        if( !rTargetFrameName.isEmpty() && rTargetFrameName == "_self" )
+        if (rTargetFrameName.isEmpty() || rTargetFrameName == "_self")
             return m_aDispatchContainer.getDispatchForURL( rURL );
     }
     return uno::Reference< frame::XDispatch > ();
@@ -1093,29 +1092,17 @@ void SAL_CALL ChartController::dispatch(
     else if(aCommand == "FillColor")
     {
         if (rArgs.getLength() > 0)
-        {
-            sal_uInt32 nColor;
-            if (rArgs[0].Value >>= nColor)
-                this->executeDispatch_FillColor(nColor);
-        }
+            executeDispatch_FillColor(rArgs[0].Value);
     }
     else if(aCommand == "XLineColor")
     {
         if (rArgs.getLength() > 0)
-        {
-            sal_Int32 nColor = -1;
-            rArgs[0].Value >>= nColor;
-            this->executeDispatch_LineColor(nColor);
-        }
+            executeDispatch_LineColor(rArgs[0].Value);
     }
     else if(aCommand == "LineWidth")
     {
         if (rArgs.getLength() > 0)
-        {
-            sal_Int32 nWidth = -1;
-            rArgs[0].Value >>= nWidth;
-            this->executeDispatch_LineWidth(nWidth);
-        }
+            executeDispatch_LineWidth(rArgs[0].Value);
     }
     else if(aCommand.startsWith("FillGradient"))
     {
@@ -1238,7 +1225,9 @@ void SAL_CALL ChartController::dispatch(
             this->executeDispatch_PositionAndSize();
         }
     }
-    else if( lcl_isFormatObjectCommand(aCommand) )
+    else if ( aCommand == "FontDialog" )
+        this->impl_ShapeControllerDispatch(rURL, rArgs);
+    else if (lcl_isFormatObjectCommand(aCommand))
         this->executeDispatch_FormatObject(rURL.Path);
     //more format
     else if( aCommand == "DiagramType" )
@@ -1277,30 +1266,126 @@ void SAL_CALL ChartController::dispatch(
         this->executeDispatch_ToggleGridVertical();
     else if( aCommand == "ScaleText" )
         this->executeDispatch_ScaleText();
-    else if( aCommand == "StatusBarVisible" )
+    else if( aCommand == "Bold" || aCommand == "CharFontName" || aCommand == "FontHeight"
+             || aCommand == "Italic" || aCommand == "Underline" || aCommand == "Strikeout"
+             || aCommand == "Shadowed" || aCommand == "Color" || aCommand == "FontColor"
+             || aCommand == "Grow" || aCommand == "Shrink" || aCommand == "ResetAttributes"
+             || aCommand == "SuperScript" || aCommand == "SubScript"
+             || aCommand == "Spacing"
+             )
     {
-        // workaround: this should not be necessary.
-        uno::Reference< beans::XPropertySet > xPropSet( m_xFrame, uno::UNO_QUERY );
-        if( xPropSet.is() )
+        try
         {
-            uno::Reference< css::frame::XLayoutManager > xLayoutManager;
-            xPropSet->getPropertyValue( "LayoutManager" ) >>= xLayoutManager;
-            if ( xLayoutManager.is() )
+            OUString aCID(m_aSelection.getSelectedCID());
+            rtl::Reference<::chart::ChartModel> xChartModel = getChartModel();
+            if (xChartModel.is())
             {
-                bool bIsVisible( xLayoutManager->isElementVisible( "private:resource/statusbar/statusbar" ));
-                if( bIsVisible )
+                // if the selected is title... we should get the text properties instead...
+                // or the selected text properties
+                std::vector<Reference<beans::XPropertySet>> xProperties;
+                xProperties.emplace(xProperties.end(),
+                                     ObjectIdentifier::getObjectPropertySet(aCID, xChartModel));
+
+                if (ObjectIdentifier::getObjectType(aCID) == OBJECTTYPE_TITLE)
                 {
-                    xLayoutManager->hideElement( "private:resource/statusbar/statusbar" );
-                    xLayoutManager->destroyElement( "private:resource/statusbar/statusbar" );
+                    Reference<chart2::XTitle> xTitle(xProperties[0], uno::UNO_QUERY);
+                    if (xTitle.is())
+                    {
+                        OutlinerView* pOutlinerView = nullptr;
+                        if (m_pDrawViewWrapper)
+                        {
+                            pOutlinerView = m_pDrawViewWrapper->GetTextEditOutlinerView();
+                        }
+                        // if the Title is not in edit mode
+                        if (!pOutlinerView)
+                        {
+                            const Sequence<Reference<chart2::XFormattedString>> aStrings(
+                                xTitle->getText());
+                            xProperties.pop_back();
+                            for (int i = 0; i < aStrings.getLength(); i++)
+                            {
+                                Reference<beans::XPropertySet> xTitlePropSet(aStrings[i],
+                                                                             uno::UNO_QUERY);
+                                xProperties.push_back(xTitlePropSet);
+                            }
+                        }
+                        // Todo: implement the edit mode case here.
+                        // the edited text attributes are a bit different from the properties
+                        // SfxItemSet aItemSet = pOutlinerView->GetAttribs();
+                    }
                 }
-                else
+                bool bAllPropertiesExist = (xProperties.size() > 0);
+                for (std::size_t i = 0; i < xProperties.size(); i++)
                 {
-                    xLayoutManager->createElement( "private:resource/statusbar/statusbar" );
-                    xLayoutManager->showElement( "private:resource/statusbar/statusbar" );
+                    if (!xProperties[i].is())
+                        bAllPropertiesExist = false;
                 }
-                // @todo: update menu state (checkmark next to "Statusbar").
+                if (bAllPropertiesExist)
+                {
+                    if (aCommand == "Bold")
+                    {
+                        executeDispatch_FontBold(xProperties);
+                    }
+                    else if (aCommand == "CharFontName")
+                    {
+                        executeDispatch_FontName(xProperties, rArgs);
+                    }
+                    else if (aCommand == "FontHeight")
+                    {
+                        executeDispatch_FontHeight(xProperties, rArgs);
+                    }
+                    else if (aCommand == "Italic")
+                    {
+                        executeDispatch_FontItalic(xProperties);
+                    }
+                    else if (aCommand == "Underline")
+                    {
+                        executeDispatch_FontUnderline(xProperties, rArgs);
+                    }
+                    else if (aCommand == "Strikeout")
+                    {
+                        executeDispatch_FontStrikeout(xProperties);
+                    }
+                    else if (aCommand == "Shadowed")
+                    {
+                        executeDispatch_FontShadowed(xProperties);
+                    }
+                    else if (aCommand == "Color" || aCommand == "FontColor")
+                    {
+                        executeDispatch_FontColor(xProperties, rArgs);
+                    }
+                    else if (aCommand == "Grow")
+                    {
+                        executeDispatch_FontGrow(xProperties);
+                    }
+                    else if (aCommand == "Shrink")
+                    {
+                        executeDispatch_FontShrink(xProperties);
+                    }
+                    else if (aCommand == "ResetAttributes")
+                    {
+                        executeDispatch_FontReset(xProperties);
+                    }
+                    else if (aCommand == "Spacing")
+                    {
+                        executeDispatch_FontSpacing(xProperties, rArgs);
+                    }
+                    else if (aCommand == "SuperScript")
+                    {
+                        executeDispatch_FontSuperScript(xProperties);
+                    }
+                    else if (aCommand == "SubScript")
+                    {
+                        executeDispatch_FontSubScript(xProperties);
+                    }
+                }
             }
         }
+        catch (const uno::Exception&)
+        {
+            DBG_UNHANDLED_EXCEPTION("chart2");
+        }
+
     }
 }
 
@@ -1336,17 +1421,19 @@ void SAL_CALL ChartController::releaseContextMenuInterceptor(
 
 void ChartController::executeDispatch_ChartType()
 {
-    UndoLiveUpdateGuard aUndoGuard(
-        SchResId( STR_ACTION_EDIT_CHARTTYPE ), m_xUndoManager );
+    auto xUndoGuard = std::make_shared<UndoLiveUpdateGuard>(SchResId(STR_ACTION_EDIT_CHARTTYPE),
+                                                            m_xUndoManager);
 
     SolarMutexGuard aSolarGuard;
     //prepare and open dialog
-    ChartTypeDialog aDlg(GetChartFrame(), getChartModel());
-    if (aDlg.run() == RET_OK)
-    {
-        impl_adaptDataSeriesAutoResize();
-        aUndoGuard.commit();
-    }
+    auto aDlg =  std::make_shared<ChartTypeDialog>(GetChartFrame(), getChartModel());
+    weld::DialogController::runAsync(aDlg, [this, xUndoGuard=std::move(xUndoGuard)](int nResult) {
+        if (nResult == RET_OK)
+        {
+            impl_adaptDataSeriesAutoResize();
+            xUndoGuard->commit();
+        }
+    });
 }
 
 void ChartController::executeDispatch_SourceData()
@@ -1363,7 +1450,7 @@ void ChartController::executeDispatch_SourceData()
     if ( rModel.hasInternalDataProvider() )
     {
         // Check if we will able to create data provider later
-        css::uno::Reference< com::sun::star::chart2::XDataProviderAccess > xCreatorDoc(
+        css::uno::Reference< css::chart2::XDataProviderAccess > xCreatorDoc(
             rModel.getParent(), uno::UNO_QUERY);
         if (!xCreatorDoc.is())
             return;
@@ -1388,17 +1475,17 @@ void ChartController::executeDispatch_SourceData()
             rModel.attachDataProvider(xDataProvider);
         }
     }
-
-    UndoLiveUpdateGuard aUndoGuard(
-        SchResId(STR_ACTION_EDIT_DATA_RANGES), m_xUndoManager);
-
+    auto xUndoGuard = std::make_shared<UndoLiveUpdateGuard>(SchResId(STR_ACTION_EDIT_DATA_RANGES),
+                                                            m_xUndoManager);
     SolarMutexGuard aSolarGuard;
-    ::chart::DataSourceDialog aDlg(GetChartFrame(), xChartDoc);
-    if (aDlg.run() == RET_OK)
-    {
-        impl_adaptDataSeriesAutoResize();
-        aUndoGuard.commit();
-    }
+    auto aDlg = std::make_shared<DataSourceDialog>(GetChartFrame(), xChartDoc);
+    weld::DialogController::runAsync(aDlg, [this, xUndoGuard=std::move(xUndoGuard)](int nResult) {
+        if (nResult == RET_OK)
+        {
+            impl_adaptDataSeriesAutoResize();
+            xUndoGuard->commit();
+        }
+    });
 }
 
 void ChartController::executeDispatch_MoveSeries( bool bForward )
@@ -1513,16 +1600,14 @@ void ChartController::SetAndApplySelection(const Reference<drawing::XShape>& rxS
     }
 }
 
-
-
-uno::Reference< XAccessible > ChartController::CreateAccessible()
+rtl::Reference<AccessibleChartView> ChartController::CreateAccessible()
 {
 #if !ENABLE_WASM_STRIP_ACCESSIBILITY
     rtl::Reference< AccessibleChartView > xResult = new AccessibleChartView( GetDrawViewWrapper() );
     impl_initializeAccessible( *xResult );
     return xResult;
 #else
-    return uno::Reference< XAccessible >();
+    return {};
 #endif
 }
 
@@ -1533,11 +1618,11 @@ void ChartController::impl_invalidateAccessible()
     auto pChartWindow(GetChartWindow());
     if( pChartWindow )
     {
-        Reference< XInterface > xInit( pChartWindow->GetAccessible(false) );
-        if(xInit.is())
+        rtl::Reference<comphelper::OAccessible> pAccessible = pChartWindow->GetAccessible(false);
+        if (pAccessible.is())
         {
             //empty arguments -> invalid accessible
-            dynamic_cast<AccessibleChartView&>(*xInit).initialize();
+            dynamic_cast<AccessibleChartView&>(*pAccessible).initialize();
         }
     }
 #endif
@@ -1549,99 +1634,37 @@ void ChartController::impl_initializeAccessible()
     auto pChartWindow(GetChartWindow());
     if( !pChartWindow )
         return;
-    Reference< XInterface > xInit( pChartWindow->GetAccessible(false) );
-    if(xInit.is())
-        impl_initializeAccessible( dynamic_cast<AccessibleChartView&>(*xInit) );
+    rtl::Reference<comphelper::OAccessible> pInit = pChartWindow->GetAccessible(false);
+    if (pInit.is())
+        impl_initializeAccessible(dynamic_cast<AccessibleChartView&>(*pInit));
 #endif
 }
 #if !ENABLE_WASM_STRIP_ACCESSIBILITY
 void ChartController::impl_initializeAccessible( AccessibleChartView& rAccChartView )
 {
-    uno::Reference< XAccessible > xParent;
-    {
-        SolarMutexGuard aGuard;
-        auto pChartWindow(GetChartWindow());
-        if( pChartWindow )
-        {
-            vcl::Window* pParentWin( pChartWindow->GetAccessibleParentWindow());
-            if( pParentWin )
-                xParent.set( pParentWin->GetAccessible());
-        }
-    }
+    SolarMutexGuard aGuard;
 
-    rAccChartView.initialize(*this, getChartModel(), m_xChartView, xParent, m_xViewWindow);
+    uno::Reference< XAccessible > xParent;
+
+    ChartWindow* pChartWindow = GetChartWindow();
+    if( pChartWindow )
+        xParent.set(pChartWindow->GetAccessibleParent());
+
+    rAccChartView.initialize(*this, getChartModel(), m_xChartView, xParent, pChartWindow);
 }
 #else
 void ChartController::impl_initializeAccessible( AccessibleChartView& /* rAccChartView */) {}
 #endif
 
-const o3tl::sorted_vector< OUString >& ChartController::impl_getAvailableCommands()
+const o3tl::sorted_vector< std::u16string_view >& ChartController::impl_getAvailableCommands()
 {
-    static const o3tl::sorted_vector< OUString > s_AvailableCommands {
-        // commands for container forward
-        "AddDirect",           "NewDoc",                "Open",
-        "Save",                "SaveAs",                "SendMail",
-        "EditDoc",             "ExportDirectToPDF",     "PrintDefault",
-
-        // own commands
-        "Cut",                "Copy",                 "Paste",
-        "DataRanges",         "DiagramData",
-        // insert objects
-        "InsertMenuTitles",   "InsertTitles",
-        "InsertMenuLegend",   "InsertLegend",         "DeleteLegend",
-        "InsertMenuDataLabels",
-        "InsertMenuAxes",     "InsertRemoveAxes",         "InsertMenuGrids",
-        "InsertSymbol",
-        "InsertTrendlineEquation",  "InsertTrendlineEquationAndR2",
-        "InsertR2Value",      "DeleteR2Value",
-        "InsertMenuTrendlines",  "InsertTrendline",
-        "InsertMenuMeanValues", "InsertMeanValue",
-        "InsertMenuXErrorBars",  "InsertXErrorBars",
-        "InsertMenuYErrorBars",   "InsertYErrorBars",
-        "InsertDataLabels",   "InsertDataLabel",
-        "DeleteTrendline",    "DeleteMeanValue",      "DeleteTrendlineEquation",
-        "DeleteXErrorBars",   "DeleteYErrorBars",
-        "DeleteDataLabels",   "DeleteDataLabel",
-        "InsertMenuDataTable",
-        "InsertDataTable", "DeleteDataTable",
-        //format objects
-        "FormatSelection",     "TransformDialog",
-        "DiagramType",        "View3D",
-        "Forward",            "Backward",
-        "MainTitle",          "SubTitle",
-        "XTitle",             "YTitle",               "ZTitle",
-        "SecondaryXTitle",    "SecondaryYTitle",
-        "AllTitles",          "Legend",
-        "DiagramAxisX",       "DiagramAxisY",         "DiagramAxisZ",
-        "DiagramAxisA",       "DiagramAxisB",         "DiagramAxisAll",
-        "DiagramGridXMain",   "DiagramGridYMain",     "DiagramGridZMain",
-        "DiagramGridXHelp",   "DiagramGridYHelp",     "DiagramGridZHelp",
-        "DiagramGridAll",
-        "DiagramWall",        "DiagramFloor",         "DiagramArea",
-
-        //context menu - format objects entries
-        "FormatWall",        "FormatFloor",         "FormatChartArea",
-        "FormatLegend",
-
-        "FormatAxis",           "FormatTitle",
-        "FormatDataSeries",     "FormatDataPoint",
-        "ResetAllDataPoints",   "ResetDataPoint",
-        "FormatDataLabels",     "FormatDataLabel",
-        "FormatMeanValue",      "FormatTrendline",      "FormatTrendlineEquation",
-        "FormatXErrorBars",     "FormatYErrorBars",
-        "FormatStockLoss",      "FormatStockGain",
-
-        "FormatMajorGrid",      "InsertMajorGrid",      "DeleteMajorGrid",
-        "FormatMinorGrid",      "InsertMinorGrid",      "DeleteMinorGrid",
-        "InsertAxis",           "DeleteAxis",           "InsertAxisTitle",
-
+    static const o3tl::sorted_vector< std::u16string_view > s_AvailableCommands {
         // toolbar commands
-        "ToggleGridHorizontal", "ToggleGridVertical", "ToggleLegend",         "ScaleText",
-        "NewArrangement",     "Update",
-        "DefaultColors",      "BarWidth",             "NumberOfLines",
-        "ArrangeRow",
-        "StatusBarVisible",
-        "ChartElementSelector"};
+        u"ChartElementSelector",
+
+        // LOK commands
+        u"LOKSetTextSelection", u"LOKTransform",
+    };
     return s_AvailableCommands;
 }
 

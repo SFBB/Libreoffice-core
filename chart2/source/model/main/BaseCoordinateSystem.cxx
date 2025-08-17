@@ -24,6 +24,7 @@
 #include <ModifyListenerHelper.hxx>
 #include <Axis.hxx>
 #include <ChartType.hxx>
+#include <ExplicitCategoriesProvider.hxx>
 #include <com/sun/star/chart2/AxisType.hpp>
 #include <com/sun/star/container/NoSuchElementException.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
@@ -266,7 +267,7 @@ void SAL_CALL BaseCoordinateSystem::addChartType( const Reference< chart2::XChar
 
     if( std::find( m_aChartTypes.begin(), m_aChartTypes.end(), pChartType )
         != m_aChartTypes.end())
-        throw lang::IllegalArgumentException("type not found", static_cast<cppu::OWeakObject*>(this), 1);
+        throw lang::IllegalArgumentException(u"type not found"_ustr, static_cast<cppu::OWeakObject*>(this), 1);
 
     m_aChartTypes.push_back( pChartType );
     ModifyListenerHelper::addListener( aChartType, m_xModifyEventForwarder );
@@ -280,7 +281,7 @@ void SAL_CALL BaseCoordinateSystem::removeChartType( const Reference< chart2::XC
     auto aIt( std::find( m_aChartTypes.begin(), m_aChartTypes.end(), pChartType ));
     if( aIt == m_aChartTypes.end())
         throw container::NoSuchElementException(
-            "The given chart type is no element of the container",
+            u"The given chart type is no element of the container"_ustr,
             static_cast< uno::XWeak * >( this ));
 
     m_aChartTypes.erase( aIt );
@@ -316,6 +317,13 @@ void BaseCoordinateSystem::setChartTypes( const std::vector< rtl::Reference< Cha
     for (auto const & aChartType : m_aChartTypes)
         aChartType->addModifyListener( m_xModifyEventForwarder );
     fireModifyEvent();
+}
+
+ExplicitCategoriesProvider& BaseCoordinateSystem::getExplicitCategoriesProvider(ChartModel& rModel)
+{
+    if (!mxExplicitCategoriesProvider)
+        mxExplicitCategoriesProvider = std::make_unique<ExplicitCategoriesProvider>(this, rModel);
+    return *mxExplicitCategoriesProvider;
 }
 
 // ____ XModifyBroadcaster ____

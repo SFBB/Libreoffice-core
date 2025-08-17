@@ -22,11 +22,11 @@
 
 #include <comphelper/propertysetinfo.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <editeng/unoipset.hxx>
 #include <vcl/svapp.hxx>
 #include <svx/unopool.hxx>
 #include <svx/svdmodel.hxx>
 #include <svx/svdpool.hxx>
-#include <svx/unoprov.hxx>
 #include <svx/unoshprp.hxx>
 #include <svx/xflbstit.hxx>
 #include <svx/xflbmtit.hxx>
@@ -57,7 +57,6 @@ void SvxUnoDrawPool::init()
 
     SdrModel::SetTextDefaults( mpDefaultsPool.get(), SdrEngineDefaults::GetFontHeight() );
     mpDefaultsPool->SetDefaultMetric(SdrEngineDefaults::GetMapUnit());
-    mpDefaultsPool->FreezeIdRanges();
 }
 
 SfxItemPool* SvxUnoDrawPool::getModelPool( bool bReadOnly ) noexcept
@@ -81,11 +80,11 @@ void SvxUnoDrawPool::getAny( SfxItemPool const * pPool, const comphelper::Proper
     {
     case OWN_ATTR_FILLBMP_MODE:
         {
-            if (pPool->GetDefaultItem(XATTR_FILLBMP_TILE).GetValue())
+            if (pPool->GetUserOrPoolDefaultItem(XATTR_FILLBMP_TILE).GetValue())
             {
                 rValue <<= drawing::BitmapMode_REPEAT;
             }
-            else if (pPool->GetDefaultItem(XATTR_FILLBMP_STRETCH).GetValue())
+            else if (pPool->GetUserOrPoolDefaultItem(XATTR_FILLBMP_STRETCH).GetValue())
             {
                 rValue <<= drawing::BitmapMode_STRETCH;
             }
@@ -105,7 +104,7 @@ void SvxUnoDrawPool::getAny( SfxItemPool const * pPool, const comphelper::Proper
 
             // Assure, that ID is a Which-ID (it could be a Slot-ID.)
             // Thus, convert handle to Which-ID.
-            pPool->GetDefaultItem( pPool->GetWhich( static_cast<sal_uInt16>(pEntry->mnHandle) ) ).QueryValue( rValue, nMemberId );
+            pPool->GetUserOrPoolDefaultItem( pPool->GetWhichIDFromSlotID( static_cast<sal_uInt16>(pEntry->mnHandle) ) ).QueryValue( rValue, nMemberId );
         }
     }
 
@@ -138,7 +137,7 @@ void SvxUnoDrawPool::putAny( SfxItemPool* pPool, const comphelper::PropertyMapEn
 
     // Assure, that ID is a Which-ID (it could be a Slot-ID.)
     // Thus, convert handle to Which-ID.
-    const sal_uInt16 nWhich = pPool->GetWhich( static_cast<sal_uInt16>(pEntry->mnHandle) );
+    const sal_uInt16 nWhich = pPool->GetWhichIDFromSlotID( static_cast<sal_uInt16>(pEntry->mnHandle) );
     switch( nWhich )
     {
         case OWN_ATTR_FILLBMP_MODE:
@@ -154,15 +153,15 @@ void SvxUnoDrawPool::putAny( SfxItemPool* pPool, const comphelper::PropertyMapEn
                     eMode = static_cast<drawing::BitmapMode>(nMode);
                 }
 
-                pPool->SetPoolDefaultItem( XFillBmpStretchItem( eMode == drawing::BitmapMode_STRETCH ) );
-                pPool->SetPoolDefaultItem( XFillBmpTileItem( eMode == drawing::BitmapMode_REPEAT ) );
+                pPool->SetUserDefaultItem( XFillBmpStretchItem( eMode == drawing::BitmapMode_STRETCH ) );
+                pPool->SetUserDefaultItem( XFillBmpTileItem( eMode == drawing::BitmapMode_REPEAT ) );
                 return;
             }
             while(false);
 
     default:
         {
-            std::unique_ptr<SfxPoolItem> pNewItem( pPool->GetDefaultItem( nWhich ).Clone() );
+            std::unique_ptr<SfxPoolItem> pNewItem( pPool->GetUserOrPoolDefaultItem( nWhich ).Clone() );
             sal_uInt8 nMemberId = pEntry->mnMemberId;
             if( pPool->GetMetric(nWhich) == MapUnit::Map100thMM )
                 nMemberId &= (~CONVERT_TWIPS);
@@ -170,7 +169,7 @@ void SvxUnoDrawPool::putAny( SfxItemPool* pPool, const comphelper::PropertyMapEn
             if( !pNewItem->PutValue( aValue, nMemberId ) )
                 throw lang::IllegalArgumentException();
 
-            pPool->SetPoolDefaultItem( *pNewItem );
+            pPool->SetUserDefaultItem( *pNewItem );
         }
     }
 }
@@ -183,7 +182,7 @@ void SvxUnoDrawPool::_setPropertyValues( const comphelper::PropertyMapEntry** pp
 
     DBG_ASSERT( pPool, "I need a SfxItemPool!" );
     if( nullptr == pPool )
-        throw beans::UnknownPropertyException( "no pool, no properties..", getXWeak());
+        throw beans::UnknownPropertyException( u"no pool, no properties.."_ustr, getXWeak());
 
     while( *ppEntries )
         putAny( pPool, *ppEntries++, *pValues++ );
@@ -197,7 +196,7 @@ void SvxUnoDrawPool::_getPropertyValues( const comphelper::PropertyMapEntry** pp
 
     DBG_ASSERT( pPool, "I need a SfxItemPool!" );
     if( nullptr == pPool )
-        throw beans::UnknownPropertyException( "no pool, no properties..", getXWeak());
+        throw beans::UnknownPropertyException( u"no pool, no properties.."_ustr, getXWeak());
 
     while( *ppEntries )
         getAny( pPool, *ppEntries++, *pValue++ );
@@ -215,7 +214,7 @@ void SvxUnoDrawPool::_getPropertyStates( const comphelper::PropertyMapEntry** pp
         {
             //Assure, that ID is a Which-ID (it could be a Slot-ID.)
             // Thus, convert handle to Which-ID.
-            const sal_uInt16 nWhich = pPool->GetWhich( static_cast<sal_uInt16>((*ppEntries)->mnHandle) );
+            const sal_uInt16 nWhich = pPool->GetWhichIDFromSlotID( static_cast<sal_uInt16>((*ppEntries)->mnHandle) );
 
             switch( nWhich )
             {
@@ -223,8 +222,8 @@ void SvxUnoDrawPool::_getPropertyStates( const comphelper::PropertyMapEntry** pp
                 {
                     // use method <IsStaticDefaultItem(..)> instead of using
                     // probably incompatible item pool <mpDefaultPool>.
-                    if ( IsStaticDefaultItem( &(pPool->GetDefaultItem( XATTR_FILLBMP_STRETCH )) ) ||
-                         IsStaticDefaultItem( &(pPool->GetDefaultItem( XATTR_FILLBMP_TILE )) ) )
+                    if ( IsStaticDefaultItem( &(pPool->GetUserOrPoolDefaultItem( XATTR_FILLBMP_STRETCH )) ) ||
+                         IsStaticDefaultItem( &(pPool->GetUserOrPoolDefaultItem( XATTR_FILLBMP_TILE )) ) )
                     {
                         *pStates = beans::PropertyState_DEFAULT_VALUE;
                     }
@@ -235,8 +234,8 @@ void SvxUnoDrawPool::_getPropertyStates( const comphelper::PropertyMapEntry** pp
                 }
                 break;
             case OWN_ATTR_TEXTCOLUMNS:
-                if (IsStaticDefaultItem(&pPool->GetDefaultItem(sal_uInt16(SDRATTR_TEXTCOLUMNS_NUMBER)))
-                    && IsStaticDefaultItem(&pPool->GetDefaultItem(sal_uInt16(SDRATTR_TEXTCOLUMNS_SPACING))))
+                if (IsStaticDefaultItem(&pPool->GetUserOrPoolDefaultItem(sal_uInt16(SDRATTR_TEXTCOLUMNS_NUMBER)))
+                    && IsStaticDefaultItem(&pPool->GetUserOrPoolDefaultItem(sal_uInt16(SDRATTR_TEXTCOLUMNS_SPACING))))
                     *pStates = beans::PropertyState_DEFAULT_VALUE;
                 else
                     *pStates = beans::PropertyState_DIRECT_VALUE;
@@ -245,8 +244,8 @@ void SvxUnoDrawPool::_getPropertyStates( const comphelper::PropertyMapEntry** pp
                 //#i18732# - correction:
                 // use method <IsStaticDefaultItem(..)> instead of using probably
                 // incompatible item pool <mpDefaultPool>.
-                const SfxPoolItem& r1 = pPool->GetDefaultItem( nWhich );
-                //const SfxPoolItem& r2 = mpDefaultPool->GetDefaultItem( nWhich );
+                const SfxPoolItem& r1 = pPool->GetUserOrPoolDefaultItem( nWhich );
+                //const SfxPoolItem& r2 = mpDefaultPool->GetUserOrPoolDefaultItem( nWhich );
 
                 if ( IsStaticDefaultItem( &r1 ) )
                 {
@@ -279,23 +278,23 @@ void SvxUnoDrawPool::_setPropertyToDefault( const comphelper::PropertyMapEntry* 
 
     // Assure, that ID is a Which-ID (it could be a Slot-ID.)
     // Thus, convert handle to Which-ID.
-    const sal_uInt16 nWhich = pPool->GetWhich( static_cast<sal_uInt16>(pEntry->mnHandle) );
+    const sal_uInt16 nWhich = pPool->GetWhichIDFromSlotID( static_cast<sal_uInt16>(pEntry->mnHandle) );
     if ( pPool && pPool != mpDefaultsPool.get() )
     {
-        // use method <ResetPoolDefaultItem(..)> instead of using probably incompatible item pool <mpDefaultsPool>.
-        pPool->ResetPoolDefaultItem( nWhich );
+        // use method <ResetUserDefaultItem(..)> instead of using probably incompatible item pool <mpDefaultsPool>.
+        pPool->ResetUserDefaultItem( nWhich );
     }
 }
 
 uno::Any SvxUnoDrawPool::_getPropertyDefault( const comphelper::PropertyMapEntry* pEntry )
 {
     SolarMutexGuard aGuard;
-    //#i18732# - use method <GetPoolDefaultItem(..)> instead of
+    //#i18732# - use method <GetUserDefaultItem(..)> instead of
     // using probably incompatible item pool <mpDefaultsPool>
     uno::Any aAny;
     SfxItemPool* pPool = getModelPool( true );
-    const sal_uInt16 nWhich = pPool->GetWhich( static_cast<sal_uInt16>(pEntry->mnHandle) );
-    const SfxPoolItem *pItem = pPool->GetPoolDefaultItem ( nWhich );
+    const sal_uInt16 nWhich = pPool->GetWhichIDFromSlotID( static_cast<sal_uInt16>(pEntry->mnHandle) );
+    const SfxPoolItem *pItem = pPool->GetUserDefaultItem ( nWhich );
     if (pItem)
     {
         pItem->QueryValue( aAny, pEntry->mnMemberId );
@@ -350,12 +349,12 @@ sal_Bool SAL_CALL SvxUnoDrawPool::supportsService( const  OUString& ServiceName 
 
 OUString SAL_CALL SvxUnoDrawPool::getImplementationName()
 {
-    return "SvxUnoDrawPool";
+    return u"SvxUnoDrawPool"_ustr;
 }
 
 uno::Sequence< OUString > SAL_CALL SvxUnoDrawPool::getSupportedServiceNames(  )
 {
-    uno::Sequence<OUString> aSNS { "com.sun.star.drawing.Defaults" };
+    uno::Sequence<OUString> aSNS { u"com.sun.star.drawing.Defaults"_ustr };
     return aSNS;
 }
 

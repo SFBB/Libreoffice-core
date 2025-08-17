@@ -146,7 +146,7 @@ static OptionInfo const * get_option_info(
 static bool is_option(
     OptionInfo const * option_info, sal_uInt32 * pIndex )
 {
-    OSL_ASSERT( option_info != 0 );
+    assert(option_info != 0);
     if (osl_getCommandArgCount() <= *pIndex)
         return false;
 
@@ -582,9 +582,9 @@ SAL_IMPLEMENT_MAIN()
             {
                 css::uno::Reference< reflection::XTypeDescription > td(
                     xTD_enum->nextTypeDescription());
-                OUString name(td->getName());
+                OUString td_name(td->getName());
                 bool bEmit = std::any_of(unoidlMandatoryProvs.begin(), unoidlMandatoryProvs.end(),
-                    [&name](rtl::Reference<unoidl::Provider>& rProv) { return rProv->findEntity(name).is(); });
+                    [&td_name](rtl::Reference<unoidl::Provider>& rProv) { return rProv->findEntity(td_name).is(); });
                 if (bEmit) {
                     type_emitter->get_type(td);
                 }

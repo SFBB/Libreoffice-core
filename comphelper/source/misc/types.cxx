@@ -95,7 +95,7 @@ sal_Int32 getEnumAsINT32(const Any& _rAny)
 {
     sal_Int32 nReturn = 0;
     if (!::cppu::enum2int(nReturn, _rAny))
-        throw IllegalArgumentException("enum2int failed",
+        throw IllegalArgumentException(u"enum2int failed"_ustr,
                                        css::uno::Reference<css::uno::XInterface>(), -1);
     return nReturn;
 }
@@ -105,7 +105,7 @@ FontDescriptor getDefaultFont()
     FontDescriptor aReturn;
     aReturn.Slant = FontSlant_DONTKNOW;
     aReturn.Underline = FontUnderline::DONTKNOW;
-    aReturn.Strikeout = com::sun::star::awt::FontStrikeout::DONTKNOW;
+    aReturn.Strikeout = css::awt::FontStrikeout::DONTKNOW;
     return aReturn;
 }
 

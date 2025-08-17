@@ -20,6 +20,7 @@
 #ifndef INCLUDED_REPORTDESIGN_INC_REPORTDEFINITION_HXX
 #define INCLUDED_REPORTDESIGN_INC_REPORTDEFINITION_HXX
 
+#include <config_options.h>
 #include "dllapi.h"
 
 #include "ReportHelperDefines.hxx"
@@ -43,6 +44,7 @@
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/propertysetmixin.hxx>
+#include <rtl/ref.hxx>
 #include <svx/unomod.hxx>
 
 #include <memory>
@@ -52,12 +54,17 @@ namespace rptui
 {
     class OReportModel;
 }
+namespace rptxml
+{
+    class ORptExport;
+}
 namespace utl
 {
     class MediaDescriptor;
 }
 namespace reportdesign
 {
+    class OSection;
     class OReportComponentProperties;
     typedef cppu::PartialWeakComponentImplHelper<   css::report::XReportDefinition
                                                     ,   css::document::XEventBroadcaster
@@ -82,7 +89,7 @@ namespace reportdesign
      * \ingroup reportdesign_api
      *
      */
-    class REPORTDESIGN_DLLPUBLIC OReportDefinition  final :public ::cppu::BaseMutex
+    class OReportDefinition  final :public ::cppu::BaseMutex
                                                     ,public ReportDefinitionBase
                                                     ,public ReportDefinitionPropertySet
                                                     ,public ::comphelper::IEmbeddedHelper
@@ -96,7 +103,7 @@ namespace reportdesign
         void setSection(     const OUString& _sProperty
                             ,bool _bOn
                             ,const OUString& _sName
-                            ,css::uno::Reference< css::report::XSection>& _member);
+                            ,rtl::Reference< OSection>& _member);
 
         template <typename T> void set(  const OUString& _sProperty
                                         ,const T& Value
@@ -128,22 +135,11 @@ namespace reportdesign
         bool WriteThroughComponent(
             /// the component we export
             const css::uno::Reference< css::lang::XComponent> & xComponent,
-            const char* pStreamName,        /// the stream name
-            const char* pServiceName,       /// service name of the component
+            const OUString& rStreamName, /// the stream name
+            const rtl::Reference<rptxml::ORptExport>& pExporter, /// the exporter
             /// the argument (XInitialization)
             const css::uno::Sequence< css::uno::Any> & rArguments,
-            /// output descriptor
-            const css::uno::Sequence< css::beans::PropertyValue> & rMediaDesc,
             const css::uno::Reference< css::embed::XStorage >& _xStorageToSaveTo);
-
-        /// write a single output stream
-        /// (to be called either directly or by WriteThroughComponent(...))
-        bool WriteThroughComponent(
-            const css::uno::Reference< css::io::XOutputStream> & xOutputStream,
-            const css::uno::Reference< css::lang::XComponent> & xComponent,
-            const char* pServiceName,
-            const css::uno::Sequence< css::uno::Any> & rArguments,
-            const css::uno::Sequence< css::beans::PropertyValue> & rMediaDesc);
 
         void notifyEvent(const OUString& _sEventName);
         void init();
@@ -189,9 +185,8 @@ namespace reportdesign
     public:
         //TTTT Needed? Or same as above?
         static const css::uno::Sequence< sal_Int8 > & getUnoTunnelId();
-        static std::shared_ptr<rptui::OReportModel> getSdrModel(const css::uno::Reference< css::report::XReportDefinition >& _xReportDefinition);
+        UNLESS_MERGELIBS_MORE(REPORTDESIGN_DLLPUBLIC) static std::shared_ptr<rptui::OReportModel> getSdrModel(const css::uno::Reference< css::report::XReportDefinition >& _xReportDefinition);
 
-    private:
         DECLARE_XINTERFACE( )
         DECLARE_XTYPEPROVIDER( )
         // css::lang::XServiceInfo
@@ -399,9 +394,6 @@ namespace reportdesign
         virtual css::uno::Reference< css::task::XInteractionHandler > getInteractionHandler() const override;
         virtual bool isEnableSetModified() const override;
         virtual OUString getDocumentBaseURL() const override;
-
-        /// @throws css::uno::RuntimeException
-        css::uno::Reference< css::ui::XUIConfigurationManager2 > getUIConfigurationManager2(  );
       };
 
 } // namespace reportdesign

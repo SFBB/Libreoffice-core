@@ -32,7 +32,7 @@ Reference<VendorBase> OtherInfo::createInstance()
 
 char const* const* OtherInfo::getJavaExePaths(int * size)
 {
-    static char const * ar[] = {
+    static char const * const ar[] = {
 #if defined(_WIN32)
         "bin/java.exe",
         "jre/bin/java.exe"
@@ -41,13 +41,13 @@ char const* const* OtherInfo::getJavaExePaths(int * size)
         "jre/bin/java"
 #endif
     };
-    *size = SAL_N_ELEMENTS (ar);
+    *size = std::size(ar);
     return ar;
 }
 
 char const* const* OtherInfo::getRuntimePaths(int * size)
 {
-    static char const* ar[]= {
+    static char const* const ar[]= {
 #if defined(_WIN32)
         "/bin/client/jvm.dll",
         "/bin/hotspot/jvm.dll",
@@ -71,7 +71,7 @@ char const* const* OtherInfo::getRuntimePaths(int * size)
 #endif
 
     };
-    *size = SAL_N_ELEMENTS(ar);
+    *size = std::size(ar);
     return ar;
 }
 
@@ -80,7 +80,7 @@ char const* const* OtherInfo::getLibraryPaths(int* size)
 
 #if defined(UNX) && !defined(MACOSX)
     //mac version does not have a ld library path anymore
-    static char const * ar[] = {
+    static char const * const ar[] = {
         "/bin",
         "/jre/bin",
         "/bin/classic",
@@ -93,7 +93,7 @@ char const* const* OtherInfo::getLibraryPaths(int* size)
         ("/lib/" JFW_PLUGIN_ARCH)
     };
 
-    *size = SAL_N_ELEMENTS(ar);
+    *size = std::size(ar);
     return ar;
 #else
     *size = 0;

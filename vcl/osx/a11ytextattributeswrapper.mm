@@ -25,6 +25,7 @@
 #include "a11ytextattributeswrapper.h"
 
 #include <com/sun/star/accessibility/AccessibleTextType.hpp>
+#include <com/sun/star/awt/FontSlant.hpp>
 #include <com/sun/star/awt/FontUnderline.hpp>
 #include <com/sun/star/awt/FontWeight.hpp>
 #include <com/sun/star/awt/FontStrikeout.hpp>
@@ -210,7 +211,10 @@ using namespace ::com::sun::star::uno;
             } else if ( property.Name == "CharFontName" ) {
                 OUString fontname;
                 property.Value >>= fontname;
-                [fontDescriptor setName:CreateNSString(fontname)];
+                // Related tdf#158914: explicitly call autorelease selector
+                // CreateNSString() is not a getter. It expects the caller to
+                // release the returned string.
+                [ fontDescriptor setName: [ CreateNSString(fontname) autorelease ] ];
             } else if ( property.Name == "CharWeight" ) {
                 [fontDescriptor setBold:[AquaA11yTextAttributesWrapper convertBoldStyle:property]];
             } else if ( property.Name == "CharPosture" ) {
@@ -313,8 +317,11 @@ using namespace ::com::sun::star::uno;
     int endIndex = loc + len;
     int currentIndex = loc;
     try {
-        NSString * myString = CreateNSString ( [ wrapper accessibleText ] -> getText() ); // TODO: dirty fix for i87817
-        string = [ [ NSMutableAttributedString alloc ] initWithString: CreateNSString ( [ wrapper accessibleText ] -> getTextRange ( loc, loc + len ) ) ];
+        // Related tdf#158914: explicitly call autorelease selector
+        // CreateNSString() is not a getter. It expects the caller to
+        // release the returned string.
+        NSString * myString = [ CreateNSString ( [ wrapper accessibleText ] -> getText() ) autorelease ]; // TODO: dirty fix for i87817
+        string = [ [ NSMutableAttributedString alloc ] initWithString: [ CreateNSString ( [ wrapper accessibleText ] -> getTextRange ( loc, loc + len ) ) autorelease ] ];
         [ string autorelease ];
         if ( [ wrapper accessibleTextAttributes ] && [myString characterAtIndex:0] != 57361) { // TODO: dirty fix for i87817
             [ string beginEditing ];

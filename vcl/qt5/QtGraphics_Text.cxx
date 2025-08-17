@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -85,7 +85,7 @@ bool QtGraphics::GetFontCapabilities(vcl::FontCapabilities& rFontCapabilities) c
 
 void QtGraphics::GetDevFontList(vcl::font::PhysicalFontCollection* pPFC)
 {
-    static const bool bUseFontconfig = (nullptr == getenv("SAL_VCL_QT5_NO_FONTCONFIG"));
+    static const bool bUseFontconfig = (nullptr == getenv("SAL_VCL_QT_NO_FONTCONFIG"));
 
     if (pPFC->Count())
         return;
@@ -108,8 +108,8 @@ void QtGraphics::GetDevFontList(vcl::font::PhysicalFontCollection* pPFC)
         // inform FreetypeManager about this font provided by the PsPrint subsystem
         FontAttributes aFA = pFont->m_aFontAttributes;
         aFA.IncreaseQualityBy(4096);
-        const OString& rFileName = rMgr.getFontFileSysPath(nFontId);
-        rFontManager.AddFontFile(rFileName, nFaceNum, nVariantNum, nFontId, aFA);
+        const OString aFileName = rMgr.getFontFileSysPath(nFontId);
+        rFontManager.AddFontFile(aFileName, nFaceNum, nVariantNum, nFontId, aFA);
     }
 
     if (bUseFontconfig)
@@ -133,6 +133,11 @@ bool QtGraphics::AddTempDevFont(vcl::font::PhysicalFontCollection*, const OUStri
                                 const OUString& /*rFontName*/)
 {
     return false;
+}
+
+bool QtGraphics::RemoveTempDevFont(const OUString& /*rFileURL*/, const OUString& /*rFontName*/)
+{
+    return true; // No fonts registered - no problem to remove
 }
 
 namespace
@@ -232,4 +237,4 @@ void QtGraphics::DrawTextLayout(const GenericSalLayout& rLayout)
     aPainter.drawGlyphRun(QPointF(), aGlyphRun);
 }
 
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

@@ -154,7 +154,8 @@ OleEmbeddedObject::~OleEmbeddedObject()
 }
 
 
-void OleEmbeddedObject::MakeEventListenerNotification_Impl( const OUString& aEventName )
+void OleEmbeddedObject::MakeEventListenerNotification_Impl( const OUString& aEventName,
+                                                      osl::ResettableMutexGuard& guard )
 {
     if ( !m_pInterfaceContainer )
         return;
@@ -165,63 +166,63 @@ void OleEmbeddedObject::MakeEventListenerNotification_Impl( const OUString& aEve
     if ( pContainer == nullptr )
         return;
 
-    document::EventObject aEvent( static_cast< ::cppu::OWeakObject* >( this ), aEventName );
-    comphelper::OInterfaceIteratorHelper2 pIterator(*pContainer);
-    while (pIterator.hasMoreElements())
+    auto proc = [&guard, aEvent = document::EventObject(getXWeak(), aEventName)](
+                    const uno::Reference<document::XEventListener>& xListener)
     {
         try
         {
-            static_cast<document::XEventListener*>(pIterator.next())->notifyEvent( aEvent );
+            osl::ResettableMutexGuardScopedReleaser area(guard);
+            xListener->notifyEvent(aEvent);
         }
-        catch( const uno::RuntimeException& )
+        catch (const lang::DisposedException&)
+        {
+            throw; // forEach handles this
+        }
+        catch (const uno::RuntimeException&)
         {
         }
-    }
+    };
+    pContainer->forEach<document::XEventListener>(proc);
 }
 #ifdef _WIN32
 
-void OleEmbeddedObject::StateChangeNotification_Impl( bool bBeforeChange, sal_Int32 nOldState, sal_Int32 nNewState )
+void OleEmbeddedObject::StateChangeNotification_Impl( bool bBeforeChange, sal_Int32 nOldState, sal_Int32 nNewState,
+                                                      osl::ResettableMutexGuard& guard )
 {
-    if ( m_pInterfaceContainer )
-    {
-        comphelper::OInterfaceContainerHelper2* pContainer = m_pInterfaceContainer->getContainer(
-                            cppu::UnoType<embed::XStateChangeListener>::get());
-        if ( pContainer != nullptr )
-        {
-            lang::EventObject aSource( static_cast< ::cppu::OWeakObject* >( this ) );
-            comphelper::OInterfaceIteratorHelper2 pIterator(*pContainer);
+    if (!m_pInterfaceContainer)
+        return;
 
-            while (pIterator.hasMoreElements())
-            {
-                if ( bBeforeChange )
-                {
-                    try
-                    {
-                        static_cast<embed::XStateChangeListener*>(pIterator.next())->changingState( aSource, nOldState, nNewState );
-                    }
-                    catch( const uno::Exception& )
-                    {
-                        // even if the listener complains ignore it for now
-                    }
-                }
-                else
-                {
-                       try
-                    {
-                        static_cast<embed::XStateChangeListener*>(pIterator.next())->stateChanged( aSource, nOldState, nNewState );
-                    }
-                    catch( const uno::Exception& )
-                    {
-                        // if anything happened it is problem of listener, ignore it
-                    }
-                }
-            }
+    comphelper::OInterfaceContainerHelper2* pContainer = m_pInterfaceContainer->getContainer(
+                        cppu::UnoType<embed::XStateChangeListener>::get());
+    if (!pContainer)
+        return;
+
+    auto proc
+        = [bBeforeChange, nOldState, nNewState, &guard, aSource = lang::EventObject(getXWeak())](
+              const uno::Reference<embed::XStateChangeListener>& xListener)
+    {
+        try
+        {
+            osl::ResettableMutexGuardScopedReleaser area(guard);
+            if (bBeforeChange)
+                xListener->changingState(aSource, nOldState, nNewState);
+            else
+                xListener->stateChanged(aSource, nOldState, nNewState);
         }
-    }
+        catch (const lang::DisposedException&)
+        {
+            throw; // forEach handles this
+        }
+        catch (const uno::Exception&)
+        {
+            // even if the listener complains ignore it for now
+        }
+    };
+    pContainer->forEach<embed::XStateChangeListener>(proc);
 }
 #endif
 
-void OleEmbeddedObject::GetRidOfComponent()
+void OleEmbeddedObject::GetRidOfComponent(osl::ResettableMutexGuard* guard)
 {
 #ifdef _WIN32
     if ( m_pOleComponent )
@@ -230,26 +231,34 @@ void OleEmbeddedObject::GetRidOfComponent()
             SaveObject_Impl();
 
         m_pOleComponent->removeCloseListener( m_xClosePreventer );
+        // When releasing the guard below, avoid a case when two threads are doing the same;
+        // store the reference on stack and clear m_pOleComponent in advance
+        rtl::Reference<OleComponent> pOleComponent(std::move(m_pOleComponent));
         try
         {
-            m_pOleComponent->close( false );
+            std::optional<osl::ResettableMutexGuardScopedReleaser> oReleaser;
+            if (guard)
+                oReleaser.emplace(*guard);
+            pOleComponent->close(false);
         }
         catch( const uno::Exception& )
         {
+            m_pOleComponent = std::move(pOleComponent);
             // TODO: there should be a special listener to wait for component closing
             //       and to notify object, may be object itself can be such a listener
             m_pOleComponent->addCloseListener( m_xClosePreventer );
             throw;
         }
 
-        m_pOleComponent->disconnectEmbeddedObject();
-        m_pOleComponent.clear();
+        pOleComponent->disconnectEmbeddedObject();
     }
+#else
+    (void)guard;
 #endif
 }
 
 
-void OleEmbeddedObject::Dispose()
+void OleEmbeddedObject::Dispose(osl::ResettableMutexGuard* guard)
 {
     if ( m_pInterfaceContainer )
     {
@@ -266,7 +275,7 @@ void OleEmbeddedObject::Dispose()
 
     if ( m_pOleComponent )
         try {
-            GetRidOfComponent();
+            GetRidOfComponent(guard);
         } catch( const uno::Exception& )
         {
             m_bDisposed = true;
@@ -377,7 +386,7 @@ uno::Reference< util::XCloseable > SAL_CALL OleEmbeddedObject::getComponent()
     if ( m_nObjectState == -1 ) // || m_nObjectState == embed::EmbedStates::LOADED )
     {
         // the object is still not running
-        throw uno::RuntimeException( "The object is not loaded!",
+        throw uno::RuntimeException( u"The object is not loaded!"_ustr,
                                         static_cast< ::cppu::OWeakObject* >(this) );
     }
 
@@ -449,7 +458,7 @@ void SAL_CALL OleEmbeddedObject::close( sal_Bool bDeliverOwnership )
     }
     // end wrapping related part ====================
 
-    ::osl::MutexGuard aGuard( m_aMutex );
+    osl::ResettableMutexGuard aGuard(m_aMutex);
     if ( m_bDisposed )
         throw lang::DisposedException(); // TODO
 
@@ -495,7 +504,7 @@ void SAL_CALL OleEmbeddedObject::close( sal_Bool bDeliverOwnership )
         }
     }
 
-    Dispose();
+    Dispose(&aGuard);
 }
 
 
@@ -687,14 +696,14 @@ void OleEmbeddedObject::initialize(const uno::Sequence<uno::Any>& rArguments)
         return;
 
     comphelper::SequenceAsHashMap aValues(rArguments[0]);
-    auto it = aValues.find("StreamReadOnly");
+    auto it = aValues.find(u"StreamReadOnly"_ustr);
     if (it != aValues.end())
         it->second >>= m_bStreamReadOnly;
 }
 
 OUString SAL_CALL OleEmbeddedObject::getImplementationName()
 {
-    return "com.sun.star.comp.embed.OleEmbeddedObject";
+    return u"com.sun.star.comp.embed.OleEmbeddedObject"_ustr;
 }
 
 sal_Bool SAL_CALL OleEmbeddedObject::supportsService(const OUString& ServiceName)
@@ -704,7 +713,7 @@ sal_Bool SAL_CALL OleEmbeddedObject::supportsService(const OUString& ServiceName
 
 uno::Sequence<OUString> SAL_CALL OleEmbeddedObject::getSupportedServiceNames()
 {
-    return { "com.sun.star.comp.embed.OleEmbeddedObject" };
+    return { u"com.sun.star.comp.embed.OleEmbeddedObject"_ustr };
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

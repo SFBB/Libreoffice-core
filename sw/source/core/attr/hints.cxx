@@ -22,24 +22,13 @@
 #include <hints.hxx>
 #include <ndtxt.hxx>
 #include <swtypes.hxx>
+#include <init.hxx>
 #include <svl/languageoptions.hxx>
 #include <utility>
 #include <vcl/outdev.hxx>
 #include <osl/diagnose.h>
 
-SwFormatChg::SwFormatChg( SwFormat* pFormat )
-    : SwMsgPoolItem( RES_FMT_CHG ), pChangedFormat( pFormat )
-{
-}
-
-
-
 namespace sw {
-
-MoveText::MoveText(SwTextNode *const pD, sal_Int32 const nD, sal_Int32 const nS, sal_Int32 const nL)
-    : pDestNode(pD), nDestStart(nD), nSourceStart(nS), nLen(nL)
-{
-}
 
 InsertText::InsertText(const sal_Int32 nP, const sal_Int32 nL, const bool isInFMCommand, const bool isInFMResult)
     : SfxHint( SfxHintId::SwInsertText )
@@ -56,16 +45,6 @@ DeleteText::DeleteText( const sal_Int32 nS, const sal_Int32 nL )
 
 DeleteChar::DeleteChar( const sal_Int32 nPos )
     : SfxHint( SfxHintId::SwDeleteChar ), m_nPos( nPos )
-{
-}
-
-RedlineDelText::RedlineDelText(sal_Int32 const nS, sal_Int32 const nL)
-    : nStart(nS), nLen(nL)
-{
-}
-
-RedlineUnDelText::RedlineUnDelText(sal_Int32 const nS, sal_Int32 const nL)
-    : nStart(nS), nLen(nL)
 {
 }
 
@@ -86,12 +65,12 @@ void AutoFormatUsedHint::CheckNode(const SwNode* pNode) const
 } // namespace sw
 
 SwUpdateAttr::SwUpdateAttr( sal_Int32 nS, sal_Int32 nE, sal_uInt16 nW )
-    : SwMsgPoolItem( RES_UPDATE_ATTR ), m_nStart( nS ), m_nEnd( nE ), m_nWhichAttr( nW )
+    : m_nStart( nS ), m_nEnd( nE ), m_nWhichAttr( nW )
 {
 }
 
 SwUpdateAttr::SwUpdateAttr( sal_Int32 nS, sal_Int32 nE, sal_uInt16 nW, std::vector<sal_uInt16> aW )
-    : SwMsgPoolItem( RES_UPDATE_ATTR ), m_nStart( nS ), m_nEnd( nE ), m_nWhichAttr( nW ), m_aWhichFmtAttrs(std::move( aW ))
+    : m_nStart( nS ), m_nEnd( nE ), m_nWhichAttr( nW ), m_aWhichFmtAttrs(std::move( aW ))
 {
 }
 
@@ -106,16 +85,14 @@ SwTableFormulaUpdate::SwTableFormulaUpdate(const SwTable* pNewTable)
 }
 
 SwAttrSetChg::SwAttrSetChg( const SwAttrSet& rTheSet, SwAttrSet& rSet )
-    : SwMsgPoolItem( RES_ATTRSET_CHG ),
-    m_bDelSet( false ),
+  : m_bDelSet( false ),
     m_pChgSet( &rSet ),
     m_pTheChgdSet( &rTheSet )
 {
 }
 
 SwAttrSetChg::SwAttrSetChg( const SwAttrSetChg& rChgSet )
-    : SwMsgPoolItem( RES_ATTRSET_CHG ),
-    m_bDelSet( true ),
+  : m_bDelSet( true ),
     m_pTheChgdSet( rChgSet.m_pTheChgdSet )
 {
     m_pChgSet = new SwAttrSet( *rChgSet.m_pChgSet );
@@ -155,25 +132,16 @@ SwMsgPoolItem* SwMsgPoolItem::Clone( SfxItemPool* ) const
     return nullptr;
 }
 
-#if OSL_DEBUG_LEVEL > 0
-const SfxPoolItem* GetDfltAttr( sal_uInt16 nWhich )
+const SfxPoolItem* GetDfltAttr(sal_uInt16 nWhich)
 {
-    OSL_ASSERT( nWhich < POOLATTR_END && nWhich >= POOLATTR_BEGIN );
-
-    SfxPoolItem *pHt = aAttrTab[ nWhich - POOLATTR_BEGIN ];
-    OSL_ENSURE( pHt, "GetDfltFormatAttr(): Dflt == 0" );
-    return pHt;
-}
+#ifdef DBG_UTIL
+    OSL_ASSERT(nWhich < POOLATTR_END && nWhich >= POOLATTR_BEGIN);
+    const SfxPoolItem* pRetval(getItemInfoPackageSwAttributes().getExistingItemInfo(nWhich - POOLATTR_BEGIN).getItem());
+    OSL_ENSURE(pRetval, "GetDfltFormatAttr(): Dflt == 0");
+    return pRetval;
 #else
-const SfxPoolItem* GetDfltAttr( sal_uInt16 nWhich )
-{
-    return aAttrTab[ nWhich - POOLATTR_BEGIN ];
-}
+    return getItemInfoPackageSwAttributes().getExistingItemInfo(nWhich - POOLATTR_BEGIN).getItem();
 #endif
-
-SwFindNearestNode::SwFindNearestNode( const SwNode& rNd )
-    : SwMsgPoolItem( RES_FINDNEARESTNODE ), m_pNode( &rNd ), m_pFound( nullptr )
-{
 }
 
 void SwFindNearestNode::CheckNode( const SwNode& rNd )

@@ -28,6 +28,8 @@
 #include <svx/svdundo.hxx>
 #include <vcl/svapp.hxx>
 #include <editeng/eeitem.hxx>
+#include <editeng/editobj.hxx>
+#include <editeng/fieldupdater.hxx>
 #include <editeng/langitem.hxx>
 #include <svl/itempool.hxx>
 #include <editeng/flditem.hxx>
@@ -125,7 +127,7 @@ SdrObject* SdDrawDocument::GetObj(std::u16string_view rObjName) const
 // Find SdPage by name
 sal_uInt16 SdDrawDocument::GetPageByName(std::u16string_view rPgName, bool& rbIsMasterPage) const
 {
-    SdPage* pPage = nullptr;
+    const SdPage* pPage = nullptr;
     sal_uInt16 nPage = 0;
     const sal_uInt16 nMaxPages = GetPageCount();
     sal_uInt16 nPageNum = SDRPAGE_NOTFOUND;
@@ -136,8 +138,7 @@ sal_uInt16 SdDrawDocument::GetPageByName(std::u16string_view rPgName, bool& rbIs
     // ignored)
     while (nPage < nMaxPages && nPageNum == SDRPAGE_NOTFOUND)
     {
-        pPage = const_cast<SdPage*>(static_cast<const SdPage*>(
-            GetPage(nPage)));
+        pPage = static_cast<const SdPage*>(GetPage(nPage));
 
         if (pPage != nullptr
             && pPage->GetPageKind() != PageKind::Handout
@@ -155,8 +156,7 @@ sal_uInt16 SdDrawDocument::GetPageByName(std::u16string_view rPgName, bool& rbIs
 
     while (nPage < nMaxMasterPages && nPageNum == SDRPAGE_NOTFOUND)
     {
-        pPage = const_cast<SdPage*>(static_cast<const SdPage*>(
-            GetMasterPage(nPage)));
+        pPage = static_cast<const SdPage*>(GetMasterPage(nPage));
 
         if (pPage && pPage->GetName() == rPgName)
         {
@@ -173,14 +173,14 @@ sal_uInt16 SdDrawDocument::GetPageByName(std::u16string_view rPgName, bool& rbIs
 bool SdDrawDocument::IsPageNameUnique( std::u16string_view rPgName ) const
 {
     sal_uInt16 nCount = 0;
-    SdPage* pPage = nullptr;
+    const SdPage* pPage = nullptr;
 
     // Search all regular pages and all notes pages (handout pages are ignored)
     sal_uInt16 nPage = 0;
     sal_uInt16 nMaxPages = GetPageCount();
     while (nPage < nMaxPages)
     {
-        pPage = const_cast<SdPage*>(static_cast<const SdPage*>(GetPage(nPage)));
+        pPage = static_cast<const SdPage*>(GetPage(nPage));
 
         if (pPage && pPage->GetName() == rPgName && pPage->GetPageKind() != PageKind::Handout)
             nCount++;
@@ -193,7 +193,7 @@ bool SdDrawDocument::IsPageNameUnique( std::u16string_view rPgName ) const
     nMaxPages = GetMasterPageCount();
     while (nPage < nMaxPages)
     {
-        pPage = const_cast<SdPage*>(static_cast<const SdPage*>(GetMasterPage(nPage)));
+        pPage = static_cast<const SdPage*>(GetMasterPage(nPage));
 
         if (pPage && pPage->GetName() == rPgName)
             nCount++;
@@ -262,106 +262,169 @@ void SdDrawDocument::UpdatePageObjectsInNotes(sal_uInt16 nStartPos)
     }
 }
 
+namespace
+{
+class SvxFieldItemUpdater_BaseProperties final : public editeng::SvxFieldItemUpdater
+{
+    sdr::properties::BaseProperties& mrProps;
+
+public:
+    SvxFieldItemUpdater_BaseProperties(sdr::properties::BaseProperties& rProps)
+        : mrProps(rProps) {}
+
+    virtual void SetItem(const SvxFieldItem& rNew) override
+    {
+        mrProps.SetObjectItem(rNew);
+    }
+};
+}
+
+static void UpdatePageRelativeURLs(SdrObject& rObj, const std::function<void(const SvxFieldItem & rFieldItem, editeng::SvxFieldItemUpdater& rFieldItemUpdater)>& rItemCallback)
+{
+    if (SdrObjList* pChildrenObjs = rObj.getChildrenOfSdrObject())
+    {
+        for (const rtl::Reference<SdrObject>& pSubObj : *pChildrenObjs)
+            UpdatePageRelativeURLs(*pSubObj, rItemCallback);
+    }
+
+    // cannot call GetObjectItemSet on a group
+    if (rObj.GetObjIdentifier() != SdrObjKind::Group)
+    {
+        sdr::properties::BaseProperties& rProps = rObj.GetProperties();
+        const SfxItemSet& rSet = rProps.GetObjectItemSet();
+        if (const SvxFieldItem* pFieldItem = rSet.GetItemIfSet(EE_FEATURE_FIELD))
+        {
+            SvxFieldItemUpdater_BaseProperties aItemUpdater(rProps);
+            rItemCallback(*pFieldItem, aItemUpdater);
+        }
+    }
+
+    SdrTextObj* pTxtObj = DynCastSdrTextObj(&rObj);
+    if (!pTxtObj)
+        return;
+    OutlinerParaObject* pOutlinerParagraphObject = pTxtObj->GetOutlinerParaObject();
+    if (!pOutlinerParagraphObject)
+        return;
+    EditTextObject& aEdit = const_cast<EditTextObject&>(pOutlinerParagraphObject->GetTextObject());
+    aEdit.GetFieldUpdater().UpdatePageRelativeURLs(rItemCallback);
+};
+
+void SdDrawDocument::UpdatePageRelativeURLsImpl(const std::function<void(const SvxFieldItem & rFieldItem, editeng::SvxFieldItemUpdater& rFieldItemUpdater)>& rItemCallback)
+{
+    for (sal_uInt16 nPage = 0, nPageCount = GetPageCount(); nPage < nPageCount; ++nPage)
+    {
+        SdrPage* pPage = GetPage(nPage);
+        for(size_t nObj = 0, nObjCount = pPage->GetObjCount(); nObj < nObjCount; ++nObj)
+            ::UpdatePageRelativeURLs(*pPage->GetObj(nObj), rItemCallback);
+    }
+}
+
 void SdDrawDocument::UpdatePageRelativeURLs(std::u16string_view aOldName, std::u16string_view aNewName)
 {
     if (aNewName.empty())
         return;
 
-    SfxItemPool& rPool(GetPool());
-    for (const SfxPoolItem* pItem : rPool.GetItemSurrogates(EE_FEATURE_FIELD))
+    const OUString sNotes(SdResId(STR_NOTES));
+    auto aItemCallback = [&sNotes, &aOldName, &aNewName](const SvxFieldItem & rFieldItem, editeng::SvxFieldItemUpdater& rFieldItemUpdater) -> void
     {
-        const SvxFieldItem* pFldItem = dynamic_cast< const SvxFieldItem * > (pItem);
+        const SvxFieldData* pFieldData = rFieldItem.GetField();
+        if (pFieldData->GetClassId() != SvxURLField::CLASS_ID)
+            return;
+        const SvxURLField* pURLField(static_cast<const SvxURLField*>(pFieldData));
+        OUString aURL(pURLField->GetURL());
+        if (aURL.isEmpty() || (aURL[0] != 35) || (aURL.indexOf(aOldName, 1) != 1))
+            return;
 
-        if(pFldItem)
+        bool bURLChange(false);
+
+        if (aURL.getLength() == sal_Int32(aOldName.size() + 1)) // standard page name
         {
-            SvxURLField* pURLField = const_cast< SvxURLField* >( dynamic_cast<const SvxURLField*>( pFldItem->GetField() ) );
-
-            if(pURLField)
+            aURL = aURL.replaceAt(1, aURL.getLength() - 1, u"") +
+                aNewName;
+            bURLChange = true;
+        }
+        else
+        {
+            if (aURL.getLength() == sal_Int32(aOldName.size()) + 2 + sNotes.getLength()
+                && aURL.indexOf(sNotes, aOldName.size() + 2) == sal_Int32(aOldName.size() + 2))
             {
-                OUString aURL = pURLField->GetURL();
-
-                if (!aURL.isEmpty() && (aURL[0] == 35) && (aURL.indexOf(aOldName, 1) == 1))
-                {
-                    if (aURL.getLength() == sal_Int32(aOldName.size() + 1)) // standard page name
-                    {
-                        aURL = aURL.replaceAt(1, aURL.getLength() - 1, u"") +
-                            aNewName;
-                        pURLField->SetURL(aURL);
-                    }
-                    else
-                    {
-                        const OUString sNotes(SdResId(STR_NOTES));
-                        if (aURL.getLength() == sal_Int32(aOldName.size()) + 2 + sNotes.getLength()
-                            && aURL.indexOf(sNotes, aOldName.size() + 2) == sal_Int32(aOldName.size() + 2))
-                        {
-                            aURL = aURL.replaceAt(1, aURL.getLength() - 1, u"") +
-                                aNewName + " " + sNotes;
-                            pURLField->SetURL(aURL);
-                        }
-                    }
-                }
+                aURL = aURL.replaceAt(1, aURL.getLength() - 1, u"") +
+                    aNewName + " " + sNotes;
+                bURLChange = true;
             }
         }
-    }
+
+        if(bURLChange)
+        {
+            SvxFieldItem aNewFieldItem(rFieldItem);
+            const_cast<SvxURLField*>(static_cast<const SvxURLField*>(aNewFieldItem.GetField()))->SetURL(aURL);
+            rFieldItemUpdater.SetItem(aNewFieldItem);
+        }
+    };
+
+    UpdatePageRelativeURLsImpl(aItemCallback);
 }
 
 void SdDrawDocument::UpdatePageRelativeURLs(SdPage const * pPage, sal_uInt16 nPos, sal_Int32 nIncrement)
 {
     bool bNotes = (pPage->GetPageKind() == PageKind::Notes);
 
-    SfxItemPool& rPool(GetPool());
-    for (const SfxPoolItem* pItem : rPool.GetItemSurrogates(EE_FEATURE_FIELD))
+    auto aItemCallback = [this, nPos, bNotes, nIncrement](const SvxFieldItem & rFieldItem, editeng::SvxFieldItemUpdater& rFieldItemUpdater) -> void
     {
-        const SvxFieldItem* pFldItem;
+        const SvxURLField* pURLField(dynamic_cast<const SvxURLField*>(rFieldItem.GetField()));
 
-        if ((pFldItem = dynamic_cast< const SvxFieldItem * > (pItem)) != nullptr)
+        if (nullptr == pURLField)
+            return;
+
+        OUString aURL(pURLField->GetURL());
+
+        if (aURL.isEmpty() || (aURL[0] != 35))
+            return;
+
+        OUString aHashSlide;
+        if (meDocType == DocumentType::Draw)
+            aHashSlide = "#" + SdResId(STR_PAGE_NAME);
+        else
+            aHashSlide = "#" + SdResId(STR_PAGE);
+
+        if (!aURL.startsWith(aHashSlide))
+            return;
+
+        OUString aURLCopy = aURL;
+        const OUString sNotes(SdResId(STR_NOTES));
+
+        aURLCopy = aURLCopy.replaceAt(0, aHashSlide.getLength(), u"");
+
+        bool bNotesLink = ( aURLCopy.getLength() >= sNotes.getLength() + 3
+            && aURLCopy.endsWith(sNotes) );
+
+        if (bNotesLink != bNotes)
+            return; // no compatible link and page
+
+        if (bNotes)
+            aURLCopy = aURLCopy.replaceAt(aURLCopy.getLength() - sNotes.getLength(), sNotes.getLength(), u"");
+
+        sal_Int32 number = aURLCopy.toInt32();
+        sal_uInt16 realPageNumber = (nPos + 1)/ 2;
+
+        if ( number < realPageNumber )
+            return;
+
+        // update link page number
+        number += nIncrement;
+        aURL = aURL.replaceAt(aHashSlide.getLength() + 1, aURL.getLength() - aHashSlide.getLength() - 1, u"") +
+            OUString::number(number);
+        if (bNotes)
         {
-            SvxURLField* pURLField = const_cast< SvxURLField* >( dynamic_cast<const SvxURLField*>( pFldItem->GetField() ) );
-
-            if(pURLField)
-            {
-                OUString aURL = pURLField->GetURL();
-
-                if (!aURL.isEmpty() && (aURL[0] == 35))
-                {
-                    OUString aHashSlide = "#" + SdResId(STR_PAGE);
-
-                    if (aURL.startsWith(aHashSlide))
-                    {
-                        OUString aURLCopy = aURL;
-                        const OUString sNotes(SdResId(STR_NOTES));
-
-                        aURLCopy = aURLCopy.replaceAt(0, aHashSlide.getLength(), u"");
-
-                        bool bNotesLink = ( aURLCopy.getLength() >= sNotes.getLength() + 3
-                            && aURLCopy.endsWith(sNotes) );
-
-                        if (bNotesLink != bNotes)
-                            continue; // no compatible link and page
-
-                        if (bNotes)
-                            aURLCopy = aURLCopy.replaceAt(aURLCopy.getLength() - sNotes.getLength(), sNotes.getLength(), u"");
-
-                        sal_Int32 number = aURLCopy.toInt32();
-                        sal_uInt16 realPageNumber = (nPos + 1)/ 2;
-
-                        if ( number >= realPageNumber )
-                        {
-                            // update link page number
-                            number += nIncrement;
-                            aURL = aURL.replaceAt(aHashSlide.getLength() + 1, aURL.getLength() - aHashSlide.getLength() - 1, u"") +
-                                OUString::number(number);
-                            if (bNotes)
-                            {
-                                aURL += " " + sNotes;
-                            }
-                            pURLField->SetURL(aURL);
-                        }
-                    }
-                }
-            }
+            aURL += " " + sNotes;
         }
-    }
+
+        SvxFieldItem aNewFieldItem(rFieldItem);
+        const_cast<SvxURLField*>(static_cast<const SvxURLField*>(aNewFieldItem.GetField()))->SetURL(aURL);
+        rFieldItemUpdater.SetItem(aNewFieldItem);
+    };
+
+    UpdatePageRelativeURLsImpl(aItemCallback);
 }
 
 // Move page
@@ -390,9 +453,15 @@ void SdDrawDocument::InsertPage(SdrPage* pPage, sal_uInt16 nPos)
 
     if (comphelper::LibreOfficeKit::isActive() && static_cast<SdPage*>(pPage)->GetPageKind() == PageKind::Standard)
     {
-        SdXImpressDocument* pDoc = comphelper::getFromUnoTunnel<SdXImpressDocument>(this->getUnoModel());
+        SdXImpressDocument* pDoc = getUnoModel();
         SfxLokHelper::notifyDocumentSizeChangedAllViews(pDoc);
     }
+}
+
+// Override SfxBaseModel::getUnoModel and return a more concrete type
+SdXImpressDocument* SdDrawDocument::getUnoModel()
+{
+    return comphelper::getFromUnoTunnel<SdXImpressDocument>(FmFormModel::getUnoModel());
 }
 
 // Delete page
@@ -420,7 +489,7 @@ rtl::Reference<SdrPage> SdDrawDocument::RemovePage(sal_uInt16 nPgNum)
 
     if (comphelper::LibreOfficeKit::isActive() && pSdPage->GetPageKind() == PageKind::Standard)
     {
-        SdXImpressDocument* pDoc = comphelper::getFromUnoTunnel<SdXImpressDocument>(this->getUnoModel());
+        SdXImpressDocument* pDoc = getUnoModel();
         SfxLokHelper::notifyDocumentSizeChangedAllViews(pDoc);
     }
 
@@ -718,31 +787,35 @@ void SdDrawDocument::UnselectAllPages()
     }
 }
 
+bool SdDrawDocument::MoveSelectedPages(sal_uInt16 nTargetPage)
+{
+    sal_uInt16 nNoOfPages = GetSdPageCount(PageKind::Standard);
+    std::vector<SdPage*> aPageList;
+    for (sal_uInt16 nPage = 0; nPage < nNoOfPages; nPage++)
+    {
+        SdPage* pPage = GetSdPage(nPage, PageKind::Standard);
+
+        if (pPage->IsSelected())
+        {
+            aPageList.push_back(pPage);
+        }
+    }
+    return MovePages(nTargetPage, aPageList);
+}
+
 // + Move selected pages after said page
 //   (nTargetPage = (sal_uInt16)-1  --> move before first page)
 // + Returns sal_True when the page has been moved
-bool SdDrawDocument::MovePages(sal_uInt16 nTargetPage)
+bool SdDrawDocument::MovePages(sal_uInt16 nTargetPage, const std::vector<SdPage*>& rSelectedPages)
 {
     SdPage* pPage              = nullptr;
-    sal_uInt16  nPage;
-    sal_uInt16  nNoOfPages         = GetSdPageCount(PageKind::Standard);
+    sal_uInt16 nPage;
     bool    bSomethingHappened = false;
 
     const bool bUndo = IsUndoEnabled();
 
     if( bUndo )
         BegUndo(SdResId(STR_UNDO_MOVEPAGES));
-
-    // List of selected pages
-    std::vector<SdPage*> aPageList;
-    for (nPage = 0; nPage < nNoOfPages; nPage++)
-    {
-        pPage = GetSdPage(nPage, PageKind::Standard);
-
-        if (pPage->IsSelected()) {
-            aPageList.push_back(pPage);
-        }
-    }
 
     // If necessary, look backwards, until we find a page that wasn't selected
     nPage = nTargetPage;
@@ -765,8 +838,7 @@ bool SdDrawDocument::MovePages(sal_uInt16 nTargetPage)
     // Insert before the first page
     if (nPage == sal_uInt16(-1))
     {
-        std::vector<SdPage*>::reverse_iterator iter;
-        for (iter = aPageList.rbegin(); iter != aPageList.rend(); ++iter)
+        for (auto iter = rSelectedPages.rbegin(); iter != rSelectedPages.rend(); ++iter)
         {
             nPage = (*iter)->GetPageNum();
             if (nPage != 0)
@@ -788,7 +860,7 @@ bool SdDrawDocument::MovePages(sal_uInt16 nTargetPage)
     {
         nTargetPage = 2 * nPage + 1;    // PageKind::Standard --> absolute
 
-        for (const auto& rpPage : aPageList)
+        for (const auto& rpPage : rSelectedPages)
         {
             nPage = rpPage->GetPageNum();
             if (nPage > nTargetPage)
@@ -864,7 +936,7 @@ void SdDrawDocument::SetLanguage( const LanguageType eLang, const sal_uInt16 nId
     {
         GetDrawOutliner().SetDefaultLanguage( Application::GetSettings().GetLanguageTag().getLanguageType() );
         m_pHitTestOutliner->SetDefaultLanguage( Application::GetSettings().GetLanguageTag().getLanguageType() );
-        m_pItemPool->SetPoolDefaultItem( SvxLanguageItem( eLang, nId ) );
+        m_pItemPool->SetUserDefaultItem( SvxLanguageItem( eLang, nId ) );
         SetChanged( bChanged );
     }
 }

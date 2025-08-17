@@ -34,6 +34,7 @@
 #include <treeopt.hrc>
 #include <helpids.h>
 
+#include "appearance.hxx"
 #include "cfgchart.hxx"
 #include "connpoolconfig.hxx"
 #include "connpooloptions.hxx"
@@ -45,7 +46,6 @@
 #include "optaccessibility.hxx"
 #include <optasian.hxx>
 #include "optchart.hxx"
-#include "optcolor.hxx"
 #include "optctl.hxx"
 #include "optfltr.hxx"
 #include "optgdlg.hxx"
@@ -60,7 +60,6 @@
 #include <optpath.hxx>
 #include "optsave.hxx"
 #include "optupdt.hxx"
-#include "personalization.hxx"
 #include <treeopt.hxx>
 #include "optbasic.hxx"
 #include "optlanguagetool.hxx"
@@ -86,6 +85,7 @@
 #include <editeng/optitems.hxx>
 #include <editeng/unolingu.hxx>
 #include <linguistic/misc.hxx>
+#include <o3tl/deleter.hxx>
 #include <officecfg/Office/OptionsDialog.hxx>
 #include <sfx2/app.hxx>
 #include <sfx2/dispatch.hxx>
@@ -114,7 +114,6 @@
 #include <sal/log.hxx>
 
 using namespace ::com::sun::star;
-using namespace ::com::sun::star::beans;
 using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::frame;
 using namespace ::com::sun::star::lang;
@@ -262,9 +261,8 @@ static std::unique_ptr<SfxTabPage> CreateGeneralTabPage(sal_uInt16 nId, weld::Co
         case RID_SVXPAGE_INET_SECURITY:             fnCreate = &SvxSecurityTabPage::Create; break;
         case RID_SVXPAGE_INET_MAIL:                 fnCreate = &SvxEMailTabPage::Create; break;
 #if HAVE_FEATURE_DESKTOP
-        case RID_SVXPAGE_PERSONALIZATION:           fnCreate = &SvxPersonalizationTabPage::Create; break;
+        case RID_SVXPAGE_APPEARANCE:                fnCreate = &SvxAppearanceTabPage::Create; break;
 #endif
-        case RID_SVXPAGE_COLORCONFIG:               fnCreate = &SvxColorOptionsTabPage::Create; break;
         case RID_OFAPAGE_HTMLOPT:                   fnCreate = &OfaHtmlTabPage::Create; break;
         case SID_OPTFILTER_MSOFFICE:                fnCreate = &OfaMSFilterTabPage::Create; break;
         case RID_OFAPAGE_MSFILTEROPT2:              fnCreate = &OfaMSFilterTabPage2::Create; break;
@@ -293,112 +291,107 @@ namespace {
 
 struct OptionsMapping_Impl
 {
-    const char* m_pGroupName;
-    const char* m_pPageName;
+    OUString m_aGroupName;
+    OUString m_aPageName;
     sal_uInt16      m_nPageId;
 };
 
 }
 
-OptionsMapping_Impl const OptionsMap_Impl[] =
+constexpr OptionsMapping_Impl OptionsMap_Impl[]
 {
 //    GROUP                 PAGE                    PAGE-ID
-    { "ProductName",        nullptr,                SID_GENERAL_OPTIONS },
-    { "ProductName",        "UserData",             RID_SFXPAGE_GENERAL },
-    { "ProductName",        "General",              OFA_TP_MISC },
-    { "ProductName",        "View",                 OFA_TP_VIEW },
-    { "ProductName",        "Print",                RID_SFXPAGE_PRINTOPTIONS },
-    { "ProductName",        "Paths",                RID_SFXPAGE_PATH },
-    { "ProductName",        "Fonts",                RID_SVX_FONT_SUBSTITUTION },
-    { "ProductName",        "Security",             RID_SVXPAGE_INET_SECURITY },
-    { "ProductName",        "Personalization",      RID_SVXPAGE_PERSONALIZATION },
-    { "ProductName",        "Appearance",           RID_SVXPAGE_COLORCONFIG },
-    { "ProductName",        "Accessibility",        RID_SVXPAGE_ACCESSIBILITYCONFIG },
-    { "ProductName",        "Java",                 RID_SVXPAGE_OPTIONS_JAVA },
-    { "ProductName",        "BasicIDEOptions",      RID_SVXPAGE_BASICIDE_OPTIONS },
-    { "ProductName",        "OnlineUpdate",         RID_SVXPAGE_ONLINEUPDATE },
-    { "LanguageSettings",   nullptr,                SID_LANGUAGE_OPTIONS },
-    { "LanguageSettings",   "Languages",            OFA_TP_LANGUAGES  },
-    { "LanguageSettings",   "WritingAids",          RID_SFXPAGE_LINGU },
-    { "LanguageSettings",   "SearchingInJapanese",  RID_SVXPAGE_JSEARCH_OPTIONS },
-    { "LanguageSettings",   "AsianLayout",          RID_SVXPAGE_ASIAN_LAYOUT },
-    { "LanguageSettings",   "ComplexTextLayout",    RID_SVXPAGE_OPTIONS_CTL },
-    { "Internet",           nullptr,                SID_INET_DLG },
-    { "Internet",           "Proxy",                RID_SVXPAGE_INET_PROXY },
-    { "Internet",           "Email",                RID_SVXPAGE_INET_MAIL },
-    { "LoadSave",           nullptr,                SID_FILTER_DLG },
-    { "LoadSave",           "General",              RID_SFXPAGE_SAVE },
-    { "LoadSave",           "VBAProperties",        SID_OPTFILTER_MSOFFICE },
-    { "LoadSave",           "MicrosoftOffice",      RID_OFAPAGE_MSFILTEROPT2 },
-    { "LoadSave",           "HTMLCompatibility",    RID_OFAPAGE_HTMLOPT },
-    { "Writer",             nullptr,                SID_SW_EDITOPTIONS },
-    { "Writer",             "General",              RID_SW_TP_OPTLOAD_PAGE },
-    { "Writer",             "View",                 RID_SW_TP_CONTENT_OPT },
-    { "Writer",             "FormattingAids",       RID_SW_TP_OPTSHDWCRSR },
-    { "Writer",             "Grid",                 RID_SVXPAGE_GRID },
-    { "Writer",             "BasicFontsWestern",    RID_SW_TP_STD_FONT },
-    { "Writer",             "BasicFontsAsian",      RID_SW_TP_STD_FONT_CJK },
-    { "Writer",             "BasicFontsCTL",        RID_SW_TP_STD_FONT_CTL },
-    { "Writer",             "Print",                RID_SW_TP_OPTPRINT_PAGE },
-    { "Writer",             "Table",                RID_SW_TP_OPTTABLE_PAGE },
-    { "Writer",             "Changes",              RID_SW_TP_REDLINE_OPT },
-    { "Writer",             "Comparison",           RID_SW_TP_COMPARISON_OPT },
-    { "Writer",             "Compatibility",        RID_SW_TP_OPTCOMPATIBILITY_PAGE },
-    { "Writer",             "AutoCaption",          RID_SW_TP_OPTCAPTION_PAGE },
-    { "Writer",             "MailMerge",            RID_SW_TP_MAILCONFIG },
-    { "WriterWeb",          nullptr,                SID_SW_ONLINEOPTIONS },
-    { "WriterWeb",          "View",                 RID_SW_TP_HTML_CONTENT_OPT },
-    { "WriterWeb",          "FormattingAids",       RID_SW_TP_HTML_OPTSHDWCRSR },
-    { "WriterWeb",          "Grid",                 RID_SW_TP_HTML_OPTGRID_PAGE },
-    { "WriterWeb",          "Print",                RID_SW_TP_HTML_OPTPRINT_PAGE },
-    { "WriterWeb",          "Table",                RID_SW_TP_HTML_OPTTABLE_PAGE },
-    { "WriterWeb",          "Background",           RID_SW_TP_BACKGROUND },
-    { "Math",               nullptr,                SID_SM_EDITOPTIONS },
-    { "Math",               "Settings",             SID_SM_TP_PRINTOPTIONS },
-    { "Calc",               nullptr,                SID_SC_EDITOPTIONS },
-    { "Calc",               "General",              SID_SC_TP_LAYOUT },
-    { "Calc",               "View",                 SID_SC_TP_CONTENT },
-    { "Calc",               "Calculate",            SID_SC_TP_CALC },
-    { "Calc",               "Formula",              SID_SC_TP_FORMULA },
-    { "Calc",               "SortLists",            SID_SC_TP_USERLISTS },
-    { "Calc",               "Changes",              SID_SC_TP_CHANGES },
-    { "Calc",               "Compatibility",        SID_SC_TP_COMPATIBILITY },
-    { "Calc",               "Grid",                 SID_SC_TP_GRID },
-    { "Calc",               "Print",                RID_SC_TP_PRINT },
-    { "Impress",            nullptr,                SID_SD_EDITOPTIONS },
-    { "Impress",            "General",              SID_SI_TP_MISC },
-    { "Impress",            "View",                 SID_SI_TP_CONTENTS },
-    { "Impress",            "Grid",                 SID_SI_TP_SNAP },
-    { "Impress",            "Print",                SID_SI_TP_PRINT },
-    { "Draw",               nullptr,                SID_SD_GRAPHIC_OPTIONS },
-    { "Draw",               "General",              SID_SD_TP_MISC },
-    { "Draw",               "View",                 SID_SD_TP_CONTENTS },
-    { "Draw",               "Grid",                 SID_SD_TP_SNAP },
-    { "Draw",               "Print",                SID_SD_TP_PRINT },
-    { "Charts",             nullptr,                SID_SCH_EDITOPTIONS },
-    { "Charts",             "DefaultColors",        RID_OPTPAGE_CHART_DEFCOLORS },
-    { "Base",               nullptr,                SID_SB_STARBASEOPTIONS },
-    { "Base",               "Connections",          SID_SB_CONNECTIONPOOLING },
-    { "Base",               "Databases",            SID_SB_DBREGISTEROPTIONS },
-    { nullptr,                 nullptr,             0 }
+    { u"ProductName"_ustr,        u""_ustr,                SID_GENERAL_OPTIONS },
+    { u"ProductName"_ustr,        u"UserData"_ustr,             RID_SFXPAGE_GENERAL },
+    { u"ProductName"_ustr,        u"General"_ustr,              OFA_TP_MISC },
+    { u"ProductName"_ustr,        u"View"_ustr,                 OFA_TP_VIEW },
+    { u"ProductName"_ustr,        u"Print"_ustr,                RID_SFXPAGE_PRINTOPTIONS },
+    { u"ProductName"_ustr,        u"Paths"_ustr,                RID_SFXPAGE_PATH },
+    { u"ProductName"_ustr,        u"Fonts"_ustr,                RID_SVX_FONT_SUBSTITUTION },
+    { u"ProductName"_ustr,        u"Security"_ustr,             RID_SVXPAGE_INET_SECURITY },
+    { u"ProductName"_ustr,        u"Appearance"_ustr,           RID_SVXPAGE_APPEARANCE },
+    { u"ProductName"_ustr,        u"Accessibility"_ustr,        RID_SVXPAGE_ACCESSIBILITYCONFIG },
+    { u"ProductName"_ustr,        u"Java"_ustr,                 RID_SVXPAGE_OPTIONS_JAVA },
+    { u"ProductName"_ustr,        u"BasicIDEOptions"_ustr,      RID_SVXPAGE_BASICIDE_OPTIONS },
+    { u"ProductName"_ustr,        u"OnlineUpdate"_ustr,         RID_SVXPAGE_ONLINEUPDATE },
+    { u"LanguageSettings"_ustr,   u""_ustr,                SID_LANGUAGE_OPTIONS },
+    { u"LanguageSettings"_ustr,   u"Languages"_ustr,            OFA_TP_LANGUAGES  },
+    { u"LanguageSettings"_ustr,   u"WritingAids"_ustr,          RID_SFXPAGE_LINGU },
+    { u"LanguageSettings"_ustr,   u"SearchingInJapanese"_ustr,  RID_SVXPAGE_JSEARCH_OPTIONS },
+    { u"LanguageSettings"_ustr,   u"AsianLayout"_ustr,          RID_SVXPAGE_ASIAN_LAYOUT },
+    { u"LanguageSettings"_ustr,   u"ComplexTextLayout"_ustr,    RID_SVXPAGE_OPTIONS_CTL },
+    { u"Internet"_ustr,           u""_ustr,                SID_INET_DLG },
+    { u"Internet"_ustr,           u"Proxy"_ustr,                RID_SVXPAGE_INET_PROXY },
+    { u"Internet"_ustr,           u"Email"_ustr,                RID_SVXPAGE_INET_MAIL },
+    { u"LoadSave"_ustr,           u""_ustr,                SID_FILTER_DLG },
+    { u"LoadSave"_ustr,           u"General"_ustr,              RID_SFXPAGE_SAVE },
+    { u"LoadSave"_ustr,           u"VBAProperties"_ustr,        SID_OPTFILTER_MSOFFICE },
+    { u"LoadSave"_ustr,           u"MicrosoftOffice"_ustr,      RID_OFAPAGE_MSFILTEROPT2 },
+    { u"LoadSave"_ustr,           u"HTMLCompatibility"_ustr,    RID_OFAPAGE_HTMLOPT },
+    { u"Writer"_ustr,             u""_ustr,                SID_SW_EDITOPTIONS },
+    { u"Writer"_ustr,             u"General"_ustr,              RID_SW_TP_OPTLOAD_PAGE },
+    { u"Writer"_ustr,             u"View"_ustr,                 RID_SW_TP_CONTENT_OPT },
+    { u"Writer"_ustr,             u"FormattingAids"_ustr,       RID_SW_TP_OPTSHDWCRSR },
+    { u"Writer"_ustr,             u"Grid"_ustr,                 RID_SVXPAGE_GRID },
+    { u"Writer"_ustr,             u"BasicFontsWestern"_ustr,    RID_SW_TP_STD_FONT },
+    { u"Writer"_ustr,             u"BasicFontsAsian"_ustr,      RID_SW_TP_STD_FONT_CJK },
+    { u"Writer"_ustr,             u"BasicFontsCTL"_ustr,        RID_SW_TP_STD_FONT_CTL },
+    { u"Writer"_ustr,             u"Print"_ustr,                RID_SW_TP_OPTPRINT_PAGE },
+    { u"Writer"_ustr,             u"Table"_ustr,                RID_SW_TP_OPTTABLE_PAGE },
+    { u"Writer"_ustr,             u"Changes"_ustr,              RID_SW_TP_REDLINE_OPT },
+    { u"Writer"_ustr,             u"Comparison"_ustr,           RID_SW_TP_COMPARISON_OPT },
+    { u"Writer"_ustr,             u"Compatibility"_ustr,        RID_SW_TP_OPTCOMPATIBILITY_PAGE },
+    { u"Writer"_ustr,             u"AutoCaption"_ustr,          RID_SW_TP_OPTCAPTION_PAGE },
+    { u"Writer"_ustr,             u"MailMerge"_ustr,            RID_SW_TP_MAILCONFIG },
+    { u"WriterWeb"_ustr,          u""_ustr,                SID_SW_ONLINEOPTIONS },
+    { u"WriterWeb"_ustr,          u"View"_ustr,                 RID_SW_TP_HTML_CONTENT_OPT },
+    { u"WriterWeb"_ustr,          u"FormattingAids"_ustr,       RID_SW_TP_HTML_OPTSHDWCRSR },
+    { u"WriterWeb"_ustr,          u"Grid"_ustr,                 RID_SW_TP_HTML_OPTGRID_PAGE },
+    { u"WriterWeb"_ustr,          u"Print"_ustr,                RID_SW_TP_HTML_OPTPRINT_PAGE },
+    { u"WriterWeb"_ustr,          u"Table"_ustr,                RID_SW_TP_HTML_OPTTABLE_PAGE },
+    { u"Math"_ustr,               u""_ustr,                SID_SM_EDITOPTIONS },
+    { u"Math"_ustr,               u"Settings"_ustr,             SID_SM_TP_PRINTOPTIONS },
+    { u"Calc"_ustr,               u""_ustr,                SID_SC_EDITOPTIONS },
+    { u"Calc"_ustr,               u"General"_ustr,              SID_SC_TP_LAYOUT },
+    { u"Calc"_ustr,               u"View"_ustr,                 SID_SC_TP_CONTENT },
+    { u"Calc"_ustr,               u"Calculate"_ustr,            SID_SC_TP_CALC },
+    { u"Calc"_ustr,               u"Formula"_ustr,              SID_SC_TP_FORMULA },
+    { u"Calc"_ustr,               u"SortLists"_ustr,            SID_SC_TP_USERLISTS },
+    { u"Calc"_ustr,               u"Changes"_ustr,              SID_SC_TP_CHANGES },
+    { u"Calc"_ustr,               u"Compatibility"_ustr,        SID_SC_TP_COMPATIBILITY },
+    { u"Calc"_ustr,               u"Grid"_ustr,                 SID_SC_TP_GRID },
+    { u"Calc"_ustr,               u"Print"_ustr,                RID_SC_TP_PRINT },
+    { u"Impress"_ustr,            u""_ustr,                SID_SD_EDITOPTIONS },
+    { u"Impress"_ustr,            u"General"_ustr,              SID_SI_TP_MISC },
+    { u"Impress"_ustr,            u"View"_ustr,                 SID_SI_TP_CONTENTS },
+    { u"Impress"_ustr,            u"Grid"_ustr,                 SID_SI_TP_SNAP },
+    { u"Impress"_ustr,            u"Print"_ustr,                SID_SI_TP_PRINT },
+    { u"Draw"_ustr,               u""_ustr,                SID_SD_GRAPHIC_OPTIONS },
+    { u"Draw"_ustr,               u"General"_ustr,              SID_SD_TP_MISC },
+    { u"Draw"_ustr,               u"View"_ustr,                 SID_SD_TP_CONTENTS },
+    { u"Draw"_ustr,               u"Grid"_ustr,                 SID_SD_TP_SNAP },
+    { u"Draw"_ustr,               u"Print"_ustr,                SID_SD_TP_PRINT },
+    { u"Charts"_ustr,             u""_ustr,                SID_SCH_EDITOPTIONS },
+    { u"Charts"_ustr,             u"DefaultColors"_ustr,        RID_OPTPAGE_CHART_DEFCOLORS },
+    { u"Base"_ustr,               u""_ustr,                SID_SB_STARBASEOPTIONS },
+    { u"Base"_ustr,               u"Connections"_ustr,          SID_SB_CONNECTIONPOOLING },
+    { u"Base"_ustr,               u"Databases"_ustr,            SID_SB_DBREGISTEROPTIONS },
 };
 
 static bool lcl_getStringFromID( sal_uInt16 _nPageId, OUString& _rGroupName, OUString& _rPageName )
 {
     bool bRet = false;
 
-    sal_uInt16 nIdx = 0;
-    while ( OptionsMap_Impl[nIdx].m_pGroupName != nullptr )
+    for (const auto & rMapping : OptionsMap_Impl )
     {
-        if ( _nPageId == OptionsMap_Impl[nIdx].m_nPageId )
+        if ( _nPageId == rMapping.m_nPageId )
         {
             bRet = true;
-            _rGroupName = OUString::createFromAscii( OptionsMap_Impl[nIdx].m_pGroupName );
-            if ( OptionsMap_Impl[nIdx].m_pPageName != nullptr )
-                _rPageName = OUString::createFromAscii( OptionsMap_Impl[nIdx].m_pPageName );
+            _rGroupName = rMapping.m_aGroupName;
+            if ( !rMapping.m_aPageName.isEmpty() )
+                _rPageName = rMapping.m_aPageName;
             break;
         }
-        ++nIdx;
     }
 
     return bRet;
@@ -461,13 +454,13 @@ struct OptionsPageIdInfo
 
 // Basic ctor with common initialization
 OfaTreeOptionsDialog::OfaTreeOptionsDialog(weld::Window* pParent, bool fromExtensionManager)
-    : SfxOkDialogController(pParent, "cui/ui/optionsdialog.ui", "OptionsDialog")
-    , xOkPB(m_xBuilder->weld_button("ok"))
-    , xApplyPB(m_xBuilder->weld_button("apply"))
-    , xBackPB(m_xBuilder->weld_button("revert"))
-    , xTreeLB(m_xBuilder->weld_tree_view("pages"))
-    , xTabBox(m_xBuilder->weld_container("box"))
-    , m_xSearchEdit(m_xBuilder->weld_entry("searchEntry"))
+    : SfxOkDialogController(pParent, u"cui/ui/optionsdialog.ui"_ustr, u"OptionsDialog"_ustr)
+    , xOkPB(m_xBuilder->weld_button(u"ok"_ustr))
+    , xApplyPB(m_xBuilder->weld_button(u"apply"_ustr))
+    , xBackPB(m_xBuilder->weld_button(u"revert"_ustr))
+    , xTreeLB(m_xBuilder->weld_tree_view(u"pages"_ustr))
+    , xTabBox(m_xBuilder->weld_container(u"box"_ustr))
+    , m_xSearchEdit(m_xBuilder->weld_entry(u"searchEntry"_ustr))
     , m_pParent(pParent)
     , m_aUpdateDataTimer("OfaTreeOptionsDialog UpdateDataTimer")
     , bIsFirtsInitialize(true)
@@ -478,17 +471,17 @@ OfaTreeOptionsDialog::OfaTreeOptionsDialog(weld::Window* pParent, bool fromExten
     , bNeedsRestart(false)
     , eRestartReason(svtools::RESTART_REASON_NONE)
 {
-    Size aSize(xTreeLB->get_approximate_digit_width() * 82, xTreeLB->get_height_rows(30));
-#if HAVE_FEATURE_GPGME
-    // tdf#115015: make enough space for crypto settings (approx. 14 text edits + padding)
-    aSize.setHeight((weld::GetMinimumEditHeight() + 6) * 14);
-#endif
+    Size aSize(xTreeLB->get_approximate_digit_width() * 100, xTreeLB->get_height_rows(30));
+    AbsoluteScreenPixelRectangle aScreen
+        = Application::GetScreenPosSizePixel(Application::GetDisplayBuiltInScreen());
+    // clamp height to max of 80% of screen height to make buttons accessible on smaller screens
+    aSize.setHeight(std::min(static_cast<tools::Long>(aScreen.GetHeight() * 0.8), aSize.Height()));
     xTabBox->set_size_request(aSize.Width(), aSize.Height());
     xTreeLB->set_size_request(xTreeLB->get_approximate_digit_width() * 35, aSize.Height());
 
     // Init tree and handler
     xTreeLB->set_help_id(HID_OFADLG_TREELISTBOX);
-    xTreeLB->connect_changed(LINK(this, OfaTreeOptionsDialog, ShowPageHdl_Impl));
+    xTreeLB->connect_selection_changed(LINK(this, OfaTreeOptionsDialog, ShowPageHdl_Impl));
     xBackPB->connect_clicked(LINK(this, OfaTreeOptionsDialog, BackHdl_Impl));
     xApplyPB->connect_clicked(LINK(this, OfaTreeOptionsDialog, ApplyHdl_Impl));
     xOkPB->connect_clicked(LINK(this, OfaTreeOptionsDialog, ApplyHdl_Impl));
@@ -526,7 +519,7 @@ OfaTreeOptionsDialog::OfaTreeOptionsDialog(weld::Window* pParent, std::u16string
     ActivateLastSelection();
 }
 
-OfaTreeOptionsDialog::~OfaTreeOptionsDialog()
+void OfaTreeOptionsDialog::ImplDestroy()
 {
     xCurrentPageEntry.reset();
 
@@ -580,6 +573,11 @@ OfaTreeOptionsDialog::~OfaTreeOptionsDialog()
         bEntry = xTreeLB->iter_next(*xEntry);
     }
     deleteGroupNames();
+}
+
+OfaTreeOptionsDialog::~OfaTreeOptionsDialog()
+{
+    suppress_fun_call_w_exception(ImplDestroy());
 }
 
 OptionsPageInfo* OfaTreeOptionsDialog::AddTabPage(
@@ -790,8 +788,9 @@ IMPL_LINK_NOARG(OfaTreeOptionsDialog, SearchUpdateHdl, weld::Entry&, void)
 
 IMPL_LINK_NOARG(OfaTreeOptionsDialog, ImplUpdateDataHdl, Timer*, void)
 {
-    // initializeFirstNDialog() can take a long time, show wait cursor and disable input
-    std::unique_ptr<weld::WaitObject> xWait(m_pParent ? new weld::WaitObject(m_pParent) : nullptr);
+    // initializeAllDialogs() can take a long time, show wait cursor and disable input
+    m_xSearchEdit->set_editable(false);
+    m_xSearchEdit->set_busy_cursor(true);
 
     // Pause redraw
     xTreeLB->freeze();
@@ -801,7 +800,7 @@ IMPL_LINK_NOARG(OfaTreeOptionsDialog, ImplUpdateDataHdl, Timer*, void)
         m_xSearchEdit->freeze();
         xTreeLB->hide();
 
-        initializeFirstNDialog();
+        initializeAllDialogs();
 
         m_xSearchEdit->thaw();
         xTreeLB->show();
@@ -818,6 +817,9 @@ IMPL_LINK_NOARG(OfaTreeOptionsDialog, ImplUpdateDataHdl, Timer*, void)
     // select first child of first node after the search done
     if (nMatchFound != -1)
         selectFirstEntry();
+
+    m_xSearchEdit->set_editable(true);
+    m_xSearchEdit->set_busy_cursor(false);
 }
 
 void OfaTreeOptionsDialog::selectFirstEntry()
@@ -847,10 +849,9 @@ void OfaTreeOptionsDialog::selectFirstEntry()
     }
 }
 
-void OfaTreeOptionsDialog::initializeFirstNDialog(sal_Int16 nNumberOfNode)
+void OfaTreeOptionsDialog::initializeAllDialogs()
 {
     std::unique_ptr<weld::TreeIter> xEntry;
-    sal_Int16 nCount = 0;
 
     std::unique_ptr<weld::TreeIter> xTemp = xTreeLB->make_iterator();
     bool bTemp = xTreeLB->get_iter_first(*xTemp);
@@ -877,12 +878,6 @@ void OfaTreeOptionsDialog::initializeFirstNDialog(sal_Int16 nNumberOfNode)
             }
         }
 
-        /* if nNumberOfNode is -1 (which is the default value if no parameter provided),
-           this function will initialize all dialogs since nCount always greater than -1 */
-        if (nCount == nNumberOfNode)
-            break;
-
-        ++nCount;
         bTemp = xTreeLB->iter_next(*xTemp);
     }
 }
@@ -1187,15 +1182,6 @@ void OfaTreeOptionsDialog::ActivateLastSelection()
     xTreeLB->select(*xEntry);
     m_xSearchEdit->grab_focus();
     SelectHdl_Impl();
-
-    // initializeFirstNDialog() can take a long time, show wait cursor
-    std::unique_ptr<weld::WaitObject> xWait(m_pParent ? new weld::WaitObject(m_pParent) : nullptr);
-
-    /* initialize first 25 dialogs which are almost half of the dialogs
-    in a row while Options dialog opens. then clear&reselect to avoid UI test failures. */
-    initializeFirstNDialog(25);
-    clearOptionsDialog();
-    SelectHdl_Impl();
 }
 
 void OfaTreeOptionsDialog::InitItemSets(OptionsGroupInfo& rGroupInfo)
@@ -1211,7 +1197,7 @@ void OfaTreeOptionsDialog::InitItemSets(OptionsGroupInfo& rGroupInfo)
 }
 
 void OfaTreeOptionsDialog::initializeCurrentDialog(OptionsPageInfo*& pPageInfo,
-                                                   std::unique_ptr<weld::TreeIter>& xEntry)
+                                                   const std::unique_ptr<weld::TreeIter>& xEntry)
 {
     std::unique_ptr<weld::TreeIter> xParent(xTreeLB->make_iterator(xEntry.get()));
     bool bParent = xTreeLB->iter_parent(*xParent);
@@ -1480,15 +1466,15 @@ std::optional<SfxItemSet> OfaTreeOptionsDialog::CreateItemSet( sal_uInt16 nId )
 
                 SfxItemState aState(pDispatch->QueryState(SID_ATTR_LANGUAGE, aResult));
                 if(SfxItemState::DEFAULT <= aState)
-                    pRet->Put(*aResult.getItem(), SID_ATTR_LANGUAGE);
+                    pRet->Put(*aResult.getItem());
 
                 aState = pDispatch->QueryState(SID_ATTR_CHAR_CJK_LANGUAGE, aResult);
                 if(SfxItemState::DEFAULT <= aState)
-                    pRet->Put(*aResult.getItem(), SID_ATTR_CHAR_CJK_LANGUAGE);
+                    pRet->Put(*aResult.getItem());
 
                 aState = pDispatch->QueryState(SID_ATTR_CHAR_CTL_LANGUAGE, aResult);
                 if(SfxItemState::DEFAULT <= aState)
-                    pRet->Put(*aResult.getItem(), SID_ATTR_CHAR_CTL_LANGUAGE);
+                    pRet->Put(*aResult.getItem());
 
                 pRet->Put(aHyphen);
 
@@ -1635,7 +1621,7 @@ void OfaTreeOptionsDialog::ApplyLanguageOptions(const SfxItemSet& rSet)
     bool bSaveSpellCheck = false;
     const SfxPoolItem* pItem = nullptr;
 
-    Reference< XComponentContext >  xContext( ::comphelper::getProcessComponentContext() );
+    const Reference< XComponentContext >&  xContext( ::comphelper::getProcessComponentContext() );
     Reference< XLinguProperties >  xProp = LinguProperties::create( xContext );
     if ( const SfxHyphenRegionItem* pHyphenItem = rSet.GetItemIfSet(SID_ATTR_HYPHENREGION, false ) )
     {
@@ -1726,20 +1712,16 @@ OUString OfaTreeOptionsDialog::getCurrentFactory_Impl( const Reference< XFrame >
 
 void OfaTreeOptionsDialog::generalOptions(const std::vector<sal_uInt16>& vPageId)
 {
-    sal_uInt16 nGroup = 0;
     SvtOptionsDialogOptions aOptionsDlgOpt;
-    sal_uInt16 nPageId = 0;
-
     if ( !lcl_isOptionHidden( SID_GENERAL_OPTIONS, aOptionsDlgOpt ) )
     {
         setGroupName(u"ProductName", CuiResId(SID_GENERAL_OPTIONS_RES[0].first));
-        nGroup = AddGroup(CuiResId(SID_GENERAL_OPTIONS_RES[0].first), nullptr, nullptr, SID_GENERAL_OPTIONS );
-        const sal_uInt16 nEnd = static_cast<sal_uInt16>(std::size(SID_GENERAL_OPTIONS_RES));
+        sal_uInt16 nGroup = AddGroup(CuiResId(SID_GENERAL_OPTIONS_RES[0].first), nullptr, nullptr, SID_GENERAL_OPTIONS );
 
-        for (sal_uInt16 i = 1; i < nEnd; ++i)
+        for (size_t i = 1; i < std::size(SID_GENERAL_OPTIONS_RES); ++i)
         {
             OUString sNewTitle = CuiResId(SID_GENERAL_OPTIONS_RES[i].first);
-            nPageId = SID_GENERAL_OPTIONS_RES[i].second;
+            sal_uInt16 nPageId = SID_GENERAL_OPTIONS_RES[i].second;
             if ( lcl_isOptionHidden( nPageId, aOptionsDlgOpt ) )
                 continue;
 
@@ -1751,14 +1733,7 @@ void OfaTreeOptionsDialog::generalOptions(const std::vector<sal_uInt16>& vPageId
                 continue;
             }
 
-            // Disable Basic IDE options, if experimental features are not enabled
-            if( RID_SVXPAGE_BASICIDE_OPTIONS == nPageId )
-            {
-                if( ! officecfg::Office::Common::Misc::ExperimentalMode::get() )
-                    continue;
-            }
-
-            if (vPageId.size() != 0)
+            if (!vPageId.empty())
             {
                 if (std::find(vPageId.begin(), vPageId.end(), nPageId) != vPageId.end())
                     AddTabPage(nPageId, sNewTitle, nGroup);
@@ -1771,20 +1746,17 @@ void OfaTreeOptionsDialog::generalOptions(const std::vector<sal_uInt16>& vPageId
 
 void OfaTreeOptionsDialog::loadAndSaveOptions(const std::vector<sal_uInt16>& vPageId)
 {
-    sal_uInt16 nGroup = 0;
     SvtOptionsDialogOptions aOptionsDlgOpt;
-    sal_uInt16 nPageId = 0;
-
     if ( !lcl_isOptionHidden( SID_FILTER_DLG, aOptionsDlgOpt ) )
     {
         setGroupName( u"LoadSave", CuiResId(SID_FILTER_DLG_RES[0].first) );
-        nGroup = AddGroup( CuiResId(SID_FILTER_DLG_RES[0].first), nullptr, nullptr, SID_FILTER_DLG );
+        sal_uInt16 nGroup = AddGroup( CuiResId(SID_FILTER_DLG_RES[0].first), nullptr, nullptr, SID_FILTER_DLG );
         for ( size_t i = 1; i < std::size(SID_FILTER_DLG_RES); ++i )
         {
-            nPageId = static_cast<sal_uInt16>(SID_FILTER_DLG_RES[i].second);
+            sal_uInt16 nPageId = SID_FILTER_DLG_RES[i].second;
             if ( !lcl_isOptionHidden( nPageId, aOptionsDlgOpt ) )
             {
-                if (vPageId.size() != 0)
+                if (!vPageId.empty())
                 {
                     if (std::find(vPageId.begin(), vPageId.end(), nPageId) != vPageId.end())
                         AddTabPage(nPageId, CuiResId(SID_FILTER_DLG_RES[i].first), nGroup);
@@ -1798,18 +1770,14 @@ void OfaTreeOptionsDialog::loadAndSaveOptions(const std::vector<sal_uInt16>& vPa
 
 void OfaTreeOptionsDialog::languageOptions(const std::vector<sal_uInt16>& vPageId)
 {
-    sal_uInt16 nGroup = 0;
     SvtOptionsDialogOptions aOptionsDlgOpt;
-    sal_uInt16 nPageId = 0;
-
-    SvtCTLOptions aCTLLanguageOptions;
     if ( !lcl_isOptionHidden( SID_LANGUAGE_OPTIONS, aOptionsDlgOpt ) )
     {
         setGroupName(u"LanguageSettings", CuiResId(SID_LANGUAGE_OPTIONS_RES[0].first));
-        nGroup = AddGroup(CuiResId(SID_LANGUAGE_OPTIONS_RES[0].first), nullptr, nullptr, SID_LANGUAGE_OPTIONS );
+        sal_uInt16 nGroup = AddGroup(CuiResId(SID_LANGUAGE_OPTIONS_RES[0].first), nullptr, nullptr, SID_LANGUAGE_OPTIONS );
         for (size_t i = 1; i < std::size(SID_LANGUAGE_OPTIONS_RES); ++i)
         {
-            nPageId = static_cast<sal_uInt16>(SID_LANGUAGE_OPTIONS_RES[i].second);
+            sal_uInt16 nPageId = SID_LANGUAGE_OPTIONS_RES[i].second;
             if ( lcl_isOptionHidden( nPageId, aOptionsDlgOpt ) )
                 continue;
 
@@ -1824,7 +1792,7 @@ void OfaTreeOptionsDialog::languageOptions(const std::vector<sal_uInt16>& vPageI
                  ( RID_SVXPAGE_ASIAN_LAYOUT != nPageId    || SvtCJKOptions::IsAsianTypographyEnabled() ) &&
                  ( RID_SVXPAGE_OPTIONS_CTL != nPageId     || SvtCTLOptions::IsCTLFontEnabled() ) )
             {
-                if (vPageId.size() != 0)
+                if (!vPageId.empty())
                 {
                     if (std::find(vPageId.begin(), vPageId.end(), nPageId) != vPageId.end())
                         AddTabPage(nPageId, CuiResId(SID_LANGUAGE_OPTIONS_RES[i].first), nGroup);
@@ -1838,40 +1806,35 @@ void OfaTreeOptionsDialog::languageOptions(const std::vector<sal_uInt16>& vPageI
 
 void OfaTreeOptionsDialog::writerOptions(const std::vector<sal_uInt16>& vPageId)
 {
-    sal_uInt16 nGroup = 0;
-    SvtOptionsDialogOptions aOptionsDlgOpt;
-    sal_uInt16 nPageId = 0;
-
-    OUString aFactory = getCurrentFactory_Impl( m_xFrame );
-    DBG_ASSERT( GetModuleIdentifier( m_xFrame ) == aFactory, "S H I T!!!" );
-
-    SvtModuleOptions aModuleOpt;
-    if ( aModuleOpt.IsModuleInstalled( SvtModuleOptions::EModule::WRITER ) )
+    if (SvtModuleOptions().IsWriterInstalled())
     {
         // text document
+        OUString aFactory = getCurrentFactory_Impl(m_xFrame);
+        DBG_ASSERT(GetModuleIdentifier(m_xFrame) == aFactory, "This should not happen");
         if (   aFactory == "com.sun.star.text.TextDocument"
             || aFactory == "com.sun.star.text.WebDocument"
             || aFactory == "com.sun.star.text.GlobalDocument" )
         {
-            SfxModule* pSwMod = SfxApplication::GetModule(SfxToolsModule::Writer);
+            SvtOptionsDialogOptions aOptionsDlgOpt;
             if ( !lcl_isOptionHidden( SID_SW_EDITOPTIONS, aOptionsDlgOpt ) )
             {
                 if ( aFactory == "com.sun.star.text.WebDocument" )
                     setGroupName( u"WriterWeb", CuiResId(SID_SW_EDITOPTIONS_RES[0].first) );
                 else
                     setGroupName( u"Writer", CuiResId(SID_SW_EDITOPTIONS_RES[0].first) );
-                nGroup = AddGroup(CuiResId(SID_SW_EDITOPTIONS_RES[0].first), pSwMod, pSwMod, SID_SW_EDITOPTIONS );
+                SfxModule* pSwMod = SfxApplication::GetModule(SfxToolsModule::Writer);
+                sal_uInt16 nGroup = AddGroup(CuiResId(SID_SW_EDITOPTIONS_RES[0].first), pSwMod, pSwMod, SID_SW_EDITOPTIONS );
                 SvtCTLOptions aCTLLanguageOptions;
                 for ( size_t i = 1; i < std::size(SID_SW_EDITOPTIONS_RES); ++i )
                 {
-                    nPageId = static_cast<sal_uInt16>(SID_SW_EDITOPTIONS_RES[i].second);
+                    sal_uInt16 nPageId = SID_SW_EDITOPTIONS_RES[i].second;
                     if ( lcl_isOptionHidden( nPageId, aOptionsDlgOpt ) )
                         continue;
                     if ( ( RID_SW_TP_STD_FONT_CJK != nPageId || SvtCJKOptions::IsCJKFontEnabled() ) &&
                          ( RID_SW_TP_STD_FONT_CTL != nPageId || SvtCTLOptions::IsCTLFontEnabled() ) &&
                          ( RID_SW_TP_MAILCONFIG != nPageId || MailMergeCfgIsEmailSupported() ) )
                     {
-                        if (vPageId.size() != 0)
+                        if (!vPageId.empty())
                         {
                             if (std::find(vPageId.begin(), vPageId.end(), nPageId) != vPageId.end())
                                 AddTabPage(nPageId, CuiResId(SID_SW_EDITOPTIONS_RES[i].first),
@@ -1882,14 +1845,14 @@ void OfaTreeOptionsDialog::writerOptions(const std::vector<sal_uInt16>& vPageId)
                     }
                 }
 #ifdef DBG_UTIL
-                if (vPageId.size() != 0)
+                if (!vPageId.empty())
                 {
                     if (std::find(vPageId.begin(), vPageId.end(), RID_SW_TP_OPTTEST_PAGE)
                         != vPageId.end())
-                        AddTabPage(RID_SW_TP_OPTTEST_PAGE, "Internal Test", nGroup);
+                        AddTabPage(RID_SW_TP_OPTTEST_PAGE, u"Internal Test"_ustr, nGroup);
                 }
                 else
-                    AddTabPage(RID_SW_TP_OPTTEST_PAGE, "Internal Test", nGroup);
+                    AddTabPage(RID_SW_TP_OPTTEST_PAGE, u"Internal Test"_ustr, nGroup);
 #endif
             }
         }
@@ -1898,33 +1861,27 @@ void OfaTreeOptionsDialog::writerOptions(const std::vector<sal_uInt16>& vPageId)
 
 void OfaTreeOptionsDialog::writerWebOptions(const std::vector<sal_uInt16>& vPageId)
 {
-    sal_uInt16 nGroup = 0;
-    SvtOptionsDialogOptions aOptionsDlgOpt;
-    sal_uInt16 nPageId = 0;
-
-    OUString aFactory = getCurrentFactory_Impl( m_xFrame );
-    DBG_ASSERT( GetModuleIdentifier( m_xFrame ) == aFactory, "S H I T!!!" );
-
-    SvtModuleOptions aModuleOpt;
-    if ( aModuleOpt.IsModuleInstalled( SvtModuleOptions::EModule::WRITER ) )
+    if (SvtModuleOptions().IsWriterInstalled())
     {
         // text document
+        OUString aFactory = getCurrentFactory_Impl(m_xFrame);
+        DBG_ASSERT(GetModuleIdentifier(m_xFrame) == aFactory, "This should not happen");
         if (   aFactory == "com.sun.star.text.TextDocument"
             || aFactory == "com.sun.star.text.WebDocument"
             || aFactory == "com.sun.star.text.GlobalDocument" )
         {
-            SfxModule* pSwMod = SfxApplication::GetModule(SfxToolsModule::Writer);
-
             // HTML documents
+            SvtOptionsDialogOptions aOptionsDlgOpt;
             if ( !lcl_isOptionHidden( SID_SW_ONLINEOPTIONS, aOptionsDlgOpt ) )
             {
-                nGroup = AddGroup(CuiResId(SID_SW_ONLINEOPTIONS_RES[0].first), pSwMod, pSwMod, SID_SW_ONLINEOPTIONS );
+                SfxModule* pSwMod = SfxApplication::GetModule(SfxToolsModule::Writer);
+                sal_uInt16 nGroup = AddGroup(CuiResId(SID_SW_ONLINEOPTIONS_RES[0].first), pSwMod, pSwMod, SID_SW_ONLINEOPTIONS );
                 for( size_t i = 1; i < std::size(SID_SW_ONLINEOPTIONS_RES); ++i )
                 {
-                    nPageId = static_cast<sal_uInt16>(SID_SW_ONLINEOPTIONS_RES[i].second);
+                    sal_uInt16 nPageId = SID_SW_ONLINEOPTIONS_RES[i].second;
                     if ( !lcl_isOptionHidden( nPageId, aOptionsDlgOpt ) )
                     {
-                        if (vPageId.size() != 0)
+                        if (!vPageId.empty())
                         {
                             if (std::find(vPageId.begin(), vPageId.end(), nPageId) != vPageId.end())
                                 AddTabPage(nPageId, CuiResId(SID_SW_ONLINEOPTIONS_RES[i].first),
@@ -1936,14 +1893,14 @@ void OfaTreeOptionsDialog::writerWebOptions(const std::vector<sal_uInt16>& vPage
                     }
                 }
 #ifdef DBG_UTIL
-                if (vPageId.size() != 0)
+                if (!vPageId.empty())
                 {
                     if (std::find(vPageId.begin(), vPageId.end(), RID_SW_TP_OPTTEST_PAGE)
                         != vPageId.end())
-                        AddTabPage(RID_SW_TP_OPTTEST_PAGE, "Internal Test", nGroup);
+                        AddTabPage(RID_SW_TP_OPTTEST_PAGE, u"Internal Test"_ustr, nGroup);
                 }
                 else
-                    AddTabPage(RID_SW_TP_OPTTEST_PAGE, "Internal Test", nGroup);
+                    AddTabPage(RID_SW_TP_OPTTEST_PAGE, u"Internal Test"_ustr, nGroup);
 #endif
             }
         }
@@ -1952,32 +1909,26 @@ void OfaTreeOptionsDialog::writerWebOptions(const std::vector<sal_uInt16>& vPage
 
 void OfaTreeOptionsDialog::calcOptions(const std::vector<sal_uInt16>& vPageId)
 {
-    sal_uInt16 nGroup = 0;
-    SvtOptionsDialogOptions aOptionsDlgOpt;
-    sal_uInt16 nPageId = 0;
-
-    OUString aFactory = getCurrentFactory_Impl( m_xFrame );
-    DBG_ASSERT( GetModuleIdentifier( m_xFrame ) == aFactory, "S H I T!!!" );
-
-    SvtModuleOptions aModuleOpt;
     // Calc options
-    if ( aModuleOpt.IsModuleInstalled( SvtModuleOptions::EModule::CALC ) )
+    if (SvtModuleOptions().IsCalcInstalled())
     {
+        OUString aFactory = getCurrentFactory_Impl(m_xFrame);
+        DBG_ASSERT(GetModuleIdentifier(m_xFrame) == aFactory, "This should not happen");
         if ( aFactory == "com.sun.star.sheet.SpreadsheetDocument" )
         {
+            SvtOptionsDialogOptions aOptionsDlgOpt;
             if ( !lcl_isOptionHidden( SID_SC_EDITOPTIONS, aOptionsDlgOpt ) )
             {
                 SfxModule* pScMod = SfxApplication::GetModule( SfxToolsModule::Calc );
                 setGroupName( u"Calc", CuiResId(SID_SC_EDITOPTIONS_RES[0].first) );
-                nGroup = AddGroup( CuiResId(SID_SC_EDITOPTIONS_RES[0].first), pScMod, pScMod, SID_SC_EDITOPTIONS );
-                const sal_uInt16 nCount = static_cast<sal_uInt16>(std::size(SID_SC_EDITOPTIONS_RES));
-                for ( sal_uInt16 i = 1; i < nCount; ++i )
+                sal_uInt16 nGroup = AddGroup( CuiResId(SID_SC_EDITOPTIONS_RES[0].first), pScMod, pScMod, SID_SC_EDITOPTIONS );
+                for (size_t i = 1; i < std::size(SID_SC_EDITOPTIONS_RES); ++i)
                 {
-                    nPageId = static_cast<sal_uInt16>(SID_SC_EDITOPTIONS_RES[i].second);
+                    sal_uInt16 nPageId = SID_SC_EDITOPTIONS_RES[i].second;
                     if ( lcl_isOptionHidden( nPageId, aOptionsDlgOpt ) )
                         continue;
 
-                    if (vPageId.size() != 0)
+                    if (!vPageId.empty())
                     {
                         if (std::find(vPageId.begin(), vPageId.end(), nPageId) != vPageId.end())
                             AddTabPage(nPageId, CuiResId(SID_SC_EDITOPTIONS_RES[i].first), nGroup);
@@ -1992,32 +1943,26 @@ void OfaTreeOptionsDialog::calcOptions(const std::vector<sal_uInt16>& vPageId)
 
 void OfaTreeOptionsDialog::impressOptions(const std::vector<sal_uInt16>& vPageId)
 {
-    sal_uInt16 nGroup = 0;
-    SvtOptionsDialogOptions aOptionsDlgOpt;
-    sal_uInt16 nPageId = 0;
-
-    OUString aFactory = getCurrentFactory_Impl( m_xFrame );
-    DBG_ASSERT( GetModuleIdentifier( m_xFrame ) == aFactory, "S H I T!!!" );
-    SvtModuleOptions aModuleOpt;
-
     // Impress options
-    SfxModule* pSdMod = SfxApplication::GetModule( SfxToolsModule::Draw );
-    if ( aModuleOpt.IsModuleInstalled( SvtModuleOptions::EModule::IMPRESS ) )
+    if (SvtModuleOptions().IsImpressInstalled())
     {
+        OUString aFactory = getCurrentFactory_Impl(m_xFrame);
+        DBG_ASSERT(GetModuleIdentifier(m_xFrame) == aFactory, "This should not happen");
         if ( aFactory == "com.sun.star.presentation.PresentationDocument" )
         {
+            SvtOptionsDialogOptions aOptionsDlgOpt;
             if ( !lcl_isOptionHidden( SID_SD_EDITOPTIONS, aOptionsDlgOpt ) )
             {
+                SfxModule* pSdMod = SfxApplication::GetModule(SfxToolsModule::Draw);
                 setGroupName( u"Impress", CuiResId(SID_SD_EDITOPTIONS_RES[0].first) );
-                nGroup = AddGroup( CuiResId(SID_SD_EDITOPTIONS_RES[0].first), pSdMod, pSdMod, SID_SD_EDITOPTIONS );
-                const sal_uInt16 nCount = static_cast<sal_uInt16>(std::size(SID_SD_EDITOPTIONS_RES));
-                for ( sal_uInt16 i = 1; i < nCount; ++i )
+                sal_uInt16 nGroup = AddGroup( CuiResId(SID_SD_EDITOPTIONS_RES[0].first), pSdMod, pSdMod, SID_SD_EDITOPTIONS );
+                for (size_t i = 1; i < std::size(SID_SD_EDITOPTIONS_RES); ++i)
                 {
-                    nPageId = static_cast<sal_uInt16>(SID_SD_EDITOPTIONS_RES[i].second);
+                    sal_uInt16 nPageId = SID_SD_EDITOPTIONS_RES[i].second;
                     if ( lcl_isOptionHidden( nPageId, aOptionsDlgOpt ) )
                         continue;
 
-                    if (vPageId.size() != 0)
+                    if (!vPageId.empty())
                     {
                         if (std::find(vPageId.begin(), vPageId.end(), nPageId) != vPageId.end())
                             AddTabPage(nPageId, CuiResId(SID_SD_EDITOPTIONS_RES[i].first), nGroup);
@@ -2032,32 +1977,26 @@ void OfaTreeOptionsDialog::impressOptions(const std::vector<sal_uInt16>& vPageId
 
 void OfaTreeOptionsDialog::drawOptions(const std::vector<sal_uInt16>& vPageId)
 {
-    sal_uInt16 nGroup = 0;
-    SvtOptionsDialogOptions aOptionsDlgOpt;
-    sal_uInt16 nPageId = 0;
-
-    OUString aFactory = getCurrentFactory_Impl( m_xFrame );
-    DBG_ASSERT( GetModuleIdentifier( m_xFrame ) == aFactory, "S H I T!!!" );
-    SvtModuleOptions aModuleOpt;
-
     // Draw options
-    SfxModule* pSdMod = SfxApplication::GetModule(SfxToolsModule::Draw);
-    if ( aModuleOpt.IsModuleInstalled( SvtModuleOptions::EModule::DRAW ) )
+    if (SvtModuleOptions().IsDrawInstalled())
     {
+        OUString aFactory = getCurrentFactory_Impl(m_xFrame);
+        DBG_ASSERT(GetModuleIdentifier(m_xFrame) == aFactory, "This should not happen");
         if ( aFactory == "com.sun.star.drawing.DrawingDocument" )
         {
+            SvtOptionsDialogOptions aOptionsDlgOpt;
             if ( !lcl_isOptionHidden( SID_SD_GRAPHIC_OPTIONS, aOptionsDlgOpt ) )
             {
+                SfxModule* pSdMod = SfxApplication::GetModule(SfxToolsModule::Draw);
                 setGroupName( u"Draw", CuiResId(SID_SD_GRAPHIC_OPTIONS_RES[0].first) );
-                nGroup = AddGroup( CuiResId(SID_SD_GRAPHIC_OPTIONS_RES[0].first), pSdMod, pSdMod, SID_SD_GRAPHIC_OPTIONS );
-                const sal_uInt16 nCount = static_cast<sal_uInt16>(std::size(SID_SD_GRAPHIC_OPTIONS_RES));
-                for ( sal_uInt16 i = 1; i < nCount; ++i )
+                sal_uInt16 nGroup = AddGroup( CuiResId(SID_SD_GRAPHIC_OPTIONS_RES[0].first), pSdMod, pSdMod, SID_SD_GRAPHIC_OPTIONS );
+                for (size_t i = 1; i < std::size(SID_SD_GRAPHIC_OPTIONS_RES); ++i)
                 {
-                    nPageId = static_cast<sal_uInt16>(SID_SD_GRAPHIC_OPTIONS_RES[i].second);
+                    sal_uInt16 nPageId = SID_SD_GRAPHIC_OPTIONS_RES[i].second;
                     if ( lcl_isOptionHidden( nPageId, aOptionsDlgOpt ) )
                         continue;
 
-                    if (vPageId.size() != 0)
+                    if (!vPageId.empty())
                     {
                         if (std::find(vPageId.begin(), vPageId.end(), nPageId) != vPageId.end())
                             AddTabPage(nPageId, CuiResId(SID_SD_GRAPHIC_OPTIONS_RES[i].first),
@@ -2073,30 +2012,25 @@ void OfaTreeOptionsDialog::drawOptions(const std::vector<sal_uInt16>& vPageId)
 
 void OfaTreeOptionsDialog::mathOptions(const std::vector<sal_uInt16>& vPageId)
 {
-    sal_uInt16 nGroup = 0;
-    SvtOptionsDialogOptions aOptionsDlgOpt;
-    sal_uInt16 nPageId = 0;
-
-    OUString aFactory = getCurrentFactory_Impl( m_xFrame );
-    DBG_ASSERT( GetModuleIdentifier( m_xFrame ) == aFactory, "S H I T!!!" );
-    SvtModuleOptions aModuleOpt;
-
     // Math options
-    if ( aModuleOpt.IsModuleInstalled( SvtModuleOptions::EModule::MATH ) )
+    if (SvtModuleOptions().IsMathInstalled())
     {
+        OUString aFactory = getCurrentFactory_Impl(m_xFrame);
+        DBG_ASSERT(GetModuleIdentifier(m_xFrame) == aFactory, "This should not happen");
         if ( aFactory == "com.sun.star.formula.FormulaProperties" )
         {
+            SvtOptionsDialogOptions aOptionsDlgOpt;
             if ( !lcl_isOptionHidden( SID_SM_EDITOPTIONS, aOptionsDlgOpt ) )
             {
                 SfxModule* pSmMod = SfxApplication::GetModule(SfxToolsModule::Math);
                 setGroupName( u"Math", CuiResId(SID_SM_EDITOPTIONS_RES[0].first) );
-                nGroup = AddGroup(CuiResId(SID_SM_EDITOPTIONS_RES[0].first), pSmMod, pSmMod, SID_SM_EDITOPTIONS );
+                sal_uInt16 nGroup = AddGroup(CuiResId(SID_SM_EDITOPTIONS_RES[0].first), pSmMod, pSmMod, SID_SM_EDITOPTIONS );
                 for ( size_t i = 1; i < std::size(SID_SM_EDITOPTIONS_RES); ++i )
                 {
-                    nPageId = static_cast<sal_uInt16>(SID_SM_EDITOPTIONS_RES[i].second);
+                    sal_uInt16 nPageId = SID_SM_EDITOPTIONS_RES[i].second;
                     if ( !lcl_isOptionHidden( nPageId, aOptionsDlgOpt ) )
                     {
-                        if (vPageId.size() != 0)
+                        if (!vPageId.empty())
                         {
                             if (std::find(vPageId.begin(), vPageId.end(), nPageId) != vPageId.end())
                                 AddTabPage(nPageId, CuiResId(SID_SM_EDITOPTIONS_RES[i].first),
@@ -2113,27 +2047,24 @@ void OfaTreeOptionsDialog::mathOptions(const std::vector<sal_uInt16>& vPageId)
 
 void OfaTreeOptionsDialog::databaseOptions(const std::vector<sal_uInt16>& vPageId)
 {
-    sal_uInt16 nGroup = 0;
     SvtOptionsDialogOptions aOptionsDlgOpt;
-    sal_uInt16 nPageId = 0;
-
     SvtModuleOptions aModuleOpt;
 
     // Database - needed only if there is an application which integrates with databases
     if ( !lcl_isOptionHidden( SID_SB_STARBASEOPTIONS, aOptionsDlgOpt ) &&
-        (   aModuleOpt.IsModuleInstalled( SvtModuleOptions::EModule::DATABASE )
-        ||  aModuleOpt.IsModuleInstalled( SvtModuleOptions::EModule::WRITER )
-        ||  aModuleOpt.IsModuleInstalled( SvtModuleOptions::EModule::CALC )
+        (   aModuleOpt.IsDataBaseInstalled()
+        ||  aModuleOpt.IsWriterInstalled()
+        ||  aModuleOpt.IsCalcInstalled()
         ) )
     {
         setGroupName( u"Base", CuiResId(SID_SB_STARBASEOPTIONS_RES[0].first) );
-        nGroup = AddGroup( CuiResId(SID_SB_STARBASEOPTIONS_RES[0].first), nullptr, nullptr, SID_SB_STARBASEOPTIONS );
+        sal_uInt16 nGroup = AddGroup( CuiResId(SID_SB_STARBASEOPTIONS_RES[0].first), nullptr, nullptr, SID_SB_STARBASEOPTIONS );
         for ( size_t i = 1; i < std::size(SID_SB_STARBASEOPTIONS_RES); ++i )
         {
-            nPageId = static_cast<sal_uInt16>(SID_SB_STARBASEOPTIONS_RES[i].second);
+            sal_uInt16 nPageId = SID_SB_STARBASEOPTIONS_RES[i].second;
             if ( !lcl_isOptionHidden( nPageId, aOptionsDlgOpt ) )
             {
-                if (vPageId.size() != 0)
+                if (!vPageId.empty())
                 {
                     if (std::find(vPageId.begin(), vPageId.end(), nPageId) != vPageId.end())
                         AddTabPage(nPageId, CuiResId(SID_SB_STARBASEOPTIONS_RES[i].first), nGroup);
@@ -2147,20 +2078,18 @@ void OfaTreeOptionsDialog::databaseOptions(const std::vector<sal_uInt16>& vPageI
 
 void OfaTreeOptionsDialog::chartOptions(const std::vector<sal_uInt16>& vPageId)
 {
-    sal_uInt16 nGroup = 0;
     SvtOptionsDialogOptions aOptionsDlgOpt;
-    sal_uInt16 nPageId = 0;
 
     if ( !lcl_isOptionHidden( SID_SCH_EDITOPTIONS, aOptionsDlgOpt ) )
     {
         setGroupName( u"Charts", CuiResId(SID_SCH_EDITOPTIONS_RES[0].first) );
-        nGroup = AddGroup( CuiResId(SID_SCH_EDITOPTIONS_RES[0].first), nullptr, nullptr, SID_SCH_EDITOPTIONS );
+        sal_uInt16 nGroup = AddGroup( CuiResId(SID_SCH_EDITOPTIONS_RES[0].first), nullptr, nullptr, SID_SCH_EDITOPTIONS );
         for ( size_t i = 1; i < std::size(SID_SCH_EDITOPTIONS_RES); ++i )
         {
-            nPageId = static_cast<sal_uInt16>(SID_SCH_EDITOPTIONS_RES[i].second);
+            sal_uInt16 nPageId = SID_SCH_EDITOPTIONS_RES[i].second;
             if ( !lcl_isOptionHidden( nPageId, aOptionsDlgOpt ) )
             {
-                if (vPageId.size() != 0)
+                if (!vPageId.empty())
                 {
                     if (std::find(vPageId.begin(), vPageId.end(), nPageId) != vPageId.end())
                         AddTabPage(nPageId, CuiResId(SID_SCH_EDITOPTIONS_RES[i].first), nGroup);
@@ -2174,19 +2103,17 @@ void OfaTreeOptionsDialog::chartOptions(const std::vector<sal_uInt16>& vPageId)
 
 void OfaTreeOptionsDialog::internetOptions(const std::vector<sal_uInt16>& vPageId)
 {
-    sal_uInt16 nGroup = 0;
     SvtOptionsDialogOptions aOptionsDlgOpt;
-    sal_uInt16 nPageId = 0;
 
     if ( lcl_isOptionHidden( SID_INET_DLG, aOptionsDlgOpt ) )
         return;
 
     setGroupName(u"Internet", CuiResId(SID_INET_DLG_RES[0].first));
-    nGroup = AddGroup(CuiResId(SID_INET_DLG_RES[0].first), nullptr, nullptr, SID_INET_DLG );
+    sal_uInt16 nGroup = AddGroup(CuiResId(SID_INET_DLG_RES[0].first), nullptr, nullptr, SID_INET_DLG );
 
     for ( size_t i = 1; i < std::size(SID_INET_DLG_RES); ++i )
     {
-        nPageId = static_cast<sal_uInt16>(SID_INET_DLG_RES[i].second);
+        sal_uInt16 nPageId = SID_INET_DLG_RES[i].second;
         if ( lcl_isOptionHidden( nPageId, aOptionsDlgOpt ) )
             continue;
 #if defined(_WIN32)
@@ -2194,7 +2121,7 @@ void OfaTreeOptionsDialog::internetOptions(const std::vector<sal_uInt16>& vPageI
         if ( nPageId == RID_SVXPAGE_INET_MAIL )
             continue;
 #endif
-        if (vPageId.size() != 0)
+        if (!vPageId.empty())
         {
             if (std::find(vPageId.begin(), vPageId.end(), nPageId) != vPageId.end())
                 AddTabPage(nPageId, CuiResId(SID_INET_DLG_RES[i].first), nGroup);
@@ -2292,7 +2219,7 @@ OUString OfaTreeOptionsDialog::GetModuleIdentifier( const Reference< XFrame >& r
 {
     OUString sModule;
     Reference < XFrame > xCurrentFrame( rFrame );
-    Reference< XComponentContext > xContext = comphelper::getProcessComponentContext();
+    const Reference< XComponentContext >& xContext = comphelper::getProcessComponentContext();
     Reference < XModuleManager2 > xModuleManager = ModuleManager::create(xContext);
 
     if ( !xCurrentFrame.is() )
@@ -2341,7 +2268,7 @@ std::unique_ptr<Module> OfaTreeOptionsDialog::LoadModule(
             {
                 // load the nodes of this module
                 Reference< XNameAccess > xNodeAccess;
-                xModAccess->getByName( "Nodes" ) >>= xNodeAccess;
+                xModAccess->getByName( u"Nodes"_ustr ) >>= xNodeAccess;
                 if ( xNodeAccess.is() )
                 {
                     const Sequence< OUString > xTemp = xNodeAccess->getElementNames();
@@ -2352,7 +2279,7 @@ std::unique_ptr<Module> OfaTreeOptionsDialog::LoadModule(
                         xNodeAccess->getByName( rNode ) >>= xAccess;
                         if ( xAccess.is() )
                         {
-                            xAccess->getByName( "Index" ) >>= nIndex;
+                            xAccess->getByName( u"Index"_ustr ) >>= nIndex;
                             if ( nIndex < 0 )
                                 // append nodes with index < 0
                                 pModule->m_aNodeList.push_back(
@@ -2403,9 +2330,9 @@ VectorOfNodes OfaTreeOptionsDialog::LoadNodes(
             bool bAllModules = false;
 
             sNodeId = sGroupName;
-            xNodeAccess->getByName( "Label" ) >>= sLabel;
-            xNodeAccess->getByName( "OptionsPage" ) >>= sPageURL;
-            xNodeAccess->getByName( "AllModules" ) >>= bAllModules;
+            xNodeAccess->getByName( u"Label"_ustr ) >>= sLabel;
+            xNodeAccess->getByName( u"OptionsPage"_ustr ) >>= sPageURL;
+            xNodeAccess->getByName( u"AllModules"_ustr ) >>= bAllModules;
 
             if ( sLabel.isEmpty() )
                 sLabel = sGroupName;
@@ -2420,7 +2347,7 @@ VectorOfNodes OfaTreeOptionsDialog::LoadNodes(
             }
 
             Reference< XNameAccess > xLeavesSet;
-            xNodeAccess->getByName( "Leaves" ) >>= xLeavesSet;
+            xNodeAccess->getByName( u"Leaves"_ustr ) >>= xLeavesSet;
             if ( xLeavesSet.is() )
             {
                 const Sequence< OUString > seqLeaves = xLeavesSet->getElementNames();
@@ -2434,12 +2361,12 @@ VectorOfNodes OfaTreeOptionsDialog::LoadNodes(
                         OUString sId, sLeafLabel, sEventHdl, sLeafURL, sLeafGrpId;
                         sal_Int32 nLeafGrpIdx = 0;
 
-                        xLeaveAccess->getByName( "Id" ) >>= sId;
-                        xLeaveAccess->getByName( "Label" ) >>= sLeafLabel;
-                        xLeaveAccess->getByName( "OptionsPage" ) >>= sLeafURL;
-                        xLeaveAccess->getByName( "EventHandlerService" ) >>= sEventHdl;
-                        xLeaveAccess->getByName( "GroupId" ) >>= sLeafGrpId;
-                        xLeaveAccess->getByName( "GroupIndex" ) >>= nLeafGrpIdx;
+                        xLeaveAccess->getByName( u"Id"_ustr ) >>= sId;
+                        xLeaveAccess->getByName( u"Label"_ustr ) >>= sLeafLabel;
+                        xLeaveAccess->getByName( u"OptionsPage"_ustr ) >>= sLeafURL;
+                        xLeaveAccess->getByName( u"EventHandlerService"_ustr ) >>= sEventHdl;
+                        xLeaveAccess->getByName( u"GroupId"_ustr ) >>= sLeafGrpId;
+                        xLeaveAccess->getByName( u"GroupIndex"_ustr ) >>= nLeafGrpIdx;
 
                         if ( rExtensionId.empty() || sId == rExtensionId )
                         {
@@ -2673,7 +2600,7 @@ bool ExtensionsTabPage::DispatchAction( const OUString& rAction )
     {
         try
         {
-            bRet = m_xEventHdl->callHandlerMethod( m_xPage, Any( rAction ), "external_event" );
+            bRet = m_xEventHdl->callHandlerMethod( m_xPage, Any( rAction ), u"external_event"_ustr );
         }
         catch ( Exception const & )
         {
@@ -2717,7 +2644,7 @@ void ExtensionsTabPage::ActivatePage()
             auto aWindowRect = m_xPageParent->getPosSize();
             m_xPage->setPosSize(0, 0, aWindowRect.Width, aWindowRect.Height, awt::PosSize::POSSIZE);
             if ( !m_sEventHdl.isEmpty() )
-                DispatchAction( "initialize" );
+                DispatchAction( u"initialize"_ustr );
         }
     }
 
@@ -2735,13 +2662,13 @@ void ExtensionsTabPage::DeactivatePage()
 
 void ExtensionsTabPage::ResetPage()
 {
-    DispatchAction( "back" );
+    DispatchAction( u"back"_ustr );
     ActivatePage();
 }
 
 void ExtensionsTabPage::SavePage()
 {
-    DispatchAction( "ok" );
+    DispatchAction( u"ok"_ustr );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -30,6 +30,7 @@
 #include <svx/svdomedia.hxx>
 #include <svx/svdpool.hxx>
 #include <comphelper/classids.hxx>
+#include <comphelper/DirectoryHelper.hxx>
 #include <comphelper/embeddedobjectcontainer.hxx>
 #include <comphelper/propertysequence.hxx>
 #include <comphelper/propertyvalue.hxx>
@@ -60,20 +61,19 @@ using namespace ::cppu;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
-using namespace ::com::sun::star::container;
 using namespace ::com::sun::star::beans;
 
 
 SvxOle2Shape::SvxOle2Shape(SdrObject* pObject, OUString referer)
     : SvxShapeText(pObject, getSvxMapProvider().GetMap(SVXMAP_OLE2),
                 getSvxMapProvider().GetPropertySet(SVXMAP_OLE2,SdrObject::GetGlobalDrawObjectItemPool()))
-    , referer_(std::move(referer))
+    , m_referer(std::move(referer))
 {
 }
 
 SvxOle2Shape::SvxOle2Shape(SdrObject* pObject, OUString referer, std::span<const SfxItemPropertyMapEntry> pPropertyMap, const SvxItemPropertySet* pPropertySet)
     : SvxShapeText(pObject, pPropertyMap, pPropertySet)
-    , referer_(std::move(referer))
+    , m_referer(std::move(referer))
 {
 }
 
@@ -243,7 +243,7 @@ bool SvxOle2Shape::getPropertyValueImpl( const OUString& rName, const SfxItemPro
                 if ( !bIsWMF )
                 {
                     // #i119735# just use GetGDIMetaFile, it will create a buffered version of contained bitmap now automatically
-                    GDIMetaFile aMtf(pObj->GetGraphic()->GetGDIMetaFile());
+                    GDIMetaFile aMtf(pGraphic->GetGDIMetaFile());
                     SvMemoryStream aDestStrm( 65535, 65535 );
                     ConvertGDIMetaFileToWMF( aMtf, aDestStrm, nullptr, false );
                     const uno::Sequence<sal_Int8> aSeq(
@@ -298,7 +298,7 @@ bool SvxOle2Shape::getPropertyValueImpl( const OUString& rName, const SfxItemPro
             if ( xObj.is()
               && ( pProperty->nWID == OWN_ATTR_OLE_EMBEDDED_OBJECT || pProperty->nWID == OWN_ATTR_OLE_EMBEDDED_OBJECT_NONEWCLIENT || svt::EmbeddedObjectRef::TryRunningState( xObj ) ) )
             {
-                // Discussed with CL fue to the before GetPaintingPageView
+                // Discussed with CL due to the before GetPaintingPageView
                 // usage. Removed it, former fallback is used now
                 if ( pProperty->nWID == OWN_ATTR_OLEMODEL || pProperty->nWID == OWN_ATTR_OLE_EMBEDDED_OBJECT )
                 {
@@ -451,8 +451,8 @@ void SvxOle2Shape::createLink( const OUString& aLinkURL )
     ::comphelper::IEmbeddedHelper* pPersist = GetSdrObject()->getSdrModelFromSdrObject().GetPersist();
 
     uno::Sequence< beans::PropertyValue > aMediaDescr{
-        comphelper::makePropertyValue("URL", aLinkURL),
-        comphelper::makePropertyValue("Referer", referer_)
+        comphelper::makePropertyValue(u"URL"_ustr, aLinkURL),
+        comphelper::makePropertyValue(u"Referer"_ustr, m_referer)
     };
 
     uno::Reference< task::XInteractionHandler > xInteraction = pPersist->getInteractionHandler();
@@ -565,7 +565,7 @@ OUString SvxOle2Shape::GetAndClearInitialFrameURL()
 SvxAppletShape::SvxAppletShape(SdrObject* pObject, OUString referer)
     : SvxOle2Shape(pObject, std::move(referer), getSvxMapProvider().GetMap(SVXMAP_APPLET), getSvxMapProvider().GetPropertySet(SVXMAP_APPLET, SdrObject::GetGlobalDrawObjectItemPool()))
 {
-    SetShapeType( "com.sun.star.drawing.AppletShape" );
+    SetShapeType( u"com.sun.star.drawing.AppletShape"_ustr );
 }
 
 SvxAppletShape::~SvxAppletShape() noexcept
@@ -577,7 +577,7 @@ void SvxAppletShape::Create( SdrObject* pNewObj, SvxDrawPage* pNewPage )
     SvxShape::Create( pNewObj, pNewPage );
     const SvGlobalName aAppletClassId( SO3_APPLET_CLASSID );
     createObject(aAppletClassId);
-    SetShapeType( "com.sun.star.drawing.AppletShape" );
+    SetShapeType( u"com.sun.star.drawing.AppletShape"_ustr );
 }
 
 void SAL_CALL SvxAppletShape::setPropertyValue( const OUString& aPropertyName, const css::uno::Any& rValue )
@@ -636,7 +636,7 @@ bool SvxAppletShape::getPropertyValueImpl( const OUString& rName, const SfxItemP
 SvxPluginShape::SvxPluginShape(SdrObject* pObject, OUString referer)
     : SvxOle2Shape(pObject, std::move(referer), getSvxMapProvider().GetMap(SVXMAP_PLUGIN), getSvxMapProvider().GetPropertySet(SVXMAP_PLUGIN, SdrObject::GetGlobalDrawObjectItemPool()))
 {
-    SetShapeType( "com.sun.star.drawing.PluginShape" );
+    SetShapeType( u"com.sun.star.drawing.PluginShape"_ustr );
 }
 
 SvxPluginShape::~SvxPluginShape() noexcept
@@ -648,7 +648,7 @@ void SvxPluginShape::Create( SdrObject* pNewObj, SvxDrawPage* pNewPage )
     SvxShape::Create( pNewObj, pNewPage );
     const SvGlobalName aPluginClassId( SO3_PLUGIN_CLASSID );
     createObject(aPluginClassId);
-    SetShapeType( "com.sun.star.drawing.PluginShape" );
+    SetShapeType( u"com.sun.star.drawing.PluginShape"_ustr );
 }
 
 void SAL_CALL SvxPluginShape::setPropertyValue( const OUString& aPropertyName, const css::uno::Any& rValue )
@@ -707,7 +707,7 @@ bool SvxPluginShape::getPropertyValueImpl( const OUString& rName, const SfxItemP
 SvxFrameShape::SvxFrameShape(SdrObject* pObject, OUString referer)
     : SvxOle2Shape(pObject, std::move(referer), getSvxMapProvider().GetMap(SVXMAP_FRAME), getSvxMapProvider().GetPropertySet(SVXMAP_FRAME, SdrObject::GetGlobalDrawObjectItemPool()))
 {
-    SetShapeType( "com.sun.star.drawing.FrameShape" );
+    SetShapeType( u"com.sun.star.drawing.FrameShape"_ustr );
 }
 
 SvxFrameShape::~SvxFrameShape() noexcept
@@ -725,12 +725,12 @@ void SvxFrameShape::Create( SdrObject* pNewObj, SvxDrawPage* pNewPage )
 {
     uno::Reference<beans::XPropertySet> xSet(static_cast<OWeakObject *>(this), uno::UNO_QUERY);
     if (xSet)
-        xSet->getPropertyValue("FrameURL") >>= m_sInitialFrameURL;
+        xSet->getPropertyValue(u"FrameURL"_ustr) >>= m_sInitialFrameURL;
 
     SvxShape::Create( pNewObj, pNewPage );
     const SvGlobalName aIFrameClassId( SO3_IFRAME_CLASSID );
     createObject(aIFrameClassId);
-    SetShapeType( "com.sun.star.drawing.FrameShape" );
+    SetShapeType( u"com.sun.star.drawing.FrameShape"_ustr );
 }
 
 void SAL_CALL SvxFrameShape::setPropertyValue( const OUString& aPropertyName, const css::uno::Any& rValue )
@@ -789,9 +789,9 @@ bool SvxFrameShape::getPropertyValueImpl(const OUString& rName, const SfxItemPro
 
 SvxMediaShape::SvxMediaShape(SdrObject* pObj, OUString referer)
 :   SvxShape( pObj, getSvxMapProvider().GetMap(SVXMAP_MEDIA), getSvxMapProvider().GetPropertySet(SVXMAP_MEDIA, SdrObject::GetGlobalDrawObjectItemPool()) ),
-    referer_(std::move(referer))
+    m_referer(std::move(referer))
 {
-    SetShapeType( "com.sun.star.drawing.MediaShape" );
+    SetShapeType( u"com.sun.star.drawing.MediaShape"_ustr );
 }
 
 
@@ -823,7 +823,19 @@ bool SvxMediaShape::setPropertyValueImpl( const OUString& rName, const SfxItemPr
             if( rValue >>= aURL )
             {
                 bOk = true;
-                aItem.setURL( aURL, "", referer_ );
+                if ( aURL.startsWith("file:///") && !comphelper::DirectoryHelper::fileExists(aURL) )
+                {
+                    comphelper::IEmbeddedHelper* pPersist = GetSdrObject()->getSdrModelFromSdrObject().GetPersist();
+                    auto fileDirectoryEndIdx = pPersist->getDocumentBaseURL().lastIndexOf("/");
+                    auto fileNameStartIdx = aURL.lastIndexOf("/");
+                    if (fileDirectoryEndIdx != -1 && fileNameStartIdx != -1)
+                    {
+                        OUString aFallbackURL = OUString::Concat(pPersist->getDocumentBaseURL().subView(0, fileDirectoryEndIdx + 1))
+                            + aURL.subView(fileNameStartIdx + 1);
+                        aItem.setFallbackURL(aFallbackURL);
+                    }
+                }
+                aItem.setURL( aURL, u""_ustr, m_referer );
             }
         }
 #endif
@@ -938,7 +950,7 @@ bool SvxMediaShape::setPropertyValueImpl( const OUString& rName, const SfxItemPr
             {
                 css::uno::Any exc = cppu::getCaughtException();
                 throw css::lang::WrappedTargetException(
-                        "ContentCreationException Setting InputStream!",
+                        u"ContentCreationException Setting InputStream!"_ustr,
                         getXWeak(),
                         exc);
             }
@@ -946,7 +958,7 @@ bool SvxMediaShape::setPropertyValueImpl( const OUString& rName, const SfxItemPr
             {
                 css::uno::Any anyEx = cppu::getCaughtException();
                 throw css::lang::WrappedTargetException(
-                        "CommandFailedException Setting InputStream!",
+                        u"CommandFailedException Setting InputStream!"_ustr,
                         getXWeak(),
                         anyEx);
             }
@@ -1031,14 +1043,14 @@ bool SvxMediaShape::getPropertyValueImpl( const OUString& rName, const SfxItemPr
                 {
                     css::uno::Any anyEx = cppu::getCaughtException();
                     throw css::lang::WrappedTargetException(
-                            "ContentCreationException Getting InputStream!",
+                            u"ContentCreationException Getting InputStream!"_ustr,
                             getXWeak(), anyEx );
                 }
                 catch (const css::ucb::CommandFailedException&)
                 {
                     css::uno::Any anyEx = cppu::getCaughtException();
                     throw css::lang::WrappedTargetException(
-                            "CommandFailedException Getting InputStream!",
+                            u"CommandFailedException Getting InputStream!"_ustr,
                             getXWeak(), anyEx );
                 }
 
@@ -1059,7 +1071,7 @@ bool SvxMediaShape::getPropertyValueImpl( const OUString& rName, const SfxItemPr
             case OWN_ATTR_VALUE_GRAPHIC:
 #if HAVE_FEATURE_AVMEDIA
             {
-                Graphic aGraphic = aItem.getGraphic();
+                const Graphic& aGraphic = aItem.getGraphic();
                 if (!aGraphic.IsNone())
                 {
                     rValue <<= aGraphic.GetXGraphic();

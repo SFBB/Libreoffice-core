@@ -20,13 +20,13 @@
 #ifndef INCLUDED_SDEXT_SOURCE_PRESENTER_PRESENTERPANEBASE_HXX
 #define INCLUDED_SDEXT_SOURCE_PRESENTER_PRESENTERPANEBASE_HXX
 
-#include <cppuhelper/basemutex.hxx>
+#include "PresenterPaneBorderPainter.hxx"
+
+#include <PresenterHelper.hxx>
+
 #include <cppuhelper/compbase.hxx>
 #include <com/sun/star/awt/XWindowListener.hpp>
-#include <com/sun/star/drawing/XPresenterHelper.hpp>
-#include <com/sun/star/drawing/framework/XPane.hpp>
-#include <com/sun/star/drawing/framework/XPaneBorderPainter.hpp>
-#include <com/sun/star/lang/XInitialization.hpp>
+#include <framework/AbstractPane.hxx>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/rendering/XCanvas.hpp>
 #include <rtl/ref.hxx>
@@ -36,12 +36,9 @@ namespace sdext::presenter {
 
 class PresenterController;
 
-typedef ::cppu::WeakComponentImplHelper <
-    css::drawing::framework::XPane,
-    css::lang::XInitialization,
-    css::awt::XWindowListener,
-    css::awt::XPaintListener
-> PresenterPaneBaseInterfaceBase;
+typedef ::cppu::ImplInheritanceHelper<sd::framework::AbstractPane, css::awt::XWindowListener,
+                                        css::awt::XPaintListener>
+    PresenterPaneBaseInterfaceBase;
 
 /** Base class of the panes used by the presenter screen.  Pane objects are
     stored in the PresenterPaneContainer.  Sizes and positions are
@@ -50,8 +47,7 @@ typedef ::cppu::WeakComponentImplHelper <
     panes are painted by the PresenterPaneBorderPainter.
 */
 class PresenterPaneBase
-    : protected ::cppu::BaseMutex,
-      public PresenterPaneBaseInterfaceBase
+    : public PresenterPaneBaseInterfaceBase
 {
 public:
     PresenterPaneBase (
@@ -61,22 +57,23 @@ public:
     PresenterPaneBase(const PresenterPaneBase&) = delete;
     PresenterPaneBase& operator=(const PresenterPaneBase&) = delete;
 
-    virtual void SAL_CALL disposing() override;
+    virtual void disposing(std::unique_lock<std::mutex>&) override;
 
     const css::uno::Reference<css::awt::XWindow>& GetBorderWindow() const;
     void SetTitle (const OUString& rsTitle);
-    const OUString& GetTitle() const;
-    const css::uno::Reference<css::drawing::framework::XPaneBorderPainter>& GetPaneBorderPainter() const;
+    const rtl::Reference<PresenterPaneBorderPainter>& GetPaneBorderPainter() const;
 
-    // XInitialization
+    void initialize(const rtl::Reference<sd::framework::ResourceId>& rxPaneId,
+                    const css::uno::Reference<css::awt::XWindow>& rxParentWindow,
+                    const css::uno::Reference<css::rendering::XCanvas>& rxParentCanvas,
+                    const rtl::Reference<PresenterPaneBorderPainter>& rxBorderPainter,
+                    bool bIsWindowVisibleOnCreation);
 
-    virtual void SAL_CALL initialize (const css::uno::Sequence<css::uno::Any>& rArguments) override;
+    // AbstractResourceI
 
-    // XResourceId
+    virtual rtl::Reference<sd::framework::ResourceId> getResourceId() override;
 
-    virtual css::uno::Reference<css::drawing::framework::XResourceId> SAL_CALL getResourceId() override;
-
-    virtual sal_Bool SAL_CALL isAnchorOnly() override;
+    virtual bool isAnchorOnly() override;
 
     // XWindowListener
 
@@ -99,9 +96,8 @@ protected:
     css::uno::Reference<css::rendering::XCanvas> mxBorderCanvas;
     css::uno::Reference<css::awt::XWindow> mxContentWindow;
     css::uno::Reference<css::rendering::XCanvas> mxContentCanvas;
-    css::uno::Reference<css::drawing::framework::XResourceId> mxPaneId;
-    css::uno::Reference<css::drawing::framework::XPaneBorderPainter> mxBorderPainter;
-    css::uno::Reference<css::drawing::XPresenterHelper> mxPresenterHelper;
+    rtl::Reference<sd::framework::ResourceId> mxPaneId;
+    rtl::Reference<PresenterPaneBorderPainter> mxBorderPainter;
     OUString msTitle;
     css::uno::Reference<css::uno::XComponentContext> mxComponentContext;
 
@@ -113,12 +109,6 @@ protected:
     void PaintBorder (const css::awt::Rectangle& rUpdateRectangle);
     void ToTop();
     void LayoutContextWindow();
-    bool IsVisible() const;
-
-    /** @throws css::lang::DisposedException when the object has already been
-        disposed.
-    */
-    void ThrowIfDisposed();
 };
 
 } // end of namespace ::sd::presenter

@@ -46,7 +46,7 @@ using namespace ::com::sun::star;
 
 namespace vclcanvas::tools
 {
-        ::BitmapEx bitmapExFromXBitmap( const uno::Reference< rendering::XBitmap >& xBitmap )
+        ::Bitmap bitmapFromXBitmap( const uno::Reference< rendering::XBitmap >& xBitmap )
         {
             // TODO(F3): CanvasCustomSprite should also be tunnelled
             // through (also implements XIntegerBitmap interface)
@@ -64,24 +64,23 @@ namespace vclcanvas::tools
                     // TODO(F3): mind the plain Canvas impl. Consolidate with CWS canvas05
                     const ::OutputDevice& rDev( pCanvasImpl->getBackBuffer()->getOutDev() );
                     const ::Point aEmptyPoint;
-                    return rDev.GetBitmapEx( aEmptyPoint,
-                                             rDev.GetOutputSizePixel() );
+                    return rDev.GetBitmap( aEmptyPoint, rDev.GetOutputSizePixel() );
                 }
 
                 // TODO(F2): add support for floating point bitmap formats
                 uno::Reference< rendering::XIntegerReadOnlyBitmap > xIntBmp(
                     xBitmap, uno::UNO_QUERY_THROW );
 
-                ::BitmapEx aBmpEx = vcl::unotools::bitmapExFromXBitmap( xIntBmp );
-                if( !aBmpEx.IsEmpty() )
-                    return aBmpEx;
+                ::Bitmap aBmp = vcl::unotools::bitmapFromXBitmap( xIntBmp );
+                if( !aBmp.IsEmpty() )
+                    return aBmp;
 
                 // TODO(F1): extract pixel from XBitmap interface
                 ENSURE_OR_THROW( false,
                                   "bitmapExFromXBitmap(): could not extract bitmap" );
             }
 
-            return ::BitmapEx();
+            return ::Bitmap();
         }
 
         bool setupFontTransform( ::Point&                       o_rPoint,
@@ -123,14 +122,14 @@ namespace vclcanvas::tools
             if( !::rtl::math::approxEqual(aScale.getY(), 1.0) )
             {
                 const sal_Int32 nFontHeight( io_rVCLFont.GetFontHeight() );
-                io_rVCLFont.SetFontHeight( ::basegfx::fround(nFontHeight * aScale.getY()) );
+                io_rVCLFont.SetFontHeight( ::basegfx::fround<::tools::Long>(nFontHeight * aScale.getY()) );
             }
 
             io_rVCLFont.SetOrientation( Degree10( ::basegfx::fround(-basegfx::rad2deg<10>(fmod(nRotate, 2*M_PI))) ) );
 
             // TODO(F2): Missing functionality in VCL: shearing
-            o_rPoint.setX( ::basegfx::fround(aTranslate.getX()) );
-            o_rPoint.setY( ::basegfx::fround(aTranslate.getY()) );
+            o_rPoint.setX( ::basegfx::fround<::tools::Long>(aTranslate.getX()) );
+            o_rPoint.setY( ::basegfx::fround<::tools::Long>(aTranslate.getY()) );
 
             return true;
         }
@@ -154,7 +153,7 @@ namespace vclcanvas::tools
                 if (!::basegfx::fTools::equalZero(fDividend))
                     fStretch /= fDividend;
 
-                const ::tools::Long nNewWidth = ::basegfx::fround(aSize.Width() * fStretch);
+                const ::tools::Long nNewWidth = ::basegfx::fround<::tools::Long>(aSize.Width() * fStretch);
 
                 rFont.SetAverageFontWidth(nNewWidth);
 
@@ -212,8 +211,8 @@ namespace vclcanvas::tools
             return ::tools::PolyPolygon( aTemp );
         }
 
-        ::BitmapEx transformBitmap( const BitmapEx&                 rBitmap,
-                                    const ::basegfx::B2DHomMatrix&  rTransform )
+        ::Bitmap transformBitmap( const ::Bitmap&                 rBitmap,
+                                  const ::basegfx::B2DHomMatrix&  rTransform )
         {
             SAL_INFO( "canvas.vcl", "::vclcanvas::tools::transformBitmap()" );
             SAL_INFO( "canvas.vcl", "::vclcanvas::tools::transformBitmap: 0x" << std::hex << &rBitmap );
@@ -223,13 +222,12 @@ namespace vclcanvas::tools
             // deleted from the transformation; this can be handled by
             // an offset when painting the bitmap
             const Size                  aBmpSize( rBitmap.GetSizePixel() );
-            ::basegfx::B2DRectangle     aDestRect;
 
             // calc effective transformation for bitmap
             const ::basegfx::B2DRectangle aSrcRect( 0, 0,
                                                     aBmpSize.Width(),
                                                     aBmpSize.Height() );
-            ::canvas::tools::calcTransformedRectBounds( aDestRect,
+            ::basegfx::B2DRectangle     aDestRect = ::canvas::tools::calcTransformedRectBounds(
                                                         aSrcRect,
                                                         rTransform );
 
@@ -237,8 +235,7 @@ namespace vclcanvas::tools
             // aligned with (0,0). The method takes the given
             // rectangle, and calculates a transformation that maps
             // this rectangle unscaled to the origin.
-            ::basegfx::B2DHomMatrix aLocalTransform;
-            ::canvas::tools::calcRectToOriginTransform( aLocalTransform,
+            ::basegfx::B2DHomMatrix aLocalTransform = ::canvas::tools::calcRectToOriginTransform(
                                                         aSrcRect,
                                                         rTransform );
 

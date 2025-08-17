@@ -31,7 +31,6 @@
 namespace chart
 {
 using namespace ::com::sun::star;
-using namespace ::com::sun::star::chart2;
 
 LabelPositionHelper::LabelPositionHelper(
                       sal_Int32 nDimensionCount
@@ -53,28 +52,28 @@ awt::Point LabelPositionHelper::transformSceneToScreenPosition( const drawing::P
 
 void LabelPositionHelper::changeTextAdjustment( tAnySequence& rPropValues, const tNameSequence& rPropNames, LabelAlignment eAlignment)
 {
-    //HorizontalAdjustment
+    uno::Any* pHorizontalAdjustAny
+        = PropertyMapper::getValuePointer(rPropValues, rPropNames, u"TextHorizontalAdjust");
+    if (pHorizontalAdjustAny)
     {
         drawing::TextHorizontalAdjust eHorizontalAdjust = drawing::TextHorizontalAdjust_CENTER;
         if( eAlignment==LABEL_ALIGN_RIGHT || eAlignment==LABEL_ALIGN_RIGHT_TOP || eAlignment==LABEL_ALIGN_RIGHT_BOTTOM )
             eHorizontalAdjust = drawing::TextHorizontalAdjust_LEFT;
         else if( eAlignment==LABEL_ALIGN_LEFT || eAlignment==LABEL_ALIGN_LEFT_TOP || eAlignment==LABEL_ALIGN_LEFT_BOTTOM )
             eHorizontalAdjust = drawing::TextHorizontalAdjust_RIGHT;
-        uno::Any* pHorizontalAdjustAny = PropertyMapper::getValuePointer(rPropValues,rPropNames,u"TextHorizontalAdjust");
-        if(pHorizontalAdjustAny)
-            *pHorizontalAdjustAny <<= eHorizontalAdjust;
+        *pHorizontalAdjustAny <<= eHorizontalAdjust;
     }
 
-    //VerticalAdjustment
+    uno::Any* pVerticalAdjustAny
+        = PropertyMapper::getValuePointer(rPropValues, rPropNames, u"TextVerticalAdjust");
+    if (pVerticalAdjustAny)
     {
         drawing::TextVerticalAdjust eVerticalAdjust = drawing::TextVerticalAdjust_CENTER;
         if( eAlignment==LABEL_ALIGN_TOP || eAlignment==LABEL_ALIGN_RIGHT_TOP || eAlignment==LABEL_ALIGN_LEFT_TOP )
             eVerticalAdjust = drawing::TextVerticalAdjust_BOTTOM;
         else if( eAlignment==LABEL_ALIGN_BOTTOM || eAlignment==LABEL_ALIGN_RIGHT_BOTTOM || eAlignment==LABEL_ALIGN_LEFT_BOTTOM )
             eVerticalAdjust = drawing::TextVerticalAdjust_TOP;
-        uno::Any* pVerticalAdjustAny = PropertyMapper::getValuePointer(rPropValues,rPropNames,u"TextVerticalAdjust");
-        if(pVerticalAdjustAny)
-            *pVerticalAdjustAny <<= eVerticalAdjust;
+        *pVerticalAdjustAny <<= eVerticalAdjust;
     }
 }
 
@@ -98,7 +97,7 @@ void LabelPositionHelper::doDynamicFontResize( tAnySequence& rPropValues
 {
     //handle dynamic font resize:
     awt::Size aOldReferenceSize;
-    if( xAxisModelProps->getPropertyValue( "ReferencePageSize") >>= aOldReferenceSize )
+    if( xAxisModelProps->getPropertyValue( u"ReferencePageSize"_ustr) >>= aOldReferenceSize )
     {
         uno::Any* pAOldAndNewFontHeightAny = PropertyMapper::getValuePointer( rPropValues, rPropNames, u"CharHeight" );
         lcl_doDynamicFontResize( pAOldAndNewFontHeightAny, aOldReferenceSize, rNewReferenceSize );

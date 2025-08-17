@@ -64,6 +64,7 @@
 #include <slotserv.hxx>
 #include <rtl/ustring.hxx>
 #include <sfx2/lokhelper.hxx>
+#include <sfx2/lokunocmdlist.hxx>
 
 #include <memory>
 #include <string_view>
@@ -76,6 +77,10 @@
 #include <desktop/crashreport.hxx>
 #include <vcl/threadex.hxx>
 #include <unotools/mediadescriptor.hxx>
+
+#include <frozen/bits/defines.h>
+#include <frozen/bits/elsa_std.h>
+#include <frozen/unordered_map.h>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -233,7 +238,7 @@ void SAL_CALL SfxOfficeDispatch::dispatch( const css::util::URL& aURL, const css
         std::unique_ptr< css::uno::ContextLayer > layer(EnsureJavaContext());
 #endif
         utl::MediaDescriptor aDescriptor(aArgs);
-        bool bOnMainThread = aDescriptor.getUnpackedValueOrDefault("OnMainThread", false);
+        bool bOnMainThread = aDescriptor.getUnpackedValueOrDefault(u"OnMainThread"_ustr, false);
         if (bOnMainThread)
         {
             // Make sure that we own the solar mutex, otherwise later
@@ -335,7 +340,7 @@ SfxDispatchController_Impl::SfxDispatchController_Impl(
     , bMasterSlave( false )
     , bVisible( true )
 {
-    if ( aDispatchURL.Protocol == "slot:" && !pSlot->pUnoName.isEmpty() )
+    if ( aDispatchURL.Protocol == "slot:" && !pSlot->aUnoName.isEmpty() )
     {
         aDispatchURL.Complete = pSlot->GetCommand();
         Reference< XURLTransformer > xTrans( URLTransformer::create( ::comphelper::getProcessComponentContext() ) );
@@ -493,7 +498,7 @@ void SfxDispatchController_Impl::addParametersToArgs( const css::util::URL& aURL
 
 MapUnit SfxDispatchController_Impl::GetCoreMetric( SfxItemPool const & rPool, sal_uInt16 nSlotId )
 {
-    sal_uInt16 nWhich = rPool.GetWhich( nSlotId );
+    sal_uInt16 nWhich = rPool.GetWhichIDFromSlotID( nSlotId );
     return rPool.GetMetric( nWhich );
 }
 
@@ -508,14 +513,54 @@ OUString SfxDispatchController_Impl::getSlaveCommand( const css::util::URL& rURL
 
 namespace {
 
+OUString parseArguments(std::u16string_view rAction,
+                              const css::uno::Sequence<css::beans::PropertyValue>& rArgs)
+{
+    OUStringBuffer aBuffer(rAction);
+
+    if (rArgs.hasElements())
+    {
+        aBuffer.append(" {");
+        for (const css::beans::PropertyValue& rProp : rArgs)
+        {
+            OUString aTypeName = rProp.Value.getValueTypeName();
+
+            if (aTypeName == "long" || aTypeName == "short")
+            {
+                sal_Int32 nValue = 0;
+                rProp.Value >>= nValue;
+                aBuffer.append("\"" + rProp.Name + "\": " + OUString::number(nValue) + ", ");
+            }
+            else if (aTypeName == "unsigned long")
+            {
+                sal_uInt32 nValue = 0;
+                rProp.Value >>= nValue;
+                aBuffer.append("\"" + rProp.Name + "\": " + OUString::number(nValue) + ", ");
+            }
+            else if (aTypeName == "boolean")
+            {
+                bool bValue = false;
+                rProp.Value >>= bValue;
+                aBuffer.append("\"" + rProp.Name + "\": ");
+                if (bValue)
+                    aBuffer.append("True, ");
+                else
+                    aBuffer.append("False, ");
+            }
+        }
+        aBuffer.append("}");
+    }
+
+    return aBuffer.makeStringAndClear();
+}
+
 void collectUIInformation(const util::URL& rURL, const css::uno::Sequence< css::beans::PropertyValue >& rArgs)
 {
     static const char* pFile = std::getenv("LO_COLLECT_UIINFO");
     if (!pFile)
         return;
 
-    UITestLogger::getInstance().logCommand(
-        Concat2View("Send UNO Command (\"" + rURL.Complete + "\") "), rArgs);
+    UITestLogger::getInstance().log(parseArguments(Concat2View("Send UNO Command (\"" + rURL.Complete + "\") "), rArgs));
 }
 
 }
@@ -526,24 +571,27 @@ void SfxDispatchController_Impl::dispatch( const css::util::URL& aURL,
 {
     if ( aURL.Protocol == ".uno:")
     {
-        CrashReporter::logUnoCommand(aURL.Path);
+        CrashReporter::logUnoCommand(parseArguments(aURL.Path, aArgs));
     }
     collectUIInformation(aURL, aArgs);
 
     SolarMutexGuard aGuard;
 
-    if (comphelper::LibreOfficeKit::isActive() &&
-        SfxViewShell::Current()->isBlockedCommand(aURL.Complete))
+    if (comphelper::LibreOfficeKit::isActive())
     {
-        tools::JsonWriter aTree;
-        aTree.put("code", "");
-        aTree.put("kind", "BlockedCommand");
-        aTree.put("cmd", aURL.Complete);
-        aTree.put("message", "Blocked feature");
-        aTree.put("viewID", SfxViewShell::Current()->GetViewShellId().get());
+        const SfxViewShell* pViewShell = SfxViewShell::Current();
+        if (pViewShell && pViewShell->isBlockedCommand(aURL.Complete))
+        {
+            tools::JsonWriter aTree;
+            aTree.put("code", "");
+            aTree.put("kind", "BlockedCommand");
+            aTree.put("cmd", aURL.Complete);
+            aTree.put("message", "Blocked feature");
+            aTree.put("viewID", pViewShell->GetViewShellId().get());
 
-        SfxViewShell::Current()->libreOfficeKitViewCallback(LOK_COMMAND_BLOCKED, aTree.finishAndGetAsOString());
-        return;
+            pViewShell->libreOfficeKitViewCallback(LOK_COMMAND_BLOCKED, aTree.finishAndGetAsOString());
+            return;
+        }
     }
 
     if (
@@ -655,7 +703,7 @@ void SfxDispatchController_Impl::dispatch( const css::util::URL& aURL,
                         sal_Int32 nIndex = lNewArgs.getLength();
                         lNewArgs.realloc( nIndex+1 );
                         auto plNewArgs = lNewArgs.getArray();
-                        plNewArgs[nIndex].Name   = pSlot->pUnoName;
+                        plNewArgs[nIndex].Name   = pSlot->aUnoName;
                         plNewArgs[nIndex].Value  <<= SfxDispatchController_Impl::getSlaveCommand( aDispatchURL );
                     }
 
@@ -666,11 +714,11 @@ void SfxDispatchController_Impl::dispatch( const css::util::URL& aURL,
                     {
                         // execute with arguments - call directly
                         aItem = pDispatcher->Execute(GetId(), nCall, &*xSet, &aInternalSet, nModifier);
-                        if (nullptr != aItem.getItem())
+                        if (aItem)
                         {
                             if (const SfxBoolItem* pBoolItem = dynamic_cast<const SfxBoolItem*>(aItem.getItem()))
                                 bSuccess = pBoolItem->GetValue();
-                            else if ( !aItem.getItem()->isVoidItem() )
+                            else if ( !IsDisabledItem(aItem.getItem()) )
                                 bSuccess = true;  // all other types are true
                         }
                         // else bSuccess = false look to line 664 it is false
@@ -687,7 +735,7 @@ void SfxDispatchController_Impl::dispatch( const css::util::URL& aURL,
                         aReq.SetInternalArgs_Impl(aInternalSet);
                         pDispatcher->GetBindings()->Execute_Impl( aReq, pSlot, pShell );
                         aItem = aReq.GetReturnValue();
-                        bSuccess = aReq.IsDone() || nullptr != aItem.getItem();
+                        bSuccess = aReq.IsDone() || aItem;
                     }
                 }
                 else
@@ -719,7 +767,7 @@ void SfxDispatchController_Impl::dispatch( const css::util::URL& aURL,
                 }
             }
 
-            bSuccess = (nullptr != aItem.getItem());
+            bSuccess = aItem.is();
         }
     }
 
@@ -733,7 +781,7 @@ void SfxDispatchController_Impl::dispatch( const css::util::URL& aURL,
         aEvent.State = css::frame::DispatchResultState::FAILURE;
 
     aEvent.Source = static_cast<css::frame::XDispatch*>(pDispatch);
-    if ( bSuccess && nullptr != aItem.getItem() && !aItem.getItem()->isVoidItem() )
+    if ( bSuccess && aItem && !IsDisabledItem(aItem.getItem()) )
     {
         sal_uInt16 nSubId( 0 );
         if ( eMapUnit == MapUnit::MapTwip )
@@ -761,9 +809,9 @@ void SfxDispatchController_Impl::addStatusListener(const css::uno::Reference< cs
     css::uno::Any aState;
     if ( !pDispatcher && pBindings )
         pDispatcher = GetBindings().GetDispatcher_Impl();
-    SfxItemState eState = pDispatcher ? pDispatcher->QueryState( GetId(), aState ) : SfxItemState::DONTCARE;
+    SfxItemState eState = pDispatcher ? pDispatcher->QueryState( GetId(), aState ) : SfxItemState::INVALID;
 
-    if ( eState == SfxItemState::DONTCARE )
+    if ( eState == SfxItemState::INVALID )
     {
         // Use special uno struct to transport don't care state
         css::frame::status::ItemStatus aItemStatus;
@@ -778,7 +826,7 @@ void SfxDispatchController_Impl::addStatusListener(const css::uno::Reference< cs
     if ( bVisible )
     {
         aEvent.IsEnabled  = eState != SfxItemState::DISABLED;
-        aEvent.State      = aState;
+        aEvent.State      = std::move(aState);
     }
     else
     {
@@ -834,7 +882,7 @@ void SfxDispatchController_Impl::StateChanged( sal_uInt16 nSID, SfxItemState eSt
         return;
 
     css::uno::Any aState;
-    if ( ( eState >= SfxItemState::DEFAULT ) && pState && !IsInvalidItem( pState ) && !pState->isVoidItem() )
+    if ( ( eState >= SfxItemState::DEFAULT ) && pState && !IsInvalidItem( pState ) && !IsDisabledItem(pState) )
     {
         // Retrieve metric from pool to have correct sub ID when calling QueryValue
         sal_uInt16     nSubId( 0 );
@@ -855,7 +903,7 @@ void SfxDispatchController_Impl::StateChanged( sal_uInt16 nSID, SfxItemState eSt
 
         pState->QueryValue( aState, static_cast<sal_uInt8>(nSubId) );
     }
-    else if ( eState == SfxItemState::DONTCARE )
+    else if ( eState == SfxItemState::INVALID )
     {
         // Use special uno struct to transport don't care state
         css::frame::status::ItemStatus aItemStatus;
@@ -868,7 +916,7 @@ void SfxDispatchController_Impl::StateChanged( sal_uInt16 nSID, SfxItemState eSt
     aEvent.Source = static_cast<css::frame::XDispatch*>(pDispatch);
     aEvent.IsEnabled = eState != SfxItemState::DISABLED;
     aEvent.Requery = false;
-    aEvent.State = aState;
+    aEvent.State = std::move(aState);
 
     if (pDispatcher && pDispatcher->GetFrame())
     {
@@ -888,404 +936,550 @@ void SfxDispatchController_Impl::StateChangedAtToolBoxControl( sal_uInt16 nSID, 
     StateChanged( nSID, eState, pState, nullptr );
 }
 
+namespace
+{
+using PayloadGetter_t = OString (*)(sal_uInt16, SfxViewFrame*, const css::frame::FeatureStateEvent&,
+                                   const SfxPoolItem*);
+
+OString IsActivePayload(sal_uInt16, SfxViewFrame*, const css::frame::FeatureStateEvent& aEvent,
+                        const SfxPoolItem*)
+{
+    bool bTemp = false;
+    aEvent.State >>= bTemp;
+    return aEvent.FeatureURL.Complete.toUtf8() + "=" + OString::boolean(bTemp);
+}
+
+OString FontNamePayload(sal_uInt16, SfxViewFrame*, const css::frame::FeatureStateEvent& aEvent,
+                        const SfxPoolItem*)
+{
+    css::awt::FontDescriptor aFontDesc;
+    aEvent.State >>= aFontDesc;
+    return aEvent.FeatureURL.Complete.toUtf8() + "=" + aFontDesc.Name.toUtf8();
+}
+
+OString FontHeightPayload(sal_uInt16, SfxViewFrame*, const css::frame::FeatureStateEvent& aEvent,
+                          const SfxPoolItem*)
+{
+    css::frame::status::FontHeight aFontHeight;
+    aEvent.State >>= aFontHeight;
+    return aEvent.FeatureURL.Complete.toUtf8() + "=" + OString::number(aFontHeight.Height);
+}
+
+OString StyleApplyPayload(sal_uInt16, SfxViewFrame*, const css::frame::FeatureStateEvent& aEvent,
+                          const SfxPoolItem*)
+{
+    css::frame::status::Template aTemplate;
+    aEvent.State >>= aTemplate;
+    return aEvent.FeatureURL.Complete.toUtf8() + "=" + aTemplate.StyleName.toUtf8();
+}
+
+OString ColorPayload(sal_uInt16, SfxViewFrame*, const css::frame::FeatureStateEvent& aEvent,
+                     const SfxPoolItem*)
+{
+    sal_Int32 nColor = -1;
+    aEvent.State >>= nColor;
+    return aEvent.FeatureURL.Complete.toUtf8() + "=" + OString::number(nColor);
+}
+
+OString UndoRedoPayload(sal_uInt16, SfxViewFrame*, const css::frame::FeatureStateEvent& aEvent,
+                        const SfxPoolItem* pState)
+{
+    if (aEvent.IsEnabled)
+        if (auto pUndoConflict = dynamic_cast<const SfxUInt32Item*>(pState);
+            !pUndoConflict || pUndoConflict->GetValue() == 0)
+            return aEvent.FeatureURL.Complete.toUtf8() + "=enabled";
+    return aEvent.FeatureURL.Complete.toUtf8() + "=disabled";
+}
+
+OString EnabledPayload(sal_uInt16, SfxViewFrame*, const css::frame::FeatureStateEvent& aEvent,
+                       const SfxPoolItem*)
+{
+    return aEvent.FeatureURL.Complete.toUtf8()
+           + (aEvent.IsEnabled ? std::string_view("=enabled") : std::string_view("=disabled"));
+}
+
+OString ParaDirectionPayload(sal_uInt16, SfxViewFrame*, const css::frame::FeatureStateEvent& aEvent,
+                             const SfxPoolItem*)
+{
+    tools::JsonWriter aTree;
+    bool bTemp = false;
+    aEvent.State >>= bTemp;
+    aTree.put("commandName", aEvent.FeatureURL.Complete);
+    aTree.put("disabled", !aEvent.IsEnabled);
+    aTree.put("state", bTemp ? std::string_view("true") : std::string_view("false"));
+    return aTree.finishAndGetAsOString();
+}
+
+OString Int32Payload(sal_uInt16, SfxViewFrame*, const css::frame::FeatureStateEvent& aEvent,
+                     const SfxPoolItem*)
+{
+    OStringBuffer aBuffer(aEvent.FeatureURL.Complete.toUtf8() + "=");
+    if (sal_Int32 aInt32; aEvent.IsEnabled && (aEvent.State >>= aInt32))
+        aBuffer.append(aInt32);
+    return aBuffer.makeStringAndClear();
+}
+
+OString TransformPayload(sal_uInt16 nSID, SfxViewFrame* pViewFrame,
+                         const css::frame::FeatureStateEvent& aEvent, const SfxPoolItem*)
+{
+    if (aEvent.IsEnabled && pViewFrame->GetViewShell()->isLOKMobilePhone())
+    {
+        boost::property_tree::ptree aTree;
+        boost::property_tree::ptree aState;
+
+        aTree.put("commandName", aEvent.FeatureURL.Complete);
+        pViewFrame->GetBindings().QueryControlState(nSID, aState);
+        aTree.add_child("state", aState);
+
+        std::stringstream aStream;
+        boost::property_tree::write_json(aStream, aTree);
+        return OString(aStream.str());
+    }
+    return aEvent.FeatureURL.Complete.toUtf8() + "="; // Should an empty string be returned?
+}
+
+OString StringPayload(sal_uInt16, SfxViewFrame*, const css::frame::FeatureStateEvent& aEvent,
+                      const SfxPoolItem*)
+{
+    OStringBuffer aBuffer(aEvent.FeatureURL.Complete.toUtf8() + "=");
+    if (OUString aString; aEvent.IsEnabled && (aEvent.State >>= aString))
+        aBuffer.append(aString.toUtf8());
+    return aBuffer.makeStringAndClear();
+}
+
+OString RowColSelCountPayload(sal_uInt16, SfxViewFrame*,
+                              const css::frame::FeatureStateEvent& aEvent, const SfxPoolItem*)
+{
+    OUString aString;
+    if (aEvent.IsEnabled)
+        aEvent.State >>= aString;
+    tools::JsonWriter aTree;
+    aTree.put("commandName", aEvent.FeatureURL.Complete);
+    aTree.put("locale", comphelper::LibreOfficeKit::getLocale().getBcp47());
+    aTree.put("state", aString);
+    return aTree.finishAndGetAsOString();
+}
+
+OString StateTableCellPayload(sal_uInt16, SfxViewFrame*,
+                              const css::frame::FeatureStateEvent& aEvent,
+                              const SfxPoolItem* pState)
+{
+    OStringBuffer aBuffer(aEvent.FeatureURL.Complete.toUtf8() + "=");
+    if (aEvent.IsEnabled)
+        if (const SfxStringItem* pSvxStatusItem = dynamic_cast<const SfxStringItem*>(pState))
+            aBuffer.append(pSvxStatusItem->GetValue().toUtf8());
+    return aBuffer.makeStringAndClear();
+}
+
+OString BooleanPayload(sal_uInt16, SfxViewFrame*, const css::frame::FeatureStateEvent& aEvent,
+                       const SfxPoolItem*)
+{
+    OStringBuffer aBuffer(aEvent.FeatureURL.Complete.toUtf8() + "=");
+    if (bool aBool; aEvent.IsEnabled && (aEvent.State >>= aBool))
+        aBuffer.append(aBool);
+    return aBuffer.makeStringAndClear();
+}
+
+OString BooleanOrDisabledPayload(sal_uInt16, SfxViewFrame*,
+                                 const css::frame::FeatureStateEvent& aEvent, const SfxPoolItem*)
+{
+    OStringBuffer aBuffer(aEvent.FeatureURL.Complete.toUtf8() + "=");
+    if (bool aBool; aEvent.IsEnabled && (aEvent.State >>= aBool))
+        aBuffer.append(aBool);
+    else
+        aBuffer.append("disabled");
+    return aBuffer.makeStringAndClear();
+}
+
+OString PointPayload(sal_uInt16, SfxViewFrame*, const css::frame::FeatureStateEvent& aEvent,
+                     const SfxPoolItem*)
+{
+    OStringBuffer aBuffer(aEvent.FeatureURL.Complete.toUtf8() + "=");
+    if (css::awt::Point aPoint; aEvent.IsEnabled && (aEvent.State >>= aPoint))
+        aBuffer.append(OString::number(aPoint.X) + " / " + OString::number(aPoint.Y));
+    return aBuffer.makeStringAndClear();
+}
+
+OString SizePayload(sal_uInt16, SfxViewFrame*, const css::frame::FeatureStateEvent& aEvent,
+                    const SfxPoolItem*)
+{
+    OStringBuffer aBuffer(aEvent.FeatureURL.Complete.toUtf8() + "=");
+    if (css::awt::Size aSize; aEvent.IsEnabled && (aEvent.State >>= aSize))
+        aBuffer.append(OString::number(aSize.Width) + " x " + OString::number(aSize.Height));
+    return aBuffer.makeStringAndClear();
+}
+
+OString StringOrStrSeqPayload(sal_uInt16, SfxViewFrame*,
+                              const css::frame::FeatureStateEvent& aEvent, const SfxPoolItem*)
+{
+    OStringBuffer aBuffer(aEvent.FeatureURL.Complete.toUtf8() + "=");
+    if (aEvent.IsEnabled)
+    {
+        if (OUString sValue; aEvent.State >>= sValue)
+            aBuffer.append(sValue.toUtf8());
+        else if (css::uno::Sequence<OUString> aSeq; aEvent.State >>= aSeq)
+            aBuffer.append(aSeq[0].toUtf8());
+    }
+    return aBuffer.makeStringAndClear();
+}
+
+OString StrSeqPayload(sal_uInt16, SfxViewFrame*, const css::frame::FeatureStateEvent& aEvent,
+                      const SfxPoolItem*)
+{
+    OString json;
+    if (aEvent.IsEnabled)
+    {
+        if (css::uno::Sequence<OUString> aSeq; aEvent.State >>= aSeq)
+        {
+            tools::JsonWriter aTree;
+            for (const auto& s : aSeq)
+                aTree.put(s.toUtf8(), "true");
+            json = aTree.finishAndGetAsOString();
+        }
+    }
+    return aEvent.FeatureURL.Complete.toUtf8() + "=" + json;
+}
+
+OString TableSizePayload(sal_uInt16, SfxViewFrame*, const css::frame::FeatureStateEvent& aEvent,
+                         const SfxPoolItem*)
+{
+    OStringBuffer aBuffer(aEvent.FeatureURL.Complete.toUtf8() + "=");
+    if (sal_Int32 nValue; aEvent.State >>= nValue)
+        aBuffer.append(o3tl::convert<double>(nValue, o3tl::Length::twip, o3tl::Length::in));
+    return aBuffer.makeStringAndClear();
+}
+
+constexpr auto enumToPayload = frozen::make_unordered_map<PayloadType, PayloadGetter_t>({
+    { PayloadType::None, nullptr },
+    { PayloadType::IsActivePayload, IsActivePayload },
+    { PayloadType::FontNamePayload, FontNamePayload },
+    { PayloadType::FontHeightPayload, FontHeightPayload },
+    { PayloadType::StyleApplyPayload, StyleApplyPayload },
+    { PayloadType::ColorPayload, ColorPayload },
+    { PayloadType::UndoRedoPayload, UndoRedoPayload },
+    { PayloadType::EnabledPayload, EnabledPayload },
+    { PayloadType::ParaDirectionPayload, ParaDirectionPayload },
+    { PayloadType::Int32Payload, Int32Payload },
+    { PayloadType::TransformPayload, TransformPayload },
+    { PayloadType::StringPayload, StringPayload },
+    { PayloadType::RowColSelCountPayload, RowColSelCountPayload },
+    { PayloadType::StateTableCellPayload, StateTableCellPayload },
+    { PayloadType::BooleanPayload, BooleanPayload },
+    { PayloadType::BooleanOrDisabledPayload, BooleanOrDisabledPayload },
+    { PayloadType::PointPayload, PointPayload },
+    { PayloadType::SizePayload, SizePayload },
+    { PayloadType::StringOrStrSeqPayload, StringOrStrSeqPayload },
+    { PayloadType::StrSeqPayload, StrSeqPayload },
+    { PayloadType::TableSizePayload, TableSizePayload },
+});
+}
+
+const std::map<std::u16string_view, KitUnoCommand>& GetKitUnoCommandList()
+{
+    static std::map<std::u16string_view, KitUnoCommand> aUnoCommandList = {
+        { u"Bold", { PayloadType::IsActivePayload, true } },
+        { u"CenterPara", { PayloadType::IsActivePayload, true } },
+
+        { u"CharBackgroundExt", { PayloadType::IsActivePayload, true } },
+        { u"ControlCodes", { PayloadType::IsActivePayload, true } },
+        { u"DefaultBullet", { PayloadType::IsActivePayload, true } },
+        { u"DefaultNumbering", { PayloadType::IsActivePayload, true } },
+        { u"Italic", { PayloadType::IsActivePayload, true } },
+        { u"JustifyPara", { PayloadType::IsActivePayload, true } },
+        { u"LeftPara", { PayloadType::IsActivePayload, true } },
+        { u"OutlineFont", { PayloadType::IsActivePayload, true } },
+        { u"RightPara", { PayloadType::IsActivePayload, true } },
+        { u"Shadowed", { PayloadType::IsActivePayload, true } },
+        { u"SpellOnline", { PayloadType::IsActivePayload, true } },
+        { u"OnlineAutoFormat", { PayloadType::IsActivePayload, true } },
+        { u"SubScript", { PayloadType::IsActivePayload, true } },
+        { u"SuperScript", { PayloadType::IsActivePayload, true } },
+        { u"Strikeout", { PayloadType::IsActivePayload, true } },
+        { u"Underline", { PayloadType::IsActivePayload, true } },
+        { u"ModifiedStatus", { PayloadType::IsActivePayload, true } },
+        { u"TrackChanges", { PayloadType::IsActivePayload, true } },
+        { u"TrackChangesInThisView", { PayloadType::IsActivePayload, true } },
+        { u"TrackChangesInAllViews", { PayloadType::IsActivePayload, true } },
+        { u"ShowTrackedChanges", { PayloadType::IsActivePayload, true } },
+        { u"AlignLeft", { PayloadType::IsActivePayload, true } },
+        { u"AlignHorizontalCenter", { PayloadType::IsActivePayload, true } },
+        { u"AlignRight", { PayloadType::IsActivePayload, true } },
+        { u"DocumentRepair", { PayloadType::IsActivePayload, true } },
+        { u"ObjectAlignLeft", { PayloadType::IsActivePayload, true } },
+        { u"ObjectAlignRight", { PayloadType::IsActivePayload, true } },
+        { u"AlignCenter", { PayloadType::IsActivePayload, true } },
+        { u"AlignUp", { PayloadType::IsActivePayload, true } },
+        { u"AlignMiddle", { PayloadType::IsActivePayload, true } },
+        { u"AlignDown", { PayloadType::IsActivePayload, true } },
+        { u"TraceChangeMode", { PayloadType::IsActivePayload, true } },
+        { u"FormatPaintbrush", { PayloadType::IsActivePayload, true } },
+        { u"FreezePanes", { PayloadType::IsActivePayload, true } },
+        { u"Sidebar", { PayloadType::IsActivePayload, true } },
+        { u"SpacePara1", { PayloadType::IsActivePayload, true } },
+        { u"SpacePara15", { PayloadType::IsActivePayload, true } },
+        { u"SpacePara2", { PayloadType::IsActivePayload, true } },
+        { u"DataFilterAutoFilter", { PayloadType::IsActivePayload, true } },
+        { u"CellProtection", { PayloadType::IsActivePayload, true } },
+        { u"NormalMultiPaneGUI", { PayloadType::IsActivePayload, false } },
+        { u"NotesMode", { PayloadType::IsActivePayload, false } },
+        { u"SlideMasterPage", { PayloadType::IsActivePayload, false } },
+
+        { u"CharFontName", { PayloadType::FontNamePayload, true } },
+
+        { u"FontHeight", { PayloadType::FontHeightPayload, true } },
+
+        { u"StyleApply", { PayloadType::StyleApplyPayload, true } },
+
+        { u"BackColor", { PayloadType::ColorPayload, false } },
+        { u"BackgroundColor", { PayloadType::ColorPayload, true } },
+        { u"TableCellBackgroundColor", { PayloadType::ColorPayload, true } },
+        { u"CharBackColor", { PayloadType::ColorPayload, true } },
+        { u"Color", { PayloadType::ColorPayload, true } },
+        { u"FontColor", { PayloadType::ColorPayload, true } },
+        { u"FrameLineColor", { PayloadType::ColorPayload, true } },
+        { u"GlowColor", { PayloadType::ColorPayload, false } },
+
+        { u"Undo", { PayloadType::UndoRedoPayload, true } },
+        { u"Redo", { PayloadType::UndoRedoPayload, true } },
+
+        { u"Cut", { PayloadType::EnabledPayload, true } },
+        { u"Copy", { PayloadType::EnabledPayload, true } },
+        { u"CopySlide", { PayloadType::EnabledPayload, true } },
+        { u"Paste", { PayloadType::EnabledPayload, true } },
+        { u"SelectAll", { PayloadType::EnabledPayload, true } },
+        { u"InsertAnnotation", { PayloadType::EnabledPayload, true } },
+        { u"DeleteAnnotation", { PayloadType::EnabledPayload, true } },
+        { u"ResolveAnnotation", { PayloadType::EnabledPayload, false } },
+        { u"ResolveAnnotationThread", { PayloadType::EnabledPayload, false } },
+        { u"PromoteComment", { PayloadType::EnabledPayload, true } },
+        { u"InsertRowsBefore", { PayloadType::EnabledPayload, true } },
+        { u"InsertRowsAfter", { PayloadType::EnabledPayload, true } },
+        { u"InsertColumnsBefore", { PayloadType::EnabledPayload, true } },
+        { u"InsertColumnsAfter", { PayloadType::EnabledPayload, true } },
+        { u"NameGroup", { PayloadType::EnabledPayload, true } },
+        { u"ObjectTitleDescription", { PayloadType::EnabledPayload, true } },
+        { u"MergeCells", { PayloadType::EnabledPayload, true } },
+        { u"InsertObjectChart", { PayloadType::EnabledPayload, true } },
+        { u"InsertSection", { PayloadType::EnabledPayload, true } },
+        { u"InsertPagebreak", { PayloadType::EnabledPayload, true } },
+        { u"InsertColumnBreak", { PayloadType::EnabledPayload, true } },
+        { u"HyperlinkDialog", { PayloadType::EnabledPayload, true } },
+        { u"InsertSymbol", { PayloadType::EnabledPayload, true } },
+        { u"InsertPage", { PayloadType::EnabledPayload, true } },
+        { u"DeletePage", { PayloadType::EnabledPayload, true } },
+        { u"DuplicatePage", { PayloadType::EnabledPayload, true } },
+        { u"DeleteRows", { PayloadType::EnabledPayload, true } },
+        { u"DeleteColumns", { PayloadType::EnabledPayload, true } },
+        { u"DeleteTable", { PayloadType::EnabledPayload, true } },
+        { u"SelectTable", { PayloadType::EnabledPayload, true } },
+        { u"EntireRow", { PayloadType::EnabledPayload, true } },
+        { u"EntireColumn", { PayloadType::EnabledPayload, true } },
+        { u"EntireCell", { PayloadType::EnabledPayload, true } },
+        { u"SortAscending", { PayloadType::EnabledPayload, true } },
+        { u"SortDescending", { PayloadType::EnabledPayload, true } },
+        { u"AcceptAllTrackedChanges", { PayloadType::EnabledPayload, true } },
+        { u"RejectAllTrackedChanges", { PayloadType::EnabledPayload, true } },
+        { u"AcceptTrackedChange", { PayloadType::EnabledPayload, true } },
+        { u"RejectTrackedChange", { PayloadType::EnabledPayload, true } },
+        { u"ReinstateTrackedChange", { PayloadType::EnabledPayload, true } },
+        { u"AcceptTrackedChangeToNext", { PayloadType::EnabledPayload, true } },
+        { u"RejectTrackedChangeToNext", { PayloadType::EnabledPayload, true } },
+        { u"NextTrackedChange", { PayloadType::EnabledPayload, true } },
+        { u"PreviousTrackedChange", { PayloadType::EnabledPayload, true } },
+        { u"FormatGroup", { PayloadType::EnabledPayload, true } },
+        { u"ObjectBackOne", { PayloadType::EnabledPayload, true } },
+        { u"SendToBack", { PayloadType::EnabledPayload, true } },
+        { u"ObjectForwardOne", { PayloadType::EnabledPayload, true } },
+        { u"BringToFront", { PayloadType::EnabledPayload, true } },
+        { u"WrapRight", { PayloadType::EnabledPayload, true } },
+        { u"WrapThrough", { PayloadType::EnabledPayload, true } },
+        { u"WrapLeft", { PayloadType::EnabledPayload, true } },
+        { u"WrapIdeal", { PayloadType::EnabledPayload, true } },
+        { u"WrapOn", { PayloadType::EnabledPayload, true } },
+        { u"WrapOff", { PayloadType::EnabledPayload, true } },
+        { u"UpdateCurIndex", { PayloadType::EnabledPayload, true } },
+        { u"InsertCaptionDialog", { PayloadType::EnabledPayload, true } },
+        { u"SplitTable", { PayloadType::EnabledPayload, true } },
+        { u"SplitCell", { PayloadType::EnabledPayload, true } },
+        { u"DeleteNote", { PayloadType::EnabledPayload, true } },
+        { u"AcceptChanges", { PayloadType::EnabledPayload, true } },
+        { u"SetDefault", { PayloadType::EnabledPayload, true } },
+        { u"ParaspaceIncrease", { PayloadType::EnabledPayload, true } },
+        { u"ParaspaceDecrease", { PayloadType::EnabledPayload, true } },
+        { u"TableDialog", { PayloadType::EnabledPayload, true } },
+        { u"FormatCellDialog", { PayloadType::EnabledPayload, true } },
+        { u"FontDialog", { PayloadType::EnabledPayload, true } },
+        { u"ParagraphDialog", { PayloadType::EnabledPayload, true } },
+        { u"OutlineBullet", { PayloadType::EnabledPayload, true } },
+        { u"InsertIndexesEntry", { PayloadType::EnabledPayload, true } },
+        { u"TransformDialog", { PayloadType::EnabledPayload, true } },
+        { u"EditRegion", { PayloadType::EnabledPayload, true } },
+        { u"ThesaurusDialog", { PayloadType::EnabledPayload, true } },
+        { u"OutlineRight", { PayloadType::EnabledPayload, false } },
+        { u"OutlineLeft", { PayloadType::EnabledPayload, false } },
+        { u"OutlineDown", { PayloadType::EnabledPayload, false } },
+        { u"OutlineUp", { PayloadType::EnabledPayload, false } },
+        { u"FormatArea", { PayloadType::EnabledPayload, true } },
+        { u"FormatLine", { PayloadType::EnabledPayload, true } },
+        { u"FormatColumns", { PayloadType::EnabledPayload, true } },
+        { u"Watermark", { PayloadType::EnabledPayload, true } },
+        { u"InsertBreak", { PayloadType::EnabledPayload, true } },
+        { u"InsertEndnote", { PayloadType::EnabledPayload, true } },
+        { u"InsertFootnote", { PayloadType::EnabledPayload, true } },
+        { u"InsertReferenceField", { PayloadType::EnabledPayload, true } },
+        { u"InsertBookmark", { PayloadType::EnabledPayload, true } },
+        { u"InsertAuthoritiesEntry", { PayloadType::EnabledPayload, true } },
+        { u"InsertMultiIndex", { PayloadType::EnabledPayload, true } },
+        { u"InsertField", { PayloadType::EnabledPayload, true } },
+        { u"PageNumberWizard", { PayloadType::EnabledPayload, true } },
+        { u"InsertPageNumberField", { PayloadType::EnabledPayload, true } },
+        { u"InsertPageCountField", { PayloadType::EnabledPayload, true } },
+        { u"InsertDateField", { PayloadType::EnabledPayload, true } },
+        { u"InsertTitleField", { PayloadType::EnabledPayload, true } },
+        { u"InsertFieldCtrl", { PayloadType::EnabledPayload, true } },
+        { u"CharmapControl", { PayloadType::EnabledPayload, true } },
+        { u"EnterGroup", { PayloadType::EnabledPayload, true } },
+        { u"LeaveGroup", { PayloadType::EnabledPayload, true } },
+        { u"Combine", { PayloadType::EnabledPayload, true } },
+        { u"Merge", { PayloadType::EnabledPayload, true } },
+        { u"Dismantle", { PayloadType::EnabledPayload, true } },
+        { u"Substract", { PayloadType::EnabledPayload, true } },
+        { u"DistributeSelection", { PayloadType::EnabledPayload, true } },
+        { u"Intersect", { PayloadType::EnabledPayload, true } },
+        { u"ResetAttributes", { PayloadType::EnabledPayload, true } },
+        { u"IncrementIndent", { PayloadType::EnabledPayload, true } },
+        { u"DecrementIndent", { PayloadType::EnabledPayload, true } },
+        { u"EditHeaderAndFooter", { PayloadType::EnabledPayload, true } },
+        { u"InsertSparkline", { PayloadType::EnabledPayload, true } },
+        { u"DeleteSparkline", { PayloadType::EnabledPayload, true } },
+        { u"DeleteSparklineGroup", { PayloadType::EnabledPayload, true } },
+        { u"EditSparklineGroup", { PayloadType::EnabledPayload, true } },
+        { u"EditSparkline", { PayloadType::EnabledPayload, true } },
+        { u"GroupSparklines", { PayloadType::EnabledPayload, true } },
+        { u"UngroupSparklines", { PayloadType::EnabledPayload, true } },
+        { u"FormatSparklineMenu", { PayloadType::EnabledPayload, true } },
+        { u"DataDataPilotRun", { PayloadType::EnabledPayload, true } },
+        { u"RecalcPivotTable", { PayloadType::EnabledPayload, true } },
+        { u"DeletePivotTable", { PayloadType::EnabledPayload, true } },
+        { u"NumberFormatDecDecimals", { PayloadType::EnabledPayload, true } },
+        { u"NumberFormatIncDecimals", { PayloadType::EnabledPayload, true } },
+        { u"Protect", { PayloadType::EnabledPayload, true } },
+        { u"UnsetCellsReadOnly", { PayloadType::EnabledPayload, true } },
+        { u"ContentControlProperties", { PayloadType::EnabledPayload, true } },
+        { u"DeleteContentControl", { PayloadType::EnabledPayload, true } },
+        { u"InsertCheckboxContentControl", { PayloadType::EnabledPayload, true } },
+        { u"InsertContentControl", { PayloadType::EnabledPayload, true } },
+        { u"InsertDateContentControl", { PayloadType::EnabledPayload, true } },
+        { u"InsertDropdownContentControl", { PayloadType::EnabledPayload, true } },
+        { u"InsertPlainTextContentControl", { PayloadType::EnabledPayload, true } },
+        { u"InsertPictureContentControl", { PayloadType::EnabledPayload, true } },
+        { u"ChangeBezier", { PayloadType::EnabledPayload, true } },
+        { u"DistributeHorzCenter", { PayloadType::EnabledPayload, true } },
+        { u"DistributeHorzDistance", { PayloadType::EnabledPayload, true } },
+        { u"DistributeHorzLeft", { PayloadType::EnabledPayload, true } },
+        { u"DistributeHorzRight", { PayloadType::EnabledPayload, true } },
+        { u"DistributeVertBottom", { PayloadType::EnabledPayload, true } },
+        { u"DistributeVertCenter", { PayloadType::EnabledPayload, true } },
+        { u"DistributeVertDistance", { PayloadType::EnabledPayload, true } },
+        { u"DistributeVertTop", { PayloadType::EnabledPayload, true } },
+        { u"AnimationEffects", { PayloadType::EnabledPayload, true } },
+        { u"ExecuteAnimationEffect", { PayloadType::EnabledPayload, true } },
+        { u"PasteSlide", { PayloadType::EnabledPayload, true } },
+        { u"LineStyle", { PayloadType::EnabledPayload, true } },
+
+        { u"ParaLeftToRight", { PayloadType::ParaDirectionPayload, true } },
+        { u"ParaRightToLeft", { PayloadType::ParaDirectionPayload, true } },
+
+        { u"AssignLayout", { PayloadType::Int32Payload, true } },
+        { u"StatusSelectionMode", { PayloadType::Int32Payload, true } },
+        { u"Signature", { PayloadType::Int32Payload, false } },
+        { u"SelectionMode", { PayloadType::Int32Payload, true } },
+        { u"StatusBarFunc", { PayloadType::Int32Payload, true } },
+
+        { u"TransformPosX", { PayloadType::TransformPayload, true } },
+        { u"TransformPosY", { PayloadType::TransformPayload, true } },
+        { u"TransformWidth", { PayloadType::TransformPayload, true } },
+        { u"TransformHeight", { PayloadType::TransformPayload, true } },
+
+        { u"StatusDocPos", { PayloadType::StringPayload, true } },
+        { u"StatusPageStyle", { PayloadType::StringPayload, true } },
+        { u"StateWordCount", { PayloadType::StringPayload, true } },
+        { u"PageStyleName", { PayloadType::StringPayload, false } },
+        { u"PageStatus", { PayloadType::StringPayload, true } },
+        { u"LayoutStatus", { PayloadType::StringPayload, true } },
+        { u"Scale", { PayloadType::StringPayload, true } },
+        { u"Context", { PayloadType::StringPayload, true } },
+
+        { u"RowColSelCount", { PayloadType::RowColSelCountPayload, true } },
+
+        { u"StateTableCell", { PayloadType::StateTableCellPayload, true } },
+
+        { u"InsertMode", { PayloadType::BooleanPayload, true } },
+        { u"WrapText", { PayloadType::BooleanPayload, true } },
+        { u"NumberFormatCurrency", { PayloadType::BooleanPayload, true } },
+        { u"NumberFormatPercent", { PayloadType::BooleanPayload, true } },
+        { u"NumberFormatDecimal", { PayloadType::BooleanPayload, true } },
+        { u"NumberFormatDate", { PayloadType::BooleanPayload, true } },
+        { u"ShowResolvedAnnotations", { PayloadType::BooleanPayload, true } },
+
+        { u"ToggleMergeCells", { PayloadType::BooleanOrDisabledPayload, true } },
+        { u"SheetRightToLeft", { PayloadType::BooleanOrDisabledPayload, true } },
+        { u"ToggleSheetGrid", { PayloadType::BooleanOrDisabledPayload, true } },
+        { u"EditDoc", { PayloadType::BooleanOrDisabledPayload, true } },
+
+        { u"Position", { PayloadType::PointPayload, false } },
+        { u"FreezePanesColumn", { PayloadType::PointPayload, true } },
+        { u"FreezePanesRow", { PayloadType::PointPayload, true } },
+
+        { u"Size", { PayloadType::SizePayload, false } },
+
+        { u"LanguageStatus", { PayloadType::StringOrStrSeqPayload, true } },
+        { u"StatePageNumber", { PayloadType::StringOrStrSeqPayload, true } },
+
+        { u"InsertPageHeader", { PayloadType::StrSeqPayload, true } },
+        { u"InsertPageFooter", { PayloadType::StrSeqPayload, true } },
+
+        { u"TableColumWidth", { PayloadType::TableSizePayload, false } },
+        { u"TableRowHeight", { PayloadType::TableSizePayload, false } },
+
+        { u"BorderInner", { PayloadType::None, true } },
+        { u"BorderOuter", { PayloadType::None, true } },
+        { u"ChangeTheme", { PayloadType::None, true } },
+        { u"DeleteSlide", { PayloadType::None, true } },
+        { u"DuplicateSlide", { PayloadType::None, true } },
+        { u"InsertSlide", { PayloadType::None, true } },
+        { u"JumpToMark", { PayloadType::None, true } },
+        { u"MoveKeepInsertMode", { PayloadType::None, true } },
+        { u"Orientation", { PayloadType::None, true } },
+        { u"ReplyComment", { PayloadType::None, true } },
+        { u"ResolveComment", { PayloadType::None, true } },
+        { u"ResolveCommentThread", { PayloadType::None, true } },
+        { u"RunMacro", { PayloadType::None, true } },
+    };
+    return aUnoCommandList;
+}
+
 static void InterceptLOKStateChangeEvent(sal_uInt16 nSID, SfxViewFrame* pViewFrame, const css::frame::FeatureStateEvent& aEvent, const SfxPoolItem* pState)
 {
-    if (!comphelper::LibreOfficeKit::isActive())
+    const SfxViewShell* pViewShell = pViewFrame->GetViewShell();
+    if (!comphelper::LibreOfficeKit::isActive() || !pViewShell)
         return;
 
-    OUStringBuffer aBuffer(aEvent.FeatureURL.Complete + "=");
-
-    if (aEvent.FeatureURL.Path == "Bold" ||
-        aEvent.FeatureURL.Path == "CenterPara" ||
-        aEvent.FeatureURL.Path == "CharBackgroundExt" ||
-        aEvent.FeatureURL.Path == "ControlCodes" ||
-        aEvent.FeatureURL.Path == "DefaultBullet" ||
-        aEvent.FeatureURL.Path == "DefaultNumbering" ||
-        aEvent.FeatureURL.Path == "Italic" ||
-        aEvent.FeatureURL.Path == "JustifyPara" ||
-        aEvent.FeatureURL.Path == "LeftPara" ||
-        aEvent.FeatureURL.Path == "OutlineFont" ||
-        aEvent.FeatureURL.Path == "RightPara" ||
-        aEvent.FeatureURL.Path == "Shadowed" ||
-        aEvent.FeatureURL.Path == "SpellOnline" ||
-        aEvent.FeatureURL.Path == "OnlineAutoFormat" ||
-        aEvent.FeatureURL.Path == "SubScript" ||
-        aEvent.FeatureURL.Path == "SuperScript" ||
-        aEvent.FeatureURL.Path == "Strikeout" ||
-        aEvent.FeatureURL.Path == "Underline" ||
-        aEvent.FeatureURL.Path == "ModifiedStatus" ||
-        aEvent.FeatureURL.Path == "TrackChanges" ||
-        aEvent.FeatureURL.Path == "ShowTrackedChanges" ||
-        aEvent.FeatureURL.Path == "NextTrackedChange" ||
-        aEvent.FeatureURL.Path == "PreviousTrackedChange" ||
-        aEvent.FeatureURL.Path == "AlignLeft" ||
-        aEvent.FeatureURL.Path == "AlignHorizontalCenter" ||
-        aEvent.FeatureURL.Path == "AlignRight" ||
-        aEvent.FeatureURL.Path == "DocumentRepair" ||
-        aEvent.FeatureURL.Path == "ObjectAlignLeft" ||
-        aEvent.FeatureURL.Path == "ObjectAlignRight" ||
-        aEvent.FeatureURL.Path == "AlignCenter" ||
-        aEvent.FeatureURL.Path == "AlignUp" ||
-        aEvent.FeatureURL.Path == "AlignMiddle" ||
-        aEvent.FeatureURL.Path == "AlignDown" ||
-        aEvent.FeatureURL.Path == "TraceChangeMode" ||
-        aEvent.FeatureURL.Path == "FormatPaintbrush" ||
-        aEvent.FeatureURL.Path == "FreezePanes" ||
-        aEvent.FeatureURL.Path == "Sidebar" ||
-        aEvent.FeatureURL.Path == "SpacePara1" ||
-        aEvent.FeatureURL.Path == "SpacePara15" ||
-        aEvent.FeatureURL.Path == "SpacePara2" ||
-        aEvent.FeatureURL.Path == "DataFilterAutoFilter" ||
-        aEvent.FeatureURL.Path == "CellProtection")
-    {
-        bool bTemp = false;
-        aEvent.State >>= bTemp;
-        aBuffer.append(bTemp);
-    }
-    else if (aEvent.FeatureURL.Path == "CharFontName")
-    {
-        css::awt::FontDescriptor aFontDesc;
-        aEvent.State >>= aFontDesc;
-        aBuffer.append(aFontDesc.Name);
-    }
-    else if (aEvent.FeatureURL.Path == "FontHeight")
-    {
-        css::frame::status::FontHeight aFontHeight;
-        aEvent.State >>= aFontHeight;
-        aBuffer.append(aFontHeight.Height);
-    }
-    else if (aEvent.FeatureURL.Path == "StyleApply")
-    {
-        css::frame::status::Template aTemplate;
-        aEvent.State >>= aTemplate;
-        aBuffer.append(aTemplate.StyleName);
-    }
-    else if (aEvent.FeatureURL.Path == "BackColor" ||
-             aEvent.FeatureURL.Path == "BackgroundColor" ||
-             aEvent.FeatureURL.Path == "CharBackColor" ||
-             aEvent.FeatureURL.Path == "Color" ||
-             aEvent.FeatureURL.Path == "FontColor" ||
-             aEvent.FeatureURL.Path == "FrameLineColor" ||
-             aEvent.FeatureURL.Path == "GlowColor")
-    {
-        sal_Int32 nColor = -1;
-        aEvent.State >>= nColor;
-        aBuffer.append(nColor);
-    }
-    else if (aEvent.FeatureURL.Path == "Undo" ||
-             aEvent.FeatureURL.Path == "Redo")
-    {
-        const SfxUInt32Item* pUndoConflict = dynamic_cast< const SfxUInt32Item * >( pState );
-        if ( pUndoConflict && pUndoConflict->GetValue() > 0 )
-        {
-            aBuffer.append("disabled");
-        }
-        else
-        {
-            aBuffer.append(aEvent.IsEnabled ? std::u16string_view(u"enabled") : std::u16string_view(u"disabled"));
-        }
-    }
-    else if (aEvent.FeatureURL.Path == "Cut" ||
-             aEvent.FeatureURL.Path == "Copy" ||
-             aEvent.FeatureURL.Path == "Paste" ||
-             aEvent.FeatureURL.Path == "SelectAll" ||
-             aEvent.FeatureURL.Path == "InsertAnnotation" ||
-             aEvent.FeatureURL.Path == "DeleteAnnotation" ||
-             aEvent.FeatureURL.Path == "ResolveAnnotation" ||
-             aEvent.FeatureURL.Path == "ResolveAnnotationThread" ||
-             aEvent.FeatureURL.Path == "InsertRowsBefore" ||
-             aEvent.FeatureURL.Path == "InsertRowsAfter" ||
-             aEvent.FeatureURL.Path == "InsertColumnsBefore" ||
-             aEvent.FeatureURL.Path == "InsertColumnsAfter" ||
-             aEvent.FeatureURL.Path == "MergeCells" ||
-             aEvent.FeatureURL.Path == "InsertObjectChart" ||
-             aEvent.FeatureURL.Path == "InsertSection" ||
-             aEvent.FeatureURL.Path == "InsertAnnotation" ||
-             aEvent.FeatureURL.Path == "InsertPagebreak" ||
-             aEvent.FeatureURL.Path == "InsertColumnBreak" ||
-             aEvent.FeatureURL.Path == "HyperlinkDialog" ||
-             aEvent.FeatureURL.Path == "InsertSymbol" ||
-             aEvent.FeatureURL.Path == "InsertPage" ||
-             aEvent.FeatureURL.Path == "DeletePage" ||
-             aEvent.FeatureURL.Path == "DuplicatePage" ||
-             aEvent.FeatureURL.Path == "DeleteRows" ||
-             aEvent.FeatureURL.Path == "DeleteColumns" ||
-             aEvent.FeatureURL.Path == "DeleteTable" ||
-             aEvent.FeatureURL.Path == "SelectTable" ||
-             aEvent.FeatureURL.Path == "EntireRow" ||
-             aEvent.FeatureURL.Path == "EntireColumn" ||
-             aEvent.FeatureURL.Path == "EntireCell" ||
-             aEvent.FeatureURL.Path == "SortAscending" ||
-             aEvent.FeatureURL.Path == "SortDescending" ||
-             aEvent.FeatureURL.Path == "AcceptAllTrackedChanges" ||
-             aEvent.FeatureURL.Path == "RejectAllTrackedChanges" ||
-             aEvent.FeatureURL.Path == "AcceptTrackedChange" ||
-             aEvent.FeatureURL.Path == "RejectTrackedChange" ||
-             aEvent.FeatureURL.Path == "NextTrackedChange" ||
-             aEvent.FeatureURL.Path == "PreviousTrackedChange" ||
-             aEvent.FeatureURL.Path == "FormatGroup" ||
-             aEvent.FeatureURL.Path == "ObjectBackOne" ||
-             aEvent.FeatureURL.Path == "SendToBack" ||
-             aEvent.FeatureURL.Path == "ObjectForwardOne" ||
-             aEvent.FeatureURL.Path == "BringToFront" ||
-             aEvent.FeatureURL.Path == "WrapRight" ||
-             aEvent.FeatureURL.Path == "WrapThrough" ||
-             aEvent.FeatureURL.Path == "WrapLeft" ||
-             aEvent.FeatureURL.Path == "WrapIdeal" ||
-             aEvent.FeatureURL.Path == "WrapOn" ||
-             aEvent.FeatureURL.Path == "WrapOff" ||
-             aEvent.FeatureURL.Path == "UpdateCurIndex" ||
-             aEvent.FeatureURL.Path == "InsertCaptionDialog" ||
-             aEvent.FeatureURL.Path == "MergeCells" ||
-             aEvent.FeatureURL.Path == "SplitTable" ||
-             aEvent.FeatureURL.Path == "SplitCell" ||
-             aEvent.FeatureURL.Path == "DeleteNote" ||
-             aEvent.FeatureURL.Path == "AcceptChanges" ||
-             aEvent.FeatureURL.Path == "SetDefault" ||
-             aEvent.FeatureURL.Path == "ParaLeftToRight" ||
-             aEvent.FeatureURL.Path == "ParaRightToLeft" ||
-             aEvent.FeatureURL.Path == "ParaspaceIncrease" ||
-             aEvent.FeatureURL.Path == "ParaspaceDecrease" ||
-             aEvent.FeatureURL.Path == "TableDialog" ||
-             aEvent.FeatureURL.Path == "FormatCellDialog" ||
-             aEvent.FeatureURL.Path == "FontDialog" ||
-             aEvent.FeatureURL.Path == "ParagraphDialog" ||
-             aEvent.FeatureURL.Path == "OutlineBullet" ||
-             aEvent.FeatureURL.Path == "InsertIndexesEntry" ||
-             aEvent.FeatureURL.Path == "TransformDialog" ||
-             aEvent.FeatureURL.Path == "EditRegion" ||
-             aEvent.FeatureURL.Path == "ThesaurusDialog" ||
-             aEvent.FeatureURL.Path == "OutlineRight" ||
-             aEvent.FeatureURL.Path == "OutlineLeft" ||
-             aEvent.FeatureURL.Path == "OutlineDown" ||
-             aEvent.FeatureURL.Path == "OutlineUp" ||
-             aEvent.FeatureURL.Path == "FormatArea" ||
-             aEvent.FeatureURL.Path == "FormatLine" ||
-             aEvent.FeatureURL.Path == "FormatColumns" ||
-             aEvent.FeatureURL.Path == "Watermark" ||
-             aEvent.FeatureURL.Path == "InsertBreak" ||
-             aEvent.FeatureURL.Path == "InsertEndnote" ||
-             aEvent.FeatureURL.Path == "InsertFootnote" ||
-             aEvent.FeatureURL.Path == "InsertReferenceField" ||
-             aEvent.FeatureURL.Path == "InsertBookmark" ||
-             aEvent.FeatureURL.Path == "InsertAuthoritiesEntry" ||
-             aEvent.FeatureURL.Path == "InsertMultiIndex" ||
-             aEvent.FeatureURL.Path == "InsertField" ||
-             aEvent.FeatureURL.Path == "PageNumberWizard" ||
-             aEvent.FeatureURL.Path == "InsertPageNumberField" ||
-             aEvent.FeatureURL.Path == "InsertPageCountField" ||
-             aEvent.FeatureURL.Path == "InsertDateField" ||
-             aEvent.FeatureURL.Path == "InsertTitleField" ||
-             aEvent.FeatureURL.Path == "InsertFieldCtrl" ||
-             aEvent.FeatureURL.Path == "CharmapControl" ||
-             aEvent.FeatureURL.Path == "EnterGroup" ||
-             aEvent.FeatureURL.Path == "LeaveGroup" ||
-             aEvent.FeatureURL.Path == "Combine" ||
-             aEvent.FeatureURL.Path == "Merge" ||
-             aEvent.FeatureURL.Path == "Dismantle" ||
-             aEvent.FeatureURL.Path == "Substract" ||
-             aEvent.FeatureURL.Path == "DistributeSelection" ||
-             aEvent.FeatureURL.Path == "Intersect" ||
-             aEvent.FeatureURL.Path == "ResetAttributes" ||
-             aEvent.FeatureURL.Path == "IncrementIndent" ||
-             aEvent.FeatureURL.Path == "DecrementIndent" ||
-             aEvent.FeatureURL.Path == "EditHeaderAndFooter" ||
-             aEvent.FeatureURL.Path == "InsertSparkline" ||
-             aEvent.FeatureURL.Path == "DeleteSparkline" ||
-             aEvent.FeatureURL.Path == "DeleteSparklineGroup" ||
-             aEvent.FeatureURL.Path == "EditSparklineGroup" ||
-             aEvent.FeatureURL.Path == "EditSparkline" ||
-             aEvent.FeatureURL.Path == "GroupSparklines" ||
-             aEvent.FeatureURL.Path == "UngroupSparklines" ||
-             aEvent.FeatureURL.Path == "FormatSparklineMenu" ||
-             aEvent.FeatureURL.Path == "DataDataPilotRun" ||
-             aEvent.FeatureURL.Path == "RecalcPivotTable" ||
-             aEvent.FeatureURL.Path == "DeletePivotTable" ||
-             aEvent.FeatureURL.Path == "NumberFormatDecDecimals" ||
-             aEvent.FeatureURL.Path == "NumberFormatIncDecimals" ||
-             aEvent.FeatureURL.Path == "Protect" ||
-             aEvent.FeatureURL.Path == "UnsetCellsReadOnly" ||
-             aEvent.FeatureURL.Path == "ContentControlProperties" ||
-             aEvent.FeatureURL.Path == "InsertCheckboxContentControl" ||
-             aEvent.FeatureURL.Path == "InsertContentControl" ||
-             aEvent.FeatureURL.Path == "InsertDateContentControl" ||
-             aEvent.FeatureURL.Path == "InsertDropdownContentControl" ||
-             aEvent.FeatureURL.Path == "InsertPlainTextContentControl" ||
-             aEvent.FeatureURL.Path == "InsertPictureContentControl")
-    {
-        aBuffer.append(aEvent.IsEnabled ? std::u16string_view(u"enabled") : std::u16string_view(u"disabled"));
-    }
-    else if (aEvent.FeatureURL.Path == "AssignLayout" ||
-             aEvent.FeatureURL.Path == "StatusSelectionMode" ||
-             aEvent.FeatureURL.Path == "Signature" ||
-             aEvent.FeatureURL.Path == "SelectionMode" ||
-             aEvent.FeatureURL.Path == "StatusBarFunc")
-    {
-        sal_Int32 aInt32;
-
-        if (aEvent.IsEnabled && (aEvent.State >>= aInt32))
-        {
-            aBuffer.append(aInt32);
-        }
-    }
-    else if (aEvent.FeatureURL.Path == "TransformPosX" ||
-             aEvent.FeatureURL.Path == "TransformPosY" ||
-             aEvent.FeatureURL.Path == "TransformWidth" ||
-             aEvent.FeatureURL.Path == "TransformHeight")
-    {
-        const SfxViewShell* pViewShell = SfxViewShell::Current();
-        if (aEvent.IsEnabled && pViewShell && pViewShell->isLOKMobilePhone())
-        {
-            boost::property_tree::ptree aTree;
-            boost::property_tree::ptree aState;
-            OUString aStr(aEvent.FeatureURL.Complete);
-
-            aTree.put("commandName", aStr.toUtf8().getStr());
-            pViewFrame->GetBindings().QueryControlState(nSID, aState);
-            aTree.add_child("state", aState);
-
-            aBuffer.setLength(0);
-            std::stringstream aStream;
-            boost::property_tree::write_json(aStream, aTree);
-            aBuffer.appendAscii(aStream.str().c_str());
-        }
-    }
-    else if (aEvent.FeatureURL.Path == "StatusDocPos" ||
-             aEvent.FeatureURL.Path == "RowColSelCount" ||
-             aEvent.FeatureURL.Path == "StatusPageStyle" ||
-             aEvent.FeatureURL.Path == "StateWordCount" ||
-             aEvent.FeatureURL.Path == "PageStyleName" ||
-             aEvent.FeatureURL.Path == "PageStatus" ||
-             aEvent.FeatureURL.Path == "LayoutStatus" ||
-             aEvent.FeatureURL.Path == "Scale" ||
-             aEvent.FeatureURL.Path == "Context")
-    {
-        OUString aString;
-
-        if (aEvent.IsEnabled && (aEvent.State >>= aString))
-        {
-            aBuffer.append(aString);
-        }
-    }
-    else if (aEvent.FeatureURL.Path == "StateTableCell")
-    {
-        if (aEvent.IsEnabled)
-        {
-            if (const SfxStringItem* pSvxStatusItem = dynamic_cast<const SfxStringItem*>(pState))
-                aBuffer.append(pSvxStatusItem->GetValue());
-        }
-    }
-    else if (aEvent.FeatureURL.Path == "InsertMode" ||
-             aEvent.FeatureURL.Path == "WrapText" ||
-             aEvent.FeatureURL.Path == "NumberFormatCurrency" ||
-             aEvent.FeatureURL.Path == "NumberFormatPercent" ||
-             aEvent.FeatureURL.Path == "NumberFormatDecimal" ||
-             aEvent.FeatureURL.Path == "NumberFormatDate" ||
-             aEvent.FeatureURL.Path == "ShowResolvedAnnotations")
-    {
-        bool aBool;
-
-        if (aEvent.IsEnabled && (aEvent.State >>= aBool))
-        {
-            aBuffer.append(OUString::boolean(aBool));
-        }
-    }
-    else if (aEvent.FeatureURL.Path == "ToggleMergeCells" ||
-             aEvent.FeatureURL.Path == "SheetRightToLeft")
-    {
-        bool aBool;
-
-        if (aEvent.IsEnabled && (aEvent.State >>= aBool))
-        {
-            aBuffer.append(OUString::boolean(aBool));
-        }
-        else
-        {
-            aBuffer.append("disabled");
-        }
-    }
-    else if (aEvent.FeatureURL.Path == "Position" ||
-             aEvent.FeatureURL.Path == "FreezePanesColumn" ||
-             aEvent.FeatureURL.Path == "FreezePanesRow")
-    {
-        css::awt::Point aPoint;
-
-        if (aEvent.IsEnabled && (aEvent.State >>= aPoint))
-        {
-            aBuffer.append( OUString::number(aPoint.X) + " / " + OUString::number(aPoint.Y));
-        }
-    }
-    else if (aEvent.FeatureURL.Path == "Size")
-    {
-        css::awt::Size aSize;
-
-        if (aEvent.IsEnabled && (aEvent.State >>= aSize))
-        {
-            aBuffer.append( OUString::number(aSize.Width) + " x " + OUString::number(aSize.Height) );
-        }
-    }
-    else if (aEvent.FeatureURL.Path == "LanguageStatus" ||
-             aEvent.FeatureURL.Path == "StatePageNumber")
-    {
-        css::uno::Sequence< OUString > aSeq;
-
-        if (aEvent.IsEnabled)
-        {
-            OUString sValue;
-            if (aEvent.State >>= sValue)
-            {
-                aBuffer.append(sValue);
-            }
-            else if (aEvent.State >>= aSeq)
-            {
-                aBuffer.append(aSeq[0]);
-            }
-        }
-    }
-    else if (aEvent.FeatureURL.Path == "InsertPageHeader" ||
-             aEvent.FeatureURL.Path == "InsertPageFooter")
-    {
-        if (aEvent.IsEnabled)
-        {
-            css::uno::Sequence< OUString > aSeq;
-            if (aEvent.State >>= aSeq)
-            {
-                aBuffer.append(u'{');
-                for (sal_Int32 itSeq = 0; itSeq < aSeq.getLength(); itSeq++)
-                {
-                    aBuffer.append("\"" + aSeq[itSeq]);
-                    if (itSeq != aSeq.getLength() - 1)
-                        aBuffer.append("\":true,");
-                    else
-                        aBuffer.append("\":true");
-                }
-                aBuffer.append(u'}');
-            }
-        }
-    }
-    else if (aEvent.FeatureURL.Path == "TableColumWidth" ||
-             aEvent.FeatureURL.Path == "TableRowHeight")
-    {
-        sal_Int32 nValue;
-        if (aEvent.State >>= nValue)
-        {
-            float nScaleValue = 1000.0;
-            nValue *= nScaleValue;
-            sal_Int32 nConvertedValue = o3tl::convert(nValue, o3tl::Length::twip, o3tl::Length::in);
-            aBuffer.append(nConvertedValue / nScaleValue);
-        }
-    }
-    else
+    const std::map<std::u16string_view, KitUnoCommand>& rUnoCommandList = GetKitUnoCommandList();
+    auto handler = rUnoCommandList.find(aEvent.FeatureURL.Path);
+    if (handler == rUnoCommandList.end())
     {
         // Try to send JSON state version
-        SfxLokHelper::sendUnoStatus(pViewFrame->GetViewShell(), pState);
+        SfxLokHelper::sendUnoStatus(pViewShell, pState);
 
         return;
     }
 
-    OUString payload = aBuffer.makeStringAndClear();
-    if (const SfxViewShell* pViewShell = pViewFrame->GetViewShell())
-        pViewShell->libreOfficeKitViewCallback(LOK_CALLBACK_STATE_CHANGED, payload.toUtf8());
+    auto payloadIter = enumToPayload.find(handler->second.payloadType);
+    PayloadGetter_t pFunct = payloadIter != enumToPayload.end() ? payloadIter->second : nullptr;
+    if (pFunct != nullptr)
+        pViewShell->libreOfficeKitViewCallback(LOK_CALLBACK_STATE_CHANGED,
+                                               pFunct(nSID, pViewFrame, aEvent, pState));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

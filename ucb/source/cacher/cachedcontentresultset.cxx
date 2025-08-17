@@ -554,7 +554,7 @@ sal_Int32 CCRS_PropertySetInfo
 bool CCRS_PropertySetInfo
         ::impl_queryProperty( std::u16string_view rName, Property& rProp ) const
 {
-    for( const Property& rMyProp : std::as_const(*m_xProperties) )
+    for (const Property& rMyProp : *m_xProperties)
     {
         if( rMyProp.Name == rName )
         {
@@ -593,7 +593,7 @@ sal_Int32 CCRS_PropertySetInfo
     while( bFound )
     {
         bFound = false;
-        for( const auto & rProp : std::as_const(*m_xProperties) )
+        for (const auto& rProp : *m_xProperties)
         {
             if( nHandle == rProp.Handle )
             {
@@ -676,6 +676,9 @@ bool CachedContentResultSet
     }
 //  OSL_ENSURE( nRow <= m_nKnownCount, "don't step into regions you don't know with this method" );
 
+    if (!m_bAfterLastApplied && m_nLastAppliedPos == nRow)
+        return true;
+
     sal_Int32 nLastAppliedPos = m_nLastAppliedPos;
     bool bAfterLastApplied = m_bAfterLastApplied;
     bool bAfterLast = m_bAfterLast;
@@ -683,13 +686,62 @@ bool CachedContentResultSet
 
     rGuard.unlock();
 
-    if( bAfterLastApplied || nLastAppliedPos != nRow )
+    if( nForwardOnly == 1 )
     {
-        if( nForwardOnly == 1 )
-        {
-            if( bAfterLastApplied || bAfterLast || !nRow || nRow < nLastAppliedPos )
-                throw SQLException();
+        if( bAfterLastApplied || bAfterLast || !nRow || nRow < nLastAppliedPos )
+            throw SQLException();
 
+        sal_Int32 nN = nRow - nLastAppliedPos;
+        sal_Int32 nM;
+        for( nM = 0; nN--; nM++ )
+        {
+            if( !m_xResultSetOrigin->next() )
+                break;
+        }
+
+        rGuard.lock();
+        m_nLastAppliedPos += nM;
+        m_bAfterLastApplied = nRow != m_nLastAppliedPos;
+        return nRow == m_nLastAppliedPos;
+    }
+
+    if( !nRow ) //absolute( 0 ) will throw exception
+    {
+        m_xResultSetOrigin->beforeFirst();
+
+        rGuard.lock();
+        m_nLastAppliedPos = 0;
+        m_bAfterLastApplied = false;
+        return false;
+    }
+    try
+    {
+        //move absolute, if !nLastAppliedPos
+        //because move relative would throw exception
+        if( !nLastAppliedPos || bAfterLast || bAfterLastApplied )
+        {
+            bool bValid = m_xResultSetOrigin->absolute( nRow );
+
+            rGuard.lock();
+            m_nLastAppliedPos = nRow;
+            m_bAfterLastApplied = !bValid;
+            return bValid;
+        }
+        else
+        {
+            bool bValid = m_xResultSetOrigin->relative( nRow - nLastAppliedPos );
+
+            rGuard.lock();
+            m_nLastAppliedPos += ( nRow - nLastAppliedPos );
+            m_bAfterLastApplied = !bValid;
+            return bValid;
+        }
+    }
+    catch (const SQLException&)
+    {
+        rGuard.lock();
+        if( !bAfterLastApplied && !bAfterLast && nRow > nLastAppliedPos && impl_isForwardOnly(rGuard) )
+        {
             sal_Int32 nN = nRow - nLastAppliedPos;
             sal_Int32 nM;
             for( nM = 0; nN--; nM++ )
@@ -698,69 +750,14 @@ bool CachedContentResultSet
                     break;
             }
 
-            rGuard.lock();
             m_nLastAppliedPos += nM;
             m_bAfterLastApplied = nRow != m_nLastAppliedPos;
-            return nRow == m_nLastAppliedPos;
         }
-
-        if( !nRow ) //absolute( 0 ) will throw exception
-        {
-            m_xResultSetOrigin->beforeFirst();
-
-            rGuard.lock();
-            m_nLastAppliedPos = 0;
-            m_bAfterLastApplied = false;
-            return false;
-        }
-        try
-        {
-            //move absolute, if !nLastAppliedPos
-            //because move relative would throw exception
-            if( !nLastAppliedPos || bAfterLast || bAfterLastApplied )
-            {
-                bool bValid = m_xResultSetOrigin->absolute( nRow );
-
-                rGuard.lock();
-                m_nLastAppliedPos = nRow;
-                m_bAfterLastApplied = !bValid;
-                return bValid;
-            }
-            else
-            {
-                bool bValid = m_xResultSetOrigin->relative( nRow - nLastAppliedPos );
-
-                rGuard.lock();
-                m_nLastAppliedPos += ( nRow - nLastAppliedPos );
-                m_bAfterLastApplied = !bValid;
-                return bValid;
-            }
-        }
-        catch (const SQLException&)
-        {
-            rGuard.lock();
-            if( !bAfterLastApplied && !bAfterLast && nRow > nLastAppliedPos && impl_isForwardOnly(rGuard) )
-            {
-                sal_Int32 nN = nRow - nLastAppliedPos;
-                sal_Int32 nM;
-                for( nM = 0; nN--; nM++ )
-                {
-                    if( !m_xResultSetOrigin->next() )
-                        break;
-                }
-
-                m_nLastAppliedPos += nM;
-                m_bAfterLastApplied = nRow != m_nLastAppliedPos;
-            }
-            else
-                throw;
-        }
-
+        else
+            throw;
         return nRow == m_nLastAppliedPos;
     }
-    return true;
-};
-
+}
 
 //define for fetching data
 
@@ -912,7 +909,7 @@ XTYPEPROVIDER_IMPL_11( CachedContentResultSet
 
 OUString SAL_CALL CachedContentResultSet::getImplementationName()
 {
-    return "com.sun.star.comp.ucb.CachedContentResultSet";
+    return u"com.sun.star.comp.ucb.CachedContentResultSet"_ustr;
 }
 
 sal_Bool SAL_CALL CachedContentResultSet::supportsService( const OUString& ServiceName )
@@ -922,7 +919,7 @@ sal_Bool SAL_CALL CachedContentResultSet::supportsService( const OUString& Servi
 
 css::uno::Sequence< OUString > SAL_CALL CachedContentResultSet::getSupportedServiceNames()
 {
-    return { "com.sun.star.ucb.CachedContentResultSet" };
+    return { u"com.sun.star.ucb.CachedContentResultSet"_ustr };
 }
 
 
@@ -1222,24 +1219,19 @@ OUString CachedContentResultSet
     XCONTENTACCESS_queryXXX( queryContentIdentifierString, ContentIdentifierString, OUString )
 }
 
-
 // virtual
-Reference< XContentIdentifier > SAL_CALL CachedContentResultSet
-    ::queryContentIdentifier()
+Reference<XContentIdentifier> CachedContentResultSet
+    ::queryContentIdentifierImpl(std::unique_lock<std::mutex>& rGuard)
 {
-    std::unique_lock rGuard(m_aMutex);
     XCONTENTACCESS_queryXXX( queryContentIdentifier, ContentIdentifier, Reference< XContentIdentifier > )
 }
 
-
 // virtual
-Reference< XContent > SAL_CALL CachedContentResultSet
-    ::queryContent()
+Reference<XContent> CachedContentResultSet
+    ::queryContentImpl(std::unique_lock<std::mutex>& rGuard)
 {
-    std::unique_lock rGuard(m_aMutex);
     XCONTENTACCESS_queryXXX( queryContent, Content, Reference< XContent > )
 }
-
 
 // XResultSet methods. ( inherited )
 
@@ -1998,7 +1990,7 @@ CachedContentResultSetFactory::~CachedContentResultSetFactory()
 
 OUString SAL_CALL CachedContentResultSetFactory::getImplementationName()
 {
-    return "com.sun.star.comp.ucb.CachedContentResultSetFactory";
+    return u"com.sun.star.comp.ucb.CachedContentResultSetFactory"_ustr;
 }
 sal_Bool SAL_CALL CachedContentResultSetFactory::supportsService( const OUString& ServiceName )
 {
@@ -2006,7 +1998,7 @@ sal_Bool SAL_CALL CachedContentResultSetFactory::supportsService( const OUString
 }
 css::uno::Sequence< OUString > SAL_CALL CachedContentResultSetFactory::getSupportedServiceNames()
 {
-    return { "com.sun.star.ucb.CachedContentResultSetFactory" };
+    return { u"com.sun.star.ucb.CachedContentResultSetFactory"_ustr };
 }
 
 // Service factory implementation.

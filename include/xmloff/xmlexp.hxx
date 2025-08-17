@@ -51,6 +51,8 @@
 
 #include <vector>
 #include <memory>
+#include <unordered_map>
+#include <unordered_set>
 #include <o3tl/typed_flags_set.hxx>
 
 namespace com::sun::star::beans { class XPropertySet; }
@@ -68,10 +70,10 @@ namespace com::sun::star::xml::sax { class XExtendedDocumentHandler; }
 namespace com::sun::star::xml::sax { class XLocator; }
 
 class SvXMLNamespaceMap;
-class SvtSecurityMapPersonalInfo;
 class SvXMLExport_Impl;
 class ProgressBarHelper;
 class XMLEventExport;
+class XMLFontAutoStylePoolEntry_Impl;
 class XMLImageMapExport;
 class XMLErrors;
 class LanguageTag;
@@ -87,6 +89,7 @@ namespace com::sun::star {
 namespace comphelper { class UnoInterfaceToUniqueIdentifierMapper; }
 
 namespace model { class Theme; }
+namespace vcl { class ILibreOfficeKitNotifier; }
 
 enum class SvXMLExportFlags {
     NONE                     = 0,
@@ -98,7 +101,7 @@ enum class SvXMLExportFlags {
     SCRIPTS                  = 0x0020,
     SETTINGS                 = 0x0040,
     FONTDECLS                = 0x0080,
-    EMBEDDED                 = 0x0100,
+    EMBEDDED                 = 0x0100, // for flat-ODF export
     PRETTY                   = 0x0400,
     OASIS                    = 0x8000,
     ALL                      = 0x05ff
@@ -151,6 +154,7 @@ class XMLOFF_DLLPUBLIC SvXMLExport : public cppu::WeakImplHelper<
     std::unique_ptr<XMLEventExport> mpEventExport;
     std::unique_ptr<XMLImageMapExport> mpImageMapExport;
     std::unique_ptr<XMLErrors>  mpXMLErrors;
+    vcl::ILibreOfficeKitNotifier* mpNotifier = nullptr;
 
     const enum ::xmloff::token::XMLTokenEnum meClass;
     SAL_DLLPRIVATE void InitCtor_();
@@ -159,6 +163,9 @@ class XMLOFF_DLLPUBLIC SvXMLExport : public cppu::WeakImplHelper<
     SvXMLErrorFlags   mnErrorFlags;
 
     const OUString               msWS;           // " "
+
+    // A map of font hashes and names that were already embedded, including previous passes
+    std::unordered_map<OString, OUString> m_aEmbeddedFontFiles;
 
     // Shapes in Writer cannot be named via context menu (#i51726#)
     SvtModuleOptions::EFactory meModelType;
@@ -174,6 +181,9 @@ class XMLOFF_DLLPUBLIC SvXMLExport : public cppu::WeakImplHelper<
     SAL_DLLPRIVATE void ImplExportContent(); // <office:body>
     virtual void SetBodyAttributes();
     void GetViewSettingsAndViews(css::uno::Sequence<css::beans::PropertyValue>& rProps);
+
+    OUString embedFontFile(OUString const& rFileUrl, OUString const& rFamilyName);
+    std::unordered_set<OUString> getUsedFontList();
 
 protected:
     void setExportFlags( SvXMLExportFlags nExportFlags ) { mnExportFlags = nExportFlags; }
@@ -226,6 +236,12 @@ protected:
     xmloff::OFormLayerXMLExport* CreateFormExport();
     virtual void GetViewSettings(css::uno::Sequence<css::beans::PropertyValue>& aProps);
     virtual void GetConfigurationSettings(css::uno::Sequence<css::beans::PropertyValue>& aProps);
+
+    virtual bool getEmbedFonts() { return false; }
+    virtual bool getEmbedOnlyUsedFonts() { return false; }
+    virtual bool getEmbedLatinScript() { return true; }
+    virtual bool getEmbedAsianScript() { return true; }
+    virtual bool getEmbedComplexScript() { return true; }
 
     struct SettingsGroup
     {
@@ -292,6 +308,16 @@ public:
     virtual ~SvXMLExport() override;
 
     virtual void collectAutoStyles();
+    void exportFonts(const std::vector<XMLFontAutoStylePoolEntry_Impl*>& rFonts);
+
+    // We write font info to both content.xml and styles.xml, but they are written by different
+    // SvXMLExport instances, and would therefore embed each font file twice, if done naively. On
+    // the other hand, we can't limit the embedding only to content.xml phase, because there it
+    // doesn't handle some style-specific content like headers/footers. These methods are for
+    // passing the "already embedded" information from one instance to another.
+
+    std::unordered_map<OString, OUString> getEmbeddedFontFiles() const;
+    void setEmbeddedFontFiles(const std::unordered_map<OString, OUString>&);
 
     // XExporter
     virtual void SAL_CALL setSourceDocument( const css::uno::Reference< css::lang::XComponent >& xDoc ) override;
@@ -304,8 +330,8 @@ public:
     virtual void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any >& aArguments ) override;
 
     // XNamed
-    virtual OUString SAL_CALL getName(  ) override;
-    virtual void SAL_CALL setName( const OUString& aName ) override;
+    virtual OUString SAL_CALL getName(  ) override final;
+    virtual void SAL_CALL setName( const OUString& aName ) override final;
 
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName(  ) final override;
@@ -388,7 +414,7 @@ public:
     const SvXMLNamespaceMap& GetNamespaceMap() const { return *mpNamespaceMap; }
 
     // Get author id to remove personal info
-    size_t GetInfoID( const OUString sPersonalInfo ) const { return mpAuthorIDs->GetInfoID(sPersonalInfo); }
+    size_t GetInfoID( const OUString& sPersonalInfo ) const { return mpAuthorIDs->GetInfoID(sPersonalInfo); }
 
     // Get unit converter
     const SvXMLUnitConverter& GetMM100UnitConverter() const { return maUnitConv; }
@@ -555,6 +581,8 @@ public:
 
     /// Get clamped mimetype for image export (empty if none)
     OUString const & GetImageFilterName() const;
+
+    void SetLibreOfficeKitNotifier(vcl::ILibreOfficeKitNotifier* pNotifier);
 };
 
 inline rtl::Reference< XMLTextParagraphExport > const & SvXMLExport::GetTextParagraphExport()
@@ -648,9 +676,6 @@ public:
 
     // The constructor prints a start tag that has the common attributes
     // of the XMLExport instance attached.
-    SvXMLElementExport( SvXMLExport& rExp, sal_uInt16 nPrefix,
-                        const char *pName,
-                        bool bIgnWSOutside, bool bIgnWSInside );
     SvXMLElementExport( SvXMLExport& rExp, sal_uInt16 nPrefix,
                         const OUString& rName,
                         bool bIgnWSOutside, bool bIgnWSInside );

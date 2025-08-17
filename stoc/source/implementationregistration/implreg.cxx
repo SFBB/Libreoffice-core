@@ -53,7 +53,6 @@ using namespace css::beans;
 using namespace css::lang;
 using namespace css::registry;
 using namespace cppu;
-using namespace osl;
 
 namespace {
 
@@ -509,7 +508,7 @@ void prepareUserKeys(const Reference < XSimpleRegistry >& xDest,
 
     OUString relativKey;
     if (keyNames.hasElements())
-        relativKey = keyNames.getConstArray()[0].copy(xKey->getKeyName().getLength()+1);
+        relativKey = keyNames[0].copy(xKey->getKeyName().getLength()+1);
 
     if (keyNames.getLength() == 1 &&
         xKey->getKeyType(relativKey) == RegistryKeyType_LINK)
@@ -585,7 +584,7 @@ void deleteAllImplementations(   const Reference < XSimpleRegistry >& xReg,
     {
         bool hasLocationUrl = false;
 
-        for (const Reference < XRegistryKey> & xImplKey : std::as_const(subKeys))
+        for (const Reference<XRegistryKey>& xImplKey : subKeys)
         {
             Reference < XRegistryKey > xKey = xImplKey->openKey(
                 slash_UNO_slash_LOCATION );
@@ -657,12 +656,11 @@ void delete_all_singleton_entries(
     // throw (InvalidRegistryException, RuntimeException)
 {
     Sequence< Reference< registry::XRegistryKey > > singletons( xSingletons_section->openKeys() );
-    Reference< registry::XRegistryKey > const * subkeys = singletons.getConstArray();
     for ( sal_Int32 nPos = singletons.getLength(); nPos--; )
     {
-        Reference< registry::XRegistryKey > const & xSingleton = subkeys[ nPos ];
+        Reference<registry::XRegistryKey> const& xSingleton = singletons[nPos];
         Reference< registry::XRegistryKey > xRegisteredImplNames(
-            xSingleton->openKey( "REGISTERED_BY" ) );
+            xSingleton->openKey( u"REGISTERED_BY"_ustr ) );
         if (xRegisteredImplNames.is() && xRegisteredImplNames->isValid())
         {
             Sequence< OUString > registered_implnames;
@@ -696,7 +694,7 @@ void delete_all_singleton_entries(
                 {
                     // remove whole entry
                     xRegisteredImplNames->closeKey();
-                    xSingleton->deleteKey( "REGISTERED_BY" );
+                    xSingleton->deleteKey( u"REGISTERED_BY"_ustr );
                     // registry key cannot provide its relative name, only absolute :(
                     OUString abs( xSingleton->getKeyName() );
                     xSingletons_section->deleteKey( abs.copy( abs.lastIndexOf( '/' ) +1 ) );
@@ -725,7 +723,7 @@ void deleteAllServiceEntries(    const Reference < XSimpleRegistry >& xReg,
     {
         bool hasNoImplementations = false;
 
-        for (const Reference < XRegistryKey > & xServiceKey : std::as_const(subKeys))
+        for (const Reference<XRegistryKey>& xServiceKey : subKeys)
         {
             if (xServiceKey->getValueType() == RegistryValueType_ASCIILIST)
             {
@@ -795,17 +793,16 @@ void insert_singletons(
     // throw( registry::InvalidRegistryException, registry::CannotRegisterImplementationException, RuntimeException )
 {
     // singletons
-    Reference< registry::XRegistryKey > xKey( xImplKey->openKey( "UNO/SINGLETONS" ) );
+    Reference< registry::XRegistryKey > xKey( xImplKey->openKey( u"UNO/SINGLETONS"_ustr ) );
     if (!(xKey.is() && xKey->isValid()))
         return;
 
     OUString implname( xImplKey->getKeyName().copy( sizeof ("/IMPLEMENTATIONS/") -1 ) );
     // singleton entries
     Sequence< Reference< registry::XRegistryKey > > xSingletons_section( xKey->openKeys() );
-    Reference< registry::XRegistryKey > const * p = xSingletons_section.getConstArray();
     for ( sal_Int32 nPos = xSingletons_section.getLength(); nPos--; )
     {
-        Reference< registry::XRegistryKey > const & xSingleton = p[ nPos ];
+        Reference<registry::XRegistryKey> const& xSingleton = xSingletons_section[nPos];
         OUString singleton_name(
             xSingleton->getKeyName().copy(
                 implname.getLength() + sizeof ("/IMPLEMENTATIONS//UNO/SINGLETONS/") -1 ) );
@@ -822,7 +819,7 @@ void insert_singletons(
                 {
                     Reference< container::XHierarchicalNameAccess > xTDMgr;
                     OUString the_tdmgr =
-                        "/singletons/com.sun.star.reflection.theTypeDescriptionManager";
+                        u"/singletons/com.sun.star.reflection.theTypeDescriptionManager"_ustr;
                     xContext->getValueByName( the_tdmgr ) >>= xTDMgr;
                     if (! xTDMgr.is())
                     {
@@ -869,11 +866,11 @@ void insert_singletons(
         }
 
         Reference< registry::XRegistryKey > xRegisteredImplNames(
-            xKey2->openKey( "REGISTERED_BY" ) );
+            xKey2->openKey( u"REGISTERED_BY"_ustr ) );
         if (!xRegisteredImplNames.is() || !xRegisteredImplNames->isValid())
         {
             // create
-            xRegisteredImplNames = xKey2->createKey( "REGISTERED_BY" );
+            xRegisteredImplNames = xKey2->createKey( u"REGISTERED_BY"_ustr );
         }
 
         Sequence< OUString > implnames;
@@ -911,7 +908,7 @@ void prepareRegistry(
     if (!subKeys.hasElements())
     {
         throw InvalidRegistryException(
-            "prepareRegistry(): source registry is empty" );
+            u"prepareRegistry(): source registry is empty"_ustr );
     }
 
     for (const Reference < XRegistryKey >& xImplKey : subKeys)
@@ -1119,7 +1116,7 @@ ImplementationRegistration::ImplementationRegistration( const Reference < XCompo
 // XServiceInfo
 OUString ImplementationRegistration::getImplementationName()
 {
-    return "com.sun.star.comp.stoc.ImplementationRegistration";
+    return u"com.sun.star.comp.stoc.ImplementationRegistration"_ustr;
 }
 
 // XServiceInfo
@@ -1131,7 +1128,7 @@ sal_Bool ImplementationRegistration::supportsService(const OUString& ServiceName
 // XServiceInfo
 Sequence< OUString > ImplementationRegistration::getSupportedServiceNames()
 {
-    return { "com.sun.star.registry.ImplementationRegistration" };
+    return { u"com.sun.star.registry.ImplementationRegistration"_ustr };
 }
 
 Reference< XSimpleRegistry > ImplementationRegistration::getRegistryFromServiceManager() const
@@ -1145,7 +1142,7 @@ Reference< XSimpleRegistry > ImplementationRegistration::getRegistryFromServiceM
 
             Any aAny = xPropSet->getPropertyValue( Registry );
 
-            if( aAny.getValueType().getTypeClass() == TypeClass_INTERFACE ) {
+            if( aAny.getValueTypeClass() == TypeClass_INTERFACE ) {
                 aAny >>= xRegistry;
             }
          }
@@ -1176,42 +1173,42 @@ void ImplementationRegistration::initialize(
     Reference< XSimpleRegistry > rReg;
 
     // 1st argument : An instance of an implementation loader
-    if( aArgs.getConstArray()[0].getValueType().getTypeClass() == TypeClass_INTERFACE ) {
-        aArgs.getConstArray()[0] >>= rLoader;
+    if( aArgs[0].getValueTypeClass() == TypeClass_INTERFACE ) {
+        aArgs[0] >>= rLoader;
     }
     if( !rLoader.is()) {
         throw IllegalArgumentException(
             "ImplementationRegistration::initialize() invalid first parameter,"
             "expected " + cppu::UnoType<decltype(rLoader)>::get().getTypeName() +
-            ", got " + aArgs.getConstArray()[0].getValueTypeName(),
+            ", got " + aArgs[0].getValueTypeName(),
             Reference< XInterface > (), 0 );
     }
 
     // 2nd argument : The service name of the loader. This name is written into the registry
-    if( aArgs.getConstArray()[1].getValueType().getTypeClass() == TypeClass_STRING ) {
-        aArgs.getConstArray()[1] >>= loaderServiceName;
+    if( aArgs[1].getValueTypeClass() == TypeClass_STRING ) {
+        aArgs[1] >>= loaderServiceName;
     }
     if( loaderServiceName.isEmpty() ) {
         throw IllegalArgumentException(
             "ImplementationRegistration::initialize() invalid second parameter,"
-            "expected string, got " + aArgs.getConstArray()[1].getValueTypeName(),
+            "expected string, got " + aArgs[1].getValueTypeName(),
             Reference< XInterface > (), 0 );
     }
 
     // 3rd argument : The file name of the dll, that contains the loader
-    if( aArgs.getConstArray()[2].getValueType().getTypeClass() == TypeClass_STRING ) {
-        aArgs.getConstArray()[2] >>= locationUrl;
+    if( aArgs[2].getValueTypeClass() == TypeClass_STRING ) {
+        aArgs[2] >>= locationUrl;
     }
     if( locationUrl.isEmpty() ) {
         throw IllegalArgumentException(
             "ImplementationRegistration::initialize() invalid third parameter,"
-            "expected string, got " + aArgs.getConstArray()[2].getValueTypeName(),
+            "expected string, got " + aArgs[2].getValueTypeName(),
             Reference< XInterface > (), 0 );
     }
 
     // 4th argument : The registry, the service should be written to
-    if( aArgs.getConstArray()[3].getValueType().getTypeClass() == TypeClass_INTERFACE ) {
-        aArgs.getConstArray()[3] >>= rReg;
+    if( aArgs[3].getValueTypeClass() == TypeClass_INTERFACE ) {
+        aArgs[3] >>= rReg;
     }
 
     if( !rReg.is() ) {
@@ -1220,7 +1217,7 @@ void ImplementationRegistration::initialize(
             throw IllegalArgumentException(
                 "ImplementationRegistration::initialize() invalid fourth parameter,"
                 "expected " + cppu::UnoType<decltype(rReg)>::get().getTypeName() +
-                ", got " + aArgs.getConstArray()[3].getValueTypeName(),
+                ", got " + aArgs[3].getValueTypeName(),
                 Reference< XInterface > (), 0 );
         }
     }
@@ -1262,8 +1259,8 @@ void ImplementationRegistration::prepareRegister(
 
     if( !m_xSMgr.is() )    {
         throw CannotRegisterImplementationException(
-                "ImplementationRegistration::registerImplementation() "
-                "no componentcontext available to instantiate loader" );
+                u"ImplementationRegistration::registerImplementation() "
+                "no componentcontext available to instantiate loader"_ustr );
     }
 
     try
@@ -1345,7 +1342,7 @@ sal_Bool ImplementationRegistration::revokeImplementation(const OUString& locati
             try {
                 Any aAny = xPropSet->getPropertyValue( Registry );
 
-                if( aAny.getValueType().getTypeClass() == TypeClass_INTERFACE )
+                if( aAny.getValueTypeClass() == TypeClass_INTERFACE )
                 {
                     aAny >>= xRegistry;
                 }
@@ -1482,7 +1479,7 @@ void ImplementationRegistration::doRevoke(
         }
     }
 
-    xKey = xRootKey->openKey( "/SINGLETONS" );
+    xKey = xRootKey->openKey( u"/SINGLETONS"_ustr );
     if (xKey.is() && xKey->isValid())
     {
         delete_all_singleton_entries( xKey, aNames );
@@ -1526,7 +1523,7 @@ void ImplementationRegistration::doRegister(
         if ( !bSuccess )
         {
             throw CannotRegisterImplementationException(
-                "ImplementationRegistration::doRegistration() component registration signaled failure" );
+                u"ImplementationRegistration::doRegistration() component registration signaled failure"_ustr );
         }
 
         prepareRegistry(xDest, xSourceKey, implementationLoaderUrl, registeredLocationUrl, xCtx);

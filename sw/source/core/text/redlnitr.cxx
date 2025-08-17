@@ -53,6 +53,7 @@
 #include <editeng/crossedoutitem.hxx>
 #include <editeng/formatbreakitem.hxx>
 #include <editeng/udlnitem.hxx>
+#include <officecfg/Office/Writer.hxx>
 
 using namespace ::com::sun::star;
 
@@ -70,19 +71,20 @@ private:
     /// next redline
     SwRedlineTable::size_type m_RedlineIndex;
     /// next fieldmark
-    std::pair<sw::mark::IFieldmark const*, std::optional<SwPosition>> m_Fieldmark;
+    std::pair<sw::mark::Fieldmark const*, std::optional<SwPosition>> m_Fieldmark;
     std::optional<SwPosition> m_oNextFieldmarkHide;
     /// previous paragraph break - because m_pStartPos/EndPos are non-owning
     std::optional<std::pair<SwPosition, SwPosition>> m_oParagraphBreak;
     /// current start/end pair
     SwPosition const* m_pStartPos;
     SwPosition const* m_pEndPos;
+    SwNode const* m_pCurrentRedlineNode;
 
 public:
     SwPosition const* GetStartPos() const { return m_pStartPos; }
     SwPosition const* GetEndPos() const { return m_pEndPos; }
 
-    HideIterator(SwTextNode & rTextNode,
+    HideIterator(const SwTextNode & rTextNode,
             bool const isHideRedlines, sw::FieldmarkMode const eMode,
             sw::ParagraphBreakMode const ePBMode)
         : m_rIDRA(rTextNode.getIDocumentRedlineAccess())
@@ -94,6 +96,7 @@ public:
         , m_RedlineIndex(isHideRedlines ? m_rIDRA.GetRedlinePos(rTextNode, RedlineType::Any) : SwRedlineTable::npos)
         , m_pStartPos(nullptr)
         , m_pEndPos(&m_Start)
+        , m_pCurrentRedlineNode(&rTextNode)
     {
     }
 
@@ -107,6 +110,14 @@ public:
         assert(m_pEndPos);
         if (m_isHideRedlines)
         {
+            // GetRedlinePos() returns npos if there is no redline on the
+            // node but something else could have merged nodes so search again!
+            if (m_RedlineIndex == SwRedlineTable::npos
+                && &m_pEndPos->GetNode() != m_pCurrentRedlineNode)
+            {
+                m_RedlineIndex = m_rIDRA.GetRedlinePos(m_pEndPos->GetNode(), RedlineType::Any);
+                m_pCurrentRedlineNode = &m_pEndPos->GetNode();
+            }
             // position on current or next redline
             for (; m_RedlineIndex < m_rIDRA.GetRedlineTable().size(); ++m_RedlineIndex)
             {
@@ -150,7 +161,7 @@ public:
             if (nPos != -1)
             {
                 m_oNextFieldmarkHide.emplace(*pTextNode, nPos);
-                sw::mark::IFieldmark const*const pFieldmark(
+                sw::mark::Fieldmark const*const pFieldmark(
                         m_eFieldmarkMode == sw::FieldmarkMode::ShowResult
                             ? m_rIDMA.getFieldmarkAt(*m_oNextFieldmarkHide)
                             : m_rIDMA.getInnerFieldmarkFor(*m_oNextFieldmarkHide));
@@ -264,6 +275,47 @@ public:
 
 namespace sw {
 
+void FindParaPropsNodeIgnoreHidden(sw::MergedPara & rMerged,
+        sw::ParagraphBreakMode const eMode, SwScriptInfo * pScriptInfo)
+{
+    if (eMode == sw::ParagraphBreakMode::Hidden)
+    {
+        ::std::optional<SwScriptInfo> oScriptInfo;
+        if (pScriptInfo == nullptr)
+        {
+            oScriptInfo.emplace();
+            pScriptInfo = &*oScriptInfo;
+        }
+        // always init: when called from SwTextFrame::SwClientNotify() it is stale!
+        pScriptInfo->InitScriptInfoHidden(*rMerged.pFirstNode, &rMerged);
+        TextFrameIndex nHiddenStart{COMPLETE_STRING};
+        TextFrameIndex nHiddenEnd{0};
+        pScriptInfo->GetBoundsOfHiddenRange(TextFrameIndex{0}, nHiddenStart, nHiddenEnd);
+        if (TextFrameIndex{0} == nHiddenStart)
+        {
+            if (nHiddenEnd == TextFrameIndex{rMerged.mergedText.getLength()})
+            {
+                rMerged.pParaPropsNode = const_cast<SwTextNode*>(rMerged.pLastNode);
+            }
+            else
+            {   // this requires MapViewToModel to never return a position at
+                // the end of a node (when all its text is hidden)
+                rMerged.pParaPropsNode = sw::MapViewToModel(rMerged, nHiddenEnd).first;
+            }
+            return;
+        }
+    }
+    if (!rMerged.extents.empty())
+    {   // para props from first node that isn't empty (OOo/LO compat)
+        rMerged.pParaPropsNode = rMerged.extents.begin()->pNode;
+    }
+    else
+    {   // if every node is empty, the last one wins (Word compat)
+        // (OOo/LO historically used first one)
+        rMerged.pParaPropsNode = const_cast<SwTextNode*>(rMerged.pLastNode);
+    }
+}
+
 std::unique_ptr<sw::MergedPara>
 CheckParaRedlineMerge(SwTextFrame & rFrame, SwTextNode & rTextNode,
        FrameMode const eMode)
@@ -278,7 +330,6 @@ CheckParaRedlineMerge(SwTextFrame & rFrame, SwTextNode & rTextNode,
     std::vector<SwSectionNode *> sections;
     std::vector<sw::Extent> extents;
     OUStringBuffer mergedText;
-    SwTextNode * pParaPropsNode(nullptr);
     SwTextNode * pNode(&rTextNode);
     sal_Int32 nLastEnd(0);
     for (auto iter = HideIterator(rTextNode,
@@ -420,22 +471,23 @@ CheckParaRedlineMerge(SwTextFrame & rFrame, SwTextNode & rTextNode,
     if (extents.empty()) // there was no text anywhere
     {
         assert(mergedText.isEmpty());
-        pParaPropsNode = pNode; // if every node is empty, the last one wins
     }
     else
     {
         assert(!mergedText.isEmpty());
-        pParaPropsNode = extents.begin()->pNode; // para props from first node that isn't empty
     }
-//    pParaPropsNode = &rTextNode; // well, actually...
+    auto pRet{std::make_unique<sw::MergedPara>(rFrame, std::move(extents),
+                mergedText.makeStringAndClear(), &rTextNode, nodes.back())};
+    FindParaPropsNodeIgnoreHidden(*pRet, rFrame.getRootFrame()->GetParagraphBreakMode(), nullptr);
+    assert(pRet->pParaPropsNode);
     // keep lists up to date with visible nodes
-    if (pParaPropsNode->IsInList() && !pParaPropsNode->GetNum(rFrame.getRootFrame()))
+    if (pRet->pParaPropsNode->IsInList() && !pRet->pParaPropsNode->GetNum(rFrame.getRootFrame()))
     {
-        pParaPropsNode->AddToListRLHidden(); // try to add it...
+        pRet->pParaPropsNode->AddToListRLHidden(); // try to add it...
     }
     for (auto const pTextNode : nodes)
     {
-        if (pTextNode != pParaPropsNode)
+        if (pTextNode != pRet->pParaPropsNode)
         {
             pTextNode->RemoveFromListRLHidden();
         }
@@ -449,12 +501,12 @@ CheckParaRedlineMerge(SwTextFrame & rFrame, SwTextNode & rTextNode,
         // for non-first nodes that are already merged with this frame,
         // need to remove here too, otherwise footnotes can be removed only
         // by lucky accident, e.g. TruncLines().
-        auto itExtent(extents.begin());
+        auto itExtent(pRet->extents.begin());
         for (auto const pTextNode : nodes)
         {
             sal_Int32 nLast(0);
             std::vector<std::pair<sal_Int32, sal_Int32>> hidden;
-            for ( ; itExtent != extents.end(); ++itExtent)
+            for ( ; itExtent != pRet->extents.end(); ++itExtent)
             {
                 if (itExtent->pNode != pTextNode)
                 {
@@ -490,9 +542,6 @@ CheckParaRedlineMerge(SwTextFrame & rFrame, SwTextNode & rTextNode,
             pSectionNode->GetSection().GetFormat()->DelFrames(/*rFrame.getRootFrame()*/);
         }
     }
-    auto pRet(std::make_unique<sw::MergedPara>(rFrame, std::move(extents),
-                mergedText.makeStringAndClear(), pParaPropsNode, &rTextNode,
-                nodes.back()));
     for (SwTextNode * pTmp : nodes)
     {
         pRet->listener.StartListening(pTmp);
@@ -734,14 +783,14 @@ SwRedlineItr::~SwRedlineItr() COVERITY_NOEXCEPT_FALSE
     m_pExt.reset();
 }
 
-// The return value of SwRedlineItr::Seek tells you if the current font
-// has been manipulated by leaving (-1) or accessing (+1) of a section
+/// The return value of SwRedlineItr::Seek tells if the current font
+/// has been manipulated by leaving (-1) or entering (+1) a range redline
 short SwRedlineItr::Seek(SwFont& rFnt,
         SwNodeOffset const nNode, sal_Int32 const nNew, sal_Int32 const nOld)
 {
     short nRet = 0;
     if( ExtOn() )
-        return 0; // Abbreviation: if we're within an ExtendTextInputs
+        return 0; // shortcut: if we're within an ExtendTextInputs
                   // there can't be other changes of attributes (not even by redlining)
     if (m_eMode == Mode::Show)
     {
@@ -750,20 +799,20 @@ short SwRedlineItr::Seek(SwFont& rFnt,
             if (nNew >= m_nEnd)
             {
                 --nRet;
-                Clear_( &rFnt );    // We go behind the current section
-                ++m_nAct;             // and check the next one
+                Clear_( &rFnt );    // We go behind the current range
+//                ++m_nAct; // don't increment, could be in next range too if overlap
             }
             else if (nNew < m_nStart)
             {
                 --nRet;
-                Clear_( &rFnt );    // We go in front of the current section
+                Clear_( &rFnt );    // We go before the current range
                 if (m_nAct > m_nFirst)
-                    m_nAct = m_nFirst;  // the test has to run from the beginning
+                    m_nAct = m_nFirst;  // need to start over
                 else
                     return nRet + EnterExtend(rFnt, nNode, nNew); // There's none prior to us
             }
             else
-                return nRet + EnterExtend(rFnt, nNode, nNew); // We stayed in the same section
+                return nRet + EnterExtend(rFnt, nNode, nNew); // We stayed in the same range
         }
         if (SwRedlineTable::npos == m_nAct || nOld > nNew)
             m_nAct = m_nFirst;
@@ -771,16 +820,35 @@ short SwRedlineItr::Seek(SwFont& rFnt,
         m_nStart = COMPLETE_STRING;
         m_nEnd = COMPLETE_STRING;
         const SwRedlineTable& rTable = m_rDoc.getIDocumentRedlineAccess().GetRedlineTable();
+        ::std::optional<decltype(m_nAct)> oFirstMatch;
 
         for ( ; m_nAct < rTable.size() ; ++m_nAct)
         {
-            rTable[ m_nAct ]->CalcStartEnd(nNode, m_nStart, m_nEnd);
+            decltype(m_nStart) nStart;
+            decltype(m_nEnd) nEnd;
+            if (rTable[m_nAct]->CalcStartEnd(nNode, nStart, nEnd))
+            { // previous redline intersected nNode but this one precedes it
+                continue;
+            }
 
-            if (nNew < m_nEnd)
+            // redline table is sorted, but here it's not the complete redlines
+            assert(m_nStart == COMPLETE_STRING || m_nStart <= nStart);
+            assert(m_nStart == COMPLETE_STRING || m_nStart <= nEnd);
+            if (oFirstMatch && nNew < nStart)
             {
-                if (nNew >= m_nStart) // only possible candidate
+                m_nEnd = std::min(m_nEnd, nStart);
+                break;
+            }
+            if (nNew < nEnd)
+            {
+                m_nStart = nStart;
+                m_nEnd = std::min(m_nEnd, nEnd);
+                if (nStart <= nNew) // there can be a format and another redline...
                 {
-                    m_bOn = true;
+                    if (!oFirstMatch)
+                    {
+                        oFirstMatch.emplace(m_nAct);
+                    }
                     const SwRangeRedline *pRed = rTable[ m_nAct ];
 
                     if (m_pSet)
@@ -799,7 +867,8 @@ short SwRedlineItr::Seek(SwFont& rFnt,
                     SfxWhichIter aIter( *m_pSet );
 
                     // moved text: dark green with double underline or strikethrough
-                    if ( pRed->IsMoved() )
+                    bool bDisplayMovedTextInGreen = officecfg::Office::Writer::Comparison::DisplayMovedTextInGreen::get();
+                    if ( bDisplayMovedTextInGreen && pRed->IsMoved() )
                     {
                         m_pSet->Put(SvxColorItem( COL_GREEN, RES_CHRATR_COLOR ));
                         if (SfxItemState::SET == m_pSet->GetItemState(RES_CHRATR_CROSSEDOUT, true))
@@ -824,13 +893,19 @@ short SwRedlineItr::Seek(SwFont& rFnt,
                         }
                         nWhich = aIter.NextWhich();
                     }
-
-                    ++nRet;
                 }
-                break;
+                else
+                {
+                    break;
+                }
             }
-            m_nStart = COMPLETE_STRING;
-            m_nEnd = COMPLETE_STRING;
+        }
+
+        if (oFirstMatch)
+        {
+            m_bOn = true;
+            m_nAct = *oFirstMatch; // rewind
+            ++nRet; // increment only once per m_nStart/m_nEnd range
         }
     }
     else if (m_eMode == Mode::Hide)
@@ -871,14 +946,15 @@ void SwRedlineItr::FillHints( std::size_t nAuthor, RedlineType eType )
     switch ( eType )
     {
         case RedlineType::Insert:
-            SW_MOD()->GetInsertAuthorAttr(nAuthor, *m_pSet);
+            SwModule::get()->GetInsertAuthorAttr(nAuthor, *m_pSet);
             break;
         case RedlineType::Delete:
-            SW_MOD()->GetDeletedAuthorAttr(nAuthor, *m_pSet);
+            SwModule::get()->GetDeletedAuthorAttr(nAuthor, *m_pSet);
             break;
         case RedlineType::Format:
         case RedlineType::FmtColl:
-            SW_MOD()->GetFormatAuthorAttr(nAuthor, *m_pSet);
+        case RedlineType::ParagraphFormat:
+            SwModule::get()->GetFormatAuthorAttr(nAuthor, *m_pSet);
             break;
         default:
             break;
@@ -916,7 +992,7 @@ void SwRedlineItr::Clear_( SwFont* pFnt )
             m_rAttrHandler.PopAndChg( *hint, *pFnt );
         else
             m_rAttrHandler.Pop( *hint );
-        SwTextAttr::Destroy(hint, const_cast<SwDoc&>(m_rDoc).GetAttrPool() );
+        SwTextAttr::Destroy(hint);
     }
     m_Hints.clear();
 }
@@ -1068,7 +1144,7 @@ bool SwRedlineItr::CheckLine(
                 // start to collect text of invisible redlines for ChangesInMargin layout
                 if (rRedlineText.isEmpty() && !pRedline->IsVisible())
                 {
-                    rRedlineText = const_cast<SwRangeRedline*>(pRedline)->GetDescr(/*bSimplified=*/true);
+                    rRedlineText = pRedline->GetDescr(/*bSimplified=*/true);
                     pPrevRedline = pRedline;
                     isExtendText = true;
                 }
@@ -1077,7 +1153,7 @@ bool SwRedlineItr::CheckLine(
                 else if (pPrevRedline && !pRedline->IsVisible() &&
                     *pRedline->Start() == *pPrevRedline->Start() && *pRedline->End() == *pPrevRedline->End() )
                 {
-                    OUString sExtendText(const_cast<SwRangeRedline*>(pRedline)->GetDescr(/*bSimplified=*/true));
+                    OUString sExtendText(pRedline->GetDescr(/*bSimplified=*/true));
                     if (!sExtendText.isEmpty())
                     {
                         if (rRedlineText.getLength() < 12)
@@ -1085,7 +1161,7 @@ bool SwRedlineItr::CheckLine(
                             // TODO: remove extra space from GetDescr(true),
                             // but show deletion of paragraph or line break
                             rRedlineText = rRedlineText +
-                                    const_cast<SwRangeRedline*>(pRedline)->GetDescr(/*bSimplified=*/true).subView(1);
+                                    pRedline->GetDescr(/*bSimplified=*/true).subView(1);
                         }
                         else
                             rRedlineText = OUString::Concat(rRedlineText.subView(0, rRedlineText.getLength() - 3)) + "...";

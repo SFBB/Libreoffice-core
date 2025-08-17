@@ -63,6 +63,7 @@
 #include <o3tl/string_view.hxx>
 #include <osl/process.h>
 #include <osl/thread.h>
+#include <osl/diagnose.h>
 #include <osl/file.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
@@ -347,23 +348,8 @@ std::unique_ptr<XFDateStyle> LwpTools::GetSystemDateStyle(bool bLongFormat)
                 break;
             }
             case 'h':
-            {
-                for (j=1;;j++)
-                {
-                    cTmp = pattern[i+j];
-                    if (cTmp != cSymbol)
-                    {
-                        i=i+j;
-                        break;
-                    }
-                }
-                if (j==1)
-                    pDateStyle->AddHour(false);
-                else
-                    pDateStyle->AddHour();
-                break;
-            }
             case 'H':
+            case 'K':
             {
                 for (j=1;;j++)
                 {
@@ -543,23 +529,6 @@ std::unique_ptr<XFDateStyle> LwpTools::GetSystemDateStyle(bool bLongFormat)
                 }
                 break;
             }
-            case 'K':
-            {
-                for (j=1;;j++)
-                {
-                    cTmp = pattern[i+j];
-                    if (cTmp != cSymbol)
-                    {
-                        i=i+j;
-                        break;
-                    }
-                }
-                if (j==1)
-                    pDateStyle->AddHour(false);
-                else
-                    pDateStyle->AddHour();
-                break;
-            }
             case 'Z':
             {
                 for (j=1;;j++)
@@ -588,7 +557,7 @@ std::unique_ptr<XFDateStyle> LwpTools::GetSystemDateStyle(bool bLongFormat)
             }
             case '"':
             {
-                pDateStyle->AddText("'");
+                pDateStyle->AddText(u"'"_ustr);
                 break;
             }
             default:
@@ -667,23 +636,8 @@ std::unique_ptr<XFTimeStyle> LwpTools::GetSystemTimeStyle()
         switch(cSymbol)
         {
             case 'h':
-            {
-                for (j=1;;j++)
-                {
-                    cTmp = pattern[i+j];
-                    if (cTmp != cSymbol)
-                    {
-                        i=i+j;
-                        break;
-                    }
-                }
-                if (j==1)
-                    pTimeStyle->AddHour(false);
-                else
-                    pTimeStyle->AddHour();
-                break;
-            }
             case 'H':
+            case 'K':
             {
                 for (j=1;;j++)
                 {
@@ -734,23 +688,6 @@ std::unique_ptr<XFTimeStyle> LwpTools::GetSystemTimeStyle()
                     pTimeStyle->AddSecond();
                 break;
             }
-            case 'S':
-            {
-                for (j=1;;j++)
-                {
-                    cTmp = pattern[i+j];
-                    if (cTmp != cSymbol)
-                    {
-                        i=i+j;
-                        break;
-                    }
-                }
-                /*if (j==1)
-                    pDateStyle->AddSecond(sal_False);
-                else
-                    pDateStyle->AddSecond();*/
-                break;
-            }
             case 'a':
             {
                 for (j=1;;j++)
@@ -765,36 +702,8 @@ std::unique_ptr<XFTimeStyle> LwpTools::GetSystemTimeStyle()
                 pTimeStyle->SetAmPm(true);
                 break;
             }
+            case 'S':
             case 'k':
-            {
-                for (j=1;;j++)
-                {
-                    cTmp = pattern[i+j];
-                    if (cTmp != cSymbol)
-                    {
-                        i=i+j;
-                        break;
-                    }
-                }
-                break;
-            }
-            case 'K':
-            {
-                for (j=1;;j++)
-                {
-                    cTmp = pattern[i+j];
-                    if (cTmp != cSymbol)
-                    {
-                        i=i+j;
-                        break;
-                    }
-                }
-                if (j==1)
-                    pTimeStyle->AddHour(false);
-                else
-                    pTimeStyle->AddHour();
-                break;
-            }
             case '\''://'
             {
                 for (j=1;;j++)
@@ -810,7 +719,7 @@ std::unique_ptr<XFTimeStyle> LwpTools::GetSystemTimeStyle()
             }
             case '"':
             {
-                pTimeStyle->AddText("'");
+                pTimeStyle->AddText(u"'"_ustr);
                 break;
             }
             default:

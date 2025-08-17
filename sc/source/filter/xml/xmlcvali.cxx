@@ -46,6 +46,7 @@ class ScXMLContentValidationContext : public ScXMLImportContext
     OUString      sCondition;
     sal_Int16          nShowList;
     bool           bAllowEmptyCell;
+    bool           bIsCaseSensitive;
     bool           bDisplayHelp;
     bool           bDisplayError;
 
@@ -167,6 +168,7 @@ ScXMLContentValidationContext::ScXMLContentValidationContext( ScXMLImport& rImpo
     ScXMLImportContext( rImport ),
     nShowList(sheet::TableValidationVisibility::UNSORTED),
     bAllowEmptyCell(true),
+    bIsCaseSensitive(false),
     bDisplayHelp(false),
     bDisplayError(false)
 {
@@ -189,6 +191,10 @@ ScXMLContentValidationContext::ScXMLContentValidationContext( ScXMLImport& rImpo
         case XML_ELEMENT( TABLE, XML_ALLOW_EMPTY_CELL ):
             if (IsXMLToken(aIter, XML_FALSE))
                 bAllowEmptyCell = false;
+            break;
+        case XML_ELEMENT( TABLE, XML_CASE_SENSITIVE ):
+            if (IsXMLToken(aIter, XML_TRUE))
+                bIsCaseSensitive = true;
             break;
         case XML_ELEMENT( TABLE, XML_DISPLAY_LIST ):
             if (IsXMLToken(aIter, XML_NO))
@@ -358,7 +364,7 @@ void SAL_CALL ScXMLContentValidationContext::endFastElement( sal_Int32 /*nElemen
     if (xEventContext.is())
     {
         uno::Sequence<beans::PropertyValue> aValues;
-        xEventContext->GetEventSequence( "OnError", aValues );
+        xEventContext->GetEventSequence( u"OnError"_ustr, aValues );
 
         auto pValue = std::find_if(std::cbegin(aValues), std::cend(aValues),
             [](const beans::PropertyValue& rValue) {
@@ -368,7 +374,8 @@ void SAL_CALL ScXMLContentValidationContext::endFastElement( sal_Int32 /*nElemen
     }
 
     ScMyImportValidation aValidation;
-    aValidation.eGrammar1 = aValidation.eGrammar2 = GetScImport().GetDocument()->GetStorageGrammar();
+    if (ScDocument* pDoc = GetScImport().GetDocument())
+        aValidation.eGrammar1 = aValidation.eGrammar2 = pDoc->GetStorageGrammar();
     aValidation.sName = sName;
     aValidation.sBaseCellAddress = sBaseCellAddress;
     aValidation.sInputTitle = sHelpTitle;
@@ -380,6 +387,7 @@ void SAL_CALL ScXMLContentValidationContext::endFastElement( sal_Int32 /*nElemen
     aValidation.bShowErrorMessage = bDisplayError;
     aValidation.bShowInputMessage = bDisplayHelp;
     aValidation.bIgnoreBlanks = bAllowEmptyCell;
+    aValidation.bCaseSensitive = bIsCaseSensitive;
     aValidation.nShowList = nShowList;
     GetScImport().AddValidation(aValidation);
 }

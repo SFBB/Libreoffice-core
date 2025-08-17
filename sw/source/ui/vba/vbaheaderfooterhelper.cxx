@@ -23,6 +23,8 @@
 #include <com/sun/star/text/XPageCursor.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
+#include <unotxdoc.hxx>
+#include <unobasestyle.hxx>
 
 using namespace ::com::sun::star;
 using namespace ::ooo::vba;
@@ -30,7 +32,8 @@ using namespace ::ooo::vba;
 #define FIRST_PAGE 1
 
 // Class HeaderFooterHelper
-bool HeaderFooterHelper::isHeaderFooter( const uno::Reference< frame::XModel >& xModel )
+
+bool HeaderFooterHelper::isHeaderFooter( const rtl::Reference< SwXTextDocument >& xModel )
 {
     return isHeaderFooter( word::getCurrentXText( xModel ) );
 }
@@ -42,17 +45,16 @@ bool HeaderFooterHelper::isHeaderFooter( const uno::Reference< text::XText >& xT
     return aImplName == "SwXHeadFootText";
 }
 
-bool HeaderFooterHelper::isHeader( const uno::Reference< frame::XModel >& xModel )
+bool HeaderFooterHelper::isHeader( const rtl::Reference< SwXTextDocument >& xModel )
 {
     const uno::Reference< text::XText > xCurrentText = word::getCurrentXText( xModel );
     if( !isHeaderFooter( xCurrentText ) )
         return false;
 
-    OUString aPropText = "HeaderText";
-    uno::Reference< style::XStyle > xPageStyle = word::getCurrentPageStyle( xModel );
-    uno::Reference< beans::XPropertySet > xPageProps( xPageStyle, uno::UNO_QUERY_THROW );
+    OUString aPropText = u"HeaderText"_ustr;
+    rtl::Reference< SwXBaseStyle> xPageStyle = word::getCurrentPageStyle( xModel );
     bool isShared = true;
-    xPageProps->getPropertyValue( "HeaderIsShared" ) >>= isShared;
+    xPageStyle->getPropertyValue( u"HeaderIsShared"_ustr ) >>= isShared;
     if( !isShared )
     {
         uno::Reference< text::XPageCursor > xPageCursor( word::getXTextViewCursor( xModel ), uno::UNO_QUERY_THROW );
@@ -62,7 +64,7 @@ bool HeaderFooterHelper::isHeader( const uno::Reference< frame::XModel >& xModel
             aPropText = "HeaderTextRight";
     }
 
-    uno::Reference< text::XText > xHeaderText( xPageProps->getPropertyValue( aPropText ), uno::UNO_QUERY_THROW );
+    uno::Reference< text::XText > xHeaderText( xPageStyle->getPropertyValue( aPropText ), uno::UNO_QUERY_THROW );
     uno::Reference< text::XTextRangeCompare > xTRC( xHeaderText, uno::UNO_QUERY_THROW );
     uno::Reference< text::XTextRange > xTR1( xCurrentText, uno::UNO_QUERY_THROW );
     uno::Reference< text::XTextRange > xTR2( xHeaderText, uno::UNO_QUERY_THROW );
@@ -79,7 +81,7 @@ bool HeaderFooterHelper::isHeader( const uno::Reference< frame::XModel >& xModel
     return false;
 }
 
-bool HeaderFooterHelper::isFirstPageHeader( const uno::Reference< frame::XModel >& xModel )
+bool HeaderFooterHelper::isFirstPageHeader( const rtl::Reference< SwXTextDocument >& xModel )
 {
     if( isHeader( xModel ) )
     {
@@ -91,13 +93,13 @@ bool HeaderFooterHelper::isFirstPageHeader( const uno::Reference< frame::XModel 
     return false;
 }
 
-bool HeaderFooterHelper::isEvenPagesHeader( const uno::Reference< frame::XModel >& xModel )
+bool HeaderFooterHelper::isEvenPagesHeader( const rtl::Reference< SwXTextDocument >& xModel )
 {
     if( isHeader( xModel ) )
     {
-        uno::Reference< beans::XPropertySet > xStyleProps( word::getCurrentPageStyle( xModel ), uno::UNO_QUERY_THROW );
+        rtl::Reference< SwXBaseStyle > xStyleProps( word::getCurrentPageStyle( xModel ) );
         bool isShared = false;
-        xStyleProps->getPropertyValue("HeaderIsShared") >>= isShared;
+        xStyleProps->getPropertyValue(u"HeaderIsShared"_ustr) >>= isShared;
         if( !isShared )
         {
             uno::Reference< text::XPageCursor > xPageCursor( word::getXTextViewCursor( xModel ), uno::UNO_QUERY_THROW );
@@ -107,17 +109,16 @@ bool HeaderFooterHelper::isEvenPagesHeader( const uno::Reference< frame::XModel 
     return false;
 }
 
-bool HeaderFooterHelper::isFooter( const uno::Reference< frame::XModel >& xModel )
+bool HeaderFooterHelper::isFooter( const rtl::Reference< SwXTextDocument >& xModel )
 {
     const uno::Reference< text::XText > xCurrentText = word::getCurrentXText( xModel );
     if( !isHeaderFooter( xCurrentText ) )
         return false;
 
-    OUString aPropText = "FooterText";
-    uno::Reference< style::XStyle > xPageStyle = word::getCurrentPageStyle( xModel );
-    uno::Reference< beans::XPropertySet > xPageProps( xPageStyle, uno::UNO_QUERY_THROW );
+    OUString aPropText = u"FooterText"_ustr;
+    rtl::Reference< SwXBaseStyle > xPageStyle = word::getCurrentPageStyle( xModel );
     bool isShared = true;
-    xPageProps->getPropertyValue( "FooterIsShared" ) >>= isShared;
+    xPageStyle->getPropertyValue( u"FooterIsShared"_ustr ) >>= isShared;
     if( !isShared )
     {
         uno::Reference< text::XPageCursor > xPageCursor( word::getXTextViewCursor( xModel ), uno::UNO_QUERY_THROW );
@@ -127,7 +128,7 @@ bool HeaderFooterHelper::isFooter( const uno::Reference< frame::XModel >& xModel
             aPropText = "FooterTextRight";
     }
 
-    uno::Reference< text::XText > xFooterText( xPageProps->getPropertyValue( aPropText ), uno::UNO_QUERY_THROW );
+    uno::Reference< text::XText > xFooterText( xPageStyle->getPropertyValue( aPropText ), uno::UNO_QUERY_THROW );
     uno::Reference< text::XTextRangeCompare > xTRC( xFooterText, uno::UNO_QUERY_THROW );
     uno::Reference< text::XTextRange > xTR1( xCurrentText, uno::UNO_QUERY_THROW );
     uno::Reference< text::XTextRange > xTR2( xFooterText, uno::UNO_QUERY_THROW );
@@ -144,7 +145,7 @@ bool HeaderFooterHelper::isFooter( const uno::Reference< frame::XModel >& xModel
     return false;
 }
 
-bool HeaderFooterHelper::isFirstPageFooter( const uno::Reference< frame::XModel >& xModel )
+bool HeaderFooterHelper::isFirstPageFooter( const rtl::Reference< SwXTextDocument >& xModel )
 {
     if( isFooter( xModel ) )
     {
@@ -155,13 +156,13 @@ bool HeaderFooterHelper::isFirstPageFooter( const uno::Reference< frame::XModel 
     return false;
 }
 
-bool HeaderFooterHelper::isEvenPagesFooter( const uno::Reference< frame::XModel >& xModel )
+bool HeaderFooterHelper::isEvenPagesFooter( const rtl::Reference< SwXTextDocument >& xModel )
 {
     if( isFooter( xModel ) )
     {
-        uno::Reference< beans::XPropertySet > xStyleProps( word::getCurrentPageStyle( xModel ), uno::UNO_QUERY_THROW );
+        rtl::Reference< SwXBaseStyle > xStyleProps( word::getCurrentPageStyle( xModel ) );
         bool isShared = false;
-        xStyleProps->getPropertyValue("FooterIsShared") >>= isShared;
+        xStyleProps->getPropertyValue(u"FooterIsShared"_ustr) >>= isShared;
         if( !isShared )
         {
             uno::Reference< text::XPageCursor > xPageCursor( word::getXTextViewCursor( xModel ), uno::UNO_QUERY_THROW );

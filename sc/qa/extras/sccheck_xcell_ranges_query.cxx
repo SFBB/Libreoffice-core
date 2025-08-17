@@ -17,7 +17,6 @@
 #include <com/sun/star/container/XNamed.hpp>
 
 using namespace css;
-using namespace css::lang;
 
 namespace sc_apitest
 {
@@ -47,7 +46,7 @@ private:
 };
 
 CheckXCellRangesQuery::CheckXCellRangesQuery()
-    : UnoApiTest("/sc/qa/extras/testdocuments")
+    : UnoApiTest(u"/sc/qa/extras/testdocuments"_ustr)
 {
 }
 
@@ -56,7 +55,7 @@ uno::Reference<uno::XInterface> CheckXCellRangesQuery::init()
     // create a calc document
     if (!mxComponent.is())
         // Load an empty document.
-        mxComponent = loadFromDesktop("private:factory/scalc");
+        loadFromURL(u"private:factory/scalc"_ustr);
 
     uno::Reference<sheet::XSpreadsheetDocument> xSheetDoc(mxComponent, uno::UNO_QUERY_THROW);
 
@@ -77,7 +76,7 @@ uno::Reference<uno::XInterface> CheckXCellRangesQuery::init()
     // set one value for comparison.
     xSpreadSheet->getCellByPosition(1, 1)->setValue(15);
     xSpreadSheet->getCellByPosition(1, 3)->setValue(5);
-    xSpreadSheet->getCellByPosition(2, 1)->setFormula("=B2+B4");
+    xSpreadSheet->getCellByPosition(2, 1)->setFormula(u"=B2+B4"_ustr);
 
     return xSpreadSheet;
 }
@@ -120,7 +119,7 @@ void CheckXCellRangesQuery::checkFilledCell()
     // compare a cell with value 5 with a cell with value 15
     _queryRowDifferences(sSheetName + ".C4");
     // try to get nothing
-    _queryEmptyCells("");
+    _queryEmptyCells(u""_ustr);
 }
 
 /**

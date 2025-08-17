@@ -48,7 +48,6 @@
 #include <memory>
 #include <mutex>
 
-using namespace ::osl;
 using namespace ::cppu;
 using namespace ::utl;
 using namespace ::com::sun::star;
@@ -67,7 +66,7 @@ constexpr OUStringLiteral XML_EMBEDDEDOBJECTGRAPHIC_URL_BASE = u"vnd.sun.star.Gr
 class OutputStorageWrapper_Impl : public ::cppu::WeakImplHelper<XOutputStream>
 {
     std::mutex    maMutex;
-    Reference < XOutputStream > xOut;
+    rtl::Reference < OOutputStreamWrapper > xOut;
     TempFileFast aTempFile;
     bool bStreamClosed : 1;
     SvStream* pStream;
@@ -374,12 +373,16 @@ void SvXMLEmbeddedObjectHelper::ImplReadObject(
 
                 // TODO/LATER: what to do when other types of objects are based on substream persistence?
                 // This is an ole object
-                uno::Reference< beans::XPropertySet > xProps( xStm, uno::UNO_QUERY_THROW );
-                xProps->setPropertyValue(
-                    "MediaType",
-                    uno::Any( OUString( "application/vnd.sun.star.oleobject" ) ) );
+                uno::Reference< beans::XPropertySet > xProps( xStm, uno::UNO_QUERY );
+                if (xProps)
+                {
+                    xProps->setPropertyValue(
+                        u"MediaType"_ustr,
+                        uno::Any( u"application/vnd.sun.star.oleobject"_ustr ) );
 
-                xStm->getOutputStream()->closeOutput();
+
+                    xStm->getOutputStream()->closeOutput();
+                }
             }
             catch ( uno::Exception& )
             {
@@ -559,7 +562,7 @@ OUString SAL_CALL SvXMLEmbeddedObjectHelper::resolveEmbeddedObjectURL(const OUSt
     {
         css::uno::Any anyEx = cppu::getCaughtException();
         throw WrappedTargetRuntimeException(
-            "SvXMLEmbeddedObjectHelper::resolveEmbeddedObjectURL non-RuntimeException",
+            u"SvXMLEmbeddedObjectHelper::resolveEmbeddedObjectURL non-RuntimeException"_ustr,
             getXWeak(), anyEx);
     }
     return sRet;
@@ -626,7 +629,7 @@ Any SAL_CALL SvXMLEmbeddedObjectHelper::getByName(
                                 mxTempStorage =
                                     comphelper::OStorageHelper::GetTemporaryStorage();
                             Sequence < beans::PropertyValue > aDummy,
-                                aEmbDescr{ comphelper::makePropertyValue("StoreVisualReplacement",
+                                aEmbDescr{ comphelper::makePropertyValue(u"StoreVisualReplacement"_ustr,
                                                                          !bOasisFormat) };
                             if ( !bOasisFormat )
                             {

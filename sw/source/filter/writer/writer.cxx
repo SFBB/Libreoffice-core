@@ -38,20 +38,20 @@
 
 using namespace css;
 
-typedef std::multimap<SwNodeOffset, const ::sw::mark::IMark*> SwBookmarkNodeTable;
+typedef std::multimap<SwNodeOffset, const ::sw::mark::MarkBase*> SwBookmarkNodeTable;
 
 struct Writer_Impl
 {
     SvStream * m_pStream;
 
     std::map<OUString, OUString> maFileNameMap;
-    std::vector<const SvxFontItem*> aFontRemoveLst;
+    std::vector<SfxPoolItemHolder> aFontRemoveLst;
     SwBookmarkNodeTable aBkmkNodePos;
 
     Writer_Impl();
 
-    void RemoveFontList( SwDoc& rDoc );
-    void InsertBkmk( const ::sw::mark::IMark& rBkmk );
+    void RemoveFontList();
+    void InsertBkmk( const ::sw::mark::MarkBase& rBkmk );
 };
 
 Writer_Impl::Writer_Impl()
@@ -59,15 +59,12 @@ Writer_Impl::Writer_Impl()
 {
 }
 
-void Writer_Impl::RemoveFontList( SwDoc& rDoc )
+void Writer_Impl::RemoveFontList()
 {
-    for( const auto& rpFontItem : aFontRemoveLst )
-    {
-        rDoc.GetAttrPool().DirectRemoveItemFromPool( *rpFontItem );
-    }
+    aFontRemoveLst.clear();
 }
 
-void Writer_Impl::InsertBkmk(const ::sw::mark::IMark& rBkmk)
+void Writer_Impl::InsertBkmk(const ::sw::mark::MarkBase& rBkmk)
 {
     SwNodeOffset nNd = rBkmk.GetMarkPos().GetNodeIndex();
 
@@ -119,7 +116,7 @@ const IDocumentStylePoolAccess& Writer::getIDocumentStylePoolAccess() const { re
 
 void Writer::ResetWriter()
 {
-    m_pImpl->RemoveFontList( *m_pDoc );
+    m_pImpl->RemoveFontList();
     m_pImpl.reset(new Writer_Impl);
 
     if( m_pCurrentPam )
@@ -160,7 +157,7 @@ bool Writer::CopyNextPam( SwPaM ** ppPam )
 sal_Int32 Writer::FindPos_Bkmk(const SwPosition& rPos) const
 {
     const IDocumentMarkAccess* const pMarkAccess = m_pDoc->getIDocumentMarkAccess();
-    const IDocumentMarkAccess::const_iterator_t ppBkmk = pMarkAccess->findFirstBookmarkStartsAfter(rPos);
+    const auto ppBkmk = pMarkAccess->findFirstBookmarkNotStartsBefore(rPos);
     if(ppBkmk != pMarkAccess->getBookmarksEnd())
         return ppBkmk - pMarkAccess->getBookmarksBegin();
     return -1;
@@ -173,7 +170,7 @@ Writer::NewUnoCursor(SwDoc & rDoc, SwNodeOffset const nStartIdx, SwNodeOffset co
 
     SwNodeIndex aStt( *pNds, nStartIdx );
     SwContentNode* pCNode = aStt.GetNode().GetContentNode();
-    if( !pCNode && nullptr == pNds->GoNext( &aStt ) )
+    if (!pCNode && nullptr == SwNodes::GoNext(&aStt))
     {
         OSL_FAIL( "No more ContentNode at StartPos" );
     }
@@ -208,7 +205,7 @@ ErrCodeMsg Writer::Write( SwPaM& rPaM, SvStream& rStrm, const OUString* pFName )
         ErrCodeMsg nResult = ERRCODE_ABORT;
         try
         {
-            tools::SvRef<SotStorage> aRef = new SotStorage( rStrm );
+            rtl::Reference<SotStorage> aRef = new SotStorage(rStrm);
             nResult = Write( rPaM, *aRef, pFName );
             if ( nResult == ERRCODE_NONE )
                 aRef->Commit();
@@ -343,9 +340,9 @@ void Writer::PutNumFormatFontsInAttrPool()
                     else if( *pFont == *pDefFont )
                         bCheck = true;
 
-                    AddFontItem( rPool, SvxFontItem( pFont->GetFamilyType(),
+                    AddFontItem( rPool, SvxFontItem( pFont->GetFamilyTypeMaybeAskConfig(),
                                 pFont->GetFamilyName(), pFont->GetStyleName(),
-                                pFont->GetPitch(), pFont->GetCharSet(), RES_CHRATR_FONT ));
+                                pFont->GetPitchMaybeAskConfig(), pFont->GetCharSet(), RES_CHRATR_FONT ));
                 }
             }
         }
@@ -363,36 +360,48 @@ void Writer::PutEditEngFontsInAttrPool()
     }
 }
 
-void Writer::AddFontItems_( SfxItemPool& rPool, sal_uInt16 nW )
+void Writer::AddFontItems_( SfxItemPool& rPool, TypedWhichId<SvxFontItem> nWhich )
 {
-    const SvxFontItem* pFont = static_cast<const SvxFontItem*>(&rPool.GetDefaultItem( nW ));
+    const SvxFontItem* pFont = &rPool.GetUserOrPoolDefaultItem( nWhich );
     AddFontItem( rPool, *pFont );
 
-    pFont = static_cast<const SvxFontItem*>(rPool.GetPoolDefaultItem( nW ));
+    pFont = rPool.GetUserDefaultItem( nWhich );
     if( nullptr != pFont )
         AddFontItem( rPool, *pFont );
 
-    for (const SfxPoolItem* pItem : rPool.GetItemSurrogates(nW))
-        AddFontItem( rPool, *static_cast<const SvxFontItem*>(pItem) );
+    if (nWhich == RES_CHRATR_FONT || nWhich == RES_CHRATR_CJK_FONT || nWhich == RES_CHRATR_CTL_FONT)
+    {
+        m_pDoc->ForEachCharacterFontItem(nWhich, /*bIgnoreAutoStyles*/false,
+            [this, &rPool] (const SvxFontItem& rFontItem) -> bool
+            {
+                AddFontItem( rPool, rFontItem );
+                return true;
+            });
+    }
+    else
+    {
+        // nWhich is one of EE_CHAR_FONTINFO /  EE_CHAR_FONTINFO_CJK / rPool, EE_CHAR_FONTINFO_CTL
+        for (const SfxPoolItem* pItem : rPool.GetItemSurrogates(nWhich))
+            AddFontItem( rPool, *static_cast<const SvxFontItem*>(pItem) );
+    }
 }
 
 void Writer::AddFontItem( SfxItemPool& rPool, const SvxFontItem& rFont )
 {
-    const SvxFontItem* pItem;
+    SfxPoolItemHolder aItem;
     if( RES_CHRATR_FONT != rFont.Which() )
     {
         SvxFontItem aFont( rFont );
         aFont.SetWhich( RES_CHRATR_FONT );
-        pItem = &rPool.DirectPutItemInPool( aFont );
+        aItem = SfxPoolItemHolder(rPool, &aFont);
+        assert(aItem.getItem() != &aFont && "Pointer to local outside scope (pushed to aFontRemoveLst)");
     }
     else
-        pItem = &rPool.DirectPutItemInPool( rFont );
+        aItem = SfxPoolItemHolder(rPool, &rFont);
 
-    if( 1 < pItem->GetRefCount() )
-        rPool.DirectRemoveItemFromPool( *pItem );
-    else
+    if(1 == aItem.getItem()->GetRefCount())
     {
-        m_pImpl->aFontRemoveLst.push_back( pItem );
+        m_pImpl->aFontRemoveLst.push_back(aItem);
     }
 }
 
@@ -401,7 +410,7 @@ void Writer::AddFontItem( SfxItemPool& rPool, const SvxFontItem& rFont )
 void Writer::CreateBookmarkTable()
 {
     const IDocumentMarkAccess* const pMarkAccess = m_pDoc->getIDocumentMarkAccess();
-    for(IDocumentMarkAccess::const_iterator_t ppBkmk = pMarkAccess->getBookmarksBegin();
+    for(auto ppBkmk = pMarkAccess->getBookmarksBegin();
         ppBkmk != pMarkAccess->getBookmarksEnd();
         ++ppBkmk)
     {
@@ -411,7 +420,7 @@ void Writer::CreateBookmarkTable()
 
 // search all Bookmarks in the range and return it in the Array
 bool Writer::GetBookmarks(const SwContentNode& rNd, sal_Int32 nStt,
-    sal_Int32 nEnd, std::vector< const ::sw::mark::IMark* >& rArr)
+    sal_Int32 nEnd, std::vector< const ::sw::mark::MarkBase* >& rArr)
 {
     OSL_ENSURE( rArr.empty(), "there are still entries available" );
 
@@ -429,7 +438,7 @@ bool Writer::GetBookmarks(const SwContentNode& rNd, sal_Int32 nStt,
         {
             for( SwBookmarkNodeTable::const_iterator it = aIterPair.first; it != aIterPair.second; ++it )
             {
-                const ::sw::mark::IMark& rBkmk = *(it->second);
+                const ::sw::mark::MarkBase& rBkmk = *(it->second);
                 sal_Int32 nContent;
                 if( rBkmk.GetMarkPos().GetNode() == rNd &&
                     (nContent = rBkmk.GetMarkPos().GetContentIndex() ) >= nStt &&

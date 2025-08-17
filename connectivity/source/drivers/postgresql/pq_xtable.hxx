@@ -48,8 +48,6 @@
 namespace pq_sdbc_driver
 {
 
-class Columns;
-
 class Table : public ReflectionBase,
               public css::sdbcx::XColumnsSupplier,
               public css::sdbcx::XIndexesSupplier,
@@ -117,7 +115,7 @@ class TableDescriptor
       public css::sdbcx::XIndexesSupplier,
       public css::sdbcx::XKeysSupplier
 {
-    css::uno::Reference< css::container::XNameAccess > m_columns;
+    rtl::Reference<ColumnDescriptors> m_columns;
     css::uno::Reference< css::container::XIndexAccess > m_keys;
     css::uno::Reference< css::container::XNameAccess > m_indexes;
 

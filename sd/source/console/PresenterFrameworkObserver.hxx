@@ -20,25 +20,22 @@
 #ifndef INCLUDED_SDEXT_SOURCE_PRESENTER_PRESENTERFRAMEWORKOBSERVER_HXX
 #define INCLUDED_SDEXT_SOURCE_PRESENTER_PRESENTERFRAMEWORKOBSERVER_HXX
 
-#include <com/sun/star/drawing/framework/XConfigurationChangeListener.hpp>
-#include <com/sun/star/drawing/framework/XConfigurationController.hpp>
+#include <framework/ConfigurationChangeListener.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <cppuhelper/compbase.hxx>
+#include <rtl/ref.hxx>
 
 #include <functional>
 
-namespace sdext::presenter {
+namespace sd::framework { class ConfigurationController; }
 
-typedef ::cppu::WeakComponentImplHelper <
-    css::drawing::framework::XConfigurationChangeListener
-    > PresenterFrameworkObserverInterfaceBase;
+namespace sdext::presenter {
 
 /** Watch the drawing framework for changes and run callbacks when a certain
     change takes place.
 */
 class PresenterFrameworkObserver
-    : private ::cppu::BaseMutex,
-      public PresenterFrameworkObserverInterfaceBase
+    : public sd::framework::ConfigurationChangeListener
 {
 public:
     typedef ::std::function<void (bool)> Action;
@@ -47,16 +44,16 @@ public:
     PresenterFrameworkObserver& operator=(const PresenterFrameworkObserver&) = delete;
 
     static void RunOnUpdateEnd (
-        const css::uno::Reference<css::drawing::framework::XConfigurationController>&rxController,
+        const rtl::Reference<::sd::framework::ConfigurationController>& rxController,
         const Action& rAction);
 
-    virtual void SAL_CALL disposing() override;
+    virtual void disposing(std::unique_lock<std::mutex>&) override;
     virtual void SAL_CALL disposing (const css::lang::EventObject& rEvent) override;
-    virtual void SAL_CALL notifyConfigurationChange (
-        const css::drawing::framework::ConfigurationChangeEvent& rEvent) override;
+    virtual void notifyConfigurationChange (
+        const sd::framework::ConfigurationChangeEvent& rEvent) override;
 
 private:
-    css::uno::Reference<css::drawing::framework::XConfigurationController> mxConfigurationController;
+    rtl::Reference<sd::framework::ConfigurationController> mxConfigurationController;
     Action maAction;
 
     /** Create a new PresenterFrameworkObserver object.
@@ -67,7 +64,7 @@ private:
             e.g. when some resource has been created.
     */
     PresenterFrameworkObserver (
-        css::uno::Reference<css::drawing::framework::XConfigurationController> xController,
+        rtl::Reference<sd::framework::ConfigurationController> xController,
         const Action& rAction);
     virtual ~PresenterFrameworkObserver() override;
 

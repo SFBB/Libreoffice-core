@@ -27,23 +27,15 @@
 #include <svx/svdopath.hxx>
 #include <svx/svdocapt.hxx>
 #include <svx/svxids.hrc>
-#include <svx/strings.hrc>
-#include <svx/xlnwtit.hxx>
-#include <svx/xlnstwit.hxx>
-#include <svx/xlnedwit.hxx>
-#include <svx/xlnedit.hxx>
-#include <svx/xlnstit.hxx>
-#include <svx/dialmgr.hxx>
 #include <svx/svdomeas.hxx>
 #include <osl/diagnose.h>
-#include <basegfx/polygon/b2dpolygontools.hxx>
 
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <basegfx/point/b2dpoint.hxx>
 
 FuConstRectangle::FuConstRectangle(ScTabViewShell& rViewSh, vcl::Window* pWin, ScDrawView* pViewP,
-                                   SdrModel* pDoc, const SfxRequest& rReq)
-    : FuConstruct(rViewSh, pWin, pViewP, pDoc, rReq)
+                                   SdrModel& rDoc, const SfxRequest& rReq)
+    : FuConstruct(rViewSh, pWin, pViewP, rDoc, rReq)
 {
 }
 
@@ -188,7 +180,7 @@ void FuConstRectangle::Deactivate()
 rtl::Reference<SdrObject> FuConstRectangle::CreateDefaultObject(const sal_uInt16 nID, const tools::Rectangle& rRectangle)
 {
     rtl::Reference<SdrObject> pObj(SdrObjFactory::MakeNewObject(
-        *pDrDoc,
+        rDrDoc,
         pView->GetCurrentObjInventor(),
         pView->GetCurrentObjIdentifier()));
 
@@ -279,7 +271,7 @@ rtl::Reference<SdrObject> FuConstRectangle::CreateDefaultObject(const sal_uInt16
             }
         }
 
-        SfxItemSet aAttr(pDrDoc->GetItemPool());
+        SfxItemSet aAttr(rDrDoc.GetItemPool());
         SetLineEnds(aAttr, *pObj, nID);
         pObj->SetMergedItemSet(aAttr);
     }

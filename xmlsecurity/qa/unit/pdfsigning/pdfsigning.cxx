@@ -13,6 +13,7 @@
 
 #if USE_CRYPTO_NSS
 #include <secoid.h>
+#include <nss.h>
 #endif
 
 #include <string_view>
@@ -29,6 +30,7 @@
 #include <unotools/ucbstreamhelper.hxx>
 #include <vcl/filter/pdfdocument.hxx>
 #include <vcl/filter/PDFiumLibrary.hxx>
+#include <svl/cryptosign.hxx>
 
 #include <documentsignaturemanager.hxx>
 #include <pdfsignaturehelper.hxx>
@@ -63,7 +65,6 @@ protected:
 public:
     PDFSigningTest();
     void setUp() override;
-    void tearDown() override;
 };
 
 PDFSigningTest::PDFSigningTest() {}
@@ -71,31 +72,27 @@ PDFSigningTest::PDFSigningTest() {}
 void PDFSigningTest::setUp()
 {
     test::BootstrapFixture::setUp();
-    MacrosTest::setUpNssGpg(m_directories, "xmlsecurity_pdfsigning");
+    MacrosTest::setUpX509(m_directories, u"xmlsecurity_pdfsigning"_ustr);
 
     uno::Reference<xml::crypto::XSEInitializer> xSEInitializer
-        = xml::crypto::SEInitializer::create(mxComponentContext);
+        = xml::crypto::SEInitializer::create(m_xContext);
     uno::Reference<xml::crypto::XXMLSecurityContext> xSecurityContext
         = xSEInitializer->createSecurityContext(OUString());
 #if USE_CRYPTO_NSS
-#ifdef NSS_USE_ALG_IN_ANY_SIGNATURE
+#ifdef NSS_USE_ALG_IN_SIGNATURE
     // policy may disallow using SHA1 for signatures but unit test documents
     // have such existing signatures (call this after createSecurityContext!)
-    NSS_SetAlgorithmPolicy(SEC_OID_SHA1, NSS_USE_ALG_IN_ANY_SIGNATURE, 0);
+    NSS_SetAlgorithmPolicy(SEC_OID_SHA1, NSS_USE_ALG_IN_SIGNATURE, 0);
+    // the minimum is 2048 in Fedora 40
+    NSS_OptionSet(NSS_RSA_MIN_KEY_SIZE, 1024);
 #endif
 #endif
-}
-
-void PDFSigningTest::tearDown()
-{
-    MacrosTest::tearDownNssGpg();
-    test::BootstrapFixture::tearDown();
 }
 
 std::vector<SignatureInformation> PDFSigningTest::verify(const OUString& rURL, size_t nCount)
 {
     uno::Reference<xml::crypto::XSEInitializer> xSEInitializer
-        = xml::crypto::SEInitializer::create(mxComponentContext);
+        = xml::crypto::SEInitializer::create(m_xContext);
     uno::Reference<xml::crypto::XXMLSecurityContext> xSecurityContext
         = xSEInitializer->createSecurityContext(OUString());
     std::vector<SignatureInformation> aRet;
@@ -109,11 +106,8 @@ std::vector<SignatureInformation> PDFSigningTest::verify(const OUString& rURL, s
     {
         CPPUNIT_ASSERT_EQUAL(nCount, aHelper.GetSignatureInformations().size());
     }
-    for (size_t i = 0; i < aHelper.GetSignatureInformations().size(); ++i)
-    {
-        const SignatureInformation& rInfo = aHelper.GetSignatureInformations()[i];
-        aRet.push_back(rInfo);
-    }
+    aRet.insert(aRet.end(), aHelper.GetSignatureInformations().begin(),
+                aHelper.GetSignatureInformations().end());
 
     return aRet;
 }
@@ -123,7 +117,7 @@ bool PDFSigningTest::sign(const OUString& rInURL, const OUString& rOutURL,
 {
     // Make sure that input has nOriginalSignatureCount signatures.
     uno::Reference<xml::crypto::XSEInitializer> xSEInitializer
-        = xml::crypto::SEInitializer::create(mxComponentContext);
+        = xml::crypto::SEInitializer::create(m_xContext);
     uno::Reference<xml::crypto::XXMLSecurityContext> xSecurityContext
         = xSEInitializer->createSecurityContext(OUString());
     vcl::filter::PDFDocument aDocument;
@@ -141,21 +135,14 @@ bool PDFSigningTest::sign(const OUString& rInURL, const OUString& rOutURL,
             = xSecurityContext->getSecurityEnvironment();
         uno::Sequence<uno::Reference<security::XCertificate>> aCertificates
             = xSecurityEnvironment->getPersonalCertificates();
-        DateTime now(DateTime::SYSTEM);
         for (auto& cert : asNonConstRange(aCertificates))
         {
-            css::util::DateTime aNotValidAfter = cert->getNotValidAfter();
-            css::util::DateTime aNotValidBefore = cert->getNotValidBefore();
-
             // Only try certificates that are already active and not expired
-            if ((now > aNotValidAfter) || (now < aNotValidBefore))
+            if (IsValid(cert, xSecurityEnvironment))
             {
-                SAL_WARN("xmlsecurity.qa",
-                         "Skipping a certificate that is not yet valid or already not valid");
-            }
-            else
-            {
-                bool bSignResult = aDocument.Sign(cert, "test", /*bAdES=*/true);
+                svl::crypto::SigningContext aSigningContext;
+                aSigningContext.m_xCertificate = cert;
+                bool bSignResult = aDocument.Sign(aSigningContext, u"test"_ustr, /*bAdES=*/true);
 #ifdef _WIN32
                 if (!bSignResult)
                 {
@@ -245,7 +232,7 @@ CPPUNIT_TEST_FIXTURE(PDFSigningTest, testPDFRemove)
 
     // Make sure that good.pdf has 1 valid signature.
     uno::Reference<xml::crypto::XSEInitializer> xSEInitializer
-        = xml::crypto::SEInitializer::create(mxComponentContext);
+        = xml::crypto::SEInitializer::create(m_xContext);
     uno::Reference<xml::crypto::XXMLSecurityContext> xSecurityContext
         = xSEInitializer->createSecurityContext(OUString());
     vcl::filter::PDFDocument aDocument;
@@ -291,7 +278,7 @@ CPPUNIT_TEST_FIXTURE(PDFSigningTest, testPDFRemoveAll)
     // testPDFRemove(), here intentionally test DocumentSignatureManager and
     // PDFSignatureHelper code as well.
     uno::Reference<xml::crypto::XSEInitializer> xSEInitializer
-        = xml::crypto::SEInitializer::create(mxComponentContext);
+        = xml::crypto::SEInitializer::create(m_xContext);
     uno::Reference<xml::crypto::XXMLSecurityContext> xSecurityContext
         = xSEInitializer->createSecurityContext(OUString());
 
@@ -303,7 +290,7 @@ CPPUNIT_TEST_FIXTURE(PDFSigningTest, testPDFRemoveAll)
         osl::File::RC::E_None,
         osl::File::copy(m_directories.getURLFromSrc(DATA_DIRECTORY) + "2good.pdf", aOutURL));
     // Load the test document as a storage and read its two signatures.
-    DocumentSignatureManager aManager(mxComponentContext, DocumentSignatureMode::Content);
+    DocumentSignatureManager aManager(m_xContext, DocumentSignatureMode::Content);
     std::unique_ptr<SvStream> pStream
         = utl::UcbStreamHelper::CreateStream(aOutURL, StreamMode::READ | StreamMode::WRITE);
     uno::Reference<io::XStream> xStream(new utl::OStreamWrapper(std::move(pStream)));
@@ -327,12 +314,12 @@ CPPUNIT_TEST_FIXTURE(PDFSigningTest, testPDFRemoveAll)
 CPPUNIT_TEST_FIXTURE(PDFSigningTest, testTdf107782)
 {
     uno::Reference<xml::crypto::XSEInitializer> xSEInitializer
-        = xml::crypto::SEInitializer::create(mxComponentContext);
+        = xml::crypto::SEInitializer::create(m_xContext);
     uno::Reference<xml::crypto::XXMLSecurityContext> xSecurityContext
         = xSEInitializer->createSecurityContext(OUString());
 
     // Load the test document as a storage and read its signatures.
-    DocumentSignatureManager aManager(mxComponentContext, DocumentSignatureMode::Content);
+    DocumentSignatureManager aManager(m_xContext, DocumentSignatureMode::Content);
     OUString aURL = m_directories.getURLFromSrc(DATA_DIRECTORY) + "tdf107782.pdf";
     std::unique_ptr<SvStream> pStream
         = utl::UcbStreamHelper::CreateStream(aURL, StreamMode::READ | StreamMode::WRITE);
@@ -539,6 +526,8 @@ CPPUNIT_TEST_FIXTURE(PDFSigningTest, testGood)
     const std::initializer_list<std::u16string_view> aNames = {
         // We failed to determine if this is good or bad.
         u"good-non-detached.pdf",
+        // adbe.pcks7.sha1 with SHA-256 in the second pass
+        u"good-non-detached-mixed.pdf",
         // Boolean value for dictionary key caused read error.
         u"dict-bool.pdf",
     };
@@ -597,13 +586,13 @@ CPPUNIT_TEST_FIXTURE(PDFSigningTest, testUnknownSubFilter)
 
     // Tokenize the bugdoc.
     uno::Reference<xml::crypto::XSEInitializer> xSEInitializer
-        = xml::crypto::SEInitializer::create(mxComponentContext);
+        = xml::crypto::SEInitializer::create(m_xContext);
     uno::Reference<xml::crypto::XXMLSecurityContext> xSecurityContext
         = xSEInitializer->createSecurityContext(OUString());
     std::unique_ptr<SvStream> pStream = utl::UcbStreamHelper::CreateStream(
         m_directories.getURLFromSrc(DATA_DIRECTORY) + "cr-comment.pdf", StreamMode::STD_READ);
     uno::Reference<io::XStream> xStream(new utl::OStreamWrapper(std::move(pStream)));
-    DocumentSignatureManager aManager(mxComponentContext, DocumentSignatureMode::Content);
+    DocumentSignatureManager aManager(m_xContext, DocumentSignatureMode::Content);
     aManager.setSignatureStream(xStream);
     aManager.read(/*bUseTempStream=*/false);
 
@@ -622,14 +611,14 @@ CPPUNIT_TEST_FIXTURE(PDFSigningTest, testGoodCustomMagic)
 
     // Tokenize the bugdoc.
     uno::Reference<xml::crypto::XSEInitializer> xSEInitializer
-        = xml::crypto::SEInitializer::create(mxComponentContext);
+        = xml::crypto::SEInitializer::create(m_xContext);
     uno::Reference<xml::crypto::XXMLSecurityContext> xSecurityContext
         = xSEInitializer->createSecurityContext(OUString());
     std::unique_ptr<SvStream> pStream = utl::UcbStreamHelper::CreateStream(
         m_directories.getURLFromSrc(DATA_DIRECTORY) + "good-custom-magic.pdf",
         StreamMode::STD_READ);
     uno::Reference<io::XStream> xStream(new utl::OStreamWrapper(std::move(pStream)));
-    DocumentSignatureManager aManager(mxComponentContext, DocumentSignatureMode::Content);
+    DocumentSignatureManager aManager(m_xContext, DocumentSignatureMode::Content);
     aManager.setSignatureStream(xStream);
     aManager.read(/*bUseTempStream=*/false);
 
@@ -639,6 +628,64 @@ CPPUNIT_TEST_FIXTURE(PDFSigningTest, testGoodCustomMagic)
     // i.e. no signatures were found due to a custom non-comment magic after the header.
     std::vector<SignatureInformation>& rInformations = aManager.getCurrentSignatureInformations();
     CPPUNIT_ASSERT_EQUAL(static_cast<std::size_t>(1), rInformations.size());
+}
+
+/// Test that we reject invalid adbe.pkcs7.sha1
+CPPUNIT_TEST_FIXTURE(PDFSigningTest, testBadNonDetached)
+{
+    std::shared_ptr<vcl::pdf::PDFium> pPDFium = vcl::pdf::PDFiumLibrary::get();
+    if (!pPDFium)
+    {
+        return;
+    }
+
+    const std::initializer_list<std::u16string_view> aNames = {
+        // SHA-1 mismatch
+        u"bad-non-detached-hash-mismatch.pdf",
+        // SHA-256 used instead of SHA-1 in the first pass
+        u"bad-non-detached-function-mismatch.pdf",
+        // the subfilter says adbe.pkcs7.sha1, the actual signature corresponds to adb.pkcs7.detached
+        u"bad-non-detached-subfilter-mismatch.pdf",
+        // CVE-2025-2866; SHA-1 matches, RSA signature invalid
+        u"bad-non-detached-rsa-mismatch.pdf"
+    };
+
+    for (const auto& rName : aNames)
+    {
+        std::vector<SignatureInformation> aInfos
+            = verify(m_directories.getURLFromSrc(DATA_DIRECTORY) + rName, 1);
+        CPPUNIT_ASSERT(!aInfos.empty());
+        SignatureInformation& rInformation = aInfos[0];
+        CPPUNIT_ASSERT_EQUAL(xml::crypto::SecurityOperationStatus::SecurityOperationStatus_UNKNOWN,
+                             rInformation.nStatus);
+    }
+}
+
+/// Test that we do not crash when processing incomplete signatures
+CPPUNIT_TEST_FIXTURE(PDFSigningTest, testIncompleteCMS)
+{
+    std::shared_ptr<vcl::pdf::PDFium> pPDFium = vcl::pdf::PDFiumLibrary::get();
+    if (!pPDFium)
+    {
+        return;
+    }
+
+    const std::initializer_list<std::u16string_view> aNames
+        = { // empty digestAlgorithms; used to crash when using NSS
+            u"bad-empty-digestalgorithms.pdf",
+            // missing certificates; used to crash when using NSS
+            u"bad-missing-certificates.pdf"
+          };
+
+    for (const auto& rName : aNames)
+    {
+        std::vector<SignatureInformation> aInfos
+            = verify(m_directories.getURLFromSrc(DATA_DIRECTORY) + rName, 1);
+        CPPUNIT_ASSERT(!aInfos.empty());
+        SignatureInformation& rInformation = aInfos[0];
+        CPPUNIT_ASSERT_EQUAL(xml::crypto::SecurityOperationStatus::SecurityOperationStatus_UNKNOWN,
+                             rInformation.nStatus);
+    }
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();

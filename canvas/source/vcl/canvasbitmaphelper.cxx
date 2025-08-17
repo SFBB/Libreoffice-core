@@ -38,7 +38,7 @@ namespace vclcanvas
     {
     }
 
-    void CanvasBitmapHelper::init( const BitmapEx&                rBitmap,
+    void CanvasBitmapHelper::init( const ::Bitmap&                rBitmap,
                                    rendering::XGraphicDevice&     rDevice,
                                    const OutDevProviderSharedPtr& rOutDevReference )
     {
@@ -51,7 +51,7 @@ namespace vclcanvas
         CanvasHelper::init( rDevice,
                             mpBackBuffer,
                             false,
-                            rBitmap.IsAlpha() );
+                            rBitmap.HasAlpha() );
     }
 
     void CanvasBitmapHelper::disposing()
@@ -89,7 +89,7 @@ namespace vclcanvas
         if( !mpBackBuffer || mpDevice )
             return uno::Reference< rendering::XBitmap >(); // we're disposed
 
-        BitmapEx aRes( mpBackBuffer->getBitmapReference() );
+        ::Bitmap aRes( mpBackBuffer->getBitmapReference() );
 
         aRes.Scale( vcl::unotools::sizeFromRealSize2D(newSize),
                      beFast ? BmpScaleFlag::Default : BmpScaleFlag::BestQuality );
@@ -163,10 +163,10 @@ namespace vclcanvas
         return aBitmapLayout;
     }
 
-    BitmapEx CanvasBitmapHelper::getBitmap() const
+    ::Bitmap CanvasBitmapHelper::getBitmap() const
     {
         if( !mpBackBuffer )
-            return BitmapEx(); // we're disposed
+            return ::Bitmap(); // we're disposed
         else
             return mpBackBuffer->getBitmapReference();
     }

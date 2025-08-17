@@ -31,6 +31,7 @@
 #include <com/sun/star/document/XDocumentPropertiesSupplier.hpp>
 #include <com/sun/star/document/XViewDataSupplier.hpp>
 #include <comphelper/servicehelper.hxx>
+#include <comphelper/diagnose_ex.hxx>
 #include <o3tl/any.hxx>
 #include <osl/thread.h>
 #include <osl/diagnose.h>
@@ -60,6 +61,7 @@
 #include <docsh.hxx>
 #include <document.hxx>
 #include <docuno.hxx>
+#include <dbdocfun.hxx>
 #include <rangenam.hxx>
 #include <tokenarray.hxx>
 #include <tokenuno.hxx>
@@ -159,7 +161,7 @@ public:
     /** Creates and returns a defined name on the-fly in the correct Calc sheet. */
     WorkbookHelper::RangeDataRet createLocalNamedRangeObject(OUString& orName, sal_Int32 nIndex, sal_Int32 nNameFlags, sal_Int32 nTab);
     /** Creates and returns a database range on-the-fly in the Calc document. */
-    Reference< XDatabaseRange > createDatabaseRangeObject( OUString& orName, const ScRange& rRangeAddr );
+    rtl::Reference<ScDatabaseRangeObj> createDatabaseRangeObject( OUString& orName, const ScRange& rRangeAddr );
     /** Creates and returns an unnamed database range on-the-fly in the Calc document. */
     Reference< XDatabaseRange > createUnnamedDatabaseRangeObject( const ScRange& rRangeAddr );
     /** Finds the (already existing) database range of the given formula token index. */
@@ -435,7 +437,7 @@ WorkbookHelper::RangeDataRet WorkbookGlobals::createLocalNamedRangeObject(
         ScDocument& rDoc =  getScDocument();
         ScRangeName* pNames = rDoc.GetRangeName( nTab );
         if(!pNames)
-            throw RuntimeException("invalid sheet index used");
+            throw RuntimeException(u"invalid sheet index used"_ustr);
         // find an unused name
         orName = findUnusedName( pNames, orName );
         // create the named range
@@ -444,31 +446,38 @@ WorkbookHelper::RangeDataRet WorkbookGlobals::createLocalNamedRangeObject(
     return aScRangeData;
 }
 
-Reference< XDatabaseRange > WorkbookGlobals::createDatabaseRangeObject( OUString& orName, const ScRange& rRangeAddr )
+rtl::Reference<ScDatabaseRangeObj> WorkbookGlobals::createDatabaseRangeObject( OUString& orName, const ScRange& rRangeAddr )
 {
     // validate cell range
     ScRange aDestRange = rRangeAddr;
     bool bValidRange = getAddressConverter().validateCellRange( aDestRange, true, true );
 
+    ScDocShell* pDocSh = getScDocument().GetDocumentShell();
     // create database range and insert it into the Calc document
-    Reference< XDatabaseRange > xDatabaseRange;
-    if( bValidRange && !orName.isEmpty() ) try
+    if( bValidRange && !orName.isEmpty() && pDocSh) try
     {
         // find an unused name
-        PropertySet aDocProps(( Reference< css::beans::XPropertySet >(mxDoc) ));
-        Reference< XDatabaseRanges > xDatabaseRanges( aDocProps.getAnyProperty( PROP_DatabaseRanges ), UNO_QUERY_THROW );
-        orName = ContainerHelper::getUnusedName( xDatabaseRanges, orName, '_' );
+        OUString aNewName = orName;
+        sal_Int32 nIndex = -1;
+        ScDBCollection* pNames = pDocSh->GetDocument().GetDBCollection();
+        while (pNames && pNames->getNamedDBs().findByUpperName(ScGlobal::getCharClass().uppercase(aNewName)) != nullptr )
+            aNewName = orName + OUStringChar('_') + OUString::number( nIndex++ );
+        orName = aNewName;
         // create the database range
         CellRangeAddress aApiRange( aDestRange.aStart.Tab(), aDestRange.aStart.Col(), aDestRange.aStart.Row(),
                                     aDestRange.aEnd.Col(), aDestRange.aEnd.Row() );
-        xDatabaseRanges->addNewByName( orName, aApiRange );
-        xDatabaseRange.set( xDatabaseRanges->getByName( orName ), UNO_QUERY );
+        ScDBDocFunc aFunc(*pDocSh);
+        ScRange aNameRange( static_cast<SCCOL>(aApiRange.StartColumn), static_cast<SCROW>(aApiRange.StartRow), aApiRange.Sheet,
+                            static_cast<SCCOL>(aApiRange.EndColumn),   static_cast<SCROW>(aApiRange.EndRow),   aApiRange.Sheet );
+        if(!( aFunc.AddDBRange( orName, aNameRange ) ))
+            throw RuntimeException(u"Could not add database range"_ustr);
+        return new ScDatabaseRangeObj(pDocSh, orName);
     }
     catch( Exception& )
     {
+        DBG_UNHANDLED_EXCEPTION("sc");
     }
-    OSL_ENSURE( xDatabaseRange.is(), "WorkbookGlobals::createDatabaseRangeObject - cannot create database range" );
-    return xDatabaseRange;
+    return {};
 }
 
 Reference< XDatabaseRange > WorkbookGlobals::createUnnamedDatabaseRangeObject( const ScRange& rRangeAddr )
@@ -553,7 +562,7 @@ void WorkbookGlobals::initialize()
         mpDoc = &mpDocShell->GetDocument();
 
     if (!mpDoc)
-        throw RuntimeException("Workbookhelper::getScDocument(): Failed to access ScDocument from model");
+        throw RuntimeException(u"Workbookhelper::getScDocument(): Failed to access ScDocument from model"_ustr);
 
     Reference< XDocumentProperties > xDocProps = mxDoc->getDocumentProperties();
     const OUString aGenerator( xDocProps->getGenerator());
@@ -595,12 +604,23 @@ void WorkbookGlobals::initialize()
 
     // initialise edit engine
     ScDocument& rDoc = getScDocument();
-    mxEditEngine.reset( new ScEditEngineDefaulter( rDoc.GetEnginePool() ) );
+    mxEditEngine.reset( new ScEditEngineDefaulter( rDoc.GetEditEnginePool() ) );
     mxEditEngine->SetRefMapMode(MapMode(MapUnit::Map100thMM));
-    mxEditEngine->SetEditTextObjectPool( rDoc.GetEditPool() );
     mxEditEngine->SetUpdateLayout( false );
     mxEditEngine->EnableUndo( false );
     mxEditEngine->SetControlWord( mxEditEngine->GetControlWord() & ~EEControlBits::ALLOWBIGOBJS );
+
+    // Initialize a final ODFF OpCodeMap once in case none was created yet, so
+    // the subsequent XFormulaOpCodeMapper::getAvailableMappings() via
+    // OpCodeProviderImpl::fillEntrySeq() do not have to recreate temporary
+    // mappings over and over again.
+    // Same for OOXML mapping that is accessed by some base class
+    // formula::FormulaCompiler::GetOpCodeMap() calls.
+    {
+        ScCompiler aCompiler( rDoc, ScAddress(), formula::FormulaGrammar::GRAM_ODFF);
+        aCompiler.GetOpCodeMap(css::sheet::FormulaLanguage::ODFF);
+        aCompiler.GetOpCodeMap(css::sheet::FormulaLanguage::OOXML);
+    }
 
     // set some document properties needed during import
     if( mrBaseFilter.isImportFilter() )
@@ -639,7 +659,9 @@ void WorkbookGlobals::finalize()
     mpDoc->EnableExecuteLink(true);
     // #i79826# enable updating automatic row height after loading the document
     mpDoc->UnlockAdjustHeight();
-    mpDocShell->UpdateAllRowHeights(/*bOnlyUsedRows=*/true);
+    // check settings (potentially asking the user if optimal row height should be run now)
+    if (mpDocShell->GetRecalcRowHeightsMode()) // default is to always update
+        mpDocShell->UpdateAllRowHeights(/*bOnlyUsedRows=*/true);
 
     // #i76026# enable Undo after loading the document
     mpDoc->EnableUndo(true);
@@ -737,7 +759,7 @@ void WorkbookHelper::finalizeWorkbookImport()
         number 1). Otherwise hidden sheets (e.g. for scenarios) which have
         'Default' page style will break automatic page numbering for following
         sheets. Automatic numbering is set by passing the value 0. */
-    PropertySet aDefPageStyle( getStyleObject( "Default", true ) );
+    PropertySet aDefPageStyle( getStyleObject( u"Default"_ustr, true ) );
     aDefPageStyle.setProperty< sal_Int16 >( PROP_FirstPageNumber, 0 );
 
     // Has any string ref syntax been imported?
@@ -765,7 +787,7 @@ void WorkbookHelper::finalizeWorkbookImport()
 
     OUString sTabName;
     Reference< XNameAccess > xSheetsNC;
-    for (const auto& rProp : std::as_const(aSeq))
+    for (const auto& rProp : aSeq)
     {
         OUString sName(rProp.Name);
         if (sName == SC_ACTIVETABLE)
@@ -790,7 +812,7 @@ void WorkbookHelper::finalizeWorkbookImport()
     if ( !(aAny >>= aProperties) )
         return;
 
-    for (const auto& rProp : std::as_const(aProperties))
+    for (const auto& rProp : aProperties)
     {
         OUString sName(rProp.Name);
         if (sName == SC_POSITIONLEFT)
@@ -838,18 +860,10 @@ const rtl::Reference< ScModelObj > & WorkbookHelper::getDocument() const
     return mrBookGlob.getDocument();
 }
 
-Reference< XSpreadsheet > WorkbookHelper::getSheetFromDoc( sal_Int32 nSheet ) const
+rtl::Reference< ScTableSheetObj > WorkbookHelper::getSheetFromDoc( sal_Int32 nSheet ) const
 {
-    Reference< XSpreadsheet > xSheet;
-    try
-    {
-        Reference< XIndexAccess > xSheetsIA( getDocument()->getSheets(), UNO_QUERY_THROW );
-        xSheet.set( xSheetsIA->getByIndex( nSheet ), UNO_QUERY_THROW );
-    }
-    catch( Exception& )
-    {
-    }
-    return xSheet;
+    rtl::Reference< ScTableSheetsObj > xSheetsIA( getDocument()->getScSheets() );
+    return xSheetsIA->GetSheetByIndex( nSheet );
 }
 
 Reference< XSpreadsheet > WorkbookHelper::getSheetFromDoc( const OUString& rSheet ) const
@@ -900,7 +914,7 @@ WorkbookHelper::RangeDataRet WorkbookHelper::createLocalNamedRangeObject(OUStrin
     return mrBookGlob.createLocalNamedRangeObject(orName, nIndex, nNameFlags, nTab);
 }
 
-Reference< XDatabaseRange > WorkbookHelper::createDatabaseRangeObject( OUString& orName, const ScRange& rRangeAddr ) const
+rtl::Reference<ScDatabaseRangeObj> WorkbookHelper::createDatabaseRangeObject( OUString& orName, const ScRange& rRangeAddr ) const
 {
     return mrBookGlob.createDatabaseRangeObject( orName, rRangeAddr );
 }

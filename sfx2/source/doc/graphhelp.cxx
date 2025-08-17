@@ -128,28 +128,29 @@ void* GraphicHelper::getWinMetaFileFromGDI_Impl( const GDIMetaFile* pGDIMeta, co
 
                     if ( hMemory )
                     {
-                        METAFILEPICT* pMF = static_cast<METAFILEPICT*>(GlobalLock( hMemory ));
-
-                        pMF->hMF = hMeta;
-                        pMF->mm = MM_ANISOTROPIC;
-
-                        MapMode aWinMode( MapUnit::Map100thMM );
-
-                        if ( aWinMode == pGDIMeta->GetPrefMapMode() )
+                        if (METAFILEPICT* pMF = static_cast<METAFILEPICT*>(GlobalLock(hMemory)))
                         {
-                            pMF->xExt = aMetaSize.Width();
-                            pMF->yExt = aMetaSize.Height();
-                        }
-                        else
-                        {
-                            Size aWinSize = OutputDevice::LogicToLogic( Size( aMetaSize.Width(), aMetaSize.Height() ),
-                                                                        pGDIMeta->GetPrefMapMode(),
-                                                                        aWinMode );
-                            pMF->xExt = aWinSize.Width();
-                            pMF->yExt = aWinSize.Height();
-                        }
+                            pMF->hMF = hMeta;
+                            pMF->mm = MM_ANISOTROPIC;
 
-                        GlobalUnlock( hMemory );
+                            MapMode aWinMode( MapUnit::Map100thMM );
+
+                            if ( aWinMode == pGDIMeta->GetPrefMapMode() )
+                            {
+                                pMF->xExt = aMetaSize.Width();
+                                pMF->yExt = aMetaSize.Height();
+                            }
+                            else
+                            {
+                                Size aWinSize = OutputDevice::LogicToLogic( Size( aMetaSize.Width(), aMetaSize.Height() ),
+                                                                            pGDIMeta->GetPrefMapMode(),
+                                                                            aWinMode );
+                                pMF->xExt = aWinSize.Width();
+                                pMF->yExt = aWinSize.Height();
+                            }
+
+                            GlobalUnlock(hMemory);
+                        }
                         pResult = static_cast<void*>(hMemory);
                     }
                     else
@@ -169,7 +170,7 @@ void* GraphicHelper::getWinMetaFileFromGDI_Impl( const GDIMetaFile* pGDIMeta, co
 
 
 // static
-bool GraphicHelper::getThumbnailFormatFromBitmap_Impl(const BitmapEx& rBitmap, const uno::Reference<io::XStream>& xStream)
+bool GraphicHelper::getThumbnailFormatFromBitmap_Impl(const Bitmap& rBitmap, const uno::Reference<io::XStream>& xStream)
 {
     if (rBitmap.IsEmpty() || !xStream.is())
         return false;
@@ -179,7 +180,7 @@ bool GraphicHelper::getThumbnailFormatFromBitmap_Impl(const BitmapEx& rBitmap, c
     if (pStream->GetError())
         return false;
 
-    BitmapEx bitmap(rBitmap);
+    Bitmap bitmap(rBitmap);
     bitmap.Convert(BmpConversion::N8BitColors);
 
     GraphicFilter& rFilter = GraphicFilter::GetGraphicFilter();
@@ -198,21 +199,21 @@ bool GraphicHelper::getThumbnailReplacement_Impl(std::u16string_view rResID, con
     bool bResult = false;
     if (!rResID.empty() && xStream.is())
     {
-        uno::Reference< uno::XComponentContext > xContext = ::comphelper::getProcessComponentContext();
+        const uno::Reference< uno::XComponentContext >& xContext = ::comphelper::getProcessComponentContext();
         try
         {
             uno::Reference< graphic::XGraphicProvider > xGraphProvider(graphic::GraphicProvider::create(xContext));
             const OUString aURL{OUString::Concat("private:graphicrepository/") + rResID};
 
-            uno::Sequence< beans::PropertyValue > aMediaProps{ comphelper::makePropertyValue("URL",
+            uno::Sequence< beans::PropertyValue > aMediaProps{ comphelper::makePropertyValue(u"URL"_ustr,
                                                                                              aURL) };
 
             uno::Reference< graphic::XGraphic > xGraphic = xGraphProvider->queryGraphic( aMediaProps );
             if ( xGraphic.is() )
             {
                 uno::Sequence< beans::PropertyValue > aStoreProps{
-                    comphelper::makePropertyValue("OutputStream", xStream),
-                    comphelper::makePropertyValue("MimeType", OUString("image/png"))
+                    comphelper::makePropertyValue(u"OutputStream"_ustr, xStream),
+                    comphelper::makePropertyValue(u"MimeType"_ustr, u"image/png"_ustr)
                 };
 
                 xGraphProvider->storeGraphic( xGraphic, aStoreProps );

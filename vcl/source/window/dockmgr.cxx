@@ -435,19 +435,13 @@ private:
 public:
     ImplPopupFloatWin( vcl::Window* pParent, bool bToolBox );
     virtual ~ImplPopupFloatWin() override;
-    virtual css::uno::Reference< css::accessibility::XAccessible > CreateAccessible() override;
+    virtual rtl::Reference<comphelper::OAccessible> CreateAccessible() override;
 };
 
 ImplPopupFloatWin::ImplPopupFloatWin( vcl::Window* pParent, bool bToolBox ) :
     FloatingWindow( pParent, bToolBox ? WB_BORDER | WB_POPUP | WB_SYSTEMWINDOW | WB_NOSHADOW : WB_STDPOPUP ),
     mbToolBox( bToolBox )
 {
-    if ( bToolBox )
-    {
-        // indicate window type, required for accessibility
-        // which should not see this window as a toplevel window
-        mpWindowImpl->mbToolbarFloatingWindow = true;
-    }
 }
 
 ImplPopupFloatWin::~ImplPopupFloatWin()
@@ -455,7 +449,7 @@ ImplPopupFloatWin::~ImplPopupFloatWin()
     disposeOnce();
 }
 
-css::uno::Reference< css::accessibility::XAccessible > ImplPopupFloatWin::CreateAccessible()
+rtl::Reference<comphelper::OAccessible> ImplPopupFloatWin::CreateAccessible()
 {
     if ( !mbToolBox )
         return FloatingWindow::CreateAccessible();
@@ -466,7 +460,7 @@ css::uno::Reference< css::accessibility::XAccessible > ImplPopupFloatWin::Create
     // as this window is only used as a helper for subtoolbars that are not teared-off, the parent toolbar
     // has to provide accessibility support (as implemented in the toolkit)
     // so the contained toolbar should appear as child of the corresponding toolbar item of the parent toolbar
-    return css::uno::Reference< css::accessibility::XAccessible >();
+    return {};
 }
 
 ImplDockingWindowWrapper::ImplDockingWindowWrapper( const vcl::Window *pWindow )

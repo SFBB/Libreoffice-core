@@ -21,6 +21,7 @@
 
 #include <o3tl/sprintf.hxx>
 #include <o3tl/string_view.hxx>
+#include <o3tl/numeric.hxx>
 #include <comphelper/string.hxx>
 #include <sal/log.hxx>
 #include <tools/debug.hxx>
@@ -64,6 +65,8 @@ const double EXP_ABS_UPPER_BOUND = 1.0E15;  // use exponential notation above th
 
 constexpr sal_Int32 kTimeSignificantRound = 7;  // Round (date+)time at 7 decimals
                                                 // (+5 of 86400 == 12 significant digits).
+
+const sal_Unicode cBlankDigit = 0x2007;     // tdf#158890 use figure space for '?'
 } // namespace
 
 const double D_MAX_U_INT32 = double(0xffffffff);      // 4294967295.0
@@ -362,14 +365,13 @@ void SvNumberformat::ImpCopyNumberformat( const SvNumberformat& rFormat )
 }
 
 SvNumberformat::SvNumberformat( SvNumberformat const & rFormat )
-    : rScan(rFormat.rScan), bStarFlag( rFormat.bStarFlag )
+    : rScan(rFormat.rScan)
 {
     ImpCopyNumberformat( rFormat );
 }
 
 SvNumberformat::SvNumberformat( SvNumberformat const & rFormat, ImpSvNumberformatScan& rSc )
     : rScan(rSc)
-    , bStarFlag( rFormat.bStarFlag )
 {
     ImpCopyNumberformat( rFormat );
 }
@@ -723,10 +725,10 @@ bool NatNumTakesParameters(sal_Int16 nNum)
 
 // is there a 3-letter bank code in NatNum12 param (but not
 // followed by an equal mark, like in the date code "NNN=")?
-static bool lcl_isNatNum12Currency( const OUString& sParam )
+static bool lcl_isNatNum12Currency( std::u16string_view sParam )
 {
     sal_Int32 nUpper = 0;
-    sal_Int32 nLen = sParam.getLength();
+    sal_Int32 nLen = sParam.size();
     for (sal_Int32 n = 0; n < nLen; ++n)
     {
         sal_Unicode c = sParam[n];
@@ -750,12 +752,12 @@ static bool lcl_isNatNum12Currency( const OUString& sParam )
 SvNumberformat::SvNumberformat(OUString& rString,
                                ImpSvNumberformatScan* pSc,
                                ImpSvNumberInputScan* pISc,
+                               const NativeNumberWrapper& rNatNum,
                                sal_Int32& nCheckPos,
                                LanguageType& eLan,
                                bool bReplaceBooleanEquivalent)
         : rScan(*pSc)
         , bAdditionalBuiltin( false )
-        , bStarFlag( false )
 {
     if (bReplaceBooleanEquivalent)
         rScan.ReplaceBooleanEquivalent( rString);
@@ -766,7 +768,7 @@ SvNumberformat::SvNumberformat(OUString& rString,
     // replace all occurrences by a simple space.
     // The same for Narrow No-Break Space just in case some locale uses it.
     // The tokens will be changed to the LocaleData separator again later on.
-    const OUString& rThSep = GetFormatter().GetNumThousandSep();
+    const OUString& rThSep = GetCurrentLanguageData().GetNumThousandSep();
     if ( rThSep.getLength() == 1)
     {
         const sal_Unicode cNBSp = 0xA0;
@@ -781,7 +783,7 @@ SvNumberformat::SvNumberformat(OUString& rString,
     OUString aConvertToDecSep;
     if (rScan.GetConvertMode())
     {
-        aConvertFromDecSep = GetFormatter().GetNumDecimalSep();
+        aConvertFromDecSep = GetCurrentLanguageData().GetNumDecimalSep();
         maLocale.meLanguage = rScan.GetNewLnge();
         eLan = maLocale.meLanguage; // Make sure to return switch
     }
@@ -811,7 +813,7 @@ SvNumberformat::SvNumberformat(OUString& rString,
         // Original language/country may have to be reestablished
         if (rScan.GetConvertMode())
         {
-            rScan.GetNumberformatter()->ChangeIntl(rScan.GetTmpLnge());
+            rScan.GetCurrentLanguageData().ChangeIntl(rScan.GetTmpLnge());
         }
         OUString sInsertCalendar; // a calendar resulting from parsing LCID
         OUString sStr;
@@ -844,7 +846,7 @@ SvNumberformat::SvNumberformat(OUString& rString,
                     {
                         sal_Int32 nDecPos;
                         SvNumFormatType F_Type = SvNumFormatType::UNDEFINED;
-                        if (!pISc->IsNumberFormat(sStr, F_Type, fNumber, nullptr, SvNumInputOptions::NONE) ||
+                        if (!pISc->IsNumberFormat(sStr, F_Type, fNumber, nullptr, rNatNum, SvNumInputOptions::NONE) ||
                             ( F_Type != SvNumFormatType::NUMBER &&
                               F_Type != SvNumFormatType::SCIENTIFIC) )
                         {
@@ -857,7 +859,7 @@ SvNumberformat::SvNumberformat(OUString& rString,
                         else if (rScan.GetConvertMode() && ((nDecPos = sStr.indexOf( aConvertFromDecSep)) >= 0))
                         {
                             if (aConvertToDecSep.isEmpty())
-                                aConvertToDecSep = GetFormatter().GetLangDecimalSep( rScan.GetNewLnge());
+                                aConvertToDecSep = rScan.GetCurrentLanguageData().GetLangDecimalSep( rScan.GetNewLnge());
                             if (aConvertToDecSep != aConvertFromDecSep)
                             {
                                 const OUString aStr( sStr.replaceAt( nDecPos,
@@ -1465,16 +1467,10 @@ namespace {
 
 sal_Unicode toUniChar(sal_uInt8 n)
 {
-    char c;
     if (n < 10)
-    {
-        c = '0' + n;
-    }
+        return static_cast<sal_Unicode>('0' + n);
     else
-    {
-        c = 'A' + n - 10;
-    }
-    return sal_Unicode(c);
+        return static_cast<sal_Unicode>('A' + n - 10);
 }
 
 bool IsCombiningSymbol( OUStringBuffer& rStringBuffer, sal_Int32 nPos )
@@ -1559,7 +1555,7 @@ OUString SvNumberformat::LocaleType::generateCode() const
         {
             aBuf.append(toUniChar(n));
         }
-        n16 = n16 << 4;
+        n16 = (n16 << 4) & 0xFFFF;
     }
 
     return aBuf.makeStringAndClear();
@@ -1615,25 +1611,15 @@ SvNumberformat::LocaleType SvNumberformat::ImpGetLocaleType(std::u16string_view 
         cToken = rString[nPos];
         if (cToken == ']')
             break;
-        if ( '0' <= cToken && cToken <= '9' )
-        {
-            nNum *= 16;
-            nNum += cToken - '0';
-        }
-        else if ( 'a' <= cToken && cToken <= 'f' )
-        {
-            nNum *= 16;
-            nNum += cToken - 'a' + 10;
-        }
-        else if ( 'A' <= cToken && cToken <= 'F' )
-        {
-            nNum *= 16;
-            nNum += cToken - 'A' + 10;
-        }
-        else
-        {
+
+        int nValue = o3tl::convertToHex<int>(cToken);
+
+        if (nValue == -1)
             return LocaleType(); // LANGUAGE_DONTKNOW;
-        }
+
+        nNum *= 16;
+        nNum += nValue;
+
         ++nPos;
     }
 
@@ -2050,14 +2036,16 @@ OUString SvNumberformat::StripNewCurrencyDelimiters( const OUString& rStr )
     return aTmp.makeStringAndClear();
 }
 
-void SvNumberformat::ImpGetOutputStandard(double& fNumber, OUStringBuffer& rOutString) const
+void SvNumberformat::ImpGetOutputStandard(double& fNumber, OUStringBuffer& rOutString,
+                                          const NativeNumberWrapper& rNatNum) const
 {
     OUString sTemp;
-    ImpGetOutputStandard(fNumber, sTemp);
+    ImpGetOutputStandard(fNumber, sTemp, rNatNum);
     rOutString = sTemp;
 }
 
-void SvNumberformat::ImpGetOutputStandard(double& fNumber, OUString& rOutString) const
+void SvNumberformat::ImpGetOutputStandard(double& fNumber, OUString& rOutString,
+                                          const NativeNumberWrapper& rNatNum) const
 {
     sal_uInt16 nStandardPrec = rScan.GetStandardPrec();
 
@@ -2066,11 +2054,11 @@ void SvNumberformat::ImpGetOutputStandard(double& fNumber, OUString& rOutString)
         nStandardPrec = ::std::min(nStandardPrec, static_cast<sal_uInt16>(14)); // limits to 14 decimals
         rOutString = ::rtl::math::doubleToUString( fNumber,
                                                   rtl_math_StringFormat_E2, nStandardPrec /*2*/,
-                                                  GetFormatter().GetNumDecimalSep()[0]);
+                                                  GetCurrentLanguageData().GetNumDecimalSep()[0]);
     }
     else
     {
-        ImpGetOutputStdToPrecision(fNumber, rOutString, nStandardPrec);
+        ImpGetOutputStdToPrecision(fNumber, rOutString, nStandardPrec, rNatNum);
     }
 }
 
@@ -2093,9 +2081,41 @@ bool checkForAll0s(const T& rString, sal_Int32 nIdx=0)
     return true;
 }
 
+OUString impTransliterateImpl(const OUString& rStr,
+                              const SvNumberNatNum& rNum,
+                              const NativeNumberWrapper& rNatNum)
+{
+    css::lang::Locale aLocale( LanguageTag( rNum.GetLang() ).getLocale() );
+    return rNatNum.getNativeNumberStringParams(rStr, aLocale, rNum.GetNatNum(), rNum.GetParams());
 }
 
-void SvNumberformat::ImpGetOutputStdToPrecision(double& rNumber, OUString& rOutString, sal_uInt16 nPrecision) const
+void impTransliterateImpl(OUStringBuffer& rStr,
+                          const SvNumberNatNum& rNum,
+                          const NativeNumberWrapper& rNatNum)
+{
+    css::lang::Locale aLocale( LanguageTag( rNum.GetLang() ).getLocale() );
+
+    rStr = rNatNum.getNativeNumberStringParams(
+        OUString::unacquired(rStr), aLocale, rNum.GetNatNum(), rNum.GetParams());
+}
+
+OUString impTransliterate(const OUString& rStr, const SvNumberNatNum& rNum, const NativeNumberWrapper& rNatNum)
+{
+    return rNum.IsComplete() ? impTransliterateImpl(rStr, rNum, rNatNum) : rStr;
+}
+
+void impTransliterate(OUStringBuffer& rStr, const SvNumberNatNum& rNum, const NativeNumberWrapper& rNatNum)
+{
+    if(rNum.IsComplete())
+    {
+        impTransliterateImpl(rStr, rNum, rNatNum);
+    }
+}
+
+}
+
+void SvNumberformat::ImpGetOutputStdToPrecision(double& rNumber, OUString& rOutString, sal_uInt16 nPrecision,
+                                                const NativeNumberWrapper& rNatNum) const
 {
     // Make sure the precision doesn't go over the maximum allowable precision.
     nPrecision = ::std::min(UPPER_PRECISION, nPrecision);
@@ -2107,12 +2127,12 @@ void SvNumberformat::ImpGetOutputStdToPrecision(double& rNumber, OUString& rOutS
 
     rOutString = ::rtl::math::doubleToUString( rNumber,
                                                rtl_math_StringFormat_F, nPrecision /*2*/,
-                                               GetFormatter().GetNumDecimalSep()[0], true );
+                                               GetCurrentLanguageData().GetNumDecimalSep()[0], true );
     if (rOutString[0] == '-' && checkForAll0s(rOutString, 1))
     {
         rOutString = comphelper::string::stripStart(rOutString, '-'); // not -0
     }
-    rOutString = impTransliterate(rOutString, NumFor[0].GetNatNum());
+    rOutString = ::impTransliterate(rOutString, NumFor[0].GetNatNum(), rNatNum);
 }
 
 void SvNumberformat::ImpGetOutputInputLine(double fNumber, OUString& OutString) const
@@ -2138,7 +2158,7 @@ void SvNumberformat::ImpGetOutputInputLine(double fNumber, OUString& OutString) 
     OutString = ::rtl::math::doubleToUString( fNumber,
                                               rtl_math_StringFormat_Automatic,
                                               rtl_math_DecimalPlaces_Max,
-                                              GetFormatter().GetNumDecimalSep()[0], true );
+                                              GetCurrentLanguageData().GetNumDecimalSep()[0], true );
 
     if ( eType & SvNumFormatType::PERCENT && bModified)
     {
@@ -2197,7 +2217,8 @@ static bool lcl_insertStarFillChar( OUStringBuffer& rBuf, sal_Int32 nPos, std::u
 
 void SvNumberformat::GetOutputString(std::u16string_view sString,
                                      OUString& OutString,
-                                     const Color** ppColor)
+                                     const Color** ppColor,
+                                     bool bStarFlag) const
 {
     OUStringBuffer sOutBuff;
     sal_uInt16 nIx;
@@ -2248,7 +2269,7 @@ void SvNumberformat::GetOutputString(std::u16string_view sString,
 namespace {
 
 void lcl_GetOutputStringScientific(double fNumber, sal_uInt16 nCharCount,
-                                   const SvNumberFormatter& rFormatter, OUString& rOutString)
+                                   const SvNFLanguageData& rLanguageData, OUString& rOutString)
 {
     bool bSign = std::signbit(fNumber);
 
@@ -2267,7 +2288,7 @@ void lcl_GetOutputStringScientific(double fNumber, sal_uInt16 nCharCount,
     nPrec = ::std::min(nPrec, static_cast<sal_uInt16>(14)); // limit to 14 decimals.
 
     rOutString = ::rtl::math::doubleToUString(fNumber, rtl_math_StringFormat_E2,
-                                              nPrec, rFormatter.GetNumDecimalSep()[0], true );
+                                              nPrec, rLanguageData.GetNumDecimalSep()[0], true );
 }
 
 OUString lcl_GetPercentString(const ImpSvNumberformatInfo &rInfo, sal_uInt16 nCnt)
@@ -2399,7 +2420,7 @@ OUString SvNumberformat::GetIntegerFractionDelimiterString( sal_uInt16 nNumFor )
     return lcl_GetIntegerFractionDelimiterString( rInfo, nCnt );
 }
 
-bool SvNumberformat::GetOutputString(double fNumber, sal_uInt16 nCharCount, OUString& rOutString) const
+bool SvNumberformat::GetOutputString(double fNumber, sal_uInt16 nCharCount, OUString& rOutString, const NativeNumberWrapper& rNatNum) const
 {
     if (eType != SvNumFormatType::NUMBER)
     {
@@ -2413,7 +2434,7 @@ bool SvNumberformat::GetOutputString(double fNumber, sal_uInt16 nCharCount, OUSt
     }
     if (fTestNum < EXP_LOWER_BOUND)
     {
-        lcl_GetOutputStringScientific(fNumber, nCharCount, GetFormatter(), rOutString);
+        lcl_GetOutputStringScientific(fNumber, nCharCount, GetCurrentLanguageData(), rOutString);
         return true;
     }
 
@@ -2423,7 +2444,7 @@ bool SvNumberformat::GetOutputString(double fNumber, sal_uInt16 nCharCount, OUSt
 
     if (nDigitPre > 15)
     {
-        lcl_GetOutputStringScientific(fNumber, nCharCount, GetFormatter(), rOutString);
+        lcl_GetOutputStringScientific(fNumber, nCharCount, GetCurrentLanguageData(), rOutString);
         return true;
     }
 
@@ -2438,11 +2459,11 @@ bool SvNumberformat::GetOutputString(double fNumber, sal_uInt16 nCharCount, OUSt
         // Subtract the decimal point.
         --nPrec;
     }
-    ImpGetOutputStdToPrecision(fNumber, rOutString, nPrec);
+    ImpGetOutputStdToPrecision(fNumber, rOutString, nPrec, rNatNum);
     if (rOutString.getLength() > nCharCount)
     {
         // String still wider than desired.  Switch to scientific notation.
-        lcl_GetOutputStringScientific(fNumber, nCharCount, GetFormatter(), rOutString);
+        lcl_GetOutputStringScientific(fNumber, nCharCount, GetCurrentLanguageData(), rOutString);
     }
     return true;
 }
@@ -2474,7 +2495,10 @@ sal_uInt16 SvNumberformat::GetSubformatIndex (double fNumber ) const
 
 bool SvNumberformat::GetOutputString(double fNumber,
                                      OUString& OutString,
-                                     const Color** ppColor)
+                                     const Color** ppColor,
+                                     const NativeNumberWrapper& rNatNum,
+                                     const SvNFLanguageData& rCurrentLang,
+                                     bool bStarFlag) const
 {
     bool bRes = false;
     OutString.clear();
@@ -2494,7 +2518,7 @@ bool SvNumberformat::GetOutputString(double fNumber,
     OUStringBuffer sBuff(64);
     if (eType & SvNumFormatType::TEXT)
     {
-        ImpGetOutputStandard(fNumber, sBuff);
+        ImpGetOutputStandard(fNumber, sBuff, rNatNum);
         OutString = sBuff.makeStringAndClear();
         return false;
     }
@@ -2542,35 +2566,35 @@ bool SvNumberformat::GetOutputString(double fNumber,
                         OutString = ::rtl::math::doubleToUString( fNumber,
                                 rtl_math_StringFormat_F,
                                 rtl_math_DecimalPlaces_Max,
-                                GetFormatter().GetNumDecimalSep()[0], true);
+                                GetCurrentLanguageData().GetNumDecimalSep()[0], true);
                     else
                         OutString = ::rtl::math::doubleToUString( fNumber,
                                 rtl_math_StringFormat_E2,
                                 rtl_math_DecimalPlaces_Max,
-                                GetFormatter().GetNumDecimalSep()[0], true);
+                                GetCurrentLanguageData().GetNumDecimalSep()[0], true);
                 }
                 else
                 {
                     OutString = ::rtl::math::doubleToUString( fNumber,
                                 rtl_math_StringFormat_Automatic,
                                 rtl_math_DecimalPlaces_Max,
-                                GetFormatter().GetNumDecimalSep()[0], true);
+                                GetCurrentLanguageData().GetNumDecimalSep()[0], true);
                 }
                 return false;
             }
-            ImpGetOutputStandard(fNumber, sBuff);
+            ImpGetOutputStandard(fNumber, sBuff, rNatNum);
             bHadStandard = true;
             break;
         case SvNumFormatType::DATE:
-            bRes |= ImpGetDateOutput(fNumber, 0, sBuff);
+            bRes |= ImpGetDateOutput(fNumber, 0, bStarFlag, rNatNum, rCurrentLang, sBuff);
             bHadStandard = true;
             break;
         case SvNumFormatType::TIME:
-            bRes |= ImpGetTimeOutput(fNumber, 0, sBuff);
+            bRes |= ImpGetTimeOutput(fNumber, 0, bStarFlag, rNatNum, rCurrentLang, sBuff);
             bHadStandard = true;
             break;
         case SvNumFormatType::DATETIME:
-            bRes |= ImpGetDateTimeOutput(fNumber, 0, sBuff);
+            bRes |= ImpGetDateTimeOutput(fNumber, 0, bStarFlag, rNatNum, rCurrentLang, sBuff);
             bHadStandard = true;
             break;
         default: break;
@@ -2594,7 +2618,7 @@ bool SvNumberformat::GetOutputString(double fNumber,
         }
         else if (nCnt == 0) // Else Standard Format
         {
-            ImpGetOutputStandard(fNumber, sBuff);
+            ImpGetOutputStandard(fNumber, sBuff, rNatNum);
             OutString = sBuff.makeStringAndClear();
             return false;
         }
@@ -2632,27 +2656,27 @@ bool SvNumberformat::GetOutputString(double fNumber,
             }
             break;
         case SvNumFormatType::DATE:
-            bRes |= ImpGetDateOutput(fNumber, nIx, sBuff);
+            bRes |= ImpGetDateOutput(fNumber, nIx, bStarFlag, rNatNum, rCurrentLang, sBuff);
             break;
         case SvNumFormatType::TIME:
-            bRes |= ImpGetTimeOutput(fNumber, nIx, sBuff);
+            bRes |= ImpGetTimeOutput(fNumber, nIx, bStarFlag, rNatNum, rCurrentLang, sBuff);
                 break;
         case SvNumFormatType::DATETIME:
-            bRes |= ImpGetDateTimeOutput(fNumber, nIx, sBuff);
+            bRes |= ImpGetDateTimeOutput(fNumber, nIx, bStarFlag, rNatNum, rCurrentLang, sBuff);
             break;
         case SvNumFormatType::NUMBER:
         case SvNumFormatType::PERCENT:
         case SvNumFormatType::CURRENCY:
-            bRes |= ImpGetNumberOutput(fNumber, nIx, sBuff);
+            bRes |= ImpGetNumberOutput(fNumber, nIx, bStarFlag, rNatNum, sBuff);
             break;
         case SvNumFormatType::LOGICAL:
-            bRes |= ImpGetLogicalOutput(fNumber, nIx, sBuff);
+            bRes |= ImpGetLogicalOutput(fNumber, nIx, rNatNum, sBuff);
             break;
         case SvNumFormatType::FRACTION:
-            bRes |= ImpGetFractionOutput(fNumber, nIx, sBuff);
+            bRes |= ImpGetFractionOutput(fNumber, nIx, bStarFlag, rNatNum, sBuff);
             break;
         case SvNumFormatType::SCIENTIFIC:
-            bRes |= ImpGetScientificOutput(fNumber, nIx, sBuff);
+            bRes |= ImpGetScientificOutput(fNumber, nIx, bStarFlag, rNatNum, sBuff);
             break;
         default: break;
         }
@@ -2663,7 +2687,9 @@ bool SvNumberformat::GetOutputString(double fNumber,
 
 bool SvNumberformat::ImpGetScientificOutput(double fNumber,
                                             sal_uInt16 nIx,
-                                            OUStringBuffer& sStr)
+                                            bool bStarFlag,
+                                            const NativeNumberWrapper& rNatNum,
+                                            OUStringBuffer& sStr) const
 {
     bool bRes = false;
     bool bSign = false;
@@ -2766,7 +2792,7 @@ bool SvNumberformat::ImpGetScientificOutput(double fNumber,
     }
 
     // restore leading zeros or blanks according to format '0' or '?' tdf#156449
-    bRes |= ImpNumberFill(ExpStr, fNumber, k, j, nIx, NF_SYMBOLTYPE_EXP);
+    bRes |= ImpNumberFill(rNatNum, ExpStr, fNumber, k, j, nIx, NF_SYMBOLTYPE_EXP, bStarFlag);
 
     bool bCont = true;
 
@@ -2798,7 +2824,7 @@ bool SvNumberformat::ImpGetScientificOutput(double fNumber,
     }
     else
     {
-        bRes |= ImpDecimalFill(sStr, fNumber, nDecPos, j, nIx, false);
+        bRes |= ImpDecimalFill(rNatNum, sStr, fNumber, nDecPos, j, nIx, false, bStarFlag);
     }
 
     if (bSign)
@@ -2896,7 +2922,9 @@ void SvNumberformat::ImpGetFractionElements ( double& fNumber, sal_uInt16 nIx,
 
 bool SvNumberformat::ImpGetFractionOutput(double fNumber,
                                           sal_uInt16 nIx,
-                                          OUStringBuffer& sBuff)
+                                          bool bStarFlag,
+                                          const NativeNumberWrapper& rNatNum,
+                                          OUStringBuffer& sBuff) const
 {
     bool bRes = false;
     const ImpSvNumberformatInfo& rInfo = NumFor[nIx].Info();
@@ -2943,7 +2971,7 @@ bool SvNumberformat::ImpGetFractionOutput(double fNumber,
         char aBuf[100];
         o3tl::sprintf( aBuf, "%.f", fNum ); // simple rounded integer
         sStr.appendAscii( aBuf );
-        impTransliterate(sStr, NumFor[nIx].GetNatNum());
+        ::impTransliterate(sStr, NumFor[nIx].GetNatNum(), rNatNum);
     }
     bool bHideFraction = (rInfo.nCntPre > 0 && nFrac == 0
                         && (sNumeratorFormat.indexOf('0') < 0)
@@ -2955,14 +2983,14 @@ bool SvNumberformat::ImpGetFractionOutput(double fNumber,
     }
     else  // if there are some '0' in format, force display of fraction
     {
-        sFrac = ImpIntToString( nIx, nFrac );
-        sDiv = ImpIntToString( nIx, nDiv );
+        sFrac = ImpIntToString(rNatNum, nIx, nFrac);
+        sDiv = ImpIntToString(rNatNum, nIx, nDiv);
     }
 
     sal_uInt16 j = nCnt-1; // Last symbol -> backwards
     sal_Int32 k;           // Denominator
 
-    bRes |= ImpNumberFill(sDiv, fNumber, k, j, nIx, NF_SYMBOLTYPE_FRAC, true);
+    bRes |= ImpNumberFill(rNatNum, sDiv, fNumber, k, j, nIx, NF_SYMBOLTYPE_FRAC, bStarFlag, true);
 
     bool bCont = true;
     if (rInfo.nTypeArray[j] == NF_SYMBOLTYPE_FRAC)
@@ -2993,7 +3021,7 @@ bool SvNumberformat::ImpGetFractionOutput(double fNumber,
     }
     else
     {
-        bRes |= ImpNumberFill(sFrac, fNumber, k, j, nIx, NF_SYMBOLTYPE_FRACBLANK);
+        bRes |= ImpNumberFill(rNatNum, sFrac, fNumber, k, j, nIx, NF_SYMBOLTYPE_FRACBLANK, bStarFlag);
         bCont = false;  // there is no integer part?
         if (rInfo.nTypeArray[j] == NF_SYMBOLTYPE_FRACBLANK)
         {
@@ -3038,8 +3066,8 @@ bool SvNumberformat::ImpGetFractionOutput(double fNumber,
     else
     {
         k = sStr.getLength(); // After last figure
-        bRes |= ImpNumberFillWithThousands(sStr, fNumber, k, j, nIx,
-                                           rInfo.nCntPre);
+        bRes |= ImpNumberFillWithThousands(rNatNum, sStr, fNumber, k, j, nIx,
+                                           rInfo.nCntPre, bStarFlag);
     }
     if (bSign && (nFrac != 0 || fNum != 0.0))
     {
@@ -3052,7 +3080,8 @@ bool SvNumberformat::ImpGetFractionOutput(double fNumber,
 }
 
 sal_uInt16 SvNumberformat::ImpGetFractionOfSecondString( OUStringBuffer& rBuf, double fFractionOfSecond,
-        int nFractionDecimals, bool bAddOneRoundingDecimal, sal_uInt16 nIx, sal_uInt16 nMinimumInputLineDecimals )
+        int nFractionDecimals, bool bAddOneRoundingDecimal, sal_uInt16 nIx, sal_uInt16 nMinimumInputLineDecimals,
+        const NativeNumberWrapper& rNatNum) const
 {
     if (!nFractionDecimals)
         return 0;
@@ -3072,19 +3101,22 @@ sal_uInt16 SvNumberformat::ImpGetFractionOfSecondString( OUStringBuffer& rBuf, d
         {
             rBuf.append('0');
         }
-        impTransliterate(rBuf, NumFor[nIx].GetNatNum());
+        ::impTransliterate(rBuf, NumFor[nIx].GetNatNum(), rNatNum);
         nFractionDecimals = rBuf.getLength();
     }
     else
     {
-        impTransliterate(rBuf, NumFor[nIx].GetNatNum());
+        ::impTransliterate(rBuf, NumFor[nIx].GetNatNum(), rNatNum);
     }
     return static_cast<sal_uInt16>(nFractionDecimals);
 }
 
 bool SvNumberformat::ImpGetTimeOutput(double fNumber,
                                       sal_uInt16 nIx,
-                                      OUStringBuffer& sBuff)
+                                      bool bStarFlag,
+                                      const NativeNumberWrapper& rNatNum,
+                                      const SvNFLanguageData& rCurrentLang,
+                                      OUStringBuffer& sBuff) const
 {
     using namespace ::com::sun::star::i18n;
     bool bCalendarSet = false;
@@ -3126,7 +3158,7 @@ bool SvNumberformat::ImpGetTimeOutput(double fNumber,
         nMin = nCMinute;
         nSec = nCSecond;
         nCntPost = ImpGetFractionOfSecondString( sSecStr, fFractionOfSecond, nCntPost, true, nIx,
-                (bInputLine ? rInfo.nCntPost : 0));
+                (bInputLine ? rInfo.nCntPost : 0), rNatNum );
     }
     else
     {
@@ -3143,7 +3175,7 @@ bool SvNumberformat::ImpGetTimeOutput(double fNumber,
         sal_uInt32 nSeconds = static_cast<sal_uInt32>(fTime);
 
         nCntPost = ImpGetFractionOfSecondString( sSecStr, fTime - nSeconds, nCntPost, false, nIx,
-                (bInputLine ? rInfo.nCntPost : 0));
+                (bInputLine ? rInfo.nCntPost : 0), rNatNum );
 
         if (rInfo.nThousand == 3) // [ss]
         {
@@ -3228,24 +3260,27 @@ bool SvNumberformat::ImpGetTimeOutput(double fNumber,
             }
             break;
         case NF_KEY_AMPM:               // AM/PM
+        {
+            CalendarWrapper& rCal = *rCurrentLang.GetCalendar();
             if ( !bCalendarSet )
             {
-                double fDiff = DateTime::Sub( DateTime(rScan.GetNullDate()), GetCal().getEpochStart());
+                double fDiff = DateTime::Sub( DateTime(rScan.GetNullDate()), rCal.getEpochStart());
                 fDiff += fNumberOrig;
-                GetCal().setLocalDateTime( fDiff );
+                rCal.setLocalDateTime( fDiff );
                 bCalendarSet = true;
             }
             if (cAmPm == 'a')
             {
-                sBuff.append(GetCal().getDisplayName(
+                sBuff.append(rCal.getDisplayName(
                                  CalendarDisplayIndex::AM_PM, AmPmValue::AM, 0 ));
             }
             else
             {
-                sBuff.append(GetCal().getDisplayName(
+                sBuff.append(rCal.getDisplayName(
                                  CalendarDisplayIndex::AM_PM, AmPmValue::PM, 0 ));
             }
             break;
+        }
         case NF_KEY_AP:                 // A/P
             if (cAmPm == 'a')
             {
@@ -3257,22 +3292,22 @@ bool SvNumberformat::ImpGetTimeOutput(double fNumber,
             }
             break;
         case NF_KEY_MI:                 // M
-            sBuff.append(ImpIntToString( nIx, nMin ));
+            sBuff.append(ImpIntToString(rNatNum, nIx, nMin ));
             break;
         case NF_KEY_MMI:                // MM
-            sBuff.append(ImpIntToString( nIx, nMin, 2 ));
+            sBuff.append(ImpIntToString(rNatNum, nIx, nMin, 2 ));
             break;
         case NF_KEY_H:                  // H
-            sBuff.append(ImpIntToString( nIx, nHour ));
+            sBuff.append(ImpIntToString(rNatNum, nIx, nHour ));
             break;
         case NF_KEY_HH:                 // HH
-            sBuff.append(ImpIntToString( nIx, nHour, 2 ));
+            sBuff.append(ImpIntToString(rNatNum, nIx, nHour, 2 ));
             break;
         case NF_KEY_S:                  // S
-            sBuff.append(ImpIntToString( nIx, nSec ));
+            sBuff.append(ImpIntToString(rNatNum, nIx, nSec ));
             break;
         case NF_KEY_SS:                 // SS
-            sBuff.append(ImpIntToString( nIx, nSec, 2 ));
+            sBuff.append(ImpIntToString(rNatNum, nIx, nSec, 2 ));
             break;
         default:
             break;
@@ -3404,10 +3439,11 @@ sal_Int32 SvNumberformat::ImpUseMonthCase( int & io_nState, const ImpSvNumFor& r
     return CalendarDisplayCode::LONG_MONTH_NAME;
 }
 
+namespace {
 
-bool SvNumberformat::ImpIsOtherCalendar( const ImpSvNumFor& rNumFor ) const
+bool ImpIsOtherCalendar( const ImpSvNumFor& rNumFor, const CalendarWrapper& rCal )
 {
-    if ( GetCal().getUniqueID() != GREGORIAN )
+    if ( rCal.getUniqueID() != GREGORIAN )
     {
         return false;
     }
@@ -3435,10 +3471,12 @@ bool SvNumberformat::ImpIsOtherCalendar( const ImpSvNumFor& rNumFor ) const
     return false;
 }
 
+}
+
 void SvNumberformat::SwitchToOtherCalendar( OUString& rOrgCalendar,
-                                            double& fOrgDateTime ) const
+                                            double& fOrgDateTime,
+                                            CalendarWrapper& rCal ) const
 {
-    CalendarWrapper& rCal = GetCal();
     if ( rCal.getUniqueID() != GREGORIAN )
         return;
 
@@ -3464,9 +3502,9 @@ void SvNumberformat::SwitchToOtherCalendar( OUString& rOrgCalendar,
 }
 
 void SvNumberformat::SwitchToGregorianCalendar( std::u16string_view rOrgCalendar,
-                                                double fOrgDateTime ) const
+                                                double fOrgDateTime,
+                                                CalendarWrapper& rCal ) const
 {
-    CalendarWrapper& rCal = GetCal();
     if ( rOrgCalendar.size() && rCal.getUniqueID() != GREGORIAN )
     {
         rCal.loadCalendar( GREGORIAN, rLoc().getLanguageTag().getLocale() );
@@ -3474,10 +3512,11 @@ void SvNumberformat::SwitchToGregorianCalendar( std::u16string_view rOrgCalendar
     }
 }
 
-bool SvNumberformat::ImpFallBackToGregorianCalendar( OUString& rOrgCalendar, double& fOrgDateTime )
+bool SvNumberformat::ImpFallBackToGregorianCalendar( OUString& rOrgCalendar,
+                                                     double& fOrgDateTime,
+                                                     CalendarWrapper& rCal ) const
 {
     using namespace ::com::sun::star::i18n;
-    CalendarWrapper& rCal = GetCal();
     if ( rCal.getUniqueID() != GREGORIAN )
     {
         sal_Int16 nVal = rCal.getValue( CalendarFieldIndex::ERA );
@@ -3703,13 +3742,16 @@ static bool lcl_getValidDate( const DateTime& rNullDate, const DateTime& rEpochS
 
 bool SvNumberformat::ImpGetDateOutput(double fNumber,
                                       sal_uInt16 nIx,
-                                      OUStringBuffer& sBuff)
+                                      bool bStarFlag,
+                                      const NativeNumberWrapper& rNatNum,
+                                      const SvNFLanguageData& rCurrentLang,
+                                      OUStringBuffer& sBuff) const
 {
     using namespace ::com::sun::star::i18n;
     bool bRes = false;
 
-    CalendarWrapper& rCal = GetCal();
-    if (!lcl_getValidDate( rScan.GetNullDate(), rCal.getEpochStart(), fNumber))
+    CalendarWrapper& rCal = *rCurrentLang.GetCalendar();
+    if (!lcl_getValidDate( DateTime( rScan.GetNullDate() ), rCal.getEpochStart(), fNumber))
     {
         sBuff = ImpSvNumberformatScan::sErrStr;
         return false;
@@ -3719,12 +3761,12 @@ bool SvNumberformat::ImpGetDateOutput(double fNumber,
     OUString aOrgCalendar; // empty => not changed yet
 
     double fOrgDateTime(0.0);
-    bool bOtherCalendar = ImpIsOtherCalendar( NumFor[nIx] );
+    bool bOtherCalendar = ImpIsOtherCalendar( NumFor[nIx], *rCurrentLang.GetCalendar() );
     if ( bOtherCalendar )
     {
-        SwitchToOtherCalendar( aOrgCalendar, fOrgDateTime );
+        SwitchToOtherCalendar( aOrgCalendar, fOrgDateTime, *rCurrentLang.GetCalendar() );
     }
-    if ( ImpFallBackToGregorianCalendar( aOrgCalendar, fOrgDateTime ) )
+    if ( ImpFallBackToGregorianCalendar( aOrgCalendar, fOrgDateTime, *rCurrentLang.GetCalendar() ) )
     {
         bOtherCalendar = false;
     }
@@ -3763,7 +3805,7 @@ bool SvNumberformat::ImpGetDateOutput(double fNumber,
             }
             rCal.loadCalendar( rInfo.sStrArray[i], rLoc().getLanguageTag().getLocale() );
             rCal.setDateTime( fOrgDateTime );
-            ImpFallBackToGregorianCalendar( aOrgCalendar, fOrgDateTime );
+            ImpFallBackToGregorianCalendar( aOrgCalendar, fOrgDateTime, *rCurrentLang.GetCalendar() );
             break;
         case NF_SYMBOLTYPE_STAR:
             if( bStarFlag )
@@ -3788,7 +3830,7 @@ bool SvNumberformat::ImpGetDateOutput(double fNumber,
             // for example, Catalan "de març", but "d'abril" etc.
             if ( bUseSpellout )
             {
-                aStr = impTransliterate(aStr, NumFor[nIx].GetNatNum(), rInfo.nTypeArray[i]);
+                aStr = impTransliterate(aStr, NumFor[nIx].GetNatNum(), rInfo.nTypeArray[i], rNatNum);
             }
             sBuff.append(aStr);
             break;
@@ -3809,7 +3851,7 @@ bool SvNumberformat::ImpGetDateOutput(double fNumber,
                                                            nNatNum);
             if ( bUseSpellout )
             {
-                aStr = impTransliterate(aStr, NumFor[nIx].GetNatNum(), rInfo.nTypeArray[i]);
+                aStr = impTransliterate(aStr, NumFor[nIx].GetNatNum(), rInfo.nTypeArray[i], rNatNum);
             }
             sBuff.append(aStr);
             break;
@@ -3824,7 +3866,7 @@ bool SvNumberformat::ImpGetDateOutput(double fNumber,
             // NatNum12: support variants of preposition, suffixation or article
             if ( bUseSpellout )
             {
-                aStr = impTransliterate(aStr, NumFor[nIx].GetNatNum(), rInfo.nTypeArray[i]);
+                aStr = impTransliterate(aStr, NumFor[nIx].GetNatNum(), rInfo.nTypeArray[i], rNatNum);
             }
             sBuff.append(aStr);
             break;
@@ -3834,41 +3876,41 @@ bool SvNumberformat::ImpGetDateOutput(double fNumber,
         case NF_KEY_DDD:                // DDD
             if ( bOtherCalendar )
             {
-                SwitchToGregorianCalendar( aOrgCalendar, fOrgDateTime );
+                SwitchToGregorianCalendar( aOrgCalendar, fOrgDateTime, *rCurrentLang.GetCalendar() );
             }
             aStr = rCal.getDisplayString( CalendarDisplayCode::SHORT_DAY_NAME, nNatNum );
             // NatNum12: support at least capitalize, upper, lower, title
             if ( bUseSpellout )
             {
-                aStr = impTransliterate(aStr, NumFor[nIx].GetNatNum(), rInfo.nTypeArray[i]);
+                aStr = impTransliterate(aStr, NumFor[nIx].GetNatNum(), rInfo.nTypeArray[i], rNatNum);
             }
             sBuff.append(aStr);
             if ( bOtherCalendar )
             {
-                SwitchToOtherCalendar( aOrgCalendar, fOrgDateTime );
+                SwitchToOtherCalendar( aOrgCalendar, fOrgDateTime, *rCurrentLang.GetCalendar() );
             }
             break;
         case NF_KEY_DDDD:               // DDDD
             if ( bOtherCalendar )
             {
-                SwitchToGregorianCalendar( aOrgCalendar, fOrgDateTime );
+                SwitchToGregorianCalendar( aOrgCalendar, fOrgDateTime, *rCurrentLang.GetCalendar() );
             }
             aStr = rCal.getDisplayString( CalendarDisplayCode::LONG_DAY_NAME, nNatNum );
             // NatNum12: support variants of preposition, suffixation or article
             if ( bUseSpellout )
             {
-                aStr = impTransliterate(aStr, NumFor[nIx].GetNatNum(), rInfo.nTypeArray[i]);
+                aStr = impTransliterate(aStr, NumFor[nIx].GetNatNum(), rInfo.nTypeArray[i], rNatNum);
             }
             sBuff.append(aStr);
             if ( bOtherCalendar )
             {
-                SwitchToOtherCalendar( aOrgCalendar, fOrgDateTime );
+                SwitchToOtherCalendar( aOrgCalendar, fOrgDateTime, *rCurrentLang.GetCalendar() );
             }
             break;
         case NF_KEY_YY:                 // YY
             if ( bOtherCalendar )
             {
-                SwitchToGregorianCalendar( aOrgCalendar, fOrgDateTime );
+                SwitchToGregorianCalendar( aOrgCalendar, fOrgDateTime, *rCurrentLang.GetCalendar() );
             }
             // Prepend a minus sign if Gregorian BCE and era is not displayed.
             if (lcl_isSignedYear( rCal, NumFor[nIx] ))
@@ -3878,13 +3920,13 @@ bool SvNumberformat::ImpGetDateOutput(double fNumber,
             sBuff.append(rCal.getDisplayString( CalendarDisplayCode::SHORT_YEAR, nNatNum ));
             if ( bOtherCalendar )
             {
-                SwitchToOtherCalendar( aOrgCalendar, fOrgDateTime );
+                SwitchToOtherCalendar( aOrgCalendar, fOrgDateTime, *rCurrentLang.GetCalendar() );
             }
             break;
         case NF_KEY_YYYY:               // YYYY
             if ( bOtherCalendar )
             {
-                SwitchToGregorianCalendar( aOrgCalendar, fOrgDateTime );
+                SwitchToGregorianCalendar( aOrgCalendar, fOrgDateTime, *rCurrentLang.GetCalendar() );
             }
             // Prepend a minus sign if Gregorian BCE and era is not displayed.
             if (lcl_isSignedYear( rCal, NumFor[nIx] ))
@@ -3900,19 +3942,19 @@ bool SvNumberformat::ImpGetDateOutput(double fNumber,
                 // without suddenly being hit by the 2-digit year magic.
                 OUStringBuffer aBuf;
                 padToLength(aBuf, 4 - aStr.getLength(), '0');
-                impTransliterate(aBuf, NumFor[nIx].GetNatNum());
+                ::impTransliterate(aBuf, NumFor[nIx].GetNatNum(), rNatNum);
                 aBuf.append(aStr);
                 aStr = aBuf.makeStringAndClear();
             }
             // NatNum12: support variants of preposition, suffixation or article
             if ( bUseSpellout )
             {
-                aStr = impTransliterate(aStr, NumFor[nIx].GetNatNum(), rInfo.nTypeArray[i]);
+                aStr = impTransliterate(aStr, NumFor[nIx].GetNatNum(), rInfo.nTypeArray[i], rNatNum);
             }
             sBuff.append(aStr);
             if ( bOtherCalendar )
             {
-                SwitchToOtherCalendar( aOrgCalendar, fOrgDateTime );
+                SwitchToOtherCalendar( aOrgCalendar, fOrgDateTime, *rCurrentLang.GetCalendar() );
             }
             break;
         case NF_KEY_EC:                 // E
@@ -3928,7 +3970,7 @@ bool SvNumberformat::ImpGetDateOutput(double fNumber,
             // NatNum12: support at least capitalize, upper, lower, title
             if ( bUseSpellout )
             {
-                aStr = impTransliterate(aStr, NumFor[nIx].GetNatNum(), rInfo.nTypeArray[i]);
+                aStr = impTransliterate(aStr, NumFor[nIx].GetNatNum(), rInfo.nTypeArray[i], rNatNum);
             }
             sBuff.append(aStr);
             break;
@@ -3938,7 +3980,7 @@ bool SvNumberformat::ImpGetDateOutput(double fNumber,
             // NatNum12: support variants of preposition, suffixation or article
             if ( bUseSpellout )
             {
-                aStr = impTransliterate(aStr, NumFor[nIx].GetNatNum(), rInfo.nTypeArray[i]);
+                aStr = impTransliterate(aStr, NumFor[nIx].GetNatNum(), rInfo.nTypeArray[i], rNatNum);
             }
             sBuff.append(aStr);
             break;
@@ -3947,7 +3989,7 @@ bool SvNumberformat::ImpGetDateOutput(double fNumber,
             sBuff.append(rLoc().getLongDateDayOfWeekSep());
             break;
         case NF_KEY_WW :                // WW
-            sBuff.append(ImpIntToString( nIx,
+            sBuff.append(ImpIntToString(rNatNum, nIx,
                                          rCal.getValue( CalendarFieldIndex::WEEK_OF_YEAR )));
             break;
         case NF_KEY_G:                  // G
@@ -3973,13 +4015,16 @@ bool SvNumberformat::ImpGetDateOutput(double fNumber,
 
 bool SvNumberformat::ImpGetDateTimeOutput(double fNumber,
                                           sal_uInt16 nIx,
-                                          OUStringBuffer& sBuff)
+                                          bool bStarFlag,
+                                          const NativeNumberWrapper& rNatNum,
+                                          const SvNFLanguageData& rCurrentLang,
+                                          OUStringBuffer& sBuff) const
 {
     using namespace ::com::sun::star::i18n;
     bool bRes = false;
 
-    CalendarWrapper& rCal = GetCal();
-    if (!lcl_getValidDate( rScan.GetNullDate(), rCal.getEpochStart(), fNumber))
+    CalendarWrapper& rCal = *rCurrentLang.GetCalendar();
+    if (!lcl_getValidDate( DateTime( rScan.GetNullDate() ), rCal.getEpochStart(), fNumber))
     {
         sBuff = ImpSvNumberformatScan::sErrStr;
         return false;
@@ -4014,12 +4059,12 @@ bool SvNumberformat::ImpGetDateTimeOutput(double fNumber,
     int nUseMonthCase = 0; // Not decided yet
     OUString aOrgCalendar; // empty => not changed yet
     double fOrgDateTime(0.0);
-    bool bOtherCalendar = ImpIsOtherCalendar( NumFor[nIx] );
+    bool bOtherCalendar = ImpIsOtherCalendar( NumFor[nIx], *rCurrentLang.GetCalendar() );
     if ( bOtherCalendar )
     {
-        SwitchToOtherCalendar( aOrgCalendar, fOrgDateTime );
+        SwitchToOtherCalendar( aOrgCalendar, fOrgDateTime, *rCurrentLang.GetCalendar() );
     }
-    if ( ImpFallBackToGregorianCalendar( aOrgCalendar, fOrgDateTime ) )
+    if ( ImpFallBackToGregorianCalendar( aOrgCalendar, fOrgDateTime, *rCurrentLang.GetCalendar() ) )
     {
         bOtherCalendar = false;
     }
@@ -4037,14 +4082,14 @@ bool SvNumberformat::ImpGetDateTimeOutput(double fNumber,
         nMin = nCMinute;
         nSec = nCSecond;
         nCntPost = ImpGetFractionOfSecondString( sSecStr, fFractionOfSecond, nCntPost, true, nIx,
-                (bInputLine ? rInfo.nCntPost : 0));
+                (bInputLine ? rInfo.nCntPost : 0), rNatNum );
     }
     else
     {
         sal_uInt32 nSeconds = static_cast<sal_uInt32>(floor( fTime ));
 
         nCntPost = ImpGetFractionOfSecondString( sSecStr, fTime - nSeconds, nCntPost, false, nIx,
-                (bInputLine ? rInfo.nCntPost : 0));
+                (bInputLine ? rInfo.nCntPost : 0), rNatNum );
 
         if (rInfo.nThousand == 3) // [ss]
         {
@@ -4107,7 +4152,7 @@ bool SvNumberformat::ImpGetDateTimeOutput(double fNumber,
             }
             rCal.loadCalendar( rInfo.sStrArray[i], rLoc().getLanguageTag().getLocale() );
             rCal.setDateTime( fOrgDateTime );
-            ImpFallBackToGregorianCalendar( aOrgCalendar, fOrgDateTime );
+            ImpFallBackToGregorianCalendar( aOrgCalendar, fOrgDateTime, *rCurrentLang.GetCalendar() );
             break;
         case NF_SYMBOLTYPE_STAR:
             if( bStarFlag )
@@ -4160,22 +4205,22 @@ bool SvNumberformat::ImpGetDateTimeOutput(double fNumber,
             }
             break;
         case NF_KEY_MI:                 // M
-            sBuff.append(ImpIntToString( nIx, nMin ));
+            sBuff.append(ImpIntToString(rNatNum, nIx, nMin ));
             break;
         case NF_KEY_MMI:                // MM
-            sBuff.append(ImpIntToString( nIx, nMin, 2 ));
+            sBuff.append(ImpIntToString(rNatNum, nIx, nMin, 2 ));
             break;
         case NF_KEY_H:                  // H
-            sBuff.append(ImpIntToString( nIx, nHour ));
+            sBuff.append(ImpIntToString(rNatNum, nIx, nHour ));
             break;
         case NF_KEY_HH:                 // HH
-            sBuff.append(ImpIntToString( nIx, nHour, 2 ));
+            sBuff.append(ImpIntToString(rNatNum, nIx, nHour, 2 ));
             break;
         case NF_KEY_S:                  // S
-            sBuff.append(ImpIntToString( nIx, nSec ));
+            sBuff.append(ImpIntToString(rNatNum, nIx, nSec ));
             break;
         case NF_KEY_SS:                 // SS
-            sBuff.append(ImpIntToString( nIx, nSec, 2 ));
+            sBuff.append(ImpIntToString(rNatNum, nIx, nSec, 2 ));
             break;
         case NF_KEY_M:                  // M
             sBuff.append(rCal.getDisplayString(
@@ -4215,29 +4260,29 @@ bool SvNumberformat::ImpGetDateTimeOutput(double fNumber,
         case NF_KEY_DDD:                // DDD
             if ( bOtherCalendar )
             {
-                SwitchToGregorianCalendar( aOrgCalendar, fOrgDateTime );
+                SwitchToGregorianCalendar( aOrgCalendar, fOrgDateTime, *rCurrentLang.GetCalendar() );
             }
             sBuff.append(rCal.getDisplayString( CalendarDisplayCode::SHORT_DAY_NAME, nNatNum ));
             if ( bOtherCalendar )
             {
-                SwitchToOtherCalendar( aOrgCalendar, fOrgDateTime );
+                SwitchToOtherCalendar( aOrgCalendar, fOrgDateTime, *rCurrentLang.GetCalendar() );
             }
             break;
         case NF_KEY_DDDD:               // DDDD
             if ( bOtherCalendar )
             {
-                SwitchToGregorianCalendar( aOrgCalendar, fOrgDateTime );
+                SwitchToGregorianCalendar( aOrgCalendar, fOrgDateTime, *rCurrentLang.GetCalendar() );
             }
             sBuff.append(rCal.getDisplayString( CalendarDisplayCode::LONG_DAY_NAME, nNatNum ));
             if ( bOtherCalendar )
             {
-                SwitchToOtherCalendar( aOrgCalendar, fOrgDateTime );
+                SwitchToOtherCalendar( aOrgCalendar, fOrgDateTime, *rCurrentLang.GetCalendar() );
             }
             break;
         case NF_KEY_YY:                 // YY
             if ( bOtherCalendar )
             {
-                SwitchToGregorianCalendar( aOrgCalendar, fOrgDateTime );
+                SwitchToGregorianCalendar( aOrgCalendar, fOrgDateTime, *rCurrentLang.GetCalendar() );
             }
             // Prepend a minus sign if Gregorian BCE and era is not displayed.
             if (lcl_isSignedYear( rCal, NumFor[nIx] ))
@@ -4247,13 +4292,13 @@ bool SvNumberformat::ImpGetDateTimeOutput(double fNumber,
             sBuff.append(rCal.getDisplayString( CalendarDisplayCode::SHORT_YEAR, nNatNum ));
             if ( bOtherCalendar )
             {
-                SwitchToOtherCalendar( aOrgCalendar, fOrgDateTime );
+                SwitchToOtherCalendar( aOrgCalendar, fOrgDateTime, *rCurrentLang.GetCalendar() );
             }
             break;
         case NF_KEY_YYYY:               // YYYY
             if ( bOtherCalendar )
             {
-                SwitchToGregorianCalendar( aOrgCalendar, fOrgDateTime );
+                SwitchToGregorianCalendar( aOrgCalendar, fOrgDateTime, *rCurrentLang.GetCalendar() );
             }
             // Prepend a minus sign if Gregorian BCE and era is not displayed.
             if (lcl_isSignedYear( rCal, NumFor[nIx] ))
@@ -4269,7 +4314,7 @@ bool SvNumberformat::ImpGetDateTimeOutput(double fNumber,
                 // without suddenly being hit by the 2-digit year magic.
                 OUStringBuffer aBuf;
                 padToLength(aBuf, 4 - aYear.getLength(), '0');
-                impTransliterate(aBuf, NumFor[nIx].GetNatNum());
+                ::impTransliterate(aBuf, NumFor[nIx].GetNatNum(), rNatNum);
                 aBuf.append(aYear);
                 sBuff.append(aBuf);
             }
@@ -4279,7 +4324,7 @@ bool SvNumberformat::ImpGetDateTimeOutput(double fNumber,
             }
             if ( bOtherCalendar )
             {
-                SwitchToOtherCalendar( aOrgCalendar, fOrgDateTime );
+                SwitchToOtherCalendar( aOrgCalendar, fOrgDateTime, *rCurrentLang.GetCalendar() );
             }
             break;
         case NF_KEY_EC:                 // E
@@ -4302,7 +4347,7 @@ bool SvNumberformat::ImpGetDateTimeOutput(double fNumber,
             sBuff.append(rLoc().getLongDateDayOfWeekSep());
             break;
         case NF_KEY_WW :                // WW
-            sBuff.append(ImpIntToString( nIx, rCal.getValue( CalendarFieldIndex::WEEK_OF_YEAR )));
+            sBuff.append(ImpIntToString(rNatNum, nIx, rCal.getValue( CalendarFieldIndex::WEEK_OF_YEAR )));
             break;
         case NF_KEY_G:                  // G
             ImpAppendEraG( sBuff, rCal, nNatNum );
@@ -4327,7 +4372,8 @@ bool SvNumberformat::ImpGetDateTimeOutput(double fNumber,
 
 bool SvNumberformat::ImpGetLogicalOutput(double fNumber,
                                          sal_uInt16 nIx,
-                                         OUStringBuffer& sStr)
+                                         const NativeNumberWrapper& rNatNum,
+                                         OUStringBuffer& sStr) const
 {
     bool bRes = false;
     const ImpSvNumberformatInfo& rInfo = NumFor[nIx].Info();
@@ -4344,13 +4390,15 @@ bool SvNumberformat::ImpGetLogicalOutput(double fNumber,
             break;
         }
     }
-    impTransliterate(sStr, NumFor[nIx].GetNatNum());
+    ::impTransliterate(sStr, NumFor[nIx].GetNatNum(), rNatNum);
     return bRes;
 }
 
 bool SvNumberformat::ImpGetNumberOutput(double fNumber,
                                         sal_uInt16 nIx,
-                                        OUStringBuffer& sStr)
+                                        bool bStarFlag,
+                                        const NativeNumberWrapper& rNatNum,
+                                        OUStringBuffer& sStr) const
 {
     bool bRes = false;
     bool bSign;
@@ -4407,6 +4455,8 @@ bool SvNumberformat::ImpGetNumberOutput(double fNumber,
         {
             nPrecExp = 0;
         }
+        // Make sure that Calc's ROUND and formatted output agree
+        fNumber = rtl_math_round(fNumber, rInfo.nCntPost, rtl_math_RoundingMode_Corrected);
         if (rInfo.nCntPost) // Decimal places
         {
             if ((rInfo.nCntPost + nPrecExp) > 15 && nPrecExp < 15)
@@ -4454,21 +4504,23 @@ bool SvNumberformat::ImpGetNumberOutput(double fNumber,
                                         // Edit backwards:
     j = NumFor[nIx].GetCount()-1;       // Last symbol
                                         // Decimal places:
-    bRes |= ImpDecimalFill( sStr, fNumber, nDecPos, j, nIx, bInteger );
+    bRes |= ImpDecimalFill(rNatNum, sStr, fNumber, nDecPos, j, nIx, bInteger, bStarFlag);
     if (bSign)
     {
         sStr.insert(0, '-');
     }
-    impTransliterate(sStr, NumFor[nIx].GetNatNum());
+    ::impTransliterate(sStr, NumFor[nIx].GetNatNum(), rNatNum);
     return bRes;
 }
 
-bool SvNumberformat::ImpDecimalFill( OUStringBuffer& sStr,  // number string
+bool SvNumberformat::ImpDecimalFill(const NativeNumberWrapper& rNatNum,
+                                   OUStringBuffer& sStr,  // number string
                                    double& rNumber,       // number
                                    sal_Int32 nDecPos,     // decimals start
                                    sal_uInt16 j,          // symbol index within format code
                                    sal_uInt16 nIx,        // subformat index
-                                   bool bInteger)         // is integer
+                                   bool bInteger,         // is integer
+                                   bool bStarFlag) const
 {
     bool bRes = false;
     bool bFilled = false;               // Was filled?
@@ -4549,7 +4601,7 @@ bool SvNumberformat::ImpDecimalFill( OUStringBuffer& sStr,  // number string
                         }
                         else if ( c == '?' )
                         {
-                            sStr[ k ] = ' ';
+                            sStr[ k ] = cBlankDigit;
                             bFilled = true;
                         }
                         else if ( !bFilled ) // #
@@ -4566,7 +4618,7 @@ bool SvNumberformat::ImpDecimalFill( OUStringBuffer& sStr,  // number string
             case NF_KEY_GENERAL: // Standard in the String
             {
                 OUStringBuffer sNum;
-                ImpGetOutputStandard(rNumber, sNum);
+                ImpGetOutputStandard(rNumber, sNum, rNatNum);
                 sNum.stripStart('-');
                 sStr.insert(k, sNum);
                 break;
@@ -4578,19 +4630,21 @@ bool SvNumberformat::ImpDecimalFill( OUStringBuffer& sStr,  // number string
         } // of while
     } // of decimal places
 
-    bRes |= ImpNumberFillWithThousands(sStr, rNumber, k, j, nIx, // Fill with . if needed
-                                       rInfo.nCntPre, bFilled );
+    bRes |= ImpNumberFillWithThousands(rNatNum, sStr, rNumber, k, j, nIx, // Fill with . if needed
+                                       rInfo.nCntPre, bStarFlag, bFilled );
 
     return bRes;
 }
 
-bool SvNumberformat::ImpNumberFillWithThousands( OUStringBuffer& sBuff,  // number string
+bool SvNumberformat::ImpNumberFillWithThousands( const NativeNumberWrapper& rNatNum,
+                                                 OUStringBuffer& sBuff,  // number string
                                                  double& rNumber,       // number
                                                  sal_Int32 k,           // position within string
                                                  sal_uInt16 j,          // symbol index within format code
                                                  sal_uInt16 nIx,        // subformat index
                                                  sal_Int32 nDigCnt,     // count of integer digits in format
-                                                 bool bAddDecSep)       // add decimal separator if necessary
+                                                 bool bStarFlag,
+                                                 bool bAddDecSep) const // add decimal separator if necessary
 {
     bool bRes = false;
     sal_Int32 nLeadingStringChars = 0; // inserted StringChars before number
@@ -4599,7 +4653,7 @@ bool SvNumberformat::ImpNumberFillWithThousands( OUStringBuffer& sBuff,  // numb
     const ImpSvNumberformatInfo& rInfo = NumFor[nIx].Info();
     // no normal thousands separators if number divided by thousands
     bool bDoThousands = (rInfo.nThousand == 0);
-    utl::DigitGroupingIterator aGrouping( GetFormatter().GetLocaleData()->getDigitGrouping());
+    utl::DigitGroupingIterator aGrouping( GetCurrentLanguageData().GetLocaleData()->getDigitGrouping());
 
     while (!bStop) // backwards
     {
@@ -4613,6 +4667,12 @@ bool SvNumberformat::ImpNumberFillWithThousands( OUStringBuffer& sBuff,  // numb
             aGrouping.reset();
             [[fallthrough]];
         case NF_SYMBOLTYPE_STRING:
+            if ( rInfo.nTypeArray[j] == NF_SYMBOLTYPE_STRING && nDigCnt == 0 )
+            {
+                // tdf#159930 no integer in format ".###"
+                k = 0; // insert string at the beginning
+            }
+            [[fallthrough]];
         case NF_SYMBOLTYPE_CURRENCY:
         case NF_SYMBOLTYPE_PERCENT:
             if ( rInfo.nTypeArray[j] != NF_SYMBOLTYPE_DECSEP || bAddDecSep )
@@ -4708,7 +4768,7 @@ bool SvNumberformat::ImpNumberFillWithThousands( OUStringBuffer& sBuff,  // numb
                         sBuff.insert(0, '0');
                         break;
                     case '?':
-                        sBuff.insert(0, ' ');
+                        sBuff.insert(0, cBlankDigit);
                         break;
                     }
                 }
@@ -4726,7 +4786,7 @@ bool SvNumberformat::ImpNumberFillWithThousands( OUStringBuffer& sBuff,  // numb
         case NF_KEY_GENERAL: // "General" in string
         {
             OUStringBuffer sNum;
-            ImpGetOutputStandard(rNumber, sNum);
+            ImpGetOutputStandard(rNumber, sNum, rNatNum);
             sNum.stripStart('-');
             sBuff.insert(k, sNum);
             break;
@@ -4750,11 +4810,11 @@ void SvNumberformat::ImpDigitFill(OUStringBuffer& sStr,     // number string
                                   sal_Int32 & k,            // position within string
                                   sal_uInt16 nIx,           // subformat index
                                   sal_Int32 & nDigitCount,  // count of integer digits from the right so far
-                                  utl::DigitGroupingIterator & rGrouping )  // current grouping
+                                  utl::DigitGroupingIterator & rGrouping ) const // current grouping
 {
     if (NumFor[nIx].Info().bThousand) // Only if grouping fill in separators
     {
-        const OUString& rThousandSep = GetFormatter().GetNumThousandSep();
+        const OUString& rThousandSep = GetCurrentLanguageData().GetNumThousandSep();
         while (k > nStart)
         {
             if (nDigitCount == rGrouping.getPos())
@@ -4772,13 +4832,15 @@ void SvNumberformat::ImpDigitFill(OUStringBuffer& sStr,     // number string
     }
 }
 
-bool SvNumberformat::ImpNumberFill( OUStringBuffer& sBuff, // number string
+bool SvNumberformat::ImpNumberFill( const NativeNumberWrapper& rNatNum,
+                                    OUStringBuffer& sBuff, // number string
                                     double& rNumber,       // number for "General" format
                                     sal_Int32& k,          // position within string
                                     sal_uInt16& j,         // symbol index within format code
                                     sal_uInt16 nIx,        // subformat index
                                     short eSymbolType,     // type of stop condition
-                                    bool bInsertRightBlank)// insert blank on right for denominator (default = false)
+                                    bool bStarFlag,
+                                    bool bInsertRightBlank) const // insert blank on right for denominator (default = false)
 {
     bool bRes = false;
     bool bStop = false;
@@ -4848,7 +4910,7 @@ bool SvNumberformat::ImpNumberFill( OUStringBuffer& sBuff, // number string
                         sBuff.insert(0, '0');
                         break;
                     case '?':
-                        sBuff.insert(nPosInsertBlank, ' ');
+                        sBuff.insert(nPosInsertBlank, cBlankDigit);
                         break;
                     }
                 }
@@ -4862,7 +4924,7 @@ bool SvNumberformat::ImpNumberFill( OUStringBuffer& sBuff, // number string
         {
             OUStringBuffer sNum;
             bFoundNumber = true;
-            ImpGetOutputStandard(rNumber, sNum);
+            ImpGetOutputStandard(rNumber, sNum, rNatNum);
             sNum.stripStart('-');
             sBuff.insert(k, sNum);
         }
@@ -5614,8 +5676,10 @@ OUString SvNumberformat::GetMappedFormatstring( const NfKeywordTable& rKeywords,
     return aStr.makeStringAndClear();
 }
 
-OUString SvNumberformat::ImpGetNatNumString( const SvNumberNatNum& rNum,
-                                           sal_Int64 nVal, sal_uInt16 nMinDigits ) const
+// static
+OUString SvNumberformat::ImpGetNatNumString(const SvNumberNatNum& rNum,
+                                            sal_Int64 nVal, sal_uInt16 nMinDigits,
+                                            const NativeNumberWrapper& rNatNum)
 {
     OUString aStr;
     if ( nMinDigits )
@@ -5658,33 +5722,17 @@ OUString SvNumberformat::ImpGetNatNumString( const SvNumberNatNum& rNum,
     {
         aStr = OUString::number( nVal );
     }
-    return impTransliterate(aStr, rNum);
-}
-
-OUString SvNumberformat::impTransliterateImpl(const OUString& rStr,
-                                              const SvNumberNatNum& rNum ) const
-{
-    css::lang::Locale aLocale( LanguageTag( rNum.GetLang() ).getLocale() );
-    return GetFormatter().GetNatNum()->getNativeNumberStringParams(rStr, aLocale, rNum.GetNatNum(),
-                                                                   rNum.GetParams());
-}
-
-void SvNumberformat::impTransliterateImpl(OUStringBuffer& rStr,
-                                          const SvNumberNatNum& rNum ) const
-{
-    css::lang::Locale aLocale( LanguageTag( rNum.GetLang() ).getLocale() );
-
-    rStr = GetFormatter().GetNatNum()->getNativeNumberStringParams(
-        OUString::unacquired(rStr), aLocale, rNum.GetNatNum(), rNum.GetParams());
+    return ::impTransliterate(aStr, rNum, rNatNum);
 }
 
 OUString SvNumberformat::impTransliterateImpl(const OUString& rStr,
                                               const SvNumberNatNum& rNum,
-                                              const sal_uInt16 nDateKey) const
+                                              const sal_uInt16 nDateKey,
+                                              const NativeNumberWrapper& rNatNum) const
 {
     // no KEYWORD=argument list in NatNum12
     if (rNum.GetParams().indexOf('=') == -1)
-        return impTransliterateImpl( rStr, rNum);
+        return ::impTransliterateImpl( rStr, rNum, rNatNum);
 
     const NfKeywordTable & rKeywords = rScan.GetKeywords();
 
@@ -5711,13 +5759,13 @@ OUString SvNumberformat::impTransliterateImpl(const OUString& rStr,
 
     css::lang::Locale aLocale( LanguageTag( rNum.GetLang() ).getLocale() );
 
-    return GetFormatter().GetNatNum()->getNativeNumberStringParams(
+    return rNatNum.getNativeNumberStringParams(
         rStr, aLocale, rNum.GetNatNum(),
         rNum.GetParams().copy(nField + nKeywordLen, nFieldEnd - nField - nKeywordLen));
 }
 
 void SvNumberformat::GetNatNumXml( css::i18n::NativeNumberXmlAttributes2& rAttr,
-                                   sal_uInt16 nNumFor ) const
+                                   sal_uInt16 nNumFor, const NativeNumberWrapper& rNatNum ) const
 {
     if ( nNumFor <= 3 )
     {
@@ -5732,7 +5780,7 @@ void SvNumberformat::GetNatNumXml( css::i18n::NativeNumberXmlAttributes2& rAttr,
              * adapted, and whether to fill Spellout or something different
              * should be internal there. */
             css::i18n::NativeNumberXmlAttributes aTmp(
-                    GetFormatter().GetNatNum()->convertToXmlAttributes(
+                    rNatNum.convertToXmlAttributes(
                         aLocale, rNum.GetNatNum()));
             rAttr.Locale = aTmp.Locale;
             rAttr.Format = aTmp.Format;
@@ -5764,10 +5812,10 @@ void SvNumberformat::GetNatNumXml( css::i18n::NativeNumberXmlAttributes2& rAttr,
 OUString SvNumberformat::GetNatNumModifierString( sal_uInt16 nNumFor ) const
 {
     if ( nNumFor > 3 )
-        return "";
+        return u""_ustr;
     const SvNumberNatNum& rNum = NumFor[nNumFor].GetNatNum();
     if ( !rNum.IsSet() )
-        return "";
+        return u""_ustr;
     const sal_Int32 nNum = rNum.GetNatNum();
     OUStringBuffer sNatNumModifier = "[NatNum" + OUString::number( nNum );
     if ( NatNumTakesParameters( nNum ) )
@@ -6070,14 +6118,9 @@ const LocaleDataWrapper& SvNumberformat::rLoc() const
     return rScan.GetLoc();
 }
 
-CalendarWrapper& SvNumberformat::GetCal() const
+const SvNFLanguageData& SvNumberformat::GetCurrentLanguageData() const
 {
-    return rScan.GetCal();
-}
-
-const SvNumberFormatter& SvNumberformat::GetFormatter() const
-{
-    return *rScan.GetNumberformatter();
+    return rScan.GetCurrentLanguageData();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

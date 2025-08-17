@@ -50,8 +50,8 @@ void SwViewShellImp::StartAction()
 {
     if ( HasDrawView() )
     {
-        CurrShell aCurr( GetShell() );
-        if ( auto pFEShell = dynamic_cast<SwFEShell*>( m_pShell) )
+        CurrShell aCurr( &GetShell() );
+        if ( auto pFEShell = dynamic_cast<SwFEShell*>(&m_rShell) )
             pFEShell->HideChainMarker(); // might have changed
     }
 }
@@ -60,8 +60,8 @@ void SwViewShellImp::EndAction()
 {
     if ( HasDrawView() )
     {
-        CurrShell aCurr( GetShell() );
-        if ( auto pFEShell = dynamic_cast<SwFEShell*>(m_pShell) )
+        CurrShell aCurr( &GetShell() );
+        if ( auto pFEShell = dynamic_cast<SwFEShell*>(&m_rShell) )
             pFEShell->SetChainMarker(); // might have changed
     }
 }
@@ -96,11 +96,11 @@ void SwViewShellImp::PaintLayer( const SdrLayerID _nLayerID,
         return;
 
     //change the draw mode in high contrast mode
-    OutputDevice* pOutDev = GetShell()->GetOut();
+    OutputDevice* pOutDev = GetShell().GetOut();
     DrawModeFlags nOldDrawMode = pOutDev->GetDrawMode();
-    if( GetShell()->GetWin() &&
+    if( GetShell().GetWin() &&
         Application::GetSettings().GetStyleSettings().GetHighContrastMode() &&
-        (!GetShell()->IsPreview() || officecfg::Office::Common::Accessibility::IsForPagePreviews::get()))
+        (!GetShell().IsPreview() || officecfg::Office::Common::Accessibility::IsForPagePreviews::get()))
     {
         pOutDev->SetDrawMode( nOldDrawMode | DrawModeFlags::SettingsLine | DrawModeFlags::SettingsFill |
                             DrawModeFlags::SettingsText | DrawModeFlags::SettingsGradient );
@@ -114,7 +114,7 @@ void SwViewShellImp::PaintLayer( const SdrLayerID _nLayerID,
     // set default horizontal text direction on painting <hell> or
     // <heaven>.
     EEHorizontalTextDirection aOldEEHoriTextDir = EEHorizontalTextDirection::L2R;
-    const IDocumentDrawModelAccess& rIDDMA = GetShell()->getIDocumentDrawModelAccess();
+    const IDocumentDrawModelAccess& rIDDMA = GetShell().getIDocumentDrawModelAccess();
     if ( (_nLayerID == rIDDMA.GetHellId()) ||
          (_nLayerID == rIDDMA.GetHeavenId()) )
     {
@@ -151,8 +151,6 @@ void SwViewShellImp::PaintLayer( const SdrLayerID _nLayerID,
 
 }
 
-#define FUZZY_EDGE 400
-
 bool SwViewShellImp::IsDragPossible( const Point &rPoint )
 {
     if ( !HasDrawView() )
@@ -173,8 +171,9 @@ bool SwViewShellImp::IsDragPossible( const Point &rPoint )
         aRect.Union( aTmp );
     }
     else
-        aRect = GetShell()->GetLayout()->getFrameArea();
+        aRect = GetShell().GetLayout()->getFrameArea();
 
+    constexpr tools::Long FUZZY_EDGE = 400;
     aRect.AddTop   (- FUZZY_EDGE );
     aRect.AddBottom(  FUZZY_EDGE );
     aRect.AddLeft  (- FUZZY_EDGE );
@@ -203,8 +202,9 @@ void SwViewShellImp::NotifySizeChg( const Size &rNewSz )
     if ( !bCheckDrawObjs )
         return;
 
-    OSL_ENSURE( m_pShell->getIDocumentDrawModelAccess().GetDrawModel(), "NotifySizeChg without DrawModel" );
-    SdrPage* pPage = m_pShell->getIDocumentDrawModelAccess().GetDrawModel()->GetPage( 0 );
+    OSL_ENSURE( m_rShell.getIDocumentDrawModelAccess().GetDrawModel(), "NotifySizeChg without DrawModel" );
+    SdrPage* pPage = m_rShell.getIDocumentDrawModelAccess().GetDrawModel()->GetPage( 0 );
+    std::vector<SdrObject*> aCandidatesToMove;
     for (const rtl::Reference<SdrObject>& pObj : *pPage)
     {
         if( dynamic_cast<const SwVirtFlyDrawObj*>( pObj.get()) ==  nullptr )
@@ -245,27 +245,33 @@ void SwViewShellImp::NotifySizeChg( const Size &rNewSz )
                 continue;
             }
 
-            const tools::Rectangle aObjBound( pObj->GetCurrentBoundRect() );
-            if ( !aDocRect.Contains( aObjBound ) )
-            {
-                Size aSz;
-                if ( aObjBound.Left() > aDocRect.Right() )
-                    aSz.setWidth( (aDocRect.Right() - aObjBound.Left()) - MINFLY );
-                if ( aObjBound.Top() > aDocRect.Bottom() )
-                    aSz.setHeight( (aDocRect.Bottom() - aObjBound.Top()) - MINFLY );
-                if ( aSz.Width() || aSz.Height() )
-                    pObj->Move( aSz );
+            aCandidatesToMove.push_back(pObj.get());
+        }
+    }
 
-                // Don't let large objects disappear to the top
-                aSz.setWidth(0);
-                aSz.setHeight(0);
-                if ( aObjBound.Right() < aDocRect.Left() )
-                    aSz.setWidth( (aDocRect.Left() - aObjBound.Right()) + MINFLY );
-                if ( aObjBound.Bottom() < aDocRect.Top() )
-                    aSz.setHeight( (aDocRect.Top() - aObjBound.Bottom()) + MINFLY );
-                if ( aSz.Width() || aSz.Height() )
-                    pObj->Move( aSz );
-            }
+    // Moving a SdrObject can invalidate their positions in SdrPage's container of objects
+    for (const auto pObj : aCandidatesToMove)
+    {
+        const tools::Rectangle aObjBound( pObj->GetCurrentBoundRect() );
+        if ( !aDocRect.Contains( aObjBound ) )
+        {
+            Size aSz;
+            if ( aObjBound.Left() > aDocRect.Right() )
+                aSz.setWidth( (aDocRect.Right() - aObjBound.Left()) - MINFLY );
+            if ( aObjBound.Top() > aDocRect.Bottom() )
+                aSz.setHeight( (aDocRect.Bottom() - aObjBound.Top()) - MINFLY );
+            if ( aSz.Width() || aSz.Height() )
+                pObj->Move( aSz );
+
+            // Don't let large objects disappear to the top
+            aSz.setWidth(0);
+            aSz.setHeight(0);
+            if ( aObjBound.Right() < aDocRect.Left() )
+                aSz.setWidth( (aDocRect.Left() - aObjBound.Right()) + MINFLY );
+            if ( aObjBound.Bottom() < aDocRect.Top() )
+                aSz.setHeight( (aDocRect.Top() - aObjBound.Bottom()) + MINFLY );
+            if ( aSz.Width() || aSz.Height() )
+                pObj->Move( aSz );
         }
     }
 }

@@ -18,7 +18,6 @@
  */
 
 #include <xmloff/xmlimp.hxx>
-#include <xmloff/namespacemap.hxx>
 #include <xmloff/xmlnamespace.hxx>
 #include <xmloff/xmltoken.hxx>
 #include "txtparai.hxx"
@@ -74,7 +73,7 @@ XMLTextListItemContext::XMLTextListItemContext(
                     aAny >>= xStyle;
 
                     uno::Reference< beans::XPropertySet > xPropSet( xStyle, UNO_QUERY );
-                    aAny = xPropSet->getPropertyValue("NumberingRules");
+                    aAny = xPropSet->getPropertyValue(u"NumberingRules"_ustr);
                     aAny >>= mxNumRulesOverride;
                 }
                 else

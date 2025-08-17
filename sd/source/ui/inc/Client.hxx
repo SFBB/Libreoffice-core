@@ -26,9 +26,9 @@ namespace sd
 {
 class ViewShell;
 
-class Client : public SfxInPlaceClient
+class Client final : public SfxInPlaceClient
 {
-    ViewShell* mpViewShell;
+    ViewShell& mrViewShell;
     SdrOle2Obj* pSdrOle2Obj;
 
     virtual void ObjectAreaChanged() override;
@@ -36,7 +36,7 @@ class Client : public SfxInPlaceClient
     virtual void ViewChanged() override;
 
 public:
-    Client(SdrOle2Obj* pObj, ViewShell* pSdViewShell, vcl::Window* pWindow);
+    Client(SdrOle2Obj* pObj, ViewShell& rSdViewShell, vcl::Window* pWindow);
     virtual ~Client() override;
 };
 

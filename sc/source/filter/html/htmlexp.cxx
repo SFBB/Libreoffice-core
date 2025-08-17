@@ -50,6 +50,7 @@
 #include <stdio.h>
 #include <osl/diagnose.h>
 #include <o3tl/unit_conversion.hxx>
+#include <o3tl/string_view.hxx>
 
 #include <htmlexp.hxx>
 #include <global.hxx>
@@ -87,6 +88,9 @@
 #include <com/sun/star/document/XDocumentPropertiesSupplier.hpp>
 #include <rtl/strbuf.hxx>
 #include <officecfg/Office/Common.hxx>
+#include <tools/json_writer.hxx>
+#include <svl/numformat.hxx>
+#include <svl/zformat.hxx>
 
 using ::editeng::SvxBorderLine;
 using namespace ::com::sun::star;
@@ -105,7 +109,7 @@ const sal_uInt16 ScHTMLExport::nDefaultFontSize[SC_HTML_FONTSIZES] =
 
 sal_uInt16 ScHTMLExport::nFontSize[SC_HTML_FONTSIZES] = { 0 };
 
-const char* ScHTMLExport::pFontSizeCss[SC_HTML_FONTSIZES] =
+const char* const ScHTMLExport::pFontSizeCss[SC_HTML_FONTSIZES] =
 {
     "xx-small", "x-small", "small", "medium", "large", "x-large", "xx-large"
 };
@@ -375,7 +379,7 @@ void ScHTMLExport::WriteHeader()
         for(sal_Int32 nPos {0};;)
         {
             rStrm.WriteChar( '\"' );
-            OUT_STR( rList.getToken( 0, ';', nPos ) );
+            OUT_STR( o3tl::getToken( rList, 0, ';', nPos ) );
             rStrm.WriteChar( '\"' );
             if (nPos<0)
                 break;
@@ -629,7 +633,7 @@ void ScHTMLExport::WriteBody()
                         // Save graphic as (JPG) file
                         aGrfNm = aStreamPath;
                         ErrCode nErr = XOutBitmap::WriteGraphic( *pGrf, aGrfNm,
-                            "JPG", XOutFlags::UseNativeIfPossible );
+                            u"JPG"_ustr, XOutFlags::UseNativeIfPossible );
                         if( !nErr ) // Contains errors, as we have nothing to output
                         {
                             aGrfNm = URIHelper::SmartRel2Abs(
@@ -671,6 +675,20 @@ void ScHTMLExport::WriteBody()
         }
 
         rStrm.WriteChar( '>' ); OUT_LF();
+
+        // A marker right after <body> can be used, so that data-sheets-* attributes are considered
+        // at all. This is disabled by default.
+        OString aMarker;
+        char* pEnv = getenv("SC_DEBUG_HTML_MARKER");
+        if (pEnv)
+        {
+            aMarker = pEnv;
+        }
+        else if (comphelper::LibreOfficeKit::isActive())
+        {
+            aMarker = "<google-sheets-html-origin/>"_ostr;
+        }
+        rStrm.WriteOString(aMarker);
     }
 
     if ( bAll )
@@ -879,7 +897,7 @@ void ScHTMLExport::WriteTables()
         }
 
         if ( bAll )
-            OUT_COMMENT( "**************************************************************************" );
+            OUT_COMMENT( u"**************************************************************************" );
     }
 }
 
@@ -1128,6 +1146,71 @@ void ScHTMLExport::WriteCell( sc::ColumnBlockPosition& rBlockPos, SCCOL nCol, SC
     aStrTD.append(HTMLOutFuncs::CreateTableDataOptionsValNum(bValueData, fVal,
         nFormat, *pFormatter, &aNonConvertibleChars));
 
+    std::optional<tools::JsonWriter> oJson;
+    const SvNumberformat* pNumberFormat = nullptr;
+    if (bValueData)
+    {
+        if (nFormat)
+        {
+            const SvNumberformat* pFormatEntry = pFormatter->GetEntry(nFormat);
+            if (pFormatEntry)
+            {
+                OUString aNumStr = pFormatEntry->GetFormatstring();
+                if (aNumStr == "BOOLEAN")
+                {
+                    // 4 is boolean.
+                    oJson.emplace();
+                    oJson->put("1", static_cast<sal_Int32>(4));
+                    oJson->put("4", static_cast<sal_Int32>(fVal));
+                }
+                else
+                {
+                    // 3 is number.
+                    oJson.emplace();
+                    oJson->put("1", static_cast<sal_Int32>(3));
+                    oJson->put("3", static_cast<sal_Int32>(fVal));
+                    pNumberFormat = pFormatEntry;
+                }
+            }
+        }
+
+        if (aCell.getType() == CELLTYPE_FORMULA)
+        {
+            // If it's a formula, then also emit that, grammar is R1C1 reference style.
+            OUString aFormula = aCell.getFormula()->GetFormula(
+                    formula::FormulaGrammar::GRAM_ENGLISH_XL_R1C1);
+            aStrTD.append(" " OOO_STRING_SVTOOLS_HTML_O_DSformula "=\""
+                    + HTMLOutFuncs::ConvertStringToHTML(aFormula) + "\"");
+        }
+    }
+    else
+    {
+        // 2 is text.
+        oJson.emplace();
+        oJson->put("1", static_cast<sal_Int32>(2));
+        oJson->put("2", pDoc->GetString(aPos));
+    }
+
+    if (oJson)
+    {
+        OUString aJsonString = OUString::fromUtf8(oJson->finishAndGetAsOString());
+        aStrTD.append(" " OOO_STRING_SVTOOLS_HTML_O_DSval "=\""
+                      + HTMLOutFuncs::ConvertStringToHTML(aJsonString) + "\"");
+    }
+
+    if (pNumberFormat)
+    {
+        // 2 is a number format.
+        oJson.emplace();
+        oJson->put("1", static_cast<sal_Int32>(2));
+        oJson->put("2", pNumberFormat->GetFormatstring());
+        // The number format is for a number.
+        oJson->put("3", static_cast<sal_Int32>(1));
+        OUString aJsonString = OUString::fromUtf8(oJson->finishAndGetAsOString());
+        aStrTD.append(" " OOO_STRING_SVTOOLS_HTML_O_DSnum "=\""
+                      + HTMLOutFuncs::ConvertStringToHTML(aJsonString) + "\"");
+    }
+
     TAG_ON(aStrTD.makeStringAndClear());
 
     //write the note for this as the first thing in the tag
@@ -1168,7 +1251,7 @@ void ScHTMLExport::WriteCell( sc::ColumnBlockPosition& rBlockPos, SCCOL nCol, SC
                 for (sal_Int32 nPos {0};;)
                 {
                     OString aTmpStr = HTMLOutFuncs::ConvertStringToHTML(
-                        rList.getToken( 0, ';', nPos ),
+                        o3tl::getToken( rList, 0, ';', nPos ),
                         &aNonConvertibleChars);
                     aStr.append(aTmpStr);
                     if (nPos<0)
@@ -1230,7 +1313,7 @@ void ScHTMLExport::WriteCell( sc::ColumnBlockPosition& rBlockPos, SCCOL nCol, SC
                 break;
             [[fallthrough]];
         default:
-            aStrOut = ScCellFormat::GetString(aCell, nFormat, &pColor, *pFormatter, *pDoc);
+            aStrOut = ScCellFormat::GetString(aCell, nFormat, &pColor, nullptr, *pDoc);
     }
 
     if ( !bFieldText )
@@ -1288,7 +1371,7 @@ bool ScHTMLExport::WriteFieldText( const EditTextObject* pData )
         ESelection aSel( 0, 0, nParas-1, rEngine.GetTextLen( nParas-1 ) );
         SfxItemSet aSet( rEngine.GetAttribs( aSel ) );
         SfxItemState eFieldState = aSet.GetItemState( EE_FEATURE_FIELD, false );
-        if ( eFieldState == SfxItemState::DONTCARE || eFieldState == SfxItemState::SET )
+        if ( eFieldState == SfxItemState::INVALID || eFieldState == SfxItemState::SET )
             bFields = true;
     }
     if ( bFields )

@@ -24,20 +24,14 @@
 #include <unotools/ucbhelper.hxx>
 #include <strings.hrc>
 
-using namespace ::comphelper;
-
 using namespace utl;
 using namespace ::connectivity;
 using namespace ::dbtools;
 using namespace ::connectivity::dbase;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::beans;
-using namespace ::com::sun::star::sdbcx;
-using namespace ::com::sun::star::sdbc;
-using namespace ::com::sun::star::container;
-using namespace ::com::sun::star::lang;
 
-sdbcx::ObjectType ODbaseIndexes::createObject(const OUString& _rName)
+css::uno::Reference< css::beans::XPropertySet > ODbaseIndexes::createObject(const OUString& _rName)
 {
     OUString sFile = m_pTable->getConnection()->getURL() +
         OMetaConnection::getPropMap().getNameByIndex(PROPERTY_ID_DELIMITER) +
@@ -51,23 +45,8 @@ sdbcx::ObjectType ODbaseIndexes::createObject(const OUString& _rName)
         ::dbtools::throwGenericSQLException( sError, *m_pTable );
     }
 
-    sdbcx::ObjectType xRet;
     std::unique_ptr<SvStream> pFileStream = ::connectivity::file::OFileTable::createStream_simpleError(sFile, StreamMode::READ | StreamMode::NOCREATE | StreamMode::SHARE_DENYWRITE);
-    if(pFileStream)
-    {
-        pFileStream->SetEndian(SvStreamEndian::LITTLE);
-        pFileStream->SetBufferSize(DINDEX_PAGE_SIZE);
-        ODbaseIndex::NDXHeader aHeader;
-
-        pFileStream->Seek(0);
-        ReadHeader(*pFileStream, aHeader);
-        pFileStream.reset();
-
-        rtl::Reference<ODbaseIndex> pIndex = new ODbaseIndex(m_pTable,aHeader,_rName);
-        xRet = pIndex;
-        pIndex->openIndexFile();
-    }
-    else
+    if(!pFileStream)
     {
         const OUString sError( m_pTable->getConnection()->getResources().getResourceStringWithSubstitution(
                 STR_COULD_NOT_LOAD_FILE,
@@ -75,7 +54,18 @@ sdbcx::ObjectType ODbaseIndexes::createObject(const OUString& _rName)
              ) );
         ::dbtools::throwGenericSQLException( sError, *m_pTable );
     }
-    return xRet;
+
+    pFileStream->SetEndian(SvStreamEndian::LITTLE);
+    pFileStream->SetBufferSize(DINDEX_PAGE_SIZE);
+    ODbaseIndex::NDXHeader aHeader;
+
+    pFileStream->Seek(0);
+    ReadHeader(*pFileStream, aHeader);
+    pFileStream.reset();
+
+    rtl::Reference<ODbaseIndex> pIndex = new ODbaseIndex(m_pTable,aHeader,_rName);
+    pIndex->openIndexFile();
+    return pIndex;
 }
 
 void ODbaseIndexes::impl_refresh(  )
@@ -90,7 +80,7 @@ Reference< XPropertySet > ODbaseIndexes::createDescriptor()
 }
 
 // XAppend
-sdbcx::ObjectType ODbaseIndexes::appendObject( const OUString& _rForName, const Reference< XPropertySet >& descriptor )
+css::uno::Reference< css::beans::XPropertySet > ODbaseIndexes::appendObject( const OUString& _rForName, const Reference< XPropertySet >& descriptor )
 {
     ODbaseIndex* pIndex = dynamic_cast<ODbaseIndex*>(descriptor.get());
     if(pIndex)

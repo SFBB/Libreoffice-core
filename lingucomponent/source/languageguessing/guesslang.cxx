@@ -202,7 +202,7 @@ uno::Sequence< Locale > SAL_CALL LangGuess_Impl::getAvailableLanguages(  )
         css::lang::Locale current_aRes;
         current_aRes.Language   = OUString::createFromAscii( gs[i].GetLanguage() );
         current_aRes.Country    = OUString::createFromAscii( gs[i].GetCountry() );
-        pRes[i] = current_aRes;
+        pRes[i] = std::move(current_aRes);
     }
 
     return aRes;
@@ -224,7 +224,7 @@ uno::Sequence< Locale > SAL_CALL LangGuess_Impl::getEnabledLanguages(  )
         css::lang::Locale current_aRes;
         current_aRes.Language   = OUString::createFromAscii( gs[i].GetLanguage() );
         current_aRes.Country    = OUString::createFromAscii( gs[i].GetCountry() );
-        pRes[i] = current_aRes;
+        pRes[i] = std::move(current_aRes);
     }
 
     return aRes;
@@ -246,7 +246,7 @@ uno::Sequence< Locale > SAL_CALL LangGuess_Impl::getDisabledLanguages(  )
         css::lang::Locale current_aRes;
         current_aRes.Language   = OUString::createFromAscii( gs[i].GetLanguage() );
         current_aRes.Country    = OUString::createFromAscii( gs[i].GetCountry() );
-        pRes[i] = current_aRes;
+        pRes[i] = std::move(current_aRes);
     }
 
     return aRes;
@@ -296,7 +296,7 @@ void SAL_CALL LangGuess_Impl::enableLanguages(
 
 OUString SAL_CALL LangGuess_Impl::getImplementationName(  )
 {
-    return "com.sun.star.lingu2.LanguageGuessing";
+    return u"com.sun.star.lingu2.LanguageGuessing"_ustr;
 }
 
 sal_Bool SAL_CALL LangGuess_Impl::supportsService( const OUString& ServiceName )
@@ -306,7 +306,7 @@ sal_Bool SAL_CALL LangGuess_Impl::supportsService( const OUString& ServiceName )
 
 Sequence<OUString> SAL_CALL LangGuess_Impl::getSupportedServiceNames(  )
 {
-    return { "com.sun.star.linguistic2.LanguageGuessing" };
+    return { u"com.sun.star.linguistic2.LanguageGuessing"_ustr };
 }
 
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
