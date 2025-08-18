@@ -433,7 +433,6 @@ void ExtensionBox_Impl::DrawRow(vcl::RenderContext& rRenderContext, const tools:
     auto aTextHeight = rRenderContext.GetTextHeight();
 
     // Get max title width
-    // coverity[ tainted_data_return : FALSE ] version 2023.12.2
     auto nMaxTitleWidth = rRect.GetWidth() - ICON_OFFSET;
     nMaxTitleWidth -= (2 * SMALL_ICON_SIZE) + (4 * SPACE_BETWEEN);
     rRenderContext.SetFont(aStdFont);
@@ -507,7 +506,7 @@ void ExtensionBox_Impl::DrawRow(vcl::RenderContext& rRenderContext, const tools:
     {
         aPos = rRect.TopLeft() + Point( ICON_OFFSET + nMaxTitleWidth + (2*SPACE_BETWEEN), TOP_OFFSET );
 
-        rRenderContext.Push(vcl::PushFlags::FONT | vcl::PushFlags::TEXTCOLOR | vcl::PushFlags::TEXTFILLCOLOR);
+        auto popIt = rRenderContext.ScopedPush(vcl::PushFlags::FONT | vcl::PushFlags::TEXTCOLOR | vcl::PushFlags::TEXTFILLCOLOR);
         rRenderContext.SetTextColor(rStyleSettings.GetLinkColor());
         rRenderContext.SetTextFillColor(rStyleSettings.GetFieldColor());
         vcl::Font aFont = rRenderContext.GetFont();
@@ -516,7 +515,6 @@ void ExtensionBox_Impl::DrawRow(vcl::RenderContext& rRenderContext, const tools:
         rRenderContext.SetFont(aFont);
         rRenderContext.DrawText(aPos, rEntry->m_sPublisher);
         rEntry->m_aLinkRect = tools::Rectangle(aPos, Size(nLinkWidth, aTextHeight));
-        rRenderContext.Pop();
     }
 
     // Draw status icons

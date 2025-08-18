@@ -478,10 +478,9 @@ public:
     SwTextNode const* GetTextNodeForParaProps() const;
     SwTextNode const* GetTextNodeForFirstText() const;
     SwTextNode      * GetTextNodeFirst()
-        { return const_cast<SwTextNode*>(const_cast<SwTextFrame const*>(this)->GetTextNodeFirst()); };
+        { return const_cast<SwTextNode*>(std::as_const(*this).GetTextNodeFirst()); };
     SwTextNode const* GetTextNodeFirst() const;
-    SwDoc      & GetDoc()
-        { return const_cast<SwDoc &>(const_cast<SwTextFrame const*>(this)->GetDoc()); }
+    SwDoc      & GetDoc() { return const_cast<SwDoc &>(std::as_const(*this).GetDoc()); }
     SwDoc const& GetDoc() const;
 
     SwTextFrame(SwTextNode * const, SwFrame*, sw::FrameMode eMode);
@@ -551,13 +550,12 @@ public:
     bool IsInFootnoteConnect()const { return mbInFootnoteConnect;}
     bool IsFieldFollow() const { return mbFieldFollow;}
 
-    inline void SetRepaint() const;
-    inline void ResetRepaint() const;
+    inline void SetRepaint() { mbRepaint = true; }
+    inline void ResetRepaint() { mbRepaint = false; }
     bool HasRepaint() const { return mbRepaint; }
     void SetHasRotatedPortions(bool bHasRotatedPortions);
     bool GetHasRotatedPortions() const { return mbHasRotatedPortions; }
-    void SetAnimation() const
-        { const_cast<SwTextFrame*>(this)->mbHasAnimation = true; }
+    void SetAnimation() { mbHasAnimation = true; }
     bool HasAnimation() const { return mbHasAnimation; }
 
     bool IsSwapped() const { return mbIsSwapped; }
@@ -911,15 +909,6 @@ inline void SwTextFrame::SetOffset(TextFrameIndex const nNewOfst)
 {
     if ( mnOffset != nNewOfst )
         SetOffset_( nNewOfst );
-}
-
-inline void SwTextFrame::SetRepaint() const
-{
-    const_cast<SwTextFrame*>(this)->mbRepaint = true;
-}
-inline void SwTextFrame::ResetRepaint() const
-{
-    const_cast<SwTextFrame*>(this)->mbRepaint = false;
 }
 
 class TemporarySwap {

@@ -297,7 +297,7 @@ void SwExtraPainter::PaintRedline( SwTwips nY, tools::Long nMax, sal_Int16 nWord
             m_aClip.ChgClip( m_aRect, m_pTextFrame );
         }
     }
-    m_pSh->GetOut()->Push(vcl::PushFlags::LINECOLOR);
+    auto popIt = m_pSh->GetOut()->ScopedPush(vcl::PushFlags::LINECOLOR);
     m_pSh->GetOut()->SetLineColor(nWordSpacing ? COL_LIGHTRED : SwModule::get()->GetRedlineMarkColor());
 
     if ( nWordSpacing )
@@ -310,7 +310,6 @@ void SwExtraPainter::PaintRedline( SwTwips nY, tools::Long nMax, sal_Int16 nWord
     }
     else
         m_pSh->GetOut()->DrawLine( aStart, aEnd );
-    m_pSh->GetOut()->Pop();
 }
 
 void SwTextFrame::PaintExtraData( const SwRect &rRect ) const
@@ -646,7 +645,7 @@ bool SwTextFrame::PaintEmpty( const SwRect &rRect, bool bCheck ) const
 
 void SwTextFrame::PaintSwFrame(vcl::RenderContext& rRenderContext, SwRect const& rRect, PaintFrameMode) const
 {
-    ResetRepaint();
+    const_cast<SwTextFrame*>(this)->ResetRepaint();
 
     // #i16816# tagged pdf support
     SwViewShell *pSh = getRootFrame()->GetCurrShell();

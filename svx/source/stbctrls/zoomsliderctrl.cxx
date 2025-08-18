@@ -122,7 +122,6 @@ sal_uInt16 SvxZoomSliderControl::Offset2Zoom( tools::Long nOffset ) const
 // returns the offset to the left control border
 tools::Long SvxZoomSliderControl::Zoom2Offset( sal_uInt16 nCurrentZoom ) const
 {
-    // coverity[ tainted_data_return : FALSE ] version 2023.12.2
     const tools::Long nControlWidth = getControlRect().GetWidth();
     tools::Long nRet = nSliderXOffset;
 
@@ -235,7 +234,7 @@ void SvxZoomSliderControl::Paint( const UserDrawEvent& rUsrEvt )
     aSlider.AdjustLeft(nSliderXOffset );
     aSlider.AdjustRight( -nSliderXOffset );
 
-    pDev->Push(vcl::PushFlags::LINECOLOR | vcl::PushFlags::FILLCOLOR);
+    auto popIt = pDev->ScopedPush(vcl::PushFlags::LINECOLOR | vcl::PushFlags::FILLCOLOR);
 
     const StyleSettings& rStyleSettings = Application::GetSettings().GetStyleSettings();
     pDev->SetLineColor( rStyleSettings.GetDarkShadowColor() );
@@ -273,8 +272,6 @@ void SvxZoomSliderControl::Paint( const UserDrawEvent& rUsrEvt )
     // draw increase button
     aImagePoint.setX( aRect.Left() + aControlRect.GetWidth() - mxImpl->maIncreaseButton.GetSizePixel().Width() - (nSliderXOffset - mxImpl->maIncreaseButton.GetSizePixel().Height())/2 );
     pDev->DrawImage( aImagePoint, mxImpl->maIncreaseButton );
-
-    pDev->Pop();
 }
 
 bool SvxZoomSliderControl::MouseButtonDown( const MouseEvent & rEvt )
