@@ -385,7 +385,6 @@ void ODatabaseContext::setTransientProperties(const OUString& _sURL, ODatabaseMo
     try
     {
         OUString sAuthFailedPassword;
-        Any aUser, aPassword;
         Reference< XPropertySet > xDSProps( _rDataSourceModel.getOrCreateDataSource(), UNO_QUERY_THROW );
         const Sequence< PropertyValue >& rSessionPersistentProps = m_aDatasourceProperties[_sURL];
         for ( auto const & prop : rSessionPersistentProps )
@@ -394,14 +393,6 @@ void ODatabaseContext::setTransientProperties(const OUString& _sURL, ODatabaseMo
             {
                 OSL_VERIFY( prop.Value >>= sAuthFailedPassword );
             }
-            else if (prop.Name == PROPERTY_USER)
-            {
-                aUser = prop.Value;
-            }
-            else if (prop.Name == PROPERTY_PASSWORD)
-            {
-                aPassword = prop.Value;
-            }
             else
             {
                 xDSProps->setPropertyValue( prop.Name, prop.Value );
@@ -409,12 +400,6 @@ void ODatabaseContext::setTransientProperties(const OUString& _sURL, ODatabaseMo
         }
 
         _rDataSourceModel.m_sFailedPassword = sAuthFailedPassword;
-        // tdf#167960: only restore password, if the username is unchanged
-        if (aPassword.hasValue() && aUser.hasValue())
-        {
-            if (aUser == xDSProps->getPropertyValue(PROPERTY_USER))
-                xDSProps->setPropertyValue(PROPERTY_PASSWORD, aPassword);
-        }
     }
     catch( const Exception& )
     {
@@ -471,20 +456,17 @@ void ODatabaseContext::storeTransientProperties( ODatabaseModelImpl& _rModelImpl
                 &&  ( ( rProperty.Attributes & PropertyAttribute::READONLY) == 0 )
                 )
             {
-                // found such a property
-                aRememberProps.put( rProperty.Name, xSource->getPropertyValue( rProperty.Name ) );
+                // If the connection was opened by a user other than the one registered in the
+                // data source, the password will not be stored and always requested. See tdf#167960
+                if (rProperty.Name != "Password" || !_rModelImpl.m_bAskPassword)
+                {
+                    // found such a property
+                    aRememberProps.put( rProperty.Name, xSource->getPropertyValue( rProperty.Name ) );
+                }
             }
         }
-        if (aRememberProps.has(PROPERTY_PASSWORD))
-        {
-            // tdf#167960: store also username associated with this password.
-            // It may happen, that the next time this document is loaded, it gets another username.
-            // It happens e.g. if this time a different username and password were used, which are
-            // now saved in the model's PROPERTY_USER / PROPERTY_PASSWORD; but the document is not
-            // modified to write that username to file. The next time it is opened, the previously
-            // stored name is loaded. We can detect the change, using this stored value.
-            aRememberProps.put(PROPERTY_USER, xSource->getPropertyValue(PROPERTY_USER));
-        }
+        // We don't need him anymore, we only come here once for a datasource.
+        _rModelImpl.m_bAskPassword = false;
     }
     catch ( const Exception& )
     {

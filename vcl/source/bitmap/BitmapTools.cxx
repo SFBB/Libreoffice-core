@@ -650,344 +650,9 @@ css::uno::Sequence< sal_Int8 > GetMaskDIB(Bitmap const & rBmp)
     return GetMaskDIB(BitmapEx(rBmp));
 }
 
-static bool readAlpha( BitmapReadAccess const * pAlphaReadAcc, tools::Long nY, const tools::Long nWidth, unsigned char* data, tools::Long nOff )
-{
-    bool bIsAlpha = false;
-    tools::Long nX;
-    int nAlpha;
-    Scanline pReadScan;
-
-    nOff += 3;
-
-    switch( pAlphaReadAcc->GetScanlineFormat() )
-    {
-        case ScanlineFormat::N8BitPal:
-            pReadScan = pAlphaReadAcc->GetScanline( nY );
-            for( nX = 0; nX < nWidth; nX++ )
-            {
-                BitmapColor const& rColor(
-                    pAlphaReadAcc->GetPaletteColor(*pReadScan));
-                pReadScan++;
-                nAlpha = data[ nOff ] = rColor.GetIndex();
-                if( nAlpha != 255 )
-                    bIsAlpha = true;
-                nOff += 4;
-            }
-            break;
-        default:
-            SAL_INFO( "canvas.cairo", "fallback to GetColor for alpha - slow, format: " << static_cast<int>(pAlphaReadAcc->GetScanlineFormat()) );
-            for( nX = 0; nX < nWidth; nX++ )
-            {
-                nAlpha = data[ nOff ] = pAlphaReadAcc->GetColor( nY, nX ).GetIndex();
-                if( nAlpha != 255 )
-                    bIsAlpha = true;
-                nOff += 4;
-            }
-    }
-
-    return bIsAlpha;
-}
-
-
-
 /**
- * @param data will be filled with alpha data, if xBitmap is alpha/transparent image
- * @param bHasAlpha will be set to true if resulting surface has alpha
- **/
-void CanvasCairoExtractBitmapData( BitmapEx const & aBmpEx, const Bitmap & aBitmap, unsigned char*& data, bool& bHasAlpha, tools::Long& rnWidth, tools::Long& rnHeight )
-{
-    const AlphaMask& aAlpha = aBmpEx.GetAlphaMask();
-
-    BitmapScopedReadAccess pBitmapReadAcc( aBitmap );
-    BitmapScopedReadAccess pAlphaReadAcc;
-    const tools::Long      nWidth = rnWidth = pBitmapReadAcc->Width();
-    const tools::Long      nHeight = rnHeight = pBitmapReadAcc->Height();
-    tools::Long nX, nY;
-    bool bIsAlpha = false;
-
-    if( aBmpEx.IsAlpha() )
-        pAlphaReadAcc = aAlpha;
-
-    data = static_cast<unsigned char*>(malloc( nWidth*nHeight*4 ));
-
-    tools::Long nOff = 0;
-    ::Color aColor;
-    unsigned int nAlpha = 255;
-
-#if !ENABLE_WASM_STRIP_PREMULTIPLY
-    vcl::bitmap::lookup_table const & premultiply_table = vcl::bitmap::get_premultiply_table();
-#endif
-    for( nY = 0; nY < nHeight; nY++ )
-    {
-        ::Scanline pReadScan;
-
-        switch( pBitmapReadAcc->GetScanlineFormat() )
-        {
-        case ScanlineFormat::N8BitPal:
-            pReadScan = pBitmapReadAcc->GetScanline( nY );
-            if( pAlphaReadAcc )
-                if( readAlpha( pAlphaReadAcc.get(), nY, nWidth, data, nOff ) )
-                    bIsAlpha = true;
-
-            for( nX = 0; nX < nWidth; nX++ )
-            {
-#ifdef OSL_BIGENDIAN
-                if( pAlphaReadAcc )
-                    nAlpha = data[ nOff++ ];
-                else
-                    nAlpha = data[ nOff++ ] = 255;
-#else
-                if( pAlphaReadAcc )
-                    nAlpha = data[ nOff + 3 ];
-                else
-                    nAlpha = data[ nOff + 3 ] = 255;
-#endif
-                aColor = pBitmapReadAcc->GetPaletteColor(*pReadScan++);
-
-#ifdef OSL_BIGENDIAN
-#if ENABLE_WASM_STRIP_PREMULTIPLY
-                data[ nOff++ ] = vcl::bitmap::premultiply(aColor.GetRed(), nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(aColor.GetGreen(), nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(aColor.GetBlue(), nAlpha);
-#else
-                data[ nOff++ ] = premultiply_table[nAlpha][aColor.GetRed()];
-                data[ nOff++ ] = premultiply_table[nAlpha][aColor.GetGreen()];
-                data[ nOff++ ] = premultiply_table[nAlpha][aColor.GetBlue()];
-#endif
-#else
-#if ENABLE_WASM_STRIP_PREMULTIPLY
-                data[ nOff++ ] = vcl::bitmap::premultiply(aColor.GetBlue(), nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(aColor.GetGreen(), nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(aColor.GetRed(), nAlpha);
-#else
-                data[ nOff++ ] = premultiply_table[nAlpha][aColor.GetBlue()];
-                data[ nOff++ ] = premultiply_table[nAlpha][aColor.GetGreen()];
-                data[ nOff++ ] = premultiply_table[nAlpha][aColor.GetRed()];
-#endif
-                nOff++;
-#endif
-            }
-            break;
-        case ScanlineFormat::N24BitTcBgr:
-            pReadScan = pBitmapReadAcc->GetScanline( nY );
-            if( pAlphaReadAcc )
-                if( readAlpha( pAlphaReadAcc.get(), nY, nWidth, data, nOff ) )
-                    bIsAlpha = true;
-
-            for( nX = 0; nX < nWidth; nX++ )
-            {
-#ifdef OSL_BIGENDIAN
-                if( pAlphaReadAcc )
-                    nAlpha = data[ nOff ];
-                else
-                    nAlpha = data[ nOff ] = 255;
-#if ENABLE_WASM_STRIP_PREMULTIPLY
-                data[ nOff + 3 ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
-                data[ nOff + 2 ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
-                data[ nOff + 1 ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
-#else
-                data[ nOff + 3 ] = premultiply_table[nAlpha][*pReadScan++];
-                data[ nOff + 2 ] = premultiply_table[nAlpha][*pReadScan++];
-                data[ nOff + 1 ] = premultiply_table[nAlpha][*pReadScan++];
-#endif
-                nOff += 4;
-#else
-                if( pAlphaReadAcc )
-                    nAlpha = data[ nOff + 3 ];
-                else
-                    nAlpha = data[ nOff + 3 ] = 255;
-#if ENABLE_WASM_STRIP_PREMULTIPLY
-                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
-#else
-                data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
-                data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
-                data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
-#endif
-                nOff++;
-#endif
-            }
-            break;
-        case ScanlineFormat::N24BitTcRgb:
-            pReadScan = pBitmapReadAcc->GetScanline( nY );
-            if( pAlphaReadAcc )
-                if( readAlpha( pAlphaReadAcc.get(), nY, nWidth, data, nOff ) )
-                    bIsAlpha = true;
-
-            for( nX = 0; nX < nWidth; nX++ )
-            {
-#ifdef OSL_BIGENDIAN
-                if( pAlphaReadAcc )
-                    nAlpha = data[ nOff++ ];
-                else
-                    nAlpha = data[ nOff++ ] = 255;
-#if ENABLE_WASM_STRIP_PREMULTIPLY
-                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
-#else
-                data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
-                data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
-                data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
-#endif
-#else
-                if( pAlphaReadAcc )
-                    nAlpha = data[ nOff + 3 ];
-                else
-                    nAlpha = data[ nOff + 3 ] = 255;
-#if ENABLE_WASM_STRIP_PREMULTIPLY
-                data[ nOff++ ] = vcl::bitmap::premultiply(pReadScan[ 2 ], nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(pReadScan[ 1 ], nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(pReadScan[ 0 ], nAlpha);
-#else
-                data[ nOff++ ] = premultiply_table[nAlpha][pReadScan[ 2 ]];
-                data[ nOff++ ] = premultiply_table[nAlpha][pReadScan[ 1 ]];
-                data[ nOff++ ] = premultiply_table[nAlpha][pReadScan[ 0 ]];
-#endif
-                pReadScan += 3;
-                nOff++;
-#endif
-            }
-            break;
-        case ScanlineFormat::N32BitTcBgra:
-        case ScanlineFormat::N32BitTcBgrx:
-            pReadScan = pBitmapReadAcc->GetScanline( nY );
-            if( pAlphaReadAcc )
-                if( readAlpha( pAlphaReadAcc.get(), nY, nWidth, data, nOff ) )
-                    bIsAlpha = true;
-
-            for( nX = 0; nX < nWidth; nX++ )
-            {
-#ifdef OSL_BIGENDIAN
-                if( pAlphaReadAcc )
-                    nAlpha = data[ nOff++ ];
-                else
-                    nAlpha = data[ nOff++ ] = 255;
-#if ENABLE_WASM_STRIP_PREMULTIPLY
-                data[ nOff++ ] = vcl::bitmap::premultiply(pReadScan[ 2 ], nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(pReadScan[ 1 ], nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(pReadScan[ 0 ], nAlpha);
-#else
-                data[ nOff++ ] = premultiply_table[nAlpha][pReadScan[ 2 ]];
-                data[ nOff++ ] = premultiply_table[nAlpha][pReadScan[ 1 ]];
-                data[ nOff++ ] = premultiply_table[nAlpha][pReadScan[ 0 ]];
-#endif
-                pReadScan += 4;
-#else
-                if( pAlphaReadAcc )
-                    nAlpha = data[ nOff + 3 ];
-                else
-                    nAlpha = data[ nOff + 3 ] = 255;
-#if ENABLE_WASM_STRIP_PREMULTIPLY
-                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
-#else
-                data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
-                data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
-                data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
-#endif
-                pReadScan++;
-                nOff++;
-#endif
-            }
-            break;
-        case ScanlineFormat::N32BitTcRgba:
-        case ScanlineFormat::N32BitTcRgbx:
-            pReadScan = pBitmapReadAcc->GetScanline( nY );
-            if( pAlphaReadAcc )
-                if( readAlpha( pAlphaReadAcc.get(), nY, nWidth, data, nOff ) )
-                    bIsAlpha = true;
-
-            for( nX = 0; nX < nWidth; nX++ )
-            {
-#ifdef OSL_BIGENDIAN
-                if( pAlphaReadAcc )
-                    nAlpha = data[ nOff ++ ];
-                else
-                    nAlpha = data[ nOff ++ ] = 255;
-#if ENABLE_WASM_STRIP_PREMULTIPLY
-                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
-#else
-                data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
-                data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
-                data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
-#endif
-                pReadScan++;
-#else
-                if( pAlphaReadAcc )
-                    nAlpha = data[ nOff + 3 ];
-                else
-                    nAlpha = data[ nOff + 3 ] = 255;
-#if ENABLE_WASM_STRIP_PREMULTIPLY
-                data[ nOff++ ] = vcl::bitmap::premultiply(pReadScan[ 2 ], nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(pReadScan[ 1 ], nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(pReadScan[ 0 ], nAlpha);
-#else
-                data[ nOff++ ] = premultiply_table[nAlpha][pReadScan[ 2 ]];
-                data[ nOff++ ] = premultiply_table[nAlpha][pReadScan[ 1 ]];
-                data[ nOff++ ] = premultiply_table[nAlpha][pReadScan[ 0 ]];
-#endif
-                pReadScan += 4;
-                nOff++;
-#endif
-            }
-            break;
-        default:
-            SAL_INFO( "canvas.cairo", "fallback to GetColor - slow, format: " << static_cast<int>(pBitmapReadAcc->GetScanlineFormat()) );
-
-            if( pAlphaReadAcc )
-                if( readAlpha( pAlphaReadAcc.get(), nY, nWidth, data, nOff ) )
-                    bIsAlpha = true;
-
-            for( nX = 0; nX < nWidth; nX++ )
-            {
-                aColor = pBitmapReadAcc->GetColor( nY, nX );
-
-                // cairo need premultiplied color values
-                // TODO(rodo) handle endianness
-#ifdef OSL_BIGENDIAN
-                if( pAlphaReadAcc )
-                    nAlpha = data[ nOff++ ];
-                else
-                    nAlpha = data[ nOff++ ] = 255;
-#if ENABLE_WASM_STRIP_PREMULTIPLY
-                data[ nOff++ ] = vcl::bitmap::premultiply(aColor.GetRed(), nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(aColor.GetGreen(), nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(aColor.GetBlue(), nAlpha);
-#else
-                data[ nOff++ ] = premultiply_table[nAlpha][aColor.GetRed()];
-                data[ nOff++ ] = premultiply_table[nAlpha][aColor.GetGreen()];
-                data[ nOff++ ] = premultiply_table[nAlpha][aColor.GetBlue()];
-#endif
-#else
-                if( pAlphaReadAcc )
-                    nAlpha = data[ nOff + 3 ];
-                else
-                    nAlpha = data[ nOff + 3 ] = 255;
-#if ENABLE_WASM_STRIP_PREMULTIPLY
-                data[ nOff++ ] = vcl::bitmap::premultiply(aColor.GetBlue(), nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(aColor.GetGreen(), nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(aColor.GetRed(), nAlpha);
-#else
-                data[ nOff++ ] = premultiply_table[nAlpha][aColor.GetBlue()];
-                data[ nOff++ ] = premultiply_table[nAlpha][aColor.GetGreen()];
-                data[ nOff++ ] = premultiply_table[nAlpha][aColor.GetRed()];
-#endif
-                nOff ++;
-#endif
-            }
-        }
-    }
-
-    bHasAlpha = bIsAlpha;
-
-}
-
-/**
+ * This returns data formatted the way Cairo wants it, i.e. either CAIRO_FORMAT_ARGB32 or CAIRO_FORMAT_RGB24
+ *
  * @param data will be filled with alpha data, if xBitmap is alpha/transparent image
  * @param bHasAlpha will be set to true if resulting surface has alpha
  **/
@@ -997,19 +662,15 @@ void CanvasCairoExtractBitmapData( const Bitmap & aBitmap, unsigned char*& data,
     const tools::Long      nWidth = rnWidth = pBitmapReadAcc->Width();
     const tools::Long      nHeight = rnHeight = pBitmapReadAcc->Height();
     tools::Long nX, nY;
-    bool bIsAlpha = false;
+    bHasAlpha = aBitmap.HasAlpha();
 
-    data = static_cast<unsigned char*>(malloc( nWidth*nHeight*4 ));
+    data = static_cast<unsigned char*>(malloc( nWidth*nHeight*(bHasAlpha ? 4 : 3) ));
     if (!data)
         std::abort();
 
     tools::Long nOff = 0;
     ::Color aColor;
-    unsigned int nAlpha = 255;
 
-#if !ENABLE_WASM_STRIP_PREMULTIPLY
-    vcl::bitmap::lookup_table const & premultiply_table = vcl::bitmap::get_premultiply_table();
-#endif
     for( nY = 0; nY < nHeight; nY++ )
     {
         ::Scanline pReadScan;
@@ -1017,186 +678,138 @@ void CanvasCairoExtractBitmapData( const Bitmap & aBitmap, unsigned char*& data,
         switch( pBitmapReadAcc->GetScanlineFormat() )
         {
         case ScanlineFormat::N8BitPal:
+            assert(!bHasAlpha);
             pReadScan = pBitmapReadAcc->GetScanline( nY );
 
             for( nX = 0; nX < nWidth; nX++ )
             {
-#ifdef OSL_BIGENDIAN
-                nAlpha = data[ nOff++ ] = 255;
-#else
-                nAlpha = data[ nOff + 3 ] = 255;
-#endif
                 aColor = pBitmapReadAcc->GetPaletteColor(*pReadScan++);
-
 #ifdef OSL_BIGENDIAN
-#if ENABLE_WASM_STRIP_PREMULTIPLY
-                data[ nOff++ ] = vcl::bitmap::premultiply(aColor.GetRed(), nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(aColor.GetGreen(), nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(aColor.GetBlue(), nAlpha);
+                data[ nOff++ ] = aColor.GetRed();
+                data[ nOff++ ] = aColor.GetGreen();
+                data[ nOff++ ] = aColor.GetBlue();
 #else
-                data[ nOff++ ] = premultiply_table[nAlpha][aColor.GetRed()];
-                data[ nOff++ ] = premultiply_table[nAlpha][aColor.GetGreen()];
-                data[ nOff++ ] = premultiply_table[nAlpha][aColor.GetBlue()];
-#endif
-#else
-#if ENABLE_WASM_STRIP_PREMULTIPLY
-                data[ nOff++ ] = vcl::bitmap::premultiply(aColor.GetBlue(), nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(aColor.GetGreen(), nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(aColor.GetRed(), nAlpha);
-#else
-                data[ nOff++ ] = premultiply_table[nAlpha][aColor.GetBlue()];
-                data[ nOff++ ] = premultiply_table[nAlpha][aColor.GetGreen()];
-                data[ nOff++ ] = premultiply_table[nAlpha][aColor.GetRed()];
-#endif
-                nOff++;
+                data[ nOff++ ] = aColor.GetBlue();
+                data[ nOff++ ] = aColor.GetGreen();
+                data[ nOff++ ] = aColor.GetRed();
 #endif
             }
             break;
         case ScanlineFormat::N24BitTcBgr:
+            assert(!bHasAlpha);
             pReadScan = pBitmapReadAcc->GetScanline( nY );
 
             for( nX = 0; nX < nWidth; nX++ )
             {
 #ifdef OSL_BIGENDIAN
-                nAlpha = data[ nOff ] = 255;
-#if ENABLE_WASM_STRIP_PREMULTIPLY
-                data[ nOff + 3 ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
-                data[ nOff + 2 ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
-                data[ nOff + 1 ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
+                data[ nOff + 3 ] = *pReadScan++;
+                data[ nOff + 2 ] = *pReadScan++;
+                data[ nOff + 1 ] = *pReadScan++;
 #else
-                data[ nOff + 3 ] = premultiply_table[nAlpha][*pReadScan++];
-                data[ nOff + 2 ] = premultiply_table[nAlpha][*pReadScan++];
-                data[ nOff + 1 ] = premultiply_table[nAlpha][*pReadScan++];
+                data[ nOff + 1 ] = *pReadScan++;
+                data[ nOff + 2 ] = *pReadScan++;
+                data[ nOff + 3 ] = *pReadScan++;
 #endif
-                nOff += 4;
-#else
-                nAlpha = data[ nOff + 3 ] = 255;
-#if ENABLE_WASM_STRIP_PREMULTIPLY
-                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
-#else
-                data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
-                data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
-                data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
-#endif
-                nOff++;
-#endif
+                nOff += 3;
             }
             break;
         case ScanlineFormat::N24BitTcRgb:
+            assert(!bHasAlpha);
             pReadScan = pBitmapReadAcc->GetScanline( nY );
 
             for( nX = 0; nX < nWidth; nX++ )
             {
 #ifdef OSL_BIGENDIAN
-                nAlpha = data[ nOff++ ] = 255;
-#if ENABLE_WASM_STRIP_PREMULTIPLY
-                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
+                data[ nOff + 3 ] = *pReadScan++;
+                data[ nOff + 2 ] = *pReadScan++;
+                data[ nOff + 1 ] = *pReadScan++;
 #else
-                data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
-                data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
-                data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
+                data[ nOff + 1 ] = *pReadScan++;
+                data[ nOff + 2 ] = *pReadScan++;
+                data[ nOff + 3 ] = *pReadScan++;
 #endif
-#else
-                nAlpha = data[ nOff + 3 ] = 255;
-#if ENABLE_WASM_STRIP_PREMULTIPLY
-                data[ nOff++ ] = vcl::bitmap::premultiply(pReadScan[ 2 ], nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(pReadScan[ 1 ], nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(pReadScan[ 0 ], nAlpha);
-#else
-                data[ nOff++ ] = premultiply_table[nAlpha][pReadScan[ 2 ]];
-                data[ nOff++ ] = premultiply_table[nAlpha][pReadScan[ 1 ]];
-                data[ nOff++ ] = premultiply_table[nAlpha][pReadScan[ 0 ]];
-#endif
-                pReadScan += 3;
-                nOff++;
-#endif
+                nOff += 3;
             }
             break;
         case ScanlineFormat::N32BitTcBgra:
-            bIsAlpha = true;
-            [[fallthrough]];
+            assert(bHasAlpha);
+            pReadScan = pBitmapReadAcc->GetScanline( nY );
+
+            // this data is already premultiplied
+            for( nX = 0; nX < nWidth; nX++ )
+            {
+#ifdef OSL_BIGENDIAN
+                data[ nOff++ ] = pReadScan[ 3 ];
+                data[ nOff++ ] = pReadScan[ 2 ];
+                data[ nOff++ ] = pReadScan[ 1 ];
+                data[ nOff++ ] = pReadScan[ 0 ];
+                pReadScan += 4;
+#else
+                data[ nOff++ ] = *pReadScan++;
+                data[ nOff++ ] = *pReadScan++;
+                data[ nOff++ ] = *pReadScan++;
+                data[ nOff++ ] = *pReadScan++;
+#endif
+            }
+            break;
+
         case ScanlineFormat::N32BitTcBgrx:
+            assert(!bHasAlpha);
             pReadScan = pBitmapReadAcc->GetScanline( nY );
 
             for( nX = 0; nX < nWidth; nX++ )
             {
 #ifdef OSL_BIGENDIAN
-                if( bIsAlpha )
-                    nAlpha = pReadScan[3];
-                else
-                    nAlpha = data[ nOff++ ] = 255;
-#if ENABLE_WASM_STRIP_PREMULTIPLY
-                data[ nOff++ ] = vcl::bitmap::premultiply(pReadScan[ 2 ], nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(pReadScan[ 1 ], nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(pReadScan[ 0 ], nAlpha);
-#else
-                data[ nOff++ ] = premultiply_table[nAlpha][pReadScan[ 2 ]];
-                data[ nOff++ ] = premultiply_table[nAlpha][pReadScan[ 1 ]];
-                data[ nOff++ ] = premultiply_table[nAlpha][pReadScan[ 0 ]];
-#endif
+                data[ nOff++ ] = pReadScan[ 2 ];
+                data[ nOff++ ] = pReadScan[ 1 ];
+                data[ nOff++ ] = pReadScan[ 0 ];
                 pReadScan += 4;
 #else
-                if( bIsAlpha )
-                    nAlpha = pReadScan[3];
-                else
-                    nAlpha = data[ nOff + 3 ] = 255;
-#if ENABLE_WASM_STRIP_PREMULTIPLY
-                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
-#else
-                data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
-                data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
-                data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
-#endif
+                data[ nOff++ ] = *pReadScan++;
+                data[ nOff++ ] = *pReadScan++;
+                data[ nOff++ ] = *pReadScan++;
                 pReadScan++;
-                nOff++;
 #endif
             }
             break;
         case ScanlineFormat::N32BitTcRgba:
-            bIsAlpha = true;
-            [[fallthrough]];
+            assert(bHasAlpha);
+            pReadScan = pBitmapReadAcc->GetScanline( nY );
+
+            // this data is already premultiplied
+            for( nX = 0; nX < nWidth; nX++ )
+            {
+#ifdef OSL_BIGENDIAN
+                data[ nOff++ ] = *pReadScan++;
+                data[ nOff++ ] = *pReadScan++;
+                data[ nOff++ ] = *pReadScan++;
+                data[ nOff++ ] = *pReadScan++;
+#else
+                data[ nOff++ ] = pReadScan[ 3 ];
+                data[ nOff++ ] = pReadScan[ 2 ];
+                data[ nOff++ ] = pReadScan[ 1 ];
+                data[ nOff++ ] = pReadScan[ 0 ];
+                pReadScan += 4;
+#endif
+            }
+            break;
+
         case ScanlineFormat::N32BitTcRgbx:
+            assert(!bHasAlpha);
             pReadScan = pBitmapReadAcc->GetScanline( nY );
 
             for( nX = 0; nX < nWidth; nX++ )
             {
 #ifdef OSL_BIGENDIAN
-                if( bIsAlpha )
-                    nAlpha = pReadScan[3];
-                else
-                    nAlpha = data[ nOff ++ ] = 255;
-#if ENABLE_WASM_STRIP_PREMULTIPLY
-                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(*pReadScan++, nAlpha);
-#else
-                data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
-                data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
-                data[ nOff++ ] = premultiply_table[nAlpha][*pReadScan++];
-#endif
+                data[ nOff++ ] = *pReadScan++;
+                data[ nOff++ ] = *pReadScan++;
+                data[ nOff++ ] = *pReadScan++;
                 pReadScan++;
 #else
-                if( bIsAlpha )
-                    nAlpha = pReadScan[3];
-                else
-                    nAlpha = data[ nOff + 3 ] = 255;
-#if ENABLE_WASM_STRIP_PREMULTIPLY
-                data[ nOff++ ] = vcl::bitmap::premultiply(pReadScan[ 2 ], nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(pReadScan[ 1 ], nAlpha);
-                data[ nOff++ ] = vcl::bitmap::premultiply(pReadScan[ 0 ], nAlpha);
-#else
-                data[ nOff++ ] = premultiply_table[nAlpha][pReadScan[ 2 ]];
-                data[ nOff++ ] = premultiply_table[nAlpha][pReadScan[ 1 ]];
-                data[ nOff++ ] = premultiply_table[nAlpha][pReadScan[ 0 ]];
-#endif
+                data[ nOff++ ] = pReadScan[ 2 ];
+                data[ nOff++ ] = pReadScan[ 1 ];
+                data[ nOff++ ] = pReadScan[ 0 ];
                 pReadScan += 4;
-                nOff++;
 #endif
             }
             break;
@@ -1204,8 +817,6 @@ void CanvasCairoExtractBitmapData( const Bitmap & aBitmap, unsigned char*& data,
             assert(false && "unknown format");
         }
     }
-
-    bHasAlpha = bIsAlpha;
 }
 
     uno::Sequence< sal_Int8 > CanvasExtractBitmapData(Bitmap const & rBitmap, const geometry::IntegerRectangle2D& rect)
