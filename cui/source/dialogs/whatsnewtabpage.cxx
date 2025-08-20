@@ -9,14 +9,10 @@
 
 #include <whatsnewtabpage.hxx>
 
-#include <config_folders.h>
-#include <rtl/bootstrap.hxx>
 #include <sfx2/app.hxx>
 #include <sfx2/sfxresid.hxx>
 #include <sfx2/strings.hrc>
-#include <sfx2/viewfrm.hxx>
-#include <svx/dlgctrl.hxx>
-#include <vcl/graphicfilter.hxx>
+#include <vcl/outdev.hxx>
 
 WhatsNewTabPage::WhatsNewTabPage(weld::Container* pPage, weld::DialogController* pController,
                                  const SfxItemSet& rAttr)
@@ -34,9 +30,7 @@ std::unique_ptr<SfxTabPage> WhatsNewTabPage::Create(weld::Container* pPage,
     return std::make_unique<WhatsNewTabPage>(pPage, pController, *rAttr);
 }
 
-void WhatsNewTabPage::Reset(const SfxItemSet* rSet) { ActivatePage(*rSet); }
-
-void WhatsNewTabPage::ActivatePage(const SfxItemSet& /* rSet */)
+void WhatsNewTabPage::Reset(const SfxItemSet* /* rSet */)
 {
     const Size aGraphicSize = m_aBrand.GetGraphicSize();
     m_pBrand->set_size_request(aGraphicSize.getWidth(), aGraphicSize.getHeight());

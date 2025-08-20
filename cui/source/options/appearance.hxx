@@ -12,14 +12,8 @@
 #include <vcl/weld.hxx>
 #include <sfx2/tabdlg.hxx>
 #include <svx/colorbox.hxx>
-#include <svx/xflasit.hxx>
-#include <svx/svxdlg.hxx>
 #include <svtools/colorcfg.hxx>
-#include <sfx2/app.hxx>
-#include <vcl/graph.hxx>
 #include <vcl/IconThemeInfo.hxx>
-#include <vcl/ptrstyle.hxx>
-#include <vcl/svapp.hxx>
 
 using namespace svtools;
 class SvxAppearanceTabPage : public SfxTabPage
@@ -91,8 +85,6 @@ private:
     void UpdateColorDropdown();
     void FillItemsList();
     ColorConfigEntry GetActiveEntry();
-
-    virtual void ActivatePage(const SfxItemSet&) override;
 
 public:
     SvxAppearanceTabPage(weld::Container* pPage, weld::DialogController* pController,
