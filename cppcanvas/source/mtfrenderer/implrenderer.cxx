@@ -749,7 +749,7 @@ namespace cppcanvas::internal
             aFontRequest.FontDescription.FontDescription.Weight =
                 rParms.mrParms.maFontWeight ?
                 *rParms.mrParms.maFontWeight :
-                ::canvas::tools::numeric_cast<sal_Int8>( ::basegfx::fround( rFont.GetWeight() ) );
+                ::canvastools::numeric_cast<sal_Int8>( ::basegfx::fround( rFont.GetWeight() ) );
             aFontRequest.FontDescription.FontDescription.Letterform =
                 rParms.mrParms.maFontLetterForm ?
                 *rParms.mrParms.maFontLetterForm :
@@ -777,7 +777,7 @@ namespace cppcanvas::internal
             }
 
             geometry::Matrix2D aFontMatrix;
-            ::canvas::tools::setIdentityMatrix2D( aFontMatrix );
+            ::canvastools::setIdentityMatrix2D( aFontMatrix );
 
             // TODO(F2): use correct scale direction, font
             // height might be width or anything else
@@ -1255,7 +1255,7 @@ namespace cppcanvas::internal
                         // modify current mapModeTransformation
                         // transformation, such that subsequent
                         // coordinates map correctly
-                        tools::calcLogic2PixelAffineTransform( rStates.getState().mapModeTransform,
+                        cppcanvastools::calcLogic2PixelAffineTransform( rStates.getState().mapModeTransform,
                                                                rVDev );
                         break;
 
@@ -1714,7 +1714,7 @@ namespace cppcanvas::internal
                                     // (the metafile comment works in
                                     // logical coordinates).
                                     ::basegfx::B2DHomMatrix aLogic2PixelTransform;
-                                    aMatrix *= tools::calcLogic2PixelLinearTransform( aLogic2PixelTransform,
+                                    aMatrix *= cppcanvastools::calcLogic2PixelLinearTransform( aLogic2PixelTransform,
                                                                                       rVDev );
 
                                     ::basegfx::unotools::affineMatrixFromHomMatrix(
@@ -2480,7 +2480,7 @@ namespace cppcanvas::internal
                         MetaTextLineAction*      pAct = static_cast<MetaTextLineAction*>(pCurrAct);
 
                         const OutDevState&       rState( rStates.getState() );
-                        const ::Size             aBaselineOffset( tools::getBaselineOffset( rState,
+                        const ::Size             aBaselineOffset( cppcanvastools::getBaselineOffset( rState,
                                                                                             rVDev ) );
                         const ::basegfx::B2DSize aSize( rState.mapModeTransform *
                                                         ::basegfx::B2DSize(pAct->GetWidth(),
@@ -2488,13 +2488,13 @@ namespace cppcanvas::internal
 
                         std::shared_ptr<Action> pPolyAction(
                             PolyPolyActionFactory::createPolyPolyAction(
-                                tools::createTextLinesPolyPolygon(
+                                cppcanvastools::createTextLinesPolyPolygon(
                                     rState.mapModeTransform *
                                     ::basegfx::B2DPoint(
                                         vcl::unotools::b2DPointFromPoint(pAct->GetStartPoint()) +
                                         vcl::unotools::b2DVectorFromSize(aBaselineOffset)),
                                     aSize.getWidth(),
-                                    tools::createTextLineInfo( rVDev,
+                                    cppcanvastools::createTextLineInfo( rVDev,
                                                                rState )),
                                 rCanvas,
                                 rState ) );
@@ -2887,7 +2887,7 @@ namespace cppcanvas::internal
             aStateStack.getState().transform.scale( 1.0 / aMtfSizePix.Width(),
                                                      1.0 / aMtfSizePix.Height() );
 
-            tools::calcLogic2PixelAffineTransform( aStateStack.getState().mapModeTransform,
+            cppcanvastools::calcLogic2PixelAffineTransform( aStateStack.getState().mapModeTransform,
                                                    *aVDev );
 
             {
@@ -2896,7 +2896,7 @@ namespace cppcanvas::internal
                 rState.textColor =
                     rState.textFillColor =
                     rState.textOverlineColor =
-                    rState.textLineColor = tools::intSRGBAToDoubleSequence( 0x000000FF );
+                    rState.textLineColor = cppcanvastools::intSRGBAToDoubleSequence( 0x000000FF );
             }
 
             // apply overrides from the Parameters struct
@@ -2904,13 +2904,13 @@ namespace cppcanvas::internal
             {
                 ::cppcanvas::internal::OutDevState& rState = aStateStack.getState();
                 rState.isFillColorSet = true;
-                rState.fillColor = tools::intSRGBAToDoubleSequence( *rParams.maFillColor );
+                rState.fillColor = cppcanvastools::intSRGBAToDoubleSequence( *rParams.maFillColor );
             }
             if( rParams.maLineColor )
             {
                 ::cppcanvas::internal::OutDevState& rState = aStateStack.getState();
                 rState.isLineColorSet = true;
-                rState.lineColor = tools::intSRGBAToDoubleSequence( *rParams.maLineColor );
+                rState.lineColor = cppcanvastools::intSRGBAToDoubleSequence( *rParams.maLineColor );
             }
             if( rParams.maTextColor )
             {
@@ -2921,7 +2921,7 @@ namespace cppcanvas::internal
                 rState.textColor =
                     rState.textFillColor =
                     rState.textOverlineColor =
-                    rState.textLineColor = tools::intSRGBAToDoubleSequence( *rParams.maTextColor );
+                    rState.textLineColor = cppcanvastools::intSRGBAToDoubleSequence( *rParams.maTextColor );
             }
             if( rParams.maFontName ||
                 rParams.maFontWeight ||
@@ -2978,7 +2978,7 @@ namespace cppcanvas::internal
                 // render subset of actions
                 // ========================
 
-                ::basegfx::B2DHomMatrix aMatrix = ::canvas::tools::getRenderStateTransform( getRenderState() );
+                ::basegfx::B2DHomMatrix aMatrix = ::canvastools::getRenderStateTransform( getRenderState() );
 
                 ActionRenderer aRenderer( aMatrix );
 
@@ -3020,7 +3020,7 @@ namespace cppcanvas::internal
             // query bounds for subset of actions
             // ==================================
 
-            ::basegfx::B2DHomMatrix aMatrix = ::canvas::tools::getRenderStateTransform(
+            ::basegfx::B2DHomMatrix aMatrix = ::canvastools::getRenderStateTransform(
                                                       getRenderState() );
 
             AreaQuery aQuery( aMatrix );
@@ -3038,7 +3038,7 @@ namespace cppcanvas::internal
         {
             SAL_INFO( "cppcanvas.emf", "::cppcanvas::internal::ImplRenderer::draw()" );
 
-            ::basegfx::B2DHomMatrix aMatrix = ::canvas::tools::getRenderStateTransform(
+            ::basegfx::B2DHomMatrix aMatrix = ::canvastools::getRenderStateTransform(
                                                       getRenderState() );
 
             try

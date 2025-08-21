@@ -63,11 +63,11 @@ namespace vclcanvas
         maFont->SetLanguage( LanguageTag::convertToLanguageType( rFontRequest.Locale, false));
 
         // adjust to stretched/shrunk font
-        tools::setupFontWidth(rFontMatrix, maFont.get(), rOutDevProvider->getOutDev());
+        vclcanvastools::setupFontWidth(rFontMatrix, maFont.get(), rOutDevProvider->getOutDev());
 
         sal_uInt32 nEmphasisMark = 0;
 
-        ::canvas::tools::extractExtraFontProperties(rExtraFontProperties, nEmphasisMark);
+        ::canvastools::extractExtraFontProperties(rExtraFontProperties, nEmphasisMark);
 
         if (nEmphasisMark)
             maFont->SetEmphasisMark(FontEmphasisMark(nEmphasisMark));

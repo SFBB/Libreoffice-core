@@ -78,7 +78,7 @@ namespace cppcanvas::internal
                 maPoint( rPoint ),
                 mpCanvas(std::move( xCanvas ))
             {
-                tools::initRenderState(maState,rState);
+                cppcanvastools::initRenderState(maState,rState);
                 maState.DeviceColor = rState.lineColor;
             }
 
@@ -89,7 +89,7 @@ namespace cppcanvas::internal
                 maPoint( rPoint ),
                 mpCanvas( rCanvas )
             {
-                tools::initRenderState(maState,rState);
+                cppcanvastools::initRenderState(maState,rState);
                 maState.DeviceColor = vcl::unotools::colorToDoubleSequence(
                     rAltColor,
                     rCanvas->getUNOCanvas()->getDevice()->getDeviceColorSpace() );
@@ -101,7 +101,7 @@ namespace cppcanvas::internal
                 SAL_INFO( "cppcanvas.emf", "::cppcanvas::internal::PointAction: 0x" << std::hex << this );
 
                 rendering::RenderState aLocalState( maState );
-                ::canvas::tools::prependToRenderState(aLocalState, rTransformation);
+                ::canvastools::prependToRenderState(aLocalState, rTransformation);
 
                 mpCanvas->getUNOCanvas()->drawPoint( ::basegfx::unotools::point2DFromB2DPoint(maPoint),
                                                      mpCanvas->getViewState(),
@@ -125,9 +125,9 @@ namespace cppcanvas::internal
             ::basegfx::B2DRange PointAction::getBounds( const ::basegfx::B2DHomMatrix&  rTransformation ) const
             {
                 rendering::RenderState aLocalState( maState );
-                ::canvas::tools::prependToRenderState(aLocalState, rTransformation);
+                ::canvastools::prependToRenderState(aLocalState, rTransformation);
 
-                return tools::calcDevicePixelBounds( ::basegfx::B2DRange( maPoint.getX()-1,
+                return cppcanvastools::calcDevicePixelBounds( ::basegfx::B2DRange( maPoint.getX()-1,
                                                                           maPoint.getY()-1,
                                                                           maPoint.getX()+1,
                                                                           maPoint.getY()+1 ),

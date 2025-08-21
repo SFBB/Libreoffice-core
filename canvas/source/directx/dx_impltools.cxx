@@ -52,7 +52,7 @@
 using namespace ::com::sun::star;
 
 
-namespace dxcanvas::tools
+namespace dxcanvastools
 {
         ::basegfx::B2DPolyPolygon polyPolygonFromXPolyPolygon2D( const uno::Reference< rendering::XPolyPolygon2D >& xPoly )
         {
@@ -382,9 +382,9 @@ namespace dxcanvas::tools
             // TODO(F1): handle color space conversions, when defined on canvas/graphicDevice
             Gdiplus::ARGB aColor;
 
-            ::canvas::tools::verifyRange(rColor[0],0.0,1.0);
-            ::canvas::tools::verifyRange(rColor[1],0.0,1.0);
-            ::canvas::tools::verifyRange(rColor[2],0.0,1.0);
+            ::canvastools::verifyRange(rColor[0],0.0,1.0);
+            ::canvastools::verifyRange(rColor[1],0.0,1.0);
+            ::canvastools::verifyRange(rColor[2],0.0,1.0);
 
             aColor =
                 (static_cast<sal_uInt8>( ::basegfx::fround( 255*rColor[0] ) ) << 16) |
@@ -393,7 +393,7 @@ namespace dxcanvas::tools
 
             if( rColor.getLength() > 3 )
             {
-                ::canvas::tools::verifyRange(rColor[3],0.0,1.0);
+                ::canvastools::verifyRange(rColor[3],0.0,1.0);
                 aColor |= static_cast<sal_uInt8>( ::basegfx::fround( 255*rColor[3] ) ) << 24;
             }
 
@@ -464,7 +464,7 @@ namespace dxcanvas::tools
             }
             else
             {
-                return tools::graphicsPathFromB2DPolyPolygon(
+                return graphicsPathFromB2DPolyPolygon(
                     polyPolygonFromXPolyPolygon2D( xPoly ), bNoLineJoin );
             }
         }
@@ -558,7 +558,7 @@ namespace dxcanvas::tools
                 }
 
                 GraphicsSharedPtr pGraphics(createGraphicsFromBitmap(pBitmap));
-                tools::setupGraphics(*pGraphics);
+                setupGraphics(*pGraphics);
                 if( !drawVCLBitmapFromXBitmap(
                         pGraphics,
                         xBitmap) )
@@ -624,6 +624,6 @@ namespace dxcanvas::tools
             o_rAttr.SetColorMatrix( &aColorMatrix );
         }
 
-} // namespace dxcanvas::tools
+} // namespace dxcanvastools
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

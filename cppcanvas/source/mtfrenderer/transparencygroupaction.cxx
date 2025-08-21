@@ -131,7 +131,7 @@ namespace cppcanvas::internal
 
                 aLocalTransformation.translate( rDstPoint.getX(),
                                                 rDstPoint.getY() );
-                ::canvas::tools::appendToRenderState( rRenderState,
+                ::canvastools::appendToRenderState( rRenderState,
                                                       aLocalTransformation );
             }
 
@@ -146,11 +146,11 @@ namespace cppcanvas::internal
                 maDstSize(rDstSize.getX(), rDstSize.getY()),
                 mpCanvas( rCanvas )
             {
-                tools::initRenderState(maState,rState);
+                cppcanvastools::initRenderState(maState,rState);
                 implSetupTransform( maState, rDstPoint );
 
                 // correct clip (which is relative to original transform)
-                tools::modifyClip( maState,
+                cppcanvastools::modifyClip( maState,
                                    rState,
                                    rCanvas,
                                    rDstPoint,
@@ -176,10 +176,10 @@ namespace cppcanvas::internal
 
                 // determine overall transformation matrix (render, view,
                 // and passed transformation)
-                ::basegfx::B2DHomMatrix aTransform = ::canvas::tools::getRenderStateTransform( maState );
+                ::basegfx::B2DHomMatrix aTransform = ::canvastools::getRenderStateTransform( maState );
                 aTransform = rTransformation * aTransform;
 
-                ::basegfx::B2DHomMatrix aTotalTransform = ::canvas::tools::getViewStateTransform( mpCanvas->getViewState() );
+                ::basegfx::B2DHomMatrix aTotalTransform = ::canvastools::getViewStateTransform( mpCanvas->getViewState() );
                 aTotalTransform = aTotalTransform * aTransform;
 
                 // since pure translational changes to the transformation
@@ -413,7 +413,7 @@ namespace cppcanvas::internal
                 aTransform = aTransform * aScaleCorrection;
 
                 rendering::RenderState aLocalState( maState );
-                ::canvas::tools::setRenderStateTransform(aLocalState, aTransform);
+                ::canvastools::setRenderStateTransform(aLocalState, aTransform);
 
                 if(aLocalState.Clip.is())
                 {
@@ -466,9 +466,9 @@ namespace cppcanvas::internal
             ::basegfx::B2DRange TransparencyGroupAction::getBounds( const ::basegfx::B2DHomMatrix&  rTransformation ) const
             {
                 rendering::RenderState aLocalState( maState );
-                ::canvas::tools::prependToRenderState(aLocalState, rTransformation);
+                ::canvastools::prependToRenderState(aLocalState, rTransformation);
 
-                return tools::calcDevicePixelBounds(
+                return cppcanvastools::calcDevicePixelBounds(
                     ::basegfx::B2DRange( 0,0,
                                          maDstSize.getWidth(),
                                          maDstSize.getHeight() ),

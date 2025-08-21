@@ -37,13 +37,13 @@
 
 using namespace ::com::sun::star;
 
-namespace cppcanvas::tools
+namespace cppcanvastools
 {
         void initRenderState( rendering::RenderState&                   renderState,
                               const ::cppcanvas::internal::OutDevState& outdevState )
         {
-            ::canvas::tools::initRenderState( renderState );
-            ::canvas::tools::setRenderStateTransform( renderState,
+            ::canvastools::initRenderState( renderState );
+            ::canvastools::setRenderStateTransform( renderState,
                                                       outdevState.transform );
             renderState.Clip = outdevState.xClipPoly;
         }
@@ -111,7 +111,7 @@ namespace cppcanvas::tools
 
         bool modifyClip( rendering::RenderState&                            o_rRenderState,
                          const struct ::cppcanvas::internal::OutDevState&   rOutdevState,
-                         const CanvasSharedPtr&                             rCanvas,
+                         const ::cppcanvas::CanvasSharedPtr&                rCanvas,
                          const ::basegfx::B2DPoint&                         rOffset,
                          const ::basegfx::B2DVector*                        pScaling,
                          const double*                                      pRotation )
@@ -630,11 +630,11 @@ namespace cppcanvas::tools
                                                    const rendering::RenderState&    renderState )
         {
             ::basegfx::B2DHomMatrix aTransform;
-            ::canvas::tools::mergeViewAndRenderTransform( aTransform,
+            ::canvastools::mergeViewAndRenderTransform( aTransform,
                                                           viewState,
                                                           renderState );
 
-            return  ::canvas::tools::calcTransformedRectBounds(rBounds,
+            return  ::canvastools::calcTransformedRectBounds(rBounds,
                                                                aTransform );
         }
 

@@ -70,13 +70,14 @@ void TickerThread::execute()
         if (sleep_duration == std::chrono::milliseconds::max())
         {
             // Wait until a lock is added or shutdown
-            m_rLockStore.m_aCondition.wait(
-                aGuard, [this] { return !m_rLockStore.m_aLockInfoMap.empty() || m_bFinish; });
+            m_rLockStore.m_aCondition.wait(aGuard,
+                [this] { return !m_rLockStore.m_aLockInfoMap.empty() || m_bFinish; });
         }
         else
         {
             // Wait until the next deadline or a notification
-            m_rLockStore.m_aCondition.wait_for(aGuard, sleep_duration);
+            m_rLockStore.m_aCondition.wait_for(aGuard, sleep_duration,
+                [this] { return !m_rLockStore.m_aLockInfoMap.empty() || m_bFinish; });
         }
     }
 
@@ -93,7 +94,7 @@ SerfLockStore::~SerfLockStore()
 {
     std::unique_lock aGuard(m_aMutex);
     stopTicker(aGuard);
-    aGuard.lock(); // actually no threads should even try to access members now
+    assert(aGuard.owns_lock()); // actually no threads should even try to access members now
 
     // release active locks, if any.
     SAL_WARN_IF( !m_aLockInfoMap.empty(), "ucb.ucp.webdav",
@@ -133,6 +134,8 @@ void SerfLockStore::stopTicker(std::unique_lock<std::mutex> & rGuard)
     {
         pTickerThread->join(); // without m_aMutex locked (to prevent deadlock)
     }
+
+    rGuard.lock();
 }
 
 bool SerfLockStore::joinThreads()
