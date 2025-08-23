@@ -27,7 +27,10 @@
 
 #include <com/sun/star/io/IOException.hpp>
 #include <com/sun/star/io/XTextOutputStream2.hpp>
+#include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
+
+#include <optional>
 
 namespace com::sun::star::uno { class XComponentContext; }
 
@@ -44,19 +47,28 @@ class OTextOutputStream : public WeakImplHelper< XTextOutputStream2, XServiceInf
 {
     Reference< XOutputStream > mxStream;
 
-    // Encoding
-    bool mbEncodingInitialized;
-    rtl_UnicodeToTextConverter  mConvUnicode2Text;
-    rtl_UnicodeToTextContext    mContextUnicode2Text;
+    struct Encoding_t
+    {
+        rtl_UnicodeToTextConverter  mConvUnicode2Text;
+        rtl_UnicodeToTextContext    mContextUnicode2Text;
+        Encoding_t(rtl_TextEncoding encoding)
+        {
+            mConvUnicode2Text = rtl_createUnicodeToTextConverter(encoding);
+            mContextUnicode2Text = rtl_createUnicodeToTextContext(mConvUnicode2Text);
+        }
+        ~Encoding_t()
+        {
+            rtl_destroyUnicodeToTextContext(mConvUnicode2Text, mContextUnicode2Text);
+            rtl_destroyUnicodeToTextConverter(mConvUnicode2Text);
+        }
+    };
+    std::optional<Encoding_t> moEncoding;
 
     Sequence<sal_Int8> implConvert( const OUString& rSource );
     /// @throws IOException
     void checkOutputStream() const;
 
 public:
-    OTextOutputStream();
-    virtual ~OTextOutputStream() override;
-
     // Methods XTextOutputStream
     virtual void SAL_CALL writeString( const OUString& aString ) override;
     virtual void SAL_CALL setEncoding( const OUString& Encoding ) override;
@@ -76,22 +88,6 @@ public:
         virtual sal_Bool              SAL_CALL supportsService(const OUString& ServiceName) override;
 };
 
-}
-
-OTextOutputStream::OTextOutputStream()
-    : mbEncodingInitialized(false)
-    , mConvUnicode2Text(nullptr)
-    , mContextUnicode2Text(nullptr)
-{
-}
-
-OTextOutputStream::~OTextOutputStream()
-{
-    if( mbEncodingInitialized )
-    {
-        rtl_destroyUnicodeToTextContext( mConvUnicode2Text, mContextUnicode2Text );
-        rtl_destroyUnicodeToTextConverter( mConvUnicode2Text );
-    }
 }
 
 Sequence<sal_Int8> OTextOutputStream::implConvert( const OUString& rSource )
@@ -115,8 +111,8 @@ Sequence<sal_Int8> OTextOutputStream::implConvert( const OUString& rSource )
     while( true )
     {
         nTargetCount += rtl_convertUnicodeToText(
-                                    mConvUnicode2Text,
-                                    mContextUnicode2Text,
+                                    moEncoding->mConvUnicode2Text,
+                                    moEncoding->mContextUnicode2Text,
                                     &( puSource[nSourceCount] ),
                                     nSourceSize - nSourceCount ,
                                     &( pTarget[nTargetCount] ),
@@ -148,12 +144,10 @@ Sequence<sal_Int8> OTextOutputStream::implConvert( const OUString& rSource )
 void OTextOutputStream::writeString( const OUString& aString )
 {
     checkOutputStream();
-    if( !mbEncodingInitialized )
+    if (!moEncoding)
     {
         setEncoding( u"utf8"_ustr );
     }
-    if( !mbEncodingInitialized )
-        return;
 
     Sequence<sal_Int8> aByteSeq = implConvert( aString );
     mxStream->writeBytes( aByteSeq );
@@ -164,11 +158,9 @@ void OTextOutputStream::setEncoding( const OUString& Encoding )
     OString aOEncodingStr = OUStringToOString( Encoding, RTL_TEXTENCODING_ASCII_US );
     rtl_TextEncoding encoding = rtl_getTextEncodingFromMimeCharset( aOEncodingStr.getStr() );
     if( RTL_TEXTENCODING_DONTKNOW == encoding )
-        return;
+        throw IllegalArgumentException("Unknown encoding '" + Encoding + "'", getXWeak(), 0);
 
-    mbEncodingInitialized = true;
-    mConvUnicode2Text   = rtl_createUnicodeToTextConverter( encoding );
-    mContextUnicode2Text = rtl_createUnicodeToTextContext( mConvUnicode2Text );
+    moEncoding.emplace(encoding);
 }
 
 
@@ -232,7 +224,7 @@ extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 io_OTextOutputStream_get_implementation(
     css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
 {
-    return cppu::acquire(new OTextOutputStream());
+    return cppu::acquire(new OTextOutputStream);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
