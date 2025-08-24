@@ -1891,7 +1891,10 @@ IMPL_LINK(SwContentTree, CommandHdl, const CommandEvent&, rCEvt, bool)
             default: break;
         }
         if (!aIdent.isEmpty())
+        {
+            assert(nContentType != ContentTypeId::UNKNOWN && "aIdent is empty if UNKNOWN type");
             xPop->set_active(aIdent, mTrackContentType[nContentType]);
+        }
 
         // Edit only if the shown content is coming from the current view.
         if (State::HIDDEN != m_eState &&
@@ -3253,6 +3256,9 @@ void SwContentTree::Display( bool bActive )
 
             for( ContentTypeId nCntType : o3tl::enumrange<ContentTypeId>() )
             {
+                // starts at 0 so ContentTypeId::UNKNOWN of -1 is skipped
+                assert(nCntType != ContentTypeId::UNKNOWN);
+
                 std::unique_ptr<SwContentType>& rpContentT = bActive ?
                                     m_aActiveContentArr[nCntType] :
                                     m_aHiddenContentArr[nCntType];

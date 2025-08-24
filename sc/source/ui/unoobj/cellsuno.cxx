@@ -5865,20 +5865,13 @@ uno::Reference<text::XTextCursor> SAL_CALL ScCellObj::createTextCursorByRange(
                                     const uno::Reference<text::XTextRange>& aTextPosition )
 {
     SolarMutexGuard aGuard;
-    rtl::Reference<SvxUnoTextCursor> pCursor = new ScCellTextCursor( *this );
 
     SvxUnoTextRangeBase* pRange = comphelper::getFromUnoTunnel<SvxUnoTextRangeBase>( aTextPosition );
-    if(pRange)
-        pCursor->SetSelection( pRange->GetSelection() );
-    else
-    {
-        ScCellTextCursor* pOther = comphelper::getFromUnoTunnel<ScCellTextCursor>( aTextPosition );
-        if(!pOther)
-            throw uno::RuntimeException();
+    if (!pRange)
+        throw uno::RuntimeException();
 
-        pCursor->SetSelection( pOther->GetSelection() );
-
-    }
+    rtl::Reference<SvxUnoTextCursor> pCursor = new ScCellTextCursor(*this);
+    pCursor->SetSelection(pRange->GetSelection());
 
     return pCursor;
 }
@@ -5921,13 +5914,16 @@ void SAL_CALL ScCellObj::insertTextContent( const uno::Reference<text::XTextRang
                                                 sal_Bool bAbsorb )
 {
     SolarMutexGuard aGuard;
-    ScDocShell* pDocSh = GetDocShell();
-    if ( pDocSh && xContent.is() )
+    ScEditFieldObj* pCellField = dynamic_cast<ScEditFieldObj*>(xContent.get());
+    if (pCellField && pCellField->IsInserted())
+        throw lang::IllegalArgumentException(u"Content already inserted"_ustr, getXWeak(), 1);
+    if (ScDocShell* pDocSh = GetDocShell(); pDocSh && pCellField)
     {
-        ScEditFieldObj* pCellField = dynamic_cast<ScEditFieldObj*>(xContent.get());
-        SvxUnoTextRangeBase* pTextRange = comphelper::getFromUnoTunnel<ScCellTextCursor>( xRange );
+        auto* pTextRange = comphelper::getFromUnoTunnel<SvxUnoTextRangeBase>(xRange);
+        if (!pTextRange && xRange.get() == this) // cell itself passed as range?
+            pTextRange = &GetUnoText();
 
-        if ( pCellField && !pCellField->IsInserted() && pTextRange )
+        if (pTextRange)
         {
             SvxEditSource* pEditSource = pTextRange->GetEditSource();
             ESelection aSelection(pTextRange->GetSelection());
