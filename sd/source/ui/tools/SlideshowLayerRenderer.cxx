@@ -200,17 +200,30 @@ bool isGroup(SdrObject* pObject) { return pObject->getChildrenOfSdrObject() != n
 
 /// Sets visible for all kinds of polypolys in the container
 void changePolyPolys(
-    drawinglayer::primitive2d::Primitive2DContainer& rContainer, bool bRenderObject,
+    const drawinglayer::primitive2d::Primitive2DContainer& rContainer, bool bRenderObject,
     std::vector<drawinglayer::primitive2d::Primitive2DReference>& rPrimitivesToUnhide)
 {
     for (auto& pBasePrimitive : rContainer)
     {
-        if (pBasePrimitive->getPrimitive2DID() == PRIMITIVE2D_ID_POLYPOLYGONCOLORPRIMITIVE2D
-            || pBasePrimitive->getPrimitive2DID() == PRIMITIVE2D_ID_POLYPOLYGONGRADIENTPRIMITIVE2D
-            || pBasePrimitive->getPrimitive2DID() == PRIMITIVE2D_ID_POLYPOLYGONGRAPHICPRIMITIVE2D
-            || pBasePrimitive->getPrimitive2DID() == PRIMITIVE2D_ID_POLYPOLYGONHATCHPRIMITIVE2D
-            || pBasePrimitive->getPrimitive2DID() == PRIMITIVE2D_ID_POLYPOLYGONHAIRLINEPRIMITIVE2D
-            || pBasePrimitive->getPrimitive2DID() == PRIMITIVE2D_ID_UNIFIEDTRANSPARENCEPRIMITIVE2D)
+        if (pBasePrimitive->getPrimitive2DID() == PRIMITIVE2D_ID_GROUPPRIMITIVE2D)
+        {
+            auto& rGroupPrimitive
+                = static_cast<drawinglayer::primitive2d::GroupPrimitive2D&>(*pBasePrimitive);
+            const drawinglayer::primitive2d::Primitive2DContainer& rChildren
+                = rGroupPrimitive.getChildren();
+            changePolyPolys(rChildren, bRenderObject, rPrimitivesToUnhide);
+        }
+        else if (pBasePrimitive->getPrimitive2DID() == PRIMITIVE2D_ID_POLYPOLYGONCOLORPRIMITIVE2D
+                 || pBasePrimitive->getPrimitive2DID()
+                        == PRIMITIVE2D_ID_POLYPOLYGONGRADIENTPRIMITIVE2D
+                 || pBasePrimitive->getPrimitive2DID()
+                        == PRIMITIVE2D_ID_POLYPOLYGONGRAPHICPRIMITIVE2D
+                 || pBasePrimitive->getPrimitive2DID() == PRIMITIVE2D_ID_POLYPOLYGONHATCHPRIMITIVE2D
+                 || pBasePrimitive->getPrimitive2DID()
+                        == PRIMITIVE2D_ID_POLYPOLYGONHAIRLINEPRIMITIVE2D
+                 || pBasePrimitive->getPrimitive2DID()
+                        == PRIMITIVE2D_ID_UNIFIEDTRANSPARENCEPRIMITIVE2D
+                 || pBasePrimitive->getPrimitive2DID() == PRIMITIVE2D_ID_POLYPOLYGONRGBAPRIMITIVE2D)
         {
             pBasePrimitive->setVisible(bRenderObject);
             if (!bRenderObject)
@@ -663,9 +676,10 @@ SdrObject* getObjectForShape(uno::Reference<drawing::XShape> const& xShape)
 
 } // end anonymous namespace
 
-SlideshowLayerRenderer::SlideshowLayerRenderer(SdrPage& rPage, bool bRenderBackground,
-                                               bool bRenderMasterPage)
+SlideshowLayerRenderer::SlideshowLayerRenderer(SdrPage& rPage, const OString& rSlideHash,
+                                               bool bRenderBackground, bool bRenderMasterPage)
     : mrPage(rPage)
+    , msSlideHash(rSlideHash)
     , mrModel(rPage.getSdrModelFromSdrPage())
     , mbRenderBackground(bRenderBackground)
     , mbRenderMasterPage(bRenderMasterPage)
@@ -941,7 +955,7 @@ void SlideshowLayerRenderer::writeBackgroundJSON(OString& rJsonMsg)
     ::tools::JsonWriter aJsonWriter;
     aJsonWriter.put("group", maRenderState.stageString());
     aJsonWriter.put("index", maRenderState.currentIndex());
-    aJsonWriter.put("slideHash", GetInterfaceHash(GetXDrawPageForSdrPage(&mrPage)));
+    aJsonWriter.put("slideHash", msSlideHash);
     aJsonWriter.put("type", "bitmap");
     writeContentNode(aJsonWriter);
     rJsonMsg = aJsonWriter.finishAndGetAsOString();
@@ -953,7 +967,7 @@ void SlideshowLayerRenderer::writeJSON(OString& rJsonMsg, RenderPass const& rRen
     ::tools::JsonWriter aJsonWriter;
     aJsonWriter.put("group", maRenderState.stageString());
     aJsonWriter.put("index", maRenderState.currentIndex());
-    aJsonWriter.put("slideHash", GetInterfaceHash(GetXDrawPageForSdrPage(&mrPage)));
+    aJsonWriter.put("slideHash", msSlideHash);
 
     SdrObject* pObject = rRenderPass.mpObject;
     sal_Int32 nParagraph = rRenderPass.mnParagraph;

@@ -23,6 +23,10 @@ namespace sidebar
 struct IColorPaletteHandler
 {
     virtual ~IColorPaletteHandler() = default;
+
+    virtual void createDiagramSnapshot() = 0;
+    virtual void restoreOriginalDiagram() = 0;
+
     virtual void select(ChartColorPaletteType eType, sal_uInt32 nIndex) = 0;
     virtual void apply(const ChartColorPalette* pColorPalette) = 0;
     [[nodiscard]] virtual std::shared_ptr<ChartColorPaletteHelper> getHelper() const = 0;
@@ -60,6 +64,9 @@ public:
     void applyColorPalette(const ChartColorPalette* pColorPalette) const;
     void updateStatus(bool bForce = false);
 
+    void createDiagramSnapshot() const;
+    void restoreOriginalDiagram() const;
+
 private:
     std::unique_ptr<WeldToolbarPopup> weldPopupWindow() override;
     VclPtr<vcl::Window> createVclPopupWindow(vcl::Window* pParent) override;
@@ -70,14 +77,21 @@ private:
 class ChartColorPalettePopup final : public WeldToolbarPopup
 {
     rtl::Reference<ChartColorPaletteControl> mxControl;
-    std::unique_ptr<ChartColorPalettes> mxColorfulValueSet;
-    std::unique_ptr<weld::CustomWeld> mxColorfulValueSetWin;
-    std::unique_ptr<ChartColorPalettes> mxMonoValueSet;
-    std::unique_ptr<weld::CustomWeld> mxMonoValueSetWin;
+    std::unique_ptr<ChartColorPalettes> mxColorfulPalettes;
+    std::unique_ptr<ChartColorPalettes> mxMonoPalettes;
 
-    DECL_LINK(SelectColorfulValueSetHdl, ValueSet*, void);
-    DECL_LINK(SelectMonoValueSetHdl, ValueSet*, void);
-    sal_uInt32 SelectValueSetHdl(const std::unique_ptr<ChartColorPalettes>& xValueSet) const;
+    ChartColorPaletteType meHighlightedItemType;
+    sal_uInt16 mnHighlightedItemId;
+    bool mbItemSelected;
+
+    DECL_LINK(SelectColorfulPaletteHdl, weld::IconView&, bool);
+    DECL_LINK(SelectMonoPaletteHdl, weld::IconView&, bool);
+    sal_uInt32 SelectPaletteHdl(const std::unique_ptr<ChartColorPalettes>& xPalettes);
+
+    DECL_LINK(ColorfulMouseMoveHdl, const MouseEvent&, bool);
+    DECL_LINK(MonoMouseMoveHdl, const MouseEvent&, bool);
+    void MouseMoveHdl(const std::unique_ptr<ChartColorPalettes>& xPalettes,
+                      ChartColorPaletteType eHlItemType);
 
     void GrabFocus() override;
 
