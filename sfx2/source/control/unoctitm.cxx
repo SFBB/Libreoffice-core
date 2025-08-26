@@ -1395,6 +1395,7 @@ const std::map<std::u16string_view, KitUnoCommand>& GetKitUnoCommandList()
         { u"Signature", { PayloadType::Int32Payload, false } },
         { u"SelectionMode", { PayloadType::Int32Payload, true } },
         { u"StatusBarFunc", { PayloadType::Int32Payload, true } },
+        { u"CalcPageSize", { PayloadType::Int32Payload, true } },
 
         { u"TransformPosX", { PayloadType::TransformPayload, true } },
         { u"TransformPosY", { PayloadType::TransformPayload, true } },
@@ -1409,6 +1410,7 @@ const std::map<std::u16string_view, KitUnoCommand>& GetKitUnoCommandList()
         { u"LayoutStatus", { PayloadType::StringPayload, true } },
         { u"Scale", { PayloadType::StringPayload, true } },
         { u"Context", { PayloadType::StringPayload, true } },
+        { u"CalcPageMargin", { PayloadType::StringPayload, true } },
 
         { u"RowColSelCount", { PayloadType::RowColSelCountPayload, true } },
 

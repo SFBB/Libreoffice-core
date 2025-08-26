@@ -3805,7 +3805,7 @@ static void lcl_ApplyCropping( const DffPropSet& rPropSet, SfxItemSet* pSet, Gra
 
     double      fFactor;
     Size        aCropSize;
-    BitmapEx    aCropBitmap;
+    Bitmap      aCropBitmap;
     sal_uInt32  nTop( 0 ),  nBottom( 0 ), nLeft( 0 ), nRight( 0 );
 
     // Cropping has to be applied on a loaded graphic.
@@ -3815,7 +3815,7 @@ static void lcl_ApplyCropping( const DffPropSet& rPropSet, SfxItemSet* pSet, Gra
         aCropSize = lcl_GetPrefSize(rGraf, MapMode(MapUnit::Map100thMM));
     else
     {
-        aCropBitmap = rGraf.GetBitmapEx();
+        aCropBitmap = rGraf.GetBitmap();
         aCropSize = aCropBitmap.GetSizePixel();
     }
     if ( nCropTop )
@@ -3912,9 +3912,9 @@ rtl::Reference<SdrObject> SvxMSDffManager::ImportGraphic( SvStream& rSt, SfxItem
 
                 if ( aGraf.GetType() == GraphicType::Bitmap )
                 {
-                    BitmapEx aBitmapEx( aGraf.GetBitmapEx() );
-                    aBitmapEx.CombineMaskOr( MSO_CLR_ToColor( nTransColor, DFF_Prop_pictureTransparent ), 9 );
-                    aGraf = aBitmapEx;
+                    Bitmap aBitmap( aGraf.GetBitmap() );
+                    aBitmap.CombineMaskOr( MSO_CLR_ToColor( nTransColor, DFF_Prop_pictureTransparent ), 9 );
+                    aGraf = aBitmap;
                 }
             }
 
@@ -4006,14 +4006,14 @@ rtl::Reference<SdrObject> SvxMSDffManager::ImportGraphic( SvStream& rSt, SfxItem
                     {
                         case GraphicType::Bitmap :
                         {
-                            BitmapEx    aBitmapEx( aGraf.GetBitmapEx() );
+                            Bitmap    aBitmap( aGraf.GetBitmap() );
                             if ( nBrightness || nContrast || ( nGamma != 0x10000 ) )
-                                aBitmapEx.Adjust( nBrightness, static_cast<sal_Int16>(nContrast), 0, 0, 0, static_cast<double>(nGamma) / 0x10000, false, true );
+                                aBitmap.Adjust( nBrightness, static_cast<sal_Int16>(nContrast), 0, 0, 0, static_cast<double>(nGamma) / 0x10000, false, true );
                             if ( eDrawMode == GraphicDrawMode::Greys )
-                                aBitmapEx.Convert( BmpConversion::N8BitGreys );
+                                aBitmap.Convert( BmpConversion::N8BitGreys );
                             else if ( eDrawMode == GraphicDrawMode::Mono )
-                                aBitmapEx.Convert( BmpConversion::N1BitThreshold );
-                            aGraf = aBitmapEx;
+                                aBitmap.Convert( BmpConversion::N1BitThreshold );
+                            aGraf = aBitmap;
 
                         }
                         break;

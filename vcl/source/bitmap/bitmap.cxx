@@ -2272,4 +2272,113 @@ void Bitmap::BlendAlpha(sal_uInt8 nAlpha)
     }
 }
 
+void Bitmap::ReplaceTransparency(const Color& rReplaceColor)
+{
+    if( !HasAlpha() )
+        return;
+
+    Bitmap aNewBmp(GetSizePixel(), vcl::PixelFormat::N24_BPP);
+    aNewBmp.SetPrefSize(GetPrefSize());
+    aNewBmp.SetPrefMapMode(GetPrefMapMode());
+
+    {
+        BitmapScopedReadAccess pReadAccess(*this);
+        assert(pReadAccess);
+        if( !pReadAccess )
+            return;
+
+        BitmapScopedWriteAccess pWriteAccess(*this);
+        assert(pWriteAccess);
+        if( !pWriteAccess )
+            return;
+
+        const tools::Long  nWidth = pReadAccess->Width(), nHeight = pReadAccess->Height();
+        for( tools::Long nY = 0; nY < nHeight; nY++ )
+        {
+            Scanline pReadScanline = pReadAccess->GetScanline( nY );
+            Scanline pWriteScanline = pWriteAccess->GetScanline( nY );
+            for( tools::Long nX = 0; nX < nWidth; nX++ )
+            {
+                BitmapColor aCol = pReadAccess->GetPixelFromData( pReadScanline, nX );
+                aCol.Merge(rReplaceColor, aCol.GetAlpha());
+                aCol.SetAlpha(255);
+                pWriteAccess->SetPixelOnData( pWriteScanline, nX, aCol );
+            }
+        }
+    }
+
+    *this = std::move(aNewBmp);
+}
+
+Bitmap Bitmap::AutoScaleBitmap(Bitmap const & aBitmap, const tools::Long aStandardSize)
+{
+    Point aEmptyPoint(0,0);
+    double imgposX = 0;
+    double imgposY = 0;
+    Bitmap aRet = aBitmap;
+    double imgOldWidth = aRet.GetSizePixel().Width();
+    double imgOldHeight = aRet.GetSizePixel().Height();
+
+    if (imgOldWidth >= aStandardSize || imgOldHeight >= aStandardSize)
+    {
+        sal_Int32 imgNewWidth = 0;
+        sal_Int32 imgNewHeight = 0;
+        if (imgOldWidth >= imgOldHeight)
+        {
+            imgNewWidth = aStandardSize;
+            imgNewHeight = sal_Int32(imgOldHeight / (imgOldWidth / aStandardSize) + 0.5);
+            imgposX = 0;
+            imgposY = (aStandardSize - (imgOldHeight / (imgOldWidth / aStandardSize) + 0.5)) / 2 + 0.5;
+        }
+        else
+        {
+            imgNewHeight = aStandardSize;
+            imgNewWidth = sal_Int32(imgOldWidth / (imgOldHeight / aStandardSize) + 0.5);
+            imgposY = 0;
+            imgposX = (aStandardSize - (imgOldWidth / (imgOldHeight / aStandardSize) + 0.5)) / 2 + 0.5;
+        }
+
+        Size aScaledSize( imgNewWidth, imgNewHeight );
+        aRet.Scale( aScaledSize, BmpScaleFlag::BestQuality );
+    }
+    else
+    {
+        imgposX = (aStandardSize - imgOldWidth) / 2 + 0.5;
+        imgposY = (aStandardSize - imgOldHeight) / 2 + 0.5;
+    }
+
+    Size aStdSize( aStandardSize, aStandardSize );
+    tools::Rectangle aRect(aEmptyPoint, aStdSize );
+
+    ScopedVclPtrInstance< VirtualDevice > aVirDevice(*Application::GetDefaultDevice());
+    aVirDevice->SetOutputSizePixel( aStdSize );
+    aVirDevice->SetFillColor( COL_TRANSPARENT );
+    aVirDevice->SetLineColor( COL_TRANSPARENT );
+
+    // Draw a rect into virDevice
+    aVirDevice->DrawRect( aRect );
+    Point aPointPixel( static_cast<tools::Long>(imgposX), static_cast<tools::Long>(imgposY) );
+    aVirDevice->DrawBitmapEx( aPointPixel, aRet );
+    aRet = aVirDevice->GetBitmap( aEmptyPoint, aStdSize );
+
+    return aRet;
+}
+
+void Bitmap::CombineMaskOr(Color rTransColor, sal_uInt8 nTol)
+{
+    Bitmap aColBmp = CreateColorBitmap();
+    AlphaMask aNewMask = aColBmp.CreateAlphaMask( rTransColor, nTol );
+
+    if ( HasAlpha() )
+        aNewMask.AlphaCombineOr( CreateAlphaMask() );
+
+    const MapMode aMap( maPrefMapMode );
+    const Size aSize( maPrefSize );
+
+    *this = Bitmap(BitmapEx(aColBmp, aNewMask));
+
+    maPrefMapMode = aMap;
+    maPrefSize = aSize;
+}
+
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

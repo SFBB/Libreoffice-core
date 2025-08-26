@@ -535,6 +535,10 @@ public:
                                 size_t nColorCount,
                                 sal_uInt8 const * pTols );
 
+    /** Replace transparency with given color.
+     */
+    void ReplaceTransparency( const Color& rColor );
+
     /** Change various global color characteristics
 
         @param nLuminancePercent
@@ -565,7 +569,7 @@ public:
 
         @return true, if the operation was completed successfully.
      */
-    SAL_DLLPRIVATE bool Adjust(
+    bool Adjust(
                                 short nLuminancePercent,
                                 short nContrastPercent = 0,
                                 short nChannelRPercent = 0,
@@ -591,6 +595,8 @@ public:
      * Blends, i.e. multiplies the alpha layer with the new alpha value.
      */
     void BlendAlpha( sal_uInt8 nAlpha );
+
+    void CombineMaskOr(Color maskColor, sal_uInt8 nTol);
 
     /** Remove existing blending against COL_WHITE based on given AlphaMask
 
@@ -631,6 +637,9 @@ public:
     */
     [[nodiscard]]
     Bitmap            Modify( const basegfx::BColorModifierStack& rBColorModifierStack) const;
+
+    [[nodiscard]]
+    static Bitmap     AutoScaleBitmap( Bitmap const & rBitmap, const tools::Long aStandardSize );
 
     SAL_DLLPRIVATE void Draw( OutputDevice* pOutDev,
                               const Point& rDestPt ) const;
