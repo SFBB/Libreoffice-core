@@ -25,6 +25,7 @@
 #include <array>
 #include <limits>
 #include <ostream>
+#include <tuple>
 
 #include "scdllapi.h"
 #include "types.hxx"
@@ -33,12 +34,7 @@
 #include <o3tl/typed_flags_set.hxx>
 #include <o3tl/underlyingenumvalue.hxx>
 
-namespace com::sun::star {
-    namespace sheet {
-        struct ExternalLinkInfo;
-    }
-}
-
+namespace com::sun::star::sheet { struct ExternalLinkInfo; }
 namespace com::sun::star::uno { template <typename > class Sequence; }
 
 class ScDocument;
@@ -52,102 +48,102 @@ typedef size_t SCSIZE;
 // included, we should not be using those stupid macros anyway.
 #undef min
 #undef max
-const SCROW    SCROW_MAX    = ::std::numeric_limits<SCROW>::max();
-const SCCOL    SCCOL_MAX    = ::std::numeric_limits<SCCOL>::max();
-const SCTAB    SCTAB_MAX    = ::std::numeric_limits<SCTAB>::max();
-const SCCOLROW SCCOLROW_MAX = ::std::numeric_limits<SCCOLROW>::max();
-const SCSIZE   SCSIZE_MAX   = ::std::numeric_limits<SCSIZE>::max();
+constexpr SCROW SCROW_MAX = std::numeric_limits<SCROW>::max();
+constexpr SCCOL SCCOL_MAX = std::numeric_limits<SCCOL>::max();
+constexpr SCTAB SCTAB_MAX = std::numeric_limits<SCTAB>::max();
+constexpr SCCOLROW SCCOLROW_MAX = std::numeric_limits<SCCOLROW>::max();
+constexpr SCSIZE SCSIZE_MAX = std::numeric_limits<SCSIZE>::max();
 
 // Count values
-const SCROW       MAXROWCOUNT    = 1048576;
-const SCCOL       MAXCOLCOUNT    = 16384;
-const SCCOL       INITIALCOLCOUNT = 1; // initial number of columns we allocate memory for
+constexpr SCROW MAXROWCOUNT = 1024 * 1024;
+constexpr SCCOL MAXCOLCOUNT = 16 * 1024;
+constexpr SCCOL INITIALCOLCOUNT = 1; // initial number of columns we allocate memory for
 /// limiting to 10000 for now, problem with 32 bit builds for now
-const SCTAB       MAXTABCOUNT    = 10000;
+constexpr SCTAB MAXTABCOUNT = 10000;
 // Maximum values
-const SCROW       MAXROW         = MAXROWCOUNT - 1;
-const SCCOL       MAXCOL         = MAXCOLCOUNT - 1;
-const SCTAB       MAXTAB         = MAXTABCOUNT - 1;
-const SCCOLROW    MAXCOLROW      = MAXROW;
-const SCROW       MAXROWCOUNT_JUMBO = 16 * 1024 * 1024;
-const SCCOL       MAXCOLCOUNT_JUMBO = 16384;
-const SCROW       MAXROW_JUMBO   = MAXROWCOUNT_JUMBO - 1;
-const SCCOL       MAXCOL_JUMBO   = MAXCOLCOUNT_JUMBO - 1;
+constexpr SCROW MAXROW = MAXROWCOUNT - 1;
+constexpr SCCOL MAXCOL = MAXCOLCOUNT - 1;
+constexpr SCTAB MAXTAB = MAXTABCOUNT - 1;
+constexpr SCCOLROW MAXCOLROW = MAXROW;
+constexpr SCROW MAXROWCOUNT_JUMBO = 16 * 1024 * 1024;
+constexpr SCCOL MAXCOLCOUNT_JUMBO = 16 * 1024;
+constexpr SCROW MAXROW_JUMBO = MAXROWCOUNT_JUMBO - 1;
+constexpr SCCOL MAXCOL_JUMBO = MAXCOLCOUNT_JUMBO - 1;
 // Maximum tiled rendering values
-const SCROW       MAXTILEDROW    = MAXROW;
+constexpr SCROW MAXTILEDROW    = MAXROW;
 // Limit the initial tab count to prevent users to set the count too high,
 // which could cause the memory usage of blank documents to exceed the
 // available system memory.
-const SCTAB       MAXINITTAB = 1024;
-const SCTAB       MININITTAB = 1;
+constexpr SCTAB MAXINITTAB = 1024;
+constexpr SCTAB MININITTAB = 1;
 
-inline constexpr OUString MAXROW_STRING(u"1048575"_ustr);
-inline constexpr OUString MAXCOL_STRING(u"XFD"_ustr);
-inline constexpr OUString MAXROW_JUMBO_STRING(u"16777215"_ustr);
-inline constexpr OUString MAXCOL_JUMBO_STRING(u"XFD"_ustr);
+constexpr OUString MAXROW_STRING(u"1048575"_ustr);
+constexpr OUString MAXCOL_STRING(u"XFD"_ustr);
+constexpr OUString MAXROW_JUMBO_STRING(u"16777215"_ustr);
+constexpr OUString MAXCOL_JUMBO_STRING(u"XFD"_ustr);
 
 // Special values
-const SCTAB SC_TAB_APPEND     = SCTAB_MAX;
-const SCTAB TABLEID_DOC       = SCTAB_MAX;  // entire document, e.g. protect
-const SCROW SCROWS32K         = 32000; // for fuzzing
-const SCCOL SCCOL_REPEAT_NONE = SCCOL_MAX;
-const SCROW SCROW_REPEAT_NONE = SCROW_MAX;
-const SCCOL SC_TABSTART_NONE  = SCCOL_MAX;
+constexpr SCTAB SC_TAB_APPEND = SCTAB_MAX;
+constexpr SCTAB TABLEID_DOC = SCTAB_MAX;  // entire document, e.g. protect
+constexpr SCROW SCROWS32K = 32000; // for fuzzing
+constexpr SCCOL SCCOL_REPEAT_NONE = SCCOL_MAX;
+constexpr SCROW SCROW_REPEAT_NONE = SCROW_MAX;
+constexpr SCCOL SC_TABSTART_NONE = SCCOL_MAX;
 
-const SCROW MAXROW_30         = 8191;
+constexpr SCROW MAXROW_30 = 8191;
 
-[[nodiscard]] inline bool ValidCol( SCCOL nCol, SCCOL nMaxCol )
+[[nodiscard]] constexpr bool ValidCol( SCCOL nCol, SCCOL nMaxCol )
 {
     assert(nMaxCol == MAXCOL || nMaxCol == MAXCOL_JUMBO); // temporary to debug jumbo sheets work
     return nCol >= 0 && nCol <= nMaxCol;
 }
 
-[[nodiscard]] inline bool ValidRow( SCROW nRow, SCROW nMaxRow)
+[[nodiscard]] constexpr bool ValidRow( SCROW nRow, SCROW nMaxRow)
 {
     assert(nMaxRow == MAXROW || nMaxRow == MAXROW_JUMBO); // temporary to debug jumbo sheets work
     return nRow >= 0 && nRow <= nMaxRow;
 }
 
-[[nodiscard]] inline bool ValidTab( SCTAB nTab )
+[[nodiscard]] constexpr bool ValidTab( SCTAB nTab )
 {
     return nTab >= 0 && nTab <= MAXTAB;
 }
 
-[[nodiscard]] inline bool ValidTab( SCTAB nTab, SCTAB nMaxTab )
+[[nodiscard]] constexpr bool ValidTab( SCTAB nTab, SCTAB nMaxTab )
 {
     return nTab >= 0 && nTab <= nMaxTab;
 }
 
-[[nodiscard]] inline bool ValidColRow( SCCOL nCol, SCROW nRow, SCCOL nMaxCol, SCROW nMaxRow )
+[[nodiscard]] constexpr bool ValidColRow( SCCOL nCol, SCROW nRow, SCCOL nMaxCol, SCROW nMaxRow )
 {
     assert(nMaxRow == MAXROW || nMaxRow == MAXROW_JUMBO); // temporary to debug jumbo sheets work
     return ValidCol(nCol,nMaxCol) && ValidRow(nRow,nMaxRow);
 }
 
-[[nodiscard]] inline bool ValidColRowTab( SCCOL nCol, SCROW nRow, SCTAB nTab, SCCOL nMaxCol, SCROW nMaxRow )
+[[nodiscard]] constexpr bool ValidColRowTab( SCCOL nCol, SCROW nRow, SCTAB nTab, SCCOL nMaxCol, SCROW nMaxRow )
 {
     assert(nMaxRow == MAXROW || nMaxRow == MAXROW_JUMBO); // temporary to debug jumbo sheets work
     return ValidCol(nCol,nMaxCol) && ValidRow(nRow,nMaxRow) && ValidTab( nTab);
 }
 
-[[nodiscard]] inline SCCOL SanitizeCol( SCCOL nCol, SCCOL nMaxCol )
+[[nodiscard]] constexpr SCCOL SanitizeCol( SCCOL nCol, SCCOL nMaxCol )
 {
     assert(nMaxCol == MAXCOL || nMaxCol == MAXCOL_JUMBO); // temporary to debug jumbo sheets work
     return nCol < 0 ? 0 : (nCol > nMaxCol ? nMaxCol : nCol);
 }
 
-[[nodiscard]] inline SCROW SanitizeRow( SCROW nRow, SCROW nMaxRow )
+[[nodiscard]] constexpr SCROW SanitizeRow( SCROW nRow, SCROW nMaxRow )
 {
     assert(nMaxRow == MAXROW || nMaxRow == MAXROW_JUMBO); // temporary to debug jumbo sheets work
     return nRow < 0 ? 0 : (nRow > nMaxRow ? nMaxRow : nRow);
 }
 
-[[nodiscard]] inline SCTAB SanitizeTab( SCTAB nTab )
+[[nodiscard]] constexpr SCTAB SanitizeTab( SCTAB nTab )
 {
     return nTab < 0 ? 0 : (nTab > MAXTAB ? MAXTAB : nTab);
 }
 
-template <typename T> inline void PutInOrder(T& nStart, T& nEnd)
+template <typename T> constexpr void PutInOrder(T& nStart, T& nEnd)
 {
     if (nEnd < nStart)
         std::swap(nStart, nEnd);
@@ -193,11 +189,13 @@ namespace o3tl
 {
     template<> struct typed_flags<ScRefFlags> : is_typed_flags<ScRefFlags, 0xffff> {};
 }
-inline void applyStartToEndFlags(ScRefFlags &target,const ScRefFlags source)
+
+constexpr void applyStartToEndFlags(ScRefFlags &target,const ScRefFlags source)
 {
     target |= ScRefFlags(o3tl::to_underlying(source) << 4);
 }
-inline void applyStartToEndFlags(ScRefFlags &target)
+
+constexpr void applyStartToEndFlags(ScRefFlags &target)
 {
     target |= ScRefFlags(o3tl::to_underlying(target) << 4);
 }
@@ -251,77 +249,107 @@ public:
         {}
     };
 
-    ScAddress() :
+    constexpr ScAddress() :
         nRow(0), nCol(0), nTab(0)
     {}
-    ScAddress( SCCOL nColP, SCROW nRowP, SCTAB nTabP ) :
+
+    constexpr ScAddress( SCCOL nColP, SCROW nRowP, SCTAB nTabP ) :
         nRow(nRowP), nCol(nColP), nTab(nTabP)
     {}
+
     /** coverity[uninit_member] - Yes, it is what it seems to be: Uninitialized.
         May be used for performance reasons if it is initialized by other means. */
-    ScAddress( Uninitialized )
+    constexpr ScAddress( Uninitialized )
     {}
-    ScAddress( InitializeInvalid ) :
+
+    constexpr ScAddress( InitializeInvalid ) :
         nRow(-1), nCol(-1), nTab(-1)
     {}
-    ScAddress( const ScAddress& rAddress ) :
+
+    constexpr ScAddress( const ScAddress& rAddress ) :
         nRow(rAddress.nRow), nCol(rAddress.nCol), nTab(rAddress.nTab)
     {}
-    inline ScAddress& operator=( const ScAddress& rAddress );
 
-    inline void Set( SCCOL nCol, SCROW nRow, SCTAB nTab );
+    constexpr ScAddress& operator=(const ScAddress& rAddress)
+    {
+        nCol = rAddress.nCol;
+        nRow = rAddress.nRow;
+        nTab = rAddress.nTab;
+        return *this;
+    }
 
-    SCROW Row() const
+    constexpr void Set(SCCOL nColP, SCROW nRowP, SCTAB nTabP)
+    {
+        nCol = nColP;
+        nRow = nRowP;
+        nTab = nTabP;
+    }
+
+    constexpr SCROW Row() const
     {
         return nRow;
     }
 
-    SCCOL Col() const
+    constexpr SCCOL Col() const
     {
         return nCol;
     }
-    SCTAB Tab() const
+
+    constexpr SCTAB Tab() const
     {
         return nTab;
     }
-    void SetRow( SCROW nRowP )
+
+    constexpr void SetRow( SCROW nRowP )
     {
         nRow = nRowP;
     }
-    void SetCol( SCCOL nColP )
+
+    constexpr void SetCol( SCCOL nColP )
     {
         nCol = nColP;
     }
-    void SetTab( SCTAB nTabP )
+
+    constexpr void SetTab( SCTAB nTabP )
     {
         nTab = nTabP;
     }
-    void SetInvalid()
+
+    constexpr void SetInvalid()
     {
         nRow = -1;
         nCol = -1;
         nTab = -1;
     }
-    bool IsValid() const
+
+    constexpr bool IsValid() const
     {
         return (nRow >= 0) && (nCol >= 0) && (nTab >= 0);
     }
 
-    inline void PutInOrder( ScAddress& rAddress );
+    constexpr void PutInOrder(ScAddress& rAddress)
+    {
+        ::PutInOrder(nCol, rAddress.nCol);
+        ::PutInOrder(nRow, rAddress.nRow);
+        ::PutInOrder(nTab, rAddress.nTab);
+    }
 
-    void IncRow( SCROW nDelta = 1 )
+    constexpr void IncRow( SCROW nDelta = 1 )
     {
-        nRow = sal::static_int_cast<SCROW>(nRow + nDelta);
+        nRow = static_cast<SCROW>(nRow + nDelta);
     }
-    void IncCol( SCCOL nDelta = 1 )
+
+    constexpr void IncCol( SCCOL nDelta = 1 )
     {
-        nCol = sal::static_int_cast<SCCOL>(nCol + nDelta);
+        nCol = static_cast<SCCOL>(nCol + nDelta);
     }
-    void IncTab( SCTAB nDelta = 1 )
+
+    constexpr void IncTab( SCTAB nDelta = 1 )
     {
-        nTab = sal::static_int_cast<SCTAB>(nTab + nDelta);
+        nTab = static_cast<SCTAB>(nTab + nDelta);
     }
-    void GetVars( SCCOL& nColP, SCROW& nRowP, SCTAB& nTabP ) const
+
+    constexpr void GetVars( SCCOL& nColP, SCROW& nRowP, SCTAB& nTabP ) const
     {
         nColP = nCol;
         nRowP = nRow;
@@ -361,13 +389,37 @@ public:
     [[nodiscard]] SC_DLLPUBLIC bool Move( SCCOL nDeltaX, SCROW nDeltaY, SCTAB nDeltaZ,
             ScAddress& rErrorPos, const ScDocument& rDoc );
 
-    inline bool operator==( const ScAddress& rAddress ) const;
-    inline bool operator!=( const ScAddress& rAddress ) const;
-    inline bool operator<( const ScAddress& rAddress ) const;
-    inline bool operator<=( const ScAddress& rAddress ) const;
-    inline bool lessThanByRow( const ScAddress& rAddress ) const;
+    constexpr bool operator==(const ScAddress& rAddress) const = default;
 
-    inline size_t hash() const;
+    constexpr auto operator<=>(const ScAddress& rh) const
+    {
+        return std::make_tuple(nTab, nCol, nRow) <=> std::make_tuple(rh.nTab, rh.nCol, rh.nRow);
+    }
+
+    /** Less than ordered by tab,row,col as needed by row-wise import/export */
+    bool lessThanByRow(const ScAddress& rh) const
+    {
+        return std::make_tuple(nTab, nRow, nCol) < std::make_tuple(rh.nTab, rh.nRow, rh.nCol);
+    }
+
+    size_t hash() const
+    {
+    #if SAL_TYPES_SIZEOFPOINTER == 8
+        // 16 bits for the columns, and 20 bits for the rows
+        return (static_cast<size_t>(nTab) << 36) ^
+               (static_cast<size_t>(nCol) << 20) ^
+                static_cast<size_t>(nRow);
+    #else
+        // Assume that there are not that many addresses with row > 2^16 AND column
+        // > 2^8 AND sheet > 2^8 so we won't have too many collisions.
+        if (nRow <= 0xffff)
+            return (static_cast<size_t>(nTab) << 24) ^
+                (static_cast<size_t>(nCol) << 16) ^ static_cast<size_t>(nRow);
+        else
+            return (static_cast<size_t>(nTab) << 28) ^
+                (static_cast<size_t>(nCol) << 24) ^ static_cast<size_t>(nRow);
+    #endif
+    }
 
     /**
      * Create a human-readable string representation of the cell address.  You
@@ -393,99 +445,21 @@ inline std::basic_ostream<charT, traits> & operator <<(std::basic_ostream<charT,
     return stream;
 }
 
-inline void ScAddress::PutInOrder( ScAddress& rAddress )
+namespace std
 {
-    ::PutInOrder(nCol, rAddress.nCol);
-    ::PutInOrder(nRow, rAddress.nRow);
-    ::PutInOrder(nTab, rAddress.nTab);
-}
 
-inline void ScAddress::Set( SCCOL nColP, SCROW nRowP, SCTAB nTabP )
+template <>
+struct hash<ScAddress>
 {
-    nCol = nColP;
-    nRow = nRowP;
-    nTab = nTabP;
-}
-
-inline ScAddress& ScAddress::operator=( const ScAddress& rAddress )
-{
-    nCol = rAddress.nCol;
-    nRow = rAddress.nRow;
-    nTab = rAddress.nTab;
-    return *this;
-}
-
-inline bool ScAddress::operator==( const ScAddress& rAddress ) const
-{
-    return nRow == rAddress.nRow && nCol == rAddress.nCol && nTab == rAddress.nTab;
-}
-
-inline bool ScAddress::operator!=( const ScAddress& rAddress ) const
-{
-    return !operator==( rAddress );
-}
-
-/** Less than ordered by tab,col,row. */
-inline bool ScAddress::operator<( const ScAddress& rAddress ) const
-{
-    if (nTab == rAddress.nTab)
-    {
-        if (nCol == rAddress.nCol)
-            return nRow < rAddress.nRow;
-        else
-            return nCol < rAddress.nCol;
-    }
-    else
-        return nTab < rAddress.nTab;
-}
-
-inline bool ScAddress::operator<=( const ScAddress& rAddress ) const
-{
-    return operator<( rAddress ) || operator==( rAddress );
-}
-
-/** Less than ordered by tab,row,col as needed by row-wise import/export */
-inline bool ScAddress::lessThanByRow( const ScAddress& rAddress ) const
-{
-    if (nTab == rAddress.nTab)
-    {
-        if (nRow == rAddress.nRow)
-            return nCol < rAddress.nCol;
-        else
-            return nRow < rAddress.nRow;
-    }
-    else
-        return nTab < rAddress.nTab;
-}
-
-inline size_t ScAddress::hash() const
-{
-#if SAL_TYPES_SIZEOFPOINTER == 8
-    // 16 bits for the columns, and 20 bits for the rows
-    return (static_cast<size_t>(nTab) << 36) ^
-           (static_cast<size_t>(nCol) << 20) ^
-            static_cast<size_t>(nRow);
-#else
-    // Assume that there are not that many addresses with row > 2^16 AND column
-    // > 2^8 AND sheet > 2^8 so we won't have too many collisions.
-    if (nRow <= 0xffff)
-        return (static_cast<size_t>(nTab) << 24) ^
-            (static_cast<size_t>(nCol) << 16) ^ static_cast<size_t>(nRow);
-    else
-        return (static_cast<size_t>(nTab) << 28) ^
-            (static_cast<size_t>(nCol) << 24) ^ static_cast<size_t>(nRow);
-#endif
-}
-
-struct ScAddressHashFunctor
-{
-    size_t operator()( const ScAddress & rAddress ) const
+    std::size_t operator()(ScAddress const & rAddress) const
     {
         return rAddress.hash();
     }
 };
 
-[[nodiscard]] inline bool ValidAddress( const ScAddress& rAddress, SCCOL nMaxCol, SCROW nMaxRow )
+} // end namespace std
+
+[[nodiscard]] constexpr bool ValidAddress(const ScAddress& rAddress, SCCOL nMaxCol, SCROW nMaxRow)
 {
     return ValidCol(rAddress.Col(), nMaxCol) && ValidRow(rAddress.Row(), nMaxRow) && ValidTab(rAddress.Tab());
 }

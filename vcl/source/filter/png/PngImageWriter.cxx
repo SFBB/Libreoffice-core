@@ -140,7 +140,7 @@ static bool pngWrite(SvStream& rStream, const Graphic& rGraphic, int nCompressio
     png_set_pHYs(pPng, pInfo, std::round(aPPM.getWidth()), std::round(aPPM.getHeight()),
                  PNG_RESOLUTION_METER);
 
-    Bitmap aBitmap(rGraphic.GetBitmapEx());
+    Bitmap aBitmap(rGraphic.GetBitmap());
 
     if (!bTranslucent && aBitmap.HasAlpha())
     {
@@ -365,7 +365,7 @@ static bool pngWrite(SvStream& rStream, const Graphic& rGraphic, int nCompressio
             const AnimationFrame& rCurrentFrame = *rFrames[1 + i];
             SvMemoryStream aStream;
 
-            if (!pngWrite(aStream, rCurrentFrame.maBitmapEx, nCompressionLevel, bInterlaced,
+            if (!pngWrite(aStream, Bitmap(rCurrentFrame.maBitmapEx), nCompressionLevel, bInterlaced,
                           bTranslucent, {}))
                 return false;
 

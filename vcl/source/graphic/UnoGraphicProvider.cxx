@@ -589,9 +589,9 @@ void ImplApplyFilterData( ::Graphic& rGraphic, const uno::Sequence< beans::Prope
             ImplCalculateCropRect( rGraphic, aCropLogic, aCropPixel );
             if ( bRemoveCropArea )
             {
-                BitmapEx aBmpEx( rGraphic.GetBitmapEx() );
-                aBmpEx.Crop( aCropPixel );
-                rGraphic = aBmpEx;
+                Bitmap aBmp( rGraphic.GetBitmap() );
+                aBmp.Crop( aCropPixel );
+                rGraphic = aBmp;
             }
             Size aVisiblePixelSize( bRemoveCropArea ? rGraphic.GetSizePixel() : aCropPixel.GetSize() );
             ImplApplyBitmapResolution( rGraphic, nImageResolution, aVisiblePixelSize, aLogicalSize );
@@ -662,7 +662,7 @@ void ImplApplyFilterData( ::Graphic& rGraphic, const uno::Sequence< beans::Prope
                         ImplApplyBitmapResolution( aGraphic, nImageResolution,
                             aGraphic.GetSizePixel(), awt::Size( aSize100thmm2.Width(), aSize100thmm2.Height() ) );
 
-                        rtl::Reference<MetaAction> pNewAction = new MetaBmpExScaleAction( aPos, aSize, aGraphic.GetBitmapEx() );
+                        rtl::Reference<MetaAction> pNewAction = new MetaBmpExScaleAction( aPos, aSize, BitmapEx(aGraphic.GetBitmap()) );
                         aMtf.ReplaceAction( pNewAction, i );
                         break;
                     }

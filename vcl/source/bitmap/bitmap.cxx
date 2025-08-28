@@ -222,7 +222,7 @@ void savePNG(const OUString& sWhere, const Bitmap& rBmp)
 {
     SvFileStream aStream(sWhere, StreamMode::WRITE | StreamMode::TRUNC);
     GraphicFilter& rFilter = GraphicFilter::GetGraphicFilter();
-    rFilter.compressAsPNG(BitmapEx(rBmp), aStream);
+    rFilter.compressAsPNG(rBmp, aStream);
 }
 }
 
@@ -351,6 +351,22 @@ vcl::PixelFormat Bitmap::getPixelFormat() const
         return vcl::PixelFormat::N32_BPP;
 
     return vcl::PixelFormat::INVALID;
+}
+
+bool Bitmap::HasAlpha() const
+{
+    if (!mxSalBmp)
+        return false;
+    switch(mxSalBmp->GetScanlineFormat())
+    {
+        case ScanlineFormat::N32BitTcAbgr:
+        case ScanlineFormat::N32BitTcArgb:
+        case ScanlineFormat::N32BitTcBgra:
+        case ScanlineFormat::N32BitTcRgba:
+            return true;
+        default:
+            return false;
+    }
 }
 
 bool Bitmap::HasGreyPaletteAny() const
@@ -2379,6 +2395,53 @@ void Bitmap::CombineMaskOr(Color rTransColor, sal_uInt8 nTol)
 
     maPrefMapMode = aMap;
     maPrefSize = aSize;
+}
+
+/**
+ * Retrieves the color model data we need for the XImageConsumer stuff.
+ */
+void  Bitmap::GetColorModel(css::uno::Sequence< sal_Int32 >& rRGBPalette,
+        sal_uInt32& rnRedMask, sal_uInt32& rnGreenMask, sal_uInt32& rnBlueMask, sal_uInt32& rnAlphaMask, sal_uInt32& rnTransparencyIndex,
+        sal_uInt32& rnWidth, sal_uInt32& rnHeight, sal_uInt8& rnBitCount)
+{
+    BitmapScopedReadAccess pReadAccess( *this );
+    assert( pReadAccess );
+
+    if( pReadAccess->HasPalette() )
+    {
+        sal_uInt16 nPalCount = pReadAccess->GetPaletteEntryCount();
+
+        if( nPalCount )
+        {
+            rRGBPalette = css::uno::Sequence< sal_Int32 >( nPalCount + 1 );
+
+            sal_Int32* pTmp = rRGBPalette.getArray();
+
+            for( sal_uInt32 i = 0; i < nPalCount; i++, pTmp++ )
+            {
+                const BitmapColor& rCol = pReadAccess->GetPaletteColor( static_cast<sal_uInt16>(i) );
+
+                *pTmp = static_cast<sal_Int32>(rCol.GetRed()) << sal_Int32(24);
+                *pTmp |= static_cast<sal_Int32>(rCol.GetGreen()) << sal_Int32(16);
+                *pTmp |= static_cast<sal_Int32>(rCol.GetBlue()) << sal_Int32(8);
+                *pTmp |= sal_Int32(0x000000ffL);
+            }
+
+            rnTransparencyIndex = 0;
+        }
+    }
+    else
+    {
+        rnRedMask = 0xff000000UL;
+        rnGreenMask = 0x00ff0000UL;
+        rnBlueMask = 0x0000ff00UL;
+        rnAlphaMask = 0x000000ffUL;
+        rnTransparencyIndex = 0;
+    }
+
+    rnWidth = pReadAccess->Width();
+    rnHeight = pReadAccess->Height();
+    rnBitCount = pReadAccess->GetBitCount();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
