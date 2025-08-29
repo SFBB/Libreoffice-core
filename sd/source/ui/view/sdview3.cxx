@@ -200,28 +200,28 @@ bool View::InsertMetaFile( const TransferableDataHelper& rDataHelper, const Poin
                             {
                                 MetaBmpAction* pBmpAction = dynamic_cast< MetaBmpAction* >( pAction );
                                 if( pBmpAction )
-                                    aGraphic = Graphic(BitmapEx(pBmpAction->GetBitmap()));
+                                    aGraphic = Graphic(pBmpAction->GetBitmap());
                             }
                             break;
                         case MetaActionType::BMPSCALE:
                             {
                                 MetaBmpScaleAction* pBmpScaleAction = dynamic_cast< MetaBmpScaleAction* >( pAction );
                                 if( pBmpScaleAction )
-                                    aGraphic = Graphic(BitmapEx(pBmpScaleAction->GetBitmap()));
+                                    aGraphic = Graphic(pBmpScaleAction->GetBitmap());
                             }
                             break;
                         case MetaActionType::BMPEX:
                             {
                                 MetaBmpExAction* pBmpExAction = dynamic_cast< MetaBmpExAction* >( pAction );
                                 if( pBmpExAction )
-                                    aGraphic = Graphic(pBmpExAction->GetBitmapEx() );
+                                    aGraphic = Graphic(pBmpExAction->GetBitmap());
                             }
                             break;
                         case MetaActionType::BMPEXSCALE:
                             {
                                 MetaBmpExScaleAction* pBmpExScaleAction = dynamic_cast< MetaBmpExScaleAction* >( pAction );
                                 if( pBmpExScaleAction )
-                                    aGraphic = Graphic( pBmpExScaleAction->GetBitmapEx() );
+                                    aGraphic = Graphic( Bitmap(pBmpExScaleAction->GetBitmapEx()) );
                             }
                             break;
                         default: break;
@@ -1318,7 +1318,7 @@ bool View::InsertData( const TransferableDataHelper& rDataHelper,
         Bitmap aBmp;
 
         // get basic Bitmap data
-        rDataHelper.GetBitmapEx(SotClipboardFormatId::BITMAP, aBmp);
+        rDataHelper.GetBitmap(SotClipboardFormatId::BITMAP, aBmp);
 
         if(aBmp.IsEmpty())
         {

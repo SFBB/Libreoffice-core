@@ -316,12 +316,12 @@ ErrCode XOutBitmap::WriteGraphic( const Graphic& rGraphic, OUString& rFileName,
 
                     pVDev->SetRasterOp( RasterOp::Xor );
                     pVDev->DrawBitmap( aPt, aSize, aBitmap );
-                    aGraphic = BitmapEx( aBitmap, pVDev->GetBitmap( aPt, aSize ) );
+                    aGraphic = Bitmap(BitmapEx( aBitmap, pVDev->GetBitmap( aPt, aSize ) ));
                 }
                 else
                 {
                     rGraphic.Draw(*pVDev, Point(), aSize);
-                    aGraphic = BitmapEx(pVDev->GetBitmap(Point(), aSize));
+                    aGraphic = pVDev->GetBitmap(Point(), aSize);
                 }
             }
             else

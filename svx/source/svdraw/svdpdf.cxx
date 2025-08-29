@@ -533,7 +533,7 @@ void ImpSdrPdfImport::InsertObj(SdrObject* pObj1, bool bScale)
                             basegfx::fround<tools::Long>(
                                 ceil(std::min(static_cast<double>(aOrigSizePixel.Height()),
                                               aPixel.getHeight()))));
-                        const BitmapEx aClippedBitmap(BitmapEx(aBitmap), aClipTopLeft, aClipSize);
+                        const Bitmap aClippedBitmap(aBitmap, aClipTopLeft, aClipSize);
 
                         pObj->SetMergedItem(XFillStyleItem(drawing::FillStyle_BITMAP));
                         pObj->SetMergedItem(XFillBitmapItem(OUString(), Graphic(aClippedBitmap)));
@@ -875,7 +875,7 @@ void ImpSdrPdfImport::ImportImage(std::unique_ptr<vcl::pdf::PDFiumPageObject> co
     const int nWidth = bitmap->getWidth();
     const int nHeight = bitmap->getHeight();
     const int nStride = bitmap->getStride();
-    BitmapEx aBitmap(Size(nWidth, nHeight), vcl::PixelFormat::N24_BPP);
+    Bitmap aBitmap(Size(nWidth, nHeight), vcl::PixelFormat::N24_BPP);
 
     switch (format)
     {

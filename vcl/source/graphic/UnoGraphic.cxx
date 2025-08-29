@@ -202,7 +202,7 @@ uno::Reference< graphic::XGraphic > SAL_CALL Graphic::colorChange(
                 Bitmap aBitmap2(aBitmap);
                 AlphaMask aMask(aBitmap2.CreateAlphaMask(aColorFrom, nTolerance));
                 aBitmap2.Replace(aColorFrom, aColorTo, nTolerance);
-                aReturnGraphic = ::Graphic(BitmapEx(aBitmap2, aMask));
+                aReturnGraphic = ::Graphic(Bitmap(BitmapEx(aBitmap2, aMask)));
             }
             else
             {
@@ -220,30 +220,14 @@ uno::Reference< graphic::XGraphic > SAL_CALL Graphic::applyDuotone(
     const uno::Reference< graphic::XGraphic >& rxGraphic, sal_Int32 nColorOne, sal_Int32 nColorTwo )
 {
     ::Graphic aGraphic(rxGraphic);
-    ::Graphic aReturnGraphic;
-
     Bitmap    aBitmap( aGraphic.GetBitmap() );
-    if (aBitmap.HasAlpha())
-    {
-        const AlphaMask   aMask( aBitmap.CreateAlphaMask() );
 
-        Bitmap    aTmpBmp(aBitmap.CreateColorBitmap());
-        BitmapFilter::Filter(aTmpBmp,
-                        BitmapDuoToneFilter(
-                            Color(ColorTransparency, nColorOne),
-                            Color(ColorTransparency, nColorTwo)));
+    BitmapFilter::Filter(aBitmap,
+                    BitmapDuoToneFilter(
+                        Color(ColorTransparency, nColorOne),
+                        Color(ColorTransparency, nColorTwo)));
 
-        aReturnGraphic = ::Graphic( BitmapEx( aTmpBmp, aMask ) );
-    }
-    else
-    {
-        BitmapFilter::Filter(aBitmap,
-                        BitmapDuoToneFilter(
-                            Color(ColorTransparency, nColorOne),
-                            Color(ColorTransparency, nColorTwo)));
-
-        aReturnGraphic = ::Graphic( aBitmap );
-    }
+    ::Graphic aReturnGraphic(aBitmap);
     aReturnGraphic.setOriginURL(aGraphic.getOriginURL());
     return aReturnGraphic.GetXGraphic();
 }

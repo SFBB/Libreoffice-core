@@ -760,7 +760,7 @@ void XclImpDrawObjBase::ConvertFillStyle( SdrObject& rSdrObj, const XclObjFillDa
             aBitmap = aXOBitmap.GetBitmap();
 
             rSdrObj.SetMergedItem(XFillStyleItem(drawing::FillStyle_BITMAP));
-            rSdrObj.SetMergedItem(XFillBitmapItem(OUString(), Graphic(BitmapEx(aBitmap))));
+            rSdrObj.SetMergedItem(XFillBitmapItem(OUString(), Graphic(aBitmap)));
         }
     }
 }
@@ -4221,7 +4221,7 @@ void XclImpDrawing::ReadBmp( Graphic& rGraphic, const XclImpRoot& rRoot, XclImpS
     aMemStrm.Seek( STREAM_SEEK_TO_BEGIN );
     Bitmap aBitmap;
     if( ReadDIB(aBitmap, aMemStrm, false) )   // read DIB without file header
-        rGraphic = BitmapEx(aBitmap);
+        rGraphic = aBitmap;
 }
 
 void XclImpDrawing::ReadDffRecord( XclImpStream& rStrm )

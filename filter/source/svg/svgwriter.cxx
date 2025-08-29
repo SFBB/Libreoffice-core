@@ -3018,7 +3018,7 @@ void SVGActionWriter::ImplWriteBmp( const BitmapEx& rBmpEx,
         }
     }
 
-    if( !(bCached || GraphicConverter::Export( aOStm, *pBitmap, ConvertDataFormat::PNG ) == ERRCODE_NONE) )
+    if( !(bCached || GraphicConverter::Export( aOStm, Bitmap(*pBitmap), ConvertDataFormat::PNG ) == ERRCODE_NONE) )
         return;
 
     Point                    aPt;
@@ -3909,9 +3909,9 @@ void SVGActionWriter::ImplWriteActions( const GDIMetaFile& rMtf,
                 {
                     const MetaBmpExAction*  pA = static_cast<const MetaBmpExAction*>(pAction);
 
-                    ImplWriteBmp( pA->GetBitmapEx(),
-                                  pA->GetPoint(), mpVDev->PixelToLogic( pA->GetBitmapEx().GetSizePixel() ),
-                                  Point(), pA->GetBitmapEx().GetSizePixel(), pxShape );
+                    ImplWriteBmp( BitmapEx(pA->GetBitmap()),
+                                  pA->GetPoint(), mpVDev->PixelToLogic( pA->GetBitmap().GetSizePixel() ),
+                                  Point(), pA->GetBitmap().GetSizePixel(), pxShape );
                 }
             }
             break;

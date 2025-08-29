@@ -117,6 +117,7 @@ public:
                             Bitmap();
     explicit                Bitmap( const OUString& rIconName );
                             Bitmap( const Bitmap& rBitmap );
+                            Bitmap( const Bitmap& rBitmap, Point aSrc, Size aSize );
     explicit                Bitmap( const BitmapEx& rBitmapEx );
                             Bitmap( const Size& rSizePixel, vcl::PixelFormat ePixelFormat, const BitmapPalette* pPal = nullptr );
     SAL_DLLPRIVATE explicit Bitmap( std::shared_ptr<SalBitmap> xSalBitmap );
@@ -712,6 +713,45 @@ inline sal_Int64 Bitmap::GetSizeBytes() const
     sal_Int64 aSizeInBytes = (aSizePixel.Width() * aSizePixel.Height() * aBitCount) / 8;
     return aSizeInBytes;
 }
+
+/** Create a blend frame as Bitmap using an alpha value
+
+    @param nAlpha
+    The blend value defines how strong the frame will be blended with the
+    existing content, 255 == full coverage, 0 == no frame will be drawn
+
+    @param aColorTopLeft, aColorBottomRight
+    The colors defining the frame. These colors are linearly interpolated from
+    aColorTopLeft and aColorBottomRight using the width and height of the area
+
+    @param rSize
+    The size of the frame in pixels
+    */
+Bitmap VCL_DLLPUBLIC createAlphaBlendFrame(
+    const Size& rSize,
+    sal_uInt8 nAlpha,
+    const Color& rColorTopLeft,
+    const Color& rColorBottomRight);
+
+/** Create a blend frame as Bitmap using an alpha value
+
+    @param nAlpha
+    The blend value defines how strong the frame will be blended with the
+    existing content, 255 == full coverage, 0 == no frame will be drawn
+
+    @param aColorTopLeft, aColorBottomRight, aColorTopRight, aColorBottomLeft
+    The colors defining the frame.
+
+    @param rSize
+    The size of the frame in pixels
+    */
+Bitmap createAlphaBlendFrame(
+    const Size& rSize,
+    sal_uInt8 nAlpha,
+    const Color& rColorTopLeft,
+    const Color& rColorTopRight,
+    const Color& rColorBottomRight,
+    const Color& rColorBottomLeft);
 
 #endif // INCLUDED_VCL_BITMAP_HXX
 
