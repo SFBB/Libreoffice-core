@@ -2211,7 +2211,7 @@ namespace cppcanvas::internal
 
                         std::shared_ptr<Action> pBmpAction(
                                 internal::BitmapActionFactory::createBitmapAction(
-                                    Bitmap(pAct->GetBitmapEx()),
+                                    pAct->GetBitmap(),
                                     rStates.getState().mapModeTransform *
                                     vcl::unotools::b2DPointFromPoint( pAct->GetPoint() ),
                                     rStates.getState().mapModeTransform *
@@ -2236,7 +2236,7 @@ namespace cppcanvas::internal
 
                         // crop bitmap to given source rectangle (no
                         // need to copy and convert the whole bitmap)
-                        Bitmap aBmp( pAct->GetBitmapEx() );
+                        Bitmap aBmp( pAct->GetBitmap() );
                         const ::tools::Rectangle aCropRect( pAct->GetSrcPoint(),
                                                    pAct->GetSrcSize() );
                         aBmp.Crop( aCropRect );

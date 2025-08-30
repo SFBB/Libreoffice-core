@@ -1101,21 +1101,21 @@ MetaBmpExScaleAction::~MetaBmpExScaleAction()
 {}
 
 MetaBmpExScaleAction::MetaBmpExScaleAction( const Point& rPt, const Size& rSz,
-                                            const BitmapEx& rBmpEx ) :
+                                            const Bitmap& rBmp ) :
     MetaAction  ( MetaActionType::BMPEXSCALE ),
-    maBmpEx     ( rBmpEx ),
+    maBmp       ( rBmp ),
     maPt        ( rPt ),
     maSz        ( rSz )
 {}
 
 void MetaBmpExScaleAction::Execute( OutputDevice* pOut )
 {
-    if (!AllowScale(maBmpEx.GetSizePixel(), pOut->LogicToPixel(maSz)))
+    if (!AllowScale(maBmp.GetSizePixel(), pOut->LogicToPixel(maSz)))
         return;
     if (!AllowRect(pOut->LogicToPixel(tools::Rectangle(maPt, maSz))))
         return;
 
-    pOut->DrawBitmapEx( maPt, maSz, maBmpEx );
+    pOut->DrawBitmapEx( maPt, maSz, maBmp );
 }
 
 rtl::Reference<MetaAction> MetaBmpExScaleAction::Clone() const
@@ -1145,9 +1145,9 @@ MetaBmpExScalePartAction::~MetaBmpExScalePartAction()
 
 MetaBmpExScalePartAction::MetaBmpExScalePartAction( const Point& rDstPt, const Size& rDstSz,
                                                     const Point& rSrcPt, const Size& rSrcSz,
-                                                    const BitmapEx& rBmpEx ) :
+                                                    const Bitmap& rBmp ) :
     MetaAction  ( MetaActionType::BMPEXSCALEPART ),
-    maBmpEx     ( rBmpEx ),
+    maBmp       ( rBmp ),
     maDstPt     ( rDstPt ),
     maDstSz     ( rDstSz ),
     maSrcPt     ( rSrcPt ),
@@ -1159,7 +1159,7 @@ void MetaBmpExScalePartAction::Execute( OutputDevice* pOut )
     if (!AllowRect(pOut->LogicToPixel(tools::Rectangle(maDstPt, maDstSz))))
         return;
 
-    pOut->DrawBitmapEx( maDstPt, maDstSz, maSrcPt, maSrcSz, maBmpEx );
+    pOut->DrawBitmapEx( maDstPt, maDstSz, maSrcPt, maSrcSz, maBmp );
 }
 
 rtl::Reference<MetaAction> MetaBmpExScalePartAction::Clone() const

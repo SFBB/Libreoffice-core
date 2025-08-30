@@ -31,6 +31,7 @@
 #include <tools/tenccvt.hxx>
 #include <tools/fract.hxx>
 #include <tools/stream.hxx>
+#include <vcl/alpha.hxx>
 #include <vcl/dibtools.hxx>
 #include <vcl/metaact.hxx>
 #include <vcl/FilterConfigItem.hxx>
@@ -1261,8 +1262,8 @@ void WMFWriter::WriteRecords( const GDIMetaFile & rMTF )
             case MetaActionType::BMPEXSCALE:
             {
                 const MetaBmpExScaleAction* pA = static_cast<const MetaBmpExScaleAction*>(pMA);
-                Bitmap                      aBmp( pA->GetBitmapEx().GetBitmap() );
-                AlphaMask                   aMsk( pA->GetBitmapEx().GetAlphaMask() );
+                Bitmap                      aBmp( pA->GetBitmap().CreateColorBitmap() );
+                AlphaMask                   aMsk( pA->GetBitmap().CreateAlphaMask() );
 
                 if( !aMsk.IsEmpty() )
                 {
@@ -1278,13 +1279,13 @@ void WMFWriter::WriteRecords( const GDIMetaFile & rMTF )
             case MetaActionType::BMPEXSCALEPART:
             {
                 const MetaBmpExScalePartAction* pA = static_cast<const MetaBmpExScalePartAction*>(pMA);
-                BitmapEx                        aBmpEx( pA->GetBitmapEx() );
+                Bitmap                          aBmpEx( pA->GetBitmap() );
                 aBmpEx.Crop( tools::Rectangle( pA->GetSrcPoint(), pA->GetSrcSize() ) );
-                Bitmap                          aBmp( aBmpEx.GetBitmap() );
-                AlphaMask                       aMsk( aBmpEx.GetAlphaMask() );
+                Bitmap                          aBmp( aBmpEx.CreateColorBitmap() );
 
-                if( !aMsk.IsEmpty() )
+                if( aBmpEx.HasAlpha() )
                 {
+                    AlphaMask aMsk( aBmpEx.CreateAlphaMask() );
                     aBmp.Replace( aMsk, COL_WHITE );
                     WMFRecord_StretchDIB( pA->GetDestPoint(), pA->GetDestSize(), aMsk.GetBitmap(), W_SRCPAINT );
                     WMFRecord_StretchDIB( pA->GetDestPoint(), pA->GetDestSize(), aBmp, W_SRCAND );

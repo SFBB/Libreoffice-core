@@ -828,11 +828,11 @@ void PSWriter::ImplWriteActions( const GDIMetaFile& rMtf, VirtualDevice& rVDev )
 
             case MetaActionType::BMPEXSCALE :
             {
-                BitmapEx aBitmapEx( static_cast<MetaBmpExScaleAction*>(pMA)->GetBitmapEx() );
-                Bitmap aBitmap( aBitmapEx.GetBitmap() );
+                Bitmap aBitmapEx( static_cast<MetaBmpExScaleAction*>(pMA)->GetBitmap() );
+                Bitmap aBitmap( aBitmapEx.CreateColorBitmap() );
                 if ( mbGrayScale )
                     aBitmap.Convert( BmpConversion::N8BitGreys );
-                const AlphaMask& aMask( aBitmapEx.GetAlphaMask() );
+                const AlphaMask aMask( aBitmapEx.CreateAlphaMask() );
                 Point aPoint = static_cast<const MetaBmpExScaleAction*>(pMA)->GetPoint();
                 Size aSize( static_cast<const MetaBmpExScaleAction*>(pMA)->GetSize() );
                 ImplBmp( &aBitmap, &aMask, aPoint, aSize.Width(), aSize.Height() );
@@ -841,13 +841,13 @@ void PSWriter::ImplWriteActions( const GDIMetaFile& rMtf, VirtualDevice& rVDev )
 
             case MetaActionType::BMPEXSCALEPART :
             {
-                BitmapEx    aBitmapEx( static_cast<const MetaBmpExScalePartAction*>(pMA)->GetBitmapEx() );
+                Bitmap      aBitmapEx( static_cast<const MetaBmpExScalePartAction*>(pMA)->GetBitmap() );
                 aBitmapEx.Crop( tools::Rectangle( static_cast<const MetaBmpExScalePartAction*>(pMA)->GetSrcPoint(),
                     static_cast<const MetaBmpExScalePartAction*>(pMA)->GetSrcSize() ) );
-                Bitmap      aBitmap( aBitmapEx.GetBitmap() );
+                Bitmap      aBitmap( aBitmapEx.CreateColorBitmap() );
                 if ( mbGrayScale )
                     aBitmap.Convert( BmpConversion::N8BitGreys );
-                AlphaMask   aMask( aBitmapEx.GetAlphaMask() );
+                AlphaMask   aMask( aBitmapEx.CreateAlphaMask() );
                 Point aPoint = static_cast<const MetaBmpExScalePartAction*>(pMA)->GetDestPoint();
                 Size aSize = static_cast<const MetaBmpExScalePartAction*>(pMA)->GetDestSize();
                 ImplBmp( &aBitmap, &aMask, aPoint, aSize.Width(), aSize.Height() );

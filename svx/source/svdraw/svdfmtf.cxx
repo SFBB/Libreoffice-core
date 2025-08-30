@@ -1148,7 +1148,7 @@ void ImpSdrGDIMetaFileImport::DoAction(MetaBmpExScaleAction const & rAct)
     aRect.AdjustRight( 1 ); aRect.AdjustBottom( 1 );
     rtl::Reference<SdrGrafObj> pGraf = new SdrGrafObj(
         *mpModel,
-        Bitmap(rAct.GetBitmapEx()),
+        rAct.GetBitmap(),
         aRect);
 
     // This action is not creating line and fill, set directly, do not use SetAttributes(..)
@@ -1329,7 +1329,7 @@ void ImpSdrGDIMetaFileImport::DoAction(MetaBmpScalePartAction const & rAct)
 void ImpSdrGDIMetaFileImport::DoAction(MetaBmpExScalePartAction const & rAct)
 {
     tools::Rectangle aRect(rAct.GetDestPoint(),rAct.GetDestSize());
-    Bitmap aBitmap(rAct.GetBitmapEx());
+    Bitmap aBitmap(rAct.GetBitmap());
 
     aRect.AdjustRight( 1 );
     aRect.AdjustBottom( 1 );
@@ -1592,7 +1592,7 @@ void ImpSdrGDIMetaFileImport::DoAction(MetaFloatTransparentAction const & rAct)
                 aNewMask = AlphaMask(aBitmap.GetSizePixel(), &nTransparence);
             }
 
-            aBitmap = Bitmap(BitmapEx(aBitmap.CreateColorBitmap(), aNewMask));
+            aBitmap = Bitmap(aBitmap.CreateColorBitmap(), aNewMask);
         }
         else
         {

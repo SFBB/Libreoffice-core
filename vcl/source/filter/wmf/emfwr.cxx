@@ -28,6 +28,7 @@
 #include <tools/stream.hxx>
 #include <basegfx/polygon/b2dpolygon.hxx>
 #include <basegfx/polygon/b2dpolypolygon.hxx>
+#include <vcl/alpha.hxx>
 #include <vcl/lineinfo.hxx>
 #include <vcl/dibtools.hxx>
 #include <vcl/metaact.hxx>
@@ -1305,11 +1306,11 @@ void EMFWriter::ImplWrite( const GDIMetaFile& rMtf )
             case MetaActionType::BMPEXSCALE:
             {
                 const MetaBmpExScaleAction* pA = static_cast<const MetaBmpExScaleAction*>(pAction);
-                Bitmap                      aBmp( pA->GetBitmapEx().GetBitmap() );
-                AlphaMask                   aMsk( pA->GetBitmapEx().GetAlphaMask() );
+                Bitmap                      aBmp( pA->GetBitmap().CreateColorBitmap() );
 
-                if( !aMsk.IsEmpty() )
+                if( pA->GetBitmap().HasAlpha() )
                 {
+                    AlphaMask                   aMsk( pA->GetBitmap().CreateAlphaMask() );
                     aBmp.Replace( aMsk, COL_WHITE );
                     ImplWriteBmpRecord( aMsk.GetBitmap(), pA->GetPoint(), pA->GetSize(), WIN_SRCPAINT );
                     ImplWriteBmpRecord( aBmp, pA->GetPoint(), pA->GetSize(), WIN_SRCAND );
@@ -1322,13 +1323,13 @@ void EMFWriter::ImplWrite( const GDIMetaFile& rMtf )
             case MetaActionType::BMPEXSCALEPART:
             {
                 const MetaBmpExScalePartAction* pA = static_cast<const MetaBmpExScalePartAction*>(pAction);
-                BitmapEx                        aBmpEx( pA->GetBitmapEx() );
+                Bitmap                          aBmpEx( pA->GetBitmap() );
                 aBmpEx.Crop( tools::Rectangle( pA->GetSrcPoint(), pA->GetSrcSize() ) );
-                Bitmap                          aBmp( aBmpEx.GetBitmap() );
-                AlphaMask                       aMsk( aBmpEx.GetAlphaMask() );
+                Bitmap                          aBmp( aBmpEx.CreateColorBitmap() );
 
-                if( !aMsk.IsEmpty() )
+                if( aBmpEx.HasAlpha() )
                 {
+                    AlphaMask aMsk( aBmpEx.CreateAlphaMask() );
                     aBmp.Replace( aMsk, COL_WHITE );
                     ImplWriteBmpRecord( aMsk.GetBitmap(), pA->GetDestPoint(), pA->GetDestSize(), WIN_SRCPAINT );
                     ImplWriteBmpRecord( aBmp, pA->GetDestPoint(), pA->GetDestSize(), WIN_SRCAND );

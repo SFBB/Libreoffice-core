@@ -226,7 +226,7 @@ namespace
                 Size(
                     basegfx::fround<tools::Long>(aLogicBitmapRange.getWidth()),
                     basegfx::fround<tools::Long>(aLogicBitmapRange.getHeight())),
-                BitmapEx(rBitmapEx.GetBitmap(), aAlpha)));
+                Bitmap(rBitmapEx.GetBitmap(), aAlpha)));
 
         return true;
     }
@@ -340,7 +340,7 @@ namespace
                 Size(
                     basegfx::fround<tools::Long>(aLogicBitmapRange.getWidth()),
                     basegfx::fround<tools::Long>(aLogicBitmapRange.getHeight())),
-                BitmapEx(rBitmap.CreateColorBitmap(), aAlpha)));
+                Bitmap(rBitmap.CreateColorBitmap(), aAlpha)));
 
         return true;
     }
@@ -878,7 +878,7 @@ void clipMetafileContentAgainstOwnRegions(GDIMetaFile& rSource)
                         aClips.back(),
                         pA->GetPoint(),
                         pA->GetSize(),
-                        pA->GetBitmapEx(),
+                        pA->GetBitmap(),
                         aTarget);
                     break;
                 }
@@ -899,16 +899,16 @@ void clipMetafileContentAgainstOwnRegions(GDIMetaFile& rSource)
                 case MetaActionType::BMPEXSCALEPART :
                 {
                     const MetaBmpExScalePartAction* pA = static_cast< const MetaBmpExScalePartAction* >(pAction);
-                    const BitmapEx& rBitmapEx = pA->GetBitmapEx();
+                    const Bitmap& rBitmap = pA->GetBitmap();
 
-                    if(rBitmapEx.IsEmpty())
+                    if(rBitmap.IsEmpty())
                     {
                         // empty content
                         bDone = true;
                     }
                     else
                     {
-                        BitmapEx aCroppedBitmapEx(rBitmapEx);
+                        Bitmap aCroppedBitmap(rBitmap);
                         const tools::Rectangle aCropRectangle(pA->GetSrcPoint(), pA->GetSrcSize());
 
                         if(aCropRectangle.IsEmpty())
@@ -918,12 +918,12 @@ void clipMetafileContentAgainstOwnRegions(GDIMetaFile& rSource)
                         }
                         else
                         {
-                            aCroppedBitmapEx.Crop(aCropRectangle);
+                            aCroppedBitmap.Crop(aCropRectangle);
                             bDone = handleBitmapContent(
                                 aClips.back(),
                                 pA->GetDestPoint(),
                                 pA->GetDestSize(),
-                                aCroppedBitmapEx,
+                                aCroppedBitmap,
                                 aTarget);
                         }
                     }
