@@ -55,7 +55,7 @@ Bitmap VCL_DLLPUBLIC CreateFromData(sal_uInt8 const *pData,
                                       sal_Int8 nBitsPerPixel,
                                       bool bReversColors = false, bool bReverseAlpha = false);
 
-void VCL_DLLPUBLIC fillWithData(sal_uInt8* pData, BitmapEx const& rBitmapEx);
+void VCL_DLLPUBLIC fillWithData(sal_uInt8* pData, Bitmap const& rBitmap);
 
 Bitmap VCL_DLLPUBLIC CreateFromData( RawBitmap && data );
 
@@ -87,8 +87,6 @@ VCL_DLLPUBLIC css::uno::Sequence< sal_Int8 > CanvasExtractBitmapData(Bitmap cons
 
 Bitmap VCL_DLLPUBLIC createHistorical8x8FromArray(std::array<sal_uInt8,64> const & pArray, Color aColorPix, Color aColorBack);
 bool VCL_DLLPUBLIC isHistorical8x8(const Bitmap& rBitmap, Color& o_rBack, Color& o_rFront);
-
-VCL_DLLPUBLIC bool convertBitmap32To24Plus8(BitmapEx const & rInput, BitmapEx & rResult);
 
 /** Retrieve downsampled and cropped bitmap
 

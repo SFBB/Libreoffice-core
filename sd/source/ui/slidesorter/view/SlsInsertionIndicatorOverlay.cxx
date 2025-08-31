@@ -152,7 +152,7 @@ Point InsertionIndicatorOverlay::PaintRepresentatives (
     // Paint the pages.
     Point aPageOffset (0,0);
     double nTransparency (0);
-    const BitmapEx aExclusionOverlay (mrSlideSorter.GetTheme()->GetIcon(Theme::Icon_HideSlideOverlay));
+    const Bitmap aExclusionOverlay (mrSlideSorter.GetTheme()->GetIcon(Theme::Icon_HideSlideOverlay));
     for (sal_Int32 nIndex=2; nIndex>=0; --nIndex)
     {
         if (rRepresentatives.size() <= o3tl::make_unsigned(nIndex))
@@ -177,7 +177,7 @@ Point InsertionIndicatorOverlay::PaintRepresentatives (
         aPageOffset.AdjustY(gnShadowBorder );
 
         // Paint the preview.
-        BitmapEx aPreview (rRepresentatives[nIndex].maBitmap);
+        Bitmap aPreview (rRepresentatives[nIndex].maBitmap);
         aPreview.Scale(rPreviewSize, BmpScaleFlag::BestQuality);
         rContent.DrawBitmapEx(aPageOffset, aPreview);
 
