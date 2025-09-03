@@ -69,6 +69,7 @@
 #include <strings.hrc>
 #include <docmodel/color/ComplexColor.hxx>
 #include <IDocumentSettingAccess.hxx>
+#include <editeng/paperinf.hxx>
 
 // 50 cm 28350
 #define MAXHEIGHT 28350
@@ -319,6 +320,34 @@ void ItemSetToPageDesc( const SfxItemSet& rSet, SwPageDesc& rPageDesc )
         aSize.SetSize(rSizeItem.GetSize());
         rMaster.SetFormatAttr(aSize);
     }
+    else if (rSet.GetItemState(FN_PARAM_1) == SfxItemState::SET)
+    {
+        const sal_uInt16 nSizeItem = rSet.GetItem<SfxUInt16Item>(FN_PARAM_1)->GetValue();
+        SwFormatFrameSize aSize(SwFrameSize::Fixed);
+        aSize.SetSize(SvxPaperInfo::GetPaperSize(static_cast<Paper>(nSizeItem)));
+        rMaster.SetFormatAttr(aSize);
+    }
+
+    // Orientation
+    if (rSet.GetItemState(SID_ATTR_PAGE_ORIENTATION) == SfxItemState::SET)
+    {
+        const bool bIsLandscape = rSet.GetItem<SfxBoolItem>(SID_ATTR_PAGE_ORIENTATION)->GetValue();
+        SwFormatFrameSize aSize(SwFrameSize::Fixed);
+        Size curSize = rMaster.GetFrameSize().GetSize();
+
+        // If orientation is landscape and width < height, swap them
+        // If orientation is portrait and width > height, swap them
+        if ((bIsLandscape && curSize.Width() < curSize.Height()) ||
+            (!bIsLandscape && curSize.Width() > curSize.Height()))
+        {
+            curSize = Swap(curSize);
+        }
+        aSize.SetSize(curSize);
+        rMaster.SetFormatAttr(aSize);
+
+        rPageDesc.SetLandscape(bIsLandscape);
+    }
+
     // Evaluate header attributes
     if( const SvxSetItem* pHeaderSetItem = rSet.GetItemIfSet( SID_ATTR_PAGE_HEADERSET,
             false ) )

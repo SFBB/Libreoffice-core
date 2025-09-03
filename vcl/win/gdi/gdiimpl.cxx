@@ -636,7 +636,7 @@ void WinSalGraphicsImpl::drawMask(const SalTwoRect& rPosAry,
     {
         WinSalBitmap aTmp;
 
-        if( aTmp.Create( rSalBitmap, &mrParent ) )
+        if( aTmp.Create( rSalBitmap, mrParent ) )
             ImplDrawBitmap( hDC, aPosAry, aTmp, false, 0x00B8074AUL ); // raster operation PSDPxax
     }
     else
@@ -2372,12 +2372,11 @@ bool WinSalGraphicsImpl::TryDrawBitmapGDIPlus(const SalTwoRect& rTR, const SalBi
     return true;
 }
 
-bool WinSalGraphicsImpl::drawAlphaBitmap(
+void WinSalGraphicsImpl::drawAlphaBitmap(
     const SalTwoRect& rTR,
     const SalBitmap& rSrcBitmap)
 {
     drawBitmap(rTR, rSrcBitmap);
-    return true;
 }
 
 bool WinSalGraphicsImpl::drawTransformedBitmap(
