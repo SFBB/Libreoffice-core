@@ -780,8 +780,12 @@ void SwTextPaintInfo::DrawText_( const OUString &rText, const SwLinePortion &rPo
             aDrawInf.SetSmartTags( bTmpSmart ? m_pSmartTags : nullptr );
 
             // set custom letter spacing (hyphenation hasn't been supported yet)
-            if ( rPor.GetLetterSpacing() > 0 )
+            if ( rPor.GetLetterSpacing() != 0 )
                 aDrawInf.SetLetterSpacing( rPor.GetLetterSpacing() / sal_Int32(nLength) );
+
+            // set custom glyph scaling (hyphenation hasn't been supported yet)
+            // Note: set 100 percent, too (to reset the setting of the previous line)
+            aDrawInf.SetScaleWidth( rPor.GetScaleWidth() );
 
             m_pFnt->DrawText_( aDrawInf );
         }

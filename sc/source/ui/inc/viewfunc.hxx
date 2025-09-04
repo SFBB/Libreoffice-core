@@ -79,6 +79,8 @@ public:
                     ~ScViewFunc();
 
     SC_DLLPUBLIC const ScPatternAttr*    GetSelectionPattern ();
+    SC_DLLPUBLIC OUString GetCurrentString(SCCOL nCol, SCROW nRow);
+
     void GetSelectionFrame(
         std::shared_ptr<SvxBoxItem>& rLineOuter,
         std::shared_ptr<SvxBoxInfoItem>& rLineInner );
@@ -351,6 +353,8 @@ public:
     bool            TestFormatArea( SCCOL nCol, SCROW nRow, SCTAB nTab, bool bAttrChanged );
     void            DoAutoAttributes( SCCOL nCol, SCROW nRow, SCTAB nTab,
                                         bool bAttrChanged );
+
+    void MakeNewSheetView();
 
                                                 // Internal helper functions
 protected:

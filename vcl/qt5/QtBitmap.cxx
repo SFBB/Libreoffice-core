@@ -72,15 +72,6 @@ bool QtBitmap::Create(const SalBitmap& rSalBmp, SalGraphics& rSalGraphics)
     return true;
 }
 
-bool QtBitmap::Create(const SalBitmap& rSalBmp, vcl::PixelFormat eNewPixelFormat)
-{
-    if (eNewPixelFormat == vcl::PixelFormat::INVALID)
-        return false;
-    const QtBitmap* pBitmap = static_cast<const QtBitmap*>(&rSalBmp);
-    m_pImage.reset(new QImage(pBitmap->m_pImage->convertToFormat(getBitFormat(eNewPixelFormat))));
-    return true;
-}
-
 bool QtBitmap::Create(const css::uno::Reference<css::rendering::XBitmapCanvas>& /*rBitmapCanvas*/,
                       Size& /*rSize*/)
 {
@@ -103,8 +94,6 @@ ScanlineFormat QtBitmap::GetScanlineFormat() const
     auto nBits = getFormatBits(m_pImage->format());
     switch (nBits)
     {
-        case 1:
-            return ScanlineFormat::N1BitMsbPal;
         case 8:
             return ScanlineFormat::N8BitPal;
         case 24:
