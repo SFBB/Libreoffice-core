@@ -38,7 +38,6 @@
 #include <memory>
 
 class AlphaMask;
-class BitmapEx;
 namespace basegfx { class BColorModifierStack; }
 namespace com::sun::star::rendering {
     class XBitmapCanvas;
@@ -119,7 +118,6 @@ public:
     explicit                Bitmap( const OUString& rIconName );
                             Bitmap( const Bitmap& rBitmap );
                             Bitmap( const Bitmap& rBitmap, Point aSrc, Size aSize );
-    explicit                Bitmap( const BitmapEx& rBitmapEx );
                             Bitmap( const Size& rSizePixel, vcl::PixelFormat ePixelFormat, const BitmapPalette* pPal = nullptr );
                             Bitmap( const Bitmap& rBmp, const Bitmap& rMask );
                             Bitmap( const Bitmap& rBmp, const AlphaMask& rAlphaMask );
@@ -658,11 +656,11 @@ public:
 
     /** Remove existing blending against COL_WHITE based on given AlphaMask
 
-        Inside convertToBitmapEx the content gets rendered to RGB target (no 'A'),
+        Inside convertToBitmap the content gets rendered to RGB target (no 'A'),
         so it gets blended against the start condition of the target device which
         is blank (usually white background, but others may be used).
         Usually rendering to RGB is sufficient (e.g. EditViews), but for conversion
-        to BitmapEx the alpha channel is needed to e.g. allow export/conversion to
+        to Bitmap the alpha channel is needed to e.g. allow export/conversion to
         pixel target formats which support Alpha, e.g. PNG.
         It is possible though to create the fully valid and correct AlphaChannel.
         If the content, the start condition and the alpha values are known it is
@@ -688,7 +686,7 @@ public:
     */
     std::pair<Bitmap, AlphaMask> SplitIntoColorAndAlpha() const;
 
-   /** Create ColorStack-modified version of this BitmapEx
+   /** Create ColorStack-modified version of this Bitmap
 
         @param rBColorModifierStack
         A ColrModifierStack which defines how each pixel has to be modified
@@ -718,6 +716,9 @@ public:
 
     SAL_DLLPRIVATE bool     ImplMakeGreyscales();
     SAL_DLLPRIVATE bool     ImplMake8BitNoConversion();
+
+    /// Dumps the pixels as PNG in bitmap.png.
+    void DumpAsPng(const char* pFileName = nullptr) const;
 
 private:
     SAL_DLLPRIVATE bool ImplConvertUp(vcl::PixelFormat ePixelFormat, Color const* pExtColor = nullptr);

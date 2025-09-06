@@ -31,6 +31,7 @@
 #include <unotools/ucbstreamhelper.hxx>
 #include <sot/exchange.hxx>
 #include <sot/storage.hxx>
+#include <vcl/alpha.hxx>
 #include <vcl/bitmap.hxx>
 #include <vcl/filter/SvmReader.hxx>
 #include <vcl/filter/SvmWriter.hxx>
@@ -1585,13 +1586,13 @@ bool TransferableDataHelper::GetBitmap(const DataFlavor& rFlavor, Bitmap& rBmp) 
     {
         if(!bSuppressPNG && rFlavor.MimeType.equalsIgnoreAsciiCase("image/png"))
         {
-            // it's a PNG, import to BitmapEx
+            // it's a PNG, import to Bitmap
             vcl::PngImageReader aPNGReader(*xStm);
             rBmp = aPNGReader.read();
         }
         else if(!bSuppressJPEG && rFlavor.MimeType.equalsIgnoreAsciiCase("image/jpeg"))
         {
-            // it's a JPEG, import to BitmapEx
+            // it's a JPEG, import to Bitmap
             GraphicFilter& rFilter = GraphicFilter::GetGraphicFilter();
             Graphic aGraphic;
             if (rFilter.ImportGraphic(aGraphic, u"", *xStm) == ERRCODE_NONE)

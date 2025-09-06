@@ -27,8 +27,6 @@
 #include <vcl/dllapi.h>
 #include <vcl/bitmap.hxx>
 
-class BitmapEx;
-
 class VCL_DLLPUBLIC AlphaMask final
 {
 public:
@@ -109,9 +107,7 @@ public:
     { return maBitmap.CopyPixel_AlphaOptimized(rRectDst, rRectSrc, rBmpSrc); }
 
 private:
-    friend class BitmapEx;
     friend class ::OutputDevice;
-    friend bool VCL_DLLPUBLIC ReadDIBBitmapEx(BitmapEx& rTarget, SvStream& rIStm, bool bFileHeader, bool bMSOFormat);
 
     Bitmap maBitmap;
 };

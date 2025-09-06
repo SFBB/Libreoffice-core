@@ -18,7 +18,8 @@
 
 #include <skia/osx/bitmap.hxx>
 
-#include <vcl/bitmapex.hxx>
+#include <vcl/alpha.hxx>
+#include <vcl/bitmap.hxx>
 #include <vcl/image.hxx>
 
 #include <skia/salbmp.hxx>
@@ -61,8 +62,7 @@ CGImageRef createCGImage(const Image& rImage)
     }
     else
     {
-        BitmapEx bitmapEx(bitmap);
-        AlphaMask alpha(bitmapEx.GetAlphaMask());
+        AlphaMask alpha(bitmap.CreateAlphaMask());
         // tdf#156854 invert alpha mask for macOS native menu item images
         // At the time of this change, only the AquaSalMenu class calls this
         // function so it should be safe to invert the alpha mask here.

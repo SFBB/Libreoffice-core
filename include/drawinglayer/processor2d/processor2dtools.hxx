@@ -20,7 +20,7 @@
 #define INCLUDED_DRAWINGLAYER_PROCESSOR2D_PROCESSOR2DTOOLS_HXX
 
 #include <drawinglayer/drawinglayerdllapi.h>
-#include <vcl/bitmapex.hxx>
+#include <vcl/bitmap.hxx>
 #include <memory>
 
 namespace drawinglayer::geometry { class ViewInformation2D; }
@@ -93,7 +93,7 @@ namespace drawinglayer::processor2d
             A unique_ptr to a BaseProcessor2D from which to extract
 
             @return
-            a BitmapEx, may be empty, so check result
+            a Bitmap, may be empty, so check result
         */
         DRAWINGLAYER_DLLPUBLIC Bitmap extractBitmapFromBaseProcessor2D(const std::unique_ptr<BaseProcessor2D>& rProcessor);
 

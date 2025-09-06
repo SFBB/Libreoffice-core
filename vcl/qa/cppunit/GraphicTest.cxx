@@ -18,6 +18,7 @@
 #include <com/sun/star/beans/PropertyValue.hpp>
 
 #include <vcl/BitmapReadAccess.hxx>
+#include <vcl/alpha.hxx>
 #include <vcl/graph.hxx>
 #include <vcl/graphicfilter.hxx>
 #include <tools/stream.hxx>
@@ -542,7 +543,7 @@ CPPUNIT_TEST_FIXTURE(GraphicTest, testSwappingGraphic_PNG_WithoutGfxLink)
 {
     // Prepare Graphic from a PNG image first
 
-    // Make sure to construct the Graphic from BitmapEx, so that we
+    // Make sure to construct the Graphic from Bitmap, so that we
     // don't have the GfxLink present.
     Graphic aGraphic(makeUnloadedGraphic(u"png").GetBitmap());
 

@@ -14,7 +14,7 @@
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/lang/XMultiServiceFactory.hpp>
 
-#include <vcl/bitmapex.hxx>
+#include <vcl/bitmap.hxx>
 #include <vcl/event.hxx>
 #include <vcl/gradient.hxx>
 #include <vcl/vclmain.hxx>
@@ -510,9 +510,9 @@ public:
         aRectangle = aRegions[index++];
         {
             vcl::test::OutputDeviceTestBitmap aOutDevTest;
-            BitmapEx aBitmap = aOutDevTest.setupDrawBlend(vcl::PixelFormat::N24_BPP);
+            Bitmap aBitmap = aOutDevTest.setupDrawBlend(vcl::PixelFormat::N24_BPP);
             assertAndSetBackground(vcl::test::OutputDeviceTestBitmap::checkBlend(aBitmap), aRectangle, rRenderContext);
-            drawBitmapScaledAndCentered(aRectangle, aBitmap.GetBitmap(), rRenderContext);
+            drawBitmapScaledAndCentered(aRectangle, aBitmap.CreateColorBitmap(), rRenderContext);
         }
     }
 

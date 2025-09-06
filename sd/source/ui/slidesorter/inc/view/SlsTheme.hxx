@@ -19,7 +19,7 @@
 
 #pragma once
 
-#include <vcl/bitmapex.hxx>
+#include <vcl/bitmap.hxx>
 #include <tools/color.hxx>
 
 #include <memory>
@@ -45,8 +45,6 @@ public:
     */
     void Update (
         const std::shared_ptr<controller::Properties>& rpProperties);
-
-    //    BitmapEx GetInsertIndicatorIcon() const;
 
     enum FontType {
         Font_PageNumber,
