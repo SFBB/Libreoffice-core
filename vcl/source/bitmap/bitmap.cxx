@@ -153,9 +153,9 @@ static Bitmap createBitmapFromColorAndAlpha(const Bitmap& rColorBitmap, const Bi
         if (!bSuccess)
         {
             SAL_WARN("vcl", "Bitmap::Bitmap(): could not create image");
-            return Bitmap(xSalBmp);
+            return Bitmap(std::move(xSalBmp));
         }
-        Bitmap aRetBmp(xSalBmp);
+        Bitmap aRetBmp(std::move(xSalBmp));
         BitmapScopedReadAccess pReadColorAcc(rColorBitmap);
         BitmapScopedReadAccess pReadAlphaAcc(rAlphaBitmap);
         BitmapScopedWriteAccess pWriteAcc(aRetBmp);
@@ -787,136 +787,6 @@ bool Bitmap::CopyPixel( const tools::Rectangle& rRectDst,
     return bRet;
 }
 
-bool Bitmap::CopyPixel_AlphaOptimized( const tools::Rectangle& rRectDst, const tools::Rectangle& rRectSrc )
-{
-    assert(HasGreyPalette8Bit());
-    // Note: this code is copied from Bitmap::CopyPixel but avoids any palette lookups
-    // This optimization is possible because the palettes of AlphaMasks are always identical (8bit GreyPalette, see ctor)
-    const Size  aSizePix( GetSizePixel() );
-    tools::Rectangle   aRectDst( rRectDst );
-
-    aRectDst.Intersection( tools::Rectangle( Point(), aSizePix ) );
-
-    if( aRectDst.IsEmpty() )
-        return false;
-
-    tools::Rectangle aRectSrc( rRectSrc );
-    aRectSrc.Intersection( tools::Rectangle( Point(), aSizePix ) );
-    if( aRectSrc.IsEmpty() || ( aRectSrc == aRectDst ) )
-        return false;
-
-    BitmapScopedWriteAccess   pWriteAcc(*this);
-    if( !pWriteAcc )
-        return false;
-
-    const tools::Long  nWidth = std::min( aRectSrc.GetWidth(), aRectDst.GetWidth() );
-    const tools::Long  nHeight = std::min( aRectSrc.GetHeight(), aRectDst.GetHeight() );
-    const tools::Long  nSrcX = aRectSrc.Left();
-    const tools::Long  nSrcY = aRectSrc.Top();
-    const tools::Long  nSrcEndX1 = nSrcX + nWidth - 1;
-    const tools::Long  nSrcEndY1 = nSrcY + nHeight - 1;
-    const tools::Long  nDstX = aRectDst.Left();
-    const tools::Long  nDstY = aRectDst.Top();
-    const tools::Long  nDstEndX1 = nDstX + nWidth - 1;
-    const tools::Long  nDstEndY1 = nDstY + nHeight - 1;
-
-    if( ( nDstX <= nSrcX ) && ( nDstY <= nSrcY ) )
-    {
-        for( tools::Long nY = nSrcY, nYN = nDstY; nY <= nSrcEndY1; nY++, nYN++ )
-        {
-            Scanline pScanline = pWriteAcc->GetScanline(nYN);
-            Scanline pScanlineSrc = pWriteAcc->GetScanline(nY);
-            for( tools::Long nX = nSrcX, nXN = nDstX; nX <= nSrcEndX1; nX++, nXN++ )
-                pWriteAcc->SetPixelOnData( pScanline, nXN, pWriteAcc->GetPixelFromData( pScanlineSrc, nX ) );
-        }
-    }
-    else if( ( nDstX <= nSrcX ) && ( nDstY >= nSrcY ) )
-    {
-        for( tools::Long nY = nSrcEndY1, nYN = nDstEndY1; nY >= nSrcY; nY--, nYN-- )
-        {
-            Scanline pScanline = pWriteAcc->GetScanline(nYN);
-            Scanline pScanlineSrc = pWriteAcc->GetScanline(nY);
-            for( tools::Long nX = nSrcX, nXN = nDstX; nX <= nSrcEndX1; nX++, nXN++ )
-                pWriteAcc->SetPixelOnData( pScanline, nXN, pWriteAcc->GetPixelFromData( pScanlineSrc, nX ) );
-        }
-    }
-    else if( ( nDstX >= nSrcX ) && ( nDstY <= nSrcY ) )
-    {
-        for( tools::Long nY = nSrcY, nYN = nDstY; nY <= nSrcEndY1; nY++, nYN++ )
-        {
-            Scanline pScanline = pWriteAcc->GetScanline(nYN);
-            Scanline pScanlineSrc = pWriteAcc->GetScanline(nY);
-            for( tools::Long nX = nSrcEndX1, nXN = nDstEndX1; nX >= nSrcX; nX--, nXN-- )
-                pWriteAcc->SetPixelOnData( pScanline, nXN, pWriteAcc->GetPixelFromData( pScanlineSrc, nX ) );
-        }
-    }
-    else
-    {
-        for( tools::Long nY = nSrcEndY1, nYN = nDstEndY1; nY >= nSrcY; nY--, nYN-- )
-        {
-            Scanline pScanline = pWriteAcc->GetScanline(nYN);
-            Scanline pScanlineSrc = pWriteAcc->GetScanline(nY);
-            for( tools::Long nX = nSrcEndX1, nXN = nDstEndX1; nX >= nSrcX; nX--, nXN-- )
-                pWriteAcc->SetPixelOnData( pScanline, nXN, pWriteAcc->GetPixelFromData( pScanlineSrc, nX ) );
-        }
-    }
-
-    return true;
-}
-
-bool Bitmap::CopyPixel_AlphaOptimized( const tools::Rectangle& rRectDst, const tools::Rectangle& rRectSrc,
-                           const AlphaMask& rBmpSrc )
-{
-    assert(HasGreyPalette8Bit());
-    assert(rBmpSrc.GetBitmap().HasGreyPalette8Bit());
-    // Note: this code is copied from Bitmap::CopyPixel but avoids any palette lookups
-    // This optimization is possible because the palettes of AlphaMasks are always identical (8bit GreyPalette, see ctor)
-    const Size  aSizePix( GetSizePixel() );
-    tools::Rectangle   aRectDst( rRectDst );
-
-    aRectDst.Intersection( tools::Rectangle( Point(), aSizePix ) );
-
-    if( aRectDst.IsEmpty() )
-        return false;
-
-    if( rBmpSrc.GetBitmap().mxSalBmp == mxSalBmp ) // self-copy
-        return CopyPixel_AlphaOptimized(rRectDst, rRectSrc);
-
-    Bitmap*         pSrc = &const_cast<Bitmap&>(rBmpSrc.GetBitmap());
-    const Size      aCopySizePix( pSrc->GetSizePixel() );
-    tools::Rectangle       aRectSrc( rRectSrc );
-
-    aRectSrc.Intersection( tools::Rectangle( Point(), aCopySizePix ) );
-    if( aRectSrc.IsEmpty() )
-        return false;
-
-    BitmapScopedReadAccess pReadAcc(*pSrc);
-    if( !pReadAcc )
-        return false;
-
-    BitmapScopedWriteAccess pWriteAcc(*this);
-    if( !pWriteAcc )
-        return false;
-
-    const tools::Long  nWidth = std::min( aRectSrc.GetWidth(), aRectDst.GetWidth() );
-    const tools::Long  nHeight = std::min( aRectSrc.GetHeight(), aRectDst.GetHeight() );
-    const tools::Long  nSrcEndX = aRectSrc.Left() + nWidth;
-    const tools::Long  nSrcEndY = aRectSrc.Top() + nHeight;
-    tools::Long        nDstY = aRectDst.Top();
-
-    for( tools::Long nSrcY = aRectSrc.Top(); nSrcY < nSrcEndY; nSrcY++, nDstY++)
-    {
-        Scanline pScanline = pWriteAcc->GetScanline(nDstY);
-        Scanline pScanlineRead = pReadAcc->GetScanline(nSrcY);
-        for( tools::Long nSrcX = aRectSrc.Left(), nDstX = aRectDst.Left(); nSrcX < nSrcEndX; nSrcX++, nDstX++ )
-            pWriteAcc->SetPixelOnData( pScanline, nDstX, pReadAcc->GetPixelFromData( pScanlineRead, nSrcX ) );
-    }
-
-    bool bRet = ( nWidth > 0 ) && ( nHeight > 0 );
-
-    return bRet;
-}
-
 bool Bitmap::Expand( sal_Int32 nDX, sal_Int32 nDY, const Color* pInitColor )
 {
     if( !nDX && !nDY )
@@ -1078,7 +948,8 @@ bool Bitmap::Convert( BmpConversion eConversion )
 
         case BmpConversion::N32Bit:
         {
-            if( nBitCount < 32 )
+            // check for alpha, because even if we are a 32-bit format, we might not be a 32-bit format with alpha
+            if( !HasAlpha() )
                 bRet = ImplConvertUp(vcl::PixelFormat::N32_BPP);
             else
                 bRet = true;
@@ -1599,7 +1470,9 @@ bool Bitmap::HasFastScale()
 void Bitmap::AdaptBitCount(Bitmap& rNew) const
 {
     // aNew is the result of some operation; adapt it's BitCount to the original (this)
-    if (getPixelFormat() == rNew.getPixelFormat())
+    // Also check HasAlpha() in case we are dealing with one of the 32-bit formats
+    // without an alpha channel.
+    if (getPixelFormat() == rNew.getPixelFormat() && HasAlpha() == rNew.HasAlpha())
         return;
 
     switch (getPixelFormat())
@@ -1951,7 +1824,7 @@ const basegfx::SystemDependentDataHolder* Bitmap::accessSystemDependentDataHolde
 
 std::pair<Bitmap, AlphaMask> Bitmap::SplitIntoColorAndAlpha() const
 {
-    assert(getPixelFormat() == vcl::PixelFormat::N32_BPP && "only valid to call this when this is a 32-bit combined color+alpha bitmap");
+    assert(HasAlpha() && "only valid to call this when this is a 32-bit combined color+alpha bitmap");
     Bitmap aColorBmp(GetSizePixel(), vcl::PixelFormat::N24_BPP);
     aColorBmp.SetPrefSize(GetPrefSize());
     aColorBmp.SetPrefMapMode(GetPrefMapMode());
