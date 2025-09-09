@@ -947,19 +947,6 @@ bool Bitmap::Replace(const AlphaMask& rAlpha, const Color& rMergeColor)
 
 bool Bitmap::Replace(const Color& rSearchColor, const Color& rReplaceColor, sal_uInt8 nTol)
 {
-    if (mxSalBmp)
-    {
-        // implementation specific replace
-        std::shared_ptr<SalBitmap> xImpBmp(ImplGetSVData()->mpDefInst->CreateSalBitmap());
-        if (xImpBmp->Create(*mxSalBmp) && xImpBmp->Replace(rSearchColor, rReplaceColor, nTol))
-        {
-            ImplSetSalBitmap(xImpBmp);
-            maPrefMapMode = MapMode(MapUnit::MapPixel);
-            maPrefSize = xImpBmp->GetSize();
-            return true;
-        }
-    }
-
     BitmapScopedWriteAccess pAcc(*this);
     if (!pAcc)
         return false;
@@ -1000,7 +987,9 @@ bool Bitmap::Replace(const Color& rSearchColor, const Color& rReplaceColor, sal_
                     && nMaxG >= aCol.GetGreen() && nMinB <= aCol.GetBlue()
                     && nMaxB >= aCol.GetBlue())
                 {
-                    pAcc->SetPixelOnData(pScanline, nX, aReplace);
+                    BitmapColor aNewCol = aReplace;
+                    aNewCol.SetAlpha(aCol.GetAlpha());
+                    pAcc->SetPixelOnData(pScanline, nX, aNewCol);
                 }
             }
         }
@@ -1094,7 +1083,9 @@ bool Bitmap::Replace(const Color* pSearchColors, const Color* pReplaceColors, si
                         && aMinG[i] <= aCol.GetGreen() && aMaxG[i] >= aCol.GetGreen()
                         && aMinB[i] <= aCol.GetBlue() && aMaxB[i] >= aCol.GetBlue())
                     {
-                        pAcc->SetPixelOnData(pScanline, nX, aReplaces[i]);
+                        BitmapColor aNewCol = aReplaces[i];
+                        aNewCol.SetAlpha(aCol.GetAlpha());
+                        pAcc->SetPixelOnData(pScanline, nX, aNewCol);
                         break;
                     }
                 }
