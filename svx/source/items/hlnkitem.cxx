@@ -25,17 +25,18 @@
 
 SfxPoolItem* SvxHyperlinkItem::CreateDefault() { return new  SvxHyperlinkItem(TypedWhichId<SvxHyperlinkItem>(0));}
 
-SvxHyperlinkItem::SvxHyperlinkItem( const SvxHyperlinkItem& rHyperlinkItem ):
-            SfxPoolItem(rHyperlinkItem)
+SvxHyperlinkItem::SvxHyperlinkItem( const SvxHyperlinkItem& rHyperlinkItem )
+    : SfxPoolItem(rHyperlinkItem),
+    sName(rHyperlinkItem.sName),
+    sURL(rHyperlinkItem.sURL),
+    sTarget(rHyperlinkItem.sTarget),
+    eType(rHyperlinkItem.eType),
+    sReplacementText(rHyperlinkItem.sReplacementText),
+    m_showName(rHyperlinkItem.m_showName),
+    m_showText(rHyperlinkItem.m_showText),
+    sIntName(rHyperlinkItem.sIntName),
+    nMacroEvents(rHyperlinkItem.nMacroEvents)
 {
-    sName   = rHyperlinkItem.sName;
-    sURL    = rHyperlinkItem.sURL;
-    sTarget = rHyperlinkItem.sTarget;
-    eType   = rHyperlinkItem.eType;
-    sIntName = rHyperlinkItem.sIntName;
-    nMacroEvents = rHyperlinkItem.nMacroEvents;
-    sReplacementText = rHyperlinkItem.sReplacementText;
-
     if( rHyperlinkItem.GetMacroTable() )
         pMacroTable.reset( new SvxMacroTableDtor( *rHyperlinkItem.GetMacroTable() ) );
 
@@ -43,13 +44,15 @@ SvxHyperlinkItem::SvxHyperlinkItem( const SvxHyperlinkItem& rHyperlinkItem ):
 
 SvxHyperlinkItem::SvxHyperlinkItem( TypedWhichId<SvxHyperlinkItem> _nWhich, OUString aName, OUString aURL,
                                     OUString aTarget, OUString aIntName, SvxLinkInsertMode eTyp,
-                                    HyperDialogEvent nEvents, SvxMacroTableDtor const *pMacroTbl, OUString aReplacementText):
+                                    HyperDialogEvent nEvents, SvxMacroTableDtor const *pMacroTbl, bool showName, bool showText, OUString aReplacementText):
     SfxPoolItem (_nWhich ),
     sName       (std::move(aName)),
     sURL        (std::move(aURL)),
     sTarget     (std::move(aTarget)),
     eType       (eTyp),
     sReplacementText (std::move(aReplacementText)),
+    m_showName    (showName),
+    m_showText    (showText),
     sIntName (std::move(aIntName)),
     nMacroEvents (nEvents)
 {
@@ -74,7 +77,9 @@ bool SvxHyperlinkItem::operator==( const SfxPoolItem& rAttr ) const
                   eType   == rItem.eType   &&
                   sIntName == rItem.sIntName &&
                   nMacroEvents == rItem.nMacroEvents &&
-                  sReplacementText == rItem.sReplacementText);
+                  sReplacementText == rItem.sReplacementText &&
+                  m_showText == rItem.m_showText &&
+                  m_showName == rItem.m_showName);
     if (!bRet)
         return false;
 
@@ -186,6 +191,7 @@ bool SvxHyperlinkItem::PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId 
                 return false;
             sReplacementText = aStr;
         break;
+        // Currently no way to put showName or showValue; these are set by the shell
         default:
             return false;
     }
