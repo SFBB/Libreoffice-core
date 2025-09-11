@@ -35,9 +35,9 @@ using namespace ::com::sun::star::accessibility;
 // Ctor/Dtor/disposing
 
 AccessibleBrowseBox::AccessibleBrowseBox(
-    const css::uno::Reference<css::accessibility::XAccessible>& _rxParent,
+    const rtl::Reference<comphelper::OAccessible>& rpParent,
     ::vcl::IAccessibleTableProvider& _rBrowseBox)
-    : AccessibleBrowseBoxBase(_rxParent, _rBrowseBox, nullptr,
+    : AccessibleBrowseBoxBase(rpParent, _rBrowseBox, nullptr,
                               AccessibleBrowseBoxObjType::BrowseBox)
 {
     m_xFocusWindow.set(mpBrowseBox->GetWindowInstance()->GetComponentInterface(), css::uno::UNO_QUERY);
@@ -158,8 +158,7 @@ tools::Rectangle AccessibleBrowseBox::implGetBoundingBox()
     return mpBrowseBox->GetWindowExtentsRelative( *pParent );
 }
 
-// internal helper methods
-css::uno::Reference< css::accessibility::XAccessible > AccessibleBrowseBox::implGetTable()
+rtl::Reference<comphelper::OAccessible> AccessibleBrowseBox::getTable()
 {
     if( !mxTable.is() )
     {
@@ -169,8 +168,8 @@ css::uno::Reference< css::accessibility::XAccessible > AccessibleBrowseBox::impl
     return mxTable;
 }
 
-css::uno::Reference< css::accessibility::XAccessible >
-AccessibleBrowseBox::implGetHeaderBar(AccessibleBrowseBoxObjType eObjType)
+rtl::Reference<comphelper::OAccessible>
+AccessibleBrowseBox::getHeaderBar(AccessibleBrowseBoxObjType eObjType)
 {
     if( eObjType == AccessibleBrowseBoxObjType::RowHeaderBar )
     {
@@ -185,26 +184,23 @@ AccessibleBrowseBox::implGetHeaderBar(AccessibleBrowseBoxObjType eObjType)
         return mxColumnHeaderBar;
     }
 
-    return css::uno::Reference<css::accessibility::XAccessible>();
+    return {};
 }
 
-css::uno::Reference< css::accessibility::XAccessible >
-AccessibleBrowseBox::implGetFixedChild( sal_Int64 nChildIndex )
+rtl::Reference<comphelper::OAccessible>
+AccessibleBrowseBox::implGetFixedChild(sal_Int64 nChildIndex)
 {
-    css::uno::Reference< css::accessibility::XAccessible > xRet;
     switch( nChildIndex )
     {
         case vcl::BBINDEX_COLUMNHEADERBAR:
-            xRet = implGetHeaderBar( AccessibleBrowseBoxObjType::ColumnHeaderBar );
-        break;
+            return getHeaderBar(AccessibleBrowseBoxObjType::ColumnHeaderBar);
         case vcl::BBINDEX_ROWHEADERBAR:
-            xRet = implGetHeaderBar( AccessibleBrowseBoxObjType::RowHeaderBar );
-        break;
+            return getHeaderBar(AccessibleBrowseBoxObjType::RowHeaderBar);
         case vcl::BBINDEX_TABLE:
-            xRet = implGetTable();
-        break;
+            return getTable();
     }
-    return xRet;
+
+    return {};
 }
 
 rtl::Reference<AccessibleBrowseBoxTable> AccessibleBrowseBox::createAccessibleTable()

@@ -32,9 +32,9 @@ using namespace ::com::sun::star;
 
 // Ctor() and Dtor()
 
-AccessibleTabListBox::AccessibleTabListBox(const Reference<XAccessible>& rxParent,
+AccessibleTabListBox::AccessibleTabListBox(const rtl::Reference<comphelper::OAccessible>& rpParent,
                                            SvHeaderTabListBox& rBox)
-    : AccessibleBrowseBox(rxParent, rBox)
+    : AccessibleBrowseBox(rpParent, rBox)
     , m_pTabListBox(&rBox)
 {
 }
@@ -72,7 +72,7 @@ AccessibleTabListBox::getAccessibleChild( sal_Int64 nChildIndex )
     if (nChildIndex != 0)
         throw IndexOutOfBoundsException();
 
-    return implGetTable();
+    return getTable();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

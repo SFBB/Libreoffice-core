@@ -30,10 +30,10 @@ private:
 
 public:
     /** ctor()
-        @param rxParent  XAccessible interface of the parent object.
+        @param rpParent Accessible parent object.
         @param rBox  The HeaderTabListBox control. */
     AccessibleTabListBox(
-        const css::uno::Reference< css::accessibility::XAccessible >& rxParent,
+        const rtl::Reference<comphelper::OAccessible>& rpParent,
         SvHeaderTabListBox& rBox );
 
     // XAccessibleContext -----------------------------------------------------
@@ -45,8 +45,7 @@ public:
     virtual css::uno::Reference< css::accessibility::XAccessible > SAL_CALL
     getAccessibleChild( sal_Int64 nChildIndex ) override;
 
-    css::uno::Reference< css::accessibility::XAccessible >
-        getHeaderBar()
+    rtl::Reference<comphelper::OAccessible> getHeaderBar()
     {
         return AccessibleBrowseBox::getHeaderBar( AccessibleBrowseBoxObjType::ColumnHeaderBar );
     }

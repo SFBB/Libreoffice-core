@@ -1085,7 +1085,7 @@ void SwInsertDBColAutoPilot::DataToDoc( const Sequence<Any>& rSelection,
                             {
                                 if(rNumFormatr.GetType(aNumFormat.GetValue()) & SvNumFormatType::DATE)
                                 {
-                                    ::Date aStandard(1,1,1900);
+                                    ::Date aStandard(30, 12, 1899);
                                     if (rNumFormatr.GetNullDate() != aStandard)
                                         fVal += (aStandard - rNumFormatr.GetNullDate());
                                 }
@@ -1280,10 +1280,8 @@ void SwInsertDBColAutoPilot::DataToDoc( const Sequence<Any>& rSelection,
                                     DataType::TIMESTAMP  == eDataType)
 
                                 {
-                                    ::Date aStandard(1,1,1900);
-                                    ::Date aCompare(aDBFormatData.aNullDate.Day ,
-                                                    aDBFormatData.aNullDate.Month,
-                                                    aDBFormatData.aNullDate.Year);
+                                    ::Date aStandard(30, 12, 1899);
+                                    ::Date aCompare(aDBFormatData.aNullDate);
                                     if(aStandard != aCompare)
                                         nValue += (aStandard - aCompare);
                                 }
@@ -1310,7 +1308,7 @@ void SwInsertDBColAutoPilot::DataToDoc( const Sequence<Any>& rSelection,
                                 const Color* pCol;
                                 if(rNumFormatr.GetType(pDBCol->nFormat) & SvNumFormatType::DATE)
                                 {
-                                    ::Date aStandard(1,1,1900);
+                                    ::Date aStandard(30, 12, 1899);
                                     if (rNumFormatr.GetNullDate() != aStandard)
                                         nValue += (aStandard - rNumFormatr.GetNullDate());
                                 }

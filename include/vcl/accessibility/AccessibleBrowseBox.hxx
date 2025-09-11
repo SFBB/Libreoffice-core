@@ -33,7 +33,7 @@ class VCL_DLLPUBLIC AccessibleBrowseBox : public AccessibleBrowseBoxBase
 
 public:
     AccessibleBrowseBox(
-        const css::uno::Reference< css::accessibility::XAccessible >& _rxParent,
+        const rtl::Reference<comphelper::OAccessible>& rpParent,
         ::vcl::IAccessibleTableProvider& _rBrowseBox
     );
 
@@ -107,21 +107,11 @@ public:
 
     /** returns the accessible object for the row or the column header bar
     */
-    css::uno::Reference<
-        css::accessibility::XAccessible >
-        getHeaderBar( AccessibleBrowseBoxObjType _eObjType )
-        {
-            return implGetHeaderBar(_eObjType);
-        }
+    rtl::Reference<comphelper::OAccessible> getHeaderBar(AccessibleBrowseBoxObjType eObjType);
 
     /** returns the accessible object for the table representation
     */
-    css::uno::Reference<
-        css::accessibility::XAccessible >
-        getTable( )
-        {
-            return implGetTable();
-        }
+    rtl::Reference<comphelper::OAccessible> getTable();
 
 protected:
     // internal virtual methods
@@ -132,26 +122,11 @@ protected:
 
     // internal helper methods
 
-    /** This method creates (once) and returns the accessible data table child.
-        @attention  This method requires locked mutex's and a living object.
-        @return  The XAccessible interface of the data table. */
-    css::uno::Reference<
-        css::accessibility::XAccessible > implGetTable();
-
-    /** This method creates (once) and returns the specified header bar.
-        @attention  This method requires locked mutex's and a living object.
-        @return  The XAccessible interface of the header bar. */
-    css::uno::Reference<
-        css::accessibility::XAccessible >
-        implGetHeaderBar( AccessibleBrowseBoxObjType eObjType );
-
     /** This method returns one of the children that are always present:
         Data table, row and column header bar or corner control.
         @attention  This method requires locked mutex's and a living object.
-        @return  The XAccessible interface of the specified child. */
-    css::uno::Reference<
-        css::accessibility::XAccessible >
-    implGetFixedChild( sal_Int64 nChildIndex );
+        @return  The accessible object of the specified child. */
+    rtl::Reference<comphelper::OAccessible> implGetFixedChild(sal_Int64 nChildIndex);
 
     /** This method creates and returns an accessible table.
         @return  An AccessibleBrowseBoxTable. */

@@ -2552,48 +2552,41 @@ static bool ImplHandleShowDialog( vcl::Window* pWindow, ShowDialogId nDialogId )
     return ImplCallCommand( pWindow, CommandEventId::ShowDialog, &aCmdData );
 }
 
-static void ImplHandleSurroundingTextRequest( vcl::Window *pWindow,
-                          OUString& rText,
-                          Selection &rSelRange )
-{
-    vcl::Window* pChild = ImplGetKeyInputWindow( pWindow );
-
-    if ( !pChild )
-    {
-        rText.clear();
-        rSelRange.setMin( 0 );
-        rSelRange.setMax( 0 );
-    }
-    else
-    {
-        rText = pChild->GetSurroundingText();
-        Selection aSel = pChild->GetSurroundingTextSelection();
-        rSelRange.setMin( aSel.Min() );
-        rSelRange.setMax( aSel.Max() );
-    }
-}
-
 static void ImplHandleSalSurroundingTextRequest( vcl::Window *pWindow,
                          SalSurroundingTextRequestEvent *pEvt )
 {
-    Selection aSelRange;
-    ImplHandleSurroundingTextRequest( pWindow, pEvt->maText, aSelRange );
+    vcl::Window* pChild = ImplGetKeyInputWindow( pWindow );
+    if ( !pChild )
+    {
+        pEvt->maText.clear();
+        pEvt->mnStart = 0;
+        pEvt->mnEnd = 0;
+        return;
+    }
 
-    aSelRange.Normalize();
+    pEvt->maText = pChild->GetSurroundingText();
+    Selection aSelRange = pChild->GetSurroundingTextSelection();
+
+    sal_uLong nSelectionAnchorPos = 0;
+    sal_uLong nCursorPos = 0;
 
     if( aSelRange.Min() < 0 )
-        pEvt->mnStart = 0;
+        nSelectionAnchorPos = 0;
     else if( aSelRange.Min() > pEvt->maText.getLength() )
-        pEvt->mnStart = pEvt->maText.getLength();
+        nSelectionAnchorPos = pEvt->maText.getLength();
     else
-        pEvt->mnStart = aSelRange.Min();
+        nSelectionAnchorPos = aSelRange.Min();
 
     if( aSelRange.Max() < 0 )
-        pEvt->mnStart = 0;
+        nCursorPos = 0;
     else if( aSelRange.Max() > pEvt->maText.getLength() )
-        pEvt->mnEnd = pEvt->maText.getLength();
+        nCursorPos = pEvt->maText.getLength();
     else
-        pEvt->mnEnd = aSelRange.Max();
+        nCursorPos = aSelRange.Max();
+
+    pEvt->mnCursorPos = nCursorPos;
+    pEvt->mnStart = std::min(nSelectionAnchorPos, nCursorPos);
+    pEvt->mnEnd = std::max(nSelectionAnchorPos, nCursorPos);
 }
 
 static void ImplHandleSalDeleteSurroundingTextRequest( vcl::Window *pWindow,
