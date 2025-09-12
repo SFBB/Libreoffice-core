@@ -14,8 +14,8 @@ ARGON2_TARBALL := phc-winner-argon2-20190702.tar.gz
 # so that git cherry-pick
 # will not run into conflicts
 # please repack the tarball using external/boost/repack_tarball.sh
-BOOST_SHA256SUM := 5c67a448c562f1606e38203ba7ed7e8d7453581b6b9ca324e96205eae0da5ff8
-BOOST_TARBALL := boost_1_88_0.tar.xz
+BOOST_SHA256SUM := b3a976c659961f1d7fae9a8e58d6729a11f5473abaf2ef0e623f53777c86475d
+BOOST_TARBALL := boost_1_89_0.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -302,8 +302,8 @@ FREEHAND_TARBALL := libfreehand-0.1.2.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-FREETYPE_SHA256SUM := f8dfa8f15ef0576738dfb55b2e6e6b172fd5d09b6f03785a1df03239549f64d2
-FREETYPE_TARBALL := freetype-2.14.0.tar.xz
+FREETYPE_SHA256SUM := 32427e8c471ac095853212a37aef816c60b42052d4d9e48230bab3bdf2936ccc
+FREETYPE_TARBALL := freetype-2.14.1.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -482,8 +482,8 @@ LXML_TARBALL := lxml-6.0.1.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-MARIADB_CONNECTOR_C_SHA256SUM := b593fdd3d5b8964a9feec2bf57a13e6cc8f178a4fe948e89f60ede9c53d621fe
-MARIADB_CONNECTOR_C_TARBALL := mariadb-connector-c-3.3.15-src.tar.gz
+MARIADB_CONNECTOR_C_SHA256SUM := a5abb7331508988f7287b481c1839bd929261ce38352cd0fde6c002c300e0c01
+MARIADB_CONNECTOR_C_TARBALL := mariadb-connector-c-3.3.17-src.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts

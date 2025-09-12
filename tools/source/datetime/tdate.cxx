@@ -72,11 +72,9 @@ sal_Int32 Date::GetAsNormalizedDays() const
     // This is a very common datum we often calculate from.
     if (mnDate == 18991230) // 1899-12-30
     {
-#ifndef NDEBUG
-        static sal_Int32 nDays = DateToDays( GetDay(), GetMonth(), GetYear());
-        assert(nDays == 693594);
-#endif
-        return 693594;
+        assert(GetDay() == 30 && GetMonth() == 12 && GetYear() == 1899);
+        constexpr sal_Int32 nullDays = comphelper::date::convertDateToDays(30, 12, 1899);
+        return nullDays;
     }
     // Not calling comphelper::date::convertDateToDaysNormalizing() here just
     // avoids a second check on null-date handling like above.
@@ -376,6 +374,17 @@ void Date::AddDays( sal_Int32 nDays )
 {
     if (nDays != 0)
         *this = lcl_DaysToDate( GetAsNormalizedDays() + nDays );
+}
+
+bool Date::CheckedAddDays( sal_Int32 nDays )
+{
+    if (nDays == 0)
+        return true;
+    sal_Int32 nTotalDays;
+    if (o3tl::checked_add(GetAsNormalizedDays(), nDays, nTotalDays))
+        return false;
+    *this = lcl_DaysToDate(nTotalDays);
+    return true;
 }
 
 Date& Date::operator ++()

@@ -3022,6 +3022,10 @@ AC_ARG_WITH(dotnet,
          Requires .NET SDK 8 or higher. To disable building .NET components, use
          --without-dotnet or --with-dotnet=no.]))
 
+AC_ARG_ENABLE(rust-uno,
+    AS_HELP_STRING([--enable-rust-uno],
+        [Enable experimental Rust UNO support.]))
+
 dnl ===================================================================
 dnl Branding
 dnl ===================================================================
@@ -5925,6 +5929,16 @@ fi
 AC_SUBST(ENABLE_DOTNET)
 AC_SUBST(DOTNET)
 AC_SUBST(DOTNET_ROOT)
+
+AC_MSG_CHECKING([whether to enable Rust UNO support])
+if test "$enable_rust_uno" = "yes"; then
+    ENABLE_RUST_UNO=TRUE
+    AC_MSG_RESULT([yes])
+else
+    ENABLE_RUST_UNO=
+    AC_MSG_RESULT([no])
+fi
+AC_SUBST(ENABLE_RUST_UNO)
 
 DISABLE_GUI=""
 if test "$enable_gui" = "no"; then
@@ -11587,18 +11601,9 @@ dnl ===================================================================
 dnl Orcus
 dnl ===================================================================
 libo_CHECK_SYSTEM_MODULE([orcus],[ORCUS],[liborcus-0.20 >= 0.20.2])
-if test "$with_system_orcus" != "yes"; then
-    if test "$SYSTEM_BOOST" = "TRUE"; then
-        dnl Link with Boost.System
-        dnl This seems to be necessary since boost 1.50 (1.48 does not need it,
-        dnl 1.49 is untested). The macro BOOST_THREAD_DONT_USE_SYSTEM mentioned
-        dnl in documentation has no effect.
-        AX_BOOST_SYSTEM
-    fi
-fi
+
 dnl FIXME by renaming SYSTEM_LIBORCUS to SYSTEM_ORCUS in the build system world
 SYSTEM_LIBORCUS=$SYSTEM_ORCUS
-AC_SUBST([BOOST_SYSTEM_LIB])
 AC_SUBST(SYSTEM_LIBORCUS)
 
 dnl ===================================================================
