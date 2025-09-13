@@ -349,6 +349,8 @@ private:
     void          UpdateCurrentTab();
     ScViewDataTable* FetchTableData(SCTAB) const;
 
+    bool IsValidTabNumber(SCTAB nTabNumber) const;
+
 public:
     ScViewData( ScDocShell& rDocSh, ScTabViewShell* pViewSh );
     ~ScViewData() COVERITY_NOEXCEPT_FALSE;
@@ -411,6 +413,11 @@ public:
     void SetSheetViewID(sc::SheetViewID nID)
     {
         pThisTab->mnSheetViewID = nID;
+    }
+
+    sc::SheetViewID GetSheetViewID() const
+    {
+        return pThisTab->mnSheetViewID;
     }
 
     SCCOL           MaxCol() const                          { return mrDoc.MaxCol(); }

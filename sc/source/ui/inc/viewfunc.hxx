@@ -355,6 +355,8 @@ public:
                                         bool bAttrChanged );
 
     void MakeNewSheetView();
+    void RemoveCurrentSheetView();
+    void SwitchSheetView();
 
                                                 // Internal helper functions
 protected:

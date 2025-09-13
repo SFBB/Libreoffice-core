@@ -188,7 +188,7 @@ void CppProducer::generateCBridgeIncludes(CppFile& file, std::string_view name,
     includeManager.dumpIncludes(file, name);
 }
 
-void CppProducer::generateCBridgeTypeDefinitions(CppFile& file, const OString& handleTypeName)
+void CppProducer::generateCBridgeTypeDefinitions(CppFile& file, std::string_view handleTypeName)
 {
     // Opaque handle typedef for type safety
     file.beginLine()
@@ -204,9 +204,9 @@ void CppProducer::generateCBridgeTypeDefinitions(CppFile& file, const OString& h
         .endLine();
 }
 
-void CppProducer::generateCBridgeConstructors(CppFile& file, const OString& className,
-                                              const OString& functionPrefix,
-                                              const OString& handleTypeName)
+void CppProducer::generateCBridgeConstructors(CppFile& file, std::string_view className,
+                                              std::string_view functionPrefix,
+                                              std::string_view handleTypeName)
 {
     // Opaque constructor function - creates interface instance from existing Reference
     file.beginLine()
@@ -348,9 +348,9 @@ void CppProducer::generateCBridgeConstructors(CppFile& file, const OString& clas
         .endBlock();
 }
 
-void CppProducer::generateCBridgeDestructor(CppFile& file, const OString& className,
-                                            const OString& functionPrefix,
-                                            const OString& handleTypeName)
+void CppProducer::generateCBridgeDestructor(CppFile& file, std::string_view className,
+                                            std::string_view functionPrefix,
+                                            std::string_view handleTypeName)
 {
     // Opaque destructor function - destroys interface instance
     file.beginLine()
@@ -379,9 +379,9 @@ void CppProducer::generateCBridgeDestructor(CppFile& file, const OString& classN
         .endBlock();
 }
 
-void CppProducer::generateCBridgeValidation(CppFile& file, const OString& className,
-                                            const OString& functionPrefix,
-                                            const OString& handleTypeName)
+void CppProducer::generateCBridgeValidation(CppFile& file, std::string_view className,
+                                            std::string_view functionPrefix,
+                                            std::string_view handleTypeName)
 {
     // Opaque validity check function
     file.beginLine()
@@ -409,9 +409,9 @@ void CppProducer::generateCBridgeValidation(CppFile& file, const OString& classN
         .endBlock();
 }
 
-void CppProducer::generateCBridgeMethods(CppFile& file, const OString& className,
-                                         const OString& functionPrefix,
-                                         const OString& handleTypeName,
+void CppProducer::generateCBridgeMethods(CppFile& file, std::string_view className,
+                                         std::string_view functionPrefix,
+                                         std::string_view handleTypeName,
                                          const rtl::Reference<unoidl::InterfaceTypeEntity>& entity)
 {
     // Opaque method bridge functions - each method gets unique extern "C" function
@@ -824,9 +824,9 @@ void CppProducer::generateStructSourceNamespaces(CppFile& file, std::string_view
     generateSourceNamespaces(file, name);
 }
 
-void CppProducer::generateStructSourceBasicFunctions(CppFile& file, const OString& functionPrefix,
-                                                     const OString& handleTypeName,
-                                                     const std::string& className)
+void CppProducer::generateStructSourceBasicFunctions(CppFile& file, std::string_view functionPrefix,
+                                                     std::string_view handleTypeName,
+                                                     std::string_view className)
 {
     // Generate struct creation function
     file.beginLine()
@@ -912,8 +912,8 @@ void CppProducer::generateStructSourceBasicFunctions(CppFile& file, const OStrin
 }
 
 void CppProducer::generateStructSourceBaseMembers(
-    CppFile& file, const OString& functionPrefix, const OString& handleTypeName,
-    const std::string& className, const rtl::Reference<unoidl::PlainStructTypeEntity>& entity)
+    CppFile& file, std::string_view functionPrefix, std::string_view handleTypeName,
+    std::string_view className, const rtl::Reference<unoidl::PlainStructTypeEntity>& entity)
 {
     // Generate getters/setters for base type members (if struct has a base)
     if (!entity->getDirectBase().isEmpty())
@@ -944,8 +944,8 @@ void CppProducer::generateStructSourceBaseMembers(
 }
 
 void CppProducer::generateStructSourceDirectMembers(
-    CppFile& file, const OString& functionPrefix, const OString& handleTypeName,
-    const std::string& className, const rtl::Reference<unoidl::PlainStructTypeEntity>& entity)
+    CppFile& file, std::string_view functionPrefix, std::string_view handleTypeName,
+    std::string_view className, const rtl::Reference<unoidl::PlainStructTypeEntity>& entity)
 {
     // Generate getters/setters for direct struct members
     file.beginLine().append("// Getters/setters for direct struct members").endLine();
@@ -956,9 +956,9 @@ void CppProducer::generateStructSourceDirectMembers(
     }
 }
 
-void CppProducer::generateStructMemberAccessors(CppFile& file, const OString& functionPrefix,
-                                                const OString& handleTypeName,
-                                                const std::string& className,
+void CppProducer::generateStructMemberAccessors(CppFile& file, std::string_view functionPrefix,
+                                                std::string_view handleTypeName,
+                                                std::string_view className,
                                                 const unoidl::PlainStructTypeEntity::Member& member)
 {
     // Generate getter implementation
@@ -1013,7 +1013,7 @@ void CppProducer::generateStructMemberAccessors(CppFile& file, const OString& fu
     // UNO interface types start with "com.sun.star" and end with an interface name (typically starting with "X")
     // Examples: "com.sun.star.uno.XInterface", "com.sun.star.text.XText"
     bool isInterfaceType = (unoType.startsWith("com.sun.star.") && (unoType.lastIndexOf('.') != -1)
-                            && (unoType.copy(unoType.lastIndexOf('.') + 1).startsWith("X")));
+                            && (unoType.subView(unoType.lastIndexOf('.') + 1).starts_with('X')));
 
     if (isInterfaceType)
     {
@@ -1067,15 +1067,13 @@ void CppProducer::generateStructSource(std::string_view name,
     file.beginLine().append("extern \"C\"").endLine().beginBlock();
 
     // Generate basic functions (creation/destruction)
-    generateStructSourceBasicFunctions(file, functionPrefix, handleTypeName, className.getStr());
+    generateStructSourceBasicFunctions(file, functionPrefix, handleTypeName, className);
 
     // Generate accessors for base type members
-    generateStructSourceBaseMembers(file, functionPrefix, handleTypeName, className.getStr(),
-                                    entity);
+    generateStructSourceBaseMembers(file, functionPrefix, handleTypeName, className, entity);
 
     // Generate accessors for direct members
-    generateStructSourceDirectMembers(file, functionPrefix, handleTypeName, className.getStr(),
-                                      entity);
+    generateStructSourceDirectMembers(file, functionPrefix, handleTypeName, className, entity);
 
     file.endBlock().append(" // extern \"C\"").endLine();
 
@@ -1104,7 +1102,7 @@ OString CppProducer::getCFunctionPrefix(std::string_view unoName)
 {
     // Convert com.sun.star.lang.XMain to com__sun__star__lang__XMain for function names
     OString temp(unoName);
-    return temp.replaceAll(".", "__");
+    return temp.replaceAll("."_ostr, "__"_ostr);
 }
 
 OString CppProducer::getMethodReturnType(std::u16string_view returnType) const
@@ -1120,13 +1118,13 @@ OString CppProducer::getMethodDefaultReturn(std::u16string_view returnType) cons
 
     // Handle void vs non-void return types properly
     if (resolvedType == u"void")
-        return ""; // void methods don't return anything
+        return ""_ostr; // void methods don't return anything
 
     // Return appropriate default values for different types
     if (resolvedType == u"double")
-        return "0.0";
+        return "0.0"_ostr;
     else if (resolvedType == u"float")
-        return "0.0f";
+        return "0.0f"_ostr;
     else if (resolvedType == u"sal_Int32" || resolvedType == u"long" || resolvedType == u"sal_Int16"
              || resolvedType == u"short" || resolvedType == u"sal_Int8" || resolvedType == u"byte"
              || resolvedType == u"sal_uInt8" || resolvedType == u"sal_uInt16"
@@ -1134,9 +1132,9 @@ OString CppProducer::getMethodDefaultReturn(std::u16string_view returnType) cons
              || resolvedType == u"sal_uInt64" || resolvedType == u"sal_Unicode"
              || resolvedType == u"unsigned short" || resolvedType == u"unsigned long"
              || resolvedType == u"unsigned hyper" || resolvedType == u"hyper")
-        return "0";
+        return "0"_ostr;
     else if (resolvedType == u"sal_Bool" || resolvedType == u"boolean")
-        return "false";
+        return "false"_ostr;
     else
     {
         // Check if it's an enum type
@@ -1154,11 +1152,11 @@ OString CppProducer::getMethodDefaultReturn(std::u16string_view returnType) cons
         else if (isUnoType(resolvedType) && isUnoStruct(resolvedType))
         {
             // Return empty struct for struct types
-            return OString("{}"); // Empty struct literal
+            return "{}"_ostr; // Empty struct literal
         }
         else
         {
-            return "nullptr"; // For pointer/interface/any types
+            return "nullptr"_ostr; // For pointer/interface/any types
         }
     }
 }
@@ -1463,9 +1461,9 @@ void CppProducer::generateInterfaceSourceNamespaces(CppFile& file, std::string_v
 }
 
 void CppProducer::generateInterfaceSourceBasicFunctions(CppFile& file,
-                                                        const OString& functionPrefix,
-                                                        const OString& className,
-                                                        const OString& handleTypeName)
+                                                        std::string_view functionPrefix,
+                                                        std::string_view className,
+                                                        std::string_view handleTypeName)
 {
     // Interface creation
     file.beginLine()
@@ -1638,8 +1636,8 @@ void CppProducer::generateInterfaceSourceBasicFunctions(CppFile& file,
 }
 
 void CppProducer::generateInterfaceSourceMethodImplementations(
-    CppFile& file, const OString& functionPrefix, const OString& className,
-    const OString& handleTypeName, const rtl::Reference<unoidl::InterfaceTypeEntity>& entity)
+    CppFile& file, std::string_view functionPrefix, std::string_view className,
+    std::string_view handleTypeName, const rtl::Reference<unoidl::InterfaceTypeEntity>& entity)
 {
     // Generate method implementations
     file.beginLine().append("// Method implementations").endLine();
@@ -1654,9 +1652,9 @@ void CppProducer::generateInterfaceSourceMethodImplementations(
     }
 }
 
-void CppProducer::generateSingleInterfaceMethod(CppFile& file, const OString& functionPrefix,
-                                                const OString& className,
-                                                const OString& handleTypeName,
+void CppProducer::generateSingleInterfaceMethod(CppFile& file, std::string_view functionPrefix,
+                                                std::string_view className,
+                                                std::string_view handleTypeName,
                                                 const unoidl::InterfaceTypeEntity::Method& method)
 {
     file.beginLine();
@@ -2324,7 +2322,7 @@ OUString CppProducer::resolveTypedef(std::u16string_view unoType) const
     return OUString(unoType);
 }
 
-OString CppProducer::mapUnoPrimitiveToSal(std::u16string_view unoType) const
+OString CppProducer::mapUnoPrimitiveToSal(std::u16string_view unoType)
 {
     // Common primitive type mappings from UNO to SAL types
     if (unoType == u"boolean")
@@ -2479,31 +2477,31 @@ OString CppProducer::getRustFFITypeName(std::u16string_view unoType) const
         return "*mut std::ffi::c_void"_ostr; // Default for unknown types
 }
 
-OString CppProducer::convertBasicType(const OString& typeName) const
+OString CppProducer::convertBasicType(const OString& typeName)
 {
     OString result = typeName;
 
     // Convert UNO primitive types to C++ types
     if (result == "long")
-        result = "sal_Int32";
+        result = "sal_Int32"_ostr;
     else if (result == "short")
-        result = "sal_Int16";
+        result = "sal_Int16"_ostr;
     else if (result == "byte")
-        result = "sal_Int8";
+        result = "sal_Int8"_ostr;
     else if (result == "boolean")
-        result = "sal_Bool";
+        result = "sal_Bool"_ostr;
     else if (result == "double")
-        result = "double";
+        result = "double"_ostr;
     else if (result == "float")
-        result = "float";
+        result = "float"_ostr;
     else if (result == "string")
-        result = "OUString";
+        result = "OUString"_ostr;
     else if (result == "any")
-        result = "Any";
+        result = "Any"_ostr;
     else if (result.indexOf('.') != -1)
     {
         // For UNO types with namespace, convert dots to double colons
-        result = result.replaceAll(".", "::");
+        result = result.replaceAll("."_ostr, "::"_ostr);
     }
 
     return result;
@@ -2576,7 +2574,7 @@ bool CppProducer::isUnoInterface(std::u16string_view typeName) const
     return sort == codemaker::UnoType::Sort::Interface;
 }
 
-OString CppProducer::convertUnoTypeToHandle(std::u16string_view unoType) const
+OString CppProducer::convertUnoTypeToHandle(std::u16string_view unoType)
 {
     // Convert UNO type name to typedef handle name
     // com.sun.star.lang.XMain -> com__sun__star__lang__XMainHandle

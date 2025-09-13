@@ -63,6 +63,8 @@
 #include <cliputil.hxx>
 #include <clipoptions.hxx>
 #include <gridwin.hxx>
+#include <SheetView.hxx>
+#include <uiitems.hxx>
 #include <com/sun/star/util/XCloneable.hpp>
 
 using namespace com::sun::star;
@@ -2062,21 +2064,75 @@ void ScViewFunc::DataFormPutData( SCROW nCurrentRow ,
 void ScViewFunc::MakeNewSheetView()
 {
     SCTAB nTab = GetViewData().GetTabNumber();
-    ScDocument& rDoc = GetViewData().GetDocument();
+    ScDocument& rDocument = GetViewData().GetDocument();
 
     SCTAB nSheetViewTab = nTab + 1;
-    if (rDoc.CopyTab(nTab, nSheetViewTab))
+    if (rDocument.CopyTab(nTab, nSheetViewTab))
     {
+        GetViewData().GetDocShell().Broadcast(ScTablesHint(SC_TAB_INSERTED, nSheetViewTab));
+        SfxGetpApp()->Broadcast(SfxHint(SfxHintId::ScTablesChanged));
+
         // Add and register the created sheet view
-        rDoc.SetSheetView(nSheetViewTab, true);
-        sc::SheetViewID nSheetViewID = rDoc.CreateNewSheetView(nTab, nSheetViewTab);
+        rDocument.SetSheetView(nSheetViewTab, true);
+        sc::SheetViewID nSheetViewID = rDocument.CreateNewSheetView(nTab, nSheetViewTab);
         GetViewData().SetSheetViewID(nSheetViewID);
 
         // Update
         GetViewData().SetTabNo(nSheetViewTab); // force add the sheet view tab
         GetViewData().SetTabNo(nTab); // then change back to the current tab
+
+        ScDocShell& rDocSh = GetViewData().GetDocShell();
+        rDocSh.PostPaintGridAll();
         PaintExtras(); // update Tab Control
     }
+}
+
+void ScViewFunc::RemoveCurrentSheetView()
+{
+    sc::SheetViewID nSheetViewID = GetViewData().GetSheetViewID();
+    if (nSheetViewID == sc::DefaultSheetViewID)
+        return;
+
+    ScDocument& rDocument = GetViewData().GetDocument();
+    SCTAB nTab = GetViewData().GetTabNumber();
+    auto pSheetManager = rDocument.GetSheetViewManager(nTab);
+    if (!pSheetManager)
+        return;
+
+    SCTAB nSheetViewTab = rDocument.GetSheetViewNumber(nTab, nSheetViewID);
+    pSheetManager->remove(nSheetViewID);
+    GetViewData().SetSheetViewID(sc::DefaultSheetViewID);
+    GetViewData().SetTabNo(nTab);
+    GetViewData().GetDocFunc().DeleteTable(nSheetViewTab, true);
+
+    GetViewData().GetDocShell().PostPaintGridAll();
+    PaintExtras();
+}
+
+void ScViewFunc::SwitchSheetView()
+{
+    SCTAB nTab = GetViewData().GetTabNumber();
+    ScDocument& rDocument = GetViewData().GetDocument();
+    if (rDocument.IsSheetView(nTab))
+        return;
+
+    sc::SheetViewID nSheetViewID = GetViewData().GetSheetViewID();
+    auto pSheetManager = rDocument.GetSheetViewManager(nTab);
+    sc::SheetViewID nNextSheetViewID = pSheetManager->getNextSheetView(nSheetViewID);
+
+    GetViewData().SetSheetViewID(nNextSheetViewID);
+
+    if (nNextSheetViewID != sc::DefaultSheetViewID)
+    {
+        SCTAB nNextSheetViewTab = rDocument.GetSheetViewNumber(nTab, nNextSheetViewID);
+        GetViewData().SetTabNo(nNextSheetViewTab); // force add the sheet view tab
+    }
+
+    // Update
+    GetViewData().SetTabNo(nTab); // then change back to the current tab
+    ScDocShell& rDocSh = GetViewData().GetDocShell();
+    rDocSh.PostPaintGridAll();
+    PaintExtras(); // update Tab Control
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -1868,15 +1868,19 @@ Point SwFrame::GetRelPos() const
     return aRet;
 }
 
+// See also: sw::HasPageBreakBefore and SwFEShell::GetPageOffset
 static const SwFrame* lcl_FindStartOfVirtualPages(const SwPageFrame *pPage)
 {
     const SwPageFrame* pPageFrameIter = pPage;
     while (pPageFrameIter)
     {
-        const SwContentFrame* pContentFrame = pPageFrameIter->FindFirstBodyContent();
-        if (pContentFrame)
+        if (const SwFrame* pFlow = pPageFrameIter->FindFirstBodyContent())
         {
-            const SwFormatPageDesc& rFormatPageDesc = pContentFrame->GetPageDescItem();
+            // Since pFlow is obtained from pPageFrameIter->FindFirstBodyContent(),
+            // it (and every upper table frame) must have valid upper.
+            while (const SwFrame* pTable = pFlow->GetUpper()->FindTabFrame())
+                pFlow = pTable;
+            const SwFormatPageDesc& rFormatPageDesc = pFlow->GetPageDescItem();
 
             if ( rFormatPageDesc.GetNumOffset() && rFormatPageDesc.GetDefinedIn() )
             {
@@ -1893,6 +1897,7 @@ static const SwFrame* lcl_FindStartOfVirtualPages(const SwPageFrame *pPage)
     }
     return nullptr;
 }
+
 /** @return the virtual page number with the offset. */
 sal_uInt16 SwFrame::GetVirtPageNum() const
 {

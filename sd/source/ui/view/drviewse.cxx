@@ -150,7 +150,7 @@ void DrawViewShell::FuPermanent(SfxRequest& rReq)
 {
     // We do not execute a thing during a native slide show
 
-    if (SlideShow::IsRunning(GetViewShellBase()) && !SlideShow::IsInteractiveSlideshow(&GetViewShellBase())) // IASS
+    if (SlideShow::IsRunning(GetViewShellBase()) && !SlideShow::IsInteractiveSlideshow(GetViewShellBase())) // IASS
         return;
 
     sal_uInt16 nSId = rReq.GetSlot();
@@ -806,7 +806,7 @@ void DrawViewShell::FuSupport(SfxRequest& rReq)
 
     // We do not execute a thing during a native slide show
     if((SlideShow::IsRunning(GetViewShellBase())
-        && !SlideShow::IsInteractiveSlideshow(&GetViewShellBase())) // IASS
+        && !SlideShow::IsInteractiveSlideshow(GetViewShellBase())) // IASS
         && (rReq.GetSlot() != SID_PRESENTATION_END && rReq.GetSlot() != SID_SIZE_PAGE))
         return;
 
@@ -957,10 +957,9 @@ void DrawViewShell::FuSupport(SfxRequest& rReq)
         case SID_PASTE_SLIDE:
         case SID_COPY_SLIDE:
         {
-            sd::slidesorter::SlideSorterViewShell::GetSlideSorter(GetViewShellBase())
-                ->GetSlideSorter()
-                .GetController()
-                .FuSupport(rReq);
+            if (::sd::slidesorter::SlideSorterViewShell* pSlideSorterViewShell =
+                sd::slidesorter::SlideSorterViewShell::GetSlideSorter(GetViewShellBase()))
+                    pSlideSorterViewShell->GetSlideSorter().GetController().FuSupport(rReq);
             Cancel();
             rReq.Done();
         }
@@ -1675,6 +1674,7 @@ void DrawViewShell::InsertURLButton(const OUString& rURL, const OUString& rText,
                 SdAnimationInfo* pInfo = SdDrawDocument::GetShapeUserData(*pMarkedObj, true);
                 pInfo->meClickAction = presentation::ClickAction_DOCUMENT;
                 pInfo->SetBookmark( sTargetURL );
+                pMarkedObj->setHyperlink(rURL);
             }
         }
         catch( uno::Exception& )
