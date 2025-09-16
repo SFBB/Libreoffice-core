@@ -109,6 +109,7 @@ SvxHyperlinkTabPageBase::SvxHyperlinkTabPageBase(weld::Container* pParent,
   , mxFormLabel(xBuilder->weld_label(u"form_label"_ustr))
   , mxNameLabel(xBuilder->weld_label(u"name_label"_ustr))
   , mxIndicationLabel(xBuilder->weld_label(u"indication_label"_ustr))
+  , mxTabLabel(xBuilder->weld_label(u"label2"_ustr))
   , mxFurtherSettings(xBuilder->weld_label(u"label1"_ustr))
   , mbIsCloseDisabled( false )
   , mpDialog( pDlg )
@@ -236,29 +237,20 @@ void SvxHyperlinkTabPageBase::FillStandardDlgFields ( const SvxHyperlinkItem* pH
         mxLbForm->hide();
         mxFormLabel->hide();
 
+        mxTabLabel->hide();
+        mxFurtherSettings->hide();
+
         // Although not visible, give fields so that default value can be used
         mxLbForm->clear();
         mxLbForm->append_text( aStrFormText );
         mxLbForm->append_text( aStrFormButton );
         mxLbForm->set_active( pHyperlinkItem->GetInsertMode() == HLINK_BUTTON ? 1 : 0 );
 
-        if (pHyperlinkItem->GetShowName()) {
-            mxNameLabel->show();
-            mxEdText->show();
-            mxFurtherSettings->show();
-        } else {
-            mxNameLabel->hide();
-            mxEdText->hide();
-            mxFurtherSettings->hide();
-        }
+        mxNameLabel->set_visible(m_showName);
+        mxEdText->set_visible(m_showName);
 
-        if (pHyperlinkItem->GetShowText()) {
-            mxEdIndication->show();
-            mxIndicationLabel->show();
-        } else {
-            mxEdIndication->hide();
-            mxIndicationLabel->hide();
-        }
+        mxEdIndication->set_visible(m_showText);
+        mxIndicationLabel->set_visible(m_showText);
     }
 
     // Text

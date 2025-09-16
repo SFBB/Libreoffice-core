@@ -111,18 +111,9 @@ SvxHpLinkDlg::SvxHpLinkDlg(SfxBindings* pBindings, SfxChildWindow* pChild, weld:
     m_xOKBtn->show();
     m_xCancelBtn->show();
 
-    if (comphelper::LibreOfficeKit::isActive())
-    {
-        m_xApplyBtn->hide();
-        m_xHelpBtn->hide();
-        m_xResetBtn->hide();
-    }
-    else
-    {
-        m_xApplyBtn->show();
-        m_xHelpBtn->show();
-        m_xResetBtn->show();
-    }
+    m_xApplyBtn->set_visible(!comphelper::LibreOfficeKit::isActive());
+    m_xHelpBtn->set_visible(!comphelper::LibreOfficeKit::isActive());
+    m_xResetBtn->set_visible(!comphelper::LibreOfficeKit::isActive());
 
     mbGrabFocus = true;
 
@@ -138,30 +129,15 @@ SvxHpLinkDlg::SvxHpLinkDlg(SfxBindings* pBindings, SfxChildWindow* pChild, weld:
 
     SetInputSet (mpItemSet.get());
 
-    // insert pages
     AddTabPage(u"internet"_ustr, SvxHyperlinkInternetTp::Create);
     AddTabPage(u"mail"_ustr, SvxHyperlinkMailTp::Create);
+    AddTabPage(u"document"_ustr, SvxHyperlinkDocTp::Create);
+
     if (!comphelper::LibreOfficeKit::isActive())
-    {
-        AddTabPage(u"document"_ustr, SvxHyperlinkDocTp::Create);
         AddTabPage(u"newdocument"_ustr, SvxHyperlinkNewDocTp::Create);
-    }
-
-    // tdf#90496 - remember last used view in hyperlink dialog
-    SetCurPageId(msRememberedPageId);
-
-    // Init Dialog
-    Start();
 
     GetBindings().Update(SID_HYPERLINK_GETLINK);
     GetBindings().Update(SID_READONLY_MODE);
-
-    // Now that we have got the link data, we can reset
-    // all the pages with the correct information
-    assert(pSet);
-    for (std::unique_ptr<IconChoicePageData>& page: maPageList) {
-        page->xPage->Reset(*pSet);
-    }
 
     m_xResetBtn->connect_clicked( LINK( this, SvxHpLinkDlg, ResetHdl ) );
     m_xOKBtn->connect_clicked( LINK ( this, SvxHpLinkDlg, ClickOkHdl_Impl ) );
@@ -186,7 +162,14 @@ SvxHpLinkDlg::~SvxHpLinkDlg()
     pOutSet.reset();
 }
 
-void SvxHpLinkDlg::Activate() {
+IconChoicePage* SvxHpLinkDlg::GetTabPage( std::u16string_view rPageId )
+{
+    const IconChoicePageData* p = GetPageData(rPageId);
+    return (p == nullptr) ? nullptr : p->xPage.get();
+}
+
+void SvxHpLinkDlg::Activate()
+{
     if (mbGrabFocus) {
         static_cast<SvxHyperlinkTabPageBase *>(GetTabPage(GetCurPageId()))->SetInitFocus();
         mbGrabFocus = false;
@@ -243,48 +226,36 @@ IMPL_LINK_NOARG(SvxHpLinkDlg, ClickApplyHdl_Impl, weld::Button&, void)
 |************************************************************************/
 void SvxHpLinkDlg::SetPage ( SvxHyperlinkItem const * pItem )
 {
-    OUString sPageId(u"internet"_ustr);
+    mpItemSet->Put(*pItem);
 
     const OUString& aStrURL(pItem->GetURL());
     INetURLObject aURL(aStrURL);
     INetProtocol eProtocolTyp = aURL.GetProtocol();
 
-    switch ( eProtocolTyp )
-    {
-        case INetProtocol::Http :
-        case INetProtocol::Ftp :
-            sPageId = "internet";
-            break;
-        case INetProtocol::File :
-            sPageId = "document";
-            break;
-        case INetProtocol::Mailto :
-            sPageId = "mail";
-            break;
-        default :
-            if (aStrURL.startsWith("#"))
-                sPageId = "document";
-            else
-            {
-                // not valid
-                sPageId = GetCurPageId();
-            }
-            break;
+    OUString sPageId(msRememberedPageId);
+
+    if (eProtocolTyp == INetProtocol::Http || eProtocolTyp == INetProtocol::Https || eProtocolTyp == INetProtocol::Ftp) {
+        sPageId = "internet";
+    } else if (eProtocolTyp == INetProtocol::Mailto) {
+        sPageId = "mail";
+    } else if (!comphelper::LibreOfficeKit::isActive() &&
+        (eProtocolTyp == INetProtocol::File || aStrURL.startsWith("#"))) {
+        sPageId = "document";
     }
 
+    IconChoicePage* pPage = GetTabPage(sPageId);
+
+    // Switching to tab that doesn't exist should not crash
+    if (pPage == nullptr) { return; }
+
     ShowPage (sPageId);
-
-    SvxHyperlinkTabPageBase* pCurrentPage = static_cast<SvxHyperlinkTabPageBase*>(GetTabPage( sPageId ));
-
     mbIsHTMLDoc = (pItem->GetInsertMode() & HLINK_HTMLMODE) != 0;
 
-    IconChoicePage* pPage = GetTabPage (sPageId);
-    if(pPage)
-    {
-        SfxItemSet& aPageSet = const_cast<SfxItemSet&>(pPage->GetItemSet ());
-        aPageSet.Put ( *pItem );
+    SfxItemSet& aPageSet = const_cast<SfxItemSet&>(pPage->GetItemSet ());
+    aPageSet.Put ( *pItem );
 
-        pCurrentPage->Reset( aPageSet );
+    for (std::unique_ptr<IconChoicePageData>& page: maPageList) {
+        page->xPage->Reset(*pSet);
     }
 }
 

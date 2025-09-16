@@ -327,8 +327,8 @@ GRAPHITE_TARBALL := graphite2-minimal-1.3.14.tgz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-HARFBUZZ_SHA256SUM := 0f052eb4ab01d8bae98ba971c954becb32be57d7250f18af343b1d27892e03fa
-HARFBUZZ_TARBALL := harfbuzz-11.4.5.tar.xz
+HARFBUZZ_SHA256SUM := 2d30ba45c4c8ec4de661a1002b4f88d0841ff1a3087f34629275f5436d722109
+HARFBUZZ_TARBALL := harfbuzz-11.5.0.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -518,8 +518,8 @@ MYTHES_TARBALL := mythes-1.2.5.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-NSS_SHA256SUM := 5ff67daaa778ff302ccacdd00e665ce71da59f05dcdaab62bcdab6e23c90d320
-NSS_TARBALL := nss-3.115.1-with-nspr-4.37.tar.gz
+NSS_SHA256SUM := af6f21bae9f16534988842597871754450fd6cdbd786750e7cd069f8d231ce10
+NSS_TARBALL := nss-3.116-with-nspr-4.37.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
