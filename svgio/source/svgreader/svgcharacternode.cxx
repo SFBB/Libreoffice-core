@@ -205,12 +205,12 @@ namespace svgio::svgreader
             // get current TextPosition and TextWidth in units
             basegfx::B2DPoint aPosition(rSvgTextPosition.getPosition());
             double fTextWidth(aTextLayouterDevice.getTextWidth(getText(), nIndex, nLength) / sizeFactor);
+            double fSvgTextLength(rSvgTextPosition.getTextLength());
 
             // check for user-given TextLength
-            if(0.0 != rSvgTextPosition.getTextLength()
-                && !basegfx::fTools::equal(fTextWidth, rSvgTextPosition.getTextLength()))
+            if(0.0 != fSvgTextLength && 0.0 != fTextWidth && !basegfx::fTools::equal(fTextWidth, fSvgTextLength))
             {
-                const double fFactor(rSvgTextPosition.getTextLength() / fTextWidth);
+                const double fFactor(fSvgTextLength / fTextWidth);
 
                 if(rSvgTextPosition.getLengthAdjust())
                 {
@@ -234,11 +234,13 @@ namespace svgio::svgreader
                     fFontWidth *= fFactor;
                 }
 
-                fTextWidth = rSvgTextPosition.getTextLength();
+                fTextWidth = fSvgTextLength;
             }
 
             // get TextAlign
             TextAlign aTextAlign(rSvgStyleAttributes.getTextAlign());
+
+            bool bRTL(FontDirection::RTL == rSvgStyleAttributes.getFontDirection());
 
             // map TextAnchor to TextAlign, there seems not to be a difference
             if(TextAnchor::notset != rSvgStyleAttributes.getTextAnchor())
@@ -247,7 +249,10 @@ namespace svgio::svgreader
                 {
                     case TextAnchor::start:
                     {
-                        aTextAlign = TextAlign::left;
+                        if (bRTL)
+                            aTextAlign = TextAlign::right;
+                        else
+                            aTextAlign = TextAlign::left;
                         break;
                     }
                     case TextAnchor::middle:
@@ -257,7 +262,10 @@ namespace svgio::svgreader
                     }
                     case TextAnchor::end:
                     {
-                        aTextAlign = TextAlign::right;
+                        if (bRTL)
+                            aTextAlign = TextAlign::left;
+                        else
+                            aTextAlign = TextAlign::right;
                         break;
                     }
                     default:
