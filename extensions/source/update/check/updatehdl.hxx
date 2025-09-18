@@ -38,8 +38,13 @@
 #include <cppuhelper/implbase.hxx>
 #include <unotools/resmgr.hxx>
 #include <rtl/ref.hxx>
+#include <vcl/window.hxx>
 
 #include "actionlistener.hxx"
+
+// use vcl controls directly for now, until dialog has been welded
+#define VCL_INTERNALS
+#include <vcl/toolkit/prgsbar.hxx>
 
 enum DialogControls
 {
@@ -77,6 +82,12 @@ class UpdateHandler : public cppu::WeakImplHelper< css::awt::XActionListener,
 private:
     css::uno::Reference< css::uno::XComponentContext >    mxContext;
     css::uno::Reference< css::awt::XDialog >              mxUpdDlg;
+
+    VclPtr<vcl::Window> m_pStatusEdit;
+    VclPtr<vcl::Window> m_pDescriptionEdit;
+    VclPtr<vcl::Window> m_pPercentEdit;
+    VclPtr<ProgressBar> m_pProgressBar;
+
     css::uno::Reference< css::task::XInteractionHandler > mxInteractionHdl;
     rtl::Reference< IActionListener >                     mxActionListener;
 
@@ -127,11 +138,9 @@ private:
     OUString           msBubbleTitles[ UPDATESTATES_COUNT ];
 
     void                    createDialog();
+    vcl::Window*            getWindow(const OUString& rControlName);
     void                    updateState( UpdateState eNewState );
     void                    startThrobber( bool bStart = true );
-    void                    setControlProperty( const OUString &rCtrlName,
-                                                const OUString &rPropName,
-                                                const css::uno::Any &rPropValue );
     void                    showControl( const OUString &rCtrlName, bool bShow = true );
     void                    showControls( short nControls );
     void                    focusControl( DialogControls eID );

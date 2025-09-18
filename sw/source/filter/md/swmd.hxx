@@ -33,9 +33,30 @@
 
 class MDTable;
 
+struct MDImage
+{
+    OUString url;
+    OUString title;
+    OUString altText;
+    OUString link;
+
+    void Reset()
+    {
+        url.clear();
+        title.clear();
+        altText.clear();
+        link.clear();
+    }
+};
+
 constexpr tools::Long MD_PARSPACE = o3tl::toTwips(5, o3tl::Length::mm);
-constexpr tools::Long MD_MAX_IMAGE_WIDTH_IN_TWIPS = 2500;
-constexpr tools::Long MD_MAX_IMAGE_HEIGHT_IN_TWIPS = 2500;
+constexpr tools::Long MD_MAX_IMAGE_WIDTH_IN_TWIPS = 5000;
+constexpr tools::Long MD_MAX_IMAGE_HEIGHT_IN_TWIPS = 5000;
+constexpr tools::Long MD_MIN_IMAGE_WIDTH_IN_TWIPS = 500;
+constexpr tools::Long MD_MIN_IMAGE_HEIGHT_IN_TWIPS = 500;
+
+constexpr OUString Checkmark = u"\x2705"_ustr;
+constexpr OUString Crossmark = u"\x274C"_ustr;
 
 constexpr frozen::unordered_map<MD_ALIGN, SvxAdjust, 4> adjustMap
     = { { MD_ALIGN_DEFAULT, SvxAdjust::Left },
@@ -78,6 +99,7 @@ class SwMarkdownParser
     bool m_bNoParSpace = true;
     bool m_bInsideImage = false;
 
+    MDImage m_aImg;
     std::vector<MDTable*> m_aTables;
     std::shared_ptr<MDTable> m_xTable;
 
@@ -104,7 +126,7 @@ class SwMarkdownParser
 
     void StartNumberedBulletList(MD_BLOCKTYPE aListType);
     void EndNumberedBulletList();
-    void StartNumberedBulletListItem();
+    void StartNumberedBulletListItem(MD_BLOCK_LI_DETAIL aDetail);
     void EndNumberedBulletListItem();
 
     void BeginHtmlBlock();
@@ -118,8 +140,12 @@ class SwMarkdownParser
     void SetAttrs(SwPaM& rRange);
     void ClearAttrs();
 
-    void InsertImage(const OUString& aURL, const OUString& rTitle,
-                     const SwFormatINetFormat* pINetFormat);
+    void InsertCurImage()
+    {
+        InsertImage(m_aImg);
+        m_aImg.Reset();
+    }
+    void InsertImage(const MDImage& rImg);
 
     void StartTable(sal_Int32 nRow, sal_Int32 nCol);
     void EndTable();

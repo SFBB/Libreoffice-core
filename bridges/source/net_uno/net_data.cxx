@@ -76,8 +76,11 @@ uno_Sequence* alloc_uno_sequence(sal_Int32 nElements, sal_Int32 nElementSize, vo
 }
 
 void marshal_data(void* pUnoData, void* pNetData, typelib_TypeDescriptionReference* pTDRef,
-                  bool bDestructValue, Bridge& bridge)
+                  Bridge& bridge)
 {
+    assert(pUnoData);
+    assert(pNetData);
+
     switch (pTDRef->eTypeClass)
     {
         case typelib_TypeClass_BOOLEAN:
@@ -99,9 +102,6 @@ void marshal_data(void* pUnoData, void* pNetData, typelib_TypeDescriptionReferen
             IntPtr* ppNetStr = static_cast<IntPtr*>(pNetData);
             rtl_uString* pUnoStr = *static_cast<rtl_uString**>(pUnoData);
 
-            if (bDestructValue && pNetData)
-                std::free(pNetData);
-
             *ppNetStr = alloc_net_string(OUString::unacquired(&pUnoStr));
             break;
         }
@@ -111,9 +111,6 @@ void marshal_data(void* pUnoData, void* pNetData, typelib_TypeDescriptionReferen
             typelib_TypeDescriptionReference* pUnoType
                 = *static_cast<typelib_TypeDescriptionReference**>(pUnoData);
 
-            if (bDestructValue && pNetData)
-                std::free(pNetData);
-
             *ppNetType = alloc_net_string(map_uno_type_to_net(pUnoType));
             break;
         }
@@ -121,11 +118,6 @@ void marshal_data(void* pUnoData, void* pNetData, typelib_TypeDescriptionReferen
         {
             Value::Any* ppNetAny = static_cast<Value::Any*>(pNetData);
             uno_Any* pUnoAny = static_cast<uno_Any*>(pUnoData);
-
-            if (bDestructValue && ppNetAny->type)
-                std::free(ppNetAny->type);
-            if (bDestructValue && ppNetAny->data)
-                std::free(ppNetAny->data);
 
             ppNetAny->type = alloc_net_string(map_uno_type_to_net(pUnoAny->pType));
 
@@ -168,7 +160,7 @@ void marshal_data(void* pUnoData, void* pNetData, typelib_TypeDescriptionReferen
                 case typelib_TypeClass_SEQUENCE:
                 {
                     IntPtr mem = std::malloc(net_sizeof(pUnoAny->pType->eTypeClass));
-                    marshal_data(pUnoAny->pData, mem, pUnoAny->pType, bDestructValue, bridge);
+                    marshal_data(pUnoAny->pData, mem, pUnoAny->pType, bridge);
                     std::free(ppNetAny->data);
                     ppNetAny->data = mem;
                     break;
@@ -178,8 +170,7 @@ void marshal_data(void* pUnoData, void* pNetData, typelib_TypeDescriptionReferen
                 case typelib_TypeClass_INTERFACE:
                 case typelib_TypeClass_EXCEPTION:
                 case typelib_TypeClass_STRUCT:
-                    marshal_data(pUnoAny->pData, &ppNetAny->data, pUnoAny->pType, bDestructValue,
-                                 bridge);
+                    marshal_data(pUnoAny->pData, &ppNetAny->data, pUnoAny->pType, bridge);
                     break;
                 default:
                 {
@@ -195,9 +186,6 @@ void marshal_data(void* pUnoData, void* pNetData, typelib_TypeDescriptionReferen
         {
             Value::Sequence* ppNetSeq = static_cast<Value::Sequence*>(pNetData);
             uno_Sequence* pUnoSeq = *static_cast<uno_Sequence**>(pUnoData);
-
-            if (bDestructValue && ppNetSeq->data)
-                std::free(ppNetSeq->data);
 
             ppNetSeq->length = pUnoSeq->nElements;
 
@@ -245,7 +233,7 @@ void marshal_data(void* pUnoData, void* pNetData, typelib_TypeDescriptionReferen
                     {
                         void* pNetElem = static_cast<char*>(ppNetSeq->data) + (nPos * nNetElemSize);
                         void* pUnoElem = pUnoSeq->elements + (nPos * nUnoElemSize);
-                        marshal_data(pUnoElem, pNetElem, pElemTDRef, bDestructValue, bridge);
+                        marshal_data(pUnoElem, pNetElem, pElemTDRef, bridge);
                     }
                     break;
                 }
@@ -304,9 +292,6 @@ void marshal_data(void* pUnoData, void* pNetData, typelib_TypeDescriptionReferen
             IntPtr* ppNetStruct = static_cast<IntPtr*>(pNetData);
             void* pUnoStruct = pUnoData;
 
-            if (bDestructValue && *ppNetStruct)
-                std::free(*ppNetStruct);
-
             TypeDescHolder type(pTDRef);
             typelib_CompoundTypeDescription* pCompTD
                 = reinterpret_cast<typelib_CompoundTypeDescription*>(type.get());
@@ -360,7 +345,7 @@ void marshal_data(void* pUnoData, void* pNetData, typelib_TypeDescriptionReferen
                     case typelib_TypeClass_INTERFACE:
                     case typelib_TypeClass_EXCEPTION:
                     case typelib_TypeClass_STRUCT:
-                        marshal_data(pUnoField, pNetField, pMemberTDRef, bDestructValue, bridge);
+                        marshal_data(pUnoField, pNetField, pMemberTDRef, bridge);
                         break;
                     default:
                     {
@@ -385,8 +370,11 @@ void marshal_data(void* pUnoData, void* pNetData, typelib_TypeDescriptionReferen
 }
 
 void unmarshal_data(void* pUnoData, void* pNetData, typelib_TypeDescriptionReference* pTDRef,
-                    bool bDestructObject, bool bAssignData, Bridge& bridge)
+                    bool bDestructObject, Bridge& bridge)
 {
+    assert(pUnoData);
+    assert(pNetData);
+
     switch (pTDRef->eTypeClass)
     {
         case typelib_TypeClass_BOOLEAN:
@@ -401,25 +389,21 @@ void unmarshal_data(void* pUnoData, void* pNetData, typelib_TypeDescriptionRefer
         case typelib_TypeClass_FLOAT:
         case typelib_TypeClass_DOUBLE:
         case typelib_TypeClass_ENUM:
-            if (bAssignData)
-                std::memcpy(pUnoData, pNetData, net_sizeof(pTDRef->eTypeClass));
+            std::memcpy(pUnoData, pNetData, net_sizeof(pTDRef->eTypeClass));
             break;
         case typelib_TypeClass_STRING:
         {
             rtl_uString** ppUnoStr = static_cast<rtl_uString**>(pUnoData);
             IntPtr pNetStr = *static_cast<IntPtr*>(pNetData);
 
-            if (bDestructObject && ppUnoStr)
+            if (bDestructObject && *ppUnoStr)
                 rtl_uString_release(*ppUnoStr);
 
-            if (bAssignData)
-            {
-                *ppUnoStr = nullptr;
-                if (pNetStr)
-                    rtl_uString_newFromStr(ppUnoStr, static_cast<String>(pNetStr));
-                else
-                    rtl_uString_new(ppUnoStr);
-            }
+            *ppUnoStr = nullptr;
+            if (pNetStr)
+                rtl_uString_newFromStr(ppUnoStr, static_cast<String>(pNetStr));
+            else
+                rtl_uString_new(ppUnoStr);
 
             std::free(pNetStr);
             break;
@@ -430,11 +414,10 @@ void unmarshal_data(void* pUnoData, void* pNetData, typelib_TypeDescriptionRefer
                 = static_cast<typelib_TypeDescriptionReference**>(pUnoData);
             IntPtr pNetType = *static_cast<IntPtr*>(pNetData);
 
-            if (bDestructObject && ppUnoType)
+            if (bDestructObject && *ppUnoType)
                 typelib_typedescriptionreference_release(*ppUnoType);
 
-            if (bAssignData)
-                *ppUnoType = map_net_type_to_uno(OUString(static_cast<String>(pNetType)));
+            *ppUnoType = map_net_type_to_uno(OUString(static_cast<String>(pNetType)));
 
             std::free(pNetType);
             break;
@@ -444,176 +427,114 @@ void unmarshal_data(void* pUnoData, void* pNetData, typelib_TypeDescriptionRefer
             uno_Any* pUnoAny = static_cast<uno_Any*>(pUnoData);
             Value::Any* pNetAny = static_cast<Value::Any*>(pNetData);
 
-            if (bDestructObject && pUnoData)
+            if (bDestructObject)
                 uno_any_destruct(pUnoAny, nullptr);
 
             typelib_TypeDescriptionReference* pValueTDRef
                 = map_net_type_to_uno(OUString(static_cast<String>(pNetAny->type)));
             std::free(pNetAny->type);
 
-            if (bAssignData)
+            switch (pValueTDRef->eTypeClass)
             {
-                switch (pValueTDRef->eTypeClass)
+                case typelib_TypeClass_VOID:
                 {
-                    case typelib_TypeClass_VOID:
+                    pUnoAny->pType = pValueTDRef;
+                    pUnoAny->pData = &pUnoAny->pReserved;
+                    break;
+                }
+                case typelib_TypeClass_BOOLEAN:
+                case typelib_TypeClass_BYTE:
+                case typelib_TypeClass_CHAR:
+                case typelib_TypeClass_SHORT:
+                case typelib_TypeClass_UNSIGNED_SHORT:
+                case typelib_TypeClass_LONG:
+                case typelib_TypeClass_UNSIGNED_LONG:
+                case typelib_TypeClass_FLOAT:
+                case typelib_TypeClass_ENUM:
+                {
+                    pUnoAny->pType = pValueTDRef;
+                    pUnoAny->pData = &pUnoAny->pReserved;
+                    std::memcpy(pUnoAny->pData, &pNetAny->data, sizeof(IntPtr));
+                    break;
+                }
+                case typelib_TypeClass_HYPER:
+                case typelib_TypeClass_UNSIGNED_HYPER:
+                case typelib_TypeClass_DOUBLE:
+                {
+                    pUnoAny->pType = pValueTDRef;
+                    size_t size = net_sizeof(pValueTDRef->eTypeClass);
+                    if (size <= sizeof(IntPtr))
                     {
-                        pUnoAny->pType = pValueTDRef;
-                        pUnoAny->pData = &pUnoAny->pReserved;
-                        break;
-                    }
-                    case typelib_TypeClass_BOOLEAN:
-                    case typelib_TypeClass_BYTE:
-                    case typelib_TypeClass_CHAR:
-                    case typelib_TypeClass_SHORT:
-                    case typelib_TypeClass_UNSIGNED_SHORT:
-                    case typelib_TypeClass_LONG:
-                    case typelib_TypeClass_UNSIGNED_LONG:
-                    case typelib_TypeClass_FLOAT:
-                    case typelib_TypeClass_ENUM:
-                    {
-                        pUnoAny->pType = pValueTDRef;
                         pUnoAny->pData = &pUnoAny->pReserved;
                         std::memcpy(pUnoAny->pData, &pNetAny->data, sizeof(IntPtr));
-                        break;
                     }
-                    case typelib_TypeClass_HYPER:
-                    case typelib_TypeClass_UNSIGNED_HYPER:
-                    case typelib_TypeClass_DOUBLE:
+                    else
+                    {
+                        void* mem = std::malloc(size);
+                        assert(mem);
+                        std::memcpy(mem, pNetAny->data, size);
+                        pUnoAny->pData = mem;
+                        std::free(pNetAny->data);
+                    }
+                    break;
+                }
+                case typelib_TypeClass_STRING:
+                case typelib_TypeClass_TYPE:
+                case typelib_TypeClass_INTERFACE:
+                {
+                    if (pNetAny->data)
                     {
                         pUnoAny->pType = pValueTDRef;
-                        size_t size = net_sizeof(pValueTDRef->eTypeClass);
-                        if (size <= sizeof(IntPtr))
-                        {
-                            pUnoAny->pData = &pUnoAny->pReserved;
-                            std::memcpy(pUnoAny->pData, &pNetAny->data, sizeof(IntPtr));
-                        }
-                        else
-                        {
-                            void* mem = std::malloc(size);
-                            assert(mem);
-                            std::memcpy(mem, pNetAny->data, size);
-                            pUnoAny->pData = mem;
-                            std::free(pNetAny->data);
-                        }
-                        break;
+                        pUnoAny->pData = &pUnoAny->pReserved;
+                        pUnoAny->pReserved = nullptr;
+                        unmarshal_data(pUnoAny->pData, &pNetAny->data, pValueTDRef, bDestructObject,
+                                       bridge);
                     }
-                    case typelib_TypeClass_STRING:
-                    case typelib_TypeClass_TYPE:
-                    case typelib_TypeClass_INTERFACE:
+                    else
                     {
-                        if (pNetAny->data)
-                        {
-                            pUnoAny->pType = pValueTDRef;
-                            pUnoAny->pData = &pUnoAny->pReserved;
-                            pUnoAny->pReserved = nullptr;
-                            unmarshal_data(pUnoAny->pData, &pNetAny->data, pValueTDRef,
-                                           bDestructObject, true, bridge);
-                        }
-                        else
-                        {
-                            uno_any_construct(pUnoAny, nullptr, nullptr, nullptr);
-                        }
-                        break;
+                        uno_any_construct(pUnoAny, nullptr, nullptr, nullptr);
                     }
-                    case typelib_TypeClass_ANY:
-                    case typelib_TypeClass_SEQUENCE:
-                    {
-                        if (pNetAny->data)
-                        {
-                            pUnoAny->pType = pValueTDRef;
-                            pUnoAny->pData = &pUnoAny->pReserved;
-                            pUnoAny->pReserved = nullptr;
-                            unmarshal_data(pUnoAny->pData, &pNetAny->data, pValueTDRef,
-                                           bDestructObject, true, bridge);
-                        }
-                        else
-                        {
-                            uno_any_construct(pUnoAny, nullptr, nullptr, nullptr);
-                        }
-                        break;
-                    }
-                    case typelib_TypeClass_STRUCT:
-                    case typelib_TypeClass_EXCEPTION:
-                    {
-                        if (pNetAny->data)
-                        {
-                            pUnoAny->pType = pValueTDRef;
-                            TypeDescHolder valueType(pValueTDRef);
-                            void* mem = std::malloc(valueType.get()->nSize);
-                            unmarshal_data(mem, &pNetAny->data, pValueTDRef, bDestructObject, true,
-                                           bridge);
-                            pUnoAny->pData = mem;
-                        }
-                        else
-                        {
-                            uno_any_construct(pUnoAny, nullptr, nullptr, nullptr);
-                        }
-                        break;
-                    }
-                    default:
-                    {
-                        throw BridgeRuntimeError(SAL_WHERE,
-                                                 "could not map "
-                                                     + OUString::unacquired(&pValueTDRef->pTypeName)
-                                                     + " into an UNO any");
-                    }
+                    break;
                 }
-            }
-            else
-            {
-                switch (pValueTDRef->eTypeClass)
+                case typelib_TypeClass_ANY:
+                case typelib_TypeClass_SEQUENCE:
                 {
-                    case typelib_TypeClass_VOID:
-                    case typelib_TypeClass_BOOLEAN:
-                    case typelib_TypeClass_BYTE:
-                    case typelib_TypeClass_CHAR:
-                    case typelib_TypeClass_SHORT:
-                    case typelib_TypeClass_UNSIGNED_SHORT:
-                    case typelib_TypeClass_LONG:
-                    case typelib_TypeClass_UNSIGNED_LONG:
-                    case typelib_TypeClass_FLOAT:
-                    case typelib_TypeClass_ENUM:
-                        break;
-                    case typelib_TypeClass_HYPER:
-                    case typelib_TypeClass_UNSIGNED_HYPER:
-                    case typelib_TypeClass_DOUBLE:
+                    if (pNetAny->data)
                     {
-                        size_t size = net_sizeof(pValueTDRef->eTypeClass);
-                        if (pNetAny->data && size > sizeof(IntPtr))
-                            std::free(pNetAny->data);
-                        break;
+                        pUnoAny->pType = pValueTDRef;
+                        pUnoAny->pData = &pUnoAny->pReserved;
+                        pUnoAny->pReserved = nullptr;
+                        unmarshal_data(pUnoAny->pData, &pNetAny->data, pValueTDRef, bDestructObject,
+                                       bridge);
                     }
-                    case typelib_TypeClass_ANY:
-                    case typelib_TypeClass_SEQUENCE:
+                    else
                     {
-                        if (pNetAny->data)
-                        {
-                            unmarshal_data(pUnoAny->pData, &pNetAny->data, pValueTDRef,
-                                           bDestructObject, false, bridge);
-                            std::free(pNetAny->data);
-                        }
-                        break;
+                        uno_any_construct(pUnoAny, nullptr, nullptr, nullptr);
                     }
-                    case typelib_TypeClass_STRING:
-                    case typelib_TypeClass_TYPE:
-                    case typelib_TypeClass_INTERFACE:
-                    case typelib_TypeClass_STRUCT:
-                    case typelib_TypeClass_EXCEPTION:
+                    break;
+                }
+                case typelib_TypeClass_STRUCT:
+                case typelib_TypeClass_EXCEPTION:
+                {
+                    if (pNetAny->data)
                     {
-                        if (pNetAny->data)
-                        {
-                            unmarshal_data(pUnoAny->pData, &pNetAny->data, pValueTDRef,
-                                           bDestructObject, false, bridge);
-                        }
-                        break;
+                        pUnoAny->pType = pValueTDRef;
+                        TypeDescHolder valueType(pValueTDRef);
+                        void* mem = std::malloc(valueType.get()->nSize);
+                        unmarshal_data(mem, &pNetAny->data, pValueTDRef, bDestructObject, bridge);
+                        pUnoAny->pData = mem;
                     }
-                    default:
+                    else
                     {
-                        throw BridgeRuntimeError(SAL_WHERE,
-                                                 "could not map "
-                                                     + OUString::unacquired(&pValueTDRef->pTypeName)
-                                                     + " into an UNO any");
+                        uno_any_construct(pUnoAny, nullptr, nullptr, nullptr);
                     }
+                    break;
+                }
+                default:
+                {
+                    throw BridgeRuntimeError(
+                        SAL_WHERE, "could not map " + OUString::unacquired(&pValueTDRef->pTypeName)
+                                       + " into an UNO any");
                 }
             }
             break;
@@ -624,7 +545,7 @@ void unmarshal_data(void* pUnoData, void* pNetData, typelib_TypeDescriptionRefer
             Value::Sequence* pNetSeq = static_cast<Value::Sequence*>(pNetData);
 
             TypeDescHolder type(pTDRef);
-            if (bDestructObject && ppUnoSeq)
+            if (bDestructObject && *ppUnoSeq)
                 uno_destructData(ppUnoSeq, type.get(), nullptr);
 
             typelib_TypeDescriptionReference* pElemTDRef
@@ -645,9 +566,7 @@ void unmarshal_data(void* pUnoData, void* pNetData, typelib_TypeDescriptionRefer
                 case typelib_TypeClass_FLOAT:
                 case typelib_TypeClass_DOUBLE:
                 case typelib_TypeClass_ENUM:
-                    if (bAssignData)
-                        *ppUnoSeq
-                            = alloc_uno_sequence(pNetSeq->length, nNetElemSize, pNetSeq->data);
+                    *ppUnoSeq = alloc_uno_sequence(pNetSeq->length, nNetElemSize, pNetSeq->data);
                     break;
                 case typelib_TypeClass_ANY:
                 case typelib_TypeClass_SEQUENCE:
@@ -670,20 +589,16 @@ void unmarshal_data(void* pUnoData, void* pNetData, typelib_TypeDescriptionRefer
                             void* pNetElem
                                 = static_cast<char*>(pNetSeq->data) + (nPos * nNetElemSize);
                             void* pUnoElem = (*ppUnoSeq)->elements + (nPos * nUnoElemSize);
-                            unmarshal_data(pUnoElem, pNetElem, pElemTDRef, bDestructObject,
-                                           bAssignData, bridge);
+                            unmarshal_data(pUnoElem, pNetElem, pElemTDRef, bDestructObject, bridge);
                         }
                     }
                     catch (...)
                     {
-                        if (bAssignData)
+                        // Clean up already converted elements
+                        for (int nClean = 0; nClean < nPos; ++nClean)
                         {
-                            // Clean up already converted elements
-                            for (int nClean = 0; nClean < nPos; ++nClean)
-                            {
-                                void* pUnoElem = (*ppUnoSeq)->elements + (nClean * nUnoElemSize);
-                                uno_destructData(pUnoElem, elemType.get(), nullptr);
-                            }
+                            void* pUnoElem = (*ppUnoSeq)->elements + (nClean * nUnoElemSize);
+                            uno_destructData(pUnoElem, elemType.get(), nullptr);
                         }
                         throw;
                     }
@@ -710,31 +625,27 @@ void unmarshal_data(void* pUnoData, void* pNetData, typelib_TypeDescriptionRefer
             if (bDestructObject && ppUnoI)
                 uno_destructData(ppUnoI, type.get(), nullptr);
 
-            if (bAssignData)
+            if (pNetI)
             {
-                if (pNetI)
-                {
-                    Context* pCtx = static_cast<Context*>(bridge.m_net_env->pContext);
+                Context* pCtx = static_cast<Context*>(bridge.m_net_env->pContext);
 
-                    // Get oid and type description
-                    OUString sOid(pCtx->lookupObjectId(pNetI));
+                // Get oid and type description
+                OUString sOid(pCtx->lookupObjectId(pNetI));
 
-                    typelib_InterfaceTypeDescription* pInterfaceTD
-                        = reinterpret_cast<typelib_InterfaceTypeDescription*>(type.get());
+                typelib_InterfaceTypeDescription* pInterfaceTD
+                    = reinterpret_cast<typelib_InterfaceTypeDescription*>(type.get());
 
-                    // Get the proxy if already created, else create new
-                    *ppUnoI = nullptr;
-                    (*bridge.m_uno_env->getRegisteredInterface)(bridge.m_uno_env,
-                                                                reinterpret_cast<void**>(ppUnoI),
-                                                                sOid.pData, pInterfaceTD);
+                // Get the proxy if already created, else create new
+                *ppUnoI = nullptr;
+                (*bridge.m_uno_env->getRegisteredInterface)(
+                    bridge.m_uno_env, reinterpret_cast<void**>(ppUnoI), sOid.pData, pInterfaceTD);
 
-                    if (!*ppUnoI)
-                        *ppUnoI = new NetProxy(bridge, pNetI, pInterfaceTD, sOid);
-                }
-                else
-                {
-                    *ppUnoI = nullptr;
-                }
+                if (!*ppUnoI)
+                    *ppUnoI = new NetProxy(bridge, pNetI, pInterfaceTD, sOid);
+            }
+            else
+            {
+                *ppUnoI = nullptr;
             }
 
             break;
@@ -790,9 +701,7 @@ void unmarshal_data(void* pUnoData, void* pNetData, typelib_TypeDescriptionRefer
                         case typelib_TypeClass_FLOAT:
                         case typelib_TypeClass_DOUBLE:
                         case typelib_TypeClass_ENUM:
-                            if (bAssignData)
-                                std::memcpy(pUnoField, pNetField,
-                                            net_sizeof(pMemberTDRef->eTypeClass));
+                            std::memcpy(pUnoField, pNetField, net_sizeof(pMemberTDRef->eTypeClass));
                             break;
                         case typelib_TypeClass_ANY:
                         case typelib_TypeClass_SEQUENCE:
@@ -802,7 +711,7 @@ void unmarshal_data(void* pUnoData, void* pNetData, typelib_TypeDescriptionRefer
                         case typelib_TypeClass_EXCEPTION:
                         case typelib_TypeClass_STRUCT:
                             unmarshal_data(pUnoField, pNetField, pMemberTDRef, bDestructObject,
-                                           bAssignData, bridge);
+                                           bridge);
                             break;
                         default:
                         {
@@ -818,15 +727,12 @@ void unmarshal_data(void* pUnoData, void* pNetData, typelib_TypeDescriptionRefer
             }
             catch (...)
             {
-                if (bAssignData)
+                // Clean up already converted fields
+                for (int nClean = vecMembers.size() - 1; nClean > nPos; nClean--)
                 {
-                    // Clean up already converted fields
-                    for (int nClean = vecMembers.size() - 1; nClean > nPos; nClean--)
-                    {
-                        auto[pMemberTDRef, nUnoOffset] = vecMembers[nClean];
-                        void* pUnoField = static_cast<char*>(pUnoStruct) + nUnoOffset;
-                        uno_type_destructData(pUnoField, pMemberTDRef, nullptr);
-                    }
+                    auto[pMemberTDRef, nUnoOffset] = vecMembers[nClean];
+                    void* pUnoField = static_cast<char*>(pUnoStruct) + nUnoOffset;
+                    uno_type_destructData(pUnoField, pMemberTDRef, nullptr);
                 }
                 throw;
             }
@@ -845,16 +751,15 @@ void unmarshal_data(void* pUnoData, void* pNetData, typelib_TypeDescriptionRefer
 }
 
 void Bridge::map_uno_to_net_value(void* pUnoData, Value* pValue,
-                                  typelib_TypeDescriptionReference* pTDRef, bool bDestructValue)
+                                  typelib_TypeDescriptionReference* pTDRef)
 {
-    marshal_data(pUnoData, pValue, pTDRef, bDestructValue, *this);
+    marshal_data(pUnoData, pValue, pTDRef, *this);
 }
 
 void Bridge::map_net_value_to_uno(void* pUnoData, Value* pValue,
-                                  typelib_TypeDescriptionReference* pTDRef, bool bDestructObject,
-                                  bool bAssignObject)
+                                  typelib_TypeDescriptionReference* pTDRef, bool bDestructObject)
 {
-    unmarshal_data(pUnoData, pValue, pTDRef, bDestructObject, bAssignObject, *this);
+    unmarshal_data(pUnoData, pValue, pTDRef, bDestructObject, *this);
 }
 }
 

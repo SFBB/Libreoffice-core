@@ -61,7 +61,11 @@
 
 #include <strings.hrc>
 #include <unotools/resmgr.hxx>
+#include <toolkit/helper/vclunohelper.hxx>
 #include <tools/urlobj.hxx>
+#include <vcl/svapp.hxx>
+#include <vcl/toolkit/fixed.hxx>
+#include <vcl/vclenum.hxx>
 #include <comphelper/diagnose_ex.hxx>
 
 constexpr OUString COMMAND_CLOSE = u"close"_ustr;
@@ -72,6 +76,9 @@ constexpr OUString CTRL_PROGRESS = u"progress"_ustr;
 constexpr OUString TEXT_STATUS = u"text_status"_ustr;
 constexpr OUString TEXT_PERCENT = u"text_percent"_ustr;
 constexpr OUString TEXT_DESCRIPTION = u"text_description"_ustr;
+
+const OUString FIXEDLINE_STATUS = u"fixedLineStatus"_ustr;
+const OUString FIXEDLINE_DESCRIPTION = u"fixedTextDescription"_ustr;
 
 constexpr OUStringLiteral FIXED_LINE_MODEL = u"com.sun.star.awt.UnoControlFixedLineModel";
 constexpr OUString FIXED_TEXT_MODEL = u"com.sun.star.awt.UnoControlFixedTextModel"_ustr;
@@ -125,7 +132,8 @@ void UpdateHandler::enableControls( short nCtrlState )
         if ( ( nCurStateVal & 0x01 ) != ( nOldStateVal & 0x01 ) )
         {
             bool bEnableControl = ( ( nCurStateVal & 0x01 ) == 0x01 );
-            setControlProperty( msButtonIDs[i], u"Enabled"_ustr, uno::Any( bEnableControl ) );
+            vcl::Window* pWin = getWindow(msButtonIDs[i]);
+            pWin->Enable(bEnableControl);
         }
     }
 
@@ -144,8 +152,10 @@ void UpdateHandler::setDownloadBtnLabel( bool bAppendDots )
         if ( bAppendDots )
             aLabel += "...";
 
-        setControlProperty( msButtonIDs[DOWNLOAD_BUTTON], u"Label"_ustr, uno::Any( aLabel ) );
-        setControlProperty( msButtonIDs[DOWNLOAD_BUTTON], u"HelpURL"_ustr, uno::Any(OUString( INET_HID_SCHEME + HID_CHECK_FOR_UPD_DOWNLOAD2 )) );
+        vcl::Window* pButton = getWindow(msButtonIDs[DOWNLOAD_BUTTON]);
+        assert(pButton);
+        pButton->SetText(aLabel);
+        pButton->SetHelpId(OUString(INET_HID_SCHEME + HID_CHECK_FOR_UPD_DOWNLOAD2));
 
         mbDownloadBtnHasDots = bAppendDots;
     }
@@ -231,15 +241,15 @@ void UpdateHandler::setProgress( sal_Int32 nPercent )
         osl::MutexGuard aGuard( maMutex );
 
         mnPercent = nPercent;
-        setControlProperty( CTRL_PROGRESS, u"ProgressValue"_ustr, uno::Any( nPercent ) );
-        setControlProperty( TEXT_PERCENT, u"Text"_ustr, uno::Any( substVariables(msPercent) ) );
+        m_pProgressBar->SetValue(nPercent);
+        m_pPercentEdit->SetText(substVariables(msPercent));
     }
 }
 
 
 void UpdateHandler::setErrorMessage( const OUString& rErrorMsg )
 {
-    setControlProperty( TEXT_DESCRIPTION, u"Text"_ustr, uno::Any( rErrorMsg ) );
+    m_pDescriptionEdit->SetText(rErrorMsg);
 }
 
 
@@ -420,7 +430,7 @@ void SAL_CALL UpdateHandler::handle( uno::Reference< task::XInteractionRequest >
     beans::Optional< OUString > aErrorText = xStrResolver->getStringFromInformationalRequest( rRequest );
     if ( aErrorText.IsPresent )
     {
-        setControlProperty( TEXT_DESCRIPTION, u"Text"_ustr, uno::Any( aErrorText.Value ) );
+        m_pDescriptionEdit->SetText(aErrorText.Value);
 
         uno::Sequence< uno::Reference< task::XInteractionContinuation > > xContinuations = rRequest->getContinuations();
         if ( xContinuations.getLength() == 1 )
@@ -483,6 +493,8 @@ void UpdateHandler::updateState( UpdateState eState )
     if ( meLastState == eState )
         return;
 
+    SolarMutexGuard g;
+
     OUString sText;
 
     switch ( eState )
@@ -490,25 +502,25 @@ void UpdateHandler::updateState( UpdateState eState )
         case UPDATESTATE_CHECKING:
             showControls( (1<<CANCEL_BUTTON) + (1<<THROBBER_CTRL) );
             enableControls( 1<<CANCEL_BUTTON );
-            setControlProperty( TEXT_STATUS, u"Text"_ustr, uno::Any( substVariables(msChecking) ) );
-            setControlProperty( TEXT_DESCRIPTION, u"Text"_ustr, uno::Any( OUString() ) );
+            m_pStatusEdit->SetText(substVariables(msChecking));
+            m_pDescriptionEdit->SetText(OUString());
             focusControl( CANCEL_BUTTON );
             break;
         case UPDATESTATE_ERROR_CHECKING:
             showControls( 0 );
             enableControls( 1 << CLOSE_BUTTON );
-            setControlProperty( TEXT_STATUS, u"Text"_ustr, uno::Any( substVariables(msCheckingError) ) );
+            m_pStatusEdit->SetText(substVariables(msCheckingError));
             focusControl( CLOSE_BUTTON );
             break;
         case UPDATESTATE_UPDATE_AVAIL:
             showControls( 0 );
             enableControls( ( 1 << CLOSE_BUTTON )  + ( 1 << DOWNLOAD_BUTTON ) );
-            setControlProperty( TEXT_STATUS, u"Text"_ustr, uno::Any( substVariables(msUpdFound) ) );
+            m_pStatusEdit->SetText(substVariables(msUpdFound));
 
             sText = substVariables(msDownloadWarning);
             if ( !msDescriptionMsg.isEmpty() )
                 sText += "\n\n" + msDescriptionMsg;
-            setControlProperty( TEXT_DESCRIPTION, u"Text"_ustr, uno::Any( sText ) );
+            m_pDescriptionEdit->SetText(sText);
 
             setDownloadBtnLabel( false );
             focusControl( DOWNLOAD_BUTTON );
@@ -516,12 +528,12 @@ void UpdateHandler::updateState( UpdateState eState )
         case UPDATESTATE_UPDATE_NO_DOWNLOAD:
             showControls( 0 );
             enableControls( ( 1 << CLOSE_BUTTON )  + ( 1 << DOWNLOAD_BUTTON ) );
-            setControlProperty( TEXT_STATUS, u"Text"_ustr, uno::Any( substVariables(msUpdFound) ) );
+            m_pStatusEdit->SetText(substVariables(msUpdFound));
 
             sText = substVariables(msDownloadNotAvail);
             if ( !msDescriptionMsg.isEmpty() )
                 sText += "\n\n" + msDescriptionMsg;
-            setControlProperty( TEXT_DESCRIPTION, u"Text"_ustr, uno::Any( sText ) );
+            m_pDescriptionEdit->SetText(sText );
 
             setDownloadBtnLabel( true );
             focusControl( DOWNLOAD_BUTTON );
@@ -530,38 +542,38 @@ void UpdateHandler::updateState( UpdateState eState )
         case UPDATESTATE_EXT_UPD_AVAIL:     // will only be set, when there are no office updates avail
             showControls( 0 );
             enableControls( 1 << CLOSE_BUTTON );
-            setControlProperty( TEXT_STATUS, u"Text"_ustr, uno::Any( substVariables(msNoUpdFound) ) );
-            setControlProperty( TEXT_DESCRIPTION, u"Text"_ustr, uno::Any( OUString() ) );
+            m_pStatusEdit->SetText(substVariables(msNoUpdFound));
+            m_pDescriptionEdit->SetText(OUString());
             focusControl( CLOSE_BUTTON );
             break;
         case UPDATESTATE_DOWNLOADING:
             showControls( (1<<PROGRESS_CTRL) + (1<<CANCEL_BUTTON) + (1<<PAUSE_BUTTON) + (1<<RESUME_BUTTON) );
             enableControls( (1<<CLOSE_BUTTON) + (1<<CANCEL_BUTTON) + (1<<PAUSE_BUTTON) );
-            setControlProperty( TEXT_STATUS, u"Text"_ustr, uno::Any( substVariables(msDownloading) ) );
-            setControlProperty( TEXT_PERCENT, u"Text"_ustr, uno::Any( substVariables(msPercent) ) );
-            setControlProperty( TEXT_DESCRIPTION, u"Text"_ustr, uno::Any( substVariables(msDownloadWarning) ) );
-            setControlProperty( CTRL_PROGRESS, u"ProgressValue"_ustr, uno::Any( mnPercent ) );
+            m_pStatusEdit->SetText(substVariables(msDownloading));
+            m_pPercentEdit->SetText(substVariables(msPercent));
+            m_pDescriptionEdit->SetText(substVariables(msDownloadWarning));
+            m_pProgressBar->SetValue(mnPercent );
             focusControl( CLOSE_BUTTON );
             break;
         case UPDATESTATE_DOWNLOAD_PAUSED:
             showControls( (1<<PROGRESS_CTRL) + (1<<CANCEL_BUTTON) + (1<<PAUSE_BUTTON) + (1<<RESUME_BUTTON) );
             enableControls( (1<<CLOSE_BUTTON) + (1<<CANCEL_BUTTON) + (1<<RESUME_BUTTON) );
-            setControlProperty( TEXT_STATUS, u"Text"_ustr, uno::Any( substVariables(msDownloadPause) ) );
-            setControlProperty( TEXT_PERCENT, u"Text"_ustr, uno::Any( substVariables(msPercent) ) );
-            setControlProperty( TEXT_DESCRIPTION, u"Text"_ustr, uno::Any( substVariables(msDownloadWarning) ) );
-            setControlProperty( CTRL_PROGRESS, u"ProgressValue"_ustr, uno::Any( mnPercent ) );
+            m_pStatusEdit->SetText(substVariables(msDownloadPause));
+            m_pPercentEdit->SetText(substVariables(msPercent));
+            m_pDescriptionEdit->SetText(substVariables(msDownloadWarning));
+            m_pProgressBar->SetValue(mnPercent);
             focusControl( CLOSE_BUTTON );
             break;
         case UPDATESTATE_ERROR_DOWNLOADING:
             showControls( (1<<PROGRESS_CTRL) + (1<<CANCEL_BUTTON) + (1<<PAUSE_BUTTON) + (1<<RESUME_BUTTON) );
             enableControls( (1<<CLOSE_BUTTON) + (1<<CANCEL_BUTTON) );
-            setControlProperty( TEXT_STATUS, u"Text"_ustr, uno::Any( substVariables(msDownloadError) ) );
+            m_pStatusEdit->SetText(substVariables(msDownloadError));
             focusControl( CLOSE_BUTTON );
             break;
         case UPDATESTATE_DOWNLOAD_AVAIL:
             showControls( 0 );
-            setControlProperty( TEXT_STATUS, u"Text"_ustr, uno::Any( substVariables(msReady2Install) ) );
-            setControlProperty( TEXT_DESCRIPTION, u"Text"_ustr, uno::Any( substVariables(msDownloadDescr) ) );
+            m_pStatusEdit->SetText(substVariables(msReady2Install));
+            m_pDescriptionEdit->SetText(substVariables(msDownloadDescr));
             break;
         case UPDATESTATE_AUTO_START:
         case UPDATESTATES_COUNT:
@@ -673,28 +685,6 @@ void UpdateHandler::startThrobber( bool bStart )
     if (xWindow.is() )
         xWindow->setVisible( bStart );
 }
-
-
-void UpdateHandler::setControlProperty( const OUString &rCtrlName,
-                                        const OUString &rPropName,
-                                        const uno::Any &rPropValue )
-{
-    if ( !mxUpdDlg.is() ) return;
-
-    uno::Reference< awt::XControlContainer > xContainer( mxUpdDlg, uno::UNO_QUERY );
-    uno::Reference< awt::XControl > xControl( xContainer->getControl( rCtrlName ), uno::UNO_SET_THROW );
-    uno::Reference< awt::XControlModel > xControlModel( xControl->getModel(), uno::UNO_SET_THROW );
-    uno::Reference< beans::XPropertySet > xPropSet( xControlModel, uno::UNO_QUERY_THROW );
-
-    try {
-        xPropSet->setPropertyValue( rPropName, rPropValue );
-    }
-    catch( const beans::UnknownPropertyException& )
-    {
-        TOOLS_WARN_EXCEPTION( "extensions.update", "UpdateHandler::setControlProperty" );
-    }
-}
-
 
 void UpdateHandler::showControl( const OUString &rCtrlName, bool bShow )
 {
@@ -816,7 +806,7 @@ bool UpdateHandler::showWarning( const OUString &rWarningText ) const
         // xMsgBox->setCaptionText( msCancelTitle );
         xMsgBox->setMessageText( rWarningText );
         nRet = xMsgBox->execute();
-        if ( nRet == 2 ) // RET_YES == 2
+        if (nRet == RET_YES)
             bRet = true;
         mbShowsMessageBox = false;
     }
@@ -886,7 +876,7 @@ bool UpdateHandler::showWarning( const OUString &rWarningText,
         mbShowsMessageBox = true;
         xMsgBox->setMessageText( rWarningText );
         nRet = xMsgBox->execute();
-        if ( nRet == 2 ) // RET_YES == 2
+        if (nRet == RET_YES)
             bRet = true;
 
         mbShowsMessageBox = false;
@@ -971,15 +961,15 @@ void UpdateHandler::showControls( short nControls )
 
     // Status text needs to be smaller, when there are buttons at the right side of the dialog
     if ( ( nControls & ( (1<<CANCEL_BUTTON) + (1<<PAUSE_BUTTON) + (1<<RESUME_BUTTON) ) )  != 0 )
-        setControlProperty( TEXT_STATUS, u"Width"_ustr, uno::Any( sal_Int32(EDIT_WIDTH - BUTTON_WIDTH - 2*INNER_BORDER - TEXT_OFFSET ) ) );
+        m_pStatusEdit->set_width_request(EDIT_WIDTH - BUTTON_WIDTH - 2 * INNER_BORDER - TEXT_OFFSET);
     else
-        setControlProperty( TEXT_STATUS, u"Width"_ustr, uno::Any( sal_Int32(EDIT_WIDTH - 2*TEXT_OFFSET ) ) );
+        m_pStatusEdit->set_width_request(EDIT_WIDTH - 2*TEXT_OFFSET);
 
     // Status text needs to be taller, when we show the progress bar
     if ( ( nControls & ( 1<<PROGRESS_CTRL ) ) != 0 )
-        setControlProperty( TEXT_STATUS, u"Height"_ustr, uno::Any( sal_Int32(LABEL_HEIGHT) ) );
+        m_pStatusEdit->set_height_request(LABEL_HEIGHT);
     else
-        setControlProperty( TEXT_STATUS, u"Height"_ustr, uno::Any( sal_Int32(BOX_HEIGHT1 - 4*TEXT_OFFSET - LABEL_HEIGHT ) ) );
+        m_pStatusEdit->set_height_request(BOX_HEIGHT1 - 4*TEXT_OFFSET - LABEL_HEIGHT);
 }
 
 
@@ -1022,7 +1012,7 @@ void UpdateHandler::createDialog()
     {   // Label (fixed text) <status>
         uno::Sequence< beans::NamedValue > aProps { { u"Label"_ustr, uno::Any( msStatusFL ) } };
 
-        insertControlModel( xControlModel, FIXED_TEXT_MODEL, u"fixedLineStatus"_ustr,
+        insertControlModel( xControlModel, FIXED_TEXT_MODEL, FIXEDLINE_STATUS,
                             awt::Rectangle( DIALOG_BORDER+1, DIALOG_BORDER, EDIT_WIDTH-2, LABEL_HEIGHT ),
                             aProps );
     }
@@ -1119,7 +1109,7 @@ void UpdateHandler::createDialog()
     {   // Label (FixedText) <description>
         uno::Sequence< beans::NamedValue > aProps { { u"Label"_ustr, uno::Any( msDescription ) } };
 
-        insertControlModel( xControlModel, FIXED_TEXT_MODEL, u"fixedTextDescription"_ustr,
+        insertControlModel( xControlModel, FIXED_TEXT_MODEL, FIXEDLINE_DESCRIPTION,
                             awt::Rectangle( DIALOG_BORDER+1, LABEL_Y_POS, EDIT_WIDTH-2, LABEL_HEIGHT ),
                             aProps );
     }
@@ -1244,6 +1234,32 @@ void UpdateHandler::createDialog()
 
     mxUpdDlg.set( xControl, uno::UNO_QUERY_THROW );
     mnLastCtrlState = -1;
+
+    m_pStatusEdit = getWindow(TEXT_STATUS);
+    m_pDescriptionEdit = getWindow(TEXT_DESCRIPTION);
+    m_pPercentEdit = getWindow(TEXT_PERCENT);
+    m_pProgressBar = dynamic_cast<ProgressBar*>(getWindow(CTRL_PROGRESS));
+
+    FixedText* pStatusLabel = dynamic_cast<FixedText*>(getWindow(FIXEDLINE_STATUS));
+    assert(pStatusLabel);
+    pStatusLabel->set_mnemonic_widget(m_pStatusEdit);
+
+    FixedText* pDescriptionLabel = dynamic_cast<FixedText*>(getWindow(FIXEDLINE_DESCRIPTION));
+    assert(pDescriptionLabel);
+    pDescriptionLabel->set_mnemonic_widget(m_pDescriptionEdit);
+}
+
+vcl::Window* UpdateHandler::getWindow(const OUString& rControlName)
+{
+    assert(mxUpdDlg.is() && "Dialog not set.");
+
+    uno::Reference<awt::XControlContainer> xControlContainer(mxUpdDlg, uno::UNO_QUERY_THROW);
+    uno::Reference<awt::XControl> xControl(xControlContainer->getControl(rControlName),
+                                           uno::UNO_SET_THROW);
+    uno::Reference<awt::XWindow> xWindow(xControl, uno::UNO_QUERY_THROW);
+    vcl::Window* pWin = VCLUnoHelper::GetWindow(xControl->getPeer());
+    assert(pWin);
+    return pWin;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

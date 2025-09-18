@@ -442,7 +442,7 @@ void SwMarkdownParser::EndNumberedBulletList()
     }
 }
 
-void SwMarkdownParser::StartNumberedBulletListItem()
+void SwMarkdownParser::StartNumberedBulletListItem(MD_BLOCK_LI_DETAIL aDetail)
 {
     sal_uInt8 nLevel = GetNumInfo().GetLevel();
     sal_uInt16 nStart = GetNumInfo().GetNodeStartValue(nLevel);
@@ -465,6 +465,13 @@ void SwMarkdownParser::StartNumberedBulletListItem()
     if (GetNumInfo().GetNumRule())
     {
         aNumRuleName = GetNumInfo().GetNumRule()->GetName();
+
+        if (aDetail.is_task)
+        {
+            bool bChecked = (aDetail.task_mark == 'x' || aDetail.task_mark == 'X') ? true : false;
+            pTextNode->InsertText((bChecked ? Checkmark : Crossmark) + u" "_ustr,
+                                  SwContentIndex(pTextNode, 0));
+        }
     }
     else
     {
@@ -593,10 +600,9 @@ void SwMarkdownParser::SetAttrs(SwPaM& rRange)
 
 void SwMarkdownParser::ClearAttrs() { m_xDoc->ResetAttrs(*m_pPam, true); }
 
-void SwMarkdownParser::InsertImage(const OUString& aURL, const OUString& rTitle,
-                                   const SwFormatINetFormat* pINetFormat)
+void SwMarkdownParser::InsertImage(const MDImage& rImg)
 {
-    OUString sGrfNm = INetURLObject::GetAbsURL(m_sBaseURL, aURL);
+    OUString sGrfNm = INetURLObject::GetAbsURL(m_sBaseURL, rImg.url);
 
     Graphic aGraphic;
     INetURLObject aGraphicURL(sGrfNm);
@@ -615,26 +621,30 @@ void SwMarkdownParser::InsertImage(const OUString& aURL, const OUString& rTitle,
                 = o3tl::convert(aDescriptor.GetSizePixel(), o3tl::Length::px, o3tl::Length::twip);
     }
 
-    tools::Long nWidth = aGrfSz.getWidth();
-    tools::Long nHeight = aGrfSz.getHeight();
-
-    if (nWidth > 0 && nHeight > 0)
+    tools::Long nWidth = 0;
+    tools::Long nHeight = 0;
+    if (!aGrfSz.IsEmpty())
     {
+        nWidth = aGrfSz.getWidth();
+        nHeight = aGrfSz.getHeight();
         if (nWidth > MD_MAX_IMAGE_WIDTH_IN_TWIPS || nHeight > MD_MAX_IMAGE_HEIGHT_IN_TWIPS)
         {
             double fScaleX = static_cast<double>(MD_MAX_IMAGE_WIDTH_IN_TWIPS) / nWidth;
             double fScaleY = static_cast<double>(MD_MAX_IMAGE_HEIGHT_IN_TWIPS) / nHeight;
             double fScale = std::min(fScaleX, fScaleY);
-
             nWidth = static_cast<tools::Long>(nWidth * fScale);
             nHeight = static_cast<tools::Long>(nHeight * fScale);
         }
+        if (nWidth < MD_MIN_IMAGE_WIDTH_IN_TWIPS && nWidth < MD_MIN_IMAGE_HEIGHT_IN_TWIPS)
+        {
+            nWidth = MD_MIN_IMAGE_WIDTH_IN_TWIPS;
+            nHeight = MD_MIN_IMAGE_HEIGHT_IN_TWIPS;
+        }
     }
-
-    if (nWidth < MINFLY || nHeight < MINFLY)
+    else
     {
-        nWidth = MINFLY;
-        nHeight = MINFLY;
+        nWidth = MD_MIN_IMAGE_WIDTH_IN_TWIPS;
+        nHeight = MD_MIN_IMAGE_HEIGHT_IN_TWIPS;
     }
 
     SfxItemSet aFlySet(
@@ -646,11 +656,11 @@ void SwMarkdownParser::InsertImage(const OUString& aURL, const OUString& rTitle,
     aFlySet.Put(
         SwFormatVertOrient(0, text::VertOrientation::CHAR_CENTER, text::RelOrientation::CHAR));
 
-    if (pINetFormat)
+    if (!rImg.link.isEmpty())
     {
         // Have a link, set that on the image.
         SwFormatURL aFormatURL;
-        aFormatURL.SetURL(pINetFormat->GetValue(), /*bServerMap=*/false);
+        aFormatURL.SetURL(rImg.link, /*bServerMap=*/false);
         aFlySet.Put(aFormatURL);
     }
 
@@ -662,10 +672,11 @@ void SwMarkdownParser::InsertImage(const OUString& aURL, const OUString& rTitle,
     SwGrfNode* pGrfNd = m_xDoc->GetNodes()[pFlyFormat->GetContent().GetContentIdx()->GetIndex() + 1]
                             ->GetGrfNode();
 
-    if (pGrfNd && !rTitle.isEmpty())
-    {
-        pGrfNd->SetTitle(rTitle);
-    }
+    if (!rImg.title.isEmpty())
+        pFlyFormat->SetFormatName(UIName(rImg.title));
+
+    if (pGrfNd && !rImg.altText.isEmpty())
+        pGrfNd->SetTitle(rImg.altText);
 
     m_bNoParSpace = true;
 }
