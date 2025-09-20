@@ -19,12 +19,9 @@
 
 
 #include <vcl/svapp.hxx>
-#include <vcl/metaact.hxx>
-#include <vcl/gdimtf.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/window.hxx>
 
-#include <editeng/outliner.hxx>
 #include <editeng/tstpitem.hxx>
 #include <editeng/lspcitem.hxx>
 #include <editeng/flditem.hxx>
@@ -70,8 +67,6 @@
 #include <com/sun/star/i18n/BreakIterator.hpp>
 #include <com/sun/star/i18n/ScriptType.hpp>
 #include <com/sun/star/i18n/InputSequenceChecker.hpp>
-#include <vcl/pdfextoutdevdata.hxx>
-#include <i18nlangtag/mslangid.hxx>
 #include <i18nutil/kashida.hxx>
 
 #include <comphelper/processfactory.hxx>
@@ -84,22 +79,16 @@
 #include <comphelper/string.hxx>
 #include <cstddef>
 #include <memory>
-#include <set>
-
-#include <vcl/outdev/ScopedStates.hxx>
 
 #include <vcl/canvastools.hxx>
 #include <drawinglayer/processor2d/processor2dtools.hxx>
 #include <drawinglayer/processor2d/baseprocessor2d.hxx>
-#include <drawinglayer/primitive2d/groupprimitive2d.hxx>
 #include <drawinglayer/primitive2d/maskprimitive2d.hxx>
 #include <basegfx/polygon/b2dpolygontools.hxx>
 #include <drawinglayer/primitive2d/transformprimitive2d.hxx>
 #include <basegfx/matrix/b2dhommatrixtools.hxx>
 #include <basegfx/color/bcolormodifier.hxx>
 #include <drawinglayer/primitive2d/modifiedcolorprimitive2d.hxx>
-
-#include <unicode/uchar.h>
 
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
@@ -2216,7 +2205,12 @@ void ImpEditEngine::ImpBreakLine(ParaPortion& rParaPortion, EditLine& rLine, Tex
             nBreakPos = nMaxBreakPos;
             // I18N nextCharacters !
             if ( nBreakPos <= rLine.GetStart() )
-                nBreakPos = rLine.GetStart() + 1;  // Otherwise infinite loop!
+            {
+                // Move to next character, otherwise infinite loop!
+                nBreakPos = rLine.GetStart();
+                // Use iterateCodePoints to avoid splitting surrogate-pairs
+                pNode->GetString().iterateCodePoints(&nBreakPos, 1);
+            }
         }
     }
 
