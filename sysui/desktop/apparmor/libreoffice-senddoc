@@ -12,12 +12,13 @@
 #
 # ------------------------------------------------------------------
 
-#include <tunables/global>
+@{libo_inst_dir} = @INSTDIR@
 
-profile libreoffice-senddoc INSTDIR-program/senddoc {
-  #include <abstractions/base>
+include <tunables/global>
 
-  #include <abstractions/user-tmp>
+profile libreoffice-senddoc @{libo_inst_dir}/program/senddoc {
+  include <abstractions/base>
+  include <abstractions/user-tmp>
 
   /{usr/,}bin/sh        rmix,
   /{usr/,}bin/bash      rmix,
@@ -30,8 +31,11 @@ profile libreoffice-senddoc INSTDIR-program/senddoc {
   /usr/bin/xdg-open     rPUx,
   /usr/bin/xdg-email    rPUx,
   /dev/null             rw,
-  INSTDIR-program/uri-encode rmpux,
+  @{libo_inst_dir}/program/uri-encode rmpux,
   /usr/share/libreoffice/share/config/* r,
   owner @{HOME}/.config/libreoffice{,dev}/?/user/uno_packages/cache/log.txt rw,
+
+  # Site-specific additions and overrides. See local/README for details.
+  include if exists <local/libreoffice-senddoc>
 }
 

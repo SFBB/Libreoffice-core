@@ -12,20 +12,23 @@
 #
 # ------------------------------------------------------------------
 
-#include <tunables/global>
+@{libo_inst_dir} = @INSTDIR@
 
-profile libreoffice-xpdfimport INSTDIR-program/xpdfimport {
-  #include <abstractions/base>
+include <tunables/global>
 
-  #include <abstractions/user-tmp>
+profile libreoffice-xpdfimport @{libo_inst_dir}/program/xpdfimport {
+  include <abstractions/base>
+  include <abstractions/user-tmp>
 
   /usr/share/poppler/**     r,
   /usr/share/libreoffice/share/config/* r,
   owner @{HOME}/.config/libreoffice{,dev}/?/user/uno_packages/cache/log.txt rw,
 
-  INSTDIR-program/xpdfimport        pxm,
+  @{libo_inst_dir}/program/xpdfimport pxm,
 
   #Uncomment for build testing (should be one directory <- of instdir)
   #/mnt/store/git/libo/**    r,
-}
 
+  # Site-specific additions and overrides. See local/README for details.
+  include if exists <local/libreoffice-xpdfimport>
+}
