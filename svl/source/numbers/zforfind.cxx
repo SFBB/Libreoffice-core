@@ -18,7 +18,7 @@
  */
 
 #include <cstdlib>
-#include <dtoa.h>
+#include <fast_float/fast_float.h>
 #include <float.h>
 #include <comphelper/string.hxx>
 #include <o3tl/string_view.hxx>
@@ -151,32 +151,12 @@ static void TransformInput(const NativeNumberWrapper& rNatNum, const SvNFLanguag
  * Only simple unsigned floating point values without any error detection,
  * decimal separator has to be '.'
  */
-double ImpSvNumberInputScan::StringToDouble( std::u16string_view aStr, bool bForceFraction )
+static double StringToDouble( std::u16string_view aStr )
 {
-    std::unique_ptr<char[]> bufInHeap;
-    constexpr int bufOnStackSize = 256;
-    char bufOnStack[bufOnStackSize];
-    char* buf = bufOnStack;
-    const sal_Int32 bufsize = aStr.size() + (bForceFraction ? 2 : 1);
-    if (bufsize > bufOnStackSize)
-    {
-        bufInHeap = std::make_unique<char[]>(bufsize);
-        buf = bufInHeap.get();
-    }
-    char* p = buf;
-    if (bForceFraction)
-        *p++ = '.';
-    for (size_t nPos = 0; nPos < aStr.size(); ++nPos)
-    {
-        sal_Unicode c = aStr[nPos];
-        if (c == '.' || (c >= '0' && c <= '9'))
-            *p++ = static_cast<char>(c);
-        else
-            break;
-    }
-    *p = '\0';
-
-    return strtod_nolocale(buf, nullptr);
+    const auto fmt = fast_float::chars_format::fixed | fast_float::chars_format::no_infnan;
+    double result = 0;
+    (void)fast_float::from_chars(aStr.data(), aStr.data() + aStr.size(), result, fmt);
+    return result;
 }
 
 namespace {
@@ -1054,7 +1034,7 @@ bool ImpSvNumberInputScan::GetTimeRef( double& fOutNumber,
     }
     if (nIndex - nStartIndex < nCnt)
     {
-        fSecond100 = StringToDouble( sStrArray[nNums[nIndex]], true );
+        fSecond100 = StringToDouble(Concat2View("." + sStrArray[nNums[nIndex]]));
     }
     fOutNumber = (static_cast<double>(nHour)*3600 +
                   static_cast<double>(nMinute)*60 +
