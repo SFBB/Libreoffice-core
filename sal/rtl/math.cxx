@@ -231,7 +231,6 @@ double stringToDouble(CharT const* pBegin, CharT const* pEnd, CharT cDecSeparato
             char* string = stringOnStack;
             const CharT** map = mapOnStack;
             size_t pos = 0;
-            // [-loplugin:unusedmember] false positive
             Buf_t(size_t bufsize)
             {
                 if (bufsize > 256)
@@ -241,8 +240,8 @@ double stringToDouble(CharT const* pBegin, CharT const* pEnd, CharT cDecSeparato
                     string = stringInHeap.get();
                     map = mapInHeap.get();
                 }
+                // coverity[uninit_member] - mapOnStack contents intentionally not initialized
             }
-            // [-loplugin:unusedmember] false positive
             void insert(char c, const CharT* ptr)
             {
                 string[pos] = c;
