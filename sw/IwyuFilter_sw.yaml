@@ -543,9 +543,6 @@ excludelist:
     # Actually used
     - com/sun/star/text/TextMarkupDescriptor.hpp
     - com/sun/star/text/XTextRange.hpp
-    sw/source/core/unocore/unotbl.cxx:
-    # No .hxx -> .h replacement in URE headers
-    - cppuhelper/interfacecontainer.hxx
     sw/source/core/unocore/unoredline.cxx:
     # Needed for template
     - com/sun/star/text/XTextSection.hpp
@@ -853,9 +850,6 @@ excludelist:
     sw/qa/extras/rtfexport/rtfexport4.cxx:
     # Required in C++20 mode.
     - o3tl/cppunittraitshelper.hxx
-    sw/qa/extras/txtexport/txtexport.cxx:
-    # No .hxx -> .h replacement in URE headers
-    - osl/thread.hxx
     sw/source/writerfilter/dmapper/BorderHandler.cxx:
     # Needed for method parameter type
     - tools/color.hxx

@@ -111,8 +111,8 @@ ETONYEK_TARBALL := libetonyek-0.1.$(ETONYEK_VERSION_MICRO).tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-EXPAT_SHA256SUM := 21b778b34ec837c2ac285aef340f9fb5fa063a811b21ea4d2412a9702c88995c
-EXPAT_TARBALL := expat-2.7.2.tar.xz
+EXPAT_SHA256SUM := 71df8f40706a7bb0a80a5367079ea75d91da4f8c65c58ec59bcdfbf7decdab9f
+EXPAT_TARBALL := expat-2.7.3.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -435,8 +435,8 @@ LIBGPGERROR_TARBALL := libgpg-error-1.55.tar.bz2
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-LIBLANGTAG_SHA256SUM := 5ed6bcd4ae3f3c05c912e62f216cd1a44123846147f729a49fb5668da51e030e
-LIBLANGTAG_TARBALL := liblangtag-0.6.7.tar.bz2
+LIBLANGTAG_SHA256SUM := a96975b79ddd8fef6d9295c083fe3f1afa1a8898a57235d4069255ade44e5cf2
+LIBLANGTAG_TARBALL := liblangtag-0.6.8.tar.bz2
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
