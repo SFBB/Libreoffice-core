@@ -87,6 +87,7 @@
 #include <o3tl/string_view.hxx>
 #include "presetooxhandleadjustmentrelations.hxx"
 #include <editeng/frmdiritem.hxx>
+#include <EnhancedCustomShapeEngine.hxx>
 
 using namespace ::com::sun::star;
 
@@ -369,7 +370,7 @@ static rtl::Reference<SdrObject> ImpCreateShadowObjectClone(const SdrObject& rOr
 }
 
 
-uno::Reference<drawing::XCustomShapeEngine> const & SdrObjCustomShape::GetCustomShapeEngine() const
+rtl::Reference<EnhancedCustomShapeEngine> const & SdrObjCustomShape::GetCustomShapeEngine() const
 {
     if (mxCustomShapeEngine.is())
         return mxCustomShapeEngine;
@@ -378,27 +379,10 @@ uno::Reference<drawing::XCustomShapeEngine> const & SdrObjCustomShape::GetCustom
     if ( !aXShape )
         return mxCustomShapeEngine;
 
-    const uno::Reference<uno::XComponentContext>& xContext( ::comphelper::getProcessComponentContext() );
-
     OUString aEngine(GetMergedItem( SDRATTR_CUSTOMSHAPE_ENGINE ).GetValue());
-    static constexpr OUStringLiteral sEnhancedCustomShapeEngine = u"com.sun.star.drawing.EnhancedCustomShapeEngine";
-    if ( aEngine.isEmpty() )
-        aEngine = sEnhancedCustomShapeEngine;
-
+    if ( aEngine.isEmpty() || aEngine == "com.sun.star.drawing.EnhancedCustomShapeEngine")
     {
-        static constexpr OUString sCustomShape = u"CustomShape"_ustr;
-        uno::Sequence<beans::PropertyValue> aPropValues{ comphelper::makePropertyValue(sCustomShape,
-                                                                             aXShape) };
-        uno::Sequence<uno::Any> aArgument{ uno::Any(aPropValues) };
-        try
-        {
-            uno::Reference<uno::XInterface> xInterface(xContext->getServiceManager()->createInstanceWithArgumentsAndContext(aEngine, aArgument, xContext));
-            if (xInterface.is())
-                mxCustomShapeEngine.set(xInterface, uno::UNO_QUERY);
-        }
-        catch (const loader::CannotActivateFactoryException&)
-        {
-        }
+        mxCustomShapeEngine = new EnhancedCustomShapeEngine(aXShape);
     }
 
     return mxCustomShapeEngine;
@@ -408,7 +392,7 @@ const SdrObject* SdrObjCustomShape::GetSdrObjectFromCustomShape() const
 {
     if ( !mXRenderedCustomShape.is() )
     {
-        uno::Reference<drawing::XCustomShapeEngine> xCustomShapeEngine( GetCustomShapeEngine() );
+        rtl::Reference<EnhancedCustomShapeEngine> xCustomShapeEngine( GetCustomShapeEngine() );
         if ( xCustomShapeEngine.is() )
             const_cast<SdrObjCustomShape*>(this)->mXRenderedCustomShape = xCustomShapeEngine->render();
     }
@@ -539,7 +523,7 @@ bool SdrObjCustomShape::GetTextBounds( tools::Rectangle& rTextBound ) const
 {
     bool bRet = false;
 
-    uno::Reference<drawing::XCustomShapeEngine> xCustomShapeEngine( GetCustomShapeEngine() );
+    rtl::Reference<EnhancedCustomShapeEngine> xCustomShapeEngine( GetCustomShapeEngine() );
     if ( xCustomShapeEngine.is() )
     {
         awt::Rectangle aR( xCustomShapeEngine->getTextBounds() );
@@ -554,7 +538,7 @@ bool SdrObjCustomShape::GetTextBounds( tools::Rectangle& rTextBound ) const
 basegfx::B2DPolyPolygon SdrObjCustomShape::GetLineGeometry( const bool bBezierAllowed ) const
 {
     basegfx::B2DPolyPolygon aRetval;
-    uno::Reference<drawing::XCustomShapeEngine> xCustomShapeEngine( GetCustomShapeEngine() );
+    rtl::Reference<EnhancedCustomShapeEngine> xCustomShapeEngine( GetCustomShapeEngine() );
     if ( xCustomShapeEngine.is() )
     {
         drawing::PolyPolygonBezierCoords aBezierCoords = xCustomShapeEngine->getLineGeometry();
@@ -578,86 +562,82 @@ std::vector< SdrCustomShapeInteraction > SdrObjCustomShape::GetInteractionHandle
     std::vector< SdrCustomShapeInteraction > aRet;
     try
     {
-        uno::Reference<drawing::XCustomShapeEngine> xCustomShapeEngine( GetCustomShapeEngine() );
-        if ( xCustomShapeEngine.is() )
+        rtl::Reference<EnhancedCustomShapeEngine> xCustomShapeEngine( GetCustomShapeEngine() );
+        if ( !xCustomShapeEngine.is() )
+            return aRet;
+
+        uno::Sequence<uno::Reference<drawing::XCustomShapeHandle>> xInteractionHandles( xCustomShapeEngine->getInteraction() );
+        for ( int i = 0; i < xInteractionHandles.getLength(); i++ )
         {
-            int i;
-            uno::Sequence<uno::Reference<drawing::XCustomShapeHandle>> xInteractionHandles( xCustomShapeEngine->getInteraction() );
-            for ( i = 0; i < xInteractionHandles.getLength(); i++ )
+            SdrCustomShapeInteraction aSdrCustomShapeInteraction;
+            aSdrCustomShapeInteraction.xInteraction = xInteractionHandles[ i ];
+            aSdrCustomShapeInteraction.aPosition = xInteractionHandles[ i ]->getPosition();
+
+            CustomShapeHandleModes nMode = CustomShapeHandleModes::NONE;
+            switch( ImpGetCustomShapeType( *this ) )
             {
-                if ( xInteractionHandles[ i ].is() )
+                case mso_sptAccentBorderCallout90 :     // 2 ortho
                 {
-                    SdrCustomShapeInteraction aSdrCustomShapeInteraction;
-                    aSdrCustomShapeInteraction.xInteraction = xInteractionHandles[ i ];
-                    aSdrCustomShapeInteraction.aPosition = xInteractionHandles[ i ]->getPosition();
-
-                    CustomShapeHandleModes nMode = CustomShapeHandleModes::NONE;
-                    switch( ImpGetCustomShapeType( *this ) )
-                    {
-                        case mso_sptAccentBorderCallout90 :     // 2 ortho
-                        {
-                            if (i == 0)
-                                nMode |= CustomShapeHandleModes::RESIZE_FIXED | CustomShapeHandleModes::CREATE_FIXED;
-                            else if (i == 1)
-                                nMode |= CustomShapeHandleModes::RESIZE_ABSOLUTE_X | CustomShapeHandleModes::RESIZE_ABSOLUTE_Y | CustomShapeHandleModes::MOVE_SHAPE | CustomShapeHandleModes::ORTHO4;
-                        }
-                        break;
-
-                        case mso_sptChevron :
-                        case mso_sptHomePlate :
-                             nMode |= CustomShapeHandleModes::RESIZE_ABSOLUTE_NEGX;
-                        break;
-
-                        case mso_sptWedgeRectCallout :
-                        case mso_sptWedgeRRectCallout :
-                        case mso_sptCloudCallout :
-                        case mso_sptWedgeEllipseCallout :
-                        {
-                            if (i == 0)
-                                nMode |= CustomShapeHandleModes::RESIZE_FIXED;
-                        }
-                        break;
-
-                        case mso_sptBorderCallout1 :            // 2 diag
-                        {
-                            if (i == 0)
-                                nMode |= CustomShapeHandleModes::RESIZE_FIXED | CustomShapeHandleModes::CREATE_FIXED;
-                            else if (i == 1)
-                                nMode |= CustomShapeHandleModes::RESIZE_ABSOLUTE_X | CustomShapeHandleModes::RESIZE_ABSOLUTE_Y | CustomShapeHandleModes::MOVE_SHAPE;
-                        }
-                        break;
-                        case mso_sptBorderCallout2 :            // 3
-                        {
-                            if (i == 0)
-                                nMode |= CustomShapeHandleModes::RESIZE_FIXED | CustomShapeHandleModes::CREATE_FIXED;
-                            else if (i == 2)
-                                nMode |= CustomShapeHandleModes::RESIZE_ABSOLUTE_X | CustomShapeHandleModes::RESIZE_ABSOLUTE_Y | CustomShapeHandleModes::MOVE_SHAPE;
-                        }
-                        break;
-                        case mso_sptCallout90 :
-                        case mso_sptAccentCallout90 :
-                        case mso_sptBorderCallout90 :
-                        case mso_sptCallout1 :
-                        case mso_sptCallout2 :
-                        case mso_sptCallout3 :
-                        case mso_sptAccentCallout1 :
-                        case mso_sptAccentCallout2 :
-                        case mso_sptAccentCallout3 :
-                        case mso_sptBorderCallout3 :
-                        case mso_sptAccentBorderCallout1 :
-                        case mso_sptAccentBorderCallout2 :
-                        case mso_sptAccentBorderCallout3 :
-                        {
-                            if (i == 0)
-                                nMode |= CustomShapeHandleModes::RESIZE_FIXED | CustomShapeHandleModes::CREATE_FIXED;
-                        }
-                        break;
-                        default: break;
-                    }
-                    aSdrCustomShapeInteraction.nMode = nMode;
-                    aRet.push_back( aSdrCustomShapeInteraction );
+                    if (i == 0)
+                        nMode |= CustomShapeHandleModes::RESIZE_FIXED | CustomShapeHandleModes::CREATE_FIXED;
+                    else if (i == 1)
+                        nMode |= CustomShapeHandleModes::RESIZE_ABSOLUTE_X | CustomShapeHandleModes::RESIZE_ABSOLUTE_Y | CustomShapeHandleModes::MOVE_SHAPE | CustomShapeHandleModes::ORTHO4;
                 }
+                break;
+
+                case mso_sptChevron :
+                case mso_sptHomePlate :
+                     nMode |= CustomShapeHandleModes::RESIZE_ABSOLUTE_NEGX;
+                break;
+
+                case mso_sptWedgeRectCallout :
+                case mso_sptWedgeRRectCallout :
+                case mso_sptCloudCallout :
+                case mso_sptWedgeEllipseCallout :
+                {
+                    if (i == 0)
+                        nMode |= CustomShapeHandleModes::RESIZE_FIXED;
+                }
+                break;
+
+                case mso_sptBorderCallout1 :            // 2 diag
+                {
+                    if (i == 0)
+                        nMode |= CustomShapeHandleModes::RESIZE_FIXED | CustomShapeHandleModes::CREATE_FIXED;
+                    else if (i == 1)
+                        nMode |= CustomShapeHandleModes::RESIZE_ABSOLUTE_X | CustomShapeHandleModes::RESIZE_ABSOLUTE_Y | CustomShapeHandleModes::MOVE_SHAPE;
+                }
+                break;
+                case mso_sptBorderCallout2 :            // 3
+                {
+                    if (i == 0)
+                        nMode |= CustomShapeHandleModes::RESIZE_FIXED | CustomShapeHandleModes::CREATE_FIXED;
+                    else if (i == 2)
+                        nMode |= CustomShapeHandleModes::RESIZE_ABSOLUTE_X | CustomShapeHandleModes::RESIZE_ABSOLUTE_Y | CustomShapeHandleModes::MOVE_SHAPE;
+                }
+                break;
+                case mso_sptCallout90 :
+                case mso_sptAccentCallout90 :
+                case mso_sptBorderCallout90 :
+                case mso_sptCallout1 :
+                case mso_sptCallout2 :
+                case mso_sptCallout3 :
+                case mso_sptAccentCallout1 :
+                case mso_sptAccentCallout2 :
+                case mso_sptAccentCallout3 :
+                case mso_sptBorderCallout3 :
+                case mso_sptAccentBorderCallout1 :
+                case mso_sptAccentBorderCallout2 :
+                case mso_sptAccentBorderCallout3 :
+                {
+                    if (i == 0)
+                        nMode |= CustomShapeHandleModes::RESIZE_FIXED | CustomShapeHandleModes::CREATE_FIXED;
+                }
+                break;
+                default: break;
             }
+            aSdrCustomShapeInteraction.nMode = nMode;
+            aRet.push_back( aSdrCustomShapeInteraction );
         }
     }
     catch( const uno::RuntimeException& )
