@@ -26,7 +26,9 @@
 class SVXCORE_DLLPUBLIC EnhancedCustomShapeEngine
     : public cppu::WeakImplHelper<css::lang::XServiceInfo, css::drawing::XCustomShapeEngine>
 {
-    css::uno::Reference<css::drawing::XShape> mxShape;
+    /// Cannot use a rtl::Reference here because EnhancedCustomShapeEngine is owned by
+    /// SdrObjCustomShape, so this is basically a parent pointer.
+    SdrObjCustomShape* mpCustomShape;
     bool mbForceGroupWithText;
 
     static rtl::Reference<SdrObject> ImplForceGroupWithText(SdrObjCustomShape& rSdrObjCustomShape,
@@ -34,7 +36,7 @@ class SVXCORE_DLLPUBLIC EnhancedCustomShapeEngine
 
 public:
     EnhancedCustomShapeEngine(const css::uno::Sequence<css::uno::Any>& aArguments);
-    EnhancedCustomShapeEngine(const css::uno::Reference<css::drawing::XShape>& xShape);
+    EnhancedCustomShapeEngine(SdrObjCustomShape& rShape);
 
     // XInterface
     virtual void SAL_CALL acquire() noexcept override;
@@ -51,6 +53,10 @@ public:
     virtual css::drawing::PolyPolygonBezierCoords SAL_CALL getLineGeometry() override;
     virtual css::uno::Sequence<css::uno::Reference<css::drawing::XCustomShapeHandle>>
         SAL_CALL getInteraction() override;
+
+    tools::Rectangle getTextBounds2() const;
+    basegfx::B2DPolyPolygon getB2DLineGeometry() const;
+    rtl::Reference<SdrObject> render2() const;
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
