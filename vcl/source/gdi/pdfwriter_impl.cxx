@@ -386,43 +386,7 @@ void appendFixedInt( sal_Int32 nValue, OStringBuffer& rBuffer )
 // appends a double. PDF does not accept exponential format, only fixed point
 void appendDouble( double fValue, OStringBuffer& rBuffer, sal_Int32 nPrecision = 10 )
 {
-    bool bNeg = false;
-    if( fValue < 0.0 )
-    {
-        bNeg = true;
-        fValue=-fValue;
-    }
-
-    sal_Int64 nInt = static_cast<sal_Int64>(fValue);
-    fValue -= static_cast<double>(nInt);
-    // optimizing hardware may lead to a value of 1.0 after the subtraction
-    if( rtl::math::approxEqual(fValue, 1.0) || log10( 1.0-fValue ) <= -nPrecision )
-    {
-        nInt++;
-        fValue = 0.0;
-    }
-    sal_Int64 nFrac = 0;
-    if( fValue )
-    {
-        fValue *= pow( 10.0, static_cast<double>(nPrecision) );
-        nFrac = static_cast<sal_Int64>(fValue);
-    }
-    if( bNeg && ( nInt || nFrac ) )
-        rBuffer.append( '-' );
-    rBuffer.append( nInt );
-    if( !nFrac )
-        return;
-
-    int i;
-    rBuffer.append( '.' );
-    sal_Int64 nBound = static_cast<sal_Int64>(pow( 10.0, nPrecision - 1.0 )+0.5);
-    for ( i = 0; ( i < nPrecision ) && nFrac; i++ )
-    {
-        sal_Int64 nNumb = nFrac / nBound;
-        nFrac -= nNumb * nBound;
-        rBuffer.append( nNumb );
-        nBound /= 10;
-    }
+    rtl::math::doubleToStringBuffer(rBuffer, fValue, rtl_math_StringFormat_F, nPrecision, '.', true);
 }
 
 void appendColor( const Color& rColor, OStringBuffer& rBuffer, bool bConvertToGrey )
@@ -577,25 +541,26 @@ void computeDocumentIdentifier(std::vector<sal_uInt8>& o_rIdentifier,
     // to use the localtime notation only
     // according to a recommendation in XMP Specification (Jan 2004, page 75)
     // the Acrobat way seems the right approach
-    aCreationMetaDateString.append(char('0' + ((aDT.Year / 1000) % 10)));
-    aCreationMetaDateString.append(char('0' + ((aDT.Year / 100) % 10)));
-    aCreationMetaDateString.append(char('0' + ((aDT.Year / 10) % 10)));
-    aCreationMetaDateString.append(char('0' + ((aDT.Year) % 10)));
-    aCreationMetaDateString.append("-");
-    aCreationMetaDateString.append(char('0' + ((aDT.Month / 10) % 10)));
-    aCreationMetaDateString.append(char('0' + ((aDT.Month) % 10)));
-    aCreationMetaDateString.append("-");
-    aCreationMetaDateString.append(char('0' + ((aDT.Day / 10) % 10)));
-    aCreationMetaDateString.append(char('0' + ((aDT.Day) % 10)));
-    aCreationMetaDateString.append("T");
-    aCreationMetaDateString.append(char('0' + ((aDT.Hours / 10) % 10)));
-    aCreationMetaDateString.append(char('0' + ((aDT.Hours) % 10)));
-    aCreationMetaDateString.append(":");
-    aCreationMetaDateString.append(char('0' + ((aDT.Minutes / 10) % 10)));
-    aCreationMetaDateString.append(char('0' + ((aDT.Minutes) % 10)));
-    aCreationMetaDateString.append(":");
-    aCreationMetaDateString.append(char('0' + ((aDT.Seconds / 10) % 10)));
-    aCreationMetaDateString.append(char('0' + ((aDT.Seconds) % 10)));
+    aCreationMetaDateString.append(
+        OStringChar(char('0' + ((aDT.Year / 1000) % 10)))
+        + OStringChar(char('0' + ((aDT.Year / 100) % 10)))
+        + OStringChar(char('0' + ((aDT.Year / 10) % 10)))
+        + OStringChar(char('0' + ((aDT.Year) % 10)))
+        + OStringChar('-')
+        + OStringChar(char('0' + ((aDT.Month / 10) % 10)))
+        + OStringChar(char('0' + ((aDT.Month) % 10)))
+        + OStringChar('-')
+        + OStringChar(char('0' + ((aDT.Day / 10) % 10)))
+        + OStringChar(char('0' + ((aDT.Day) % 10)))
+        + OStringChar('T')
+        + OStringChar(char('0' + ((aDT.Hours / 10) % 10)))
+        + OStringChar(char('0' + ((aDT.Hours) % 10)))
+        + OStringChar(':')
+        + OStringChar(char('0' + ((aDT.Minutes / 10) % 10)))
+        + OStringChar(char('0' + ((aDT.Minutes) % 10)))
+        + OStringChar(':')
+        + OStringChar(char('0' + ((aDT.Seconds / 10) % 10)))
+        + OStringChar(char('0' + ((aDT.Seconds) % 10))));
 
     sal_uInt32 nDelta = 0;
     if (aGMT.Seconds > aTVal.Seconds)
@@ -614,11 +579,11 @@ void computeDocumentIdentifier(std::vector<sal_uInt8>& o_rIdentifier,
     }
     if (nDelta)
     {
-        aCreationMetaDateString.append(char('0' + ((nDelta / 36000) % 10)));
-        aCreationMetaDateString.append(char('0' + ((nDelta / 3600) % 10)));
-        aCreationMetaDateString.append(":");
-        aCreationMetaDateString.append(char('0' + ((nDelta / 600) % 6)));
-        aCreationMetaDateString.append(char('0' + ((nDelta / 60) % 10)));
+        aCreationMetaDateString.append(OStringChar(char('0' + ((nDelta / 36000) % 10)))
+                                       + OStringChar(char('0' + ((nDelta / 3600) % 10)))
+                                       + OStringChar(':')
+                                       + OStringChar(char('0' + ((nDelta / 600) % 6)))
+                                       + OStringChar(char('0' + ((nDelta / 60) % 10))));
     }
     aID.append(i_rCString1.getStr(), i_rCString1.getLength());
 
