@@ -654,7 +654,6 @@ void PushButton::ImplInitPushButtonData()
     meSymbol        = SymbolType::DONTKNOW;
     meState         = TRISTATE_FALSE;
     mnDDStyle       = PushButtonDropdownStyle::NONE;
-    mbIsActive    = false;
     mbPressed       = false;
     mbIsAction      = false;
 }
@@ -919,8 +918,7 @@ void PushButton::ImplDrawPushButtonContent(OutputDevice *pDev, SystemTextColorFl
     sal_Int32 nImageSep = 1 + (pDev->GetTextHeight()-10)/2;
     if( nImageSep < 1 )
         nImageSep = 1;
-    if ( mnDDStyle == PushButtonDropdownStyle::MenuButton ||
-         mnDDStyle == PushButtonDropdownStyle::SplitMenuButton )
+    if ( mnDDStyle == PushButtonDropdownStyle::MenuButton )
     {
         tools::Long nSeparatorX = 0;
         tools::Rectangle aSymbolRect = aInRect;
@@ -981,7 +979,7 @@ void PushButton::ImplDrawPushButton(vcl::RenderContext& rRenderContext)
     bool bNativeOK = false;
 
     // adjust style if button should be rendered 'pressed'
-    if (mbPressed || mbIsActive)
+    if (mbPressed)
         nButtonStyle |= DrawButtonFlags::Pressed;
 
     if (GetStyle() & WB_FLATBUTTON)
@@ -1037,7 +1035,7 @@ void PushButton::ImplDrawPushButton(vcl::RenderContext& rRenderContext)
                 ImplControlValue aControlValue;
                 ControlState nState = ControlState::NONE;
 
-                if (mbPressed || mbIsActive)
+                if (mbPressed)
                     nState |= ControlState::PRESSED;
                 if (GetButtonState() & DrawButtonFlags::Pressed)
                     nState |= ControlState::PRESSED;
@@ -1051,12 +1049,6 @@ void PushButton::ImplDrawPushButton(vcl::RenderContext& rRenderContext)
                 if (IsMouseOver() && aInRect.Contains(GetPointerPosPixel()))
                     nState |= ControlState::ROLLOVER;
 
-                if ( IsMouseOver() && aInRect.Contains(GetPointerPosPixel()) && mbIsActive)
-                {
-                    nState |= ControlState::ROLLOVER;
-                    nButtonStyle &= ~DrawButtonFlags::Pressed;
-                }
-
                 bNativeOK = rRenderContext.DrawNativeControl(aCtrlType, ControlPart::ButtonDown, aInRect, nState,
                                                              aControlValue, OUString());
             }
@@ -1069,12 +1061,6 @@ void PushButton::ImplDrawPushButton(vcl::RenderContext& rRenderContext)
     bool bRollOver = (IsMouseOver() && aInRect.Contains(GetPointerPosPixel()));
     if (bRollOver)
         nButtonStyle |= DrawButtonFlags::Highlight;
-    bool bDrawMenuSep = mnDDStyle == PushButtonDropdownStyle::SplitMenuButton;
-    if (GetStyle() & WB_FLATBUTTON)
-    {
-        if (!bRollOver && !HasFocus())
-            bDrawMenuSep = false;
-    }
     // tdf#123175 if there is a custom control bg set, draw the button without outsourcing to the NWF
     bNativeOK = !IsControlBackground() && rRenderContext.IsNativeControlSupported(ControlType::Pushbutton, ControlPart::Entire);
     if (bNativeOK)
@@ -1085,7 +1071,7 @@ void PushButton::ImplDrawPushButton(vcl::RenderContext& rRenderContext)
         tools::Rectangle aCtrlRegion(aInRect);
         ControlState nState = ControlState::NONE;
 
-        if (mbPressed || IsChecked() || mbIsActive)
+        if (mbPressed || IsChecked())
         {
             nState |= ControlState::PRESSED;
             nButtonStyle |= DrawButtonFlags::Pressed;
@@ -1099,16 +1085,10 @@ void PushButton::ImplDrawPushButton(vcl::RenderContext& rRenderContext)
         if (Window::IsEnabled())
             nState |= ControlState::ENABLED;
 
-        if (bRollOver || mbIsActive)
+        if (bRollOver)
         {
             nButtonStyle |= DrawButtonFlags::Highlight;
             nState |= ControlState::ROLLOVER;
-        }
-
-        if (mbIsActive && bRollOver)
-        {
-            nState &= ~ControlState::PRESSED;
-            nButtonStyle &= ~DrawButtonFlags::Pressed;
         }
 
         if (GetStyle() & WB_FLATBUTTON)
@@ -1147,7 +1127,7 @@ void PushButton::ImplDrawPushButton(vcl::RenderContext& rRenderContext)
 
         // draw content using the same aInRect as non-native VCL would do
         ImplDrawPushButtonContent(&rRenderContext, SystemTextColorFlags::NONE,
-                                  aInRect, bDrawMenuSep, nButtonStyle);
+                                  aInRect, /*bDrawMenuSep*/false, nButtonStyle);
 
         if (HasFocus())
             ShowFocus(ImplGetFocusRect());
@@ -1172,7 +1152,7 @@ void PushButton::ImplDrawPushButton(vcl::RenderContext& rRenderContext)
     }
 
     // draw content
-    ImplDrawPushButtonContent(&rRenderContext, SystemTextColorFlags::NONE, aInRect, bDrawMenuSep, nButtonStyle);
+    ImplDrawPushButtonContent(&rRenderContext, SystemTextColorFlags::NONE, aInRect, /*bDrawMenuSep*/false, nButtonStyle);
 
     if (HasFocus())
     {
@@ -1706,8 +1686,7 @@ Size PushButton::CalcMinimumSize() const
     }
     else if ( Button::HasImage() )
         aSize = GetModeImage().GetSizePixel();
-    if( mnDDStyle == PushButtonDropdownStyle::MenuButton ||
-        mnDDStyle == PushButtonDropdownStyle::SplitMenuButton )
+    if( mnDDStyle == PushButtonDropdownStyle::MenuButton )
     {
         tools::Long nSymbolSize = GetTextHeight() / 2 + 1;
         aSize.AdjustWidth(2*nSymbolSize );

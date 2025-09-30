@@ -14,7 +14,7 @@
 #include <iostream>
 #include <set>
 
-RustProducer::RustProducer(const OString& outputDir, bool verbose, bool dryRun,
+RustProducer::RustProducer(std::string_view outputDir, bool verbose, bool dryRun,
                            const rtl::Reference<TypeManager>& typeManager)
     : m_outputDir(outputDir)
     , m_verbose(verbose)
@@ -35,8 +35,17 @@ void RustProducer::produceEnum(std::string_view name,
 
     file.openFile();
 
+    generateEnumDefinition(file, name, entity);
+    generateEnumImplementation(file, name);
+    generateEnumExternDeclarations(file, name);
+
+    file.closeFile();
+}
+
+void RustProducer::generateEnumDefinition(RustFile& file, std::string_view name,
+                                          const rtl::Reference<unoidl::EnumTypeEntity>& entity)
+{
     OString typeName(splitName(name)); // Simple name for Rust enum
-    OString externFunctionPrefix = getRustTypeName(name); // Full name for extern "C" functions
 
     file.beginLine()
         .append("/// Opaque Rust enum wrapper for ")
@@ -79,6 +88,12 @@ void RustProducer::produceEnum(std::string_view name,
     }
 
     file.endBlock();
+}
+
+void RustProducer::generateEnumImplementation(RustFile& file, std::string_view name)
+{
+    OString typeName(splitName(name)); // Simple name for Rust enum
+    OString externFunctionPrefix(getRustTypeName(name)); // Full name for extern "C" functions
 
     // Add conversion functions using extern "C" bridge
     file.beginLine()
@@ -117,6 +132,12 @@ void RustProducer::produceEnum(std::string_view name,
         .append("}")
         .endLine()
         .endBlock();
+}
+
+void RustProducer::generateEnumExternDeclarations(RustFile& file, std::string_view name)
+{
+    OString typeName(splitName(name)); // Simple name for Rust enum
+    OString externFunctionPrefix(getRustTypeName(name)); // Full name for extern "C" functions
 
     // Extern "C" declarations
     file.beginLine()
@@ -143,8 +164,6 @@ void RustProducer::produceEnum(std::string_view name,
         .beginLine()
         .append("}")
         .endLine();
-
-    file.closeFile();
 }
 
 void RustProducer::produceStruct(std::string_view name,
@@ -159,8 +178,19 @@ void RustProducer::produceStruct(std::string_view name,
 
     file.openFile();
 
+    generateStructDefinition(file, name, entity);
+    generateStructImplementation(file, name, entity);
+    generateStructDropTrait(file, name, entity);
+    generateStructExternDeclarations(file, name, entity);
+
+    file.closeFile();
+}
+
+void RustProducer::generateStructDefinition(
+    RustFile& file, std::string_view name,
+    const rtl::Reference<unoidl::PlainStructTypeEntity>& /* entity */)
+{
     OString typeName(splitName(name)); // Simple name for Rust struct
-    OString externFunctionPrefix = getRustTypeName(name); // Full name for extern "C" functions
 
     file.beginLine()
         .append("/// Opaque Rust struct wrapper for ")
@@ -181,6 +211,14 @@ void RustProducer::produceStruct(std::string_view name,
         .append("ptr: *mut c_void,")
         .endLine()
         .endBlock();
+}
+
+void RustProducer::generateStructImplementation(
+    RustFile& file, std::string_view name,
+    const rtl::Reference<unoidl::PlainStructTypeEntity>& entity)
+{
+    OString typeName(splitName(name)); // Simple name for Rust struct
+    OString externFunctionPrefix(getRustTypeName(name)); // Full name for extern "C" functions
 
     // Implementation with opaque field accessors
     file.beginLine()
@@ -192,6 +230,19 @@ void RustProducer::produceStruct(std::string_view name,
         .endLine()
         .beginBlock();
 
+    generateStructConstructor(file, externFunctionPrefix);
+    generateStructFromPtr(file, externFunctionPrefix);
+
+    // Generate as_ptr method
+    generateStructAsPtr(file);
+
+    generateStructAccessors(file, entity, externFunctionPrefix);
+
+    file.endBlock();
+}
+
+void RustProducer::generateStructConstructor(RustFile& file, std::string_view externFunctionPrefix)
+{
     // Constructor
     file.beginLine()
         .append("pub fn new() -> Option<Self> {")
@@ -222,7 +273,10 @@ void RustProducer::produceStruct(std::string_view name,
         .beginLine()
         .append("}")
         .endLine();
+}
 
+void RustProducer::generateStructFromPtr(RustFile& file, std::string_view externFunctionPrefix)
+{
     // from_ptr method for creating wrapper from existing pointer with C++ type casting
     file.beginLine()
         .append("")
@@ -253,56 +307,172 @@ void RustProducer::produceStruct(std::string_view name,
         .endLine()
         .endBlock()
         .endBlock();
+}
 
-    // Opaque field accessors
+void RustProducer::generateStructAsPtr(RustFile& file)
+{
+    file.beginLine()
+        .append("")
+        .endLine()
+        .beginLine()
+        .append("pub fn as_ptr(&self) -> *mut c_void")
+        .endLine()
+        .beginBlock()
+        .beginLine()
+        .append("self.ptr")
+        .endLine()
+        .endBlock();
+}
+
+void RustProducer::generateStructAccessors(
+    RustFile& file, const rtl::Reference<unoidl::PlainStructTypeEntity>& entity,
+    std::string_view externFunctionPrefix)
+{
+    // Generate getters and setters for all struct members
     for (const auto& member : entity->getDirectMembers())
     {
         OString memberName = u2b(member.name); // Use original case, not snake_case
+        std::u16string_view memberType = member.type;
 
-        // Getter
-        file.beginLine()
-            .append("")
-            .endLine()
-            .beginLine()
-            .append("pub fn get_")
-            .append(memberName)
-            .append("(&self) -> *mut c_void {")
-            .endLine()
-            .extraIndent()
-            .beginLine()
-            .append("unsafe { ")
+        generateStructMemberGetter(file, memberName, memberType, externFunctionPrefix);
+        generateStructMemberSetter(file, memberName, memberType, externFunctionPrefix);
+    }
+}
+
+void RustProducer::generateStructMemberGetter(RustFile& file, std::string_view memberName,
+                                              std::u16string_view memberType,
+                                              std::string_view externFunctionPrefix)
+{
+    OString returnType = getRustStructGetterReturnType(memberType);
+
+    file.beginLine()
+        .append("")
+        .endLine()
+        .beginLine()
+        .append("pub fn get_")
+        .append(memberName)
+        .append("(&self) -> ")
+        .append(returnType)
+        .append(" {")
+        .endLine()
+        .extraIndent()
+        .beginLine();
+
+    // Handle conversion based on type
+    if (memberType == u"string")
+    {
+        // String type - convert from FFI to high-level type
+        file.append("unsafe { crate::core::OUString::from_raw(")
             .append(externFunctionPrefix)
             .append("_get_")
             .append(memberName)
-            .append("(self.ptr) }")
-            .endLine()
-            .beginLine()
-            .append("}")
-            .endLine();
-
-        // Setter
-        file.beginLine()
-            .append("")
-            .endLine()
-            .beginLine()
-            .append("pub fn set_")
+            .append("(self.ptr)) }");
+    }
+    else if (memberType == u"any")
+    {
+        // Any type - convert from FFI to high-level type
+        file.append("unsafe { crate::core::Any::from_raw(std::ptr::read(")
+            .append(externFunctionPrefix)
+            .append("_get_")
             .append(memberName)
-            .append("(&mut self, value: *mut c_void) {")
-            .endLine()
-            .extraIndent()
-            .beginLine()
-            .append("unsafe { ")
+            .append("(self.ptr) as *const crate::ffi::uno_any::uno_Any)) }");
+    }
+    else if (memberType == u"boolean" || memberType == u"byte" || memberType == u"short"
+             || memberType == u"unsigned short" || memberType == u"long"
+             || memberType == u"unsigned long" || memberType == u"hyper"
+             || memberType == u"unsigned hyper" || memberType == u"float"
+             || memberType == u"double")
+    {
+        // Primitive types - dereference the pointer returned from FFI
+        file.append("unsafe { *")
+            .append(externFunctionPrefix)
+            .append("_get_")
+            .append(memberName)
+            .append("(self.ptr) }");
+    }
+    else
+    {
+        // Other types - return raw pointer
+        file.append("unsafe { ")
+            .append(externFunctionPrefix)
+            .append("_get_")
+            .append(memberName)
+            .append("(self.ptr) }");
+    }
+
+    file.endLine().beginLine().append("}").endLine();
+}
+
+void RustProducer::generateStructMemberSetter(RustFile& file, std::string_view memberName,
+                                              std::u16string_view memberType,
+                                              std::string_view externFunctionPrefix)
+{
+    OString parameterType = getRustStructSetterParameterType(memberType);
+
+    file.beginLine()
+        .append("")
+        .endLine()
+        .beginLine()
+        .append("pub fn set_")
+        .append(memberName)
+        .append("(&mut self, value: ")
+        .append(parameterType)
+        .append(") {")
+        .endLine()
+        .extraIndent()
+        .beginLine();
+
+    // Handle conversion based on type
+    if (memberType == u"string")
+    {
+        // String type - convert from high-level to FFI type
+        file.append("unsafe { ")
             .append(externFunctionPrefix)
             .append("_set_")
             .append(memberName)
-            .append("(self.ptr, value) }")
-            .endLine()
-            .beginLine()
-            .append("}")
-            .endLine();
+            .append("(self.ptr, value.as_ptr()) }");
+    }
+    else if (memberType == u"any")
+    {
+        // Any type - convert from high-level to FFI type
+        file.append("unsafe { ")
+            .append(externFunctionPrefix)
+            .append("_set_")
+            .append(memberName)
+            .append("(self.ptr, value.as_ptr()) }");
+    }
+    else if (memberType == u"boolean" || memberType == u"byte" || memberType == u"short"
+             || memberType == u"unsigned short" || memberType == u"long"
+             || memberType == u"unsigned long" || memberType == u"hyper"
+             || memberType == u"unsigned hyper" || memberType == u"float"
+             || memberType == u"double")
+    {
+        // Primitive types - pass by value directly
+        file.append("unsafe { ")
+            .append(externFunctionPrefix)
+            .append("_set_")
+            .append(memberName)
+            .append("(self.ptr, value) }");
+    }
+    else
+    {
+        // Other types - pass raw pointer through
+        file.append("unsafe { ")
+            .append(externFunctionPrefix)
+            .append("_set_")
+            .append(memberName)
+            .append("(self.ptr, value) }");
     }
 
-    file.endBlock();
+    file.endLine().beginLine().append("}").endLine();
+}
+
+void RustProducer::generateStructDropTrait(
+    RustFile& file, std::string_view name,
+    const rtl::Reference<unoidl::PlainStructTypeEntity>& /* entity */)
+{
+    OString typeName(splitName(name)); // Simple name for Rust struct
+    OString externFunctionPrefix(getRustTypeName(name)); // Full name for extern "C" functions
 
     // Drop implementation
     file.beginLine()
@@ -333,6 +503,13 @@ void RustProducer::produceStruct(std::string_view name,
         .append("}")
         .endLine()
         .endBlock();
+}
+
+void RustProducer::generateStructExternDeclarations(
+    RustFile& file, std::string_view name,
+    const rtl::Reference<unoidl::PlainStructTypeEntity>& entity)
+{
+    OString externFunctionPrefix(getRustTypeName(name)); // Full name for extern "C" functions
 
     // Extern "C" declarations for opaque operations
     file.beginLine()
@@ -341,8 +518,18 @@ void RustProducer::produceStruct(std::string_view name,
         .beginLine()
         .append("unsafe extern \"C\" {")
         .endLine()
-        .extraIndent()
-        .beginLine()
+        .extraIndent();
+
+    generateStructBasicExternDeclarations(file, externFunctionPrefix);
+    generateStructMemberExternDeclarations(file, entity, externFunctionPrefix);
+
+    file.beginLine().append("}").endLine();
+}
+
+void RustProducer::generateStructBasicExternDeclarations(RustFile& file,
+                                                         std::string_view externFunctionPrefix)
+{
+    file.beginLine()
         .append("fn ")
         .append(externFunctionPrefix)
         .append("_constructor() -> *mut c_void;")
@@ -357,29 +544,37 @@ void RustProducer::produceStruct(std::string_view name,
         .append(externFunctionPrefix)
         .append("_from_ptr(ptr: *mut c_void) -> *mut c_void;")
         .endLine();
+}
 
+void RustProducer::generateStructMemberExternDeclarations(
+    RustFile& file, const rtl::Reference<unoidl::PlainStructTypeEntity>& entity,
+    std::string_view externFunctionPrefix)
+{
     for (const auto& member : entity->getDirectMembers())
     {
         OString memberName = u2b(member.name); // Use original case, not snake_case
+        OString getterReturnType = getRustStructExternGetterReturnType(member.type);
+        OString setterParamType = getRustStructExternSetterParameterType(member.type);
+
         file.beginLine()
             .append("fn ")
             .append(externFunctionPrefix)
             .append("_get_")
             .append(memberName)
-            .append("(ptr: *mut c_void) -> *mut c_void;")
+            .append("(ptr: *mut c_void) -> ")
+            .append(getterReturnType)
+            .append(";")
             .endLine()
             .beginLine()
             .append("fn ")
             .append(externFunctionPrefix)
             .append("_set_")
             .append(memberName)
-            .append("(ptr: *mut c_void, value: *mut c_void);")
+            .append("(ptr: *mut c_void, value: ")
+            .append(setterParamType)
+            .append(");")
             .endLine();
     }
-
-    file.beginLine().append("}").endLine();
-
-    file.closeFile();
 }
 
 void RustProducer::produceInterface(std::string_view name,
@@ -394,9 +589,20 @@ void RustProducer::produceInterface(std::string_view name,
 
     file.openFile();
 
-    OString typeName(splitName(name)); // Simple name for Rust interface
-    OString externFunctionPrefix = getRustTypeName(name); // Full name for extern "C" functions
+    generateInterfaceWrapper(file, name, entity);
+    generateInterfaceExternDeclarations(file, name, entity);
 
+    file.closeFile();
+}
+
+void RustProducer::generateInterfaceWrapper(
+    RustFile& file, std::string_view name,
+    const rtl::Reference<unoidl::InterfaceTypeEntity>& entity)
+{
+    OString typeName(splitName(name)); // Simple name for Rust interface
+    OString externFunctionPrefix(getRustTypeName(name)); // Full name for extern "C" functions
+
+    // Generate struct header and documentation
     file.beginLine()
         .append("/// Opaque Rust interface wrapper for ")
         .append(name)
@@ -417,7 +623,20 @@ void RustProducer::produceInterface(std::string_view name,
         .endLine()
         .endBlock();
 
-    // Implementation block
+    // Generate implementation block with constructor, methods, etc.
+    generateInterfaceImplementation(file, typeName, externFunctionPrefix, entity);
+
+    // Generate Drop trait implementation
+    generateInterfaceDropTrait(file, typeName, externFunctionPrefix);
+
+    // Generate thread safety markers
+    generateInterfaceThreadSafety(file, typeName);
+}
+
+void RustProducer::generateInterfaceImplementation(
+    RustFile& file, std::string_view typeName, std::string_view externFunctionPrefix,
+    const rtl::Reference<unoidl::InterfaceTypeEntity>& entity)
+{
     file.beginLine()
         .append("")
         .endLine()
@@ -427,7 +646,27 @@ void RustProducer::produceInterface(std::string_view name,
         .endLine()
         .beginBlock();
 
-    // Constructor
+    // Generate constructor
+    generateInterfaceConstructor(file, externFunctionPrefix);
+
+    // Generate from_ptr method
+    generateInterfaceFromPtr(file, externFunctionPrefix);
+
+    // Generate as_ptr method
+    generateInterfaceAsPtr(file);
+
+    // Generate validity check if no conflicting method
+    generateInterfaceValidityCheck(file, externFunctionPrefix, entity);
+
+    // Generate method wrappers
+    generateInterfaceMethodWrappers(file, externFunctionPrefix, entity);
+
+    file.endBlock();
+}
+
+void RustProducer::generateInterfaceConstructor(RustFile& file,
+                                                std::string_view externFunctionPrefix)
+{
     file.beginLine()
         .append("pub fn new() -> Option<Self> {")
         .endLine()
@@ -457,8 +696,10 @@ void RustProducer::produceInterface(std::string_view name,
         .beginLine()
         .append("}")
         .endLine();
+}
 
-    // from_ptr method for creating wrapper from existing pointer with C++ type casting
+void RustProducer::generateInterfaceFromPtr(RustFile& file, std::string_view externFunctionPrefix)
+{
     file.beginLine()
         .append("")
         .endLine()
@@ -488,8 +729,10 @@ void RustProducer::produceInterface(std::string_view name,
         .endLine()
         .endBlock()
         .endBlock();
+}
 
-    // as_ptr method for getting the raw pointer
+void RustProducer::generateInterfaceAsPtr(RustFile& file)
+{
     file.beginLine()
         .append("")
         .endLine()
@@ -501,8 +744,13 @@ void RustProducer::produceInterface(std::string_view name,
         .append("self.ptr")
         .endLine()
         .endBlock();
+}
 
-    // Validity check - only add if there's no conflicting isValid method
+void RustProducer::generateInterfaceValidityCheck(
+    RustFile& file, std::string_view externFunctionPrefix,
+    const rtl::Reference<unoidl::InterfaceTypeEntity>& entity)
+{
+    // Check if there's already an isValid method to avoid conflicts
     bool hasIsValidMethod = false;
     for (const auto& method : entity->getDirectMethods())
     {
@@ -531,8 +779,13 @@ void RustProducer::produceInterface(std::string_view name,
             .append("}")
             .endLine();
     }
+}
 
-    // Method wrappers - all methods return opaque pointers
+void RustProducer::generateInterfaceMethodWrappers(
+    RustFile& file, std::string_view externFunctionPrefix,
+    const rtl::Reference<unoidl::InterfaceTypeEntity>& entity)
+{
+    // Generate method wrappers - all methods return opaque pointers
     for (const auto& method : entity->getDirectMethods())
     {
         OString rustMethodName = getRustFunctionName(u2b(method.name));
@@ -545,10 +798,13 @@ void RustProducer::produceInterface(std::string_view name,
             .append(rustMethodName)
             .append("(&self");
 
-        // All parameters are opaque void pointers
+        // Parameters with typed support for primitives
         for (const auto& param : method.parameters)
         {
-            file.append(", ").append(param.name).append(": *mut c_void");
+            file.append(", ")
+                .append(param.name)
+                .append(": ")
+                .append(getRustParameterType(param.type, param.direction));
         }
 
         file.append(") -> ")
@@ -570,7 +826,8 @@ void RustProducer::produceInterface(std::string_view name,
 
             for (const auto& param : method.parameters)
             {
-                file.append(", ").append(param.name);
+                file.append(", ").append(
+                    convertRustParameterForFFICall(param.type, u2b(param.name), param.direction));
             }
 
             file.append(") };").endLine();
@@ -587,7 +844,8 @@ void RustProducer::produceInterface(std::string_view name,
 
             for (const auto& param : method.parameters)
             {
-                file.append(", ").append(param.name);
+                file.append(", ").append(
+                    convertRustParameterForFFICall(param.type, u2b(param.name), param.direction));
             }
 
             file.append(") };").endLine();
@@ -671,112 +929,12 @@ void RustProducer::produceInterface(std::string_view name,
                 else
                 {
                     // Check for typedef resolution first
-                    OString resolvedType = resolveTypedef(method.returnType);
-                    if (resolvedType != rustType)
+                    OString resolvedType(resolveTypedef(method.returnType));
+                    // It's a typedef - handle based on resolved type
+                    if (!generateTypeCastReturn(file, resolvedType))
                     {
-                        // It's a typedef - handle based on resolved type
-                        if (resolvedType == "boolean")
-                        {
-                            file.beginLine().append("unsafe { *(ptr as *const u8) }").endLine();
-                        }
-                        else if (resolvedType == "byte")
-                        {
-                            file.beginLine().append("unsafe { *(ptr as *const i8) }").endLine();
-                        }
-                        else if (resolvedType == "short")
-                        {
-                            file.beginLine().append("unsafe { *(ptr as *const i16) }").endLine();
-                        }
-                        else if (resolvedType == "unsigned short")
-                        {
-                            file.beginLine().append("unsafe { *(ptr as *const u16) }").endLine();
-                        }
-                        else if (resolvedType == "long")
-                        {
-                            file.beginLine().append("unsafe { *(ptr as *const i32) }").endLine();
-                        }
-                        else if (resolvedType == "unsigned long")
-                        {
-                            file.beginLine().append("unsafe { *(ptr as *const u32) }").endLine();
-                        }
-                        else if (resolvedType == "hyper")
-                        {
-                            file.beginLine().append("unsafe { *(ptr as *const i64) }").endLine();
-                        }
-                        else if (resolvedType == "unsigned hyper")
-                        {
-                            file.beginLine().append("unsafe { *(ptr as *const u64) }").endLine();
-                        }
-                        else if (resolvedType == "float")
-                        {
-                            file.beginLine().append("unsafe { *(ptr as *const f32) }").endLine();
-                        }
-                        else if (resolvedType == "double")
-                        {
-                            file.beginLine().append("unsafe { *(ptr as *const f64) }").endLine();
-                        }
-                        else if (resolvedType == "char")
-                        {
-                            file.beginLine().append("unsafe { *(ptr as *const u16) }").endLine();
-                        }
-                        else
-                        {
-                            // Typedef resolves to other types - return raw pointer
-                            file.beginLine().append("ptr").endLine();
-                        }
-                    }
-                    else
-                    {
-                        // Not a typedef - check for primitive types that need dereferencing
-                        if (rustType == "boolean")
-                        {
-                            file.beginLine().append("unsafe { *(ptr as *const u8) }").endLine();
-                        }
-                        else if (rustType == "byte")
-                        {
-                            file.beginLine().append("unsafe { *(ptr as *const i8) }").endLine();
-                        }
-                        else if (rustType == "short")
-                        {
-                            file.beginLine().append("unsafe { *(ptr as *const i16) }").endLine();
-                        }
-                        else if (rustType == "unsigned short")
-                        {
-                            file.beginLine().append("unsafe { *(ptr as *const u16) }").endLine();
-                        }
-                        else if (rustType == "long")
-                        {
-                            file.beginLine().append("unsafe { *(ptr as *const i32) }").endLine();
-                        }
-                        else if (rustType == "unsigned long")
-                        {
-                            file.beginLine().append("unsafe { *(ptr as *const u32) }").endLine();
-                        }
-                        else if (rustType == "hyper")
-                        {
-                            file.beginLine().append("unsafe { *(ptr as *const i64) }").endLine();
-                        }
-                        else if (rustType == "unsigned hyper")
-                        {
-                            file.beginLine().append("unsafe { *(ptr as *const u64) }").endLine();
-                        }
-                        else if (rustType == "float")
-                        {
-                            file.beginLine().append("unsafe { *(ptr as *const f32) }").endLine();
-                        }
-                        else if (rustType == "double")
-                        {
-                            file.beginLine().append("unsafe { *(ptr as *const f64) }").endLine();
-                        }
-                        else if (rustType == "char")
-                        {
-                            file.beginLine().append("unsafe { *(ptr as *const u16) }").endLine();
-                        }
-                        else
-                        {
-                            // For other types (sequences, templates, etc), return the raw pointer
-                            file.beginLine().append("ptr").endLine();
-                        }
+                        // Typedef resolves to non-primitive types - return raw pointer
+                        file.beginLine().append("ptr").endLine();
                     }
                 }
             }
@@ -784,10 +942,11 @@ void RustProducer::produceInterface(std::string_view name,
 
         file.beginLine().append("}").endLine();
     }
+}
 
-    file.endBlock();
-
-    // Drop implementation for automatic cleanup
+void RustProducer::generateInterfaceDropTrait(RustFile& file, std::string_view typeName,
+                                              std::string_view externFunctionPrefix)
+{
     file.beginLine()
         .append("")
         .endLine()
@@ -816,7 +975,10 @@ void RustProducer::produceInterface(std::string_view name,
         .append("}")
         .endLine()
         .endBlock();
+}
 
+void RustProducer::generateInterfaceThreadSafety(RustFile& file, std::string_view typeName)
+{
     // Thread safety markers
     file.beginLine()
         .append("")
@@ -831,6 +993,13 @@ void RustProducer::produceInterface(std::string_view name,
         .append(typeName)
         .append(" {}")
         .endLine();
+}
+
+void RustProducer::generateInterfaceExternDeclarations(
+    RustFile& file, std::string_view name,
+    const rtl::Reference<unoidl::InterfaceTypeEntity>& entity)
+{
+    OString externFunctionPrefix(getRustTypeName(name));
 
     // Extern "C" declarations - connects to C-side bridge
     file.beginLine()
@@ -856,6 +1025,17 @@ void RustProducer::produceInterface(std::string_view name,
         .append("_from_ptr(ptr: *mut c_void) -> *mut c_void;")
         .endLine();
 
+    // Check if there's already an isValid method to avoid conflicts
+    bool hasIsValidMethod = false;
+    for (const auto& method : entity->getDirectMethods())
+    {
+        if (u2b(method.name).equalsIgnoreAsciiCase("isValid"))
+        {
+            hasIsValidMethod = true;
+            break;
+        }
+    }
+
     // Only declare _is_valid if we don't have a conflicting isValid method
     if (!hasIsValidMethod)
     {
@@ -877,7 +1057,10 @@ void RustProducer::produceInterface(std::string_view name,
 
         for (const auto& param : method.parameters)
         {
-            file.append(", ").append(param.name).append(": *mut c_void");
+            file.append(", ")
+                .append(param.name)
+                .append(": ")
+                .append(getRustExternParameterType(param.type, param.direction));
         }
 
         file.append(") -> ");
@@ -895,8 +1078,6 @@ void RustProducer::produceInterface(std::string_view name,
     }
 
     file.beginLine().append("}").endLine();
-
-    file.closeFile();
 }
 
 void RustProducer::produceService(
@@ -911,19 +1092,18 @@ void RustProducer::produceService(
 
     file.openFile();
 
+    generateServiceDefinition(file, name, entity);
+    generateServiceImplementation(file, name, entity);
+    generateServiceExternDeclarations(file, name, entity);
+
+    file.closeFile();
+}
+
+void RustProducer::generateServiceDefinition(
+    RustFile& file, std::string_view name,
+    const rtl::Reference<unoidl::SingleInterfaceBasedServiceEntity>& /* entity */)
+{
     OString serviceName(splitName(name)); // Simple name for Rust service
-    OString externFunctionPrefix = getRustTypeName(name); // Full name for extern "C" functions
-    OUString interfaceType = entity->getBase();
-
-    // Generate proper module path for the interface
-    OString interfaceTypeStr = u2b(interfaceType);
-    std::string_view interfaceTypeName = splitName(interfaceTypeStr);
-
-    // Convert interface type to full module path
-    OString path = interfaceTypeStr;
-    path = path.replaceAll("."_ostr, "::"_ostr);
-    OString interfaceModulePath
-        = "crate::generated::rustmaker::"_ostr + path + "::" + interfaceTypeName;
 
     file.beginLine()
         .append("/// Opaque Rust service wrapper for ")
@@ -942,6 +1122,13 @@ void RustProducer::produceService(
         .append(serviceName)
         .append(";")
         .endLine();
+}
+
+void RustProducer::generateServiceImplementation(
+    RustFile& file, std::string_view name,
+    const rtl::Reference<unoidl::SingleInterfaceBasedServiceEntity>& entity)
+{
+    OString serviceName(splitName(name)); // Simple name for Rust service
 
     // Implementation block
     file.beginLine()
@@ -952,6 +1139,21 @@ void RustProducer::produceService(
         .append(serviceName)
         .endLine()
         .beginBlock();
+
+    generateServiceCreateMethod(file, name, entity);
+
+    file.endBlock();
+}
+
+void RustProducer::generateServiceCreateMethod(
+    RustFile& file, std::string_view name,
+    const rtl::Reference<unoidl::SingleInterfaceBasedServiceEntity>& entity)
+{
+    OString externFunctionPrefix(getRustTypeName(name)); // Full name for extern "C" functions
+    OUString interfaceType = entity->getBase();
+
+    // Generate proper module path for the interface
+    OString interfaceModulePath = generateServiceInterfaceModulePath(interfaceType);
 
     // Service creation method
     file.beginLine()
@@ -987,8 +1189,25 @@ void RustProducer::produceService(
         .endLine()
         .endBlock()
         .endBlock();
+}
 
-    file.endBlock();
+OString RustProducer::generateServiceInterfaceModulePath(const OUString& interfaceType)
+{
+    // Generate proper module path for the interface
+    OString interfaceTypeStr = u2b(interfaceType);
+    std::string_view interfaceTypeName = splitName(interfaceTypeStr);
+
+    // Convert interface type to full module path
+    OString path = interfaceTypeStr;
+    path = path.replaceAll("."_ostr, "::"_ostr);
+    return "crate::generated::rustmaker::"_ostr + path + "::" + interfaceTypeName;
+}
+
+void RustProducer::generateServiceExternDeclarations(
+    RustFile& file, std::string_view name,
+    const rtl::Reference<unoidl::SingleInterfaceBasedServiceEntity>& /* entity */)
+{
+    OString externFunctionPrefix(getRustTypeName(name)); // Full name for extern "C" functions
 
     // Extern "C" declarations
     file.beginLine()
@@ -1004,8 +1223,68 @@ void RustProducer::produceService(
         .append("_create(context: *mut c_void) -> *mut c_void;")
         .endLine()
         .endBlock();
+}
 
-    file.closeFile();
+bool RustProducer::generateTypeCastReturn(RustFile& file, std::string_view resolvedType) const
+{
+    if (resolvedType == "boolean")
+    {
+        file.beginLine().append("unsafe { *(ptr as *const u8) }").endLine();
+        return true;
+    }
+    else if (resolvedType == "byte")
+    {
+        file.beginLine().append("unsafe { *(ptr as *const i8) }").endLine();
+        return true;
+    }
+    else if (resolvedType == "short")
+    {
+        file.beginLine().append("unsafe { *(ptr as *const i16) }").endLine();
+        return true;
+    }
+    else if (resolvedType == "unsigned short")
+    {
+        file.beginLine().append("unsafe { *(ptr as *const u16) }").endLine();
+        return true;
+    }
+    else if (resolvedType == "long")
+    {
+        file.beginLine().append("unsafe { *(ptr as *const i32) }").endLine();
+        return true;
+    }
+    else if (resolvedType == "unsigned long")
+    {
+        file.beginLine().append("unsafe { *(ptr as *const u32) }").endLine();
+        return true;
+    }
+    else if (resolvedType == "hyper")
+    {
+        file.beginLine().append("unsafe { *(ptr as *const i64) }").endLine();
+        return true;
+    }
+    else if (resolvedType == "unsigned hyper")
+    {
+        file.beginLine().append("unsafe { *(ptr as *const u64) }").endLine();
+        return true;
+    }
+    else if (resolvedType == "float")
+    {
+        file.beginLine().append("unsafe { *(ptr as *const f32) }").endLine();
+        return true;
+    }
+    else if (resolvedType == "double")
+    {
+        file.beginLine().append("unsafe { *(ptr as *const f64) }").endLine();
+        return true;
+    }
+    else if (resolvedType == "char")
+    {
+        file.beginLine().append("unsafe { *(ptr as *const u16) }").endLine();
+        return true;
+    }
+
+    // Return false if no type casting was generated (not a primitive type)
+    return false;
 }
 
 // Helper functions
@@ -1110,7 +1389,7 @@ OString RustProducer::getRustWrapperTypeName(std::u16string_view unoType) const
         }
 
         // First resolve typedefs
-        OString resolvedType = resolveTypedef(unoType);
+        OString resolvedType(resolveTypedef(unoType));
         if (resolvedType != rustType)
         {
             // It's a typedef - recursively get wrapper type for resolved type
@@ -1186,24 +1465,243 @@ OString RustProducer::getRustReturnType(std::u16string_view unoType) const
     return getRustWrapperTypeName(unoType);
 }
 
-OString RustProducer::getRustFFIReturnType(std::u16string_view unoType) const
+OString RustProducer::getRustParameterType(
+    std::u16string_view unoType,
+    unoidl::InterfaceTypeEntity::Method::Parameter::Direction direction) const
 {
-    // Handle void returns
-    if (unoType == u"void")
+    // Handle string types with typed parameters (high-level Rust API)
+    if (unoType == u"string")
     {
-        return "()"_ostr;
+        bool isInputOnly
+            = (direction == unoidl::InterfaceTypeEntity::Method::Parameter::DIRECTION_IN);
+        if (isInputOnly)
+        {
+            // Input string: take high-level OUString in public API
+            return "crate::core::OUString"_ostr;
+        }
+        else
+        {
+            // Input/output string: still use raw pointer for output parameters
+            return "*mut *mut crate::ffi::rtl_string::rtl_uString"_ostr;
+        }
     }
 
-    // For interfaces, structs, enums - return their opaque handle typedef
-    if (isUnoInterface(unoType) || isUnoStruct(unoType) || isUnoEnum(unoType))
+    // Handle any types with typed parameters (high-level Rust API)
+    if (unoType == u"any")
     {
-        // Convert UNO type name to typedef handle name
-        // com.sun.star.lang.XMain -> com__sun__star__lang__XMainHandle
-        OString functionPrefix = getRustTypeName(std::string(unoType.begin(), unoType.end()));
-        return functionPrefix + "Handle";
+        bool isInputOnly
+            = (direction == unoidl::InterfaceTypeEntity::Method::Parameter::DIRECTION_IN);
+        if (isInputOnly)
+        {
+            // Input any: take high-level Any in public API
+            return "crate::core::Any"_ostr;
+        }
+        else
+        {
+            // Input/output any: still use raw pointer for output parameters
+            return "*mut *mut crate::ffi::uno_any::uno_Any"_ostr;
+        }
     }
 
-    // For other types (primitives, sequences, etc) - use void*
+    // Handle struct types with typed parameters (high-level Rust API)
+    if (isUnoStruct(unoType))
+    {
+        bool isInputOnly
+            = (direction == unoidl::InterfaceTypeEntity::Method::Parameter::DIRECTION_IN);
+        if (isInputOnly)
+        {
+            // Input struct: take high-level generated struct in public API
+            OString rustType = u2b(unoType);
+            if (rustType.indexOf('.') != -1)
+            {
+                // Convert dots to :: for module path
+                OString modulePath = rustType.replaceAll("."_ostr, "::"_ostr);
+
+                // Extract simple type name
+                sal_Int32 lastDot = rustType.lastIndexOf('.');
+                if (lastDot != -1)
+                {
+                    OString simpleName = rustType.copy(lastDot + 1);
+                    return "crate::generated::rustmaker::" + modulePath + "::" + simpleName;
+                }
+            }
+            // Fallback for simple struct names without namespace
+            return "crate::generated::rustmaker::" + rustType;
+        }
+        else
+        {
+            // Input/output struct: still use raw pointer for output parameters
+            return "*mut c_void"_ostr;
+        }
+    }
+
+    // Handle interface types with typed parameters (high-level Rust API)
+    if (isUnoInterface(unoType))
+    {
+        bool isInputOnly
+            = (direction == unoidl::InterfaceTypeEntity::Method::Parameter::DIRECTION_IN);
+        if (isInputOnly)
+        {
+            // Input interface: take high-level generated interface in public API
+            OString rustType = u2b(unoType);
+            if (rustType.indexOf('.') != -1)
+            {
+                // Convert dots to :: for module path
+                OString modulePath = rustType.replaceAll("."_ostr, "::"_ostr);
+
+                // Extract simple type name
+                sal_Int32 lastDot = rustType.lastIndexOf('.');
+                if (lastDot != -1)
+                {
+                    OString simpleName = rustType.copy(lastDot + 1);
+                    return "crate::generated::rustmaker::" + modulePath + "::" + simpleName;
+                }
+            }
+            // Fallback for simple interface names without namespace
+            return "crate::generated::rustmaker::" + rustType;
+        }
+        else
+        {
+            // Input/output interface: still use raw pointer for output parameters
+            return "*mut c_void"_ostr;
+        }
+    }
+
+    // Only use typed parameters for basic primitive types (matching CppProducer approach)
+    // This ensures we don't break existing logic for complex types
+    if (unoType == u"boolean" || unoType == u"byte" || unoType == u"short"
+        || unoType == u"unsigned short" || unoType == u"long" || unoType == u"unsigned long"
+        || unoType == u"hyper" || unoType == u"unsigned hyper" || unoType == u"float"
+        || unoType == u"double")
+    {
+        // Get the Rust primitive type
+        OString rustPrimitiveType = getRustWrapperTypeName(unoType);
+        if (!rustPrimitiveType.isEmpty())
+        {
+            bool isInputOnly
+                = (direction == unoidl::InterfaceTypeEntity::Method::Parameter::DIRECTION_IN);
+            if (isInputOnly)
+            {
+                // Input parameters: pass by value (u8 for boolean, i32 for long, etc.)
+                return rustPrimitiveType;
+            }
+            else
+            {
+                // Input/output parameters: pass by mutable pointer (*mut u8, *mut i32, etc.)
+                return "*mut " + rustPrimitiveType;
+            }
+        }
+    }
+
+    // For all other types (typedefs, structs, enums, interfaces, sequences), use void*
+    // This maintains compatibility with existing null-checking and casting logic
+    return "*mut c_void"_ostr;
+}
+
+OString RustProducer::getRustExternParameterType(
+    std::u16string_view unoType,
+    unoidl::InterfaceTypeEntity::Method::Parameter::Direction direction) const
+{
+    // Handle string types with C-compatible FFI parameters (different from high-level API)
+    if (unoType == u"string")
+    {
+        bool isInputOnly
+            = (direction == unoidl::InterfaceTypeEntity::Method::Parameter::DIRECTION_IN);
+        if (isInputOnly)
+        {
+            // Input string: pass as C-compatible pointer for FFI
+            return "*const crate::ffi::rtl_string::rtl_uString"_ostr;
+        }
+        else
+        {
+            // Input/output string: pass as mutable pointer for output parameters
+            return "*mut *mut crate::ffi::rtl_string::rtl_uString"_ostr;
+        }
+    }
+
+    // Handle any types with C-compatible FFI parameters (different from high-level API)
+    if (unoType == u"any")
+    {
+        bool isInputOnly
+            = (direction == unoidl::InterfaceTypeEntity::Method::Parameter::DIRECTION_IN);
+        if (isInputOnly)
+        {
+            // Input any: pass as C-compatible pointer for FFI
+            return "*const crate::ffi::uno_any::uno_Any"_ostr;
+        }
+        else
+        {
+            // Input/output any: pass as mutable pointer for output parameters
+            return "*mut *mut crate::ffi::uno_any::uno_Any"_ostr;
+        }
+    }
+
+    // Handle struct types with C-compatible FFI parameters (different from high-level API)
+    if (isUnoStruct(unoType))
+    {
+        bool isInputOnly
+            = (direction == unoidl::InterfaceTypeEntity::Method::Parameter::DIRECTION_IN);
+        if (isInputOnly)
+        {
+            // Input struct: pass as C-compatible pointer for FFI (void* for now, can be refined later)
+            return "*mut c_void"_ostr;
+        }
+        else
+        {
+            // Input/output struct: still use raw pointer for output parameters
+            return "*mut c_void"_ostr;
+        }
+    }
+
+    // Handle interface types with C-compatible FFI parameters (different from high-level API)
+    if (isUnoInterface(unoType))
+    {
+        bool isInputOnly
+            = (direction == unoidl::InterfaceTypeEntity::Method::Parameter::DIRECTION_IN);
+        if (isInputOnly)
+        {
+            // Input interface: pass as C-compatible pointer for FFI (void* for interfaces)
+            return "*mut c_void"_ostr;
+        }
+        else
+        {
+            // Input/output interface: still use raw pointer for output parameters
+            return "*mut c_void"_ostr;
+        }
+    }
+
+    // Handle enums - revert to void* to avoid nullptr comparison issues
+    if (isUnoEnum(unoType))
+    {
+        return "*mut c_void"_ostr;
+    }
+
+    // For primitive types, use the same logic as high-level API (primitives are the same)
+    if (unoType == u"boolean" || unoType == u"byte" || unoType == u"short"
+        || unoType == u"unsigned short" || unoType == u"long" || unoType == u"unsigned long"
+        || unoType == u"hyper" || unoType == u"unsigned hyper" || unoType == u"float"
+        || unoType == u"double")
+    {
+        // Get the Rust primitive type
+        OString rustPrimitiveType = getRustWrapperTypeName(unoType);
+        if (!rustPrimitiveType.isEmpty())
+        {
+            bool isInputOnly
+                = (direction == unoidl::InterfaceTypeEntity::Method::Parameter::DIRECTION_IN);
+            if (isInputOnly)
+            {
+                // Input parameters: pass by value (u8 for boolean, i32 for long, etc.)
+                return rustPrimitiveType;
+            }
+            else
+            {
+                // Input/output parameters: pass by mutable pointer (*mut u8, *mut i32, etc.)
+                return "*mut " + rustPrimitiveType;
+            }
+        }
+    }
+
+    // For all other types (typedefs, structs, interfaces, sequences), use void*
     return "*mut c_void"_ostr;
 }
 
@@ -1229,6 +1727,209 @@ bool RustProducer::isUnoEnum(std::u16string_view typeName) const
     rtl::Reference<unoidl::MapCursor> cursor;
     codemaker::UnoType::Sort sort = m_typeManager->getSort(OUString(typeName), &entity, &cursor);
     return sort == codemaker::UnoType::Sort::Enum;
+}
+
+OString RustProducer::convertRustParameterForFFICall(
+    std::u16string_view unoType, std::string_view paramName,
+    unoidl::InterfaceTypeEntity::Method::Parameter::Direction direction) const
+{
+    // Handle string types with automatic conversion
+    if (unoType == u"string")
+    {
+        bool isInputOnly
+            = (direction == unoidl::InterfaceTypeEntity::Method::Parameter::DIRECTION_IN);
+        if (isInputOnly)
+        {
+            // Input string: convert OUString to rtl_uString* using .as_ptr()
+            return OString(paramName) + ".as_ptr()";
+        }
+        else
+        {
+            // Input/output string: pass through as pointer (already proper type)
+            return OString(paramName);
+        }
+    }
+
+    // Handle any types with automatic conversion
+    if (unoType == u"any")
+    {
+        bool isInputOnly
+            = (direction == unoidl::InterfaceTypeEntity::Method::Parameter::DIRECTION_IN);
+        if (isInputOnly)
+        {
+            // Input any: convert Any to uno_Any* using .as_ptr()
+            return OString(paramName) + ".as_ptr()";
+        }
+        else
+        {
+            // Input/output any: pass through as pointer (already proper type)
+            return OString(paramName);
+        }
+    }
+
+    // Handle struct types with automatic conversion
+    if (isUnoStruct(unoType))
+    {
+        bool isInputOnly
+            = (direction == unoidl::InterfaceTypeEntity::Method::Parameter::DIRECTION_IN);
+        if (isInputOnly)
+        {
+            // Input struct: convert generated struct to void* using .as_ptr()
+            return OString(paramName) + ".as_ptr()";
+        }
+        else
+        {
+            // Input/output struct: pass through as pointer (already proper type)
+            return OString(paramName);
+        }
+    }
+
+    // Handle interface types with automatic conversion
+    if (isUnoInterface(unoType))
+    {
+        bool isInputOnly
+            = (direction == unoidl::InterfaceTypeEntity::Method::Parameter::DIRECTION_IN);
+        if (isInputOnly)
+        {
+            // Input interface: convert generated interface to void* using .as_ptr()
+            return OString(paramName) + ".as_ptr()";
+        }
+        else
+        {
+            // Input/output interface: pass through as pointer (already proper type)
+            return OString(paramName);
+        }
+    }
+
+    // Handle primitive types - pass through directly (no conversion needed)
+    if (unoType == u"boolean" || unoType == u"byte" || unoType == u"short"
+        || unoType == u"unsigned short" || unoType == u"long" || unoType == u"unsigned long"
+        || unoType == u"hyper" || unoType == u"unsigned hyper" || unoType == u"float"
+        || unoType == u"double")
+    {
+        // Primitive types already match FFI expectations - pass through directly
+        return OString(paramName);
+    }
+
+    // For all other types, pass through without conversion (fallback)
+    return OString(paramName);
+}
+
+OString RustProducer::getRustStructGetterReturnType(std::u16string_view unoType) const
+{
+    // Struct getters return the actual type (for direct access, not modification)
+
+    // Handle string types
+    if (unoType == u"string")
+    {
+        return "crate::core::OUString"_ostr; // Return high-level string type
+    }
+
+    // Handle any types
+    if (unoType == u"any")
+    {
+        return "crate::core::Any"_ostr; // Return high-level Any type
+    }
+
+    // Handle primitive types - return the Rust primitive directly
+    if (unoType == u"boolean" || unoType == u"byte" || unoType == u"short"
+        || unoType == u"unsigned short" || unoType == u"long" || unoType == u"unsigned long"
+        || unoType == u"hyper" || unoType == u"unsigned hyper" || unoType == u"float"
+        || unoType == u"double")
+    {
+        return getRustWrapperTypeName(unoType); // Return native Rust type (u8, i32, f64, etc.)
+    }
+
+    // For all other types (typedefs, structs, enums, interfaces, sequences), use void*
+    return "*mut c_void"_ostr;
+}
+
+OString RustProducer::getRustStructSetterParameterType(std::u16string_view unoType) const
+{
+    // Struct setters take the value to set
+
+    // Handle string types
+    if (unoType == u"string")
+    {
+        return "crate::core::OUString"_ostr; // Take high-level string type
+    }
+
+    // Handle any types
+    if (unoType == u"any")
+    {
+        return "crate::core::Any"_ostr; // Take high-level Any type
+    }
+
+    // Handle primitive types - take by value for direct assignment
+    if (unoType == u"boolean" || unoType == u"byte" || unoType == u"short"
+        || unoType == u"unsigned short" || unoType == u"long" || unoType == u"unsigned long"
+        || unoType == u"hyper" || unoType == u"unsigned hyper" || unoType == u"float"
+        || unoType == u"double")
+    {
+        return getRustWrapperTypeName(unoType); // Take native Rust type (u8, i32, f64, etc.)
+    }
+
+    // For all other types (typedefs, structs, enums, interfaces, sequences), use void*
+    return "*mut c_void"_ostr;
+}
+
+OString RustProducer::getRustStructExternGetterReturnType(std::u16string_view unoType) const
+{
+    // Struct extern getter return types (FFI-compatible)
+
+    // Handle string types
+    if (unoType == u"string")
+    {
+        return "*mut crate::ffi::rtl_string::rtl_uString"_ostr; // Return mutable pointer for from_raw compatibility
+    }
+
+    // Handle any types
+    if (unoType == u"any")
+    {
+        return "*const crate::ffi::uno_any::uno_Any"_ostr; // Return C-compatible Any pointer
+    }
+
+    // Handle primitive types - return pointer to primitive for FFI
+    if (unoType == u"boolean" || unoType == u"byte" || unoType == u"short"
+        || unoType == u"unsigned short" || unoType == u"long" || unoType == u"unsigned long"
+        || unoType == u"hyper" || unoType == u"unsigned hyper" || unoType == u"float"
+        || unoType == u"double")
+    {
+        return "*const " + getRustWrapperTypeName(unoType); // Return pointer to primitive type
+    }
+
+    // For all other types (typedefs, structs, enums, interfaces, sequences), use void*
+    return "*mut c_void"_ostr;
+}
+
+OString RustProducer::getRustStructExternSetterParameterType(std::u16string_view unoType) const
+{
+    // Struct extern setter parameter types (FFI-compatible)
+
+    // Handle string types
+    if (unoType == u"string")
+    {
+        return "*const crate::ffi::rtl_string::rtl_uString"_ostr; // Take const pointer for setter input (this is fine)
+    }
+
+    // Handle any types
+    if (unoType == u"any")
+    {
+        return "*const crate::ffi::uno_any::uno_Any"_ostr; // Take C-compatible Any pointer
+    }
+
+    // Handle primitive types - take by value for FFI (matches C++ side)
+    if (unoType == u"boolean" || unoType == u"byte" || unoType == u"short"
+        || unoType == u"unsigned short" || unoType == u"long" || unoType == u"unsigned long"
+        || unoType == u"hyper" || unoType == u"unsigned hyper" || unoType == u"float"
+        || unoType == u"double")
+    {
+        return getRustWrapperTypeName(
+            unoType); // Take primitive type by value (matches C++ approach)
+    }
+
+    // For all other types (typedefs, structs, enums, interfaces, sequences), use void*
+    return "*mut c_void"_ostr;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

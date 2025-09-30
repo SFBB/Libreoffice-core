@@ -56,8 +56,6 @@ public:
     SAL_DLLPRIVATE void             ImplSetFocusRect( const tools::Rectangle &rFocusRect );
     SAL_DLLPRIVATE const tools::Rectangle& ImplGetFocusRect() const;
     SAL_DLLPRIVATE void             ImplSetSymbolAlign( SymbolAlign eAlign );
-    /// The x-coordinate of the vertical separator line, use in MenuButton subclass only.
-    SAL_DLLPRIVATE void             ImplSetSeparatorX( tools::Long nX );
 
 protected:
     SAL_DLLPRIVATE explicit Button( WindowType eType );
@@ -116,7 +114,6 @@ enum class PushButtonDropdownStyle
 {
     NONE            = 0x0000,
     MenuButton      = 0x0002, //visual down arrow
-    SplitMenuButton = 0x0003, //visual down arrow and separator line
 };
 
 class VCL_DLLPUBLIC PushButton : public Button
@@ -187,7 +184,6 @@ public:
 
 protected:
     PushButtonDropdownStyle mnDDStyle;
-    bool            mbIsActive;
 
     SAL_DLLPRIVATE void            ImplInitPushButtonData();
     SAL_DLLPRIVATE static WinBits  ImplInitStyle( const vcl::Window* pPrevWindow, WinBits nStyle );
