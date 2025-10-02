@@ -2339,6 +2339,11 @@ void SwEnhancedPDFExportHelper::EnhancedPDFExport(LanguageType const eLanguageDe
     const bool bOldLockView = mrSh.IsViewLocked();
     mrSh.LockView( true );
 
+    // tdf#133976 speeds up export greatly
+    SwTextFrame::GetTextCache()->IncreaseMax( 10000 );
+    const ::comphelper::ScopeGuard aGuard(
+        []() mutable { SwTextFrame::GetTextCache()->DecreaseMax( 10000 ); } );
+
     if ( !mbEditEngineOnly )
     {
         assert(pPDFExtOutDevData->GetSwPDFState() == nullptr);
@@ -2762,8 +2767,6 @@ void SwEnhancedPDFExportHelper::EnhancedPDFExport(LanguageType const eLanguageDe
                 continue;
             }
 
-            SwCursorSaveState aSaveState( *mrSh.GetCursor_() );
-
             // Select the footnote:
             mrSh.SwCursorShell::SetMark();
             mrSh.SwCursorShell::Right( 1, SwCursorSkipMode::Chars );
@@ -2773,7 +2776,8 @@ void SwEnhancedPDFExportHelper::EnhancedPDFExport(LanguageType const eLanguageDe
             aTmp.insert( aTmp.begin(), mrSh.SwCursorShell::GetCursor_()->begin(), mrSh.SwCursorShell::GetCursor_()->end() );
             OSL_ENSURE( !aTmp.empty(), "Enhanced pdf export - rectangles are missing" );
 
-            mrSh.GetCursor_()->RestoreSavePos();
+            // restore cursor position
+            mrSh.GetCursor_()->GetPoint()->Assign(rTNd, pTextFootnote->GetStart());
             mrSh.SwCursorShell::ClearMark();
 
             if (aTmp.empty())
