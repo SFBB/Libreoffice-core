@@ -327,8 +327,8 @@ GRAPHITE_TARBALL := graphite2-minimal-1.3.14.tgz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-HARFBUZZ_SHA256SUM := 9f63c4a0fcdcb90b5a2c54dd17ad23429dfb281de6c0986863b8a89a05e5bc27
-HARFBUZZ_TARBALL := harfbuzz-12.0.0.tar.xz
+HARFBUZZ_SHA256SUM := e5c81b7f6e0b102dfb000cfa424538b8e896ab78a2f4b8a5ec8cae62ab43369e
+HARFBUZZ_TARBALL := harfbuzz-12.1.0.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -549,8 +549,8 @@ OPENLDAP_TARBALL := openldap-2.6.10.tgz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-OPENSSL_SHA256SUM := d80c34f5cf902dccf1f1b5df5ebb86d0392e37049e5d73df1b3abae72e4ffe8b
-OPENSSL_TARBALL := openssl-3.0.18.tar.gz
+OPENSSL_SHA256SUM := 967311f84955316969bdb1d8d4b983718ef42338639c621ec4c34fddef355e99
+OPENSSL_TARBALL := openssl-3.5.4.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts

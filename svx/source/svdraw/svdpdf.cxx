@@ -97,10 +97,19 @@ ImpSdrPdfImport::ImpSdrPdfImport(SdrModel& rModel, SdrLayerID nLay, const tools:
     , mdPageHeightPts(0)
     , mpPDFium(vcl::pdf::PDFiumLibrary::get())
 {
+    // Same as SdModule
+    mpVD->SetReferenceDevice(VirtualDevice::RefDevMode::Dpi600);
+    mpVD->SetMapMode(MapMode(MapUnit::Map100thMM));
     mpVD->EnableOutput(false);
     mpVD->SetLineColor();
     mpVD->SetFillColor();
     maOldLineColor.SetRed(mpVD->GetLineColor().GetRed() + 1);
+
+    // Get TextBounds relative to baseline
+    vcl::Font aFnt = mpVD->GetFont();
+    aFnt.SetAlignment(ALIGN_BASELINE);
+    mpVD->SetFont(aFnt);
+
     mpLineAttr = std::make_unique<SfxItemSet>(
         SfxItemSet::makeFixedSfxItemSet<XATTR_LINE_FIRST, XATTR_LINE_LAST>(rModel.GetItemPool()));
     mpFillAttr = std::make_unique<SfxItemSet>(
@@ -173,20 +182,21 @@ void ImpSdrPdfImport::SetupPageScale(const double dPageWidth, const double dPage
     mdPageHeightPts = dPageHeight;
 
     Size aPageSize(convertPointToMm100(dPageWidth), convertPointToMm100(dPageHeight));
+    Size aScaleRectSize = maScaleRect.GetSize();
 
     if (aPageSize.Width() && aPageSize.Height() && (!maScaleRect.IsEmpty()))
     {
         maOfs = maScaleRect.TopLeft();
 
-        if (aPageSize.Width() != (maScaleRect.GetWidth() - 1))
+        if (aPageSize.Width() != aScaleRectSize.Width())
         {
-            mfScaleX = static_cast<double>(maScaleRect.GetWidth() - 1)
+            mfScaleX = static_cast<double>(aScaleRectSize.Width())
                        / static_cast<double>(aPageSize.Width());
         }
 
-        if (aPageSize.Height() != (maScaleRect.GetHeight() - 1))
+        if (aPageSize.Height() != aScaleRectSize.Height())
         {
-            mfScaleY = static_cast<double>(maScaleRect.GetHeight() - 1)
+            mfScaleY = static_cast<double>(aScaleRectSize.Height())
                        / static_cast<double>(aPageSize.Height());
         }
     }
@@ -196,15 +206,15 @@ void ImpSdrPdfImport::SetupPageScale(const double dPageWidth, const double dPage
     maScaleX = Fraction(1, 1);
     maScaleY = Fraction(1, 1);
 
-    if (aPageSize.Width() != (maScaleRect.GetWidth() - 1))
+    if (aPageSize.Width() != aScaleRectSize.Width())
     {
-        maScaleX = Fraction(maScaleRect.GetWidth() - 1, aPageSize.Width());
+        maScaleX = Fraction(aScaleRectSize.Width(), aPageSize.Width());
         mbSize = true;
     }
 
-    if (aPageSize.Height() != (maScaleRect.GetHeight() - 1))
+    if (aPageSize.Height() != aScaleRectSize.Height())
     {
-        maScaleY = Fraction(maScaleRect.GetHeight() - 1, aPageSize.Height());
+        maScaleY = Fraction(aScaleRectSize.Height(), aPageSize.Height());
         mbSize = true;
     }
 }
@@ -780,20 +790,20 @@ void ImpSdrPdfImport::InsertTextObject(const Point& rPos, const Size& rSize, con
 
     FontMetric aFontMetric(mpVD->GetFontMetric());
     vcl::Font aFont(mpVD->GetFont());
-    TextAlign eAlignment(aFont.GetAlignment());
+    assert(aFont.GetAlignment() == ALIGN_BASELINE);
 
-    // sal_Int32 nTextWidth = static_cast<sal_Int32>(mpVD->GetTextWidth(rStr) * mfScaleX);
-    sal_Int32 nTextHeight = static_cast<sal_Int32>(mpVD->GetTextHeight() * mfScaleY);
+    tools::Rectangle aOurRect;
+    (void)mpVD->GetTextBoundRect(aOurRect, rStr);
 
-    Point aPosition(basegfx::fround<tools::Long>(rPos.X() * mfScaleX + maOfs.X()),
-                    basegfx::fround<tools::Long>(rPos.Y() * mfScaleY + maOfs.Y()));
-    Size aSize(basegfx::fround<tools::Long>(rSize.Width() * mfScaleX),
-               basegfx::fround<tools::Long>(rSize.Height() * mfScaleY));
+    auto nDiff = aFontMetric.GetDescent() - aOurRect.Bottom();
+    Point aPos(rPos.X(), rPos.Y() + nDiff);
 
-    if (eAlignment == ALIGN_BASELINE)
-        aPosition.AdjustY(basegfx::fround<tools::Long>(aFontMetric.GetAscent() * -mfScaleY));
-    else if (eAlignment == ALIGN_BOTTOM)
-        aPosition.AdjustY(-nTextHeight);
+    Size aBoundsSize(rSize.Width(), -aFontMetric.GetLineHeight());
+
+    Point aPosition(basegfx::fround<tools::Long>(aPos.X() * mfScaleX + maOfs.X()),
+                    basegfx::fround<tools::Long>(aPos.Y() * mfScaleY + maOfs.Y()));
+    Size aSize(basegfx::fround<tools::Long>(aBoundsSize.Width() * mfScaleX),
+               basegfx::fround<tools::Long>(aBoundsSize.Height() * mfScaleY));
 
     tools::Rectangle aTextRect(aPosition, aSize);
     rtl::Reference<SdrRectObj> pText = new SdrRectObj(*mpModel, aTextRect, SdrObjKind::Text);
