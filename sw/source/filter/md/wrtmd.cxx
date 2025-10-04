@@ -50,6 +50,7 @@
 #include <ndgrf.hxx>
 #include <ndole.hxx>
 #include <fmturl.hxx>
+#include <fmtanchr.hxx>
 #include "wrtmd.hxx"
 
 #include <algorithm>
@@ -110,6 +111,7 @@ struct FormattingStatus
     std::set<SwMDImageInfo> aImages;
     // Checked/unchecked -> increment (1 or -1) map.
     std::unordered_map<bool, int> aTaskListItemChanges;
+    std::set<const SwFrameFormat*> aFlys;
 };
 
 // This is a vector of positions in the node text, where objects of class T start or end.
@@ -136,6 +138,7 @@ struct NodePositions
     PosData<SfxPoolItem> hintEnds;
     PosData<SwRangeRedline> redlineStarts;
     PosData<SwRangeRedline> redlineEnds;
+    PosData<SwFrameFormat> flys;
 
     sal_Int32 getEndOfCurrent(sal_Int32 end)
     {
@@ -146,9 +149,62 @@ struct NodePositions
             pos_of(hintStarts.current()),
             pos_of(redlineEnds.current()),
             pos_of(redlineStarts.current()),
+            pos_of(flys.current()),
         });
     }
 };
+
+void ApplyFlyFrameFormat(const SwFlyFrameFormat& rFrameFormat, SwMDWriter& rWrt,
+                         FormattingStatus& rChange)
+{
+    const SwFormatContent& rFlyContent = rFrameFormat.GetContent();
+    SwNodeOffset nStart = rFlyContent.GetContentIdx()->GetIndex() + 1;
+    Graphic aGraphic;
+    OUString aGraphicURL;
+    if (rWrt.m_pDoc->GetNodes()[nStart]->GetNodeType() == SwNodeType::Grf)
+    {
+        SwGrfNode* pGrfNode = rWrt.m_pDoc->GetNodes()[nStart]->GetGrfNode();
+        aGraphic = pGrfNode->GetGraphic();
+        if (pGrfNode->IsLinkedFile())
+        {
+            pGrfNode->GetFileFilterNms(&aGraphicURL, /*pFilterNm=*/nullptr);
+        }
+        else
+        {
+            // Not linked, image data goes into the "URL".
+            OUString aGraphicInBase64;
+            if (!XOutBitmap::GraphicToBase64(aGraphic, aGraphicInBase64))
+            {
+                return;
+            }
+
+            aGraphicURL = "data:" + aGraphicInBase64;
+        }
+    }
+    else
+    {
+        SwOLENode* pOLENode = rWrt.m_pDoc->GetNodes()[nStart]->GetOLENode();
+        assert(pOLENode->GetGraphic());
+        aGraphic = *pOLENode->GetGraphic();
+        // TODO fill aGraphicURL with the right info
+    }
+
+    const OUString& rBaseURL = rWrt.GetBaseURL();
+    INetURLObject aGraphicURLObject(aGraphicURL);
+    if (!rBaseURL.isEmpty() && aGraphicURLObject.GetProtocol() != INetProtocol::Data)
+    {
+        aGraphicURL = URIHelper::simpleNormalizedMakeRelative(rBaseURL, aGraphicURL);
+    }
+    OUString aTitle = rFrameFormat.GetObjTitle();
+    OUString aDescription = rFrameFormat.GetObjDescription();
+    OUString aLink;
+    if (rFrameFormat.GetAttrSet().HasItem(RES_URL))
+    {
+        const SwFormatURL& rLink = rFrameFormat.GetURL();
+        aLink = rLink.GetURL();
+    }
+    rChange.aImages.emplace(aGraphicURL, aTitle, aDescription, aLink);
+}
 
 void ApplyItem(SwMDWriter& rWrt, FormattingStatus& rChange, const SfxPoolItem& rItem, int increment)
 {
@@ -219,53 +275,7 @@ void ApplyItem(SwMDWriter& rWrt, FormattingStatus& rChange, const SfxPoolItem& r
             const SwFormatFlyCnt& rFormatFlyCnt = rItem.StaticWhichCast(RES_TXTATR_FLYCNT);
             const auto& rFrameFormat
                 = static_cast<const SwFlyFrameFormat&>(*rFormatFlyCnt.GetFrameFormat());
-            const SwFormatContent& rFlyContent = rFrameFormat.GetContent();
-            SwNodeOffset nStart = rFlyContent.GetContentIdx()->GetIndex() + 1;
-            Graphic aGraphic;
-            OUString aGraphicURL;
-            if (rWrt.m_pDoc->GetNodes()[nStart]->GetNodeType() == SwNodeType::Grf)
-            {
-                SwGrfNode* pGrfNode = rWrt.m_pDoc->GetNodes()[nStart]->GetGrfNode();
-                aGraphic = pGrfNode->GetGraphic();
-                if (pGrfNode->IsLinkedFile())
-                {
-                    pGrfNode->GetFileFilterNms(&aGraphicURL, /*pFilterNm=*/nullptr);
-                }
-                else
-                {
-                    // Not linked, image data goes into the "URL".
-                    OUString aGraphicInBase64;
-                    if (!XOutBitmap::GraphicToBase64(aGraphic, aGraphicInBase64))
-                    {
-                        break;
-                    }
-
-                    aGraphicURL = "data:" + aGraphicInBase64;
-                }
-            }
-            else
-            {
-                SwOLENode* pOLENode = rWrt.m_pDoc->GetNodes()[nStart]->GetOLENode();
-                assert(pOLENode->GetGraphic());
-                aGraphic = *pOLENode->GetGraphic();
-                // TODO fill aGraphicURL with the right info
-            }
-
-            const OUString& rBaseURL = rWrt.GetBaseURL();
-            INetURLObject aGraphicURLObject(aGraphicURL);
-            if (!rBaseURL.isEmpty() && aGraphicURLObject.GetProtocol() != INetProtocol::Data)
-            {
-                aGraphicURL = URIHelper::simpleNormalizedMakeRelative(rBaseURL, aGraphicURL);
-            }
-            OUString aTitle = rFrameFormat.GetObjTitle();
-            OUString aDescription = rFrameFormat.GetObjDescription();
-            OUString aLink;
-            if (rFrameFormat.GetAttrSet().HasItem(RES_URL))
-            {
-                const SwFormatURL& rLink = rFrameFormat.GetURL();
-                aLink = rLink.GetURL();
-            }
-            rChange.aImages.emplace(aGraphicURL, aTitle, aDescription, aLink);
+            ApplyFlyFrameFormat(rFrameFormat, rWrt, rChange);
             break;
         }
         case RES_TXTATR_CONTENTCONTROL:
@@ -289,6 +299,11 @@ void ApplyItem(SwMDWriter& rWrt, FormattingStatus& rChange, const SfxPoolItem& r
 void ApplyItem(FormattingStatus& rChange, const SwRangeRedline* pItem, int increment)
 {
     rChange.aRedlineChanges[pItem] += increment;
+}
+
+void ApplyItem(FormattingStatus& rChange, const SwFrameFormat* pItem)
+{
+    rChange.aFlys.insert(pItem);
 }
 
 // currentFormatting is the state of properties before this position. For any hint and/or redline
@@ -319,6 +334,12 @@ FormattingStatus CalculateFormattingChange(SwMDWriter& rWrt, NodePositions& posi
          p = positions.redlineStarts.next())
         ApplyItem(result, p->second, +1);
 
+    // Output anchored flys.
+    for (auto it = positions.flys.current(); it && it->first == pos; it = positions.flys.next())
+    {
+        ApplyItem(result, it->second);
+    }
+
     return result;
 }
 
@@ -328,6 +349,37 @@ bool ShouldCloseIt(int prev, int curr) { return prev != curr && prev >= 0 && cur
 bool ShouldOpenIt(int prev, int curr) { return prev != curr && prev <= 0 && curr > 0; }
 
 void OutEscapedChars(SwMDWriter& rWrt, std::u16string_view chars);
+
+void OutMarkdown_SwMDImageInfo(const SwMDImageInfo& rImageInfo, SwMDWriter& rWrt)
+{
+    if (!rImageInfo.aLink.isEmpty())
+    {
+        // Start image link.
+        rWrt.Strm().WriteUnicodeOrByteText(u"[");
+    }
+
+    rWrt.Strm().WriteUnicodeOrByteText(u"![");
+    OutEscapedChars(rWrt, rImageInfo.aDescription);
+    rWrt.Strm().WriteUnicodeOrByteText(u"](");
+    rWrt.Strm().WriteUnicodeOrByteText(rImageInfo.aURL);
+
+    if (!rImageInfo.aTitle.isEmpty())
+    {
+        rWrt.Strm().WriteUnicodeOrByteText(u" \"");
+        OutEscapedChars(rWrt, rImageInfo.aTitle);
+        rWrt.Strm().WriteUnicodeOrByteText(u"\"");
+    }
+
+    rWrt.Strm().WriteUnicodeOrByteText(u")");
+
+    if (!rImageInfo.aLink.isEmpty())
+    {
+        // End image link.
+        rWrt.Strm().WriteUnicodeOrByteText(u"](");
+        rWrt.Strm().WriteUnicodeOrByteText(rImageInfo.aLink);
+        rWrt.Strm().WriteUnicodeOrByteText(u")");
+    }
+}
 
 // Calculate the updated status of properties. Then compare the status before and after; and for
 // each event when a value changes from 0 to a positive number, output respective opening markup;
@@ -419,6 +471,29 @@ void OutFormattingChange(SwMDWriter& rWrt, NodePositions& positions, sal_Int32 p
         }
     }
 
+    // Write flys anchored at this position.
+    FormattingStatus aChange;
+    for (const SwFrameFormat* pFrameFormat : result.aFlys)
+    {
+        if (current.aFlys.contains(pFrameFormat))
+        {
+            // 'current' is the old state and 'result' is the new state, so don't write images which were written already.
+            continue;
+        }
+
+        if (pFrameFormat->Which() != RES_FLYFRMFMT)
+        {
+            continue;
+        }
+
+        const auto& rFlyFrameFormat = static_cast<const SwFlyFrameFormat&>(*pFrameFormat);
+        ApplyFlyFrameFormat(rFlyFrameFormat, rWrt, aChange);
+    }
+    for (const SwMDImageInfo& rImage : aChange.aImages)
+    {
+        OutMarkdown_SwMDImageInfo(rImage, rWrt);
+    }
+
     // Not in CommonMark
     if (ShouldOpenIt(current.nCrossedOutChange, result.nCrossedOutChange))
         rWrt.Strm().WriteUnicodeOrByteText(u"~~");
@@ -476,33 +551,7 @@ void OutFormattingChange(SwMDWriter& rWrt, NodePositions& positions, sal_Int32 p
             continue;
         }
 
-        if (!rImageInfo.aLink.isEmpty())
-        {
-            // Start image link.
-            rWrt.Strm().WriteUnicodeOrByteText(u"[");
-        }
-
-        rWrt.Strm().WriteUnicodeOrByteText(u"![");
-        OutEscapedChars(rWrt, rImageInfo.aDescription);
-        rWrt.Strm().WriteUnicodeOrByteText(u"](");
-        rWrt.Strm().WriteUnicodeOrByteText(rImageInfo.aURL);
-
-        if (!rImageInfo.aTitle.isEmpty())
-        {
-            rWrt.Strm().WriteUnicodeOrByteText(u" \"");
-            OutEscapedChars(rWrt, rImageInfo.aTitle);
-            rWrt.Strm().WriteUnicodeOrByteText(u"\"");
-        }
-
-        rWrt.Strm().WriteUnicodeOrByteText(u")");
-
-        if (!rImageInfo.aLink.isEmpty())
-        {
-            // End image link.
-            rWrt.Strm().WriteUnicodeOrByteText(u"](");
-            rWrt.Strm().WriteUnicodeOrByteText(rImageInfo.aLink);
-            rWrt.Strm().WriteUnicodeOrByteText(u")");
-        }
+        OutMarkdown_SwMDImageInfo(rImageInfo, rWrt);
     }
 
     current = std::move(result);
@@ -752,6 +801,24 @@ void OutMarkdown_SwTextNode(SwMDWriter& rWrt, const SwTextNode& rNode, bool bFir
 
         positions.redlineEnds.sort();
 
+        // Collect flys anchored to this text node.
+        for (size_t nFly = 0; nFly < rWrt.GetFlys().size(); ++nFly)
+        {
+            const SwMDFly& rFly = rWrt.GetFlys()[nFly];
+            if (rFly.m_nAnchorNodeOffset < rNode.GetIndex())
+            {
+                continue;
+            }
+            if (rFly.m_nAnchorNodeOffset > rNode.GetIndex())
+            {
+                break;
+            }
+
+            SwMDFly aFly = rWrt.GetFlys().erase_extract(nFly);
+            --nFly;
+            positions.flys.add(aFly.m_nAnchorContentOffset, aFly.m_pFrameFormat);
+        }
+
         FormattingStatus currentStatus;
         while (nStrPos < nEnd)
         {
@@ -893,8 +960,45 @@ void OutMarkdown_SwTableNode(SwMDWriter& rWrt, const SwTableNode& rTableNode)
 
 SwMDWriter::SwMDWriter(const OUString& rBaseURL) { SetBaseURL(rBaseURL); }
 
+bool SwMDFly::operator<(const SwMDFly& rFly) const
+{
+    if (m_nAnchorNodeOffset != rFly.m_nAnchorNodeOffset)
+    {
+        return m_nAnchorNodeOffset < rFly.m_nAnchorNodeOffset;
+    }
+
+    if (m_nAnchorContentOffset != rFly.m_nAnchorContentOffset)
+    {
+        return m_nAnchorContentOffset < rFly.m_nAnchorContentOffset;
+    }
+
+    return m_pFrameFormat->GetAnchor().GetOrder() < rFly.m_pFrameFormat->GetAnchor().GetOrder();
+}
+
+void SwMDWriter::CollectFlys()
+{
+    // ApplyItem() already handles as-char flys.
+    SwPosFlyFrames aFrames(m_pDoc->GetAllFlyFormats(m_bWriteAll ? nullptr : m_pCurrentPam.get(),
+                                                    /*bDrawAlso=*/false));
+    for (const SwPosFlyFrame& rFrame : aFrames)
+    {
+        const SwFrameFormat& rFrameFormat = rFrame.GetFormat();
+        const SwFormatAnchor& rAnchor = rFrameFormat.GetAnchor();
+        SwContentNode* pAnchorNode = rAnchor.GetAnchorContentNode();
+        if (!pAnchorNode)
+        {
+            continue;
+        }
+
+        m_aFlys.insert(
+            { pAnchorNode->GetIndex(), rAnchor.GetAnchorContentOffset(), &rFrameFormat });
+    }
+}
+
 ErrCode SwMDWriter::WriteStream()
 {
+    CollectFlys();
+
     Strm().SetStreamCharSet(RTL_TEXTENCODING_UTF8);
     if (m_bShowProgress)
         ::StartProgress(STR_STATSTR_W4WWRITE, 0, sal_Int32(m_pDoc->GetNodes().Count()),
