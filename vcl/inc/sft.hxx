@@ -41,6 +41,7 @@
 
 #include <config_options.h>
 #include <rtl/ustring.hxx>
+#include <tools/fontenum.hxx>
 #include <vcl/dllapi.h>
 #include <vcl/fontcapabilities.hxx>
 #include <vcl/fontcharmap.hxx>
@@ -54,6 +55,8 @@
 #include <vector>
 
 #include "font/TTFStructure.hxx"
+
+class LanguageTag;
 
 namespace vcl
 {
@@ -145,6 +148,8 @@ namespace vcl
         sal_uInt16 nameID;                      /**< Name ID                                                */
         std::vector<sal_uInt8> sptr;            /**< string data (not zero-terminated!)          */
     };
+
+    OUString convertSfntName(const NameRecord& rNameRecord);
 
 /** Return value of GetTTGlobalFontInfo() */
 
@@ -603,6 +608,10 @@ void GetTTGlobalFontInfo(const AbstractTrueTypeFont *ttf, TTGlobalFontInfo *info
  * @ingroup sft
  */
 bool GetTTGlobalFontHeadInfo(const AbstractTrueTypeFont *ttf, int& xMin, int& yMin, int& xMax, int& yMax, sal_uInt16& macStyle);
+
+OUString analyzeSfntName(const TrueTypeFont* pTTFont, sal_uInt16 nameId, const LanguageTag& rPrefLang);
+
+void AnalyzeTTF(const TrueTypeFont* pTTFont, FontWeight& weight);
 
 /*- private definitions */
 

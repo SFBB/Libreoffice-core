@@ -534,7 +534,7 @@ void GraphicImportTask::doImport(GraphicImportContext& rContext)
     }
 }
 
-void GraphicFilter::ImportGraphics(std::vector< std::shared_ptr<Graphic> >& rGraphics, std::vector< std::unique_ptr<SvStream> > vStreams)
+std::vector<Graphic> GraphicFilter::ImportGraphics(std::vector<std::unique_ptr<SvStream>> vStreams)
 {
     static bool bThreads = !getenv("VCL_NO_THREAD_IMPORT");
     std::vector<GraphicImportContext> aContexts;
@@ -608,16 +608,16 @@ void GraphicFilter::ImportGraphics(std::vector< std::shared_ptr<Graphic> >& rGra
     rSharedPool.waitUntilDone(pTag);
 
     // Process data after import.
+    std::vector<Graphic> aGraphics;
+    aGraphics.reserve(aContexts.size());
     for (auto& rContext : aContexts)
     {
         rContext.m_pAccess.reset();
 
-        std::shared_ptr<Graphic> pGraphic;
-
         if (rContext.m_nStatus == ERRCODE_NONE && rContext.m_pImportOutput && rContext.m_pImportOutput->moBitmap)
-            pGraphic = std::make_shared<Graphic>(*rContext.m_pImportOutput->moBitmap);
+            aGraphics.emplace_back(*rContext.m_pImportOutput->moBitmap);
         else
-            pGraphic = std::make_shared<Graphic>();
+            aGraphics.emplace_back();
 
         if (rContext.m_nStatus == ERRCODE_NONE && rContext.m_eLinkType != GfxLinkType::NONE)
         {
@@ -640,11 +640,10 @@ void GraphicFilter::ImportGraphics(std::vector< std::shared_ptr<Graphic> >& rGra
             }
 
             if (rContext.m_nStatus == ERRCODE_NONE)
-                pGraphic->SetGfxLink(std::make_shared<GfxLink>(aGraphicContent, rContext.m_eLinkType));
+                aGraphics.back().SetGfxLink(std::make_shared<GfxLink>(aGraphicContent, rContext.m_eLinkType));
         }
-
-        rGraphics.push_back(std::move(pGraphic));
     }
+    return aGraphics;
 }
 
 void GraphicFilter::MakeGraphicsAvailableThreaded(std::vector<Graphic*>& graphics)
@@ -673,17 +672,13 @@ void GraphicFilter::MakeGraphicsAvailableThreaded(std::vector<Graphic*>& graphic
     streams.reserve(toLoad.size());
     for( auto graphic : toLoad )
     {
-        streams.push_back( std::make_unique<SvMemoryStream>( const_cast<sal_uInt8*>(graphic->GetSharedGfxLink()->GetData()),
-            graphic->GetSharedGfxLink()->GetDataSize(), StreamMode::READ | StreamMode::WRITE));
+        streams.push_back(graphic->GetSharedGfxLink()->getDataContainer().getAsStream());
     }
-    std::vector< std::shared_ptr<Graphic>> loadedGraphics;
-    loadedGraphics.reserve(streams.size());
-    ImportGraphics(loadedGraphics, std::move(streams));
+    std::vector<Graphic> loadedGraphics = ImportGraphics(std::move(streams));
     assert(loadedGraphics.size() == toLoad.size());
     for( size_t i = 0; i < toLoad.size(); ++i )
     {
-        if(loadedGraphics[ i ] != nullptr)
-            toLoad[ i ]->ImplGetImpGraphic()->updateFromLoadedGraphic(loadedGraphics[ i ]->ImplGetImpGraphic());
+        toLoad[ i ]->ImplGetImpGraphic()->updateFromLoadedGraphic(loadedGraphics[ i ].ImplGetImpGraphic());
     }
 }
 

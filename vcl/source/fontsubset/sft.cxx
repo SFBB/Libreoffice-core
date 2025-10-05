@@ -42,11 +42,13 @@
 #include <tools/fix16.hxx>
 #endif
 #include "ttcr.hxx"
+#include <i18nlangtag/applelangid.hxx>
 #include <rtl/crc.h>
 #include <rtl/ustring.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <sal/log.hxx>
 #include <o3tl/safeint.hxx>
+#include <o3tl/string_view.hxx>
 #include <osl/endian.h>
 #include <osl/thread.h>
 #include <unotools/tempfile.hxx>
@@ -1795,6 +1797,260 @@ bool getTTCoverage(
         }
     }
     return bRet;
+}
+
+static FontWeight ImplWeightToSal( int nWeight )
+{
+    if ( nWeight <= FW_THIN )
+        return WEIGHT_THIN;
+    else if ( nWeight <= FW_EXTRALIGHT )
+        return WEIGHT_ULTRALIGHT;
+    else if ( nWeight <= FW_LIGHT )
+        return WEIGHT_LIGHT;
+    else if ( nWeight < FW_MEDIUM )
+        return WEIGHT_NORMAL;
+    else if ( nWeight == FW_MEDIUM )
+        return WEIGHT_MEDIUM;
+    else if ( nWeight <= FW_SEMIBOLD )
+        return WEIGHT_SEMIBOLD;
+    else if ( nWeight <= FW_BOLD )
+        return WEIGHT_BOLD;
+    else if ( nWeight <= FW_EXTRABOLD )
+        return WEIGHT_ULTRABOLD;
+    else
+        return WEIGHT_BLACK;
+}
+
+/*
+ *  static helpers
+ */
+static sal_uInt16 getUInt16BE( const sal_uInt8*& pBuffer )
+{
+    sal_uInt16 nRet = static_cast<sal_uInt16>(pBuffer[1]) |
+        (static_cast<sal_uInt16>(pBuffer[0]) << 8);
+    pBuffer+=2;
+    return nRet;
+}
+
+OUString convertSfntName( const NameRecord& rNameRecord )
+{
+    OUString aValue;
+    if(
+       ( rNameRecord.platformID == 3 && ( rNameRecord.encodingID == 0 || rNameRecord.encodingID == 1 ) )  // MS, Unicode
+       ||
+       ( rNameRecord.platformID == 0 ) // Apple, Unicode
+       )
+    {
+        OUStringBuffer aName( rNameRecord.sptr.size()/2 );
+        const sal_uInt8* pNameBuffer = rNameRecord.sptr.data();
+        for(size_t n = 0; n < rNameRecord.sptr.size()/2; n++ )
+            aName.append( static_cast<sal_Unicode>(getUInt16BE( pNameBuffer )) );
+        aValue = aName.makeStringAndClear();
+    }
+    else if( rNameRecord.platformID == 3 )
+    {
+        if( rNameRecord.encodingID >= 2 && rNameRecord.encodingID <= 6 )
+        {
+            /*
+             *  and now for a special kind of madness:
+             *  some fonts encode their byte value string as BE uint16
+             *  (leading to stray zero bytes in the string)
+             *  while others code two bytes as a uint16 and swap to BE
+             */
+            OStringBuffer aName;
+            const sal_uInt8* pNameBuffer = rNameRecord.sptr.data();
+            for(size_t n = 0; n < rNameRecord.sptr.size()/2; n++ )
+            {
+                sal_Unicode aCode = static_cast<sal_Unicode>(getUInt16BE( pNameBuffer ));
+                char aChar = aCode >> 8;
+                if( aChar )
+                    aName.append( aChar );
+                aChar = aCode & 0x00ff;
+                if( aChar )
+                    aName.append( aChar );
+            }
+            switch( rNameRecord.encodingID )
+            {
+                case 2:
+                    aValue = OStringToOUString( aName, RTL_TEXTENCODING_MS_932 );
+                    break;
+                case 3:
+                    aValue = OStringToOUString( aName, RTL_TEXTENCODING_MS_936 );
+                    break;
+                case 4:
+                    aValue = OStringToOUString( aName, RTL_TEXTENCODING_MS_950 );
+                    break;
+                case 5:
+                    aValue = OStringToOUString( aName, RTL_TEXTENCODING_MS_949 );
+                    break;
+                case 6:
+                    aValue = OStringToOUString( aName, RTL_TEXTENCODING_MS_1361 );
+                    break;
+            }
+        }
+    }
+    else if( rNameRecord.platformID == 1 )
+    {
+        std::string_view aName(reinterpret_cast<const char*>(rNameRecord.sptr.data()), rNameRecord.sptr.size());
+        rtl_TextEncoding eEncoding = RTL_TEXTENCODING_DONTKNOW;
+        switch (rNameRecord.encodingID)
+        {
+            case 0:
+                eEncoding = RTL_TEXTENCODING_APPLE_ROMAN;
+                break;
+            case 1:
+                eEncoding = RTL_TEXTENCODING_APPLE_JAPANESE;
+                break;
+            case 2:
+                eEncoding = RTL_TEXTENCODING_APPLE_CHINTRAD;
+                break;
+            case 3:
+                eEncoding = RTL_TEXTENCODING_APPLE_KOREAN;
+                break;
+            case 4:
+                eEncoding = RTL_TEXTENCODING_APPLE_ARABIC;
+                break;
+            case 5:
+                eEncoding = RTL_TEXTENCODING_APPLE_HEBREW;
+                break;
+            case 6:
+                eEncoding = RTL_TEXTENCODING_APPLE_GREEK;
+                break;
+            case 7:
+                eEncoding = RTL_TEXTENCODING_APPLE_CYRILLIC;
+                break;
+            case 9:
+                eEncoding = RTL_TEXTENCODING_APPLE_DEVANAGARI;
+                break;
+            case 10:
+                eEncoding = RTL_TEXTENCODING_APPLE_GURMUKHI;
+                break;
+            case 11:
+                eEncoding = RTL_TEXTENCODING_APPLE_GUJARATI;
+                break;
+            case 21:
+                eEncoding = RTL_TEXTENCODING_APPLE_THAI;
+                break;
+            case 25:
+                eEncoding = RTL_TEXTENCODING_APPLE_CHINSIMP;
+                break;
+            case 29:
+                eEncoding = RTL_TEXTENCODING_APPLE_CENTEURO;
+                break;
+            case 32:    //Uninterpreted
+                eEncoding = RTL_TEXTENCODING_UTF8;
+                break;
+            default:
+                if (o3tl::starts_with(aName, "Khmer OS") || // encoding '20' (Khmer) isn't implemented
+                    o3tl::starts_with(aName, "YoavKtav")) // tdf#152278
+                {
+                    eEncoding = RTL_TEXTENCODING_UTF8;
+                }
+                SAL_WARN_IF(eEncoding == RTL_TEXTENCODING_DONTKNOW, "vcl.fonts", "mac encoding " <<
+                            rNameRecord.encodingID << " in font '" << aName << "'" <<
+                            (rNameRecord.encodingID > 32 ? " is invalid" : " has unimplemented conversion"));
+                break;
+        }
+        if (eEncoding != RTL_TEXTENCODING_DONTKNOW)
+            aValue = OStringToOUString(aName, eEncoding);
+    }
+
+    return aValue;
+}
+
+OUString analyzeSfntName(const TrueTypeFont* pTTFont, sal_uInt16 nameId, const LanguageTag& rPrefLang)
+{
+    OUString aResult;
+
+    std::vector<NameRecord> aNameRecords;
+    GetTTNameRecords(pTTFont, aNameRecords);
+    if( !aNameRecords.empty() )
+    {
+        LanguageType eLang = rPrefLang.getLanguageType();
+        int nLastMatch = -1;
+        for( size_t i = 0; i < aNameRecords.size(); i++ )
+        {
+            if( aNameRecords[i].nameID != nameId || aNameRecords[i].sptr.empty() )
+                continue;
+            int nMatch = -1;
+            if( aNameRecords[i].platformID == 0 ) // Unicode
+                nMatch = 4000;
+            else if( aNameRecords[i].platformID == 3 )
+            {
+                // this bases on the LanguageType actually being a Win LCID
+                if (aNameRecords[i].languageID == eLang)
+                    nMatch = 8000;
+                else if( aNameRecords[i].languageID == LANGUAGE_ENGLISH_US )
+                    nMatch = 2000;
+                else if( aNameRecords[i].languageID == LANGUAGE_ENGLISH ||
+                         aNameRecords[i].languageID == LANGUAGE_ENGLISH_UK )
+                    nMatch = 1500;
+                else
+                    nMatch = 1000;
+            }
+            else if (aNameRecords[i].platformID == 1)
+            {
+                AppleLanguageId aAppleId = static_cast<AppleLanguageId>(static_cast<sal_uInt16>(aNameRecords[i].languageID));
+                LanguageTag aApple(makeLanguageTagFromAppleLanguageId(aAppleId));
+                if (aApple == rPrefLang)
+                    nMatch = 8000;
+                else if (aAppleId == AppleLanguageId::ENGLISH)
+                    nMatch = 2000;
+                else
+                    nMatch = 1000;
+            }
+            OUString aName = convertSfntName( aNameRecords[i] );
+            if (!(aName.isEmpty()) && nMatch >= nLastMatch)
+            {
+                nLastMatch = nMatch;
+                aResult = aName;
+            }
+        }
+    }
+
+    return aResult;
+}
+
+void AnalyzeTTF(const TrueTypeFont* ttf, FontWeight& weight)
+{
+    sal_uInt32 table_size;
+    const sal_uInt8* table = ttf->table(O_OS2, table_size);
+    if (table_size >= 42)
+    {
+        sal_uInt16 weightOS2 = GetUInt16(table, OS2_usWeightClass_offset);
+        weight = ImplWeightToSal(weightOS2);
+        return;
+    }
+
+    // Fallback to inferring from the style name (name ID 2).
+    OUString sStyle = analyzeSfntName(ttf, 2, LanguageTag(LANGUAGE_ENGLISH_US));
+
+    bool bBold(false), bItalic(false);
+    if (o3tl::equalsIgnoreAsciiCase(sStyle, u"Regular"))
+    {
+        bBold = false;
+        bItalic = false;
+    }
+    else if (o3tl::equalsIgnoreAsciiCase(sStyle, u"Bold"))
+        bBold = true;
+    else if (o3tl::equalsIgnoreAsciiCase(sStyle, u"Bold Italic"))
+    {
+        bBold = true;
+        bItalic = true;
+    }
+    else if (o3tl::equalsIgnoreAsciiCase(sStyle, u"Italic"))
+    {
+        bItalic = true;
+    }
+    else
+    {
+        SAL_WARN("vcl.fonts", "Unhandled font style: " << sStyle);
+    }
+
+    if (bBold)
+        weight = WEIGHT_BOLD;
+    (void)bItalic; // we might need to use this in a similar scenario where
+                   // italic cannot be found
 }
 
 } // namespace vcl

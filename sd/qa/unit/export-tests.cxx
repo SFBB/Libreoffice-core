@@ -1072,6 +1072,45 @@ CPPUNIT_TEST_FIXTURE(SdExportTest, testExplodedPdfTextPos)
     CPPUNIT_ASSERT_DOUBLES_EQUAL(3063, y, 0);
 }
 
+CPPUNIT_TEST_FIXTURE(SdExportTest, testExplodedPdfFont)
+{
+    auto pPdfium = vcl::pdf::PDFiumLibrary::get();
+    if (!pPdfium)
+        return;
+    UsePdfium aGuard;
+
+    loadFromFile(u"pdf/differentfonts.pdf");
+
+    setFilterOptions("{\"DecomposePDF\":{\"type\":\"boolean\",\"value\":\"true\"}}");
+    setImportFilterName(u"OpenDocument Drawing Flat XML"_ustr);
+    saveAndReload(u"OpenDocument Drawing Flat XML"_ustr);
+
+    xmlDocUniquePtr pXml = parseLayout();
+    {
+        OUString sItalic = getXPath(pXml, "//font[2]", "italic");
+        // was "none" before
+        CPPUNIT_ASSERT_EQUAL(u"normal"_ustr, sItalic);
+        // check that the others remain as expected
+        OUString sFontName = getXPath(pXml, "//font[2]", "name");
+        CPPUNIT_ASSERT_EQUAL(u"Liberation Serif"_ustr, sFontName);
+        int nFontHeight = getXPath(pXml, "//font[2]", "height").toInt32();
+        CPPUNIT_ASSERT_EQUAL(494, nFontHeight);
+    }
+#if !defined _WIN32
+    //TODO, debug this
+    {
+        OUString sWeight = getXPath(pXml, "//font[4]", "weight");
+        // was "normal" before
+        CPPUNIT_ASSERT_EQUAL(u"bold"_ustr, sWeight);
+        // check that the others remain as expected
+        OUString sFontName = getXPath(pXml, "//font[4]", "name");
+        CPPUNIT_ASSERT_EQUAL(u"Liberation Sans"_ustr, sFontName);
+        int nFontHeight = getXPath(pXml, "//font[4]", "height").toInt32();
+        CPPUNIT_ASSERT_EQUAL(564, nFontHeight);
+    }
+#endif
+}
+
 CPPUNIT_TEST_FIXTURE(SdExportTest, testEmbeddedText)
 {
     createSdDrawDoc("objectwithtext.fodg");
