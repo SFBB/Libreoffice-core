@@ -29,9 +29,12 @@ namespace rptui
 
 class DlgEdFactory
 {
+private:
+    void ImplDestroy();
+
 public:
     DlgEdFactory();
-    ~DlgEdFactory() COVERITY_NOEXCEPT_FALSE;
+    ~DlgEdFactory();
 
     DECL_STATIC_LINK(DlgEdFactory, MakeObject, SdrObjCreatorParams, rtl::Reference<SdrObject>);
 };
