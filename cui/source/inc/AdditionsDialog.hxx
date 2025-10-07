@@ -62,16 +62,18 @@ private:
     DECL_LINK(ImplUpdateDataHdl, Timer*, void);
     DECL_LINK(FocusOut_Impl, weld::Widget&, void);
     DECL_LINK(CloseButtonHdl, weld::Button&, void);
+    DECL_LINK(ShowMoreHdl, weld::Button&, void);
 
 public:
     css::uno::Reference<css::deployment::XExtensionManager> m_xExtensionManager;
     std::unique_ptr<weld::Entry> m_xEntrySearch;
     std::unique_ptr<weld::Button> m_xButtonClose;
-    std::vector<std::shared_ptr<AdditionsItem>> m_aAdditionsItems; // UI components
+    std::vector<std::unique_ptr<AdditionsItem>> m_aAdditionsItems; // UI components
     std::vector<AdditionInfo> m_aAllExtensionsVector; // Stores the all extensions' info
 
     std::unique_ptr<weld::ScrolledWindow> m_xContentWindow;
-    std::unique_ptr<weld::Grid> m_xContentGrid;
+    std::unique_ptr<weld::Box> m_xContentBox;
+    std::unique_ptr<weld::Button> m_xButtonShowMore;
 
     std::unique_ptr<weld::Label> m_xLabelProgress;
     std::unique_ptr<weld::MenuButton> m_xGearBtn;
@@ -101,11 +103,10 @@ public:
 class AdditionsItem
 {
 public:
-    AdditionsItem(weld::Grid* pParentGrid, AdditionsDialog* pParentDialog,
+    AdditionsItem(weld::Box* pParentBox, AdditionsDialog* pParentDialog,
                   const AdditionInfo& additionInfo);
     bool getExtensionFile(OUString& sExtensionFile);
 
-    DECL_LINK(ShowMoreHdl, weld::Button&, void);
     DECL_LINK(InstallHdl, weld::Button&, void);
 
     std::unique_ptr<weld::Builder> m_xBuilder;
@@ -125,7 +126,6 @@ public:
     std::unique_ptr<weld::Image> m_xImageVoting4;
     std::unique_ptr<weld::Image> m_xImageVoting5;
     std::unique_ptr<weld::Label> m_xLabelDownloadNumber;
-    std::unique_ptr<weld::Button> m_xButtonShowMore;
     AdditionsDialog* m_pParentDialog;
     OUString m_sDownloadURL;
     OUString m_sExtensionID;

@@ -600,7 +600,6 @@ ErrCode SbiStream::Write( const OString& rBuf )
     return nError;
 }
 
-
 SbiIoSystem::SbiIoSystem()
 {
     for(SbiStream* & i : pChan)
@@ -611,9 +610,9 @@ SbiIoSystem::SbiIoSystem()
     nError = ERRCODE_NONE;
 }
 
-SbiIoSystem::~SbiIoSystem() COVERITY_NOEXCEPT_FALSE
+SbiIoSystem::~SbiIoSystem()
 {
-    Shutdown();
+    suppress_fun_call_w_exception(Shutdown());
 }
 
 ErrCode SbiIoSystem::GetError()

@@ -55,10 +55,12 @@ namespace connectivity
     };
 
 
-    class  java_lang_Object
+    class java_lang_Object
     {
         java_lang_Object& operator= (java_lang_Object const &) = delete;
         java_lang_Object(java_lang_Object const &) = delete;
+
+        void ImplDestroy();
 
     protected:
         // The Java handle to this class
@@ -77,7 +79,7 @@ namespace connectivity
         // The actual ctor
         java_lang_Object();
 
-        virtual ~java_lang_Object() COVERITY_NOEXCEPT_FALSE;
+        virtual ~java_lang_Object();
 
         void                saveRef( JNIEnv * pEnv, jobject myObj );
         jobject             getJavaObject() const { return object; }

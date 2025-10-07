@@ -2696,14 +2696,14 @@ void DrawingML::WriteRunProperties( const Reference< XPropertySet >& rRun, bool 
     }
 
     mpFS->startElementNS( XML_a, nElement,
-                          XML_b, bold,
-                          XML_i, italic,
                           XML_lang, sax_fastparser::UseIf(usLanguage, !usLanguage.isEmpty()),
                           XML_sz, OString::number(nSize),
-            // For Condensed character spacing spc value is negative.
+                          XML_b, bold,
+                          XML_i, italic,
+                          XML_u, underline,
+                          // For Condensed character spacing spc value is negative.
                           XML_spc, sax_fastparser::UseIf(OString::number(nCharKerning), nCharKerning != 0),
                           XML_strike, strikeout,
-                          XML_u, underline,
                           XML_baseline, sax_fastparser::UseIf(OString::number(nCharEscapement*1000), nCharEscapement != 0),
                           XML_cap, cap );
 
@@ -3414,7 +3414,7 @@ void DrawingML::WriteParagraphTabStops(const Reference<XPropertySet>& rXPropSet)
             default:
                 sAlignment = "l"_ostr;
         }
-        mpFS->singleElementNS(XML_a, XML_tab, XML_algn, sAlignment, XML_pos, sPosition);
+        mpFS->singleElementNS(XML_a, XML_tab, XML_pos, sPosition, XML_algn, sAlignment);
     }
     if (aTabStops.getLength() > 0)
         mpFS->endElementNS(XML_a, XML_tabLst);

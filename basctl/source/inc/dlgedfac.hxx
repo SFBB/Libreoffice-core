@@ -31,9 +31,11 @@ class DlgEdFactory
 {
     const css::uno::Reference<css::frame::XModel> mxModel;
 
+    void ImplDestroy();
+
 public:
     DlgEdFactory(css::uno::Reference<css::frame::XModel> xModel);
-    ~DlgEdFactory() COVERITY_NOEXCEPT_FALSE;
+    ~DlgEdFactory();
 
     DECL_LINK(MakeObject, SdrObjCreatorParams, rtl::Reference<SdrObject>);
 };
