@@ -4256,10 +4256,10 @@ void DrawingML::WriteBodyProps(const css::uno::Reference< css::uno::XInterface >
                            XML_fromWordArt, sax_fastparser::UseIf("1", bFromWordArt),
                            XML_lIns, sax_fastparser::UseIf(OString::number(oox::drawingml::convertHmmToEmu(nLeft)),
                                                            bRequireInset || nLeft != mconstDefaultLeftRightInset),
-                           XML_rIns, sax_fastparser::UseIf(OString::number(oox::drawingml::convertHmmToEmu(nRight)),
-                                                           bRequireInset || nRight != mconstDefaultLeftRightInset),
                            XML_tIns, sax_fastparser::UseIf(OString::number(oox::drawingml::convertHmmToEmu(nTop)),
                                                            bRequireInset || nTop != mconstDefaultTopBottomInset),
+                           XML_rIns, sax_fastparser::UseIf(OString::number(oox::drawingml::convertHmmToEmu(nRight)),
+                                                           bRequireInset || nRight != mconstDefaultLeftRightInset),
                            XML_bIns, sax_fastparser::UseIf(OString::number(oox::drawingml::convertHmmToEmu(nBottom)),
                                                            bRequireInset || nBottom != mconstDefaultTopBottomInset),
                            XML_anchor, sAnchor,
@@ -5894,7 +5894,8 @@ void DrawingML::WriteShapeEffect( std::u16string_view sName, const Sequence< Pro
                 {
                     sal_Int64 nVal = 0;
                     rOuterShdwProp.Value >>= nVal;
-                    aOuterShdwAttrList->add( XML_blurRad, OString::number( nVal ) );
+                    if (nVal != 0)
+                        aOuterShdwAttrList->add( XML_blurRad, OString::number( nVal ) );
                 }
                 else if( rOuterShdwProp.Name == "dir" )
                 {
