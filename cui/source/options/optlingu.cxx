@@ -36,6 +36,7 @@
 #include <comphelper/diagnose_ex.hxx>
 #include <comphelper/lok.hxx>
 #include <comphelper/processfactory.hxx>
+#include <comphelper/sequence.hxx>
 #include <com/sun/star/configuration/ReadWriteAccess.hpp>
 #include <com/sun/star/linguistic2/LinguServiceManager.hpp>
 #include <com/sun/star/linguistic2/XSearchableDictionaryList.hpp>
@@ -79,13 +80,6 @@ constexpr OUString cHyph(SN_HYPHENATOR);
 constexpr OUString cThes(SN_THESAURUS);
 
 // static ----------------------------------------------------------------
-
-static sal_Int32 lcl_SeqGetEntryPos(
-    const Sequence< OUString > &rSeq, std::u16string_view rEntry )
-{
-    auto it = std::find(rSeq.begin(), rSeq.end(), rEntry);
-    return it == rSeq.end() ? -1 : std::distance(rSeq.begin(), it);
-}
 
 static bool KillFile_Impl( const OUString& rURL )
 {
@@ -435,7 +429,7 @@ Sequence< OUString > SvxLinguData_Impl::GetSortedImplNames( LanguageType nLang, 
             case TYPE_GRAMMAR   : aImplName = rInfo.sGrammarImplName; break;
         }
 
-        if (!aImplName.isEmpty()  &&  (lcl_SeqGetEntryPos( aRes, aImplName) == -1))    // name not yet added
+        if (!aImplName.isEmpty() && (comphelper::findValue(aRes, aImplName) == -1)) // name not yet added
         {
             DBG_ASSERT( nIdx < aRes.getLength(), "index out of range" );
             if (nIdx < aRes.getLength())
@@ -681,21 +675,18 @@ bool SvxLinguData_Impl::AddRemove(
 {
     bool bRet = false;  // modified?
 
-    sal_Int32 nEntries = rConfigured.getLength();
-    sal_Int32 nPos = lcl_SeqGetEntryPos(rConfigured, rImplName);
+    sal_Int32 nPos = comphelper::findValue(rConfigured, rImplName);
     if (bAdd  &&  nPos < 0)         // add new entry
     {
-        rConfigured.realloc( ++nEntries );
-        OUString *pConfigured = rConfigured.getArray();
-        pConfigured[nEntries - 1] = rImplName;
+        rConfigured.realloc(rConfigured.getLength() + 1);
+        rConfigured.getArray()[rConfigured.getLength() - 1] = rImplName;
         bRet = true;
     }
     else if (!bAdd  &&  nPos >= 0)  // remove existing entry
     {
         OUString *pConfigured = rConfigured.getArray();
-        for (sal_Int32 i = nPos;  i < nEntries - 1;  ++i)
-            pConfigured[i] = pConfigured[i + 1];
-        rConfigured.realloc(--nEntries);
+        std::move(rConfigured.begin() + nPos + 1, rConfigured.end(), pConfigured + nPos);
+        rConfigured.realloc(rConfigured.getLength() - 1);
         bRet = true;
     }
 
@@ -1778,7 +1769,7 @@ void SvxEditModulesDlg::LangSelectHdl_Impl(const SvxLanguageBox* pBox)
                 {
                     SAL_INFO( "cui.options", "language entry missing" );    // only relevant if all languages found should be supported
                 }
-                const bool bCheck = bHasLang && lcl_SeqGetEntryPos( rTable[ eCurLanguage ], aImplName ) >= 0;
+                const bool bCheck = bHasLang && comphelper::findValue( rTable[ eCurLanguage ], aImplName ) >= 0;
                 pUserData = new ModuleUserData_Impl( aImplName, false,
                                         bCheck, TYPE_SPELL, static_cast<sal_uInt8>(nLocalIndex++) );
                 sId = weld::toId(pUserData);
@@ -1833,7 +1824,7 @@ void SvxEditModulesDlg::LangSelectHdl_Impl(const SvxLanguageBox* pBox)
                 {
                     SAL_INFO( "cui.options", "language entry missing" );    // only relevant if all languages found should be supported
                 }
-                const bool bCheck = bHasLang && lcl_SeqGetEntryPos( rTable[ eCurLanguage ], aImplName ) >= 0;
+                const bool bCheck = bHasLang && comphelper::findValue( rTable[ eCurLanguage ], aImplName ) >= 0;
                 pUserData = new ModuleUserData_Impl( aImplName, false,
                                         bCheck, TYPE_GRAMMAR, static_cast<sal_uInt8>(nLocalIndex++) );
 
@@ -1889,7 +1880,7 @@ void SvxEditModulesDlg::LangSelectHdl_Impl(const SvxLanguageBox* pBox)
                 {
                     SAL_INFO( "cui.options", "language entry missing" );    // only relevant if all languages found should be supported
                 }
-                const bool bCheck = bHasLang && lcl_SeqGetEntryPos( rTable[ eCurLanguage ], aImplName ) >= 0;
+                const bool bCheck = bHasLang && comphelper::findValue( rTable[ eCurLanguage ], aImplName ) >= 0;
                 pUserData = new ModuleUserData_Impl( aImplName, false,
                                         bCheck, TYPE_HYPH, static_cast<sal_uInt8>(nLocalIndex++) );
                 sId = weld::toId(pUserData);
@@ -1944,7 +1935,7 @@ void SvxEditModulesDlg::LangSelectHdl_Impl(const SvxLanguageBox* pBox)
                 {
                     SAL_INFO( "cui.options", "language entry missing" );    // only relevant if all languages found should be supported
                 }
-                const bool bCheck = bHasLang && lcl_SeqGetEntryPos( rTable[ eCurLanguage ], aImplName ) >= 0;
+                const bool bCheck = bHasLang && comphelper::findValue( rTable[ eCurLanguage ], aImplName ) >= 0;
                 pUserData = new ModuleUserData_Impl( aImplName, false,
                                         bCheck, TYPE_THES, static_cast<sal_uInt8>(nLocalIndex++) );
                 sId = weld::toId(pUserData);
