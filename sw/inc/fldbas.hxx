@@ -29,6 +29,7 @@
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <cppuhelper/weakref.hxx>
 #include <editeng/svxenum.hxx>
+#include <o3tl/enumarray.hxx>
 #include <unotools/weakref.hxx>
 #include <rtl/ref.hxx>
 #include <vector>
@@ -144,7 +145,7 @@ enum class SwFieldTypesEnum : sal_uInt16 {
     Dropdown,
     Custom,     // Unused - necessary for alignment with aSwFields in fldmgr.cxx
     ParagraphSignature,
-    LAST,
+    LAST = ParagraphSignature,
     Unknown = USHRT_MAX // used by SwFieldMgr::GetCurTypeId
 };
 enum class SwFileNameFormat {
@@ -237,7 +238,7 @@ class SW_DLLPUBLIC SwFieldType : public sw::BroadcastingModify
     SwFieldIds m_nWhich;
 
     friend void FinitUI();     ///< In order to delete pointer!
-    static  std::vector<OUString>* s_pFieldNames;
+    static o3tl::enumarray<SwFieldTypesEnum, OUString>* s_pFieldNames;
 
     static void GetFieldName_();  ///< Sets up FieldNames; fldmgr.cxx!
 

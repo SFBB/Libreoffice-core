@@ -419,7 +419,7 @@ static bool getDefaultVBAMode( StarBASIC* pb )
 
 SbModule::SbModule( const OUString& rName, bool bVBASupport )
     : SbxObject( u"StarBASICModule"_ustr )
-    , mbVBASupport(bVBASupport), mbCompat(bVBASupport), bIsProxyModule(false)
+    , mbVBASupport(bVBASupport), mbCompat(bVBASupport)
 {
     SetName( rName );
     SetFlag( SbxFlagBits::ExtSearch | SbxFlagBits::GlobalSearch );
@@ -627,11 +627,11 @@ void SbModule::Clear()
 SbxVariable* SbModule::Find( const OUString& rName, SbxClassType t )
 {
     // make sure a search in an uninstantiated class module will fail
-    SbxVariable* pRes = SbxObject::Find( rName, t );
-    if ( bIsProxyModule && !GetSbData()->bRunInit )
+    if (isClassModule() && !GetSbData()->bRunInit)
     {
         return nullptr;
     }
+    SbxVariable* pRes = SbxObject::Find( rName, t );
     if( !pRes && pImage )
     {
         SbiInstance* pInst = GetSbData()->pInst;
@@ -800,7 +800,7 @@ void SbModule::Notify( SfxBroadcaster& rBC, const SfxHint& rHint )
 // The setting of the source makes the image invalid
 // and scans the method definitions newly in
 
-void SbModule::SetSource32( const OUString& r )
+void SbModule::SetSource( const OUString& r )
 {
     // Default basic mode to library container mode, but... allow Option VBASupport 0/1 override
     SetVBASupport( getDefaultVBAMode( static_cast< StarBASIC*>( GetParent() ) ) );
@@ -846,6 +846,10 @@ void SbModule::SetSource32( const OUString& r )
                         bool bIsVBA = ( aTok.GetDbl()== 1 );
                         SetVBASupport( bIsVBA );
                         aTok.SetCompatible( bIsVBA );
+                    }
+                    else if (eCurTok == CLASSMODULE)
+                    {
+                        SetModuleType(css::script::ModuleType::CLASS);
                     }
                 }
             }
@@ -1323,11 +1327,9 @@ void SbModule::implClearIfVarDependsOnDeletedBasic(SbxVariable& rVar, StarBASIC*
     if (rVar.SbxValue::GetType() != SbxOBJECT || dynamic_cast<const SbProcedureProperty*>(&rVar) != nullptr)
         return;
 
-    SbxObject* pObj = dynamic_cast<SbxObject*>(rVar.GetObject());
-    if( pObj == nullptr )
+    SbxObject* p = dynamic_cast<SbxObject*>(rVar.GetObject());
+    if (p == nullptr)
         return;
-
-    SbxObject* p = pObj;
 
     SbModule* pMod = dynamic_cast<SbModule*>( p  );
     if( pMod != nullptr )
@@ -1335,8 +1337,7 @@ void SbModule::implClearIfVarDependsOnDeletedBasic(SbxVariable& rVar, StarBASIC*
 
     while( (p = p->GetParent()) != nullptr )
     {
-        StarBASIC* pBasic = dynamic_cast<StarBASIC*>( p  );
-        if( pBasic != nullptr && pBasic == pDeletedBasic )
+        if (p == pDeletedBasic)
         {
             rVar.SbxValue::Clear();
             break;
@@ -1377,7 +1378,7 @@ void StarBASIC::ClearAllModuleVars()
     for (const auto& rModule: pModules)
     {
         // Initialise only, if the startcode was already executed
-        if( rModule->pImage && rModule->pImage->bInit && !rModule->isProxyModule() && dynamic_cast<const SbObjModule*>( rModule.get()) == nullptr )
+        if( rModule->pImage && rModule->pImage->bInit && !rModule->isClassModule() && dynamic_cast<const SbObjModule*>( rModule.get()) == nullptr )
             rModule->ClearPrivateVars();
     }
 
@@ -1614,14 +1615,14 @@ bool SbModule::LoadData( SvStream& rStrm, sal_uInt16 nVer )
         // Old version: image away
         if( nVer == 1 )
         {
-            SetSource32( p->aOUSource );
+            SetSource( p->aOUSource );
         }
         else
             pImage = std::move(p);
     }
     else
     {
-        SetSource32( p->aOUSource );
+        SetSource( p->aOUSource );
     }
     return true;
 }

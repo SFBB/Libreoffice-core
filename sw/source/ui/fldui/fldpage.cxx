@@ -234,13 +234,18 @@ void SwFieldPage::InsertField(SwFieldTypesEnum nTypeId, sal_uInt16 nSubType, con
             break;
 
         case SwFieldTypesEnum::Input:
-            {
-                SwInputField* pField = static_cast<SwInputField*>(pTmpField.get());
+           {
+                // This could actually be SwFieldTypesEnum::SetInput,
+                // because of the remapping we do in SwFieldVarPage::Reset().
+                // Which is why we cast to SwSetExpField instead of casting to SwInputField.
+                assert(dynamic_cast<SwSetExpField*>(pTmpField.get()));
+                SwSetExpField* pField = static_cast<SwSetExpField*>(pTmpField.get());
                 // User- or SetField ?
                 if (m_aMgr.GetFieldType(SwFieldIds::User, sPar1) == nullptr &&
-                    !(pField->GetSubType() & SwInputFieldSubType::Text)) // SETEXPFLD
+                    !(pField->GetSubType() & SwGetSetExpType::String)) // SETEXPFLD
                 {
-                    pField->SetPar2(sPar2); // Par2 is prompt for SwInputField
+                    pField->SetPromptText(sPar2);
+                    sPar2 = pField->GetPar2();
                 }
             }
             break;

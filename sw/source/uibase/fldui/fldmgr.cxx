@@ -518,27 +518,15 @@ SwFieldGroup SwFieldMgr::GetGroup(SwFieldTypesEnum nTypeId, sal_uInt16 nSubType)
 //  ACCESS over TYP_...
 SwFieldTypesEnum SwFieldMgr::GetTypeId(sal_uInt16 nPos)
 {
-    OSL_ENSURE(nPos < ::GetPackCount(), "forbidden Pos");
+    assert(nPos < ::GetPackCount() && "forbidden Pos");
     return aSwFields[ nPos ].nTypeId;
 }
 
 const OUString & SwFieldMgr::GetTypeStr(sal_uInt16 nPos)
 {
-    OSL_ENSURE(nPos < ::GetPackCount(), "forbidden TypeId");
+    assert(nPos < ::GetPackCount() && "forbidden TypeId");
 
     SwFieldTypesEnum nFieldWh = aSwFields[ nPos ].nTypeId;
-
-    // special treatment for date/time fields (without var/fix)
-    if( SwFieldTypesEnum::Date == nFieldWh )
-    {
-        static OUString g_aDate( SwResId( STR_DATEFLD ) );
-        return g_aDate;
-    }
-    if( SwFieldTypesEnum::Time == nFieldWh )
-    {
-        static OUString g_aTime( SwResId( STR_TIMEFLD ) );
-        return g_aTime;
-    }
 
     return SwFieldType::GetTypeStr( nFieldWh );
 }
@@ -668,7 +656,7 @@ void SwFieldMgr::GetSubTypes(SwFieldTypesEnum nTypeId, std::vector<OUString>& rT
 //  ACCESS over TYP_...
 sal_uInt16 SwFieldMgr::GetFormatCount(SwFieldTypesEnum nTypeId, bool bHtmlMode) const
 {
-    assert(nTypeId < SwFieldTypesEnum::LAST && "forbidden TypeId");
+    assert(nTypeId <= SwFieldTypesEnum::LAST && "forbidden TypeId");
     {
         const sal_uInt16 nPos = GetPos(nTypeId);
 
@@ -717,7 +705,7 @@ OUString SwFieldMgr::GetFormatStr(const SwField& rField) const
 // determine FormatString to a type
 OUString SwFieldMgr::GetFormatStr(SwFieldTypesEnum nTypeId, sal_uInt32 nFormatId) const
 {
-    assert(nTypeId < SwFieldTypesEnum::LAST && "forbidden TypeId");
+    assert(nTypeId <= SwFieldTypesEnum::LAST && "forbidden TypeId");
     const sal_uInt16 nPos = GetPos(nTypeId);
 
     if (nPos == USHRT_MAX)
@@ -1543,11 +1531,11 @@ bool SwFieldMgr::InsertField(
             return true;
 
         default:
-        {   OSL_ENSURE(false, "wrong field type");
+        {   assert(false && "wrong field type");
             return false;
         }
     }
-    OSL_ENSURE(pField, "field not available");
+    assert(pField && "field not available");
 
     //the auto language flag has to be set prior to the language!
     pField->SetAutomaticLanguage(rData.m_bIsAutomaticLanguage);
@@ -1624,7 +1612,7 @@ void SwFieldMgr::UpdateCurField(sal_uInt32 nFormat,
                             std::unique_ptr<SwField> pTmpField)
 {
     // change format
-    OSL_ENSURE(m_pCurField, "no field at CursorPos");
+    assert(m_pCurField && "no field at CursorPos");
 
     if (!pTmpField)
         pTmpField = m_pCurField->CopyField();
@@ -1846,62 +1834,61 @@ LanguageType SwFieldMgr::GetCurrLanguage() const
 
 void SwFieldType::GetFieldName_()
 {
-    static const TranslateId coFieldNms[] =
+    static constexpr o3tl::enumarray<SwFieldTypesEnum, TranslateId> coFieldNms
     {
-        FLD_DATE_STD,
-        FLD_TIME_STD,
-        STR_FILENAMEFLD,
-        STR_DBNAMEFLD,
-        STR_CHAPTERFLD,
-        STR_PAGENUMBERFLD,
-        STR_DOCSTATFLD,
-        STR_AUTHORFLD,
-        STR_SETFLD,
-        STR_GETFLD,
-        STR_FORMELFLD,
-        STR_HIDDENTXTFLD,
-        STR_SETREFFLD,
-        STR_GETREFFLD,
-        STR_DDEFLD,
-        STR_MACROFLD,
-        STR_INPUTFLD,
-        STR_HIDDENPARAFLD,
-        STR_DOCINFOFLD,
-        STR_DBFLD,
-        STR_USERFLD,
-        STR_POSTITFLD,
-        STR_TEMPLNAMEFLD,
-        STR_SEQFLD,
-        STR_DBNEXTSETFLD,
-        STR_DBNUMSETFLD,
-        STR_DBSETNUMBERFLD,
-        STR_CONDTXTFLD,
-        STR_NEXTPAGEFLD,
-        STR_PREVPAGEFLD,
-        STR_EXTUSERFLD,
-        FLD_DATE_FIX,
-        FLD_TIME_FIX,
-        STR_SETINPUTFLD,
-        STR_USRINPUTFLD,
-        STR_SETREFPAGEFLD,
-        STR_GETREFPAGEFLD,
-        STR_INTERNETFLD,
-        STR_JUMPEDITFLD,
-        STR_SCRIPTFLD,
-        STR_AUTHORITY,
-        STR_COMBINED_CHARS,
-        STR_DROPDOWN,
-        STR_CUSTOM_FIELD,
-        STR_PARAGRAPH_SIGNATURE
+        FLD_DATE_STD, /*Date*/
+        FLD_TIME_STD, /*Time*/
+        STR_FILENAMEFLD, /*Filename*/
+        STR_DBNAMEFLD, /*DatabaseName*/
+        STR_CHAPTERFLD, /*Chapter*/
+        STR_PAGENUMBERFLD, /*PageNumber*/
+        STR_DOCSTATFLD, /*DocumentStatistics*/
+        STR_AUTHORFLD, /*Author*/
+        STR_SETFLD, /*Set*/
+        STR_GETFLD, /*Get*/
+        STR_FORMELFLD, /*Formel*/
+        STR_HIDDENTXTFLD, /*HiddenText*/
+        STR_SETREFFLD, /*SetRef*/
+        STR_GETREFFLD, /*GetRef*/
+        STR_DDEFLD, /*DDE*/
+        STR_MACROFLD, /*Macro*/
+        STR_INPUTFLD, /*Input*/
+        STR_HIDDENPARAFLD, /*HiddenParagraph*/
+        STR_DOCINFOFLD, /*DocumentInfo*/
+        STR_DBFLD, /*Database*/
+        STR_USERFLD, /*User*/
+        STR_POSTITFLD, /*Postit*/
+        STR_TEMPLNAMEFLD, /*TemplateName*/
+        STR_SEQFLD, /*Sequence*/
+        STR_DBNEXTSETFLD, /*DatabaseNextSet*/
+        STR_DBNUMSETFLD, /*DatabaseNumberSet*/
+        STR_DBSETNUMBERFLD, /*DatabaseSetNumber*/
+        STR_CONDTXTFLD, /*ConditionalText*/
+        STR_NEXTPAGEFLD, /*NextPage*/
+        STR_PREVPAGEFLD, /*PreviousPage*/
+        STR_EXTUSERFLD, /*ExtendedUser*/
+        FLD_DATE_FIX, /*FixedDate*/
+        FLD_TIME_FIX, /*FixedTime*/
+        STR_SETINPUTFLD, /*SetInput*/
+        STR_USRINPUTFLD, /*UserInput*/
+        STR_SETREFPAGEFLD, /*SetRefPage*/
+        STR_GETREFPAGEFLD, /*GetRefPage*/
+        STR_INTERNETFLD, /*Internet*/
+        STR_JUMPEDITFLD, /*JumpEdit*/
+        STR_SCRIPTFLD, /*Script*/
+        STR_AUTHORITY, /*Authority*/
+        STR_COMBINED_CHARS, /*CombinedChars*/
+        STR_DROPDOWN, /*Dropdown*/
+        STR_CUSTOM_FIELD, /*Custom*/
+        STR_PARAGRAPH_SIGNATURE /*ParagraphSignature*/
     };
 
     // insert infos for fields
-    SwFieldType::s_pFieldNames = new std::vector<OUString>;
-    SwFieldType::s_pFieldNames->reserve(SAL_N_ELEMENTS(coFieldNms));
-    for (const TranslateId & id : coFieldNms)
+    SwFieldType::s_pFieldNames = new o3tl::enumarray<SwFieldTypesEnum, OUString>;
+    for( SwFieldTypesEnum i : o3tl::enumrange<SwFieldTypesEnum>() )
     {
-        const OUString aTmp(SwResId(id));
-        SwFieldType::s_pFieldNames->push_back(MnemonicGenerator::EraseAllMnemonicChars( aTmp ));
+        const OUString aTmp(SwResId(coFieldNms[i]));
+        (*SwFieldType::s_pFieldNames)[i] = MnemonicGenerator::EraseAllMnemonicChars( aTmp );
     }
 }
 
