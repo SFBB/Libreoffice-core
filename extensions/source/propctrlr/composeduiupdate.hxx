@@ -21,9 +21,8 @@
 
 #include <com/sun/star/inspection/XObjectInspectorUI.hpp>
 #include <com/sun/star/inspection/XPropertyHandler.hpp>
-
+#include <o3tl/deleter.hxx>
 #include <memory>
-
 
 namespace pcr
 {
@@ -195,9 +194,9 @@ namespace pcr
         {
             m_rUIUpdate.suspendAutoFire();
         }
-        ~ComposedUIAutoFireGuard() COVERITY_NOEXCEPT_FALSE
+        ~ComposedUIAutoFireGuard()
         {
-            m_rUIUpdate.resumeAutoFire();
+            suppress_fun_call_w_exception(m_rUIUpdate.resumeAutoFire());
         }
     };
 

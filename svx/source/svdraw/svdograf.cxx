@@ -35,6 +35,7 @@
 #include <svx/svdhdl.hxx>
 #include <svx/svdmodel.hxx>
 #include <svx/svdpage.hxx>
+#include <svx/svdpagv.hxx>
 #include <svx/svdview.hxx>
 #include <svx/svdograf.hxx>
 #include <svx/svdogrp.hxx>
@@ -59,8 +60,7 @@
 #include <comphelper/processfactory.hxx>
 #include <com/sun/star/drawing/XDrawPagesSupplier.hpp>
 #include <com/sun/star/frame/DispatchHelper.hpp>
-#include <com/sun/star/frame/XDesktop2.hpp>
-#include <com/sun/star/frame/Desktop.hpp>
+#include <com/sun/star/frame/XLoadable.hpp>
 #include <vcl/filter/PDFiumLibrary.hxx>
 #include <svdpdf.hxx>
 #include <svx/unoapi.hxx>
@@ -379,18 +379,15 @@ css::uno::Reference<css::lang::XComponent> SdrGrafObj::GetReplacementGraphicMode
 
     // Create an empty Draw component.
     uno::Reference<uno::XComponentContext> xContext = ::comphelper::getProcessComponentContext();
-    uno::Reference<frame::XDesktop2> xDesktop = css::frame::Desktop::create(xContext);
-    if (!xDesktop)
-        return nullptr;
-    uno::Reference<lang::XComponent> xComponent = xDesktop->loadComponentFromURL(u"private:factory/sdraw"_ustr, u"_default"_ustr, 0, {});
-    uno::Reference<frame::XModel> xModel(xComponent, uno::UNO_QUERY);
+    uno::Reference<frame::XModel> xModel(xContext->getServiceManager()->createInstanceWithContext(u"com.sun.star.drawing.DrawingDocument"_ustr, xContext),
+        uno::UNO_QUERY);
     if (!xModel)
         return nullptr;
+    uno::Reference<css::frame::XLoadable> xModelLoad(xModel, uno::UNO_QUERY);
+    if (xModelLoad)
+        xModelLoad->initNew();
     uno::Reference<frame::XController> xController(xModel->getCurrentController());
-    SfxViewShell* pViewShell = SfxViewShell::Get(xController);
-    if (!pViewShell)
-        return nullptr;
-    uno::Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier(xComponent, uno::UNO_QUERY);
+    uno::Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier(xModel, uno::UNO_QUERY);
     if (!xDrawPagesSupplier)
         return nullptr;
     uno::Reference<drawing::XDrawPages> xDrawPages = xDrawPagesSupplier->getDrawPages();
@@ -411,14 +408,25 @@ css::uno::Reference<css::lang::XComponent> SdrGrafObj::GetReplacementGraphicMode
         aFilter.DoImport(*pSdrPage, 0, rGraphic.getPageNumber(), nullptr);
     }
 
-    if (SdrView* pView = pViewShell->GetDrawView())
+    // Group shapes together, including invisible objects
+    size_t nSrcObjCount = pSdrPage->GetObjCount();
+    if (!nSrcObjCount)
+        return xModel;
+
+    rtl::Reference<SdrObject> xGrp(new SdrObjGroup(rSdrModel));
+    SdrObjList* pDstList = xGrp->GetSubList();
+
+    while (nSrcObjCount > 0)
     {
-        // Group shapes together
-        pView->MarkAllObj();
-        pView->GroupMarked();
+        --nSrcObjCount;
+        rtl::Reference<SdrObject> xObj(pSdrPage->GetObj(nSrcObjCount));
+        pSdrPage->RemoveObject(nSrcObjCount);
+        pDstList->InsertObject(xObj.get(), 0);
     }
 
-    return xComponent;
+    pSdrPage->InsertObject(xGrp.get(), 0);
+
+    return xModel;
 }
 
 void SdrGrafObj::NbcSetGraphic(const Graphic& rGraphic)

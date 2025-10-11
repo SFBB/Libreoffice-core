@@ -338,29 +338,22 @@ bool DrawingML::GetPropertyAndState( const Reference< XPropertySet >& rXProperty
     return false;
 }
 
+bool DrawingML::GetDirectProperty(
+    const css::uno::Reference<css::beans::XPropertySet>& rXPropSet,
+    const css::uno::Reference<css::beans::XPropertyState>& rXPropState, const OUString& aName)
+{
+    PropertyState state;
+    return GetPropertyAndState(rXPropSet, rXPropState, aName, state)
+           && state == beans::PropertyState_DIRECT_VALUE;
+}
+
 namespace
 {
 /// Gets hexa value of color on string format.
 OString getColorStr(const ::Color nColor)
 {
     // Transparency is a separate element.
-    OString sColor = OString::number(sal_uInt32(nColor) & 0x00FFFFFF, 16);
-    if (sColor.getLength() < 6)
-    {
-        OStringBuffer sBuf("0");
-        int remains = 5 - sColor.getLength();
-
-        while (remains > 0)
-        {
-            sBuf.append("0");
-            remains--;
-        }
-
-        sBuf.append(sColor);
-
-        sColor = sBuf.toString();
-    }
-    return sColor;
+    return I32SHEX(sal_uInt32(nColor) & 0x00FFFFFF);
 }
 }
 
@@ -2489,7 +2482,6 @@ void DrawingML::WriteRunProperties( const Reference< XPropertySet >& rRun, bool 
     Reference< XPropertySet > rXPropSet = rRun;
     Reference< XPropertyState > rXPropState( rRun, UNO_QUERY );
     OUString usLanguage;
-    PropertyState eState;
     bool bComplex = ( nScriptType ==  css::i18n::ScriptType::COMPLEX );
     const char* bold = "0";
     const char* italic = nullptr;
@@ -2544,9 +2536,7 @@ void DrawingML::WriteRunProperties( const Reference< XPropertySet >& rRun, bool 
                 break;
         }
 
-    if ((bCheckDirect && GetPropertyAndState(rXPropSet, rXPropState, u"CharUnderline"_ustr, eState)
-         && eState == beans::PropertyState_DIRECT_VALUE)
-        || GetProperty(rXPropSet, u"CharUnderline"_ustr))
+    if (GetProperty(rXPropSet, u"CharUnderline"_ustr))
     {
         switch ( *o3tl::doAccess<sal_Int16>(mAny) )
         {
@@ -2604,9 +2594,7 @@ void DrawingML::WriteRunProperties( const Reference< XPropertySet >& rRun, bool 
         }
     }
 
-    if ((bCheckDirect && GetPropertyAndState(rXPropSet, rXPropState, u"CharStrikeout"_ustr, eState)
-         && eState == beans::PropertyState_DIRECT_VALUE)
-        || GetProperty(rXPropSet, u"CharStrikeout"_ustr))
+    if (GetProperty(rXPropSet, u"CharStrikeout"_ustr))
     {
         switch ( *o3tl::doAccess<sal_Int16>(mAny) )
         {
@@ -2652,12 +2640,10 @@ void DrawingML::WriteRunProperties( const Reference< XPropertySet >& rRun, bool 
             usLanguage = aLanguageTag.getBcp47MS();
     }
 
-    if (bCheckDirect && GetPropertyAndState(rXPropSet, rXPropState, u"CharEscapement"_ustr, eState)
-        && eState == beans::PropertyState_DIRECT_VALUE)
+    if (bCheckDirect && GetDirectProperty(rXPropSet, rXPropState, u"CharEscapement"_ustr))
         mAny >>= nCharEscapement;
 
-    if (bCheckDirect && GetPropertyAndState(rXPropSet, rXPropState, u"CharEscapementHeight"_ustr, eState)
-        && eState == beans::PropertyState_DIRECT_VALUE)
+    if (bCheckDirect && GetDirectProperty(rXPropSet, rXPropState, u"CharEscapementHeight"_ustr))
         mAny >>= nCharEscapementHeight;
 
     if (DFLT_ESC_AUTO_SUPER == nCharEscapement)
@@ -2718,9 +2704,7 @@ void DrawingML::WriteRunProperties( const Reference< XPropertySet >& rRun, bool 
     else
     {
         // mso doesn't like text color to be placed after typeface
-        if ((bCheckDirect && GetPropertyAndState(rXPropSet, rXPropState, u"CharColor"_ustr, eState)
-            && eState == beans::PropertyState_DIRECT_VALUE)
-            || GetProperty(rXPropSet, u"CharColor"_ustr))
+        if (GetProperty(rXPropSet, u"CharColor"_ustr))
         {
             ::Color color( ColorTransparency, *o3tl::doAccess<sal_uInt32>(mAny) );
             SAL_INFO("oox.shape", "run color: " << sal_uInt32(color) << " auto: " << sal_uInt32(COL_AUTO));
@@ -2812,10 +2796,7 @@ void DrawingML::WriteRunProperties( const Reference< XPropertySet >& rRun, bool 
     }
 
     if (underline
-        && ((bCheckDirect
-             && GetPropertyAndState(rXPropSet, rXPropState, u"CharUnderlineColor"_ustr, eState)
-             && eState == beans::PropertyState_DIRECT_VALUE)
-            || GetProperty(rXPropSet, u"CharUnderlineColor"_ustr)))
+        && (GetProperty(rXPropSet, u"CharUnderlineColor"_ustr)))
     {
         ::Color color(ColorTransparency, *o3tl::doAccess<sal_uInt32>(mAny));
         // if color is automatic, then we shouldn't write information about color but to take color from character
@@ -2852,12 +2833,9 @@ void DrawingML::WriteRunProperties( const Reference< XPropertySet >& rRun, bool 
                                XML_charset, charset );
     }
 
-    if (bCheckDirect && ((bComplex
-         && (GetPropertyAndState(rXPropSet, rXPropState, u"CharFontNameComplex"_ustr, eState)
-             && eState == beans::PropertyState_DIRECT_VALUE))
-        || (!bComplex
-            && (GetPropertyAndState(rXPropSet, rXPropState, u"CharFontNameAsian"_ustr, eState)
-                && eState == beans::PropertyState_DIRECT_VALUE))))
+    if (bCheckDirect
+        && GetDirectProperty(rXPropSet, rXPropState,
+                             bComplex ? u"CharFontNameComplex"_ustr : u"CharFontNameAsian"_ustr))
     {
         const char* const pitch = nullptr;
         const char* const charset = nullptr;

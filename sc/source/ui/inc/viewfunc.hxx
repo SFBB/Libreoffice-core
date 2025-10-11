@@ -67,6 +67,18 @@ struct ScDataFormFragment
     ScDataFormFragment(weld::Grid* pGrid, int nLine);
 };
 
+namespace sc
+{
+
+/** Direction of searching for the sheet view to switch to relative to the current sheet view. */
+enum class SwitchSheetViewDirection
+{
+    Next,
+    Previous
+};
+
+}
+
 class ScViewFunc : public ScTabView
 {
 private:
@@ -354,9 +366,12 @@ public:
     void            DoAutoAttributes( SCCOL nCol, SCROW nRow, SCTAB nTab,
                                         bool bAttrChanged );
 
+    // SheetView methods
     void MakeNewSheetView();
     void RemoveCurrentSheetView();
-    void SwitchSheetView();
+    void SwitchSheetView(sc::SwitchSheetViewDirection eDirection);
+    void ExitSheetView(); // Switch to default view
+    void SelectSheetView(sc::SheetViewID nSelectSheetViewID);
 
                                                 // Internal helper functions
 protected:
@@ -366,6 +381,9 @@ protected:
                                      bool                 bColor );
 
 private:
+    // SheetView Private
+    void SheetViewChanged();
+
     void            PasteRTF( SCCOL nCol, SCROW nStartRow,
                                 const css::uno::Reference< css::datatransfer::XTransferable >& rxTransferable );
 

@@ -26,11 +26,14 @@ class SC_DLLPUBLIC SheetViewManager
 {
 private:
     std::vector<std::shared_ptr<SheetView>> maViews;
+    sal_Int32 maNameCounter = 0;
 
     bool isValidSheetViewID(SheetViewID nID) const
     {
         return nID >= 0 && o3tl::make_unsigned(nID) < maViews.size();
     }
+
+    OUString generateName();
 
 public:
     SheetViewManager();
@@ -52,6 +55,9 @@ public:
 
     /** Calculate the next sheet view ID from the current ID. */
     SheetViewID getNextSheetView(SheetViewID nID);
+
+    /** Calculate the previous sheet view ID from the current ID. */
+    SheetViewID getPreviousSheetView(SheetViewID nID);
 
     void unsyncAllSheetViews();
 };
