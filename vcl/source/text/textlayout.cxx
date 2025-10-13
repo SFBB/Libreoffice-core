@@ -62,7 +62,7 @@ void ImplMultiTextLineInfo::Clear()
 
 namespace vcl
 {
-    TextLayoutCommon::~TextLayoutCommon() COVERITY_NOEXCEPT_FALSE
+    TextLayoutCommon::~TextLayoutCommon()
     {}
 
     OUString TextLayoutCommon::GetCenterEllipsisString(std::u16string_view rOrigStr, sal_Int32 nIndex, tools::Long nMaxWidth)
@@ -520,6 +520,8 @@ namespace vcl
 
     private:
 
+        void ImplDestroy();
+
         OutputDevice&   m_rTargetDevice;
         OutputDevice&   m_rReferenceDevice;
         const bool      m_bRTLEnabled;
@@ -570,10 +572,15 @@ namespace vcl
         m_rReferenceDevice.SetFont( aRefFont );
     }
 
-    ReferenceDeviceTextLayout::~ReferenceDeviceTextLayout()
+    void ReferenceDeviceTextLayout::ImplDestroy()
     {
         m_rReferenceDevice.Pop();
         m_rTargetDevice.Pop();
+    }
+
+    ReferenceDeviceTextLayout::~ReferenceDeviceTextLayout()
+    {
+        suppress_fun_call_w_exception(ImplDestroy());
     }
 
     namespace

@@ -35,6 +35,8 @@ class JSDialogSender
 {
     std::unique_ptr<JSDialogNotifyIdle> mpIdleNotify;
 
+    void ImplDestroy();
+
 protected:
     bool m_bCanClose; // specifies if can send a close message
 
@@ -50,7 +52,7 @@ public:
         initializeSender(aNotifierWindow, aContentWindow, sTypeOfJSON);
     }
 
-    virtual ~JSDialogSender() COVERITY_NOEXCEPT_FALSE;
+    virtual ~JSDialogSender();
 
     void sendFullUpdate(bool bForce = false);
     void sendClose();
