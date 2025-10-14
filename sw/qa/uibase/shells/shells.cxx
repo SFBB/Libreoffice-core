@@ -9,6 +9,7 @@
 
 #include <swmodeltestbase.hxx>
 
+#include <com/sun/star/frame/Desktop.hpp>
 #include <com/sun/star/frame/XStorable.hpp>
 #include <com/sun/star/packages/zip/ZipFileAccess.hpp>
 #include <com/sun/star/text/BibliographyDataType.hpp>
@@ -34,6 +35,7 @@
 #include <osl/thread.hxx>
 
 #include <IDocumentContentOperations.hxx>
+#include <IDocumentRedlineAccess.hxx>
 #include <cmdid.h>
 #include <fmtanchr.hxx>
 #include <view.hxx>
@@ -589,7 +591,7 @@ CPPUNIT_TEST_FIXTURE(SwUibaseShellsTest, testInsertFieldmarkReadonly)
 CPPUNIT_TEST_FIXTURE(SwUibaseShellsTest, testDocumentStructureTransformChart)
 {
     createSwDoc("docStructureChartExampleOriginal.odt");
-    OString aJson = R"json(
+    static constexpr OUString aJson = uR"json(
 {
     "Transforms": [
         {"Charts.ByEmbedIndex.0": [
@@ -658,12 +660,11 @@ CPPUNIT_TEST_FIXTURE(SwUibaseShellsTest, testDocumentStructureTransformChart)
         }}
     ]
 }
-)json"_ostr;
+)json"_ustr;
 
     //transform
     uno::Sequence<css::beans::PropertyValue> aArgs = {
-        comphelper::makePropertyValue(u"DataJson"_ustr,
-                                      uno::Any(OStringToOUString(aJson, RTL_TEXTENCODING_UTF8))),
+        comphelper::makePropertyValue(u"DataJson"_ustr, aJson),
     };
     dispatchCommand(mxComponent, u".uno:TransformDocumentStructure"_ustr, aArgs);
 
@@ -778,7 +779,7 @@ CPPUNIT_TEST_FIXTURE(SwUibaseShellsTest, testDocumentStructureExtractChart)
 CPPUNIT_TEST_FIXTURE(SwUibaseShellsTest, testDocumentStructureDocProperties)
 {
     createSwDoc("docStructureChartExampleOriginal.odt");
-    OString aJson = R"json(
+    static constexpr OUString aJson = uR"json(
 {
     "Transforms": [
         { "DocumentProperties": {
@@ -850,11 +851,10 @@ CPPUNIT_TEST_FIXTURE(SwUibaseShellsTest, testDocumentStructureDocProperties)
         } }
     ]
 }
-)json"_ostr;
+)json"_ustr;
 
     uno::Sequence<css::beans::PropertyValue> aArgs = {
-        comphelper::makePropertyValue(u"DataJson"_ustr,
-                                      uno::Any(OStringToOUString(aJson, RTL_TEXTENCODING_UTF8))),
+        comphelper::makePropertyValue(u"DataJson"_ustr, aJson),
     };
     dispatchCommand(mxComponent, u".uno:TransformDocumentStructure"_ustr, aArgs);
 
@@ -1121,6 +1121,43 @@ CPPUNIT_TEST_FIXTURE(SwUibaseShellsTest, testDocumentStructureExtractRedlines_te
     }
 
     CPPUNIT_ASSERT(bool(it == docStructure.end()));
+}
+
+CPPUNIT_TEST_FIXTURE(SwUibaseShellsTest, testDocumentStructureUnoCommand)
+{
+    // 1. Create a document;
+    // 2. Check that it's not in change tracking mode;
+    // 3. Perform a "TransformDocumentStructure" with a "UnoCommand" of ".uno:TrackChanges";
+    // 4. Check that it's in change tracking mode now.
+
+    createSwDoc();
+
+    // Let comphelper::dispatchCommand (in SfxLokHelper::dispatchUnoCommand) find the frame
+    auto xDesktop = frame::Desktop::create(comphelper::getProcessComponentContext());
+    auto pFrame = getSwDocShell()->GetFrame();
+    CPPUNIT_ASSERT(pFrame);
+    xDesktop->setActiveFrame(pFrame->GetFrame().GetFrameInterface());
+
+    CPPUNIT_ASSERT(!getSwDoc()->getIDocumentRedlineAccess().IsRedlineOn());
+
+    static constexpr OUString aJson = uR"json(
+{
+    "UnoCommand": {
+        "name": ".uno:TrackChanges",
+        "arguments": {
+            "TrackChanges": {
+                "type": "boolean",
+                "value": "true"
+            }
+        }
+    }
+}
+)json"_ustr;
+
+    dispatchCommand(mxComponent, u".uno:TransformDocumentStructure"_ustr,
+                    { comphelper::makePropertyValue(u"DataJson"_ustr, aJson) });
+
+    CPPUNIT_ASSERT(getSwDoc()->getIDocumentRedlineAccess().IsRedlineOn());
 }
 
 CPPUNIT_TEST_FIXTURE(SwUibaseShellsTest, testUpdateRefmarks)
