@@ -105,13 +105,15 @@ void clearDir( const OUString& path )
         }
     }
 }
+}
 
 // Returns a URL for a file where to store contents of a given temporary font.
 // The file may or not may not exist yet, and will be cleaned up automatically as appropriate.
 // Use activateFonts() to actually enable usage of the font.
-OUString fileUrlForTemporaryFont(std::u16string_view name)
+// static
+OUString EmbeddedFontsManager::getFileUrlForTemporaryFont(std::u16string_view name, std::u16string_view suffix)
 {
-    OUString filename = OUString::Concat(name) + ".ttf"; // TODO is it always ttf?
+    OUString filename = OUString::Concat(name) + suffix;
 
     if (!comphelper::OStorageHelper::IsValidZipEntryFileName(filename, false))
     {
@@ -127,6 +129,8 @@ OUString fileUrlForTemporaryFont(std::u16string_view name)
                               RTL_TEXTENCODING_UTF8);
 }
 
+namespace
+{
 bool writeFontBytesToFile(osl::File& file, const void* data, sal_uInt64 size)
 {
     auto bytes = static_cast<const char*>(data);
@@ -164,7 +168,7 @@ bool writeFontBytesToFile(osl::File& file, const void* data, sal_uInt64 size)
 // @param name name of the font file
 OUString writeFontBytesToFile(const std::vector<char>& bytes, std::u16string_view name)
 {
-    OUString url = fileUrlForTemporaryFont(name);
+    OUString url = EmbeddedFontsManager::getFileUrlForTemporaryFont(name, u".ttf");
     std::optional<osl::File> file(url);
     auto rc = file->open(osl_File_OpenFlag_Create | osl_File_OpenFlag_Write);
 
@@ -191,7 +195,7 @@ OUString writeFontBytesToFile(const std::vector<char>& bytes, std::u16string_vie
                 }
             }
         }
-        url = fileUrlForTemporaryFont(Concat2View(name + OUString::number(counter++)));
+        url = EmbeddedFontsManager::getFileUrlForTemporaryFont(Concat2View(name + OUString::number(counter++)), u".ttf");
         file.emplace(url);
         rc = file->open(osl_File_OpenFlag_Create | osl_File_OpenFlag_Write);
     }
@@ -367,6 +371,12 @@ bool EmbeddedFontsManager::addEmbeddedFont( const uno::Reference< io::XInputStre
     OUString fileUrl = writeFontBytesToFile(fontData, Concat2View(fontName + extra));
     if (fileUrl.isEmpty())
         return false;
+
+    return addEmbeddedFont(fileUrl, fontName, sufficientFontRights);
+}
+
+bool EmbeddedFontsManager::addEmbeddedFont( const OUString& fileUrl, const OUString& fontName, bool sufficientFontRights )
+{
 
     // Register  it / increase its refcount in s_EmbeddedFonts
     {

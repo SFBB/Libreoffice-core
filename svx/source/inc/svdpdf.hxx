@@ -23,7 +23,9 @@
 #include <sal/config.h>
 
 #include <memory>
+#include <map>
 
+#include <config_features.h>
 #include <tools/fract.hxx>
 #include <vcl/virdev.hxx>
 #include <vcl/graph.hxx>
@@ -42,10 +44,57 @@ class SdrModel;
 class SdrObject;
 class SvdProgressInfo;
 
+// Fonts are typically saved in pdf files as multiple subsets.
+// This describes a single font subset:
+struct FontSubSet
+{
+    // The location of a file containing the dumped info about the font
+    OUString cidFontInfoUrl;
+    // The location of a 'mergefile' derived from glyphToChars/charsToGlyph
+    // that indicates what positions the glyphs of this font should go in
+    // a final font merged from multiple subsets
+    OUString toMergedMapUrl;
+    // The location of the extracted font, converted to a cid font.
+    OUString pfaCIDUrl;
+    // What glyphs are in the subset and what characters those represent.
+    std::map<sal_Int32, OString> glyphToChars;
+    std::map<OString, sal_Int32> charsToGlyph;
+    int nGlyphCount;
+};
+
+// The collection of all font subsets in the document.
+struct SubSetInfo
+{
+    std::vector<FontSubSet> aComponents;
+};
+
+// Describes a final, possibly merged from multiple input fontsubsets,
+// font of a given name and fontweight available as fontfile
+struct EmbeddedFontInfo
+{
+    OUString sFontName;
+    OUString sFontFile;
+    FontWeight eFontWeight;
+};
+
+// A description of such a final font as LibreOffice sees it
+// e.g. "Name SemiBold"
+struct OfficeFontInfo
+{
+    OUString sFontName;
+    FontWeight eFontWeight;
+};
+
 // Helper Class to import PDF
 class ImpSdrPdfImport final
 {
     std::vector<rtl::Reference<SdrObject>> maTmpList;
+
+    std::map<vcl::pdf::PDFiumFont, OfficeFontInfo> maImportedFonts;
+    std::map<OUString, SubSetInfo> maDifferentSubsetsForFont;
+    // map of PostScriptName->Merged Font File for that font
+    std::map<OUString, EmbeddedFontInfo> maEmbeddedFonts;
+
     ScopedVclPtr<VirtualDevice> mpVD;
     tools::Rectangle maScaleRect;
     size_t mnMapScalingOfs; // from here on, not edited with MapScaling
@@ -120,6 +169,17 @@ class ImpSdrPdfImport final
     bool CheckLastPolyLineAndFillMerge(const basegfx::B2DPolyPolygon& rPolyPolygon);
 
     void DoObjects(SvdProgressInfo* pProgrInfo, sal_uInt32* pActionsToReport, int nPageIndex);
+
+#if HAVE_FEATURE_PDFIMPORT
+
+    void CollectFonts();
+
+    static EmbeddedFontInfo convertToOTF(SubSetInfo& rSubSetInfo, const OUString& fileUrl,
+                                         const OUString& fontName, const OUString& baseFontName,
+                                         std::u16string_view fontFileName,
+                                         const std::vector<uint8_t>& toUnicodeData);
+
+#endif
 
     // Copy assignment is forbidden and not implemented.
     ImpSdrPdfImport(const ImpSdrPdfImport&) = delete;

@@ -131,6 +131,8 @@ def ignoreRemoval(include, toAdd, absFileName, moduleRules, noexclude):
         return True
     if include == "libetonyek/libetonyek.h" and "libetonyek/EtonyekDocument.h" in toAdd:
         return True
+    if include == "box2d/box2d.h" and "box2d/b2_world.h" in toAdd:
+        return True
 
     noRemove = (
         # <https://www.openoffice.org/tools/CodingGuidelines.sxw> insists on not
@@ -493,7 +495,7 @@ def isInUnoIncludeFile(path):
             or path.startswith("include/uno/")
 
 
-def tidy(compileCommands, paths, dontstop, noexclude, checknamespaces, finderrors, removefwdd):
+def tidy(compileCommands, paths, dontstop, noexclude, checknamespaces, finderrors, removefwdd, debug):
     return_code = 0
 
     try:
@@ -552,6 +554,11 @@ def tidy(compileCommands, paths, dontstop, noexclude, checknamespaces, finderror
             # but those and our CI are not reliable enough yet for use
             else:
                 invocation = "include-what-you-use -Xiwyu --cxx17ns -Xiwyu --max_line_length=200 " + args
+
+            if debug:
+                print(invocation)
+                sys.exit(0)
+
             task_queue.put((invocation, moduleRules))
 
         task_queue.join()
@@ -583,6 +590,9 @@ def main(argv):
                          'in a subsequent normal run')
     parser.add_argument('--finderrors', action='store_true',
                    help='Report IWYU failures when it returns with -1 error code. '
+                        'Use only for debugging this script!')
+    parser.add_argument('-d', action='store_true',
+                   help='Print the full IWYU invocation of a given file. '
                         'Use only for debugging this script!')
     parser.add_argument('--fwdecl', action='store_true',
                     help='Suggest removal of obsolete forward declarations')
@@ -663,16 +673,16 @@ def main(argv):
                                 classname=c.group(1)
                                 p = subprocess.run(["git", "grep", "-q", "-e", "#include <"+exclusion, "-e", exclusion, "-e", classname, file])
                                 if p.returncode == 1 :
-                                    print("WARNING:", exclusion, "is not present anymore in", file)
+                                    print("WARNING:", file, ":", exclusion, "line is not present anymore, remove it from:", rulePath)
                             else:
                                 p = subprocess.run(["git", "grep", "-q", "-e", "#include <"+exclusion, "-e", exclusion, file])
                                 if p.returncode == 1 :
-                                    print("WARNING:", exclusion, "is not present anymore in", file)
+                                    print("WARNING:", file, ":", exclusion, "line is not present anymore, remove it from:", rulePath)
                     except TypeError:
                         print("WARNING: no exclusions are defined for:", file)
         sys.exit(0)
 
-    tidy(compileCommands, paths=list_of_files, dontstop=vars(args)["continue"], noexclude=args.noexclude, checknamespaces=args.ns, finderrors=args.finderrors, removefwdd=args.fwdecl)
+    tidy(compileCommands, paths=list_of_files, dontstop=vars(args)["continue"], noexclude=args.noexclude, checknamespaces=args.ns, finderrors=args.finderrors, removefwdd=args.fwdecl, debug=args.d)
 
 if __name__ == '__main__':
     main(sys.argv[1:])

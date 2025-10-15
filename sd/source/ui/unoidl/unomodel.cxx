@@ -81,10 +81,12 @@
 #include <notifydocumentevent.hxx>
 #include <tpaction.hxx>
 #include <unomodel.hxx>
+#include <sdhtmlfilter.hxx>
 #include "unopool.hxx"
 #include <sfx2/lokhelper.hxx>
 #include <sfx2/dispatch.hxx>
 #include <vcl/svapp.hxx>
+#include <Outliner.hxx>
 #include <LibreOfficeKit/LibreOfficeKitEnums.h>
 
 #include <editeng/UnoForbiddenCharsTable.hxx>
@@ -4631,6 +4633,8 @@ OString SdXImpressDocument::getPresentationInfo() const
             SdGenericDrawPage* pSlide(xDrawPages->getDrawPageByIndex(i));
             bool bIsVisible = true; // default visible
             pSlide->getPropertyValue("Visible") >>= bIsVisible;
+
+            SdPage* pPage = SdPage::getImplementation(pSlide);
             if (!bIsVisible)
             {
                 auto aSlideNode = aJsonWriter.startStruct();
@@ -4638,20 +4642,30 @@ OString SdXImpressDocument::getPresentationInfo() const
                 aJsonWriter.put("hash", sSlideHash);
                 aJsonWriter.put("index", i);
                 aJsonWriter.put("hidden", true);
+                aJsonWriter.put("uniqueID", pPage->GetUniqueID());
             }
             else
             {
-                SdPage* pPage = SdPage::getImplementation(pSlide);
-
                 auto aSlideNode = aJsonWriter.startStruct();
                 std::string sSlideHash = GetInterfaceHash(cppu::getXWeak(pSlide));
                 aJsonWriter.put("hash", sSlideHash);
                 aJsonWriter.put("index", i);
+                aJsonWriter.put("uniqueID", pPage->GetUniqueID());
 
                 if (pPage)
                 {
                     auto aName = SdDrawPage::getPageApiNameFromUiName(pPage->GetName());
                     aJsonWriter.put("name", aName);
+                    {
+                        OUStringBuffer aHtml;
+                        SdrOutliner* pOutliner = mpDoc->GetInternalOutliner();
+                        if (pOutliner)
+                        {
+                            SdHTMLFilter::ExportPage(pOutliner, pPage, aHtml);
+                            aJsonWriter.put("ally", aHtml.makeStringAndClear());
+                            pOutliner->Clear();
+                        }
+                    }
                 }
 
                 bool bIsDrawPageEmpty = pSlide->getCount() == 0;

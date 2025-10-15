@@ -13,6 +13,7 @@
 
 #include <com/sun/star/uno/Reference.hxx>
 
+#include <config_features.h>
 #include <rtl/ustring.hxx>
 #include <tools/fontenum.hxx>
 #include <tools/long.hxx>
@@ -61,6 +62,11 @@ public:
         bool bSubsetted = false);
 
     /**
+      fileUrl needs to be created via getFileUrlForTemporaryFont
+    */
+    bool addEmbeddedFont( const OUString& fileUrl, const OUString& fontName, bool sufficientFontRights );
+
+    /**
       Adds the passed fonts to the list of known fonts. The fonts are used only until application
       exit.
 
@@ -78,7 +84,7 @@ public:
     static bool analyzeTTF(const void* data, tools::Long size, FontWeight& weight);
 
     /**
-      Removes all temporary fonts in the path used by fileUrlForTemporaryFont().
+      Removes all temporary fonts in the path used by getFileUrlForTemporaryFont().
       @internal
     */
     static void clearTemporaryFontFiles();
@@ -109,6 +115,23 @@ public:
 
     EmbeddedFontsManager(const css::uno::Reference<css::frame::XModel>& xModel);
     ~EmbeddedFontsManager();
+
+    static OUString getFileUrlForTemporaryFont(std::u16string_view name, std::u16string_view suffix);
+
+#if HAVE_FEATURE_PDFIMPORT
+    // write text dump
+    static bool tx_dump(const OUString& srcFontUrl, const OUString& destFileUrl);
+    // write Type 1 font
+    static bool tx_t1(const OUString& srcFontUrl, const OUString& destFontUrl);
+    // merge fonts together (can also be used to convert a name keyed font to a cid keyed font)
+    // each font in fonts is glyphaliasfile, mergefontfile
+    static bool mergefonts(const OUString& cidFontInfoUrl, const OUString& destFileUrl,
+                           const std::vector<std::pair<OUString, OUString>>& fonts);
+    // write OTF font, features is optional
+    static bool makeotf(const OUString& srcFontUrl, const OUString& destFileUrl,
+                        const OUString& fontMenuNameDBUrl, const OUString& charMapUrl,
+                        const OUString& featuresUrl);
+#endif
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
