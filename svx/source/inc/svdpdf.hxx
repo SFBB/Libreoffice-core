@@ -59,6 +59,8 @@ struct FontSubSet
     // What glyphs are in the subset and what characters those represent.
     std::map<sal_Int32, OString> glyphToChars;
     std::map<OString, sal_Int32> charsToGlyph;
+    // What glyphs ranges are in the subset
+    std::map<sal_Int32, Range> glyphRangesToChars;
     int nGlyphCount;
 };
 
@@ -158,7 +160,8 @@ class ImpSdrPdfImport final
     void ImportText(std::unique_ptr<vcl::pdf::PDFiumPageObject> const& pPageObject,
                     std::unique_ptr<vcl::pdf::PDFiumTextPage> const& pTextPage,
                     int nPageObjectIndex);
-    void InsertTextObject(const Point& rPos, const Size& rSize, const OUString& rStr);
+    void InsertTextObject(const Point& rPos, const Size& rSize, const OUString& rStr,
+                          bool bInvisible);
 
     void SetupPageScale(const double dPageWidth, const double dPageHeight);
     void SetAttributes(SdrObject* pObj, bool bForceTextAttr = false);

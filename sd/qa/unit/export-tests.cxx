@@ -1111,6 +1111,81 @@ CPPUNIT_TEST_FIXTURE(SdExportTest, testExplodedPdfFont)
 #endif
 }
 
+CPPUNIT_TEST_FIXTURE(SdExportTest, testExplodedPdfHindi)
+{
+    auto pPdfium = vcl::pdf::PDFiumLibrary::get();
+    if (!pPdfium)
+        return;
+    UsePdfium aGuard;
+
+    loadFromFile(u"pdf/BasicHindi.pdf");
+
+    setFilterOptions("{\"DecomposePDF\":{\"type\":\"boolean\",\"value\":\"true\"}}");
+    setImportFilterName(u"OpenDocument Drawing Flat XML"_ustr);
+    save(u"OpenDocument Drawing Flat XML"_ustr);
+
+    xmlDocUniquePtr pXmlDoc = parseExportedFile();
+
+    // Check that the English text in here is correct at least
+
+    // ensure the expected content
+    assertXPathContent(pXmlDoc,
+                       "/office:document/office:body/office:drawing/draw:page/draw:g/draw:frame[3]/"
+                       "draw:text-box/text:p[@text:style-name='P4'][1]",
+                       u"FIRST-YEAR HINDI COURSE");
+
+    // ensure the expected font name
+    assertXPath(pXmlDoc, "/office:document/office:automatic-styles/style:style[@style:name='P4']/"
+                         "style:text-properties[@fo:font-family='AcademyEngravedLetPlain']");
+}
+
+CPPUNIT_TEST_FIXTURE(SdExportTest, testExplodedPdfGrayscaleImageUnderInvisibleTest)
+{
+    auto pPdfium = vcl::pdf::PDFiumLibrary::get();
+    if (!pPdfium)
+        return;
+    UsePdfium aGuard;
+
+    loadFromFile(u"pdf/GrayscaleImageUnderInvisibleTest.pdf");
+
+    setFilterOptions("{\"DecomposePDF\":{\"type\":\"boolean\",\"value\":\"true\"}}");
+    setImportFilterName(u"OpenDocument Drawing Flat XML"_ustr);
+    saveAndReload(u"OpenDocument Drawing Flat XML"_ustr);
+
+    uno::Reference<drawing::XShapes> xGroupShape(getShapeFromPage(0, 0), uno::UNO_QUERY);
+    CPPUNIT_ASSERT(xGroupShape.is());
+
+    // first shape in the group is the picture
+    uno::Reference<beans::XPropertySet> xShape(xGroupShape->getByIndex(0), uno::UNO_QUERY);
+    CPPUNIT_ASSERT(xShape.is());
+
+    uno::Reference<graphic::XGraphic> xGraphic;
+    xShape->getPropertyValue(u"Graphic"_ustr) >>= xGraphic;
+    CPPUNIT_ASSERT(xGraphic.is());
+
+    Graphic aGraphic(xGraphic);
+    Bitmap aBitmap(aGraphic.GetBitmap());
+    CPPUNIT_ASSERT_EQUAL(tools::Long(2582), aBitmap.GetSizePixel().Width());
+    CPPUNIT_ASSERT_EQUAL(tools::Long(3325), aBitmap.GetSizePixel().Height());
+
+    Color aExpectedColor(ColorAlphaTag::ColorAlpha, 0xFFFFFFFF);
+
+    // Without the fix in place, this test would have failed with
+    // - Expected: rgba[ffffffff]
+    // - Actual  : rgba[000000ff]
+    CPPUNIT_ASSERT_EQUAL(aExpectedColor, aBitmap.GetPixelColor(5, 5));
+
+    // All the other shape in the group are text in front of that picture
+    // but with their pdf text mode as Invisible so it is the picture that
+    // is seen and the text is hidden. Test a sample text shape here. Without
+    // the fix this test would fail as these shapes were visible.
+    uno::Reference<beans::XPropertySet> xTextShape(xGroupShape->getByIndex(10), uno::UNO_QUERY);
+    CPPUNIT_ASSERT(xTextShape.is());
+    bool bVisible(true);
+    xTextShape->getPropertyValue(u"Visible"_ustr) >>= bVisible;
+    CPPUNIT_ASSERT_MESSAGE("Shape should be Invisible", !bVisible);
+}
+
 CPPUNIT_TEST_FIXTURE(SdExportTest, testEmbeddedText)
 {
     createSdDrawDoc("objectwithtext.fodg");
