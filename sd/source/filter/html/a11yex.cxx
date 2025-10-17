@@ -17,16 +17,30 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#pragma once
+#include <sal/log.hxx>
+#include <svx/svdoutl.hxx>
+#include <svx/svdogrp.hxx>
+#include <svx/svdotable.hxx>
+#include <svx/svdograf.hxx>
+#include <tools/debug.hxx>
 
-#include <sal/types.h>
+#include <drawdoc.hxx>
+#include <DrawDocShell.hxx>
+#include <Outliner.hxx>
+#include <sdpage.hxx>
 
-#if defined MSFILTER_DLLIMPLEMENTATION
-#define MSFILTER_DLLPUBLIC SAL_DLLPUBLIC_EXPORT
-#else
-#define MSFILTER_DLLPUBLIC SAL_DLLPUBLIC_IMPORT
-#endif
+#include "htmlex.hxx"
+#include <sdhtmlfilter.hxx>
 
-#define MSFILTER_DLLPRIVATE SAL_DLLPRIVATE
+using namespace ::com::sun::star;
+using namespace ::com::sun::star::uno;
+using namespace ::com::sun::star::document;
+
+using namespace sdr::table;
+
+void SdHTMLFilter::ExportPage(SdrOutliner* pOutliner, SdPage* pPage, OUStringBuffer& rHtml)
+{
+    HtmlExport::ExportPage(pOutliner, pPage, rHtml);
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

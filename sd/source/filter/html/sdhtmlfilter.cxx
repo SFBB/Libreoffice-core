@@ -42,9 +42,4 @@ bool SdHTMLFilter::Export()
     return true;
 }
 
-void SdHTMLFilter::ExportPage(SdrOutliner* pOutliner, SdPage* pPage, OUStringBuffer& rHtml)
-{
-    HtmlExport::ExportPage(pOutliner, pPage, rHtml);
-}
-
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

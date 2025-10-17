@@ -16,23 +16,23 @@
 class ScTabViewShell;
 class ScDocument;
 
-#define MAX_DATAFORM_COLS   32
-#define MAX_DATAFORM_ROWS   32000
+#define MAX_DATAFORM_COLS 32
+#define MAX_DATAFORM_ROWS 32000
 
 class ScDataFormDlg : public weld::GenericDialogController
 {
 private:
-    OUString        sNewRecord;
+    OUString m_sNewRecord;
 
-    ScTabViewShell* pTabViewShell;
-    ScDocument*     pDoc;
-    sal_uInt16      aColLength;
-    SCROW           nCurrentRow;
-    SCCOL           nStartCol;
-    SCCOL           nEndCol;
-    SCROW           nStartRow;
-    SCROW           nEndRow;
-    SCTAB           nTab;
+    ScTabViewShell& m_rTabViewShell;
+    ScDocument& m_rDoc;
+    sal_uInt16 m_aColLength;
+    SCROW m_nCurrentRow;
+    SCCOL m_nStartCol;
+    SCCOL m_nEndCol;
+    SCROW m_nStartRow;
+    SCROW m_nEndRow;
+    SCTAB m_nTab;
 
     std::unique_ptr<weld::Button> m_xBtnNew;
     std::unique_ptr<weld::Button> m_xBtnDelete;
@@ -46,12 +46,12 @@ private:
     std::vector<std::unique_ptr<ScDataFormFragment>> m_aEntries;
 
 public:
-    ScDataFormDlg(weld::Window* pParent, ScTabViewShell* pTabViewShell);
+    ScDataFormDlg(weld::Window* pParent, ScTabViewShell& rTabViewShell);
     virtual ~ScDataFormDlg() override;
 
     void FillCtrls();
-private:
 
+private:
     void SetButtonState();
 
     // Handler:
