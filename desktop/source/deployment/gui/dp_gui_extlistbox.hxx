@@ -49,11 +49,6 @@ namespace dp_gui {
 
 class TheExtensionManager;
 
-
-struct Entry_Impl;
-
-typedef std::shared_ptr< Entry_Impl > TEntry_Impl;
-
 struct Entry_Impl
 {
     bool            m_bActive       :1;
@@ -81,22 +76,22 @@ struct Entry_Impl
 
     Entry_Impl(const css::uno::Reference<css::deployment::XPackage> &xPackage,
                const PackageState eState, const bool bReadOnly);
-   ~Entry_Impl();
+    ~Entry_Impl();
 
-    sal_Int32 CompareTo(const CollatorWrapper *pCollator, const TEntry_Impl& rEntry) const;
+    sal_Int32 CompareTo(const CollatorWrapper& rCollator, const Entry_Impl& rEntry) const;
     void checkDependencies();
 };
 
-class ExtensionBox_Impl;
+typedef std::shared_ptr<Entry_Impl> TEntry_Impl;
 
+class ExtensionBox;
 
 class ExtensionRemovedListener : public ::cppu::WeakImplHelper<css::lang::XEventListener>
 {
-    ExtensionBox_Impl*   m_pParent;
+    ExtensionBox* m_pParent;
 
 public:
-
-    explicit ExtensionRemovedListener( ExtensionBox_Impl *pParent ) { m_pParent = pParent; }
+    explicit ExtensionRemovedListener(ExtensionBox* pParent) { m_pParent = pParent; }
     virtual ~ExtensionRemovedListener() override;
 
 
@@ -104,10 +99,9 @@ public:
     virtual void SAL_CALL disposing(css::lang::EventObject const& evt) override;
 };
 
-class ExtensionBox_Impl : public weld::CustomWidgetController
+class ExtensionBox : public weld::CustomWidgetController
 {
     bool m_bHasScrollBar : 1;
-    bool m_bHasActive : 1;
     bool m_bNeedsRecalc : 1;
     bool m_bInCheckMode : 1;
     bool m_bAdjustActive : 1;
@@ -125,7 +119,7 @@ class ExtensionBox_Impl : public weld::CustomWidgetController
 
     rtl::Reference<ExtensionRemovedListener> m_xRemoveListener;
 
-    TheExtensionManager      *m_pManager;
+    TheExtensionManager& m_rManager;
     //This mutex is used for synchronizing access to m_vEntries.
     //Currently it is used to synchronize adding, removing entries and
     //functions like getItemName, getItemDescription, etc. to prevent
@@ -137,7 +131,6 @@ class ExtensionBox_Impl : public weld::CustomWidgetController
     std::vector< TEntry_Impl > m_vEntries;
     std::vector< TEntry_Impl > m_vRemovedEntries;
 
-    std::unique_ptr<css::lang::Locale> m_pLocale;
     std::optional<CollatorWrapper>   m_oCollator;
 
     //Holds weak references to extensions to which is we have added an XEventListener
@@ -162,8 +155,9 @@ class ExtensionBox_Impl : public weld::CustomWidgetController
 
     void Init();
 public:
-    explicit ExtensionBox_Impl(std::unique_ptr<weld::ScrolledWindow> xScroll);
-    virtual ~ExtensionBox_Impl() override;
+    explicit ExtensionBox(std::unique_ptr<weld::ScrolledWindow> xScroll,
+                          TheExtensionManager& rManager);
+    virtual ~ExtensionBox() override;
 
     virtual bool MouseButtonDown( const MouseEvent& rMEvt ) override;
     virtual bool MouseMove( const MouseEvent& rMEvt ) override;
@@ -176,8 +170,8 @@ public:
 
     TEntry_Impl const & GetEntryData( tools::Long nPos ) { return m_vEntries[ nPos ]; }
     tools::Long            GetEntryCount() const { return static_cast<tools::Long>(m_vEntries.size()); }
-    tools::Rectangle       GetEntryRect( const tools::Long nPos ) const;
-    bool            HasActive() const { return m_bHasActive; }
+    tools::Rectangle GetActiveEntryRect() const;
+    bool            HasActive() const { return m_nActive >= 0; }
     tools::Long            PointToPos( const Point& rPos );
     virtual void    RecalcAll();
     void            RemoveUnlocked();
@@ -192,21 +186,11 @@ public:
     void prepareChecking();
     void checkEntries();
 
-    void setExtensionManager(TheExtensionManager* pManager) { m_pManager = pManager; }
-
-    //These functions are used for automatic testing
 public:
     enum { ENTRY_NOTFOUND = -1 };
 
-    /** @return  The count of the entries in the list box. */
-    sal_Int32 getItemCount() const;
-
     /** @return  The index of the first selected entry in the list box.
-        When nothing is selected, which is the case when getItemCount returns '0',
-        then this function returns ENTRY_NOTFOUND */
-    /** @return  The index of the first selected entry in the list box.
-        When nothing is selected, which is the case when getItemCount returns '0',
-        then this function returns ENTRY_NOTFOUND */
+        When nothing is selected, then this function returns ENTRY_NOTFOUND. */
     sal_Int32 getSelIndex() const;
 };
 

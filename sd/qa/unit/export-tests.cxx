@@ -1135,7 +1135,7 @@ CPPUNIT_TEST_FIXTURE(SdExportTest, testExplodedPdfHindi)
 
     // ensure the expected font name
     assertXPath(pXmlDoc, "/office:document/office:automatic-styles/style:style[@style:name='P4']/"
-                         "style:text-properties[@fo:font-family='AcademyEngravedLetPlain']");
+                         "style:text-properties[@style:font-name='AcademyEngravedLetPlain']");
 }
 
 CPPUNIT_TEST_FIXTURE(SdExportTest, testExplodedPdfGrayscaleImageUnderInvisibleTest)
@@ -1183,6 +1183,31 @@ CPPUNIT_TEST_FIXTURE(SdExportTest, testExplodedPdfGrayscaleImageUnderInvisibleTe
     bool bVisible(true);
     xTextShape->getPropertyValue(u"Visible"_ustr) >>= bVisible;
     CPPUNIT_ASSERT_MESSAGE("Shape should be Invisible", !bVisible);
+}
+
+CPPUNIT_TEST_FIXTURE(SdExportTest, testExplodedPdfMissingFontVersion)
+{
+    auto pPdfium = vcl::pdf::PDFiumLibrary::get();
+    if (!pPdfium)
+        return;
+    UsePdfium aGuard;
+
+    loadFromFile(u"pdf/ErrareHumanumEst.pdf");
+
+    setFilterOptions("{\"DecomposePDF\":{\"type\":\"boolean\",\"value\":\"true\"}}");
+    setImportFilterName(u"OpenDocument Drawing Flat XML"_ustr);
+    saveAndReload(u"OpenDocument Drawing Flat XML"_ustr);
+
+    const SdrPage* pPage = GetPage(1);
+
+    const SdrObject* pObj = pPage->GetObj(0);
+    CPPUNIT_ASSERT(pObj);
+    const SdrObjGroup* pObjGroup = dynamic_cast<const SdrObjGroup*>(pObj);
+    CPPUNIT_ASSERT(pObjGroup);
+    const SdrTextObj* pTextObj = DynCastSdrTextObj(pObjGroup->GetObj(0));
+    OUString sText = pTextObj->GetOutlinerParaObject()->GetTextObject().GetText(0);
+    // Without fix this fails to import at all
+    CPPUNIT_ASSERT_EQUAL(u"Errare humanum est"_ustr, sText);
 }
 
 CPPUNIT_TEST_FIXTURE(SdExportTest, testEmbeddedText)

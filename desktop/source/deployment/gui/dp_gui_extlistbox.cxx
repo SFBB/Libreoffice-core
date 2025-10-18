@@ -104,9 +104,9 @@ Entry_Impl::Entry_Impl( const uno::Reference< deployment::XPackage > &xPackage,
         if ( xGraphic.is() )
             m_aIcon = Image( xGraphic );
 
-        if ( eState == AMBIGUOUS )
+        if (eState == PackageState::AMBIGUOUS)
             m_sErrorText = DpResId( RID_STR_ERROR_UNKNOWN_STATUS );
-        else if ( eState == NOT_REGISTERED )
+        else if (eState == PackageState::NOT_REGISTERED)
             checkDependencies();
     }
     catch (const deployment::ExtensionRemovedException &) {}
@@ -118,15 +118,15 @@ Entry_Impl::~Entry_Impl()
 {}
 
 
-sal_Int32 Entry_Impl::CompareTo( const CollatorWrapper *pCollator, const TEntry_Impl& rEntry ) const
+sal_Int32 Entry_Impl::CompareTo(const CollatorWrapper& rCollator, const Entry_Impl& rEntry) const
 {
-    sal_Int32 eCompare = pCollator->compareString( m_sTitle, rEntry->m_sTitle );
+    sal_Int32 eCompare = rCollator.compareString(m_sTitle, rEntry.m_sTitle);
     if ( eCompare == 0 )
     {
-        eCompare = m_sVersion.compareTo( rEntry->m_sVersion );
+        eCompare = m_sVersion.compareTo(rEntry.m_sVersion);
         if ( eCompare == 0 )
         {
-            sal_Int32 nCompare = m_xPackage->getRepositoryName().compareTo( rEntry->m_xPackage->getRepositoryName() );
+            sal_Int32 nCompare = m_xPackage->getRepositoryName().compareTo(rEntry.m_xPackage->getRepositoryName());
             if ( nCompare < 0 )
                 eCompare = -1;
             else if ( nCompare > 0 )
@@ -177,16 +177,14 @@ ExtensionRemovedListener::~ExtensionRemovedListener()
 {
 }
 
-
-// ExtensionBox_Impl
-ExtensionBox_Impl::ExtensionBox_Impl(std::unique_ptr<weld::ScrolledWindow> xScroll)
+ExtensionBox::ExtensionBox(std::unique_ptr<weld::ScrolledWindow> xScroll,
+                           TheExtensionManager& rManager)
     : m_bHasScrollBar( false )
-    , m_bHasActive( false )
     , m_bNeedsRecalc( true )
     , m_bInCheckMode( false )
     , m_bAdjustActive( false )
     , m_bInDelete( false )
-    , m_nActive( 0 )
+    , m_nActive(-1)
     , m_nTopIndex( 0 )
     , m_nStdHeight( 0 )
     , m_nActiveHeight( 0 )
@@ -194,14 +192,14 @@ ExtensionBox_Impl::ExtensionBox_Impl(std::unique_ptr<weld::ScrolledWindow> xScro
     , m_aLockedImage(StockImage::Yes, RID_BMP_LOCKED)
     , m_aWarningImage(StockImage::Yes, RID_BMP_WARNING)
     , m_aDefaultImage(StockImage::Yes, RID_BMP_EXTENSION)
-    , m_pManager( nullptr )
+    , m_rManager(rManager)
     , m_xScrollBar(std::move(xScroll))
 {
 }
 
-void ExtensionBox_Impl::Init()
+void ExtensionBox::Init()
 {
-    m_xScrollBar->connect_vadjustment_value_changed( LINK( this, ExtensionBox_Impl, ScrollHdl ) );
+    m_xScrollBar->connect_vadjustment_value_changed(LINK(this, ExtensionBox, ScrollHdl));
 
     auto nIconHeight = 2*TOP_OFFSET + SMALL_ICON_SIZE;
     auto nTitleHeight = 2*TOP_OFFSET + GetTextHeight();
@@ -219,12 +217,12 @@ void ExtensionBox_Impl::Init()
 
     m_xRemoveListener = new ExtensionRemovedListener( this );
 
-    m_pLocale.reset( new lang::Locale( Application::GetSettings().GetLanguageTag().getLocale() ) );
     m_oCollator.emplace( ::comphelper::getProcessComponentContext() );
-    m_oCollator->loadDefaultCollator( *m_pLocale, i18n::CollatorOptions::CollatorOptions_IGNORE_CASE );
+    m_oCollator->loadDefaultCollator(Application::GetSettings().GetLanguageTag().getLocale(),
+                                     i18n::CollatorOptions::CollatorOptions_IGNORE_CASE);
 }
 
-ExtensionBox_Impl::~ExtensionBox_Impl()
+ExtensionBox::~ExtensionBox()
 {
     if ( ! m_bInDelete )
         DeleteRemoved();
@@ -240,30 +238,18 @@ ExtensionBox_Impl::~ExtensionBox_Impl()
 
     m_xRemoveListener.clear();
 
-    m_pLocale.reset();
     m_oCollator.reset();
 }
 
-sal_Int32 ExtensionBox_Impl::getItemCount() const
+sal_Int32 ExtensionBox::getSelIndex() const
 {
-    return static_cast< sal_Int32 >( m_vEntries.size() );
-}
-
-
-sal_Int32 ExtensionBox_Impl::getSelIndex() const
-{
-    if ( m_bHasActive )
-    {
-        OSL_ASSERT( m_nActive >= -1);
-        return static_cast< sal_Int32 >( m_nActive );
-    }
-    else
-        return ENTRY_NOTFOUND;
+    assert(m_nActive >= -1);
+    return static_cast<sal_Int32>(m_nActive);
 }
 
 
 // Title + description
-void ExtensionBox_Impl::CalcActiveHeight( const tools::Long nPos )
+void ExtensionBox::CalcActiveHeight(const tools::Long nPos)
 {
     const ::osl::MutexGuard aGuard( m_entriesMutex );
 
@@ -300,26 +286,21 @@ void ExtensionBox_Impl::CalcActiveHeight( const tools::Long nPos )
         m_nActiveHeight += 2;
 }
 
-tools::Rectangle ExtensionBox_Impl::GetEntryRect( const tools::Long nPos ) const
+tools::Rectangle ExtensionBox::GetActiveEntryRect() const
 {
+    assert(m_nActive >= 0 && "No active entry");
+
     const ::osl::MutexGuard aGuard( m_entriesMutex );
 
     Size aSize( GetOutputSizePixel() );
+    aSize.setHeight(m_nActiveHeight);
 
-    if ( m_vEntries[ nPos ]->m_bActive )
-        aSize.setHeight( m_nActiveHeight );
-    else
-        aSize.setHeight( m_nStdHeight );
-
-    Point aPos( 0, -m_nTopIndex + nPos * m_nStdHeight );
-    if ( m_bHasActive && ( nPos < m_nActive ) )
-        aPos.AdjustY(m_nActiveHeight - m_nStdHeight );
+    Point aPos(0, -m_nTopIndex + m_nActive * m_nStdHeight);
 
     return tools::Rectangle( aPos, aSize );
 }
 
-
-void ExtensionBox_Impl::DeleteRemoved()
+void ExtensionBox::DeleteRemoved()
 {
     const ::osl::MutexGuard aGuard( m_entriesMutex );
 
@@ -332,7 +313,7 @@ void ExtensionBox_Impl::DeleteRemoved()
 
 
 //This function may be called with nPos < 0
-void ExtensionBox_Impl::selectEntry( const tools::Long nPos )
+void ExtensionBox::selectEntry(const tools::Long nPos)
 {
     bool invalidate = false;
     {
@@ -340,25 +321,24 @@ void ExtensionBox_Impl::selectEntry( const tools::Long nPos )
         //Currently it is used to guard m_vEntries and m_nActive. m_nActive will be
         //modified in this function.
         //It would be probably best to always use a copy of m_vEntries
-        //and some other state variables from ExtensionBox_Impl for
+        //and some other state variables from ExtensionBox for
         //the whole painting operation. See issue i86993
         ::osl::MutexGuard guard(m_entriesMutex);
 
         if ( m_bInCheckMode )
             return;
 
-        if ( m_bHasActive )
+        if (m_nActive >= 0)
         {
             if ( nPos == m_nActive )
                 return;
 
-            m_bHasActive = false;
             m_vEntries[ m_nActive ]->m_bActive = false;
+            m_nActive = -1;
         }
 
         if ( ( nPos >= 0 ) && ( o3tl::make_unsigned(nPos) < m_vEntries.size() ) )
         {
-            m_bHasActive = true;
             m_nActive = nPos;
             m_vEntries[ nPos ]->m_bActive = true;
 
@@ -382,14 +362,15 @@ void ExtensionBox_Impl::selectEntry( const tools::Long nPos )
     }
 }
 
-
-void ExtensionBox_Impl::DrawRow(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect, const TEntry_Impl& rEntry)
+void ExtensionBox::DrawRow(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect,
+                           const TEntry_Impl& rEntry)
 {
     const StyleSettings& rStyleSettings = rRenderContext.GetSettings().GetStyleSettings();
 
     if (rEntry->m_bActive)
         rRenderContext.SetTextColor(rStyleSettings.GetHighlightTextColor());
-    else if ((rEntry->m_eState != REGISTERED) && (rEntry->m_eState != NOT_AVAILABLE))
+    else if ((rEntry->m_eState != PackageState::REGISTERED)
+             && (rEntry->m_eState != PackageState::NOT_AVAILABLE))
         rRenderContext.SetTextColor(rStyleSettings.GetDisableColor());
     else
         rRenderContext.SetTextColor(rStyleSettings.GetFieldTextColor());
@@ -526,7 +507,8 @@ void ExtensionBox_Impl::DrawRow(vcl::RenderContext& rRenderContext, const tools:
         else
             rRenderContext.DrawImage(aPos, Size(SMALL_ICON_SIZE, SMALL_ICON_SIZE), m_aSharedImage);
     }
-    if ((rEntry->m_eState == AMBIGUOUS ) || rEntry->m_bMissingDeps || rEntry->m_bMissingLic)
+    if ((rEntry->m_eState == PackageState::AMBIGUOUS) || rEntry->m_bMissingDeps
+        || rEntry->m_bMissingLic)
     {
         aPos = rRect.TopRight() + Point(-(RIGHT_ICON_OFFSET + SPACE_BETWEEN + 2 * SMALL_ICON_SIZE), TOP_OFFSET);
         rRenderContext.DrawImage(aPos, Size(SMALL_ICON_SIZE, SMALL_ICON_SIZE), m_aWarningImage);
@@ -536,17 +518,16 @@ void ExtensionBox_Impl::DrawRow(vcl::RenderContext& rRenderContext, const tools:
     rRenderContext.DrawLine(rRect.BottomLeft(), rRect.BottomRight());
 }
 
-
-void ExtensionBox_Impl::RecalcAll()
+void ExtensionBox::RecalcAll()
 {
-    if ( m_bHasActive )
+    if (m_nActive >= 0)
         CalcActiveHeight( m_nActive );
 
     SetupScrollBar();
 
-    if ( m_bHasActive )
+    if (m_nActive >= 0)
     {
-        tools::Rectangle aEntryRect = GetEntryRect( m_nActive );
+        tools::Rectangle aEntryRect = GetActiveEntryRect();
 
         if ( m_bAdjustActive )
         {
@@ -587,15 +568,14 @@ void ExtensionBox_Impl::RecalcAll()
     m_bNeedsRecalc = false;
 }
 
-
-bool ExtensionBox_Impl::HandleCursorKey( sal_uInt16 nKeyCode )
+bool ExtensionBox::HandleCursorKey(sal_uInt16 nKeyCode)
 {
     if ( m_vEntries.empty() )
         return true;
 
     tools::Long nSelect = 0;
 
-    if ( m_bHasActive )
+    if (HasActive())
     {
         tools::Long nPageSize = GetOutputSizePixel().Height() / m_nStdHeight;
         if ( nPageSize < 2 )
@@ -632,8 +612,7 @@ bool ExtensionBox_Impl::HandleCursorKey( sal_uInt16 nKeyCode )
     return true;
 }
 
-
-void ExtensionBox_Impl::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle& /*rPaintRect*/)
+void ExtensionBox::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle& /*rPaintRect*/)
 {
     if ( !m_bInDelete )
         DeleteRemoved();
@@ -655,12 +634,11 @@ void ExtensionBox_Impl::Paint(vcl::RenderContext& rRenderContext, const tools::R
     }
 }
 
-
-tools::Long ExtensionBox_Impl::GetTotalHeight() const
+tools::Long ExtensionBox::GetTotalHeight() const
 {
     tools::Long nHeight = m_vEntries.size() * m_nStdHeight;
 
-    if ( m_bHasActive )
+    if (HasActive())
     {
         nHeight += m_nActiveHeight - m_nStdHeight;
     }
@@ -668,8 +646,7 @@ tools::Long ExtensionBox_Impl::GetTotalHeight() const
     return nHeight;
 }
 
-
-void ExtensionBox_Impl::SetupScrollBar()
+void ExtensionBox::SetupScrollBar()
 {
     const Size aSize = GetOutputSizePixel();
     const auto nTotalHeight = GetTotalHeight();
@@ -695,14 +672,13 @@ void ExtensionBox_Impl::SetupScrollBar()
     m_bHasScrollBar = bNeedsScrollBar;
 }
 
-
-void ExtensionBox_Impl::Resize()
+void ExtensionBox::Resize()
 {
     RecalcAll();
     Invalidate();
 }
 
-void ExtensionBox_Impl::SetDrawingArea(weld::DrawingArea* pDrawingArea)
+void ExtensionBox::SetDrawingArea(weld::DrawingArea* pDrawingArea)
 {
     Size aSize = pDrawingArea->get_ref_device().LogicToPixel(Size(250, 150), MapMode(MapUnit::MapAppFont));
     pDrawingArea->set_size_request(aSize.Width(), aSize.Height());
@@ -712,11 +688,11 @@ void ExtensionBox_Impl::SetDrawingArea(weld::DrawingArea* pDrawingArea)
     Init();
 }
 
-tools::Long ExtensionBox_Impl::PointToPos( const Point& rPos )
+tools::Long ExtensionBox::PointToPos(const Point& rPos)
 {
     tools::Long nPos = ( rPos.Y() + m_nTopIndex ) / m_nStdHeight;
 
-    if ( m_bHasActive && ( nPos > m_nActive ) )
+    if (m_nActive >= 0 && (nPos > m_nActive))
     {
         if ( rPos.Y() + m_nTopIndex <= m_nActive*m_nStdHeight + m_nActiveHeight )
             nPos = m_nActive;
@@ -727,7 +703,7 @@ tools::Long ExtensionBox_Impl::PointToPos( const Point& rPos )
     return nPos;
 }
 
-bool ExtensionBox_Impl::MouseMove( const MouseEvent& rMEvt )
+bool ExtensionBox::MouseMove(const MouseEvent& rMEvt)
 {
     bool bOverHyperlink = false;
 
@@ -746,7 +722,7 @@ bool ExtensionBox_Impl::MouseMove( const MouseEvent& rMEvt )
     return false;
 }
 
-OUString ExtensionBox_Impl::RequestHelp(tools::Rectangle& rRect)
+OUString ExtensionBox::RequestHelp(tools::Rectangle& rRect)
 {
     auto nPos = PointToPos( rRect.TopLeft() );
     if ( ( nPos >= 0 ) && ( o3tl::make_unsigned(nPos) < m_vEntries.size() ) )
@@ -763,13 +739,13 @@ OUString ExtensionBox_Impl::RequestHelp(tools::Rectangle& rRect)
     return OUString();
 }
 
-bool ExtensionBox_Impl::MouseButtonDown( const MouseEvent& rMEvt )
+bool ExtensionBox::MouseButtonDown(const MouseEvent& rMEvt)
 {
     if ( !rMEvt.IsLeft() )
         return false;
 
-    if (rMEvt.IsMod1() && m_bHasActive)
-        selectEntry(ExtensionBox_Impl::ENTRY_NOTFOUND);   // Selecting a not existing entry will deselect the current one
+    if (rMEvt.IsMod1() && m_nActive >= 0)
+        selectEntry(ExtensionBox::ENTRY_NOTFOUND);   // Selecting a not existing entry will deselect the current one
     else
     {
         auto nPos = PointToPos( rMEvt.GetPosPixel() );
@@ -798,7 +774,7 @@ bool ExtensionBox_Impl::MouseButtonDown( const MouseEvent& rMEvt )
     return true;
 }
 
-bool ExtensionBox_Impl::KeyInput(const KeyEvent& rKEvt)
+bool ExtensionBox::KeyInput(const KeyEvent& rKEvt)
 {
     if ( !m_bInDelete )
         DeleteRemoved();
@@ -813,8 +789,8 @@ bool ExtensionBox_Impl::KeyInput(const KeyEvent& rKEvt)
     return bHandled;
 }
 
-bool ExtensionBox_Impl::FindEntryPos( const TEntry_Impl& rEntry, const tools::Long nStart,
-                                      const tools::Long nEnd, tools::Long &nPos )
+bool ExtensionBox::FindEntryPos(const TEntry_Impl& rEntry, const tools::Long nStart,
+                                const tools::Long nEnd, tools::Long& nPos)
 {
     nPos = nStart;
     if ( nStart > nEnd )
@@ -824,7 +800,7 @@ bool ExtensionBox_Impl::FindEntryPos( const TEntry_Impl& rEntry, const tools::Lo
 
     if ( nStart == nEnd )
     {
-        eCompare = rEntry->CompareTo( &*m_oCollator, m_vEntries[ nStart ] );
+        eCompare = rEntry->CompareTo(*m_oCollator, *m_vEntries[nStart]);
         if ( eCompare < 0 )
             return false;
         else if ( eCompare == 0 )
@@ -845,7 +821,7 @@ bool ExtensionBox_Impl::FindEntryPos( const TEntry_Impl& rEntry, const tools::Lo
     }
 
     const tools::Long nMid = nStart + ( ( nEnd - nStart ) / 2 );
-    eCompare = rEntry->CompareTo( &*m_oCollator, m_vEntries[ nMid ] );
+    eCompare = rEntry->CompareTo(*m_oCollator, *m_vEntries[nMid]);
 
     if ( eCompare < 0 )
         return FindEntryPos( rEntry, nStart, nMid-1, nPos );
@@ -864,7 +840,7 @@ bool ExtensionBox_Impl::FindEntryPos( const TEntry_Impl& rEntry, const tools::Lo
     }
 }
 
-void ExtensionBox_Impl::cleanVecListenerAdded()
+void ExtensionBox::cleanVecListenerAdded()
 {
     std::erase_if(m_vListenerAdded,
         [](const uno::WeakReference<deployment::XPackage>& rxListener) {
@@ -873,8 +849,7 @@ void ExtensionBox_Impl::cleanVecListenerAdded()
         });
 }
 
-void ExtensionBox_Impl::addEventListenerOnce(
-    uno::Reference<deployment::XPackage > const & extension)
+void ExtensionBox::addEventListenerOnce(uno::Reference<deployment::XPackage> const& extension)
 {
     //make sure to only add the listener once
     cleanVecListenerAdded();
@@ -886,12 +861,11 @@ void ExtensionBox_Impl::addEventListenerOnce(
     }
 }
 
-
-void ExtensionBox_Impl::addEntry( const uno::Reference< deployment::XPackage > &xPackage,
-                                  bool bLicenseMissing )
+void ExtensionBox::addEntry(const uno::Reference<deployment::XPackage>& xPackage,
+                            bool bLicenseMissing)
 {
     PackageState eState = TheExtensionManager::getPackageState( xPackage );
-    bool         bLocked = m_pManager->isReadOnly( xPackage );
+    bool bLocked = m_rManager.isReadOnly(xPackage);
 
     TEntry_Impl pEntry = std::make_shared<Entry_Impl>( xPackage, eState, bLocked );
 
@@ -916,11 +890,11 @@ void ExtensionBox_Impl::addEntry( const uno::Reference< deployment::XPackage > &
             }
             else if (!m_bInCheckMode)
             {
-                OSL_FAIL("ExtensionBox_Impl::addEntry(): Will not add duplicate entries");
+                OSL_FAIL("ExtensionBox::addEntry(): Will not add duplicate entries");
             }
         }
 
-        pEntry->m_bHasOptions = m_pManager->supportsOptions(xPackage);
+        pEntry->m_bHasOptions = m_rManager.supportsOptions(xPackage);
         pEntry->m_bUser = (xPackage->getRepositoryName() == USER_PACKAGE_MANAGER);
         pEntry->m_bShared = (xPackage->getRepositoryName() == SHARED_PACKAGE_MANAGER);
         pEntry->m_bNew = m_bInCheckMode;
@@ -930,7 +904,7 @@ void ExtensionBox_Impl::addEntry( const uno::Reference< deployment::XPackage > &
             pEntry->m_sErrorText = DpResId(RID_STR_ERROR_MISSING_LICENSE);
 
         //access to m_nActive must be guarded
-        if (!m_bInCheckMode && m_bHasActive && (m_nActive >= nPos))
+        if (!m_bInCheckMode && (m_nActive >= nPos))
             m_nActive += 1;
     }
 
@@ -940,23 +914,23 @@ void ExtensionBox_Impl::addEntry( const uno::Reference< deployment::XPackage > &
     m_bNeedsRecalc = true;
 }
 
-void ExtensionBox_Impl::updateEntry( const uno::Reference< deployment::XPackage > &xPackage )
+void ExtensionBox::updateEntry(const uno::Reference<deployment::XPackage>& xPackage)
 {
     for (auto const& entry : m_vEntries)
     {
         if ( entry->m_xPackage == xPackage )
         {
             PackageState eState = TheExtensionManager::getPackageState( xPackage );
-            entry->m_bHasOptions = m_pManager->supportsOptions( xPackage );
+            entry->m_bHasOptions = m_rManager.supportsOptions(xPackage);
             entry->m_eState = eState;
             entry->m_sTitle = xPackage->getDisplayName();
             entry->m_sVersion = xPackage->getVersion();
             entry->m_sDescription = xPackage->getDescription();
 
-            if ( eState == REGISTERED )
+            if (eState == PackageState::REGISTERED)
                 entry->m_bMissingLic = false;
 
-            if ( eState == AMBIGUOUS )
+            if (eState == PackageState::AMBIGUOUS)
                 entry->m_sErrorText = DpResId( RID_STR_ERROR_UNKNOWN_STATUS );
             else if ( ! entry->m_bMissingLic )
                 entry->m_sErrorText.clear();
@@ -973,7 +947,7 @@ void ExtensionBox_Impl::updateEntry( const uno::Reference< deployment::XPackage 
 //The gui is a registered as listener on the package. Removing it will cause the
 //listeners to be notified and then this function is called. At this moment xPackage
 //is in the disposing state and all calls on it may result in a DisposedException.
-void ExtensionBox_Impl::removeEntry( const uno::Reference< deployment::XPackage > &xPackage )
+void ExtensionBox::removeEntry(const uno::Reference<deployment::XPackage>& xPackage)
 {
     if (  m_bInDelete )
         return;
@@ -1001,7 +975,7 @@ void ExtensionBox_Impl::removeEntry( const uno::Reference< deployment::XPackage 
             if ( IsReallyVisible() )
                 invalidate = true;
 
-            if ( m_bHasActive )
+            if (m_nActive >= 0)
             {
                 if ( nPos < m_nActive )
                     m_nActive -= 1;
@@ -1009,10 +983,11 @@ void ExtensionBox_Impl::removeEntry( const uno::Reference< deployment::XPackage 
                           ( nPos == static_cast<tools::Long>(m_vEntries.size()) ) )
                     m_nActive -= 1;
 
-                m_bHasActive = false;
+                const tools::Long nActive = m_nActive;
+                m_nActive = -1;
                 //clear before calling out of this method
                 aGuard.clear();
-                selectEntry( m_nActive );
+                selectEntry(nActive);
             }
         }
     }
@@ -1024,8 +999,7 @@ void ExtensionBox_Impl::removeEntry( const uno::Reference< deployment::XPackage 
     }
 }
 
-
-void ExtensionBox_Impl::RemoveUnlocked()
+void ExtensionBox::RemoveUnlocked()
 {
     bool bAllRemoved = false;
 
@@ -1049,8 +1023,7 @@ void ExtensionBox_Impl::RemoveUnlocked()
     }
 }
 
-
-void ExtensionBox_Impl::prepareChecking()
+void ExtensionBox::prepareChecking()
 {
     m_bInCheckMode = true;
     for (auto const& entry : m_vEntries)
@@ -1060,8 +1033,7 @@ void ExtensionBox_Impl::prepareChecking()
     }
 }
 
-
-void ExtensionBox_Impl::checkEntries()
+void ExtensionBox::checkEntries()
 {
     tools::Long nNewPos = -1;
     tools::Long nChangedActivePos = -1;
@@ -1102,7 +1074,6 @@ void ExtensionBox_Impl::checkEntries()
                     {
                         nChangedActivePos = nPos;
                         m_nActive = -1;
-                        m_bHasActive = false;
                     }
                     m_vRemovedEntries.push_back(*iIndex);
                     (*iIndex)->m_xPackage->removeEventListener(m_xRemoveListener);
@@ -1130,7 +1101,7 @@ void ExtensionBox_Impl::checkEntries()
     }
 }
 
-IMPL_LINK(ExtensionBox_Impl, ScrollHdl, weld::ScrolledWindow&, rScrBar, void)
+IMPL_LINK(ExtensionBox, ScrollHdl, weld::ScrolledWindow&, rScrBar, void)
 {
     m_nTopIndex = rScrBar.vadjustment_get_value();
     Invalidate();

@@ -39,24 +39,23 @@ struct ImplSVEvent;
 
 namespace dp_gui {
 
-class ExtBoxWithBtns_Impl;
-class ExtensionBox_Impl;
+class ExtensionBoxWithButtons;
+class ExtensionBox;
 class TheExtensionManager;
 
 class DialogHelper
 {
     css::uno::Reference< css::uno::XComponentContext > m_xContext;
-    weld::Window*   m_pWindow;
+    weld::Dialog* m_pDialog;
     ImplSVEvent *   m_nEventID;
     TopLevelWindowLocker m_aBusy;
 
 public:
-                    DialogHelper(const css::uno::Reference< css::uno::XComponentContext > &,
-                                 weld::Window* pWindow);
+    DialogHelper(const css::uno::Reference<css::uno::XComponentContext>&, weld::Dialog* pDialog);
     virtual        ~DialogHelper();
 
     void            openWebBrowser(const OUString& rURL, const OUString& rTitle);
-    weld::Window*   getFrameWeld() const { return m_pWindow; }
+    weld::Window*   getFrameWeld() const { return m_pDialog; }
     void            PostUserEvent( const Link<void*,void>& rLink, void* pCaller );
     void            clearEventID() { m_nEventID = nullptr; }
 
@@ -73,12 +72,10 @@ public:
     virtual void    checkEntries() = 0;
 
     static bool     IsSharedPkgMgr( const css::uno::Reference< css::deployment::XPackage > &);
-           bool     continueOnSharedExtension( const css::uno::Reference< css::deployment::XPackage > &,
-                                               weld::Widget* pParent,
-                                               TranslateId pResID,
-                                               bool &bHadWarning );
+    bool continueOnSharedExtension(const css::uno::Reference<css::deployment::XPackage>&,
+                                   TranslateId pResID, bool& bHadWarning);
 
-    void            incBusy() { m_aBusy.incBusy(m_pWindow); }
+    void            incBusy() { m_aBusy.incBusy(m_pDialog); }
     void            decBusy() { m_aBusy.decBusy(); }
     bool            isBusy() const { return m_aBusy.isBusy(); }
     bool            installExtensionWarn(std::u16string_view rExtensionURL);
@@ -88,7 +85,6 @@ public:
 class ExtMgrDialog : public weld::GenericDialogController
                    , public DialogHelper
 {
-    const OUString       m_sAddPackages;
     OUString             m_sProgressText;
     bool                 m_bHasProgress;
     bool                 m_bProgressChanged;
@@ -100,11 +96,11 @@ class ExtMgrDialog : public weld::GenericDialogController
     bool                 m_bClosed;
     sal_Int32            m_nProgress;
     Idle                 m_aIdle;
-    TheExtensionManager *m_pManager;
+    TheExtensionManager& m_rManager;
 
     css::uno::Reference< css::task::XAbortChannel > m_xAbortChannel;
 
-    std::unique_ptr<ExtBoxWithBtns_Impl> m_xExtensionBox;
+    std::unique_ptr<ExtensionBoxWithButtons> m_xExtensionBox;
     std::unique_ptr<weld::CustomWeld> m_xExtensionBoxWnd;
     std::unique_ptr<weld::Button> m_xOptionsBtn;
     std::unique_ptr<weld::Button> m_xAddBtn;
@@ -136,7 +132,7 @@ class ExtMgrDialog : public weld::GenericDialogController
     DECL_LINK( startProgress, void *, void );
 
 public:
-    ExtMgrDialog(weld::Window * pParent, TheExtensionManager *pManager);
+    ExtMgrDialog(weld::Window* pParent, TheExtensionManager& rManager);
     virtual ~ExtMgrDialog() override;
 
     virtual void    showProgress( bool bStart ) override;
@@ -157,7 +153,7 @@ public:
 
     void Close();
 
-    TheExtensionManager*    getExtensionManager() const { return m_pManager; }
+    TheExtensionManager& getExtensionManager() const { return m_rManager; }
 
     void updateList();
     virtual void    prepareChecking() override;
@@ -188,11 +184,11 @@ class UpdateRequiredDialog : public weld::GenericDialogController
     bool                 m_bHasLockedEntries;
     sal_Int32            m_nProgress;
     Idle                 m_aIdle;
-    TheExtensionManager *m_pManager;
+    TheExtensionManager& m_rManager;
 
     css::uno::Reference< css::task::XAbortChannel > m_xAbortChannel;
 
-    std::unique_ptr<ExtensionBox_Impl> m_xExtensionBox;
+    std::unique_ptr<ExtensionBox> m_xExtensionBox;
     std::unique_ptr<weld::CustomWeld> m_xExtensionBoxWnd;
     std::unique_ptr<weld::Label> m_xUpdateNeeded;
     std::unique_ptr<weld::Button> m_xUpdateBtn;
@@ -213,7 +209,7 @@ class UpdateRequiredDialog : public weld::GenericDialogController
     void            disableAllEntries();
 
 public:
-    UpdateRequiredDialog(weld::Window * pParent, TheExtensionManager *pManager);
+    UpdateRequiredDialog(weld::Window* pParent, TheExtensionManager& rManager);
     virtual        ~UpdateRequiredDialog() override;
 
     virtual short   run() override;
