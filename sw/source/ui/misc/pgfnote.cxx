@@ -82,10 +82,10 @@ IMPL_LINK_NOARG(SwFootNotePage, HeightModify, weld::MetricSpinButton&, void)
 IMPL_LINK_NOARG(SwFootNotePage, LineWidthChanged_Impl, weld::MetricSpinButton&, void)
 {
     sal_Int64 nVal = m_xLineWidthEdit->get_value(FieldUnit::NONE);
-    nVal = static_cast<sal_Int64>(vcl::ConvertDoubleValue(
+    nVal = vcl::ConvertAndUnscaleValue(
                 nVal,
                 m_xLineWidthEdit->get_digits(),
-                m_xLineWidthEdit->get_unit(), MapUnit::MapTwip ));
+                m_xLineWidthEdit->get_unit(), FieldUnit::TWIP );
     m_xLineTypeBox->SetWidth(nVal);
 }
 
@@ -197,9 +197,9 @@ void SwFootNotePage::Reset(const SfxItemSet *rSet)
     // Separator width
     m_xLineWidthEdit->connect_value_changed(LINK(this, SwFootNotePage, LineWidthChanged_Impl));
 
-    sal_Int64 nWidthPt = static_cast<sal_Int64>(vcl::ConvertDoubleValue(
-            sal_Int64( pFootnoteInfo->GetLineWidth() ), m_xLineWidthEdit->get_digits(),
-            MapUnit::MapTwip, m_xLineWidthEdit->get_unit( ) ));
+    sal_Int64 nWidthPt = vcl::ConvertAndScaleValue(
+            pFootnoteInfo->GetLineWidth(), m_xLineWidthEdit->get_digits(),
+            MapUnit::MapTwip, m_xLineWidthEdit->get_unit( ) );
     m_xLineWidthEdit->set_value(nWidthPt, FieldUnit::NONE);
 
     // Separator style
@@ -263,10 +263,10 @@ bool SwFootNotePage::FillItemSet(SfxItemSet *rSet)
 
     // Separator width
     sal_Int64 nWidth = m_xLineWidthEdit->get_value(FieldUnit::NONE);
-    nWidth = static_cast<tools::Long>(vcl::ConvertDoubleValue(
+    nWidth = vcl::ConvertAndUnscaleValue(
                    nWidth,
                    m_xLineWidthEdit->get_digits(),
-                   m_xLineWidthEdit->get_unit(), MapUnit::MapTwip ));
+                   m_xLineWidthEdit->get_unit(), FieldUnit::TWIP );
     rFootnoteInfo.SetLineWidth( nWidth );
 
     // Separator color

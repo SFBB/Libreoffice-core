@@ -35,45 +35,19 @@ namespace vcl
 {
 VCL_DLLPUBLIC FieldUnit EnglishStringToMetric(std::u16string_view rEnglishMetricString);
 
-VCL_DLLPUBLIC bool TextToValue(const OUString& rStr, double& rValue, sal_Int64 nBaseValue,
+VCL_DLLPUBLIC bool TextToValue(std::u16string_view rStr, double& rValue, sal_Int64 nBaseValue,
                                sal_uInt16 nDecDigits, const LocaleDataWrapper& rLocaleDataWrapper,
                                FieldUnit eUnit);
 VCL_DLLPUBLIC FieldUnit GetTextMetricUnit(std::u16string_view aStr);
 
 VCL_DLLPUBLIC sal_Int64 ConvertValue(sal_Int64 nValue, sal_Int64 mnBaseValue, sal_uInt16 nDecDigits,
                                      FieldUnit eInUnit, FieldUnit eOutUnit);
-VCL_DLLPUBLIC sal_Int64 ConvertValue(sal_Int64 nValue, sal_uInt16 nDecDigits, MapUnit eInUnit,
-                                     FieldUnit eOutUnit);
-
-// for backwards compatibility
-// caution: conversion to double loses precision
-VCL_DLLPUBLIC double ConvertDoubleValue(double nValue, sal_Int64 mnBaseValue, sal_uInt16 nDecDigits,
-                                        FieldUnit eInUnit, FieldUnit eOutUnit);
-VCL_DLLPUBLIC double ConvertDoubleValue(double nValue, sal_uInt16 nDecDigits, FieldUnit eInUnit,
-                                        MapUnit eOutUnit);
-VCL_DLLPUBLIC double ConvertDoubleValue(double nValue, sal_uInt16 nDecDigits, MapUnit eInUnit,
-                                        FieldUnit eOutUnit);
-
-// for backwards compatibility
-// caution: conversion to double loses precision
-inline double ConvertDoubleValue(sal_Int64 nValue, sal_Int64 nBaseValue, sal_uInt16 nDecDigits,
-                                 FieldUnit eInUnit, FieldUnit eOutUnit)
-{
-    return ConvertDoubleValue(static_cast<double>(nValue), nBaseValue, nDecDigits, eInUnit,
-                              eOutUnit);
-}
-
-inline double ConvertDoubleValue(sal_Int64 nValue, sal_uInt16 nDecDigits, FieldUnit eInUnit,
-                                 MapUnit eOutUnit)
-{
-    return ConvertDoubleValue(static_cast<double>(nValue), nDecDigits, eInUnit, eOutUnit);
-}
-
-inline double ConvertDoubleValue(sal_Int64 nValue, sal_uInt16 nDecDigits, MapUnit eInUnit,
-                                 FieldUnit eOutUnit)
-{
-    return ConvertDoubleValue(static_cast<double>(nValue), nDecDigits, eInUnit, eOutUnit);
-}
+// nValue is not scaled to nDecDigits; the result is scaled
+VCL_DLLPUBLIC sal_Int64 ConvertAndScaleValue(sal_Int64 nValue, sal_uInt16 nDecDigits,
+                                             MapUnit eInUnit, FieldUnit eOutUnit);
+// nValue is already scaled to nDecDigits; the result is unscaled
+VCL_DLLPUBLIC sal_Int64 ConvertAndUnscaleValue(sal_Int64 nValue, sal_uInt16 nDecDigits,
+                                               FieldUnit eInUnit, FieldUnit eOutUnit);
 }
 
 #endif // INCLUDED_VCL_FIELDVALUES_HXX

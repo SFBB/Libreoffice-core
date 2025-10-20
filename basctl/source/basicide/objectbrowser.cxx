@@ -1054,8 +1054,8 @@ void ObjectBrowser::NavigateToMacroSource(const IdeSymbolInfo& rSymbol)
                  "NavigateToMacroSource: Document is alive, dispatching SID_BASICIDE_SHOWSBX.");
 
         // Pass the method name so it navigates to the exact line
-        SbxItem aSbxItem(SID_BASICIDE_ARG_SBX, aDoc, rSymbol.sOriginLibrary, rSymbol.sOriginModule,
-                         rSymbol.sName, basctl::SBX_TYPE_METHOD);
+        SbxItem aSbxItem(SID_BASICIDE_ARG_SBX, std::move(aDoc), rSymbol.sOriginLibrary,
+                         rSymbol.sOriginModule, rSymbol.sName, basctl::SBX_TYPE_METHOD);
 
         SfxViewFrame& rViewFrame = m_pShell->GetViewFrame();
         if (SfxDispatcher* pDispatcher = rViewFrame.GetDispatcher())
@@ -1176,8 +1176,10 @@ IMPL_LINK(ObjectBrowser, OnRightTreeSelect, weld::TreeView&, rTree, void)
     }
 
     auto xLeftIter = m_xLeftTreeView->make_iterator();
-    m_xLeftTreeView->get_selected(xLeftIter.get());
-    auto pLeftSymbol = GetSymbolForIter(*xLeftIter, *m_xLeftTreeView, m_aLeftTreeSymbolIndex);
+    std::shared_ptr<const IdeSymbolInfo> pLeftSymbol
+        = m_xLeftTreeView->get_selected(xLeftIter.get())
+              ? GetSymbolForIter(*xLeftIter, *m_xLeftTreeView, m_aLeftTreeSymbolIndex)
+              : nullptr;
 
     auto xRightIter = rTree.make_iterator();
     if (!rTree.get_selected(xRightIter.get()))
