@@ -49,10 +49,10 @@ QtInstanceTreeView::QtInstanceTreeView(QTreeView* pTreeView)
     m_pTreeView->viewport()->installEventFilter(this);
 }
 
-void QtInstanceTreeView::insert(const weld::TreeIter* pParent, int nPos, const OUString* pStr,
-                                const OUString* pId, const OUString* pIconName,
-                                VirtualDevice* pImageSurface, bool bChildrenOnDemand,
-                                weld::TreeIter* pRet)
+void QtInstanceTreeView::do_insert(const weld::TreeIter* pParent, int nPos, const OUString* pStr,
+                                   const OUString* pId, const OUString* pIconName,
+                                   VirtualDevice* pImageSurface, bool bChildrenOnDemand,
+                                   weld::TreeIter* pRet)
 {
     assert(!bChildrenOnDemand && "Not implemented yet");
     // avoid -Werror=unused-parameter for release build
@@ -96,7 +96,7 @@ void QtInstanceTreeView::insert(const weld::TreeIter* pParent, int nPos, const O
     });
 }
 
-void QtInstanceTreeView::insert_separator(int, const OUString&)
+void QtInstanceTreeView::do_insert_separator(int, const OUString&)
 {
     assert(false && "Not implemented yet");
 }
@@ -162,11 +162,11 @@ int QtInstanceTreeView::get_selected_index() const
     return nIndex;
 }
 
-void QtInstanceTreeView::select(int nPos) { select(treeIter(nPos)); }
+void QtInstanceTreeView::do_select(int nPos) { do_select(treeIter(nPos)); }
 
-void QtInstanceTreeView::unselect(int nPos) { unselect(treeIter(nPos)); }
+void QtInstanceTreeView::do_unselect(int nPos) { do_unselect(treeIter(nPos)); }
 
-void QtInstanceTreeView::remove(int nPos) { remove(treeIter(nPos)); }
+void QtInstanceTreeView::do_remove(int nPos) { do_remove(treeIter(nPos)); }
 
 OUString QtInstanceTreeView::get_text(int nRow, int nCol) const
 {
@@ -278,7 +278,7 @@ void QtInstanceTreeView::set_font_color(int nPos, const Color& rColor)
     set_font_color(treeIter(nPos), rColor);
 }
 
-void QtInstanceTreeView::scroll_to_row(int nRow) { scroll_to_row(treeIter(nRow)); }
+void QtInstanceTreeView::do_scroll_to_row(int nRow) { scroll_to_row(treeIter(nRow)); }
 
 bool QtInstanceTreeView::is_selected(int nPos) const { return is_selected(treeIter(nPos)); }
 
@@ -297,7 +297,7 @@ int QtInstanceTreeView::get_cursor_index() const
     return nIndex;
 }
 
-void QtInstanceTreeView::set_cursor(int nPos) { set_cursor(treeIter(nPos)); }
+void QtInstanceTreeView::do_set_cursor(int nPos) { do_set_cursor(treeIter(nPos)); }
 
 int QtInstanceTreeView::find_text(const OUString& rText) const
 {
@@ -380,7 +380,7 @@ bool QtInstanceTreeView::get_cursor(weld::TreeIter* pIter) const
     return bRet;
 }
 
-void QtInstanceTreeView::set_cursor(const weld::TreeIter& rIter)
+void QtInstanceTreeView::do_set_cursor(const weld::TreeIter& rIter)
 {
     SolarMutexGuard g;
 
@@ -509,7 +509,7 @@ int QtInstanceTreeView::iter_n_children(const weld::TreeIter& rIter) const
     return m_pModel->rowCount(rQtIter.modelIndex());
 }
 
-void QtInstanceTreeView::remove(const weld::TreeIter& rIter)
+void QtInstanceTreeView::do_remove(const weld::TreeIter& rIter)
 {
     SolarMutexGuard g;
 
@@ -519,7 +519,7 @@ void QtInstanceTreeView::remove(const weld::TreeIter& rIter)
     });
 }
 
-void QtInstanceTreeView::select(const weld::TreeIter& rIter)
+void QtInstanceTreeView::do_select(const weld::TreeIter& rIter)
 {
     SolarMutexGuard g;
 
@@ -533,7 +533,7 @@ void QtInstanceTreeView::select(const weld::TreeIter& rIter)
     });
 }
 
-void QtInstanceTreeView::unselect(const weld::TreeIter& rIter)
+void QtInstanceTreeView::do_unselect(const weld::TreeIter& rIter)
 {
     SolarMutexGuard g;
 
@@ -711,7 +711,7 @@ void QtInstanceTreeView::set_font_color(const weld::TreeIter& rIter, const Color
     });
 }
 
-void QtInstanceTreeView::scroll_to_row(const weld::TreeIter& rIter)
+void QtInstanceTreeView::do_scroll_to_row(const weld::TreeIter& rIter)
 {
     SolarMutexGuard g;
 
@@ -821,7 +821,7 @@ void QtInstanceTreeView::collapse_row(const weld::TreeIter& rIter)
     GetQtInstance().RunInMainThread([&] { m_pTreeView->collapse(modelIndex(rIter)); });
 }
 
-void QtInstanceTreeView::set_children_on_demand(const weld::TreeIter&, bool)
+void QtInstanceTreeView::do_set_children_on_demand(const weld::TreeIter&, bool)
 {
     assert(false && "Not implemented yet");
 }
@@ -941,7 +941,7 @@ void QtInstanceTreeView::set_sort_column(int nColumn)
     GetQtInstance().RunInMainThread([&] { m_pModel->sort(nColumn); });
 }
 
-void QtInstanceTreeView::clear()
+void QtInstanceTreeView::do_clear()
 {
     SolarMutexGuard g;
 
@@ -1026,7 +1026,7 @@ void QtInstanceTreeView::set_selection_mode(SelectionMode eMode)
 
 int QtInstanceTreeView::count_selected_rows() const { return get_selected_rows().size(); }
 
-void QtInstanceTreeView::remove_selection() { assert(false && "Not implemented yet"); }
+void QtInstanceTreeView::do_remove_selection() { assert(false && "Not implemented yet"); }
 
 bool QtInstanceTreeView::changed_by_hover() const
 {

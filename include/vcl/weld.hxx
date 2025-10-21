@@ -7,8 +7,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-#ifndef INCLUDED_VCL_WELD_HXX
-#define INCLUDED_VCL_WELD_HXX
+#pragma once
 
 #include <basegfx/range/b2irange.hxx>
 #include <rtl/ustring.hxx>
@@ -86,6 +85,8 @@ class VCL_DLLPUBLIC Widget
 {
     friend class ::LOKTrigger;
 
+    int m_nBlockNotify = 0;
+
 protected:
     Link<Widget&, void> m_aFocusInHdl;
     Link<Widget&, void> m_aFocusOutHdl;
@@ -97,6 +98,10 @@ protected:
     Link<const MouseEvent&, bool> m_aMousePressHdl;
     Link<const MouseEvent&, bool> m_aMouseMotionHdl;
     Link<const MouseEvent&, bool> m_aMouseReleaseHdl;
+
+    void disable_notify_events() { ++m_nBlockNotify; }
+    bool notify_events_disabled() const { return m_nBlockNotify != 0; }
+    void enable_notify_events() { --m_nBlockNotify; }
 
     void signal_focus_in() { m_aFocusInHdl.Call(*this); }
     void signal_focus_out() { m_aFocusOutHdl.Call(*this); }
@@ -686,20 +691,63 @@ class VCL_DLLPUBLIC Assistant : virtual public Dialog
     Link<const OUString&, bool> m_aJumpPageHdl;
 
 protected:
-    bool signal_jump_page(const OUString& rIdent) { return m_aJumpPageHdl.Call(rIdent); }
+    bool signal_jump_page(const OUString& rIdent)
+    {
+        if (notify_events_disabled())
+            return true;
+        return m_aJumpPageHdl.Call(rIdent);
+    }
+
+    virtual void do_set_current_page(int nPage) = 0;
+    virtual void do_set_current_page(const OUString& rIdent) = 0;
+    virtual void do_set_page_index(const OUString& rIdent, int nIndex) = 0;
+    virtual void do_set_page_title(const OUString& rIdent, const OUString& rTitle) = 0;
+    virtual void do_set_page_sensitive(const OUString& rIdent, bool bSensitive) = 0;
 
 public:
     virtual int get_current_page() const = 0;
     virtual int get_n_pages() const = 0;
     virtual OUString get_page_ident(int nPage) const = 0;
     virtual OUString get_current_page_ident() const = 0;
-    virtual void set_current_page(int nPage) = 0;
-    virtual void set_current_page(const OUString& rIdent) = 0;
+
+    void set_current_page(int nPage)
+    {
+        disable_notify_events();
+        do_set_current_page(nPage);
+        enable_notify_events();
+    }
+
+    void set_current_page(const OUString& rIdent)
+    {
+        disable_notify_events();
+        do_set_current_page(rIdent);
+        enable_notify_events();
+    }
+
     // move the page rIdent to position nIndex
-    virtual void set_page_index(const OUString& rIdent, int nIndex) = 0;
-    virtual void set_page_title(const OUString& rIdent, const OUString& rTitle) = 0;
+    void set_page_index(const OUString& rIdent, int nIndex)
+    {
+        disable_notify_events();
+        do_set_page_index(rIdent, nIndex);
+        enable_notify_events();
+    }
+
+    void set_page_title(const OUString& rIdent, const OUString& rTitle)
+    {
+        disable_notify_events();
+        do_set_page_title(rIdent, rTitle);
+        enable_notify_events();
+    }
+
     virtual OUString get_page_title(const OUString& rIdent) const = 0;
-    virtual void set_page_sensitive(const OUString& rIdent, bool bSensitive) = 0;
+
+    void set_page_sensitive(const OUString& rIdent, bool bSensitive)
+    {
+        disable_notify_events();
+        do_set_page_sensitive(rIdent, bSensitive);
+        enable_notify_events();
+    }
+
     virtual weld::Container* append_page(const OUString& rIdent) = 0;
 
     virtual void set_page_side_help_id(const OUString& rHelpId) = 0;
@@ -994,8 +1042,20 @@ protected:
     std::function<int(const weld::TreeIter&, const weld::TreeIter&)> m_aCustomSort;
 
 protected:
-    void signal_selection_changed() { m_aSelectionChangedHdl.Call(*this); }
-    bool signal_row_activated() { return m_aRowActivatedHdl.Call(*this); }
+    void signal_selection_changed()
+    {
+        if (notify_events_disabled())
+            return;
+        m_aSelectionChangedHdl.Call(*this);
+    }
+
+    bool signal_row_activated()
+    {
+        if (notify_events_disabled())
+            return true;
+        return m_aRowActivatedHdl.Call(*this);
+    }
+
     void signal_column_clicked(int nColumn) { m_aColumnClickedHdl.Call(nColumn); }
     bool signal_expanding(const TreeIter& rIter)
     {
@@ -1005,8 +1065,19 @@ protected:
     {
         return !m_aCollapsingHdl.IsSet() || m_aCollapsingHdl.Call(rIter);
     }
-    void signal_visible_range_changed() { m_aVisibleRangeChangedHdl.Call(*this); }
-    void signal_model_changed() { m_aModelChangedHdl.Call(*this); }
+    void signal_visible_range_changed()
+    {
+        if (notify_events_disabled())
+            return;
+        m_aVisibleRangeChangedHdl.Call(*this);
+    }
+
+    void signal_model_changed()
+    {
+        if (notify_events_disabled())
+            return;
+        m_aModelChangedHdl.Call(*this);
+    }
 
     void signal_toggled(const iter_col& rIterCol) { m_aRadioToggleHdl.Call(rIterCol); }
 
@@ -1020,7 +1091,13 @@ protected:
     void signal_popup_menu(const CommandEvent& rCommand) { m_aPopupMenuHdl.Call(rCommand); }
 
     Link<const TreeIter&, OUString> m_aQueryTooltipHdl;
-    OUString signal_query_tooltip(const TreeIter& rIter) { return m_aQueryTooltipHdl.Call(rIter); }
+
+    OUString signal_query_tooltip(const TreeIter& rIter)
+    {
+        if (notify_events_disabled())
+            return {};
+        return m_aQueryTooltipHdl.Call(rIter);
+    }
 
     Link<render_args, void> m_aRenderHdl;
     void signal_custom_render(vcl::RenderContext& rDevice, const tools::Rectangle& rRect,
@@ -1035,6 +1112,25 @@ protected:
         return m_aGetSizeHdl.Call(get_size_args(rDevice, rId));
     }
 
+    virtual void do_insert(const TreeIter* pParent, int pos, const OUString* pStr,
+                           const OUString* pId, const OUString* pIconName,
+                           VirtualDevice* pImageSurface, bool bChildrenOnDemand, TreeIter* pRet)
+        = 0;
+    virtual void do_insert_separator(int pos, const OUString& rId) = 0;
+    virtual void do_select(int pos) = 0;
+    virtual void do_unselect(int pos) = 0;
+    virtual void do_remove(int pos) = 0;
+    virtual void do_scroll_to_row(int row) = 0;
+    virtual void do_set_cursor(int pos) = 0;
+    virtual void do_set_cursor(const TreeIter& rIter) = 0;
+    virtual void do_remove(const TreeIter& rIter) = 0;
+    virtual void do_select(const TreeIter& rIter) = 0;
+    virtual void do_unselect(const TreeIter& rIter) = 0;
+    virtual void do_scroll_to_row(const TreeIter& rIter) = 0;
+    virtual void do_set_children_on_demand(const TreeIter& rIter, bool bChildrenOnDemand) = 0;
+    virtual void do_clear() = 0;
+    virtual void do_remove_selection() = 0;
+
 public:
     virtual void connect_query_tooltip(const Link<const TreeIter&, OUString>& rLink)
     {
@@ -1043,10 +1139,14 @@ public:
     }
 
     // see 'expanding on-demand node details' for bChildrenOnDemand of true
-    virtual void insert(const TreeIter* pParent, int pos, const OUString* pStr, const OUString* pId,
-                        const OUString* pIconName, VirtualDevice* pImageSurface,
-                        bool bChildrenOnDemand, TreeIter* pRet)
-        = 0;
+    void insert(const TreeIter* pParent, int pos, const OUString* pStr, const OUString* pId,
+                const OUString* pIconName, VirtualDevice* pImageSurface, bool bChildrenOnDemand,
+                TreeIter* pRet)
+    {
+        disable_notify_events();
+        do_insert(pParent, pos, pStr, pId, pIconName, pImageSurface, bChildrenOnDemand, pRet);
+        enable_notify_events();
+    }
 
     void insert(int nRow, TreeIter* pRet = nullptr)
     {
@@ -1081,7 +1181,13 @@ public:
         insert(pParent, -1, &rStr, nullptr, nullptr, nullptr, false, nullptr);
     }
 
-    virtual void insert_separator(int pos, const OUString& rId) = 0;
+    void insert_separator(int pos, const OUString& rId)
+    {
+        disable_notify_events();
+        do_insert_separator(pos, rId);
+        enable_notify_events();
+    }
+
     void append_separator(const OUString& rId) { insert_separator(-1, rId); }
 
     void connect_selection_changed(const Link<TreeView&, void>& rLink)
@@ -1116,9 +1222,27 @@ public:
     //by index
     virtual int get_selected_index() const = 0;
     //Don't select when frozen, select after thaw. Note selection doesn't survive a freeze.
-    virtual void select(int pos) = 0;
-    virtual void unselect(int pos) = 0;
-    virtual void remove(int pos) = 0;
+    void select(int pos)
+    {
+        disable_notify_events();
+        do_select(pos);
+        enable_notify_events();
+    }
+
+    void unselect(int pos)
+    {
+        disable_notify_events();
+        do_unselect(pos);
+        enable_notify_events();
+    }
+
+    void remove(int pos)
+    {
+        disable_notify_events();
+        do_remove(pos);
+        enable_notify_events();
+    }
+
     // col index -1 gets the first text column
     virtual OUString get_text(int row, int col = -1) const = 0;
     // col index -1 sets the first text column
@@ -1145,12 +1269,25 @@ public:
     virtual void swap(int pos1, int pos2) = 0;
     virtual std::vector<int> get_selected_rows() const = 0;
     virtual void set_font_color(int pos, const Color& rColor) = 0;
+
     // scroll to make 'row' visible, this will also expand all parent rows of 'row' as necessary to
     // make 'row' visible
-    virtual void scroll_to_row(int row) = 0;
+    void scroll_to_row(int row)
+    {
+        disable_notify_events();
+        do_scroll_to_row(row);
+        enable_notify_events();
+    }
+
     virtual bool is_selected(int pos) const = 0;
     virtual int get_cursor_index() const = 0;
-    virtual void set_cursor(int pos) = 0;
+
+    void set_cursor(int pos)
+    {
+        disable_notify_events();
+        do_set_cursor(pos);
+        enable_notify_events();
+    }
 
     //by text
     virtual int find_text(const OUString& rText) const = 0;
@@ -1179,7 +1316,14 @@ public:
     virtual void copy_iterator(const TreeIter& rSource, TreeIter& rDest) const = 0;
     virtual bool get_selected(TreeIter* pIter) const = 0;
     virtual bool get_cursor(TreeIter* pIter) const = 0;
-    virtual void set_cursor(const TreeIter& rIter) = 0;
+
+    void set_cursor(const TreeIter& rIter)
+    {
+        disable_notify_events();
+        do_set_cursor(rIter);
+        enable_notify_events();
+    }
+
     virtual bool get_iter_first(TreeIter& rIter) const = 0;
     // set iter to point to next node at the current level
     virtual bool iter_next_sibling(TreeIter& rIter) const = 0;
@@ -1215,10 +1359,29 @@ public:
     virtual bool iter_has_child(const TreeIter& rIter) const = 0;
     // returns the number of direct children rIter has
     virtual int iter_n_children(const TreeIter& rIter) const = 0;
-    virtual void remove(const TreeIter& rIter) = 0;
+
+    void remove(const TreeIter& rIter)
+    {
+        disable_notify_events();
+        do_remove(rIter);
+        enable_notify_events();
+    }
+
     //Don't select when frozen, select after thaw. Note selection doesn't survive a freeze.
-    virtual void select(const TreeIter& rIter) = 0;
-    virtual void unselect(const TreeIter& rIter) = 0;
+    void select(const TreeIter& rIter)
+    {
+        disable_notify_events();
+        do_select(rIter);
+        enable_notify_events();
+    }
+
+    void unselect(const TreeIter& rIter)
+    {
+        disable_notify_events();
+        do_unselect(rIter);
+        enable_notify_events();
+    }
+
     //visually indent this row as if it was at get_iter_depth() + nIndentLevel
     virtual void set_extra_row_indent(const TreeIter& rIter, int nIndentLevel) = 0;
     // col index -1 sets the first text column
@@ -1246,9 +1409,16 @@ public:
                            const css::uno::Reference<css::graphic::XGraphic>& rImage, int col = -1)
         = 0;
     virtual void set_font_color(const TreeIter& rIter, const Color& rColor) = 0;
+
     // scroll to make rIter visible, this will also expand all parent rows of rIter as necessary to
     // make rIter visible
-    virtual void scroll_to_row(const TreeIter& rIter) = 0;
+    void scroll_to_row(const TreeIter& rIter)
+    {
+        disable_notify_events();
+        do_scroll_to_row(rIter);
+        enable_notify_events();
+    }
+
     virtual bool is_selected(const TreeIter& rIter) const = 0;
 
     virtual void move_subtree(TreeIter& rNode, const TreeIter* pNewParent, int nIndexInNewParent)
@@ -1307,9 +1477,16 @@ public:
     virtual void expand_row(const TreeIter& rIter) = 0;
     // collapse row will first trigger the callback set via connect_collapsing before collapsing
     virtual void collapse_row(const TreeIter& rIter) = 0;
+
     // set the empty node to appear as if it has children, true is equivalent
     // to 'insert' with a bChildrenOnDemand of true. See notes above.
-    virtual void set_children_on_demand(const TreeIter& rIter, bool bChildrenOnDemand) = 0;
+    void set_children_on_demand(const TreeIter& rIter, bool bChildrenOnDemand)
+    {
+        disable_notify_events();
+        do_set_children_on_demand(rIter, bChildrenOnDemand);
+        enable_notify_events();
+    }
+
     // return if the node is configured to be populated on-demand
     virtual bool get_children_on_demand(const TreeIter& rIter) const = 0;
     // set if the expanders are shown or not
@@ -1374,7 +1551,13 @@ public:
         m_aCustomSort = func;
     }
 
-    virtual void clear() = 0;
+    void clear()
+    {
+        disable_notify_events();
+        do_clear();
+        enable_notify_events();
+    }
+
     virtual int get_height_rows(int nRows) const = 0;
 
     virtual void columns_autosize() = 0;
@@ -1389,8 +1572,14 @@ public:
 
     virtual void set_selection_mode(SelectionMode eMode) = 0;
     virtual int count_selected_rows() const = 0;
+
     // remove the selected nodes
-    virtual void remove_selection() = 0;
+    void remove_selection()
+    {
+        disable_notify_events();
+        do_remove_selection();
+        enable_notify_events();
+    }
 
     // only meaningful is call this from a "changed" callback, true if the change
     // was due to mouse hovering over the entry
@@ -1449,24 +1638,59 @@ protected:
     Link<const TreeIter&, OUString> m_aQueryTooltipHdl;
     Link<const encoded_image_query&, bool> m_aGetPropertyTreeElemHdl;
 
-    void signal_selection_changed() { m_aSelectionChangeHdl.Call(*this); }
-    bool signal_item_activated() { return m_aItemActivatedHdl.Call(*this); }
+    void signal_selection_changed()
+    {
+        if (notify_events_disabled())
+            return;
+        m_aSelectionChangeHdl.Call(*this);
+    }
+
+    bool signal_item_activated()
+    {
+        if (notify_events_disabled())
+            return true;
+        return m_aItemActivatedHdl.Call(*this);
+    }
+
     OUString signal_query_tooltip(const TreeIter& rIter) const
     {
+        if (notify_events_disabled())
+            return {};
         return m_aQueryTooltipHdl.Call(rIter);
     }
+
+    virtual void do_insert(int pos, const OUString* pStr, const OUString* pId,
+                           const OUString* pIconName, TreeIter* pRet)
+        = 0;
+    virtual void do_insert(int pos, const OUString* pStr, const OUString* pId, const Bitmap* pIcon,
+                           TreeIter* pRet)
+        = 0;
+    virtual void do_select(int pos) = 0;
+    virtual void do_unselect(int pos) = 0;
+    virtual void do_clear() = 0;
+    virtual void do_remove(int pos) = 0;
+    virtual void do_set_cursor(const TreeIter& rIter) = 0;
+    virtual void do_scroll_to_item(const TreeIter& rIter) = 0;
 
 public:
     virtual int get_item_width() const = 0;
     virtual void set_item_width(int width) = 0;
 
-    virtual void insert(int pos, const OUString* pStr, const OUString* pId,
-                        const OUString* pIconName, TreeIter* pRet)
-        = 0;
+    void insert(int pos, const OUString* pStr, const OUString* pId, const OUString* pIconName,
+                TreeIter* pRet)
+    {
+        disable_notify_events();
+        do_insert(pos, pStr, pId, pIconName, pRet);
+        enable_notify_events();
+    }
 
-    virtual void insert(int pos, const OUString* pStr, const OUString* pId, const Bitmap* pIcon,
-                        TreeIter* pRet)
-        = 0;
+    void insert(int pos, const OUString* pStr, const OUString* pId, const Bitmap* pIcon,
+                TreeIter* pRet)
+    {
+        disable_notify_events();
+        do_insert(pos, pStr, pId, pIcon, pRet);
+        enable_notify_events();
+    }
 
     virtual void insert_separator(int pos, const OUString* pId) = 0;
 
@@ -1510,7 +1734,12 @@ public:
 
     virtual OUString get_selected_id() const = 0;
 
-    virtual void clear() = 0;
+    void clear()
+    {
+        disable_notify_events();
+        do_clear();
+        enable_notify_events();
+    }
 
     virtual int count_selected_items() const = 0;
 
@@ -1518,25 +1747,58 @@ public:
 
     //by index. Don't select when frozen, select after thaw. Note selection doesn't survive a freeze.
     virtual OUString get_id(int pos) const = 0;
-    virtual void select(int pos) = 0;
-    virtual void unselect(int pos) = 0;
+
+    void select(int pos)
+    {
+        disable_notify_events();
+        do_select(pos);
+        enable_notify_events();
+    }
+
+    void unselect(int pos)
+    {
+        disable_notify_events();
+        do_unselect(pos);
+        enable_notify_events();
+    }
+
     virtual void set_image(int pos, VirtualDevice& rDevice) = 0;
     virtual void set_text(int pos, const OUString& rText) = 0;
     virtual void set_id(int pos, const OUString& rId) = 0;
     virtual void set_item_accessible_name(int pos, const OUString& rName) = 0;
-    virtual void remove(int pos) = 0;
+
+    void remove(int pos)
+    {
+        disable_notify_events();
+        do_remove(pos);
+        enable_notify_events();
+    }
+
     virtual tools::Rectangle get_rect(int pos) const = 0;
 
     //via iter
     virtual std::unique_ptr<TreeIter> make_iterator(const TreeIter* pOrig = nullptr) const = 0;
     virtual bool get_selected(TreeIter* pIter) const = 0;
     virtual bool get_cursor(TreeIter* pIter) const = 0;
-    virtual void set_cursor(const TreeIter& rIter) = 0;
+
+    void set_cursor(const TreeIter& rIter)
+    {
+        disable_notify_events();
+        do_set_cursor(rIter);
+        enable_notify_events();
+    }
+
     virtual bool get_iter_first(TreeIter& rIter) const = 0;
     virtual OUString get_id(const TreeIter& rIter) const = 0;
     virtual OUString get_text(const TreeIter& rIter) const = 0;
     virtual bool iter_next_sibling(TreeIter& rIter) const = 0;
-    virtual void scroll_to_item(const TreeIter& rIter) = 0;
+
+    void scroll_to_item(const TreeIter& rIter)
+    {
+        disable_notify_events();
+        do_scroll_to_item(rIter);
+        enable_notify_events();
+    }
 
     // call func on each selected element until func returns true or we run out of elements
     virtual void selected_foreach(const std::function<bool(TreeIter&)>& func) = 0;
@@ -1595,10 +1857,23 @@ protected:
     Link<Toggleable&, void> m_aToggleHdl;
     TriState m_eSavedValue = TRISTATE_FALSE;
 
-    void signal_toggled() { m_aToggleHdl.Call(*this); }
+    void signal_toggled()
+    {
+        if (notify_events_disabled())
+            return;
+        m_aToggleHdl.Call(*this);
+    }
+
+    virtual void do_set_active(bool active) = 0;
 
 public:
-    virtual void set_active(bool active) = 0;
+    void set_active(bool active)
+    {
+        disable_notify_events();
+        do_set_active(active);
+        enable_notify_events();
+    }
+
     virtual bool get_active() const = 0;
 
     virtual TriState get_state() const
@@ -1671,14 +1946,23 @@ public:
 
 class VCL_DLLPUBLIC CheckButton : virtual public Toggleable
 {
+protected:
+    virtual void do_set_state(TriState eState) = 0;
+
 public:
     // must override Toggleable::get_state to support TRISTATE_INDET
     virtual TriState get_state() const override = 0;
-    virtual void set_state(TriState eState) = 0;
 
-    virtual void set_active(bool bActive) override final
+    void set_state(TriState eState)
     {
-        set_state(bActive ? TRISTATE_TRUE : TRISTATE_FALSE);
+        disable_notify_events();
+        do_set_state(eState);
+        enable_notify_events();
+    }
+
+    virtual void do_set_active(bool bActive) override final
+    {
+        do_set_state(bActive ? TRISTATE_TRUE : TRISTATE_FALSE);
     }
 
     virtual bool get_active() const override final { return get_state() == TRISTATE_TRUE; }
@@ -1783,22 +2067,52 @@ protected:
     friend class ::LOKTrigger;
 
     void signal_changed() { m_aChangeHdl.Call(*this); }
-    void signal_cursor_position() { m_aCursorPositionHdl.Call(*this); }
+
+    void signal_cursor_position()
+    {
+        if (notify_events_disabled())
+            return;
+        m_aCursorPositionHdl.Call(*this);
+    }
+
+    virtual void do_set_text(const OUString& rText) = 0;
+    virtual void do_select_region(int nStartPos, int nEndPos) = 0;
+    virtual void do_set_position(int nCursorPos) = 0;
 
 public:
-    virtual void set_text(const OUString& rText) = 0;
+    void set_text(const OUString& rText)
+    {
+        disable_notify_events();
+        do_set_text(rText);
+        enable_notify_events();
+    }
+
     virtual OUString get_text() const = 0;
     virtual void set_width_chars(int nChars) = 0;
     virtual int get_width_chars() const = 0;
     // The maximum length of the entry. Use 0 for no maximum
     virtual void set_max_length(int nChars) = 0;
+
     // nEndPos can be -1 in order to select all text
-    virtual void select_region(int nStartPos, int nEndPos) = 0;
+    void select_region(int nStartPos, int nEndPos)
+    {
+        disable_notify_events();
+        do_select_region(nStartPos, nEndPos);
+        enable_notify_events();
+    }
+
     // returns true if the selection has nonzero length
     virtual bool get_selection_bounds(int& rStartPos, int& rEndPos) = 0;
     virtual void replace_selection(const OUString& rText) = 0;
+
     // nCursorPos can be -1 to set to the end
-    virtual void set_position(int nCursorPos) = 0;
+    void set_position(int nCursorPos)
+    {
+        disable_notify_events();
+        do_set_position(nCursorPos);
+        enable_notify_events();
+    }
+
     virtual int get_position() const = 0;
     virtual void set_editable(bool bEditable) = 0;
     virtual bool get_editable() const = 0;
@@ -2037,8 +2351,19 @@ class VCL_DLLPUBLIC Calendar : virtual public Widget
     Link<Calendar&, void> m_aActivatedHdl;
 
 protected:
-    void signal_selected() { m_aSelectedHdl.Call(*this); }
-    void signal_activated() { m_aActivatedHdl.Call(*this); }
+    void signal_selected()
+    {
+        if (notify_events_disabled())
+            return;
+        m_aSelectedHdl.Call(*this);
+    }
+
+    void signal_activated()
+    {
+        if (notify_events_disabled())
+            return;
+        m_aActivatedHdl.Call(*this);
+    }
 
 public:
     void connect_selected(const Link<Calendar&, void>& rLink) { m_aSelectedHdl = rLink; }
@@ -2413,17 +2738,48 @@ protected:
     Link<TextView&, void> m_aCursorPositionHdl;
 
     void signal_changed() { m_aChangeHdl.Call(*this); }
-    void signal_cursor_position() { m_aCursorPositionHdl.Call(*this); }
+
+    void signal_cursor_position()
+    {
+        if (notify_events_disabled())
+            return;
+        m_aCursorPositionHdl.Call(*this);
+    }
+
     void signal_vadjustment_value_changed() { m_aVValueChangeHdl.Call(*this); }
 
+    virtual void do_set_text(const OUString& rText) = 0;
+    virtual void do_select_region(int nStartPos, int nEndPos) = 0;
+    virtual void do_replace_selection(const OUString& rText) = 0;
+
 public:
-    virtual void set_text(const OUString& rText) = 0;
+    void set_text(const OUString& rText)
+    {
+        disable_notify_events();
+        do_set_text(rText);
+        enable_notify_events();
+    }
+
     virtual OUString get_text() const = 0;
+
     // if nStartPos or nEndPos is -1 the max available text pos will be used
-    virtual void select_region(int nStartPos, int nEndPos) = 0;
+    void select_region(int nStartPos, int nEndPos)
+    {
+        disable_notify_events();
+        do_select_region(nStartPos, nEndPos);
+        enable_notify_events();
+    }
+
     // returns true if the selection has nonzero length
     virtual bool get_selection_bounds(int& rStartPos, int& rEndPos) = 0;
-    virtual void replace_selection(const OUString& rText) = 0;
+
+    void replace_selection(const OUString& rText)
+    {
+        disable_notify_events();
+        do_replace_selection(rText);
+        enable_notify_events();
+    }
+
     virtual void set_editable(bool bEditable) = 0;
     virtual bool get_editable() const = 0;
     virtual void set_monospace(bool bMonospace) = 0;
@@ -2947,6 +3303,5 @@ void Dialog::set_default_response(int nResponse)
     change_default_button(nullptr, pButton.get());
 }
 }
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

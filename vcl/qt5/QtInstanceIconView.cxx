@@ -45,8 +45,8 @@ int QtInstanceIconView::get_item_width() const
 
 void QtInstanceIconView::set_item_width(int) { assert(false && "Not implemented yet"); }
 
-void QtInstanceIconView::insert(int nPos, const OUString* pStr, const OUString* pId,
-                                const QPixmap* pIcon, weld::TreeIter* pRet)
+void QtInstanceIconView::do_insert(int nPos, const OUString* pStr, const OUString* pId,
+                                   const QPixmap* pIcon, weld::TreeIter* pRet)
 {
     assert(!pRet && "Support for pRet param not implemented yet");
     (void)pRet;
@@ -74,26 +74,26 @@ void QtInstanceIconView::insert(int nPos, const OUString* pStr, const OUString* 
     });
 }
 
-void QtInstanceIconView::insert(int nPos, const OUString* pStr, const OUString* pId,
-                                const OUString* pIconName, weld::TreeIter* pRet)
+void QtInstanceIconView::do_insert(int nPos, const OUString* pStr, const OUString* pId,
+                                   const OUString* pIconName, weld::TreeIter* pRet)
 {
     std::optional<QPixmap> oPixmap;
     if (pIconName)
         oPixmap = loadQPixmapIcon(*pIconName);
 
     const QPixmap* pPixmapIcon = oPixmap.has_value() ? &oPixmap.value() : nullptr;
-    insert(nPos, pStr, pId, pPixmapIcon, pRet);
+    do_insert(nPos, pStr, pId, pPixmapIcon, pRet);
 }
 
-void QtInstanceIconView::insert(int nPos, const OUString* pStr, const OUString* pId,
-                                const Bitmap* pIcon, weld::TreeIter* pRet)
+void QtInstanceIconView::do_insert(int nPos, const OUString* pStr, const OUString* pId,
+                                   const Bitmap* pIcon, weld::TreeIter* pRet)
 {
     std::optional<QPixmap> oPixmap;
     if (pIcon)
         oPixmap = toQPixmap(*pIcon);
 
     const QPixmap* pPixmapIcon = oPixmap.has_value() ? &oPixmap.value() : nullptr;
-    insert(nPos, pStr, pId, pPixmapIcon, pRet);
+    do_insert(nPos, pStr, pId, pPixmapIcon, pRet);
 }
 
 void QtInstanceIconView::insert_separator(int, const OUString*)
@@ -119,7 +119,7 @@ OUString QtInstanceIconView::get_selected_id() const
     return sId;
 }
 
-void QtInstanceIconView::clear()
+void QtInstanceIconView::do_clear()
 {
     SolarMutexGuard g;
 
@@ -152,14 +152,14 @@ OUString QtInstanceIconView::get_id(int nPos) const
     return sId;
 }
 
-void QtInstanceIconView::select(int nPos)
+void QtInstanceIconView::do_select(int nPos)
 {
     SolarMutexGuard g;
     GetQtInstance().RunInMainThread(
         [&] { m_pSelectionModel->select(m_pModel->index(nPos, 0), QItemSelectionModel::Select); });
 }
 
-void QtInstanceIconView::unselect(int nPos)
+void QtInstanceIconView::do_unselect(int nPos)
 {
     SolarMutexGuard g;
 
@@ -209,7 +209,7 @@ void QtInstanceIconView::set_item_accessible_name(int nPos, const OUString& rNam
     });
 }
 
-void QtInstanceIconView::remove(int) { assert(false && "Not implemented yet"); }
+void QtInstanceIconView::do_remove(int) { assert(false && "Not implemented yet"); }
 
 tools::Rectangle QtInstanceIconView::get_rect(int) const
 {
@@ -235,7 +235,7 @@ bool QtInstanceIconView::get_cursor(weld::TreeIter*) const
     return false;
 }
 
-void QtInstanceIconView::set_cursor(const weld::TreeIter& rIter)
+void QtInstanceIconView::do_set_cursor(const weld::TreeIter& rIter)
 {
     SolarMutexGuard g;
 
@@ -276,7 +276,7 @@ bool QtInstanceIconView::iter_next_sibling(weld::TreeIter&) const
     return false;
 }
 
-void QtInstanceIconView::scroll_to_item(const weld::TreeIter& rIter)
+void QtInstanceIconView::do_scroll_to_item(const weld::TreeIter& rIter)
 {
     SolarMutexGuard g;
     GetQtInstance().RunInMainThread([&] { m_pListView->scrollTo(modelIndex(rIter)); });

@@ -39,12 +39,12 @@ class QtInstanceTreeView : public QtInstanceWidget, public virtual weld::TreeVie
 public:
     QtInstanceTreeView(QTreeView* pTreeView);
 
-    virtual void insert(const weld::TreeIter* pParent, int nPos, const OUString* pStr,
-                        const OUString* pId, const OUString* pIconName,
-                        VirtualDevice* pImageSurface, bool bChildrenOnDemand,
-                        weld::TreeIter* pRet) override;
+    virtual void do_insert(const weld::TreeIter* pParent, int nPos, const OUString* pStr,
+                           const OUString* pId, const OUString* pIconName,
+                           VirtualDevice* pImageSurface, bool bChildrenOnDemand,
+                           weld::TreeIter* pRet) override;
 
-    virtual void insert_separator(int pos, const OUString& rId) override;
+    virtual void do_insert_separator(int pos, const OUString& rId) override;
 
     virtual OUString get_selected_text() const override;
     virtual OUString get_selected_id() const override;
@@ -54,9 +54,9 @@ public:
     virtual void set_clicks_to_toggle(int nToggleBehavior) override;
 
     virtual int get_selected_index() const override;
-    virtual void select(int nPos) override;
-    virtual void unselect(int nPos) override;
-    virtual void remove(int nPos) override;
+    virtual void do_select(int nPos) override;
+    virtual void do_unselect(int nPos) override;
+    virtual void do_remove(int nPos) override;
     virtual OUString get_text(int nRow, int nCol = -1) const override;
     virtual void set_text(int nRow, const OUString& rText, int nCol = -1) override;
     virtual void set_sensitive(int nRow, bool bSensitive, int nCol = -1) override;
@@ -74,10 +74,10 @@ public:
     virtual void swap(int nPos1, int nPos2) override;
     virtual std::vector<int> get_selected_rows() const override;
     virtual void set_font_color(int nPos, const Color& rColor) override;
-    virtual void scroll_to_row(int nRow) override;
+    virtual void do_scroll_to_row(int nRow) override;
     virtual bool is_selected(int nPos) const override;
     virtual int get_cursor_index() const override;
-    virtual void set_cursor(int pos) override;
+    virtual void do_set_cursor(int pos) override;
 
     virtual int find_text(const OUString& rText) const override;
     virtual OUString get_id(int nPos) const override;
@@ -88,7 +88,7 @@ public:
     virtual void copy_iterator(const weld::TreeIter& rSource, weld::TreeIter& rDest) const override;
     virtual bool get_selected(weld::TreeIter* pIter) const override;
     virtual bool get_cursor(weld::TreeIter* pIter) const override;
-    virtual void set_cursor(const weld::TreeIter& rIter) override;
+    virtual void do_set_cursor(const weld::TreeIter& rIter) override;
     virtual bool get_iter_first(weld::TreeIter& rIter) const override;
     virtual bool iter_next_sibling(weld::TreeIter& rIter) const override;
     virtual bool iter_previous_sibling(weld::TreeIter& rIter) const override;
@@ -102,9 +102,9 @@ public:
     virtual int iter_compare(const weld::TreeIter& a, const weld::TreeIter& b) const override;
     virtual bool iter_has_child(const weld::TreeIter& rIter) const override;
     virtual int iter_n_children(const weld::TreeIter& rIter) const override;
-    virtual void remove(const weld::TreeIter& rIter) override;
-    virtual void select(const weld::TreeIter& rIter) override;
-    virtual void unselect(const weld::TreeIter& rIter) override;
+    virtual void do_remove(const weld::TreeIter& rIter) override;
+    virtual void do_select(const weld::TreeIter& rIter) override;
+    virtual void do_unselect(const weld::TreeIter& rIter) override;
     virtual void set_extra_row_indent(const weld::TreeIter& rIter, int nIndentLevel) override;
     virtual void set_text(const weld::TreeIter& rIter, const OUString& rStr,
                           int nCol = -1) override;
@@ -127,7 +127,7 @@ public:
                            const css::uno::Reference<css::graphic::XGraphic>& rImage,
                            int nCol = -1) override;
     virtual void set_font_color(const weld::TreeIter& rIter, const Color& rColor) override;
-    virtual void scroll_to_row(const weld::TreeIter& rIter) override;
+    virtual void do_scroll_to_row(const weld::TreeIter& rIter) override;
     virtual bool is_selected(const weld::TreeIter& rIter) const override;
 
     virtual void move_subtree(weld::TreeIter& rNode, const weld::TreeIter* pNewParent,
@@ -144,8 +144,8 @@ public:
     virtual bool get_row_expanded(const weld::TreeIter& rIter) const override;
     virtual void expand_row(const weld::TreeIter& rIter) override;
     virtual void collapse_row(const weld::TreeIter& rIter) override;
-    virtual void set_children_on_demand(const weld::TreeIter& rIter,
-                                        bool bChildrenOnDemand) override;
+    virtual void do_set_children_on_demand(const weld::TreeIter& rIter,
+                                           bool bChildrenOnDemand) override;
     virtual bool get_children_on_demand(const weld::TreeIter& rIter) const override;
     virtual void set_show_expanders(bool bShow) override;
 
@@ -171,7 +171,7 @@ public:
     virtual int get_sort_column() const override;
     virtual void set_sort_column(int nColumn) override;
 
-    virtual void clear() override;
+    virtual void do_clear() override;
     virtual int get_height_rows(int nRows) const override;
 
     virtual void columns_autosize() override;
@@ -184,7 +184,7 @@ public:
 
     virtual void set_selection_mode(SelectionMode eMode) override;
     virtual int count_selected_rows() const override;
-    virtual void remove_selection() override;
+    virtual void do_remove_selection() override;
 
     virtual bool changed_by_hover() const override;
 

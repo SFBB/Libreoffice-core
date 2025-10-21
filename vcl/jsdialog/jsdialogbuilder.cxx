@@ -1092,15 +1092,15 @@ JSAssistant::JSAssistant(JSDialogSender* pSender, vcl::RoadmapWizard* pDialog,
 {
 }
 
-void JSAssistant::set_current_page(int nPage)
+void JSAssistant::do_set_current_page(int nPage)
 {
-    SalInstanceAssistant::set_current_page(nPage);
+    SalInstanceAssistant::do_set_current_page(nPage);
     sendFullUpdate();
 }
 
-void JSAssistant::set_current_page(const OUString& rIdent)
+void JSAssistant::do_set_current_page(const OUString& rIdent)
 {
-    SalInstanceAssistant::set_current_page(rIdent);
+    SalInstanceAssistant::do_set_current_page(rIdent);
     sendFullUpdate();
 }
 
@@ -1222,9 +1222,9 @@ JSEntry::JSEntry(JSDialogSender* pSender, ::Edit* pEntry, SalInstanceBuilder* pB
 {
 }
 
-void JSEntry::set_text(const OUString& rText)
+void JSEntry::do_set_text(const OUString& rText)
 {
-    SalInstanceEntry::set_text(rText);
+    SalInstanceEntry::do_set_text(rText);
     sendUpdate();
 }
 
@@ -1415,9 +1415,9 @@ JSFormattedSpinButton::JSFormattedSpinButton(JSDialogSender* pSender, ::Formatte
 {
 }
 
-void JSFormattedSpinButton::set_text(const OUString& rText)
+void JSFormattedSpinButton::do_set_text(const OUString& rText)
 {
-    SalInstanceFormattedSpinButton::set_text(rText);
+    SalInstanceFormattedSpinButton::do_set_text(rText);
     sendUpdate();
 }
 
@@ -1554,10 +1554,10 @@ JSCheckButton::JSCheckButton(JSDialogSender* pSender, ::CheckBox* pCheckBox,
 {
 }
 
-void JSCheckButton::set_state(TriState eState)
+void JSCheckButton::do_set_state(TriState eState)
 {
     TriState eOldState = get_state();
-    SalInstanceCheckButton::set_state(eState);
+    SalInstanceCheckButton::do_set_state(eState);
     if (eOldState != eState)
         sendUpdate();
 }
@@ -1663,9 +1663,9 @@ JSTextView::JSTextView(JSDialogSender* pSender, ::VclMultiLineEdit* pTextView,
 {
 }
 
-void JSTextView::set_text(const OUString& rText)
+void JSTextView::do_set_text(const OUString& rText)
 {
-    SalInstanceTextView::set_text(rText);
+    SalInstanceTextView::do_set_text(rText);
     sendUpdate();
 }
 
@@ -1674,9 +1674,9 @@ void JSTextView::set_text_without_notify(const OUString& rText)
     SalInstanceTextView::set_text(rText);
 }
 
-void JSTextView::replace_selection(const OUString& rText)
+void JSTextView::do_replace_selection(const OUString& rText)
 {
-    SalInstanceTextView::replace_selection(rText);
+    SalInstanceTextView::do_replace_selection(rText);
     sendUpdate();
 }
 
@@ -1728,10 +1728,9 @@ void JSTreeView::set_sensitive(const weld::TreeIter& rIter, bool bSensitive, int
     sendUpdate();
 }
 
-void JSTreeView::select(int pos)
+void JSTreeView::do_select(int pos)
 {
     assert(m_xTreeView->IsUpdateMode() && "don't select when frozen");
-    disable_notify_events();
     if (pos == -1 || (pos == 0 && n_children() == 0))
         m_xTreeView->SelectAll(false);
     else
@@ -1747,7 +1746,6 @@ void JSTreeView::select(int pos)
             m_xTreeView->MakeVisible(pEntry);
         }
     }
-    enable_notify_events();
 
     std::unique_ptr<jsdialog::ActionDataMap> pMap = std::make_unique<jsdialog::ActionDataMap>();
     (*pMap)[ACTION_TYPE ""_ostr] = "select";
@@ -1783,12 +1781,13 @@ void JSTreeView::drag_end()
     g_DragSource = nullptr;
 }
 
-void JSTreeView::insert(const weld::TreeIter* pParent, int pos, const OUString* pStr,
-                        const OUString* pId, const OUString* pIconName,
-                        VirtualDevice* pImageSurface, bool bChildrenOnDemand, weld::TreeIter* pRet)
+void JSTreeView::do_insert(const weld::TreeIter* pParent, int pos, const OUString* pStr,
+                           const OUString* pId, const OUString* pIconName,
+                           VirtualDevice* pImageSurface, bool bChildrenOnDemand,
+                           weld::TreeIter* pRet)
 {
-    SalInstanceTreeView::insert(pParent, pos, pStr, pId, pIconName, pImageSurface,
-                                bChildrenOnDemand, pRet);
+    SalInstanceTreeView::do_insert(pParent, pos, pStr, pId, pIconName, pImageSurface,
+                                   bChildrenOnDemand, pRet);
 
     sendUpdate();
 }
@@ -1805,38 +1804,35 @@ void JSTreeView::set_text(const weld::TreeIter& rIter, const OUString& rStr, int
     sendUpdate();
 }
 
-void JSTreeView::remove(int pos)
+void JSTreeView::do_remove(int pos)
 {
-    SalInstanceTreeView::remove(pos);
+    SalInstanceTreeView::do_remove(pos);
     sendUpdate();
 }
 
-void JSTreeView::remove(const weld::TreeIter& rIter)
+void JSTreeView::do_remove(const weld::TreeIter& rIter)
 {
-    SalInstanceTreeView::remove(rIter);
+    SalInstanceTreeView::do_remove(rIter);
     sendUpdate();
 }
 
-void JSTreeView::clear()
+void JSTreeView::do_clear()
 {
-    SalInstanceTreeView::clear();
+    SalInstanceTreeView::do_clear();
     sendUpdate();
 }
 
-void JSTreeView::set_cursor_without_notify(const weld::TreeIter& rIter)
-{
-    SalInstanceTreeView::set_cursor(rIter);
-}
+void JSTreeView::set_cursor_without_notify(const weld::TreeIter& rIter) { set_cursor(rIter); }
 
-void JSTreeView::set_cursor(const weld::TreeIter& rIter)
+void JSTreeView::do_set_cursor(const weld::TreeIter& rIter)
 {
-    SalInstanceTreeView::set_cursor(rIter);
+    SalInstanceTreeView::do_set_cursor(rIter);
     sendUpdate();
 }
 
-void JSTreeView::set_cursor(int pos)
+void JSTreeView::do_set_cursor(int pos)
 {
-    SalInstanceTreeView::set_cursor(pos);
+    SalInstanceTreeView::do_set_cursor(pos);
     sendUpdate();
 }
 
@@ -1884,17 +1880,17 @@ JSIconView::JSIconView(JSDialogSender* pSender, ::IconView* pIconView, SalInstan
 {
 }
 
-void JSIconView::insert(int pos, const OUString* pStr, const OUString* pId,
-                        const OUString* pIconName, weld::TreeIter* pRet)
+void JSIconView::do_insert(int pos, const OUString* pStr, const OUString* pId,
+                           const OUString* pIconName, weld::TreeIter* pRet)
 {
-    SalInstanceIconView::insert(pos, pStr, pId, pIconName, pRet);
+    SalInstanceIconView::do_insert(pos, pStr, pId, pIconName, pRet);
     sendUpdate();
 }
 
-void JSIconView::insert(int pos, const OUString* pStr, const OUString* pId, const Bitmap* pIcon,
-                        weld::TreeIter* pRet)
+void JSIconView::do_insert(int pos, const OUString* pStr, const OUString* pId, const Bitmap* pIcon,
+                           weld::TreeIter* pRet)
 {
-    SalInstanceIconView::insert(pos, pStr, pId, pIcon, pRet);
+    SalInstanceIconView::do_insert(pos, pStr, pId, pIcon, pRet);
     sendUpdate();
 }
 
@@ -1904,15 +1900,15 @@ void JSIconView::insert_separator(int pos, const OUString* pId)
     sendUpdate();
 }
 
-void JSIconView::clear()
+void JSIconView::do_clear()
 {
-    SalInstanceIconView::clear();
+    SalInstanceIconView::do_clear();
     sendUpdate();
 }
 
-void JSIconView::select(int pos)
+void JSIconView::do_select(int pos)
 {
-    SalInstanceIconView::select(pos);
+    SalInstanceIconView::do_select(pos);
 
     std::unique_ptr<jsdialog::ActionDataMap> pMap = std::make_unique<jsdialog::ActionDataMap>();
     (*pMap)[ACTION_TYPE ""_ostr] = "select";
@@ -1920,9 +1916,9 @@ void JSIconView::select(int pos)
     sendAction(std::move(pMap));
 }
 
-void JSIconView::unselect(int pos)
+void JSIconView::do_unselect(int pos)
 {
-    SalInstanceIconView::unselect(pos);
+    SalInstanceIconView::do_unselect(pos);
     sendUpdate();
 }
 
@@ -1946,9 +1942,9 @@ JSRadioButton::JSRadioButton(JSDialogSender* pSender, ::RadioButton* pRadioButto
 {
 }
 
-void JSRadioButton::set_active(bool active)
+void JSRadioButton::do_set_active(bool active)
 {
-    SalInstanceRadioButton::set_active(active);
+    SalInstanceRadioButton::do_set_active(active);
     sendUpdate();
 }
 
@@ -1984,9 +1980,9 @@ void JSMenuButton::set_image(const css::uno::Reference<css::graphic::XGraphic>& 
     sendUpdate();
 }
 
-void JSMenuButton::set_active(bool bActive)
+void JSMenuButton::do_set_active(bool bActive)
 {
-    SalInstanceMenuButton::set_active(bActive);
+    SalInstanceMenuButton::do_set_active(bActive);
 
     VclPtr<vcl::Window> pPopup = m_xMenuButton->GetPopover();
     if (pPopup)

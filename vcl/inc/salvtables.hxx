@@ -202,7 +202,6 @@ private:
     bool m_bEventListener;
     bool m_bKeyEventListener;
     bool m_bMouseEventListener;
-    int m_nBlockNotify;
     int m_nFreezeCount;
 
 protected:
@@ -357,12 +356,6 @@ public:
     virtual ~SalInstanceWidget() override;
 
     vcl::Window* getWidget() const;
-
-    void disable_notify_events();
-
-    bool notify_events_disabled() const;
-
-    void enable_notify_events();
 
     virtual void queue_resize() override;
 
@@ -576,13 +569,13 @@ public:
     virtual int get_n_pages() const override;
     virtual OUString get_page_ident(int nPage) const override;
     virtual OUString get_current_page_ident() const override;
-    virtual void set_current_page(int nPage) override;
-    virtual void set_current_page(const OUString& rIdent) override;
-    virtual void set_page_index(const OUString& rIdent, int nNewIndex) override;
+    virtual void do_set_current_page(int nPage) override;
+    virtual void do_set_current_page(const OUString& rIdent) override;
+    virtual void do_set_page_index(const OUString& rIdent, int nNewIndex) override;
     virtual weld::Container* append_page(const OUString& rIdent) override;
     virtual OUString get_page_title(const OUString& rIdent) const override;
-    virtual void set_page_title(const OUString& rIdent, const OUString& rTitle) override;
-    virtual void set_page_sensitive(const OUString& rIdent, bool bSensitive) override;
+    virtual void do_set_page_title(const OUString& rIdent, const OUString& rTitle) override;
+    virtual void do_set_page_sensitive(const OUString& rIdent, bool bSensitive) override;
     virtual void set_page_side_help_id(const OUString& rHelpId) override;
     virtual void set_page_side_image(const OUString& rImage) override;
     std::unique_ptr<weld::Button> weld_button_for_response(int nResponse) override;
@@ -615,7 +608,7 @@ private:
 public:
     SalInstanceEntry(::Edit* pEntry, SalInstanceBuilder* pBuilder, bool bTakeOwnership);
 
-    virtual void set_text(const OUString& rText) override;
+    virtual void do_set_text(const OUString& rText) override;
 
     virtual OUString get_text() const override;
 
@@ -625,13 +618,13 @@ public:
 
     virtual void set_max_length(int nChars) override;
 
-    virtual void select_region(int nStartPos, int nEndPos) override;
+    virtual void do_select_region(int nStartPos, int nEndPos) override;
 
     bool get_selection_bounds(int& rStartPos, int& rEndPos) override;
 
     virtual void replace_selection(const OUString& rText) override;
 
-    virtual void set_position(int nCursorPos) override;
+    virtual void do_set_position(int nCursorPos) override;
 
     virtual int get_position() const override;
 
@@ -1111,12 +1104,7 @@ public:
         weld::ToggleButton::connect_toggled(rLink);
     }
 
-    virtual void set_active(bool active) override
-    {
-        disable_notify_events();
-        m_xToggleButton->Check(active);
-        enable_notify_events();
-    }
+    virtual void do_set_active(bool active) override { m_xToggleButton->Check(active); }
 
     virtual bool get_active() const override { return m_xToggleButton->IsChecked(); }
 
@@ -1233,7 +1221,7 @@ private:
 public:
     SalInstanceCheckButton(CheckBox* pButton, SalInstanceBuilder* pBuilder, bool bTakeOwnership);
 
-    virtual void set_state(TriState eState) override;
+    virtual void do_set_state(TriState eState) override;
 
     virtual TriState get_state() const override;
 
@@ -1427,15 +1415,15 @@ public:
     SalInstanceTextView(VclMultiLineEdit* pTextView, SalInstanceBuilder* pBuilder,
                         bool bTakeOwnership);
 
-    virtual void set_text(const OUString& rText) override;
+    virtual void do_set_text(const OUString& rText) override;
 
-    virtual void replace_selection(const OUString& rText) override;
+    virtual void do_replace_selection(const OUString& rText) override;
 
     virtual OUString get_text() const override;
 
     bool get_selection_bounds(int& rStartPos, int& rEndPos) override;
 
-    virtual void select_region(int nStartPos, int nEndPos) override;
+    virtual void do_select_region(int nStartPos, int nEndPos) override;
 
     virtual void set_editable(bool bEditable) override;
     virtual bool get_editable() const override;
@@ -1596,12 +1584,12 @@ public:
 
     virtual void hide() override;
 
-    virtual void insert(const weld::TreeIter* pParent, int pos, const OUString* pStr,
-                        const OUString* pId, const OUString* pIconName,
-                        VirtualDevice* pImageSurface, bool bChildrenOnDemand,
-                        weld::TreeIter* pRet) override;
+    virtual void do_insert(const weld::TreeIter* pParent, int pos, const OUString* pStr,
+                           const OUString* pId, const OUString* pIconName,
+                           VirtualDevice* pImageSurface, bool bChildrenOnDemand,
+                           weld::TreeIter* pRet) override;
 
-    virtual void insert_separator(int pos, const OUString& /*rId*/) override;
+    virtual void do_insert_separator(int pos, const OUString& /*rId*/) override;
 
     virtual void bulk_insert_for_each(
         int nSourceCount, const std::function<void(weld::TreeIter&, int nSourceIndex)>& func,
@@ -1612,7 +1600,7 @@ public:
 
     virtual void set_font_color(const weld::TreeIter& rIter, const Color& rColor) override;
 
-    virtual void remove(int pos) override;
+    virtual void do_remove(int pos) override;
 
     virtual int find_text(const OUString& rText) const override;
 
@@ -1620,7 +1608,7 @@ public:
 
     virtual void swap(int pos1, int pos2) override;
 
-    virtual void clear() override;
+    virtual void do_clear() override;
 
     virtual void select_all() override;
     virtual void unselect_all() override;
@@ -1629,17 +1617,17 @@ public:
 
     virtual int iter_n_children(const weld::TreeIter& rIter) const override;
 
-    virtual void select(int pos) override;
+    virtual void do_select(int pos) override;
 
     virtual int get_cursor_index() const override;
 
-    virtual void set_cursor(int pos) override;
+    virtual void do_set_cursor(int pos) override;
 
-    virtual void scroll_to_row(int pos) override;
+    virtual void do_scroll_to_row(int pos) override;
 
     virtual bool is_selected(int pos) const override;
 
-    virtual void unselect(int pos) override;
+    virtual void do_unselect(int pos) override;
 
     virtual std::vector<int> get_selected_rows() const override;
 
@@ -1744,7 +1732,7 @@ public:
 
     virtual bool get_cursor(weld::TreeIter* pIter) const override;
 
-    virtual void set_cursor(const weld::TreeIter& rIter) override;
+    virtual void do_set_cursor(const weld::TreeIter& rIter) override;
 
     virtual bool get_iter_first(weld::TreeIter& rIter) const override;
 
@@ -1762,13 +1750,13 @@ public:
 
     virtual bool iter_parent(weld::TreeIter& rIter) const override;
 
-    virtual void remove(const weld::TreeIter& rIter) override;
+    virtual void do_remove(const weld::TreeIter& rIter) override;
 
-    virtual void select(const weld::TreeIter& rIter) override;
+    virtual void do_select(const weld::TreeIter& rIter) override;
 
-    virtual void scroll_to_row(const weld::TreeIter& rIter) override;
+    virtual void do_scroll_to_row(const weld::TreeIter& rIter) override;
 
-    virtual void unselect(const weld::TreeIter& rIter) override;
+    virtual void do_unselect(const weld::TreeIter& rIter) override;
 
     virtual int get_iter_depth(const weld::TreeIter& rIter) const override;
 
@@ -1778,8 +1766,8 @@ public:
 
     virtual bool get_children_on_demand(const weld::TreeIter& rIter) const override;
 
-    virtual void set_children_on_demand(const weld::TreeIter& rIter,
-                                        bool bChildrenOnDemand) override;
+    virtual void do_set_children_on_demand(const weld::TreeIter& rIter,
+                                           bool bChildrenOnDemand) override;
 
     virtual void expand_row(const weld::TreeIter& rIter) override;
 
@@ -1807,7 +1795,7 @@ public:
 
     virtual void connect_visible_range_changed(const Link<weld::TreeView&, void>& rLink) override;
 
-    virtual void remove_selection() override;
+    virtual void do_remove_selection() override;
 
     virtual bool is_selected(const weld::TreeIter& rIter) const override;
 
@@ -1861,6 +1849,10 @@ public:
     virtual bool changed_by_hover() const override;
 
     virtual ~SalInstanceTreeView() override;
+
+    // public version of protected weld::Widget methods
+    void disableNotifyEvents() { disable_notify_events(); }
+    void enableNotifyEvents() { enable_notify_events(); }
 };
 
 class SalInstanceExpander : public SalInstanceWidget, public virtual weld::Expander
@@ -1906,8 +1898,8 @@ private:
     DECL_LINK(TooltipHdl, SvTreeListEntry*, OUString);
     DECL_LINK(DumpImageHdl, const ::IconView::encoded_image_query&, bool);
 
-    void insert(int pos, const OUString* pStr, const OUString* pId, const Image& rImage,
-                weld::TreeIter* pRet);
+    void do_insert(int pos, const OUString* pStr, const OUString* pId, const Image& rImage,
+                   weld::TreeIter* pRet);
 
 public:
     SalInstanceIconView(::IconView* pIconView, SalInstanceBuilder* pBuilder, bool bTakeOwnership);
@@ -1919,11 +1911,11 @@ public:
 
     virtual void thaw() override;
 
-    virtual void insert(int pos, const OUString* pStr, const OUString* pId,
-                        const OUString* pIconName, weld::TreeIter* pRet) override;
+    virtual void do_insert(int pos, const OUString* pStr, const OUString* pId,
+                           const OUString* pIconName, weld::TreeIter* pRet) override;
 
-    virtual void insert(int pos, const OUString* pStr, const OUString* pId, const Bitmap* pIcon,
-                        weld::TreeIter* pRet) override;
+    virtual void do_insert(int pos, const OUString* pStr, const OUString* pId, const Bitmap* pIcon,
+                           weld::TreeIter* pRet) override;
 
     virtual void insert_separator(int pos, const OUString* pId) override;
 
@@ -1938,9 +1930,9 @@ public:
 
     virtual int count_selected_items() const override;
 
-    virtual void select(int pos) override;
+    virtual void do_select(int pos) override;
 
-    virtual void unselect(int pos) override;
+    virtual void do_unselect(int pos) override;
 
     virtual void select_all() override;
     virtual void unselect_all() override;
@@ -1954,13 +1946,13 @@ public:
 
     virtual bool get_cursor(weld::TreeIter* pIter) const override;
 
-    virtual void set_cursor(const weld::TreeIter& rIter) override;
+    virtual void do_set_cursor(const weld::TreeIter& rIter) override;
 
     virtual bool get_iter_first(weld::TreeIter& rIter) const override;
 
     virtual bool iter_next_sibling(weld::TreeIter& rIter) const override;
 
-    virtual void scroll_to_item(const weld::TreeIter& rIter) override;
+    virtual void do_scroll_to_item(const weld::TreeIter& rIter) override;
 
     virtual void selected_foreach(const std::function<bool(weld::TreeIter&)>& func) override;
 
@@ -1968,7 +1960,7 @@ public:
 
     virtual OUString get_id(int pos) const override;
 
-    virtual void remove(int pos) override;
+    virtual void do_remove(int pos) override;
 
     const OUString* getEntryData(int index) const;
 
@@ -1984,7 +1976,7 @@ public:
 
     virtual tools::Rectangle get_rect(int pos) const override;
 
-    virtual void clear() override;
+    virtual void do_clear() override;
 
     virtual ~SalInstanceIconView() override;
 };
@@ -2000,7 +1992,7 @@ public:
     SalInstanceRadioButton(::RadioButton* pButton, SalInstanceBuilder* pBuilder,
                            bool bTakeOwnership);
 
-    virtual void set_active(bool active) override;
+    virtual void do_set_active(bool active) override;
 
     virtual bool get_active() const override;
 
@@ -2044,7 +2036,7 @@ protected:
 public:
     SalInstanceMenuButton(::MenuButton* pButton, SalInstanceBuilder* pBuilder, bool bTakeOwnership);
 
-    virtual void set_active(bool active) override;
+    virtual void do_set_active(bool active) override;
 
     virtual bool get_active() const override;
 
@@ -2247,7 +2239,7 @@ public:
     SalInstanceFormattedSpinButton(FormattedField* pButton, SalInstanceBuilder* pBuilder,
                                    bool bTakeOwnership);
 
-    virtual void set_text(const OUString& rText) override;
+    virtual void do_set_text(const OUString& rText) override;
 
     virtual void connect_changed(const Link<weld::Entry&, void>& rLink) override;
 

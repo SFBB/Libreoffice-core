@@ -180,7 +180,7 @@ void SalInstance::DoQuit()
         std::abort();
 }
 
-SalTimer::~SalTimer() COVERITY_NOEXCEPT_FALSE {}
+SalTimer::~SalTimer() {}
 
 void SalBitmap::DropScaledCache()
 {
@@ -365,7 +365,6 @@ SalInstanceWidget::SalInstanceWidget(vcl::Window* pWidget, SalInstanceBuilder* p
     , m_bEventListener(false)
     , m_bKeyEventListener(false)
     , m_bMouseEventListener(false)
-    , m_nBlockNotify(0)
     , m_nFreezeCount(0)
 {
 }
@@ -652,12 +651,6 @@ SalInstanceWidget::~SalInstanceWidget()
 }
 
 vcl::Window* SalInstanceWidget::getWidget() const { return m_xWidget; }
-
-void SalInstanceWidget::disable_notify_events() { ++m_nBlockNotify; }
-
-bool SalInstanceWidget::notify_events_disabled() const { return m_nBlockNotify != 0; }
-
-void SalInstanceWidget::enable_notify_events() { --m_nBlockNotify; }
 
 OUString SalInstanceWidget::strip_mnemonic(const OUString& rLabel) const
 {
@@ -2097,10 +2090,8 @@ OUString SalInstanceAssistant::get_current_page_ident() const
     return get_page_ident(get_current_page());
 }
 
-void SalInstanceAssistant::set_current_page(int nPage)
+void SalInstanceAssistant::do_set_current_page(int nPage)
 {
-    disable_notify_events();
-
     // take the first shown page as the size for all pages
     if (m_xWizard->GetPageSizePixel().Width() == 0)
     {
@@ -2119,18 +2110,17 @@ void SalInstanceAssistant::set_current_page(int nPage)
     }
 
     m_xWizard->ShowPage(m_aIds[nPage]);
-    enable_notify_events();
 }
 
-void SalInstanceAssistant::set_current_page(const OUString& rIdent)
+void SalInstanceAssistant::do_set_current_page(const OUString& rIdent)
 {
     int nIndex = find_page(rIdent);
     if (nIndex == -1)
         return;
-    set_current_page(nIndex);
+    do_set_current_page(nIndex);
 }
 
-void SalInstanceAssistant::set_page_index(const OUString& rIdent, int nNewIndex)
+void SalInstanceAssistant::do_set_page_index(const OUString& rIdent, int nNewIndex)
 {
     int nOldIndex = find_page(rIdent);
 
@@ -2139,8 +2129,6 @@ void SalInstanceAssistant::set_page_index(const OUString& rIdent, int nNewIndex)
 
     if (nOldIndex == nNewIndex)
         return;
-
-    disable_notify_events();
 
     auto entry = std::move(m_aAddedPages[nOldIndex]);
     m_aAddedPages.erase(m_aAddedPages.begin() + nOldIndex);
@@ -2151,8 +2139,6 @@ void SalInstanceAssistant::set_page_index(const OUString& rIdent, int nNewIndex)
     m_aIds.insert(m_aIds.begin() + nNewIndex, nId);
 
     m_aUpdateRoadmapIdle.Start();
-
-    enable_notify_events();
 }
 
 weld::Container* SalInstanceAssistant::append_page(const OUString& rIdent)
@@ -2184,31 +2170,27 @@ OUString SalInstanceAssistant::get_page_title(const OUString& rIdent) const
     return m_aAddedPages[nIndex]->GetText();
 }
 
-void SalInstanceAssistant::set_page_title(const OUString& rIdent, const OUString& rTitle)
+void SalInstanceAssistant::do_set_page_title(const OUString& rIdent, const OUString& rTitle)
 {
     int nIndex = find_page(rIdent);
     if (nIndex == -1)
         return;
     if (m_aAddedPages[nIndex]->GetText() != rTitle)
     {
-        disable_notify_events();
         m_aAddedPages[nIndex]->SetText(rTitle);
         m_aUpdateRoadmapIdle.Start();
-        enable_notify_events();
     }
 }
 
-void SalInstanceAssistant::set_page_sensitive(const OUString& rIdent, bool bSensitive)
+void SalInstanceAssistant::do_set_page_sensitive(const OUString& rIdent, bool bSensitive)
 {
     int nIndex = find_page(rIdent);
     if (nIndex == -1)
         return;
     if (m_aAddedPages[nIndex]->IsEnabled() != bSensitive)
     {
-        disable_notify_events();
         m_aAddedPages[nIndex]->Enable(bSensitive);
         m_aUpdateRoadmapIdle.Start();
-        enable_notify_events();
     }
 }
 
@@ -2232,8 +2214,6 @@ SalInstanceAssistant::~SalInstanceAssistant()
 
 IMPL_LINK_NOARG(SalInstanceAssistant, OnRoadmapItemSelected, LinkParamNone*, void)
 {
-    if (notify_events_disabled())
-        return;
     auto nCurItemId = m_xWizard->GetCurrentRoadmapItemID();
     int nPageIndex(find_id(nCurItemId));
     if (!signal_jump_page(get_page_ident(nPageIndex)) && nCurItemId != m_xWizard->GetCurLevel())
@@ -2991,7 +2971,7 @@ SalInstanceMenuButton::SalInstanceMenuButton(::MenuButton* pButton, SalInstanceB
     }
 }
 
-void SalInstanceMenuButton::set_active(bool active)
+void SalInstanceMenuButton::do_set_active(bool active)
 {
     if (active == get_active())
         return;
@@ -3076,12 +3056,7 @@ IMPL_LINK_NOARG(SalInstanceMenuButton, MenuSelectHdl, ::MenuButton*, void)
     signal_selected(m_xMenuButton->GetCurItemIdent());
 }
 
-IMPL_LINK_NOARG(SalInstanceMenuButton, ActivateHdl, ::MenuButton*, void)
-{
-    if (notify_events_disabled())
-        return;
-    signal_toggled();
-}
+IMPL_LINK_NOARG(SalInstanceMenuButton, ActivateHdl, ::MenuButton*, void) { signal_toggled(); }
 
 IMPL_LINK(SalInstanceLinkButton, ClickHdl, FixedHyperlink&, rButton, void)
 {
@@ -3100,12 +3075,7 @@ SalInstanceRadioButton::SalInstanceRadioButton(::RadioButton* pButton, SalInstan
     m_xRadioButton->SetToggleHdl(LINK(this, SalInstanceRadioButton, ToggleHdl));
 }
 
-void SalInstanceRadioButton::set_active(bool active)
-{
-    disable_notify_events();
-    m_xRadioButton->Check(active);
-    enable_notify_events();
-}
+void SalInstanceRadioButton::do_set_active(bool active) { m_xRadioButton->Check(active); }
 
 bool SalInstanceRadioButton::get_active() const { return m_xRadioButton->IsChecked(); }
 
@@ -3139,17 +3109,10 @@ SalInstanceRadioButton::~SalInstanceRadioButton()
     m_xRadioButton->SetToggleHdl(Link<::RadioButton&, void>());
 }
 
-IMPL_LINK_NOARG(SalInstanceRadioButton, ToggleHdl, ::RadioButton&, void)
-{
-    if (notify_events_disabled())
-        return;
-    signal_toggled();
-}
+IMPL_LINK_NOARG(SalInstanceRadioButton, ToggleHdl, ::RadioButton&, void) { signal_toggled(); }
 
 IMPL_LINK(SalInstanceToggleButton, ToggleListener, VclWindowEvent&, rEvent, void)
 {
-    if (notify_events_disabled())
-        return;
     if (rEvent.GetId() == VclEventId::PushbuttonToggle)
         signal_toggled();
 }
@@ -3162,12 +3125,10 @@ SalInstanceCheckButton::SalInstanceCheckButton(CheckBox* pButton, SalInstanceBui
     m_xCheckButton->SetToggleHdl(LINK(this, SalInstanceCheckButton, ToggleHdl));
 }
 
-void SalInstanceCheckButton::set_state(TriState eState)
+void SalInstanceCheckButton::do_set_state(TriState eState)
 {
-    disable_notify_events();
     m_xCheckButton->EnableTriState(eState == TRISTATE_INDET);
     m_xCheckButton->SetState(eState);
-    enable_notify_events();
 }
 
 TriState SalInstanceCheckButton::get_state() const { return m_xCheckButton->GetState(); }
@@ -3184,8 +3145,6 @@ SalInstanceCheckButton::~SalInstanceCheckButton()
 
 IMPL_LINK_NOARG(SalInstanceCheckButton, ToggleHdl, CheckBox&, void)
 {
-    if (notify_events_disabled())
-        return;
     m_xCheckButton->EnableTriState(false);
     signal_toggled();
 }
@@ -3275,19 +3234,9 @@ public:
 };
 }
 
-IMPL_LINK_NOARG(SalInstanceCalendar, SelectHdl, ::Calendar*, void)
-{
-    if (notify_events_disabled())
-        return;
-    signal_selected();
-}
+IMPL_LINK_NOARG(SalInstanceCalendar, SelectHdl, ::Calendar*, void) { signal_selected(); }
 
-IMPL_LINK_NOARG(SalInstanceCalendar, ActivateHdl, ::Calendar*, void)
-{
-    if (notify_events_disabled())
-        return;
-    signal_activated();
-}
+IMPL_LINK_NOARG(SalInstanceCalendar, ActivateHdl, ::Calendar*, void) { signal_activated(); }
 
 SalInstanceImage::SalInstanceImage(FixedImage* pImage, SalInstanceBuilder* pBuilder,
                                    bool bTakeOwnership)
@@ -3341,12 +3290,7 @@ SalInstanceEntry::SalInstanceEntry(Edit* pEntry, SalInstanceBuilder* pBuilder, b
     m_xEntry->SetTextFilter(&m_aTextFilter);
 }
 
-void SalInstanceEntry::set_text(const OUString& rText)
-{
-    disable_notify_events();
-    m_xEntry->SetText(rText);
-    enable_notify_events();
-}
+void SalInstanceEntry::do_set_text(const OUString& rText) { m_xEntry->SetText(rText); }
 
 OUString SalInstanceEntry::get_text() const { return m_xEntry->GetText(); }
 
@@ -3356,13 +3300,11 @@ int SalInstanceEntry::get_width_chars() const { return m_xEntry->GetWidthInChars
 
 void SalInstanceEntry::set_max_length(int nChars) { m_xEntry->SetMaxTextLen(nChars); }
 
-void SalInstanceEntry::select_region(int nStartPos, int nEndPos)
+void SalInstanceEntry::do_select_region(int nStartPos, int nEndPos)
 {
-    disable_notify_events();
     tools::Long nStart = nStartPos < 0 ? SELECTION_MAX : nStartPos;
     tools::Long nEnd = nEndPos < 0 ? SELECTION_MAX : nEndPos;
     m_xEntry->SetSelection(Selection(nStart, nEnd));
-    enable_notify_events();
 }
 
 bool SalInstanceEntry::get_selection_bounds(int& rStartPos, int& rEndPos)
@@ -3378,14 +3320,12 @@ void SalInstanceEntry::replace_selection(const OUString& rText)
     m_xEntry->ReplaceSelected(rText);
 }
 
-void SalInstanceEntry::set_position(int nCursorPos)
+void SalInstanceEntry::do_set_position(int nCursorPos)
 {
-    disable_notify_events();
     if (nCursorPos < 0)
         m_xEntry->SetCursorAtLast();
     else
         m_xEntry->SetSelection(Selection(nCursorPos, nCursorPos));
-    enable_notify_events();
 }
 
 int SalInstanceEntry::get_position() const { return m_xEntry->GetSelection().Max(); }
@@ -3519,8 +3459,6 @@ IMPL_LINK_NOARG(SalInstanceEntry, ChangeHdl, Edit&, void) { signal_changed(); }
 
 IMPL_LINK(SalInstanceEntry, CursorListener, VclWindowEvent&, rEvent, void)
 {
-    if (notify_events_disabled())
-        return;
     if (rEvent.GetId() == VclEventId::EditSelectionChanged
         || rEvent.GetId() == VclEventId::EditCaretChanged)
         signal_cursor_position();
@@ -3625,7 +3563,6 @@ void SalInstanceTreeView::do_insert(const weld::TreeIter* pParent, int pos, cons
                                     const VirtualDevice* pImageSurface, bool bChildrenOnDemand,
                                     weld::TreeIter* pRet, bool bIsSeparator)
 {
-    disable_notify_events();
     const SalInstanceTreeIter* pVclIter = static_cast<const SalInstanceTreeIter*>(pParent);
     SvTreeListEntry* iter = pVclIter ? pVclIter->iter : nullptr;
     auto nInsertPos = pos == -1 ? TREELIST_APPEND : pos;
@@ -3679,8 +3616,6 @@ void SalInstanceTreeView::do_insert(const weld::TreeIter* pParent, int pos, cons
         SvViewDataEntry* pViewData = m_xTreeView->GetViewDataEntry(pEntry);
         pViewData->SetSelectable(false);
     }
-
-    enable_notify_events();
 }
 
 void SalInstanceTreeView::update_checkbutton_column_width(SvTreeListEntry* pEntry)
@@ -3977,15 +3912,15 @@ void SalInstanceTreeView::hide()
     SalInstanceWidget::hide();
 }
 
-void SalInstanceTreeView::insert(const weld::TreeIter* pParent, int pos, const OUString* pStr,
-                                 const OUString* pId, const OUString* pIconName,
-                                 VirtualDevice* pImageSurface, bool bChildrenOnDemand,
-                                 weld::TreeIter* pRet)
+void SalInstanceTreeView::do_insert(const weld::TreeIter* pParent, int pos, const OUString* pStr,
+                                    const OUString* pId, const OUString* pIconName,
+                                    VirtualDevice* pImageSurface, bool bChildrenOnDemand,
+                                    weld::TreeIter* pRet)
 {
     do_insert(pParent, pos, pStr, pId, pIconName, pImageSurface, bChildrenOnDemand, pRet, false);
 }
 
-void SalInstanceTreeView::insert_separator(int pos, const OUString& /*rId*/)
+void SalInstanceTreeView::do_insert_separator(int pos, const OUString& /*rId*/)
 {
     OUString sSep(VclResId(STR_SEPARATOR));
     do_insert(nullptr, pos, &sSep, nullptr, nullptr, nullptr, false, nullptr, true);
@@ -4058,12 +3993,10 @@ void SalInstanceTreeView::set_font_color(const weld::TreeIter& rIter, const Colo
     set_font_color(rVclIter.iter, rColor);
 }
 
-void SalInstanceTreeView::remove(int pos)
+void SalInstanceTreeView::do_remove(int pos)
 {
-    disable_notify_events();
     SvTreeListEntry* pEntry = m_xTreeView->GetEntry(nullptr, pos);
     m_xTreeView->RemoveEntry(pEntry);
-    enable_notify_events();
 }
 
 int SalInstanceTreeView::find_text(const OUString& rText) const
@@ -4099,12 +4032,10 @@ void SalInstanceTreeView::swap(int pos1, int pos2)
     pModel->Move(pEntry1, pEntry2);
 }
 
-void SalInstanceTreeView::clear()
+void SalInstanceTreeView::do_clear()
 {
-    disable_notify_events();
     m_xTreeView->Clear();
     m_aUserData.clear();
-    enable_notify_events();
 }
 
 void SalInstanceTreeView::select_all() { unselect(-1); }
@@ -4122,12 +4053,11 @@ int SalInstanceTreeView::iter_n_children(const weld::TreeIter& rIter) const
     return m_xTreeView->GetModel()->GetChildList(rVclIter.iter).size();
 }
 
-void SalInstanceTreeView::select(int pos)
+void SalInstanceTreeView::do_select(int pos)
 {
     assert(m_xTreeView->IsUpdateMode()
            && "don't select when frozen, select after thaw. Note selection doesn't survive a "
               "freeze");
-    disable_notify_events();
     if (pos == -1 || (pos == 0 && n_children() == 0))
         m_xTreeView->SelectAll(false);
     else
@@ -4137,7 +4067,6 @@ void SalInstanceTreeView::select(int pos)
         m_xTreeView->Select(pEntry, true);
         m_xTreeView->MakeVisible(pEntry);
     }
-    enable_notify_events();
 }
 
 int SalInstanceTreeView::get_cursor_index() const
@@ -4148,9 +4077,8 @@ int SalInstanceTreeView::get_cursor_index() const
     return SvTreeList::GetRelPos(pEntry);
 }
 
-void SalInstanceTreeView::set_cursor(int pos)
+void SalInstanceTreeView::do_set_cursor(int pos)
 {
-    disable_notify_events();
     if (pos == -1)
         m_xTreeView->SetCurEntry(nullptr);
     else
@@ -4158,18 +4086,15 @@ void SalInstanceTreeView::set_cursor(int pos)
         SvTreeListEntry* pEntry = m_xTreeView->GetEntry(nullptr, pos);
         m_xTreeView->SetCurEntry(pEntry);
     }
-    enable_notify_events();
 }
 
-void SalInstanceTreeView::scroll_to_row(int pos)
+void SalInstanceTreeView::do_scroll_to_row(int pos)
 {
     assert(m_xTreeView->IsUpdateMode()
            && "don't select when frozen, select after thaw. Note selection doesn't survive a "
               "freeze");
-    disable_notify_events();
     SvTreeListEntry* pEntry = m_xTreeView->GetEntry(nullptr, pos);
     m_xTreeView->MakeVisible(pEntry);
-    enable_notify_events();
 }
 
 bool SalInstanceTreeView::is_selected(int pos) const
@@ -4178,12 +4103,11 @@ bool SalInstanceTreeView::is_selected(int pos) const
     return m_xTreeView->IsSelected(pEntry);
 }
 
-void SalInstanceTreeView::unselect(int pos)
+void SalInstanceTreeView::do_unselect(int pos)
 {
     assert(m_xTreeView->IsUpdateMode()
            && "don't select when frozen, select after thaw. Note selection doesn't survive a "
               "freeze");
-    disable_notify_events();
     if (pos == -1)
         m_xTreeView->SelectAll(true);
     else
@@ -4191,7 +4115,6 @@ void SalInstanceTreeView::unselect(int pos)
         SvTreeListEntry* pEntry = m_xTreeView->GetEntry(nullptr, pos);
         m_xTreeView->Select(pEntry, false);
     }
-    enable_notify_events();
 }
 
 std::vector<int> SalInstanceTreeView::get_selected_rows() const
@@ -4628,12 +4551,10 @@ bool SalInstanceTreeView::get_cursor(weld::TreeIter* pIter) const
     return pEntry != nullptr;
 }
 
-void SalInstanceTreeView::set_cursor(const weld::TreeIter& rIter)
+void SalInstanceTreeView::do_set_cursor(const weld::TreeIter& rIter)
 {
     const SalInstanceTreeIter& rVclIter = static_cast<const SalInstanceTreeIter&>(rIter);
-    disable_notify_events();
     m_xTreeView->SetCurEntry(rVclIter.iter);
-    enable_notify_events();
 }
 
 bool SalInstanceTreeView::get_iter_first(weld::TreeIter& rIter) const
@@ -4702,43 +4623,35 @@ bool SalInstanceTreeView::iter_parent(weld::TreeIter& rIter) const
     return rVclIter.iter != nullptr;
 }
 
-void SalInstanceTreeView::remove(const weld::TreeIter& rIter)
+void SalInstanceTreeView::do_remove(const weld::TreeIter& rIter)
 {
-    disable_notify_events();
     const SalInstanceTreeIter& rVclIter = static_cast<const SalInstanceTreeIter&>(rIter);
     m_xTreeView->RemoveEntry(rVclIter.iter);
-    enable_notify_events();
 }
 
-void SalInstanceTreeView::select(const weld::TreeIter& rIter)
+void SalInstanceTreeView::do_select(const weld::TreeIter& rIter)
 {
     assert(m_xTreeView->IsUpdateMode()
            && "don't select when frozen, select after thaw. Note selection doesn't survive a "
               "freeze");
-    disable_notify_events();
     const SalInstanceTreeIter& rVclIter = static_cast<const SalInstanceTreeIter&>(rIter);
     m_xTreeView->Select(rVclIter.iter, true);
-    enable_notify_events();
 }
 
-void SalInstanceTreeView::scroll_to_row(const weld::TreeIter& rIter)
+void SalInstanceTreeView::do_scroll_to_row(const weld::TreeIter& rIter)
 {
     assert(m_xTreeView->IsUpdateMode()
            && "don't select when frozen, select after thaw. Note selection doesn't survive a "
               "freeze");
-    disable_notify_events();
     const SalInstanceTreeIter& rVclIter = static_cast<const SalInstanceTreeIter&>(rIter);
     m_xTreeView->MakeVisible(rVclIter.iter);
-    enable_notify_events();
 }
 
-void SalInstanceTreeView::unselect(const weld::TreeIter& rIter)
+void SalInstanceTreeView::do_unselect(const weld::TreeIter& rIter)
 {
     assert(m_xTreeView->IsUpdateMode() && "don't unselect when frozen");
-    disable_notify_events();
     const SalInstanceTreeIter& rVclIter = static_cast<const SalInstanceTreeIter&>(rIter);
     m_xTreeView->Select(rVclIter.iter, false);
-    enable_notify_events();
 }
 
 int SalInstanceTreeView::get_iter_depth(const weld::TreeIter& rIter) const
@@ -4767,11 +4680,9 @@ bool SalInstanceTreeView::get_children_on_demand(const weld::TreeIter& rIter) co
     return GetPlaceHolderChild(rVclIter.iter) != nullptr;
 }
 
-void SalInstanceTreeView::set_children_on_demand(const weld::TreeIter& rIter,
-                                                 bool bChildrenOnDemand)
+void SalInstanceTreeView::do_set_children_on_demand(const weld::TreeIter& rIter,
+                                                    bool bChildrenOnDemand)
 {
-    disable_notify_events();
-
     const SalInstanceTreeIter& rVclIter = static_cast<const SalInstanceTreeIter&>(rIter);
 
     SvTreeListEntry* pPlaceHolder = GetPlaceHolderChild(rVclIter.iter);
@@ -4784,8 +4695,6 @@ void SalInstanceTreeView::set_children_on_demand(const weld::TreeIter& rIter,
     }
     else if (!bChildrenOnDemand && pPlaceHolder)
         m_xTreeView->RemoveEntry(pPlaceHolder);
-
-    enable_notify_events();
 }
 
 void SalInstanceTreeView::expand_row(const weld::TreeIter& rIter)
@@ -4886,9 +4795,8 @@ void SalInstanceTreeView::connect_visible_range_changed(const Link<weld::TreeVie
     m_xTreeView->SetScrolledHdl(LINK(this, SalInstanceTreeView, VisibleRangeChangedHdl));
 }
 
-void SalInstanceTreeView::remove_selection()
+void SalInstanceTreeView::do_remove_selection()
 {
-    disable_notify_events();
     SvTreeListEntry* pSelected = m_xTreeView->FirstSelected();
     while (pSelected)
     {
@@ -4896,7 +4804,6 @@ void SalInstanceTreeView::remove_selection()
         m_xTreeView->RemoveEntry(pSelected);
         pSelected = pNextSelected;
     }
-    enable_notify_events();
 }
 
 bool SalInstanceTreeView::is_selected(const weld::TreeIter& rIter) const
@@ -5127,7 +5034,7 @@ SalInstanceTreeView::~SalInstanceTreeView()
 
 IMPL_LINK(SalInstanceTreeView, TooltipHdl, SvTreeListEntry*, pEntry, OUString)
 {
-    if (pEntry && !notify_events_disabled())
+    if (pEntry)
         return signal_query_tooltip(SalInstanceTreeIter(pEntry));
 
     return {};
@@ -5201,15 +5108,11 @@ IMPL_LINK(SalInstanceTreeView, CompareHdl, const SvSortData&, rSortData, sal_Int
 
 IMPL_LINK_NOARG(SalInstanceTreeView, VisibleRangeChangedHdl, SvTreeListBox*, void)
 {
-    if (notify_events_disabled())
-        return;
     signal_visible_range_changed();
 }
 
 IMPL_LINK_NOARG(SalInstanceTreeView, ModelChangedHdl, SvTreeListBox*, void)
 {
-    if (notify_events_disabled())
-        return;
     signal_model_changed();
 }
 
@@ -5257,15 +5160,11 @@ IMPL_LINK(SalInstanceTreeView, ToggleHdl, SvLBoxButtonData*, pData, void)
 
 IMPL_LINK_NOARG(SalInstanceTreeView, SelectHdl, SvTreeListBox*, void)
 {
-    if (notify_events_disabled())
-        return;
     signal_selection_changed();
 }
 
 IMPL_LINK_NOARG(SalInstanceTreeView, DeSelectHdl, SvTreeListBox*, void)
 {
-    if (notify_events_disabled())
-        return;
     if (m_xTreeView->GetSelectionMode() == SelectionMode::Single
         && !m_xTreeView->GetHoverSelection())
         return;
@@ -5274,8 +5173,6 @@ IMPL_LINK_NOARG(SalInstanceTreeView, DeSelectHdl, SvTreeListBox*, void)
 
 IMPL_LINK_NOARG(SalInstanceTreeView, DoubleClickHdl, SvTreeListBox*, bool)
 {
-    if (notify_events_disabled())
-        return false;
     return !signal_row_activated();
 }
 
@@ -5391,10 +5288,9 @@ void SalInstanceIconView::thaw()
     SalInstanceWidget::thaw();
 }
 
-void SalInstanceIconView::insert(int pos, const OUString* pStr, const OUString* pId,
-                                 const Image& rImage, weld::TreeIter* pRet)
+void SalInstanceIconView::do_insert(int pos, const OUString* pStr, const OUString* pId,
+                                    const Image& rImage, weld::TreeIter* pRet)
 {
-    disable_notify_events();
     auto nInsertPos = pos == -1 ? TREELIST_APPEND : pos;
     void* pUserData;
     if (pId)
@@ -5420,22 +5316,20 @@ void SalInstanceIconView::insert(int pos, const OUString* pStr, const OUString* 
         SalInstanceTreeIter* pVclRetIter = static_cast<SalInstanceTreeIter*>(pRet);
         pVclRetIter->iter = pEntry;
     }
-
-    enable_notify_events();
 }
 
-void SalInstanceIconView::insert(int pos, const OUString* pStr, const OUString* pId,
-                                 const OUString* pIconName, weld::TreeIter* pRet)
+void SalInstanceIconView::do_insert(int pos, const OUString* pStr, const OUString* pId,
+                                    const OUString* pIconName, weld::TreeIter* pRet)
 {
     const Image aImage = pIconName ? createImage(*pIconName) : Image();
-    insert(pos, pStr, pId, aImage, pRet);
+    do_insert(pos, pStr, pId, aImage, pRet);
 }
 
-void SalInstanceIconView::insert(int pos, const OUString* pStr, const OUString* pId,
-                                 const Bitmap* pIcon, weld::TreeIter* pRet)
+void SalInstanceIconView::do_insert(int pos, const OUString* pStr, const OUString* pId,
+                                    const Bitmap* pIcon, weld::TreeIter* pRet)
 {
     const Image aImage = pIcon ? Image(*pIcon) : Image();
-    insert(pos, pStr, pId, aImage, pRet);
+    do_insert(pos, pStr, pId, aImage, pRet);
 }
 
 void SalInstanceIconView::insert_separator(int pos, const OUString* /* pId */)
@@ -5455,7 +5349,7 @@ void SalInstanceIconView::insert_separator(int pos, const OUString* /* pId */)
 
 IMPL_LINK(SalInstanceIconView, TooltipHdl, SvTreeListEntry*, pEntry, OUString)
 {
-    if (pEntry && !notify_events_disabled())
+    if (pEntry)
         return signal_query_tooltip(SalInstanceTreeIter(pEntry));
 
     return {};
@@ -5502,12 +5396,11 @@ OUString SalInstanceIconView::get_selected_text() const
 
 int SalInstanceIconView::count_selected_items() const { return m_xIconView->GetSelectionCount(); }
 
-void SalInstanceIconView::select(int pos)
+void SalInstanceIconView::do_select(int pos)
 {
     assert(m_xIconView->IsUpdateMode()
            && "don't select when frozen, select after thaw. Note selection doesn't survive a "
               "freeze");
-    disable_notify_events();
     if (pos == -1 || (pos == 0 && n_children() == 0))
         m_xIconView->SelectAll(false);
     else
@@ -5516,15 +5409,13 @@ void SalInstanceIconView::select(int pos)
         m_xIconView->Select(pEntry, true);
         m_xIconView->MakeVisible(pEntry);
     }
-    enable_notify_events();
 }
 
-void SalInstanceIconView::unselect(int pos)
+void SalInstanceIconView::do_unselect(int pos)
 {
     assert(m_xIconView->IsUpdateMode()
            && "don't select when frozen, select after thaw. Note selection doesn't survive a "
               "freeze");
-    disable_notify_events();
     if (pos == -1)
         m_xIconView->SelectAll(true);
     else
@@ -5532,7 +5423,6 @@ void SalInstanceIconView::unselect(int pos)
         SvTreeListEntry* pEntry = m_xIconView->GetEntry(nullptr, pos);
         m_xIconView->Select(pEntry, false);
     }
-    enable_notify_events();
 }
 
 void SalInstanceIconView::select_all() { unselect(-1); }
@@ -5569,12 +5459,10 @@ bool SalInstanceIconView::get_cursor(weld::TreeIter* pIter) const
     return pEntry != nullptr;
 }
 
-void SalInstanceIconView::set_cursor(const weld::TreeIter& rIter)
+void SalInstanceIconView::do_set_cursor(const weld::TreeIter& rIter)
 {
     const SalInstanceTreeIter& rVclIter = static_cast<const SalInstanceTreeIter&>(rIter);
-    disable_notify_events();
     m_xIconView->SetCurEntry(rVclIter.iter);
-    enable_notify_events();
 }
 
 bool SalInstanceIconView::get_iter_first(weld::TreeIter& rIter) const
@@ -5591,15 +5479,13 @@ bool SalInstanceIconView::iter_next_sibling(weld::TreeIter& rIter) const
     return rVclIter.iter != nullptr;
 }
 
-void SalInstanceIconView::scroll_to_item(const weld::TreeIter& rIter)
+void SalInstanceIconView::do_scroll_to_item(const weld::TreeIter& rIter)
 {
     assert(m_xIconView->IsUpdateMode()
            && "don't select when frozen, select after thaw. Note selection doesn't survive a "
               "freeze");
-    disable_notify_events();
     const SalInstanceTreeIter& rVclIter = static_cast<const SalInstanceTreeIter&>(rIter);
     m_xIconView->MakeVisible(rVclIter.iter);
-    enable_notify_events();
 }
 
 void SalInstanceIconView::selected_foreach(const std::function<bool(weld::TreeIter&)>& func)
@@ -5653,12 +5539,10 @@ void SalInstanceIconView::set_image(int pos, VirtualDevice& rIcon)
     }
 }
 
-void SalInstanceIconView::remove(int pos)
+void SalInstanceIconView::do_remove(int pos)
 {
-    disable_notify_events();
     SvTreeListEntry* pEntry = m_xIconView->GetEntry(nullptr, pos);
     m_xIconView->RemoveEntry(pEntry);
-    enable_notify_events();
 }
 
 const OUString* SalInstanceIconView::getEntryData(int index) const
@@ -5716,12 +5600,10 @@ tools::Rectangle SalInstanceIconView::get_rect(int pos) const
     return m_xIconView->GetBoundingRect(aEntry);
 }
 
-void SalInstanceIconView::clear()
+void SalInstanceIconView::do_clear()
 {
-    disable_notify_events();
     m_xIconView->Clear();
     m_aUserData.clear();
-    enable_notify_events();
 }
 
 SalInstanceIconView::~SalInstanceIconView()
@@ -5733,15 +5615,11 @@ SalInstanceIconView::~SalInstanceIconView()
 
 IMPL_LINK_NOARG(SalInstanceIconView, SelectHdl, SvTreeListBox*, void)
 {
-    if (notify_events_disabled())
-        return;
     signal_selection_changed();
 }
 
 IMPL_LINK_NOARG(SalInstanceIconView, DeSelectHdl, SvTreeListBox*, void)
 {
-    if (notify_events_disabled())
-        return;
     if (m_xIconView->GetSelectionMode() == SelectionMode::Single)
         return;
     signal_selection_changed();
@@ -5749,8 +5627,6 @@ IMPL_LINK_NOARG(SalInstanceIconView, DeSelectHdl, SvTreeListBox*, void)
 
 IMPL_LINK_NOARG(SalInstanceIconView, DoubleClickHdl, SvTreeListBox*, bool)
 {
-    if (notify_events_disabled())
-        return false;
     return !signal_item_activated();
 }
 
@@ -5870,11 +5746,9 @@ SalInstanceFormattedSpinButton::SalInstanceFormattedSpinButton(FormattedField* p
     m_xButton->SetLoseFocusHdl(LINK(this, SalInstanceFormattedSpinButton, LoseFocusHdl));
 }
 
-void SalInstanceFormattedSpinButton::set_text(const OUString& rText)
+void SalInstanceFormattedSpinButton::do_set_text(const OUString& rText)
 {
-    disable_notify_events();
     m_xButton->SpinField::SetText(rText);
-    enable_notify_events();
 }
 
 void SalInstanceFormattedSpinButton::connect_changed(const Link<weld::Entry&, void>& rLink)
@@ -6000,18 +5874,11 @@ SalInstanceTextView::SalInstanceTextView(VclMultiLineEdit* pTextView, SalInstanc
     rVertScrollBar.SetScrollHdl(LINK(this, SalInstanceTextView, VscrollHdl));
 }
 
-void SalInstanceTextView::set_text(const OUString& rText)
-{
-    disable_notify_events();
-    m_xTextView->SetText(rText);
-    enable_notify_events();
-}
+void SalInstanceTextView::do_set_text(const OUString& rText) { m_xTextView->SetText(rText); }
 
-void SalInstanceTextView::replace_selection(const OUString& rText)
+void SalInstanceTextView::do_replace_selection(const OUString& rText)
 {
-    disable_notify_events();
     m_xTextView->ReplaceSelected(rText);
-    enable_notify_events();
 }
 
 OUString SalInstanceTextView::get_text() const { return m_xTextView->GetText(); }
@@ -6024,13 +5891,11 @@ bool SalInstanceTextView::get_selection_bounds(int& rStartPos, int& rEndPos)
     return rSelection.Len();
 }
 
-void SalInstanceTextView::select_region(int nStartPos, int nEndPos)
+void SalInstanceTextView::do_select_region(int nStartPos, int nEndPos)
 {
-    disable_notify_events();
     tools::Long nStart = nStartPos < 0 ? SELECTION_MAX : nStartPos;
     tools::Long nEnd = nEndPos < 0 ? SELECTION_MAX : nEndPos;
     m_xTextView->SetSelection(Selection(nStart, nEnd));
-    enable_notify_events();
 }
 
 void SalInstanceTextView::set_editable(bool bEditable) { m_xTextView->SetReadOnly(!bEditable); }
@@ -6145,8 +6010,6 @@ IMPL_LINK_NOARG(SalInstanceTextView, ChangeHdl, Edit&, void) { signal_changed();
 
 IMPL_LINK(SalInstanceTextView, CursorListener, VclWindowEvent&, rEvent, void)
 {
-    if (notify_events_disabled())
-        return;
     if (rEvent.GetId() == VclEventId::EditSelectionChanged
         || rEvent.GetId() == VclEventId::EditCaretChanged)
         signal_cursor_position();
@@ -6882,7 +6745,7 @@ IMPL_LINK(SalInstanceEntryTreeView, KeyPressListener, VclWindowEvent&, rEvent, v
     if (!bNavigation)
         return;
 
-    m_pTreeView->disable_notify_events();
+    m_pTreeView->disableNotifyEvents();
     auto& rListBox = m_pTreeView->getTreeView();
     if (!rListBox.FirstSelected())
     {
@@ -6893,7 +6756,7 @@ IMPL_LINK(SalInstanceEntryTreeView, KeyPressListener, VclWindowEvent&, rEvent, v
         rListBox.KeyInput(rKeyEvent);
     m_xEntry->set_text(m_xTreeView->get_selected_text());
     m_xEntry->select_region(0, -1);
-    m_pTreeView->enable_notify_events();
+    m_pTreeView->enableNotifyEvents();
     m_bTreeChange = true;
     m_pEntry->fire_signal_changed();
     m_bTreeChange = false;

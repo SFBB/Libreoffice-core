@@ -7739,7 +7739,7 @@ public:
         return get_page_ident(get_current_page());
     }
 
-    virtual void set_current_page(int nPage) override
+    virtual void do_set_current_page(int nPage) override
     {
         OString sDialogTitle(gtk_window_get_title(GTK_WINDOW(m_pAssistant)));
 
@@ -7752,15 +7752,15 @@ public:
             gtk_window_set_title(GTK_WINDOW(m_pAssistant), sDialogTitle.getStr());
     }
 
-    virtual void set_current_page(const OUString& rIdent) override
+    virtual void do_set_current_page(const OUString& rIdent) override
     {
         int nPage = find_page(rIdent);
         if (nPage == -1)
             return;
-        set_current_page(nPage);
+        do_set_current_page(nPage);
     }
 
-    virtual void set_page_title(const OUString& rIdent, const OUString& rTitle) override
+    virtual void do_set_page_title(const OUString& rIdent, const OUString& rTitle) override
     {
         int nIndex = find_page(rIdent);
         if (nIndex == -1)
@@ -7783,12 +7783,12 @@ public:
         return OUString(pStr, pStr ? strlen(pStr) : 0, RTL_TEXTENCODING_UTF8);
     }
 
-    virtual void set_page_sensitive(const OUString& rIdent, bool bSensitive) override
+    virtual void do_set_page_sensitive(const OUString& rIdent, bool bSensitive) override
     {
         m_aNotClickable[rIdent] = !bSensitive;
     }
 
-    virtual void set_page_index(const OUString& rIdent, int nNewIndex) override
+    virtual void do_set_page_index(const OUString& rIdent, int nNewIndex) override
     {
         int nOldIndex = find_page(rIdent);
         if (nOldIndex == -1)
@@ -10286,7 +10286,7 @@ public:
     {
     }
 
-    virtual void set_active(bool active) override
+    virtual void do_set_active(bool active) override
     {
         disable_notify_events();
         gtk_toggle_button_set_active(m_pToggleButton, active);
@@ -10949,7 +10949,7 @@ public:
         m_aCustomBackground.use_custom_content(pDevice);
     }
 
-    virtual void set_active(bool active) override
+    virtual void do_set_active(bool active) override
     {
         disable_notify_events();
         if (active)
@@ -10979,10 +10979,10 @@ public:
         return GtkInstanceWidget::get_font();
     }
 #else
-    virtual void set_active(bool bActive) override
+    virtual void do_set_active(bool bActive) override
     {
         bool bWasActive = get_active();
-        GtkInstanceToggleButton::set_active(bActive);
+        GtkInstanceToggleButton::do_set_active(bActive);
         if (bWasActive && !bActive && gtk_widget_get_focus_on_click(GTK_WIDGET(m_pMenuButton)))
         {
             // grab focus back to the toggle button if the menu was popped down
@@ -12492,7 +12492,7 @@ public:
     {
     }
 
-    virtual void set_state(TriState eState) override
+    virtual void do_set_state(TriState eState) override
     {
         disable_notify_events();
         const bool bInconsistent = eState == TRISTATE_INDET;
@@ -13122,7 +13122,7 @@ public:
     {
     }
 
-    virtual void set_text(const OUString& rText) override
+    virtual void do_set_text(const OUString& rText) override
     {
         disable_notify_events();
 #if GTK_CHECK_VERSION(4, 0, 0)
@@ -13177,7 +13177,7 @@ public:
         enable_notify_events();
     }
 
-    virtual void select_region(int nStartPos, int nEndPos) override
+    virtual void do_select_region(int nStartPos, int nEndPos) override
     {
         disable_notify_events();
         gtk_editable_select_region(m_pEditable, nStartPos, nEndPos);
@@ -13200,7 +13200,7 @@ public:
         enable_notify_events();
     }
 
-    virtual void set_position(int nCursorPos) override
+    virtual void do_set_position(int nCursorPos) override
     {
         disable_notify_events();
         gtk_editable_set_position(m_pEditable, nCursorPos);
@@ -14988,9 +14988,10 @@ public:
         gtk_widget_queue_draw(GTK_WIDGET(m_pTreeView));
     }
 
-    virtual void insert(const weld::TreeIter* pParent, int pos, const OUString* pText, const OUString* pId, const OUString* pIconName,
-                        VirtualDevice* pImageSurface,
-                        bool bChildrenOnDemand, weld::TreeIter* pRet) override
+    virtual void do_insert(const weld::TreeIter* pParent, int pos, const OUString* pText,
+                           const OUString* pId, const OUString* pIconName,
+                           VirtualDevice* pImageSurface, bool bChildrenOnDemand,
+                           weld::TreeIter* pRet) override
     {
         disable_notify_events();
         GtkTreeIter iter;
@@ -15010,7 +15011,7 @@ public:
         enable_notify_events();
     }
 
-    virtual void insert_separator(int pos, const OUString& rId) override
+    virtual void do_insert_separator(int pos, const OUString& rId) override
     {
         disable_notify_events();
         GtkTreeIter iter;
@@ -15036,7 +15037,7 @@ public:
         set_font_color(rGtkIter.iter, rColor);
     }
 
-    virtual void remove(int pos) override
+    virtual void do_remove(int pos) override
     {
         disable_notify_events();
         GtkTreeIter iter;
@@ -15108,7 +15109,7 @@ public:
         enable_notify_events();
     }
 
-    virtual void clear() override
+    virtual void do_clear() override
     {
         disable_notify_events();
         gtk_tree_view_set_row_separator_func(m_pTreeView, nullptr, nullptr, nullptr);
@@ -15231,7 +15232,7 @@ public:
         return gtk_tree_model_iter_n_children(m_pTreeModel, const_cast<GtkTreeIter*>(&rGtkIter.iter));
     }
 
-    virtual void select(int pos) override
+    virtual void do_select(int pos) override
     {
         assert(gtk_tree_view_get_model(m_pTreeView) && "don't select when frozen, select after thaw. Note selection doesn't survive a freeze");
         disable_notify_events();
@@ -15249,7 +15250,7 @@ public:
         enable_notify_events();
     }
 
-    virtual void set_cursor(int pos) override
+    virtual void do_set_cursor(int pos) override
     {
         disable_notify_events();
         GtkTreePath* path;
@@ -15265,7 +15266,7 @@ public:
         enable_notify_events();
     }
 
-    virtual void scroll_to_row(int pos) override
+    virtual void do_scroll_to_row(int pos) override
     {
         assert(gtk_tree_view_get_model(m_pTreeView) && "don't select when frozen, select after thaw. Note selection doesn't survive a freeze");
         disable_notify_events();
@@ -15283,7 +15284,7 @@ public:
         return gtk_tree_selection_iter_is_selected(gtk_tree_view_get_selection(m_pTreeView), &iter);
     }
 
-    virtual void unselect(int pos) override
+    virtual void do_unselect(int pos) override
     {
         assert(gtk_tree_view_get_model(m_pTreeView) && "don't select when frozen, select after thaw. Note selection doesn't survive a freeze");
         disable_notify_events();
@@ -15854,7 +15855,7 @@ public:
         return nRet;
     }
 
-    virtual void set_cursor(const weld::TreeIter& rIter) override
+    virtual void do_set_cursor(const weld::TreeIter& rIter) override
     {
         disable_notify_events();
         const GtkInstanceTreeIter& rGtkIter = static_cast<const GtkInstanceTreeIter&>(rIter);
@@ -15992,7 +15993,7 @@ public:
         return ret;
     }
 
-    virtual void remove(const weld::TreeIter& rIter) override
+    virtual void do_remove(const weld::TreeIter& rIter) override
     {
         disable_notify_events();
         const GtkInstanceTreeIter& rGtkIter = static_cast<const GtkInstanceTreeIter&>(rIter);
@@ -16000,7 +16001,7 @@ public:
         enable_notify_events();
     }
 
-    virtual void remove_selection() override
+    virtual void do_remove_selection() override
     {
         disable_notify_events();
 
@@ -16021,7 +16022,7 @@ public:
         enable_notify_events();
     }
 
-    virtual void select(const weld::TreeIter& rIter) override
+    virtual void do_select(const weld::TreeIter& rIter) override
     {
         assert(gtk_tree_view_get_model(m_pTreeView) && "don't select when frozen, select after thaw. Note selection doesn't survive a freeze");
         disable_notify_events();
@@ -16030,7 +16031,7 @@ public:
         enable_notify_events();
     }
 
-    virtual void scroll_to_row(const weld::TreeIter& rIter) override
+    virtual void do_scroll_to_row(const weld::TreeIter& rIter) override
     {
         assert(gtk_tree_view_get_model(m_pTreeView) && "don't select when frozen, select after thaw. Note selection doesn't survive a freeze");
         disable_notify_events();
@@ -16042,7 +16043,7 @@ public:
         enable_notify_events();
     }
 
-    virtual void unselect(const weld::TreeIter& rIter) override
+    virtual void do_unselect(const weld::TreeIter& rIter) override
     {
         assert(gtk_tree_view_get_model(m_pTreeView) && "don't select when frozen, select after thaw. Note selection doesn't survive a freeze");
         disable_notify_events();
@@ -16082,7 +16083,8 @@ public:
         return child_is_placeholder(aIter);
     }
 
-    virtual void set_children_on_demand(const weld::TreeIter& rIter, bool bChildrenOnDemand) override
+    virtual void do_set_children_on_demand(const weld::TreeIter& rIter,
+                                           bool bChildrenOnDemand) override
     {
         disable_notify_events();
 
@@ -16807,17 +16809,11 @@ private:
         pThis->launch_signal_selection_changed();
     }
 
-    void handle_item_activated()
-    {
-        if (signal_item_activated())
-            return;
-    }
-
     static void signalItemActivated(GtkIconView*, GtkTreePath*, gpointer widget)
     {
         GtkInstanceIconView* pThis = static_cast<GtkInstanceIconView*>(widget);
         SolarMutexGuard aGuard;
-        pThis->handle_item_activated();
+        pThis->signal_item_activated();
     }
 
     static gboolean signalQueryTooltip(GtkWidget* /*pGtkWidget*/, gint x, gint y,
@@ -16992,7 +16988,7 @@ private:
 #endif
     }
 
-    virtual void remove(int pos) override
+    virtual void do_remove(int pos) override
     {
         disable_notify_events();
         GtkTreeModel* pModel = GTK_TREE_MODEL(m_pTreeStore);
@@ -17051,7 +17047,8 @@ public:
         gtk_icon_view_set_item_width(m_pIconView, width);
     }
 
-    virtual void insert(int pos, const OUString* pText, const OUString* pId, const OUString* pIconName, weld::TreeIter* pRet) override
+    virtual void do_insert(int pos, const OUString* pText, const OUString* pId,
+                           const OUString* pIconName, weld::TreeIter* pRet) override
     {
         disable_notify_events();
         GtkTreeIter iter;
@@ -17064,7 +17061,8 @@ public:
         enable_notify_events();
     }
 
-    virtual void insert(int pos, const OUString* pText, const OUString* pId, const Bitmap* pIcon, weld::TreeIter* pRet) override
+    virtual void do_insert(int pos, const OUString* pText, const OUString* pId, const Bitmap* pIcon,
+                           weld::TreeIter* pRet) override
     {
         disable_notify_events();
         GtkTreeIter iter;
@@ -17104,7 +17102,7 @@ public:
         return OUString();
     }
 
-    virtual void clear() override
+    virtual void do_clear() override
     {
         disable_notify_events();
         gtk_tree_store_clear(m_pTreeStore);
@@ -17194,7 +17192,7 @@ public:
         return nRet;
     }
 
-    virtual void select(int pos) override
+    virtual void do_select(int pos) override
     {
         assert(gtk_icon_view_get_model(m_pIconView) && "don't select when frozen, select after thaw. Note selection doesn't survive a freeze");
         disable_notify_events();
@@ -17212,7 +17210,7 @@ public:
         enable_notify_events();
     }
 
-    virtual void unselect(int pos) override
+    virtual void do_unselect(int pos) override
     {
         assert(gtk_icon_view_get_model(m_pIconView) && "don't select when frozen, select after thaw. Note selection doesn't survive a freeze");
         disable_notify_events();
@@ -17248,7 +17246,7 @@ public:
         return path != nullptr;
     }
 
-    virtual void set_cursor(const weld::TreeIter& rIter) override
+    virtual void do_set_cursor(const weld::TreeIter& rIter) override
     {
         disable_notify_events();
         const GtkInstanceTreeIter& rGtkIter = static_cast<const GtkInstanceTreeIter&>(rIter);
@@ -17273,7 +17271,7 @@ public:
         return gtk_tree_model_iter_next(pModel, &rGtkIter.iter);
     }
 
-    virtual void scroll_to_item(const weld::TreeIter& rIter) override
+    virtual void do_scroll_to_item(const weld::TreeIter& rIter) override
     {
         assert(gtk_icon_view_get_model(m_pIconView) && "don't select when frozen, select after thaw. Note selection doesn't survive a freeze");
         disable_notify_events();
@@ -17496,7 +17494,7 @@ public:
         enable_notify_events();
     }
 
-    virtual void set_text(const OUString& rText) override
+    virtual void do_set_text(const OUString& rText) override
     {
         disable_notify_events();
         // tdf#122786 if we're just formatting a value, then we're done,
@@ -17672,7 +17670,7 @@ public:
     {
     }
 
-    virtual void set_text(const OUString& rText) override
+    virtual void do_set_text(const OUString& rText) override
     {
         GtkInstanceEditable::set_text(rText);
         Formatter& rFormatter = GetFormatter();
@@ -18046,7 +18044,7 @@ public:
         gtk_widget_set_size_request(m_pWidget, nWidth, nHeight);
     }
 
-    virtual void set_text(const OUString& rText) override
+    virtual void do_set_text(const OUString& rText) override
     {
         disable_notify_events();
         OString sText(OUStringToOString(rText, RTL_TEXTENCODING_UTF8));
@@ -18064,7 +18062,7 @@ public:
         return sRet;
     }
 
-    virtual void replace_selection(const OUString& rText) override
+    virtual void do_replace_selection(const OUString& rText) override
     {
         disable_notify_events();
         gtk_text_buffer_delete_selection(m_pTextBuffer, false, gtk_text_view_get_editable(m_pTextView));
@@ -18082,7 +18080,7 @@ public:
         return rStartPos != rEndPos;
     }
 
-    virtual void select_region(int nStartPos, int nEndPos) override
+    virtual void do_select_region(int nStartPos, int nEndPos) override
     {
         disable_notify_events();
         GtkTextIter start, end;

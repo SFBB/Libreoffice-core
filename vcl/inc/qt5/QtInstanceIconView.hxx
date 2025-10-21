@@ -28,42 +28,42 @@ public:
     virtual int get_item_width() const override;
     virtual void set_item_width(int width) override;
 
-    virtual void insert(int nPos, const OUString* pStr, const OUString* pId,
-                        const OUString* pIconName, weld::TreeIter* pRet) override;
+    virtual void do_insert(int nPos, const OUString* pStr, const OUString* pId,
+                           const OUString* pIconName, weld::TreeIter* pRet) override;
 
-    virtual void insert(int nPos, const OUString* pStr, const OUString* pId, const Bitmap* pIcon,
-                        weld::TreeIter* pRet) override;
+    virtual void do_insert(int nPos, const OUString* pStr, const OUString* pId, const Bitmap* pIcon,
+                           weld::TreeIter* pRet) override;
 
     virtual void insert_separator(int pos, const OUString* pId) override;
 
     virtual OUString get_selected_id() const override;
 
-    virtual void clear() override;
+    virtual void do_clear() override;
 
     virtual int count_selected_items() const override;
 
     virtual OUString get_selected_text() const override;
 
     virtual OUString get_id(int nPos) const override;
-    virtual void select(int nPos) override;
-    virtual void unselect(int nPos) override;
+    virtual void do_select(int nPos) override;
+    virtual void do_unselect(int nPos) override;
     virtual void set_image(int nPos, VirtualDevice& rDevice) override;
     virtual void set_text(int nPos, const OUString& rText) override;
     virtual void set_id(int nPos, const OUString& rId) override;
     virtual void set_item_accessible_name(int nPos, const OUString& rName) override;
-    virtual void remove(int pos) override;
+    virtual void do_remove(int pos) override;
     virtual tools::Rectangle get_rect(int pos) const override;
 
     virtual std::unique_ptr<weld::TreeIter> make_iterator(const weld::TreeIter* pOrig
                                                           = nullptr) const override;
     virtual bool get_selected(weld::TreeIter* pIter) const override;
     virtual bool get_cursor(weld::TreeIter* pIter) const override;
-    virtual void set_cursor(const weld::TreeIter& rIter) override;
+    virtual void do_set_cursor(const weld::TreeIter& rIter) override;
     virtual bool get_iter_first(weld::TreeIter& rIter) const override;
     virtual OUString get_id(const weld::TreeIter& rIter) const override;
     virtual OUString get_text(const weld::TreeIter& rIter) const override;
     virtual bool iter_next_sibling(weld::TreeIter& rIter) const override;
-    virtual void scroll_to_item(const weld::TreeIter& rIter) override;
+    virtual void do_scroll_to_item(const weld::TreeIter& rIter) override;
 
     virtual void selected_foreach(const std::function<bool(weld::TreeIter&)>& func) override;
 
@@ -76,8 +76,8 @@ protected:
     virtual bool handleToolTipEvent(const QHelpEvent& rHelpEvent) override;
 
 private:
-    void insert(int nPos, const OUString* pStr, const OUString* pId, const QPixmap* pIcon,
-                weld::TreeIter* pRet);
+    void do_insert(int nPos, const OUString* pStr, const OUString* pId, const QPixmap* pIcon,
+                   weld::TreeIter* pRet);
 
     QModelIndex modelIndex(int nPos) const;
     QModelIndex modelIndex(const weld::TreeIter& rIter) const;

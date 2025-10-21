@@ -31,7 +31,7 @@ QtInstanceTextView::QtInstanceTextView(QPlainTextEdit* pTextEdit)
                 &QtInstanceTextView::handleVerticalScrollValueChanged);
 }
 
-void QtInstanceTextView::set_text(const OUString& rText)
+void QtInstanceTextView::do_set_text(const OUString& rText)
 {
     SolarMutexGuard g;
     GetQtInstance().RunInMainThread([&] { m_pTextEdit->setPlainText(toQString(rText)); });
@@ -45,7 +45,7 @@ OUString QtInstanceTextView::get_text() const
     return sText;
 }
 
-void QtInstanceTextView::select_region(int nStartPos, int nEndPos)
+void QtInstanceTextView::do_select_region(int nStartPos, int nEndPos)
 {
     SolarMutexGuard g;
 
@@ -75,7 +75,7 @@ bool QtInstanceTextView::get_selection_bounds(int& rStartPos, int& rEndPos)
     return bHasSelection;
 }
 
-void QtInstanceTextView::replace_selection(const OUString& rText)
+void QtInstanceTextView::do_replace_selection(const OUString& rText)
 {
     SolarMutexGuard g;
     GetQtInstance().RunInMainThread([&] { m_pTextEdit->insertPlainText(toQString(rText)); });

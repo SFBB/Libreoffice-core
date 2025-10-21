@@ -139,19 +139,23 @@ void SAL_CALL GenericToolbarController::execute( sal_Int16 KeyModifier )
         if ( m_bDisposed )
             throw DisposedException();
 
-        if ( m_bInitialized &&
-             m_xFrame.is() &&
-             !m_aCommandURL.isEmpty() )
-        {
-            aCommandURL = m_aCommandURL;
-            URLToDispatchMap::iterator pIter = m_aListenerMap.find( m_aCommandURL );
-            if ( pIter != m_aListenerMap.end() )
-                xDispatch = pIter->second;
-        }
-    }
+        if ( !m_bInitialized || !m_xFrame.is() || m_aCommandURL.isEmpty() )
+            return;
 
-    if ( !xDispatch.is() )
-        return;
+        URLToDispatchMap::iterator pIter = m_aListenerMap.find( m_aCommandURL );
+
+        if ( pIter == m_aListenerMap.end() )
+            return;
+
+        aCommandURL = m_aCommandURL;
+        xDispatch = pIter->second;
+
+        // tdf#138234 If this toolbar is a floating window then
+        // clicking on a button probably took the window focus. Let’s
+        // give it back to the toolbar’s frame.
+        if ( m_xFrame.is() && m_xFrame->getContainerWindow().is() )
+            m_xFrame->getContainerWindow()->setFocus();
+    }
 
     css::util::URL aTargetURL;
 

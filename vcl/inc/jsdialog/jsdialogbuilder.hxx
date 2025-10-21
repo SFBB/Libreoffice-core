@@ -431,8 +431,8 @@ public:
     JSAssistant(JSDialogSender* pSender, vcl::RoadmapWizard* pDialog, SalInstanceBuilder* pBuilder,
                 bool bTakeOwnership);
 
-    virtual void set_current_page(int nPage) override;
-    virtual void set_current_page(const OUString& rIdent) override;
+    void do_set_current_page(int nPage) override;
+    virtual void do_set_current_page(const OUString& rIdent) override;
     virtual void response(int response) override;
     virtual std::unique_ptr<weld::Button> weld_button_for_response(int response) override;
     virtual int run() override;
@@ -515,7 +515,7 @@ class JSEntry final : public JSWidget<SalInstanceEntry, ::Edit>
 public:
     JSEntry(JSDialogSender* pSender, ::Edit* pEntry, SalInstanceBuilder* pBuilder,
             bool bTakeOwnership);
-    virtual void set_text(const OUString& rText) override;
+    virtual void do_set_text(const OUString& rText) override;
     void set_text_without_notify(const OUString& rText);
     virtual void replace_selection(const OUString& rText) override;
 };
@@ -589,7 +589,7 @@ public:
     JSFormattedSpinButton(JSDialogSender* pSender, ::FormattedField* pSpin,
                           SalInstanceBuilder* pBuilder, bool bTakeOwnership);
 
-    virtual void set_text(const OUString& rText) override;
+    virtual void do_set_text(const OUString& rText) override;
     void set_text_without_notify(const OUString& rText);
 };
 
@@ -634,7 +634,7 @@ public:
     JSCheckButton(JSDialogSender* pSender, ::CheckBox* pCheckBox, SalInstanceBuilder* pBuilder,
                   bool bTakeOwnership);
 
-    virtual void set_state(TriState eState) override;
+    virtual void do_set_state(TriState eState) override;
 };
 
 class JSDrawingArea final : public JSWidget<SalInstanceDrawingArea, VclDrawingArea>
@@ -671,9 +671,9 @@ class JSTextView final : public JSWidget<SalInstanceTextView, ::VclMultiLineEdit
 public:
     JSTextView(JSDialogSender* pSender, ::VclMultiLineEdit* pTextView, SalInstanceBuilder* pBuilder,
                bool bTakeOwnership);
-    virtual void set_text(const OUString& rText) override;
+    virtual void do_set_text(const OUString& rText) override;
     void set_text_without_notify(const OUString& rText);
-    virtual void replace_selection(const OUString& rText) override;
+    virtual void do_replace_selection(const OUString& rText) override;
 };
 
 class JSTreeView final : public JSWidget<SalInstanceTreeView, ::SvTabListBox>
@@ -692,17 +692,17 @@ public:
     virtual void set_sensitive(int pos, bool bSensitive, int col = -1) override;
     virtual void set_sensitive(const weld::TreeIter& rIter, bool bSensitive, int col = -1) override;
 
-    using SalInstanceTreeView::select;
+    using SalInstanceTreeView::do_select;
     /// pos is used differently here, it defines how many steps of iterator we need to perform to take entry
-    virtual void select(int pos) override;
+    virtual void do_select(int pos) override;
 
     virtual weld::TreeView* get_drag_source() const override;
 
-    using SalInstanceTreeView::insert;
-    virtual void insert(const weld::TreeIter* pParent, int pos, const OUString* pStr,
-                        const OUString* pId, const OUString* pIconName,
-                        VirtualDevice* pImageSurface, bool bChildrenOnDemand,
-                        weld::TreeIter* pRet) override;
+    using SalInstanceTreeView::do_insert;
+    virtual void do_insert(const weld::TreeIter* pParent, int pos, const OUString* pStr,
+                           const OUString* pId, const OUString* pIconName,
+                           VirtualDevice* pImageSurface, bool bChildrenOnDemand,
+                           weld::TreeIter* pRet) override;
 
     virtual void set_text(int row, const OUString& rText, int col = -1) override;
     virtual void set_text(const weld::TreeIter& rIter, const OUString& rStr, int col = -1) override;
@@ -710,15 +710,15 @@ public:
     virtual void expand_row(const weld::TreeIter& rIter) override;
     virtual void collapse_row(const weld::TreeIter& rIter) override;
 
-    virtual void set_cursor(const weld::TreeIter& rIter) override;
+    virtual void do_set_cursor(const weld::TreeIter& rIter) override;
     void set_cursor_without_notify(const weld::TreeIter& rIter);
-    virtual void set_cursor(int pos) override;
+    virtual void do_set_cursor(int pos) override;
 
-    using SalInstanceTreeView::remove;
-    virtual void remove(int pos) override;
-    virtual void remove(const weld::TreeIter& rIter) override;
+    using SalInstanceTreeView::do_remove;
+    virtual void do_remove(int pos) override;
+    virtual void do_remove(const weld::TreeIter& rIter) override;
 
-    virtual void clear() override;
+    virtual void do_clear() override;
 
     void drag_start();
     void drag_end();
@@ -740,17 +740,17 @@ public:
     JSIconView(JSDialogSender* pSender, ::IconView* pIconView, SalInstanceBuilder* pBuilder,
                bool bTakeOwnership);
 
-    virtual void insert(int pos, const OUString* pStr, const OUString* pId,
-                        const OUString* pIconName, weld::TreeIter* pRet) override;
+    virtual void do_insert(int pos, const OUString* pStr, const OUString* pId,
+                           const OUString* pIconName, weld::TreeIter* pRet) override;
 
-    virtual void insert(int pos, const OUString* pStr, const OUString* pId, const Bitmap* pIcon,
-                        weld::TreeIter* pRet) override;
+    virtual void do_insert(int pos, const OUString* pStr, const OUString* pId, const Bitmap* pIcon,
+                           weld::TreeIter* pRet) override;
 
     virtual void insert_separator(int pos, const OUString* pId) override;
 
-    virtual void clear() override;
-    virtual void select(int pos) override;
-    virtual void unselect(int pos) override;
+    virtual void do_clear() override;
+    virtual void do_select(int pos) override;
+    virtual void do_unselect(int pos) override;
 
     // OnDemandRenderingHandler
     virtual void render_entry(int pos, int dpix, int dpiy) override;
@@ -762,7 +762,7 @@ public:
     JSRadioButton(JSDialogSender* pSender, ::RadioButton* pRadioButton,
                   SalInstanceBuilder* pBuilder, bool bTakeOwnership);
 
-    virtual void set_active(bool active) override;
+    virtual void do_set_active(bool active) override;
 };
 
 class JSFrame : public JSWidget<SalInstanceFrame, ::VclFrame>
@@ -781,7 +781,7 @@ public:
     virtual void set_label(const OUString& rText) override;
     virtual void set_image(VirtualDevice* pDevice) override;
     virtual void set_image(const css::uno::Reference<css::graphic::XGraphic>& rImage) override;
-    virtual void set_active(bool active) override;
+    virtual void do_set_active(bool active) override;
 };
 
 class JSMenu final : public SalInstanceMenu

@@ -73,7 +73,7 @@ OUString QtInstanceAssistant::get_current_page_ident() const
     return sId;
 }
 
-void QtInstanceAssistant::set_current_page(int nPage)
+void QtInstanceAssistant::do_set_current_page(int nPage)
 {
     SolarMutexGuard g;
 
@@ -101,7 +101,7 @@ void QtInstanceAssistant::set_current_page(int nPage)
     });
 }
 
-void QtInstanceAssistant::set_current_page(const OUString& rIdent)
+void QtInstanceAssistant::do_set_current_page(const OUString& rIdent)
 {
     SolarMutexGuard g;
 
@@ -112,14 +112,14 @@ void QtInstanceAssistant::set_current_page(const OUString& rIdent)
             QWizardPage* pPage = m_pWizard->page(nPageId);
             if (pPage && pPage->objectName() == toQString(rIdent))
             {
-                set_current_page(nPageId);
+                do_set_current_page(nPageId);
                 break;
             }
         }
     });
 }
 
-void QtInstanceAssistant::set_page_index(const OUString& rIdent, int nIndex)
+void QtInstanceAssistant::do_set_page_index(const OUString& rIdent, int nIndex)
 {
     SolarMutexGuard g;
 
@@ -156,7 +156,7 @@ void QtInstanceAssistant::set_page_index(const OUString& rIdent, int nIndex)
     });
 }
 
-void QtInstanceAssistant::set_page_title(const OUString& rIdent, const OUString& rTitle)
+void QtInstanceAssistant::do_set_page_title(const OUString& rIdent, const OUString& rTitle)
 {
     SolarMutexGuard g;
 
@@ -179,7 +179,7 @@ OUString QtInstanceAssistant::get_page_title(const OUString& rIdent) const
     return sTitle;
 }
 
-void QtInstanceAssistant::set_page_sensitive(const OUString& rIdent, bool bSensitive)
+void QtInstanceAssistant::do_set_page_sensitive(const OUString& rIdent, bool bSensitive)
 {
     SolarMutexGuard g;
 

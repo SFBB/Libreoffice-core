@@ -26,7 +26,7 @@ QtInstanceEntry::QtInstanceEntry(QLineEdit* pLineEdit)
                      &QtInstanceEntry::handleTextChanged);
 }
 
-void QtInstanceEntry::set_text(const OUString& rText)
+void QtInstanceEntry::do_set_text(const OUString& rText)
 {
     SolarMutexGuard g;
     GetQtInstance().RunInMainThread([&] { m_pLineEdit->setText(toQString(rText)); });
@@ -57,7 +57,7 @@ void QtInstanceEntry::set_max_length(int nChars)
     GetQtInstance().RunInMainThread([&] { m_pLineEdit->setMaxLength(nChars); });
 }
 
-void QtInstanceEntry::select_region(int nStartPos, int nEndPos)
+void QtInstanceEntry::do_select_region(int nStartPos, int nEndPos)
 {
     SolarMutexGuard g;
 
@@ -90,7 +90,7 @@ void QtInstanceEntry::replace_selection(const OUString& rText)
     GetQtInstance().RunInMainThread([&] { m_pLineEdit->insert(toQString(rText)); });
 }
 
-void QtInstanceEntry::set_position(int nCursorPos)
+void QtInstanceEntry::do_set_position(int nCursorPos)
 {
     SolarMutexGuard g;
     if (nCursorPos == -1)
