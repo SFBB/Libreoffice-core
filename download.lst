@@ -312,8 +312,8 @@ FROZEN_TARBALL := frozen-1.2.0.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-GLM_SHA256SUM := 09c5716296787e1f7fcb87b1cbdbf26814ec1288ed6259ccd30d5d9795809fa5
-GLM_TARBALL := glm-1.0.1.zip
+GLM_SHA256SUM := be64032585415ca7dbea0d614915bb8eec012adf7b4d4fea7ff6b5bd3e0b906a
+GLM_TARBALL := glm-1.0.2.zip
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -518,8 +518,8 @@ MYTHES_TARBALL := mythes-1.2.5.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-NSS_SHA256SUM := af6f21bae9f16534988842597871754450fd6cdbd786750e7cd069f8d231ce10
-NSS_TARBALL := nss-3.116-with-nspr-4.37.tar.gz
+NSS_SHA256SUM := cda19ca82e3f4839b0cb72fc633545a83b3f73dd3385a24a176860c461773a70
+NSS_TARBALL := nss-3.117-with-nspr-4.37.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -606,8 +606,8 @@ POSTGRESQL_TARBALL := postgresql-15.14.tar.bz2
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-PYTHON_SHA256SUM := c30bb24b7f1e9a19b11b55a546434f74e739bb4c271a3e3a80ff4380d49f7adb
-PYTHON_TARBALL := Python-3.12.11.tar.xz
+PYTHON_SHA256SUM := fb85a13414b028c49ba18bbd523c2d055a30b56b18b92ce454ea2c51edc656c4
+PYTHON_TARBALL := Python-3.12.12.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -652,8 +652,8 @@ RHINO_TARBALL := rhino-1.7.15.zip
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-SKIA_SHA256SUM := 1808fba8891ebac4ae50007bd2b7bdf4dee27fb5a345fc720cb4891d1b859136
-SKIA_TARBALL := skia-m140-f3ff281f2330f2948888a9cc0ba921bbdc107da8.tar.xz
+SKIA_SHA256SUM := 01aa9c77b506900ad39c6ec0750d4b8051306287fad970170e0d780a30821d3c
+SKIA_TARBALL := skia-m141-5eefbe51d17d2e379fa2d7353827e0ccb1e1f601.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts

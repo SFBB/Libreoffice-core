@@ -103,17 +103,9 @@ public:
     void ToTop( SwCacheObj *pObj );
 
     bool Insert(SwCacheObj *pNew, bool isDuplicateOwnerAllowed);
-    void Delete(const void * pOwner, sal_uInt16 nIndex);
     void Delete( const void *pOwner );
 
-    /// Mark some entries as "do not delete"
-    /// @param nOfst determines how many are not to be touched
-    void SetLRUOfst( const sal_uInt16 nOfst );
-    void ResetLRUOfst() { m_pFirst = m_pRealFirst; }
-
     void IncreaseMax( const sal_uInt16 nAdd );
-    void DecreaseMax( const sal_uInt16 nSub );
-    sal_uInt16 GetCurMax() const { return m_nCurMax; }
     SwCacheObj *First() { return m_pRealFirst; }
     static inline SwCacheObj *Next( SwCacheObj *pCacheObj);
     SwCacheObj* operator[](sal_uInt16 nIndex) { return m_aCacheObjects[nIndex].get(); }
@@ -144,12 +136,8 @@ class SwCacheObj
     void SetCachePos(const sal_uInt16 nNew)
     {
         if (m_nCachePos != nNew)
-        {
             m_nCachePos = nNew;
-            UpdateCachePos();
-        }
     }
-    virtual void UpdateCachePos() { }
 
 protected:
     const void *m_pOwner;
