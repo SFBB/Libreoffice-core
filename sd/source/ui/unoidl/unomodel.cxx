@@ -120,6 +120,7 @@
 #include <rtl/math.hxx>
 #include <tools/helpers.hxx>
 #include <tools/json_writer.hxx>
+#include <TransitionPreset.hxx>
 
 // Support creation of GraphicStorageHandler and EmbeddedObjectResolver
 #include <svx/xmleohlp.hxx>
@@ -1403,6 +1404,11 @@ void AnimationsExporter::exportAnimate(const Reference<XAnimate>& xAnimate)
         {
             anim::convertTarget(sTmp, aTemp);
             mrWriter.put("targetElement", sTmp.makeStringAndClear());
+            SdrObject* pObject = getTargetObject(aTemp);
+            if (pObject)
+            {
+                mrWriter.put("title", pObject->GetTitle());
+            }
         }
         nTemp = xAnimate->getSubItem();
         if (nTemp)
@@ -4807,6 +4813,22 @@ OString SdXImpressDocument::getPresentationInfo(bool bAllyState) const
                         else
                         {
                             SAL_WARN("sd", "Transition sub-type unknown: " << nTransitionSubtype);
+                        }
+
+                        if (bAllyState)
+                        {
+                            const TransitionPresetList& rList = TransitionPreset::getTransitionPresetList();
+                            auto aTransition = std::find_if(rList.begin(), rList.end(),
+                                                            [nTransitionType,
+                                                             nTransitionSubtype](const TransitionPresetPtr& rxPreset) {
+                                                                return (rxPreset->getTransition() == nTransitionType)
+                                                                    && (rxPreset->getSubtype() == nTransitionSubtype);
+                                                            });
+
+                            if (aTransition != rList.end())
+                            {
+                                aJsonWriter.put("transitionLabel", (*aTransition)->getSetLabel());
+                            }
                         }
 
                         bool nTransitionDirection = false;
