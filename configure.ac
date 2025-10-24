@@ -15177,6 +15177,7 @@ AC_SUBST(MSGUNIQ)
 # check that the list is valid
 for lang in $WITH_LANG; do
     test "$lang" = "ALL" && continue
+    test "$lang" = "qtz" && ALL_LANGS="$ALL_LANGS qtz" && continue
     # need to check for the exact string, so add space before and after the list of all languages
     for vl in $ALL_LANGS; do
         if test "$vl" = "$lang"; then
@@ -16155,7 +16156,7 @@ AC_CONFIG_LINKS([include:include])
 
 if test -n "$WSL_ONLY_AS_HELPER"; then
     # while we configure in linux, we actually compile in "cygwin" (close enough at least)
-    build=$host
+    build=$build_cpu-$host_vendor-$host_os
     PathFormat "$SRC_ROOT"
     SRC_ROOT="$formatted_path"
     PathFormat "$BUILDDIR"
