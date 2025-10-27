@@ -78,23 +78,10 @@ struct EmbeddedFontInfo
     FontWeight eFontWeight;
 };
 
-// A description of such a final font as LibreOffice sees it
-// e.g. "Name SemiBold"
-struct OfficeFontInfo
-{
-    OUString sFontName;
-    FontWeight eFontWeight;
-};
-
 // Helper Class to import PDF
 class ImpSdrPdfImport final
 {
     std::vector<rtl::Reference<SdrObject>> maTmpList;
-
-    std::map<vcl::pdf::PDFiumFont, OfficeFontInfo> maImportedFonts;
-    std::map<OUString, SubSetInfo> maDifferentSubsetsForFont;
-    // map of PostScriptName->Merged Font File for that font
-    std::map<OUString, EmbeddedFontInfo> maEmbeddedFonts;
 
     ScopedVclPtr<VirtualDevice> mpVD;
     tools::Rectangle maScaleRect;
@@ -103,11 +90,13 @@ class ImpSdrPdfImport final
     std::unique_ptr<SfxItemSet> mpFillAttr;
     std::unique_ptr<SfxItemSet> mpTextAttr;
     SdrModel* mpModel;
+    std::shared_ptr<ImportedFontMap> mxImportedFonts;
     SdrLayerID mnLayer;
-    Color maOldLineColor;
     sal_Int32 mnLineWidth;
     static constexpr css::drawing::LineCap gaLineCap = css::drawing::LineCap_BUTT;
     XDash maDash;
+    std::optional<Color> moFillColor;
+    std::optional<Bitmap> moFillPattern;
 
     bool mbMov;
     bool mbSize;
@@ -146,17 +135,25 @@ class ImpSdrPdfImport final
     void checkClip();
     bool isClip() const;
 
+    Color getStrokeColor(std::unique_ptr<vcl::pdf::PDFiumPageObject> const& pPageObject,
+                         std::unique_ptr<vcl::pdf::PDFiumPage> const& pPage);
+    Color getFillColor(std::unique_ptr<vcl::pdf::PDFiumPageObject> const& pPageObject,
+                       std::unique_ptr<vcl::pdf::PDFiumPage> const& pPage);
+
     void ImportPdfObject(std::unique_ptr<vcl::pdf::PDFiumPageObject> const& pPageObject,
+                         std::unique_ptr<vcl::pdf::PDFiumPage> const& pPage,
                          std::unique_ptr<vcl::pdf::PDFiumTextPage> const& pTextPage,
                          int nPageObjectIndex);
     void ImportForm(std::unique_ptr<vcl::pdf::PDFiumPageObject> const& pPageObject,
+                    std::unique_ptr<vcl::pdf::PDFiumPage> const& pPage,
                     std::unique_ptr<vcl::pdf::PDFiumTextPage> const& pTextPage,
                     int nPageObjectIndex);
     void ImportImage(std::unique_ptr<vcl::pdf::PDFiumPageObject> const& pPageObject,
                      int nPageObjectIndex);
     void ImportPath(std::unique_ptr<vcl::pdf::PDFiumPageObject> const& pPageObject,
-                    int nPageObjectIndex);
+                    std::unique_ptr<vcl::pdf::PDFiumPage> const& pPage, int nPageObjectIndex);
     void ImportText(std::unique_ptr<vcl::pdf::PDFiumPageObject> const& pPageObject,
+                    std::unique_ptr<vcl::pdf::PDFiumPage> const& pPage,
                     std::unique_ptr<vcl::pdf::PDFiumTextPage> const& pTextPage,
                     int nPageObjectIndex);
     void InsertTextObject(const Point& rPos, const Size& rSize, const OUString& rStr,
@@ -172,15 +169,16 @@ class ImpSdrPdfImport final
 
     void DoObjects(SvdProgressInfo* pProgrInfo, sal_uInt32* pActionsToReport, int nPageIndex);
 
-    void CollectFonts();
+    static ImportedFontMap CollectFonts(sal_Int64 nPrefix, vcl::pdf::PDFiumDocument& rPdfDocument);
 
     sal_Int64 getPrefix() const { return reinterpret_cast<sal_Int64>(this); }
 
-    static EmbeddedFontInfo convertToOTF(sal_Int64 prefix, SubSetInfo& rSubSetInfo,
+    static EmbeddedFontInfo convertToOTF(sal_Int64 nPrefix, SubSetInfo& rSubSetInfo,
                                          const OUString& fileUrl, const OUString& fontName,
                                          const OUString& baseFontName,
                                          std::u16string_view fontFileName,
-                                         const std::vector<uint8_t>& toUnicodeData);
+                                         const std::vector<uint8_t>& toUnicodeData,
+                                         const vcl::pdf::PDFiumFont& font);
 
     // Copy assignment is forbidden and not implemented.
     ImpSdrPdfImport(const ImpSdrPdfImport&) = delete;

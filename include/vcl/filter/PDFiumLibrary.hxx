@@ -53,7 +53,24 @@ inline constexpr OString constDictionaryKey_RichContent = "RC"_ostr;
 class PDFiumBitmap;
 class PDFiumDocument;
 class PDFiumPageObject;
-typedef void* PDFiumFont;
+
+class PDFiumFont
+{
+public:
+    virtual ~PDFiumFont() = default;
+
+    virtual bool getFontData(std::vector<uint8_t>& rData) const = 0;
+    virtual bool getFontToUnicode(std::vector<uint8_t>& rData) const = 0;
+    virtual bool getIsEmbedded() const = 0;
+
+    // Get the index in the font of the glyph represented by the pdf "character
+    // code" of nCharCode. Which itself is what is mapped to unicode by a pdf's
+    // ToUnicode resource.
+    // A return of 0 represents not-found.
+    virtual sal_uInt32 getGlyphIndexFromCharCode(const sal_uInt32 nCharCode) const = 0;
+
+    virtual sal_Int32 getFontDictObjNum() const = 0;
+};
 
 class VCL_DLLPUBLIC PDFium
 {
@@ -158,15 +175,18 @@ public:
     virtual OUString getFontName() = 0;
     virtual OUString getBaseFontName() = 0;
     virtual int getFontAngle() = 0;
-    virtual PDFiumFont getFont() = 0;
-    virtual bool getFontData(PDFiumFont font, std::vector<uint8_t>& rData) = 0;
-    virtual bool getFontToUnicode(PDFiumFont font, std::vector<uint8_t>& rData) = 0;
-    virtual bool getIsEmbedded(PDFiumFont font) = 0;
+    virtual std::unique_ptr<PDFiumFont> getFont() = 0;
     virtual bool getFontProperties(FontWeight& weight) = 0;
     virtual PDFTextRenderMode getTextRenderMode() = 0;
     virtual Color getFillColor() = 0;
+    virtual std::unique_ptr<PDFiumBitmap> getRenderedFillPattern(PDFiumDocument& rDoc,
+                                                                 PDFiumPage& rPage)
+        = 0;
     virtual Color getStrokeColor() = 0;
     virtual double getStrokeWidth() = 0;
+    virtual std::unique_ptr<PDFiumBitmap> getRenderedStrokePattern(PDFiumDocument& rDoc,
+                                                                   PDFiumPage& rPage)
+        = 0;
     // Path
     virtual int getPathSegmentCount() = 0;
     virtual std::unique_ptr<PDFiumPathSegment> getPathSegment(int index) = 0;

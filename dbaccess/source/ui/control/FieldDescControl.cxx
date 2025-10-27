@@ -82,54 +82,6 @@ OFieldDescControl::OFieldDescControl(weld::Container* pPage, OTableDesignHelpBar
 
 OFieldDescControl::~OFieldDescControl()
 {
-    dispose();
-}
-
-void OFieldDescControl::dispose()
-{
-    // Destroy children
-    DeactivateAggregate( tpDefault );
-    DeactivateAggregate( tpRequired );
-    DeactivateAggregate( tpTextLen );
-    DeactivateAggregate( tpNumType );
-    DeactivateAggregate( tpScale );
-    DeactivateAggregate( tpLength );
-    DeactivateAggregate( tpFormat );
-    DeactivateAggregate( tpAutoIncrement );
-    DeactivateAggregate( tpBoolDefault );
-    DeactivateAggregate( tpColumnName );
-    DeactivateAggregate( tpType );
-    DeactivateAggregate( tpAutoIncrementValue );
-    m_pHelp = nullptr;
-    m_pLastFocusWindow = nullptr;
-    m_pActFocusWindow = nullptr;
-    m_xDefaultText.reset();
-    m_xRequiredText.reset();
-    m_xAutoIncrementText.reset();
-    m_xTextLenText.reset();
-    m_xNumTypeText.reset();
-    m_xLengthText.reset();
-    m_xScaleText.reset();
-    m_xFormatText.reset();
-    m_xBoolDefaultText.reset();
-    m_xColumnNameText.reset();
-    m_xTypeText.reset();
-    m_xAutoIncrementValueText.reset();
-    m_xRequired.reset();
-    m_xNumType.reset();
-    m_xAutoIncrement.reset();
-    m_xDefault.reset();
-    m_xTextLen.reset();
-    m_xLength.reset();
-    m_xScale.reset();
-    m_xFormatSample.reset();
-    m_xBoolDefault.reset();
-    m_xColumnName.reset();
-    m_xType.reset();
-    m_xAutoIncrementValue.reset();
-    m_xFormat.reset();
-    m_xContainer.reset();
-    m_xBuilder.reset();
 }
 
 OUString OFieldDescControl::BoolStringPersistent(std::u16string_view rUIString) const
@@ -894,10 +846,7 @@ void OFieldDescControl::DisplayData(OFieldDescription* pFieldDescr )
     }
 
     if (m_xDefault)
-    {
         m_xDefault->set_text(getControlDefault(pFieldDescr));
-        m_xDefault->save_value();
-    }
 
     if (m_xBoolDefault)
     {
@@ -937,10 +886,7 @@ void OFieldDescControl::DisplayData(OFieldDescription* pFieldDescr )
     }
 
     if (m_xTextLen)
-    {
         m_xTextLen->set_text(OUString::number(pFieldDescr->GetPrecision()));
-        m_xTextLen->save_value();
-    }
 
     if( m_xNumType )
     {
@@ -989,6 +935,14 @@ void OFieldDescControl::DisplayData(OFieldDescription* pFieldDescr )
     // Enable/disable Controls
     bool bRead(IsReadOnly());
 
+    // Save the values that we loaded so we can detect any changes
+    iterateControls([] (OWidgetBase* pWidget)
+    {
+        if (pWidget)
+            pWidget->save_value();
+        return false;
+    });
+
     SetReadOnly( bRead );
 }
 
@@ -1000,7 +954,6 @@ IMPL_LINK(OFieldDescControl, OnControlFocusGot, weld::Widget&, rControl, void )
     {
         if (pWidget && &rControl == pWidget->GetWidget())
         {
-            pWidget->save_value();
             strHelpText = pWidget->GetHelp();
             return true;
         }
@@ -1037,6 +990,17 @@ IMPL_LINK(OFieldDescControl, OnControlFocusLost, weld::Widget&, rControl, void )
         UpdateFormatSample(pActFieldDescr);
 
     implFocusLost(&rControl);
+}
+
+void OFieldDescControl::FlushModifiedData()
+{
+    iterateControls([&](OWidgetBase* pWidget)
+    {
+        if (pWidget && pWidget->get_value_changed_from_saved())
+            CellModified(-1, pWidget->GetPos());
+
+        return false;
+    });
 }
 
 void OFieldDescControl::SaveData( OFieldDescription* pFieldDescr )

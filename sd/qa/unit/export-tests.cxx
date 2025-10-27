@@ -1210,6 +1210,94 @@ CPPUNIT_TEST_FIXTURE(SdExportTest, testExplodedPdfMissingFontVersion)
     CPPUNIT_ASSERT_EQUAL(u"Errare humanum est"_ustr, sText);
 }
 
+CPPUNIT_TEST_FIXTURE(SdExportTest, testExplodedPdfEmbeddedFonts)
+{
+    auto pPdfium = vcl::pdf::PDFiumLibrary::get();
+    if (!pPdfium)
+        return;
+    UsePdfium aGuard;
+
+    //cannot overwrite font file that windows has already open, fix in a later
+    //patch
+#if !defined _WIN32
+    loadFromFile(u"pdf/sciencejournalsource.pdf");
+
+    setFilterOptions("{\"DecomposePDF\":{\"type\":\"boolean\",\"value\":\"true\"}}");
+    save(u"OpenDocument Drawing Flat XML"_ustr);
+
+    xmlDocUniquePtr pXmlDoc = parseExportedFile();
+
+    // The PT Serif embedded font should have been extracted and embedded into the fodg,
+    // ensure we have the bold variant
+    assertXPath(pXmlDoc, "/office:document/office:font-face-decls/style:font-face[@style:name='PT "
+                         "Serif']/svg:font-face-src/svg:font-face-uri[@loext:font-weight='bold' "
+                         "and @loext:font-style='normal']/office:binary-data");
+#endif
+}
+
+CPPUNIT_TEST_FIXTURE(SdExportTest, testExplodedPdfPatternStroke)
+{
+    auto pPdfium = vcl::pdf::PDFiumLibrary::get();
+    if (!pPdfium)
+        return;
+    UsePdfium aGuard;
+
+    loadFromFile(u"pdf/pattern-stroke.pdf");
+
+    setFilterOptions("{\"DecomposePDF\":{\"type\":\"boolean\",\"value\":\"true\"}}");
+    save(u"OpenDocument Drawing Flat XML"_ustr);
+
+    xmlDocUniquePtr pXmlDoc = parseExportedFile();
+
+    // ensure the stroke color is this redish color, and not gray which is what it
+    // defaults to if the stroke pattern isn't taken into account.
+    assertXPath(pXmlDoc, "/office:document/office:automatic-styles/style:style[@style:name='gr1']/"
+                         "style:graphic-properties[@svg:stroke-color='#ed1b2d']");
+}
+
+CPPUNIT_TEST_FIXTURE(SdExportTest, testExplodedPdfPatternFill)
+{
+    auto pPdfium = vcl::pdf::PDFiumLibrary::get();
+    if (!pPdfium)
+        return;
+    UsePdfium aGuard;
+
+    loadFromFile(u"pdf/pattern-fill.pdf");
+
+    setFilterOptions("{\"DecomposePDF\":{\"type\":\"boolean\",\"value\":\"true\"}}");
+    save(u"OpenDocument Drawing Flat XML"_ustr);
+
+    xmlDocUniquePtr pXmlDoc = parseExportedFile();
+
+    // ensure the stroke color is this redish color, and not gray which is what it
+    // defaults to if the stroke pattern isn't taken into account.
+    assertXPath(pXmlDoc, "/office:document/office:automatic-styles/style:style[@style:name='gr1']/"
+                         "style:graphic-properties[@style:repeat='repeat' and "
+                         "@draw:fill-image-width='1.27cm' and @draw:fill-image-height='1.27cm' and "
+                         "@draw:fill-image-name='Bitmap_20_1']");
+}
+
+CPPUNIT_TEST_FIXTURE(SdExportTest, testExplodedPdfTextShear)
+{
+    auto pPdfium = vcl::pdf::PDFiumLibrary::get();
+    if (!pPdfium)
+        return;
+    UsePdfium aGuard;
+
+    loadFromFile(u"pdf/textshear.pdf");
+
+    setFilterOptions("{\"DecomposePDF\":{\"type\":\"boolean\",\"value\":\"true\"}}");
+    save(u"OpenDocument Drawing Flat XML"_ustr);
+
+    xmlDocUniquePtr pXmlDoc = parseExportedFile();
+
+    // Ensure the Lato font style is italic, seen as regular before improvement to take
+    // text shear into account.
+    assertXPath(pXmlDoc,
+                "/office:document/office:automatic-styles/style:style[@style:name='P2']/"
+                "style:text-properties[@style:font-name='Lato' and @fo:font-style='italic']");
+}
+
 CPPUNIT_TEST_FIXTURE(SdExportTest, testEmbeddedText)
 {
     createSdDrawDoc("objectwithtext.fodg");

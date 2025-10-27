@@ -31,6 +31,7 @@
 #include <editeng/udlnitem.hxx>
 #include <editeng/crossedoutitem.hxx>
 #include <editeng/shdditem.hxx>
+#include <svx/xflbmsxy.hxx>
 #include <svx/xlnclit.hxx>
 #include <svx/xlncapit.hxx>
 #include <svx/xlnwtit.hxx>
@@ -109,7 +110,7 @@ ImpSdrPdfImport::ImpSdrPdfImport(SdrModel& rModel, SdrLayerID nLay, const tools:
 
     // Load the buffer using pdfium.
     auto const& rVectorGraphicData = rGraphic.getVectorGraphicData();
-    auto* pData = rVectorGraphicData->getBinaryDataContainer().getData();
+    const auto* pData = rVectorGraphicData->getBinaryDataContainer().getData();
     sal_Int32 nSize = rVectorGraphicData->getBinaryDataContainer().getSize();
     mpPdfDocument = mpPDFium ? mpPDFium->openDocument(pData, nSize, OString()) : nullptr;
     if (!mpPdfDocument)
@@ -117,7 +118,16 @@ ImpSdrPdfImport::ImpSdrPdfImport(SdrModel& rModel, SdrLayerID nLay, const tools:
 
     mnPageCount = mpPdfDocument->getPageCount();
 
-    CollectFonts();
+    const std::shared_ptr<GfxLink> xGrfLink = rGraphic.GetSharedGfxLink();
+    if (xGrfLink)
+        mxImportedFonts = xGrfLink->getImportedFonts();
+    if (!mxImportedFonts)
+    {
+        mxImportedFonts
+            = std::make_shared<ImportedFontMap>(CollectFonts(getPrefix(), *mpPdfDocument));
+        if (xGrfLink)
+            xGrfLink->setImportedFonts(mxImportedFonts);
+    }
 
     // Same as SdModule
     mpVD = VclPtr<VirtualDevice>::Create();
@@ -125,8 +135,6 @@ ImpSdrPdfImport::ImpSdrPdfImport(SdrModel& rModel, SdrLayerID nLay, const tools:
     mpVD->SetMapMode(MapMode(MapUnit::Map100thMM));
     mpVD->EnableOutput(false);
     mpVD->SetLineColor();
-    mpVD->SetFillColor();
-    maOldLineColor.SetRed(mpVD->GetLineColor().GetRed() + 1);
 
     // Get TextBounds relative to baseline
     vcl::Font aFnt = mpVD->GetFont();
@@ -223,13 +231,20 @@ OUString getFileUrlForTemporaryFont(sal_Int64 prefix, std::u16string_view name,
 
 // Possibly there is some alternative route to query pdfium for all fonts without
 // iterating through every object to see what font each uses
-void ImpSdrPdfImport::CollectFonts()
+ImportedFontMap ImpSdrPdfImport::CollectFonts(sal_Int64 nPrefix,
+                                              vcl::pdf::PDFiumDocument& rPdfDocument)
 {
-    const int nPageCount = mpPdfDocument->getPageCount();
+    ImportedFontMap aImportedFonts;
+
+    std::map<OUString, SubSetInfo> aDifferentSubsetsForFont;
+    // map of PostScriptName->Merged Font File for that font
+    std::map<OUString, EmbeddedFontInfo> aEmbeddedFonts;
+
+    const int nPageCount = rPdfDocument.getPageCount();
 
     for (int nPageIndex = 0; nPageIndex < nPageCount; ++nPageIndex)
     {
-        auto pPdfPage = mpPdfDocument->openPage(nPageIndex);
+        auto pPdfPage = rPdfDocument.openPage(nPageIndex);
         if (!pPdfPage)
         {
             SAL_WARN("sd.filter", "ImpSdrPdfImport missing page: " << nPageIndex);
@@ -251,12 +266,12 @@ void ImpSdrPdfImport::CollectFonts()
             const vcl::pdf::PDFPageObjectType ePageObjectType = pPageObject->getType();
             if (ePageObjectType != vcl::pdf::PDFPageObjectType::Text)
                 continue;
-            vcl::pdf::PDFiumFont font = pPageObject->getFont();
+            std::unique_ptr<vcl::pdf::PDFiumFont> font = pPageObject->getFont();
             if (!font)
                 continue;
 
-            auto itImportedFont = maImportedFonts.find(font);
-            if (itImportedFont == maImportedFonts.end())
+            auto itImportedFont = aImportedFonts.find(font->getFontDictObjNum());
+            if (itImportedFont == aImportedFonts.end())
             {
                 OUString sPostScriptName = GetPostScriptName(pPageObject->getBaseFontName());
 
@@ -273,21 +288,28 @@ void ImpSdrPdfImport::CollectFonts()
                                  << sFontName);
                 }
 
-                if (!pPageObject->getIsEmbedded(font))
+                if (!font->getIsEmbedded())
                 {
                     SAL_WARN("sd.filter", "skipping not embedded font, map: "
                                               << sFontName << " to " << sPostScriptFontFamily);
-                    maImportedFonts.emplace(font,
-                                            OfficeFontInfo{ sPostScriptFontFamily, eFontWeight });
+                    aImportedFonts.insert(OfficeFontInfo{ font->getFontDictObjNum(),
+                                                          sPostScriptFontFamily, eFontWeight });
+                    continue;
+                }
+
+                std::vector<uint8_t> aFontData;
+                if (!font->getFontData(aFontData) || aFontData.empty())
+                {
+                    SAL_WARN("sd.filter", "that's worrying, skipping " << sFontName);
                     continue;
                 }
 
                 SubSetInfo* pSubSetInfo;
 
                 SAL_INFO("sd.filter", "importing font: " << font);
-                auto itFontName = maDifferentSubsetsForFont.find(sPostScriptName);
+                auto itFontName = aDifferentSubsetsForFont.find(sPostScriptName);
                 OUString sFontFileName = sPostScriptName;
-                if (itFontName != maDifferentSubsetsForFont.end())
+                if (itFontName != aDifferentSubsetsForFont.end())
                 {
                     sFontFileName += OUString::number(itFontName->second.aComponents.size());
                     itFontName->second.aComponents.emplace_back();
@@ -299,29 +321,26 @@ void ImpSdrPdfImport::CollectFonts()
                     SubSetInfo aSubSetInfo;
                     aSubSetInfo.aComponents.emplace_back();
                     auto result
-                        = maDifferentSubsetsForFont.emplace(sPostScriptName, aSubSetInfo).first;
+                        = aDifferentSubsetsForFont.emplace(sPostScriptName, aSubSetInfo).first;
                     pSubSetInfo = &result->second;
                 }
-                std::vector<uint8_t> aFontData;
-                if (!pPageObject->getFontData(font, aFontData))
-                    SAL_WARN("sd.filter", "that's worrying");
                 bool bTTF = EmbeddedFontsManager::analyzeTTF(aFontData.data(), aFontData.size(),
                                                              eFontWeight);
                 SAL_INFO_IF(!bTTF, "sd.filter", "not ttf/otf, converting");
-                OUString fileUrl = getFileUrlForTemporaryFont(getPrefix(), sFontFileName,
-                                                              bTTF ? u".ttf" : u".t1");
+                OUString fileUrl
+                    = getFileUrlForTemporaryFont(nPrefix, sFontFileName, bTTF ? u".ttf" : u".t1");
                 if (!writeFontFile(fileUrl, aFontData))
                     SAL_WARN("sd.filter", "ttf not written");
                 else
                     SAL_INFO("sd.filter", "ttf written to: " << fileUrl);
                 std::vector<uint8_t> aToUnicodeData;
-                if (!pPageObject->getFontToUnicode(font, aToUnicodeData))
+                if (!font->getFontToUnicode(aToUnicodeData))
                     SAL_WARN("sd.filter", "that's maybe worrying");
                 if (!bTTF || !aToUnicodeData.empty())
                 {
                     EmbeddedFontInfo fontInfo
-                        = convertToOTF(getPrefix(), *pSubSetInfo, fileUrl, sFontName,
-                                       sPostScriptName, sFontFileName, aToUnicodeData);
+                        = convertToOTF(nPrefix, *pSubSetInfo, fileUrl, sFontName, sPostScriptName,
+                                       sFontFileName, aToUnicodeData, *font);
                     fileUrl = fontInfo.sFontFile;
                     sFontName = fontInfo.sFontName;
                     eFontWeight = fontInfo.eFontWeight;
@@ -329,29 +348,32 @@ void ImpSdrPdfImport::CollectFonts()
 
                 if (fileUrl.getLength())
                 {
-                    maImportedFonts.emplace(font, OfficeFontInfo{ sFontName, eFontWeight });
-                    maEmbeddedFonts[sPostScriptName]
+                    aImportedFonts.insert(
+                        OfficeFontInfo{ font->getFontDictObjNum(), sFontName, eFontWeight });
+                    aEmbeddedFonts[sPostScriptName]
                         = EmbeddedFontInfo{ sFontName, fileUrl, eFontWeight };
                 }
             }
             else
             {
                 SAL_INFO("sd.filter", "already saw font " << font << " and used "
-                                                          << itImportedFont->second.sFontName
+                                                          << itImportedFont->sFontName
                                                           << " as name");
             }
         }
     }
 
-    if (!maEmbeddedFonts.empty())
+    if (!aEmbeddedFonts.empty())
     {
-        EmbeddedFontsManager aEmbeddedFontsManager(nullptr); //TODO get model we want fonts in
-        for (const auto& fontinfo : maEmbeddedFonts)
+        EmbeddedFontsManager aEmbeddedFontsManager(nullptr);
+        for (const auto& fontinfo : aEmbeddedFonts)
         {
             aEmbeddedFontsManager.addEmbeddedFont(fontinfo.second.sFontFile,
                                                   fontinfo.second.sFontName, true);
         }
     }
+
+    return aImportedFonts;
 }
 
 void ImpSdrPdfImport::DoObjects(SvdProgressInfo* pProgrInfo, sal_uInt32* pActionsToReport,
@@ -380,7 +402,7 @@ void ImpSdrPdfImport::DoObjects(SvdProgressInfo* pProgrInfo, sal_uInt32* pAction
     for (int nPageObjectIndex = 0; nPageObjectIndex < nPageObjectCount; ++nPageObjectIndex)
     {
         auto pPageObject = pPdfPage->getObject(nPageObjectIndex);
-        ImportPdfObject(pPageObject, pTextPage, nPageObjectIndex);
+        ImportPdfObject(pPageObject, pPdfPage, pTextPage, nPageObjectIndex);
         if (pProgrInfo && pActionsToReport)
         {
             (*pActionsToReport)++;
@@ -520,8 +542,6 @@ void ImpSdrPdfImport::SetAttributes(SdrObject* pObj, bool bForceTextAttr)
             mpLineAttr->Put(XLineWidthItem(0));
         }
 
-        maOldLineColor = mpVD->GetLineColor();
-
         if (mpVD->IsLineColor())
         {
             mpLineAttr->Put(XLineStyleItem(drawing::LineStyle_SOLID)); //TODO support dashed lines.
@@ -555,10 +575,29 @@ void ImpSdrPdfImport::SetAttributes(SdrObject* pObj, bool bForceTextAttr)
 
     if (bFill)
     {
-        if (mpVD->IsFillColor())
+        bool doFill
+            = mpVD->GetDrawMode() != DrawModeFlags::NoFill && (moFillColor || moFillPattern);
+        if (doFill && moFillColor)
+            doFill = !moFillColor->IsTransparent();
+        if (doFill)
         {
-            mpFillAttr->Put(XFillStyleItem(drawing::FillStyle_SOLID));
-            mpFillAttr->Put(XFillColorItem(OUString(), mpVD->GetFillColor()));
+            if (moFillColor)
+            {
+                mpFillAttr->Put(XFillStyleItem(drawing::FillStyle_SOLID));
+                mpFillAttr->Put(XFillColorItem(OUString(), *moFillColor));
+            }
+            else
+            {
+                assert(moFillPattern && "pattern should exist");
+                mpFillAttr->Put(XFillStyleItem(drawing::FillStyle_BITMAP));
+                mpFillAttr->Put(XFillBitmapItem(OUString(), Graphic(*moFillPattern)));
+                mpFillAttr->Put(XFillBmpStretchItem(false));
+                mpFillAttr->Put(XFillBmpTileItem(true));
+                mpFillAttr->Put(
+                    XFillBmpSizeXItem(convertPointToMm100(moFillPattern->GetSizePixel().Width())));
+                mpFillAttr->Put(
+                    XFillBmpSizeYItem(convertPointToMm100(moFillPattern->GetSizePixel().Height())));
+            }
         }
         else
         {
@@ -880,6 +919,7 @@ void ImpSdrPdfImport::checkClip()
 bool ImpSdrPdfImport::isClip() const { return !maClip.getB2DRange().isEmpty(); }
 void ImpSdrPdfImport::ImportPdfObject(
     std::unique_ptr<vcl::pdf::PDFiumPageObject> const& pPageObject,
+    std::unique_ptr<vcl::pdf::PDFiumPage> const& pPage,
     std::unique_ptr<vcl::pdf::PDFiumTextPage> const& pTextPage, int nPageObjectIndex)
 {
     if (!pPageObject)
@@ -889,10 +929,10 @@ void ImpSdrPdfImport::ImportPdfObject(
     switch (ePageObjectType)
     {
         case vcl::pdf::PDFPageObjectType::Text:
-            ImportText(pPageObject, pTextPage, nPageObjectIndex);
+            ImportText(pPageObject, pPage, pTextPage, nPageObjectIndex);
             break;
         case vcl::pdf::PDFPageObjectType::Path:
-            ImportPath(pPageObject, nPageObjectIndex);
+            ImportPath(pPageObject, pPage, nPageObjectIndex);
             break;
         case vcl::pdf::PDFPageObjectType::Image:
             ImportImage(pPageObject, nPageObjectIndex);
@@ -901,7 +941,7 @@ void ImpSdrPdfImport::ImportPdfObject(
             SAL_WARN("sd.filter", "Got page object SHADING: " << nPageObjectIndex);
             break;
         case vcl::pdf::PDFPageObjectType::Form:
-            ImportForm(pPageObject, pTextPage, nPageObjectIndex);
+            ImportForm(pPageObject, pPage, pTextPage, nPageObjectIndex);
             break;
         default:
             SAL_WARN("sd.filter", "Unknown PDF page object #" << nPageObjectIndex << " of type: "
@@ -911,6 +951,7 @@ void ImpSdrPdfImport::ImportPdfObject(
 }
 
 void ImpSdrPdfImport::ImportForm(std::unique_ptr<vcl::pdf::PDFiumPageObject> const& pPageObject,
+                                 std::unique_ptr<vcl::pdf::PDFiumPage> const& pPage,
                                  std::unique_ptr<vcl::pdf::PDFiumTextPage> const& pTextPage,
                                  int /*nPageObjectIndex*/)
 {
@@ -924,7 +965,7 @@ void ImpSdrPdfImport::ImportForm(std::unique_ptr<vcl::pdf::PDFiumPageObject> con
     {
         auto pFormObject = pPageObject->getFormObject(nIndex);
 
-        ImportPdfObject(pFormObject, pTextPage, -1);
+        ImportPdfObject(pFormObject, pPage, pTextPage, -1);
     }
 
     // Restore the old one.
@@ -951,8 +992,12 @@ static bool isSimpleFamilyName(std::string_view Weight)
            || Weight == "BoldItalic";
 }
 
-static void rewriteBrokenFontName(std::string_view brokenName, std::string_view brokenCIDName,
-                                  std::string_view fixedName, const OUString& pfaCIDUrl)
+// a) change brokenName/brokenCIDName if present to fixedName
+// b) remove preamble FontMatrix and overwrite following ones in the %ADOBeginFontDict
+// section with that content instead to avoid generating fonts with unusual UnitsPerEm
+// of 1 that freetype will reject
+static void rewriteFont(std::string_view brokenName, std::string_view brokenCIDName,
+                        std::string_view fixedName, const OUString& pfaCIDUrl)
 {
     OUString oldCIDUrl = pfaCIDUrl + ".broken";
     if (osl::File::move(pfaCIDUrl, oldCIDUrl) != osl::File::E_None)
@@ -960,6 +1005,12 @@ static void rewriteBrokenFontName(std::string_view brokenName, std::string_view 
         SAL_WARN("sd.filter", "unable to move file");
         return;
     }
+
+    const bool rewriteNames = !brokenName.empty();
+
+    bool fontDict = false;
+
+    OString sGlobalMatrix;
 
     const OString sBrokenFontLine = "/FontName /"_ostr + brokenName + " def"_ostr;
     const OString sFixedFontLine = "/FontName /"_ostr + fixedName + " def"_ostr;
@@ -972,16 +1023,40 @@ static void rewriteBrokenFontName(std::string_view brokenName, std::string_view 
     OString sLine;
     while (input.ReadLine(sLine))
     {
-        if (sLine == sBrokenFontLine)
+        if (rewriteNames)
         {
-            output.WriteLine(sFixedFontLine);
-            continue;
+            if (sLine == sBrokenFontLine)
+            {
+                output.WriteLine(sFixedFontLine);
+                continue;
+            }
+            else if (sLine == sBrokenCIDFontLine)
+            {
+                output.WriteLine(sFixedCIDFontLine);
+                continue;
+            }
         }
-        else if (sLine == sBrokenCIDFontLine)
+
+        if (sLine.startsWith("%ADOBeginFontDict"))
+            fontDict = true;
+        else if (sLine.startsWith("/FontMatrix "))
         {
-            output.WriteLine(sFixedCIDFontLine);
-            continue;
+            if (!fontDict)
+            {
+                // Global case, stash and don't emit the global matrix
+                sGlobalMatrix = sLine;
+                continue;
+            }
+
+            if (!sGlobalMatrix.isEmpty())
+            {
+                // Local case, emit the global matrix instead if
+                // there was one, otherwise emit the local matrix
+                output.WriteLine(sGlobalMatrix);
+                continue;
+            }
         }
+
         output.WriteLine(sLine);
         if (sLine.startsWith("%%BeginData"))
         {
@@ -1009,7 +1084,7 @@ static bool toPfaCID(SubSetInfo& rSubSetInfo, const OUString& fileUrl,
     OUString toMergedMapUrl = fileUrl + u".tomergedmap";
 
     OString version, Notice, FullName, FamilyName, CIDFontName, CIDFontVersion, srcFontType,
-        glyphTag;
+        glyphTag, FontMatrix;
     OString brokenFontName;
     FontName = postScriptName.toUtf8();
     std::map<sal_Int32, OString> glyphIndexToName;
@@ -1048,6 +1123,8 @@ static bool toPfaCID(SubSetInfo& rSubSetInfo, const OUString& fileUrl,
         if (extractEntry(sLine, "FSType", FSType))
             continue;
         if (extractEntry(sLine, "Weight", Weight))
+            continue;
+        if (extractEntry(sLine, "FontMatrix", FontMatrix))
             continue;
         if (extractEntry(sLine, "sup.srcFontType", srcFontType))
             continue;
@@ -1164,7 +1241,6 @@ static bool toPfaCID(SubSetInfo& rSubSetInfo, const OUString& fileUrl,
       ## glyph[tag] {name,encoding}
     */
     bNameKeyed = glyphTag == "{name,encoding}";
-
     if (bNameKeyed)
     {
         SAL_INFO("sd.filter", "convert to cid keyed");
@@ -1200,8 +1276,12 @@ static bool toPfaCID(SubSetInfo& rSubSetInfo, const OUString& fileUrl,
         }
     }
 
-    if (!brokenFontName.isEmpty())
-        rewriteBrokenFontName(brokenFontName, CIDFontName, FontName, pfaCIDUrl);
+    if (!brokenFontName.isEmpty() || !FontMatrix.isEmpty())
+    {
+        // If the fontname isn't as expected, or if there is a
+        // font matrix present then we rewrite the font.
+        rewriteFont(brokenFontName, CIDFontName, FontName, pfaCIDUrl);
+    }
 
     return true;
 }
@@ -1265,43 +1345,93 @@ const char cmapsuffix[] = "endcmap\n"
                           "end\n"
                           "end\n";
 
+namespace
+{
+struct ToUnicodeData
+{
+    std::vector<OString> bfcharlines;
+    std::vector<OString> bfcharranges;
+
+    // one or the other of these
+    const vcl::pdf::PDFiumFont* pFont;
+    const std::map<int, int>* pNameIndexToGlyph;
+
+    // For the pdf provided mapping from the font to unicode
+    ToUnicodeData(const std::vector<uint8_t>& toUnicodeData, const vcl::pdf::PDFiumFont& pdfFont)
+        : pFont(&pdfFont)
+        , pNameIndexToGlyph(nullptr)
+    {
+        SvMemoryStream aInCMap(const_cast<uint8_t*>(toUnicodeData.data()), toUnicodeData.size(),
+                               StreamMode::READ);
+
+        OString sLine;
+        while (aInCMap.ReadLine(sLine))
+        {
+            if (sLine.endsWith("beginbfchar"))
+            {
+                while (aInCMap.ReadLine(sLine))
+                {
+                    if (sLine.endsWith("endbfchar"))
+                        break;
+                    bfcharlines.push_back(sLine);
+                }
+            }
+            else if (sLine.endsWith("beginbfrange"))
+            {
+                while (aInCMap.ReadLine(sLine))
+                {
+                    if (sLine.endsWith("endbfrange"))
+                        break;
+                    bfcharranges.push_back(sLine);
+                }
+            }
+        }
+    }
+
+    // For name keyed fonts without toUnicode data where we
+    // can assume the font encoding is Adobe Standard and
+    // reverse map from the name indexes so we can forward
+    // map to unicode
+    ToUnicodeData(std::map<int, int>& nameIndexToGlyph)
+        : pFont(nullptr)
+        , pNameIndexToGlyph(&nameIndexToGlyph)
+    {
+        for (const auto & [ adobe, glyphid ] : nameIndexToGlyph)
+        {
+            if (glyphid == 0)
+                continue;
+
+            const char cChar(adobe);
+            OUString sUni(&cChar, 1, RTL_TEXTENCODING_ADOBE_STANDARD);
+            sal_Unicode mappedChar = sUni.toChar();
+
+            OStringBuffer aBuffer("<");
+            appendFourByteHex(aBuffer, adobe);
+            aBuffer.append("> <");
+            appendFourByteHex(aBuffer, mappedChar);
+            aBuffer.append(">");
+            bfcharlines.push_back(aBuffer.toString());
+        }
+    }
+
+    sal_uInt32 getGlyphIndexFromCharCode(sal_uInt32 nPDFCharCode)
+    {
+        if (pFont)
+            return pFont->getGlyphIndexFromCharCode(nPDFCharCode);
+        assert(pNameIndexToGlyph);
+        auto it = pNameIndexToGlyph->find(nPDFCharCode);
+        return it != pNameIndexToGlyph->end() ? it->second : 0;
+    }
+};
+}
+
 static void buildCMapAndFeatures(const OUString& CMapUrl, SvFileStream& Features,
-                                 std::string_view FontName,
-                                 const std::vector<uint8_t>& toUnicodeData, bool bNameKeyed,
-                                 std::map<int, int>& nameIndexToGlyph, SubSetInfo& rSubSetInfo)
+                                 std::string_view FontName, ToUnicodeData& tud,
+                                 SubSetInfo& rSubSetInfo)
 {
     SvFileStream CMap(CMapUrl, StreamMode::READWRITE | StreamMode::TRUNC);
 
     CMap.WriteBytes(cmapprefix, std::size(cmapprefix) - 1);
-
-    SvMemoryStream aInCMap(const_cast<uint8_t*>(toUnicodeData.data()), toUnicodeData.size(),
-                           StreamMode::READ);
-
-    std::vector<OString> bfcharlines;
-    std::vector<OString> bfcharranges;
-
-    OString sLine;
-    while (aInCMap.ReadLine(sLine))
-    {
-        if (sLine.endsWith("beginbfchar"))
-        {
-            while (aInCMap.ReadLine(sLine))
-            {
-                if (sLine.endsWith("endbfchar"))
-                    break;
-                bfcharlines.push_back(sLine);
-            }
-        }
-        else if (sLine.endsWith("beginbfrange"))
-        {
-            while (aInCMap.ReadLine(sLine))
-            {
-                if (sLine.endsWith("endbfrange"))
-                    break;
-                bfcharranges.push_back(sLine);
-            }
-        }
-    }
 
     sal_Int32 mergeOffset = 1; //Leave space for notdef
     for (const auto& count : rSubSetInfo.aComponents)
@@ -1310,11 +1440,11 @@ static void buildCMapAndFeatures(const OUString& CMapUrl, SvFileStream& Features
     std::map<sal_Int32, OString> ligatureGlyphToChars;
     std::vector<sal_Int32> glyphs;
 
-    if (!bfcharranges.empty())
+    if (!tud.bfcharranges.empty())
     {
         std::vector<OString> cidranges;
 
-        for (const auto& charrange : bfcharranges)
+        for (const auto& charrange : tud.bfcharranges)
         {
             assert(charrange[0] == '<');
             sal_Int32 nEnd = charrange.indexOf('>', 1);
@@ -1340,7 +1470,7 @@ static void buildCMapAndFeatures(const OUString& CMapUrl, SvFileStream& Features
                 OStringBuffer aBuffer("<");
                 appendFourByteHex(aBuffer, nGlyphRangeStart);
                 aBuffer.append("> " + sChars);
-                bfcharlines.push_back(aBuffer.toString());
+                tud.bfcharlines.push_back(aBuffer.toString());
                 continue;
             }
 
@@ -1360,7 +1490,7 @@ static void buildCMapAndFeatures(const OUString& CMapUrl, SvFileStream& Features
                 aBuffer.append("> <");
                 appendFourByteHex(aBuffer, nCharRangeStart);
                 aBuffer.append(">");
-                bfcharlines.push_back(aBuffer.toString());
+                tud.bfcharlines.push_back(aBuffer.toString());
                 continue;
             }
 
@@ -1378,7 +1508,6 @@ static void buildCMapAndFeatures(const OUString& CMapUrl, SvFileStream& Features
         if (!cidranges.empty())
         {
             // searching for real world examples where this occurs
-            assert(!bNameKeyed);
             OString beginline = OString::number(cidranges.size()) + " begincidrange";
             CMap.WriteLine(beginline);
             for (const auto& rLine : cidranges)
@@ -1387,18 +1516,17 @@ static void buildCMapAndFeatures(const OUString& CMapUrl, SvFileStream& Features
         }
     }
 
-    if (!bfcharlines.empty())
+    if (!tud.bfcharlines.empty())
     {
-        OString beginline = OString::number(bfcharlines.size()) + " begincidchar";
+        OString beginline = OString::number(tud.bfcharlines.size()) + " begincidchar";
         CMap.WriteLine(beginline);
-        for (const auto& charline : bfcharlines)
+        for (const auto& charline : tud.bfcharlines)
         {
             assert(charline[0] == '<');
             sal_Int32 nEnd = charline.indexOf('>', 1);
             assert(charline[nEnd] == '>');
-            sal_Int32 nGlyphIndex = o3tl::toInt32(charline.subView(1, nEnd - 1), 16);
-            if (bNameKeyed)
-                nGlyphIndex = nameIndexToGlyph[nGlyphIndex];
+            sal_Int32 nPDFCharCode = o3tl::toInt32(charline.subView(1, nEnd - 1), 16);
+            sal_Int32 nGlyphIndex = tud.getGlyphIndexFromCharCode(nPDFCharCode);
             OString sChars(o3tl::trim(charline.subView(nEnd + 1)));
             assert(sChars[0] == '<' && sChars[sChars.getLength() - 1] == '>');
             OString sContents = sChars.copy(1, sChars.getLength() - 2);
@@ -1421,7 +1549,7 @@ static void buildCMapAndFeatures(const OUString& CMapUrl, SvFileStream& Features
         }
         CMap.WriteLine("endcidchar");
 
-        rSubSetInfo.aComponents.back().nGlyphCount = bfcharlines.size();
+        rSubSetInfo.aComponents.back().nGlyphCount = tud.bfcharlines.size();
     }
 
     CMap.WriteBytes(cmapsuffix, std::size(cmapsuffix) - 1);
@@ -1502,7 +1630,7 @@ static EmbeddedFontInfo mergeFontSubsets(sal_Int64 prefix, const OUString& merge
                                          const OUString& longFontName, std::string_view Weight,
                                          const SubSetInfo& rSubSetInfo)
 {
-    SAL_WARN("sd.filter", "merging " << rSubSetInfo.aComponents.size() << " font subsets of "
+    SAL_INFO("sd.filter", "merging " << rSubSetInfo.aComponents.size() << " font subsets of "
                                      << postScriptName << " together to create: " << mergedFontUrl);
     std::vector<std::pair<OUString, OUString>> fonts;
     for (size_t i = 0; i < rSubSetInfo.aComponents.size(); ++i)
@@ -1656,7 +1784,8 @@ EmbeddedFontInfo ImpSdrPdfImport::convertToOTF(sal_Int64 prefix, SubSetInfo& rSu
                                                const OUString& fileUrl, const OUString& fontName,
                                                const OUString& postScriptName,
                                                std::u16string_view fontFileName,
-                                               const std::vector<uint8_t>& toUnicodeData)
+                                               const std::vector<uint8_t>& toUnicodeData,
+                                               const vcl::pdf::PDFiumFont& font)
 {
     // Convert to Type 1 CID keyed
     std::map<int, int> nameIndexToGlyph;
@@ -1678,8 +1807,14 @@ EmbeddedFontInfo ImpSdrPdfImport::convertToOTF(sal_Int64 prefix, SubSetInfo& rSu
     bool bCMap = true;
     if (!toUnicodeData.empty())
     {
-        buildCMapAndFeatures(CMapUrl, Features, FontName, toUnicodeData, bNameKeyed,
-                             nameIndexToGlyph, rSubSetInfo);
+        ToUnicodeData tud(toUnicodeData, font);
+        buildCMapAndFeatures(CMapUrl, Features, FontName, tud, rSubSetInfo);
+    }
+    else if (bNameKeyed)
+    {
+        SAL_INFO("sd.filter", "There is no CMap, assuming Adobe Standard encoding.");
+        ToUnicodeData tud(nameIndexToGlyph);
+        buildCMapAndFeatures(CMapUrl, Features, FontName, tud, rSubSetInfo);
     }
     else
     {
@@ -1715,7 +1850,39 @@ EmbeddedFontInfo ImpSdrPdfImport::convertToOTF(sal_Int64 prefix, SubSetInfo& rSu
     return EmbeddedFontInfo();
 }
 
+// There isn't, as far as I know, a way to stroke with a pattern at the moment,
+// so extract some sensible color if this is a stroke pattern
+Color ImpSdrPdfImport::getStrokeColor(
+    std::unique_ptr<vcl::pdf::PDFiumPageObject> const& pPageObject,
+    std::unique_ptr<vcl::pdf::PDFiumPage> const& pPage)
+{
+    if (std::unique_ptr<vcl::pdf::PDFiumBitmap> bitmap
+        = pPageObject->getRenderedStrokePattern(*mpPdfDocument, *pPage))
+    {
+        Bitmap aBitmap(bitmap->createBitmapFromBuffer());
+        return aBitmap.GetPixelColor(aBitmap.GetSizePixel().Width() / 2,
+                                     aBitmap.GetSizePixel().Height() / 2);
+    }
+    return pPageObject->getStrokeColor();
+}
+
+// Typically for a fill pattern you want to use some pattern fill equivalent
+// but if that's not possible then this fallback can be useful
+Color ImpSdrPdfImport::getFillColor(std::unique_ptr<vcl::pdf::PDFiumPageObject> const& pPageObject,
+                                    std::unique_ptr<vcl::pdf::PDFiumPage> const& pPage)
+{
+    if (std::unique_ptr<vcl::pdf::PDFiumBitmap> bitmap
+        = pPageObject->getRenderedFillPattern(*mpPdfDocument, *pPage))
+    {
+        Bitmap aBitmap(bitmap->createBitmapFromBuffer());
+        return aBitmap.GetPixelColor(aBitmap.GetSizePixel().Width() / 2,
+                                     aBitmap.GetSizePixel().Height() / 2);
+    }
+    return pPageObject->getFillColor();
+}
+
 void ImpSdrPdfImport::ImportText(std::unique_ptr<vcl::pdf::PDFiumPageObject> const& pPageObject,
+                                 std::unique_ptr<vcl::pdf::PDFiumPage> const& pPage,
                                  std::unique_ptr<vcl::pdf::PDFiumTextPage> const& pTextPage,
                                  int /*nPageObjectIndex*/)
 {
@@ -1740,13 +1907,15 @@ void ImpSdrPdfImport::ImportText(std::unique_ptr<vcl::pdf::PDFiumPageObject> con
 
     OUString sFontName;
     FontWeight eFontWeight(WEIGHT_DONTKNOW);
-    auto itImportedFont = maImportedFonts.find(pPageObject->getFont());
-    if (itImportedFont != maImportedFonts.end())
+    auto xFont = pPageObject->getFont();
+    auto itImportedFont
+        = xFont ? mxImportedFonts->find(xFont->getFontDictObjNum()) : mxImportedFonts->end();
+    if (itImportedFont != mxImportedFonts->end())
     {
         // We expand a name like "Foo" with non-traditional styles like
         // "SemiBold" to "Foo SemiBold";
-        sFontName = itImportedFont->second.sFontName;
-        eFontWeight = itImportedFont->second.eFontWeight;
+        sFontName = itImportedFont->sFontName;
+        eFontWeight = itImportedFont->eFontWeight;
     }
     else
     {
@@ -1768,7 +1937,17 @@ void ImpSdrPdfImport::ImportText(std::unique_ptr<vcl::pdf::PDFiumPageObject> con
     if (!sFontName.isEmpty())
         aFnt.SetFamilyName(sFontName);
 
-    const int italicAngle = pPageObject->getFontAngle();
+    int italicAngle = pPageObject->getFontAngle();
+    {
+        // Decompose matrix to inspect shear
+        basegfx::B2DVector aScale, aTranslate;
+        double fRotate, fShearX;
+        aMatrix.decompose(aScale, aTranslate, fRotate, fShearX);
+        int nTextRotation = basegfx::fround(basegfx::rad2deg<1>(atan(fShearX)));
+        // Add this additional shear to the reported italic angle, where
+        // rotation to the right is negative
+        italicAngle += -nTextRotation;
+    }
     aFnt.SetItalic(italicAngle == 0 ? ITALIC_NONE
                                     : (italicAngle < 0 ? ITALIC_NORMAL : ITALIC_OBLIQUE));
     aFnt.SetWeight(eFontWeight);
@@ -1805,7 +1984,8 @@ void ImpSdrPdfImport::ImportText(std::unique_ptr<vcl::pdf::PDFiumPageObject> con
     }
     if (bUse)
     {
-        Color aColor = bFill ? pPageObject->getFillColor() : pPageObject->getStrokeColor();
+        Color aColor
+            = bFill ? getFillColor(pPageObject, pPage) : getStrokeColor(pPageObject, pPage);
         if (aColor != COL_TRANSPARENT)
             aTextColor = aColor.GetRGBColor();
     }
@@ -1903,13 +2083,6 @@ void ImpSdrPdfImport::MapScaling()
     mnMapScalingOfs = nCount;
 }
 
-static Bitmap createBitmap(const Size& rSize, bool bGrayScale)
-{
-    if (bGrayScale)
-        return Bitmap(rSize, vcl::PixelFormat::N8_BPP, &Bitmap::GetGreyPalette(256));
-    return Bitmap(rSize, vcl::PixelFormat::N24_BPP);
-}
-
 void ImpSdrPdfImport::ImportImage(std::unique_ptr<vcl::pdf::PDFiumPageObject> const& pPageObject,
                                   int /*nPageObjectIndex*/)
 {
@@ -1927,33 +2100,6 @@ void ImpSdrPdfImport::ImportImage(std::unique_ptr<vcl::pdf::PDFiumPageObject> co
         return;
     }
 
-    const unsigned char* pBuf = bitmap->getBuffer();
-    const int nWidth = bitmap->getWidth();
-    const int nHeight = bitmap->getHeight();
-    const int nStride = bitmap->getStride();
-    Bitmap aBitmap(createBitmap(Size(nWidth, nHeight), format == vcl::pdf::PDFBitmapType::Gray));
-
-    switch (format)
-    {
-        case vcl::pdf::PDFBitmapType::Gray:
-            ReadRawDIB(aBitmap, pBuf, ScanlineFormat::N8BitPal, nHeight, nStride);
-            break;
-        case vcl::pdf::PDFBitmapType::BGR:
-            ReadRawDIB(aBitmap, pBuf, ScanlineFormat::N24BitTcBgr, nHeight, nStride);
-            break;
-        case vcl::pdf::PDFBitmapType::BGRx:
-            ReadRawDIB(aBitmap, pBuf, ScanlineFormat::N32BitTcBgra, nHeight, nStride);
-            break;
-        case vcl::pdf::PDFBitmapType::BGRA:
-            ReadRawDIB(aBitmap, pBuf, ScanlineFormat::N32BitTcBgra, nHeight, nStride);
-            break;
-        default:
-            SAL_WARN("sd.filter", "Got IMAGE width: " << nWidth << ", height: " << nHeight
-                                                      << ", stride: " << nStride
-                                                      << ", format: " << static_cast<int>(format));
-            break;
-    }
-
     basegfx::B2DRectangle aBounds = pPageObject->getBounds();
     float left = aBounds.getMinX();
     // Upside down.
@@ -1965,6 +2111,7 @@ void ImpSdrPdfImport::ImportImage(std::unique_ptr<vcl::pdf::PDFiumPageObject> co
     aRect.AdjustRight(1);
     aRect.AdjustBottom(1);
 
+    Bitmap aBitmap = bitmap->createBitmapFromBuffer();
     rtl::Reference<SdrGrafObj> pGraf = new SdrGrafObj(*mpModel, Graphic(aBitmap), aRect);
 
     // This action is not creating line and fill, set directly, do not use SetAttributes(..)
@@ -1974,6 +2121,7 @@ void ImpSdrPdfImport::ImportImage(std::unique_ptr<vcl::pdf::PDFiumPageObject> co
 }
 
 void ImpSdrPdfImport::ImportPath(std::unique_ptr<vcl::pdf::PDFiumPageObject> const& pPageObject,
+                                 std::unique_ptr<vcl::pdf::PDFiumPage> const& pPage,
                                  int /*nPageObjectIndex*/)
 {
     auto aPathMatrix = pPageObject->getMatrix();
@@ -2069,12 +2217,20 @@ void ImpSdrPdfImport::ImportPath(std::unique_ptr<vcl::pdf::PDFiumPageObject> con
             mpVD->SetDrawMode(DrawModeFlags::NoFill);
     }
 
-    mpVD->SetFillColor(pPageObject->getFillColor());
+    if (std::unique_ptr<vcl::pdf::PDFiumBitmap> bitmap
+        = pPageObject->getRenderedFillPattern(*mpPdfDocument, *pPage))
+    {
+        moFillPattern = bitmap->createBitmapFromBuffer();
+        moFillColor.reset();
+    }
+    else
+    {
+        moFillColor = pPageObject->getFillColor();
+        moFillPattern.reset();
+    }
 
     if (bStroke)
-    {
-        mpVD->SetLineColor(pPageObject->getStrokeColor());
-    }
+        mpVD->SetLineColor(getStrokeColor(pPageObject, pPage));
     else
         mpVD->SetLineColor(COL_TRANSPARENT);
 
