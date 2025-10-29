@@ -140,8 +140,6 @@ ImpSdrPdfImport::ImpSdrPdfImport(SdrModel& rModel, SdrLayerID nLay, const tools:
     vcl::Font aFnt = mpVD->GetFont();
     aFnt.SetAlignment(ALIGN_BASELINE);
     mpVD->SetFont(aFnt);
-
-    checkClip();
 }
 
 ImpSdrPdfImport::~ImpSdrPdfImport() = default;
@@ -683,139 +681,6 @@ void ImpSdrPdfImport::InsertObj(SdrObject* pObj1, bool bScale)
         }
     }
 
-    if (isClip())
-    {
-        const basegfx::B2DPolyPolygon aPoly(pObj->TakeXorPoly());
-        const basegfx::B2DRange aOldRange(aPoly.getB2DRange());
-        const SdrLayerID aOldLayer(pObj->GetLayer());
-        const SfxItemSet aOldItemSet(pObj->GetMergedItemSet());
-        const SdrGrafObj* pSdrGrafObj = dynamic_cast<SdrGrafObj*>(pObj.get());
-        const SdrTextObj* pSdrTextObj = DynCastSdrTextObj(pObj.get());
-
-        if (pSdrTextObj && pSdrTextObj->HasText())
-        {
-            // all text objects are created from ImportText and have no line or fill attributes, so
-            // it is okay to concentrate on the text itself
-            while (true)
-            {
-                const basegfx::B2DPolyPolygon aTextContour(pSdrTextObj->TakeContour());
-                const basegfx::B2DRange aTextRange(aTextContour.getB2DRange());
-                const basegfx::B2DRange aClipRange(maClip.getB2DRange());
-
-                // no overlap -> completely outside
-                if (!aClipRange.overlaps(aTextRange))
-                {
-                    pObj.clear();
-                    break;
-                }
-
-                // when the clip is a rectangle fast check for inside is possible
-                if (basegfx::utils::isRectangle(maClip) && aClipRange.isInside(aTextRange))
-                {
-                    // completely inside ClipRect
-                    break;
-                }
-
-                // here text needs to be clipped; to do so, convert to SdrObjects with polygons
-                // and add these recursively. Delete original object, do not add in this run
-                rtl::Reference<SdrObject> pConverted = pSdrTextObj->ConvertToPolyObj(true, true);
-                pObj.clear();
-                if (pConverted)
-                {
-                    // recursively add created conversion; per definition this shall not
-                    // contain further SdrTextObjs. Visit only non-group objects
-                    SdrObjListIter aIter(*pConverted, SdrIterMode::DeepNoGroups);
-
-                    // work with clones; the created conversion may contain group objects
-                    // and when working with the original objects the loop itself could
-                    // break and the cleanup later would be pretty complicated (only delete group
-                    // objects, are these empty, ...?)
-                    while (aIter.IsMore())
-                    {
-                        SdrObject* pCandidate = aIter.Next();
-                        OSL_ENSURE(pCandidate && dynamic_cast<SdrObjGroup*>(pCandidate) == nullptr,
-                                   "SdrObjListIter with SdrIterMode::DeepNoGroups error (!)");
-                        rtl::Reference<SdrObject> pNewClone(
-                            pCandidate->CloneSdrObject(pCandidate->getSdrModelFromSdrObject()));
-
-                        if (pNewClone)
-                        {
-                            InsertObj(pNewClone.get(), false);
-                        }
-                        else
-                        {
-                            OSL_ENSURE(false, "SdrObject::Clone() failed (!)");
-                        }
-                    }
-                }
-
-                break;
-            }
-        }
-        else
-        {
-            Bitmap aBitmap;
-
-            if (pSdrGrafObj)
-            {
-                aBitmap = pSdrGrafObj->GetGraphic().GetBitmap();
-            }
-
-            pObj.clear();
-
-            if (!aOldRange.isEmpty())
-            {
-                // clip against ClipRegion
-                const basegfx::B2DPolyPolygon aNewPoly(basegfx::utils::clipPolyPolygonOnPolyPolygon(
-                    aPoly, maClip, true, !aPoly.isClosed()));
-                const basegfx::B2DRange aNewRange(aNewPoly.getB2DRange());
-
-                if (!aNewRange.isEmpty())
-                {
-                    pObj = new SdrPathObj(
-                        *mpModel, aNewPoly.isClosed() ? SdrObjKind::Polygon : SdrObjKind::PolyLine,
-                        aNewPoly);
-
-                    pObj->SetLayer(aOldLayer);
-                    pObj->SetMergedItemSet(aOldItemSet);
-
-                    if (!aBitmap.IsEmpty())
-                    {
-                        // aNewRange is inside of aOldRange and defines which part of aBitmapEx is used
-                        const double fScaleX(aBitmap.GetSizePixel().Width()
-                                             / (aOldRange.getWidth() ? aOldRange.getWidth() : 1.0));
-                        const double fScaleY(
-                            aBitmap.GetSizePixel().Height()
-                            / (aOldRange.getHeight() ? aOldRange.getHeight() : 1.0));
-                        basegfx::B2DRange aPixel(aNewRange);
-                        basegfx::B2DHomMatrix aTrans;
-
-                        aTrans.translate(-aOldRange.getMinX(), -aOldRange.getMinY());
-                        aTrans.scale(fScaleX, fScaleY);
-                        aPixel.transform(aTrans);
-
-                        const Size aOrigSizePixel(aBitmap.GetSizePixel());
-                        const Point aClipTopLeft(
-                            basegfx::fround<tools::Long>(floor(std::max(0.0, aPixel.getMinX()))),
-                            basegfx::fround<tools::Long>(floor(std::max(0.0, aPixel.getMinY()))));
-                        const Size aClipSize(
-                            basegfx::fround<tools::Long>(ceil(std::min(
-                                static_cast<double>(aOrigSizePixel.Width()), aPixel.getWidth()))),
-                            basegfx::fround<tools::Long>(
-                                ceil(std::min(static_cast<double>(aOrigSizePixel.Height()),
-                                              aPixel.getHeight()))));
-                        const Bitmap aClippedBitmap(aBitmap, aClipTopLeft, aClipSize);
-
-                        pObj->SetMergedItem(XFillStyleItem(drawing::FillStyle_BITMAP));
-                        pObj->SetMergedItem(XFillBitmapItem(OUString(), Graphic(aClippedBitmap)));
-                        pObj->SetMergedItem(XFillBmpTileItem(false));
-                        pObj->SetMergedItem(XFillBmpStretchItem(true));
-                    }
-                }
-            }
-        }
-    }
-
     if (!pObj)
         return;
 
@@ -900,23 +765,6 @@ bool ImpSdrPdfImport::CheckLastPolyLineAndFillMerge(const basegfx::B2DPolyPolygo
     return false;
 }
 
-void ImpSdrPdfImport::checkClip()
-{
-    if (mpVD->IsClipRegion())
-    {
-        maClip = mpVD->GetClipRegion().GetAsB2DPolyPolygon();
-
-        if (isClip())
-        {
-            const basegfx::B2DHomMatrix aTransform(basegfx::utils::createScaleTranslateB2DHomMatrix(
-                mfScaleX, mfScaleY, maOfs.X(), maOfs.Y()));
-
-            maClip.transform(aTransform);
-        }
-    }
-}
-
-bool ImpSdrPdfImport::isClip() const { return !maClip.getB2DRange().isEmpty(); }
 void ImpSdrPdfImport::ImportPdfObject(
     std::unique_ptr<vcl::pdf::PDFiumPageObject> const& pPageObject,
     std::unique_ptr<vcl::pdf::PDFiumPage> const& pPage,
@@ -2139,26 +1987,20 @@ void ImpSdrPdfImport::ImportImage(std::unique_ptr<vcl::pdf::PDFiumPageObject> co
     InsertObj(pGraf.get());
 }
 
-void ImpSdrPdfImport::ImportPath(std::unique_ptr<vcl::pdf::PDFiumPageObject> const& pPageObject,
-                                 std::unique_ptr<vcl::pdf::PDFiumPage> const& pPage,
-                                 int /*nPageObjectIndex*/)
+void ImpSdrPdfImport::appendSegmentsToPolyPoly(
+    basegfx::B2DPolyPolygon& rPolyPoly,
+    const std::vector<std::unique_ptr<vcl::pdf::PDFiumPathSegment>>& rPathSegments,
+    const basegfx::B2DHomMatrix& rPathMatrix)
 {
-    auto aPathMatrix = pPageObject->getMatrix();
-
-    aPathMatrix *= maCurrentMatrix;
-
-    basegfx::B2DPolyPolygon aPolyPoly;
     basegfx::B2DPolygon aPoly;
     std::vector<basegfx::B2DPoint> aBezier;
 
-    const int nSegments = pPageObject->getPathSegmentCount();
-    for (int nSegmentIndex = 0; nSegmentIndex < nSegments; ++nSegmentIndex)
+    for (const auto& pPathSegment : rPathSegments)
     {
-        auto pPathSegment = pPageObject->getPathSegment(nSegmentIndex);
         if (pPathSegment != nullptr)
         {
             basegfx::B2DPoint aB2DPoint = pPathSegment->getPoint();
-            aB2DPoint *= aPathMatrix;
+            aB2DPoint *= rPathMatrix;
 
             const bool bClose = pPathSegment->isClosed();
             if (bClose)
@@ -2188,7 +2030,7 @@ void ImpSdrPdfImport::ImportPath(std::unique_ptr<vcl::pdf::PDFiumPageObject> con
                     // New Poly.
                     if (aPoly.count() > 0)
                     {
-                        aPolyPoly.append(aPoly, 1);
+                        rPolyPoly.append(aPoly, 1);
                         aPoly.clear();
                     }
 
@@ -2212,9 +2054,29 @@ void ImpSdrPdfImport::ImportPath(std::unique_ptr<vcl::pdf::PDFiumPageObject> con
 
     if (aPoly.count() > 0)
     {
-        aPolyPoly.append(aPoly, 1);
+        rPolyPoly.append(aPoly, 1);
         aPoly.clear();
     }
+}
+
+void ImpSdrPdfImport::ImportPath(std::unique_ptr<vcl::pdf::PDFiumPageObject> const& pPageObject,
+                                 std::unique_ptr<vcl::pdf::PDFiumPage> const& pPage,
+                                 int /*nPageObjectIndex*/)
+{
+    auto aPathMatrix = pPageObject->getMatrix();
+
+    aPathMatrix *= maCurrentMatrix;
+
+    basegfx::B2DPolyPolygon aPolyPoly;
+
+    std::vector<std::unique_ptr<vcl::pdf::PDFiumPathSegment>> aPathSegments;
+    const int nSegments = pPageObject->getPathSegmentCount();
+    for (int nSegmentIndex = 0; nSegmentIndex < nSegments; ++nSegmentIndex)
+    {
+        aPathSegments.push_back(pPageObject->getPathSegment(nSegmentIndex));
+    }
+
+    appendSegmentsToPolyPoly(aPolyPoly, aPathSegments, aPathMatrix);
 
     const basegfx::B2DHomMatrix aTransform(
         basegfx::utils::createScaleTranslateB2DHomMatrix(mfScaleX, mfScaleY, maOfs.X(), maOfs.Y()));

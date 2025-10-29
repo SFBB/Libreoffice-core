@@ -113,9 +113,6 @@ class ImpSdrPdfImport final
     bool mbNoLine;
     bool mbNoFill;
 
-    // clipregion
-    basegfx::B2DPolyPolygon maClip;
-
     std::unique_ptr<vcl::pdf::PDFiumDocument> mpPdfDocument;
     int mnPageCount;
     double mdPageHeightPts;
@@ -130,10 +127,6 @@ class ImpSdrPdfImport final
     Point PointsToLogic(double x, double y) const;
 
     std::shared_ptr<vcl::pdf::PDFium> mpPDFium;
-
-    // check for clip and evtl. fill maClip
-    void checkClip();
-    bool isClip() const;
 
     Color getStrokeColor(std::unique_ptr<vcl::pdf::PDFiumPageObject> const& pPageObject,
                          std::unique_ptr<vcl::pdf::PDFiumPage> const& pPage);
@@ -163,6 +156,11 @@ class ImpSdrPdfImport final
     void SetAttributes(SdrObject* pObj, bool bForceTextAttr = false);
     void InsertObj(SdrObject* pObj, bool bScale = true);
     void MapScaling();
+
+    void appendSegmentsToPolyPoly(
+        basegfx::B2DPolyPolygon& rPolyPoly,
+        const std::vector<std::unique_ptr<vcl::pdf::PDFiumPathSegment>>& rPathSegments,
+        const basegfx::B2DHomMatrix& rPathMatrix);
 
     // #i73407# reformulation to use new B2DPolygon classes
     bool CheckLastPolyLineAndFillMerge(const basegfx::B2DPolyPolygon& rPolyPolygon);
