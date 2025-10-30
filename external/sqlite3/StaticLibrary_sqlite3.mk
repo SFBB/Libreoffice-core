@@ -7,10 +7,14 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 #
 
-$(eval $(call gb_PythonTest_PythonTest,pyuno_pytests_testpip))
+$(eval $(call gb_StaticLibrary_StaticLibrary,sqlite3))
 
-$(eval $(call gb_PythonTest_add_modules,pyuno_pytests_testpip,$(SRCDIR)/pyuno/qa/pytests,\
-    testpip \
+$(eval $(call gb_StaticLibrary_use_unpacked,sqlite3,sqlite3))
+
+$(eval $(call gb_StaticLibrary_set_warnings_disabled,sqlite3))
+
+$(eval $(call gb_StaticLibrary_add_generated_cobjects,sqlite3,\
+    UnpackedTarball/sqlite3/sqlite3 \
 ))
 
 # vim: set noet sw=4 ts=4:
