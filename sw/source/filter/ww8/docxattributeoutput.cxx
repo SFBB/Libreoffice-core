@@ -7700,38 +7700,6 @@ void DocxAttributeOutput::NumberingDefinition( sal_uInt16 nId, const SwNumRule &
     m_pSerializer->endElementNS( XML_w, XML_num );
 }
 
-// Not all attributes of SwNumFormat are important for export, so can't just use embedded in
-// that classes comparison.
-static bool lcl_ListLevelsAreDifferentForExport(const SwNumFormat & rFormat1, const SwNumFormat & rFormat2)
-{
-    if (rFormat1 == rFormat2)
-        // They are equal, nothing to do
-        return false;
-
-    if (!rFormat1.GetCharFormat() != !rFormat2.GetCharFormat())
-        // One has charformat, other not. they are different
-        return true;
-
-    if (rFormat1.GetCharFormat() && rFormat2.GetCharFormat())
-    {
-        const SwAttrSet & a1 = rFormat1.GetCharFormat()->GetAttrSet();
-        const SwAttrSet & a2 = rFormat2.GetCharFormat()->GetAttrSet();
-
-        if (!(a1 == a2))
-            // Difference in charformat: they are different
-            return true;
-    }
-
-    // Compare numformats with empty charformats
-    SwNumFormat modified1 = rFormat1;
-    SwNumFormat modified2 = rFormat2;
-    modified1.SetCharFormatName(OUString());
-    modified2.SetCharFormatName(OUString());
-    modified1.SetCharFormat(nullptr);
-    modified2.SetCharFormat(nullptr);
-    return modified1 != modified2;
-}
-
 void DocxAttributeOutput::OverrideNumberingDefinition(
         SwNumRule const& rRule,
         sal_uInt16 const nNum, sal_uInt16 const nAbstractNum, const std::map< size_t, size_t > & rLevelOverrides )
@@ -7747,7 +7715,8 @@ void DocxAttributeOutput::OverrideNumberingDefinition(
     for (sal_uInt8 nLevel = 0; nLevel < nLevels; ++nLevel)
     {
         const auto levelOverride = rLevelOverrides.find(nLevel);
-        bool bListsAreDifferent = lcl_ListLevelsAreDifferentForExport(rRule.Get(nLevel), rAbstractRule.Get(nLevel));
+        bool bListsAreDifferent
+            = AreListLevelsDifferentForExport(rRule.Get(nLevel), rAbstractRule.Get(nLevel));
 
         // Export list override only if it is different to abstract one
         // or we have a level numbering override
@@ -7824,6 +7793,15 @@ void DocxAttributeOutput::NumberingLevel( sal_uInt8 nLevel,
                 FSNS( XML_w, XML_val ), OString::number(nStart) );
     }
 
+    // format
+    OString aCustomFormat;
+    OString aFormat(lcl_ConvertNumberingType(nNumberingType, pOutSet, aCustomFormat, "decimal"_ostr));
+
+    if (aCustomFormat.isEmpty())
+    {
+        m_pSerializer->singleElementNS(XML_w, XML_numFmt, FSNS(XML_w, XML_val), aFormat);
+    }
+
     if (m_bExportingOutline)
     {
         sal_uInt16 nId = m_rExport.m_pStyles->GetHeadingParagraphStyleId( nLevel );
@@ -7835,29 +7813,19 @@ void DocxAttributeOutput::NumberingLevel( sal_uInt8 nLevel,
     if (isLegal)
         m_pSerializer->singleElementNS(XML_w, XML_isLgl);
 
-    // format
-    OString aCustomFormat;
-    OString aFormat(lcl_ConvertNumberingType(nNumberingType, pOutSet, aCustomFormat, "decimal"_ostr));
-
+    if (!aCustomFormat.isEmpty())
     {
-        if (aCustomFormat.isEmpty())
-        {
-            m_pSerializer->singleElementNS(XML_w, XML_numFmt, FSNS(XML_w, XML_val), aFormat);
-        }
-        else
-        {
-            m_pSerializer->startElementNS(XML_mc, XML_AlternateContent);
-            m_pSerializer->startElementNS(XML_mc, XML_Choice, XML_Requires, "w14");
+        m_pSerializer->startElementNS(XML_mc, XML_AlternateContent);
+        m_pSerializer->startElementNS(XML_mc, XML_Choice, XML_Requires, "w14");
 
-            m_pSerializer->singleElementNS(XML_w, XML_numFmt, FSNS(XML_w, XML_val), aFormat,
-                                           FSNS(XML_w, XML_format), aCustomFormat);
+        m_pSerializer->singleElementNS(XML_w, XML_numFmt, FSNS(XML_w, XML_val), aFormat,
+                                       FSNS(XML_w, XML_format), aCustomFormat);
 
-            m_pSerializer->endElementNS(XML_mc, XML_Choice);
-            m_pSerializer->startElementNS(XML_mc, XML_Fallback);
-            m_pSerializer->singleElementNS(XML_w, XML_numFmt, FSNS(XML_w, XML_val), "decimal");
-            m_pSerializer->endElementNS(XML_mc, XML_Fallback);
-            m_pSerializer->endElementNS(XML_mc, XML_AlternateContent);
-        }
+        m_pSerializer->endElementNS(XML_mc, XML_Choice);
+        m_pSerializer->startElementNS(XML_mc, XML_Fallback);
+        m_pSerializer->singleElementNS(XML_w, XML_numFmt, FSNS(XML_w, XML_val), "decimal");
+        m_pSerializer->endElementNS(XML_mc, XML_Fallback);
+        m_pSerializer->endElementNS(XML_mc, XML_AlternateContent);
     }
 
     // suffix
@@ -7953,6 +7921,8 @@ void DocxAttributeOutput::NumberingLevel( sal_uInt8 nLevel,
     if ( pOutSet )
     {
         m_pSerializer->startElementNS(XML_w, XML_rPr);
+        // mark() before child elements.
+        InitCollectedRunProperties();
 
         SfxItemSet aTempSet(*pOutSet);
         if ( pFont )
@@ -7970,6 +7940,9 @@ void DocxAttributeOutput::NumberingLevel( sal_uInt8 nLevel,
         m_rExport.OutputItemSet(aTempSet, false, true, i18n::ScriptType::LATIN, m_rExport.m_bExportModeRTF);
 
         WriteCollectedRunProperties();
+
+        // Merge the marks for the ordered elements
+        m_pSerializer->mergeTopMarks(Tag_InitCollectedRunProperties);
 
         m_pSerializer->endElementNS( XML_w, XML_rPr );
     }
@@ -8584,7 +8557,10 @@ DocxAttributeOutput::hasProperties DocxAttributeOutput::WritePostitFields()
     {
         const DateTime aDateTime = f->GetDateTime();
         bool bNoDate = bRemovePersonalInfo ||
-            ( aDateTime.GetYear() == 1970 && aDateTime.GetMonth() == 1 && aDateTime.GetDay() == 1 );
+            ( aDateTime.GetYear() == 1970 && aDateTime.GetMonth() == 1 && aDateTime.GetDay() == 1 ) ||
+            // The officeotron validator does not think year 0 is valid, so just dont put anything,
+            // a zero year is not useful anyway.
+            ( aDateTime.GetYear() == 0 && aDateTime.GetMonth() == 0 && aDateTime.GetDay() == 0 );
 
         rtl::Reference<sax_fastparser::FastAttributeList> pAttributeList
             = sax_fastparser::FastSerializerHelper::createAttrList();

@@ -17,8 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SVX_XMLGRHLP_HXX
-#define INCLUDED_SVX_XMLGRHLP_HXX
+#pragma once
 
 #include <comphelper/compbase.hxx>
 #include <vcl/graph.hxx>
@@ -32,7 +31,7 @@
 #include <com/sun/star/document/XGraphicStorageHandler.hpp>
 #include <com/sun/star/document/XBinaryStreamResolver.hpp>
 #include <com/sun/star/embed/XStorage.hpp>
-#include <svx/svxdllapi.h>
+#include <xmloff/dllapi.h>
 
 enum class SvXMLGraphicHelperMode
 {
@@ -45,7 +44,7 @@ struct SvxGraphicHelperStream_Impl
     css::uno::Reference < css::io::XStream > xStream;
 };
 
-class SVXCORE_DLLPUBLIC SvXMLGraphicHelper final :
+class XMLOFF_DLLPUBLIC SvXMLGraphicHelper final :
         public comphelper::WeakComponentImplHelper<css::document::XGraphicObjectResolver,
                                             css::document::XGraphicStorageHandler,
                                             css::document::XBinaryStreamResolver>
@@ -63,16 +62,16 @@ private:
     SvXMLGraphicHelperMode      meCreateMode;
     OUString                    maOutputMimeType;
 
-    SVX_DLLPRIVATE static bool          ImplGetStreamNames( const OUString& rURLStr,
+    SAL_DLLPRIVATE static bool          ImplGetStreamNames( const OUString& rURLStr,
                                                     OUString& rPictureStorageName,
                                                     OUString& rPictureStreamName );
-    SVX_DLLPRIVATE css::uno::Reference < css::embed::XStorage >
+    SAL_DLLPRIVATE css::uno::Reference < css::embed::XStorage >
                                             ImplGetGraphicStorage( const OUString& rPictureStorageName );
-    SVX_DLLPRIVATE SvxGraphicHelperStream_Impl
+    SAL_DLLPRIVATE SvxGraphicHelperStream_Impl
                                             ImplGetGraphicStream( const OUString& rPictureStorageName,
                                                       const OUString& rPictureStreamName );
-    SVX_DLLPRIVATE static OUString      ImplGetGraphicMimeType( std::u16string_view rFileName );
-    SVX_DLLPRIVATE Graphic ImplReadGraphic(const OUString& rPictureStorageName,
+    SAL_DLLPRIVATE static OUString      ImplGetGraphicMimeType( std::u16string_view rFileName );
+    SAL_DLLPRIVATE Graphic ImplReadGraphic(const OUString& rPictureStorageName,
                                            const OUString& rPictureStreamName,
                                            sal_Int32 nPage = -1);
 
@@ -82,7 +81,7 @@ private:
                                       SvXMLGraphicHelperMode eCreateMode,
                                       const OUString& rGraphicMimeType = OUString() );
 
-    SVX_DLLPRIVATE OUString implSaveGraphic(css::uno::Reference<css::graphic::XGraphic> const & rxGraphic,
+    SAL_DLLPRIVATE OUString implSaveGraphic(css::uno::Reference<css::graphic::XGraphic> const & rxGraphic,
                                             OUString & rOutMimeType,
                                             std::u16string_view rRequestName);
 
@@ -94,6 +93,10 @@ public:
     static rtl::Reference<SvXMLGraphicHelper>  Create( SvXMLGraphicHelperMode eCreateMode,
                                         const OUString& rMimeType = OUString() );
 
+    static void splitObjectURL(const OUString& aURLNoPar,
+        OUString& rContainerStorageName,
+        OUString& rObjectStorageName);
+
 public:
 
     // XGraphicObjectResolver
@@ -102,10 +105,6 @@ public:
     // XGraphicStorageHandler
     virtual css::uno::Reference<css::graphic::XGraphic> SAL_CALL
         loadGraphic(OUString const & aURL) override;
-
-    // XGraphicStorageHandler
-    virtual css::uno::Reference<css::graphic::XGraphic>
-        SAL_CALL loadGraphicAtPage(OUString const& aURL, sal_Int32 nPage) override;
 
     virtual css::uno::Reference<css::graphic::XGraphic> SAL_CALL
         loadGraphicFromOutputStream(css::uno::Reference<css::io::XOutputStream> const & rxOutputStream) override;
@@ -123,12 +122,12 @@ public:
     virtual css::uno::Reference< css::io::XInputStream > SAL_CALL getInputStream( const OUString& rURL ) override;
     virtual css::uno::Reference< css::io::XOutputStream > SAL_CALL createOutputStream(  ) override;
     virtual OUString SAL_CALL resolveOutputStream( const css::uno::Reference< css::io::XOutputStream >& rxBinaryStream ) override;
+
+    css::uno::Reference<css::graphic::XGraphic>
+        loadGraphicAtPage(OUString const& aURL, sal_Int32 nPage);
+
+    css::uno::Reference<css::graphic::XGraphic>
+        loadGraphicFromOutputStreamAtPage(css::uno::Reference<css::io::XOutputStream> const & rxOutputStream, sal_Int32 nPage);
 };
-
-namespace svx {
-    SVXCORE_DLLPUBLIC void DropUnusedNamedItems(css::uno::Reference<css::uno::XInterface> const& xModel);
-}
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
