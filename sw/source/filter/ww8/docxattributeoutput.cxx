@@ -138,6 +138,7 @@
 #include <textcontentcontrol.hxx>
 #include <formatflysplit.hxx>
 
+#include <o3tl/sprintf.hxx>
 #include <o3tl/string_view.hxx>
 #include <o3tl/unit_conversion.hxx>
 #include <osl/file.hxx>
@@ -1446,14 +1447,14 @@ void DocxAttributeOutput::StartParagraphProperties()
     m_pSerializer->startElementNS(XML_w, XML_pPr);
     m_bOpenedParaPr = true;
 
+    InitCollectedParagraphProperties();
+
     // and output the section break now (if it appeared)
     if (m_pSectionInfo && m_rExport.m_nTextTyp == TXT_MAINTEXT)
     {
         m_rExport.SectionProperties( *m_pSectionInfo );
         m_pSectionInfo.reset();
     }
-
-    InitCollectedParagraphProperties();
 }
 
 void DocxAttributeOutput::InitCollectedParagraphProperties()
@@ -1618,9 +1619,6 @@ void DocxAttributeOutput::EndParagraphProperties(const SfxItemSet& rParagraphMar
         PopulateFrameProperties(&rFrameFormat, aSize);
     }
 
-    // Merge the marks for the ordered elements
-    m_pSerializer->mergeTopMarks(Tag_InitCollectedParagraphProperties);
-
     // Write 'Paragraph Mark' properties
     m_pSerializer->startElementNS(XML_w, XML_rPr);
     // mark() before paragraph mark properties child elements.
@@ -1706,6 +1704,9 @@ void DocxAttributeOutput::EndParagraphProperties(const SfxItemSet& rParagraphMar
         m_aFramePr.SetUseFrameBackground(true);
         m_aFramePr.SetUseFrameTextDirection(true);
     }
+
+    // Merge the marks for the ordered elements
+    m_pSerializer->mergeTopMarks(Tag_InitCollectedParagraphProperties);
 
     m_pSerializer->endElementNS( XML_w, XML_pPr );
 
@@ -3168,6 +3169,8 @@ void DocxAttributeOutput::DoWriteFieldRunProperties( const SwTextNode * pNode, s
 
     {
         m_pSerializer->startElementNS(XML_w, XML_rPr);
+        // mark() before child elements.
+        InitCollectedRunProperties();
 
         // 1. output webHidden flag
         if(GetExport().m_bHideTabLeaderAndPageNumbers && m_pHyperlinkAttrList.is() )
@@ -3181,6 +3184,9 @@ void DocxAttributeOutput::DoWriteFieldRunProperties( const SwTextNode * pNode, s
 
         // 3. write the character properties
         WriteCollectedRunProperties();
+
+        // Merge the marks for the ordered elements
+        m_pSerializer->mergeTopMarks(Tag_InitCollectedRunProperties);
 
         m_pSerializer->endElementNS( XML_w, XML_rPr );
     }
@@ -3309,11 +3315,12 @@ void DocxAttributeOutput::StartRunProperties()
 
     m_pSerializer->startElementNS(XML_w, XML_rPr);
 
+    InitCollectedRunProperties();
+
     if(GetExport().m_bHideTabLeaderAndPageNumbers && m_pHyperlinkAttrList.is() )
     {
         m_pSerializer->singleElementNS(XML_w, XML_webHidden);
     }
-    InitCollectedRunProperties();
 
     assert( !m_oPostponedGraphic );
     m_oPostponedGraphic.emplace();
@@ -3828,9 +3835,11 @@ static bool impl_WriteRunText( FSHelperPtr const & pSerializer, sal_Int32 nTextT
     {
         for (char16_t aChar : aView)
         {
+            char pBuf[5];
+            o3tl::sprintf(pBuf, "%04x", aChar);
             pSerializer->singleElementNS(XML_w, XML_sym,
                 FSNS(XML_w, XML_font), rSymbolFont,
-                FSNS(XML_w, XML_char), OString::number(aChar, 16));
+                FSNS(XML_w, XML_char), pBuf);
         }
     }
     else
@@ -4759,6 +4768,17 @@ void DocxAttributeOutput::TableCellProperties( ww8::WW8TableNodeInfoInner::Point
     // Output any table cell redlines if there are any attached to this specific cell
     TableCellRedline( pTableTextNodeInfoInner );
 
+    if (const SfxGrabBagItem* pItem = pTableBox->GetFrameFormat()->GetAttrSet().GetItem<SfxGrabBagItem>(RES_FRMATR_GRABBAG))
+    {
+        const std::map<OUString, uno::Any>& rGrabBag = pItem->GetGrabBag();
+        std::map<OUString, uno::Any>::const_iterator it = rGrabBag.find(u"CellCnfStyle"_ustr);
+        if (it != rGrabBag.end())
+        {
+            uno::Sequence<beans::PropertyValue> aAttributes = it->second.get< uno::Sequence<beans::PropertyValue> >();
+            m_pTableStyleExport->CnfStyle(aAttributes);
+        }
+    }
+
     // Cell preferred width
     SwTwips nWidth = GetGridCols( pTableTextNodeInfoInner )->at( nCell );
     if ( nCell )
@@ -4796,18 +4816,6 @@ void DocxAttributeOutput::TableCellProperties( ww8::WW8TableNodeInfoInner::Point
     {
         m_pSerializer->singleElementNS(XML_w, XML_vMerge, FSNS(XML_w, XML_val), "continue");
     }
-
-    if (const SfxGrabBagItem* pItem = pTableBox->GetFrameFormat()->GetAttrSet().GetItem<SfxGrabBagItem>(RES_FRMATR_GRABBAG))
-    {
-        const std::map<OUString, uno::Any>& rGrabBag = pItem->GetGrabBag();
-        std::map<OUString, uno::Any>::const_iterator it = rGrabBag.find(u"CellCnfStyle"_ustr);
-        if (it != rGrabBag.end())
-        {
-            uno::Sequence<beans::PropertyValue> aAttributes = it->second.get< uno::Sequence<beans::PropertyValue> >();
-            m_pTableStyleExport->CnfStyle(aAttributes);
-        }
-    }
-
 
     const SvxBoxItem& rBox = pTableBox->GetFrameFormat( )->GetBox( );
     const SvxBoxItem& rDefaultBox = (*m_TableFirstCells.rbegin())->getTableBox( )->GetFrameFormat( )->GetBox( );
@@ -6136,63 +6144,63 @@ void DocxAttributeOutput::WriteOLEShape(const SwFlyFrameFormat& rFrameFormat, co
         switch (rBox.GetLeft()->GetBorderLineStyle())
         {
             case SvxBorderLineStyle::SOLID:
-                sLineType = "Single"_ostr;
+                sLineType = "single"_ostr;
                 sDashType = "Solid"_ostr;
                 break;
             case SvxBorderLineStyle::DASHED:
-                sLineType = "Single"_ostr;
+                sLineType = "single"_ostr;
                 sDashType = "Dash"_ostr;
                 break;
             case SvxBorderLineStyle::DASH_DOT:
-                sLineType = "Single"_ostr;
+                sLineType = "single"_ostr;
                 sDashType = "DashDot"_ostr;
                 break;
             case SvxBorderLineStyle::DASH_DOT_DOT:
-                sLineType = "Single"_ostr;
+                sLineType = "single"_ostr;
                 sDashType = "ShortDashDotDot"_ostr;
                 break;
             case SvxBorderLineStyle::DOTTED:
-                sLineType = "Single"_ostr;
+                sLineType = "single"_ostr;
                 sDashType = "Dot"_ostr;
                 break;
             case SvxBorderLineStyle::DOUBLE:
-                sLineType = "ThinThin"_ostr;
+                sLineType = "thinThin"_ostr;
                 sDashType = "Solid"_ostr;
                 break;
             case SvxBorderLineStyle::DOUBLE_THIN:
-                sLineType = "ThinThin"_ostr;
+                sLineType = "thinThin"_ostr;
                 sDashType = "Solid"_ostr;
                 break;
             case SvxBorderLineStyle::EMBOSSED:
-                sLineType = "Single"_ostr;
+                sLineType = "single"_ostr;
                 sDashType = "Solid"_ostr;
                 break;
             case SvxBorderLineStyle::ENGRAVED:
-                sLineType = "Single"_ostr;
+                sLineType = "single"_ostr;
                 sDashType = "Solid"_ostr;
                 break;
             case SvxBorderLineStyle::FINE_DASHED:
-                sLineType = "Single"_ostr;
+                sLineType = "single"_ostr;
                 sDashType = "Dot"_ostr;
                 break;
             case SvxBorderLineStyle::INSET:
-                sLineType = "Single"_ostr;
+                sLineType = "single"_ostr;
                 sDashType = "Solid"_ostr;
                 break;
             case SvxBorderLineStyle::OUTSET:
-                sLineType = "Single"_ostr;
+                sLineType = "single"_ostr;
                 sDashType = "Solid"_ostr;
                 break;
             case SvxBorderLineStyle::THICKTHIN_LARGEGAP:
             case SvxBorderLineStyle::THICKTHIN_MEDIUMGAP:
             case SvxBorderLineStyle::THICKTHIN_SMALLGAP:
-                sLineType = "ThickThin"_ostr;
+                sLineType = "thickThin"_ostr;
                 sDashType = "Solid"_ostr;
                 break;
             case SvxBorderLineStyle::THINTHICK_LARGEGAP:
             case SvxBorderLineStyle::THINTHICK_MEDIUMGAP:
             case SvxBorderLineStyle::THINTHICK_SMALLGAP:
-                sLineType = "ThinThick"_ostr;
+                sLineType = "thinThick"_ostr;
                 sDashType = "Solid"_ostr;
                 break;
             case SvxBorderLineStyle::NONE:
@@ -7929,7 +7937,7 @@ void DocxAttributeOutput::NumberingLevel( sal_uInt8 nLevel,
         {
             GetExport().GetId( *pFont ); // ensure font info is written to fontTable.xml
             OString aFamilyName( OUStringToOString( pFont->GetFamilyName(), RTL_TEXTENCODING_UTF8 ) );
-            m_pSerializer->singleElementNS( XML_w, XML_rFonts,
+            AddToAttrList( m_pFontsAttrList,
                     FSNS( XML_w, XML_ascii ), aFamilyName,
                     FSNS( XML_w, XML_hAnsi ), aFamilyName,
                     FSNS( XML_w, XML_cs ), aFamilyName,
@@ -8558,7 +8566,7 @@ DocxAttributeOutput::hasProperties DocxAttributeOutput::WritePostitFields()
         const DateTime aDateTime = f->GetDateTime();
         bool bNoDate = bRemovePersonalInfo ||
             ( aDateTime.GetYear() == 1970 && aDateTime.GetMonth() == 1 && aDateTime.GetDay() == 1 ) ||
-            // The officeotron validator does not think year 0 is valid, so just dont put anything,
+            // The officeotron validator does not think year 0 is valid, so just don't put anything,
             // a zero year is not useful anyway.
             ( aDateTime.GetYear() == 0 && aDateTime.GetMonth() == 0 && aDateTime.GetDay() == 0 );
 
