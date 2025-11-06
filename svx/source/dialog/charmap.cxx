@@ -731,7 +731,7 @@ void SvxShowCharSet::SelectIndex(int nNewIndex, bool bFocus)
     if( nNewIndex < 0 )
     {
         // need to scroll see closest unicode
-        sal_uInt32 cPrev = mxFontCharMap->GetPrevChar( getSelectedChar() );
+        sal_UCS4 cPrev = mxFontCharMap->GetPrevChar( getSelectedChar() );
         int nMapIndex = mxFontCharMap->GetIndexFromChar( cPrev );
         int nNewPos = nMapIndex / COLUMN_COUNT;
         mxScrollArea->vadjustment_set_value(nNewPos);
@@ -1960,7 +1960,7 @@ void SubsetMap::InitList()
                     aAllSubsets.emplace_back( 0x11380, 0x113FF, SvxResId(RID_SUBSETSTR_TULU_TIGALARI) );
                     break;
 #endif
-#if (U_ICU_VERSION_MAJOR_NUM >= 77)
+#if (U_ICU_VERSION_MAJOR_NUM >= 78)
                 case UBLOCK_BERIA_ERFE:
                     aAllSubsets.emplace_back( 0x16EA0, 0x16EDF, SvxResId(RID_SUBSETSTR_BERIA_ERFE) );
                     break;
@@ -2019,8 +2019,8 @@ void SubsetMap::ApplyCharMap( const FontCharMapRef& rxFontCharMap )
     // remove subsets that are not matched in any range
     std::erase_if(maSubsets,
         [&rxFontCharMap](const Subset& rSubset) {
-            sal_uInt32 cMin = rSubset.GetRangeMin();
-            sal_uInt32 cMax = rSubset.GetRangeMax();
+            sal_UCS4 cMin = rSubset.GetRangeMin();
+            sal_UCS4 cMax = rSubset.GetRangeMax();
             int nCount = rxFontCharMap->CountCharsInRange( cMin, cMax );
             return nCount <= 0;
         });

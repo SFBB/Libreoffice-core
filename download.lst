@@ -327,8 +327,8 @@ GRAPHITE_TARBALL := graphite2-minimal-1.3.14.tgz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-HARFBUZZ_SHA256SUM := e5c81b7f6e0b102dfb000cfa424538b8e896ab78a2f4b8a5ec8cae62ab43369e
-HARFBUZZ_TARBALL := harfbuzz-12.1.0.tar.xz
+HARFBUZZ_SHA256SUM := ecb603aa426a8b24665718667bda64a84c1504db7454ee4cadbd362eea64e545
+HARFBUZZ_TARBALL := harfbuzz-12.2.0.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -594,8 +594,8 @@ LIBTIFF_TARBALL := tiff-4.7.1.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-POPPLER_SHA256SUM := 6b5e9bb64dabb15787a14db1675291c7afaf9387438cc93a4fb7f6aec4ee6fe0
-POPPLER_TARBALL := poppler-25.10.0.tar.xz
+POPPLER_SHA256SUM := 63f155142b77349e2bccaef148e754e7506ab1641e713b83af4f54a8f8b15369
+POPPLER_TARBALL := poppler-25.11.0.tar.xz
 POPPLER_DATA_SHA256SUM := c835b640a40ce357e1b83666aabd95edffa24ddddd49b8daff63adb851cdab74
 POPPLER_DATA_TARBALL := poppler-data-0.4.12.tar.gz
 # three static lines
@@ -657,8 +657,8 @@ SKIA_TARBALL := skia-m141-5eefbe51d17d2e379fa2d7353827e0ccb1e1f601.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-SQLITE3_SHA256SUM := 1d3049dd0f830a025a53105fc79fd2ab9431aea99e137809d064d8ee8356b032
-SQLITE3_TARBALL := sqlite-amalgamation-3500400.zip
+SQLITE3_SHA256SUM := 55b7b3b7909243ca5c87dc7a2d5ad515936dfabb3bbe1c72564fb606c0d5066c
+SQLITE3_TARBALL := sqlite-amalgamation-3510000.zip
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
