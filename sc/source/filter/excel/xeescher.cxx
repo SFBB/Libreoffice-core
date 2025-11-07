@@ -1147,7 +1147,7 @@ void VmlFormControlExporter::EndShape(sal_Int32 nShapeElement)
     pVmlDrawing->startElement(FSNS(XML_v, XML_textbox));
     pVmlDrawing->startElement(XML_div);
     pVmlDrawing->startElement(XML_font);
-    pVmlDrawing->write(m_aLabel);
+    pVmlDrawing->writeEscaped(m_aLabel);
     pVmlDrawing->endElement(XML_font);
     pVmlDrawing->endElement(XML_div);
     pVmlDrawing->endElement(FSNS(XML_v, XML_textbox));
@@ -1370,7 +1370,7 @@ void XclExpTbxControlObj::SaveXml( XclExpXmlStream& rStrm )
                     pDrawing->startElementNS(XML_a, XML_p);
                     pDrawing->startElementNS(XML_a, XML_r);
                     pDrawing->startElementNS(XML_a, XML_t);
-                    pDrawing->write(msLabel);
+                    pDrawing->writeEscaped(msLabel);
                     pDrawing->endElementNS(XML_a, XML_t);
                     pDrawing->endElementNS(XML_a, XML_r);
                     pDrawing->endElementNS(XML_a, XML_p);
