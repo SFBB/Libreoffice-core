@@ -3378,50 +3378,44 @@ void ScInterpreter::ScEuroConvert()
 // local functions
 namespace {
 
-constexpr std::u16string_view UTF8_TH_0      = u"ศูนย์";
-constexpr std::u16string_view UTF8_TH_1      = u"หนึ่ง";
-constexpr std::u16string_view UTF8_TH_2      = u"สอง";
-constexpr std::u16string_view UTF8_TH_3      = u"สาม";
-constexpr std::u16string_view UTF8_TH_4      = u"สี่";
-constexpr std::u16string_view UTF8_TH_5      = u"ห้า";
-constexpr std::u16string_view UTF8_TH_6      = u"หก";
-constexpr std::u16string_view UTF8_TH_7      = u"เจ็ด";
-constexpr std::u16string_view UTF8_TH_8      = u"แปด";
-constexpr std::u16string_view UTF8_TH_9      = u"เก้า";
-constexpr std::u16string_view UTF8_TH_10     = u"สิบ";
-constexpr std::u16string_view UTF8_TH_11     = u"เอ็ด";
-constexpr std::u16string_view UTF8_TH_20     = u"ยี่";
-constexpr std::u16string_view UTF8_TH_1E2    = u"ร้อย";
-constexpr std::u16string_view UTF8_TH_1E3    = u"พัน";
-constexpr std::u16string_view UTF8_TH_1E4    = u"หมื่น";
-constexpr std::u16string_view UTF8_TH_1E5    = u"แสน";
-constexpr std::u16string_view UTF8_TH_1E6    = u"ล้าน";
-constexpr std::u16string_view UTF8_TH_DOT0   = u"ถ้วน";
-constexpr std::u16string_view UTF8_TH_BAHT   = u"บาท";
-constexpr std::u16string_view UTF8_TH_SATANG = u"สตางค์";
-constexpr std::u16string_view UTF8_TH_MINUS  = u"ลบ";
+constexpr std::u16string_view TH_0      = u"ศูนย์";
+constexpr std::u16string_view TH_1      = u"หนึ่ง";
+constexpr std::u16string_view TH_2      = u"สอง";
+constexpr std::u16string_view TH_3      = u"สาม";
+constexpr std::u16string_view TH_4      = u"สี่";
+constexpr std::u16string_view TH_5      = u"ห้า";
+constexpr std::u16string_view TH_6      = u"หก";
+constexpr std::u16string_view TH_7      = u"เจ็ด";
+constexpr std::u16string_view TH_8      = u"แปด";
+constexpr std::u16string_view TH_9      = u"เก้า";
+constexpr std::u16string_view TH_10     = u"สิบ";
+constexpr std::u16string_view TH_11     = u"เอ็ด";
+constexpr std::u16string_view TH_20     = u"ยี่";
+constexpr std::u16string_view TH_1E2    = u"ร้อย";
+constexpr std::u16string_view TH_1E3    = u"พัน";
+constexpr std::u16string_view TH_1E4    = u"หมื่น";
+constexpr std::u16string_view TH_1E5    = u"แสน";
+constexpr std::u16string_view TH_1E6    = u"ล้าน";
+constexpr std::u16string_view TH_DOT0   = u"ถ้วน";
+constexpr std::u16string_view TH_BAHT   = u"บาท";
+constexpr std::u16string_view TH_SATANG = u"สตางค์";
+constexpr std::u16string_view TH_MINUS  = u"ลบ";
 
-void lclSplitBlock( double& rfInt, sal_Int32& rnBlock, double fValue, double fSize )
+/** Appends a digit (1 to 9) to the passed string. */
+void lclAppendDigit( OUStringBuffer& rText, char nDigit )
 {
-    rnBlock = static_cast< sal_Int32 >( modf( (fValue + 0.1) / fSize, &rfInt ) * fSize + 0.1 );
-}
-
-/** Appends a digit (0 to 9) to the passed string. */
-void lclAppendDigit( OUStringBuffer& rText, sal_Int32 nDigit )
-{
+    assert(nDigit >= '1' && nDigit <= '9');
     switch( nDigit )
     {
-        case 0: rText.append( UTF8_TH_0 ); break;
-        case 1: rText.append( UTF8_TH_1 ); break;
-        case 2: rText.append( UTF8_TH_2 ); break;
-        case 3: rText.append( UTF8_TH_3 ); break;
-        case 4: rText.append( UTF8_TH_4 ); break;
-        case 5: rText.append( UTF8_TH_5 ); break;
-        case 6: rText.append( UTF8_TH_6 ); break;
-        case 7: rText.append( UTF8_TH_7 ); break;
-        case 8: rText.append( UTF8_TH_8 ); break;
-        case 9: rText.append( UTF8_TH_9 ); break;
-        default:    OSL_FAIL( "lclAppendDigit - illegal digit" );
+        case '1': rText.append( TH_1 ); break;
+        case '2': rText.append( TH_2 ); break;
+        case '3': rText.append( TH_3 ); break;
+        case '4': rText.append( TH_4 ); break;
+        case '5': rText.append( TH_5 ); break;
+        case '6': rText.append( TH_6 ); break;
+        case '7': rText.append( TH_7 ); break;
+        case '8': rText.append( TH_8 ); break;
+        case '9': rText.append( TH_9 ); break;
     }
 }
 
@@ -3429,61 +3423,43 @@ void lclAppendDigit( OUStringBuffer& rText, sal_Int32 nDigit )
     @param nDigit  A digit in the range from 1 to 9.
     @param nPow10  A value in the range from 2 to 5.
  */
-void lclAppendPow10( OUStringBuffer& rText, sal_Int32 nDigit, sal_Int32 nPow10 )
+void lclAppendPow10( OUStringBuffer& rText, char nDigit, sal_Int32 nPow10 )
 {
-    OSL_ENSURE( (1 <= nDigit) && (nDigit <= 9), "lclAppendPow10 - illegal digit" );
+    assert(nPow10 >= 2 && nPow10 <= 5);
     lclAppendDigit( rText, nDigit );
     switch( nPow10 )
     {
-        case 2: rText.append( UTF8_TH_1E2 );   break;
-        case 3: rText.append( UTF8_TH_1E3 );   break;
-        case 4: rText.append( UTF8_TH_1E4 );   break;
-        case 5: rText.append( UTF8_TH_1E5 );   break;
-        default:    OSL_FAIL( "lclAppendPow10 - illegal power" );
+        case 2: rText.append( TH_1E2 );   break;
+        case 3: rText.append( TH_1E3 );   break;
+        case 4: rText.append( TH_1E4 );   break;
+        case 5: rText.append( TH_1E5 );   break;
     }
 }
 
 /** Appends a block of 6 digits (value from 1 to 999,999) to the passed string. */
-void lclAppendBlock( OUStringBuffer& rText, sal_Int32 nValue )
+void lclAppendBlock( OUStringBuffer& rText, std::string_view block )
 {
-    OSL_ENSURE( (1 <= nValue) && (nValue <= 999999), "lclAppendBlock - illegal value" );
-    if( nValue >= 100000 )
-    {
-        lclAppendPow10( rText, nValue / 100000, 5 );
-        nValue %= 100000;
-    }
-    if( nValue >= 10000 )
-    {
-        lclAppendPow10( rText, nValue / 10000, 4 );
-        nValue %= 10000;
-    }
-    if( nValue >= 1000 )
-    {
-        lclAppendPow10( rText, nValue / 1000, 3 );
-        nValue %= 1000;
-    }
-    if( nValue >= 100 )
-    {
-        lclAppendPow10( rText, nValue / 100, 2 );
-        nValue %= 100;
-    }
-    if( nValue <= 0 )
-        return;
+    assert(block.size() > 0 && block.size() <= 6);
+    auto it = block.begin();
+    for (size_t pow = block.size() - 1; pow >= 2; --pow)
+        if (char ch = *it++; ch != '0')
+            lclAppendPow10(rText, ch, pow);
 
-    sal_Int32 nTen = nValue / 10;
-    sal_Int32 nOne = nValue % 10;
-    if( nTen >= 1 )
+    // Two last characters
+    char ten = block.size() > 1 ? *it++ : '0';
+    char one = *it;
+    if (ten >= '1')
     {
-        if( nTen >= 3 )
-            lclAppendDigit( rText, nTen );
-        else if( nTen == 2 )
-            rText.append( UTF8_TH_20 );
-        rText.append( UTF8_TH_10 );
+        if (ten >= '3')
+            lclAppendDigit(rText, ten);
+        else if (ten == '2')
+            rText.append( TH_20 );
+        rText.append( TH_10 );
     }
-    if( (nTen > 0) && (nOne == 1) )
-        rText.append( UTF8_TH_11 );
-    else if( nOne > 0 )
-        lclAppendDigit( rText, nOne );
+    if ((ten > '0') && (one == '1'))
+        rText.append( TH_11 );
+    else if( one > '0' )
+        lclAppendDigit(rText, one);
 }
 
 } // namespace
@@ -3501,56 +3477,52 @@ void ScInterpreter::ScBahtText()
         return;
     }
 
-    // sign
-    bool bMinus = fValue < 0.0;
-    fValue = std::abs( fValue );
-
-    // round to 2 digits after decimal point, fValue contains Satang as integer
-    fValue = ::rtl::math::approxFloor( fValue * 100.0 + 0.5 );
-
+    OString number = rtl::math::doubleToString(std::abs(fValue), rtl_math_StringFormat_F, 2, '.');
+    assert(number.getLength() > 3); // At least "0.00"
+    const sal_Int32 dotPos = number.getLength() - 3;
+    assert(number[dotPos] == '.');
     // split Baht and Satang
-    double fBaht = 0.0;
-    sal_Int32 nSatang = 0;
-    lclSplitBlock( fBaht, nSatang, fValue, 100.0 );
+    std::string_view sBaht(number.subView(0, dotPos)), sSatang(number.subView(dotPos + 1));
+    bool noBaht = sBaht == "0", noSatang = sSatang == "00";
+    if (noBaht && noSatang)
+    {
+        return PushString(OUString::Concat(TH_0) + TH_BAHT + TH_DOT0);
+    }
 
     OUStringBuffer aText;
+    // sign
+    if (fValue < 0.0)
+        aText.append(TH_MINUS);
 
     // generate text for Baht value
-    if( fBaht == 0.0 )
+    if (!noBaht)
     {
-        if( nSatang == 0 )
-            aText.append( UTF8_TH_0 );
+        size_t blocksize = sBaht.size() % 6;
+        if (blocksize == 0)
+            blocksize = 6;
+        while (!sBaht.empty())
+        {
+            assert(blocksize <= sBaht.size());
+            lclAppendBlock(aText, sBaht.substr(0, blocksize));
+            sBaht.remove_prefix(blocksize);
+            blocksize = 6;
+            // add "million", if there will come more blocks
+            if (!sBaht.empty())
+                aText.append(TH_1E6);
+        }
+        aText.append(TH_BAHT);
     }
-    else while( fBaht > 0.0 )
-    {
-        OUStringBuffer aBlock;
-        sal_Int32 nBlock = 0;
-        lclSplitBlock( fBaht, nBlock, fBaht, 1.0e6 );
-        if( nBlock > 0 )
-            lclAppendBlock( aBlock, nBlock );
-        // add leading "million", if there will come more blocks
-        if( fBaht > 0.0 )
-            aBlock.insert( 0, UTF8_TH_1E6 );
-
-        aText.insert(0, aBlock);
-    }
-    if (!aText.isEmpty())
-        aText.append( UTF8_TH_BAHT );
 
     // generate text for Satang value
-    if( nSatang == 0 )
+    if (noSatang)
     {
-        aText.append( UTF8_TH_DOT0 );
+        aText.append( TH_DOT0 );
     }
     else
     {
-        lclAppendBlock( aText, nSatang );
-        aText.append( UTF8_TH_SATANG );
+        lclAppendBlock(aText, sSatang);
+        aText.append( TH_SATANG );
     }
-
-    // add the minus sign
-    if( bMinus )
-        aText.insert( 0, UTF8_TH_MINUS );
 
     PushString(aText.makeStringAndClear());
 }
