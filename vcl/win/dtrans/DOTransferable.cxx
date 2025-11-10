@@ -17,6 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <sal/config.h>
+
+#include <comphelper/scopeguard.hxx>
 #include <sal/types.h>
 #include <rtl/process.h>
 #include <osl/diagnose.h>
@@ -57,7 +60,7 @@ namespace
                  ( aFlavor.DataType == CPPUTYPE_OUSTRING ) ) );
     }
 
-void clipDataToByteStream( CLIPFORMAT cf, STGMEDIUM stgmedium, CDOTransferable::ByteSequence_t& aByteSequence )
+void clipDataToByteStream(CLIPFORMAT cf, STGMEDIUM stgmedium, Sequence<sal_Int8>& aByteSequence)
 {
     CStgTransferHelper memTransferHelper;
     LPSTREAM pStream = nullptr;
@@ -125,7 +128,7 @@ void clipDataToByteStream( CLIPFORMAT cf, STGMEDIUM stgmedium, CDOTransferable::
     memTransferHelper.read( aByteSequence.getArray( ), nMemSize );
 }
 
-OUString byteStreamToOUString( CDOTransferable::ByteSequence_t& aByteStream )
+OUString byteStreamToOUString(Sequence<sal_Int8>& aByteStream)
 {
     sal_Int32 nWChars;
     sal_Int32 nMemSize = aByteStream.getLength( );
@@ -142,7 +145,7 @@ OUString byteStreamToOUString( CDOTransferable::ByteSequence_t& aByteStream )
     return OUString( reinterpret_cast< sal_Unicode* >( aByteStream.getArray( ) ), nWChars );
 }
 
-Any byteStreamToAny( CDOTransferable::ByteSequence_t& aByteStream, const Type& aRequestedDataType )
+Any byteStreamToAny(Sequence<sal_Int8>& aByteStream, const Type& aRequestedDataType)
 {
     Any aAny;
 
@@ -245,7 +248,7 @@ Any SAL_CALL CDOTransferable::getTransferData( const DataFlavor& aFlavor )
 
     //  get the data from clipboard in a byte stream
 
-    ByteSequence_t clipDataStream;
+    Sequence<sal_Int8> clipDataStream;
 
     try
     {
@@ -386,7 +389,7 @@ LCID CDOTransferable::getLocaleFromClipboard( )
     try
     {
         CFormatEtc fetc = CDataFormatTranslator::getFormatEtcForClipformat( CF_LOCALE );
-        ByteSequence_t aLCIDSeq = getClipboardData( fetc );
+        Sequence<sal_Int8> aLCIDSeq = getClipboardData(fetc);
         lcid = *reinterpret_cast<LCID*>( aLCIDSeq.getArray( ) );
 
         // because of a Win95/98 Bug; there the high word
@@ -464,7 +467,7 @@ HRESULT getClipboardData_impl(const IDataObjectPtr& pDataObject, CFormatEtc& rFo
 }
 }
 
-CDOTransferable::ByteSequence_t CDOTransferable::getClipboardData( CFormatEtc& aFormatEtc )
+Sequence<sal_Int8> CDOTransferable::getClipboardData(CFormatEtc& aFormatEtc)
 {
     CFormatEtc aLocalFormatEtc(aFormatEtc);
     STGMEDIUM stgmedium;
@@ -495,7 +498,8 @@ CDOTransferable::ByteSequence_t CDOTransferable::getClipboardData( CFormatEtc& a
             throw RuntimeException( );
     }
 
-    ByteSequence_t byteStream;
+    comphelper::ScopeGuard stgMediumReleaser([&stgmedium] { ReleaseStgMedium(&stgmedium); });
+    Sequence<sal_Int8> byteStream;
 
     try
     {
@@ -504,14 +508,7 @@ CDOTransferable::ByteSequence_t CDOTransferable::getClipboardData( CFormatEtc& a
         else if (CF_HDROP == aLocalFormatEtc.getClipformat())
             byteStream = CF_HDROPToFileList(stgmedium.hGlobal);
         else if (CF_BITMAP == aLocalFormatEtc.getClipformat())
-        {
             byteStream = WinBITMAPToOOBMP(stgmedium.hBitmap);
-            if (aLocalFormatEtc.getTymed() == TYMED_GDI &&
-                ! stgmedium.pUnkForRelease )
-            {
-                DeleteObject(stgmedium.hBitmap);
-            }
-        }
         else
         {
             clipDataToByteStream(aLocalFormatEtc.getClipformat(), stgmedium, byteStream);
@@ -528,12 +525,9 @@ CDOTransferable::ByteSequence_t CDOTransferable::getClipboardData( CFormatEtc& a
                 byteStream = WinMFPictToOOMFPict(byteStream);
             }
         }
-
-        ReleaseStgMedium( &stgmedium );
     }
     catch( CStgTransferHelper::CStgTransferException& )
     {
-        ReleaseStgMedium( &stgmedium );
         throw IOException( );
     }
 
@@ -542,7 +536,7 @@ CDOTransferable::ByteSequence_t CDOTransferable::getClipboardData( CFormatEtc& a
 
 OUString CDOTransferable::synthesizeUnicodeText( )
 {
-    ByteSequence_t aTextSequence;
+    Sequence<sal_Int8> aTextSequence;
     CFormatEtc     fetc;
     LCID           lcid = getLocaleFromClipboard( );
     sal_uInt32     cpForTxtCnvt = 0;
