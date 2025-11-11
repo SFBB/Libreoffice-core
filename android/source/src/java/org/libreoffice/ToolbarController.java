@@ -11,6 +11,7 @@ package org.libreoffice;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
+import android.content.pm.PackageManager;
 import androidx.appcompat.widget.Toolbar;
 import android.util.Log;
 import android.view.KeyEvent;
@@ -246,27 +247,20 @@ public class ToolbarController implements Toolbar.OnMenuItemClickListener {
                 Toast.makeText(mContext, mContext.getString(R.string.readonly_file), Toast.LENGTH_LONG).show();
             }
         } else {
-            hideItem(R.id.action_save);
+            setItemVisible(R.id.action_save, false);
         }
-        mMainMenu.findItem(R.id.action_parts).setVisible(mContext.isDrawerEnabled());
+        setItemVisible(R.id.action_parts, mContext.isDrawerEnabled());
+
+        final boolean enablePrint = mContext.getPackageManager().hasSystemFeature(PackageManager.FEATURE_PRINTING);
+        enableMenuItem(R.id.action_print, enablePrint);
+        setItemVisible(R.id.action_print, enablePrint);
     }
 
-    public void showItem(final int item){
+    public void setItemVisible(final int item, boolean visible){
         LOKitShell.getMainHandler().post(new Runnable() {
             @Override
             public void run() {
-                mMainMenu.findItem(item).setVisible(true);
-
-            }
-        });
-    }
-
-    public void hideItem(final int item){
-        LOKitShell.getMainHandler().post(new Runnable() {
-            @Override
-            public void run() {
-                mMainMenu.findItem(item).setVisible(false);
-
+                mMainMenu.findItem(item).setVisible(visible);
             }
         });
     }
