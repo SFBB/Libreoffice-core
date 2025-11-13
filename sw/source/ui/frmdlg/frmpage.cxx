@@ -724,6 +724,9 @@ SwFramePage::SwFramePage(weld::Container* pPage, weld::DialogController* pContro
     m_xRelWidthCB->connect_toggled(aLk2);
     m_xRelHeightCB->connect_toggled(aLk2);
 
+    m_xRelWidthRelationLB->connect_changed(LINK(this, SwFramePage, RelRelationClickHdl));
+    m_xRelHeightRelationLB->connect_changed(LINK(this, SwFramePage, RelRelationClickHdl));
+
     m_xAutoWidthCB->connect_toggled(LINK(this, SwFramePage, AutoWidthClickHdl));
     m_xAutoHeightCB->connect_toggled(LINK(this, SwFramePage, AutoHeightClickHdl));
 
@@ -1881,17 +1884,13 @@ IMPL_LINK( SwFramePage, RelSizeClickHdl, weld::Toggleable&, rBtn, void )
 {
     if (&rBtn == m_xRelWidthCB.get())
     {
-        m_xWidthED->ShowPercent(rBtn.get_active());
+        m_xWidthED->ShowPercent(rBtn.get_active(), MAX_PERCENT_WIDTH);
         m_xRelWidthRelationLB->set_sensitive(rBtn.get_active());
-        if (rBtn.get_active())
-            m_xWidthED->get()->set_max(MAX_PERCENT_WIDTH, FieldUnit::NONE);
     }
     else // rBtn == m_xRelHeightCB.get()
     {
-        m_xHeightED->ShowPercent(rBtn.get_active());
+        m_xHeightED->ShowPercent(rBtn.get_active(), MAX_PERCENT_WIDTH);
         m_xRelHeightRelationLB->set_sensitive(rBtn.get_active());
-        if (rBtn.get_active())
-            m_xHeightED->get()->set_max(MAX_PERCENT_HEIGHT, FieldUnit::NONE);
     }
 
     RangeModifyHdl();  // correct the values again
@@ -1902,6 +1901,10 @@ IMPL_LINK( SwFramePage, RelSizeClickHdl, weld::Toggleable&, rBtn, void )
         ModifyHdl(*m_xHeightED->get());
 }
 
+IMPL_LINK_NOARG(SwFramePage, RelRelationClickHdl, weld::ComboBox&, void)
+{
+    RangeModifyHdl();
+}
 // range check
 IMPL_LINK_NOARG(SwFramePage, RangeModifyClickHdl, weld::Toggleable&, void)
 {
@@ -1954,6 +1957,11 @@ void SwFramePage::RangeModifyHdl()
 
     aVal.nHPos = nAtHorzPosVal;
     aVal.nVPos = nAtVertPosVal;
+
+    if (m_xRelWidthRelationLB->get_active() == 1)
+        aVal.bEntirePageWidth = true;
+    if (m_xRelHeightRelationLB->get_active() == 1)
+        aVal.bEntirePageHeight = true;
 
     aMgr.ValidateMetrics(aVal, mpToCharContentPos, true);   // one time, to get reference values for percental values
 

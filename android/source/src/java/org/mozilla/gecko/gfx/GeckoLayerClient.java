@@ -20,7 +20,7 @@ public class GeckoLayerClient implements PanZoomTarget {
 
     private LayerRenderer mLayerRenderer;
 
-    private LibreOfficeMainActivity mContext;
+    private final LibreOfficeMainActivity mContext;
     private IntSize mScreenSize;
     private DisplayPortMetrics mDisplayPort;
 
@@ -174,8 +174,6 @@ public class GeckoLayerClient implements PanZoomTarget {
 
     private void adjustViewport(DisplayPortMetrics displayPort) {
         ImmutableViewportMetrics metrics = getViewportMetrics();
-
-        ImmutableViewportMetrics clampedMetrics = metrics.clamp();
 
         if (displayPort == null) {
             displayPort = mDisplayPortCalculator.calculate(metrics, mPanZoomController.getVelocityVector());

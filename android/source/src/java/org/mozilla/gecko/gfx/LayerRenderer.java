@@ -31,12 +31,6 @@ import javax.microedition.khronos.opengles.GL10;
 public class LayerRenderer implements GLSurfaceView.Renderer {
     private static final String LOGTAG = "GeckoLayerRenderer";
 
-    /*
-     * The amount of time a frame is allowed to take to render before we declare it a dropped
-     * frame.
-     */
-    private static final int MAX_FRAME_TIME = 16;   /* 1000 ms / 60 FPS */
-
     private final LayerView mView;
     private final SingleTileLayer mBackgroundLayer;
     private final NinePatchTileLayer mShadowLayer;
@@ -48,7 +42,7 @@ public class LayerRenderer implements GLSurfaceView.Renderer {
     private RenderContext mLastPageContext;
     private int mMaxTextureSize;
 
-    private CopyOnWriteArrayList<Layer> mExtraLayers = new CopyOnWriteArrayList<Layer>();
+    private final CopyOnWriteArrayList<Layer> mExtraLayers = new CopyOnWriteArrayList<Layer>();
 
     // Used by GLES 2.0
     private int mProgram;
@@ -297,9 +291,11 @@ public class LayerRenderer implements GLSurfaceView.Renderer {
 
     public class Frame {
         // A fixed snapshot of the viewport metrics that this frame is using to render content.
-        private ImmutableViewportMetrics mFrameMetrics;
-        // A rendering context for page-positioned layers, and one for screen-positioned layers.
-        private RenderContext mPageContext, mScreenContext;
+        private final ImmutableViewportMetrics mFrameMetrics;
+        // A rendering context for page-positioned layers.
+        private final RenderContext mPageContext;
+        // A rendering context for screen-positioned layers.
+        private final RenderContext mScreenContext;
         // Whether a layer was updated.
         private boolean mUpdated;
         private final Rect mPageRect;
@@ -422,16 +418,14 @@ public class LayerRenderer implements GLSurfaceView.Renderer {
 
         public void drawForeground() {
             /* Draw any extra layers that were added (likely plugins) */
-            if (mExtraLayers.size() > 0) {
-                for (Layer layer : mExtraLayers) {
-                    if (!layer.usesDefaultProgram())
-                        deactivateDefaultProgram();
+            for (Layer layer : mExtraLayers) {
+                if (!layer.usesDefaultProgram())
+                    deactivateDefaultProgram();
 
-                    layer.draw(mPageContext);
+                layer.draw(mPageContext);
 
-                    if (!layer.usesDefaultProgram())
-                        activateDefaultProgram();
-                }
+                if (!layer.usesDefaultProgram())
+                    activateDefaultProgram();
             }
 
             /* Draw the vertical scrollbar. */

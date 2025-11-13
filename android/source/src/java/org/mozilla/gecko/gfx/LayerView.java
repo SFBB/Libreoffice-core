@@ -27,7 +27,6 @@ import org.libreoffice.LOEvent;
 import org.libreoffice.LOKitShell;
 import org.libreoffice.LibreOfficeMainActivity;
 import org.libreoffice.R;
-import org.mozilla.gecko.OnInterceptTouchListener;
 import org.mozilla.gecko.OnSlideSwipeListener;
 
 /**
@@ -37,19 +36,18 @@ import org.mozilla.gecko.OnSlideSwipeListener;
  * mediator between the LayerRenderer and the LayerController.
  */
 public class LayerView extends FrameLayout {
-    private static String LOGTAG = LayerView.class.getName();
+    private static final String LOGTAG = LayerView.class.getName();
 
     private GeckoLayerClient mLayerClient;
     private PanZoomController mPanZoomController;
-    private GLController mGLController;
+    private final GLController mGLController;
     private InputConnectionHandler mInputConnectionHandler;
     private LayerRenderer mRenderer;
 
-    private SurfaceView mSurfaceView;
+    private final SurfaceView mSurfaceView;
 
     private Listener mListener;
-    private OnInterceptTouchListener mTouchIntercepter;
-    private LibreOfficeMainActivity mContext;
+    private final LibreOfficeMainActivity mContext;
 
     public LayerView(Context context, AttributeSet attrs) {
         super(context, attrs);
@@ -97,16 +95,6 @@ public class LayerView extends FrameLayout {
         }
     }
 
-    public void setTouchIntercepter(final OnInterceptTouchListener touchIntercepter) {
-        // this gets run on the gecko thread, but for thread safety we want the assignment
-        // on the UI thread.
-        post(new Runnable() {
-            public void run() {
-                mTouchIntercepter = touchIntercepter;
-            }
-        });
-    }
-
     public void setInputConnectionHandler(InputConnectionHandler inputConnectionHandler) {
         mInputConnectionHandler = inputConnectionHandler;
     }
@@ -117,21 +105,12 @@ public class LayerView extends FrameLayout {
             requestFocus();
         }
 
-        if (mTouchIntercepter != null && mTouchIntercepter.onInterceptTouchEvent(this, event)) {
-            return true;
-        }
-        if (mPanZoomController != null && mPanZoomController.onTouchEvent(event)) {
-            return true;
-        }
-        if (mTouchIntercepter != null && mTouchIntercepter.onTouch(this, event)) {
-            return true;
-        }
-        return false;
+        return mPanZoomController != null && mPanZoomController.onTouchEvent(event);
     }
 
     @Override
     public boolean onHoverEvent(MotionEvent event) {
-        return mTouchIntercepter != null && mTouchIntercepter.onTouch(this, event);
+        return false;
     }
 
     @Override
@@ -140,7 +119,6 @@ public class LayerView extends FrameLayout {
     }
 
     public GeckoLayerClient getLayerClient() { return mLayerClient; }
-    public PanZoomController getPanZoomController() { return mPanZoomController; }
 
     public ImmutableViewportMetrics getViewportMetrics() {
         return mLayerClient.getViewportMetrics();
@@ -210,10 +188,6 @@ public class LayerView extends FrameLayout {
 
     public void setListener(Listener listener) {
         mListener = listener;
-    }
-
-    Listener getListener() {
-        return mListener;
     }
 
     public GLController getGLController() {
