@@ -32,6 +32,8 @@ constexpr auto IgnoredList
         { u"svt/ui/tabbuttons.ui" },
         { u"svx/ui/toolbarpopover.ui" },
         { u"modules/scalc/ui/dropmenu.ui"}, // Calc -> Navigator -> right click
+        { u"modules/sdraw/ui/navigatorcontextmenu.ui" }, // Impress -> Navigator -> right click
+        { u"modules/swriter/ui/navigatorcontextmenu.ui" }, // Writer -> Navigator -> right click
     });
 
 // ========== MOBILE DIALOGS ================================================= //
@@ -187,6 +189,7 @@ constexpr auto ScalcDialogList
         { u"modules/scalc/ui/sortoptionspage.ui" },
         { u"modules/scalc/ui/sparklinedialog.ui" },
         { u"modules/scalc/ui/standardfilterdialog.ui" },
+        { u"modules/scalc/ui/statisticsinfopage.ui" },
         { u"modules/scalc/ui/textimportcsv.ui" },
         { u"modules/scalc/ui/ttestdialog.ui" },
         { u"modules/scalc/ui/ungroupdialog.ui" },

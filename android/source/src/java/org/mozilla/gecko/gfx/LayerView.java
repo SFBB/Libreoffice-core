@@ -39,7 +39,7 @@ public class LayerView extends FrameLayout {
     private static final String LOGTAG = LayerView.class.getName();
 
     private GeckoLayerClient mLayerClient;
-    private PanZoomController mPanZoomController;
+    private JavaPanZoomController mPanZoomController;
     private final GLController mGLController;
     private InputConnectionHandler mInputConnectionHandler;
     private LayerRenderer mRenderer;
@@ -87,9 +87,6 @@ public class LayerView extends FrameLayout {
     }
 
     public void destroy() {
-        if (mLayerClient != null) {
-            mLayerClient.destroy();
-        }
         if (mRenderer != null) {
             mRenderer.destroy();
         }
@@ -170,16 +167,8 @@ public class LayerView extends FrameLayout {
         mRenderer.removeLayer(layer);
     }
 
-    public int getMaxTextureSize() {
-        return mRenderer.getMaxTextureSize();
-    }
-
     public void setLayerRenderer(LayerRenderer renderer) {
         mRenderer = renderer;
-    }
-
-    public LayerRenderer getLayerRenderer() {
-        return mRenderer;
     }
 
     public LayerRenderer getRenderer() {

@@ -150,11 +150,9 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Shared
         loKitThread = new LOKitThread(this);
         loKitThread.start();
 
-        mLayerClient = new GeckoLayerClient(this);
         LayerView layerView = findViewById(R.id.layer_view);
-        mLayerClient.setView(layerView);
+        mLayerClient = new GeckoLayerClient(this, layerView);
         layerView.setInputConnectionHandler(new LOKitInputConnectionHandler());
-        mLayerClient.notifyReady();
 
         layerView.setOnKeyListener(new View.OnKeyListener() {
             @Override
@@ -542,7 +540,6 @@ public class LibreOfficeMainActivity extends AppCompatActivity implements Shared
             .unregisterOnSharedPreferenceChangeListener(this);
 
         LOKitShell.sendCloseEvent();
-        mLayerClient.destroy();
         super.onDestroy();
 
         if (isFinishing()) { // Not an orientation change

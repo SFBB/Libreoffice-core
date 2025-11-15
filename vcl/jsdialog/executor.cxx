@@ -17,6 +17,8 @@
 #include <sal/log.hxx>
 #include <string_view>
 #include <vcl/jsdialog/executor.hxx>
+#include <vcl/toolkit/treelistentry.hxx>
+#include <vcl/weld.hxx>
 
 /// returns true if execution was successful
 using JSWidgetExecutor = bool (*)(weld::Widget&, const StringMap&);
@@ -485,6 +487,11 @@ bool ExecuteAction(const OUString& nWindowId, const OUString& rWidget, const Str
                     LOKTrigger::trigger_changed(*pEdit);
                     return true;
                 }
+                if (sAction == "activate")
+                {
+                    LOKTrigger::trigger_activated(*pEdit);
+                    return true;
+                }
             }
 
             auto pTextView = dynamic_cast<JSTextView*>(pWidget);
@@ -646,6 +653,26 @@ bool ExecuteAction(const OUString& nWindowId, const OUString& rWidget, const Str
                     else
                         SAL_WARN("vcl", "No absolute position found for " << nEntryAbsPos
                                                                           << " in treeview");
+                    return true;
+                }
+                else if (sAction == "editend")
+                {
+                    OUString sDataJSON = rtl::Uri::decode(
+                        rData.at(u"data"_ustr), rtl_UriDecodeMechanism::rtl_UriDecodeWithCharset,
+                        RTL_TEXTENCODING_UTF8);
+                    StringMap aMap(jsonToStringMap(
+                        OUStringToOString(sDataJSON, RTL_TEXTENCODING_ASCII_US).getStr()));
+
+                    sal_Int32 nRow = o3tl::toInt32(aMap[u"row"_ustr]);
+                    sal_Int32 nColumn = o3tl::toInt32(aMap[u"column"_ustr]);
+                    OUString sValue = aMap[u"value"_ustr];
+
+                    pTreeView->set_text(nRow, sValue, nColumn);
+
+                    SalInstanceTreeIter pEntry = pTreeView->getTreeView().GetEntry(nRow);
+                    LOKTrigger::trigger_editing_done(*pTreeView,
+                                                     weld::TreeView::iter_string(pEntry, sValue));
+
                     return true;
                 }
             }
