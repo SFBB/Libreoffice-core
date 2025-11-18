@@ -612,6 +612,18 @@ public:
 
     void                        DrawGrid( const tools::Rectangle& rRect, const Size& rDist, DrawGridFlags nFlags );
 
+    /** Draw a grid of small crosses.
+
+     @param     rGridArea       The area where grid points are positioned.
+     @param     rGridDistance   Distances of grid points horizontally and vertically.
+     @param     rDrawingArea    Whole drawing area, defining the visible area where crosses should be drawn.
+
+     @note The rGridArea typically covers a larger area of the page, than the rDrawingArea, because some grid points might be outside
+           of the drawing area, but we still need to draw them partially. Even if the center of the cross is not visible, one edge
+           of the cross can hang into the visible area.
+     */
+    void                        DrawGridOfCrosses( const tools::Rectangle& rGridArea, const Size& rGridDistance, const tools::Rectangle& rDrawingArea );
+
     ///@}
 
     /** @name Invert functions
@@ -1371,7 +1383,7 @@ public:
 
 protected:
 
-    virtual void                DrawDeviceBitmapEx(
+    virtual void                DrawDeviceBitmap(
                                     const Point& rDestPt, const Size& rDestSize,
                                     const Point& rSrcPtPixel, const Size& rSrcSizePixel,
                                     Bitmap& rBitmap );
