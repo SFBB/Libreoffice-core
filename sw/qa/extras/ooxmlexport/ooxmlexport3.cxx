@@ -27,7 +27,7 @@
 class Test : public SwModelTestBase
 {
 public:
-    Test() : SwModelTestBase(u"/sw/qa/extras/ooxmlexport/data/"_ustr, u"Office Open XML Text"_ustr) {}
+    Test() : SwModelTestBase(u"/sw/qa/extras/ooxmlexport/data/"_ustr) {}
 };
 
 DECLARE_OOXMLEXPORT_TEST(testFdo68418, "fdo68418.docx")
@@ -76,7 +76,8 @@ DECLARE_OOXMLEXPORT_TEST(testTdf92470_footnoteRestart, "tdf92470_footnoteRestart
 
 CPPUNIT_TEST_FIXTURE(Test, testTdf108944_footnoteSeparator2)
 {
-    loadAndReload("tdf108944_footnoteSeparator2.odt");
+    createSwDoc("tdf108944_footnoteSeparator2.odt");
+    saveAndReload(TestFilter::DOCX);
     CPPUNIT_ASSERT_EQUAL(1, getPages());
     uno::Reference<beans::XPropertySet> xPageStyle(getStyles(u"PageStyles"_ustr)->getByName(u"Standard"_ustr), uno::UNO_QUERY);
     //This was zero. The comment was causing the bHasFtnSep flag to be reset to false, so the separator was missing.
@@ -85,7 +86,8 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf108944_footnoteSeparator2)
 
 CPPUNIT_TEST_FIXTURE(Test, testCharacterBorder)
 {
-    loadAndReload("charborder.odt");
+    createSwDoc("charborder.odt");
+    saveAndReload(TestFilter::DOCX);
     CPPUNIT_ASSERT_EQUAL(1, getPages());
     uno::Reference<beans::XPropertySet> xRun(getRun(getParagraph(1),1), uno::UNO_QUERY);
     // OOXML has just one border attribute (<w:bdr>) for text border so all side has
@@ -139,7 +141,8 @@ CPPUNIT_TEST_FIXTURE(Test, testCharacterBorder)
 
 CPPUNIT_TEST_FIXTURE(Test, testStyleInheritance)
 {
-    loadAndSave("style-inheritance.docx");
+    createSwDoc("style-inheritance.docx");
+    save(TestFilter::DOCX);
 
     // Check that now styleId's are more like what MSO produces
     xmlDocUniquePtr pXmlStyles = parseExport(u"word/styles.xml"_ustr);
@@ -239,7 +242,8 @@ CPPUNIT_TEST_FIXTURE(Test, testStyleInheritance)
 
 CPPUNIT_TEST_FIXTURE(Test, testCalendar1)
 {
-    loadAndSave("calendar1.docx");
+    createSwDoc("calendar1.docx");
+    save(TestFilter::DOCX);
     // Document has a non-trivial table style, test the roundtrip of it.
     xmlDocUniquePtr pXmlStyles = parseExport(u"word/styles.xml"_ustr);
     assertXPath(pXmlStyles, "/w:styles/w:style[@w:styleId='Calendar1']/w:basedOn", "val", u"TableNormal");
@@ -287,7 +291,7 @@ CPPUNIT_TEST_FIXTURE(Test, testCalendar2)
 
     createSwDoc("calendar2.docx");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::DOCX);
     verify();
 
     // This paragraph property was missing in table style.
@@ -353,7 +357,8 @@ DECLARE_OOXMLEXPORT_TEST(testCalendar5, "calendar5.docx")
 
 CPPUNIT_TEST_FIXTURE(Test, testTcBorders)
 {
-    loadAndSave("testTcBorders.docx");
+    createSwDoc("testTcBorders.docx");
+    save(TestFilter::DOCX);
     //fdo#76635 : Table borders are not getting preserved.
 
     xmlDocUniquePtr pXmlDocument = parseExport(u"word/document.xml"_ustr);
@@ -371,7 +376,8 @@ CPPUNIT_TEST_FIXTURE(Test, testTcBorders)
 
 CPPUNIT_TEST_FIXTURE(Test, testQuicktables)
 {
-    loadAndSave("quicktables.docx");
+    createSwDoc("quicktables.docx");
+    save(TestFilter::DOCX);
     xmlDocUniquePtr pXmlStyles = parseExport(u"word/styles.xml"_ustr);
 
     // These were missing in the Calendar3 table style.
@@ -400,7 +406,8 @@ CPPUNIT_TEST_FIXTURE(Test, testQuicktables)
 
 CPPUNIT_TEST_FIXTURE(Test, testFdo71302)
 {
-    loadAndSave("fdo71302.docx");
+    createSwDoc("fdo71302.docx");
+    save(TestFilter::DOCX);
     xmlDocUniquePtr pXmlStyles = parseExport(u"word/styles.xml"_ustr);
 
     // This got renamed to "Strong Emphasis" without a good reason.
@@ -494,7 +501,8 @@ DECLARE_OOXMLEXPORT_TEST(testSmartart, "smartart.docx")
 
 CPPUNIT_TEST_FIXTURE(Test, testFontNameIsEmpty)
 {
-    loadAndSave("font-name-is-empty.docx");
+    createSwDoc("font-name-is-empty.docx");
+    save(TestFilter::DOCX);
     // Check no empty font name is exported
     // This test does not fail, if the document contains a font with empty name.
 
@@ -514,7 +522,8 @@ CPPUNIT_TEST_FIXTURE(Test, testFontNameIsEmpty)
 
 CPPUNIT_TEST_FIXTURE(Test, testMultiColumnLineSeparator)
 {
-    loadAndSave("multi-column-line-separator-SAVED.docx");
+    createSwDoc("multi-column-line-separator-SAVED.docx");
+    save(TestFilter::DOCX);
     // Check for the Column Separator value.It should be FALSE as the document does not contain separator line.
     xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
     assertXPath(pXmlDoc, "/w:document/w:body/w:p[3]/w:pPr/w:sectPr/w:cols","sep",u"false");
@@ -551,7 +560,8 @@ DECLARE_OOXMLEXPORT_TEST(testCustomXmlGrabBag, "customxml.docx")
 
 CPPUNIT_TEST_FIXTURE(Test, testCustomXmlRelationships)
 {
-    loadAndSave("customxml.docx");
+    createSwDoc("customxml.docx");
+    save(TestFilter::DOCX);
     xmlDocUniquePtr pXmlDoc = parseExport(u"customXml/_rels/item1.xml.rels"_ustr);
 
     // Check there is a relation to itemProps1.xml.
@@ -561,7 +571,8 @@ CPPUNIT_TEST_FIXTURE(Test, testCustomXmlRelationships)
 
 CPPUNIT_TEST_FIXTURE(Test, testFdo69644)
 {
-    loadAndSave("fdo69644.docx");
+    createSwDoc("fdo69644.docx");
+    save(TestFilter::DOCX);
     // The problem was that the exporter exported the table definition
     // with only 3 columns, instead of 5 columns.
     // Check that the table grid is exported with 5 columns
@@ -577,7 +588,8 @@ DECLARE_OOXMLEXPORT_TEST(testFdo70812, "fdo70812.docx")
 
 CPPUNIT_TEST_FIXTURE(Test, testPgMargin)
 {
-    loadAndSave("testPgMargin.docx");
+    createSwDoc("testPgMargin.docx");
+    save(TestFilter::DOCX);
     xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
     assertXPath(pXmlDoc, "/w:document/w:body/w:sectPr/w:pgMar", "left", u"1440");
 }
@@ -690,7 +702,8 @@ DECLARE_OOXMLEXPORT_TEST(testTextBoxGradientAngle, "fdo65295.docx")
 
 CPPUNIT_TEST_FIXTURE(Test, testCellGridSpan)
 {
-    loadAndSave("cell-grid-span.docx");
+    createSwDoc("cell-grid-span.docx");
+    save(TestFilter::DOCX);
     // The problem was during export gridSpan value for 1st & 2nd cells for test document
     // used to get set wrongly to 5 and 65532 respectively which was the reason for crash during save operation
     // Verifying gridSpan element is not present in RoundTripped Document (As it's Default value is 1).
@@ -713,7 +726,8 @@ DECLARE_OOXMLEXPORT_TEST(testFdo71646, "fdo71646.docx")
 
 CPPUNIT_TEST_FIXTURE(Test, testParaAutoSpacing)
 {
-    loadAndSave("para-auto-spacing.docx");
+    createSwDoc("para-auto-spacing.docx");
+    save(TestFilter::DOCX);
     xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
     assertXPath(pXmlDoc, "/w:document/w:body/w:p[1]/w:pPr/w:spacing", "beforeAutospacing",u"1");
     assertXPath(pXmlDoc, "/w:document/w:body/w:p[1]/w:pPr/w:spacing", "afterAutospacing",u"1");
@@ -774,7 +788,8 @@ DECLARE_OOXMLEXPORT_TEST(testPNGImageCrop, "test_PNG_ImageCrop.docx")
 
 CPPUNIT_TEST_FIXTURE(Test, testTdf41542_imagePadding)
 {
-    loadAndReload("tdf41542_imagePadding.odt");
+    createSwDoc("tdf41542_imagePadding.odt");
+    saveAndReload(TestFilter::DOCX);
     CPPUNIT_ASSERT_EQUAL(3, getShapes());
     CPPUNIT_ASSERT_EQUAL(1, getPages());
     // borderlessImage - image WITHOUT BORDERS : simulate padding with -crop
@@ -796,7 +811,8 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf41542_imagePadding)
 
 CPPUNIT_TEST_FIXTURE(Test, testFootnoteParagraphTag)
 {
-    loadAndSave("testFootnote.docx");
+    createSwDoc("testFootnote.docx");
+    save(TestFilter::DOCX);
     /* In footnotes.xml, the paragraph tag inside <w:footnote w:id="2"> was getting written into document.xml.
      * Check for, paragraph tag is correctly written into footnotes.xml.
      */
@@ -807,14 +823,16 @@ CPPUNIT_TEST_FIXTURE(Test, testFootnoteParagraphTag)
 
 CPPUNIT_TEST_FIXTURE(Test, testSpacingLineRule)
 {
-    loadAndReload("table_lineRule.docx");
+    createSwDoc("table_lineRule.docx");
+    saveAndReload(TestFilter::DOCX);
     xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
     assertXPath(pXmlDoc, "/w:document/w:body/w:tbl/w:tr[1]/w:tc[1]/w:p/w:pPr/w:spacing", "lineRule", u"auto");
 }
 
 CPPUNIT_TEST_FIXTURE(Test, testTableLineSpacing)
 {
-    loadAndSave("table_atleast.docx");
+    createSwDoc("table_atleast.docx");
+    save(TestFilter::DOCX);
     xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
     assertXPath(pXmlDoc, "/w:document/w:body/w:tbl/w:tr/w:tc/w:p/w:pPr/w:spacing", "line", u"320");
 }
@@ -834,7 +852,8 @@ DECLARE_OOXMLEXPORT_TEST(testMce, "mce.docx")
 
 CPPUNIT_TEST_FIXTURE(Test, testThemePreservation)
 {
-    loadAndSave("theme-preservation.docx");
+    createSwDoc("theme-preservation.docx");
+    save(TestFilter::DOCX);
     // check default font theme values have been preserved
     xmlDocUniquePtr pXmlStyles = parseExport(u"word/styles.xml"_ustr);
     assertXPath(pXmlStyles, "/w:styles/w:docDefaults/w:rPrDefault/w:rPr/w:rFonts", "asciiTheme", u"minorHAnsi");
@@ -884,7 +903,8 @@ CPPUNIT_TEST_FIXTURE(Test, testThemePreservation)
 
 CPPUNIT_TEST_FIXTURE(Test, testTableThemePreservation)
 {
-    loadAndSave("table-theme-preservation.docx");
+    createSwDoc("table-theme-preservation.docx");
+    save(TestFilter::DOCX);
     xmlDocUniquePtr pXmlDocument = parseExport(u"word/document.xml"_ustr);
 
     // check cell theme colors have been preserved
@@ -937,7 +957,8 @@ CPPUNIT_TEST_FIXTURE(Test, testTableThemePreservation)
 
 CPPUNIT_TEST_FIXTURE(Test, testcantSplit)
 {
-    loadAndSave("2_table_doc.docx");
+    createSwDoc("2_table_doc.docx");
+    save(TestFilter::DOCX);
     // if Split table value is true for a table then during export do not write <w:cantSplit w:val="false"/>
     // in table row property,As default row prop is allow row to break across page.
     // writing <w:cantSplit w:val="false"/> during export was causing problem that all the cell data used to come on same page
@@ -948,7 +969,8 @@ CPPUNIT_TEST_FIXTURE(Test, testcantSplit)
 
 CPPUNIT_TEST_FIXTURE(Test, testDontSplitTable)
 {
-    loadAndReload("tdf101589_dontSplitTable.odt");
+    createSwDoc("tdf101589_dontSplitTable.odt");
+    saveAndReload(TestFilter::DOCX);
     CPPUNIT_ASSERT_EQUAL(2, getPages());
     //single row tables need to prevent split by setting row to no split
     xmlDocUniquePtr pXmlDoc = parseLayoutDump();
@@ -978,7 +1000,8 @@ DECLARE_OOXMLEXPORT_TEST(testExtraSectionBreak, "1_page.docx")
 
 CPPUNIT_TEST_FIXTURE(Test, testcolumnbreak)
 {
-    loadAndSave("columnbreak.docx");
+    createSwDoc("columnbreak.docx");
+    save(TestFilter::DOCX);
     CPPUNIT_ASSERT_EQUAL(style::BreakType_COLUMN_BEFORE, getProperty<style::BreakType>(getParagraph(5, u"This is first line after col brk."_ustr), u"BreakType"_ustr));
     xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
     assertXPath(pXmlDoc, "/w:document/w:body/w:p[5]/w:r[1]/w:br", "type", u"column");
@@ -986,7 +1009,8 @@ CPPUNIT_TEST_FIXTURE(Test, testcolumnbreak)
 
 CPPUNIT_TEST_FIXTURE(Test, testGlossary)
 {
-    loadAndSave("testGlossary.docx");
+    createSwDoc("testGlossary.docx");
+    save(TestFilter::DOCX);
     xmlDocUniquePtr pXmlDoc = parseExport(u"word/glossary/document.xml"_ustr);
     assertXPath(pXmlDoc, "/w:glossaryDocument", "Ignorable", u"w14 wp14");
 }
@@ -994,7 +1018,8 @@ CPPUNIT_TEST_FIXTURE(Test, testGlossary)
 CPPUNIT_TEST_FIXTURE(Test, testGlossaryWithEmail)
 {
     // tdf#152289
-    loadAndSave("glossaryWithEmail.docx");
+    createSwDoc("glossaryWithEmail.docx");
+    save(TestFilter::DOCX);
     xmlDocUniquePtr pXmlDoc = parseExport(u"word/glossary/_rels/document.xml.rels"_ustr);
     assertXPath(pXmlDoc, "/rels:Relationships/rels:Relationship[@Id='rId4' "
         "and @Type='http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink' "
@@ -1014,14 +1039,16 @@ DECLARE_OOXMLEXPORT_TEST(testFdo71785, "fdo71785.docx")
 
 CPPUNIT_TEST_FIXTURE(Test, testCrashWhileSave)
 {
-    loadAndSave("testCrashWhileSave.docx");
+    createSwDoc("testCrashWhileSave.docx");
+    save(TestFilter::DOCX);
     xmlDocUniquePtr pXmlDoc = parseExport(u"word/footer1.xml"_ustr);
     CPPUNIT_ASSERT(getXPath(pXmlDoc, "/w:ftr/w:tbl/w:tr/w:tc[1]/w:p[1]/w:pPr/w:pStyle", "val").match("Normal"));
 }
 
 CPPUNIT_TEST_FIXTURE(Test, testFileOpenInputOutputError)
 {
-    loadAndReload("floatingtbl_with_formula.docx");
+    createSwDoc("floatingtbl_with_formula.docx");
+    saveAndReload(TestFilter::DOCX);
     // Docx containing Floating table with formula was giving "General input/output error" while opening in LibreOffice
     xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
     assertXPath(pXmlDoc, "/w:document/w:body/w:p[1]/w:pPr/w:pStyle", "val", u"Normal");
@@ -1032,7 +1059,8 @@ CPPUNIT_TEST_FIXTURE(Test, testFileOpenInputOutputError)
 
 CPPUNIT_TEST_FIXTURE(Test, testSingleCellTableBorders)
 {
-    loadAndSave("tdf124399_SingleCellTableBorders.docx");
+    createSwDoc("tdf124399_SingleCellTableBorders.docx");
+    save(TestFilter::DOCX);
     // tdf#124399: Extra borders on single cell tables fixed.
 
     xmlDocUniquePtr pXmlDocument = parseExport(u"word/document.xml"_ustr);
@@ -1042,7 +1070,8 @@ CPPUNIT_TEST_FIXTURE(Test, testSingleCellTableBorders)
 
 CPPUNIT_TEST_FIXTURE(Test, testInsideBorders)
 {
-    loadAndSave("tdf129242_InsideBorders.docx");
+    createSwDoc("tdf129242_InsideBorders.docx");
+    save(TestFilter::DOCX);
     // tdf#129242: Don't remove inside borders if the table has more than one cells.
 
     xmlDocUniquePtr pXmlDocument = parseExport(u"word/document.xml"_ustr);
@@ -1053,7 +1082,8 @@ CPPUNIT_TEST_FIXTURE(Test, testInsideBorders)
 
 CPPUNIT_TEST_FIXTURE(Test, testRightBorder)
 {
-    loadAndSave("tdf129442_RightBorder.docx");
+    createSwDoc("tdf129442_RightBorder.docx");
+    save(TestFilter::DOCX);
     // tdf#129442: Right border of a one column table was missing.
 
     xmlDocUniquePtr pXmlDocument = parseExport(u"word/document.xml"_ustr);
@@ -1064,7 +1094,8 @@ CPPUNIT_TEST_FIXTURE(Test, testRightBorder)
 
 CPPUNIT_TEST_FIXTURE(Test, testBottomBorder)
 {
-    loadAndSave("tdf129450_BottomBorder.docx");
+    createSwDoc("tdf129450_BottomBorder.docx");
+    save(TestFilter::DOCX);
     // tdf#129450: Missing bottom border in one row table.
 
     xmlDocUniquePtr pXmlDocument = parseExport(u"word/document.xml"_ustr);
@@ -1075,7 +1106,8 @@ CPPUNIT_TEST_FIXTURE(Test, testBottomBorder)
 
 CPPUNIT_TEST_FIXTURE(Test, testBottomBorders)
 {
-    loadAndSave("tdf129452_BottomBorders.docx");
+    createSwDoc("tdf129452_BottomBorders.docx");
+    save(TestFilter::DOCX);
     // tdf#129452: Do not omit bottom borders when a column in a table is vertically merged and
     // the inside borders are turned off.
 
@@ -1090,7 +1122,8 @@ CPPUNIT_TEST_FIXTURE(Test, testBottomBorders)
 
 CPPUNIT_TEST_FIXTURE(Test, testFontTypes)
 {
-    loadAndSave("tdf120344_FontTypes.docx");
+    createSwDoc("tdf120344_FontTypes.docx");
+    save(TestFilter::DOCX);
     // tdf#120344: Font type of numbering symbols can be different than the font type of the text.
 
     // Check the font type of the text, should be Consolas.
@@ -1104,7 +1137,8 @@ CPPUNIT_TEST_FIXTURE(Test, testFontTypes)
 
 CPPUNIT_TEST_FIXTURE(Test, testNumberingLevels)
 {
-    loadAndSave("tdf95495.docx");
+    createSwDoc("tdf95495.docx");
+    save(TestFilter::DOCX);
     xmlDocUniquePtr pXmlDocument = parseExport(u"word/document.xml"_ustr);
 
     // tdf#95495: set list level of the custom style based on the setting of the parent style
@@ -1123,7 +1157,8 @@ CPPUNIT_TEST_FIXTURE(Test, testNumberingLevels)
 
 CPPUNIT_TEST_FIXTURE(Test, testVerticalBorders)
 {
-    loadAndSave("calendar3.docx");
+    createSwDoc("calendar3.docx");
+    save(TestFilter::DOCX);
     // tdf#130799: Inside vertical borders of a table should not be missing.
 
     xmlDocUniquePtr pXmlDocument = parseExport(u"word/document.xml"_ustr);
@@ -1133,7 +1168,8 @@ CPPUNIT_TEST_FIXTURE(Test, testVerticalBorders)
 
 CPPUNIT_TEST_FIXTURE(Test, testArrowFlipXY)
 {
-    loadAndSave("tdf100751_arrowBothFlip.docx");
+    createSwDoc("tdf100751_arrowBothFlip.docx");
+    save(TestFilter::DOCX);
     // tdf#100751: Both x and y flip should happen.
 
     xmlDocUniquePtr pXmlDocument = parseExport(u"word/document.xml"_ustr);
@@ -1147,7 +1183,8 @@ CPPUNIT_TEST_FIXTURE(Test, testArrowFlipXY)
 
 CPPUNIT_TEST_FIXTURE(Test, testArrowPosition)
 {
-    loadAndSave("tdf104565_ArrowPosition.docx");
+    createSwDoc("tdf104565_ArrowPosition.docx");
+    save(TestFilter::DOCX);
     // tdf#104565: Test correct position.
     xmlDocUniquePtr pXmlDocument = parseExport(u"word/document.xml"_ustr);
 
@@ -1158,7 +1195,8 @@ CPPUNIT_TEST_FIXTURE(Test, testArrowPosition)
 
 CPPUNIT_TEST_FIXTURE(Test, testArrowMarker)
 {
-    loadAndSave("tdf123346_ArrowMarker.docx");
+    createSwDoc("tdf123346_ArrowMarker.docx");
+    save(TestFilter::DOCX);
     // tdf#123346: Check arrow marker.
 
     xmlDocUniquePtr pXmlDocument = parseExport(u"word/document.xml"_ustr);
@@ -1169,7 +1207,8 @@ CPPUNIT_TEST_FIXTURE(Test, testArrowMarker)
 
 CPPUNIT_TEST_FIXTURE(Test, testShapeLineWidth)
 {
-    loadAndSave("tdf92526_ShapeLineWidth.odt");
+    createSwDoc("tdf92526_ShapeLineWidth.odt");
+    save(TestFilter::DOCX);
     CPPUNIT_ASSERT_EQUAL(1, getShapes());
     CPPUNIT_ASSERT_EQUAL(1, getPages());
     // tdf#92526: Make sure that line with stays 0.
@@ -1182,7 +1221,8 @@ CPPUNIT_TEST_FIXTURE(Test, testShapeLineWidth)
 
 CPPUNIT_TEST_FIXTURE(Test, testRelativeAnchorWidthFromLeftMargin)
 {
-    loadAndSave("tdf132976_testRelativeAnchorWidthFromLeftMargin.docx");
+    createSwDoc("tdf132976_testRelativeAnchorWidthFromLeftMargin.docx");
+    save(TestFilter::DOCX);
     // tdf#132976 The size of the width of this shape should come from the size of the left margin.
     // It was set to the size of the width of the entire page before.
     xmlDocUniquePtr pXmlDoc = parseLayoutDump();
@@ -1191,7 +1231,8 @@ CPPUNIT_TEST_FIXTURE(Test, testRelativeAnchorWidthFromLeftMargin)
 
 CPPUNIT_TEST_FIXTURE(Test, testRelativeAnchorWidthFromInsideOutsideMargin)
 {
-    loadAndSave("tdf133861_RelativeAnchorWidthFromInsideOutsideMargin.docx");
+    createSwDoc("tdf133861_RelativeAnchorWidthFromInsideOutsideMargin.docx");
+    save(TestFilter::DOCX);
     // tdf#133863 tdf#133864 The sizes of the width of these shapes depend on the sizes of the inside and outside margins.
     // The open book: outside --text-- inside | inside --text-- outside
     xmlDocUniquePtr pXmlDoc = parseLayoutDump();
@@ -1207,7 +1248,8 @@ CPPUNIT_TEST_FIXTURE(Test, testRelativeAnchorWidthFromInsideOutsideMargin)
 
 CPPUNIT_TEST_FIXTURE(Test, testBodyPrUpright)
 {
-    loadAndSave("tdf123610_handle_upright.docx");
+    createSwDoc("tdf123610_handle_upright.docx");
+    save(TestFilter::DOCX);
     // tdf#123610: Check grab-bag attribute upright to keep text upright regardless of shape rotation.
 
     xmlDocUniquePtr pXmlDocument = parseExport(u"word/document.xml"_ustr);
@@ -1218,7 +1260,8 @@ CPPUNIT_TEST_FIXTURE(Test, testBodyPrUpright)
 
 CPPUNIT_TEST_FIXTURE(Test, testLostArrow)
 {
-    loadAndReload("tdf99810-lost-arrow.odt");
+    createSwDoc("tdf99810-lost-arrow.odt");
+    saveAndReload(TestFilter::DOCX);
     CPPUNIT_ASSERT_EQUAL(1, getShapes());
     CPPUNIT_ASSERT_EQUAL(1, getPages());
     // tdf#99810: check whether we use normal shape instead of connector shape if the XML namespace

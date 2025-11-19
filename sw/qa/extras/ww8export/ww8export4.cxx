@@ -46,14 +46,15 @@ class Test : public SwModelTestBase
 {
 public:
     Test()
-        : SwModelTestBase(u"/sw/qa/extras/ww8export/data/"_ustr, u"MS Word 97"_ustr)
+        : SwModelTestBase(u"/sw/qa/extras/ww8export/data/"_ustr)
     {
     }
 };
 
 CPPUNIT_TEST_FIXTURE(Test, testTdf77964)
 {
-    loadAndReload("tdf77964.doc");
+    createSwDoc("tdf77964.doc");
+    saveAndReload(TestFilter::DOC);
     // both images were loading as AT_PARA instead of AS_CHAR. Image2 visually had text wrapping.
     CPPUNIT_ASSERT_EQUAL(text::TextContentAnchorType_AS_CHARACTER, getProperty<text::TextContentAnchorType>(getShapeByName(u"Image2"), u"AnchorType"_ustr));
 }
@@ -265,7 +266,7 @@ CPPUNIT_TEST_FIXTURE(Test, testEndnotesAtSectEndDOC)
     }
 
     // When saving to DOC:
-    saveAndReload(u"MS Word 97"_ustr);
+    saveAndReload(TestFilter::DOC);
 
     // Then make sure the endnote position is section end:
     SwDoc* pDoc = getSwDoc();
@@ -329,7 +330,7 @@ CPPUNIT_TEST_FIXTURE(Test, testDontBreakWrappedTables)
     }
 
     // When saving to doc:
-    saveAndReload(u"MS Word 97"_ustr);
+    saveAndReload(TestFilter::DOC);
 
     // Then make sure the compat flag is serialized:
     SwDoc* pDoc = getSwDoc();
@@ -374,7 +375,7 @@ CPPUNIT_TEST_FIXTURE(Test, testFloattableOverlapNeverDOCExport)
     }
 
     // When saving to DOC:
-    saveAndReload(u"MS Word 97"_ustr);
+    saveAndReload(TestFilter::DOC);
 
     // Then make sure that the overlap=never markup is written:
     SwDoc* pDoc = getSwDoc();
@@ -439,7 +440,7 @@ CPPUNIT_TEST_FIXTURE(Test, testLegalNumbering)
 
     createSwDoc("listWithLgl.doc");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::DOC);
     verify();
 }
 
@@ -449,7 +450,7 @@ CPPUNIT_TEST_FIXTURE(Test, testDOCExportDoNotMirrorRtlDrawObjs)
     createSwDoc("draw-obj-rtl-no-mirror-vml.docx");
 
     // When saving that to DOC:
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::DOC);
 
     // Then make sure the shape is on the right margin:
     xmlDocUniquePtr pXmlDoc = parseLayoutDump();
@@ -513,13 +514,13 @@ CPPUNIT_TEST_FIXTURE(Test, testEmptyGroup)
     CPPUNIT_ASSERT_EQUAL(size_t(0), pObject->GetSubList()->GetObjCount());
 
     // it must not assert/crash on save
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::DOC);
 }
 
 CPPUNIT_TEST_FIXTURE(Test, testTdf135709)
 {
     createSwDoc("tdf135709.odt");
-    saveAndReload("MS Word 97");
+    saveAndReload(TestFilter::DOC);
 
     uno::Reference<text::XTextFramesSupplier> xTextFramesSupplier(mxComponent, uno::UNO_QUERY);
     uno::Reference<beans::XPropertySet> xPropertySet(xTextFramesSupplier->getTextFrames()->getByName("Frame1") , uno::UNO_QUERY);
@@ -536,7 +537,7 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf135710)
 {
     // Uses same test doc as testTdf135709
     createSwDoc("tdf135709.odt");
-    saveAndReload("MS Word 97");
+    saveAndReload(TestFilter::DOC);
 
     xmlDocUniquePtr pXmlDoc = parseLayoutDump();
 
@@ -599,7 +600,7 @@ nde muito parto na água. Tb posso fazer porcentagem de atendimento..."_ustr);
     // make sure everything survives roundtrip
     createSwDoc("tdf56738.doc");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::DOC);
     verify();
 }
 
@@ -610,7 +611,7 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf120629)
     sal_Int16 numFormat = getNumberingTypeOfParagraph(1);
     CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int16>(56), numFormat);
 
-    saveAndReload("MS Word 97");
+    saveAndReload(TestFilter::DOC);
     sal_Int16 numFormat_after = getNumberingTypeOfParagraph(1);
     // Without the fix in place this fails with
     // Expected: 56
@@ -641,7 +642,7 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf54862)
     };
 
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::DOC);
     verify();
 }
 
@@ -664,7 +665,7 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf80596)
     };
 
     fnVerify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::DOC);
     fnVerify();
 }
 
@@ -687,7 +688,7 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf80596Hanging)
     };
 
     fnVerify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::DOC);
     fnVerify();
 }
 
@@ -706,7 +707,7 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf88908)
         CPPUNIT_ASSERT(!rIDSA.get(DocumentSettingId::BALANCE_SPACES_AND_IDEOGRAPHIC_SPACES));
     }
 
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::DOC);
 
     {
         SwDoc* pDoc = getSwDoc();
@@ -716,7 +717,7 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf88908)
         rIDSA.set(DocumentSettingId::BALANCE_SPACES_AND_IDEOGRAPHIC_SPACES, true);
     }
 
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::DOC);
 
     {
         SwDoc* pDoc = getSwDoc();
@@ -738,7 +739,7 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf166620)
     // Exporting to a Word format, a tab is prepended to the endnote text. When imported, the
     // NoGapAfterNoteNumber compatibility flag is enabled; and the exported tab is the only thing
     // that separates the number and the text. The tab must not be stripped away on import.
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::DOC);
     {
         auto xFactory = mxComponent.queryThrow<lang::XMultiServiceFactory>();
         auto xSettings = xFactory->createInstance(u"com.sun.star.document.Settings"_ustr);
@@ -751,7 +752,7 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf166620)
         CPPUNIT_ASSERT_EQUAL(u"\tEndnote text"_ustr, xEndnoteText->getString());
     }
     // Do a second round-trip. It must not duplicate the tab.
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::DOC);
     {
         auto xFactory = mxComponent.queryThrow<lang::XMultiServiceFactory>();
         auto xSettings = xFactory->createInstance(u"com.sun.star.document.Settings"_ustr);
@@ -767,7 +768,7 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf166620)
         xEndnoteText->setString(u"Endnote text"_ustr);
     }
     // Do a third round-trip. It must not introduce the tab, because of the compatibility flag.
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::DOC);
     {
         auto xFactory = mxComponent.queryThrow<lang::XMultiServiceFactory>();
         auto xSettings = xFactory->createInstance(u"com.sun.star.document.Settings"_ustr);
@@ -796,7 +797,7 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf167297)
     };
 
     fnVerify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::DOC);
     fnVerify();
 }
 
@@ -816,7 +817,7 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf167583)
     fnVerify(true);
 
     // Check that the value is persisted across save-reload
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::DOC);
     fnVerify(true);
 
     // Unset the compat flag
@@ -828,7 +829,7 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf167583)
     }
 
     fnVerify(false);
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::DOC);
     fnVerify(false);
 }
 

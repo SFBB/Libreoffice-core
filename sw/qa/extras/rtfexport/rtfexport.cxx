@@ -41,7 +41,7 @@ class Test : public SwModelTestBase
 {
 public:
     Test()
-        : SwModelTestBase(u"/sw/qa/extras/rtfexport/data/"_ustr, u"Rich Text Format"_ustr)
+        : SwModelTestBase(u"/sw/qa/extras/rtfexport/data/"_ustr)
     {
     }
 };
@@ -59,7 +59,7 @@ CPPUNIT_TEST_FIXTURE(Test, testZoom)
     };
     createSwDoc("zoom.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
@@ -68,7 +68,7 @@ CPPUNIT_TEST_FIXTURE(Test, testFdo38176)
     auto verify = [this]() { CPPUNIT_ASSERT_EQUAL(u"foo ‑­bar"_ustr, getBodyText()); };
     createSwDoc("fdo38176.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
@@ -86,7 +86,7 @@ CPPUNIT_TEST_FIXTURE(Test, testFdo49683)
     };
     createSwDoc("fdo49683.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
@@ -104,7 +104,7 @@ CPPUNIT_TEST_FIXTURE(Test, testFdo50087)
     };
     createSwDoc("fdo50087.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
@@ -122,13 +122,14 @@ CPPUNIT_TEST_FIXTURE(Test, testFdo50831)
     };
     createSwDoc("fdo50831.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
 CPPUNIT_TEST_FIXTURE(Test, testFdo48335)
 {
-    loadAndReload("fdo48335.odt");
+    createSwDoc("fdo48335.odt");
+    saveAndReload(TestFilter::RTF);
     CPPUNIT_ASSERT_EQUAL(3, getPages());
     /*
      * The problem was that we exported a fake pagebreak, make sure it's just a soft one now.
@@ -187,13 +188,14 @@ CPPUNIT_TEST_FIXTURE(Test, testFdo38244)
     };
     createSwDoc("fdo38244.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
 CPPUNIT_TEST_FIXTURE(Test, testCommentsNested)
 {
-    loadAndReload("comments-nested.odt");
+    createSwDoc("comments-nested.odt");
+    saveAndReload(TestFilter::RTF);
     CPPUNIT_ASSERT_EQUAL(1, getPages());
     uno::Reference<beans::XPropertySet> xOuter = getProperty<uno::Reference<beans::XPropertySet>>(
         getRun(getParagraph(1), 2), u"TextField"_ustr);
@@ -215,13 +217,14 @@ CPPUNIT_TEST_FIXTURE(Test, testMathAccents)
     };
     createSwDoc("math-accents.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
 CPPUNIT_TEST_FIXTURE(Test, testMathEqarray)
 {
-    loadAndReload("math-eqarray.rtf");
+    createSwDoc("math-eqarray.rtf");
+    saveAndReload(TestFilter::RTF);
     OUString aActual = getFormula(getRun(getParagraph(1), 1));
     CPPUNIT_ASSERT_EQUAL(
         u"y \"=\" left lbrace stack { 0 , x \"<\" 0 # 1 , x \"=\" 0 # {x} ^ {2} , x \">\" 0 } right none"_ustr,
@@ -241,20 +244,22 @@ CPPUNIT_TEST_FIXTURE(Test, testMathD)
     };
     createSwDoc("math-d.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
 CPPUNIT_TEST_FIXTURE(Test, testMathEscaping)
 {
-    loadAndReload("math-escaping.rtf");
+    createSwDoc("math-escaping.rtf");
+    saveAndReload(TestFilter::RTF);
     OUString aActual = getFormula(getRun(getParagraph(1), 1));
     CPPUNIT_ASSERT_EQUAL(u"\u00E1 \\{"_ustr, aActual);
 }
 
 CPPUNIT_TEST_FIXTURE(Test, testMathLim)
 {
-    loadAndReload("math-lim.rtf");
+    createSwDoc("math-lim.rtf");
+    saveAndReload(TestFilter::RTF);
     OUString aActual = getFormula(getRun(getParagraph(1), 1));
     CPPUNIT_ASSERT_EQUAL(u"lim from {x \u2192 1} {x}"_ustr, aActual);
 }
@@ -267,7 +272,7 @@ CPPUNIT_TEST_FIXTURE(Test, testMathMatrix)
     };
     createSwDoc("math-matrix.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
@@ -279,13 +284,14 @@ CPPUNIT_TEST_FIXTURE(Test, testMathBox)
     };
     createSwDoc("math-mbox.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
 CPPUNIT_TEST_FIXTURE(Test, testMathMso2007)
 {
-    loadAndReload("math-mso2007.rtf");
+    createSwDoc("math-mso2007.rtf");
+    saveAndReload(TestFilter::RTF);
     OUString aActual = getFormula(getRun(getParagraph(1), 1));
     OUString aExpected(u"A \"=\" \u03C0 {r} ^ {2}"_ustr);
     CPPUNIT_ASSERT_EQUAL(aExpected, aActual);
@@ -336,7 +342,8 @@ CPPUNIT_TEST_FIXTURE(Test, testMathMso2007)
 
 CPPUNIT_TEST_FIXTURE(Test, testMathNary)
 {
-    loadAndReload("math-nary.rtf");
+    createSwDoc("math-nary.rtf");
+    saveAndReload(TestFilter::RTF);
     OUString aActual = getFormula(getRun(getParagraph(1), 1));
     CPPUNIT_ASSERT_EQUAL(
         u"lllint from {1} to {2} {x \"+\" 1} prod from {a} {b} sum to {2} {x}"_ustr, aActual);
@@ -353,7 +360,7 @@ CPPUNIT_TEST_FIXTURE(Test, testMathLimupp)
     };
     createSwDoc("math-limupp.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
@@ -365,7 +372,7 @@ CPPUNIT_TEST_FIXTURE(Test, testMathStrikeh)
     };
     createSwDoc("math-strikeh.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
@@ -377,13 +384,14 @@ CPPUNIT_TEST_FIXTURE(Test, testMathPlaceholders)
     };
     createSwDoc("math-placeholders.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
 CPPUNIT_TEST_FIXTURE(Test, testMathRad)
 {
-    loadAndReload("math-rad.rtf");
+    createSwDoc("math-rad.rtf");
+    saveAndReload(TestFilter::RTF);
     OUString aActual = getFormula(getRun(getParagraph(1), 1));
     CPPUNIT_ASSERT_EQUAL(u"sqrt {4} nroot {3} {x \"+\" 1}"_ustr, aActual);
 }
@@ -396,7 +404,7 @@ CPPUNIT_TEST_FIXTURE(Test, testMathSepchr)
     };
     createSwDoc("math-sepchr.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
@@ -412,13 +420,14 @@ CPPUNIT_TEST_FIXTURE(Test, testMathSubscripts)
     };
     createSwDoc("math-subscripts.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
 CPPUNIT_TEST_FIXTURE(Test, testMathVerticalstacks)
 {
-    loadAndReload("math-vertical-stacks.rtf");
+    createSwDoc("math-vertical-stacks.rtf");
+    saveAndReload(TestFilter::RTF);
     CPPUNIT_ASSERT_EQUAL(u"{a} over {b}"_ustr, getFormula(getRun(getParagraph(1), 1)));
     CPPUNIT_ASSERT_EQUAL(u"{a} / {b}"_ustr, getFormula(getRun(getParagraph(2), 1)));
     CPPUNIT_ASSERT_EQUAL(u"stack { a # b }"_ustr, getFormula(getRun(getParagraph(3), 1)));
@@ -460,13 +469,14 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf49073)
     };
     createSwDoc("tdf49073.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
 CPPUNIT_TEST_FIXTURE(Test, testMathRuns)
 {
-    loadAndReload("math-runs.rtf");
+    createSwDoc("math-runs.rtf");
+    saveAndReload(TestFilter::RTF);
     // was [](){}, i.e. first curly bracket had an incorrect position
     CPPUNIT_ASSERT_EQUAL(u"\\{ \\[ \\] \\( \\) \\}"_ustr, getFormula(getRun(getParagraph(1), 1)));
 }
@@ -474,14 +484,16 @@ CPPUNIT_TEST_FIXTURE(Test, testMathRuns)
 // Saving left and right for parentheses when importing not from the m:t tag (rtf)
 CPPUNIT_TEST_FIXTURE(Test, testTdf158023_rtf)
 {
-    loadAndReload("tdf158023.rtf");
+    createSwDoc("tdf158023.rtf");
+    saveAndReload(TestFilter::RTF);
     CPPUNIT_ASSERT_EQUAL(u"left [a right ] left (b right ) left lbrace c right rbrace"_ustr,
                          getFormula(getRun(getParagraph(1), 1)));
 }
 
 CPPUNIT_TEST_FIXTURE(Test, testFdo77979)
 {
-    loadAndReload("fdo77979.odt");
+    createSwDoc("fdo77979.odt");
+    saveAndReload(TestFilter::RTF);
     CPPUNIT_ASSERT_EQUAL(1, getPages());
     // font name is encoded with \fcharset of font
     CPPUNIT_ASSERT_EQUAL(u"\u5FAE\u8F6F\u96C5\u9ED1"_ustr,
@@ -490,7 +502,8 @@ CPPUNIT_TEST_FIXTURE(Test, testFdo77979)
 
 CPPUNIT_TEST_FIXTURE(Test, testFdo53113)
 {
-    loadAndReload("fdo53113.odt");
+    createSwDoc("fdo53113.odt");
+    saveAndReload(TestFilter::RTF);
     CPPUNIT_ASSERT_EQUAL(1, getShapes());
     CPPUNIT_ASSERT_EQUAL(1, getPages());
     /*
@@ -525,7 +538,8 @@ CPPUNIT_TEST_FIXTURE(Test, testFdo53113)
 
 CPPUNIT_TEST_FIXTURE(Test, testFdo55939)
 {
-    loadAndReload("fdo55939.odt");
+    createSwDoc("fdo55939.odt");
+    saveAndReload(TestFilter::RTF);
     CPPUNIT_ASSERT_EQUAL(1, getPages());
     // The problem was that the exported RTF was invalid.
     // Also, the 'Footnote text.' had an additional newline at its end.
@@ -543,7 +557,8 @@ CPPUNIT_TEST_FIXTURE(Test, testFdo55939)
 
 CPPUNIT_TEST_FIXTURE(Test, testTextFrames)
 {
-    loadAndReload("textframes.odt");
+    createSwDoc("textframes.odt");
+    saveAndReload(TestFilter::RTF);
     CPPUNIT_ASSERT_EQUAL(3, getShapes());
     CPPUNIT_ASSERT_EQUAL(1, getPages());
     // The output was simply invalid, so let's check if all 3 frames were imported back.
@@ -555,7 +570,8 @@ CPPUNIT_TEST_FIXTURE(Test, testTextFrames)
 
 CPPUNIT_TEST_FIXTURE(Test, testFdo53604)
 {
-    loadAndReload("fdo53604.odt");
+    createSwDoc("fdo53604.odt");
+    saveAndReload(TestFilter::RTF);
     CPPUNIT_ASSERT_EQUAL(1, getPages());
     // Invalid output on empty footnote.
     uno::Reference<text::XFootnotesSupplier> xFootnotesSupplier(mxComponent, uno::UNO_QUERY);
@@ -565,7 +581,8 @@ CPPUNIT_TEST_FIXTURE(Test, testFdo53604)
 
 CPPUNIT_TEST_FIXTURE(Test, testFdo52286)
 {
-    loadAndReload("fdo52286.odt");
+    createSwDoc("fdo52286.odt");
+    saveAndReload(TestFilter::RTF);
     CPPUNIT_ASSERT_EQUAL(1, getPages());
     // The problem was that font size wasn't reduced in sub/super script.
     CPPUNIT_ASSERT_EQUAL(sal_Int32(58), getProperty<sal_Int32>(getRun(getParagraph(1), 2),
@@ -595,7 +612,7 @@ CPPUNIT_TEST_FIXTURE(Test, testFdo61507)
     };
     createSwDoc("fdo61507.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
@@ -611,13 +628,14 @@ CPPUNIT_TEST_FIXTURE(Test, testFdo30983)
     };
     createSwDoc("fdo30983.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
 CPPUNIT_TEST_FIXTURE(Test, testPlaceholder)
 {
-    loadAndReload("placeholder.odt");
+    createSwDoc("placeholder.odt");
+    saveAndReload(TestFilter::RTF);
     CPPUNIT_ASSERT_EQUAL(1, getPages());
     // Only the field text was exported, make sure we still have a field with the correct Hint text.
     uno::Reference<text::XTextRange> xRun(getRun(getParagraph(1), 2));
@@ -638,7 +656,7 @@ CPPUNIT_TEST_FIXTURE(Test, testMnor)
     };
     createSwDoc("mnor.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
@@ -668,7 +686,7 @@ CPPUNIT_TEST_FIXTURE(Test, testI120928)
     };
     createSwDoc("i120928.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
@@ -682,7 +700,7 @@ CPPUNIT_TEST_FIXTURE(Test, testBookmark)
     };
     createSwDoc("bookmark.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
@@ -701,7 +719,7 @@ CPPUNIT_TEST_FIXTURE(Test, testHyperlink)
     };
     createSwDoc("hyperlink.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
@@ -721,7 +739,7 @@ CPPUNIT_TEST_FIXTURE(Test, testHyperlinkTdf100105)
     };
     createSwDoc("hyperlink_empty.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
@@ -741,7 +759,7 @@ CPPUNIT_TEST_FIXTURE(Test, test78758)
     };
     createSwDoc("fdo78758.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
@@ -766,7 +784,7 @@ CPPUNIT_TEST_FIXTURE(Test, testTextFrameBorders)
     };
     createSwDoc("textframe-borders.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
@@ -804,14 +822,15 @@ CPPUNIT_TEST_FIXTURE(Test, testTextframeGradient)
     };
     createSwDoc("textframe-gradient.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
 CPPUNIT_TEST_FIXTURE(Test, testTdf159824_axialGradient)
 {
     // given a frame with an axial gradient (white - green - white)
-    loadAndReload("tdf159824_axialGradient.odt");
+    createSwDoc("tdf159824_axialGradient.odt");
+    saveAndReload(TestFilter::RTF);
 
     uno::Reference<text::XTextFramesSupplier> xTextFramesSupplier(mxComponent, uno::UNO_QUERY);
     uno::Reference<container::XIndexAccess> xIndexAccess(xTextFramesSupplier->getTextFrames(),
@@ -835,7 +854,7 @@ CPPUNIT_TEST_FIXTURE(Test, testRecordChanges)
     };
     createSwDoc("record-changes.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
@@ -856,7 +875,7 @@ CPPUNIT_TEST_FIXTURE(Test, testTextframeTable)
     };
     createSwDoc("textframe-table.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
@@ -881,7 +900,7 @@ CPPUNIT_TEST_FIXTURE(Test, testFdo66682)
     };
     createSwDoc("fdo66682.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
@@ -897,13 +916,14 @@ CPPUNIT_TEST_FIXTURE(Test, testParaShadow)
     };
     createSwDoc("para-shadow.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
 CPPUNIT_TEST_FIXTURE(Test, testCharacterBorder)
 {
-    loadAndReload("charborder.odt");
+    createSwDoc("charborder.odt");
+    saveAndReload(TestFilter::RTF);
     CPPUNIT_ASSERT_EQUAL(1, getPages());
     uno::Reference<beans::XPropertySet> xRun(getRun(getParagraph(1), 1), uno::UNO_QUERY);
     // RTF has just one border attribute (chbrdr) for text border so all side has
@@ -959,7 +979,7 @@ CPPUNIT_TEST_FIXTURE(Test, testFdo66743)
     };
     createSwDoc("fdo66743.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
@@ -974,7 +994,7 @@ CPPUNIT_TEST_FIXTURE(Test, testFdo68787)
     };
     createSwDoc("fdo68787.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
@@ -988,13 +1008,14 @@ CPPUNIT_TEST_FIXTURE(Test, testFdo74709)
     };
     createSwDoc("fdo74709.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
 CPPUNIT_TEST_FIXTURE(Test, testTdf84832)
 {
-    loadAndReload("tdf84832.docx");
+    createSwDoc("tdf84832.docx");
+    saveAndReload(TestFilter::RTF);
     uno::Reference<table::XCell> xCell = getCell(getParagraphOrTable(2), u"A1"_ustr);
     // This was 0, as left padding wasn't exported.
     CPPUNIT_ASSERT_EQUAL(sal_Int32(convertTwipToMm100(108)),
@@ -1014,7 +1035,7 @@ CPPUNIT_TEST_FIXTURE(Test, testRelsize)
     };
     createSwDoc("relsize.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
@@ -1030,7 +1051,7 @@ CPPUNIT_TEST_FIXTURE(Test, testLineNumbering)
     };
     createSwDoc("linenumbering.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
@@ -1043,7 +1064,7 @@ CPPUNIT_TEST_FIXTURE(Test, testFdo77600)
     };
     createSwDoc("fdo77600.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
@@ -1055,13 +1076,14 @@ CPPUNIT_TEST_FIXTURE(Test, testFdo80167)
     };
     createSwDoc("fdo80167.rtf");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::RTF);
     verify();
 }
 
 CPPUNIT_TEST_FIXTURE(Test, testFdo32613)
 {
-    loadAndReload("fdo32613.odt");
+    createSwDoc("fdo32613.odt");
+    saveAndReload(TestFilter::RTF);
     CPPUNIT_ASSERT_EQUAL(1, getShapes());
     CPPUNIT_ASSERT_EQUAL(1, getPages());
     // This was AS_CHARACTER, RTF export did not support writing anchored pictures.

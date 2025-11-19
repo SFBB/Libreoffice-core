@@ -115,7 +115,7 @@ class SwUnoWriter : public SwModelTestBase
 {
 public:
     SwUnoWriter()
-        : SwModelTestBase(u"/sw/qa/extras/unowriter/data/"_ustr, u"writer8"_ustr)
+        : SwModelTestBase(u"/sw/qa/extras/unowriter/data/"_ustr)
     {
     }
 };
@@ -1554,7 +1554,7 @@ CPPUNIT_TEST_FIXTURE(SwUnoWriter, testTdf164921)
         xStorable->storeToURL(maTempFile.GetURL(), aMediaDescriptor.getAsConstPropertyValueList());
     }
     {
-        saveAndReload(u"writer8"_ustr);
+        saveAndReload(TestFilter::ODT);
 
         uno::Reference<style::XStyleFamiliesSupplier> xSFS(mxComponent, uno::UNO_QUERY);
         uno::Reference<container::XNameContainer> xListStyles(

@@ -76,7 +76,7 @@ typedef std::pair<OUString, css::uno::Sequence< css::table::BorderLine> > String
 class Test : public SwModelTestBase
 {
     public:
-        Test() : SwModelTestBase(u"/sw/qa/extras/odfimport/data/"_ustr, u"writer8"_ustr) {}
+        Test() : SwModelTestBase(u"/sw/qa/extras/odfimport/data/"_ustr) {}
 };
 
 CPPUNIT_TEST_FIXTURE(Test, testEmptySvgFamilyName)
@@ -1335,7 +1335,7 @@ CPPUNIT_TEST_FIXTURE(Test, testVerticallyMergedCellBorder)
     CPPUNIT_ASSERT(!rA2Set.GetBox().GetRight());
 
     // Given this document model, when exporting to ODT:
-    save(u"writer8"_ustr);
+    save(TestFilter::ODT);
 
     // Then make sure the covered cell has a style.
     xmlDocUniquePtr pXmlSettings = parseExport(u"content.xml"_ustr);

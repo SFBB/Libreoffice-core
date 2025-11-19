@@ -37,6 +37,7 @@ constexpr auto IgnoredList
         { u"modules/scalc/ui/dropmenu.ui"}, // Calc -> Navigator -> right click
         { u"modules/sdraw/ui/navigatorcontextmenu.ui" }, // Impress -> Navigator -> right click
         { u"modules/swriter/ui/navigatorcontextmenu.ui" }, // Writer -> Navigator -> right click
+        { u"sfx/ui/quickfind.ui" },
     });
 
 // ========== MOBILE DIALOGS ================================================= //
@@ -245,6 +246,7 @@ constexpr auto SwriterDialogList
         { u"modules/swriter/ui/paradialog.ui" },
         { u"modules/swriter/ui/picturedialog.ui" },
         { u"modules/swriter/ui/picturepage.ui" },
+        { u"modules/swriter/ui/renameobjectdialog.ui" },
         { u"modules/swriter/ui/sectionpage.ui" },
         { u"modules/swriter/ui/sortdialog.ui" },
         { u"modules/swriter/ui/splittable.ui" },
@@ -477,6 +479,13 @@ constexpr auto NavigatorList
         { u"modules/simpress/ui/navigatorpanel.ui"}
 });
 
+// ========== QUICKFIND ================================================= //
+constexpr auto QuickFindList
+    = frozen::make_unordered_set<std::u16string_view>({
+        { u"modules/swriter/ui/sidebarquickfind.ui" },
+});
+
+
 // ========== NOTEBOOKBAR ================================================= //
 
 constexpr auto NotebookbarList
@@ -599,6 +608,11 @@ bool isBuilderEnabledForSidebar(std::u16string_view rUIFile)
 bool isBuilderEnabledForNavigator(std::u16string_view rUIFile)
 {
         return isInMap(NavigatorList, rUIFile);
+}
+
+bool isBuilderEnabledForQuickFind(std::u16string_view rUIFile)
+{
+    return isInMap(QuickFindList, rUIFile);
 }
 
 bool isInterimBuilderEnabledForNotebookbar(std::u16string_view rUIFile)

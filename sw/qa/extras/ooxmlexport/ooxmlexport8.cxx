@@ -44,7 +44,7 @@
 class Test : public SwModelTestBase
 {
 public:
-    Test() : SwModelTestBase(u"/sw/qa/extras/ooxmlexport/data/"_ustr, u"Office Open XML Text"_ustr) {}
+    Test() : SwModelTestBase(u"/sw/qa/extras/ooxmlexport/data/"_ustr) {}
 };
 
 DECLARE_OOXMLEXPORT_TEST(testN751054, "n751054.docx")
@@ -55,7 +55,8 @@ DECLARE_OOXMLEXPORT_TEST(testN751054, "n751054.docx")
 
 CPPUNIT_TEST_FIXTURE(Test, testTdf48569)
 {
-    loadAndReload("tdf48569.odt");
+    createSwDoc("tdf48569.odt");
+    saveAndReload(TestFilter::DOCX);
     CPPUNIT_ASSERT_EQUAL(2, getShapes());
     CPPUNIT_ASSERT_EQUAL(1, getPages());
     // File crashing while saving in LO
@@ -437,7 +438,8 @@ DECLARE_OOXMLEXPORT_TEST(testTDF91122, "tdf91122.docx")
 
 CPPUNIT_TEST_FIXTURE(Test, testFdo76803)
 {
-    loadAndReload("fdo76803.docx");
+    createSwDoc("fdo76803.docx");
+    saveAndReload(TestFilter::DOCX);
     // The ContourPolyPolygon was wrong
     uno::Reference<beans::XPropertySet> xPropertySet(getShape(1), uno::UNO_QUERY);
 
@@ -719,7 +721,7 @@ CPPUNIT_TEST_FIXTURE(Test, testN779642)
     };
     createSwDoc("n779642.docx");
     verify();
-    saveAndReload(u"Office Open XML Text"_ustr);
+    saveAndReload(TestFilter::DOCX);
     verify();
 }
 
@@ -990,7 +992,7 @@ CPPUNIT_TEST_FIXTURE(Test, testN820509)
     }
     CPPUNIT_ASSERT_EQUAL(u"M.d.yyyy"_ustr, sDateFormat);
 
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::DOCX);
 
     uno::Reference<text::XTextTablesSupplier> xTablesSupplier(mxComponent, uno::UNO_QUERY);
     uno::Reference<container::XIndexAccess> xTables(xTablesSupplier->getTextTables(), uno::UNO_QUERY);

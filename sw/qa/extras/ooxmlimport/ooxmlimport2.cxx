@@ -53,7 +53,7 @@ class Test : public SwModelTestBase
 {
 public:
     Test()
-        : SwModelTestBase(u"/sw/qa/extras/ooxmlimport/data/"_ustr, u"Office Open XML Text"_ustr)
+        : SwModelTestBase(u"/sw/qa/extras/ooxmlimport/data/"_ustr)
     {
     }
 };
@@ -767,7 +767,7 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf158023Import)
     createSwDoc("tdf158023_import.docx");
     verify();
 
-    saveAndReload(u"Office Open XML Text"_ustr);
+    saveAndReload(TestFilter::DOCX);
     verifyReload();
 }
 

@@ -28,14 +28,15 @@ class Test : public SwModelTestBase
 {
 public:
     Test()
-        : SwModelTestBase(u"/sw/qa/extras/ooxmlexport/data/"_ustr, u"Office Open XML Text"_ustr)
+        : SwModelTestBase(u"/sw/qa/extras/ooxmlexport/data/"_ustr)
     {
     }
 };
 
 CPPUNIT_TEST_FIXTURE(Test, testfdo79969_xlsb)
 {
-    loadAndSave("fdo79969_xlsb.docx");
+    createSwDoc("fdo79969_xlsb.docx");
+    save(TestFilter::DOCX);
     // This UT for DOCX embedded with binary excel work sheet.
     xmlDocUniquePtr pXmlDoc = parseExport(u"[Content_Types].xml"_ustr);
 
@@ -57,7 +58,8 @@ CPPUNIT_TEST_FIXTURE(Test, testfdo79969_xlsb)
 
 CPPUNIT_TEST_FIXTURE(Test, testfdo80097)
 {
-    loadAndSave("fdo80097.docx");
+    createSwDoc("fdo80097.docx");
+    save(TestFilter::DOCX);
     //fdo#76635 : Table borders are not getting preserved.
 
     xmlDocUniquePtr pXmlDocument = parseExport(u"word/document.xml"_ustr);
@@ -109,7 +111,8 @@ CPPUNIT_TEST_FIXTURE(Test, testfdo80097)
 
 CPPUNIT_TEST_FIXTURE(Test, testTdf95033)
 {
-    loadAndSave("tdf95033.docx");
+    createSwDoc("tdf95033.docx");
+    save(TestFilter::DOCX);
     //tdf#95033 : Table borders defined by row-level tblPrEx are not getting preserved.
 
     xmlDocUniquePtr pXmlDocument = parseExport(u"word/document.xml"_ustr);
@@ -137,7 +140,8 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf95033)
 
 CPPUNIT_TEST_FIXTURE(Test, testTdf133455)
 {
-    loadAndSave("tdf133455.docx");
+    createSwDoc("tdf133455.docx");
+    save(TestFilter::DOCX);
     xmlDocUniquePtr pXmlDocument = parseExport(u"word/document.xml"_ustr);
 
     //Not disabled table cell borders
@@ -169,7 +173,8 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf133455)
 
 CPPUNIT_TEST_FIXTURE(Test, testTdf138612)
 {
-    loadAndSave("tdf138612.docx");
+    createSwDoc("tdf138612.docx");
+    save(TestFilter::DOCX);
     xmlDocUniquePtr pXmlDocument = parseExport(u"word/document.xml"_ustr);
 
     // Row 5 Col 1 - vertically merged cell
@@ -192,7 +197,8 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf138612)
 
 CPPUNIT_TEST_FIXTURE(Test, testTdf140597)
 {
-    loadAndSave("tdf140597.docx");
+    createSwDoc("tdf140597.docx");
+    save(TestFilter::DOCX);
     xmlDocUniquePtr pXmlDocument = parseExport(u"word/document.xml"_ustr);
 
     // There were missing tblPrEx table exception borders
@@ -209,7 +215,8 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf140597)
 
 CPPUNIT_TEST_FIXTURE(Test, testTdf128646)
 {
-    loadAndSave("tdf128646.docx");
+    createSwDoc("tdf128646.docx");
+    save(TestFilter::DOCX);
     // The problem was that not hidden shapes anchored to empty hidden paragraphs were imported as hidden.
     xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
 
@@ -246,7 +253,8 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf128646)
 
 CPPUNIT_TEST_FIXTURE(Test, testTdf119800)
 {
-    loadAndSave("tdf119800.docx");
+    createSwDoc("tdf119800.docx");
+    save(TestFilter::DOCX);
     // The problem was that not hidden shapes anchored to empty hidden paragraphs were imported as hidden.
     // (tdf#128646 solved the same only for table paragraphs)
     xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
@@ -258,7 +266,8 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf119800)
 
 CPPUNIT_TEST_FIXTURE(Test, testTdf131728)
 {
-    loadAndSave("tdf131728.docx");
+    createSwDoc("tdf131728.docx");
+    save(TestFilter::DOCX);
     // Inline paragraphs specified by w:specVanish were loaded as not
     // inline paragraphs, breaking the paragraph layout. Use ODF text
     // frame to keep the paragraph layout, where the frame contains the
@@ -271,7 +280,8 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf131728)
 
 CPPUNIT_TEST_FIXTURE(Test, testTdf48459)
 {
-    loadAndSave("tdf48459.fodt");
+    createSwDoc("tdf48459.fodt");
+    save(TestFilter::DOCX);
     // export Inline Heading frame style as style separator
     xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
 
@@ -282,7 +292,8 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf48459)
 
 CPPUNIT_TEST_FIXTURE(Test, testTdf164901)
 {
-    loadAndSave("tdf164901.docx");
+    createSwDoc("tdf164901.docx");
+    save(TestFilter::DOCX);
     xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
 
     // This was 0 (lost floating table because of containing a style separator)
@@ -291,7 +302,8 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf164901)
 
 CPPUNIT_TEST_FIXTURE(Test, testFdo77129)
 {
-    loadAndSave("fdo77129.docx");
+    createSwDoc("fdo77129.docx");
+    save(TestFilter::DOCX);
     // The problem was that text after TOC field was missing if footer reference  comes in field.
     xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
 
@@ -328,7 +340,8 @@ DECLARE_OOXMLEXPORT_TEST(testTdf129402, "fdo77129.docx")
 
 CPPUNIT_TEST_FIXTURE(Test, testfdo79969_xlsm)
 {
-    loadAndSave("fdo79969_xlsm.docx");
+    createSwDoc("fdo79969_xlsm.docx");
+    save(TestFilter::DOCX);
     // This UT for DOCX embedded with excel work sheet.
     xmlDocUniquePtr pXmlDoc = parseExport(u"[Content_Types].xml"_ustr);
 
@@ -350,7 +363,8 @@ CPPUNIT_TEST_FIXTURE(Test, testfdo79969_xlsm)
 
 CPPUNIT_TEST_FIXTURE(Test, testfdo80522)
 {
-    loadAndReload("fdo80522.docx");
+    createSwDoc("fdo80522.docx");
+    saveAndReload(TestFilter::DOCX);
     xmlDocUniquePtr pXmlDoc = parseExport(u"[Content_Types].xml"_ustr);
 
     assertXPath(pXmlDoc,
@@ -371,7 +385,8 @@ CPPUNIT_TEST_FIXTURE(Test, testfdo80522)
 
 CPPUNIT_TEST_FIXTURE(Test, testfdo80523_pptm)
 {
-    loadAndReload("fdo80523_pptm.docx");
+    createSwDoc("fdo80523_pptm.docx");
+    saveAndReload(TestFilter::DOCX);
     xmlDocUniquePtr pXmlDoc = parseExport(u"[Content_Types].xml"_ustr);
 
     assertXPath(pXmlDoc,
@@ -392,7 +407,8 @@ CPPUNIT_TEST_FIXTURE(Test, testfdo80523_pptm)
 
 CPPUNIT_TEST_FIXTURE(Test, testfdo80523_sldm)
 {
-    loadAndReload("fdo80523_sldm.docx");
+    createSwDoc("fdo80523_sldm.docx");
+    saveAndReload(TestFilter::DOCX);
     xmlDocUniquePtr pXmlDoc = parseExport(u"[Content_Types].xml"_ustr);
 
     assertXPath(pXmlDoc,
@@ -413,7 +429,8 @@ CPPUNIT_TEST_FIXTURE(Test, testfdo80523_sldm)
 
 CPPUNIT_TEST_FIXTURE(Test, testfdo80898)
 {
-    loadAndSave("fdo80898.docx");
+    createSwDoc("fdo80898.docx");
+    save(TestFilter::DOCX);
     // This UT for DOCX embedded with binary excel work sheet.
     xmlDocUniquePtr pXmlDoc = parseExport(u"[Content_Types].xml"_ustr);
 
@@ -434,7 +451,8 @@ CPPUNIT_TEST_FIXTURE(Test, testfdo80898)
 
 CPPUNIT_TEST_FIXTURE(Test, testOleIconDrawAspect)
 {
-    loadAndSave("tdf131537.odt");
+    createSwDoc("tdf131537.odt");
+    save(TestFilter::DOCX);
     xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
     assertXPath(pXmlDoc, "/w:document/w:body/w:p[2]/w:r/w:object/o:OLEObject", "DrawAspect",
                 u"Icon");
@@ -442,7 +460,8 @@ CPPUNIT_TEST_FIXTURE(Test, testOleIconDrawAspect)
 
 CPPUNIT_TEST_FIXTURE(Test, testTableCellWithDirectFormatting)
 {
-    loadAndSave("fdo80800.docx");
+    createSwDoc("fdo80800.docx");
+    save(TestFilter::DOCX);
     // Issue was Direct Formatting for non-first Table cells was not getting preserved.
 
     xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
@@ -537,7 +556,8 @@ DECLARE_OOXMLEXPORT_TEST(test2colHeader, "2col-header.docx")
 
 CPPUNIT_TEST_FIXTURE(Test, testTdf148035)
 {
-    loadAndSave("tdf148035.docx");
+    createSwDoc("tdf148035.docx");
+    save(TestFilter::DOCX);
     xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
 
     assertXPathContent(pXmlDoc, "/w:document/w:body/w:p/w:sdt/w:sdtContent/w:r[2]/w:t",
@@ -555,7 +575,8 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf148035)
 
 CPPUNIT_TEST_FIXTURE(Test, testfdo83048)
 {
-    loadAndSave("fdo83048.docx");
+    createSwDoc("fdo83048.docx");
+    save(TestFilter::DOCX);
     // Issue was wrong SDT properties were getting exported for Date SDT
     xmlDocUniquePtr pXmlDoc = parseExport(u"word/footer2.xml"_ustr);
 
@@ -567,7 +588,8 @@ CPPUNIT_TEST_FIXTURE(Test, testfdo83048)
 
 CPPUNIT_TEST_FIXTURE(Test, testSdt2Run)
 {
-    loadAndSave("sdt-2-run.docx");
+    createSwDoc("sdt-2-run.docx");
+    save(TestFilter::DOCX);
     xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
 
     // The problem was that <w:sdt> was closed after "first", not after "second", so the second assert failed.
@@ -579,7 +601,8 @@ CPPUNIT_TEST_FIXTURE(Test, testSdt2Run)
 
 CPPUNIT_TEST_FIXTURE(Test, testFD083057)
 {
-    loadAndSave("fdo83057.docx");
+    createSwDoc("fdo83057.docx");
+    save(TestFilter::DOCX);
     xmlDocUniquePtr pXmlDoc = parseExport(u"word/header2.xml"_ustr);
 
     // A fly frame was attached to a para which started with a hint (run) containing an SDT.
@@ -594,7 +617,8 @@ CPPUNIT_TEST_FIXTURE(Test, testFD083057)
 
 CPPUNIT_TEST_FIXTURE(Test, testHeaderBorder)
 {
-    loadAndSave("header-border.docx");
+    createSwDoc("header-border.docx");
+    save(TestFilter::DOCX);
     xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
     // This was 0, as header margin was lost during import.
     assertXPath(pXmlDoc, "//w:pgMar", "header", u"720");
@@ -623,7 +647,8 @@ DECLARE_OOXMLEXPORT_TEST(testImageNoborder, "image-noborder.docx")
 
 CPPUNIT_TEST_FIXTURE(Test, testTdf89774)
 {
-    loadAndSave("tdf89774.fodt");
+    createSwDoc("tdf89774.fodt");
+    save(TestFilter::DOCX);
     xmlDocUniquePtr pXmlDoc = parseExport(u"docProps/app.xml"_ustr);
     // This was 65, as unit was seconds instead of minutes.
     assertXPathContent(pXmlDoc, "/extended-properties:Properties/extended-properties:TotalTime",
@@ -632,7 +657,8 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf89774)
 
 CPPUNIT_TEST_FIXTURE(Test, testSectionProtection)
 {
-    loadAndReload("sectionprot.odt");
+    createSwDoc("sectionprot.odt");
+    saveAndReload(TestFilter::DOCX);
     xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
     assertXPath(pXmlDoc, "/w:document/w:body/w:p/w:pPr/w:sectPr/w:formProt", "val", u"true");
     assertXPath(pXmlDoc, "/w:document/w:body/w:sectPr/w:formProt", "val", u"false");
@@ -654,7 +680,8 @@ CPPUNIT_TEST_FIXTURE(Test, testSectionProtection)
 
 CPPUNIT_TEST_FIXTURE(Test, testSectionProtection2)
 {
-    loadAndSave("sectionprot2.odt");
+    createSwDoc("sectionprot2.odt");
+    save(TestFilter::DOCX);
     CPPUNIT_ASSERT_EQUAL(1, getPages());
     xmlDocUniquePtr pXmlSettings = parseExport(u"word/settings.xml"_ustr);
     assertXPath(pXmlSettings, "/w:settings/w:documentProtection", "enforcement", u"true");
@@ -687,7 +714,7 @@ CPPUNIT_TEST_FIXTURE(Test, tdf66398_permissions)
 
     createSwDoc("tdf66398_permissions.docx");
     verify();
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::DOCX);
     verify();
 
     // check document permission settings for the whole document
@@ -709,7 +736,8 @@ CPPUNIT_TEST_FIXTURE(Test, tdf66398_permissions)
 
 CPPUNIT_TEST_FIXTURE(Test, tdf166173_enforcement)
 {
-    loadAndSave("tdf166173_enforcement.docx");
+    createSwDoc("tdf166173_enforcement.docx");
+    save(TestFilter::DOCX);
     xmlDocUniquePtr pXmlSettings = parseExport(u"word/settings.xml"_ustr);
 
     // check if attribute 'enforcement' of 'documentProtection' has still '0' value.
@@ -718,7 +746,8 @@ CPPUNIT_TEST_FIXTURE(Test, tdf166173_enforcement)
 
 CPPUNIT_TEST_FIXTURE(Test, tdf106843)
 {
-    loadAndSave("tdf106843.fodt");
+    createSwDoc("tdf106843.fodt");
+    save(TestFilter::DOCX);
     // check Track Changes permission set in Writer/OpenDocument (password: "test", encoded by default encoding of Writer)
     xmlDocUniquePtr pXmlSettings = parseExport(u"word/settings.xml"_ustr);
     assertXPath(pXmlSettings, "/w:settings/w:documentProtection", "edit", u"trackedChanges");
@@ -736,7 +765,8 @@ CPPUNIT_TEST_FIXTURE(Test, tdf106843)
 
 CPPUNIT_TEST_FIXTURE(Test, tdf89991_revisionView)
 {
-    loadAndSave("tdf89991.docx");
+    createSwDoc("tdf89991.docx");
+    save(TestFilter::DOCX);
     // check revisionView (Show Changes) import and export
     xmlDocUniquePtr pXmlSettings = parseExport(u"word/settings.xml"_ustr);
     assertXPath(pXmlSettings, "/w:settings/w:revisionView", "insDel", u"0");
@@ -753,7 +783,8 @@ CPPUNIT_TEST_FIXTURE(Test, tdf89991_revisionView)
 
 CPPUNIT_TEST_FIXTURE(Test, tdf122201_editUnprotectedText)
 {
-    loadAndReload("tdf122201_editUnprotectedText.odt");
+    createSwDoc("tdf122201_editUnprotectedText.odt");
+    saveAndReload(TestFilter::DOCX);
     CPPUNIT_ASSERT_EQUAL(1, getPages());
     // get the document
 
@@ -774,7 +805,8 @@ CPPUNIT_TEST_FIXTURE(Test, tdf122201_editUnprotectedText)
 
 CPPUNIT_TEST_FIXTURE(Test, testSectionHeader)
 {
-    loadAndReload("sectionprot.odt");
+    createSwDoc("sectionprot.odt");
+    saveAndReload(TestFilter::DOCX);
     CPPUNIT_ASSERT_EQUAL(1, getPages());
     xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
     // this test must not be zero
@@ -783,7 +815,8 @@ CPPUNIT_TEST_FIXTURE(Test, testSectionHeader)
 
 CPPUNIT_TEST_FIXTURE(Test, testTdf146491)
 {
-    loadAndReload("tdf146491.odt");
+    createSwDoc("tdf146491.odt");
+    saveAndReload(TestFilter::DOCX);
     xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
     // This was 12 - a page style was unnecessarily created for every section.
     assertXPath(pXmlDoc, "//w:footerReference", 1);
@@ -791,7 +824,8 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf146491)
 
 CPPUNIT_TEST_FIXTURE(Test, testOO47778_1)
 {
-    loadAndReload("ooo47778-3.odt");
+    createSwDoc("ooo47778-3.odt");
+    saveAndReload(TestFilter::DOCX);
     CPPUNIT_ASSERT_EQUAL(5, getShapes());
     CPPUNIT_ASSERT_EQUAL(1, getPages());
     xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
@@ -800,7 +834,8 @@ CPPUNIT_TEST_FIXTURE(Test, testOO47778_1)
 
 CPPUNIT_TEST_FIXTURE(Test, testOO47778_2)
 {
-    loadAndReload("ooo47778-4.odt");
+    createSwDoc("ooo47778-4.odt");
+    saveAndReload(TestFilter::DOCX);
     CPPUNIT_ASSERT_EQUAL(1, getShapes());
     CPPUNIT_ASSERT_EQUAL(1, getPages());
     xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
@@ -817,7 +852,8 @@ CPPUNIT_TEST_FIXTURE(Test, testOO47778_2)
 
 CPPUNIT_TEST_FIXTURE(Test, testOO67471)
 {
-    loadAndReload("ooo67471-2.odt");
+    createSwDoc("ooo67471-2.odt");
+    saveAndReload(TestFilter::DOCX);
     CPPUNIT_ASSERT_EQUAL(1, getPages());
     xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
     assertXPathContent(pXmlDoc, "(//w:t)[2]", u"B");
@@ -825,7 +861,8 @@ CPPUNIT_TEST_FIXTURE(Test, testOO67471)
 
 CPPUNIT_TEST_FIXTURE(Test, testKDE302504)
 {
-    loadAndReload("kde302504-1.odt");
+    createSwDoc("kde302504-1.odt");
+    saveAndReload(TestFilter::DOCX);
     CPPUNIT_ASSERT_EQUAL(1, getShapes());
     CPPUNIT_ASSERT_EQUAL(1, getPages());
     xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
@@ -834,7 +871,8 @@ CPPUNIT_TEST_FIXTURE(Test, testKDE302504)
 
 CPPUNIT_TEST_FIXTURE(Test, testKDE216114)
 {
-    loadAndReload("kde216114-1.odt");
+    createSwDoc("kde216114-1.odt");
+    saveAndReload(TestFilter::DOCX);
     CPPUNIT_ASSERT_EQUAL(1, getShapes());
     CPPUNIT_ASSERT_EQUAL(1, getPages());
     xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
@@ -843,7 +881,8 @@ CPPUNIT_TEST_FIXTURE(Test, testKDE216114)
 
 CPPUNIT_TEST_FIXTURE(Test, testOO72950)
 {
-    loadAndReload("ooo72950-1.odt");
+    createSwDoc("ooo72950-1.odt");
+    saveAndReload(TestFilter::DOCX);
     CPPUNIT_ASSERT_EQUAL(1, getPages());
     xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
     assertXPath(pXmlDoc, "//w:tbl", 1);
@@ -854,7 +893,8 @@ CPPUNIT_TEST_FIXTURE(Test, testOO72950)
 //considered the same table
 CPPUNIT_TEST_FIXTURE(Test, fdo60957)
 {
-    loadAndSave("fdo60957-2.docx");
+    createSwDoc("fdo60957-2.docx");
+    save(TestFilter::DOCX);
     xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
     assertXPath(pXmlDoc, "//w:tbl", 2);
 
@@ -872,7 +912,8 @@ CPPUNIT_TEST_FIXTURE(Test, fdo60957)
 //number of cell start and ends
 CPPUNIT_TEST_FIXTURE(Test, testOO106020)
 {
-    loadAndSave("ooo106020-1.odt");
+    createSwDoc("ooo106020-1.odt");
+    save(TestFilter::DOCX);
     xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
     assertXPath(pXmlDoc, "//w:tbl", 1);
 }
@@ -886,7 +927,8 @@ DECLARE_OOXMLEXPORT_TEST(testNonBMPChar, "nonbmpchar.docx")
 
 CPPUNIT_TEST_FIXTURE(Test, testSpacingGroupShapeText)
 {
-    loadAndSave("tdf131775_SpacingGroupShapeText.docx");
+    createSwDoc("tdf131775_SpacingGroupShapeText.docx");
+    save(TestFilter::DOCX);
     // tdf#131775: Check if correct spacing.
 
     xmlDocUniquePtr pXmlDocument = parseExport(u"word/document.xml"_ustr);
@@ -900,7 +942,8 @@ CPPUNIT_TEST_FIXTURE(Test, testSpacingGroupShapeText)
 
 CPPUNIT_TEST_FIXTURE(Test, testTdf100581)
 {
-    loadAndSave("tdf100581.odt");
+    createSwDoc("tdf100581.odt");
+    save(TestFilter::DOCX);
     CPPUNIT_ASSERT_EQUAL(1, getShapes());
     CPPUNIT_ASSERT_EQUAL(1, getPages());
     xmlDocUniquePtr pXmlDocument = parseExport(u"word/document.xml"_ustr);
@@ -930,7 +973,8 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf100581)
 
 CPPUNIT_TEST_FIXTURE(Test, testTdf112287)
 {
-    loadAndSave("tdf112287.docx");
+    createSwDoc("tdf112287.docx");
+    save(TestFilter::DOCX);
     // tdf#131775: Check if correct spacing.
 
     xmlDocUniquePtr pXmlDocument = parseExport(u"word/document.xml"_ustr);
@@ -943,7 +987,8 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf112287)
 
 CPPUNIT_TEST_FIXTURE(Test, testTdf157572_defaultVAnchor)
 {
-    loadAndSave("tdf157572_defaultVAnchor.docx");
+    createSwDoc("tdf157572_defaultVAnchor.docx");
+    save(TestFilter::DOCX);
     xmlDocUniquePtr pXmlDocument = parseExport(u"word/document.xml"_ustr);
 
     // vAnchor wasn't defined on import. It should default to 'margin' when w:y=non-zero
@@ -954,7 +999,8 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf157572_defaultVAnchor)
 
 CPPUNIT_TEST_FIXTURE(Test, testTdf157572_insidiousCombination)
 {
-    loadAndSave("tdf157572_insidiousCombination.docx");
+    createSwDoc("tdf157572_insidiousCombination.docx");
+    save(TestFilter::DOCX);
     xmlDocUniquePtr pXmlDocument = parseExport(u"word/document.xml"_ustr);
 
     // This is a NASTY example. In MS Word, it IMPORTS yAlign=bottom, but positions it as y=0.
@@ -972,7 +1018,8 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf157572_insidiousCombination)
 
 CPPUNIT_TEST_FIXTURE(Test, testTdf157572_noVAlignAsText)
 {
-    loadAndSave("tdf157572_noVAlignAsText.docx");
+    createSwDoc("tdf157572_noVAlignAsText.docx");
+    save(TestFilter::DOCX);
     xmlDocUniquePtr pXmlDocument = parseExport(u"word/document.xml"_ustr);
 
     assertXPath(pXmlDocument, "/w:document/w:body/w:p[1]/w:pPr/w:framePr", "vAnchor", u"text");
@@ -982,7 +1029,8 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf157572_noVAlignAsText)
 
 CPPUNIT_TEST_FIXTURE(Test, testTdf112287B)
 {
-    loadAndSave("tdf112287B.docx");
+    createSwDoc("tdf112287B.docx");
+    save(TestFilter::DOCX);
     xmlDocUniquePtr pXmlDocument = parseExport(u"word/document.xml"_ustr);
 
     assertXPath(pXmlDocument, "/w:document/w:body/w:p[1]/w:pPr/w:framePr", "vAnchor", u"text");
@@ -991,7 +1039,8 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf112287B)
 
 CPPUNIT_TEST_FIXTURE(Test, testZOrderInHeader)
 {
-    loadAndSave("tdf120760_ZOrderInHeader.docx");
+    createSwDoc("tdf120760_ZOrderInHeader.docx");
+    save(TestFilter::DOCX);
     // tdf#120760 Check that the Z-Order of the background is smaller than the front shape's.
     xmlDocUniquePtr pXml = parseExport(u"word/header2.xml"_ustr);
 
@@ -1010,7 +1059,8 @@ CPPUNIT_TEST_FIXTURE(Test, testZOrderInHeader)
 
 CPPUNIT_TEST_FIXTURE(Test, testSvgExtensionsSupport)
 {
-    loadAndSave("SvgImageTest.odt");
+    createSwDoc("SvgImageTest.odt");
+    save(TestFilter::DOCX);
 
     xmlDocUniquePtr pXmlDocRels = parseExport(u"word/_rels/document.xml.rels"_ustr);
 
@@ -1035,7 +1085,8 @@ CPPUNIT_TEST_FIXTURE(Test, testSvgExtensionsSupport)
 
 CPPUNIT_TEST_FIXTURE(Test, testtdf158044)
 {
-    loadAndSave("tdf158044.odt");
+    createSwDoc("tdf158044.odt");
+    save(TestFilter::DOCX);
     // write hard attributes to prevent multiple toggle attributes from vanishing
     xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
 
@@ -1083,7 +1134,7 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf158855)
     CPPUNIT_ASSERT_EQUAL(OUString("Office Open XML Text"),
                          getSwDocShell()->GetMedium()->GetFilter()->GetFilterName());
 
-    saveAndReload(getSwDocShell()->GetMedium()->GetFilter()->GetFilterName());
+    saveAndReload(TestFilter::DOCX);
 
     CPPUNIT_ASSERT_EQUAL(2, getPages());
     CPPUNIT_ASSERT_EQUAL(2, getParagraphs());
@@ -1126,7 +1177,7 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf158971)
     }
 
     // Saving must not fail assertions
-    saveAndReload(mpFilter);
+    saveAndReload(TestFilter::DOCX);
 
     // Check again
     CPPUNIT_ASSERT_EQUAL(2, getParagraphs());
@@ -1150,7 +1201,8 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf158971)
 CPPUNIT_TEST_FIXTURE(Test, testTdf158451)
 {
     //Without the test, crash occurs when document loads
-    loadAndReload("tdf158451.docx");
+    createSwDoc("tdf158451.docx");
+    saveAndReload(TestFilter::DOCX);
     //Asserts document contains grouped shapes with Anchor = "As Character"
     CPPUNIT_ASSERT_EQUAL(1, getPages());
     CPPUNIT_ASSERT_EQUAL(1, getShapes());
@@ -1168,7 +1220,8 @@ DECLARE_OOXMLEXPORT_TEST(testTdf160827, "tdf160827.docx")
 CPPUNIT_TEST_FIXTURE(Test, testTdf159110)
 {
     // Given a text with an URL with multiple spaces
-    loadAndReload("multi_space_url.fodt");
+    createSwDoc("multi_space_url.fodt");
+    saveAndReload(TestFilter::DOCX);
 
     static constexpr OUString sExpectedURL
         = u"http://www.example.org/path%20%20with%20%20spaces"_ustr;

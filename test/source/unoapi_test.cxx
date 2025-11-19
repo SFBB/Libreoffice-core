@@ -27,6 +27,7 @@ using namespace css::uno;
 UnoApiTest::UnoApiTest(OUString path)
     : mbSkipValidation(false)
     , m_aBaseString(std::move(path))
+    , meImportFilterName(TestFilter::NONE)
 {
     maTempFile.EnableKillingFile();
 }
@@ -96,11 +97,11 @@ void UnoApiTest::loadFromURL(OUString const& rURL, const char* pPassword)
         aFilterOptions.push_back(aValue);
     }
 
-    if (!maImportFilterName.isEmpty())
+    if (meImportFilterName != TestFilter::NONE)
     {
         beans::PropertyValue aValue;
         aValue.Name = "FilterName";
-        aValue.Value <<= maImportFilterName;
+        aValue.Value <<= TestFilterNames.at(meImportFilterName);
         aFilterOptions.push_back(aValue);
     }
 
@@ -147,17 +148,18 @@ uno::Any UnoApiTest::executeMacro(const OUString& rScriptURL,
     return aRet;
 }
 
-void UnoApiTest::save(const OUString& rFilter, const char* pPassword)
+void UnoApiTest::save(TestFilter eFilter, const char* pPassword)
 {
+    OUString aFilter(TestFilterNames.at(eFilter));
     utl::MediaDescriptor aMediaDescriptor;
-    aMediaDescriptor[u"FilterName"_ustr] <<= rFilter;
+    aMediaDescriptor[u"FilterName"_ustr] <<= aFilter;
     if (!maFilterOptions.isEmpty())
         aMediaDescriptor[u"FilterOptions"_ustr] <<= maFilterOptions;
 
     if (pPassword)
     {
-        if (rFilter != "Office Open XML Text" && rFilter != "Calc Office Open XML"
-            && rFilter != "Impress Office Open XML")
+        if (eFilter != TestFilter::DOCX && eFilter != TestFilter::XLSX
+            && eFilter != TestFilter::PPTX)
         {
             aMediaDescriptor[u"Password"_ustr] <<= OUString::createFromAscii(pPassword);
         }
@@ -179,12 +181,12 @@ void UnoApiTest::save(const OUString& rFilter, const char* pPassword)
 
     if (!mbSkipValidation)
     {
-        if (rFilter == "Office Open XML Text")
+        if (eFilter == TestFilter::DOCX)
         {
             // do nothing: too many validation errors right now
         }
         else
-            validate(maTempFile.GetFileName(), rFilter);
+            validate(maTempFile.GetFileName(), aFilter);
     }
 }
 
@@ -194,9 +196,9 @@ void UnoApiTest::saveWithParams(const uno::Sequence<beans::PropertyValue>& rPara
     xStorable->storeToURL(maTempFile.GetURL(), rParams);
 }
 
-void UnoApiTest::saveAndReload(const OUString& rFilter, const char* pPassword)
+void UnoApiTest::saveAndReload(TestFilter eFilter, const char* pPassword)
 {
-    save(rFilter, pPassword);
+    save(eFilter, pPassword);
     loadFromURL(maTempFile.GetURL(), pPassword);
 }
 
