@@ -1298,6 +1298,17 @@ CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testTdf163483_export_math_fallback)
                 "id", cNvPr_id);
 }
 
+CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testEmptyChildTnLstElement)
+{
+    createSdImpressDoc("odp/emptyChildTnLstElement.odp");
+
+    // Without the fix in place, this test would have failed with
+    // - Expected: 0
+    // - Actual  : 4
+    // - validation error in OOXML export: Errors: 4
+    saveAndReload(TestFilter::PPTX);
+}
+
 CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testPlaceHolderFitHeightToText)
 {
     createSdImpressDoc("pptx/tdf160487.pptx");
@@ -1343,6 +1354,17 @@ CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testDeduplicateMasters)
     aAny >>= aXBackgroundPropSet;
     CPPUNIT_ASSERT(aXBackgroundPropSet->getPropertyValue("FillColor") >>= nColor);
     CPPUNIT_ASSERT_EQUAL(Color(0x000000), nColor);
+}
+
+CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testInvalidAttributeValuesInSrcRect)
+{
+    createSdImpressDoc("odp/invalidAttributeValuesInSrcRect.odp");
+
+    // Without the fix in place, this test would have failed with
+    // - Expected: 0
+    // - Actual  : 24
+    // - validation error in OOXML export: Errors: 24
+    saveAndReload(TestFilter::PPTX);
 }
 
 CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testConvertWithMasterDeduplication)

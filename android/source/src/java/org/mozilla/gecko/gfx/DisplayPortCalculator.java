@@ -20,12 +20,10 @@ final class DisplayPortCalculator {
     // Keep this in sync with the TILEDLAYERBUFFER_TILE_SIZE defined in gfx/layers/TiledLayerBuffer.h
     private static final int TILE_SIZE = 256;
 
-    private DisplayPortStrategy sStrategy;
-    private final LibreOfficeMainActivity mMainActivity;
+    private final DisplayPortStrategy sStrategy;
 
     DisplayPortCalculator(LibreOfficeMainActivity context) {
-        this.mMainActivity = context;
-        sStrategy = new VelocityBiasStrategy(mMainActivity);
+        sStrategy = new VelocityBiasStrategy(context);
     }
 
     DisplayPortMetrics calculate(ImmutableViewportMetrics metrics, PointF velocity) {
