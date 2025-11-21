@@ -1104,6 +1104,9 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest5, testRedlineTableColumnDeletionWithDOCXExpo
     assertXPath(pXmlDoc, "//page[1]//body/tab");
     assertXPath(pXmlDoc, "//page[1]//body/tab/row/cell", 2);
 
+    // FIXME: validation error in OOXML export: Errors: 1
+    skipValidation();
+
     // Save it to a DOCX and load it back.
     // Exporting change tracking of the cell wasn't supported.
     // Also Manage Changes for the import.

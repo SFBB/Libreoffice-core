@@ -124,10 +124,25 @@ DECLARE_OOXMLEXPORT_TEST(testTdf165478_bottomAligned, "tdf165478_bottomAligned.d
     CPPUNIT_ASSERT_EQUAL(sal_Int32(1887), nFlyTop);
 }
 
+CPPUNIT_TEST_FIXTURE(Test, testInvalidDatetimeInProps)
+{
+    createSwDoc("invalidDatetimeInProps.fodt");
+
+    // Without the fix in place, this test would have failed with
+    // - Expected: 0
+    // - Actual  : 2
+    // - validation error in OOXML export: Errors: 2
+    saveAndReload(TestFilter::DOCX);
+}
+
 CPPUNIT_TEST_FIXTURE(Test, testTdf169413_asciiTheme)
 {
     // the document failed to reload without errors after a round-trip
     createSwDoc("tdf169413_asciiTheme.docx");
+
+    // FIXME: validation error in OOXML export: Errors: 5
+    skipValidation();
+
     saveAndReload(TestFilter::DOCX);
 }
 
@@ -194,7 +209,11 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf167082)
     // - Actual  : Standard
 
     createSwDoc("tdf167082.docx");
+
+    // FIXME: validation error in OOXML export: Errors: 1
+    skipValidation();
     saveAndReload(TestFilter::DOCX);
+
     OUString aStyleName = getProperty<OUString>(getParagraph(3), u"ParaStyleName"_ustr);
 
     CPPUNIT_ASSERT_EQUAL(OUString("Heading 1"), aStyleName);

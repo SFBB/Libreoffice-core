@@ -1210,12 +1210,12 @@ void SdrMarkView::SetMarkHandlesForLOKit(tools::Rectangle const & rRect, const S
                         selectedNode = &others;
                     }
                     std::string sKind = std::to_string(kind);
-                    boost::optional< boost::property_tree::ptree& > kindNode = selectedNode->get_child_optional(sKind.c_str());
+                    boost::optional< boost::property_tree::ptree& > kindNode = selectedNode->get_child_optional(sKind);
                     if (!kindNode)
                     {
                         boost::property_tree::ptree newChild;
                         newChild.push_back(node);
-                        selectedNode->add_child(sKind.c_str(), newChild);
+                        selectedNode->add_child(sKind, newChild);
                     }
                     else
                         kindNode.get().push_back(node);
@@ -1228,14 +1228,12 @@ void SdrMarkView::SetMarkHandlesForLOKit(tools::Rectangle const & rRect, const S
                 responseJSON.add_child("kinds", nodes);
                 std::stringstream aStream;
                 boost::property_tree::write_json(aStream, responseJSON, /*pretty=*/ false);
-                handleArrayStr = ", \"handles\":"_ostr;
-                handleArrayStr = handleArrayStr + aStream.str().c_str();
+                handleArrayStr = OString::Concat(", \"handles\":") + aStream.view();
                 if (bConnectorSelection)
                 {
                     aStream.str("");
                     boost::property_tree::write_json(aStream, aGluePointsTree, /*pretty=*/ false);
-                    handleArrayStr = handleArrayStr + ", \"GluePoints\":";
-                    handleArrayStr = handleArrayStr + aStream.str().c_str();
+                    handleArrayStr += OString::Concat(", \"GluePoints\":") + aStream.view();
                 }
             }
 
@@ -1278,9 +1276,7 @@ void SdrMarkView::SetMarkHandlesForLOKit(tools::Rectangle const & rRect, const S
                     aExtraInfo.append(", \"ObjectRectangles\": "_ostr + objectRectangles);
                 }
 
-                aExtraInfo.append(handleArrayStr
-                    + "}");
-                sSelectionText += ", " + aExtraInfo;
+                sSelectionText += ", " + aExtraInfo + handleArrayStr + "}";
             }
         }
 
