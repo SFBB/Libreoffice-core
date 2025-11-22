@@ -569,10 +569,8 @@ namespace oglcanvas
                 {
                     // copy state from Gradient polypoly locally
                     // (given object might change!)
-                    const ::canvas::ParametricPolyPolygon::Values aValues(
-                        pGradient->getValues() );
 
-                    rAct.maFunction = [aValues = aValues, aTexture = textures[0]]
+                    rAct.maFunction = [aValues = pGradient->getValues(), textures]
                         (const CanvasHelper& rHelper,
                          const basegfx::B2DHomMatrix& rTransform,
                          GLenum eSrcBlend,
@@ -585,7 +583,7 @@ namespace oglcanvas
                                                            eSrcBlend,
                                                            eDstBlend,
                                                            aValues,
-                                                           aTexture,
+                                                           textures[0],
                                                            rPolyPolygons);
                     };
 
@@ -628,7 +626,7 @@ namespace oglcanvas
                                 aPixelData,
                                 canvastools::getStdColorSpace()));
 
-                        rAct.maFunction = [aTexture = textures[0],
+                        rAct.maFunction = [textures,
                                            aPixelSize = aSize,
                                            aPixelData = aARGBBytes,
                                            nPixelCrc32 = rtl_crc32(0, aARGBBytes.getConstArray(), aARGBBytes.getLength())]
@@ -643,7 +641,7 @@ namespace oglcanvas
                                                                rTransform,
                                                                eSrcBlend,
                                                                eDstBlend,
-                                                               aTexture,
+                                                               textures[0],
                                                                aPixelSize,
                                                                aPixelData,
                                                                nPixelCrc32,
