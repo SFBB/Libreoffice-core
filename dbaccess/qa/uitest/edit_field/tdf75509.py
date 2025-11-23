@@ -11,21 +11,9 @@ from uitest.uihelper.common import get_url_for_data_file, get_state_as_dict
 
 from libreoffice.uno.propertyvalue import mkPropertyValues
 
-from com.sun.star.util import URL
-
 #Bug 75509 - Incorrect display of digits in default Numeric formatting
 #            of a field when language isn't English
 class tdf75509(UITestCase):
-    def execute_for_frame(self, xFrame, command):
-        url = URL()
-        url.Complete = command
-        xUrlTransformer = self.xContext.ServiceManager.createInstanceWithContext(
-            "com.sun.star.util.URLTransformer", self.xContext)
-        _, url = xUrlTransformer.parseStrict(url)
-
-        xDispatch = xFrame.queryDispatch(url, "", 0)
-        xDispatch.dispatch(url, [])
-
     def test_tdf75509(self):
         # The sample file is an HSQLDB database with a single table. Aside from the primary key, the
         # table has two numeric type fields each with 2 decimal places. One of them is called
@@ -42,65 +30,62 @@ class tdf75509(UITestCase):
             # does the trick
             self.xUITest.executeCommand(".uno:SelectAll")
 
-            self.xUITest.executeCommand(".uno:DBTableEdit")
+            with self.ui_test.open_subcomponent_through_command(".uno:DBTableEdit") as xTableFrame:
+                xTableWindow = self.xUITest.getWindow(xTableFrame.getContainerWindow())
 
-            xTableWindow = self.xUITest.getTopFocusWindow()
+                xTableEditor = xTableWindow.getChild("DBTableEditor")
 
-            xTableEditor = xTableWindow.getChild("DBTableEditor")
+                # Select the “FrenchField” row
+                xTableEditor.executeAction("TYPE", mkPropertyValues({"KEYCODE": "DOWN"}))
 
-            # Select the “FrenchField” row
-            xTableEditor.executeAction("TYPE", mkPropertyValues({"KEYCODE": "DOWN"}))
+                # Type a value with the comma decimal separator into the default value field
+                xDefaultValue = xTableWindow.getChild("DefaultValue")
 
-            # Type a value with the comma decimal separator into the default value field
-            xDefaultValue = xTableWindow.getChild("DefaultValue")
+                xDefaultValue.executeAction("FOCUS", tuple())
+                xDefaultValue.executeAction("SET", mkPropertyValues({"TEXT": "3,14"}))
 
-            xDefaultValue.executeAction("FOCUS", tuple())
-            xDefaultValue.executeAction("SET", mkPropertyValues({"TEXT": "3,14"}))
+                # Focus something else so that the example text will get updated
+                xTableEditor.executeAction("FOCUS", tuple())
 
-            # Focus something else so that the example text will get updated
-            xTableEditor.executeAction("FOCUS", tuple())
+                # The example format should be updated to reflect the default value
+                xFormatText = xTableWindow.getChild("FormatText")
+                self.assertEqual(get_state_as_dict(xFormatText)["Text"], "3,14")
 
-            # The example format should be updated to reflect the default value
-            xFormatText = xTableWindow.getChild("FormatText")
-            self.assertEqual(get_state_as_dict(xFormatText)["Text"], "3,14")
+                # Select the “EnglishField"
+                xTableEditor.executeAction("TYPE", mkPropertyValues({"KEYCODE": "DOWN"}))
 
-            # Select the “EnglishField"
-            xTableEditor.executeAction("TYPE", mkPropertyValues({"KEYCODE": "DOWN"}))
+                # Perform the same tests with the “.” decimal separator
+                xDefaultValue.executeAction("FOCUS", tuple())
+                xDefaultValue.executeAction("SET", mkPropertyValues({"TEXT": "2.72"}))
+                xTableEditor.executeAction("FOCUS", tuple())
+                self.assertEqual(get_state_as_dict(xFormatText)["Text"], "2.72")
 
-            # Perform the same tests with the “.” decimal separator
-            xDefaultValue.executeAction("FOCUS", tuple())
-            xDefaultValue.executeAction("SET", mkPropertyValues({"TEXT": "2.72"}))
-            xTableEditor.executeAction("FOCUS", tuple())
-            self.assertEqual(get_state_as_dict(xFormatText)["Text"], "2.72")
+                # Save the table (ie, just the table, not the actual database file to disk)
+                self.xUITest.executeCommandForProvider(".uno:Save", xTableFrame)
 
-            # Save the table (ie, just the table, not the actual database file to disk)
-            self.execute_for_frame(self.ui_test.get_desktop().getCurrentFrame(), ".uno:Save")
+            with self.ui_test.open_subcomponent_through_command(".uno:DBTableOpen") as xTableFrame:
+                xTableWindow = self.xUITest.getWindow(xTableFrame.getContainerWindow())
 
-            self.xUITest.executeCommand(".uno:DBTableOpen")
+                # Focus the “FrenchField” input in the table
+                xGrid = xTableWindow.getChild("DBGrid")
+                xGrid.executeAction("FOCUS", tuple())
+                xGrid.executeAction("TYPE", mkPropertyValues({"KEYCODE": "TAB"}))
 
-            xTableWindow = self.xUITest.getTopFocusWindow()
+                # It should have the default value with a comma separator
+                xEdit = self.xUITest.getFocusWindow()
+                self.assertEqual(get_state_as_dict(xEdit)["Text"], "3,14")
 
-            # Focus the “FrenchField” input in the table
-            xGrid = xTableWindow.getChild("DBGrid")
-            xGrid.executeAction("FOCUS", tuple())
-            xGrid.executeAction("TYPE", mkPropertyValues({"KEYCODE": "TAB"}))
+                # Focus the “EnglishField” input in the table
+                xGrid.executeAction("TYPE", mkPropertyValues({"KEYCODE": "TAB"}))
 
-            # It should have the default value with a comma separator
-            xEdit = self.xUITest.getFocusWindow()
-            self.assertEqual(get_state_as_dict(xEdit)["Text"], "3,14")
+                # It should have the default value with a dot separator
+                xEdit = self.xUITest.getFocusWindow()
+                self.assertEqual(get_state_as_dict(xEdit)["Text"], "2.72")
 
-            # Focus the “EnglishField” input in the table
-            xGrid.executeAction("TYPE", mkPropertyValues({"KEYCODE": "TAB"}))
+                # Modify the field so that the we can save the record
+                xEdit.executeAction("SET", mkPropertyValues({"TEXT": "2.71"}))
 
-            # It should have the default value with a dot separator
-            xEdit = self.xUITest.getFocusWindow()
-            self.assertEqual(get_state_as_dict(xEdit)["Text"], "2.72")
-
-            # Modify the field so that the we can save the record
-            xEdit.executeAction("SET", mkPropertyValues({"TEXT": "2.71"}))
-
-            self.execute_for_frame(self.ui_test.get_desktop().getCurrentFrame(),
-                                   ".uno:RecSave")
+                self.xUITest.executeCommandForProvider(".uno:RecSave", xTableFrame)
 
             # Check that the default values actually entered the database
             xDbController = self.ui_test.get_desktop().getActiveFrame().getController()
