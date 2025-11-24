@@ -1709,13 +1709,35 @@ bool ScTextWnd::MouseButtonUp( const MouseEvent& rMEvt )
 
 bool ScTextWnd::Command( const CommandEvent& rCEvt )
 {
+    if (!m_xEditView)
+        return false;
+
     bool bConsumed = false;
 
     bInputMode = true;
     CommandEventId nCommand = rCEvt.GetCommand();
-    if (m_xEditView)
+
+    ScModule* pScMod = ScModule::get();
+
+    bool bExtInput = nCommand == CommandEventId::StartExtTextInput ||
+                     nCommand == CommandEventId::EndExtTextInput ||
+                     nCommand == CommandEventId::ExtTextInput ||
+                     nCommand == CommandEventId::CursorPos ||
+                     nCommand == CommandEventId::QueryCharPosition;
+
+    if (bExtInput)
     {
-        ScModule* pScMod = ScModule::get();
+        if (ScInputHandler* pInputHdl = pScMod->GetInputHdl())
+        {
+            // Similar to ScGridWindow::Command (and ScTextWnd::KeyInput)
+            // forward the CommandEvent to both EditEngines, the inputbar one
+            // and the main document one.
+            pInputHdl->InputCommand(rCEvt);
+            bConsumed = true;
+        }
+    }
+    else
+    {
         ScTabViewShell* pStartViewSh = ScTabViewShell::GetActiveViewShell();
 
         // don't modify the font defaults here - the right defaults are
@@ -1744,21 +1766,6 @@ bool ScTextWnd::Command( const CommandEvent& rCEvt )
                     rViewData.GetView()->ShowCursor(); // Missing for KillEditView, due to being inactive
                 }
             }
-        }
-        else if ( nCommand == CommandEventId::EndExtTextInput )
-        {
-            ScModule* mod = ScModule::get();
-            if (bFormulaMode)
-            {
-                ScInputHandler* pHdl = mod->GetInputHdl();
-                if (pHdl)
-                    pHdl->InputCommand(rCEvt);
-            }
-            mod->InputChanged(m_xEditView.get());
-        }
-        else if ( nCommand == CommandEventId::CursorPos )
-        {
-            //  don't call InputChanged for CommandEventId::CursorPos
         }
         else if ( nCommand == CommandEventId::InputLanguageChange )
         {
@@ -1808,7 +1815,12 @@ bool ScTextWnd::Command( const CommandEvent& rCEvt )
             //pass alt press/release to parent impl
         }
         else
-            ScModule::get()->InputChanged(m_xEditView.get());
+        {
+            // I suspect this path doesn't get call anymore or its called
+            // and shouldn't be
+            SAL_WARN("sc.core", "Likely we lost input bar formatting");
+            pScMod->InputChanged(m_xEditView.get());
+        }
     }
 
     if ( comphelper::LibreOfficeKit::isActive() && nCommand == CommandEventId::CursorPos )
@@ -1818,11 +1830,6 @@ bool ScTextWnd::Command( const CommandEvent& rCEvt )
 
         StartEditEngine();
         TextGrabFocus();
-
-        if (!m_xEditView)
-            return true;
-
-        ScModule* mod = ScModule::get();
 
         // information about paragraph is in additional data
         // information about position in a paragraph in a Mouse Pos
@@ -1838,7 +1845,7 @@ bool ScTextWnd::Command( const CommandEvent& rCEvt )
         nPosEnd = m_xEditView->GetPosNoField(nParaEnd, aSelectionStartEnd.Y());
 
         m_xEditView->SetSelection(ESelection(nParaStart, nPosStart, nParaEnd, nPosEnd));
-        mod->InputSelection(m_xEditView.get());
+        pScMod->InputSelection(m_xEditView.get());
 
         bConsumed = true;
     }
