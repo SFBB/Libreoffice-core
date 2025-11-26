@@ -19,10 +19,10 @@
 
 #include <memory>
 #include "PageSizeControl.hxx"
+#include "ValueSetWithTextControl.hxx"
 
 #include <cmdid.h>
 #include <svx/pageitem.hxx>
-#include <svx/sidebar/ValueSetWithTextControl.hxx>
 
 #include <unotools/localedatawrapper.hxx>
 #include <rtl/character.hxx>
@@ -71,7 +71,7 @@ PageSizeControl::PageSizeControl(PageSizePopup* pControl, weld::Widget* pParent)
     : WeldToolbarPopup(pControl->getFrameInterface(), pParent, u"modules/swriter/ui/pagesizecontrol.ui"_ustr, u"PageSizeControl"_ustr)
     , mxMoreButton(m_xBuilder->weld_button(u"moreoptions"_ustr))
     , mxWidthHeightField(m_xBuilder->weld_metric_spin_button(u"metric"_ustr, FieldUnit::CM))
-    , mxSizeValueSet(new svx::sidebar::ValueSetWithTextControl)
+    , mxSizeValueSet(new ValueSetWithTextControl)
     , mxSizeValueSetWin(new weld::CustomWeld(*m_xBuilder, u"pagesizevalueset"_ustr, *mxSizeValueSet))
     , mxControl(pControl)
 {
@@ -93,78 +93,65 @@ PageSizeControl::PageSizeControl(PageSizePopup* pControl, weld::Widget* pParent)
     mxSizeValueSet->SetStyle( mxSizeValueSet->GetStyle() | WB_3DLOOK | WB_NO_DIRECTSELECT | WB_FLATVALUESET );
 
     sal_uInt16 nSelectedItem = 0;
+    OUString aMetricStr;
+    const OUString aText = mxWidthHeightField->get_text();
+    for (short i = aText.getLength() - 1; i >= 0; i--)
     {
-        OUString aMetricStr;
+        sal_Unicode c = aText[i];
+        if ( rtl::isAsciiAlpha(c) || (c == '\'') || (c == '\"') || (c == '%') )
+            aMetricStr = OUStringChar(c) + aMetricStr;
+        else if (!aMetricStr.isEmpty())
+            break;
+    }
+
+    bool bLandscape = false;
+    const SvxSizeItem* pSize(nullptr);
+    if (SfxViewFrame* pViewFrm = SfxViewFrame::Current())
+    {
+        SfxPoolItemHolder aResult;
+        pViewFrm->GetBindings().GetDispatcher()->QueryState(SID_ATTR_PAGE, aResult );
+        bLandscape = static_cast<const SvxPageItem*>(aResult.getItem())->IsLandscape();
+        pViewFrm->GetBindings().GetDispatcher()->QueryState(SID_ATTR_PAGE_SIZE, aResult);
+        pSize = static_cast<const SvxSizeItem*>(aResult.getItem());
+    }
+
+    const LocaleDataWrapper& localeDataWrapper = Application::GetSettings().GetLocaleDataWrapper();
+    for ( std::vector< Paper >::size_type nPaperIdx = 0;
+          nPaperIdx < maPaperList.size();
+          ++nPaperIdx )
+    {
+        Size aPaperSize = SvxPaperInfo::GetPaperSize( maPaperList[ nPaperIdx ] );
+        if ( bLandscape )
         {
-            const OUString aText = mxWidthHeightField->get_text();
-            for (short i = aText.getLength() - 1; i >= 0; i--)
-            {
-                sal_Unicode c = aText[i];
-                if ( rtl::isAsciiAlpha(c) || (c == '\'') || (c == '\"') || (c == '%') )
-                {
-                    aMetricStr = OUStringChar(c) + aMetricStr;
-                }
-                else
-                {
-                    if (!aMetricStr.isEmpty())
-                    {
-                        break;
-                    }
-                }
-            }
+            Swap( aPaperSize );
         }
 
-        bool bLandscape = false;
-        const SvxSizeItem* pSize(nullptr);
-        if (SfxViewFrame* pViewFrm = SfxViewFrame::Current())
+        mxWidthHeightField->set_value( mxWidthHeightField->normalize( aPaperSize.Width() ), FieldUnit::TWIP );
+        const OUString aWidthStr = localeDataWrapper.getNum(
+            mxWidthHeightField->get_value(FieldUnit::NONE),
+            mxWidthHeightField->get_digits(),
+            true,
+            true );
+
+        mxWidthHeightField->set_value( mxWidthHeightField->normalize( aPaperSize.Height() ), FieldUnit::TWIP);
+        const OUString aHeightStr = localeDataWrapper.getNum(
+            mxWidthHeightField->get_value(FieldUnit::NONE),
+            mxWidthHeightField->get_digits(),
+            true,
+            true );
+
+        const OUString aItemText2 = aWidthStr + " x " + aHeightStr + " " + aMetricStr;
+
+        mxSizeValueSet->AddItem(
+            SvxPaperInfo::GetName( maPaperList[ nPaperIdx ] ),
+            aItemText2 );
+
+        if ( pSize && aPaperSize == pSize->GetSize() )
         {
-            SfxPoolItemHolder aResult;
-            pViewFrm->GetBindings().GetDispatcher()->QueryState(SID_ATTR_PAGE, aResult );
-            bLandscape = static_cast<const SvxPageItem*>(aResult.getItem())->IsLandscape();
-            pViewFrm->GetBindings().GetDispatcher()->QueryState(SID_ATTR_PAGE_SIZE, aResult);
-            pSize = static_cast<const SvxSizeItem*>(aResult.getItem());
-        }
-
-        const LocaleDataWrapper& localeDataWrapper = Application::GetSettings().GetLocaleDataWrapper();
-        OUString aWidthStr;
-        OUString aHeightStr;
-        OUString aItemText2;
-        for ( std::vector< Paper >::size_type nPaperIdx = 0;
-              nPaperIdx < maPaperList.size();
-              ++nPaperIdx )
-        {
-            Size aPaperSize = SvxPaperInfo::GetPaperSize( maPaperList[ nPaperIdx ] );
-            if ( bLandscape )
-            {
-                Swap( aPaperSize );
-            }
-
-            mxWidthHeightField->set_value( mxWidthHeightField->normalize( aPaperSize.Width() ), FieldUnit::TWIP );
-            aWidthStr = localeDataWrapper.getNum(
-                mxWidthHeightField->get_value(FieldUnit::NONE),
-                mxWidthHeightField->get_digits(),
-                true,
-                true );
-
-            mxWidthHeightField->set_value( mxWidthHeightField->normalize( aPaperSize.Height() ), FieldUnit::TWIP);
-            aHeightStr = localeDataWrapper.getNum(
-                mxWidthHeightField->get_value(FieldUnit::NONE),
-                mxWidthHeightField->get_digits(),
-                true,
-                true );
-
-            aItemText2 = aWidthStr + " x " + aHeightStr + " " + aMetricStr;
-
-            mxSizeValueSet->AddItem(
-                SvxPaperInfo::GetName( maPaperList[ nPaperIdx ] ),
-                aItemText2 );
-
-            if ( pSize && aPaperSize == pSize->GetSize() )
-            {
-                nSelectedItem = nPaperIdx + 1;
-            }
+            nSelectedItem = nPaperIdx + 1;
         }
     }
+
     mxSizeValueSet->SetNoSelection();
     mxSizeValueSet->SetSelectHdl( LINK(this, PageSizeControl, ImplSizeHdl ) );
     mxSizeValueSet->Show();

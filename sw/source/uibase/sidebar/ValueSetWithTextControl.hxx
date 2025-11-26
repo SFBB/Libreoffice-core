@@ -16,8 +16,7 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SVX_SIDEBAR_VALUESETWITHTEXTCONTROL_HXX
-#define INCLUDED_SVX_SIDEBAR_VALUESETWITHTEXTCONTROL_HXX
+#pragma once
 
 #include <svx/svxdllapi.h>
 
@@ -25,7 +24,7 @@
 
 #include <vector>
 
-namespace svx::sidebar
+namespace sw::sidebar
 {
 /** Specialization of class <ValueSet>.
     This specialization allows is a one-columned ValueSet which allow
@@ -33,16 +32,16 @@ namespace svx::sidebar
 
     Especially, used for sidebar related controls.
 */
-class SVX_DLLPUBLIC ValueSetWithTextControl final : public ValueSet
+class ValueSetWithTextControl final : public ValueSet
 {
 public:
     ValueSetWithTextControl();
 
-    SVX_DLLPRIVATE virtual void SetDrawingArea(weld::DrawingArea* pDrawingArea) override;
+    virtual void SetDrawingArea(weld::DrawingArea* pDrawingArea) override;
 
     void AddItem(const OUString& rItemText, const OUString& rItemText2);
 
-    SVX_DLLPRIVATE virtual void UserDraw(const UserDrawEvent& rUDEvt) override;
+    virtual void UserDraw(const UserDrawEvent& rUDEvt) override;
 
 private:
     struct ValueSetWithTextItem
@@ -54,8 +53,6 @@ private:
     ::std::vector<ValueSetWithTextItem> maItems;
 };
 
-} // end of namespace svx::sidebar
-
-#endif
+} // end of namespace sw::sidebar
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
