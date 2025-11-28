@@ -196,7 +196,7 @@ bool GetEncryptionData_Impl( const SfxItemSet* pSet, uno::Sequence< beans::Named
     bool bResult = false;
     if ( pSet )
     {
-        const SfxUnoAnyItem* pEncryptionDataItem = SfxItemSet::GetItem<SfxUnoAnyItem>(pSet, SID_ENCRYPTIONDATA, false);
+        const SfxUnoAnyItem* pEncryptionDataItem = pSet->GetItem(SID_ENCRYPTIONDATA, false);
         if ( pEncryptionDataItem )
         {
             pEncryptionDataItem->GetValue() >>= o_rEncryptionData;
@@ -204,7 +204,7 @@ bool GetEncryptionData_Impl( const SfxItemSet* pSet, uno::Sequence< beans::Named
         }
         else
         {
-            const SfxStringItem* pPasswordItem = SfxItemSet::GetItem<SfxStringItem>(pSet, SID_PASSWORD, false);
+            const SfxStringItem* pPasswordItem = pSet->GetItem(SID_PASSWORD, false);
             if ( pPasswordItem )
             {
                 o_rEncryptionData = ::comphelper::OStorageHelper::CreatePackageEncryptionData( pPasswordItem->GetValue() );
@@ -1813,7 +1813,7 @@ bool SfxObjectShell::SaveTo_Impl
         bool const bPasswdProvided(aEncryptionData.getLength() != 0);
         pFilter = rMedium.GetFilter();
 
-        const SfxStringItem *pVersionItem = !rMedium.IsInCheckIn()? SfxItemSet::GetItem<SfxStringItem>(pSet, SID_DOCINFO_COMMENTS, false): nullptr;
+        const SfxStringItem *pVersionItem = !rMedium.IsInCheckIn()? SfxItemSet::GetItem(pSet, SID_DOCINFO_COMMENTS, false): nullptr;
         OUString aTmpVersionURL;
 
         if ( bOk )
@@ -1893,7 +1893,7 @@ bool SfxObjectShell::SaveTo_Impl
             if ( bOk && pVersionItem && !rMedium.IsInCheckIn() )
             {
                 // store a version also
-                const SfxStringItem *pAuthorItem = SfxItemSet::GetItem<SfxStringItem>(pSet, SID_DOCINFO_AUTHOR, false);
+                const SfxStringItem *pAuthorItem = SfxItemSet::GetItem(pSet, SID_DOCINFO_AUTHOR, false);
 
                 // version comment
                 util::RevisionTag aInfo;
@@ -3053,7 +3053,7 @@ bool SfxObjectShell::DoSave_Impl( const SfxItemSet* pArgs )
     // an interaction handler here can acquire only in case of GUI Saving
     // and should be removed after the saving is done
     css::uno::Reference< XInteractionHandler > xInteract;
-    const SfxUnoAnyItem* pxInteractionItem = SfxItemSet::GetItem<SfxUnoAnyItem>(pArgs, SID_INTERACTIONHANDLER, false);
+    const SfxUnoAnyItem* pxInteractionItem = pArgs->GetItem(SID_INTERACTIONHANDLER, false);
     if ( pxInteractionItem && ( pxInteractionItem->GetValue() >>= xInteract ) && xInteract.is() )
         pMediumTmp->GetItemSet().Put( SfxUnoAnyItem( SID_INTERACTIONHANDLER, Any( xInteract ) ) );
 

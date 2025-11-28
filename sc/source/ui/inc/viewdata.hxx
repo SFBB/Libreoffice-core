@@ -276,11 +276,11 @@ private:
     OUString            msOldWindowState;           // imported window size
 
     ::std::vector<std::unique_ptr<ScViewDataTable>> maTabData;
-    ScDocShell&         mrDocShell;
-    ScDocument&         mrDoc;
     ScMarkData          maMarkData;
     ScMarkData          maHighlightData;
     ScViewDataTable* pThisTab;                   // Data of the displayed sheet
+    ScDocShell*         pDocShell;
+    ScDocument&         mrDoc;
     ScTabViewShell*     pView;
     std::unique_ptr<EditView> pEditView[4];               // Belongs to the window
     ScViewOptions       maOptions;
@@ -354,15 +354,18 @@ private:
 
     bool IsValidTabNumber(SCTAB nTabNumber) const;
 
+    ScViewData(ScDocument* pDoc, ScDocShell* pDocSh, ScTabViewShell* pViewSh);
+
 public:
     ScViewData( ScDocShell& rDocSh, ScTabViewShell* pViewSh );
+    ScViewData( ScDocument& rDoc );
     ~ScViewData() COVERITY_NOEXCEPT_FALSE;
 
-    ScDocShell&     GetDocShell() const     { return mrDocShell; }
+    ScDocShell*     GetDocShell() const     { return pDocShell; }
     ScDocFunc&      GetDocFunc() const;
     SC_DLLPUBLIC ScDBFunc* GetView() const;
     ScTabViewShell* GetViewShell() const    { return pView; }
-    SfxObjectShell& GetSfxDocShell() const  { return mrDocShell; }
+    SfxObjectShell* GetSfxDocShell() const  { return pDocShell; }
     SfxBindings&    GetBindings();          // from ViewShell's ViewFrame
     SC_DLLPUBLIC SfxDispatcher& GetDispatcher();        // from ViewShell's ViewFrame
 

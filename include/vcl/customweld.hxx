@@ -52,7 +52,6 @@ public:
             return;
         m_pDrawingArea->queue_draw();
     }
-    static bool IsUpdateMode() { return true; }
     void Invalidate(const tools::Rectangle& rRect)
     {
         if (!m_pDrawingArea)
@@ -71,7 +70,6 @@ public:
     bool IsEnabled() const { return m_pDrawingArea->get_sensitive(); }
     void Enable() const { m_pDrawingArea->set_sensitive(true); }
     void Disable() const { m_pDrawingArea->set_sensitive(false); }
-    bool IsActive() const { return m_pDrawingArea->is_active(); }
     int GetTextHeight() const { return m_pDrawingArea->get_text_height(); }
     int GetTextWidth(const OUString& rText) const
     {
