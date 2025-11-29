@@ -1280,7 +1280,7 @@ endef
 
 else # !SYSTEM_CAIRO
 
-ifneq ($(filter-out MACOSX WNT,$(OS)),)
+ifneq ($(filter-out MACOSX$(ENABLE_HEADLESS) WNT,$(OS)),)
 
 $(eval $(call gb_Helper_register_packages_for_install,ooo,\
 	cairo \
@@ -1371,7 +1371,7 @@ gb_ExternalProject__use_fontconfig :=
 
 else # SYSTEM_FONTCONFIG
 
-ifneq ($(filter-out MACOSX WNT,$(OS)),)
+ifneq (,$(filter FONTCONFIG,$(BUILD_TYPE)))
 
 $(eval $(call gb_Helper_register_packages_for_install,ooo,\
 	fontconfig \
