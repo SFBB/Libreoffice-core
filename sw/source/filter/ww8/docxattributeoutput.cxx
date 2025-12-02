@@ -778,6 +778,8 @@ void SdtBlockHelper::WriteSdtBlock(const ::sax_fastparser::FSHelperPtr& pSeriali
     // output sdt properties
     pSerializer->startElementNS(XML_w, XML_sdtPr);
 
+    WriteExtraParams(pSerializer);
+
     if (m_nSdtPrToken > 0 && m_pTokenChildren.is())
     {
         if (!m_pTokenAttributes.is())
@@ -806,8 +808,6 @@ void SdtBlockHelper::WriteSdtBlock(const ::sax_fastparser::FSHelperPtr& pSeriali
         }
     }
 
-    WriteExtraParams(pSerializer);
-
     pSerializer->endElementNS(XML_w, XML_sdtPr);
 
     // sdt contents start tag
@@ -826,20 +826,19 @@ void SdtBlockHelper::WriteSdtBlock(const ::sax_fastparser::FSHelperPtr& pSeriali
 
 void SdtBlockHelper::WriteExtraParams(const ::sax_fastparser::FSHelperPtr& pSerializer)
 {
+    if (!m_aAlias.isEmpty())
+        pSerializer->singleElementNS(XML_w, XML_alias, FSNS(XML_w, XML_val), m_aAlias);
+
+    if (!m_aTag.isEmpty())
+        pSerializer->singleElementNS(XML_w, XML_tag, FSNS(XML_w, XML_val), m_aTag);
+
     if (m_nId)
     {
         pSerializer->singleElementNS(XML_w, XML_id, FSNS(XML_w, XML_val), OString::number(m_nId));
     }
 
-    if (m_pDataBindingAttrs.is())
-    {
-        pSerializer->singleElementNS(XML_w, XML_dataBinding, detachFrom(m_pDataBindingAttrs));
-    }
-
-    if (m_pTextAttrs.is())
-    {
-        pSerializer->singleElementNS(XML_w, XML_text, detachFrom(m_pTextAttrs));
-    }
+    if (!m_aLock.isEmpty())
+        pSerializer->singleElementNS(XML_w, XML_lock, FSNS(XML_w, XML_val), m_aLock);
 
     if (!m_aPlaceHolderDocPart.isEmpty())
     {
@@ -851,6 +850,15 @@ void SdtBlockHelper::WriteExtraParams(const ::sax_fastparser::FSHelperPtr& pSeri
     if (m_bShowingPlaceHolder)
         pSerializer->singleElementNS(XML_w, XML_showingPlcHdr);
 
+    if (m_pDataBindingAttrs.is())
+    {
+        pSerializer->singleElementNS(XML_w, XML_dataBinding, detachFrom(m_pDataBindingAttrs));
+    }
+
+    if (m_nTabIndex)
+        pSerializer->singleElementNS(XML_w, XML_tabIndex, FSNS(XML_w, XML_val),
+                                     OString::number(m_nTabIndex));
+
     if (!m_aColor.isEmpty())
     {
         pSerializer->singleElementNS(XML_w15, XML_color, FSNS(XML_w, XML_val), m_aColor);
@@ -861,18 +869,10 @@ void SdtBlockHelper::WriteExtraParams(const ::sax_fastparser::FSHelperPtr& pSeri
         pSerializer->singleElementNS(XML_w15, XML_appearance, FSNS(XML_w15, XML_val), m_aAppearance);
     }
 
-    if (!m_aAlias.isEmpty())
-        pSerializer->singleElementNS(XML_w, XML_alias, FSNS(XML_w, XML_val), m_aAlias);
-
-    if (!m_aTag.isEmpty())
-        pSerializer->singleElementNS(XML_w, XML_tag, FSNS(XML_w, XML_val), m_aTag);
-
-    if (m_nTabIndex)
-        pSerializer->singleElementNS(XML_w, XML_tabIndex, FSNS(XML_w, XML_val),
-                                     OString::number(m_nTabIndex));
-
-    if (!m_aLock.isEmpty())
-        pSerializer->singleElementNS(XML_w, XML_lock, FSNS(XML_w, XML_val), m_aLock);
+    if (m_pTextAttrs.is())
+    {
+        pSerializer->singleElementNS(XML_w, XML_text, detachFrom(m_pTextAttrs));
+    }
 }
 
 void SdtBlockHelper::EndSdtBlock(const ::sax_fastparser::FSHelperPtr& pSerializer)
@@ -2542,6 +2542,14 @@ void DocxAttributeOutput::WriteFormDateStart(const OUString& sFullDate, const OU
     m_pSerializer->startElementNS(XML_w, XML_sdt);
     m_pSerializer->startElementNS(XML_w, XML_sdtPr);
 
+    if (aGrabBagSdt.hasElements())
+    {
+        // There are some extra sdt parameters came from grab bag
+        SdtBlockHelper aSdtBlock;
+        aSdtBlock.GetSdtParamsFromGrabBag(aGrabBagSdt);
+        aSdtBlock.WriteExtraParams(m_pSerializer);
+    }
+
     if(!sFullDate.isEmpty())
         m_pSerializer->startElementNS(XML_w, XML_date, FSNS(XML_w, XML_fullDate), sFullDate);
     else
@@ -2558,14 +2566,6 @@ void DocxAttributeOutput::WriteFormDateStart(const OUString& sFullDate, const OU
     m_pSerializer->singleElementNS(XML_w, XML_calendar,
                                    FSNS(XML_w, XML_val), "gregorian");
     m_pSerializer->endElementNS(XML_w, XML_date);
-
-    if (aGrabBagSdt.hasElements())
-    {
-        // There are some extra sdt parameters came from grab bag
-        SdtBlockHelper aSdtBlock;
-        aSdtBlock.GetSdtParamsFromGrabBag(aGrabBagSdt);
-        aSdtBlock.WriteExtraParams(m_pSerializer);
-    }
 
     m_pSerializer->endElementNS(XML_w, XML_sdtPr);
 
@@ -2629,21 +2629,6 @@ void DocxAttributeOutput::WriteContentControlStart()
 
     m_pSerializer->startElementNS(XML_w, XML_sdt);
     m_pSerializer->startElementNS(XML_w, XML_sdtPr);
-    if (!m_pContentControl->GetPlaceholderDocPart().isEmpty())
-    {
-        m_pSerializer->startElementNS(XML_w, XML_placeholder);
-        m_pSerializer->singleElementNS(XML_w, XML_docPart, FSNS(XML_w, XML_val),
-                                       m_pContentControl->GetPlaceholderDocPart());
-        m_pSerializer->endElementNS(XML_w, XML_placeholder);
-    }
-
-    if (!m_pContentControl->GetDataBindingPrefixMappings().isEmpty() || !m_pContentControl->GetDataBindingXpath().isEmpty() || !m_pContentControl->GetDataBindingStoreItemID().isEmpty())
-    {
-        m_pSerializer->singleElementNS( XML_w, XML_dataBinding,
-            FSNS(XML_w, XML_prefixMappings), m_pContentControl->GetDataBindingPrefixMappings(),
-            FSNS(XML_w, XML_xpath), m_pContentControl->GetDataBindingXpath(),
-            FSNS(XML_w, XML_storeItemID), m_pContentControl->GetDataBindingStoreItemID());
-    }
 
     if (!m_pContentControl->GetColor().isEmpty())
     {
@@ -2675,23 +2660,39 @@ void DocxAttributeOutput::WriteContentControlStart()
                                        OString::number(m_pContentControl->GetId()));
     }
 
-    if (m_pContentControl->GetTabIndex())
-    {
-        // write the unsigned value as if it were signed since that is all we can import
-        const sal_Int32 nTabIndex = static_cast<sal_Int32>(m_pContentControl->GetTabIndex());
-        m_pSerializer->singleElementNS(XML_w, XML_tabIndex, FSNS(XML_w, XML_val),
-                                       OString::number(nTabIndex));
-    }
-
     if (!m_pContentControl->GetLock().isEmpty())
     {
         m_pSerializer->singleElementNS(XML_w, XML_lock, FSNS(XML_w, XML_val),
                                        m_pContentControl->GetLock());
     }
 
+    if (!m_pContentControl->GetPlaceholderDocPart().isEmpty())
+    {
+        m_pSerializer->startElementNS(XML_w, XML_placeholder);
+        m_pSerializer->singleElementNS(XML_w, XML_docPart, FSNS(XML_w, XML_val),
+                                       m_pContentControl->GetPlaceholderDocPart());
+        m_pSerializer->endElementNS(XML_w, XML_placeholder);
+    }
+
     if (m_pContentControl->GetShowingPlaceHolder())
     {
         m_pSerializer->singleElementNS(XML_w, XML_showingPlcHdr);
+    }
+
+    if (!m_pContentControl->GetDataBindingPrefixMappings().isEmpty() || !m_pContentControl->GetDataBindingXpath().isEmpty() || !m_pContentControl->GetDataBindingStoreItemID().isEmpty())
+    {
+        m_pSerializer->singleElementNS( XML_w, XML_dataBinding,
+            FSNS(XML_w, XML_prefixMappings), m_pContentControl->GetDataBindingPrefixMappings(),
+            FSNS(XML_w, XML_xpath), m_pContentControl->GetDataBindingXpath(),
+            FSNS(XML_w, XML_storeItemID), m_pContentControl->GetDataBindingStoreItemID());
+    }
+
+    if (m_pContentControl->GetTabIndex())
+    {
+        // write the unsigned value as if it were signed since that is all we can import
+        const sal_Int32 nTabIndex = static_cast<sal_Int32>(m_pContentControl->GetTabIndex());
+        m_pSerializer->singleElementNS(XML_w, XML_tabIndex, FSNS(XML_w, XML_val),
+                                       OString::number(nTabIndex));
     }
 
     if (m_pContentControl->GetPicture())

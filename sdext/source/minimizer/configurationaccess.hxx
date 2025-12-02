@@ -98,11 +98,8 @@ class ConfigurationAccess
         css::uno::Reference< css::uno::XComponentContext > mxContext;
 
     private:
-        std::map < PPPOptimizerTokenEnum, OUString > maStrings;
-
         std::vector< OptimizerSettings > maSettings;
 
-        void LoadStrings();
         void LoadConfiguration();
         css::uno::Reference< css::uno::XInterface > OpenConfiguration( bool bReadOnly );
         static css::uno::Reference< css::uno::XInterface > GetConfigurationNode(

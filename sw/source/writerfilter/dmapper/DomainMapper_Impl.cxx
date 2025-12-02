@@ -7611,9 +7611,9 @@ void DomainMapper_Impl::handleToc
 
         }
 
-        uno::Reference<container::XIndexAccess> xChapterNumberingRules;
+        rtl::Reference<SwXChapterNumbering> xChapterNumberingRules;
         if (m_xTextDocument)
-            xChapterNumberingRules = m_xTextDocument->getChapterNumberingRules();
+            xChapterNumberingRules = m_xTextDocument->getSwChapterNumberingRules();
         rtl::Reference<SwXStyleFamily> xStyles;
         if (m_xTextDocument)
         {
@@ -7636,8 +7636,8 @@ void DomainMapper_Impl::handleToc
             {
                 // This relies on the chapter numbering rules already defined
                 // (see ListDef::CreateNumberingRules)
-                uno::Sequence<beans::PropertyValue> props;
-                xChapterNumberingRules->getByIndex(nLevel - 1) >>= props;
+                uno::Sequence<beans::PropertyValue> props =
+                    xChapterNumberingRules->getRuleByIndex(nLevel - 1);
                 bool bHasNumbering = false;
                 bool bUseTabStop = false;
                 for (const auto& propval : props)
@@ -8450,7 +8450,7 @@ void DomainMapper_Impl::CloseFieldCommand()
                     bool bStyleRef = aIt->second.eFieldId == FIELD_STYLEREF;
 
                     // Do we need a GetReference (default) or a GetExpression field?
-                    uno::Reference< container::XNameAccess > xFieldMasterAccess = GetTextDocument()->getTextFieldMasters();
+                    rtl::Reference< SwXTextFieldMasters > xFieldMasterAccess = GetTextDocument()->getSwXTextFieldMasters();
 
                     if (!xFieldMasterAccess->hasByName(
                             "com.sun.star.text.FieldMaster.SetExpression."

@@ -591,6 +591,11 @@ void SwXTextDocument::removeEventListener(const Reference< lang::XEventListener 
 
 Reference< XPropertySet > SwXTextDocument::getLineNumberingProperties()
 {
+    return getSwLineNumberingProperties();
+}
+
+rtl::Reference< SwXLineNumberingProperties > SwXTextDocument::getSwLineNumberingProperties()
+{
     SolarMutexGuard aGuard;
     ThrowIfInvalid();
 
@@ -602,6 +607,11 @@ Reference< XPropertySet > SwXTextDocument::getLineNumberingProperties()
 }
 
 Reference< XIndexReplace >  SwXTextDocument::getChapterNumberingRules()
+{
+    return getSwChapterNumberingRules();
+}
+
+rtl::Reference< SwXChapterNumbering >  SwXTextDocument::getSwChapterNumberingRules()
 {
     SolarMutexGuard aGuard;
     ThrowIfInvalid();
@@ -1223,6 +1233,11 @@ Reference< XNameAccess >  SwXTextDocument::getEmbeddedObjects()
 }
 
 Reference< XNameAccess >  SwXTextDocument::getBookmarks()
+{
+    return getSwBookmarks();
+}
+
+rtl::Reference< SwXBookmarks >  SwXTextDocument::getSwBookmarks()
 {
     SolarMutexGuard aGuard;
     ThrowIfInvalid();
