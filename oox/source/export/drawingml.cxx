@@ -363,6 +363,7 @@ void DrawingML::WriteColor( ::Color nColor, sal_Int32 nAlpha )
     if( nAlpha < MAX_PERCENT )
     {
         mpFS->startElementNS(XML_a, XML_srgbClr, XML_val, sColor);
+        assert(nAlpha >= 0);
         mpFS->singleElementNS(XML_a, XML_alpha, XML_val, OString::number(nAlpha));
         mpFS->endElementNS( XML_a, XML_srgbClr );
 
@@ -409,6 +410,7 @@ void DrawingML::WriteColor( const ::Color nColor, const Sequence< PropertyValue 
     else if(nAlpha < MAX_PERCENT)
     {
         mpFS->startElementNS(XML_a, XML_srgbClr, XML_val, sColor);
+        assert(nAlpha >= 0);
         mpFS->singleElementNS(XML_a, XML_alpha, XML_val, OString::number(nAlpha));
         mpFS->endElementNS(XML_a, XML_srgbClr);
     }
@@ -427,6 +429,7 @@ void DrawingML::WriteColorTransformations( const Sequence< PropertyValue >& aTra
         {
             if(nToken == XML_alpha && nAlpha < MAX_PERCENT)
             {
+                assert(nAlpha >= 0);
                 mpFS->singleElementNS(XML_a, nToken, XML_val, OString::number(nAlpha));
             }
             else
@@ -2306,10 +2309,10 @@ void DrawingML::WriteTransformation(const Reference< XShape >& xShape, const too
     const sal_Int64 MAX_SIZE = std::numeric_limits<sal_Int32>::max();
     sal_Int32 nCx = std::min(oox::drawingml::convertHmmToEmu(rRect.GetWidth()), MAX_SIZE);
     sal_Int32 nCy = std::min(oox::drawingml::convertHmmToEmu(rRect.GetHeight()), MAX_SIZE);
+    sal_Int32 nX = std::min(oox::drawingml::convertHmmToEmu(nLeft), MAX_SIZE);
+    sal_Int32 nY = std::min(oox::drawingml::convertHmmToEmu(nTop), MAX_SIZE);
 
-    mpFS->singleElementNS(XML_a, XML_off,
-        XML_x, OString::number(oox::drawingml::convertHmmToEmu(nLeft)),
-        XML_y, OString::number(oox::drawingml::convertHmmToEmu(nTop)));
+    mpFS->singleElementNS(XML_a, XML_off, XML_x, OString::number(nX), XML_y, OString::number(nY));
     mpFS->singleElementNS(XML_a, XML_ext, XML_cx, OString::number(nCx), XML_cy,
                           OString::number(nCy));
 
