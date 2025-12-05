@@ -86,7 +86,7 @@
 #include <ostream>
 
 typedef o3tl::strong_int<sal_uInt16, struct LanguageTypeTag> LanguageType;
-inline std::ostream& operator<<(std::ostream& os, LanguageType const & lt) { os << sal_uInt16(lt); return os; }
+inline std::ostream& operator<<(std::ostream& os, LanguageType lt) { return os << sal_uInt16(lt); }
 constexpr LanguageType primary(LanguageType lt) { return LanguageType(sal_uInt16(lt) & 0x03ff); }
 
 namespace o3tl
@@ -98,7 +98,7 @@ namespace o3tl
     // delete "sal_Int16" constructor via specialization: values > 0x7FFF are
     // actually used, and unfortunately passed around in the API as signed
     // "short", so use this to find all places where casts must be inserted
-    template<> template<> constexpr strong_int<unsigned short,LanguageTypeTag>::strong_int(short, std::enable_if<std::is_integral<short>::value, int>::type) = delete;
+    template<> template<> constexpr strong_int<unsigned short,LanguageTypeTag>::strong_int(short) = delete;
 #endif
 }
 
