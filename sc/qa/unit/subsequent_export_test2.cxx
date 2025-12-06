@@ -96,6 +96,19 @@ CPPUNIT_TEST_FIXTURE(ScExportTest2, testTdf166724_cellAnchor)
     CPPUNIT_ASSERT_EQUAL(tools::Long(1058), aRect.Top());
     CPPUNIT_ASSERT_EQUAL(tools::Long(4192), aRect.GetWidth());
     CPPUNIT_ASSERT_EQUAL(tools::Long(557), aRect.GetHeight());
+
+    // test implementation of GetRange
+    tools::Rectangle aB2(rRTDoc.GetMMRect(1, 1, 1, 1, 0)); // B2 from sheet 0 in mm100
+    // ask which cell contains the bottom right point: found using TWIP precision
+    ScRange aFoundCell = rRTDoc.GetRange(0, tools::Rectangle(aB2.Right(), aB2.Bottom()));
+    // BottomRight of cell B2 is approximately the same as the TopLeft of cell C3
+    CPPUNIT_ASSERT_EQUAL(SCCOL(2), aFoundCell.aStart.Col()); // found cell C3
+    CPPUNIT_ASSERT_EQUAL(SCROW(2), aFoundCell.aStart.Row());
+    tools::Long n1Twip = o3tl::convert(1, o3tl::Length::twip, o3tl::Length::mm100); // 2 mm100
+    // reducing by 1 twip must return cell B2
+    aFoundCell = rRTDoc.GetRange(0, tools::Rectangle(aB2.Right() - n1Twip, aB2.Bottom() - n1Twip));
+    CPPUNIT_ASSERT_EQUAL(SCCOL(1), aFoundCell.aStart.Col()); // found cell B2
+    CPPUNIT_ASSERT_EQUAL(SCROW(1), aFoundCell.aStart.Row());
 };
 
 CPPUNIT_TEST_FIXTURE(ScExportTest2, testFreezePaneStartCellXLSX)
@@ -1003,6 +1016,42 @@ CPPUNIT_TEST_FIXTURE(ScExportTest2, testXltxExport)
     assertXPath(pDoc, "/ContentType:Types/ContentType:Override[@PartName='/xl/workbook.xml']",
                 "ContentType",
                 u"application/vnd.openxmlformats-officedocument.spreadsheetml.template.main+xml");
+}
+
+CPPUNIT_TEST_FIXTURE(ScExportTest2, testTdf165180_date1904)
+{
+    // given a hand-modified document (which added dateCompatibility="0")
+    // with an earliest date of 1904 (Excel-for-mac null-date)
+
+    // ensure en-US locale for expected date formatting
+    SvtSysLocaleOptions aOptions;
+    OUString sLocaleConfigString = aOptions.GetLanguageTag().getBcp47();
+    aOptions.SetLocaleConfigString(u"en-US"_ustr);
+    aOptions.Commit();
+    comphelper::ScopeGuard g([&aOptions, &sLocaleConfigString] {
+        aOptions.SetLocaleConfigString(sLocaleConfigString);
+        aOptions.Commit();
+    });
+
+    createScDoc("xlsx/tdf165180_date1904.xlsx");
+    saveAndReload(TestFilter::XLSX_2007);
+
+    ScDocument* pDoc = getScDoc();
+    CPPUNIT_ASSERT_EQUAL(u"Tuesday, March 1, 1904"_ustr, pDoc->GetString(0, 0, 0));
+
+    xmlDocUniquePtr pWorkbook = parseExport(u"xl/workbook.xml"_ustr);
+    // dateCompatibility is ignored: make sure that date1904=true is round-tripped
+    assertXPath(pWorkbook, "/x:workbook/x:workbookPr", "date1904", u"true");
+
+    createScDoc("xlsx/tdf165180_date1904.xlsx");
+    saveAndReload(TestFilter::XLSX);
+
+    pDoc = getScDoc();
+    CPPUNIT_ASSERT_EQUAL(u"Tuesday, March 1, 1904"_ustr, pDoc->GetString(0, 0, 0));
+
+    pWorkbook = parseExport(u"xl/workbook.xml"_ustr);
+    // dateCompatibility is ignored: make sure that date1904=true is round-tripped
+    assertXPath(pWorkbook, "/x:workbook/x:workbookPr", "date1904", u"true");
 }
 
 CPPUNIT_TEST_FIXTURE(ScExportTest2, testPivotCacheAfterExportXLSX)

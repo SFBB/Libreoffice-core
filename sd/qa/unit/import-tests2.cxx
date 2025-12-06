@@ -1952,12 +1952,24 @@ CPPUNIT_TEST_FIXTURE(SdImportTest2, testTdf128596)
     CPPUNIT_ASSERT_EQUAL(css::drawing::BitmapMode_REPEAT, bitmapmode);
 }
 
-CPPUNIT_TEST_FIXTURE(SdImportTest2, testDefaultTabStop)
+CPPUNIT_TEST_FIXTURE(SdImportTest2, testTdf96389_deftabstopISO29500)
 {
-    createSdImpressDoc("pptx/deftabstop.pptx");
+    createSdImpressDoc("potx/tdf96389_deftabstopISO29500.potx");
 
     SdXImpressDocument* pXImpressDocument = dynamic_cast<SdXImpressDocument*>(mxComponent.get());
     CPPUNIT_ASSERT(pXImpressDocument);
+    SdDrawDocument* pDoc = pXImpressDocument->GetDoc();
+
+    sal_Int32 nDefTab = pDoc->GetDefaultTabulator();
+
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(2540), nDefTab);
+}
+
+CPPUNIT_TEST_FIXTURE(SdImportTest2, testTdf96389_deftabstopECMA)
+{
+    createSdImpressDoc("potx/tdf96389_deftabstopECMA.potx");
+
+    SdXImpressDocument* pXImpressDocument = dynamic_cast<SdXImpressDocument*>(mxComponent.get());
     SdDrawDocument* pDoc = pXImpressDocument->GetDoc();
 
     sal_Int32 nDefTab = pDoc->GetDefaultTabulator();
