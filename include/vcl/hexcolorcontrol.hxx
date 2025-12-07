@@ -17,12 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SVX_HEXCOLOR_HXX
-#define INCLUDED_SVX_HEXCOLOR_HXX
+#pragma once
 
-#include <svx/svxdllapi.h>
 #include <tools/color.hxx>
 #include <tools/link.hxx>
+#include <vcl/dllapi.h>
 
 namespace weld { class Entry; }
 
@@ -30,7 +29,7 @@ struct ImplSVEvent;
 
 namespace weld {
 
-class SVXCORE_DLLPUBLIC HexColorControl
+class VCL_DLLPUBLIC HexColorControl
 {
 private:
     std::unique_ptr<weld::Entry> m_xEntry;
@@ -51,7 +50,5 @@ public:
 };
 
 }
-
-#endif  // INCLUDED_SVX_HEXCOLOR_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

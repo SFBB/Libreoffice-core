@@ -475,7 +475,7 @@ public:
 
     util::DateTime m_aDateTime;
 
-    uno::Sequence<beans::PropertyValue> m_aArgs;
+    comphelper::SequenceAsHashMap m_aArgs;
 
     explicit SfxMedium_Impl();
     ~SfxMedium_Impl();
@@ -2931,11 +2931,9 @@ void SfxMedium::GetLockingStream_Impl()
         return;
 
     // open the original document
-    uno::Sequence< beans::PropertyValue > xProps;
-    TransformItems( SID_OPENDOC, GetItemSet(), xProps );
-    utl::MediaDescriptor aMedium( xProps );
+    comphelper::SequenceAsHashMap aMedium(TransformItems(SID_OPENDOC, GetItemSet()));
 
-    aMedium.addInputStreamOwnLock();
+    utl::MediaDescriptor::addInputStreamOwnLock(aMedium);
 
     uno::Reference< io::XInputStream > xInputStream;
     aMedium[utl::MediaDescriptor::PROP_STREAM] >>= pImpl->m_xLockingStream;
@@ -2984,7 +2982,6 @@ void SfxMedium::GetMedium_Impl()
     }
     else
     {
-        uno::Sequence < beans::PropertyValue > xProps;
         OUString aFileName;
         if (!pImpl->m_aName.isEmpty())
         {
@@ -3018,8 +3015,7 @@ void SfxMedium::GetMedium_Impl()
         }
         else
         {
-            TransformItems( SID_OPENDOC, GetItemSet(), xProps );
-            utl::MediaDescriptor aMedium( xProps );
+            comphelper::SequenceAsHashMap aMedium(TransformItems(SID_OPENDOC, GetItemSet()));
 
             if ( pImpl->m_xLockingStream.is() && !bFromTempFile )
             {
@@ -3032,12 +3028,12 @@ void SfxMedium::GetMedium_Impl()
                 {
                     aMedium[utl::MediaDescriptor::PROP_URL] <<= aFileName;
                     aMedium.erase( utl::MediaDescriptor::PROP_READONLY );
-                    aMedium.addInputStream();
+                    utl::MediaDescriptor::addInputStream(aMedium);
                 }
                 else if ( GetURLObject().GetProtocol() == INetProtocol::File )
                 {
                     // use the special locking approach only for file URLs
-                    aMedium.addInputStreamOwnLock();
+                    utl::MediaDescriptor::addInputStreamOwnLock(aMedium);
                 }
                 else
                 {
@@ -3047,7 +3043,7 @@ void SfxMedium::GetMedium_Impl()
                     {
                         aMedium[utl::MediaDescriptor::PROP_AUTHENTICATIONHANDLER] <<= GetInteractionHandler( true );
                     }
-                    aMedium.addInputStream();
+                    utl::MediaDescriptor::addInputStream(aMedium);
                 }
                 // the ReadOnly property set in aMedium is ignored
                 // the check is done in LockOrigFileOnDemand() for file and non-file URLs
@@ -3693,14 +3689,12 @@ SfxMedium::SfxMedium( const uno::Sequence<beans::PropertyValue>& aArgs ) :
 
 void SfxMedium::SetArgs(const uno::Sequence<beans::PropertyValue>& rArgs)
 {
-    comphelper::SequenceAsHashMap aArgsMap(rArgs);
-    aArgsMap.erase(u"Stream"_ustr);
-    aArgsMap.erase(u"InputStream"_ustr);
-
-    pImpl->m_aArgs = aArgsMap.getAsConstPropertyValueList();
+    pImpl->m_aArgs << rArgs;
+    pImpl->m_aArgs.erase(u"Stream"_ustr);
+    pImpl->m_aArgs.erase(u"InputStream"_ustr);
 }
 
-const uno::Sequence<beans::PropertyValue> & SfxMedium::GetArgs() const { return pImpl->m_aArgs; }
+const comphelper::SequenceAsHashMap& SfxMedium::GetArgs() const { return pImpl->m_aArgs; }
 
 SfxMedium::SfxMedium( const uno::Reference < embed::XStorage >& rStor, const OUString& rBaseURL, const std::shared_ptr<SfxItemSet>& p ) :
     pImpl(new SfxMedium_Impl)

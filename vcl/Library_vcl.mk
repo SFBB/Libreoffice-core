@@ -69,6 +69,7 @@ $(eval $(call gb_Library_use_libraries,vcl,\
     $(if $(filter OPENCL,$(BUILD_TYPE)),opencl) \
     sal \
     salhelper \
+    sax \
     sot \
     svl \
     tl \
@@ -168,6 +169,7 @@ $(eval $(call gb_Library_add_exception_objects,vcl,\
     vcl/source/window/brdwin \
     vcl/source/window/bufferdevice \
     vcl/source/window/accessibility \
+    vcl/source/window/colorpicker \
     vcl/source/window/legacyaccessibility \
     vcl/source/window/clipping \
     vcl/source/window/stacking \
@@ -188,6 +190,7 @@ $(eval $(call gb_Library_add_exception_objects,vcl,\
     vcl/source/window/DocWindow \
     vcl/source/window/event \
     vcl/source/window/floatwin \
+    vcl/source/window/hexcolorcontrol \
     $(if $(ENABLE_WASM_STRIP_SPLASH),,vcl/source/window/introwin) \
     vcl/source/window/keycod \
     vcl/source/window/keyevent \

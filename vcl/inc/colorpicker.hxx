@@ -21,10 +21,9 @@
 
 #include <vcl/ColorDialog.hxx>
 #include <vcl/customweld.hxx>
+#include <vcl/hexcolorcontrol.hxx>
 #include <vcl/virdev.hxx>
 #include <vcl/weld.hxx>
-#include <sfx2/basedlgs.hxx>
-#include <svx/hexcolorcontrol.hxx>
 #include <o3tl/typed_flags_set.hxx>
 
 enum class UpdateFlags
@@ -160,7 +159,7 @@ private:
     double mdValue;
 };
 
-class ColorPickerDialog : public SfxDialogController
+class ColorPickerDialog : public weld::GenericDialogController, public virtual ColorDialogController
 {
 private:
     ColorFieldControl m_aColorField;
@@ -205,8 +204,12 @@ private:
 public:
     ColorPickerDialog(weld::Window* pParent, const Color& rColor, vcl::ColorPickerMode eDialogMode);
 
-    Color GetColor() const;
-    void SetColor(const Color& rColor);
+    virtual weld::Dialog* getDialog() override
+    {
+        return weld::GenericDialogController::getDialog();
+    }
+    virtual Color GetColor() const override;
+    virtual void SetColor(const Color& rColor) override;
 
 private:
     void update_color(UpdateFlags n = UpdateFlags::All);

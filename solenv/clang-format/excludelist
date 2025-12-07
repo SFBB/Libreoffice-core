@@ -2166,7 +2166,6 @@ cui/source/dialogs/DiagramDialog.cxx
 cui/source/dialogs/SpellAttrib.hxx
 cui/source/dialogs/SpellDialog.cxx
 cui/source/dialogs/about.cxx
-cui/source/dialogs/colorpicker.cxx
 cui/source/dialogs/cuifmsearch.cxx
 cui/source/dialogs/cuigaldlg.cxx
 cui/source/dialogs/cuigrfflt.cxx
@@ -5626,7 +5625,6 @@ include/svx/grfflt.hxx
 include/svx/gridctrl.hxx
 include/svx/hdft.hxx
 include/svx/helperhittest3d.hxx
-include/svx/hexcolorcontrol.hxx
 include/svx/hlnkitem.hxx
 include/svx/hyperdlg.hxx
 include/svx/ifaceids.hxx
@@ -6101,6 +6099,7 @@ include/vcl/graphictools.hxx
 include/vcl/hatch.hxx
 include/vcl/headbar.hxx
 include/vcl/help.hxx
+include/vcl/hexcolorcontrol.hxx
 include/vcl/i18nhelp.hxx
 include/vcl/idle.hxx
 include/vcl/image.hxx
@@ -14716,6 +14715,7 @@ vcl/source/window/brdwin.cxx
 vcl/source/window/bubblewindow.cxx
 vcl/source/window/builder.cxx
 vcl/source/window/clipping.cxx
+vcl/source/window/colorpicker.cxx
 vcl/source/window/commandevent.cxx
 vcl/source/window/cursor.cxx
 vcl/source/window/debugevent.cxx
