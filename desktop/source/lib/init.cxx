@@ -4274,7 +4274,7 @@ static void doc_paintTile(LibreOfficeKitDocument* pThis,
         return;
     }
 
-#if defined(UNX) && !defined(MACOSX) || defined(_WIN32)
+#if defined(UNX) || defined(_WIN32)
 
     // Painting of zoomed or HiDPI spreadsheets is special, we actually draw everything at 100%,
     // and only set cairo's (or CoreGraphic's, in the iOS case) scale factor accordingly, so that
@@ -5600,6 +5600,33 @@ static void doc_postUnoCommand(LibreOfficeKitDocument* pThis, const char* pComma
     else if (gImpl && aCommand == ".uno:SidebarHide")
     {
         hideSidebar();
+        return;
+    }
+    else if (gImpl && aCommand == ".uno:UICoverage")
+    {
+        for (const beans::PropertyValue& rPropValue : aPropertyValuesVector)
+        {
+            if (rPropValue.Name == "Report")
+            {
+                bool report(true);
+                rPropValue.Value >>= report;
+                if (report)
+                {
+                    tools::JsonWriter aJson;
+                    aJson.put("commandName", aCommand);
+                    aJson.put("success", true);
+                    Application::UICoverageReport(aJson);
+                    pDocument->mpCallbackFlushHandlers[nView]->queue(LOK_CALLBACK_UNO_COMMAND_RESULT, aJson.finishAndGetAsOString());
+                }
+            }
+            else if (rPropValue.Name == "Track")
+            {
+                bool track(false);
+                rPropValue.Value >>= track;
+                Application::EnableUICoverage(track);
+            }
+        }
+
         return;
     }
 

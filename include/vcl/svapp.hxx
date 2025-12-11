@@ -45,6 +45,7 @@
 
 
 class Bitmap;
+namespace tools { class JsonWriter; }
 namespace weld
 {
     class Builder;
@@ -1236,6 +1237,12 @@ public:
 
     /** Determines if safe mode is enabled */
     static bool                 IsSafeModeEnabled();
+
+    /** Collect what .ui files are used*/
+    static void                 EnableUICoverage(bool bEnable);
+
+    /** Report on what .ui files were used*/
+    static void UICoverageReport(tools::JsonWriter& rJson);
 
     ///@}
 

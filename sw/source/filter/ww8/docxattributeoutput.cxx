@@ -4359,7 +4359,10 @@ void DocxAttributeOutput::StartRedline(const SwRedlineData* pRedlineData, bool b
 
     const DateTime& aDateTime = pRedlineData->GetTimeStamp();
     bool bNoDate = bRemovePersonalInfo ||
-        ( aDateTime.GetYear() == 1970 && aDateTime.GetMonth() == 1 && aDateTime.GetDay() == 1 );
+        ( aDateTime.GetYear() == 1970 && aDateTime.GetMonth() == 1 && aDateTime.GetDay() == 1 ) ||
+        // The officeotron validator does not think year 0 is valid, so just dont put anything,
+        // a zero year is not useful anyway.
+        ( aDateTime.GetYear() == 0 && aDateTime.GetMonth() == 0 && aDateTime.GetDay() == 0 );
     bool isInMoveBookmark = false;
     for (const auto& openedBookmark : m_rOpenedBookmarksIds)
     {
@@ -4774,9 +4777,6 @@ void DocxAttributeOutput::TableCellProperties( ww8::WW8TableNodeInfoInner::Point
 
     bool const bEcma = GetExport().GetFilter().getVersion() == oox::core::ECMA_376_1ST_EDITION;
 
-    // Output any table cell redlines if there are any attached to this specific cell
-    TableCellRedline( pTableTextNodeInfoInner );
-
     if (const SfxGrabBagItem* pItem = pTableBox->GetFrameFormat()->GetAttrSet().GetItem<SfxGrabBagItem>(RES_FRMATR_GRABBAG))
     {
         const std::map<OUString, uno::Any>& rGrabBag = pItem->GetGrabBag();
@@ -4842,6 +4842,9 @@ void DocxAttributeOutput::TableCellProperties( ww8::WW8TableNodeInfoInner::Point
     }
 
     TableVerticalCell( pTableTextNodeInfoInner );
+
+    // Output any table cell redlines if there are any attached to this specific cell
+    TableCellRedline( pTableTextNodeInfoInner );
 
     m_pSerializer->endElementNS( XML_w, XML_tcPr );
 }
