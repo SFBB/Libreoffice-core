@@ -107,6 +107,7 @@
 #include <vcl/abstdlg.hxx>
 
 #ifdef _WIN32
+#include <o3tl/char16_t2wchar_t.hxx>
 #include <Shlobj.h>
 #ifdef GetTempPath
 #undef GetTempPath
@@ -1717,6 +1718,19 @@ bool SfxStoringHelper::FinishGUIStoreModel(::comphelper::SequenceAsHashMap::cons
     {
         OUString aFileName;
         aFileNameIter->second >>= aFileName;
+        if (comphelper::LibreOfficeKit::isActive())
+        {
+            // In the LOK case, we didn't actually display any dialog yet, so invoke a callback if
+            // that's set.
+            OUString aNewURI;
+            if (comphelper::LibreOfficeKit::fileSaveDialog(aFileName, aNewURI))
+            {
+                if (aNewURI.isEmpty())
+                    return false;
+                aFileName = aNewURI;
+            }
+        }
+
         aURL.SetURL( aFileName );
         DBG_ASSERT( aURL.GetProtocol() != INetProtocol::NotValid, "Illegal URL!" );
 

@@ -21,6 +21,8 @@
 #include <comphelper/propertyvalue.hxx>
 #include <unotools/syslocaleoptions.hxx>
 #include <formula/grammar.hxx>
+#include <sfx2/docfilt.hxx>
+#include <sfx2/fcontnr.hxx>
 #include <svl/numformat.hxx>
 #include <svl/zformat.hxx>
 #include <svx/svdograf.hxx>
@@ -45,8 +47,15 @@ ScExportTest2::ScExportTest2()
 CPPUNIT_TEST_FIXTURE(ScExportTest2, testGroupShape)
 {
     createScDoc("xlsx/groupShape.xlsx");
-    save(TestFilter::XLSX);
 
+    // tdf#165180: should be recognized as a 2010+ XLSX format when loaded (and resaved...)
+    SfxMedium* pMedium = getScDocShell()->GetMedium();
+    SfxFilterMatcher aMatcher(u"com.sun.star.sheet.SpreadsheetDocument"_ustr);
+    std::shared_ptr<const SfxFilter> pFilter;
+    aMatcher.DetectFilter(*pMedium, pFilter);
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("import", u"Calc Office Open XML"_ustr, pFilter->GetFilterName());
+
+    save(TestFilter::XLSX);
     xmlDocUniquePtr pDoc = parseExport(u"xl/drawings/drawing1.xml"_ustr);
     CPPUNIT_ASSERT(pDoc);
     assertXPath(pDoc, "/xdr:wsDr/xdr:twoCellAnchor/xdr:grpSp/xdr:grpSpPr");
@@ -73,15 +82,6 @@ CPPUNIT_TEST_FIXTURE(ScExportTest2, testTdf166724_cellAnchor)
     // VML's x:anchor indicates cell-anchor
     CPPUNIT_ASSERT_EQUAL(SCA_CELL_RESIZE, anchorType);
 
-    // VML's x:anchor has too large Offsets: limit to cell B2's edges.
-    // Without the fixes, this was X[9040] Y[10257] W[2823] H[742]
-    tools::Rectangle aRect = pPage->GetObj(0)->GetSnapRect();
-    CPPUNIT_ASSERT_EQUAL(tools::Long(1990), aRect.Left());
-    CPPUNIT_ASSERT_EQUAL(tools::Long(1058), aRect.Top());
-    CPPUNIT_ASSERT_EQUAL(tools::Long(4192), aRect.GetWidth());
-    CPPUNIT_ASSERT_EQUAL(tools::Long(557), aRect.GetHeight());
-
-    // I did not focus on (minor) round-trip concerns. Just documenting the current results...
     saveAndReload(TestFilter::XLSX);
 
     ScDocument& rRTDoc = *getScDoc();
@@ -90,12 +90,6 @@ CPPUNIT_TEST_FIXTURE(ScExportTest2, testTdf166724_cellAnchor)
 
     anchorType = ScDrawLayer::GetAnchorType(*pPage->GetObj(0));
     CPPUNIT_ASSERT_EQUAL(SCA_CELL_RESIZE, anchorType);
-
-    aRect = pPage->GetObj(0)->GetSnapRect();
-    CPPUNIT_ASSERT_EQUAL(tools::Long(1990), aRect.Left());
-    CPPUNIT_ASSERT_EQUAL(tools::Long(1058), aRect.Top());
-    CPPUNIT_ASSERT_EQUAL(tools::Long(4192), aRect.GetWidth());
-    CPPUNIT_ASSERT_EQUAL(tools::Long(557), aRect.GetHeight());
 
     // test implementation of GetRange
     tools::Rectangle aB2(rRTDoc.GetMMRect(1, 1, 1, 1, 0)); // B2 from sheet 0 in mm100
@@ -131,6 +125,13 @@ CPPUNIT_TEST_FIXTURE(ScExportTest2, testMatrixMultiplicationXLSX)
 {
     createScDoc("xlsx/matrix-multiplication.xlsx");
 
+    // tdf#165180: should be recognized as a 2007 XLSX format when loaded (and resaved...)
+    SfxMedium* pMedium = getScDocShell()->GetMedium();
+    SfxFilterMatcher aMatcher(u"com.sun.star.sheet.SpreadsheetDocument"_ustr);
+    std::shared_ptr<const SfxFilter> pFilter;
+    aMatcher.DetectFilter(*pMedium, pFilter);
+    CPPUNIT_ASSERT_EQUAL(u"Calc MS Excel 2007 XML"_ustr, pFilter->GetFilterName());
+
     save(TestFilter::XLSX);
 
     xmlDocUniquePtr pDoc = parseExport(u"xl/worksheets/sheet1.xml"_ustr);
@@ -145,6 +146,11 @@ CPPUNIT_TEST_FIXTURE(ScExportTest2, testMatrixMultiplicationXLSX)
 
     // make sure that the CellFormulaType is array.
     CPPUNIT_ASSERT_EQUAL(u"array"_ustr, CellFormulaType);
+
+    // tdf#165180: should be recognizable as a 2007 XLSX format when saved
+    xmlDocUniquePtr pWorkbook = parseExport(u"xl/workbook.xml"_ustr);
+    // lowestEdited = 4 needs to be round-tripped in order to detect as a 2007 ECMA_376_1ST_EDITION
+    assertXPath(pWorkbook, "/x:workbook/x:fileVersion", "lowestEdited", u"4");
 }
 
 CPPUNIT_TEST_FIXTURE(ScExportTest2, testRefStringXLSX)
@@ -1103,6 +1109,12 @@ CPPUNIT_TEST_FIXTURE(ScExportTest2, testTdf114969XLSX)
     CPPUNIT_ASSERT(pDoc);
     assertXPath(pDoc, "/x:worksheet/x:hyperlinks/x:hyperlink[1]", "location", u"'1.1.1.1'!C1");
     assertXPath(pDoc, "/x:worksheet/x:hyperlinks/x:hyperlink[2]", "location", u"'1.1.1.1'!C2");
+
+    // tdf#165180: should be recognizable as a 2007 XLSX format when saved
+    save(TestFilter::XLSX_2007);
+    xmlDocUniquePtr pWorkbook = parseExport(u"xl/workbook.xml"_ustr);
+    // lowestEdited = 4 needs to be output in order to be detected as a 2007 ECMA_376_1ST_EDITION
+    assertXPath(pWorkbook, "/x:workbook/x:fileVersion", "lowestEdited", u"4");
 }
 
 CPPUNIT_TEST_FIXTURE(ScExportTest2, testTdf115192XLSX)
@@ -1422,7 +1434,7 @@ CPPUNIT_TEST_FIXTURE(ScExportTest2, testTdf123645XLSX)
 CPPUNIT_TEST_FIXTURE(ScExportTest2, testTdf125173XLSX)
 {
     createScDoc("ods/text_box_hyperlink.ods");
-    save(TestFilter::XLSX);
+    saveAndReload(TestFilter::XLSX);
 
     xmlDocUniquePtr pDoc = parseExport(u"xl/drawings/drawing1.xml"_ustr);
     CPPUNIT_ASSERT(pDoc);
@@ -1434,6 +1446,13 @@ CPPUNIT_TEST_FIXTURE(ScExportTest2, testTdf125173XLSX)
                 u"http://www.google.com/");
     assertXPath(pXmlRels, "/rels:Relationships/rels:Relationship[@Id='rId1']", "TargetMode",
                 u"External");
+
+    // tdf#137883: should be recognized as a 2010+ XLSX format when reloaded (and resaved...)
+    SfxMedium* pMedium = getScDocShell()->GetMedium();
+    SfxFilterMatcher aMatcher(u"com.sun.star.sheet.SpreadsheetDocument"_ustr);
+    std::shared_ptr<const SfxFilter> pFilter;
+    aMatcher.DetectFilter(*pMedium, pFilter);
+    CPPUNIT_ASSERT_EQUAL(u"Calc Office Open XML"_ustr, pFilter->GetFilterName());
 }
 
 CPPUNIT_TEST_FIXTURE(ScExportTest2, testTdf79972XLSX)

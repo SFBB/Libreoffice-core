@@ -14,8 +14,8 @@ ARGON2_TARBALL := phc-winner-argon2-20190702.tar.gz
 # so that git cherry-pick
 # will not run into conflicts
 # please repack the tarball using external/boost/repack_tarball.sh
-BOOST_SHA256SUM := b3a976c659961f1d7fae9a8e58d6729a11f5473abaf2ef0e623f53777c86475d
-BOOST_TARBALL := boost_1_89_0.tar.xz
+BOOST_SHA256SUM := b1f3cd4a82b59dd66e02c2ebae6334df18043a050d2d8eb83d12ad88b95b5e86
+BOOST_TARBALL := boost_1_90_0.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -390,8 +390,8 @@ JFREEREPORT_SAC_TARBALL := 39bb3fcea1514f1369fcfc87542390fd-sacjava-1.3.zip
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-LIBJPEG_TURBO_SHA256SUM := 560f6338b547544c4f9721b18d8b87685d433ec78b3c644c70d77adad22c55e6
-LIBJPEG_TURBO_TARBALL := libjpeg-turbo-3.1.2.tar.gz
+LIBJPEG_TURBO_SHA256SUM := 3a13a5ba767dc8264bc40b185e41368a80d5d5f945944d1dbaa4b2fb0099f4e5
+LIBJPEG_TURBO_TARBALL := libjpeg-turbo-3.1.3.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
