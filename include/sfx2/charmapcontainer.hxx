@@ -28,10 +28,22 @@
 
 class SFX2_DLLPUBLIC SfxCharmapContainer
 {
-    std::deque<OUString> m_aRecentCharList;
-    std::deque<OUString> m_aRecentCharFontList;
-    std::deque<OUString> m_aFavCharList;
-    std::deque<OUString> m_aFavCharFontList;
+    struct CharAndFont
+    {
+        OUString sChar;
+        OUString sFont;
+
+        CharAndFont(const OUString& rChar, const OUString& rFont)
+            : sChar(rChar)
+            , sFont(rFont)
+        {
+        }
+
+        bool operator==(const CharAndFont& rOther) const = default;
+    };
+
+    std::deque<CharAndFont> m_aRecentChars;
+    std::deque<CharAndFont> m_aFavChars;
 
     SvxCharView m_aRecentCharView[16];
     SvxCharView m_aFavCharView[16];
@@ -44,18 +56,18 @@ class SFX2_DLLPUBLIC SfxCharmapContainer
     Link<void*, void> m_aUpdateFavHdl;
     Link<void*, void> m_aUpdateRecentHdl;
 
-    DECL_DLLPRIVATE_LINK(RecentClearClickHdl, SvxCharView*, void);
-    DECL_DLLPRIVATE_LINK(FavClearClickHdl, SvxCharView*, void);
-    DECL_DLLPRIVATE_LINK(RecentClearAllClickHdl, SvxCharView*, void);
-    DECL_DLLPRIVATE_LINK(FavClearAllClickHdl, SvxCharView*, void);
+    DECL_DLLPRIVATE_LINK(RecentClearClickHdl, SvxCharView&, void);
+    DECL_DLLPRIVATE_LINK(FavClearClickHdl, SvxCharView&, void);
+    DECL_DLLPRIVATE_LINK(RecentClearAllClickHdl, SvxCharView&, void);
+    DECL_DLLPRIVATE_LINK(FavClearAllClickHdl, SvxCharView&, void);
 
 public:
     SfxCharmapContainer(weld::Builder& rBuilder, const VclPtr<VirtualDevice>& rVirDev,
                         bool bLockGridSizes);
 
-    void init(bool bHasInsert, const Link<SvxCharView*, void>& rMouseClickHdl,
+    void init(bool bHasInsert, const Link<SvxCharView&, void>& rMouseClickHdl,
               const Link<void*, void>& rUpdateFavHdl, const Link<void*, void>& rUpdateRecentHdl,
-              const Link<SvxCharView*, void>& rFocusInHdl = Link<SvxCharView*, void>());
+              const Link<SvxCharView&, void>& rFocusInHdl = Link<SvxCharView&, void>());
 
     void getFavCharacterList();
     void updateFavCharControl();
@@ -63,23 +75,16 @@ public:
     void getRecentCharacterList(); //gets both recent char and recent char font list
     void updateRecentCharControl();
 
-    void updateRecentCharacterList(const OUString& sTitle, const OUString& rFont);
-    void updateFavCharacterList(const OUString& sTitle, const OUString& rFont);
-    void deleteFavCharacterFromList(std::u16string_view sTitle, std::u16string_view rFont);
+    void updateRecentCharacterList(const OUString& rTitle, const OUString& rFont);
+    void updateFavCharacterList(const OUString& rTitle, const OUString& rFont);
+    void deleteFavCharacterFromList(const OUString& rTitle, const OUString& rFont);
 
-    bool isFavChar(std::u16string_view sTitle, std::u16string_view rFont);
+    bool isFavChar(const OUString& rTitle, const OUString& rFont);
     bool hasRecentChars() const;
 
     bool FavCharListIsFull() const;
 
     void GrabFocusToFirstFavorite();
-
-private:
-    std::pair<std::deque<OUString>::const_iterator, std::deque<OUString>::const_iterator>
-    getRecentChar(std::u16string_view sTitle, std::u16string_view rFont) const;
-
-    std::pair<std::deque<OUString>::const_iterator, std::deque<OUString>::const_iterator>
-    getFavChar(std::u16string_view sTitle, std::u16string_view rFont) const;
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

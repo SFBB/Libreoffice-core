@@ -86,6 +86,8 @@ class VCL_DLLPUBLIC Widget
 
     int m_nBlockNotify = 0;
 
+    Link<const CommandEvent&, bool> m_aCommandHdl;
+
 protected:
     Link<Widget&, void> m_aFocusInHdl;
     Link<Widget&, void> m_aFocusOutHdl;
@@ -102,6 +104,7 @@ protected:
     bool notify_events_disabled() const { return m_nBlockNotify != 0; }
     void enable_notify_events() { --m_nBlockNotify; }
 
+    bool signal_command(const CommandEvent& rCEvt) { return m_aCommandHdl.Call(rCEvt); }
     void signal_focus_in() { m_aFocusInHdl.Call(*this); }
     void signal_focus_out() { m_aFocusOutHdl.Call(*this); }
     bool signal_mnemonic_activate() { return m_aMnemonicActivateHdl.Call(*this); }
@@ -241,6 +244,11 @@ public:
     virtual OUString get_tooltip_text() const = 0;
 
     virtual void set_cursor_data(void* pData) = 0;
+
+    virtual void connect_command(const Link<const CommandEvent&, bool>& rLink)
+    {
+        m_aCommandHdl = rLink;
+    }
 
     virtual void connect_focus_in(const Link<Widget&, void>& rLink)
     {
@@ -1034,9 +1042,6 @@ public:
 private:
     OUString m_sSavedValue;
 
-    // if handler returns true, then menu has been shown and event is consumed
-    Link<const CommandEvent&, bool> m_aPopupMenuHdl;
-
 protected:
     Link<TreeView&, void> m_aSelectionChangedHdl;
     Link<TreeView&, bool> m_aRowActivatedHdl;
@@ -1101,8 +1106,6 @@ protected:
     {
         return m_aEditingDoneHdl.Call(rIterText);
     }
-
-    bool signal_popup_menu(const CommandEvent& rCommand) { return m_aPopupMenuHdl.Call(rCommand); }
 
     Link<const TreeIter&, OUString> m_aQueryTooltipHdl;
 
@@ -1528,11 +1531,6 @@ public:
         m_aVisibleRangeChangedHdl = rLink;
     }
 
-    virtual void connect_popup_menu(const Link<const CommandEvent&, bool>& rLink)
-    {
-        m_aPopupMenuHdl = rLink;
-    }
-
     virtual void enable_drag_source(rtl::Reference<TransferDataContainer>& rTransferable,
                                     sal_uInt8 eDNDConstants)
         = 0;
@@ -1648,7 +1646,6 @@ private:
 protected:
     Link<IconView&, void> m_aSelectionChangeHdl;
     Link<IconView&, bool> m_aItemActivatedHdl;
-    Link<const CommandEvent&, bool> m_aCommandHdl;
     Link<const TreeIter&, OUString> m_aQueryTooltipHdl;
     Link<const encoded_image_query&, bool> m_aGetPropertyTreeElemHdl;
 
@@ -1732,8 +1729,6 @@ public:
        the activation to the default handler which expands/collapses the row, if possible.
     */
     void connect_item_activated(const Link<IconView&, bool>& rLink) { m_aItemActivatedHdl = rLink; }
-
-    void connect_command(const Link<const CommandEvent&, bool>& rLink) { m_aCommandHdl = rLink; }
 
     virtual void connect_query_tooltip(const Link<const TreeIter&, OUString>& rLink)
     {
@@ -2894,7 +2889,6 @@ public:
 
 protected:
     Link<draw_args, void> m_aDrawHdl;
-    Link<const CommandEvent&, bool> m_aCommandHdl;
     Link<Widget&, tools::Rectangle> m_aGetFocusRectHdl;
     Link<tools::Rectangle&, OUString> m_aQueryTooltipHdl;
     // if handler returns true, drag is disallowed
@@ -2923,7 +2917,6 @@ protected:
 
 public:
     void connect_draw(const Link<draw_args, void>& rLink) { m_aDrawHdl = rLink; }
-    void connect_command(const Link<const CommandEvent&, bool>& rLink) { m_aCommandHdl = rLink; }
     void connect_focus_rect(const Link<Widget&, tools::Rectangle>& rLink)
     {
         m_aGetFocusRectHdl = rLink;

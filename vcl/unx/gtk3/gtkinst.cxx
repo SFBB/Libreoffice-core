@@ -2571,7 +2571,7 @@ protected:
         Point aPos(gtk_widget_get_allocated_width(pWidget) / 2,
                    gtk_widget_get_allocated_height(pWidget) / 2);
         CommandEvent aCEvt(aPos, CommandEventId::ContextMenu, false);
-        return pThis->signal_popup_menu(aCEvt);
+        return pThis->signal_command(aCEvt);
     }
 #endif
 
@@ -2742,6 +2742,7 @@ private:
     GtkCssProvider* m_pBgCssProvider;
 #if !GTK_CHECK_VERSION(4, 0, 0)
     GdkDragAction m_eDragAction;
+    gulong m_nPopupMenuSignalId;
 #endif
     gulong m_nFocusInSignalId;
     gulong m_nMnemonicActivateSignalId;
@@ -2812,11 +2813,6 @@ private:
     }
 #endif
 
-    virtual bool signal_popup_menu(const CommandEvent&)
-    {
-        return false;
-    }
-
 #if GTK_CHECK_VERSION(4, 0, 0)
     static void signalButtonPress(GtkGestureClick* pGesture, int n_press, gdouble x, gdouble y, gpointer widget)
     {
@@ -2848,7 +2844,7 @@ private:
             {
                 //if handled for context menu, stop processing
                 CommandEvent aCEvt(aPos, CommandEventId::ContextMenu, true);
-                if (signal_popup_menu(aCEvt))
+                if (signal_command(aCEvt))
                 {
                     gtk_gesture_set_state(GTK_GESTURE(pGesture), GTK_EVENT_SEQUENCE_CLAIMED);
                     return;
@@ -2914,7 +2910,7 @@ private:
         {
             //if handled for context menu, stop processing
             CommandEvent aCEvt(aPos, CommandEventId::ContextMenu, true);
-            if (signal_popup_menu(aCEvt))
+            if (signal_command(aCEvt))
                 return true;
         }
 
@@ -3323,6 +3319,7 @@ public:
         , m_pBgCssProvider(nullptr)
 #if !GTK_CHECK_VERSION(4, 0, 0)
         , m_eDragAction(GdkDragAction(0))
+        , m_nPopupMenuSignalId(0)
 #endif
         , m_nFocusInSignalId(0)
         , m_nMnemonicActivateSignalId(0)
@@ -3371,6 +3368,16 @@ public:
 #endif
 
         localizeDecimalSeparator();
+    }
+
+    virtual void connect_command(const Link<const CommandEvent&, bool>& rLink) override
+    {
+#if !GTK_CHECK_VERSION(4, 0, 0)
+        if (!m_nPopupMenuSignalId)
+            m_nPopupMenuSignalId = g_signal_connect(m_pWidget, "popup-menu", G_CALLBACK(signalPopupMenu), this);
+#endif
+        ensureButtonPressSignal();
+        weld::Widget::connect_command(rLink);
     }
 
     virtual void connect_key_press(const Link<const KeyEvent&, bool>& rLink) override
@@ -4140,6 +4147,10 @@ public:
 
         if (m_pDragCancelEvent)
             Application::RemoveUserEvent(m_pDragCancelEvent);
+#if !GTK_CHECK_VERSION(4, 0, 0)
+        if (m_nPopupMenuSignalId)
+            g_signal_handler_disconnect(m_pWidget, m_nPopupMenuSignalId);
+#endif
         if (m_nDragMotionSignalId)
             g_signal_handler_disconnect(m_pWidget, m_nDragMotionSignalId);
         if (m_nDragDropSignalId)
@@ -13922,7 +13933,6 @@ private:
     gulong m_nRowDeletedSignalId;
     gulong m_nRowInsertedSignalId;
 #if !GTK_CHECK_VERSION(4, 0, 0)
-    gulong m_nPopupMenuSignalId;
     gulong m_nKeyPressSignalId;
     gulong m_nCrossingSignalid;
 #endif
@@ -13977,11 +13987,6 @@ private:
         GtkInstanceTreeView* pThis = static_cast<GtkInstanceTreeView*>(widget);
         SolarMutexGuard aGuard;
         pThis->handle_row_activated();
-    }
-
-    virtual bool signal_popup_menu(const CommandEvent& rCEvt) override
-    {
-        return weld::TreeView::signal_popup_menu(rCEvt);
     }
 
     void insert_row(GtkTreeIter& iter, const GtkTreeIter* parent, int pos, const OUString* pId, const OUString* pText,
@@ -14636,7 +14641,6 @@ public:
         , m_nTestCollapseRowSignalId(g_signal_connect(pTreeView, "test-collapse-row", G_CALLBACK(signalTestCollapseRow), this))
         , m_nVAdjustmentChangedSignalId(0)
 #if !GTK_CHECK_VERSION(4, 0, 0)
-        , m_nPopupMenuSignalId(g_signal_connect(pTreeView, "popup-menu", G_CALLBACK(signalPopupMenu), this))
         , m_nKeyPressSignalId(g_signal_connect(pTreeView, "key-press-event", G_CALLBACK(signalKeyPress), this))
         , m_nCrossingSignalid(g_signal_connect(pTreeView, "enter-notify-event", G_CALLBACK(signalCrossing), this))
 #endif
@@ -16256,12 +16260,6 @@ public:
         g_signal_handler_unblock(gtk_tree_view_get_selection(m_pTreeView), m_nChangedSignalId);
     }
 
-    virtual void connect_popup_menu(const Link<const CommandEvent&, bool>& rLink) override
-    {
-        ensureButtonPressSignal();
-        weld::TreeView::connect_popup_menu(rLink);
-    }
-
     virtual bool get_dest_row_at_pos(const Point &rPos, weld::TreeIter* pResult, bool bDnDMode, bool bAutoScroll) override
     {
         if (rPos.X() < 0 || rPos.Y() < 0)
@@ -16644,7 +16642,6 @@ public:
 #if !GTK_CHECK_VERSION(4, 0, 0)
         g_signal_handler_disconnect(m_pTreeView, m_nCrossingSignalid);
         g_signal_handler_disconnect(m_pTreeView, m_nKeyPressSignalId);
-        g_signal_handler_disconnect(m_pTreeView, m_nPopupMenuSignalId);
 #endif
         g_signal_handler_disconnect(m_pTreeModel, m_nRowDeletedSignalId);
         g_signal_handler_disconnect(m_pTreeModel, m_nRowInsertedSignalId);
@@ -16714,23 +16711,10 @@ private:
     gint m_nIdCol;
     gulong m_nSelectionChangedSignalId;
     gulong m_nItemActivatedSignalId;
-#if !GTK_CHECK_VERSION(4, 0, 0)
-    gulong m_nPopupMenu;
-#endif
     gulong m_nQueryTooltipSignalId = 0;
     ImplSVEvent* m_pSelectionChangeEvent;
 
     DECL_LINK(async_signal_selection_changed, void*, void);
-
-    bool signal_command(const CommandEvent& rCEvt)
-    {
-        return m_aCommandHdl.Call(rCEvt);
-    }
-
-    virtual bool signal_popup_menu(const CommandEvent& rCEvt) override
-    {
-        return signal_command(rCEvt);
-    }
 
     void launch_signal_selection_changed()
     {
@@ -16971,9 +16955,6 @@ public:
         , m_nSelectionChangedSignalId(g_signal_connect(pIconView, "selection-changed",
                                       G_CALLBACK(signalSelectionChanged), this))
         , m_nItemActivatedSignalId(g_signal_connect(pIconView, "item-activated", G_CALLBACK(signalItemActivated), this))
-#if !GTK_CHECK_VERSION(4, 0, 0)
-        , m_nPopupMenu(g_signal_connect(pIconView, "popup-menu", G_CALLBACK(signalPopupMenu), this))
-#endif
         , m_pSelectionChangeEvent(nullptr)
     {
         m_nIdCol = std::max(m_nTextCol, m_nImageCol) + 1;
@@ -17295,9 +17276,6 @@ public:
 
         g_signal_handler_disconnect(m_pIconView, m_nItemActivatedSignalId);
         g_signal_handler_disconnect(m_pIconView, m_nSelectionChangedSignalId);
-#if !GTK_CHECK_VERSION(4, 0, 0)
-        g_signal_handler_disconnect(m_pIconView, m_nPopupMenu);
-#endif
     }
 };
 
@@ -18294,7 +18272,6 @@ private:
 #endif
     gulong m_nQueryTooltip;
 #if !GTK_CHECK_VERSION(4, 0, 0)
-    gulong m_nPopupMenu;
     gulong m_nScrollEvent;
 #endif
     GtkGesture *m_pZoomGesture;
@@ -18382,10 +18359,7 @@ private:
         gtk_tooltip_set_tip_area(tooltip, &aGdkHelpArea);
         return true;
     }
-    virtual bool signal_popup_menu(const CommandEvent& rCEvt) override
-    {
-        return signal_command(rCEvt);
-    }
+
 #if !GTK_CHECK_VERSION(4, 0, 0)
     bool signal_scroll(const GdkEventScroll* pEvent)
     {
@@ -18412,7 +18386,7 @@ private:
         CommandWheelData aWheelData(aEvt.mnDelta, aEvt.mnNotchDelta, aEvt.mnScrollLines,
                                     nMode, nCode, bHorz, aEvt.mbDeltaIsPixel);
         CommandEvent aCEvt(Point(aEvt.mnX, aEvt.mnY), CommandEventId::Wheel, true, &aWheelData);
-        return m_aCommandHdl.Call(aCEvt);
+        return signal_command(aCEvt);
     }
     static gboolean signalScroll(GtkWidget*, GdkEventScroll* pEvent, gpointer widget)
     {
@@ -18432,7 +18406,7 @@ private:
 
         CommandGestureZoomData aGestureData(x, y, eEventType, fScaleDelta);
         CommandEvent aCEvt(Point(x, y), CommandEventId::GestureZoom, true, &aGestureData);
-        return m_aCommandHdl.Call(aCEvt);
+        return signal_command(aCEvt);
     }
 
     static bool signalZoomBegin(GtkGesture* gesture, GdkEventSequence* sequence, gpointer widget)
@@ -18475,7 +18449,6 @@ public:
         , m_pSurface(nullptr)
         , m_nQueryTooltip(g_signal_connect(m_pDrawingArea, "query-tooltip", G_CALLBACK(signalQueryTooltip), this))
 #if !GTK_CHECK_VERSION(4, 0, 0)
-        , m_nPopupMenu(g_signal_connect(m_pDrawingArea, "popup-menu", G_CALLBACK(signalPopupMenu), this))
         , m_nScrollEvent(g_signal_connect(m_pDrawingArea, "scroll-event", G_CALLBACK(signalScroll), this))
 #endif
     {
@@ -18733,9 +18706,6 @@ public:
 #if !GTK_CHECK_VERSION(4, 0, 0)
         g_signal_handler_disconnect(m_pDrawingArea, m_nScrollEvent);
 #endif
-#if !GTK_CHECK_VERSION(4, 0, 0)
-        g_signal_handler_disconnect(m_pDrawingArea, m_nPopupMenu);
-#endif
         g_signal_handler_disconnect(m_pDrawingArea, m_nQueryTooltip);
 #if GTK_CHECK_VERSION(4, 0, 0)
         gtk_drawing_area_set_draw_func(m_pDrawingArea, nullptr, nullptr, nullptr);
@@ -18749,9 +18719,9 @@ public:
         return *m_xDevice;
     }
 
-    bool signal_command(const CommandEvent& rCEvt)
+    bool signalCommand(const CommandEvent& rCEvt)
     {
-        return m_aCommandHdl.Call(rCEvt);
+        return signal_command(rCEvt);
     }
 
     virtual void click(const Point& rPos) override
@@ -18853,7 +18823,7 @@ void IMHandler::updateIMSpotLocation()
 {
     CommandEvent aCEvt(Point(), CommandEventId::CursorPos);
     // we expect set_cursor_location to get triggered by this
-    m_pArea->signal_command(aCEvt);
+    m_pArea->signalCommand(aCEvt);
 }
 
 void IMHandler::set_cursor_location(const tools::Rectangle& rRect)
@@ -18875,7 +18845,7 @@ void IMHandler::signalIMCommit(GtkIMContext* /*pContext*/, gchar* pText, gpointe
     OUString sText(pText, strlen(pText), RTL_TEXTENCODING_UTF8);
     CommandExtTextInputData aData(sText, nullptr, sText.getLength(), 0, false);
     CommandEvent aCEvt(Point(), CommandEventId::ExtTextInput, false, &aData);
-    pThis->m_pArea->signal_command(aCEvt);
+    pThis->m_pArea->signalCommand(aCEvt);
 
     pThis->updateIMSpotLocation();
 
@@ -18904,7 +18874,7 @@ void IMHandler::signalIMPreeditChanged(GtkIMContext* pIMContext, gpointer im_han
 
     CommandExtTextInputData aData(sText, aInputFlags.data(), nCursorPos, nCursorFlags, false);
     CommandEvent aCEvt(Point(), CommandEventId::ExtTextInput, false, &aData);
-    pThis->m_pArea->signal_command(aCEvt);
+    pThis->m_pArea->signalCommand(aCEvt);
 
     pThis->updateIMSpotLocation();
 }
@@ -18952,7 +18922,7 @@ void IMHandler::StartExtTextInput()
     if (m_bExtTextInput)
         return;
     CommandEvent aCEvt(Point(), CommandEventId::StartExtTextInput);
-    m_pArea->signal_command(aCEvt);
+    m_pArea->signalCommand(aCEvt);
     m_bExtTextInput = true;
 }
 
@@ -18969,7 +18939,7 @@ void IMHandler::EndExtTextInput()
     if (!m_bExtTextInput)
         return;
     CommandEvent aCEvt(Point(), CommandEventId::EndExtTextInput);
-    m_pArea->signal_command(aCEvt);
+    m_pArea->signalCommand(aCEvt);
     m_bExtTextInput = false;
 }
 

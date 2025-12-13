@@ -240,7 +240,7 @@ SwRedlineAcceptDlg::SwRedlineAcceptDlg(std::shared_ptr<weld::Window> xParent, we
     rTreeView.set_selection_mode(SelectionMode::Multiple);
 
     rTreeView.connect_selection_changed(LINK(this, SwRedlineAcceptDlg, SelectHdl));
-    rTreeView.connect_popup_menu(LINK(this, SwRedlineAcceptDlg, CommandHdl));
+    rTreeView.connect_command(LINK(this, SwRedlineAcceptDlg, CommandHdl));
 
     // avoid multiple selection of the same texts:
     m_aSelectTimer.SetTimeout(100);
@@ -1193,8 +1193,13 @@ void SwRedlineAcceptDlg::CallAcceptReject( bool bSelect, bool bAccept )
     for (const auto& rRedLine : aRedlines)
     {
         SwRedlineTable::size_type nPosition = GetRedlinePos( *rRedLine );
+
+        // bSelect is false for "accept/reject all", true when only accepting/rejecting one or more
+        // selected changes. Only use direct accept/reject for explicitly selected changes.
+        bool bDirect = bSelect;
+
         if( nPosition != SwRedlineTable::npos )
-            (pSh->*FnAccRej)( nPosition, /*bDirect=*/true );
+            (pSh->*FnAccRej)( nPosition, bDirect );
 
         // handle redlines of table rows, stored as children of the item associated
         // to the deleted/inserted table row(s)
@@ -1209,7 +1214,7 @@ void SwRedlineAcceptDlg::CallAcceptReject( bool bSelect, bool bAccept )
                 {
                     nPosition = GetRedlinePos( *xChild );
                     if( nPosition != SwRedlineTable::npos )
-                        (pSh->*FnAccRej)( nPosition, /*bDirect=*/true );
+                        (pSh->*FnAccRej)( nPosition, bDirect );
                 }
                 while ( rTreeView.iter_next_sibling(*xChild) );
             }

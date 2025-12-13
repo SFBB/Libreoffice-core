@@ -52,6 +52,19 @@ CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest3, testTdf165670)
                 u"*/ 802433 h 1884784");
 }
 
+CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest3, testTdf169694_import_OLE_animation)
+{
+    createSdImpressDoc("pptx/tdf169694.pptx");
+    save(TestFilter::PPTX);
+
+    xmlDocUniquePtr pXmlDocContent = parseExport(u"ppt/slides/slide1.xml"_ustr);
+    assertXPath(pXmlDocContent,
+                "/p:sld/p:timing/p:tnLst/p:par/p:cTn/p:childTnLst[1]/p:seq/p:cTn/p:childTnLst[1]/"
+                "p:par[1]/p:cTn/p:childTnLst[1]/p:par/p:cTn/p:childTnLst[1]/p:par/p:cTn/"
+                "p:childTnLst[1]/p:set/p:cBhvr/p:tgtEl/p:spTgt",
+                1);
+}
+
 CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest3, testTdf165262)
 {
     createSdImpressDoc("ppt/tdf165262.ppt");
@@ -1128,6 +1141,18 @@ CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest3, testTdf169781)
     assertXPath(pXmlDoc2,
                 "/p:sld/p:cSld/p:spTree/p:graphicFrame[2]/a:graphic/a:graphicData/p:oleObj/p:pic",
                 1);
+}
+
+CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest3, testTdf169524)
+{
+    createSdImpressDoc("odp/tdf169524.odp");
+    save(TestFilter::PPTX);
+
+    xmlDocUniquePtr pXmlDoc = parseExport(u"ppt/slideMasters/slideMaster1.xml"_ustr);
+
+    // Verify that no left margin is exported
+    assertXPathNoAttribute(
+        pXmlDoc, "/p:sldMaster/p:cSld/p:spTree/p:sp[2]/p:txBody/a:lstStyle/a:lvl1pPr", "marL");
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();

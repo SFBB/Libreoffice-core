@@ -301,41 +301,60 @@ auto detachFrom(rtl::Reference<sax_fastparser::FastAttributeList>& src)
     return rtl::Reference(std::move(src));
 }
 
-constexpr auto constThemeColorTypeTokenMap = frozen::make_unordered_map<model::ThemeColorType, const char*>({
-    { model::ThemeColorType::Dark1, "dark1" },
-    { model::ThemeColorType::Light1, "light1" },
-    { model::ThemeColorType::Dark2, "dark2" },
-    { model::ThemeColorType::Light2, "light2" },
-    { model::ThemeColorType::Accent1, "accent1" },
-    { model::ThemeColorType::Accent2, "accent2" },
-    { model::ThemeColorType::Accent3, "accent3" },
-    { model::ThemeColorType::Accent4, "accent4" },
-    { model::ThemeColorType::Accent5, "accent5" },
-    { model::ThemeColorType::Accent6, "accent6" },
-    { model::ThemeColorType::Hyperlink, "hyperlink" },
-    { model::ThemeColorType::FollowedHyperlink, "followedHyperlink" }
+struct ThemeSchemeName
+{
+    const char* ThemeName;
+    const char* SchemeName;
+};
+
+constexpr auto constThemeColorTypeTokenMap = frozen::make_unordered_map<model::ThemeColorType, const ThemeSchemeName>({
+    { model::ThemeColorType::Dark1, { "dark1", "dk1" } },
+    { model::ThemeColorType::Light1, { "light1", "lt1" } },
+    { model::ThemeColorType::Dark2, {"dark2", "dk2" } },
+    { model::ThemeColorType::Light2, {"light2", "lt2" } },
+    { model::ThemeColorType::Accent1, {"accent1", "accent1" } },
+    { model::ThemeColorType::Accent2, {"accent2", "accent2" } },
+    { model::ThemeColorType::Accent3, {"accent3", "accent3" } },
+    { model::ThemeColorType::Accent4, {"accent4", "accent4" } },
+    { model::ThemeColorType::Accent5, {"accent5", "accent5" } },
+    { model::ThemeColorType::Accent6, {"accent6", "accent6" } },
+    { model::ThemeColorType::Hyperlink, {"hyperlink", "hlink" } },
+    { model::ThemeColorType::FollowedHyperlink, {"followedHyperlink", "folHlink" } }
 });
 
-OString lclGetSchemeType(model::ComplexColor const& rComplexColor)
+// Returns colors as OOXML ST_ThemeColor or ST_SchemeColorVal types, which are very similar
+OString lclGetThemeOrSchemeType(model::ComplexColor const& rComplexColor, bool bIsTheme = true)
 {
     const auto iter = constThemeColorTypeTokenMap.find(rComplexColor.getThemeColorType());
     assert(iter != constThemeColorTypeTokenMap.end());
-    OString sSchemeType = iter->second;
+    OString sSchemeType = bIsTheme ? iter->second.ThemeName : iter->second.SchemeName;
     if (rComplexColor.getThemeColorUsage() == model::ThemeColorUsage::Text)
     {
         if (rComplexColor.getThemeColorType() == model::ThemeColorType::Dark1)
-            sSchemeType = "text1"_ostr;
+            sSchemeType = bIsTheme ? "text1"_ostr : "tx1"_ostr;
         else if (rComplexColor.getThemeColorType() == model::ThemeColorType::Dark2)
-            sSchemeType = "text2"_ostr;
+            sSchemeType = bIsTheme ? "text2"_ostr : "tx2"_ostr;
     }
     else if (rComplexColor.getThemeColorUsage() == model::ThemeColorUsage::Background)
     {
         if (rComplexColor.getThemeColorType() == model::ThemeColorType::Light1)
-            sSchemeType = "background1"_ostr;
+            sSchemeType = bIsTheme ? "background1"_ostr : "bg1"_ostr;
         else if (rComplexColor.getThemeColorType() == model::ThemeColorType::Light2)
-            sSchemeType = "background2"_ostr;
+            sSchemeType = bIsTheme ? "background2"_ostr : "bg2"_ostr;
     }
     return sSchemeType;
+}
+
+// Returns colors as OOXML ST_ThemeColor type
+OString lclGetThemeType(model::ComplexColor const& rComplexColor)
+{
+    return lclGetThemeOrSchemeType(rComplexColor, true);
+}
+
+// Return colors as OOXML ST_SchemeColorVal type for Scheme Color element
+OString lclGetSchemeType(model::ComplexColor const& rComplexColor)
+{
+    return lclGetThemeOrSchemeType(rComplexColor, false);
 }
 
 void lclAddThemeValuesToCustomAttributes(
@@ -344,7 +363,7 @@ void lclAddThemeValuesToCustomAttributes(
 {
     if (rComplexColor.isValidThemeType())
     {
-        OString sSchemeType = lclGetSchemeType(rComplexColor);
+        OString sSchemeType = lclGetThemeType(rComplexColor);
 
         DocxAttributeOutput::AddToAttrList(pAttrList, FSNS(XML_w, nThemeAttrId), sSchemeType);
 
@@ -1457,55 +1476,55 @@ void DocxAttributeOutput::StartParagraphProperties()
     }
 }
 
+// Write the elements in the spec order
+const sal_Int32 aParagraphPropertiesOrder[] =
+{
+    FSNS( XML_w, XML_pStyle ),
+    FSNS( XML_w, XML_keepNext ),
+    FSNS( XML_w, XML_keepLines ),
+    FSNS( XML_w, XML_pageBreakBefore ),
+    FSNS( XML_w, XML_framePr ),
+    FSNS( XML_w, XML_widowControl ),
+    FSNS( XML_w, XML_numPr ),
+    FSNS( XML_w, XML_suppressLineNumbers ),
+    FSNS( XML_w, XML_pBdr ),
+    FSNS( XML_w, XML_shd ),
+    FSNS( XML_w, XML_tabs ),
+    FSNS( XML_w, XML_suppressAutoHyphens ),
+    FSNS( XML_w, XML_kinsoku ),
+    FSNS( XML_w, XML_wordWrap ),
+    FSNS( XML_w, XML_overflowPunct ),
+    FSNS( XML_w, XML_topLinePunct ),
+    FSNS( XML_w, XML_autoSpaceDE ),
+    FSNS( XML_w, XML_autoSpaceDN ),
+    FSNS( XML_w, XML_bidi ),
+    FSNS( XML_w, XML_adjustRightInd ),
+    FSNS( XML_w, XML_snapToGrid ),
+    FSNS( XML_w, XML_spacing ),
+    FSNS( XML_w, XML_ind ),
+    FSNS( XML_w, XML_contextualSpacing ),
+    FSNS( XML_w, XML_mirrorIndents ),
+    FSNS( XML_w, XML_suppressOverlap ),
+    FSNS( XML_w, XML_jc ),
+    FSNS( XML_w, XML_textDirection ),
+    FSNS( XML_w, XML_textAlignment ),
+    FSNS( XML_w, XML_textboxTightWrap ),
+    FSNS( XML_w, XML_outlineLvl ),
+    FSNS( XML_w, XML_divId ),
+    FSNS( XML_w, XML_cnfStyle ),
+    FSNS( XML_w, XML_rPr ),
+    FSNS( XML_w, XML_sectPr ),
+    FSNS( XML_w, XML_pPrChange )
+};
+
 void DocxAttributeOutput::InitCollectedParagraphProperties()
 {
     m_pLRSpaceAttrList.clear();
     m_pParagraphSpacingAttrList.clear();
 
-    // Write the elements in the spec order
-    static const sal_Int32 aOrder[] =
-    {
-        FSNS( XML_w, XML_pStyle ),
-        FSNS( XML_w, XML_keepNext ),
-        FSNS( XML_w, XML_keepLines ),
-        FSNS( XML_w, XML_pageBreakBefore ),
-        FSNS( XML_w, XML_framePr ),
-        FSNS( XML_w, XML_widowControl ),
-        FSNS( XML_w, XML_numPr ),
-        FSNS( XML_w, XML_suppressLineNumbers ),
-        FSNS( XML_w, XML_pBdr ),
-        FSNS( XML_w, XML_shd ),
-        FSNS( XML_w, XML_tabs ),
-        FSNS( XML_w, XML_suppressAutoHyphens ),
-        FSNS( XML_w, XML_kinsoku ),
-        FSNS( XML_w, XML_wordWrap ),
-        FSNS( XML_w, XML_overflowPunct ),
-        FSNS( XML_w, XML_topLinePunct ),
-        FSNS( XML_w, XML_autoSpaceDE ),
-        FSNS( XML_w, XML_autoSpaceDN ),
-        FSNS( XML_w, XML_bidi ),
-        FSNS( XML_w, XML_adjustRightInd ),
-        FSNS( XML_w, XML_snapToGrid ),
-        FSNS( XML_w, XML_spacing ),
-        FSNS( XML_w, XML_ind ),
-        FSNS( XML_w, XML_contextualSpacing ),
-        FSNS( XML_w, XML_mirrorIndents ),
-        FSNS( XML_w, XML_suppressOverlap ),
-        FSNS( XML_w, XML_jc ),
-        FSNS( XML_w, XML_textDirection ),
-        FSNS( XML_w, XML_textAlignment ),
-        FSNS( XML_w, XML_textboxTightWrap ),
-        FSNS( XML_w, XML_outlineLvl ),
-        FSNS( XML_w, XML_divId ),
-        FSNS( XML_w, XML_cnfStyle ),
-        FSNS( XML_w, XML_rPr ),
-        FSNS( XML_w, XML_sectPr ),
-        FSNS( XML_w, XML_pPrChange )
-    };
-
     // postpone the output so that we can later [in EndParagraphProperties()]
     // prepend the properties before the run
-    m_pSerializer->mark(Tag_InitCollectedParagraphProperties, comphelper::containerToSequence(aOrder));
+    m_pSerializer->mark(Tag_InitCollectedParagraphProperties, comphelper::containerToSequence(aParagraphPropertiesOrder));
 }
 
 void DocxAttributeOutput::WriteCollectedParagraphProperties()
@@ -4278,9 +4297,9 @@ void DocxAttributeOutput::Redline( const SwRedlineData* pRedlineData)
                 const UIName & sParaStyleName = pFormattingChanges->GetFormatName();
                 if (pChangesSet || !sParaStyleName.isEmpty())
                 {
-                    m_pSerializer->mark(Tag_Redline_2);
-
                     m_pSerializer->startElementNS(XML_w, XML_pPr);
+
+                    m_pSerializer->mark(Tag_Redline_2, comphelper::containerToSequence(aParagraphPropertiesOrder));
 
                     if (!sParaStyleName.isEmpty())
                     {
@@ -4318,9 +4337,9 @@ void DocxAttributeOutput::Redline( const SwRedlineData* pRedlineData)
                     m_pLRSpaceAttrList = std::move(pLRSpaceAttrList_Original);
                     m_pParagraphSpacingAttrList = std::move(pParagraphSpacingAttrList_Original);
 
-                    m_pSerializer->endElementNS( XML_w, XML_pPr );
+                    m_pSerializer->mergeTopMarks(Tag_Redline_2);
 
-                    m_pSerializer->mergeTopMarks(Tag_Redline_2, sax_fastparser::MergeMarks::PREPEND);
+                    m_pSerializer->endElementNS( XML_w, XML_pPr );
                 }
             }
         }
@@ -4360,7 +4379,7 @@ void DocxAttributeOutput::StartRedline(const SwRedlineData* pRedlineData, bool b
     const DateTime& aDateTime = pRedlineData->GetTimeStamp();
     bool bNoDate = bRemovePersonalInfo ||
         ( aDateTime.GetYear() == 1970 && aDateTime.GetMonth() == 1 && aDateTime.GetDay() == 1 ) ||
-        // The officeotron validator does not think year 0 is valid, so just dont put anything,
+        // The officeotron validator does not think year 0 is valid, so just don't put anything,
         // a zero year is not useful anyway.
         ( aDateTime.GetYear() == 0 && aDateTime.GetMonth() == 0 && aDateTime.GetDay() == 0 );
     bool isInMoveBookmark = false;
