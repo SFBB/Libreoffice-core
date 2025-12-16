@@ -145,7 +145,7 @@ bool SvxCharView::Command(const CommandEvent& rCommandEvent)
     {
         GrabFocus();
         Invalidate();
-        createContextMenu(rCommandEvent.GetMousePosPixel());
+        maContextMenuHdl.Call(rCommandEvent);
         return true;
     }
 
@@ -163,22 +163,6 @@ void SvxCharView::InsertCharToDoc()
     };
 
     comphelper::dispatchCommand(u".uno:InsertSymbol"_ustr, aArgs);
-}
-
-void SvxCharView::createContextMenu(const Point& rPosition)
-{
-    weld::DrawingArea* pDrawingArea = GetDrawingArea();
-    std::unique_ptr<weld::Builder> xBuilder(
-        Application::CreateBuilder(pDrawingArea, u"sfx/ui/charviewmenu.ui"_ustr));
-    std::unique_ptr<weld::Menu> xItemMenu(xBuilder->weld_menu(u"charviewmenu"_ustr));
-    const OUString sMenuId
-        = xItemMenu->popup_at_rect(pDrawingArea, tools::Rectangle(rPosition, Size(1, 1)));
-    if (sMenuId == u"clearchar")
-        maClearClickHdl.Call(*this);
-    else if (sMenuId == u"clearallchar")
-        maClearAllClickHdl.Call(*this);
-
-    Invalidate();
 }
 
 void SvxCharView::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle&)
@@ -278,20 +262,15 @@ void SvxCharView::setMouseClickHdl(const Link<SvxCharView&, void>& rLink)
     maMouseClickHdl = rLink;
 }
 
-void SvxCharView::setClearClickHdl(const Link<SvxCharView&, void>& rLink)
+void SvxCharView::setContextMenuHdl(const Link<const CommandEvent&, void>& rLink)
 {
-    maClearClickHdl = rLink;
+    maContextMenuHdl = rLink;
 }
 
-void SvxCharView::setClearAllClickHdl(const Link<SvxCharView&, void>& rLink)
-{
-    maClearAllClickHdl = rLink;
-}
-
-void SvxCharView::SetFont(const vcl::Font& rFont)
+void SvxCharView::UpdateFont(const OUString& rFontFamilyName)
 {
     tools::Long nWinHeight = GetOutputSizePixel().Height();
-    maFont = rFont;
+    maFont.SetFamilyName(rFontFamilyName);
     maFont.SetWeight(WEIGHT_NORMAL);
     maFont.SetAlignment(ALIGN_TOP);
     maFont.SetFontSize(mxVirDev->PixelToLogic(Size(0, nWinHeight / 2)));
@@ -307,7 +286,8 @@ void SvxCharView::SetFont(const vcl::Font& rFont)
 
 void SvxCharView::Resize()
 {
-    SetFont(GetFont()); //force recalculation of size
+    // force recalculation of size
+    UpdateFont(maFont.GetFamilyName());
 }
 
 void SvxCharView::SetText(const OUString& rText)

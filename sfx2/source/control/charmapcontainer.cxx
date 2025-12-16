@@ -24,6 +24,7 @@
 #include <sfx2/viewfrm.hxx>
 #include <sfx2/strings.hrc>
 #include <sfx2/sfxresid.hxx>
+#include <vcl/commandevent.hxx>
 
 using namespace css;
 
@@ -121,13 +122,12 @@ void SfxCharmapContainer::init(bool bHasInsert, const Link<SvxCharView&, void>& 
         m_aRecentCharView[i].SetHasInsert(bHasInsert);
         m_aRecentCharView[i].setFocusInHdl(rFocusInHdl);
         m_aRecentCharView[i].setMouseClickHdl(rMouseClickHdl);
-        m_aRecentCharView[i].setClearClickHdl(LINK(this, SfxCharmapContainer, RecentClearClickHdl));
-        m_aRecentCharView[i].setClearAllClickHdl(LINK(this, SfxCharmapContainer, RecentClearAllClickHdl));
+        m_aRecentCharView[i].setContextMenuHdl(
+            LINK(this, SfxCharmapContainer, RecentContextMenuHdl));
         m_aFavCharView[i].SetHasInsert(bHasInsert);
         m_aFavCharView[i].setFocusInHdl(rFocusInHdl);
         m_aFavCharView[i].setMouseClickHdl(rMouseClickHdl);
-        m_aFavCharView[i].setClearClickHdl(LINK(this, SfxCharmapContainer, FavClearClickHdl));
-        m_aFavCharView[i].setClearAllClickHdl(LINK(this, SfxCharmapContainer, FavClearAllClickHdl));
+        m_aFavCharView[i].setContextMenuHdl(LINK(this, SfxCharmapContainer, FavContextMenuHdl));
     }
 }
 
@@ -152,9 +152,7 @@ void SfxCharmapContainer::updateFavCharControl()
     for (auto it = m_aFavChars.begin(); it != m_aFavChars.end(); ++it, i++)
     {
         m_aFavCharView[i].SetText(it->sChar);
-        vcl::Font rFont = m_aFavCharView[i].GetFont();
-        rFont.SetFamilyName(it->sFont);
-        m_aFavCharView[i].SetFont(rFont);
+        m_aFavCharView[i].UpdateFont(it->sFont);
         m_aFavCharView[i].Show();
     }
 
@@ -193,9 +191,7 @@ void SfxCharmapContainer::updateRecentCharControl()
     for (auto it = m_aRecentChars.begin(); it != m_aRecentChars.end(); ++it, i++)
     {
         m_aRecentCharView[i].SetText(it->sChar);
-        vcl::Font rFont = m_aRecentCharView[i].GetFont();
-        rFont.SetFamilyName(it->sFont);
-        m_aRecentCharView[i].SetFont(rFont);
+        m_aRecentCharView[i].UpdateFont(it->sFont);
         m_aRecentCharView[i].Show();
     }
 
@@ -295,6 +291,47 @@ void SfxCharmapContainer::deleteFavCharacterFromList(const OUString& rTitle, con
 bool SfxCharmapContainer::isFavChar(const OUString& rTitle, const OUString& rFont)
 {
     return std::ranges::find(m_aFavChars, CharAndFont(rTitle, rFont)) != m_aFavChars.end();
+}
+
+void SfxCharmapContainer::HandleContextMenu(std::span<SvxCharView> aCharViews,
+                                            const Link<SvxCharView&, void>& rClearHdl,
+                                            const Link<SvxCharView&, void>& rClearAllHdl,
+                                            const CommandEvent& rCmdEvent)
+{
+    assert(rCmdEvent.GetCommand() == CommandEventId::ContextMenu);
+
+    for (SvxCharView& rView : aCharViews)
+    {
+        // the context menu is opened for the currently focused view
+        if (!rView.HasFocus())
+            continue;
+
+        weld::DrawingArea* pDrawingArea = rView.GetDrawingArea();
+        std::unique_ptr<weld::Builder> xBuilder(
+            Application::CreateBuilder(pDrawingArea, u"sfx/ui/charviewmenu.ui"_ustr));
+        std::unique_ptr<weld::Menu> xItemMenu(xBuilder->weld_menu(u"charviewmenu"_ustr));
+        const OUString sMenuId = xItemMenu->popup_at_rect(
+            pDrawingArea, tools::Rectangle(rCmdEvent.GetMousePosPixel(), Size(1, 1)));
+        if (sMenuId == u"clearchar")
+            rClearHdl.Call(rView);
+        else if (sMenuId == u"clearallchar")
+            rClearAllHdl.Call(rView);
+
+        rView.Invalidate();
+        return;
+    }
+}
+
+IMPL_LINK(SfxCharmapContainer, RecentContextMenuHdl, const CommandEvent&, rCmdEvent, void)
+{
+    HandleContextMenu(m_aRecentCharView, (LINK(this, SfxCharmapContainer, RecentClearClickHdl)),
+                      LINK(this, SfxCharmapContainer, RecentClearAllClickHdl), rCmdEvent);
+}
+
+IMPL_LINK(SfxCharmapContainer, FavContextMenuHdl, const CommandEvent&, rCmdEvent, void)
+{
+    HandleContextMenu(m_aFavCharView, LINK(this, SfxCharmapContainer, FavClearClickHdl),
+                      LINK(this, SfxCharmapContainer, FavClearAllClickHdl), rCmdEvent);
 }
 
 IMPL_LINK(SfxCharmapContainer, RecentClearClickHdl, SvxCharView&, rView, void)
