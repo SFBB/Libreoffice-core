@@ -832,6 +832,15 @@ const SvViewDataItem* SvTreeListBox::GetViewDataItem(const SvTreeListEntry* pEnt
     return &pEntryData->GetItem(nItemPos);
 }
 
+OUString SvTreeListBox::GetEntryTooltip(SvTreeListEntry* pEntry) const
+{
+    const OUString sToolTip = aTooltipHdl.Call(pEntry);
+    if (!sToolTip.isEmpty())
+        return sToolTip;
+
+    return pEntry->GetToolTip();
+}
+
 void SvTreeListBox::InitViewData( SvViewDataEntry* pData, SvTreeListEntry* pEntry )
 {
     SvTreeListEntry* pInhEntry = pEntry;
@@ -3330,19 +3339,16 @@ void SvTreeListBox::GetLastTab( SvLBoxTabFlags nFlagMask, sal_uInt16& rTabPos )
 
 void SvTreeListBox::RequestHelp( const HelpEvent& rHEvt )
 {
-    if (aTooltipHdl.IsSet())
+    const Point pos(ScreenToOutputPixel(rHEvt.GetMousePosPixel()));
+    if (SvTreeListEntry* entry = GetEntry(pos))
     {
-        const Point pos(ScreenToOutputPixel(rHEvt.GetMousePosPixel()));
-        if (SvTreeListEntry* entry = GetEntry(pos))
+        const OUString tooltip = GetEntryTooltip(entry);
+        if (!tooltip.isEmpty())
         {
-            const OUString tooltip = GetEntryTooltip(entry);
-            if (!tooltip.isEmpty())
-            {
-                const Size size(GetOutputSizePixel().Width(), GetEntryHeight());
-                tools::Rectangle screenRect(OutputToScreenPixel(GetEntryPosition(entry)), size);
-                Help::ShowQuickHelp(this, screenRect, tooltip);
-                return;
-            }
+            const Size size(GetOutputSizePixel().Width(), GetEntryHeight());
+            tools::Rectangle screenRect(OutputToScreenPixel(GetEntryPosition(entry)), size);
+            Help::ShowQuickHelp(this, screenRect, tooltip);
+            return;
         }
     }
 

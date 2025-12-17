@@ -29,15 +29,10 @@
 
 #include <com/sun/star/beans/PropertyValue.hpp>
 
-#include <o3tl/temporary.hxx>
-#include <unicode/uchar.h>
-#include <unicode/utypes.h>
-
 using namespace com::sun::star;
 
 SvxCharView::SvxCharView(const VclPtr<VirtualDevice>& rVirDev)
     : mxVirDev(rVirDev)
-    , mnY(0)
     , maHasInsert(true)
 {
 }
@@ -66,46 +61,11 @@ void SvxCharView::GetFocus()
 
 void SvxCharView::LoseFocus() { Invalidate(); }
 
-bool SvxCharView::GetDecimalValueAndCharName(sal_UCS4& rDecimalValue, OUString& rCharName)
-{
-    OUString charValue = GetText();
-    if (charValue.isEmpty())
-        return false;
-
-    sal_UCS4 nDecimalValue = charValue.iterateCodePoints(&o3tl::temporary(sal_Int32(1)), -1);
-    /* get the character name */
-    UErrorCode errorCode = U_ZERO_ERROR;
-    // icu has a private uprv_getMaxCharNameLength function which returns the max possible
-    // length of this property. Unicode 3.2 max char name length was 83
-    char buffer[100];
-    u_charName(nDecimalValue, U_UNICODE_CHAR_NAME, buffer, sizeof(buffer), &errorCode);
-    if (U_SUCCESS(errorCode))
-    {
-        rDecimalValue = nDecimalValue;
-        rCharName = OUString::createFromAscii(buffer);
-        return true;
-    }
-    return false;
-}
-
-OUString SvxCharView::GetCharInfoText()
-{
-    sal_UCS4 nDecimalValue = 0;
-    OUString sCharName;
-    const bool bSuccess = GetDecimalValueAndCharName(nDecimalValue, sCharName);
-    if (bSuccess)
-    {
-        auto aHexText = OUString::number(nDecimalValue, 16).toAsciiUpperCase();
-        return GetText() + u" " + sCharName + u" U+" + aHexText;
-    }
-    return OUString();
-}
-
 OUString SvxCharView::RequestHelp(tools::Rectangle& rHelpRect)
 {
     // Gtk3 requires a rectangle be specified for the tooltip to display, X11 does not.
     rHelpRect = tools::Rectangle(Point(), GetOutputSizePixel());
-    return GetCharInfoText();
+    return m_sToolTip;
 }
 
 bool SvxCharView::MouseButtonDown(const MouseEvent& rMEvt)
@@ -189,6 +149,11 @@ void SvxCharView::Paint(vcl::RenderContext& rRenderContext, const tools::Rectang
     Size aFontSize(aOrigFont.GetFontSize());
     ::tools::Rectangle aBoundRect;
 
+    mxVirDev->Push(PUSH_ALLFONT);
+    mxVirDev->SetFont(maFont);
+    tools::Long nY = (nWinHeight - mxVirDev->GetTextHeight()) / 2;
+    mxVirDev->Pop();
+
     for (tools::Long nFontHeight = aFontSize.Height(); nFontHeight > 0; nFontHeight -= 1)
     {
         if (!rRenderContext.GetTextBoundRect(aBoundRect, aText) || aBoundRect.IsEmpty())
@@ -205,11 +170,11 @@ void SvxCharView::Paint(vcl::RenderContext& rRenderContext, const tools::Rectang
         aFontSize.setHeight(nFontHeight);
         aFont.SetFontSize(aFontSize);
         rRenderContext.SetFont(aFont);
-        mnY = (nWinHeight - rRenderContext.GetTextHeight()) / 2;
+        nY = (nWinHeight - rRenderContext.GetTextHeight()) / 2;
         bShrankFont = true;
     }
 
-    Point aPoint(2, mnY);
+    Point aPoint(2, nY);
 
     if (!bGotBoundary)
         aPoint.setX((aSize.Width() - rRenderContext.GetTextWidth(aText)) / 2);
@@ -276,11 +241,6 @@ void SvxCharView::UpdateFont(const OUString& rFontFamilyName)
     maFont.SetFontSize(mxVirDev->PixelToLogic(Size(0, nWinHeight / 2)));
     maFont.SetTransparent(true);
 
-    mxVirDev->Push(PUSH_ALLFONT);
-    mxVirDev->SetFont(maFont);
-    mnY = (nWinHeight - mxVirDev->GetTextHeight()) / 2;
-    mxVirDev->Pop();
-
     Invalidate();
 }
 
@@ -294,12 +254,6 @@ void SvxCharView::SetText(const OUString& rText)
 {
     m_sText = rText;
     Invalidate();
-
-    OUString sName;
-    if (GetDecimalValueAndCharName(o3tl::temporary(sal_UCS4()), sName))
-        SetAccessibleName(sName);
-    else
-        SetAccessibleName(OUString());
 }
 
 void SvxCharView::SetHasInsert(bool bInsert) { maHasInsert = bInsert; }
