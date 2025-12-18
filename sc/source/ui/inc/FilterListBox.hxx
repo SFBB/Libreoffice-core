@@ -22,7 +22,8 @@
 #include <types.hxx>
 
 #include <tools/solar.h>
-#include <vcl/weld.hxx>
+#include <vcl/weld/TreeView.hxx>
+#include <vcl/weld/weld.hxx>
 
 class ScGridWindow;
 struct ImplSVEvent;

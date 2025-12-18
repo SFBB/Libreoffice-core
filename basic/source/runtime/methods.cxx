@@ -29,7 +29,7 @@
 #include <vcl/sound.hxx>
 #include <vcl/wintypes.hxx>
 #include <vcl/stdtext.hxx>
-#include <vcl/weld.hxx>
+#include <vcl/weld/weld.hxx>
 #include <basic/sbx.hxx>
 #include <svl/zforlist.hxx>
 #include <rtl/character.hxx>
@@ -186,7 +186,7 @@ static uno::Reference< ucb::XSimpleFileAccess3 > const & getFileAccess()
 
 void SbRtl_CreateObject(StarBASIC * pBasic, SbxArray & rPar, bool)
 {
-    if( rPar.Count() < 2 )
+    if( rPar.Count() != 2 )
         return StarBASIC::Error( ERRCODE_BASIC_BAD_ARGUMENT );
 
     OUString aClass(rPar.Get(1)->GetOUString());
@@ -312,7 +312,7 @@ void SbRtl_Asc(StarBASIC *, SbxArray & rPar, bool)
 
 static void implChr( SbxArray& rPar, bool bChrW )
 {
-    if (rPar.Count() < 2)
+    if (rPar.Count() != 2)
         return StarBASIC::Error( ERRCODE_BASIC_BAD_ARGUMENT );
 
     SbxVariableRef pArg = rPar.Get(1);

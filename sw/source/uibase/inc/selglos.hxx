@@ -23,7 +23,8 @@
 
 #include <string_view>
 
-#include <vcl/weld.hxx>
+#include <vcl/weld/TreeView.hxx>
+#include <vcl/weld/weld.hxx>
 
 class SwSelGlossaryDlg final : public weld::GenericDialogController
 {

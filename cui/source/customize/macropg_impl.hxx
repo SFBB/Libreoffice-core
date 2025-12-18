@@ -20,7 +20,8 @@
 #pragma once
 
 #include <svl/itemset.hxx>
-#include <vcl/weld.hxx>
+#include <vcl/weld/TreeView.hxx>
+#include <vcl/weld/weld.hxx>
 
 class SvxMacroTabPage_Impl
 {

@@ -20,7 +20,8 @@
 
 #include <vcl/customweld.hxx>
 #include <vcl/event.hxx>
-#include <vcl/weld.hxx>
+#include <vcl/weld/TreeView.hxx>
+#include <vcl/weld/weld.hxx>
 #include <editeng/hangulhanja.hxx>
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/linguistic2/XConversionDictionaryList.hpp>

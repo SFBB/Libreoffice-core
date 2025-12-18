@@ -20,7 +20,8 @@
 #pragma once
 
 #include <types.hxx>
-#include <vcl/weld.hxx>
+#include <vcl/weld/TreeView.hxx>
+#include <vcl/weld/weld.hxx>
 
 class ScDocument;
 

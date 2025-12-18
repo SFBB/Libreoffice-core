@@ -27,7 +27,8 @@
 #include <vcl/dockwin.hxx>
 #include <vcl/idle.hxx>
 #include <vcl/keycod.hxx>
-#include <vcl/weld.hxx>
+#include <vcl/weld/TreeView.hxx>
+#include <vcl/weld/weld.hxx>
 #include <vcl/window.hxx>
 
 #include <srchdlg.hxx>

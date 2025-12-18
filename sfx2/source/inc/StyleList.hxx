@@ -28,7 +28,8 @@
 #include <svl/style.hxx>
 #include <vcl/idle.hxx>
 #include <vcl/transfer.hxx>
-#include <vcl/weld.hxx>
+#include <vcl/weld/TreeView.hxx>
+#include <vcl/weld/weld.hxx>
 
 class SfxObjectShell;
 class SfxTemplateItem;

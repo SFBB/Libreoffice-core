@@ -30,7 +30,8 @@
 #include <svtools/valueset.hxx>
 
 #include <utility>
-#include <vcl/weld.hxx>
+#include <vcl/weld/TreeView.hxx>
+#include <vcl/weld/weld.hxx>
 #include <vcl/outdev.hxx>
 #include <comphelper/diagnose_ex.hxx>
 

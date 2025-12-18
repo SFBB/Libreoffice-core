@@ -28,7 +28,8 @@
 #include <vcl/graph.hxx>
 #include <vcl/GraphicObject.hxx>
 #include <vcl/customweld.hxx>
-#include <vcl/weld.hxx>
+#include <vcl/weld/TreeView.hxx>
+#include <vcl/weld/weld.hxx>
 #include <AppElementType.hxx>
 #include <ChildWindow.hxx>
 #include "DocumentInfoPreview.hxx"

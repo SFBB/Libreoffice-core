@@ -21,7 +21,8 @@
 
 #include <sfx2/objsh.hxx>
 #include <vcl/timer.hxx>
-#include <vcl/weld.hxx>
+#include <vcl/weld/TreeView.hxx>
+#include <vcl/weld/weld.hxx>
 #include <types.hxx>
 
 class ScViewData;

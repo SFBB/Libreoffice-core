@@ -20,7 +20,8 @@
 
 #include <editeng/shaditem.hxx>
 #include <svtools/ctrlbox.hxx>
-#include <vcl/weld.hxx>
+#include <vcl/weld/IconView.hxx>
+#include <vcl/weld/weld.hxx>
 #include <sfx2/tabdlg.hxx>
 #include <svx/algitem.hxx>
 #include <svx/colorbox.hxx>

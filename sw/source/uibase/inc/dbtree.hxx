@@ -20,7 +20,8 @@
 #define INCLUDED_SW_SOURCE_UIBASE_INC_DBTREE_HXX
 
 #include <memory>
-#include <vcl/weld.hxx>
+#include <vcl/weld/TreeView.hxx>
+#include <vcl/weld/weld.hxx>
 
 #include <swdllapi.h>
 

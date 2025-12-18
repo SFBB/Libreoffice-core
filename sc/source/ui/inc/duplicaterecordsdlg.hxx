@@ -20,7 +20,8 @@
 #pragma once
 
 #include "viewdata.hxx"
-#include <vcl/weld.hxx>
+#include <vcl/weld/TreeView.hxx>
+#include <vcl/weld/weld.hxx>
 
 using namespace css;
 
