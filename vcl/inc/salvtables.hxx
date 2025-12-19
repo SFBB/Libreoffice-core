@@ -9,7 +9,10 @@
 #pragma once
 
 #include <vcl/builder.hxx>
+#include <vcl/weld/Builder.hxx>
+#include <vcl/weld/DialogController.hxx>
 #include <vcl/weld/EntryTreeView.hxx>
+#include <vcl/weld/MetricSpinButton.hxx>
 #include <vcl/weld/TreeView.hxx>
 #include <vcl/weld/weld.hxx>
 #include <vcl/svapp.hxx>
@@ -1482,11 +1485,39 @@ struct SalInstanceTreeIter final : public weld::TreeIter
     SvTreeListEntry* iter;
 };
 
-class SalInstanceTreeView : public SalInstanceWidget, public virtual weld::TreeView
+class SalInstanceItemView : public SalInstanceWidget, public virtual weld::ItemView
 {
+    VclPtr<SvTreeListBox> m_pTreeListBox;
+
 protected:
     // owner for UserData
     std::vector<std::unique_ptr<OUString>> m_aUserData;
+
+    SalInstanceItemView(SvTreeListBox* pTreeListBox, SalInstanceBuilder* pBuilder,
+                        bool bTakeOwnership);
+
+    virtual void do_select(int pos) override;
+    virtual void do_unselect(int pos) override;
+    virtual void do_clear() override;
+
+public:
+    virtual std::unique_ptr<weld::TreeIter> make_iterator(const weld::TreeIter* pOrig
+                                                          = nullptr) const override;
+
+    virtual std::unique_ptr<weld::TreeIter> get_iterator(int nPos) const override;
+
+    virtual OUString get_selected_id() const override;
+    virtual OUString get_selected_text() const override;
+
+    virtual void select_all() override;
+    virtual void unselect_all() override;
+
+    virtual int n_children() const override;
+};
+
+class SalInstanceTreeView : public SalInstanceItemView, public virtual weld::TreeView
+{
+protected:
     VclPtr<SvTabListBox> m_xTreeView;
     SvLBoxButtonData m_aCheckButtonData;
     SvLBoxButtonData m_aRadioButtonData;
@@ -1610,16 +1641,7 @@ public:
 
     virtual void swap(int pos1, int pos2) override;
 
-    virtual void do_clear() override;
-
-    virtual void select_all() override;
-    virtual void unselect_all() override;
-
-    virtual int n_children() const override;
-
     virtual int iter_n_children(const weld::TreeIter& rIter) const override;
-
-    virtual void do_select(int pos) override;
 
     virtual int get_cursor_index() const override;
 
@@ -1628,8 +1650,6 @@ public:
     virtual void do_scroll_to_row(int pos) override;
 
     virtual bool is_selected(int pos) const override;
-
-    virtual void do_unselect(int pos) override;
 
     virtual std::vector<int> get_selected_rows() const override;
 
@@ -1679,11 +1699,11 @@ public:
 
     virtual bool get_text_emphasis(int pos, int col) const override;
 
-    void set_text_align(SvTreeListEntry* pEntry, double fAlign, int col);
+    void set_text_align(SvTreeListEntry* pEntry, TxtAlign eAlign, int col);
 
-    virtual void set_text_align(const weld::TreeIter& rIter, double fAlign, int col) override;
+    virtual void set_text_align(const weld::TreeIter& rIter, TxtAlign eAlign, int col) override;
 
-    virtual void set_text_align(int pos, double fAlign, int col) override;
+    virtual void set_text_align(int pos, TxtAlign eAlign, int col) override;
 
     virtual void connect_editing(const Link<const weld::TreeIter&, bool>& rStartLink,
                                  const Link<const iter_string&, bool>& rEndLink) override;
@@ -1721,13 +1741,6 @@ public:
 
     virtual int get_selected_index() const override;
 
-    virtual OUString get_selected_text() const override;
-
-    virtual OUString get_selected_id() const override;
-
-    virtual std::unique_ptr<weld::TreeIter> make_iterator(const weld::TreeIter* pOrig
-                                                          = nullptr) const override;
-
     virtual void copy_iterator(const weld::TreeIter& rSource, weld::TreeIter& rDest) const override;
 
     virtual bool get_selected(weld::TreeIter* pIter) const override;
@@ -1754,10 +1767,12 @@ public:
 
     virtual void do_remove(const weld::TreeIter& rIter) override;
 
+    using SalInstanceItemView::do_select;
     virtual void do_select(const weld::TreeIter& rIter) override;
 
     virtual void do_scroll_to_row(const weld::TreeIter& rIter) override;
 
+    using SalInstanceItemView::do_unselect;
     virtual void do_unselect(const weld::TreeIter& rIter) override;
 
     virtual int get_iter_depth(const weld::TreeIter& rIter) const override;
@@ -1882,16 +1897,13 @@ public:
     virtual ~SalInstanceExpander() override;
 };
 
-class SalInstanceIconView : public SalInstanceWidget, public virtual weld::IconView
+class SalInstanceIconView : public SalInstanceItemView, public virtual weld::IconView
 {
 protected:
     VclPtr<::IconView> m_xIconView;
 
 private:
     bool m_bFixedItemWidth = false;
-
-    // owner for UserData
-    std::vector<std::unique_ptr<OUString>> m_aUserData;
 
     DECL_LINK(SelectHdl, SvTreeListBox*, void);
     DECL_LINK(DeSelectHdl, SvTreeListBox*, void);
@@ -1925,23 +1937,7 @@ public:
     virtual void
     connect_get_image(const Link<const weld::encoded_image_query&, bool>& rLink) override;
 
-    virtual OUString get_selected_id() const override;
-
-    virtual OUString get_selected_text() const override;
-
     virtual int count_selected_items() const override;
-
-    virtual void do_select(int pos) override;
-
-    virtual void do_unselect(int pos) override;
-
-    virtual void select_all() override;
-    virtual void unselect_all() override;
-
-    virtual int n_children() const override;
-
-    virtual std::unique_ptr<weld::TreeIter> make_iterator(const weld::TreeIter* pOrig
-                                                          = nullptr) const override;
 
     virtual bool get_selected(weld::TreeIter* pIter) const override;
 
@@ -1977,9 +1973,7 @@ public:
 
     virtual OUString get_text(const weld::TreeIter& rIter) const override;
 
-    virtual tools::Rectangle get_rect(int pos) const override;
-
-    virtual void do_clear() override;
+    virtual tools::Rectangle get_rect(const weld::TreeIter& rIter) const override;
 
     virtual ~SalInstanceIconView() override;
 };

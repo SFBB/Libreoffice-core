@@ -37,9 +37,6 @@ public:
     typedef std::tuple<vcl::RenderContext&, const tools::Rectangle&, bool, const OUString&>
         render_args;
 
-private:
-    OUString m_sSavedValue;
-
 protected:
     Link<TreeView&, void> m_aSelectionChangedHdl;
     Link<TreeView&, bool> m_aRowActivatedHdl;
@@ -132,14 +129,14 @@ protected:
                            VirtualDevice* pImageSurface, bool bChildrenOnDemand, TreeIter* pRet)
         = 0;
     virtual void do_insert_separator(int pos, const OUString& rId) = 0;
-    virtual void do_select(int pos) = 0;
-    virtual void do_unselect(int pos) = 0;
     virtual void do_remove(int pos) = 0;
     virtual void do_scroll_to_row(int row) = 0;
     virtual void do_set_cursor(int pos) = 0;
     virtual void do_set_cursor(const TreeIter& rIter) = 0;
     virtual void do_remove(const TreeIter& rIter) = 0;
+    using ItemView::do_select;
     virtual void do_select(const TreeIter& rIter) = 0;
+    using ItemView::do_unselect;
     virtual void do_unselect(const TreeIter& rIter) = 0;
     virtual void do_scroll_to_row(const TreeIter& rIter) = 0;
     virtual void do_set_children_on_demand(const TreeIter& rIter, bool bChildrenOnDemand) = 0;
@@ -223,9 +220,6 @@ public:
     void connect_column_clicked(const Link<int, void>& rLink) { m_aColumnClickedHdl = rLink; }
     void connect_model_changed(const Link<TreeView&, void>& rLink) { m_aModelChangedHdl = rLink; }
 
-    virtual OUString get_selected_text() const = 0;
-    virtual OUString get_selected_id() const = 0;
-
     // call before inserting any content and connecting to toggle signals,
     // an pre-inserted checkbutton column will exist at the start of every row
     // inserted after this call which can be accessed with col index -1
@@ -235,20 +229,6 @@ public:
 
     //by index
     virtual int get_selected_index() const = 0;
-    //Don't select when frozen, select after thaw. Note selection doesn't survive a freeze.
-    void select(int pos)
-    {
-        disable_notify_events();
-        do_select(pos);
-        enable_notify_events();
-    }
-
-    void unselect(int pos)
-    {
-        disable_notify_events();
-        do_unselect(pos);
-        enable_notify_events();
-    }
 
     void remove(int pos)
     {
@@ -279,7 +259,7 @@ public:
         = 0;
     virtual void set_text_emphasis(int row, bool bOn, int col) = 0;
     virtual bool get_text_emphasis(int row, int col) const = 0;
-    virtual void set_text_align(int row, double fAlign, int col) = 0;
+    virtual void set_text_align(int row, TxtAlign eAlign, int col) = 0;
     virtual void swap(int pos1, int pos2) = 0;
     virtual std::vector<int> get_selected_rows() const = 0;
     virtual void set_font_color(int pos, const Color& rColor) = 0;
@@ -379,6 +359,7 @@ public:
     }
 
     //Don't select when frozen, select after thaw. Note selection doesn't survive a freeze.
+    using ItemView::select;
     void select(const TreeIter& rIter)
     {
         disable_notify_events();
@@ -386,6 +367,7 @@ public:
         enable_notify_events();
     }
 
+    using ItemView::unselect;
     void unselect(const TreeIter& rIter)
     {
         disable_notify_events();
@@ -402,7 +384,7 @@ public:
     virtual bool get_sensitive(const TreeIter& rIter, int col) const = 0;
     virtual void set_text_emphasis(const TreeIter& rIter, bool bOn, int col) = 0;
     virtual bool get_text_emphasis(const TreeIter& rIter, int col) const = 0;
-    virtual void set_text_align(const TreeIter& rIter, double fAlign, int col) = 0;
+    virtual void set_text_align(const TreeIter& rIter, TxtAlign eAlign, int col) = 0;
     // col index -1 sets the expander toggle, enable_toggle_buttons must have been called to create that column
     virtual void set_toggle(const TreeIter& rIter, TriState bOn, int col = -1) = 0;
     // col index -1 gets the expander toggle, enable_toggle_buttons must have been called to create that column
@@ -531,13 +513,6 @@ public:
 
     void connect_drag_begin(const Link<bool&, bool>& rLink) { m_aDragBeginHdl = rLink; }
 
-    //all of them. Don't select when frozen, select after thaw. Note selection doesn't survive a freeze.
-    virtual void select_all() = 0;
-    virtual void unselect_all() = 0;
-
-    // return the number of toplevel nodes
-    virtual int n_children() const = 0;
-
     // afterwards, entries will be in default ascending sort order
     virtual void make_sorted() = 0;
     virtual void make_unsorted() = 0;
@@ -586,10 +561,6 @@ public:
 
     virtual void vadjustment_set_value(int value) = 0;
     virtual int vadjustment_get_value() const = 0;
-
-    void save_value() { m_sSavedValue = get_selected_text(); }
-    OUString const& get_saved_value() const { return m_sSavedValue; }
-    bool get_value_changed_from_saved() const { return m_sSavedValue != get_selected_text(); }
 
     // for custom rendering a cell
     void connect_custom_get_size(const Link<get_size_args, Size>& rLink) { m_aGetSizeHdl = rLink; }

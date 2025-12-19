@@ -19,6 +19,8 @@
 
 #pragma once
 
+#include <vcl/weld/Builder.hxx>
+#include <vcl/weld/DialogController.hxx>
 #include <vcl/weld/weld.hxx>
 #include <tabprotection.hxx>
 #include <memory>

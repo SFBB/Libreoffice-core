@@ -19,6 +19,8 @@
 
 #pragma once
 
+#include <vcl/weld/DialogController.hxx>
+#include <vcl/weld/MetricSpinButton.hxx>
 #include <vcl/weld/weld.hxx>
 #include <svx/graphctl.hxx>
 

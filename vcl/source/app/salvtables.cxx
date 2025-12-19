@@ -3510,6 +3510,92 @@ public:
 };
 }
 
+SalInstanceItemView::SalInstanceItemView(SvTreeListBox* pTreeListBox, SalInstanceBuilder* pBuilder,
+                                         bool bTakeOwnership)
+    : SalInstanceWidget(pTreeListBox, pBuilder, bTakeOwnership)
+    , m_pTreeListBox(pTreeListBox)
+{
+}
+
+std::unique_ptr<weld::TreeIter>
+SalInstanceItemView::make_iterator(const weld::TreeIter* pOrig) const
+{
+    return std::unique_ptr<weld::TreeIter>(
+        new SalInstanceTreeIter(static_cast<const SalInstanceTreeIter*>(pOrig)));
+}
+
+std::unique_ptr<weld::TreeIter> SalInstanceItemView::get_iterator(int nPos) const
+{
+    if (SvTreeListEntry* pEntry = m_pTreeListBox->GetEntry(nPos))
+        return std::make_unique<SalInstanceTreeIter>(pEntry);
+
+    return {};
+}
+
+OUString SalInstanceItemView::get_selected_id() const
+{
+    assert(m_pTreeListBox->IsUpdateMode() && "don't request selection when frozen");
+    if (SvTreeListEntry* pEntry = m_pTreeListBox->FirstSelected())
+    {
+        if (const OUString* pStr = static_cast<const OUString*>(pEntry->GetUserData()))
+            return *pStr;
+    }
+    return OUString();
+}
+
+OUString SalInstanceItemView::get_selected_text() const
+{
+    assert(m_pTreeListBox->IsUpdateMode() && "don't request selection when frozen");
+    if (SvTreeListEntry* pEntry = m_pTreeListBox->FirstSelected())
+        return SvTabListBox::GetEntryText(pEntry, 0);
+    return OUString();
+}
+
+void SalInstanceItemView::select_all() { unselect(-1); }
+
+void SalInstanceItemView::unselect_all() { select(-1); }
+
+int SalInstanceItemView::n_children() const
+{
+    return m_pTreeListBox->GetModel()->GetChildList(nullptr).size();
+}
+
+void SalInstanceItemView::do_select(int pos)
+{
+    assert(m_pTreeListBox->IsUpdateMode()
+           && "don't select when frozen, select after thaw. Note selection doesn't survive a "
+              "freeze");
+    if (pos == -1 || (pos == 0 && n_children() == 0))
+        m_pTreeListBox->SelectAll(false);
+    else
+    {
+        SvTreeListEntry* pEntry = m_pTreeListBox->GetEntry(nullptr, pos);
+        assert(pEntry && "bad pos?");
+        m_pTreeListBox->Select(pEntry, true);
+        m_pTreeListBox->MakeVisible(pEntry);
+    }
+}
+
+void SalInstanceItemView::do_unselect(int pos)
+{
+    assert(m_pTreeListBox->IsUpdateMode()
+           && "don't select when frozen, select after thaw. Note selection doesn't survive a "
+              "freeze");
+    if (pos == -1)
+        m_pTreeListBox->SelectAll(true);
+    else
+    {
+        SvTreeListEntry* pEntry = m_pTreeListBox->GetEntry(nullptr, pos);
+        m_pTreeListBox->Select(pEntry, false);
+    }
+}
+
+void SalInstanceItemView::do_clear()
+{
+    m_pTreeListBox->Clear();
+    m_aUserData.clear();
+}
+
 // Each row has a cell for the expander image, (and an optional cell for a
 // checkbutton if enable_toggle_buttons has been called) which precede
 // index 0
@@ -3738,7 +3824,7 @@ void SalInstanceTreeView::set_header_item_width(const std::vector<int>& rWidths)
 
 SalInstanceTreeView::SalInstanceTreeView(SvTabListBox* pTreeView, SalInstanceBuilder* pBuilder,
                                          bool bTakeOwnership)
-    : SalInstanceWidget(pTreeView, pBuilder, bTakeOwnership)
+    : SalInstanceItemView(pTreeView, pBuilder, bTakeOwnership)
     , m_xTreeView(pTreeView)
     , m_aCheckButtonData(*pTreeView, false)
     , m_aRadioButtonData(*pTreeView, true)
@@ -4035,41 +4121,10 @@ void SalInstanceTreeView::swap(int pos1, int pos2)
     pModel->Move(pEntry1, pEntry2);
 }
 
-void SalInstanceTreeView::do_clear()
-{
-    m_xTreeView->Clear();
-    m_aUserData.clear();
-}
-
-void SalInstanceTreeView::select_all() { unselect(-1); }
-
-void SalInstanceTreeView::unselect_all() { select(-1); }
-
-int SalInstanceTreeView::n_children() const
-{
-    return m_xTreeView->GetModel()->GetChildList(nullptr).size();
-}
-
 int SalInstanceTreeView::iter_n_children(const weld::TreeIter& rIter) const
 {
     const SalInstanceTreeIter& rVclIter = static_cast<const SalInstanceTreeIter&>(rIter);
     return m_xTreeView->GetModel()->GetChildList(rVclIter.iter).size();
-}
-
-void SalInstanceTreeView::do_select(int pos)
-{
-    assert(m_xTreeView->IsUpdateMode()
-           && "don't select when frozen, select after thaw. Note selection doesn't survive a "
-              "freeze");
-    if (pos == -1 || (pos == 0 && n_children() == 0))
-        m_xTreeView->SelectAll(false);
-    else
-    {
-        SvTreeListEntry* pEntry = m_xTreeView->GetEntry(nullptr, pos);
-        assert(pEntry && "bad pos?");
-        m_xTreeView->Select(pEntry, true);
-        m_xTreeView->MakeVisible(pEntry);
-    }
 }
 
 int SalInstanceTreeView::get_cursor_index() const
@@ -4104,20 +4159,6 @@ bool SalInstanceTreeView::is_selected(int pos) const
 {
     SvTreeListEntry* pEntry = m_xTreeView->GetEntry(nullptr, pos);
     return m_xTreeView->IsSelected(pEntry);
-}
-
-void SalInstanceTreeView::do_unselect(int pos)
-{
-    assert(m_xTreeView->IsUpdateMode()
-           && "don't select when frozen, select after thaw. Note selection doesn't survive a "
-              "freeze");
-    if (pos == -1)
-        m_xTreeView->SelectAll(true);
-    else
-    {
-        SvTreeListEntry* pEntry = m_xTreeView->GetEntry(nullptr, pos);
-        m_xTreeView->Select(pEntry, false);
-    }
 }
 
 std::vector<int> SalInstanceTreeView::get_selected_rows() const
@@ -4358,28 +4399,28 @@ bool SalInstanceTreeView::get_text_emphasis(int pos, int col) const
     return get_text_emphasis(pEntry, col);
 }
 
-void SalInstanceTreeView::set_text_align(SvTreeListEntry* pEntry, double fAlign, int col)
+void SalInstanceTreeView::set_text_align(SvTreeListEntry* pEntry, TxtAlign eAlign, int col)
 {
     col = to_internal_model(col);
 
     assert(col >= 0 && o3tl::make_unsigned(col) < pEntry->ItemCount());
     SvLBoxItem& rItem = pEntry->GetItem(col);
     assert(dynamic_cast<SvLBoxString*>(&rItem));
-    static_cast<SvLBoxString&>(rItem).Align(fAlign);
+    static_cast<SvLBoxString&>(rItem).Align(eAlign);
 
     InvalidateModelEntry(pEntry);
 }
 
-void SalInstanceTreeView::set_text_align(const weld::TreeIter& rIter, double fAlign, int col)
+void SalInstanceTreeView::set_text_align(const weld::TreeIter& rIter, TxtAlign eAlign, int col)
 {
     const SalInstanceTreeIter& rVclIter = static_cast<const SalInstanceTreeIter&>(rIter);
-    set_text_align(rVclIter.iter, fAlign, col);
+    set_text_align(rVclIter.iter, eAlign, col);
 }
 
-void SalInstanceTreeView::set_text_align(int pos, double fAlign, int col)
+void SalInstanceTreeView::set_text_align(int pos, TxtAlign eAlign, int col)
 {
     SvTreeListEntry* pEntry = m_xTreeView->GetEntry(nullptr, pos);
-    set_text_align(pEntry, fAlign, col);
+    set_text_align(pEntry, eAlign, col);
 }
 
 void SalInstanceTreeView::connect_editing(const Link<const weld::TreeIter&, bool>& rStartLink,
@@ -4501,32 +4542,6 @@ int SalInstanceTreeView::get_selected_index() const
     if (!pEntry)
         return -1;
     return SvTreeList::GetRelPos(pEntry);
-}
-
-OUString SalInstanceTreeView::get_selected_text() const
-{
-    assert(m_xTreeView->IsUpdateMode() && "don't request selection when frozen");
-    if (SvTreeListEntry* pEntry = m_xTreeView->FirstSelected())
-        return SvTabListBox::GetEntryText(pEntry, 0);
-    return OUString();
-}
-
-OUString SalInstanceTreeView::get_selected_id() const
-{
-    assert(m_xTreeView->IsUpdateMode() && "don't request selection when frozen");
-    if (SvTreeListEntry* pEntry = m_xTreeView->FirstSelected())
-    {
-        if (const OUString* pStr = static_cast<const OUString*>(pEntry->GetUserData()))
-            return *pStr;
-    }
-    return OUString();
-}
-
-std::unique_ptr<weld::TreeIter>
-SalInstanceTreeView::make_iterator(const weld::TreeIter* pOrig) const
-{
-    return std::unique_ptr<weld::TreeIter>(
-        new SalInstanceTreeIter(static_cast<const SalInstanceTreeIter*>(pOrig)));
 }
 
 void SalInstanceTreeView::copy_iterator(const weld::TreeIter& rSource, weld::TreeIter& rDest) const
@@ -5252,7 +5267,7 @@ IMPL_LINK(SalInstanceTreeView, EditedEntryHdl, const IterString&, rIterString, b
 
 SalInstanceIconView::SalInstanceIconView(::IconView* pIconView, SalInstanceBuilder* pBuilder,
                                          bool bTakeOwnership)
-    : SalInstanceWidget(pIconView, pBuilder, bTakeOwnership)
+    : SalInstanceItemView(pIconView, pBuilder, bTakeOwnership)
     , m_xIconView(pIconView)
 {
     m_xIconView->SetSelectHdl(LINK(this, SalInstanceIconView, SelectHdl));
@@ -5371,71 +5386,7 @@ void SalInstanceIconView::connect_get_image(
     m_xIconView->SetDumpImageHdl(LINK(this, SalInstanceIconView, DumpImageHdl));
 }
 
-OUString SalInstanceIconView::get_selected_id() const
-{
-    assert(m_xIconView->IsUpdateMode() && "don't request selection when frozen");
-    if (SvTreeListEntry* pEntry = m_xIconView->FirstSelected())
-    {
-        if (const OUString* pStr = static_cast<const OUString*>(pEntry->GetUserData()))
-            return *pStr;
-    }
-    return OUString();
-}
-
-OUString SalInstanceIconView::get_selected_text() const
-{
-    assert(m_xIconView->IsUpdateMode() && "don't request selection when frozen");
-    if (SvTreeListEntry* pEntry = m_xIconView->FirstSelected())
-        return m_xIconView->GetEntryText(pEntry);
-    return OUString();
-}
-
 int SalInstanceIconView::count_selected_items() const { return m_xIconView->GetSelectionCount(); }
-
-void SalInstanceIconView::do_select(int pos)
-{
-    assert(m_xIconView->IsUpdateMode()
-           && "don't select when frozen, select after thaw. Note selection doesn't survive a "
-              "freeze");
-    if (pos == -1 || (pos == 0 && n_children() == 0))
-        m_xIconView->SelectAll(false);
-    else
-    {
-        SvTreeListEntry* pEntry = m_xIconView->GetEntry(nullptr, pos);
-        m_xIconView->Select(pEntry, true);
-        m_xIconView->MakeVisible(pEntry);
-    }
-}
-
-void SalInstanceIconView::do_unselect(int pos)
-{
-    assert(m_xIconView->IsUpdateMode()
-           && "don't select when frozen, select after thaw. Note selection doesn't survive a "
-              "freeze");
-    if (pos == -1)
-        m_xIconView->SelectAll(true);
-    else
-    {
-        SvTreeListEntry* pEntry = m_xIconView->GetEntry(nullptr, pos);
-        m_xIconView->Select(pEntry, false);
-    }
-}
-
-void SalInstanceIconView::select_all() { unselect(-1); }
-
-void SalInstanceIconView::unselect_all() { select(-1); }
-
-int SalInstanceIconView::n_children() const
-{
-    return m_xIconView->GetModel()->GetChildList(nullptr).size();
-}
-
-std::unique_ptr<weld::TreeIter>
-SalInstanceIconView::make_iterator(const weld::TreeIter* pOrig) const
-{
-    return std::unique_ptr<weld::TreeIter>(
-        new SalInstanceTreeIter(static_cast<const SalInstanceTreeIter*>(pOrig)));
-}
 
 bool SalInstanceIconView::get_selected(weld::TreeIter* pIter) const
 {
@@ -5594,19 +5545,10 @@ void SalInstanceIconView::set_item_tooltip_text(int pos, const OUString& rToolTi
     pEntry->SetToolTip(rToolTip);
 }
 
-tools::Rectangle SalInstanceIconView::get_rect(int pos) const
+tools::Rectangle SalInstanceIconView::get_rect(const weld::TreeIter& rIter) const
 {
-    SvTreeListEntry* aEntry = m_xIconView->GetEntry(nullptr, pos);
-    if (aEntry == nullptr)
-        return tools::Rectangle();
-
-    return m_xIconView->GetBoundingRect(aEntry);
-}
-
-void SalInstanceIconView::do_clear()
-{
-    m_xIconView->Clear();
-    m_aUserData.clear();
+    const SalInstanceTreeIter& rVclIter = static_cast<const SalInstanceTreeIter&>(rIter);
+    return m_xIconView->GetBoundingRect(rVclIter.iter);
 }
 
 SalInstanceIconView::~SalInstanceIconView()

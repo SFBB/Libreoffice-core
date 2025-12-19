@@ -10,7 +10,7 @@
 #pragma once
 
 #include "QtInstanceTreeIter.hxx"
-#include "QtInstanceWidget.hxx"
+#include "QtInstanceItemView.hxx"
 
 #include <vcl/weld/TreeView.hxx>
 
@@ -18,7 +18,7 @@
 #include <QtGui/QStandardItemModel>
 #include <QtWidgets/QTreeView>
 
-class QtInstanceTreeView : public QtInstanceWidget, public virtual weld::TreeView
+class QtInstanceTreeView : public QtInstanceItemView, public virtual weld::TreeView
 {
     Q_OBJECT
 
@@ -72,7 +72,7 @@ public:
                            int nCol = -1) override;
     virtual void set_text_emphasis(int nRow, bool bOn, int nCol) override;
     virtual bool get_text_emphasis(int nRow, int nCol) const override;
-    virtual void set_text_align(int nRow, double fAlign, int nCol) override;
+    virtual void set_text_align(int nRow, TxtAlign eAlign, int nCol) override;
     virtual void swap(int nPos1, int nPos2) override;
     virtual std::vector<int> get_selected_rows() const override;
     virtual void set_font_color(int nPos, const Color& rColor) override;
@@ -85,8 +85,6 @@ public:
     virtual OUString get_id(int nPos) const override;
     virtual int find_id(const OUString& rId) const override;
 
-    virtual std::unique_ptr<weld::TreeIter> make_iterator(const weld::TreeIter* pOrig
-                                                          = nullptr) const override;
     virtual void copy_iterator(const weld::TreeIter& rSource, weld::TreeIter& rDest) const override;
     virtual bool get_selected(weld::TreeIter* pIter) const override;
     virtual bool get_cursor(weld::TreeIter* pIter) const override;
@@ -115,7 +113,7 @@ public:
     virtual bool get_sensitive(const weld::TreeIter& rIter, int nCol) const override;
     virtual void set_text_emphasis(const weld::TreeIter& rIter, bool bOn, int nCol) override;
     virtual bool get_text_emphasis(const weld::TreeIter& rIter, int nCol) const override;
-    virtual void set_text_align(const weld::TreeIter& rIter, double fAlign, int nCol) override;
+    virtual void set_text_align(const weld::TreeIter& rIter, TxtAlign eAlign, int nCol) override;
     virtual void set_toggle(const weld::TreeIter& rIter, TriState eState, int nCol = -1) override;
     virtual TriState get_toggle(const weld::TreeIter& rIter, int nCol = -1) const override;
     virtual OUString get_text(const weld::TreeIter& rIter, int nCol = -1) const override;
@@ -157,9 +155,6 @@ public:
     virtual void enable_drag_source(rtl::Reference<TransferDataContainer>& rTransferable,
                                     sal_uInt8 eDNDConstants) override;
 
-    virtual void select_all() override;
-    virtual void unselect_all() override;
-
     virtual int n_children() const override;
 
     virtual void make_sorted() override;
@@ -173,7 +168,6 @@ public:
     virtual int get_sort_column() const override;
     virtual void set_sort_column(int nColumn) override;
 
-    virtual void do_clear() override;
     virtual int get_height_rows(int nRows) const override;
 
     virtual void columns_autosize() override;
@@ -214,10 +208,6 @@ public:
     virtual bool eventFilter(QObject* pObject, QEvent* pEvent) override;
 
 private:
-    QModelIndex modelIndex(int nRow, int nCol = 0,
-                           const QModelIndex& rParentIndex = QModelIndex()) const;
-    QModelIndex modelIndex(const weld::TreeIter& rIter, int nCol = 0) const;
-    QtInstanceTreeIter treeIter(int nRow, const QModelIndex& rParentIndex = QModelIndex()) const;
     QStandardItem* itemFromIndex(const QModelIndex& rIndex) const;
     QModelIndex toggleButtonModelIndex(const weld::TreeIter& rIter) const;
     QModelIndex firstTextColumnModelIndex(const weld::TreeIter& rIter) const;

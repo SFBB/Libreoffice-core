@@ -21,7 +21,7 @@
 constexpr int ROLE_ID = Qt::UserRole + 1000;
 
 QtInstanceIconView::QtInstanceIconView(QListView* pListView)
-    : QtInstanceWidget(pListView)
+    : QtInstanceItemView(pListView, *pListView->model())
     , m_pListView(pListView)
 {
     assert(m_pListView);
@@ -119,13 +119,6 @@ OUString QtInstanceIconView::get_selected_id() const
     return sId;
 }
 
-void QtInstanceIconView::do_clear()
-{
-    SolarMutexGuard g;
-
-    GetQtInstance().RunInMainThread([&] { m_pModel->clear(); });
-}
-
 int QtInstanceIconView::count_selected_items() const
 {
     assert(false && "Not implemented yet");
@@ -138,19 +131,7 @@ OUString QtInstanceIconView::get_selected_text() const
     return OUString();
 }
 
-OUString QtInstanceIconView::get_id(int nPos) const
-{
-    SolarMutexGuard g;
-
-    OUString sId;
-    GetQtInstance().RunInMainThread([&] {
-        QVariant aRoleData = m_pModel->data(modelIndex(nPos), ROLE_ID);
-        if (aRoleData.canConvert<QString>())
-            sId = toOUString(aRoleData.toString());
-    });
-
-    return sId;
-}
+OUString QtInstanceIconView::get_id(int nPos) const { return get_id(treeIter(nPos)); }
 
 void QtInstanceIconView::do_select(int nPos)
 {
@@ -221,16 +202,10 @@ void QtInstanceIconView::set_item_tooltip_text(int nPos, const OUString& rToolTi
 
 void QtInstanceIconView::do_remove(int) { assert(false && "Not implemented yet"); }
 
-tools::Rectangle QtInstanceIconView::get_rect(int) const
+tools::Rectangle QtInstanceIconView::get_rect(const weld::TreeIter&) const
 {
     assert(false && "Not implemented yet");
     return tools::Rectangle();
-}
-
-std::unique_ptr<weld::TreeIter> QtInstanceIconView::make_iterator(const weld::TreeIter*) const
-{
-    assert(false && "Not implemented yet");
-    return nullptr;
 }
 
 bool QtInstanceIconView::get_selected(weld::TreeIter*) const
@@ -262,7 +237,16 @@ bool QtInstanceIconView::get_iter_first(weld::TreeIter&) const
 
 OUString QtInstanceIconView::get_id(const weld::TreeIter& rIter) const
 {
-    return get_id(position(rIter));
+    SolarMutexGuard g;
+
+    OUString sId;
+    GetQtInstance().RunInMainThread([&] {
+        QVariant aRoleData = m_pModel->data(modelIndex(rIter), ROLE_ID);
+        if (aRoleData.canConvert<QString>())
+            sId = toOUString(aRoleData.toString());
+    });
+
+    return sId;
 }
 
 OUString QtInstanceIconView::get_text(const weld::TreeIter& rIter) const
@@ -297,18 +281,6 @@ void QtInstanceIconView::selected_foreach(const std::function<bool(weld::TreeIte
     assert(false && "Not implemented yet");
 }
 
-void QtInstanceIconView::select_all()
-{
-    SolarMutexGuard g;
-    GetQtInstance().RunInMainThread([&] { m_pListView->selectAll(); });
-}
-
-void QtInstanceIconView::unselect_all()
-{
-    SolarMutexGuard g;
-    GetQtInstance().RunInMainThread([&] { m_pListView->clearSelection(); });
-}
-
 int QtInstanceIconView::n_children() const
 {
     SolarMutexGuard g;
@@ -317,19 +289,6 @@ int QtInstanceIconView::n_children() const
     GetQtInstance().RunInMainThread([&] { nChildren = m_pModel->rowCount(); });
 
     return nChildren;
-}
-
-QModelIndex QtInstanceIconView::modelIndex(int nPos) const { return m_pModel->index(nPos, 0); }
-
-QModelIndex QtInstanceIconView::modelIndex(const weld::TreeIter& rIter) const
-{
-    return modelIndex(position(rIter));
-}
-
-int QtInstanceIconView::position(const weld::TreeIter& rIter)
-{
-    QModelIndex aModelIndex = static_cast<const QtInstanceTreeIter&>(rIter).modelIndex();
-    return aModelIndex.row();
 }
 
 bool QtInstanceIconView::handleToolTipEvent(const QHelpEvent& rHelpEvent)

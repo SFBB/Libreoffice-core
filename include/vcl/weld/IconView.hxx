@@ -20,9 +20,6 @@ class VCL_DLLPUBLIC IconView : virtual public ItemView
 {
     friend class ::LOKTrigger;
 
-private:
-    OUString m_sSavedValue;
-
 protected:
     Link<IconView&, void> m_aSelectionChangeHdl;
     Link<IconView&, bool> m_aItemActivatedHdl;
@@ -56,8 +53,6 @@ protected:
     virtual void do_insert(int pos, const OUString* pStr, const OUString* pId, const Bitmap* pIcon,
                            TreeIter* pRet)
         = 0;
-    virtual void do_select(int pos) = 0;
-    virtual void do_unselect(int pos) = 0;
     virtual void do_remove(int pos) = 0;
     virtual void do_set_cursor(const TreeIter& rIter) = 0;
     virtual void do_scroll_to_item(const TreeIter& rIter) = 0;
@@ -120,28 +115,10 @@ public:
         m_aGetPropertyTreeElemHdl = rLink;
     }
 
-    virtual OUString get_selected_id() const = 0;
-
     virtual int count_selected_items() const = 0;
-
-    virtual OUString get_selected_text() const = 0;
 
     //by index. Don't select when frozen, select after thaw. Note selection doesn't survive a freeze.
     virtual OUString get_id(int pos) const = 0;
-
-    void select(int pos)
-    {
-        disable_notify_events();
-        do_select(pos);
-        enable_notify_events();
-    }
-
-    void unselect(int pos)
-    {
-        disable_notify_events();
-        do_unselect(pos);
-        enable_notify_events();
-    }
 
     virtual void set_image(int pos, VirtualDevice& rDevice) = 0;
     virtual void set_text(int pos, const OUString& rText) = 0;
@@ -156,9 +133,11 @@ public:
         enable_notify_events();
     }
 
-    virtual tools::Rectangle get_rect(int pos) const = 0;
+    tools::Rectangle get_rect(int pos) const;
 
     //via iter
+    virtual tools::Rectangle get_rect(const TreeIter& rIter) const = 0;
+
     void set_cursor(const TreeIter& rIter)
     {
         disable_notify_events();
@@ -180,17 +159,6 @@ public:
 
     // call func on each selected element until func returns true or we run out of elements
     virtual void selected_foreach(const std::function<bool(TreeIter&)>& func) = 0;
-
-    //all of them. Don't select when frozen, select after thaw. Note selection doesn't survive a freeze.
-    virtual void select_all() = 0;
-    virtual void unselect_all() = 0;
-
-    // return the number of toplevel nodes
-    virtual int n_children() const = 0;
-
-    void save_value() { m_sSavedValue = get_selected_text(); }
-    OUString const& get_saved_value() const { return m_sSavedValue; }
-    bool get_value_changed_from_saved() const { return m_sSavedValue != get_selected_text(); }
 };
 }
 

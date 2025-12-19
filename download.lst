@@ -482,8 +482,8 @@ LXML_TARBALL := lxml-6.0.2.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-LZMA_SHA256SUM := bdbc23fbf9098843357e71e49685724fda2c320c29cb1b25fd90505f14bb0b3d
-LZMA_TARBALL := xz-5.8.1.tar.gz
+LZMA_SHA256SUM := ce09c50a5962786b83e5da389c90dd2c15ecd0980a258dd01f70f9e7ce58a8f1
+LZMA_TARBALL := xz-5.8.2.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -652,8 +652,8 @@ RHINO_TARBALL := rhino-1.7.15.1.zip
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-SKIA_SHA256SUM := 45ae58e84fa2d1e261bfc980e1c5b7bbfaf83887e3813795bd343d3786f4d0bc
-SKIA_TARBALL := skia-m142-f4ed99d2443962782cf5f8b4dd27179f131e7cbe.tar.xz
+SKIA_SHA256SUM := 31ad00946dd858f4d069173e411162cd81e72646e274fb2cba0a55ca7872be78
+SKIA_TARBALL := skia-m144-ee20d565acb08dece4a32e3f209cdd41119015ca.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts

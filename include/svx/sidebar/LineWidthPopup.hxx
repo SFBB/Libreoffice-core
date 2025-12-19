@@ -20,8 +20,9 @@
 #define INCLUDED_SVX_SOURCE_SIDEBAR_LINE_LINEWIDTHPOPUP_HXX
 
 #include <tools/mapunit.hxx>
-#include <vcl/customweld.hxx>
 #include <vcl/image.hxx>
+#include <vcl/weld/MetricSpinButton.hxx>
+#include <vcl/weld/customweld.hxx>
 #include <vcl/weld/weld.hxx>
 #include <svtools/toolbarmenu.hxx>
 #include <array>

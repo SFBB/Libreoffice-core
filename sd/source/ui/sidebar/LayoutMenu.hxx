@@ -101,9 +101,6 @@ private:
     css::uno::Reference<css::ui::XSidebar> mxSidebar;
     bool mbIsDisposed;
 
-    std::unique_ptr<weld::Builder> mxMenuBuilder;
-    std::unique_ptr<weld::Menu> mxMenu;
-
     // Store the size of preview image
     Size maPreviewSize;
 
@@ -162,11 +159,11 @@ private:
     /** When clicked then set the current page of the view in the center pane.
     */
     DECL_LINK(LayoutSelected, weld::IconView&, bool);
-    DECL_LINK(MousePressHdl, const MouseEvent&, bool);
+    DECL_LINK(CommandHdl, const CommandEvent&, bool);
+
     DECL_LINK(StateChangeHandler, const OUString&, void);
     DECL_LINK(EventMultiplexerListener, ::sdtools::EventMultiplexerEvent&, void);
     DECL_LINK(MenuSelectAsyncHdl, void*, void);
-    DECL_LINK(OnPopupEnd, const OUString&, void);
 
     static VclPtr<VirtualDevice> GetVirtualDevice(Image pPreview);
     static Bitmap GetPreviewAsBitmap(const Image& rImage);

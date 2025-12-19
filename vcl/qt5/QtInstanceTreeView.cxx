@@ -22,7 +22,7 @@ constexpr int ROLE_ID = Qt::UserRole + 1000;
 const char* const PROPERTY_COLUMN_ROLES = "column-roles";
 
 QtInstanceTreeView::QtInstanceTreeView(QTreeView* pTreeView)
-    : QtInstanceWidget(pTreeView)
+    : QtInstanceItemView(pTreeView, *pTreeView->model())
     , m_pTreeView(pTreeView)
 {
     assert(m_pTreeView);
@@ -227,9 +227,9 @@ bool QtInstanceTreeView::get_text_emphasis(int nRow, int nCol) const
     return get_text_emphasis(treeIter(nRow), nCol);
 }
 
-void QtInstanceTreeView::set_text_align(int nRow, double fAlign, int nCol)
+void QtInstanceTreeView::set_text_align(int nRow, TxtAlign eAlign, int nCol)
 {
-    return set_text_align(treeIter(nRow), fAlign, nCol);
+    return set_text_align(treeIter(nRow), eAlign, nCol);
 }
 
 void QtInstanceTreeView::swap(int nPos1, int nPos2)
@@ -333,12 +333,6 @@ int QtInstanceTreeView::find_id(const OUString& rId) const
     });
 
     return nIndex;
-}
-
-std::unique_ptr<weld::TreeIter> QtInstanceTreeView::make_iterator(const weld::TreeIter* pOrig) const
-{
-    const QModelIndex aIndex = pOrig ? modelIndex(*pOrig) : QModelIndex();
-    return std::make_unique<QtInstanceTreeIter>(aIndex);
 }
 
 void QtInstanceTreeView::copy_iterator(const weld::TreeIter& rSource, weld::TreeIter& rDest) const
@@ -606,9 +600,15 @@ bool QtInstanceTreeView::get_text_emphasis(const weld::TreeIter&, int) const
     return false;
 }
 
-void QtInstanceTreeView::set_text_align(const weld::TreeIter&, double, int)
+void QtInstanceTreeView::set_text_align(const weld::TreeIter& rIter, TxtAlign eAlign, int nCol)
 {
-    assert(false && "Not implemented yet");
+    SolarMutexGuard g;
+
+    GetQtInstance().RunInMainThread([&] {
+        QStandardItem* pItem = itemFromIndex(modelIndex(rIter, nCol));
+        if (pItem)
+            pItem->setTextAlignment(toQtAlignment(eAlign));
+    });
 }
 
 void QtInstanceTreeView::set_toggle(const weld::TreeIter& rIter, TriState eState, int nCol)
@@ -846,18 +846,6 @@ void QtInstanceTreeView::enable_drag_source(rtl::Reference<TransferDataContainer
     assert(false && "Not implemented yet");
 }
 
-void QtInstanceTreeView::select_all()
-{
-    SolarMutexGuard g;
-    GetQtInstance().RunInMainThread([&] { m_pTreeView->selectAll(); });
-}
-
-void QtInstanceTreeView::unselect_all()
-{
-    SolarMutexGuard g;
-    GetQtInstance().RunInMainThread([&] { m_pTreeView->clearSelection(); });
-}
-
 int QtInstanceTreeView::n_children() const
 {
     SolarMutexGuard g;
@@ -939,16 +927,6 @@ void QtInstanceTreeView::set_sort_column(int nColumn)
     SolarMutexGuard g;
 
     GetQtInstance().RunInMainThread([&] { m_pModel->sort(nColumn); });
-}
-
-void QtInstanceTreeView::do_clear()
-{
-    SolarMutexGuard g;
-
-    GetQtInstance().RunInMainThread([&] {
-        // don't use QStandardItemModel::clear, as that would remove header data as well
-        m_pModel->removeRows(0, m_pModel->rowCount());
-    });
 }
 
 int QtInstanceTreeView::get_height_rows(int) const
@@ -1111,23 +1089,6 @@ bool QtInstanceTreeView::eventFilter(QObject* pObject, QEvent* pEvent)
         return handleViewPortToolTipEvent(static_cast<QHelpEvent&>(*pEvent));
 
     return QtInstanceWidget::eventFilter(pObject, pEvent);
-}
-
-QModelIndex QtInstanceTreeView::modelIndex(int nRow, int nCol,
-                                           const QModelIndex& rParentIndex) const
-{
-    return modelIndex(treeIter(nRow, rParentIndex), nCol);
-}
-
-QModelIndex QtInstanceTreeView::modelIndex(const weld::TreeIter& rIter, int nCol) const
-{
-    QModelIndex aModelIndex = static_cast<const QtInstanceTreeIter&>(rIter).modelIndex();
-    return m_pModel->index(aModelIndex.row(), nCol, aModelIndex.parent());
-}
-
-QtInstanceTreeIter QtInstanceTreeView::treeIter(int nRow, const QModelIndex& rParentIndex) const
-{
-    return QtInstanceTreeIter(m_pModel->index(nRow, 0, rParentIndex));
 }
 
 QStandardItem* QtInstanceTreeView::itemFromIndex(const QModelIndex& rIndex) const

@@ -18,8 +18,9 @@
  */
 #pragma once
 
-#include <vcl/customweld.hxx>
+#include <vcl/weld/DialogController.hxx>
 #include <vcl/weld/TreeView.hxx>
+#include <vcl/weld/customweld.hxx>
 #include <autoform.hxx>
 #include "autofmt.hxx"
 

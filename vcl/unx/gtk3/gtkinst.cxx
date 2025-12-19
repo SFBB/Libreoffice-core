@@ -36,6 +36,7 @@
 #include <vcl/sysdata.hxx>
 #include <vcl/transfer.hxx>
 #include <vcl/toolkit/floatwin.hxx>
+#include <vcl/weld/MetricSpinButton.hxx>
 #include <unx/genpspgraphics.h>
 #include <rtl/strbuf.hxx>
 #include <sal/log.hxx>
@@ -2096,7 +2097,9 @@ class GtkInstanceBuilder;
 #if !GTK_CHECK_VERSION(4, 0, 0)
         if (nKeyCode == 0)
         {
-            guint updated_keyval = GtkSalFrame::GetKeyValFor(gdk_keymap_get_default(), hardware_keycode, group);
+            GdkKeymap* keymap = gdk_keymap_get_default();
+            guint8 best_group = GtkSalFrame::GetBestAccelKeyGroup(keymap, group);
+            guint updated_keyval = GtkSalFrame::GetKeyValFor(keymap, hardware_keycode, best_group);
             nKeyCode = GtkSalFrame::GetKeyCode(updated_keyval);
         }
 #else
@@ -4468,6 +4471,22 @@ namespace
         GdkRGBA aColor{ rColor.GetRed() / 255.0f, rColor.GetGreen() / 255.0f,
                         rColor.GetBlue() / 255.0f, 0 };
         return aColor;
+    }
+
+    double toGtkTextAlignValue(TxtAlign eAlign)
+    {
+        switch (eAlign)
+        {
+            case TxtAlign::Left:
+                return 0;
+            case TxtAlign::Center:
+                return 0.5;
+            case TxtAlign::Right:
+                return 1;
+            default:
+                assert(false && "Unhandled value for text alignment");
+                return 0;
+        }
     }
 
     Color toVclColor(const GdkRGBA& rColor)
@@ -13865,7 +13884,23 @@ int promote_arg(bool bArg)
     return static_cast<int>(bArg);
 }
 
-class GtkInstanceTreeView : public GtkInstanceWidget, public virtual weld::TreeView
+class GtkInstanceItemView : public GtkInstanceWidget, public virtual weld::ItemView
+{
+public:
+    GtkInstanceItemView(GtkWidget* pWidget, GtkInstanceBuilder* pBuilder, bool bTakeOwnership)
+        : GtkInstanceWidget(pWidget, pBuilder, bTakeOwnership)
+    {
+    }
+
+    virtual std::unique_ptr<weld::TreeIter>
+    make_iterator(const weld::TreeIter* pOrig) const override
+    {
+        return std::unique_ptr<weld::TreeIter>(
+            new GtkInstanceTreeIter(static_cast<const GtkInstanceTreeIter*>(pOrig)));
+    }
+};
+
+class GtkInstanceTreeView : public GtkInstanceItemView, public virtual weld::TreeView
 {
 private:
     GtkTreeView* m_pTreeView;
@@ -14624,7 +14659,7 @@ private:
 
 public:
     GtkInstanceTreeView(GtkTreeView* pTreeView, GtkInstanceBuilder* pBuilder, bool bTakeOwnership)
-        : GtkInstanceWidget(GTK_WIDGET(pTreeView), pBuilder, bTakeOwnership)
+        : GtkInstanceItemView(GTK_WIDGET(pTreeView), pBuilder, bTakeOwnership)
         , m_pTreeView(pTreeView)
         , m_pTreeModel(gtk_tree_view_get_model(m_pTreeView))
         , m_bWorkAroundBadDragRegion(false)
@@ -15489,17 +15524,17 @@ public:
         return get_int(pos, iter->second) == PANGO_WEIGHT_BOLD;
     }
 
-    virtual void set_text_align(const weld::TreeIter& rIter, double fAlign, int col) override
+    virtual void set_text_align(const weld::TreeIter& rIter, TxtAlign eAlign, int col) override
     {
         const GtkInstanceTreeIter& rGtkIter = static_cast<const GtkInstanceTreeIter&>(rIter);
         col = to_internal_model(col);
-        set(rGtkIter.iter, m_aAlignMap[col], fAlign);
+        set(rGtkIter.iter, m_aAlignMap[col], toGtkTextAlignValue(eAlign));
     }
 
-    virtual void set_text_align(int pos, double fAlign, int col) override
+    virtual void set_text_align(int pos, TxtAlign eAlign, int col) override
     {
         col = to_internal_model(col);
-        set(pos, m_aAlignMap[col], fAlign);
+        set(pos, m_aAlignMap[col], toGtkTextAlignValue(eAlign));
     }
 
     using GtkInstanceWidget::set_sensitive;
@@ -15753,16 +15788,20 @@ public:
         return OUString();
     }
 
-    virtual std::unique_ptr<weld::TreeIter> make_iterator(const weld::TreeIter* pOrig) const override
-    {
-        return std::unique_ptr<weld::TreeIter>(new GtkInstanceTreeIter(static_cast<const GtkInstanceTreeIter*>(pOrig)));
-    }
-
     virtual void copy_iterator(const weld::TreeIter& rSource, weld::TreeIter& rDest) const override
     {
         const GtkInstanceTreeIter& rGtkSource(static_cast<const GtkInstanceTreeIter&>(rSource));
         GtkInstanceTreeIter& rGtkDest(static_cast<GtkInstanceTreeIter&>(rDest));
         rGtkDest.iter = rGtkSource.iter;
+    }
+
+    virtual std::unique_ptr<weld::TreeIter> get_iterator(int nPos) const override
+    {
+        GtkTreeIter iter;
+        if (gtk_tree_model_iter_nth_child(m_pTreeModel, &iter, nullptr, nPos))
+            return std::make_unique<GtkInstanceTreeIter>(iter);
+
+        return {};
     }
 
     virtual bool get_selected(weld::TreeIter* pIter) const override
@@ -16703,7 +16742,7 @@ IMPL_LINK_NOARG(GtkInstanceTreeView, async_stop_cell_editing, void*, void)
 
 namespace {
 
-class GtkInstanceIconView : public GtkInstanceWidget, public virtual weld::IconView
+class GtkInstanceIconView : public GtkInstanceItemView, public virtual weld::IconView
 {
 private:
     GtkIconView* m_pIconView;
@@ -16822,14 +16861,10 @@ private:
         return sRet;
     }
 
-    tools::Rectangle get_rect(int pos) const override
+    tools::Rectangle get_rect(const weld::TreeIter& rIter) const override
     {
-        GtkTreeModel* pModel = GTK_TREE_MODEL(m_pTreeStore);
-        GtkTreeIter rIter;
-        if (!gtk_tree_model_iter_nth_child(pModel, &rIter, nullptr, pos))
-            return tools::Rectangle();
-
         const GtkInstanceTreeIter& rGtkIter = static_cast<const GtkInstanceTreeIter&>(rIter);
+        GtkTreeModel* pModel = GTK_TREE_MODEL(m_pTreeStore);
         GtkTreePath* path
             = gtk_tree_model_get_path(pModel, const_cast<GtkTreeIter*>(&rGtkIter.iter));
 
@@ -16961,7 +16996,7 @@ private:
 
 public:
     GtkInstanceIconView(GtkIconView* pIconView, GtkInstanceBuilder* pBuilder, bool bTakeOwnership)
-        : GtkInstanceWidget(GTK_WIDGET(pIconView), pBuilder, bTakeOwnership)
+        : GtkInstanceItemView(GTK_WIDGET(pIconView), pBuilder, bTakeOwnership)
         , m_pIconView(pIconView)
         , m_pTreeStore(GTK_TREE_STORE(gtk_icon_view_get_model(m_pIconView)))
         , m_nTextCol(gtk_icon_view_get_text_column(m_pIconView)) // May be -1
@@ -16972,6 +17007,16 @@ public:
         , m_pSelectionChangeEvent(nullptr)
     {
         m_nIdCol = std::max(m_nTextCol, m_nImageCol) + 1;
+    }
+
+    virtual std::unique_ptr<weld::TreeIter> get_iterator(int nPos) const override
+    {
+        GtkTreeModel* pModel = GTK_TREE_MODEL(m_pTreeStore);
+        GtkTreeIter iter;
+        if (gtk_tree_model_iter_nth_child(pModel, &iter, nullptr, nPos))
+            return std::make_unique<GtkInstanceTreeIter>(iter);
+
+        return {};
     }
 
     virtual int get_item_width() const override
@@ -17218,11 +17263,6 @@ public:
         gtk_icon_view_scroll_to_path(m_pIconView, path, false, 0, 0);
         gtk_tree_path_free(path);
         enable_notify_events();
-    }
-
-    virtual std::unique_ptr<weld::TreeIter> make_iterator(const weld::TreeIter* pOrig) const override
-    {
-        return std::unique_ptr<weld::TreeIter>(new GtkInstanceTreeIter(static_cast<const GtkInstanceTreeIter*>(pOrig)));
     }
 
     virtual void selected_foreach(const std::function<bool(weld::TreeIter&)>& func) override
@@ -24413,11 +24453,6 @@ public:
             return nullptr;
         auto_add_parentless_widgets_to_container(GTK_WIDGET(pSpinButton));
         return std::make_unique<GtkInstanceSpinButton>(pSpinButton, this, false);
-    }
-
-    virtual std::unique_ptr<weld::MetricSpinButton> weld_metric_spin_button(const OUString& id, FieldUnit eUnit) override
-    {
-        return std::make_unique<weld::MetricSpinButton>(weld_spin_button(id), eUnit);
     }
 
     virtual std::unique_ptr<weld::FormattedSpinButton> weld_formatted_spin_button(const OUString &id) override
