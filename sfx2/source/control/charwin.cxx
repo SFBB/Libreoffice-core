@@ -24,8 +24,7 @@
 #include <vcl/svapp.hxx>
 #include <vcl/weld/weldutils.hxx>
 #include <sfx2/charwin.hxx>
-#include <comphelper/dispatchcommand.hxx>
-#include <comphelper/propertyvalue.hxx>
+#include <sfx2/charmapcontainer.hxx>
 
 #include <com/sun/star/beans/PropertyValue.hpp>
 
@@ -33,7 +32,7 @@ using namespace com::sun::star;
 
 SvxCharView::SvxCharView(const VclPtr<VirtualDevice>& rVirDev)
     : mxVirDev(rVirDev)
-    , maHasInsert(true)
+    , m_bActivateOnSingleClick(false)
 {
 }
 
@@ -56,7 +55,7 @@ void SvxCharView::GetFocus()
 {
     Invalidate();
     if (maFocusInHdl.IsSet())
-        maFocusInHdl.Call(*this);
+        maFocusInHdl.Call(CharAndFont(GetText(), GetFontFamilyName()));
 }
 
 void SvxCharView::LoseFocus() { Invalidate(); }
@@ -72,12 +71,10 @@ bool SvxCharView::MouseButtonDown(const MouseEvent& rMEvt)
 {
     if (rMEvt.IsLeft())
     {
-        if (!(rMEvt.GetClicks() % 2) && maHasInsert)
-        {
-            InsertCharToDoc();
-        }
-
-        maMouseClickHdl.Call(*this);
+        GrabFocus();
+        Invalidate();
+        if (rMEvt.GetClicks() == 2 || m_bActivateOnSingleClick)
+            maActivateHdl.Call(GetCharAndFont());
         return true;
     }
 
@@ -92,7 +89,7 @@ bool SvxCharView::KeyInput(const KeyEvent& rKEvt)
     {
         case KEY_SPACE:
         case KEY_RETURN:
-            InsertCharToDoc();
+            maActivateHdl.Call(GetCharAndFont());
             bRet = true;
             break;
     }
@@ -110,19 +107,6 @@ bool SvxCharView::Command(const CommandEvent& rCommandEvent)
     }
 
     return weld::CustomWidgetController::Command(rCommandEvent);
-}
-
-void SvxCharView::InsertCharToDoc()
-{
-    if (GetText().isEmpty())
-        return;
-
-    uno::Sequence<beans::PropertyValue> aArgs{
-        comphelper::makePropertyValue(u"Symbols"_ustr, GetText()),
-        comphelper::makePropertyValue(u"FontName"_ustr, maFont.GetFamilyName())
-    };
-
-    comphelper::dispatchCommand(u".uno:InsertSymbol"_ustr, aArgs);
 }
 
 void SvxCharView::Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle&)
@@ -220,11 +204,14 @@ void SvxCharView::Paint(vcl::RenderContext& rRenderContext, const tools::Rectang
         rRenderContext.SetFont(aOrigFont);
 }
 
-void SvxCharView::setFocusInHdl(const Link<SvxCharView&, void>& rLink) { maFocusInHdl = rLink; }
-
-void SvxCharView::setMouseClickHdl(const Link<SvxCharView&, void>& rLink)
+void SvxCharView::setFocusInHdl(const Link<const CharAndFont&, void>& rLink)
 {
-    maMouseClickHdl = rLink;
+    maFocusInHdl = rLink;
+}
+
+void SvxCharView::setActivateHdl(const Link<const CharAndFont&, void>& rLink)
+{
+    maActivateHdl = rLink;
 }
 
 void SvxCharView::setContextMenuHdl(const Link<const CommandEvent&, void>& rLink)
@@ -256,6 +243,11 @@ void SvxCharView::SetText(const OUString& rText)
     Invalidate();
 }
 
-void SvxCharView::SetHasInsert(bool bInsert) { maHasInsert = bInsert; }
+CharAndFont SvxCharView::GetCharAndFont() const
+{
+    return CharAndFont(GetText(), GetFontFamilyName());
+}
+
+void SvxCharView::SetActivateOnSingleClick(bool bActivate) { m_bActivateOnSingleClick = bActivate; }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

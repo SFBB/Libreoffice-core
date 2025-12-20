@@ -56,8 +56,6 @@ public:
     virtual void set_clicks_to_toggle(int nToggleBehavior) override;
 
     virtual int get_selected_index() const override;
-    virtual void do_select(int nPos) override;
-    virtual void do_unselect(int nPos) override;
     virtual void do_remove(int nPos) override;
     virtual OUString get_text(int nRow, int nCol = -1) const override;
     virtual void set_text(int nRow, const OUString& rText, int nCol = -1) override;
@@ -89,15 +87,12 @@ public:
     virtual bool get_selected(weld::TreeIter* pIter) const override;
     virtual bool get_cursor(weld::TreeIter* pIter) const override;
     virtual void do_set_cursor(const weld::TreeIter& rIter) override;
-    virtual bool get_iter_first(weld::TreeIter& rIter) const override;
-    virtual bool iter_next_sibling(weld::TreeIter& rIter) const override;
     virtual bool iter_previous_sibling(weld::TreeIter& rIter) const override;
     virtual bool iter_next(weld::TreeIter& rIter) const override;
     virtual bool iter_previous(weld::TreeIter& rIter) const override;
     virtual bool iter_children(weld::TreeIter& rIter) const override;
     virtual bool iter_parent(weld::TreeIter& rIter) const override;
     virtual int get_iter_depth(const weld::TreeIter& rIter) const override;
-    virtual int get_iter_index_in_parent(const weld::TreeIter& rIter) const override;
 
     virtual int iter_compare(const weld::TreeIter& a, const weld::TreeIter& b) const override;
     virtual bool iter_has_child(const weld::TreeIter& rIter) const override;

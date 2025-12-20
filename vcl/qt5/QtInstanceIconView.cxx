@@ -133,20 +133,19 @@ OUString QtInstanceIconView::get_selected_text() const
 
 OUString QtInstanceIconView::get_id(int nPos) const { return get_id(treeIter(nPos)); }
 
-void QtInstanceIconView::do_select(int nPos)
+void QtInstanceIconView::do_select(const weld::TreeIter& rIter)
 {
     SolarMutexGuard g;
     GetQtInstance().RunInMainThread(
-        [&] { m_pSelectionModel->select(m_pModel->index(nPos, 0), QItemSelectionModel::Select); });
+        [&] { m_pSelectionModel->select(modelIndex(rIter), QItemSelectionModel::Select); });
 }
 
-void QtInstanceIconView::do_unselect(int nPos)
+void QtInstanceIconView::do_unselect(const weld::TreeIter& rIter)
 {
     SolarMutexGuard g;
 
-    GetQtInstance().RunInMainThread([&] {
-        m_pSelectionModel->select(m_pModel->index(nPos, 0), QItemSelectionModel::Deselect);
-    });
+    GetQtInstance().RunInMainThread(
+        [&] { m_pSelectionModel->select(modelIndex(rIter), QItemSelectionModel::Deselect); });
 }
 
 void QtInstanceIconView::set_image(int nPos, VirtualDevice& rDevice)
@@ -229,12 +228,6 @@ void QtInstanceIconView::do_set_cursor(const weld::TreeIter& rIter)
     });
 }
 
-bool QtInstanceIconView::get_iter_first(weld::TreeIter&) const
-{
-    assert(false && "Not implemented yet");
-    return false;
-}
-
 OUString QtInstanceIconView::get_id(const weld::TreeIter& rIter) const
 {
     SolarMutexGuard g;
@@ -262,12 +255,6 @@ OUString QtInstanceIconView::get_text(const weld::TreeIter& rIter) const
     });
 
     return sText;
-}
-
-bool QtInstanceIconView::iter_next_sibling(weld::TreeIter&) const
-{
-    assert(false && "Not implemented yet");
-    return false;
 }
 
 void QtInstanceIconView::do_scroll_to_item(const weld::TreeIter& rIter)

@@ -22,7 +22,6 @@
 #include <sal/config.h>
 #include <sfx2/charmapcontainer.hxx>
 #include <svtools/toolbarmenu.hxx>
-#include <deque>
 
 class CharmapPopup;
 
@@ -45,8 +44,8 @@ private:
     std::unique_ptr<weld::Button> m_xDlgBtn;
     std::unique_ptr<weld::Label> m_xCharInfoLabel;
 
-    DECL_LINK(CharFocusInHdl, SvxCharView&, void);
-    DECL_LINK(CharClickHdl, SvxCharView&, void);
+    DECL_LINK(CharFocusInHdl, const CharAndFont&, void);
+    DECL_LINK(CharActivateHdl, const CharAndFont&, void);
     DECL_LINK(OpenDlgHdl, weld::Button&, void);
     DECL_LINK(DlgBtnFocusInHdl, weld::Widget&, void);
     DECL_LINK(UpdateRecentHdl, void*, void);

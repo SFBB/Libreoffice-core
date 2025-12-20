@@ -162,10 +162,6 @@ int QtInstanceTreeView::get_selected_index() const
     return nIndex;
 }
 
-void QtInstanceTreeView::do_select(int nPos) { do_select(treeIter(nPos)); }
-
-void QtInstanceTreeView::do_unselect(int nPos) { do_unselect(treeIter(nPos)); }
-
 void QtInstanceTreeView::do_remove(int nPos) { do_remove(treeIter(nPos)); }
 
 OUString QtInstanceTreeView::get_text(int nRow, int nCol) const
@@ -381,24 +377,6 @@ void QtInstanceTreeView::do_set_cursor(const weld::TreeIter& rIter)
     GetQtInstance().RunInMainThread([&] { m_pTreeView->setCurrentIndex(modelIndex(rIter)); });
 }
 
-bool QtInstanceTreeView::get_iter_first(weld::TreeIter& rIter) const
-{
-    QtInstanceTreeIter& rQtIter = static_cast<QtInstanceTreeIter&>(rIter);
-    const QModelIndex aIndex = modelIndex(0);
-    rQtIter.setModelIndex(aIndex);
-    return aIndex.isValid();
-}
-
-bool QtInstanceTreeView::iter_next_sibling(weld::TreeIter& rIter) const
-{
-    QtInstanceTreeIter& rQtIter = static_cast<QtInstanceTreeIter&>(rIter);
-    const QModelIndex aIndex = rQtIter.modelIndex();
-    const QModelIndex aSiblingIndex = m_pModel->sibling(aIndex.row() + 1, 0, aIndex);
-    rQtIter.setModelIndex(aSiblingIndex);
-
-    return aSiblingIndex.isValid();
-}
-
 bool QtInstanceTreeView::iter_previous_sibling(weld::TreeIter& rIter) const
 {
     QtInstanceTreeIter& rQtIter = static_cast<QtInstanceTreeIter&>(rIter);
@@ -470,19 +448,6 @@ int QtInstanceTreeView::get_iter_depth(const weld::TreeIter& rIter) const
     }
 
     return nDepth;
-}
-
-int QtInstanceTreeView::get_iter_index_in_parent(const weld::TreeIter& rIter) const
-{
-    SolarMutexGuard g;
-
-    int nIndex;
-    GetQtInstance().RunInMainThread([&] {
-        const QModelIndex aIndex = modelIndex(rIter);
-        nIndex = aIndex.row();
-    });
-
-    return nIndex;
 }
 
 int QtInstanceTreeView::iter_compare(const weld::TreeIter&, const weld::TreeIter&) const

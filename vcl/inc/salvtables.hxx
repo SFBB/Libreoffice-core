@@ -1496,21 +1496,27 @@ protected:
     SalInstanceItemView(SvTreeListBox* pTreeListBox, SalInstanceBuilder* pBuilder,
                         bool bTakeOwnership);
 
-    virtual void do_select(int pos) override;
-    virtual void do_unselect(int pos) override;
+    virtual void do_select(const weld::TreeIter& rIter) override;
+    virtual void do_unselect(const weld::TreeIter& rIter) override;
+
+    virtual void do_select_all() override;
+    virtual void do_unselect_all() override;
+
     virtual void do_clear() override;
 
 public:
     virtual std::unique_ptr<weld::TreeIter> make_iterator(const weld::TreeIter* pOrig
                                                           = nullptr) const override;
 
+    virtual bool get_iter_first(weld::TreeIter& rIter) const override;
+    virtual bool iter_next_sibling(weld::TreeIter& rIter) const override;
+
+    virtual int get_iter_index_in_parent(const weld::TreeIter& rIter) const override;
+
     virtual std::unique_ptr<weld::TreeIter> get_iterator(int nPos) const override;
 
     virtual OUString get_selected_id() const override;
     virtual OUString get_selected_text() const override;
-
-    virtual void select_all() override;
-    virtual void unselect_all() override;
 
     virtual int n_children() const override;
 };
@@ -1749,11 +1755,7 @@ public:
 
     virtual void do_set_cursor(const weld::TreeIter& rIter) override;
 
-    virtual bool get_iter_first(weld::TreeIter& rIter) const override;
-
     bool get_iter_abs_pos(weld::TreeIter& rIter, int nPos) const;
-
-    virtual bool iter_next_sibling(weld::TreeIter& rIter) const override;
 
     virtual bool iter_previous_sibling(weld::TreeIter& rIter) const override;
 
@@ -1815,8 +1817,6 @@ public:
     virtual void do_remove_selection() override;
 
     virtual bool is_selected(const weld::TreeIter& rIter) const override;
-
-    virtual int get_iter_index_in_parent(const weld::TreeIter& rIter) const override;
 
     virtual int iter_compare(const weld::TreeIter& a, const weld::TreeIter& b) const override;
 
@@ -1944,10 +1944,6 @@ public:
     virtual bool get_cursor(weld::TreeIter* pIter) const override;
 
     virtual void do_set_cursor(const weld::TreeIter& rIter) override;
-
-    virtual bool get_iter_first(weld::TreeIter& rIter) const override;
-
-    virtual bool iter_next_sibling(weld::TreeIter& rIter) const override;
 
     virtual void do_scroll_to_item(const weld::TreeIter& rIter) override;
 

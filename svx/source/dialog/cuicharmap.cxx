@@ -261,10 +261,11 @@ void SvxCharacterMap::init()
         m_xOKBtn->set_sensitive(true);
     }
 
-    m_aCharmapContents.init(m_xFrame.is(),
-                            LINK(this, SvxCharacterMap, CharClickHdl),
+    m_aCharmapContents.init(false,
+                            LINK(this, SvxCharacterMap, CharActivateHdl),
                             LINK(this, SvxCharacterMap, UpdateFavHdl),
-                            Link<void*, void>());
+                            Link<void*, void>(),
+                            LINK(this, SvxCharacterMap, CharFocusHdl));
 
     setCharName(90);
 
@@ -524,19 +525,22 @@ IMPL_LINK_NOARG(SvxCharacterMap, SearchUpdateHdl, weld::Entry&, void)
     }
 }
 
-IMPL_LINK(SvxCharacterMap, CharClickHdl, SvxCharView&, rView, void)
+IMPL_LINK(SvxCharacterMap, CharFocusHdl, const CharAndFont&, rView, void)
 {
-    rView.GrabFocus();
+    vcl::Font aCharFont = GetCharFont();
+    aCharFont.SetFamilyName(rView.sFont);
+    SetCharFont(aCharFont);
 
-    SetCharFont(rView.GetFont());
-    m_aShowChar.SetText(rView.GetText());
-    m_aShowChar.SetFont(rView.GetFont());
+    m_aShowChar.SetText(rView.sChar);
+    vcl::Font aShowCharFont = m_aShowChar.GetFont();
+    aShowCharFont.SetFamilyName(rView.sFont);
+    m_aShowChar.SetFont(aShowCharFont);
     m_aShowChar.Invalidate();
 
-    setFavButtonState(rView.GetText(), rView.GetFont().GetFamilyName()); //check state
+    setFavButtonState(rView.sChar, rView.sFont); //check state
 
     // Get the hexadecimal code
-    OUString charValue = rView.GetText();
+    OUString charValue = rView.sChar;
     sal_UCS4 cChar = charValue.iterateCodePoints(&o3tl::temporary(sal_Int32(1)), -1);
     OUString aHexText = OUString::number(cChar, 16).toAsciiUpperCase();
 
@@ -547,7 +551,6 @@ IMPL_LINK(SvxCharacterMap, CharClickHdl, SvxCharView&, rView, void)
     m_xDecimalCodeText->set_text(aDecimalText);
     setCharName(cChar);
 
-    rView.Invalidate();
     m_xOKBtn->set_sensitive(true);
 }
 
@@ -558,6 +561,12 @@ void SvxCharacterMap::insertSelectedCharacter(const SvxShowCharSet& rCharSet)
     OUString aOUStr( &cChar, 1 );
     setFavButtonState(aOUStr, m_aFont.GetFamilyName());
     insertCharToDoc(aOUStr);
+}
+
+IMPL_LINK(SvxCharacterMap, CharActivateHdl, const CharAndFont&, rChar, void)
+{
+    if (m_xFrame.is())
+        SfxCharmapContainer::InsertCharToDoc(rChar);
 }
 
 IMPL_LINK(SvxCharacterMap, CharDoubleClickHdl, SvxShowCharSet&, rCharSet, void)

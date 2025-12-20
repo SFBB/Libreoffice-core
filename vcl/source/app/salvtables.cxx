@@ -3524,6 +3524,26 @@ SalInstanceItemView::make_iterator(const weld::TreeIter* pOrig) const
         new SalInstanceTreeIter(static_cast<const SalInstanceTreeIter*>(pOrig)));
 }
 
+bool SalInstanceItemView::get_iter_first(weld::TreeIter& rIter) const
+{
+    SalInstanceTreeIter& rVclIter = static_cast<SalInstanceTreeIter&>(rIter);
+    rVclIter.iter = m_pTreeListBox->GetEntry(0);
+    return rVclIter.iter != nullptr;
+}
+
+bool SalInstanceItemView::iter_next_sibling(weld::TreeIter& rIter) const
+{
+    SalInstanceTreeIter& rVclIter = static_cast<SalInstanceTreeIter&>(rIter);
+    rVclIter.iter = rVclIter.iter->NextSibling();
+    return rVclIter.iter != nullptr;
+}
+
+int SalInstanceItemView::get_iter_index_in_parent(const weld::TreeIter& rIter) const
+{
+    const SalInstanceTreeIter& rVclIter = static_cast<const SalInstanceTreeIter&>(rIter);
+    return SvTreeList::GetRelPos(rVclIter.iter);
+}
+
 std::unique_ptr<weld::TreeIter> SalInstanceItemView::get_iterator(int nPos) const
 {
     if (SvTreeListEntry* pEntry = m_pTreeListBox->GetEntry(nPos))
@@ -3551,43 +3571,46 @@ OUString SalInstanceItemView::get_selected_text() const
     return OUString();
 }
 
-void SalInstanceItemView::select_all() { unselect(-1); }
+void SalInstanceItemView::do_select_all()
+{
+    assert(m_pTreeListBox->IsUpdateMode()
+           && "don't select when frozen, select after thaw. Note selection doesn't survive a "
+              "freeze");
+    m_pTreeListBox->SelectAll(true);
+}
 
-void SalInstanceItemView::unselect_all() { select(-1); }
+void SalInstanceItemView::do_unselect_all()
+{
+    assert(m_pTreeListBox->IsUpdateMode()
+           && "don't select when frozen, select after thaw. Note selection doesn't survive a "
+              "freeze");
+    m_pTreeListBox->SelectAll(false);
+}
 
 int SalInstanceItemView::n_children() const
 {
     return m_pTreeListBox->GetModel()->GetChildList(nullptr).size();
 }
 
-void SalInstanceItemView::do_select(int pos)
+void SalInstanceItemView::do_select(const weld::TreeIter& rIter)
 {
     assert(m_pTreeListBox->IsUpdateMode()
            && "don't select when frozen, select after thaw. Note selection doesn't survive a "
               "freeze");
-    if (pos == -1 || (pos == 0 && n_children() == 0))
-        m_pTreeListBox->SelectAll(false);
-    else
-    {
-        SvTreeListEntry* pEntry = m_pTreeListBox->GetEntry(nullptr, pos);
-        assert(pEntry && "bad pos?");
-        m_pTreeListBox->Select(pEntry, true);
-        m_pTreeListBox->MakeVisible(pEntry);
-    }
+
+    const SalInstanceTreeIter& rVclIter = static_cast<const SalInstanceTreeIter&>(rIter);
+    m_pTreeListBox->Select(rVclIter.iter, true);
+    m_pTreeListBox->MakeVisible(rVclIter.iter);
 }
 
-void SalInstanceItemView::do_unselect(int pos)
+void SalInstanceItemView::do_unselect(const weld::TreeIter& rIter)
 {
     assert(m_pTreeListBox->IsUpdateMode()
            && "don't select when frozen, select after thaw. Note selection doesn't survive a "
               "freeze");
-    if (pos == -1)
-        m_pTreeListBox->SelectAll(true);
-    else
-    {
-        SvTreeListEntry* pEntry = m_pTreeListBox->GetEntry(nullptr, pos);
-        m_pTreeListBox->Select(pEntry, false);
-    }
+
+    const SalInstanceTreeIter& rVclIter = static_cast<const SalInstanceTreeIter&>(rIter);
+    m_pTreeListBox->Select(rVclIter.iter, false);
 }
 
 void SalInstanceItemView::do_clear()
@@ -4575,24 +4598,10 @@ void SalInstanceTreeView::do_set_cursor(const weld::TreeIter& rIter)
     m_xTreeView->SetCurEntry(rVclIter.iter);
 }
 
-bool SalInstanceTreeView::get_iter_first(weld::TreeIter& rIter) const
-{
-    SalInstanceTreeIter& rVclIter = static_cast<SalInstanceTreeIter&>(rIter);
-    rVclIter.iter = m_xTreeView->GetEntry(0);
-    return rVclIter.iter != nullptr;
-}
-
 bool SalInstanceTreeView::get_iter_abs_pos(weld::TreeIter& rIter, int nAbsPos) const
 {
     SalInstanceTreeIter& rVclIter = static_cast<SalInstanceTreeIter&>(rIter);
     rVclIter.iter = m_xTreeView->GetEntryAtAbsPos(nAbsPos);
-    return rVclIter.iter != nullptr;
-}
-
-bool SalInstanceTreeView::iter_next_sibling(weld::TreeIter& rIter) const
-{
-    SalInstanceTreeIter& rVclIter = static_cast<SalInstanceTreeIter&>(rIter);
-    rVclIter.iter = rVclIter.iter->NextSibling();
     return rVclIter.iter != nullptr;
 }
 
@@ -4828,12 +4837,6 @@ bool SalInstanceTreeView::is_selected(const weld::TreeIter& rIter) const
 {
     const SalInstanceTreeIter& rVclIter = static_cast<const SalInstanceTreeIter&>(rIter);
     return m_xTreeView->IsSelected(rVclIter.iter);
-}
-
-int SalInstanceTreeView::get_iter_index_in_parent(const weld::TreeIter& rIter) const
-{
-    const SalInstanceTreeIter& rVclIter = static_cast<const SalInstanceTreeIter&>(rIter);
-    return SvTreeList::GetRelPos(rVclIter.iter);
 }
 
 int SalInstanceTreeView::iter_compare(const weld::TreeIter& a, const weld::TreeIter& b) const
@@ -5410,20 +5413,6 @@ void SalInstanceIconView::do_set_cursor(const weld::TreeIter& rIter)
 {
     const SalInstanceTreeIter& rVclIter = static_cast<const SalInstanceTreeIter&>(rIter);
     m_xIconView->SetCurEntry(rVclIter.iter);
-}
-
-bool SalInstanceIconView::get_iter_first(weld::TreeIter& rIter) const
-{
-    SalInstanceTreeIter& rVclIter = static_cast<SalInstanceTreeIter&>(rIter);
-    rVclIter.iter = m_xIconView->GetEntry(0);
-    return rVclIter.iter != nullptr;
-}
-
-bool SalInstanceIconView::iter_next_sibling(weld::TreeIter& rIter) const
-{
-    SalInstanceTreeIter& rVclIter = static_cast<SalInstanceTreeIter&>(rIter);
-    rVclIter.iter = rVclIter.iter->NextSibling();
-    return rVclIter.iter != nullptr;
 }
 
 void SalInstanceIconView::do_scroll_to_item(const weld::TreeIter& rIter)

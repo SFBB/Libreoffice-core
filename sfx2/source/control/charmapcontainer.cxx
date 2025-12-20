@@ -18,6 +18,7 @@
  */
 
 #include <comphelper/dispatchcommand.hxx>
+#include <comphelper/propertyvalue.hxx>
 #include <officecfg/Office/Common.hxx>
 #include <charmapcontrol.hxx>
 #include <charmappopup.hxx>
@@ -109,10 +110,11 @@ SfxCharmapContainer::SfxCharmapContainer(weld::Builder& rBuilder, const VclPtr<V
     }
 }
 
-void SfxCharmapContainer::init(bool bHasInsert, const Link<SvxCharView&, void>& rMouseClickHdl,
+void SfxCharmapContainer::init(bool bActivateOnSingleClick,
+                               const Link<const CharAndFont&, void>& rActivateHdl,
                                const Link<void*, void>& rUpdateFavHdl,
                                const Link<void*, void>& rUpdateRecentHdl,
-                               const Link<SvxCharView&, void>& rFocusInHdl)
+                               const Link<const CharAndFont&, void>& rFocusInHdl)
 {
     m_aUpdateFavHdl = rUpdateFavHdl;
     m_aUpdateRecentHdl = rUpdateRecentHdl;
@@ -124,14 +126,14 @@ void SfxCharmapContainer::init(bool bHasInsert, const Link<SvxCharView&, void>& 
 
     for(int i = 0; i < 16; i++)
     {
-        m_aRecentCharView[i].SetHasInsert(bHasInsert);
+        m_aRecentCharView[i].SetActivateOnSingleClick(bActivateOnSingleClick);
         m_aRecentCharView[i].setFocusInHdl(rFocusInHdl);
-        m_aRecentCharView[i].setMouseClickHdl(rMouseClickHdl);
+        m_aRecentCharView[i].setActivateHdl(rActivateHdl);
         m_aRecentCharView[i].setContextMenuHdl(
             LINK(this, SfxCharmapContainer, RecentContextMenuHdl));
-        m_aFavCharView[i].SetHasInsert(bHasInsert);
+        m_aFavCharView[i].SetActivateOnSingleClick(bActivateOnSingleClick);
         m_aFavCharView[i].setFocusInHdl(rFocusInHdl);
-        m_aFavCharView[i].setMouseClickHdl(rMouseClickHdl);
+        m_aFavCharView[i].setActivateHdl(rActivateHdl);
         m_aFavCharView[i].setContextMenuHdl(LINK(this, SfxCharmapContainer, FavContextMenuHdl));
     }
 }
@@ -348,7 +350,7 @@ IMPL_LINK(SfxCharmapContainer, FavContextMenuHdl, const CommandEvent&, rCmdEvent
 IMPL_LINK(SfxCharmapContainer, RecentClearClickHdl, SvxCharView&, rView, void)
 {
     const OUString& sTitle = rView.GetText();
-    OUString sFont = rView.GetFont().GetFamilyName();
+    OUString sFont = rView.GetFontFamilyName();
 
     // if recent char to be added is already in list, remove it
     auto itChar = std::ranges::find(m_aRecentChars, CharAndFont(sTitle, sFont));
@@ -388,7 +390,7 @@ IMPL_LINK_NOARG(SfxCharmapContainer, RecentClearAllClickHdl, SvxCharView&, void)
 
 IMPL_LINK(SfxCharmapContainer, FavClearClickHdl, SvxCharView&, rView, void)
 {
-    deleteFavCharacterFromList(rView.GetText(), rView.GetFont().GetFamilyName());
+    deleteFavCharacterFromList(rView.GetText(), rView.GetFontFamilyName());
     updateFavCharControl();
 }
 
@@ -447,6 +449,19 @@ OUString SfxCharmapContainer::GetCharInfoText(std::u16string_view sCharText)
         return sCharText + u" "_ustr + sCharName + u" U+" + aHexText;
     }
     return OUString();
+}
+
+void SfxCharmapContainer::InsertCharToDoc(const CharAndFont& rChar)
+{
+    if (rChar.sChar.isEmpty())
+        return;
+
+    uno::Sequence<beans::PropertyValue> aArgs{
+        comphelper::makePropertyValue(u"Symbols"_ustr, rChar.sChar),
+        comphelper::makePropertyValue(u"FontName"_ustr, rChar.sFont)
+    };
+
+    comphelper::dispatchCommand(u".uno:InsertSymbol"_ustr, aArgs);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

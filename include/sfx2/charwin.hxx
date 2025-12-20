@@ -24,17 +24,31 @@
 #include <vcl/weld/customweld.hxx>
 #include <vcl/weld/weld.hxx>
 
+struct CharAndFont
+{
+    OUString sChar;
+    OUString sFont;
+
+    CharAndFont(const OUString& rChar, const OUString& rFont)
+        : sChar(rChar)
+        , sFont(rFont)
+    {
+    }
+
+    bool operator==(const CharAndFont& rOther) const = default;
+};
+
 class SAL_DLLPUBLIC_RTTI SvxCharView final : public weld::CustomWidgetController
 {
 private:
     VclPtr<VirtualDevice> mxVirDev;
     vcl::Font       maFont;
-    bool            maHasInsert;
+    bool            m_bActivateOnSingleClick;
     OUString        m_sText;
     OUString        m_sToolTip;
 
-    Link<SvxCharView&, void> maFocusInHdl;
-    Link<SvxCharView&, void> maMouseClickHdl;
+    Link<const CharAndFont&, void> maFocusInHdl;
+    Link<const CharAndFont&, void> maActivateHdl;
     Link<const CommandEvent&, void> maContextMenuHdl;
 
     virtual void Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect) override;
@@ -52,17 +66,17 @@ public:
     SFX2_DLLPUBLIC virtual ~SvxCharView() override;
 
     void UpdateFont(const OUString& rFontFamilyName);
-    vcl::Font const & GetFont() const { return maFont; }
+    OUString GetFontFamilyName() const { return maFont.GetFamilyName(); }
     void            SetText( const OUString& rText );
     OUString const & GetText() const { return m_sText; }
+    CharAndFont GetCharAndFont() const;
     void SetToolTip(const OUString& rToolTip) { m_sToolTip = rToolTip; };
-    void            SetHasInsert( bool bInsert );
-    void            InsertCharToDoc();
+    void SetActivateOnSingleClick(bool bActivate);
 
     Size            get_preferred_size() const { return GetDrawingArea()->get_preferred_size(); }
 
-    void setFocusInHdl(const Link<SvxCharView&, void>& rLink);
-    void setMouseClickHdl(const Link<SvxCharView&, void>& rLink);
+    void setFocusInHdl(const Link<const CharAndFont&, void>& rLink);
+    void setActivateHdl(const Link<const CharAndFont&, void>& rLink);
     void setContextMenuHdl(const Link<const CommandEvent&, void>& rLink);
 };
 

@@ -20,12 +20,22 @@ class VCL_DLLPUBLIC ItemView : virtual public Widget
     OUString m_sSavedValue;
 
 protected:
-    virtual void do_select(int pos) = 0;
-    virtual void do_unselect(int pos) = 0;
+    virtual void do_select(const TreeIter& rIter) = 0;
+    virtual void do_unselect(const TreeIter& rIter) = 0;
+
+    virtual void do_select_all() = 0;
+    virtual void do_unselect_all() = 0;
+
     virtual void do_clear() = 0;
 
 public:
     virtual std::unique_ptr<TreeIter> make_iterator(const TreeIter* pOrig = nullptr) const = 0;
+
+    virtual bool get_iter_first(TreeIter& rIter) const = 0;
+    // set iter to point to next node at the current level
+    virtual bool iter_next_sibling(TreeIter& rIter) const = 0;
+
+    virtual int get_iter_index_in_parent(const TreeIter& rIter) const = 0;
 
     virtual std::unique_ptr<TreeIter> get_iterator(int nPos) const = 0;
 
@@ -37,9 +47,13 @@ public:
 
     // Don't select when frozen, select after thaw. Note selection doesn't survive a freeze.
     void select(int pos);
+    void select(const TreeIter& rIter);
+
     void unselect(int pos);
-    virtual void select_all() = 0;
-    virtual void unselect_all() = 0;
+    void unselect(const TreeIter& rIter);
+
+    void select_all();
+    void unselect_all();
 
     // return the number of toplevel nodes
     virtual int n_children() const = 0;

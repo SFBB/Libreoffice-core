@@ -13,15 +13,53 @@ namespace weld
 {
 void ItemView::select(int pos)
 {
+    if (pos == -1 || (pos == 0 && n_children() == 0))
+    {
+        unselect_all();
+        return;
+    }
+
+    if (std::unique_ptr<weld::TreeIter> pIter = get_iterator(pos))
+        return select(*pIter);
+}
+
+void ItemView::select(const TreeIter& rIter)
+{
     disable_notify_events();
-    do_select(pos);
+    do_select(rIter);
     enable_notify_events();
 }
 
 void ItemView::unselect(int pos)
 {
+    if (pos == -1)
+    {
+        select_all();
+        return;
+    }
+
+    if (std::unique_ptr<weld::TreeIter> pIter = get_iterator(pos))
+        return unselect(*pIter);
+}
+
+void ItemView::unselect(const TreeIter& rIter)
+{
     disable_notify_events();
-    do_unselect(pos);
+    do_unselect(rIter);
+    enable_notify_events();
+}
+
+void ItemView::select_all()
+{
+    disable_notify_events();
+    do_select_all();
+    enable_notify_events();
+}
+
+void ItemView::unselect_all()
+{
+    disable_notify_events();
+    do_unselect_all();
     enable_notify_events();
 }
 

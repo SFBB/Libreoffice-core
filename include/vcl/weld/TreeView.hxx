@@ -134,10 +134,6 @@ protected:
     virtual void do_set_cursor(int pos) = 0;
     virtual void do_set_cursor(const TreeIter& rIter) = 0;
     virtual void do_remove(const TreeIter& rIter) = 0;
-    using ItemView::do_select;
-    virtual void do_select(const TreeIter& rIter) = 0;
-    using ItemView::do_unselect;
-    virtual void do_unselect(const TreeIter& rIter) = 0;
     virtual void do_scroll_to_row(const TreeIter& rIter) = 0;
     virtual void do_set_children_on_demand(const TreeIter& rIter, bool bChildrenOnDemand) = 0;
     virtual void do_remove_selection() = 0;
@@ -315,9 +311,6 @@ public:
         enable_notify_events();
     }
 
-    virtual bool get_iter_first(TreeIter& rIter) const = 0;
-    // set iter to point to next node at the current level
-    virtual bool iter_next_sibling(TreeIter& rIter) const = 0;
     // set iter to point to previous node at the current level
     virtual bool iter_previous_sibling(TreeIter& rIter) const = 0;
     // set iter to point to next node, depth first, then sibling
@@ -341,7 +334,6 @@ public:
     }
     virtual bool iter_parent(TreeIter& rIter) const = 0;
     virtual int get_iter_depth(const TreeIter& rIter) const = 0;
-    virtual int get_iter_index_in_parent(const TreeIter& rIter) const = 0;
     /* Compares two paths. If a appears before b in a tree, then -1 is returned.
        If b appears before a , then 1 is returned. If the two nodes are equal,
        then 0 is returned.
@@ -355,23 +347,6 @@ public:
     {
         disable_notify_events();
         do_remove(rIter);
-        enable_notify_events();
-    }
-
-    //Don't select when frozen, select after thaw. Note selection doesn't survive a freeze.
-    using ItemView::select;
-    void select(const TreeIter& rIter)
-    {
-        disable_notify_events();
-        do_select(rIter);
-        enable_notify_events();
-    }
-
-    using ItemView::unselect;
-    void unselect(const TreeIter& rIter)
-    {
-        disable_notify_events();
-        do_unselect(rIter);
         enable_notify_events();
     }
 

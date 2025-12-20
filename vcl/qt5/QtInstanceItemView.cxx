@@ -22,6 +22,37 @@ std::unique_ptr<weld::TreeIter> QtInstanceItemView::make_iterator(const weld::Tr
     return std::make_unique<QtInstanceTreeIter>(aIndex);
 }
 
+bool QtInstanceItemView::get_iter_first(weld::TreeIter& rIter) const
+{
+    QtInstanceTreeIter& rQtIter = static_cast<QtInstanceTreeIter&>(rIter);
+    const QModelIndex aIndex = modelIndex(0);
+    rQtIter.setModelIndex(aIndex);
+    return aIndex.isValid();
+}
+
+bool QtInstanceItemView::iter_next_sibling(weld::TreeIter& rIter) const
+{
+    QtInstanceTreeIter& rQtIter = static_cast<QtInstanceTreeIter&>(rIter);
+    const QModelIndex aIndex = rQtIter.modelIndex();
+    const QModelIndex aSiblingIndex = m_rModel.sibling(aIndex.row() + 1, 0, aIndex);
+    rQtIter.setModelIndex(aSiblingIndex);
+
+    return aSiblingIndex.isValid();
+}
+
+int QtInstanceItemView::get_iter_index_in_parent(const weld::TreeIter& rIter) const
+{
+    SolarMutexGuard g;
+
+    int nIndex;
+    GetQtInstance().RunInMainThread([&] {
+        const QModelIndex aIndex = modelIndex(rIter);
+        nIndex = aIndex.row();
+    });
+
+    return nIndex;
+}
+
 std::unique_ptr<weld::TreeIter> QtInstanceItemView::get_iterator(int nPos) const
 {
     const QModelIndex aIndex = modelIndex(nPos);
@@ -31,13 +62,13 @@ std::unique_ptr<weld::TreeIter> QtInstanceItemView::get_iterator(int nPos) const
     return {};
 }
 
-void QtInstanceItemView::select_all()
+void QtInstanceItemView::do_select_all()
 {
     SolarMutexGuard g;
     GetQtInstance().RunInMainThread([&] { getItemView().selectAll(); });
 }
 
-void QtInstanceItemView::unselect_all()
+void QtInstanceItemView::do_unselect_all()
 {
     SolarMutexGuard g;
     GetQtInstance().RunInMainThread([&] { getItemView().clearSelection(); });
