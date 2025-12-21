@@ -1277,7 +1277,8 @@ const SwFootnoteFrame *SwFootnoteBossFrame::FindFirstFootnote( SwContentFrame co
             }
             if ( pRet )
             {
-                const SwFootnoteBossFrame* pBoss = pRet->GetRef()->FindFootnoteBossFrame();
+                const SwFootnoteBossFrame* pBoss = pRet->GetRef()->FindFootnoteBossFrame(
+                    !pRet->GetAttr()->GetFootnote().IsEndNote());
                 if( !pBoss || pBoss->GetPhyPageNum() != nPageNum ||
                     nColNum != lcl_ColumnNum( pBoss ) )
                     pRet = nullptr;
@@ -2512,7 +2513,7 @@ void SwFootnoteBossFrame::RearrangeFootnotes( const SwTwips nDeadLine, const boo
             {
                 SwFootnoteFrame* pFootnoteFrame = pCnt->FindFootnoteFrame();
                 if( pFootnoteFrame->GetRef()->FindFootnoteBossFrame(
-                    pFootnoteFrame->GetAttr()->GetFootnote().IsEndNote() ) != this )
+                    !pFootnoteFrame->GetAttr()->GetFootnote().IsEndNote() ) != this )
                     bMore = false;
             }
             else

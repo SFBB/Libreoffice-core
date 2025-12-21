@@ -129,11 +129,9 @@ protected:
                            VirtualDevice* pImageSurface, bool bChildrenOnDemand, TreeIter* pRet)
         = 0;
     virtual void do_insert_separator(int pos, const OUString& rId) = 0;
-    virtual void do_remove(int pos) = 0;
     virtual void do_scroll_to_row(int row) = 0;
+    using weld::ItemView::do_set_cursor;
     virtual void do_set_cursor(int pos) = 0;
-    virtual void do_set_cursor(const TreeIter& rIter) = 0;
-    virtual void do_remove(const TreeIter& rIter) = 0;
     virtual void do_scroll_to_row(const TreeIter& rIter) = 0;
     virtual void do_set_children_on_demand(const TreeIter& rIter, bool bChildrenOnDemand) = 0;
     virtual void do_remove_selection() = 0;
@@ -224,14 +222,7 @@ public:
     virtual void set_clicks_to_toggle(int nToggleBehavior) = 0;
 
     //by index
-    virtual int get_selected_index() const = 0;
-
-    void remove(int pos)
-    {
-        disable_notify_events();
-        do_remove(pos);
-        enable_notify_events();
-    }
+    int get_selected_index() const;
 
     // col index -1 gets the first text column
     virtual OUString get_text(int row, int col = -1) const = 0;
@@ -240,7 +231,6 @@ public:
     // col index -1 sets all columns
     virtual void set_sensitive(int row, bool bSensitive, int col = -1) = 0;
     virtual bool get_sensitive(int row, int col) const = 0;
-    virtual void set_id(int row, const OUString& rId) = 0;
     // col index -1 sets the expander toggle, enable_toggle_buttons must have been called to create that column
     virtual void set_toggle(int row, TriState eState, int col = -1) = 0;
     // col index -1 gets the expander toggle, enable_toggle_buttons must have been called to create that column
@@ -272,6 +262,7 @@ public:
     virtual bool is_selected(int pos) const = 0;
     virtual int get_cursor_index() const = 0;
 
+    using weld::ItemView::set_cursor;
     void set_cursor(int pos)
     {
         disable_notify_events();
@@ -295,7 +286,6 @@ public:
     }
 
     //by id
-    virtual OUString get_id(int pos) const = 0;
     virtual int find_id(const OUString& rId) const = 0;
     //Don't select when frozen, select after thaw. Note selection doesn't survive a freeze.
     void select_id(const OUString& rId) { select(find_id(rId)); }
@@ -303,13 +293,6 @@ public:
 
     //via iter
     virtual void copy_iterator(const TreeIter& rSource, TreeIter& rDest) const = 0;
-
-    void set_cursor(const TreeIter& rIter)
-    {
-        disable_notify_events();
-        do_set_cursor(rIter);
-        enable_notify_events();
-    }
 
     // set iter to point to previous node at the current level
     virtual bool iter_previous_sibling(TreeIter& rIter) const = 0;
@@ -343,13 +326,6 @@ public:
     // returns the number of direct children rIter has
     virtual int iter_n_children(const TreeIter& rIter) const = 0;
 
-    void remove(const TreeIter& rIter)
-    {
-        disable_notify_events();
-        do_remove(rIter);
-        enable_notify_events();
-    }
-
     //visually indent this row as if it was at get_iter_depth() + nIndentLevel
     virtual void set_extra_row_indent(const TreeIter& rIter, int nIndentLevel) = 0;
     // col index -1 sets the first text column
@@ -366,8 +342,7 @@ public:
     virtual TriState get_toggle(const TreeIter& rIter, int col = -1) const = 0;
     // col index -1 gets the first text column
     virtual OUString get_text(const TreeIter& rIter, int col = -1) const = 0;
-    virtual void set_id(const TreeIter& rIter, const OUString& rId) = 0;
-    virtual OUString get_id(const TreeIter& rIter) const = 0;
+
     // col index -1 sets the expander image
     virtual void set_image(const TreeIter& rIter, const OUString& rImage, int col = -1) = 0;
     // col index -1 sets the expander image
@@ -394,8 +369,6 @@ public:
 
     // call func on each element until func returns true or we run out of elements
     virtual void all_foreach(const std::function<bool(TreeIter&)>& func) = 0;
-    // call func on each selected element until func returns true or we run out of elements
-    virtual void selected_foreach(const std::function<bool(TreeIter&)>& func) = 0;
     // call func on each visible element until func returns true or we run out of elements
     virtual void visible_foreach(const std::function<bool(TreeIter&)>& func) = 0;
     // clear the children of pParent (whole tree if nullptr),

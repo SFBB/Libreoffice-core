@@ -15,9 +15,6 @@
 #include <QtWidgets/QHeaderView>
 #include <QtWidgets/QToolTip>
 
-// role used for the ID in the QStandardItem
-constexpr int ROLE_ID = Qt::UserRole + 1000;
-
 // Property used to store the supported roles for each of the columns
 const char* const PROPERTY_COLUMN_ROLES = "column-roles";
 
@@ -101,40 +98,6 @@ void QtInstanceTreeView::do_insert_separator(int, const OUString&)
     assert(false && "Not implemented yet");
 }
 
-OUString QtInstanceTreeView::get_selected_text() const
-{
-    SolarMutexGuard g;
-
-    OUString sText;
-    GetQtInstance().RunInMainThread([&] {
-        const QModelIndexList aSelectedIndexes = m_pSelectionModel->selectedIndexes();
-        if (aSelectedIndexes.empty())
-            return;
-
-        sText = toOUString(itemFromIndex(aSelectedIndexes.first())->text());
-    });
-
-    return sText;
-}
-
-OUString QtInstanceTreeView::get_selected_id() const
-{
-    SolarMutexGuard g;
-
-    OUString sId;
-    GetQtInstance().RunInMainThread([&] {
-        const QModelIndexList aSelectedIndexes = m_pSelectionModel->selectedIndexes();
-        if (aSelectedIndexes.empty())
-            return;
-
-        QVariant aIdData = aSelectedIndexes.first().data(ROLE_ID);
-        if (aIdData.canConvert<QString>())
-            sId = toOUString(aIdData.toString());
-    });
-
-    return sId;
-}
-
 void QtInstanceTreeView::enable_toggle_buttons(weld::ColumnToggleType)
 {
     assert(m_pModel->rowCount() == 0 && "Must be called before inserting any data");
@@ -145,24 +108,6 @@ void QtInstanceTreeView::enable_toggle_buttons(weld::ColumnToggleType)
 }
 
 void QtInstanceTreeView::set_clicks_to_toggle(int) { assert(false && "Not implemented yet"); }
-
-int QtInstanceTreeView::get_selected_index() const
-{
-    SolarMutexGuard g;
-
-    int nIndex = -1;
-    GetQtInstance().RunInMainThread([&] {
-        const QModelIndexList aSelectedIndexes = m_pSelectionModel->selectedIndexes();
-        if (aSelectedIndexes.empty())
-            return;
-
-        nIndex = aSelectedIndexes.first().row();
-    });
-
-    return nIndex;
-}
-
-void QtInstanceTreeView::do_remove(int nPos) { do_remove(treeIter(nPos)); }
 
 OUString QtInstanceTreeView::get_text(int nRow, int nCol) const
 {
@@ -183,8 +128,6 @@ bool QtInstanceTreeView::get_sensitive(int nRow, int nCol) const
 {
     return get_sensitive(treeIter(nRow), nCol);
 }
-
-void QtInstanceTreeView::set_id(int nRow, const OUString& rId) { set_id(treeIter(nRow), rId); }
 
 void QtInstanceTreeView::set_toggle(int nRow, TriState eState, int nCol)
 {
@@ -310,8 +253,6 @@ int QtInstanceTreeView::find_text(const OUString& rText) const
     return nIndex;
 }
 
-OUString QtInstanceTreeView::get_id(int nPos) const { return get_id(treeIter(nPos)); }
-
 int QtInstanceTreeView::find_id(const OUString& rId) const
 {
     SolarMutexGuard g;
@@ -335,46 +276,6 @@ void QtInstanceTreeView::copy_iterator(const weld::TreeIter& rSource, weld::Tree
 {
     const QModelIndex aModelIndex = static_cast<const QtInstanceTreeIter&>(rSource).modelIndex();
     static_cast<QtInstanceTreeIter&>(rDest).setModelIndex(aModelIndex);
-}
-
-bool QtInstanceTreeView::get_selected(weld::TreeIter* pIter) const
-{
-    SolarMutexGuard g;
-
-    bool bHasSelection = false;
-    GetQtInstance().RunInMainThread([&] {
-        const QModelIndexList aSelectedIndexes = m_pSelectionModel->selectedIndexes();
-        if (aSelectedIndexes.empty())
-            return;
-
-        bHasSelection = true;
-        if (pIter)
-            static_cast<QtInstanceTreeIter*>(pIter)->setModelIndex(aSelectedIndexes.first());
-    });
-    return bHasSelection;
-}
-
-bool QtInstanceTreeView::get_cursor(weld::TreeIter* pIter) const
-{
-    SolarMutexGuard g;
-
-    bool bRet = false;
-    GetQtInstance().RunInMainThread([&] {
-        const QModelIndex aCurrentIndex = m_pTreeView->currentIndex();
-        QtInstanceTreeIter* pQtIter = static_cast<QtInstanceTreeIter*>(pIter);
-        if (pQtIter)
-            pQtIter->setModelIndex(aCurrentIndex);
-        bRet = aCurrentIndex.isValid();
-    });
-
-    return bRet;
-}
-
-void QtInstanceTreeView::do_set_cursor(const weld::TreeIter& rIter)
-{
-    SolarMutexGuard g;
-
-    GetQtInstance().RunInMainThread([&] { m_pTreeView->setCurrentIndex(modelIndex(rIter)); });
 }
 
 bool QtInstanceTreeView::iter_previous_sibling(weld::TreeIter& rIter) const
@@ -466,38 +367,6 @@ int QtInstanceTreeView::iter_n_children(const weld::TreeIter& rIter) const
 {
     const QtInstanceTreeIter& rQtIter = static_cast<const QtInstanceTreeIter&>(rIter);
     return m_pModel->rowCount(rQtIter.modelIndex());
-}
-
-void QtInstanceTreeView::do_remove(const weld::TreeIter& rIter)
-{
-    SolarMutexGuard g;
-
-    GetQtInstance().RunInMainThread([&] {
-        const QModelIndex aIndex = modelIndex(rIter);
-        m_pModel->removeRow(aIndex.row(), aIndex.parent());
-    });
-}
-
-void QtInstanceTreeView::do_select(const weld::TreeIter& rIter)
-{
-    SolarMutexGuard g;
-
-    GetQtInstance().RunInMainThread([&] {
-        QItemSelectionModel::SelectionFlags eFlags
-            = QItemSelectionModel::Select | QItemSelectionModel::Rows;
-        if (m_pTreeView->selectionMode() == QAbstractItemView::SingleSelection)
-            eFlags |= QItemSelectionModel::Clear;
-
-        m_pSelectionModel->select(modelIndex(rIter), eFlags);
-    });
-}
-
-void QtInstanceTreeView::do_unselect(const weld::TreeIter& rIter)
-{
-    SolarMutexGuard g;
-
-    GetQtInstance().RunInMainThread(
-        [&] { m_pSelectionModel->select(modelIndex(rIter), QItemSelectionModel::Deselect); });
 }
 
 void QtInstanceTreeView::set_extra_row_indent(const weld::TreeIter&, int)
@@ -621,28 +490,6 @@ OUString QtInstanceTreeView::get_text(const weld::TreeIter& rIter, int nCol) con
     return sText;
 }
 
-void QtInstanceTreeView::set_id(const weld::TreeIter& rIter, const OUString& rId)
-{
-    SolarMutexGuard g;
-
-    GetQtInstance().RunInMainThread(
-        [&] { m_pModel->setData(modelIndex(rIter), toQString(rId), ROLE_ID); });
-}
-
-OUString QtInstanceTreeView::get_id(const weld::TreeIter& rIter) const
-{
-    SolarMutexGuard g;
-
-    OUString sId;
-    GetQtInstance().RunInMainThread([&] {
-        QVariant aRoleData = m_pModel->data(modelIndex(rIter), ROLE_ID);
-        if (aRoleData.canConvert<QString>())
-            sId = toOUString(aRoleData.toString());
-    });
-
-    return sId;
-}
-
 void QtInstanceTreeView::set_image(const weld::TreeIter& rIter, const OUString& rImage, int nCol)
 {
     if (rImage.isEmpty())
@@ -710,21 +557,6 @@ void QtInstanceTreeView::all_foreach(const std::function<bool(weld::TreeIter&)>&
                 return;
         } while (iter_next(aIter));
     }
-}
-
-void QtInstanceTreeView::selected_foreach(const std::function<bool(weld::TreeIter&)>& func)
-{
-    SolarMutexGuard g;
-
-    GetQtInstance().RunInMainThread([&] {
-        QModelIndexList aSelectionIndexes = m_pSelectionModel->selectedRows();
-        for (QModelIndex& aIndex : aSelectionIndexes)
-        {
-            QtInstanceTreeIter aIter(aIndex);
-            if (func(aIter))
-                return;
-        }
-    });
 }
 
 void QtInstanceTreeView::visible_foreach(const std::function<bool(weld::TreeIter&)>&)

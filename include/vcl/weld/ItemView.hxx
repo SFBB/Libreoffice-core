@@ -20,11 +20,15 @@ class VCL_DLLPUBLIC ItemView : virtual public Widget
     OUString m_sSavedValue;
 
 protected:
+    virtual void do_set_cursor(const TreeIter& rIter) = 0;
+
     virtual void do_select(const TreeIter& rIter) = 0;
     virtual void do_unselect(const TreeIter& rIter) = 0;
 
     virtual void do_select_all() = 0;
     virtual void do_unselect_all() = 0;
+
+    virtual void do_remove(const TreeIter& rIter) = 0;
 
     virtual void do_clear() = 0;
 
@@ -39,11 +43,18 @@ public:
 
     virtual std::unique_ptr<TreeIter> get_iterator(int nPos) const = 0;
 
+    OUString get_id(int pos) const;
+    virtual OUString get_id(const TreeIter& rIter) const = 0;
+    void set_id(int pos, const OUString& rId);
+    virtual void set_id(const TreeIter& rIter, const OUString& rId) = 0;
+
     virtual OUString get_selected_id() const = 0;
     virtual OUString get_selected_text() const = 0;
 
     virtual bool get_selected(TreeIter* pIter) const = 0;
+
     virtual bool get_cursor(TreeIter* pIter) const = 0;
+    void set_cursor(const TreeIter& rIter);
 
     // Don't select when frozen, select after thaw. Note selection doesn't survive a freeze.
     void select(int pos);
@@ -58,7 +69,13 @@ public:
     // return the number of toplevel nodes
     virtual int n_children() const = 0;
 
+    void remove(int pos);
+    void remove(const TreeIter& rIter);
+
     void clear();
+
+    // call func on each selected element until func returns true or we run out of elements
+    virtual void selected_foreach(const std::function<bool(TreeIter&)>& func) = 0;
 
     void save_value() { m_sSavedValue = get_selected_text(); }
     OUString const& get_saved_value() const { return m_sSavedValue; }

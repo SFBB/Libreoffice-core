@@ -48,20 +48,14 @@ public:
 
     virtual void do_insert_separator(int pos, const OUString& rId) override;
 
-    virtual OUString get_selected_text() const override;
-    virtual OUString get_selected_id() const override;
-
     virtual void enable_toggle_buttons(weld::ColumnToggleType eType) override;
 
     virtual void set_clicks_to_toggle(int nToggleBehavior) override;
 
-    virtual int get_selected_index() const override;
-    virtual void do_remove(int nPos) override;
     virtual OUString get_text(int nRow, int nCol = -1) const override;
     virtual void set_text(int nRow, const OUString& rText, int nCol = -1) override;
     virtual void set_sensitive(int nRow, bool bSensitive, int nCol = -1) override;
     virtual bool get_sensitive(int nRow, int nCol) const override;
-    virtual void set_id(int row, const OUString& rId) override;
     virtual void set_toggle(int nRow, TriState eState, int nCol = -1) override;
     virtual TriState get_toggle(int nRow, int nCol = -1) const override;
     virtual void set_image(int nRow, const OUString& rImage, int nCol = -1) override;
@@ -77,16 +71,13 @@ public:
     virtual void do_scroll_to_row(int nRow) override;
     virtual bool is_selected(int nPos) const override;
     virtual int get_cursor_index() const override;
+    using QtInstanceItemView::do_set_cursor;
     virtual void do_set_cursor(int pos) override;
 
     virtual int find_text(const OUString& rText) const override;
-    virtual OUString get_id(int nPos) const override;
     virtual int find_id(const OUString& rId) const override;
 
     virtual void copy_iterator(const weld::TreeIter& rSource, weld::TreeIter& rDest) const override;
-    virtual bool get_selected(weld::TreeIter* pIter) const override;
-    virtual bool get_cursor(weld::TreeIter* pIter) const override;
-    virtual void do_set_cursor(const weld::TreeIter& rIter) override;
     virtual bool iter_previous_sibling(weld::TreeIter& rIter) const override;
     virtual bool iter_next(weld::TreeIter& rIter) const override;
     virtual bool iter_previous(weld::TreeIter& rIter) const override;
@@ -97,9 +88,6 @@ public:
     virtual int iter_compare(const weld::TreeIter& a, const weld::TreeIter& b) const override;
     virtual bool iter_has_child(const weld::TreeIter& rIter) const override;
     virtual int iter_n_children(const weld::TreeIter& rIter) const override;
-    virtual void do_remove(const weld::TreeIter& rIter) override;
-    virtual void do_select(const weld::TreeIter& rIter) override;
-    virtual void do_unselect(const weld::TreeIter& rIter) override;
     virtual void set_extra_row_indent(const weld::TreeIter& rIter, int nIndentLevel) override;
     virtual void set_text(const weld::TreeIter& rIter, const OUString& rStr,
                           int nCol = -1) override;
@@ -112,8 +100,6 @@ public:
     virtual void set_toggle(const weld::TreeIter& rIter, TriState eState, int nCol = -1) override;
     virtual TriState get_toggle(const weld::TreeIter& rIter, int nCol = -1) const override;
     virtual OUString get_text(const weld::TreeIter& rIter, int nCol = -1) const override;
-    virtual void set_id(const weld::TreeIter& rIter, const OUString& rId) override;
-    virtual OUString get_id(const weld::TreeIter& rIter) const override;
     virtual void set_image(const weld::TreeIter& rIter, const OUString& rImage,
                            int nCol = -1) override;
     virtual void set_image(const weld::TreeIter& rIter, VirtualDevice& rImage,
@@ -129,7 +115,6 @@ public:
                               int nIndexInNewParent) override;
 
     virtual void all_foreach(const std::function<bool(weld::TreeIter&)>& func) override;
-    virtual void selected_foreach(const std::function<bool(weld::TreeIter&)>& func) override;
     virtual void visible_foreach(const std::function<bool(weld::TreeIter&)>& func) override;
     virtual void bulk_insert_for_each(
         int nSourceCount, const std::function<void(weld::TreeIter&, int nSourceIndex)>& func,

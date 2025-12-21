@@ -17,9 +17,6 @@
 #include <QtGui/QHelpEvent>
 #include <QtWidgets/QToolTip>
 
-// role used for the ID in the QStandardItem
-constexpr int ROLE_ID = Qt::UserRole + 1000;
-
 QtInstanceIconView::QtInstanceIconView(QListView* pListView)
     : QtInstanceItemView(pListView, *pListView->model())
     , m_pListView(pListView)
@@ -101,51 +98,14 @@ void QtInstanceIconView::insert_separator(int, const OUString*)
     assert(false && "Not implemented yet");
 }
 
-OUString QtInstanceIconView::get_selected_id() const
-{
-    SolarMutexGuard g;
-
-    OUString sId;
-    GetQtInstance().RunInMainThread([&] {
-        const QModelIndexList aSelectedIndexes = m_pSelectionModel->selectedIndexes();
-        if (aSelectedIndexes.empty())
-            return;
-
-        QVariant aIdData = aSelectedIndexes.first().data(ROLE_ID);
-        if (aIdData.canConvert<QString>())
-            sId = toOUString(aIdData.toString());
-    });
-
-    return sId;
-}
-
 int QtInstanceIconView::count_selected_items() const
 {
-    assert(false && "Not implemented yet");
-    return 0;
-}
-
-OUString QtInstanceIconView::get_selected_text() const
-{
-    assert(false && "Not implemented yet");
-    return OUString();
-}
-
-OUString QtInstanceIconView::get_id(int nPos) const { return get_id(treeIter(nPos)); }
-
-void QtInstanceIconView::do_select(const weld::TreeIter& rIter)
-{
-    SolarMutexGuard g;
-    GetQtInstance().RunInMainThread(
-        [&] { m_pSelectionModel->select(modelIndex(rIter), QItemSelectionModel::Select); });
-}
-
-void QtInstanceIconView::do_unselect(const weld::TreeIter& rIter)
-{
     SolarMutexGuard g;
 
-    GetQtInstance().RunInMainThread(
-        [&] { m_pSelectionModel->select(modelIndex(rIter), QItemSelectionModel::Deselect); });
+    int nSelected = 0;
+    GetQtInstance().RunInMainThread([&] { nSelected = m_pSelectionModel->selectedRows().count(); });
+
+    return nSelected;
 }
 
 void QtInstanceIconView::set_image(int nPos, VirtualDevice& rDevice)
@@ -169,16 +129,6 @@ void QtInstanceIconView::set_text(int nPos, const OUString& rText)
     });
 }
 
-void QtInstanceIconView::set_id(int nPos, const OUString& rId)
-{
-    SolarMutexGuard g;
-
-    GetQtInstance().RunInMainThread([&] {
-        QModelIndex aIndex = modelIndex(nPos);
-        m_pModel->setData(aIndex, toQString(rId), ROLE_ID);
-    });
-}
-
 void QtInstanceIconView::set_item_accessible_name(int nPos, const OUString& rName)
 {
     SolarMutexGuard g;
@@ -199,47 +149,15 @@ void QtInstanceIconView::set_item_tooltip_text(int nPos, const OUString& rToolTi
     });
 }
 
-void QtInstanceIconView::do_remove(int) { assert(false && "Not implemented yet"); }
-
-tools::Rectangle QtInstanceIconView::get_rect(const weld::TreeIter&) const
-{
-    assert(false && "Not implemented yet");
-    return tools::Rectangle();
-}
-
-bool QtInstanceIconView::get_selected(weld::TreeIter*) const
-{
-    assert(false && "Not implemented yet");
-    return false;
-}
-
-bool QtInstanceIconView::get_cursor(weld::TreeIter*) const
-{
-    assert(false && "Not implemented yet");
-    return false;
-}
-
-void QtInstanceIconView::do_set_cursor(const weld::TreeIter& rIter)
+tools::Rectangle QtInstanceIconView::get_rect(const weld::TreeIter& rIter) const
 {
     SolarMutexGuard g;
 
-    GetQtInstance().RunInMainThread([&] {
-        m_pSelectionModel->setCurrentIndex(modelIndex(rIter), QItemSelectionModel::NoUpdate);
-    });
-}
+    tools::Rectangle aRect;
+    GetQtInstance().RunInMainThread(
+        [&] { aRect = toRectangle(m_pListView->visualRect(modelIndex(rIter))); });
 
-OUString QtInstanceIconView::get_id(const weld::TreeIter& rIter) const
-{
-    SolarMutexGuard g;
-
-    OUString sId;
-    GetQtInstance().RunInMainThread([&] {
-        QVariant aRoleData = m_pModel->data(modelIndex(rIter), ROLE_ID);
-        if (aRoleData.canConvert<QString>())
-            sId = toOUString(aRoleData.toString());
-    });
-
-    return sId;
+    return aRect;
 }
 
 OUString QtInstanceIconView::get_text(const weld::TreeIter& rIter) const
@@ -261,11 +179,6 @@ void QtInstanceIconView::do_scroll_to_item(const weld::TreeIter& rIter)
 {
     SolarMutexGuard g;
     GetQtInstance().RunInMainThread([&] { m_pListView->scrollTo(modelIndex(rIter)); });
-}
-
-void QtInstanceIconView::selected_foreach(const std::function<bool(weld::TreeIter&)>&)
-{
-    assert(false && "Not implemented yet");
 }
 
 int QtInstanceIconView::n_children() const

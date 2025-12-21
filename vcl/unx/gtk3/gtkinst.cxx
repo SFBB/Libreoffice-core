@@ -15020,15 +15020,6 @@ public:
         set_font_color(rGtkIter.iter, rColor);
     }
 
-    virtual void do_remove(int pos) override
-    {
-        disable_notify_events();
-        GtkTreeIter iter;
-        gtk_tree_model_iter_nth_child(m_pTreeModel, &iter, nullptr, pos);
-        m_Remove(m_pTreeModel, &iter);
-        enable_notify_events();
-    }
-
     virtual int find_text(const OUString& rText) const override
     {
         Search aSearch(rText, m_nTextCol);
@@ -15616,16 +15607,6 @@ public:
         set_image(rGtkIter.iter, col, getPixbuf(rImage));
     }
 
-    virtual OUString get_id(int pos) const override
-    {
-        return get(pos, m_nIdCol);
-    }
-
-    virtual void set_id(int pos, const OUString& rId) override
-    {
-        return set(pos, m_nIdCol, rId);
-    }
-
     virtual int get_iter_index_in_parent(const weld::TreeIter& rIter) const override
     {
         const GtkInstanceTreeIter& rGtkIter = static_cast<const GtkInstanceTreeIter&>(rIter);
@@ -15692,34 +15673,6 @@ public:
         GtkInstanceTreeIter& rGtkIter = static_cast<GtkInstanceTreeIter&>(rNode);
         const GtkInstanceTreeIter* pGtkParentIter = static_cast<const GtkInstanceTreeIter*>(pNewParent);
         move_subtree(rGtkIter.iter, pGtkParentIter ? const_cast<GtkTreeIter*>(&pGtkParentIter->iter) : nullptr, nIndexInNewParent);
-    }
-
-    virtual int get_selected_index() const override
-    {
-        assert(gtk_tree_view_get_model(m_pTreeView) && "don't request selection when frozen");
-        int nRet = -1;
-        GtkTreeSelection *selection = gtk_tree_view_get_selection(m_pTreeView);
-        if (gtk_tree_selection_get_mode(selection) != GTK_SELECTION_MULTIPLE)
-        {
-            GtkTreeIter iter;
-            GtkTreeModel* pModel;
-            if (gtk_tree_selection_get_selected(gtk_tree_view_get_selection(m_pTreeView), &pModel, &iter))
-            {
-                GtkTreePath* path = gtk_tree_model_get_path(pModel, &iter);
-
-                gint depth;
-                gint* indices = gtk_tree_path_get_indices_with_depth(path, &depth);
-                nRet = indices[depth-1];
-
-                gtk_tree_path_free(path);
-            }
-        }
-        else
-        {
-            auto vec = get_selected_rows();
-            return vec.empty() ? -1 : vec[0];
-        }
-        return nRet;
     }
 
     bool get_selected_iterator(GtkTreeIter* pIter) const
@@ -16828,16 +16781,6 @@ private:
         return sRet;
     }
 
-    OUString get(int pos, int col) const
-    {
-        GtkTreeModel* pModel = GTK_TREE_MODEL(m_pTreeStore);
-        OUString sRet;
-        GtkTreeIter iter;
-        if (gtk_tree_model_iter_nth_child(pModel, &iter, nullptr, pos))
-            sRet = get(iter, col);
-        return sRet;
-    }
-
     tools::Rectangle get_rect(const weld::TreeIter& rIter) const override
     {
         const GtkInstanceTreeIter& rGtkIter = static_cast<const GtkInstanceTreeIter&>(rIter);
@@ -16887,16 +16830,11 @@ private:
         }
     }
 
-    virtual void set_id(int pos, const OUString& rId) override
+    virtual void set_id(const weld::TreeIter& rIter, const OUString& rId) override
     {
-        GtkTreeModel* pModel = GTK_TREE_MODEL(m_pTreeStore);
-        GtkTreeIter iter;
-
-        if (gtk_tree_model_iter_nth_child(pModel, &iter, nullptr, pos))
-        {
-            OString aStr(OUStringToOString(rId, RTL_TEXTENCODING_UTF8));
-            gtk_tree_store_set(m_pTreeStore, &iter, m_nIdCol, aStr.getStr(), -1);
-        }
+        const GtkInstanceTreeIter& rGtkIter = static_cast<const GtkInstanceTreeIter&>(rIter);
+        gtk_tree_store_set(m_pTreeStore, const_cast<GtkTreeIter*>(&rGtkIter.iter), m_nIdCol,
+                           rId.toUtf8().getStr(), -1);
     }
 
     virtual void set_item_accessible_name(int pos, const OUString& rName) override
@@ -16940,13 +16878,12 @@ private:
             gtk_tree_store_set(m_pTreeStore, &iter, nToolTipCol, rToolTip.toUtf8().getStr(), -1);
     }
 
-    virtual void do_remove(int pos) override
+    virtual void do_remove(const weld::TreeIter& rIter) override
     {
         disable_notify_events();
+        const GtkInstanceTreeIter& rGtkIter = static_cast<const GtkInstanceTreeIter&>(rIter);
         GtkTreeModel* pModel = GTK_TREE_MODEL(m_pTreeStore);
-        GtkTreeIter iter;
-        if (gtk_tree_model_iter_nth_child(pModel, &iter, nullptr, pos))
-            tree_store_remove(pModel, &iter);
+        tree_store_remove(pModel, const_cast<GtkTreeIter*>(&rGtkIter.iter));
         enable_notify_events();
     }
 
@@ -17290,8 +17227,6 @@ public:
         const GtkInstanceTreeIter& rGtkIter = static_cast<const GtkInstanceTreeIter&>(rIter);
         return get(rGtkIter.iter, m_nIdCol);
     }
-
-    virtual OUString get_id(int pos) const override { return get(pos, m_nIdCol); }
 
     virtual OUString get_text(const weld::TreeIter& rIter) const override
     {

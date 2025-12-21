@@ -24,8 +24,18 @@ class QtInstanceItemView : public QtInstanceWidget, public virtual weld::ItemVie
     QAbstractItemModel& m_rModel;
 
 protected:
+    // role used for the ID in the QStandardItem
+    static constexpr int ROLE_ID = Qt::UserRole + 1000;
+
+    virtual void do_set_cursor(const weld::TreeIter& rIter) override;
+
+    virtual void do_select(const weld::TreeIter& rIter) override;
+    virtual void do_unselect(const weld::TreeIter& rIter) override;
+
     virtual void do_select_all() override;
     virtual void do_unselect_all() override;
+
+    virtual void do_remove(const weld::TreeIter& rIter) override;
 
     void do_clear() override;
 
@@ -42,6 +52,22 @@ public:
 
     virtual std::unique_ptr<weld::TreeIter> get_iterator(int nPos) const override;
 
+    using weld::ItemView::get_id;
+    virtual OUString get_id(const weld::TreeIter& rIter) const override;
+    using weld::ItemView::set_id;
+    virtual void set_id(const weld::TreeIter& rIter, const OUString& rId) override;
+
+    virtual OUString get_selected_id() const override;
+    virtual OUString get_selected_text() const override;
+
+    virtual bool get_selected(weld::TreeIter* pIter) const override;
+
+    virtual bool get_cursor(weld::TreeIter* pIter) const override;
+
+    virtual void selected_foreach(const std::function<bool(weld::TreeIter&)>& func) override;
+
+    static void enableActivateOnSingleClick(QAbstractItemView& rItemView);
+
 protected:
     QModelIndex modelIndex(int nRow, int nCol = 0,
                            const QModelIndex& rParentIndex = QModelIndex()) const;
@@ -49,7 +75,8 @@ protected:
     QtInstanceTreeIter treeIter(int nRow, const QModelIndex& rParentIndex = QModelIndex()) const;
 
 private:
-    QAbstractItemView& getItemView();
+    QAbstractItemView& getItemView() const;
+    QItemSelectionModel& getSelectionModel() const;
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

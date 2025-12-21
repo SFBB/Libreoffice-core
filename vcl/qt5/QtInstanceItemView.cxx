@@ -62,6 +62,139 @@ std::unique_ptr<weld::TreeIter> QtInstanceItemView::get_iterator(int nPos) const
     return {};
 }
 
+OUString QtInstanceItemView::get_id(const weld::TreeIter& rIter) const
+{
+    SolarMutexGuard g;
+
+    OUString sId;
+    GetQtInstance().RunInMainThread([&] {
+        QVariant aRoleData = m_rModel.data(modelIndex(rIter), ROLE_ID);
+        if (aRoleData.canConvert<QString>())
+            sId = toOUString(aRoleData.toString());
+    });
+
+    return sId;
+}
+
+void QtInstanceItemView::set_id(const weld::TreeIter& rIter, const OUString& rId)
+{
+    SolarMutexGuard g;
+
+    GetQtInstance().RunInMainThread(
+        [&] { m_rModel.setData(modelIndex(rIter), toQString(rId), ROLE_ID); });
+}
+
+OUString QtInstanceItemView::get_selected_id() const
+{
+    SolarMutexGuard g;
+
+    OUString sId;
+    GetQtInstance().RunInMainThread([&] {
+        const QModelIndexList aSelectedIndexes = getSelectionModel().selectedIndexes();
+        if (aSelectedIndexes.empty())
+            return;
+
+        QVariant aIdData = aSelectedIndexes.first().data(ROLE_ID);
+        if (aIdData.canConvert<QString>())
+            sId = toOUString(aIdData.toString());
+    });
+
+    return sId;
+}
+
+OUString QtInstanceItemView::get_selected_text() const
+{
+    SolarMutexGuard g;
+
+    OUString sText;
+    GetQtInstance().RunInMainThread([&] {
+        const QModelIndexList aSelectedIndexes = getSelectionModel().selectedIndexes();
+        if (aSelectedIndexes.empty())
+            return;
+
+        sText = toOUString(aSelectedIndexes.first().data(Qt::DisplayRole).toString());
+    });
+
+    return sText;
+}
+
+bool QtInstanceItemView::get_selected(weld::TreeIter* pIter) const
+{
+    SolarMutexGuard g;
+
+    bool bHasSelection = false;
+    GetQtInstance().RunInMainThread([&] {
+        const QModelIndexList aSelectedIndexes = getSelectionModel().selectedIndexes();
+        if (aSelectedIndexes.empty())
+            return;
+
+        bHasSelection = true;
+        if (pIter)
+            static_cast<QtInstanceTreeIter*>(pIter)->setModelIndex(aSelectedIndexes.first());
+    });
+    return bHasSelection;
+}
+
+bool QtInstanceItemView::get_cursor(weld::TreeIter* pIter) const
+{
+    SolarMutexGuard g;
+
+    bool bRet = false;
+    GetQtInstance().RunInMainThread([&] {
+        const QModelIndex aCurrentIndex = getItemView().currentIndex();
+        QtInstanceTreeIter* pQtIter = static_cast<QtInstanceTreeIter*>(pIter);
+        if (pQtIter)
+            pQtIter->setModelIndex(aCurrentIndex);
+        bRet = aCurrentIndex.isValid();
+    });
+
+    return bRet;
+}
+
+void QtInstanceItemView::selected_foreach(const std::function<bool(weld::TreeIter&)>& func)
+{
+    SolarMutexGuard g;
+
+    GetQtInstance().RunInMainThread([&] {
+        QModelIndexList aSelectionIndexes = getSelectionModel().selectedRows();
+        for (QModelIndex& aIndex : aSelectionIndexes)
+        {
+            QtInstanceTreeIter aIter(aIndex);
+            if (func(aIter))
+                return;
+        }
+    });
+}
+
+void QtInstanceItemView::do_set_cursor(const weld::TreeIter& rIter)
+{
+    SolarMutexGuard g;
+
+    GetQtInstance().RunInMainThread([&] { getItemView().setCurrentIndex(modelIndex(rIter)); });
+}
+
+void QtInstanceItemView::do_select(const weld::TreeIter& rIter)
+{
+    SolarMutexGuard g;
+
+    GetQtInstance().RunInMainThread([&] {
+        QItemSelectionModel::SelectionFlags eFlags
+            = QItemSelectionModel::Select | QItemSelectionModel::Rows;
+        if (getItemView().selectionMode() == QAbstractItemView::SingleSelection)
+            eFlags |= QItemSelectionModel::Clear;
+
+        getSelectionModel().select(modelIndex(rIter), eFlags);
+    });
+}
+
+void QtInstanceItemView::do_unselect(const weld::TreeIter& rIter)
+{
+    SolarMutexGuard g;
+
+    GetQtInstance().RunInMainThread(
+        [&] { getSelectionModel().select(modelIndex(rIter), QItemSelectionModel::Deselect); });
+}
+
 void QtInstanceItemView::do_select_all()
 {
     SolarMutexGuard g;
@@ -72,6 +205,16 @@ void QtInstanceItemView::do_unselect_all()
 {
     SolarMutexGuard g;
     GetQtInstance().RunInMainThread([&] { getItemView().clearSelection(); });
+}
+
+void QtInstanceItemView::do_remove(const weld::TreeIter& rIter)
+{
+    SolarMutexGuard g;
+
+    GetQtInstance().RunInMainThread([&] {
+        const QModelIndex aIndex = modelIndex(rIter);
+        m_rModel.removeRow(aIndex.row(), aIndex.parent());
+    });
 }
 
 void QtInstanceItemView::do_clear()
@@ -98,11 +241,24 @@ QtInstanceTreeIter QtInstanceItemView::treeIter(int nRow, const QModelIndex& rPa
     return QtInstanceTreeIter(m_rModel.index(nRow, 0, rParentIndex));
 }
 
-QAbstractItemView& QtInstanceItemView::getItemView()
+QAbstractItemView& QtInstanceItemView::getItemView() const
 {
     QAbstractItemView* pView = qobject_cast<QAbstractItemView*>(getQWidget());
     assert(pView);
     return *pView;
+}
+
+QItemSelectionModel& QtInstanceItemView::getSelectionModel() const
+{
+    QItemSelectionModel* pSelectionModel = getItemView().selectionModel();
+    assert(pSelectionModel);
+    return *pSelectionModel;
+}
+
+void QtInstanceItemView::enableActivateOnSingleClick(QAbstractItemView& rItemView)
+{
+    QObject::connect(&rItemView, &QAbstractItemView::clicked, &rItemView,
+                     &QAbstractItemView::activated);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */
