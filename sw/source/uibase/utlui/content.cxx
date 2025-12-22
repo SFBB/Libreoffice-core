@@ -132,6 +132,9 @@
 
 #include <doctxm.hxx>
 
+#include <sfx2/passwd.hxx>
+#include <svl/PasswordHelper.hxx>
+
 #define CTYPE_CNT   0
 #define CTYPE_CTT   1
 
@@ -6040,11 +6043,30 @@ void SwContentTree::ExecuteContextMenuAction(const OUString& rSelectedPopupEntry
         SwSection* pSection = pSectionFormat->GetSection();
         SwSectionData aSectionData(*pSection);
         if (rSelectedPopupEntry == "protectsection")
-            aSectionData.SetProtectFlag(!pSection->IsProtect());
+        {
+            if (pSection->GetPassword().hasElements() && aSectionData.IsProtectFlag())
+            {
+                SfxPasswordDialog aPasswordDlg(m_pDialog->GetFrameWeld());
+                if (aPasswordDlg.run() != RET_OK)
+                    return;
+                if (!SvPasswordHelper::CompareHashPassword(aSectionData.GetPassword(),
+                                                           aPasswordDlg.GetPassword()))
+                {
+                    std::unique_ptr<weld::MessageDialog> xInfoBox(Application::CreateMessageDialog(
+                        m_pDialog->GetFrameWeld(), VclMessageType::Info, VclButtonsType::Ok,
+                        SwResId(STR_WRONG_PASSWORD)));
+                    xInfoBox->run();
+                    return;
+                }
+            }
+            aSectionData.SetProtectFlag(!aSectionData.IsProtectFlag());
+        }
         else
             aSectionData.SetHidden(!pSection->IsHidden());
         m_pActiveShell->UpdateSection(m_pActiveShell->GetSectionFormatPos(*pSectionFormat),
                                       aSectionData);
+        Display(true);
+        return;
     }
     else if (rSelectedPopupEntry == "sort")
     {
