@@ -3593,13 +3593,13 @@ OUString SalInstanceItemView::get_selected_text() const
     return OUString();
 }
 
-bool SalInstanceItemView::get_selected(weld::TreeIter* pIter) const
+std::unique_ptr<weld::TreeIter> SalInstanceItemView::get_selected() const
 {
     SvTreeListEntry* pEntry = m_pTreeListBox->FirstSelected();
-    auto pVclIter = static_cast<SalInstanceTreeIter*>(pIter);
-    if (pVclIter)
-        pVclIter->iter = pEntry;
-    return pEntry != nullptr;
+    if (pEntry)
+        return std::make_unique<SalInstanceTreeIter>(pEntry);
+
+    return {};
 }
 
 bool SalInstanceItemView::get_cursor(weld::TreeIter* pIter) const
@@ -4194,14 +4194,6 @@ int SalInstanceTreeView::iter_n_children(const weld::TreeIter& rIter) const
 {
     const SalInstanceTreeIter& rVclIter = static_cast<const SalInstanceTreeIter&>(rIter);
     return m_xTreeView->GetModel()->GetChildList(rVclIter.iter).size();
-}
-
-int SalInstanceTreeView::get_cursor_index() const
-{
-    SvTreeListEntry* pEntry = m_xTreeView->GetCurEntry();
-    if (!pEntry)
-        return -1;
-    return SvTreeList::GetRelPos(pEntry);
 }
 
 void SalInstanceTreeView::do_set_cursor(int pos)

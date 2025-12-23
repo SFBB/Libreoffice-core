@@ -235,9 +235,10 @@ ScXMLColumnSortContext::ScXMLColumnSortContext(
 {
 }
 
-ScXMLColumnSortContext::~ScXMLColumnSortContext()
+void ScXMLColumnSortContext::ImplDestroy()
 {
     ScDocument* pDoc = GetScImport().GetDocument();
+    assert(pDoc);
     auto& rDataSources = pDoc->GetExternalDataMapper().getDataSources();
     if (!rDataSources.empty())
     {
@@ -264,6 +265,8 @@ ScXMLColumnSortContext::~ScXMLColumnSortContext()
             std::make_shared<sc::SortTransformation>(maSortParam));
     }
 }
+
+ScXMLColumnSortContext::~ScXMLColumnSortContext() { suppress_fun_call_w_exception(ImplDestroy()); }
 
 uno::Reference<xml::sax::XFastContextHandler>
     SAL_CALL ScXMLColumnSortContext::createFastChildContext(

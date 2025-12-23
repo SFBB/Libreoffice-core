@@ -243,7 +243,8 @@ static bool AllowPoint(const Point& rPoint)
 
 static bool AllowRect(const tools::Rectangle& rRect)
 {
-    return AllowPoint(rRect.TopLeft()) && AllowPoint(rRect.BottomRight());
+    return AllowPoint(rRect.TopLeft()) && AllowPoint(rRect.BottomRight()) &&
+           AllowDim(rRect.GetHeight()) && AllowDim(rRect.GetWidth());
 }
 
 void MetaRectAction::Execute( OutputDevice* pOut )
@@ -1718,6 +1719,9 @@ MetaTransparentAction::MetaTransparentAction( tools::PolyPolygon aPolyPoly, sal_
 
 void MetaTransparentAction::Execute( OutputDevice* pOut )
 {
+    if (!AllowRect(pOut->LogicToPixel(maPolyPoly.GetBoundRect())))
+        return;
+
     pOut->DrawTransparent( maPolyPoly, mnTransPercent );
 }
 

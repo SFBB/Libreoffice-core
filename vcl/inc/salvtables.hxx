@@ -1527,7 +1527,7 @@ public:
     virtual OUString get_selected_id() const override;
     virtual OUString get_selected_text() const override;
 
-    virtual bool get_selected(weld::TreeIter* pIter) const override;
+    virtual std::unique_ptr<weld::TreeIter> get_selected() const override;
 
     virtual bool get_cursor(weld::TreeIter* pIter) const override;
 
@@ -1662,8 +1662,6 @@ public:
     virtual void swap(int pos1, int pos2) override;
 
     virtual int iter_n_children(const weld::TreeIter& rIter) const override;
-
-    virtual int get_cursor_index() const override;
 
     using SalInstanceItemView::do_set_cursor;
     virtual void do_set_cursor(int pos) override;
