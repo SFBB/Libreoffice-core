@@ -1254,7 +1254,6 @@ private:
     DECL_LINK(KeyPressHdl, const KeyEvent&, bool);
     DECL_LINK(KeyReleaseHdl, const KeyEvent&, bool);
     DECL_LINK(StyleUpdatedHdl, VclDrawingArea&, void);
-    DECL_LINK(CommandHdl, const CommandEvent&, bool);
     DECL_LINK(QueryTooltipHdl, tools::Rectangle&, OUString);
     DECL_LINK(GetSurroundingHdl, OUString&, int);
     DECL_LINK(DeleteSurroundingHdl, const Selection&, bool);
@@ -1651,8 +1650,6 @@ public:
         const weld::TreeIter* pParent = nullptr, const std::vector<int>* pFixedWidths = nullptr,
         bool bGoingToSetText = false) override;
 
-    virtual void set_font_color(int pos, const Color& rColor) override;
-
     virtual void set_font_color(const weld::TreeIter& rIter, const Color& rColor) override;
 
     virtual int find_text(const OUString& rText) const override;
@@ -1666,19 +1663,11 @@ public:
     using SalInstanceItemView::do_set_cursor;
     virtual void do_set_cursor(int pos) override;
 
-    virtual void do_scroll_to_row(int pos) override;
-
-    virtual bool is_selected(int pos) const override;
-
     virtual std::vector<int> get_selected_rows() const override;
 
     OUString get_text(SvTreeListEntry* pEntry, int col) const;
 
-    virtual OUString get_text(int pos, int col = -1) const override;
-
     void set_text(SvTreeListEntry* pEntry, const OUString& rText, int col);
-
-    virtual void set_text(int pos, const OUString& rText, int col = -1) override;
 
     using SalInstanceWidget::set_sensitive;
     using SalInstanceWidget::get_sensitive;
@@ -1686,21 +1675,13 @@ public:
     void set_sensitive(SvTreeListEntry* pEntry, bool bSensitive, int col);
     bool get_sensitive(SvTreeListEntry* pEntry, int col) const;
 
-    virtual void set_sensitive(int pos, bool bSensitive, int col = -1) override;
-
     virtual void set_sensitive(const weld::TreeIter& rIter, bool bSensitive, int col = -1) override;
 
-    virtual bool get_sensitive(int pos, int col) const override;
-
     virtual bool get_sensitive(const weld::TreeIter& rIter, int col) const override;
-
-    virtual TriState get_toggle(int pos, int col = -1) const override;
 
     virtual TriState get_toggle(const weld::TreeIter& rIter, int col = -1) const override;
 
     virtual void enable_toggle_buttons(weld::ColumnToggleType eType) override;
-
-    virtual void set_toggle(int pos, TriState eState, int col = -1) override;
 
     virtual void set_toggle(const weld::TreeIter& rIter, TriState eState, int col = -1) override;
 
@@ -1712,17 +1693,11 @@ public:
 
     virtual void set_text_emphasis(const weld::TreeIter& rIter, bool bOn, int col) override;
 
-    virtual void set_text_emphasis(int pos, bool bOn, int col) override;
-
     virtual bool get_text_emphasis(const weld::TreeIter& rIter, int col) const override;
-
-    virtual bool get_text_emphasis(int pos, int col) const override;
 
     void set_text_align(SvTreeListEntry* pEntry, TxtAlign eAlign, int col);
 
     virtual void set_text_align(const weld::TreeIter& rIter, TxtAlign eAlign, int col) override;
-
-    virtual void set_text_align(int pos, TxtAlign eAlign, int col) override;
 
     virtual void connect_editing(const Link<const weld::TreeIter&, bool>& rStartLink,
                                  const Link<const iter_string&, bool>& rEndLink) override;
@@ -1732,13 +1707,6 @@ public:
     virtual void end_editing() override;
 
     void set_image(SvTreeListEntry* pEntry, const Image& rImage, int col);
-
-    virtual void set_image(int pos, const OUString& rImage, int col = -1) override;
-
-    virtual void set_image(int pos, const css::uno::Reference<css::graphic::XGraphic>& rImage,
-                           int col = -1) override;
-
-    virtual void set_image(int pos, VirtualDevice& rImage, int col = -1) override;
 
     virtual void set_image(const weld::TreeIter& rIter, const OUString& rImage,
                            int col = -1) override;

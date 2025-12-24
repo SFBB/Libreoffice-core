@@ -14083,15 +14083,6 @@ private:
         return sRet;
     }
 
-    OUString get(int pos, int col) const
-    {
-        OUString sRet;
-        GtkTreeIter iter;
-        if (gtk_tree_model_iter_nth_child(m_pTreeModel, &iter, nullptr, pos))
-            sRet = get(iter, col);
-        return sRet;
-    }
-
     gint get_int(const GtkTreeIter& iter, int col) const
     {
         gint nRet(-1);
@@ -14099,29 +14090,10 @@ private:
         return nRet;
     }
 
-    gint get_int(int pos, int col) const
-    {
-        gint nRet(-1);
-        GtkTreeIter iter;
-        if (gtk_tree_model_iter_nth_child(m_pTreeModel, &iter, nullptr, pos))
-            nRet = get_int(iter, col);
-        gtk_tree_model_get(m_pTreeModel, &iter, col, &nRet, -1);
-        return nRet;
-    }
-
     bool get_bool(const GtkTreeIter& iter, int col) const
     {
         gboolean bRet(false);
         gtk_tree_model_get(m_pTreeModel, const_cast<GtkTreeIter*>(&iter), col, &bRet, -1);
-        return bRet;
-    }
-
-    bool get_bool(int pos, int col) const
-    {
-        bool bRet(false);
-        GtkTreeIter iter;
-        if (gtk_tree_model_iter_nth_child(m_pTreeModel, &iter, nullptr, pos))
-            bRet = get_bool(iter, col);
         return bRet;
     }
 
@@ -14155,23 +14127,9 @@ private:
         m_Setter(m_pTreeModel, const_cast<GtkTreeIter*>(&iter), col, aStr.getStr(), -1);
     }
 
-    void set(int pos, int col, std::u16string_view rText)
-    {
-        GtkTreeIter iter;
-        if (gtk_tree_model_iter_nth_child(m_pTreeModel, &iter, nullptr, pos))
-            set(iter, col, rText);
-    }
-
     void set(const GtkTreeIter& iter, int col, bool bOn)
     {
         m_Setter(m_pTreeModel, const_cast<GtkTreeIter*>(&iter), col, promote_arg(bOn), -1);
-    }
-
-    void set(int pos, int col, bool bOn)
-    {
-        GtkTreeIter iter;
-        if (gtk_tree_model_iter_nth_child(m_pTreeModel, &iter, nullptr, pos))
-            set(iter, col, bOn);
     }
 
     void set(const GtkTreeIter& iter, int col, gint bInt)
@@ -14179,23 +14137,9 @@ private:
         m_Setter(m_pTreeModel, const_cast<GtkTreeIter*>(&iter), col, bInt, -1);
     }
 
-    void set(int pos, int col, gint bInt)
-    {
-        GtkTreeIter iter;
-        if (gtk_tree_model_iter_nth_child(m_pTreeModel, &iter, nullptr, pos))
-            set(iter, col, bInt);
-    }
-
     void set(const GtkTreeIter& iter, int col, double fValue)
     {
         m_Setter(m_pTreeModel, const_cast<GtkTreeIter*>(&iter), col, fValue, -1);
-    }
-
-    void set(int pos, int col, double fValue)
-    {
-        GtkTreeIter iter;
-        if (gtk_tree_model_iter_nth_child(m_pTreeModel, &iter, nullptr, pos))
-            set(iter, col, fValue);
     }
 
     static gboolean signalTestExpandRow(GtkTreeView*, GtkTreeIter* iter, GtkTreePath*, gpointer widget)
@@ -15007,13 +14951,6 @@ public:
         enable_notify_events();
     }
 
-    virtual void set_font_color(int pos, const Color& rColor) override
-    {
-        GtkTreeIter iter;
-        gtk_tree_model_iter_nth_child(m_pTreeModel, &iter, nullptr, pos);
-        set_font_color(iter, rColor);
-    }
-
     virtual void set_font_color(const weld::TreeIter& rIter, const Color& rColor) override
     {
         const GtkInstanceTreeIter& rGtkIter = static_cast<const GtkInstanceTreeIter&>(rIter);
@@ -15234,24 +15171,6 @@ public:
         enable_notify_events();
     }
 
-    virtual void do_scroll_to_row(int pos) override
-    {
-        assert(gtk_tree_view_get_model(m_pTreeView) && "don't select when frozen, select after thaw. Note selection doesn't survive a freeze");
-        disable_notify_events();
-        GtkTreePath* path = gtk_tree_path_new_from_indices(pos, -1);
-        gtk_tree_view_expand_to_path(m_pTreeView, path);
-        gtk_tree_view_scroll_to_cell(m_pTreeView, path, nullptr, true, 0, 0);
-        gtk_tree_path_free(path);
-        enable_notify_events();
-    }
-
-    virtual bool is_selected(int pos) const override
-    {
-        GtkTreeIter iter;
-        gtk_tree_model_iter_nth_child(m_pTreeModel, &iter, nullptr, pos);
-        return gtk_tree_selection_iter_is_selected(gtk_tree_view_get_selection(m_pTreeView), &iter);
-    }
-
     virtual std::vector<int> get_selected_rows() const override
     {
         std::vector<int> aRows;
@@ -15360,38 +15279,6 @@ public:
         return gtk_tree_selection_iter_is_selected(gtk_tree_view_get_selection(m_pTreeView), const_cast<GtkTreeIter*>(&rGtkIter.iter));
     }
 
-    virtual OUString get_text(int pos, int col) const override
-    {
-        if (col == -1)
-            col = m_nTextCol;
-        else
-            col = to_internal_model(col);
-        return get(pos, col);
-    }
-
-    virtual void set_text(int pos, const OUString& rText, int col) override
-    {
-        if (col == -1)
-            col = m_nTextCol;
-        else
-            col = to_internal_model(col);
-        set(pos, col, rText);
-    }
-
-    virtual TriState get_toggle(int pos, int col) const override
-    {
-        if (col == -1)
-            col = m_nExpanderToggleCol;
-        else
-            col = to_internal_model(col);
-
-        const auto iter = m_aToggleTriStateMap.find(col);
-        assert(iter != m_aToggleTriStateMap.end());
-        if (get_bool(pos, iter->second))
-            return TRISTATE_INDET;
-        return get_bool(pos, col) ? TRISTATE_TRUE : TRISTATE_FALSE;
-    }
-
     virtual TriState get_toggle(const weld::TreeIter& rIter, int col) const override
     {
         if (col == -1)
@@ -15411,13 +15298,6 @@ public:
     {
         const GtkInstanceTreeIter& rGtkIter = static_cast<const GtkInstanceTreeIter&>(rIter);
         set_toggle(rGtkIter.iter, eState, col);
-    }
-
-    virtual void set_toggle(int pos, TriState eState, int col) override
-    {
-        GtkTreeIter iter;
-        if (gtk_tree_model_iter_nth_child(m_pTreeModel, &iter, nullptr, pos))
-            set_toggle(iter, eState, col);
     }
 
     virtual void enable_toggle_buttons(weld::ColumnToggleType eType) override
@@ -15462,19 +15342,6 @@ public:
         set(rGtkIter.iter, m_aWeightMap[col], weight);
     }
 
-    virtual void set_text_emphasis(int pos, bool bOn, int col) override
-    {
-        auto weight = bOn ? PANGO_WEIGHT_BOLD : PANGO_WEIGHT_NORMAL;
-        if (col == -1)
-        {
-            for (const auto& elem : m_aWeightMap)
-                set(pos, elem.second, weight);
-            return;
-        }
-        col = to_internal_model(col);
-        set(pos, m_aWeightMap[col], weight);
-    }
-
     virtual bool get_text_emphasis(const weld::TreeIter& rIter, int col) const override
     {
         const GtkInstanceTreeIter& rGtkIter = static_cast<const GtkInstanceTreeIter&>(rIter);
@@ -15484,14 +15351,6 @@ public:
         return get_int(rGtkIter.iter, iter->second) == PANGO_WEIGHT_BOLD;
     }
 
-    virtual bool get_text_emphasis(int pos, int col) const override
-    {
-        col = to_internal_model(col);
-        const auto iter = m_aWeightMap.find(col);
-        assert(iter != m_aWeightMap.end());
-        return get_int(pos, iter->second) == PANGO_WEIGHT_BOLD;
-    }
-
     virtual void set_text_align(const weld::TreeIter& rIter, TxtAlign eAlign, int col) override
     {
         const GtkInstanceTreeIter& rGtkIter = static_cast<const GtkInstanceTreeIter&>(rIter);
@@ -15499,36 +15358,8 @@ public:
         set(rGtkIter.iter, m_aAlignMap[col], toGtkTextAlignValue(eAlign));
     }
 
-    virtual void set_text_align(int pos, TxtAlign eAlign, int col) override
-    {
-        col = to_internal_model(col);
-        set(pos, m_aAlignMap[col], toGtkTextAlignValue(eAlign));
-    }
-
     using GtkInstanceWidget::set_sensitive;
     using GtkInstanceWidget::get_sensitive;
-
-    virtual void set_sensitive(int pos, bool bSensitive, int col) override
-    {
-        if (col == -1)
-        {
-            for (const auto& elem : m_aSensitiveMap)
-                set(pos, elem.second, bSensitive);
-        }
-        else
-        {
-            col = to_internal_model(col);
-            set(pos, m_aSensitiveMap[col], bSensitive);
-        }
-    }
-
-    virtual bool get_sensitive(int pos, int col) const override
-    {
-        col = to_internal_model(col);
-        const auto iter = m_aSensitiveMap.find(col);
-        assert(iter != m_aSensitiveMap.end());
-        return get_bool(pos, iter->second);
-    }
 
     virtual void set_sensitive(const weld::TreeIter& rIter, bool bSensitive, int col) override
     {
@@ -15563,30 +15394,6 @@ public:
         m_Setter(m_pTreeModel, const_cast<GtkTreeIter*>(&iter), col, pixbuf, -1);
         if (pixbuf)
             g_object_unref(pixbuf);
-    }
-
-    void set_image(int pos, GdkPixbuf* pixbuf, int col)
-    {
-        GtkTreeIter iter;
-        if (gtk_tree_model_iter_nth_child(m_pTreeModel, &iter, nullptr, pos))
-        {
-            set_image(iter, col, pixbuf);
-        }
-    }
-
-    virtual void set_image(int pos, const css::uno::Reference<css::graphic::XGraphic>& rImage, int col) override
-    {
-        set_image(pos, getPixbuf(rImage), col);
-    }
-
-    virtual void set_image(int pos, const OUString& rImage, int col) override
-    {
-        set_image(pos, getPixbuf(rImage), col);
-    }
-
-    virtual void set_image(int pos, VirtualDevice& rImage, int col) override
-    {
-        set_image(pos, getPixbuf(rImage), col);
     }
 
     virtual void set_image(const weld::TreeIter& rIter, const css::uno::Reference<css::graphic::XGraphic>& rImage, int col) override

@@ -1686,40 +1686,10 @@ JSTreeView::JSTreeView(JSDialogSender* pSender, ::SvTabListBox* pTreeView,
 {
 }
 
-void JSTreeView::set_toggle(int pos, TriState eState, int col)
-{
-    SvTreeListEntry* pEntry = m_xTreeView->GetEntry(nullptr, 0);
-
-    while (pEntry && pos--)
-        pEntry = m_xTreeView->Next(pEntry);
-
-    if (pEntry)
-    {
-        SalInstanceTreeView::set_toggle(pEntry, eState, col);
-        signal_toggled(iter_col(SalInstanceTreeIter(pEntry), col));
-
-        sendUpdate();
-    }
-}
-
 void JSTreeView::set_toggle(const weld::TreeIter& rIter, TriState bOn, int col)
 {
     SalInstanceTreeView::set_toggle(rIter, bOn, col);
     sendUpdate();
-}
-
-void JSTreeView::set_sensitive(int pos, bool bSensitive, int col)
-{
-    SvTreeListEntry* pEntry = m_xTreeView->GetEntry(nullptr, 0);
-
-    while (pEntry && pos--)
-        pEntry = m_xTreeView->Next(pEntry);
-
-    if (pEntry)
-    {
-        SalInstanceTreeView::set_sensitive(pEntry, bSensitive, col);
-        sendUpdate();
-    }
 }
 
 void JSTreeView::set_sensitive(const weld::TreeIter& rIter, bool bSensitive, int col)
@@ -1775,12 +1745,6 @@ void JSTreeView::do_insert(const weld::TreeIter* pParent, int pos, const OUStrin
     SalInstanceTreeView::do_insert(pParent, pos, pStr, pId, pIconName, pImageSurface,
                                    bChildrenOnDemand, pRet);
 
-    sendUpdate();
-}
-
-void JSTreeView::set_text(int row, const OUString& rText, int col)
-{
-    SalInstanceTreeView::set_text(row, rText, col);
     sendUpdate();
 }
 

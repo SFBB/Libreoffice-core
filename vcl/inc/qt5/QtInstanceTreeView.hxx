@@ -52,24 +52,8 @@ public:
 
     virtual void set_clicks_to_toggle(int nToggleBehavior) override;
 
-    virtual OUString get_text(int nRow, int nCol = -1) const override;
-    virtual void set_text(int nRow, const OUString& rText, int nCol = -1) override;
-    virtual void set_sensitive(int nRow, bool bSensitive, int nCol = -1) override;
-    virtual bool get_sensitive(int nRow, int nCol) const override;
-    virtual void set_toggle(int nRow, TriState eState, int nCol = -1) override;
-    virtual TriState get_toggle(int nRow, int nCol = -1) const override;
-    virtual void set_image(int nRow, const OUString& rImage, int nCol = -1) override;
-    virtual void set_image(int nRow, VirtualDevice& rImage, int nCol = -1) override;
-    virtual void set_image(int nRow, const css::uno::Reference<css::graphic::XGraphic>& rImage,
-                           int nCol = -1) override;
-    virtual void set_text_emphasis(int nRow, bool bOn, int nCol) override;
-    virtual bool get_text_emphasis(int nRow, int nCol) const override;
-    virtual void set_text_align(int nRow, TxtAlign eAlign, int nCol) override;
     virtual void swap(int nPos1, int nPos2) override;
     virtual std::vector<int> get_selected_rows() const override;
-    virtual void set_font_color(int nPos, const Color& rColor) override;
-    virtual void do_scroll_to_row(int nRow) override;
-    virtual bool is_selected(int nPos) const override;
     using QtInstanceItemView::do_set_cursor;
     virtual void do_set_cursor(int pos) override;
 

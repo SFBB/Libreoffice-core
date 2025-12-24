@@ -715,14 +715,10 @@ public:
     JSTreeView(JSDialogSender* pSender, ::SvTabListBox* pTextView, SalInstanceBuilder* pBuilder,
                bool bTakeOwnership);
 
-    using SalInstanceTreeView::set_toggle;
-    /// pos is used differently here, it defines how many steps of iterator we need to perform to take entry
-    virtual void set_toggle(int pos, TriState eState, int col = -1) override;
+    using weld::TreeView::set_toggle;
     virtual void set_toggle(const weld::TreeIter& rIter, TriState bOn, int col = -1) override;
 
-    using SalInstanceTreeView::set_sensitive;
-    /// pos is used differently here, it defines how many steps of iterator we need to perform to take entry
-    virtual void set_sensitive(int pos, bool bSensitive, int col = -1) override;
+    using weld::TreeView::set_sensitive;
     virtual void set_sensitive(const weld::TreeIter& rIter, bool bSensitive, int col = -1) override;
 
     virtual void do_select(const weld::TreeIter& rIter) override;
@@ -735,7 +731,7 @@ public:
                            VirtualDevice* pImageSurface, bool bChildrenOnDemand,
                            weld::TreeIter* pRet) override;
 
-    virtual void set_text(int row, const OUString& rText, int col = -1) override;
+    using weld::TreeView::set_text;
     virtual void set_text(const weld::TreeIter& rIter, const OUString& rStr, int col = -1) override;
 
     virtual void expand_row(const weld::TreeIter& rIter) override;

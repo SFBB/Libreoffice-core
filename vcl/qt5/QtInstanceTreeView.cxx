@@ -109,68 +109,6 @@ void QtInstanceTreeView::enable_toggle_buttons(weld::ColumnToggleType)
 
 void QtInstanceTreeView::set_clicks_to_toggle(int) { assert(false && "Not implemented yet"); }
 
-OUString QtInstanceTreeView::get_text(int nRow, int nCol) const
-{
-    return get_text(treeIter(nRow), nCol);
-}
-
-void QtInstanceTreeView::set_text(int nRow, const OUString& rText, int nCol)
-{
-    set_text(treeIter(nRow), rText, nCol);
-}
-
-void QtInstanceTreeView::set_sensitive(int nRow, bool bSensitive, int nCol)
-{
-    set_sensitive(treeIter(nRow), bSensitive, nCol);
-}
-
-bool QtInstanceTreeView::get_sensitive(int nRow, int nCol) const
-{
-    return get_sensitive(treeIter(nRow), nCol);
-}
-
-void QtInstanceTreeView::set_toggle(int nRow, TriState eState, int nCol)
-{
-    set_toggle(treeIter(nRow), eState, nCol);
-}
-
-TriState QtInstanceTreeView::get_toggle(int nRow, int nCol) const
-{
-    return get_toggle(treeIter(nRow), nCol);
-}
-
-void QtInstanceTreeView::set_image(int nRow, const OUString& rImage, int nCol)
-{
-    set_image(treeIter(nRow), rImage, nCol);
-}
-
-void QtInstanceTreeView::set_image(int nRow, VirtualDevice& rImage, int nCol)
-{
-    set_image(treeIter(nRow), rImage, nCol);
-}
-
-void QtInstanceTreeView::set_image(int nRow,
-                                   const css::uno::Reference<css::graphic::XGraphic>& rImage,
-                                   int nCol)
-{
-    set_image(treeIter(nRow), rImage, nCol);
-}
-
-void QtInstanceTreeView::set_text_emphasis(int nRow, bool bOn, int nCol)
-{
-    return set_text_emphasis(treeIter(nRow), bOn, nCol);
-}
-
-bool QtInstanceTreeView::get_text_emphasis(int nRow, int nCol) const
-{
-    return get_text_emphasis(treeIter(nRow), nCol);
-}
-
-void QtInstanceTreeView::set_text_align(int nRow, TxtAlign eAlign, int nCol)
-{
-    return set_text_align(treeIter(nRow), eAlign, nCol);
-}
-
 void QtInstanceTreeView::swap(int nPos1, int nPos2)
 {
     SolarMutexGuard g;
@@ -211,15 +149,6 @@ std::vector<int> QtInstanceTreeView::get_selected_rows() const
 
     return aSelectedRows;
 }
-
-void QtInstanceTreeView::set_font_color(int nPos, const Color& rColor)
-{
-    set_font_color(treeIter(nPos), rColor);
-}
-
-void QtInstanceTreeView::do_scroll_to_row(int nRow) { scroll_to_row(treeIter(nRow)); }
-
-bool QtInstanceTreeView::is_selected(int nPos) const { return is_selected(treeIter(nPos)); }
 
 void QtInstanceTreeView::do_set_cursor(int nPos) { do_set_cursor(treeIter(nPos)); }
 

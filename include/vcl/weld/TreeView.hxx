@@ -129,7 +129,6 @@ protected:
                            VirtualDevice* pImageSurface, bool bChildrenOnDemand, TreeIter* pRet)
         = 0;
     virtual void do_insert_separator(int pos, const OUString& rId) = 0;
-    virtual void do_scroll_to_row(int row) = 0;
     using weld::ItemView::do_set_cursor;
     virtual void do_set_cursor(int pos) = 0;
     virtual void do_scroll_to_row(const TreeIter& rIter) = 0;
@@ -221,45 +220,65 @@ public:
 
     virtual void set_clicks_to_toggle(int nToggleBehavior) = 0;
 
-    //by index
     int get_selected_index() const;
 
     // col index -1 gets the first text column
-    virtual OUString get_text(int row, int col = -1) const = 0;
+    OUString get_text(int row, int col = -1) const;
+    virtual OUString get_text(const TreeIter& rIter, int col = -1) const = 0;
+
     // col index -1 sets the first text column
-    virtual void set_text(int row, const OUString& rText, int col = -1) = 0;
+    void set_text(int row, const OUString& rText, int col = -1);
+    virtual void set_text(const TreeIter& rIter, const OUString& rStr, int col = -1) = 0;
+
     // col index -1 sets all columns
-    virtual void set_sensitive(int row, bool bSensitive, int col = -1) = 0;
-    virtual bool get_sensitive(int row, int col) const = 0;
+    void set_sensitive(int row, bool bSensitive, int col = -1);
+    virtual void set_sensitive(const TreeIter& rIter, bool bSensitive, int col = -1) = 0;
+
+    bool get_sensitive(int row, int col) const;
+    virtual bool get_sensitive(const TreeIter& rIter, int col) const = 0;
+
     // col index -1 sets the expander toggle, enable_toggle_buttons must have been called to create that column
-    virtual void set_toggle(int row, TriState eState, int col = -1) = 0;
+    void set_toggle(int row, TriState eState, int col = -1);
+    virtual void set_toggle(const TreeIter& rIter, TriState bOn, int col = -1) = 0;
+
     // col index -1 gets the expander toggle, enable_toggle_buttons must have been called to create that column
-    virtual TriState get_toggle(int row, int col = -1) const = 0;
+    TriState get_toggle(int row, int col = -1) const;
+    virtual TriState get_toggle(const TreeIter& rIter, int col = -1) const = 0;
+
     // col index -1 sets the expander image
-    virtual void set_image(int row, const OUString& rImage, int col = -1) = 0;
+    void set_image(int row, const OUString& rImage, int col = -1);
+    virtual void set_image(const TreeIter& rIter, const OUString& rImage, int col = -1) = 0;
     // col index -1 sets the expander image
-    virtual void set_image(int row, VirtualDevice& rImage, int col = -1) = 0;
+    void set_image(int row, VirtualDevice& rImage, int col = -1);
+    virtual void set_image(const TreeIter& rIter, VirtualDevice& rImage, int col = -1) = 0;
     // col index -1 sets the expander image
-    virtual void set_image(int row, const css::uno::Reference<css::graphic::XGraphic>& rImage,
-                           int col = -1)
+    void set_image(int row, const css::uno::Reference<css::graphic::XGraphic>& rImage,
+                   int col = -1);
+    virtual void set_image(const TreeIter& rIter,
+                           const css::uno::Reference<css::graphic::XGraphic>& rImage, int col = -1)
         = 0;
-    virtual void set_text_emphasis(int row, bool bOn, int col) = 0;
-    virtual bool get_text_emphasis(int row, int col) const = 0;
-    virtual void set_text_align(int row, TxtAlign eAlign, int col) = 0;
+
+    void set_text_emphasis(int row, bool bOn, int col);
+    virtual void set_text_emphasis(const TreeIter& rIter, bool bOn, int col) = 0;
+    bool get_text_emphasis(int row, int col) const;
+    virtual bool get_text_emphasis(const TreeIter& rIter, int col) const = 0;
+
+    void set_text_align(int row, TxtAlign eAlign, int col);
+    virtual void set_text_align(const TreeIter& rIter, TxtAlign eAlign, int col) = 0;
+
     virtual void swap(int pos1, int pos2) = 0;
     virtual std::vector<int> get_selected_rows() const = 0;
-    virtual void set_font_color(int pos, const Color& rColor) = 0;
 
-    // scroll to make 'row' visible, this will also expand all parent rows of 'row' as necessary to
-    // make 'row' visible
-    void scroll_to_row(int row)
-    {
-        disable_notify_events();
-        do_scroll_to_row(row);
-        enable_notify_events();
-    }
+    void set_font_color(int pos, const Color& rColor);
+    virtual void set_font_color(const TreeIter& rIter, const Color& rColor) = 0;
 
-    virtual bool is_selected(int pos) const = 0;
+    // scroll to make given row visible, this will also expand all parent rows
+    // of the row as necessary to make the row visible
+    void scroll_to_row(int row);
+    void scroll_to_row(const TreeIter& rIter);
+
+    bool is_selected(int pos) const;
+    virtual bool is_selected(const TreeIter& rIter) const = 0;
 
     using weld::ItemView::set_cursor;
     void set_cursor(int pos)
@@ -290,7 +309,6 @@ public:
     void select_id(const OUString& rId) { select(find_id(rId)); }
     void remove_id(const OUString& rText) { remove(find_id(rText)); }
 
-    //via iter
     virtual void copy_iterator(const TreeIter& rSource, TreeIter& rDest) const = 0;
 
     // set iter to point to previous node at the current level
@@ -327,41 +345,6 @@ public:
 
     //visually indent this row as if it was at get_iter_depth() + nIndentLevel
     virtual void set_extra_row_indent(const TreeIter& rIter, int nIndentLevel) = 0;
-    // col index -1 sets the first text column
-    virtual void set_text(const TreeIter& rIter, const OUString& rStr, int col = -1) = 0;
-    // col index -1 sets all columns
-    virtual void set_sensitive(const TreeIter& rIter, bool bSensitive, int col = -1) = 0;
-    virtual bool get_sensitive(const TreeIter& rIter, int col) const = 0;
-    virtual void set_text_emphasis(const TreeIter& rIter, bool bOn, int col) = 0;
-    virtual bool get_text_emphasis(const TreeIter& rIter, int col) const = 0;
-    virtual void set_text_align(const TreeIter& rIter, TxtAlign eAlign, int col) = 0;
-    // col index -1 sets the expander toggle, enable_toggle_buttons must have been called to create that column
-    virtual void set_toggle(const TreeIter& rIter, TriState bOn, int col = -1) = 0;
-    // col index -1 gets the expander toggle, enable_toggle_buttons must have been called to create that column
-    virtual TriState get_toggle(const TreeIter& rIter, int col = -1) const = 0;
-    // col index -1 gets the first text column
-    virtual OUString get_text(const TreeIter& rIter, int col = -1) const = 0;
-
-    // col index -1 sets the expander image
-    virtual void set_image(const TreeIter& rIter, const OUString& rImage, int col = -1) = 0;
-    // col index -1 sets the expander image
-    virtual void set_image(const TreeIter& rIter, VirtualDevice& rImage, int col = -1) = 0;
-    // col index -1 sets the expander image
-    virtual void set_image(const TreeIter& rIter,
-                           const css::uno::Reference<css::graphic::XGraphic>& rImage, int col = -1)
-        = 0;
-    virtual void set_font_color(const TreeIter& rIter, const Color& rColor) = 0;
-
-    // scroll to make rIter visible, this will also expand all parent rows of rIter as necessary to
-    // make rIter visible
-    void scroll_to_row(const TreeIter& rIter)
-    {
-        disable_notify_events();
-        do_scroll_to_row(rIter);
-        enable_notify_events();
-    }
-
-    virtual bool is_selected(const TreeIter& rIter) const = 0;
 
     virtual void move_subtree(TreeIter& rNode, const TreeIter* pNewParent, int nIndexInNewParent)
         = 0;

@@ -4145,12 +4145,6 @@ void SalInstanceTreeView::bulk_insert_for_each(
     thaw();
 }
 
-void SalInstanceTreeView::set_font_color(int pos, const Color& rColor)
-{
-    SvTreeListEntry* pEntry = m_xTreeView->GetEntry(nullptr, pos);
-    set_font_color(pEntry, rColor);
-}
-
 void SalInstanceTreeView::set_font_color(const weld::TreeIter& rIter, const Color& rColor)
 {
     const SalInstanceTreeIter& rVclIter = static_cast<const SalInstanceTreeIter&>(rIter);
@@ -4207,21 +4201,6 @@ void SalInstanceTreeView::do_set_cursor(int pos)
     }
 }
 
-void SalInstanceTreeView::do_scroll_to_row(int pos)
-{
-    assert(m_xTreeView->IsUpdateMode()
-           && "don't select when frozen, select after thaw. Note selection doesn't survive a "
-              "freeze");
-    SvTreeListEntry* pEntry = m_xTreeView->GetEntry(nullptr, pos);
-    m_xTreeView->MakeVisible(pEntry);
-}
-
-bool SalInstanceTreeView::is_selected(int pos) const
-{
-    SvTreeListEntry* pEntry = m_xTreeView->GetEntry(nullptr, pos);
-    return m_xTreeView->IsSelected(pEntry);
-}
-
 std::vector<int> SalInstanceTreeView::get_selected_rows() const
 {
     std::vector<int> aRows;
@@ -4248,12 +4227,6 @@ OUString SalInstanceTreeView::get_text(SvTreeListEntry* pEntry, int col) const
     SvLBoxItem& rItem = pEntry->GetItem(col);
     assert(dynamic_cast<SvLBoxString*>(&rItem));
     return static_cast<SvLBoxString&>(rItem).GetText();
-}
-
-OUString SalInstanceTreeView::get_text(int pos, int col) const
-{
-    SvTreeListEntry* pEntry = m_xTreeView->GetEntry(nullptr, pos);
-    return get_text(pEntry, col);
 }
 
 void SalInstanceTreeView::set_text(SvTreeListEntry* pEntry, const OUString& rText, int col)
@@ -4285,12 +4258,6 @@ void SalInstanceTreeView::set_text(SvTreeListEntry* pEntry, const OUString& rTex
     }
 
     InvalidateModelEntry(pEntry);
-}
-
-void SalInstanceTreeView::set_text(int pos, const OUString& rText, int col)
-{
-    SvTreeListEntry* pEntry = m_xTreeView->GetEntry(nullptr, pos);
-    set_text(pEntry, rText, col);
 }
 
 void SalInstanceTreeView::set_sensitive(SvTreeListEntry* pEntry, bool bSensitive, int col)
@@ -4341,18 +4308,6 @@ bool SalInstanceTreeView::get_sensitive(SvTreeListEntry* pEntry, int col) const
     return do_get_sensitive(pEntry, col);
 }
 
-void SalInstanceTreeView::set_sensitive(int pos, bool bSensitive, int col)
-{
-    SvTreeListEntry* pEntry = m_xTreeView->GetEntry(nullptr, pos);
-    set_sensitive(pEntry, bSensitive, col);
-}
-
-bool SalInstanceTreeView::get_sensitive(int pos, int col) const
-{
-    SvTreeListEntry* pEntry = m_xTreeView->GetEntry(nullptr, pos);
-    return get_sensitive(pEntry, col);
-}
-
 void SalInstanceTreeView::set_sensitive(const weld::TreeIter& rIter, bool bSensitive, int col)
 {
     const SalInstanceTreeIter& rVclIter = static_cast<const SalInstanceTreeIter&>(rIter);
@@ -4363,12 +4318,6 @@ bool SalInstanceTreeView::get_sensitive(const weld::TreeIter& rIter, int col) co
 {
     const SalInstanceTreeIter& rVclIter = static_cast<const SalInstanceTreeIter&>(rIter);
     return get_sensitive(rVclIter.iter, col);
-}
-
-TriState SalInstanceTreeView::get_toggle(int pos, int col) const
-{
-    SvTreeListEntry* pEntry = m_xTreeView->GetEntry(nullptr, pos);
-    return get_toggle(pEntry, col);
 }
 
 TriState SalInstanceTreeView::get_toggle(const weld::TreeIter& rIter, int col) const
@@ -4386,12 +4335,6 @@ void SalInstanceTreeView::enable_toggle_buttons(weld::ColumnToggleType eType)
     m_xTreeView->EnableCheckButton(rData);
     // EnableCheckButton clobbered this, restore it
     rData.SetLink(LINK(this, SalInstanceTreeView, ToggleHdl));
-}
-
-void SalInstanceTreeView::set_toggle(int pos, TriState eState, int col)
-{
-    SvTreeListEntry* pEntry = m_xTreeView->GetEntry(nullptr, pos);
-    set_toggle(pEntry, eState, col);
 }
 
 void SalInstanceTreeView::set_toggle(const weld::TreeIter& rIter, TriState eState, int col)
@@ -4442,22 +4385,10 @@ void SalInstanceTreeView::set_text_emphasis(const weld::TreeIter& rIter, bool bO
     set_text_emphasis(rVclIter.iter, bOn, col);
 }
 
-void SalInstanceTreeView::set_text_emphasis(int pos, bool bOn, int col)
-{
-    SvTreeListEntry* pEntry = m_xTreeView->GetEntry(nullptr, pos);
-    set_text_emphasis(pEntry, bOn, col);
-}
-
 bool SalInstanceTreeView::get_text_emphasis(const weld::TreeIter& rIter, int col) const
 {
     const SalInstanceTreeIter& rVclIter = static_cast<const SalInstanceTreeIter&>(rIter);
     return get_text_emphasis(rVclIter.iter, col);
-}
-
-bool SalInstanceTreeView::get_text_emphasis(int pos, int col) const
-{
-    SvTreeListEntry* pEntry = m_xTreeView->GetEntry(nullptr, pos);
-    return get_text_emphasis(pEntry, col);
 }
 
 void SalInstanceTreeView::set_text_align(SvTreeListEntry* pEntry, TxtAlign eAlign, int col)
@@ -4476,12 +4407,6 @@ void SalInstanceTreeView::set_text_align(const weld::TreeIter& rIter, TxtAlign e
 {
     const SalInstanceTreeIter& rVclIter = static_cast<const SalInstanceTreeIter&>(rIter);
     set_text_align(rVclIter.iter, eAlign, col);
-}
-
-void SalInstanceTreeView::set_text_align(int pos, TxtAlign eAlign, int col)
-{
-    SvTreeListEntry* pEntry = m_xTreeView->GetEntry(nullptr, pos);
-    set_text_align(pEntry, eAlign, col);
 }
 
 void SalInstanceTreeView::connect_editing(const Link<const weld::TreeIter&, bool>& rStartLink,
@@ -4531,23 +4456,6 @@ void SalInstanceTreeView::set_image(SvTreeListEntry* pEntry, const Image& rImage
 
     m_xTreeView->CalcEntryHeight(pEntry);
     InvalidateModelEntry(pEntry);
-}
-
-void SalInstanceTreeView::set_image(int pos, const OUString& rImage, int col)
-{
-    set_image(m_xTreeView->GetEntry(nullptr, pos), createImage(rImage), col);
-}
-
-void SalInstanceTreeView::set_image(int pos,
-                                    const css::uno::Reference<css::graphic::XGraphic>& rImage,
-                                    int col)
-{
-    set_image(m_xTreeView->GetEntry(nullptr, pos), Image(rImage), col);
-}
-
-void SalInstanceTreeView::set_image(int pos, VirtualDevice& rImage, int col)
-{
-    set_image(m_xTreeView->GetEntry(nullptr, pos), createImage(rImage), col);
 }
 
 void SalInstanceTreeView::set_image(const weld::TreeIter& rIter, const OUString& rImage, int col)
