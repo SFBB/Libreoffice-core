@@ -283,6 +283,9 @@ MetaRoundRectAction::MetaRoundRectAction( const tools::Rectangle& rRect,
 
 void MetaRoundRectAction::Execute( OutputDevice* pOut )
 {
+    if (!AllowRect(pOut->LogicToPixel(maRect)))
+        return;
+
     pOut->DrawRect( maRect, mnHorzRound, mnVertRound );
 }
 
@@ -420,6 +423,9 @@ MetaChordAction::MetaChordAction( const tools::Rectangle& rRect,
 
 void MetaChordAction::Execute( OutputDevice* pOut )
 {
+    if (!AllowRect(pOut->LogicToPixel(maRect)))
+        return;
+
     pOut->DrawChord( maRect, maStartPt, maEndPt );
 }
 
