@@ -1,40 +1,31 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
-/*
- * This file is part of the LibreOffice project.
- *
- * This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/.
- */
-
 #include <svtools/toolboxcontroller.hxx>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 #include <vcl/vclptr.hxx>
-#include <SlideTransitionPane.hxx>
+#include "AllMasterPagesSelector.hxx"
 #include <vcl/InterimItemWindow.hxx>
 
 // Used to put transition pane to the notebookbar
 
-class SlideTransitionsPaneWrapper final : public InterimItemWindow
+class SlideMasterPagesAllWrapper final : public InterimItemWindow
 {
 private:
-    std::unique_ptr<sd::SlideTransitionPane> m_xTransitionPane;
+    std::unique_ptr<sd::sidebar::AllMasterPagesSelector> m_xPane;
 
 public:
-    SlideTransitionsPaneWrapper(vcl::Window* pParent, sd::ViewShellBase& rBase);
-    virtual ~SlideTransitionsPaneWrapper() override;
+    SlideMasterPagesAllWrapper(vcl::Window* pParent, sd::ViewShellBase& rBase);
+    virtual ~SlideMasterPagesAllWrapper() override;
     virtual void dispose() override;
-    void SetOptimalSize(); // Add this method
+    void SetOptimalSize();
 };
 
-class SlideTransitionsToolBoxControl final
+class SlideMasterPagesAllToolBoxControl final
     : public cppu::ImplInheritanceHelper<svt::ToolboxController, css::lang::XServiceInfo>
 {
-    VclPtr<SlideTransitionsPaneWrapper> m_xVclBox;
+    VclPtr<SlideMasterPagesAllWrapper> m_xVclBox;
 
 public:
-    SlideTransitionsToolBoxControl();
-    virtual ~SlideTransitionsToolBoxControl() override;
+    SlideMasterPagesAllToolBoxControl();
+    virtual ~SlideMasterPagesAllToolBoxControl() override;
 
     // XStatusListener
     virtual void SAL_CALL statusChanged(const css::frame::FeatureStateEvent& rEvent) override;
@@ -49,13 +40,8 @@ public:
     // XComponent
     virtual void SAL_CALL dispose() override;
 
-    // XUpdatable
-    virtual void SAL_CALL update() override;
-
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override;
     virtual sal_Bool SAL_CALL supportsService(const OUString& rServiceName) override;
     virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 };
-
-/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */
