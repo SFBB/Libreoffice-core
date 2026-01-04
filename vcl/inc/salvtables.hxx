@@ -9,11 +9,14 @@
 #pragma once
 
 #include <vcl/builder.hxx>
+#include <vcl/weld/Assistant.hxx>
 #include <vcl/weld/Builder.hxx>
+#include <vcl/weld/ComboBox.hxx>
 #include <vcl/weld/DialogController.hxx>
 #include <vcl/weld/EntryTreeView.hxx>
 #include <vcl/weld/MetricSpinButton.hxx>
 #include <vcl/weld/ScrolledWindow.hxx>
+#include <vcl/weld/TextView.hxx>
 #include <vcl/weld/TreeView.hxx>
 #include <vcl/weld/weld.hxx>
 #include <vcl/svapp.hxx>
@@ -1529,7 +1532,7 @@ public:
 
     virtual std::unique_ptr<weld::TreeIter> get_selected() const override;
 
-    virtual bool get_cursor(weld::TreeIter* pIter) const override;
+    virtual std::unique_ptr<weld::TreeIter> get_cursor() const override;
 
     virtual int n_children() const override;
 
@@ -1808,8 +1811,8 @@ public:
 
     SvTabListBox& getTreeView();
 
-    virtual bool get_dest_row_at_pos(const Point& rPos, weld::TreeIter* pResult, bool bDnDMode,
-                                     bool bAutoScroll = true) override;
+    virtual std::unique_ptr<weld::TreeIter> get_dest_row_at_pos(const Point& rPos, bool bDnDMode,
+                                                                bool bAutoScroll = true) override;
 
     virtual void unset_drag_dest_row() override;
 

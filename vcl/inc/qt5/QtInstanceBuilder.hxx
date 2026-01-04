@@ -16,9 +16,12 @@
 #include <QtWidgets/QWidget>
 
 #include <rtl/ustring.hxx>
+#include <vcl/weld/Assistant.hxx>
 #include <vcl/weld/Builder.hxx>
+#include <vcl/weld/ComboBox.hxx>
 #include <vcl/weld/EntryTreeView.hxx>
 #include <vcl/weld/MetricSpinButton.hxx>
+#include <vcl/weld/TextView.hxx>
 #include <vcl/weld/TreeView.hxx>
 #include <vcl/weld/weld.hxx>
 

@@ -3602,13 +3602,13 @@ std::unique_ptr<weld::TreeIter> SalInstanceItemView::get_selected() const
     return {};
 }
 
-bool SalInstanceItemView::get_cursor(weld::TreeIter* pIter) const
+std::unique_ptr<weld::TreeIter> SalInstanceItemView::get_cursor() const
 {
     SvTreeListEntry* pEntry = m_pTreeListBox->GetCurEntry();
-    auto pVclIter = static_cast<SalInstanceTreeIter*>(pIter);
-    if (pVclIter)
-        pVclIter->iter = pEntry;
-    return pEntry != nullptr;
+    if (pEntry)
+        return std::make_unique<SalInstanceTreeIter>(pEntry);
+
+    return {};
 }
 
 void SalInstanceItemView::do_select_all()
@@ -4835,21 +4835,18 @@ void SalInstanceTreeView::set_sort_column(int nColumn)
 
 SvTabListBox& SalInstanceTreeView::getTreeView() { return *m_xTreeView; }
 
-bool SalInstanceTreeView::get_dest_row_at_pos(const Point& rPos, weld::TreeIter* pResult,
-                                              bool bDnDMode, bool bAutoScroll)
+std::unique_ptr<weld::TreeIter>
+SalInstanceTreeView::get_dest_row_at_pos(const Point& rPos, bool bDnDMode, bool bAutoScroll)
 {
     LclTabListBox* pTreeView
         = !bDnDMode ? dynamic_cast<LclTabListBox*>(m_xTreeView.get()) : nullptr;
     SvTreeListEntry* pTarget = pTreeView ? pTreeView->GetTargetAtPoint(rPos, false, bAutoScroll)
                                          : m_xTreeView->GetDropTarget(rPos);
 
-    if (pTarget && pResult)
-    {
-        SalInstanceTreeIter& rSalIter = static_cast<SalInstanceTreeIter&>(*pResult);
-        rSalIter.iter = pTarget;
-    }
+    if (pTarget)
+        return std::make_unique<SalInstanceTreeIter>(pTarget);
 
-    return pTarget != nullptr;
+    return {};
 }
 
 void SalInstanceTreeView::unset_drag_dest_row() { m_xTreeView->UnsetDropTarget(); }

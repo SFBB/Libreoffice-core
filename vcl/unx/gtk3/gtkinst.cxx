@@ -38,6 +38,7 @@
 #include <vcl/toolkit/floatwin.hxx>
 #include <vcl/weld/MetricSpinButton.hxx>
 #include <vcl/weld/ScrolledWindow.hxx>
+#include <vcl/weld/TextView.hxx>
 #include <unx/genpspgraphics.h>
 #include <rtl/strbuf.hxx>
 #include <sal/log.hxx>
@@ -98,6 +99,7 @@
 #include <vcl/stdtext.hxx>
 #include <vcl/syswin.hxx>
 #include <vcl/virdev.hxx>
+#include <vcl/weld/Assistant.hxx>
 #include <vcl/weld/EntryTreeView.hxx>
 #include <vcl/weld/IconView.hxx>
 #include <vcl/weld/weld.hxx>
@@ -14013,11 +14015,13 @@ private:
     {
         if (signal_row_activated())
             return;
-        GtkInstanceTreeIter aIter(nullptr);
-        if (!get_cursor(&aIter))
+        std::unique_ptr<weld::TreeIter> pIter = get_cursor();
+        if (!pIter)
             return;
-        if (gtk_tree_model_iter_has_child(m_pTreeModel, &aIter.iter))
-            get_row_expanded(aIter) ? collapse_row(aIter) : expand_row(aIter);
+
+        GtkInstanceTreeIter* pGtkIter = static_cast<GtkInstanceTreeIter*>(pIter.get());
+        if (gtk_tree_model_iter_has_child(m_pTreeModel, &pGtkIter->iter))
+            get_row_expanded(*pIter) ? collapse_row(*pIter) : expand_row(*pIter);
     }
 
     static void signalRowActivated(GtkTreeView*, GtkTreePath*, GtkTreeViewColumn*, gpointer widget)
@@ -14413,33 +14417,34 @@ private:
         if (pEvent->keyval != GDK_KEY_Left && pEvent->keyval != GDK_KEY_Right)
             return false;
 
-        GtkInstanceTreeIter aIter(nullptr);
-        if (!get_cursor(&aIter))
+        std::unique_ptr<weld::TreeIter> pIter = get_cursor();
+        if (!pIter)
             return false;
 
-        bool bHasChild = gtk_tree_model_iter_has_child(m_pTreeModel, &aIter.iter);
+        GtkInstanceTreeIter* pGtkIter = static_cast<GtkInstanceTreeIter*>(pIter.get());
+        bool bHasChild = gtk_tree_model_iter_has_child(m_pTreeModel, &pGtkIter->iter);
 
         if (pEvent->keyval == GDK_KEY_Right)
         {
-            if (bHasChild && !get_row_expanded(aIter))
+            if (bHasChild && !get_row_expanded(*pIter))
             {
-                expand_row(aIter);
+                expand_row(*pIter);
                 return true;
             }
             return false;
         }
 
-        if (bHasChild && get_row_expanded(aIter))
+        if (bHasChild && get_row_expanded(*pIter))
         {
-            collapse_row(aIter);
+            collapse_row(*pIter);
             return true;
         }
 
-        if (iter_parent(aIter))
+        if (iter_parent(*pIter))
         {
             unselect_all();
-            set_cursor(aIter);
-            select(aIter);
+            set_cursor(*pIter);
+            select(*pIter);
             return true;
         }
 
@@ -15551,19 +15556,17 @@ public:
         return {};
     }
 
-    virtual bool get_cursor(weld::TreeIter* pIter) const override
+    virtual std::unique_ptr<weld::TreeIter> get_cursor() const override
     {
-        GtkInstanceTreeIter* pGtkIter = static_cast<GtkInstanceTreeIter*>(pIter);
+        GtkTreeIter iter;
         GtkTreePath* path;
         gtk_tree_view_get_cursor(m_pTreeView, &path, nullptr);
-        if (pGtkIter && path)
-        {
-            gtk_tree_model_get_iter(m_pTreeModel, &pGtkIter->iter, path);
-        }
+        if (path)
+            gtk_tree_model_get_iter(m_pTreeModel, &iter, path);
         if (!path)
-            return false;
+            return {};
         gtk_tree_path_free(path);
-        return true;
+        return std::make_unique<GtkInstanceTreeIter>(iter);
     }
 
     virtual void do_set_cursor(const weld::TreeIter& rIter) override
@@ -16025,12 +16028,13 @@ public:
         g_signal_handler_unblock(gtk_tree_view_get_selection(m_pTreeView), m_nChangedSignalId);
     }
 
-    virtual bool get_dest_row_at_pos(const Point &rPos, weld::TreeIter* pResult, bool bDnDMode, bool bAutoScroll) override
+    virtual std::unique_ptr<weld::TreeIter> get_dest_row_at_pos(const Point& rPos, bool bDnDMode,
+                                                                bool bAutoScroll) override
     {
         if (rPos.X() < 0 || rPos.Y() < 0)
         {
             // short-circuit to avoid "gtk_tree_view_get_dest_row_at_pos: assertion 'drag_x >= 0'" g_assert
-            return false;
+            return {};
         }
 
         const bool bAsTree = gtk_tree_view_get_enable_tree_lines(m_pTreeView);
@@ -16080,10 +16084,12 @@ public:
             }
         }
 
-        if (ret && pResult)
+        std::unique_ptr<weld::TreeIter> pResult;
+        if (ret)
         {
-            GtkInstanceTreeIter& rGtkIter = static_cast<GtkInstanceTreeIter&>(*pResult);
-            gtk_tree_model_get_iter(m_pTreeModel, &rGtkIter.iter, path);
+            GtkTreeIter iter;
+            gtk_tree_model_get_iter(m_pTreeModel, &iter, path);
+            pResult = std::make_unique<GtkInstanceTreeIter>(iter);
         }
 
         if (m_bInDrag && bDnDMode)
@@ -16123,7 +16129,7 @@ public:
             }
         }
 
-        return ret;
+        return pResult;
     }
 
     virtual void unset_drag_dest_row() override
@@ -16917,17 +16923,20 @@ public:
         return {};
     }
 
-    virtual bool get_cursor(weld::TreeIter* pIter) const override
+    virtual std::unique_ptr<weld::TreeIter> get_cursor() const override
     {
-        GtkInstanceTreeIter* pGtkIter = static_cast<GtkInstanceTreeIter*>(pIter);
+        GtkTreeIter iter;
         GtkTreePath* path;
         gtk_icon_view_get_cursor(m_pIconView, &path, nullptr);
-        if (pGtkIter && path)
+        if (path)
         {
             GtkTreeModel *pModel = GTK_TREE_MODEL(m_pTreeStore);
-            gtk_tree_model_get_iter(pModel, &pGtkIter->iter, path);
+            gtk_tree_model_get_iter(pModel, &iter, path);
         }
-        return path != nullptr;
+        if (path)
+            return std::make_unique<GtkInstanceTreeIter>(iter);
+
+        return {};
     }
 
     virtual void do_set_cursor(const weld::TreeIter& rIter) override
