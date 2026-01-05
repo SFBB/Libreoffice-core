@@ -28,7 +28,9 @@
 #include <svx/svdview.hxx>
 #include <vcl/hexcolorcontrol.hxx>
 #include <vcl/weld/ComboBox.hxx>
+#include <vcl/weld/Entry.hxx>
 #include <vcl/weld/MetricSpinButton.hxx>
+#include <vcl/weld/SpinButton.hxx>
 
 class ColorListBox;
 class SdrModel;

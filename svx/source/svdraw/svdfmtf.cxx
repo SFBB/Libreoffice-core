@@ -367,7 +367,7 @@ void ImpSdrGDIMetaFileImport::SetAttributes(SdrObject* pObj, bool bForceTextAttr
         }
         else
         {
-            mpLineAttr->Put(XLineDashItem(OUString(), XDash(css::drawing::DashStyle_RECT)));
+            mpLineAttr->Put(XLineDashItem(OUString(), XDash()));
         }
     }
     else
@@ -695,7 +695,8 @@ void ImpSdrGDIMetaFileImport::DoAction(MetaLineAction const & rAct)
     SetAttributes(pPath.get());
     mnLineWidth = 0;
     maLineJoin = basegfx::B2DLineJoin::NONE;
-    maDash = XDash();
+    // tdf#169813 - reset default dash options
+    maDash = XDash(css::drawing::DashStyle_RECT, 0, 0, 0, 0, 0);
     InsertObj(pPath.get(), false);
 }
 
@@ -943,7 +944,8 @@ void ImpSdrGDIMetaFileImport::DoAction( MetaPolyLineAction const & rAct )
     SetAttributes(pPath.get());
     mnLineWidth = 0;
     maLineJoin = basegfx::B2DLineJoin::NONE;
-    maDash = XDash();
+    // tdf#169813 - reset default dash options
+    maDash = XDash(css::drawing::DashStyle_RECT, 0, 0, 0, 0, 0);
     InsertObj(pPath.get(), false);
 }
 

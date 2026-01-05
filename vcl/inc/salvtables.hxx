@@ -13,9 +13,12 @@
 #include <vcl/weld/Builder.hxx>
 #include <vcl/weld/ComboBox.hxx>
 #include <vcl/weld/DialogController.hxx>
+#include <vcl/weld/Entry.hxx>
 #include <vcl/weld/EntryTreeView.hxx>
+#include <vcl/weld/FormattedSpinButton.hxx>
 #include <vcl/weld/MetricSpinButton.hxx>
 #include <vcl/weld/ScrolledWindow.hxx>
+#include <vcl/weld/SpinButton.hxx>
 #include <vcl/weld/TextView.hxx>
 #include <vcl/weld/TreeView.hxx>
 #include <vcl/weld/weld.hxx>
@@ -632,7 +635,7 @@ public:
 
     bool get_selection_bounds(int& rStartPos, int& rEndPos) override;
 
-    virtual void replace_selection(const OUString& rText) override;
+    virtual void do_replace_selection(const OUString& rText) override;
 
     virtual void do_set_position(int nCursorPos) override;
 
@@ -981,9 +984,9 @@ public:
 
     virtual void set_max_mru_count(int) override;
 
-    virtual OUString get_mru_entries() const override;
+    virtual std::vector<OUString> get_mru_entries() const override;
 
-    virtual void set_mru_entries(const OUString&) override;
+    virtual void set_mru_entries(const std::vector<OUString>& rEntries) override;
 
     virtual void HandleEventListener(VclWindowEvent& rEvent) override;
 
@@ -1053,9 +1056,9 @@ public:
 
     virtual void set_max_mru_count(int nCount) override;
 
-    virtual OUString get_mru_entries() const override;
+    virtual std::vector<OUString> get_mru_entries() const override;
 
-    virtual void set_mru_entries(const OUString& rEntries) override;
+    virtual void set_mru_entries(const std::vector<OUString>& rEntries) override;
 
     virtual void HandleEventListener(VclWindowEvent& rEvent) override;
 

@@ -587,11 +587,14 @@ $(eval $(call gb_Library_add_exception_objects,vcl,\
     vcl/source/weld/Builder \
     vcl/source/weld/ComboBox \
     vcl/source/weld/DialogController \
+    vcl/source/weld/Entry \
     vcl/source/weld/EntryTreeView \
     vcl/source/weld/IconView \
     vcl/source/weld/ItemView \
     vcl/source/weld/MetricSpinButton \
+    vcl/source/weld/SpinButton \
     vcl/source/weld/TextView \
+    vcl/source/weld/TextWidget \
     vcl/source/weld/TreeView \
     vcl/source/weld/weldutils \
     vcl/backendtest/outputdevice/bitmap \
