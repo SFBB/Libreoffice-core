@@ -884,6 +884,17 @@ CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testTdf74670)
     CPPUNIT_ASSERT_EQUAL(1, nImageFiles);
 }
 
+CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testTdf169911_exporting_animations_without_target)
+{
+    createSdImpressDoc("odp/tdf169911.odp");
+
+    // Without the fix in place, this test would have failed with
+    // - Expected: 0
+    // - Actual  : 28
+    // - validation error in OOXML export: Errors: 28
+    saveAndReload(TestFilter::PPTX);
+}
+
 CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testTdf109169_OctagonBevel)
 {
     // The document has a shape 'Octagon Bevel'. It consists of an octagon with 8 points and eight
@@ -1326,6 +1337,13 @@ CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testEmptyChildTnLstElement)
     // - Actual  : 4
     // - validation error in OOXML export: Errors: 4
     saveAndReload(TestFilter::PPTX);
+
+    xmlDocUniquePtr pXmlDoc = parseExport(u"ppt/slides/slide1.xml"_ustr);
+
+    // tdf#170202: Without the fix in place, this test would have failed with
+    // - Expected: 0
+    // - Actual  : 1
+    CPPUNIT_ASSERT_EQUAL(0, countXPathNodes(pXmlDoc, "//p:sld/p:timing"));
 }
 
 CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testPlaceHolderFitHeightToText)
