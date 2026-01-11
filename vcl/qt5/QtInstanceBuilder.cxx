@@ -33,6 +33,7 @@
 #include <QtInstanceMenuButton.hxx>
 #include <QtInstanceMessageDialog.hxx>
 #include <QtInstanceNotebook.hxx>
+#include <QtInstancePaned.hxx>
 #include <QtInstancePopover.hxx>
 #include <QtInstanceProgressBar.hxx>
 #include <QtInstanceRadioButton.hxx>
@@ -182,6 +183,7 @@ bool QtInstanceBuilder::IsUIFileSupported(const OUString& rUIFile, const weld::W
         u"modules/swriter/ui/footnotepage.ui"_ustr,
         u"modules/swriter/ui/inforeadonlydialog.ui"_ustr,
         u"modules/swriter/ui/insertbreak.ui"_ustr,
+        u"modules/swriter/ui/insertcaption.ui"_ustr,
         u"modules/swriter/ui/inserttable.ui"_ustr,
         u"modules/swriter/ui/linenumbering.ui"_ustr,
         u"modules/swriter/ui/numberingnamedialog.ui"_ustr,
@@ -402,10 +404,16 @@ std::unique_ptr<weld::Grid> QtInstanceBuilder::weld_grid(const OUString& rId)
     return xRet;
 }
 
-std::unique_ptr<weld::Paned> QtInstanceBuilder::weld_paned(const OUString&)
+std::unique_ptr<weld::Paned> QtInstanceBuilder::weld_paned(const OUString& rId)
 {
-    assert(false && "Not implemented yet");
-    return nullptr;
+    SolarMutexGuard g;
+
+    std::unique_ptr<weld::Paned> xRet;
+    GetQtInstance().RunInMainThread([&] {
+        if (QSplitter* pSplitter = m_xBuilder->get<QSplitter>(rId))
+            xRet = std::make_unique<QtInstancePaned>(pSplitter);
+    });
+    return xRet;
 }
 
 std::unique_ptr<weld::Frame> QtInstanceBuilder::weld_frame(const OUString& rId)

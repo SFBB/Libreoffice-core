@@ -38,9 +38,11 @@
 #include <vcl/toolkit/floatwin.hxx>
 #include <vcl/weld/FormattedSpinButton.hxx>
 #include <vcl/weld/MetricSpinButton.hxx>
+#include <vcl/weld/Paned.hxx>
 #include <vcl/weld/ScrolledWindow.hxx>
 #include <vcl/weld/SpinButton.hxx>
 #include <vcl/weld/TextView.hxx>
+#include <vcl/weld/Toolbar.hxx>
 #include <unx/genpspgraphics.h>
 #include <rtl/strbuf.hxx>
 #include <sal/log.hxx>
@@ -4294,8 +4296,6 @@ public:
         }
     }
 
-    virtual void help_hierarchy_foreach(const std::function<bool(const OUString&)>& func) override;
-
     virtual OUString strip_mnemonic(const OUString &rLabel) const override
     {
         return rLabel.replaceFirst("_", "");
@@ -6330,21 +6330,16 @@ namespace
 #endif
     }
 
+#if !GTK_CHECK_VERSION(4, 0, 0)
     AbsoluteScreenPixelRectangle get_monitor_workarea(GtkWidget* pWindow)
     {
         GdkRectangle aRect;
-#if !GTK_CHECK_VERSION(4, 0, 0)
-        GdkScreen* pScreen = gtk_widget_get_screen(pWindow);
-        gint nMonitor = gdk_screen_get_monitor_at_window(pScreen, widget_get_surface(pWindow));
-        gdk_screen_get_monitor_workarea(pScreen, nMonitor, &aRect);
-#else
         GdkDisplay* pDisplay = gtk_widget_get_display(pWindow);
-        GdkSurface* gdkWindow = widget_get_surface(pWindow);
-        GdkMonitor* pMonitor = gdk_display_get_monitor_at_surface(pDisplay, gdkWindow);
-        gdk_monitor_get_geometry(pMonitor, &aRect);
-#endif
+        GdkMonitor* pMonitor = gdk_display_get_monitor_at_window(pDisplay, widget_get_surface(pWindow));
+        gdk_monitor_get_workarea(pMonitor, &aRect);
         return AbsoluteScreenPixelRectangle(aRect.x, aRect.y, aRect.x + aRect.width, aRect.y + aRect.height);
     }
+#endif
 
 
 class GtkInstanceWindow : public GtkInstanceContainer, public virtual weld::Window
@@ -6497,11 +6492,6 @@ public:
         if (is_visible())
             m_aPosWhileInvis = get_position();
         GtkInstanceContainer::hide();
-    }
-
-    virtual AbsoluteScreenPixelRectangle get_monitor_workarea() const override
-    {
-        return ::get_monitor_workarea(GTK_WIDGET(m_pWindow));
     }
 
     virtual bool get_resizable() const override
@@ -10510,12 +10500,6 @@ GtkPositionType show_menu_older_gtk(GtkWidget* pMenuButton, GtkWindow* pMenu, co
 bool show_menu_newer_gtk(GtkWidget* pComboBox, GtkWindow* pMenu, const GdkRectangle &rAnchor,
                          weld::Placement ePlace, bool bTryShrink)
 {
-    static auto window_move_to_rect = reinterpret_cast<void (*) (GdkWindow*, const GdkRectangle*, GdkGravity,
-                                                                 GdkGravity, GdkAnchorHints, gint, gint)>(
-                                                                    dlsym(nullptr, "gdk_window_move_to_rect"));
-    if (!window_move_to_rect)
-        return false;
-
     // under wayland gdk_window_move_to_rect works great for me, but in my current
     // gtk 3.24 under X it leaves part of long menus outside the work area
     GdkDisplay *pDisplay = gtk_widget_get_display(pComboBox);
@@ -10553,8 +10537,7 @@ bool show_menu_newer_gtk(GtkWidget* pComboBox, GtkWindow* pMenu, const GdkRectan
     GdkRectangle rect {x, y, rAnchor.width, rAnchor.height};
     GdkSurface* toplevel = widget_get_surface(GTK_WIDGET(pMenu));
 
-    window_move_to_rect(toplevel, &rect, rect_anchor, menu_anchor, anchor_hints,
-                        0, 0);
+    gdk_window_move_to_rect(toplevel, &rect, rect_anchor, menu_anchor, anchor_hints, 0, 0);
 
     return true;
 }
@@ -24411,18 +24394,6 @@ void GtkInstanceWindow::help()
     }
 #endif
     pHelp->Start(sHelpId, pSource);
-}
-
-//iterate upwards through the hierarchy from this widgets through its parents
-//calling func with their helpid until func returns true or we run out of parents
-void GtkInstanceWidget::help_hierarchy_foreach(const std::function<bool(const OUString&)>& func)
-{
-    GtkWidget* pParent = m_pWidget;
-    while ((pParent = gtk_widget_get_parent(pParent)))
-    {
-        if (func(::get_help_id(pParent)))
-            return;
-    }
 }
 
 std::unique_ptr<weld::Builder> GtkInstance::CreateBuilder(weld::Widget* pParent, const OUString& rUIRoot, const OUString& rUIFile)

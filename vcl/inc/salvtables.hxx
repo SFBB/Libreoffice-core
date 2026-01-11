@@ -20,6 +20,7 @@
 #include <vcl/weld/ScrolledWindow.hxx>
 #include <vcl/weld/SpinButton.hxx>
 #include <vcl/weld/TextView.hxx>
+#include <vcl/weld/Toolbar.hxx>
 #include <vcl/weld/TreeView.hxx>
 #include <vcl/weld/weld.hxx>
 #include <vcl/svapp.hxx>
@@ -372,8 +373,6 @@ public:
 
     virtual void queue_resize() override;
 
-    virtual void help_hierarchy_foreach(const std::function<bool(const OUString&)>& func) override;
-
     virtual OUString strip_mnemonic(const OUString& rLabel) const override;
     virtual OUString escape_ui_str(const OUString& rLabel) const override;
 
@@ -473,8 +472,6 @@ public:
     virtual Size get_size() const override;
 
     virtual Point get_position() const override;
-
-    virtual AbsoluteScreenPixelRectangle get_monitor_workarea() const override;
 
     virtual bool get_resizable() const override;
 

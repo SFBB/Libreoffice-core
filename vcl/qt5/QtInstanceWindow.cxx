@@ -54,7 +54,12 @@ OUString QtInstanceWindow::get_title() const
     return toOUString(getQWidget()->windowTitle());
 }
 
-void QtInstanceWindow::window_move(int, int) { assert(false && "Not implemented yet"); }
+void QtInstanceWindow::window_move(int x, int y)
+{
+    SolarMutexGuard g;
+
+    GetQtInstance().RunInMainThread([&] { getQWidget()->move(x, y); });
+}
 
 bool QtInstanceWindow::get_resizable() const
 {
@@ -85,12 +90,6 @@ Point QtInstanceWindow::get_position() const
     GetQtInstance().RunInMainThread(
         [&] { aPosition = toPoint(getQWidget()->geometry().topLeft()); });
     return aPosition;
-}
-
-AbsoluteScreenPixelRectangle QtInstanceWindow::get_monitor_workarea() const
-{
-    assert(false && "Not implemented yet");
-    return AbsoluteScreenPixelRectangle();
 }
 
 bool QtInstanceWindow::has_toplevel_focus() const

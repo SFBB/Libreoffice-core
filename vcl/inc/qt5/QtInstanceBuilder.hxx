@@ -23,8 +23,10 @@
 #include <vcl/weld/EntryTreeView.hxx>
 #include <vcl/weld/FormattedSpinButton.hxx>
 #include <vcl/weld/MetricSpinButton.hxx>
+#include <vcl/weld/Paned.hxx>
 #include <vcl/weld/SpinButton.hxx>
 #include <vcl/weld/TextView.hxx>
+#include <vcl/weld/Toolbar.hxx>
 #include <vcl/weld/TreeView.hxx>
 #include <vcl/weld/weld.hxx>
 
@@ -47,7 +49,7 @@ public:
     virtual std::unique_ptr<weld::Container> weld_container(const OUString& rId) override;
     virtual std::unique_ptr<weld::Box> weld_box(const OUString& rId) override;
     virtual std::unique_ptr<weld::Grid> weld_grid(const OUString& rId) override;
-    virtual std::unique_ptr<weld::Paned> weld_paned(const OUString&) override;
+    virtual std::unique_ptr<weld::Paned> weld_paned(const OUString& rId) override;
     virtual std::unique_ptr<weld::Frame> weld_frame(const OUString& rId) override;
     virtual std::unique_ptr<weld::ScrolledWindow>
     weld_scrolled_window(const OUString& rId, bool bUserManagedScrolling = false) override;

@@ -71,6 +71,7 @@
 #include <vcl/toolkit/treelistentry.hxx>
 #include <vcl/toolkit/throbber.hxx>
 #include <vcl/toolkit/unowrap.hxx>
+#include <vcl/weld/Paned.hxx>
 #include <vcl/weld/weld.hxx>
 #include <vcl/weld/weldutils.hxx>
 #include <vcl/toolkit/vclmedit.hxx>
@@ -1650,11 +1651,6 @@ void SalInstanceWindow::window_move(int x, int y) { m_xWindow->SetPosPixel(Point
 Size SalInstanceWindow::get_size() const { return m_xWindow->GetSizePixel(); }
 
 Point SalInstanceWindow::get_position() const { return m_xWindow->GetPosPixel(); }
-
-AbsoluteScreenPixelRectangle SalInstanceWindow::get_monitor_workarea() const
-{
-    return m_xWindow->GetDesktopRectPixel();
-}
 
 bool SalInstanceWindow::get_resizable() const { return m_xWindow->GetStyle() & WB_SIZEABLE; }
 
@@ -7051,18 +7047,6 @@ void SalInstanceWindow::help()
         }
     }
     pHelp->Start(sHelpId, pSource);
-}
-
-//iterate upwards through the hierarchy from this widgets through its parents
-//calling func with their helpid until func returns true or we run out of parents
-void SalInstanceWidget::help_hierarchy_foreach(const std::function<bool(const OUString&)>& func)
-{
-    vcl::Window* pParent = m_xWidget;
-    while ((pParent = pParent->GetParent()))
-    {
-        if (func(pParent->GetHelpId()))
-            return;
-    }
 }
 
 weld::MessageDialog* SalInstance::CreateMessageDialog(weld::Widget* pParent,

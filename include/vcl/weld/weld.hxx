@@ -353,11 +353,6 @@ public:
 
     virtual std::unique_ptr<Container> weld_parent() const = 0;
 
-    //iterate upwards through the hierarchy starting at this widgets parent,
-    //calling func with their helpid until func returns true or we run out of
-    //parents
-    virtual void help_hierarchy_foreach(const std::function<bool(const OUString&)>& func) = 0;
-
     virtual OUString strip_mnemonic(const OUString& rLabel) const = 0;
 
     /* Escapes string contents which are interpreted by the UI.
@@ -441,15 +436,6 @@ public:
     virtual int get_child_top_attach(weld::Widget& rWidget) const = 0;
 };
 
-class VCL_DLLPUBLIC Paned : virtual public Widget
-{
-public:
-    // set pixel position of divider
-    virtual void set_position(int nPos) = 0;
-    // get pixel position of divider
-    virtual int get_position() const = 0;
-};
-
 class VCL_DLLPUBLIC Frame : virtual public Container
 {
 public:
@@ -523,7 +509,6 @@ public:
     virtual bool get_resizable() const = 0;
     virtual Size get_size() const = 0;
     virtual Point get_position() const = 0;
-    virtual AbsoluteScreenPixelRectangle get_monitor_workarea() const = 0;
 
     // returns whether the widget that has focus is within this Window
     // (its very possible to move this to weld::Container if that becomes
@@ -1159,72 +1144,6 @@ public:
     virtual void resize_to_request() = 0;
 
     void connect_closed(const Link<weld::Popover&, void>& rLink) { m_aCloseHdl = rLink; }
-};
-
-class VCL_DLLPUBLIC Toolbar : virtual public Widget
-{
-    Link<const OUString&, void> m_aClickHdl;
-    Link<const OUString&, void> m_aToggleMenuHdl;
-
-protected:
-    friend class ::LOKTrigger;
-
-    void signal_clicked(const OUString& rIdent) { m_aClickHdl.Call(rIdent); }
-    void signal_toggle_menu(const OUString& rIdent) { m_aToggleMenuHdl.Call(rIdent); }
-
-public:
-    virtual void set_item_sensitive(const OUString& rIdent, bool bSensitive) = 0;
-    virtual bool get_item_sensitive(const OUString& rIdent) const = 0;
-    virtual void set_item_active(const OUString& rIdent, bool bActive) = 0;
-    virtual bool get_item_active(const OUString& rIdent) const = 0;
-    virtual void set_menu_item_active(const OUString& rIdent, bool bActive) = 0;
-    virtual bool get_menu_item_active(const OUString& rIdent) const = 0;
-    virtual void set_item_menu(const OUString& rIdent, weld::Menu* pMenu) = 0;
-    virtual void set_item_popover(const OUString& rIdent, weld::Widget* pPopover) = 0;
-    virtual void set_item_visible(const OUString& rIdent, bool bVisible) = 0;
-    virtual void set_item_help_id(const OUString& rIdent, const OUString& rHelpId) = 0;
-    virtual bool get_item_visible(const OUString& rIdent) const = 0;
-    virtual void set_item_label(const OUString& rIdent, const OUString& rLabel) = 0;
-    virtual OUString get_item_label(const OUString& rIdent) const = 0;
-    virtual void set_item_tooltip_text(const OUString& rIdent, const OUString& rTip) = 0;
-    virtual OUString get_item_tooltip_text(const OUString& rIdent) const = 0;
-    virtual void set_item_icon_name(const OUString& rIdent, const OUString& rIconName) = 0;
-    virtual void set_item_image_mirrored(const OUString& rIdent, bool bMirrored) = 0;
-    virtual void set_item_image(const OUString& rIdent,
-                                const css::uno::Reference<css::graphic::XGraphic>& rIcon)
-        = 0;
-    virtual void set_item_image(const OUString& rIdent, VirtualDevice* pDevice) = 0;
-
-    virtual void insert_item(int pos, const OUString& rId) = 0;
-    virtual void insert_separator(int pos, const OUString& rId) = 0;
-    void append_separator(const OUString& rId) { insert_separator(-1, rId); }
-
-    virtual int get_n_items() const = 0;
-    virtual OUString get_item_ident(int nIndex) const = 0;
-    virtual void set_item_ident(int nIndex, const OUString& rIdent) = 0;
-    virtual void set_item_label(int nIndex, const OUString& rLabel) = 0;
-    virtual void set_item_image(int nIndex,
-                                const css::uno::Reference<css::graphic::XGraphic>& rIcon)
-        = 0;
-    virtual void set_item_tooltip_text(int nIndex, const OUString& rTip) = 0;
-    virtual void set_item_accessible_name(int nIndex, const OUString& rName) = 0;
-    virtual void set_item_accessible_name(const OUString& rIdent, const OUString& rName) = 0;
-
-    virtual vcl::ImageType get_icon_size() const = 0;
-    virtual void set_icon_size(vcl::ImageType eType) = 0;
-
-    // return what modifiers are held
-    virtual sal_uInt16 get_modifier_state() const = 0;
-
-    // This function returns the position a new item should be inserted if dnd
-    // is dropped at rPoint
-    virtual int get_drop_index(const Point& rPoint) const = 0;
-
-    void connect_clicked(const Link<const OUString&, void>& rLink) { m_aClickHdl = rLink; }
-    void connect_menu_toggled(const Link<const OUString&, void>& rLink)
-    {
-        m_aToggleMenuHdl = rLink;
-    }
 };
 
 class VCL_DLLPUBLIC Scrollbar : virtual public Widget
