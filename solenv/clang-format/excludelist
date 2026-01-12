@@ -3648,6 +3648,9 @@ extensions/test/ole/unoTocomCalls/XCallback_Impl/Simple.cpp
 extensions/test/ole/unoTocomCalls/XCallback_Impl/Simple.h
 extensions/test/ole/unoTocomCalls/XCallback_Impl/resource.h
 external/bluez_bluetooth/inc/bluetooth/bluetooth.h
+external/cairo/configs/wnt_cairo_config.h
+external/cairo/configs/wnt_cairo_features.h
+external/cairo/configs/wnt_pixman_pixman-version.h
 external/clew/source/clew.c
 external/clew/source/include/clew/clew.h
 external/clucene/configs/_clucene-config-LINUX.h
@@ -3659,9 +3662,12 @@ external/clucene/configs/clucene-config-generic.h
 external/fontconfig/configs/wnt_fontconfig_config.h
 external/fontconfig/configs/wnt_fontconfig_fcalias.h
 external/fontconfig/configs/wnt_fontconfig_fcaliastail.h
+external/fontconfig/configs/wnt_fontconfig_fccase.h
 external/fontconfig/configs/wnt_fontconfig_fcftalias.h
 external/fontconfig/configs/wnt_fontconfig_fcftaliastail.h
+external/fontconfig/configs/wnt_fontconfig_fclang.h
 external/fontconfig/configs/wnt_fontconfig_fcobjshash.h
+external/fontconfig/configs/wnt_fontconfig_fcstdint.h
 external/libjpeg-turbo/jconfig.h
 external/libjpeg-turbo/jconfigint.h
 external/libjpeg-turbo/jversion.h
