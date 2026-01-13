@@ -1401,9 +1401,19 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
         break;
         case SID_INSERT_CANVAS_SLIDE:
         {
-            sal_uInt16 nCanvasPageIndex = GetDoc()->InsertCanvasPage();
+            sal_uInt16 nCanvasPageIndex = GetDoc()->GetOrInsertCanvasPage();
             Cancel(); // Don't know what this does
             SwitchPage(nCanvasPageIndex);
+            rReq.Done();
+        }
+        break;
+
+        case SID_SHUFFLE_PAGES:
+        {
+            if (!GetDoc()->HasCanvasPage())
+                break;
+            GetDoc()->ReshufflePages();
+            Cancel();
             rReq.Done();
         }
         break;
@@ -1641,7 +1651,11 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
                 switch( eZT )
                 {
                     case SvxZoomType::PERCENT:
-                        SetZoom( static_cast<::tools::Long>( pArgs->Get( SID_ATTR_ZOOM ).GetValue()) );
+                    {
+                        sal_uInt16 nZoom = pArgs->Get( SID_ATTR_ZOOM ).GetValue();
+                        SetZoom( static_cast<::tools::Long>( nZoom ) );
+                        RememberPageZoom(nZoom);
+                    }
                         break;
 
                     case SvxZoomType::OPTIMAL:

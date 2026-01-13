@@ -413,6 +413,10 @@ private:
 
     sal_Int32 mnImagePreferredDPI;
 
+    rtl::Reference<SdPage> mpCanvasPage;
+
+    bool mbSkipCanvasPreviewUpdates = false;
+
     SAL_DLLPRIVATE virtual css::uno::Reference< css::frame::XModel > createUnoModel() override;
 
 public:
@@ -999,8 +1003,12 @@ public:
         bool bIsPageObj,
         const sal_Int32 nInsertPosition);
 
+    SAL_DLLPRIVATE bool HasCanvasPage() const { return mpCanvasPage.is(); }
 
-    SAL_DLLPRIVATE sal_uInt16 InsertCanvasPage ();
+    SAL_DLLPRIVATE void ImportCanvasPage();
+    SAL_DLLPRIVATE bool ValidateCanvasPage(const SdPage* pPage) const;
+
+    SAL_DLLPRIVATE sal_uInt16 GetOrInsertCanvasPage ();
 
     /** return the document fonts for latin, cjk and ctl according to the current
         languages set at this document */
@@ -1065,6 +1073,10 @@ public:
         SdDrawDocument* pBookmarkDoc = nullptr,
         bool bUndo = true,
         const OUString& sNewName = OUString());
+
+    /** Re-order the pages based on the position of their previews on canvas page.
+     */
+    void ReshufflePages();
 
 private:
 
@@ -1137,6 +1149,9 @@ private:
         sal_uInt16 nInsertionPoint,
         bool bIsPageBack,
         bool bIsPageObj);
+
+    SAL_DLLPRIVATE void populatePagePreviewsGrid();
+    SAL_DLLPRIVATE void updatePagePreviewsGrid(SdPage* pPage);
 
     SAL_DLLPRIVATE virtual void PageListChanged() override;
     SAL_DLLPRIVATE virtual void MasterPageListChanged() override;

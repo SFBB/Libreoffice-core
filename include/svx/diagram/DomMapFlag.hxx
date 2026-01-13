@@ -17,33 +17,28 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#pragma once
+#ifndef INCLUDED_SVX_DIAGRAM_DOMMAPFLAG_HXX
+#define INCLUDED_SVX_DIAGRAM_DOMMAPFLAG_HXX
 
-#include <sal/config.h>
+#include <sal/types.h>
+#include <limits.h>
 
-#include <optional>
-
-#include <vcl/dllapi.h>
-#include <vcl/BitmapPalette.hxx>
-#include <vcl/Scanline.hxx>
-#include <tools/long.hxx>
-
-struct SalTwoRect;
-
-struct VCL_DLLPUBLIC BitmapBuffer
+namespace svx::diagram
 {
-    tools::Long     mnWidth;
-    tools::Long     mnHeight;
-    tools::Long     mnScanlineSize;
-    BitmapPalette   maPalette;
-    sal_uInt8*      mpBits;
-    ScanlineFormat  meFormat = ScanlineFormat::NONE;
-    ScanlineDirection meDirection = ScanlineDirection::BottomUp;
-    sal_uInt16      mnBitCount;
+enum class SVXCORE_DLLPUBLIC DomMapFlag : sal_uInt16
+{
+    OOXData = 0,
+    OOXDataRels = 1,
+    OOXLayout = 2,
+    OOXStyle = 3,
+    OOXColor = 4,
+    OOXDrawing = 5,
+    OOXDrawingRels = 6
 };
 
-VCL_DLLPUBLIC std::optional<BitmapBuffer> StretchAndConvert(
-    const BitmapBuffer& rSrcBuffer, const SalTwoRect& rTwoRect,
-    ScanlineFormat nDstBitmapFormat, std::optional<BitmapPalette> pDstPal = std::nullopt );
+typedef std::vector<DomMapFlag> DomMapFlags;
+}
+
+#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
