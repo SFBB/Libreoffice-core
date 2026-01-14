@@ -7122,7 +7122,9 @@ if test $_os = Darwin; then
     if test -n "$PKG_CONFIG"; then
         if test "$PKG_CONFIG" = /usr/bin/pkg-config && ls -l /usr/bin/pkg-config | $GREP -q Mono.framework; then
             AC_MSG_ERROR([yes, from Mono. This *will* break the build. Please remove or hide $PKG_CONFIG])
-        elif test "$PKG_CONFIG" = "/opt/homebrew/bin/pkg-config"; then
+        elif test `uname -m` = "arm64" -a "$PKG_CONFIG" = "/opt/homebrew/bin/pkg-config"; then
+            AC_MSG_RESULT([yes, from Homebrew. This is OK.])
+        elif [[[ `uname -m` == "x86_64" && "$PKG_CONFIG" == "/usr/local/bin/pkg-config" && `readlink "$PKG_CONFIG"` == ../Cellar/pkgconf/*/bin/pkg-config ]]]; then
             AC_MSG_RESULT([yes, from Homebrew. This is OK.])
         else
             if test "$enable_bogus_pkg_config" = "yes"; then
@@ -7887,17 +7889,19 @@ if test "$GCC" = "yes" -o "$COM_IS_CLANG" = TRUE; then
         [AC_MSG_RESULT([no])])
     CFLAGS=$save_CFLAGS
 
-    AC_MSG_CHECKING([whether $CC_BASE supports -D_FORTIFY_SOURCE=2])
-    save_CFLAGS=$CFLAGS
-    CFLAGS="$CFLAGS -Werror -Wp,-U_FORTIFY_SOURCE,-D_FORTIFY_SOURCE=2"
-    if test "$ENABLE_OPTIMIZED" = TRUE; then
-        CFLAGS="$CFLAGS -O2"
+    if test "$_os" = "Linux"; then
+        AC_MSG_CHECKING([whether $CC_BASE supports -D_FORTIFY_SOURCE=2])
+        save_CFLAGS=$CFLAGS
+        CFLAGS="$CFLAGS -Werror -Wp,-U_FORTIFY_SOURCE,-D_FORTIFY_SOURCE=2"
+        if test "$ENABLE_OPTIMIZED" = TRUE; then
+            CFLAGS="$CFLAGS -O2"
+        fi
+        AC_LINK_IFELSE(
+            [AC_LANG_PROGRAM([[#include <string.h>]], [[return 0;]])],
+            [AC_MSG_RESULT([yes]); HARDENING_OPT_CFLAGS="$HARDENING_OPT_CFLAGS -Wp,-U_FORTIFY_SOURCE,-D_FORTIFY_SOURCE=2"],
+            [AC_MSG_RESULT([no])])
+        CFLAGS=$save_CFLAGS
     fi
-    AC_LINK_IFELSE(
-        [AC_LANG_PROGRAM([[#include <string.h>]], [[return 0;]])],
-        [AC_MSG_RESULT([yes]); HARDENING_OPT_CFLAGS="$HARDENING_OPT_CFLAGS -Wp,-U_FORTIFY_SOURCE,-D_FORTIFY_SOURCE=2"],
-        [AC_MSG_RESULT([no])])
-    CFLAGS=$save_CFLAGS
 
     AC_MSG_CHECKING([whether $CC_BASE supports -D_GLIBCXX_ASSERTIONS])
     save_CFLAGS=$CFLAGS
@@ -10876,6 +10880,11 @@ if test "$ENABLE_MARIADBC" = "TRUE"; then
         MARIADB_LIBS='-L$(gb_StaticLibrary_WORKDIR) -lmariadb-connector-c'
         BUILD_TYPE="$BUILD_TYPE MARIADB_CONNECTOR_C"
     fi
+
+    save_LIBS=$LIBS
+    AC_SEARCH_LIBS([crypt], [crypt xcrypt], [CRYPT_LIBS="$LIBS"], [CRYPT_LIBS=""])
+    LIBS=$save_LIBS
+    AC_SUBST([CRYPT_LIBS])
 
     AC_SUBST(SYSTEM_MARIADB_CONNECTOR_C)
     AC_SUBST(MARIADB_CFLAGS)

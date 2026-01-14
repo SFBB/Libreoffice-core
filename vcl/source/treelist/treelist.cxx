@@ -481,10 +481,6 @@ SvTreeListEntry* SvTreeList::Next( SvTreeListEntry* pActEntry, sal_uInt16* pDept
         bWithDepth = true;
     }
 
-    // Get the list where the current entry belongs to (from its parent).
-    SvTreeListEntries* pActualList = &pActEntry->pParent->m_Children;
-    sal_uInt32 nActualPos = pActEntry->GetChildListPos();
-
     if (!pActEntry->m_Children.empty())
     {
         // The current entry has children. Get its first child entry.
@@ -495,6 +491,9 @@ SvTreeListEntry* SvTreeList::Next( SvTreeListEntry* pActEntry, sal_uInt16* pDept
         return pActEntry;
     }
 
+    // Get the list where the current entry belongs to (from its parent).
+    SvTreeListEntries* pActualList = &pActEntry->pParent->m_Children;
+    sal_uInt32 nActualPos = pActEntry->GetChildListPos();
     if (pActualList->size() > (nActualPos+1))
     {
         // Get the next sibling of the current entry.
@@ -509,7 +508,6 @@ SvTreeListEntry* SvTreeList::Next( SvTreeListEntry* pActEntry, sal_uInt16* pDept
     nDepth--;
     while( pParent != pRootItem.get() && pParent != nullptr )
     {
-        DBG_ASSERT(pParent!=nullptr,"TreeData corrupt!");
         pActualList = &pParent->pParent->m_Children;
         nActualPos = pParent->GetChildListPos();
         if (pActualList->size() > (nActualPos+1))
@@ -521,35 +519,6 @@ SvTreeListEntry* SvTreeList::Next( SvTreeListEntry* pActEntry, sal_uInt16* pDept
         }
         pParent = pParent->pParent;
         nDepth--;
-    }
-    return nullptr;
-}
-
-SvTreeListEntry* SvTreeList::Prev( SvTreeListEntry* pActEntry ) const
-{
-    assert(pActEntry && "Entry?");
-
-    SvTreeListEntries* pActualList = &pActEntry->pParent->m_Children;
-    sal_uInt32 nActualPos = pActEntry->GetChildListPos();
-
-    if ( nActualPos > 0 )
-    {
-        pActEntry = (*pActualList)[nActualPos-1].get();
-        while (!pActEntry->m_Children.empty())
-        {
-            pActualList = &pActEntry->m_Children;
-            pActEntry = pActualList->back().get();
-        }
-        return pActEntry;
-    }
-    if ( pActEntry->pParent == pRootItem.get() )
-        return nullptr;
-
-    pActEntry = pActEntry->pParent;
-
-    if ( pActEntry )
-    {
-        return pActEntry;
     }
     return nullptr;
 }
@@ -769,8 +738,7 @@ SvTreeListEntry* SvTreeList::FirstSelected( const SvListView* pView) const
     return pActSelEntry;
 }
 
-
-SvTreeListEntry* SvTreeList::FirstChild( SvTreeListEntry* pParent ) const
+SvTreeListEntry* SvTreeList::FirstChild(const SvTreeListEntry* pParent) const
 {
     if ( !pParent )
         pParent = pRootItem.get();

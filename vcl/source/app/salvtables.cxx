@@ -3523,15 +3523,23 @@ SalInstanceItemView::make_iterator(const weld::TreeIter* pOrig) const
 bool SalInstanceItemView::get_iter_first(weld::TreeIter& rIter) const
 {
     SalInstanceTreeIter& rVclIter = static_cast<SalInstanceTreeIter&>(rIter);
-    rVclIter.iter = m_pTreeListBox->GetEntry(0);
-    return rVclIter.iter != nullptr;
+    SvTreeListEntry* pFirst = m_pTreeListBox->GetEntry(0);
+    if (!pFirst)
+        return false;
+
+    rVclIter.iter = pFirst;
+    return true;
 }
 
 bool SalInstanceItemView::iter_next_sibling(weld::TreeIter& rIter) const
 {
     SalInstanceTreeIter& rVclIter = static_cast<SalInstanceTreeIter&>(rIter);
-    rVclIter.iter = rVclIter.iter->NextSibling();
-    return rVclIter.iter != nullptr;
+    SvTreeListEntry* pSibling = rVclIter.iter->NextSibling();
+    if (!pSibling)
+        return false;
+
+    rVclIter.iter = pSibling;
+    return true;
 }
 
 int SalInstanceItemView::get_iter_index_in_parent(const weld::TreeIter& rIter) const
@@ -4350,8 +4358,11 @@ void SalInstanceTreeView::set_extra_row_indent(const weld::TreeIter& rIter, int 
     rVclIter.iter->SetExtraIndent(nIndentLevel);
 }
 
-void SalInstanceTreeView::set_text_emphasis(SvTreeListEntry* pEntry, bool bOn, int col)
+void SalInstanceTreeView::set_text_emphasis(const weld::TreeIter& rIter, bool bOn, int col)
 {
+    const SalInstanceTreeIter& rVclIter = static_cast<const SalInstanceTreeIter&>(rIter);
+    SvTreeListEntry* pEntry = rVclIter.iter;
+
     if (col == -1)
     {
         for (size_t nCur = 0; nCur < pEntry->ItemCount(); ++nCur)
@@ -4373,12 +4384,6 @@ void SalInstanceTreeView::set_text_emphasis(SvTreeListEntry* pEntry, bool bOn, i
     static_cast<SvLBoxString&>(rItem).Emphasize(bOn);
 
     InvalidateModelEntry(pEntry);
-}
-
-void SalInstanceTreeView::set_text_emphasis(const weld::TreeIter& rIter, bool bOn, int col)
-{
-    const SalInstanceTreeIter& rVclIter = static_cast<const SalInstanceTreeIter&>(rIter);
-    set_text_emphasis(rVclIter.iter, bOn, col);
 }
 
 bool SalInstanceTreeView::get_text_emphasis(const weld::TreeIter& rIter, int col) const
@@ -4491,46 +4496,34 @@ bool SalInstanceTreeView::get_iter_abs_pos(weld::TreeIter& rIter, int nAbsPos) c
 bool SalInstanceTreeView::iter_previous_sibling(weld::TreeIter& rIter) const
 {
     SalInstanceTreeIter& rVclIter = static_cast<SalInstanceTreeIter&>(rIter);
-    rVclIter.iter = rVclIter.iter->PrevSibling();
-    return rVclIter.iter != nullptr;
+    SvTreeListEntry* pSibling = rVclIter.iter->PrevSibling();
+    if (!pSibling)
+        return false;
+
+    rVclIter.iter = pSibling;
+    return true;
 }
 
-bool SalInstanceTreeView::iter_next(weld::TreeIter& rIter) const
+bool SalInstanceTreeView::do_iter_children(weld::TreeIter& rIter) const
 {
     SalInstanceTreeIter& rVclIter = static_cast<SalInstanceTreeIter&>(rIter);
-    rVclIter.iter = m_xTreeView->Next(rVclIter.iter);
-    if (rVclIter.iter && IsDummyEntry(rVclIter.iter))
-        return iter_next(rVclIter);
-    return rVclIter.iter != nullptr;
-}
+    SvTreeListEntry* pChild = m_xTreeView->FirstChild(rVclIter.iter);
+    if (!pChild)
+        return false;
 
-bool SalInstanceTreeView::iter_previous(weld::TreeIter& rIter) const
-{
-    SalInstanceTreeIter& rVclIter = static_cast<SalInstanceTreeIter&>(rIter);
-    rVclIter.iter = m_xTreeView->Prev(rVclIter.iter);
-    if (rVclIter.iter && IsDummyEntry(rVclIter.iter))
-        return iter_previous(rVclIter);
-    return rVclIter.iter != nullptr;
-}
-
-bool SalInstanceTreeView::iter_children(weld::TreeIter& rIter) const
-{
-    SalInstanceTreeIter& rVclIter = static_cast<SalInstanceTreeIter&>(rIter);
-    rVclIter.iter = m_xTreeView->FirstChild(rVclIter.iter);
-    bool bRet = rVclIter.iter != nullptr;
-    if (bRet)
-    {
-        //on-demand dummy entry doesn't count
-        return !IsDummyEntry(rVclIter.iter);
-    }
-    return bRet;
+    rVclIter.iter = pChild;
+    return true;
 }
 
 bool SalInstanceTreeView::iter_parent(weld::TreeIter& rIter) const
 {
     SalInstanceTreeIter& rVclIter = static_cast<SalInstanceTreeIter&>(rIter);
-    rVclIter.iter = m_xTreeView->GetParent(rVclIter.iter);
-    return rVclIter.iter != nullptr;
+    SvTreeListEntry* pParent = m_xTreeView->GetParent(rVclIter.iter);
+    if (!pParent)
+        return false;
+
+    rVclIter.iter = pParent;
+    return true;
 }
 
 void SalInstanceTreeView::do_select(const weld::TreeIter& rIter)
@@ -4562,12 +4555,6 @@ int SalInstanceTreeView::get_iter_depth(const weld::TreeIter& rIter) const
 {
     const SalInstanceTreeIter& rVclIter = static_cast<const SalInstanceTreeIter&>(rIter);
     return m_xTreeView->GetModel()->GetDepth(rVclIter.iter);
-}
-
-bool SalInstanceTreeView::iter_has_child(const weld::TreeIter& rIter) const
-{
-    SalInstanceTreeIter aTempCopy(static_cast<const SalInstanceTreeIter*>(&rIter));
-    return iter_children(aTempCopy);
 }
 
 bool SalInstanceTreeView::get_row_expanded(const weld::TreeIter& rIter) const
@@ -4644,11 +4631,12 @@ void SalInstanceTreeView::all_foreach(const std::function<bool(weld::TreeIter&)>
     UpdateGuardIfHidden aGuard(*m_xTreeView);
 
     SalInstanceTreeIter aVclIter(m_xTreeView->First());
-    while (aVclIter.iter)
+    bool bContinue = aVclIter.iter;
+    while (bContinue)
     {
         if (func(aVclIter))
             return;
-        iter_next(aVclIter);
+        bContinue = iter_next(aVclIter);
     }
 }
 

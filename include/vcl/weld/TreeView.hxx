@@ -132,6 +132,7 @@ protected:
     using weld::ItemView::do_set_cursor;
     virtual void do_set_cursor(int pos) = 0;
     virtual void do_scroll_to_row(const TreeIter& rIter) = 0;
+    virtual bool do_iter_children(TreeIter& rIter) const = 0;
     virtual void do_set_children_on_demand(const TreeIter& rIter, bool bChildrenOnDemand) = 0;
     virtual void do_remove_selection() = 0;
 
@@ -258,6 +259,7 @@ public:
                            const css::uno::Reference<css::graphic::XGraphic>& rImage, int col = -1)
         = 0;
 
+    // col index -1 sets text emphasis for all columns
     void set_text_emphasis(int row, bool bOn, int col);
     virtual void set_text_emphasis(const TreeIter& rIter, bool bOn, int col) = 0;
     bool get_text_emphasis(int row, int col) const;
@@ -314,11 +316,11 @@ public:
     // set iter to point to previous node at the current level
     virtual bool iter_previous_sibling(TreeIter& rIter) const = 0;
     // set iter to point to next node, depth first, then sibling
-    virtual bool iter_next(TreeIter& rIter) const = 0;
+    bool iter_next(TreeIter& rIter) const;
     // set iter to point to previous node, sibling first then depth
-    virtual bool iter_previous(TreeIter& rIter) const = 0;
+    bool iter_previous(TreeIter& rIter) const;
     // set iter to point to first child node
-    virtual bool iter_children(TreeIter& rIter) const = 0;
+    bool iter_children(TreeIter& rIter) const;
     bool iter_nth_sibling(TreeIter& rIter, int nChild) const
     {
         bool bRet = true;
@@ -339,7 +341,7 @@ public:
        then 0 is returned.
     */
     virtual int iter_compare(const TreeIter& a, const TreeIter& b) const = 0;
-    virtual bool iter_has_child(const TreeIter& rIter) const = 0;
+    bool iter_has_child(const TreeIter& rIter) const;
     // returns the number of direct children rIter has
     virtual int iter_n_children(const TreeIter& rIter) const = 0;
 
@@ -520,6 +522,9 @@ public:
 
     using Widget::set_sensitive;
     using Widget::get_sensitive;
+
+private:
+    void last_child(weld::TreeIter& rIter, int nChildren) const;
 };
 }
 

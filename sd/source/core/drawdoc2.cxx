@@ -28,6 +28,7 @@
 #include <svx/svdopage.hxx>
 #include <svx/svdoole2.hxx>
 #include <svx/svdundo.hxx>
+#include <svx/svdoedge.hxx>
 #include <vcl/svapp.hxx>
 #include <editeng/eeitem.hxx>
 #include <editeng/editobj.hxx>
@@ -54,8 +55,17 @@
 #include <undo/undomanager.hxx>
 #include <sfx2/lokhelper.hxx>
 #include <unomodel.hxx>
+#include <svx/constructhelper.hxx>
+
+#include <svx/strings.hrc>
+#include <svx/svdobj.hxx>
+#include <svx/sxekitm.hxx>
+#include <svx/xlnedit.hxx>
+#include <svx/xlnedwit.hxx>
 
 #include <DrawDocShell.hxx>
+#include <ViewShell.hxx>
+#include <DrawViewShell.hxx>
 
 #include "PageListWatcher.hxx"
 #include <strings.hxx>
@@ -496,7 +506,8 @@ void SdDrawDocument::DeletePage(sal_uInt16 nPgNum)
 rtl::Reference<SdrPage> SdDrawDocument::RemovePage(sal_uInt16 nPgNum)
 {
     // Do not remove the only non-canvas page
-    if (HasCanvasPage() && GetSdPageCount(PageKind::Standard) == 2)
+    if (HasCanvasPage() && GetSdPageCount(PageKind::Standard) == 2
+        && nPgNum == 3 && !mbDestroying)
         return nullptr;
     rtl::Reference<SdrPage> pPage = FmFormModel::RemovePage(nPgNum);
 
@@ -504,7 +515,14 @@ rtl::Reference<SdrPage> SdDrawDocument::RemovePage(sal_uInt16 nPgNum)
 
     auto pSdPage = static_cast<SdPage*>(pPage.get());
     if (pSdPage->IsCanvasPage())
+    {
+        if (comphelper::LibreOfficeKit::isActive())
+        {
+            DrawViewShell* pDrawViewSh = dynamic_cast<DrawViewShell*>(mpDocSh->GetViewShell());
+            pDrawViewSh->RememberCanvasPageVisArea(::tools::Rectangle());
+        }
         mpCanvasPage = nullptr;
+    }
     pSdPage->DisconnectLink();
     ReplacePageInCustomShows( pSdPage, nullptr );
     UpdatePageObjectsInNotes(nPgNum);
@@ -518,8 +536,10 @@ rtl::Reference<SdrPage> SdDrawDocument::RemovePage(sal_uInt16 nPgNum)
         SfxLokHelper::notifyDocumentSizeChangedAllViews(pDoc);
     }
 
-    if (HasCanvasPage())
+    if (HasCanvasPage() && pSdPage->GetPageKind() == PageKind::Standard && !mbDestroying)
+    {
         updatePagePreviewsGrid(pSdPage);
+    }
 
     return pPage;
 }
@@ -1489,6 +1509,11 @@ bool SdDrawDocument::ValidateCanvasPage(const SdPage* pPage) const
             continue;
         SdrPageObj* pPageObj = static_cast<SdrPageObj*>(pObj);
         SdrPage* pPreviewPage = pPageObj->GetReferencedPage();
+        if (!pPreviewPage)
+        {
+            SAL_WARN("sd", "SdrObject does point to a valid page");
+            return false;
+        }
         if (aPreviewPageSet.contains(pPreviewPage))
             return false;
         else
@@ -1505,7 +1530,8 @@ void SdDrawDocument::ImportCanvasPage()
     SdPage* pPage = GetSdPage(0, PageKind::Standard);
     bool bIsCanvasPageValid = ValidateCanvasPage(pPage);
     pPage->SetCanvasPage();
-    mpCanvasPage = pPage;
+    SdPage* pMPage = static_cast<SdPage*>(&pPage->TRG_GetMasterPage());
+    pMPage->SetCanvasMasterPage();
     // re-populate the previews grid if not valid
     if (!bIsCanvasPageValid)
     {
@@ -1515,6 +1541,7 @@ void SdDrawDocument::ImportCanvasPage()
             pPage->NbcRemoveObject(0);
         }
         populatePagePreviewsGrid();
+        connectPagePreviews();
     }
 }
 
@@ -1592,6 +1619,9 @@ void SdDrawDocument::ReshufflePages()
         MovePage(nCurrentPageNum + 1, nTargetPageNum + 1); // Notes page
     }
     mbSkipCanvasPreviewUpdates = false;
+
+    // update connectors
+    connectPagePreviews();
 }
 
 sal_uInt16 SdDrawDocument::GetOrInsertCanvasPage()
@@ -1620,7 +1650,6 @@ sal_uInt16 SdDrawDocument::GetOrInsertCanvasPage()
 
     ResizeCurrentPage(pCanvasPage, aCanvasSize, PageKind::Standard);
     pCanvasPage->SetCanvasPage();
-    mpCanvasPage = pCanvasPage;
 
     SdPage* pMasterCanvas = static_cast<SdPage*>(&pCanvasPage->TRG_GetMasterPage());
     pMasterCanvas->SetCanvasMasterPage();
@@ -1632,6 +1661,7 @@ sal_uInt16 SdDrawDocument::GetOrInsertCanvasPage()
     }
 
     populatePagePreviewsGrid();
+    connectPagePreviews();
 
     return pCanvasPage->GetPageNum() / 2;
 }
@@ -1737,6 +1767,90 @@ void SdDrawDocument::updatePagePreviewsGrid(SdPage* pPage)
         const ::tools::Long nY = (mpCanvasPage->GetHeight() - nPreviewHeight) / 2;
 
         mpCanvasPage->CreatePresObj(PresObjKind::PagePreview, true, ::tools::Rectangle(Point(nX,nY), Size(nPreviewWidth, nPreviewHeight)), OUString(), nPageNum);
+    }
+    connectPagePreviews();
+}
+
+void SdDrawDocument::connectPagePreviews()
+{
+    if (!HasCanvasPage())
+        return;
+    SdrObjList* pObjList = mpCanvasPage.get();
+    sal_uInt16 nPageCount = GetSdPageCount(PageKind::Standard);
+    std::vector<SdrPageObj*> aPageOrder(nPageCount - 1, nullptr);
+
+    SdrObjListIter aIter(pObjList, SdrIterMode::Flat);
+    for (SdrObject* pObj = aIter.Next(); pObj; pObj = aIter.Next())
+    {
+        //remove the existing connectors
+        if (pObj->GetObjIdentifier() == SdrObjKind::Edge)
+        {
+            pObjList->NbcRemoveObject(pObj->GetOrdNum());
+        }
+        else if (pObj->GetObjIdentifier() == SdrObjKind::Page)
+        {
+            SdrPageObj* pPageObj = static_cast<SdrPageObj*>(pObj);
+            SdPage* pPage = static_cast<SdPage*>(pPageObj->GetReferencedPage());
+            sal_uInt16 nIndex = (pPage->GetPageNum() - 1) / 2 - 1; // without canvas page
+            aPageOrder[nIndex] = pPageObj;
+        }
+    }
+
+    // return if the document has only one non-canvas page
+    if (nPageCount == 2)
+        return;
+
+    for (size_t i = 0; i < aPageOrder.size() - 1; i++)
+    {
+        SdrPageObj* pPageObj1 = aPageOrder[i];
+        SdrPageObj* pPageObj2 = aPageOrder[i + 1];
+
+        if (!pPageObj1 || !pPageObj2)
+            continue;
+
+        ::tools::Rectangle aRect1 = pPageObj1->GetSnapRect();
+        ::tools::Rectangle aRect2 = pPageObj2->GetSnapRect();
+
+        Point aStart(aRect1.RightCenter());
+        Point aEnd(aRect2.LeftCenter());
+
+        rtl::Reference<SdrObject> pObj(
+            SdrObjFactory::MakeNewObject(*this, SdrInventor::Default, SdrObjKind::Edge));
+
+        SdrEdgeObj* pEdge = dynamic_cast<SdrEdgeObj*>(pObj.get());
+        pEdge->SetTailPoint(true, aStart);
+        pEdge->SetTailPoint(false, aEnd);
+
+        // glue the connectors to preview shapes
+        pEdge->ConnectToNode(true,  pPageObj1);
+        pEdge->ConnectToNode(false, pPageObj2);
+
+        SfxItemSet aAttr(GetPool());
+
+        // curved connector
+        aAttr.Put(SdrEdgeKindItem(SdrEdgeKind::Bezier));
+
+        // copied from FuConstructRectangle::SetLineEnds
+        ::basegfx::B2DPolyPolygon aArrow(
+            ConstructHelper::GetLineEndPoly(RID_SVXSTR_ARROW, *this));
+        if (!aArrow.count())
+        {
+            ::basegfx::B2DPolygon aNewArrow;
+            aNewArrow.append(::basegfx::B2DPoint(10.0, 0.0));
+            aNewArrow.append(::basegfx::B2DPoint(0.0, 30.0));
+            aNewArrow.append(::basegfx::B2DPoint(20.0, 30.0));
+            aNewArrow.setClosed(true);
+            aArrow.append(aNewArrow);
+        }
+
+        ::tools::Long nWidth = 600;
+        aAttr.Put(XLineEndItem(SdResId(RID_SVXSTR_ARROW), aArrow));
+        aAttr.Put(XLineEndWidthItem(nWidth));
+
+        pEdge->SetMergedItemSet(aAttr);
+
+        pObj->SetMarkProtect(true);
+        mpCanvasPage->NbcInsertObject(pObj.get());
     }
 }
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

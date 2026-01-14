@@ -15576,120 +15576,55 @@ public:
     virtual bool get_iter_first(weld::TreeIter& rIter) const override
     {
         GtkInstanceTreeIter& rGtkIter = static_cast<GtkInstanceTreeIter&>(rIter);
-        return gtk_tree_model_get_iter_first(m_pTreeModel, &rGtkIter.iter);
+        GtkTreeIter aFirstIter;
+        if (!gtk_tree_model_get_iter_first(m_pTreeModel, &aFirstIter))
+            return false;
+
+        rGtkIter.iter = aFirstIter;
+        return true;
     }
 
     virtual bool iter_next_sibling(weld::TreeIter& rIter) const override
     {
         GtkInstanceTreeIter& rGtkIter = static_cast<GtkInstanceTreeIter&>(rIter);
-        return gtk_tree_model_iter_next(m_pTreeModel, &rGtkIter.iter);
+        GtkTreeIter aTmpIter = rGtkIter.iter;
+        if (!gtk_tree_model_iter_next(m_pTreeModel, &aTmpIter))
+            return false;
+
+        rGtkIter.iter = aTmpIter;
+        return true;
     }
 
     virtual bool iter_previous_sibling(weld::TreeIter& rIter) const override
     {
         GtkInstanceTreeIter& rGtkIter = static_cast<GtkInstanceTreeIter&>(rIter);
-        return gtk_tree_model_iter_previous(m_pTreeModel, &rGtkIter.iter);
+        GtkTreeIter aTmpIter = rGtkIter.iter;
+        if (!gtk_tree_model_iter_previous(m_pTreeModel, &aTmpIter))
+            return false;
+
+        rGtkIter.iter = aTmpIter;
+        return true;
     }
 
-    virtual bool iter_next(weld::TreeIter& rIter) const override
+    virtual bool do_iter_children(weld::TreeIter& rIter) const override
     {
         GtkInstanceTreeIter& rGtkIter = static_cast<GtkInstanceTreeIter&>(rIter);
         GtkTreeIter tmp;
-        GtkTreeIter iter = rGtkIter.iter;
-
-        bool ret = gtk_tree_model_iter_children(m_pTreeModel, &tmp, &iter);
+        if (!gtk_tree_model_iter_children(m_pTreeModel, &tmp, &rGtkIter.iter))
+            return false;
         rGtkIter.iter = tmp;
-        if (ret)
-        {
-            //on-demand dummy entry doesn't count
-            if (get_text(rGtkIter, -1) == "<dummy>")
-                return iter_next(rGtkIter);
-            return true;
-        }
-
-        tmp = iter;
-        if (gtk_tree_model_iter_next(m_pTreeModel, &tmp))
-        {
-            rGtkIter.iter = tmp;
-            //on-demand dummy entry doesn't count
-            if (get_text(rGtkIter, -1) == "<dummy>")
-                return iter_next(rGtkIter);
-            return true;
-        }
-        // Move up level(s) until we find the level where the next node exists.
-        while (gtk_tree_model_iter_parent(m_pTreeModel, &tmp, &iter))
-        {
-            iter = tmp;
-            if (gtk_tree_model_iter_next(m_pTreeModel, &tmp))
-            {
-                rGtkIter.iter = tmp;
-                //on-demand dummy entry doesn't count
-                if (get_text(rGtkIter, -1) == "<dummy>")
-                    return iter_next(rGtkIter);
-                return true;
-            }
-        }
-        return false;
-    }
-
-    virtual bool iter_previous(weld::TreeIter& rIter) const override
-    {
-        bool ret = false;
-        GtkInstanceTreeIter& rGtkIter = static_cast<GtkInstanceTreeIter&>(rIter);
-        GtkTreeIter iter = rGtkIter.iter;
-        GtkTreeIter tmp = iter;
-        if (gtk_tree_model_iter_previous(m_pTreeModel, &tmp))
-        {
-            // Move down level(s) until we find the level where the last node exists.
-            int nChildren = gtk_tree_model_iter_n_children(m_pTreeModel, &tmp);
-            if (!nChildren)
-                rGtkIter.iter = tmp;
-            else
-                last_child(m_pTreeModel, &rGtkIter.iter, &tmp, nChildren);
-            ret = true;
-        }
-        else
-        {
-            // Move up level
-            if (gtk_tree_model_iter_parent(m_pTreeModel, &tmp, &iter))
-            {
-                rGtkIter.iter = tmp;
-                ret = true;
-            }
-        }
-
-        if (ret)
-        {
-            //on-demand dummy entry doesn't count
-            if (get_text(rGtkIter, -1) == "<dummy>")
-                return iter_previous(rGtkIter);
-            return true;
-        }
-
-        return false;
-    }
-
-    virtual bool iter_children(weld::TreeIter& rIter) const override
-    {
-        GtkInstanceTreeIter& rGtkIter = static_cast<GtkInstanceTreeIter&>(rIter);
-        GtkTreeIter tmp;
-        bool ret = gtk_tree_model_iter_children(m_pTreeModel, &tmp, &rGtkIter.iter);
-        rGtkIter.iter = tmp;
-        if (ret)
-        {
-            //on-demand dummy entry doesn't count
-            return get_text(rGtkIter, -1) != "<dummy>";
-        }
-        return ret;
+        return true;
     }
 
     virtual bool iter_parent(weld::TreeIter& rIter) const override
     {
         GtkInstanceTreeIter& rGtkIter = static_cast<GtkInstanceTreeIter&>(rIter);
         GtkTreeIter tmp;
-        bool ret = gtk_tree_model_iter_parent(m_pTreeModel, &tmp, &rGtkIter.iter);
+        if (!gtk_tree_model_iter_parent(m_pTreeModel, &tmp, &rGtkIter.iter))
+            return false;
+
         rGtkIter.iter = tmp;
-        return ret;
+        return true;
     }
 
     virtual void do_remove(const weld::TreeIter& rIter) override
@@ -15758,12 +15693,6 @@ public:
         int ret = gtk_tree_path_get_depth(path) - 1;
         gtk_tree_path_free(path);
         return ret;
-    }
-
-    virtual bool iter_has_child(const weld::TreeIter& rIter) const override
-    {
-        GtkInstanceTreeIter aTempCopy(static_cast<const GtkInstanceTreeIter*>(&rIter));
-        return iter_children(aTempCopy);
     }
 
     virtual bool get_row_expanded(const weld::TreeIter& rIter) const override
@@ -16939,14 +16868,24 @@ public:
     {
         GtkInstanceTreeIter& rGtkIter = static_cast<GtkInstanceTreeIter&>(rIter);
         GtkTreeModel *pModel = GTK_TREE_MODEL(m_pTreeStore);
-        return gtk_tree_model_get_iter_first(pModel, &rGtkIter.iter);
+        GtkTreeIter aFirstIter;
+        if (!gtk_tree_model_get_iter_first(pModel, &aFirstIter))
+            return false;
+
+        rGtkIter.iter = aFirstIter;
+        return true;
     }
 
     virtual bool iter_next_sibling(weld::TreeIter& rIter) const override
     {
         GtkInstanceTreeIter& rGtkIter = static_cast<GtkInstanceTreeIter&>(rIter);
         GtkTreeModel* pModel = GTK_TREE_MODEL(m_pTreeStore);
-        return gtk_tree_model_iter_next(pModel, &rGtkIter.iter);
+        GtkTreeIter aTmpIter = rGtkIter.iter;
+        if (!gtk_tree_model_iter_next(pModel, &aTmpIter))
+            return false;
+
+        rGtkIter.iter = aTmpIter;
+        return true;
     }
 
     virtual int get_iter_index_in_parent(const weld::TreeIter& rIter) const override

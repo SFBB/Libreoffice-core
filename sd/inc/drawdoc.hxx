@@ -36,6 +36,7 @@
 #include "sddllapi.h"
 #include "pres.hxx"
 #include "stlpool.hxx"
+#include "sdpage.hxx"
 
 namespace com::sun::star::xml::dom { class XNode; }
 namespace editeng { class SvxFieldItemUpdater; }
@@ -369,6 +370,8 @@ private:
     css::uno::Reference< css::presentation::XPresentation2 > mxPresentation;
 
     bool                mbNewOrLoadCompleted;
+
+    bool                mbDestroying = false;
 
     bool                mbOnlineSpell;
     bool                mbSummationOfParagraphs;
@@ -1074,6 +1077,8 @@ public:
         bool bUndo = true,
         const OUString& sNewName = OUString());
 
+    void StoreCanvasPage(SdPage* pPage) { mpCanvasPage = pPage; }
+
     /** Re-order the pages based on the position of their previews on canvas page.
      */
     void ReshufflePages();
@@ -1152,6 +1157,7 @@ private:
 
     SAL_DLLPRIVATE void populatePagePreviewsGrid();
     SAL_DLLPRIVATE void updatePagePreviewsGrid(SdPage* pPage);
+    SAL_DLLPRIVATE void connectPagePreviews();
 
     SAL_DLLPRIVATE virtual void PageListChanged() override;
     SAL_DLLPRIVATE virtual void MasterPageListChanged() override;

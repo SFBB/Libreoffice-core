@@ -41,6 +41,8 @@ QtInstanceTreeView::QtInstanceTreeView(QTreeView* pTreeView)
             &QtInstanceTreeView::handleSelectionChanged);
     connect(m_pModel, &QSortFilterProxyModel::dataChanged, this,
             &QtInstanceTreeView::handleDataChanged);
+    connect(m_pTreeView, &QTreeView::collapsed, this, &QtInstanceTreeView::signalCollapsing);
+    connect(m_pTreeView, &QTreeView::expanded, this, &QtInstanceTreeView::signalExpanding);
 
     assert(m_pTreeView->viewport());
     m_pTreeView->viewport()->installEventFilter(this);
@@ -197,58 +199,33 @@ bool QtInstanceTreeView::iter_previous_sibling(weld::TreeIter& rIter) const
     QtInstanceTreeIter& rQtIter = static_cast<QtInstanceTreeIter&>(rIter);
     const QModelIndex aIndex = rQtIter.modelIndex();
     const QModelIndex aSiblingIndex = m_pModel->sibling(aIndex.row() - 1, 0, aIndex);
+    if (!aSiblingIndex.isValid())
+        return false;
+
     rQtIter.setModelIndex(aSiblingIndex);
-
-    return aSiblingIndex.isValid();
+    return true;
 }
 
-bool QtInstanceTreeView::iter_next(weld::TreeIter& rIter) const
-{
-    QtInstanceTreeIter& rQtIter = static_cast<QtInstanceTreeIter&>(rIter);
-    QModelIndex aIndex = rQtIter.modelIndex();
-    if (m_pModel->hasChildren(aIndex))
-    {
-        rQtIter.setModelIndex(modelIndex(0, 0, aIndex));
-        return true;
-    }
-
-    while (aIndex.isValid())
-    {
-        const QModelIndex aSiblingIndex = m_pModel->sibling(aIndex.row() + 1, 0, aIndex);
-        if (aSiblingIndex.isValid())
-        {
-            rQtIter.setModelIndex(aSiblingIndex);
-            return true;
-        }
-
-        aIndex = aIndex.parent();
-    }
-
-    return false;
-}
-
-bool QtInstanceTreeView::iter_previous(weld::TreeIter&) const
-{
-    assert(false && "Not implemented yet");
-    return false;
-}
-
-bool QtInstanceTreeView::iter_children(weld::TreeIter& rIter) const
+bool QtInstanceTreeView::do_iter_children(weld::TreeIter& rIter) const
 {
     QtInstanceTreeIter& rQtIter = static_cast<QtInstanceTreeIter&>(rIter);
     const QModelIndex aChildIndex = m_pModel->index(0, 0, rQtIter.modelIndex());
-    rQtIter.setModelIndex(aChildIndex);
+    if (!aChildIndex.isValid())
+        return false;
 
-    return aChildIndex.isValid();
+    rQtIter.setModelIndex(aChildIndex);
+    return true;
 }
 
 bool QtInstanceTreeView::iter_parent(weld::TreeIter& rIter) const
 {
     QtInstanceTreeIter& rQtIter = static_cast<QtInstanceTreeIter&>(rIter);
     const QModelIndex aParentIndex = rQtIter.modelIndex().parent();
-    rQtIter.setModelIndex(aParentIndex);
+    if (!aParentIndex.isValid())
+        return false;
 
-    return aParentIndex.isValid();
+    rQtIter.setModelIndex(aParentIndex);
+    return true;
 }
 
 int QtInstanceTreeView::get_iter_depth(const weld::TreeIter& rIter) const
@@ -269,12 +246,6 @@ int QtInstanceTreeView::iter_compare(const weld::TreeIter&, const weld::TreeIter
 {
     assert(false && "Not implemented yet");
     return 0;
-}
-
-bool QtInstanceTreeView::iter_has_child(const weld::TreeIter& rIter) const
-{
-    const QtInstanceTreeIter& rQtIter = static_cast<const QtInstanceTreeIter&>(rIter);
-    return m_pModel->hasChildren(rQtIter.modelIndex());
 }
 
 int QtInstanceTreeView::iter_n_children(const weld::TreeIter& rIter) const
@@ -337,15 +308,46 @@ bool QtInstanceTreeView::get_sensitive(const weld::TreeIter& rIter, int nCol) co
     return bSensitive;
 }
 
-void QtInstanceTreeView::set_text_emphasis(const weld::TreeIter&, bool, int)
+void QtInstanceTreeView::setTextEmphasis(const QModelIndex& rIndex, bool bOn)
 {
-    assert(false && "Not implemented yet");
+    assert(GetQtInstance().IsMainThread());
+
+    QFont aFont = m_pTreeView->font();
+    const QVariant aFontData = m_pModel->data(rIndex, Qt::FontRole);
+    if (aFontData.canConvert<QFont>())
+        aFont = aFontData.value<QFont>();
+    aFont.setBold(bOn);
+    m_pModel->setData(rIndex, aFont, Qt::FontRole);
 }
 
-bool QtInstanceTreeView::get_text_emphasis(const weld::TreeIter&, int) const
+void QtInstanceTreeView::set_text_emphasis(const weld::TreeIter& rIter, bool bOn, int nCol)
 {
-    assert(false && "Not implemented yet");
-    return false;
+    SolarMutexGuard g;
+
+    GetQtInstance().RunInMainThread([&] {
+        // column index -1 means "all columns"
+        if (nCol == -1)
+        {
+            for (int i = 0; i < m_pModel->columnCount(); ++i)
+                setTextEmphasis(modelIndex(rIter, i), bOn);
+            return;
+        }
+
+        setTextEmphasis(modelIndex(rIter, nCol), bOn);
+    });
+}
+
+bool QtInstanceTreeView::get_text_emphasis(const weld::TreeIter& rIter, int nCol) const
+{
+    SolarMutexGuard g;
+
+    bool bEmphasis = false;
+    GetQtInstance().RunInMainThread([&] {
+        const QVariant aFontData = m_pModel->data(modelIndex(rIter, nCol), Qt::FontRole);
+        bEmphasis = aFontData.canConvert<bool>() && aFontData.toBool();
+    });
+
+    return bEmphasis;
 }
 
 void QtInstanceTreeView::set_text_align(const weld::TreeIter& rIter, TxtAlign eAlign, int nCol)
@@ -894,6 +896,20 @@ void QtInstanceTreeView::handleSelectionChanged()
 {
     SolarMutexGuard g;
     signal_selection_changed();
+}
+
+void QtInstanceTreeView::signalCollapsing(const QModelIndex& rIndex)
+{
+    SolarMutexGuard g;
+
+    signal_collapsing(QtInstanceTreeIter(rIndex));
+}
+
+void QtInstanceTreeView::signalExpanding(const QModelIndex& rIndex)
+{
+    SolarMutexGuard g;
+
+    signal_expanding(QtInstanceTreeIter(rIndex));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

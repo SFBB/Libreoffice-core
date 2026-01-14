@@ -1693,8 +1693,6 @@ public:
 
     virtual void set_extra_row_indent(const weld::TreeIter& rIter, int nIndentLevel) override;
 
-    void set_text_emphasis(SvTreeListEntry* pEntry, bool bOn, int col = -1);
-
     virtual void set_text_emphasis(const weld::TreeIter& rIter, bool bOn, int col) override;
 
     virtual bool get_text_emphasis(const weld::TreeIter& rIter, int col) const override;
@@ -1728,11 +1726,7 @@ public:
 
     virtual bool iter_previous_sibling(weld::TreeIter& rIter) const override;
 
-    virtual bool iter_next(weld::TreeIter& rIter) const override;
-
-    virtual bool iter_previous(weld::TreeIter& rIter) const override;
-
-    virtual bool iter_children(weld::TreeIter& rIter) const override;
+    virtual bool do_iter_children(weld::TreeIter& rIter) const override;
 
     virtual bool iter_parent(weld::TreeIter& rIter) const override;
 
@@ -1745,8 +1739,6 @@ public:
     virtual void do_unselect(const weld::TreeIter& rIter) override;
 
     virtual int get_iter_depth(const weld::TreeIter& rIter) const override;
-
-    virtual bool iter_has_child(const weld::TreeIter& rIter) const override;
 
     virtual bool get_row_expanded(const weld::TreeIter& rIter) const override;
 

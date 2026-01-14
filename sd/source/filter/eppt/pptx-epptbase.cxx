@@ -22,6 +22,7 @@
 #include "epptbase.hxx"
 #include "epptdef.hxx"
 #include "../ppt/pptanimations.hxx"
+#include <sdpage.hxx>
 #include <unomodel.hxx>
 
 #include <o3tl/any.hxx>
@@ -110,6 +111,7 @@ PPTWriterBase::PPTWriterBase()
     , mnAngle(0)
     , mnPages(0)
     , mnMasterPages(0)
+    , mnCanvasMasterIndex(SAL_MAX_UINT32)
     , maFraction(1, 576)
     , maMapModeSrc(MapUnit::Map100thMM)
     , maMapModeDest(MapUnit::MapInch, Point(), maFraction, maFraction)
@@ -130,6 +132,7 @@ PPTWriterBase::PPTWriterBase( const rtl::Reference< SdXImpressDocument > & rXMod
     , mnAngle(0)
     , mnPages(0)
     , mnMasterPages(0)
+    , mnCanvasMasterIndex(SAL_MAX_UINT32)
     , maFraction(1, 576)
     , maMapModeSrc(MapUnit::Map100thMM)
     , maMapModeDest(MapUnit::MapInch, Point(), maFraction, maFraction)
@@ -196,6 +199,8 @@ void PPTWriterBase::exportPPT( const std::vector< css::beans::PropertyValue >& r
 
     for ( i = 0; i < mnMasterPages; i++ )
     {
+        if (i == mnCanvasMasterIndex)
+            continue;
         if ( !CreateSlideMaster( i ) )
             return;
     }
@@ -204,6 +209,8 @@ void PPTWriterBase::exportPPT( const std::vector< css::beans::PropertyValue >& r
 
     for ( i = 0; i < mnPages; i++ )
     {
+        if (mbHasCanvasPage && i == 0)
+            continue;
         SAL_INFO("sd.eppt", "call ImplCreateSlide( " << i << " )");
         if ( !CreateSlide( i ) )
             return;
@@ -211,6 +218,8 @@ void PPTWriterBase::exportPPT( const std::vector< css::beans::PropertyValue >& r
 
     for ( i = 0; i < mnPages; i++ )
     {
+        if (mbHasCanvasPage && i == 0)
+            continue;
         if ( !CreateNotes( i ) )
             return;
     }
@@ -234,6 +243,24 @@ bool PPTWriterBase::InitSOIface()
         if ( !GetPageByIndex( 0, NORMAL ) )
             break;
 
+        SdDrawDocument* pDoc = mXModel->GetDoc();
+        if (pDoc && pDoc->HasCanvasPage())
+            mbHasCanvasPage = true;
+        else
+            mbHasCanvasPage = false;
+
+        for (sal_uInt32 i = 0; i < mnMasterPages; i++)
+        {
+            if (GetPageByIndex(i, MASTER))
+            {
+                SdPage* pPage = SdPage::getImplementation(mXDrawPage);
+                if (pPage && pPage->IsCanvasMasterPage())
+                {
+                    mnCanvasMasterIndex = i;
+                    break;
+                }
+            }
+        }
         return true;
     }
     return false;
@@ -456,7 +483,7 @@ sal_uInt32 PPTWriterBase::GetMasterIndex( PageType ePageType )
         }
     }
     if ( ePageType == NOTICE )
-        nRetValue += mnMasterPages;
+        nRetValue += mnMasterPages - static_cast<int>(mbHasCanvasPage);
     return nRetValue;
 }
 
@@ -475,6 +502,8 @@ bool PPTWriterBase::GetStyleSheets()
 
     for ( nPageNum = 0; nPageNum < mnMasterPages; nPageNum++ )
     {
+        if (nPageNum == mnCanvasMasterIndex)
+            continue;
         Reference< XNamed >
             aXNamed;
 
