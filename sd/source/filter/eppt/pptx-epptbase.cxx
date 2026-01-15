@@ -31,6 +31,7 @@
 #include <rtl/strbuf.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <sal/log.hxx>
+#include <tools/mapunit.hxx>
 #include <tools/UnitConversion.hxx>
 #include <com/sun/star/awt/Rectangle.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
@@ -50,7 +51,6 @@
 #include <com/sun/star/style/XStyle.hpp>
 #include <com/sun/star/style/XStyleFamiliesSupplier.hpp>
 #include <com/sun/star/task/XStatusIndicator.hpp>
-#include <unomodel.hxx>
 
 using namespace com::sun::star;
 

@@ -167,7 +167,6 @@ SfxTemplateManagerDlg::SfxTemplateManagerDlg(weld::Window *pParent)
     , mxLocalViewWeld(new weld::CustomWeld(*m_xBuilder, u"template_view"_ustr, maLocalView))
     , mxListViewButton(m_xBuilder->weld_toggle_button(u"list_view_btn"_ustr))
     , mxThumbnailViewButton(m_xBuilder->weld_toggle_button(u"thumbnail_view_btn"_ustr))
-    , mViewMode(TemplateViewMode::ThumbnailView)
 {
     // Create popup menus
     mxActionBar->append_item(MNI_ACTION_NEW_FOLDER, SfxResId(STR_CATEGORY_NEW), BMP_ACTION_NEW_CATEGORY);
@@ -287,31 +286,26 @@ void SfxTemplateManagerDlg::setDocumentModel(const uno::Reference<frame::XModel>
 
 void SfxTemplateManagerDlg::setTemplateViewMode(TemplateViewMode eViewMode)
 {
-    if (eViewMode == TemplateViewMode::ThumbnailView && mViewMode != TemplateViewMode::ThumbnailView)
+    if (maLocalView.getTemplateViewMode() == eViewMode)
+        return;
+
+    if (eViewMode == TemplateViewMode::ThumbnailView)
     {
         mxThumbnailViewButton->set_active(true);
         mxListViewButton->set_active(false);
         maLocalView.ThumbnailView::GrabFocus();
-        mViewMode = eViewMode;
-        maLocalView.setTemplateViewMode(eViewMode);
-        maLocalView.Show();
     }
-    if (eViewMode == TemplateViewMode::ListView && mViewMode != TemplateViewMode::ListView)
+    else
     {
+        assert(eViewMode == TemplateViewMode::ListView);
         mxListViewButton->set_active(true);
         mxThumbnailViewButton->set_active(false);
         maLocalView.ListView::grab_focus();
-        mViewMode = eViewMode;
-        maLocalView.setTemplateViewMode(eViewMode);
-        maLocalView.Show();
     }
-}
 
-TemplateViewMode SfxTemplateManagerDlg::getTemplateViewMode() const
-{
-    return mViewMode;
+    maLocalView.setTemplateViewMode(eViewMode);
+    maLocalView.Show();
 }
-
 
 FILTER_APPLICATION SfxTemplateManagerDlg::getCurrentApplicationFilter() const
 {
@@ -464,7 +458,7 @@ void SfxTemplateManagerDlg::writeSettings ()
     {
         { TM_SETTING_LASTFOLDER, css::uno::Any(aLastFolder) },
         { TM_SETTING_LASTAPPLICATION,     css::uno::Any(sal_uInt16(mxCBApp->get_active())) },
-        { TM_SETTING_VIEWMODE, css::uno::Any(static_cast<sal_Int16>(getTemplateViewMode()))}
+        { TM_SETTING_VIEWMODE, css::uno::Any(static_cast<sal_Int16>(maLocalView.getTemplateViewMode())) }
     };
 
     // write

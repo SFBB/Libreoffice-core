@@ -539,8 +539,8 @@ ODFVALIDATOR_JAR := odfvalidator-0.9.0-RC2-SNAPSHOT-jar-with-dependencies-2726ab
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-OFFICEOTRON_SHA256SUM := 0c2a4227394ac78147387f1c1ff1063e87f2151ffc91f1eb97bb17c2650fa708
-OFFICEOTRON_JAR := officeotron-0.8.5.jar
+OFFICEOTRON_SHA256SUM := c72cdcb7fe7cfe917d1fb8766ddbc3f92b6124ecd5fb8c6dc0ddabb74a7e057c
+OFFICEOTRON_JAR := officeotron-0.8.8.jar
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -589,8 +589,8 @@ PIXMAN_TARBALL := pixman-0.46.4.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-LIBPNG_SHA256SUM := 1d3fb8ccc2932d04aa3663e22ef5ef490244370f4e568d7850165068778d98d4
-LIBPNG_TARBALL := libpng-1.6.53.tar.xz
+LIBPNG_SHA256SUM := 01c9d8a303c941ec2c511c14312a3b1d36cedb41e2f5168ccdaa85d53b887805
+LIBPNG_TARBALL := libpng-1.6.54.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
