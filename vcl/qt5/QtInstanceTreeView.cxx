@@ -24,7 +24,7 @@ QtInstanceTreeView::QtInstanceTreeView(QTreeView* pTreeView)
 {
     assert(m_pTreeView);
 
-    m_pModel = qobject_cast<QSortFilterProxyModel*>(m_pTreeView->model());
+    m_pModel = qobject_cast<QtTreeViewModel*>(m_pTreeView->model());
     assert(m_pModel && "tree view doesn't have expected QSortFilterProxyModel set");
 
     m_pSourceModel = qobject_cast<QStandardItemModel*>(m_pModel->sourceModel());
@@ -53,10 +53,6 @@ void QtInstanceTreeView::do_insert(const weld::TreeIter* pParent, int nPos, cons
                                    VirtualDevice* pImageSurface, bool bChildrenOnDemand,
                                    weld::TreeIter* pRet)
 {
-    assert(!bChildrenOnDemand && "Not implemented yet");
-    // avoid -Werror=unused-parameter for release build
-    (void)bChildrenOnDemand;
-
     SolarMutexGuard g;
     GetQtInstance().RunInMainThread([&] {
         const QModelIndex aParentIndex
@@ -89,6 +85,9 @@ void QtInstanceTreeView::do_insert(const weld::TreeIter* pParent, int nPos, cons
             QSignalBlocker aSignalBlocker(m_pModel);
             itemFromIndex(toggleButtonModelIndex(QtInstanceTreeIter(aIndex)))->setCheckable(true);
         }
+
+        if (bChildrenOnDemand)
+            m_pModel->setChildrenOnDemand(aIndex, true);
 
         if (pRet)
             static_cast<QtInstanceTreeIter*>(pRet)->setModelIndex(aIndex);
@@ -370,6 +369,7 @@ void QtInstanceTreeView::set_toggle(const weld::TreeIter& rIter, TriState eState
 
     GetQtInstance().RunInMainThread([&] {
         QModelIndex aIndex = nCol == -1 ? toggleButtonModelIndex(rIter) : modelIndex(rIter, nCol);
+        itemFromIndex(aIndex)->setCheckable(true);
         itemFromIndex(aIndex)->setCheckState(toQtCheckState(eState));
     });
 }
@@ -534,15 +534,24 @@ void QtInstanceTreeView::collapse_row(const weld::TreeIter& rIter)
     GetQtInstance().RunInMainThread([&] { m_pTreeView->collapse(modelIndex(rIter)); });
 }
 
-void QtInstanceTreeView::do_set_children_on_demand(const weld::TreeIter&, bool)
+void QtInstanceTreeView::do_set_children_on_demand(const weld::TreeIter& rIter,
+                                                   bool bChildrenOnDemand)
 {
-    assert(false && "Not implemented yet");
+    SolarMutexGuard g;
+
+    GetQtInstance().RunInMainThread(
+        [&] { m_pModel->setChildrenOnDemand(modelIndex(rIter), bChildrenOnDemand); });
 }
 
-bool QtInstanceTreeView::get_children_on_demand(const weld::TreeIter&) const
+bool QtInstanceTreeView::get_children_on_demand(const weld::TreeIter& rIter) const
 {
-    assert(false && "Not implemented yet");
-    return false;
+    SolarMutexGuard g;
+
+    bool bChildrenOnDemand = false;
+    GetQtInstance().RunInMainThread(
+        [&] { bChildrenOnDemand = m_pModel->getChildrenOnDemand(modelIndex(rIter)); });
+
+    return bChildrenOnDemand;
 }
 
 void QtInstanceTreeView::set_show_expanders(bool) { assert(false && "Not implemented yet"); }
@@ -669,9 +678,16 @@ void QtInstanceTreeView::set_column_fixed_widths(const std::vector<int>& rWidths
     });
 }
 
-void QtInstanceTreeView::set_column_editables(const std::vector<bool>&)
+void QtInstanceTreeView::set_column_editables(const std::vector<bool>& rEditables)
 {
-    assert(false && "Not implemented yet");
+    std::unordered_set<int> aEditableColumns;
+    for (size_t i = 0; i < rEditables.size(); i++)
+    {
+        if (rEditables.at(i))
+            aEditableColumns.insert(i);
+    }
+
+    m_pModel->setEditableColumns(aEditableColumns);
 }
 
 int QtInstanceTreeView::get_column_width(int nCol) const
