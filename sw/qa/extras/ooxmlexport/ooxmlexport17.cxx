@@ -427,13 +427,9 @@ CPPUNIT_TEST_FIXTURE(Test, testDateContentControlExport)
     xContentControlProps->setPropertyValue(u"Alias"_ustr, uno::Any(u"myalias"_ustr));
     xContentControlProps->setPropertyValue(u"Tag"_ustr, uno::Any(u"mytag"_ustr));
     xContentControlProps->setPropertyValue(u"Id"_ustr, uno::Any(static_cast<sal_Int32>(123)));
-    xContentControlProps->setPropertyValue(u"TabIndex"_ustr, uno::Any(sal_uInt32(4294967295))); // -1
     xContentControlProps->setPropertyValue(u"Lock"_ustr, uno::Any(u"sdtLocked"_ustr));
 
     xText->insertTextContent(xCursor, xContentControl, /*bAbsorb=*/true);
-
-    // FIXME: validation error in OOXML export: Errors: 2
-    skipValidation();
 
     // When exporting to DOCX:
     save(TestFilter::DOCX);
@@ -457,7 +453,6 @@ CPPUNIT_TEST_FIXTURE(Test, testDateContentControlExport)
     assertXPath(pXmlDoc, "//w:sdt/w:sdtPr/w:alias", "val", u"myalias");
     assertXPath(pXmlDoc, "//w:sdt/w:sdtPr/w:tag", "val", u"mytag");
     assertXPath(pXmlDoc, "//w:sdt/w:sdtPr/w:id", "val", u"123");
-    assertXPath(pXmlDoc, "//w:sdt/w:sdtPr/w:tabIndex", "val", u"-1");
     assertXPath(pXmlDoc, "//w:sdt/w:sdtPr/w:lock", "val", u"sdtLocked");
 }
 
@@ -760,9 +755,6 @@ DECLARE_OOXMLEXPORT_TEST(testTdf142407, "tdf142407.docx")
 
 DECLARE_OOXMLEXPORT_TEST(testWPGBodyPr, "WPGbodyPr.docx")
 {
-    // FIXME: validation error in OOXML export: Errors: 3
-    skipValidation();
-
     // There are a WPG shape and a picture
     CPPUNIT_ASSERT_EQUAL(2, getShapes());
 
@@ -808,9 +800,6 @@ DECLARE_OOXMLEXPORT_TEST(testWPGBodyPr, "WPGbodyPr.docx")
 
 DECLARE_OOXMLEXPORT_TEST(testTdf146851_1, "tdf146851_1.docx")
 {
-    // FIXME: validation error in OOXML export: Errors: 1
-    skipValidation();
-
     uno::Reference<beans::XPropertySet> xPara;
 
     xPara.set(getParagraph(1, u"qwerty"_ustr), uno::UNO_QUERY);
@@ -994,9 +983,6 @@ DECLARE_OOXMLEXPORT_TEST(testTdf144563, "tdf144563.docx")
 CPPUNIT_TEST_FIXTURE(Test, testTdf146955)
 {
     createSwDoc("tdf146955.odt");
-
-    // FIXME: validation error in OOXML export: Errors: 9
-    skipValidation();
 
     saveAndReload(TestFilter::DOCX);
     // import of a (broken?) DOCX export with dozens of frames raised a SAX exception,

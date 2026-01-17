@@ -1626,16 +1626,22 @@ void DocxAttributeOutput::EndParagraphProperties(const SfxItemSet& rParagraphMar
         WriteCollectedParagraphProperties();
     Redline( pRedlineData );
 
-    WriteCollectedParagraphProperties();
-
-    // Write w:framePr
     if (!m_bWritingHeaderFooter && m_aFramePr.Frame())
     {
+        // write the collected paragraph properties __without__ the <framePr> element
+        m_rExport.SdrExporter().getFlyAttrList().clear();
+        WriteCollectedParagraphProperties();
+
+        // Write w:framePr
         const SwFrameFormat& rFrameFormat = m_aFramePr.Frame()->GetFrameFormat();
         assert(SwTextBoxHelper::TextBoxIsFramePr(rFrameFormat) && "by definition, because Frame()");
 
         const Size aSize = m_aFramePr.Frame()->GetSize();
         PopulateFrameProperties(&rFrameFormat, aSize);
+    }
+    else
+    {
+        WriteCollectedParagraphProperties();
     }
 
     // Write 'Paragraph Mark' properties
@@ -2710,8 +2716,9 @@ void DocxAttributeOutput::WriteContentControlStart()
     {
         // write the unsigned value as if it were signed since that is all we can import
         const sal_Int32 nTabIndex = static_cast<sal_Int32>(m_pContentControl->GetTabIndex());
-        m_pSerializer->singleElementNS(XML_w, XML_tabIndex, FSNS(XML_w, XML_val),
-                                       OString::number(nTabIndex));
+        if (nTabIndex != -1)
+            m_pSerializer->singleElementNS(XML_w, XML_tabIndex, FSNS(XML_w, XML_val),
+                                           OString::number(nTabIndex));
     }
 
     if (m_pContentControl->GetPicture())
@@ -5223,7 +5230,7 @@ void DocxAttributeOutput::OutputDefaultItem(const SfxPoolItem& rHt)
             bMustWrite = rHt.StaticWhichCast(RES_PARATR_LINESPACING).GetInterLineSpaceRule() != SvxInterLineSpaceRule::Off;
             break;
         case RES_PARATR_ADJUST:
-            bMustWrite = rHt.StaticWhichCast(RES_PARATR_ADJUST).GetAdjust() != SvxAdjust::Left;
+            bMustWrite = rHt.StaticWhichCast(RES_PARATR_ADJUST).GetAdjust() != SvxAdjust::ParaStart;
             break;
         case RES_PARATR_SPLIT:
             bMustWrite = !rHt.StaticWhichCast(RES_PARATR_SPLIT).GetValue();
@@ -7782,15 +7789,15 @@ void DocxAttributeOutput::OverrideNumberingDefinition(
 
             m_pSerializer->startElementNS(XML_w, XML_lvlOverride, FSNS(XML_w, XML_ilvl), OString::number(nLevel));
 
-            if (bListsAreDifferent)
-            {
-                GetExport().NumberingLevel(rRule, nLevel);
-            }
             if (levelOverride != rLevelOverrides.end())
             {
                 // list numbering restart override
                 m_pSerializer->singleElementNS(XML_w, XML_startOverride,
                     FSNS(XML_w, XML_val), OString::number(levelOverride->second));
+            }
+            if (bListsAreDifferent)
+            {
+                GetExport().NumberingLevel(rRule, nLevel);
             }
 
             m_pSerializer->endElementNS(XML_w, XML_lvlOverride);
@@ -9117,6 +9124,12 @@ void DocxAttributeOutput::ParaAdjust( const SvxAdjustItem& rAdjust )
 
     switch ( rAdjust.GetAdjust() )
     {
+        case SvxAdjust::ParaStart:
+            pAdjustString = bEcma ? "left" : "start";
+            break;
+        case SvxAdjust::ParaEnd:
+            pAdjustString = bEcma ? "right" : "end";
+            break;
         case SvxAdjust::Left:
             if ( bEcma )
             {
@@ -10461,6 +10474,7 @@ void DocxAttributeOutput::ParaGrabBag(const SfxGrabBagItem& rItem)
             uno::Sequence<beans::PropertyValue> aGrabBagSeq;
             rGrabBagElement.second >>= aGrabBagSeq;
 
+            bool bAddedValAttr = false;
             for (const auto& rProp : aGrabBagSeq)
             {
                 OUString sVal = rProp.Value.get<OUString>();
@@ -10469,7 +10483,10 @@ void DocxAttributeOutput::ParaGrabBag(const SfxGrabBagItem& rItem)
                     continue;
 
                 if (rProp.Name == "val")
+                {
                     AddToAttrList(m_pBackgroundAttrList, FSNS(XML_w, XML_val), sVal);
+                    bAddedValAttr = true;
+                }
                 else if (rProp.Name == "color")
                     AddToAttrList(m_pBackgroundAttrList, FSNS(XML_w, XML_color), sVal);
                 else if (rProp.Name == "themeColor")
@@ -10489,6 +10506,9 @@ void DocxAttributeOutput::ParaGrabBag(const SfxGrabBagItem& rItem)
                 else if (rProp.Name == "originalColor")
                     rProp.Value >>= m_sOriginalBackgroundColor;
             }
+            // w:val attribute is required
+            if (!bAddedValAttr)
+                AddToAttrList(m_pBackgroundAttrList, FSNS(XML_w, XML_val), "clear");
         }
         else if (rGrabBagElement.first == "SdtPr")
         {
