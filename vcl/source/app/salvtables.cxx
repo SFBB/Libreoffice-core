@@ -3393,7 +3393,7 @@ void SalInstanceEntry::set_font_color(const Color& rColor)
         m_xEntry->SetControlForeground(rColor);
 }
 
-void SalInstanceEntry::connect_cursor_position(const Link<Entry&, void>& rLink)
+void SalInstanceEntry::connect_cursor_position(const Link<TextWidget&, void>& rLink)
 {
     assert(!m_aCursorPositionHdl.IsSet());
     m_xEntry->AddEventListener(LINK(this, SalInstanceEntry, CursorListener));
@@ -3971,6 +3971,25 @@ void SalInstanceTreeView::columns_autosize()
         aColWidths.push_back(aWidths[1] + aWidths[0]);
         for (size_t i = 2; i < aWidths.size(); ++i)
             aColWidths.push_back(aWidths[i]);
+
+        // take column headers into account
+        if (VclPtr<SvHeaderTabListBox> pTabListBox
+            = dynamic_cast<SvHeaderTabListBox*>(m_xTreeView.get()))
+        {
+            if (VclPtr<HeaderBar> pHeaderBar = pTabListBox->GetHeaderBar())
+            {
+                const size_t nCount
+                    = std::min(aColWidths.size(), size_t(pHeaderBar->GetItemCount()));
+                for (size_t i = 0; i < nCount; ++i)
+                {
+                    const OUString sHeaderText = pHeaderBar->GetItemText(pHeaderBar->GetItemId(i));
+                    constexpr int PADDING = 6;
+                    const int nHeaderColWidth = pHeaderBar->GetTextWidth(sHeaderText) + PADDING;
+                    aColWidths[i] = std::max(aColWidths.at(i), nHeaderColWidth);
+                }
+            }
+        }
+
         set_column_fixed_widths(aColWidths);
     }
 }
@@ -5648,7 +5667,7 @@ void SalInstanceTextView::set_font(const vcl::Font& rFont)
     m_xTextView->Invalidate();
 }
 
-void SalInstanceTextView::connect_cursor_position(const Link<TextView&, void>& rLink)
+void SalInstanceTextView::connect_cursor_position(const Link<TextWidget&, void>& rLink)
 {
     assert(!m_aCursorPositionHdl.IsSet());
     m_xTextView->AddEventListener(LINK(this, SalInstanceTextView, CursorListener));
@@ -6051,8 +6070,9 @@ OUString SalInstanceComboBoxWithoutEdit::get_active_text() const
 
 void SalInstanceComboBoxWithoutEdit::remove(int pos) { m_xComboBox->RemoveEntry(pos); }
 
-void SalInstanceComboBoxWithoutEdit::insert(int pos, const OUString& rStr, const OUString* pId,
-                                            const OUString* pIconName, VirtualDevice* pImageSurface)
+void SalInstanceComboBoxWithoutEdit::do_insert(int pos, const OUString& rStr, const OUString* pId,
+                                               const OUString* pIconName,
+                                               VirtualDevice* pImageSurface)
 {
     auto nInsertPos = pos == -1 ? COMBOBOX_APPEND : pos;
     sal_Int32 nInsertedAt;
@@ -6206,8 +6226,8 @@ OUString SalInstanceComboBoxWithEdit::get_active_text() const { return m_xComboB
 
 void SalInstanceComboBoxWithEdit::remove(int pos) { m_xComboBox->RemoveEntryAt(pos); }
 
-void SalInstanceComboBoxWithEdit::insert(int pos, const OUString& rStr, const OUString* pId,
-                                         const OUString* pIconName, VirtualDevice* pImageSurface)
+void SalInstanceComboBoxWithEdit::do_insert(int pos, const OUString& rStr, const OUString* pId,
+                                            const OUString* pIconName, VirtualDevice* pImageSurface)
 {
     auto nInsertPos = pos == -1 ? COMBOBOX_APPEND : pos;
     sal_Int32 nInsertedAt;
