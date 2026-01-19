@@ -605,13 +605,30 @@ public:
     virtual OUString filter(const OUString& rText) override;
 };
 
-class SalInstanceEntry : public SalInstanceWidget, public virtual weld::Entry
+class SalInstanceTextWidget : public SalInstanceWidget, public virtual weld::TextWidget
+{
+    VclPtr<::Edit> m_pEntry;
+
+    DECL_LINK(CursorListener, VclWindowEvent&, void);
+
+public:
+    SalInstanceTextWidget(Edit* pEntry, SalInstanceBuilder* pBuilder, bool bTakeOwnership);
+    virtual ~SalInstanceTextWidget() override;
+
+    virtual void connect_cursor_position(const Link<TextWidget&, void>& rLink) override;
+
+    virtual int get_position() const override;
+
+protected:
+    virtual void do_set_position(int nCursorPos) override;
+};
+
+class SalInstanceEntry : public SalInstanceTextWidget, public virtual weld::Entry
 {
 private:
     VclPtr<::Edit> m_xEntry;
 
     DECL_LINK(ChangeHdl, Edit&, void);
-    DECL_LINK(CursorListener, VclWindowEvent&, void);
     DECL_LINK(ActivateHdl, Edit&, bool);
 
     WeldTextFilter m_aTextFilter;
@@ -635,10 +652,6 @@ public:
 
     virtual void do_replace_selection(const OUString& rText) override;
 
-    virtual void do_set_position(int nCursorPos) override;
-
-    virtual int get_position() const override;
-
     virtual void set_editable(bool bEditable) override;
 
     virtual bool get_editable() const override;
@@ -654,8 +667,6 @@ public:
     virtual void set_font(const vcl::Font& rFont) override;
 
     virtual void set_font_color(const Color& rColor) override;
-
-    virtual void connect_cursor_position(const Link<TextWidget&, void>& rLink) override;
 
     virtual void set_placeholder_text(const OUString& rText) override;
 
@@ -1413,7 +1424,7 @@ public:
     virtual ~SalInstanceToolbar() override;
 };
 
-class SalInstanceTextView : public SalInstanceWidget, public virtual weld::TextView
+class SalInstanceTextView : public SalInstanceTextWidget, public virtual weld::TextView
 {
 private:
     VclPtr<VclMultiLineEdit> m_xTextView;
@@ -1421,7 +1432,6 @@ private:
 
     DECL_LINK(ChangeHdl, Edit&, void);
     DECL_LINK(VscrollHdl, ScrollBar*, void);
-    DECL_LINK(CursorListener, VclWindowEvent&, void);
 
 public:
     SalInstanceTextView(VclMultiLineEdit* pTextView, SalInstanceBuilder* pBuilder,
@@ -1446,8 +1456,6 @@ public:
     virtual void set_font(const vcl::Font& rFont) override;
 
     virtual void set_font_color(const Color& rColor) override;
-
-    virtual void connect_cursor_position(const Link<TextWidget&, void>& rLink) override;
 
     virtual bool can_move_cursor_with_up() const override;
 

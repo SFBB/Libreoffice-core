@@ -28,6 +28,15 @@ void TextWidget::set_text(const OUString& rText)
     enable_notify_events();
 }
 
+void TextWidget::set_position(int nCursorPos)
+{
+    disable_notify_events();
+    if (nCursorPos == -1)
+        nCursorPos = get_text().getLength();
+    do_set_position(nCursorPos);
+    enable_notify_events();
+}
+
 void TextWidget::select_region(int nStartPos, int nEndPos)
 {
     disable_notify_events();
