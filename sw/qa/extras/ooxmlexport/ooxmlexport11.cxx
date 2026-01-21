@@ -38,9 +38,6 @@ public:
 
 DECLARE_OOXMLEXPORT_TEST(testTdf57589_hashColor, "tdf57589_hashColor.docx")
 {
-    // FIXME: validation error in OOXML export: Errors: 51
-    skipValidation();
-
     CPPUNIT_ASSERT_EQUAL(drawing::FillStyle_SOLID, getProperty<drawing::FillStyle>(getParagraph(1), u"FillStyle"_ustr));
     CPPUNIT_ASSERT_EQUAL(COL_LIGHTMAGENTA, getProperty<Color>(getParagraph(1), u"ParaBackColor"_ustr));
     CPPUNIT_ASSERT_EQUAL(drawing::FillStyle_NONE, getProperty<drawing::FillStyle>(getParagraph(2), u"FillStyle"_ustr));
@@ -183,9 +180,6 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf121561_tocTitle)
 CPPUNIT_TEST_FIXTURE(Test, testTdf129525)
 {
     createSwDoc("tdf129525.rtf");
-
-    // FIXME: validation error in OOXML export: Errors: 1
-    skipValidation();
 
     save(TestFilter::DOCX);
     xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);

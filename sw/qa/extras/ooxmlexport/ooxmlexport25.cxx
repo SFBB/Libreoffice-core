@@ -150,6 +150,25 @@ DECLARE_OOXMLEXPORT_TEST(testTdf165478_bottomAligned, "tdf165478_bottomAligned.d
     CPPUNIT_ASSERT_EQUAL(sal_Int32(1887), nFlyTop);
 }
 
+CPPUNIT_TEST_FIXTURE(Test, testTdf170389_manyTabstops)
+{
+    createSwDoc("tdf170389_manyTabstops.odt");
+
+    saveAndReload(TestFilter::DOCX);
+
+    xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
+    // MS Word reports document as corrupt if it has more than 64 tabstops defined
+    // The paragraph itself defines 40, and inherits 40. Without the fixes, this was 80 or 64
+    assertXPath(pXmlDoc, "//w:tabs/w:tab", 40);
+
+    xmlDocUniquePtr pLayout = parseLayoutDump();
+    sal_Int32 nSize
+        = getXPath(pLayout, "//SwFixPortion[@type='PortionType::TabLeft']", "width").toInt32();
+    // The word 'tabstop' should be almost at the very end of the line, starting at 6 inches.
+    // Without the fix, the tabstop's width was a tiny 247, now it is 1797.
+    CPPUNIT_ASSERT_GREATER(sal_Int32(1500), nSize); // nSize > 1500
+}
+
 CPPUNIT_TEST_FIXTURE(Test, testInvalidDatetimeInProps)
 {
     createSwDoc("invalidDatetimeInProps.fodt");

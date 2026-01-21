@@ -4486,7 +4486,11 @@ void SwFlyFrame::PaintSwFrame(vcl::RenderContext& rRenderContext, SwRect const& 
     PaintDecorators();
 
     // crossing out for tracked deletion
-    if ( GetAuthor() != std::string::npos && IsDeleted() )
+    const SwViewOption* pViewOptions = pShell->GetViewOptions();
+    SwRedlineRenderMode eRedlineRenderMode
+        = pViewOptions ? pViewOptions->GetRedlineRenderMode() : SwRedlineRenderMode::Standard;
+    if (GetAuthor() != std::string::npos && IsDeleted()
+        && eRedlineRenderMode == SwRedlineRenderMode::Standard)
     {
         tools::Long startX = aRect.Left(  ), endX = aRect.Right();
         tools::Long startY = aRect.Top(  ),  endY = aRect.Bottom();
@@ -6240,7 +6244,7 @@ void SwPageFrame::PaintBaselineGrid(OutputDevice& rOututDevice) const
             return;
         }
         const SwTextFormatColl* pDefaultFormat
-            = pDoc->getIDocumentStylePoolAccess().GetTextCollFromPool(RES_POOLCOLL_TEXT);
+            = pDoc->getIDocumentStylePoolAccess().GetTextCollFromPool(SwPoolFormatId::COLL_TEXT);
         if (!pDefaultFormat)
         {
             return;

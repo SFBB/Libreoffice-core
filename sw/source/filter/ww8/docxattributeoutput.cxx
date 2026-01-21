@@ -2262,7 +2262,7 @@ void DocxAttributeOutput::DoWriteMoveRangeTagStart(std::u16string_view bookmarkN
     if (!bNoDate)
         pAttributeList->add(FSNS(XML_w, XML_date ), DateTimeToOString( aDateTime ));
     else
-        // w:data is a required attribute, so just use a placeholder date
+        // w:date is a required attribute, so just use a placeholder date
         pAttributeList->add(FSNS(XML_w, XML_date ), "1970-01-01T00:00:00Z");
     pAttributeList->add(FSNS(XML_w, XML_name), bookmarkName);
     m_pSerializer->singleElementNS( XML_w, bFrom ? XML_moveFromRangeStart : XML_moveToRangeStart, pAttributeList );
@@ -6547,7 +6547,7 @@ void DocxAttributeOutput::WriteFlyFrame(const ww8::Frame& rFrame)
 
                 // skip also inline headings already exported before
                 const SwFormat* pParent = rFrame.GetFrameFormat().DerivedFrom();
-                if ( pParent && pParent->GetPoolFormatId() == RES_POOLFRM_INLINE_HEADING )
+                if ( pParent && pParent->GetPoolFormatId() == SwPoolFormatId::FRM_INLINE_HEADING )
                     break;
 
                 // The frame output is postponed to the end of the anchor paragraph
@@ -9280,13 +9280,18 @@ void DocxAttributeOutput::ParaTabStop( const SvxTabStopItem& rTabStop )
     }
 
     // do not output inherited tabs twice (inside styles and inside inline properties)
-    if ( nCount == nInheritedTabCount && nCount > 0 )
+    if (nCount == nInheritedTabCount)
     {
         if ( *pInheritedTabs == rTabStop )
-            return;
+            return; // <w:tabs> must contain at least one <w:tab>, so don't write it empty
     }
 
     m_pSerializer->startElementNS(XML_w, XML_tabs);
+
+    // <w:tabs> may contain 64 <w:tab> entries at most, or else MS Word reports the file as corrupt
+    sal_uInt32 nWrittenTabs = 0;
+    // do not output inherited tabs multiple times (inside styles and inside inline properties)
+    std::vector<bool> vInherited(nCount, false);
 
     // Get offset for tabs
     // In DOCX, w:pos specifies the position of the current custom tab stop with respect to the current page margins.
@@ -9297,6 +9302,9 @@ void DocxAttributeOutput::ParaTabStop( const SvxTabStopItem& rTabStop )
     sal_Int32 nCurrTab = 0;
     for ( sal_uInt16 i = 0; i < nInheritedTabCount; ++i )
     {
+        if (nWrittenTabs == 64)
+            break; // maximum allowed number of entries reached
+
         while ( nCurrTab < nCount && rTabStop[nCurrTab] < pInheritedTabs->At(i) )
             ++nCurrTab;
 
@@ -9305,13 +9313,22 @@ void DocxAttributeOutput::ParaTabStop( const SvxTabStopItem& rTabStop )
             m_pSerializer->singleElementNS( XML_w, XML_tab,
                 FSNS( XML_w, XML_val ), "clear",
                 FSNS( XML_w, XML_pos ), OString::number(pInheritedTabs->At(i).GetTabPos()) );
+            ++nWrittenTabs;
         }
+        else if (pInheritedTabs->At(i) == rTabStop[nCurrTab])
+            vInherited[nCurrTab] = true;
     }
 
     for (sal_uInt16 i = 0; i < nCount; i++ )
     {
         if( rTabStop[i].GetAdjustment() != SvxTabAdjust::Default )
-            impl_WriteTabElement( m_pSerializer, rTabStop[i], tabsOffset );
+        {
+            if (!vInherited[i] && nWrittenTabs < 64)
+            {
+                impl_WriteTabElement( m_pSerializer, rTabStop[i], tabsOffset );
+                ++nWrittenTabs;
+            }
+        }
         else
             GetExport().setDefaultTabStop( rTabStop[i].GetTabPos());
     }
