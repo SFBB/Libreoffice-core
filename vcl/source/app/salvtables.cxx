@@ -59,6 +59,7 @@
 #include <vcl/headbar.hxx>
 #include <vcl/toolkit/ivctrl.hxx>
 #include <vcl/layout.hxx>
+#include <vcl/notebookbar/NotebookBarAddonsItem.hxx>
 #include <vcl/toolkit/MenuButton.hxx>
 #include <vcl/ptrstyle.hxx>
 #include <slider.hxx>
@@ -3312,12 +3313,48 @@ void SalInstanceTextWidget::connect_cursor_position(const Link<TextWidget&, void
     weld::TextWidget::connect_cursor_position(rLink);
 }
 
+void SalInstanceTextWidget::do_set_text(const OUString& rText) { m_pEntry->SetText(rText); }
+
+OUString SalInstanceTextWidget::get_text() const { return m_pEntry->GetText(); }
+
 void SalInstanceTextWidget::do_set_position(int nCursorPos)
 {
     m_pEntry->SetSelection(Selection(nCursorPos, nCursorPos));
 }
 
 int SalInstanceTextWidget::get_position() const { return m_pEntry->GetSelection().Max(); }
+
+void SalInstanceTextWidget::do_select_region(int nStartPos, int nEndPos)
+{
+    tools::Long nStart = nStartPos < 0 ? SELECTION_MAX : nStartPos;
+    tools::Long nEnd = nEndPos < 0 ? SELECTION_MAX : nEndPos;
+    m_pEntry->SetSelection(Selection(nStart, nEnd));
+}
+
+bool SalInstanceTextWidget::get_selection_bounds(int& rStartPos, int& rEndPos)
+{
+    const Selection& rSelection = m_pEntry->GetSelection();
+    rStartPos = rSelection.Min();
+    rEndPos = rSelection.Max();
+    return rSelection.Len();
+}
+
+void SalInstanceTextWidget::do_replace_selection(const OUString& rText)
+{
+    m_pEntry->ReplaceSelected(rText);
+}
+
+void SalInstanceTextWidget::set_editable(bool bEditable) { m_pEntry->SetReadOnly(!bEditable); }
+
+bool SalInstanceTextWidget::get_editable() const { return !m_pEntry->IsReadOnly(); }
+
+void SalInstanceTextWidget::set_font_color(const Color& rColor)
+{
+    if (rColor == COL_AUTO)
+        m_pEntry->SetControlForeground();
+    else
+        m_pEntry->SetControlForeground(rColor);
+}
 
 SalInstanceEntry::SalInstanceEntry(Edit* pEntry, SalInstanceBuilder* pBuilder, bool bTakeOwnership)
     : SalInstanceTextWidget(pEntry, pBuilder, bTakeOwnership)
@@ -3329,39 +3366,11 @@ SalInstanceEntry::SalInstanceEntry(Edit* pEntry, SalInstanceBuilder* pBuilder, b
     m_xEntry->SetTextFilter(&m_aTextFilter);
 }
 
-void SalInstanceEntry::do_set_text(const OUString& rText) { m_xEntry->SetText(rText); }
-
-OUString SalInstanceEntry::get_text() const { return m_xEntry->GetText(); }
-
 void SalInstanceEntry::set_width_chars(int nChars) { m_xEntry->SetWidthInChars(nChars); }
 
 int SalInstanceEntry::get_width_chars() const { return m_xEntry->GetWidthInChars(); }
 
 void SalInstanceEntry::set_max_length(int nChars) { m_xEntry->SetMaxTextLen(nChars); }
-
-void SalInstanceEntry::do_select_region(int nStartPos, int nEndPos)
-{
-    tools::Long nStart = nStartPos < 0 ? SELECTION_MAX : nStartPos;
-    tools::Long nEnd = nEndPos < 0 ? SELECTION_MAX : nEndPos;
-    m_xEntry->SetSelection(Selection(nStart, nEnd));
-}
-
-bool SalInstanceEntry::get_selection_bounds(int& rStartPos, int& rEndPos)
-{
-    const Selection& rSelection = m_xEntry->GetSelection();
-    rStartPos = rSelection.Min();
-    rEndPos = rSelection.Max();
-    return rSelection.Len();
-}
-
-void SalInstanceEntry::do_replace_selection(const OUString& rText)
-{
-    m_xEntry->ReplaceSelected(rText);
-}
-
-void SalInstanceEntry::set_editable(bool bEditable) { m_xEntry->SetReadOnly(!bEditable); }
-
-bool SalInstanceEntry::get_editable() const { return !m_xEntry->IsReadOnly(); }
 
 void SalInstanceEntry::set_visibility(bool bVisible)
 {
@@ -3410,14 +3419,6 @@ void SalInstanceEntry::set_font(const vcl::Font& rFont)
 {
     m_xEntry->SetControlFont(rFont);
     m_xEntry->Invalidate();
-}
-
-void SalInstanceEntry::set_font_color(const Color& rColor)
-{
-    if (rColor == COL_AUTO)
-        m_xEntry->SetControlForeground();
-    else
-        m_xEntry->SetControlForeground(rColor);
 }
 
 void SalInstanceEntry::set_placeholder_text(const OUString& rText)
@@ -5621,32 +5622,6 @@ SalInstanceTextView::SalInstanceTextView(VclMultiLineEdit* pTextView, SalInstanc
     rVertScrollBar.SetScrollHdl(LINK(this, SalInstanceTextView, VscrollHdl));
 }
 
-void SalInstanceTextView::do_set_text(const OUString& rText) { m_xTextView->SetText(rText); }
-
-void SalInstanceTextView::do_replace_selection(const OUString& rText)
-{
-    m_xTextView->ReplaceSelected(rText);
-}
-
-OUString SalInstanceTextView::get_text() const { return m_xTextView->GetText(); }
-
-bool SalInstanceTextView::get_selection_bounds(int& rStartPos, int& rEndPos)
-{
-    const Selection& rSelection = m_xTextView->GetSelection();
-    rStartPos = rSelection.Min();
-    rEndPos = rSelection.Max();
-    return rSelection.Len();
-}
-
-void SalInstanceTextView::do_select_region(int nStartPos, int nEndPos)
-{
-    tools::Long nStart = nStartPos < 0 ? SELECTION_MAX : nStartPos;
-    tools::Long nEnd = nEndPos < 0 ? SELECTION_MAX : nEndPos;
-    m_xTextView->SetSelection(Selection(nStart, nEnd));
-}
-
-void SalInstanceTextView::set_editable(bool bEditable) { m_xTextView->SetReadOnly(!bEditable); }
-bool SalInstanceTextView::get_editable() const { return !m_xTextView->IsReadOnly(); }
 void SalInstanceTextView::set_max_length(int nChars) { m_xTextView->SetMaxTextLen(nChars); }
 
 void SalInstanceTextView::set_monospace(bool bMonospace)
@@ -5661,14 +5636,6 @@ void SalInstanceTextView::set_monospace(bool bMonospace)
         aFont = Application::GetSettings().GetStyleSettings().GetFieldFont();
     aFont.SetFontHeight(aOrigFont.GetFontHeight());
     set_font(aFont);
-}
-
-void SalInstanceTextView::set_font_color(const Color& rColor)
-{
-    if (rColor != COL_AUTO)
-        m_xTextView->SetControlForeground(rColor);
-    else
-        m_xTextView->SetControlForeground();
 }
 
 void SalInstanceTextView::set_font(const vcl::Font& rFont)

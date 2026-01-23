@@ -617,10 +617,22 @@ public:
 
     virtual void connect_cursor_position(const Link<TextWidget&, void>& rLink) override;
 
+    virtual OUString get_text() const override;
+
     virtual int get_position() const override;
 
+    virtual bool get_selection_bounds(int& rStartPos, int& rEndPos) override;
+
+    virtual void set_editable(bool bEditable) override;
+    virtual bool get_editable() const override;
+
+    virtual void set_font_color(const Color& rColor) override;
+
 protected:
+    virtual void do_set_text(const OUString& rText) override;
     virtual void do_set_position(int nCursorPos) override;
+    virtual void do_select_region(int nStartPos, int nEndPos) override;
+    virtual void do_replace_selection(const OUString& rText) override;
 };
 
 class SalInstanceEntry : public SalInstanceTextWidget, public virtual weld::Entry
@@ -636,25 +648,11 @@ private:
 public:
     SalInstanceEntry(::Edit* pEntry, SalInstanceBuilder* pBuilder, bool bTakeOwnership);
 
-    virtual void do_set_text(const OUString& rText) override;
-
-    virtual OUString get_text() const override;
-
     virtual void set_width_chars(int nChars) override;
 
     virtual int get_width_chars() const override;
 
     virtual void set_max_length(int nChars) override;
-
-    virtual void do_select_region(int nStartPos, int nEndPos) override;
-
-    bool get_selection_bounds(int& rStartPos, int& rEndPos) override;
-
-    virtual void do_replace_selection(const OUString& rText) override;
-
-    virtual void set_editable(bool bEditable) override;
-
-    virtual bool get_editable() const override;
 
     virtual void set_visibility(bool bVisible) override;
 
@@ -665,8 +663,6 @@ public:
     virtual void set_message_type(weld::EntryMessageType eType) override;
 
     virtual void set_font(const vcl::Font& rFont) override;
-
-    virtual void set_font_color(const Color& rColor) override;
 
     virtual void set_placeholder_text(const OUString& rText) override;
 
@@ -1437,25 +1433,11 @@ public:
     SalInstanceTextView(VclMultiLineEdit* pTextView, SalInstanceBuilder* pBuilder,
                         bool bTakeOwnership);
 
-    virtual void do_set_text(const OUString& rText) override;
-
-    virtual void do_replace_selection(const OUString& rText) override;
-
-    virtual OUString get_text() const override;
-
-    bool get_selection_bounds(int& rStartPos, int& rEndPos) override;
-
-    virtual void do_select_region(int nStartPos, int nEndPos) override;
-
-    virtual void set_editable(bool bEditable) override;
-    virtual bool get_editable() const override;
     virtual void set_max_length(int nChars) override;
 
     virtual void set_monospace(bool bMonospace) override;
 
     virtual void set_font(const vcl::Font& rFont) override;
-
-    virtual void set_font_color(const Color& rColor) override;
 
     virtual bool can_move_cursor_with_up() const override;
 

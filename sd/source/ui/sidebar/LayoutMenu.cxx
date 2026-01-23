@@ -135,22 +135,9 @@ LayoutMenu::LayoutMenu (
       mxLayoutIconView(m_xBuilder->weld_icon_view(u"layoutpanel_icons"_ustr)),
       mbIsMainViewChangePending(false),
       mxSidebar(std::move(xSidebar)),
-      mbIsDisposed(false),
       maPreviewSize(0, 0),
       bInContextMenuOperation(false)
 {
-    implConstruct( *mrBase.GetDocument()->GetDocSh() );
-    SAL_INFO("sd.ui", "created LayoutMenu at " << this);
-
-}
-
-void LayoutMenu::implConstruct( DrawDocShell& rDocumentShell )
-{
-    OSL_ENSURE( mrBase.GetDocument()->GetDocSh() == &rDocumentShell,
-        "LayoutMenu::implConstruct: hmm?" );
-    // if this fires, then my assumption that the rDocumentShell parameter to our first ctor is superfluous ...
-    (void) rDocumentShell;
-
     mxLayoutIconView->connect_item_activated(LINK(this, LayoutMenu, LayoutSelected));
     mxLayoutIconView->connect_command(LINK(this, LayoutMenu, CommandHdl));
     InvalidateContent();
@@ -169,26 +156,14 @@ void LayoutMenu::implConstruct( DrawDocShell& rDocumentShell )
 
 LayoutMenu::~LayoutMenu()
 {
-    SAL_INFO("sd.ui", "destroying LayoutMenu at " << this);
-    Dispose();
-    mxLayoutIconView.reset();
-}
-
-void LayoutMenu::Dispose()
-{
-    if (mbIsDisposed)
-        return;
-
-    SAL_INFO("sd.ui", "disposing LayoutMenu at " << this);
-
-    mbIsDisposed = true;
-
     if (mxListener.is())
         mxListener->dispose();
 
     Clear();
     Link<sdtools::EventMultiplexerEvent&,void> aLink (LINK(this,LayoutMenu,EventMultiplexerListener));
     mrBase.GetEventMultiplexer()->RemoveEventListener (aLink);
+
+    mxLayoutIconView.reset();
 }
 
 AutoLayout LayoutMenu::GetSelectedAutoLayout() const
@@ -514,7 +489,7 @@ void LayoutMenu::Fill()
                 else
                 {
                     Bitmap aPreviewBitmap = GetPreviewAsBitmap(aImg);
-                    mxLayoutIconView->insert(id, &sLayoutName, &sId, &aPreviewBitmap, nullptr);
+                    mxLayoutIconView->insert(id, nullptr, &sId, &aPreviewBitmap, nullptr);
                     mxLayoutIconView->set_item_accessible_name(id, sLayoutName);
                     mxLayoutIconView->set_item_tooltip_text(id, sLayoutName);
                 }

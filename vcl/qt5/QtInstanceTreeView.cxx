@@ -241,12 +241,6 @@ int QtInstanceTreeView::get_iter_depth(const weld::TreeIter& rIter) const
     return nDepth;
 }
 
-int QtInstanceTreeView::iter_compare(const weld::TreeIter&, const weld::TreeIter&) const
-{
-    assert(false && "Not implemented yet");
-    return 0;
-}
-
 int QtInstanceTreeView::iter_n_children(const weld::TreeIter& rIter) const
 {
     const QtInstanceTreeIter& rQtIter = static_cast<const QtInstanceTreeIter&>(rIter);
@@ -756,10 +750,22 @@ void QtInstanceTreeView::set_column_custom_renderer(int, bool)
 
 void QtInstanceTreeView::queue_draw() { assert(false && "Not implemented yet"); }
 
-std::unique_ptr<weld::TreeIter> QtInstanceTreeView::get_dest_row_at_pos(const Point&, bool, bool)
+std::unique_ptr<weld::TreeIter> QtInstanceTreeView::get_dest_row_at_pos(const Point& rPos,
+                                                                        bool bDnDMode, bool)
 {
-    assert(false && "Not implemented yet");
-    return {};
+    assert(!bDnDMode && "bDndMode and bAutoScroll params not handled yet");
+    (void)bDnDMode;
+
+    SolarMutexGuard g;
+
+    std::unique_ptr<weld::TreeIter> pIter;
+    GetQtInstance().RunInMainThread([&] {
+        const QModelIndex aIndex = m_pTreeView->indexAt(toQPoint(rPos));
+        if (aIndex.isValid())
+            pIter = std::make_unique<QtInstanceTreeIter>(aIndex);
+    });
+
+    return pIter;
 }
 
 void QtInstanceTreeView::unset_drag_dest_row() { assert(false && "Not implemented yet"); }

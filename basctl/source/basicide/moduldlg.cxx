@@ -329,14 +329,14 @@ private:
         else if (nDepth == 1)
         {
             std::unique_ptr<weld::TreeIter> xSelParent(pSource->make_iterator(xSelected.get()));
-            if (pSource->iter_parent(*xSelParent) && pSource->iter_compare(*xEntry, *xSelParent) == 0)
+            if (pSource->iter_parent(*xSelParent) && xEntry->equal(*xSelParent))
                 bValid = false;
         }
         else if (nDepth == 2)
         {
             std::unique_ptr<weld::TreeIter> xParent(pSource->make_iterator(xEntry.get()));
             std::unique_ptr<weld::TreeIter> xSelParent(pSource->make_iterator(xSelected.get()));
-            if (pSource->iter_parent(*xParent) && pSource->iter_parent(*xSelParent) && pSource->iter_compare(*xParent, *xSelParent) == 0)
+            if (pSource->iter_parent(*xParent) && pSource->iter_parent(*xSelParent) && xParent->equal(*xSelParent))
                 bValid = false;
         }
 
