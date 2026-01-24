@@ -36,6 +36,7 @@
 #include <redline.hxx>
 #include <unoframe.hxx>
 #include <textboxhelper.hxx>
+#include <SwStyleNameMapper.hxx>
 #include <rdfhelper.hxx>
 #include "wrtww8.hxx"
 
@@ -2776,12 +2777,6 @@ void DocxAttributeOutput::WriteContentControlStart()
                 xAttributes->add(FSNS(XML_w, XML_displayText), rItem.m_aDisplayText);
             }
 
-            OUString aValue = rItem.m_aValue;
-            if (aValue.isEmpty())
-            {
-                // Empty value would be invalid DOCX, default to the display text.
-                aValue = rItem.m_aDisplayText;
-            }
             xAttributes->add(FSNS(XML_w, XML_value), rItem.m_aValue);
             m_pSerializer->singleElementNS(XML_w, XML_listItem, xAttributes);
         }
@@ -2887,9 +2882,10 @@ void DocxAttributeOutput::WriteSdtDropDownStart(
     for (auto const& rItem : rListItems)
     {
         auto const item(OUStringToOString(rItem, RTL_TEXTENCODING_UTF8));
+        OString sDisplayText = item.isEmpty() ? " "_ostr : item; // displayText must not be empty
         m_pSerializer->singleElementNS(XML_w, XML_listItem,
                 FSNS(XML_w, XML_value), item,
-                FSNS(XML_w, XML_displayText), item);
+                FSNS(XML_w, XML_displayText), sDisplayText);
     }
 
     m_pSerializer->endElementNS(XML_w, XML_dropDownList);
@@ -5899,8 +5895,9 @@ void DocxAttributeOutput::WritePostponedFormControl(const SdrObject* pObject)
 
         for (const auto& rItem : aItems)
         {
+            OUString sDisplayText = rItem.isEmpty() ? " " : rItem; // displayText must not be empty
             m_pSerializer->singleElementNS(XML_w, XML_listItem,
-                                           FSNS(XML_w, XML_displayText), rItem,
+                                           FSNS(XML_w, XML_displayText), sDisplayText,
                                            FSNS(XML_w, XML_value), rItem);
         }
 
@@ -8529,6 +8526,11 @@ void DocxAttributeOutput::CharScriptHint(const SvxScriptHintItem& rHint)
 void DocxAttributeOutput::TextINetFormat( const SwFormatINetFormat& rLink )
 {
     const SwCharFormat* pFormat = m_rExport.m_rDoc.FindCharFormatByName(rLink.GetINetFormat());
+    if (!pFormat)
+    {
+        pFormat = m_rExport.m_rDoc.FindCharFormatByName(
+            SwStyleNameMapper::GetUIName(rLink.GetINetFormatId(), ProgName()));
+    }
     if (pFormat)
     {
         OString aStyleId(m_rExport.m_pStyles->GetStyleId(m_rExport.GetId(pFormat)));

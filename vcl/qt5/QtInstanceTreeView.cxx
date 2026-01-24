@@ -9,6 +9,7 @@
 
 #include <QtInstanceTreeView.hxx>
 #include <QtInstanceTreeView.moc>
+#include <QtTreeViewItemDelegate.hxx>
 
 #include <vcl/qt/QtUtils.hxx>
 
@@ -46,6 +47,13 @@ QtInstanceTreeView::QtInstanceTreeView(QTreeView* pTreeView)
 
     assert(m_pTreeView->viewport());
     m_pTreeView->viewport()->installEventFilter(this);
+
+    QtTreeViewItemDelegate* pDelegate = new QtTreeViewItemDelegate(
+        m_pTreeView, [this](const QModelIndex& rIndex) { return signalEditingStarted(rIndex); },
+        [this](const QModelIndex& rIndex, const QString& rNewText) {
+            return signalEditingDone(rIndex, rNewText);
+        });
+    m_pTreeView->setItemDelegate(pDelegate);
 }
 
 void QtInstanceTreeView::do_insert(const weld::TreeIter* pParent, int nPos, const OUString* pStr,
@@ -550,12 +558,32 @@ bool QtInstanceTreeView::get_children_on_demand(const weld::TreeIter& rIter) con
 
 void QtInstanceTreeView::set_show_expanders(bool) { assert(false && "Not implemented yet"); }
 
-void QtInstanceTreeView::start_editing(const weld::TreeIter&)
+void QtInstanceTreeView::start_editing(const weld::TreeIter& rEntry)
 {
-    assert(false && "Not implemented yet");
+    SolarMutexGuard g;
+
+    GetQtInstance().RunInMainThread([&] {
+        // edit item in first editable column
+        const std::vector<int> aEditableColumns = m_pModel->editableColumns();
+        assert(!aEditableColumns.empty() && "No editable column");
+        const int nColumnIndex = aEditableColumns.front();
+        const QModelIndex aIndex = modelIndex(rEntry, nColumnIndex);
+        m_pTreeView->setCurrentIndex(aIndex);
+        m_pTreeView->edit(aIndex);
+    });
 }
 
-void QtInstanceTreeView::end_editing() { assert(false && "Not implemented yet"); }
+void QtInstanceTreeView::end_editing()
+{
+    SolarMutexGuard g;
+
+    GetQtInstance().RunInMainThread([&] {
+        QtTreeViewItemDelegate* pDelegate
+            = qobject_cast<QtTreeViewItemDelegate*>(m_pTreeView->itemDelegate());
+        assert(pDelegate);
+        pDelegate->endEditing();
+    });
+}
 
 void QtInstanceTreeView::enable_drag_source(rtl::Reference<TransferDataContainer>&, sal_uInt8)
 {
@@ -674,11 +702,11 @@ void QtInstanceTreeView::set_column_fixed_widths(const std::vector<int>& rWidths
 
 void QtInstanceTreeView::set_column_editables(const std::vector<bool>& rEditables)
 {
-    std::unordered_set<int> aEditableColumns;
+    std::vector<int> aEditableColumns;
     for (size_t i = 0; i < rEditables.size(); i++)
     {
         if (rEditables.at(i))
-            aEditableColumns.insert(i);
+            aEditableColumns.push_back(i);
     }
 
     m_pModel->setEditableColumns(aEditableColumns);
@@ -727,7 +755,23 @@ void QtInstanceTreeView::set_selection_mode(SelectionMode eMode)
 
 int QtInstanceTreeView::count_selected_rows() const { return get_selected_rows().size(); }
 
-void QtInstanceTreeView::do_remove_selection() { assert(false && "Not implemented yet"); }
+void QtInstanceTreeView::do_remove_selection()
+{
+    SolarMutexGuard g;
+
+    GetQtInstance().RunInMainThread([&] {
+        // remove from last to first selected row to ensure indexes remain valid
+        QModelIndexList aSelectedIndexes = m_pSelectionModel->selectedRows();
+        std::sort(aSelectedIndexes.begin(), aSelectedIndexes.end(),
+                  [this](const QModelIndex& rFirst, const QModelIndex& rSecond) {
+                      return iter_compare(QtInstanceTreeIter(rFirst), QtInstanceTreeIter(rSecond))
+                             == -1;
+                  });
+
+        for (auto aIt = aSelectedIndexes.rbegin(); aIt != aSelectedIndexes.rend(); aIt++)
+            m_pModel->removeRow(aIt->row(), aIt->parent());
+    });
+}
 
 bool QtInstanceTreeView::changed_by_hover() const
 {
@@ -770,10 +814,19 @@ std::unique_ptr<weld::TreeIter> QtInstanceTreeView::get_dest_row_at_pos(const Po
 
 void QtInstanceTreeView::unset_drag_dest_row() { assert(false && "Not implemented yet"); }
 
-tools::Rectangle QtInstanceTreeView::get_row_area(const weld::TreeIter&) const
+tools::Rectangle QtInstanceTreeView::get_row_area(const weld::TreeIter& rIter) const
 {
-    assert(false && "Not implemented yet");
-    return tools::Rectangle();
+    SolarMutexGuard g;
+
+    tools::Rectangle aRowArea;
+    GetQtInstance().RunInMainThread([&] {
+        const QRect aFirstColRect = m_pTreeView->visualRect(modelIndex(rIter));
+        const QRect aLastColRect
+            = m_pTreeView->visualRect(modelIndex(rIter, m_pModel->columnCount() - 1));
+        aRowArea = toRectangle(aFirstColRect.united(aLastColRect));
+    });
+
+    return aRowArea;
 }
 
 weld::TreeView* QtInstanceTreeView::get_drag_source() const
@@ -798,6 +851,20 @@ QAbstractItemView::SelectionMode QtInstanceTreeView::mapSelectionMode(SelectionM
             assert(false && "unhandled selection mode");
             return QAbstractItemView::SingleSelection;
     }
+}
+
+bool QtInstanceTreeView::signalEditingStarted(const QModelIndex& rIndex)
+{
+    SolarMutexGuard g;
+
+    return signal_editing_started(QtInstanceTreeIter(rIndex));
+}
+
+bool QtInstanceTreeView::signalEditingDone(const QModelIndex& rIndex, const QString& rNewText)
+{
+    SolarMutexGuard g;
+
+    return signal_editing_done({ QtInstanceTreeIter(rIndex), toOUString(rNewText) });
 }
 
 QList<QList<Qt::ItemDataRole>> QtInstanceTreeView::columnRoles(QTreeView& rTreeView)

@@ -58,6 +58,7 @@ $(eval $(call gb_Library_use_externals,vclplug_qt6,\
     boost_headers \
     cairo \
     epoxy \
+    frozen \
     graphite \
     harfbuzz \
     icu_headers \
@@ -154,6 +155,7 @@ $(eval $(call gb_Library_add_exception_objects,vclplug_qt6,\
     vcl/qt6/QtTimer \
     vcl/qt6/QtTools \
     vcl/qt6/QtTransferable \
+    vcl/qt6/QtTreeViewItemDelegate \
     vcl/qt6/QtTreeViewModel \
     vcl/qt6/QtVirtualDevice \
     vcl/qt6/QtWidget \
