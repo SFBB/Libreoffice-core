@@ -4328,14 +4328,6 @@ fi
 
 if test "$cross_compiling" = "yes"; then
     export CROSS_COMPILING=TRUE
-    if test "$_os" = "Linux"; then
-        if test -d /usr/lib/$host_cpu-$host_os/pkgconfig; then
-            export PKG_CONFIG_LIBDIR=/usr/lib/$host_cpu-$host_os/pkgconfig
-            if test -d /usr/share/pkgconfig; then
-                export PKG_CONFIG_PATH=/usr/share/pkgconfig
-            fi
-        fi
-    fi
     if test "$enable_dynamic_loading" != yes -a "$enable_wasm_strip" = yes; then
         ENABLE_WASM_STRIP=TRUE
     fi
@@ -6410,7 +6402,6 @@ if test "$cross_compiling" = "yes"; then
         LIBO_URE_MISC_FOLDER
         OS
         SDKDIRNAME
-        SYSTEM_PYTHON
         SYSTEM_LIBXML
         SYSTEM_LIBXSLT
 "
@@ -6497,7 +6488,6 @@ else
     LIBO_URE_MISC_FOLDER_FOR_BUILD="$LIBO_URE_MISC_FOLDER"
     SDKDIRNAME_FOR_BUILD="$SDKDIRNAME"
     WORKDIR_FOR_BUILD="$WORKDIR"
-    SYSTEM_PYTHON_FOR_BUILD="$SYSTEM_PYTHON"
 fi
 AC_SUBST(OS_FOR_BUILD)
 AC_SUBST(INSTDIR_FOR_BUILD)
@@ -6511,7 +6501,6 @@ AC_SUBST(WORKDIR_FOR_BUILD)
 AC_SUBST(CC_FOR_BUILD)
 AC_SUBST(CXX_FOR_BUILD)
 AC_SUBST(CPPU_ENV_FOR_BUILD)
-AC_SUBST(SYSTEM_PYTHON_FOR_BUILD)
 
 dnl ===================================================================
 dnl Check for lockfile deps
@@ -10529,11 +10518,7 @@ if test "$build_os" != "cygwin" -a "$enable_python" != fully-internal; then
         # Clean PYTHON_VERSION checked below if cross-compiling
         PYTHON_VERSION=""
         if test "$PYTHON" != ":"; then
-            if test -n "$CROSS_COMPILING" -a -z "$SYSTEM_PYTHON_FOR_BUILD"; then
-                PYTHON_FOR_BUILD="$INSTDIR_FOR_BUILD/$LIBO_BIN_FOLDER_FOR_BUILD/python"
-            else
-                PYTHON_FOR_BUILD=$PYTHON
-            fi
+            PYTHON_FOR_BUILD=$PYTHON
         fi
     fi
 fi

@@ -2927,8 +2927,7 @@ void SwTabFrame::MakeAll(vcl::RenderContext* pRenderContext)
         // 3. The table is allowed to split or we do not have a pIndPrev:
         SwFrame* pIndPrev = GetIndPrev();
 
-        SwFlyFrame* pFly = FindFlyFrame();
-        if (!pIndPrev && pFly && pFly->IsFlySplitAllowed())
+        if (SwFlyFrame* pFly = FindFlyFrame(); !pIndPrev && pFly && pFly->IsFlySplitAllowed())
         {
             if (SwFrame* pAnchor = pFly->FindAnchorCharFrame())
             {
@@ -3279,23 +3278,22 @@ void SwTabFrame::MakeAll(vcl::RenderContext* pRenderContext)
         //Let's see if we find some place anywhere...
         if (!bMovedFwd)
         {
-            bool bMoveAlways = false;
+            bool bSkipMoveFwd = false;
             SwFrame* pUpper = GetUpper();
             if (pUpper && pUpper->IsFlyFrame())
             {
                 auto pFlyFrame = static_cast<SwFlyFrame*>(pUpper);
                 if (pFlyFrame->IsFlySplitAllowed())
                 {
-                    // If the anchor of the split has a previous frame, MoveFwd() is allowed to move
-                    // forward.
-                    bMoveAlways = true;
+                    // Don't try to move floating table forward. It's done elsewhere moving its fly.
+                    bSkipMoveFwd = true;
                 }
             }
             // don't make the effort to move fwd if its known
             // conditions that are known not to work
             if (IsInFootnote() && ForbiddenForFootnoteCntFwd())
                 bMakePage = false;
-            else if (!MoveFwd(bMakePage, false, bMoveAlways))
+            else if (bSkipMoveFwd || !MoveFwd(bMakePage, false))
                 bMakePage = false;
         }
 
