@@ -2853,7 +2853,7 @@ double SvNumberformat::GetRoundFractionValue ( double fNumber ) const
 void SvNumberformat::ImpGetFractionElements ( double& fNumber, sal_uInt16 nIx,
                                               double& fIntPart, sal_Int64& nFrac, sal_Int64& nDiv ) const
 {
-    if ( fNumber < 0.0 )
+    if (fNumber < 0.0)
         fNumber = -fNumber;
     fIntPart = floor(fNumber); // Integral part
     fNumber -= fIntPart;         // Fractional part
@@ -2884,9 +2884,17 @@ void SvNumberformat::ImpGetFractionElements ( double& fNumber, sal_uInt16 nIx,
         {
             double fTemp = 1.0 / fRemainder;             // 64bits precision required when fRemainder is very weak
             nPartialDenom = static_cast<sal_Int64>(floor(fTemp));   // due to floating point notation with double precision
+            // The fTemp value may be out of range for sal_Int64 (e.g. 1e+19), and the result of
+            // casting that is undefined. In practice, gcc/llvm gives us a large positive number,
+            // but depending on the compiler, we have either a large positive number (which works fine)
+            // or a a large negative number, which will make this algorithm oscillate.
+            // So apply a correction that makes all the compilers work reasonbly.
+            // There is probably a better algorithm to be used here for this whole function.
+            if (nPartialDenom < 0)
+                nPartialDenom = -(nPartialDenom+1);
             fRemainder = fTemp - static_cast<double>(nPartialDenom);
             nDivNext = nPartialDenom * nDiv + nDivPrev;
-            if ( nDivNext <= nBasis )  // continue loop
+            if (nDivNext <= nBasis) // continue loop
             {
                 nFracNext = nPartialDenom * nFrac + nFracPrev;
                 nFracPrev = nFrac;
