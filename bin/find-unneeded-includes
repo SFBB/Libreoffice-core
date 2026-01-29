@@ -105,9 +105,9 @@ def ignoreRemoval(include, toAdd, absFileName, moduleRules, noexclude):
     # Skip forward declaration of versioned namespaces
     # see https://gerrit.libreoffice.org/c/core/+/72972
     # for an example of breakage caused by this
-    if include == "unicode/regex.h":
+    if include.startswith("unicode/"):
         for item in toAdd:
-            match = re.search(r'namespace icu.* class RegexMatcher', item)
+            match = re.search(r'namespace icu_.*', item)
             if match:
                 return True
 
@@ -261,6 +261,13 @@ def processIWYUOutput(iwyuOutput, moduleRules, fileName, noexclude, checknamespa
                 if realFileName in excludelistRules.keys():
                     if include in excludelistRules[realFileName]:
                         print("WARNING:", include, "excluded header can be removed from exclusion list of file:", realFileName)
+                    # check if a hpp files hdl pair is now considered necessary
+                    # then there is no need for an explicit exclusion
+                    hdlMatch = re.match(".*.hdl", include)
+                    if hdlMatch:
+                        hdl = include.replace(".hdl", ".hpp")
+                        if hdl in excludelistRules[realFileName]:
+                            print("WARNING:", hdl, "excluded header can be removed from exclusion list of file:", realFileName)
 
             if checknamespaces:
                 # match for all possible URE/UNO namespaces, created with:
