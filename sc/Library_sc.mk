@@ -209,6 +209,7 @@ $(eval $(call gb_Library_add_exception_objects,sc,\
     sc/source/core/data/table5 \
     sc/source/core/data/table6 \
     sc/source/core/data/table7 \
+    sc/source/core/data/tablestyle \
     sc/source/core/data/tabprotection \
     sc/source/core/data/types \
     sc/source/core/data/userdat \
@@ -408,6 +409,8 @@ $(eval $(call gb_Library_add_exception_objects,sc,\
     sc/source/ui/cctrl/tbzoomsliderctrl \
     sc/source/ui/cctrl/SheetViewBox \
     sc/source/ui/cctrl/SheetViewControl \
+    sc/source/ui/cctrl/TableStylesBox \
+    sc/source/ui/cctrl/TableStylesControl \
     sc/source/ui/condformat/condformatdlg \
     sc/source/ui/condformat/condformatdlgentry \
     sc/source/ui/condformat/condformatdlgdata \
@@ -428,6 +431,7 @@ $(eval $(call gb_Library_add_exception_objects,sc,\
     sc/source/ui/dbgui/csvsplits \
     sc/source/ui/dbgui/csvtablebox \
     sc/source/ui/dbgui/dbnamdlg \
+    sc/source/ui/dbgui/dbtabledlg \
     sc/source/ui/dbgui/filtdlg \
     sc/source/ui/dbgui/foptmgr \
     sc/source/ui/dbgui/imoptdlg \
@@ -535,6 +539,7 @@ $(eval $(call gb_Library_add_exception_objects,sc,\
     sc/source/ui/sidebar/CellLineStyleControl \
     sc/source/ui/sidebar/CellAppearancePropertyPanel \
     sc/source/ui/sidebar/CellBorderStyleControl \
+    sc/source/ui/sidebar/DatabasePropertyPanel \
     sc/source/ui/sidebar/NumberFormatControl \
     sc/source/ui/sidebar/NumberFormatPropertyPanel \
     sc/source/ui/sidebar/ScPanelFactory \
@@ -691,6 +696,7 @@ $(eval $(call gb_Library_add_exception_objects,sc,\
     sc/source/ui/view/spelleng \
     sc/source/ui/view/spellcheckcontext \
     sc/source/ui/view/tabcont \
+    sc/source/ui/view/tableshell \
     sc/source/ui/view/tabsplit \
     sc/source/ui/view/tabview \
     sc/source/ui/view/tabview2 \

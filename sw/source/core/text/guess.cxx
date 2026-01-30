@@ -26,8 +26,8 @@
 #include <tgrditem.hxx>
 #include <com/sun/star/i18n/BreakType.hpp>
 #include <com/sun/star/i18n/WordType.hpp>
-#include <com/sun/star/i18n/XBreakIterator.hpp>
 #include <com/sun/star/text/ParagraphHyphenationKeepType.hpp>
+#include <i18npool/breakiterator.hxx>
 #include <unotools/charclass.hxx>
 #include <svl/urihelper.hxx>
 #include "porfld.hxx"
@@ -471,7 +471,7 @@ bool SwTextGuess::Guess( const SwTextPortion& rPor, SwTextFormatInfo &rInf,
             if ( ( bHyphenationNoLastWord || bDoNotHyphenateLastLine ) &&
                             sal_Int32(m_nCutPos) > nLastWord &&
                             TextFrameIndex(COMPLETE_STRING) != m_nCutPos &&
-                            // if the last word is multiple line long, e.g. an URL,
+                            // if the last word is multiple line long, e.g. a URL,
                             // apply this only if the space before the word is there
                             // in the actual line, i.e. start the long word in a new
                             // line, but still allows to break its last parts

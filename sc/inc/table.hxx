@@ -326,7 +326,9 @@ public:
 
     bool        TestRemoveSubTotals( const ScSubTotalParam& rParam );
     void        RemoveSubTotals( ScSubTotalParam& rParam );
+    void        RemoveSimpleSubTotals( ScSubTotalParam& rParam, const ScSubTotalParam& rOldParam );
     bool        DoSubTotals( ScSubTotalParam& rParam );
+    bool        DoSimpleSubTotals( ScSubTotalParam& rParam );
 
     const ScSheetEvents* GetSheetEvents() const              { return pSheetEvents.get(); }
     void        SetSheetEvents( std::unique_ptr<ScSheetEvents> pNew );
@@ -1031,7 +1033,7 @@ public:
     // For ValidQuery() see ScQueryEvalutor class.
     void        TopTenQuery( ScQueryParam& );
     void        PrepareQuery( ScQueryParam& rQueryParam );
-    SCSIZE      Query(const ScQueryParam& rQueryParam, bool bKeepSub);
+    SCSIZE      Query(const ScQueryParam& rQueryParam, bool bKeepSub, bool bKeepTotals = false);
     bool        CreateQueryParam(SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2, ScQueryParam& rQueryParam);
 
     void GetFilterEntries(SCCOL nCol, SCROW nRow1, SCROW nRow2, ScFilterEntries& rFilterEntries, bool bFiltering = false);

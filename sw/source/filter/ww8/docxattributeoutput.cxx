@@ -146,9 +146,9 @@
 #include <utility>
 #include <vcl/embeddedfontsmanager.hxx>
 #include <vcl/vectorgraphicdata.hxx>
+#include <i18npool/breakiterator.hxx>
 
 #include <com/sun/star/i18n/ScriptType.hpp>
-#include <com/sun/star/i18n/XBreakIterator.hpp>
 #include <com/sun/star/chart2/XChartDocument.hpp>
 #include <com/sun/star/drawing/ShadingPattern.hpp>
 #include <com/sun/star/text/GraphicCrop.hpp>
@@ -2000,7 +2000,20 @@ void DocxAttributeOutput::EndRun(const SwTextNode* pNode, sal_Int32 nPos, sal_In
     DoWriteBookmarksStart(m_rBookmarksStart, m_pMoveRedlineData);
     DoWriteBookmarksEnd(m_rBookmarksEnd, false, false); // Write non-moverange bookmarks
     DoWritePermissionsStart();
+
+    // Surround annotation references with redline start/end markup if we're inside a delete.
+    bool bHasAnnotationMarkReferencesInDel = !m_rAnnotationMarksEnd.empty() && m_pRedlineData
+                                             && m_pRedlineData->GetType() == RedlineType::Delete;
+    if (bHasAnnotationMarkReferencesInDel)
+    {
+        StartRedline(m_pRedlineData, bLastRun);
+    }
     DoWriteAnnotationMarks();
+    if (bHasAnnotationMarkReferencesInDel)
+    {
+        EndRedline(m_pRedlineData, bLastRun);
+    }
+
     // if there is some redlining in the document, output it
     bool bSkipRedline = false;
     if (nLen == 1)

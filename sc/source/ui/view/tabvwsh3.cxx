@@ -16,7 +16,6 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-
 #include <sfx2/bindings.hxx>
 #include <sfx2/dispatch.hxx>
 #include <sfx2/passwd.hxx>
@@ -47,6 +46,7 @@
 #include <protectiondlg.hxx>
 #include <duplicaterecordsdlg.hxx>
 #include <markdata.hxx>
+#include <cellsuno.hxx>
 
 #include <svl/ilstitem.hxx>
 #include <vector>
@@ -839,7 +839,7 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
             {
                 using namespace com::sun::star;
                 table::CellRangeAddress aCellRange;
-                uno::Reference<sheet::XSpreadsheet> xActiveSheet;
+                rtl::Reference<ScTableSheetObj> xActiveSheet;
                 DuplicatesResponse aResponse;
                 bool bHasData = true;
 
@@ -937,9 +937,16 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
                 }
 
                 if (bHasData)
-                    GetViewData().GetViewShell()->HandleDuplicateRecords(
-                            xActiveSheet, aCellRange, aResponse.bRemove, aResponse.bIncludesHeaders,
-                            aResponse.bDuplicateRows, aResponse.vEntries);
+                {
+                    if (aResponse.bRemove)
+                        GetViewData().GetViewShell()->HandleDuplicateRecordsRemove(
+                                xActiveSheet, aCellRange, aResponse.bIncludesHeaders,
+                                aResponse.bDuplicateRows, aResponse.vEntries);
+                    else
+                        GetViewData().GetViewShell()->HandleDuplicateRecordsHighlight(
+                                xActiveSheet, aCellRange, aResponse.bIncludesHeaders,
+                                aResponse.bDuplicateRows, aResponse.vEntries);
+                }
 
                 rReq.Done();
             }

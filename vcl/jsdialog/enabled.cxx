@@ -206,6 +206,7 @@ constexpr auto ScalcDialogList
         { u"modules/scalc/ui/definedatabaserangedialog.ui" },
         { u"modules/scalc/ui/selectrange.ui" },
         { u"modules/scalc/ui/selectsheetviewdialog.ui" },
+        { u"modules/scalc/ui/definetablerangedialog.ui" },
     });
 
 constexpr auto SwriterDialogList
@@ -421,6 +422,7 @@ constexpr auto SidebarList
         { u"modules/scalc/ui/functionpanel.ui" },
         { u"modules/scalc/ui/sidebaralignment.ui" },
         { u"modules/scalc/ui/sidebarcellappearance.ui" },
+        { u"modules/scalc/ui/sidebardatabase.ui" },
         { u"modules/scalc/ui/sidebarnumberformat.ui" },
         // schart
         { u"modules/schart/ui/sidebaraxis.ui" },
@@ -496,6 +498,7 @@ constexpr auto NotebookbarList
     = frozen::make_unordered_set<std::u16string_view>({
         { u"modules/scalc/ui/numberbox.ui" },
         { u"modules/scalc/ui/sheetviewbox.ui" },
+        { u"modules/scalc/ui/tablestylesbox.ui" },
         { u"svx/ui/fontnamebox.ui" },
         { u"svx/ui/fontsizebox.ui" },
         { u"svx/ui/stylespreview.ui" },

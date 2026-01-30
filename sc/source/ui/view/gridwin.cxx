@@ -1761,10 +1761,10 @@ bool ScGridWindow::TestMouse( const MouseEvent& rMEvt, bool bAction )
         ScRange aMarkRange;
         if (mrViewData.GetSimpleArea( aMarkRange ) == SC_MARK_SIMPLE)
         {
-            if (aMarkRange.aStart.Tab() == mrViewData.CurrentTabForData() && mpAutoFillRect)
+            if (aMarkRange.aStart.Tab() == mrViewData.CurrentTabForData())
             {
                 Point aMousePos = rMEvt.GetPosPixel();
-                if (mpAutoFillRect->Contains(aMousePos))
+                if (mpAutoFillRect && mpAutoFillRect->Contains(aMousePos))
                 {
                     SetPointer( PointerStyle::Cross );     //! bold cross ?
                     if (bAction)
@@ -1782,6 +1782,19 @@ bool ScGridWindow::TestMouse( const MouseEvent& rMEvt, bool bAction )
                         //  The simple selection must also be recognized when dragging,
                         //  where the Marking flag is set and MarkToSimple won't work anymore.
                         mrViewData.GetMarkData().MarkToSimple();
+                    }
+                    bNewPointer = true;
+                }
+                else if (mpDBExpandRect && mpDBExpandRect->Contains(aMousePos))
+                {
+                    SetPointer( PointerStyle::SESize );
+                    if (bAction)
+                    {
+                        SCCOL nX = maDBRange.aEnd.Col();
+                        SCROW nY = maDBRange.aEnd.Row();
+
+                        mrViewData.SetDragMode(
+                            maDBRange.aStart.Col(), maDBRange.aStart.Row(), nX, nY, ScFillMode::DBEXPAND );
                     }
                     bNewPointer = true;
                 }
@@ -2030,7 +2043,6 @@ void ScGridWindow::HandleMouseButtonDown( const MouseEvent& rMEvt, MouseEventSta
 
     RfCorner rCorner = NONE;
     bool bFound = HitRangeFinder(rMEvt.GetPosPixel(), rCorner, &nRFIndex, &nRFAddX, &nRFAddY);
-    bRFSize = (rCorner != NONE);
     aRFSelectedCorned = rCorner;
 
     if (bFound)
@@ -2472,6 +2484,52 @@ void ScGridWindow::MouseButtonUp( const MouseEvent& rMEvt )
         {
             mrViewData.GetDocShell()->GetDocFunc().ResizeMatrix( aBlockRange, aEndPos );
             mrViewData.GetView()->MarkRange( ScRange( aBlockRange.aStart, aEndPos ) );
+        }
+    }
+    else if (mrViewData.IsDBExpandMode())
+    {
+        SCCOL nStartCol;
+        SCROW nStartRow;
+        SCCOL nEndCol;
+        SCROW nEndRow;
+        mrViewData.GetFillData( nStartCol, nStartRow, nEndCol, nEndRow );
+        SCCOL nFillCol = mrViewData.GetRefEndX();
+        SCROW nFillRow = mrViewData.GetRefEndY();
+        ScViewFunc* pView = mrViewData.GetView();
+        pView->StopRefMode();
+        mrViewData.ResetFillMode();
+        pView->GetFunctionSet().SetAnchorFlag( false );    // #i5819# don't use AutoFill anchor flag for selection
+        ScAddress aCurrentAddress = mrViewData.GetCurPos();
+        ScDocument& rDocument = mrViewData.GetDocument();
+        if (ScDBData* pDBData = rDocument.GetTableDBAtCursor(aCurrentAddress.Col(), aCurrentAddress.Row(), aCurrentAddress.Tab(), ScDBDataPortion::AREA))
+        {
+            SCTAB nTab = mrViewData.GetTabNumber();
+            ScDBDocFunc aFunc( *mrViewData.GetDocShell() );
+            ScDBData aNewDBData(*pDBData);
+            ScRange aNewDBRange(nStartCol, nStartRow, nTab, nFillCol, nFillRow, nTab);
+            aNewDBRange.PutInOrder();
+            aNewDBData.SetArea(nTab, aNewDBRange.aStart.Col(), aNewDBRange.aStart.Row(), aNewDBRange.aEnd.Col(), aNewDBRange.aEnd.Row());
+            // Do subtotal if needed
+            ScRange aOldRange;
+            pDBData->GetArea(aOldRange);
+            if (aNewDBData.HasTotals() && (aOldRange.aEnd.Row() != aNewDBRange.aEnd.Row() || aOldRange.aStart.Row() != aNewDBRange.aStart.Row()))
+            {
+                // Subtotals
+                ScSubTotalParam aSubTotalParam;
+                pDBData->GetSubTotalParam(aSubTotalParam);
+                aSubTotalParam.bHasHeader = aNewDBData.HasHeader();
+                // store current subtotal settings
+                pDBData->CreateTotalRowParam(aSubTotalParam);
+                aNewDBData.SetSubTotalParam(aSubTotalParam);
+                // add/replace total row
+                aSubTotalParam.bRemoveOnly = false;
+                aSubTotalParam.bReplace = true;
+                aFunc.DoTableSubTotals(aNewDBData.GetTab(), aNewDBData, aSubTotalParam, true, false);
+            }
+            else
+            {
+                aFunc.ModifyDBData(aNewDBData);
+            }
         }
     }
     else if (mrViewData.IsAnyFillMode())
@@ -3202,7 +3260,9 @@ void ScGridWindow::StartDrag( sal_Int8 /* nAction */, const Point& rPosPixel )
     }
     else
         if ( !DrawCommand(aDragEvent) )
+        {
             mrViewData.GetView()->GetSelEngine()->Command( aDragEvent );
+        }
 }
 
 static void lcl_SetTextCursorPos( ScViewData& rViewData, ScSplitPos eWhich, vcl::Window* pWin )
@@ -3462,7 +3522,7 @@ void ScGridWindow::Command( const CommandEvent& rCEvt )
         // tdf#127341 the formerly used GetEditUrl(aPosPixel) additionally
         // to bSpellError activated EditMode here for right-click on URL
         // which prevents the regular context-menu from appearing. Since this
-        // is more expected than the context-menu for editing an URL, I removed
+        // is more expected than the context-menu for editing a URL, I removed
         // this. If this was wanted and can be argued it might be re-activated.
         // For now, reduce to spelling errors - as the original comment above
         // suggests.
@@ -6305,6 +6365,7 @@ void ScGridWindow::CursorChanged()
     UpdateCursorOverlay();
     UpdateAutoFillOverlay();
     UpdateSparklineGroupOverlay();
+    UpdateDatabaseOverlay();
 }
 
 void ScGridWindow::ImpCreateOverlayObjects()
@@ -6318,6 +6379,7 @@ void ScGridWindow::ImpCreateOverlayObjects()
     UpdateHeaderOverlay();
     UpdateShrinkOverlay();
     UpdateSparklineGroupOverlay();
+    UpdateDatabaseOverlay();
 }
 
 void ScGridWindow::ImpDestroyOverlayObjects()
@@ -6331,6 +6393,7 @@ void ScGridWindow::ImpDestroyOverlayObjects()
     DeleteHeaderOverlay();
     DeleteShrinkOverlay();
     DeleteSparklineGroupOverlay();
+    DeleteDatabaseOverlay();
 }
 
 void ScGridWindow::UpdateAllOverlays()
@@ -6580,7 +6643,7 @@ void ScGridWindow::updateOtherKitSelections() const
 namespace
 {
 
-void updateLibreOfficeKitAutoFill(const ScViewData& rViewData, tools::Rectangle const & rRectangle)
+void updateLibreOfficeKitAutoFill(const ScViewData& rViewData, tools::Rectangle const & rRectangle, bool bIsTableArea)
 {
     if (!comphelper::LibreOfficeKit::isActive())
         return;
@@ -6599,7 +6662,19 @@ void updateLibreOfficeKitAutoFill(const ScViewData& rViewData, tools::Rectangle 
     }
 
     ScTabViewShell* pViewShell = rViewData.GetViewShell();
-    pViewShell->libreOfficeKitViewCallback(LOK_CALLBACK_CELL_AUTO_FILL_AREA, sRectangleString);
+    if (bIsTableArea)
+    {
+        tools::JsonWriter writer;
+        writer.put("commandName", "TableAutoFillInfo");
+        {
+            const auto aState = writer.startNode("state");
+            writer.put("rectangle", sRectangleString);
+        }
+        OString info = writer.finishAndGetAsOString();
+        pViewShell->libreOfficeKitViewCallback(LOK_CALLBACK_STATE_CHANGED, info);
+    }
+    else
+        pViewShell->libreOfficeKitViewCallback(LOK_CALLBACK_CELL_AUTO_FILL_AREA, sRectangleString);
 }
 
 } //end anonymous namespace
@@ -6836,6 +6911,45 @@ void ScGridWindow::DeleteSelectionOverlay()
     mpOOSelection.reset();
 }
 
+std::unique_ptr<sdr::overlay::OverlayObject> ScGridWindow::DrawOverlay(const std::vector<tools::Rectangle>& rRects, const Color& rColor, bool bBorder, bool bContrastOutline, sdr::overlay::OverlayType eOverlayType)
+{
+    rtl::Reference<sdr::overlay::OverlayManager> xOverlayManager = getOverlayManager();
+    if (!xOverlayManager.is())
+        return std::unique_ptr<sdr::overlay::OverlayObject>();
+
+    std::vector< basegfx::B2DRange > aRanges;
+    const basegfx::B2DHomMatrix aTransform(GetOutDev()->GetInverseViewTransformation());
+    ScDocument& rDoc = mrViewData.GetDocument();
+    SCTAB nTab = mrViewData.CurrentTabForData();
+    bool bLayoutRTL = rDoc.IsLayoutRTL( nTab );
+
+    for(const tools::Rectangle & rRA : rRects)
+    {
+        if (bLayoutRTL)
+        {
+            basegfx::B2DRange aRB(rRA.Left(), rRA.Top() - 1, rRA.Right() + 1, rRA.Bottom());
+            aRB.transform(aTransform);
+            aRanges.push_back(aRB);
+        }
+        else
+        {
+            basegfx::B2DRange aRB(rRA.Left() - 1, rRA.Top() - 1, rRA.Right(), rRA.Bottom());
+            aRB.transform(aTransform);
+            aRanges.push_back(aRB);
+        }
+    }
+
+    std::unique_ptr<sdr::overlay::OverlayObject> pOverlay(new sdr::overlay::OverlaySelection(
+        eOverlayType,
+        rColor,
+        std::move(aRanges),
+        bBorder, bContrastOutline));
+
+    xOverlayManager->add(*pOverlay);
+
+    return pOverlay;
+}
+
 void ScGridWindow::UpdateSelectionOverlay()
 {
     const MapMode aDrawMode = GetDrawMapMode();
@@ -6867,42 +6981,14 @@ void ScGridWindow::UpdateSelectionOverlay()
             // notify the LibreOfficeKit too
             UpdateKitSelection(aRects);
         }
-        else if (xOverlayManager.is())
+        else
         {
-            std::vector< basegfx::B2DRange > aRanges;
-            const basegfx::B2DHomMatrix aTransform(GetOutDev()->GetInverseViewTransformation());
-            ScDocument& rDoc = mrViewData.GetDocument();
-            SCTAB nTab = mrViewData.CurrentTabForData();
-            bool bLayoutRTL = rDoc.IsLayoutRTL( nTab );
-
-            for(const tools::Rectangle & rRA : aRects)
-            {
-                if (bLayoutRTL)
-                {
-                    basegfx::B2DRange aRB(rRA.Left(), rRA.Top() - 1, rRA.Right() + 1, rRA.Bottom());
-                    aRB.transform(aTransform);
-                    aRanges.push_back(aRB);
-                }
-                else
-                {
-                    basegfx::B2DRange aRB(rRA.Left() - 1, rRA.Top() - 1, rRA.Right(), rRA.Bottom());
-                    aRB.transform(aTransform);
-                    aRanges.push_back(aRB);
-                }
-            }
-
-            // get the system's highlight color
             const Color aHighlight(SvtOptionsDrawinglayer::getHilightColor());
-
-            std::unique_ptr<sdr::overlay::OverlayObject> pOverlay(new sdr::overlay::OverlaySelection(
-                sdr::overlay::OverlayType::Transparent,
-                aHighlight,
-                std::move(aRanges),
-                true, true));
-
-            xOverlayManager->add(*pOverlay);
-            mpOOSelection.reset(new sdr::overlay::OverlayObjectList);
-            mpOOSelection->append(std::move(pOverlay));
+            std::unique_ptr<sdr::overlay::OverlayObject> pOverlay = DrawOverlay(aRects, aHighlight, true, true, sdr::overlay::OverlayType::Transparent);
+            if (pOverlay) {
+                mpOOSelection.reset(new sdr::overlay::OverlayObjectList);
+                mpOOSelection->append(std::move(pOverlay));
+            }
         }
     }
     else
@@ -6921,6 +7007,80 @@ void ScGridWindow::UpdateSelectionOverlay()
     }
 }
 
+void ScGridWindow::DeleteDatabaseOverlay()
+{
+    mpDBExpandRect.reset();
+    mpOODatabase.reset();
+    if (comphelper::LibreOfficeKit::isActive()) // notify the LibreOfficeKit
+    {
+        tools::Rectangle aEmptyRect;
+        updateLibreOfficeKitAutoFill(mrViewData, aEmptyRect, true);
+    }
+}
+
+void ScGridWindow::UpdateDatabaseOverlay()
+{
+    const MapMode aDrawMode = GetDrawMapMode();
+    const MapMode aOldMode = GetMapMode();
+    comphelper::ScopeGuard aMapModeGuard(
+        [&aOldMode, &aDrawMode, this] {
+            if (aOldMode != aDrawMode)
+                SetMapMode(aOldMode);
+        }
+    );
+    if (aOldMode != aDrawMode)
+        SetMapMode(aDrawMode);
+
+    DeleteDatabaseOverlay();
+
+    ScDocument& rDocument = mrViewData.GetDocument();
+    ScAddress aCurrentAddress = mrViewData.GetCurPos();
+    std::vector<basegfx::B2DRange> aRanges;
+    ScRange aCurrRange;
+    const ScDBData* pDBData = rDocument.GetTableDBAtCursor(aCurrentAddress.Col(), aCurrentAddress.Row(),
+        aCurrentAddress.Tab(), ScDBDataPortion::AREA);
+    if (pDBData)
+    {
+        pDBData->GetArea(aCurrRange);
+        Point aStart = mrViewData.GetScrPos(aCurrRange.aStart.Col(),
+                                            aCurrRange.aStart.Row(), eWhich);
+        Point aEnd = mrViewData.GetScrPos(aCurrRange.aEnd.Col() + 1,
+                                          aCurrRange.aEnd.Row() + 1, eWhich);
+
+        basegfx::B2DRange aRange(aStart.X(), aStart.Y(), aEnd.X(), aEnd.Y());
+        const basegfx::B2DHomMatrix aTransform(GetOutDev()->GetInverseViewTransformation());
+        aRange.transform(aTransform);
+        aRanges.push_back(aRange);
+
+        maDBRange = aCurrRange;
+    }
+
+    if (!aRanges.empty())
+    {
+        ScModule* mod = ScModule::get();
+        Color aDBColor = mod->GetColorConfig().GetColorValue(svtools::CALCDBFOCUS).nColor;
+
+        // #i70788# get the OverlayManager safely
+        rtl::Reference<sdr::overlay::OverlayManager> xOverlayManager = getOverlayManager();
+        if (xOverlayManager.is())
+        {
+            std::unique_ptr<sdr::overlay::OverlayObject> pOverlay(new sdr::overlay::OverlaySelection(
+                sdr::overlay::OverlayType::NoFill,
+                aDBColor,
+                std::move(aRanges),
+                true, true));
+
+            xOverlayManager->add(*pOverlay);
+            std::unique_ptr<sdr::overlay::OverlayObjectList> pOverlayList = DrawFillMarker(aCurrRange.aEnd.Col(), aCurrRange.aEnd.Row(), mpDBExpandRect, true);
+            if (pOverlayList)
+            {
+                mpOODatabase.swap(pOverlayList);
+                mpOODatabase->append(std::move(pOverlay));
+            }
+        }
+    }
+}
+
 void ScGridWindow::UpdateHighlightOverlay()
 {
     mpOOHighlight.reset();          // DeleteHighlightOverlay
@@ -6934,43 +7094,15 @@ void ScGridWindow::UpdateHighlightOverlay()
 
     if (!aRects.empty() && mrViewData.IsActive())
     {
+        ScModule* mod = ScModule::get();
+        const Color aBackgroundColor = mod->GetColorConfig().GetColorValue(svtools::DOCCOLOR).nColor;
+        Color aHighlightColor = mod->GetColorConfig().GetColorValue(svtools::CALCCELLFOCUS).nColor;
+        aHighlightColor.Merge(aBackgroundColor, 100);
+
         // #i70788# get the OverlayManager safely
-        if (rtl::Reference<sdr::overlay::OverlayManager> xOverlayManager = getOverlayManager())
+        std::unique_ptr<sdr::overlay::OverlayObject> pOverlay = DrawOverlay(aRects, aHighlightColor, false, false, sdr::overlay::OverlayType::Transparent);
+        if (pOverlay)
         {
-            std::vector< basegfx::B2DRange > aRanges;
-            const basegfx::B2DHomMatrix aTransform(GetOutDev()->GetInverseViewTransformation());
-            ScDocument& rDoc = mrViewData.GetDocument();
-            SCTAB nTab = mrViewData.CurrentTabForData();
-            bool bLayoutRTL = rDoc.IsLayoutRTL( nTab );
-
-            for(const tools::Rectangle & rRA : aRects)
-            {
-                if (bLayoutRTL)
-                {
-                    basegfx::B2DRange aRB(rRA.Left(), rRA.Top() - 1, rRA.Right() + 1, rRA.Bottom());
-                    aRB.transform(aTransform);
-                    aRanges.push_back(aRB);
-                }
-                else
-                {
-                    basegfx::B2DRange aRB(rRA.Left() - 1, rRA.Top() - 1, rRA.Right(), rRA.Bottom());
-                    aRB.transform(aTransform);
-                    aRanges.push_back(aRB);
-                }
-            }
-
-            ScModule* mod = ScModule::get();
-            const Color aBackgroundColor = mod->GetColorConfig().GetColorValue(svtools::DOCCOLOR).nColor;
-            Color aHighlightColor = mod->GetColorConfig().GetColorValue(svtools::CALCCELLFOCUS).nColor;
-            aHighlightColor.Merge(aBackgroundColor, 100);
-
-            std::unique_ptr<sdr::overlay::OverlayObject> pOverlay(new sdr::overlay::OverlaySelection(
-                sdr::overlay::OverlayType::Transparent,
-                aHighlightColor,
-                std::move(aRanges),
-                false, false));
-
-            xOverlayManager->add(*pOverlay);
             mpOOHighlight.reset(new sdr::overlay::OverlayObjectList);
             mpOOHighlight->append(std::move(pOverlay));
         }
@@ -6983,36 +7115,8 @@ void ScGridWindow::DeleteAutoFillOverlay()
     mpAutoFillRect.reset();
 }
 
-void ScGridWindow::UpdateAutoFillOverlay()
+std::unique_ptr<sdr::overlay::OverlayObjectList> ScGridWindow::DrawFillMarker(SCCOL nX, SCROW nY, std::optional<tools::Rectangle>& rRect, bool bIsTableArea)
 {
-    const MapMode aDrawMode = GetDrawMapMode();
-    const MapMode aOldMode = GetMapMode();
-    comphelper::ScopeGuard aMapModeGuard(
-        [&aOldMode, &aDrawMode, this] {
-            if (aOldMode != aDrawMode)
-                SetMapMode(aOldMode);
-        }
-    );
-    if (aOldMode != aDrawMode)
-        SetMapMode(aDrawMode);
-
-    DeleteAutoFillOverlay();
-
-    //  get the AutoFill handle rectangle in pixels
-
-    if ( !(bAutoMarkVisible && aAutoMarkPos.Tab() == mrViewData.CurrentTabForData() &&
-         !mrViewData.HasEditView(eWhich) && mrViewData.IsActive()) )
-        return;
-
-    SCCOL nX = aAutoMarkPos.Col();
-    SCROW nY = aAutoMarkPos.Row();
-
-    if (!maVisibleRange.isInside(nX, nY) && !comphelper::LibreOfficeKit::isActive())
-    {
-        // Autofill mark is not visible.  Bail out.
-        return;
-    }
-
     SCTAB nTab = mrViewData.CurrentTabForData();
     ScDocument& rDoc = mrViewData.GetDocument();
     bool bLayoutRTL = rDoc.IsLayoutRTL( nTab );
@@ -7049,14 +7153,14 @@ void ScGridWindow::UpdateAutoFillOverlay()
     tools::Rectangle aFillRect(aFillPos, aFillHandleSize);
 
     // expand rect to increase hit area
-    mpAutoFillRect = aFillRect;
-    mpAutoFillRect->expand(fScaleFactor);
+    rRect = aFillRect;
+    rRect->expand(fScaleFactor);
 
     // #i70788# get the OverlayManager safely
     rtl::Reference<sdr::overlay::OverlayManager> xOverlayManager = getOverlayManager();
     if (comphelper::LibreOfficeKit::isActive()) // notify the LibreOfficeKit
     {
-        updateLibreOfficeKitAutoFill(mrViewData, aFillRect);
+        updateLibreOfficeKitAutoFill(mrViewData, aFillRect, bIsTableArea);
     }
     else if (xOverlayManager.is())
     {
@@ -7099,10 +7203,46 @@ void ScGridWindow::UpdateAutoFillOverlay()
 
         xOverlayManager->add(*pOverlayOuter);
         xOverlayManager->add(*pOverlayInner);
-        mpOOAutoFill.reset(new sdr::overlay::OverlayObjectList);
-        mpOOAutoFill->append(std::move(pOverlayOuter));
-        mpOOAutoFill->append(std::move(pOverlayInner));
+        std::unique_ptr<sdr::overlay::OverlayObjectList> pOverlayList(new sdr::overlay::OverlayObjectList);
+        pOverlayList->append(std::move(pOverlayOuter));
+        pOverlayList->append(std::move(pOverlayInner));
+
+        return pOverlayList;
     }
+    return std::unique_ptr<sdr::overlay::OverlayObjectList>();
+}
+
+void ScGridWindow::UpdateAutoFillOverlay()
+{
+    const MapMode aDrawMode = GetDrawMapMode();
+    const MapMode aOldMode = GetMapMode();
+    comphelper::ScopeGuard aMapModeGuard(
+        [&aOldMode, &aDrawMode, this] {
+            if (aOldMode != aDrawMode)
+                SetMapMode(aOldMode);
+        }
+    );
+    if (aOldMode != aDrawMode)
+        SetMapMode(aDrawMode);
+
+    DeleteAutoFillOverlay();
+
+    //  get the AutoFill handle rectangle in pixels
+
+    if ( !(bAutoMarkVisible && aAutoMarkPos.Tab() == mrViewData.GetTabNumber() &&
+         !mrViewData.HasEditView(eWhich) && mrViewData.IsActive()) )
+        return;
+
+    SCCOL nX = aAutoMarkPos.Col();
+    SCROW nY = aAutoMarkPos.Row();
+
+    if (!maVisibleRange.isInside(nX, nY) && !comphelper::LibreOfficeKit::isActive())
+    {
+        // Autofill mark is not visible.  Bail out.
+        return;
+    }
+
+    mpOOAutoFill = DrawFillMarker(nX, nY, mpAutoFillRect, false);
 }
 
 void ScGridWindow::DeleteDragRectOverlay()

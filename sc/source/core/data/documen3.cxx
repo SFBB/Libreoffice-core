@@ -325,6 +325,22 @@ void ScDocument::SetDBCollection( std::unique_ptr<ScDBCollection> pNewDBCollecti
     pDBCollection = std::move(pNewDBCollection);
 }
 
+const ScDBData* ScDocument::GetTableDBAtCursor(SCCOL nCol, SCROW nRow, SCTAB nTab, ScDBDataPortion ePortion) const
+{
+    if (pDBCollection)
+        return pDBCollection->GetTableDBAtCursor(nCol, nRow, nTab, ePortion);
+    else
+        return nullptr;
+}
+
+ScDBData* ScDocument::GetTableDBAtCursor(SCCOL nCol, SCROW nRow, SCTAB nTab, ScDBDataPortion ePortion)
+{
+    if (pDBCollection)
+        return pDBCollection->GetTableDBAtCursor(nCol, nRow, nTab, ePortion);
+    else
+        return nullptr;
+}
+
 const ScDBData* ScDocument::GetDBAtCursor(SCCOL nCol, SCROW nRow, SCTAB nTab, ScDBDataPortion ePortion) const
 {
     if (pDBCollection)
@@ -355,6 +371,14 @@ ScDBData* ScDocument::GetDBAtArea(SCTAB nTab, SCCOL nCol1, SCROW nRow1, SCCOL nC
         return pDBCollection->GetDBAtArea(nTab, nCol1, nRow1, nCol2, nRow2);
     else
         return nullptr;
+}
+
+std::vector<const ScDBData*> ScDocument::GetAllNamedDBsInArea(SCCOL nCol1, SCROW nRow1, SCCOL nCol2, SCROW nRow2, SCTAB nTab) const
+{
+    if (pDBCollection)
+        return pDBCollection->GetAllNamedDBsInArea(nCol1, nRow1, nCol2, nRow2, nTab);
+    else
+        return std::vector<const ScDBData*>();
 }
 
 void ScDocument::RefreshDirtyTableColumnNames()
@@ -786,6 +810,18 @@ bool ScDocument::DoSubTotals( SCTAB nTab, ScSubTotalParam& rParam )
 {
     ScTable* pTable = FetchTable(nTab);
     return pTable && pTable->DoSubTotals(rParam);
+}
+
+void ScDocument::RemoveTableSubTotals( SCTAB nTab, ScSubTotalParam& rParam, const ScSubTotalParam& rOldParam )
+{
+    if (ScTable* pTable = FetchTable(nTab))
+        pTable->RemoveSimpleSubTotals( rParam, rOldParam );
+}
+
+bool ScDocument::DoTableSubTotals( SCTAB nTab, ScSubTotalParam& rParam )
+{
+    ScTable* pTable = FetchTable(nTab);
+    return pTable && pTable->DoSimpleSubTotals(rParam);
 }
 
 bool ScDocument::HasSubTotalCells( const ScRange& rRange )
@@ -1472,10 +1508,10 @@ void ScDocument::PrepareQuery( SCTAB nTab, ScQueryParam& rQueryParam )
     }
 }
 
-SCSIZE ScDocument::Query(SCTAB nTab, const ScQueryParam& rQueryParam, bool bKeepSub)
+SCSIZE ScDocument::Query(SCTAB nTab, const ScQueryParam& rQueryParam, bool bKeepSub, bool bKeepTotals)
 {
     if (ScTable* pTable = FetchTable(nTab))
-        return pTable->Query(rQueryParam, bKeepSub);
+        return pTable->Query(rQueryParam, bKeepSub, bKeepTotals);
 
     OSL_FAIL("missing tab");
     return 0;
@@ -1569,9 +1605,12 @@ void ScDocument::GetFilterEntries(
     ScDBData* pDBData = pDBCollection->GetDBAtCursor(nCol, nRow, nTab, ScDBDataPortion::AREA);  //!??
     if (!pDBData)
         return;
-
-    pDBData->ExtendBackColorArea(*this);
-    pDBData->ExtendDataArea(*this);
+    // Do not extend DBArea automatically in case of Table Styles with Total row
+    if (!pDBData->HasTotals() || !pDBData->GetTableStyleInfo())
+    {
+        pDBData->ExtendBackColorArea(*this);
+        pDBData->ExtendDataArea(*this);
+    }
     SCTAB nAreaTab;
     SCCOL nStartCol;
     SCROW nStartRow;
@@ -1581,6 +1620,9 @@ void ScDocument::GetFilterEntries(
 
     if (pDBData->HasHeader())
         ++nStartRow;
+    // For Table Styles area, exclude total row
+    if (pDBData->HasTotals() && pDBData->GetTableStyleInfo())
+        --nEndRow;
 
     ScQueryParam aParam;
     pDBData->GetQueryParam( aParam );

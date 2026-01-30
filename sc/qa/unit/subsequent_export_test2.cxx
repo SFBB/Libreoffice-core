@@ -321,6 +321,21 @@ CPPUNIT_TEST_FIXTURE(ScExportTest2, testTextDirectionXLSX)
                 u"2"); //RTL
 }
 
+CPPUNIT_TEST_FIXTURE(ScExportTest2, testTdf170189_empty_font_name)
+{
+    createScDoc("xls/tdf170189.xls");
+
+    save(TestFilter::XLSX);
+    xmlDocUniquePtr pDoc = parseExport(u"xl/styles.xml"_ustr);
+    CPPUNIT_ASSERT(pDoc);
+
+    // Without the fix in place, this test would have failed with
+    // - Expected: 4
+    // - Actual  : 5
+    assertXPath(pDoc, "/x:styleSheet/x:fonts", "count", u"4");
+    assertXPath(pDoc, "/x:styleSheet/x:cellXfs", "count", u"3");
+}
+
 CPPUNIT_TEST_FIXTURE(ScExportTest2, testTdf121260)
 {
     createScDoc("ods/tdf121260.ods");
@@ -1232,6 +1247,20 @@ CPPUNIT_TEST_FIXTURE(ScExportTest2, testTdf115159)
 
     //assert the existing OOXML built-in name is not duplicated
     assertXPath(pDoc, "/x:workbook/x:definedNames/x:definedName", 1);
+}
+
+CPPUNIT_TEST_FIXTURE(ScExportTest2, testTdf170201_empty_values_in_array_formulas)
+{
+    createScDoc("xlsx/tdf170201.xlsx");
+
+    save(TestFilter::XLSX);
+    xmlDocUniquePtr pDoc = parseExport(u"xl/workbook.xml"_ustr);
+    CPPUNIT_ASSERT(pDoc);
+
+    // Without the fix in place, this test would have failed with
+    // - Expected: {1,#N/A,3}
+    // - Actual  : {1,,3}
+    assertXPathContent(pDoc, "/x:workbook/x:definedNames/x:definedName", u"{1,#N/A,3}");
 }
 
 CPPUNIT_TEST_FIXTURE(ScExportTest2, testTdf112567)

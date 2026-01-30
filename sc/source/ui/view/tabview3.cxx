@@ -318,6 +318,7 @@ void ScTabView::InvalidateAttribs()
         rBindings.Invalidate( SID_ATTR_BORDER_DIAG_TLBR );
         rBindings.Invalidate( SID_ATTR_BORDER_DIAG_BLTR );
         rBindings.Invalidate( SID_NUMBER_TYPE_FORMAT );
+        rBindings.Invalidate( SID_DATABASE_SETTINGS );
     }
 
     rBindings.Invalidate( SID_BACKGROUND_COLOR );
@@ -579,6 +580,7 @@ void ScTabView::SelectionChanged(bool bFromPaste)
 
     rBindings.Invalidate( SID_CURRENTCELL );    // -> Navigator
     rBindings.Invalidate( SID_AUTO_FILTER );    // -> Menu
+    rBindings.Invalidate( SID_INSERT_CALCTABLE );
     rBindings.Invalidate( FID_NOTE_VISIBLE );
     rBindings.Invalidate( FID_SHOW_NOTE );
     rBindings.Invalidate( FID_HIDE_NOTE );
@@ -674,8 +676,16 @@ void ScTabView::CursorPosChanged()
 
     if (!bDataPilot)
     {
-        bool bSparkline = rDocument.HasSparkline(aViewData.GetCurPos());
+        const ScAddress rAddr = aViewData.GetCurPos();
+        bool bSparkline = rDocument.HasSparkline(rAddr);
         aViewData.GetViewShell()->SetSparklineShell(bSparkline);
+        if (!bSparkline)
+        {
+            if (rDocument.GetTableDBAtCursor(rAddr.Col(), rAddr.Row(), rAddr.Tab(), ScDBDataPortion::AREA))
+                aViewData.GetViewShell()->SetTableShell(true);
+            else
+                aViewData.GetViewShell()->SetTableShell(false);
+        }
     }
 
     //  UpdateInputHandler now in CellContentChanged
