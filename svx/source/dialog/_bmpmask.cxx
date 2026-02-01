@@ -28,12 +28,14 @@
 #include <svl/eitem.hxx>
 #include <svl/itemset.hxx>
 #include <sfx2/dispatch.hxx>
+#include <tools/mapunit.hxx>
 
 #include <svx/colorbox.hxx>
 #include <svx/dialmgr.hxx>
 #include <svx/bmpmask.hxx>
 #include <svx/strings.hrc>
 #include <svx/svxids.hrc>
+#include <tools/fldunit.hxx>
 #include <memory>
 #include <helpids.h>
 

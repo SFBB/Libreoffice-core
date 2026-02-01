@@ -35,6 +35,8 @@
 #include <com/sun/star/document/XEventBroadcaster.hpp>
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/supportsservice.hxx>
+#include <officecfg/Office/Impress.hxx>
+#include <officecfg/Office/PresenterScreen.hxx>
 
 #include <utility>
 #include <vcl/svapp.hxx>
@@ -210,7 +212,7 @@ void SAL_CALL PresenterScreenListener::notifyEvent( const css::document::EventOb
     if ( Event.EventName == "OnStartPresentation" )
     {
         mpPresenterScreen = new PresenterScreen(mxComponentContext, mxModel);
-        if(PresenterScreen::isPresenterScreenEnabled(mxComponentContext))
+        if ( officecfg::Office::Impress::Misc::Start::EnablePresenterScreen::get() )
             mpPresenterScreen->InitializePresenterScreen();
     }
     else if ( Event.EventName == "OnEndPresentation" )
@@ -270,18 +272,6 @@ PresenterScreen::PresenterScreen (
 
 PresenterScreen::~PresenterScreen()
 {
-}
-
-bool PresenterScreen::isPresenterScreenEnabled(const css::uno::Reference<css::uno::XComponentContext>& rxContext)
-{
-        bool dEnablePresenterScreen=true;
-        PresenterConfigurationAccess aConfiguration (
-            rxContext,
-            u"/org.openoffice.Office.Impress/"_ustr,
-            PresenterConfigurationAccess::READ_ONLY);
-        aConfiguration.GetConfigurationNode(u"Misc/Start/EnablePresenterScreen"_ustr)
-            >>= dEnablePresenterScreen;
-        return dEnablePresenterScreen;
 }
 
 bool PresenterScreen::isPresenterScreenFullScreen(const css::uno::Reference<css::uno::XComponentContext>& rxContext)
@@ -504,18 +494,11 @@ sal_Int32 PresenterScreen::GetPresenterScreenNumber (
             // is set or when the presenter screen will be shown as
             // non-full screen window
             Reference<XComponentContext> xContext (mxContextWeak);
-            PresenterConfigurationAccess aConfiguration (
-                xContext,
-                u"/org.openoffice.Office.PresenterScreen/"_ustr,
-                PresenterConfigurationAccess::READ_ONLY);
-            bool bStartAlways (false);
+            bool bStartAlways = officecfg::Office::PresenterScreen::Presenter::StartAlways::get().value_or(
+                false);
             bool bPresenterScreenFullScreen = isPresenterScreenFullScreen(xContext);
-            if (aConfiguration.GetConfigurationNode(
-                u"Presenter/StartAlways"_ustr) >>= bStartAlways)
-            {
-                if (bStartAlways || !bPresenterScreenFullScreen)
-                    return GetPresenterScreenFromScreen(nScreenNumber);
-            }
+            if (bStartAlways || !bPresenterScreenFullScreen)
+                return GetPresenterScreenFromScreen(nScreenNumber);
             return -1;
         }
     }
