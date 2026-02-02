@@ -141,7 +141,7 @@ const SwRedlineData* lcl_get_selected_redlinedata(const weld::TreeView& rTreeVie
 {
     if (std::unique_ptr<weld::TreeIter> xEntry = rTreeView.get_selected())
     {
-        RedlinData* pRedlinData = weld::fromId<RedlinData*>(rTreeView.get_id(*xEntry));
+        RedlineData* pRedlinData = weld::fromId<RedlineData*>(rTreeView.get_id(*xEntry));
         if (rTreeView.get_iter_depth(*xEntry))
             return static_cast<SwRedlineDataChild*>(pRedlinData->pData)->pChild;
         else
@@ -160,7 +160,7 @@ void lcl_reselect(weld::TreeView& rTreeView, const SwRedlineData* pSelectedEntry
     rTreeView.all_foreach(
         [&rTreeView, &pSelectedEntryRedlineData](weld::TreeIter& rIter)
         {
-            RedlinData* pRedlinData = weld::fromId<RedlinData*>(rTreeView.get_id(rIter));
+            RedlineData* pRedlinData = weld::fromId<RedlineData*>(rTreeView.get_id(rIter));
             const SwRedlineData* pRedlineData;
             if (rTreeView.get_iter_depth(rIter))
                 pRedlineData = static_cast<SwRedlineDataChild*>(pRedlinData->pData)->pChild;
@@ -193,29 +193,28 @@ SwRedlineAcceptDlg::SwRedlineAcceptDlg(std::shared_ptr<weld::Window> xParent, we
     , m_xTabPagesCTRL(new SvxAcceptChgCtr(pContentArea))
     , m_xPopup(pBuilder->weld_menu(u"writermenu"_ustr))
     , m_xSortMenu(pBuilder->weld_menu(u"writersortmenu"_ustr))
+    , m_rTPView(m_xTabPagesCTRL->GetViewPage())
 {
-    m_pTPView = m_xTabPagesCTRL->GetViewPage();
-
-    m_pTable = m_pTPView->GetTableControl();
+    m_pTable = m_rTPView.GetTableControl();
     m_pTable->SetWriterView();
 
-    m_pTPView->GetSortByComboBoxControl()->set_active(4);
+    m_rTPView.GetSortByComboBoxControl()->set_active(4);
 
-    m_pTPView->SetSortByComboBoxChangedHdl(
+    m_rTPView.SetSortByComboBoxChangedHdl(
         LINK(this, SwRedlineAcceptDlg, SortByComboBoxChangedHdl));
 
-    m_pTPView->SetAcceptClickHdl(LINK(this, SwRedlineAcceptDlg, AcceptHdl));
-    m_pTPView->SetAcceptAllClickHdl(LINK(this, SwRedlineAcceptDlg, AcceptAllHdl));
-    m_pTPView->SetRejectClickHdl(LINK(this, SwRedlineAcceptDlg, RejectHdl));
-    m_pTPView->SetRejectAllClickHdl(LINK(this, SwRedlineAcceptDlg, RejectAllHdl));
-    m_pTPView->SetUndoClickHdl(LINK(this, SwRedlineAcceptDlg, UndoHdl));
+    m_rTPView.SetAcceptClickHdl(LINK(this, SwRedlineAcceptDlg, AcceptHdl));
+    m_rTPView.SetAcceptAllClickHdl(LINK(this, SwRedlineAcceptDlg, AcceptAllHdl));
+    m_rTPView.SetRejectClickHdl(LINK(this, SwRedlineAcceptDlg, RejectHdl));
+    m_rTPView.SetRejectAllClickHdl(LINK(this, SwRedlineAcceptDlg, RejectAllHdl));
+    m_rTPView.SetUndoClickHdl(LINK(this, SwRedlineAcceptDlg, UndoHdl));
     //tdf#89227 default to disabled, and only enable if possible to accept/reject
-    m_pTPView->EnableAccept(false);
-    m_pTPView->EnableReject(false);
-    m_pTPView->EnableClearFormat(false);
-    m_pTPView->EnableAcceptAll(false);
-    m_pTPView->EnableRejectAll(false);
-    m_pTPView->EnableClearFormatAll(false);
+    m_rTPView.EnableAccept(false);
+    m_rTPView.EnableReject(false);
+    m_rTPView.EnableClearFormat(false);
+    m_rTPView.EnableAcceptAll(false);
+    m_rTPView.EnableRejectAll(false);
+    m_rTPView.EnableClearFormatAll(false);
 
     m_xTabPagesCTRL->GetFilterPage()->SetReadyHdl(LINK(this, SwRedlineAcceptDlg, FilterChangedHdl));
 
@@ -229,8 +228,8 @@ SwRedlineAcceptDlg::SwRedlineAcceptDlg(std::shared_ptr<weld::Window> xParent, we
     {
         pActLB->append_text(m_sFormatCollSet);
         pActLB->append_text(m_sAutoFormat);
-        m_pTPView->ShowUndo();
-        m_pTPView->DisableUndo();     // no UNDO events yet
+        m_rTPView.ShowUndo();
+        m_rTPView.DisableUndo();     // no UNDO events yet
     }
 
     pActLB->set_active(0);
@@ -298,7 +297,7 @@ void SwRedlineAcceptDlg::Init(SwRedlineTable::size_type nStart)
     else
     {
         rTreeView.clear();
-        m_RedlinData.clear();
+        m_RedlineData.clear();
         m_RedlineChildren.clear();
         m_RedlineParents.erase(m_RedlineParents.begin() + nStart, m_RedlineParents.end());
     }
@@ -395,13 +394,12 @@ void SwRedlineAcceptDlg::EnableControls(const SwView* pView)
         return false;
     });
 
-    m_pTPView->EnableAccept( bEnable && pSelectedEntry );
-    m_pTPView->EnableReject( bEnable && pSelectedEntry );
-    m_pTPView->EnableClearFormat( bEnable && !bIsNotFormated && pSelectedEntry );
-    m_pTPView->EnableAcceptAll( bEnable );
-    m_pTPView->EnableRejectAll( bEnable );
-    m_pTPView->EnableClearFormatAll( bEnable &&
-                                m_bOnlyFormatedRedlines );
+    m_rTPView.EnableAccept(bEnable && pSelectedEntry);
+    m_rTPView.EnableReject(bEnable && pSelectedEntry);
+    m_rTPView.EnableClearFormat(bEnable && !bIsNotFormated && pSelectedEntry);
+    m_rTPView.EnableAcceptAll(bEnable);
+    m_rTPView.EnableRejectAll(bEnable);
+    m_rTPView.EnableClearFormatAll(bEnable && m_bOnlyFormatedRedlines);
 }
 
 const OUString & SwRedlineAcceptDlg::GetActionImage(const SwRangeRedline& rRedln, sal_uInt16 nStack,
@@ -463,12 +461,12 @@ void SwRedlineAcceptDlg::Activate()
     SwView *pView = ::GetActiveView();
     if (!pView) // can happen when switching to another app
     {
-        m_pTPView->EnableAccept(false);
-        m_pTPView->EnableReject(false);
-        m_pTPView->EnableClearFormat(false);
-        m_pTPView->EnableAcceptAll(false);
-        m_pTPView->EnableRejectAll(false);
-        m_pTPView->EnableClearFormatAll(false);
+        m_rTPView.EnableAccept(false);
+        m_rTPView.EnableReject(false);
+        m_rTPView.EnableClearFormat(false);
+        m_rTPView.EnableAcceptAll(false);
+        m_rTPView.EnableRejectAll(false);
+        m_rTPView.EnableClearFormatAll(false);
         return; // had the focus previously
     }
 
@@ -476,12 +474,12 @@ void SwRedlineAcceptDlg::Activate()
 
     if (pView->GetDocShell()->IsReadOnly())
     {
-        m_pTPView->EnableAccept(false);
-        m_pTPView->EnableReject(false);
-        m_pTPView->EnableClearFormat(false);
-        m_pTPView->EnableAcceptAll(false);
-        m_pTPView->EnableRejectAll(false);
-        m_pTPView->EnableClearFormatAll(false);
+        m_rTPView.EnableAccept(false);
+        m_rTPView.EnableReject(false);
+        m_rTPView.EnableClearFormat(false);
+        m_rTPView.EnableAcceptAll(false);
+        m_rTPView.EnableRejectAll(false);
+        m_rTPView.EnableClearFormatAll(false);
         // note: enabling is done in EnableControls below
     }
 
@@ -617,7 +615,7 @@ void SwRedlineAcceptDlg::Notify(SfxBroadcaster& /*rBC*/, const SfxHint& rHint)
 
         weld::TreeView& rTreeView = m_pTable->GetWidget();
         rTreeView.all_foreach([&rTreeView, &rRedlineData](weld::TreeIter& rIter) {
-            RedlinData* pRedlinData = weld::fromId<RedlinData*>(rTreeView.get_id(rIter));
+            RedlineData* pRedlinData = weld::fromId<RedlineData*>(rTreeView.get_id(rIter));
             const SwRedlineData* pRedlineData;
             if (rTreeView.get_iter_depth(rIter))
                 pRedlineData = static_cast<SwRedlineDataChild*>(pRedlinData->pData)->pChild;
@@ -771,7 +769,7 @@ void SwRedlineAcceptDlg::InsertChildren(SwRedlineDataParent *pParent, const SwRa
 
         if (bValidChild)
         {
-            std::unique_ptr<RedlinData> pData(new RedlinData);
+            std::unique_ptr<RedlineData> pData(new RedlineData);
             pData->pData = pRedlineChild;
             pData->bDisabled = true;
 
@@ -786,7 +784,7 @@ void SwRedlineAcceptDlg::InsertChildren(SwRedlineDataParent *pParent, const SwRa
             OUString sId(weld::toId(pData.get()));
             rTreeView.insert(pParent->xTLBParent.get(), -1, nullptr, &sId, nullptr, nullptr,
                              false, xChild.get());
-            m_RedlinData.push_back(std::move(pData));
+            m_RedlineData.push_back(std::move(pData));
 
             rTreeView.set_image(*xChild, sImage, -1);
             rTreeView.set_text(*xChild, sAuthor, 1);
@@ -1036,7 +1034,7 @@ void SwRedlineAcceptDlg::InsertParents(SwRedlineTable::size_type nStart, SwRedli
         m_RedlineParents.insert(m_RedlineParents.begin() + i,
                 std::unique_ptr<SwRedlineDataParent>(pRedlineParent));
 
-        std::unique_ptr<RedlinData> pData(new RedlinData);
+        std::unique_ptr<RedlineData> pData(new RedlineData);
         pData->pData = pRedlineParent;
         pData->bDisabled = false;
 
@@ -1070,7 +1068,7 @@ void SwRedlineAcceptDlg::InsertParents(SwRedlineTable::size_type nStart, SwRedli
             rTreeView.insert(pParent->xTLBParent.get(), -1, nullptr, &sId, nullptr, nullptr, false, xParent.get());
         }
 
-        m_RedlinData.push_back(std::move(pData));
+        m_RedlineData.push_back(std::move(pData));
 
         rTreeView.set_image(*xParent, sImage, -1);
         rTreeView.set_text(*xParent, sAuthor, 1);
@@ -1114,7 +1112,7 @@ void SwRedlineAcceptDlg::CallAcceptReject( bool bSelect, bool bAccept )
             if (bSelect && nPos == -1)
                 nPos = rTreeView.get_iter_index_in_parent(rEntry);
 
-            RedlinData *pData = weld::fromId<RedlinData*>(rTreeView.get_id(rEntry));
+            RedlineData* pData = weld::fromId<RedlineData*>(rTreeView.get_id(rEntry));
 
             if (!pData->bDisabled)
                 aRedlines.emplace_back(rTreeView.make_iterator(&rEntry));
@@ -1144,7 +1142,7 @@ void SwRedlineAcceptDlg::CallAcceptReject( bool bSelect, bool bAccept )
     if ( bMoreRedlines && aRedlines.size() == 1 )
     {
         std::unique_ptr<weld::TreeIter> xChild(rTreeView.make_iterator( &*aRedlines[0] ));
-        RedlinData *pData = weld::fromId<RedlinData*>(rTreeView.get_id(*xChild));
+        RedlineData* pData = weld::fromId<RedlineData*>(rTreeView.get_id(*xChild));
         if ( pData->bDisabled )
             bMoreRedlines = false;
     }
@@ -1187,7 +1185,7 @@ void SwRedlineAcceptDlg::CallAcceptReject( bool bSelect, bool bAccept )
         std::unique_ptr<weld::TreeIter> xChild(rTreeView.make_iterator( &*rRedLine ));
         if ( rTreeView.iter_children(*xChild) )
         {
-            RedlinData *pData = weld::fromId<RedlinData*>(rTreeView.get_id(*xChild));
+            RedlineData* pData = weld::fromId<RedlineData*>(rTreeView.get_id(*xChild));
             // disabled for redline stack, but not for redlines of table rows
             if ( !pData->bDisabled )
             {
@@ -1221,7 +1219,7 @@ void SwRedlineAcceptDlg::CallAcceptReject( bool bSelect, bool bAccept )
         rTreeView.set_cursor(nPos);
         SelectHdl(rTreeView);
     }
-    m_pTPView->EnableUndo();
+    m_rTPView.EnableUndo();
 }
 
 SwRedlineTable::size_type SwRedlineAcceptDlg::GetRedlinePos(const weld::TreeIter& rEntry)
@@ -1235,7 +1233,7 @@ SwRedlineTable::size_type SwRedlineAcceptDlg::GetRedlinePos(const weld::TreeIter
         return SwRedlineTable::npos;
 
     weld::TreeView& rTreeView = m_pTable->GetWidget();
-    return pSh->FindRedlineOfData( *static_cast<SwRedlineDataParent*>(weld::fromId<RedlinData*>(
+    return pSh->FindRedlineOfData( *static_cast<SwRedlineDataParent*>(weld::fromId<RedlineData*>(
                                     rTreeView.get_id(rEntry))->pData)->pData );
 }
 
@@ -1245,7 +1243,7 @@ IMPL_LINK_NOARG(SwRedlineAcceptDlg, SortByComboBoxChangedHdl, SvxTPView*, void)
     if (!pView)
         return;
     SwWait aWait(*pView->GetDocShell(), false);
-    auto nSortMode = m_pTPView->GetSortByComboBoxControl()->get_active();
+    auto nSortMode = m_rTPView.GetSortByComboBoxControl()->get_active();
     if (nSortMode == 4)
         nSortMode = -1;
     m_pTable->HeaderBarClick(nSortMode);
@@ -1280,7 +1278,7 @@ IMPL_LINK_NOARG(SwRedlineAcceptDlg, UndoHdl, SvxTPView*, void)
         pView->GetViewFrame().GetDispatcher()->
                     Execute(SID_UNDO, SfxCallMode::SYNCHRON);
         const SfxPoolItemHolder aResult(pView->GetSlotState(SID_UNDO));
-        m_pTPView->EnableUndo(aResult.is());
+        m_rTPView.EnableUndo(aResult.is());
     }
 
     Activate();
@@ -1352,7 +1350,7 @@ IMPL_LINK_NOARG(SwRedlineAcceptDlg, GotoHdl, Timer *, void)
                 std::unique_ptr<weld::TreeIter> xChild(rTreeView.make_iterator( &*xActEntry ));
                 if ( rTreeView.iter_children(*xChild) )
                 {
-                    RedlinData *pData = reinterpret_cast<RedlinData*>(rTreeView.get_id(*xChild).toInt64());
+                    RedlineData *pData = reinterpret_cast<RedlineData*>(rTreeView.get_id(*xChild).toInt64());
                     // disabled for redline stack, but not for redlines of table rows
                     if ( !pData->bDisabled )
                     {
@@ -1506,7 +1504,7 @@ IMPL_LINK(SwRedlineAcceptDlg, CommandHdl, const CommandEvent&, rCEvt, bool)
         if (nSortMode == 4 && nColumn == 4)
             return true;  // we already have it
 
-        m_pTPView->GetSortByComboBoxControl()->set_active(nSortMode);
+        m_rTPView.GetSortByComboBoxControl()->set_active(nSortMode);
 
         if (nSortMode == 4)
             nSortMode = -1; // unsorted / sorted by position

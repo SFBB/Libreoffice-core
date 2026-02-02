@@ -331,7 +331,7 @@ void SvTreeList::InsertTree(SvTreeListEntry* pSrcEntry,
         pTargetParent = pRootItem.get();
 
     // take sorting into account
-    GetInsertionPos( pSrcEntry, pTargetParent, nListPos );
+    GetInsertionPos(*pSrcEntry, pTargetParent, nListPos);
 
     bAbsPositionsValid = false;
 
@@ -759,7 +759,7 @@ SvTreeListEntry* SvTreeList::NextSelected( const SvListView* pView, SvTreeListEn
     return pEntry;
 }
 
-sal_uInt32 SvTreeList::Insert( SvTreeListEntry* pEntry,SvTreeListEntry* pParent,sal_uInt32 nPos )
+void SvTreeList::Insert(SvTreeListEntry* pEntry, SvTreeListEntry* pParent, sal_uInt32 nPos)
 {
     assert(pEntry && "Entry?");
 
@@ -769,7 +769,7 @@ sal_uInt32 SvTreeList::Insert( SvTreeListEntry* pEntry,SvTreeListEntry* pParent,
     SvTreeListEntries& rList = pParent->m_Children;
 
     // take sorting into account
-    GetInsertionPos( pEntry, pParent, nPos );
+    GetInsertionPos(*pEntry, pParent, nPos);
 
     bAbsPositionsValid = false;
     pEntry->pParent = pParent;
@@ -789,8 +789,7 @@ sal_uInt32 SvTreeList::Insert( SvTreeListEntry* pEntry,SvTreeListEntry* pParent,
     else
         pEntry->nListPos = rList.size()-1;
 
-    Broadcast( SvListAction::INSERTED, pEntry );
-    return nPos; // pEntry->nListPos;
+    Broadcast(SvListAction::INSERTED, pEntry);
 }
 
 sal_uInt32 SvTreeList::GetAbsPos( const SvTreeListEntry* pEntry) const
@@ -1389,11 +1388,9 @@ void SvTreeList::ResortChildren( SvTreeListEntry* pParent )
     SetListPositions(pParent->m_Children); // correct list position in target list
 }
 
-void SvTreeList::GetInsertionPos( SvTreeListEntry const * pEntry, SvTreeListEntry* pParent,
+void SvTreeList::GetInsertionPos(const SvTreeListEntry& rEntry, SvTreeListEntry* pParent,
     sal_uInt32& rPos )
 {
-    DBG_ASSERT(pEntry,"No Entry");
-
     if( eSortMode == SvSortMode::None )
         return;
 
@@ -1412,7 +1409,7 @@ void SvTreeList::GetInsertionPos( SvTreeListEntry const * pEntry, SvTreeListEntr
     {
         k = (i+j)/2;
         const SvTreeListEntry* pTempEntry = rChildList[k].get();
-        nCompare = Compare( pEntry, pTempEntry );
+        nCompare = Compare(&rEntry, pTempEntry);
         if (nCompare != 0 && eSortMode == SvSortMode::Descending)
         {
             if( nCompare < 0 )

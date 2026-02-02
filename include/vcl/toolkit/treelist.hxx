@@ -108,7 +108,7 @@ class UNLESS_MERGELIBS_MORE(VCL_DLLPUBLIC) SvTreeList final
 
     // rPos is not changed for SortModeNone
     SAL_DLLPRIVATE void GetInsertionPos(
-                            SvTreeListEntry const * pEntry,
+                            const SvTreeListEntry& rEntry,
                             SvTreeListEntry* pParent,
                             sal_uInt32& rPos
                         );
@@ -146,9 +146,11 @@ public:
 
     SvTreeListEntry* FirstChild(const SvTreeListEntry* pParent) const;
 
-    sal_uInt32          Insert( SvTreeListEntry* pEntry,SvTreeListEntry* pPar,sal_uInt32 nPos = TREELIST_APPEND);
-    sal_uInt32          Insert( SvTreeListEntry* pEntry,sal_uInt32 nRootPos = TREELIST_APPEND )
-    { return Insert(pEntry, pRootItem.get(), nRootPos ); }
+    void Insert(SvTreeListEntry* pEntry, SvTreeListEntry* pPar, sal_uInt32 nPos = TREELIST_APPEND);
+    void Insert(SvTreeListEntry* pEntry, sal_uInt32 nRootPos = TREELIST_APPEND)
+    {
+        Insert(pEntry, pRootItem.get(), nRootPos);
+    }
 
     void                InsertTree( SvTreeListEntry* pTree, SvTreeListEntry* pTargetParent, sal_uInt32 nListPos );
 

@@ -9,6 +9,7 @@
 
 #include <swmodeltestbase.hxx>
 #include <comphelper/propertysequence.hxx>
+#include <comphelper/scopeguard.hxx>
 #include <com/sun/star/drawing/XDrawPageSupplier.hpp>
 #include <com/sun/star/linguistic2/XHyphenator.hpp>
 #include <com/sun/star/text/WrapTextMode.hpp>
@@ -20,6 +21,7 @@
 #include <editeng/postitem.hxx>
 #include <editeng/unolingu.hxx>
 #include <comphelper/sequence.hxx>
+#include <test/commontesttools.hxx>
 
 #include <anchoredobject.hxx>
 #include <fmtfsize.hxx>
@@ -618,14 +620,7 @@ CPPUNIT_TEST_FIXTURE(SwLayoutWriter6, testKeepWithNextPlusFlyFollowTextFlow)
     }
 
     // disable Field Names warning dialog
-    const bool bAsk = officecfg::Office::Common::Misc::QueryShowFieldName::get();
-    std::shared_ptr<comphelper::ConfigurationChanges> xChanges;
-    if (bAsk)
-    {
-        xChanges = comphelper::ConfigurationChanges::create();
-        officecfg::Office::Common::Misc::QueryShowFieldName::set(false, xChanges);
-        xChanges->commit();
-    }
+    ScopedConfigValue<officecfg::Office::Common::Misc::QueryShowFieldName> aCfg(false);
 
     dispatchCommand(mxComponent, u".uno:Fieldnames"_ustr, {});
 
@@ -656,12 +651,6 @@ CPPUNIT_TEST_FIXTURE(SwLayoutWriter6, testKeepWithNextPlusFlyFollowTextFlow)
         assertXPath(pXmlDoc, "/root/page[1]/body/txt[2]/anchored/fly/infos/bounds", "top", u"1694");
         assertXPath(pXmlDoc, "/root/page[1]/body/txt[3]/infos/bounds", "height", u"276");
         assertXPath(pXmlDoc, "/root/page", 1);
-    }
-
-    if (bAsk)
-    {
-        officecfg::Office::Common::Misc::QueryShowFieldName::set(true, xChanges);
-        xChanges->commit();
     }
 }
 
@@ -1551,42 +1540,28 @@ CPPUNIT_TEST_FIXTURE(SwLayoutWriter6, testHiddenParagraphFollowFrame)
 {
     createSwDoc("hidden-para-follow-frame.fodt");
 
-    uno::Any aOldValue{ queryDispatchStatus(mxComponent, m_xContext, ".uno:ShowHiddenParagraphs") };
+    comphelper::ScopeGuard g(
+        [ this, old = queryDispatchStatus(mxComponent, m_xContext, ".uno:ShowHiddenParagraphs") ] {
+            auto args(comphelper::InitPropertySequence({ { "ShowHiddenParagraphs", old } }));
+            dispatchCommand(mxComponent, ".uno:ShowHiddenParagraphs", args);
+        });
 
-    Resetter g([this, aOldValue] {
+    {
+        // disable Field Names warning dialog
+        ScopedConfigValue<officecfg::Office::Common::Misc::QueryShowFieldName> aCfg(false);
+
         uno::Sequence<beans::PropertyValue> argsSH(
-            comphelper::InitPropertySequence({ { "ShowHiddenParagraphs", aOldValue } }));
+            comphelper::InitPropertySequence({ { "ShowHiddenParagraphs", uno::Any(true) } }));
         dispatchCommand(mxComponent, ".uno:ShowHiddenParagraphs", argsSH);
-    });
+        uno::Sequence<beans::PropertyValue> args(
+            comphelper::InitPropertySequence({ { "Fieldnames", uno::Any(false) } }));
+        dispatchCommand(mxComponent, ".uno:Fieldnames", args);
+        Scheduler::ProcessEventsToIdle();
 
-    // disable Field Names warning dialog
-    const bool bAsk = officecfg::Office::Common::Misc::QueryShowFieldName::get();
-    std::shared_ptr<comphelper::ConfigurationChanges> xChanges;
-    if (bAsk)
-    {
-        xChanges = comphelper::ConfigurationChanges::create();
-        officecfg::Office::Common::Misc::QueryShowFieldName::set(false, xChanges);
-        xChanges->commit();
-    }
-    uno::Sequence<beans::PropertyValue> argsSH(
-        comphelper::InitPropertySequence({ { "ShowHiddenParagraphs", uno::Any(true) } }));
-    dispatchCommand(mxComponent, ".uno:ShowHiddenParagraphs", argsSH);
-    uno::Sequence<beans::PropertyValue> args(
-        comphelper::InitPropertySequence({ { "Fieldnames", uno::Any(false) } }));
-    dispatchCommand(mxComponent, ".uno:Fieldnames", args);
-    Scheduler::ProcessEventsToIdle();
-
-    {
         xmlDocUniquePtr pXmlDoc = parseLayoutDump();
         assertXPath(pXmlDoc, "/root/page", 2);
         assertXPath(pXmlDoc, "/root/page[1]/body/txt", 2);
         assertXPath(pXmlDoc, "/root/page[2]/body/txt", 2);
-    }
-
-    if (bAsk)
-    {
-        officecfg::Office::Common::Misc::QueryShowFieldName::set(true, xChanges);
-        xChanges->commit();
     }
 
     dispatchCommand(mxComponent, ".uno:ShowHiddenParagraphs", {});
@@ -1612,40 +1587,26 @@ CPPUNIT_TEST_FIXTURE(SwLayoutWriter6, testHiddenParagraphFlys)
 {
     createSwDoc("hidden-para-as-char-fly.fodt");
 
-    uno::Any aOldValue{ queryDispatchStatus(mxComponent, m_xContext, ".uno:ShowHiddenParagraphs") };
+    comphelper::ScopeGuard g(
+        [ this, old = queryDispatchStatus(mxComponent, m_xContext, ".uno:ShowHiddenParagraphs") ] {
+            auto args(comphelper::InitPropertySequence({ { "ShowHiddenParagraphs", old } }));
+            dispatchCommand(mxComponent, ".uno:ShowHiddenParagraphs", args);
+        });
 
-    Resetter g([this, aOldValue] {
+    {
+        // disable Field Names warning dialog
+        ScopedConfigValue<officecfg::Office::Common::Misc::QueryShowFieldName> aCfg(false);
+
         uno::Sequence<beans::PropertyValue> argsSH(
-            comphelper::InitPropertySequence({ { "ShowHiddenParagraphs", aOldValue } }));
+            comphelper::InitPropertySequence({ { "ShowHiddenParagraphs", uno::Any(true) } }));
         dispatchCommand(mxComponent, ".uno:ShowHiddenParagraphs", argsSH);
-    });
+        uno::Sequence<beans::PropertyValue> args(
+            comphelper::InitPropertySequence({ { "Fieldnames", uno::Any(false) } }));
+        dispatchCommand(mxComponent, ".uno:Fieldnames", args);
+        Scheduler::ProcessEventsToIdle();
 
-    // disable Field Names warning dialog
-    const bool bAsk = officecfg::Office::Common::Misc::QueryShowFieldName::get();
-    std::shared_ptr<comphelper::ConfigurationChanges> xChanges;
-    if (bAsk)
-    {
-        xChanges = comphelper::ConfigurationChanges::create();
-        officecfg::Office::Common::Misc::QueryShowFieldName::set(false, xChanges);
-        xChanges->commit();
-    }
-    uno::Sequence<beans::PropertyValue> argsSH(
-        comphelper::InitPropertySequence({ { "ShowHiddenParagraphs", uno::Any(true) } }));
-    dispatchCommand(mxComponent, ".uno:ShowHiddenParagraphs", argsSH);
-    uno::Sequence<beans::PropertyValue> args(
-        comphelper::InitPropertySequence({ { "Fieldnames", uno::Any(false) } }));
-    dispatchCommand(mxComponent, ".uno:Fieldnames", args);
-    Scheduler::ProcessEventsToIdle();
-
-    {
         xmlDocUniquePtr pXmlDoc = parseLayoutDump();
         assertXPath(pXmlDoc, "/root/page/body/txt[3]/anchored/fly/infos/bounds", "height", u"724");
-    }
-
-    if (bAsk)
-    {
-        officecfg::Office::Common::Misc::QueryShowFieldName::set(true, xChanges);
-        xChanges->commit();
     }
 
     dispatchCommand(mxComponent, ".uno:ShowHiddenParagraphs", {});
