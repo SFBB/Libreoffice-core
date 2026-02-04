@@ -49,7 +49,6 @@ template <class reference_type> class Reference;
 }
 typedef css::uno::Reference<css::accessibility::XAccessibleRelationSet> a11yrelationset;
 enum class PointerStyle;
-enum class ScrollType;
 enum class VclSizeGroupMode;
 class Color;
 class CommandEvent;
@@ -448,40 +447,6 @@ class VCL_DLLPUBLIC Frame : virtual public Container
 public:
     virtual void set_label(const OUString& rText) = 0;
     virtual OUString get_label() const = 0;
-};
-
-class VCL_DLLPUBLIC Notebook : virtual public Widget
-{
-    friend class ::LOKTrigger;
-
-protected:
-    Link<const OUString&, bool> m_aLeavePageHdl;
-    Link<const OUString&, void> m_aEnterPageHdl;
-
-public:
-    virtual int get_current_page() const = 0;
-    virtual int get_page_index(const OUString& rIdent) const = 0;
-    virtual OUString get_page_ident(int nPage) const = 0;
-    virtual OUString get_current_page_ident() const = 0;
-    virtual void set_current_page(int nPage) = 0;
-    virtual void set_current_page(const OUString& rIdent) = 0;
-    virtual void remove_page(const OUString& rIdent) = 0;
-    virtual void insert_page(const OUString& rIdent, const OUString& rLabel, int nPos,
-                             const OUString* pIconName = nullptr)
-        = 0;
-    void append_page(const OUString& rIdent, const OUString& rLabel,
-                     const OUString* pIconName = nullptr)
-    {
-        insert_page(rIdent, rLabel, -1, pIconName);
-    }
-    virtual void set_tab_label_text(const OUString& rIdent, const OUString& rLabel) = 0;
-    virtual OUString get_tab_label_text(const OUString& rIdent) const = 0;
-    virtual void set_show_tabs(bool bShow) = 0;
-    virtual int get_n_pages() const = 0;
-    virtual weld::Container* get_page(const OUString& rIdent) const = 0;
-
-    void connect_leave_page(const Link<const OUString&, bool>& rLink) { m_aLeavePageHdl = rLink; }
-    void connect_enter_page(const Link<const OUString&, void>& rLink) { m_aEnterPageHdl = rLink; }
 };
 
 class VCL_DLLPUBLIC ScreenShotEntry
@@ -1062,42 +1027,6 @@ public:
     virtual void resize_to_request() = 0;
 
     void connect_closed(const Link<weld::Popover&, void>& rLink) { m_aCloseHdl = rLink; }
-};
-
-class VCL_DLLPUBLIC Scrollbar : virtual public Widget
-{
-    Link<Scrollbar&, void> m_aValueChangeHdl;
-
-protected:
-    void signal_adjustment_value_changed() { m_aValueChangeHdl.Call(*this); }
-
-public:
-    virtual void adjustment_configure(int value, int lower, int upper, int step_increment,
-                                      int page_increment, int page_size)
-        = 0;
-    virtual int adjustment_get_value() const = 0;
-    virtual void adjustment_set_value(int value) = 0;
-    virtual int adjustment_get_upper() const = 0;
-    virtual void adjustment_set_upper(int upper) = 0;
-    virtual int adjustment_get_page_size() const = 0;
-    virtual void adjustment_set_page_size(int size) = 0;
-    virtual int adjustment_get_page_increment() const = 0;
-    virtual void adjustment_set_page_increment(int size) = 0;
-    virtual int adjustment_get_step_increment() const = 0;
-    virtual void adjustment_set_step_increment(int size) = 0;
-    virtual int adjustment_get_lower() const = 0;
-    virtual void adjustment_set_lower(int lower) = 0;
-
-    virtual int get_scroll_thickness() const = 0;
-    virtual void set_scroll_thickness(int nThickness) = 0;
-    virtual void set_scroll_swap_arrows(bool bSwap) = 0;
-
-    virtual ScrollType get_scroll_type() const = 0;
-
-    void connect_adjustment_value_changed(const Link<Scrollbar&, void>& rLink)
-    {
-        m_aValueChangeHdl = rLink;
-    }
 };
 
 class VCL_DLLPUBLIC ColorChooserDialog : virtual public Dialog

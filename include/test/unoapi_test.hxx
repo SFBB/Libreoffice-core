@@ -22,6 +22,13 @@
 #include <unotools/tempfile.hxx>
 #include <vcl/filter/PDFiumLibrary.hxx>
 
+enum ValidationFormat
+{
+    OOXML,
+    ODF,
+    MSBINARY
+};
+
 enum class TestFilter
 {
     NONE,
@@ -32,6 +39,7 @@ enum class TestFilter
     DOCX,
     DOCX_2007,
     DOTX,
+    EPUB,
     FODG,
     FODS,
     FODT,
@@ -57,6 +65,7 @@ enum class TestFilter
     RTF,
     SVG_DRAW,
     SVG_IMPRESS,
+    SVG_WRITER,
     TEXT,
     TEXT_ENCODED,
     XHTML_CALC,
@@ -77,6 +86,7 @@ const std::unordered_map<TestFilter, OUString> TestFilterNames{
     { TestFilter::DOCX, u"Office Open XML Text"_ustr },
     { TestFilter::DOCX_2007, u"MS Word 2007 XML"_ustr },
     { TestFilter::DOTX, u"MS Word 2007 XML Template"_ustr },
+    { TestFilter::EPUB, u"EPUB"_ustr },
     { TestFilter::FODG, u"OpenDocument Drawing Flat XML"_ustr },
     { TestFilter::FODS, u"OpenDocument Spreadsheet Flat XML"_ustr },
     { TestFilter::FODT, u"OpenDocument Text Flat XML"_ustr },
@@ -102,6 +112,7 @@ const std::unordered_map<TestFilter, OUString> TestFilterNames{
     { TestFilter::RTF, u"Rich Text Format"_ustr },
     { TestFilter::SVG_DRAW, u"draw_svg_Export"_ustr },
     { TestFilter::SVG_IMPRESS, u"impress_svg_Export"_ustr },
+    { TestFilter::SVG_WRITER, u"writer_svg_Export"_ustr },
     { TestFilter::TEXT, u"Text"_ustr },
     { TestFilter::TEXT_ENCODED, u"Text (encoded)"_ustr },
     { TestFilter::XHTML_CALC, u"XHTML Calc File"_ustr },
@@ -134,8 +145,8 @@ public:
     css::uno::Any executeMacro(const OUString& rScriptURL,
                                const css::uno::Sequence<css::uno::Any>& rParams = {});
 
-    void save(TestFilter eFilter, const char* pPassword = nullptr);
-    void saveWithParams(const css::uno::Sequence<css::beans::PropertyValue>& rParams);
+    void save(TestFilter eFilter, const css::uno::Sequence<css::beans::PropertyValue>& rParams = {},
+              const char* pPassword = nullptr);
     void saveAndReload(TestFilter eFilter, const char* pPassword = nullptr);
 
     std::unique_ptr<vcl::pdf::PDFiumDocument> parsePDFExport(const OString& rPassword = OString());
@@ -168,6 +179,8 @@ protected:
 private:
     void setTestInteractionHandler(const char* pPassword,
                                    std::vector<css::beans::PropertyValue>& rFilterOptions);
+
+    void validate(const OUString& rURL, TestFilter eFilter) const;
 
     bool mbSkipValidation;
     OUString m_aBaseString;

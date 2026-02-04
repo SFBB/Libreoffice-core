@@ -66,10 +66,12 @@ constexpr auto SUPPORTED_UI_FILES = frozen::make_unordered_set<std::u16string_vi
     u"cui/ui/certdialog.ui",
     u"cui/ui/comment.ui",
     u"cui/ui/editdictionarydialog.ui",
+    u"cui/ui/eventassigndialog.ui",
     u"cui/ui/fontfeaturesdialog.ui",
     u"cui/ui/fontfragment.ui",
     u"cui/ui/gallerytitledialog.ui",
     u"cui/ui/graphictestdlg.ui",
+    u"cui/ui/hyperlinkdlg.ui",
     u"cui/ui/hyperlinkmarkdialog.ui",
     u"cui/ui/imageviewer.ui",
     u"cui/ui/insertoleobject.ui",
@@ -267,7 +269,12 @@ constexpr auto SUPPORTED_WITH_QT_PARENT = frozen::make_unordered_set<std::u16str
     u"cui/ui/additionsfragment.ui",
     u"cui/ui/appearance.ui",
     u"cui/ui/cellalignment.ui",
+    u"cui/ui/eventassignpage.ui",
     u"cui/ui/graphictestentry.ui",
+    u"cui/ui/hyperlinkdocpage.ui",
+    u"cui/ui/hyperlinkinternetpage.ui",
+    u"cui/ui/hyperlinkmailpage.ui",
+    u"cui/ui/hyperlinknewdocpage.ui",
     u"cui/ui/lineendstabpage.ui",
     u"cui/ui/linetabpage.ui",
     u"cui/ui/linestyletabpage.ui",
@@ -330,6 +337,7 @@ constexpr auto SUPPORTED_WITH_QT_PARENT = frozen::make_unordered_set<std::u16str
     u"svt/ui/datewindow.ui",
     u"svt/ui/linewindow.ui",
     u"svx/ui/colorwindow.ui",
+    u"svx/ui/formnavigator.ui",
     u"svx/ui/formnavimenu.ui",
     u"vcl/ui/editmenu.ui",
     u"xmlsec/ui/certdetails.ui",
@@ -351,6 +359,11 @@ bool QtInstanceBuilder::IsUIFileSupported(const OUString& rUIFile, const weld::W
 
     return SUPPORTED_WITH_QT_PARENT.contains(rUIFile)
            && dynamic_cast<const QtInstanceWidget*>(pParent);
+}
+
+bool QtInstanceBuilder::IsInterimUIFileSupported(const OUString& rUIFile)
+{
+    return SUPPORTED_WITH_QT_PARENT.contains(rUIFile);
 }
 
 std::unique_ptr<weld::MessageDialog> QtInstanceBuilder::weld_message_dialog(const OUString& id)
