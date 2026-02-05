@@ -329,13 +329,20 @@ void UnoApiTest::save(TestFilter eFilter, const uno::Sequence<beans::PropertyVal
 
     if (rParams.hasElements())
         aMediaDescriptor.update(rParams);
-    if (!maFilterOptions.isEmpty())
-        aMediaDescriptor[u"FilterOptions"_ustr] <<= maFilterOptions;
 
     if (pPassword)
     {
-        if (eFilter != TestFilter::DOCX && eFilter != TestFilter::XLSX
-            && eFilter != TestFilter::PPTX)
+        if (eFilter == TestFilter::PDF_WRITER)
+        {
+            comphelper::SequenceAsHashMap aFilterData;
+            if (aMediaDescriptor.contains(u"FilterData"_ustr))
+                aFilterData = aMediaDescriptor[u"FilterData"_ustr];
+            aFilterData[u"EncryptFile"_ustr] <<= true;
+            aFilterData[u"DocumentOpenPassword"_ustr] <<= OUString::createFromAscii(pPassword);
+            aMediaDescriptor[u"FilterData"_ustr] <<= aFilterData.getAsConstPropertyValueList();
+        }
+        else if (eFilter != TestFilter::DOCX && eFilter != TestFilter::XLSX
+                 && eFilter != TestFilter::PPTX)
         {
             aMediaDescriptor[u"Password"_ustr] <<= OUString::createFromAscii(pPassword);
         }
@@ -360,9 +367,11 @@ void UnoApiTest::save(TestFilter eFilter, const uno::Sequence<beans::PropertyVal
         validate(maTempFile.GetFileName(), eFilter);
 }
 
-void UnoApiTest::saveAndReload(TestFilter eFilter, const char* pPassword)
+void UnoApiTest::saveAndReload(TestFilter eFilter,
+                               const uno::Sequence<beans::PropertyValue>& rParams,
+                               const char* pPassword)
 {
-    save(eFilter, /*rParams*/ {}, pPassword);
+    save(eFilter, rParams, pPassword);
     loadFromURL(maTempFile.GetURL(), pPassword);
 }
 

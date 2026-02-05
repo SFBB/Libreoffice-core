@@ -405,7 +405,8 @@ QObject* QtBuilder::makeObject(QObject* pParent, std::u16string_view sName, std:
     {
         pObject = new QToolBar(pParentWidget);
     }
-    else if (sName == u"GtkToggleToolButton" || sName == u"GtkToolButton")
+    else if (sName == u"GtkRadioToolButton" || sName == u"GtkToggleToolButton"
+             || sName == u"GtkToolButton")
     {
         QToolButton* pToolButton = new QToolButton(pParentWidget);
         const OUString sIconName = extractIconName(rMap);
@@ -415,7 +416,11 @@ QObject* QtBuilder::makeObject(QObject* pParent, std::u16string_view sName, std:
             pToolButton->setIcon(toQPixmap(aImage));
         }
         pToolButton->setText(toQString(extractLabel(rMap)));
-        pToolButton->setCheckable(sName == u"GtkToggleToolButton");
+        pToolButton->setCheckable(sName == u"GtkRadioToolButton"
+                                  || sName == u"GtkToggleToolButton");
+        if (sName == u"GtkRadioToolButton")
+            extractRadioButtonGroup(rId, rMap);
+
         pObject = pToolButton;
     }
     else if (sName == u"GtkTreeView")
@@ -644,8 +649,8 @@ void QtBuilder::setMnemonicWidget(const OUString& rLabelId, const OUString& rMne
 void QtBuilder::setRadioButtonGroup(const OUString& rRadioButtonId, const OUString& rRadioGroupId)
 {
     // insert all buttons into a button group owned by button whose ID matches the group's
-    QRadioButton* pGroupOwner = get<QRadioButton>(rRadioGroupId);
-    assert(pGroupOwner && "No radio button with the given group name");
+    QAbstractButton* pGroupOwner = get<QAbstractButton>(rRadioGroupId);
+    assert(pGroupOwner && "No button with the given group name");
 
     QButtonGroup* pButtonGroup = nullptr;
     static const char* const pPropertyKey = "PROPERTY_BUTTONGROUP";
@@ -660,7 +665,7 @@ void QtBuilder::setRadioButtonGroup(const OUString& rRadioButtonId, const OUStri
         pButtonGroup->addButton(pGroupOwner);
     }
 
-    QRadioButton* pRadioButton = get<QRadioButton>(rRadioButtonId);
+    QAbstractButton* pRadioButton = get<QAbstractButton>(rRadioButtonId);
     assert(pRadioButton && "No radio button with given ID");
     pButtonGroup->addButton(pRadioButton);
 

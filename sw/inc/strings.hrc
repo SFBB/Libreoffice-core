@@ -235,7 +235,7 @@
 #define STR_COLUMN_VALUESET_ITEM3               NC_("STR_COLUMN_VALUESET_ITEM3", "2 columns with different size (left > right)")
 #define STR_COLUMN_VALUESET_ITEM4               NC_("STR_COLUMN_VALUESET_ITEM4", "2 columns with different size (left < right)")
 // Table styles, Writer internal, others are taken from Svx
-#define STR_TABSTYLE_DEFAULT                    NC_("STR_TABSTYLE_DEFAULT", "Default Table Style")
+#define STR_TABSTYLE_DEFAULT                    NC_("STR_TABSTYLE_DEFAULT", "Default Style")
 
 #define STR_PARAGRAPHSTYLEFAMILY                NC_("STR_PARAGRAPHSTYLEFAMILY", "Paragraph Styles")
 #define STR_CHARACTERSTYLEFAMILY                NC_("STR_CHARACTERSTYLEFAMILY", "Character Styles")
@@ -1576,6 +1576,8 @@
 #define STR_PAGES NNC_("STR_PAGES", "Page: %1", "Pages: %1-%2")
 
 #define STR_UNDO_SORT_CHAPTERS NC_("STR_UNDO_SORT_CHAPTERS", "Sort chapters")
+
+#define STR_UNDO_UNFLOAT_FRAME_CONTENT NC_("STR_UNDO_UNFLOAT_FRAME_CONTENT", "Unfloat frame content")
 
 #endif
 

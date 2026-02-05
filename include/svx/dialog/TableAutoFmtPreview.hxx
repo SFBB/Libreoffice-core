@@ -18,47 +18,42 @@
  */
 #pragma once
 
-#include <com/sun/star/i18n/XBreakIterator.hpp>
-#include <sal/types.h>
-#include <svx/framelinkarray.hxx>
+#include <com/sun/star/i18n/XBreakIterator.hdl>
 #include <svl/numformat.hxx>
-#include <tools/gen.hxx>
-#include <rtl/ustring.hxx>
-#include <vcl/font.hxx>
+#include <svx/framelinkarray.hxx>
+#include <svx/TableAutoFmt.hxx>
 #include <vcl/weld/customweld.hxx>
 
-#include "wrtsh.hxx"
-#include <tblafmt.hxx>
-
-class AutoFormatPreview final : public weld::CustomWidgetController
+class SVX_DLLPUBLIC SvxAutoFmtPreview : public weld::CustomWidgetController
 {
 public:
-    AutoFormatPreview();
+    SvxAutoFmtPreview(bool bRTL);
 
-    void NotifyChange(const SwTableAutoFormat& rNewData);
-
-    void DetectRTL(SwWrtShell const* pWrtShell);
+    void NotifyChange(const SvxAutoFormatData* rNewData);
 
 private:
-    SwTableAutoFormat maCurrentData;
+    static const tools::Long FRAME_OFFSET = 4;
+    static const size_t GRID_SIZE = 5;
+
+    const SvxAutoFormatData* mpCurrentData;
     svx::frame::Array maArray; /// Implementation to draw the frame borders.
     bool mbFitWidth;
     bool mbRTL;
     Size maPreviousSize;
-    tools::Long mnLabelColumnWidth;
-    tools::Long mnDataColumnWidth1;
-    tools::Long mnDataColumnWidth2;
+    tools::Long mnLabelColWidth;
+    tools::Long mnDataColWidth1;
+    tools::Long mnDataColWidth2;
     tools::Long mnRowHeight;
-    const OUString maStringJan;
-    const OUString maStringFeb;
-    const OUString maStringMar;
-    const OUString maStringNorth;
-    const OUString maStringMid;
-    const OUString maStringSouth;
-    const OUString maStringSum;
+    const OUString maStrJan;
+    const OUString maStrFeb;
+    const OUString maStrMar;
+    const OUString maStrNorth;
+    const OUString maStrMid;
+    const OUString maStrSouth;
+    const OUString maStrSum;
     std::unique_ptr<SvNumberFormatter> mxNumFormat;
 
-    uno::Reference<i18n::XBreakIterator> m_xBreak;
+    css::uno::Reference<css::i18n::XBreakIterator> mxBreakIter;
 
     void Init();
     virtual void Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect) override;
@@ -67,13 +62,19 @@ private:
     void CalcLineMap();
     void PaintCells(vcl::RenderContext& rRenderContext);
 
-    sal_uInt8 GetFormatIndex(size_t nCol, size_t nRow) const;
+    sal_uInt8 GetFormatIndex(size_t nCol, size_t nRow);
+    const SvxBoxItem& GetBoxItem(size_t nCol, size_t nRow) const;
+    const SvxLineItem& GetDiagItem(size_t nCol, size_t nRow, bool bTLBR) const;
 
     void DrawString(vcl::RenderContext& rRenderContext, size_t nCol, size_t nRow);
     void DrawBackground(vcl::RenderContext& rRenderContext);
 
     void MakeFonts(vcl::RenderContext const& rRenderContext, sal_uInt8 nIndex, vcl::Font& rFont,
                    vcl::Font& rCJKFont, vcl::Font& rCTLFont);
+
+    void setStyleFromBorderPriority(size_t nCol, size_t nRow);
+    void setStyleFromBorder(sal_uInt8 nElement, size_t nCol, size_t nRow, bool reset);
+    bool compareTextAttr(int nIndex);
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
