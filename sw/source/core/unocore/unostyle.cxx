@@ -1586,10 +1586,7 @@ void SwXStyle::SetPropertyValue<HINT_BEGIN>(const SfxItemPropertyMapEntry& rEntr
 {
     // default ItemSet handling
     SfxItemSet& rStyleSet = o_rStyleBase.GetItemSet();
-    SfxItemSet aSet(*rStyleSet.GetPool(), rEntry.nWID, rEntry.nWID);
-    aSet.SetParent(&rStyleSet);
-    SfxItemPropertySet::setPropertyValue(rEntry, rValue, aSet);
-    rStyleSet.Put(aSet);
+    SfxItemPropertySet::setPropertyValue(rEntry, rValue, rStyleSet);
 }
 template<>
 void SwXStyle::SetPropertyValue<FN_UNO_HIDDEN>(const SfxItemPropertyMapEntry& rEntry, const SfxItemPropertySet& rPropSet, const uno::Any& rValue, SwStyleBase_Impl& o_rStyleBase)
@@ -2046,7 +2043,7 @@ void SwXStyle::SetStyleProperty(const SfxItemPropertyMapEntry& rEntry, const Sfx
     }
 }
 
-void SwXStyle::SetPropertyValues_Impl(const uno::Sequence<OUString>& rPropertyNames, const uno::Sequence<uno::Any>& rValues)
+void SwXStyle::SetPropertyValues_Impl(const uno::Sequence<OUString>& rPropertyNames, const uno::Sequence<uno::Any>& rValues, bool bIgnoreUnknown)
 {
     if(!m_pDoc)
         throw uno::RuntimeException();
@@ -2074,7 +2071,11 @@ void SwXStyle::SetPropertyValues_Impl(const uno::Sequence<OUString>& rPropertyNa
     {
         const SfxItemPropertyMapEntry* pEntry = rMap.getByName(pNames[nProp]);
         if(!pEntry || (!m_bIsConditional && pNames[nProp] == UNO_NAME_PARA_STYLE_CONDITIONS))
+        {
+            if (bIgnoreUnknown)
+                continue;
             throw beans::UnknownPropertyException("Unknown property: " + pNames[nProp], getXWeak());
+        }
         if(pEntry->nFlags & beans::PropertyAttribute::READONLY)
             throw beans::PropertyVetoException ("Property is read-only: " + pNames[nProp], getXWeak());
         if(aBaseImpl.getNewBase().is())
@@ -2093,7 +2094,7 @@ void SwXStyle::setPropertyValues(const uno::Sequence<OUString>& rPropertyNames, 
     // workaround for bad designed API
     try
     {
-        SetPropertyValues_Impl( rPropertyNames, rValues );
+        SetPropertyValues_Impl( rPropertyNames, rValues, /*bIgnoreUnknown*/false );
     }
     catch (const beans::UnknownPropertyException &rException)
     {
@@ -2565,7 +2566,15 @@ void SwXStyle::setPropertyValue(const OUString& rPropertyName, const uno::Any& r
     SolarMutexGuard aGuard;
     const uno::Sequence<OUString> aProperties(&rPropertyName, 1);
     const uno::Sequence<uno::Any> aValues(&rValue, 1);
-    SetPropertyValues_Impl(aProperties, aValues);
+    SetPropertyValues_Impl(aProperties, aValues, /*bIgnoreUnknown*/false);
+}
+
+void SwXStyle::setPropertyValueIgnoreUnknown(const OUString& rPropertyName, const uno::Any& rValue)
+{
+    SolarMutexGuard aGuard;
+    const uno::Sequence<OUString> aProperties(&rPropertyName, 1);
+    const uno::Sequence<uno::Any> aValues(&rValue, 1);
+    SetPropertyValues_Impl(aProperties, aValues, /*bIgnoreUnknown*/true);
 }
 
 beans::PropertyState SwXStyle::getPropertyState(const OUString& rPropertyName)
