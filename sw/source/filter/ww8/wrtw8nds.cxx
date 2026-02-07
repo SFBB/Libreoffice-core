@@ -2526,6 +2526,7 @@ void MSWordExportBase::OutputTextNode( SwTextNode& rNode )
                 }
             }
 
+            AttrOutput().ResetFlyProcessingFlag();
             const FlyProcessingState nStateOfFlyFrame = aAttrIter.OutFlys(nCurrentPos);
 
             // Append bookmarks in this range after flys, exclusive of final
@@ -2762,7 +2763,6 @@ void MSWordExportBase::OutputTextNode( SwTextNode& rNode )
             }
 
             // At the end of line, output the attributes until the CR.
-            // Exception: footnotes at the end of line
             if ( nNextAttr == nEnd )
             {
                 OSL_ENSURE( nOpenAttrWithRange >= 0, "odd to see this happening, expected >= 0" );
@@ -2807,7 +2807,6 @@ void MSWordExportBase::OutputTextNode( SwTextNode& rNode )
                 AttrOutput().EndRunProperties( pRedlineData );
             }
 
-            // Exception: footnotes at the end of line
             if ( nNextAttr == nEnd )
             {
                 OSL_ENSURE(nOpenAttrWithRange >= 0,

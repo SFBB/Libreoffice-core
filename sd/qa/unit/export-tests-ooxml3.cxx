@@ -1132,7 +1132,10 @@ CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest3, testTdf168736)
     // Verify hyperlink to nextslide is properly exported the Relationship has Target attribute
     assertXPath(pXmlDoc, "/p:sld/p:cSld/p:spTree/p:sp[3]/p:txBody/a:p/a:r/a:rPr/a:hlinkClick",
                 "action", u"ppaction://hlinkshowjump?jump=nextslide");
+}
 
+CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest3, testTdf168736_2)
+{
     createSdImpressDoc("ppt/tdf168736-2.ppt");
     save(TestFilter::PPTX);
 
@@ -1181,6 +1184,21 @@ CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest3, testTdf169952)
     xmlDocUniquePtr pXmlDoc = parseExport(u"ppt/charts/chart2.xml"_ustr);
 
     CPPUNIT_ASSERT_MESSAGE("Without the fix chart2.xml is not exported", pXmlDoc);
+}
+
+CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest3, testTdf169952_multiple_OLEs)
+{
+    createSdImpressDoc("odp/tdf169952_multiple_OLEs.odp");
+    save(TestFilter::PPTX);
+
+    // Without the fix two of the three OLE objects would get lost, and only oleObject1.bin
+    // would exist
+    uno::Reference<packages::zip::XZipFileAccess2> xNameAccess
+        = packages::zip::ZipFileAccess::createWithURL(comphelper::getComponentContext(m_xSFactory),
+                                                      maTempFile.GetURL());
+    CPPUNIT_ASSERT_EQUAL(true, bool(xNameAccess->hasByName(u"ppt/embeddings/oleObject1.bin"_ustr)));
+    CPPUNIT_ASSERT_EQUAL(true, bool(xNameAccess->hasByName(u"ppt/embeddings/oleObject2.bin"_ustr)));
+    CPPUNIT_ASSERT_EQUAL(true, bool(xNameAccess->hasByName(u"ppt/embeddings/oleObject3.bin"_ustr)));
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();

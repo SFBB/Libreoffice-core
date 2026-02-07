@@ -183,9 +183,9 @@ public:
     OUString m_aTag;
     sal_Int32 m_nTabIndex;
     OUString m_aLock;
-    sal_Int32 m_nSdtPrToken;
+    sal_Int32 m_nSdtPrToken; // 0 means either not set, or richText
 
-    void DeleteAndResetTheLists();
+    void clearGrabbagValues();
 
     void WriteSdtBlock(const ::sax_fastparser::FSHelperPtr& pSerializer, bool bRunTextIsOn, bool bParagraphHasDrawing);
     void WriteExtraParams(const ::sax_fastparser::FSHelperPtr& pSerializer);
@@ -1084,9 +1084,6 @@ private:
 
     SdtBlockHelper m_aParagraphSdt;
     SdtBlockHelper m_aRunSdt;
-
-    /// Same as m_aParagraphSdtPrAlias, but its content is available till the SDT is closed.
-    OUString m_aStartedParagraphSdtPrAlias;
 
     std::vector<std::map<SvxBoxItemLine, css::table::BorderLine2>> m_aTableStyleConfs;
 

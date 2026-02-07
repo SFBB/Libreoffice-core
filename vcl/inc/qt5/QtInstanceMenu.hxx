@@ -9,7 +9,7 @@
 
 #pragma once
 
-#include <vcl/weld/weld.hxx>
+#include <vcl/weld/Menu.hxx>
 
 #include <QtCore/QPointer>
 #include <QtWidgets/QMenu>
@@ -61,6 +61,7 @@ private:
 
 private Q_SLOTS:
     void menuActionHovered(QAction* pAction);
+    void menuActionTriggered(QAction* pAction);
     void showHelp();
 };
 
