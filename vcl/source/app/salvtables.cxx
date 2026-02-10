@@ -5204,7 +5204,7 @@ void SalInstanceIconView::do_insert(int pos, const OUString* pStr, const OUStrin
     pEntry->SetUserData(pUserData);
     m_xIconView->Insert(pEntry, nullptr, nInsertPos);
     if (!m_bFixedItemWidth)
-        m_xIconView->UpdateEntrySize(rImage);
+        m_xIconView->UpdateEntrySize(*pEntry);
 
     if (pRet)
     {
@@ -5294,24 +5294,24 @@ void SalInstanceIconView::selected_foreach(const std::function<bool(weld::TreeIt
 
 void SalInstanceIconView::set_image(int pos, VirtualDevice& rIcon)
 {
-    SvTreeListEntry* aEntry = m_xIconView->GetEntry(nullptr, pos);
-    if (aEntry == nullptr)
+    SvTreeListEntry* pEntry = m_xIconView->GetEntry(nullptr, pos);
+    if (pEntry == nullptr)
         return;
-    SvLBoxContextBmp* aItem
-        = static_cast<SvLBoxContextBmp*>(aEntry->GetFirstItem(SvLBoxItemType::ContextBmp));
+    SvLBoxContextBmp* pItem
+        = static_cast<SvLBoxContextBmp*>(pEntry->GetFirstItem(SvLBoxItemType::ContextBmp));
 
     Image aImage = createImage(rIcon);
-    if (aItem == nullptr)
+    if (pItem == nullptr)
     {
-        aEntry->AddItem(std::make_unique<SvLBoxContextBmp>(aImage, aImage, false));
+        pEntry->AddItem(std::make_unique<SvLBoxContextBmp>(aImage, aImage, false));
     }
     else
     {
-        aItem->SetBitmap1(aImage);
-        aItem->SetBitmap2(aImage);
+        pItem->SetBitmap1(aImage);
+        pItem->SetBitmap2(aImage);
         if (!m_bFixedItemWidth)
-            m_xIconView->UpdateEntrySize(aImage);
-        m_xIconView->ModelHasEntryInvalidated(aEntry);
+            m_xIconView->UpdateEntrySize(*pEntry);
+        m_xIconView->ModelHasEntryInvalidated(pEntry);
     }
 }
 

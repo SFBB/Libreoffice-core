@@ -4112,7 +4112,7 @@ bool SwFlyFrame::IsPaint(SdrObject *pObj, const SwViewShell& rSh)
 
     if ( (!rSh.GetViewOptions()->IsDraw()
              && (dynamic_cast<SdrUnoObj*>(pObj) || dynamic_cast<SdrAttrObj*>(pObj) || dynamic_cast<SwFlyDrawObj*>(pObj)))
-        || (!rSh.GetViewOptions()->IsGraphic() && dynamic_cast<SwVirtFlyDrawObj*>(pObj)) )
+        || (!rSh.GetViewOptions()->IsGraphic() && DynCastSwVirtFlyDrawObj(pObj)) )
     {
         SwRect rBoundRect = GetBoundRectOfAnchoredObj( pObj );
         lcl_PaintReplacement(rBoundRect, rSh);
@@ -4134,7 +4134,7 @@ bool SwFlyFrame::IsPaint(SdrObject *pObj, const SwViewShell& rSh)
         {
             bPaint = false;
         }
-        if ( auto pFlyDraw = dynamic_cast<SwVirtFlyDrawObj *>( pObj ) )
+        if ( auto pFlyDraw = DynCastSwVirtFlyDrawObj( pObj ) )
         {
             SwFlyFrame *pFly = pFlyDraw->GetFlyFrame();
             if ( gProp.pSFlyOnlyDraw && gProp.pSFlyOnlyDraw == pFly )
@@ -4277,6 +4277,9 @@ void SwFlyFrame::PaintSwFrame(vcl::RenderContext& rRenderContext, SwRect const& 
         }
     }
 
+    const SwViewOption* pViewOptions = pShell ? pShell->GetViewOptions() : nullptr;
+    SwRedlineRenderMode eRedlineRenderMode
+        = pViewOptions ? pViewOptions->GetRedlineRenderMode() : SwRedlineRenderMode::Standard;
     {
         bool bContour = GetFormat()->GetSurround().IsContour();
         tools::PolyPolygon aPoly;
@@ -4323,9 +4326,6 @@ void SwFlyFrame::PaintSwFrame(vcl::RenderContext& rRenderContext, SwRect const& 
             }
         }
         // paint of margin needed.
-        const SwViewOption* pViewOptions = pShell ? pShell->GetViewOptions() : nullptr;
-        SwRedlineRenderMode eRedlineRenderMode = pViewOptions ? pViewOptions->GetRedlineRenderMode()
-            : SwRedlineRenderMode::Standard;
         const bool bPaintMarginOnly( !bPaintCompleteBack &&
                                      (getFramePrintArea().SSize() != getFrameArea().SSize() || eRedlineRenderMode != SwRedlineRenderMode::Standard));
 
@@ -4493,9 +4493,6 @@ void SwFlyFrame::PaintSwFrame(vcl::RenderContext& rRenderContext, SwRect const& 
     PaintDecorators();
 
     // crossing out for tracked deletion
-    const SwViewOption* pViewOptions = pShell ? pShell->GetViewOptions() : nullptr;
-    SwRedlineRenderMode eRedlineRenderMode
-        = pViewOptions ? pViewOptions->GetRedlineRenderMode() : SwRedlineRenderMode::Standard;
     if (GetAuthor() != std::string::npos && IsDeleted()
         && eRedlineRenderMode == SwRedlineRenderMode::Standard)
     {
