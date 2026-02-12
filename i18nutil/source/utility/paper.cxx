@@ -165,7 +165,7 @@ const size_t nTabSize = SAL_N_ELEMENTS(aDinTab);
 // but also large enough to match where the ppd side rounded up to the next
 // point. Seen with C5/C6/C65 envelopes which can be found over 1 point away
 // from the values in aDinTab
-#define MAXSLOPPY PT2MM100(1.25)
+constexpr auto MAXSLOPPY = PT2MM100(1.25);
 
 void PaperInfo::doSloppyFit(bool bAlsoTryRotated)
 {
@@ -319,8 +319,8 @@ PaperInfo PaperInfo::getSystemDefaultPaper()
             freelocale(loc);
 
             //glibc stores sizes as integer mm units
-            w.word *= 100;
-            h.word *= 100;
+            tools::Long nPaperWidth = w.word * 100;
+            tools::Long nPaperHeight = h.word * 100;
 
             for ( size_t i = 0; i < nTabSize; ++i )
             {
@@ -329,18 +329,18 @@ PaperInfo PaperInfo::getSystemDefaultPaper()
                 //glibc stores sizes as integer mm units, and so is inaccurate.
                 //To find a standard paper size we calculate the standard paper
                 //sizes into equally inaccurate mm and compare
-                tools::Long width = (aDinTab[i].m_nWidth + 50) / 100;
-                tools::Long height = (aDinTab[i].m_nHeight + 50) / 100;
+                tools::Long width = o3tl::convert(aDinTab[i].m_nWidth, o3tl::Length::mm100, o3tl::Length::mm);
+                tools::Long height = o3tl::convert(aDinTab[i].m_nHeight, o3tl::Length::mm100, o3tl::Length::mm);
 
-                if (width == w.word/100 && height == h.word/100)
+                if (width == w.word && height == h.word)
                 {
-                    w.word = aDinTab[i].m_nWidth;
-                    h.word = aDinTab[i].m_nHeight;
+                    nPaperWidth = aDinTab[i].m_nWidth;
+                    nPaperHeight = aDinTab[i].m_nHeight;
                     break;
                 }
             }
 
-            aInstance = PaperInfo(w.word, h.word);
+            aInstance = PaperInfo(nPaperWidth, nPaperHeight);
             bInitialized = true;
             return aInstance;
         }

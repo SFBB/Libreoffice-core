@@ -42,6 +42,7 @@
 #include <vcl/unohelp2.hxx>
 #include <vcl/rendercontext/GetDefaultFontFlags.hxx>
 #include <vcl/svapp.hxx>
+#include <vcl/weld/MessageDialog.hxx>
 #include <vcl/weld/weld.hxx>
 #include <svx/svxdlg.hxx>
 #include <svx/chinese_translation_unodialog.hxx>
@@ -489,17 +490,18 @@ void ScCellShell::ExecuteEdit( SfxRequest& rReq )
 
         case SID_DELETE:
             {
-                InsertDeleteFlags nFlags = InsertDeleteFlags::NONE;
-
                 if ( pReqArgs!=nullptr && pTabViewShell->SelectionEditable() )
                 {
                     const   SfxPoolItem* pItem;
                     OUString aFlags('A');
 
+                    InsertDeleteFlags nFlags = InsertDeleteFlags::NONE;
                     if( pReqArgs->HasItem( SID_DELETE, &pItem ) )
                         aFlags = static_cast<const SfxStringItem*>(pItem)->GetValue();
 
                     nFlags |= FlagsFromString(aFlags, InsertDeleteFlags::ALL);
+
+                    DeleteContents(pTabViewShell, rReq, nFlags);
                 }
                 else
                 {
@@ -515,14 +517,13 @@ void ScCellShell::ExecuteEdit( SfxRequest& rReq )
                             pDlg->DisableObjects();
                         if (pDlg->Execute() == RET_OK)
                         {
-                            nFlags = pDlg->GetDelContentsCmdBits();
+                            InsertDeleteFlags nFlags = pDlg->GetDelContentsCmdBits();
+                            DeleteContents(pTabViewShell, rReq, nFlags);
                         }
                     }
                     else
                         pTabViewShell->ErrorMessage(aTester.GetMessageId());
                 }
-
-                DeleteContents(pTabViewShell, rReq, nFlags);
             }
             break;
 

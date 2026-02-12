@@ -60,6 +60,8 @@
 #include <unotools/localedatawrapper.hxx>
 #include <unotools/syslocale.hxx>
 #include <editeng/unolingu.hxx>
+#include <vcl/weld/Dialog.hxx>
+#include <vcl/weld/MessageDialog.hxx>
 #include <vcl/weld/weld.hxx>
 #include <editeng/tstpitem.hxx>
 #include <sfx2/event.hxx>

@@ -13,6 +13,8 @@
 #include <xmloff/odffields.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/weld/Builder.hxx>
+#include <vcl/weld/Dialog.hxx>
+#include <vcl/weld/MessageDialog.hxx>
 #include <strings.hrc>
 #include <swtypes.hxx>
 

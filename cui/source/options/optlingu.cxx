@@ -21,6 +21,7 @@
 #include <vcl/settings.hxx>
 #include <vcl/vclenum.hxx>
 #include <vcl/weld/Builder.hxx>
+#include <vcl/weld/Dialog.hxx>
 #include <vcl/weld/SpinButton.hxx>
 #include <vcl/weld/weld.hxx>
 #include <i18nlangtag/languagetag.hxx>
@@ -56,6 +57,7 @@
 #include <unotools/extendedsecurityoptions.hxx>
 #include <svl/eitem.hxx>
 #include <vcl/svapp.hxx>
+#include <vcl/weld/MessageDialog.hxx>
 #include <sal/log.hxx>
 
 #include <svx/svxdlg.hxx>
