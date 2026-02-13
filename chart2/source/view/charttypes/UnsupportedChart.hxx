@@ -16,30 +16,32 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
+#pragma once
 
-#include <sal/config.h>
+#include <VSeriesPlotter.hxx>
+#include <com/sun/star/drawing/Direction3D.hpp>
 
-#include <shellio.hxx>
-#include <viewsh.hxx>
-#include <swfntcch.hxx>
-#include <fmtcol.hxx>
-#include <fntcache.hxx>
-#include <swfont.hxx>
-
-// from atrstck.cxx
-extern const sal_uInt8 StackPos[];
-
-SwFontObj::SwFontObj( const SwTextFormatColl *pOwner, SwViewShell *pSh ) :
-    m_aSwFont( &pOwner->GetAttrSet(), pSh ? &pSh->getIDocumentSettingAccess() : nullptr )
+namespace chart
 {
-    m_aSwFont.AllocFontCacheId( pSh, m_aSwFont.GetActual() );
-    const SwAttrSet& rAttrSet = pOwner->GetAttrSet();
-    for (sal_uInt16 i = RES_CHRATR_BEGIN; i < RES_CHRATR_END; i++)
-        m_pDefaultArray[ StackPos[ i ] ] = &rAttrSet.Get( i );
-}
-
-SwFontObj::~SwFontObj()
+class UnsupportedChart : public VSeriesPlotter
 {
-}
+    // public methods
+public:
+    UnsupportedChart() = delete;
+
+    UnsupportedChart(const rtl::Reference<::chart::ChartType>& xChartTypeModel);
+    virtual ~UnsupportedChart() override;
+
+    virtual void createShapes() override;
+
+    virtual css::drawing::Direction3D getPreferredDiagramAspectRatio() const override;
+
+    // MinimumAndMaximumSupplier
+    virtual bool isExpandIfValuesCloseToBorder(sal_Int32 nDimensionIndex) override;
+    virtual bool isSeparateStackingForDifferentSigns(sal_Int32 nDimensionIndex) override;
+
+    virtual LegendSymbolStyle getLegendSymbolStyle() override;
+};
+} //namespace chart
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
