@@ -26,8 +26,15 @@ bool isBuilderEnabledForNavigator(std::u16string_view rUIFile);
 bool isBuilderEnabledForQuickFind(std::u16string_view rUIFile);
 bool isInterimBuilderEnabledForNotebookbar(std::u16string_view rUIFile);
 
-// returns vector of .ui files not seen that should be seen to have complete coverage
+// returns vector of writer dialog .ui files not seen that should be seen to have complete coverage
 std::vector<OUString> completeWriterDialogList(const o3tl::sorted_vector<OUString>& entries);
+// returns vector of writer sidebar .ui files not seen that should be seen to have complete coverage
+std::vector<OUString> completeWriterSidebarList(const o3tl::sorted_vector<OUString>& entries);
+// returns vector of common/shared dialog .ui files not seen that should be seen to have complete coverage
+std::vector<OUString> completeCommonDialogList(const o3tl::sorted_vector<OUString>& entries,
+                                               bool linguisticDataAvailable);
+// returns vector of common/shared sidebar .ui files not seen that should be seen to have complete coverage
+std::vector<OUString> completeCommonSidebarList(const o3tl::sorted_vector<OUString>& entries);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

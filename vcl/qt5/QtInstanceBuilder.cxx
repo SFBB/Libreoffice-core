@@ -143,6 +143,7 @@ constexpr auto SUPPORTED_UI_FILES = frozen::make_unordered_set<std::u16string_vi
     u"modules/scalc/ui/condformatmanager.ui",
     u"modules/scalc/ui/conditionalformatdialog.ui",
     u"modules/scalc/ui/definedatabaserangedialog.ui",
+    u"modules/scalc/ui/definetablerangedialog.ui",
     u"modules/scalc/ui/deletecells.ui",
     u"modules/scalc/ui/deletecontents.ui",
     u"modules/scalc/ui/duplicaterecordsdlg.ui",
@@ -371,6 +372,7 @@ constexpr auto SUPPORTED_WITH_QT_PARENT = frozen::make_unordered_set<std::u16str
     u"svx/ui/formnavigator.ui",
     u"svx/ui/formnavimenu.ui",
     u"vcl/ui/editmenu.ui",
+    u"vcl/ui/screenshotmenu.ui",
     u"xmlsec/ui/certdetails.ui",
     u"xmlsec/ui/certgeneral.ui",
 });

@@ -940,6 +940,12 @@ OUString SalInstanceMenu::get_label(const OUString& rIdent) const
 {
     return m_xMenu->GetItemText(m_xMenu->GetItemId(rIdent));
 }
+
+void SalInstanceMenu::set_tooltip_text(const OUString& rIdent, const OUString& rTip)
+{
+    m_xMenu->SetTipHelpText(m_xMenu->GetItemId(rIdent), rTip);
+}
+
 void SalInstanceMenu::set_visible(const OUString& rIdent, bool bShow)
 {
     m_xMenu->ShowItem(m_xMenu->GetItemId(rIdent), bShow);
@@ -1750,11 +1756,6 @@ SalInstanceDialog::SalInstanceDialog(::Dialog* pDialog, SalInstanceBuilder* pBui
     , m_nOldEditWidthReq(0)
     , m_nOldBorderWidth(0)
 {
-    const bool bScreenshotMode(officecfg::Office::Common::Misc::ScreenshotMode::get());
-    if (bScreenshotMode)
-    {
-        m_xDialog->SetPopupMenuHdl(LINK(this, SalInstanceDialog, PopupScreenShotMenuHdl));
-    }
 }
 
 bool SalInstanceDialog::runAsync(std::shared_ptr<weld::DialogController> const& rxOwner,
@@ -1970,34 +1971,6 @@ bool SalInstanceDialog::is_default_button(const weld::Button* pCandidate) const
     const SalInstanceWidget* pVclCandidate = dynamic_cast<const SalInstanceWidget*>(pCandidate);
     vcl::Window* pWidget = pVclCandidate ? pVclCandidate->getWidget() : nullptr;
     return pWidget && pWidget->GetStyle() & WB_DEFBUTTON;
-}
-
-IMPL_LINK(SalInstanceDialog, PopupScreenShotMenuHdl, const CommandEvent&, rCEvt, bool)
-{
-    if (CommandEventId::ContextMenu == rCEvt.GetCommand())
-    {
-        const Point aMenuPos(rCEvt.GetMousePosPixel());
-        ScopedVclPtrInstance<PopupMenu> aMenu;
-        sal_uInt16 nLocalID(1);
-
-        aMenu->InsertItem(nLocalID, VclResId(SV_BUTTONTEXT_SCREENSHOT));
-        aMenu->SetHelpText(nLocalID, VclResId(SV_HELPTEXT_SCREENSHOT));
-        aMenu->SetHelpId(nLocalID, u"InteractiveScreenshotMode"_ustr);
-        aMenu->EnableItem(nLocalID);
-
-        const sal_uInt16 nId(aMenu->Execute(m_xDialog, aMenuPos));
-
-        // 0 == no selection (so not usable as ID)
-        if (0 != nId)
-            executeScreenshotAnnotationDialog();
-
-        // consume event when:
-        // - CommandEventId::ContextMenu
-        // - bScreenshotMode
-        return true;
-    }
-
-    return false;
 }
 
 SalInstanceMessageDialog::SalInstanceMessageDialog(::MessageDialog* pDialog,

@@ -24,6 +24,7 @@
 #include <vcl/weld/MessageDialog.hxx>
 #include <vcl/weld/MetricSpinButton.hxx>
 #include <vcl/weld/Notebook.hxx>
+#include <vcl/weld/Popover.hxx>
 #include <vcl/weld/Scrollbar.hxx>
 #include <vcl/weld/ScrolledWindow.hxx>
 #include <vcl/weld/SpinButton.hxx>
@@ -189,6 +190,7 @@ public:
     virtual bool get_active(const OUString& rIdent) const override;
     virtual void set_label(const OUString& rIdent, const OUString& rLabel) override;
     virtual OUString get_label(const OUString& rIdent) const override;
+    virtual void set_tooltip_text(const OUString& rIdent, const OUString& rTip) override;
     virtual void set_visible(const OUString& rIdent, bool bShow) override;
     virtual void clear() override;
     virtual void insert(int pos, const OUString& rId, const OUString& rStr,
@@ -514,8 +516,6 @@ private:
     std::vector<VclPtr<vcl::Window>> m_aHiddenWidgets; // vector of hidden Controls
     tools::Long m_nOldEditWidthReq; // Original width request of the input field
     sal_Int32 m_nOldBorderWidth; // border width for expanded dialog
-
-    DECL_LINK(PopupScreenShotMenuHdl, const CommandEvent&, bool);
 
     void recursively_unset_default_buttons();
 

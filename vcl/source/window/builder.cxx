@@ -193,7 +193,7 @@ void Application::EnableUICoverage(bool bEnable)
         ImplGetSVData()->mpDefInst->getUsedUIList().clear();
 }
 
-void Application::UICoverageReport(tools::JsonWriter& rJson)
+void Application::UICoverageReport(tools::JsonWriter& rJson, bool linguisticDataAvailable)
 {
     auto resultNode = rJson.startNode("result");
 
@@ -211,6 +211,33 @@ void Application::UICoverageReport(tools::JsonWriter& rJson)
     {
         auto childrenNode = rJson.startArray("MissingWriterDialogCoverage");
         for (const auto& entry : missingWriterDialogUIs)
+            rJson.putSimpleValue(entry);
+    }
+
+    std::vector<OUString> missingWriterSidebarUIs = jsdialog::completeWriterSidebarList(entries);
+    rJson.put("CompleteWriterSidebarCoverage", missingWriterSidebarUIs.empty());
+    if (!missingWriterSidebarUIs.empty())
+    {
+        auto childrenNode = rJson.startArray("MissingWriterSidebarCoverage");
+        for (const auto& entry : missingWriterSidebarUIs)
+            rJson.putSimpleValue(entry);
+    }
+
+    std::vector<OUString> missingCommonDialogUIs = jsdialog::completeCommonDialogList(entries, linguisticDataAvailable);
+    rJson.put("CompleteCommonDialogCoverage", missingCommonDialogUIs.empty());
+    if (!missingCommonDialogUIs.empty())
+    {
+        auto childrenNode = rJson.startArray("MissingCommonDialogCoverage");
+        for (const auto& entry : missingCommonDialogUIs)
+            rJson.putSimpleValue(entry);
+    }
+
+    std::vector<OUString> missingCommonSidebarUIs = jsdialog::completeCommonSidebarList(entries);
+    rJson.put("CompleteCommonSidebarCoverage", missingCommonSidebarUIs.empty());
+    if (!missingCommonSidebarUIs.empty())
+    {
+        auto childrenNode = rJson.startArray("MissingCommonSidebarCoverage");
+        for (const auto& entry : missingCommonSidebarUIs)
             rJson.putSimpleValue(entry);
     }
 }

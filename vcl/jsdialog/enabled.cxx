@@ -651,6 +651,145 @@ std::vector<OUString> completeWriterDialogList(const o3tl::sorted_vector<OUStrin
     return missing;
 }
 
+std::vector<OUString> completeWriterSidebarList(const o3tl::sorted_vector<OUString>& entries)
+{
+    std::vector<OUString> missing;
+    for (const auto& entry : SidebarList)
+    {
+        OUString sEntry(entry);
+        // Skip these ones, I don't think they can appear in practice
+        if (entry == u"modules/swriter/ui/managechangessidebar.ui" ||
+            entry == u"modules/swriter/ui/pagefooterpanel.ui" ||
+            entry == u"modules/swriter/ui/pageheaderpanel.ui" ||
+            entry == u"modules/swriter/ui/pagestylespanel.ui" ||
+            entry == u"modules/swriter/ui/sidebarstylepresets.ui" ||
+            entry == u"modules/swriter/ui/sidebartheme.ui")
+            continue;
+        else if (sEntry.startsWith("modules/swriter/") && !entries.contains(sEntry))
+            missing.push_back(sEntry);
+    }
+    return missing;
+}
+
+std::vector<OUString> completeCommonSidebarList(const o3tl::sorted_vector<OUString>& entries)
+{
+    std::vector<OUString> missing;
+    for (const auto& entry : SidebarList)
+    {
+        OUString sEntry(entry);
+
+        if (sEntry.startsWith("modules/"))
+            continue;
+        // Skip this one, I don't think it can appear in practice
+        if (entry == u"svx/ui/sidebargallery.ui")
+            continue;
+        // Skip this one, its context means it cannot appear in writer
+        else if (entry == u"svx/ui/sidebarshadow.ui")
+            continue;
+        // Skip this one, its context means it cannot appear in writer
+        else if (entry == u"svx/ui/sidebartexteffect.ui")
+            continue;
+        // Skip this one, its context means it cannot appear in writer
+        else if (entry == u"svx/ui/sidebarlists.ui")
+            continue;
+        // Skip this one, its context means it can only appear in draw/impress
+        else if (entry == u"svx/ui/defaultshapespanel.ui")
+            continue;
+        else if (!entries.contains(sEntry))
+            missing.push_back(sEntry);
+    }
+    return missing;
+}
+
+std::vector<OUString> completeCommonDialogList(const o3tl::sorted_vector<OUString>& entries,
+                                               bool linguisticDataAvailable)
+{
+    std::vector<OUString> missing;
+    auto processCategory = [&](const auto& category) {
+        for (const auto& entry : category)
+        {
+            if (!linguisticDataAvailable && (
+                entry == u"cui/ui/thesaurus.ui" ||
+                entry == u"cui/ui/spellingdialog.ui" ||
+                entry == u"cui/ui/spelloptionsdialog.ui"))
+            {
+                // Skip the dialogs that can't be reached in the absense of
+                // linguistic data.
+                continue;
+            }
+
+            // Skip this one, I don't think it can appear in practice
+            if (entry == u"sfx/ui/cmisinfopage.ui")
+                continue;
+            // Skip this one, I think it can only happen on loading
+            // an archaic wordperfect file
+            else if (entry == u"writerperfect/ui/wpftencodingdialog.ui")
+                continue;
+            // Skip this one, I don't think it can appear in practice
+            else if (entry == u"cui/ui/colorpickerdialog.ui")
+                continue;
+            // Skip this one, is the query dialog about enabling overwrite
+            // mode which is disabled in the default config
+            else if (entry == u"cui/ui/querysetinsmodedialog.ui")
+                continue;
+            // Skip this one, its actually a sd-only one (with code in sd), but
+            // somehow the .ui is in cui
+            else if (entry == u"cui/ui/bulletandposition.ui")
+                continue;
+            // Skip this one for now, it requires smartart to already exist in a .docx
+            else if (entry == u"cui/ui/diagramdialog.ui")
+                continue;
+            // Skip this one, it cannot appear in writer
+            else if (entry == u"cui/ui/possizetabpage.ui")
+                continue;
+            // Skip this one, it cannot appear in writer, only calc in practice
+            else if (entry == u"cui/ui/cellalignment.ui")
+                continue;
+            // Skip this one, it cannot appear in writer, only impress/draw in
+            // practice
+            else if (entry == u"cui/ui/formatcellsdialog.ui")
+                continue;
+            // Skip this one, it cannot appear in writer (until autotext dialogs
+            // are enabled, in which case that is likely disabled. Maybe possible
+            // from calc.
+            else if (entry == u"cui/ui/eventassigndialog.ui")
+                continue;
+            // Skip this one, it is disabled in filter/source/pdf/impdialog.cxx
+            // for kit mode
+            else if (entry == u"filter/ui/pdfsignpage.ui")
+                continue;
+            // This, for the chart wizard, it is really only available in calc
+            else if (entry == u"vcl/ui/wizard.ui")
+                continue;
+            // The warn dialog appears to be somewhat broken, at least the
+            // existing tests for it are currently disabled and it doesn't
+            // work for me
+            else if (entry == u"uui/ui/macrowarnmedium.ui")
+                continue;
+            // This, for the forumula dialog, are really only available in calc
+            else if (entry == u"formula/ui/formuladialog.ui" ||
+                     entry == u"formula/ui/functionpage.ui" ||
+                     entry == u"formula/ui/parameter.ui" ||
+                     entry == u"formula/ui/structpage.ui")
+            {
+                continue;
+            }
+            // Testing this requires hosting an image, or similar, with
+            // a username+password
+            else if (entry == u"uui/ui/logindialog.ui")
+                continue;
+            OUString sEntry(entry);
+            if (!entries.contains(sEntry))
+                missing.push_back(sEntry);
+        }
+    };
+    processCategory(CuiDialogList);
+    processCategory(SfxDialogList);
+    processCategory(OtherDialogList);
+    return missing;
+}
+
+
 } // end of jsdialog
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

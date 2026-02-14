@@ -22,8 +22,10 @@ private:
                           const std::function<void(sal_Int32)>& func)
         = 0;
 
+    DECL_LINK(CommandHdl, const CommandEvent&, bool);
+
 protected:
-    void executeScreenshotAnnotationDialog();
+    virtual bool signal_command(const CommandEvent& rCEvt);
 
 public:
     virtual void set_modal(bool bModal) = 0;

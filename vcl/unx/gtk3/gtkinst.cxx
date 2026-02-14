@@ -48,6 +48,7 @@
 #include <vcl/weld/MetricSpinButton.hxx>
 #include <vcl/weld/Notebook.hxx>
 #include <vcl/weld/Paned.hxx>
+#include <vcl/weld/Popover.hxx>
 #include <vcl/weld/Scrollbar.hxx>
 #include <vcl/weld/ScrolledWindow.hxx>
 #include <vcl/weld/SpinButton.hxx>
@@ -2584,6 +2585,14 @@ protected:
         }
     }
 
+    void ensurePopupMenuSignal()
+    {
+#if !GTK_CHECK_VERSION(4, 0, 0)
+        if (!m_nPopupMenuSignalId)
+            m_nPopupMenuSignalId = g_signal_connect(m_pWidget, "popup-menu", G_CALLBACK(signalPopupMenu), this);
+#endif
+    }
+
 #if !GTK_CHECK_VERSION(4, 0, 0)
     static gboolean signalPopupMenu(GtkWidget* pWidget, gpointer widget)
     {
@@ -3394,11 +3403,9 @@ public:
 
     virtual void connect_command(const Link<const CommandEvent&, bool>& rLink) override
     {
-#if !GTK_CHECK_VERSION(4, 0, 0)
-        if (!m_nPopupMenuSignalId)
-            m_nPopupMenuSignalId = g_signal_connect(m_pWidget, "popup-menu", G_CALLBACK(signalPopupMenu), this);
-#endif
+
         ensureButtonPressSignal();
+        ensurePopupMenuSignal();
         weld::Widget::connect_command(rLink);
     }
 
@@ -6474,7 +6481,15 @@ public:
 #if !GTK_CHECK_VERSION(4, 0, 0)
         gtk_window_get_size(m_pWindow, &current_width, &current_height);
 #else
-        gtk_window_get_default_size(m_pWindow, &current_width, &current_height);
+        if (gtk_widget_is_visible(GTK_WIDGET(m_pWindow)))
+        {
+            current_width = gtk_widget_get_width(GTK_WIDGET(m_pWindow));
+            current_height = gtk_widget_get_height(GTK_WIDGET(m_pWindow));
+        }
+        else
+        {
+            gtk_window_get_default_size(m_pWindow, &current_width, &current_height);
+        }
 #endif
         return Size(current_width, current_height);
     }
@@ -6995,88 +7010,6 @@ private:
 
     void asyncresponse(gint ret);
 
-#if !GTK_CHECK_VERSION(4, 0, 0)
-    static void signalActivate(GtkMenuItem*, gpointer data)
-    {
-        bool* pActivate = static_cast<bool*>(data);
-        *pActivate = true;
-    }
-#endif
-
-#if !GTK_CHECK_VERSION(4, 0, 0)
-    bool signal_screenshot_popup_menu(const GdkEventButton* pEvent)
-    {
-        GtkWidget *pMenu = gtk_menu_new();
-
-        GtkWidget* pMenuItem = gtk_menu_item_new_with_mnemonic(MapToGtkAccelerator(VclResId(SV_BUTTONTEXT_SCREENSHOT)).getStr());
-        gtk_menu_shell_append(GTK_MENU_SHELL(pMenu), pMenuItem);
-        bool bActivate(false);
-        g_signal_connect(pMenuItem, "activate", G_CALLBACK(signalActivate), &bActivate);
-        gtk_widget_set_visible(pMenuItem, true);
-
-        int button, event_time;
-        if (pEvent)
-        {
-            button = pEvent->button;
-            event_time = pEvent->time;
-        }
-        else
-        {
-            button = 0;
-            event_time = gtk_get_current_event_time();
-        }
-
-        gtk_menu_attach_to_widget(GTK_MENU(pMenu), GTK_WIDGET(m_pDialog), nullptr);
-
-        GMainLoop* pLoop = g_main_loop_new(nullptr, true);
-        gulong nSignalId = g_signal_connect_swapped(G_OBJECT(pMenu), "deactivate", G_CALLBACK(g_main_loop_quit), pLoop);
-
-        gtk_menu_popup(GTK_MENU(pMenu), nullptr, nullptr, nullptr, nullptr, button, event_time);
-
-        if (g_main_loop_is_running(pLoop))
-            main_loop_run(pLoop);
-
-        g_main_loop_unref(pLoop);
-        g_signal_handler_disconnect(pMenu, nSignalId);
-        gtk_menu_detach(GTK_MENU(pMenu));
-
-        if (bActivate)
-            executeScreenshotAnnotationDialog();
-
-        return false;
-    }
-#endif
-
-    static gboolean signalScreenshotPopupMenu(GtkWidget*, gpointer widget)
-    {
-#if !GTK_CHECK_VERSION(4, 0, 0)
-        GtkInstanceDialog* pThis = static_cast<GtkInstanceDialog*>(widget);
-        return pThis->signal_screenshot_popup_menu(nullptr);
-#else
-        (void)widget;
-        return false;
-#endif
-    }
-
-#if !GTK_CHECK_VERSION(4, 0, 0)
-    static gboolean signalScreenshotButton(GtkWidget*, GdkEventButton* pEvent, gpointer widget)
-    {
-        GtkInstanceDialog* pThis = static_cast<GtkInstanceDialog*>(widget);
-        SolarMutexGuard aGuard;
-        return pThis->signal_screenshot_button(pEvent);
-    }
-
-    bool signal_screenshot_button(GdkEventButton* pEvent)
-    {
-        if (gdk_event_triggers_context_menu(reinterpret_cast<GdkEvent*>(pEvent)) && pEvent->type == GDK_BUTTON_PRESS)
-        {
-            //if handled for context menu, stop processing
-            return signal_screenshot_popup_menu(pEvent);
-        }
-        return false;
-    }
-#endif
-
 public:
     GtkInstanceDialog(GtkWindow* pDialog, GtkInstanceBuilder* pBuilder, bool bTakeOwnership)
         : GtkInstanceWindow(pDialog, pBuilder, bTakeOwnership)
@@ -7096,14 +7029,10 @@ public:
             m_nCloseSignalId = g_signal_connect(m_pDialog, "close", G_CALLBACK(signalClose), this);
         else
             m_nCloseSignalId = 0;
-        const bool bScreenshotMode(officecfg::Office::Common::Misc::ScreenshotMode::get());
-        if (bScreenshotMode)
-        {
-            g_signal_connect(m_pDialog, "popup-menu", G_CALLBACK(signalScreenshotPopupMenu), this);
-#if !GTK_CHECK_VERSION(4, 0, 0)
-            g_signal_connect(m_pDialog, "button-press-event", G_CALLBACK(signalScreenshotButton), this);
-#endif
-        }
+
+        // ensure context menu entry events are emitted, needed for the screenshot menu
+        ensureButtonPressSignal();
+        ensurePopupMenuSignal();
     }
 
     virtual bool runAsync(const std::shared_ptr<weld::DialogController>& rDialogController,
@@ -11395,6 +11324,16 @@ public:
     virtual OUString get_label(const OUString& rIdent) const override
     {
         return get_item_label(rIdent);
+    }
+
+    virtual void set_tooltip_text(const OUString& rIdent, const OUString& rTip) override
+    {
+#if !GTK_CHECK_VERSION(4, 0, 0)
+        gtk_widget_set_tooltip_text(GTK_WIDGET(m_aMap[rIdent]), rTip.toUtf8().getStr());
+#else
+    (void)rIdent;
+    (void)rTip;
+#endif
     }
 
     virtual void insert_separator(int pos, const OUString& rId) override

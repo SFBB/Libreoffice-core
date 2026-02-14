@@ -202,6 +202,20 @@ struct SdrObject::Impl
         meRelativeHeightRelation(text::RelOrientation::PAGE_FRAME) {}
 };
 
+void SdrObject::setDiagramDataModelID(const OUString& rID)
+{
+    if (!m_pPlusData)
+        ImpForcePlusData();
+    m_pPlusData->aObjTitle = rID;
+}
+
+const OUString& SdrObject::getDiagramDataModelID() const
+{
+    if(m_pPlusData)
+        return m_pPlusData->aObjTitle;
+    return EMPTY_OUSTRING;
+}
+
 bool SdrObject::isDiagram() const
 {
     return false;
@@ -367,7 +381,6 @@ SdrObject::SdrObject(SdrModel& rSdrModel)
     , mpSvxShape( nullptr )
     , mbDoNotInsertIntoPageAutomatically(false)
     , msHyperlink()
-    , msDiagramDataModelID()
 {
     m_bVirtObj         =false;
     m_bSnapRectDirty   =true;
@@ -405,7 +418,6 @@ SdrObject::SdrObject(SdrModel& rSdrModel, SdrObject const & rSource)
     , mpSvxShape( nullptr )
     , mbDoNotInsertIntoPageAutomatically(false)
     , msHyperlink()
-    , msDiagramDataModelID()
 {
     m_bVirtObj         =false;
     m_bSnapRectDirty   =true;
@@ -3216,6 +3228,16 @@ void SdrObject::MakeNameUnique(std::unordered_set<OUString>& rNameSet)
     if (GetName().isEmpty())
         return;
 
+    OUString sName(GetName().trim());
+    OUString sRootName(sName);
+
+    if (!sName.isEmpty() && rtl::isAsciiDigit(sName[sName.getLength() - 1]))
+    {
+        sal_Int32 nPos(sName.getLength() - 1);
+        while (nPos > 0 && rtl::isAsciiDigit(sName[--nPos]));
+        sRootName = o3tl::trim(sName.subView(0, nPos + 1));
+    }
+
     if (rNameSet.empty())
     {
         SdrPage* pPage;
@@ -3228,19 +3250,13 @@ void SdrObject::MakeNameUnique(std::unordered_set<OUString>& rNameSet)
             {
                 pObj = aIter.Next();
                 if (pObj != this)
-                    rNameSet.insert(pObj->GetName());
+                {
+                    auto rName = pObj->GetName();
+                    if (rName.startsWith(sRootName))
+                        rNameSet.insert(rName);
+                }
             }
         }
-    }
-
-    OUString sName(GetName().trim());
-    OUString sRootName(sName);
-
-    if (!sName.isEmpty() && rtl::isAsciiDigit(sName[sName.getLength() - 1]))
-    {
-        sal_Int32 nPos(sName.getLength() - 1);
-        while (nPos > 0 && rtl::isAsciiDigit(sName[--nPos]));
-        sRootName = o3tl::trim(sName.subView(0, nPos + 1));
     }
 
     for (sal_uInt32 n = 1; rNameSet.find(sName) != rNameSet.end(); n++)

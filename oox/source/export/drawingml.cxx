@@ -4949,9 +4949,21 @@ bool IsValidOOXMLFormula(std::u16string_view sFormula)
     // "?: n1 n2 n3" // ifelse
 
     // Below vector contains validTokens for the 1st token based on the number of tokens in the formula. The order is: 2, 3, 4
-    const std::vector<std::set<OUString>> validTokens
-        = { { "val", "abs", "sqrt" }, { "min", "max" }, { "*/", "+-", "+/", "?:" } };
-    const std::set<OUString> builtInVariables = { "w", "h", "t", "b", "l", "r" };
+    const std::vector<std::set<std::u16string_view>> validTokens =
+    {
+        { u"val", u"abs", u"sqrt" },
+        { u"min", u"max" },
+        { u"*/", u"+-", u"+/", u"?:" }
+    };
+    const std::set<std::u16string_view> builtInVariables =
+    {
+        u"w",
+        u"h",
+        u"t",
+        u"b",
+        u"l",
+        u"r"
+    };
     const std::vector<OUString> strTokens = comphelper::string::split(sFormula, ' ');
     sal_uInt16 nSize = strTokens.size();
 
@@ -6836,10 +6848,8 @@ void DrawingML::WriteDiagram(const css::uno::Reference<css::drawing::XShape>& rX
     // from original import. it needs a drawingRelId that is referenced inside dataDom
     uno::Reference<xml::dom::XDocument> drawingDom;
     rIDiagramHelper->getOOXDomValue(svx::diagram::DomMapFlag::OOXDrawing) >>= drawingDom;
-    const OUString drawingFileName("diagrams/drawing" + OUString::number(nDiagramId) + ".xml");
-    const OUString sRelationCompPrefix(GetRelationCompPrefix());
-    const OUString sDir(GetComponentDir());
     static bool bForceAlwaysReCreate(nullptr != std::getenv("FORCE_RECREATE_DIAGRAM_DATADOMS"));
+    static bool bActivateAdvancedDiagramFeatures(nullptr != std::getenv("ACTIVATE_ADVANCED_DIAGRAM_FEATURES"));
 
     // check if re-creation is forced (for test purposes)
     if (drawingDom && bForceAlwaysReCreate)
@@ -6853,10 +6863,13 @@ void DrawingML::WriteDiagram(const css::uno::Reference<css::drawing::XShape>& rX
     // that do not originally have a drawingDom at all. The test mentions
     // that this file was created in ms word 2007. In those cases we might
     // try in the future to 'repair' stuff by writing a DrawingDom, but for
-    // now just do as version before did - write no DrawingSDom at all
-    const bool bWriteNoDrawingDomAtAll(pAdvancedDiagramHelper->getInitiallyNoDrawingDom());
+    // now just do as version before did - write no DrawingDom at all if new
+    // features are not activated
+    const OUString drawingFileName("diagrams/drawing" + OUString::number(nDiagramId) + ".xml");
+    const OUString sRelationCompPrefix(GetRelationCompPrefix());
+    const OUString sDir(GetComponentDir());
 
-    if (!bWriteNoDrawingDomAtAll)
+    if (bActivateAdvancedDiagramFeatures || drawingDom.is())
     {
         // only add Relation if we write a DrawingDom
         drawingRelId = mpFB->addRelation(
@@ -6864,7 +6877,7 @@ void DrawingML::WriteDiagram(const css::uno::Reference<css::drawing::XShape>& rX
             Concat2View(sRelationCompPrefix + drawingFileName));
     }
 
-    if (!drawingDom && !bWriteNoDrawingDomAtAll)
+    if (!drawingDom && bActivateAdvancedDiagramFeatures)
     {
         // no drawingDom exists, so it was either not originally imported or the
         // Diagram was changed, so it got deleted. write drawingDom directly as
@@ -6885,11 +6898,17 @@ void DrawingML::WriteDiagram(const css::uno::Reference<css::drawing::XShape>& rX
     if (dataDom && bForceAlwaysReCreate)
         dataDom.clear();
 
+    // add data relation
+    const OUString dataFileName = "diagrams/data" + OUString::number(nDiagramId) + ".xml";
+    const OUString dataRelId =
+        mpFB->addRelation(mpFS->getOutputStream(), oox::getRelationship(Relationship::DIAGRAMDATA),
+                          Concat2View(sRelationCompPrefix + dataFileName));
+
     if (!dataDom)
     {
         // no dataDom exists, so  the  Diagram was changed, so it got deleted.
         // write dataDom directly as sub-content
-        OUString dataFileName = u"diagrams/data"_ustr + OUString::number(nDiagramId) + u".xml"_ustr;
+        // OUString dataFileName = u"diagrams/data"_ustr + OUString::number(nDiagramId) + u".xml"_ustr;
         uno::Reference<io::XOutputStream> xOutputStream = mpFB->openFragmentStream(
             sDir + u"/"_ustr + dataFileName,
             u"application/vnd.openxmlformats-officedocument.drawingml.diagramData+xml"_ustr);
@@ -6959,12 +6978,6 @@ void DrawingML::WriteDiagram(const css::uno::Reference<css::drawing::XShape>& rX
     mpFS->startElementNS(XML_a, XML_graphicData, XML_uri,
                          "http://schemas.openxmlformats.org/drawingml/2006/diagram");
 
-    // add data relation
-    OUString dataFileName = "diagrams/data" + OUString::number(nDiagramId) + ".xml";
-    OUString dataRelId =
-        mpFB->addRelation(mpFS->getOutputStream(), oox::getRelationship(Relationship::DIAGRAMDATA),
-                          Concat2View(sRelationCompPrefix + dataFileName));
-
     // add layout relation
     OUString layoutFileName = "diagrams/layout" + OUString::number(nDiagramId) + ".xml";
     OUString layoutRelId = mpFB->addRelation(mpFS->getOutputStream(),
@@ -7000,8 +7013,8 @@ void DrawingML::WriteDiagram(const css::uno::Reference<css::drawing::XShape>& rX
     {
         if (!drawingRelId.isEmpty())
         {
-            // NOTE: drawingRelId may be empty if bWriteNoDrawingDomAtAll is set, see
-            // comments above
+            // NOTE: drawingRelId may be empty if bActivateAdvancedDiagramFeatures is
+            // set, see comments above
             // the original and unchanged dataDom contains a reference to the drawing
             // relation. We need to update it with the new generated relation value
             // before writing the dom to the file
@@ -7080,11 +7093,19 @@ void DrawingML::WriteDiagram(const css::uno::Reference<css::drawing::XShape>& rX
             uno::Reference<xml::sax::XDocumentHandler>(writer, uno::UNO_QUERY_THROW),
             uno::Sequence<beans::StringPair>());
 
-        // write the associated Images and rels for drawing file
-        uno::Sequence<uno::Sequence<uno::Any>> xDrawingRelSeq;
-        rIDiagramHelper->getOOXDomValue(svx::diagram::DomMapFlag::OOXDrawingRels) >>= xDrawingRelSeq;
-        writeDiagramImageRels(xDrawingRelSeq, xDrawingOutputStream, u"OOXDiagramDrawingRels",
-                            nDiagramId);
+        // get originally imported OOXDrawingImageRels
+        uno::Sequence<uno::Sequence<uno::Any>> xDrawingImageRelSeq;
+        rIDiagramHelper->getOOXDomValue(svx::diagram::DomMapFlag::OOXDrawingImageRels)
+            >>= xDrawingImageRelSeq;
+
+                // get originally imported OOXDataHlinkRels
+        uno::Sequence<uno::Sequence<uno::Any>> xDrawingHlinkRelSeq;
+        rIDiagramHelper->getOOXDomValue(svx::diagram::DomMapFlag::OOXDrawingHlinkRels)
+            >>= xDrawingHlinkRelSeq;
+
+        // write the associated Images and rels for data file
+        writeDiagramImageRels(xDrawingImageRelSeq, xDrawingOutputStream, u"OOXDiagramDrawingRels", nDiagramId);
+        writeDiagramHlinkRels(xDrawingHlinkRelSeq, xDrawingOutputStream);
     }
 }
 
@@ -7092,7 +7113,7 @@ void DrawingML::writeDiagramImageRels(const uno::Sequence<uno::Sequence<uno::Any
                                       const uno::Reference<io::XOutputStream>& xOutStream,
                                       std::u16string_view sGrabBagProperyName, int nDiagramId)
 {
-    // add image relationships of OOXData, OOXDiagram
+    // add image relationships of OOXData, SmartArtDiagram
     OUString sType(oox::getRelationship(Relationship::IMAGE));
     uno::Reference<xml::sax::XWriter> xWriter
         = xml::sax::Writer::create(comphelper::getProcessComponentContext());

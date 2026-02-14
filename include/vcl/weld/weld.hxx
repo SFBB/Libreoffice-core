@@ -112,7 +112,7 @@ protected:
     bool notify_events_disabled() const { return m_nBlockNotify != 0; }
     void enable_notify_events() { --m_nBlockNotify; }
 
-    bool signal_command(const CommandEvent& rCEvt) { return m_aCommandHdl.Call(rCEvt); }
+    virtual bool signal_command(const CommandEvent& rCEvt) { return m_aCommandHdl.Call(rCEvt); }
     void signal_focus_in() { m_aFocusInHdl.Call(*this); }
     void signal_focus_out() { m_aFocusOutHdl.Call(*this); }
     bool signal_mnemonic_activate() { return m_aMnemonicActivateHdl.Call(*this); }
@@ -827,27 +827,6 @@ enum class Placement
 {
     Under,
     End
-};
-
-class VCL_DLLPUBLIC Popover : virtual public Container
-{
-    friend class ::LOKTrigger;
-
-private:
-    Link<weld::Popover&, void> m_aCloseHdl;
-
-protected:
-    void signal_closed() { m_aCloseHdl.Call(*this); }
-
-public:
-    virtual void popup_at_rect(weld::Widget* pParent, const tools::Rectangle& rRect,
-                               Placement ePlace = Placement::Under)
-        = 0;
-    virtual void popdown() = 0;
-
-    virtual void resize_to_request() = 0;
-
-    void connect_closed(const Link<weld::Popover&, void>& rLink) { m_aCloseHdl = rLink; }
 };
 
 class VCL_DLLPUBLIC SizeGroup
