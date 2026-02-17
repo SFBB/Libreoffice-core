@@ -4290,7 +4290,7 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
             // Open ThemeColorEditDialog to create/edit the new color set
             auto pSubDialog = std::make_shared<svx::ThemeColorEditDialog>(GetFrameWeld(), *pCurrentColorSet);
 
-            weld::DialogController::runAsync(pSubDialog, [pSubDialog](sal_uInt32 nResult) {
+            weld::DialogController::runAsync(pSubDialog, [pSubDialog, this](sal_uInt32 nResult) {
                 if (nResult != RET_OK)
                     return;
 
@@ -4299,11 +4299,41 @@ void DrawViewShell::FuTemporary(SfxRequest& rReq)
                 {
                     // Add the new color set to the global collection
                     svx::ColorSets::get().insert(aColorSet);
+                    // Invalidate to update the toolbar control
+                    GetViewFrame()->GetBindings().Invalidate(SID_ADD_THEME);
                 }
             });
 
             Cancel();
             rReq.Ignore();
+        }
+        break;
+
+        case SID_APPLY_THEME:
+        {
+            const SfxItemSet* pArgs = rReq.GetArgs();
+            if (pArgs)
+            {
+                const SfxPoolItem* pItem;
+                if (pArgs->GetItemState(FN_PARAM_1, true, &pItem) == SfxItemState::SET)
+                {
+                    OUString aThemeName = static_cast<const SfxStringItem*>(pItem)->GetValue();
+                    auto pColorSet = svx::ColorSets::get().getColorSet(aThemeName);
+
+                    if (pColorSet)
+                    {
+                        SdrPage* pMasterPage = &GetActualPage()->TRG_GetMasterPage();
+                        auto* pDocShell = GetDocSh();
+
+                        auto pSharedColorSet = std::shared_ptr<model::ColorSet>(new model::ColorSet(*pColorSet));
+                        sd::ThemeColorChanger aChanger(pMasterPage, pDocShell);
+                        aChanger.apply(pSharedColorSet);
+                    }
+                }
+            }
+
+            Cancel();
+            rReq.Done();
         }
         break;
 

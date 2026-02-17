@@ -55,20 +55,6 @@
 
 #define WHEEL_EVENT_FACTOR 1.5
 
-static sal_uInt16 ImplGetModifierMask( unsigned int nMask )
-{
-    sal_uInt16 nRet = 0;
-    if( (nMask & NSEventModifierFlagShift) != 0 )
-        nRet |= KEY_SHIFT;
-    if( (nMask & NSEventModifierFlagControl) != 0 )
-        nRet |= KEY_MOD3;
-    if( (nMask & NSEventModifierFlagOption) != 0 )
-        nRet |= KEY_MOD2;
-    if( (nMask & NSEventModifierFlagCommand) != 0 )
-        nRet |= KEY_MOD1;
-    return nRet;
-}
-
 static sal_uInt16 ImplMapCharCode( sal_Unicode aCode )
 {
     static sal_uInt16 aKeyCodeMap[ 128 ] =
@@ -1692,6 +1678,20 @@ static NSString* getCurrentSelection()
     }
 }
 
+-(void)contextMenuKeyDown: (NSEvent*)pEvent
+{
+    SolarMutexGuard aGuard;
+
+    vcl::Window *pWin = ImplGetSVData()->mpWinData->mpFocusWin;
+    if( pWin )
+    {
+        CommandEvent aCEvt(Point(), CommandEventId::ContextMenu, false);
+        NotifyEvent aNCmdEvt( NotifyEventType::COMMAND, pWin, &aCEvt );
+
+        if ( !ImplCallPreNotify( aNCmdEvt ) )
+            pWin->Command( aCEvt );
+    }
+}
 
 -(void)keyDown: (NSEvent*)pEvent
 {

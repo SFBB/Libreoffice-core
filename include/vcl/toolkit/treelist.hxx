@@ -31,6 +31,7 @@
 #include <tools/contnr.hxx>
 
 #include <memory>
+#include <unordered_map>
 
 enum class SvListAction
 {
@@ -205,11 +206,15 @@ class UNLESS_MERGELIBS_MORE(VCL_DLLPUBLIC) SvListView
 {
     friend class SvTreeList;
 
-    struct SAL_DLLPRIVATE Impl;
-    std::unique_ptr<Impl> m_pImpl;
+    using SvDataTable = std::unordered_map<SvTreeListEntry*, std::unique_ptr<SvViewDataEntry>>;
+    SvDataTable m_DataTable; // Mapping SvTreeListEntry -> ViewData
+
+    sal_uInt32 m_nVisibleCount;
+    sal_uInt32 m_nSelectionCount;
+    bool m_bVisPositionsValid;
 
 protected:
-    std::unique_ptr<SvTreeList> pModel;
+    std::unique_ptr<SvTreeList> m_pModel;
 
     void                ExpandListEntry( SvTreeListEntry* pParent );
     void                CollapseListEntry( SvTreeListEntry* pParent );
@@ -228,51 +233,72 @@ public:
                         );
 
     sal_uInt32          GetVisibleCount() const
-    { return pModel->GetVisibleCount( const_cast<SvListView*>(this) ); }
+    {
+        return m_pModel->GetVisibleCount(const_cast<SvListView*>(this));
+    }
 
-    SvTreeListEntry*        FirstVisible() const
-    { return pModel->FirstVisible(); }
+    SvTreeListEntry* FirstVisible() const { return m_pModel->FirstVisible(); }
 
     SvTreeListEntry*        NextVisible( SvTreeListEntry* pEntry ) const
-    { return pModel->NextVisible(this,pEntry); }
+    {
+        return m_pModel->NextVisible(this, pEntry);
+    }
 
     SvTreeListEntry*        PrevVisible( SvTreeListEntry* pEntry ) const
-    { return pModel->PrevVisible(this,pEntry); }
+    {
+        return m_pModel->PrevVisible(this, pEntry);
+    }
 
-    SvTreeListEntry*        LastVisible() const
-    { return pModel->LastVisible(this); }
+    SvTreeListEntry* LastVisible() const { return m_pModel->LastVisible(this); }
 
     SvTreeListEntry*        NextVisible( SvTreeListEntry* pEntry, sal_uInt16& rDelta ) const
-    { return pModel->NextVisible(this,pEntry,rDelta); }
+    {
+        return m_pModel->NextVisible(this, pEntry, rDelta);
+    }
 
     SvTreeListEntry*        PrevVisible( SvTreeListEntry* pEntry, sal_uInt16& rDelta ) const
-    { return pModel->PrevVisible(this,pEntry,rDelta); }
+    {
+        return m_pModel->PrevVisible(this, pEntry, rDelta);
+    }
 
     sal_uInt32              GetSelectionCount() const;
 
-    SvTreeListEntry* FirstSelected() const
-    { return pModel->FirstSelected(this); }
+    SvTreeListEntry* FirstSelected() const { return m_pModel->FirstSelected(this); }
 
     SvTreeListEntry*        NextSelected( SvTreeListEntry* pEntry ) const
-    { return pModel->NextSelected(this,pEntry); }
+    {
+        return m_pModel->NextSelected(this, pEntry);
+    }
 
     SvTreeListEntry*        GetEntryAtAbsPos( sal_uInt32 nAbsPos ) const
-    { return pModel->GetEntryAtAbsPos(nAbsPos); }
+    {
+        return m_pModel->GetEntryAtAbsPos(nAbsPos);
+    }
 
     SvTreeListEntry*        GetEntryAtVisPos( sal_uInt32 nVisPos ) const
-    { return pModel->GetEntryAtVisPos(this,nVisPos); }
+    {
+        return m_pModel->GetEntryAtVisPos(this, nVisPos);
+    }
 
     sal_uInt32              GetAbsPos( SvTreeListEntry const * pEntry ) const
-    { return pModel->GetAbsPos(pEntry); }
+    {
+        return m_pModel->GetAbsPos(pEntry);
+    }
 
     sal_uInt32           GetVisiblePos( SvTreeListEntry const * pEntry ) const
-    { return pModel->GetVisiblePos(this,pEntry); }
+    {
+        return m_pModel->GetVisiblePos(this, pEntry);
+    }
 
     sal_uInt32           GetVisibleChildCount(SvTreeListEntry* pParent ) const
-    { return pModel->GetVisibleChildCount(this,pParent); }
+    {
+        return m_pModel->GetVisibleChildCount(this, pParent);
+    }
 
     bool               IsEntryVisible( SvTreeListEntry* pEntry ) const
-    { return pModel->IsEntryVisible(this,pEntry); }
+    {
+        return m_pModel->IsEntryVisible(this, pEntry);
+    }
 
     bool                IsExpanded( SvTreeListEntry* pEntry ) const;
     bool                IsAllExpanded( SvTreeListEntry* pEntry) const;
@@ -292,6 +318,15 @@ public:
     virtual void        ModelIsRemoving( SvTreeListEntry* pEntry );
     virtual void        ModelHasRemoved( SvTreeListEntry* pEntry );
     virtual void        ModelHasEntryInvalidated( SvTreeListEntry* pEntry );
+
+private:
+    void RemoveViewData(SvTreeListEntry* pParent);
+
+    void ActionMoving(SvTreeListEntry* pEntry);
+    void ActionMoved();
+    void ActionInserted(SvTreeListEntry* pEntry);
+    void ActionInsertedTree(SvTreeListEntry* pEntry);
+    void ActionRemoving(SvTreeListEntry* pEntry);
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

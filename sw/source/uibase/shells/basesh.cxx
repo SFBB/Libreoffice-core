@@ -38,6 +38,7 @@
 #include <editeng/langitem.hxx>
 #include <svx/clipfmtitem.hxx>
 #include <svx/contdlg.hxx>
+#include <svx/ColorSets.hxx>
 #include <vcl/graph.hxx>
 #include <vcl/inputctx.hxx>
 #include <svl/slstitm.hxx>
@@ -102,6 +103,7 @@
 
 #include <svx/unobrushitemhelper.hxx>
 #include <svx/dialog/ThemeDialog.hxx>
+#include <svx/dialog/ThemeColorEditDialog.hxx>
 #include <comphelper/scopeguard.hxx>
 #include <comphelper/lok.hxx>
 #include <LibreOfficeKit/LibreOfficeKitEnums.h>
@@ -379,13 +381,7 @@ void SwBaseShell::ExecClpbrd(SfxRequest &rReq)
                     if (pIgnoreComments)
                         bIgnoreComments = pIgnoreComments->GetValue();
 
-                    // See if detection should be used.
-                    bool bSkipDetection = false;
-                    const SfxBoolItem* pSkipDetection = rReq.GetArg<SfxBoolItem>(FN_PARAM_3);
-                    if (pSkipDetection)
-                        bSkipDetection = pSkipDetection->GetValue();
-
-                    SwTransferable::Paste(rSh, aDataHelper, nAnchorType, bIgnoreComments, ePasteTable, !bSkipDetection);
+                    SwTransferable::Paste(rSh, aDataHelper, nAnchorType, bIgnoreComments, ePasteTable);
 
                     if( rSh.IsFrameSelected() || rSh.GetSelectedObjCount() )
                         rSh.EnterSelFrameMode();
@@ -3059,6 +3055,56 @@ void SwBaseShell::ExecDlg(SfxRequest &rReq)
                     });
                 }
             }
+        }
+        break;
+
+        case SID_ADD_THEME:
+        {
+            // Create empty color set as starting point for new theme
+            auto pCurrentColorSet = std::make_shared<model::ColorSet>(OUString());
+
+            // Open ThemeColorEditDialog to create/edit the new color set
+            auto pSubDialog = std::make_shared<svx::ThemeColorEditDialog>(GetView().GetFrameWeld(), *pCurrentColorSet);
+
+            weld::DialogController::runAsync(pSubDialog, [pSubDialog, this](sal_uInt32 nResult) {
+                if (nResult != RET_OK)
+                    return;
+
+                auto aColorSet = pSubDialog->getColorSet();
+                if (!aColorSet.getName().isEmpty())
+                {
+                    // Add the new color set to the global collection with auto-rename if needed
+                    svx::ColorSets::get().insert(aColorSet);
+                    // Invalidate to update the toolbar control
+                    GetView().GetViewFrame().GetBindings().Invalidate(SID_ADD_THEME);
+                }
+            });
+
+            rReq.Done();
+        }
+        break;
+
+        case SID_APPLY_THEME:
+        {
+            if (pArgs)
+            {
+                if (pArgs->GetItemState(FN_PARAM_1, true, &pItem) == SfxItemState::SET)
+                {
+                    OUString aThemeName = static_cast<const SfxStringItem*>(pItem)->GetValue();
+                    auto pColorSet = svx::ColorSets::get().getColorSet(aThemeName);
+                    auto* pDocument = rSh.GetDoc();
+                    auto* pDocumentShell = pDocument->GetDocShell();
+
+                    if (pColorSet && pDocumentShell)
+                    {
+                        auto pSharedColorSet = std::shared_ptr<model::ColorSet>(new model::ColorSet(*pColorSet));
+                        std::shared_ptr<svx::IThemeColorChanger> xChanger(new sw::ThemeColorChanger(pDocumentShell));
+                        xChanger->apply(pSharedColorSet);
+                    }
+                }
+            }
+
+            rReq.Done();
         }
         break;
 
