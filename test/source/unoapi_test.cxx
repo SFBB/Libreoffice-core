@@ -14,6 +14,7 @@
 #include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/frame/Desktop.hpp>
 #include <com/sun/star/frame/XStorable.hpp>
+#include <comphelper/lok.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/propertyvalue.hxx>
 #include <comphelper/sequence.hxx>
@@ -58,10 +59,10 @@ void UnoApiTest::tearDown()
     }
 
     if (mxComponent.is())
-    {
-        mxComponent->dispose();
-        mxComponent.clear();
-    }
+        dispose();
+
+    if (comphelper::LibreOfficeKit::isActive())
+        comphelper::LibreOfficeKit::setActive(false);
 
     test::BootstrapFixture::tearDown();
 }
@@ -262,11 +263,7 @@ void UnoApiTest::loadFromURL(OUString const& rURL,
     if (meImportFilterName != TestFilter::NONE)
         aMediaDescriptor[u"FilterName"_ustr] <<= TestFilterNames.at(meImportFilterName);
 
-    if (mxComponent.is())
-    {
-        mxComponent->dispose();
-        mxComponent.clear();
-    }
+    CPPUNIT_ASSERT_MESSAGE("A document is already open!", !mxComponent.is());
 
     mxComponent = loadFromDesktop(rURL, OUString(), aMediaDescriptor.getAsConstPropertyValueList());
     CPPUNIT_ASSERT(mxComponent);
@@ -359,6 +356,7 @@ void UnoApiTest::saveAndReload(TestFilter eFilter,
                                const char* pPassword)
 {
     save(eFilter, rParams, pPassword);
+    dispose();
     loadFromURL(maTempFile.GetURL(), rParams, pPassword);
 }
 

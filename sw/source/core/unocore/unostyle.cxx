@@ -26,6 +26,7 @@
 #include <comphelper/propertysequence.hxx>
 #include <hintids.hxx>
 #include <utility>
+#include <vcl/metric.hxx>
 #include <vcl/svapp.hxx>
 #include <svl/hint.hxx>
 #include <svtools/ctrltool.hxx>
@@ -4564,6 +4565,9 @@ sal_Bool SAL_CALL SwXTextTableStyle::isInUse()
     if (!m_bPhysical)
         return false;
 
+    if (m_pTableAutoFormat->NeedsExport())
+        return true;
+
     for (const SwTableFormat* pFormat : *m_pDocShell->GetDoc()->GetTableFrameFormats())
     {
         if(pFormat->IsUsed())
@@ -4933,7 +4937,7 @@ sal_Bool SAL_CALL SwXTextCellStyle::isInUse()
     if (!xStyle.is())
         return false;
 
-    return true;
+    return xStyle->isInUse();
 }
 
 OUString SAL_CALL SwXTextCellStyle::getParentStyle() { return m_sParentName; }
