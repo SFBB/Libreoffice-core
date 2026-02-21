@@ -6197,6 +6197,7 @@ if test "$cross_compiling" = "yes"; then
         bin/bffvalidator.sh.in \
         bin/odfvalidator.sh.in \
         bin/officeotron.sh.in \
+        bin/verapdf.sh.in \
         instsetoo_native/util/openoffice.lst.in \
         config_host/*.in \
         sysui/desktop/macosx/Info.plist.in \
@@ -9653,6 +9654,31 @@ if test "$with_export_validation" != "no"; then
         else
             OFFICEOTRON="sh $OFFICEOTRON"
         fi
+
+        AC_PATH_PROGS(VERAPDF, verapdf)
+        if test -z "$VERAPDF"; then
+            # remember to download the verapdf with validator later
+            AC_MSG_NOTICE([no verapdf found, will download it])
+            BUILD_TYPE="$BUILD_TYPE VERAPDF"
+            VERAPDF="$BUILDDIR/bin/verapdf.sh"
+
+            # and fetch name of verapdf jar name from download.lst
+            VERAPDF_JAR=`$SED -n -e "s/^VERAPDF_JAR *:= *\(.*\) */\1/p" $SRC_ROOT/download.lst`
+            AC_SUBST(VERAPDF_JAR)
+
+            if test -z "$VERAPDF_JAR"; then
+                AC_MSG_ERROR([cannot determine verapdf jar location (--with-export-validation)])
+            fi
+        fi
+        if test "$build_os" = "cygwin"; then
+            # In case of Cygwin it will be executed from Windows,
+            # so we need to run bash and absolute path to validator
+            # so instead of "odfvalidator" it will be
+            # something like "bash.exe C:\cygwin\opt\lo\bin\odfvalidator"
+            VERAPDF="bash.exe `cygpath -m "$VERAPDF"`"
+        else
+            VERAPDF="sh $VERAPDF"
+        fi
     fi
     AC_SUBST(OFFICEOTRON)
 else
@@ -11653,26 +11679,26 @@ AC_SUBST(SYSTEM_LIBORCUS)
 dnl ===================================================================
 dnl HarfBuzz
 dnl ===================================================================
-harfbuzz_required_version=5.1.0
+harfbuzz_required_version=8.3.1
 
 GRAPHITE_CFLAGS_internal="-I${WORKDIR}/UnpackedTarball/graphite/include -DGRAPHITE2_STATIC"
 HARFBUZZ_CFLAGS_internal="-I${WORKDIR}/UnpackedTarball/harfbuzz/src"
 case "$_os" in
     Linux)
         GRAPHITE_LIBS_internal='$(gb_StaticLibrary_WORKDIR)/libgraphite.a'
-        HARFBUZZ_LIBS_internal='$(gb_UnpackedTarball_workdir)/harfbuzz/builddir/src/libharfbuzz.a $(GRAPHITE_LIBS)'
+        HARFBUZZ_LIBS_internal='$(gb_UnpackedTarball_workdir)/harfbuzz/builddir/src/libharfbuzz.a $(gb_UnpackedTarball_workdir)/harfbuzz/builddir/src/libharfbuzz-subset.a $(GRAPHITE_LIBS)'
         ;;
     WINNT)
         GRAPHITE_LIBS_internal='$(gb_StaticLibrary_WORKDIR)/graphite.lib'
-        HARFBUZZ_LIBS_internal='$(gb_UnpackedTarball_workdir)/harfbuzz/builddir/src/libharfbuzz.a $(GRAPHITE_LIBS)'
+        HARFBUZZ_LIBS_internal='$(gb_UnpackedTarball_workdir)/harfbuzz/builddir/src/libharfbuzz.a $(gb_UnpackedTarball_workdir)/harfbuzz/builddir/src/libharfbuzz-subset.a $(GRAPHITE_LIBS)'
         ;;
     *)
         GRAPHITE_LIBS_internal='-L$(gb_StaticLibrary_WORKDIR) -lgraphite'
-        HARFBUZZ_LIBS_internal='-L$(gb_UnpackedTarball_workdir)/harfbuzz/builddir/src/ -lharfbuzz $(GRAPHITE_LIBS)'
+        HARFBUZZ_LIBS_internal='-L$(gb_UnpackedTarball_workdir)/harfbuzz/builddir/src/ -lharfbuzz -lharfbuzz-subset $(GRAPHITE_LIBS)'
         ;;
 esac
 libo_CHECK_SYSTEM_MODULE([graphite],[GRAPHITE],[graphite2 >= 0.9.3])
-libo_CHECK_SYSTEM_MODULE([harfbuzz],[HARFBUZZ],[harfbuzz-icu >= $harfbuzz_required_version])
+libo_CHECK_SYSTEM_MODULE([harfbuzz],[HARFBUZZ],[harfbuzz-icu >= $harfbuzz_required_version harfbuzz-subset >= $harfbuzz_required_version])
 
 if test "$with_system_harfbuzz" = "yes"; then
     if test "$with_system_graphite" = "no"; then
@@ -16274,6 +16300,7 @@ AC_CONFIG_FILES([
                  bin/bffvalidator.sh
                  bin/odfvalidator.sh
                  bin/officeotron.sh
+                 bin/verapdf.sh
                  instsetoo_native/util/openoffice.lst
                  sysui/desktop/macosx/Info.plist
                  sysui/desktop/macosx/LaunchConstraint.plist
