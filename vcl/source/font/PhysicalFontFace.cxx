@@ -37,6 +37,7 @@
 #include <comphelper/scopeguard.hxx>
 
 #include <string_view>
+#include <optional>
 
 #include <hb-ot.h>
 #include <hb-subset.h>
@@ -297,6 +298,127 @@ bool PhysicalFontFace::GetFontCapabilities(vcl::FontCapabilities& rFontCapabilit
     return rFontCapabilities.oUnicodeRange || rFontCapabilities.oCodePageRange;
 }
 
+namespace
+{
+std::optional<unsigned int> GetNamedInstanceIndex(hb_face_t* pHbFace,
+                                                  const std::vector<hb_variation_t>& rVariations)
+{
+    unsigned int nAxes = hb_ot_var_get_axis_count(pHbFace);
+    std::vector<hb_ot_var_axis_info_t> aAxisInfos(nAxes);
+    hb_ot_var_get_axis_infos(pHbFace, 0, &nAxes, aAxisInfos.data());
+
+    // Pre-fill the coordinates with axes defaults
+    std::vector<float> aCurrentCoords(nAxes);
+    for (unsigned int i = 0; i < nAxes; ++i)
+        aCurrentCoords[i] = aAxisInfos[i].default_value;
+
+    // Then update coordinates with the current variations
+    hb_ot_var_axis_info_t info;
+    for (const auto& rVariation : rVariations)
+    {
+        if (hb_ot_var_find_axis_info(pHbFace, rVariation.tag, &info))
+            aCurrentCoords[info.axis_index] = rVariation.value;
+    }
+
+    // Find a named instance that matches the current coordinates and return its index
+    unsigned int nInstances = hb_ot_var_get_named_instance_count(pHbFace);
+    std::vector<float> aInstanceCoords(nAxes);
+    for (unsigned int i = 0; i < nInstances; ++i)
+    {
+        unsigned int nInstanceAxes = nAxes;
+        if (hb_ot_var_named_instance_get_design_coords(pHbFace, i, &nInstanceAxes,
+                                                       aInstanceCoords.data())
+            && aInstanceCoords == aCurrentCoords)
+        {
+            return i;
+        }
+    }
+
+    return std::nullopt;
+}
+
+OUString GetNamedInstancePSName(const PhysicalFontFace& rFontFace,
+                                const std::vector<hb_variation_t>& rVariations)
+{
+    hb_face_t* pHbFace = rFontFace.GetHbFace();
+    auto nIndex = GetNamedInstanceIndex(pHbFace, rVariations);
+    if (nIndex)
+    {
+        auto nPSNameID = hb_ot_var_named_instance_get_postscript_name_id(pHbFace, *nIndex);
+        if (nPSNameID != HB_OT_NAME_ID_INVALID)
+            return rFontFace.GetName(static_cast<NameID>(nPSNameID));
+    }
+
+    return OUString();
+}
+
+// Implements Adobe Technical Note #5902: “Generating PostScript Names for Fonts
+// Using OpenType Font Variations”
+// https://adobe-type-tools.github.io/font-tech-notes/pdfs/5902.AdobePSNameGeneration.pdf
+OUString GenerateVariableFontPSName(const PhysicalFontFace& rFace,
+                                    const std::vector<hb_variation_t>& rVariations)
+{
+    hb_face_t* pHbFace = rFace.GetHbFace();
+    OUString aPrefix = rFace.GetName(NAME_ID_VARIATIONS_PS_PREFIX);
+    if (aPrefix.isEmpty())
+    {
+        aPrefix = rFace.GetName(NAME_ID_TYPOGRAPHIC_FAMILY);
+        if (aPrefix.isEmpty())
+            aPrefix = rFace.GetName(NAME_ID_FONT_FAMILY);
+    }
+
+    if (aPrefix.isEmpty())
+        return OUString();
+
+    OUStringBuffer aName;
+    for (sal_Int32 i = 0; i < aPrefix.getLength(); ++i)
+    {
+        auto c = aPrefix[i];
+        if (rtl::isAsciiAlphanumeric(c))
+            aName.append(c);
+    }
+
+    if (auto nIndex = GetNamedInstanceIndex(pHbFace, rVariations))
+    {
+        aName.append('-');
+        auto nPSNameID = hb_ot_var_named_instance_get_subfamily_name_id(pHbFace, *nIndex);
+        OUString aSubFamilyName = rFace.GetName(static_cast<NameID>(nPSNameID));
+        for (sal_Int32 i = 0; i < aSubFamilyName.getLength(); ++i)
+        {
+            auto c = aSubFamilyName[i];
+            if (rtl::isAsciiAlphanumeric(c))
+                aName.append(c);
+        }
+    }
+    else
+    {
+        for (const auto& rVariation : rVariations)
+        {
+            hb_ot_var_axis_info_t info;
+            if (hb_ot_var_find_axis_info(pHbFace, rVariation.tag, &info))
+            {
+                if (rVariation.value == info.default_value)
+                    continue;
+                char aTag[5];
+                hb_tag_to_string(rVariation.tag, aTag);
+                aName.append("_" + OUString::number(rVariation.value)
+                             + o3tl::trim(OUString::createFromAscii(aTag)));
+            }
+        }
+    }
+
+    if (aName.getLength() > 127)
+    {
+        auto nIndex = aName.indexOf(u'-') + 1;
+        auto aHash = static_cast<sal_uInt32>(aName.copy(nIndex).makeStringAndClear().hashCode());
+        aName.truncate(nIndex);
+        aName.append(OUString::number(aHash, 16).toAsciiUpperCase() + "...");
+    }
+
+    return aName.makeStringAndClear();
+}
+}
+
 // These are “private” HarfBuzz metrics tags, they are supported by not exposed
 // in the public header. They are safe to use, HarfBuzz just does not want to
 // advertise them.
@@ -363,7 +485,16 @@ bool PhysicalFontFace::CreateFontSubset(std::vector<sal_uInt8>& rOutBuffer,
         return false;
 
     // Fill FontSubsetInfo
-    rInfo.m_aPSName = GetName(NAME_ID_POSTSCRIPT_NAME);
+
+    // If this is a named instance and it has a PostScript name, we want to use it.
+    if (bIsVariableFont)
+    {
+        rInfo.m_aPSName = GetNamedInstancePSName(*this, rVariations);
+        if (rInfo.m_aPSName.isEmpty() && !rVariations.empty())
+            rInfo.m_aPSName = GenerateVariableFontPSName(*this, rVariations);
+    }
+    if (rInfo.m_aPSName.isEmpty())
+        rInfo.m_aPSName = GetName(NAME_ID_POSTSCRIPT_NAME);
 
     auto nUPEM = UnitsPerEm();
 

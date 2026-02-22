@@ -279,25 +279,13 @@ QObject* QtBuilder::makeObject(QObject* pParent, std::u16string_view sName, std:
         QLabel* pLabel = new QLabel(pParentWidget);
         const OUString sIconName = extractIconName(rMap);
         if (!sIconName.isEmpty())
-        {
-            const Image aImage = loadThemeImage(sIconName);
-            if (!aImage.GetBitmap().IsEmpty())
-            {
-                pLabel->setPixmap(toQPixmap(aImage));
-            }
-            else
-            {
-                const QIcon aIcon = QIcon::fromTheme(toQString(sIconName));
-                assert(!aIcon.isNull() && "No icon found for that icon name");
-                const int nIconSize = QApplication::style()->pixelMetric(QStyle::PM_ButtonIconSize);
-                pLabel->setPixmap(aIcon.pixmap(nIconSize));
-            }
-        }
+            pLabel->setPixmap(loadQPixmapIcon(sIconName));
         pObject = pLabel;
     }
     else if (sName == u"GtkLabel")
     {
         QLabel* pLabel = new QLabel(pParentWidget);
+        pLabel->setTextFormat(Qt::TextFormat::PlainText);
         setLabelProperties(*pLabel, rMap);
         extractMnemonicWidget(rId, rMap);
         pObject = pLabel;
@@ -411,10 +399,7 @@ QObject* QtBuilder::makeObject(QObject* pParent, std::u16string_view sName, std:
         QToolButton* pToolButton = new QToolButton(pParentWidget);
         const OUString sIconName = extractIconName(rMap);
         if (!sIconName.isEmpty())
-        {
-            const Image aImage = loadThemeImage(sIconName);
-            pToolButton->setIcon(toQPixmap(aImage));
-        }
+            pToolButton->setIcon(loadQPixmapIcon(sIconName));
         pToolButton->setText(toQString(extractLabel(rMap)));
         pToolButton->setCheckable(sName == u"GtkRadioToolButton"
                                   || sName == u"GtkToggleToolButton");

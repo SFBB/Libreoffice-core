@@ -247,7 +247,8 @@ public:
      * Get output string from a numeric value that fits the number of
      * characters specified.
      */
-    bool GetOutputString( double fNumber, sal_uInt16 nCharCount, OUString& rOutString, const NativeNumberWrapper& rNatNum ) const;
+    bool GetOutputString( double fNumber, sal_uInt16 nCharCount, OUString& rOutString,
+                          const NativeNumberWrapper& rNatNum, const SvNFLanguageData& rCurrentLang ) const;
 
     // bStarFlag: Take *n format as ESC n
     bool GetOutputString( double fNumber, OUString& OutString, const Color** ppColor, const NativeNumberWrapper& rNatNum, const SvNFLanguageData& rCurrentLang, bool bStarFlag = false) const;
@@ -474,13 +475,13 @@ public:
     /** Switches to the first non-"gregorian" calendar, but only if the current
         calendar is "gregorian"; original calendar name and date/time returned,
         but only if calendar switched and rOrgCalendar was empty. */
-    void SwitchToOtherCalendar( OUString& rOrgCalendar, double& fOrgDateTime, CalendarWrapper& rCal ) const;
+    static void SwitchToOtherCalendar( const SvNFLanguageData& rCurrentLang, OUString& rOrgCalendar, double& fOrgDateTime, CalendarWrapper& rCal );
 
     /** Switches to the "gregorian" calendar, but only if the current calendar
         is non-"gregorian" and rOrgCalendar is not empty. Thus a preceding
         ImpSwitchToOtherCalendar() call should have been placed prior to
         calling this method. */
-    void SwitchToGregorianCalendar( std::u16string_view rOrgCalendar, double fOrgDateTime, CalendarWrapper& rCal ) const;
+    static void SwitchToGregorianCalendar( const SvNFLanguageData& rCurrentLang, std::u16string_view rOrgCalendar, double fOrgDateTime, CalendarWrapper& rCal );
 
 #ifdef THE_FUTURE
     /** Switches to the first specified calendar, if any, in subformat nNumFor
@@ -491,11 +492,11 @@ public:
             <TRUE/> if a calendar was specified and switched to,
             <FALSE/> else.
      */
-    bool SwitchToSpecifiedCalendar( OUString& rOrgCalendar, double& fOrgDateTime,
+    bool SwitchToSpecifiedCalendar( const SvNFLanguageData& rCurrentLang, OUString& rOrgCalendar, double& fOrgDateTime,
             sal_uInt16 nNumFor ) const
         {
             if ( nNumFor < 4 )
-                return ImpSwitchToSpecifiedCalendar( rOrgCalendar,
+                return ImpSwitchToSpecifiedCalendar( rCurrentLang, rOrgCalendar,
                         fOrgDateTime, NumFor[nNumFor] );
             return false;
         }
@@ -527,7 +528,8 @@ private:
     SVL_DLLPRIVATE sal_uInt16 ImpGetNumForStringElementCount( sal_uInt16 nNumFor ) const;
 
 #ifdef THE_FUTURE
-    SVL_DLLPRIVATE bool ImpSwitchToSpecifiedCalendar( OUString& rOrgCalendar,
+    SVL_DLLPRIVATE bool ImpSwitchToSpecifiedCalendar( const SvNFLanguageData& rCurrentLang,
+                                                      OUString& rOrgCalendar,
                                                       double& fOrgDateTime,
                                                       const ImpSvNumFor& rNumFor ) const;
 #endif
@@ -557,7 +559,6 @@ private:
 
     const CharClass& rChrCls() const;
     const LocaleDataWrapper& rLoc() const;
-    const SvNFLanguageData& GetCurrentLanguageData() const;
 
     // divide in substrings and color conditions
     SVL_DLLPRIVATE short ImpNextSymbol( OUStringBuffer& rString,
@@ -696,11 +697,13 @@ private:
                                              sal_uInt16 nIx,
                                              bool bStarFlag,
                                              const NativeNumberWrapper& rNatNum,
+                                             const SvNFLanguageData& rCurrentLang,
                                              OUStringBuffer& OutString) const;
     SVL_DLLPRIVATE bool ImpGetScientificOutput(double fNumber,
                                                sal_uInt16 nIx,
                                                bool bStarFlag,
                                                const NativeNumberWrapper& rNatNum,
+                                               const SvNFLanguageData& rCurrentLang,
                                                OUStringBuffer& OutString) const;
 
     SVL_DLLPRIVATE bool ImpGetDateOutput( double fNumber,
@@ -727,9 +730,10 @@ private:
     // know a "before" era (like zh_TW ROC or ja_JP Gengou). If switched and
     // rOrgCalendar was "gregorian" the string is emptied. If rOrgCalendar was
     // empty the previous calendar name and date/time are returned.
-    SVL_DLLPRIVATE bool ImpFallBackToGregorianCalendar(OUString& rOrgCalendar,
+    SVL_DLLPRIVATE static bool ImpFallBackToGregorianCalendar(const SvNFLanguageData& rCurrentLang,
+                                                       OUString& rOrgCalendar,
                                                        double& fOrgDateTime,
-                                                       CalendarWrapper& rCal) const;
+                                                       CalendarWrapper& rCal);
 
     // Append a "G" short era string of the given calendar. In the case of a
     // Gengou calendar this is a one character abbreviation, for other
@@ -747,6 +751,7 @@ private:
                                             sal_uInt16 nIx,
                                             bool bStarFlag,
                                             const NativeNumberWrapper& rNatNum,
+                                            const SvNFLanguageData& rCurrentLang,
                                             OUStringBuffer& OutString) const;
 
     SVL_DLLPRIVATE void ImpCopyNumberformat( const SvNumberformat& rFormat );
@@ -777,11 +782,13 @@ private:
             const NativeNumberWrapper& rNatNum) const;
 
     // transliterate according to NativeNumber
-    SVL_DLLPRIVATE OUString impTransliterateImpl(const OUString& rStr, const SvNumberNatNum& rNum, sal_uInt16 nDateKey, const NativeNumberWrapper& rNatNum) const;
+    SVL_DLLPRIVATE static OUString impTransliterateImpl(const OUString& rStr, const SvNumberNatNum& rNum, sal_uInt16 nDateKey,
+                                                    const NativeNumberWrapper& rNatNum, const SvNFLanguageData& rCurrentLang);
 
-    OUString impTransliterate(const OUString& rStr, const SvNumberNatNum& rNum, sal_uInt16 nDateKey, const NativeNumberWrapper& rNatNum) const
+    OUString static impTransliterate(const OUString& rStr, const SvNumberNatNum& rNum, sal_uInt16 nDateKey,
+                              const NativeNumberWrapper& rNatNum, const SvNFLanguageData& rCurrentLang)
     {
-        return rNum.IsComplete() ? impTransliterateImpl(rStr, rNum, nDateKey, rNatNum) : rStr;
+        return rNum.IsComplete() ? impTransliterateImpl(rStr, rNum, nDateKey, rNatNum, rCurrentLang) : rStr;
     }
 
 };
