@@ -65,6 +65,9 @@ template<typename T> constexpr bool isIncompleteOrDerivedFromVclReferenceBase(
 
 } // namespace vcl::detail
 
+template <class reference_type>
+class ScopedVclPtr;
+
 /**
  * A thin wrapper around rtl::Reference to implement the acquire and dispose semantics we want for references to vcl::Window subclasses.
  *
@@ -80,6 +83,7 @@ class VclPtr
             nullptr),
         "template argument type must be derived from VclReferenceBase");
 
+protected:
     ::rtl::Reference<reference_type> m_rInnerRef;
 
 public:
@@ -98,6 +102,12 @@ public:
     VclPtr (reference_type * pBody, __sal_NoAcquire)
         : m_rInnerRef(pBody, SAL_NO_ACQUIRE)
     {}
+
+    /** Prevent auto-conversion of ScopedVclPtr to VclPtr, which defeats the purpose of
+        ScopedVclPtr.
+    */
+    VclPtr (const ScopedVclPtr<reference_type> &) = delete;
+    VclPtr (ScopedVclPtr<reference_type> &&) = delete;
 
     /** Up-casting conversion constructor: Copies interface reference.
 
@@ -182,6 +192,12 @@ public:
         m_rInnerRef.set(pBody);
         return *this;
     }
+
+    /** Prevent auto-conversion of ScopedVclPtr to VclPtr, which defeats the purpose of
+        ScopedVclPtr.
+    */
+    VclPtr& operator=(const ScopedVclPtr<reference_type> &) = delete;
+    VclPtr& operator=(ScopedVclPtr<reference_type> &&) = delete;
 
     operator reference_type * () const
     {
@@ -280,6 +296,9 @@ public:
         : VclPtr<reference_type>(handle)
     {}
 
+    /** Move constructor */
+    ScopedVclPtr(ScopedVclPtr<reference_type> &&) = default;
+
     /**
        Assignment that releases the last reference.
      */
@@ -311,6 +330,13 @@ public:
     ScopedVclPtr& operator =(VclPtr<derived_type> const& rRef)
     {
         return operator=(rRef.get());
+    }
+
+    ScopedVclPtr& operator = (ScopedVclPtr<reference_type> && rRef)
+    {
+        assert(!VclPtr<reference_type>::m_rInnerRef);
+        VclPtr<reference_type>::m_rInnerRef = std::move(rRef.m_rInnerRef);
+        return *this;
     }
 
     /**

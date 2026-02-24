@@ -21,11 +21,18 @@
 
 #include <sfx2/dllapi.h>
 #include <vcl/vclenum.hxx>
-#include <vcl/virdev.hxx>
-#include <vcl/weld/Builder.hxx>
 #include <vcl/weld/IconView.hxx>
-#include <vcl/weld/weld.hxx>
 #include <deque>
+
+class VirtualDevice;
+namespace weld
+{
+class Builder;
+}
+namespace weld
+{
+class Widget;
+}
 
 struct CharAndFont
 {
@@ -85,8 +92,8 @@ public:
               const Link<void*, void>& rUpdateFavHdl, const Link<void*, void>& rUpdateRecentHdl,
               const Link<const CharAndFont&, void>& rCharSelectedHdl);
 
-    static VclPtr<VirtualDevice> CreateIcon(weld::IconView& rIconView, const OUString& rFont,
-                                            const OUString& rText);
+    static ScopedVclPtr<VirtualDevice> CreateIcon(weld::IconView& rIconView, const OUString& rFont,
+                                                  const OUString& rText);
 
     void getFavCharacterList();
     void updateFavCharControl();

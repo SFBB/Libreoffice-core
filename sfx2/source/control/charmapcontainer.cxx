@@ -28,6 +28,9 @@
 #include <sfx2/strings.hrc>
 #include <sfx2/sfxresid.hxx>
 #include <vcl/commandevent.hxx>
+#include <vcl/svapp.hxx>
+#include <vcl/virdev.hxx>
+#include <vcl/weld/Builder.hxx>
 #include <vcl/weld/Menu.hxx>
 #include <vcl/weld/weldutils.hxx>
 
@@ -70,7 +73,7 @@ void SfxCharmapContainer::init(const Link<const CharAndFont&, void>& rActivateHd
     m_xFavIconView->connect_command(LINK(this, SfxCharmapContainer, FavContextMenuHdl));
 }
 
-VclPtr<VirtualDevice> SfxCharmapContainer::CreateIcon(weld::IconView& rIconView,
+ScopedVclPtr<VirtualDevice> SfxCharmapContainer::CreateIcon(weld::IconView& rIconView,
                                                       const OUString& rFont, const OUString& rText)
 {
     const StyleSettings& rStyleSettings = Application::GetSettings().GetStyleSettings();
@@ -78,7 +81,7 @@ VclPtr<VirtualDevice> SfxCharmapContainer::CreateIcon(weld::IconView& rIconView,
     Size aFontSize = aFont.GetFontSize();
     aFont.SetFontSize(Size(aFontSize.Width() * 2, aFontSize.Height() * 2));
 
-    VclPtr<VirtualDevice> pDev = rIconView.create_virtual_device();
+    ScopedVclPtr<VirtualDevice> pDev = rIconView.create_virtual_device();
 
     Size aSize;
     {

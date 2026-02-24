@@ -40,6 +40,7 @@
 #include <com/sun/star/ui/dialogs/XFilePicker3.hpp>
 #include <svtools/indexentryres.hxx>
 #include <toolkit/helper/vclunohelper.hxx>
+#include <tools/stream.hxx>
 #include <tools/urlobj.hxx>
 #include <column.hxx>
 #include <fmtfsize.hxx>
@@ -1551,7 +1552,8 @@ class SwTOXEdit : public SwTOXWidget
     DECL_LINK(ModifyHdl, weld::Entry&, void);
 public:
     SwTOXEdit(SwTokenWindow* pTokenWin, const SwFormToken& rToken)
-        : m_xBuilder(Application::CreateBuilder(pTokenWin->get_child_container(), u"modules/swriter/ui/toxentrywidget.ui"_ustr))
+        : m_xBuilder(Application::CreateBuilder(&pTokenWin->get_child_container(),
+                                                u"modules/swriter/ui/toxentrywidget.ui"_ustr))
         , m_aFormToken(rToken)
         , m_bNextControl(false)
         , m_pParent(pTokenWin)
@@ -1565,7 +1567,7 @@ public:
 
     virtual ~SwTOXEdit() override
     {
-        m_pParent->get_child_container()->move(m_xEntry.get(), nullptr);
+        m_pParent->get_child_container().move(m_xEntry.get(), nullptr);
     }
 
     virtual WindowType GetType() const override
@@ -1595,7 +1597,7 @@ public:
 
     virtual void set_grid_left_attach(int nPos) override
     {
-        m_pParent->get_child_container()->set_child_left_attach(*m_xEntry, nPos);
+        m_pParent->get_child_container().set_child_left_attach(*m_xEntry, nPos);
     }
 
     virtual void get_extents_relative_to(weld::Widget& rRelative, int& x, int& y, int& width, int& height) override
@@ -1712,7 +1714,8 @@ class SwTOXButton : public SwTOXWidget
     std::unique_ptr<weld::ToggleButton> m_xButton;
 public:
     SwTOXButton(SwTokenWindow* pTokenWin, const SwFormToken& rToken)
-        : m_xBuilder(Application::CreateBuilder(pTokenWin->get_child_container(), u"modules/swriter/ui/toxbuttonwidget.ui"_ustr))
+        : m_xBuilder(Application::CreateBuilder(&pTokenWin->get_child_container(),
+                                                u"modules/swriter/ui/toxbuttonwidget.ui"_ustr))
         , m_aFormToken(rToken)
         , m_bNextControl(false)
         , m_pParent(pTokenWin)
@@ -1725,7 +1728,7 @@ public:
 
     virtual ~SwTOXButton() override
     {
-        m_pParent->get_child_container()->move(m_xButton.get(), nullptr);
+        m_pParent->get_child_container().move(m_xButton.get(), nullptr);
     }
 
     virtual WindowType GetType() const override
@@ -1755,7 +1758,7 @@ public:
 
     virtual void set_grid_left_attach(int nPos) override
     {
-        m_pParent->get_child_container()->set_child_left_attach(*m_xButton, nPos);
+        m_pParent->get_child_container().set_child_left_attach(*m_xButton, nPos);
     }
 
     void get_extents_relative_to(weld::Widget& rRelative, int& x, int& y, int& width, int& height) override
@@ -3008,18 +3011,17 @@ void SwTokenWindow::InsertAtSelection(const SwFormToken& rToken)
         bool bPreStartLinkFound = false;
         bool bPreEndLinkFound = false;
 
-        const SwTOXWidget* pControl = nullptr;
-        const SwTOXWidget* pExchange = nullptr;
+        SwTOXButton* pExchange = nullptr;
 
         auto it = m_aControlList.cbegin();
         for( ; it != m_aControlList.cend() && m_pActiveCtrl != it->get(); ++it )
         {
-            pControl = it->get();
+            SwTOXWidget* pControl = it->get();
 
             if( WindowType::EDIT != pControl->GetType())
             {
-                const SwFormToken& rNewToken =
-                                static_cast<const SwTOXButton*>(pControl)->GetFormToken();
+                SwTOXButton* pButton = static_cast<SwTOXButton*>(pControl);
+                const SwFormToken& rNewToken = pButton->GetFormToken();
 
                 if( TOKEN_LINK_START == rNewToken.eTokenType )
                 {
@@ -3033,7 +3035,7 @@ void SwTokenWindow::InsertAtSelection(const SwFormToken& rToken)
                     else
                     {
                         bPreEndLinkFound = false;
-                        pExchange = pControl;
+                        pExchange = pButton;
                     }
                 }
             }
@@ -3045,20 +3047,20 @@ void SwTokenWindow::InsertAtSelection(const SwFormToken& rToken)
         {
             for( ; it != m_aControlList.cend(); ++it )
             {
-                pControl = it->get();
+                SwTOXWidget* pControl = it->get();
 
                 if( pControl != m_pActiveCtrl &&
                     WindowType::EDIT != pControl->GetType())
                 {
-                    const SwFormToken& rNewToken =
-                                    static_cast<const SwTOXButton*>(pControl)->GetFormToken();
+                    SwTOXButton* pButton = static_cast<SwTOXButton*>(pControl);
+                    const SwFormToken& rNewToken = pButton->GetFormToken();
 
                     if( TOKEN_LINK_START == rNewToken.eTokenType )
                     {
                         if(bPostLinkStartFound)
                             break;
                         bPostLinkStartFound = true;
-                        pExchange = pControl;
+                        pExchange = pButton;
                     }
                     else if(TOKEN_LINK_END == rNewToken.eTokenType )
                     {
@@ -3084,8 +3086,8 @@ void SwTokenWindow::InsertAtSelection(const SwFormToken& rToken)
             OSL_ENSURE(pExchange, "no control to exchange?");
             if(pExchange)
             {
-                const_cast<SwTOXButton*>(static_cast<const SwTOXButton*>(pExchange))->SetLinkEnd();
-                const_cast<SwTOXButton*>(static_cast<const SwTOXButton*>(pExchange))->SetText(m_aButtonTexts[TOKEN_LINK_END]);
+                pExchange->SetLinkEnd();
+                pExchange->SetText(m_aButtonTexts[TOKEN_LINK_END]);
             }
         }
 
@@ -3095,8 +3097,8 @@ void SwTokenWindow::InsertAtSelection(const SwFormToken& rToken)
 
             if(pExchange)
             {
-                const_cast<SwTOXButton*>(static_cast<const SwTOXButton*>(pExchange))->SetLinkStart();
-                const_cast<SwTOXButton*>(static_cast<const SwTOXButton*>(pExchange))->SetText(m_aButtonTexts[TOKEN_LINK_START]);
+                pExchange->SetLinkStart();
+                pExchange->SetText(m_aButtonTexts[TOKEN_LINK_START]);
             }
         }
     }
