@@ -165,16 +165,24 @@ public:
 
 struct ExtensionCmd
 {
-    enum E_CMD_TYPE { ADD, ENABLE, DISABLE, REMOVE, CHECK_FOR_UPDATES, ACCEPT_LICENSE };
+    enum class CommandType
+    {
+        Add,
+        Enable,
+        Disable,
+        Remove,
+        CheckForUpdates,
+        AcceptLicense
+    };
 
-    E_CMD_TYPE  m_eCmdType;
+    CommandType m_eCmdType;
     bool        m_bWarnUser;
     OUString    m_sExtensionURL;
     OUString    m_sRepository;
     uno::Reference< deployment::XPackage > m_xPackage;
     std::vector< uno::Reference< deployment::XPackage > >        m_vExtensionList;
 
-    ExtensionCmd( const E_CMD_TYPE eCommand,
+    ExtensionCmd( const CommandType eCommand,
                   OUString aExtensionURL,
                   OUString aRepository,
                   const bool bWarnUser )
@@ -182,12 +190,12 @@ struct ExtensionCmd
           m_bWarnUser( bWarnUser ),
           m_sExtensionURL(std::move( aExtensionURL )),
           m_sRepository(std::move( aRepository )) {};
-    ExtensionCmd( const E_CMD_TYPE eCommand,
+    ExtensionCmd( const CommandType eCommand,
                   uno::Reference< deployment::XPackage > xPackage )
         : m_eCmdType( eCommand ),
           m_bWarnUser( false ),
           m_xPackage(std::move( xPackage )) {};
-    ExtensionCmd( const E_CMD_TYPE eCommand,
+    ExtensionCmd( const CommandType eCommand,
                 std::vector<uno::Reference<deployment::XPackage > >&&vExtensionList )
         : m_eCmdType( eCommand ),
           m_bWarnUser( false ),
@@ -237,7 +245,7 @@ private:
     void _acceptLicense( ::rtl::Reference< ProgressCmdEnv > const &rCmdEnv,
                            const uno::Reference< deployment::XPackage > &xPackage );
 
-    enum Input { NONE, START, STOP };
+    enum class Input { NONE, START, STOP };
 
     uno::Reference< uno::XComponentContext > m_xContext;
     std::queue< TExtensionCmd >              m_queue;
@@ -589,7 +597,7 @@ ExtensionCmdQueue::Thread::Thread(DialogHelper& rDialogHelper, TheExtensionManag
     m_sRemovingPackages( DpResId( RID_STR_REMOVING_PACKAGES ) ),
     m_sDefaultCmd( DpResId( RID_STR_ADD_PACKAGES ) ),
     m_sAcceptLicense( DpResId( RID_STR_ACCEPT_LICENSE ) ),
-    m_eInput( NONE ),
+    m_eInput(Input::NONE),
     m_bStopped( false ),
     m_bWorking( false )
 {
@@ -601,7 +609,8 @@ void ExtensionCmdQueue::Thread::addExtension( const OUString &rExtensionURL,
 {
     if ( !rExtensionURL.isEmpty() )
     {
-        TExtensionCmd pEntry = std::make_shared<ExtensionCmd>( ExtensionCmd::ADD, rExtensionURL, rRepository, bWarnUser );
+        TExtensionCmd pEntry = std::make_shared<ExtensionCmd>(
+            ExtensionCmd::CommandType::Add, rExtensionURL, rRepository, bWarnUser);
         _insert( pEntry );
     }
 }
@@ -611,7 +620,8 @@ void ExtensionCmdQueue::Thread::removeExtension( const uno::Reference< deploymen
 {
     if ( rPackage.is() )
     {
-        TExtensionCmd pEntry = std::make_shared<ExtensionCmd>( ExtensionCmd::REMOVE, rPackage );
+        TExtensionCmd pEntry
+            = std::make_shared<ExtensionCmd>(ExtensionCmd::CommandType::Remove, rPackage);
         _insert( pEntry );
     }
 }
@@ -621,7 +631,8 @@ void ExtensionCmdQueue::Thread::acceptLicense( const uno::Reference< deployment:
 {
     if ( rPackage.is() )
     {
-        TExtensionCmd pEntry = std::make_shared<ExtensionCmd>( ExtensionCmd::ACCEPT_LICENSE, rPackage );
+        TExtensionCmd pEntry
+            = std::make_shared<ExtensionCmd>(ExtensionCmd::CommandType::AcceptLicense, rPackage);
         _insert( pEntry );
     }
 }
@@ -632,9 +643,9 @@ void ExtensionCmdQueue::Thread::enableExtension( const uno::Reference< deploymen
 {
     if ( rPackage.is() )
     {
-        TExtensionCmd pEntry = std::make_shared<ExtensionCmd>( bEnable ? ExtensionCmd::ENABLE :
-                                                          ExtensionCmd::DISABLE,
-                                                rPackage );
+        TExtensionCmd pEntry = std::make_shared<ExtensionCmd>(
+            bEnable ? ExtensionCmd::CommandType::Enable : ExtensionCmd::CommandType::Disable,
+            rPackage);
         _insert( pEntry );
     }
 }
@@ -643,7 +654,8 @@ void ExtensionCmdQueue::Thread::enableExtension( const uno::Reference< deploymen
 void ExtensionCmdQueue::Thread::checkForUpdates(
     std::vector<uno::Reference<deployment::XPackage > > && vExtensionList )
 {
-    TExtensionCmd pEntry = std::make_shared<ExtensionCmd>( ExtensionCmd::CHECK_FOR_UPDATES, std::move(vExtensionList) );
+    TExtensionCmd pEntry = std::make_shared<ExtensionCmd>(
+        ExtensionCmd::CommandType::CheckForUpdates, std::move(vExtensionList));
     _insert( pEntry );
 }
 
@@ -653,7 +665,7 @@ void ExtensionCmdQueue::Thread::stop()
 {
     std::scoped_lock aGuard( m_mutex );
     m_bStopped = true;
-    m_eInput = STOP;
+    m_eInput = Input::STOP;
     m_wakeup.notify_all();
 }
 
@@ -682,17 +694,17 @@ void ExtensionCmdQueue::Thread::execute()
         Input eInput;
         {
             std::unique_lock aGuard( m_mutex );
-            while (m_eInput == NONE) {
+            while (m_eInput == Input::NONE) {
                 m_wakeup.wait(aGuard);
             }
             eInput = m_eInput;
-            m_eInput = NONE;
+            m_eInput = Input::NONE;
             nSize = m_queue.size();
             // coverity[missing_lock: FALSE] - maybe due to (by-design) unique_lock vs. scoped_lock?
             m_bWorking = false;
         }
 
-        if ( eInput == STOP )
+        if (eInput == Input::STOP)
             break;
 
         // We only install the extension which are currently in the queue.
@@ -725,29 +737,30 @@ void ExtensionCmdQueue::Thread::execute()
                     m_queue.pop();
                 }
 
-                if ( bStartProgress && ( pEntry->m_eCmdType != ExtensionCmd::CHECK_FOR_UPDATES ) )
+                if (bStartProgress
+                    && (pEntry->m_eCmdType != ExtensionCmd::CommandType::CheckForUpdates))
                 {
                     currentCmdEnv->startProgress();
                     bStartProgress = false;
                 }
 
                 switch ( pEntry->m_eCmdType ) {
-                case ExtensionCmd::ADD :
+                case ExtensionCmd::CommandType::Add:
                     _addExtension( currentCmdEnv, pEntry->m_sExtensionURL, pEntry->m_sRepository, pEntry->m_bWarnUser );
                     break;
-                case ExtensionCmd::REMOVE :
+                case ExtensionCmd::CommandType::Remove:
                     _removeExtension( currentCmdEnv, pEntry->m_xPackage );
                     break;
-                case ExtensionCmd::ENABLE :
+                case ExtensionCmd::CommandType::Enable:
                     _enableExtension( currentCmdEnv, pEntry->m_xPackage );
                     break;
-                case ExtensionCmd::DISABLE :
+                case ExtensionCmd::CommandType::Disable:
                     _disableExtension( currentCmdEnv, pEntry->m_xPackage );
                     break;
-                case ExtensionCmd::CHECK_FOR_UPDATES :
+                case ExtensionCmd::CommandType::CheckForUpdates:
                     _checkForUpdates( std::vector(pEntry->m_vExtensionList) );
                     break;
-                case ExtensionCmd::ACCEPT_LICENSE :
+                case ExtensionCmd::CommandType::AcceptLicense:
                     _acceptLicense( currentCmdEnv, pEntry->m_xPackage );
                     break;
                 }
@@ -1033,7 +1046,7 @@ void ExtensionCmdQueue::Thread::_insert(const TExtensionCmd& rExtCmd)
         return;
 
     m_queue.push( rExtCmd );
-    m_eInput = START;
+    m_eInput = Input::START;
     m_wakeup.notify_all();
 }
 

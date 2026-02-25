@@ -68,12 +68,10 @@ public:
     bool isModified() const { return m_bModified; }
     void clearModified() { m_bModified = false; }
 
-    weld::Window* getDialog()
+    weld::Dialog* getDialog()
     {
-        if (m_xExtMgrDialog)
-            return m_xExtMgrDialog->getDialog();
-        if (m_xUpdReqDialog)
-            return m_xUpdReqDialog->getDialog();
+        if (DialogHelper* pHelper = getDialogHelper())
+            return pHelper->getDialog();
         return nullptr;
     }
     DialogHelper* getDialogHelper()
@@ -87,7 +85,6 @@ public:
     void SetText( const OUString &rTitle );
     void Show();
     void ToTop();
-    void Close();
     bool isVisible();
 
 
@@ -116,6 +113,9 @@ public:
 
     // XModifyListener
     virtual void SAL_CALL modified( css::lang::EventObject const & evt ) override;
+
+private:
+    void Close();
 };
 
 } // namespace dp_gui
