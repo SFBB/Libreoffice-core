@@ -30,6 +30,7 @@
 #include <vcl/event.hxx>
 #include <sal/log.hxx>
 
+#include <unx/saldata.hxx>
 #include <unx/salinst.h>
 #include <unx/saldisp.hxx>
 #include <unx/salobj.h>
@@ -59,7 +60,7 @@ X11SalObject* X11SalObject::CreateObject( SalFrame* pParent, SystemWindowData* p
 
     pObject->mpParent = pParent;
 
-    SalDisplay* pSalDisp        = vcl_sal::getSalDisplay(GetGenericUnixSalData());
+    SalX11Display* pSalDisp = vcl_sal::getSalDisplay();
     const SystemEnvData& rEnv   = pParent->GetSystemData();
     Display* pDisp              = pSalDisp->GetDisplay();
     ::Window aObjectParent      = static_cast<::Window>(rEnv.GetWindowHandle(pParent));
@@ -123,7 +124,7 @@ X11SalObject* X11SalObject::CreateObject( SalFrame* pParent, SystemWindowData* p
                 << static_cast<unsigned int>
                 (aVisID));
 #endif
-        GetGenericUnixSalData()->ErrorTrapPush();
+        GetX11SalData()->ErrorTrapPush();
 
         // create colormap for visual - there might not be one
         pObject->maColormap = aAttribs.colormap = XCreateColormap(
@@ -141,7 +142,7 @@ X11SalObject* X11SalObject::CreateObject( SalFrame* pParent, SystemWindowData* p
                            pVisual,
                            CWEventMask|CWColormap, &aAttribs );
         XSync( pDisp, False );
-        if( GetGenericUnixSalData()->ErrorTrapPop( false ) )
+        if (GetX11SalData()->ErrorTrapPop(false))
         {
             pObject->maSecondary = None;
             delete pObject;
@@ -150,7 +151,7 @@ X11SalObject* X11SalObject::CreateObject( SalFrame* pParent, SystemWindowData* p
         XReparentWindow( pDisp, pObject->maSecondary, pObject->maPrimary, 0, 0 );
     }
 
-    GetGenericUnixSalData()->ErrorTrapPush();
+    GetX11SalData()->ErrorTrapPush();
     if( bShow ) {
         XMapWindow( pDisp, pObject->maSecondary );
         XMapWindow( pDisp, pObject->maPrimary );
@@ -162,7 +163,7 @@ X11SalObject* X11SalObject::CreateObject( SalFrame* pParent, SystemWindowData* p
     rObjData.pVisual       = pVisual;
 
     XSync(pDisp, False);
-    if( GetGenericUnixSalData()->ErrorTrapPop( false ) )
+    if (GetX11SalData()->ErrorTrapPop(false))
     {
         delete pObject;
         return nullptr;
@@ -223,7 +224,7 @@ X11SalObject::X11SalObject()
     , maColormap(0)
     , mbVisible(false)
 {
-    maSystemChildData.pDisplay  = vcl_sal::getSalDisplay(GetGenericUnixSalData())->GetDisplay();
+    maSystemChildData.pDisplay = vcl_sal::getSalDisplay()->GetDisplay();
     maSystemChildData.SetWindowHandle(None);
     maSystemChildData.pSalFrame = nullptr;
     maSystemChildData.pWidget       = nullptr;
@@ -231,16 +232,16 @@ X11SalObject::X11SalObject()
     maSystemChildData.toolkit = SystemEnvData::Toolkit::Gen;
     maSystemChildData.platform = SystemEnvData::Platform::Xcb;
 
-    std::list< SalObject* >& rObjects = vcl_sal::getSalDisplay(GetGenericUnixSalData())->getSalObjects();
+    std::list<SalObject*>& rObjects = vcl_sal::getSalDisplay()->getSalObjects();
     rObjects.push_back( this );
 }
 
 X11SalObject::~X11SalObject()
 {
-    std::list< SalObject* >& rObjects = vcl_sal::getSalDisplay(GetGenericUnixSalData())->getSalObjects();
+    std::list<SalObject*>& rObjects = vcl_sal::getSalDisplay()->getSalObjects();
     rObjects.remove( this );
 
-    GetGenericUnixSalData()->ErrorTrapPush();
+    GetX11SalData()->ErrorTrapPush();
     ::Window aObjectParent = maParentWin;
     XSetWindowBackgroundPixmap(static_cast<Display*>(maSystemChildData.pDisplay), aObjectParent, None);
     if ( maSecondary )
@@ -250,7 +251,7 @@ X11SalObject::~X11SalObject()
     if ( maColormap )
         XFreeColormap(static_cast<Display*>(maSystemChildData.pDisplay), maColormap);
     XSync( static_cast<Display*>(maSystemChildData.pDisplay), False );
-    GetGenericUnixSalData()->ErrorTrapPop();
+    GetX11SalData()->ErrorTrapPop();
 }
 
 void
@@ -387,7 +388,7 @@ static sal_uInt16 sal_GetCode( int state )
 
 bool X11SalObject::Dispatch( XEvent* pEvent )
 {
-    std::list< SalObject* >& rObjects = vcl_sal::getSalDisplay(GetGenericUnixSalData())->getSalObjects();
+    std::list<SalObject*>& rObjects = vcl_sal::getSalDisplay()->getSalObjects();
 
     for (auto const& elem : rObjects)
     {
@@ -469,7 +470,7 @@ bool X11SalObject::Dispatch( XEvent* pEvent )
 
 void X11SalObject::SetLeaveEnterBackgrounds(const css::uno::Sequence<css::uno::Any>& rLeaveArgs, const css::uno::Sequence<css::uno::Any>& rEnterArgs)
 {
-    SalDisplay* pSalDisp        = vcl_sal::getSalDisplay(GetGenericUnixSalData());
+    SalX11Display* pSalDisp = vcl_sal::getSalDisplay();
     Display* pDisp              = pSalDisp->GetDisplay();
     ::Window aObjectParent      = maParentWin;
 

@@ -159,7 +159,7 @@ public:
 
     // Sequence: Grab Bags: The CHAR_GRAB_BAG has Name "CharInteropGrabBag" and the PARA_GRAB_BAG has Name "ParaInteropGrabBag"
     // the contained properties are their Value.
-    css::uno::Sequence< css::beans::PropertyValue > GetPropertyValues( bool bCharGrabBag = true );
+    const std::vector<css::beans::PropertyValue>& GetPropertyValues( bool bCharGrabBag = true );
 
     std::vector< PropertyIds > GetPropertyIds();
 
@@ -235,7 +235,7 @@ enum class PageBreakType
     Both
 };
 
-class SectionPropertyMap : public PropertyMap
+class SectionPropertyMap final : public PropertyMap
 {
 public:
     enum class BorderApply
@@ -457,7 +457,7 @@ void BeforeConvertToTextFrame(const std::deque<StoredRedline>& rFramedRedlines, 
 
 void AfterConvertToTextFrame(const DomainMapper_Impl& rDM_Impl, const std::deque<StoredRedline>& aFramedRedlines, std::vector<sal_Int32>& redPos, std::vector<sal_Int32>& redLen, std::vector<OUString>& redCell, std::vector<OUString>& redTable);
 
-class ParagraphProperties : public SvRefBase
+class ParagraphProperties final : public SvRefBase
 {
 private:
     bool                                         m_bFrameMode;
@@ -580,7 +580,7 @@ private:
 #define WW_OUTLINE_MAX  sal_Int16( 9 )
 #define WW_OUTLINE_MIN  sal_Int16( 0 )
 
-class StyleSheetPropertyMap
+class StyleSheetPropertyMap final
     : public ParagraphPropertiesPropertyMap
 {
 private:
@@ -597,14 +597,16 @@ public:
     void SetOutlineLevel(sal_Int16 nLevel) { if (nLevel <= WW_OUTLINE_MAX) mnOutlineLevel = nLevel; }
 };
 
-class ParagraphPropertyMap
+class ParagraphPropertyMap final
     : public ParagraphPropertiesPropertyMap
 {
 public:
     explicit ParagraphPropertyMap() {}
 };
 
-class TablePropertyMap
+typedef tools::SvRef< ParagraphPropertyMap > ParagraphPropertyMapPtr;
+
+class TablePropertyMap final
     : public PropertyMap
 {
 public:
@@ -653,7 +655,7 @@ struct TableParagraph
 {
     rtl::Reference<SwXTextCursor> m_rStartParagraph;
     rtl::Reference<SwXTextCursor> m_rEndParagraph;
-    PropertyMapPtr m_pPropertyMap;
+    ParagraphPropertyMapPtr m_pPropertyMap;
     css::uno::Reference<css::beans::XPropertySet> m_rPropertySet;
 };
 

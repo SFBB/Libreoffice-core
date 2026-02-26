@@ -18,7 +18,7 @@
 
 void X11SalGraphics::Init(X11SkiaSalVirtualDevice* pDevice)
 {
-    SalDisplay* pDisplay = pDevice->GetDisplay();
+    SalX11Display* pDisplay = pDevice->GetDisplay();
 
     m_nXScreen = pDevice->GetXScreenNumber();
     maX11Common.m_pColormap = &pDisplay->GetColormap(m_nXScreen);
@@ -38,7 +38,7 @@ X11SkiaSalVirtualDevice::X11SkiaSalVirtualDevice(const SalGraphics& rGraphics, t
 {
     assert(mpGraphics);
 
-    mpDisplay = vcl_sal::getSalDisplay(GetGenericUnixSalData());
+    mpDisplay = vcl_sal::getSalDisplay();
     mnXScreen = static_cast<const X11SalGraphics&>(rGraphics).GetScreenNumber();
     mnWidth = nDX;
     mnHeight = nDY;
@@ -56,7 +56,7 @@ X11SkiaSalVirtualDevice::X11SkiaSalVirtualDevice(const SalGraphics& rGraphics, t
     // TODO Check where a VirtualDevice is created from SystemGraphicsData
     assert(false);
 
-    mpDisplay = vcl_sal::getSalDisplay(GetGenericUnixSalData());
+    mpDisplay = vcl_sal::getSalDisplay();
     mnXScreen = static_cast<const X11SalGraphics&>(rGraphics).GetScreenNumber();
     mnWidth = nDX;
     mnHeight = nDY;

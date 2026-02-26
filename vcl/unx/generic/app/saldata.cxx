@@ -232,10 +232,10 @@ const char* const XRequest[] = {
 X11SalData::X11SalData()
     : GenericUnixSalData()
 {
-    pXLib_          = nullptr;
-
     m_aOrigXIOErrorHandler = XSetIOErrorHandler ( XIOErrorHdl );
     PushXErrorLevel( !!getenv( "SAL_IGNOREXERRORS" ) );
+
+    pXLib_.reset(new SalXLib());
 }
 
 X11SalData::~X11SalData()
@@ -256,12 +256,6 @@ void X11SalData::DeleteDisplay()
     delete GetDisplay();
     SetDisplay( nullptr );
     pXLib_.reset();
-}
-
-void X11SalData::Init()
-{
-    pXLib_.reset(new SalXLib());
-    pXLib_->Init();
 }
 
 void X11SalData::ErrorTrapPush()
@@ -297,6 +291,58 @@ void X11SalData::PopXErrorLevel()
     }
 }
 
+static Display *OpenX11Display(OString& rDisplay)
+{
+    /*
+     * open connection to X11 Display
+     * try in this order:
+     *  o  -display command line parameter,
+     *  o  $DISPLAY environment variable
+     *  o  default display
+     */
+
+    Display *pDisp = nullptr;
+
+    // is there a -display command line parameter?
+
+    sal_uInt32 nParams = osl_getCommandArgCount();
+    OUString aParam;
+    for (sal_uInt32 i=0; i<nParams; i++)
+    {
+        osl_getCommandArg(i, &aParam.pData);
+        if ( aParam == "-display" )
+        {
+            osl_getCommandArg(i+1, &aParam.pData);
+            rDisplay = OUStringToOString(
+                aParam, osl_getThreadTextEncoding());
+
+            if ((pDisp = XOpenDisplay(rDisplay.getStr()))!=nullptr)
+            {
+                /*
+                 * if a -display switch was used, we need
+                 * to set the environment accordingly since
+                 * the clipboard build another connection
+                 * to the xserver using $DISPLAY
+                 */
+                OUString envVar(u"DISPLAY"_ustr);
+                osl_setEnvironment(envVar.pData, aParam.pData);
+            }
+            break;
+        }
+    }
+
+    if (!pDisp && rDisplay.isEmpty())
+    {
+        // Open $DISPLAY or default...
+        char *pDisplay = getenv("DISPLAY");
+        if (pDisplay != nullptr)
+            rDisplay = OString(pDisplay);
+        pDisp  = XOpenDisplay(pDisplay);
+    }
+
+    return pDisp;
+}
+
 SalXLib::SalXLib()
 {
     m_aTimeout.tv_sec       = 0;
@@ -306,9 +352,6 @@ SalXLib::SalXLib()
     nFDs_                   = 0;
     FD_ZERO( &aReadFDS_ );
     FD_ZERO( &aExceptionFDS_ );
-
-    m_pInputMethod          = nullptr;
-    m_pDisplay              = nullptr;
 
     m_pTimeoutFDS[0] = m_pTimeoutFDS[1] = -1;
     if (pipe (m_pTimeoutFDS) == -1)
@@ -344,71 +387,7 @@ SalXLib::SalXLib()
     // insert [0] into read descriptor set.
     FD_SET( m_pTimeoutFDS[0], &aReadFDS_ );
     nFDs_ = m_pTimeoutFDS[0] + 1;
-}
 
-SalXLib::~SalXLib()
-{
-    // close 'wakeup' pipe.
-    close (m_pTimeoutFDS[0]);
-    close (m_pTimeoutFDS[1]);
-
-    m_pInputMethod.reset();
-}
-
-static Display *OpenX11Display(OString& rDisplay)
-{
-    /*
-     * open connection to X11 Display
-     * try in this order:
-     *  o  -display command line parameter,
-     *  o  $DISPLAY environment variable
-     *  o  default display
-     */
-
-    Display *pDisp = nullptr;
-
-    // is there a -display command line parameter?
-
-    sal_uInt32 nParams = osl_getCommandArgCount();
-    OUString aParam;
-    for (sal_uInt32 i=0; i<nParams; i++)
-    {
-        osl_getCommandArg(i, &aParam.pData);
-        if ( aParam == "-display" )
-        {
-            osl_getCommandArg(i+1, &aParam.pData);
-            rDisplay = OUStringToOString(
-                   aParam, osl_getThreadTextEncoding());
-
-            if ((pDisp = XOpenDisplay(rDisplay.getStr()))!=nullptr)
-            {
-                /*
-                 * if a -display switch was used, we need
-                 * to set the environment accordingly since
-                 * the clipboard build another connection
-                 * to the xserver using $DISPLAY
-                 */
-                OUString envVar(u"DISPLAY"_ustr);
-                osl_setEnvironment(envVar.pData, aParam.pData);
-            }
-            break;
-        }
-    }
-
-    if (!pDisp && rDisplay.isEmpty())
-    {
-        // Open $DISPLAY or default...
-        char *pDisplay = getenv("DISPLAY");
-        if (pDisplay != nullptr)
-            rDisplay = OString(pDisplay);
-        pDisp  = XOpenDisplay(pDisplay);
-    }
-
-    return pDisp;
-}
-
-void SalXLib::Init()
-{
     m_pInputMethod.reset( new SalI18N_InputMethod );
     m_pInputMethod->SetLocale();
     XrmInitialize();
@@ -424,16 +403,24 @@ void SalXLib::Init()
     OUString aProgramSystemPath;
     osl_getSystemPathFromFileURL (aProgramFileURL.pData, &aProgramSystemPath.pData);
     OString  aProgramName = OUStringToOString(
-                                        aProgramSystemPath,
-                                        osl_getThreadTextEncoding() );
+        aProgramSystemPath,
+        osl_getThreadTextEncoding() );
     std::fprintf( stderr, "%s X11 error: Can't open display: %s\n",
-            aProgramName.getStr(), aDisplay.getStr());
+                 aProgramName.getStr(), aDisplay.getStr());
     std::fprintf( stderr, "   Set DISPLAY environment variable, use -display option\n");
     std::fprintf( stderr, "   or check permissions of your X-Server\n");
     std::fprintf( stderr, "   (See \"man X\" resp. \"man xhost\" for details)\n");
     std::fflush( stderr );
     exit(0);
+}
 
+SalXLib::~SalXLib()
+{
+    // close 'wakeup' pipe.
+    close (m_pTimeoutFDS[0]);
+    close (m_pTimeoutFDS[1]);
+
+    m_pInputMethod.reset();
 }
 
 extern "C" {
@@ -512,7 +499,7 @@ void X11SalData::XError( Display *pDisplay, XErrorEvent *pEvent )
             )
             return;
 
-        if( pDisplay != vcl_sal::getSalDisplay(GetGenericUnixSalData())->GetDisplay() )
+        if (pDisplay != vcl_sal::getSalDisplay()->GetDisplay())
             return;
 
         PrintXError( pDisplay, pEvent );

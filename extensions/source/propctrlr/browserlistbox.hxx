@@ -36,9 +36,9 @@
 
 namespace pcr
 {
-class IPropertyLineListener;
 class IPropertyControlObserver;
 struct OLineDescriptor;
+class OPropertyBrowserController;
 class InspectorHelpWindow;
 class PropertyControlContext_Impl;
 
@@ -61,14 +61,14 @@ struct ListBoxLine
 };
 typedef std::vector<ListBoxLine> ListBoxLines;
 
-class OBrowserListBox final : public IButtonClickListener
+class OBrowserListBox final
 {
     std::unique_ptr<weld::ScrolledWindow> m_xScrolledWindow;
     std::unique_ptr<weld::Grid> m_xLinesPlayground;
     std::unique_ptr<InspectorHelpWindow> m_xHelpWindow;
     weld::Container* m_pInitialControlParent;
     ListBoxLines m_aLines;
-    IPropertyLineListener* m_pLineListener;
+    OPropertyBrowserController* m_pLineListener;
     IPropertyControlObserver* m_pControlObserver;
     css::uno::Reference<css::inspection::XPropertyControl> m_xActiveControl;
     sal_uInt16 m_nTheNameSize;
@@ -84,7 +84,7 @@ public:
     explicit OBrowserListBox(weld::Builder& rBuilder, weld::Container* pContainer);
     ~OBrowserListBox();
 
-    void SetListener(IPropertyLineListener* _pListener);
+    void SetListener(OPropertyBrowserController* _pListener);
     void SetObserver(IPropertyControlObserver* _pObserver);
 
     void EnableHelpSection(bool _bEnable);
@@ -116,10 +116,9 @@ public:
     void activateNextControl(
         const css::uno::Reference<css::inspection::XPropertyControl>& CurrentControl);
 
-private:
-    // IButtonClickListener
-    void buttonClicked(OBrowserLine* _pLine, bool _bPrimary) override;
+    void buttonClicked(OBrowserLine* _pLine, bool _bPrimary);
 
+private:
     /** retrieves the index of a given control in our line list
             @param _rxControl
                 The control to lookup. Must denote a control of one of the lines in ->m_aLines

@@ -372,11 +372,9 @@ ScImportAsciiDlg::ScImportAsciiDlg(weld::Window* pParent, std::u16string_view aD
         mxRbDetectSep->set_active(true);
 
     // Detect character set only once and then use it for "Detect" option.
-    SvStreamEndian eEndian;
-    SfxObjectShell::DetectCharSet(*mpDatStream, meDetectedCharSet, eEndian);
-    if (meDetectedCharSet == RTL_TEXTENCODING_UNICODE)
-        mpDatStream->SetEndian(eEndian);
-    else if ( meDetectedCharSet == RTL_TEXTENCODING_DONTKNOW )
+    mpDatStream->DetectEncoding();
+    meDetectedCharSet = mpDatStream->GetStreamEncoding();
+    if (meDetectedCharSet == RTL_TEXTENCODING_DONTKNOW)
     {
         meDetectedCharSet = osl_getThreadTextEncoding();
         // Prefer UTF-8, as UTF-16 would have already been detected from the stream.
@@ -536,7 +534,7 @@ bool ScImportAsciiDlg::GetLine( sal_uLong nLine, OUString &rText, sal_Unicode& r
         memset( mpRowPosArray.get(), 0, sizeof(mpRowPosArray[0]) * (ASCIIDLG_MAXROWS+2));
 
         Seek(0);
-        mpDatStream->StartReadingUnicodeText( mpDatStream->GetStreamCharSet() );
+        mpDatStream->StartReadingUnicodeText( mpDatStream->GetStreamEncoding() );
 
         mnStreamPos = mpDatStream->Tell();
         mpRowPosArray[mnRowPosCount] = mnStreamPos;
@@ -775,7 +773,7 @@ void ScImportAsciiDlg::UpdateVertical()
 {
     mnRowPosCount = 0;
     if (mpDatStream)
-        mpDatStream->SetStreamCharSet(meCharSet);
+        mpDatStream->SetStreamEncoding(meCharSet);
 }
 
 void ScImportAsciiDlg::RbSepFix()

@@ -61,7 +61,6 @@ extern "C"
         // initialize SalData
         X11SalData *pSalData = new X11SalData();
 
-        pSalData->Init();
         pInstance->SetLib( pSalData->GetLib() );
 
         return pInstance;
@@ -86,7 +85,7 @@ X11SalInstance::~X11SalInstance()
     // close session management
     SessionManagerClient::close();
 
-    // dispose SalDisplay list from SalData
+    // dispose SalX11Display list from SalData
     // would be done in a static destructor else which is
     // a little late
     GetX11SalData()->Dispose();
@@ -155,8 +154,7 @@ static Bool ImplPredicateEvent( Display *, XEvent *pEvent, char *pData )
 
 bool X11SalInstance::AnyInput(VclInputFlags nType)
 {
-    GenericUnixSalData *pData = GetGenericUnixSalData();
-    Display *pDisplay  = vcl_sal::getSalDisplay(pData)->GetDisplay();
+    Display* pDisplay = vcl_sal::getSalDisplay()->GetDisplay();
     bool bRet = false;
 
     if( (nType & VclInputFlags::TIMER) && (mpXLib && mpXLib->CheckTimeout(false)) )
@@ -222,7 +220,7 @@ void X11SalInstance::AddToRecentDocumentList(const OUString&, const OUString&, c
 
 void X11SalInstance::PostPrintersChanged()
 {
-    SalDisplay* pDisp = vcl_sal::getSalDisplay(GetGenericUnixSalData());
+    SalX11Display* pDisp = vcl_sal::getSalDisplay();
     for (auto pSalFrame : pDisp->getFrames() )
         pDisp->PostEvent( pSalFrame, nullptr, SalEvent::PrinterChanged );
 }

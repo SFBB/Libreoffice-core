@@ -40,6 +40,7 @@
 
 #include <headless/BitmapHelper.hxx>
 #include <headless/svpbmp.hxx>
+#include <unx/saldata.hxx>
 #include <unx/saldisp.hxx>
 #include <unx/salgdi.h>
 #include <unx/salframe.h>
@@ -95,9 +96,9 @@ static ::Window  hPresentationWindow = None, hPresFocusWindow = None;
 static ::std::list< ::Window > aPresentationReparentList;
 static int          nVisibleFloats      = 0;
 
-static void doReparentPresentationDialogues( SalDisplay const * pDisplay )
+static void doReparentPresentationDialogues(SalX11Display const * pDisplay )
 {
-    GetGenericUnixSalData()->ErrorTrapPush();
+    GetX11SalData()->ErrorTrapPush();
     for (auto const& elem : aPresentationReparentList)
     {
         int x, y;
@@ -122,7 +123,7 @@ static void doReparentPresentationDialogues( SalDisplay const * pDisplay )
     if( hPresFocusWindow )
         XSetInputFocus( pDisplay->GetDisplay(), hPresFocusWindow, PointerRoot, CurrentTime );
     XSync( pDisplay->GetDisplay(), False );
-    GetGenericUnixSalData()->ErrorTrapPop();
+    GetX11SalData()->ErrorTrapPop();
 }
 
 bool X11SalFrame::IsOverrideRedirect() const
@@ -181,12 +182,12 @@ void X11SalFrame::askForXEmbedFocus( sal_Int32 i_nTimeCode )
     aEvent.xclient.data.l[3] = 0;
     aEvent.xclient.data.l[4] = 0;
 
-    GetGenericUnixSalData()->ErrorTrapPush();
+    GetX11SalData()->ErrorTrapPush();
     XSendEvent( pDisplay_->GetDisplay(),
                 mhForeignParent,
                 False, NoEventMask, &aEvent );
     XSync( pDisplay_->GetDisplay(), False );
-    GetGenericUnixSalData()->ErrorTrapPop();
+    GetX11SalData()->ErrorTrapPop();
 }
 
 typedef std::vector< unsigned long > NetWmIconData;
@@ -352,7 +353,7 @@ void X11SalFrame::Init( SalFrameStyleFlags nSalFrameStyle, SalX11Screen nXScreen
     {
         // plugin parent may be killed unexpectedly by plugging
         // process; start permanently ignoring X errors...
-        GetGenericUnixSalData()->ErrorTrapPush();
+        GetX11SalData()->ErrorTrapPush();
 
         nStyle_ |= SalFrameStyleFlags::PLUG;
         Attributes.override_redirect = True;
@@ -708,13 +709,11 @@ X11SalFrame::X11SalFrame( SalFrame *pParent, SalFrameStyleFlags nSalFrameStyle,
     m_nXScreen( 0 ),
     maAlwaysOnTopRaiseTimer( "vcl::X11SalFrame maAlwaysOnTopRaiseTimer" )
 {
-    GenericUnixSalData *pData = GetGenericUnixSalData();
-
     mpParent                    = static_cast< X11SalFrame* >( pParent );
 
     mbTransientForRoot          = false;
 
-    pDisplay_                   = vcl_sal::getSalDisplay(pData);
+    pDisplay_ = vcl_sal::getSalDisplay();
     // insert frame in framelist
     pDisplay_->registerFrame( this );
 
@@ -784,7 +783,7 @@ X11SalFrame::~X11SalFrame()
     if( mpParent )
         mpParent->maChildren.remove( this );
 
-    // deregister on SalDisplay
+    // deregister on SalX11Display
     pDisplay_->deregisterFrame( this );
 
     // unselect all events, some may be still in the queue anyway
@@ -2299,12 +2298,12 @@ SalFrame::SalPointerState X11SalFrame::GetPointerState()
 
 KeyIndicatorState X11SalFrame::GetIndicatorState()
 {
-    return vcl_sal::getSalDisplay(GetGenericUnixSalData())->GetIndicatorState();
+    return vcl_sal::getSalDisplay()->GetIndicatorState();
 }
 
 void X11SalFrame::SimulateKeyPress( sal_uInt16 nKeyCode )
 {
-    vcl_sal::getSalDisplay(GetGenericUnixSalData())->SimulateKeyPress(nKeyCode);
+    vcl_sal::getSalDisplay()->SimulateKeyPress(nKeyCode);
 }
 
 namespace
@@ -3326,7 +3325,7 @@ bool X11SalFrame::HandleReparentEvent( XReparentEvent *pEvent )
 
     static const char* pDisableStackingCheck = getenv( "SAL_DISABLE_STACKING_CHECK" );
 
-    GetGenericUnixSalData()->ErrorTrapPush();
+    GetX11SalData()->ErrorTrapPush();
 
     /*
      *  don't rely on the new parent from the event.
@@ -3346,8 +3345,8 @@ bool X11SalFrame::HandleReparentEvent( XReparentEvent *pEvent )
                     &Children,
                     &nChildren );
 
-        bool bError = GetGenericUnixSalData()->ErrorTrapPop( false );
-        GetGenericUnixSalData()->ErrorTrapPush();
+        bool bError = GetX11SalData()->ErrorTrapPop(false);
+        GetX11SalData()->ErrorTrapPush();
 
         if( bError )
         {
@@ -3383,7 +3382,7 @@ bool X11SalFrame::HandleReparentEvent( XReparentEvent *pEvent )
         // Reparenting before Destroy
         aPresentationReparentList.remove( GetStackingWindow() );
         mhStackingWindow = None;
-        GetGenericUnixSalData()->ErrorTrapPop();
+        GetX11SalData()->ErrorTrapPop();
         return false;
     }
 
@@ -3436,8 +3435,8 @@ bool X11SalFrame::HandleReparentEvent( XReparentEvent *pEvent )
      */
 
     // reset error occurred
-    GetGenericUnixSalData()->ErrorTrapPop();
-    GetGenericUnixSalData()->ErrorTrapPush();
+    GetX11SalData()->ErrorTrapPop();
+    GetX11SalData()->ErrorTrapPush();
 
     int xp, yp, x, y;
     unsigned int wp, w, hp, h, bw, d;
@@ -3450,8 +3449,8 @@ bool X11SalFrame::HandleReparentEvent( XReparentEvent *pEvent )
                   &hRoot,
                   &xp, &yp, &wp, &hp, &bw, &d );
     bool bResized = false;
-    bool bError = GetGenericUnixSalData()->ErrorTrapPop( false );
-    GetGenericUnixSalData()->ErrorTrapPush();
+    bool bError = GetX11SalData()->ErrorTrapPop( false );
+    GetX11SalData()->ErrorTrapPush();
 
     if( ! bError )
     {
@@ -3494,7 +3493,7 @@ bool X11SalFrame::HandleReparentEvent( XReparentEvent *pEvent )
     if( bResized )
         CallCallback( SalEvent::Resize, nullptr );
 
-    GetGenericUnixSalData()->ErrorTrapPop();
+    GetX11SalData()->ErrorTrapPop();
 
     return true;
 }

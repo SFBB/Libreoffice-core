@@ -34,6 +34,7 @@
 #include <officecfg/VCL.hxx>
 
 #include <unx/wmadaptor.hxx>
+#include <unx/saldata.hxx>
 #include <unx/saldisp.hxx>
 #include <unx/salframe.h>
 
@@ -49,7 +50,7 @@ class NetWMAdaptor : public WMAdaptor
     void initAtoms();
     virtual bool isValid() const override;
 public:
-    explicit NetWMAdaptor( SalDisplay* );
+    explicit NetWMAdaptor(SalX11Display*);
 
     virtual void setWMName( X11SalFrame* pFrame, const OUString& rWMName ) const override;
     virtual void maximizeFrame( X11SalFrame* pFrame, bool bHorizontal = true, bool bVertical = true ) const override;
@@ -69,7 +70,7 @@ class GnomeWMAdaptor : public WMAdaptor
     void initAtoms();
     virtual bool isValid() const override;
 public:
-    explicit GnomeWMAdaptor( SalDisplay * );
+    explicit GnomeWMAdaptor(SalX11Display*);
 
     virtual void maximizeFrame( X11SalFrame* pFrame, bool bHorizontal = true, bool bVertical = true ) const override;
     virtual void enableAlwaysOnTop( X11SalFrame* pFrame, bool bEnable ) const override;
@@ -173,7 +174,7 @@ static int compareProtocol( const void* pLeft, const void* pRight )
 }
 }
 
-std::unique_ptr<WMAdaptor> WMAdaptor::createWMAdaptor( SalDisplay* pSalDisplay )
+std::unique_ptr<WMAdaptor> WMAdaptor::createWMAdaptor(SalX11Display* pSalDisplay)
 {
     std::unique_ptr<WMAdaptor> pAdaptor;
 
@@ -217,7 +218,7 @@ std::unique_ptr<WMAdaptor> WMAdaptor::createWMAdaptor( SalDisplay* pSalDisplay )
  *  WMAdaptor constructor
  */
 
-WMAdaptor::WMAdaptor( SalDisplay* pDisplay ) :
+WMAdaptor::WMAdaptor(SalX11Display* pDisplay) :
         m_pSalDisplay( pDisplay ),
         m_bEnableAlwaysOnTopWorks( false ),
         m_bLegacyPartialFullscreen( false ),
@@ -332,7 +333,7 @@ WMAdaptor::~WMAdaptor()
  *  NetWMAdaptor constructor
  */
 
-NetWMAdaptor::NetWMAdaptor( SalDisplay* pSalDisplay ) :
+NetWMAdaptor::NetWMAdaptor(SalX11Display* pSalDisplay) :
         WMAdaptor( pSalDisplay )
 {
     // currently all _NET WMs do transient like expected
@@ -516,7 +517,7 @@ NetWMAdaptor::NetWMAdaptor( SalDisplay* pSalDisplay ) :
  *  GnomeWMAdaptor constructor
  */
 
-GnomeWMAdaptor::GnomeWMAdaptor( SalDisplay* pSalDisplay ) :
+GnomeWMAdaptor::GnomeWMAdaptor(SalX11Display* pSalDisplay) :
         WMAdaptor( pSalDisplay ),
         m_bValid( false )
 {
@@ -552,7 +553,7 @@ GnomeWMAdaptor::GnomeWMAdaptor( SalDisplay* pSalDisplay ) :
             ::Window aWMChild = *reinterpret_cast< ::Window* >(pProperty);
             XFree( pProperty );
             pProperty = nullptr;
-            GetGenericUnixSalData()->ErrorTrapPush();
+            GetX11SalData()->ErrorTrapPush();
             if( XGetWindowProperty( m_pDisplay,
                                     aWMChild,
                                     m_aWMAtoms[ WIN_SUPPORTING_WM_CHECK ],
@@ -568,9 +569,9 @@ GnomeWMAdaptor::GnomeWMAdaptor( SalDisplay* pSalDisplay ) :
                 && nFormat == 32
                 && nItems != 0 )
             {
-                if (! GetGenericUnixSalData()->ErrorTrapPop( false ) )
+                if (!GetX11SalData()->ErrorTrapPop(false))
                 {
-                    GetGenericUnixSalData()->ErrorTrapPush();
+                    GetX11SalData()->ErrorTrapPush();
 
                     ::Window aCheckWindow =  *reinterpret_cast< ::Window* >(pProperty);
                     XFree( pProperty );
@@ -588,9 +589,9 @@ GnomeWMAdaptor::GnomeWMAdaptor( SalDisplay* pSalDisplay ) :
                     }
                 }
                 else
-                    GetGenericUnixSalData()->ErrorTrapPush();
+                    GetX11SalData()->ErrorTrapPush();
             }
-            GetGenericUnixSalData()->ErrorTrapPop();
+            GetX11SalData()->ErrorTrapPop();
         }
         else if( pProperty )
         {
@@ -751,7 +752,7 @@ bool WMAdaptor::getNetWmName()
             ::Window aWMChild = *reinterpret_cast< ::Window* >(pProperty);
             XFree( pProperty );
             pProperty = nullptr;
-            GetGenericUnixSalData()->ErrorTrapPush();
+            GetX11SalData()->ErrorTrapPush();
             if( XGetWindowProperty( m_pDisplay,
                                     aWMChild,
                                     m_aWMAtoms[ NET_SUPPORTING_WM_CHECK ],
@@ -767,9 +768,9 @@ bool WMAdaptor::getNetWmName()
                 && nFormat == 32
                 && nItems != 0 )
             {
-                    if ( ! GetGenericUnixSalData()->ErrorTrapPop( false ) )
+                    if (!GetX11SalData()->ErrorTrapPop(false))
                     {
-                        GetGenericUnixSalData()->ErrorTrapPush();
+                        GetX11SalData()->ErrorTrapPush();
                         ::Window aCheckWindow =  *reinterpret_cast< ::Window* >(pProperty);
                         XFree( pProperty );
                         pProperty = nullptr;
@@ -850,11 +851,11 @@ bool WMAdaptor::getNetWmName()
                             XFree( pProperty );
                             pProperty = nullptr;
                         }
-                        GetGenericUnixSalData()->ErrorTrapPush();
+                        GetX11SalData()->ErrorTrapPush();
                     }
             }
 
-            GetGenericUnixSalData()->ErrorTrapPop();
+            GetX11SalData()->ErrorTrapPop();
         }
         else if( pProperty )
         {

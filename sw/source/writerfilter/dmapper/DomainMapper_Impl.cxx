@@ -2152,7 +2152,7 @@ static sal_Int32 lcl_getListId(const StyleSheetEntryPtr& rEntry, const StyleShee
 ///  9 indicates that numbering should be at body level (aka disabled) - rarely used by MSWord.
 ///  0-8 are the nine valid numbering levels.
 sal_Int16 DomainMapper_Impl::GetListLevel(const StyleSheetEntryPtr& pEntry,
-                                  const PropertyMapPtr& pParaContext)
+                                  const ParagraphPropertyMapPtr& pParaContext)
 {
     sal_Int16 nListLevel = -1;
     if (pParaContext)
@@ -2225,7 +2225,7 @@ void DomainMapper_Impl::ValidateListLevel(const OUString& sStyleIdentifierD)
     }
 }
 
-void DomainMapper_Impl::finishParagraph( const PropertyMapPtr& pPropertyMap, const bool bRemove, const bool bNoNumbering )
+void DomainMapper_Impl::finishParagraph( const ParagraphPropertyMapPtr& pParaContext, const bool bRemove, const bool bNoNumbering )
 {
     if (m_bDiscardHeaderFooter)
         return;
@@ -2248,7 +2248,7 @@ void DomainMapper_Impl::finishParagraph( const PropertyMapPtr& pPropertyMap, con
             if (pFieldContext->GetFieldId() == FIELD_IF || pFieldContext->GetFieldId() == FIELD_REF)
             {
                 // Conditional text fields can't contain newlines, finish the paragraph later.
-                FieldParagraph aFinish{pPropertyMap, bRemove};
+                FieldParagraph aFinish{pParaContext, bRemove};
                 pFieldContext->GetParagraphsToFinish().push_back(aFinish);
                 return;
             }
@@ -2259,7 +2259,6 @@ void DomainMapper_Impl::finishParagraph( const PropertyMapPtr& pPropertyMap, con
     TagLogger::getInstance().startElement("finishParagraph");
 #endif
 
-    ParagraphPropertyMap* pParaContext = dynamic_cast< ParagraphPropertyMap* >( pPropertyMap.get() );
     if (m_aTextAppendStack.empty())
         return;
     TextAppendContext& rAppendContext = m_aTextAppendStack.top();
@@ -2406,7 +2405,7 @@ void DomainMapper_Impl::finishParagraph( const PropertyMapPtr& pPropertyMap, con
     // apply INHERITED autospacing only if top margin is not set
     if ( bIsAutoSet || bNoTopmargin )
     {
-        GetAnyProperty(PROP_PARA_TOP_MARGIN_BEFORE_AUTO_SPACING, pPropertyMap) >>= nBeforeAutospacing;
+        GetAnyProperty(PROP_PARA_TOP_MARGIN_BEFORE_AUTO_SPACING, pParaContext.get()) >>= nBeforeAutospacing;
         // tdf#137655 only w:beforeAutospacing=0 was specified, but not PARA_TOP_MARGIN
         // (see default_spacing = -1 in processing of LN_CT_Spacing_beforeAutospacing)
         if (bNoTopmargin && nBeforeAutospacing == convertTwipToMm100(-1))
@@ -2442,7 +2441,7 @@ void DomainMapper_Impl::finishParagraph( const PropertyMapPtr& pPropertyMap, con
     bool bAppliedBottomAutospacing = false;
     if (bIsAutoSet || bNoBottomMargin)
     {
-        GetAnyProperty(PROP_PARA_BOTTOM_MARGIN_AFTER_AUTO_SPACING, pPropertyMap) >>= nAfterAutospacing;
+        GetAnyProperty(PROP_PARA_BOTTOM_MARGIN_AFTER_AUTO_SPACING, pParaContext.get()) >>= nAfterAutospacing;
         if (bNoBottomMargin && nAfterAutospacing == convertTwipToMm100(-1))
         {
             sal_Int32 nStyleAuto = -1;
@@ -2482,7 +2481,7 @@ void DomainMapper_Impl::finishParagraph( const PropertyMapPtr& pPropertyMap, con
 
             // The paragraph style is vital to knowing all the frame properties.
             std::optional<PropertyMap::Property> aParaStyle
-                = pPropertyMap->getProperty(PROP_PARA_STYLE_NAME);
+                = pParaContext->getProperty(PROP_PARA_STYLE_NAME);
             if (aParaStyle)
             {
                 OUString sName;
@@ -2666,11 +2665,11 @@ void DomainMapper_Impl::finishParagraph( const PropertyMapPtr& pPropertyMap, con
                     lcl_AddRange(pToBeSavedProperties, xTextAppend, rAppendContext);
                 }
             }
-            applyToggleAttributes(pPropertyMap); // for paragraph marker formatting
+            applyToggleAttributes(pParaContext.get()); // for paragraph marker formatting
             std::vector<beans::PropertyValue> aProperties;
-            if (pPropertyMap)
+            if (pParaContext)
             {
-                aProperties = comphelper::sequenceToContainer< std::vector<beans::PropertyValue> >(pPropertyMap->GetPropertyValues());
+                aProperties = pParaContext->GetPropertyValues();
 
                 // tdf#64222 filter out the "paragraph marker" formatting and
                 // set it as a separate paragraph property, not a empty hint at
@@ -2937,7 +2936,7 @@ void DomainMapper_Impl::finishParagraph( const PropertyMapPtr& pPropertyMap, con
                                 }
                             }
 
-                            sal_Int16 nCurrentLevel = GetListLevel(pEntry, pPropertyMap);
+                            sal_Int16 nCurrentLevel = GetListLevel(pEntry, pParaContext);
                             if (nCurrentLevel == -1)
                                 nCurrentLevel = 0;
 
@@ -3211,7 +3210,7 @@ void DomainMapper_Impl::finishParagraph( const PropertyMapPtr& pPropertyMap, con
                                 xParaProps->setPropertyValue(u"ParaLeftMargin"_ustr, aMargin);
                             else if (isNumberingViaStyle)
                             {
-                                const sal_Int32 nParaLeftMargin = getNumberingProperty(nListId, GetListLevel(pEntry, pPropertyMap), u"IndentAt"_ustr);
+                                const sal_Int32 nParaLeftMargin = getNumberingProperty(nListId, GetListLevel(pEntry, pParaContext), u"IndentAt"_ustr);
                                 if (nParaLeftMargin != 0)
                                     xParaProps->setPropertyValue(u"ParaLeftMargin"_ustr, uno::Any(nParaLeftMargin));
                             }
@@ -3229,7 +3228,7 @@ void DomainMapper_Impl::finishParagraph( const PropertyMapPtr& pPropertyMap, con
                                 xParaProps->setPropertyValue(u"ParaFirstLineIndent"_ustr, aMargin);
                             else if (isNumberingViaStyle)
                             {
-                                const sal_Int32 nFirstLineIndent = getNumberingProperty(nListId, GetListLevel(pEntry, pPropertyMap), u"FirstLineIndent"_ustr);
+                                const sal_Int32 nFirstLineIndent = getNumberingProperty(nListId, GetListLevel(pEntry, pParaContext), u"FirstLineIndent"_ustr);
                                 if (nFirstLineIndent != 0)
                                     xParaProps->setPropertyValue(u"ParaFirstLineIndent"_ustr, uno::Any(nFirstLineIndent));
                             }
@@ -3522,7 +3521,7 @@ void DomainMapper_Impl::appendTextPortion( const OUString& rString, const Proper
     {
         applyToggleAttributes(pPropertyMap);
         // If we are in comments, then disable CharGrabBag, comment text doesn't support that.
-        uno::Sequence<beans::PropertyValue> aValues = pPropertyMap->GetPropertyValues(/*bCharGrabBag=*/!IsInComments());
+        uno::Sequence<beans::PropertyValue> aValues = comphelper::containerToSequence(pPropertyMap->GetPropertyValues(/*bCharGrabBag=*/!IsInComments()));
 
         if (IsInTOC() || m_bStartIndex || m_bStartBibliography)
             for( auto& rValue : asNonConstRange(aValues) )
@@ -3578,8 +3577,8 @@ void DomainMapper_Impl::appendTextPortion( const OUString& rString, const Proper
                 {
                     // It is content of hyperlink field. We need to create and remember
                     // character style for later applying to hyperlink
-                    PropertyValueVector_t aProps = comphelper::sequenceToContainer< PropertyValueVector_t >(GetTopContext()->GetPropertyValues());
-                    OUString sHyperlinkStyleName = GetStyleSheetTable()->getOrCreateCharStyle(aProps, /*bAlwaysCreate=*/false);
+                    const PropertyValueVector_t& rProps = GetTopContext()->GetPropertyValues();
+                    OUString sHyperlinkStyleName = GetStyleSheetTable()->getOrCreateCharStyle(rProps, /*bAlwaysCreate=*/false);
                     GetTopFieldContext()->SetHyperlinkStyle(sHyperlinkStyleName);
                 }
 
@@ -4293,7 +4292,7 @@ void DomainMapper_Impl::PushFootOrEndnote( bool bIsFootnote )
         pTopContext->SetFootnote(xFootnote, sFootnoteCharStyleName);
         uno::Sequence< beans::PropertyValue > aFontProperties;
         if (GetTopContextOfType(CONTEXT_CHARACTER))
-            aFontProperties = GetTopContextOfType(CONTEXT_CHARACTER)->GetPropertyValues();
+            aFontProperties = comphelper::containerToSequence(GetTopContextOfType(CONTEXT_CHARACTER)->GetPropertyValues());
         appendTextContent( xFootnote, aFontProperties );
         m_aTextAppendStack.push(TextAppendContext(xFootnote,
                     xFootnote->createTextCursorByRange(xFootnote->getStart())));
@@ -5267,7 +5266,7 @@ bool DomainMapper_Impl::IsSdtEndBefore()
     if(!pContext)
         return false;
     bool bIsSdtEndBefore = false;
-    const uno::Sequence< beans::PropertyValue > currentCharProps = pContext->GetPropertyValues();
+    const std::vector< beans::PropertyValue > & currentCharProps = pContext->GetPropertyValues();
     for (const auto& rCurrentCharProp : currentCharProps)
     {
         if (rCurrentCharProp.Name == "CharInteropGrabBag")
@@ -5547,7 +5546,7 @@ void DomainMapper_Impl::HandleLineBreak(const PropertyMapPtr& pPropertyMap)
     {
         rtl::Reference<SwXLineBreak> xLineBreak = m_xTextDocument->createLineBreak();
         xLineBreak->setPropertyValue(u"Clear"_ustr, uno::Any(*m_StreamStateStack.top().oLineBreakClear));
-        appendTextContent(xLineBreak, pPropertyMap->GetPropertyValues());
+        appendTextContent(xLineBreak, comphelper::containerToSequence(pPropertyMap->GetPropertyValues()));
     }
     m_StreamStateStack.top().oLineBreakClear.reset();
 }
@@ -7010,7 +7009,7 @@ void  DomainMapper_Impl::handleRubyEQField( const FieldContextPtr& pContext)
         pRubyContext->Insert(PROP_CHAR_HEIGHT, aVal);
         pRubyContext->Insert(PROP_CHAR_HEIGHT_ASIAN, aVal);
     }
-    PropertyValueVector_t aProps = comphelper::sequenceToContainer< PropertyValueVector_t >(pRubyContext->GetPropertyValues());
+    PropertyValueVector_t aProps = pRubyContext->GetPropertyValues();
     aInfo.sRubyStyle = m_rDMapper.getOrCreateCharStyle(aProps, /*bAlwaysCreate=*/false);
     PropertyMapPtr pCharContext(new PropertyMap());
     if (m_pLastCharacterContext)
@@ -7279,7 +7278,8 @@ DomainMapper_Impl::StartIndexSectionChecked(std::u16string_view sServiceName)
 {
     if (m_StreamStateStack.top().bParaChanged)
     {
-        finishParagraph(GetTopContextOfType(CONTEXT_PARAGRAPH), false); // resets bParaChanged
+        auto pParaContext = static_cast<ParagraphPropertyMap*>(GetTopContextOfType(CONTEXT_PARAGRAPH).get());
+        finishParagraph(pParaContext, false); // resets bParaChanged
         PopProperties(CONTEXT_PARAGRAPH);
         PushProperties(CONTEXT_PARAGRAPH);
         SetIsFirstRun(true);
@@ -8652,11 +8652,11 @@ void DomainMapper_Impl::CloseFieldCommand()
                             PropertyMapPtr pCharTopContext = GetTopContextOfType(CONTEXT_CHARACTER);
                             if (pCharTopContext.is())
                             {
-                                uno::Sequence<beans::PropertyValue> aContextValues
+                                const std::vector<beans::PropertyValue>& rContextValues
                                     = pCharTopContext->GetPropertyValues(
                                         /*bCharGrabBag=*/!IsInComments());
                                 OUString sFontName = getPropertyName(PROP_CHAR_FONT_NAME);
-                                for (const beans::PropertyValue& rProperty : aContextValues)
+                                for (const beans::PropertyValue& rProperty : rContextValues)
                                 {
                                     if (!bHasFont || !rProperty.Name.startsWith(sFontName))
                                     {
@@ -8756,9 +8756,9 @@ void DomainMapper_Impl::CloseFieldCommand()
                         xFieldInterface->setPropertyValue(u"Fields"_ustr, uno::Any(aValues));
                     }
 
-                    uno::Sequence<beans::PropertyValue> aValues
+                    const std::vector<beans::PropertyValue>& rValues
                         = m_aFieldStack.back()->getProperties()->GetPropertyValues();
-                    appendTextContent(xFieldInterface, aValues);
+                    appendTextContent(xFieldInterface, comphelper::containerToSequence(rValues));
                     pContext->m_bSetCitation = true;
                 }
                 break;
@@ -9189,7 +9189,7 @@ void DomainMapper_Impl::PopFieldContext()
                         if (m_pLastCharacterContext && IsRTFImport())
                             aMap.InsertProps(m_pLastCharacterContext);
                         aMap.InsertProps(m_aFieldStack.back()->getProperties());
-                        appendTextContent(xToInsert, aMap.GetPropertyValues());
+                        appendTextContent(xToInsert, comphelper::containerToSequence(aMap.GetPropertyValues()));
                         CheckRedline( xToInsert->getAnchor( ) );
                     }
                     else
@@ -9998,10 +9998,10 @@ void DomainMapper_Impl::SetCurrentRedlineToken( sal_Int32 nToken )
     m_currentRedline->m_nToken = nToken;
 }
 
-void DomainMapper_Impl::SetCurrentRedlineRevertProperties( const uno::Sequence<beans::PropertyValue>& aProperties )
+void DomainMapper_Impl::SetCurrentRedlineRevertProperties( const std::vector<beans::PropertyValue>& aProperties )
 {
     assert(m_currentRedline);
-    m_currentRedline->m_aRevertProperties = aProperties;
+    m_currentRedline->m_aRevertProperties = comphelper::containerToSequence(aProperties);
 }
 
 

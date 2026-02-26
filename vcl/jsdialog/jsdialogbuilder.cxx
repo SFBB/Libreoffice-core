@@ -933,8 +933,15 @@ JSInstanceBuilder::CreateMessageDialog(weld::Widget* pParent, VclMessageType eMe
     VclPtrInstance<::MessageDialog> xMessageDialog(pParentWidget, rPrimaryMessage, eMessageType,
                                                    eButtonType);
 
+    // SetLOKNotifier() asserts that xMessageDialog has no LOKNotifier already.
+    auto* pExistingNotifier = xMessageDialog->GetLOKNotifier();
     if (pNotifier)
-        xMessageDialog->SetLOKNotifier(pNotifier);
+    {
+        if (!pExistingNotifier)
+            xMessageDialog->SetLOKNotifier(pNotifier);
+        else if (pExistingNotifier != pNotifier)
+            SAL_WARN("vcl", "A different notifier already exists for the MessageDialog");
+    }
 
     pNotifier = xMessageDialog->GetLOKNotifier();
     if (pNotifier)
@@ -1808,6 +1815,24 @@ void JSTreeView::collapse_row(const weld::TreeIter& rIter)
 
     if (bNotify)
         sendUpdate();
+}
+
+void JSTreeView::set_sort_order(bool bAscending)
+{
+    SalInstanceTreeView::set_sort_order(bAscending);
+    sendUpdate();
+}
+
+void JSTreeView::set_sort_indicator(TriState eState, int col)
+{
+    SalInstanceTreeView::set_sort_indicator(eState, col);
+    sendUpdate();
+}
+
+void JSTreeView::set_sort_column(int col)
+{
+    SalInstanceTreeView::set_sort_column(col);
+    sendUpdate();
 }
 
 void JSTreeView::render_entry(int pos, int dpix, int dpiy)

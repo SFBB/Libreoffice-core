@@ -2371,7 +2371,9 @@ static void ImplDrawDropdownArrow(vcl::RenderContext& rRenderContext, const tool
 
     if ( bSetColor )
     {
-        if (rRenderContext.GetSettings().GetStyleSettings().GetFaceColor().IsDark())
+        const StyleSettings& rStyleSettings = rRenderContext.GetSettings().GetStyleSettings();
+
+        if (rStyleSettings.GetFaceColor().IsDark() || rStyleSettings.GetHighContrastMode())
             rRenderContext.SetFillColor(COL_WHITE);
         else
             rRenderContext.SetFillColor(COL_BLACK);
@@ -2521,9 +2523,10 @@ void ToolBox::ImplDrawButton(vcl::RenderContext& rRenderContext, const tools::Re
                                               rRect, nState, aControlValue, OUString() );
     }
 
-    if (!bNativeOk)
-        vcl::RenderTools::DrawSelectionBackground(rRenderContext, *this, rRect, bIsWindow ? 3 : highlight,
-                                                  bChecked, true, bIsWindow, nullptr, 2);
+    if (!bNativeOk) {
+        rRenderContext.DrawSelectionBackground(rRect, GetBackgroundColor(), bIsWindow ? 3 : highlight,
+                                               bChecked, true, bIsWindow, nullptr, 2);
+    }
 }
 
 void ToolBox::ImplDrawItem(vcl::RenderContext& rRenderContext, ImplToolItems::size_type nPos, sal_uInt16 nHighlight)
@@ -2597,12 +2600,6 @@ void ToolBox::ImplDrawItem(vcl::RenderContext& rRenderContext, ImplToolItems::si
         const Image* pImage = &(pItem->maImage);
         aImageSize = pImage->GetSizePixel();
 
-        // determine drawing flags
-        DrawImageFlags nImageStyle = DrawImageFlags::NONE;
-
-        if ( !pItem->mbEnabled || !IsEnabled() )
-            nImageStyle |= DrawImageFlags::Disable;
-
         // #i35563# the dontknow state indicates different states at the same time
         // which should not be rendered disabled but normal
 
@@ -2632,6 +2629,14 @@ void ToolBox::ImplDrawItem(vcl::RenderContext& rRenderContext, ImplToolItems::si
                 ImplDrawButton(rRenderContext, aButtonRect, nHighlight, pItem->meState == TRISTATE_TRUE,
                                pItem->mbEnabled && IsEnabled(), pItem->mbShowWindow);
         }
+
+        // determine drawing flags
+        DrawImageFlags nImageStyle = DrawImageFlags::NONE;
+        if ( nHighlight && rStyleSettings.GetHighContrastMode() )
+            nImageStyle |= DrawImageFlags::Invert;
+        else if ( !pItem->mbEnabled || !IsEnabled() )
+            nImageStyle |= DrawImageFlags::Disable;
+
         rRenderContext.DrawImage(Point( nImageOffX, nImageOffY ), *pImage, nImageStyle);
     }
 

@@ -3535,8 +3535,6 @@ extensions/source/propctrlr/pcrcommon.hxx
 extensions/source/propctrlr/pcrstrings.hxx
 extensions/source/propctrlr/pcrunodialogs.cxx
 extensions/source/propctrlr/pcrunodialogs.hxx
-extensions/source/propctrlr/propcontroller.cxx
-extensions/source/propctrlr/propcontroller.hxx
 extensions/source/propctrlr/propcontrolobserver.hxx
 extensions/source/propctrlr/propertycomposer.cxx
 extensions/source/propctrlr/propertycomposer.hxx
@@ -3549,11 +3547,8 @@ extensions/source/propctrlr/propertyhandler.hxx
 extensions/source/propctrlr/propertyinfo.hxx
 extensions/source/propctrlr/propeventtranslation.cxx
 extensions/source/propctrlr/propeventtranslation.hxx
-extensions/source/propctrlr/proplinelistener.hxx
 extensions/source/propctrlr/pushbuttonnavigation.cxx
 extensions/source/propctrlr/pushbuttonnavigation.hxx
-extensions/source/propctrlr/selectlabeldialog.cxx
-extensions/source/propctrlr/selectlabeldialog.hxx
 extensions/source/propctrlr/sqlcommanddesign.cxx
 extensions/source/propctrlr/sqlcommanddesign.hxx
 extensions/source/propctrlr/standardcontrol.cxx

@@ -39,6 +39,12 @@
 
 #include <comphelper/fileformat.h>
 #include <comphelper/fileurl.hxx>
+#include <comphelper/scopeguard.hxx>
+
+#include <unicode/ucsdet.h>
+
+#include <frozen/bits/elsa_std.h>
+#include <frozen/unordered_map.h>
 
 static void swapNibbles(unsigned char &c)
 {
@@ -277,7 +283,7 @@ SvStream::SvStream() :
 #else
    , m_eLineDelimiter(LINEEND_CRLF) // DOS-Format
 #endif
-   , m_eStreamCharSet(osl_getThreadTextEncoding())
+   , m_eStreamEncoding(osl_getThreadTextEncoding())
 
    , m_nCryptMask(0)
 
@@ -378,12 +384,12 @@ void SvStream::ResetError()
     ClearError();
 }
 
-bool SvStream::ReadByteStringLine( OUString& rStr, rtl_TextEncoding eSrcCharSet,
+bool SvStream::ReadByteStringLine( OUString& rStr, rtl_TextEncoding eSrcEncoding,
                                        sal_Int32 nMaxBytesToRead )
 {
     OStringBuffer aStr;
     bool bRet = ReadLine( aStr, nMaxBytesToRead);
-    rStr = OStringToOUString(aStr, eSrcCharSet);
+    rStr = OStringToOUString(aStr, eSrcEncoding);
     return bRet;
 }
 
@@ -554,13 +560,13 @@ bool SvStream::ReadUniStringLine( OUString& rStr, sal_Int32 nMaxCodepointsToRead
     return bEnd;
 }
 
-bool SvStream::ReadUniOrByteStringLine( OUString& rStr, rtl_TextEncoding eSrcCharSet,
+bool SvStream::ReadUniOrByteStringLine( OUString& rStr, rtl_TextEncoding eSrcEncoding,
                                             sal_Int32 nMaxCodepointsToRead )
 {
-    if ( eSrcCharSet == RTL_TEXTENCODING_UNICODE )
+    if (eSrcEncoding == RTL_TEXTENCODING_UNICODE)
         return ReadUniStringLine( rStr, nMaxCodepointsToRead );
     else
-        return ReadByteStringLine( rStr, eSrcCharSet, nMaxCodepointsToRead );
+        return ReadByteStringLine(rStr, eSrcEncoding, nMaxCodepointsToRead);
 }
 
 OString read_zeroTerminated_uInt8s_ToOString(SvStream& rStream)
@@ -634,9 +640,9 @@ static std::size_t write_uInt16s_FromOUString(SvStream& rStrm, std::u16string_vi
     return nWritten;
 }
 
-bool SvStream::WriteUnicodeOrByteText(std::u16string_view rStr, rtl_TextEncoding eDestCharSet, bool bZero)
+bool SvStream::WriteUnicodeOrByteText(std::u16string_view rStr, rtl_TextEncoding eDestEncoding, bool bZero)
 {
-    if ( eDestCharSet == RTL_TEXTENCODING_UNICODE )
+    if (eDestEncoding == RTL_TEXTENCODING_UNICODE)
     {
         write_uInt16s_FromOUString(*this, rStr, rStr.size());
         if (bZero)
@@ -644,7 +650,7 @@ bool SvStream::WriteUnicodeOrByteText(std::u16string_view rStr, rtl_TextEncoding
     }
     else
     {
-        OString aStr(OUStringToOString(rStr, eDestCharSet));
+        OString aStr(OUStringToOString(rStr, eDestEncoding));
         WriteBytes(aStr.getStr(), aStr.getLength());
         if (bZero)
             WriteChar(0);
@@ -652,9 +658,9 @@ bool SvStream::WriteUnicodeOrByteText(std::u16string_view rStr, rtl_TextEncoding
     return m_nError == ERRCODE_NONE;
 }
 
-bool SvStream::WriteByteStringLine( std::u16string_view rStr, rtl_TextEncoding eDestCharSet )
+bool SvStream::WriteByteStringLine(std::u16string_view rStr, rtl_TextEncoding eDestEncoding)
 {
-    return WriteLine(OUStringToOString(rStr, eDestCharSet));
+    return WriteLine(OUStringToOString(rStr, eDestEncoding));
 }
 
 bool SvStream::WriteLine(std::string_view rStr)
@@ -664,13 +670,13 @@ bool SvStream::WriteLine(std::string_view rStr)
     return m_nError == ERRCODE_NONE;
 }
 
-bool SvStream::WriteUniOrByteChar( sal_Unicode ch, rtl_TextEncoding eDestCharSet )
+bool SvStream::WriteUniOrByteChar(sal_Unicode ch, rtl_TextEncoding eDestEncoding)
 {
-    if ( eDestCharSet == RTL_TEXTENCODING_UNICODE )
+    if (eDestEncoding == RTL_TEXTENCODING_UNICODE)
         WriteUnicode(ch);
     else
     {
-        OString aStr(&ch, 1, eDestCharSet);
+        OString aStr(&ch, 1, eDestEncoding);
         WriteBytes(aStr.getStr(), aStr.getLength());
     }
     return m_nError == ERRCODE_NONE;
@@ -685,11 +691,11 @@ void SvStream::StartWritingUnicodeText()
     WriteUInt16(0xfeff);
 }
 
-void SvStream::StartReadingUnicodeText( rtl_TextEncoding eReadBomCharSet )
+void SvStream::StartReadingUnicodeText(rtl_TextEncoding eReadBomEncoding)
 {
-    if (!(  eReadBomCharSet == RTL_TEXTENCODING_DONTKNOW ||
-            eReadBomCharSet == RTL_TEXTENCODING_UNICODE ||
-            eReadBomCharSet == RTL_TEXTENCODING_UTF8))
+    if (!(  eReadBomEncoding == RTL_TEXTENCODING_DONTKNOW ||
+            eReadBomEncoding == RTL_TEXTENCODING_UNICODE ||
+            eReadBomEncoding == RTL_TEXTENCODING_UTF8))
         return;    // nothing to read
 
     const sal_uInt64 nOldPos = Tell();
@@ -699,8 +705,8 @@ void SvStream::StartReadingUnicodeText( rtl_TextEncoding eReadBomCharSet )
     switch ( nFlag )
     {
         case 0xfe: // UTF-16BE?
-            if (    eReadBomCharSet == RTL_TEXTENCODING_DONTKNOW ||
-                    eReadBomCharSet == RTL_TEXTENCODING_UNICODE)
+            if (    eReadBomEncoding == RTL_TEXTENCODING_DONTKNOW ||
+                    eReadBomEncoding == RTL_TEXTENCODING_UNICODE)
             {
                 ReadUChar(nFlag);
                 if (nFlag == 0xff)
@@ -711,8 +717,8 @@ void SvStream::StartReadingUnicodeText( rtl_TextEncoding eReadBomCharSet )
             }
         break;
         case 0xff: // UTF-16LE?
-            if (    eReadBomCharSet == RTL_TEXTENCODING_DONTKNOW ||
-                    eReadBomCharSet == RTL_TEXTENCODING_UNICODE)
+            if (    eReadBomEncoding == RTL_TEXTENCODING_DONTKNOW ||
+                    eReadBomEncoding == RTL_TEXTENCODING_UNICODE)
             {
                 ReadUChar(nFlag);
                 if (nFlag == 0xfe)
@@ -723,8 +729,8 @@ void SvStream::StartReadingUnicodeText( rtl_TextEncoding eReadBomCharSet )
             }
         break;
         case 0xef: // UTF-8?
-            if (    eReadBomCharSet == RTL_TEXTENCODING_DONTKNOW ||
-                    eReadBomCharSet == RTL_TEXTENCODING_UTF8)
+            if (    eReadBomEncoding == RTL_TEXTENCODING_DONTKNOW ||
+                    eReadBomEncoding == RTL_TEXTENCODING_UTF8)
             {
                 ReadUChar(nFlag);
                 if (nFlag == 0xbb)
@@ -740,6 +746,100 @@ void SvStream::StartReadingUnicodeText( rtl_TextEncoding eReadBomCharSet )
     }
     if (bGetBack)
         Seek(nOldPos);      // no BOM, pure data
+}
+
+void SvStream::DetectEncoding()
+{
+    static constexpr auto mapEncodings
+        = frozen::make_unordered_map<std::string_view, rtl_TextEncoding>({
+            { "UTF-8", RTL_TEXTENCODING_UTF8 },
+            { "UTF-16BE", RTL_TEXTENCODING_UCS2 },
+            { "UTF-16LE", RTL_TEXTENCODING_UCS2 },
+            //{ "UTF-32BE", RTL_TEXTENCODING_UCS4 },
+            //{ "UTF-32LE", RTL_TEXTENCODING_UCS4 },
+            { "Shift_JIS", RTL_TEXTENCODING_SHIFT_JIS },
+            { "ISO-2022-JP", RTL_TEXTENCODING_ISO_2022_JP },
+            { "ISO-2022-CN", RTL_TEXTENCODING_ISO_2022_CN },
+            { "ISO-2022-KR", RTL_TEXTENCODING_ISO_2022_KR },
+            { "GB18030", RTL_TEXTENCODING_GB_18030 },
+            { "Big5", RTL_TEXTENCODING_BIG5 },
+            { "EUC-JP", RTL_TEXTENCODING_EUC_JP },
+            { "EUC-KR", RTL_TEXTENCODING_EUC_KR },
+            { "ISO-8859-1", RTL_TEXTENCODING_ISO_8859_1 },
+            { "ISO-8859-2", RTL_TEXTENCODING_ISO_8859_2 },
+            { "ISO-8859-5", RTL_TEXTENCODING_ISO_8859_5 },
+            { "ISO-8859-6", RTL_TEXTENCODING_ISO_8859_6 },
+            { "ISO-8859-7", RTL_TEXTENCODING_ISO_8859_7 },
+            { "ISO-8859-8", RTL_TEXTENCODING_ISO_8859_8 },
+            { "ISO-8859-9", RTL_TEXTENCODING_ISO_8859_9 },
+            { "windows-1250", RTL_TEXTENCODING_MS_1250 },
+            { "windows-1251", RTL_TEXTENCODING_MS_1251 },
+            { "windows-1252", RTL_TEXTENCODING_MS_1252 },
+            { "windows-1253", RTL_TEXTENCODING_MS_1253 },
+            { "windows-1254", RTL_TEXTENCODING_MS_1254 },
+            { "windows-1255", RTL_TEXTENCODING_MS_1255 },
+            { "windows-1256", RTL_TEXTENCODING_MS_1256 },
+            { "KOI8-R", RTL_TEXTENCODING_KOI8_R },
+        });
+
+    const sal_uInt64 nOrigPos = Tell();
+    SetStreamEncoding(RTL_TEXTENCODING_DONTKNOW);
+    StartReadingUnicodeText(RTL_TEXTENCODING_DONTKNOW);
+    if (!good())
+        return;
+
+    const sal_uInt64 nBomSize = Tell() - nOrigPos;
+    if (nBomSize == 2)
+    {
+        SetStreamEncoding(RTL_TEXTENCODING_UCS2);
+        return;
+    }
+    if (nBomSize == 3)
+    {
+        SetStreamEncoding(RTL_TEXTENCODING_UTF8);
+        return;
+    }
+
+    assert(nBomSize == 0); // we are at nOrigPos
+    char bytes[4096] = { 0 };
+    size_t nRead = ReadBytes(bytes, sizeof(bytes));
+    Seek(nOrigPos);
+    ResetError();
+
+    if (nRead == 0)
+        return;
+
+    UErrorCode uerr = U_ZERO_ERROR;
+    UCharsetDetector* ucd = ucsdet_open(&uerr);
+    if (!U_SUCCESS(uerr))
+        return;
+    comphelper::ScopeGuard ucsdet_close_guard([ucd] { ucsdet_close(ucd); });
+
+    ucsdet_setText(ucd, bytes, nRead, &uerr);
+    if (!U_SUCCESS(uerr))
+        return;
+
+    const UCharsetMatch* match = ucsdet_detect(ucd, &uerr);
+    if (!U_SUCCESS(uerr))
+        return;
+
+    const char* pEncodingName = ucsdet_getName(match, &uerr);
+    if (!U_SUCCESS(uerr) || !pEncodingName)
+        return;
+
+    const auto it = mapEncodings.find(pEncodingName);
+    if (it == mapEncodings.end())
+        return;
+
+    rtl_TextEncoding eEncoding = it->second;
+    SetStreamEncoding(eEncoding);
+    if (eEncoding == RTL_TEXTENCODING_UCS2)
+    {
+        if (it->first == "UTF-16LE")
+            SetEndian(SvStreamEndian::LITTLE);
+        else if (it->first == "UTF-16BE")
+            SetEndian(SvStreamEndian::BIG);
+    }
 }
 
 sal_uInt64 SvStream::SeekRel(sal_Int64 const nPos)
@@ -1033,21 +1133,21 @@ sal_uInt64 SvStream::WriteStream( SvStream& rStream, sal_uInt64 nSize )
     return nSize - nWriteSize;
 }
 
-OUString SvStream::ReadUniOrByteString( rtl_TextEncoding eSrcCharSet )
+OUString SvStream::ReadUniOrByteString(rtl_TextEncoding eSrcEncoding)
 {
     // read UTF-16 string directly from stream ?
-    if (eSrcCharSet == RTL_TEXTENCODING_UNICODE)
+    if (eSrcEncoding == RTL_TEXTENCODING_UNICODE)
         return read_uInt32_lenPrefixed_uInt16s_ToOUString(*this);
-    return read_uInt16_lenPrefixed_uInt8s_ToOUString(*this, eSrcCharSet);
+    return read_uInt16_lenPrefixed_uInt8s_ToOUString(*this, eSrcEncoding);
 }
 
-SvStream& SvStream::WriteUniOrByteString( std::u16string_view rStr, rtl_TextEncoding eDestCharSet )
+SvStream& SvStream::WriteUniOrByteString(std::u16string_view rStr, rtl_TextEncoding eDestEncoding)
 {
     // write UTF-16 string directly into stream ?
-    if (eDestCharSet == RTL_TEXTENCODING_UNICODE)
+    if (eDestEncoding == RTL_TEXTENCODING_UNICODE)
         write_uInt32_lenPrefixed_uInt16s_FromOUString(*this, rStr);
     else
-        write_uInt16_lenPrefixed_uInt8s_FromOUString(*this, rStr, eDestCharSet);
+        write_uInt16_lenPrefixed_uInt8s_FromOUString(*this, rStr, eDestEncoding);
     return *this;
 }
 
@@ -1445,7 +1545,7 @@ SvStream& endlu( SvStream& rStrm )
 
 SvStream& endlub( SvStream& rStrm )
 {
-    if ( rStrm.GetStreamCharSet() == RTL_TEXTENCODING_UNICODE )
+    if (rStrm.GetStreamEncoding() == RTL_TEXTENCODING_UNICODE)
         return endlu( rStrm );
     else
         return endl( rStrm );
@@ -1546,6 +1646,8 @@ std::size_t SvMemoryStream::PutData( const void* pData, std::size_t nCount )
         }
         else
         {
+            const bool bSourceDataIsInsideBuffer = pData >= pBuf && pData <= (pBuf + nSize);
+            std::ptrdiff_t const offset = bSourceDataIsInsideBuffer ? static_cast<const char*>(pData) - reinterpret_cast<const char*>(pBuf) : 0;
             tools::Long nNewResize;
             if( nSize && nSize > nResize )
                 nNewResize = nSize;
@@ -1572,6 +1674,8 @@ std::size_t SvMemoryStream::PutData( const void* pData, std::size_t nCount )
                     SetError( SVSTREAM_WRITE_ERROR );
                 }
             }
+            if (bSourceDataIsInsideBuffer)
+                pData = pBuf + offset;
         }
     }
     assert(pBuf && "Possibly Reallocate failed");

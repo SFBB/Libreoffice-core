@@ -32,7 +32,6 @@
 #include <unotools/tempfile.hxx>
 #include <vcl/filter/pdfdocument.hxx>
 #include <tools/zcodec.hxx>
-#include <tools/XmlWalker.hxx>
 #include <vcl/graphicfilter.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <unotools/streamwrap.hxx>
@@ -75,6 +74,10 @@ void PdfExportTest2::registerNamespaces(xmlXPathContextPtr& pXmlXpathCtx)
     xmlXPathRegisterNs(pXmlXpathCtx, BAD_CAST("rdf"),
                        BAD_CAST("http://www.w3.org/1999/02/22-rdf-syntax-ns#"));
     xmlXPathRegisterNs(pXmlXpathCtx, BAD_CAST("dc"), BAD_CAST("http://purl.org/dc/elements/1.1/"));
+    xmlXPathRegisterNs(pXmlXpathCtx, BAD_CAST("pdfuaid"),
+                       BAD_CAST("http://www.aiim.org/pdfua/ns/id/"));
+    xmlXPathRegisterNs(pXmlXpathCtx, BAD_CAST("pdfaid"),
+                       BAD_CAST("http://www.aiim.org/pdfa/ns/id/"));
 }
 
 CPPUNIT_TEST_FIXTURE(PdfExportTest2, testTdf160705)
@@ -1491,51 +1494,50 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest2, testPdfUaMetadata)
     CPPUNIT_ASSERT(pStreamObject);
     auto& rStream = pStreamObject->GetMemory();
     rStream.Seek(0);
+    xmlDocUniquePtr pXmlDoc = parseXmlStream(&rStream);
+    CPPUNIT_ASSERT(pXmlDoc);
 
-    // Search for the PDF/UA marker in the metadata
+    assertXPathContent(pXmlDoc, "/x:xmpmeta/rdf:RDF/rdf:Description[1]/pdfuaid:part", u"1");
+}
 
-    tools::XmlWalker aWalker;
-    CPPUNIT_ASSERT(aWalker.open(&rStream));
-    CPPUNIT_ASSERT_EQUAL(std::string_view("xmpmeta"), aWalker.name());
+CPPUNIT_TEST_FIXTURE(PdfExportTest2, testTdf153472)
+{
+    // Use PDF/A-1b
+    uno::Sequence<beans::PropertyValue> aFilterData(
+        comphelper::InitPropertySequence({ { "SelectPdfVersion", uno::Any(sal_Int32(1)) } }));
+    comphelper::SequenceAsHashMap aMediaDescriptor;
+    aMediaDescriptor[u"FilterData"_ustr] <<= aFilterData;
 
-    bool bPdfUaMarkerFound = false;
-    OString aPdfUaPart;
+    vcl::filter::PDFDocument aDocument;
+    loadFromURL(u"private:factory/swriter"_ustr);
+    skipValidation();
+    save(TestFilter::PDF_WRITER, aMediaDescriptor.getAsConstPropertyValueList());
 
-    aWalker.children();
-    while (aWalker.isValid())
-    {
-        if (aWalker.name() == "RDF"
-            && aWalker.namespaceHref() == "http://www.w3.org/1999/02/22-rdf-syntax-ns#")
-        {
-            aWalker.children();
-            while (aWalker.isValid())
-            {
-                if (aWalker.name() == "Description"
-                    && aWalker.namespaceHref() == "http://www.w3.org/1999/02/22-rdf-syntax-ns#")
-                {
-                    aWalker.children();
-                    while (aWalker.isValid())
-                    {
-                        if (aWalker.name() == "part"
-                            && aWalker.namespaceHref() == "http://www.aiim.org/pdfua/ns/id/")
-                        {
-                            aPdfUaPart = aWalker.content();
-                            bPdfUaMarkerFound = true;
-                        }
-                        aWalker.next();
-                    }
-                    aWalker.parent();
-                }
-                aWalker.next();
-            }
-            aWalker.parent();
-        }
-        aWalker.next();
-    }
-    aWalker.parent();
+    // Parse the export result.
+    SvFileStream aStream(maTempFile.GetURL(), StreamMode::READ);
+    CPPUNIT_ASSERT(aDocument.Read(aStream));
 
-    CPPUNIT_ASSERT(bPdfUaMarkerFound);
-    CPPUNIT_ASSERT_EQUAL("1"_ostr, aPdfUaPart);
+    auto* pCatalog = aDocument.GetCatalog();
+    CPPUNIT_ASSERT(pCatalog);
+    auto* pCatalogDictionary = pCatalog->GetDictionary();
+    CPPUNIT_ASSERT(pCatalogDictionary);
+    auto* pMetadataObject = pCatalogDictionary->LookupObject("Metadata"_ostr);
+    CPPUNIT_ASSERT(pMetadataObject);
+    auto* pMetadataDictionary = pMetadataObject->GetDictionary();
+    auto* pType = dynamic_cast<vcl::filter::PDFNameElement*>(
+        pMetadataDictionary->LookupElement("Type"_ostr));
+    CPPUNIT_ASSERT(pType);
+    CPPUNIT_ASSERT_EQUAL("Metadata"_ostr, pType->GetValue());
+
+    auto* pStreamObject = pMetadataObject->GetStream();
+    CPPUNIT_ASSERT(pStreamObject);
+    auto& rStream = pStreamObject->GetMemory();
+    rStream.Seek(0);
+    xmlDocUniquePtr pXmlDoc = parseXmlStream(&rStream);
+    CPPUNIT_ASSERT(pXmlDoc);
+
+    assertXPathContent(pXmlDoc, "/x:xmpmeta/rdf:RDF/rdf:Description[1]/pdfaid:part", u"1");
+    assertXPathContent(pXmlDoc, "/x:xmpmeta/rdf:RDF/rdf:Description[1]/pdfaid:conformance", u"B");
 }
 
 CPPUNIT_TEST_FIXTURE(PdfExportTest2, testTdf139736)
@@ -1644,6 +1646,19 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest2, testTdf139736)
     CPPUNIT_ASSERT_EQUAL(1, nTagged); // text in body
     // 1 image and 1 frame and 1 header text; arbitrary number of aux stuff like borders
     CPPUNIT_ASSERT_GREATEREQUAL(3, nArtifacts);
+}
+
+CPPUNIT_TEST_FIXTURE(PdfExportTest2, testTdf168057)
+{
+    uno::Sequence<beans::PropertyValue> aFilterData(
+        comphelper::InitPropertySequence({ { "PDFUACompliance", uno::Any(true) },
+                                           { "SelectPdfVersion", uno::Any(sal_Int32(20)) } }));
+    comphelper::SequenceAsHashMap aMediaDescriptor;
+    aMediaDescriptor[u"FilterData"_ustr] <<= aFilterData;
+    vcl::filter::PDFDocument aDocument;
+    loadFromFile(u"tdf168057.odt");
+    // Without the fix in place, the validation would have failed
+    save(TestFilter::PDF_WRITER, aMediaDescriptor.getAsConstPropertyValueList());
 }
 
 CPPUNIT_TEST_FIXTURE(PdfExportTest2, testTdf152231)

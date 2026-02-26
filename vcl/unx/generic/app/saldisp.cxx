@@ -131,9 +131,7 @@ sal_GetServerVendor( Display *p_display )
     return vendor_unknown;
 }
 
-bool SalDisplay::BestVisual( Display     *pDisplay,
-                             int          nScreen,
-                             XVisualInfo &rVI )
+bool SalX11Display::BestVisual(Display* pDisplay, int nScreen, XVisualInfo& rVI)
 {
     VisualID nDefVID = XVisualIDFromVisual( DefaultVisual( pDisplay, nScreen ) );
     VisualID    nVID = 0;
@@ -190,7 +188,45 @@ bool SalDisplay::BestVisual( Display     *pDisplay,
     return rVI.visualid == nDefVID;
 }
 
-SalDisplay::SalDisplay( Display *display ) :
+static int DisplayHasEvent(int fd, void* data)
+{
+    auto pDisplay = static_cast<SalX11Display*>(data);
+    SAL_WARN_IF(ConnectionNumber(pDisplay->GetDisplay()) != fd, "vcl",
+                "wrong fd in DisplayHasEvent");
+    if (!pDisplay->IsDisplay())
+        return 0;
+
+    bool result;
+
+    SolarMutexGuard aGuard;
+    result = pDisplay->IsEvent();
+    return int(result);
+}
+
+static int DisplayQueue(int fd, void* data)
+{
+    auto pDisplay = static_cast<SalX11Display*>(data);
+    SAL_WARN_IF(ConnectionNumber(pDisplay->GetDisplay()) != fd, "vcl",
+                "wrong fd in DisplayHasEvent");
+    int result;
+
+    SolarMutexGuard aGuard;
+    result = XEventsQueued(pDisplay->GetDisplay(), QueuedAfterReading);
+    return result;
+}
+
+static int DisplayYield(int fd, void* data)
+{
+    auto pDisplay = static_cast<SalX11Display*>(data);
+    SAL_WARN_IF(ConnectionNumber(pDisplay->GetDisplay()) != fd, "vcl",
+                "wrong fd in DisplayHasEvent");
+
+    SolarMutexGuard aGuard;
+    pDisplay->Yield();
+    return 1;
+}
+
+SalX11Display::SalX11Display(Display* display) :
         pXLib_( nullptr ),
         mpKbdExtension( nullptr ),
         pDisp_( display ),
@@ -206,35 +242,43 @@ SalDisplay::SalDisplay( Display *display ) :
         m_nLastUserEventTime( CurrentTime )
 {
 #if OSL_DEBUG_LEVEL > 1
-    SAL_INFO("vcl.app", "SalDisplay::SalDisplay().");
+    SAL_INFO("vcl.app", "SalX11Display::SalX11Display().");
 #endif
     GenericUnixSalData *pData = GetGenericUnixSalData();
 
-    SAL_WARN_IF(  pData->GetDisplay(), "vcl", "Second SalDisplay created !!!" );
+    SAL_WARN_IF(  pData->GetDisplay(), "vcl", "Second SalX11Display created !!!" );
     pData->SetDisplay( this );
 
     m_nXDefaultScreen = SalX11Screen( DefaultScreen( pDisp_ ) );
+
+    Init();
+
+    pXLib_ = GetX11SalData()->GetLib();
+    pXLib_->Insert( ConnectionNumber( pDisp_ ),
+                   this,
+                   reinterpret_cast<YieldFunc>(DisplayHasEvent),
+                   reinterpret_cast<YieldFunc>(DisplayQueue),
+                   reinterpret_cast<YieldFunc>(DisplayYield) );
 }
 
-SalDisplay::~SalDisplay()
+SalX11Display::~SalX11Display()
 {
 #if OSL_DEBUG_LEVEL > 1
-    SAL_INFO("vcl.app", "SalDisplay::~SalDisplay().");
+    SAL_INFO("vcl.app", "SalX11Display::~SalX11Display().");
 #endif
     if( pDisp_ )
     {
         doDestruct();
-#if OSL_DEBUG_LEVEL > 1
-        SAL_INFO("vcl.app", "display " << pDisp_ << " closed.");
-#endif
+        XCloseDisplay( pDisp_ );
         pDisp_ = nullptr;
     }
+
     // don't do this in doDestruct since RandR extension adds hooks into Display
     // that is XCloseDisplay still needs the RandR library if it was used
     DeInitRandR();
 }
 
-void SalDisplay::doDestruct()
+void SalX11Display::doDestruct()
 {
     GenericUnixSalData *pData = GetGenericUnixSalData();
 
@@ -281,77 +325,13 @@ void SalDisplay::doDestruct()
         pData->SetDisplay( nullptr );
 }
 
-static int DisplayHasEvent( int fd, void * data )
-{
-  auto pDisplay = static_cast<SalX11Display *>(data);
-  SAL_WARN_IF( ConnectionNumber( pDisplay->GetDisplay() ) != fd, "vcl",
-              "wrong fd in DisplayHasEvent" );
-  if( ! pDisplay->IsDisplay() )
-      return 0;
-
-  bool result;
-
-  SolarMutexGuard aGuard;
-  result = pDisplay->IsEvent();
-  return int(result);
-}
-static int DisplayQueue( int fd, void * data )
-{
-  auto pDisplay = static_cast<SalX11Display *>(data);
-  SAL_WARN_IF( ConnectionNumber( pDisplay->GetDisplay() ) != fd, "vcl",
-              "wrong fd in DisplayHasEvent" );
-  int result;
-
-  SolarMutexGuard aGuard;
-  result =  XEventsQueued( pDisplay->GetDisplay(),
-                        QueuedAfterReading );
-  return result;
-}
-static int DisplayYield( int fd, void * data )
-{
-  auto pDisplay = static_cast<SalX11Display *>(data);
-  SAL_WARN_IF( ConnectionNumber( pDisplay->GetDisplay() ) != fd, "vcl",
-              "wrong fd in DisplayHasEvent" );
-
-  SolarMutexGuard aGuard;
-  pDisplay->Yield();
-  return 1;
-}
-
-SalX11Display::SalX11Display( Display *display )
-        : SalDisplay( display )
-{
-    Init();
-
-    pXLib_ = GetX11SalData()->GetLib();
-    pXLib_->Insert( ConnectionNumber( pDisp_ ),
-                    this,
-                    reinterpret_cast<YieldFunc>(DisplayHasEvent),
-                    reinterpret_cast<YieldFunc>(DisplayQueue),
-                    reinterpret_cast<YieldFunc>(DisplayYield) );
-}
-
-SalX11Display::~SalX11Display()
-{
-#if OSL_DEBUG_LEVEL > 1
-    SAL_INFO("vcl.app", "SalX11Display::~SalX11Display().");
-#endif
-    if( pDisp_ )
-    {
-        doDestruct();
-        XCloseDisplay( pDisp_ );
-        pDisp_ = nullptr;
-    }
-}
-
 void SalX11Display::TriggerUserEventProcessing()
 {
     if( pXLib_ )
         pXLib_->TriggerUserEventProcessing();
 }
 
-SalDisplay::ScreenData *
-SalDisplay::initScreen( SalX11Screen nXScreen ) const
+SalX11Display::ScreenData* SalX11Display::initScreen(SalX11Screen nXScreen) const
 {
     if( nXScreen.getXScreen() >= m_aScreens.size() )
         nXScreen = m_nXDefaultScreen;
@@ -363,7 +343,7 @@ SalDisplay::initScreen( SalX11Screen nXScreen ) const
     XVisualInfo aVI;
     Colormap    aColMap;
 
-    if( SalDisplay::BestVisual( pDisp_, nXScreen.getXScreen(), aVI ) ) // DefaultVisual
+    if (SalX11Display::BestVisual(pDisp_, nXScreen.getXScreen(), aVI)) // DefaultVisual
         aColMap = DefaultColormap( pDisp_, nXScreen.getXScreen() );
     else
         aColMap = XCreateColormap( pDisp_,
@@ -482,7 +462,7 @@ SalDisplay::initScreen( SalX11Screen nXScreen ) const
     return pSD;
 }
 
-void SalDisplay::Init()
+void SalX11Display::Init()
 {
     for( Cursor & aCsr : aPointerCache_ )
         aCsr = None;
@@ -556,20 +536,20 @@ void SalDisplay::Init()
 
 void SalX11Display::SetupInput()
 {
-    GetGenericUnixSalData()->ErrorTrapPush();
+    GetX11SalData()->ErrorTrapPush();
     SalI18N_KeyboardExtension *pKbdExtension = new SalI18N_KeyboardExtension( pDisp_ );
     XSync( pDisp_, False );
 
-    bool bError = GetGenericUnixSalData()->ErrorTrapPop( false );
-    GetGenericUnixSalData()->ErrorTrapPush();
+    bool bError = GetX11SalData()->ErrorTrapPop(false);
+    GetX11SalData()->ErrorTrapPush();
     pKbdExtension->UseExtension( ! bError );
-    GetGenericUnixSalData()->ErrorTrapPop();
+    GetX11SalData()->ErrorTrapPop();
 
     SetKbdExtension( pKbdExtension );
 }
 
 // Sound
-void SalDisplay::Beep() const
+void SalX11Display::Beep() const
 {
     XBell( pDisp_, 100 );
 }
@@ -611,7 +591,7 @@ unsigned int GetKeySymMask(Display* dpy, KeySym nKeySym)
 
 }
 
-void SalDisplay::SimulateKeyPress( sal_uInt16 nKeyCode )
+void SalX11Display::SimulateKeyPress(sal_uInt16 nKeyCode)
 {
     if (nKeyCode != KEY_CAPSLOCK)
         return;
@@ -630,7 +610,7 @@ void SalDisplay::SimulateKeyPress( sal_uInt16 nKeyCode )
         XkbLockModifiers (dpy, XkbUseCoreKbd, nMask, nMask);
 }
 
-KeyIndicatorState SalDisplay::GetIndicatorState() const
+KeyIndicatorState SalX11Display::GetIndicatorState() const
 {
     unsigned int _state = 0;
     KeyIndicatorState nState = KeyIndicatorState::NONE;
@@ -646,7 +626,7 @@ KeyIndicatorState SalDisplay::GetIndicatorState() const
     return nState;
 }
 
-OUString SalDisplay::GetKeyNameFromKeySym( KeySym nKeySym ) const
+OUString SalX11Display::GetKeyNameFromKeySym(KeySym nKeySym) const
 {
     OUString aLang = Application::GetSettings().GetUILanguageTag().getLanguage();
     OUString aRet;
@@ -690,7 +670,7 @@ static KeySym sal_XModifier2Keysym( Display         *pDisplay,
                              0,0 );
 }
 
-void SalDisplay::ModifierMapping()
+void SalX11Display::ModifierMapping()
 {
     XModifierKeymap *pXModMap = XGetModifierMapping( pDisp_ );
 
@@ -718,7 +698,7 @@ void SalDisplay::ModifierMapping()
     XFreeModifiermap( pXModMap );
 }
 
-OUString SalDisplay::GetKeyName( sal_uInt16 nKeyCode ) const
+OUString SalX11Display::GetKeyName(sal_uInt16 nKeyCode) const
 {
     OUString aStrMap;
     OUString aCustomKeyName;
@@ -948,7 +928,7 @@ OUString SalDisplay::GetKeyName( sal_uInt16 nKeyCode ) const
 #define IsISOKey( n ) (0x0000FE00==((n)&0xFFFFFF00))
 #endif
 
-sal_uInt16 SalDisplay::GetKeyCode( KeySym keysym, char*pcPrintable ) const
+sal_uInt16 SalX11Display::GetKeyCode(KeySym keysym, char* pcPrintable) const
 {
     sal_uInt16 nKey = 0;
 
@@ -1356,7 +1336,7 @@ sal_uInt16 SalDisplay::GetKeyCode( KeySym keysym, char*pcPrintable ) const
     return nKey;
 }
 
-KeySym SalDisplay::GetKeySym( XKeyEvent        *pEvent,
+KeySym SalX11Display::GetKeySym(    XKeyEvent        *pEvent,
                                     char             *pPrintable,
                                     int              *pLen,
                                     KeySym           *pUnmodifiedKeySym,
@@ -1459,7 +1439,7 @@ const unsigned char nullcurs_bits[] = { 0x00, 0x00, 0x00, 0x00 };
     nXHot = name##curs_x_hot; \
     nYHot = name##curs_y_hot
 
-Cursor SalDisplay::GetPointer( PointerStyle ePointerStyle )
+Cursor SalX11Display::GetPointer(PointerStyle ePointerStyle)
 {
     Cursor &aCur = aPointerCache_[ePointerStyle];
 
@@ -1800,7 +1780,7 @@ Cursor SalDisplay::GetPointer( PointerStyle ePointerStyle )
     return aCur;
 }
 
-int SalDisplay::CaptureMouse( SalFrame *pCapture )
+int SalX11Display::CaptureMouse(SalFrame* pCapture)
 {
     static const char* pEnv = getenv( "SAL_NO_MOUSEGRABS" );
 
@@ -1831,7 +1811,7 @@ int SalDisplay::CaptureMouse( SalFrame *pCapture )
 
         if( ret != GrabSuccess )
         {
-            SAL_WARN("vcl", "SalDisplay::CaptureMouse could not grab pointer: " << ret);
+            SAL_WARN("vcl", "SalX11Display::CaptureMouse could not grab pointer: " << ret);
             return -1;
         }
     }
@@ -1858,7 +1838,7 @@ void SalX11Display::Yield()
 
     XEvent aEvent;
     DBG_ASSERT(GetSalInstance()->GetYieldMutex()->IsCurrentThread(),
-                "will crash soon since solar mutex not locked in SalDisplay::Yield" );
+                "will crash soon since solar mutex not locked in SalX11Display::Yield" );
 
     XNextEvent( pDisp_, &aEvent );
 
@@ -1868,13 +1848,13 @@ void SalX11Display::Yield()
     if( GetX11SalData()->HasXErrorOccurred() )
     {
         XFlush( pDisp_ );
-        DbgPrintDisplayEvent("SalDisplay::Yield (WasXError)", &aEvent);
+        DbgPrintDisplayEvent("SalX11Display::Yield (WasXError)", &aEvent);
     }
 #endif
     GetX11SalData()->ResetXErrorOccurred();
 }
 
-void SalX11Display::Dispatch( XEvent *pEvent )
+void SalX11Display::Dispatch(XEvent* pEvent)
 {
     SalI18N_InputMethod* const pInputMethod =
         pXLib_ ? pXLib_->GetInputMethod() : nullptr;
@@ -1981,7 +1961,7 @@ void SalX11Display::Dispatch( XEvent *pEvent )
 }
 
 #ifdef DBG_UTIL
-void SalDisplay::DbgPrintDisplayEvent(const char *pComment, const XEvent *pEvent) const
+void SalX11Display::DbgPrintDisplayEvent(const char* pComment, const XEvent* pEvent) const
 {
     static const char* const EventNames[] =
     {
@@ -2152,7 +2132,7 @@ void SalDisplay::DbgPrintDisplayEvent(const char *pComment, const XEvent *pEvent
                 << " w=" << pEvent->xany.window);
 }
 
-void SalDisplay::PrintInfo() const
+void SalX11Display::PrintInfo() const
 {
     if( IsDisplay() )
     {
@@ -2193,7 +2173,7 @@ void SalDisplay::PrintInfo() const
 }
 #endif
 
-void SalDisplay::addXineramaScreenUnique( int i, tools::Long i_nX, tools::Long i_nY, tools::Long i_nWidth, tools::Long i_nHeight )
+void SalX11Display::addXineramaScreenUnique( int i, tools::Long i_nX, tools::Long i_nY, tools::Long i_nWidth, tools::Long i_nHeight )
 {
     // see if any frame buffers are at the same coordinates
     // this can happen with weird configuration e.g. on
@@ -2217,7 +2197,7 @@ void SalDisplay::addXineramaScreenUnique( int i, tools::Long i_nX, tools::Long i
     m_aXineramaScreens.emplace_back( AbsoluteScreenPixelPoint( i_nX, i_nY ), AbsoluteScreenPixelSize( i_nWidth, i_nHeight ) );
 }
 
-void SalDisplay::InitXinerama()
+void SalX11Display::InitXinerama()
 {
     if( m_aScreens.size() > 1 )
     {
@@ -2263,7 +2243,7 @@ extern "C"
 {
     static Bool timestamp_predicate( Display*, XEvent* i_pEvent, XPointer i_pArg )
     {
-        SalDisplay* pSalDisplay = reinterpret_cast<SalDisplay*>(i_pArg);
+        SalX11Display* pSalDisplay = reinterpret_cast<SalX11Display*>(i_pArg);
         if( i_pEvent->type == PropertyNotify &&
             i_pEvent->xproperty.window == pSalDisplay->GetDrawable( pSalDisplay->GetDefaultXScreen() ) &&
             i_pEvent->xproperty.atom == pSalDisplay->getWMAdaptor()->getAtom( WMAdaptor::SAL_GETTIMEEVENT )
@@ -2274,7 +2254,7 @@ extern "C"
     }
 }
 
-Time SalDisplay::GetEventTimeImpl( bool i_bAlwaysReget ) const
+Time SalX11Display::GetEventTimeImpl(bool i_bAlwaysReget) const
 {
     if( m_nLastUserEventTime == CurrentTime || i_bAlwaysReget )
     {
@@ -2284,7 +2264,7 @@ Time SalDisplay::GetEventTimeImpl( bool i_bAlwaysReget ) const
         Atom nAtom = getWMAdaptor()->getAtom( WMAdaptor::SAL_GETTIMEEVENT );
         XChangeProperty( GetDisplay(), GetDrawable( GetDefaultXScreen() ),
                          nAtom, nAtom, 8, PropModeReplace, &c, 1 );
-        XIfEvent( GetDisplay(), &aEvent, timestamp_predicate, reinterpret_cast<XPointer>(const_cast<SalDisplay *>(this)));
+        XIfEvent( GetDisplay(), &aEvent, timestamp_predicate, reinterpret_cast<XPointer>(const_cast<SalX11Display*>(this)));
         m_nLastUserEventTime = aEvent.xproperty.time;
     }
     return m_nLastUserEventTime;
@@ -2305,7 +2285,7 @@ SalVisual::SalVisual( const XVisualInfo* pXVI )
 
 // Color is RGB (ABGR) a=0xFF000000, r=0xFF0000, g=0xFF00, b=0xFF
 
-SalColormap::SalColormap( const SalDisplay *pDisplay, Colormap hColormap,
+SalColormap::SalColormap( const SalX11Display* pDisplay, Colormap hColormap,
                           SalX11Screen nXScreen )
     : m_pDisplay( pDisplay ),
       m_hColormap( hColormap )
@@ -2372,7 +2352,7 @@ SalColormap::SalColormap( const SalDisplay *pDisplay, Colormap hColormap,
 
 // MonoChrome
 SalColormap::SalColormap()
-    : m_pDisplay( vcl_sal::getSalDisplay(GetGenericUnixSalData()) ),
+    : m_pDisplay(vcl_sal::getSalDisplay()),
       m_hColormap( None ),
       m_nWhitePixel( 1 ),
       m_nBlackPixel( 0 ),
@@ -2386,13 +2366,13 @@ SalColormap::SalColormap()
 
 // TrueColor
 SalColormap::SalColormap( sal_uInt16 nDepth )
-    : m_pDisplay( vcl_sal::getSalDisplay(GetGenericUnixSalData()) ),
+    : m_pDisplay(vcl_sal::getSalDisplay()),
       m_hColormap( None ),
       m_nWhitePixel( (1 << nDepth) - 1 ),
       m_nBlackPixel( 0x00000000 ),
       m_nUsed( 1 << nDepth )
 {
-    SalX11Screen nXScreen( vcl_sal::getSalDisplay(GetGenericUnixSalData())->GetDefaultXScreen() );
+    SalX11Screen nXScreen(vcl_sal::getSalDisplay()->GetDefaultXScreen());
     const SalVisual *pVisual = &m_pDisplay->GetVisual( nXScreen );
 
     if( pVisual->GetClass() == TrueColor && pVisual->GetDepth() == nDepth )

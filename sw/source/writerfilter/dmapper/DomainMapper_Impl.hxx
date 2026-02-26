@@ -283,7 +283,7 @@ struct SubstreamContext
 /// Information about a paragraph to be finished after a field end.
 struct FieldParagraph
 {
-    PropertyMapPtr m_pPropertyMap;
+    ParagraphPropertyMapPtr m_pPropertyMap;
     bool m_bRemove = false;
 };
 
@@ -828,7 +828,7 @@ public:
     void setParaSdtEndDeferred(bool bParaSdtEndDeferred);
     bool isParaSdtEndDeferred() const;
 
-    void finishParagraph( const PropertyMapPtr& pPropertyMap, const bool bRemove = false, const bool bNoNumbering = false);
+    void finishParagraph( const ParagraphPropertyMapPtr& pPropertyMap, const bool bRemove = false, const bool bNoNumbering = false);
     void applyToggleAttributes( const PropertyMapPtr& pPropertyMap );
     void MergeAtContentImageRedlineWithNext(const css::uno::Reference<css::text::XTextAppend>& xTextAppend);
     void appendTextPortion( const OUString& rString, const PropertyMapPtr& pPropertyMap );
@@ -1115,7 +1115,7 @@ public:
     void SetCurrentRedlineDate( const OUString& sDate );
     void SetCurrentRedlineId( sal_Int32 nId );
     void SetCurrentRedlineToken( sal_Int32 nToken );
-    void SetCurrentRedlineRevertProperties( const css::uno::Sequence<css::beans::PropertyValue>& aProperties );
+    void SetCurrentRedlineRevertProperties( const std::vector< css::beans::PropertyValue >& aProperties );
     void SetCurrentRedlineIsRead();
     void RemoveTopRedline( );
     void SetCurrentRedlineInitials( const OUString& sInitials );
@@ -1150,7 +1150,7 @@ public:
 
     SectionPropertyMap * GetSectionContext();
 
-    sal_Int16 GetListLevel(const StyleSheetEntryPtr& pEntry, const PropertyMapPtr& pParaContext = nullptr);
+    sal_Int16 GetListLevel(const StyleSheetEntryPtr& pEntry, const ParagraphPropertyMapPtr& pParaContext = nullptr);
     void ValidateListLevel(const OUString& sStyleIdentifierD);
 
     /**
