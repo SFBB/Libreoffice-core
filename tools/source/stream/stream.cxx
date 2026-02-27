@@ -41,6 +41,8 @@
 #include <comphelper/fileurl.hxx>
 #include <comphelper/scopeguard.hxx>
 
+#include <boost/core/pointer_in_range.hpp>
+
 #include <unicode/ucsdet.h>
 
 #include <frozen/bits/elsa_std.h>
@@ -384,12 +386,11 @@ void SvStream::ResetError()
     ClearError();
 }
 
-bool SvStream::ReadByteStringLine( OUString& rStr, rtl_TextEncoding eSrcEncoding,
-                                       sal_Int32 nMaxBytesToRead )
+bool SvStream::ReadByteStringLine( OUString& rStr, sal_Int32 nMaxBytesToRead )
 {
     OStringBuffer aStr;
     bool bRet = ReadLine( aStr, nMaxBytesToRead);
-    rStr = OStringToOUString(aStr, eSrcEncoding);
+    rStr = OStringToOUString(aStr, GetStreamEncoding());
     return bRet;
 }
 
@@ -560,13 +561,14 @@ bool SvStream::ReadUniStringLine( OUString& rStr, sal_Int32 nMaxCodepointsToRead
     return bEnd;
 }
 
-bool SvStream::ReadUniOrByteStringLine( OUString& rStr, rtl_TextEncoding eSrcEncoding,
-                                            sal_Int32 nMaxCodepointsToRead )
+bool SvStream::ReadUniOrByteStringLine( OUString& rStr,
+                                        sal_Int32 nMaxCodepointsToRead )
 {
+    auto eSrcEncoding = GetStreamEncoding();
     if (eSrcEncoding == RTL_TEXTENCODING_UNICODE)
         return ReadUniStringLine( rStr, nMaxCodepointsToRead );
     else
-        return ReadByteStringLine(rStr, eSrcEncoding, nMaxCodepointsToRead);
+        return ReadByteStringLine(rStr, nMaxCodepointsToRead);
 }
 
 OString read_zeroTerminated_uInt8s_ToOString(SvStream& rStream)
@@ -658,9 +660,9 @@ bool SvStream::WriteUnicodeOrByteText(std::u16string_view rStr, rtl_TextEncoding
     return m_nError == ERRCODE_NONE;
 }
 
-bool SvStream::WriteByteStringLine(std::u16string_view rStr, rtl_TextEncoding eDestEncoding)
+bool SvStream::WriteByteStringLine( std::u16string_view rStr )
 {
-    return WriteLine(OUStringToOString(rStr, eDestEncoding));
+    return WriteLine(OUStringToOString(rStr, GetStreamEncoding()));
 }
 
 bool SvStream::WriteLine(std::string_view rStr)
@@ -748,7 +750,7 @@ void SvStream::StartReadingUnicodeText(rtl_TextEncoding eReadBomEncoding)
         Seek(nOldPos);      // no BOM, pure data
 }
 
-void SvStream::DetectEncoding()
+void SvStream::DetectEncoding(size_t maxBytes)
 {
     static constexpr auto mapEncodings
         = frozen::make_unordered_map<std::string_view, rtl_TextEncoding>({
@@ -801,8 +803,8 @@ void SvStream::DetectEncoding()
     }
 
     assert(nBomSize == 0); // we are at nOrigPos
-    char bytes[4096] = { 0 };
-    size_t nRead = ReadBytes(bytes, sizeof(bytes));
+    auto bytes = std::make_unique<char[]>(maxBytes);
+    size_t nRead = ReadBytes(bytes.get(), maxBytes);
     Seek(nOrigPos);
     ResetError();
 
@@ -815,7 +817,7 @@ void SvStream::DetectEncoding()
         return;
     comphelper::ScopeGuard ucsdet_close_guard([ucd] { ucsdet_close(ucd); });
 
-    ucsdet_setText(ucd, bytes, nRead, &uerr);
+    ucsdet_setText(ucd, bytes.get(), nRead, &uerr);
     if (!U_SUCCESS(uerr))
         return;
 
@@ -1646,7 +1648,8 @@ std::size_t SvMemoryStream::PutData( const void* pData, std::size_t nCount )
         }
         else
         {
-            const bool bSourceDataIsInsideBuffer = pData >= pBuf && pData <= (pBuf + nSize);
+            const bool bSourceDataIsInsideBuffer = boost::pointer_in_range(
+                static_cast<sal_uInt8 const *>(pData), pBuf, pBuf + nSize);
             std::ptrdiff_t const offset = bSourceDataIsInsideBuffer ? static_cast<const char*>(pData) - reinterpret_cast<const char*>(pBuf) : 0;
             tools::Long nNewResize;
             if( nSize && nSize > nResize )

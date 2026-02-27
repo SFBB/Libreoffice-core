@@ -66,6 +66,7 @@ public:
     }
 
     void registerNamespaces(xmlXPathContextPtr& pXmlXpathCtx) override;
+    xmlDocUniquePtr parseMetadata();
 };
 
 void PdfExportTest2::registerNamespaces(xmlXPathContextPtr& pXmlXpathCtx)
@@ -78,6 +79,40 @@ void PdfExportTest2::registerNamespaces(xmlXPathContextPtr& pXmlXpathCtx)
                        BAD_CAST("http://www.aiim.org/pdfua/ns/id/"));
     xmlXPathRegisterNs(pXmlXpathCtx, BAD_CAST("pdfaid"),
                        BAD_CAST("http://www.aiim.org/pdfa/ns/id/"));
+    xmlXPathRegisterNs(pXmlXpathCtx, BAD_CAST("pdfaExtension"),
+                       BAD_CAST("http://www.aiim.org/pdfa/ns/extension/"));
+    xmlXPathRegisterNs(pXmlXpathCtx, BAD_CAST("pdfaSchema"),
+                       BAD_CAST("http://www.aiim.org/pdfa/ns/schema#"));
+    xmlXPathRegisterNs(pXmlXpathCtx, BAD_CAST("pdfaProperty"),
+                       BAD_CAST("http://www.aiim.org/pdfa/ns/property#"));
+}
+
+xmlDocUniquePtr PdfExportTest2::parseMetadata()
+{
+    vcl::filter::PDFDocument aDocument;
+    // Parse the export result.
+    SvFileStream aStream(maTempFile.GetURL(), StreamMode::READ);
+    CPPUNIT_ASSERT(aDocument.Read(aStream));
+
+    auto* pCatalog = aDocument.GetCatalog();
+    CPPUNIT_ASSERT(pCatalog);
+    auto* pCatalogDictionary = pCatalog->GetDictionary();
+    CPPUNIT_ASSERT(pCatalogDictionary);
+    auto* pMetadataObject = pCatalogDictionary->LookupObject("Metadata"_ostr);
+    CPPUNIT_ASSERT(pMetadataObject);
+    auto* pMetadataDictionary = pMetadataObject->GetDictionary();
+    auto* pType = dynamic_cast<vcl::filter::PDFNameElement*>(
+        pMetadataDictionary->LookupElement("Type"_ostr));
+    CPPUNIT_ASSERT(pType);
+    CPPUNIT_ASSERT_EQUAL("Metadata"_ostr, pType->GetValue());
+
+    auto* pStreamObject = pMetadataObject->GetStream();
+    CPPUNIT_ASSERT(pStreamObject);
+    auto& rStream = pStreamObject->GetMemory();
+    rStream.Seek(0);
+    xmlDocUniquePtr pXmlDoc = parseXmlStream(&rStream);
+    CPPUNIT_ASSERT(pXmlDoc);
+    return pXmlDoc;
 }
 
 CPPUNIT_TEST_FIXTURE(PdfExportTest2, testTdf160705)
@@ -1422,33 +1457,10 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest2, testReexportDocumentWithComplexResources)
 
 CPPUNIT_TEST_FIXTURE(PdfExportTest2, testTdf170448)
 {
-    vcl::filter::PDFDocument aDocument;
     loadFromFile(u"tdf170448.odt");
     save(TestFilter::PDF_WRITER);
 
-    // Parse the export result.
-    SvFileStream aStream(maTempFile.GetURL(), StreamMode::READ);
-    CPPUNIT_ASSERT(aDocument.Read(aStream));
-
-    auto* pCatalog = aDocument.GetCatalog();
-    CPPUNIT_ASSERT(pCatalog);
-    auto* pCatalogDictionary = pCatalog->GetDictionary();
-    CPPUNIT_ASSERT(pCatalogDictionary);
-    auto* pMetadataObject = pCatalogDictionary->LookupObject("Metadata"_ostr);
-    CPPUNIT_ASSERT(pMetadataObject);
-    auto* pMetadataDictionary = pMetadataObject->GetDictionary();
-    auto* pType = dynamic_cast<vcl::filter::PDFNameElement*>(
-        pMetadataDictionary->LookupElement("Type"_ostr));
-    CPPUNIT_ASSERT(pType);
-    CPPUNIT_ASSERT_EQUAL("Metadata"_ostr, pType->GetValue());
-
-    auto* pStreamObject = pMetadataObject->GetStream();
-    CPPUNIT_ASSERT(pStreamObject);
-    auto& rStream = pStreamObject->GetMemory();
-    rStream.Seek(0);
-    xmlDocUniquePtr pXmlDoc = parseXmlStream(&rStream);
-    CPPUNIT_ASSERT(pXmlDoc);
-
+    xmlDocUniquePtr pXmlDoc = parseMetadata();
     // Without the fix in place, this test would have failed with
     // - Expected: ' " < > & - ‘ » - l’île (copié-collé du texte)
     // - Actual  : &apos; &quot; &lt; &gt; &amp; - ‘ » - l’île (copié-collé du texte)
@@ -1474,30 +1486,34 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest2, testPdfUaMetadata)
     skipValidation();
     save(TestFilter::PDF_WRITER, aMediaDescriptor.getAsConstPropertyValueList());
 
-    // Parse the export result.
-    SvFileStream aStream(maTempFile.GetURL(), StreamMode::READ);
-    CPPUNIT_ASSERT(aDocument.Read(aStream));
-
-    auto* pCatalog = aDocument.GetCatalog();
-    CPPUNIT_ASSERT(pCatalog);
-    auto* pCatalogDictionary = pCatalog->GetDictionary();
-    CPPUNIT_ASSERT(pCatalogDictionary);
-    auto* pMetadataObject = pCatalogDictionary->LookupObject("Metadata"_ostr);
-    CPPUNIT_ASSERT(pMetadataObject);
-    auto* pMetadataDictionary = pMetadataObject->GetDictionary();
-    auto* pType = dynamic_cast<vcl::filter::PDFNameElement*>(
-        pMetadataDictionary->LookupElement("Type"_ostr));
-    CPPUNIT_ASSERT(pType);
-    CPPUNIT_ASSERT_EQUAL("Metadata"_ostr, pType->GetValue());
-
-    auto* pStreamObject = pMetadataObject->GetStream();
-    CPPUNIT_ASSERT(pStreamObject);
-    auto& rStream = pStreamObject->GetMemory();
-    rStream.Seek(0);
-    xmlDocUniquePtr pXmlDoc = parseXmlStream(&rStream);
-    CPPUNIT_ASSERT(pXmlDoc);
-
+    xmlDocUniquePtr pXmlDoc = parseMetadata();
     assertXPathContent(pXmlDoc, "/x:xmpmeta/rdf:RDF/rdf:Description[1]/pdfuaid:part", u"1");
+}
+
+CPPUNIT_TEST_FIXTURE(PdfExportTest2, testTdf138792)
+{
+    // Enable PDF/UA
+    uno::Sequence<beans::PropertyValue> aFilterData(
+        comphelper::InitPropertySequence({ { "PDFUACompliance", uno::Any(true) } }));
+    comphelper::SequenceAsHashMap aMediaDescriptor;
+    aMediaDescriptor[u"FilterData"_ustr] <<= aFilterData;
+
+    vcl::filter::PDFDocument aDocument;
+    loadFromFile(u"tdf138792.odt");
+    skipValidation();
+    save(TestFilter::PDF_WRITER, aMediaDescriptor.getAsConstPropertyValueList());
+
+    xmlDocUniquePtr pXmlDoc = parseMetadata();
+    assertXPath(pXmlDoc, "/x:xmpmeta/rdf:RDF/rdf:Description[1]/dc:date/rdf:Seq/rdf:li");
+    assertXPathContent(pXmlDoc, "/x:xmpmeta/rdf:RDF/rdf:Description[1]/dc:format",
+                       u"application/pdf");
+    assertXPathContent(pXmlDoc, "/x:xmpmeta/rdf:RDF/rdf:Description[1]/dc:title/rdf:Alt/rdf:li",
+                       u"Test document title");
+    assertXPathContent(pXmlDoc, "/x:xmpmeta/rdf:RDF/rdf:Description[1]/dc:creator/rdf:Seq/rdf:li",
+                       u"Gabor Kelemen LO");
+    assertXPathContent(pXmlDoc,
+                       "/x:xmpmeta/rdf:RDF/rdf:Description[1]/dc:description/rdf:Alt/rdf:li",
+                       u"Test subject");
 }
 
 CPPUNIT_TEST_FIXTURE(PdfExportTest2, testTdf153472)
@@ -1513,29 +1529,7 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest2, testTdf153472)
     skipValidation();
     save(TestFilter::PDF_WRITER, aMediaDescriptor.getAsConstPropertyValueList());
 
-    // Parse the export result.
-    SvFileStream aStream(maTempFile.GetURL(), StreamMode::READ);
-    CPPUNIT_ASSERT(aDocument.Read(aStream));
-
-    auto* pCatalog = aDocument.GetCatalog();
-    CPPUNIT_ASSERT(pCatalog);
-    auto* pCatalogDictionary = pCatalog->GetDictionary();
-    CPPUNIT_ASSERT(pCatalogDictionary);
-    auto* pMetadataObject = pCatalogDictionary->LookupObject("Metadata"_ostr);
-    CPPUNIT_ASSERT(pMetadataObject);
-    auto* pMetadataDictionary = pMetadataObject->GetDictionary();
-    auto* pType = dynamic_cast<vcl::filter::PDFNameElement*>(
-        pMetadataDictionary->LookupElement("Type"_ostr));
-    CPPUNIT_ASSERT(pType);
-    CPPUNIT_ASSERT_EQUAL("Metadata"_ostr, pType->GetValue());
-
-    auto* pStreamObject = pMetadataObject->GetStream();
-    CPPUNIT_ASSERT(pStreamObject);
-    auto& rStream = pStreamObject->GetMemory();
-    rStream.Seek(0);
-    xmlDocUniquePtr pXmlDoc = parseXmlStream(&rStream);
-    CPPUNIT_ASSERT(pXmlDoc);
-
+    xmlDocUniquePtr pXmlDoc = parseMetadata();
     assertXPathContent(pXmlDoc, "/x:xmpmeta/rdf:RDF/rdf:Description[1]/pdfaid:part", u"1");
     assertXPathContent(pXmlDoc, "/x:xmpmeta/rdf:RDF/rdf:Description[1]/pdfaid:conformance", u"B");
 }
@@ -1799,6 +1793,68 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest2, testTdf157517)
     loadFromFile(u"tdf157517.odt");
     // Without the fix in place, the validation would have failed
     save(TestFilter::PDF_WRITER, aMediaDescriptor.getAsConstPropertyValueList());
+
+    xmlDocUniquePtr pXmlDoc = parseMetadata();
+    assertXPathContent(pXmlDoc,
+                       "/x:xmpmeta/rdf:RDF/rdf:Description[3]/pdfaExtension:schemas/rdf:Bag/rdf:li/"
+                       "pdfaSchema:namespaceURI",
+                       u"http://www.aiim.org/pdfua/ns/id/");
+    assertXPathContent(pXmlDoc,
+                       "/x:xmpmeta/rdf:RDF/rdf:Description[3]/pdfaExtension:schemas/rdf:Bag/rdf:li/"
+                       "pdfaSchema:prefix",
+                       u"pdfuaid");
+    assertXPathContent(pXmlDoc,
+                       "/x:xmpmeta/rdf:RDF/rdf:Description[3]/pdfaExtension:schemas/rdf:Bag/rdf:li/"
+                       "pdfaSchema:schema",
+                       u"PDF/UA identification schema");
+    assertXPathContent(pXmlDoc,
+                       "/x:xmpmeta/rdf:RDF/rdf:Description[3]/pdfaExtension:schemas/rdf:Bag/rdf:li/"
+                       "pdfaSchema:property/rdf:Seq/rdf:li[1]/pdfaProperty:category",
+                       u"internal");
+    assertXPathContent(pXmlDoc,
+                       "/x:xmpmeta/rdf:RDF/rdf:Description[3]/pdfaExtension:schemas/rdf:Bag/rdf:li/"
+                       "pdfaSchema:property/rdf:Seq/rdf:li[1]/pdfaProperty:description",
+                       u"PDF/UA version identifier");
+    assertXPathContent(pXmlDoc,
+                       "/x:xmpmeta/rdf:RDF/rdf:Description[3]/pdfaExtension:schemas/rdf:Bag/rdf:li/"
+                       "pdfaSchema:property/rdf:Seq/rdf:li[1]/pdfaProperty:name",
+                       u"part");
+    assertXPathContent(pXmlDoc,
+                       "/x:xmpmeta/rdf:RDF/rdf:Description[3]/pdfaExtension:schemas/rdf:Bag/rdf:li/"
+                       "pdfaSchema:property/rdf:Seq/rdf:li[1]/pdfaProperty:valueType",
+                       u"Integer");
+    assertXPathContent(pXmlDoc,
+                       "/x:xmpmeta/rdf:RDF/rdf:Description[3]/pdfaExtension:schemas/rdf:Bag/rdf:li/"
+                       "pdfaSchema:property/rdf:Seq/rdf:li[2]/pdfaProperty:category",
+                       u"internal");
+    assertXPathContent(pXmlDoc,
+                       "/x:xmpmeta/rdf:RDF/rdf:Description[3]/pdfaExtension:schemas/rdf:Bag/rdf:li/"
+                       "pdfaSchema:property/rdf:Seq/rdf:li[2]/pdfaProperty:description",
+                       u"PDF/UA amendment identifier");
+    assertXPathContent(pXmlDoc,
+                       "/x:xmpmeta/rdf:RDF/rdf:Description[3]/pdfaExtension:schemas/rdf:Bag/rdf:li/"
+                       "pdfaSchema:property/rdf:Seq/rdf:li[2]/pdfaProperty:name",
+                       u"amd");
+    assertXPathContent(pXmlDoc,
+                       "/x:xmpmeta/rdf:RDF/rdf:Description[3]/pdfaExtension:schemas/rdf:Bag/rdf:li/"
+                       "pdfaSchema:property/rdf:Seq/rdf:li[2]/pdfaProperty:valueType",
+                       u"Text");
+    assertXPathContent(pXmlDoc,
+                       "/x:xmpmeta/rdf:RDF/rdf:Description[3]/pdfaExtension:schemas/rdf:Bag/rdf:li/"
+                       "pdfaSchema:property/rdf:Seq/rdf:li[3]/pdfaProperty:category",
+                       u"internal");
+    assertXPathContent(pXmlDoc,
+                       "/x:xmpmeta/rdf:RDF/rdf:Description[3]/pdfaExtension:schemas/rdf:Bag/rdf:li/"
+                       "pdfaSchema:property/rdf:Seq/rdf:li[3]/pdfaProperty:description",
+                       u"PDF/UA corrigenda identifier");
+    assertXPathContent(pXmlDoc,
+                       "/x:xmpmeta/rdf:RDF/rdf:Description[3]/pdfaExtension:schemas/rdf:Bag/rdf:li/"
+                       "pdfaSchema:property/rdf:Seq/rdf:li[3]/pdfaProperty:name",
+                       u"corr");
+    assertXPathContent(pXmlDoc,
+                       "/x:xmpmeta/rdf:RDF/rdf:Description[3]/pdfaExtension:schemas/rdf:Bag/rdf:li/"
+                       "pdfaSchema:property/rdf:Seq/rdf:li[3]/pdfaProperty:valueType",
+                       u"Text");
 }
 
 CPPUNIT_TEST_FIXTURE(PdfExportTest2, testTdf152218)
@@ -2184,7 +2240,7 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest2, testTdf157817)
     auto pTypeT00 = dynamic_cast<vcl::filter::PDFNameElement*>(pObjectT00->Lookup("Type"_ostr));
     CPPUNIT_ASSERT_EQUAL("StructElem"_ostr, pTypeT00->GetValue());
     auto pST00 = dynamic_cast<vcl::filter::PDFNameElement*>(pObjectT00->Lookup("S"_ostr));
-    CPPUNIT_ASSERT_EQUAL("Contents#20Heading"_ostr, pST00->GetValue());
+    CPPUNIT_ASSERT_EQUAL("Contents Heading"_ostr, pST00->GetValue());
 
     auto pRefKidT1 = dynamic_cast<vcl::filter::PDFReferenceElement*>(pKidsTv[1]);
     CPPUNIT_ASSERT(pRefKidT1);
@@ -2206,7 +2262,7 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest2, testTdf157817)
     auto pTypeT10 = dynamic_cast<vcl::filter::PDFNameElement*>(pObjectT10->Lookup("Type"_ostr));
     CPPUNIT_ASSERT_EQUAL("StructElem"_ostr, pTypeT10->GetValue());
     auto pST10 = dynamic_cast<vcl::filter::PDFNameElement*>(pObjectT10->Lookup("S"_ostr));
-    CPPUNIT_ASSERT_EQUAL("Contents#201"_ostr, pST10->GetValue());
+    CPPUNIT_ASSERT_EQUAL("Contents 1"_ostr, pST10->GetValue());
 
     auto pKidsT10 = dynamic_cast<vcl::filter::PDFArrayElement*>(pObjectT10->Lookup("K"_ostr));
     CPPUNIT_ASSERT(pKidsT10);
@@ -2243,7 +2299,7 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest2, testTdf157817)
     auto pTypeT20 = dynamic_cast<vcl::filter::PDFNameElement*>(pObjectT20->Lookup("Type"_ostr));
     CPPUNIT_ASSERT_EQUAL("StructElem"_ostr, pTypeT20->GetValue());
     auto pST20 = dynamic_cast<vcl::filter::PDFNameElement*>(pObjectT20->Lookup("S"_ostr));
-    CPPUNIT_ASSERT_EQUAL("Contents#201"_ostr, pST20->GetValue());
+    CPPUNIT_ASSERT_EQUAL("Contents 1"_ostr, pST20->GetValue());
 
     auto pKidsT20 = dynamic_cast<vcl::filter::PDFArrayElement*>(pObjectT20->Lookup("K"_ostr));
     CPPUNIT_ASSERT(pKidsT20);
@@ -2280,7 +2336,7 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest2, testTdf157817)
     auto pTypeT30 = dynamic_cast<vcl::filter::PDFNameElement*>(pObjectT30->Lookup("Type"_ostr));
     CPPUNIT_ASSERT_EQUAL("StructElem"_ostr, pTypeT30->GetValue());
     auto pST30 = dynamic_cast<vcl::filter::PDFNameElement*>(pObjectT30->Lookup("S"_ostr));
-    CPPUNIT_ASSERT_EQUAL("Contents#201"_ostr, pST30->GetValue());
+    CPPUNIT_ASSERT_EQUAL("Contents 1"_ostr, pST30->GetValue());
 
     auto pKidsT30 = dynamic_cast<vcl::filter::PDFArrayElement*>(pObjectT30->Lookup("K"_ostr));
     CPPUNIT_ASSERT(pKidsT30);
@@ -3249,7 +3305,7 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest2, testTdf157397)
     auto pType12 = dynamic_cast<vcl::filter::PDFNameElement*>(pObject12->Lookup("Type"_ostr));
     CPPUNIT_ASSERT_EQUAL("StructElem"_ostr, pType12->GetValue());
     auto pS12 = dynamic_cast<vcl::filter::PDFNameElement*>(pObject12->Lookup("S"_ostr));
-    CPPUNIT_ASSERT_EQUAL("Text#20body"_ostr, pS12->GetValue());
+    CPPUNIT_ASSERT_EQUAL("Text body"_ostr, pS12->GetValue());
 
     auto pKids12 = dynamic_cast<vcl::filter::PDFArrayElement*>(pObject12->Lookup("K"_ostr));
     CPPUNIT_ASSERT(pKids12);
@@ -3323,7 +3379,7 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest2, testTdf157397)
     auto pType13 = dynamic_cast<vcl::filter::PDFNameElement*>(pObject13->Lookup("Type"_ostr));
     CPPUNIT_ASSERT_EQUAL("StructElem"_ostr, pType13->GetValue());
     auto pS13 = dynamic_cast<vcl::filter::PDFNameElement*>(pObject13->Lookup("S"_ostr));
-    CPPUNIT_ASSERT_EQUAL("Text#20body"_ostr, pS13->GetValue());
+    CPPUNIT_ASSERT_EQUAL("Text body"_ostr, pS13->GetValue());
 
     auto pKids13 = dynamic_cast<vcl::filter::PDFArrayElement*>(pObject13->Lookup("K"_ostr));
     CPPUNIT_ASSERT(pKids13);
@@ -3396,7 +3452,7 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest2, testTdf157397)
     auto pType14 = dynamic_cast<vcl::filter::PDFNameElement*>(pObject14->Lookup("Type"_ostr));
     CPPUNIT_ASSERT_EQUAL("StructElem"_ostr, pType14->GetValue());
     auto pS14 = dynamic_cast<vcl::filter::PDFNameElement*>(pObject14->Lookup("S"_ostr));
-    CPPUNIT_ASSERT_EQUAL("Text#20body"_ostr, pS14->GetValue());
+    CPPUNIT_ASSERT_EQUAL("Text body"_ostr, pS14->GetValue());
 
     auto pKids14 = dynamic_cast<vcl::filter::PDFArrayElement*>(pObject14->Lookup("K"_ostr));
     CPPUNIT_ASSERT(pKids14);
@@ -3470,7 +3526,7 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest2, testTdf157397)
     auto pType16 = dynamic_cast<vcl::filter::PDFNameElement*>(pObject16->Lookup("Type"_ostr));
     CPPUNIT_ASSERT_EQUAL("StructElem"_ostr, pType16->GetValue());
     auto pS16 = dynamic_cast<vcl::filter::PDFNameElement*>(pObject16->Lookup("S"_ostr));
-    CPPUNIT_ASSERT_EQUAL("Text#20body"_ostr, pS16->GetValue());
+    CPPUNIT_ASSERT_EQUAL("Text body"_ostr, pS16->GetValue());
 
     auto pKids16 = dynamic_cast<vcl::filter::PDFArrayElement*>(pObject16->Lookup("K"_ostr));
     CPPUNIT_ASSERT(pKids16);

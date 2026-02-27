@@ -307,9 +307,12 @@ public:
               @endcode
               causing endless loops ...
     */
-    bool            ReadByteStringLine( OUString& rStr, rtl_TextEncoding eSrcEncoding,
+    bool            ReadByteStringLine( OUString& rStr,
                                         sal_Int32 nMaxBytesToRead = 0xFFFE );
-    bool            WriteByteStringLine( std::u16string_view rStr, rtl_TextEncoding eDestEncoding );
+
+    /** Write a line of bytes. Uses stream encoding set on the stream.
+    */
+    bool            WriteByteStringLine( std::u16string_view rStr );
 
     /// Switch to no endian swapping and write 0xfeff
     void            StartWritingUnicodeText();
@@ -329,7 +332,7 @@ public:
         After the function, the position is after BOM (if any); GetStreamEncoding
         returns the detected encoding; GetEndian returns the detected endianness
         (for UTF-16). */
-    void DetectEncoding();
+    void DetectEncoding(size_t maxBytes = 4096);
 
     /** Read a line of Unicode.
 
@@ -347,8 +350,8 @@ public:
         and write a 16bit length prefixed sequence of bytes */
     SvStream& WriteUniOrByteString(std::u16string_view rStr, rtl_TextEncoding eDestEncoding);
 
-    /** Read a line of Unicode if eSrcEncoding==RTL_TEXTENCODING_UNICODE,
-        otherwise read a line of Bytecode and convert from eSrcEncoding
+    /** Read a line of Unicode if GetStreamEncoding()==RTL_TEXTENCODING_UNICODE,
+        otherwise read a line of Bytecode and convert from GetStreamEncoding().
 
         @param nMaxCodepointsToRead
                    Maximum of codepoints (2 bytes if Unicode, bytes if not
@@ -362,7 +365,7 @@ public:
               @endcode
               causing endless loops ...
     */
-    bool            ReadUniOrByteStringLine( OUString& rStr, rtl_TextEncoding eSrcEncoding,
+    bool            ReadUniOrByteStringLine( OUString& rStr,
                                              sal_Int32 nMaxCodepointsToRead = 0xFFFE );
     /** Write a sequence of Unicode characters if
         eDestEncoding==RTL_TEXTENCODING_UNICODE, otherwise write a sequence of
@@ -584,10 +587,13 @@ private:
     virtual void    FlushData() override;
 
 public:
-                    // Switches to Read StreamMode on failed attempt of Write opening
-                    SvFileStream( const OUString& rFileName, StreamMode eOpenMode );
-                    SvFileStream();
-                    virtual ~SvFileStream() override;
+    /*
+     * @param eOpenMode Switches to Read StreamMode on failed attempt of Write opening
+     * @param eStreamEncoding if not specified, defaults to osl_getThreadTextEncoding()
+    */
+    SvFileStream( const OUString& rFileName, StreamMode eOpenMode, std::optional<rtl_TextEncoding> oStreamEncoding = {} );
+    SvFileStream();
+    virtual ~SvFileStream() override;
 
     virtual void    ResetError() override;
 

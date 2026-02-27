@@ -4007,13 +4007,12 @@ void SwEntryBrowseBox::ReadEntries(SvStream& rInStr)
     AutoMarkEntry* pToInsert = nullptr;
     // tdf#108910, tdf#125496 - read index entries using the appropriate character set
     rInStr.DetectEncoding();
-    rtl_TextEncoding eTEnc = rInStr.GetStreamEncoding();
-    if (eTEnc == RTL_TEXTENCODING_DONTKNOW)
-        eTEnc = osl_getThreadTextEncoding();
+    if (rInStr.GetStreamEncoding() == RTL_TEXTENCODING_DONTKNOW)
+        rInStr.SetStreamEncoding(osl_getThreadTextEncoding());
     while (rInStr.good())
     {
         OUString sLine;
-        rInStr.ReadByteStringLine( sLine, eTEnc );
+        rInStr.ReadByteStringLine( sLine );
 
         // # -> comment
         // ; -> delimiter between entries ->
@@ -4075,7 +4074,7 @@ void SwEntryBrowseBox::WriteEntries(SvStream& rOutStr)
         if(!pEntry->sComment.isEmpty())
         {
             // tdf#108910, tdf#125496 - write index entries using the utf8 text encoding
-            rOutStr.WriteByteStringLine( Concat2View("#" + pEntry->sComment), RTL_TEXTENCODING_UTF8 );
+            rOutStr.WriteByteStringLine( Concat2View("#" + pEntry->sComment) );
         }
 
         OUString sWrite( pEntry->sSearch + ";" +
@@ -4088,7 +4087,7 @@ void SwEntryBrowseBox::WriteEntries(SvStream& rOutStr)
 
         if( sWrite.getLength() > 5 )
             // tdf#108910, tdf#125496 - write index entries using the utf8 text encoding
-            rOutStr.WriteByteStringLine( sWrite, RTL_TEXTENCODING_UTF8 );
+            rOutStr.WriteByteStringLine( sWrite );
     }
 }
 
