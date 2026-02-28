@@ -345,10 +345,18 @@ public:
         eSrcEncoding==RTL_TEXTENCODING_UNICODE, otherwise read a 16bit length
         prefixed sequence of bytes and convert from eSrcEncoding */
     OUString ReadUniOrByteString(rtl_TextEncoding eSrcEncoding);
+    /** Read a 32bit length prefixed sequence of utf-16 if
+        GetStreamEncoding()==RTL_TEXTENCODING_UNICODE, otherwise read a 16bit length
+        prefixed sequence of bytes and convert from GetStreamEncoding() */
+    OUString ReadUniOrByteString();
     /** Write a 32bit length prefixed sequence of utf-16 if
         eDestEncoding==RTL_TEXTENCODING_UNICODE, otherwise convert to eDestEncoding
         and write a 16bit length prefixed sequence of bytes */
     SvStream& WriteUniOrByteString(std::u16string_view rStr, rtl_TextEncoding eDestEncoding);
+    /** Write a 32bit length prefixed sequence of utf-16 if
+        GetStreamEncoding()==RTL_TEXTENCODING_UNICODE, otherwise convert to GetStreamEncoding()
+        and write a 16bit length prefixed sequence of bytes */
+    SvStream& WriteUniOrByteString(std::u16string_view rStr);
 
     /** Read a line of Unicode if GetStreamEncoding()==RTL_TEXTENCODING_UNICODE,
         otherwise read a line of Bytecode and convert from GetStreamEncoding().
@@ -374,14 +382,12 @@ public:
     bool            WriteUnicodeOrByteText(std::u16string_view rStr)
                     { return WriteUnicodeOrByteText(rStr, GetStreamEncoding(), /*bZero*/false); }
 
-    /** Write a Unicode character if eDestEncoding==RTL_TEXTENCODING_UNICODE,
-        otherwise write as Bytecode converted to eDestEncoding.
+    /** Write a Unicode character if GetStreamEncoding()==RTL_TEXTENCODING_UNICODE,
+        otherwise write as Bytecode converted to GetStreamEncoding().
 
         This may result in more than one byte being written if a multi byte
         encoding (e.g. UTF7, UTF8) is chosen. */
-    bool            WriteUniOrByteChar( sal_Unicode ch, rtl_TextEncoding eDestEncoding );
-    bool            WriteUniOrByteChar( sal_Unicode ch )
-                    { return WriteUniOrByteChar( ch, GetStreamEncoding() ); }
+    bool            WriteUniOrByteChar( sal_Unicode ch );
 
     void            SetBufferSize( sal_uInt16 m_nBufSize );
     sal_uInt16      GetBufferSize() const { return m_nBufSize; }

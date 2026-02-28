@@ -26,7 +26,6 @@
 #include <QtAccessibleInterimChildWidget.hxx>
 #include <QtBitmap.hxx>
 #include <QtClipboard.hxx>
-#include <QtData.hxx>
 #include <QtDragAndDrop.hxx>
 #include <QtFilePicker.hxx>
 #include <QtFrame.hxx>
@@ -44,6 +43,7 @@
 
 #include <headless/svpvd.hxx>
 #include <salvtables.hxx>
+#include <unx/gendata.hxx>
 
 #include <QtCore/QAbstractEventDispatcher>
 #include <QtCore/QLibraryInfo>
@@ -268,7 +268,7 @@ OUString QtInstance::constructToolkitID(std::u16string_view sTKname)
 }
 
 QtInstance::QtInstance(std::unique_ptr<QApplication>& pQApp)
-    : SalGenericInstance(std::make_unique<QtYieldMutex>())
+    : SalGenericInstance(std::make_unique<QtYieldMutex>(), new GenericUnixSalData)
     , m_bUseCairo(nullptr == getenv("SAL_VCL_QT_USE_QFONT"))
     , m_pTimer(nullptr)
     , m_bSleeping(false)
@@ -284,6 +284,17 @@ QtInstance::QtInstance(std::unique_ptr<QApplication>& pQApp)
     ImplSVData* pSVData = ImplGetSVData();
     const OUString sToolkit = "qt" + OUString::number(QT_VERSION_MAJOR);
     pSVData->maAppData.mxToolkitName = constructToolkitID(sToolkit);
+
+    pSVData->maNWFData.mbDockingAreaSeparateTB = true;
+    pSVData->maNWFData.mbFlatMenu = true;
+    pSVData->maNWFData.mbRolloverMenubar = true;
+    pSVData->maNWFData.mbNoFocusRects = true;
+    pSVData->maNWFData.mbNoFocusRectsForFlatButtons = true;
+    QStyle* style = QApplication::style();
+    pSVData->maNWFData.mnMenuFormatBorderX = style->pixelMetric(QStyle::PM_MenuPanelWidth)
+                                             + style->pixelMetric(QStyle::PM_MenuHMargin);
+    pSVData->maNWFData.mnMenuFormatBorderY = style->pixelMetric(QStyle::PM_MenuPanelWidth)
+                                             + style->pixelMetric(QStyle::PM_MenuVMargin);
 
     // this one needs to be blocking, so that the handling in main thread
     // is processed before the thread emitting the signal continues
@@ -897,6 +908,18 @@ void QtInstance::setActivePopup(QtFrame* pFrame)
     m_pActivePopup = pFrame;
 }
 
+bool QtInstance::noNativeControls()
+{
+    static const bool bNoNative = (getenv("SAL_VCL_QT_NO_NATIVE") != nullptr);
+    return bNoNative;
+}
+
+bool QtInstance::noWeldedWidgets()
+{
+    static const bool bNoWeldedWidgets = (getenv("SAL_VCL_QT_NO_WELDED_WIDGETS") != nullptr);
+    return bNoWeldedWidgets;
+}
+
 QWidget* QtInstance::GetNativeParentFromWeldParent(weld::Widget* pParent)
 {
     if (!pParent)
@@ -923,7 +946,7 @@ QtInstance::CreateBuilder(weld::Widget* pParent, const OUString& rUIRoot, const 
 {
     // for now, require explicitly enabling use of QtInstanceBuilder via SAL_VCL_QT_USE_WELDED_WIDGETS
     static const bool bUseWeldedWidgets = (getenv("SAL_VCL_QT_USE_WELDED_WIDGETS") != nullptr);
-    if (bUseWeldedWidgets && !QtData::noWeldedWidgets()
+    if (bUseWeldedWidgets && !QtInstance::noWeldedWidgets()
         && QtInstanceBuilder::IsUIFileSupported(rUIFile, pParent))
     {
         QWidget* pQtParent = GetNativeParentFromWeldParent(pParent);
@@ -981,7 +1004,7 @@ weld::MessageDialog* QtInstance::CreateMessageDialog(weld::Widget* pParent,
         return pDialog;
     }
 
-    if (QtData::noWeldedWidgets())
+    if (QtInstance::noWeldedWidgets())
     {
         return SalInstance::CreateMessageDialog(pParent, eMessageType, eButtonsType,
                                                 rPrimaryMessage);
@@ -1040,8 +1063,6 @@ VCLPLUG_QT_PUBLIC SalInstance* create_SalInstance()
 
     QtInstance* pInstance = new QtInstance(pQApp);
     pInstance->MoveFakeCmdlineArgs(pFakeArgv, pFakeArgc, aFakeArgvFreeable);
-
-    new QtData();
 
     return pInstance;
 }

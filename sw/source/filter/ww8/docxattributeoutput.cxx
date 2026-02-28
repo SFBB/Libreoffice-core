@@ -1593,6 +1593,7 @@ void lcl_writeParagraphMarkerProperties(DocxAttributeOutput& rAttributeOutput, c
     // Did we already produce a <w:sz> element?
     bool bFontSizeWritten = false;
     bool bBoldWritten = false;
+    bool bPostureWritten = false;
     while (nWhichId)
     {
         if (aIter.GetItemState(true, &pItem) == SfxItemState::SET)
@@ -1602,12 +1603,15 @@ void lcl_writeParagraphMarkerProperties(DocxAttributeOutput& rAttributeOutput, c
                 // Will this item produce a <w:sz> element?
                 bool bFontSizeItem = nWhichId == RES_CHRATR_FONTSIZE || nWhichId == RES_CHRATR_CJK_FONTSIZE;
                 bool bBoldItem = nWhichId == RES_CHRATR_WEIGHT || nWhichId == RES_CHRATR_CJK_WEIGHT;
-                if (!(bFontSizeWritten && bFontSizeItem) && !(bBoldWritten && bBoldItem))
+                bool bPostureItem = nWhichId == RES_CHRATR_POSTURE || nWhichId == RES_CHRATR_CJK_POSTURE;
+                if (!(bFontSizeWritten && bFontSizeItem) && !(bBoldWritten && bBoldItem) && !(bPostureWritten && bPostureItem))
                     rAttributeOutput.OutputItem(*pItem);
                 if (bFontSizeItem)
                     bFontSizeWritten = true;
                 if (bBoldItem)
                     bBoldWritten = true;
+                if (bPostureItem)
+                    bPostureWritten = true;
             }
             else if (nWhichId == RES_TXTATR_AUTOFMT)
             {
@@ -2231,7 +2235,7 @@ void DocxAttributeOutput::EndRun(const SwTextNode* pNode, sal_Int32 nPos, sal_In
     {
         EndRedline(m_pRedlineData.back());
     }
-    assert(m_pRedlineData.size());
+
     m_pRedlineData.pop_back();
 
     DoWriteBookmarksStart(m_rFinalBookmarksStart);
@@ -7214,7 +7218,7 @@ void DocxAttributeOutput::SectionBreak( sal_uInt8 nC, bool bBreakAfter, const WW
                 m_nColBreakStatus = COLBRK_POSTPONE;
             break;
         case msword::PageBreak:
-            if ( pSectionInfo )
+            if (pSectionInfo && !m_bOpenedParaPr)
             {
                 // Detect when the current node is the last node in the
                 // document: the last section is written explicitly in
@@ -7276,7 +7280,7 @@ void DocxAttributeOutput::SectionBreak( sal_uInt8 nC, bool bBreakAfter, const WW
             }
             else if ( m_bParagraphOpened )
             {
-                if (bBreakAfter)
+                if (bBreakAfter || m_bOpenedParaPr)
                     // tdf#128889
                     m_bPageBreakAfter = true;
                 else

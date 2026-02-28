@@ -2521,8 +2521,9 @@ void FormulaCompiler::CreateStringFromTokenArray( OUStringBuffer& rBuffer )
     while( t )
     {
         // Discard writing unknown functions without a name in OOXML ex: #NAME!()
-        if (t->GetOpCode() == ocNoName && t->GetType() == svByte
-            && FormulaGrammar::isOOXML(meGrammar))
+        if (FormulaGrammar::isOOXML(meGrammar)
+            && (t->GetOpCode() == ocNoName || t->GetOpCode() == ocExternal)
+            && t->GetType() == svByte)
         {
             rBuffer.setLength(0);
             rBuffer.append(GetNativeSymbol(ocErrRef));
@@ -2640,6 +2641,10 @@ const FormulaToken* FormulaCompiler::CreateStringFromToken( OUStringBuffer& rBuf
             rBuffer.append(u"ORG.OPENOFFICE." + mxSymbols->getSymbol(eOp));
         else
             rBuffer.append(mxSymbols->getSymbol(eOp));
+    }
+    else if (eOp == ocNoName && FormulaGrammar::isOOXML(meGrammar))
+    {
+        // Don't export "#name!" in OOXML
     }
     else if( static_cast<sal_uInt16>(eOp) < mxSymbols->getSymbolCount())        // Keyword:
         rBuffer.append( mxSymbols->getSymbol( eOp));

@@ -672,8 +672,9 @@ bool SvStream::WriteLine(std::string_view rStr)
     return m_nError == ERRCODE_NONE;
 }
 
-bool SvStream::WriteUniOrByteChar(sal_Unicode ch, rtl_TextEncoding eDestEncoding)
+bool SvStream::WriteUniOrByteChar(sal_Unicode ch)
 {
+    auto eDestEncoding = GetStreamEncoding();
     if (eDestEncoding == RTL_TEXTENCODING_UNICODE)
         WriteUnicode(ch);
     else
@@ -1135,12 +1136,22 @@ sal_uInt64 SvStream::WriteStream( SvStream& rStream, sal_uInt64 nSize )
     return nSize - nWriteSize;
 }
 
+OUString SvStream::ReadUniOrByteString()
+{
+    return ReadUniOrByteString(GetStreamEncoding());
+}
+
 OUString SvStream::ReadUniOrByteString(rtl_TextEncoding eSrcEncoding)
 {
     // read UTF-16 string directly from stream ?
     if (eSrcEncoding == RTL_TEXTENCODING_UNICODE)
         return read_uInt32_lenPrefixed_uInt16s_ToOUString(*this);
     return read_uInt16_lenPrefixed_uInt8s_ToOUString(*this, eSrcEncoding);
+}
+
+SvStream& SvStream::WriteUniOrByteString(std::u16string_view rStr)
+{
+    return WriteUniOrByteString(rStr, GetStreamEncoding());
 }
 
 SvStream& SvStream::WriteUniOrByteString(std::u16string_view rStr, rtl_TextEncoding eDestEncoding)

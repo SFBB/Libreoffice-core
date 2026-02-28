@@ -41,6 +41,30 @@ DECLARE_OOXMLEXPORT_TEST(testTdf148057_columnBreak, "tdf148057_columnBreak.docx"
     CPPUNIT_ASSERT_EQUAL(2, getPages());
 }
 
+DECLARE_OOXMLEXPORT_TEST(testTdf171025_pageAfter, "tdf171025_pageAfter.docx")
+{
+    // given a document with a LO specialty pageAfter break
+    // coupled with IsPlausableSingleWordSection
+    CPPUNIT_ASSERT_EQUAL(2, getPages());
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testTdf171038_pageAfter)
+{
+    // given a document with a LO-specialty PageAfter break
+    // coupled with !IsPlausableSingleWordSection
+    createSwDoc("tdf171038_pageAfter.docx");
+
+    saveAndReload(TestFilter::DOCX);
+
+    CPPUNIT_ASSERT_EQUAL(2, getPages());
+
+    xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
+    assertXPath(pXmlDoc, "//w:sectPr", 2); // there are two section breaks
+    assertXPath(pXmlDoc, "//w:body/w:p/w:pPr/w:p/w:pPr/w:sectPr", 0); // would be corrupt document
+    assertXPath(pXmlDoc, "//w:body/w:p/w:pPr/w:sectPr", 1); // one is in the paragraph rPr
+    assertXPath(pXmlDoc, "//w:body/w:sectPr", 1); // the other is at the end of the document
+}
+
 DECLARE_OOXMLEXPORT_TEST(testTdf166544_noTopMargin_fields, "tdf166544_noTopMargin_fields.docx")
 {
     // given a document with a hyperlink field containing a page break
@@ -361,6 +385,14 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf170908_delText)
     // delText must be inside a w:del or MS Word considers the document to be corrupt
     assertXPath(pXmlDoc, "//w:delText", 1); // there is a delTree element
     CPPUNIT_ASSERT_EQUAL(1, countXPathNodes(pXmlDoc, "//w:del/w:r/w:delText")); // must be in w:del
+
+    // tdf#170516 drawing after plainText control
+    assertXPath(pXmlDoc, "//mc:AlternateContent", 1); // only one drawing
+    const int nRunsBeforeDelText = countXPathNodes(pXmlDoc, "//w:delText/preceding::w:r");
+    const int nRunsBeforeAnchor = countXPathNodes(pXmlDoc, "//mc:AlternateContent/preceding::w:r");
+
+    // The text should be in a separate (preceding) run from the floating stuff
+    CPPUNIT_ASSERT_GREATER(nRunsBeforeDelText, nRunsBeforeAnchor);
 }
 
 CPPUNIT_TEST_FIXTURE(Test, testTdf170952_delText)

@@ -474,8 +474,8 @@ SvStream& ReadImplFont( SvStream& rIStm, ImplFont& rImplFont, tools::Long& rnNor
     bool            bTmp(false);
     sal_uInt8       nTmp8(0);
 
-    rImplFont.SetFamilyName( rIStm.ReadUniOrByteString(rIStm.GetStreamEncoding()) );
-    rImplFont.maStyleName = rIStm.ReadUniOrByteString(rIStm.GetStreamEncoding());
+    rImplFont.SetFamilyName( rIStm.ReadUniOrByteString() );
+    rImplFont.maStyleName = rIStm.ReadUniOrByteString();
     TypeSerializer aSerializer(rIStm);
     aSerializer.readSize(rImplFont.maAverageFontSize);
 
@@ -552,8 +552,8 @@ SvStream& WriteImplFont( SvStream& rOStm, const ImplFont& rImplFont, tools::Long
     VersionCompatWrite aCompat( rOStm, 5 );
 
     TypeSerializer aSerializer(rOStm);
-    rOStm.WriteUniOrByteString( rImplFont.GetFamilyName(), rOStm.GetStreamEncoding() );
-    rOStm.WriteUniOrByteString( rImplFont.GetStyleName(), rOStm.GetStreamEncoding() );
+    rOStm.WriteUniOrByteString( rImplFont.GetFamilyName() );
+    rOStm.WriteUniOrByteString( rImplFont.GetStyleName() );
     aSerializer.writeSize(rImplFont.maAverageFontSize);
 
     rOStm.WriteUInt16( GetStoreCharSet( rImplFont.GetCharSet() ) );

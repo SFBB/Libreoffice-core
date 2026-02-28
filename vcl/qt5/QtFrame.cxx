@@ -21,7 +21,6 @@
 #include <QtFrame.hxx>
 #include <QtFrame.moc>
 
-#include <QtData.hxx>
 #include <QtDragAndDrop.hxx>
 #include <QtGraphics.hxx>
 #include <QtInstance.hxx>
@@ -799,7 +798,7 @@ void QtFrame::SetPointer(PointerStyle ePointerStyle)
             return;
         m_ePointerStyle = ePointerStyle;
 
-        m_pQWidget->setCursor(GetQtData()->getCursor(ePointerStyle));
+        m_pQWidget->setCursor(toQCursor(ePointerStyle));
     });
 }
 
@@ -1000,7 +999,7 @@ void QtFrame::UpdateSettings(AllSettings& rSettings)
 {
     SolarMutexGuard g;
     GetQtInstance().RunInMainThread([&] {
-        if (QtData::noNativeControls())
+        if (QtInstance::noNativeControls())
             return;
         QtCustomStyle::LoadCustomStyle(GetUseDarkMode());
 

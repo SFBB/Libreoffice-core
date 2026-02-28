@@ -27,8 +27,6 @@
 
 #include <sal/log.hxx>
 
-#include <QtData.hxx>
-
 #include "KFFilePicker.hxx"
 #include "KFSalInstance.hxx"
 
@@ -108,8 +106,6 @@ VCLPLUG_KF_PUBLIC SalInstance* create_SalInstance()
 
     KFSalInstance* pInstance = new KFSalInstance(pQApp);
     pInstance->MoveFakeCmdlineArgs(pFakeArgv, pFakeArgc, aFakeArgvFreeable);
-
-    new QtData();
 
     return pInstance;
 }
