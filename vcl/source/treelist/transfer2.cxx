@@ -36,6 +36,7 @@
 #include <vcl/dndlistenercontainer.hxx>
 #include <vcl/transfer.hxx>
 
+#include <salinst.hxx>
 #include <svdata.hxx>
 
 using namespace ::com::sun::star::uno;
@@ -461,9 +462,8 @@ Reference<XClipboard> GetSystemClipboard()
     // On Windows, the css.datatransfer.clipboard.SystemClipboard UNO service is implemented as a
     // single-instance service (dtrans_CWinClipboard_get_implementation in
     // vcl/win/dtrans/WinClipboard.cxx) that needs timely disposing to join a spawned thread
-    // (done in DeInitVCL, vcl/source/app/svmain.cxx), while on other platforms it is implemented as
-    // a multi-instance service (ClipboardFactory, vcl/source/components/dtranscomp.cxx) so we
-    // should not hold on to a single instance here:
+    // (done in DeInitVCL, vcl/source/app/svmain.cxx), while on other platforms multiple instances
+    // are used, so we should not hold on to a single instance here:
 #if defined _WIN32
     DBG_TESTSOLARMUTEX();
     auto const data = ImplGetSVData();
@@ -493,8 +493,7 @@ Reference<XClipboard> GetSystemClipboard()
 #endif
         else
         {
-            xClipboard = css::datatransfer::clipboard::SystemClipboard::create(
-                comphelper::getProcessComponentContext());
+            xClipboard = GetSalInstance()->CreateClipboard(ClipboardSelectionType::Clipboard);
         }
     }
     catch (DeploymentException const &) {}
@@ -507,14 +506,10 @@ Reference<XClipboard> GetSystemPrimarySelection()
     Reference<XClipboard> xSelection;
     try
     {
-        const Reference<XComponentContext>& xContext(comphelper::getProcessComponentContext());
 #if USING_X11
-        // A hack, making the primary selection available as an instance
-        // of the SystemClipboard service on X11:
-        Sequence< Any > args{ Any(u"PRIMARY"_ustr) };
-        xSelection.set(xContext->getServiceManager()->createInstanceWithArgumentsAndContext(
-            u"com.sun.star.datatransfer.clipboard.SystemClipboard"_ustr, args, xContext), UNO_QUERY_THROW);
+        xSelection = GetSalInstance()->CreateClipboard(ClipboardSelectionType::Primary);
 #else
+        const Reference<XComponentContext>& xContext(comphelper::getProcessComponentContext());
         static Reference< XClipboard > s_xSelection(
             xContext->getServiceManager()->createInstanceWithContext(
                 "com.sun.star.datatransfer.clipboard.GenericClipboard", xContext), UNO_QUERY);

@@ -225,8 +225,6 @@ public:
     css::uno::Reference<css::datatransfer::XTransferable> const & GetTransferable() const { return m_xTrans; }
 };
 
-enum SelectionType { SELECTION_CLIPBOARD = 0, SELECTION_PRIMARY = 1 };
-
 class GtkSalTimer;
 class GtkInstance final : public SvpSalInstance
 {
@@ -273,7 +271,7 @@ public:
         createFolderPicker( const css::uno::Reference< css::uno::XComponentContext >& ) override;
 
     virtual css::uno::Reference<css::datatransfer::clipboard::XClipboard>
-    CreateClipboard(const css::uno::Sequence<css::uno::Any>& i_rArguments) override;
+    CreateClipboard(ClipboardSelectionType eSelection) override;
     virtual css::uno::Reference<css::datatransfer::dnd::XDragSource>
     ImplCreateDragSource(const SystemEnvData& rSysEnv) override;
     virtual css::uno::Reference<css::datatransfer::dnd::XDropTarget>
@@ -297,7 +295,9 @@ public:
 
 private:
     GtkSalTimer *m_pTimer;
-    css::uno::Reference<css::datatransfer::clipboard::XClipboard> m_aClipboards[2];
+    std::unordered_map<ClipboardSelectionType,
+                       css::uno::Reference<css::datatransfer::clipboard::XClipboard>>
+        m_aClipboards;
     bool                        IsTimerExpired();
     bool                        bNeedsInit;
     cairo_font_options_t*       m_pLastCairoFontOptions;

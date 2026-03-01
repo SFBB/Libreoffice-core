@@ -10,13 +10,15 @@
 
 #pragma once
 
-#include <com/sun/star/lang/XServiceInfo.hpp>
+#include <ClipboardBase.hxx>
+
 #include <com/sun/star/datatransfer/XTransferable.hpp>
 #include <com/sun/star/datatransfer/clipboard/XSystemClipboard.hpp>
 #include <com/sun/star/datatransfer/clipboard/XFlushableClipboard.hpp>
 #include <com/sun/star/datatransfer/clipboard/XClipboardOwner.hpp>
 #include <com/sun/star/datatransfer/clipboard/XClipboardListener.hpp>
 #include <cppuhelper/compbase.hxx>
+#include <rtl/ref.hxx>
 
 #include <QtGui/QClipboard>
 
@@ -29,15 +31,12 @@
  **/
 class QtClipboard final
     : public QObject,
-      public cppu::WeakComponentImplHelper<css::datatransfer::clipboard::XSystemClipboard,
-                                           css::datatransfer::clipboard::XFlushableClipboard,
-                                           css::lang::XServiceInfo>
+      public cppu::ImplInheritanceHelper<ClipboardBase,
+                                         css::datatransfer::clipboard::XFlushableClipboard>
 {
     Q_OBJECT
 
-    osl::Mutex m_aMutex;
-    const OUString m_aClipboardName;
-    const QClipboard::Mode m_aClipboardMode;
+    const QClipboard::Mode m_eClipboardMode;
     // has to be set, if LO changes the QClipboard itself, so it won't instantly lose
     // ownership by it's self-triggered QClipboard::changed handler
     bool m_bOwnClipboardChange;
@@ -50,27 +49,22 @@ class QtClipboard final
     css::uno::Reference<css::datatransfer::clipboard::XClipboardOwner> m_aOwner;
     std::vector<css::uno::Reference<css::datatransfer::clipboard::XClipboardListener>> m_aListeners;
 
-    bool isOwner(const QClipboard::Mode aMode);
-    static bool isSupported(const QClipboard::Mode aMode);
-
-    explicit QtClipboard(OUString aModeString, const QClipboard::Mode aMode);
+    bool isOwner(const QClipboard::Mode eMode);
 
 private Q_SLOTS:
-    void handleChanged(QClipboard::Mode mode);
+    void handleChanged(QClipboard::Mode eMode);
     void handleClearClipboard();
 
 signals:
     void clearClipboard();
 
 public:
-    // factory function to construct only valid QtClipboard objects by name
-    static css::uno::Reference<css::datatransfer::clipboard::XClipboard>
-    create(const OUString& aModeString);
+    explicit QtClipboard(ClipboardSelectionType eSelection);
+
+    static bool isSupported(const QClipboard::Mode eMode);
 
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override;
-    virtual sal_Bool SAL_CALL supportsService(const OUString& ServiceName) override;
-    virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
 
     // XClipboard
     virtual css::uno::Reference<css::datatransfer::XTransferable> SAL_CALL getContents() override;
@@ -78,10 +72,6 @@ public:
         const css::uno::Reference<css::datatransfer::XTransferable>& xTrans,
         const css::uno::Reference<css::datatransfer::clipboard::XClipboardOwner>& xClipboardOwner)
         override;
-    virtual OUString SAL_CALL getName() override;
-
-    // XClipboardEx
-    virtual sal_Int8 SAL_CALL getRenderingCapabilities() override;
 
     // XFlushableClipboard
     virtual void SAL_CALL flushClipboard() override;

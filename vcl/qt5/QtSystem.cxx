@@ -11,6 +11,9 @@
 #include <QtGui/QScreen>
 
 #include <tools/gen.hxx>
+#include <vcl/svapp.hxx>
+
+#include <QtInstance.hxx>
 #include <QtSystem.hxx>
 #include <QtTools.hxx>
 
@@ -22,9 +25,12 @@ AbsoluteScreenPixelRectangle QtSystem::GetDisplayScreenPosSizePixel(unsigned int
     return AbsoluteScreenPixelRectangle(toRectangle(scaledQRect(qRect, qApp->devicePixelRatio())));
 }
 
-int QtSystem::ShowNativeDialog(const OUString&, const OUString&, const std::vector<OUString>&)
+void QtSystem::ShowNativeMessageBox(const OUString& rTitle, const OUString& rMessage)
 {
-    return 0;
+    SolarMutexGuard g;
+
+    GetQtInstance().RunInMainThread(
+        [&] { QMessageBox::critical(nullptr, toQString(rTitle), toQString(rMessage)); });
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

@@ -17,6 +17,7 @@
 #include <QtWidgets/QApplication>
 
 #include <QtInstance.hxx>
+#include <QtTools.hxx>
 #include <QtTransferable.hxx>
 
 #include <cassert>
@@ -29,16 +30,13 @@
 #include <emscripten.h>
 #endif
 
-QtClipboard::QtClipboard(OUString aModeString, const QClipboard::Mode aMode)
-    : cppu::WeakComponentImplHelper<css::datatransfer::clipboard::XSystemClipboard,
-                                    css::datatransfer::clipboard::XFlushableClipboard,
-                                    XServiceInfo>(m_aMutex)
-    , m_aClipboardName(std::move(aModeString))
-    , m_aClipboardMode(aMode)
+QtClipboard::QtClipboard(ClipboardSelectionType eSelectionType)
+    : ImplInheritanceHelper(eSelectionType)
+    , m_eClipboardMode(toQClipboardMode(eSelectionType))
     , m_bOwnClipboardChange(false)
     , m_bDoClear(false)
 {
-    assert(isSupported(m_aClipboardMode));
+    assert(isSupported(m_eClipboardMode));
     // DirectConnection guarantees the changed slot runs in the same thread as the QClipboard
     connect(QApplication::clipboard(), &QClipboard::changed, this, &QtClipboard::handleChanged,
             Qt::DirectConnection);
@@ -48,39 +46,24 @@ QtClipboard::QtClipboard(OUString aModeString, const QClipboard::Mode aMode)
             Qt::QueuedConnection);
 }
 
-css::uno::Reference<css::datatransfer::clipboard::XClipboard>
-QtClipboard::create(const OUString& aModeString)
-{
-    static const std::map<OUString, QClipboard::Mode> aNameToClipboardMap
-        = { { "CLIPBOARD", QClipboard::Clipboard }, { "PRIMARY", QClipboard::Selection } };
-
-    assert(QApplication::clipboard()->thread() == qApp->thread());
-
-    auto iter = aNameToClipboardMap.find(aModeString);
-    if (iter != aNameToClipboardMap.end() && isSupported(iter->second))
-        return new QtClipboard(aModeString, iter->second);
-    SAL_WARN("vcl.qt", "Ignoring unrecognized clipboard type: '" << aModeString << "'");
-    return nullptr;
-}
-
 void QtClipboard::flushClipboard()
 {
     SolarMutexGuard g;
     QtInstance& rQtInstance = GetQtInstance();
     rQtInstance.RunInMainThread([this]() {
-        if (!isOwner(m_aClipboardMode))
+        if (!isOwner(m_eClipboardMode))
             return;
 
         QClipboard* pClipboard = QApplication::clipboard();
         const QtMimeData* pQtMimeData
-            = qobject_cast<const QtMimeData*>(pClipboard->mimeData(m_aClipboardMode));
+            = qobject_cast<const QtMimeData*>(pClipboard->mimeData(m_eClipboardMode));
         assert(pQtMimeData);
 
         QMimeData* pMimeCopy = nullptr;
         if (pQtMimeData && pQtMimeData->deepCopy(&pMimeCopy))
         {
             m_bOwnClipboardChange = true;
-            pClipboard->setMimeData(pMimeCopy, m_aClipboardMode);
+            pClipboard->setMimeData(pMimeCopy, m_eClipboardMode);
             m_bOwnClipboardChange = false;
         }
     });
@@ -96,11 +79,11 @@ css::uno::Reference<css::datatransfer::XTransferable> QtClipboard::getContents()
     // if we're the owner, we might have the XTransferable from setContents. but
     // maybe a non-LO clipboard change from within LO, like some C'n'P in the
     // QFileDialog, might have invalidated m_aContents, so we need to check it too.
-    if (isOwner(m_aClipboardMode) && m_aContents.is())
+    if (isOwner(m_eClipboardMode) && m_aContents.is())
         return m_aContents;
 
     // check if we can still use the shared QtClipboardTransferable
-    const QMimeData* pMimeData = QApplication::clipboard()->mimeData(m_aClipboardMode);
+    const QMimeData* pMimeData = QApplication::clipboard()->mimeData(m_eClipboardMode);
 #if defined(EMSCRIPTEN)
     if (!pMimeData)
         pMimeData = &aMimeData;
@@ -113,7 +96,7 @@ css::uno::Reference<css::datatransfer::XTransferable> QtClipboard::getContents()
             return m_aContents;
     }
 
-    m_aContents = new QtClipboardTransferable(m_aClipboardMode, pMimeData);
+    m_aContents = new QtClipboardTransferable(m_eClipboardMode, pMimeData);
     return m_aContents;
 }
 
@@ -121,7 +104,7 @@ void QtClipboard::handleClearClipboard()
 {
     if (!m_bDoClear)
         return;
-    QApplication::clipboard()->clear(m_aClipboardMode);
+    QApplication::clipboard()->clear(m_eClipboardMode);
 }
 
 void QtClipboard::setContents(
@@ -140,7 +123,7 @@ void QtClipboard::setContents(
     if (!m_bDoClear)
     {
         m_bOwnClipboardChange = true;
-        QApplication::clipboard()->setMimeData(new QtMimeData(m_aContents), m_aClipboardMode);
+        QApplication::clipboard()->setMimeData(new QtMimeData(m_aContents), m_eClipboardMode);
         m_bOwnClipboardChange = false;
     }
     else
@@ -192,16 +175,16 @@ void QtClipboard::setContents(
         xOldOwner->lostOwnership(this, xOldContents);
 }
 
-void QtClipboard::handleChanged(QClipboard::Mode aMode)
+void QtClipboard::handleChanged(QClipboard::Mode eMode)
 {
-    if (aMode != m_aClipboardMode)
+    if (eMode != m_eClipboardMode)
         return;
 
     osl::ClearableMutexGuard aGuard(m_aMutex);
 
-    if (!m_bOwnClipboardChange && isOwner(aMode))
+    if (!m_bOwnClipboardChange && isOwner(eMode))
     {
-        auto const mimeData = QApplication::clipboard()->mimeData(aMode);
+        auto const mimeData = QApplication::clipboard()->mimeData(eMode);
 
         // QtWayland will send a second change notification (seemingly without any
         // trigger). And any C'n'P operation in the Qt file picker emits a signal,
@@ -252,20 +235,6 @@ OUString QtClipboard::getImplementationName()
     return u"com.sun.star.datatransfer.QtClipboard"_ustr;
 }
 
-css::uno::Sequence<OUString> QtClipboard::getSupportedServiceNames()
-{
-    return { u"com.sun.star.datatransfer.clipboard.SystemClipboard"_ustr };
-}
-
-sal_Bool QtClipboard::supportsService(const OUString& ServiceName)
-{
-    return cppu::supportsService(this, ServiceName);
-}
-
-OUString QtClipboard::getName() { return m_aClipboardName; }
-
-sal_Int8 QtClipboard::getRenderingCapabilities() { return 0; }
-
 void QtClipboard::addClipboardListener(
     const css::uno::Reference<css::datatransfer::clipboard::XClipboardListener>& listener)
 {
@@ -280,10 +249,10 @@ void QtClipboard::removeClipboardListener(
     std::erase(m_aListeners, listener);
 }
 
-bool QtClipboard::isSupported(const QClipboard::Mode aMode)
+bool QtClipboard::isSupported(const QClipboard::Mode eMode)
 {
     const QClipboard* pClipboard = QApplication::clipboard();
-    switch (aMode)
+    switch (eMode)
     {
         case QClipboard::Selection:
             return pClipboard->supportsSelection();

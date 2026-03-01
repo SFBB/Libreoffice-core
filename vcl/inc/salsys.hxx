@@ -23,9 +23,6 @@
 #include <vcl/dllapi.h>
 #include <rtl/ustring.hxx>
 
-// Button identifier for ShowNativeMessageBox
-const int SALSYSTEM_SHOWNATIVEMSGBOX_BTN_OK = 1;
-
 class VCL_PLUGIN_PUBLIC SalSystem
 {
 public:
@@ -64,12 +61,8 @@ public:
 
         @param  rMessage
         The message to be shown by the dialog box.
-
-        @returns the identifier of the button that was pressed by the user.
-        See button identifier above. If the function fails the
-        return value is 0.
     */
-    virtual int ShowNativeMessageBox(const OUString& rTitle, const OUString& rMessage) = 0;
+    virtual void ShowNativeMessageBox(const OUString& rTitle, const OUString& rMessage) = 0;
 };
 
 VCL_DLLPUBLIC SalSystem* ImplGetSalSystem();

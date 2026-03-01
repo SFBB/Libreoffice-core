@@ -37,20 +37,6 @@ SalGenericSystem::~SalGenericSystem()
 {
 }
 
-int SalGenericSystem::ShowNativeMessageBox( const OUString& rTitle, const OUString& rMessage )
-{
-    std::vector< OUString > aButtons;
-    int nButtonIds[5] = {0}, nBut = 0;
-
-    ImplHideSplash();
-
-    aButtons.push_back( u"OK"_ustr );
-    nButtonIds[nBut++] = SALSYSTEM_SHOWNATIVEMSGBOX_BTN_OK;
-    int nResult = ShowNativeDialog( rTitle, rMessage, aButtons );
-
-    return nResult != -1 ? nButtonIds[ nResult ] : 0;
-}
-
 #if !defined(ANDROID) && !defined(IOS)
 
 // X11-specific

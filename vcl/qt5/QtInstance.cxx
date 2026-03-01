@@ -646,34 +646,29 @@ QtInstance::createFolderPicker(const css::uno::Reference<css::uno::XComponentCon
 }
 
 css::uno::Reference<css::datatransfer::clipboard::XClipboard>
-QtInstance::CreateClipboard(const css::uno::Sequence<css::uno::Any>& arguments)
+QtInstance::CreateClipboard(ClipboardSelectionType eSelection)
 {
-    OUString sel;
-    if (arguments.getLength() == 0)
-    {
-        sel = "CLIPBOARD";
-    }
-    else if (arguments.getLength() != 1 || !(arguments[0] >>= sel))
-    {
-        throw css::lang::IllegalArgumentException(u"bad QtInstance::CreateClipboard arguments"_ustr,
-                                                  css::uno::Reference<css::uno::XInterface>(), -1);
-    }
-
     // This could also use RunInMain, but SolarMutexGuard is enough
     // since at this point we're not accessing the clipboard, just get the
     // accessor to the clipboard.
     SolarMutexGuard aGuard;
 
-    auto it = m_aClipboards.find(sel);
+    auto it = m_aClipboards.find(eSelection);
     if (it != m_aClipboards.end())
         return it->second;
 
-    css::uno::Reference<css::datatransfer::clipboard::XClipboard> xClipboard
-        = EmscriptenLightweightRunInMainThread([&sel] { return QtClipboard::create(sel); });
-    if (xClipboard.is())
-        m_aClipboards[sel] = xClipboard;
+    rtl::Reference<QtClipboard> pClipboard = EmscriptenLightweightRunInMainThread([&eSelection] {
+        assert(QApplication::clipboard()->thread() == qApp->thread());
 
-    return xClipboard;
+        if (QtClipboard::isSupported(toQClipboardMode(eSelection)))
+            return rtl::Reference<QtClipboard>(new QtClipboard(eSelection));
+        SAL_WARN("vcl.qt", "Ignoring unsupported selection type");
+        return rtl::Reference<QtClipboard>();
+    });
+    if (pClipboard.is())
+        m_aClipboards[eSelection] = pClipboard;
+
+    return pClipboard;
 }
 
 css::uno::Reference<css::datatransfer::dnd::XDragSource>

@@ -74,10 +74,8 @@ void releaseAsync(css::uno::Reference<css::datatransfer::XTransferable>& ref)
 }
 
 /*XEventListener,*/
-CWinClipboard::CWinClipboard(const uno::Reference<uno::XComponentContext>& rxContext,
-                             const OUString& aClipboardName)
+CWinClipboard::CWinClipboard(const uno::Reference<uno::XComponentContext>& rxContext)
     : m_xContext(rxContext)
-    , m_itsName(aClipboardName)
 {
     // necessary to reassociate from
     // the static callback function
@@ -230,7 +228,7 @@ OUString SAL_CALL CWinClipboard::getName()
         throw lang::DisposedException("object is already disposed",
                                       static_cast<XClipboardEx*>(this));
 
-    return m_itsName;
+    return OUString();
 }
 
 // XFlushableClipboard
@@ -359,7 +357,7 @@ uno::Sequence<OUString> SAL_CALL CWinClipboard::getSupportedServiceNames()
 
 extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
 dtrans_CWinClipboard_get_implementation(css::uno::XComponentContext* context,
-                                        css::uno::Sequence<css::uno::Any> const& args)
+                                        css::uno::Sequence<css::uno::Any> const&)
 {
     // We run unit tests in parallel, which is a problem when touching a shared resource
     // like the system clipboard, so rather use the dummy GenericClipboard.
@@ -368,14 +366,14 @@ dtrans_CWinClipboard_get_implementation(css::uno::XComponentContext* context,
     if (bRunningUnitTest)
     {
         SolarMutexGuard aGuard;
-        auto xClipboard = ImplGetSVData()->mpDefInst->CreateClipboard(args);
+        auto xClipboard = GetSalInstance()->CreateClipboard(ClipboardSelectionType::Clipboard);
         if (xClipboard.is())
             xClipboard->acquire();
         return xClipboard.get();
     }
     else
     {
-        return cppu::acquire(new CWinClipboard(context, ""));
+        return cppu::acquire(new CWinClipboard(context));
     }
 }
 
