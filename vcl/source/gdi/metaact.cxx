@@ -76,6 +76,32 @@ void ImplScaleLineInfo( LineInfo& rLineInfo, double fScaleX, double fScaleY )
     }
 }
 
+bool AllowDim(tools::Long nDim)
+{
+    static bool bFuzzing = comphelper::IsFuzzing();
+    if (bFuzzing)
+    {
+        constexpr auto numCairoMax(1 << 22);
+        if (nDim > numCairoMax || nDim < -numCairoMax)
+        {
+            SAL_WARN("vcl", "skipping huge dimension: " << nDim);
+            return false;
+        }
+    }
+    return true;
+}
+
+bool AllowPoint(const Point& rPoint)
+{
+    return AllowDim(rPoint.X()) && AllowDim(rPoint.Y());
+}
+
+bool AllowRect(const tools::Rectangle& rRect)
+{
+    return AllowPoint(rRect.TopLeft()) && AllowPoint(rRect.BottomRight()) &&
+           AllowDim(rRect.GetHeight()) && AllowDim(rRect.GetWidth());
+}
+
 } //anonymous namespace
 
 MetaAction::MetaAction() :
@@ -190,6 +216,14 @@ MetaLineAction::MetaLineAction( const Point& rStart, const Point& rEnd,
 
 void MetaLineAction::Execute( OutputDevice* pOut )
 {
+    if (!AllowPoint(pOut->LogicToPixel(maStartPt)) ||
+        !AllowPoint(pOut->LogicToPixel(maEndPt)))
+    {
+        return;
+    }
+    if (!AllowDim(pOut->LogicToPixel(Size(maLineInfo.GetWidth(), 0)).Width()))
+        return;
+
     if( maLineInfo.IsDefault() )
         pOut->DrawLine( maStartPt, maEndPt );
     else
@@ -221,32 +255,6 @@ MetaRectAction::MetaRectAction( const tools::Rectangle& rRect ) :
     MetaAction  ( MetaActionType::RECT ),
     maRect      ( rRect )
 {}
-
-static bool AllowDim(tools::Long nDim)
-{
-    static bool bFuzzing = comphelper::IsFuzzing();
-    if (bFuzzing)
-    {
-        constexpr auto numCairoMax(1 << 23);
-        if (nDim > numCairoMax || nDim < -numCairoMax)
-        {
-            SAL_WARN("vcl", "skipping huge dimension: " << nDim);
-            return false;
-        }
-    }
-    return true;
-}
-
-static bool AllowPoint(const Point& rPoint)
-{
-    return AllowDim(rPoint.X()) && AllowDim(rPoint.Y());
-}
-
-static bool AllowRect(const tools::Rectangle& rRect)
-{
-    return AllowPoint(rRect.TopLeft()) && AllowPoint(rRect.BottomRight()) &&
-           AllowDim(rRect.GetHeight()) && AllowDim(rRect.GetWidth());
-}
 
 void MetaRectAction::Execute( OutputDevice* pOut )
 {
@@ -469,6 +477,8 @@ MetaPolyLineAction::MetaPolyLineAction( tools::Polygon aPoly, LineInfo aLineInfo
 void MetaPolyLineAction::Execute( OutputDevice* pOut )
 {
     if (!AllowRect(pOut->LogicToPixel(maPoly.GetBoundRect())))
+        return;
+    if (!AllowDim(pOut->LogicToPixel(Size(maLineInfo.GetWidth(), 0)).Width()))
         return;
 
     if( maLineInfo.IsDefault() )
