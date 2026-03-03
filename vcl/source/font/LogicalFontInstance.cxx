@@ -41,6 +41,7 @@ LogicalFontInstance::LogicalFontInstance(const vcl::font::PhysicalFontFace& rFon
     , m_pHbFont(nullptr)
     , m_nAveWidthFactor(1.0f)
     , m_pFontFace(&const_cast<vcl::font::PhysicalFontFace&>(rFontFace))
+    , m_bOpticalSizing(rFontSelData.mbOpticalSizing)
 {
 }
 
@@ -60,6 +61,35 @@ LogicalFontInstance::~LogicalFontInstance()
         hb_draw_funcs_destroy(m_pHbDrawFuncs);
 }
 
+const std::vector<hb_variation_t>& LogicalFontInstance::GetVariations() const
+{
+    if (!mxVariations)
+    {
+        mxVariations = GetFontFace()->GetVariations(*this);
+        hb_face_t* pHbFace = GetFontFace()->GetHbFace();
+        auto aVariations = m_aVariations;
+        if (m_bOpticalSizing && m_fPointSize > 0)
+            aVariations.push_back({ HB_TAG('o', 'p', 's', 'z'), m_fPointSize });
+
+        for (auto& rVariation : aVariations)
+        {
+            hb_ot_var_axis_info_t info;
+            if (hb_ot_var_find_axis_info(pHbFace, rVariation.tag, &info))
+                rVariation.value = std::clamp(rVariation.value, info.min_value, info.max_value);
+
+            auto it = std::find_if(mxVariations->begin(), mxVariations->end(),
+                                   [&rVariation](const hb_variation_t& rOther) {
+                                       return rOther.tag == rVariation.tag;
+                                   });
+            if (it != mxVariations->end())
+                it->value = rVariation.value;
+            else
+                mxVariations->push_back(rVariation);
+        }
+    }
+    return *mxVariations;
+}
+
 hb_font_t* LogicalFontInstance::InitHbFont()
 {
     auto pFace = GetFontFace();
@@ -71,9 +101,9 @@ hb_font_t* LogicalFontInstance::InitHbFont()
     hb_font_set_scale(pHbFont, nUPEM, nUPEM);
     hb_ot_font_set_funcs(pHbFont);
 
-    auto aVariations = pFace->GetVariations(*this);
-    if (!aVariations.empty())
-        hb_font_set_variations(pHbFont, aVariations.data(), aVariations.size());
+    const auto& rVariations = GetVariations();
+    if (!rVariations.empty())
+        hb_font_set_variations(pHbFont, rVariations.data(), rVariations.size());
 
     // If we are applying artificial italic, instruct HarfBuzz to do the same
     // so that mark positioning is also transformed.

@@ -89,11 +89,6 @@ X11SalInstance::~X11SalInstance()
 #endif
 }
 
-SalX11Display* X11SalInstance::CreateDisplay() const
-{
-    return new SalX11Display( mpXLib->GetDisplay() );
-}
-
 // AnyInput from sv/mow/source/app/svapp.cxx
 
 namespace {
@@ -205,7 +200,7 @@ void X11SalInstance::AfterAppInit()
     assert( mpXLib->GetDisplay() );
     assert( mpXLib->GetInputMethod() );
 
-    SalX11Display *pSalDisplay = CreateDisplay();
+    SalX11Display* pSalDisplay = new SalX11Display(mpXLib->GetDisplay());
     mpXLib->GetInputMethod()->CreateMethod( mpXLib->GetDisplay() );
     pSalDisplay->SetupInput();
 }
@@ -231,6 +226,27 @@ std::shared_ptr<SalBitmap> X11SalInstance::CreateSalBitmap()
         return std::make_shared<SkiaSalBitmap>();
 #endif
     return std::make_shared<SvpSalBitmap>();
+}
+
+rtl::Reference<X11DisplayConnectionDispatch> X11SalInstance::GetDisplayConnection()
+{
+    ImplSVData* pSVData = ImplGetSVData();
+
+    if (!pSVData->mxDisplayConnection.is())
+    {
+        rtl::Reference<X11DisplayConnectionDispatch> pDisplayConnection(
+            new X11DisplayConnectionDispatch);
+        pSVData->mxDisplayConnection = pDisplayConnection;
+        pDisplayConnection->start();
+        return pDisplayConnection;
+    }
+
+    return dynamic_cast<X11DisplayConnectionDispatch*>(pSVData->mxDisplayConnection.get());
+}
+
+bool X11SalInstance::CallEventCallback(const void* pEvent)
+{
+    return m_pEventInst.is() && m_pEventInst->dispatchEvent(pEvent);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

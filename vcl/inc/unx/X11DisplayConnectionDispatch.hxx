@@ -19,12 +19,38 @@
 
 #pragma once
 
-#include <unx/genprn.h>
+#include <sal/config.h>
 
-class QtPrinter final : public PspSalPrinter
+#include <displayconnectiondispatch.hxx>
+
+#include <cppuhelper/implbase.hxx>
+#include <com/sun/star/uno/Reference.hxx>
+#include <rtl/ref.hxx>
+#include <vcl/dllapi.h>
+#include <mutex>
+#include <vector>
+
+namespace x11
 {
+class SelectionManager;
+}
+
+class X11DisplayConnectionDispatch final : public vcl::DisplayConnectionDispatch
+{
+    std::mutex m_aMutex;
+    std::vector<rtl::Reference<x11::SelectionManager>> m_aHandlers;
+
 public:
-    QtPrinter(SalInfoPrinter* pInfoPrinter);
+    X11DisplayConnectionDispatch();
+    ~X11DisplayConnectionDispatch() override;
+
+    void start();
+    void terminate() override;
+
+    bool dispatchEvent(const void* pEvent);
+
+    void addEventHandler(const rtl::Reference<x11::SelectionManager>& handler);
+    void removeEventHandler(const rtl::Reference<x11::SelectionManager>& handler);
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

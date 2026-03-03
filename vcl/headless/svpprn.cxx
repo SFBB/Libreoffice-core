@@ -34,32 +34,6 @@
 
 using namespace psp;
 
-/*
- *  static helpers
- */
-
-static OUString getPdfDir( const PrinterInfo& rInfo )
-{
-    OUString aDir;
-    sal_Int32 nIndex = 0;
-    while( nIndex != -1 )
-    {
-        OUString aToken( rInfo.m_aFeatures.getToken( 0, ',', nIndex ) );
-        if( aToken.startsWith( "pdf=" ) )
-        {
-            sal_Int32 nPos = 0;
-            aDir = aToken.getToken( 1, '=', nPos );
-            if( aDir.isEmpty() )
-                if (auto const env = getenv( "HOME" )) {
-                    aDir = OStringToOUString(
-                        std::string_view( env ), osl_getThreadTextEncoding() );
-                }
-            break;
-        }
-    }
-    return aDir;
-}
-
 static void copyJobDataToJobSetup( ImplJobSetup* pJobSetup, JobData& rData )
 {
     pJobSetup->SetOrientation( rData.m_eOrientation == orientation::Landscape ? Orientation::Landscape : Orientation::Portrait );
@@ -176,11 +150,6 @@ SalInfoPrinter* SvpSalInstance::CreateInfoPrinter( SalPrinterQueueInfo* pQueueIn
     return pPrinter;
 }
 
-void SvpSalInstance::DestroyInfoPrinter( SalInfoPrinter* pPrinter )
-{
-    delete pPrinter;
-}
-
 std::unique_ptr<SalPrinter> SvpSalInstance::CreatePrinter( SalInfoPrinter* pInfoPrinter )
 {
     // create and initialize SalPrinter
@@ -199,9 +168,8 @@ void SvpSalInstance::GetPrinterQueueInfo( ImplPrnQueueList* pList )
         // #i62663# synchronize possible asynchronouse printer detection now
         rManager.checkPrintersChanged( true );
     }
-    ::std::vector< OUString > aPrinters;
-    rManager.listPrinters( aPrinters );
 
+    std::vector<OUString> aPrinters = rManager.listPrinters();
     for (auto const& printer : aPrinters)
     {
         const PrinterInfo& rInfo( rManager.getPrinterInfo(printer) );
@@ -212,16 +180,9 @@ void SvpSalInstance::GetPrinterQueueInfo( ImplPrnQueueList* pList )
         pInfo->maLocation       = rInfo.m_aLocation;
         pInfo->maComment        = rInfo.m_aComment;
 
-        sal_Int32 nIndex = 0;
-        while( nIndex != -1 )
-        {
-            OUString aToken( rInfo.m_aFeatures.getToken( 0, ',', nIndex ) );
-            if( aToken.startsWith( "pdf=" ) )
-            {
-                pInfo->maLocation = getPdfDir( rInfo );
-                break;
-            }
-        }
+        OUString sPdfDir;
+        if (getPdfDir(rInfo, sPdfDir))
+            pInfo->maLocation = sPdfDir;
 
         pList->Add( std::move(pInfo) );
     }

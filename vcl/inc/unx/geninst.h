@@ -23,6 +23,8 @@
 
 #include <memory>
 #include <comphelper/solarmutex.hxx>
+
+#include <printerinfomanager.hxx>
 #include <salinst.hxx>
 #include <svdata.hxx>
 #include <unx/genprn.h>
@@ -59,7 +61,6 @@ public:
     // Printing
     virtual SalInfoPrinter*     CreateInfoPrinter      ( SalPrinterQueueInfo* pQueueInfo,
                                                          ImplJobSetup* pSetupData ) override;
-    virtual void                DestroyInfoPrinter     ( SalInfoPrinter* pPrinter ) override;
     virtual std::unique_ptr<SalPrinter> CreatePrinter  ( SalInfoPrinter* pInfoPrinter ) override;
     virtual void                GetPrinterQueueInfo    ( ImplPrnQueueList* pList ) override;
     virtual void                GetPrinterQueueState   ( SalPrinterQueueInfo* pInfo ) override;
@@ -78,6 +79,7 @@ protected:
     static void configurePspInfoPrinter( PspSalInfoPrinter* pInfoPrinter,
                                          SalPrinterQueueInfo const * pQueueInfo,
                                          ImplJobSetup* pSetupData );
+    static bool getPdfDir(const psp::PrinterInfo& rInfo, OUString& rDir);
 };
 
 inline SalGenericInstance *GetGenericInstance()

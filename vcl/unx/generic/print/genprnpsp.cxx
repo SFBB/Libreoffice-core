@@ -53,7 +53,6 @@
 #include <vcl/PrinterSupport.hxx>
 #include <vcl/QueueInfo.hxx>
 #include <vcl/pdfwriter.hxx>
-#include <printerinfomanager.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/weld/Dialog.hxx>
@@ -73,24 +72,6 @@
 
 using namespace psp;
 using namespace com::sun::star;
-
-static bool getPdfDir( const PrinterInfo& rInfo, OUString &rDir )
-{
-    sal_Int32 nIndex = 0;
-    while( nIndex != -1 )
-    {
-        OUString aToken( rInfo.m_aFeatures.getToken( 0, ',', nIndex ) );
-        if( aToken.startsWith( "pdf=" ) )
-        {
-            sal_Int32 nPos = 0;
-            rDir = aToken.getToken( 1, '=', nPos );
-            if( rDir.isEmpty() && getenv( "HOME" ) )
-                rDir = OUString( getenv( "HOME" ), strlen( getenv( "HOME" ) ), osl_getThreadTextEncoding() );
-            return true;
-        }
-    }
-    return false;
-}
 
 namespace
 {
@@ -281,6 +262,25 @@ void SalGenericInstance::configurePspInfoPrinter(PspSalInfoPrinter *pPrinter,
     copyJobDataToJobSetup( pJobSetup, aInfo );
 }
 
+bool SalGenericInstance::getPdfDir(const PrinterInfo& rInfo, OUString& rDir)
+{
+    sal_Int32 nIndex = 0;
+    while (nIndex != -1)
+    {
+        OUString aToken(rInfo.m_aFeatures.getToken(0, ',', nIndex));
+        if (aToken.startsWith("pdf="))
+        {
+            sal_Int32 nPos = 0;
+            rDir = aToken.getToken(1, '=', nPos);
+            if (rDir.isEmpty() && getenv("HOME"))
+                rDir
+                    = OUString(getenv("HOME"), strlen(getenv("HOME")), osl_getThreadTextEncoding());
+            return true;
+        }
+    }
+    return false;
+}
+
 SalInfoPrinter* SalGenericInstance::CreateInfoPrinter( SalPrinterQueueInfo*    pQueueInfo,
                                                        ImplJobSetup*           pJobSetup )
 {
@@ -289,11 +289,6 @@ SalInfoPrinter* SalGenericInstance::CreateInfoPrinter( SalPrinterQueueInfo*    p
     PspSalInfoPrinter* pPrinter = new PspSalInfoPrinter();
     configurePspInfoPrinter(pPrinter, pQueueInfo, pJobSetup);
     return pPrinter;
-}
-
-void SalGenericInstance::DestroyInfoPrinter( SalInfoPrinter* pPrinter )
-{
-    delete pPrinter;
 }
 
 std::unique_ptr<SalPrinter> SalGenericInstance::CreatePrinter( SalInfoPrinter* pInfoPrinter )
@@ -316,9 +311,8 @@ void SalGenericInstance::GetPrinterQueueInfo( ImplPrnQueueList* pList )
         // #i62663# synchronize possible asynchronouse printer detection now
         rManager.checkPrintersChanged( true );
     }
-    ::std::vector< OUString > aPrinters;
-    rManager.listPrinters( aPrinters );
 
+    std::vector<OUString> aPrinters = rManager.listPrinters();
     for (auto const& printer : aPrinters)
     {
         const PrinterInfo& rInfo( rManager.getPrinterInfo(printer) );

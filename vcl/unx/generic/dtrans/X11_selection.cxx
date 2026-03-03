@@ -25,6 +25,7 @@
 
 #include <salinst.hxx>
 #include <unx/saldisp.hxx>
+#include <unx/salinst.h>
 
 #include <unistd.h>
 #include <string.h>
@@ -40,11 +41,12 @@
 
 #include <sal/macros.h>
 
-#include "X11_selection.hxx"
 #include "X11_clipboard.hxx"
 #include "X11_transferable.hxx"
 #include "X11_dndcontext.hxx"
 #include "bmp.hxx"
+
+#include <unx/X11_selection.hxx>
 
 #include <vcl/svapp.hxx>
 #include <o3tl/string_view.hxx>
@@ -335,7 +337,7 @@ void SelectionManager::initialize()
          *  needs to be added. The display used would be that of the normal event loop
          *  and synchronization should be done via the SolarMutex.
          */
-        m_xDisplayConnection = Application::GetDisplayConnection();
+        m_xDisplayConnection = X11SalInstance::GetDisplayConnection();
         assert(m_xDisplayConnection.is());
         m_xDisplayConnection->addEventHandler(this);
     }

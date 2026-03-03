@@ -166,8 +166,6 @@ public:
     void                ShowPage(const OUString& rName);  // SetCurPageId + call Activate on it
     OUString             GetCurPageId() const;
     SfxTabPage*         GetCurTabPage() const { return GetTabPage(GetCurPageId()); }
-    void                ResetTabPage(std::u16string_view rPageId);
-    void                ResetAllTabPages();
     void                InvalidateItem(sal_uInt16 nWhich);
     OUString            GetTabPageNameForWhich(sal_uInt16 nWhich) const;
     void                BuildWhichToTabMap();
@@ -179,9 +177,6 @@ public:
     }
     const SfxItemSet* GetExampleSet() const override { return m_xExampleSet.get(); }
 
-    /// Subclasses can override to provide additional WhichId→tab mappings
-    /// that the access tracker cannot determine correctly.
-    virtual std::map<sal_uInt16, OUString> GetWhichToTabOverrides() const { return {}; }
     const std::set<sal_uInt16>& GetInvalidatedWhichIds() const { return m_aInvalidatedWhichIds; }
 
     // may provide local slots converted by Map
