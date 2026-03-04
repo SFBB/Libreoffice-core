@@ -1,4 +1,5 @@
-# Generated with 'cmake -DZXING_WRITERS=OLD'
+# Generated with 'cmake -DZXING_READERS=OFF -DZXING_WRITERS=NEW'
+# Unused symbologies are disabled
 
 --- /dev/null	2023-12-10 14:00:18.140142051 +0100
 +++ a/core/src/Version.h	2023-12-22 21:38:22.466302568 +0100
@@ -11,18 +12,18 @@
 +
 +#pragma once
 +
-+#define ZXING_READERS
++/* #undef ZXING_READERS */
 +#define ZXING_WRITERS
 +
 +#define ZXING_ENABLE_1D 1
-+#define ZXING_ENABLE_AZTEC 1
-+#define ZXING_ENABLE_DATAMATRIX 1
-+#define ZXING_ENABLE_MAXICODE 1
-+#define ZXING_ENABLE_PDF417 1
++#define ZXING_ENABLE_AZTEC 0
++#define ZXING_ENABLE_DATAMATRIX 0
++#define ZXING_ENABLE_MAXICODE 0
++#define ZXING_ENABLE_PDF417 0
 +#define ZXING_ENABLE_QRCODE 1
 +
 +/* #undef ZXING_EXPERIMENTAL_API */
-+/* #undef ZXING_USE_ZINT */
++#define ZXING_USE_ZINT
 +
 +// Version numbering
 +#define ZXING_VERSION_MAJOR 3
@@ -31,4 +32,3 @@
 +#define ZXING_VERSION_SUFFIX ""
 +
 +#define ZXING_VERSION_STR "3.0.2"
-
