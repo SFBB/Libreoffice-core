@@ -4391,12 +4391,17 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,org/libreoffice/embindtest, \
     Constants \
     Enum \
     Exception \
+    ExplicitConstructors \
+    ImplicitConstructor \
     Struct \
     StructLong \
     StructString \
     Template \
+    XArgumentStore \
     XAttributes \
+    XStringFactory \
     XTest \
+    theSingleton \
 ))
 $(eval $(call gb_UnoApi_add_idlfiles_nohdl,offapi,org/libreoffice/embindtest, \
     BridgeTest \

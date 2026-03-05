@@ -196,7 +196,7 @@ OUString getMasterTextFieldType(SdrObject* pObject)
     return aType;
 }
 
-bool isGroup(SdrObject* pObject) { return pObject->getChildrenOfSdrObject() != nullptr; }
+bool isGroup(const SdrObject* pObject) { return pObject->getChildrenOfSdrObject() != nullptr; }
 
 /// Sets visible for all kinds of polypolys in the container
 void changePolyPolys(
@@ -834,7 +834,7 @@ void SlideshowLayerRenderer::setupMasterPageFields()
     }
 }
 
-Size SlideshowLayerRenderer::calculateAndSetSizePixel(Size const& rDesiredSizePixel)
+const Size& SlideshowLayerRenderer::calculateAndSetSizePixel(Size const& rDesiredSizePixel)
 {
     double fRatio = double(mrPage.GetHeight()) / mrPage.GetWidth();
     Size aSize(rDesiredSizePixel.Width(), ::tools::Long(rDesiredSizePixel.Width() * fRatio));
@@ -898,7 +898,7 @@ void writeBoundingBox(::tools::JsonWriter& aJsonWriter, const SdrObject* pObject
 }
 
 void writeAnimated(::tools::JsonWriter& aJsonWriter, AnimationLayerInfo const& rLayerInfo,
-                   SdrObject* pObject, sal_Int32 nParagraph = -1,
+                   const SdrObject* pObject, sal_Int32 nParagraph = -1,
                    const Color& rFontColor = COL_AUTO)
 {
     aJsonWriter.put("type", "animated");

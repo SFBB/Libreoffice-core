@@ -57,11 +57,9 @@ bool SwAccessibleCell::IsSelected()
     {
         if( pCSh->IsTableMode() )
         {
-            const SwCellFrame *pCFrame =
-                static_cast< const SwCellFrame * >( GetFrame() );
-            const SwTableBox* pBox = pCFrame->GetTabBox();
+            const SwTableBox& rBox = GetCellFrame().GetTabBox();
             SwSelBoxes const& rBoxes(pCSh->GetTableCursor()->GetSelectedBoxes());
-            bRet = rBoxes.find(pBox) != rBoxes.end();
+            bRet = rBoxes.find(&rBox) != rBoxes.end();
         }
     }
 
@@ -98,7 +96,7 @@ SwAccessibleCell::SwAccessibleCell(std::shared_ptr<SwAccessibleMap> const& pInit
     , m_aSelectionHelper( *this )
     , m_bIsSelected( false )
 {
-    OUString sBoxName( pCellFrame->GetTabBox()->GetName() );
+    OUString sBoxName(pCellFrame->GetTabBox().GetName());
     SetName( sBoxName );
 
     m_bIsSelected = IsSelected();
@@ -248,15 +246,16 @@ void SwAccessibleCell::InvalidatePosOrSize( const SwRect& rOldBox )
     SwAccessibleContext::InvalidatePosOrSize( rOldBox );
 }
 
-// XAccessibleValue
+const SwCellFrame& SwAccessibleCell::GetCellFrame() const
+{
+    const SwFrame* pSwFrame = GetFrame();
+    assert(pSwFrame && pSwFrame->IsCellFrame());
+    return static_cast<const SwCellFrame&>(*pSwFrame);
+}
 
 SwFrameFormat* SwAccessibleCell::GetTableBoxFormat() const
 {
-    assert(GetFrame());
-    assert(GetFrame()->IsCellFrame());
-
-    const SwCellFrame* pCellFrame = static_cast<const SwCellFrame*>( GetFrame() );
-    return pCellFrame->GetTabBox()->GetFrameFormat();
+    return GetCellFrame().GetTabBox().GetFrameFormat();
 }
 
 //Implement TableCell currentValue
@@ -341,15 +340,9 @@ sal_Int32 SAL_CALL SwAccessibleCell::getBackground()
 
     if (COL_AUTO == crBack)
     {
-        uno::Reference<XAccessible> xAccDoc = getAccessibleParent();
-        if (xAccDoc.is())
-        {
-            uno::Reference<XAccessibleComponent> xComponentDoc(xAccDoc, uno::UNO_QUERY);
-            if (xComponentDoc.is())
-            {
-                crBack = Color(ColorTransparency, xComponentDoc->getBackground());
-            }
-        }
+        rtl::Reference<SwAccessibleContext> pAccDoc = getAccessibleParentImpl();
+        if (pAccDoc.is())
+            crBack = Color(ColorTransparency, pAccDoc->getBackground());
     }
     return sal_Int32(crBack);
 }

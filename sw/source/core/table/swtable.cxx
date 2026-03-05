@@ -1425,7 +1425,7 @@ SwTableBox* SwTable::GetTableBox( SwNodeOffset nSttIdx )
         while ( pFrame && !pFrame->IsCellFrame() )
             pFrame = pFrame->GetUpper();
         if ( pFrame )
-            pRet = const_cast<SwTableBox*>(static_cast<SwCellFrame*>(pFrame)->GetTabBox());
+            pRet = &const_cast<SwTableBox&>(static_cast<SwCellFrame*>(pFrame)->GetTabBox());
     }
 
     // In case the layout doesn't exist yet or anything else goes wrong.
@@ -2159,7 +2159,7 @@ SwTableBoxFormat* SwTableBox::ClaimFrameFormat()
             // re-register SwCellFrame objects that know me
             SwIterator<SwCellFrame,SwFormat> aFrameIter( *pRet );
             for( SwCellFrame* pCell = aFrameIter.First(); pCell; pCell = aFrameIter.Next() )
-                if( pCell->GetTabBox() == this )
+                if (&pCell->GetTabBox() == this)
                     pCell->RegisterToFormat( *pNewFormat );
 
             // re-register myself
@@ -2187,16 +2187,17 @@ void SwTableBox::ChgFrameFormat(SwTableBoxFormat* pNewFormat, bool bNeedToReregi
 
 // Return the name of this box. This is determined dynamically
 // resulting from the position in the lines/boxes/tables.
-void sw_GetTableBoxColStr( sal_uInt16 nCol, OUString& rNm )
+OUString sw_GetTableBoxColStr(sal_uInt16 nCol)
 {
     const sal_uInt16 coDiff = 52;   // 'A'-'Z' 'a' - 'z'
 
+    OUString sName;
     do {
         const sal_uInt16 nCalc = nCol % coDiff;
         if( nCalc >= 26 )
-            rNm = OUStringChar( sal_Unicode('a' - 26 + nCalc) ) + rNm;
+            sName = OUStringChar(sal_Unicode('a' - 26 + nCalc)) + sName;
         else
-            rNm = OUStringChar( sal_Unicode('A' + nCalc) ) + rNm;
+            sName = OUStringChar(sal_Unicode('A' + nCalc)) + sName;
 
         nCol = nCol - nCalc;
         if( 0 == nCol )
@@ -2204,6 +2205,8 @@ void sw_GetTableBoxColStr( sal_uInt16 nCol, OUString& rNm )
         nCol /= coDiff;
         --nCol;
     } while( true );
+
+    return sName;
 }
 
 Point SwTableBox::GetCoordinates() const
@@ -2220,10 +2223,10 @@ Point SwTableBox::GetCoordinates() const
     do {
         const SwTableLine* pLine = pBox->GetUpper();
         // at the first level?
-        const SwTableLines* pLines = pLine->GetUpper()
-                ? &pLine->GetUpper()->GetTabLines() : &rTable.GetTabLines();
+        const SwTableLines& rLines
+            = pLine->GetUpper() ? pLine->GetUpper()->GetTabLines() : rTable.GetTabLines();
 
-        nY = pLines->GetPos( pLine ) + 1 ;
+        nY = rLines.GetPos(pLine) + 1;
         nX = pBox->GetUpper()->GetBoxPos( pBox ) + 1;
         pBox = pLine->GetUpper();
     } while( pBox );
@@ -2239,8 +2242,7 @@ OUString SwTableBox::GetName() const
     }
 
     const SwTable& rTable = m_pStartNode->FindTableNode()->GetTable();
-    sal_uInt16 nPos;
-    OUString sNm, sTmp;
+    OUString sNm;
     const SwTableBox* pBox = this;
     do {
         const SwTableLine* pLine = pBox->GetUpper();
@@ -2248,20 +2250,24 @@ OUString SwTableBox::GetName() const
         const SwTableLines* pLines = pLine->GetUpper()
                 ? &pLine->GetUpper()->GetTabLines() : &rTable.GetTabLines();
 
-        nPos = pLines->GetPos( pLine ) + 1;
-        sTmp = OUString::number( nPos );
+        sal_uInt16 nPos = pLines->GetPos(pLine) + 1;
+        OUString sTmp = OUString::number(nPos);
         if( !sNm.isEmpty() )
             sNm = sTmp + "." + sNm;
         else
             sNm = sTmp;
 
         nPos = pBox->GetUpper()->GetBoxPos( pBox );
-        sTmp = OUString::number(nPos + 1);
         pBox = pLine->GetUpper();
-        if( nullptr != pBox )
+        if (pBox)
+        {
+            sTmp = OUString::number(nPos + 1);
             sNm = sTmp + "." + sNm;
+        }
         else
-            sw_GetTableBoxColStr( nPos, sNm );
+        {
+            sNm = sw_GetTableBoxColStr(nPos) + sNm;
+        }
 
     } while( pBox );
     return sNm;
@@ -3177,8 +3183,8 @@ const SwCellFrame * SwTableCellInfo::Impl::getNextTableBoxsCellFrame(const SwFra
     while ((pFrame = getNextCellFrame(pFrame)) != nullptr)
     {
         const SwCellFrame * pCellFrame = static_cast<const SwCellFrame *>(pFrame);
-        const SwTableBox * pTabBox = pCellFrame->GetTabBox();
-        auto aIt = m_HandledTableBoxes.insert(pTabBox);
+        const SwTableBox& rTabBox = pCellFrame->GetTabBox();
+        auto aIt = m_HandledTableBoxes.insert(&rTabBox);
         if (aIt.second)
         {
             pResult = pCellFrame;
@@ -3237,7 +3243,7 @@ const SwTableBox * SwTableCellInfo::getTableBox() const
     const SwTableBox * pRet = nullptr;
 
     if (getCellFrame() != nullptr)
-        pRet = getCellFrame()->GetTabBox();
+        pRet = &getCellFrame()->GetTabBox();
 
     return pRet;
 }

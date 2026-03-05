@@ -19,6 +19,9 @@
 #include "pyuno_impl.hxx"
 
 #include <typelib/typedescription.hxx>
+#include <com/sun/star/container/XHierarchicalNameAccess.hpp>
+#include <com/sun/star/reflection/XServiceTypeDescription2.hpp>
+#include <com/sun/star/reflection/XSingletonTypeDescription.hpp>
 #include <com/sun/star/script/CannotConvertException.hpp>
 
 
@@ -70,23 +73,16 @@ void raisePyExceptionWithAny( const css::uno::Any &anyExc )
 }
 
 /// @throws RuntimeException
-static PyRef createClass( const OUString & name, const Runtime &runtime )
+static PyRef createClassFromTypeDescription(
+    std::u16string_view name, typelib_TypeDescription* pType, const Runtime& runtime )
 {
-    // assuming that this is never deleted !
-    // note I don't have the knowledge how to initialize these type objects correctly !
-    TypeDescription desc( name );
-    if( ! desc.is() )
-    {
-        throw RuntimeException( "pyuno.getClass: uno exception " + name + " is unknown" );
-    }
-
-    bool isStruct = desc.get()->eTypeClass == typelib_TypeClass_STRUCT;
-    bool isExc = desc.get()->eTypeClass == typelib_TypeClass_EXCEPTION;
-    bool isInterface = desc.get()->eTypeClass == typelib_TypeClass_INTERFACE;
+    bool isStruct = pType->eTypeClass == typelib_TypeClass_STRUCT;
+    bool isExc = pType->eTypeClass == typelib_TypeClass_EXCEPTION;
+    bool isInterface = pType->eTypeClass == typelib_TypeClass_INTERFACE;
     if( !isStruct  && !isExc && ! isInterface )
     {
-        throw RuntimeException( "pyuno.getClass: " + name + "is a " +
-                    OUString::createFromAscii( typeClassToString( static_cast<css::uno::TypeClass>(desc.get()->eTypeClass)) ) +
+        throw RuntimeException( "pyuno.getClass: " + OUString::Concat(name) + "is a " +
+                    OUString::createFromAscii( typeClassToString( static_cast<css::uno::TypeClass>(pType->eTypeClass)) ) +
                     ", expected EXCEPTION, STRUCT or INTERFACE" );
     }
 
@@ -94,7 +90,7 @@ static PyRef createClass( const OUString & name, const Runtime &runtime )
     PyRef base;
     if( isInterface )
     {
-        typelib_InterfaceTypeDescription *pDesc = reinterpret_cast<typelib_InterfaceTypeDescription *>(desc.get());
+        typelib_InterfaceTypeDescription *pDesc = reinterpret_cast<typelib_InterfaceTypeDescription *>(pType);
         if( pDesc->pBaseTypeDescription )
         {
             base = getClass( pDesc->pBaseTypeDescription->aBase.pTypeName, runtime );
@@ -106,7 +102,7 @@ static PyRef createClass( const OUString & name, const Runtime &runtime )
     }
     else
     {
-        typelib_CompoundTypeDescription *pDesc = reinterpret_cast<typelib_CompoundTypeDescription*>(desc.get());
+        typelib_CompoundTypeDescription *pDesc = reinterpret_cast<typelib_CompoundTypeDescription*>(pType);
         if( pDesc->pBaseTypeDescription )
         {
             base = getClass( pDesc->pBaseTypeDescription->aBase.pTypeName, runtime );
@@ -181,6 +177,104 @@ static PyRef createClass( const OUString & name, const Runtime &runtime )
             ret.get(), "__ne__", ne.get() );
     }
     return ret;
+}
+
+static PyRef createEmptyPyTypeForTypeDescription(
+    const css::uno::Reference<css::reflection::XTypeDescription>& xType)
+{
+    PyRef ret(
+        PyObject_CallFunctionObjArgs(
+            reinterpret_cast<PyObject*>(&PyType_Type),
+            ustring2PyString(xType->getName()).get(),
+            PyRef(PyTuple_New(0), SAL_NO_ACQUIRE).get(), // bases
+            PyRef(PyDict_New(), SAL_NO_ACQUIRE).get(),
+            nullptr),
+        SAL_NO_ACQUIRE);
+
+    return ret;
+}
+
+static PyRef createClassForService(
+    const css::uno::Reference<css::reflection::XServiceTypeDescription2>& xService)
+{
+    PyRef ret = createEmptyPyTypeForTypeDescription(xService);
+
+    // Set an attribute on the class for each of the constructors
+    for (const auto& xConstructor : xService->getConstructors())
+    {
+        OUString sName = xConstructor->getName();
+
+        // The name is empty for the default constructor
+        if (sName.isEmpty())
+        {
+            if (xConstructor->isDefaultConstructor())
+                sName = "create";
+            else
+                continue;
+        }
+
+        PyObject_SetAttr(
+            ret.get(),
+            ustring2PyString(sName).get(),
+            PyUNO_service_constructor_new(xService, xConstructor).get());
+    }
+
+    return ret;
+}
+
+static PyRef createClassForSingleton(
+    const css::uno::Reference<css::reflection::XSingletonTypeDescription>& xSingleton,
+    const Runtime& runtime)
+{
+    PyRef ret = createEmptyPyTypeForTypeDescription(xSingleton);
+
+    // Set “get” to be a class method to get the singleton given a single context parameter. The
+    // name of the service is stored via a closure.
+    OUString singletonName = xSingleton->getName();
+    PyRef makeGetter = getObjectFromUnoModule(runtime, "_uno_make_singleton_getter");
+    PyRef getter = PyObject_CallOneArg(makeGetter.get(), ustring2PyString(singletonName).get());
+
+    PyObject_SetAttrString(ret.get(), "get", getter.get());
+
+    return ret;
+}
+
+/// @throws RuntimeException
+static PyRef createClass( const OUString & name, const Runtime &runtime )
+{
+    // assuming that this is never deleted !
+    // note I don't have the knowledge how to initialize these type objects correctly !
+    TypeDescription desc(name);
+    if (desc.is())
+        return createClassFromTypeDescription(name, desc.get(), runtime);
+
+    // If there’s no type description from the typelib then check if it’s a service or a singleton
+    // using the type description manager.
+    css::uno::Any xType;
+
+    try
+    {
+        xType = runtime.getImpl()->cargo->xTdMgr->getByHierarchicalName(name);
+    }
+    catch (css::container::NoSuchElementException&)
+    {
+        // This will flow through to throw a runtime exception below
+    }
+
+    if (xType.hasValue())
+    {
+        css::uno::Reference<css::reflection::XServiceTypeDescription2> xService;
+
+        if ((xType >>= xService) && xService.is())
+            return createClassForService(xService);
+
+        css::uno::Reference<css::reflection::XSingletonTypeDescription> xSingleton;
+
+        if ((xType >>= xSingleton) && xSingleton.is())
+            return createClassForSingleton(xSingleton, runtime);
+    }
+
+    throw RuntimeException("pyuno.getClass: uno exception " + name + " is unknown");
 }
 
 bool isInstanceOfStructOrException( PyObject *obj)

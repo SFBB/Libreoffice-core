@@ -11,6 +11,8 @@ $(eval $(call gb_Library_Library,embindtest))
 
 $(eval $(call gb_Library_add_exception_objects,embindtest, \
     unotest/source/embindtest/embindtest \
+    unotest/source/embindtest/serviceconstructors \
+    unotest/source/embindtest/singleton \
 ))
 
 $(eval $(call gb_Library_set_componentfile,embindtest,unotest/source/embindtest/embindtest,services))
@@ -22,6 +24,7 @@ $(eval $(call gb_Library_use_libraries,embindtest, \
     salhelper \
     tl \
     vcl \
+    $(if $(filter -fsanitize=vptr,$(gb_CXX)),comphelper) \
 ))
 
 $(eval $(call gb_Library_use_sdk_api,embindtest))
