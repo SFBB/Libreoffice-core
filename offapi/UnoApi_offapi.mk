@@ -486,16 +486,10 @@ $(eval $(call gb_UnoApi_add_idlfiles_noheader,offapi,com/sun/star/awt,\
 	AccessibleButton \
 	AccessibleCheckBox \
 	AccessibleComboBox \
-	AccessibleDropDownComboBox \
-	AccessibleDropDownListBox \
 	AccessibleEdit \
 	AccessibleFixedText \
-	AccessibleIconChoiceControl \
-	AccessibleIconChoiceControlEntry \
 	AccessibleList \
 	AccessibleListBox \
-	AccessibleListBoxList \
-	AccessibleListItem \
 	AccessibleMenu \
 	AccessibleMenuBar \
 	AccessibleMenuItem \
@@ -511,9 +505,6 @@ $(eval $(call gb_UnoApi_add_idlfiles_noheader,offapi,com/sun/star/awt,\
 	AccessibleTabControl \
 	AccessibleTabPage \
 	AccessibleTextField \
-	AccessibleToolBox \
-	AccessibleToolBoxItem \
-	AccessibleTreeListBox \
 	AccessibleWindow \
 	AnimatedImagesControl \
 	AnimatedImagesControlModel \
@@ -749,7 +740,6 @@ $(eval $(call gb_UnoApi_add_idlfiles_noheader,offapi,com/sun/star/document,\
 ))
 $(eval $(call gb_UnoApi_add_idlfiles_noheader,offapi,com/sun/star/drawing,\
 	AccessibleDrawDocumentView \
-	AccessibleGraphControl \
 	AccessibleImageBullet \
 	AppletShape \
 	Background \
