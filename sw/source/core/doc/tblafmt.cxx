@@ -91,13 +91,6 @@ SwBoxAutoFormat::SwBoxAutoFormat()
     m_aAdjust = std::make_unique<SvxAdjustItem>(SvxAdjust::Left, RES_PARATR_ADJUST);
     m_aHorJustify = std::make_unique<SvxHorJustifyItem>(SvxCellHorJustify::Standard, 0);
     m_aVerJustify = std::make_unique<SvxVerJustifyItem>(SvxCellVerJustify::Standard, 0);
-    m_aStacked = std::make_unique<SfxBoolItem>(0);
-    m_aMargin = std::make_unique<SvxMarginItem>(TypedWhichId<SvxMarginItem>(0));
-    m_aLinebreak = std::make_unique<SfxBoolItem>(0);
-    m_aRotateAngle = std::make_unique<SfxInt32Item>(0);
-    m_aRotateMode = std::make_unique<SvxRotateModeItem>(SVX_ROTATE_MODE_STANDARD,
-                                                        TypedWhichId<SvxRotateModeItem>(0));
-
     m_aTextOrientation
         = std::make_unique<SvxFrameDirectionItem>(SvxFrameDirection::Environment, RES_FRAMEDIR);
     m_aVerticalAlignment = std::make_unique<SwFormatVertOrient>(0, text::VertOrientation::TOP,
@@ -185,16 +178,34 @@ SwBoxAutoFormat::~SwBoxAutoFormat() {}
 
 SwBoxAutoFormat& SwBoxAutoFormat::operator=(const SwBoxAutoFormat& rRef)
 {
-    // check self-assignment
     if (this == &rRef)
-    {
         return *this;
-    }
 
-    // call baseclass implementation
-    AutoFormatBase::operator=(rRef);
-
-    // copy local members - this will use ::Clone() on all involved Items
+    SetFont(rRef.GetFont());
+    SetHeight(rRef.GetHeight());
+    SetWeight(rRef.GetWeight());
+    SetPosture(rRef.GetPosture());
+    SetCJKFont(rRef.GetCJKFont());
+    SetCJKHeight(rRef.GetCJKHeight());
+    SetCJKWeight(rRef.GetCJKWeight());
+    SetCJKPosture(rRef.GetCJKPosture());
+    SetCTLFont(rRef.GetCTLFont());
+    SetCTLHeight(rRef.GetCTLHeight());
+    SetCTLWeight(rRef.GetCTLWeight());
+    SetCTLPosture(rRef.GetCTLPosture());
+    SetUnderline(rRef.GetUnderline());
+    SetOverline(rRef.GetOverline());
+    SetCrossedOut(rRef.GetCrossedOut());
+    SetContour(rRef.GetContour());
+    SetShadowed(rRef.GetShadowed());
+    SetColor(rRef.GetColor());
+    SetBox(rRef.GetBox());
+    SetTLBR(rRef.GetTLBR());
+    SetBLTR(rRef.GetBLTR());
+    SetBackground(rRef.GetBackground());
+    SetAdjust(rRef.GetAdjust());
+    SetHorJustify(rRef.GetHorJustify());
+    SetVerJustify(rRef.GetVerJustify());
     SetTextOrientation(rRef.GetTextOrientation());
     SetVerticalAlignment(rRef.GetVerticalAlignment());
     SetNumFormatString(rRef.GetNumFormatString());

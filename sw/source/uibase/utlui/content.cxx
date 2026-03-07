@@ -705,7 +705,6 @@ void SwContentType::FillMemberList(bool* pbContentChanged)
                 while (pNode /*&& pNode->IsStartNode()
                        && pNode->GetStartNode()->GetStartNodeType()
                               == SwStartNodeType::SwFlyStartNode*/
-                       && pFrameFormat
                        && pFrameFormat->GetAnchor().GetAnchorId() == RndStdIds::FLY_AT_FLY
                        && (pFrameFormat = pNode->GetFlyFormat()))
                 {
@@ -3598,8 +3597,8 @@ void SwContentTree::Display( bool bActive )
 
             for( ContentTypeId nCntType : o3tl::enumrange<ContentTypeId>() )
             {
-                // starts at 0 so ContentTypeId::UNKNOWN of -1 is skipped
-                assert(nCntType != ContentTypeId::UNKNOWN);
+                // starts at 0 so negative ContentTypeId values are skipped
+                assert(nCntType > ContentTypeId::UNKNOWN);
 
                 std::unique_ptr<SwContentType>& rpContentT = bActive ?
                                     m_aActiveContentArr[nCntType] :

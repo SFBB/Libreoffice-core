@@ -38,31 +38,23 @@ SwAccessibleEmbeddedObject::SwAccessibleEmbeddedObject(
 
 SwAccessibleEmbeddedObject::~SwAccessibleEmbeddedObject() {}
 
-// XAccessibleExtendedAttributes
-OUString SAL_CALL SwAccessibleEmbeddedObject::getExtendedAttributes()
+std::unordered_map<OUString, OUString> SwAccessibleEmbeddedObject::implGetExtendedAttributes()
 {
-    SolarMutexGuard g;
-
-    OUString style;
     SwFlyFrame* pFFrame = getFlyFrame();
+    if (!pFFrame)
+        return {};
 
-    if (pFFrame)
+    OUString sStyleValue;
+    if (SwContentFrame* pCFrame = pFFrame->ContainsContent())
     {
-        style = "style:";
-        SwContentFrame* pCFrame;
-        pCFrame = pFFrame->ContainsContent();
-        if (pCFrame)
+        assert(pCFrame->IsNoTextFrame());
+        SwContentNode* const pCNode = static_cast<SwNoTextFrame*>(pCFrame)->GetNode();
+        if (pCNode)
         {
-            assert(pCFrame->IsNoTextFrame());
-            SwContentNode* const pCNode = static_cast<SwNoTextFrame*>(pCFrame)->GetNode();
-            if (pCNode)
-            {
-                style += static_cast<SwOLENode*>(pCNode)->GetOLEObj().GetStyleString();
-            }
+            sStyleValue = static_cast<SwOLENode*>(pCNode)->GetOLEObj().GetStyleString();
         }
-        style += ";";
     }
-    return style;
+    return { { u"style"_ustr, sStyleValue } };
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
