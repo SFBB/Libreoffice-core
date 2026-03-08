@@ -11761,60 +11761,42 @@ void ScInterpreter::ScLeft()
     PushString( aStr );
 }
 
-namespace {
-
-struct UBlockScript {
-    UBlockCode from;
-    UBlockCode to;
-};
-
-}
-
-const UBlockScript scriptList[] = {
+// sorted list of inclusive ranges (pairs "from block ... to block")
+constexpr std::pair<UBlockCode, UBlockCode> scriptList[] = {
     {UBLOCK_HANGUL_JAMO, UBLOCK_HANGUL_JAMO},
     {UBLOCK_CJK_RADICALS_SUPPLEMENT, UBLOCK_HANGUL_SYLLABLES},
-    {UBLOCK_CJK_COMPATIBILITY_IDEOGRAPHS,UBLOCK_CJK_RADICALS_SUPPLEMENT },
-    {UBLOCK_IDEOGRAPHIC_DESCRIPTION_CHARACTERS,UBLOCK_CJK_COMPATIBILITY_IDEOGRAPHS},
+    {UBLOCK_CJK_COMPATIBILITY_IDEOGRAPHS, UBLOCK_CJK_COMPATIBILITY_IDEOGRAPHS},
     {UBLOCK_CJK_COMPATIBILITY_FORMS, UBLOCK_CJK_COMPATIBILITY_FORMS},
     {UBLOCK_HALFWIDTH_AND_FULLWIDTH_FORMS, UBLOCK_HALFWIDTH_AND_FULLWIDTH_FORMS},
     {UBLOCK_CJK_UNIFIED_IDEOGRAPHS_EXTENSION_B, UBLOCK_CJK_COMPATIBILITY_IDEOGRAPHS_SUPPLEMENT},
     {UBLOCK_CJK_STROKES, UBLOCK_CJK_STROKES}
 };
-static bool IsDBCS(sal_Unicode currentChar)
+static_assert(std::ranges::all_of(scriptList, [](const auto& r) { return r.first <= r.second; }));
+static_assert(std::ranges::is_sorted(scriptList,
+                                     [](const auto& l, const auto& r)
+                                     {
+                                         // avoid interleaving ranges; without the second part,
+                                         // this would pass the check: {{0, 10}, {5, 15}}
+                                         return (l.second < r.first || l.first < r.second);
+                                     }));
+static sal_Int32 ByteLen(sal_Unicode currentChar)
 {
     // for the locale of ja-JP, character U+0x005c and U+0x20ac should be ScriptType::Asian
     if( (currentChar == 0x005c || currentChar == 0x20ac) &&
           (MsLangId::getConfiguredSystemLanguage() == LANGUAGE_JAPANESE) )
-        return true;
-    sal_uInt16 i;
-    bool bRet = false;
+        return 2;
     UBlockCode block = ublock_getCode(currentChar);
-    for ( i = 0; i < SAL_N_ELEMENTS(scriptList); i++) {
-        if (block <= scriptList[i].to) break;
-    }
-    bRet = (i < SAL_N_ELEMENTS(scriptList) && block >= scriptList[i].from);
-    return bRet;
-}
-static sal_Int32 lcl_getLengthB( std::u16string_view str, sal_Int32 nPos )
-{
-    sal_Int32 index = 0;
-    sal_Int32 length = 0;
-    while ( index < nPos )
-    {
-        if (IsDBCS(str[index]))
-            length += 2;
-        else
-            length++;
-        index++;
-    }
-    return length;
+    for (auto [from, to] : scriptList) // scriptList is sorted ascending
+        if (block <= to) // only the first block with to >= block can contain block
+            return block >= from ? 2 : 1;
+    return 1;
 }
 static sal_Int32 getLengthB(std::u16string_view str)
 {
-    if(str.empty())
-        return 0;
-    else
-        return lcl_getLengthB( str, str.size() );
+    sal_Int32 length = 0;
+    for (size_t index = 0; index < str.size(); ++index)
+        length += ByteLen(str[index]);
+    return length;
 }
 void ScInterpreter::ScLenB()
 {
@@ -11822,31 +11804,15 @@ void ScInterpreter::ScLenB()
 }
 static OUString lcl_RightB(const OUString &rStr, sal_Int32 n)
 {
-    if( n < getLengthB(rStr) )
+    assert(n >= 0);
+    for (sal_Int32 nPos = rStr.getLength();; --nPos)
     {
-        OUStringBuffer aBuf(rStr);
-        sal_Int32 index = aBuf.getLength();
-        while(index-- >= 0)
-        {
-            if(0 == n)
-            {
-                aBuf.remove( 0, index + 1);
-                break;
-            }
-            if(-1 == n)
-            {
-                aBuf.remove( 0, index + 2 );
-                aBuf.insert( 0, " ");
-                break;
-            }
-            if(IsDBCS(aBuf[index]))
-                n -= 2;
-            else
-                n--;
-        }
-        return aBuf.makeStringAndClear();
+        if (n == 0 || nPos == 0)
+            return rStr.copy(nPos);
+        n -= ByteLen(rStr[nPos - 1]);
+        if (n < 0) // only one "byte" of a "doublebyte" character is requested; produce a space
+            return OUString::Concat(" ") + rStr.subView(nPos);
     }
-    return rStr;
 }
 void ScInterpreter::ScRightB()
 {
@@ -11871,31 +11837,15 @@ void ScInterpreter::ScRightB()
 }
 static OUString lcl_LeftB(const OUString &rStr, sal_Int32 n)
 {
-    if( n < getLengthB(rStr) )
+    assert(n >= 0);
+    for (sal_Int32 nPos = 0;; ++nPos)
     {
-        OUStringBuffer aBuf(rStr);
-        sal_Int32 index = -1;
-        while(index++ < aBuf.getLength())
-        {
-            if(0 == n)
-            {
-                aBuf.truncate(index);
-                break;
-            }
-            if(-1 == n)
-            {
-                aBuf.truncate( index - 1 );
-                aBuf.append(" ");
-                break;
-            }
-            if(IsDBCS(aBuf[index]))
-                n -= 2;
-            else
-                n--;
-        }
-        return aBuf.makeStringAndClear();
+        if (n == 0 || nPos == rStr.getLength())
+            return rStr.copy(0, nPos);
+        n -= ByteLen(rStr[nPos]);
+        if (n < 0) // only one "byte" of a "doublebyte" character is requested; produce a space
+            return rStr.subView(0, nPos) + OUString::Concat(" ");
     }
-    return rStr;
 }
 void ScInterpreter::ScLeftB()
 {
@@ -11989,7 +11939,7 @@ void ScInterpreter::ScFindB()
         else
         {
             // obtain byte value of nPos
-            int nBytePos = lcl_getLengthB( aBuf, nPos );
+            int nBytePos = getLengthB(aBuf.subView(0, nPos));
             PushDouble( nBytePos + nStart );
         }
     }
@@ -12034,7 +11984,7 @@ void ScInterpreter::ScSearchB()
         else
         {
             // obtain byte value of nPos
-            int nBytePos = lcl_getLengthB( aSubStr, nPos );
+            int nBytePos = getLengthB(aSubStr.subView(0, nPos));
             PushDouble( nBytePos + nStart );
         }
     }
