@@ -6730,6 +6730,35 @@ static void lcl_GetColRowDeltas(const ScRange& rRange, SCCOL& rXDelta, SCROW& rY
     rYDelta = rRange.aEnd.Row() - rRange.aStart.Row();
 }
 
+/* tdf#114479 Grow the SumRange token to match the Range geometry.
+
+  SUMIF(Range, Criterion, SumRange) operates on cells in SumRange where the
+  corresponding cell in Range matches Criterion. We don't care about the Criterion,
+  its just the Range and SumRange
+
+  The way IterateParametersIf works for this 3 arg case is: "Save only the
+  upperleft cell in case of cell range. The geometry of the 3rd parameter is
+  taken from the 1st parameter." So if the Range has 10 rows and the SumRange
+  had 1 row, the SumRange is expanded to 10 rows to match the Range geometry.
+
+  The dependency calculator needs to know what cells the formula depends on, so
+  in a case where the SumRange would be expanded by IterateParametersIf then this
+  pre-expands it so it provides the real range that the formula depends on so
+  the dependency determination is correct.
+
+ Example 1 (the original tdf#114479 motivation):
+   SUMIF($A$1:$A$10, "x", $D$1)
+   Range is 10 rows, SumRange is a single cell. At runtime cells D1:D10 are
+   accessed. The original token $D$1 is expanded to $D$1:$D$10 so the
+   dependency calculator sees all 10 cells.
+
+ Example 2 (must not shrink, formula group with relative refs):
+   In cell E2: SUMIF($B$2:$B2, $B2, $D$2:$D$173)
+   For the top cell, Range ($B$2:$B2) is 1 row, SumRange is 172 rows.
+   Shrinking SumRange to 1 row would be wrong because further down the
+   formula group (e.g. E173) Range becomes $B$2:$B173 (172 rows) and
+   IterateParametersIf reads D2:D173.
+*/
 bool ScCompiler::AdjustSumRangeShape(const ScComplexRefData& rBaseRange, ScComplexRefData& rSumRange)
 {
     ScRange aAbs = rSumRange.toAbs(rDoc, aPos);
@@ -6765,6 +6794,17 @@ bool ScCompiler::AdjustSumRangeShape(const ScComplexRefData& rBaseRange, ScCompl
 
     SCCOL nXInc = nXDelta - nXDeltaSum;
     SCROW nYInc = nYDelta - nYDeltaSum;
+
+    // Only grow SumRange, don't shrink it. Shrinking causes a problem when the
+    // formula is part of a group with relative refs. The Range may be small
+    // for the top cell but large for cells further down the group, the
+    // dependency calculator relies on the SumRange extent to determine all
+    // cells that will be accessed during threaded group calc, shrinking can
+    // drop cells that will be recalculated.
+    if (nXInc < 0)
+        nXInc = 0;
+    if (nYInc < 0)
+        nYInc = 0;
 
     // Don't let a valid End[Col,Row] go beyond (rDoc.MaxCol(),rDoc.MaxRow()) to match
     // what happens in ScInterpreter::IterateParametersIf(), but there it also shrinks

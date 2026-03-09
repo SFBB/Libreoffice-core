@@ -39,31 +39,6 @@ class SfxMacroInfoItem;
 
 // class SfxAcceleratorConfigPage ----------------------------------------
 
-struct TAccInfo
-{
-public:
-    TAccInfo(sal_Int32 nKeyPos, sal_Int32 nListPos, const vcl::KeyCode& aKey)
-        : m_nKeyPos(nKeyPos)
-        , m_nListPos(nListPos)
-        , m_bIsConfigurable(true) /**< it's important to set true as default -
-                                                because only fix entries will be disabled later... */
-        , m_sCommand()
-        , m_aKey(aKey)
-    {
-    }
-
-    bool isConfigured() const
-    {
-        return (m_nKeyPos > -1 && m_nListPos > -1 && !m_sCommand.isEmpty());
-    }
-
-    sal_Int32 m_nKeyPos;
-    sal_Int32 m_nListPos;
-    bool m_bIsConfigurable;
-    OUString m_sCommand;
-    vcl::KeyCode m_aKey;
-};
-
 namespace sfx2
 {
 class FileDialogHelper;
@@ -76,6 +51,7 @@ enum class StartFileDialogType
 };
 
 class ComponentDisposedListener;
+struct AssignmentData;
 
 class SfxAcceleratorConfigPage : public SfxTabPage
 {
@@ -91,6 +67,11 @@ private:
     OUString aFilterCfgStr;
     SfxStylesInfo_Impl m_aStylesInfo;
     bool m_bStylesInfoInitialized;
+    // Array of reserved key codes in sorted order
+    std::vector<sal_uInt16> m_aReservedKeyCodes;
+
+    // Lazily created assignment data for each accelerator configuration
+    std::vector<AssignmentData> m_aAssignmentData;
 
     css::uno::Reference<css::uno::XComponentContext> m_xContext;
     css::uno::Reference<css::ui::XAcceleratorConfiguration> m_xGlobal;
@@ -149,12 +130,27 @@ private:
     sal_Int32 MapKeyCodeToPos(const vcl::KeyCode& rCode) const;
     void StartFileDialog(StartFileDialogType nType, const OUString& rTitle);
 
-    void Init(const css::uno::Reference<css::ui::XAcceleratorConfiguration>& pAccMgr);
+    void
+    LoadAcceleratorConfig(const css::uno::Reference<css::ui::XAcceleratorConfiguration>& pAccMgr);
+    void Init();
     void ResetConfig();
     void ClearSaveInComboBox();
     void AddFrameToSaveInComboBox(const css::uno::Reference<css::frame::XFrame>& xFrame);
     void FillSaveInComboBox();
     void HandleScopeChanged();
+    bool IsReservedKeyCode(const vcl::KeyCode& rCode) const;
+    static std::vector<sal_uInt16> GetReservedKeyCodes();
+    // Find the assignments array for the current configuration or return nullptr if there isn’t one
+    // yet
+    std::vector<OUString>* FindAssignments();
+    // Get the assignments for the current configuration or lazily create it if there isn’t one yet
+    std::vector<OUString>& GetAssignments();
+    static void Apply(const css::uno::Reference<css::ui::XAcceleratorConfiguration>& pAccMgr,
+                      const std::vector<OUString>& rAssignments);
+    void Apply(const css::uno::Reference<css::ui::XAcceleratorConfiguration>& pAccMgr)
+    {
+        Apply(pAccMgr, GetAssignments());
+    };
 
 public:
     SfxAcceleratorConfigPage(weld::Container* pPage, weld::DialogController* pController,
@@ -163,8 +159,6 @@ public:
 
     virtual bool FillItemSet(SfxItemSet*) override;
     virtual void Reset(const SfxItemSet*) override;
-
-    void Apply(const css::uno::Reference<css::ui::XAcceleratorConfiguration>& pAccMgr);
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
