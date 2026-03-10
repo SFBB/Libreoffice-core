@@ -1038,6 +1038,12 @@ void ChartExport::WriteChartObj( const Reference< XShape >& xShape, sal_Int32 nI
     if( !xChartDoc.is() )
         return;
 
+    // At minimum, a PlotArea is needed or else MS Word complains about an invalid file
+    uno::Reference<chart2::XCoordinateSystemContainer>
+        xBCooSysCnt(xChartDoc->getFirstDiagram(), uno::UNO_QUERY);
+    if (!xBCooSysCnt.is())
+        return;
+
     // We need to get the new diagram here so we can know if this is a chartex
     // chart.
     mxNewDiagram.set( xChartDoc->getFirstDiagram());
@@ -4954,8 +4960,18 @@ void ChartExport::exportOneAxis_chartex(
                 getTickMarkLocStr(nValue));
     }
 
-    // ==== tickLabels consists of nothing but an extLst so I don't know how to
-    // handle it
+    // ==== tickLabels
+    bool bDisplayLabel = false;
+    if (GetProperty( xAxisProp, u"DisplayLabels"_ustr ) )
+    {
+        mAny >>= bDisplayLabel;
+
+        if( bDisplayLabel )
+        {
+            pFS->singleElement(FSNS(XML_cx, XML_tickLabels));
+        }
+    }
+    // There's also an extLst but not sure what to do with it
 
     // ==== numFmt
     bool bLinkedNumFmt = true;
