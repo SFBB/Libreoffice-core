@@ -117,8 +117,8 @@ basegfx::B2DRange getTextAnchorRange(const attribute::SdrTextAttribute& rText,
     if (fWidthForText > 0 && fTextLeftDistance + fTextRightDistance >= fWidthForText)
     {
         const double diffFactor = (fTextLeftDistance + fTextRightDistance - fWidthForText) / 2.0;
-        fTextLeftDistance -= diffFactor;
-        fTextRightDistance -= diffFactor;
+        fTextLeftDistance = std::max(fTextLeftDistance - diffFactor, 0.0);
+        fTextRightDistance = std::max(fTextRightDistance - diffFactor, 0.0);
     }
     // If top + bottom margins exceed the available height, reduce each by half the excess.
     // Guard on fWidthForText > 0 for consistency with the horizontal check: skip for
@@ -128,8 +128,8 @@ basegfx::B2DRange getTextAnchorRange(const attribute::SdrTextAttribute& rText,
     if (fWidthForText > 0 && fHeightForText > 0 && fTextUpperDistance + fTextLowerDistance >= fHeightForText)
     {
         const double diffFactor = (fTextUpperDistance + fTextLowerDistance - fHeightForText) / 2.0;
-        fTextUpperDistance -= diffFactor;
-        fTextLowerDistance -= diffFactor;
+        fTextUpperDistance = std::max(fTextUpperDistance - diffFactor, 0.0);
+        fTextLowerDistance = std::max(fTextLowerDistance - diffFactor, 0.0);
     }
     double fDistanceForTextL, fDistanceForTextT, fDistanceForTextR, fDistanceForTextB;
     if (!bVerticalWriting)
@@ -658,11 +658,8 @@ sal_uInt32 SlideBackgroundFillPrimitive2D::getPrimitive2DID() const
 
                 // Get the real size, since polygon outline and scale
                 // from the object transformation may vary (e.g. ellipse segments)
-                basegfx::B2DHomMatrix aJustScaleTransform;
-                aJustScaleTransform.set(0, 0, aScale.getX());
-                aJustScaleTransform.set(1, 1, aScale.getY());
                 basegfx::B2DPolyPolygon aScaledUnitPolyPolygon(rUnitPolyPolygon);
-                aScaledUnitPolyPolygon.transform(aJustScaleTransform);
+                aScaledUnitPolyPolygon.transform(basegfx::utils::createScaleB2DHomMatrix(aScale));
                 const basegfx::B2DRange aTextAnchorRange
                     = getTextAnchorRange(rText, aScaledUnitPolyPolygon.getB2DRange());
 

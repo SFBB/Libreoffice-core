@@ -133,6 +133,7 @@ public:
     void                AddTabPage(const OUString& rName,          // Name of the label for the new page to create
                                    const OUString& rLabel,         // UI Label for the new page to create
                                    CreateTabPage pCreateFunc,      // != 0
+                                   GetTabPageRanges pRangesFunc = nullptr,
                                    const OUString* pIconName = nullptr);
 
     void                AddTabPage(const OUString& rName,          // Name of the label for the new page to create
@@ -205,6 +206,9 @@ public:
     bool selectPageByUIXMLDescription(const OUString& rUIXMLDescription);
     Bitmap createScreenshot() const;
     OUString GetScreenshotId() const;
+
+private:
+    auto Find(std::u16string_view rId) const;
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

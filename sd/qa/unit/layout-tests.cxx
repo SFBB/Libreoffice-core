@@ -105,11 +105,25 @@ CPPUNIT_TEST_FIXTURE(SdLayoutTest, testTdf128212)
     createSdImpressDoc("pptx/tdf128212.pptx");
     xmlDocUniquePtr pXmlDoc = parseLayout();
 
-    // Without the fix in place, this test would have failed with
-    // - Expected: 7795
-    // - Actual  : 12068
-    assertXPath(pXmlDoc, "/metafile/push[1]/push[1]/textarray", "x", u"4523");
-    assertXPath(pXmlDoc, "/metafile/push[1]/push[1]/textarray", "y", u"7795");
+    // The position of the rotated text depends on the calculated text size. This depends on
+    // rendering, so it differs a bit on different platforms. Hence rather big delta here.
+
+    // translation
+    assertXPath(pXmlDoc, "//push[@flags='PushMapMode']", 1);
+    assertXPath(pXmlDoc, "//push[@flags='PushMapMode']/mapmode", "mapunit", u"MapRelative");
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(
+        331.0, getXPath(pXmlDoc, "//push[@flags='PushMapMode']/mapmode", "x").toDouble(), 3.0);
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(
+        9420.0, getXPath(pXmlDoc, "//push[@flags='PushMapMode']/mapmode", "y").toDouble(), 10.0);
+    // no scaling
+    assertXPath(pXmlDoc, "//push[@flags='PushMapMode']/mapmode", "scalex", u"(1/1)");
+    assertXPath(pXmlDoc, "//push[@flags='PushMapMode']/mapmode", "scaley", u"(1/1)");
+
+    // text position
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(
+        4760.0, getXPath(pXmlDoc, "//push[@flags='PushMapMode']/textarray", "x").toDouble(), 3.0);
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(
+        -2250.0, getXPath(pXmlDoc, "//push[@flags='PushMapMode']/textarray", "y").toDouble(), 3.0);
 }
 
 CPPUNIT_TEST_FIXTURE(SdLayoutTest, testColumnsLayout)
@@ -351,11 +365,16 @@ CPPUNIT_TEST_FIXTURE(SdLayoutTest, testFitToFrameTextFitting)
 
     assertXPath(pXmlDoc, "/metafile/push[1]/push[1]/textarray[1]", "x", u"0");
     assertXPath(pXmlDoc, "/metafile/push[1]/push[1]/textarray[1]", "y", u"406");
-    assertXPath(pXmlDoc, "/metafile/push[1]/push[1]/textarray[1]/dxarray", "first", u"114");
 #ifndef _WIN32 // FIXME: Windows seems to differ in text layouting
-    assertXPath(pXmlDoc, "/metafile/push[1]/push[1]/textarray[1]/dxarray", "last", u"6984");
+    assertXPathDoubleValue(pXmlDoc, "/metafile/push[1]/push[1]/textarray[1]/dxarray", "first",
+                           114.087, 0.001);
+    assertXPathDoubleValue(pXmlDoc, "/metafile/push[1]/push[1]/textarray[1]/dxarray", "last",
+                           6983.573, 0.001);
 #else
-    assertXPath(pXmlDoc, "/metafile/push[1]/push[1]/textarray[1]/dxarray", "last", u"6956");
+    assertXPathDoubleValue(pXmlDoc, "/metafile/push[1]/push[1]/textarray[1]/dxarray", "first",
+                           113.64, 0.001);
+    assertXPathDoubleValue(pXmlDoc, "/metafile/push[1]/push[1]/textarray[1]/dxarray", "last",
+                           6956.219, 0.001);
 #endif
 }
 
@@ -621,6 +640,38 @@ CPPUNIT_TEST_FIXTURE(SdLayoutTest, testTdf168010_PPTX)
         CPPUNIT_ASSERT_DOUBLES_EQUAL(6700, y, 100);
         assertXPathContent(pXml, "/metafile['7']/push/push/textarray/text", u"textbox");
     }
+}
+
+CPPUNIT_TEST_FIXTURE(SdLayoutTest, testTdf128206)
+{
+    createSdImpressDoc("pptx/tdf128206.pptx");
+    xmlDocUniquePtr pXmlDoc = parseLayout();
+
+    // translation
+    assertXPath(pXmlDoc, "//push[@flags='PushMapMode']", 1);
+    assertXPath(pXmlDoc, "//push[@flags='PushMapMode']/mapmode", "mapunit", u"MapRelative");
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(
+        14416.0, getXPath(pXmlDoc, "//push[@flags='PushMapMode']/mapmode", "x").toDouble(), 3.0);
+    // Without the fix, this failed with
+    // - Expected: 1658
+    // - Actual  : 1415872
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(
+        1658.0, getXPath(pXmlDoc, "//push[@flags='PushMapMode']/mapmode", "y").toDouble(), 3.0);
+    // no scaling
+    assertXPath(pXmlDoc, "//push[@flags='PushMapMode']/mapmode", "scalex", u"(1/1)");
+    assertXPath(pXmlDoc, "//push[@flags='PushMapMode']/mapmode", "scaley", u"(1/1)");
+
+    // text position
+    // Without the fix, this failed with
+    // - Expected: -11031
+    // - Actual  : -718138
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(
+        -11031.0, getXPath(pXmlDoc, "//push[@flags='PushMapMode']/textarray", "x").toDouble(), 3.0);
+    // Without the fix, this failed with
+    // - Expected: 3617
+    // - Actual  : -703490
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(
+        3617.0, getXPath(pXmlDoc, "//push[@flags='PushMapMode']/textarray", "y").toDouble(), 3.0);
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();
