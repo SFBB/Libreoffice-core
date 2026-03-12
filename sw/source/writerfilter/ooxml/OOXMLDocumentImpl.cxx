@@ -37,6 +37,7 @@
 #include <comphelper/diagnose_ex.hxx>
 #include <svx/dialmgr.hxx>
 #include <svx/strings.hrc>
+#include <comphelper/propertyvalue.hxx>
 #include <comphelper/sequence.hxx>
 #include <comphelper/namedvaluecollection.hxx>
 #include <cppuhelper/exc_hlp.hxx>
@@ -293,6 +294,10 @@ void OOXMLDocument::resolveFootnote(Stream & rStream,
     }
 
     resolveFastSubStreamWithId(rStream, mpXFootnoteStream, nId);
+    OOXMLDocument* pSubStream = dynamic_cast<OOXMLDocument*>(mpXFootnoteStream.get());
+    if (pSubStream)
+        mxEmbeddingsList
+            = comphelper::combineSequences(mxEmbeddingsList, pSubStream->getEmbeddingsList());
 }
 
 void OOXMLDocument::resolveEndnote(Stream & rStream,
@@ -315,6 +320,10 @@ void OOXMLDocument::resolveEndnote(Stream & rStream,
     }
 
     resolveFastSubStreamWithId(rStream, mpXEndnoteStream, nId);
+    OOXMLDocument* pSubStream = dynamic_cast<OOXMLDocument*>(mpXEndnoteStream.get());
+    if (pSubStream)
+        mxEmbeddingsList
+            = comphelper::combineSequences(mxEmbeddingsList, pSubStream->getEmbeddingsList());
 }
 
 void OOXMLDocument::resolveCommentsExtendedStream(Stream& rStream)
@@ -799,13 +808,19 @@ void OOXMLDocument::resolveEmbeddingsStream(const OOXMLStream::Pointer_t& pStrea
                     }
                 }
 
-                beans::PropertyValue embeddingsTemp;
                 // This will add all .xlsx and .bin to grabbag list.
                 if(bFound && mxEmbeddings.is())
                 {
-                    embeddingsTemp.Name = embeddingsTarget;
-                    embeddingsTemp.Value <<= mxEmbeddings;
-                    m_aEmbeddings.push_back(embeddingsTemp);
+                    // could attempt adding the same embedding via multiple footnotes
+                    bool bAlreadyExists
+                        = std::any_of(m_aEmbeddings.begin(), m_aEmbeddings.end(),
+                                      [](const beans::PropertyValue& rValue)
+                                      { return rValue.Name == embeddingsTarget; });
+                    if (!bAlreadyExists)
+                    {
+                        m_aEmbeddings.push_back(
+                            comphelper::makePropertyValue(embeddingsTarget, mxEmbeddings));
+                    }
                     mxEmbeddings.clear();
                 }
                 bFound = false;

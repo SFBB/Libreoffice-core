@@ -40,14 +40,12 @@ $(call gb_ExternalProject_get_state_target,curl,build):
 	$(call gb_Trace_StartRange,curl,EXTERNAL)
 	$(call gb_ExternalProject_run,build,\
 		$(gb_RUN_CONFIGURE) ./configure \
-			--without-amissl --without-bearssl --without-gnutls \
-			--without-mbedtls --without-rustls --without-wolfssl \
 			--disable-ftp --enable-http --enable-ipv6 \
 			--without-libidn2 --without-libpsl --without-librtmp \
 			--without-libssh2 --without-nghttp2 \
 			--without-libssh --without-brotli \
 			--without-ngtcp2 --without-quiche \
-			--without-zstd --without-hyper --without-libgsasl \
+			--without-zstd --without-libgsasl \
 			$(if $(WITH_GSSAPI),--with-gssapi,--without-gssapi) \
 			--disable-ipfs --disable-mqtt --disable-ares \
 			--disable-dict --disable-file --disable-gopher --disable-imap \
