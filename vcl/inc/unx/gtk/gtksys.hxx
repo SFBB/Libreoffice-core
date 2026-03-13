@@ -9,12 +9,12 @@
 
 #pragma once
 
-#include <unx/gensys.h>
 #include <gtk/gtk.h>
+#include <unx/X11Helper.hxx>
 #include <unx/saltype.h>
 #include <deque>
 
-class GtkSalSystem final : public SalGenericSystem
+class GtkSalSystem final : public SalSystem
 {
     GdkDisplay *mpDisplay;
 #if !GTK_CHECK_VERSION(4,0,0)

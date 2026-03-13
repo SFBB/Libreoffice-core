@@ -61,13 +61,10 @@ extern "C"
 }
 
 X11SalInstance::X11SalInstance(std::unique_ptr<SalYieldMutex> pMutex)
-    : SalGenericInstance(std::move(pMutex), new X11SalData)
+    : SalGenericInstance(std::move(pMutex), new X11SalData, u"x11"_ustr)
 {
     mpXLib = GetX11SalData()->GetLib();
 
-    ImplSVData* pSVData = ImplGetSVData();
-    // [-loplugin:ostr] if we use a literal here, we get use-after-free on shutdown
-    pSVData->maAppData.mxToolkitName = OUString("x11");
     m_bSupportsOpenGL = true;
 #if HAVE_FEATURE_SKIA
     X11SkiaSalGraphicsImpl::prepareSkia();
@@ -212,11 +209,6 @@ void X11SalInstance::PostPrintersChanged()
     SalX11Display* pDisp = vcl_sal::getSalDisplay();
     for (auto pSalFrame : pDisp->getFrames() )
         pDisp->PostEvent( pSalFrame, nullptr, SalEvent::PrinterChanged );
-}
-
-std::unique_ptr<GenPspGraphics> X11SalInstance::CreatePrintGraphics()
-{
-    return std::make_unique<GenPspGraphics>();
 }
 
 std::shared_ptr<SalBitmap> X11SalInstance::CreateSalBitmap()

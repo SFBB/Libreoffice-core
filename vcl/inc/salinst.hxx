@@ -86,6 +86,7 @@ private:
     const std::unique_ptr<comphelper::SolarMutex> m_pYieldMutex;
     css::uno::Reference<css::datatransfer::clipboard::XClipboard> m_clipboard;
     o3tl::sorted_vector<OUString> m_usedUI;
+    const OUString m_sToolkitName;
 
 protected:
     bool m_bSupportsOpenGL = false;
@@ -95,7 +96,8 @@ protected:
 #endif
 
 public:
-    SalInstance(std::unique_ptr<comphelper::SolarMutex> pMutex, SalData* pSalData);
+    SalInstance(std::unique_ptr<comphelper::SolarMutex> pMutex, SalData* pSalData,
+                const OUString& rToolkitName);
     virtual ~SalInstance();
 
     bool supportsOpenGL() const { return m_bSupportsOpenGL; }
@@ -146,7 +148,7 @@ public:
     virtual std::unique_ptr<SalPrinter> CreatePrinter( SalInfoPrinter* pInfoPrinter ) = 0;
 
     virtual void            GetPrinterQueueInfo( ImplPrnQueueList* pList ) = 0;
-    virtual void            GetPrinterQueueState( SalPrinterQueueInfo* pInfo ) = 0;
+    virtual void            GetPrinterQueueState(SalPrinterQueueInfo* pInfo);
     virtual OUString        GetDefaultPrinter() = 0;
 
     // SalTimer
@@ -212,9 +214,6 @@ public:
     virtual css::uno::Reference< css::ui::dialogs::XFolderPicker2 > createFolderPicker( const css::uno::Reference< css::uno::XComponentContext >& )
         { return css::uno::Reference< css::ui::dialogs::XFolderPicker2 >(); }
 
-    // callbacks for printer updates
-    virtual void            updatePrinterUpdate() {}
-
     /// Set the app's (somewhat) magic/main-thread to this one.
     virtual void            updateMainThread() {}
     /// Disconnect that - good for detaching from the JavaVM on Android.
@@ -222,6 +221,7 @@ public:
 
     /// get information about underlying versions
     virtual OUString        getOSVersion() { return u"-"_ustr; }
+    const OUString& GetToolkitName() { return m_sToolkitName; };
 
     virtual const cairo_font_options_t* GetCairoFontOptions() { return nullptr; }
 

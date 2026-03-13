@@ -51,8 +51,9 @@ protected:
     bool           mbPrinterInit;
 
 public:
-    SalGenericInstance(std::unique_ptr<comphelper::SolarMutex> pMutex, SalData* pSalData)
-        : SalInstance(std::move(pMutex), pSalData)
+    SalGenericInstance(std::unique_ptr<comphelper::SolarMutex> pMutex, SalData* pSalData,
+                       const OUString& rToolkitName)
+        : SalInstance(std::move(pMutex), pSalData, rToolkitName)
         , mbPrinterInit(false)
     {
     }
@@ -63,12 +64,12 @@ public:
                                                          ImplJobSetup* pSetupData ) override;
     virtual std::unique_ptr<SalPrinter> CreatePrinter  ( SalInfoPrinter* pInfoPrinter ) override;
     virtual void                GetPrinterQueueInfo    ( ImplPrnQueueList* pList ) override;
-    virtual void                GetPrinterQueueState   ( SalPrinterQueueInfo* pInfo ) override;
     virtual OUString            GetDefaultPrinter() override;
-    virtual void                PostPrintersChanged() = 0;
-    virtual void                updatePrinterUpdate() override;
+    virtual void                PostPrintersChanged() {};
+    // callbacks for printer updates
+    virtual void updatePrinterUpdate();
     bool isPrinterInit() const { return mbPrinterInit; }
-    virtual std::unique_ptr<GenPspGraphics> CreatePrintGraphics() = 0;
+    virtual std::unique_ptr<GenPspGraphics> CreatePrintGraphics();
 
     virtual OUString            getOSVersion() override;
 

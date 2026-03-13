@@ -87,8 +87,9 @@ static void atfork_child()
 
 #endif
 
-SvpSalInstance::SvpSalInstance( std::unique_ptr<SalYieldMutex> pMutex, SalData* pSalData)
-    : SalGenericInstance( std::move(pMutex), pSalData)
+SvpSalInstance::SvpSalInstance(std::unique_ptr<SalYieldMutex> pMutex, SalData* pSalData,
+                               const OUString& rToolkitName)
+    : SalGenericInstance(std::move(pMutex), pSalData, rToolkitName)
 {
     m_nTimeout = 0;
     m_nTimeoutMS = 0;
@@ -177,12 +178,12 @@ bool SvpSalInstance::CheckTimeout( bool bExecuteTimers )
 
 SalFrame* SvpSalInstance::CreateChildFrame( SystemParentData* /*pParent*/, SalFrameStyleFlags nStyle )
 {
-    return new SvpSalFrame( this, nullptr, nStyle );
+    return new SvpSalFrame(*this, nullptr, nStyle);
 }
 
 SalFrame* SvpSalInstance::CreateFrame( SalFrame* pParent, SalFrameStyleFlags nStyle )
 {
-    return new SvpSalFrame( this, pParent, nStyle );
+    return new SvpSalFrame(*this, pParent, nStyle);
 }
 
 void SvpSalInstance::DestroyFrame( SalFrame* pFrame )

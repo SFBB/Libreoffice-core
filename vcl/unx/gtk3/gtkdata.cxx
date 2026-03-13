@@ -523,7 +523,7 @@ void GtkSalData::Init()
     // add executable
     nParams++;
 
-    g_set_application_name(SalGenericSystem::getFrameClassName());
+    g_set_application_name(X11Helper::getFrameClassName());
 
     // Set consistent name of the root accessible
     OUString aAppName = Application::GetAppName();
@@ -822,7 +822,7 @@ extern "C" {
         {
             GtkSalDisplay *pThisDisplay = static_cast<GtkSalData *>(data)->GetGtkDisplay();
             assert(static_cast<const SalGenericDisplay *>(pThisDisplay) == pDisplay);
-            pThisDisplay->DispatchInternalEvent();
+            pThisDisplay->DispatchUserEvents(false);
         }
         return true;
     }
@@ -866,7 +866,7 @@ void GtkSalDisplay::TriggerAllUserEventsProcessed()
 
 GtkWidget* GtkSalDisplay::findGtkWidgetForNativeHandle(sal_uIntPtr hWindow) const
 {
-    for (auto pSalFrame : m_aFrames )
+    for (auto pSalFrame : getFrames())
     {
         const SystemEnvData& rEnvData = pSalFrame->GetSystemData();
         if (rEnvData.GetWindowHandle(pSalFrame) == hWindow)
@@ -875,14 +875,14 @@ GtkWidget* GtkSalDisplay::findGtkWidgetForNativeHandle(sal_uIntPtr hWindow) cons
     return nullptr;
 }
 
-void GtkSalDisplay::deregisterFrame( SalFrame* pFrame )
+void GtkSalDisplay::eraseFrame(SalFrame* pFrame)
 {
     if( m_pCapture == pFrame )
     {
         static_cast<GtkSalFrame*>(m_pCapture)->grabPointer( false, false, false );
         m_pCapture = nullptr;
     }
-    SalGenericDisplay::deregisterFrame( pFrame );
+    SalGenericDisplay::eraseFrame(pFrame);
 }
 
 namespace {

@@ -353,15 +353,13 @@ VCLPLUG_OSX_PUBLIC SalInstance* create_SalInstance()
 }
 
 AquaSalInstance::AquaSalInstance()
-    : SalInstance(std::make_unique<SalYieldMutex>(), new SalData)
+    : SalInstance(std::make_unique<SalYieldMutex>(), new SalData, u"osx"_ustr)
     , mnActivePrintJobs( 0 )
     , mbNoYieldLock( false )
     , mbTimerProcessed( false )
 {
     maMainThread = osl::Thread::getCurrentIdentifier();
 
-    ImplSVData* pSVData = ImplGetSVData();
-    pSVData->maAppData.mxToolkitName = OUString("osx");
     m_bSupportsOpenGL = true;
 
     mpButtonCell = [[NSButtonCell alloc] init];
@@ -878,10 +876,6 @@ void AquaSalInstance::GetPrinterQueueInfo( ImplPrnQueueList* pList )
 
         pList->Add( std::move(pInfo) );
     }
-}
-
-void AquaSalInstance::GetPrinterQueueState( SalPrinterQueueInfo* )
-{
 }
 
 OUString AquaSalInstance::GetDefaultPrinter()

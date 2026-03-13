@@ -61,6 +61,7 @@
 #include <config_vclplug.h>
 #include <i18nlangtag/languagetag.hxx>
 #include <vcl/qt/QtUtils.hxx>
+#include <vcl/stdtext.hxx>
 #include <vcl/sysdata.hxx>
 #include <sal/log.hxx>
 #include <o3tl/unreachable.hxx>
@@ -256,10 +257,16 @@ void QtInstance::EmscriptenLightweightRunInMainThread_(std::function<void()> fun
     func();
 }
 
+bool QtInstance::useCairo()
+{
+    static bool bUseCairo = getenv("SAL_VCL_QT_USE_QFONT") == nullptr;
+    return bUseCairo;
+}
+
 OUString QtInstance::constructToolkitID(std::u16string_view sTKname)
 {
     OUString sID(sTKname + OUString::Concat(u" ("));
-    if (m_bUseCairo)
+    if (useCairo())
         sID += "cairo+";
     else
         sID += "qfont+";
@@ -267,24 +274,22 @@ OUString QtInstance::constructToolkitID(std::u16string_view sTKname)
     return sID;
 }
 
-QtInstance::QtInstance(std::unique_ptr<QApplication>& pQApp)
-    : SalGenericInstance(std::make_unique<QtYieldMutex>(), new GenericUnixSalData)
-    , m_bUseCairo(nullptr == getenv("SAL_VCL_QT_USE_QFONT"))
+QtInstance::QtInstance(const OUString& rToolkitName)
+    : SalGenericInstance(std::make_unique<QtYieldMutex>(), new GenericUnixSalData,
+                         constructToolkitID(rToolkitName))
     , m_pTimer(nullptr)
     , m_bSleeping(false)
-    , m_pQApplication(std::move(pQApp))
     , m_aUpdateStyleTimer("vcl::qt5 m_aUpdateStyleTimer")
     , m_bUpdateFonts(false)
     , m_pActivePopup(nullptr)
 {
+    m_pQApplication = CreateQApplication();
+
 #if defined EMSCRIPTEN && ENABLE_QT6 && HAVE_EMSCRIPTEN_JSPI && !HAVE_EMSCRIPTEN_PROXY_TO_PTHREAD
     m_emscriptenThreadingData = &comphelper::emscriptenthreading::getData();
 #endif
 
     ImplSVData* pSVData = ImplGetSVData();
-    const OUString sToolkit = "qt" + OUString::number(QT_VERSION_MAJOR);
-    pSVData->maAppData.mxToolkitName = constructToolkitID(sToolkit);
-
     pSVData->maNWFData.mbDockingAreaSeparateTB = true;
     pSVData->maNWFData.mbFlatMenu = true;
     pSVData->maNWFData.mbRolloverMenubar = true;
@@ -375,7 +380,7 @@ SalFrame* QtInstance::CreateChildFrame(SystemParentData* /*pParent*/, SalFrameSt
 {
     SolarMutexGuard aGuard;
     SalFrame* pRet(nullptr);
-    RunInMainThread([&, this]() { pRet = new QtFrame(nullptr, nStyle, useCairo()); });
+    RunInMainThread([&]() { pRet = new QtFrame(nullptr, nStyle, useCairo()); });
     assert(pRet);
     return pRet;
 }
@@ -388,7 +393,7 @@ SalFrame* QtInstance::CreateFrame(SalFrame* pParent, SalFrameStyleFlags nStyle)
 
     SalFrame* pRet(nullptr);
     RunInMainThread(
-        [&, this]() { pRet = new QtFrame(static_cast<QtFrame*>(pParent), nStyle, useCairo()); });
+        [&]() { pRet = new QtFrame(static_cast<QtFrame*>(pParent), nStyle, useCairo()); });
     assert(pRet);
     return pRet;
 }
@@ -428,7 +433,7 @@ std::unique_ptr<SalVirtualDevice> QtInstance::CreateVirtualDevice(SalGraphics& r
                                                                   DeviceFormat /*eFormat*/,
                                                                   bool bAlphaMaskTransparent)
 {
-    if (m_bUseCairo)
+    if (useCairo())
     {
         SvpSalGraphics* pSvpSalGraphics = dynamic_cast<QtSvpGraphics*>(&rGraphics);
         assert(pSvpSalGraphics);
@@ -450,7 +455,7 @@ std::unique_ptr<SalVirtualDevice>
 QtInstance::CreateVirtualDevice(SalGraphics& rGraphics, tools::Long& nDX, tools::Long& nDY,
                                 DeviceFormat /*eFormat*/, const SystemGraphicsData& rGd)
 {
-    if (m_bUseCairo)
+    if (useCairo())
     {
         SvpSalGraphics* pSvpSalGraphics = dynamic_cast<QtSvpGraphics*>(&rGraphics);
         assert(pSvpSalGraphics);
@@ -497,7 +502,7 @@ SalSystem* QtInstance::CreateSalSystem() { return new QtSystem; }
 
 std::shared_ptr<SalBitmap> QtInstance::CreateSalBitmap()
 {
-    if (m_bUseCairo)
+    if (useCairo())
         return std::make_shared<SvpSalBitmap>();
     else
         return std::make_shared<QtBitmap>();
@@ -784,9 +789,7 @@ void QtInstance::colorSchemeChanged() { UpdateStyle(false); }
 
 void QtInstance::virtualGeometryChanged(const QRect&) { notifyDisplayChanged(); }
 
-void QtInstance::AllocFakeCmdlineArgs(std::unique_ptr<char* []>& rFakeArgv,
-                                      std::unique_ptr<int>& rFakeArgc,
-                                      std::vector<FreeableCStr>& rFakeArgvFreeable)
+std::unique_ptr<QApplication> QtInstance::CreateQApplication()
 {
     OString aVersion(qVersion());
     SAL_INFO("vcl.qt", "qt version string is " << aVersion);
@@ -808,39 +811,22 @@ void QtInstance::AllocFakeCmdlineArgs(std::unique_ptr<char* []>& rFakeArgv,
     osl_getSystemPathFromFileURL(aParam.pData, &aBin.pData);
     OString aExec = OUStringToOString(aBin, osl_getThreadTextEncoding());
 
-    std::vector<FreeableCStr> aFakeArgvFreeable;
-    aFakeArgvFreeable.reserve(4);
-    aFakeArgvFreeable.emplace_back(strdup(aExec.getStr()));
-    aFakeArgvFreeable.emplace_back(strdup("--nocrashhandler"));
+    m_pFakeArgvFreeable.reserve(4);
+    m_pFakeArgvFreeable.emplace_back(strdup(aExec.getStr()));
+    m_pFakeArgvFreeable.emplace_back(strdup("--nocrashhandler"));
     if (nDisplayValueIdx)
     {
-        aFakeArgvFreeable.emplace_back(strdup("-display"));
+        m_pFakeArgvFreeable.emplace_back(strdup("-display"));
         osl_getCommandArg(nDisplayValueIdx, &aParam.pData);
         OString aDisplay = OUStringToOString(aParam, osl_getThreadTextEncoding());
-        aFakeArgvFreeable.emplace_back(strdup(aDisplay.getStr()));
+        m_pFakeArgvFreeable.emplace_back(strdup(aDisplay.getStr()));
     }
-    rFakeArgvFreeable.swap(aFakeArgvFreeable);
 
-    const int nFakeArgc = rFakeArgvFreeable.size();
-    rFakeArgv.reset(new char*[nFakeArgc]);
-    for (int i = 0; i < nFakeArgc; i++)
-        rFakeArgv[i] = rFakeArgvFreeable[i].get();
+    m_nFakeArgc = m_pFakeArgvFreeable.size();
+    m_pFakeArgv.reset(new char*[m_nFakeArgc]);
+    for (int i = 0; i < m_nFakeArgc; i++)
+        m_pFakeArgv[i] = m_pFakeArgvFreeable[i].get();
 
-    rFakeArgc.reset(new int);
-    *rFakeArgc = nFakeArgc;
-}
-
-void QtInstance::MoveFakeCmdlineArgs(std::unique_ptr<char* []>& rFakeArgv,
-                                     std::unique_ptr<int>& rFakeArgc,
-                                     std::vector<FreeableCStr>& rFakeArgvFreeable)
-{
-    m_pFakeArgv = std::move(rFakeArgv);
-    m_pFakeArgc = std::move(rFakeArgc);
-    m_pFakeArgvFreeable.swap(rFakeArgvFreeable);
-}
-
-std::unique_ptr<QApplication> QtInstance::CreateQApplication(int& nArgc, char** pArgv)
-{
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
     // for Qt 6, setting Qt::AA_EnableHighDpiScaling and Qt::AA_UseHighDpiPixmaps
     // is deprecated, they're always enabled
@@ -854,19 +840,20 @@ std::unique_ptr<QApplication> QtInstance::CreateQApplication(int& nArgc, char** 
     QGuiApplication::setHighDpiScaleFactorRoundingPolicy(
         Qt::HighDpiScaleFactorRoundingPolicy::Round);
 
-    FreeableCStr session_manager;
+    std::optional<OString> oSessionManager;
     if (getenv("SESSION_MANAGER") != nullptr)
     {
-        session_manager.reset(strdup(getenv("SESSION_MANAGER")));
+        oSessionManager = OString(getenv("SESSION_MANAGER"));
         unsetenv("SESSION_MANAGER");
     }
 
-    std::unique_ptr<QApplication> pQApp = std::make_unique<QApplication>(nArgc, pArgv);
+    std::unique_ptr<QApplication> pQApp
+        = std::make_unique<QApplication>(m_nFakeArgc, m_pFakeArgv.get());
 
-    if (session_manager != nullptr)
+    if (oSessionManager.has_value())
     {
         // coverity[tainted_string] - trusted source for setenv
-        setenv("SESSION_MANAGER", session_manager.get(), 1);
+        setenv("SESSION_MANAGER", oSessionManager.value().getStr(), 1);
     }
 
     QApplication::setQuitOnLastWindowClosed(false);
@@ -1017,7 +1004,7 @@ weld::MessageDialog* QtInstance::CreateMessageDialog(weld::Widget* pParent,
         QMessageBox* pMessageBox = new QMessageBox(pQtParent);
         pMessageBox->setText(toQString(rPrimaryMessage));
         pMessageBox->setIcon(vclMessageTypeToQtIcon(eMessageType));
-        pMessageBox->setWindowTitle(vclMessageTypeToQtTitle(eMessageType));
+        pMessageBox->setWindowTitle(toQString(GetStandardMessageDialogText(eMessageType)));
         QtInstanceMessageDialog* pDialog = new QtInstanceMessageDialog(pMessageBox);
         pDialog->addStandardButtons(eButtonsType);
         return pDialog;
@@ -1055,18 +1042,8 @@ VCLPLUG_QT_PUBLIC SalInstance* create_SalInstance()
 {
     initResources();
 
-    std::unique_ptr<char* []> pFakeArgv;
-    std::unique_ptr<int> pFakeArgc;
-    std::vector<FreeableCStr> aFakeArgvFreeable;
-    QtInstance::AllocFakeCmdlineArgs(pFakeArgv, pFakeArgc, aFakeArgvFreeable);
-
-    std::unique_ptr<QApplication> pQApp
-        = QtInstance::CreateQApplication(*pFakeArgc, pFakeArgv.get());
-
-    QtInstance* pInstance = new QtInstance(pQApp);
-    pInstance->MoveFakeCmdlineArgs(pFakeArgv, pFakeArgc, aFakeArgvFreeable);
-
-    return pInstance;
+    const OUString sToolkit = "qt" + OUString::number(QT_VERSION_MAJOR);
+    return new QtInstance(sToolkit);
 }
 }
 

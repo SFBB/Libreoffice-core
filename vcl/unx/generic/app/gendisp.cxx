@@ -29,36 +29,11 @@ SalGenericDisplay::~SalGenericDisplay()
 {
 }
 
-void SalGenericDisplay::registerFrame( SalFrame* pFrame )
-{
-    insertFrame( pFrame );
-}
-
-void SalGenericDisplay::deregisterFrame( SalFrame* pFrame )
-{
-    eraseFrame( pFrame );
-}
-
 void SalGenericDisplay::emitDisplayChanged()
 {
     SalFrame *pAnyFrame = anyFrame();
     if( pAnyFrame )
         pAnyFrame->CallCallback( SalEvent::DisplayChanged, nullptr );
-}
-
-bool SalGenericDisplay::DispatchInternalEvent( bool bHandleAllCurrentEvent )
-{
-    return DispatchUserEvents( bHandleAllCurrentEvent );
-}
-
-void SalGenericDisplay::SendInternalEvent( SalFrame* pFrame, void* pData, SalEvent nEvent )
-{
-    PostEvent( pFrame, pData, nEvent );
-}
-
-void SalGenericDisplay::CancelInternalEvent( SalFrame* pFrame, void* pData, SalEvent nEvent )
-{
-    RemoveEvent( pFrame, pData, nEvent );
 }
 
 void SalGenericDisplay::ProcessEvent( SalUserEvent aEvent )

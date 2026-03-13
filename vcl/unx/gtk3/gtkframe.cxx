@@ -19,6 +19,7 @@
 
 #include <config_version.h>
 
+#include <IconHelper.hxx>
 #include <unx/gtk/gtkframe.hxx>
 #include <unx/gtk/gtkdata.hxx>
 #include <unx/gtk/gtkinst.hxx>
@@ -514,7 +515,7 @@ GtkSalFrame::GtkSalFrame( SalFrame* pParent, SalFrameStyleFlags nStyle )
     , m_aSmoothScrollIdle("GtkSalFrame m_aSmoothScrollIdle")
 #endif
 {
-    getDisplay()->registerFrame( this );
+    getDisplay()->insertFrame(this);
     m_bDefaultPos       = true;
     m_bDefaultSize      = ( (nStyle & SalFrameStyleFlags::SIZEABLE) && ! pParent );
     Init( pParent, nStyle );
@@ -529,7 +530,7 @@ GtkSalFrame::GtkSalFrame( SystemParentData* pSysData )
     , m_aSmoothScrollIdle("GtkSalFrame m_aSmoothScrollIdle")
 #endif
 {
-    getDisplay()->registerFrame( this );
+    getDisplay()->insertFrame(this);
     // permanently ignore errors from our unruly children ...
     GtkSalData::ErrorTrapPush();
     m_bDefaultPos       = true;
@@ -713,7 +714,7 @@ GtkSalFrame::~GtkSalFrame()
         m_pParent->m_aChildren.remove( this );
     }
 
-    getDisplay()->deregisterFrame( this );
+    getDisplay()->eraseFrame(this);
 
     if( m_pRegion )
     {
@@ -1881,7 +1882,7 @@ void GtkSalFrame::ReleaseGraphics( SalGraphics* pGraphics )
 
 bool GtkSalFrame::PostEvent(std::unique_ptr<ImplSVEvent> pData)
 {
-    getDisplay()->SendInternalEvent( this, pData.release() );
+    getDisplay()->PostEvent(this, pData.release(), SalEvent::UserEvent);
     return true;
 }
 
@@ -1930,26 +1931,7 @@ void GtkSalFrame::SetIcon( sal_uInt16 nIcon )
         || ! m_pWindow )
         return;
 
-    gchar* appicon;
-
-    if (nIcon == SV_ICON_ID_TEXT)
-        appicon = g_strdup ("libreoffice-writer");
-    else if (nIcon == SV_ICON_ID_SPREADSHEET)
-        appicon = g_strdup ("libreoffice-calc");
-    else if (nIcon == SV_ICON_ID_DRAWING)
-        appicon = g_strdup ("libreoffice-draw");
-    else if (nIcon == SV_ICON_ID_PRESENTATION)
-        appicon = g_strdup ("libreoffice-impress");
-    else if (nIcon == SV_ICON_ID_DATABASE)
-        appicon = g_strdup ("libreoffice-base");
-    else if (nIcon == SV_ICON_ID_FORMULA)
-        appicon = g_strdup ("libreoffice-math");
-    else
-        appicon = g_strdup ("libreoffice-startcenter");
-
-    SetIcon(appicon);
-
-    g_free (appicon);
+    SetIcon(IconHelper::GetAppIconName(nIcon).toUtf8().getStr());
 }
 
 void GtkSalFrame::SetMenu( SalMenu* pSalMenu )
@@ -2638,9 +2620,9 @@ void GtkSalFrame::updateWMClass()
 
     OString aResClass = OUStringToOString(m_sWMClass, RTL_TEXTENCODING_ASCII_US);
     const char *pResClass = !aResClass.isEmpty() ? aResClass.getStr() :
-                                                    SalGenericSystem::getFrameClassName();
+                                                    X11Helper::getFrameClassName();
     XClassHint* pClass = XAllocClassHint();
-    OString aResName = SalGenericSystem::getFrameResName();
+    OString aResName = X11Helper::getFrameResName();
     pClass->res_name  = const_cast<char*>(aResName.getStr());
     pClass->res_class = const_cast<char*>(pResClass);
     Display *display = gdk_x11_display_get_xdisplay(getGdkDisplay());
@@ -4769,7 +4751,7 @@ void GtkSalFrame::signalStyleUpdated(GtkWidget*, gpointer frame)
     GtkSalFrame* pThis = static_cast<GtkSalFrame*>(frame);
 
     // note: settings changed for multiple frames is avoided in winproc.cxx ImplHandleSettings
-    GtkSalFrame::getDisplay()->SendInternalEvent( pThis, nullptr, SalEvent::SettingsChanged );
+    GtkSalFrame::getDisplay()->PostEvent(pThis, nullptr, SalEvent::SettingsChanged);
 
     // a plausible alternative might be to send SalEvent::FontChanged if pSetting starts with "gtk-xft"
 
@@ -4785,7 +4767,7 @@ void GtkSalFrame::signalStyleUpdated(GtkWidget*, gpointer frame)
     if (bFontSettingsChanged)
     {
         pInstance->ResetLastSeenCairoFontOptions(pCurrentCairoFontOptions);
-        GtkSalFrame::getDisplay()->SendInternalEvent( pThis, nullptr, SalEvent::FontChanged );
+        GtkSalFrame::getDisplay()->PostEvent(pThis, nullptr, SalEvent::FontChanged);
     }
 }
 
@@ -4795,7 +4777,7 @@ gboolean GtkSalFrame::signalWindowState( GtkWidget*, GdkEvent* pEvent, gpointer 
     GtkSalFrame* pThis = static_cast<GtkSalFrame*>(frame);
     if( (pThis->m_nState & GDK_TOPLEVEL_STATE_MINIMIZED) != (pEvent->window_state.new_window_state & GDK_TOPLEVEL_STATE_MINIMIZED) )
     {
-        GtkSalFrame::getDisplay()->SendInternalEvent( pThis, nullptr, SalEvent::Resize );
+        GtkSalFrame::getDisplay()->PostEvent(pThis, nullptr, SalEvent::Resize);
         pThis->TriggerPaintEvent();
     }
 
@@ -4824,7 +4806,7 @@ void GtkSalFrame::signalWindowState(GdkToplevel* pSurface, GParamSpec*, gpointer
     GtkSalFrame* pThis = static_cast<GtkSalFrame*>(frame);
     if( (pThis->m_nState & GDK_TOPLEVEL_STATE_MINIMIZED) != (eNewWindowState & GDK_TOPLEVEL_STATE_MINIMIZED) )
     {
-        GtkSalFrame::getDisplay()->SendInternalEvent( pThis, nullptr, SalEvent::Resize );
+        GtkSalFrame::getDisplay()->PostEvent(pThis, nullptr, SalEvent::Resize);
         pThis->TriggerPaintEvent();
     }
 
@@ -5548,7 +5530,7 @@ GtkSalFrame::IMHandler::IMHandler( GtkSalFrame* pFrame )
 GtkSalFrame::IMHandler::~IMHandler()
 {
     // cancel an eventual event posted to begin preedit again
-    GtkSalFrame::getDisplay()->CancelInternalEvent( m_pFrame, &m_aInputEvent, SalEvent::ExtTextInput );
+    GtkSalFrame::getDisplay()->RemoveEvent(m_pFrame, &m_aInputEvent, SalEvent::ExtTextInput);
     deleteIMContext();
 }
 
@@ -5650,7 +5632,7 @@ void GtkSalFrame::IMHandler::endExtTextInput( EndExtTextInputFlags /*nFlags*/ )
         if( m_bFocused )
         {
             // begin preedit again
-            GtkSalFrame::getDisplay()->SendInternalEvent( m_pFrame, &m_aInputEvent, SalEvent::ExtTextInput );
+            GtkSalFrame::getDisplay()->PostEvent(m_pFrame, &m_aInputEvent, SalEvent::ExtTextInput);
         }
     }
 }
@@ -5667,7 +5649,7 @@ void GtkSalFrame::IMHandler::focusChanged( bool bFocusIn )
         {
             sendEmptyCommit();
             // begin preedit again
-            GtkSalFrame::getDisplay()->SendInternalEvent( m_pFrame, &m_aInputEvent, SalEvent::ExtTextInput );
+            GtkSalFrame::getDisplay()->PostEvent(m_pFrame, &m_aInputEvent, SalEvent::ExtTextInput);
         }
     }
     else
@@ -5676,7 +5658,7 @@ void GtkSalFrame::IMHandler::focusChanged( bool bFocusIn )
         gtk_im_context_focus_out( m_pIMContext );
         GtkSalData::ErrorTrapPop();
         // cancel an eventual event posted to begin preedit again
-        GtkSalFrame::getDisplay()->CancelInternalEvent( m_pFrame, &m_aInputEvent, SalEvent::ExtTextInput );
+        GtkSalFrame::getDisplay()->RemoveEvent(m_pFrame, &m_aInputEvent, SalEvent::ExtTextInput);
     }
 }
 

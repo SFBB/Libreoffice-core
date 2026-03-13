@@ -55,14 +55,15 @@ public:
         }
     };
 
-protected:
+private:
+    SalFrameSet m_aFrames;
     mutable std::mutex         m_aUserEventsMutex;
     std::list< SalUserEvent >  m_aUserEvents;
     std::list< SalUserEvent >  m_aProcessingUserEvents;
     bool                       m_bAllUserEventProcessedSignaled;
-    SalFrameSet                m_aFrames;
     oslThreadIdentifier        m_aProcessingThread;
 
+protected:
     virtual void ProcessEvent( SalUserEvent aEvent ) = 0;
     virtual void TriggerUserEventProcessing() = 0;
     virtual void TriggerAllUserEventsProcessed() {}
@@ -75,7 +76,7 @@ public:
     inline const SalFrameSet& getFrames() const;
     inline SalFrame* anyFrame() const;
     void insertFrame( SalFrame* pFrame );
-    void eraseFrame( SalFrame* pFrame );
+    virtual void eraseFrame(SalFrame* pFrame);
     inline bool isFrameAlive( const SalFrame* pFrame ) const;
 
     void PostEvent( SalFrame* pFrame, void* pData, SalEvent nEvent );

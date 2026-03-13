@@ -103,7 +103,8 @@ class VCL_DLLPUBLIC SvpSalInstance : public SalGenericInstance, public SalUserEv
 public:
     static SvpSalInstance*  s_pDefaultInstance;
 
-    SvpSalInstance(std::unique_ptr<SalYieldMutex> pMutex, SalData* pSalData);
+    SvpSalInstance(std::unique_ptr<SalYieldMutex> pMutex, SalData* pSalData,
+                   const OUString& rToolkitName = EMPTY_OUSTRING);
     virtual void AfterAppInit() override;
     virtual ~SvpSalInstance() override;
 
@@ -114,9 +115,6 @@ public:
 
     SAL_DLLPRIVATE void     StartTimer( sal_uInt64 nMS );
     SAL_DLLPRIVATE void     StopTimer();
-
-    inline void             registerFrame( SalFrame* pFrame );
-    inline void             deregisterFrame( SalFrame* pFrame );
 
     SAL_DLLPRIVATE bool     CheckTimeout( bool bExecuteTimers = true );
 
@@ -155,7 +153,6 @@ public:
     SAL_DLLPRIVATE virtual std::unique_ptr<SalPrinter> CreatePrinter( SalInfoPrinter* pInfoPrinter ) override;
 
     virtual void            GetPrinterQueueInfo( ImplPrnQueueList* pList ) override;
-    virtual void            GetPrinterQueueState( SalPrinterQueueInfo* pInfo ) override;
     virtual OUString        GetDefaultPrinter() override;
     virtual void            PostPrintersChanged() override;
 
@@ -176,20 +173,8 @@ public:
 
     SAL_DLLPRIVATE virtual void AddToRecentDocumentList(const OUString& rFileUrl, const OUString& rMimeType, const OUString& rDocumentService) override;
 
-    SAL_DLLPRIVATE virtual std::unique_ptr<GenPspGraphics> CreatePrintGraphics() override;
-
     SAL_DLLPRIVATE virtual const cairo_font_options_t* GetCairoFontOptions() override;
 };
-
-inline void SvpSalInstance::registerFrame( SalFrame* pFrame )
-{
-    insertFrame( pFrame );
-}
-
-inline void SvpSalInstance::deregisterFrame( SalFrame* pFrame )
-{
-    eraseFrame( pFrame );
-}
 
 VCL_DLLPUBLIC cairo_surface_t* get_underlying_cairo_surface(const VirtualDevice& rDevice);
 

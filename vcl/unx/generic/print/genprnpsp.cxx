@@ -331,11 +331,6 @@ void SalGenericInstance::GetPrinterQueueInfo( ImplPrnQueueList* pList )
     }
 }
 
-void SalGenericInstance::GetPrinterQueueState( SalPrinterQueueInfo* )
-{
-    mbPrinterInit = true;
-}
-
 OUString SalGenericInstance::GetDefaultPrinter()
 {
     mbPrinterInit = true;
@@ -1028,6 +1023,11 @@ void SalGenericInstance::updatePrinterUpdate()
     ::psp::PrinterInfoManager& rManager( ::psp::PrinterInfoManager::get() );
     if (rManager.checkPrintersChanged(false))
         PostPrintersChanged();
+}
+
+std::unique_ptr<GenPspGraphics> SalGenericInstance::CreatePrintGraphics()
+{
+    return std::make_unique<GenPspGraphics>();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -72,7 +72,6 @@ class VCLPLUG_QT_PUBLIC QtInstance : public QObject,
     Q_OBJECT
 
     osl::Condition m_aWaitingYieldCond;
-    const bool m_bUseCairo;
     QtTimer* m_pTimer;
     bool m_bSleeping;
     std::unordered_map<ClipboardSelectionType, rtl::Reference<QtClipboard>> m_aClipboards;
@@ -80,7 +79,7 @@ class VCLPLUG_QT_PUBLIC QtInstance : public QObject,
     std::unique_ptr<QApplication> m_pQApplication;
     std::vector<FreeableCStr> m_pFakeArgvFreeable;
     std::unique_ptr<char* []> m_pFakeArgv;
-    std::unique_ptr<int> m_pFakeArgc;
+    int m_nFakeArgc;
 
     Timer m_aUpdateStyleTimer;
     bool m_bUpdateFonts;
@@ -115,23 +114,13 @@ protected:
     virtual rtl::Reference<QtFilePicker>
     createPicker(css::uno::Reference<css::uno::XComponentContext> const& context,
                  QFileDialog::FileMode);
-    bool useCairo() const { return m_bUseCairo; }
-    // encodes cairo usage and Qt platform name into the ToolkitName
-    OUString constructToolkitID(std::u16string_view sTKname);
+    static bool useCairo();
     void connectQScreenSignals(const QScreen*);
     void notifyDisplayChanged();
 
 public:
-    explicit QtInstance(std::unique_ptr<QApplication>& pQApp);
+    explicit QtInstance(const OUString& rToolkitName);
     virtual ~QtInstance() override;
-
-    // handle common SalInstance setup
-    static void AllocFakeCmdlineArgs(std::unique_ptr<char* []>& rFakeArgv,
-                                     std::unique_ptr<int>& rFakeArgc,
-                                     std::vector<FreeableCStr>& rFakeArgvFreeable);
-    void MoveFakeCmdlineArgs(std::unique_ptr<char* []>& rFakeArgv, std::unique_ptr<int>& rFakeArgc,
-                             std::vector<FreeableCStr>& rFakeArgvFreeable);
-    static std::unique_ptr<QApplication> CreateQApplication(int& nArgc, char** pArgv);
 
     void RunInMainThread(std::function<void()> func);
     template <typename F>
@@ -168,14 +157,6 @@ public:
     CreateVirtualDevice(SalGraphics& rGraphics, tools::Long& nDX, tools::Long& nDY,
                         DeviceFormat eFormat, const SystemGraphicsData& rData) override;
 
-    virtual SalInfoPrinter* CreateInfoPrinter(SalPrinterQueueInfo* pQueueInfo,
-                                              ImplJobSetup* pSetupData) override;
-    virtual std::unique_ptr<SalPrinter> CreatePrinter(SalInfoPrinter* pInfoPrinter) override;
-    virtual void GetPrinterQueueInfo(ImplPrnQueueList* pList) override;
-    virtual void GetPrinterQueueState(SalPrinterQueueInfo* pInfo) override;
-    virtual OUString GetDefaultPrinter() override;
-    virtual void PostPrintersChanged() override;
-
     virtual std::unique_ptr<SalMenu> CreateMenu(bool, Menu*) override;
     virtual std::unique_ptr<SalMenuItem> CreateMenuItem(const SalItemParams&) override;
 
@@ -205,8 +186,6 @@ public:
 
     virtual void AddToRecentDocumentList(const OUString& rFileUrl, const OUString& rMimeType,
                                          const OUString& rDocumentService) override;
-
-    virtual std::unique_ptr<GenPspGraphics> CreatePrintGraphics() override;
 
     virtual bool IsMainThread() const override;
 
@@ -249,6 +228,12 @@ public:
     static bool noNativeControls();
     static bool noWeldedWidgets();
     static bool isQtWeldingEnabled();
+
+private:
+    std::unique_ptr<QApplication> CreateQApplication();
+
+    // encodes cairo usage and Qt platform name into the ToolkitName
+    static OUString constructToolkitID(std::u16string_view sTKname);
 };
 
 inline QtInstance& GetQtInstance()

@@ -230,8 +230,12 @@ static VclInputFlags categorizeEvent(const GdkEvent *pEvent)
 }
 #endif
 
+#ifndef GTK_TOOLKIT_NAME
+#define GTK_TOOLKIT_NAME "gtk3"
+#endif
+
 GtkInstance::GtkInstance( std::unique_ptr<SalYieldMutex> pMutex )
-    : SvpSalInstance(std::move(pMutex), new GtkSalData)
+    : SvpSalInstance(std::move(pMutex), new GtkSalData, GTK_TOOLKIT_NAME)
     , m_pTimer(nullptr)
     , bNeedsInit(true)
     , m_pLastCairoFontOptions(nullptr)
@@ -256,15 +260,6 @@ void GtkInstance::EnsureInit()
     GtkSalData *pSalData = GetGtkSalData();
     pSalData->Init();
     GtkSalData::initNWF();
-
-    ImplSVData* pSVData = ImplGetSVData();
-#ifdef GTK_TOOLKIT_NAME
-    // [-loplugin:ostr] if we use a literal here, we get use-after-free on shutdown
-    pSVData->maAppData.mxToolkitName = OUString(GTK_TOOLKIT_NAME);
-#else
-    // [-loplugin:ostr] if we use a literal here, we get use-after-free on shutdown
-    pSVData->maAppData.mxToolkitName = OUString("gtk3");
-#endif
 
     bNeedsInit = false;
 }
@@ -329,11 +324,7 @@ SalInfoPrinter* GtkInstance::CreateInfoPrinter( SalPrinterQueueInfo* pQueueInfo,
     ImplJobSetup* pSetupData )
 {
     EnsureInit();
-    mbPrinterInit = true;
-    // create and initialize SalInfoPrinter
-    PspSalInfoPrinter* pPrinter = new PspSalInfoPrinter;
-    configurePspInfoPrinter(pPrinter, pQueueInfo, pSetupData);
-    return pPrinter;
+    return SalGenericInstance::CreateInfoPrinter(pQueueInfo, pSetupData);
 }
 
 std::unique_ptr<SalPrinter> GtkInstance::CreatePrinter( SalInfoPrinter* pInfoPrinter )
@@ -551,7 +542,7 @@ bool GtkInstance::AnyInput( VclInputFlags nType )
 std::unique_ptr<GenPspGraphics> GtkInstance::CreatePrintGraphics()
 {
     EnsureInit();
-    return std::make_unique<GenPspGraphics>();
+    return SvpSalInstance::CreatePrintGraphics();
 }
 
 const cairo_font_options_t* GtkInstance::GetCairoFontOptions()
@@ -4904,10 +4895,7 @@ namespace
         }
         else
         {
-            const AllSettings& rSettings = Application::GetSettings();
-            pixbuf = load_icon_by_name_theme_lang(rIconName,
-                                       rSettings.GetStyleSettings().DetermineIconTheme(),
-                                       rSettings.GetUILanguageTag().getBcp47());
+            pixbuf = load_icon_by_name(rIconName);
         }
         return pixbuf;
     }

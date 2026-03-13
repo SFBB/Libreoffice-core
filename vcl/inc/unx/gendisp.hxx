@@ -35,13 +35,7 @@ public:
                  SalGenericDisplay();
     virtual      ~SalGenericDisplay() override;
 
-    void registerFrame( SalFrame* pFrame );
-    virtual void deregisterFrame( SalFrame* pFrame );
     void emitDisplayChanged();
-
-    void SendInternalEvent( SalFrame* pFrame, void* pData, SalEvent nEvent = SalEvent::UserEvent );
-    void CancelInternalEvent( SalFrame* pFrame, void* pData, SalEvent nEvent );
-    bool DispatchInternalEvent( bool bHandleAllCurrentEvent = false );
 
     bool     MouseCaptured( const SalFrame *pFrameData ) const
                         { return m_pCapture == pFrameData; }

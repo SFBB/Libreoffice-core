@@ -188,10 +188,6 @@ void SvpSalInstance::GetPrinterQueueInfo( ImplPrnQueueList* pList )
     }
 }
 
-void SvpSalInstance::GetPrinterQueueState( SalPrinterQueueInfo* )
-{
-}
-
 OUString SvpSalInstance::GetDefaultPrinter()
 {
     PrinterInfoManager& rManager( PrinterInfoManager::get() );
@@ -203,11 +199,6 @@ void SvpSalInstance::PostPrintersChanged()
     SvpSalInstance *pInst = SvpSalInstance::s_pDefaultInstance;
     for (auto pSalFrame : pInst->getFrames() )
         pInst->PostEvent( pSalFrame, nullptr, SalEvent::PrinterChanged );
-}
-
-std::unique_ptr<GenPspGraphics> SvpSalInstance::CreatePrintGraphics()
-{
-    return std::make_unique<GenPspGraphics>();
 }
 
 bool SvpSalInfoPrinter::Setup( weld::Window*, ImplJobSetup* )
