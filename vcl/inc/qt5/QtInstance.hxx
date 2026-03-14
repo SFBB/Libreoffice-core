@@ -205,6 +205,9 @@ public:
     virtual css::uno::Reference<css::datatransfer::dnd::XDropTarget>
     ImplCreateDropTarget(const SystemEnvData& rSysEnv) override;
 
+    virtual Platform GetPlatform() const override;
+    virtual Toolkit GetToolkit() const override;
+
     // for qt font options
     virtual const cairo_font_options_t* GetCairoFontOptions() override;
 
@@ -230,6 +233,7 @@ public:
     static bool isQtWeldingEnabled();
 
 private:
+    QtFrame* CreateFrame(SalFrameStyleFlags nStyle, QtFrame* pParent);
     std::unique_ptr<QApplication> CreateQApplication();
 
     // encodes cairo usage and Qt platform name into the ToolkitName

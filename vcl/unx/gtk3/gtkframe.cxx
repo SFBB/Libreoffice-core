@@ -1251,14 +1251,12 @@ void GtkSalFrame::InitCommon()
     m_aSystemData.pSalFrame     = this;
     m_aSystemData.pWidget       = m_pWindow;
     m_aSystemData.nScreen       = m_nXScreen.getXScreen();
-    m_aSystemData.toolkit       = SystemEnvData::Toolkit::Gtk;
 
 #if defined(GDK_WINDOWING_X11)
     GdkDisplay *pDisplay = getGdkDisplay();
     if (DLSYM_GDK_IS_X11_DISPLAY(pDisplay))
     {
         m_aSystemData.pDisplay = gdk_x11_display_get_xdisplay(pDisplay);
-        m_aSystemData.platform = SystemEnvData::Platform::Xcb;
 #if !GTK_CHECK_VERSION(4,0,0)
         GdkScreen* pScreen = gtk_widget_get_screen(m_pWindow);
         GdkVisual* pVisual = gdk_screen_get_system_visual(pScreen);
@@ -1268,10 +1266,7 @@ void GtkSalFrame::InitCommon()
 #endif
 #if defined(GDK_WINDOWING_WAYLAND)
     if (DLSYM_GDK_IS_WAYLAND_DISPLAY(pDisplay))
-    {
         m_aSystemData.pDisplay = gdk_wayland_display_get_wl_display(pDisplay);
-        m_aSystemData.platform = SystemEnvData::Platform::Wayland;
-    }
 #endif
 
     m_bGraphics = false;

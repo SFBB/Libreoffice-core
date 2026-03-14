@@ -36,6 +36,7 @@
 struct ScQueryParam;
 class ScDPObject;
 class ScDocument;
+class ScTokenArray;
 struct ScInterpreterContext;
 namespace tools { class XmlWriter; }
 
@@ -64,6 +65,18 @@ public:
         GroupItems(const GroupItems&) = delete;
         const GroupItems& operator=(const GroupItems&) = delete;
         GroupItems(const ScDPNumGroupInfo& rInfo, sal_Int32 nGroupType);
+    };
+
+    struct CalculatedField
+    {
+        OUString maFieldName;
+        OUString maCalculation;
+        std::shared_ptr<ScTokenArray> mpArrayRef;
+        sal_Int32 mnIndex;
+        // nIndex can be recomputed by WriteToCache()
+        CalculatedField(ScDocument& rDoc, const OUString& rFieldName, const std::shared_ptr<ScTokenArray>& pArray, sal_Int32 nIndex = 0);
+        CalculatedField(const CalculatedField&) = delete;
+        const CalculatedField& operator=(const CalculatedField&) = delete;
     };
 
     struct Field
@@ -118,9 +131,11 @@ private:
     mutable ScDPObjectSet maRefObjects;
 
     typedef std::vector< std::unique_ptr<Field> > FieldsType;
+    typedef std::vector<std::shared_ptr<CalculatedField>> CalculatedFieldsType;
     typedef std::vector< std::unique_ptr<GroupItems> > GroupFieldsType;
 
     FieldsType maFields;
+    CalculatedFieldsType maCalculatedFields;
     GroupFieldsType maGroupFields;
     std::vector<StringSetType> maStringPools; // one for each field.
 
@@ -143,8 +158,14 @@ public:
     static OUString GetLocaleIndependentFormattedNumberString( double fValue );
     static OUString GetLocaleIndependentFormattedString( double fValue, const ScInterpreterContext& rContext, sal_uInt32 nNumFormat );
     SC_DLLPUBLIC OUString GetFormattedString(tools::Long nDim, const ScDPItemData& rItem, bool bLocaleIndependent) const;
+    SC_DLLPUBLIC double GetCalculatedValueByToken(std::unique_ptr<ScTokenArray> pNewArray) const;
     ScInterpreterContext& GetInterpreterContext() const;
 
+    std::shared_ptr<CalculatedField> SetCalculatedField(const OUString& rFieldName, const std::shared_ptr<ScTokenArray>& pArray,
+                                                        sal_Int32 nIndex);
+    void RemoveCalculatedField(const OUString& rFieldName);
+    const CalculatedFieldsType& GetCalculatedFields() const { return maCalculatedFields; }
+    SC_DLLPUBLIC const CalculatedField* GetCalculatedFieldByName(const OUString& rFieldName) const;
     tools::Long AppendGroupField();
     void ResetGroupItems(tools::Long nDim, const ScDPNumGroupInfo& rNumInfo, sal_Int32 nGroupType);
     SCROW SetGroupItem(tools::Long nDim, const ScDPItemData& rData);
@@ -198,6 +219,7 @@ public:
 
     SC_DLLPUBLIC size_t GetFieldCount() const;
     SC_DLLPUBLIC size_t GetGroupFieldCount() const;
+    SC_DLLPUBLIC size_t GetCalculatedFieldCount() const;
 
     ScDPCache(const ScDPCache&) = delete;
     const ScDPCache& operator=(const ScDPCache&) = delete;

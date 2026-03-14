@@ -34,6 +34,8 @@
 #include <QtMenu.hxx>
 #include <QtObject.hxx>
 #include <QtOpenGLContext.hxx>
+#include <QtSalFrame.hxx>
+#include <QtSvpSalFrame.hxx>
 #include "QtSvpVirtualDevice.hxx"
 #include <QtSystem.hxx>
 #include <QtTimer.hxx>
@@ -378,24 +380,13 @@ void QtInstance::deleteObjectLater(QObject* pObject) { pObject->deleteLater(); }
 
 SalFrame* QtInstance::CreateChildFrame(SystemParentData* /*pParent*/, SalFrameStyleFlags nStyle)
 {
-    SolarMutexGuard aGuard;
-    SalFrame* pRet(nullptr);
-    RunInMainThread([&]() { pRet = new QtFrame(nullptr, nStyle, useCairo()); });
-    assert(pRet);
-    return pRet;
+    return CreateFrame(nStyle, nullptr);
 }
 
 SalFrame* QtInstance::CreateFrame(SalFrame* pParent, SalFrameStyleFlags nStyle)
 {
-    SolarMutexGuard aGuard;
-
     assert(!pParent || dynamic_cast<QtFrame*>(pParent));
-
-    SalFrame* pRet(nullptr);
-    RunInMainThread(
-        [&]() { pRet = new QtFrame(static_cast<QtFrame*>(pParent), nStyle, useCairo()); });
-    assert(pRet);
-    return pRet;
+    return CreateFrame(nStyle, static_cast<QtFrame*>(pParent));
 }
 
 void QtInstance::DestroyFrame(SalFrame* pFrame)
@@ -693,6 +684,24 @@ QtInstance::ImplCreateDropTarget(const SystemEnvData& rSysEnv)
     return pDropTarget;
 }
 
+Platform QtInstance::GetPlatform() const
+{
+    const QString sPlatformName = QGuiApplication::platformName();
+    if (sPlatformName == u"wayland")
+        return Platform::Wayland;
+    if (sPlatformName == u"xcb")
+        return Platform::Xcb;
+    if (sPlatformName == u"wasm")
+        return Platform::WASM;
+    if (sPlatformName == u"windows")
+        return Platform::Windows;
+
+    assert(false && "Unsupported qt VCL platform");
+    return Platform::Other;
+}
+
+Toolkit QtInstance::GetToolkit() const { return Toolkit::Qt; }
+
 const cairo_font_options_t* QtInstance::GetCairoFontOptions()
 {
     static cairo_font_options_t* gOptions = cairo_font_options_create();
@@ -734,7 +743,7 @@ void* QtInstance::CreateGStreamerSink(const SystemChildWindow* pWindow)
     if (!pEnvData)
         return nullptr;
 
-    if (pEnvData->platform != SystemEnvData::Platform::Wayland)
+    if (GetQtInstance().GetPlatform() != Platform::Wayland)
         return nullptr;
 
     GstElement* pVideosink = pSymbol("qwidget5videosink", "qwidget5videosink");
@@ -788,6 +797,21 @@ void QtInstance::screenRemoved(QScreen*) { notifyDisplayChanged(); }
 void QtInstance::colorSchemeChanged() { UpdateStyle(false); }
 
 void QtInstance::virtualGeometryChanged(const QRect&) { notifyDisplayChanged(); }
+
+QtFrame* QtInstance::CreateFrame(SalFrameStyleFlags nStyle, QtFrame* pParent)
+{
+    SolarMutexGuard aGuard;
+
+    QtFrame* pFrame = nullptr;
+    RunInMainThread([&]() {
+        if (useCairo())
+            pFrame = new QtSvpSalFrame(pParent, nStyle);
+        else
+            pFrame = new QtSalFrame(pParent, nStyle);
+    });
+
+    return pFrame;
+}
 
 std::unique_ptr<QApplication> QtInstance::CreateQApplication()
 {

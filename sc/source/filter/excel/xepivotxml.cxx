@@ -46,6 +46,7 @@
 #include <com/sun/star/sheet/MemberResultFlags.hpp>
 #include <com/sun/star/sheet/XMembersSupplier.hpp>
 
+#include <map>
 #include <vector>
 #include <unordered_map>
 
@@ -292,8 +293,9 @@ void XclExpXmlPivotCaches::SavePivotCacheXml( XclExpXmlStream& rStrm, const Entr
 
     size_t nCount = rCache.GetFieldCount();
     const size_t nGroupFieldCount = rCache.GetGroupFieldCount();
+    const size_t nCalculatedFieldCount = rCache.GetCalculatedFieldCount();
     pDefStrm->startElement(XML_cacheFields,
-        XML_count, OString::number(static_cast<tools::Long>(nCount + nGroupFieldCount)));
+        XML_count, OString::number(static_cast<tools::Long>(nCount + nGroupFieldCount + nCalculatedFieldCount)));
 
     SvNumberFormatter& rFormatter = GetFormatter();
 
@@ -307,6 +309,35 @@ void XclExpXmlPivotCaches::SavePivotCacheXml( XclExpXmlStream& rStrm, const Entr
         else
             return GetExcelFormattedDate(fVal, rFormatter);
     };
+
+    // Get DPObject early so we can build a base→group field mapping for the source field loop.
+    ScDPObject* pDPObject
+        = rCache.GetAllReferences().empty() ? nullptr : *rCache.GetAllReferences().begin();
+
+    // Build a map: base source field index → parent group cacheField index.
+    // This is needed to write the "par" attribute on base fields (e.g. <fieldGroup par="3"/>).
+    std::map<SCCOL, size_t> aBaseToGroupFieldIdx;
+    if (pDPObject)
+    {
+        ScDPSaveData* pSD = pDPObject->GetSaveData();
+        if (pSD && pSD->GetDimensionData())
+        {
+            for (size_t gi = nCount; gi < nCount + nGroupFieldCount; ++gi)
+            {
+                const OUString aGrpName = pDPObject->GetDimName(gi, o3tl::temporary(bool()));
+                if (aGrpName.isEmpty())
+                    break;
+                const ScDPSaveGroupDimension* pGrpDim
+                    = pSD->GetDimensionData()->GetNamedGroupDim(aGrpName);
+                if (pGrpDim)
+                {
+                    SCCOL nBase = rCache.GetDimensionIndex(pGrpDim->GetSourceDimName());
+                    if (nBase >= 0)
+                        aBaseToGroupFieldIdx[nBase] = gi;
+                }
+            }
+        }
+    }
 
     auto WriteFieldGroup = [&rCache, pDefStrm, &GetClampedDate](size_t i, size_t base)
     {
@@ -531,11 +562,16 @@ void XclExpXmlPivotCaches::SavePivotCacheXml( XclExpXmlStream& rStrm, const Entr
 
         WriteFieldGroup(i, i);
 
+        // Write <fieldGroup par="N"/> for source fields that are the base of a group dimension.
+        // The "par" attribute tells Excel which cacheField is the parent group field.
+        // Only write this when WriteFieldGroup didn't already emit a <fieldGroup> element
+        // (i.e. when the source field has no date grouping).
+        auto itPar = aBaseToGroupFieldIdx.find(static_cast<SCCOL>(i));
+        if (itPar != aBaseToGroupFieldIdx.end() && !rCache.GetGroupType(i))
+            pDefStrm->singleElement(XML_fieldGroup, XML_par, OString::number(itPar->second));
+
         pDefStrm->endElement(XML_cacheField);
     }
-
-    ScDPObject* pDPObject
-        = rCache.GetAllReferences().empty() ? nullptr : *rCache.GetAllReferences().begin();
 
     for (size_t i = nCount; pDPObject && i < nCount + nGroupFieldCount; ++i)
     {
@@ -561,8 +597,100 @@ void XclExpXmlPivotCaches::SavePivotCacheXml( XclExpXmlStream& rStrm, const Entr
 
         pDefStrm->startElement(XML_cacheField, XML_name, aName.toUtf8(), XML_numFmtId,
                                OString::number(0), XML_databaseField, ToPsz10(false));
-        WriteFieldGroup(i, nBase);
+
+        if (pDim->GetDatePart() == 0)
+        {
+            // Discrete (manual) grouping: write fieldGroup with discretePr and groupItems
+            const ScDPCache::ScDPItemDataVec& rBaseItems = rCache.GetDimMemberValues(nBase);
+
+            // Build the list of group item names and a mapping from source item name
+            // to group index. Named groups come first, then ungrouped source items
+            // (each as its own group entry), matching the order used by
+            // ScDPSaveGroupDimension::AddToCache.
+            std::vector<OUString> aGroupItemNames;
+            std::map<OUString, sal_Int32> aItemToGroupIdx;
+
+            // First: named groups
+            tools::Long nGroupCount = pDim->GetGroupCount();
+            for (tools::Long g = 0; g < nGroupCount; ++g)
+            {
+                const ScDPSaveGroupItem& rGroup = pDim->GetGroupByIndex(g);
+                sal_Int32 nGroupIdx = static_cast<sal_Int32>(aGroupItemNames.size());
+                aGroupItemNames.push_back(rGroup.GetGroupName());
+
+                for (size_t e = 0; e < rGroup.GetElementCount(); ++e)
+                {
+                    const OUString* pElem = rGroup.GetElementByIndex(e);
+                    if (pElem)
+                        aItemToGroupIdx[*pElem] = nGroupIdx;
+                }
+            }
+
+            // Then: ungrouped source items as their own group entries
+            for (const ScDPItemData& rItem : rBaseItems)
+            {
+                OUString aItemName = rCache.GetFormattedString(nBase, rItem, false);
+                if (aItemToGroupIdx.find(aItemName) == aItemToGroupIdx.end())
+                {
+                    sal_Int32 nGroupIdx = static_cast<sal_Int32>(aGroupItemNames.size());
+                    aGroupItemNames.push_back(aItemName);
+                    aItemToGroupIdx[aItemName] = nGroupIdx;
+                }
+            }
+
+            // <fieldGroup base="nBase">
+            pDefStrm->startElement(XML_fieldGroup, XML_base, OString::number(nBase));
+
+            // <discretePr count="N"> — maps each base field shared item to a group index
+            pDefStrm->startElement(XML_discretePr, XML_count,
+                                   OString::number(rBaseItems.size()));
+            for (const ScDPItemData& rItem : rBaseItems)
+            {
+                OUString aItemName = rCache.GetFormattedString(nBase, rItem, false);
+                auto it = aItemToGroupIdx.find(aItemName);
+                sal_Int32 nGroupIdx = (it != aItemToGroupIdx.end()) ? it->second : 0;
+                pDefStrm->singleElement(XML_x, XML_v, OString::number(nGroupIdx));
+            }
+            pDefStrm->endElement(XML_discretePr);
+
+            // <groupItems count="N"> — the group names
+            pDefStrm->startElement(XML_groupItems, XML_count,
+                                   OString::number(aGroupItemNames.size()));
+            for (const OUString& rName : aGroupItemNames)
+            {
+                pDefStrm->singleElement(XML_s, XML_v, rName.toUtf8());
+            }
+            pDefStrm->endElement(XML_groupItems);
+
+            pDefStrm->endElement(XML_fieldGroup);
+        }
+        else
+        {
+            WriteFieldGroup(i, nBase);
+        }
+
         pDefStrm->endElement(XML_cacheField);
+    }
+
+    for (size_t i = nCount + nGroupFieldCount; pDPObject && i < nCount + nGroupFieldCount + nCalculatedFieldCount; ++i)
+    {
+        const OUString aName = pDPObject->GetDimName(i, o3tl::temporary(bool()));
+        if (aName.isEmpty())
+            continue;
+
+        const ScDPCache::CalculatedField* pCalcField = rCache.GetCalculatedFieldByName(aName);
+        if (pCalcField && pCalcField->mpArrayRef)
+        {
+            ScAddress aPos(ScAddress::INITIALIZE_INVALID);
+            OUString aFormula = XclXmlUtils::ToOUString(GetCompileFormulaContext(), aPos, pCalcField->mpArrayRef.get());
+
+            pDefStrm->startElement(XML_cacheField, XML_name, pCalcField->maFieldName.toUtf8(), XML_numFmtId,
+                            OString::number(0), XML_formula, aFormula.toUtf8(),
+                            XML_databaseField, ToPsz10(false));
+
+            WriteFieldGroup(i, i);
+            pDefStrm->endElement(XML_cacheField);
+        }
     }
 
     pDefStrm->endElement(XML_cacheFields);
@@ -978,7 +1106,7 @@ void XclExpXmlPivotTables::SavePivotTableXml( XclExpXmlStream& rStrm, const ScDP
 
     const ScDPSaveData& rSaveData = *rDPObj.GetSaveData();
 
-    size_t nFieldCount = rCache.GetFieldCount() + rCache.GetGroupFieldCount();
+    size_t nFieldCount = rCache.GetFieldCount() + rCache.GetGroupFieldCount() + rCache.GetCalculatedFieldCount();
     std::vector<const ScDPSaveDimension*> aCachedDims;
     NameToIdMapType aNameToIdMap;
 
@@ -1173,25 +1301,59 @@ void XclExpXmlPivotTables::SavePivotTableXml( XclExpXmlStream& rStrm, const ScDP
 
         if (eOrient == sheet::DataPilotFieldOrientation_DATA)
         {
+            const ScDPCache::CalculatedField* pCalcField = rCache.GetCalculatedFieldByName(pDim->GetName());
             if(bDimInTabularMode)
             {
-                pPivotStrm->singleElement(XML_pivotField,
-                    XML_dataField, ToPsz10(true),
-                    XML_compact, ToPsz10(false),
-                    XML_outline, ToPsz10(false),
-                    XML_showAll, ToPsz10(false));
+                if (!pCalcField)
+                {
+                    pPivotStrm->singleElement(XML_pivotField, XML_dataField, ToPsz10(true),
+                                              XML_compact, ToPsz10(false), XML_outline,
+                                              ToPsz10(false), XML_showAll, ToPsz10(false));
+                }
+                else
+                {
+                    pPivotStrm->singleElement(XML_pivotField, XML_dataField, ToPsz10(true),
+                                              XML_dragToRow, ToPsz10(false), XML_dragToCol,
+                                              ToPsz10(false), XML_dragToPage, ToPsz10(false),
+                                              XML_compact, ToPsz10(false), XML_outline,
+                                              ToPsz10(false), XML_showAll, ToPsz10(false),
+                                              XML_defaultSubtotal, ToPsz10(false));
+                }
             }
             else
             {
                 if (bDimInCompactMode)
-                    pPivotStrm->singleElement(XML_pivotField,
-                        XML_dataField, ToPsz10(true),
-                        XML_showAll, ToPsz10(false));
+                {
+                    if (!pCalcField)
+                    {
+                        pPivotStrm->singleElement(XML_pivotField, XML_dataField, ToPsz10(true),
+                                                  XML_showAll, ToPsz10(false));
+                    }
+                    else
+                    {
+                        pPivotStrm->singleElement(XML_pivotField, XML_dataField, ToPsz10(true),
+                                                  XML_dragToRow, ToPsz10(false), XML_dragToCol,
+                                                  ToPsz10(false), XML_dragToPage, ToPsz10(false),
+                                                  XML_showAll, ToPsz10(false), XML_defaultSubtotal,
+                                                  ToPsz10(false));
+                    }
+                }
                 else
-                    pPivotStrm->singleElement(XML_pivotField,
-                        XML_dataField, ToPsz10(true),
-                        XML_compact, ToPsz10(false),
-                        XML_showAll, ToPsz10(false));
+                {
+                    if (!pCalcField)
+                    {
+                        pPivotStrm->singleElement(XML_pivotField, XML_dataField, ToPsz10(true),
+                                                  XML_compact, ToPsz10(false), XML_showAll, ToPsz10(false));
+                    }
+                    else
+                    {
+                        pPivotStrm->singleElement(XML_pivotField, XML_dataField, ToPsz10(true),
+                                                  XML_dragToRow, ToPsz10(false), XML_dragToCol,
+                                                  ToPsz10(false), XML_dragToPage, ToPsz10(false),
+                                                  XML_compact, ToPsz10(false), XML_showAll, ToPsz10(false),
+                                                  XML_defaultSubtotal, ToPsz10(false));
+                    }
+                }
             }
             continue;
         }
@@ -1215,6 +1377,19 @@ void XclExpXmlPivotTables::SavePivotTableXml( XclExpXmlStream& rStrm, const ScDP
                     sFormattedName = const_cast<ScDPObject&>(rDPObj).GetFormattedString(
                         pDim->GetName(), it.GetValue());
                 aCacheFieldItems.push_back(sFormattedName);
+            }
+        }
+        else if (i >= rCache.GetFieldCount() && !rCache.GetGroupType(i))
+        {
+            // Discrete (manual) group field: items are plain strings, not GroupValue.
+            // SortGroupItems only handles date groups, so get items via member IDs.
+            ScfInt32Vec aGIIds;
+            rCache.GetGroupDimMemberIds(i, aGIIds);
+            for (sal_Int32 nId : aGIIds)
+            {
+                const ScDPItemData* pData = rCache.GetItemDataById(i, nId);
+                if (pData)
+                    aCacheFieldItems.push_back(rCache.GetFormattedString(i, *pData, false));
             }
         }
         else

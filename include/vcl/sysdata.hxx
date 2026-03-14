@@ -51,8 +51,8 @@ typedef struct CGContext *CGContextRef;
 
 struct VCL_DLLPUBLIC SystemEnvData
 {
-    enum class Toolkit { Invalid, Gen, Gtk, Qt };
-    Toolkit             toolkit;        // the toolkit in use
+    SalFrame*           pSalFrame;      // contains a salframe, if object has one
+    void*               pWidget;        // the corresponding widget
 #if defined(_WIN32)
     HWND                hWnd;           // the window hwnd
 #elif defined( MACOSX )
@@ -63,14 +63,9 @@ struct VCL_DLLPUBLIC SystemEnvData
 #elif defined( IOS )
     // Nothing
 #elif defined( UNX )
-    enum class Platform { Invalid, Wayland, Xcb, WASM };
-
     void*               pDisplay;       // the relevant display connection
-    SalFrame*           pSalFrame;      // contains a salframe, if object has one
-    void*               pWidget;        // the corresponding widget
     void*               pVisual;        // the visual in use
     int                 nScreen;        // the current screen of the window
-    Platform            platform;       // the windowing system in use
 private:
     sal_uIntPtr         aWindow;        // the window of the object
 public:
@@ -87,7 +82,8 @@ public:
 #endif
 
     SystemEnvData()
-        : toolkit(Toolkit::Invalid)
+        : pSalFrame(nullptr)
+        , pWidget(nullptr)
 #if defined(_WIN32)
         , hWnd(nullptr)
 #elif defined( MACOSX )
@@ -97,11 +93,8 @@ public:
 #elif defined( IOS )
 #elif defined( UNX )
         , pDisplay(nullptr)
-        , pSalFrame(nullptr)
-        , pWidget(nullptr)
         , pVisual(nullptr)
         , nScreen(0)
-        , platform(Platform::Invalid)
         , aWindow(0)
 #endif
     {

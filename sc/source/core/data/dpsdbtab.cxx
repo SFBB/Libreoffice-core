@@ -23,6 +23,7 @@
 #include <dpfilteredcache.hxx>
 #include <document.hxx>
 #include <dpobject.hxx>
+#include <tokenarray.hxx>
 
 #include <com/sun/star/sdb/CommandType.hpp>
 
@@ -46,7 +47,7 @@ sal_Int32 ScImportSourceDesc::GetCommandType() const
     return nSdbType;
 }
 
-const ScDPCache* ScImportSourceDesc::CreateCache(const ScDPDimensionSaveData* pDimData) const
+const ScDPCache* ScImportSourceDesc::CreateCache(const ScDPDimensionSaveData* pDimData, const ScDPDimCalcSaveData* pCalculatedDimData) const
 {
     if (!mpDoc)
         return nullptr;
@@ -56,7 +57,7 @@ const ScDPCache* ScImportSourceDesc::CreateCache(const ScDPDimensionSaveData* pD
         return nullptr;
 
     ScDPCollection::DBCaches& rCaches = mpDoc->GetDPCollection()->GetDBCaches();
-    return rCaches.getCache(nSdbType, aDBName, aObject, pDimData);
+    return rCaches.getCache(nSdbType, aDBName, aObject, pDimData, pCalculatedDimData);
 }
 
 ScDatabaseDPData::ScDatabaseDPData(
@@ -79,7 +80,12 @@ void ScDatabaseDPData::DisposeData()
 sal_Int32 ScDatabaseDPData::GetColumnCount()
 {
     CreateCacheTable();
-    return GetCacheTable().getColSize();
+    return GetCacheTable().getColSize() + GetCacheTable().getCalculatedColumnCount();
+}
+
+sal_Int32 ScDatabaseDPData::GetCalculatedColumnCount()
+{
+    return GetCacheTable().getCalculatedColumnCount();
 }
 
 OUString ScDatabaseDPData::getDimensionName(sal_Int32 nColumn)
@@ -97,13 +103,28 @@ OUString ScDatabaseDPData::getDimensionName(sal_Int32 nColumn)
 
 bool ScDatabaseDPData::getIsDataLayoutDimension(sal_Int32 nColumn)
 {
-    return ( nColumn == GetCacheTable().getColSize());
+    return ( nColumn == GetCacheTable().getColSize() + GetCacheTable().getCalculatedColumnCount());
 }
 
 bool ScDatabaseDPData::IsDateDimension(sal_Int32 /* nDim */)
 {
     //TODO: later...
     return false;
+}
+
+bool ScDatabaseDPData::IsCalculatedDimension(sal_Int32 nDim)
+{
+    return GetCacheTable().isCalculatedField(nDim);
+}
+
+OUString ScDatabaseDPData::GetCalculation(sal_Int32 nDim)
+{
+    return GetCacheTable().getCalculation(nDim);
+}
+
+const ScTokenArray* ScDatabaseDPData::GetCalculationToken(sal_Int32 nDim)
+{
+    return GetCacheTable().getCalculationToken(nDim);
 }
 
 void ScDatabaseDPData::SetEmptyFlags( bool /* bIgnoreEmptyRows */, bool /* bRepeatIfEmpty */ )
@@ -114,11 +135,11 @@ void ScDatabaseDPData::SetEmptyFlags( bool /* bIgnoreEmptyRows */, bool /* bRepe
 
 void ScDatabaseDPData::CreateCacheTable()
 {
-    if (!aCacheTable.empty())
-        // cache table already created.
-        return;
+    if (aCacheTable.empty())
+        aCacheTable.fillTable();
 
-    aCacheTable.fillTable();
+    if (aCacheTable.emptycalcfields())
+        aCacheTable.fillCalcFieldTable();
 }
 
 void ScDatabaseDPData::FilterCacheTable(std::vector<ScDPFilteredCache::Criterion>&& rCriteria, std::unordered_set<sal_Int32>&& rCatDims)

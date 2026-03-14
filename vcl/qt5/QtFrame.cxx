@@ -23,10 +23,8 @@
 #include <QtFrame.moc>
 
 #include <QtDragAndDrop.hxx>
-#include <QtGraphics.hxx>
 #include <QtInstance.hxx>
 #include <QtMainWindow.hxx>
-#include <QtSvpGraphics.hxx>
 #include <QtTools.hxx>
 #include <QtTransferable.hxx>
 #if CHECK_ANY_QT_USING_X11
@@ -63,19 +61,8 @@
 
 #include <com/sun/star/datatransfer/dnd/DNDConstants.hpp>
 
-#include <cairo.h>
-#include <headless/svpgdi.hxx>
-
-static void SvpDamageHandler(void* handle, sal_Int32 nExtentsX, sal_Int32 nExtentsY,
-                             sal_Int32 nExtentsWidth, sal_Int32 nExtentsHeight)
-{
-    QtFrame* pThis = static_cast<QtFrame*>(handle);
-    pThis->Damage(nExtentsX, nExtentsY, nExtentsWidth, nExtentsHeight);
-}
-
-QtFrame::QtFrame(QtFrame* pParent, SalFrameStyleFlags nStyle, bool bUseCairo)
+QtFrame::QtFrame(QtFrame* pParent, SalFrameStyleFlags nStyle)
     : m_pTopLevel(nullptr)
-    , m_bUseCairo(bUseCairo)
     , m_bNullRegion(true)
     , m_bGraphicsInUse(false)
     , m_ePointerStyle(PointerStyle::Arrow)
@@ -91,9 +78,6 @@ QtFrame::QtFrame(QtFrame* pParent, SalFrameStyleFlags nStyle, bool bUseCairo)
     , m_nInputLanguage(LANGUAGE_DONTKNOW)
 {
     GetQtInstance().insertFrame(this);
-
-    m_aDamageHandler.handle = this;
-    m_aDamageHandler.damaged = ::SvpDamageHandler;
 
     if (nStyle & SalFrameStyleFlags::DEFAULT) // ensure default style
     {
@@ -160,23 +144,6 @@ void QtFrame::screenChanged(QScreen*) { m_pQWidget->fakeResize(); }
 
 void QtFrame::FillSystemEnvData(SystemEnvData& rData, QWidget* pWidget, QtFrame* pFrame)
 {
-    assert(rData.platform == SystemEnvData::Platform::Invalid);
-    assert(rData.toolkit == SystemEnvData::Toolkit::Invalid);
-    if (QGuiApplication::platformName() == "wayland")
-        rData.platform = SystemEnvData::Platform::Wayland;
-    else if (QGuiApplication::platformName() == "xcb")
-        rData.platform = SystemEnvData::Platform::Xcb;
-    else if (QGuiApplication::platformName() == "wasm")
-        rData.platform = SystemEnvData::Platform::WASM;
-    else
-    {
-        // maybe add a SystemEnvData::Platform::Unsupported to avoid special cases and not abort?
-        SAL_WARN("vcl.qt",
-                 "Unsupported qt VCL platform: " << toOUString(QGuiApplication::platformName()));
-        std::abort();
-    }
-
-    rData.toolkit = SystemEnvData::Toolkit::Qt;
     rData.pSalFrame = pFrame;
     rData.pWidget = pWidget;
 }
@@ -204,42 +171,14 @@ SalGraphics* QtFrame::AcquireGraphics()
 
     m_bGraphicsInUse = true;
 
-    if (m_bUseCairo)
-    {
-        if (!m_pSvpGraphics)
-        {
-            QSize aSize = m_pQWidget->size() * devicePixelRatioF();
-            m_pSvpGraphics.reset(new QtSvpGraphics(this));
-            m_pSurface.reset(
-                cairo_image_surface_create(CAIRO_FORMAT_ARGB32, aSize.width(), aSize.height()));
-            m_pSvpGraphics->setSurface(m_pSurface.get(),
-                                       basegfx::B2IVector(aSize.width(), aSize.height()));
-            cairo_surface_set_user_data(m_pSurface.get(), QtSvpGraphics::getDamageKey(),
-                                        &m_aDamageHandler, nullptr);
-        }
-        return m_pSvpGraphics.get();
-    }
-    else
-    {
-        if (!m_pQtGraphics)
-        {
-            m_pQtGraphics.reset(new QtGraphics(this));
-            m_pQImage.reset(
-                new QImage(m_pQWidget->size() * devicePixelRatioF(), Qt_DefaultFormat32));
-            m_pQImage->fill(Qt::transparent);
-            m_pQtGraphics->ChangeQImage(m_pQImage.get());
-        }
-        return m_pQtGraphics.get();
-    }
+    return DoAcquireGraphics(m_pQWidget->size() * devicePixelRatioF());
 }
 
 void QtFrame::ReleaseGraphics(SalGraphics* pSalGraph)
 {
     (void)pSalGraph;
-    if (m_bUseCairo)
-        assert(pSalGraph == m_pSvpGraphics.get());
-    else
-        assert(pSalGraph == m_pQtGraphics.get());
+    assert(pSalGraph == GetGraphics());
+
     m_bGraphicsInUse = false;
 }
 
@@ -269,18 +208,19 @@ QWindow* QtFrame::windowHandle() const
     // set attribute 'Qt::WA_NativeWindow' first to make sure a window handle actually exists
     QWidget* pChild = asChild();
     assert(pChild->window() == pChild);
-    switch (m_aSystemData.platform)
+    switch (GetQtInstance().GetPlatform())
     {
-        case SystemEnvData::Platform::WASM:
+        case Platform::WASM:
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0)
             // no idea, why Qt::WA_NativeWindow breaks the menubar for EMSCRIPTEN
             break;
 #endif
-        case SystemEnvData::Platform::Wayland:
-        case SystemEnvData::Platform::Xcb:
+        case Platform::Wayland:
+        case Platform::Windows:
+        case Platform::Xcb:
             pChild->setAttribute(Qt::WA_NativeWindow);
             break;
-        case SystemEnvData::Platform::Invalid:
+        case Platform::Other:
             std::abort();
             break;
     }
@@ -346,6 +286,8 @@ void QtFrame::SetIcon(sal_uInt16 nIcon)
 
     const QString sAppIcon = toQString(IconHelper::GetAppIconName(nIcon));
     QIcon aIcon = QIcon::fromTheme(sAppIcon);
+    if (aIcon.isNull())
+        aIcon = loadQPixmapIcon(IconHelper::GetInternalAppIconName(nIcon));
     m_pQWidget->window()->setWindowIcon(aIcon);
 
     if (QGuiApplication::platformName() == "wayland" && m_pQWidget->window()->isVisible())
@@ -724,8 +666,6 @@ void QtFrame::ShowFullScreen(bool bFullScreen, sal_Int32 nScreen)
 void QtFrame::StartPresentation(bool bStart)
 {
 #if !defined EMSCRIPTEN
-    assert(m_aSystemData.platform != SystemEnvData::Platform::Invalid);
-
 #if CHECK_QT5_USING_X11
     unsigned int nRootWindow(0);
     std::optional<Display*> aDisplay;
@@ -1247,8 +1187,7 @@ void QtFrame::SetScreenNumber(unsigned int nScreen)
 void QtFrame::SetApplicationID(const OUString& rWMClass)
 {
 #if CHECK_QT5_USING_X11
-    assert(m_aSystemData.platform != SystemEnvData::Platform::Invalid);
-    if (m_aSystemData.platform != SystemEnvData::Platform::Xcb || !m_pTopLevel)
+    if (GetQtInstance().GetPlatform() != Platform::Xcb || !m_pTopLevel)
         return;
 
     QtX11Support::setApplicationID(m_pTopLevel->winId(), rWMClass);
@@ -1261,14 +1200,14 @@ void QtFrame::ResolveWindowHandle(SystemEnvData& rData) const
 {
     if (!rData.pWidget)
         return;
-    assert(rData.platform != SystemEnvData::Platform::Invalid);
+
     // Calling QWidget::winId() implicitly enables native windows to be used instead
     // of "alien widgets" that don't have a native widget associated with them,
     // s. https://doc.qt.io/qt-6/qwidget.html#native-widgets-vs-alien-widgets
     // Avoid native widgets with Qt 5 on Wayland and with Qt 6 altogether as they
     // cause unresponsive UI, s. tdf#122293/QTBUG-75766 and tdf#160565
     // (for qt5 xcb, they're needed for video playback)
-    if (rData.platform != SystemEnvData::Platform::Wayland
+    if (GetQtInstance().GetPlatform() != Platform::Wayland
         && QLibraryInfo::version().majorVersion() < 6)
     {
         rData.SetWindowHandle(static_cast<QWidget*>(rData.pWidget)->winId());
@@ -1352,18 +1291,7 @@ void QtFrame::handlePaintEvent(const QPaintEvent* pEvent, QWidget* pWidget)
     if (!m_bNullRegion)
         p.setClipRegion(m_aRegion);
 
-    QImage aImage;
-    if (m_bUseCairo)
-    {
-        cairo_surface_t* pSurface = m_pSurface.get();
-        cairo_surface_flush(pSurface);
-
-        aImage = QImage(cairo_image_surface_get_data(pSurface),
-                        cairo_image_surface_get_width(pSurface),
-                        cairo_image_surface_get_height(pSurface), Qt_DefaultFormat32);
-    }
-    else
-        aImage = *m_pQImage;
+    QImage aImage = GetImage();
 
     const qreal fRatio = devicePixelRatioF();
     aImage.setDevicePixelRatio(fRatio);
@@ -1377,38 +1305,7 @@ void QtFrame::handleResizeEvent(const QResizeEvent* pEvent)
     const int nWidth = ceil(pEvent->size().width() * fRatio);
     const int nHeight = ceil(pEvent->size().height() * fRatio);
 
-    if (m_bUseCairo)
-    {
-        if (m_pSurface)
-        {
-            const int nOldWidth = cairo_image_surface_get_width(m_pSurface.get());
-            const int nOldHeight = cairo_image_surface_get_height(m_pSurface.get());
-            if (nOldWidth != nWidth || nOldHeight != nHeight)
-            {
-                cairo_surface_t* pSurface
-                    = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, nWidth, nHeight);
-                cairo_surface_set_user_data(pSurface, SvpSalGraphics::getDamageKey(),
-                                            &m_aDamageHandler, nullptr);
-                m_pSvpGraphics->setSurface(pSurface, basegfx::B2IVector(nWidth, nHeight));
-                UniqueCairoSurface old_surface(m_pSurface.release());
-                m_pSurface.reset(pSurface);
-
-                const int nMinWidth = qMin(nOldWidth, nWidth);
-                const int nMinHeight = qMin(nOldHeight, nHeight);
-                SalTwoRect rect(0, 0, nMinWidth, nMinHeight, 0, 0, nMinWidth, nMinHeight);
-                m_pSvpGraphics->copySource(rect, old_surface.get());
-            }
-        }
-    }
-    else
-    {
-        if (m_pQImage && m_pQImage->size() != QSize(nWidth, nHeight))
-        {
-            QImage* pImage = new QImage(m_pQImage->copy(0, 0, nWidth, nHeight));
-            m_pQtGraphics->ChangeQImage(pImage);
-            m_pQImage.reset(pImage);
-        }
-    }
+    DoHandleResizeEvent(nWidth, nHeight);
 
     CallCallback(SalEvent::Resize, nullptr);
 }

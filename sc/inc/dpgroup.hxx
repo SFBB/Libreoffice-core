@@ -29,6 +29,7 @@
 #include "dpnumgroupinfo.hxx"
 
 class ScDocument;
+class ScTokenArray;
 
 typedef ::std::vector<ScDPItemData> ScDPItemDataVec;
 
@@ -124,6 +125,10 @@ class ScDPGroupTableData final : public ScDPTableData
     void FillGroupValues(std::vector<SCROW>& rItems, const std::vector<sal_Int32>& rDims);
     virtual sal_Int32                GetSourceDim( sal_Int32 nDim ) override;
 
+    /// Maps a proxy dimension index in the calc field zone [N+G, N+G+C) to the
+    /// actual cache mnIndex (OOXML field index). Returns nDim unchanged for other zones.
+    sal_Int32   CalcFieldToCacheIndex( sal_Int32 nDim ) const;
+
     bool        IsNumGroupDimension( tools::Long nDimension ) const;
     void GetNumGroupInfo(tools::Long nDimension, ScDPNumGroupInfo& rInfo);
 
@@ -141,6 +146,7 @@ public:
     sal_Int32        GetDimensionIndex( std::u16string_view rName );
 
     virtual sal_Int32                    GetColumnCount() override;
+    virtual sal_Int32                    GetCalculatedColumnCount() override;
     virtual sal_Int32                    GetMembersCount( sal_Int32 nDim ) override;
     virtual const std::vector< SCROW >& GetColumnEntries( sal_Int32 nColumn ) override ;
     virtual const ScDPItemData* GetMemberById( sal_Int32 nDim, sal_Int32 nId) override;
@@ -149,6 +155,9 @@ public:
     virtual OUString                getDimensionName(sal_Int32 nColumn) override;
     virtual bool                    getIsDataLayoutDimension(sal_Int32 nColumn) override;
     virtual bool                    IsDateDimension(sal_Int32 nDim) override;
+    virtual bool                    IsCalculatedDimension(sal_Int32 nDim) override;
+    virtual OUString                GetCalculation(sal_Int32 nDim) override;
+    virtual const ScTokenArray*     GetCalculationToken(sal_Int32 nDim) override;
     virtual sal_uInt32              GetNumberFormat(sal_Int32 nDim) override;
     virtual void                    DisposeData() override;
     virtual void                    SetEmptyFlags( bool bIgnoreEmptyRows, bool bRepeatIfEmpty ) override;

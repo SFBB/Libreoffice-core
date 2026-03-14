@@ -3781,8 +3781,13 @@ void CairoPixelProcessor2D::renderTextBackground(
     basegfx::BColor aFillColor(getFillColor(rTextCandidate.getTextFillColor().getBColor()));
     aFillColor = maBColorModifierStack.getModifiedColor(aFillColor);
     cairo_set_source_rgb(mpRT, aFillColor.getRed(), aFillColor.getGreen(), aFillColor.getBlue());
+    // Disable anti-aliasing so adjacent background rectangles share exact pixel
+    // edges with no visible seam between them.
+    cairo_antialias_t eOldAA = cairo_get_antialias(mpRT);
+    cairo_set_antialias(mpRT, CAIRO_ANTIALIAS_NONE);
     cairo_rectangle(mpRT, 0.0, -fAscent, fTextWidth, fAscent + fDescent);
     cairo_fill(mpRT);
+    cairo_set_antialias(mpRT, eOldAA);
     cairo_restore(mpRT);
 }
 
@@ -3883,8 +3888,37 @@ void CairoPixelProcessor2D::renderTextSimpleOrDecoratedPortionPrimitive2D(
                 fDescent += aTextLayouter.getTextHeight() * (250.0 / 1000.0);
         }
 
-        renderTextBackground(rTextCandidate, fAscent, fDescent, aFullTextTransform,
-                             pSalLayout->GetTextWidth());
+        const sal_uInt8 nProportionalFontSize(rTextCandidate.getProportionalFontSize());
+        assert(nProportionalFontSize > 0);
+        double fBgWidth(pSalLayout->GetTextWidth());
+        if (nProportionalFontSize != 100)
+        {
+            const double fScale(100.0 / nProportionalFontSize);
+            const double fEscOffset(rTextCandidate.getEscapement() / -100.0
+                                    * aDecTrans.getScale().getY() * fScale);
+            fAscent = fEscOffset + fAscent * fScale;
+            fDescent = fDescent * fScale - fEscOffset;
+
+            // trim trailing whitespace from background width to not have background over
+            // trailing whitespace, since that looks like an error for the user.
+            const auto& rDXArray(rTextCandidate.getDXArray());
+            if (!rDXArray.empty())
+            {
+                const OUString& rText(rTextCandidate.getText());
+                sal_Int32 nLast(rTextCandidate.getTextPosition() + rTextCandidate.getTextLength()
+                                - 1);
+                sal_Int32 nFirst(rTextCandidate.getTextPosition());
+                while (nLast >= nFirst && rText[nLast] == ' ')
+                    nLast--;
+                sal_Int32 nTrimmedLen(nLast - nFirst + 1);
+                if (nTrimmedLen > 0 && nTrimmedLen < rTextCandidate.getTextLength())
+                    fBgWidth = rDXArray[nTrimmedLen - 1];
+                else if (nTrimmedLen <= 0)
+                    fBgWidth = 0;
+            }
+        }
+
+        renderTextBackground(rTextCandidate, fAscent, fDescent, aFullTextTransform, fBgWidth);
     }
 
     // get TextColor early, may have to be modified
