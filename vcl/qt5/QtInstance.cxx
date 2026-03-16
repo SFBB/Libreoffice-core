@@ -24,7 +24,6 @@
 
 #include <QtAccessibleRegistry.hxx>
 #include <QtAccessibleInterimChildWidget.hxx>
-#include <QtBitmap.hxx>
 #include <QtClipboard.hxx>
 #include <QtDragAndDrop.hxx>
 #include <QtFilePicker.hxx>
@@ -34,16 +33,15 @@
 #include <QtMenu.hxx>
 #include <QtObject.hxx>
 #include <QtOpenGLContext.hxx>
-#include <QtSalFrame.hxx>
-#include <QtSvpSalFrame.hxx>
-#include "QtSvpVirtualDevice.hxx"
+#include <QtSalInstance.hxx>
+#if USE_HEADLESS_CODE
+#include <QtSvpSalInstance.hxx>
+#endif
 #include <QtSystem.hxx>
 #include <QtTimer.hxx>
-#include <QtVirtualDevice.hxx>
 #include <QtInstanceWidget.hxx>
 #include <QtInstanceMessageDialog.hxx>
 
-#include <headless/svpvd.hxx>
 #include <salvtables.hxx>
 #include <unx/gendata.hxx>
 
@@ -72,7 +70,6 @@
 #if QT_VERSION < QT_VERSION_CHECK(6, 0, 0) && ENABLE_GSTREAMER_1_0 && QT5_HAVE_GOBJECT
 #include <unx/gstsink.hxx>
 #endif
-#include <headless/svpbmp.hxx>
 
 #include <mutex>
 #include <condition_variable>
@@ -419,52 +416,6 @@ void QtInstance::DestroyObject(SalObject* pObject)
     }
 }
 
-std::unique_ptr<SalVirtualDevice> QtInstance::CreateVirtualDevice(SalGraphics& rGraphics,
-                                                                  tools::Long nDX, tools::Long nDY,
-                                                                  DeviceFormat /*eFormat*/,
-                                                                  bool bAlphaMaskTransparent)
-{
-    if (useCairo())
-    {
-        SvpSalGraphics* pSvpSalGraphics = dynamic_cast<QtSvpGraphics*>(&rGraphics);
-        assert(pSvpSalGraphics);
-        // tdf#127529 see SvpSalInstance::CreateVirtualDevice for the rare case of a non-null pPreExistingTarget
-        std::unique_ptr<SalVirtualDevice> pVD(
-            new QtSvpVirtualDevice(pSvpSalGraphics->getSurface(), /*pPreExistingTarget*/ nullptr));
-        pVD->SetSize(nDX, nDY, bAlphaMaskTransparent);
-        return pVD;
-    }
-    else
-    {
-        std::unique_ptr<SalVirtualDevice> pVD(new QtVirtualDevice(/*scale*/ 1));
-        pVD->SetSize(nDX, nDY, bAlphaMaskTransparent);
-        return pVD;
-    }
-}
-
-std::unique_ptr<SalVirtualDevice>
-QtInstance::CreateVirtualDevice(SalGraphics& rGraphics, tools::Long& nDX, tools::Long& nDY,
-                                DeviceFormat /*eFormat*/, const SystemGraphicsData& rGd)
-{
-    if (useCairo())
-    {
-        SvpSalGraphics* pSvpSalGraphics = dynamic_cast<QtSvpGraphics*>(&rGraphics);
-        assert(pSvpSalGraphics);
-        // tdf#127529 see SvpSalInstance::CreateVirtualDevice for the rare case of a non-null pPreExistingTarget
-        cairo_surface_t* pPreExistingTarget = static_cast<cairo_surface_t*>(rGd.pSurface);
-        std::unique_ptr<SalVirtualDevice> pVD(
-            new QtSvpVirtualDevice(pSvpSalGraphics->getSurface(), pPreExistingTarget));
-        pVD->SetSize(nDX, nDY, /*bAlphaMaskTransparent*/ false);
-        return pVD;
-    }
-    else
-    {
-        std::unique_ptr<SalVirtualDevice> pVD(new QtVirtualDevice(/*scale*/ 1));
-        pVD->SetSize(nDX, nDY, /*bAlphaMaskTransparent*/ false);
-        return pVD;
-    }
-}
-
 std::unique_ptr<SalMenu> QtInstance::CreateMenu(bool bMenuBar, Menu* pVCLMenu)
 {
     SolarMutexGuard aGuard;
@@ -490,14 +441,6 @@ SalTimer* QtInstance::CreateSalTimer()
 }
 
 SalSystem* QtInstance::CreateSalSystem() { return new QtSystem; }
-
-std::shared_ptr<SalBitmap> QtInstance::CreateSalBitmap()
-{
-    if (useCairo())
-        return std::make_shared<SvpSalBitmap>();
-    else
-        return std::make_shared<QtBitmap>();
-}
 
 bool QtInstance::ImplYield(bool bWait, bool bHandleAllCurrentEvents)
 {
@@ -702,12 +645,6 @@ Platform QtInstance::GetPlatform() const
 
 Toolkit QtInstance::GetToolkit() const { return Toolkit::Qt; }
 
-const cairo_font_options_t* QtInstance::GetCairoFontOptions()
-{
-    static cairo_font_options_t* gOptions = cairo_font_options_create();
-    return gOptions;
-}
-
 IMPL_LINK_NOARG(QtInstance, updateStyleHdl, Timer*, void)
 {
     SolarMutexGuard aGuard;
@@ -803,12 +740,7 @@ QtFrame* QtInstance::CreateFrame(SalFrameStyleFlags nStyle, QtFrame* pParent)
     SolarMutexGuard aGuard;
 
     QtFrame* pFrame = nullptr;
-    RunInMainThread([&]() {
-        if (useCairo())
-            pFrame = new QtSvpSalFrame(pParent, nStyle);
-        else
-            pFrame = new QtSalFrame(pParent, nStyle);
-    });
+    RunInMainThread([&]() { pFrame = DoCreateFrame(nStyle, pParent); });
 
     return pFrame;
 }
@@ -864,21 +796,8 @@ std::unique_ptr<QApplication> QtInstance::CreateQApplication()
     QGuiApplication::setHighDpiScaleFactorRoundingPolicy(
         Qt::HighDpiScaleFactorRoundingPolicy::Round);
 
-    std::optional<OString> oSessionManager;
-    if (getenv("SESSION_MANAGER") != nullptr)
-    {
-        oSessionManager = OString(getenv("SESSION_MANAGER"));
-        unsetenv("SESSION_MANAGER");
-    }
-
     std::unique_ptr<QApplication> pQApp
         = std::make_unique<QApplication>(m_nFakeArgc, m_pFakeArgv.get());
-
-    if (oSessionManager.has_value())
-    {
-        // coverity[tainted_string] - trusted source for setenv
-        setenv("SESSION_MANAGER", oSessionManager.value().getStr(), 1);
-    }
 
     QApplication::setQuitOnLastWindowClosed(false);
     return pQApp;
@@ -1067,7 +986,11 @@ VCLPLUG_QT_PUBLIC SalInstance* create_SalInstance()
     initResources();
 
     const OUString sToolkit = "qt" + OUString::number(QT_VERSION_MAJOR);
-    return new QtInstance(sToolkit);
+#if USE_HEADLESS_CODE
+    if (QtInstance::useCairo())
+        return new QtSvpSalInstance(sToolkit);
+#endif
+    return new QtSalInstance(sToolkit);
 }
 }
 

@@ -231,6 +231,7 @@ const char* const XRequest[] = {
 
 X11SalData::X11SalData()
     : GenericUnixSalData()
+    , m_pDisplay(nullptr)
 {
     m_aOrigXIOErrorHandler = XSetIOErrorHandler ( XIOErrorHdl );
     PushXErrorLevel( !!getenv( "SAL_IGNOREXERRORS" ) );
@@ -247,13 +248,13 @@ X11SalData::~X11SalData()
 
 void X11SalData::Dispose()
 {
-    delete GetDisplay();
+    delete m_pDisplay;
     SetSalData( nullptr );
 }
 
 void X11SalData::DeleteDisplay()
 {
-    delete GetDisplay();
+    delete m_pDisplay;
     SetDisplay( nullptr );
     pXLib_.reset();
 }

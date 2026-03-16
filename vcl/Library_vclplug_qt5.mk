@@ -57,7 +57,7 @@ $(eval $(call gb_Library_use_libraries,vclplug_qt5,\
 
 $(eval $(call gb_Library_use_externals,vclplug_qt5,\
     boost_headers \
-    cairo \
+    $(if $(filter TRUE,$(ENABLE_CAIRO_CANVAS) $(USE_HEADLESS_CODE)),cairo) \
     epoxy \
     frozen \
     graphite \
@@ -150,9 +150,13 @@ $(eval $(call gb_Library_add_exception_objects,vclplug_qt5,\
     vcl/qt5/QtOpenGLContext \
     vcl/qt5/QtPainter \
     vcl/qt5/QtSalFrame \
-    vcl/qt5/QtSvpGraphics \
-    vcl/qt5/QtSvpSalFrame \
-    vcl/qt5/QtSvpSurface \
+    vcl/qt5/QtSalInstance \
+    $(if $(USE_HEADLESS_CODE), \
+        vcl/qt5/QtSvpGraphics \
+        vcl/qt5/QtSvpSalFrame \
+        vcl/qt5/QtSvpSalInstance \
+        vcl/qt5/QtSvpSurface \
+    ) \
     vcl/qt5/QtSystem \
     vcl/qt5/QtTimer \
     vcl/qt5/QtTools \

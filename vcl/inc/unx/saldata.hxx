@@ -21,8 +21,9 @@
 
 #include <X11/Xlib.h>
 
-#include <unx/saldisp.hxx>
 #include <unx/gendata.hxx>
+
+class SalX11Display;
 
 class SalXLib;
 
@@ -34,6 +35,8 @@ class X11SalData final : public GenericUnixSalData
         bool            m_bWas;
         XErrorHandler   m_aHandler;
     };
+
+    SalX11Display* m_pDisplay;
 
     // cached hostname to avoid slow lookup
     OUString m_aHostname;
@@ -61,6 +64,8 @@ public:
 
     void Dispose();
 
+    SalX11Display* GetDisplay() const { return m_pDisplay; }
+    void SetDisplay(SalX11Display* pDisp) { m_pDisplay = pDisp; }
     void                    DeleteDisplay(); // for shutdown
 
     SalXLib*                GetLib() const { return pXLib_.get(); }
