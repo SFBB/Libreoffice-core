@@ -171,84 +171,38 @@ SalInstance* tryInstance( const OUString& rModuleBase, bool bForce = false )
 #if UNIX_DESKTOP_DETECT
 
 #if !STATIC_SAL_INSTANCE
-const char* const* autodetect_plugin_list()
+std::vector<OUString> autodetect_plugin_list()
 {
-    static const char* const pKDEFallbackList[] =
-    {
-#if ENABLE_KF5
-        "kf5",
-#endif
-#if ENABLE_GTK3_KDE5
-        "gtk3_kde5",
-#endif
-#if ENABLE_GTK3
-        "gtk3",
-#endif
-#if ENABLE_GEN
-        "gen",
-#endif
-        nullptr
-    };
-
-    static const char* const pPlasma6FallbackList[] =
-    {
-#if ENABLE_KF6
-        "kf6",
-#endif
-#if ENABLE_KF5
-        "kf5",
-#endif
-#if ENABLE_GTK3_KDE5
-        "gtk3_kde5",
-#endif
-#if ENABLE_GTK3
-        "gtk3",
-#endif
-#if ENABLE_GEN
-        "gen",
-#endif
-        nullptr
-    };
-
-    static const char* const pStandardFallbackList[] =
-    {
-#if ENABLE_GTK3
-        "gtk3",
-#endif
-#if ENABLE_GEN
-        "gen",
-#endif
-        nullptr
-    };
-
-#if ENABLE_HEADLESS
-    static const char* const pHeadlessFallbackList[] =
-    {
-        "svp",
-        nullptr
-    };
-#endif
-
-    DesktopType desktop = get_desktop_environment();
-    const char * const * pList = pStandardFallbackList;
-
+    const DesktopType eDesktop = get_desktop_environment();
 #if ENABLE_HEADLESS
     // no server at all: dummy plugin
-    if ( desktop == DESKTOP_NONE )
-        pList = pHeadlessFallbackList;
-    else
+    if (eDesktop == DESKTOP_NONE)
+        return { u"svp"_ustr };
 #endif
-        if ( desktop == DESKTOP_GNOME ||
-              desktop == DESKTOP_UNITY ||
-              desktop == DESKTOP_XFCE  ||
-              desktop == DESKTOP_MATE )
-        pList = pStandardFallbackList;
-    else if (desktop == DESKTOP_PLASMA5 || desktop == DESKTOP_LXQT)
-        pList = pKDEFallbackList;
-    else if (desktop == DESKTOP_PLASMA6)
-        pList = pPlasma6FallbackList;
 
-    return pList;
+    std::vector<OUString> aPlugins;
+    if (eDesktop == DESKTOP_LXQT || eDesktop == DESKTOP_PLASMA5 || eDesktop == DESKTOP_PLASMA6)
+    {
+#if ENABLE_KF6
+        if (eDesktop == DESKTOP_PLASMA6)
+            aPlugins.push_back(u"kf6"_ustr);
+#endif
+#if ENABLE_KF5
+        aPlugins.push_back(u"kf5"_ustr);
+#endif
+#if ENABLE_GTK3_KDE5
+        aPlugins.push_back(u"gtk3_kde5"_ustr);
+#endif
+    }
+
+#if ENABLE_GTK3
+    aPlugins.push_back(u"gtk3"_ustr);
+#endif
+#if ENABLE_GEN
+    aPlugins.push_back(u"gen"_ustr);
+#endif
+
+    return aPlugins;
 }
 #endif // !STATIC_SAL_INSTANCE
 #endif // UNIX_DESKTOP_DETECT
@@ -298,62 +252,63 @@ SalInstance *CreateSalInstance()
     return create_SalInstance();
 
 #else // !STATIC_SAL_INSTANCE
-    SalInstance *pInst = nullptr;
 
     if( !aUsePlugin.isEmpty() )
-        pInst = tryInstance( aUsePlugin, true );
+    {
+        if (SalInstance* pInst = tryInstance(aUsePlugin, true))
+            return pInst;
+    }
 
 #if UNIX_DESKTOP_DETECT
-    const char* const* pPluginList = pInst ? nullptr : autodetect_plugin_list();
-    for (int i = 0; !pInst && pPluginList[i]; ++i)
+    const std::vector<OUString> aPluginList = autodetect_plugin_list();
+    for (const OUString& rPlugin : aPluginList)
     {
-        pInst = tryInstance(OUString::createFromAscii(pPluginList[i]));
-        SAL_INFO_IF(pInst, "vcl.plugadapt", "plugin autodetection: " << pPluginList[i]);
+        SalInstance* pInst = tryInstance(rPlugin);
+        SAL_INFO_IF(pInst, "vcl.plugadapt", "plugin autodetection: " << rPlugin);
+        if (pInst)
+            return pInst;
     }
 #endif
 
     // fallback, try everything
-    static const char* const pPlugin[] = {
+    static constexpr OUString aPlugins[] = {
 #ifdef _WIN32
-        "win",
+        u"win"_ustr,
 #elif defined(MACOSX)
-        "osx",
+        u"osx"_ustr,
 #else // !_WIN32 && !MACOSX
 #if ENABLE_GTK3
-        "gtk3",
+        u"gtk3"_ustr,
 #endif
 #if ENABLE_KF5
-        "kf5",
+        u"kf5"_ustr,
 #endif
 #if ENABLE_GTK3_KDE5
-        "gtk3_kde5",
+        u"gtk3_kde5"_ustr,
 #endif
 #if ENABLE_GEN
-        "gen",
+        u"gen"_ustr,
 #endif
 #if ENABLE_QT5
-        "qt5",
+        u"qt5"_ustr,
 #endif
 #if ENABLE_KF6
-        "kf6",
+        u"kf6"_ustr,
 #endif
 #if ENABLE_QT6
-        "qt6",
+        u"qt6"_ustr,
 #endif
 #endif // !_WIN32 && !MACOSX
-        nullptr
     };
 
-    for (int i = 0; !pInst && pPlugin[i]; ++i)
-        pInst = tryInstance( OUString::createFromAscii( pPlugin[ i ] ) );
-
-    if( ! pInst )
+    for (const OUString& rPlugin : aPlugins)
     {
-        std::fprintf( stderr, "no suitable windowing system found, exiting.\n" );
-        _exit( 1 );
+        if (SalInstance* pInst = tryInstance(rPlugin))
+            return pInst;
     }
 
-    return pInst;
+    std::fprintf(stderr, "no suitable windowing system found, exiting.\n");
+    _exit(1);
 #endif // !STATIC_SAL_INSTANCE
 }
 

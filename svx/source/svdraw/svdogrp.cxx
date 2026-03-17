@@ -46,6 +46,16 @@ const std::shared_ptr< svx::diagram::DiagramHelper_svx >& SdrObjGroup::getDiagra
     return mp_DiagramHelper;
 }
 
+SdrObject* SdrObjGroup::getDiagramSubSelection()
+{
+    if (!mp_DiagramHelper)
+        return this;
+
+    SdrObject* pRetval(mp_DiagramHelper->getDiagramSubSelection());
+
+    return nullptr == pRetval ? this : pRetval;
+}
+
 // BaseProperties section
 std::unique_ptr<sdr::properties::BaseProperties> SdrObjGroup::CreateObjectSpecificProperties()
 {
@@ -109,7 +119,7 @@ void SdrObjGroup::AddToHdlList(SdrHdlList& rHdlList) const
     if(!isDiagram())
         return;
 
-    svx::diagram::DiagramHelper_svx::AddAdditionalVisualization(*this, rHdlList);
+    getDiagramHelper()->AddAdditionalVisualization(rHdlList);
 }
 
 SdrObjGroup::~SdrObjGroup()
@@ -358,8 +368,8 @@ void SdrObjGroup::NbcSetSnapRect(const tools::Rectangle& rRect)
     if (nDivX==0) { nMulX=1; nDivX=1; }
     if (nDivY==0) { nMulY=1; nDivY=1; }
     if (nMulX!=nDivX || nMulY!=nDivY) {
-        Fraction aX(nMulX,nDivX);
-        Fraction aY(nMulY,nDivY);
+        double aX = double(nMulX) / nDivX;
+        double aY = double(nMulY) / nDivY;
         NbcResize(aOld.TopLeft(),aX,aY);
     }
     if (rRect.Left()!=aOld.Left() || rRect.Top()!=aOld.Top()) {
@@ -392,10 +402,10 @@ void SdrObjGroup::NbcMove(const Size& rSize)
 }
 
 
-void SdrObjGroup::NbcResize(const Point& rRef, const Fraction& xFact, const Fraction& yFact)
+void SdrObjGroup::NbcResize(const Point& rRef, double xFact, double yFact)
 {
-    bool bXMirr=(xFact.GetNumerator()<0) != (xFact.GetDenominator()<0);
-    bool bYMirr=(yFact.GetNumerator()<0) != (yFact.GetDenominator()<0);
+    bool bXMirr = (xFact<0);
+    bool bYMirr = (yFact<0);
     if (bXMirr || bYMirr) {
         Point aRef1(GetSnapRect().Center());
         if (bXMirr) {
@@ -487,8 +497,8 @@ void SdrObjGroup::SetSnapRect(const tools::Rectangle& rRect)
     tools::Rectangle aOld(GetSnapRect());
     if (aOld.IsEmpty())
     {
-        Fraction aX(1,1);
-        Fraction aY(1,1);
+        double aX(1);
+        double aY(1);
         Resize(aOld.TopLeft(),aX,aY);
     }
     else
@@ -500,8 +510,8 @@ void SdrObjGroup::SetSnapRect(const tools::Rectangle& rRect)
         if (nDivX==0) { nMulX=1; nDivX=1; }
         if (nDivY==0) { nMulY=1; nDivY=1; }
         if (nMulX!=nDivX || nMulY!=nDivY) {
-            Fraction aX(nMulX,nDivX);
-            Fraction aY(nMulY,nDivY);
+            double aX = double(nMulX) / nDivX;
+            double aY = double(nMulY) / nDivY;
             Resize(aOld.TopLeft(),aX,aY);
         }
     }
@@ -557,13 +567,13 @@ void SdrObjGroup::Move(const Size& rSiz)
 }
 
 
-void SdrObjGroup::Resize(const Point& rRef, const Fraction& xFact, const Fraction& yFact, bool bUnsetRelative)
+void SdrObjGroup::Resize(const Point& rRef, double xFact, double yFact, bool bUnsetRelative)
 {
-    if (xFact.GetNumerator()==xFact.GetDenominator() && yFact.GetNumerator()==yFact.GetDenominator())
+    if (xFact == 1.0 && yFact == 1.0)
         return;
 
-    bool bXMirr=(xFact.GetNumerator()<0) != (xFact.GetDenominator()<0);
-    bool bYMirr=(yFact.GetNumerator()<0) != (yFact.GetDenominator()<0);
+    bool bXMirr = (xFact<0);
+    bool bYMirr = (yFact<0);
     if (bXMirr || bYMirr) {
         Point aRef1(GetSnapRect().Center());
         if (bXMirr) {

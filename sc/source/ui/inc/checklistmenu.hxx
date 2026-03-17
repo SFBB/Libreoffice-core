@@ -37,7 +37,7 @@ struct ScCheckListMember
     OUString                 maName; // node name
     OUString                 maRealName;
     double                   mnValue; // number value of filter condition
-    bool                     mbVisible;
+    bool                     mbVisible; // represents the visibility on the sheet and not in the autofilter menu
     bool                     mbMarked;
     bool                     mbHiddenByOtherFilter;
     bool                     mbDate;
@@ -219,14 +219,14 @@ private:
     void selectCurrentMemberOnly(bool bSet);
     void updateMemberParents(const weld::TreeIter* pLeaf, size_t nIdx);
 
-    std::unique_ptr<weld::TreeIter> ShowCheckEntry(const OUString& sName, ScCheckListMember& rMember, bool bShow = true, bool bCheck = true);
+    std::unique_ptr<weld::TreeIter> ShowCheckEntry(const OUString& sName, ScCheckListMember& rMember, bool bShow = true, bool bCheck = true, bool bLockMarked = false);
     void CheckEntry(std::u16string_view sName, const weld::TreeIter* pParent, bool bCheck);
-    void CheckEntry(const weld::TreeIter& rEntry, bool bCheck);
+    void CheckEntry(const weld::TreeIter& rEntry, bool bCheck, bool bLock = false);
     void GetRecursiveChecked(const weld::TreeIter* pEntry, std::unordered_set<OUString>& vOut, OUString& rLabel);
     std::unordered_set<OUString> GetAllChecked();
     bool IsChecked(std::u16string_view sName, const weld::TreeIter* pParent);
     int GetCheckedEntryCount() const;
-    void CheckAllChildren(const weld::TreeIter& rEntry, bool bCheck);
+    void CheckAllChildren(const weld::TreeIter& rEntry, bool bCheck, bool bLock);
 
     void setSelectedMenuItem(size_t nPos);
 
@@ -253,6 +253,16 @@ private:
     DECL_LINK(LockCheckedHdl, weld::Toggleable&, void);
 
     void Check(const weld::TreeIter* pIter);
+    void MarkCheckedMembers();
+
+    /* here by visible we mean members visible on the autofilter
+     * dropdown. it's different from the `maMembers[n].mbVisible`
+     * flag which is for the visible members on the sheet. */
+
+    /* both `SearchEditTimeoutHdl` and `LockCheckedHdl` call this
+     * function because they are doing similar things, we use
+     * `bSearchEditTimeout` to know which one called this function. */
+    size_t UpdateVisibleMembers(bool bSearchEditTimeout);
 
     DECL_LINK(CheckHdl, const weld::TreeView::iter_col&, void);
 

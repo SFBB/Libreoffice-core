@@ -841,9 +841,8 @@ namespace
      * not. `bIncludeMarkedMembers` just does that.
      */
     void loadSearchedMembers(std::vector<int>& rSearchedMembers, std::vector<ScCheckListMember>& rMembers,
-                             const OUString& rSearchText, bool bIncludeMarkedMembers=false)
+                             const std::u16string_view& rSearchTextLC, bool bIncludeMarkedMembers=false)
     {
-        const OUString aSearchText = ScGlobal::getCharClass().lowercase( rSearchText );
 
         for (size_t i = 0; i < rMembers.size(); ++i)
         {
@@ -853,7 +852,7 @@ namespace
             if ( aLabelDisp.isEmpty() )
                 aLabelDisp = ScResId( STR_EMPTYDATA );
 
-            bool bPartialMatch = ScGlobal::getCharClass().lowercase( aLabelDisp ).indexOf( aSearchText ) != -1;
+            bool bPartialMatch = ScGlobal::getCharClass().lowercase( aLabelDisp ).indexOf( rSearchTextLC ) != -1;
 
             if (!bPartialMatch)
                 continue;
@@ -876,70 +875,112 @@ namespace
     }
 }
 
-IMPL_LINK_NOARG(ScCheckListMenuControl, LockCheckedHdl, weld::Toggleable&, void)
+void ScCheckListMenuControl::MarkCheckedMembers()
 {
-    bool bLockCheckedEntries = mxChkLockChecked->get_active();
-
-    // go over the members visible in the popup, and remember which one is
-    // checked, and which one is not by setting `mbMarked` to `true`; by default
-    // `mbMarked` is `false`, we clear all the marks when lock is unchecked, see
-    // at the end of this callback.
-    mpChecks->all_foreach([this](weld::TreeIter& rEntry){
-        if (mpChecks->get_toggle(rEntry) == TRISTATE_TRUE)
-        {
-            for (auto& aMember : maMembers)
+    if (mbHasDates)
+    {
+        mpChecks->all_foreach([this](weld::TreeIter& rEntry){
+            if (mpChecks->get_toggle(rEntry) == TRISTATE_TRUE)
             {
-                if (aMember.maName == mpChecks->get_text(rEntry))
+                int nDepth = mpChecks->get_iter_depth(rEntry);
+                OUString sText = mpChecks->get_text(rEntry);
+
+                if (!nDepth)
                 {
-                    aMember.mbMarked = true;
-                    /*
-                     * if there are multiple entries with the same
-                     * name in the range, they all show up as a single
-                     * entry in the autofilter, so we can break
-                     */
-                    break;
+                    for (ScCheckListMember& aMember : maMembers)
+                    {
+                        if (aMember.maName == sText)
+                        {
+                            aMember.mbMarked = true;
+                            break;
+                        }
+                    }
+                }
+                else if (nDepth == ScCheckListMember::DatePartType::DAY)
+                {
+                    std::unique_ptr<weld::TreeIter> xIter = mpChecks->make_iterator(&rEntry);
+                    OUString aYear, aMonth;
+
+                    if (mpChecks->iter_parent(*xIter))
+                        aMonth = mpChecks->get_text(*xIter);
+
+                    if (mpChecks->iter_parent(*xIter))
+                        aYear = mpChecks->get_text(*xIter);
+
+                    for (auto& aMember : maMembers)
+                    {
+                        if (aMember.maName.equals(sText) && aMember.meDatePartType == nDepth)
+                        {
+                            if (aMember.maDateParts[0] == aYear && aMember.maDateParts[1] == aMonth)
+                                aMember.mbMarked = true;
+                        }
+                    }
                 }
             }
-        }
-
-        return false;
-    });
-
-    mpChecks->freeze();
-    mpChecks->clear();
-    mpChecks->thaw();
-
-    OUString aSearchText = mxEdSearch->get_text();
-    if (aSearchText.isEmpty())
-    {
-        /*
-         * when we click on lock, all the checked entries are marked and
-         * this `true` tells `initMembers` to check only the currently
-         * checked entries.
-         *
-         * when lock is unchecked we want that the entries which were locked
-         * and checked now become unlocked and checked so that we can select
-         * or deselect more entries, still we want only the marked (selected)
-         * entries to remain selected, thus this `true` is valid even in the
-         * uncheck case.
-         */
-        initMembers(-1, true);
+            return false;
+        });
     }
     else
     {
-        std::vector<int> aShownIndexes;
-        loadSearchedMembers(aShownIndexes, maMembers, aSearchText, true);
-        std::vector<int> aFixedWidths { mnCheckWidthReq };
+        // go over the members visible in the popup, and remember which one is
+        // checked, and which one is not by setting `mbMarked` to `true`; by default
+        // `mbMarked` is `false`, we clear all the marks when lock is unchecked, see
+        // at the end of this callback.
+        mpChecks->all_foreach([this](weld::TreeIter& rEntry){
+            if (mpChecks->get_toggle(rEntry) == TRISTATE_TRUE)
+            {
+                for (auto& aMember : maMembers)
+                {
+                    if (aMember.maName == mpChecks->get_text(rEntry))
+                    {
+                        aMember.mbMarked = true;
+                        /*
+                         * if there are multiple entries with the same
+                         * name in the range, they all show up as a single
+                         * entry in the autofilter, so we can break
+                         */
+                        break;
+                    }
+                }
+            }
 
-        // insert the members, remember whether checked or unchecked.
-        mpChecks->bulk_insert_for_each(aShownIndexes.size(), [this, &aShownIndexes, &bLockCheckedEntries](weld::TreeIter& rIter, int i) {
-            size_t nIndex = aShownIndexes[i];
-            insertMember(*mpChecks, rIter, maMembers[nIndex], maMembers[nIndex].mbMarked, bLockCheckedEntries);
-        }, nullptr, &aFixedWidths);
+            return false;
+        });
     }
+}
 
-    // unmarking should happen after the members are inserted
-    if (!bLockCheckedEntries)
+IMPL_LINK_NOARG(ScCheckListMenuControl, SearchEditTimeoutHdl, Timer*, void)
+{
+    size_t nEnableMember = std::count_if(maMembers.begin(), maMembers.end(),
+        [](const ScCheckListMember& rLMem) { return !rLMem.mbHiddenByOtherFilter; });
+    size_t nSelCount = UpdateVisibleMembers(true);
+
+    if ( nSelCount == nEnableMember )
+        mxChkToggleAll->set_state( TRISTATE_TRUE );
+    else if ( nSelCount == 0 )
+        mxChkToggleAll->set_state( TRISTATE_FALSE );
+    else
+        mxChkToggleAll->set_state( TRISTATE_INDET );
+
+    if ( !maConfig.mbAllowEmptySet )
+    {
+        const bool bEmptySet( nSelCount == 0 );
+        mpChecks->set_sensitive(!bEmptySet);
+        mxChkToggleAll->set_sensitive(!bEmptySet);
+        mxBtnSelectSingle->set_sensitive(!bEmptySet);
+        mxBtnUnselectSingle->set_sensitive(!bEmptySet);
+        mxBtnOk->set_sensitive(!bEmptySet);
+    }
+}
+
+IMPL_LINK_NOARG(ScCheckListMenuControl, LockCheckedHdl, weld::Toggleable&, void)
+{
+    MarkCheckedMembers();
+    UpdateVisibleMembers(false);
+
+    // unmarking should happen after the members are inserted or updated
+    // (in case there's a hierarchy, in which case we don't clear everything)
+    if (!mxChkLockChecked->get_active())
         for (auto& aMember : maMembers)
             aMember.mbMarked = false;
 }
@@ -969,11 +1010,37 @@ IMPL_LINK_NOARG(ScCheckListMenuControl, ComboChangedHdl, weld::ComboBox&, void)
         mxFieldChangedAction->execute();
 }
 
-IMPL_LINK_NOARG(ScCheckListMenuControl, SearchEditTimeoutHdl, Timer*, void)
+IMPL_LINK_NOARG(ScCheckListMenuControl, EdModifyHdl, weld::Entry&, void)
+{
+    maSearchEditTimer.Start();
+}
+
+IMPL_LINK_NOARG(ScCheckListMenuControl, EdActivateHdl, weld::Entry&, bool)
+{
+    if (mxBtnOk->get_sensitive())
+        close(true);
+    return true;
+}
+
+IMPL_LINK( ScCheckListMenuControl, CheckHdl, const weld::TreeView::iter_col&, rRowCol, void )
+{
+    Check(&rRowCol.first);
+}
+
+size_t ScCheckListMenuControl::UpdateVisibleMembers(bool bSearchEditTimeout)
 {
     OUString aSearchText = mxEdSearch->get_text();
-    aSearchText = ScGlobal::getCharClass().lowercase( aSearchText );
+    aSearchText = ScGlobal::getCharClass().lowercase(aSearchText);
+
+    bool bLockChecked = mxChkLockChecked->get_active();
+
+    /* this assumes that either it's the SearchEditTimeoutHdl calling this function
+     * with `bSearchEditTimeout` as `true`, or it's `LockCheckedHdl` calling it with
+     * `bSearchEditTimeout` as `false`. so when searching we check whether lock is
+     * checked or not, and otherwise we always lock on lock checkbox toggles. */
+    bool bLockMarkedEntries = !bSearchEditTimeout || bLockChecked;
     bool bSearchTextEmpty = aSearchText.isEmpty();
+
     size_t nEnableMember = std::count_if(maMembers.begin(), maMembers.end(),
         [](const ScCheckListMember& rLMem) { return !rLMem.mbHiddenByOtherFilter; });
     size_t nSelCount = 0;
@@ -1008,18 +1075,27 @@ IMPL_LINK_NOARG(ScCheckListMenuControl, SearchEditTimeoutHdl, Timer*, void)
             else if ( bIsDate && maMembers[i].meDatePartType != ScCheckListMember::DAY )
                 continue;
 
+            bool bLockCurrentMember = bLockMarkedEntries && maMembers[i].mbMarked;
             if ( bSearchTextEmpty )
             {
-                auto xLeaf = ShowCheckEntry(aLabelDisp, maMembers[i], true, maMembers[i].mbVisible);
+                bool bCheck = bLockMarkedEntries ? bLockCurrentMember : maMembers[i].mbVisible;
+                auto xLeaf = ShowCheckEntry(aLabelDisp, maMembers[i], true, bCheck, bLockChecked);
                 updateMemberParents(xLeaf.get(), i);
                 if ( maMembers[i].mbVisible )
                     ++nSelCount;
                 continue;
             }
 
-            if ( bPartialMatch )
+            /* the whole point of lock is to show entries from the previous search which
+             * don't necessarily match the current search term. */
+            if ( bPartialMatch || bLockCurrentMember )
             {
-                auto xLeaf = ShowCheckEntry(aLabelDisp, maMembers[i]);
+                /* when searching, we always show the entries as checked so that the user can
+                 * unselect ones they don't want and lock the rest in place. when locking however,
+                 * we only check the marked entries. `MarkCheckedMembers` does that, so it's called
+                 * before calling this function in `LockCheckedHdl`. */
+                bool bCheck = bSearchEditTimeout  || maMembers[i].mbMarked;
+                auto xLeaf = ShowCheckEntry(aLabelDisp, maMembers[i], true, bCheck, bLockChecked);
                 updateMemberParents(xLeaf.get(), i);
                 ++nSelCount;
             }
@@ -1048,27 +1124,34 @@ IMPL_LINK_NOARG(ScCheckListMenuControl, SearchEditTimeoutHdl, Timer*, void)
     else
     {
         mpChecks->freeze();
-
-        // when there are a lot of rows, it is cheaper to simply clear the tree and either
-        // re-initialise or just insert the filtered lines
+        // when there are a lot of rows, it is cheaper to simply clear the
+        // tree and either re-initialise or just insert the filtered lines.
         mpChecks->clear();
-
         mpChecks->thaw();
 
-        /*
-         * here we pass the lock state to tell `initMembers` to preserve selection
-         * if lock is checked. this is for the case when the user has some entries
-         * locked and is now searching for more entries.
-         */
         if (bSearchTextEmpty)
-            nSelCount = initMembers(-1, mxChkLockChecked->get_active());
+        {
+            /*
+             * when we click on lock, all the checked entries are marked and
+             * this `true` tells `initMembers` to check only the currently
+             * checked entries.
+             *
+             * when lock is unchecked we want that the entries which were locked
+             * and checked now become unlocked and checked so that we can select
+             * or deselect more entries, still we want only the marked (selected)
+             * entries to remain selected, thus this `true` is valid even in the
+             * uncheck case.
+             */
+            nSelCount = initMembers(-1, bLockMarkedEntries);
+        }
         else
         {
             std::vector<int> aShownIndexes;
-            loadSearchedMembers(aShownIndexes, maMembers, aSearchText, mxChkLockChecked->get_active());
+            loadSearchedMembers(aShownIndexes, maMembers, aSearchText, bLockMarkedEntries);
             std::vector<int> aFixedWidths { mnCheckWidthReq };
+
             // tdf#122419 insert in the fastest order, this might be backwards.
-            mpChecks->bulk_insert_for_each(aShownIndexes.size(), [this, &aShownIndexes, &nSelCount](weld::TreeIter& rIter, int i) {
+            mpChecks->bulk_insert_for_each(aShownIndexes.size(), [this, &aShownIndexes, &nSelCount, bLockChecked, bSearchEditTimeout](weld::TreeIter& rIter, int i) {
                 size_t nIndex = aShownIndexes[i];
                 /*
                  * here we pass `true` for `bChecked` because we want the searched entries to be selected
@@ -1077,45 +1160,13 @@ IMPL_LINK_NOARG(ScCheckListMenuControl, SearchEditTimeoutHdl, Timer*, void)
                  * `LockCheckedHdl`, consecutive searches don't change which entries are marked and which
                  * aren't.
                  */
-                insertMember(*mpChecks, rIter, maMembers[nIndex], true, mxChkLockChecked->get_active());
-                ++nSelCount;
+                bool bCheck = bSearchEditTimeout || maMembers[nIndex].mbMarked;
+                insertMember(*mpChecks, rIter, maMembers[nIndex], bCheck, bLockChecked);
+                nSelCount++;
             }, nullptr, &aFixedWidths);
         }
     }
-
-    if ( nSelCount == nEnableMember )
-        mxChkToggleAll->set_state( TRISTATE_TRUE );
-    else if ( nSelCount == 0 )
-        mxChkToggleAll->set_state( TRISTATE_FALSE );
-    else
-        mxChkToggleAll->set_state( TRISTATE_INDET );
-
-    if ( !maConfig.mbAllowEmptySet )
-    {
-        const bool bEmptySet( nSelCount == 0 );
-        mpChecks->set_sensitive(!bEmptySet);
-        mxChkToggleAll->set_sensitive(!bEmptySet);
-        mxBtnSelectSingle->set_sensitive(!bEmptySet);
-        mxBtnUnselectSingle->set_sensitive(!bEmptySet);
-        mxBtnOk->set_sensitive(!bEmptySet);
-    }
-}
-
-IMPL_LINK_NOARG(ScCheckListMenuControl, EdModifyHdl, weld::Entry&, void)
-{
-    maSearchEditTimer.Start();
-}
-
-IMPL_LINK_NOARG(ScCheckListMenuControl, EdActivateHdl, weld::Entry&, bool)
-{
-    if (mxBtnOk->get_sensitive())
-        close(true);
-    return true;
-}
-
-IMPL_LINK( ScCheckListMenuControl, CheckHdl, const weld::TreeView::iter_col&, rRowCol, void )
-{
-    Check(&rRowCol.first);
+    return nSelCount;
 }
 
 void ScCheckListMenuControl::Check(const weld::TreeIter* pEntry)
@@ -1388,22 +1439,23 @@ void ScCheckListMenuControl::CheckEntry(std::u16string_view sName, const weld::T
 }
 
 // Recursively check all children of rParent
-void ScCheckListMenuControl::CheckAllChildren(const weld::TreeIter& rParent, bool bCheck)
+void ScCheckListMenuControl::CheckAllChildren(const weld::TreeIter& rParent, bool bCheck, bool bLock)
 {
+    mpChecks->set_sensitive(rParent, !bLock);
     mpChecks->set_toggle(rParent, bCheck ? TRISTATE_TRUE : TRISTATE_FALSE);
     std::unique_ptr<weld::TreeIter> xEntry = mpChecks->make_iterator(&rParent);
     bool bEntry = mpChecks->iter_children(*xEntry);
     while (bEntry)
     {
-        CheckAllChildren(*xEntry, bCheck);
+        CheckAllChildren(*xEntry, bCheck, bLock);
         bEntry = mpChecks->iter_next_sibling(*xEntry);
     }
 }
 
-void ScCheckListMenuControl::CheckEntry(const weld::TreeIter& rParent, bool bCheck)
+void ScCheckListMenuControl::CheckEntry(const weld::TreeIter& rParent, bool bCheck, bool bLock)
 {
     // recursively check all items below rParent
-    CheckAllChildren(rParent, bCheck);
+    CheckAllChildren(rParent, bCheck, bLock);
     // checking rParent can affect ancestors, e.g. if ancestor is unchecked and rParent is
     // now checked then the ancestor needs to be checked also
     if (!mpChecks->get_iter_depth(rParent))
@@ -1430,16 +1482,18 @@ void ScCheckListMenuControl::CheckEntry(const weld::TreeIter& rParent, bool bChe
             bChild = mpChecks->iter_next_sibling(*xChild);
         }
         mpChecks->set_toggle(*xAncestor, bChildChecked ? TRISTATE_TRUE : TRISTATE_FALSE);
+        mpChecks->set_sensitive(*xAncestor, !bLock);
         bAncestor = mpChecks->iter_parent(*xAncestor);
     }
 }
 
-std::unique_ptr<weld::TreeIter> ScCheckListMenuControl::ShowCheckEntry(const OUString& sName, ScCheckListMember& rMember, bool bShow, bool bCheck)
+std::unique_ptr<weld::TreeIter> ScCheckListMenuControl::ShowCheckEntry(const OUString& sName, ScCheckListMember& rMember, bool bShow, bool bCheck, bool bLockMarked)
 {
     std::unique_ptr<weld::TreeIter> xEntry;
     if (!rMember.mbDate || rMember.mxParent)
         xEntry = FindEntry(rMember.mxParent.get(), sName);
 
+    bool bLockThisEntry = bLockMarked && rMember.mbMarked;
     if ( bShow )
     {
         if (!xEntry)
@@ -1454,24 +1508,27 @@ std::unique_ptr<weld::TreeIter> ScCheckListMenuControl::ShowCheckEntry(const OUS
                 {
                     xYearEntry = mpChecks->make_iterator();
                     mpChecks->insert(nullptr, -1, nullptr, nullptr, nullptr, nullptr, false, xYearEntry.get());
-                    mpChecks->set_toggle(*xYearEntry, TRISTATE_FALSE);
+                    mpChecks->set_toggle(*xYearEntry, bCheck ? TRISTATE_TRUE: TRISTATE_FALSE);
                     mpChecks->set_text(*xYearEntry, rMember.maDateParts[0], 0);
+                    mpChecks->set_sensitive(*xYearEntry, !rMember.mbHiddenByOtherFilter && !bLockThisEntry);
                 }
                 std::unique_ptr<weld::TreeIter> xMonthEntry = FindEntry(xYearEntry.get(), rMember.maDateParts[1]);
                 if (!xMonthEntry)
                 {
                     xMonthEntry = mpChecks->make_iterator();
                     mpChecks->insert(xYearEntry.get(), -1, nullptr, nullptr, nullptr, nullptr, false, xMonthEntry.get());
-                    mpChecks->set_toggle(*xMonthEntry, TRISTATE_FALSE);
+                    mpChecks->set_toggle(*xMonthEntry, bCheck ? TRISTATE_TRUE: TRISTATE_FALSE);
                     mpChecks->set_text(*xMonthEntry, rMember.maDateParts[1], 0);
+                    mpChecks->set_sensitive(*xMonthEntry, !rMember.mbHiddenByOtherFilter && !bLockThisEntry);
                 }
                 std::unique_ptr<weld::TreeIter> xDayEntry = FindEntry(xMonthEntry.get(), rMember.maName);
                 if (!xDayEntry)
                 {
                     xDayEntry = mpChecks->make_iterator();
                     mpChecks->insert(xMonthEntry.get(), -1, nullptr, nullptr, nullptr, nullptr, false, xDayEntry.get());
-                    mpChecks->set_toggle(*xDayEntry, TRISTATE_FALSE);
+                    mpChecks->set_toggle(*xDayEntry, bCheck ? TRISTATE_TRUE: TRISTATE_FALSE);
                     mpChecks->set_text(*xDayEntry, rMember.maName, 0);
+                    mpChecks->set_sensitive(*xDayEntry, !rMember.mbHiddenByOtherFilter && !bLockThisEntry);
                 }
                 return xDayEntry; // Return leaf node
             }
@@ -1480,9 +1537,10 @@ std::unique_ptr<weld::TreeIter> ScCheckListMenuControl::ShowCheckEntry(const OUS
             mpChecks->append(xEntry.get());
             mpChecks->set_toggle(*xEntry, bCheck ? TRISTATE_TRUE : TRISTATE_FALSE);
             mpChecks->set_text(*xEntry, sName, 0);
+            mpChecks->set_sensitive(*xEntry, !rMember.mbHiddenByOtherFilter && !bLockThisEntry);
         }
         else
-            CheckEntry(*xEntry, bCheck);
+            CheckEntry(*xEntry, bCheck, bLockThisEntry);
     }
     else if (xEntry)
     {

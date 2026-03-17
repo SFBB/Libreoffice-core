@@ -50,6 +50,7 @@
 #include <vector>
 
 #include <svx/svdotable.hxx>
+#include <svx/diagram/DiagramHelper_svx.hxx>
 
 #include <svx/sdr/contact/displayinfo.hxx>
 #include <sdr/contact/objectcontactofobjlistpainter.hxx>
@@ -244,6 +245,45 @@ const OUString& SdrObject::getDiagramDataModelID() const
     return EMPTY_OUSTRING;
 }
 
+bool SdrObject::isDiagramBackgroundShape() const
+{
+    const OUString& rID(getDiagramDataModelID());
+    if (rID.isEmpty())
+        return false;
+
+    const std::shared_ptr< svx::diagram::DiagramHelper_svx >& rDiagramHelper(getDiagramHelper());
+    if (!rDiagramHelper)
+        return false;
+
+    return rID == rDiagramHelper->getBackgroundShapeModelID();
+}
+
+bool SdrObject::isDiagramTextNode() const
+{
+    const OUString& rID(getDiagramDataModelID());
+    if (rID.isEmpty())
+        return false;
+
+    const std::shared_ptr< svx::diagram::DiagramHelper_svx >& rDiagramHelper(getDiagramHelper());
+    if (!rDiagramHelper)
+        return false;
+
+    return rDiagramHelper->isTextNodeModelID(rID);
+}
+
+bool SdrObject::removeDiagramNode()
+{
+    const OUString& rID(getDiagramDataModelID());
+    if (rID.isEmpty())
+        return false;
+
+    const std::shared_ptr< svx::diagram::DiagramHelper_svx >& rDiagramHelper(getDiagramHelper());
+    if (!rDiagramHelper)
+        return false;
+
+    return rDiagramHelper->removeDiagramNode(rID, getSdrModelFromSdrObject());
+}
+
 bool SdrObject::isDiagram() const
 {
     return false;
@@ -251,22 +291,21 @@ bool SdrObject::isDiagram() const
 
 const std::shared_ptr< svx::diagram::DiagramHelper_svx >& SdrObject::getDiagramHelper() const
 {
+    if (!getDiagramDataModelID().isEmpty())
+    {
+        SdrObject* pParent(getParentSdrObjectFromSdrObject());
+
+        if (nullptr != pParent)
+            return pParent->getDiagramHelper();
+    }
+
     static std::shared_ptr< svx::diagram::DiagramHelper_svx > aEmpty;
     return aEmpty;
 }
 
-const std::shared_ptr< svx::diagram::DiagramHelper_svx >& SdrObject::getDiagramHelperFromDiagramOrMember() const
+SdrObject* SdrObject::getDiagramSubSelection()
 {
-    SdrObject* pCurrent(const_cast<SdrObject*>(this));
-
-    while (pCurrent)
-    {
-        if (pCurrent->isDiagram())
-            return pCurrent->getDiagramHelper();
-        pCurrent = pCurrent->getParentSdrObjectFromSdrObject();
-    }
-
-    return getDiagramHelper();
+    return this;
 }
 
 // BaseProperties section
@@ -1530,10 +1569,10 @@ void SdrObject::NbcMove(const Size& rSize)
     SetBoundAndSnapRectsDirty();
 }
 
-void SdrObject::NbcResize(const Point& rRef, const Fraction& xFact, const Fraction& yFact)
+void SdrObject::NbcResize(const Point& rRef, double xFact, double yFact)
 {
-    bool bXMirr=(xFact.GetNumerator()<0) != (xFact.GetDenominator()<0);
-    bool bYMirr=(yFact.GetNumerator()<0) != (yFact.GetDenominator()<0);
+    bool bXMirr = (xFact<0);
+    bool bYMirr = (yFact<0);
     if (bXMirr || bYMirr) {
         Point aRef1(GetSnapRect().Center());
         if (bXMirr) {
@@ -1649,9 +1688,9 @@ void SdrObject::NbcCrop(const basegfx::B2DPoint& /*aRef*/, double /*fxFact*/, do
     // Where SwVirtFlyDrawObj is the only real user of it to do something local
 }
 
-void SdrObject::Resize(const Point& rRef, const Fraction& xFact, const Fraction& yFact, bool bUnsetRelative)
+void SdrObject::Resize(const Point& rRef, double xFact, double yFact, bool bUnsetRelative)
 {
-    if (xFact.GetNumerator() == xFact.GetDenominator() && yFact.GetNumerator() == yFact.GetDenominator())
+    if (xFact == 1.0 && yFact == 1.0)
         return;
 
     if (bUnsetRelative)
@@ -2314,7 +2353,7 @@ void SdrObject::NbcApplyNotPersistAttr(const SfxItemSet& rAttr)
         aResizeY *= pPoolItem->GetValue();
     }
     if (aResizeX!=Fraction(1,1) || aResizeY!=Fraction(1,1)) {
-        NbcResize(aRef1,aResizeX,aResizeY);
+        NbcResize(aRef1,double(aResizeX),double(aResizeY));
     }
 }
 

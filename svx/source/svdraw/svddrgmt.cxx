@@ -2019,7 +2019,7 @@ void SdrDragResize::MoveSdrDrag(const Point& rNoSnapPnt)
 
 void SdrDragResize::applyCurrentTransformationToSdrObject(SdrObject& rTarget)
 {
-    rTarget.Resize(DragStat().GetRef1(),Fraction(m_aXFact),Fraction(m_aYFact));
+    rTarget.Resize(DragStat().GetRef1(),m_aXFact,m_aYFact);
 }
 
 bool SdrDragResize::EndSdrDrag(bool bCopy)
@@ -2036,7 +2036,7 @@ bool SdrDragResize::EndSdrDrag(bool bCopy)
     }
     else
     {
-        getSdrDragView().ResizeMarkedObj(DragStat().GetRef1(),Fraction(m_aXFact),Fraction(m_aYFact),bCopy);
+        getSdrDragView().ResizeMarkedObj(DragStat().GetRef1(),m_aXFact,m_aYFact,bCopy);
     }
 
     return true;
@@ -2404,11 +2404,11 @@ void SdrDragShear::applyCurrentTransformationToSdrObject(SdrObject& rTarget)
     {
         if (bVertical)
         {
-            rTarget.Resize(DragStat().GetRef1(),aFact,Fraction(1,1));
+            rTarget.Resize(DragStat().GetRef1(),double(aFact),1);
         }
         else
         {
-            rTarget.Resize(DragStat().GetRef1(),Fraction(1,1),aFact);
+            rTarget.Resize(DragStat().GetRef1(),1,double(aFact));
         }
     }
 
@@ -2441,11 +2441,11 @@ bool SdrDragShear::EndSdrDrag(bool bCopy)
         {
             if (bVertical)
             {
-                getSdrDragView().ResizeMarkedObj(DragStat().GetRef1(),aFact,Fraction(1,1),bCopy);
+                getSdrDragView().ResizeMarkedObj(DragStat().GetRef1(),double(aFact),1.0,bCopy);
             }
             else
             {
-                getSdrDragView().ResizeMarkedObj(DragStat().GetRef1(),Fraction(1,1),aFact,bCopy);
+                getSdrDragView().ResizeMarkedObj(DragStat().GetRef1(),1.0,double(aFact),bCopy);
             }
 
             bCopy=false;
@@ -3265,17 +3265,17 @@ void SdrDragCrook::applyCurrentTransformationToSdrObject(SdrObject& rTarget)
 
     if (bDoResize)
     {
-        Fraction aFact1(1,1);
+        double aFact1(1);
 
         if (bContortion)
         {
             if (bVertical)
             {
-                rTarget.Resize(aCenter,aFact1,aFact);
+                rTarget.Resize(aCenter,aFact1,double(aFact));
             }
             else
             {
-                rTarget.Resize(aCenter,aFact,aFact1);
+                rTarget.Resize(aCenter,double(aFact),aFact1);
             }
         }
         else
@@ -3285,11 +3285,11 @@ void SdrDragCrook::applyCurrentTransformationToSdrObject(SdrObject& rTarget)
 
             if (bVertical)
             {
-                ResizePoint(aCtr1,aCenter,aFact1,aFact);
+                ResizePoint(aCtr1,aCenter,aFact1,double(aFact));
             }
             else
             {
-                ResizePoint(aCtr1,aCenter,aFact,aFact1);
+                ResizePoint(aCtr1,aCenter,double(aFact),aFact1);
             }
 
             Size aSiz(aCtr1.X()-aCtr0.X(),aCtr1.Y()-aCtr0.Y());
@@ -3338,14 +3338,14 @@ bool SdrDragCrook::EndSdrDrag(bool bCopy)
 
         if (bResize)
         {
-            Fraction aFact1(1,1);
+            double aFact1(1.0);
 
             if (bContortion)
             {
                 if (bVertical)
-                    getSdrDragView().ResizeMarkedObj(aCenter,aFact1,aFact,bCopy);
+                    getSdrDragView().ResizeMarkedObj(aCenter,aFact1,double(aFact),bCopy);
                 else
-                    getSdrDragView().ResizeMarkedObj(aCenter,aFact,aFact1,bCopy);
+                    getSdrDragView().ResizeMarkedObj(aCenter,double(aFact),aFact1,bCopy);
             }
             else
             {
@@ -3363,9 +3363,9 @@ bool SdrDragCrook::EndSdrDrag(bool bCopy)
                     Point aCtr1(aCtr0);
 
                     if (bVertical)
-                        ResizePoint(aCtr1,aCenter,aFact1,aFact);
+                        ResizePoint(aCtr1,aCenter,aFact1,double(aFact));
                     else
-                        ResizePoint(aCtr1,aCenter,aFact,aFact1);
+                        ResizePoint(aCtr1,aCenter,double(aFact),aFact1);
 
                     Size aSiz(aCtr1.X()-aCtr0.X(),aCtr1.Y()-aCtr0.Y());
                     if( bUndo )

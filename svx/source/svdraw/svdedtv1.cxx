@@ -239,7 +239,7 @@ bool SdrEditView::IsMarkedObjSizeValid(const Size& aTargetSize)
     return false;
 }
 
-void SdrEditView::ResizeMarkedObj(const Point& rRef, const Fraction& xFact, const Fraction& yFact, bool bCopy)
+void SdrEditView::ResizeMarkedObj(const Point& rRef, double xFact, double yFact, bool bCopy)
 {
     const bool bUndo = IsUndoEnabled();
     if( bUndo )
@@ -265,7 +265,7 @@ void SdrEditView::ResizeMarkedObj(const Point& rRef, const Fraction& xFact, cons
             AddUndoActions( CreateConnectorUndo( *pO ) );
             AddUndo(GetModel().GetSdrUndoFactory().CreateUndoGeoObject(*pO));
         }
-        pO->Resize(rRef,xFact,yFact);
+        pO->Resize(rRef,double(xFact),double(yFact));
     }
 
     if( bUndo )
@@ -298,11 +298,11 @@ void SdrEditView::ResizeMultMarkedObj(const Point& rRef,
 
         Fraction aFrac(1,1);
         if (bWdh && xFact.IsValid() && bHgt && yFact.IsValid())
-            pO->Resize(rRef, xFact, yFact);
+            pO->Resize(rRef, double(xFact), double(yFact));
         else if (bWdh && xFact.IsValid())
-            pO->Resize(rRef, xFact, aFrac);
+            pO->Resize(rRef, double(xFact), double(aFrac));
         else if (bHgt && yFact.IsValid())
-            pO->Resize(rRef, aFrac, yFact);
+            pO->Resize(rRef, double(aFrac), double(yFact));
     }
     if( bUndo )
         EndUndo();
@@ -777,12 +777,12 @@ void SdrEditView::SetNotPersistAttrToMarked(const SfxItemSet& rAttr)
     if (const SdrResizeXAllItem *pPoolItem = rAttr.GetItemIfSet(SDRATTR_RESIZEXALL))
     {
         Fraction aXFact = pPoolItem->GetValue();
-        ResizeMarkedObj(aAllSnapRect.TopLeft(),aXFact,Fraction(1,1));
+        ResizeMarkedObj(aAllSnapRect.TopLeft(),double(aXFact),1.0);
     }
     if (const SdrResizeYAllItem *pPoolItem = rAttr.GetItemIfSet(SDRATTR_RESIZEYALL))
     {
         Fraction aYFact = pPoolItem->GetValue();
-        ResizeMarkedObj(aAllSnapRect.TopLeft(),Fraction(1,1),aYFact);
+        ResizeMarkedObj(aAllSnapRect.TopLeft(),1.0,double(aYFact));
     }
     if (const SdrRotateAllItem *pPoolItem = rAttr.GetItemIfSet(SDRATTR_ROTATEALL))
     {
@@ -953,6 +953,8 @@ void SdrEditView::MergeAttrFromMarked(SfxItemSet& rAttr, bool bOnlyHardAttr) con
         {
             continue;
         }
+
+        pObj = pObj->getDiagramSubSelection();
 
         const SfxItemSet& rSet = pObj->GetMergedItemSet();
         SfxWhichIter aIter(rSet);
@@ -1198,6 +1200,8 @@ void SdrEditView::SetAttrToMarked(const SfxItemSet& rAttr, bool bReplaceAll)
     {
         SdrMark* pM=rMarkList.GetMark(nm);
         SdrObject* pObj = pM->GetMarkedSdrObj();
+
+        pObj = pObj->getDiagramSubSelection();
 
         if( bUndo )
         {
