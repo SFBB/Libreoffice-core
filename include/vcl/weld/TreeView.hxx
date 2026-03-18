@@ -480,6 +480,7 @@ public:
     virtual void set_centered_column(int nCol) = 0;
     virtual OUString get_column_title(int nColumn) const = 0;
     virtual void set_column_title(int nColumn, const OUString& rTitle) = 0;
+    virtual void set_column_visible(int nColumn, bool bVisible) = 0;
 
     int get_checkbox_column_width() const { return get_approximate_digit_width() * 3 + 6; }
 
@@ -524,6 +525,8 @@ public:
         = 0;
     virtual void unset_drag_dest_row() = 0;
     virtual tools::Rectangle get_row_area(const weld::TreeIter& rIter) const = 0;
+    virtual tools::Rectangle get_cell_area(const weld::TreeIter& rIter,
+                                           const int nColumn) const = 0;
     // for dragging and dropping between TreeViews, return the active source
     virtual TreeView* get_drag_source() const = 0;
 

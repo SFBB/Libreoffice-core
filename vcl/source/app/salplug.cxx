@@ -38,12 +38,12 @@
 #include <salinst.hxx>
 #include <sal/log.hxx>
 #include <svdata.hxx>
+#include <vcl/DesktopType.hxx>
 #include <vcl/svapp.hxx>
 
 #if HAVE_FEATURE_UI
 #if USING_X11
 #define UNIX_DESKTOP_DETECT 1
-#include <unx/desktops.hxx>
 #else
 #define UNIX_DESKTOP_DETECT 0
 #endif
@@ -78,9 +78,6 @@
 #include <headless/svpinst.hxx>
 #include <unx/gendata.hxx>
 #endif
-
-#include <frozen/bits/elsa_std.h>
-#include <frozen/unordered_map.h>
 
 namespace {
 
@@ -176,15 +173,15 @@ std::vector<OUString> autodetect_plugin_list()
     const DesktopType eDesktop = get_desktop_environment();
 #if ENABLE_HEADLESS
     // no server at all: dummy plugin
-    if (eDesktop == DESKTOP_NONE)
+    if (eDesktop == DesktopType::Headless)
         return { u"svp"_ustr };
 #endif
 
     std::vector<OUString> aPlugins;
-    if (eDesktop == DESKTOP_LXQT || eDesktop == DESKTOP_PLASMA5 || eDesktop == DESKTOP_PLASMA6)
+    if (eDesktop == DesktopType::LXQt || eDesktop == DesktopType::Plasma5 || eDesktop == DesktopType::Plasma6)
     {
 #if ENABLE_KF6
-        if (eDesktop == DESKTOP_PLASMA6)
+        if (eDesktop == DesktopType::Plasma6)
             aPlugins.push_back(u"kf6"_ustr);
 #endif
 #if ENABLE_KF5
@@ -362,40 +359,26 @@ void SalAbort( const OUString& rErrorText, bool bDumpCore )
 #endif // !_WIN32
 }
 
-const OUString& SalGetDesktopEnvironment()
+DesktopType SalGetDesktopEnvironment()
 {
 #if !HAVE_FEATURE_UI
-    static OUString aDesktopEnvironment("headless");
+    return DesktopType::Headless;
 #elif defined(_WIN32)
-    static OUString aDesktopEnvironment( "Windows" );
+    return DesktopType::Windows;
 #elif defined(MACOSX)
-    static OUString aDesktopEnvironment( "MacOSX" );
+    return DesktopType::macOS;
 #elif defined(EMSCRIPTEN)
-    static OUString aDesktopEnvironment("WASM");
+    return DesktopType::WASM;
 #elif defined(ANDROID)
-    static OUString aDesktopEnvironment("android");
+    return DesktopType::Android;
 #elif defined(iOS)
-    static OUString aDesktopEnvironment("iOS");
+    return DesktopType::iOS;
 #elif UNIX_DESKTOP_DETECT
-    static constexpr auto aDesktopMap
-        = frozen::make_unordered_map<DesktopType, OUString>({ { DESKTOP_NONE, u"none"_ustr },
-                                                              { DESKTOP_UNKNOWN, u"unknown"_ustr },
-                                                              { DESKTOP_GNOME, u"GNOME"_ustr },
-                                                              { DESKTOP_UNITY, u"UNITY"_ustr },
-                                                              { DESKTOP_XFCE, u"XFCE"_ustr },
-                                                              { DESKTOP_MATE, u"MATE"_ustr },
-                                                              { DESKTOP_PLASMA5, u"PLASMA5"_ustr },
-                                                              { DESKTOP_PLASMA6, u"PLASMA6"_ustr },
-                                                              { DESKTOP_LXQT, u"LXQT"_ustr } });
-    static OUString aDesktopEnvironment;
-    if( aDesktopEnvironment.isEmpty())
-    {
-        aDesktopEnvironment = aDesktopMap.at(get_desktop_environment());
-    }
+    static DesktopType eDesktop = get_desktop_environment();
+    return eDesktop;
 #else
-    static OUString aDesktopEnvironment("unknown");
+    return DesktopType::Unknown;
 #endif
-    return aDesktopEnvironment;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

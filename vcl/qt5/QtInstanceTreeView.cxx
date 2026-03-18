@@ -746,6 +746,13 @@ void QtInstanceTreeView::set_column_title(int nColumn, const OUString& rTitle)
         [&] { m_pModel->setHeaderData(nColumn, Qt::Horizontal, toQString(rTitle)); });
 }
 
+void QtInstanceTreeView::set_column_visible(int nColumn, const bool bVisible)
+{
+    SolarMutexGuard g;
+
+    GetQtInstance().RunInMainThread([&] { m_pTreeView->setColumnHidden(nColumn, !bVisible); });
+}
+
 void QtInstanceTreeView::set_selection_mode(SelectionMode eMode)
 {
     SolarMutexGuard g;
@@ -827,6 +834,20 @@ tools::Rectangle QtInstanceTreeView::get_row_area(const weld::TreeIter& rIter) c
     });
 
     return aRowArea;
+}
+
+tools::Rectangle QtInstanceTreeView::get_cell_area(const weld::TreeIter& rIter,
+                                                   const int nColumn) const
+{
+    SolarMutexGuard g;
+
+    tools::Rectangle aCellArea;
+    GetQtInstance().RunInMainThread([&] {
+        const QRect aCellRect = m_pTreeView->visualRect(modelIndex(rIter, nColumn));
+        aCellArea = toRectangle(aCellRect);
+    });
+
+    return aCellArea;
 }
 
 weld::TreeView* QtInstanceTreeView::get_drag_source() const

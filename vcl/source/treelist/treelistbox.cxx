@@ -404,6 +404,9 @@ SvTreeListBox::SvTreeListBox(vcl::Window* pParent, WinBits nWinStyle) :
     Control(pParent, nWinStyle | WB_CLIPCHILDREN),
     DropTargetHelper(this),
     DragSourceHelper(this),
+    m_nVisibleCount(0),
+    m_nSelectionCount(0),
+    m_bVisPositionsValid(false),
     mpImpl(new SvTreeListBoxImpl(*this)),
     mbContextBmpExpanded(false),
     mbQuickSearch(false),
@@ -418,6 +421,14 @@ SvTreeListBox::SvTreeListBox(vcl::Window* pParent, WinBits nWinStyle) :
     mnDragAction(DND_ACTION_COPYMOVE | DND_ACTION_LINK),
     mbCenterAndClipText(false)
 {
+    m_pModel.reset(new SvTreeList(*this));
+
+    // insert root entry
+    SvTreeListEntry* pEntry = m_pModel->pRootItem.get();
+    std::unique_ptr<SvViewDataEntry> pViewData(new SvViewDataEntry);
+    pViewData->SetExpanded(true);
+    m_DataTable.insert(std::make_pair(pEntry, std::move(pViewData)));
+
     nImpFlags = SvTreeListBoxFlags::NONE;
     pTargetEntry = nullptr;
     nDragDropMode = DragDropMode::NONE;
@@ -555,6 +566,268 @@ TriState SvTreeListBox::NotifyCopying(
     sal_uInt32&        rNewChildPos)  // position in childlist of target parent
 {
     return NotifyMoving(pTarget,pEntry,rpNewParent,rNewChildPos);
+}
+
+sal_uInt32 SvTreeListBox::GetSelectionCount() const { return m_nSelectionCount; }
+
+bool SvTreeListBox::HasViewData() const { return m_DataTable.size() > 1; } // There's always a ROOT
+
+void SvTreeListBox::ExpandListEntry(SvTreeListEntry* pEntry)
+{
+    assert(pEntry && "Expand:View/Entry?");
+    SvViewDataEntry* pViewData = GetViewData(pEntry);
+    if (!pViewData)
+        return;
+
+    if (pViewData->IsExpanded())
+        return;
+
+    DBG_ASSERT(!pEntry->m_Children.empty(),
+               "SvTreeList::Expand: We expected to have child entries.");
+
+    pViewData->SetExpanded(true);
+    SvTreeListEntry* pParent = pEntry->pParent;
+    // if parent is visible, invalidate status data
+    if (IsExpanded(pParent))
+    {
+        m_bVisPositionsValid = false;
+        m_nVisibleCount = 0;
+    }
+}
+
+void SvTreeListBox::CollapseListEntry(SvTreeListEntry* pEntry)
+{
+    assert(pEntry && "Collapse:View/Entry?");
+    SvViewDataEntry* pViewData = GetViewData(pEntry);
+    if (!pViewData)
+        return;
+
+    if (!pViewData->IsExpanded())
+        return;
+
+    DBG_ASSERT(!pEntry->m_Children.empty(),
+               "SvTreeList::Collapse: We expected to have child entries.");
+
+    pViewData->SetExpanded(false);
+
+    SvTreeListEntry* pParent = pEntry->pParent;
+    if (IsExpanded(pParent))
+    {
+        m_nVisibleCount = 0;
+        m_bVisPositionsValid = false;
+    }
+}
+
+bool SvTreeListBox::SelectListEntry(SvTreeListEntry* pEntry, bool bSelect)
+{
+    DBG_ASSERT(pEntry, "Select:View/Entry?");
+
+    SvViewDataEntry* pViewData = GetViewData(pEntry);
+    if (!pViewData)
+        return false;
+
+    if (bSelect)
+    {
+        if (pViewData->IsSelected() || !pViewData->IsSelectable())
+            return false;
+        else
+        {
+            pViewData->SetSelected(true);
+            m_nSelectionCount++;
+        }
+    }
+    else
+    {
+        if (!pViewData->IsSelected())
+            return false;
+        else
+        {
+            pViewData->SetSelected(false);
+            m_nSelectionCount--;
+        }
+    }
+    return true;
+}
+
+void SvTreeListBox::Reset()
+{
+    m_DataTable.clear();
+    m_nSelectionCount = 0;
+    m_nVisibleCount = 0;
+    m_bVisPositionsValid = false;
+    if (m_pModel)
+    {
+        // insert root entry
+        SvTreeListEntry* pEntry = m_pModel->pRootItem.get();
+        std::unique_ptr<SvViewDataEntry> pViewData(new SvViewDataEntry);
+        pViewData->SetExpanded(true);
+        m_DataTable.insert(std::make_pair(pEntry, std::move(pViewData)));
+    }
+}
+
+void SvTreeListBox::ActionMoving(SvTreeListEntry* pEntry)
+{
+    SvTreeListEntry* pParent = pEntry->pParent;
+    assert(pParent && "Model not consistent");
+    if (pParent != m_pModel->pRootItem.get() && pParent->m_Children.size() == 1)
+    {
+        const auto iter = m_DataTable.find(pParent);
+        assert(iter != m_DataTable.end());
+        SvViewDataEntry* pViewData = iter->second.get();
+        pViewData->SetExpanded(false);
+    }
+    // preliminary
+    m_nVisibleCount = 0;
+    m_bVisPositionsValid = false;
+}
+
+void SvTreeListBox::ActionMoved()
+{
+    m_nVisibleCount = 0;
+    m_bVisPositionsValid = false;
+}
+
+void SvTreeListBox::ActionInserted(SvTreeListEntry* pEntry)
+{
+    DBG_ASSERT(pEntry, "Insert:No Entry");
+    std::unique_ptr<SvViewDataEntry> pData(new SvViewDataEntry());
+    InitViewData(pData.get(), pEntry);
+    std::pair<SvDataTable::iterator, bool> aSuccess
+        = m_DataTable.insert(std::make_pair(pEntry, std::move(pData)));
+    DBG_ASSERT(aSuccess.second, "Entry already in View");
+    if (m_nVisibleCount && m_pModel->IsEntryVisible(this, pEntry))
+    {
+        m_nVisibleCount = 0;
+        m_bVisPositionsValid = false;
+    }
+}
+
+void SvTreeListBox::ActionInsertedTree(SvTreeListEntry* pEntry)
+{
+    if (m_pModel->IsEntryVisible(this, pEntry))
+    {
+        m_nVisibleCount = 0;
+        m_bVisPositionsValid = false;
+    }
+    // iterate over entry and its children
+    SvTreeListEntry* pCurEntry = pEntry;
+    sal_uInt16 nRefDepth = m_pModel->GetDepth(pCurEntry);
+    while (pCurEntry)
+    {
+        DBG_ASSERT(m_DataTable.find(pCurEntry) != m_DataTable.end(), "Entry already in Table");
+        std::unique_ptr<SvViewDataEntry> pViewData(new SvViewDataEntry());
+        InitViewData(pViewData.get(), pEntry);
+        m_DataTable.insert(std::make_pair(pCurEntry, std::move(pViewData)));
+        pCurEntry = m_pModel->Next(pCurEntry);
+        if (pCurEntry && m_pModel->GetDepth(pCurEntry) <= nRefDepth)
+            pCurEntry = nullptr;
+    }
+}
+
+void SvTreeListBox::RemoveViewData(SvTreeListEntry* pParent)
+{
+    for (auto const& it : pParent->m_Children)
+    {
+        SvTreeListEntry& rEntry = *it;
+        m_DataTable.erase(&rEntry);
+        if (rEntry.HasChildren())
+            RemoveViewData(&rEntry);
+    }
+}
+
+void SvTreeListBox::ActionRemoving(SvTreeListEntry* pEntry)
+{
+    assert(pEntry && "Remove:No Entry");
+    const auto iter = m_DataTable.find(pEntry);
+    assert(iter != m_DataTable.end());
+    SvViewDataEntry* pViewData = iter->second.get();
+    sal_uInt32 nSelRemoved = 0;
+    if (pViewData->IsSelected())
+        nSelRemoved = 1 + m_pModel->GetChildSelectionCount(this, pEntry);
+    m_nSelectionCount -= nSelRemoved;
+    sal_uInt32 nVisibleRemoved = 0;
+    if (m_pModel->IsEntryVisible(this, pEntry))
+        nVisibleRemoved = 1 + m_pModel->GetVisibleChildCount(this, pEntry);
+    if (m_nVisibleCount)
+    {
+#ifdef DBG_UTIL
+        if (m_nVisibleCount < nVisibleRemoved)
+        {
+            OSL_FAIL("nVisibleRemoved bad");
+        }
+#endif
+        m_nVisibleCount -= nVisibleRemoved;
+    }
+    m_bVisPositionsValid = false;
+
+    m_DataTable.erase(pEntry);
+    RemoveViewData(pEntry);
+
+    SvTreeListEntry* pCurEntry = pEntry->pParent;
+    if (pCurEntry && pCurEntry != m_pModel->pRootItem.get() && pCurEntry->m_Children.size() == 1)
+    {
+        SvDataTable::iterator itr = m_DataTable.find(pCurEntry);
+        assert(itr != m_DataTable.end() && "Entry not in Table");
+        pViewData = itr->second.get();
+        pViewData->SetExpanded(false);
+    }
+}
+
+bool SvTreeListBox::IsExpanded(SvTreeListEntry* pEntry) const
+{
+    DBG_ASSERT(pEntry, "IsExpanded:No Entry");
+    SvDataTable::const_iterator itr = m_DataTable.find(pEntry);
+    if (itr == m_DataTable.end())
+        return false;
+    return itr->second->IsExpanded();
+}
+
+bool SvTreeListBox::IsAllExpanded(SvTreeListEntry* pEntry) const
+{
+    DBG_ASSERT(pEntry, "IsAllExpanded:No Entry");
+    if (!IsExpanded(pEntry))
+        return false;
+    const SvTreeListEntries& rChildren = pEntry->GetChildEntries();
+    for (auto& rChild : rChildren)
+    {
+        if (rChild->HasChildren() || rChild->HasChildrenOnDemand())
+        {
+            if (!IsAllExpanded(rChild.get()))
+                return false;
+        }
+    }
+    return true;
+}
+
+bool SvTreeListBox::IsSelected(const SvTreeListEntry* pEntry) const
+{
+    DBG_ASSERT(pEntry, "IsExpanded:No Entry");
+    SvDataTable::const_iterator itr = m_DataTable.find(const_cast<SvTreeListEntry*>(pEntry));
+    if (itr == m_DataTable.end())
+        return false;
+    return itr->second->IsSelected();
+}
+
+void SvTreeListBox::SetEntryFocus(SvTreeListEntry* pEntry, bool bFocus)
+{
+    DBG_ASSERT(pEntry, "SetEntryFocus:No Entry");
+    SvDataTable::iterator itr = m_DataTable.find(pEntry);
+    assert(itr != m_DataTable.end() && "Entry not in Table");
+    itr->second->SetFocus(bFocus);
+}
+
+const SvViewDataEntry* SvTreeListBox::GetViewData(const SvTreeListEntry* pEntry) const
+{
+    SvDataTable::const_iterator itr = m_DataTable.find(const_cast<SvTreeListEntry*>(pEntry));
+    assert(itr != m_DataTable.end() && "Entry not in model or wrong view");
+    if (itr == m_DataTable.end())
+        return nullptr;
+    return itr->second.get();
+}
+
+SvViewDataEntry* SvTreeListBox::GetViewData(SvTreeListEntry* pEntry)
+{
+    return const_cast<SvViewDataEntry*>(std::as_const(*this).GetViewData(pEntry));
 }
 
 SvTreeListEntry* SvTreeListBox::FirstChild(const SvTreeListEntry* pParent) const
@@ -827,7 +1100,7 @@ sal_uInt32 SvTreeListBox::GetLevelChildCount( const SvTreeListEntry* _pParent ) 
 
 SvViewDataEntry* SvTreeListBox::GetViewDataEntry( SvTreeListEntry const * pEntry ) const
 {
-    return const_cast<SvViewDataEntry*>(SvListView::GetViewData(pEntry));
+    return const_cast<SvViewDataEntry*>(GetViewData(pEntry));
 }
 
 SvViewDataItem* SvTreeListBox::GetViewDataItem(SvTreeListEntry const * pEntry, SvLBoxItem const * pItem)
@@ -837,7 +1110,7 @@ SvViewDataItem* SvTreeListBox::GetViewDataItem(SvTreeListEntry const * pEntry, S
 
 const SvViewDataItem* SvTreeListBox::GetViewDataItem(const SvTreeListEntry* pEntry, const SvLBoxItem* pItem) const
 {
-    const SvViewDataEntry* pEntryData = SvListView::GetViewData(pEntry);
+    const SvViewDataEntry* pEntryData = GetViewData(pEntry);
     assert(pEntryData && "Entry not in View");
     sal_uInt16 nItemPos = pEntry->GetPos(pItem);
     return &pEntryData->GetItem(nItemPos);
@@ -1361,7 +1634,7 @@ void SvTreeListBox::dispose()
 
         pEdCtrl.reset();
 
-        SvListView::dispose();
+        m_pModel.reset();
 
         SvTreeListBox::RemoveBoxFromDDList_Impl( *this );
 
@@ -1371,6 +1644,8 @@ void SvTreeListBox::dispose()
             g_pDDTarget = nullptr;
         mpImpl.reset();
     }
+
+    m_DataTable.clear();
 
     DropTargetHelper::dispose();
     DragSourceHelper::dispose();
@@ -1464,6 +1739,11 @@ void SvTreeListBox::SetTabs()
     tools::Long nContextWidth = nContextBmpWidthMax;
     tools::Long nContextWidthDIV2 = nContextWidth / 2;
 
+    // Remember hidden state of tabs
+    std::vector<bool> hiddenState(aTabs.size());
+    for (size_t n = 0; n < aTabs.size(); ++n)
+        hiddenState[n] = aTabs[n]->IsHidden();
+
     ClearTabList();
 
     TreeListButtonType eButtonType = TreeListButtonType::NO_BUTTONS;
@@ -1539,6 +1819,15 @@ void SvTreeListBox::SetTabs()
             AddTab( nStartPos, TABFLAGS_TEXT );
             break;
     }
+
+    for (size_t n = 0; n < std::min(aTabs.size(), hiddenState.size()); ++n)
+    {
+        if (hiddenState[n])
+            aTabs[n]->nFlags |= SvLBoxTabFlags::HIDDEN;
+        else
+            aTabs[n]->nFlags &= ~SvLBoxTabFlags::HIDDEN;
+    }
+
     pImpl->NotifyTabsChanged();
 }
 
@@ -1949,8 +2238,6 @@ void SvTreeListBox::ModelHasCleared()
     AdjustEntryHeight();
     AdjustEntryHeight( GetDefaultExpandedEntryBmp() );
     AdjustEntryHeight( GetDefaultCollapsedEntryBmp() );
-
-    SvListView::ModelHasCleared();
 }
 
 bool SvTreeListBox::PosOverBody(const Point& rPos) const
@@ -2228,6 +2515,9 @@ void SvTreeListBox::ModelIsRemoving( SvTreeListEntry* pEntry )
 
 void SvTreeListBox::ModelHasRemoved( SvTreeListEntry* pEntry  )
 {
+    // WARNING WARNING WARNING
+    // The supplied pointer should have been deleted
+    // before this call. Be careful not to use it!!!
     if (pEntry == pHdlEntry)
         pHdlEntry = nullptr;
 
@@ -2707,6 +2997,14 @@ void SvTreeListBox::PaintEntry1(SvTreeListEntry& rEntry, tools::Long nLine, vcl:
     while (nCurTab < nTabCount && nCurItem < nItemCount)
     {
         SvLBoxTab* pTab = aTabs[nCurTab].get();
+
+        if (pTab->IsHidden())
+        {
+            nCurItem++;
+            nCurTab++;
+            continue;
+        }
+
         const size_t nNextTab = nCurTab + 1;
         SvLBoxTab* pNextTab = nNextTab < nTabCount ? aTabs[nNextTab].get() : nullptr;
         SvLBoxItem& rItem = rEntry.GetItem(nCurItem);
@@ -3043,73 +3341,17 @@ tools::Rectangle SvTreeListBox::GetFocusRect(const SvTreeListEntry* pEntry, tool
     return aRect;
 }
 
-sal_IntPtr SvTreeListBox::GetTabPos(const SvTreeListEntry* pEntry, const SvLBoxTab* pTab) const
+tools::Long SvTreeListBox::GetTabPos(const SvTreeListEntry* pEntry, const SvLBoxTab* pTab) const
 {
     assert(pTab);
-    sal_IntPtr nPos = pTab->GetPos();
+    tools::Long nPos = pTab->GetPos();
     if( pTab->IsDynamic() )
     {
         sal_uInt16 nDepth = m_pModel->GetDepth(pEntry);
         nDepth = nDepth * static_cast<sal_uInt16>(nIndent);
-        nPos += static_cast<sal_IntPtr>(nDepth);
+        nPos += nDepth;
     }
     return nPos + (pEntry->GetExtraIndent() * nIndent);
-}
-
-SvLBoxItem* SvTreeListBox::GetItem_Impl( SvTreeListEntry* pEntry, tools::Long nX,
-    SvLBoxTab** ppTab )
-{
-    SvLBoxItem* pItemClicked = nullptr;
-    sal_uInt16 nTabCount = aTabs.size();
-    sal_uInt16 nItemCount = pEntry->ItemCount();
-    SvLBoxTab* pTab = aTabs.front().get();
-    SvLBoxItem* pItem = &pEntry->GetItem(0);
-    sal_uInt16 nNextItem = 1;
-    nX -= GetMapMode().GetOrigin().X();
-    tools::Long nRealWidth = pImpl->GetOutputSize().Width();
-    nRealWidth -= GetMapMode().GetOrigin().X();
-
-    while( true )
-    {
-        SvLBoxTab* pNextTab=nNextItem<nTabCount ? aTabs[nNextItem].get() : nullptr;
-        tools::Long nStart = GetTabPos( pEntry, pTab );
-
-        tools::Long nNextTabPos;
-        if( pNextTab )
-            nNextTabPos = GetTabPos( pEntry, pNextTab );
-        else
-        {
-            nNextTabPos = nRealWidth;
-            if( nStart > nRealWidth )
-                nNextTabPos += 50;
-        }
-
-        auto nItemWidth(pItem->GetWidth(this, pEntry));
-        nStart += pTab->CalcOffset(nItemWidth, nNextTabPos - nStart);
-        auto nLen = nItemWidth;
-        if( pNextTab )
-        {
-            tools::Long nTabWidth = GetTabPos( pEntry, pNextTab ) - nStart;
-            if( nTabWidth < nLen )
-                nLen = nTabWidth;
-        }
-
-        if( nX >= nStart && nX < (nStart+nLen ) )
-        {
-            pItemClicked = pItem;
-            if( ppTab )
-            {
-                *ppTab = pTab;
-                break;
-            }
-        }
-        if( nNextItem >= nItemCount || nNextItem >= nTabCount)
-            break;
-        pTab = aTabs[ nNextItem ].get();
-        pItem = &pEntry->GetItem( nNextItem );
-        nNextItem++;
-    }
-    return pItemClicked;
 }
 
 std::pair<tools::Long, tools::Long> SvTreeListBox::GetItemPos(SvTreeListEntry* pEntry, sal_uInt16 nTabIdx)
@@ -3208,13 +3450,63 @@ void SvTreeListBox::SetForceMakeVisible( bool bEnable )
 
 SvLBoxItem* SvTreeListBox::GetItem(SvTreeListEntry* pEntry,tools::Long nX,SvLBoxTab** ppTab)
 {
-    return GetItem_Impl( pEntry, nX, ppTab );
+    SvLBoxItem* pItemClicked = nullptr;
+    sal_uInt16 nTabCount = aTabs.size();
+    sal_uInt16 nItemCount = pEntry->ItemCount();
+    SvLBoxTab* pTab = aTabs.front().get();
+    SvLBoxItem* pItem = &pEntry->GetItem(0);
+    sal_uInt16 nNextItem = 1;
+    nX -= GetMapMode().GetOrigin().X();
+    tools::Long nRealWidth = pImpl->GetOutputSize().Width();
+    nRealWidth -= GetMapMode().GetOrigin().X();
+
+    while (true)
+    {
+        SvLBoxTab* pNextTab = nNextItem < nTabCount ? aTabs[nNextItem].get() : nullptr;
+        tools::Long nStart = GetTabPos(pEntry, pTab);
+
+        tools::Long nNextTabPos;
+        if (pNextTab)
+            nNextTabPos = GetTabPos(pEntry, pNextTab);
+        else
+        {
+            nNextTabPos = nRealWidth;
+            if (nStart > nRealWidth)
+                nNextTabPos += 50;
+        }
+
+        auto nItemWidth(pItem->GetWidth(this, pEntry));
+        nStart += pTab->CalcOffset(nItemWidth, nNextTabPos - nStart);
+        auto nLen = nItemWidth;
+        if (pNextTab)
+        {
+            tools::Long nTabWidth = GetTabPos(pEntry, pNextTab) - nStart;
+            if (nTabWidth < nLen)
+                nLen = nTabWidth;
+        }
+
+        if (nX >= nStart && nX < (nStart + nLen))
+        {
+            pItemClicked = pItem;
+            if (ppTab)
+            {
+                *ppTab = pTab;
+                break;
+            }
+        }
+        if (nNextItem >= nItemCount || nNextItem >= nTabCount)
+            break;
+        pTab = aTabs[nNextItem].get();
+        pItem = &pEntry->GetItem(nNextItem);
+        nNextItem++;
+    }
+    return pItemClicked;
 }
 
 SvLBoxItem* SvTreeListBox::GetItem(SvTreeListEntry* pEntry,tools::Long nX )
 {
     SvLBoxTab* pDummyTab;
-    return GetItem_Impl( pEntry, nX, &pDummyTab );
+    return GetItem(pEntry, nX, &pDummyTab);
 }
 
 void SvTreeListBox::AddTab(tools::Long nTabPos, SvLBoxTabFlags nFlags )
@@ -3383,26 +3675,69 @@ IMPL_LINK( SvTreeListBox, DefaultCompare, const SvSortData&, rData, sal_Int32 )
     return DefaultCompare(pLeftText, pRightText);
 }
 
-void SvTreeListBox::ModelNotification( SvListAction nActionId, SvTreeListEntry* pEntry1,
-                        SvTreeListEntry* pEntry2, sal_uInt32 nPos )
+void SvTreeListBox::ModelNotification(SvListAction nActionId, SvTreeListEntry* pEntry)
 {
     SolarMutexGuard aSolarGuard;
 
     if( nActionId == SvListAction::CLEARING )
         CancelTextEditing();
 
-    SvListView::ModelNotification( nActionId, pEntry1, pEntry2, nPos );
+    switch (nActionId)
+    {
+        case SvListAction::INSERTED:
+            ActionInserted(pEntry);
+            ModelHasInserted(pEntry);
+            break;
+        case SvListAction::INSERTED_TREE:
+            ActionInsertedTree(pEntry);
+            ModelHasInsertedTree(pEntry);
+            break;
+        case SvListAction::REMOVING:
+            ModelIsRemoving(pEntry);
+            ActionRemoving(pEntry);
+            break;
+        case SvListAction::REMOVED:
+            ModelHasRemoved(pEntry);
+            break;
+        case SvListAction::MOVING:
+            ModelIsMoving(pEntry);
+            ActionMoving(pEntry);
+            break;
+        case SvListAction::MOVED:
+            ActionMoved();
+            ModelHasMoved(pEntry);
+            break;
+        case SvListAction::CLEARING:
+            Reset();
+            ModelHasCleared(); // sic! for compatibility reasons!
+            break;
+        case SvListAction::CLEARED:
+            break;
+        case SvListAction::INVALIDATE_ENTRY:
+            // no action for the base class
+            ModelHasEntryInvalidated(pEntry);
+            break;
+        case SvListAction::RESORTED:
+            m_bVisPositionsValid = false;
+            break;
+        case SvListAction::RESORTING:
+            break;
+        default:
+            OSL_FAIL("unknown ActionId");
+    }
+
     switch( nActionId )
     {
         case SvListAction::INSERTED:
         {
-            SvLBoxContextBmp* pBmpItem = static_cast< SvLBoxContextBmp* >( pEntry1->GetFirstItem( SvLBoxItemType::ContextBmp ) );
+            SvLBoxContextBmp* pBmpItem
+                = static_cast<SvLBoxContextBmp*>(pEntry->GetFirstItem(SvLBoxItemType::ContextBmp));
             if ( !pBmpItem )
                 break;
             const Image& rBitmap1( pBmpItem->GetBitmap1() );
             const Image& rBitmap2( pBmpItem->GetBitmap2() );
             short nMaxWidth = short( std::max( rBitmap1.GetSizePixel().Width(), rBitmap2.GetSizePixel().Width() ) );
-            nMaxWidth = pImpl->UpdateContextBmpWidthVector( pEntry1, nMaxWidth );
+            nMaxWidth = pImpl->UpdateContextBmpWidthVector(pEntry, nMaxWidth);
             if( nMaxWidth > nContextBmpWidthMax )
             {
                 nContextBmpWidthMax = nMaxWidth;
@@ -3513,36 +3848,6 @@ rtl::Reference<comphelper::OAccessible> SvTreeListBox::CreateAccessible()
         return new AccessibleListBox(*this, xAccParent);
 
     return {};
-}
-
-void SvTreeListBox::FillAccessibleEntryStateSet( SvTreeListEntry* pEntry, sal_Int64& rStateSet ) const
-{
-    assert(pEntry && "SvTreeListBox::FillAccessibleEntryStateSet: invalid entry");
-
-    if ( pEntry->HasChildrenOnDemand() || pEntry->HasChildren() )
-    {
-        rStateSet |= AccessibleStateType::EXPANDABLE;
-        if ( IsExpanded( pEntry ) )
-            rStateSet |= AccessibleStateType::EXPANDED;
-    }
-
-    if (nTreeFlags & SvTreeFlags::CHKBTN)
-        rStateSet |= AccessibleStateType::CHECKABLE;
-    if ( GetCheckButtonState( pEntry ) == SvButtonState::Checked )
-        rStateSet |= AccessibleStateType::CHECKED;
-    if ( IsEntryVisible( pEntry ) )
-        rStateSet |= AccessibleStateType::VISIBLE;
-    if ( IsSelected( pEntry ) )
-        rStateSet |= AccessibleStateType::SELECTED;
-    if ( IsEnabled() )
-    {
-        rStateSet |= AccessibleStateType::ENABLED;
-        rStateSet |= AccessibleStateType::FOCUSABLE;
-        rStateSet |= AccessibleStateType::SELECTABLE;
-        SvViewDataEntry* pViewDataNewCur = GetViewDataEntry(pEntry);
-        if (pViewDataNewCur && pViewDataNewCur->HasFocus())
-            rStateSet |= AccessibleStateType::FOCUSED;
-    }
 }
 
 tools::Rectangle SvTreeListBox::GetBoundingRect(const SvTreeListEntry* pEntry)

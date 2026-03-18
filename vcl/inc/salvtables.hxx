@@ -1635,6 +1635,8 @@ public:
 
     virtual void set_column_title(int nColumn, const OUString& rTitle) override;
 
+    virtual void set_column_visible(int nColumn, bool bVisible) override;
+
     virtual void set_column_custom_renderer(int nColumn, bool bEnable) override;
 
     virtual void queue_draw() override;
@@ -1810,6 +1812,9 @@ public:
     virtual void unset_drag_dest_row() override;
 
     virtual tools::Rectangle get_row_area(const weld::TreeIter& rIter) const override;
+
+    virtual tools::Rectangle get_cell_area(const weld::TreeIter& rIter,
+                                           const int nColumn) const override;
 
     virtual TreeView* get_drag_source() const override;
 

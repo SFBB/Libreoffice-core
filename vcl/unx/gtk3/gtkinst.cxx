@@ -14805,6 +14805,13 @@ public:
         gtk_tree_view_column_set_title(pColumn, OUStringToOString(rTitle, RTL_TEXTENCODING_UTF8).getStr());
     }
 
+    virtual void set_column_visible(int nColumn, const bool bVisible) override
+    {
+        GtkTreeViewColumn* pColumn = GTK_TREE_VIEW_COLUMN(g_list_nth_data(m_pColumns, nColumn));
+        assert(pColumn && "wrong count");
+        gtk_tree_view_column_set_visible(pColumn, bVisible);
+    }
+
     virtual void set_column_custom_renderer(int nColumn, bool bEnable) override
     {
         assert(n_children() == 0 && "tree must be empty");
@@ -15993,6 +16000,23 @@ public:
         const GtkInstanceTreeIter& rGtkIter = static_cast<const GtkInstanceTreeIter&>(rIter);
         GtkTreePath* pPath = gtk_tree_model_get_path(m_pTreeModel, const_cast<GtkTreeIter*>(&rGtkIter.iter));
         tools::Rectangle aRet = ::get_row_area(m_pTreeView, m_pColumns, pPath);
+        gtk_tree_path_free(pPath);
+        return aRet;
+    }
+
+    virtual tools::Rectangle get_cell_area(const weld::TreeIter& rIter,
+                                           const int nColumn) const override
+    {
+        const GtkInstanceTreeIter& rGtkIter = static_cast<const GtkInstanceTreeIter&>(rIter);
+        GtkTreePath* pPath = gtk_tree_model_get_path(m_pTreeModel, const_cast<GtkTreeIter*>(&rGtkIter.iter));
+        GtkTreeViewColumn* pColumn = GTK_TREE_VIEW_COLUMN(g_list_nth_data(m_pColumns, nColumn));
+        assert(pColumn && "wrong count");
+
+         // Note: We do not check cell renderers inside the column because it appears to be difficult to find their focus area
+        GdkRectangle aRect;
+        gtk_tree_view_get_cell_area(m_pTreeView, pPath, pColumn, &aRect);
+        tools::Rectangle aRet(aRect.x, aRect.y, aRect.x + aRect.width, aRect.y + aRect.height);
+
         gtk_tree_path_free(pPath);
         return aRet;
     }

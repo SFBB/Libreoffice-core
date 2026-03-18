@@ -71,6 +71,7 @@ enum class SvLBoxTabFlags
                                // (on which Abo Tabpage/Extras/Option/Customize, etc. rely on)
                                // The first tab's position corresponds precisely to the Flags set
                                // and column widths
+    HIDDEN           = 0x0080, // Tab is not visible
 
     ADJUST_FLAGS = ADJUST_RIGHT | ADJUST_LEFT | ADJUST_CENTER,
 };
@@ -113,6 +114,7 @@ public:
     tools::Long    GetPos() const { return nPos; }
     tools::Long    CalcOffset( tools::Long nItemLength, tools::Long nTabWidth );
     bool    IsEditable() const { return bool(nFlags & SvLBoxTabFlags::EDITABLE); }
+    bool    IsHidden() const { return bool(nFlags & SvLBoxTabFlags::HIDDEN); }
 };
 
 class UNLESS_MERGELIBS(VCL_DLLPUBLIC) SvLBoxItem
@@ -176,12 +178,10 @@ typedef std::pair<vcl::RenderContext&, const SvTreeListEntry&> svtree_measure_ar
 typedef std::tuple<vcl::RenderContext&, const tools::Rectangle&, const SvTreeListEntry&> svtree_render_args;
 typedef std::pair<SvTreeListEntry*, OUString> IterString;
 
-class UNLESS_MERGELIBS_MORE(VCL_DLLPUBLIC) SvTreeListBox
-                :public Control
-                ,public SvListView
-                ,public DropTargetHelper
-                ,public DragSourceHelper
-                ,public vcl::ISearchableStringList
+class UNLESS_MERGELIBS_MORE(VCL_DLLPUBLIC) SvTreeListBox : public Control,
+                                                           public DropTargetHelper,
+                                                           public DragSourceHelper,
+                                                           public vcl::ISearchableStringList
 {
     friend class SvImpLBox;
     friend class SvLBoxString;
@@ -190,7 +190,17 @@ class UNLESS_MERGELIBS_MORE(VCL_DLLPUBLIC) SvTreeListBox
     friend class SalInstanceIconView;
     friend class SalInstanceTreeView;
     friend class SalInstanceEntryTreeView;
+    friend class SvTreeList;
     friend class JSTreeView;
+
+    using SvDataTable = std::unordered_map<SvTreeListEntry*, std::unique_ptr<SvViewDataEntry>>;
+    SvDataTable m_DataTable; // Mapping SvTreeListEntry -> ViewData
+
+    sal_uInt32 m_nVisibleCount;
+    sal_uInt32 m_nSelectionCount;
+    bool m_bVisPositionsValid;
+
+    std::unique_ptr<SvTreeList> m_pModel;
 
     std::unique_ptr<SvTreeListBoxImpl> mpImpl;
     Link<SvTreeListBox*,void>  aScrolledHdl;
@@ -260,6 +270,20 @@ private:
     // Handler that is called by TreeList to clone an Entry
     DECL_DLLPRIVATE_LINK( CloneHdl_Impl, SvTreeListEntry*, SvTreeListEntry* );
 
+    void ExpandListEntry(SvTreeListEntry* pParent);
+    void CollapseListEntry(SvTreeListEntry* pParent);
+    bool SelectListEntry(SvTreeListEntry* pEntry, bool bSelect);
+
+    void Reset();
+
+    void RemoveViewData(SvTreeListEntry* pParent);
+
+    void ActionMoving(SvTreeListEntry* pEntry);
+    void ActionMoved();
+    void ActionInserted(SvTreeListEntry* pEntry);
+    void ActionInsertedTree(SvTreeListEntry* pEntry);
+    void ActionRemoving(SvTreeListEntry* pEntry);
+
     // Handler and methods for Drag - finished handler.
     // The Handle retrieved by GetDragFinishedHdl can be set on the
     // TransferDataContainer. This link is a callback for the DragFinished
@@ -311,7 +335,7 @@ protected:
 
     // InitViewData is called right after CreateViewData
     // The Entry is has not yet been added to the View in InitViewData!
-    virtual void InitViewData( SvViewDataEntry*, SvTreeListEntry* pEntry ) override;
+    virtual void InitViewData(SvViewDataEntry*, SvTreeListEntry* pEntry);
     // Calls InitViewData for all Items
     void            RecalcViewData();
 
@@ -338,6 +362,82 @@ public:
     SvTreeListBox( vcl::Window* pParent, WinBits nWinStyle=0 );
     virtual ~SvTreeListBox() override;
     virtual void dispose() override;
+
+    sal_uInt32 GetVisibleCount() const
+    {
+        return m_pModel->GetVisibleCount(const_cast<SvTreeListBox*>(this));
+    }
+
+    SvTreeListEntry* FirstVisible() const { return m_pModel->FirstVisible(); }
+
+    SvTreeListEntry* NextVisible(SvTreeListEntry* pEntry) const
+    {
+        return m_pModel->NextVisible(this, pEntry);
+    }
+
+    SvTreeListEntry* PrevVisible(SvTreeListEntry* pEntry) const
+    {
+        return m_pModel->PrevVisible(this, pEntry);
+    }
+
+    SvTreeListEntry* LastVisible() const { return m_pModel->LastVisible(this); }
+
+    SvTreeListEntry* NextVisible(SvTreeListEntry* pEntry, sal_uInt16& rDelta) const
+    {
+        return m_pModel->NextVisible(this, pEntry, rDelta);
+    }
+
+    SvTreeListEntry* PrevVisible(SvTreeListEntry* pEntry, sal_uInt16& rDelta) const
+    {
+        return m_pModel->PrevVisible(this, pEntry, rDelta);
+    }
+
+    sal_uInt32 GetSelectionCount() const;
+
+    SvTreeListEntry* FirstSelected() const { return m_pModel->FirstSelected(this); }
+
+    SvTreeListEntry* NextSelected(SvTreeListEntry* pEntry) const
+    {
+        return m_pModel->NextSelected(this, pEntry);
+    }
+
+    SvTreeListEntry* GetEntryAtAbsPos(sal_uInt32 nAbsPos) const
+    {
+        return m_pModel->GetEntryAtAbsPos(nAbsPos);
+    }
+
+    SvTreeListEntry* GetEntryAtVisPos(sal_uInt32 nVisPos) const
+    {
+        return m_pModel->GetEntryAtVisPos(this, nVisPos);
+    }
+
+    sal_uInt32 GetAbsPos(SvTreeListEntry const* pEntry) const
+    {
+        return m_pModel->GetAbsPos(pEntry);
+    }
+
+    sal_uInt32 GetVisiblePos(SvTreeListEntry const* pEntry) const
+    {
+        return m_pModel->GetVisiblePos(this, pEntry);
+    }
+
+    sal_uInt32 GetVisibleChildCount(SvTreeListEntry* pParent) const
+    {
+        return m_pModel->GetVisibleChildCount(this, pParent);
+    }
+
+    bool IsEntryVisible(SvTreeListEntry* pEntry) const
+    {
+        return m_pModel->IsEntryVisible(this, pEntry);
+    }
+
+    bool IsExpanded(SvTreeListEntry* pEntry) const;
+    bool IsAllExpanded(SvTreeListEntry* pEntry) const;
+    bool IsSelected(const SvTreeListEntry* pEntry) const;
+    void SetEntryFocus(SvTreeListEntry* pEntry, bool bFocus);
+    const SvViewDataEntry* GetViewData(const SvTreeListEntry* pEntry) const;
+    SvViewDataEntry* GetViewData(SvTreeListEntry* pEntry);
+    bool HasViewData() const;
 
     SvTreeList* GetModel() const { return m_pModel.get(); }
 
@@ -434,13 +534,8 @@ public:
         SvTreeListEntry*& rpNewParent,   // New TargetParent
         sal_uInt32&        rNewChildPos); // The TargetParent's position in Childlist
 
-    // ACCESSIBILITY ==========================================================
-
     /** Creates and returns the accessible object of the Box. */
     virtual rtl::Reference<comphelper::OAccessible> CreateAccessible() override;
-
-    /** Fills the StateSet of one entry. */
-    void FillAccessibleEntryStateSet( SvTreeListEntry* pEntry, sal_Int64& rStateSet ) const;
 
     /** Calculate and return the bounding rectangle of an entry.
         @param pEntry
@@ -470,7 +565,6 @@ protected:
     SAL_DLLPRIVATE void         PaintEntry1( SvTreeListEntry&, tools::Long nLine, vcl::RenderContext& rRenderContext );
 
     SAL_DLLPRIVATE void         InitTreeView();
-    SAL_DLLPRIVATE SvLBoxItem*  GetItem_Impl( SvTreeListEntry*, tools::Long nX, SvLBoxTab** ppTab );
     SAL_DLLPRIVATE void         ImplInitStyle();
 
     void            SetupDragOrigin();
@@ -576,14 +670,14 @@ public:
     virtual void    LoseFocus() override;
     void            SetUpdateMode( bool );
 
-    virtual void    ModelHasCleared() override;
-    virtual void    ModelHasInserted( SvTreeListEntry* pEntry ) override;
-    virtual void    ModelHasInsertedTree( SvTreeListEntry* pEntry ) override;
-    virtual void    ModelIsMoving(SvTreeListEntry* pSource ) override;
-    virtual void    ModelHasMoved(SvTreeListEntry* pSource ) override;
-    virtual void    ModelIsRemoving( SvTreeListEntry* pEntry ) override;
-    virtual void    ModelHasRemoved( SvTreeListEntry* pEntry ) override;
-    void            ModelHasEntryInvalidated( SvTreeListEntry* pEntry ) override;
+    virtual void ModelHasCleared();
+    virtual void ModelHasInserted(SvTreeListEntry* pEntry);
+    virtual void ModelHasInsertedTree(SvTreeListEntry* pEntry);
+    virtual void ModelIsMoving(SvTreeListEntry* pSource);
+    virtual void ModelHasMoved(SvTreeListEntry* pSource);
+    virtual void ModelIsRemoving(SvTreeListEntry* pEntry);
+    virtual void ModelHasRemoved(SvTreeListEntry* pEntry);
+    void ModelHasEntryInvalidated(SvTreeListEntry* pEntry);
 
     void            ScrollOutputArea( short nDeltaEntries );
 
@@ -604,7 +698,7 @@ public:
 
     virtual tools::Rectangle GetFocusRect(const SvTreeListEntry*, tools::Long nLine );
     // Respects indentation
-    sal_IntPtr      GetTabPos(const SvTreeListEntry*, const SvLBoxTab*) const;
+    tools::Long     GetTabPos(const SvTreeListEntry*, const SvLBoxTab*) const;
     void            InvalidateEntry( SvTreeListEntry* );
     SvLBoxItem*     GetItem( SvTreeListEntry*, tools::Long nX, SvLBoxTab** ppTab);
     SvLBoxItem*     GetItem( SvTreeListEntry*, tools::Long nX );
@@ -629,8 +723,7 @@ public:
     sal_Int32       DefaultCompare(const SvLBoxString* pLeftText, const SvLBoxString* pRightText);
 
     DECL_DLLPRIVATE_LINK( DefaultCompare, const SvSortData&, sal_Int32 );
-    virtual void    ModelNotification( SvListAction nActionId, SvTreeListEntry* pEntry1,
-                        SvTreeListEntry* pEntry2, sal_uInt32 nPos ) override;
+    void ModelNotification(SvListAction nActionId, SvTreeListEntry* pEntry);
 
     SvTreeListEntry*    GetFirstEntryInView() const;
     SvTreeListEntry*    GetNextEntryInView(SvTreeListEntry*) const;

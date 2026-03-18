@@ -56,7 +56,6 @@ namespace o3tl
 class UNLESS_MERGELIBS_MORE(VCL_DLLPUBLIC) SvTreeListEntry
 {
     friend class SvTreeList;
-    friend class SvListView;
     friend class SvTreeListBox;
 
     typedef std::vector<std::unique_ptr<SvLBoxItem>> ItemsType;
@@ -91,7 +90,6 @@ public:
     bool HasChildListPos() const;
     sal_uInt32 GetChildListPos() const;
 
-    SvTreeListEntries& GetChildEntries() { return m_Children; }
     const SvTreeListEntries& GetChildEntries() const { return m_Children; }
 
     void Clone(SvTreeListEntry* pSource);

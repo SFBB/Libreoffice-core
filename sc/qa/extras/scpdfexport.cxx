@@ -9,6 +9,7 @@
 
 #include <sal/config.h>
 #include <config_oox.h>
+#include <config_poppler.h>
 
 #include <test/unoapi_test.hxx>
 
@@ -47,7 +48,7 @@ public:
     ~ScPDFExportTest();
 
     // helpers
-private:
+protected:
     void exportToPDF(const uno::Reference<frame::XModel>& xModel, const ScRange& range,
                      const std::initializer_list<css::beans::PropertyValue>& params = {});
 
@@ -57,46 +58,6 @@ private:
 
     void setFont(ScFieldEditEngine& rEE, sal_Int32 nStart, sal_Int32 nEnd,
                  const OUString& rFontName);
-
-    // unit tests
-public:
-    void testPopupRectangleSize_Tdf162955();
-    void testMediaShapeScreen_Tdf159094();
-    void testExportRange_Tdf120161();
-    void testExportFitToPage_Tdf103516();
-    void testUnoCommands_Tdf120161();
-    void testTdf64703_hiddenPageBreak();
-    void testTdf159068();
-    void testTdf159067();
-    void testTdf159066();
-    void testTdf159065();
-    void testTdf123870();
-    void testTdf143978();
-    void testTdf120190();
-    void testTdf84012();
-    void testTdf78897();
-    void testForcepoint97();
-    void testTdf156893();
-
-    CPPUNIT_TEST_SUITE(ScPDFExportTest);
-    CPPUNIT_TEST(testPopupRectangleSize_Tdf162955);
-    CPPUNIT_TEST(testMediaShapeScreen_Tdf159094);
-    CPPUNIT_TEST(testExportRange_Tdf120161);
-    CPPUNIT_TEST(testExportFitToPage_Tdf103516);
-    CPPUNIT_TEST(testUnoCommands_Tdf120161);
-    CPPUNIT_TEST(testTdf64703_hiddenPageBreak);
-    CPPUNIT_TEST(testTdf159068);
-    CPPUNIT_TEST(testTdf159067);
-    CPPUNIT_TEST(testTdf159066);
-    CPPUNIT_TEST(testTdf159065);
-    CPPUNIT_TEST(testTdf123870);
-    CPPUNIT_TEST(testTdf143978);
-    CPPUNIT_TEST(testTdf120190);
-    CPPUNIT_TEST(testTdf84012);
-    CPPUNIT_TEST(testTdf78897);
-    CPPUNIT_TEST(testForcepoint97);
-    CPPUNIT_TEST(testTdf156893);
-    CPPUNIT_TEST_SUITE_END();
 };
 
 ScPDFExportTest::ScPDFExportTest()
@@ -215,7 +176,7 @@ void ScPDFExportTest::setFont(ScFieldEditEngine& rEE, sal_Int32 nStart, sal_Int3
     rEE.QuickSetAttribs(aItemSet, ESelection(0, nStart, 0, nEnd));
 }
 
-void ScPDFExportTest::testMediaShapeScreen_Tdf159094()
+CPPUNIT_TEST_FIXTURE(ScPDFExportTest, testMediaShapeScreen_Tdf159094)
 {
     loadFromFile(u"tdf159094.ods");
     uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY);
@@ -227,7 +188,7 @@ void ScPDFExportTest::testMediaShapeScreen_Tdf159094()
     exportToPDF(xModel, aRange);
 }
 
-void ScPDFExportTest::testPopupRectangleSize_Tdf162955()
+CPPUNIT_TEST_FIXTURE(ScPDFExportTest, testPopupRectangleSize_Tdf162955)
 {
     std::shared_ptr<vcl::pdf::PDFium> pPDFium = vcl::pdf::PDFiumLibrary::get();
     if (!pPDFium)
@@ -264,7 +225,7 @@ void ScPDFExportTest::testPopupRectangleSize_Tdf162955()
 }
 
 // Selection was not taken into account during export into PDF
-void ScPDFExportTest::testExportRange_Tdf120161()
+CPPUNIT_TEST_FIXTURE(ScPDFExportTest, testExportRange_Tdf120161)
 {
     // create test document
     loadFromURL(u"private:factory/scalc"_ustr);
@@ -324,7 +285,7 @@ void ScPDFExportTest::testExportRange_Tdf120161()
     }
 }
 
-void ScPDFExportTest::testExportFitToPage_Tdf103516()
+CPPUNIT_TEST_FIXTURE(ScPDFExportTest, testExportFitToPage_Tdf103516)
 {
     // create test document
     loadFromURL(u"private:factory/scalc"_ustr);
@@ -407,7 +368,7 @@ void ScPDFExportTest::testExportFitToPage_Tdf103516()
     }
 }
 
-void ScPDFExportTest::testUnoCommands_Tdf120161()
+CPPUNIT_TEST_FIXTURE(ScPDFExportTest, testUnoCommands_Tdf120161)
 {
     loadFromFile(u"tdf120161.ods");
 
@@ -436,7 +397,7 @@ void ScPDFExportTest::testUnoCommands_Tdf120161()
     }
 }
 
-void ScPDFExportTest::testTdf64703_hiddenPageBreak()
+CPPUNIT_TEST_FIXTURE(ScPDFExportTest, testTdf64703_hiddenPageBreak)
 {
     loadFromFile(u"tdf64703_hiddenPageBreak.ods");
 
@@ -452,7 +413,7 @@ void ScPDFExportTest::testTdf64703_hiddenPageBreak()
     }
 }
 
-void ScPDFExportTest::testTdf159068()
+CPPUNIT_TEST_FIXTURE(ScPDFExportTest, testTdf159068)
 {
     loadFromFile(u"tdf159068.ods");
     uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY);
@@ -512,7 +473,7 @@ void ScPDFExportTest::testTdf159068()
     CPPUNIT_ASSERT_EQUAL(static_cast<decltype(nArtifact)>(5), nArtifact);
 }
 
-void ScPDFExportTest::testTdf159067()
+CPPUNIT_TEST_FIXTURE(ScPDFExportTest, testTdf159067)
 {
     loadFromFile(u"tdf159067.ods");
     uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY);
@@ -572,7 +533,7 @@ void ScPDFExportTest::testTdf159067()
     CPPUNIT_ASSERT_EQUAL(static_cast<decltype(nArtifact)>(3), nArtifact);
 }
 
-void ScPDFExportTest::testTdf159066()
+CPPUNIT_TEST_FIXTURE(ScPDFExportTest, testTdf159066)
 {
     loadFromFile(u"tdf159066.ods");
     uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY);
@@ -588,7 +549,7 @@ void ScPDFExportTest::testTdf159066()
     CPPUNIT_ASSERT_EQUAL(true, bFound);
 }
 
-void ScPDFExportTest::testTdf159065()
+CPPUNIT_TEST_FIXTURE(ScPDFExportTest, testTdf159065)
 {
     loadFromFile(u"tdf159065.ods");
     uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY);
@@ -646,7 +607,7 @@ void ScPDFExportTest::testTdf159065()
     CPPUNIT_ASSERT_EQUAL(static_cast<decltype(nLink)>(2), nLink);
 }
 
-void ScPDFExportTest::testTdf123870()
+CPPUNIT_TEST_FIXTURE(ScPDFExportTest, testTdf123870)
 {
     loadFromFile(u"tdf123870.ods");
     uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY);
@@ -734,7 +695,7 @@ void ScPDFExportTest::testTdf123870()
     CPPUNIT_ASSERT(nArtifacts >= 6);
 }
 
-void ScPDFExportTest::testTdf143978()
+CPPUNIT_TEST_FIXTURE(ScPDFExportTest, testTdf143978)
 {
     std::shared_ptr<vcl::pdf::PDFium> pPDFium = vcl::pdf::PDFiumLibrary::get();
     if (!pPDFium)
@@ -775,7 +736,7 @@ void ScPDFExportTest::testTdf143978()
     CPPUNIT_ASSERT_EQUAL(u"2021-11-17"_ustr, sText2);
 }
 
-void ScPDFExportTest::testTdf120190()
+CPPUNIT_TEST_FIXTURE(ScPDFExportTest, testTdf120190)
 {
     std::shared_ptr<vcl::pdf::PDFium> pPDFium = vcl::pdf::PDFiumLibrary::get();
     if (!pPDFium)
@@ -842,7 +803,7 @@ void ScPDFExportTest::testTdf120190()
     CPPUNIT_ASSERT_EQUAL(u"6"_ustr, sText5);
 }
 
-void ScPDFExportTest::testTdf84012()
+CPPUNIT_TEST_FIXTURE(ScPDFExportTest, testTdf84012)
 {
     std::shared_ptr<vcl::pdf::PDFium> pPDFium = vcl::pdf::PDFiumLibrary::get();
     if (!pPDFium)
@@ -877,7 +838,7 @@ void ScPDFExportTest::testTdf84012()
     CPPUNIT_ASSERT_EQUAL(u"Blah blah (blah, blah)"_ustr, aActualText);
 }
 
-void ScPDFExportTest::testTdf78897()
+CPPUNIT_TEST_FIXTURE(ScPDFExportTest, testTdf78897)
 {
     std::shared_ptr<vcl::pdf::PDFium> pPDFium = vcl::pdf::PDFiumLibrary::get();
     if (!pPDFium)
@@ -913,7 +874,7 @@ void ScPDFExportTest::testTdf78897()
 }
 
 // just needs to not crash on export to pdf
-void ScPDFExportTest::testForcepoint97()
+CPPUNIT_TEST_FIXTURE(ScPDFExportTest, testForcepoint97)
 {
     loadFromFile(u"forcepoint97.xlsx");
     uno::Reference<frame::XModel> xModel(mxComponent, uno::UNO_QUERY);
@@ -923,7 +884,8 @@ void ScPDFExportTest::testForcepoint97()
     exportToPDF(xModel, range1);
 }
 
-void ScPDFExportTest::testTdf156893()
+#if ENABLE_PDFIMPORT
+CPPUNIT_TEST_FIXTURE(ScPDFExportTest, testTdf156893)
 {
     // Given a spreadsheet with a large number of rows, the whole-sheet export to PDF should export
     // all rows.
@@ -949,8 +911,8 @@ void ScPDFExportTest::testTdf156893()
     CPPUNIT_ASSERT_EQUAL(u"Last row"_ustr,
                          pPdfPage->getObject(22999)->getText(pPdfPage->getTextPage()));
 }
+#endif
 
-CPPUNIT_TEST_SUITE_REGISTRATION(ScPDFExportTest);
 CPPUNIT_PLUGIN_IMPLEMENT();
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
