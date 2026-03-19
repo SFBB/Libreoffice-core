@@ -36,13 +36,12 @@
 #include <tools/gen.hxx>
 #include <tools/contnr.hxx>
 #include <vcl/toolkit/treelist.hxx>
+#include <vcl/toolkit/viewdataentry.hxx>
 #include <vcl/transfer.hxx>
 #include <o3tl/typed_flags_set.hxx>
 
 class SvTreeListBox;
 class SvTreeListEntry;
-struct SvViewDataItem;
-class SvViewDataEntry;
 class SvInplaceEdit2;
 class SvLBoxString;
 class SvImpLBox;
@@ -77,7 +76,7 @@ enum class SvLBoxTabFlags
 };
 namespace o3tl
 {
-    template<> struct typed_flags<SvLBoxTabFlags> : is_typed_flags<SvLBoxTabFlags, 0x007f> {};
+    template<> struct typed_flags<SvLBoxTabFlags> : is_typed_flags<SvLBoxTabFlags, 0x00ff> {};
 }
 
 #define SV_TAB_BORDER 8
@@ -193,7 +192,7 @@ class UNLESS_MERGELIBS_MORE(VCL_DLLPUBLIC) SvTreeListBox : public Control,
     friend class SvTreeList;
     friend class JSTreeView;
 
-    using SvDataTable = std::unordered_map<SvTreeListEntry*, std::unique_ptr<SvViewDataEntry>>;
+    using SvDataTable = std::unordered_map<SvTreeListEntry*, SvViewDataEntry>;
     SvDataTable m_DataTable; // Mapping SvTreeListEntry -> ViewData
 
     sal_uInt32 m_nVisibleCount;
@@ -203,26 +202,26 @@ class UNLESS_MERGELIBS_MORE(VCL_DLLPUBLIC) SvTreeListBox : public Control,
     std::unique_ptr<SvTreeList> m_pModel;
 
     std::unique_ptr<SvTreeListBoxImpl> mpImpl;
-    Link<SvTreeListBox*,void>  aScrolledHdl;
-    Link<SvTreeListBox*,void>  aExpandedHdl;
-    Link<SvTreeListBox*,bool>  aExpandingHdl;
-    Link<SvTreeListBox*,void>  aSelectHdl;
-    Link<SvTreeListBox*,void>  aDeselectHdl;
-    Link<SvTreeListEntry*, OUString> aTooltipHdl;
-    Link<svtree_render_args, void> aCustomRenderHdl;
-    Link<svtree_measure_args, Size> aCustomMeasureHdl;
+    Link<SvTreeListBox*, void> m_aScrolledHdl;
+    Link<SvTreeListBox*, void> m_aExpandedHdl;
+    Link<SvTreeListBox*, bool> m_aExpandingHdl;
+    Link<SvTreeListBox*, void> m_aSelectHdl;
+    Link<SvTreeListBox*, void> m_aDeselectHdl;
+    Link<SvTreeListEntry*, OUString> m_aTooltipHdl;
+    Link<svtree_render_args, void> m_aCustomRenderHdl;
+    Link<svtree_measure_args, Size> m_aCustomMeasureHdl;
 
-    Image           aPrevInsertedExpBmp;
-    Image           aPrevInsertedColBmp;
-    Image           aCurInsertedExpBmp;
-    Image           aCurInsertedColBmp;
+    Image m_aPrevInsertedExpBmp;
+    Image m_aPrevInsertedColBmp;
+    Image m_aCurInsertedExpBmp;
+    Image m_aCurInsertedColBmp;
 
-    short           nContextBmpWidthMax;
-    short           nEntryHeightOffs;
-    short           nIndent;
-    short           nFocusWidth;
-    sal_uInt16      nFirstSelTab;
-    sal_uInt16      nLastSelTab;
+    short m_nContextBmpWidthMax;
+    short m_nEntryHeightOffs;
+    short m_nIndent;
+    short m_nFocusWidth;
+    sal_uInt16 m_nFirstSelTab;
+    sal_uInt16 m_nLastSelTab;
     tools::Long mnCheckboxItemWidth;
     bool mbContextBmpExpanded;
     bool mbQuickSearch; // Enables type-ahead search in the check list box.
@@ -235,34 +234,36 @@ class UNLESS_MERGELIBS_MORE(VCL_DLLPUBLIC) SvTreeListBox : public Control,
                                       // 1 == Every click on row toggle its checkbox.
                                       // 2 == First click select, second click toggle.
 
-    SvTreeListEntry*    pHdlEntry;
+    SvTreeListEntry* m_pHdlEntry;
 
-    DragDropMode    nDragDropMode;
-    DragDropMode    nOldDragMode;
-    SelectionMode   eSelMode;
-    sal_Int32       nMinWidthInChars;
+    DragDropMode m_nDragDropMode;
+    DragDropMode m_nOldDragMode;
+    SelectionMode m_eSelMode;
+    sal_Int32 m_nMinWidthInChars;
 
     sal_Int8        mnDragAction;
 
-    SvTreeListEntry*        pEdEntry;
-    SvLBoxString*           pEdItem;
+    SvTreeListEntry* m_pEdEntry;
+    SvLBoxString* m_pEdItem;
 
     rtl::Reference<TransferDataContainer> m_xTransferHelper;
 
 protected:
-    std::unique_ptr<SvImpLBox>              pImpl;
-    short                   nEntryHeight;
-    short                   nEntryWidth;
+    std::unique_ptr<SvImpLBox> m_pImpl;
+    short m_nEntryHeight;
+    short m_nEntryWidth;
     bool                    mbCenterAndClipText;
 
-    Link<SvTreeListBox*,bool> aDoubleClickHdl;
-    SvTreeListEntry*        pTargetEntry;
-    SvLBoxButtonData*       pCheckButtonData;
-    std::vector<std::unique_ptr<SvLBoxTab>> aTabs;
-    SvTreeFlags             nTreeFlags;
-    SvTreeListBoxFlags      nImpFlags;
+    Link<SvTreeListBox*, bool> m_aDoubleClickHdl;
+    SvTreeListEntry* m_pTargetEntry;
+    SvLBoxButtonData* m_pCheckButtonData;
+    std::vector<std::unique_ptr<SvLBoxTab>> m_aTabs;
+    SvTreeFlags m_nTreeFlags;
+    SvTreeListBoxFlags m_nImpFlags;
     // Move/CopySelection: Position of the current Entry in SelectionList
-    sal_uInt16              nCurEntrySelPos;
+    sal_uInt16 m_nCurEntrySelPos;
+
+    std::unique_ptr<SvInplaceEdit2> m_pEdCtrl;
 
 private:
     DECL_DLLPRIVATE_LINK( CheckButtonClick, SvLBoxButtonData *, void );
@@ -329,7 +330,6 @@ protected:
     virtual void Insert(SvTreeListEntry* pEntry, sal_uInt32 nRootPos = TREELIST_APPEND);
 
     // In-place editing
-    std::unique_ptr<SvInplaceEdit2>  pEdCtrl;
     void            EditText( const OUString&, const tools::Rectangle&,const Selection&);
     void            CancelTextEditing();
 
@@ -458,8 +458,8 @@ public:
      */
     void            RemoveEntry(SvTreeListEntry const * pEntry);
 
-    DragDropMode    GetDragDropMode() const { return nDragDropMode; }
-    SelectionMode   GetSelectionMode() const { return eSelMode; }
+    DragDropMode GetDragDropMode() const { return m_nDragDropMode; }
+    SelectionMode GetSelectionMode() const { return m_eSelMode; }
 
     // pParent == 0 -> Root level
     SvTreeListEntry* GetEntry( SvTreeListEntry* pParent, sal_uInt32 nPos ) const;
@@ -482,29 +482,41 @@ public:
     OUString GetEntryTooltip(SvTreeListEntry* pEntry) const;
 
     VclPtr<Edit> GetEditWidget() const; // for UITest
-    bool IsInplaceEditingEnabled() const { return bool(nImpFlags & SvTreeListBoxFlags::EDT_ENABLED); }
-    bool IsEditingActive() const { return bool(nImpFlags & SvTreeListBoxFlags::IN_EDT); }
+    bool IsInplaceEditingEnabled() const
+    {
+        return bool(m_nImpFlags & SvTreeListBoxFlags::EDT_ENABLED);
+    }
+    bool IsEditingActive() const { return bool(m_nImpFlags & SvTreeListBoxFlags::IN_EDT); }
     void EndEditing( bool bCancel = false );
 
     void            Clear();
 
     bool            TextCenterAndClipEnabled() const { return mbCenterAndClipText; }
 
-    void            SetSelectHdl( const Link<SvTreeListBox*,void>& rNewHdl ) {aSelectHdl=rNewHdl; }
-    void            SetDeselectHdl( const Link<SvTreeListBox*,void>& rNewHdl ) {aDeselectHdl=rNewHdl; }
-    void            SetDoubleClickHdl(const Link<SvTreeListBox*,bool>& rNewHdl) {aDoubleClickHdl=rNewHdl;}
-    void            SetExpandingHdl(const Link<SvTreeListBox*,bool>& rNewHdl){aExpandingHdl=rNewHdl;}
-    void            SetExpandedHdl(const Link<SvTreeListBox*,void>& rNewHdl){aExpandedHdl=rNewHdl;}
-    void SetTooltipHdl(const Link<SvTreeListEntry*, OUString>& rLink) { aTooltipHdl = rLink; }
-    void SetCustomRenderHdl(const Link<svtree_render_args, void>& rLink) { aCustomRenderHdl = rLink; }
-    void SetCustomMeasureHdl(const Link<svtree_measure_args, Size>& rLink) { aCustomMeasureHdl = rLink; }
+    void SetSelectHdl(const Link<SvTreeListBox*, void>& rNewHdl) { m_aSelectHdl = rNewHdl; }
+    void SetDeselectHdl(const Link<SvTreeListBox*, void>& rNewHdl) { m_aDeselectHdl = rNewHdl; }
+    void SetDoubleClickHdl(const Link<SvTreeListBox*, bool>& rNewHdl)
+    {
+        m_aDoubleClickHdl = rNewHdl;
+    }
+    void SetExpandingHdl(const Link<SvTreeListBox*, bool>& rNewHdl) { m_aExpandingHdl = rNewHdl; }
+    void SetExpandedHdl(const Link<SvTreeListBox*, void>& rNewHdl) { m_aExpandedHdl = rNewHdl; }
+    void SetTooltipHdl(const Link<SvTreeListEntry*, OUString>& rLink) { m_aTooltipHdl = rLink; }
+    void SetCustomRenderHdl(const Link<svtree_render_args, void>& rLink)
+    {
+        m_aCustomRenderHdl = rLink;
+    }
+    void SetCustomMeasureHdl(const Link<svtree_measure_args, Size>& rLink)
+    {
+        m_aCustomMeasureHdl = rLink;
+    }
 
     void            ExpandedHdl();
     bool            ExpandingHdl();
     void            SelectHdl();
     void            DeselectHdl();
     bool            DoubleClickHdl();
-    SvTreeListEntry*    GetHdlEntry() const { return pHdlEntry; }
+    SvTreeListEntry* GetHdlEntry() const { return m_pHdlEntry; }
 
     // Is called for an Entry that gets expanded with the Flag
     // ENTRYFLAG_CHILDREN_ON_DEMAND set.
@@ -543,7 +555,7 @@ public:
         @return  The bounding rectangle of an entry. */
     tools::Rectangle    GetBoundingRect(const SvTreeListEntry* pEntry);
 
-    SvTreeFlags         GetTreeFlags() const {return nTreeFlags;}
+    SvTreeFlags GetTreeFlags() const { return m_nTreeFlags; }
 
     static OUString     SearchEntryTextWithHeadTitle(SvTreeListEntry* pEntry);
 
@@ -576,7 +588,7 @@ protected:
     // Is called automatically when inserting/changing Bitmaps, changing the Model etc.
     virtual void    SetTabs();
     void            AddTab( tools::Long nPos, SvLBoxTabFlags nFlags );
-    sal_uInt16      TabCount() const { return aTabs.size(); }
+    sal_uInt16 TabCount() const { return m_aTabs.size(); }
     SvLBoxTab*      GetFirstDynamicTab() const;
     SvLBoxTab*      GetFirstDynamicTab( sal_uInt16& rTabPos ) const;
     SvLBoxTab*      GetFirstTab( SvLBoxTabFlags nFlagMask, sal_uInt16& rTabPos );
@@ -587,7 +599,7 @@ protected:
     virtual void    InitEntry(SvTreeListEntry*, const OUString&, const Image&, const Image&);
 
     void            NotifyScrolled();
-    void            SetScrolledHdl( const Link<SvTreeListBox*,void>& rLink ) { aScrolledHdl = rLink; }
+    void SetScrolledHdl(const Link<SvTreeListBox*, void>& rLink) { m_aScrolledHdl = rLink; }
     tools::Long            GetXOffset() const { return GetMapMode().GetOrigin().X(); }
 
     virtual void    Command( const CommandEvent& rCEvt ) override;
@@ -681,12 +693,12 @@ public:
 
     void            ScrollOutputArea( short nDeltaEntries );
 
-    short           GetEntryHeight() const  { return nEntryHeight; }
+    short GetEntryHeight() const { return m_nEntryHeight; }
     void            SetEntryHeight( short nHeight );
-    short           GetEntryWidth() const { return nEntryWidth; }
+    short GetEntryWidth() const { return m_nEntryWidth; }
     void            SetEntryWidth( short nWidth );
     Size            GetOutputSizePixel() const;
-    short           GetIndent() const { return nIndent; }
+    short GetIndent() const { return m_nIndent; }
     void            SetSpaceBetweenEntries( short nSpace );
     Point           GetEntryPosition(const SvTreeListEntry*) const;
     void            MakeVisible( SvTreeListEntry* pEntry );

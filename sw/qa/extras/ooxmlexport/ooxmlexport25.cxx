@@ -10,6 +10,8 @@
 #include <swmodeltestbase.hxx>
 
 #include <com/sun/star/beans/XPropertyState.hpp>
+#include <com/sun/star/text/XTextTablesSupplier.hpp>
+#include <com/sun/star/text/XTextTable.hpp>
 
 #include <comphelper/configuration.hxx>
 #include <comphelper/sequenceashashmap.hxx>
@@ -74,6 +76,23 @@ DECLARE_OOXMLEXPORT_TEST(testTdf166544_noTopMargin_fields, "tdf166544_noTopMargi
     sal_Int32 nHeight = getXPath(pXmlDoc, "//page[2]//txt/infos/bounds", "height").toInt32();
     // Without the fix, the text height (showing a large top margin) was 569
     CPPUNIT_ASSERT_EQUAL(sal_Int32(269), nHeight);
+}
+
+DECLARE_OOXMLEXPORT_TEST(testTdf171299_tableInField, "tdf171299_tableInField.docx")
+{
+    // given a document where the field contains a table
+
+    // there is some text prior to the table
+    getParagraph(1, "Zusammenfassung:");
+    CPPUNIT_ASSERT_EQUAL(4, getParagraphs());
+
+    // The table cells also all have text content
+    uno::Reference<text::XTextTablesSupplier> xTablesSupplier(mxComponent, uno::UNO_QUERY);
+    uno::Reference<container::XIndexAccess> xTables(xTablesSupplier->getTextTables(),
+                                                    uno::UNO_QUERY);
+    uno::Reference<text::XTextTable> xTextTable(xTables->getByIndex(0), uno::UNO_QUERY);
+    uno::Reference<text::XTextRange> xCell(xTextTable->getCellByName(u"A1"_ustr), uno::UNO_QUERY);
+    CPPUNIT_ASSERT_EQUAL(OUString("ID"), xCell->getString());
 }
 
 DECLARE_OOXMLEXPORT_TEST(testTdf166141_linkedStyles, "tdf166141_linkedStyles.docx")

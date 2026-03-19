@@ -863,9 +863,9 @@ void SdrModel::SetDefaultTabulator(sal_uInt16 nVal)
 
 void SdrModel::ImpSetUIUnit()
 {
-    if(0 == m_aUIScale.GetNumerator() || 0 == m_aUIScale.GetDenominator())
+    if(0 == m_aUIScale)
     {
-        m_aUIScale = Fraction(1,1);
+        m_aUIScale = 1.0;
     }
 
     m_nUIUnitDecimalMark = 0;
@@ -894,11 +894,11 @@ void SdrModel::ImpSetUIUnit()
         nDiv = div;
     }
     // #i89872# take Unit of Measurement into account
-    if(1 != m_aUIScale.GetDenominator() || 1 != m_aUIScale.GetNumerator())
+    if(1.0 != m_aUIScale)
     {
         // divide by UIScale
-        nMul *= m_aUIScale.GetDenominator();
-        nDiv *= m_aUIScale.GetNumerator();
+        nMul *= Fraction(m_aUIScale).GetDenominator();
+        nDiv *= Fraction(m_aUIScale).GetNumerator();
     }
 
     // shorten trailing zeros for dividend
@@ -916,7 +916,7 @@ void SdrModel::ImpSetUIUnit()
     }
 
     // end preparations, set member values
-    m_aUIUnitFact = Fraction(sal_Int32(nMul), sal_Int32(nDiv));
+    m_aUIUnitFact = double(nMul) / nDiv;
     m_aUIUnitStr = GetUnitString(m_eUIUnit);
 }
 
@@ -941,7 +941,7 @@ void SdrModel::SetUIUnit(FieldUnit eUnit)
     }
 }
 
-void SdrModel::SetUIScale(const Fraction& rScale)
+void SdrModel::SetUIScale(double rScale)
 {
     if (m_aUIScale!=rScale) {
         m_aUIScale=rScale;
@@ -950,7 +950,7 @@ void SdrModel::SetUIScale(const Fraction& rScale)
     }
 }
 
-void SdrModel::SetUIUnit(FieldUnit eUnit, const Fraction& rScale)
+void SdrModel::SetUIUnit(FieldUnit eUnit, double rScale)
 {
     if (m_eUIUnit!=eUnit || m_aUIScale!=rScale) {
         m_eUIUnit=eUnit;
@@ -1002,7 +1002,7 @@ OUString SdrModel::GetMetricString(tools::Long nVal, bool bNoUnitChars, sal_Int3
     const bool bNegative(nVal < 0);
     SvtSysLocale aSysLoc;
     const LocaleDataWrapper& rLoc(aSysLoc.GetLocaleData());
-    double fLocalValue(double(nVal) * double(m_aUIUnitFact));
+    double fLocalValue(double(nVal) * m_aUIUnitFact);
 
     if(bNegative)
     {

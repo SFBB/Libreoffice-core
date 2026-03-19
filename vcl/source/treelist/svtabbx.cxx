@@ -214,12 +214,12 @@ void SvTabListBox::DumpAsPropertyTree(tools::JsonWriter& rJsonWriter)
             break;
     }
 
-    bool bCheckButtons = static_cast<int>(nTreeFlags & SvTreeFlags::CHKBTN);
+    bool bCheckButtons = static_cast<int>(m_nTreeFlags & SvTreeFlags::CHKBTN);
 
     bool isRadioButton = false;
-    if (pCheckButtonData)
+    if (m_pCheckButtonData)
     {
-        isRadioButton = pCheckButtonData -> IsRadio();
+        isRadioButton = m_pCheckButtonData->IsRadio();
     }
 
     OUString checkboxtype;
@@ -255,10 +255,10 @@ void SvTabListBox::SetTabs()
     // editable by SvTreeListBox::SetTabs(),
     // which prevents setting a different column to editable as the first
     // one with the flag is picked in SvTreeListBox::ImplEditEntry()
-    assert(aTabs.back()->nFlags & SvLBoxTabFlags::EDITABLE);
+    assert(m_aTabs.back()->nFlags & SvLBoxTabFlags::EDITABLE);
     if (!(mvTabList[0].nFlags & SvLBoxTabFlags::EDITABLE))
     {
-        aTabs.back()->nFlags &= ~SvLBoxTabFlags::EDITABLE;
+        m_aTabs.back()->nFlags &= ~SvLBoxTabFlags::EDITABLE;
     }
 
     // append all other tabs to the list
@@ -302,46 +302,32 @@ void SvTabListBox::dispose()
     SvTreeListBox::dispose();
 }
 
-void SvTabListBox::SetTabWidth(sal_uInt16 nTab, tools::Long tabWidth, MapUnit eMapUnit)
+void SvTabListBox::SetTabWidth(sal_uInt16 nTab, tools::Long tabWidth)
 {
     // Ensure that mvTabList[nTab + 1] exists because it is required to calculate diff
     if (nTab + 2 > tools::Long(mvTabList.size()))
         mvTabList.resize(nTab + 2);
 
-    MapMode aMMSource( eMapUnit );
-    MapMode aMMDest( MapUnit::MapPixel );
     tools::Long diff = tabWidth -
             (mvTabList[nTab + 1].GetPos() - mvTabList[nTab].GetPos()); // Width change
 
     // Shift all tab positions after nTab by diff
     for( sal_uInt16 nIdx = nTab + 1; nIdx < sal_uInt16(mvTabList.size()); nIdx++)
-    {
-        Size aSize(mvTabList[nIdx].GetPos() + diff, 0);
-        aSize = LogicToLogic( aSize, &aMMSource, &aMMDest );
-        tools::Long nNewTab = aSize.Width();
-        mvTabList[nIdx].SetPos( nNewTab );
-    }
-    SvTreeListBox::nTreeFlags |= SvTreeFlags::RECALCTABS;
+        mvTabList[nIdx].SetPos(mvTabList[nIdx].GetPos() + diff);
+    SvTreeListBox::m_nTreeFlags |= SvTreeFlags::RECALCTABS;
     if( IsUpdateMode() )
         Invalidate();
 }
 
-void SvTabListBox::SetTabs(const std::vector<tools::Long>& rTabPositions, MapUnit eMapUnit)
+void SvTabListBox::SetTabs(const std::vector<tools::Long>& rTabPositions)
 {
     assert(!rTabPositions.empty());
     mvTabList.resize(rTabPositions.size());
 
-    MapMode aMMSource( eMapUnit );
-    MapMode aMMDest( MapUnit::MapPixel );
-
     for( sal_uInt16 nIdx = 0; nIdx < sal_uInt16(mvTabList.size()); nIdx++)
-    {
-        Size aSize(rTabPositions.at(nIdx), 0);
-        aSize = LogicToLogic( aSize, &aMMSource, &aMMDest );
-        tools::Long nNewTab = aSize.Width();
-        mvTabList[nIdx].SetPos( nNewTab );
-    }
-    SvTreeListBox::nTreeFlags |= SvTreeFlags::RECALCTABS;
+        mvTabList[nIdx].SetPos(rTabPositions.at(nIdx));
+
+    SvTreeListBox::m_nTreeFlags |= SvTreeFlags::RECALCTABS;
     if( IsUpdateMode() )
         Invalidate();
 }
@@ -534,7 +520,7 @@ void SvTabListBox::SetTabAlignCenter(sal_uInt16 nTab)
     // see SvLBoxTab::CalcOffset for force, which only matters for centering
     nFlags |= SvLBoxTabFlags::ADJUST_CENTER | SvLBoxTabFlags::FORCE;
     rTab.nFlags = nFlags;
-    SvTreeListBox::nTreeFlags |= SvTreeFlags::RECALCTABS;
+    SvTreeListBox::m_nTreeFlags |= SvTreeFlags::RECALCTABS;
     if( IsUpdateMode() )
         Invalidate();
 }
@@ -557,12 +543,12 @@ void SvTabListBox::SetTabVisible(sal_uInt16 nTab, bool bVisible)
     if( nTab >= mvTabList.size() )
         return;
 
-    if( SvTreeListBox::nTreeFlags & SvTreeFlags::RECALCTABS )
+    if( SvTreeListBox::m_nTreeFlags & SvTreeFlags::RECALCTABS )
         SetTabs();
 
     // Find index in aTabs
-    nTab += aTabs.size() - mvTabList.size();
-    SvLBoxTab* pTab = aTabs[ nTab ].get();
+    nTab += m_aTabs.size() - mvTabList.size();
+    SvLBoxTab* pTab = m_aTabs[ nTab ].get();
 
     if (!bVisible)
         pTab->nFlags |= SvLBoxTabFlags::HIDDEN;
@@ -576,21 +562,21 @@ bool SvTabListBox::GetTabVisible(sal_uInt16 nTab)
     if( nTab >= mvTabList.size() )
         return false;
 
-    if( SvTreeListBox::nTreeFlags & SvTreeFlags::RECALCTABS )
+    if( SvTreeListBox::m_nTreeFlags & SvTreeFlags::RECALCTABS )
         SetTabs();
 
-    nTab += aTabs.size() - mvTabList.size();
-    SvLBoxTab* pTab = aTabs[ nTab ].get();
+    nTab += m_aTabs.size() - mvTabList.size();
+    SvLBoxTab* pTab = m_aTabs[ nTab ].get();
     return !pTab->IsHidden();
 }
 
 tools::Long SvTabListBox::GetLogicTab( sal_uInt16 nTab )
 {
-    if( SvTreeListBox::nTreeFlags & SvTreeFlags::RECALCTABS )
+    if (SvTreeListBox::m_nTreeFlags & SvTreeFlags::RECALCTABS)
         SetTabs();
 
     DBG_ASSERT(nTab<mvTabList.size(),"GetTabPos:Invalid Tab");
-    return aTabs[ nTab ]->GetPos();
+    return m_aTabs[nTab]->GetPos();
 }
 
 SvHeaderTabListBox::SvHeaderTabListBox(vcl::Window* pParent, WinBits nWinStyle, HeaderBar* pHeaderBar)

@@ -2243,7 +2243,8 @@ void DomainMapper_Impl::finishParagraph( const ParagraphPropertyMapPtr& pParaCon
             }
         }
 
-        if (pFieldContext && pFieldContext->IsCommandCompleted())
+        if (pFieldContext && pFieldContext->IsCommandCompleted()
+            && pFieldContext->GetTableDepth() == m_StreamStateStack.top().nTableDepth)
         {
             if (pFieldContext->GetFieldId() == FIELD_IF || pFieldContext->GetFieldId() == FIELD_REF)
             {
@@ -6384,7 +6385,7 @@ void DomainMapper_Impl::PushFieldContext()
     uno::Reference< text::XTextRange > xStart;
     if (xCrsr.is())
         xStart = xCrsr->getStart();
-    m_aFieldStack.push_back(new FieldContext(xStart));
+    m_aFieldStack.push_back(new FieldContext(xStart, m_StreamStateStack.top().nTableDepth));
 }
 /*-------------------------------------------------------------------------
 //the current field context waits for the completion of the command
@@ -6409,11 +6410,12 @@ void DomainMapper_Impl::SetFieldLocked()
 }
 
 
-FieldContext::FieldContext(uno::Reference< text::XTextRange > xStart)
+FieldContext::FieldContext(uno::Reference<text::XTextRange> xStart, sal_Int32 nTableDepth)
     : m_bFieldCommandCompleted(false)
     , m_xStartRange(std::move( xStart ))
     , m_bFieldLocked( false )
     , m_bCommandType(false)
+    , m_nNestedTableLevel(nTableDepth)
 {
     m_pProperties = new PropertyMap();
 }
@@ -8863,6 +8865,10 @@ bool DomainMapper_Impl::IsFieldResultAsString()
     OSL_ENSURE( pContext, "no field context available");
     if( pContext )
     {
+        // This is not a field result if it is not in the same cell as the field
+        if (pContext->GetTableDepth() != m_StreamStateStack.top().nTableDepth)
+            return false;
+
         bRet = pContext->GetTextField().is()
             || pContext->GetFieldId() == FIELD_FORMDROPDOWN
             || pContext->GetFieldId() == FIELD_FILLIN;
