@@ -1212,14 +1212,14 @@ void SmViewShell::QueryObjAreaPixel( tools::Rectangle& rRect ) const
     rRect.SetSize(mxGraphicWindow->GetSizePixel());
 }
 
-void SmViewShell::SetZoomFactor( const Fraction &rX, const Fraction &rY )
+void SmViewShell::SetZoomFactor( double fX, double fY )
 {
-    const Fraction &rFrac = std::min(rX, rY);
-    mxGraphicWindow->SetZoom(sal::static_int_cast<sal_uInt16>(tools::Long(rFrac * Fraction( 100, 1 ))));
+    double fFrac = std::min(fX, fY);
+    mxGraphicWindow->SetZoom(sal::static_int_cast<sal_uInt16>(tools::Long(fFrac * 100)));
 
     //To avoid rounding errors base class regulates crooked values too
     //if necessary
-    SfxViewShell::SetZoomFactor( rX, rY );
+    SfxViewShell::SetZoomFactor( fX, fY );
 }
 
 SfxPrinter* SmViewShell::GetPrinter(bool bCreate)
@@ -1530,6 +1530,42 @@ void SmViewShell::Execute(SfxRequest& rReq)
                 }
             }
             break;
+
+        case SID_MATRIXEDITOR:
+        {
+            auto pMatrixCreatorDialog = std::make_unique<MatrixCreatorDialog>(rReq.GetFrameWeld());
+
+            if (pMatrixCreatorDialog->run() == RET_OK)
+            {
+                OUString result = pMatrixCreatorDialog->getMatrix();
+
+                ESelection eSelection = pWin->GetSelection();
+                eSelection.Adjust();
+
+                auto pEngine = pWin->GetEditEngine();
+                OUString sText;
+
+                for (sal_Int32 p = 0; p < pEngine->GetParagraphCount(); ++p)
+                {
+                    if (p == eSelection.start.nPara)
+                    {
+                        OUString pText = pEngine->GetText(p);
+                        sText += pText.replaceAt(eSelection.start.nIndex,
+                                                 eSelection.end.nIndex - eSelection.start.nIndex,
+                                                 result)
+                                 + "\n";
+                    }
+                    else
+                        sText += pEngine->GetText(p) + "\n";
+                }
+
+                GetDoc()->SetText(sText);
+                SetStatusText(OUString());
+                ShowError(nullptr);
+                GetDoc()->Repaint();
+            }
+        }
+        break;
 
         case SID_DELETE:
             if (IsInlineEditEnabled())

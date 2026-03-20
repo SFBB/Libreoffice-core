@@ -815,16 +815,13 @@ void SwTextPaintInfo::DrawText_( const OUString &rText, const SwLinePortion &rPo
 
             const SwAttrSet& rAttrSet = GetTextFrame()->GetTextNodeForParaProps()->GetSwAttrSet();
             const SvxAdjustItem* pAdjust = rAttrSet.GetItem(RES_PARATR_ADJUST);
-            // microtypograpy: line-level automatic scaling between the custom range
+            // microtypography: line-level automatic scaling between the custom range
             if ( pAdjust->GetPropScaleWidthMinimum() != 100 ||
                     pAdjust->GetPropScaleWidthMaximum() != 100 )
             {
                 // Note: set 100 percent, too (to reset the automatic scaling of the previous line)
                 aDrawInf.SetScaleWidth( GetScaleWidth() );
             }
-            else
-               // tdf#171161 otherwise use the user-defined scale width value
-               aDrawInf.SetScaleWidth( rAttrSet.GetCharScaleW().GetValue()  );
 
             m_pFnt->DrawText_( aDrawInf );
         }
