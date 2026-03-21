@@ -370,6 +370,24 @@ TableStyleSheetEntry * DomainMapperTableHandler::endTableGetTableStyle(TableInfo
             aGrabBag[u"TablePosition"_ustr] = uno::Any();
         }
 
+        // This one is simply preserving all the table look attributes for a round-trip.
+        const std::optional<PropertyMap::Property> oTableLook
+            = m_aTableProperties->getProperty(META_PROP_TABLE_LOOK);
+        if (oTableLook)
+        {
+            aGrabBag[u"TableStyleLook"_ustr] = oTableLook->second;
+            m_aTableProperties->Erase(oTableLook->first);
+        }
+
+        // The "val" attribute's numeric value: a bit flag indicating applied style elements.
+        const std::optional<PropertyMap::Property> aTblLook
+            = m_aTableProperties->getProperty(PROP_TBL_LOOK);
+        if(aTblLook)
+        {
+            aTblLook->second >>= rInfo.nTblLook;
+            m_aTableProperties->Erase( aTblLook->first );
+        }
+
         std::optional<PropertyMap::Property> aTableStyleVal = m_aTableProperties->getProperty(META_PROP_TABLE_STYLE_NAME);
         if(aTableStyleVal)
         {
@@ -428,28 +446,25 @@ TableStyleSheetEntry * DomainMapperTableHandler::endTableGetTableStyle(TableInfo
 #endif
                 if (pTableStyle)
                 {
-                    // apply tblHeader setting of the table style
+                    // disable styles that have no definition
+                    if (rInfo.nTblLook & 0x020 && !pTableStyle->Has(CNF_FIRST_ROW))
+                        rInfo.nTblLook &= ~0x20;
+                    if (rInfo.nTblLook & 0x040 && !pTableStyle->Has(CNF_LAST_ROW))
+                        rInfo.nTblLook &= ~0x040;
+                    if (rInfo.nTblLook & 0x080 && !pTableStyle->Has(CNF_FIRST_COLUMN))
+                        rInfo.nTblLook &= ~0x080;
+                    if (rInfo.nTblLook & 0x100 && !pTableStyle->Has(CNF_LAST_COLUMN))
+                        rInfo.nTblLook &= ~0x100;
+                }
+
+                if (pTableStyle && (rInfo.nTblLook & 0x020))  // first row style used
+                {
+                    // apply (without overwriting) tblHeader setting of the table style
                     PropertyMapPtr pHeaderStyleProps = pTableStyle->GetProperties(CNF_FIRST_ROW);
                     if ( pHeaderStyleProps->getProperty(PROP_HEADER_ROW_COUNT) )
                         m_aTableProperties->Insert(PROP_HEADER_ROW_COUNT, uno::Any( sal_Int32(1)), false);
                 }
             }
-        }
-
-        // This is the one preserving just all the table look attributes.
-        std::optional<PropertyMap::Property> oTableLook = m_aTableProperties->getProperty(META_PROP_TABLE_LOOK);
-        if (oTableLook)
-        {
-            aGrabBag[u"TableStyleLook"_ustr] = oTableLook->second;
-            m_aTableProperties->Erase(oTableLook->first);
-        }
-
-        // This is just the "val" attribute's numeric value.
-        const std::optional<PropertyMap::Property> aTblLook = m_aTableProperties->getProperty(PROP_TBL_LOOK);
-        if(aTblLook)
-        {
-            aTblLook->second >>= rInfo.nTblLook;
-            m_aTableProperties->Erase( aTblLook->first );
         }
 
         // apply cell margin settings of the table style
@@ -665,8 +680,28 @@ TableStyleSheetEntry * DomainMapperTableHandler::endTableGetTableStyle(TableInfo
         if ( !m_aTableProperties->getValue( TablePropertyMap::HORI_ORIENT, nHoriOrient ) )
             lcl_extractHoriOrient( rFrameProperties, nHoriOrient );
         m_aTableProperties->Insert( PROP_HORI_ORIENT, uno::Any( sal_Int16(nHoriOrient) ) );
+
+        // tdf#88496/tdf#138020: If all rows are considered as to-be-repeated headers, then emulate
+        // by just disabling the header, since MS Word doesn't repeat any rows in that case.
+        bool bForceNoHeader = false;
+        const std::optional<PropertyMap::Property> oHeaderRowCount
+            = m_aTableProperties->getProperty(PROP_HEADER_ROW_COUNT);
+        if (oHeaderRowCount && m_aRowProperties.size() > 1) // only for tables with more than 1 row
+        {
+            sal_Int32 nHeaderRowCount = 0;
+            oHeaderRowCount->second >>= nHeaderRowCount;
+            // force no PROP_HEADER_ROW_COUNT instead of just suggesting zero as a default
+            bForceNoHeader = std::cmp_equal(nHeaderRowCount, m_aRowProperties.size());
+
+            if (bForceNoHeader)
+            {
+                // side effect in MS Word: table moves to empty page if all rows are header rows,
+                // and since we are turning off header rows, emulate by preventing a table split.
+                m_aTableProperties->Insert(PROP_SPLIT, uno::Any(false));
+            }
+        }
         //fill default value - if not available
-        m_aTableProperties->Insert( PROP_HEADER_ROW_COUNT, uno::Any( sal_Int32(0)), false);
+        m_aTableProperties->Insert( PROP_HEADER_ROW_COUNT, uno::Any( sal_Int32(0)), bForceNoHeader);
         m_aTableProperties->Insert(PROP_WRITING_MODE,
                                    uno::Any(sal_Int16(text::WritingMode2::CONTEXT)),
                                    /*bOverWrite=*/false);
@@ -729,7 +764,9 @@ CellPropertyValuesSeq_t DomainMapperTableHandler::endTableGetCellProperties(Tabl
 
         sal_Int32 nRowStyleMask = 0;
 
-        if (aRowOfCellsIterator==m_aCellProperties.begin())
+        if (*aRowIter && (*aRowIter)->isSet(PROP_TBL_HEADER))
+            nRowStyleMask |= CNF_FIRST_ROW; // table header implies first row style must be applied
+        else if (aRowOfCellsIterator==m_aCellProperties.begin())
         {
             if(rInfo.nTblLook&0x20)
                 nRowStyleMask |= CNF_FIRST_ROW;     // first row style used
@@ -739,8 +776,7 @@ CellPropertyValuesSeq_t DomainMapperTableHandler::endTableGetCellProperties(Tabl
             if(rInfo.nTblLook&0x40)
                 nRowStyleMask |= CNF_LAST_ROW;      // last row style used
         }
-        else if (*aRowIter && (*aRowIter)->isSet(PROP_TBL_HEADER))
-            nRowStyleMask |= CNF_FIRST_ROW; // table header implies first row
+
         if(!nRowStyleMask)                          // if no row style used yet
         {
             // banding used only if not first and or last row style used
