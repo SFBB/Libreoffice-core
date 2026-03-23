@@ -29,13 +29,6 @@
 #include <svdata.hxx>
 #include <unx/genprn.h>
 
-class VCL_DLLPUBLIC SalYieldMutex : public comphelper::SolarMutex
-{
-public:
-    SalYieldMutex();
-    virtual ~SalYieldMutex() override;
-};
-
 /*
  * Abstract generic class to build vclplugin's instance classes from
  */
@@ -51,9 +44,8 @@ protected:
     bool           mbPrinterInit;
 
 public:
-    SalGenericInstance(std::unique_ptr<comphelper::SolarMutex> pMutex, SalData* pSalData,
-                       const OUString& rToolkitName)
-        : SalInstance(std::move(pMutex), pSalData, rToolkitName)
+    SalGenericInstance(std::unique_ptr<comphelper::SolarMutex> pMutex, SalData* pSalData)
+        : SalInstance(std::move(pMutex), pSalData)
         , mbPrinterInit(false)
     {
     }

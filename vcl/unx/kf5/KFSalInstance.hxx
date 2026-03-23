@@ -80,9 +80,14 @@ class KFSalInstance final : public QtInstanceBaseClass
 
 public:
     explicit KFSalInstance()
-        : QtInstanceBaseClass(u"kf" + OUString::number(QT_VERSION_MAJOR))
+        : QtInstanceBaseClass()
     {
     }
+
+    virtual OUString getToolkitId() const override
+    {
+        return u"kf"_ustr + OUString::number(QT_VERSION_MAJOR);
+    };
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

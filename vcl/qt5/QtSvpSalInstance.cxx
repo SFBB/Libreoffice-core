@@ -24,8 +24,8 @@
 #include <QtSvpSalInstance.moc>
 #include <headless/svpbmp.hxx>
 
-QtSvpSalInstance::QtSvpSalInstance(const OUString& rToolkitName)
-    : QtInstance(rToolkitName)
+QtSvpSalInstance::QtSvpSalInstance()
+    : QtInstance()
 {
 }
 
@@ -73,5 +73,7 @@ const cairo_font_options_t* QtSvpSalInstance::GetCairoFontOptions()
     static cairo_font_options_t* gOptions = cairo_font_options_create();
     return gOptions;
 }
+
+OUString QtSvpSalInstance::getRenderingBackendName() const { return u"cairo"_ustr; };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

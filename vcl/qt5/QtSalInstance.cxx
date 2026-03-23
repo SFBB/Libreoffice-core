@@ -23,8 +23,8 @@
 #include <QtSalInstance.moc>
 #include <QtVirtualDevice.hxx>
 
-QtSalInstance::QtSalInstance(const OUString& rToolkitName)
-    : QtInstance(rToolkitName)
+QtSalInstance::QtSalInstance()
+    : QtInstance()
 {
 }
 
@@ -54,5 +54,7 @@ QtFrame* QtSalInstance::DoCreateFrame(SalFrameStyleFlags nStyle, QtFrame* pParen
 }
 
 std::shared_ptr<SalBitmap> QtSalInstance::CreateSalBitmap() { return std::make_shared<QtBitmap>(); }
+
+OUString QtSalInstance::getRenderingBackendName() const { return u"qfont"_ustr; };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

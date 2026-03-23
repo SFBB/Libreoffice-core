@@ -42,6 +42,7 @@
 #include <QtInstanceWidget.hxx>
 #include <QtInstanceMessageDialog.hxx>
 
+#include <SalYieldMutex.hxx>
 #include <salvtables.hxx>
 #include <unx/gendata.hxx>
 
@@ -262,20 +263,8 @@ bool QtInstance::useCairo()
     return bUseCairo;
 }
 
-OUString QtInstance::constructToolkitID(std::u16string_view sTKname)
-{
-    OUString sID(sTKname + OUString::Concat(u" ("));
-    if (useCairo())
-        sID += "cairo+";
-    else
-        sID += "qfont+";
-    sID += toOUString(QGuiApplication::platformName()) + OUString::Concat(u")");
-    return sID;
-}
-
-QtInstance::QtInstance(const OUString& rToolkitName)
-    : SalGenericInstance(std::make_unique<QtYieldMutex>(), new GenericUnixSalData,
-                         constructToolkitID(rToolkitName))
+QtInstance::QtInstance()
+    : SalGenericInstance(std::make_unique<QtYieldMutex>(), new GenericUnixSalData)
     , m_pTimer(nullptr)
     , m_bSleeping(false)
     , m_aUpdateStyleTimer("vcl::qt5 m_aUpdateStyleTimer")
@@ -645,6 +634,17 @@ Platform QtInstance::GetPlatform() const
 
 Toolkit QtInstance::GetToolkit() const { return Toolkit::Qt; }
 
+OUString QtInstance::getToolkitId() const
+{
+    return u"qt"_ustr + OUString::number(QT_VERSION_MAJOR);
+}
+
+OUString QtInstance::GetToolkitName() const
+{
+    return getToolkitId() + u" (" + getRenderingBackendName() + u"+"
+           + toOUString(QGuiApplication::platformName()) + u")";
+};
+
 IMPL_LINK_NOARG(QtInstance, updateStyleHdl, Timer*, void)
 {
     SolarMutexGuard aGuard;
@@ -985,12 +985,11 @@ VCLPLUG_QT_PUBLIC SalInstance* create_SalInstance()
 {
     initResources();
 
-    const OUString sToolkit = "qt" + OUString::number(QT_VERSION_MAJOR);
 #if USE_HEADLESS_CODE
     if (QtInstance::useCairo())
-        return new QtSvpSalInstance(sToolkit);
+        return new QtSvpSalInstance();
 #endif
-    return new QtSalInstance(sToolkit);
+    return new QtSalInstance();
 }
 }
 

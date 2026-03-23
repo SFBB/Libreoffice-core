@@ -24,6 +24,7 @@
 #include <stack>
 
 #include <DropTarget.hxx>
+#include <SalYieldMutex.hxx>
 #include <unx/X11Helper.hxx>
 #include <headless/svpinst.hxx>
 #include <com/sun/star/datatransfer/DataFlavor.hpp>
@@ -286,6 +287,7 @@ public:
 
     virtual Platform GetPlatform() const override;
     virtual Toolkit GetToolkit() const override;
+    virtual OUString GetToolkitName() const override;
 
     virtual const cairo_font_options_t* GetCairoFontOptions() override;
             const cairo_font_options_t* GetLastSeenCairoFontOptions() const;

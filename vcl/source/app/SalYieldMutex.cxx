@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -17,30 +17,21 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#pragma once
+#include <sal/config.h>
 
-#include <svx/svxdllapi.h>
+#include <config_features.h>
 
-class SdrObject;
+#include <SalYieldMutex.hxx>
 
+#include <vcl/opengl/OpenGLContext.hxx>
 
-namespace svx
+SalYieldMutex::SalYieldMutex()
 {
-
-
-    //= SdrObjectFilter
-
-    /** specifies a boolean predicate on the set of all SdrObjects - vulgo a filter.
-    */
-    class SVXCORE_DLLPUBLIC SAL_NO_VTABLE ISdrObjectFilter
-    {
-    public:
-        virtual bool    includeObject( const SdrObject& i_rObject ) const = 0;
-
-        virtual         ~ISdrObjectFilter() = 0;
-    };
-
-
+#if HAVE_FEATURE_OPENGL
+    SetBeforeReleaseHandler(&OpenGLContext::prepareForYield);
+#endif
 }
+
+SalYieldMutex::~SalYieldMutex() {}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

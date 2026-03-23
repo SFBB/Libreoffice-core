@@ -19,24 +19,16 @@
 
 #pragma once
 
-#include <salinst.hxx>
-#include <vclpluginapi.h>
+#include <sal/config.h>
 
-/** Abstract base class for SalInstance implementations on Windows. */
-class VCLPLUG_WIN_PUBLIC WindowsInstance : public SalInstance
+#include <comphelper/solarmutex.hxx>
+#include <vcl/dllapi.h>
+
+class VCL_DLLPUBLIC SalYieldMutex : public comphelper::SolarMutex
 {
 public:
-    WindowsInstance(std::unique_ptr<comphelper::SolarMutex> pMutex, SalData* pSalData);
-    virtual ~WindowsInstance();
-
-    virtual SalInfoPrinter* CreateInfoPrinter(SalPrinterQueueInfo* pQueueInfo,
-                                              ImplJobSetup* pSetupData) override;
-    virtual std::unique_ptr<SalPrinter> CreatePrinter(SalInfoPrinter* pInfoPrinter) override;
-    virtual void GetPrinterQueueInfo(ImplPrnQueueList* pList) override;
-    virtual void GetPrinterQueueState(SalPrinterQueueInfo* pInfo) override;
-    virtual OUString GetDefaultPrinter() override;
-
-    virtual Platform GetPlatform() const override { return Platform::Windows; }
+    SalYieldMutex();
+    virtual ~SalYieldMutex() override;
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */
