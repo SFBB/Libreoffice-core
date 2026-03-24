@@ -382,23 +382,22 @@ DECLARE_OOXMLEXPORT_TEST(testTdf58944RepeatingTableHeader, "tdf58944-repeating-t
 
 CPPUNIT_TEST_FIXTURE(Test, testTdf81100)
 {
-    auto verify = [this](bool bIsExport = false) {
+    auto verify = [this]() {
         xmlDocUniquePtr pDump = parseLayoutDump();
         CPPUNIT_ASSERT_EQUAL(3, getPages());
 
         // table starts on page 1 and finished on page 2
-        // and it has got only a single repeating header line
+        // with no repeating header line (explicit tblHeader="0")
         assertXPath(pDump, "/root/page[2]/body/tab[1]", 1);
         assertXPath(pDump, "/root/page[2]/body/tab[1]/row", 2);
         assertXPath(pDump, "/root/page[3]/body/tab", 1);
-        if (!bIsExport) // TODO export tblHeader=false
-            assertXPath(pDump, "/root/page[3]/body/tab/row", 1);
+        assertXPath(pDump, "/root/page[3]/body/tab/row", 1);
     };
     createSwDoc("tdf81100.docx");
     verify();
 
     saveAndReload(TestFilter::DOCX);
-    verify(/*bIsExport*/ true);
+    verify();
 
     xmlDocUniquePtr pXmlDoc = parseExport(u"word/styles.xml"_ustr);
     CPPUNIT_ASSERT(pXmlDoc);
@@ -913,6 +912,36 @@ DECLARE_OOXMLEXPORT_TEST(testTdf143384_tableInFoot_negativeMargins,
 {
     // There should be no crash during loading of the document
     CPPUNIT_ASSERT_EQUAL(1, getPages());
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testTdf145542_imageSize)
+{
+    // Given an ODT with an image in a frame: svg:width="2cm" but style:rel-width="100%",
+    // so the displayed size is full page width, not 2cm.
+    createSwDoc("tdf145542_image_size.fodt");
+    save(TestFilter::DOCX);
+
+    xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
+    // tdf#145542: the exported wp:extent must reflect the rendered size (full page width 17cm),
+    // not the unstretched svg:width="2cm" (= 720000 EMU). Without the fix, this was 720000.
+    const sal_Int64 nCx = getXPath(pXmlDoc, "//wp:inline/wp:extent", "cx").toInt64();
+    CPPUNIT_ASSERT_GREATER(sal_Int64(6000000), nCx); // 170 mm = 6120000 EMU
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testTdf145542_imageSizeRotatedAndStretched)
+{
+    // Given an ODT with an image that is both rotated (30 degrees) and stretched
+    // (svg:width="3cm" but style:rel-width="100%"). The DOCX export must write the
+    // stretched-but-unrotated size, not the unstretched 3cm.
+    createSwDoc("tdf145542_image_size_rotated_and_stretched.fodt");
+    save(TestFilter::DOCX);
+
+    xmlDocUniquePtr pXmlDoc = parseExport(u"word/document.xml"_ustr);
+    // The stretched-but-unrotated width for a 3:2 rectangle scaled to fill 17cm text area
+    // and rotated 30 degrees is ~14.2cm (≈ 5100000 EMU). Without the fix, this was ~1080000
+    // (the unstretched 3cm).
+    const sal_Int64 nCx = getXPath(pXmlDoc, "//wp:inline/wp:extent", "cx").toInt64();
+    CPPUNIT_ASSERT_GREATER(sal_Int64(5000000), nCx);
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();

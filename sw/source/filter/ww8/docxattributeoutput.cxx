@@ -104,6 +104,7 @@
 #include <tools/date.hxx>
 #include <tools/datetime.hxx>
 #include <tools/datetimeutils.hxx>
+#include <tools/degree.hxx>
 #include <tools/globname.hxx>
 #include <svl/whiter.hxx>
 #include <rtl/tencinfo.h>
@@ -455,6 +456,36 @@ bool lcl_hasParaSdtEndBefore(const SwNode& rNode)
 
     const std::map<OUString, css::uno::Any>& rMap = pParaGrabBag->GetGrabBag();
     return rMap.contains(u"ParaSdtEndBefore"_ustr);
+}
+
+bool lcl_HasTblHeaderFromStyle(const SwFrameFormat* pTableFormat,
+                               const DocxTableStyleExport& rTableStyleExport)
+{
+    // does the table actually apply a table style, and does it use the firstRow style?
+    const std::map<OUString, css::uno::Any>& rGrabBag
+        = pTableFormat->GetAttrSet().GetItem<SfxGrabBagItem>(RES_FRMATR_GRABBAG)->GetGrabBag();
+    bool bIsUsingFirstRow = false;
+    OUString sStyleId;
+    for (const auto& rElement : rGrabBag)
+    {
+        if (rElement.first == "TableStyleName")
+            sStyleId = rElement.second.get<OUString>();
+        else if (rElement.first == "TableStyleLook")
+        {
+            for (const auto& rTblLook : rElement.second.get<uno::Sequence<beans::PropertyValue>>())
+            {
+                if (rTblLook.Name == "val")
+                {
+                    bIsUsingFirstRow = rTblLook.Value.get<sal_Int32>() & 0x020;
+                    break;
+                }
+            }
+        }
+    }
+    if (!bIsUsingFirstRow || sStyleId.isEmpty())
+        return false;
+
+    return rTableStyleExport.FirstRowHasTblHeader(sStyleId);
 }
 
 } // end anonymous namespace
@@ -5061,7 +5092,17 @@ void DocxAttributeOutput::StartTableRow( ww8::WW8TableNodeInfoInner::Pointer_t c
     // Header row: tblHeader
     const SwTable *pTable = pTableTextNodeInfoInner->getTable( );
     if ( pTable->GetRowsToRepeat( ) > pTableTextNodeInfoInner->getRow( ) )
-        m_pSerializer->singleElementNS(XML_w, XML_tblHeader, FSNS(XML_w, XML_val), "true"); // TODO to overwrite table style may need explicit false
+        m_pSerializer->singleElementNS(XML_w, XML_tblHeader, FSNS(XML_w, XML_val), "true");
+    else if (!pTableTextNodeInfoInner->getRow()) // first row
+    {
+        // Perhaps there is a table style attached to this table,
+        // and perhaps that table style has a firstRow tblStylePr defined
+        // and perhaps our tblLook uses that firstRow style
+        // and perhaps the firstRow style defines a tblHeader
+        // then in that case we need to write an explicit false to dis-inherit.
+        if (lcl_HasTblHeaderFromStyle(pTable->GetFrameFormat(), *m_pTableStyleExport))
+            m_pSerializer->singleElementNS(XML_w, XML_tblHeader, FSNS(XML_w, XML_val), "false");
+    }
 
     TableRowRedline( pTableTextNodeInfoInner );
     TableHeight( pTableTextNodeInfoInner );
@@ -5626,13 +5667,33 @@ void DocxAttributeOutput::FlyFrameGraphic( const SwGrfNode* pGrfNode, const Size
         assert(xShapePropSet);
     }
 
+    // aSize is used for both wp:extent and a:xfrm/a:ext (unrotated content size).
+    // tdf#138953: for rotated images, aSize must be the unrotated size, not LayoutSize (rSize)
+    // which is the rotation bounding box. tdf#145542: for non-rotated images, Size property may
+    // differ from LayoutSize when scaled (e.g., relative width or older ODT), so use rSize.
+    // For the rotated+scaled case, derive the stretched-but-unrotated size from the bounding
+    // box (rSize), the unscaled size (Size property), and the rotation angle.
     Size aSize = rSize;
-    // We need the original (cropped, but unrotated) size of object. So prefer the object data,
-    // and only use passed frame size as fallback.
-    if (xShapePropSet)
+    auto nShapeRotation = xShapePropSet && pGrfNode
+                              ? pGrfNode->GetSwAttrSet().Get(RES_GRFATR_ROTATION).GetValue()
+                              : 0_deg10;
+    if (nShapeRotation)
     {
-        if (css::awt::Size val; xShapePropSet->getPropertyValue(u"Size"_ustr) >>= val)
-            aSize = Size(o3tl::toTwips(val.Width, o3tl::Length::mm100), o3tl::toTwips(val.Height, o3tl::Length::mm100));
+        if (css::awt::Size aObjSize; xShapePropSet->getPropertyValue(u"Size"_ustr) >>= aObjSize)
+        {
+            double nW0 = o3tl::toTwips<double>(aObjSize.Width, o3tl::Length::mm100);
+            double nH0 = o3tl::toTwips<double>(aObjSize.Height, o3tl::Length::mm100);
+            const double fAngle = toRadians(nShapeRotation);
+            // Bounding box width of the unstretched rotated rectangle
+            const double fUnscaledBBoxW = nW0 * abs(cos(fAngle)) + nH0 * abs(sin(fAngle));
+            if (fUnscaledBBoxW > 0 && rSize.Width() > 0)
+            {
+                double fScale = rSize.Width() / fUnscaledBBoxW;
+                nW0 *= fScale;
+                nH0 *= fScale;
+            }
+            aSize = Size(basegfx::fround<tools::Long>(nW0), basegfx::fround<tools::Long>(nH0));
+        }
     }
 
     m_rExport.SdrExporter().startDMLAnchorInline(pFrameFormat, aSize);
