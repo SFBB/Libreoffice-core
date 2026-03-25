@@ -53,14 +53,10 @@ static bool ImplIsSysWindowOrChild( HWND hWndParent, HWND hWndChild )
 
 WinSalObject* ImplFindSalObject( HWND hWndChild )
 {
-    SalData*        pSalData = GetSalData();
-    WinSalObject*   pObject = pSalData->mpFirstObject;
-    while ( pObject )
+    for (WinSalObject* pObject : GetSalData()->maObjects)
     {
         if ( ImplIsSysWindowOrChild( pObject->mhWndChild, hWndChild ) )
             return pObject;
-
-        pObject = pObject->mpNextObject;
     }
 
     return nullptr;
@@ -68,23 +64,19 @@ WinSalObject* ImplFindSalObject( HWND hWndChild )
 
 static WinSalFrame* ImplFindSalObjectFrame( HWND hWnd )
 {
-    WinSalFrame* pFrame = nullptr;
     WinSalObject* pObject = ImplFindSalObject( hWnd );
     if ( pObject )
     {
         // find matching frame
         HWND hWnd2 = ::GetParent( pObject->mhWnd );
-        pFrame = GetSalData()->mpFirstFrame;
-        while ( pFrame )
+        for (WinSalFrame* pFrame : GetSalData()->maFrames)
         {
             if ( pFrame->mhWnd == hWnd2 )
-                break;
-
-            pFrame = pFrame->mpNextFrame;
+                return pFrame;
         }
     }
 
-    return pFrame;
+    return nullptr;
 }
 
 static LRESULT CALLBACK SalSysMsgProc( int nCode, WPARAM wParam, LPARAM lParam )
@@ -412,7 +404,7 @@ SalObject* ImplSalCreateObject( WinSalInstance* pInst, WinSalFrame* pParent )
     SalData* pSalData = GetSalData();
 
     // install hook, if it is the first SalObject
-    if ( !pSalData->mpFirstObject )
+    if (pSalData->maObjects.empty())
     {
         pSalData->mhSalObjMsgHook = SetWindowsHookExW( WH_CALLWNDPROC,
                                                        SalSysMsgProc,
@@ -505,8 +497,7 @@ WinSalObject::WinSalObject()
     mpStdClipRgnData    = nullptr;
 
     // Insert object in objectlist
-    mpNextObject = pSalData->mpFirstObject;
-    pSalData->mpFirstObject = this;
+    pSalData->maObjects.insert(pSalData->maObjects.begin(), this);
 }
 
 WinSalObject::~WinSalObject()
@@ -514,22 +505,11 @@ WinSalObject::~WinSalObject()
     SalData* pSalData = GetSalData();
 
     // remove frame from framelist
-    if ( this == pSalData->mpFirstObject )
-    {
-        pSalData->mpFirstObject = mpNextObject;
+    pSalData->maObjects.remove(this);
 
-        // remove hook, if it is the last SalObject
-        if ( !pSalData->mpFirstObject )
-            UnhookWindowsHookEx( pSalData->mhSalObjMsgHook );
-    }
-    else
-    {
-        WinSalObject* pTempObject = pSalData->mpFirstObject;
-        while ( pTempObject->mpNextObject != this )
-            pTempObject = pTempObject->mpNextObject;
-
-        pTempObject->mpNextObject = mpNextObject;
-    }
+    // remove hook, if it is the last SalObject
+    if (pSalData->maObjects.empty())
+        UnhookWindowsHookEx(pSalData->mhSalObjMsgHook);
 
     // destroy cache data
     delete [] reinterpret_cast<BYTE*>(mpStdClipRgnData);

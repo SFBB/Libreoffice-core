@@ -7760,22 +7760,15 @@ void DocxAttributeOutput::FontAlternateName( const OUString& rName ) const
     m_pSerializer->singleElementNS(XML_w, XML_altName, FSNS(XML_w, XML_val), rName);
 }
 
-void DocxAttributeOutput::FontCharset( sal_uInt8 nCharSet, rtl_TextEncoding nEncoding ) const
+void DocxAttributeOutput::FontCharset( sal_uInt8 nCharSet ) const
 {
-    rtl::Reference<FastAttributeList> pAttr = FastSerializerHelper::createAttrList();
-
     OString aCharSet( OString::number( nCharSet, 16 ) );
     if ( aCharSet.getLength() == 1 )
         aCharSet = "0" + aCharSet;
-    pAttr->add(FSNS(XML_w, XML_val), aCharSet);
 
-    if (GetExport().GetFilter().getVersion() != oox::core::ECMA_376_1ST_EDITION)
-    {
-        if( const char* charset = rtl_getMimeCharsetFromTextEncoding( nEncoding ))
-            pAttr->add( FSNS( XML_w, XML_characterSet ), charset );
-    }
-
-    m_pSerializer->singleElementNS( XML_w, XML_charset, pAttr );
+    // An old change also added w:characterSet to the export conditionally, but it's only for
+    // strict OOXML that LO doesn't support and the condition couldn't cover, so it's removed now
+    m_pSerializer->singleElementNS( XML_w, XML_charset, FSNS(XML_w, XML_val), aCharSet );
 }
 
 void DocxAttributeOutput::FontFamilyType( FontFamily eFamily ) const
@@ -9185,7 +9178,7 @@ void DocxAttributeOutput::FootnotesEndnotes( bool bFootnotes )
         // Request separator only if both width and thickness are non-zero.
         bSeparator = rFootnoteInfo.GetLineStyle() != SvxBorderLineStyle::NONE
                   && rFootnoteInfo.GetLineWidth() > 0
-                  && double(rFootnoteInfo.GetWidth()) > 0;
+                  && rFootnoteInfo.GetWidth() > 0;
         nHeight = sw::FootnoteSeparatorHeight(m_rExport.m_rDoc, rFootnoteInfo);
 
         const IDocumentSettingAccess& rIDSA = m_rExport.m_rDoc.getIDocumentSettingAccess();

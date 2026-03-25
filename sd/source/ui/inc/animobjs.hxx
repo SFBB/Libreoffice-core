@@ -56,7 +56,7 @@ class SdDisplay final : public weld::CustomWidgetController
 {
 private:
     Bitmap      aBitmap;
-    Fraction    aScale;
+    double      mfScale;
 
 public:
     SdDisplay();
@@ -65,7 +65,7 @@ public:
     virtual void Paint( vcl::RenderContext& rRenderContext, const ::tools::Rectangle& rRect ) override;
 
     void    SetBitmap( Bitmap const * pBmp );
-    void    SetScale( const Fraction& rFrac );
+    void    SetScale( double rFrac );
 
     virtual void SetDrawingArea(weld::DrawingArea* pDrawingArea) override;
 };
@@ -142,7 +142,7 @@ private:
     void            ResetAttrs();
     void            WaitInEffect( sal_Int64 nMilliSeconds, sal_Int64 nTime,
                                         SfxProgress* pStbMgr ) const;
-    Fraction        GetScale();
+    double          GetScale();
 };
 
 /**

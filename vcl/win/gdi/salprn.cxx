@@ -1122,7 +1122,6 @@ void WinSalInfoPrinter::GetPageInfo( const ImplJobSetup*,
 static BOOL CALLBACK SalPrintAbortProc( HDC hPrnDC, int /* nError */ )
 {
     SalData*    pSalData = GetSalData();
-    WinSalPrinter* pPrinter;
     int         i = 0;
     bool        bWhile = true;
 
@@ -1137,16 +1136,10 @@ static BOOL CALLBACK SalPrintAbortProc( HDC hPrnDC, int /* nError */ )
         else
             ++i;
 
-        pPrinter = pSalData->mpFirstPrinter;
-        while ( pPrinter )
-        {
-            if( pPrinter->mhDC == hPrnDC )
-                break;
-
-            pPrinter = pPrinter->mpNextPrinter;
-        }
-
-        if ( !pPrinter || pPrinter->mbAbort )
+        auto aPrinterIt
+            = std::ranges::find_if(pSalData->maPrinters, [&hPrnDC](WinSalPrinter* pPrinter)
+                                   { return pPrinter && pPrinter->mhDC == hPrnDC; });
+        if (aPrinterIt == pSalData->maPrinters.end())
             return FALSE;
     }
     while ( bWhile );
@@ -1178,24 +1171,19 @@ static DEVMODEW const * ImplSalSetCopies( DEVMODEW const * pDevMode, sal_uInt32 
 
 WinSalPrinter::WinSalPrinter() :
     mpInfoPrinter( nullptr ),
-    mpNextPrinter( nullptr ),
     mhDC( nullptr ),
     mnError( SalPrinterError::NONE ),
     mnCopies( 0 ),
     mbCollate( false ),
-    mbAbort( false ),
     mbValid( true )
 {
     SalData* pSalData = GetSalData();
     // insert printer in printerlist
-    mpNextPrinter = pSalData->mpFirstPrinter;
-    pSalData->mpFirstPrinter = this;
+    pSalData->maPrinters.insert(pSalData->maPrinters.begin(), this);
 }
 
 WinSalPrinter::~WinSalPrinter()
 {
-    SalData* pSalData = GetSalData();
-
     // release DC if there is one still around because of AbortJob
     HDC hDC = mhDC;
     if ( hDC )
@@ -1207,17 +1195,7 @@ WinSalPrinter::~WinSalPrinter()
     }
 
     // remove printer from printerlist
-    if ( this == pSalData->mpFirstPrinter )
-        pSalData->mpFirstPrinter = mpNextPrinter;
-    else
-    {
-        WinSalPrinter* pTempPrinter = pSalData->mpFirstPrinter;
-
-        while( pTempPrinter->mpNextPrinter != this )
-            pTempPrinter = pTempPrinter->mpNextPrinter;
-
-        pTempPrinter->mpNextPrinter = mpNextPrinter;
-    }
+    GetSalData()->maPrinters.remove(this);
 }
 
 void WinSalPrinter::markInvalid()
@@ -1255,7 +1233,6 @@ bool WinSalPrinter::StartJob( const OUString* pFileName,
                            ImplJobSetup* pSetupData )
 {
     mnError     = SalPrinterError::NONE;
-    mbAbort     = false;
     mnCopies        = nCopies;
     mbCollate   = bCollate;
 
@@ -1296,7 +1273,6 @@ bool WinSalPrinter::StartJob( const OUString* pFileName,
     }
 
     mnError = SalPrinterError::NONE;
-    mbAbort = false;
 
     // As the Telecom Balloon Fax driver tends to send messages repeatedly
     // we try to process first all, and then insert a dummy message

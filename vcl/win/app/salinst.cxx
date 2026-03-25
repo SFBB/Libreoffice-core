@@ -219,10 +219,6 @@ SalData::SalData()
     mnCmdShow = 0;
     mhSalObjMsgHook = nullptr;
     mhWantLeaveMsg = nullptr;
-    mpFirstFrame = nullptr;
-    mpFirstObject = nullptr;
-    mpFirstVD = nullptr;
-    mpFirstPrinter = nullptr;
     mh50Bmp = nullptr;
     mh50Brush = nullptr;
     int i;
@@ -385,10 +381,10 @@ void WinSalInstance::AfterAppInit()
 static LRESULT ImplSalDispatchMessage( const MSG* pMsg )
 {
     SalData* pSalData = GetSalData();
-    if ( pSalData->mpFirstObject && ImplSalPreDispatchMsg( pMsg ) )
+    if (!pSalData->maObjects.empty() && ImplSalPreDispatchMsg(pMsg))
         return 0;
     LRESULT lResult = DispatchMessageW( pMsg );
-    if ( pSalData->mpFirstObject )
+    if (!pSalData->maObjects.empty())
         ImplSalPostDispatchMsg( pMsg );
     return lResult;
 }
