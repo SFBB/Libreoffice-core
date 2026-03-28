@@ -9,12 +9,16 @@
 
 #pragma once
 
+#include <sal/config.h>
+
 #include "QtInstanceContainer.hxx"
 
 #include <QtWidgets/QGroupBox>
 
 class QtInstanceFrame : public QtInstanceContainer, public virtual weld::Frame
 {
+    Q_OBJECT
+
     QGroupBox* m_pGroupBox;
 
 public:

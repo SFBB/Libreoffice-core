@@ -892,12 +892,6 @@ static int CALLBACK SalEnumFontsProcExW( const LOGFONTW* lpelfe,
     return 1;
 }
 
-struct TempFontItem
-{
-    OUString maFontResourcePath;
-    TempFontItem* mpNextItem;
-};
-
 static int lcl_AddFontResource(SalData& rSalData, const OUString& rFontFileURL)
 {
     OUString aFontSystemPath;
@@ -908,23 +902,16 @@ static int lcl_AddFontResource(SalData& rSalData, const OUString& rFontFileURL)
     if (nRet <= 0)
         return nRet;
 
-    TempFontItem* pNewItem = new TempFontItem;
-    pNewItem->maFontResourcePath = aFontSystemPath;
-
-    pNewItem->mpNextItem = rSalData.mpTempFontItem;
-    rSalData.mpTempFontItem = pNewItem;
+    rSalData.maTempFontPaths.insert(aFontSystemPath);
 
     return nRet;
 }
 
 void ImplReleaseTempFonts(SalData& rSalData)
 {
-    while (TempFontItem* p = rSalData.mpTempFontItem)
-    {
-        RemoveFontResourceExW(o3tl::toW(p->maFontResourcePath.getStr()), FR_PRIVATE, nullptr);
-        rSalData.mpTempFontItem = p->mpNextItem;
-        delete p;
-    }
+    for (const OUString& rFontPath : rSalData.maTempFontPaths)
+        RemoveFontResourceExW(o3tl::toW(rFontPath.getStr()), FR_PRIVATE, nullptr);
+    rSalData.maTempFontPaths.clear();
 }
 
 bool WinSalGraphics::AddTempDevFont(vcl::font::PhysicalFontCollection* pFontCollection,
@@ -971,17 +958,14 @@ bool WinSalGraphics::RemoveTempDevFont(const OUString& rFileURL, const OUString&
     OUString path;
     osl::FileBase::getSystemPathFromFileURL(rFileURL, path);
     auto pSalData = GetSalData();
-    for (TempFontItem** pp = &pSalData->mpTempFontItem; *pp; pp = &(*pp)->mpNextItem)
+    auto aIt = pSalData->maTempFontPaths.find(path);
+    if (aIt != pSalData->maTempFontPaths.end())
     {
-        if ((*pp)->maFontResourcePath == path)
-        {
-            RemoveFontResourceExW(o3tl::toW(path.getStr()), FR_PRIVATE, nullptr);
-            auto p = *pp;
-            *pp = p->mpNextItem;
-            delete p;
-            return true;
-        }
+        RemoveFontResourceExW(o3tl::toW(path.getStr()), FR_PRIVATE, nullptr);
+        pSalData->maTempFontPaths.erase(aIt);
+        return true;
     }
+
     SAL_WARN("vcl.fonts", "Trying to unregister an embedded font that wasn't registered?");
     return true; // It's still safe to delete the font file: we don't use it
 }

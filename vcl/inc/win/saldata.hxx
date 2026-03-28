@@ -31,12 +31,14 @@
 #include <systools/win32/comtools.hxx>
 #include <tools/long.hxx>
 
+#include <win/DWriteTextRenderer.hxx>
 #include <win/wincomp.hxx>
 
 #include <set>
 #include <list>
 #include <map>
 #include <unordered_map>
+#include <unordered_set>
 
 class AutoTimer;
 class WinSalInstance;
@@ -46,7 +48,6 @@ class WinSalVirtualDevice;
 class WinSalPrinter;
 namespace vcl { class Font; }
 struct HDCCache;
-struct TempFontItem;
 class TextOutRenderer;
 class SkiaControlsCache;
 
@@ -100,7 +101,6 @@ public:
     HWND                    mhWantLeaveMsg;         // window handle, that want a MOUSELEAVE message
     std::list<WinSalFrame*> maFrames; // frames
     std::list<WinSalObject*> maObjects; // objects
-    std::list<WinSalPrinter*> maPrinters; // printers
     std::array<HDCCache, CACHESIZE_HDC> maHDCCache; // Cache for three DC's
     HBITMAP                 mh50Bmp;                // 50% Bitmap
     HBRUSH                  mh50Brush;              // 50% Brush
@@ -114,7 +114,7 @@ public:
     bool                    mbObjClassInit;         // is SALOBJECTCLASS initialised
     DWORD                   mnAppThreadId;          // Id from Application-Thread
     std::unordered_map<int, SalIcon> maIconCache;   // icon cache
-    TempFontItem*           mpTempFontItem;         // LibreOffice own fonts (shared and embedded)
+    std::unordered_set<OUString> maTempFontPaths; // LibreOffice own fonts (shared and embedded)
     bool                    mbThemeChanged;         // true if visual theme was changed: throw away theme handles
     bool                    mbThemeMenuSupport;
 
@@ -124,7 +124,7 @@ public:
     std::set< HMENU >       mhMenuSet;              // keeps track of menu handles created by VCL, used by IsKnownMenuHandle()
     std::map< UINT,sal_uInt16 > maVKMap;      // map some dynamic VK_* entries
 
-    std::unique_ptr<TextOutRenderer> m_pD2DWriteTextOutRenderer;
+    std::unique_ptr<D2DWriteTextOutRenderer> m_pD2DWriteTextOutRenderer;
     // tdf#107205 need 2 instances because D2DWrite can't rotate text
     std::unique_ptr<TextOutRenderer> m_pExTextOutRenderer;
     std::unique_ptr<SkiaControlsCache> m_pSkiaControlsCache;

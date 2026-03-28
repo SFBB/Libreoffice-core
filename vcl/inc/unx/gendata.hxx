@@ -9,18 +9,12 @@
 
 #pragma once
 
-#include <osl/socket.hxx>
-
 #include <svdata.hxx>
 
 #include <memory>
 
 #ifndef IOS
 class FreetypeManager;
-#endif
-class SalGenericDisplay;
-
-#ifndef IOS
 
 namespace psp
 {
@@ -51,9 +45,7 @@ class VCL_PLUGIN_PUBLIC GenericUnixSalData : public SalData
 {
 #ifndef IOS
     friend class ::psp::PrinterInfoManager;
-#endif
 
-#ifndef IOS
     std::unique_ptr<FreetypeManager> m_pFreetypeManager;
     std::unique_ptr<psp::PrintFontManager> m_pPrintFontManager;
     std::unique_ptr<psp::PrinterInfoManager> m_pPrinterInfoManager;
