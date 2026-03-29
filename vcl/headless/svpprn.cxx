@@ -125,27 +125,24 @@ static void copyJobDataToJobSetup( ImplJobSetup* pJobSetup, JobData& rData )
 
 // SalInstance
 
-SalInfoPrinter* SvpSalInstance::CreateInfoPrinter( SalPrinterQueueInfo* pQueueInfo,
-                                                   ImplJobSetup*        pJobSetup )
+SalInfoPrinter* SvpSalInstance::CreateInfoPrinter(SalPrinterQueueInfo& rQueueInfo,
+                                                  ImplJobSetup& rJobSetup)
 {
     // create and initialize SalInfoPrinter
     SvpSalInfoPrinter* pPrinter = new SvpSalInfoPrinter;
 
-    if( pJobSetup )
-    {
-        PrinterInfoManager& rManager( PrinterInfoManager::get() );
-        PrinterInfo aInfo( rManager.getPrinterInfo( pQueueInfo->maPrinterName ) );
-        pPrinter->m_aJobData = aInfo;
+    PrinterInfoManager& rManager(PrinterInfoManager::get());
+    PrinterInfo aInfo(rManager.getPrinterInfo(rQueueInfo.maPrinterName));
+    pPrinter->m_aJobData = aInfo;
 
-        if( pJobSetup->GetDriverData() )
-            JobData::constructFromStreamBuffer( pJobSetup->GetDriverData(),
-                                                pJobSetup->GetDriverDataLen(), aInfo );
+    if (rJobSetup.GetDriverData())
+        JobData::constructFromStreamBuffer(rJobSetup.GetDriverData(), rJobSetup.GetDriverDataLen(),
+                                           aInfo);
 
-        pJobSetup->SetSystem( JOBSETUP_SYSTEM_UNIX );
-        pJobSetup->SetPrinterName( pQueueInfo->maPrinterName );
-        pJobSetup->SetDriver( aInfo.m_aDriverName );
-        copyJobDataToJobSetup( pJobSetup, aInfo );
-    }
+    rJobSetup.SetSystem(JOBSETUP_SYSTEM_UNIX);
+    rJobSetup.SetPrinterName(rQueueInfo.maPrinterName);
+    rJobSetup.SetDriver(aInfo.m_aDriverName);
+    copyJobDataToJobSetup(&rJobSetup, aInfo);
 
     return pPrinter;
 }
@@ -159,7 +156,7 @@ std::unique_ptr<SalPrinter> SvpSalInstance::CreatePrinter( SalInfoPrinter* pInfo
     return std::unique_ptr<SalPrinter>(pPrinter);
 }
 
-void SvpSalInstance::GetPrinterQueueInfo( ImplPrnQueueList* pList )
+void SvpSalInstance::GetPrinterQueueInfo(ImplPrnQueueList& rList)
 {
     PrinterInfoManager& rManager( PrinterInfoManager::get() );
     static const char* pNoSyncDetection = getenv( "SAL_DISABLE_SYNCHRONOUS_PRINTER_DETECTION" );
@@ -169,13 +166,11 @@ void SvpSalInstance::GetPrinterQueueInfo( ImplPrnQueueList* pList )
         rManager.checkPrintersChanged( true );
     }
 
-    std::vector<OUString> aPrinters = rManager.listPrinters();
-    for (auto const& printer : aPrinters)
+    for (const auto& [rPrinterName, rInfo] : rManager.getPrinters())
     {
-        const PrinterInfo& rInfo( rManager.getPrinterInfo(printer) );
         // create new entry
         std::unique_ptr<SalPrinterQueueInfo> pInfo(new SalPrinterQueueInfo);
-        pInfo->maPrinterName    = printer;
+        pInfo->maPrinterName = rPrinterName;
         pInfo->maDriver         = rInfo.m_aDriverName;
         pInfo->maLocation       = rInfo.m_aLocation;
         pInfo->maComment        = rInfo.m_aComment;
@@ -184,7 +179,7 @@ void SvpSalInstance::GetPrinterQueueInfo( ImplPrnQueueList* pList )
         if (getPdfDir(rInfo, sPdfDir))
             pInfo->maLocation = sPdfDir;
 
-        pList->Add( std::move(pInfo) );
+        rList.Add(std::move(pInfo));
     }
 }
 
@@ -201,7 +196,7 @@ void SvpSalInstance::PostPrintersChanged()
         pInst->PostEvent( pSalFrame, nullptr, SalEvent::PrinterChanged );
 }
 
-bool SvpSalInfoPrinter::Setup( weld::Window*, ImplJobSetup* )
+bool SvpSalInfoPrinter::Setup( weld::Window&, ImplJobSetup&)
 {
     return false;
 }

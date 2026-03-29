@@ -242,24 +242,22 @@ static std::vector<OUString> getFaxNumbers()
  *  SalInstance
  */
 
-void SalGenericInstance::configurePspInfoPrinter(PspSalInfoPrinter *pPrinter,
-    SalPrinterQueueInfo const * pQueueInfo, ImplJobSetup* pJobSetup)
+void SalGenericInstance::configurePspInfoPrinter(PspSalInfoPrinter& rPrinter,
+                                                 const SalPrinterQueueInfo& rQueueInfo,
+                                                 ImplJobSetup& rJobSetup)
 {
-    if( !pJobSetup )
-        return;
-
     PrinterInfoManager& rManager( PrinterInfoManager::get() );
-    PrinterInfo aInfo( rManager.getPrinterInfo( pQueueInfo->maPrinterName ) );
-    pPrinter->m_aJobData = aInfo;
+    PrinterInfo aInfo(rManager.getPrinterInfo(rQueueInfo.maPrinterName));
+    rPrinter.m_aJobData = aInfo;
 
-    if( pJobSetup->GetDriverData() )
-        JobData::constructFromStreamBuffer( pJobSetup->GetDriverData(),
-                                            pJobSetup->GetDriverDataLen(), aInfo );
+    if (rJobSetup.GetDriverData())
+        JobData::constructFromStreamBuffer(rJobSetup.GetDriverData(), rJobSetup.GetDriverDataLen(),
+                                           aInfo);
 
-    pJobSetup->SetSystem( JOBSETUP_SYSTEM_UNIX );
-    pJobSetup->SetPrinterName( pQueueInfo->maPrinterName );
-    pJobSetup->SetDriver( aInfo.m_aDriverName );
-    copyJobDataToJobSetup( pJobSetup, aInfo );
+    rJobSetup.SetSystem(JOBSETUP_SYSTEM_UNIX);
+    rJobSetup.SetPrinterName(rQueueInfo.maPrinterName);
+    rJobSetup.SetDriver(aInfo.m_aDriverName);
+    copyJobDataToJobSetup(&rJobSetup, aInfo);
 }
 
 bool SalGenericInstance::getPdfDir(const PrinterInfo& rInfo, OUString& rDir)
@@ -281,13 +279,13 @@ bool SalGenericInstance::getPdfDir(const PrinterInfo& rInfo, OUString& rDir)
     return false;
 }
 
-SalInfoPrinter* SalGenericInstance::CreateInfoPrinter( SalPrinterQueueInfo*    pQueueInfo,
-                                                       ImplJobSetup*           pJobSetup )
+SalInfoPrinter* SalGenericInstance::CreateInfoPrinter(SalPrinterQueueInfo& rQueueInfo,
+                                                      ImplJobSetup& rJobSetup)
 {
     mbPrinterInit = true;
     // create and initialize SalInfoPrinter
     PspSalInfoPrinter* pPrinter = new PspSalInfoPrinter();
-    configurePspInfoPrinter(pPrinter, pQueueInfo, pJobSetup);
+    configurePspInfoPrinter(*pPrinter, rQueueInfo, rJobSetup);
     return pPrinter;
 }
 
@@ -301,7 +299,7 @@ std::unique_ptr<SalPrinter> SalGenericInstance::CreatePrinter( SalInfoPrinter* p
     return std::unique_ptr<SalPrinter>(pPrinter);
 }
 
-void SalGenericInstance::GetPrinterQueueInfo( ImplPrnQueueList* pList )
+void SalGenericInstance::GetPrinterQueueInfo(ImplPrnQueueList& rList)
 {
     mbPrinterInit = true;
     PrinterInfoManager& rManager( PrinterInfoManager::get() );
@@ -312,13 +310,11 @@ void SalGenericInstance::GetPrinterQueueInfo( ImplPrnQueueList* pList )
         rManager.checkPrintersChanged( true );
     }
 
-    std::vector<OUString> aPrinters = rManager.listPrinters();
-    for (auto const& printer : aPrinters)
+    for (const auto& [rPrinterName, rInfo] : rManager.getPrinters())
     {
-        const PrinterInfo& rInfo( rManager.getPrinterInfo(printer) );
         // create new entry
         std::unique_ptr<SalPrinterQueueInfo> pInfo(new SalPrinterQueueInfo);
-        pInfo->maPrinterName    = printer;
+        pInfo->maPrinterName = rPrinterName;
         pInfo->maDriver         = rInfo.m_aDriverName;
         pInfo->maLocation       = rInfo.m_aLocation;
         pInfo->maComment        = rInfo.m_aComment;
@@ -327,7 +323,7 @@ void SalGenericInstance::GetPrinterQueueInfo( ImplPrnQueueList* pList )
         if (getPdfDir(rInfo, sPdfDir))
             pInfo->maLocation = sPdfDir;
 
-        pList->Add( std::move(pInfo) );
+        rList.Add(std::move(pInfo));
     }
 }
 
@@ -398,64 +394,58 @@ void PspSalInfoPrinter::ReleaseGraphics( SalGraphics* pGraphics )
     }
 }
 
-bool PspSalInfoPrinter::Setup( weld::Window* pFrame, ImplJobSetup* pJobSetup )
+bool PspSalInfoPrinter::Setup(weld::Window& rFrame, ImplJobSetup& rJobSetup)
 {
-    if( ! pFrame || ! pJobSetup )
-        return false;
-
     PrinterInfoManager& rManager = PrinterInfoManager::get();
 
-    PrinterInfo aInfo( rManager.getPrinterInfo( pJobSetup->GetPrinterName() ) );
-    if ( pJobSetup->GetDriverData() )
+    PrinterInfo aInfo(rManager.getPrinterInfo(rJobSetup.GetPrinterName()));
+    if (rJobSetup.GetDriverData())
     {
-        SetData( JobSetFlags::ALL, pJobSetup );
-        JobData::constructFromStreamBuffer( pJobSetup->GetDriverData(), pJobSetup->GetDriverDataLen(), aInfo );
+        SetData(JobSetFlags::ALL, rJobSetup);
+        JobData::constructFromStreamBuffer(rJobSetup.GetDriverData(), rJobSetup.GetDriverDataLen(),
+                                           aInfo);
     }
-    aInfo.m_bPapersizeFromSetup = pJobSetup->GetPapersizeFromSetup();
-    aInfo.meSetupMode = pJobSetup->GetPrinterSetupMode();
+    aInfo.m_bPapersizeFromSetup = rJobSetup.GetPapersizeFromSetup();
+    aInfo.meSetupMode = rJobSetup.GetPrinterSetupMode();
 
-    if (SetupPrinterDriver(pFrame, aInfo))
+    if (SetupPrinterDriver(&rFrame, aInfo))
     {
-        pJobSetup->SetDriverData( nullptr, 0 );
+        rJobSetup.SetDriverData(nullptr, 0);
 
         sal_uInt32 nBytes;
         std::unique_ptr<sal_uInt8[]> pBuffer;
         aInfo.getStreamBuffer( pBuffer, nBytes );
-        pJobSetup->SetDriverData( std::move(pBuffer), nBytes );
+        rJobSetup.SetDriverData(std::move(pBuffer), nBytes);
 
         // copy everything to job setup
-        copyJobDataToJobSetup( pJobSetup, aInfo );
-        JobData::constructFromStreamBuffer( pJobSetup->GetDriverData(), pJobSetup->GetDriverDataLen(), m_aJobData );
+        copyJobDataToJobSetup(&rJobSetup, aInfo);
+        JobData::constructFromStreamBuffer(rJobSetup.GetDriverData(), rJobSetup.GetDriverDataLen(),
+                                           m_aJobData);
         return true;
     }
     return false;
 }
 
-// This function gets the driver data and puts it into pJobSetup
-// If pJobSetup->GetDriverData() is NOT NULL, then the independent
+// This function gets the driver data and puts it into rJobSetup
+// If rJobSetup.GetDriverData() is NOT NULL, then the independent
 // data should be merged into the driver data
-// If pJobSetup->GetDriverData() IS NULL, then the driver defaults
+// If rJobSetup.GetDriverData() IS NULL, then the driver defaults
 // should be merged into the independent data
-bool PspSalInfoPrinter::SetPrinterData( ImplJobSetup* pJobSetup )
+bool PspSalInfoPrinter::SetPrinterData(ImplJobSetup& rJobSetup)
 {
-    if( pJobSetup->GetDriverData() )
-        return SetData( JobSetFlags::ALL, pJobSetup );
+    if (rJobSetup.GetDriverData())
+        return SetData(JobSetFlags::ALL, rJobSetup);
 
-    copyJobDataToJobSetup( pJobSetup, m_aJobData );
+    copyJobDataToJobSetup(&rJobSetup, m_aJobData);
 
     return true;
 }
 
-// This function merges the independent driver data
-// and sets the new independent data in pJobSetup
-// Only the data must be changed, where the bit
-// in nGetDataFlags is set
-bool PspSalInfoPrinter::SetData(
-    JobSetFlags nSetDataFlags,
-    ImplJobSetup* pJobSetup )
+bool PspSalInfoPrinter::SetData(JobSetFlags nSetDataFlags, ImplJobSetup& rJobSetup)
 {
     JobData aData;
-    JobData::constructFromStreamBuffer( pJobSetup->GetDriverData(), pJobSetup->GetDriverDataLen(), aData );
+    JobData::constructFromStreamBuffer(rJobSetup.GetDriverData(), rJobSetup.GetDriverDataLen(),
+                                       aData);
 
     if( aData.m_pParser )
     {
@@ -464,29 +454,31 @@ bool PspSalInfoPrinter::SetData(
 
         // merge orientation if necessary
         if( nSetDataFlags & JobSetFlags::ORIENTATION )
-            aData.m_eOrientation = pJobSetup->GetOrientation() == Orientation::Landscape ? orientation::Landscape : orientation::Portrait;
+            aData.m_eOrientation = rJobSetup.GetOrientation() == Orientation::Landscape
+                                       ? orientation::Landscape
+                                       : orientation::Portrait;
 
         // merge papersize if necessary
         if( nSetDataFlags & JobSetFlags::PAPERSIZE )
         {
             OUString aPaper;
 
-            if( pJobSetup->GetPaperFormat() == PAPER_USER )
-                aPaper = aData.m_pParser->matchPaper(
-                    TenMuToPt( pJobSetup->GetPaperWidth() ),
-                    TenMuToPt( pJobSetup->GetPaperHeight() ),
-                    &aData.m_eOrientation );
+            if (rJobSetup.GetPaperFormat() == PAPER_USER)
+                aPaper = aData.m_pParser->matchPaper(TenMuToPt(rJobSetup.GetPaperWidth()),
+                                                     TenMuToPt(rJobSetup.GetPaperHeight()),
+                                                     &aData.m_eOrientation);
             else
-                aPaper = OStringToOUString(PaperInfo::toPSName(pJobSetup->GetPaperFormat()), RTL_TEXTENCODING_ISO_8859_1);
+                aPaper = OStringToOUString(PaperInfo::toPSName(rJobSetup.GetPaperFormat()),
+                                           RTL_TEXTENCODING_ISO_8859_1);
 
             pKey = aData.m_pParser->getKey( u"PageSize"_ustr );
             pValue = pKey ? pKey->getValueCaseInsensitive( aPaper ) : nullptr;
 
             // some PPD files do not specify the standard paper names (e.g. C5 instead of EnvC5)
             // try to find the correct paper anyway using the size
-            if( pKey && ! pValue && pJobSetup->GetPaperFormat() != PAPER_USER )
+            if (pKey && !pValue && rJobSetup.GetPaperFormat() != PAPER_USER)
             {
-                PaperInfo aInfo( pJobSetup->GetPaperFormat() );
+                PaperInfo aInfo(rJobSetup.GetPaperFormat());
                 aPaper = aData.m_pParser->matchPaper(
                     TenMuToPt( aInfo.getWidth() ),
                     TenMuToPt( aInfo.getHeight() ),
@@ -504,11 +496,11 @@ bool PspSalInfoPrinter::SetData(
             pKey = aData.m_pParser->getKey( u"InputSlot"_ustr );
             if( pKey )
             {
-                int nPaperBin = pJobSetup->GetPaperBin();
+                int nPaperBin = rJobSetup.GetPaperBin();
                 if( nPaperBin >= pKey->countValues() )
                     pValue = pKey->getDefaultValue();
                 else
-                    pValue = pKey->getValue( pJobSetup->GetPaperBin() );
+                    pValue = pKey->getValue(rJobSetup.GetPaperBin());
 
                 // may fail due to constraints;
                 // real paper bin is copied back to jobsetup in that case
@@ -525,7 +517,7 @@ bool PspSalInfoPrinter::SetData(
             if( pKey )
             {
                 pValue = nullptr;
-                switch( pJobSetup->GetDuplexMode() )
+                switch (rJobSetup.GetDuplexMode())
                 {
                 case DuplexMode::Off:
                     pValue = pKey->getValue( u"None"_ustr );
@@ -548,10 +540,10 @@ bool PspSalInfoPrinter::SetData(
                 aData.m_aContext.setValue( pKey, pValue );
             }
         }
-        aData.m_bPapersizeFromSetup = pJobSetup->GetPapersizeFromSetup();
+        aData.m_bPapersizeFromSetup = rJobSetup.GetPapersizeFromSetup();
 
         m_aJobData = aData;
-        copyJobDataToJobSetup( pJobSetup, aData );
+        copyJobDataToJobSetup(&rJobSetup, aData);
         return true;
     }
 

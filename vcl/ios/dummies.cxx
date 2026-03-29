@@ -38,13 +38,13 @@ void SvpSalInstance::PostPrintersChanged()
 {
 }
 
-SalInfoPrinter* SvpSalInstance::CreateInfoPrinter( SalPrinterQueueInfo* /* pQueueInfo */,
-                                                   ImplJobSetup*        /* pJobSetup */ )
+SalInfoPrinter* SvpSalInstance::CreateInfoPrinter(SalPrinterQueueInfo& /* rQueueInfo */,
+                                                  ImplJobSetup& /* rJobSetup */)
 {
-    return NULL;
+    return nullptr;
 }
 
-void SvpSalInstance::GetPrinterQueueInfo( ImplPrnQueueList* /* pList */ )
+void SvpSalInstance::GetPrinterQueueInfo(ImplPrnQueueList& /* rList */)
 {
 }
 
@@ -58,17 +58,13 @@ OUString SalGenericInstance::GetDefaultPrinter()
     return OUString();
 }
 
-void SalGenericInstance::PostPrintersChanged()
+SalInfoPrinter* SalGenericInstance::CreateInfoPrinter(SalPrinterQueueInfo& /* rQueueInfo */,
+                                                      ImplJobSetup& /* rJobSetup */)
 {
+    return nullptr;
 }
 
-SalInfoPrinter* SalGenericInstance::CreateInfoPrinter( SalPrinterQueueInfo* /* pQueueInfo */,
-                                                       ImplJobSetup*        /* pJobSetup */ )
-{
-    return NULL;
-}
-
-void SalGenericInstance::GetPrinterQueueInfo( ImplPrnQueueList* /* pList */ )
+void SalGenericInstance::GetPrinterQueueInfo(ImplPrnQueueList& /* rList */)
 {
 }
 

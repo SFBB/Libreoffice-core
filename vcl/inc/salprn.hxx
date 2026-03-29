@@ -63,15 +63,14 @@ public:
     virtual SalGraphics*            AcquireGraphics() = 0;
     virtual void                    ReleaseGraphics( SalGraphics* pGraphics ) = 0;
 
-    virtual bool                    Setup(weld::Window* pFrame, ImplJobSetup* pSetupData) = 0;
+    virtual bool Setup(weld::Window& rFrame, ImplJobSetup& rSetupData) = 0;
     // This function set the driver data and
-    // set the new indepen data in pSetupData
-    virtual bool                    SetPrinterData( ImplJobSetup* pSetupData ) = 0;
-    // This function merged the indepen driver data
-    // and set the new indepen data in pSetupData
-    // Only the data must changed, where the bit
-    // in nFlags is set
-    virtual bool                    SetData( JobSetFlags nFlags, ImplJobSetup* pSetupData ) = 0;
+    // set the new indepen data in rSetupData
+    virtual bool SetPrinterData(ImplJobSetup& rSetupData) = 0;
+    // This function merges the independent driver data
+    // and sets the new independent data in rSetupData
+    // Only the data must be changed for which the bit in nFlags is set.
+    virtual bool SetData(JobSetFlags nFlags, ImplJobSetup& rSetupData) = 0;
 
     virtual void                    GetPageInfo( const ImplJobSetup* pSetupData,
                                                  tools::Long& rOutWidth, tools::Long& rOutHeight,

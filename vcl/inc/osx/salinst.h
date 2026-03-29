@@ -116,11 +116,11 @@ public:
                                                    tools::Long &nDX, tools::Long &nDY,
                                                    DeviceFormat eFormat,
                                                    const SystemGraphicsData& rData ) override;
-    virtual SalInfoPrinter* CreateInfoPrinter( SalPrinterQueueInfo* pQueueInfo,
-                                               ImplJobSetup* pSetupData ) override;
+    virtual SalInfoPrinter* CreateInfoPrinter(SalPrinterQueueInfo& rQueueInfo,
+                                              ImplJobSetup& rSetupData) override;
     virtual void            DestroyInfoPrinter( SalInfoPrinter* pPrinter ) override;
     virtual std::unique_ptr<SalPrinter> CreatePrinter( SalInfoPrinter* pInfoPrinter ) override;
-    virtual void            GetPrinterQueueInfo( ImplPrnQueueList* pList ) override;
+    virtual void GetPrinterQueueInfo(ImplPrnQueueList& rList) override;
     virtual OUString        GetDefaultPrinter() override;
     virtual SalTimer*       CreateSalTimer() override;
     virtual SalSystem*      CreateSalSystem() override;

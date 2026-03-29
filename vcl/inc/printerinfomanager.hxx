@@ -84,20 +84,7 @@ protected:
         TimeValue               m_aModified;
     };
 
-    // internal data to describe a printer
-    struct Printer
-    {
-        // configuration file containing this printer
-        // empty means a freshly added printer that has to be saved yet
-        OUString         m_aFile;
-        // details other config files that have this printer
-        // in case of removal all have to be removed
-        std::unordered_set< OUString > m_aAlternateFiles;
-        // the corresponding info and job data
-        PrinterInfo             m_aInfo;
-    };
-
-    std::unordered_map< OUString, Printer > m_aPrinters;
+    std::unordered_map<OUString, PrinterInfo> m_aPrinters;
     PrinterInfo                         m_aGlobalDefaults;
     std::vector< WatchFile >            m_aWatchFiles;
     OUString                     m_aDefaultPrinter;
@@ -128,8 +115,8 @@ public:
     // get PrinterInfoManager type
     Type getType() const { return m_eType; }
 
-    // lists the names of all known printers
-    std::vector<OUString> listPrinters() const;
+    // retrieve all known printers
+    const std::unordered_map<OUString, PrinterInfo>& getPrinters() const { return m_aPrinters; }
 
     // gets info about a named printer
     const PrinterInfo& getPrinterInfo( const OUString& rPrinter ) const;

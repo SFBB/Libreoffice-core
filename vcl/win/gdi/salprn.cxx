@@ -970,31 +970,31 @@ void WinSalInfoPrinter::ReleaseGraphics( SalGraphics* )
     m_bGraphics = false;
 }
 
-bool WinSalInfoPrinter::Setup(weld::Window* pFrame, ImplJobSetup* pSetupData)
+bool WinSalInfoPrinter::Setup(weld::Window& rFrame, ImplJobSetup& rSetupData)
 {
-    if ( ImplUpdateSalJobSetup(this, pSetupData, true, pFrame))
+    if (ImplUpdateSalJobSetup(this, &rSetupData, true, &rFrame))
     {
-        ImplDevModeToJobSetup( this, pSetupData, JobSetFlags::ALL );
-        return ImplUpdateSalPrnIC( this, pSetupData );
+        ImplDevModeToJobSetup(this, &rSetupData, JobSetFlags::ALL);
+        return ImplUpdateSalPrnIC(this, &rSetupData);
     }
 
     return false;
 }
 
-bool WinSalInfoPrinter::SetPrinterData( ImplJobSetup* pSetupData )
+bool WinSalInfoPrinter::SetPrinterData(ImplJobSetup& rSetupData)
 {
-    if ( !ImplTestSalJobSetup( this, pSetupData, false ) )
+    if (!ImplTestSalJobSetup(this, &rSetupData, false))
         return false;
-    return ImplUpdateSalPrnIC( this, pSetupData );
+    return ImplUpdateSalPrnIC(this, &rSetupData);
 }
 
-bool WinSalInfoPrinter::SetData( JobSetFlags nFlags, ImplJobSetup* pSetupData )
+bool WinSalInfoPrinter::SetData(JobSetFlags nFlags, ImplJobSetup& rSetupData)
 {
-    ImplJobSetupToDevMode( this, pSetupData, nFlags );
-    if ( ImplUpdateSalJobSetup( this, pSetupData, true, nullptr ) )
+    ImplJobSetupToDevMode(this, &rSetupData, nFlags);
+    if (ImplUpdateSalJobSetup(this, &rSetupData, true, nullptr))
     {
-        ImplDevModeToJobSetup( this, pSetupData, nFlags );
-        return ImplUpdateSalPrnIC( this, pSetupData );
+        ImplDevModeToJobSetup(this, &rSetupData, nFlags);
+        return ImplUpdateSalPrnIC(this, &rSetupData);
     }
 
     return false;
@@ -1135,7 +1135,7 @@ static BOOL CALLBACK SalPrintAbortProc( HDC hPrnDC, int /* nError */ )
         else
             ++i;
 
-        const std::list<WinSalPrinter*>& rPrinters = GetWindowsInstance().GetPrinters();
+        const std::list<WinSalPrinter*>& rPrinters = GetWindowsInstance().GetData().m_aPrinters;
         auto aPrinterIt
             = std::ranges::find_if(rPrinters, [&hPrnDC](WinSalPrinter* pPrinter)
                                    { return pPrinter && pPrinter->mhDC == hPrnDC; });
@@ -1177,7 +1177,7 @@ WinSalPrinter::WinSalPrinter() :
     mbCollate( false ),
     mbValid( true )
 {
-    GetWindowsInstance().InsertPrinter(this);
+    GetWindowsInstance().GetData().m_aPrinters.push_front(this);
 }
 
 WinSalPrinter::~WinSalPrinter()
@@ -1192,7 +1192,7 @@ WinSalPrinter::~WinSalPrinter()
         DeleteDC( hDC );
     }
 
-    GetWindowsInstance().RemovePrinter(this);
+    GetWindowsInstance().GetData().m_aPrinters.remove(this);
 }
 
 void WinSalPrinter::markInvalid()

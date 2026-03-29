@@ -19,35 +19,50 @@
 
 #pragma once
 
+#include <sal/config.h>
+
 #include <salinst.hxx>
 #include <svdata.hxx>
 #include <vclpluginapi.h>
+#include <win/DWriteTextRenderer.hxx>
 
 #include <list>
 
 class WinSalPrinter;
 
+#ifdef GetDefaultPrinter
+#undef GetDefaultPrinter
+#endif
+
+struct WindowsInstanceData
+{
+    std::list<WinSalPrinter*> m_aPrinters;
+    std::unordered_set<OUString> m_aTempFontPaths;
+
+    std::unique_ptr<D2DWriteTextOutRenderer> m_pD2DWriteTextOutRenderer;
+    // tdf#107205 need 2 instances because D2DWrite can't rotate text
+    std::unique_ptr<TextOutRenderer> m_pExTextOutRenderer;
+};
+
 /** Abstract base class for SalInstance implementations on Windows. */
 class VCLPLUG_WIN_PUBLIC WindowsInstance : public SalInstance
 {
-    std::list<WinSalPrinter*> m_aPrinters;
+    WindowsInstanceData m_aData;
 
 public:
     WindowsInstance(std::unique_ptr<comphelper::SolarMutex> pMutex, SalData* pSalData);
     virtual ~WindowsInstance();
 
-    virtual SalInfoPrinter* CreateInfoPrinter(SalPrinterQueueInfo* pQueueInfo,
-                                              ImplJobSetup* pSetupData) override;
+    virtual SalInfoPrinter* CreateInfoPrinter(SalPrinterQueueInfo& rQueueInfo,
+                                              ImplJobSetup& rSetupData) override;
     virtual std::unique_ptr<SalPrinter> CreatePrinter(SalInfoPrinter* pInfoPrinter) override;
-    virtual void GetPrinterQueueInfo(ImplPrnQueueList* pList) override;
+    virtual void GetPrinterQueueInfo(ImplPrnQueueList& rList) override;
     virtual void GetPrinterQueueState(SalPrinterQueueInfo* pInfo) override;
     virtual OUString GetDefaultPrinter() override;
 
     virtual Platform GetPlatform() const override { return Platform::Windows; }
 
-    const std::list<WinSalPrinter*>& GetPrinters() const;
-    void InsertPrinter(WinSalPrinter* pPrinter);
-    void RemovePrinter(WinSalPrinter* pPrinter);
+    WindowsInstanceData& GetData() { return m_aData; }
 };
 
 inline WindowsInstance& GetWindowsInstance()

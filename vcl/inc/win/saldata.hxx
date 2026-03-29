@@ -27,11 +27,11 @@
 
 #include <svdata.hxx>
 #include <salwtype.hxx>
+#include <vclpluginapi.h>
 
 #include <systools/win32/comtools.hxx>
 #include <tools/long.hxx>
 
-#include <win/DWriteTextRenderer.hxx>
 #include <win/wincomp.hxx>
 
 #include <set>
@@ -76,7 +76,7 @@ struct SalIcon
     HICON   hSmallIcon;
 };
 
-class SalData : public sal::systools::CoInitializeGuard
+class VCLPLUG_WIN_PUBLIC SalData : public sal::systools::CoInitializeGuard
 {
 public:
     SalData();
@@ -114,7 +114,6 @@ public:
     bool                    mbObjClassInit;         // is SALOBJECTCLASS initialised
     DWORD                   mnAppThreadId;          // Id from Application-Thread
     std::unordered_map<int, SalIcon> maIconCache;   // icon cache
-    std::unordered_set<OUString> maTempFontPaths; // LibreOffice own fonts (shared and embedded)
     bool                    mbThemeChanged;         // true if visual theme was changed: throw away theme handles
     bool                    mbThemeMenuSupport;
 
@@ -124,9 +123,6 @@ public:
     std::set< HMENU >       mhMenuSet;              // keeps track of menu handles created by VCL, used by IsKnownMenuHandle()
     std::map< UINT,sal_uInt16 > maVKMap;      // map some dynamic VK_* entries
 
-    std::unique_ptr<D2DWriteTextOutRenderer> m_pD2DWriteTextOutRenderer;
-    // tdf#107205 need 2 instances because D2DWrite can't rotate text
-    std::unique_ptr<TextOutRenderer> m_pExTextOutRenderer;
     std::unique_ptr<SkiaControlsCache> m_pSkiaControlsCache;
 };
 
@@ -142,8 +138,6 @@ extern SalShlData aSalShlData;
 void ImplClearHDCCache( SalData* pData );
 HDC ImplGetCachedDC( sal_uLong nID, HBITMAP hBmp = nullptr );
 void ImplReleaseCachedDC( sal_uLong nID );
-
-void ImplReleaseTempFonts(SalData&);
 
 HCURSOR ImplLoadSalCursor( int nId );
 HBITMAP ImplLoadSalBitmap( int nId );

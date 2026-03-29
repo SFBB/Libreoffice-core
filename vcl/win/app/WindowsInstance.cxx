@@ -96,20 +96,20 @@ WindowsInstance::WindowsInstance(std::unique_ptr<comphelper::SolarMutex> pMutex,
 
 WindowsInstance::~WindowsInstance() { SkiaHelper::cleanup(); }
 
-SalInfoPrinter* WindowsInstance::CreateInfoPrinter(SalPrinterQueueInfo* pQueueInfo,
-                                                   ImplJobSetup* pSetupData)
+SalInfoPrinter* WindowsInstance::CreateInfoPrinter(SalPrinterQueueInfo& rQueueInfo,
+                                                   ImplJobSetup& rSetupData)
 {
     WinSalInfoPrinter* pPrinter = new WinSalInfoPrinter;
-    if (!pQueueInfo->moPortName)
-        GetPrinterQueueState(pQueueInfo);
-    pPrinter->maDriverName = pQueueInfo->maDriver;
-    pPrinter->maDeviceName = pQueueInfo->maPrinterName;
-    pPrinter->maPortName = pQueueInfo->moPortName ? *pQueueInfo->moPortName : OUString();
+    if (!rQueueInfo.moPortName)
+        GetPrinterQueueState(&rQueueInfo);
+    pPrinter->maDriverName = rQueueInfo.maDriver;
+    pPrinter->maDeviceName = rQueueInfo.maPrinterName;
+    pPrinter->maPortName = rQueueInfo.moPortName ? *rQueueInfo.moPortName : OUString();
 
     // check if the provided setup data match the actual printer
-    ImplTestSalJobSetup(pPrinter, pSetupData, true);
+    ImplTestSalJobSetup(pPrinter, &rSetupData, true);
 
-    HDC hDC = ImplCreateSalPrnIC(pPrinter, pSetupData);
+    HDC hDC = ImplCreateSalPrnIC(pPrinter, &rSetupData);
     if (!hDC)
     {
         delete pPrinter;
@@ -117,10 +117,10 @@ SalInfoPrinter* WindowsInstance::CreateInfoPrinter(SalPrinterQueueInfo* pQueueIn
     }
 
     pPrinter->setHDC(hDC);
-    if (!pSetupData->GetDriverData())
-        ImplUpdateSalJobSetup(pPrinter, pSetupData, false, nullptr);
-    ImplDevModeToJobSetup(pPrinter, pSetupData, JobSetFlags::ALL);
-    pSetupData->SetSystem(JOBSETUP_SYSTEM_WINDOWS);
+    if (!rSetupData.GetDriverData())
+        ImplUpdateSalJobSetup(pPrinter, &rSetupData, false, nullptr);
+    ImplDevModeToJobSetup(pPrinter, &rSetupData, JobSetFlags::ALL);
+    rSetupData.SetSystem(JOBSETUP_SYSTEM_WINDOWS);
 
     return pPrinter;
 }
@@ -132,7 +132,7 @@ std::unique_ptr<SalPrinter> WindowsInstance::CreatePrinter(SalInfoPrinter* pInfo
     return std::unique_ptr<SalPrinter>(pPrinter);
 }
 
-void WindowsInstance::GetPrinterQueueInfo(ImplPrnQueueList* pList)
+void WindowsInstance::GetPrinterQueueInfo(ImplPrnQueueList& rList)
 {
     DWORD i;
     DWORD nBytes = 0;
@@ -153,7 +153,7 @@ void WindowsInstance::GetPrinterQueueInfo(ImplPrnQueueList* pList)
             pInfo->maPrinterName = o3tl::toU(pWinInfo4[i].pPrinterName);
             pInfo->mnStatus = PrintQueueFlags::NONE;
             pInfo->mnJobs = 0;
-            pList->Add(std::move(pInfo));
+            rList.Add(std::move(pInfo));
         }
     }
     std::free(pWinInfo4);
@@ -209,11 +209,5 @@ OUString WindowsInstance::GetDefaultPrinter()
     }
     return OUString();
 }
-
-const std::list<WinSalPrinter*>& WindowsInstance::GetPrinters() const { return m_aPrinters; }
-
-void WindowsInstance::InsertPrinter(WinSalPrinter* pPrinter) { m_aPrinters.push_front(pPrinter); }
-
-void WindowsInstance::RemovePrinter(WinSalPrinter* pPrinter) { m_aPrinters.remove(pPrinter); }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */
