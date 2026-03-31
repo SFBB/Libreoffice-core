@@ -336,14 +336,14 @@ private:
     ScDPParentDimData        aParentDimData;
     std::unique_ptr<ScDPResultDimension>  pChildDimension;
     std::unique_ptr<ScDPDataMember>       pDataRoot;
+    std::unique_ptr<ScDPAggData>          pColTotal;  // to store column totals
+    sal_uInt16              nMemberStep;            // step to show details
     bool                    bHasElements:1;
     bool                    bForceSubTotal:1;
     bool                    bHasHiddenDetails:1;
     bool                    bInitialized:1;
     bool                    bAutoHidden:1;
-    ScDPAggData             aColTotal;              // to store column totals
 
-    sal_uInt16                  nMemberStep;            // step to show details
 public:
     ScDPResultMember(
         const ScDPResultData* pData,  const ScDPParentDimData& rParentDimData );  //! Ref
@@ -396,7 +396,7 @@ public:
         tools::Long nMeasure) const;
 
     void                UpdateDataResults( const ScDPResultMember* pRefMember, tools::Long nMeasure ) const;
-    void                UpdateRunningTotals( const ScDPResultMember* pRefMember, tools::Long nMeasure,
+    void                UpdateRunningTotals( ScDPResultMember* pRefMember, tools::Long nMeasure,
                                                 ScDPRunningTotalState& rRunning, ScDPRowTotals& rTotals ) const;
 
     void                SortMembers( ScDPResultMember* pRefMember );
@@ -422,7 +422,7 @@ public:
     SCROW GetOrder() const { return aParentDimData.mnOrder; }         //! Ref
     bool IsRoot() const { return GetParentLevel() == nullptr; }
     SCROW                       GetDataId( ) const ;
-    ScDPAggData*        GetColTotal( tools::Long nMeasure ) const;
+    ScDPAggData*        GetColTotal( tools::Long nMeasure );
 
     void                FillVisibilityData(ScDPResultVisibilityData& rData) const;
 };
@@ -467,7 +467,7 @@ public:
 
     void UpdateDataRow( const ScDPResultMember* pRefMember, tools::Long nMeasure, bool bIsSubTotalRow,
                         const ScDPSubTotalState& rSubState );
-    void UpdateRunningTotals( const ScDPResultMember* pRefMember, tools::Long nMeasure, bool bIsSubTotalRow,
+    void UpdateRunningTotals( ScDPResultMember* pRefMember, tools::Long nMeasure, bool bIsSubTotalRow,
                               const ScDPSubTotalState& rSubState, ScDPRunningTotalState& rRunning,
                               ScDPRowTotals& rTotals, const ScDPResultMember& rRowParent );
 
@@ -497,7 +497,7 @@ class ScDPResultDimension
 {
 public:
     typedef std::vector<std::unique_ptr<ScDPResultMember>> MemberArray;
-    typedef std::map<SCROW, ScDPResultMember*> MemberHash;
+    typedef std::unordered_map<SCROW, ScDPResultMember*> MemberHash;
 private:
     const ScDPResultData*   pResultData;
     MemberArray             maMemberArray;
@@ -557,7 +557,7 @@ public:
         tools::Long nMeasure) const;
 
     void                UpdateDataResults( const ScDPResultMember* pRefMember, tools::Long nMeasure ) const;
-    void                UpdateRunningTotals( const ScDPResultMember* pRefMember, tools::Long nMeasure,
+    void                UpdateRunningTotals( ScDPResultMember* pRefMember, tools::Long nMeasure,
                                             ScDPRunningTotalState& rRunning, ScDPRowTotals& rTotals ) const;
 
     void                SortMembers( ScDPResultMember* pRefMember );
@@ -630,7 +630,7 @@ public:
 
     void                UpdateDataRow( const ScDPResultDimension* pRefDim, tools::Long nMeasure, bool bIsSubTotalRow,
                                     const ScDPSubTotalState& rSubState ) const;
-    void                UpdateRunningTotals( const ScDPResultDimension* pRefDim, tools::Long nMeasure, bool bIsSubTotalRow,
+    void                UpdateRunningTotals( ScDPResultDimension* pRefDim, tools::Long nMeasure, bool bIsSubTotalRow,
                                     const ScDPSubTotalState& rSubState, ScDPRunningTotalState& rRunning,
                                     ScDPRowTotals& rTotals, const ScDPResultMember& rRowParent ) const;
 

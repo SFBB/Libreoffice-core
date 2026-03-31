@@ -982,12 +982,12 @@ ScDPResultMember::ScDPResultMember(
     const ScDPResultData* pData, const ScDPParentDimData& rParentDimData ) :
     pResultData( pData ),
        aParentDimData( rParentDimData ),
+    nMemberStep( 1 ),
     bHasElements( false ),
     bForceSubTotal( false ),
     bHasHiddenDetails( false ),
     bInitialized( false ),
-    bAutoHidden( false ),
-    nMemberStep( 1 )
+    bAutoHidden( false )
 {
     // pParentLevel/pMemberDesc is 0 for root members
 }
@@ -995,12 +995,12 @@ ScDPResultMember::ScDPResultMember(
 ScDPResultMember::ScDPResultMember(
     const ScDPResultData* pData, bool bForceSub ) :
     pResultData( pData ),
+    nMemberStep( 1 ),
     bHasElements( false ),
     bForceSubTotal( bForceSub ),
     bHasHiddenDetails( false ),
     bInitialized( false ),
-    bAutoHidden( false ),
-    nMemberStep( 1 )
+    bAutoHidden( false )
 {
 }
 ScDPResultMember::~ScDPResultMember()
@@ -1772,7 +1772,7 @@ void ScDPResultMember::ResetResults()
         pChildDimension->ResetResults();
 }
 
-void ScDPResultMember::UpdateRunningTotals( const ScDPResultMember* pRefMember, tools::Long nMeasure,
+void ScDPResultMember::UpdateRunningTotals( ScDPResultMember* pRefMember, tools::Long nMeasure,
                                             ScDPRunningTotalState& rRunning, ScDPRowTotals& rTotals ) const
 {
     //  IsVisible() test is in ScDPResultDimension::FillDataResults
@@ -1847,7 +1847,7 @@ void ScDPResultMember::Dump(int nIndent) const
     std::cout << aIndent << "-- result member '" << GetName() << "'" << std::endl;
 
     std::cout << aIndent << " column totals" << std::endl;
-    for (const ScDPAggData* p = &aColTotal; p; p = p->GetExistingChild())
+    for (const ScDPAggData* p = pColTotal.get(); p; p = p->GetExistingChild())
         p->Dump(nIndent+1);
 
     if (pChildDimension)
@@ -1861,9 +1861,13 @@ void ScDPResultMember::Dump(int nIndent) const
 }
 #endif
 
-ScDPAggData* ScDPResultMember::GetColTotal( tools::Long nMeasure ) const
+ScDPAggData* ScDPResultMember::GetColTotal( tools::Long nMeasure )
 {
-    return lcl_GetChildTotal( const_cast<ScDPAggData*>(&aColTotal), nMeasure );
+    if (!pColTotal)
+    {
+        pColTotal = std::make_unique<ScDPAggData>();
+    }
+    return lcl_GetChildTotal(pColTotal.get(), nMeasure);
 }
 
 void ScDPResultMember::FillVisibilityData(ScDPResultVisibilityData& rData) const
@@ -2326,14 +2330,14 @@ void ScDPDataMember::ResetResults()
 }
 
 void ScDPDataMember::UpdateRunningTotals(
-    const ScDPResultMember* pRefMember, tools::Long nMeasure, bool bIsSubTotalRow,
+    ScDPResultMember* pRefMember, tools::Long nMeasure, bool bIsSubTotalRow,
     const ScDPSubTotalState& rSubState, ScDPRunningTotalState& rRunning,
     ScDPRowTotals& rTotals, const ScDPResultMember& rRowParent )
 {
     OSL_ENSURE( pRefMember == pResultMember || !pResultMember, "bla" );
 
     const ScDPDataDimension* pDataChild = GetChildDimension();
-    const ScDPResultDimension* pRefChild = pRefMember->GetChildDimension();
+    ScDPResultDimension* pRefChild = pRefMember->GetChildDimension();
 
     bool bIsRoot = ( pResultMember == nullptr || pResultMember->GetParentLevel() == nullptr );
 
@@ -2915,6 +2919,20 @@ ScDPResultMember *ScDPResultDimension::FindMember(  SCROW  iData ) const
         OSL_FAIL("problem!  hash result is not the same as IsNamedItem");
     }
 
+    // Normal late allocation normally always finds it in the hash
+    if (!pResultData->IsLateInit())
+    {
+        // For full (non-late) init, we don't use the hash since it's huge
+        // but we can normally use a binary search for efficiency
+        SCROW nIndex;
+        if (lcl_SearchMember(maMemberArray, iData, nIndex))
+        {
+            // I *think* this is always true, but check for sanity
+            ScDPResultMember* pResultMember = maMemberArray[nIndex].get();
+            if (pResultMember->IsNamedItem(iData))
+                return pResultMember;
+        }
+    }
     unsigned int i;
     unsigned int nCount = maMemberArray.size();
     for( i = 0; i < nCount ; i++ )
@@ -3355,7 +3373,7 @@ tools::Long ScDPResultDimension::GetSortedIndex( tools::Long nUnsorted ) const
     return aMemberOrder.empty() ? nUnsorted : aMemberOrder[nUnsorted];
 }
 
-void ScDPResultDimension::UpdateRunningTotals( const ScDPResultMember* pRefMember, tools::Long nMeasure,
+void ScDPResultDimension::UpdateRunningTotals( ScDPResultMember* pRefMember, tools::Long nMeasure,
                                                 ScDPRunningTotalState& rRunning, ScDPRowTotals& rTotals ) const
 {
     const ScDPResultMember* pMember;
@@ -3936,7 +3954,7 @@ tools::Long ScDPDataDimension::GetSortedIndex( tools::Long nUnsorted ) const
     return rMemberOrder.empty() ? nUnsorted : rMemberOrder[nUnsorted];
 }
 
-void ScDPDataDimension::UpdateRunningTotals( const ScDPResultDimension* pRefDim,
+void ScDPDataDimension::UpdateRunningTotals( ScDPResultDimension* pRefDim,
                                     tools::Long nMeasure, bool bIsSubTotalRow,
                                     const ScDPSubTotalState& rSubState, ScDPRunningTotalState& rRunning,
                                     ScDPRowTotals& rTotals, const ScDPResultMember& rRowParent ) const
@@ -3961,7 +3979,7 @@ void ScDPDataDimension::UpdateRunningTotals( const ScDPResultDimension* pRefDim,
             nMemberMeasure = nSorted;
         }
 
-        const ScDPResultMember* pRefMember = pRefDim->GetMember(nMemberPos);
+        ScDPResultMember* pRefMember = pRefDim->GetMember(nMemberPos);
         if ( pRefMember->IsVisible() )
         {
             if ( bIsDataLayout )
@@ -4111,7 +4129,8 @@ ScDPResultMember* ScDPResultDimension::AddMember(const ScDPParentDimData &aData 
     SCROW   nDataIndex = pMember->GetDataId();
     maMemberArray.emplace_back( pMember );
 
-    maMemberHash.emplace( nDataIndex, pMember );
+    if (pResultData->IsLateInit())
+        maMemberHash.emplace(nDataIndex, pMember);
     return pMember;
 }
 
@@ -4124,7 +4143,8 @@ ScDPResultMember* ScDPResultDimension::InsertMember(const ScDPParentDimData *pMe
         maMemberArray.emplace( maMemberArray.begin()+nInsert, pNew );
 
         SCROW   nDataIndex = pMemberData->mpMemberDesc->GetItemDataId();
-        maMemberHash.emplace( nDataIndex, pNew );
+        if (pResultData->IsLateInit())
+            maMemberHash.emplace(nDataIndex, pNew);
         return pNew;
     }
     return maMemberArray[ nInsert ].get();

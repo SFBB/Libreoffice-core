@@ -10535,10 +10535,14 @@ else
     SYSTEM_LIBXML=
     LIBXML_CFLAGS="-I${WORKDIR}/UnpackedTarball/libxml2/include"
     if test "$COM" = "MSC"; then
-        LIBXML_CFLAGS="${LIBXML_CFLAGS} -I${WORKDIR}/UnpackedTarball/icu/source/i18n -I${WORKDIR}/UnpackedTarball/icu/source/common"
+        LIBXML_CFLAGS="${LIBXML_CFLAGS} -I${WORKDIR}/UnpackedTarball/libxml2 -I${WORKDIR}/UnpackedTarball/icu/source/i18n -I${WORKDIR}/UnpackedTarball/icu/source/common"
     fi
     if test "$COM" = "MSC"; then
-        LIBXML_LIBS="${WORKDIR}/UnpackedTarball/libxml2/win32/bin.msvc/libxml2.lib"
+        if test "$MSVC_USE_DEBUG_RUNTIME" = TRUE; then
+            LIBXML_LIBS="${WORKDIR}/UnpackedTarball/libxml2/Debug/libxml2d.lib"
+        else
+            LIBXML_LIBS="${WORKDIR}/UnpackedTarball/libxml2/Release/libxml2.lib"
+        fi
     else
         LIBXML_LIBS="-L${WORKDIR}/UnpackedTarball/libxml2/.libs -lxml2"
         if test "$DISABLE_DYNLOADING" = TRUE; then
@@ -14151,7 +14155,7 @@ then
     elif test "$_os" = "WINNT"; then
         qt6_library_prefix=""
         # file names of libraries built in debug mode have an additional
-        # "d" suffix in the file name, e.g. "libQt6Widgetsd.lib"
+        # "d" suffix in the file name, e.g. "Qt6Widgetsd.lib"
         qt6_library_suffixes=".lib d.lib"
     else
         qt6_library_prefix="lib"
