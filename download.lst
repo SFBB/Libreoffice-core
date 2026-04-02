@@ -385,8 +385,8 @@ JFREEREPORT_SAC_TARBALL := 39bb3fcea1514f1369fcfc87542390fd-sacjava-1.3.zip
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-LIBJPEG_TURBO_SHA256SUM := e23d3ebb2c6ee4d0e2a5823dbb55b614845df5ea3435c956fed5cf04041a87ad
-LIBJPEG_TURBO_TARBALL := libjpeg-turbo-3.1.4.tar.gz
+LIBJPEG_TURBO_SHA256SUM := ecae8008e2cc9ade2f2c1bb9d5e6d4fb73e7c433866a056bd82980741571a022
+LIBJPEG_TURBO_TARBALL := libjpeg-turbo-3.1.4.1.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -477,8 +477,8 @@ LXML_TARBALL := lxml-6.0.2.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-LZMA_SHA256SUM := ce09c50a5962786b83e5da389c90dd2c15ecd0980a258dd01f70f9e7ce58a8f1
-LZMA_TARBALL := xz-5.8.2.tar.gz
+LZMA_SHA256SUM := 3d3a1b973af218114f4f889bbaa2f4c037deaae0c8e815eec381c3d546b974a0
+LZMA_TARBALL := xz-5.8.3.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
