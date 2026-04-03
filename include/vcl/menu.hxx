@@ -163,7 +163,7 @@ protected:
     SAL_DLLPRIVATE Menu* ImplGetStartMenu();
     SAL_DLLPRIVATE Menu* ImplFindSelectMenu();
     SAL_DLLPRIVATE Menu* ImplFindMenu( sal_uInt16 nId );
-    SAL_DLLPRIVATE Size  ImplCalcSize( vcl::Window* pWin );
+    SAL_DLLPRIVATE Size ImplCalcSize(vcl::Window& rWin);
     SAL_DLLPRIVATE bool  ImplIsVisible( sal_uInt16 nPos ) const;
     SAL_DLLPRIVATE bool  ImplCurrentlyHiddenOnGUI(sal_uInt16 nPos) const;
     SAL_DLLPRIVATE bool  ImplIsSelectable( sal_uInt16 nPos ) const;
@@ -524,7 +524,7 @@ public:
         aTitleText = rTitle;
     }
 
-    sal_uInt16 Execute( vcl::Window* pWindow, const Point& rPopupPos );
+    sal_uInt16 Execute(vcl::Window& rWindow, const Point& rPopupPos);
     sal_uInt16 Execute( vcl::Window* pWindow, const tools::Rectangle& rRect, PopupMenuFlags nFlags = PopupMenuFlags::NONE );
 
     // for the TestTool

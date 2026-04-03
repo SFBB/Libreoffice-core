@@ -322,8 +322,8 @@ GRAPHITE_TARBALL := graphite2-minimal-1.3.14.tgz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-HARFBUZZ_SHA256SUM := 6695da3eb7e1be0aa3092fe4d81433a33b47f4519259c759d729e3a9a55c1429
-HARFBUZZ_TARBALL := harfbuzz-13.2.1.tar.xz
+HARFBUZZ_SHA256SUM := d4aa312728136e3dc7c3cda47b871614ce0d12bbb19f9dcac2ea70de836dc307
+HARFBUZZ_TARBALL := harfbuzz-14.0.0.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -599,8 +599,8 @@ LIBTIFF_TARBALL := tiff-4.7.1.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-POPPLER_SHA256SUM := 8b3c5e2a9f2ab4c3ec5029f28af1b433c6b71f0d1e7b3997aa561cf1c0ca4ebe
-POPPLER_TARBALL := poppler-26.03.0.tar.xz
+POPPLER_SHA256SUM := b0955163114af96bc0106f68cb24daf973a629462453d8b82775f81b0d4e0693
+POPPLER_TARBALL := poppler-26.04.0.tar.xz
 POPPLER_DATA_SHA256SUM := c835b640a40ce357e1b83666aabd95edffa24ddddd49b8daff63adb851cdab74
 POPPLER_DATA_TARBALL := poppler-data-0.4.12.tar.gz
 # three static lines
