@@ -119,11 +119,11 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest11, testTdf108791)
     auto& aPostItFields = pPostItMgr->GetPostItFields();
 
     CPPUNIT_ASSERT_EQUAL(size_t(6), aPostItFields.size());
-    for (size_t i = 0; i < aPostItFields.size(); ++i)
+    for (const auto& rPostItFieldItem : aPostItFields)
     {
-        CPPUNIT_ASSERT(aPostItFields[i]);
+        CPPUNIT_ASSERT(rPostItFieldItem);
         CPPUNIT_ASSERT_EQUAL(SwPostItHelper::SwLayoutStatus::VISIBLE,
-                             aPostItFields[i]->mLayoutStatus);
+                             rPostItFieldItem->mLayoutStatus);
     }
 
     // Select "Comment thread 1 reply 2"
@@ -155,11 +155,11 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest11, testTdf108791_2)
     auto& aPostItFields = pPostItMgr->GetPostItFields();
 
     CPPUNIT_ASSERT_EQUAL(size_t(6), aPostItFields.size());
-    for (size_t i = 0; i < aPostItFields.size(); ++i)
+    for (const auto& rPostItFieldItem : aPostItFields)
     {
-        CPPUNIT_ASSERT(aPostItFields[i]);
+        CPPUNIT_ASSERT(rPostItFieldItem);
         CPPUNIT_ASSERT_EQUAL(SwPostItHelper::SwLayoutStatus::VISIBLE,
-                             aPostItFields[i]->mLayoutStatus);
+                             rPostItFieldItem->mLayoutStatus);
     }
 
     // Select "Comment thread 1 reply 2"
@@ -191,11 +191,11 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest11, testTdf108791_3)
     auto& aPostItFields = pPostItMgr->GetPostItFields();
 
     CPPUNIT_ASSERT_EQUAL(size_t(6), aPostItFields.size());
-    for (size_t i = 0; i < aPostItFields.size(); ++i)
+    for (const auto& rPostItFieldItem : aPostItFields)
     {
-        CPPUNIT_ASSERT(aPostItFields[i]);
+        CPPUNIT_ASSERT(rPostItFieldItem);
         CPPUNIT_ASSERT_EQUAL(SwPostItHelper::SwLayoutStatus::VISIBLE,
-                             aPostItFields[i]->mLayoutStatus);
+                             rPostItFieldItem->mLayoutStatus);
     }
 
     // Select "Comment thread 1 reply 2"
@@ -208,16 +208,16 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest11, testTdf108791_3)
     dispatchCommand(mxComponent, u".uno:DeleteAuthor"_ustr, {});
 
     CPPUNIT_ASSERT_EQUAL(size_t(6), aPostItFields.size());
-    for (size_t i = 0; i < aPostItFields.size(); ++i)
+    for (const auto& rPostItFieldItem : aPostItFields)
     {
-        CPPUNIT_ASSERT(aPostItFields[i]);
-        CPPUNIT_ASSERT(aPostItFields[i]->mpPostIt);
-        pPostItField = aPostItFields[i]->mpPostIt->GetPostItField();
+        CPPUNIT_ASSERT(rPostItFieldItem);
+        CPPUNIT_ASSERT(rPostItFieldItem->mpPostIt);
+        pPostItField = rPostItFieldItem->mpPostIt->GetPostItField();
         CPPUNIT_ASSERT(pPostItField);
         CPPUNIT_ASSERT_EQUAL(pPostItField->GetPar1() == "Author3"
                                  ? SwPostItHelper::SwLayoutStatus::DELETED
                                  : SwPostItHelper::SwLayoutStatus::VISIBLE,
-                             aPostItFields[i]->mLayoutStatus);
+                             rPostItFieldItem->mLayoutStatus);
     }
 }
 
@@ -231,11 +231,11 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest11, testTdf108791_4)
     auto& aPostItFields = pPostItMgr->GetPostItFields();
 
     CPPUNIT_ASSERT_EQUAL(size_t(6), aPostItFields.size());
-    for (size_t i = 0; i < aPostItFields.size(); ++i)
+    for (const auto& rPostItFieldItem : aPostItFields)
     {
-        CPPUNIT_ASSERT(aPostItFields[i]);
+        CPPUNIT_ASSERT(rPostItFieldItem);
         CPPUNIT_ASSERT_EQUAL(SwPostItHelper::SwLayoutStatus::VISIBLE,
-                             aPostItFields[i]->mLayoutStatus);
+                             rPostItFieldItem->mLayoutStatus);
     }
 
     // Select any comment
@@ -245,11 +245,11 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest11, testTdf108791_4)
     dispatchCommand(mxComponent, u".uno:DeleteAllNotes"_ustr, {});
 
     CPPUNIT_ASSERT_EQUAL(size_t(6), aPostItFields.size());
-    for (size_t i = 0; i < aPostItFields.size(); ++i)
+    for (const auto& rPostItFieldItem : aPostItFields)
     {
-        CPPUNIT_ASSERT(aPostItFields[i]);
+        CPPUNIT_ASSERT(rPostItFieldItem);
         CPPUNIT_ASSERT_EQUAL(SwPostItHelper::SwLayoutStatus::DELETED,
-                             aPostItFields[i]->mLayoutStatus);
+                             rPostItFieldItem->mLayoutStatus);
     }
 }
 
@@ -265,11 +265,11 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest11, testTdf108791_5)
     auto& aPostItFields = pPostItMgr->GetPostItFields();
 
     CPPUNIT_ASSERT_EQUAL(size_t(6), aPostItFields.size());
-    for (size_t i = 0; i < aPostItFields.size(); ++i)
+    for (const auto& rPostItFieldItem : aPostItFields)
     {
-        CPPUNIT_ASSERT(aPostItFields[i]);
+        CPPUNIT_ASSERT(rPostItFieldItem);
         CPPUNIT_ASSERT_EQUAL(SwPostItHelper::SwLayoutStatus::VISIBLE,
-                             aPostItFields[i]->mLayoutStatus);
+                             rPostItFieldItem->mLayoutStatus);
     }
 
     // Select "Comment thread 1 reply 2"
@@ -282,12 +282,12 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest11, testTdf108791_5)
     dispatchCommand(mxComponent, u".uno:DeleteComment"_ustr, {});
 
     CPPUNIT_ASSERT_EQUAL(size_t(5), aPostItFields.size());
-    for (size_t i = 0; i < aPostItFields.size(); ++i)
+    for (const auto& rPostItFieldItem : aPostItFields)
     {
-        CPPUNIT_ASSERT(aPostItFields[i]);
-        CPPUNIT_ASSERT(aPostItFields[i]->mpPostIt);
-        CPPUNIT_ASSERT(aPostItFields[i]->mpPostIt->GetPostItField());
-        CPPUNIT_ASSERT(aPostItFields[i]->mpPostIt->GetPostItField()->GetText()
+        CPPUNIT_ASSERT(rPostItFieldItem);
+        CPPUNIT_ASSERT(rPostItFieldItem->mpPostIt);
+        CPPUNIT_ASSERT(rPostItFieldItem->mpPostIt->GetPostItField());
+        CPPUNIT_ASSERT(rPostItFieldItem->mpPostIt->GetPostItField()->GetText()
                        != "Comment thread 1 reply 2");
     }
 }
@@ -302,11 +302,11 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest11, testTdf108791_6)
     auto& aPostItFields = pPostItMgr->GetPostItFields();
 
     CPPUNIT_ASSERT_EQUAL(size_t(6), aPostItFields.size());
-    for (size_t i = 0; i < aPostItFields.size(); ++i)
+    for (const auto& rPostItFieldItem : aPostItFields)
     {
-        CPPUNIT_ASSERT(aPostItFields[i]);
+        CPPUNIT_ASSERT(rPostItFieldItem);
         CPPUNIT_ASSERT_EQUAL(SwPostItHelper::SwLayoutStatus::VISIBLE,
-                             aPostItFields[i]->mLayoutStatus);
+                             rPostItFieldItem->mLayoutStatus);
     }
 
     // Select "Comment thread 1 reply 2"
@@ -331,11 +331,11 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest11, testTdf108791_7)
     auto& aPostItFields = pPostItMgr->GetPostItFields();
 
     CPPUNIT_ASSERT_EQUAL(size_t(6), aPostItFields.size());
-    for (size_t i = 0; i < aPostItFields.size(); ++i)
+    for (const auto& rPostItFieldItem : aPostItFields)
     {
-        CPPUNIT_ASSERT(aPostItFields[i]);
+        CPPUNIT_ASSERT(rPostItFieldItem);
         CPPUNIT_ASSERT_EQUAL(SwPostItHelper::SwLayoutStatus::VISIBLE,
-                             aPostItFields[i]->mLayoutStatus);
+                             rPostItFieldItem->mLayoutStatus);
     }
 
     // Select "Comment thread 1 reply 2"
@@ -348,12 +348,12 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest11, testTdf108791_7)
     dispatchCommand(mxComponent, u".uno:DeleteAuthor"_ustr, {});
 
     CPPUNIT_ASSERT_EQUAL(size_t(4), aPostItFields.size());
-    for (size_t i = 0; i < aPostItFields.size(); ++i)
+    for (const auto& rPostItFieldItem : aPostItFields)
     {
-        CPPUNIT_ASSERT(aPostItFields[i]);
-        CPPUNIT_ASSERT(aPostItFields[i]->mpPostIt);
-        CPPUNIT_ASSERT(aPostItFields[i]->mpPostIt->GetPostItField());
-        CPPUNIT_ASSERT(aPostItFields[i]->mpPostIt->GetPostItField()->GetPar1() != "Author3");
+        CPPUNIT_ASSERT(rPostItFieldItem);
+        CPPUNIT_ASSERT(rPostItFieldItem->mpPostIt);
+        CPPUNIT_ASSERT(rPostItFieldItem->mpPostIt->GetPostItField());
+        CPPUNIT_ASSERT(rPostItFieldItem->mpPostIt->GetPostItField()->GetPar1() != "Author3");
     }
 }
 
@@ -367,11 +367,11 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest11, testTdf108791_8)
     auto& aPostItFields = pPostItMgr->GetPostItFields();
 
     CPPUNIT_ASSERT_EQUAL(size_t(6), aPostItFields.size());
-    for (size_t i = 0; i < aPostItFields.size(); ++i)
+    for (const auto& rPostItFieldItem : aPostItFields)
     {
-        CPPUNIT_ASSERT(aPostItFields[i]);
+        CPPUNIT_ASSERT(rPostItFieldItem);
         CPPUNIT_ASSERT_EQUAL(SwPostItHelper::SwLayoutStatus::VISIBLE,
-                             aPostItFields[i]->mLayoutStatus);
+                             rPostItFieldItem->mLayoutStatus);
     }
 
     // Select any comment
@@ -458,6 +458,32 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest11, testExtrudedShapeSelection)
                                                         uno::UNO_QUERY);
     // Without fix, this test would have failed here
     CPPUNIT_ASSERT(xSelections.is());
+}
+
+CPPUNIT_TEST_FIXTURE(SwUiWriterTest11, testTdf152244DefaultStartEndArrowSizes)
+{
+    createSwDoc();
+    SwWrtShell* pWrtShell = getSwDocShell()->GetWrtShell();
+    CPPUNIT_ASSERT(pWrtShell);
+
+    // Insert a line with end arrow via Ctrl key
+    dispatchCommand(mxComponent, u".uno:LineArrowEnd"_ustr,
+                    comphelper::InitPropertySequence({ { "KeyModifier", uno::Any(KEY_MOD1) } }));
+    CPPUNIT_ASSERT_EQUAL(1, getShapes());
+
+    uno::Reference<drawing::XShape> xShape = getShape(1);
+    uno::Reference<beans::XPropertySet> xPropSet(xShape, uno::UNO_QUERY);
+
+    sal_uInt32 nStartWidth = 0;
+    xPropSet->getPropertyValue(u"LineStartWidth"_ustr) >>= nStartWidth;
+    sal_uInt32 nEndWidth = 0;
+    xPropSet->getPropertyValue(u"LineEndWidth"_ustr) >>= nEndWidth;
+
+    // Without the fix in place, this test would have failed with
+    // - Expected: 353
+    // - Actual  : 176
+    // i.e. the start/end arrow widths are not equal
+    CPPUNIT_ASSERT_EQUAL(nStartWidth, nEndWidth);
 }
 
 CPPUNIT_TEST_FIXTURE(SwUiWriterTest11, testTdf169035ParaStartDefault)
