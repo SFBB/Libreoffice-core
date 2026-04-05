@@ -615,7 +615,7 @@ namespace pcr
     Any SAL_CALL FormComponentPropertyHandler::convertToControlValue( const OUString& _rPropertyName, const Any& _rPropertyValue, const Type& _rControlValueType )
     {
         ::osl::MutexGuard aGuard( m_aMutex );
-        sal_Int32 nPropId = m_pInfoService->getPropertyId( _rPropertyName );
+        sal_Int32 nPropId = OPropertyInfoService::getPropertyId(_rPropertyName);
         DBG_ASSERT( nPropId != -1, "FormComponentPropertyHandler::convertToPropertyValue: not one of my properties!!" );
 
         impl_getPropertyFromId_throw( nPropId );
@@ -826,16 +826,16 @@ namespace pcr
 
         for ( Property & rProperty : asNonConstRange(aAllProperties) )
         {
-            nPropId = m_pInfoService->getPropertyId( rProperty.Name );
+            nPropId = OPropertyInfoService::getPropertyId(rProperty.Name);
             if ( nPropId == -1 )
                 continue;
             rProperty.Handle = nPropId;
 
-            sDisplayName = m_pInfoService->getPropertyTranslation( nPropId );
+            sDisplayName = OPropertyInfoService::getPropertyTranslation(nPropId);
             if ( sDisplayName.isEmpty() )
                 continue;
 
-            sal_uInt32  nPropertyUIFlags = m_pInfoService->getPropertyUIFlags( nPropId );
+            sal_uInt32 nPropertyUIFlags = OPropertyInfoService::getPropertyUIFlags(nPropId);
             bool bIsVisibleForForms   = ( nPropertyUIFlags & PROP_FLAG_FORM_VISIBLE   ) != 0;
             bool bIsVisibleForDialogs = ( nPropertyUIFlags & PROP_FLAG_DIALOG_VISIBLE ) != 0;
 
@@ -937,7 +937,7 @@ namespace pcr
                 nPropId = PROPERTY_ID_WORDBREAK;
         }
 
-        OUString sDisplayName = m_pInfoService->getPropertyTranslation( nPropId );
+        OUString sDisplayName = OPropertyInfoService::getPropertyTranslation(nPropId);
         if ( sDisplayName.isEmpty() )
         {
             OSL_FAIL( "FormComponentPropertyHandler::describePropertyLine: did getSupportedProperties not work properly?" );
@@ -946,7 +946,7 @@ namespace pcr
 
 
         LineDescriptor aDescriptor;
-        aDescriptor.HelpURL = HelpIdUrl::getHelpURL( m_pInfoService->getPropertyHelpId( nPropId ) );
+        aDescriptor.HelpURL = HelpIdUrl::getHelpURL(OPropertyInfoService::getPropertyHelpId(nPropId));
         aDescriptor.DisplayName = sDisplayName;
 
         // for the moment, assume a text field
@@ -1238,11 +1238,11 @@ namespace pcr
 
 
         // enum properties
-        sal_uInt32 nPropertyUIFlags = m_pInfoService->getPropertyUIFlags( nPropId );
+        sal_uInt32 nPropertyUIFlags = OPropertyInfoService::getPropertyUIFlags(nPropId);
         bool bIsEnumProperty = ( nPropertyUIFlags & PROP_FLAG_ENUM ) != 0;
         if ( bIsEnumProperty || ( PROPERTY_ID_TARGET_FRAME == nPropId ) )
         {
-            std::vector< OUString > aEnumValues = m_pInfoService->getPropertyEnumRepresentations( nPropId );
+            std::vector<OUString> aEnumValues = OPropertyInfoService::getPropertyEnumRepresentations(nPropId);
             std::vector< OUString >::const_iterator pStart = aEnumValues.begin();
             std::vector< OUString >::const_iterator pEnd = aEnumValues.end();
 
@@ -2210,7 +2210,7 @@ namespace pcr
 
     bool FormComponentPropertyHandler::impl_shouldExcludeProperty_nothrow( const Property& _rProperty ) const
     {
-        OSL_ENSURE( _rProperty.Handle == m_pInfoService->getPropertyId( _rProperty.Name ),
+        OSL_ENSURE(_rProperty.Handle == OPropertyInfoService::getPropertyId(_rProperty.Name),
             "FormComponentPropertyHandler::impl_shouldExcludeProperty_nothrow: inconsistency in the property!" );
 
         if ( _rProperty.Handle == PROPERTY_ID_CONTROLLABEL )
@@ -2281,7 +2281,7 @@ namespace pcr
             break;
         }
 
-        sal_uInt32 nPropertyUIFlags = m_pInfoService->getPropertyUIFlags( _rProperty.Handle );
+        sal_uInt32 nPropertyUIFlags = OPropertyInfoService::getPropertyUIFlags(_rProperty.Handle);
 
         // don't show experimental properties unless allowed to do so
         if ( ( nPropertyUIFlags & PROP_FLAG_EXPERIMENTAL ) != 0 )
@@ -2444,9 +2444,9 @@ namespace pcr
 
 
             // Set the UI data
-            _out_rProperty.DisplayName = m_pInfoService->getPropertyTranslation( PROPERTY_ID_COMMAND );
+            _out_rProperty.DisplayName = OPropertyInfoService::getPropertyTranslation(PROPERTY_ID_COMMAND);
 
-            _out_rProperty.HelpURL = HelpIdUrl::getHelpURL( m_pInfoService->getPropertyHelpId( PROPERTY_ID_COMMAND ) );
+            _out_rProperty.HelpURL = HelpIdUrl::getHelpURL(OPropertyInfoService::getPropertyHelpId(PROPERTY_ID_COMMAND));
             _out_rProperty.PrimaryButtonId = UID_PROP_DLG_SQLCOMMAND;
 
 
@@ -2552,8 +2552,8 @@ namespace pcr
         ::cppu::enum2int( nListSourceType, aListSourceType );
         ListSourceType eListSourceType = static_cast<ListSourceType>(nListSourceType);
 
-        _out_rDescriptor.DisplayName = m_pInfoService->getPropertyTranslation( PROPERTY_ID_LISTSOURCE );
-        _out_rDescriptor.HelpURL = HelpIdUrl::getHelpURL( m_pInfoService->getPropertyHelpId( PROPERTY_ID_LISTSOURCE ) );
+        _out_rDescriptor.DisplayName = OPropertyInfoService::getPropertyTranslation(PROPERTY_ID_LISTSOURCE);
+        _out_rDescriptor.HelpURL = HelpIdUrl::getHelpURL(OPropertyInfoService::getPropertyHelpId(PROPERTY_ID_LISTSOURCE));
 
 
         // set enums
@@ -2589,10 +2589,7 @@ namespace pcr
 
     bool FormComponentPropertyHandler::impl_dialogListSelection_nothrow( const OUString& _rProperty, ::osl::ClearableMutexGuard& _rClearBeforeDialog ) const
     {
-        OSL_PRECOND(m_pInfoService, "FormComponentPropertyHandler::impl_dialogListSelection_"
-                                    "nothrow: no property meta data!");
-
-        OUString sPropertyUIName( m_pInfoService->getPropertyTranslation( m_pInfoService->getPropertyId( _rProperty ) ) );
+        OUString sPropertyUIName(OPropertyInfoService::getPropertyTranslation(OPropertyInfoService::getPropertyId(_rProperty)));
         ListSelectionDialog aDialog(impl_getDefaultDialogFrame_nothrow(), m_xComponent, _rProperty, sPropertyUIName);
         _rClearBeforeDialog.clear();
         return ( RET_OK == aDialog.run() );
@@ -2617,7 +2614,7 @@ namespace pcr
             if ( !xComposer.is() )
                 return false;
 
-            OUString sPropertyUIName( m_pInfoService->getPropertyTranslation( _bFilter ? PROPERTY_ID_FILTER : PROPERTY_ID_SORT ) );
+            OUString sPropertyUIName(OPropertyInfoService::getPropertyTranslation(_bFilter ? PROPERTY_ID_FILTER : PROPERTY_ID_SORT));
 
             // create the dialog
             Reference< XExecutableDialog > xDialog;
@@ -2742,7 +2739,7 @@ namespace pcr
     bool FormComponentPropertyHandler::impl_browseForImage_nothrow( Any& _out_rNewValue, ::osl::ClearableMutexGuard& _rClearBeforeDialog ) const
     {
         bool bIsLink = true;// reflect the legacy behavior
-        OUString aStrTrans = m_pInfoService->getPropertyTranslation( PROPERTY_ID_IMAGE_URL );
+        OUString aStrTrans = OPropertyInfoService::getPropertyTranslation(PROPERTY_ID_IMAGE_URL);
 
         weld::Window* pWin = impl_getDefaultDialogFrame_nothrow();
         ::sfx2::FileDialogHelper aFileDlg(

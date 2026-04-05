@@ -174,7 +174,7 @@ protected:
 
         if (sClass == "GtkListStore" || sClass == "GtkTreeStore")
         {
-            handleListStore(reader, sID, sClass);
+            handleListStore(reader);
             return nullptr;
         }
         else if (sClass == "GtkMenu")
@@ -232,6 +232,9 @@ protected:
                     {
                         pCurrentChild = insertObject(pParent, sClass, sType, sID, aProperties,
                                                      aPangoAttributes, aAtkAttributes);
+                        aProperties.clear();
+                        aPangoAttributes.clear();
+                        aAtkAttributes.clear();
                     }
                     handleChild(pCurrentChild, nullptr, reader, isToolbarItemClass(sClass));
                 }
@@ -290,7 +293,10 @@ protected:
         }
 
         if (!aItems.empty())
-            insertComboBoxOrListBoxItems(pCurrentChild, aProperties, aItems);
+        {
+            const sal_Int32 nActiveIndex = BuilderBase::extractActive(aProperties);
+            insertComboBoxOrListBoxItems(pCurrentChild, aItems, nActiveIndex);
+        }
 
         return pCurrentChild;
     }
@@ -535,8 +541,9 @@ protected:
                                          std::vector<vcl::EnumContext::Context>& rContext,
                                          stringmap& rProperties, stringmap& rAtkProperties)
         = 0;
-    virtual void insertComboBoxOrListBoxItems(Widget* pWidget, stringmap& rMap,
-                                              const std::vector<ComboBoxTextItem>& rItems)
+    virtual void insertComboBoxOrListBoxItems(Widget* pWidget,
+                                              const std::vector<ComboBoxTextItem>& rItems,
+                                              sal_Int32 nActiveIndex)
         = 0;
 
     virtual WidgetPtr insertObject(Widget* pParent, const OUString& rClass, std::string_view sType,

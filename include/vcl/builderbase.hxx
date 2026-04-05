@@ -58,12 +58,6 @@ protected:
     BuilderBase(std::u16string_view sUIDir, const OUString& rUIFile, bool bLegacy);
     virtual ~BuilderBase() = default;
 
-    struct ListStore
-    {
-        typedef std::vector<OUString> row;
-        std::vector<row> m_aEntries;
-    };
-
     struct SizeGroup
     {
         std::vector<OUString> m_aWidgets;
@@ -130,8 +124,7 @@ protected:
 
     stringmap handleAtkObject(xmlreader::XmlReader& reader) const;
     std::vector<ComboBoxTextItem> handleItems(xmlreader::XmlReader& reader) const;
-    void handleListStore(xmlreader::XmlReader& reader, const OUString& rID,
-                         std::u16string_view rClass);
+    static void handleListStore(xmlreader::XmlReader& reader);
     void handleRow(xmlreader::XmlReader& reader, const OUString& rID);
 
     void addAdjustment(const OUString& sID, Adjustment&& rAdjustment);
@@ -139,8 +132,6 @@ protected:
 
     void addTextBuffer(const OUString& sID, TextBuffer&& rTextBuffer);
     const TextBuffer* get_buffer_by_name(const OUString& sID) const;
-
-    const ListStore* get_model_by_name(const OUString& sID) const;
 
     virtual void set_response(const OUString& rId, int nResponse) = 0;
 
@@ -155,7 +146,6 @@ private:
     {
         std::locale m_aResLocale;
 
-        std::map<OUString, ListStore> m_aModels;
         std::vector<SizeGroup> m_aSizeGroups;
 
         std::map<OUString, Adjustment> m_aAdjustments;

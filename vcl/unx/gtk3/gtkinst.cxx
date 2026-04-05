@@ -4066,16 +4066,6 @@ public:
         return GetSystemClipboard();
     }
 
-    virtual void connect_get_property_tree(const Link<tools::JsonWriter&, void>& /*rLink*/) override
-    {
-        //not implemented for the gtk variant
-    }
-
-    virtual void get_property_tree(tools::JsonWriter& /*rJsonWriter*/) override
-    {
-        //not implemented for the gtk variant
-    }
-
     virtual void call_attention_to() override
     {
         // Change the class name to restart the animation under
@@ -7256,11 +7246,6 @@ public:
     }
 
     void close(bool bCloseSignal);
-
-    virtual void SetInstallLOKNotifierHdl(const Link<void*, vcl::ILibreOfficeKitNotifier*>&) override
-    {
-        //not implemented for the gtk variant
-    }
 
     virtual ~GtkInstanceDialog() override
     {

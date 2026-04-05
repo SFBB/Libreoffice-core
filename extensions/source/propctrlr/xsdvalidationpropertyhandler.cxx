@@ -312,7 +312,7 @@ namespace pcr
         case PROPERTY_ID_XSD_WHITESPACES:
         {
             nControlType = PropertyControlType::ListBox;
-            aListEntries = m_pInfoService->getPropertyEnumRepresentations( PROPERTY_ID_XSD_WHITESPACES );
+            aListEntries = OPropertyInfoService::getPropertyEnumRepresentations(PROPERTY_ID_XSD_WHITESPACES);
         }
         break;
 
@@ -402,8 +402,8 @@ namespace pcr
         }
 
         aDescriptor.Category = "Data";
-        aDescriptor.DisplayName = m_pInfoService->getPropertyTranslation( nPropId );
-        aDescriptor.HelpURL = HelpIdUrl::getHelpURL( m_pInfoService->getPropertyHelpId( nPropId ) );
+        aDescriptor.DisplayName = OPropertyInfoService::getPropertyTranslation(nPropId);
+        aDescriptor.HelpURL = HelpIdUrl::getHelpURL(OPropertyInfoService::getPropertyHelpId(nPropId));
 
         return aDescriptor;
     }

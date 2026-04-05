@@ -135,25 +135,9 @@ private:
     typedef StringPair WidgetAdjustmentMap;
     typedef StringPair ButtonMenuMap;
 
-    struct ComboBoxModelMap
-    {
-        OUString m_sID;
-        OUString m_sValue;
-        sal_Int32 m_nActiveId;
-        ComboBoxModelMap(OUString sId, OUString sValue, sal_Int32 nActiveId)
-            : m_sID(std::move(sId))
-            , m_sValue(std::move(sValue))
-            , m_nActiveId(nActiveId)
-        {
-        }
-    };
-
-    void     mungeModel(ListBox &rTarget, const ListStore &rStore, sal_uInt16 nActiveId);
-    void     mungeModel(ComboBox &rTarget, const ListStore &rStore, sal_uInt16 nActiveId);
-    void     mungeModel(SvTabListBox &rTarget, const ListStore &rStore, sal_uInt16 nActiveId);
-
-    void insertComboBoxOrListBoxItems(vcl::Window* pWindow, stringmap& rMap,
-                                      const std::vector<ComboBoxTextItem>& rItems) override;
+    void insertComboBoxOrListBoxItems(vcl::Window* pWindow,
+                                      const std::vector<ComboBoxTextItem>& rItems,
+                                      sal_Int32 nActiveIndex) override;
 
     static void     mungeTextBuffer(VclMultiLineEdit &rTarget, const TextBuffer &rTextBuffer);
 
@@ -168,8 +152,6 @@ private:
 
     struct VclParserState
     {
-        std::vector<ComboBoxModelMap> m_aModelMaps;
-
         std::vector<TextBufferMap> m_aTextBufferMaps;
 
         std::vector<WidgetAdjustmentMap> m_aNumericFormatterAdjustmentMaps;
@@ -259,7 +241,6 @@ private:
 
     static int  getImageSize(const stringmap &rMap);
 
-    void        extractModel(const OUString &id, stringmap &rVec);
     void        extractBuffer(const OUString &id, stringmap &rVec);
     static bool extractAdjustmentToMap(const OUString &id, stringmap &rVec, std::vector<WidgetAdjustmentMap>& rAdjustmentMap);
     void        extractButtonImage(const OUString &id, stringmap &rMap, bool bRadio);

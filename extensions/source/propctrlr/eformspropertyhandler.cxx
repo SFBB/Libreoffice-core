@@ -314,7 +314,7 @@ namespace pcr
         if (!m_pHelper)
             return aReturn;
 
-        PropertyId nPropId( m_pInfoService->getPropertyId( _rPropertyName ) );
+        PropertyId nPropId(OPropertyInfoService::getPropertyId(_rPropertyName));
 
         OUString sControlValue;
         switch ( nPropId )
@@ -348,7 +348,7 @@ namespace pcr
         if (!m_pHelper)
             return aReturn;
 
-        PropertyId nPropId( m_pInfoService->getPropertyId( _rPropertyName ) );
+        PropertyId nPropId(OPropertyInfoService::getPropertyId(_rPropertyName));
 
         OSL_ENSURE( _rControlValueType.getTypeClass() == TypeClass_STRING,
             "EFormsPropertyHandler::convertToControlValue: all our controls should use strings for value exchange!" );
@@ -454,9 +454,9 @@ namespace pcr
             break;
         }
 
-        aDescriptor.DisplayName = m_pInfoService->getPropertyTranslation( nPropId );
+        aDescriptor.DisplayName = OPropertyInfoService::getPropertyTranslation(nPropId);
         aDescriptor.Category = "Data";
-        aDescriptor.HelpURL = HelpIdUrl::getHelpURL( m_pInfoService->getPropertyHelpId( nPropId ) );
+        aDescriptor.HelpURL = HelpIdUrl::getHelpURL(OPropertyInfoService::getPropertyHelpId(nPropId));
         return aDescriptor;
     }
 

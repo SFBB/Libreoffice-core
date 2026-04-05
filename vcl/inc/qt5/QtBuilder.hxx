@@ -48,9 +48,6 @@ public:
     template <typename T = QWidget> T* get(const OUString& rId);
     OUString getDialogId();
 
-    QObject* makeObject(QObject* pParent, std::u16string_view sName, std::string_view sType,
-                        const OUString& rId, stringmap& rMap);
-
     virtual void applyAtkProperties(QObject* pObject, const stringmap& rProperties,
                                     bool bToolbarItem) override;
     virtual void applyPackingProperties(QObject* pCurrentChild, QObject* pParent,
@@ -59,8 +56,9 @@ public:
                                          std::vector<vcl::EnumContext::Context>& rContext,
                                          stringmap& rProperties,
                                          stringmap& rAtkProperties) override;
-    virtual void insertComboBoxOrListBoxItems(QObject* pObject, stringmap& rMap,
-                                              const std::vector<ComboBoxTextItem>& rItems) override;
+    virtual void insertComboBoxOrListBoxItems(QObject* pObject,
+                                              const std::vector<ComboBoxTextItem>& rItems,
+                                              sal_Int32 nActiveIndex) override;
 
     virtual QObject* insertObject(QObject* pParent, const OUString& rClass, std::string_view sType,
                                   const OUString& rId, stringmap& rProps,

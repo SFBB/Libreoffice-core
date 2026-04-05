@@ -281,7 +281,7 @@ namespace pcr
         {
             // available options are nearly the same as for the "normal" button type, but only the
             // first two options
-            aListEntries = m_pInfoService->getPropertyEnumRepresentations( PROPERTY_ID_BUTTONTYPE );
+            aListEntries = OPropertyInfoService::getPropertyEnumRepresentations( PROPERTY_ID_BUTTONTYPE );
             aListEntries.resize( 2 );
         }
         break;
@@ -293,9 +293,9 @@ namespace pcr
 
         LineDescriptor aDescriptor;
         aDescriptor.Control = PropertyHandlerHelper::createListBoxControl( _rxControlFactory, std::move(aListEntries), false, true );
-        aDescriptor.DisplayName = m_pInfoService->getPropertyTranslation( nPropId );
+        aDescriptor.DisplayName = OPropertyInfoService::getPropertyTranslation(nPropId);
         aDescriptor.Category = "General";
-        aDescriptor.HelpURL = HelpIdUrl::getHelpURL( m_pInfoService->getPropertyHelpId( nPropId ) );
+        aDescriptor.HelpURL = HelpIdUrl::getHelpURL(OPropertyInfoService::getPropertyHelpId(nPropId));
         return aDescriptor;
     }
 
@@ -341,7 +341,7 @@ namespace pcr
         OUString sControlValue;
         OSL_VERIFY( _rControlValue >>= sControlValue );
 
-        PropertyId nPropId( m_pInfoService->getPropertyId( _rPropertyName ) );
+        PropertyId nPropId(OPropertyInfoService::getPropertyId(_rPropertyName));
         switch ( nPropId )
         {
         case PROPERTY_ID_SUBMISSION_ID:
@@ -354,7 +354,7 @@ namespace pcr
         case PROPERTY_ID_XFORMS_BUTTONTYPE:
         {
             ::rtl::Reference< IPropertyEnumRepresentation > aEnumConversion(
-                new DefaultEnumRepresentation( *m_pInfoService, ::cppu::UnoType<FormButtonType>::get(), PROPERTY_ID_BUTTONTYPE ) );
+                new DefaultEnumRepresentation(::cppu::UnoType<FormButtonType>::get(), PROPERTY_ID_BUTTONTYPE ) );
             // TODO/UNOize: make aEnumConversion a member?
             aEnumConversion->getValueFromDescription( sControlValue, aPropertyValue );
         }
@@ -382,7 +382,7 @@ namespace pcr
         OSL_ENSURE( _rControlValueType.getTypeClass() == TypeClass_STRING,
             "SubmissionPropertyHandler::convertToControlValue: all our controls should use strings for value exchange!" );
 
-        PropertyId nPropId( m_pInfoService->getPropertyId( _rPropertyName ) );
+        PropertyId nPropId(OPropertyInfoService::getPropertyId(_rPropertyName));
         switch ( nPropId )
         {
         case PROPERTY_ID_SUBMISSION_ID:
@@ -396,7 +396,7 @@ namespace pcr
         case PROPERTY_ID_XFORMS_BUTTONTYPE:
         {
             ::rtl::Reference< IPropertyEnumRepresentation > aEnumConversion(
-                new DefaultEnumRepresentation( *m_pInfoService, _rPropertyValue.getValueType(), PROPERTY_ID_BUTTONTYPE ) );
+                new DefaultEnumRepresentation(_rPropertyValue.getValueType(), PROPERTY_ID_BUTTONTYPE ) );
             // TODO/UNOize: make aEnumConversion a member?
             aControlValue <<= aEnumConversion->getDescriptionForValue( _rPropertyValue );
         }

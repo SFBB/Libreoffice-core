@@ -3478,8 +3478,6 @@ extensions/source/propctrlr/browserview.cxx
 extensions/source/propctrlr/browserview.hxx
 extensions/source/propctrlr/buttonnavigationhandler.cxx
 extensions/source/propctrlr/buttonnavigationhandler.hxx
-extensions/source/propctrlr/cellbindinghandler.cxx
-extensions/source/propctrlr/cellbindinghandler.hxx
 extensions/source/propctrlr/cellbindinghelper.cxx
 extensions/source/propctrlr/cellbindinghelper.hxx
 extensions/source/propctrlr/composeduiupdate.cxx
@@ -3511,8 +3509,6 @@ extensions/source/propctrlr/formcontroller.hxx
 extensions/source/propctrlr/formgeometryhandler.cxx
 extensions/source/propctrlr/formlinkdialog.cxx
 extensions/source/propctrlr/formlinkdialog.hxx
-extensions/source/propctrlr/formmetadata.cxx
-extensions/source/propctrlr/formmetadata.hxx
 extensions/source/propctrlr/formstrings.hxx
 extensions/source/propctrlr/genericpropertyhandler.cxx
 extensions/source/propctrlr/genericpropertyhandler.hxx
@@ -3540,9 +3536,6 @@ extensions/source/propctrlr/propertycontrolextender.cxx
 extensions/source/propctrlr/propertycontrolextender.hxx
 extensions/source/propctrlr/propertyeditor.cxx
 extensions/source/propctrlr/propertyeditor.hxx
-extensions/source/propctrlr/propertyhandler.cxx
-extensions/source/propctrlr/propertyhandler.hxx
-extensions/source/propctrlr/propertyinfo.hxx
 extensions/source/propctrlr/propeventtranslation.cxx
 extensions/source/propctrlr/propeventtranslation.hxx
 extensions/source/propctrlr/pushbuttonnavigation.cxx
