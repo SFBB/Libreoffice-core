@@ -2951,6 +2951,66 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testCalcFieldSingleDataDimXLSX)
     CPPUNIT_ASSERT_EQUAL(u"168168"_ustr, pDoc->GetString(ScAddress(1, 6, 0)));
 }
 
+CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testCalcFieldDiffAggregationXLSX)
+{
+    // Calculated fields always operate on SUM of referenced fields (matching
+    // Excel behavior), even when the same field is visible with a different
+    // aggregation function like COUNT.
+    // Sheet2: SUM of Spend + calc field Field1 = Spend * 2
+    // Sheet3: COUNT of Spend + calc field Field1 = Spend * 2
+    // Both must produce the same Field1 values (SUM-based).
+    createScDoc("xlsx/pivot-table/test_diff_aggregation.xlsx");
+
+    ScDocument* pDoc = getScDoc();
+    pDoc->CalcAll();
+
+    CPPUNIT_ASSERT(pDoc->HasPivotTable());
+
+    // Sheet2 (SUM pivot): B3:C5 on sheet 1
+    // SUM of Spend: 2010=78, 2011=87, total=165
+    CPPUNIT_ASSERT_EQUAL(u"78"_ustr, pDoc->GetString(ScAddress(1, 2, 1)));
+    CPPUNIT_ASSERT_EQUAL(u"87"_ustr, pDoc->GetString(ScAddress(1, 3, 1)));
+    CPPUNIT_ASSERT_EQUAL(u"165"_ustr, pDoc->GetString(ScAddress(1, 4, 1)));
+    // Field1 = Spend * 2: 2010=156, 2011=174, total=330
+    CPPUNIT_ASSERT_EQUAL(u"156"_ustr, pDoc->GetString(ScAddress(2, 2, 1)));
+    CPPUNIT_ASSERT_EQUAL(u"174"_ustr, pDoc->GetString(ScAddress(2, 3, 1)));
+    CPPUNIT_ASSERT_EQUAL(u"330"_ustr, pDoc->GetString(ScAddress(2, 4, 1)));
+
+    // Sheet3 (COUNT pivot): B3:C5 on sheet 2
+    // COUNT of Spend: 2010=3, 2011=3, total=6
+    CPPUNIT_ASSERT_EQUAL(u"3"_ustr, pDoc->GetString(ScAddress(1, 2, 2)));
+    CPPUNIT_ASSERT_EQUAL(u"3"_ustr, pDoc->GetString(ScAddress(1, 3, 2)));
+    CPPUNIT_ASSERT_EQUAL(u"6"_ustr, pDoc->GetString(ScAddress(1, 4, 2)));
+    // Field1 must still use SUM(Spend) * 2, not COUNT(Spend) * 2
+    CPPUNIT_ASSERT_EQUAL(u"156"_ustr, pDoc->GetString(ScAddress(2, 2, 2)));
+    CPPUNIT_ASSERT_EQUAL(u"174"_ustr, pDoc->GetString(ScAddress(2, 3, 2)));
+    CPPUNIT_ASSERT_EQUAL(u"330"_ustr, pDoc->GetString(ScAddress(2, 4, 2)));
+}
+
+CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testCalcFieldNameErrorXLSX)
+{
+    // tdf#78486: When the pivot cache field name differs from the actual source
+    // column name (e.g. cache has "Werte2" but source column is "Werte"), the
+    // calculated field formula must use #NAME? for the unresolvable reference
+    // after import, matching Excel behavior. Otherwise re-saving produces a
+    // corrupt file (formula references a field that doesn't exist in the cache).
+    createScDoc("xlsx/pivot-table/pivot_calcfield_nameerror.xlsx");
+
+    save(TestFilter::XLSX);
+    xmlDocUniquePtr pDocXml = parseExport(u"xl/pivotCache/pivotCacheDefinition1.xml"_ustr);
+    CPPUNIT_ASSERT(pDocXml);
+
+    // The cache should have "Werte" (from actual source data), not "Werte2"
+    assertXPath(pDocXml, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[2]", "name", u"Werte");
+
+    // The calculated field formula should contain #NAME? instead of the stale "Werte2"
+    OUString aFormula
+        = getXPath(pDocXml, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]", "formula");
+    // Original formula was IF(Werte2 >0,Werte2,0) but "Werte2" is not a valid
+    // source column (actual column is "Werte"), so it becomes #NAME?.
+    CPPUNIT_ASSERT_EQUAL(u"IF(#NAME? >0,#NAME?,0)"_ustr, aFormula);
+}
+
 CPPUNIT_PLUGIN_IMPLEMENT();
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

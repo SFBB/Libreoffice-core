@@ -2716,13 +2716,16 @@ void ScDPDataMember::UpdateRunningTotals(
 tools::Long ScDPDataMember::FindMeasureIndex(const std::vector<OUString>& rNames,
                                              const OUString& rName)
 {
-    auto it = std::find_if(rNames.begin(), rNames.end(), [&rName](const OUString& rItem)
+    // Search from the end so that hidden SUM dependency measures (appended
+    // after visible measures) are found before visible non-SUM measures of
+    // the same field. This ensures calculated fields always use SUM values.
+    auto it = std::find_if(rNames.rbegin(), rNames.rend(), [&rName](const OUString& rItem)
                            { return rItem.equalsIgnoreAsciiCase(rName); });
 
-    if (it == rNames.end())
+    if (it == rNames.rend())
         return -1;
 
-    return static_cast<tools::Long>(std::distance(rNames.begin(), it));
+    return static_cast<tools::Long>(std::distance(rNames.begin(), it.base()) - 1);
 }
 
 std::unique_ptr<ScTokenArray> ScDPDataMember::ReplaceTokenMeasuresWithValues(const ScTokenArray* pArray,
@@ -2793,6 +2796,16 @@ std::unique_ptr<ScTokenArray> ScDPDataMember::ReplaceTokenMeasuresWithValues(con
             }
             // remove from recursion stack after processing
             rRecStack.erase(nMemberMeasure);
+        }
+        else
+        {
+            // Field name is a valid ocDPFieldName but not found among measures —
+            // it is a group field or a row/column field not in the data area.
+            // Truly invalid names are already #NAME! error tokens from
+            // ParseDPFieldName and never reach here as ocDPFieldName.
+            // Replace with 0 to match Excel (SUM of text/group values = 0).
+            formula::FormulaToken* pValToken = new formula::FormulaDoubleToken(0.0);
+            pNewArray->ReplaceRPNToken(aIterResult.GetIndex() - 1, pValToken);
         }
     }
     return pNewArray;
