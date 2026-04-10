@@ -73,7 +73,7 @@ IMPL_LINK_NOARG(ScCheckListMenuControl::SubMenuItemData, TimeoutHdl, Timer *, vo
     mpParent->handleMenuTimeout(this);
 }
 
-IMPL_LINK_NOARG(ScCheckListMenuControl, RowActivatedHdl, weld::TreeView&, bool)
+IMPL_LINK_NOARG(ScCheckListMenuControl, RowActivatedHdl, const weld::TreeIter&, bool)
 {
     int nSelectedIndex = mxMenu->get_selected_index();
     assert(nSelectedIndex >= 0 && "nothing selected");
@@ -2004,7 +2004,8 @@ IMPL_LINK(ScListSubMenuControl, MenuKeyInputHdl, const KeyEvent&, rKEvt, bool)
             weld::TreeView& rMenu = !mbColorMenu ? *mxMenu :
                                     (mxBackColorMenu->has_focus() ? *mxBackColorMenu : *mxTextColorMenu);
             // don't toggle checkbutton, go straight to activating entry
-            bConsumed = RowActivatedHdl(rMenu);
+            executeMenuItem(rMenu);
+            bConsumed = true;
             break;
         }
         case KEY_DOWN:
@@ -2052,14 +2053,17 @@ IMPL_LINK(ScListSubMenuControl, ColorSelChangedHdl, weld::TreeView&, rMenu, void
     rMenu.grab_focus();
 }
 
-IMPL_LINK(ScListSubMenuControl, RowActivatedHdl, weld::TreeView&, rMenu, bool)
+IMPL_LINK(ScListSubMenuControl, RowActivatedHdl, const weld::TreeIter&, rIter, bool)
 {
-    executeMenuItem(weld::fromId<ScCheckListMenuControl::Action*>(rMenu.get_selected_id()));
+    executeMenuItem(rIter.getItemView());
     return true;
 }
 
-void ScListSubMenuControl::executeMenuItem(ScCheckListMenuControl::Action* pAction)
+void ScListSubMenuControl::executeMenuItem(const weld::ItemView& rMenu)
 {
+    ScCheckListMenuControl::Action* pAction
+        = weld::fromId<ScCheckListMenuControl::Action*>(rMenu.get_selected_id());
+
     // if no action is defined.
     if (!pAction)
         return;

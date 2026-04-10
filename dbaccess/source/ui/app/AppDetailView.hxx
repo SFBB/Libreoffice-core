@@ -25,6 +25,7 @@
 #include <vcl/mnemonic.hxx>
 #include <vcl/weld/Paned.hxx>
 #include <vcl/weld/TextView.hxx>
+#include <vcl/weld/TreeIter.hxx>
 #include <IClipBoardTest.hxx>
 #include "AppTitleWindow.hxx"
 #include <AppElementType.hxx>
@@ -69,7 +70,7 @@ namespace dbaui
 
         int m_nCursorIndex;
 
-        DECL_LINK(onSelected, weld::TreeView&, bool);
+        DECL_LINK(onSelected, const weld::TreeIter&, bool);
         DECL_LINK(OnEntrySelectHdl, weld::TreeView&, void);
         DECL_LINK(FocusInHdl, weld::Widget&, void);
         DECL_LINK(FocusOutHdl, weld::Widget&, void);

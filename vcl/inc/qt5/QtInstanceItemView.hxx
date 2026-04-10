@@ -75,6 +75,7 @@ protected:
                            const QModelIndex& rParentIndex = QModelIndex()) const;
     QModelIndex modelIndex(const weld::TreeIter& rIter, int nCol = 0) const;
     QtInstanceTreeIter treeIter(int nRow, const QModelIndex& rParentIndex = QModelIndex()) const;
+    QtInstanceTreeIter treeIter(const QModelIndex& rIndex) const;
 
 private:
     QAbstractItemView& getItemView() const;

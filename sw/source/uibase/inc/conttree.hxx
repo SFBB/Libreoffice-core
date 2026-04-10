@@ -201,6 +201,7 @@ class SwContentTree final : public SfxListener
     std::unique_ptr<weld::TreeIter> GetEntryAtAbsPos(size_t nAbsPos) const;
 
     void Expand(const weld::TreeIter& rParent, std::vector<std::unique_ptr<weld::TreeIter>>* pNodesToExpand);
+    bool ActivateContentEntry();
 
     void MoveOutline(SwOutlineNodes::size_type nTargetPos);
 
@@ -216,7 +217,7 @@ class SwContentTree final : public SfxListener
     DECL_LINK(ExpandHdl, const weld::TreeIter&, bool);
     /** Collapse - Remember the state for content types. */
     DECL_LINK(CollapseHdl, const weld::TreeIter&, bool);
-    DECL_LINK(ContentDoubleClickHdl, weld::TreeView&, bool);
+    DECL_LINK(ContentDoubleClickHdl, const weld::TreeIter&, bool);
     DECL_LINK(AsyncContentDoubleClickHdl, void*, void);
     DECL_LINK(SelectHdl, weld::TreeView&, void);
     DECL_LINK(FocusInHdl, weld::Widget&, void);
@@ -368,7 +369,7 @@ private:
     void Select();
 
     DECL_LINK(Timeout, Timer*, void);
-    DECL_LINK(DoubleClickHdl, weld::TreeView&, bool);
+    DECL_LINK(DoubleClickHdl, const weld::TreeIter&, bool);
     DECL_LINK(SelectHdl, weld::TreeView&, void);
     DECL_LINK(FocusInHdl, weld::Widget&, void);
     DECL_LINK(KeyInputHdl, const KeyEvent&, bool);

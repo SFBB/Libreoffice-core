@@ -3424,8 +3424,6 @@ extensions/source/bibliography/toolbar.hxx
 extensions/source/config/ldap/ldapaccess.cxx
 extensions/source/config/ldap/ldapuserprofilebe.cxx
 extensions/source/config/ldap/ldapuserprofilebe.hxx
-extensions/source/dbpilots/commonpagesdbp.cxx
-extensions/source/dbpilots/commonpagesdbp.hxx
 extensions/source/dbpilots/controlwizard.cxx
 extensions/source/dbpilots/controlwizard.hxx
 extensions/source/dbpilots/dbptools.cxx
@@ -3434,8 +3432,6 @@ extensions/source/dbpilots/gridwizard.cxx
 extensions/source/dbpilots/gridwizard.hxx
 extensions/source/dbpilots/groupboxwiz.cxx
 extensions/source/dbpilots/groupboxwiz.hxx
-extensions/source/dbpilots/listcombowizard.cxx
-extensions/source/dbpilots/listcombowizard.hxx
 extensions/source/dbpilots/optiongrouplayouter.cxx
 extensions/source/dbpilots/optiongrouplayouter.hxx
 extensions/source/dbpilots/unoautopilot.hxx

@@ -44,8 +44,7 @@ sw::DropDownFieldDialog::DropDownFieldDialog(weld::Widget *pParent, SwWrtShell &
 {
     m_xListItemsLB->set_size_request(m_xListItemsLB->get_approximate_digit_width() * 24,
                                      m_xListItemsLB->get_height_rows(12));
-    Link<weld::TreeView&, bool> aDoubleLk = LINK(this, DropDownFieldDialog, DoubleClickHdl);
-    m_xListItemsLB->connect_row_activated( aDoubleLk );
+    m_xListItemsLB->connect_row_activated(LINK(this, DropDownFieldDialog, DoubleClickHdl));
 
     Link<weld::Button&, void> aEditButtonLk = LINK(this, DropDownFieldDialog, EditHdl);
     Link<weld::Button&,void> aPrevButtonLk = LINK(this, DropDownFieldDialog, PrevHdl);
@@ -133,7 +132,7 @@ IMPL_LINK_NOARG(sw::DropDownFieldDialog, NextHdl, weld::Button&, void)
     m_xDialog->response(RET_OK);
 }
 
-IMPL_LINK_NOARG(sw::DropDownFieldDialog, DoubleClickHdl, weld::TreeView&, bool)
+IMPL_LINK_NOARG(sw::DropDownFieldDialog, DoubleClickHdl, const weld::TreeIter&, bool)
 {
     // tdf#114144, when next is available make double-click accept and go to next field
     if (m_xNextPB->get_visible() && m_xNextPB->get_sensitive())
