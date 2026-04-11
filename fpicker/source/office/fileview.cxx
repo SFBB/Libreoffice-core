@@ -177,8 +177,11 @@ public:
 
     OUString get_id(const weld::TreeIter& rIter) { return mxTreeView->get_id(rIter); }
 
-    void connect_row_activated(const Link<const weld::TreeIter&, bool>& rLink) { mxTreeView->connect_row_activated(rLink); }
-    void connect_changed(const Link<weld::TreeView&, void>& rLink)
+    void connect_item_activated(const Link<const weld::TreeIter&, bool>& rLink)
+    {
+        mxTreeView->connect_item_activated(rLink);
+    }
+    void connect_changed(const Link<weld::ItemView&, void>& rLink)
     {
         mxTreeView->connect_selection_changed(rLink);
     }
@@ -360,8 +363,8 @@ public:
     }
 
 protected:
-    DECL_LINK(ChangedHdl, weld::TreeView&, void);
-    DECL_LINK(SelectionChangedHdl, weld::IconView&, void);
+    DECL_LINK(ChangedHdl, weld::ItemView&, void);
+    DECL_LINK(SelectionChangedHdl, weld::ItemView&, void);
     DECL_LINK(RowActivatedHdl, const weld::TreeIter&, bool);
     DECL_LINK(ItemActivatedHdl, const weld::TreeIter&, bool);
 
@@ -1314,13 +1317,13 @@ void SvtFileView_Impl::FilterFolderContent_Impl( std::u16string_view rFilter )
         });
 }
 
-IMPL_LINK_NOARG(SvtFileView_Impl, ChangedHdl, weld::TreeView&, void)
+IMPL_LINK_NOARG(SvtFileView_Impl, ChangedHdl, weld::ItemView&, void)
 {
     if (!mnSuspendSelectCallback)
         m_aSelectHandler.Call(m_pAntiImpl);
 }
 
-IMPL_LINK_NOARG(SvtFileView_Impl, SelectionChangedHdl, weld::IconView&, void)
+IMPL_LINK_NOARG(SvtFileView_Impl, SelectionChangedHdl, weld::ItemView&, void)
 {
     if (!mnSuspendSelectCallback)
         m_aSelectHandler.Call(m_pAntiImpl);
@@ -1348,7 +1351,7 @@ void SvtFileView_Impl::SetDoubleClickHandler(const Link<SvtFileView*,bool>& rHdl
 {
     maDoubleClickHandler = rHdl;
 
-    mxView->connect_row_activated(LINK(this, SvtFileView_Impl, RowActivatedHdl));
+    mxView->connect_item_activated(LINK(this, SvtFileView_Impl, RowActivatedHdl));
     mxIconView->connect_item_activated(LINK(this, SvtFileView_Impl, ItemActivatedHdl));
 }
 

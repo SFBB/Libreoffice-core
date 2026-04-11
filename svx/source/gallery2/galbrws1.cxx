@@ -189,7 +189,7 @@ GalleryBrowser::GalleryBrowser(
     mxListView->connect_selection_changed(LINK(this, GalleryBrowser, SelectObjectHdl));
     mxListView->connect_command(LINK(this, GalleryBrowser, PopupMenuHdl2));
     mxListView->connect_key_press(LINK(this, GalleryBrowser, KeyInputHdl2));
-    mxListView->connect_row_activated(LINK(this, GalleryBrowser, RowActivatedHdl));
+    mxListView->connect_item_activated(LINK(this, GalleryBrowser, RowActivatedHdl));
     mxDragDropTargetHelper.reset(new GalleryDragDrop(this, mxListView->get_drop_target()));
     mxListView->connect_drag_begin(LINK(this, GalleryBrowser, DragBeginHdl));
     mxSearchField->connect_changed( LINK( this, GalleryBrowser, SearchHdl));
@@ -605,7 +605,7 @@ IMPL_LINK(GalleryBrowser, PopupMenuHdl1, const CommandEvent&, rCEvt, bool)
     return true;
 }
 
-IMPL_LINK_NOARG(GalleryBrowser, SelectThemeHdl, weld::TreeView&, void)
+IMPL_LINK_NOARG(GalleryBrowser, SelectThemeHdl, weld::ItemView&, void)
 {
     SelectTheme(GetSelectedTheme());
 }
@@ -1498,7 +1498,7 @@ IMPL_LINK_NOARG(GalleryBrowser, SelectObjectValueSetHdl, ValueSet*, void)
     ImplUpdateSelection();
 }
 
-IMPL_LINK_NOARG(GalleryBrowser, SelectObjectHdl, weld::TreeView&, void)
+IMPL_LINK_NOARG(GalleryBrowser, SelectObjectHdl, weld::ItemView&, void)
 {
     ImplUpdateSelection();
 }

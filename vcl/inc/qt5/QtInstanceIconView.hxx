@@ -24,7 +24,6 @@ class QtInstanceIconView : public QtInstanceItemView, public virtual weld::IconV
 
     QListView* m_pListView;
     QStandardItemModel* m_pModel;
-    QItemSelectionModel* m_pSelectionModel;
 
 public:
     QtInstanceIconView(QListView* pListView);
@@ -59,10 +58,6 @@ protected:
 private:
     void do_insert(int nPos, const OUString* pStr, const OUString* pId, const QPixmap* pIcon,
                    weld::TreeIter* pRet);
-
-private Q_SLOTS:
-    void handleActivated(const QModelIndex& rIndex);
-    void handleSelectionChanged();
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

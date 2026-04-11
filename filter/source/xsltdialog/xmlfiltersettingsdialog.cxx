@@ -85,7 +85,8 @@ XMLFilterSettingsDialog::XMLFilterSettingsDialog(weld::Window* pParent,
 
     m_xFilterListBox->connect_selection_changed(
         LINK(this, XMLFilterSettingsDialog, SelectionChangedHdl_Impl));
-    m_xFilterListBox->connect_row_activated( LINK( this, XMLFilterSettingsDialog, DoubleClickHdl_Impl ) );
+    m_xFilterListBox->connect_item_activated(
+        LINK(this, XMLFilterSettingsDialog, DoubleClickHdl_Impl));
     m_xFilterListBox->set_accessible_name(FilterResId(STR_XML_FILTER_LISTBOX));
 
     m_xPBNew->connect_clicked(LINK( this, XMLFilterSettingsDialog, ClickHdl_Impl ) );
@@ -151,7 +152,7 @@ IMPL_LINK(XMLFilterSettingsDialog, ClickHdl_Impl, weld::Button&, rButton, void)
         m_xDialog->response(RET_CLOSE);
 }
 
-IMPL_LINK_NOARG(XMLFilterSettingsDialog, SelectionChangedHdl_Impl, weld::TreeView&, void)
+IMPL_LINK_NOARG(XMLFilterSettingsDialog, SelectionChangedHdl_Impl, weld::ItemView&, void)
 {
     updateStates();
 }

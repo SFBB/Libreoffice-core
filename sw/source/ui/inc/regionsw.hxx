@@ -87,7 +87,8 @@ class SwEditRegionDlg final : public SfxDialogController
     void RecurseList(const SwSectionFormat* pFormat, const weld::TreeIter* pIter);
     size_t FindArrPos(const SwSectionFormat* pFormat);
 
-    DECL_LINK(GetFirstEntryHdl, weld::TreeView&, void);
+    void UpdateFromSelection();
+    DECL_LINK(GetFirstEntryHdl, weld::ItemView&, void);
 
     DECL_LINK(OkHdl, weld::Button&, void);
     DECL_LINK(NameEditHdl, weld::Entry&, void);

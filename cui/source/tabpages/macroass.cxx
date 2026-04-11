@@ -93,10 +93,10 @@ SfxMacroTabPage::SfxMacroTabPage(weld::Container* pPage, weld::DialogController*
     SetFrame( rxDocumentFrame );
 
     weld::TreeView& rListBox = m_xEventLB->GetListBox();
-    m_xMacroLB->connect_row_activated(LINK(this, SfxMacroTabPage, MacroTreeViewActivatedHdl));
+    m_xMacroLB->connect_item_activated(LINK(this, SfxMacroTabPage, MacroTreeViewActivatedHdl));
     m_xDeletePB->connect_clicked(LINK(this, SfxMacroTabPage, AssignDeleteClickHdl_Impl));
     m_xAssignPB->connect_clicked(LINK(this, SfxMacroTabPage, AssignDeleteClickHdl_Impl));
-    rListBox.connect_row_activated(LINK(this, SfxMacroTabPage, AssignmentsTreeViewActivatedHdl));
+    rListBox.connect_item_activated(LINK(this, SfxMacroTabPage, AssignmentsTreeViewActivatedHdl));
 
     rListBox.connect_selection_changed(LINK(this, SfxMacroTabPage, SelectEvent_Impl));
     m_xGroupLB->connect_changed(LINK(this, SfxMacroTabPage, SelectGroup_Impl));
@@ -222,7 +222,7 @@ bool SfxMacroTabPage::IsReadOnly() const
     return false;
 }
 
-IMPL_LINK_NOARG(SfxMacroTabPage, SelectEvent_Impl, weld::TreeView&, void)
+IMPL_LINK_NOARG(SfxMacroTabPage, SelectEvent_Impl, weld::ItemView&, void)
 {
     weld::TreeView& rListBox = m_xEventLB->GetListBox();
     int nSelected = rListBox.get_selected_index();
@@ -236,7 +236,7 @@ IMPL_LINK_NOARG(SfxMacroTabPage, SelectEvent_Impl, weld::TreeView&, void)
     EnableButtons();
 }
 
-IMPL_LINK_NOARG(SfxMacroTabPage, SelectGroup_Impl, weld::TreeView&, void)
+IMPL_LINK_NOARG(SfxMacroTabPage, SelectGroup_Impl, weld::ItemView&, void)
 {
     m_xGroupLB->GroupSelected();
     const OUString sScriptURI = m_xMacroLB->GetSelectedScriptURI();
@@ -248,7 +248,7 @@ IMPL_LINK_NOARG(SfxMacroTabPage, SelectGroup_Impl, weld::TreeView&, void)
     EnableButtons();
 }
 
-IMPL_LINK_NOARG(SfxMacroTabPage, SelectMacro_Impl, weld::TreeView&, void)
+IMPL_LINK_NOARG(SfxMacroTabPage, SelectMacro_Impl, weld::ItemView&, void)
 {
     EnableButtons();
 }

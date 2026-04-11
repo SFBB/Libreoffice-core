@@ -77,9 +77,14 @@ protected:
     QtInstanceTreeIter treeIter(int nRow, const QModelIndex& rParentIndex = QModelIndex()) const;
     QtInstanceTreeIter treeIter(const QModelIndex& rIndex) const;
 
+    QItemSelectionModel& getSelectionModel() const;
+
 private:
     QAbstractItemView& getItemView() const;
-    QItemSelectionModel& getSelectionModel() const;
+
+private Q_SLOTS:
+    void handleActivated(const QModelIndex& rIndex);
+    void handleSelectionChanged();
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

@@ -41,8 +41,6 @@ public:
         render_args;
 
 private:
-    Link<TreeView&, void> m_aSelectionChangedHdl;
-    Link<const weld::TreeIter&, bool> m_aRowActivatedHdl;
     Link<int, void> m_aColumnClickedHdl;
     Link<const iter_col&, void> m_aRadioToggleHdl;
     Link<const TreeIter&, bool> m_aEditingStartedHdl;
@@ -61,20 +59,6 @@ protected:
     std::function<int(const weld::TreeIter&, const weld::TreeIter&)> m_aCustomSort;
 
 protected:
-    void signal_selection_changed()
-    {
-        if (notify_events_disabled())
-            return;
-        m_aSelectionChangedHdl.Call(*this);
-    }
-
-    bool signal_row_activated(const weld::TreeIter& rIter)
-    {
-        if (notify_events_disabled())
-            return true;
-        return m_aRowActivatedHdl.Call(rIter);
-    }
-
     void signal_column_clicked(int nColumn) { m_aColumnClickedHdl.Call(nColumn); }
     bool signal_expanding(const TreeIter& rIter)
     {
@@ -200,22 +184,6 @@ public:
 
     void append_separator(const OUString& rId) { insert_separator(-1, rId); }
 
-    void connect_selection_changed(const Link<TreeView&, void>& rLink)
-    {
-        m_aSelectionChangedHdl = rLink;
-    }
-
-    /* A row is "activated" when the user double clicks a treeview row. It may
-       also be emitted when a row is selected and Space or Enter is pressed.
-
-       a return of "true" means the activation has been handled, a "false" propagates
-       the activation to the default handler which expands/collapses the row, if possible.
-    */
-    void connect_row_activated(const Link<const weld::TreeIter&, bool>& rLink)
-    {
-        m_aRowActivatedHdl = rLink;
-    }
-
     // Argument is a pair of iter, col describing the toggled node
     void connect_toggled(const Link<const iter_col&, void>& rLink) { m_aRadioToggleHdl = rLink; }
 
@@ -228,8 +196,6 @@ public:
     virtual void enable_toggle_buttons(ColumnToggleType eType) = 0;
 
     virtual void set_clicks_to_toggle(int nToggleBehavior) = 0;
-
-    int get_selected_index() const;
 
     // col index -1 gets the first text column
     OUString get_text(int row, int col = -1) const;

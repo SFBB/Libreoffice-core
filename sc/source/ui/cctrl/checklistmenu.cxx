@@ -107,7 +107,7 @@ IMPL_LINK(ScCheckListMenuControl, MenuKeyInputHdl, const KeyEvent&, rKEvt, bool)
     return false;
 }
 
-IMPL_LINK_NOARG(ScCheckListMenuControl, SelectHdl, weld::TreeView&, void)
+IMPL_LINK_NOARG(ScCheckListMenuControl, SelectHdl, weld::ItemView&, void)
 {
     sal_uInt32 nSelectedMenu = MENU_NOT_SELECTED;
     std::unique_ptr<weld::TreeIter> pSelected = mxMenu->get_selected();
@@ -650,7 +650,7 @@ ScCheckListMenuControl::ScCheckListMenuControl(weld::Widget* pParent, ScViewData
     mxEdSearch->show();
     mxButtonBox->show();
 
-    mxMenu->connect_row_activated(LINK(this, ScCheckListMenuControl, RowActivatedHdl));
+    mxMenu->connect_item_activated(LINK(this, ScCheckListMenuControl, RowActivatedHdl));
     mxMenu->connect_selection_changed(LINK(this, ScCheckListMenuControl, SelectHdl));
     mxMenu->connect_key_press(LINK(this, ScCheckListMenuControl, MenuKeyInputHdl));
 
@@ -1867,7 +1867,7 @@ ScListSubMenuControl::ScListSubMenuControl(weld::Widget* pParent, ScCheckListMen
 
 void ScListSubMenuControl::SetupMenu(weld::TreeView& rMenu)
 {
-    rMenu.connect_row_activated(LINK(this, ScListSubMenuControl, RowActivatedHdl));
+    rMenu.connect_item_activated(LINK(this, ScListSubMenuControl, RowActivatedHdl));
     rMenu.connect_key_press(LINK(this, ScListSubMenuControl, MenuKeyInputHdl));
 }
 
@@ -2042,7 +2042,7 @@ IMPL_LINK(ScListSubMenuControl, MenuKeyInputHdl, const KeyEvent&, rKEvt, bool)
     return bConsumed;
 }
 
-IMPL_LINK(ScListSubMenuControl, ColorSelChangedHdl, weld::TreeView&, rMenu, void)
+IMPL_LINK(ScListSubMenuControl, ColorSelChangedHdl, weld::ItemView&, rMenu, void)
 {
     if (rMenu.get_selected_index() == -1)
         return;

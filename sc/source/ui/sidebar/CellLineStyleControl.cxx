@@ -71,7 +71,7 @@ CellLineStylePopup::CellLineStylePopup(weld::Toolbar* pParent, const OUString& r
     mxCellLineStyleTreeView->set_size_request(-1, nHeight);
     mxCellLineStyleTreeView->queue_resize();
 
-    mxCellLineStyleTreeView->connect_row_activated(LINK(this, CellLineStylePopup, StyleSelectHdl));
+    mxCellLineStyleTreeView->connect_item_activated(LINK(this, CellLineStylePopup, StyleSelectHdl));
 }
 
 CellLineStylePopup::~CellLineStylePopup()
@@ -130,11 +130,10 @@ void CellLineStylePopup::GrabFocus()
     mxCellLineStyleTreeView->grab_focus();
 }
 
-IMPL_LINK_NOARG(CellLineStylePopup, StyleSelectHdl, const weld::TreeIter&, bool)
+IMPL_LINK(CellLineStylePopup, StyleSelectHdl, const weld::TreeIter&, rIter, bool)
 {
-    const int nIndex = mxCellLineStyleTreeView->get_selected_index();
-    if (nIndex < 0)
-        return false;
+    const int nIndex = mxCellLineStyleTreeView->get_iter_index_in_parent(rIter);
+    assert(nIndex >= 0 && "Invalid index for activated row");
 
     SvxLineItem aLineItem(SID_FRAME_LINESTYLE);
     SvxBorderLineStyle nStyle = SvxBorderLineStyle::SOLID;

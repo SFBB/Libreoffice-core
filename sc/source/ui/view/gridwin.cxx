@@ -211,7 +211,7 @@ ScFilterListBox::ScFilterListBox(weld::Window* pParent, ScGridWindow* pGrid,
     , eMode(eNewMode)
     , nAsyncSelectHdl(nullptr)
 {
-    xTreeView->connect_row_activated(LINK(this, ScFilterListBox, SelectHdl));
+    xTreeView->connect_item_activated(LINK(this, ScFilterListBox, SelectHdl));
     xTreeView->connect_key_press(LINK(this, ScFilterListBox, KeyInputHdl));
 }
 
@@ -254,17 +254,14 @@ IMPL_LINK(ScFilterListBox, KeyInputHdl, const KeyEvent&, rKeyEvent, bool)
     return bDone;
 }
 
-IMPL_LINK_NOARG(ScFilterListBox, SelectHdl, const weld::TreeIter&, bool)
+IMPL_LINK(ScFilterListBox, SelectHdl, const weld::TreeIter&, rIter, bool)
 {
     if (!bInit && !bCancelled && !nAsyncSelectHdl)
     {
-        int nPos = xTreeView->get_selected_index();
-        if (nPos != -1)
-        {
-            nSel = nPos;
-            // #i81298# launch async so the box isn't deleted from modifications within FilterSelect
-            nAsyncSelectHdl = Application::PostUserEvent(LINK(this, ScFilterListBox, AsyncSelectHdl));
-        }
+        nSel = xTreeView->get_iter_index_in_parent(rIter);
+        assert(nSel >= 0 && "Invalid index for activated row");
+        // #i81298# launch async so the box isn't deleted from modifications within FilterSelect
+        nAsyncSelectHdl = Application::PostUserEvent(LINK(this, ScFilterListBox, AsyncSelectHdl));
     }
     return true;
 }

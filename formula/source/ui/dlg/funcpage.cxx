@@ -75,7 +75,7 @@ FuncPage::FuncPage(weld::Container* pParent, const IFunctionManager* _pFunctionM
                                     m_xLbFunction->get_height_rows(15));
     m_xLbCategory->connect_changed(LINK(this, FuncPage, SelComboBoxHdl));
     m_xLbFunction->connect_selection_changed(LINK(this, FuncPage, SelTreeViewHdl));
-    m_xLbFunction->connect_row_activated(LINK(this, FuncPage, DblClkHdl));
+    m_xLbFunction->connect_item_activated(LINK(this, FuncPage, DblClkHdl));
     m_xLbFunction->connect_key_press(LINK(this, FuncPage, KeyInputHdl));
     m_xLbFunctionSearchString->connect_changed(LINK(this, FuncPage, ModifyHdl));
     m_xSimilaritySearch->connect_toggled(LINK(this, FuncPage, SimilarityToggleHdl));
@@ -292,7 +292,7 @@ IMPL_LINK_NOARG(FuncPage, SelComboBoxHdl, weld::ComboBox&, void)
     UpdateFunctionList(searchStr);
 }
 
-IMPL_LINK_NOARG(FuncPage, SelTreeViewHdl, weld::TreeView&, void)
+IMPL_LINK_NOARG(FuncPage, SelTreeViewHdl, weld::ItemView&, void)
 {
     const IFunctionDescription* pDesc = GetFuncDesc();
     if (pDesc)

@@ -33,7 +33,7 @@ namespace abp
         , m_xTableList(m_xBuilder->weld_tree_view(u"table"_ustr))
     {
         m_xTableList->connect_selection_changed(LINK(this, TableSelectionPage, OnTableSelected));
-        m_xTableList->connect_row_activated( LINK( this, TableSelectionPage, OnTableDoubleClicked ) );
+        m_xTableList->connect_item_activated(LINK(this, TableSelectionPage, OnTableDoubleClicked));
     }
 
     TableSelectionPage::~TableSelectionPage()
@@ -75,7 +75,7 @@ namespace abp
         return true;
     }
 
-    IMPL_LINK_NOARG( TableSelectionPage, OnTableSelected, weld::TreeView&, void )
+    IMPL_LINK_NOARG(TableSelectionPage, OnTableSelected, weld::ItemView&, void)
     {
         updateDialogTravelUI();
     }

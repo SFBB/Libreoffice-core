@@ -238,7 +238,8 @@ DigitalSignaturesDialog::DigitalSignaturesDialog(
 
     m_xSignaturesLB->connect_selection_changed(
         LINK(this, DigitalSignaturesDialog, SignatureHighlightHdl));
-    m_xSignaturesLB->connect_row_activated( LINK( this, DigitalSignaturesDialog, SignatureSelectHdl ) );
+    m_xSignaturesLB->connect_item_activated(
+        LINK(this, DigitalSignaturesDialog, SignatureSelectHdl));
 
     m_xViewBtn->connect_clicked( LINK( this, DigitalSignaturesDialog, ViewButtonHdl ) );
     m_xViewBtn->set_sensitive(false);
@@ -455,7 +456,7 @@ short DigitalSignaturesDialog::run()
     return GenericDialogController::run();
 }
 
-IMPL_LINK_NOARG(DigitalSignaturesDialog, SignatureHighlightHdl, weld::TreeView&, void)
+IMPL_LINK_NOARG(DigitalSignaturesDialog, SignatureHighlightHdl, weld::ItemView&, void)
 {
     bool bSel = m_xSignaturesLB->get_selected_index() != -1;
     m_xViewBtn->set_sensitive( bSel );

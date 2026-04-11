@@ -166,7 +166,7 @@ SvxListDialog::SvxListDialog(weld::Window* pParent)
     m_xRemoveBtn->connect_clicked(LINK(this, SvxListDialog, RemoveHdl_Impl));
     m_xEditBtn->connect_clicked(LINK(this, SvxListDialog, EditHdl_Impl));
     m_xList->connect_selection_changed(LINK(this, SvxListDialog, SelectHdl_Impl));
-    m_xList->connect_row_activated(LINK(this, SvxListDialog, DblClickHdl_Impl));
+    m_xList->connect_item_activated(LINK(this, SvxListDialog, DblClickHdl_Impl));
 
     SelectionChanged();
 }
@@ -189,7 +189,7 @@ IMPL_LINK_NOARG(SvxListDialog, AddHdl_Impl, weld::Button&, void)
 
 IMPL_LINK_NOARG(SvxListDialog, EditHdl_Impl, weld::Button&, void) { EditEntry(); }
 
-IMPL_LINK_NOARG(SvxListDialog, SelectHdl_Impl, weld::TreeView&, void) { SelectionChanged(); }
+IMPL_LINK_NOARG(SvxListDialog, SelectHdl_Impl, weld::ItemView&, void) { SelectionChanged(); }
 
 IMPL_LINK_NOARG(SvxListDialog, DblClickHdl_Impl, const weld::TreeIter&, bool)
 {

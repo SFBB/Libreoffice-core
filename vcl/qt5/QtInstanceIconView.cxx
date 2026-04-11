@@ -26,13 +26,6 @@ QtInstanceIconView::QtInstanceIconView(QListView* pListView)
 
     m_pModel = qobject_cast<QStandardItemModel*>(m_pListView->model());
     assert(m_pModel && "list view doesn't have expected item model set");
-
-    m_pSelectionModel = m_pListView->selectionModel();
-    assert(m_pSelectionModel);
-
-    connect(m_pListView, &QListView::activated, this, &QtInstanceIconView::handleActivated);
-    connect(m_pSelectionModel, &QItemSelectionModel::selectionChanged, this,
-            &QtInstanceIconView::handleSelectionChanged);
 }
 
 int QtInstanceIconView::get_item_width() const
@@ -56,6 +49,7 @@ void QtInstanceIconView::do_insert(int nPos, const OUString* pStr, const OUStrin
             nPos = m_pModel->rowCount();
 
         QStandardItem* pItem = new QStandardItem;
+        pItem->setEditable(false);
         if (pStr)
             pItem->setText(toQString(*pStr));
         if (pId)
@@ -104,7 +98,8 @@ int QtInstanceIconView::count_selected_items() const
     SolarMutexGuard g;
 
     int nSelected = 0;
-    GetQtInstance().RunInMainThread([&] { nSelected = m_pSelectionModel->selectedRows().count(); });
+    GetQtInstance().RunInMainThread(
+        [&] { nSelected = getSelectionModel().selectedRows().count(); });
 
     return nSelected;
 }
@@ -207,18 +202,6 @@ bool QtInstanceIconView::handleToolTipEvent(const QHelpEvent& rHelpEvent)
     QToolTip::showText(rHelpEvent.globalPos(), toRichTextTooltip(sToolTip), m_pListView,
                        m_pListView->visualRect(aIndex));
     return true;
-}
-
-void QtInstanceIconView::handleActivated(const QModelIndex& rIndex)
-{
-    SolarMutexGuard g;
-    signal_item_activated(treeIter(rIndex));
-}
-
-void QtInstanceIconView::handleSelectionChanged()
-{
-    SolarMutexGuard g;
-    signal_selection_changed();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

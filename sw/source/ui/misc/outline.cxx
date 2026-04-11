@@ -65,7 +65,7 @@ class SwNumNamesDlg : public weld::GenericDialogController
     std::unique_ptr<weld::Button> m_xOKBtn;
 
     DECL_LINK( ModifyHdl, weld::Entry&, void );
-    DECL_LINK( SelectHdl, weld::TreeView&, void );
+    DECL_LINK(SelectHdl, weld::ItemView&, void);
     DECL_LINK(DoubleClickHdl, const weld::TreeIter&, bool);
 
 public:
@@ -78,7 +78,7 @@ public:
 }
 
 // remember selected entry
-IMPL_LINK( SwNumNamesDlg, SelectHdl, weld::TreeView&, rBox, void )
+IMPL_LINK(SwNumNamesDlg, SelectHdl, weld::ItemView&, rBox, void)
 {
     m_xFormEdit->set_text(rBox.get_selected_text());
     m_xFormEdit->select_region(0, -1);
@@ -131,7 +131,7 @@ SwNumNamesDlg::SwNumNamesDlg(weld::Window *pParent)
 
     m_xFormEdit->connect_changed(LINK(this, SwNumNamesDlg, ModifyHdl));
     m_xFormBox->connect_selection_changed(LINK(this, SwNumNamesDlg, SelectHdl));
-    m_xFormBox->connect_row_activated(LINK(this, SwNumNamesDlg, DoubleClickHdl));
+    m_xFormBox->connect_item_activated(LINK(this, SwNumNamesDlg, DoubleClickHdl));
     m_xFormBox->set_size_request(-1, m_xFormBox->get_height_rows(9));
 }
 
@@ -546,9 +546,9 @@ void    SwOutlineSettingsTabPage::Update()
     SetModified();
 }
 
-IMPL_LINK( SwOutlineSettingsTabPage, LevelHdl, weld::TreeView&, rBox, void )
+void SwOutlineSettingsTabPage::ApplyLevelSelection()
 {
-    auto aRows = rBox.get_selected_rows();
+    auto aRows = m_xLevelLB->get_selected_rows();
     assert(aRows.empty() || aRows.size() == 1); // Single selection only
     if (aRows.empty() || aRows[0] == MAXLEVEL)
     {
@@ -559,6 +559,11 @@ IMPL_LINK( SwOutlineSettingsTabPage, LevelHdl, weld::TreeView&, rBox, void )
         m_nActLevel = 1 << aRows[0];
     }
     Update();
+}
+
+IMPL_LINK_NOARG(SwOutlineSettingsTabPage, LevelHdl, weld::ItemView&, void)
+{
+    ApplyLevelSelection();
 }
 
 IMPL_LINK(SwOutlineSettingsTabPage, ToggleComplete, weld::SpinButton&, rEdit, void)
@@ -791,7 +796,7 @@ void SwOutlineSettingsTabPage::ActivatePage(const SfxItemSet& )
         m_xLevelLB->select(lcl_BitToLevel(m_nActLevel));
     else
         m_xLevelLB->select(MAXLEVEL);
-    LevelHdl(*m_xLevelLB);
+    ApplyLevelSelection();
 }
 
 DeactivateRC SwOutlineSettingsTabPage::DeactivatePage(SfxItemSet*)

@@ -83,7 +83,7 @@ ScFunctionWin::ScFunctionWin(weld::Widget* pParent, SfxBindings* pBindings)
     xCatBox->connect_changed(LINK( this, ScFunctionWin, SelComboHdl));
     xFuncList->connect_selection_changed(LINK(this, ScFunctionWin, SelTreeHdl));
 
-    xFuncList->connect_row_activated(LINK( this, ScFunctionWin, SetRowActivatedHdl));
+    xFuncList->connect_item_activated(LINK(this, ScFunctionWin, SetRowActivatedHdl));
     xInsertButton->connect_clicked(LINK( this, ScFunctionWin, SetSelectionClickHdl));
     xHelpButton->connect_clicked(LINK( this, ScFunctionWin, SetHelpClickHdl));
     xSimilaritySearch->connect_toggled(LINK(this, ScFunctionWin, SetSimilarityToggleHdl));
@@ -565,7 +565,7 @@ IMPL_LINK_NOARG(ScFunctionWin, SelComboHdl, weld::ComboBox&, void)
     SetDescription();
 }
 
-IMPL_LINK_NOARG(ScFunctionWin, SelTreeHdl, weld::TreeView&, void)
+IMPL_LINK_NOARG(ScFunctionWin, SelTreeHdl, weld::ItemView&, void)
 {
     bool bSensitivity = weld::fromId<const ScFuncDesc*>(xFuncList->get_selected_id());
     xHelpButton->set_sensitive(bSensitivity);

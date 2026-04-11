@@ -57,7 +57,7 @@ class SwGlossDecideDlg : public weld::GenericDialogController
     std::unique_ptr<weld::TreeView> m_xListLB;
 
     DECL_LINK(DoubleClickHdl, const weld::TreeIter&, bool);
-    DECL_LINK(SelectHdl, weld::TreeView&, void);
+    DECL_LINK(SelectHdl, weld::ItemView&, void);
 
 public:
     explicit SwGlossDecideDlg(weld::Window* pParent);
@@ -74,7 +74,7 @@ SwGlossDecideDlg::SwGlossDecideDlg(weld::Window* pParent)
 {
     m_xListLB->set_size_request(m_xListLB->get_approximate_digit_width() * 32,
                                 m_xListLB->get_height_rows(8));
-    m_xListLB->connect_row_activated(LINK(this, SwGlossDecideDlg, DoubleClickHdl));
+    m_xListLB->connect_item_activated(LINK(this, SwGlossDecideDlg, DoubleClickHdl));
     m_xListLB->connect_selection_changed(LINK(this, SwGlossDecideDlg, SelectHdl));
 }
 
@@ -84,7 +84,7 @@ IMPL_LINK_NOARG(SwGlossDecideDlg, DoubleClickHdl, const weld::TreeIter&, bool)
     return true;
 }
 
-IMPL_LINK_NOARG(SwGlossDecideDlg, SelectHdl, weld::TreeView&, void)
+IMPL_LINK_NOARG(SwGlossDecideDlg, SelectHdl, weld::ItemView&, void)
 {
     m_xOk->set_sensitive(m_xListLB->get_selected_index() != -1);
 }

@@ -176,7 +176,7 @@ SfxVersionDialog::SfxVersionDialog(weld::Window* pParent, SfxViewFrame* pVwFrame
     m_xCmisButton->connect_clicked( aClickLink );
 
     m_xVersionBox->connect_selection_changed(LINK(this, SfxVersionDialog, SelectHdl_Impl));
-    m_xVersionBox->connect_row_activated( LINK( this, SfxVersionDialog, DClickHdl_Impl ) );
+    m_xVersionBox->connect_item_activated(LINK(this, SfxVersionDialog, DClickHdl_Impl));
 
     m_xVersionBox->grab_focus();
 
@@ -294,7 +294,7 @@ IMPL_LINK_NOARG(SfxVersionDialog, DClickHdl_Impl, const weld::TreeIter&, bool)
     return true;
 }
 
-IMPL_LINK_NOARG(SfxVersionDialog, SelectHdl_Impl, weld::TreeView&, void)
+IMPL_LINK_NOARG(SfxVersionDialog, SelectHdl_Impl, weld::ItemView&, void)
 {
     bool bEnable = m_xVersionBox->get_selected_index() != -1;
     SfxObjectShell* pObjShell = m_pViewFrame->GetObjectShell();

@@ -33,15 +33,9 @@ QtInstanceTreeView::QtInstanceTreeView(QTreeView* pTreeView)
     m_pSourceModel = qobject_cast<QStandardItemModel*>(m_pModel->sourceModel());
     assert(m_pSourceModel && "proxy model doesn't have expected source model");
 
-    m_pSelectionModel = m_pTreeView->selectionModel();
-    assert(m_pSelectionModel);
-
     m_pColumnRoles = columnRoles(*pTreeView);
     assert(m_pColumnRoles.size() == m_pModel->columnCount() && "column count doesn't match");
 
-    connect(m_pTreeView, &QTreeView::activated, this, &QtInstanceTreeView::handleActivated);
-    connect(m_pSelectionModel, &QItemSelectionModel::selectionChanged, this,
-            &QtInstanceTreeView::handleSelectionChanged);
     connect(m_pModel, &QSortFilterProxyModel::dataChanged, this,
             &QtInstanceTreeView::handleDataChanged);
     connect(m_pTreeView, &QTreeView::collapsed, this, &QtInstanceTreeView::signalCollapsing);
@@ -125,8 +119,9 @@ void QtInstanceTreeView::swap(int nPos1, int nPos2)
     SolarMutexGuard g;
 
     GetQtInstance().RunInMainThread([&] {
-        const bool bPos1Selected = m_pSelectionModel->isRowSelected(nPos1);
-        const bool bPos2Selected = m_pSelectionModel->isRowSelected(nPos2);
+        QItemSelectionModel& rSelectionModel = getSelectionModel();
+        const bool bPos1Selected = rSelectionModel.isRowSelected(nPos1);
+        const bool bPos2Selected = rSelectionModel.isRowSelected(nPos2);
 
         const int nSourceModelPos1 = m_pModel->mapToSource(modelIndex(nPos1)).row();
         const int nSourceModelPos2 = m_pModel->mapToSource(modelIndex(nPos2)).row();
@@ -153,7 +148,7 @@ std::vector<int> QtInstanceTreeView::get_selected_rows() const
     std::vector<int> aSelectedRows;
 
     GetQtInstance().RunInMainThread([&] {
-        const QModelIndexList aSelectionIndexes = m_pSelectionModel->selectedRows();
+        const QModelIndexList aSelectionIndexes = getSelectionModel().selectedRows();
         for (const QModelIndex& aIndex : aSelectionIndexes)
             aSelectedRows.push_back(aIndex.row());
     });
@@ -456,7 +451,7 @@ bool QtInstanceTreeView::is_selected(const weld::TreeIter& rIter) const
 
     bool bSelected = false;
     GetQtInstance().RunInMainThread(
-        [&] { bSelected = m_pSelectionModel->isSelected(modelIndex(rIter)); });
+        [&] { bSelected = getSelectionModel().isSelected(modelIndex(rIter)); });
 
     return bSelected;
 }
@@ -770,7 +765,7 @@ void QtInstanceTreeView::do_remove_selection()
 
     GetQtInstance().RunInMainThread([&] {
         // remove from last to first selected row to ensure indexes remain valid
-        QModelIndexList aSelectedIndexes = m_pSelectionModel->selectedRows();
+        QModelIndexList aSelectedIndexes = getSelectionModel().selectedRows();
         std::sort(aSelectedIndexes.begin(), aSelectedIndexes.end(),
                   [this](const QModelIndex& rFirst, const QModelIndex& rSecond) {
                       return iter_compare(treeIter(rFirst), treeIter(rSecond)) == -1;
@@ -976,12 +971,6 @@ bool QtInstanceTreeView::handleViewPortToolTipEvent(const QHelpEvent& rHelpEvent
     return true;
 }
 
-void QtInstanceTreeView::handleActivated(const QModelIndex& rIndex)
-{
-    SolarMutexGuard g;
-    signal_row_activated(treeIter(rIndex));
-}
-
 void QtInstanceTreeView::handleDataChanged(const QModelIndex& rTopLeft,
                                            const QModelIndex& rBottomRight,
                                            const QVector<int>& rRoles)
@@ -1001,12 +990,6 @@ void QtInstanceTreeView::handleDataChanged(const QModelIndex& rTopLeft,
         nColIndex = -1;
 
     signal_toggled(iter_col(QtInstanceTreeIter(*this, rTopLeft), nColIndex));
-}
-
-void QtInstanceTreeView::handleSelectionChanged()
-{
-    SolarMutexGuard g;
-    signal_selection_changed();
 }
 
 void QtInstanceTreeView::signalCollapsing(const QModelIndex& rIndex)

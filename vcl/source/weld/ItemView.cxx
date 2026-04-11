@@ -11,6 +11,20 @@
 
 namespace weld
 {
+bool ItemView::signal_item_activated(const TreeIter& rIter)
+{
+    if (notify_events_disabled())
+        return true;
+    return m_aItemActivatedHdl.Call(rIter);
+}
+
+void ItemView::signal_selection_changed()
+{
+    if (notify_events_disabled())
+        return;
+    m_aSelectionChangeHdl.Call(*this);
+}
+
 OUString ItemView::get_id(int pos) const
 {
     if (std::unique_ptr<weld::TreeIter> pIter = get_iterator(pos))
@@ -23,6 +37,14 @@ void ItemView::set_id(int pos, const OUString& rId)
 {
     if (std::unique_ptr<weld::TreeIter> pIter = get_iterator(pos))
         return set_id(*pIter, rId);
+}
+
+int ItemView::get_selected_index() const
+{
+    if (std::unique_ptr<weld::TreeIter> pIter = get_selected())
+        return get_iter_index_in_parent(*pIter);
+
+    return -1;
 }
 
 int ItemView::get_cursor_index() const

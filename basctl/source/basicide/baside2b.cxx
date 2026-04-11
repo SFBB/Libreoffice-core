@@ -1875,7 +1875,7 @@ IMPL_STATIC_LINK_NOARG(WatchWindow, ButtonHdl, weld::Button&, void)
         pDispatcher->Execute(SID_BASICIDE_REMOVEWATCH);
 }
 
-IMPL_LINK_NOARG(WatchWindow, TreeListHdl, weld::TreeView&, void)
+IMPL_LINK_NOARG(WatchWindow, TreeListHdl, weld::ItemView&, void)
 {
     std::unique_ptr<weld::TreeIter> xCurEntry = m_xTreeListBox->get_cursor();
     if (!xCurEntry)
@@ -2671,7 +2671,7 @@ IMPL_LINK_NOARG(CodeCompleteWindow, ImplDoubleClickHdl, const weld::TreeIter&, b
     return true;
 }
 
-IMPL_LINK_NOARG(CodeCompleteWindow, ImplSelectHdl, weld::TreeView&, void)
+IMPL_LINK_NOARG(CodeCompleteWindow, ImplSelectHdl, weld::ItemView&, void)
 {
     //give back the focus to the parent
     pParent->GrabFocus();
@@ -2859,7 +2859,7 @@ CodeCompleteWindow::CodeCompleteWindow(EditorWindow* pPar)
     , pParent(pPar)
     , m_xListBox(m_xBuilder->weld_tree_view(u"treeview"_ustr))
 {
-    m_xListBox->connect_row_activated(LINK(this, CodeCompleteWindow, ImplDoubleClickHdl));
+    m_xListBox->connect_item_activated(LINK(this, CodeCompleteWindow, ImplDoubleClickHdl));
     m_xListBox->connect_selection_changed(LINK(this, CodeCompleteWindow, ImplSelectHdl));
     m_xListBox->connect_key_press(LINK(this, CodeCompleteWindow, KeyInputHdl));
     m_xListBox->make_sorted();

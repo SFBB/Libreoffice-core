@@ -192,7 +192,7 @@ QuickFindPanel::QuickFindPanel(weld::Widget* pParent, const uno::Reference<frame
         LINK(this, QuickFindPanel, SimilaritySettingsDialogButtonClickedHandler));
     m_xSearchFindsList->connect_selection_changed(
         LINK(this, QuickFindPanel, SearchFindsListSelectionChangedHandler));
-    m_xSearchFindsList->connect_row_activated(
+    m_xSearchFindsList->connect_item_activated(
         LINK(this, QuickFindPanel, SearchFindsListRowActivatedHandler));
     m_xSearchFindsList->connect_key_press(
         LINK(this, QuickFindPanel, SearchFindsListKeyPressHandler));
@@ -434,7 +434,7 @@ IMPL_LINK(QuickFindPanel, SearchFindsListRender, weld::TreeView::render_args, aP
     }
 }
 
-IMPL_LINK_NOARG(QuickFindPanel, SearchFindsListSelectionChangedHandler, weld::TreeView&, void)
+IMPL_LINK_NOARG(QuickFindPanel, SearchFindsListSelectionChangedHandler, weld::ItemView&, void)
 {
     std::unique_ptr<weld::TreeIter> xEntry = m_xSearchFindsList->get_cursor();
     if (!xEntry)

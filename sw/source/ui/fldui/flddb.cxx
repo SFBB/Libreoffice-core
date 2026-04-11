@@ -60,7 +60,7 @@ SwFieldDBPage::SwFieldDBPage(weld::Container* pPage, weld::DialogController* pCo
 
     m_xNumFormatLB->connect_changed(LINK(this, SwFieldDBPage, NumSelectHdl));
     m_xDatabaseTLB->connect_changed(LINK(this, SwFieldDBPage, TreeSelectHdl));
-    m_xDatabaseTLB->connect_row_activated(LINK(this, SwFieldDBPage, TreeViewInsertHdl));
+    m_xDatabaseTLB->connect_item_activated(LINK(this, SwFieldDBPage, TreeViewInsertHdl));
 
     m_xValueED->connect_changed(LINK(this, SwFieldDBPage, ModifyHdl));
     m_xAddDBPB->connect_clicked(LINK(this, SwFieldDBPage, AddDBHdl));
@@ -172,7 +172,7 @@ void SwFieldDBPage::Reset(const SfxItemSet*)
     TypeHdl(nullptr);
 
     m_xTypeLB->connect_selection_changed(LINK(this, SwFieldDBPage, TypeListBoxHdl));
-    m_xTypeLB->connect_row_activated(LINK(this, SwFieldDBPage, TreeViewInsertHdl));
+    m_xTypeLB->connect_item_activated(LINK(this, SwFieldDBPage, TreeViewInsertHdl));
 
     if (IsFieldEdit())
     {
@@ -271,12 +271,12 @@ SwFieldGroup SwFieldDBPage::GetGroup()
     return SwFieldGroup::Database;
 }
 
-IMPL_LINK( SwFieldDBPage, TypeListBoxHdl, weld::TreeView&, rBox, void )
+IMPL_LINK( SwFieldDBPage, TypeListBoxHdl, weld::ItemView&, rBox, void )
 {
     TypeHdl(&rBox);
 }
 
-void SwFieldDBPage::TypeHdl(const weld::TreeView* pBox)
+void SwFieldDBPage::TypeHdl(const weld::ItemView* pBox)
 {
     // save old ListBoxPos
     const sal_Int32 nOld = GetTypeSel();
@@ -448,7 +448,7 @@ void SwFieldDBPage::CheckInsert()
     EnableInsert(bInsert, IsCurrentPage());
 }
 
-IMPL_LINK(SwFieldDBPage, TreeSelectHdl, weld::TreeView&, rBox, void)
+IMPL_LINK(SwFieldDBPage, TreeSelectHdl, weld::ItemView&, rBox, void)
 {
     std::unique_ptr<weld::TreeIter> xIter = rBox.get_selected();
     if (!xIter)

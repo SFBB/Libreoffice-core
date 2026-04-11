@@ -151,7 +151,7 @@ IMPL_LINK(SvxJavaOptionsPage, CheckHdl_Impl, const weld::TreeView::iter_col&, rR
     HandleCheckEntry(m_xJavaList->get_iter_index_in_parent(rRowCol.first));
 }
 
-IMPL_LINK_NOARG(SvxJavaOptionsPage, SelectHdl_Impl, weld::TreeView&, void)
+IMPL_LINK_NOARG(SvxJavaOptionsPage, SelectHdl_Impl, weld::ItemView&, void)
 {
     UpdateJavaPathText();
 }
@@ -658,7 +658,7 @@ SvxJavaParameterDlg::SvxJavaParameterDlg(weld::Window* pParent)
     m_xRemoveBtn->connect_clicked( LINK( this, SvxJavaParameterDlg, RemoveHdl_Impl ) );
     m_xEditBtn->connect_clicked( LINK( this, SvxJavaParameterDlg, EditHdl_Impl ) );
     m_xAssignedList->connect_selection_changed(LINK(this, SvxJavaParameterDlg, SelectHdl_Impl));
-    m_xAssignedList->connect_row_activated( LINK( this, SvxJavaParameterDlg, DblClickHdl_Impl ) );
+    m_xAssignedList->connect_item_activated(LINK(this, SvxJavaParameterDlg, DblClickHdl_Impl));
 
     ModifyHdl_Impl(*m_xParameterEdit);
     EnableEditButton();
@@ -710,7 +710,7 @@ IMPL_LINK_NOARG(SvxJavaParameterDlg, EditHdl_Impl, weld::Button&, void)
     EditParameter();
 }
 
-IMPL_LINK_NOARG(SvxJavaParameterDlg, SelectHdl_Impl, weld::TreeView&, void)
+IMPL_LINK_NOARG(SvxJavaParameterDlg, SelectHdl_Impl, weld::ItemView&, void)
 {
     EnableEditButton();
     EnableRemoveButton();
@@ -944,7 +944,7 @@ IMPL_LINK_NOARG(SvxJavaClassPathDlg, RemoveHdl_Impl, weld::Button&, void)
     EnableRemoveButton();
 }
 
-IMPL_LINK_NOARG(SvxJavaClassPathDlg, SelectHdl_Impl, weld::TreeView&, void)
+IMPL_LINK_NOARG(SvxJavaClassPathDlg, SelectHdl_Impl, weld::ItemView&, void)
 {
     EnableRemoveButton();
 }

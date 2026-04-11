@@ -120,7 +120,7 @@ SvBaseLinksDlg::SvBaseLinksDlg(weld::Window * pParent, LinkManager* pMgr, bool b
     aUpdateIdle.SetPriority( TaskPriority::LOWEST );
 
     m_xTbLinks->connect_selection_changed(LINK(this, SvBaseLinksDlg, LinksSelectHdl));
-    m_xTbLinks->connect_row_activated( LINK( this, SvBaseLinksDlg, LinksDoubleClickHdl ) );
+    m_xTbLinks->connect_item_activated(LINK(this, SvBaseLinksDlg, LinksDoubleClickHdl));
     m_xRbAutomatic->connect_toggled( LINK( this, SvBaseLinksDlg, ToggleHdl ) );
     m_xRbManual->connect_toggled( LINK( this, SvBaseLinksDlg, ToggleHdl ) );
     m_xPbUpdateNow->connect_clicked( LINK( this, SvBaseLinksDlg, UpdateNowClickHdl ) );
@@ -140,9 +140,9 @@ SvBaseLinksDlg::~SvBaseLinksDlg()
 /*************************************************************************
 |*    SvBaseLinksDlg::Handler()
 *************************************************************************/
-IMPL_LINK(SvBaseLinksDlg, LinksSelectHdl, weld::TreeView&, rTreeView, void)
+IMPL_LINK_NOARG(SvBaseLinksDlg, LinksSelectHdl, weld::ItemView&, void)
 {
-    LinksSelectHdl(&rTreeView);
+    LinksSelectHdl(m_xTbLinks.get());
 }
 
 void SvBaseLinksDlg::LinksSelectHdl(weld::TreeView* pSvTabListBox)

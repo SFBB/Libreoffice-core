@@ -272,7 +272,8 @@ OContentTableSelection::OContentTableSelection(weld::Container* pPage, OListComb
 {
     enableFormDatasourceDisplay();
 
-    m_xSelectTable->connect_row_activated(LINK(this, OContentTableSelection, OnTableDoubleClicked));
+    m_xSelectTable->connect_item_activated(
+        LINK(this, OContentTableSelection, OnTableDoubleClicked));
     m_xSelectTable->connect_selection_changed(LINK(this, OContentTableSelection, OnTableSelected));
 }
 
@@ -292,7 +293,7 @@ bool OContentTableSelection::canAdvance() const
     return 0 != m_xSelectTable->count_selected_rows();
 }
 
-IMPL_LINK_NOARG(OContentTableSelection, OnTableSelected, weld::TreeView&, void)
+IMPL_LINK_NOARG(OContentTableSelection, OnTableSelected, weld::ItemView&, void)
 {
     updateDialogTravelUI();
 }
@@ -351,7 +352,7 @@ OContentFieldSelection::OContentFieldSelection(weld::Container* pPage, OListComb
                                                          : RID_STR_FIELDINFO_COMBOBOX));
     m_xSelectTableField->connect_selection_changed(
         LINK(this, OContentFieldSelection, OnFieldSelected));
-    m_xSelectTableField->connect_row_activated(
+    m_xSelectTableField->connect_item_activated(
         LINK(this, OContentFieldSelection, OnTableDoubleClicked));
 }
 
@@ -383,7 +384,7 @@ IMPL_LINK_NOARG(OContentFieldSelection, OnTableDoubleClicked, const weld::TreeIt
     return true;
 }
 
-IMPL_LINK_NOARG(OContentFieldSelection, OnFieldSelected, weld::TreeView&, void)
+IMPL_LINK_NOARG(OContentFieldSelection, OnFieldSelected, weld::ItemView&, void)
 {
     updateDialogTravelUI();
     m_xDisplayedField->set_text(m_xSelectTableField->get_selected_text());

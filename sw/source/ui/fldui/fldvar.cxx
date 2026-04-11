@@ -155,12 +155,12 @@ void SwFieldVarPage::Reset(const SfxItemSet* )
     // select old Pos
     RestorePos(*m_xTypeLB);
 
-    m_xTypeLB->connect_row_activated(LINK(this, SwFieldVarPage, TreeViewInsertHdl));
+    m_xTypeLB->connect_item_activated(LINK(this, SwFieldVarPage, TreeViewInsertHdl));
     m_xTypeLB->connect_selection_changed(LINK(this, SwFieldVarPage, TypeHdl));
     m_xSelectionLB->connect_selection_changed(LINK(this, SwFieldVarPage, SubTypeListBoxHdl));
-    m_xSelectionLB->connect_row_activated(LINK(this, SwFieldVarPage, SubTypeInsertHdl));
-    m_xFormatLB->connect_row_activated(LINK(this, SwFieldVarPage, TreeViewInsertHdl));
-    m_xNumFormatLB->connect_row_activated(LINK(this, SwFieldVarPage, TreeViewInsertHdl));
+    m_xSelectionLB->connect_item_activated(LINK(this, SwFieldVarPage, SubTypeInsertHdl));
+    m_xFormatLB->connect_item_activated(LINK(this, SwFieldVarPage, TreeViewInsertHdl));
+    m_xNumFormatLB->connect_item_activated(LINK(this, SwFieldVarPage, TreeViewInsertHdl));
     m_xNameED->connect_changed(LINK(this, SwFieldVarPage, ModifyHdl));
     m_xValueED->connect_changed(LINK(this, SwFieldVarPage, ModifyValueHdl));
     m_xNewPB->connect_clicked(LINK(this, SwFieldVarPage, TBClickHdl));
@@ -204,7 +204,7 @@ void SwFieldVarPage::Reset(const SfxItemSet* )
     }
 }
 
-IMPL_LINK_NOARG(SwFieldVarPage, TypeHdl, weld::TreeView&, void)
+IMPL_LINK_NOARG(SwFieldVarPage, TypeHdl, weld::ItemView&, void)
 {
     // save old ListBoxPos
     const sal_Int32 nOld = GetTypeSel();
@@ -234,7 +234,7 @@ IMPL_LINK_NOARG(SwFieldVarPage, TypeHdl, weld::TreeView&, void)
     m_bInit = false;
 }
 
-IMPL_LINK( SwFieldVarPage, SubTypeListBoxHdl, weld::TreeView&, rBox, void )
+IMPL_LINK(SwFieldVarPage, SubTypeListBoxHdl, weld::ItemView&, rBox, void)
 {
     SubTypeHdl(&rBox);
 }
@@ -252,7 +252,7 @@ static inline sal_uInt32 lcl_getUsedNumFormat( const SwNumFormatTreeView& rNumFo
     return nNumberFormat;
 }
 
-void SwFieldVarPage::SubTypeHdl(const weld::TreeView* pBox)
+void SwFieldVarPage::SubTypeHdl(const weld::ItemView* pBox)
 {
     SwFieldTypesEnum nTypeId = static_cast<SwFieldTypesEnum>(m_xTypeLB->get_id(GetTypeSel()).toUInt32());
     sal_Int32 nSelPos = m_xSelectionLB->get_selected_index();

@@ -25,7 +25,7 @@ ScPivotLayoutTreeList::ScPivotLayoutTreeList(std::unique_ptr<weld::TreeView> xCo
     : ScPivotLayoutTreeListBase(std::move(xControl))
 {
     mxControl->connect_key_press(LINK(this, ScPivotLayoutTreeList, KeyInputHdl));
-    mxControl->connect_row_activated(LINK(this, ScPivotLayoutTreeList, DoubleClickHdl));
+    mxControl->connect_item_activated(LINK(this, ScPivotLayoutTreeList, DoubleClickHdl));
 }
 
 ScPivotLayoutTreeList::~ScPivotLayoutTreeList()
@@ -48,13 +48,9 @@ void ScPivotLayoutTreeList::Setup(ScPivotLayoutDialog* pParent, SvPivotTreeListT
     meType = eType;
 }
 
-IMPL_LINK_NOARG(ScPivotLayoutTreeList, DoubleClickHdl, const weld::TreeIter&, bool)
+IMPL_LINK(ScPivotLayoutTreeList, DoubleClickHdl, const weld::TreeIter&, rIter, bool)
 {
-    int nEntry = mxControl->get_cursor_index();
-    if (nEntry == -1)
-        return true;
-
-    ScItemValue* pCurrentItemValue = weld::fromId<ScItemValue*>(mxControl->get_id(nEntry));
+    ScItemValue* pCurrentItemValue = weld::fromId<ScItemValue*>(mxControl->get_id(rIter));
     ScPivotFuncData& rCurrentFunctionData = pCurrentItemValue->maFunctionData;
     SCCOL nCurrentColumn = rCurrentFunctionData.mnCol;
 

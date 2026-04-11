@@ -162,7 +162,7 @@ PageSizeControl::PageSizeControl(PageSizePopup* pControl, weld::Widget* pParent)
     mxPageSizeTreeView->set_size_request(-1, nHeight);
     mxPageSizeTreeView->queue_resize();
 
-    mxPageSizeTreeView->connect_row_activated(LINK(this, PageSizeControl, ImplSizeHdl));
+    mxPageSizeTreeView->connect_item_activated(LINK(this, PageSizeControl, ImplSizeHdl));
 
     mxMoreButton->connect_clicked( LINK( this, PageSizeControl, MoreButtonClickHdl_Impl ) );
     mxMoreButton->grab_focus();
@@ -202,11 +202,10 @@ void PageSizeControl::ExecuteSizeChange( const Paper ePaper )
         SfxCallMode::RECORD, { &aPageSizeItem });
 }
 
-IMPL_LINK_NOARG(PageSizeControl, ImplSizeHdl, const weld::TreeIter&, bool)
+IMPL_LINK(PageSizeControl, ImplSizeHdl, const weld::TreeIter&, rIter, bool)
 {
-    const int nIndex = mxPageSizeTreeView->get_selected_index();
-    if (nIndex < 0)
-        return false;
+    const int nIndex = mxPageSizeTreeView->get_iter_index_in_parent(rIter);
+    assert(nIndex >= 0 && "Invalid index for activated row");
 
     const Paper ePaper = maPaperList.at(nIndex);
     ExecuteSizeChange( ePaper );

@@ -77,7 +77,7 @@ CertificateChooser::CertificateChooser(weld::Window* _pParent,
     };
     m_xCertLB->set_column_fixed_widths(aWidths);
     m_xCertLB->connect_selection_changed(LINK(this, CertificateChooser, CertificateHighlightHdl));
-    m_xCertLB->connect_row_activated( LINK( this, CertificateChooser, CertificateSelectHdl ) );
+    m_xCertLB->connect_item_activated(LINK(this, CertificateChooser, CertificateSelectHdl));
     m_xViewBtn->connect_clicked( LINK( this, CertificateChooser, ViewButtonHdl ) );
     m_xSearchBox->connect_changed(LINK(this, CertificateChooser, SearchModifyHdl));
     m_xReloadBtn->connect_clicked( LINK( this, CertificateChooser, ReloadButtonHdl ) );
@@ -420,7 +420,7 @@ IMPL_LINK_NOARG(CertificateChooser, SearchModifyHdl, weld::Entry&, void)
     ImplInitialize(true);
 }
 
-IMPL_LINK_NOARG(CertificateChooser, CertificateHighlightHdl, weld::TreeView&, void)
+IMPL_LINK_NOARG(CertificateChooser, CertificateHighlightHdl, weld::ItemView&, void)
 {
     bool bEnable = m_xCertLB->get_selected_index() != -1;
     m_xViewBtn->set_sensitive(bEnable);

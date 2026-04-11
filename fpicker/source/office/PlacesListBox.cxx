@@ -30,7 +30,7 @@ PlacesListBox::PlacesListBox(std::unique_ptr<weld::TreeView> xControl,
     mxImpl->set_size_request(aSize.Width(), aSize.Height());
 
     mxImpl->connect_selection_changed(LINK(this, PlacesListBox, Selection));
-    mxImpl->connect_row_activated( LINK( this, PlacesListBox, DoubleClick ) ) ;
+    mxImpl->connect_item_activated(LINK(this, PlacesListBox, DoubleClick));
     mxImpl->connect_query_tooltip(LINK(this, PlacesListBox, QueryTooltipHdl));
 }
 
@@ -98,7 +98,7 @@ OUString PlacesListBox::getEntryIcon( const PlacePtr& pPlace )
     return theImage;
 }
 
-IMPL_LINK_NOARG( PlacesListBox, Selection, weld::TreeView&, void )
+IMPL_LINK_NOARG(PlacesListBox, Selection, weld::ItemView&, void)
 {
     int nSelected = mxImpl->get_cursor_index();
     assert(nSelected != -1 && "no selection");

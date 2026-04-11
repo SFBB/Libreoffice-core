@@ -405,7 +405,7 @@ OfaSwAutoFmtOptionsPage::OfaSwAutoFmtOptionsPage(weld::Container* pPage, weld::D
     , m_xEditPB(m_xBuilder->weld_button(u"edit"_ustr))
 {
     m_xCheckLB->connect_selection_changed(LINK(this, OfaSwAutoFmtOptionsPage, SelectHdl));
-    m_xCheckLB->connect_row_activated(LINK(this, OfaSwAutoFmtOptionsPage, DoubleClickEditHdl));
+    m_xCheckLB->connect_item_activated(LINK(this, OfaSwAutoFmtOptionsPage, DoubleClickEditHdl));
 
     std::vector<int> aWidths
     {
@@ -663,7 +663,7 @@ void OfaSwAutoFmtOptionsPage::Reset( const SfxItemSet* )
     m_xCheckLB->thaw();
 }
 
-IMPL_LINK(OfaSwAutoFmtOptionsPage, SelectHdl, weld::TreeView&, rBox, void)
+IMPL_LINK(OfaSwAutoFmtOptionsPage, SelectHdl, weld::ItemView&, rBox, void)
 {
     m_xEditPB->set_sensitive(rBox.get_selected_id().toInt64() != 0);
 }
@@ -958,12 +958,12 @@ void OfaAutocorrReplacePage::SetLanguage(LanguageType eSet)
     }
 }
 
-IMPL_LINK(OfaAutocorrReplacePage, SelectHdl, weld::TreeView&, rBox, void)
+IMPL_LINK_NOARG(OfaAutocorrReplacePage, SelectHdl, weld::ItemView&, void)
 {
     if(!bFirstSelect || !bHasSelectionText)
     {
-        int nEntry = rBox.get_selected_index();
-        OUString sTmpShort(rBox.get_text(nEntry, 0));
+        int nEntry = m_xReplaceTLB->get_selected_index();
+        OUString sTmpShort(m_xReplaceTLB->get_text(nEntry, 0));
         // if the text is set via ModifyHdl, the cursor is always at the beginning
         // of a word, although you're editing here
         bool bSameContent = 0 == maCompareClass.compareString(sTmpShort, m_xShortED->get_text());
@@ -978,9 +978,9 @@ IMPL_LINK(OfaAutocorrReplacePage, SelectHdl, weld::TreeView&, rBox, void)
                 m_xShortED->select_region(nStartPos, nEndPos);
             }
         }
-        m_xReplaceED->set_text(rBox.get_text(nEntry, 1));
+        m_xReplaceED->set_text(m_xReplaceTLB->get_text(nEntry, 1));
         // with UserData there is a Formatinfo
-        m_xTextOnlyCB->set_active(rBox.get_id(nEntry).isEmpty());
+        m_xTextOnlyCB->set_active(m_xReplaceTLB->get_id(nEntry).isEmpty());
     }
     else
     {
@@ -1539,7 +1539,7 @@ bool OfaAutocorrExceptPage::NewDelHdl(const weld::Widget* pBtn)
     return true;
 }
 
-IMPL_LINK(OfaAutocorrExceptPage, SelectHdl, weld::TreeView&, rBox, void)
+IMPL_LINK(OfaAutocorrExceptPage, SelectHdl, weld::ItemView&, rBox, void)
 {
     if (&rBox == m_xAbbrevLB.get())
     {
@@ -2324,7 +2324,7 @@ IMPL_LINK_NOARG(OfaSmartTagOptionsTabPage, CheckHdl, weld::Toggleable&, void)
 
 /** Handler for the list box
 */
-IMPL_LINK_NOARG(OfaSmartTagOptionsTabPage, SelectHdl, weld::TreeView&, void)
+IMPL_LINK_NOARG(OfaSmartTagOptionsTabPage, SelectHdl, weld::ItemView&, void)
 {
     const int nPos = m_xSmartTagTypesLB->get_selected_index();
     if (nPos == -1)

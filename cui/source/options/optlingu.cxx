@@ -811,7 +811,7 @@ SvxLinguTabPage::SvxLinguTabPage(weld::Container* pPage, weld::DialogController*
     m_xLinguOptionsCLB->enable_toggle_buttons(weld::ColumnToggleType::Check);
 
     m_xLinguModulesCLB->connect_selection_changed(LINK(this, SvxLinguTabPage, SelectHdl_Impl));
-    m_xLinguModulesCLB->connect_row_activated(LINK(this, SvxLinguTabPage, BoxDoubleClickHdl_Impl));
+    m_xLinguModulesCLB->connect_item_activated(LINK(this, SvxLinguTabPage, BoxDoubleClickHdl_Impl));
     m_xLinguModulesCLB->connect_toggled(LINK(this, SvxLinguTabPage, ModulesBoxCheckButtonHdl_Impl));
 
     m_xLinguModulesEditPB->connect_clicked( LINK( this, SvxLinguTabPage, ClickHdl_Impl ));
@@ -825,7 +825,7 @@ SvxLinguTabPage::SvxLinguTabPage(weld::Container* pPage, weld::DialogController*
     m_xLinguDicsDelPB->connect_clicked( LINK( this, SvxLinguTabPage, ClickHdl_Impl ));
 
     m_xLinguOptionsCLB->connect_selection_changed(LINK(this, SvxLinguTabPage, SelectHdl_Impl));
-    m_xLinguOptionsCLB->connect_row_activated(LINK(this, SvxLinguTabPage, BoxDoubleClickHdl_Impl));
+    m_xLinguOptionsCLB->connect_item_activated(LINK(this, SvxLinguTabPage, BoxDoubleClickHdl_Impl));
 
     m_xMoreDictsLink->connect_activate_link(LINK(this, SvxLinguTabPage, OnLinkClick));
     if (officecfg::Office::Security::Hyperlinks::Open::get() == SvtExtendedSecurityOptions::OPEN_NEVER)
@@ -1497,7 +1497,7 @@ IMPL_LINK(SvxLinguTabPage, ClickHdl_Impl, weld::Button&, rBtn, void)
     }
 }
 
-IMPL_LINK(SvxLinguTabPage, SelectHdl_Impl, weld::TreeView&, rBox, void)
+IMPL_LINK(SvxLinguTabPage, SelectHdl_Impl, weld::ItemView&, rBox, void)
 {
     if (m_xLinguModulesCLB.get() == &rBox)
     {
@@ -1612,7 +1612,7 @@ SvxEditModulesDlg::~SvxEditModulesDlg()
         delete weld::fromId<ModuleUserData_Impl*>(m_xModulesCLB->get_id(i));
 }
 
-IMPL_LINK( SvxEditModulesDlg, SelectHdl_Impl, weld::TreeView&, rBox, void )
+IMPL_LINK(SvxEditModulesDlg, SelectHdl_Impl, weld::ItemView&, rBox, void)
 {
     int nCurPos = rBox.get_selected_index();
     if (nCurPos == -1)

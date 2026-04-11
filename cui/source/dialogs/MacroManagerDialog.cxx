@@ -666,7 +666,7 @@ MacroManagerDialog::MacroManagerDialog(weld::Window* pParent,
     m_xScriptContainersListBox->connect_changed(LINK(this, MacroManagerDialog, SelectHdl));
 
     m_xScriptsListBox->connect_changed(LINK(this, MacroManagerDialog, SelectHdl));
-    m_xScriptsListBox->connect_row_activated(
+    m_xScriptsListBox->connect_item_activated(
         LINK(this, MacroManagerDialog, FunctionDoubleClickHdl));
     m_xScriptsListBox->connect_command(LINK(this, MacroManagerDialog, ContextMenuHdl));
 
@@ -817,9 +817,10 @@ void MacroManagerDialog::Notify(SfxBroadcaster&, const SfxHint& rHint)
     }
 }
 
-IMPL_LINK(MacroManagerDialog, SelectHdl, weld::TreeView&, rTreeView, void)
+IMPL_LINK(MacroManagerDialog, SelectHdl, weld::ItemView&, rItemView, void)
 {
-    if (&rTreeView == &m_xScriptContainersListBox->get_widget())
+    weld::TreeView& rTreeView = m_xScriptContainersListBox->get_widget();
+    if (&rItemView == &rTreeView)
     {
         m_xScriptsListBoxLabel->set_label(m_aScriptsListBoxLabelBaseStr);
         m_xScriptsListBox->ClearAll();

@@ -74,7 +74,7 @@ OTableSelectionPage::OTableSelectionPage(weld::Container* pPage, OControlWizard*
 
     m_xDatasource->connect_selection_changed(LINK(this, OTableSelectionPage, OnListboxSelection));
     m_xTable->connect_selection_changed(LINK(this, OTableSelectionPage, OnListboxSelection));
-    m_xTable->connect_row_activated(LINK(this, OTableSelectionPage, OnListboxDoubleClicked));
+    m_xTable->connect_item_activated(LINK(this, OTableSelectionPage, OnListboxDoubleClicked));
     m_xSearchDatabase->connect_clicked(LINK(this, OTableSelectionPage, OnSearchClicked));
 }
 
@@ -213,7 +213,7 @@ IMPL_LINK_NOARG(OTableSelectionPage, OnListboxDoubleClicked, const weld::TreeIte
     return true;
 }
 
-IMPL_LINK(OTableSelectionPage, OnListboxSelection, weld::TreeView&, _rBox, void)
+IMPL_LINK(OTableSelectionPage, OnListboxSelection, weld::ItemView&, _rBox, void)
 {
     if (m_xDatasource.get() == &_rBox)
     { // new data source selected

@@ -116,7 +116,8 @@ DbRegistrationOptionsPage::DbRegistrationOptionsPage(weld::Container* pPage, wel
     m_xPathBox->connect_column_clicked(LINK(this, DbRegistrationOptionsPage, HeaderSelect_Impl));
 
     m_xPathBox->make_sorted();
-    m_xPathBox->connect_row_activated( LINK( this, DbRegistrationOptionsPage, PathBoxDoubleClickHdl ) );
+    m_xPathBox->connect_item_activated(
+        LINK(this, DbRegistrationOptionsPage, PathBoxDoubleClickHdl));
     m_xPathBox->connect_selection_changed(LINK(this, DbRegistrationOptionsPage, PathSelect_Impl));
 
     m_xPathBox->set_help_id(HID_DBPATH_CTL_PATH);
@@ -263,7 +264,7 @@ IMPL_LINK( DbRegistrationOptionsPage, HeaderSelect_Impl, int, nCol, void )
     m_xPathBox->set_sort_indicator(bSortMode ? TRISTATE_TRUE : TRISTATE_FALSE, nCol);
 }
 
-IMPL_LINK_NOARG(DbRegistrationOptionsPage, PathSelect_Impl, weld::TreeView&, void)
+IMPL_LINK_NOARG(DbRegistrationOptionsPage, PathSelect_Impl, weld::ItemView&, void)
 {
     DatabaseRegistration* pRegistration = weld::fromId<DatabaseRegistration*>(m_xPathBox->get_selected_id());
 

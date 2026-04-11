@@ -122,11 +122,11 @@ void SwFieldFuncPage::Reset(const SfxItemSet* )
         }
     }
 
-    m_xTypeLB->connect_row_activated(LINK(this, SwFieldFuncPage, TreeViewInsertHdl));
+    m_xTypeLB->connect_item_activated(LINK(this, SwFieldFuncPage, TreeViewInsertHdl));
     m_xTypeLB->connect_selection_changed(LINK(this, SwFieldFuncPage, TypeHdl));
     m_xSelectionLB->connect_selection_changed(LINK(this, SwFieldFuncPage, SelectHdl));
-    m_xSelectionLB->connect_row_activated(LINK(this, SwFieldFuncPage, InsertMacroHdl));
-    m_xFormatLB->connect_row_activated(LINK(this, SwFieldFuncPage, TreeViewInsertHdl));
+    m_xSelectionLB->connect_item_activated(LINK(this, SwFieldFuncPage, InsertMacroHdl));
+    m_xFormatLB->connect_item_activated(LINK(this, SwFieldFuncPage, TreeViewInsertHdl));
     m_xMacroBT->connect_clicked(LINK(this, SwFieldFuncPage, MacroHdl));
     Link<weld::Button&,void> aListModifyLk( LINK(this, SwFieldFuncPage, ListModifyButtonHdl));
     m_xListAddPB->connect_clicked(aListModifyLk);
@@ -189,7 +189,7 @@ const TranslateId FMT_MARK_ARY[] =
     FMT_MARK_OLE
 };
 
-IMPL_LINK_NOARG(SwFieldFuncPage, TypeHdl, weld::TreeView&, void)
+IMPL_LINK_NOARG(SwFieldFuncPage, TypeHdl, weld::ItemView&, void)
 {
     // save old ListBoxPos
     const sal_Int32 nOld = GetTypeSel();
@@ -387,7 +387,7 @@ IMPL_LINK_NOARG(SwFieldFuncPage, TypeHdl, weld::TreeView&, void)
     EnableInsert(bInsert, IsCurrentPage());
 }
 
-IMPL_LINK_NOARG(SwFieldFuncPage, SelectHdl, weld::TreeView&, void)
+IMPL_LINK_NOARG(SwFieldFuncPage, SelectHdl, weld::ItemView&, void)
 {
     const SwFieldTypesEnum nTypeId = static_cast<SwFieldTypesEnum>(m_xTypeLB->get_id(GetTypeSel()).toUInt32());
 
@@ -457,7 +457,7 @@ void SwFieldFuncPage::ListModifyHdl(const weld::Widget* pControl)
     ListEnableHdl(*m_xListItemED);
 }
 
-IMPL_LINK_NOARG(SwFieldFuncPage, ListEnableListBoxHdl, weld::TreeView&, void)
+IMPL_LINK_NOARG(SwFieldFuncPage, ListEnableListBoxHdl, weld::ItemView&, void)
 {
     ListEnableHdl(*m_xListItemED);
 }

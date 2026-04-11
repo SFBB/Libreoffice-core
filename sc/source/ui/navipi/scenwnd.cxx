@@ -87,7 +87,7 @@ void ScScenarioWindow::UpdateEntries( const std::vector<OUString> &rNewEntryList
     }
 }
 
-IMPL_LINK_NOARG(ScScenarioWindow, SelectHdl, weld::TreeView&, void)
+IMPL_LINK_NOARG(ScScenarioWindow, SelectHdl, weld::ItemView&, void)
 {
     if (const ScenarioEntry* pEntry = GetSelectedScenarioEntry())
         SetComment(pEntry->maComment);
@@ -199,7 +199,7 @@ ScScenarioWindow::ScScenarioWindow(weld::Builder& rBuilder, const OUString& aQH_
     m_xEdComment->set_tooltip_text(aQH_Comment);
 
     m_xLbScenario->connect_selection_changed(LINK(this, ScScenarioWindow, SelectHdl));
-    m_xLbScenario->connect_row_activated(LINK(this, ScScenarioWindow, DoubleClickHdl));
+    m_xLbScenario->connect_item_activated(LINK(this, ScScenarioWindow, DoubleClickHdl));
     m_xLbScenario->connect_key_press(LINK(this, ScScenarioWindow, KeyInputHdl));
     m_xLbScenario->connect_command(LINK(this, ScScenarioWindow, ContextMenuHdl));
 

@@ -440,9 +440,11 @@ void SvxBitmapTabPage::Reset( const SfxItemSet* rAttrs )
     ClickBitmapHdl_Impl();
 }
 
-std::unique_ptr<SfxTabPage> SvxBitmapTabPage::Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rAttrs)
+std::unique_ptr<SvxBitmapTabPage> SvxBitmapTabPage::Create(weld::Container* pPage,
+                                                           weld::DialogController* pController,
+                                                           const SfxItemSet& rAttrs)
 {
-    return std::make_unique<SvxBitmapTabPage>(pPage, pController, *rAttrs);
+    return std::make_unique<SvxBitmapTabPage>(pPage, pController, rAttrs);
 }
 
 void SvxBitmapTabPage::ClickBitmapHdl_Impl()

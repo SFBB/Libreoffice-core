@@ -56,13 +56,13 @@ public:
         m_xControl->selected_foreach(func);
     }
 
-    void connect_changed(const Link<weld::TreeView&, void>& rLink)
+    void connect_changed(const Link<weld::ItemView&, void>& rLink)
     {
         m_xControl->connect_selection_changed(rLink);
     }
-    void connect_row_activated(const Link<const weld::TreeIter&, bool>& rLink)
+    void connect_item_activated(const Link<const weld::TreeIter&, bool>& rLink)
     {
-        m_xControl->connect_row_activated(rLink);
+        m_xControl->connect_item_activated(rLink);
     }
     void connect_column_clicked(const Link<int, void>& rLink)
     {
@@ -115,7 +115,7 @@ class SwInsertBookmarkDlg final : public SfxDialogController
     DECL_LINK(EditTextHdl, weld::Button&, void);
     DECL_LINK(RenameHdl, weld::Button&, void);
     DECL_LINK(GotoHdl, weld::Button&, void);
-    DECL_LINK(SelectionChangedHdl, weld::TreeView&, void);
+    DECL_LINK(SelectionChangedHdl, weld::ItemView&, void);
     DECL_LINK(DoubleClickHdl, const weld::TreeIter&, bool);
     DECL_LINK(HeaderBarClick, int, void);
     DECL_LINK(ChangeHideHdl, weld::Toggleable&, void);

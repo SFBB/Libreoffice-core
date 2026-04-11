@@ -21,24 +21,8 @@ class VCL_DLLPUBLIC IconView : virtual public ItemView
     friend class ::LOKTrigger;
 
 protected:
-    Link<IconView&, void> m_aSelectionChangeHdl;
-    Link<const TreeIter&, bool> m_aItemActivatedHdl;
     Link<const TreeIter&, OUString> m_aQueryTooltipHdl;
     Link<const encoded_image_query&, bool> m_aGetPropertyTreeElemHdl;
-
-    void signal_selection_changed()
-    {
-        if (notify_events_disabled())
-            return;
-        m_aSelectionChangeHdl.Call(*this);
-    }
-
-    bool signal_item_activated(const TreeIter& rIter)
-    {
-        if (notify_events_disabled())
-            return true;
-        return m_aItemActivatedHdl.Call(rIter);
-    }
 
     OUString signal_query_tooltip(const TreeIter& rIter) const
     {
@@ -88,22 +72,6 @@ public:
     }
 
     void append_separator(const OUString& rId) { insert_separator(-1, &rId); }
-
-    void connect_selection_changed(const Link<IconView&, void>& rLink)
-    {
-        m_aSelectionChangeHdl = rLink;
-    }
-
-    /* A row is "activated" when the user double clicks a treeview row. It may
-       also be emitted when a row is selected and Space or Enter is pressed.
-
-       a return of "true" means the activation has been handled, a "false" propagates
-       the activation to the default handler which expands/collapses the row, if possible.
-    */
-    void connect_item_activated(const Link<const TreeIter&, bool>& rLink)
-    {
-        m_aItemActivatedHdl = rLink;
-    }
 
     virtual void connect_query_tooltip(const Link<const TreeIter&, OUString>& rLink)
     {

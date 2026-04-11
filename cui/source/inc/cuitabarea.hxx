@@ -277,7 +277,6 @@ private:
     template< typename TabPage >
     DeactivateRC DeactivatePage_Impl( SfxItemSet* pSet );
 
-    std::unique_ptr<SfxTabPage> CreateFillStyleTabPage(FillType eFillType);
     std::unique_ptr<SfxTabPage> CreatePage(FillType eFillType);
 
 public:
@@ -428,7 +427,8 @@ public:
 
     void    Construct();
 
-    static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* );
+    static std::unique_ptr<SvxGradientTabPage>
+    Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet&);
     virtual bool FillItemSet( SfxItemSet* ) override;
     virtual void Reset( const SfxItemSet * ) override;
 
@@ -497,7 +497,8 @@ public:
 
     void    Construct();
 
-    static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* );
+    static std::unique_ptr<SvxHatchTabPage>
+    Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet&);
     virtual bool FillItemSet( SfxItemSet* ) override;
     virtual void Reset( const SfxItemSet * ) override;
 
@@ -596,7 +597,8 @@ public:
 
     void    Construct();
 
-    static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* );
+    static std::unique_ptr<SvxBitmapTabPage>
+    Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet&);
 
     virtual bool FillItemSet( SfxItemSet* ) override;
     virtual void Reset( const SfxItemSet * ) override;
@@ -649,7 +651,8 @@ public:
 
     void    Construct();
 
-    static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* );
+    static std::unique_ptr<SvxPatternTabPage>
+    Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet&);
     virtual bool FillItemSet( SfxItemSet* ) override;
     virtual void Reset( const SfxItemSet * ) override;
 
@@ -762,14 +765,14 @@ public:
 
     void    Construct();
 
-    static std::unique_ptr<SfxTabPage> Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* );
+    static std::unique_ptr<SvxColorTabPage>
+    Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet&);
     virtual bool FillItemSet( SfxItemSet* ) override;
     virtual void Reset( const SfxItemSet * ) override;
 
     virtual void ActivatePage( const SfxItemSet& rSet ) override;
     virtual DeactivateRC DeactivatePage( SfxItemSet* pSet ) override;
 
-    void    SetPropertyList( XPropertyListType t, const XPropertyListRef &xRef );
     void    SetColorList( const XColorListRef& pColList );
 
     void SetColorChgd(ChangeType* pIn) { m_pnColorListState = pIn; }

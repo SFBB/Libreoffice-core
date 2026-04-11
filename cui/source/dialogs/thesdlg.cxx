@@ -180,18 +180,18 @@ IMPL_LINK_NOARG(SvxThesaurusDialog, WordSelectHdl_Impl, weld::ComboBox&, void)
     m_aModifyIdle.Start();
 }
 
-IMPL_LINK( SvxThesaurusDialog, AlternativesSelectHdl_Impl, weld::TreeView&, rBox, void )
+IMPL_LINK_NOARG(SvxThesaurusDialog, AlternativesSelectHdl_Impl, weld::ItemView&, void)
 {
-    int nEntry = rBox.get_selected_index();
+    int nEntry = m_xAlternativesCT->get_selected_index();
     if (nEntry != -1)
     {
-        bool bIsHeader = rBox.get_text_emphasis(nEntry, 0);
+        bool bIsHeader = m_xAlternativesCT->get_text_emphasis(nEntry, 0);
         if (bIsHeader)
         {
             ++nEntry;
-            rBox.select(nEntry);
+            m_xAlternativesCT->select(nEntry);
         }
-        OUString aStr = linguistic::GetThesaurusReplaceText(rBox.get_text(nEntry));
+        OUString aStr = linguistic::GetThesaurusReplaceText(m_xAlternativesCT->get_text(nEntry));
         m_xReplaceEdit->set_text(aStr);
         ReplaceEditHdl_Impl(*m_xReplaceEdit);
     }
@@ -263,7 +263,8 @@ SvxThesaurusDialog::SvxThesaurusDialog(
     m_xLangLB->connect_changed( LINK( this, SvxThesaurusDialog, LanguageHdl_Impl ) );
     m_xAlternativesCT->connect_selection_changed(
         LINK(this, SvxThesaurusDialog, AlternativesSelectHdl_Impl));
-    m_xAlternativesCT->connect_row_activated( LINK( this, SvxThesaurusDialog, AlternativesDoubleClickHdl_Impl ));
+    m_xAlternativesCT->connect_item_activated(
+        LINK(this, SvxThesaurusDialog, AlternativesDoubleClickHdl_Impl));
     m_xAlternativesCT->connect_key_press(LINK(this, SvxThesaurusDialog, KeyInputHdl));
 
     xThesaurus = xThes;

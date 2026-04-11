@@ -165,7 +165,7 @@ IMPL_LINK_NOARG(SfxNewFileDialog, Update, Timer*, void)
     m_xPreviewController->SetObjectShell(m_xDocShell);
 }
 
-IMPL_LINK( SfxNewFileDialog, RegionSelect, weld::TreeView&, rBox, void )
+IMPL_LINK(SfxNewFileDialog, RegionSelect, weld::ItemView&, rBox, void)
 {
     if (m_xDocShell.Is() && m_xDocShell->GetProgress())
         return;
@@ -193,7 +193,7 @@ IMPL_LINK_NOARG(SfxNewFileDialog, Expand, weld::Expander&, void)
     TemplateSelect(*m_xTemplateLb);
 }
 
-IMPL_LINK_NOARG(SfxNewFileDialog, TemplateSelect, weld::TreeView&, void)
+IMPL_LINK_NOARG(SfxNewFileDialog, TemplateSelect, weld::ItemView&, void)
 {
     // Still loading
     if (m_xDocShell && m_xDocShell->GetProgress())
@@ -285,7 +285,7 @@ SfxNewFileDialog::SfxNewFileDialog(weld::Window *pParent, SfxNewFileDialogMode n
     m_xMoreBt->set_expanded(bExpand && (nFlags != SfxNewFileDialogMode::NONE));
 
     m_xTemplateLb->connect_selection_changed(LINK(this, SfxNewFileDialog, TemplateSelect));
-    m_xTemplateLb->connect_row_activated(LINK(this, SfxNewFileDialog, DoubleClick));
+    m_xTemplateLb->connect_item_activated(LINK(this, SfxNewFileDialog, DoubleClick));
 
     // update the template configuration if necessary
     {

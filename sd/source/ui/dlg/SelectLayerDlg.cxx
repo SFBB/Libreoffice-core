@@ -31,7 +31,7 @@ SdSelectLayerDlg::SdSelectLayerDlg(weld::Window* pParent)
 {
     m_xListLB->set_size_request(m_xListLB->get_approximate_digit_width() * 32,
                                 m_xListLB->get_height_rows(8));
-    m_xListLB->connect_row_activated(LINK(this, SdSelectLayerDlg, DoubleClickHdl));
+    m_xListLB->connect_item_activated(LINK(this, SdSelectLayerDlg, DoubleClickHdl));
     m_xListLB->connect_selection_changed(LINK(this, SdSelectLayerDlg, SelectHdl));
 }
 
@@ -41,7 +41,7 @@ IMPL_LINK_NOARG(SdSelectLayerDlg, DoubleClickHdl, const weld::TreeIter&, bool)
     return true;
 }
 
-IMPL_LINK_NOARG(SdSelectLayerDlg, SelectHdl, weld::TreeView&, void)
+IMPL_LINK_NOARG(SdSelectLayerDlg, SelectHdl, weld::ItemView&, void)
 {
     m_xOk->set_sensitive(m_xListLB->get_selected_index() != -1);
 }
