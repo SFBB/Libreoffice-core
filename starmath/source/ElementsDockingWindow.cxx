@@ -33,6 +33,7 @@
 #include <sfx2/dispatch.hxx>
 #include <sfx2/sfxmodelfactory.hxx>
 #include <svl/stritem.hxx>
+#include <vcl/commandevent.hxx>
 #include <vcl/event.hxx>
 #include <vcl/rendercontext/DrawModeFlags.hxx>
 #include <vcl/settings.hxx>
@@ -590,9 +591,8 @@ SmElementsControl::SmElementsControl(std::unique_ptr<weld::IconView> pIconView,
     maParser.reset(starmathdatabase::GetVersionSmParser(m_nSmSyntaxVersion));
     maParser->SetImportSymbolNames(true);
 
-    mpIconView->connect_query_tooltip(LINK(this, SmElementsControl, QueryTooltipHandler));
     mpIconView->connect_item_activated(LINK(this, SmElementsControl, ElementActivatedHandler));
-    mpIconView->connect_mouse_press(LINK(this, SmElementsControl, MousePressHdl));
+    mpIconView->connect_command(LINK(this, SmElementsControl, CommandHdl));
 }
 
 SmElementsControl::~SmElementsControl()
@@ -671,7 +671,9 @@ void SmElementsControl::addElement(const OUString& aElementVisual, const OUStrin
     const OUString aId(weld::toId(maItemDatas.back().get()));
     Bitmap aBitmap( pDevice->GetBitmap(Point(0,0), pDevice->GetOutputSize()) );
     mpIconView->insert(-1, nullptr, &aId, &aBitmap, nullptr);
-    mpIconView->set_item_accessible_name(mpIconView->n_children() - 1, GetElementHelpText(aId));
+    const OUString sHelpText = GetElementHelpText(aId);
+    mpIconView->set_item_accessible_name(mpIconView->n_children() - 1, sHelpText);
+    mpIconView->set_item_tooltip_text(mpIconView->n_children() - 1, sHelpText);
     if (mpIconView->get_item_width() < aSize.Width())
         mpIconView->set_item_width(aSize.Width());
 }
@@ -749,7 +751,6 @@ void SmElementsControl::build()
     {
         case 5:
             addElements(mnCurrentSetIndex);
-            m_sHoveredItem = "nil"; // if list is empty we must not use the previously hovered item
             break;
         case 6:
         default:
@@ -769,16 +770,6 @@ void SmElementsControl::setSmSyntaxVersion(sal_Int16 nSmSyntaxVersion)
     }
 }
 
-IMPL_LINK(SmElementsControl, QueryTooltipHandler, const weld::TreeIter&, iter, OUString)
-{
-    if (const OUString id = mpIconView->get_id(iter); !id.isEmpty())
-    {
-        m_sHoveredItem = id;
-        return GetElementHelpText(id);
-    }
-    return {};
-}
-
 IMPL_LINK(SmElementsControl, ElementActivatedHandler, const weld::TreeIter&, rIter, bool)
 {
     if (const OUString id = mpIconView->get_id(rIter); !id.isEmpty())
@@ -788,24 +779,43 @@ IMPL_LINK(SmElementsControl, ElementActivatedHandler, const weld::TreeIter&, rIt
     return true;
 }
 
-IMPL_LINK(SmElementsControl, MousePressHdl, const MouseEvent&, rEvt, bool)
+IMPL_LINK(SmElementsControl, CommandHdl, const CommandEvent&, rEvent, bool)
 {
-    if (rEvt.IsRight() && m_bAllowDelete && (m_sHoveredItem != "nil"))
+    if (rEvent.GetCommand() != CommandEventId::ContextMenu)
+        return false;
+
+    if (!m_bAllowDelete)
+        return false;
+
+    Point aPos;
+    std::unique_ptr<weld::TreeIter> pItem;
+    if (rEvent.IsMouseEvent())
     {
-        mpIconView->select( GetElementPos(m_sHoveredItem) );
-        OUString sElementId = mpIconView->get_selected_id();
-        if (!sElementId.isEmpty())
-        {
-            OUString sResponse = mxPopup->popup_at_rect(
-                mpIconView.get(), tools::Rectangle(rEvt.GetPosPixel(), Size(1, 1)));
-            if (sResponse == "delete")
-            {
-                SmModule::get()->GetConfig()->DeleteUserDefinedFormula( GetElementHelpText(m_sHoveredItem) );
-                build(); //refresh view
-            }
-            mpIconView->unselect_all();
-        }
+        aPos = rEvent.GetMousePosPixel();
+        pItem = mpIconView->get_item_at_pos(aPos);
+        if (!pItem)
+            return false;
+        mpIconView->select(*pItem);
     }
+    else
+    {
+        pItem = mpIconView->get_selected();
+        if (!pItem)
+            return false;
+        aPos = mpIconView->get_rect(*pItem).Center();
+    }
+
+    OUString sResponse
+        = mxPopup->popup_at_rect(mpIconView.get(), tools::Rectangle(aPos, Size(1, 1)));
+    if (sResponse == u"delete")
+    {
+        SmModule::get()->GetConfig()->DeleteUserDefinedFormula(
+            GetElementHelpText(mpIconView->get_id(*pItem)));
+        build(); //refresh view
+    }
+    mpIconView->unselect_all();
+
     return true;
 }
+
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

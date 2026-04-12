@@ -23,15 +23,11 @@ namespace chart
 {
 class ChartColorPalettes final
 {
-public:
-    typedef Link<const MouseEvent&, bool> MouseEventHandler;
-
 private:
     std::unique_ptr<weld::IconView> mxIconView;
     std::unique_ptr<weld::ScrolledWindow> mxWindow;
     std::vector<ChartColorPalette> maColorSets;
-    sal_uInt16 mnHighlightedItemId;
-    MouseEventHandler maMouseMoveHdl;
+    Link<const OUString&, bool> maMouseMoveHdl;
 
 public:
     ChartColorPalettes(weld::Builder& rBuilder, const OUString& id, const OUString& winId);
@@ -46,12 +42,11 @@ public:
 
     void insert(ChartColorPalette const& rColorSet);
     const ChartColorPalette* getPalette(sal_uInt32 nItem) const;
-    void setMouseMoveHdl(const MouseEventHandler& rLink);
+    void setMouseMoveHdl(const Link<const OUString&, bool>& rLink);
 
     void Fill();
 
 private:
-    DECL_LINK(OnQueryTooltip, const weld::TreeIter&, OUString);
     DECL_LINK(OnMouseMove, const MouseEvent&, bool);
 };
 
