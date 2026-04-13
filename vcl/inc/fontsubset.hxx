@@ -25,6 +25,8 @@
 
 #include <vcl/dllapi.h>
 
+#include <vector>
+
 // Translate units from TT to PS (standard 1/1000)
 inline int XUnits(int nUPEM, int n) { return (n * 1000) / nUPEM; }
 
@@ -32,12 +34,9 @@ enum class FontType {
     NO_FONT     = 0,
     SFNT_TTF    = 1<<1,                     ///< SFNT container with TrueType glyphs
     SFNT_CFF    = 1<<2,                     ///< SFNT container with CFF-container
-    TYPE1_PFB   = 1<<3,                     ///< PSType1 Postscript Font Binary
-    CFF_FONT    = 1<<4,                     ///< CFF-container with PSType2 glyphs
-    ANY_SFNT    = SFNT_TTF | SFNT_CFF
 };
 namespace o3tl {
-    template<> struct typed_flags<FontType> : is_typed_flags<FontType, 0x1e> {};
+    template<> struct typed_flags<FontType> : is_typed_flags<FontType, 0x06> {};
 }
 
 class VCL_DLLPUBLIC FontSubsetInfo final
@@ -50,6 +49,7 @@ public: // TODO: make subsetter results private and provide accessor methods ins
     int                     m_nCapHeight = 0;
     tools::Rectangle        m_aFontBBox;
     FontType                m_nFontType = FontType::NO_FONT; ///< font-type of subset result
+    std::vector<OString>    m_aGlyphNames;                   ///< glyph names for CFF encoding
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

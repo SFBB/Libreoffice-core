@@ -1822,37 +1822,6 @@ bool PDFWriterImpl::emitType3Font(const vcl::font::PhysicalFontFace* pFace,
     return true;
 }
 
-typedef int ThreeInts[3];
-static bool getPfbSegmentLengths( const unsigned char* pFontBytes, int nByteLen,
-    ThreeInts& rSegmentLengths )
-{
-    if( !pFontBytes || (nByteLen < 0) )
-        return false;
-    const unsigned char* pPtr = pFontBytes;
-    const unsigned char* pEnd = pFontBytes + nByteLen;
-
-    for(int & rSegmentLength : rSegmentLengths) {
-        // read segment1 header
-        if( pPtr+6 >= pEnd )
-            return false;
-        if( (pPtr[0] != 0x80) || (pPtr[1] >= 0x03) )
-            return false;
-        const int nLen = (pPtr[5]<<24) + (pPtr[4]<<16) + (pPtr[3]<<8) + pPtr[2];
-        if( nLen <= 0)
-            return false;
-        rSegmentLength = nLen;
-        pPtr += nLen + 6;
-    }
-
-    // read segment-end header
-    if( pPtr+2 >= pEnd )
-        return false;
-    if( (pPtr[0] != 0x80) || (pPtr[1] != 0x03) )
-        return false;
-
-    return true;
-}
-
 static void appendSubsetName( int nSubsetID, std::u16string_view rPSName, OStringBuffer& rBuffer )
 {
     if( nSubsetID )
@@ -2039,10 +2008,8 @@ sal_Int32 PDFWriterImpl::emitFontDescriptor( const vcl::font::PhysicalFontFace* 
             case FontType::SFNT_TTF:
                 aLine.append( '2' );
                 break;
-            case FontType::CFF_FONT:
+            case FontType::SFNT_CFF:
                 aLine.append( "3" );
-                break;
-            case FontType::TYPE1_PFB:
                 break;
             default:
                 OSL_FAIL( "unknown fonttype in PDF font descriptor" );
@@ -2131,10 +2098,12 @@ bool PDFWriterImpl::emitFonts()
                     if (!writeBufferBytes(aBuffer.data(), aBuffer.size()))
                         return false;
                 }
-                else if( aSubsetInfo.m_nFontType & FontType::CFF_FONT)
+                else if( aSubsetInfo.m_nFontType == FontType::SFNT_CFF )
                 {
-                    // CFF subset is embedded as an SFNT font (same as TrueType)
-                    aLine.append("/Subtype/Type1C>>\nstream\n");
+                    aLine.append("/Length1 "
+                        + OString::number(aBuffer.size())
+                        + "/Subtype/OpenType>>\n"
+                          "stream\n" );
                     if ( !writeBuffer( aLine ) ) return false;
                     if ( osl::File::E_None != m_aFile.getPos(nStartPos) ) return false;
 
@@ -2143,31 +2112,6 @@ bool PDFWriterImpl::emitFonts()
                     checkAndEnableStreamEncryption( nFontStream );
                     if (!writeBufferBytes(aBuffer.data(), aBuffer.size()))
                         return false;
-                }
-                else if( aSubsetInfo.m_nFontType & FontType::TYPE1_PFB) // TODO: also support PFA?
-                {
-                    // get the PFB-segment lengths
-                    ThreeInts aSegmentLengths = {0,0,0};
-                    getPfbSegmentLengths(aBuffer.data(), aBuffer.size(), aSegmentLengths);
-                    // the lengths below are mandatory for PDF-exported Type1 fonts
-                    // because the PFB segment headers get stripped! WhyOhWhy.
-                    aLine.append("/Length1 "
-                        + OString::number(aSegmentLengths[0] )
-                        + "/Length2 "
-                        + OString::number( aSegmentLengths[1] )
-                        + "/Length3 "
-                        + OString::number( aSegmentLengths[2] )
-                        + ">>\n"
-                          "stream\n" );
-                    if ( !writeBuffer( aLine ) ) return false;
-                    if ( osl::File::E_None != m_aFile.getPos(nStartPos) ) return false;
-
-                    // emit PFB-sections without section headers
-                    beginCompression();
-                    checkAndEnableStreamEncryption( nFontStream );
-                    if ( !writeBufferBytes( &aBuffer[6], aSegmentLengths[0] ) ) return false;
-                    if ( !writeBufferBytes( &aBuffer[12] + aSegmentLengths[0], aSegmentLengths[1] ) ) return false;
-                    if ( !writeBufferBytes( &aBuffer[18] + aSegmentLengths[0] + aSegmentLengths[1], aSegmentLengths[2] ) ) return false;
                 }
                 else
                 {
@@ -2204,7 +2148,7 @@ bool PDFWriterImpl::emitFonts()
                 if ( !updateObject( nFontObject ) ) return false;
                 aLine.setLength( 0 );
                 aLine.append( OString::number(nFontObject) + " 0 obj\n" );
-                aLine.append( (aSubsetInfo.m_nFontType & (FontType::TYPE1_PFB | FontType::CFF_FONT)) ?
+                aLine.append( (aSubsetInfo.m_nFontType == FontType::SFNT_CFF) ?
                              "<</Type/Font/Subtype/Type1/BaseFont/" :
                              "<</Type/Font/Subtype/TrueType/BaseFont/" );
                 appendSubsetName( s_subset.m_nFontID, aSubsetInfo.m_aPSName, aLine );
@@ -2228,6 +2172,17 @@ bool PDFWriterImpl::emitFonts()
                     aLine.append( "/ToUnicode "
                         + OString::number( nToUnicodeStream )
                         + " 0 R\n" );
+                }
+                if( aSubsetInfo.m_nFontType == FontType::SFNT_CFF
+                    && !aSubsetInfo.m_aGlyphNames.empty() )
+                {
+                    aLine.append( "/Encoding<</Type/Encoding/Differences[" );
+                    for (size_t i = 0; i < aSubsetInfo.m_aGlyphNames.size(); i++)
+                    {
+                        aLine.append( OString::number(sal_Int32(i))
+                            + "/" + aSubsetInfo.m_aGlyphNames[i] + " " );
+                    }
+                    aLine.append( "]>>\n" );
                 }
                 aLine.append( ">>\n"
                              "endobj\n\n" );
