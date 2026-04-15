@@ -718,16 +718,13 @@ namespace
     bool identifyTrueTypeFont( const void* i_pBuffer, sal_uInt32 i_nSize, Font& o_rResult )
     {
         bool bResult = false;
-        TrueTypeFont* pTTF = nullptr;
-        if( OpenTTFontBuffer( i_pBuffer, i_nSize, 0, &pTTF ) == SFErrCodes::Ok )
+        TrueTypeFont aFont(i_pBuffer, i_nSize, 0);
+        if( aFont.isValid() )
         {
-            TTGlobalFontInfo aInfo;
-            GetTTGlobalFontInfo( pTTF, &aInfo );
+            TTGlobalFontInfo aInfo = aFont.getGlobalFontInfo();
             // most importantly: the family name
-            if( !aInfo.ufamily.isEmpty() )
-                o_rResult.SetFamilyName( aInfo.ufamily );
-            else if( !aInfo.family.isEmpty() )
-                o_rResult.SetFamilyName( OStringToOUString( aInfo.family, RTL_TEXTENCODING_ASCII_US ) );
+            if( !aInfo.family.isEmpty() )
+                o_rResult.SetFamilyName( aInfo.family );
             // set weight
             if( aInfo.weight )
             {
@@ -781,14 +778,9 @@ namespace
             o_rResult.SetPitch( (aInfo.pitch == 0) ? PITCH_VARIABLE : PITCH_FIXED );
 
             // set style name
-            if( !aInfo.usubfamily.isEmpty() )
-                o_rResult.SetStyleName( aInfo.usubfamily );
-            else if( !aInfo.subfamily.isEmpty() )
-                o_rResult.SetStyleName( OUString::createFromAscii( aInfo.subfamily ) );
+            if( !aInfo.subfamily.isEmpty() )
+                o_rResult.SetStyleName( aInfo.subfamily );
 
-            // cleanup
-            CloseTTFont( pTTF );
-            // success
             bResult = true;
         }
         return bResult;

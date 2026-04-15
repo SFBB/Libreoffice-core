@@ -224,26 +224,20 @@ OUString getFilenameForExport(std::u16string_view familyName, FontFamily family,
 // to have a different meaning (guessing from code, IsSubsettable() might
 // possibly mean it's ttf, while IsEmbeddable() might mean it's type1).
 // So just try to open the data as ttf and see.
-bool sufficientTTFRights(const void* data, tools::Long size,
+bool sufficientTTFRights(const TrueTypeFont& font,
                          EmbeddedFontsManager::FontRights rights)
 {
-    TrueTypeFont* font;
-    if (OpenTTFontBuffer(data, size, 0 /*TODO*/, &font) == SFErrCodes::Ok)
+    TTGlobalFontInfo info = font.getGlobalFontInfo();
+    // https://www.microsoft.com/typography/otspec/os2.htm#fst
+    int copyright = info.typeFlags;
+    switch (rights)
     {
-        TTGlobalFontInfo info;
-        GetTTGlobalFontInfo(font, &info);
-        CloseTTFont(font);
-        // https://www.microsoft.com/typography/otspec/os2.htm#fst
-        int copyright = info.typeFlags;
-        switch (rights)
-        {
-            case EmbeddedFontsManager::FontRights::ViewingAllowed:
-                // Embedding not restricted completely.
-                return (copyright & 0x02) != 0x02;
-            case EmbeddedFontsManager::FontRights::EditingAllowed:
-                // Font is installable or editable.
-                return copyright == 0 || (copyright & 0x08);
-        }
+        case EmbeddedFontsManager::FontRights::ViewingAllowed:
+            // Embedding not restricted completely.
+            return (copyright & 0x02) != 0x02;
+        case EmbeddedFontsManager::FontRights::EditingAllowed:
+            // Font is installable or editable.
+            return copyright == 0 || (copyright & 0x08);
     }
     return true; // no known restriction
 }
@@ -334,31 +328,18 @@ bool EmbeddedFontsManager::addEmbeddedFont( const uno::Reference< io::XInputStre
     }
 #endif
 
+    TrueTypeFont font(fontData.data(), fontData.size(), 0);
+    if (!font.isValid())
+        return false;
+
     if( !eot )
     {
-        sufficientFontRights = sufficientTTFRights(fontData.data(), fontData.size(), FontRights::EditingAllowed);
+        sufficientFontRights = sufficientTTFRights(font, FontRights::EditingAllowed);
     }
 
     if (bSubsetted)
     {
-        TrueTypeFont* font;
-        sal_uInt32 nGlyphs = 0;
-        if (OpenTTFontBuffer(fontData.data(), fontData.size(), 0, &font) == SFErrCodes::Ok)
-        {
-            sal_uInt32 nGlyphCount = font->glyphCount();
-            for (sal_uInt32 i = 0; i < nGlyphCount; ++i)
-            {
-                sal_uInt32 nOffset = font->glyphOffset(i);
-                sal_uInt32 nNextOffset = font->glyphOffset(i + 1);
-                if (nOffset == nNextOffset)
-                {
-                    // GetTTGlyphComponents() says this is an empty glyph, ignore it.
-                    continue;
-                }
-                ++nGlyphs;
-            }
-            CloseTTFont(font);
-        }
+        sal_uInt32 nGlyphs = font.countNonEmptyGlyphs();
         // Check if it has reasonable amount of glyphs, set the limit to the number of glyphs in the
         // English alphabet (not differentiating lowercase and uppercase).
         if (nGlyphs < 26)
@@ -569,12 +550,11 @@ bool EmbeddedFontsManager::isEmbeddedAndRestricted(std::u16string_view familyNam
 
 bool EmbeddedFontsManager::analyzeTTF(const void* data, tools::Long size, FontWeight& weight)
 {
-    TrueTypeFont* font;
-    if (OpenTTFontBuffer( data, size, 0 /*TODO*/, &font ) != SFErrCodes::Ok)
+    TrueTypeFont font(data, size, 0);
+    if (!font.isValid())
         return false;
 
-    weight = AnalyzeTTFWeight(font);
-    CloseTTFont(font);
+    weight = font.analyzeFontWeight();
 
     return true;
 }
@@ -661,7 +641,8 @@ OUString EmbeddedFontsManager::fontFileUrl( std::u16string_view familyName, Font
         {
             auto data = aFontData.data();
             auto size = aFontData.size();
-            if( sufficientTTFRights( data, size, rights ))
+            TrueTypeFont aFont(data, size, 0);
+            if( sufficientTTFRights( aFont, rights ))
             {
                 osl::File file( url );
                 if( file.open( osl_File_OpenFlag_Write | osl_File_OpenFlag_Create ) == osl::File::E_None )

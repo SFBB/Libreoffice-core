@@ -23,43 +23,31 @@
 #include <svx/xtable.hxx>
 #include <tools/gen.hxx>
 
-class SVXCORE_DLLPUBLIC SvxPresetListBox : public ValueSet
+class SvxPresetListBox final : public ValueSet
 {
 private:
-    static constexpr sal_uInt32  s_nColCount = 3;
-    Size                         m_aIconSize;
-    sal_uInt16 mnContextMenuItemId;
-    Link<SvxPresetListBox*,void> maRenameHdl;
-    Link<SvxPresetListBox*,void> maDeleteHdl;
+    Size m_aIconSize;
+    Link<sal_uInt16, void> maRenameHdl;
+    Link<sal_uInt16, void> maDeleteHdl;
 
-    void OnMenuItemSelected(std::u16string_view rIdent);
-
-    template< typename ListType, typename EntryType >
-    void FillPresetListBoxImpl(ListType& pList, sal_uInt32 nStartIndex);
+    template <typename ListType> void FillPresetListBoxImpl(ListType& rList);
 
 public:
     SvxPresetListBox(std::unique_ptr<weld::ScrolledWindow> pWindow);
 
-    virtual void Resize() override;
     virtual bool Command(const CommandEvent& rEvent) override;
+    virtual bool KeyInput(const KeyEvent& rKEvt) override;
     virtual void SetDrawingArea(weld::DrawingArea* pDrawingArea) override;
-    Size const & GetIconSize() const { return m_aIconSize; }
-    sal_uInt16 GetContextMenuItemId() const { return mnContextMenuItemId; }
 
-    void SetRenameHdl( const Link<SvxPresetListBox*,void>& rLink )
-    {
-        maRenameHdl = rLink;
-    }
-    void SetDeleteHdl( const Link<SvxPresetListBox*,void>& rLink )
-    {
-        maDeleteHdl = rLink;
-    }
+    Size const& GetIconSize() const { return m_aIconSize; }
 
-    void FillPresetListBox(XGradientList& pList, sal_uInt32 nStartIndex = 1);
-    void FillPresetListBox(XHatchList& pList, sal_uInt32 nStartIndex = 1);
-    void FillPresetListBox(XBitmapList& pList, sal_uInt32 nStartIndex = 1);
-    void FillPresetListBox(XPatternList& pList, sal_uInt32 nStartIndex = 1);
-    void DrawLayout();
+    void SetRenameHdl(const Link<sal_uInt16, void>& rLink) { maRenameHdl = rLink; }
+    void SetDeleteHdl(const Link<sal_uInt16, void>& rLink) { maDeleteHdl = rLink; }
+
+    void FillPresetListBox(XGradientList& rList);
+    void FillPresetListBox(XHatchList& rList);
+    void FillPresetListBox(XBitmapList& rList);
+    void FillPresetListBox(XPatternList& rList);
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

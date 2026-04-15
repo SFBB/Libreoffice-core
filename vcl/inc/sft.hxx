@@ -43,14 +43,14 @@
 #include <rtl/ustring.hxx>
 #include <tools/fontenum.hxx>
 #include <vcl/dllapi.h>
-#include <vcl/fontcapabilities.hxx>
 #include <i18nlangtag/lang.h>
+#include <i18nlangtag/languagetag.hxx>
 
-#include <array>
+#include <hb-ot.h>
+
 #include <vector>
+#include "font/PhysicalFontFace.hxx"
 #include "fontsubset.hxx"
-
-class LanguageTag;
 
 namespace vcl
 {
@@ -58,18 +58,6 @@ namespace vcl
 /*@{*/
     typedef sal_Int32       F16Dot16;           /**< fixed: 16.16 */
 /*@}*/
-
-/** Return value of OpenTTFont() */
-    enum class SFErrCodes {
-        Ok,                              /**< no error                                     */
-        BadFile,                         /**< file not found                               */
-        FileIo,                          /**< file I/O error                               */
-        Memory,                          /**< memory allocation error                      */
-        GlyphNum,                        /**< incorrect number of glyphs                   */
-        BadArg,                          /**< incorrect arguments                          */
-        TtFormat,                        /**< incorrect TrueType font format               */
-        FontNo                           /**< incorrect logical font number of a TTC font  */
-    };
 
 #ifndef FW_THIN /* WIN32 compilation would conflict */
 /** Value of the weight member of the TTGlobalFontInfo struct */
@@ -115,25 +103,11 @@ namespace vcl
 
 
 
-/** Structure used by the TrueType Creator and CreateTTFromTTGlyphs() */
-    struct NameRecord {
-        sal_uInt16 platformID;                  /**< Platform ID                                            */
-        sal_uInt16 encodingID;                  /**< Platform-specific encoding ID                          */
-        LanguageType languageID;                /**< Language ID                                            */
-        sal_uInt16 nameID;                      /**< Name ID                                                */
-        std::vector<sal_uInt8> sptr;            /**< string data (not zero-terminated!)          */
-    };
-
-    OUString convertSfntName(const NameRecord& rNameRecord);
-
-/** Return value of GetTTGlobalFontInfo() */
+/** Return value of TrueTypeFont::getGlobalFontInfo() */
 
     typedef struct TTGlobalFontInfo_ {
-        OString    family;        /**< family name                                             */
-        OUString   ufamily;       /**< family name UCS2                                         */
-        OString    subfamily;     /**< subfamily name                                          */
-        OUString   usubfamily;    /**< subfamily name UCS2 */
-        OString    psname;        /**< PostScript name                                         */
+        OUString   family;            /**< family name                                             */
+        OUString   subfamily;         /**< subfamily name                                          */
         sal_uInt16 macStyle = 0;      /**< macstyle bits from 'HEAD' table */
         int   weight = 0;             /**< value of WeightClass or 0 if can't be determined        */
         int   width = 0;              /**< value of WidthClass or 0 if can't be determined         */
@@ -377,11 +351,6 @@ constexpr int GLYF_yMin_offset = 4;
 constexpr int GLYF_xMax_offset = 6;
 constexpr int GLYF_yMax_offset = 8;
 
-constexpr sal_uInt32 T_true = 0x74727565;        /* 'true' */
-constexpr sal_uInt32 T_ttcf = 0x74746366;        /* 'ttcf' */
-constexpr sal_uInt32 T_otto = 0x4f54544f;        /* 'OTTO' */
-
-class AbstractTrueTypeFont;
 class TrueTypeFont;
 
 /**
@@ -396,145 +365,28 @@ class TrueTypeFont;
  */
     int CountTTCFonts(const char* fname);
 
-/**
- * TrueTypeFont constructor.
- * The font file has to be provided as a memory buffer and length
- * @param  pBuffer - memory buffer
- * @param  nLen    - size of memory buffer
- * @param  facenum - logical font number within a TTC file. This value is ignored
- *                   for TrueType fonts
- * @param  ttf     - returns the opened TrueTypeFont
- * @return value of SFErrCodes enum
- * @ingroup sft
- */
-    SFErrCodes VCL_DLLPUBLIC OpenTTFontBuffer(const void* pBuffer, sal_uInt32 nLen, sal_uInt32 facenum,
-                                              TrueTypeFont** ttf);
-#if !defined(_WIN32) || defined(DO_USE_TTF_ON_WIN32)
-/**
- * TrueTypeFont constructor.
- * Reads the font file and allocates the memory for the structure.
- * on WIN32 the font has to be provided as a memory buffer and length
- * @param  fname   - name of TrueType font file
- * @param  facenum - logical font number within a TTC file. This value is ignored
- *                   for TrueType fonts
- * @param  ttf     - returns the opened TrueTypeFont
- * @return value of SFErrCodes enum
- * @ingroup sft
- */
-    SFErrCodes VCL_DLLPUBLIC OpenTTFontFile(const char *fname, sal_uInt32 facenum, TrueTypeFont** ttf);
-#endif
-
-    bool VCL_DLLPUBLIC getTTCoverage(
-        std::optional<std::bitset<UnicodeCoverage::MAX_UC_ENUM>> & rUnicodeCoverage,
-        std::optional<std::bitset<CodePageCoverage::MAX_CP_ENUM>> & rCodePageCoverage,
-        const unsigned char* pTable, size_t nLength);
-
-/**
- * TrueTypeFont destructor. Deallocates the memory.
- * @ingroup sft
- */
-    void VCL_DLLPUBLIC CloseTTFont(TrueTypeFont *);
-
-/**
- * Returns global font information about the TrueType font.
- * @see TTGlobalFontInfo
- *
- * @param ttf         pointer to a TrueTypeFont structure
- * @param info        pointer to a TTGlobalFontInfo structure
- * @ingroup sft
- *
- */
-void GetTTGlobalFontInfo(const AbstractTrueTypeFont *ttf, TTGlobalFontInfo *info);
-
-OUString analyzeSfntName(const TrueTypeFont* pTTFont, sal_uInt16 nameId, const LanguageTag& rPrefLang);
-
-FontWeight AnalyzeTTFWeight(const TrueTypeFont* pTTFont);
-
-/*- private definitions */
-
-/* indexes into TrueTypeFont::tables[] and TrueTypeFont::tlens[] */
-constexpr int O_maxp = 0;
-constexpr int O_glyf = 1;    /* 'glyf' */
-constexpr int O_head = 2;    /* 'head' */
-constexpr int O_loca = 3;    /* 'loca' */
-constexpr int O_name = 4;    /* 'name' */
-constexpr int O_cmap = 5;    /* 'cmap' */
-constexpr int O_OS2  = 6;   /* 'OS/2' */
-constexpr int O_post = 7;   /* 'post' */
-constexpr int O_cvt  = 8;   /* 'cvt_' - only used in TT->TT generation */
-constexpr int O_prep = 9;   /* 'prep' - only used in TT->TT generation */
-constexpr int O_fpgm = 10;   /* 'fpgm' - only used in TT->TT generation */
-constexpr int O_CFF = 11;   /* 'CFF' */
-constexpr int NUM_TAGS = 12;
-
-class UNLESS_MERGELIBS(VCL_DLLPUBLIC) AbstractTrueTypeFont
+class UNLESS_MERGELIBS(VCL_DLLPUBLIC) TrueTypeFont
 {
-    std::string m_sFileName;
-    sal_uInt32 m_nGlyphs;
-    std::vector<sal_uInt32> m_aGlyphOffsets;
-    bool m_bMicrosoftSymbolEncoded;
+    hb_face_t* m_pFace = nullptr;
 
-protected:
-    SFErrCodes indexGlyphData();
+    void open(hb_blob_t* pBlob, sal_uInt32 facenum);
+    font::RawFontData getTable(hb_tag_t tag) const;
 
 public:
-    AbstractTrueTypeFont(const char* fileName = nullptr);
-    virtual ~AbstractTrueTypeFont();
+    /** Construct from a file path */
+    TrueTypeFont(const char* pFileName, sal_uInt32 facenum);
+    /** Construct from a memory buffer */
+    TrueTypeFont(const void* pBuffer, sal_uInt32 nLen, sal_uInt32 facenum);
+    ~TrueTypeFont();
 
-    SFErrCodes initialize();
+    bool isValid() const { return m_pFace != nullptr; }
 
-    std::string const & fileName() const { return m_sFileName; }
-    sal_uInt32 glyphCount() const { return m_nGlyphs; }
-    sal_uInt32 glyphOffset(sal_uInt32 glyphID) const;
-    bool IsMicrosoftSymbolEncoded() const { return m_bMicrosoftSymbolEncoded; }
+    OUString getName(hb_ot_name_id_t nNameID, const LanguageTag& rLang = LanguageTag(LANGUAGE_DONTKNOW)) const;
 
-    virtual bool hasTable(sal_uInt32 ord) const = 0;
-    virtual const sal_uInt8* table(sal_uInt32 ord, sal_uInt32& size) const = 0;
-
-    OString     psname;
-    OString     family;
-    OUString    ufamily;
-    OString     subfamily;
-    OUString    usubfamily;
+    TTGlobalFontInfo getGlobalFontInfo() const;
+    sal_uInt32 countNonEmptyGlyphs() const;
+    FontWeight analyzeFontWeight() const;
 };
-
-class TrueTypeFont final : public AbstractTrueTypeFont
-{
-    struct TTFontTable_
-    {
-        const sal_uInt8* pData = nullptr; /* pointer to a raw subtable in the SFNT file */
-        sal_uInt32 nSize = 0; /* table size */
-    };
-
-    std::array<struct TTFontTable_, NUM_TAGS> m_aTableList;
-
-public:
-        sal_Int32   fsize;
-        intptr_t    mmhandle;
-        sal_uInt8   *ptr;
-        sal_uInt32  ntables;
-
-    TrueTypeFont(const char* pFileName = nullptr);
-    ~TrueTypeFont() override;
-
-    SFErrCodes open(sal_uInt32 facenum);
-
-    bool hasTable(sal_uInt32 ord) const override { return m_aTableList[ord].pData != nullptr; }
-    inline const sal_uInt8* table(sal_uInt32 ord, sal_uInt32& size) const override;
-};
-
-const sal_uInt8* TrueTypeFont::table(sal_uInt32 ord, sal_uInt32& size) const
-{
-    if (ord >= NUM_TAGS)
-    {
-        size = 0;
-        return nullptr;
-    }
-
-    auto& rTable = m_aTableList[ord];
-    size = rTable.nSize;
-    return rTable.pData;
-}
 
 } // namespace vcl
 

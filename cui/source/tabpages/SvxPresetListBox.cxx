@@ -17,9 +17,11 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <svx/SvxPresetListBox.hxx>
+#include <SvxPresetListBox.hxx>
+
 #include <svx/xtable.hxx>
 #include <vcl/commandevent.hxx>
+#include <vcl/event.hxx>
 #include <vcl/image.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/weld/Builder.hxx>
@@ -29,7 +31,6 @@
 SvxPresetListBox::SvxPresetListBox(std::unique_ptr<weld::ScrolledWindow> pWindow)
     : ValueSet(std::move(pWindow))
     , m_aIconSize(60, 64)
-    , mnContextMenuItemId(0)
 {
     SetEdgeBlending(true);
 }
@@ -37,81 +38,91 @@ SvxPresetListBox::SvxPresetListBox(std::unique_ptr<weld::ScrolledWindow> pWindow
 void SvxPresetListBox::SetDrawingArea(weld::DrawingArea* pDrawingArea)
 {
     ValueSet::SetDrawingArea(pDrawingArea);
-    SetStyle(GetStyle() | WB_ITEMBORDER);
-}
-
-void SvxPresetListBox::Resize()
-{
-    DrawLayout();
-    WinBits aWinBits(GetStyle());
-    aWinBits |= WB_VSCROLL;
-    SetStyle(aWinBits);
-    ValueSet::Resize();
+    SetStyle(GetStyle() | WB_ITEMBORDER | WB_VSCROLL);
+    SetColCount(3);
+    SetLineCount(5);
 }
 
 bool SvxPresetListBox::Command(const CommandEvent& rEvent)
 {
     if (rEvent.GetCommand() != CommandEventId::ContextMenu)
         return CustomWidgetController::Command(rEvent);
-    mnContextMenuItemId = GetHighlightedItemId();
-    if (mnContextMenuItemId > 0)
+
+    sal_uInt16 nContextMenuItemId = 0;
+    Point aPos;
+    if (rEvent.IsMouseEvent())
+    {
+        nContextMenuItemId = GetHighlightedItemId();
+        aPos = rEvent.GetMousePosPixel();
+    }
+    else
+    {
+        nContextMenuItemId = GetSelectedItemId();
+        aPos = GetItemRect(nContextMenuItemId).Center();
+    }
+
+    if (nContextMenuItemId > 0)
     {
         std::unique_ptr<weld::Builder> xBuilder(
             Application::CreateBuilder(GetDrawingArea(), u"svx/ui/presetmenu.ui"_ustr));
         std::unique_ptr<weld::Menu> xMenu(xBuilder->weld_menu(u"menu"_ustr));
-        OnMenuItemSelected(xMenu->popup_at_rect(
-            GetDrawingArea(), tools::Rectangle(rEvent.GetMousePosPixel(), Size(1, 1))));
+        const OUString sIdent
+            = xMenu->popup_at_rect(GetDrawingArea(), tools::Rectangle(aPos, Size(1, 1)));
+        if (sIdent == u"rename")
+            maRenameHdl.Call(nContextMenuItemId);
+        else if (sIdent == u"delete")
+            maDeleteHdl.Call(nContextMenuItemId);
 
-        mnContextMenuItemId = 0;
         return true;
     }
     return false;
 }
 
-void SvxPresetListBox::DrawLayout()
+bool SvxPresetListBox::SvxPresetListBox::KeyInput(const KeyEvent& rKEvt)
 {
-    SetColCount(s_nColCount);
-    SetLineCount(5);
+    switch (rKEvt.GetKeyCode().GetCode())
+    {
+        case KEY_DELETE:
+        {
+            maDeleteHdl.Call(GetSelectedItemId());
+            return true;
+        }
+        break;
+        default:
+            return ValueSet::KeyInput(rKEvt);
+    }
 }
 
-template <typename ListType, typename EntryType>
-void SvxPresetListBox::FillPresetListBoxImpl(ListType& pList, sal_uInt32 nStartIndex)
+template <typename ListType> void SvxPresetListBox::FillPresetListBoxImpl(ListType& rList)
 {
     const Size aSize(GetIconSize());
-    for (tools::Long nIndex = 0; nIndex < pList.Count(); nIndex++, nStartIndex++)
+    sal_uInt32 nStartIndex = 1;
+    for (tools::Long nIndex = 0; nIndex < rList.Count(); nIndex++, nStartIndex++)
     {
-        Bitmap aBitmap = pList.GetBitmapForPreview(nIndex, aSize);
-        EntryType* pItem = static_cast<EntryType*>(pList.Get(nIndex));
+        Bitmap aBitmap = rList.CreateBitmap(nIndex, aSize);
+        XPropertyEntry* pItem = rList.Get(nIndex);
         InsertItem(nStartIndex, Image(aBitmap), pItem->GetName());
     }
 }
 
-void SvxPresetListBox::FillPresetListBox(XGradientList& pList, sal_uInt32 nStartIndex)
+void SvxPresetListBox::FillPresetListBox(XGradientList& rList)
 {
-    FillPresetListBoxImpl<XGradientList, XGradientEntry>(pList, nStartIndex);
+    FillPresetListBoxImpl<XGradientList>(rList);
 }
 
-void SvxPresetListBox::FillPresetListBox(XHatchList& pList, sal_uInt32 nStartIndex)
+void SvxPresetListBox::FillPresetListBox(XHatchList& rList)
 {
-    FillPresetListBoxImpl<XHatchList, XHatchEntry>(pList, nStartIndex);
+    FillPresetListBoxImpl<XHatchList>(rList);
 }
 
-void SvxPresetListBox::FillPresetListBox(XBitmapList& pList, sal_uInt32 nStartIndex)
+void SvxPresetListBox::FillPresetListBox(XBitmapList& rList)
 {
-    FillPresetListBoxImpl<XBitmapList, XBitmapEntry>(pList, nStartIndex);
+    FillPresetListBoxImpl<XBitmapList>(rList);
 }
 
-void SvxPresetListBox::FillPresetListBox(XPatternList& pList, sal_uInt32 nStartIndex)
+void SvxPresetListBox::FillPresetListBox(XPatternList& rList)
 {
-    FillPresetListBoxImpl<XPatternList, XBitmapEntry>(pList, nStartIndex);
-}
-
-void SvxPresetListBox::OnMenuItemSelected(std::u16string_view rIdent)
-{
-    if (rIdent == u"rename")
-        maRenameHdl.Call(this);
-    else if (rIdent == u"delete")
-        maDeleteHdl.Call(this);
+    FillPresetListBoxImpl<XPatternList>(rList);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

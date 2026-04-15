@@ -356,7 +356,8 @@ namespace {
 
 OUString analyzeSfntFamilyName(void const * pTTFont)
 {
-    return analyzeSfntName(static_cast<TrueTypeFont const *>(pTTFont), 1, SvtSysLocaleOptions().GetRealUILanguageTag());
+    return static_cast<TrueTypeFont const *>(pTTFont)->getName(HB_OT_NAME_ID_FONT_FAMILY,
+        SvtSysLocaleOptions().GetRealUILanguageTag());
 }
 
 }
@@ -366,20 +367,18 @@ bool PrintFontManager::analyzeSfntFile( PrintFont& rFont ) const
     bool bSuccess = false;
     rtl_TextEncoding aEncoding = osl_getThreadTextEncoding();
     OString aFile = getFontFile( rFont );
-    TrueTypeFont* pTTFont = nullptr;
+    TrueTypeFont aFont(aFile.getStr(), rFont.m_nCollectionEntry);
 
     auto& rDFA = rFont.m_aFontAttributes;
     rDFA.SetQuality(512);
 
-    auto const e = OpenTTFontFile( aFile.getStr(), rFont.m_nCollectionEntry, &pTTFont );
-    if( e == SFErrCodes::Ok )
+    if( aFont.isValid() )
     {
-        TTGlobalFontInfo aInfo;
-        GetTTGlobalFontInfo( pTTFont, & aInfo );
+        TTGlobalFontInfo aInfo = aFont.getGlobalFontInfo();
 
         if (rDFA.GetFamilyName().isEmpty())
         {
-            OUString aFamily = analyzeSfntFamilyName(pTTFont);
+            OUString aFamily = analyzeSfntFamilyName(&aFont);
             if (aFamily.isEmpty())
             {
                  // poor font does not have a family name
@@ -393,12 +392,12 @@ bool PrintFontManager::analyzeSfntFile( PrintFont& rFont ) const
             rDFA.SetFamilyName(aFamily);
         }
 
-        if( !aInfo.usubfamily.isEmpty() )
-            rDFA.SetStyleName(aInfo.usubfamily);
+        if( !aInfo.subfamily.isEmpty() )
+            rDFA.SetStyleName(aInfo.subfamily);
 
         rDFA.SetFamilyType(matchFamilyName(rDFA.GetFamilyName()));
 
-        rDFA.SetWeight(AnalyzeTTFWeight(pTTFont));
+        rDFA.SetWeight(aFont.analyzeFontWeight());
 
         switch( aInfo.width )
         {
@@ -424,11 +423,10 @@ bool PrintFontManager::analyzeSfntFile( PrintFont& rFont ) const
 
         rDFA.SetMicrosoftSymbolEncoded(aInfo.microsoftSymbolEncoded);
 
-        CloseTTFont( pTTFont );
         bSuccess = true;
     }
     else
-        SAL_WARN("vcl.fonts", "Could not OpenTTFont \"" << aFile << "\": " << int(e));
+        SAL_WARN("vcl.fonts", "Invalid or unsupported font file: \"" << aFile << "\"");
 
     return bSuccess;
 }

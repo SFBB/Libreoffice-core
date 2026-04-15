@@ -18,12 +18,13 @@
  */
 #pragma once
 
+#include "SvxPresetListBox.hxx"
+
 #include <svtools/valueset.hxx>
 #include <svx/dlgctrl.hxx>
 #include <svx/xflasit.hxx>
 #include <svx/tabarea.hxx>
 #include <svx/SvxColorValueSet.hxx>
-#include <svx/SvxPresetListBox.hxx>
 #include <svx/PaletteManager.hxx>
 #include <svx/svdview.hxx>
 #include <vcl/hexcolorcontrol.hxx>
@@ -405,8 +406,8 @@ private:
     DECL_LINK( ClickModifyHdl_Impl, weld::Button&, void );
     DECL_LINK( ChangeGradientHdl, ValueSet*, void );
     void ChangeGradientHdl_Impl();
-    DECL_LINK( ClickRenameHdl_Impl, SvxPresetListBox*, void );
-    DECL_LINK( ClickDeleteHdl_Impl, SvxPresetListBox*, void );
+    DECL_LINK(ClickRenameHdl_Impl, sal_uInt16, void);
+    DECL_LINK(ClickDeleteHdl_Impl, sal_uInt16, void);
     DECL_LINK( ModifiedEditHdl_Impl, weld::SpinButton&, void );
     DECL_LINK( ModifiedMetricHdl_Impl, weld::MetricSpinButton&, void );
     DECL_LINK( ModifiedColorListBoxHdl_Impl, ColorListBox&, void );
@@ -484,8 +485,8 @@ private:
     void ModifiedHdl_Impl(void const *);
     DECL_LINK( ClickAddHdl_Impl, weld::Button&, void );
     DECL_LINK( ClickModifyHdl_Impl, weld::Button&, void );
-    DECL_LINK( ClickRenameHdl_Impl, SvxPresetListBox*, void );
-    DECL_LINK( ClickDeleteHdl_Impl, SvxPresetListBox*, void );
+    DECL_LINK(ClickRenameHdl_Impl, sal_uInt16, void);
+    DECL_LINK(ClickDeleteHdl_Impl, sal_uInt16, void);
 
     sal_Int32 SearchHatchList(std::u16string_view rHatchName);
 
@@ -516,26 +517,6 @@ public:
 
 class SvxBitmapTabPage : public SfxTabPage
 {
-
-public:
-
-    class SvxPresetListBoxValueSet : public SvxPresetListBox
-    {
-    public:
-        SvxPresetListBoxValueSet(std::unique_ptr<weld::ScrolledWindow> pWindow);
-        virtual bool KeyInput(const KeyEvent& rKEvt) override;
-
-        void SetDialog(SvxBitmapTabPage* pSvxBitmapTabPage)
-        {
-            m_pSvxBitmapTabPage = pSvxBitmapTabPage;
-        }
-
-    private:
-        SvxBitmapTabPage* m_pSvxBitmapTabPage;
-    };
-
-private:
-
     const SfxItemSet&          m_rOutAttrs;
 
     XBitmapListRef             m_pBitmapList;
@@ -555,7 +536,7 @@ private:
     Size                       rZoomedSize;
 
     SvxXRectPreview m_aCtlBitmapPreview;
-    std::unique_ptr<SvxPresetListBoxValueSet>   m_xBitmapLB;
+    std::unique_ptr<SvxPresetListBox> m_xBitmapLB;
     std::unique_ptr<weld::ComboBox> m_xBitmapStyleLB;
     std::unique_ptr<weld::Container> m_xSizeBox;
     std::unique_ptr<weld::CheckButton> m_xTsbScale;
@@ -580,12 +561,11 @@ private:
     DECL_LINK( ModifyBitmapPositionHdl, weld::ComboBox&, void );
     DECL_LINK( ModifyPositionOffsetHdl, weld::MetricSpinButton&, void );
     DECL_LINK( ModifyTileOffsetHdl, weld::MetricSpinButton&, void );
-    DECL_LINK( ClickRenameHdl, SvxPresetListBox*, void );
-    DECL_LINK( ClickDeleteHdl, SvxPresetListBox*, void );
+    DECL_LINK(ClickRenameHdl, sal_uInt16, void);
+    DECL_LINK(ClickDeleteHdl, sal_uInt16, void);
     DECL_LINK( ClickImportHdl, weld::Button&, void );
     void ClickBitmapHdl_Impl();
     void CalculateBitmapPresetSize();
-    void DeleteBitmapHdl_Impl(const sal_uInt16 nId);
     sal_Int32 SearchBitmapList(std::u16string_view rBitmapName);
     sal_Int32 SearchBitmapList(const GraphicObject& rGraphicObject);
     tools::Long AddBitmap(const GraphicObject& rGraphicObject, const OUString& rName,
@@ -640,8 +620,8 @@ private:
     DECL_LINK( ClickModifyHdl_Impl, weld::Button&, void );
     DECL_LINK( ChangePatternHdl_Impl, ValueSet*, void );
     DECL_LINK( ChangeColorHdl_Impl, ColorListBox&, void );
-    DECL_LINK( ClickRenameHdl_Impl, SvxPresetListBox*, void );
-    DECL_LINK( ClickDeleteHdl_Impl, SvxPresetListBox*, void );
+    DECL_LINK(ClickRenameHdl_Impl, sal_uInt16, void);
+    DECL_LINK(ClickDeleteHdl_Impl, sal_uInt16, void);
 
     sal_Int32 SearchPatternList(std::u16string_view rPatternName);
 

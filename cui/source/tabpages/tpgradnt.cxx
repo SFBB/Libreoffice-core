@@ -394,7 +394,7 @@ IMPL_LINK_NOARG(SvxGradientTabPage, ClickAddHdl_Impl, weld::Button&, void)
         m_pGradientList->Insert(std::make_unique<XGradientEntry>(aBGradient, aName), nCount);
 
         sal_Int32 nId = m_xGradientLB->GetItemId(nCount - 1); //calculate the last ID
-        Bitmap aBitmap = m_pGradientList->GetBitmapForPreview( nCount, m_xGradientLB->GetIconSize() );
+        Bitmap aBitmap = m_pGradientList->CreateBitmap(nCount, m_xGradientLB->GetIconSize());
         m_xGradientLB->InsertItem( nId + 1, Image(aBitmap), aName );
         m_xGradientLB->SelectItem( nId + 1 );
         m_xGradientLB->Resize();
@@ -437,7 +437,8 @@ IMPL_LINK_NOARG(SvxGradientTabPage, ClickModifyHdl_Impl, weld::Button&, void)
 
     m_pGradientList->Replace(std::make_unique<XGradientEntry>(aBGradient, aName), nPos);
 
-    Bitmap aBitmap = m_pGradientList->GetBitmapForPreview( static_cast<sal_uInt16>(nPos), m_xGradientLB->GetIconSize() );
+    Bitmap aBitmap = m_pGradientList->CreateBitmap(static_cast<sal_uInt16>(nPos),
+                                                   m_xGradientLB->GetIconSize());
     m_xGradientLB->RemoveItem( nId );
     m_xGradientLB->InsertItem( nId, Image(aBitmap), aName, static_cast<sal_uInt16>(nPos) );
     m_xGradientLB->SelectItem( nId );
@@ -445,9 +446,8 @@ IMPL_LINK_NOARG(SvxGradientTabPage, ClickModifyHdl_Impl, weld::Button&, void)
     m_nGradientListState |= ChangeType::MODIFIED;
 }
 
-IMPL_LINK_NOARG(SvxGradientTabPage, ClickDeleteHdl_Impl, SvxPresetListBox*, void)
+IMPL_LINK(SvxGradientTabPage, ClickDeleteHdl_Impl, sal_uInt16, nId, void)
 {
-    const sal_uInt16 nId = m_xGradientLB->GetContextMenuItemId();
     const size_t nPos = m_xGradientLB->GetItemPos(nId);
 
     if( nPos != VALUESET_ITEM_NOTFOUND )
@@ -476,9 +476,8 @@ IMPL_LINK_NOARG(SvxGradientTabPage, ClickDeleteHdl_Impl, SvxPresetListBox*, void
         m_xBtnModify->set_sensitive(false);
 }
 
-IMPL_LINK_NOARG(SvxGradientTabPage, ClickRenameHdl_Impl, SvxPresetListBox*, void)
+IMPL_LINK(SvxGradientTabPage, ClickRenameHdl_Impl, sal_uInt16, nId, void)
 {
-    const sal_uInt16 nId = m_xGradientLB->GetContextMenuItemId();
     const size_t nPos = m_xGradientLB->GetItemPos(nId);
 
     if ( nPos == VALUESET_ITEM_NOTFOUND )
