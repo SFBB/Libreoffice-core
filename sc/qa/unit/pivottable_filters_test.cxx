@@ -2931,6 +2931,20 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testCalcFields1XLSB)
     verifyCalcFields(pDoc, /*bBIFF12=*/true);
 }
 
+CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testDatesDiscreteGrouping)
+{
+    createScDoc("xls/pivottable_dates_grouping.xls");
+    save(TestFilter::XLSX);
+
+    xmlDocUniquePtr pCacheDef = parseExport(u"xl/pivotCache/pivotCacheDefinition1.xml"_ustr);
+    CPPUNIT_ASSERT(pCacheDef);
+
+    assertXPath(pCacheDef,
+                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[last()]/"
+                "x:fieldGroup/x:groupItems",
+                "count", u"2");
+}
+
 CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testCalcFieldSingleDataDimXLSX)
 {
     // Pivot table with a single calculated field as the only data dimension.
@@ -3009,6 +3023,20 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testCalcFieldNameErrorXLSX)
     // Original formula was IF(Werte2 >0,Werte2,0) but "Werte2" is not a valid
     // source column (actual column is "Werte"), so it becomes #NAME?.
     CPPUNIT_ASSERT_EQUAL(u"IF(#NAME? >0,#NAME?,0)"_ustr, aFormula);
+}
+
+CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testNumberGroupingXLS)
+{
+    createScDoc("xls/pivottable_number_grouping.xls");
+    save(TestFilter::XLSX);
+
+    xmlDocUniquePtr pCacheDef = parseExport(u"xl/pivotCache/pivotCacheDefinition1.xml"_ustr);
+    CPPUNIT_ASSERT(pCacheDef);
+
+    assertXPath(pCacheDef,
+                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[@databaseField='0']/"
+                "x:fieldGroup/x:groupItems",
+                "count", u"3");
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();
