@@ -227,9 +227,8 @@ OUString getFilenameForExport(std::u16string_view familyName, FontFamily family,
 bool sufficientTTFRights(const TrueTypeFont& font,
                          EmbeddedFontsManager::FontRights rights)
 {
-    TTGlobalFontInfo info = font.getGlobalFontInfo();
     // https://www.microsoft.com/typography/otspec/os2.htm#fst
-    int copyright = info.typeFlags;
+    int copyright = font.getTypeFlags();
     switch (rights)
     {
         case EmbeddedFontsManager::FontRights::ViewingAllowed:
@@ -554,7 +553,7 @@ bool EmbeddedFontsManager::analyzeTTF(const void* data, tools::Long size, FontWe
     if (!font.isValid())
         return false;
 
-    weight = font.analyzeFontWeight();
+    weight = font.getFontWeight();
 
     return true;
 }

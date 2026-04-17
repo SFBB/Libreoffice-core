@@ -721,65 +721,24 @@ namespace
         TrueTypeFont aFont(i_pBuffer, i_nSize, 0);
         if( aFont.isValid() )
         {
-            TTGlobalFontInfo aInfo = aFont.getGlobalFontInfo();
             // most importantly: the family name
-            if( !aInfo.family.isEmpty() )
-                o_rResult.SetFamilyName( aInfo.family );
+            OUString aFamily = aFont.getFamilyName();
+            if( !aFamily.isEmpty() )
+                o_rResult.SetFamilyName( aFamily );
             // set weight
-            if( aInfo.weight )
-            {
-                if( aInfo.weight < FW_EXTRALIGHT )
-                    o_rResult.SetWeight( WEIGHT_THIN );
-                else if( aInfo.weight < FW_LIGHT )
-                    o_rResult.SetWeight( WEIGHT_ULTRALIGHT );
-                else if( aInfo.weight < FW_NORMAL )
-                    o_rResult.SetWeight( WEIGHT_LIGHT );
-                else if( aInfo.weight < FW_MEDIUM )
-                    o_rResult.SetWeight( WEIGHT_NORMAL );
-                else if( aInfo.weight < FW_SEMIBOLD )
-                    o_rResult.SetWeight( WEIGHT_MEDIUM );
-                else if( aInfo.weight < FW_BOLD )
-                    o_rResult.SetWeight( WEIGHT_SEMIBOLD );
-                else if( aInfo.weight < FW_EXTRABOLD )
-                    o_rResult.SetWeight( WEIGHT_BOLD );
-                else if( aInfo.weight < FW_BLACK )
-                    o_rResult.SetWeight( WEIGHT_ULTRABOLD );
-                else
-                    o_rResult.SetWeight( WEIGHT_BLACK );
-            }
-            else
-                o_rResult.SetWeight( (aInfo.macStyle & 1) ? WEIGHT_BOLD : WEIGHT_NORMAL );
+            o_rResult.SetWeight( aFont.getFontWeight() );
             // set width
-            if( aInfo.width )
-            {
-                if( aInfo.width == FWIDTH_ULTRA_CONDENSED )
-                    o_rResult.SetAverageFontWidth( WIDTH_ULTRA_CONDENSED );
-                else if( aInfo.width == FWIDTH_EXTRA_CONDENSED )
-                    o_rResult.SetAverageFontWidth( WIDTH_EXTRA_CONDENSED );
-                else if( aInfo.width == FWIDTH_CONDENSED )
-                    o_rResult.SetAverageFontWidth( WIDTH_CONDENSED );
-                else if( aInfo.width == FWIDTH_SEMI_CONDENSED )
-                    o_rResult.SetAverageFontWidth( WIDTH_SEMI_CONDENSED );
-                else if( aInfo.width == FWIDTH_NORMAL )
-                    o_rResult.SetAverageFontWidth( WIDTH_NORMAL );
-                else if( aInfo.width == FWIDTH_SEMI_EXPANDED )
-                    o_rResult.SetAverageFontWidth( WIDTH_SEMI_EXPANDED );
-                else if( aInfo.width == FWIDTH_EXPANDED )
-                    o_rResult.SetAverageFontWidth( WIDTH_EXPANDED );
-                else if( aInfo.width == FWIDTH_EXTRA_EXPANDED )
-                    o_rResult.SetAverageFontWidth( WIDTH_EXTRA_EXPANDED );
-                else if( aInfo.width >= FWIDTH_ULTRA_EXPANDED )
-                    o_rResult.SetAverageFontWidth( WIDTH_ULTRA_EXPANDED );
-            }
+            o_rResult.SetAverageFontWidth( aFont.getFontWidth() );
             // set italic
-            o_rResult.SetItalic( (aInfo.italicAngle != 0) ? ITALIC_NORMAL : ITALIC_NONE );
+            o_rResult.SetItalic( aFont.getFontItalic() );
 
             // set pitch
-            o_rResult.SetPitch( (aInfo.pitch == 0) ? PITCH_VARIABLE : PITCH_FIXED );
+            o_rResult.SetPitch( aFont.getFontPitch() );
 
             // set style name
-            if( !aInfo.subfamily.isEmpty() )
-                o_rResult.SetStyleName( aInfo.subfamily );
+            OUString aSubfamily = aFont.getSubfamilyName();
+            if( !aSubfamily.isEmpty() )
+                o_rResult.SetStyleName( aSubfamily );
 
             bResult = true;
         }

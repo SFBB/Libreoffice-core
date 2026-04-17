@@ -531,9 +531,9 @@ class SvxBitmapTabPage : public SfxTabPage
     const SdrView*             mpView;
     MapUnit                    mePoolUnit;
     FieldUnit                  meFieldUnit;
-    Size                       rBitmapSize;
-    Size                       rFilledSize;
-    Size                       rZoomedSize;
+    Size m_aBitmapSize;
+    Size m_aFilledSize;
+    Size m_aZoomedSize;
 
     SvxXRectPreview m_aCtlBitmapPreview;
     std::unique_ptr<SvxPresetListBox> m_xBitmapLB;
@@ -564,7 +564,6 @@ class SvxBitmapTabPage : public SfxTabPage
     DECL_LINK(ClickRenameHdl, sal_uInt16, void);
     DECL_LINK(ClickDeleteHdl, sal_uInt16, void);
     DECL_LINK( ClickImportHdl, weld::Button&, void );
-    void ClickBitmapHdl_Impl();
     void CalculateBitmapPresetSize();
     sal_Int32 SearchBitmapList(std::u16string_view rBitmapName);
     sal_Int32 SearchBitmapList(const GraphicObject& rGraphicObject);
