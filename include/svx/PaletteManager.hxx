@@ -20,6 +20,7 @@
 
 #include <svx/Palette.hxx>
 #include <rtl/ustring.hxx>
+#include <svx/IColorSet.hxx>
 #include <svx/xtable.hxx>
 #include <svx/theme/ThemeColorPaletteManager.hxx>
 #include <vcl/ColorDialog.hxx>
@@ -63,8 +64,8 @@ public:
     PaletteManager(const PaletteManager&) = delete;
     PaletteManager& operator=(const PaletteManager&) = delete;
     void        LoadPalettes();
-    void        ReloadColorSet(SvxColorValueSet& rColorSet);
-    void        ReloadRecentColorSet(SvxColorValueSet& rColorSet);
+    void ReloadColorSet(IColorSet& rColorSet);
+    void ReloadRecentColorSet(IColorSet& rColorSet);
     std::vector<OUString> GetPaletteList();
     void SetPalette(sal_Int32 nPos, bool bPosOnly = false);
     sal_Int32   GetPalette() const;
@@ -84,7 +85,7 @@ public:
 
     bool IsThemePaletteSelected() const;
 
-    static bool GetThemeAndEffectIndex(sal_uInt16 nItemId, sal_uInt16& rThemeIndex, sal_uInt16& rEffectIndex);
+    static bool GetThemeAndEffectIndex(sal_uInt16 nItemIndex, sal_uInt16& rThemeIndex, sal_uInt16& rEffectIndex);
     bool GetLumModOff(sal_uInt16 nThemeIndex, sal_uInt16 nEffect, sal_Int16& rLumMod, sal_Int16& rLumOff);
 
     static void DispatchColorCommand(const OUString& aCommand, const NamedColor& rColor);

@@ -40,14 +40,14 @@ PaletteASE::PaletteASE( OUString aFPath, OUString aFName ) :
     LoadPalette();
 }
 
-void PaletteASE::LoadColorSet(SvxColorValueSet& rColorSet)
+void PaletteASE::LoadColorSet(IColorSet& rColorSet)
 {
-    rColorSet.Clear();
-    int nIx = 1;
+    rColorSet.clear();
+    int nIndex = 0;
     for (const auto& rColor : maColors)
     {
-        rColorSet.InsertItem(nIx, rColor.m_aColor, rColor.m_aName);
-        ++nIx;
+        rColorSet.insert(nIndex, rColor.m_aColor, rColor.m_aName);
+        ++nIndex;
     }
 }
 
@@ -294,16 +294,16 @@ const OUString& PaletteGPL::GetPath()
     return maFPath;
 }
 
-void PaletteGPL::LoadColorSet(SvxColorValueSet& rColorSet)
+void PaletteGPL::LoadColorSet(IColorSet& rColorSet)
 {
     LoadPalette();
 
-    rColorSet.Clear();
-    int nIx = 1;
+    rColorSet.clear();
+    int nIndex = 0;
     for (const auto& rColor : maColors)
     {
-        rColorSet.InsertItem(nIx, rColor.m_aColor, rColor.m_aName);
-        ++nIx;
+        rColorSet.insert(nIndex, rColor.m_aColor, rColor.m_aName);
+        ++nIndex;
     }
 }
 
@@ -443,7 +443,7 @@ const OUString& PaletteSOC::GetPath()
     return maFPath;
 }
 
-void PaletteSOC::LoadColorSet(SvxColorValueSet& rColorSet)
+void PaletteSOC::LoadColorSet(IColorSet& rColorSet)
 {
     if( !mbLoadedPalette )
     {
@@ -451,7 +451,7 @@ void PaletteSOC::LoadColorSet(SvxColorValueSet& rColorSet)
         mpColorList = XPropertyList::AsColorList(XPropertyList::CreatePropertyListFromURL(XPropertyListType::Color, maFPath));
         (void)mpColorList->Load();
     }
-    rColorSet.Clear();
+    rColorSet.clear();
     if( mpColorList.is() )
         rColorSet.addEntriesForXColorList( *mpColorList );
 }

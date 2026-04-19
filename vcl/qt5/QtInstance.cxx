@@ -37,6 +37,7 @@
 #include <QtObject.hxx>
 #include <QtOpenGLContext.hxx>
 #include <QtSalInstance.hxx>
+#include <QtSalInstanceBuilderWrapper.hxx>
 #if USE_HEADLESS_CODE
 #include <QtSvpSalInstance.hxx>
 #endif
@@ -867,16 +868,16 @@ bool QtInstance::isQtWeldingEnabled()
     return bUseWeldedWidgets;
 }
 
-QWidget* QtInstance::GetNativeParentFromWeldParent(weld::Widget* pParent)
+QWidget* QtInstance::GetQWidget(weld::Widget* pWidget)
 {
-    if (!pParent)
+    if (!pWidget)
         return nullptr;
 
-    if (QtInstanceWidget* pQtInstanceWidget = dynamic_cast<QtInstanceWidget*>(pParent))
+    if (QtInstanceWidget* pQtInstanceWidget = dynamic_cast<QtInstanceWidget*>(pWidget))
         return pQtInstanceWidget->getQWidget();
 
     // the parent is not welded/not a native Qt widget; get QWidget via frame
-    if (SalInstanceWidget* pSalWidget = dynamic_cast<SalInstanceWidget*>(pParent))
+    if (SalInstanceWidget* pSalWidget = dynamic_cast<SalInstanceWidget*>(pWidget))
     {
         if (vcl::Window* pWindow = pSalWidget->getWidget())
         {
@@ -891,15 +892,16 @@ QWidget* QtInstance::GetNativeParentFromWeldParent(weld::Widget* pParent)
 std::unique_ptr<weld::Builder>
 QtInstance::CreateBuilder(weld::Widget* pParent, const OUString& rUIRoot, const OUString& rUIFile)
 {
-    if (isQtWeldingEnabled() && QtInstanceBuilder::IsUIFileSupported(rUIFile, pParent))
+    if (!isQtWeldingEnabled())
+        return SalInstance::CreateBuilder(pParent, rUIRoot, rUIFile);
+
+    if (QtInstanceBuilder::IsUIFileSupported(rUIFile, pParent))
     {
-        QWidget* pQtParent = GetNativeParentFromWeldParent(pParent);
+        QWidget* pQtParent = GetQWidget(pParent);
         return std::make_unique<QtInstanceBuilder>(pQtParent, rUIRoot, rUIFile);
     }
-    else
-    {
-        return SalInstance::CreateBuilder(pParent, rUIRoot, rUIFile);
-    }
+
+    return std::make_unique<QtSalInstanceBuilderWrapper>(pParent, rUIRoot, rUIFile);
 }
 
 std::unique_ptr<weld::Builder> QtInstance::CreateInterimBuilder(vcl::Window* pParent,
@@ -955,7 +957,7 @@ weld::MessageDialog* QtInstance::CreateMessageDialog(weld::Widget* pParent,
     }
     else
     {
-        QWidget* pQtParent = GetNativeParentFromWeldParent(pParent);
+        QWidget* pQtParent = GetQWidget(pParent);
         QMessageBox* pMessageBox = new QMessageBox(pQtParent);
         pMessageBox->setText(toQString(rPrimaryMessage));
         pMessageBox->setIcon(vclMessageTypeToQtIcon(eMessageType));
@@ -973,7 +975,7 @@ QtInstance::CreateColorChooserDialog(weld::Window* pParent, vcl::ColorPickerMode
 
     std::unique_ptr<weld::ColorChooserDialog> pColorChooserDialog;
     RunInMainThread([&] {
-        QColorDialog* pDialog = new QColorDialog(GetNativeParentFromWeldParent(pParent));
+        QColorDialog* pDialog = new QColorDialog(GetQWidget(pParent));
         pColorChooserDialog = std::make_unique<QtInstanceColorChooserDialog>(pDialog);
     });
 

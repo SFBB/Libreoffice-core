@@ -921,19 +921,12 @@ SfxPoolItemHolder SfxBindings::Execute_Impl( sal_uInt16 nId, const SfxPoolItem**
     if ( pImpl->bMsgDirty )
         UpdateSlotServer_Impl();
 
-    SfxShell *pShell=nullptr;
-    const SfxSlot *pSlot=nullptr;
-
     const SfxSlotServer* pServer = pCache->GetSlotServer( rDispatcher, pImpl->xProv );
-    if ( !pServer )
-    {
+    if (!pServer)
         return SfxPoolItemHolder();
-    }
-    else
-    {
-        pShell = rDispatcher.GetShell( pServer->GetShellLevel() );
-        pSlot = pServer->GetSlot();
-    }
+
+    SfxShell* pShell = rDispatcher.GetShell(pServer->GetShellLevel());
+    const SfxSlot* pSlot = pServer->GetSlot();
 
     if (!pShell)
         return SfxPoolItemHolder();
@@ -944,7 +937,7 @@ SfxPoolItemHolder SfxBindings::Execute_Impl( sal_uInt16 nId, const SfxPoolItem**
         while( *ppItems )
             aReq.AppendItem( **ppItems++ );
 
-    Execute_Impl( aReq, pSlot, pShell );
+    Execute_Impl(aReq, pSlot, *pShell);
 
     const SfxPoolItemHolder& rRetval(aReq.GetReturnValue());
 
@@ -954,9 +947,9 @@ SfxPoolItemHolder SfxBindings::Execute_Impl( sal_uInt16 nId, const SfxPoolItem**
     return rRetval;
 }
 
-void SfxBindings::Execute_Impl( SfxRequest& aReq, const SfxSlot* pSlot, SfxShell* pShell )
+void SfxBindings::Execute_Impl(SfxRequest& aReq, const SfxSlot* pSlot, SfxShell& rShell)
 {
-    SfxItemPool &rPool = pShell->GetPool();
+    SfxItemPool& rPool = rShell.GetPool();
 
     if ( SfxSlotKind::Attribute == pSlot->GetKind() )
     {
@@ -969,7 +962,7 @@ void SfxBindings::Execute_Impl( SfxRequest& aReq, const SfxSlot* pSlot, SfxShell
             sal_uInt16 nWhich = pSlot->GetWhich(rPool);
             SfxItemSet aSet(rPool, nWhich, nWhich);
             SfxStateFunc pFunc = pSlot->GetStateFnc();
-            (*pFunc)(pShell, aSet);
+            (*pFunc)(&rShell, aSet);
             const SfxPoolItem *pOldItem;
             SfxItemState eState = aSet.GetItemState(nWhich, true, &pOldItem);
             if ( eState == SfxItemState::DISABLED )
@@ -1037,10 +1030,10 @@ void SfxBindings::Execute_Impl( SfxRequest& aReq, const SfxSlot* pSlot, SfxShell
             }
         }
 
-        pDispatcher->Execute_( *pShell, *pSlot, aReq, aReq.GetCallMode() | SfxCallMode::RECORD );
+        pDispatcher->Execute_(rShell, *pSlot, aReq, aReq.GetCallMode() | SfxCallMode::RECORD );
     }
     else
-        pDispatcher->Execute_( *pShell, *pSlot, aReq, aReq.GetCallMode() | SfxCallMode::RECORD );
+        pDispatcher->Execute_(rShell, *pSlot, aReq, aReq.GetCallMode() | SfxCallMode::RECORD );
 }
 
 
