@@ -1221,8 +1221,7 @@ void SwWW8ImplReader::InsertTxbxText(SdrTextObj* pTextObj,
             {
                 if( pFlyFormat && pRecord )
                 {
-                    SfxItemSetFixed<RES_FRMATR_BEGIN, RES_FRMATR_END-1, XATTR_START, XATTR_END>
-                        aFlySet( m_rDoc.GetAttrPool() );
+                    SfxItemSet aFlySet(SfxItemSet::makeFixedSfxItemSet<RES_FRMATR_BEGIN, RES_FRMATR_END-1, XATTR_START, XATTR_END>( m_rDoc.GetAttrPool() ));
 
                     tools::Rectangle aInnerDist(   pRecord->nDxTextLeft,
                                              pRecord->nDyTextTop,
@@ -2699,7 +2698,7 @@ SwFrameFormat* SwWW8ImplReader::Read_GrafLayer( tools::Long nGrafAnchorCp )
     // when in a header or footer word appears to treat all elements as wrap through
 
     // determine wrapping mode
-    SfxItemSetFixed<RES_FRMATR_BEGIN, RES_FRMATR_END-1, XATTR_START, XATTR_END> aFlySet(m_rDoc.GetAttrPool());
+    SfxItemSet aFlySet(SfxItemSet::makeFixedSfxItemSet<RES_FRMATR_BEGIN, RES_FRMATR_END-1, XATTR_START, XATTR_END>(m_rDoc.GetAttrPool()));
     Reader::ResetFrameFormatAttrs(aFlySet); // tdf#122425: Explicitly remove borders and spacing
     css::text::WrapTextMode eSurround = css::text::WrapTextMode_PARALLEL;
     bool bContour = false;
@@ -3030,8 +3029,7 @@ SwFrameFormat* SwWW8ImplReader::MungeTextIntoDrawBox(SvxMSDffImportRec& rRecord,
         else
         {
             // use ww8-default border distance
-            SfxItemSetFixed<SDRATTR_TEXT_LEFTDIST, SDRATTR_TEXT_LOWERDIST>
-                 aItemSet(m_pDrawModel->GetItemPool());
+            SfxItemSet aItemSet(SfxItemSet::makeFixedSfxItemSet<SDRATTR_TEXT_LEFTDIST, SDRATTR_TEXT_LOWERDIST>(m_pDrawModel->GetItemPool()));
             aItemSet.Put(makeSdrTextLeftDistItem(rRecord.nDxTextLeft));
             aItemSet.Put(makeSdrTextRightDistItem(rRecord.nDxTextRight));
             aItemSet.Put(makeSdrTextUpperDistItem(rRecord.nDyTextTop));
@@ -3183,7 +3181,7 @@ SwFlyFrameFormat* SwWW8ImplReader::ImportReplaceableDrawables(rtl::Reference<Sdr
 
     rFlySet.Put(SwFormatFrameSize(SwFrameSize::Fixed, nWidthTw, nHeightTw));
 
-    SfxItemSetFixed<RES_GRFATR_BEGIN, RES_GRFATR_END-1> aGrSet(m_rDoc.GetAttrPool());
+    SfxItemSet aGrSet(SfxItemSet::makeFixedSfxItemSet<RES_GRFATR_BEGIN, RES_GRFATR_END-1>(m_rDoc.GetAttrPool()));
 
     // Note that the escher inner distance only seems to be honoured in
     // word for textboxes, not for graphics and ole objects.

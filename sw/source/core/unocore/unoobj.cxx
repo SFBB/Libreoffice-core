@@ -354,7 +354,7 @@ lcl_setCharFormatSequence(SwPaM & rPam, uno::Any const& rValue)
         rPam.GetDoc().GetIDocumentUndoRedo().StartUndo(SwUndoId::START, nullptr);
         aStyle <<= aCharStyles.getConstArray()[nStyle];
         // create a local set and apply each format directly
-        SfxItemSetFixed<RES_TXTATR_CHARFMT, RES_TXTATR_CHARFMT> aSet(rPam.GetDoc().GetAttrPool());
+        SfxItemSet aSet(SfxItemSet::makeFixedSfxItemSet<RES_TXTATR_CHARFMT, RES_TXTATR_CHARFMT>(rPam.GetDoc().GetAttrPool()));
         SwUnoCursorHelper::SetCharStyle(rPam.GetDoc(), aStyle, aSet);
         // the first style should replace the current attributes,
         // all other have to be added
@@ -1874,10 +1874,9 @@ uno::Any SwUnoCursorHelper::GetPropertyValue(
 
     if (!bDone)
     {
-        SfxItemSetFixed<
+        SfxItemSet aSet(SfxItemSet::makeFixedSfxItemSet<
                 RES_CHRATR_BEGIN, RES_FRMATR_END - 1,
-                RES_UNKNOWNATR_CONTAINER, RES_UNKNOWNATR_CONTAINER>
-            aSet(rPaM.GetDoc().GetAttrPool());
+                RES_UNKNOWNATR_CONTAINER, RES_UNKNOWNATR_CONTAINER>(rPaM.GetDoc().GetAttrPool()));
 
         SwUnoCursorHelper::GetCursorAttr(rPaM, aSet);
 

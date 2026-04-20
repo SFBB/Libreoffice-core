@@ -2128,7 +2128,7 @@ bool SwCursorShell::GetContentAtPos( const Point& rPt,
         if( !bRet && IsAttrAtPos::CurrAttrs & rContentAtPos.eContentAtPos )
         {
             const sal_Int32 n = aPos.GetContentIndex();
-            SfxItemSetFixed<POOLATTR_BEGIN, POOLATTR_END - 1>  aSet( GetDoc()->GetAttrPool() );
+            SfxItemSet aSet(SfxItemSet::makeFixedSfxItemSet<POOLATTR_BEGIN, POOLATTR_END - 1>( GetDoc()->GetAttrPool() ));
             if( pTextNd->GetpSwpHints() )
             {
                 for( size_t i = 0; i < pTextNd->GetSwpHints().Count(); ++i )
@@ -2518,9 +2518,9 @@ bool SwCursorShell::SetShadowCursorPos( const Point& rPt, SwFillMode eFillMode )
         if( nullptr != (pCNd = aPos.GetNode().GetContentNode() ))
         {
             assert(pCNd->IsTextNode()); // ???
-            SfxItemSetFixed<
+            SfxItemSet aSet(SfxItemSet::makeFixedSfxItemSet<
                     RES_PARATR_ADJUST, RES_PARATR_ADJUST,
-                    RES_MARGIN_FIRSTLINE, RES_MARGIN_TEXTLEFT> aSet(GetDoc()->GetAttrPool());
+                    RES_MARGIN_FIRSTLINE, RES_MARGIN_TEXTLEFT>(GetDoc()->GetAttrPool()));
             SvxFirstLineIndentItem firstLine(pCNd->GetAttr(RES_MARGIN_FIRSTLINE));
             SvxTextLeftMarginItem leftMargin(pCNd->GetAttr(RES_MARGIN_TEXTLEFT));
             firstLine.SetTextFirstLineOffset(SvxIndentValue::zero());

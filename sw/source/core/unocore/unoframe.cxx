@@ -1684,7 +1684,7 @@ void SwXFrame::setPropertyValue(const OUString& rPropertyName, const ::uno::Any&
                 SwXFrame* pFrame = dynamic_cast<SwXFrame*>(xFrame.get());
                 if(pFrame && this != pFrame && pFrame->GetFrameFormat() && &pFrame->GetFrameFormat()->GetDoc() == &rDoc)
                 {
-                    SfxItemSetFixed<RES_FRMATR_BEGIN, RES_FRMATR_END - 1> aSet( rDoc.GetAttrPool() );
+                    SfxItemSet aSet(SfxItemSet::makeFixedSfxItemSet<RES_FRMATR_BEGIN, RES_FRMATR_END - 1>( rDoc.GetAttrPool() ));
                     aSet.SetParent(&pFormat->GetAttrSet());
                     SwFormatAnchor aAnchor = static_cast<const SwFormatAnchor&>(aSet.Get(pEntry->nWID));
 
@@ -2468,7 +2468,7 @@ void SwXFrame::setPropertyToDefault( const OUString& rPropertyName )
         if(OWN_ATTR_FILLBMP_MODE == pEntry->nWID)
         {
             SwDoc& rDoc = pFormat->GetDoc();
-            SfxItemSetFixed<XATTR_FILL_FIRST, XATTR_FILL_LAST> aSet(rDoc.GetAttrPool());
+            SfxItemSet aSet(SfxItemSet::makeFixedSfxItemSet<XATTR_FILL_FIRST, XATTR_FILL_LAST>(rDoc.GetAttrPool()));
             aSet.SetParent(&pFormat->GetAttrSet());
 
             aSet.ClearItem(XATTR_FILLBMP_STRETCH);
@@ -2514,7 +2514,7 @@ void SwXFrame::setPropertyToDefault( const OUString& rPropertyName )
             else if (rPropertyName != UNO_NAME_ANCHOR_TYPE)
             {
                 SwDoc& rDoc = pFormat->GetDoc();
-                SfxItemSetFixed<RES_FRMATR_BEGIN, RES_FRMATR_END - 1> aSet( rDoc.GetAttrPool() );
+                SfxItemSet aSet(SfxItemSet::makeFixedSfxItemSet<RES_FRMATR_BEGIN, RES_FRMATR_END - 1>( rDoc.GetAttrPool() ));
                 aSet.SetParent(&pFormat->GetAttrSet());
                 aSet.ClearItem(pEntry->nWID);
                 SwDocModifyAndUndoGuard guard(*pFormat);
@@ -2697,17 +2697,16 @@ void SwXFrame::attachToRange(uno::Reference<text::XTextRange> const& xTextRange,
     SwPaM aPam(rNode);
     aPam.Move( fnMoveBackward, GoInDoc );
 
-    SfxItemSetFixed<RES_GRFATR_BEGIN, RES_GRFATR_END-1> aGrSet(pDoc->GetAttrPool());
+    SfxItemSet aGrSet(SfxItemSet::makeFixedSfxItemSet<RES_GRFATR_BEGIN, RES_GRFATR_END-1>(pDoc->GetAttrPool()));
 
-    SfxItemSetFixed<
+    SfxItemSet aFrameSet(SfxItemSet::makeFixedSfxItemSet<
         RES_FRMATR_BEGIN,       RES_FRMATR_END-1,
         RES_UNKNOWNATR_CONTAINER, RES_UNKNOWNATR_CONTAINER,
 
         // FillAttribute support
         XATTR_FILL_FIRST, XATTR_FILL_LAST,
 
-        SID_ATTR_BORDER_INNER,  SID_ATTR_BORDER_INNER>
-            aFrameSet(pDoc->GetAttrPool() );
+        SID_ATTR_BORDER_INNER,  SID_ATTR_BORDER_INNER>(pDoc->GetAttrPool() ));
 
     // set correct parent to get the XFILL_NONE FillStyle as needed
     aFrameSet.SetParent(&pDoc->GetDfltFrameFormat()->GetAttrSet());
@@ -2792,7 +2791,7 @@ void SwXFrame::attachToRange(uno::Reference<text::XTextRange> const& xTextRange,
             {
                 pFormat->DelFrames();
                 pAnchorItem->SetAnchor( pCopySource->Start() );
-                SfxItemSetFixed<RES_ANCHOR, RES_ANCHOR> aAnchorSet( pDoc->GetAttrPool() );
+                SfxItemSet aAnchorSet(SfxItemSet::makeFixedSfxItemSet<RES_ANCHOR, RES_ANCHOR>( pDoc->GetAttrPool() ));
                 aAnchorSet.Put( std::move(pAnchorItem) );
                 pDoc->SetFlyFrameAttr( *pFormat, aAnchorSet );
             }
@@ -3104,7 +3103,7 @@ void SwXFrame::attach(const uno::Reference< text::XTextRange > & xTextRange)
         }
     }
 
-    SfxItemSetFixed<RES_ANCHOR, RES_ANCHOR> aSet( rDoc.GetAttrPool() );
+    SfxItemSet aSet(SfxItemSet::makeFixedSfxItemSet<RES_ANCHOR, RES_ANCHOR>( rDoc.GetAttrPool() ));
     aSet.SetParent(&pFormat->GetAttrSet());
     SwFormatAnchor aAnchor = aSet.Get(RES_ANCHOR);
 

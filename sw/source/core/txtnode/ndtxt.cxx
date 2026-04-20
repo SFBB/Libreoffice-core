@@ -2177,11 +2177,10 @@ void SwTextNode::CopyText( SwTextNode *const pDest,
                    pDest->HasSwAttrSet() ||
                    nLen != pDest->GetText().getLength()))
             {
-                SfxItemSetFixed<
+                SfxItemSet aCharSet(SfxItemSet::makeFixedSfxItemSet<
                         RES_CHRATR_BEGIN, RES_CHRATR_END - 1,
                         RES_TXTATR_INETFMT, RES_TXTATR_CHARFMT,
-                        RES_UNKNOWNATR_BEGIN, RES_UNKNOWNATR_END - 1>
-                    aCharSet( pDest->GetDoc().GetAttrPool() );
+                        RES_UNKNOWNATR_BEGIN, RES_UNKNOWNATR_END - 1>( pDest->GetDoc().GetAttrPool() ));
                 aCharSet.Put( *GetpSwAttrSet() );
                 if( aCharSet.Count() )
                 {
@@ -2219,11 +2218,10 @@ void SwTextNode::CopyText( SwTextNode *const pDest,
                pDest->HasSwAttrSet() ||
                nLen != pDest->GetText().getLength()))
         {
-            SfxItemSetFixed<
+            SfxItemSet aCharSet(SfxItemSet::makeFixedSfxItemSet<
                     RES_CHRATR_BEGIN, RES_CHRATR_END - 1,
                     RES_TXTATR_INETFMT, RES_TXTATR_CHARFMT,
-                    RES_UNKNOWNATR_BEGIN, RES_UNKNOWNATR_END - 1>
-                 aCharSet( pDest->GetDoc().GetAttrPool() );
+                    RES_UNKNOWNATR_BEGIN, RES_UNKNOWNATR_END - 1>( pDest->GetDoc().GetAttrPool() ));
             aCharSet.Put( *GetpSwAttrSet() );
             if( aCharSet.Count() )
             {
@@ -2669,11 +2667,10 @@ void SwTextNode::CutImpl( SwTextNode * const pDest, const SwContentIndex & rDest
         if( nInitSize || hasSwAttrSet ||
             nLen != pDest->GetText().getLength())
         {
-            SfxItemSetFixed<
+            SfxItemSet aCharSet(SfxItemSet::makeFixedSfxItemSet<
                     RES_CHRATR_BEGIN, RES_CHRATR_END - 1,
                     RES_TXTATR_INETFMT, RES_TXTATR_CHARFMT,
-                    RES_UNKNOWNATR_BEGIN, RES_UNKNOWNATR_END - 1>
-                 aCharSet( pDest->GetDoc().GetAttrPool() );
+                    RES_UNKNOWNATR_BEGIN, RES_UNKNOWNATR_END - 1>( pDest->GetDoc().GetAttrPool() ));
             aCharSet.Put( *GetpSwAttrSet() );
             if( aCharSet.Count() )
                 pDest->SetAttr( aCharSet, nDestStart, nDestStart + nLen );
@@ -2682,9 +2679,8 @@ void SwTextNode::CutImpl( SwTextNode * const pDest, const SwContentIndex & rDest
         {
             // Copy all attrs except RES_PARATR_LIST_LEVEL: it was initialized before
             // and current SwTextNode can contain not suitable for pDest value
-            SfxItemSetFixed<RES_CHRATR_BEGIN, RES_PARATR_LIST_LEVEL - 1,
-                   RES_PARATR_LIST_LEVEL + 1, HINT_END>
-                 aCharSet(pDest->GetDoc().GetAttrPool());
+            SfxItemSet aCharSet(SfxItemSet::makeFixedSfxItemSet<RES_CHRATR_BEGIN, RES_PARATR_LIST_LEVEL - 1,
+                   RES_PARATR_LIST_LEVEL + 1, HINT_END>(pDest->GetDoc().GetAttrPool()));
             aCharSet.Put(*GetpSwAttrSet());
             if (aCharSet.Count())
                 pDest->SetAttr(aCharSet, nDestStart, nDestStart + nLen);
@@ -5566,7 +5562,7 @@ void SwTextNode::dumpAsXml(xmlTextWriterPtr pWriter) const
 
 sal_uInt32 SwTextNode::GetRsid( sal_Int32 nStt, sal_Int32 nEnd ) const
 {
-    SfxItemSetFixed<RES_CHRATR_RSID, RES_CHRATR_RSID> aSet( const_cast<SwAttrPool&>((GetDoc().GetAttrPool())) );
+    SfxItemSet aSet(SfxItemSet::makeFixedSfxItemSet<RES_CHRATR_RSID, RES_CHRATR_RSID>( const_cast<SwAttrPool&>((GetDoc().GetAttrPool())) ));
     if (GetParaAttr(aSet, nStt, nEnd))
     {
         const SvxRsidItem* pRsid = aSet.GetItem<SvxRsidItem>(RES_CHRATR_RSID);

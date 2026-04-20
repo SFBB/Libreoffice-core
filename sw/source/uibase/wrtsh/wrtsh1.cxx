@@ -1237,7 +1237,7 @@ void SwWrtShell::InsertContentControl(SwContentControlType eType)
             InsertGraphic(OUString(), OUString(), aBitmap, nullptr, RndStdIds::FLY_AS_CHAR);
 
             // Set properties on the bitmap.
-            SfxItemSetFixed<RES_FRM_SIZE, RES_FRM_SIZE> aSet(GetDoc()->GetAttrPool());
+            SfxItemSet aSet(SfxItemSet::makeFixedSfxItemSet<RES_FRM_SIZE, RES_FRM_SIZE>(GetDoc()->GetAttrPool()));
             GetFlyFrameAttr(aSet);
             SwFormatFrameSize aSize(SwFrameSize::Fixed, 3000, 3000);
             aSet.Put(aSize);
@@ -2034,14 +2034,14 @@ void SwWrtShell::QuickUpdateStyle()
 void SwWrtShell::AutoUpdatePara(SwTextFormatColl* pColl, const SfxItemSet& rStyleSet, SwPaM* pPaM )
 {
     SwPaM* pCursor = pPaM ? pPaM : GetCursor( );
-    SfxItemSetFixed<
+    SfxItemSet aCoreSet(SfxItemSet::makeFixedSfxItemSet<
             RES_CHRATR_BEGIN, RES_CHRATR_END - 1,
             RES_PARATR_BEGIN, RES_PARATR_END - 1,
             RES_FRMATR_BEGIN, RES_FRMATR_END - 1,
             SID_ATTR_TABSTOP_DEFAULTS,SID_ATTR_TABSTOP_OFFSET,
             SID_ATTR_BORDER_INNER, SID_ATTR_BORDER_INNER,
             SID_ATTR_PARA_MODEL, SID_ATTR_PARA_KEEP,
-            SID_ATTR_PARA_PAGENUM, SID_ATTR_PARA_PAGENUM>  aCoreSet( GetAttrPool() );
+            SID_ATTR_PARA_PAGENUM, SID_ATTR_PARA_PAGENUM>( GetAttrPool() ));
     GetPaMAttr( pCursor, aCoreSet );
     bool bReset = false;
 
