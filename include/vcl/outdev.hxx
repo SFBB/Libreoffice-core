@@ -1724,6 +1724,7 @@ public:
     SAL_DLLPRIVATE tools::Long         ImplLogicWidthToDevicePixel( tools::Long nWidth ) const;
     SAL_DLLPRIVATE double              ImplLogicWidthToDeviceSubPixel(tools::Long nWidth) const;
 
+protected:
     /** Convert a logical height to a height in units of device pixels.
 
      To get the number of device pixels, it must calculate the Y-DPI of the device and
@@ -1761,6 +1762,7 @@ public:
      */
     SAL_DLLPRIVATE tools::Long         ImplDevicePixelToLogicHeight( tools::Long nHeight ) const;
 
+private:
     /** Convert a logical size to the size on the physical device.
 
      @param         rLogicSize  Const reference to a size in logical units
@@ -1829,7 +1831,6 @@ public:
      */
     SAL_DLLPRIVATE basegfx::B2DHomMatrix ImplGetDeviceTransformation() const;
 
-private:
     /** Convert a logical X coordinate to a device pixel's X coordinate.
 
      To get the device's X coordinate, it must calculate the mapping offset
