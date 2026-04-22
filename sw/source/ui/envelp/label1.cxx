@@ -71,8 +71,8 @@ void SwLabRec::FillItem( SwLabItem& rItem ) const
 void SwLabDlg::ReplaceGroup_( const OUString &rMake )
 {
     // Remove old entries
-    m_pRecs->erase(m_pRecs->begin() + 1, m_pRecs->end());
-    m_aLabelsCfg.FillLabels(rMake, *m_pRecs);
+    m_aRecs.erase(m_aRecs.begin() + 1, m_aRecs.end());
+    m_aLabelsCfg.FillLabels(rMake, m_aRecs);
     m_aLstGroup = rMake;
 }
 
@@ -80,10 +80,10 @@ void SwLabDlg::PageCreated(const OUString &rId, SfxTabPage &rPage)
 {
     if (rId == "labels")
     {
-        static_cast<SwLabPage*>(&rPage)->SetDBManager(m_pDBManager);
-        static_cast<SwLabPage*>(&rPage)->InitDatabaseBox();
+        static_cast<SwLabelPage*>(&rPage)->SetDBManager(m_pDBManager);
+        static_cast<SwLabelPage*>(&rPage)->InitDatabaseBox();
         if (!m_bLabel)
-            static_cast<SwLabPage*>(&rPage)->SetToBusinessCard();
+            static_cast<SwLabelPage*>(&rPage)->SetToBusinessCard();
     }
     else if (rId == "options")
         m_pPrtPage = static_cast<SwLabPrtPage*>(&rPage);
@@ -95,7 +95,6 @@ SwLabDlg::SwLabDlg(weld::Window* pParent, const SfxItemSet& rSet,
     , m_pDBManager(pDBManager_)
     , m_pPrtPage(nullptr)
     , m_aTypeIds(50, 10)
-    , m_pRecs(new SwLabRecs)
     , m_bLabel(bLabel)
 {
     weld::WaitObject aWait(pParent);
@@ -108,7 +107,7 @@ SwLabDlg::SwLabDlg(weld::Window* pParent, const SfxItemSet& rSet,
 
     bool bDouble = false;
 
-    for (const std::unique_ptr<SwLabRec> & i : *m_pRecs)
+    for (const std::unique_ptr<SwLabRec>& i : m_aRecs)
     {
         if (pRec->m_aMake == i->m_aMake &&
             pRec->m_aType == i->m_aType)
@@ -119,7 +118,7 @@ SwLabDlg::SwLabDlg(weld::Window* pParent, const SfxItemSet& rSet,
     }
 
     if (!bDouble)
-        m_pRecs->insert( m_pRecs->begin(), std::move(pRec));
+        m_aRecs.insert(m_aRecs.begin(), std::move(pRec));
 
     size_t nLstGroup = 0;
     const std::vector<OUString>& rMan = m_aLabelsCfg.GetManufacturers();
@@ -136,7 +135,7 @@ SwLabDlg::SwLabDlg(weld::Window* pParent, const SfxItemSet& rSet,
     if (m_xExampleSet)
         m_xExampleSet->Put(aItem);
 
-    AddTabPage(u"labels"_ustr, TabResId(RID_TAB_LABEL.aLabel), SwLabPage::Create,
+    AddTabPage(u"labels"_ustr, TabResId(RID_TAB_LABEL.aLabel), SwLabelPage::Create,
                RID_L + RID_TAB_LABEL.sIconName);
     if (!m_bLabel)
     {
@@ -153,10 +152,7 @@ SwLabDlg::SwLabDlg(weld::Window* pParent, const SfxItemSet& rSet,
     m_sBusinessCardDlg = SwResId(STR_BUSINESS_CARDS);
 }
 
-SwLabDlg::~SwLabDlg()
-{
-    m_pRecs.reset();
-}
+SwLabDlg::~SwLabDlg() {}
 
 void SwLabDlg::GetLabItem(SwLabItem &rItem)
 {
@@ -210,7 +206,7 @@ Printer *SwLabDlg::GetPrt()
         return nullptr;
 }
 
-SwLabPage::SwLabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet)
+SwLabelPage::SwLabelPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet)
     : SfxTabPage(pPage, pController, u"modules/swriter/ui/cardmediumpage.ui"_ustr, u"CardMediumPage"_ustr, &rSet)
     , m_pDBManager(nullptr)
     , m_aItem(static_cast<const SwLabItem&>(rSet.Get(FN_LABEL)))
@@ -242,30 +238,30 @@ SwLabPage::SwLabPage(weld::Container* pPage, weld::DialogController* pController
     SetExchangeSupport();
 
     // Install handlers
-    m_xAddrBox->connect_toggled(LINK(this, SwLabPage, AddrHdl));
-    m_xDatabaseLB->connect_changed(LINK(this, SwLabPage, DatabaseHdl));
-    m_xTableLB->connect_changed(LINK(this, SwLabPage, DatabaseHdl));
-    m_xDBFieldLB->connect_changed(LINK(this, SwLabPage, DatabaseHdl));
-    m_xInsertBT->connect_clicked(LINK(this, SwLabPage, FieldHdl));
+    m_xAddrBox->connect_toggled(LINK(this, SwLabelPage, AddrHdl));
+    m_xDatabaseLB->connect_changed(LINK(this, SwLabelPage, DatabaseHdl));
+    m_xTableLB->connect_changed(LINK(this, SwLabelPage, DatabaseHdl));
+    m_xDBFieldLB->connect_changed(LINK(this, SwLabelPage, DatabaseHdl));
+    m_xInsertBT->connect_clicked(LINK(this, SwLabelPage, FieldHdl));
     // Disable insert button first,
     // it'll be enabled if m_xDatabaseLB, m_pTableLB and m_pInsertBT are filled
     m_xInsertBT->set_sensitive(false);
-    m_xContButton->connect_toggled(LINK(this, SwLabPage, PageHdl));
-    m_xSheetButton->connect_toggled(LINK(this, SwLabPage, PageHdl));
+    m_xContButton->connect_toggled(LINK(this, SwLabelPage, PageHdl));
+    m_xSheetButton->connect_toggled(LINK(this, SwLabelPage, PageHdl));
     auto nMaxWidth = m_xMakeBox->get_approximate_digit_width() * 32;
     m_xMakeBox->set_size_request(nMaxWidth, -1);
     m_xTypeBox->set_size_request(nMaxWidth, -1);
-    m_xMakeBox->connect_changed(LINK(this, SwLabPage, MakeHdl));
-    m_xTypeBox->connect_changed(LINK(this, SwLabPage, TypeHdl));
+    m_xMakeBox->connect_changed(LINK(this, SwLabelPage, MakeHdl));
+    m_xTypeBox->connect_changed(LINK(this, SwLabelPage, TypeHdl));
 
     InitDatabaseBox();
 }
 
-SwLabPage::~SwLabPage()
+SwLabelPage::~SwLabelPage()
 {
 }
 
-void SwLabPage::SetToBusinessCard()
+void SwLabelPage::SetToBusinessCard()
 {
     m_xContainer->set_help_id(HID_BUSINESS_FMT_PAGE);
     m_xContButton->set_help_id(HID_BUSINESS_FMT_PAGE_CONT);
@@ -274,7 +270,7 @@ void SwLabPage::SetToBusinessCard()
     m_xTypeBox->set_help_id(HID_BUSINESS_FMT_PAGE_TYPE);
 };
 
-IMPL_LINK_NOARG(SwLabPage, AddrHdl, weld::Toggleable&, void)
+IMPL_LINK_NOARG(SwLabelPage, AddrHdl, weld::Toggleable&, void)
 {
     OUString aWriting;
 
@@ -285,7 +281,7 @@ IMPL_LINK_NOARG(SwLabPage, AddrHdl, weld::Toggleable&, void)
     m_xWritingEdit->grab_focus();
 }
 
-IMPL_LINK( SwLabPage, DatabaseHdl, weld::ComboBox&, rListBox, void )
+IMPL_LINK(SwLabelPage, DatabaseHdl, weld::ComboBox&, rListBox, void)
 {
     m_sActDBName = m_xDatabaseLB->get_active_text();
 
@@ -304,7 +300,7 @@ IMPL_LINK( SwLabPage, DatabaseHdl, weld::ComboBox&, rListBox, void )
         m_xInsertBT->set_sensitive(false);
 }
 
-IMPL_LINK_NOARG(SwLabPage, FieldHdl, weld::Button&, void)
+IMPL_LINK_NOARG(SwLabelPage, FieldHdl, weld::Button&, void)
 {
     OUString aStr("<" + m_xDatabaseLB->get_active_text() + "." +
                   m_xTableLB->get_active_text() + "." +
@@ -317,12 +313,12 @@ IMPL_LINK_NOARG(SwLabPage, FieldHdl, weld::Button&, void)
     m_xWritingEdit->select_region(nStartPos, nEndPos);
 }
 
-IMPL_LINK_NOARG(SwLabPage, PageHdl, weld::Toggleable&, void)
+IMPL_LINK_NOARG(SwLabelPage, PageHdl, weld::Toggleable&, void)
 {
     MakeHdl(*m_xMakeBox);
 }
 
-IMPL_LINK_NOARG(SwLabPage, MakeHdl, weld::ComboBox&, void)
+IMPL_LINK_NOARG(SwLabelPage, MakeHdl, weld::ComboBox&, void)
 {
     weld::WaitObject aWait(GetParentSwLabDlg()->getDialog());
 
@@ -375,13 +371,13 @@ IMPL_LINK_NOARG(SwLabPage, MakeHdl, weld::ComboBox&, void)
     TypeHdl(*m_xTypeBox);
 }
 
-IMPL_LINK_NOARG(SwLabPage, TypeHdl, weld::ComboBox&, void)
+IMPL_LINK_NOARG(SwLabelPage, TypeHdl, weld::ComboBox&, void)
 {
     DisplayFormat();
     m_aItem.m_aType = m_xTypeBox->get_active_text();
 }
 
-void SwLabPage::DisplayFormat()
+void SwLabelPage::DisplayFormat()
 {
     std::unique_ptr<weld::Builder> xBuilder(Application::CreateBuilder(GetFrameWeld(), u"cui/ui/spinbox.ui"_ustr));
     std::unique_ptr<weld::Dialog> xTopLevel(xBuilder->weld_dialog(u"SpinDialog"_ustr));
@@ -393,11 +389,9 @@ void SwLabPage::DisplayFormat()
     SwLabRec* pRec = GetSelectedEntryPos();
     m_aItem.m_aLstType = pRec->m_aType;
     setfldval(*xField, pRec->m_nWidth);
-    xField->reformat();
     const OUString aWString = xField->get_text();
 
     setfldval(*xField, pRec->m_nHeight);
-    xField->reformat();
 
     OUString aText = pRec->m_aType + ": " + aWString +
            " x " + xField->get_text() +
@@ -406,14 +400,14 @@ void SwLabPage::DisplayFormat()
     m_xFormatInfo->set_label(aText);
 }
 
-SwLabRec* SwLabPage::GetSelectedEntryPos()
+SwLabRec* SwLabelPage::GetSelectedEntryPos()
 {
     OUString sSelEntry(m_xTypeBox->get_active_text());
 
     return GetParentSwLabDlg()->GetRecord(sSelEntry, m_xContButton->get_active());
 }
 
-void SwLabPage::InitDatabaseBox()
+void SwLabelPage::InitDatabaseBox()
 {
     if( !GetDBManager() )
         return;
@@ -435,17 +429,19 @@ void SwLabPage::InitDatabaseBox()
         m_xDBFieldLB->clear();
 }
 
-std::unique_ptr<SfxTabPage> SwLabPage::Create(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rSet)
+std::unique_ptr<SfxTabPage> SwLabelPage::Create(weld::Container* pPage,
+                                                weld::DialogController* pController,
+                                                const SfxItemSet* rSet)
 {
-    return std::make_unique<SwLabPage>(pPage, pController, *rSet);
+    return std::make_unique<SwLabelPage>(pPage, pController, *rSet);
 }
 
-void SwLabPage::ActivatePage(const SfxItemSet& rSet)
+void SwLabelPage::ActivatePage(const SfxItemSet& rSet)
 {
     Reset( &rSet );
 }
 
-DeactivateRC SwLabPage::DeactivatePage(SfxItemSet* _pSet)
+DeactivateRC SwLabelPage::DeactivatePage(SfxItemSet* _pSet)
 {
     if (_pSet)
         FillItemSet(_pSet);
@@ -453,7 +449,7 @@ DeactivateRC SwLabPage::DeactivatePage(SfxItemSet* _pSet)
     return DeactivateRC::LeavePage;
 }
 
-void SwLabPage::FillItem(SwLabItem& rItem)
+void SwLabelPage::FillItem(SwLabItem& rItem)
 {
     rItem.m_bAddr    = m_xAddrBox->get_active();
     rItem.m_aWriting = m_xWritingEdit->get_text();
@@ -469,7 +465,7 @@ void SwLabPage::FillItem(SwLabItem& rItem)
     rItem.m_aLstType = m_xTypeBox->get_active_text();
 }
 
-bool SwLabPage::FillItemSet(SfxItemSet* rSet)
+bool SwLabelPage::FillItemSet(SfxItemSet* rSet)
 {
     FillItem( m_aItem );
     rSet->Put( m_aItem );
@@ -477,7 +473,7 @@ bool SwLabPage::FillItemSet(SfxItemSet* rSet)
     return true;
 }
 
-void SwLabPage::Reset(const SfxItemSet* rSet)
+void SwLabelPage::Reset(const SfxItemSet* rSet)
 {
     m_xMakeBox->clear();
 

@@ -33,6 +33,7 @@
 #include <vcl/virdev.hxx>
 #include <vcl/weld/Builder.hxx>
 #include <vcl/weld/Notebook.hxx>
+#include <vcl/weld/SizeGroup.hxx>
 #include <vcl/weld/Dialog.hxx>
 #include <sal/log.hxx>
 #include <tools/debug.hxx>
@@ -816,8 +817,7 @@ void SfxTabDialogController::setPreviewsToSamePlace()
     if (aGrids.size() <= 1)
         return;
 
-    m_xSizeGroup = m_xBuilder->create_size_group();
-    m_xSizeGroup->set_mode(VclSizeGroupMode::Both);
+    m_xSizeGroup = m_xBuilder->create_size_group(VclSizeGroupMode::Both);
     for (auto& rGrid : aGrids)
         m_xSizeGroup->add_widget(rGrid.get());
 }

@@ -74,6 +74,7 @@
 #include <vcl/toolkit/throbber.hxx>
 #include <vcl/toolkit/unowrap.hxx>
 #include <vcl/weld/Paned.hxx>
+#include <vcl/weld/SizeGroup.hxx>
 #include <vcl/weld/weld.hxx>
 #include <vcl/weld/weldutils.hxx>
 #include <vcl/toolkit/vclmedit.hxx>
@@ -1265,17 +1266,18 @@ private:
     std::shared_ptr<VclSizeGroup> m_xGroup;
 
 public:
-    SalInstanceSizeGroup()
+    SalInstanceSizeGroup(VclSizeGroupMode eMode)
         : m_xGroup(std::make_shared<VclSizeGroup>())
     {
+        m_xGroup->set_mode(eMode);
     }
+
     virtual void add_widget(weld::Widget* pWidget) override
     {
         SalInstanceWidget* pVclWidget = dynamic_cast<SalInstanceWidget*>(pWidget);
         assert(pVclWidget && pVclWidget->getWidget());
         pVclWidget->getWidget()->add_to_size_group(m_xGroup);
     }
-    virtual void set_mode(VclSizeGroupMode eMode) override { m_xGroup->set_mode(eMode); }
 };
 }
 
@@ -4001,7 +4003,11 @@ void SalInstanceTreeView::set_column_visible(int nColumn, const bool bVisible)
 
     SvHeaderTabListBox* pHeaderBox = dynamic_cast<SvHeaderTabListBox*>(m_xTreeView.get());
     if (HeaderBar* pHeaderBar = pHeaderBox ? pHeaderBox->GetHeaderBar() : nullptr)
-        pHeaderBar->SetItemSize(pHeaderBar->GetItemId(nColumn), width);
+    {
+        sal_uInt16 nItemId = pHeaderBar->GetItemId(nColumn);
+        pHeaderBar->SetItemVisible(nItemId, bVisible);
+        pHeaderBar->SetItemSize(nItemId, width);
+    }
 
     // Set flag for columns_autosize() to respect the visibility
     m_xTreeView->SetTabVisible(nColumn, bVisible);
@@ -6859,9 +6865,9 @@ std::unique_ptr<weld::Scrollbar> SalInstanceBuilder::weld_scrollbar(const OUStri
     return pScrollbar ? std::make_unique<SalInstanceScrollbar>(pScrollbar, this, false) : nullptr;
 }
 
-std::unique_ptr<weld::SizeGroup> SalInstanceBuilder::create_size_group()
+std::unique_ptr<weld::SizeGroup> SalInstanceBuilder::create_size_group(VclSizeGroupMode eMode)
 {
-    return std::make_unique<SalInstanceSizeGroup>();
+    return std::make_unique<SalInstanceSizeGroup>(eMode);
 }
 
 OUString SalInstanceBuilder::get_current_page_help_id() const

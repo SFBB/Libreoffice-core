@@ -28,6 +28,7 @@
 #include <vcl/weld/MetricSpinButton.hxx>
 #include <vcl/weld/Notebook.hxx>
 #include <vcl/weld/Paned.hxx>
+#include <vcl/weld/SizeGroup.hxx>
 #include <vcl/weld/SpinButton.hxx>
 #include <vcl/weld/TextView.hxx>
 #include <vcl/weld/Toolbar.hxx>
@@ -95,7 +96,7 @@ public:
     virtual std::unique_ptr<weld::Popover> weld_popover(const OUString& rId) override;
     virtual std::unique_ptr<weld::Toolbar> weld_toolbar(const OUString& rId) override;
     virtual std::unique_ptr<weld::Scrollbar> weld_scrollbar(const OUString& rId) override;
-    virtual std::unique_ptr<weld::SizeGroup> create_size_group() override;
+    virtual std::unique_ptr<weld::SizeGroup> create_size_group(VclSizeGroupMode eMode) override;
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */
