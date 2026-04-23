@@ -38,7 +38,6 @@
 
 #include <svx/dlgctrl.hxx>
 #include <cuitabline.hxx>
-#include <defdlgname.hxx>
 #include <dialmgr.hxx>
 #include <svx/dlgutil.hxx>
 #include <svx/dialmgr.hxx>
@@ -50,6 +49,8 @@
 
 using namespace com::sun::star;
 
+constexpr int RET_BTN_1  = 100;
+constexpr int RET_BTN_2  = 101;
 
 SvxLineDefTabPage::SvxLineDefTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rInAttrs)
     : SfxTabPage(pPage, pController, u"cui/ui/linestyletabpage.ui"_ustr, u"LineStylePage"_ustr, &rInAttrs)
@@ -458,32 +459,11 @@ IMPL_LINK( SvxLineDefTabPage, SelectTypeListBoxHdl_Impl, weld::ComboBox&, rListB
 void  SvxLineDefTabPage::SelectTypeHdl_Impl(const weld::ComboBox* p)
 {
     if (p == m_xLbType1.get() || !p)
-    {
-        if (m_xLbType1->get_active() == 0)
-        {
-            m_xMtrLength1->set_sensitive(false);
-            m_xMtrLength1->set_text(u""_ustr);
-        }
-        else if (!m_xMtrLength1->get_sensitive())
-        {
-            m_xMtrLength1->set_sensitive(true);
-            m_xMtrLength1->reformat();
-        }
-    }
+        m_xMtrLength1->set_sensitive(m_xLbType1->get_active() != 0);
 
     if (p == m_xLbType2.get() || !p)
-    {
-        if (m_xLbType2->get_active() == 0)
-        {
-            m_xMtrLength2->set_sensitive(false);
-            m_xMtrLength2->set_text(u""_ustr);
-        }
-        else if (!m_xMtrLength2->get_sensitive())
-        {
-            m_xMtrLength2->set_sensitive(true);
-            m_xMtrLength2->reformat();
-        }
-    }
+        m_xMtrLength2->set_sensitive(m_xLbType2->get_active() != 0);
+
     ChangePreviewHdl_Impl(*m_xMtrLength1);
 }
 

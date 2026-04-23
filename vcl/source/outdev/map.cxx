@@ -215,7 +215,7 @@ tools::Long OutputDevice::ImplLogicYToDevicePixel( tools::Long nY ) const
                              maMapRes.mfMapScY )+mnOutOffY+mnOutOffOrigY;
 }
 
-tools::Long OutputDevice::ImplLogicWidthToDevicePixel( tools::Long nWidth ) const
+tools::Long OutputDevice::LogicWidthToDevicePixel(tools::Long nWidth) const
 {
     if ( !mbMap )
         return nWidth;
@@ -223,7 +223,7 @@ tools::Long OutputDevice::ImplLogicWidthToDevicePixel( tools::Long nWidth ) cons
     return lcl_logicToPixel(nWidth, mnDPIX, maMapRes.mfMapScX);
 }
 
-tools::Long OutputDevice::ImplLogicHeightToDevicePixel( tools::Long nHeight ) const
+tools::Long OutputDevice::LogicHeightToDevicePixel( tools::Long nHeight ) const
 {
     if ( !mbMap )
         return nHeight;
@@ -231,7 +231,7 @@ tools::Long OutputDevice::ImplLogicHeightToDevicePixel( tools::Long nHeight ) co
     return lcl_logicToPixel(nHeight, mnDPIY, maMapRes.mfMapScY);
 }
 
-tools::Long OutputDevice::ImplDevicePixelToLogicWidth( tools::Long nWidth ) const
+tools::Long OutputDevice::DevicePixelToLogicWidth( tools::Long nWidth ) const
 {
     if ( !mbMap )
         return nWidth;
@@ -247,7 +247,7 @@ SAL_DLLPRIVATE double OutputDevice::ImplDevicePixelToLogicWidthDouble(double nWi
     return lcl_pixelToLogicDouble(nWidth, mnDPIX, maMapRes.mfMapScX);
 }
 
-tools::Long OutputDevice::ImplDevicePixelToLogicHeight( tools::Long nHeight ) const
+tools::Long OutputDevice::DevicePixelToLogicHeight( tools::Long nHeight ) const
 {
     if ( !mbMap )
         return nHeight;
@@ -263,7 +263,7 @@ double OutputDevice::ImplDevicePixelToLogicHeightDouble(double nHeight) const
     return lcl_pixelToLogicDouble(nHeight, mnDPIY, maMapRes.mfMapScY);
 }
 
-Point OutputDevice::ImplLogicToDevicePixel( const Point& rLogicPt ) const
+Point OutputDevice::LogicToDevicePixel(const Point& rLogicPt) const
 {
     if ( !mbMap )
         return Point( rLogicPt.X()+mnOutOffX, rLogicPt.Y()+mnOutOffY );
@@ -285,7 +285,7 @@ Size OutputDevice::ImplLogicToDevicePixel( const Size& rLogicSize ) const
                                    maMapRes.mfMapScY ) );
 }
 
-tools::Rectangle OutputDevice::ImplLogicToDevicePixel( const tools::Rectangle& rLogicRect ) const
+tools::Rectangle OutputDevice::LogicToDevicePixel(const tools::Rectangle& rLogicRect) const
 {
     // tdf#141761 IsEmpty() removed
     // Even if rLogicRect.IsEmpty(), transform of the Position contained
@@ -479,22 +479,22 @@ LineInfo OutputDevice::ImplLogicToDevicePixel( const LineInfo& rLineInfo ) const
     if( aInfo.GetStyle() == LineStyle::Dash )
     {
         if( aInfo.GetDotCount() && aInfo.GetDotLen() )
-            aInfo.SetDotLen( std::max( ImplLogicWidthToDevicePixel( aInfo.GetDotLen() ), tools::Long(1) ) );
+            aInfo.SetDotLen(std::max(LogicWidthToDevicePixel(aInfo.GetDotLen()), tools::Long(1)));
         else
             aInfo.SetDotCount( 0 );
 
         if( aInfo.GetDashCount() && aInfo.GetDashLen() )
-            aInfo.SetDashLen( std::max( ImplLogicWidthToDevicePixel( aInfo.GetDashLen() ), tools::Long(1) ) );
+            aInfo.SetDashLen(std::max(LogicWidthToDevicePixel(aInfo.GetDashLen()), tools::Long(1)));
         else
             aInfo.SetDashCount( 0 );
 
-        aInfo.SetDistance( ImplLogicWidthToDevicePixel( aInfo.GetDistance() ) );
+        aInfo.SetDistance(LogicWidthToDevicePixel(aInfo.GetDistance()));
 
         if( ( !aInfo.GetDashCount() && !aInfo.GetDotCount() ) || !aInfo.GetDistance() )
             aInfo.SetStyle( LineStyle::Solid );
     }
 
-    aInfo.SetWidth( ImplLogicWidthToDevicePixel( aInfo.GetWidth() ) );
+    aInfo.SetWidth(LogicWidthToDevicePixel(aInfo.GetWidth()));
 
     return aInfo;
 }
@@ -1650,7 +1650,7 @@ void OutputDevice::SetPixelOffset( const Size& rOffset )
 }
 
 
-double OutputDevice::ImplLogicWidthToDeviceSubPixel(tools::Long nWidth) const
+double OutputDevice::LogicWidthToDeviceSubPixel(tools::Long nWidth) const
 {
     if (!mbMap)
         return nWidth;
@@ -1659,7 +1659,7 @@ double OutputDevice::ImplLogicWidthToDeviceSubPixel(tools::Long nWidth) const
                                maMapRes.mfMapScX);
 }
 
-double OutputDevice::ImplLogicHeightToDeviceSubPixel(tools::Long nHeight) const
+double OutputDevice::LogicHeightToDeviceSubPixel(tools::Long nHeight) const
 {
     if (!mbMap)
         return nHeight;
@@ -1668,7 +1668,7 @@ double OutputDevice::ImplLogicHeightToDeviceSubPixel(tools::Long nHeight) const
                                maMapRes.mfMapScY);
 }
 
-basegfx::B2DPoint OutputDevice::ImplLogicToDeviceSubPixel(const Point& rPoint) const
+basegfx::B2DPoint OutputDevice::LogicToDeviceSubPixel(const Point& rPoint) const
 {
     if (!mbMap)
         return basegfx::B2DPoint(rPoint.X() + mnOutOffX, rPoint.Y() + mnOutOffY);

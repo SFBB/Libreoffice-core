@@ -432,10 +432,10 @@ void OutputDevice::DrawOutDev( const Point& rDestPt, const Size& rDestSize,
     if ( mbOutputClipped )
         return;
 
-    tools::Long nSrcWidth   = ImplLogicWidthToDevicePixel( rSrcSize.Width() );
-    tools::Long nSrcHeight  = ImplLogicHeightToDevicePixel( rSrcSize.Height() );
-    tools::Long nDestWidth  = ImplLogicWidthToDevicePixel( rDestSize.Width() );
-    tools::Long nDestHeight = ImplLogicHeightToDevicePixel( rDestSize.Height() );
+    tools::Long nSrcWidth   = LogicWidthToDevicePixel(rSrcSize.Width());
+    tools::Long nSrcHeight  = LogicHeightToDevicePixel(rSrcSize.Height());
+    tools::Long nDestWidth  = LogicWidthToDevicePixel(rDestSize.Width());
+    tools::Long nDestHeight = LogicHeightToDevicePixel(rDestSize.Height());
 
     if (nSrcWidth && nSrcHeight && nDestWidth && nDestHeight)
     {
@@ -485,12 +485,12 @@ void OutputDevice::DrawOutDev( const Point& rDestPt, const Size& rDestSize,
 
     SalTwoRect aPosAry(rOutDev.ImplLogicXToDevicePixel(rSrcPt.X()),
                              rOutDev.ImplLogicYToDevicePixel(rSrcPt.Y()),
-                             rOutDev.ImplLogicWidthToDevicePixel(rSrcSize.Width()),
-                             rOutDev.ImplLogicHeightToDevicePixel(rSrcSize.Height()),
+                             rOutDev.LogicWidthToDevicePixel(rSrcSize.Width()),
+                             rOutDev.LogicHeightToDevicePixel(rSrcSize.Height()),
                              ImplLogicXToDevicePixel(rDestPt.X()),
                              ImplLogicYToDevicePixel(rDestPt.Y()),
-                             ImplLogicWidthToDevicePixel(rDestSize.Width()),
-                             ImplLogicHeightToDevicePixel(rDestSize.Height()));
+                             LogicWidthToDevicePixel(rDestSize.Width()),
+                             LogicHeightToDevicePixel(rDestSize.Height()));
 
     // if we have alpha, this will blend source over destination
     drawOutDevDirect(rOutDev, aPosAry);
@@ -518,8 +518,8 @@ void OutputDevice::CopyArea( const Point& rDestPt,
     if ( mbOutputClipped )
         return;
 
-    tools::Long nSrcWidth   = ImplLogicWidthToDevicePixel( rSrcSize.Width() );
-    tools::Long nSrcHeight  = ImplLogicHeightToDevicePixel( rSrcSize.Height() );
+    tools::Long nSrcWidth = LogicWidthToDevicePixel(rSrcSize.Width());
+    tools::Long nSrcHeight = LogicHeightToDevicePixel(rSrcSize.Height());
     if (nSrcWidth && nSrcHeight)
     {
         SalTwoRect aPosAry(ImplLogicXToDevicePixel(rSrcPt.X()), ImplLogicYToDevicePixel(rSrcPt.Y()),

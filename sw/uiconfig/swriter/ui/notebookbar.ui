@@ -2463,7 +2463,7 @@
                                 <child>
                                   <object class="GtkToolButton" id="File-NewDoc1">
                                     <property name="visible">True</property>
-                                    <property name="action-name">.uno:NewDoc</property>
+                                    <property name="action-name">.uno:SearchDialog</property>
                                     <property name="use-underline">True</property>
                                   </object>
                                   <packing>
@@ -4176,12 +4176,14 @@
                         <property name="visible">True</property>
                         <property name="can-focus">False</property>
                         <property name="valign">center</property>
+                        <property name="hexpand">True</property>
                         <property name="vexpand">True</property>
                         <child>
                           <object class="GtkBox" id="GroupB80">
                             <property name="visible">True</property>
                             <property name="can-focus">False</property>
                             <property name="valign">center</property>
+                            <property name="hexpand">True</property>
                             <property name="orientation">vertical</property>
                             <child>
                               <object class="sfxlo-NotebookbarToolBox" id="SectionBottom127">
@@ -4195,7 +4197,7 @@
                                     <property name="action-name">.uno:StylesPreview</property>
                                   </object>
                                   <packing>
-                                    <property name="expand">False</property>
+                                    <property name="expand">True</property>
                                     <property name="homogeneous">True</property>
                                   </packing>
                                 </child>
@@ -4502,7 +4504,7 @@
                               <object class="GtkToolButton" id="Home-FocusToFindbar">
                                 <property name="visible">True</property>
                                 <property name="valign">center</property>
-                                <property name="action-name">vnd.sun.star.findbar:FocusToFindbar</property>
+                                <property name="action-name">.uno:SearchDialog</property>
                               </object>
                               <packing>
                                 <property name="expand">False</property>
