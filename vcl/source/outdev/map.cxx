@@ -38,104 +38,6 @@
 #include <basegfx/matrix/b2dhommatrix.hxx>
 #include <tools/UnitConversion.hxx>
 
-static auto lcl_setMapRes(ImplMapRes& rMapRes, const o3tl::Length eUnit)
-{
-    const auto [nNum, nDen] = o3tl::getConversionMulDiv(eUnit, o3tl::Length::in);
-    rMapRes.mfMapScX = rMapRes.mfMapScY = double(nNum) / nDen;
-};
-
-static void lcl_calcMapResolution( const MapMode& rMapMode,
-                                   tools::Long nDPIX, tools::Long nDPIY, ImplMapRes& rMapRes )
-{
-    switch ( rMapMode.GetMapUnit() )
-    {
-        case MapUnit::MapRelative:
-            break;
-        case MapUnit::Map100thMM:
-            lcl_setMapRes(rMapRes, o3tl::Length::mm100);
-            break;
-        case MapUnit::Map10thMM:
-            lcl_setMapRes(rMapRes, o3tl::Length::mm10);
-            break;
-        case MapUnit::MapMM:
-            lcl_setMapRes(rMapRes, o3tl::Length::mm);
-            break;
-        case MapUnit::MapCM:
-            lcl_setMapRes(rMapRes, o3tl::Length::cm);
-            break;
-        case MapUnit::Map1000thInch:
-            lcl_setMapRes(rMapRes, o3tl::Length::in1000);
-            break;
-        case MapUnit::Map100thInch:
-            lcl_setMapRes(rMapRes, o3tl::Length::in100);
-            break;
-        case MapUnit::Map10thInch:
-            lcl_setMapRes(rMapRes, o3tl::Length::in10);
-            break;
-        case MapUnit::MapInch:
-            lcl_setMapRes(rMapRes, o3tl::Length::in);
-            break;
-        case MapUnit::MapPoint:
-            lcl_setMapRes(rMapRes, o3tl::Length::pt);
-            break;
-        case MapUnit::MapTwip:
-            lcl_setMapRes(rMapRes, o3tl::Length::twip);
-            break;
-        case MapUnit::MapPixel:
-            rMapRes.mfMapScX   = 1.0 / nDPIX;
-            rMapRes.mfMapScY   = 1.0 / nDPIY;
-            break;
-        case MapUnit::MapSysFont:
-        case MapUnit::MapAppFont:
-            {
-            ImplSVData* pSVData = ImplGetSVData();
-            if ( !pSVData->maGDIData.mnAppFontX )
-            {
-                if (pSVData->maFrameData.mpFirstFrame)
-                    vcl::Window::ImplInitAppFontData(pSVData->maFrameData.mpFirstFrame);
-                else
-                {
-                    ScopedVclPtrInstance<WorkWindow> pWin( nullptr, 0 );
-                    vcl::Window::ImplInitAppFontData( pWin );
-                }
-            }
-            rMapRes.mfMapScX   = double(pSVData->maGDIData.mnAppFontX) / (nDPIX * 40);
-            rMapRes.mfMapScY   = double(pSVData->maGDIData.mnAppFontY) / (nDPIY * 80);
-            }
-            break;
-        default:
-            OSL_FAIL( "unhandled MapUnit" );
-            break;
-    }
-
-    double fScaleX = rMapMode.GetScaleX();
-    double fScaleY = rMapMode.GetScaleY();
-
-    // set offset according to MapMode
-    Point aOrigin = rMapMode.GetOrigin();
-    if ( rMapMode.GetMapUnit() != MapUnit::MapRelative )
-    {
-        rMapRes.mnMapOfsX = aOrigin.X();
-        rMapRes.mnMapOfsY = aOrigin.Y();
-    }
-    else
-    {
-        auto funcCalcOffset = [](double fScale, tools::Long& rnMapOffset, tools::Long nOrigin)
-        {
-            assert(fScale != 0);
-            rnMapOffset = std::llround(double( rnMapOffset ) / fScale) + nOrigin;
-        };
-
-        funcCalcOffset(fScaleX, rMapRes.mnMapOfsX, aOrigin.X());
-        funcCalcOffset(fScaleY, rMapRes.mnMapOfsY, aOrigin.Y());
-    }
-
-    // calculate scaling factor according to MapMode
-    // aTemp? = rMapRes.mnMapSc? * aScale?
-    rMapRes.mfMapScX = fScaleX * rMapRes.mfMapScX;
-    rMapRes.mfMapScY = fScaleY * rMapRes.mfMapScY;
-}
-
 // #i75163#
 void OutputDevice::ImplInvalidateViewTransform()
 {
@@ -420,38 +322,38 @@ basegfx::B2DPolygon OutputDevice::ImplLogicToDevicePixel(const basegfx::B2DPolyg
             if (bC2)
                 aPoly.setNextControlPoint(i, aC2);
         }
+
+        return aPoly;
     }
-    else
+
+    for (sal_uInt32 i = 0; i < nPoints; ++i)
     {
-        for (sal_uInt32 i = 0; i < nPoints; ++i)
+        const basegfx::B2DPoint& rPt = aPoly.getB2DPoint(i);
+        basegfx::B2DPoint aPt(rPt.getX() + mnOutOffX, rPt.getY() + mnOutOffY);
+
+        const bool bC1 = aPoly.isPrevControlPointUsed(i);
+        if (bC1)
         {
-            const basegfx::B2DPoint& rPt = aPoly.getB2DPoint(i);
-            basegfx::B2DPoint aPt(rPt.getX() + mnOutOffX, rPt.getY() + mnOutOffY);
+            const basegfx::B2DPoint aB2DC1(aPoly.getPrevControlPoint(i));
 
-            const bool bC1 = aPoly.isPrevControlPointUsed(i);
-            if (bC1)
-            {
-                const basegfx::B2DPoint aB2DC1(aPoly.getPrevControlPoint(i));
-
-                aC1 = basegfx::B2DPoint(aB2DC1.getX() + mnOutOffX, aB2DC1.getY() + mnOutOffY);
-            }
-
-            const bool bC2 = aPoly.isNextControlPointUsed(i);
-            if (bC2)
-            {
-                const basegfx::B2DPoint aB2DC2(aPoly.getNextControlPoint(i));
-
-                aC2 = basegfx::B2DPoint(aB2DC2.getX() + mnOutOffX, aB2DC2.getY() + mnOutOffY);
-            }
-
-            aPoly.setB2DPoint(i, aPt);
-
-            if (bC1)
-                aPoly.setPrevControlPoint(i, aC1);
-
-            if (bC2)
-                aPoly.setNextControlPoint(i, aC2);
+            aC1 = basegfx::B2DPoint(aB2DC1.getX() + mnOutOffX, aB2DC1.getY() + mnOutOffY);
         }
+
+        const bool bC2 = aPoly.isNextControlPointUsed(i);
+        if (bC2)
+        {
+            const basegfx::B2DPoint aB2DC2(aPoly.getNextControlPoint(i));
+
+            aC2 = basegfx::B2DPoint(aB2DC2.getX() + mnOutOffX, aB2DC2.getY() + mnOutOffY);
+        }
+
+        aPoly.setB2DPoint(i, aPt);
+
+        if (bC1)
+            aPoly.setPrevControlPoint(i, aC1);
+
+        if (bC2)
+            aPoly.setNextControlPoint(i, aC2);
     }
 
     return aPoly;
@@ -550,23 +452,23 @@ void OutputDevice::SetMapMode()
     if ( mpMetaFile )
         mpMetaFile->AddAction( new MetaMapModeAction( MapMode() ) );
 
-    if ( mbMap || !maMapMode.IsDefault() )
-    {
-        mbMap       = false;
-        maMapMode   = MapMode();
+    if (!mbMap && maMapMode.IsDefault())
+        return;
 
-        // create new objects (clip region are not re-scaled)
-        mbNewFont   = true;
-        mbInitFont  = true;
-        ImplInitMapModeObjects();
+    mbMap       = false;
+    maMapMode   = MapMode();
 
-        // #106426# Adapt logical offset when changing mapmode
-        mnOutOffLogicX = mnOutOffOrigX; // no mapping -> equal offsets
-        mnOutOffLogicY = mnOutOffOrigY;
+    // create new objects (clip region are not re-scaled)
+    mbNewFont   = true;
+    mbInitFont  = true;
+    ImplInitMapModeObjects();
 
-        // #i75163#
-        ImplInvalidateViewTransform();
-    }
+    // #106426# Adapt logical offset when changing mapmode
+    mnOutOffLogicX = mnOutOffOrigX; // no mapping -> equal offsets
+    mnOutOffLogicY = mnOutOffOrigY;
+
+    // #i75163#
+    ImplInvalidateViewTransform();
 }
 
 void OutputDevice::SetMapMode( const MapMode& rNewMapMode )
@@ -614,7 +516,7 @@ void OutputDevice::SetMapMode( const MapMode& rNewMapMode )
         }
 
         // calculate new MapMode-resolution
-        lcl_calcMapResolution(rNewMapMode, mnDPIX, mnDPIY, maMapRes);
+        maMapRes.CalcMapResolution(rNewMapMode, mnDPIX, mnDPIY);
     }
 
     // set new MapMode
@@ -719,49 +621,41 @@ void OutputDevice::SetRelativeMapMode( const MapMode& rNewMapMode )
 // #i75163#
 basegfx::B2DHomMatrix OutputDevice::GetViewTransformation() const
 {
-    if(mbMap && mpOutDevData)
-    {
-        if(!mpOutDevData->mpViewTransform)
-        {
-            mpOutDevData->mpViewTransform = new basegfx::B2DHomMatrix;
-
-            const double fScaleFactorX(static_cast<double>(mnDPIX) * maMapRes.mfMapScX);
-            const double fScaleFactorY(static_cast<double>(mnDPIY) * maMapRes.mfMapScY);
-            const double fZeroPointX((static_cast<double>(maMapRes.mnMapOfsX) * fScaleFactorX) + static_cast<double>(mnOutOffOrigX));
-            const double fZeroPointY((static_cast<double>(maMapRes.mnMapOfsY) * fScaleFactorY) + static_cast<double>(mnOutOffOrigY));
-
-            mpOutDevData->mpViewTransform->set(0, 0, fScaleFactorX);
-            mpOutDevData->mpViewTransform->set(1, 1, fScaleFactorY);
-            mpOutDevData->mpViewTransform->set(0, 2, fZeroPointX);
-            mpOutDevData->mpViewTransform->set(1, 2, fZeroPointY);
-        }
-
-        return *mpOutDevData->mpViewTransform;
-    }
-    else
-    {
+    if (!mbMap || !mpOutDevData)
         return basegfx::B2DHomMatrix();
+
+    if(!mpOutDevData->mpViewTransform)
+    {
+        mpOutDevData->mpViewTransform = new basegfx::B2DHomMatrix;
+
+        const double fScaleFactorX(static_cast<double>(mnDPIX) * maMapRes.mfMapScX);
+        const double fScaleFactorY(static_cast<double>(mnDPIY) * maMapRes.mfMapScY);
+        const double fZeroPointX((static_cast<double>(maMapRes.mnMapOfsX) * fScaleFactorX) + static_cast<double>(mnOutOffOrigX));
+        const double fZeroPointY((static_cast<double>(maMapRes.mnMapOfsY) * fScaleFactorY) + static_cast<double>(mnOutOffOrigY));
+
+        mpOutDevData->mpViewTransform->set(0, 0, fScaleFactorX);
+        mpOutDevData->mpViewTransform->set(1, 1, fScaleFactorY);
+        mpOutDevData->mpViewTransform->set(0, 2, fZeroPointX);
+        mpOutDevData->mpViewTransform->set(1, 2, fZeroPointY);
     }
+
+    return *mpOutDevData->mpViewTransform;
 }
 
 // #i75163#
 basegfx::B2DHomMatrix OutputDevice::GetInverseViewTransformation() const
 {
-    if(mbMap && mpOutDevData)
-    {
-        if(!mpOutDevData->mpInverseViewTransform)
-        {
-            GetViewTransformation();
-            mpOutDevData->mpInverseViewTransform = new basegfx::B2DHomMatrix(*mpOutDevData->mpViewTransform);
-            mpOutDevData->mpInverseViewTransform->invert();
-        }
-
-        return *mpOutDevData->mpInverseViewTransform;
-    }
-    else
-    {
+    if (!mbMap || !mpOutDevData)
         return basegfx::B2DHomMatrix();
+
+    if(!mpOutDevData->mpInverseViewTransform)
+    {
+        GetViewTransformation();
+        mpOutDevData->mpInverseViewTransform = new basegfx::B2DHomMatrix(*mpOutDevData->mpViewTransform);
+        mpOutDevData->mpInverseViewTransform->invert();
     }
+
+    return *mpOutDevData->mpInverseViewTransform;
 }
 
 // #i75163#
@@ -769,7 +663,7 @@ basegfx::B2DHomMatrix OutputDevice::GetViewTransformation( const MapMode& rMapMo
 {
     // #i82615#
     ImplMapRes          aMapRes;
-    lcl_calcMapResolution(rMapMode, mnDPIX, mnDPIY, aMapRes);
+    aMapRes.CalcMapResolution(rMapMode, mnDPIX, mnDPIY);
 
     basegfx::B2DHomMatrix aTransform;
 
@@ -942,7 +836,7 @@ Point OutputDevice::LogicToPixel( const Point& rLogicPt,
 
     // convert MapMode resolution and convert
     ImplMapRes          aMapRes;
-    lcl_calcMapResolution(rMapMode, mnDPIX, mnDPIY, aMapRes);
+    aMapRes.CalcMapResolution(rMapMode, mnDPIX, mnDPIY);
 
     return Point( lcl_logicToPixel( rLogicPt.X() + aMapRes.mnMapOfsX, mnDPIX,
                                     aMapRes.mfMapScX )+mnOutOffOrigX,
@@ -959,7 +853,7 @@ Size OutputDevice::LogicToPixel( const Size& rLogicSize,
 
     // convert MapMode resolution and convert
     ImplMapRes          aMapRes;
-    lcl_calcMapResolution(rMapMode, mnDPIX, mnDPIY, aMapRes);
+    aMapRes.CalcMapResolution(rMapMode, mnDPIX, mnDPIY);
 
     return Size( lcl_logicToPixel( rLogicSize.Width(), mnDPIX,
                                    aMapRes.mfMapScX ),
@@ -976,7 +870,7 @@ tools::Rectangle OutputDevice::LogicToPixel( const tools::Rectangle& rLogicRect,
 
     // convert MapMode resolution and convert
     ImplMapRes          aMapRes;
-    lcl_calcMapResolution(rMapMode, mnDPIX, mnDPIY, aMapRes);
+    aMapRes.CalcMapResolution(rMapMode, mnDPIX, mnDPIY);
 
     tools::Rectangle aRetval(
         lcl_logicToPixel( rLogicRect.Left() + aMapRes.mnMapOfsX, mnDPIX, aMapRes.mfMapScX )+mnOutOffOrigX,
@@ -1002,7 +896,7 @@ tools::Polygon OutputDevice::LogicToPixel( const tools::Polygon& rLogicPoly,
 
     // convert MapMode resolution and convert
     ImplMapRes          aMapRes;
-    lcl_calcMapResolution(rMapMode, mnDPIX, mnDPIY, aMapRes);
+    aMapRes.CalcMapResolution(rMapMode, mnDPIX, mnDPIY);
 
     sal_uInt16  i;
     sal_uInt16  nPoints = rLogicPoly.GetSize();
@@ -1196,7 +1090,7 @@ Point OutputDevice::PixelToLogic( const Point& rDevicePt,
 
     // calculate MapMode-resolution and convert
     ImplMapRes          aMapRes;
-    lcl_calcMapResolution(rMapMode, mnDPIX, mnDPIY, aMapRes);
+    aMapRes.CalcMapResolution(rMapMode, mnDPIX, mnDPIY);
 
     return Point( lcl_pixelToLogic( rDevicePt.X(), mnDPIX,
                                     aMapRes.mfMapScX ) - aMapRes.mnMapOfsX - mnOutOffLogicX,
@@ -1214,7 +1108,7 @@ Size OutputDevice::PixelToLogic( const Size& rDeviceSize,
 
     // calculate MapMode-resolution and convert
     ImplMapRes          aMapRes;
-    lcl_calcMapResolution(rMapMode, mnDPIX, mnDPIY, aMapRes);
+    aMapRes.CalcMapResolution(rMapMode, mnDPIX, mnDPIY);
 
     return Size( lcl_pixelToLogic( rDeviceSize.Width(), mnDPIX,
                                    aMapRes.mfMapScX ),
@@ -1232,7 +1126,7 @@ tools::Rectangle OutputDevice::PixelToLogic( const tools::Rectangle& rDeviceRect
 
     // calculate MapMode-resolution and convert
     ImplMapRes          aMapRes;
-    lcl_calcMapResolution(rMapMode, mnDPIX, mnDPIY, aMapRes);
+    aMapRes.CalcMapResolution(rMapMode, mnDPIX, mnDPIY);
 
     tools::Rectangle aRetval(
         lcl_pixelToLogic( rDeviceRect.Left(), mnDPIX, aMapRes.mfMapScX ) - aMapRes.mnMapOfsX - mnOutOffLogicX,
@@ -1259,7 +1153,7 @@ tools::Polygon OutputDevice::PixelToLogic( const tools::Polygon& rDevicePoly,
 
     // calculate MapMode-resolution and convert
     ImplMapRes          aMapRes;
-    lcl_calcMapResolution(rMapMode, mnDPIX, mnDPIY, aMapRes);
+    aMapRes.CalcMapResolution(rMapMode, mnDPIX, mnDPIY);
 
     sal_uInt16  i;
     sal_uInt16  nPoints = rDevicePoly.GetSize();
@@ -1313,7 +1207,7 @@ static ImplMapRes lcl_resolveMapRes(const MapMode* pMode, const MapMode& rDefaul
     if (pEffectiveMode->GetMapUnit() == MapUnit::MapRelative)
         aRes = rDefaultMapRes; // Pre-fill, do NOT return early
 
-    lcl_calcMapResolution(*pEffectiveMode, nDPIX, nDPIY, aRes);
+    aRes.CalcMapResolution(*pEffectiveMode, nDPIX, nDPIY);
 
     return aRes;
 }
@@ -1352,8 +1246,8 @@ auto getCorrectedUnit(MapUnit eMapSrc, MapUnit eMapDst)
 std::pair<ImplMapRes, ImplMapRes> lcl_calcConversionMapRes(const MapMode& rMMSource, const MapMode& rMMDest)
 {
     std::pair<ImplMapRes, ImplMapRes> result;
-    lcl_calcMapResolution(rMMSource, 72, 72, result.first);
-    lcl_calcMapResolution(rMMDest, 72, 72, result.second);
+    result.first.CalcMapResolution(rMMSource, 72, 72);
+    result.second.CalcMapResolution(rMMDest, 72, 72);
     return result;
 }
 }
@@ -1371,6 +1265,7 @@ static tools::Long lcl_convertLogicValue(const tools::Long n1, const o3tl::Lengt
 {
     if (n1 == 0 || eFrom == o3tl::Length::invalid || eTo == o3tl::Length::invalid)
         return 0;
+
     bool bOverflow;
     const auto nResult = o3tl::convert(n1, eFrom, eTo, bOverflow);
     if (bOverflow)
@@ -1378,17 +1273,23 @@ static tools::Long lcl_convertLogicValue(const tools::Long n1, const o3tl::Lengt
         const auto [n2, n3] = o3tl::getConversionMulDiv(eFrom, eTo);
         BigInt a4 = n1;
         a4 *= n2;
+    }
 
-        if ( a4.IsNeg() )
-            a4 -= n3 / 2;
-        else
-            a4 += n3 / 2;
-
-        a4 /= n3;
-        return static_cast<tools::Long>(a4);
-    } // of if
-    else
+    if (!bOverflow)
         return nResult;
+
+    const auto [n2, n3] = o3tl::getConversionMulDiv(eFrom, eTo);
+    BigInt a4 = n1;
+    a4 *= n2;
+
+    if ( a4.IsNeg() )
+        a4 -= n3 / 2;
+    else
+        a4 += n3 / 2;
+
+    a4 /= n3;
+
+    return static_cast<tools::Long>(a4);
 }
 
 Point OutputDevice::LogicToLogic( const Point& rPtSource,
@@ -1474,17 +1375,15 @@ Point OutputDevice::LogicToLogic( const Point& rPtSource,
         const auto [eFrom, eTo] = getCorrectedUnit(eUnitSource, eUnitDest);
         return Point(lcl_convertLogicValue(rPtSource.X(), eFrom, eTo), lcl_convertLogicValue(rPtSource.Y(), eFrom, eTo));
     }
-    else
-    {
-        const auto [aMapResSource, aMapResDest] = lcl_calcConversionMapRes( rMapModeSource, rMapModeDest );
 
-        return Point( lcl_scaleLogicValue( rPtSource.X() + aMapResSource.mnMapOfsX,
-                           aMapResSource.mfMapScX, aMapResDest.mfMapScX ) -
-                      aMapResDest.mnMapOfsX,
-                      lcl_scaleLogicValue( rPtSource.Y() + aMapResSource.mnMapOfsY,
-                           aMapResSource.mfMapScY, aMapResDest.mfMapScY ) -
-                      aMapResDest.mnMapOfsY );
-    }
+    const auto [aMapResSource, aMapResDest] = lcl_calcConversionMapRes( rMapModeSource, rMapModeDest );
+
+    return Point( lcl_scaleLogicValue( rPtSource.X() + aMapResSource.mnMapOfsX,
+                       aMapResSource.mfMapScX, aMapResDest.mfMapScX ) -
+                  aMapResDest.mnMapOfsX,
+                  lcl_scaleLogicValue( rPtSource.Y() + aMapResSource.mnMapOfsY,
+                       aMapResSource.mfMapScY, aMapResDest.mfMapScY ) -
+                  aMapResDest.mnMapOfsY );
 }
 
 Size OutputDevice::LogicToLogic( const Size& rSzSource,
@@ -1503,15 +1402,13 @@ Size OutputDevice::LogicToLogic( const Size& rSzSource,
         const auto [eFrom, eTo] = getCorrectedUnit(eUnitSource, eUnitDest);
         return Size(lcl_convertLogicValue(rSzSource.Width(), eFrom, eTo), lcl_convertLogicValue(rSzSource.Height(), eFrom, eTo));
     }
-    else
-    {
-        const auto [aMapResSource, aMapResDest] = lcl_calcConversionMapRes( rMapModeSource, rMapModeDest );
 
-        return Size( lcl_scaleLogicValue( rSzSource.Width(),
-                          aMapResSource.mfMapScX, aMapResDest.mfMapScX ),
-                     lcl_scaleLogicValue( rSzSource.Height(),
-                          aMapResSource.mfMapScY, aMapResDest.mfMapScY ) );
-    }
+    const auto [aMapResSource, aMapResDest] = lcl_calcConversionMapRes( rMapModeSource, rMapModeDest );
+
+    return Size( lcl_scaleLogicValue( rSzSource.Width(),
+                      aMapResSource.mfMapScX, aMapResDest.mfMapScX ),
+                 lcl_scaleLogicValue( rSzSource.Height(),
+                      aMapResSource.mfMapScY, aMapResDest.mfMapScY ) );
 }
 
 basegfx::B2DPolygon OutputDevice::LogicToLogic( const basegfx::B2DPolygon& rPolySource,
@@ -1551,21 +1448,21 @@ basegfx::B2DHomMatrix OutputDevice::LogicToLogic(const MapMode& rMapModeSource, 
                                       : o3tl::convert(1.0, eFrom, eTo));
         aTransform.set(0, 0, fScaleFactor);
         aTransform.set(1, 1, fScaleFactor);
-    }
-    else
-    {
-        const auto [aMapResSource, aMapResDest] = lcl_calcConversionMapRes(rMapModeSource, rMapModeDest);
 
-        const double fScaleFactorX(aMapResSource.mfMapScX / aMapResDest.mfMapScX);
-        const double fScaleFactorY(aMapResSource.mfMapScY / aMapResDest.mfMapScY);
-        const double fZeroPointX(double(aMapResSource.mnMapOfsX) * fScaleFactorX - double(aMapResDest.mnMapOfsX));
-        const double fZeroPointY(double(aMapResSource.mnMapOfsY) * fScaleFactorY - double(aMapResDest.mnMapOfsY));
-
-        aTransform.set(0, 0, fScaleFactorX);
-        aTransform.set(1, 1, fScaleFactorY);
-        aTransform.set(0, 2, fZeroPointX);
-        aTransform.set(1, 2, fZeroPointY);
+        return aTransform;
     }
+
+    const auto [aMapResSource, aMapResDest] = lcl_calcConversionMapRes(rMapModeSource, rMapModeDest);
+
+    const double fScaleFactorX(aMapResSource.mfMapScX / aMapResDest.mfMapScX);
+    const double fScaleFactorY(aMapResSource.mfMapScY / aMapResDest.mfMapScY);
+    const double fZeroPointX(double(aMapResSource.mnMapOfsX) * fScaleFactorX - double(aMapResDest.mnMapOfsX));
+    const double fZeroPointY(double(aMapResSource.mnMapOfsY) * fScaleFactorY - double(aMapResDest.mnMapOfsY));
+
+    aTransform.set(0, 0, fScaleFactorX);
+    aTransform.set(1, 1, fScaleFactorY);
+    aTransform.set(0, 2, fZeroPointX);
+    aTransform.set(1, 2, fZeroPointY);
 
     return aTransform;
 }

@@ -40,34 +40,26 @@ namespace {
  * Extract a file path from OLE link path.  An OLE link path is expected to
  * be in the following format:
  *
- * Excel.Sheet.8 \3 [file path]
+ * Excel.Sheet.8  [file path]
+ * Excel.Sheet.12 [file path]
  */
 bool extractFilePath(const OUString& rUrl, OUString& rPath)
 {
-    const char* prefix = "Excel.Sheet.8\3";
-    size_t nPrefixLen = ::std::strlen(prefix);
+    OUString prefix1 = "Excel.Sheet.8", prefix2 = "Excel.Sheet.12";
+    sal_Int32 nStart = -1;
 
-    sal_Int32 n = rUrl.getLength();
-    if (n <= static_cast<sal_Int32>(nPrefixLen))
-        // needs to have the specified prefix.
+    if (rUrl.startsWith(prefix1))
+        nStart = prefix1.getLength();
+    else if (rUrl.startsWith(prefix2))
+        nStart = prefix2.getLength();
+
+    if (nStart < 0)
         return false;
 
-    OUStringBuffer aBuf;
-    const sal_Unicode* p = rUrl.getStr();
-    for (size_t i = 0; i < o3tl::make_unsigned(n); ++i, ++p)
-    {
-        if (i < nPrefixLen)
-        {
-            sal_Unicode pc = static_cast<sal_Unicode>(*prefix++);
-            if (pc != *p)
-                return false;
+    if (nStart < rUrl.getLength() && rUrl[nStart] == u'\3')
+        nStart++;
 
-            continue;
-        }
-        aBuf.append(*p);
-    }
-
-    rPath = aBuf.makeStringAndClear();
+    rPath = rUrl.copy(nStart);
     return true;
 }
 
@@ -353,7 +345,7 @@ ConvErr ExcelToSc8::Convert( std::unique_ptr<ScTokenArray>& rpTokArray, XclImpSt
                     case 0x10:              //  RadicalLel  4       -       err
                     case 0x1D:              //  SxName      4       -       val
                         aIn.Ignore( 4 );
-                        aPool << ocBad;
+                        aPool << ocErrName;
                         aPool >> aStack;
                         break;
                     default:
@@ -484,8 +476,10 @@ ConvErr ExcelToSc8::Convert( std::unique_ptr<ScTokenArray>& rpTokArray, XclImpSt
                              || pName->HasTokens()) // check forward declaration
                         aStack << aPool.StoreName(nUINT16,
                                                   pName->IsGlobal() ? -1 : pName->GetScTab());
-                    else
+                    else if (ScGlobal::IsValidExternal(pName->GetXclName()))
                         aStack << aPool.Store(ocExternal, pName->GetXclName());
+                    else
+                        aStack << aPool.Store(ocUDExternal, pName->GetXclName());
                 }
                 break;
             }
@@ -669,8 +663,10 @@ ConvErr ExcelToSc8::Convert( std::unique_ptr<ScTokenArray>& rpTokArray, XclImpSt
                             aStack << aPool.StoreName( nNameIdx, pName->IsGlobal() ? -1 : pName->GetScTab());
                         else if (pName->IsMacro())
                             aStack << aPool.Store(ocMacro, pName->GetXclName());
-                        else
+                        else if (ScGlobal::IsValidExternal(pName->GetXclName()))
                             aStack << aPool.Store(ocExternal, pName->GetXclName());
+                        else
+                            aStack << aPool.Store(ocUDExternal, pName->GetXclName());
                     }
                 }
                 else if( const XclImpExtName* pExtName = rLinkMan.GetExternName( nXtiIndex, nNameIdx ) )
@@ -746,7 +742,7 @@ ConvErr ExcelToSc8::Convert( std::unique_ptr<ScTokenArray>& rpTokArray, XclImpSt
                                 }
                             }
                             else
-                                aStack << aPool.Store(ocNoName, pExtName->GetName());
+                                aStack << aPool.Store(ocErrRef);
                         }
                         break;
                         default:

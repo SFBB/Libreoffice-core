@@ -112,6 +112,7 @@ CompileEnglish
 ComplexColor
 ConditionalFormat
 ConnectBars
+ConnectorLines
 ContainsHeader
 Coordinates
 CopyBack
@@ -234,6 +235,14 @@ FromWordArt
 Function
 GapwidthSequence
 GenerateVbaEvents
+GeoCacheBinary
+GeoCacheClearData
+GeoCacheProvider
+GeographyAttribution
+GeographyCultureLanguage
+GeographyCultureRegion
+GeographyProjectionType
+GeographyViewedRegionType
 Geometry3D
 GlowEffect
 GlowEffectRadius
@@ -252,6 +261,7 @@ HScroll
 Handles
 HasAutoShowInfo
 HasColumnRowHeaders
+HasGeography
 HasHorizontalScrollBar
 HasLayoutInfo
 HasMainTitle
@@ -366,6 +376,8 @@ MajorTickmarks
 MarkPosition
 MaxFieldCount
 MaxTextLen
+MeanLine
+MeanMarker
 MediaType
 MediaMimeType
 MediaURL
@@ -386,6 +398,7 @@ MultiSelection
 Name
 NamedRanges
 NegativeError
+Nonoutliers
 NullDate
 NumberFormat
 NumberFormatKey
@@ -401,6 +414,7 @@ Orientation
 Origin
 OutputPosition
 Outline
+Outliers
 OverlapSequence
 Overlay
 PageScale
@@ -421,6 +435,7 @@ ParaRightMargin
 ParaTabStops
 ParaTabStopDefaultDistance
 ParaTopMargin
+ParentLabelLayout
 Path
 PercentageNumberFormat
 PersistName
@@ -451,6 +466,7 @@ ProgressValueMax
 ProgressValueMin
 ProjectionMode
 Protected
+QuartileMethod
 RadiusRangeMaximum
 RadiusRangeMinimum
 RangeXMaximum
@@ -467,6 +483,7 @@ Reference
 ReferenceDevice
 ReferenceSheet
 RefreshPeriod
+RegionLabelLayout
 RegularExpressions
 RelId
 RelativeHeight
@@ -574,6 +591,7 @@ StringItemList
 StyleIndex
 SubPieType
 SubViewSize
+SubtotalIndices
 Subtotals
 Suffix
 Surround

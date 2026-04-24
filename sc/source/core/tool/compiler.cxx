@@ -1039,12 +1039,17 @@ struct ConventionOOO_A1 : public Convention_A1
             rBuffer.append('.');
         }
 
-        if (!rRef.IsColRel())
-            rBuffer.append('$');
-        MakeColStr( rLimits, rBuffer, aAbsRef.Col());
-        if (!rRef.IsRowRel())
-            rBuffer.append('$');
-        MakeRowStr( rLimits, rBuffer, aAbsRef.Row());
+        if (!rRef.IsColRel() && !rRef.IsRowRel() && rRef.IsColDeleted() && rRef.IsRowDeleted())
+            rBuffer.append("#REF!");
+        else
+        {
+            if (!rRef.IsColRel())
+                rBuffer.append('$');
+            MakeColStr(rLimits, rBuffer, aAbsRef.Col());
+            if (!rRef.IsRowRel())
+                rBuffer.append('$');
+            MakeRowStr(rLimits, rBuffer, aAbsRef.Row());
+        }
 
         return true;
     }
@@ -1368,12 +1373,17 @@ struct ConventionXL_A1 : public Convention_A1, public ConventionXL
 
     static void makeSingleCellStr( const ScSheetLimits& rLimits, OUStringBuffer& rBuf, const ScSingleRefData& rRef, const ScAddress& rAbs )
     {
-        if (!rRef.IsColRel())
-            rBuf.append('$');
-        MakeColStr(rLimits, rBuf, rAbs.Col());
-        if (!rRef.IsRowRel())
-            rBuf.append('$');
-        MakeRowStr(rLimits, rBuf, rAbs.Row());
+        if (!rRef.IsColRel() && !rRef.IsRowRel() && rRef.IsColDeleted() && rRef.IsRowDeleted())
+            rBuf.append("#REF!");
+        else
+        {
+            if (!rRef.IsColRel())
+                rBuf.append('$');
+            MakeColStr(rLimits, rBuf, rAbs.Col());
+            if (!rRef.IsRowRel())
+                rBuf.append('$');
+            MakeRowStr(rLimits, rBuf, rAbs.Row());
+        }
     }
 
     virtual void makeRefStr(
@@ -2072,9 +2082,10 @@ void ScCompiler::CheckTabQuotes( OUString& rString,
     sal_Int32 nContFlags = nStartFlags | KParseTokens::ANY_NUMBER;
     ParseResult aRes = ScGlobal::getCharClass().parsePredefinedToken(
         KParseType::IDENTNAME, rString, 0, nStartFlags, OUString(), nContFlags, OUString());
+    bool bKeyWord = (rString == "FALSE" || rString == "TRUE");
     bool bNeedsQuote
         = (!((aRes.TokenType & KParseType::IDENTNAME) && aRes.EndPos == rString.getLength())
-           || lcl_TabContainsReference(rString));
+           || lcl_TabContainsReference(rString) || bKeyWord);
 
     switch ( eConv )
     {
@@ -3180,12 +3191,14 @@ bool ScCompiler::ParseOpCode( const OUString& rName, bool bInArray )
 
     if (!bFound)
     {
-        OUString aIntName;
+        OUString aIntName, aFuncName = rName, sUDPrefix = mxSymbols->getSymbol(ocUDExternal);
+        if (aFuncName.matchIgnoreAsciiCase(sUDPrefix))
+            aFuncName = aFuncName.copy(sUDPrefix.getLength());
+
         if (mxSymbols->hasExternals())
         {
             // If symbols are set by filters get mapping to exact name.
-            ExternalHashMap::const_iterator iExt(
-                    mxSymbols->getExternalHashMap().find( rName));
+            ExternalHashMap::const_iterator iExt(mxSymbols->getExternalHashMap().find(aFuncName));
             if (iExt != mxSymbols->getExternalHashMap().end())
             {
                 if (ScGlobal::GetAddInCollection()->GetFuncData( (*iExt).second))
@@ -3202,12 +3215,18 @@ bool ScCompiler::ParseOpCode( const OUString& rName, bool bInArray )
             else
                 // bLocalFirst=false for (English) upper full original name
                 // (service.function)
-                aIntName = ScGlobal::GetAddInCollection()->FindFunction(
-                        rName, !mxSymbols->isEnglish());
+                aIntName = ScGlobal::GetAddInCollection()->FindFunction(aFuncName,
+                                                                        !mxSymbols->isEnglish());
         }
         if (!aIntName.isEmpty())
         {
             maRawToken.SetExternal( aIntName );     // international name
+            bFound = true;
+        }
+        else if (rName != aFuncName)
+        {
+            // User-defined function
+            maRawToken.SetExternal(aFuncName, ocUDExternal);
             bFound = true;
         }
     }
@@ -3504,8 +3523,10 @@ bool ScCompiler::ParseSingleReference( const OUString& rName, const OUString* pE
     {
         // Valid given tab and invalid col or row may indicate a sheet-local
         // named expression, bail out early and don't create a reference token.
-        if (!(nFlags & ScRefFlags::VALID) && mnCurrentSheetEndPos > 0 &&
-                (nFlags & ScRefFlags::TAB_VALID) && (nFlags & ScRefFlags::TAB_3D))
+        bool bErrRef = (rName.subView(mnCurrentSheetEndPos) == mxSymbols->getSymbol(ocErrRef));
+
+        if (!(nFlags & ScRefFlags::VALID) && mnCurrentSheetEndPos > 0
+            && (nFlags & ScRefFlags::TAB_VALID) && (nFlags & ScRefFlags::TAB_3D) && !bErrRef)
         {
             if (aExtInfo.mbExternal)
             {
@@ -3534,8 +3555,8 @@ bool ScCompiler::ParseSingleReference( const OUString& rName, const OUString* pE
 
         ScSingleRefData aRef;
         aRef.InitAddress( aAddr );
-        aRef.SetColRel( (nFlags & ScRefFlags::COL_ABS) == ScRefFlags::ZERO );
-        aRef.SetRowRel( (nFlags & ScRefFlags::ROW_ABS) == ScRefFlags::ZERO );
+        aRef.SetColRel(((nFlags & ScRefFlags::COL_ABS) == ScRefFlags::ZERO) && !bErrRef);
+        aRef.SetRowRel(((nFlags & ScRefFlags::ROW_ABS) == ScRefFlags::ZERO) && !bErrRef);
         aRef.SetTabRel( (nFlags & ScRefFlags::TAB_ABS) == ScRefFlags::ZERO );
         aRef.SetFlag3D( ( nFlags & ScRefFlags::TAB_3D ) != ScRefFlags::ZERO );
         // the reference is really invalid
@@ -3861,6 +3882,11 @@ bool ScCompiler::ParseExternalNamedRange( const OUString& rSymbol, bool& rbInval
     OUString aFile, aName;
     if (!pConv->parseExternalName( rSymbol, aFile, aName, rDoc, &maExternalLinks))
         return false;
+
+    // Remove the user-defined flag
+    OUString sUDPrefix = mxSymbols->getSymbol(ocUDExternal);
+    if (aName.matchIgnoreAsciiCase(sUDPrefix))
+        aName = aName.copy(sUDPrefix.getLength());
 
     if (aFile.getLength() > MAXSTRLEN || aName.getLength() > MAXSTRLEN)
         return false;
@@ -5576,6 +5602,9 @@ OUString ScCompiler::SanitizeDefinedName(const OUString& rStr, const ScDocument&
 
     OUString sName = aBuffer.makeStringAndClear();
 
+    if (sName.isEmpty())
+        bValidName = false;
+
     // Name can't be a valid cell reference
     if ((ScAddress().Parse(sName, rDoc, ::formula::FormulaGrammar::CONV_XL_A1) != ScRefFlags::ZERO)
         || (ScRange().Parse(sName, rDoc, ::formula::FormulaGrammar::CONV_XL_R1C1)
@@ -5607,8 +5636,18 @@ void ScCompiler::CreateStringFromExternal( OUStringBuffer& rBuffer, const Formul
     switch (t->GetType())
     {
         case svExternalName:
-            rBuffer.append(
-                pConv->makeExternalNameStr(nUsedFileId, *pFileName, t->GetString().getString()));
+        {
+            FormulaToken* p = maArrIterator.PeekNextNoSpaces();
+            OUString sName = t->GetString().getString();
+            if (p && p->GetOpCode() == ocOpen)
+            {
+                OUString sUDPrefix = mxSymbols->getSymbol(ocUDExternal);
+                if (FormulaGrammar::isOOXML(meGrammar) && !sName.matchIgnoreAsciiCase(sUDPrefix))
+                    sName = sUDPrefix + sName;
+            }
+
+            rBuffer.append(pConv->makeExternalNameStr(nUsedFileId, *pFileName, sName));
+        }
         break;
         case svExternalSingleRef:
             pConv->makeExternalRefStr(rDoc.GetSheetLimits(),

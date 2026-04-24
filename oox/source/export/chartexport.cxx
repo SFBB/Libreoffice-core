@@ -22,12 +22,14 @@
 #include <oox/token/tokens.hxx>
 #include <oox/core/xmlfilterbase.hxx>
 #include <oox/export/chartexport.hxx>
+#include <oox/export/chartgeographyexport.hxx>
 #include <oox/export/shapes.hxx>
 #include <oox/token/relationship.hxx>
 #include <oox/export/utils.hxx>
 #include <drawingml/chart/typegroupconverter.hxx>
 #include <basegfx/utils/gradienttools.hxx>
 #include <docmodel/uno/UnoGradientTools.hxx>
+#include <docmodel/uno/UnoComplexColor.hxx>
 
 #include <cstdio>
 #include <limits>
@@ -1373,6 +1375,16 @@ void ChartExport::WriteChartObj( const Reference< XShape >& xShape, sal_Int32 nI
 
         pFS->singleElement(FSNS(XML_a, XML_schemeClr),
                 XML_val, "accent1");
+        pFS->singleElement(FSNS(XML_a, XML_schemeClr),
+                XML_val, "accent2");
+        pFS->singleElement(FSNS(XML_a, XML_schemeClr),
+                XML_val, "accent3");
+        pFS->singleElement(FSNS(XML_a, XML_schemeClr),
+                XML_val, "accent4");
+        pFS->singleElement(FSNS(XML_a, XML_schemeClr),
+                XML_val, "accent5");
+        pFS->singleElement(FSNS(XML_a, XML_schemeClr),
+                XML_val, "accent6");
 
         pFS->endElement(FSNS(XML_cs, XML_colorStyle));
     }
@@ -2913,6 +2925,28 @@ void ChartExport::exportFill( const Reference< XPropertySet >& xPropSet )
         if (aTransparenceGradient.StartColor == 0xffffff && aTransparenceGradient.EndColor == 0xffffff)
             aFillStyle = FillStyle_NONE;
     }
+
+    model::ComplexColor aComplexColor;
+    if (GetProperty(xPropSet, u"FillComplexColor"_ustr)) {
+        uno::Reference<util::XComplexColor> xCC;
+        mAny >>= xCC;
+        aComplexColor = model::color::getFromXComplexColor(xCC);
+    }
+
+    // The following restriction to solidFill is not correct. Any color that's
+    // the default scheme color (e.g., as a gradient fill stop) shouldn't be
+    // exported. However, we lose transforms on gradient fills (and maybe other
+    // color usage), so we can't tell what should be equivalent to the default
+    // scheme color in that context. See FillProperties::pushToPropMap(). So
+    // play it safe and don't try to handle that here. TODO
+    if (aFillStyle == FillStyle_SOLID &&
+            aComplexColor.getType() == model::ColorType::Theme &&
+            aComplexColor.getTransformations().empty()) {
+        // If we're dealing with a theme color, then we don't want to export the
+        // explicit value. We want it to remain implicit, as a theme.
+        return;
+    }
+
     switch( aFillStyle )
     {
         case FillStyle_SOLID:
@@ -3947,24 +3981,111 @@ void ChartExport::exportSeries_chartex( const Reference<chart2::XChartType>& xCh
                     OString::number(nSeriesCnt++));
 
             // layoutPr
-            PropertySet aSeriesProp(rSeries);
-            sal_uInt32 nIntervalClosedChar = '\0';
-            if (aSeriesProp.getProperty(nIntervalClosedChar, PROP_IntervalClosed)) {
-                pFS->startElement(FSNS(XML_cx, XML_layoutPr));
+            // Maybe factor this into another function. TODO
+            Reference<beans::XPropertySet> xSeriesProp(rSeries, uno::UNO_QUERY);
+            if (xSeriesProp.is())
+            {
+                OUString sParentLabelLayout;
+                uno::Any aParentLL = xSeriesProp->getPropertyValue(u"ParentLabelLayout"_ustr);
+                bool bHasParentLL = (aParentLL >>= sParentLabelLayout);
 
-                switch (nIntervalClosedChar) {
-                    case 'l' :
-                        pFS->singleElement(FSNS(XML_cx, XML_binning), XML_intervalClosed, "l");
-                        break;
-                    case 'r' :
-                        pFS->singleElement(FSNS(XML_cx, XML_binning), XML_intervalClosed, "r");
-                        break;
-                    default:
-                        assert(false);
-                        break;
+                OUString sRegionLabelLayout;
+                uno::Any aRegionLL = xSeriesProp->getPropertyValue(u"RegionLabelLayout"_ustr);
+                bool bHasRegionLL = (aRegionLL >>= sRegionLabelLayout);
+
+                uno::Any aConnLines = xSeriesProp->getPropertyValue(u"ConnectorLines"_ustr);
+                uno::Any aMeanLine = xSeriesProp->getPropertyValue(u"MeanLine"_ustr);
+                uno::Any aMeanMarker = xSeriesProp->getPropertyValue(u"MeanMarker"_ustr);
+                uno::Any aNonoutliers = xSeriesProp->getPropertyValue(u"Nonoutliers"_ustr);
+                uno::Any aOutliers = xSeriesProp->getPropertyValue(u"Outliers"_ustr);
+                bool bHasVisibility = aConnLines.hasValue() || aMeanLine.hasValue()
+                            || aMeanMarker.hasValue() || aNonoutliers.hasValue()
+                            || aOutliers.hasValue();
+
+                OUString sQuartileMethod;
+                uno::Any aQM = xSeriesProp->getPropertyValue(u"QuartileMethod"_ustr);
+                bool bHasQM = (aQM >>= sQuartileMethod);
+
+                uno::Sequence<sal_Int32> aSubtotalIndices;
+                uno::Any aSubtotals = xSeriesProp->getPropertyValue(u"SubtotalIndices"_ustr);
+                bool bHasSubtotals = (aSubtotals >>= aSubtotalIndices);
+
+                uno::Any aIntervalClosed = xSeriesProp->getPropertyValue( u"IntervalClosed"_ustr);
+                const bool bHasIC = aIntervalClosed.hasValue();
+
+                bool bHasGeography = false;
+                xSeriesProp->getPropertyValue(u"HasGeography"_ustr) >>= bHasGeography;
+
+                bool bHasAny = bHasParentLL || bHasRegionLL || bHasVisibility
+                            || bHasQM || bHasSubtotals || bHasIC || bHasGeography;
+                if (bHasAny)
+                {
+                    pFS->startElement(FSNS(XML_cx, XML_layoutPr));
+
+                    if (bHasParentLL)
+                        pFS->singleElement(FSNS(XML_cx, XML_parentLabelLayout),
+                            XML_val, sParentLabelLayout);
+
+                    if (bHasRegionLL)
+                        pFS->singleElement(FSNS(XML_cx, XML_regionLabelLayout),
+                            XML_val, sRegionLabelLayout);
+
+                    if (bHasVisibility)
+                    {
+                        bool bConnLines = false, bMeanLine = false,
+                                 bMeanMarker = false, bNonoutliers = false,
+                                 bOutliers = false;
+                        bool bHasConnLines = (aConnLines >>= bConnLines);
+                        bool bHasMeanLine = (aMeanLine >>= bMeanLine);
+                        bool bHasMeanMarker = (aMeanMarker >>= bMeanMarker);
+                        bool bHasNonoutliers = (aNonoutliers >>= bNonoutliers);
+                        bool bHasOutliers = (aOutliers >>= bOutliers);
+
+                        pFS->singleElement(FSNS(XML_cx, XML_visibility),
+                            XML_connectorLines, bHasConnLines ? ToPsz10(bConnLines) : nullptr,
+                            XML_meanLine, bHasMeanLine ? ToPsz10(bMeanLine) : nullptr,
+                            XML_meanMarker, bHasMeanMarker ? ToPsz10(bMeanMarker) : nullptr,
+                            XML_nonoutliers, bHasNonoutliers ? ToPsz10(bNonoutliers) : nullptr,
+                            XML_outliers, bHasOutliers ? ToPsz10(bOutliers) : nullptr);
+
+                    }
+
+                    if (bHasGeography)
+                        oox::drawingml::chart::exportGeography(xSeriesProp, pFS);
+
+                    if (bHasIC)
+                    {
+                        sal_uInt32 nIntervalClosedChar = '\0';
+                        aIntervalClosed >>= nIntervalClosedChar;
+
+                        switch (nIntervalClosedChar) {
+                            case 'l' :
+                                pFS->singleElement(FSNS(XML_cx, XML_binning), XML_intervalClosed, "l");
+                                break;
+                            case 'r' :
+                                pFS->singleElement(FSNS(XML_cx, XML_binning), XML_intervalClosed, "r");
+                                break;
+                            default:
+                                assert(false);
+                                break;
+                        }
+                    }
+
+                    if (bHasQM)
+                        pFS->singleElement(FSNS(XML_cx, XML_statistics),
+                            XML_quartileMethod, sQuartileMethod);
+
+                    if (bHasSubtotals)
+                    {
+                        pFS->startElement(FSNS(XML_cx, XML_subtotals));
+                        for (sal_Int32 nIdx : aSubtotalIndices)
+                            pFS->singleElement(FSNS(XML_cx, XML_idx),
+                                XML_val, OString::number(nIdx));
+                        pFS->endElement(FSNS(XML_cx, XML_subtotals));
+                    }
+
+                    pFS->endElement(FSNS(XML_cx, XML_layoutPr));
                 }
-
-                pFS->endElement(FSNS(XML_cx, XML_layoutPr));
             }
 
             // axisId
@@ -4887,12 +5008,51 @@ void ChartExport::exportOneAxis_chartex(
     // ==== catScaling/valScaling
     switch (nAxisType) {
         case XML_catAx:
-            pFS->singleElement(FSNS(XML_cx, XML_catScaling) /* TODO: handle gapWidth */);
+            {
+                // Get gapWidth from the chart type's GapwidthSequence property
+                std::optional<double> oGapWidth;
+                try
+                {
+                    Reference<chart2::XCoordinateSystemContainer> xCooSysCnt(mxNewDiagram, uno::UNO_QUERY);
+                    if (xCooSysCnt.is())
+                    {
+                        auto aCooSysSeq = xCooSysCnt->getCoordinateSystems();
+                        if (aCooSysSeq.hasElements())
+                        {
+                            Reference<chart2::XChartTypeContainer> xCTCnt(aCooSysSeq[0], uno::UNO_QUERY);
+                            if (xCTCnt.is())
+                            {
+                                auto aChartTypes = xCTCnt->getChartTypes();
+                                if (aChartTypes.hasElements())
+                                {
+                                    Reference<beans::XPropertySet> xTypeProp(aChartTypes[0], uno::UNO_QUERY);
+                                    if (xTypeProp.is() && GetProperty(xTypeProp, u"GapwidthSequence"_ustr))
+                                    {
+                                        uno::Sequence<sal_Int32> aGapSeq;
+                                        mAny >>= aGapSeq;
+                                        if (aGapSeq.hasElements())
+                                            oGapWidth = aGapSeq[0] / 100.0;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (uno::Exception&)
+                {
+                }
+
+                if (oGapWidth.has_value())
+                    pFS->singleElement(FSNS(XML_cx, XML_catScaling),
+                            XML_gapWidth, OString::number(*oGapWidth));
+                else
+                    pFS->singleElement(FSNS(XML_cx, XML_catScaling));
+            }
             break;
         case XML_valAx:
             {
                 bool bAutoMax = false;
-                double dMax = 0; // Make VS happy
+                double dMax = 0;
                 bool bMaxSpecified = false;
                 if(GetProperty( xAxisProp, u"AutoMax"_ustr ) )
                     mAny >>= bAutoMax;
@@ -4904,7 +5064,7 @@ void ChartExport::exportOneAxis_chartex(
                 }
 
                 bool bAutoMin = false;
-                double dMin = 0; // Make VS happy
+                double dMin = 0;
                 bool bMinSpecified = false;
                 if(GetProperty( xAxisProp, u"AutoMin"_ustr ) )
                     mAny >>= bAutoMin;
@@ -4915,21 +5075,33 @@ void ChartExport::exportOneAxis_chartex(
                     bMinSpecified = true;
                 }
 
-                // TODO: handle majorUnit/minorUnit in the following
-                if (bMaxSpecified && bMinSpecified) {
-                    pFS->singleElement(FSNS(XML_cx, XML_valScaling),
-                            XML_max, OString::number(dMax),
-                            XML_min, OString::number(dMin));
-                } else if (!bMaxSpecified && bMinSpecified) {
-                    pFS->singleElement(FSNS(XML_cx, XML_valScaling),
-                            XML_min, OString::number(dMin));
-                } else if (bMaxSpecified && !bMinSpecified) {
-                    pFS->singleElement(FSNS(XML_cx, XML_valScaling),
-                            XML_max, OString::number(dMax));
-                } else {
-                    pFS->singleElement(FSNS(XML_cx, XML_valScaling));
+                bool bAutoMajor = false;
+                double dMajorUnit = 0;
+                bool bMajorSpecified = false;
+                if(GetProperty( xAxisProp, u"AutoStepMain"_ustr ) )
+                    mAny >>= bAutoMajor;
+                if( !bAutoMajor && (GetProperty( xAxisProp, u"StepMain"_ustr ) ) )
+                {
+                    mAny >>= dMajorUnit;
+                    bMajorSpecified = true;
                 }
 
+                bool bAutoMinor = false;
+                double dMinorUnit = 0;
+                bool bMinorSpecified = false;
+                if(GetProperty( xAxisProp, u"AutoStepHelp"_ustr ) )
+                    mAny >>= bAutoMinor;
+                if( !bAutoMinor && (GetProperty( xAxisProp, u"StepHelp"_ustr ) ) )
+                {
+                    mAny >>= dMinorUnit;
+                    bMinorSpecified = true;
+                }
+
+                pFS->singleElement(FSNS(XML_cx, XML_valScaling),
+                        XML_max, bMaxSpecified ? OString::number(dMax) : std::optional<OString>(),
+                        XML_min, bMinSpecified ? OString::number(dMin) : std::optional<OString>(),
+                        XML_majorUnit, bMajorSpecified ? OString::number(dMajorUnit) : std::optional<OString>(),
+                        XML_minorUnit, bMinorSpecified ? OString::number(dMinorUnit) : std::optional<OString>());
             }
             break;
         default:

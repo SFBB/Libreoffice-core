@@ -22,6 +22,7 @@
 #include <drawingml/shapepropertiescontext.hxx>
 #include <drawingml/textbodycontext.hxx>
 #include <drawingml/chart/datasourcecontext.hxx>
+#include <drawingml/chart/geographycontext.hxx>
 #include <drawingml/chart/seriesmodel.hxx>
 #include <drawingml/chart/titlecontext.hxx>
 #include <oox/core/xmlfilterbase.hxx>
@@ -830,13 +831,17 @@ ContextHandlerRef LayoutPropsContext::onCreateContext( sal_Int32 nElement, const
             switch( nElement )
             {
                 case CX_TOKEN( parentLabelLayout ):
-                    // TODO
+                    mrModel.mosParentLabelLayout = rAttribs.getString( XML_val );
                     return nullptr;
                 case CX_TOKEN( regionLabelLayout ):
-                    // TODO
+                    mrModel.mosRegionLabelLayout = rAttribs.getString( XML_val );
                     return nullptr;
                 case CX_TOKEN( visibility ):
-                    // TODO
+                    mrModel.mobVisibilityConnectorLines = rAttribs.getBool( XML_connectorLines );
+                    mrModel.mobVisibilityMeanLine = rAttribs.getBool( XML_meanLine );
+                    mrModel.mobVisibilityMeanMarker = rAttribs.getBool( XML_meanMarker );
+                    mrModel.mobVisibilityNonoutliers = rAttribs.getBool( XML_nonoutliers );
+                    mrModel.mobVisibilityOutliers = rAttribs.getBool( XML_outliers );
                     return nullptr;
                 case CX_TOKEN( aggregation ):
                     // The schema gives an empty definition for this type??
@@ -856,18 +861,39 @@ ContextHandlerRef LayoutPropsContext::onCreateContext( sal_Int32 nElement, const
                     return new BinningContext( *this, rB );
                 }
                 case CX_TOKEN( geography ):
-                    // TODO
-                    return nullptr;
+                {
+                    auto& rGeo = mrModel.mxGeography.emplace();
+                    rGeo.mosProjectionType = rAttribs.getString( XML_projectionType );
+                    rGeo.mosViewedRegionType = rAttribs.getString( XML_viewedRegionType );
+                    rGeo.mosCultureLanguage = rAttribs.getString( XML_cultureLanguage );
+                    rGeo.mosCultureRegion = rAttribs.getString( XML_cultureRegion );
+                    rGeo.mosAttribution = rAttribs.getString( XML_attribution );
+                    return new GeographyContext( *this, *mrModel.mxGeography );
+                }
                 case CX_TOKEN( statistics ):
-                    // TODO
+                    mrModel.mosQuartileMethod = rAttribs.getString( XML_quartileMethod );
                     return nullptr;
                 case CX_TOKEN( subtotals ):
-                    // TODO
-                    return nullptr;
+                    return this;
                 case CX_TOKEN( extLst ):
                     // TODO
                     return nullptr;
             }
+            break;
+        case CX_TOKEN( subtotals ):
+            switch( nElement )
+            {
+                case CX_TOKEN( idx ):
+                {
+                    sal_Int32 nVal = rAttribs.getInteger( XML_val, -1 );
+                    if (nVal >= 0)
+                        mrModel.maSubtotalIndices.push_back( nVal );
+                    return nullptr;
+                }
+                default:
+                    return nullptr;
+            }
+            break;
     }
     return ContextBase::onCreateContext( nElement, rAttribs );
 }
@@ -911,6 +937,7 @@ ContextHandlerRef ChartexSeriesContext::onCreateContext( sal_Int32 nElement, con
                     mrModel.maAxisIds.push_back( rAttribs.getInteger( XML_val, -1 ) );
                     return nullptr;
             }
+            break;
     }
     return SeriesContextBase::onCreateContext( nElement, rAttribs );
 }

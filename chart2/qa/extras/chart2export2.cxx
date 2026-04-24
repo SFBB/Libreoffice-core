@@ -152,17 +152,32 @@ CPPUNIT_TEST_FIXTURE(Chart2ExportTest2, testCrossBetweenODS)
                 u"between");
 }
 
-CPPUNIT_TEST_FIXTURE(Chart2ExportTest2, testChartexTitleXLSX_boxWhisker)
+CPPUNIT_TEST_FIXTURE(Chart2ExportTest2, testChartexElementsXLSX_boxWhisker)
 {
     loadFromFile(u"xlsx/boxWhisker.xlsx");
     save(TestFilter::XLSX);
     xmlDocUniquePtr pXmlDoc = parseExport(u"xl/charts/chartEx1.xml"_ustr);
     CPPUNIT_ASSERT(pXmlDoc);
 
+    // Check title
     assertXPath(pXmlDoc, "/cx:chartSpace/cx:chart/cx:plotArea/cx:plotAreaRegion/cx:series", 3, 0,
                 "layoutId", u"boxWhisker");
     assertXPathContent(pXmlDoc, "/cx:chartSpace/cx:chart/cx:title/cx:tx/cx:txData/cx:v",
                        u"BoxWhisker");
+
+    // Check visibility
+    //
+    // boxWhisker.xlsx has 3 series, each with visibility attributes.
+    // Verify the first series's visibility attributes round-trip correctly.
+    OString sSeriesPath = "/cx:chartSpace/cx:chart/cx:plotArea/cx:plotAreaRegion/cx:series[1]"_ostr;
+
+    assertXPathNoAttribute(pXmlDoc, sSeriesPath + "/cx:layoutPr/cx:visibility", "connectorLines");
+    assertXPath(pXmlDoc, sSeriesPath + "/cx:layoutPr/cx:visibility", "meanLine", u"0");
+    assertXPath(pXmlDoc, sSeriesPath + "/cx:layoutPr/cx:visibility", "meanMarker", u"1");
+    assertXPath(pXmlDoc, sSeriesPath + "/cx:layoutPr/cx:visibility", "nonoutliers", u"0");
+    assertXPath(pXmlDoc, sSeriesPath + "/cx:layoutPr/cx:visibility", "outliers", u"1");
+    assertXPath(pXmlDoc, sSeriesPath + "/cx:layoutPr/cx:statistics", "quartileMethod",
+                u"exclusive");
 }
 
 CPPUNIT_TEST_FIXTURE(Chart2ExportTest2, testChartexTitleXLSX_clusteredColumn)
@@ -194,6 +209,8 @@ CPPUNIT_TEST_FIXTURE(Chart2ExportTest2, testChartexTitleXLSX_funnel1)
         "val", u"c55a11");
     assertXPathContent(pXmlDoc, "/cx:chartSpace/cx:chart/cx:title/cx:tx/cx:txData/cx:v",
                        u"Funnel chart!");
+    assertXPath(pXmlDoc, "/cx:chartSpace/cx:chart/cx:plotArea/cx:axis/cx:catScaling", "gapWidth",
+                u"0.06");
 }
 
 CPPUNIT_TEST_FIXTURE(Chart2ExportTest2, testChartexTitleXLSX_paretoLine)
@@ -224,6 +241,11 @@ CPPUNIT_TEST_FIXTURE(Chart2ExportTest2, testChartexTitleXLSX_regionMap)
                 "layoutId", u"regionMap");
     assertXPathContent(pXmlDoc, "/cx:chartSpace/cx:chart/cx:title/cx:tx/cx:txData/cx:v",
                        u"RegionMap");
+
+    assertXPath(pXmlDoc,
+                "/cx:chartSpace/cx:chart/cx:plotArea/cx:plotAreaRegion/cx:series/cx:layoutPr/"
+                "cx:regionLabelLayout",
+                "val", u"bestFitOnly");
 }
 
 CPPUNIT_TEST_FIXTURE(Chart2ExportTest2, testChartexTitleXLSX_sunburst)
@@ -237,6 +259,11 @@ CPPUNIT_TEST_FIXTURE(Chart2ExportTest2, testChartexTitleXLSX_sunburst)
                 "layoutId", u"sunburst");
     assertXPathContent(pXmlDoc, "/cx:chartSpace/cx:chart/cx:title/cx:tx/cx:txData/cx:v",
                        u"Sunburst");
+
+    assertXPath(pXmlDoc,
+                "/cx:chartSpace/cx:chart/cx:plotArea/cx:plotAreaRegion/cx:series/cx:layoutPr/"
+                "cx:parentLabelLayout",
+                "val", u"overlapping");
 }
 
 CPPUNIT_TEST_FIXTURE(Chart2ExportTest2, testChartexTitleXLSX_treemap)
@@ -274,6 +301,33 @@ CPPUNIT_TEST_FIXTURE(Chart2ExportTest2, testChartexPPTX)
 
     assertXPath(pXmlDoc, "/cx:chartSpace/cx:chart/cx:plotArea/cx:plotAreaRegion/cx:series", 3, 0,
                 "layoutId", u"funnel");
+    // There should be only one axis, where currently there are multiple.
+    // However, that's a separate problem from the gapWidth output. So just
+    // reference the first for now.
+    assertXPath(pXmlDoc, "/cx:chartSpace/cx:chart/cx:plotArea/cx:axis[1]/cx:catScaling", "gapWidth",
+                u"2.19");
+}
+
+CPPUNIT_TEST_FIXTURE(Chart2ExportTest2, testChartexGapWidth)
+{
+    loadFromFile(u"xlsx/box-whisker-gapwidth.xlsx");
+    save(TestFilter::XLSX);
+    xmlDocUniquePtr pXmlDoc = parseExport(u"xl/charts/chartEx1.xml"_ustr);
+    CPPUNIT_ASSERT(pXmlDoc);
+
+    assertXPath(pXmlDoc, "/cx:chartSpace/cx:chart/cx:plotArea/cx:axis[1]/cx:catScaling", "gapWidth",
+                u"2.47");
+}
+
+CPPUNIT_TEST_FIXTURE(Chart2ExportTest2, testChartexGapWidth2)
+{
+    loadFromFile(u"xlsx/pareto-gapwidth.xlsx");
+    save(TestFilter::XLSX);
+    xmlDocUniquePtr pXmlDoc = parseExport(u"xl/charts/chartEx1.xml"_ustr);
+    CPPUNIT_ASSERT(pXmlDoc);
+
+    assertXPath(pXmlDoc, "/cx:chartSpace/cx:chart/cx:plotArea/cx:axis[1]/cx:catScaling", "gapWidth",
+                u"2.55");
 }
 
 CPPUNIT_TEST_FIXTURE(Chart2ExportTest2, testChartexAxes)
@@ -286,6 +340,11 @@ CPPUNIT_TEST_FIXTURE(Chart2ExportTest2, testChartexAxes)
     // Should be two axes
     assertXPath(pXmlDoc, "/cx:chartSpace/cx:chart/cx:plotArea/cx:axis", 2);
     assertXPath(pXmlDoc, "/cx:chartSpace/cx:chart/cx:plotArea/cx:axis/cx:tickLabels", 2);
+
+    // There should *not* be a fill in the series shape properties
+    assertXPath(
+        pXmlDoc,
+        "/cx:chartSpace/cx:chart/cx:plotArea/cx:plotAreaRegion/cx:series/cx:spPr/a:solidFill", 0);
 }
 
 CPPUNIT_TEST_FIXTURE(Chart2ExportTest2, testChartexBinningXLSX)
@@ -1838,6 +1897,33 @@ CPPUNIT_TEST_FIXTURE(Chart2ExportTest2, testTdf166249)
                 "/c:chartSpace/c:chart/c:plotArea/c:pieChart/c:ser/c:dLbls/c:dLbl[1]/c:spPr/a:ln/"
                 "a:solidFill/a:srgbClr/a:alpha",
                 "val", u"128");
+}
+
+CPPUNIT_TEST_FIXTURE(Chart2ExportTest2, testChartexGeography)
+{
+    loadFromFile(u"xlsx/regionMap.xlsx");
+    save(TestFilter::XLSX);
+    xmlDocUniquePtr pXmlDoc = parseExport(u"xl/charts/chartEx1.xml"_ustr);
+    CPPUNIT_ASSERT(pXmlDoc);
+
+    static constexpr OString sSeriesBase
+        = "/cx:chartSpace/cx:chart/cx:plotArea/cx:plotAreaRegion/cx:series"_ostr;
+    OString sLayoutPr = sSeriesBase + "/cx:layoutPr"_ostr;
+    OString sGeo = sLayoutPr + "/cx:geography"_ostr;
+
+    // geography element with correct attributes
+    assertXPath(pXmlDoc, sGeo, "cultureLanguage", u"en-US");
+    assertXPath(pXmlDoc, sGeo, "cultureRegion", u"GB");
+
+    // geoCache with provider
+    OString sCache = sGeo + "/cx:geoCache"_ostr;
+    assertXPath(pXmlDoc, sCache, "provider", u"{E9337A44-BEBE-4D9F-B70C-5C5E7DAFC167}");
+
+    // binary element exists and starts with the expected base64 prefix
+    OString sBinary = sCache + "/cx:binary"_ostr;
+    assertXPath(pXmlDoc, sBinary, 1);
+    OUString sBinaryContent = getXPathContent(pXmlDoc, sBinary);
+    CPPUNIT_ASSERT(sBinaryContent.startsWith(u"7HvJkt24kuWvpOWm"));
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();

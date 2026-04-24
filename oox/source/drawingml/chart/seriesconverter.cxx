@@ -40,6 +40,7 @@
 #include <comphelper/sequence.hxx>
 #include <osl/diagnose.h>
 #include <drawingml/chart/datasourceconverter.hxx>
+#include <drawingml/chart/geographyconverter.hxx>
 #include <drawingml/chart/seriesmodel.hxx>
 #include <drawingml/chart/titleconverter.hxx>
 #include <drawingml/chart/typegroupconverter.hxx>
@@ -963,16 +964,47 @@ Reference< XDataSeries > SeriesConverter::createDataSeries( const TypeGroupConve
     }
 
     // Layout properties
-    if (mrModel.mxLayoutPr.is() && mrModel.mxLayoutPr->mxBinning.is()) {
-        ModelRef<BinningModel> xBinning = mrModel.mxLayoutPr->mxBinning;
+    if (mrModel.mxLayoutPr.is())
+    {
+        SeriesModel::LayoutPropsRef &rLPR = mrModel.mxLayoutPr;
+        if (rLPR->mxBinning.is()) {
+            ModelRef<BinningModel> xBinning = rLPR->mxBinning;
 
-        if (xBinning->meIntervalClosed) {
-            sal_uInt32 nBinSideChar = xBinning->meIntervalClosed.value() ==
-                BinningModel::ClosedSide::L ? 'l' : 'r';
-            aSeriesProp.setProperty(PROP_IntervalClosed, nBinSideChar);
+            if (xBinning->meIntervalClosed) {
+                sal_uInt32 nBinSideChar = xBinning->meIntervalClosed.value() ==
+                    BinningModel::ClosedSide::L ? 'l' : 'r';
+                aSeriesProp.setProperty(PROP_IntervalClosed, nBinSideChar);
+            }
+        }
+        // chartex series layout visibility
+        if (rLPR->mobVisibilityConnectorLines.has_value())
+            aSeriesProp.setProperty(PROP_ConnectorLines, rLPR->mobVisibilityConnectorLines.value());
+        if (rLPR->mobVisibilityMeanLine.has_value())
+            aSeriesProp.setProperty(PROP_MeanLine, rLPR->mobVisibilityMeanLine.value());
+        if (rLPR->mobVisibilityMeanMarker.has_value())
+            aSeriesProp.setProperty(PROP_MeanMarker, rLPR->mobVisibilityMeanMarker.value());
+        if (rLPR->mobVisibilityNonoutliers.has_value())
+            aSeriesProp.setProperty(PROP_Nonoutliers, rLPR->mobVisibilityNonoutliers.value());
+        if (rLPR->mobVisibilityOutliers.has_value())
+            aSeriesProp.setProperty(PROP_Outliers, rLPR->mobVisibilityOutliers.value());
+
+        // chartex other series layout properties: parentLabelLayout, regionLabelLayout, statistics, subtotals
+        if (rLPR->mosParentLabelLayout.has_value())
+            aSeriesProp.setProperty(PROP_ParentLabelLayout, rLPR->mosParentLabelLayout.value());
+        if (rLPR->mosRegionLabelLayout.has_value())
+            aSeriesProp.setProperty(PROP_RegionLabelLayout, rLPR->mosRegionLabelLayout.value());
+        if (rLPR->mosQuartileMethod.has_value())
+            aSeriesProp.setProperty(PROP_QuartileMethod, rLPR->mosQuartileMethod.value());
+        if (!rLPR->maSubtotalIndices.empty())
+            aSeriesProp.setProperty(PROP_SubtotalIndices,
+                comphelper::containerToSequence(rLPR->maSubtotalIndices));
+
+        if (rLPR->mxGeography.has_value())
+        {
+            aSeriesProp.setProperty(PROP_HasGeography, true);
+            convertGeography(*rLPR->mxGeography, aSeriesProp);
         }
     }
-
     return xDataSeries;
 }
 

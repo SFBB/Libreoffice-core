@@ -24,6 +24,7 @@
 
 #include <oox/drawingml/chart/datasourcemodel.hxx>
 #include <drawingml/chart/titlemodel.hxx>
+#include <drawingml/chart/geographymodel.hxx>
 
 namespace oox::drawingml::chart {
 
@@ -195,6 +196,21 @@ struct LayoutPropsModel
     // There's also a CT_Aggregation but no content given
 
     BinningRef          mxBinning;          // Binning settings.
+
+    // Chartex visibility flags, from CT_SeriesElementVisibilities
+    std::optional<bool> mobVisibilityConnectorLines;
+    std::optional<bool> mobVisibilityMeanLine;
+    std::optional<bool> mobVisibilityMeanMarker;
+    std::optional<bool> mobVisibilityNonoutliers;
+    std::optional<bool> mobVisibilityOutliers;
+
+    // Chartex layoutPr: label layout, statistics, subtotals
+    std::optional<OUString> mosParentLabelLayout;
+    std::optional<OUString> mosRegionLabelLayout;
+    std::optional<OUString> mosQuartileMethod;
+    std::vector<sal_Int32>  maSubtotalIndices;
+
+    std::optional<GeographyModel> mxGeography;
 };
 
 enum class DataSourceType: sal_Int32
