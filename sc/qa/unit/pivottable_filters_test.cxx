@@ -2935,6 +2935,27 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testGroupAndCalcFieldXLSX)
                 u"0");
 }
 
+CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testExtGroupingXLS)
+{
+    createScDoc("xls/pivottable_ext_grouping.xls");
+    save(TestFilter::XLSX);
+
+    xmlDocUniquePtr pCacheDef = parseExport(u"xl/pivotCache/pivotCacheDefinition1.xml"_ustr);
+    CPPUNIT_ASSERT(pCacheDef);
+    OUString sGroupItems
+        = getXPath(pCacheDef,
+                   "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[@databaseField='0']"
+                   "/x:fieldGroup/x:groupItems",
+                   "count");
+
+    xmlDocUniquePtr pTable = parseExport(u"xl/pivotTables/pivotTable1.xml"_ustr);
+    CPPUNIT_ASSERT(pTable);
+    OUString sPivotFieldItems = getXPath(
+        pTable, "/x:pivotTableDefinition/x:pivotFields/x:pivotField[last()]/x:items", "count");
+
+    CPPUNIT_ASSERT_EQUAL(sGroupItems, sPivotFieldItems);
+}
+
 CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testCalcFields1XLSB)
 {
     createScDoc("xlsb/pivot-table/calcfields.xlsb");
@@ -3053,6 +3074,18 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testNumberGroupingXLS)
                 "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[@databaseField='0']/"
                 "x:fieldGroup/x:groupItems",
                 "count", u"3");
+}
+
+CPPUNIT_TEST_FIXTURE(ScPivotTableFiltersTest, testExtSourceFieldsXLS)
+{
+    createScDoc("xls/pivottable_ext_source_fields.xls");
+    save(TestFilter::XLSX);
+
+    xmlDocUniquePtr pDocXml = parseExport(u"xl/pivotCache/pivotCacheDefinition1.xml"_ustr);
+    CPPUNIT_ASSERT(pDocXml);
+
+    // Without the fix, this would only have 7 fields
+    assertXPath(pDocXml, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField", 13);
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();

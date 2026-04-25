@@ -67,13 +67,7 @@ void ChartColorPalettes::setMouseMoveHdl(const Link<const OUString&, bool>& rLin
 
 void ChartColorPalettes::Fill()
 {
-    const sal_uInt32 nColumns = 2;
     const Size aSize(BORDER * 6 + SIZE * ChartColorPaletteSize / 2, BORDER * 5 + SIZE * 2);
-
-    const sal_uInt32 nRows = maColorSets.size() / nColumns;
-    mxIconView->set_item_width(aSize.getWidth());
-    mxIconView->set_size_request(nColumns * (aSize.getWidth() + 8),
-                                 nRows * (aSize.getHeight() + 8));
 
     mxIconView->clear();
 
@@ -87,7 +81,7 @@ void ChartColorPalettes::Fill()
     {
         const ChartColorPalette& rColorSet = maColorSets[i];
         pVDev->Erase();
-        ChartColorPaletteHelper::renderColorPalette(pVDev, aDrawArea, rColorSet, false);
+        ChartColorPaletteHelper::renderColorPalette(*pVDev, aDrawArea, rColorSet, false);
         OUString sId = OUString::number(i + 1);
         OUString sName = "Palette " + OUString::number(i + 1);
 
