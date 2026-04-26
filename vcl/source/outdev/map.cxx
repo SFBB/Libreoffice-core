@@ -238,8 +238,7 @@ tools::Polygon OutputDevice::ImplLogicToDevicePixel( const tools::Polygon& rLogi
     if ( !mbMap && !mnOutOffX && !mnOutOffY )
         return rLogicPoly;
 
-    sal_uInt16  i;
-    sal_uInt16  nPoints = rLogicPoly.GetSize();
+    const sal_uInt16 nPoints = rLogicPoly.GetSize();
     tools::Polygon aPoly( rLogicPoly );
 
     // get pointer to Point-array (copy data)
@@ -247,7 +246,7 @@ tools::Polygon OutputDevice::ImplLogicToDevicePixel( const tools::Polygon& rLogi
 
     if ( mbMap )
     {
-        for ( i = 0; i < nPoints; i++ )
+        for (sal_uInt16 i = 0; i < nPoints; i++)
         {
             const Point& rPt = pPointAry[i];
             Point aPt(lcl_logicToPixel( rPt.X()+maMapRes.mnMapOfsX, mnDPIX,
@@ -259,7 +258,7 @@ tools::Polygon OutputDevice::ImplLogicToDevicePixel( const tools::Polygon& rLogi
     }
     else
     {
-        for ( i = 0; i < nPoints; i++ )
+        for (sal_uInt16 i = 0; i < nPoints; i++)
         {
             Point aPt = pPointAry[i];
             aPt.AdjustX(mnOutOffX );
@@ -276,7 +275,7 @@ basegfx::B2DPolygon OutputDevice::ImplLogicToDevicePixel(const basegfx::B2DPolyg
     if (!mbMap && !mnOutOffX && !mnOutOffY)
         return rLogicPoly;
 
-    sal_uInt32 nPoints = rLogicPoly.count();
+    const sal_uInt32 nPoints = rLogicPoly.count();
     basegfx::B2DPolygon aPoly(rLogicPoly);
 
     basegfx::B2DPoint aC1;
@@ -365,7 +364,8 @@ tools::PolyPolygon OutputDevice::ImplLogicToDevicePixel( const tools::PolyPolygo
         return rLogicPolyPoly;
 
     tools::PolyPolygon aPolyPoly( rLogicPolyPoly );
-    sal_uInt16      nPoly = aPolyPoly.Count();
+    const sal_uInt16 nPoly = aPolyPoly.Count();
+
     for( sal_uInt16 i = 0; i < nPoly; i++ )
     {
         tools::Polygon& rPoly = aPolyPoly[i];
@@ -748,14 +748,13 @@ tools::Polygon OutputDevice::LogicToPixel( const tools::Polygon& rLogicPoly ) co
     if ( !mbMap )
         return rLogicPoly;
 
-    sal_uInt16  i;
-    sal_uInt16  nPoints = rLogicPoly.GetSize();
+    const sal_uInt16 nPoints = rLogicPoly.GetSize();
     tools::Polygon aPoly( rLogicPoly );
 
     // get pointer to Point-array (copy data)
     const Point* pPointAry = aPoly.GetConstPointAry();
 
-    for ( i = 0; i < nPoints; i++ )
+    for (sal_uInt16 i = 0; i < nPoints; i++)
     {
         const Point* pPt = &(pPointAry[i]);
         Point aPt;
@@ -776,7 +775,8 @@ tools::PolyPolygon OutputDevice::LogicToPixel( const tools::PolyPolygon& rLogicP
         return rLogicPolyPoly;
 
     tools::PolyPolygon aPolyPoly( rLogicPolyPoly );
-    sal_uInt16      nPoly = aPolyPoly.Count();
+    const sal_uInt16 nPoly = aPolyPoly.Count();
+
     for( sal_uInt16 i = 0; i < nPoly; i++ )
     {
         tools::Polygon& rPoly = aPolyPoly[i];
@@ -898,14 +898,13 @@ tools::Polygon OutputDevice::LogicToPixel( const tools::Polygon& rLogicPoly,
     ImplMapRes          aMapRes;
     aMapRes.CalcMapResolution(rMapMode, mnDPIX, mnDPIY);
 
-    sal_uInt16  i;
-    sal_uInt16  nPoints = rLogicPoly.GetSize();
+    const sal_uInt16 nPoints = rLogicPoly.GetSize();
     tools::Polygon aPoly( rLogicPoly );
 
     // get pointer to Point-array (copy data)
     const Point* pPointAry = aPoly.GetConstPointAry();
 
-    for ( i = 0; i < nPoints; i++ )
+    for (sal_uInt16 i = 0; i < nPoints; i++)
     {
         const Point* pPt = &(pPointAry[i]);
         Point aPt;
@@ -993,14 +992,13 @@ tools::Polygon OutputDevice::PixelToLogic( const tools::Polygon& rDevicePoly ) c
     if ( !mbMap )
         return rDevicePoly;
 
-    sal_uInt16  i;
-    sal_uInt16  nPoints = rDevicePoly.GetSize();
+    const sal_uInt16 nPoints = rDevicePoly.GetSize();
     tools::Polygon aPoly( rDevicePoly );
 
     // get pointer to Point-array (copy data)
     const Point* pPointAry = aPoly.GetConstPointAry();
 
-    for ( i = 0; i < nPoints; i++ )
+    for (sal_uInt16 i = 0; i < nPoints; i++)
     {
         const Point* pPt = &(pPointAry[i]);
         Point aPt;
@@ -1021,7 +1019,8 @@ tools::PolyPolygon OutputDevice::PixelToLogic( const tools::PolyPolygon& rDevice
         return rDevicePolyPoly;
 
     tools::PolyPolygon aPolyPoly( rDevicePolyPoly );
-    sal_uInt16      nPoly = aPolyPoly.Count();
+    const sal_uInt16 nPoly = aPolyPoly.Count();
+
     for( sal_uInt16 i = 0; i < nPoly; i++ )
     {
         tools::Polygon& rPoly = aPolyPoly[i];
@@ -1155,14 +1154,13 @@ tools::Polygon OutputDevice::PixelToLogic( const tools::Polygon& rDevicePoly,
     ImplMapRes          aMapRes;
     aMapRes.CalcMapResolution(rMapMode, mnDPIX, mnDPIY);
 
-    sal_uInt16  i;
-    sal_uInt16  nPoints = rDevicePoly.GetSize();
+    const sal_uInt16 nPoints = rDevicePoly.GetSize();
     tools::Polygon aPoly( rDevicePoly );
 
     // get pointer to Point-array (copy data)
     const Point* pPointAry = aPoly.GetConstPointAry();
 
-    for ( i = 0; i < nPoints; i++ )
+    for (sal_uInt16 i = 0; i < nPoints; i++)
     {
         const Point* pPt = &(pPointAry[i]);
         Point aPt;
@@ -1224,9 +1222,7 @@ static void lcl_verifyUnitSourceDest( MapUnit eUnitSource, MapUnit eUnitDest )
                 "Destination MapUnit is not permitted" );
 }
 
-namespace
-{
-auto getCorrectedUnit(MapUnit eMapSrc, MapUnit eMapDst)
+static auto lcl_getCorrectedUnit(MapUnit eMapSrc, MapUnit eMapDst)
 {
     o3tl::Length eSrc = o3tl::Length::invalid;
     o3tl::Length eDst = o3tl::Length::invalid;
@@ -1243,13 +1239,12 @@ auto getCorrectedUnit(MapUnit eMapSrc, MapUnit eMapDst)
     return std::make_pair(eSrc, eDst);
 }
 
-std::pair<ImplMapRes, ImplMapRes> lcl_calcConversionMapRes(const MapMode& rMMSource, const MapMode& rMMDest)
+static std::pair<ImplMapRes, ImplMapRes> lcl_calcConversionMapRes(const MapMode& rMMSource, const MapMode& rMMDest)
 {
     std::pair<ImplMapRes, ImplMapRes> result;
     result.first.CalcMapResolution(rMMSource, 72, 72);
     result.second.CalcMapResolution(rMMDest, 72, 72);
     return result;
-}
 }
 
 static tools::Long lcl_scaleLogicValue( const tools::Long n1,
@@ -1372,7 +1367,7 @@ Point OutputDevice::LogicToLogic( const Point& rPtSource,
 
     if (rMapModeSource.IsSimple() && rMapModeDest.IsSimple())
     {
-        const auto [eFrom, eTo] = getCorrectedUnit(eUnitSource, eUnitDest);
+        const auto [eFrom, eTo] = lcl_getCorrectedUnit(eUnitSource, eUnitDest);
         return Point(lcl_convertLogicValue(rPtSource.X(), eFrom, eTo), lcl_convertLogicValue(rPtSource.Y(), eFrom, eTo));
     }
 
@@ -1399,7 +1394,7 @@ Size OutputDevice::LogicToLogic( const Size& rSzSource,
 
     if (rMapModeSource.IsSimple() && rMapModeDest.IsSimple())
     {
-        const auto [eFrom, eTo] = getCorrectedUnit(eUnitSource, eUnitDest);
+        const auto [eFrom, eTo] = lcl_getCorrectedUnit(eUnitSource, eUnitDest);
         return Size(lcl_convertLogicValue(rSzSource.Width(), eFrom, eTo), lcl_convertLogicValue(rSzSource.Height(), eFrom, eTo));
     }
 
@@ -1442,7 +1437,7 @@ basegfx::B2DHomMatrix OutputDevice::LogicToLogic(const MapMode& rMapModeSource, 
 
     if (rMapModeSource.IsSimple() && rMapModeDest.IsSimple())
     {
-        const auto [eFrom, eTo] = getCorrectedUnit(eUnitSource, eUnitDest);
+        const auto [eFrom, eTo] = lcl_getCorrectedUnit(eUnitSource, eUnitDest);
         const double fScaleFactor(eFrom == o3tl::Length::invalid || eTo == o3tl::Length::invalid
                                       ? std::numeric_limits<double>::quiet_NaN()
                                       : o3tl::convert(1.0, eFrom, eTo));
@@ -1482,7 +1477,7 @@ tools::Rectangle OutputDevice::LogicToLogic( const tools::Rectangle& rRectSource
 
     if (rMapModeSource.IsSimple() && rMapModeDest.IsSimple())
     {
-        const auto [eFrom, eTo] = getCorrectedUnit(eUnitSource, eUnitDest);
+        const auto [eFrom, eTo] = lcl_getCorrectedUnit(eUnitSource, eUnitDest);
 
         auto left = lcl_convertLogicValue(rRectSource.Left(), eFrom, eTo);
         auto top = lcl_convertLogicValue(rRectSource.Top(), eFrom, eTo);
@@ -1531,7 +1526,7 @@ tools::Long OutputDevice::LogicToLogic( tools::Long nLongSource,
         return nLongSource;
 
     lcl_verifyUnitSourceDest( eUnitSource, eUnitDest );
-    const auto [eFrom, eTo] = getCorrectedUnit(eUnitSource, eUnitDest);
+    const auto [eFrom, eTo] = lcl_getCorrectedUnit(eUnitSource, eUnitDest);
     return lcl_convertLogicValue(nLongSource, eFrom, eTo);
 }
 
