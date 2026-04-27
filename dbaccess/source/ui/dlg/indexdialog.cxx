@@ -127,15 +127,10 @@ DbaIndexDialog::DbaIndexDialog(weld::Window* pParent, const Sequence<OUString>& 
     m_xClose->connect_clicked(LINK(this, DbaIndexDialog, OnCloseDialog));
 
     // if all of the indexes have an empty description, we're not interested in displaying it
-    bool bFound = false;
-    for (auto const& check : *m_xIndexes)
-    {
-        if (!check.sDescription.isEmpty())
-        {
-            bFound = true;
-            break;
-        }
-    }
+    bool bFound
+        = std::ranges::any_of(m_xIndexes->begin(), m_xIndexes->end(),
+                              [](const auto& check) { return !check.sDescription.isEmpty(); });
+
     if (!bFound)
     {
         // hide the controls which are necessary for the description
@@ -523,12 +518,12 @@ IMPL_LINK_NOARG(DbaIndexDialog, OnEntryEditing, const weld::TreeIter&, bool)
     return true;
 }
 
-IMPL_LINK(DbaIndexDialog, OnEntryEdited, const IterString&, rIterString, bool)
+IMPL_LINK(DbaIndexDialog, OnEntryEdited, const weld::TreeView::IterColText&, rIterColText, bool)
 {
     m_bEditingActive = false;
 
-    const weld::TreeIter& rEntry = rIterString.first;
-    OUString sNewName = rIterString.second;
+    const weld::TreeIter& rEntry = rIterColText.m_rIter;
+    OUString sNewName = rIterColText.m_sText;
 
     Indexes::iterator aPosition = m_xIndexes->begin() + m_xIndexList->get_id(rEntry).toUInt32();
 

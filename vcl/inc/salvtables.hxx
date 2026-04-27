@@ -1567,7 +1567,7 @@ protected:
     DECL_LINK(StartDragHdl, SvTreeListBox*, bool);
     DECL_STATIC_LINK(SalInstanceTreeView, FinishDragHdl, SvTreeListBox*, void);
     DECL_LINK(EditingEntryHdl, SvTreeListEntry*, bool);
-    DECL_LINK(EditedEntryHdl, const IterString&, bool);
+    DECL_LINK(EditedEntryHdl, const EntryItemText&, bool);
     DECL_LINK(VisibleRangeChangedHdl, SvTreeListBox*, void);
     DECL_LINK(CompareHdl, const SvSortData&, sal_Int32);
     DECL_LINK(TooltipHdl, SvTreeListEntry*, OUString);
@@ -1707,7 +1707,7 @@ public:
     virtual void set_text_align(const weld::TreeIter& rIter, TxtAlign eAlign, int col) override;
 
     virtual void connect_editing(const Link<const weld::TreeIter&, bool>& rStartLink,
-                                 const Link<const iter_string&, bool>& rEndLink) override;
+                                 const Link<const IterColText&, bool>& rEndLink) override;
 
     virtual void start_editing(const weld::TreeIter& rIter) override;
 

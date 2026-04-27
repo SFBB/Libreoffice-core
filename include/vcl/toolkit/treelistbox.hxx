@@ -176,7 +176,20 @@ struct SvTreeListBoxImpl;
 
 typedef std::pair<vcl::RenderContext&, const SvTreeListEntry&> svtree_measure_args;
 typedef std::tuple<vcl::RenderContext&, const tools::Rectangle&, const SvTreeListEntry&> svtree_render_args;
-typedef std::pair<SvTreeListEntry*, OUString> IterString;
+
+struct EntryItemText
+{
+    SvTreeListEntry& m_rEntry;
+    const SvLBoxItem* m_pItem;
+    OUString m_sText;
+
+    EntryItemText(SvTreeListEntry& rEntry, const SvLBoxItem* pItem, const OUString& rText)
+        : m_rEntry(rEntry)
+        , m_pItem(pItem)
+        , m_sText(rText)
+    {
+    }
+};
 
 class UNLESS_MERGELIBS_MORE(VCL_DLLPUBLIC) SvTreeListBox : public Control,
                                                            public DropTargetHelper,
@@ -477,8 +490,8 @@ public:
     sal_uInt32          GetLevelChildCount( const SvTreeListEntry* pParent ) const;
 
     SvViewDataEntry* GetViewDataEntry( SvTreeListEntry const * pEntry ) const;
-    SvViewDataItem*  GetViewDataItem(SvTreeListEntry const *, SvLBoxItem const *);
-    const SvViewDataItem*  GetViewDataItem(const SvTreeListEntry*, const SvLBoxItem*) const;
+    SvViewDataItem& GetViewDataItem(SvTreeListEntry const*, SvLBoxItem const*);
+    const SvViewDataItem& GetViewDataItem(const SvTreeListEntry*, const SvLBoxItem*) const;
 
     OUString GetEntryTooltip(SvTreeListEntry* pEntry) const;
 
@@ -577,12 +590,10 @@ protected:
     SAL_DLLPRIVATE void         ImpEntryInserted( SvTreeListEntry* pEntry );
     SAL_DLLPRIVATE void         PaintEntry1( SvTreeListEntry&, tools::Long nLine, vcl::RenderContext& rRenderContext );
 
-    SAL_DLLPRIVATE void         InitTreeView();
     SAL_DLLPRIVATE void         ImplInitStyle();
 
     void            SetupDragOrigin();
-    void            EditItemText( SvTreeListEntry* pEntry, SvLBoxString* pItem,
-                        const Selection& );
+    void EditItemText(SvTreeListEntry& rEntry, SvLBoxString& rItem, const Selection&);
     void            EditedText(const OUString&);
 
     // Recalculate all tabs depending on TreeListStyle and Bitmap sizes
@@ -594,7 +605,7 @@ protected:
     SvLBoxTab*      GetFirstDynamicTab( sal_uInt16& rTabPos ) const;
     SvLBoxTab*      GetFirstTab( SvLBoxTabFlags nFlagMask, sal_uInt16& rTabPos );
     void            GetLastTab( SvLBoxTabFlags nFlagMask, sal_uInt16& rTabPos );
-    SvLBoxTab*      GetTab( SvTreeListEntry const *, SvLBoxItem const * ) const;
+    SvLBoxTab* GetTab(const SvTreeListEntry&, SvLBoxItem const*) const;
     void            ClearTabList();
 
     virtual void    InitEntry(SvTreeListEntry*, const OUString&, const Image&, const Image&);
@@ -671,7 +682,8 @@ public:
     // Edits the Entry's first StringItem, 0 == Cursor
     void            EditEntry( SvTreeListEntry* pEntry );
     virtual bool    EditingEntry( SvTreeListEntry* pEntry );
-    virtual bool    EditedEntry( SvTreeListEntry* pEntry, const OUString& rNewText );
+    virtual bool EditedEntry(SvTreeListEntry& rEntry, const SvLBoxItem* pItem,
+                             const OUString& rNewText);
 
     virtual void    Paint( vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect ) override;
     virtual void    MouseButtonDown( const MouseEvent& rMEvt ) override;

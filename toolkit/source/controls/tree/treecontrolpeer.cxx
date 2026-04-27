@@ -99,7 +99,8 @@ public:
     virtual void    RequestingChildren( SvTreeListEntry* pParent ) override;
 
     virtual bool    EditingEntry( SvTreeListEntry* pEntry ) override;
-    virtual bool    EditedEntry( SvTreeListEntry* pEntry, const OUString& rNewText ) override;
+    virtual bool EditedEntry(SvTreeListEntry& rEntry, const SvLBoxItem* pItem,
+                             const OUString& rNewText) override;
 
     DECL_LINK(OnSelectionChangeHdl, SvTreeListBox*, void);
     DECL_LINK(OnExpandingHdl, SvTreeListBox*, bool);
@@ -1485,10 +1486,10 @@ bool UnoTreeListBoxImpl::EditingEntry( SvTreeListEntry* pEntry )
     return mxPeer.is() && mxPeer->onEditingEntry( dynamic_cast< UnoTreeListEntry* >( pEntry ) );
 }
 
-
-bool UnoTreeListBoxImpl::EditedEntry( SvTreeListEntry* pEntry, const OUString& rNewText )
+bool UnoTreeListBoxImpl::EditedEntry(SvTreeListEntry& rEntry, const SvLBoxItem*,
+                                     const OUString& rNewText)
 {
-    return mxPeer.is() && mxPeer->onEditedEntry( dynamic_cast< UnoTreeListEntry* >( pEntry ), rNewText );
+    return mxPeer.is() && mxPeer->onEditedEntry(dynamic_cast<UnoTreeListEntry*>(&rEntry), rNewText);
 }
 
 
@@ -1540,7 +1541,7 @@ void UnoTreeListItem::SetGraphicURL( const OUString& rGraphicURL )
 void UnoTreeListItem::InitViewData(SvTreeListBox& rView, SvTreeListEntry* pEntry, SvViewDataItem* pViewData)
 {
     if( !pViewData )
-        pViewData = rView.GetViewDataItem( pEntry, this );
+        pViewData = &rView.GetViewDataItem(pEntry, this);
 
     Size aSize(maImage.GetSizePixel());
     pViewData->mnWidth = aSize.Width();

@@ -63,13 +63,13 @@ static VclPtr<SvTreeListBox> g_pDDTarget;
 
 class SvInplaceEdit2
 {
-    Link<SvInplaceEdit2&,void> aCallBackHdl;
-    Accelerator   aAccReturn;
-    Accelerator   aAccEscape;
-    Idle          aIdle { "svtools::SvInplaceEdit2 aIdle" };
-    VclPtr<Edit>  pEdit;
-    bool          bCanceled;
-    bool          bAlreadyInCallBack;
+    Link<SvInplaceEdit2&, void> m_aCallBackHdl;
+    Accelerator m_aAccReturn;
+    Accelerator m_aAccEscape;
+    Idle m_aIdle{ "svtools::SvInplaceEdit2 aIdle" };
+    VclPtr<Edit> m_pEdit;
+    bool m_bCanceled;
+    bool m_bAlreadyInCallBack;
 
     void        CallCallBackHdl_Impl();
     DECL_LINK( Timeout_Impl, Timer *, void );
@@ -83,15 +83,15 @@ public:
                ~SvInplaceEdit2();
     bool        KeyInput( const KeyEvent& rKEvt );
     void        LoseFocus();
-    bool        EditingCanceled() const { return bCanceled; }
+    bool EditingCanceled() const { return m_bCanceled; }
     OUString    GetText() const;
     OUString const & GetSavedValue() const;
     void        StopEditing( bool bCancel );
     void        Hide();
-    const VclPtr<Edit> & GetEditWidget() const { return pEdit; };
+    const VclPtr<Edit>& GetEditWidget() const { return m_pEdit; };
 
-    void RemoveEscapeAccel() { Application::RemoveAccel(&aAccEscape); }
-    void InsertEscapeAccel() { Application::InsertAccel(&aAccEscape); }
+    void RemoveEscapeAccel() { Application::RemoveAccel(&m_aAccEscape); }
+    void InsertEscapeAccel() { Application::InsertAccel(&m_aAccEscape); }
 };
 // ***************************************************************
 
@@ -144,77 +144,63 @@ void MyEdit_Impl::Command(const CommandEvent& rCEvt)
         Edit::Command(rCEvt);
 }
 
-SvInplaceEdit2::SvInplaceEdit2
-(
-    vcl::Window* pParent, const Point& rPos,
-    const Size& rSize,
-    const OUString& rData,
-    const Link<SvInplaceEdit2&,void>& rNotifyEditEnd,
-    const Selection& rSelection
-) :
-
-    aCallBackHdl       ( rNotifyEditEnd ),
-    bCanceled           ( false ),
-    bAlreadyInCallBack  ( false )
-
+SvInplaceEdit2::SvInplaceEdit2(vcl::Window* pParent, const Point& rPos, const Size& rSize,
+                               const OUString& rData,
+                               const Link<SvInplaceEdit2&, void>& rNotifyEditEnd,
+                               const Selection& rSelection)
+    : m_aCallBackHdl(rNotifyEditEnd)
+    , m_bCanceled(false)
+    , m_bAlreadyInCallBack(false)
 {
-
-    pEdit = VclPtr<MyEdit_Impl>::Create( pParent, this );
+    m_pEdit = VclPtr<MyEdit_Impl>::Create(pParent, this);
 
     vcl::Font aFont( pParent->GetFont() );
     aFont.SetTransparent( false );
     Color aColor( pParent->GetBackground().GetColor() );
     aFont.SetFillColor(aColor );
-    pEdit->SetFont( aFont );
-    pEdit->SetBackground( pParent->GetBackground() );
-    pEdit->SetPosPixel( rPos );
-    pEdit->SetSizePixel( rSize );
-    pEdit->SetText( rData );
-    pEdit->SetSelection( rSelection );
-    pEdit->SaveValue();
+    m_pEdit->SetFont(aFont);
+    m_pEdit->SetBackground(pParent->GetBackground());
+    m_pEdit->SetPosPixel(rPos);
+    m_pEdit->SetSizePixel(rSize);
+    m_pEdit->SetText(rData);
+    m_pEdit->SetSelection(rSelection);
+    m_pEdit->SaveValue();
 
-    aAccReturn.InsertItem( SVLBOX_ACC_RETURN, vcl::KeyCode(KEY_RETURN) );
-    aAccEscape.InsertItem( SVLBOX_ACC_ESCAPE, vcl::KeyCode(KEY_ESCAPE) );
+    m_aAccReturn.InsertItem(SVLBOX_ACC_RETURN, vcl::KeyCode(KEY_RETURN));
+    m_aAccEscape.InsertItem(SVLBOX_ACC_ESCAPE, vcl::KeyCode(KEY_ESCAPE));
 
-    aAccReturn.SetActivateHdl( LINK( this, SvInplaceEdit2, ReturnHdl_Impl) );
-    aAccEscape.SetActivateHdl( LINK( this, SvInplaceEdit2, EscapeHdl_Impl) );
-    Application::InsertAccel( &aAccReturn );
-    Application::InsertAccel( &aAccEscape );
+    m_aAccReturn.SetActivateHdl(LINK(this, SvInplaceEdit2, ReturnHdl_Impl));
+    m_aAccEscape.SetActivateHdl(LINK(this, SvInplaceEdit2, EscapeHdl_Impl));
+    Application::InsertAccel(&m_aAccReturn);
+    Application::InsertAccel(&m_aAccEscape);
 
-    pEdit->Show();
-    pEdit->GrabFocus();
+    m_pEdit->Show();
+    m_pEdit->GrabFocus();
 }
 
 SvInplaceEdit2::~SvInplaceEdit2()
 {
-    if( !bAlreadyInCallBack )
+    if (!m_bAlreadyInCallBack)
     {
-        Application::RemoveAccel( &aAccReturn );
-        Application::RemoveAccel( &aAccEscape );
+        Application::RemoveAccel(&m_aAccReturn);
+        Application::RemoveAccel(&m_aAccEscape);
     }
-    pEdit.disposeAndClear();
+    m_pEdit.disposeAndClear();
 }
 
-OUString const & SvInplaceEdit2::GetSavedValue() const
-{
-    return pEdit->GetSavedValue();
-}
+OUString const& SvInplaceEdit2::GetSavedValue() const { return m_pEdit->GetSavedValue(); }
 
-void SvInplaceEdit2::Hide()
-{
-    pEdit->Hide();
-}
-
+void SvInplaceEdit2::Hide() { m_pEdit->Hide(); }
 
 IMPL_LINK_NOARG(SvInplaceEdit2, ReturnHdl_Impl, Accelerator&, void)
 {
-    bCanceled = false;
+    m_bCanceled = false;
     CallCallBackHdl_Impl();
 }
 
 IMPL_LINK_NOARG(SvInplaceEdit2, EscapeHdl_Impl, Accelerator&, void)
 {
-    bCanceled = true;
+    m_bCanceled = true;
     CallCallBackHdl_Impl();
 }
 
@@ -226,12 +212,12 @@ bool SvInplaceEdit2::KeyInput( const KeyEvent& rKEvt )
     switch ( nCode )
     {
         case KEY_ESCAPE:
-            bCanceled = true;
+            m_bCanceled = true;
             CallCallBackHdl_Impl();
             return true;
 
         case KEY_RETURN:
-            bCanceled = false;
+            m_bCanceled = false;
             CallCallBackHdl_Impl();
             return true;
     }
@@ -240,22 +226,22 @@ bool SvInplaceEdit2::KeyInput( const KeyEvent& rKEvt )
 
 void SvInplaceEdit2::StopEditing( bool bCancel )
 {
-    if ( !bAlreadyInCallBack )
+    if (!m_bAlreadyInCallBack)
     {
-        bCanceled = bCancel;
+        m_bCanceled = bCancel;
         CallCallBackHdl_Impl();
     }
 }
 
 void SvInplaceEdit2::LoseFocus()
 {
-    if (!bAlreadyInCallBack && !pEdit->IsActivePopup()
-        && ((!Application::GetFocusWindow()) || !pEdit->IsChild(Application::GetFocusWindow())))
+    if (!m_bAlreadyInCallBack && !m_pEdit->IsActivePopup()
+        && ((!Application::GetFocusWindow()) || !m_pEdit->IsChild(Application::GetFocusWindow())))
     {
-        bCanceled = false;
-        aIdle.SetPriority(TaskPriority::REPAINT);
-        aIdle.SetInvokeHandler(LINK(this,SvInplaceEdit2,Timeout_Impl));
-        aIdle.Start();
+        m_bCanceled = false;
+        m_aIdle.SetPriority(TaskPriority::REPAINT);
+        m_aIdle.SetInvokeHandler(LINK(this, SvInplaceEdit2, Timeout_Impl));
+        m_aIdle.Start();
     }
 }
 
@@ -266,21 +252,18 @@ IMPL_LINK_NOARG(SvInplaceEdit2, Timeout_Impl, Timer *, void)
 
 void SvInplaceEdit2::CallCallBackHdl_Impl()
 {
-    aIdle.Stop();
-    if ( !bAlreadyInCallBack )
+    m_aIdle.Stop();
+    if (!m_bAlreadyInCallBack)
     {
-        bAlreadyInCallBack = true;
-        Application::RemoveAccel( &aAccReturn );
-        Application::RemoveAccel( &aAccEscape );
-        pEdit->Hide();
-        aCallBackHdl.Call( *this );
+        m_bAlreadyInCallBack = true;
+        Application::RemoveAccel(&m_aAccReturn);
+        Application::RemoveAccel(&m_aAccEscape);
+        m_pEdit->Hide();
+        m_aCallBackHdl.Call(*this);
     }
 }
 
-OUString SvInplaceEdit2::GetText() const
-{
-    return pEdit->GetText();
-}
+OUString SvInplaceEdit2::GetText() const { return m_pEdit->GetText(); }
 
 // ***************************************************************
 // class SvLBoxTab
@@ -350,20 +333,20 @@ SvLBoxItem::~SvLBoxItem()
 
 int SvLBoxItem::GetWidth(const SvTreeListBox& rView, const SvTreeListEntry* pEntry) const
 {
-    const SvViewDataItem* pViewData = rView.GetViewDataItem(pEntry, this);
-    int nWidth = pViewData->mnWidth;
+    const SvViewDataItem& rViewData = rView.GetViewDataItem(pEntry, this);
+    int nWidth = rViewData.mnWidth;
     if (nWidth == -1)
     {
         nWidth = CalcWidth(rView);
-        const_cast<SvViewDataItem*>(pViewData)->mnWidth = nWidth;
+        const_cast<SvViewDataItem&>(rViewData).mnWidth = nWidth;
     }
     return nWidth;
 }
 
 int SvLBoxItem::GetHeight(const SvTreeListBox& rView, const SvTreeListEntry* pEntry) const
 {
-    const SvViewDataItem* pViewData = rView.GetViewDataItem(pEntry, this);
-    return pViewData->mnHeight;
+    const SvViewDataItem& rViewData = rView.GetViewDataItem(pEntry, this);
+    return rViewData.mnHeight;
 }
 
 int SvLBoxItem::GetWidth(const SvTreeListBox& rView, const SvViewDataEntry* pData,
@@ -400,6 +383,8 @@ struct SvTreeListBoxImpl
         m_bDoingQuickSelection(false),
         m_aQuickSelectionEngine(_rBox) {}
 };
+
+#define SV_LBOX_DEFAULT_INDENT_PIXEL 20
 
 SvTreeListBox::SvTreeListBox(vcl::Window* pParent, WinBits nWinStyle) :
     Control(pParent, nWinStyle | WB_CLIPCHILDREN),
@@ -439,7 +424,33 @@ SvTreeListBox::SvTreeListBox(vcl::Window* pParent, WinBits nWinStyle) :
     m_nDragDropMode = DragDropMode::NONE;
     SetType(WindowType::TREELISTBOX);
 
-    InitTreeView();
+    m_pCheckButtonData = nullptr;
+    m_pEdEntry = nullptr;
+    m_pEdItem = nullptr;
+    m_nEntryHeight = 0;
+    m_pEdCtrl = nullptr;
+    m_nFirstSelTab = 0;
+    m_nLastSelTab = 0;
+    m_nFocusWidth = -1;
+    mnCheckboxItemWidth = 0;
+
+    m_nTreeFlags = SvTreeFlags::RECALCTABS;
+    m_nIndent = SV_LBOX_DEFAULT_INDENT_PIXEL;
+    m_nEntryHeightOffs = SV_ENTRYHEIGHTOFFS_PIXEL;
+    m_pImpl.reset(new SvImpLBox(*this, GetModel(), GetStyle()));
+
+    mbContextBmpExpanded = true;
+    m_nContextBmpWidthMax = 0;
+
+    SetFont( GetFont() );
+    AdjustEntryHeightAndRecalc();
+
+    SetSpaceBetweenEntries( 0 );
+    GetOutDev()->SetLineColor();
+    InitSettings();
+    ImplInitStyle();
+    SetTabs();
+
     m_pImpl->SetModel(m_pModel.get());
 
     SetSublistOpenWithLeftRight();
@@ -1104,17 +1115,20 @@ SvViewDataEntry* SvTreeListBox::GetViewDataEntry( SvTreeListEntry const * pEntry
     return const_cast<SvViewDataEntry*>(GetViewData(pEntry));
 }
 
-SvViewDataItem* SvTreeListBox::GetViewDataItem(SvTreeListEntry const * pEntry, SvLBoxItem const * pItem)
+SvViewDataItem& SvTreeListBox::GetViewDataItem(SvTreeListEntry const* pEntry,
+                                               SvLBoxItem const* pItem)
 {
-    return const_cast<SvViewDataItem*>(static_cast<const SvTreeListBox*>(this)->GetViewDataItem(pEntry, pItem));
+    return const_cast<SvViewDataItem&>(
+        static_cast<const SvTreeListBox*>(this)->GetViewDataItem(pEntry, pItem));
 }
 
-const SvViewDataItem* SvTreeListBox::GetViewDataItem(const SvTreeListEntry* pEntry, const SvLBoxItem* pItem) const
+const SvViewDataItem& SvTreeListBox::GetViewDataItem(const SvTreeListEntry* pEntry,
+                                                     const SvLBoxItem* pItem) const
 {
     const SvViewDataEntry* pEntryData = GetViewData(pEntry);
     assert(pEntryData && "Entry not in View");
     sal_uInt16 nItemPos = pEntry->GetPos(pItem);
-    return &pEntryData->GetItem(nItemPos);
+    return pEntryData->GetItem(nItemPos);
 }
 
 OUString SvTreeListBox::GetEntryTooltip(SvTreeListEntry* pEntry) const
@@ -1553,38 +1567,6 @@ Link<sal_Int8,void> SvTreeListBox::GetDragFinishedHdl() const
     - calculate rectangle when editing in-place (bug with some fonts)
     - SetSpaceBetweenEntries: offset is not taken into account in SetEntryHeight
 */
-
-#define SV_LBOX_DEFAULT_INDENT_PIXEL 20
-
-void SvTreeListBox::InitTreeView()
-{
-    m_pCheckButtonData = nullptr;
-    m_pEdEntry = nullptr;
-    m_pEdItem = nullptr;
-    m_nEntryHeight = 0;
-    m_pEdCtrl = nullptr;
-    m_nFirstSelTab = 0;
-    m_nLastSelTab = 0;
-    m_nFocusWidth = -1;
-    mnCheckboxItemWidth = 0;
-
-    m_nTreeFlags = SvTreeFlags::RECALCTABS;
-    m_nIndent = SV_LBOX_DEFAULT_INDENT_PIXEL;
-    m_nEntryHeightOffs = SV_ENTRYHEIGHTOFFS_PIXEL;
-    m_pImpl.reset(new SvImpLBox(*this, GetModel(), GetStyle()));
-
-    mbContextBmpExpanded = true;
-    m_nContextBmpWidthMax = 0;
-
-    SetFont( GetFont() );
-    AdjustEntryHeightAndRecalc();
-
-    SetSpaceBetweenEntries( 0 );
-    GetOutDev()->SetLineColor();
-    InitSettings();
-    ImplInitStyle();
-    SetTabs();
-}
 
 OUString SvTreeListBox::SearchEntryTextWithHeadTitle( SvTreeListEntry* pEntry )
 {
@@ -2149,7 +2131,7 @@ bool SvTreeListBox::EditingEntry( SvTreeListEntry* )
     return true;
 }
 
-bool SvTreeListBox::EditedEntry( SvTreeListEntry* /*pEntry*/,const OUString& /*rNewText*/)
+bool SvTreeListBox::EditedEntry(SvTreeListEntry&, const SvLBoxItem*, const OUString&)
 {
     return true;
 }
@@ -2695,26 +2677,26 @@ void SvTreeListBox::ModelHasEntryInvalidated( SvTreeListEntry* pEntry )
     m_pImpl->InvalidateEntry(pEntry);
 }
 
-void SvTreeListBox::EditItemText(SvTreeListEntry* pEntry, SvLBoxString* pItem, const Selection& rSelection)
+void SvTreeListBox::EditItemText(SvTreeListEntry& rEntry, SvLBoxString& rItem,
+                                 const Selection& rSelection)
 {
-    assert(pEntry && pItem);
-    if( IsSelected( pEntry ))
+    if (IsSelected(&rEntry))
     {
         m_pImpl->ShowCursor(false);
-        SelectListEntry( pEntry, false );
-        m_pImpl->InvalidateEntry(pEntry);
-        SelectListEntry( pEntry, true );
+        SelectListEntry(&rEntry, false);
+        m_pImpl->InvalidateEntry(&rEntry);
+        SelectListEntry(&rEntry, true);
         m_pImpl->ShowCursor(true);
     }
-    m_pEdEntry = pEntry;
-    m_pEdItem = pItem;
-    SvLBoxTab* pTab = GetTab( pEntry, pItem );
+    m_pEdEntry = &rEntry;
+    m_pEdItem = &rItem;
+    SvLBoxTab* pTab = GetTab(rEntry, &rItem);
     DBG_ASSERT(pTab,"EditItemText:Tab not found");
 
-    auto nItemHeight(pItem->GetHeight(*this, pEntry));
-    Point aPos = GetEntryPosition( pEntry );
+    auto nItemHeight(rItem.GetHeight(*this, &rEntry));
+    Point aPos = GetEntryPosition(&rEntry);
     aPos.AdjustY((m_nEntryHeight - nItemHeight) / 2);
-    aPos.setX( GetTabPos( pEntry, pTab ) );
+    aPos.setX(GetTabPos(&rEntry, pTab));
     tools::Long nOutputWidth = m_pImpl->GetOutputSize().Width();
     Size aSize( nOutputWidth - aPos.X(), nItemHeight );
     sal_uInt16 nPos = std::find_if( m_aTabs.begin(), m_aTabs.end(),
@@ -2723,7 +2705,7 @@ void SvTreeListBox::EditItemText(SvTreeListEntry* pEntry, SvLBoxString* pItem, c
     if( nPos+1 < static_cast<sal_uInt16>(m_aTabs.size()) )
     {
         SvLBoxTab* pRightTab = m_aTabs[nPos + 1].get();
-        tools::Long nRight = GetTabPos( pEntry, pRightTab );
+        tools::Long nRight = GetTabPos(&rEntry, pRightTab);
         if( nRight <= nOutputWidth )
             aSize.setWidth( nRight - aPos.X() );
     }
@@ -2731,7 +2713,7 @@ void SvTreeListBox::EditItemText(SvTreeListEntry* pEntry, SvLBoxString* pItem, c
     aPos += aOrigin; // convert to win coordinates
     aSize.AdjustWidth( -(aOrigin.X()) );
     tools::Rectangle aRect( aPos, aSize );
-    EditText( pItem->GetText(), aRect, rSelection );
+    EditText(rItem.GetText(), aRect, rSelection);
 }
 
 void SvTreeListBox::EditEntry( SvTreeListEntry* pEntry )
@@ -2761,12 +2743,12 @@ void SvTreeListBox::ImplEditEntry( SvTreeListEntry* pEntry )
         if (rTmpItem.GetType() != SvLBoxItemType::String)
             continue;
 
-        SvLBoxTab* pTab = GetTab( pEntry, &rTmpItem );
+        SvLBoxTab* pTab = GetTab(*pEntry, &rTmpItem);
         nNextTabPos = -1;
         if( i < nCount - 1 )
         {
             SvLBoxItem& rNextItem = pEntry->GetItem( i + 1 );
-            SvLBoxTab* pNextTab = GetTab( pEntry, &rNextItem );
+            SvLBoxTab* pNextTab = GetTab(*pEntry, &rNextItem);
             nNextTabPos = pNextTab->GetPos();
         }
 
@@ -2786,7 +2768,7 @@ void SvTreeListBox::ImplEditEntry( SvTreeListEntry* pEntry )
         Selection aSel( SELECTION_MIN, SELECTION_MAX );
         SelectAll( false );
         MakeVisible( pEntry );
-        EditItemText( pEntry, pItem, aSel );
+        EditItemText(*pEntry, *pItem, aSel);
     }
 }
 
@@ -2795,7 +2777,7 @@ void SvTreeListBox::EditedText( const OUString& rStr )
 {
     if (m_pEdEntry) // we have to check if this entry is null that means that it is removed while editing
     {
-        if (EditedEntry(m_pEdEntry, rStr))
+        if (EditedEntry(*m_pEdEntry, m_pEdItem, rStr))
         {
             m_pEdItem->SetText(rStr);
             m_pModel->InvalidateEntry(m_pEdEntry);
@@ -3539,9 +3521,9 @@ SvLBoxTab* SvTreeListBox::GetFirstDynamicTab() const
     return GetFirstDynamicTab( nDummy );
 }
 
-SvLBoxTab* SvTreeListBox::GetTab( SvTreeListEntry const * pEntry, SvLBoxItem const * pItem) const
+SvLBoxTab* SvTreeListBox::GetTab(const SvTreeListEntry& rEntry, SvLBoxItem const* pItem) const
 {
-    sal_uInt16 nPos = pEntry->GetPos( pItem );
+    sal_uInt16 nPos = rEntry.GetPos(pItem);
     return m_aTabs[nPos].get();
 }
 

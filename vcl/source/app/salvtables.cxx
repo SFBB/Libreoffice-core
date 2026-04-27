@@ -4100,8 +4100,8 @@ void SalInstanceTreeView::bulk_insert_for_each(
         for (size_t j = 0; j < nFixedWidths; ++j)
         {
             SvLBoxItem& rItem = aVclIter.iter->GetItem(j + nExtraCols);
-            SvViewDataItem* pViewDataItem = m_xTreeView->GetViewDataItem(aVclIter.iter, &rItem);
-            pViewDataItem->mnWidth = (*pFixedWidths)[j];
+            SvViewDataItem& rViewDataItem = m_xTreeView->GetViewDataItem(aVclIter.iter, &rItem);
+            rViewDataItem.mnWidth = (*pFixedWidths)[j];
         }
     }
 
@@ -4372,7 +4372,7 @@ void SalInstanceTreeView::set_text_align(const weld::TreeIter& rIter, TxtAlign e
 }
 
 void SalInstanceTreeView::connect_editing(const Link<const weld::TreeIter&, bool>& rStartLink,
-                                          const Link<const iter_string&, bool>& rEndLink)
+                                          const Link<const IterColText&, bool>& rEndLink)
 {
     m_xTreeView->EnableInplaceEditing(rStartLink.IsSet() || rEndLink.IsSet());
     weld::TreeView::connect_editing(rStartLink, rEndLink);
@@ -5083,10 +5083,12 @@ IMPL_LINK(SalInstanceTreeView, EditingEntryHdl, SvTreeListEntry*, pEntry, bool)
     return signal_editing_started(SalInstanceTreeIter(*this, pEntry));
 }
 
-IMPL_LINK(SalInstanceTreeView, EditedEntryHdl, const IterString&, rIterString, bool)
+IMPL_LINK(SalInstanceTreeView, EditedEntryHdl, const EntryItemText&, rEntryItemString, bool)
 {
-    return signal_editing_done(
-        iter_string(SalInstanceTreeIter(*this, rIterString.first), rIterString.second));
+    const int nColumn
+        = to_external_model(rEntryItemString.m_rEntry.GetPos(rEntryItemString.m_pItem));
+    return signal_editing_done(IterColText(SalInstanceTreeIter(*this, &rEntryItemString.m_rEntry),
+                                           nColumn, rEntryItemString.m_sText));
 }
 
 SalInstanceIconView::SalInstanceIconView(::IconView* pIconView, SalInstanceBuilder* pBuilder,
