@@ -1093,11 +1093,16 @@ namespace emfio
             {
                 if (nRecordSize != 7)
                     bRecordOk = false;
-                sal_uInt16  nBrushStyle = 0;
+                sal_uInt16 nBrushStyle = 0;
                 mpInputStream->ReadUInt16( nBrushStyle );
                 BrushStyle eBrushStyle = static_cast<BrushStyle>(nBrushStyle);
-                CreateObject(std::make_unique<WinMtfFillStyle>( ReadColor(), ( eBrushStyle == BrushStyle::BS_NULL ) ));
-                SAL_WARN_IF( (eBrushStyle != BrushStyle::BS_SOLID) && (eBrushStyle != BrushStyle::BS_NULL), "emfio", "TODO: Brush style not implemented. Please fill the bug report" );
+                Color aColor = ReadColor();
+                sal_uInt16 nHatch(0);
+                mpInputStream->ReadUInt16( nHatch );
+                if (eBrushStyle == BrushStyle::BS_HATCHED)
+                    CreateObject(std::make_unique<WinMtfFillStyle>( aColor, mapWindowsHatch(nHatch, aColor) ));
+                else
+                    CreateObject(std::make_unique<WinMtfFillStyle>( aColor, eBrushStyle == BrushStyle::BS_NULL ));
             }
             break;
 
@@ -1390,8 +1395,17 @@ namespace emfio
             }
             break;
 
-            case W_META_SETRELABS:
             case W_META_SETPOLYFILLMODE:
+            {
+                if ((nRecordSize != 4) && (nRecordSize != 5))
+                    bRecordOk = false;
+                sal_uInt16 nDat = 0;
+                mpInputStream->ReadUInt16( nDat );
+                SetPolyFillMode( nDat );
+            }
+            break;
+
+            case W_META_SETRELABS:
             case W_META_SETSTRETCHBLTMODE:
             case W_META_SETTEXTCHAREXTRA:
             case W_META_SETTEXTJUSTIFICATION:
@@ -1476,6 +1490,8 @@ namespace emfio
             // inch
             mpInputStream->ReadUInt16( mnUnitsPerInch );
 
+            SAL_WARN_IF(!mnUnitsPerInch, "emfio", "Invalid WMF: mnUnitsPerInch is 0");
+
             // reserved
             mpInputStream->SeekRel( 4 );
 
@@ -1542,7 +1558,7 @@ namespace emfio
         SAL_INFO("emfio", "WMF size  w: " << aWMFSize.Width()    << " h: " << aWMFSize.Height());
 
         Size aDevExt( 10000, 10000 );
-        if( ( std::abs( aWMFSize.Width() ) > 1 ) && ( std::abs( aWMFSize.Height() ) > 1 ) )
+        if( ( std::abs( aWMFSize.Width() ) > 1 ) && ( std::abs( aWMFSize.Height() ) > 1 ) && mnUnitsPerInch )
         {
             const double    fFrac = 1.0 / mnUnitsPerInch;
             MapMode         aWMFMap( MapUnit::MapInch, Point(), fFrac, fFrac );

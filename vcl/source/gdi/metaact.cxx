@@ -885,6 +885,9 @@ static bool AllowScale(const Size& rSource, const Size& rDest)
     static bool bFuzzing = comphelper::IsFuzzing();
     if (bFuzzing)
     {
+        if (!AllowDim(rDest.Width()) || !AllowDim(rDest.Height()))
+            return false;
+
         constexpr int nMaxScaleWhenFuzzing = 128;
 
         auto nSourceHeight = rSource.Height();
@@ -1356,7 +1359,11 @@ MetaClipRegionAction::MetaClipRegionAction( vcl::Region aRegion, bool bClip ) :
 void MetaClipRegionAction::Execute( OutputDevice* pOut )
 {
     if( mbClip )
+    {
+        if (!AllowRect(pOut->LogicToPixel(maRegion.GetBoundRect())))
+            return;
         pOut->SetClipRegion( maRegion );
+    }
     else
         pOut->SetClipRegion();
 }

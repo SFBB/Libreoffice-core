@@ -23,6 +23,8 @@
 #include <sal/log.hxx>
 #include <osl/diagnose.h>
 #include <vcl/dibtools.hxx>
+#include <vcl/gradient.hxx>
+#include <com/sun/star/awt/GradientStyle.hpp>
 #include <o3tl/environment.hxx>
 #include <o3tl/safeint.hxx>
 #include <o3tl/sprintf.hxx>
@@ -796,6 +798,14 @@ namespace emfio
         for (sal_uInt32 i = 0; i < nPoly && mpInputStream->good(); ++i)
         {
             const sal_uInt32 nPointCount(aPoints[i]);
+            auto nRemainingSize = nEndPos - mpInputStream->Tell();
+            if (nPointCount > nRemainingSize / (sizeof(T) * 2))
+            {
+                SAL_WARN("emfio", "polygon " << i << " claims " << nPointCount
+                         << " points but only " << nRemainingSize / (sizeof(T) * 2)
+                         << " fit in remaining stream");
+                return;
+            }
             std::vector<Point> aPtAry(nPointCount);
             for (sal_uInt32 j = 0; j < nPointCount && mpInputStream->good(); ++j)
             {
@@ -1144,6 +1154,11 @@ namespace emfio
                     break;
 
                     case EMR_SETPOLYFILLMODE :
+                    {
+                        mpInputStream->ReadUInt32( nDat32 );
+                        SAL_INFO("emfio", "\t\tPolyFillMode: 0x" << std::hex << nDat32 << std::dec);
+                        SetPolyFillMode( nDat32 );
+                    }
                     break;
 
                     case EMR_SETROP2 :
@@ -1303,7 +1318,25 @@ namespace emfio
                                 if ((nPenStyle & PS_STYLE_MASK) > PS_INSIDEFRAME)
                                     nPenStyle = PS_COSMETIC;
                                 SAL_INFO("emfio", "\t\tWidth: " << nWidth);
-                                CreateObjectIndexed(nIndex, std::make_unique<WinMtfLineStyle>(aColorRef, nPenStyle, nWidth));
+
+                                // [MS-EMF] 2.2.20: when elpBrushStyle is BS_HATCHED,
+                                // elpHatch specifies the hatch pattern or color alias.
+                                BrushStyle ePenBrush = static_cast<BrushStyle>(nBrushStyle);
+                                if (ePenBrush == BrushStyle::BS_HATCHED)
+                                {
+                                    if (elpHatch == 8 || elpHatch == 9)        // HS_SOLIDTEXTCLR / HS_DITHEREDTEXTCLR
+                                        aColorRef = maTextColor;
+                                    else if (elpHatch == 10 || elpHatch == 11) // HS_SOLIDBKCLR / HS_DITHEREDBKCLR
+                                        aColorRef = maBkColor;
+                                    // 0-7: keep aColorRef (brush/hatch color)
+                                }
+                                auto pLineStyle = std::make_unique<WinMtfLineStyle>(aColorRef, nPenStyle, nWidth);
+                                if (ePenBrush == BrushStyle::BS_HATCHED && elpHatch >= 0 && elpHatch <= 5)
+                                {
+                                    pLineStyle->bHasHatch = true;
+                                    pLineStyle->aHatch = mapWindowsHatch(elpHatch, aColorRef);
+                                }
+                                CreateObjectIndexed(nIndex, std::move(pLineStyle));
                             }
                         }
                     }
@@ -1314,10 +1347,31 @@ namespace emfio
                         mpInputStream->ReadUInt32( nIndex );
                         if ( ( nIndex & ENHMETA_STOCK_OBJECT ) == 0 )
                         {
-                            sal_uInt32  nStyle;
+                            sal_uInt32 nStyle;
                             mpInputStream->ReadUInt32( nStyle );
                             BrushStyle eStyle = static_cast<BrushStyle>(nStyle);
-                            CreateObjectIndexed(nIndex, std::make_unique<WinMtfFillStyle>( ReadColor(), ( eStyle == BrushStyle::BS_HOLLOW ) ));
+                            Color aColor = ReadColor();
+                            sal_Int32 nHatch(0);
+                            mpInputStream->ReadInt32( nHatch );
+                            if (eStyle == BrushStyle::BS_HATCHED && nHatch >= 0 && nHatch <= 5)
+                                CreateObjectIndexed(nIndex, std::make_unique<WinMtfFillStyle>( aColor, mapWindowsHatch(nHatch, aColor) ));
+                            else if (eStyle == BrushStyle::BS_HATCHED && (nHatch == 6 || nHatch == 7))
+                            {
+                                // [MS-EMF] 2.1.17 HS_SOLIDCLR / HS_DITHEREDCLR: brush color
+                                CreateObjectIndexed(nIndex, std::make_unique<WinMtfFillStyle>( aColor ));
+                            }
+                            else if (eStyle == BrushStyle::BS_HATCHED && (nHatch == 8 || nHatch == 9))
+                            {
+                                // [MS-EMF] 2.1.17 HS_SOLIDTEXTCLR / HS_DITHEREDTEXTCLR: text color
+                                CreateObjectIndexed(nIndex, std::make_unique<WinMtfFillStyle>( maTextColor ));
+                            }
+                            else if (eStyle == BrushStyle::BS_HATCHED && (nHatch == 10 || nHatch == 11))
+                            {
+                                // [MS-EMF] 2.1.17 HS_SOLIDBKCLR / HS_DITHEREDBKCLR: background color
+                                CreateObjectIndexed(nIndex, std::make_unique<WinMtfFillStyle>( maBkColor ));
+                            }
+                            else
+                                CreateObjectIndexed(nIndex, std::make_unique<WinMtfFillStyle>( aColor, eStyle == BrushStyle::BS_HOLLOW ));
                         }
                     }
                     break;
@@ -2329,6 +2383,133 @@ namespace emfio
                     }
                     break;
 
+                    case EMR_CREATEMONOBRUSH :
+                    {
+                        sal_uInt64  nStart = mpInputStream->Tell() - 8;
+                        Bitmap aBitmap;
+
+                        mpInputStream->ReadUInt32( nIndex );
+
+                        if ( ( nIndex & ENHMETA_STOCK_OBJECT ) == 0 )
+                        {
+                            sal_uInt32 usage, offBmi, cbBmi, offBits, cbBits;
+
+                            mpInputStream->ReadUInt32( usage );
+                            mpInputStream->ReadUInt32( offBmi );
+                            mpInputStream->ReadUInt32( cbBmi );
+                            mpInputStream->ReadUInt32( offBits );
+                            mpInputStream->ReadUInt32( cbBits );
+
+                            if ( !mpInputStream->good() || (cbBits > (SAL_MAX_UINT32 - 14)) || ((SAL_MAX_UINT32 - 14) - cbBits < cbBmi) )
+                               bStatus = false;
+                            else if ( offBmi )
+                            {
+                                sal_uInt32  nSize = cbBmi + cbBits + 14;
+                                if ( nSize <= ( mnEndPos - mnStartPos ) )
+                                {
+                                    char*   pBuf = new char[ nSize ];
+
+                                    SvMemoryStream aTmp( pBuf, nSize, StreamMode::READ | StreamMode::WRITE );
+                                    aTmp.ObjectOwnsMemory( true );
+                                    aTmp.WriteUChar( 'B' )
+                                        .WriteUChar( 'M' )
+                                        .WriteUInt32( cbBits )
+                                        .WriteUInt16( 0 )
+                                        .WriteUInt16( 0 )
+                                        .WriteUInt32( cbBmi + 14 );
+
+                                    mpInputStream->Seek( nStart + offBmi );
+                                    char* pWritePos = pBuf + 14;
+                                    auto nRead = mpInputStream->ReadBytes(pWritePos, cbBmi);
+                                    if (nRead != cbBmi)
+                                    {
+                                        // zero remainder if short read
+                                        memset(pWritePos + nRead, 0, cbBmi - nRead);
+                                    }
+
+                                    mpInputStream->Seek( nStart + offBits );
+                                    pWritePos = pBuf + 14 + cbBmi;
+                                    nRead = mpInputStream->ReadBytes(pWritePos, cbBits);
+                                    if (nRead != cbBits)
+                                    {
+                                        // zero remainder if short read
+                                        memset(pWritePos + nRead, 0, cbBits - nRead);
+                                    }
+
+                                    aTmp.Seek( 0 );
+                                    ReadDIB(aBitmap, aTmp, true);
+                                }
+                            }
+                        }
+
+                        CreateObjectIndexed(nIndex, std::make_unique<WinMtfFillStyle>( aBitmap ));
+                    }
+                    break;
+
+                    case EMR_GRADIENTFILL :
+                    {
+                        // [MS-EMF] 2.3.5.12 EMR_GRADIENTFILL
+                        sal_Int32 BoundsLeft, BoundsTop, BoundsRight, BoundsBottom;
+                        sal_uInt32 nVer, nTri, ulMode;
+                        mpInputStream->ReadInt32( BoundsLeft ).ReadInt32( BoundsTop )
+                                      .ReadInt32( BoundsRight ).ReadInt32( BoundsBottom );
+                        mpInputStream->ReadUInt32( nVer ).ReadUInt32( nTri ).ReadUInt32( ulMode );
+
+                        SAL_INFO("emfio", "\t\tGradientFill nVer: " << nVer << " nTri: " << nTri << " mode: " << ulMode);
+
+                        if ( !mpInputStream->good() || nVer > 256 * 1024 || nTri > 256 * 1024 )
+                        {
+                            bStatus = false;
+                            break;
+                        }
+
+                        // Read TriVertex array (each 16 bytes: x, y, Red, Green, Blue, Alpha as int32+int32+4*uint16)
+                        struct TriVertex { sal_Int32 x, y; sal_uInt16 Red, Green, Blue, Alpha; };
+                        std::vector<TriVertex> vertices(nVer);
+                        for (sal_uInt32 i = 0; i < nVer && mpInputStream->good(); ++i)
+                        {
+                            mpInputStream->ReadInt32( vertices[i].x ).ReadInt32( vertices[i].y );
+                            mpInputStream->ReadUInt16( vertices[i].Red ).ReadUInt16( vertices[i].Green )
+                                          .ReadUInt16( vertices[i].Blue ).ReadUInt16( vertices[i].Alpha );
+                        }
+
+                        if (ulMode == 0x00 || ulMode == 0x01) // GRADIENT_FILL_RECT_H or GRADIENT_FILL_RECT_V
+                        {
+                            for (sal_uInt32 i = 0; i < nTri && mpInputStream->good(); ++i)
+                            {
+                                sal_uInt32 nUpperLeft, nLowerRight;
+                                mpInputStream->ReadUInt32( nUpperLeft ).ReadUInt32( nLowerRight );
+
+                                if (nUpperLeft >= nVer || nLowerRight >= nVer)
+                                    continue;
+
+                                const TriVertex& ul = vertices[nUpperLeft];
+                                const TriVertex& lr = vertices[nLowerRight];
+
+                                Color aStartColor( static_cast<sal_uInt8>(ul.Red >> 8),
+                                                   static_cast<sal_uInt8>(ul.Green >> 8),
+                                                   static_cast<sal_uInt8>(ul.Blue >> 8) );
+                                Color aEndColor( static_cast<sal_uInt8>(lr.Red >> 8),
+                                                 static_cast<sal_uInt8>(lr.Green >> 8),
+                                                 static_cast<sal_uInt8>(lr.Blue >> 8) );
+
+                                Gradient aGradient( css::awt::GradientStyle_LINEAR, aStartColor, aEndColor );
+                                // GRADIENT_FILL_RECT_H: left-to-right -> angle 900
+                                // GRADIENT_FILL_RECT_V: top-to-bottom -> angle 0
+                                aGradient.SetAngle( Degree10(ulMode == 0x00 ? 900 : 0) );
+
+                                tools::Rectangle aRect( Point( ul.x, ul.y ), Point( lr.x, lr.y ) );
+                                DrawRect( aRect, false );
+                                mpGDIMetaFile->AddAction( new MetaGradientAction( ImplMap( aRect ), aGradient ) );
+                            }
+                        }
+                        else if (ulMode == 0x02) // GRADIENT_FILL_TRIANGLE
+                        {
+                            SAL_WARN("emfio", "TODO: EMR_GRADIENTFILL triangle mode not implemented");
+                        }
+                    }
+                    break;
+
                     case EMR_CREATECOLORSPACE :
                     {
                         sal_uInt32 nRemainingRecSize = nRecSize - 8;
@@ -2383,11 +2564,9 @@ namespace emfio
                     case EMR_SETICMPROFILEW :
                     case EMR_TRANSPARENTBLT :
                     case EMR_TRANSPARENTDIB :
-                    case EMR_GRADIENTFILL :
                     case EMR_SETLINKEDUFIS :
                     case EMR_SETMAPPERFLAGS :
                     case EMR_SETICMMODE :
-                    case EMR_CREATEMONOBRUSH :
                     case EMR_SETBRUSHORGEX :
                     case EMR_SETMETARGN :
                     case EMR_SETMITERLIMIT :

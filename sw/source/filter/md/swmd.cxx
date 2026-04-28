@@ -34,6 +34,7 @@
 #include <poolfmt.hxx>
 #include <iodetect.hxx>
 #include <hintids.hxx>
+#include <paratr.hxx>
 #include <sfx2/docfile.hxx>
 #include <sfx2/sfxsids.hrc>
 #include <tools/urlobj.hxx>
@@ -61,6 +62,7 @@
 #include <unicode/utypes.h>
 #include <unicode/ucsdet.h>
 #include <rtl/tencinfo.h>
+#include <unotextrange.hxx>
 
 #include "swmd.hxx"
 
@@ -78,6 +80,22 @@ bool allowAccessLink(const SwDoc& rDoc)
 }
 }
 
+SwNumRuleItem SwMarkdownParser::GetNumRuleItem(const UIName& rName, sal_uInt8 nLevel) const
+{
+    if (m_pNumRuleItem)
+    {
+        SwNumRule* pExistingRule = m_xDoc->FindNumRulePtr(m_pNumRuleItem->GetValue());
+        SwNumRule* pNewRule = m_xDoc->FindNumRulePtr(rName);
+        if (pExistingRule && pNewRule
+            && pExistingRule->Get(nLevel).GetNumberingType()
+                   == pNewRule->Get(nLevel).GetNumberingType())
+        {
+            return *m_pNumRuleItem;
+        }
+    }
+    return SwNumRuleItem(rName);
+}
+
 void SwMarkdownParser::SetNodeNum(sal_uInt8 nLevel)
 {
     SwTextNode* pTextNode = m_pPam->GetPointNode().GetTextNode();
@@ -89,7 +107,7 @@ void SwMarkdownParser::SetNodeNum(sal_uInt8 nLevel)
 
     OSL_ENSURE(GetNumInfo().GetNumRule(), "No numbering rule");
     const UIName& rName = GetNumInfo().GetNumRule()->GetName();
-    static_cast<SwContentNode*>(pTextNode)->SetAttr(SwNumRuleItem(rName));
+    static_cast<SwContentNode*>(pTextNode)->SetAttr(GetNumRuleItem(rName, nLevel));
 
     pTextNode->SetAttrListLevel(nLevel);
     pTextNode->SetCountedInList(false);
@@ -530,7 +548,7 @@ void SwMarkdownParser::StartNumberedBulletListItem(MD_BLOCK_LI_DETAIL aDetail)
         m_xDoc->MakeNumRule(aNumRuleName, &aNumRule);
     }
 
-    static_cast<SwContentNode*>(pTextNode)->SetAttr(SwNumRuleItem(aNumRuleName));
+    static_cast<SwContentNode*>(pTextNode)->SetAttr(GetNumRuleItem(aNumRuleName, nLevel));
     pTextNode->SetAttrListLevel(nLevel);
 
     if (nLevel < MAXLEVEL)
@@ -551,7 +569,15 @@ void SwMarkdownParser::StartNumberedBulletListItem(MD_BLOCK_LI_DETAIL aDetail)
 void SwMarkdownParser::EndNumberedBulletListItem()
 {
     if (m_pPam->GetPoint()->GetContentIndex())
-        AppendTextNode(AM_SPACE);
+    {
+        SwMdAppendMode eMode = AM_SPACE;
+        if (!m_bNewDoc)
+        {
+            // Don't touch paragraph margins when pasting.
+            eMode = AM_NORMAL;
+        }
+        AppendTextNode(eMode);
+    }
 }
 
 void SwMarkdownParser::BeginHtmlBlock()
@@ -830,11 +856,35 @@ void MarkdownReader::SetupFilterOptions(SwDoc& rDoc)
 
 ErrCodeMsg MarkdownReader::Read(SwDoc& rDoc, const OUString& rBaseURL, SwPaM& rPam, const OUString&)
 {
-    ErrCode nRet;
-
     SetupFilterOptions(rDoc);
+
+    const SwNumRuleItem* pNumRuleItem = nullptr;
+    if (m_bInsertMode)
+    {
+        SwTextNode* pTextNode = rPam.GetPointNode().GetTextNode();
+        if (pTextNode)
+        {
+            pNumRuleItem = pTextNode->GetSwAttrSet().GetItemIfSet(RES_PARATR_NUMRULE, false);
+        }
+    }
+
+    SwPasteInfo aPasteInfo(rDoc, rPam);
+    if (m_bInsertMode)
+    {
+        StartPaste(aPasteInfo);
+    }
+
     SwMarkdownParser parser(rDoc, rPam, *m_pStream, rBaseURL, !m_bInsertMode);
-    nRet = parser.CallParser();
+    if (pNumRuleItem)
+    {
+        parser.SetNumRuleItem(pNumRuleItem);
+    }
+    ErrCode nRet = parser.CallParser();
+
+    if (m_bInsertMode)
+    {
+        EndPaste(aPasteInfo);
+    }
 
     return nRet;
 }
@@ -879,7 +929,11 @@ ErrCode SwMarkdownParser::CallParser()
 
     SwTextFormatColl* pColl
         = m_xDoc->getIDocumentStylePoolAccess().GetTextCollFromPool(SwPoolFormatId::COLL_TEXT);
-    m_xDoc->SetTextFormatColl(*m_pPam, pColl);
+    if (m_bNewDoc)
+    {
+        // Don't touch the paragraph style when pasting.
+        m_xDoc->SetTextFormatColl(*m_pPam, pColl);
+    }
 
     ErrCode nRet;
 

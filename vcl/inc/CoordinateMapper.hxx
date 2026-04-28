@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -19,31 +19,28 @@
 
 #pragma once
 
-#include <sal/config.h>
+#include <sal/types.h>
 
-#include <jni.h>
+#include <vcl/dllapi.h>
 
-#if defined DISABLE_DYNLOADING
-#define JAVAUNOHELPER_DETAIL_CALLCONV JNICALL
-#else
-#define JAVAUNOHELPER_DETAIL_CALLCONV
-#endif
+class CoordinateMapper
+{
+private:
+    sal_Int32 mnDPIX;
+    sal_Int32 mnDPIY;
+    sal_Int32 mnDPIScalePercentage = 100;
 
-extern "C" {
+public:
+    sal_Int32 GetDPIX() const;
+    sal_Int32 GetDPIY() const;
 
-namespace javaunohelper::detail {
+    void SetDPIX(sal_Int32 nDPIX);
+    void SetDPIY(sal_Int32 nDPIY);
 
-typedef jobject JAVAUNOHELPER_DETAIL_CALLCONV Func_bootstrap(
-    JNIEnv *_env, jclass, jstring, jobjectArray, jobject);
+    sal_Int32 GetDPIScalePercentage() const;
+    void SetDPIScalePercentage(sal_Int32 nPercentage);
 
-typedef jobject JAVAUNOHELPER_DETAIL_CALLCONV Func_getFactory(
-    JNIEnv *, jclass, jstring, jstring, jobject, jobject, jobject);
+    float GetDPIScaleFactor() const;
+};
 
-typedef jboolean JAVAUNOHELPER_DETAIL_CALLCONV Func_writeInfo(
-    JNIEnv *, jclass, jstring, jobject, jobject, jobject);
-
-}
-
-}
-
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */
