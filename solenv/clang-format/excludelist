@@ -5454,7 +5454,6 @@ include/svtools/colorcfg.hxx
 include/svtools/ctrlbox.hxx
 include/svtools/ctrltool.hxx
 include/svtools/dialogclosedlistener.hxx
-include/svtools/editbrowsebox.hxx
 include/svtools/ehdl.hxx
 include/svtools/embedhlp.hxx
 include/svtools/embedtransfer.hxx
@@ -11194,7 +11193,6 @@ svx/source/inc/fmexch.hxx
 svx/source/inc/fmexpl.hxx
 svx/source/inc/fmobj.hxx
 svx/source/inc/fmpgeimp.hxx
-svx/source/inc/fmprop.hxx
 svx/source/inc/fmscriptingenv.hxx
 svx/source/inc/fmservs.hxx
 svx/source/inc/fmshimp.hxx

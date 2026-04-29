@@ -72,7 +72,7 @@ public:
     virtual OUString         GetColumnDescription( sal_uInt16 _nColumnPos ) const = 0;
 
     /** @return  <TRUE/>, if the object has a row header. */
-    virtual bool                    HasRowHeader() const = 0; //GetColumnId
+    virtual bool HasRowHeader() const = 0;
     virtual bool                    GoToCell( sal_Int32 _nRow, sal_uInt16 _nColumnPos ) = 0;
 
     virtual void                    SetNoSelection() = 0;
@@ -115,9 +115,6 @@ public:
     virtual void                    FillAccessibleStateSet( sal_Int64& _rStateSet, AccessibleBrowseBoxObjType _eType ) const = 0;
     virtual void                    FillAccessibleStateSetForCell( sal_Int64& _rStateSet, sal_Int32 _nRow, sal_uInt16 _nColumnPos ) const = 0;
     virtual void                    GrabTableFocus() = 0;
-
-    // OutputDevice
-    virtual bool                    GetGlyphBoundRects( const Point& rOrigin, const OUString& rStr, int nIndex, int nLen, std::vector< tools::Rectangle >& rVector ) = 0;
 
     // Window
     virtual tools::Rectangle        GetWindowExtentsRelative(const vcl::Window& rRelativeWindow) const = 0;

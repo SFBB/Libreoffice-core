@@ -581,7 +581,6 @@ tools::Long SvTabListBox::GetLogicTab( sal_uInt16 nTab )
 
 SvHeaderTabListBox::SvHeaderTabListBox(vcl::Window* pParent, WinBits nWinStyle, HeaderBar* pHeaderBar)
     : SvTabListBox(pParent, nWinStyle)
-    , m_bFirstPaint(true)
 {
 
     assert(pHeaderBar);
@@ -604,15 +603,6 @@ void SvHeaderTabListBox::dispose()
 
     m_xHeaderBar.reset();
     SvTabListBox::dispose();
-}
-
-void SvHeaderTabListBox::Paint( vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect )
-{
-    if (m_bFirstPaint)
-    {
-        m_bFirstPaint = false;
-    }
-    SvTabListBox::Paint(rRenderContext, rRect);
 }
 
 HeaderBar* SvHeaderTabListBox::GetHeaderBar()
@@ -1126,11 +1116,6 @@ void SvHeaderTabListBox::GrabTableFocus()
     GrabFocus();
 }
 
-bool SvHeaderTabListBox::GetGlyphBoundRects( const Point& rOrigin, const OUString& rStr, int nIndex, int nLen, std::vector< tools::Rectangle >& rVector )
-{
-    return GetOutDev()->GetGlyphBoundRects( rOrigin, rStr, nIndex, nLen, rVector );
-}
-
 tools::Rectangle SvHeaderTabListBox::GetWindowExtentsRelative(const vcl::Window& rRelativeWindow) const
 {
     return Control::GetWindowExtentsRelative( rRelativeWindow );
@@ -1179,7 +1164,7 @@ sal_Int32 SvHeaderTabListBox::GetFieldIndexAtPoint(sal_Int32 _nRow,sal_Int32 _nC
 {
     OUString sText = GetAccessibleCellText( _nRow, static_cast< sal_uInt16 >( _nColumnPos ) );
     std::vector< tools::Rectangle > aRects;
-    if ( GetGlyphBoundRects(Point(0,0), sText, 0, sText.getLength(), aRects) )
+    if (GetOutDev()->GetGlyphBoundRects(Point(0, 0), sText, 0, sText.getLength(), aRects))
     {
         sal_Int32 nPos = 0;
         for (auto const& rectangle : aRects)

@@ -3190,7 +3190,7 @@ void ChartExport::exportAreaChart( const Reference< chart2::XChartType >& xChart
         if (splitDataSeries.hasElements())
             exportSeries_chart(xChartType, splitDataSeries, bPrimaryAxes);
 
-        createAxes(bPrimaryAxes, false, false);
+        createAxes(bPrimaryAxes, true, false);
         //exportAxesId(bPrimaryAxes);
 
         pFS->endElement(FSNS(XML_c, nTypeId));
@@ -3294,7 +3294,7 @@ void ChartExport::exportBarChart(const Reference< chart2::XChartType >& xChartTy
             }
         }
 
-        createAxes(bPrimaryAxes, false, false);
+        createAxes(bPrimaryAxes, true, false);
 
         pFS->endElement(FSNS(XML_c, nTypeId));
     }
@@ -3319,7 +3319,7 @@ void ChartExport::exportBubbleChart( const Reference< chart2::XChartType >& xCha
         if (splitDataSeries.hasElements())
             exportSeries_chart(xChartType, splitDataSeries, bPrimaryAxes);
 
-        createAxes(bPrimaryAxes, false, false);
+        createAxes(bPrimaryAxes, true, false);
 
         pFS->endElement(FSNS(XML_c, XML_bubbleChart));
     }
@@ -3521,7 +3521,7 @@ void ChartExport::exportRadarChart( const Reference< chart2::XChartType >& xChar
     exportVaryColors(xChartType);
     bool bPrimaryAxes = true;
     exportAllSeries(xChartType, bPrimaryAxes);
-    createAxes(bPrimaryAxes, false, false);
+    createAxes(bPrimaryAxes, true, false);
 
     pFS->endElement( FSNS( XML_c, XML_radarChart ) );
 }
@@ -3551,7 +3551,7 @@ void ChartExport::exportScatterChartSeries( const Reference< chart2::XChartType 
     bool bPrimaryAxes = true;
     if (pSeries)
         exportSeries_chart(xChartType, *pSeries, bPrimaryAxes);
-    createAxes(bPrimaryAxes, false, false);
+    createAxes(bPrimaryAxes, true, false);
     //exportAxesId(bPrimaryAxes);
 
     pFS->endElement( FSNS( XML_c, XML_scatterChart ) );
@@ -3583,14 +3583,13 @@ void ChartExport::exportStockChart( const Reference< chart2::XChartType >& xChar
         aSplitDataSeries.push_back({});
     }
 
-    sal_uInt32 nIdx = 0;
     for (const auto& splitDataSeries : aSplitDataSeries)
     {
         pFS->startElement(FSNS(XML_c, XML_stockChart));
 
         bool bPrimaryAxes = true;
         if (splitDataSeries.hasElements())
-            exportCandleStickSeries(splitDataSeries, bPrimaryAxes, nIdx);
+            exportCandleStickSeries(splitDataSeries, bPrimaryAxes);
 
         // export stock properties
         Reference< css::chart::XStatisticDisplay > xStockPropProvider(mxDiagram, uno::UNO_QUERY);
@@ -3600,7 +3599,7 @@ void ChartExport::exportStockChart( const Reference< chart2::XChartType >& xChar
             exportUpDownBars(xChartType);
         }
 
-        createAxes(bPrimaryAxes, false, false);
+        createAxes(bPrimaryAxes, true, false);
 
         pFS->endElement(FSNS(XML_c, XML_stockChart));
     }
@@ -3675,7 +3674,7 @@ void ChartExport::exportSurfaceChart( const Reference< chart2::XChartType >& xCh
     exportVaryColors(xChartType);
     bool bPrimaryAxes = true;
     exportAllSeries(xChartType, bPrimaryAxes);
-    createAxes(bPrimaryAxes, false, false);
+    createAxes(bPrimaryAxes, true, false);
 
     pFS->endElement( FSNS( XML_c, nTypeId ) );
 }
@@ -4098,7 +4097,7 @@ void ChartExport::exportSeries_chartex( const Reference<chart2::XChartType>& xCh
 }
 
 void ChartExport::exportCandleStickSeries(
-    const Sequence<Reference<chart2::XDataSeries>>& aSeriesSeq, bool& rPrimaryAxes, sal_uInt32& nIdx)
+    const Sequence<Reference<chart2::XDataSeries>>& aSeriesSeq, bool& rPrimaryAxes)
 {
     for( const Reference< chart2::XDataSeries >& xSeries : aSeriesSeq )
     {
@@ -4127,8 +4126,8 @@ void ChartExport::exportCandleStickSeries(
                         FSHelperPtr pFS = GetFS();
                         pFS->startElement(FSNS(XML_c, XML_ser));
 
-                        pFS->singleElement(FSNS(XML_c, XML_idx), XML_val, OString::number(++nIdx));
-                        pFS->singleElement(FSNS(XML_c, XML_order), XML_val, OString::number(nIdx));
+                        pFS->singleElement(FSNS(XML_c, XML_idx), XML_val, OString::number(mnSeriesCount));
+                        pFS->singleElement(FSNS(XML_c, XML_order), XML_val, OString::number(mnSeriesCount++));
 
                         // export label
                         if( xLabelSeq.is() )
@@ -5833,22 +5832,33 @@ void ChartExport::exportDataPoints(
 // Generalized axis output
 void ChartExport::createAxes(bool bPrimaryAxes, bool bCheckCombinedAxes, bool bIsChartex)
 {
-    sal_Int32 nAxisIdx, nAxisIdy;
-    bool bPrimaryAxisExists = false;
-    bool bSecondaryAxisExists = false;
-    // let's check which axis already exists and which axis is attached to the actual dataseries
-    if (maAxes.size() >= 2)
+    sal_Int32 nAxisIdx = -1, nAxisIdy = -1;
+    bool bCreateAxes = true;
+
+    // tdf#114181 keep axes of combined charts - search for existing pairs
+    if (bCheckCombinedAxes)
     {
-        bPrimaryAxisExists = bPrimaryAxes && maAxes[1].nAxisType == AXIS_PRIMARY_Y;
-        bSecondaryAxisExists = !bPrimaryAxes && maAxes[1].nAxisType == AXIS_SECONDARY_Y;
+        const AxesType eWantedX = bPrimaryAxes ? AXIS_PRIMARY_X : AXIS_SECONDARY_X;
+        const AxesType eWantedY = bPrimaryAxes ? AXIS_PRIMARY_Y : AXIS_SECONDARY_Y;
+
+        sal_Int32 nFoundX = -1, nFoundY = -1;
+        for (const auto& rAxis : maAxes)
+        {
+            if (rAxis.nAxisType == eWantedX)
+                nFoundX = rAxis.nAxisId;
+            else if (rAxis.nAxisType == eWantedY)
+                nFoundY = rAxis.nAxisId;
+        }
+
+        if (nFoundX != -1 && nFoundY != -1)
+        {
+            bCreateAxes = false;
+            nAxisIdx = nFoundX;
+            nAxisIdy = nFoundY;
+        }
     }
-    // tdf#114181 keep axes of combined charts
-    if ( bCheckCombinedAxes && ( bPrimaryAxisExists || bSecondaryAxisExists ) )
-    {
-        nAxisIdx = maAxes[0].nAxisId;
-        nAxisIdy = maAxes[1].nAxisId;
-    }
-    else
+
+    if (bCreateAxes)
     {
         nAxisIdx = lcl_generateRandomValue();
         nAxisIdy = lcl_generateRandomValue();

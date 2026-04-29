@@ -16,8 +16,8 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_SVX_FMGRIDCL_HXX
-#define INCLUDED_SVX_FMGRIDCL_HXX
+
+#pragma once
 
 #include <svx/gridctrl.hxx>
 #include <vcl/transfer.hxx>
@@ -149,7 +149,7 @@ public:
 protected:
     virtual void Command(const CommandEvent& rEvt) override;
 
-    virtual VclPtr<BrowserHeader> imp_CreateHeaderBar(BrowseBox* pParent) override;
+    virtual VclPtr<svt::EditBrowserHeader> imp_CreateHeaderBar(BrowseBox* pParent) override;
     virtual tools::Long QueryMinimumRowHeight() override;
     virtual void RowHeightChanged() override;
     virtual void ColumnResized(sal_uInt16 nId) override;
@@ -194,7 +194,5 @@ protected:
     */
     bool isColumnSelected(DbGridColumn const * _pColumn) const;
 };
-
-#endif // INCLUDED_SVX_FMGRIDCL_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -2294,6 +2294,96 @@ CPPUNIT_TEST_FIXTURE(ScExportTest, testTdf155368)
     assertXPath(pStyles, "/x:styleSheet/x:cellXfs/x:xf[2]/x:alignment", "wrapText", u"false");
 }
 
+CPPUNIT_TEST_FIXTURE(ScExportTest, testCombinedChartAxesCount)
+{
+    createScDoc("xls/forum-mso-de-37362.xls");
+    save(TestFilter::XLSX);
+
+    xmlDocUniquePtr pChart = parseExport(u"xl/charts/chart1.xml"_ustr);
+    CPPUNIT_ASSERT(pChart);
+
+    assertXPath(pChart, "/c:chartSpace/c:chart/c:plotArea/c:catAx", 2);
+    assertXPath(pChart, "/c:chartSpace/c:chart/c:plotArea/c:valAx", 2);
+}
+
+CPPUNIT_TEST_FIXTURE(ScExportTest, testCombinedChartsAxesSharing)
+{
+    createScDoc("xls/forum-mso-de-48440.xls");
+    save(TestFilter::XLSX);
+
+    xmlDocUniquePtr pChart = parseExport(u"xl/charts/chart3.xml"_ustr);
+    CPPUNIT_ASSERT(pChart);
+
+    assertXPath(pChart, "/c:chartSpace/c:chart/c:plotArea/c:catAx", 1);
+    assertXPath(pChart, "/c:chartSpace/c:chart/c:plotArea/c:valAx", 3);
+
+    OUString barChartAxis1
+        = getXPath(pChart, "/c:chartSpace/c:chart/c:plotArea/c:barChart/c:axId[1]", "val");
+    OUString scatterChart1Axis1
+        = getXPath(pChart, "/c:chartSpace/c:chart/c:plotArea/c:scatterChart[1]/c:axId[1]", "val");
+    CPPUNIT_ASSERT_EQUAL(barChartAxis1, scatterChart1Axis1);
+
+    OUString barChartAxis2
+        = getXPath(pChart, "/c:chartSpace/c:chart/c:plotArea/c:barChart/c:axId[2]", "val");
+    OUString scatterChart1Axis2
+        = getXPath(pChart, "/c:chartSpace/c:chart/c:plotArea/c:scatterChart[1]/c:axId[2]", "val");
+    CPPUNIT_ASSERT_EQUAL(barChartAxis2, scatterChart1Axis2);
+}
+
+CPPUNIT_TEST_FIXTURE(ScExportTest, testForumFr59757)
+{
+    createScDoc("xls/forum-fr-59757.xls");
+    save(TestFilter::XLSX);
+
+    xmlDocUniquePtr pChart = parseExport(u"xl/charts/chart1.xml"_ustr);
+    CPPUNIT_ASSERT(pChart);
+
+    // stock chart
+    assertXPath(pChart, "/c:chartSpace/c:chart/c:plotArea/c:stockChart/c:ser[1]/c:idx", "val",
+                u"0");
+    assertXPath(pChart, "/c:chartSpace/c:chart/c:plotArea/c:stockChart/c:ser[1]/c:order", "val",
+                u"0");
+    assertXPath(pChart, "/c:chartSpace/c:chart/c:plotArea/c:stockChart/c:ser[2]/c:idx", "val",
+                u"1");
+    assertXPath(pChart, "/c:chartSpace/c:chart/c:plotArea/c:stockChart/c:ser[2]/c:order", "val",
+                u"1");
+    assertXPath(pChart, "/c:chartSpace/c:chart/c:plotArea/c:stockChart/c:ser[3]/c:idx", "val",
+                u"2");
+    assertXPath(pChart, "/c:chartSpace/c:chart/c:plotArea/c:stockChart/c:ser[3]/c:order", "val",
+                u"2");
+    assertXPath(pChart, "/c:chartSpace/c:chart/c:plotArea/c:stockChart/c:ser[4]/c:idx", "val",
+                u"3");
+    assertXPath(pChart, "/c:chartSpace/c:chart/c:plotArea/c:stockChart/c:ser[4]/c:order", "val",
+                u"3");
+
+    // line chart
+    assertXPath(pChart, "/c:chartSpace/c:chart/c:plotArea/c:lineChart/c:ser[1]/c:idx", "val", u"4");
+    assertXPath(pChart, "/c:chartSpace/c:chart/c:plotArea/c:lineChart/c:ser[1]/c:order", "val",
+                u"4");
+    assertXPath(pChart, "/c:chartSpace/c:chart/c:plotArea/c:lineChart/c:ser[2]/c:idx", "val", u"5");
+    assertXPath(pChart, "/c:chartSpace/c:chart/c:plotArea/c:lineChart/c:ser[2]/c:order", "val",
+                u"5");
+}
+
+CPPUNIT_TEST_FIXTURE(ScExportTest, testColumnBounds)
+{
+    createScDoc("xls/forum-mso-en4-368528.xls");
+    save(TestFilter::XLSX);
+
+    xmlDocUniquePtr pDoc = parseExport(u"xl/drawings/drawing1.xml"_ustr);
+    CPPUNIT_ASSERT(pDoc);
+    assertXPathContent(pDoc,
+                       "/xdr:wsDr/mc:AlternateContent/mc:Choice/xdr:twoCellAnchor/xdr:from/xdr:col",
+                       u"0"); // earlier -1
+
+    pDoc = parseExport(u"xl/worksheets/sheet1.xml"_ustr);
+    CPPUNIT_ASSERT(pDoc);
+    assertXPathContent(pDoc,
+                       "/x:worksheet/mc:AlternateContent/mc:Choice/x:controls/mc:AlternateContent/"
+                       "mc:Choice/x:control/x:controlPr/x:anchor/x:from/xdr:col",
+                       u"0"); // earlier -1
+}
+
 CPPUNIT_PLUGIN_IMPLEMENT();
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

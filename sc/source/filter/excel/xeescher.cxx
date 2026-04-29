@@ -170,8 +170,10 @@ void lcl_GetFromTo( const XclExpRoot& rRoot, const tools::Rectangle &aRect, sal_
             }
             if( r.Left() > aRect.Left() && r.Top() > aRect.Top() )
             {
-                aFrom = tools::Rectangle( nCol-1, lcl_hmm2output( nColOff, bInEMU ),
-                                   nRow-1, lcl_hmm2output( nRowOff, bInEMU ) );
+                sal_Int32 nNewCol = (nCol > 0) ? nCol - 1 : 0;
+                sal_Int32 nNewRow = (nRow > 0) ? nRow - 1 : 0;
+                aFrom = tools::Rectangle( nNewCol, lcl_hmm2output( nColOff, bInEMU ),
+                                   nNewRow, lcl_hmm2output( nRowOff, bInEMU ) );
                 break;
             }
         }
@@ -193,8 +195,10 @@ void lcl_GetFromTo( const XclExpRoot& rRoot, const tools::Rectangle &aRect, sal_
             }
             if( r.Left() < aRect.Left() && r.Top() > aRect.Top() )
             {
-                aFrom = tools::Rectangle( nCol-1, lcl_hmm2output( nColOff, bInEMU ),
-                                   nRow-1, lcl_hmm2output( nRowOff, bInEMU ) );
+                sal_Int32 nNewCol = (nCol > 0) ? nCol - 1 : 0;
+                sal_Int32 nNewRow = (nRow > 0) ? nRow - 1 : 0;
+                aFrom = tools::Rectangle( nNewCol, lcl_hmm2output( nColOff, bInEMU ),
+                                   nNewRow, lcl_hmm2output( nRowOff, bInEMU ) );
                 break;
             }
         }
@@ -2033,7 +2037,7 @@ void XclExpObjectManager::StartSheet()
     mxObjList = new XclExpObjList( GetRoot(), *mxEscherEx );
 }
 
-rtl::Reference< XclExpRecordBase > XclExpObjectManager::ProcessDrawing( const SdrPage* pSdrPage )
+rtl::Reference< XclExpRecordBase > XclExpObjectManager::ProcessDrawing( const SdrPage* pSdrPage, std::unique_ptr<XclExpImgData> pImgData )
 {
     if( pSdrPage )
         mxEscherEx->AddSdrPage( *pSdrPage, GetOutput() != EXC_OUTPUT_BINARY );
@@ -2041,6 +2045,8 @@ rtl::Reference< XclExpRecordBase > XclExpObjectManager::ProcessDrawing( const Sd
     OSL_ENSURE( mxEscherEx->GetGroupLevel() <= 1, "XclExpObjectManager::ProcessDrawing - still groups open?" );
     while( mxEscherEx->GetGroupLevel() )
         mxEscherEx->LeaveGroup();
+    if (pImgData)
+        mxObjList->SetImageData(std::move(pImgData));
     mxObjList->EndSheet();
     return mxObjList;
 }
