@@ -1626,6 +1626,44 @@ CPPUNIT_TEST_FIXTURE(ScExportTest2, testEmptyPivotFieldsTable)
                          css::container::NoSuchElementException);
 }
 
+CPPUNIT_TEST_FIXTURE(ScExportTest2, testOffsetIllegalParam)
+{
+    createScDoc("ods/offsetIllegalParam.ods");
+    save(TestFilter::XLSX);
+
+    xmlDocUniquePtr pWorkbook = parseExport(u"xl/workbook.xml"_ustr);
+    CPPUNIT_ASSERT(pWorkbook);
+
+    assertXPathContent(pWorkbook, "/x:workbook/x:definedNames/x:definedName[2]",
+                       u"OFFSET(#REF!,0,2)");
+    assertXPathContent(pWorkbook, "/x:workbook/x:definedNames/x:definedName[3]",
+                       u"OFFSET(#REF!,0,1)");
+}
+
+CPPUNIT_TEST_FIXTURE(ScExportTest2, testForumEn29552)
+{
+    createScDoc("xls/forum-en-29552.xls");
+    save(TestFilter::XLSX);
+
+    CPPUNIT_ASSERT_THROW(parseExport(u"xl/revisions/revisionHeaders.xml"_ustr),
+                         css::container::NoSuchElementException);
+    CPPUNIT_ASSERT_THROW(parseExport(u"xl/revisions/userNames.xml"_ustr),
+                         css::container::NoSuchElementException);
+}
+
+CPPUNIT_TEST_FIXTURE(ScExportTest2, testFdo30900)
+{
+    createScDoc("ods/fdo30900-1.ods");
+    save(TestFilter::XLSX);
+
+    xmlDocUniquePtr pWorkbook = parseExport(u"xl/workbook.xml"_ustr);
+    CPPUNIT_ASSERT(pWorkbook);
+
+    // earlier OFFSET($A$1,1,0,COUNTA($A$2:$A$100))
+    assertXPathContent(pWorkbook, "/x:workbook/x:definedNames/x:definedName[1]",
+                       u"OFFSET(Feuille1!$A$1,1,0,COUNTA(Feuille1!$A$2:$A$100))");
+}
+
 CPPUNIT_PLUGIN_IMPLEMENT();
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -13,11 +13,21 @@
 
 #include <editeng/boxitem.hxx>
 #include <editeng/brushitem.hxx>
+#include <tools/json_writer.hxx>
 #include "document.hxx"
 #include "scdllapi.h"
 #include "dbdata.hxx"
 
 class ScPatternAttr;
+namespace model
+{
+class ColorSet;
+}
+
+namespace tools
+{
+class JsonWriter;
+}
 
 enum class ScTableStyleElement
 {
@@ -106,12 +116,17 @@ public:
     void SetOOXMLDefault(bool bDefault);
     bool IsOOXMLDefault() const;
 
+    /// Re-resolve themed colors in custom style patterns against a new ColorSet
+    void UpdateThemedColors(const model::ColorSet& rColorSet);
+
     const OUString& GetName() const;
     const OUString& GetUIName() const;
 };
 
 class SC_DLLPUBLIC ScTableStyles
 {
+    SfxBindings* mpBindings;
+
 private:
     ScTableStyles(ScTableStyles const&) = delete;
     ScTableStyles(ScTableStyles&&) = delete;
@@ -121,12 +136,20 @@ private:
     std::unordered_map<OUString, std::unique_ptr<ScTableStyle>> maTableStyles;
 
 public:
-    ScTableStyles();
+    ScTableStyles(SfxBindings* pBindings);
 
     void AddTableStyle(std::unique_ptr<ScTableStyle> pTableStyle);
     void DeleteTableStyle(const OUString& rName);
     const ScTableStyle* GetTableStyle(const OUString& rName) const;
-    bool HasTableStyle() const { return maTableStyles.size() > 0; }
+    bool HasTableStyle() const { return !maTableStyles.empty(); }
+
+    /// Remove all styles marked as OOXML defaults (for regeneration after theme change)
+    void ClearOOXMLDefaultStyles();
+
+    /// Update themed colors in custom (non-default) styles after a theme change
+    void UpdateCustomStyleThemedColors(const model::ColorSet& rColorSet);
+
+    void generateJSON(tools::JsonWriter& rWriter) const;
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

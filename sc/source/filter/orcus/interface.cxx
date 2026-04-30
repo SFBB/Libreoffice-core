@@ -49,6 +49,7 @@
 #include <o3tl/unit_conversion.hxx>
 #include <tools/fontenum.hxx>
 #include <sal/log.hxx>
+#include <rtl/character.hxx>
 
 #include <stylesbuffer.hxx>
 #include <orcus/exception.hpp>
@@ -145,6 +146,51 @@ void ScOrcusNamedExpression::set_named_expression(std::string_view name,
 {
     maName = OUString(name.data(), name.size(), mrGlobalSettings.getTextEncoding());
     maExpr = OUString(expression.data(), expression.size(), mrGlobalSettings.getTextEncoding());
+
+    formula::FormulaGrammar::AddressConvention eConv
+        = formula::FormulaGrammar::extractRefConvention(mrGlobalSettings.getCalcGrammar());
+
+    std::vector<OUString> aTables = mrDoc.getDoc().GetAllTableNames();
+    for (const auto& aTable : aTables)
+    {
+        OUString aReqTable = aTable;
+        ScCompiler::CheckTabQuotes(aReqTable, eConv);
+
+        if (aReqTable.indexOf('\'') == -1)
+            continue;
+
+        sal_Int32 nPos = 0;
+        while ((nPos = maExpr.indexOf(aTable, nPos)) != -1)
+        {
+            bool bQuoted = (nPos > 0 && maExpr[nPos - 1] == '\'');
+            bool bIsCompleteTableName = true;
+            sal_Int32 nLen = aTable.getLength();
+            sal_Int32 nEndPos = nPos + nLen;
+
+            if (nPos > 0)
+            {
+                sal_Unicode cPrevChar = maExpr[nPos - 1];
+                bIsCompleteTableName &= !(rtl::isAsciiAlphanumeric(cPrevChar) || cPrevChar == '_'
+                                          || cPrevChar == '.');
+            }
+
+            if (nEndPos < maExpr.getLength())
+            {
+                sal_Unicode cEndChar = maExpr[nEndPos];
+                bIsCompleteTableName &= (cEndChar == '!' || cEndChar == ':');
+            }
+
+            if (!bQuoted && bIsCompleteTableName)
+            {
+                maExpr = maExpr.replaceAt(nPos, nLen, aReqTable);
+                nPos += aReqTable.getLength();
+            }
+            else
+            {
+                nPos += nLen;
+            }
+        }
+    }
 }
 
 void ScOrcusNamedExpression::set_named_range(std::string_view /*name*/, std::string_view /*range*/)

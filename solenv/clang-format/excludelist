@@ -6130,7 +6130,6 @@ include/vcl/toolkit/floatwin.hxx
 include/vcl/toolkit/fmtfield.hxx
 include/vcl/toolkit/group.hxx
 include/vcl/toolkit/imgctrl.hxx
-include/vcl/toolkit/ivctrl.hxx
 include/vcl/toolkit/longcurr.hxx
 include/vcl/toolkit/lstbox.hxx
 include/vcl/toolkit/MenuButton.hxx
@@ -6141,7 +6140,6 @@ include/vcl/toolkit/scrbar.hxx
 include/vcl/toolkit/spin.hxx
 include/vcl/toolkit/spinfld.hxx
 include/vcl/toolkit/svlbitm.hxx
-include/vcl/toolkit/svtabbx.hxx
 include/vcl/toolkit/tabdlg.hxx
 include/vcl/toolkit/throbber.hxx
 include/vcl/toolkit/treelist.hxx
@@ -14010,6 +14008,7 @@ vcl/inc/impfontcharmap.hxx
 vcl/inc/font/FontMetricData.hxx
 vcl/inc/impgraph.hxx
 vcl/inc/implimagetree.hxx
+vcl/inc/ivctrl.hxx
 vcl/inc/jobdata.hxx
 vcl/inc/jobset.h
 vcl/inc/listbox.hxx
@@ -14064,6 +14063,7 @@ vcl/inc/spin.hxx
 vcl/inc/strhelper.hxx
 vcl/inc/svdata.hxx
 vcl/inc/svimpbox.hxx
+vcl/inc/svtabbx.hxx
 vcl/inc/test/outputdevice.hxx
 vcl/inc/textlayout.hxx
 vcl/inc/textlineinfo.hxx

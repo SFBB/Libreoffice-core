@@ -8,6 +8,15 @@
  */
 
 #include <tablestyle.hxx>
+#include <sc.hrc>
+#include <sfx2/bindings.hxx>
+#include <sfx2/lokhelper.hxx>
+#include <LibreOfficeKit/LibreOfficeKitEnums.h>
+#include <editeng/colritem.hxx>
+#include <editeng/borderline.hxx>
+#include <docmodel/color/ComplexColor.hxx>
+#include <docmodel/theme/ColorSet.hxx>
+#include <patattr.hxx>
 
 ScTableStyle::ScTableStyle(const OUString& rName, const std::optional<OUString>& rUIName)
     : mnFirstRowStripeSize(1)
@@ -871,14 +880,156 @@ sal_Int32 ScTableStyle::GetFirstColumnStripeSize() const { return mnFirstColStri
 
 sal_Int32 ScTableStyle::GetSecondColumnStripeSize() const { return mnSecondColStripeSize; }
 
-ScTableStyles::ScTableStyles() {}
+ScTableStyles::ScTableStyles(SfxBindings* pBindings)
+    : mpBindings(pBindings)
+{
+}
 
 void ScTableStyles::AddTableStyle(std::unique_ptr<ScTableStyle> pTableStyle)
 {
+    // TODO: insert() won't overwrite an existing entry with the same name.
+    // When we add UI support for creating custom table styles, we should
+    // either reject duplicates (with UI validation) or use insert_or_assign
+    // to replace the existing style.
     maTableStyles.insert({ pTableStyle->GetName(), std::move(pTableStyle) });
+    if (mpBindings)
+        mpBindings->Invalidate(SID_TABLE_STYLES);
 }
 
-void ScTableStyles::DeleteTableStyle(const OUString& rName) { maTableStyles.erase(rName); }
+void ScTableStyles::DeleteTableStyle(const OUString& rName)
+{
+    maTableStyles.erase(rName);
+    if (mpBindings)
+        mpBindings->Invalidate(SID_TABLE_STYLES);
+}
+
+void ScTableStyles::ClearOOXMLDefaultStyles()
+{
+    std::erase_if(maTableStyles,
+                  [](const auto& rEntry) { return rEntry.second->IsOOXMLDefault(); });
+    if (mpBindings)
+        mpBindings->Invalidate(SID_TABLE_STYLES);
+}
+
+namespace
+{
+/// Update themed colors in a single pattern's items against a new ColorSet
+void updatePatternThemedColors(ScPatternAttr& rPattern, const model::ColorSet& rColorSet)
+{
+    SfxItemSet& rItemSet = rPattern.GetItemSetWritable();
+
+    // Update background fill color
+    if (const SvxBrushItem* pBrush = rItemSet.GetItemIfSet(ATTR_BACKGROUND))
+    {
+        const model::ComplexColor& rCC = pBrush->getComplexColor();
+        if (rCC.getThemeColorType() != model::ThemeColorType::Unknown)
+        {
+            Color aNewColor = rColorSet.resolveOOXMLColor(rCC);
+            SvxBrushItem aNewBrush(aNewColor, ATTR_BACKGROUND);
+            aNewBrush.setComplexColor(rCC);
+            rItemSet.Put(aNewBrush);
+        }
+    }
+
+    // Update font color
+    if (const SvxColorItem* pColorItem = rItemSet.GetItemIfSet(ATTR_FONT_COLOR))
+    {
+        const model::ComplexColor& rCC = pColorItem->getComplexColor();
+        if (rCC.getThemeColorType() != model::ThemeColorType::Unknown)
+        {
+            Color aNewColor = rColorSet.resolveOOXMLColor(rCC);
+            SvxColorItem aNewColorItem(aNewColor, rCC, ATTR_FONT_COLOR);
+            rItemSet.Put(aNewColorItem);
+        }
+    }
+
+    // Update border line colors (outer borders)
+    if (const SvxBoxItem* pBox = rItemSet.GetItemIfSet(ATTR_BORDER))
+    {
+        SvxBoxItem aNewBox(*pBox);
+        bool bChanged = false;
+        for (auto eLine : { SvxBoxItemLine::TOP, SvxBoxItemLine::BOTTOM, SvxBoxItemLine::LEFT,
+                            SvxBoxItemLine::RIGHT })
+        {
+            if (const editeng::SvxBorderLine* pLine = aNewBox.GetLine(eLine))
+            {
+                const model::ComplexColor& rCC = pLine->getComplexColor();
+                if (rCC.getThemeColorType() != model::ThemeColorType::Unknown)
+                {
+                    Color aNewColor = rColorSet.resolveOOXMLColor(rCC);
+                    editeng::SvxBorderLine aNewLine(*pLine);
+                    aNewLine.SetColor(aNewColor);
+                    aNewBox.SetLine(&aNewLine, eLine);
+                    bChanged = true;
+                }
+            }
+        }
+        if (bChanged)
+            rItemSet.Put(aNewBox);
+    }
+
+    // Update inner border line colors (vertical/horizontal)
+    if (const SvxBoxInfoItem* pBoxInfo = rItemSet.GetItemIfSet(ATTR_BORDER_INNER))
+    {
+        SvxBoxInfoItem aNewBoxInfo(*pBoxInfo);
+        bool bChanged = false;
+        if (const editeng::SvxBorderLine* pLine = aNewBoxInfo.GetVert())
+        {
+            const model::ComplexColor& rCC = pLine->getComplexColor();
+            if (rCC.getThemeColorType() != model::ThemeColorType::Unknown)
+            {
+                Color aNewColor = rColorSet.resolveOOXMLColor(rCC);
+                editeng::SvxBorderLine aNewLine(*pLine);
+                aNewLine.SetColor(aNewColor);
+                aNewBoxInfo.SetLine(&aNewLine, SvxBoxInfoItemLine::VERT);
+                bChanged = true;
+            }
+        }
+        if (const editeng::SvxBorderLine* pLine = aNewBoxInfo.GetHori())
+        {
+            const model::ComplexColor& rCC = pLine->getComplexColor();
+            if (rCC.getThemeColorType() != model::ThemeColorType::Unknown)
+            {
+                Color aNewColor = rColorSet.resolveOOXMLColor(rCC);
+                editeng::SvxBorderLine aNewLine(*pLine);
+                aNewLine.SetColor(aNewColor);
+                aNewBoxInfo.SetLine(&aNewLine, SvxBoxInfoItemLine::HORI);
+                bChanged = true;
+            }
+        }
+        if (bChanged)
+            rItemSet.Put(aNewBoxInfo);
+    }
+}
+
+} // anonymous namespace
+
+void ScTableStyle::UpdateThemedColors(const model::ColorSet& rColorSet)
+{
+    if (mbIsOOXMLDefault)
+        return; // defaults are fully regenerated, not updated in-place
+
+    std::unique_ptr<ScPatternAttr>* aPatterns[]
+        = { &mpTablePattern,           &mpFirstColumnStripePattern, &mpSecondColumnStripePattern,
+            &mpFirstRowStripePattern,  &mpSecondRowStripePattern,   &mpLastColumnPattern,
+            &mpFirstColumnPattern,     &mpHeaderRowPattern,         &mpTotalRowPattern,
+            &mpFirstHeaderCellPattern, &mpLastHeaderCellPattern };
+
+    for (auto* pPatternPtr : aPatterns)
+    {
+        if (*pPatternPtr)
+            updatePatternThemedColors(**pPatternPtr, rColorSet);
+    }
+}
+
+void ScTableStyles::UpdateCustomStyleThemedColors(const model::ColorSet& rColorSet)
+{
+    for (auto & [ rName, pStyle ] : maTableStyles)
+    {
+        if (pStyle && !pStyle->IsOOXMLDefault())
+            pStyle->UpdateThemedColors(rColorSet);
+    }
+}
 
 const ScTableStyle* ScTableStyles::GetTableStyle(const OUString& rName) const
 {
@@ -886,6 +1037,63 @@ const ScTableStyle* ScTableStyles::GetTableStyle(const OUString& rName) const
         return nullptr;
 
     return maTableStyles.find(rName)->second.get();
+}
+
+namespace
+{
+std::string_view tableStyleElementName(ScTableStyleElement eElement)
+{
+    switch (eElement)
+    {
+        case ScTableStyleElement::WholeTable:
+            return "WholeTable";
+        case ScTableStyleElement::FirstColumnStripe:
+            return "FirstColumnStripe";
+        case ScTableStyleElement::SecondColumnStripe:
+            return "SecondColumnStripe";
+        case ScTableStyleElement::FirstRowStripe:
+            return "FirstRowStripe";
+        case ScTableStyleElement::SecondRowStripe:
+            return "SecondRowStripe";
+        case ScTableStyleElement::LastColumn:
+            return "LastColumn";
+        case ScTableStyleElement::FirstColumn:
+            return "FirstColumn";
+        case ScTableStyleElement::HeaderRow:
+            return "HeaderRow";
+        case ScTableStyleElement::TotalRow:
+            return "TotalRow";
+        case ScTableStyleElement::FirstHeaderCell:
+            return "FirstHeaderCell";
+        case ScTableStyleElement::LastHeaderCell:
+            return "LastHeaderCell";
+    }
+    return {};
+}
+}
+
+void ScTableStyles::generateJSON(tools::JsonWriter& rWriter) const
+{
+    auto aStylesArray = rWriter.startArray("TableStyles");
+
+    for (auto const & [ rName, pStyle ] : maTableStyles)
+    {
+        auto aStyleStruct = rWriter.startStruct();
+        rWriter.put("Name", pStyle->GetName().toUtf8());
+        rWriter.put("UIName", pStyle->GetUIName().toUtf8());
+
+        auto aElementsArray = rWriter.startArray("Elements");
+        for (auto const & [ eElement, pPattern ] : pStyle->GetSetPatterns())
+        {
+            const SvxBrushItem* pBrush = pPattern->GetItemSet().GetItemIfSet(ATTR_BACKGROUND);
+            if (!pBrush)
+                continue;
+
+            auto aElementStruct = rWriter.startStruct();
+            rWriter.put("Type", tableStyleElementName(eElement));
+            rWriter.put("FillColor", pBrush->GetColor().AsRGBHexString().toUtf8());
+        }
+    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

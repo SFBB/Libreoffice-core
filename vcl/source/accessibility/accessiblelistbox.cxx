@@ -286,35 +286,6 @@ Reference< XAccessible > SAL_CALL AccessibleListBox::getAccessibleParent(  )
     return m_xParent;
 }
 
-sal_Int32 AccessibleListBox::GetRoleType() const
-{
-    sal_Int32 nCase = 0;
-    SvTreeListEntry* pEntry = getListBox()->GetEntry(0);
-    if ( pEntry )
-    {
-        if( pEntry->HasChildrenOnDemand() || getListBox()->GetChildCount(pEntry) > 0  )
-        {
-            nCase = 1;
-            return nCase;
-        }
-    }
-
-    bool bHasButtons = (getListBox()->GetStyle() & WB_HASBUTTONS)!=0;
-    if( !(getListBox()->GetTreeFlags() & SvTreeFlags::CHKBTN) )
-    {
-        if( bHasButtons )
-            nCase = 1;
-    }
-    else
-    {
-        if( bHasButtons )
-            nCase = 2;
-        else
-            nCase = 3;
-    }
-    return nCase;
-}
-
 sal_Int16 SAL_CALL AccessibleListBox::getAccessibleRole()
 {
     ::comphelper::OExternalLockGuard aGuard( this );
@@ -327,11 +298,24 @@ sal_Int16 SAL_CALL AccessibleListBox::getAccessibleRole()
     bool bHasButtons = (pListBox->GetStyle() & WB_HASBUTTONS) != 0;
     if (!bHasButtons && (pListBox->GetTreeFlags() & SvTreeFlags::CHKBTN))
         return AccessibleRole::LIST;
+
+    SvTreeListEntry* pEntry = getListBox()->GetEntry(0);
+    if ( pEntry )
+    {
+        if( pEntry->HasChildrenOnDemand() || getListBox()->GetChildCount(pEntry) > 0  )
+            return AccessibleRole::TREE;
+    }
+
+    if( !(getListBox()->GetTreeFlags() & SvTreeFlags::CHKBTN) )
+    {
+        if( bHasButtons )
+            return AccessibleRole::TREE;
+    }
     else
-        if (GetRoleType() == 0)
-            return AccessibleRole::LIST;
-        else
+    {
         return AccessibleRole::TREE;
+    }
+    return AccessibleRole::LIST;
 }
 
 OUString SAL_CALL AccessibleListBox::getAccessibleDescription(  )

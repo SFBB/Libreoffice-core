@@ -40,7 +40,6 @@
 #include <vcl/headbar.hxx>
 #include <vcl/notebookbar/NotebookBarAddonsItem.hxx>
 #include <vcl/notebookbar/NotebookBarAddonsMerger.hxx>
-#include <vcl/toolkit/ivctrl.hxx>
 #include <vcl/layout.hxx>
 #include <vcl/toolkit/lstbox.hxx>
 #include <vcl/toolkit/MenuButton.hxx>
@@ -49,7 +48,6 @@
 #include <vcl/toolkit/scrbar.hxx>
 #include <vcl/split.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/toolkit/svtabbx.hxx>
 #include <vcl/tabctrl.hxx>
 #include <vcl/tabpage.hxx>
 #include <vcl/toolkit/throbber.hxx>
@@ -74,10 +72,13 @@
 #include <window.h>
 #include <xmlreader/xmlreader.hxx>
 #include <desktop/crashreport.hxx>
+#include <SvHeaderTabListBox.hxx>
 #include <calendar.hxx>
+#include <ivctrl.hxx>
 #include <menutogglebutton.hxx>
 #include <salinst.hxx>
 #include <strings.hrc>
+#include <svtabbx.hxx>
 #include <treeglue.hxx>
 #include <verticaltabctrl.hxx>
 #include <wizdlg.hxx>

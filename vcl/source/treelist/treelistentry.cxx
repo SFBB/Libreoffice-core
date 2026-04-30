@@ -184,10 +184,12 @@ SvLBoxItem* SvTreeListEntry::GetFirstItem(SvLBoxItemType eType)
     return (it == m_Items.end()) ? nullptr : (*it).get();
 }
 
-size_t SvTreeListEntry::GetPos( const SvLBoxItem* pItem ) const
+size_t SvTreeListEntry::GetPos(const SvLBoxItem& rItem) const
 {
-    ItemsType::const_iterator it = std::find_if(m_Items.begin(), m_Items.end(), FindByPointer(pItem));
-    return it == m_Items.end() ? ITEM_NOT_FOUND : std::distance(m_Items.begin(), it);
+    ItemsType::const_iterator it
+        = std::find_if(m_Items.begin(), m_Items.end(), FindByPointer(&rItem));
+    assert(it != m_Items.end() && "item not found");
+    return std::distance(m_Items.begin(), it);
 }
 
 void SvTreeListEntry::SetUserData(OUString* pPtr) { pUserData = pPtr; }

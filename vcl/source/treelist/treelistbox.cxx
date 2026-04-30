@@ -333,7 +333,7 @@ SvLBoxItem::~SvLBoxItem()
 
 int SvLBoxItem::GetWidth(const SvTreeListBox& rView, const SvTreeListEntry* pEntry) const
 {
-    const SvViewDataItem& rViewData = rView.GetViewDataItem(pEntry, this);
+    const SvViewDataItem& rViewData = rView.GetViewDataItem(pEntry, *this);
     int nWidth = rViewData.mnWidth;
     if (nWidth == -1)
     {
@@ -345,7 +345,7 @@ int SvLBoxItem::GetWidth(const SvTreeListBox& rView, const SvTreeListEntry* pEnt
 
 int SvLBoxItem::GetHeight(const SvTreeListBox& rView, const SvTreeListEntry* pEntry) const
 {
-    const SvViewDataItem& rViewData = rView.GetViewDataItem(pEntry, this);
+    const SvViewDataItem& rViewData = rView.GetViewDataItem(pEntry, *this);
     return rViewData.mnHeight;
 }
 
@@ -1116,18 +1116,18 @@ SvViewDataEntry* SvTreeListBox::GetViewDataEntry( SvTreeListEntry const * pEntry
 }
 
 SvViewDataItem& SvTreeListBox::GetViewDataItem(SvTreeListEntry const* pEntry,
-                                               SvLBoxItem const* pItem)
+                                               const SvLBoxItem& rItem)
 {
     return const_cast<SvViewDataItem&>(
-        static_cast<const SvTreeListBox*>(this)->GetViewDataItem(pEntry, pItem));
+        static_cast<const SvTreeListBox*>(this)->GetViewDataItem(pEntry, rItem));
 }
 
 const SvViewDataItem& SvTreeListBox::GetViewDataItem(const SvTreeListEntry* pEntry,
-                                                     const SvLBoxItem* pItem) const
+                                                     const SvLBoxItem& rItem) const
 {
     const SvViewDataEntry* pEntryData = GetViewData(pEntry);
     assert(pEntryData && "Entry not in View");
-    sal_uInt16 nItemPos = pEntry->GetPos(pItem);
+    sal_uInt16 nItemPos = pEntry->GetPos(rItem);
     return pEntryData->GetItem(nItemPos);
 }
 
@@ -2126,7 +2126,7 @@ bool SvTreeListBox::EditingEntry( SvTreeListEntry* )
     return true;
 }
 
-bool SvTreeListBox::EditedEntry(SvTreeListEntry&, const SvLBoxItem*, const OUString&)
+bool SvTreeListBox::EditedEntry(SvTreeListEntry&, const SvLBoxItem&, const OUString&)
 {
     return true;
 }
@@ -2685,7 +2685,7 @@ void SvTreeListBox::EditItemText(SvTreeListEntry& rEntry, SvLBoxString& rItem,
     }
     m_pEdEntry = &rEntry;
     m_pEdItem = &rItem;
-    SvLBoxTab* pTab = GetTab(rEntry, &rItem);
+    SvLBoxTab* pTab = GetTab(rEntry, rItem);
     DBG_ASSERT(pTab,"EditItemText:Tab not found");
 
     auto nItemHeight(rItem.GetHeight(*this, &rEntry));
@@ -2738,12 +2738,12 @@ void SvTreeListBox::ImplEditEntry( SvTreeListEntry* pEntry )
         if (rTmpItem.GetType() != SvLBoxItemType::String)
             continue;
 
-        SvLBoxTab* pTab = GetTab(*pEntry, &rTmpItem);
+        SvLBoxTab* pTab = GetTab(*pEntry, rTmpItem);
         nNextTabPos = -1;
         if( i < nCount - 1 )
         {
             SvLBoxItem& rNextItem = pEntry->GetItem( i + 1 );
-            SvLBoxTab* pNextTab = GetTab(*pEntry, &rNextItem);
+            SvLBoxTab* pNextTab = GetTab(*pEntry, rNextItem);
             nNextTabPos = pNextTab->GetPos();
         }
 
@@ -2772,7 +2772,8 @@ void SvTreeListBox::EditedText( const OUString& rStr )
 {
     if (m_pEdEntry) // we have to check if this entry is null that means that it is removed while editing
     {
-        if (EditedEntry(*m_pEdEntry, m_pEdItem, rStr))
+        assert(m_pEdItem);
+        if (EditedEntry(*m_pEdEntry, *m_pEdItem, rStr))
         {
             m_pEdItem->SetText(rStr);
             m_pModel->InvalidateEntry(m_pEdEntry);
@@ -3516,9 +3517,9 @@ SvLBoxTab* SvTreeListBox::GetFirstDynamicTab() const
     return GetFirstDynamicTab( nDummy );
 }
 
-SvLBoxTab* SvTreeListBox::GetTab(const SvTreeListEntry& rEntry, SvLBoxItem const* pItem) const
+SvLBoxTab* SvTreeListBox::GetTab(const SvTreeListEntry& rEntry, const SvLBoxItem& rItem) const
 {
-    sal_uInt16 nPos = rEntry.GetPos(pItem);
+    sal_uInt16 nPos = rEntry.GetPos(rItem);
     return m_aTabs[nPos].get();
 }
 

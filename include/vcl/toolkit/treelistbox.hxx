@@ -148,11 +148,9 @@ enum class DragDropMode
 {
     NONE            = 0x0000,
     CTRL_MOVE       = 0x0001,
-    APP_COPY        = 0x0004,
     // Entries may be dropped via the uppermost Entry
     // The DropTarget is 0 in that case
     ENABLE_TOP      = 0x0010,
-    ALL             = 0x0015,
 };
 namespace o3tl
 {
@@ -180,12 +178,12 @@ typedef std::tuple<vcl::RenderContext&, const tools::Rectangle&, const SvTreeLis
 struct EntryItemText
 {
     SvTreeListEntry& m_rEntry;
-    const SvLBoxItem* m_pItem;
+    const SvLBoxItem& m_rItem;
     OUString m_sText;
 
-    EntryItemText(SvTreeListEntry& rEntry, const SvLBoxItem* pItem, const OUString& rText)
+    EntryItemText(SvTreeListEntry& rEntry, const SvLBoxItem& rItem, const OUString& rText)
         : m_rEntry(rEntry)
-        , m_pItem(pItem)
+        , m_rItem(rItem)
         , m_sText(rText)
     {
     }
@@ -487,8 +485,8 @@ public:
     sal_uInt32          GetLevelChildCount( const SvTreeListEntry* pParent ) const;
 
     SvViewDataEntry* GetViewDataEntry( SvTreeListEntry const * pEntry ) const;
-    SvViewDataItem& GetViewDataItem(SvTreeListEntry const*, SvLBoxItem const*);
-    const SvViewDataItem& GetViewDataItem(const SvTreeListEntry*, const SvLBoxItem*) const;
+    SvViewDataItem& GetViewDataItem(SvTreeListEntry const*, const SvLBoxItem&);
+    const SvViewDataItem& GetViewDataItem(const SvTreeListEntry*, const SvLBoxItem&) const;
 
     OUString GetEntryTooltip(SvTreeListEntry* pEntry) const;
 
@@ -602,7 +600,7 @@ protected:
     SvLBoxTab*      GetFirstDynamicTab( sal_uInt16& rTabPos ) const;
     SvLBoxTab*      GetFirstTab( SvLBoxTabFlags nFlagMask, sal_uInt16& rTabPos );
     void            GetLastTab( SvLBoxTabFlags nFlagMask, sal_uInt16& rTabPos );
-    SvLBoxTab* GetTab(const SvTreeListEntry&, SvLBoxItem const*) const;
+    SvLBoxTab* GetTab(const SvTreeListEntry&, const SvLBoxItem&) const;
     void            ClearTabList();
 
     virtual void    InitEntry(SvTreeListEntry*, const OUString&, const Image&, const Image&);
@@ -679,7 +677,7 @@ public:
     // Edits the Entry's first StringItem, 0 == Cursor
     void            EditEntry( SvTreeListEntry* pEntry );
     virtual bool    EditingEntry( SvTreeListEntry* pEntry );
-    virtual bool EditedEntry(SvTreeListEntry& rEntry, const SvLBoxItem* pItem,
+    virtual bool EditedEntry(SvTreeListEntry& rEntry, const SvLBoxItem& rItem,
                              const OUString& rNewText);
 
     virtual void    Paint( vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect ) override;

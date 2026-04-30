@@ -30,6 +30,8 @@
 #include <o3tl/sorted_vector.hxx>
 #include <o3tl/string_view.hxx>
 #include <officecfg/Office/Common.hxx>
+#include <SvHeaderTabListBox.hxx>
+#include <ivctrl.hxx>
 #include <salframe.hxx>
 #include <salinst.hxx>
 #include <salvd.hxx>
@@ -43,6 +45,7 @@
 #include <strings.hrc>
 #include <svdata.hxx>
 #include <svimpbox.hxx>
+#include <svtabbx.hxx>
 #include <messagedialog.hxx>
 #include <treeglue.hxx>
 #include <unotools/accessiblerelationsethelper.hxx>
@@ -57,7 +60,6 @@
 #include <vcl/toolkit/fixed.hxx>
 #include <vcl/toolkit/fmtfield.hxx>
 #include <vcl/headbar.hxx>
-#include <vcl/toolkit/ivctrl.hxx>
 #include <vcl/layout.hxx>
 #include <vcl/notebookbar/NotebookBarAddonsItem.hxx>
 #include <vcl/toolkit/MenuButton.hxx>
@@ -66,7 +68,6 @@
 #include <vcl/rendercontext/GetDefaultFontFlags.hxx>
 #include <vcl/sysdata.hxx>
 #include <vcl/toolkit/svlbitm.hxx>
-#include <vcl/toolkit/svtabbx.hxx>
 #include <vcl/tabctrl.hxx>
 #include <vcl/tabpage.hxx>
 #include <vcl/toolbox.hxx>
@@ -3852,22 +3853,17 @@ SalInstanceTreeView::SalInstanceTreeView(SvTabListBox* pTreeView, SalInstanceBui
             pHeaderBar->SetEndDragHdl(LINK(this, SalInstanceTreeView, EndDragHdl));
             pHeaderBar->SetSelectHdl(LINK(this, SalInstanceTreeView, HeaderBarClickedHdl));
         }
-        pHeaderBox->SetEditingEntryHdl(LINK(this, SalInstanceTreeView, EditingEntryHdl));
-        pHeaderBox->SetEditedEntryHdl(LINK(this, SalInstanceTreeView, EditedEntryHdl));
     }
     else
     {
-        static_cast<LclTabListBox&>(*m_xTreeView)
-            .SetModelChangedHdl(LINK(this, SalInstanceTreeView, ModelChangedHdl));
-        static_cast<LclTabListBox&>(*m_xTreeView)
-            .SetStartDragHdl(LINK(this, SalInstanceTreeView, StartDragHdl));
-        static_cast<LclTabListBox&>(*m_xTreeView)
-            .SetEndDragHdl(LINK(this, SalInstanceTreeView, FinishDragHdl));
-        static_cast<LclTabListBox&>(*m_xTreeView)
-            .SetEditingEntryHdl(LINK(this, SalInstanceTreeView, EditingEntryHdl));
-        static_cast<LclTabListBox&>(*m_xTreeView)
-            .SetEditedEntryHdl(LINK(this, SalInstanceTreeView, EditedEntryHdl));
+        LclTabListBox& rLclTabListBox = static_cast<LclTabListBox&>(*m_xTreeView);
+        rLclTabListBox.SetModelChangedHdl(LINK(this, SalInstanceTreeView, ModelChangedHdl));
+        rLclTabListBox.SetStartDragHdl(LINK(this, SalInstanceTreeView, StartDragHdl));
+        rLclTabListBox.SetEndDragHdl(LINK(this, SalInstanceTreeView, FinishDragHdl));
     }
+    m_xTreeView->SetEditingEntryHdl(LINK(this, SalInstanceTreeView, EditingEntryHdl));
+    m_xTreeView->SetEditedEntryHdl(LINK(this, SalInstanceTreeView, EditedEntryHdl));
+
     m_aCheckButtonData.SetLink(LINK(this, SalInstanceTreeView, ToggleHdl));
     m_aRadioButtonData.SetLink(LINK(this, SalInstanceTreeView, ToggleHdl));
 }
@@ -4100,7 +4096,7 @@ void SalInstanceTreeView::bulk_insert_for_each(
         for (size_t j = 0; j < nFixedWidths; ++j)
         {
             SvLBoxItem& rItem = aVclIter.iter->GetItem(j + nExtraCols);
-            SvViewDataItem& rViewDataItem = m_xTreeView->GetViewDataItem(aVclIter.iter, &rItem);
+            SvViewDataItem& rViewDataItem = m_xTreeView->GetViewDataItem(aVclIter.iter, rItem);
             rViewDataItem.mnWidth = (*pFixedWidths)[j];
         }
     }
@@ -5086,7 +5082,7 @@ IMPL_LINK(SalInstanceTreeView, EditingEntryHdl, SvTreeListEntry*, pEntry, bool)
 IMPL_LINK(SalInstanceTreeView, EditedEntryHdl, const EntryItemText&, rEntryItemString, bool)
 {
     const int nColumn
-        = to_external_model(rEntryItemString.m_rEntry.GetPos(rEntryItemString.m_pItem));
+        = to_external_model(rEntryItemString.m_rEntry.GetPos(rEntryItemString.m_rItem));
     return signal_editing_done(IterColText(SalInstanceTreeIter(*this, &rEntryItemString.m_rEntry),
                                            nColumn, rEntryItemString.m_sText));
 }

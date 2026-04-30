@@ -52,8 +52,6 @@ private:
 
     void            RemoveChildEntries(SvTreeListEntry*);
 
-    sal_Int32 GetRoleType() const;
-
 public:
     /** OAccessibleBase needs a valid view
         @param  _rListBox

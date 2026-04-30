@@ -9,6 +9,7 @@
 #pragma once
 
 #include <vcl/builder.hxx>
+#include <vcl/headbar.hxx>
 #include <vcl/weld/Assistant.hxx>
 #include <vcl/weld/Builder.hxx>
 #include <vcl/weld/ColorChooserDialog.hxx>
@@ -49,7 +50,6 @@
 #include <vcl/toolkit/combobox.hxx>
 #include <vcl/tabctrl.hxx>
 #include <vcl/layout.hxx>
-#include <vcl/toolkit/svtabbx.hxx>
 #include <vcl/toolkit/svlbitm.hxx>
 #include <vcl/weld/IconView.hxx>
 #include <o3tl/sorted_vector.hxx>
@@ -57,6 +57,7 @@
 #include "colorpicker.hxx"
 #include "iconview.hxx"
 #include "messagedialog.hxx"
+#include "svtabbx.hxx"
 #include "verticaltabctrl.hxx"
 
 namespace vcl

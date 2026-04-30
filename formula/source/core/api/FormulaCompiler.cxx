@@ -2536,7 +2536,44 @@ void FormulaCompiler::CreateStringFromTokenArray( OUStringBuffer& rBuffer )
             rBuffer.append(GetNativeSymbol(ocErrRef));
             break;
         }
-        if (t->GetOpCode() == ocExternal && t->GetType() == svByte)
+        // #NAME? followed by a ref produces invalid OOXML like "#NAME?$C7"
+        if (FormulaGrammar::isOOXML(meGrammar) && t->GetOpCode() == ocPush
+            && t->GetError() == FormulaError::NoName)
+        {
+            FormulaToken* pNextToken = maArrIterator.PeekNext();
+            if (pNextToken && pNextToken->IsRef())
+            {
+                rBuffer.setLength(0);
+                rBuffer.append(GetNativeSymbol(ocErrName));
+                break;
+            }
+        }
+        if (FormulaGrammar::isOOXML(meGrammar) && t->GetOpCode() == ocOffset
+            && t->GetType() == svByte)
+        {
+            FormulaTokenArrayPlainIterator aTempIter(*pArr);
+            aTempIter.Jump(maArrIterator.GetIndex());
+            FormulaToken* pNext = aTempIter.Next();
+            if (pNext && pNext->GetOpCode() == ocOpen
+                && pNext->GetType() == svSep)
+            {
+                FormulaToken* pNext2 = aTempIter.Next();
+                if (pNext2 && pNext2->GetOpCode() == ocPush)
+                {
+                    StackVar eType = pNext2->GetType();
+                    if (eType == svString || eType == svDouble)
+                    {
+                        rBuffer.append(GetNativeSymbol(t->GetOpCode()));
+                        rBuffer.append(GetNativeSymbol(pNext->GetOpCode()));
+                        rBuffer.append(GetNativeSymbol(ocErrRef));
+                        maArrIterator.Jump(aTempIter.GetIndex());
+                        t = maArrIterator.Next();
+                        continue;
+                    }
+                }
+            }
+        }
+        if ((t->GetOpCode() == ocExternal || t->GetOpCode() == ocPush) && t->GetType() == svByte)
         {
             rBuffer.append(GetNativeSymbol(ocErrRef));
             t = maArrIterator.Next();
