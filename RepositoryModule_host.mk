@@ -97,6 +97,7 @@ $(eval $(call gb_Module_add_moduledirs,libreoffice,\
 	instsetoo_native \
 	io \
 	javaunohelper \
+	$(if $(ENABLE_QUICKJS),jsuno) \
 	jurt \
 	jvmaccess \
 	jvmfwk \

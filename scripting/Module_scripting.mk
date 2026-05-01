@@ -37,12 +37,18 @@ $(eval $(call gb_Module_add_targets,scripting,\
 		Package_ScriptsPython \
 		Pyuno_mailmerge \
 	) \
+	$(if $(ENABLE_QUICKJS),Library_jsprov) \
 	Library_basprov \
 	Library_dlgprov \
 	Library_protocolhandler \
+	Library_singleprov \
 	Library_scriptframe \
 	Library_stringresource \
 	Library_vbaevents \
+))
+
+$(eval $(call gb_Module_add_check_targets,scripting,\
+    $(if $(ENABLE_QUICKJS),CppunitTest_scripting_jsprov) \
 ))
 
 endif

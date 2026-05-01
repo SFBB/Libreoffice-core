@@ -436,12 +436,14 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,ooo, \
 	i18npool \
 	i18nsearch \
 	$(if $(ENABLE_JAVA),jdbc) \
+	$(if $(ENABLE_QUICKJS),jsuno) \
 	$(if $(filter WNT,$(OS)),jumplist) \
 	$(if $(ENABLE_LDAP),ldapbe2) \
 	$(if $(filter WNT,$(OS)),WinUserInfoBe) \
 	localebe1 \
 	log \
 	lng \
+	$(call gb_Helper_optional,SCRIPTING,$(if $(ENABLE_QUICKJS),jsprov)) \
 	$(if $(filter $(OS),MACOSX),macbe1) \
 	$(if $(MERGELIBS),merged) \
 	migrationoo2 \
@@ -470,6 +472,7 @@ $(eval $(call gb_Helper_register_libraries_for_install,OOOLIBS,ooo, \
 	sd \
 	sdd \
 	sfx \
+	singleprov \
 	slideshow \
 	sot \
 	$(if $(or $(DISABLE_GUI),$(ENABLE_WASM_STRIP_SPLASH)),,spl) \
