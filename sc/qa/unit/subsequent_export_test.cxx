@@ -2384,6 +2384,59 @@ CPPUNIT_TEST_FIXTURE(ScExportTest, testColumnBounds)
                        u"0"); // earlier -1
 }
 
+CPPUNIT_TEST_FIXTURE(ScExportTest, testForumMsoEn4258437)
+{
+    createScDoc("xls/forum-mso-en4-258437.xls");
+    save(TestFilter::XLSX);
+
+    xmlDocUniquePtr pCache = parseExport(u"xl/pivotCache/pivotCacheDefinition1.xml"_ustr);
+    CPPUNIT_ASSERT(pCache);
+
+    // earlier containsInteger was missing for cacheField="Client Bought  Amount"
+    assertXPath(pCache, "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]/x:sharedItems",
+                "containsInteger", u"1");
+
+    // all integer values
+    assertXPath(pCache,
+                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]/x:sharedItems/x:n[1]", "v",
+                u"550");
+    assertXPath(pCache,
+                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]/x:sharedItems/x:n[2]", "v",
+                u"1100");
+    assertXPath(pCache,
+                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]/x:sharedItems/x:n[3]", "v",
+                u"2200");
+    assertXPath(pCache,
+                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]/x:sharedItems/x:n[4]", "v",
+                u"5500");
+    assertXPath(pCache,
+                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]/x:sharedItems/x:n[5]", "v",
+                u"11000");
+    assertXPath(pCache,
+                "/x:pivotCacheDefinition/x:cacheFields/x:cacheField[5]/x:sharedItems/x:n[6]", "v",
+                u"14300");
+}
+
+CPPUNIT_TEST_FIXTURE(ScExportTest, testInvalidSheetNameLength)
+{
+    createScDoc("xls/forum-mso-en4-109082.xls");
+    save(TestFilter::XLSX);
+
+    xmlDocUniquePtr pDoc = parseExport(u"xl/workbook.xml"_ustr);
+    CPPUNIT_ASSERT(pDoc);
+
+    pDoc = parseExport(u"xl/externalLinks/externalLink1.xml"_ustr);
+    CPPUNIT_ASSERT(pDoc);
+    assertXPath(pDoc, "/x:externalLink/x:externalBook/x:sheetNames/x:sheetName[1]", "val",
+                u".xls.xls.xls.xls.xls.xls.xlsShe");
+
+    pDoc = parseExport(u"xl/workbook.xml"_ustr);
+    CPPUNIT_ASSERT(pDoc);
+    assertXPathContent(pDoc, "/x:workbook/x:definedNames/x:definedName[1]",
+                       u"OFFSET('[1].xls.xls.xls.xls.xls.xls.xlsS-1'!$A$2,0,0,(COUNTA('[1].xls.xls."
+                       u"xls.xls.xls.xls.xlsS-1'!$A$1:$A$1048576)-1),1)");
+}
+
 CPPUNIT_PLUGIN_IMPLEMENT();
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

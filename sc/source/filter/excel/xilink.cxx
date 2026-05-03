@@ -32,6 +32,8 @@
 #include <scmatrix.hxx>
 #include <svl/sharedstringpool.hxx>
 #include <sal/log.hxx>
+#include <defaultsoptions.hxx>
+#include <scmod.hxx>
 
 #include <vector>
 #include <memory>
@@ -615,6 +617,36 @@ void XclImpSupbookTab::LoadCachedValues( const ScExternalRefCache::TableTypeRef&
 
 // External document (SUPBOOK) ================================================
 
+static OUString lcl_sanitize_table_name(const OUString& rName)
+{
+    const sal_Int32 nLen = rName.getLength();
+    OUStringBuffer aNameBuffer;
+    aNameBuffer.ensureCapacity(nLen);
+
+    for (sal_Int32 i = 0; i < nLen; ++i)
+    {
+        const sal_Unicode c = rName[i];
+        switch (c)
+        {
+            case ':':
+            case '\\':
+            case '/':
+            case '?':
+            case '*':
+            case '[':
+            case ']':
+                break;
+            case '\'':
+                if (i == 0 || i == nLen - 1) // not allowed as first or last character
+                    break;
+                [[fallthrough]];
+            default:
+                aNameBuffer.append(c);
+        }
+    }
+    return aNameBuffer.makeStringAndClear();
+}
+
 XclImpSupbook::XclImpSupbook( XclImpStream& rStrm ) :
     XclImpRoot( rStrm.GetRoot() ),
     meType( XclSupbookType::Unknown ),
@@ -657,9 +689,14 @@ XclImpSupbook::XclImpSupbook( XclImpStream& rStrm ) :
             nSBTabCnt = nMaxRecords;
         }
 
+        const ScDefaultsOptions& rOpt = ScModule::get()->GetDefaultsOptions();
+        const OUString aStrTable = rOpt.GetInitTabPrefix();
+
         for( sal_uInt16 nSBTab = 0; nSBTab < nSBTabCnt; ++nSBTab )
         {
-            OUString aTabName( rStrm.ReadUniString() );
+            OUString aTabName = lcl_sanitize_table_name( rStrm.ReadUniString() );
+            if (aTabName.isEmpty())
+                aTabName = aStrTable + OUString::number(static_cast<sal_Int32>(nSBTab));
             maSupbTabList.push_back( std::make_unique<XclImpSupbookTab>( aTabName ) );
         }
     }

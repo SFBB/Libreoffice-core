@@ -41,6 +41,8 @@
 using namespace ::oox;
 using namespace ::com::sun::star;
 
+constexpr int MAX_TAB_NAME_LENGTH = 31;
+
 // *** Helper classes ***
 
 namespace {
@@ -347,7 +349,6 @@ void XclExpName::SaveXml( XclExpXmlStream& rStrm )
     // (1 based) to get the sheetid as of the exported document's perspective.
     SCTAB nXlsxTab = mnXclTab - 1;
     OUString sName = ScCompiler::SanitizeDefinedName(maOrigName, GetDoc());
-
     // Regenerate symbol for external references
     if (ScTokenArray* pScTokArr = GetScTokenArray())
     {
@@ -371,6 +372,41 @@ void XclExpName::SaveXml( XclExpXmlStream& rStrm )
             }
             else if (t->IsExternalRef())
             {
+                // excel doesn't allow sheet names having length > 31
+                do
+                {
+                    if (t->IsExternalRef())
+                    {
+                        formula::StackVar eType = t->GetType();
+                        if (eType != formula::svExternalName  && t->GetString().getLength() > MAX_TAB_NAME_LENGTH)
+                        {
+                            const OUString& rSheetName = t->GetString().getString();
+                            const auto& aTruncatedMap
+                                = GetRoot().GetGlobalLinkManager().GetTruncatedSheetMap(t->GetIndex());
+                            if (auto it = aTruncatedMap.find(rSheetName); it != aTruncatedMap.end())
+                            {
+                                formula::FormulaToken* pNewToken = nullptr;
+                                if (eType == formula::svExternalSingleRef)
+                                {
+                                    pNewToken = new ScExternalSingleRefToken(
+                                        t->GetIndex(), svl::SharedString(it->second),
+                                        *t->GetSingleRef());
+                                }
+                                else if (eType == formula::svExternalDoubleRef)
+                                {
+                                    pNewToken = new ScExternalDoubleRefToken(
+                                        t->GetIndex(), svl::SharedString(it->second),
+                                        *t->GetDoubleRef());
+                                }
+
+                                if (pNewToken)
+                                    pScTokArr->ReplaceToken(aIter.GetIndex() - 1, pNewToken,
+                                                            formula::FormulaTokenArray::CODE_ONLY);
+                            }
+                        }
+                    }
+                    t = aIter.Next();
+                } while (t);
                 msSymbol = XclXmlUtils::ToOUString(GetCompileFormulaContext(), GetPos(), pScTokArr);
                 break;
             }
@@ -705,6 +741,17 @@ sal_uInt16 XclExpNameManagerImpl::CreateName( SCTAB nTab, const ScRangeData& rRa
             for (sal_uInt16 i = 0; i < nLen; ++i)
             {
                 formula::FormulaToken* pToken = pFormulaArray[i];
+                // Skip references preceded by '!' (ocBad) - these are
+                // current-sheet references (e.g. !D3 in CELL("filename",!D3))
+                // that will be wrongly converted.
+                if (pToken && pToken->GetOpCode() == ocBad
+                    && pToken->GetString().getString() == "!")
+                {
+                    // Skip the following reference token
+                    if (i + 1 < nLen)
+                        ++i;
+                    continue;
+                }
                 lcl_EnsureAbs3DToken(nLocalTab, pToken);
             }
 
