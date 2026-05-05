@@ -2544,7 +2544,8 @@ SfxObjectShellRef ScExternalRefManager::loadSrcDocument(sal_uInt16 nFileId, OUSt
         ScDocumentLoader::GetFilterName(aFile, rFilter, aOptions, true, false);
     std::shared_ptr<const SfxFilter> pFilter = ScDocShell::Factory().GetFilterContainer()->GetFilter4FilterName(rFilter);
 
-    if (pFileData->maRelativeName.isEmpty() && !pFileData->mbPathMissing)
+    if (pFileData->maRelativeName.isEmpty() && !pFileData->mbPathMissing
+        && !pFileData->mbXlStartup)
     {
         // Generate a relative file path.
         INetURLObject aBaseURL(getOwnDocumentName());
@@ -2724,7 +2725,7 @@ void ScExternalRefManager::addFilesToLinkManager()
 
 void ScExternalRefManager::SrcFileData::maybeCreateRealFileName(std::u16string_view rOwnDocName)
 {
-    if (mbPathMissing || maRelativeName.isEmpty())
+    if (mbPathMissing || mbXlStartup || maRelativeName.isEmpty())
         // No relative path given.  Nothing to do.
         return;
 
@@ -2824,6 +2825,18 @@ sal_uInt16 ScExternalRefManager::convertFileIdToUsedFileId(sal_uInt16 nFileId)
         return nFileId;
     else
         return maConvertFileIdToUsedFileId[nFileId];
+}
+
+void ScExternalRefManager::addDrawingMacros(sal_uInt16 nFileId, const OUString& rName)
+{
+    if (rName.isEmpty())
+        return;
+    maDrawingMacros[nFileId].insert(rName);
+}
+
+const std::map<sal_uInt16, std::set<OUString>>& ScExternalRefManager::getDrawingMacros() const
+{
+    return maDrawingMacros;
 }
 
 void ScExternalRefManager::setSkipUnusedFileIds(std::vector<sal_uInt16>& rExternFileIds)
@@ -3123,6 +3136,20 @@ void ScExternalRefManager::setPathMissing(sal_uInt16 nFileId)
     maSrcFiles[nFileId].mbPathMissing = true;
 }
 
+bool ScExternalRefManager::isXlStartup(sal_uInt16 nFileId)
+{
+    if (nFileId >= maSrcFiles.size())
+        return true;
+    return maSrcFiles[nFileId].mbXlStartup;
+}
+
+void ScExternalRefManager::setXlStartup(sal_uInt16 nFileId)
+{
+    if (nFileId >= maSrcFiles.size())
+        return;
+    maSrcFiles[nFileId].mbXlStartup = true;
+}
+
 void ScExternalRefManager::clear()
 {
     for (auto& rEntry : maLinkListeners)
@@ -3149,7 +3176,7 @@ void ScExternalRefManager::resetSrcFileData(const OUString& rBaseFileUrl)
 {
     for (auto& rSrcFile : maSrcFiles)
     {
-        if (rSrcFile.mbPathMissing)
+        if (rSrcFile.mbPathMissing || rSrcFile.mbXlStartup)
             continue;
 
         // Re-generate relative file name from the absolute file name.

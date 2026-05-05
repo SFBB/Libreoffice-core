@@ -33,6 +33,7 @@
 #include <formula/types.hxx>
 #include <tools/solar.h>
 
+#include <map>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
@@ -434,6 +435,7 @@ public:
         OUString maFilterName;
         OUString maFilterOptions;
         bool mbPathMissing = false;  /// true if external relation is (xlPathMissing).
+        bool mbXlStartup = false;    /// true if path is relative to XLSTART folder.
 
         void maybeCreateRealFileName(std::u16string_view rOwnDocName);
     };
@@ -590,6 +592,10 @@ public:
     SC_DLLPUBLIC void convertToAbsName(OUString& rFile) const;
     SC_DLLPUBLIC sal_uInt16 getExternalFileId(const OUString& rFile);
 
+    /** Stores the drawing-shape macro */
+    SC_DLLPUBLIC void addDrawingMacros(sal_uInt16 nFileId, const OUString& rName);
+    SC_DLLPUBLIC const std::map<sal_uInt16, std::set<OUString>>& getDrawingMacros() const;
+
     /**
      * It returns a pointer to the name of the URI associated with a given
      * external file ID.  In case the original document has moved, it returns
@@ -650,6 +656,9 @@ public:
 
     SC_DLLPUBLIC bool isPathMissing(sal_uInt16 nFileId);
     void setPathMissing(sal_uInt16 nFileId);
+
+    SC_DLLPUBLIC bool isXlStartup(sal_uInt16 nFileId);
+    SC_DLLPUBLIC void setXlStartup(sal_uInt16 nFileId);
 
     void clear();
 
@@ -865,6 +874,10 @@ private:
 
     bool mbSkipUnusedFileIds = false;
     std::vector<sal_uInt16> maConvertFileIdToUsedFileId;
+
+    /** External references discovered in drawing-shape macros.
+        File ID is 0-based (matches getExternalFileId). */
+    std::map<sal_uInt16, std::set<OUString>> maDrawingMacros;
 
     bool mbDocTimerEnabled:1;
 

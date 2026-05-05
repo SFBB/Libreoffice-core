@@ -74,6 +74,7 @@ void DiagramData_oox::writeDiagramReplacement(DrawingML& rOriginalDrawingML, con
     ::oox::core::XmlFilterBase* pOriginalFB(rOriginalDrawingML.GetFB());
     ShapeExport aShapeExport(XML_dsp, rTarget, nullptr, pOriginalFB, rOriginalDrawingML.GetDocumentType(), rOriginalDrawingML.GetTextExport(), true);
     aShapeExport.setDiagaramExport(true);
+    aShapeExport.setDiagaramReplacementExport(true);
     const sal_Int32 nCount(xShapes->getCount());
 
     // write header infos
@@ -85,6 +86,13 @@ void DiagramData_oox::writeDiagramReplacement(DrawingML& rOriginalDrawingML, con
         FSNS(XML_xmlns, XML_dsp), aNsDsp,
         FSNS(XML_xmlns, XML_a), aNsDml);
     rTarget->startElementNS(XML_dsp, XML_spTree);
+
+    // nvGrpSpPr and grpSpPr elements are mandatory even if empty.
+    rTarget->startElementNS(XML_dsp, XML_nvGrpSpPr);
+    rTarget->singleElementNS(XML_dsp, XML_cNvPr, XML_id, "0", XML_name, "");
+    rTarget->singleElementNS(XML_dsp, XML_cNvGrpSpPr);
+    rTarget->endElementNS(XML_dsp, XML_nvGrpSpPr);
+    rTarget->singleElementNS(XML_dsp, XML_grpSpPr);
 
     for ( sal_Int32 i = 0; i < nCount; ++i )
     {
@@ -122,6 +130,10 @@ void DiagramData_oox::writeDiagramData(DrawingML& rOriginalDrawingML, const sax_
     rTarget->startElementNS(XML_dgm, XML_dataModel,
         FSNS(XML_xmlns, XML_dgm), aNsDmlDiagram,
         FSNS(XML_xmlns, XML_a), aNsDml);
+
+    // need to use a full ShapeExport to get the correct DocumentType suppport if SW export
+    ShapeExport aShapeExport(XML_dsp, rTarget, nullptr, pOriginalFB, rOriginalDrawingML.GetDocumentType(), rOriginalDrawingML.GetTextExport(), true);
+    aShapeExport.setDiagaramExport(true);
 
     // write PointList
     rTarget->startElementNS(XML_dgm, XML_ptLst);
@@ -181,12 +193,24 @@ void DiagramData_oox::writeDiagramData(DrawingML& rOriginalDrawingML, const sax_
             }
         }
 
+        // <spPr> element is before <t> element
+        if (bWriteFill)
+        {
+            rTarget->startElementNS(XML_dgm, XML_spPr);
+            aShapeExport.WriteFill( xProps, xAssociatedShape->getSize());
+
+            rTarget->endElementNS(XML_dgm, XML_spPr);
+        }
+        else
+        {
+            // write empty fill
+            rTarget->singleElementNS(XML_dgm, XML_spPr);
+        }
+
         if (bWriteText)
         {
             rTarget->startElementNS(XML_dgm, XML_t);
-            DrawingML aTempML(rTarget, pOriginalFB);
-            aTempML.setDiagaramExport(true);
-            aTempML.WriteText(xAssociatedShape, false, true, XML_a);
+            aShapeExport.WriteText(xAssociatedShape, false, true, XML_a);
             rTarget->endElementNS(XML_dgm, XML_t);
         }
         else
@@ -209,22 +233,6 @@ void DiagramData_oox::writeDiagramData(DrawingML& rOriginalDrawingML, const sax_
                 rTarget->endElementNS(XML_a, XML_p);
                 rTarget->endElementNS(XML_dgm, XML_t);
             }
-        }
-
-        if (bWriteFill)
-        {
-            rTarget->startElementNS(XML_dgm, XML_spPr);
-
-            DrawingML aTempML(rTarget, pOriginalFB);
-            aTempML.setDiagaramExport(true);
-            aTempML.WriteFill( xProps, xAssociatedShape->getSize());
-
-            rTarget->endElementNS(XML_dgm, XML_spPr);
-        }
-        else
-        {
-            // write empty fill
-            rTarget->singleElementNS(XML_dgm, XML_spPr);
         }
 
         rTarget->endElementNS(XML_dgm, XML_pt);
@@ -255,12 +263,9 @@ void DiagramData_oox::writeDiagramData(DrawingML& rOriginalDrawingML, const sax_
 
     if (xBgShape.is())
     {
-        // if we have the BGShape as XShape, export using a temp DrawingML which uses
-        // the target file combined with the XmlFilterBase representing the ongoing Diagram export
-        DrawingML aTempML(rTarget, pOriginalFB);
-        aTempML.setDiagaramExport(true);
+        // use created temporary ShapeExport with correct DocumentType
         uno::Reference<beans::XPropertySet> xProps(xBgShape, uno::UNO_QUERY);
-        aTempML.WriteFill( xProps, xBgShape->getSize());
+        aShapeExport.WriteFill( xProps, xBgShape->getSize());
     }
 
     rTarget->endElementNS(XML_dgm, XML_bg);

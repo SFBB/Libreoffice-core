@@ -114,6 +114,8 @@ public:
     virtual OUString getTransformedString(const OUString& rURL) const;
 
     virtual bool isExternalURL(const OUString& rURL) const;
+
+    virtual sal_Int32 getExternalLinkIndex(const OUString& rUrl) const;
 };
 
 // Our rotation is counter-clockwise and is in 100ths of a degree.
@@ -314,6 +316,7 @@ protected:
 
     /// True when DiagramReplacementVisualization is exported
     bool mbDiagaramExport;
+    bool mbDiagaramReplacementExport;
 
     bool mbEmbedFonts = false;
 
@@ -374,6 +377,10 @@ public:
     DocumentType GetDocumentType() const { return meDocumentType; }
     /// The application-specific text exporter callback, if there is one.
     DMLTextExport* GetTextExport() { return mpTextExport; }
+
+    /// get/set mbDiagaramReplacementExport
+    void setDiagaramReplacementExport(bool bNew) { mbDiagaramReplacementExport = bNew; }
+    bool isDiagaramReplacementExport() const { return mbDiagaramReplacementExport;}
 
     /// get/set mbDiagaramExport
     void setDiagaramExport(bool bNew) { mbDiagaramExport = bNew; }
