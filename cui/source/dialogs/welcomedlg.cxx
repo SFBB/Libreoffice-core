@@ -67,7 +67,7 @@ WelcomeDialog::WelcomeDialog(weld::Window* pParent, const bool bIsFirstStart)
 void WelcomeDialog::ImplDestroy()
 {
     m_xTabCtrl->set_current_page(sNewsTab); // ensure next start with the first page
-    if (!m_xShowAgain->get_active())
+    if (m_xShowAgain->get_active())
     {
         std::shared_ptr<comphelper::ConfigurationChanges> xChanges(
             comphelper::ConfigurationChanges::create());
@@ -86,7 +86,7 @@ void WelcomeDialog::PageCreated(const OUString& rId, SfxTabPage& rPage)
     }
     else if (rId == sAppearanceTab)
     {
-        rPage.getAdditionalProperties().emplace(u"HideAdvancedControls"_ustr, css::uno::Any(true));
+        rPage.getAdditionalProperties().emplace(u"IsWelcomeDialog"_ustr, css::uno::Any(true));
     }
 }
 

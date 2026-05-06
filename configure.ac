@@ -4504,14 +4504,15 @@ find_ucrt()
     reg_get_value_32 "HKEY_LOCAL_MACHINE/SOFTWARE/Microsoft/Microsoft SDKs/Windows/v10.0" "InstallationFolder"
     if test -n "$regvalue"; then
         PathFormat "$regvalue"
-        UCRTSDKDIR=$formatted_path_unix
+        UCRTSDKDIR=$formatted_path
+        UCRTSDKDIR_unix=$formatted_path_unix
         reg_get_value_32 "HKEY_LOCAL_MACHINE/SOFTWARE/Microsoft/Microsoft SDKs/Windows/v10.0" "ProductVersion"
         if test -n "$regvalue"; then
             UCRTVERSION="$regvalue".0
         fi
 
         # Rest if not exist
-        if ! test -d "${UCRTSDKDIR}Include/$UCRTVERSION/ucrt"; then
+        if ! test -d "${UCRTSDKDIR_unix}Include/$UCRTVERSION/ucrt"; then
           UCRTSDKDIR=
         fi
     fi
@@ -4520,12 +4521,13 @@ find_ucrt()
         ide_env_file="${ide_env_dir}VsDevCmd.bat"
         if test -f "$ide_env_file"; then
             PathFormat "$(win_get_env_from_vsdevcmdbat UniversalCRTSdkDir)"
-            UCRTSDKDIR=$formatted_path_unix
+            UCRTSDKDIR=$formatted_path
+            UCRTSDKDIR_unix=$formatted_path_unix
             UCRTVERSION=$(win_get_env_from_vsdevcmdbat UCRTVersion)
             dnl Hack needed at least by tml:
             if test "$UCRTVERSION" = 10.0.15063.0 \
-                -a ! -f "${UCRTSDKDIR}Include/10.0.15063.0/um/sqlext.h" \
-                -a -f "${UCRTSDKDIR}Include/10.0.14393.0/um/sqlext.h"
+                -a ! -f "${UCRTSDKDIR_unix}Include/10.0.15063.0/um/sqlext.h" \
+                -a -f "${UCRTSDKDIR_unix}Include/10.0.14393.0/um/sqlext.h"
             then
                 UCRTVERSION=10.0.14393.0
             fi
@@ -6719,7 +6721,7 @@ if test -z "$TARFILE_LOCATION"; then
 else
     AbsolutePath "$TARFILE_LOCATION"
     PathFormat "${absolute_path}"
-    TARFILE_LOCATION="${formatted_path_unix}"
+    TARFILE_LOCATION="${formatted_path}"
 fi
 AC_SUBST(TARFILE_LOCATION)
 
@@ -9473,7 +9475,7 @@ _ACEOF
         fi
     fi
     PathFormat "$JAVA_HOME"
-    JAVA_HOME="$formatted_path_unix"
+    JAVA_HOME="$formatted_path"
 fi
 
 if test -z "$JAWTLIB" -a -n "$ENABLE_JAVA" -a "$_os" != Android -a \
@@ -16345,10 +16347,12 @@ else
         fi
         pathmunge "$WINDOWS_SDK_BINDIR_NO_ARCH/$WIN_BUILD_ARCH" "before"
         if test "$ENABLE_JAVA" != ""; then
-            if test -d "$JAVA_HOME/jre/bin/client"; then
+            PathFormat "$JAVA_HOME"
+            JAVA_HOME_unix="$formatted_path_unix"
+            if test -d "$JAVA_HOME_unix/jre/bin/client"; then
                 pathmunge "$JAVA_HOME/jre/bin/client" "before"
             fi
-            if test -d "$JAVA_HOME/jre/bin/hotspot"; then
+            if test -d "$JAVA_HOME_unix/jre/bin/hotspot"; then
                 pathmunge "$JAVA_HOME/jre/bin/hotspot" "before"
             fi
             pathmunge "$JAVA_HOME/bin" "before"
@@ -16399,9 +16403,7 @@ if test -n "$WSL_ONLY_AS_HELPER"; then
     SRC_ROOT="$formatted_path"
     PathFormat "$BUILDDIR"
     BUILDDIR="$formatted_path"
-    # TARFILE_LOCATION and JAVAINTERPRETER are used in the validator scripts
-    PathFormat "$TARFILE_LOCATION"
-    TARFILE_LOCATION="$formatted_path"
+    # JAVAINTERPRETER is used in the validator scripts
     PathFormat "$JAVAINTERPRETER"
     JAVAINTERPRETER="$formatted_path"
     # git-bash has (gnu) tar, curl and sha256sum
