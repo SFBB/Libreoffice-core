@@ -437,7 +437,7 @@ SvTreeListBox::SvTreeListBox(vcl::Window* pParent, WinBits nWinStyle) :
     m_nTreeFlags = SvTreeFlags::RECALCTABS;
     m_nIndent = SV_LBOX_DEFAULT_INDENT_PIXEL;
     m_nEntryHeightOffs = SV_ENTRYHEIGHTOFFS_PIXEL;
-    m_pImpl.reset(new SvImpLBox(*this, GetModel(), GetStyle()));
+    m_pImpl.reset(new SvImpLBox(*this, *m_pModel, GetStyle()));
 
     mbContextBmpExpanded = true;
     m_nContextBmpWidthMax = 0;
@@ -450,8 +450,6 @@ SvTreeListBox::SvTreeListBox(vcl::Window* pParent, WinBits nWinStyle) :
     InitSettings();
     ImplInitStyle();
     SetTabs();
-
-    m_pImpl->SetModel(m_pModel.get());
 
     SetSublistOpenWithLeftRight();
 }
@@ -1603,7 +1601,7 @@ void SvTreeListBox::dispose()
     }
     if( mpImpl )
     {
-        ClearTabList();
+        m_aTabs.clear();
 
         m_pEdCtrl.reset();
 
@@ -1717,7 +1715,7 @@ void SvTreeListBox::SetTabs()
     for (size_t n = 0; n < m_aTabs.size(); ++n)
         hiddenState[n] = m_aTabs[n]->IsHidden();
 
-    ClearTabList();
+    m_aTabs.clear();
 
     TreeListButtonType eButtonType = TreeListButtonType::NO_BUTTONS;
     if (!(m_nTreeFlags & SvTreeFlags::CHKBTN))
@@ -2821,7 +2819,7 @@ SvTreeListEntry* SvTreeListBox::GetEntry( const Point& rPos, bool bHit ) const
     if( pEntry && bHit )
     {
         tools::Long nLine = m_pImpl->GetEntryLine(pEntry);
-        if (!(m_pImpl->EntryReallyHit(pEntry, rPos, nLine)))
+        if (!(m_pImpl->EntryReallyHit(*pEntry, rPos, nLine)))
             return nullptr;
     }
     return pEntry;
@@ -3522,12 +3520,6 @@ SvLBoxTab* SvTreeListBox::GetTab(const SvTreeListEntry& rEntry, const SvLBoxItem
     sal_uInt16 nPos = rEntry.GetPos(rItem);
     return m_aTabs[nPos].get();
 }
-
-void SvTreeListBox::ClearTabList()
-{
-    m_aTabs.clear();
-}
-
 
 Size SvTreeListBox::GetOutputSizePixel() const
 {

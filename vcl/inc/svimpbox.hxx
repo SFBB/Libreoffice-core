@@ -37,11 +37,11 @@ namespace comphelper::string { class NaturalStringSorter; }
 
 class ImpLBSelEng final : public FunctionSet
 {
-    SvImpLBox*          pImp;
+    SvImpLBox& m_rImp;
     VclPtr<SvTreeListBox>  pView;
 
 public:
-    ImpLBSelEng( SvImpLBox* pImp, SvTreeListBox* pView );
+    ImpLBSelEng(SvImpLBox& rImp, SvTreeListBox& rView);
     virtual ~ImpLBSelEng() override;
     void        BeginDrag() override;
     void        CreateAnchor() override;
@@ -96,7 +96,7 @@ friend class SvTreeListBox;
 friend class SalInstanceTreeView;
 friend class IconView;
 private:
-    SvTreeList*          m_pTree;
+    SvTreeList& m_rTree;
     SvTreeListEntry*     m_pAnchor;
     SvTreeListEntry*     m_pMostRightEntry;
     SvLBoxButton*        m_pActiveButton;
@@ -165,7 +165,7 @@ private:
     bool                ButtonUpCheckCtrl( const MouseEvent& rMEvt );
     bool                ButtonDownCheckExpand( const MouseEvent&, SvTreeListEntry* );
 
-    bool                EntryReallyHit(SvTreeListEntry* pEntry, const Point& rPos, tools::Long nLine);
+    bool EntryReallyHit(SvTreeListEntry& rEntry, const Point& rPos, tools::Long nLine);
     void                InitScrollBarBox();
     SvLBoxTab*          NextTab( SvLBoxTab const * );
 
@@ -228,13 +228,12 @@ protected:
     DECL_LINK( MyUserEvent,  void*, void);
 
 public:
-    SvImpLBox(SvTreeListBox& rView, SvTreeList*, WinBits nWinStyle);
+    SvImpLBox(SvTreeListBox& rView, SvTreeList& rTree, WinBits nWinStyle);
     virtual ~SvImpLBox();
 
     void                Clear();
     void                SetStyle( WinBits i_nWinStyle );
     void                SetNoAutoCurEntry( bool b );
-    void                SetModel( SvTreeList* pModel ) { m_pTree = pModel;}
 
     void                EntryInserted( SvTreeListEntry*);
     void                RemovingEntry( SvTreeListEntry* pEntry );
