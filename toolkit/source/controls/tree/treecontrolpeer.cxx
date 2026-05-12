@@ -948,16 +948,9 @@ bool TreeControlPeer::onEditedEntry( UnoTreeListEntry const * pEntry, const OUSt
     return true;
 }
 
-
-// css::awt::tree::TreeDataModelListener
-
-
 void SAL_CALL TreeControlPeer::treeNodesChanged( const css::awt::tree::TreeDataModelEvent& rEvent )
 {
     SolarMutexGuard aGuard;
-
-    if( mnEditLock != 0 )
-        return;
 
     updateTree( rEvent );
 }
@@ -966,18 +959,12 @@ void SAL_CALL TreeControlPeer::treeNodesInserted( const css::awt::tree::TreeData
 {
     SolarMutexGuard aGuard;
 
-    if( mnEditLock != 0 )
-        return;
-
     updateTree( rEvent );
 }
 
 void SAL_CALL TreeControlPeer::treeNodesRemoved( const css::awt::tree::TreeDataModelEvent& rEvent )
 {
     SolarMutexGuard aGuard;
-
-    if( mnEditLock != 0 )
-        return;
 
     updateTree( rEvent );
 }
@@ -986,30 +973,18 @@ void SAL_CALL TreeControlPeer::treeStructureChanged( const css::awt::tree::TreeD
 {
     SolarMutexGuard aGuard;
 
-    if( mnEditLock != 0 )
-        return;
-
     updateTree( rEvent );
 }
 
 void TreeControlPeer::updateTree( const css::awt::tree::TreeDataModelEvent& rEvent )
 {
+    if (mnEditLock != 0)
+        return;
+
     UnoTreeListBoxImpl& rTree = getTreeListBoxOrThrow();
 
-    Sequence< Reference< XTreeNode > > Nodes;
     Reference< XTreeNode > xNode( rEvent.ParentNode );
-    if( !xNode.is() && Nodes.hasElements() )
-    {
-        xNode = Nodes[0];
-    }
-
-    if( xNode.is() )
-        updateNode( rTree, xNode );
-}
-
-void TreeControlPeer::updateNode( UnoTreeListBoxImpl const & rTree, const Reference< XTreeNode >& xNode )
-{
-    if( !xNode.is() )
+    if (!xNode.is())
         return;
 
     UnoTreeListEntry* pNodeEntry = getEntry( xNode, false );

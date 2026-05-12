@@ -231,17 +231,16 @@ sal_uInt32 SvTreeList::Move(SvTreeListEntry* pSrcEntry,SvTreeListEntry* pTargetP
     return nRetVal;
 }
 
-sal_uInt32 SvTreeList::Copy(SvTreeListEntry* pSrcEntry,SvTreeListEntry* pTargetParent,sal_uInt32 nListPos)
+sal_uInt32 SvTreeList::Copy(SvTreeListEntry& rSrcEntry, SvTreeListEntry* pTargetParent,
+                            sal_uInt32 nListPos)
 {
-    // pDest may be 0!
-    DBG_ASSERT(pSrcEntry,"Entry?");
     if ( !pTargetParent )
         pTargetParent = m_pRootItem.get();
 
     m_bAbsPositionsValid = false;
 
     sal_uInt32 nCloneCount = 0;
-    SvTreeListEntry* pClonedEntry = Clone( pSrcEntry, nCloneCount );
+    SvTreeListEntry* pClonedEntry = Clone(rSrcEntry, nCloneCount);
     m_nEntryCount += nCloneCount;
 
     SvTreeListEntries& rDst = pTargetParent->m_Children;
@@ -317,22 +316,22 @@ void SvTreeList::InsertTree(SvTreeListEntry* pSrcEntry,
     Broadcast(SvListAction::INSERTED_TREE, pSrcEntry );
 }
 
-SvTreeListEntry* SvTreeList::CloneEntry( SvTreeListEntry* pSource ) const
+SvTreeListEntry* SvTreeList::CloneEntry(SvTreeListEntry& rSource) const
 {
     if (m_aCloneLink.IsSet())
-        return m_aCloneLink.Call(pSource);
+        return m_aCloneLink.Call(rSource);
     SvTreeListEntry* pEntry = new SvTreeListEntry;
-    pEntry->Clone(pSource);
+    pEntry->Clone(rSource);
     return pEntry;
 }
 
-SvTreeListEntry* SvTreeList::Clone( SvTreeListEntry* pEntry, sal_uInt32& nCloneCount ) const
+SvTreeListEntry* SvTreeList::Clone(SvTreeListEntry& rEntry, sal_uInt32& nCloneCount) const
 {
-    SvTreeListEntry* pClonedEntry = CloneEntry( pEntry );
+    SvTreeListEntry* pClonedEntry = CloneEntry(rEntry);
     nCloneCount = 1;
-    if (!pEntry->m_Children.empty())
+    if (!rEntry.m_Children.empty())
         // Clone the child entries.
-        CloneChildren(pClonedEntry->m_Children, nCloneCount, pEntry->m_Children, *pClonedEntry);
+        CloneChildren(pClonedEntry->m_Children, nCloneCount, rEntry.m_Children, *pClonedEntry);
 
     return pClonedEntry;
 }
@@ -344,7 +343,7 @@ void SvTreeList::CloneChildren(
     for (auto const& elem : rSrc)
     {
         SvTreeListEntry& rEntry = *elem;
-        std::unique_ptr<SvTreeListEntry> pNewEntry(CloneEntry(&rEntry));
+        std::unique_ptr<SvTreeListEntry> pNewEntry(CloneEntry(rEntry));
         ++rCloneCount;
         pNewEntry->pParent = &rNewParent;
         if (!rEntry.m_Children.empty())

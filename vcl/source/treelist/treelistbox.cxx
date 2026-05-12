@@ -460,9 +460,9 @@ void SvTreeListBox::Clear()
         m_pModel->Clear(); // Model calls SvTreeListBox::ModelHasCleared()
 }
 
-IMPL_LINK( SvTreeListBox, CloneHdl_Impl, SvTreeListEntry*, pEntry, SvTreeListEntry* )
+IMPL_LINK(SvTreeListBox, CloneHdl_Impl, SvTreeListEntry&, rEntry, SvTreeListEntry*)
 {
-    return CloneEntry(pEntry);
+    return CloneEntry(rEntry);
 }
 
 void SvTreeListBox::Insert(SvTreeListEntry* pEntry, SvTreeListEntry* pParent, sal_uInt32 nPos)
@@ -866,8 +866,6 @@ bool SvTreeListBox::CopySelection( SvTreeListBox* pSource, SvTreeListEntry* pTar
     bool bSuccess = true;
     std::vector<SvTreeListEntry*> aList;
     bool bClone = ( pSource->GetModel() != GetModel() );
-    Link<SvTreeListEntry*, SvTreeListEntry*> aCloneLink(m_pModel->GetCloneLink());
-    m_pModel->SetCloneLink(LINK(this, SvTreeListBox, CloneHdl_Impl));
 
     // cache selection to simplify iterating over the selection when doing a D&D
     // exchange within the same listbox
@@ -891,12 +889,12 @@ bool SvTreeListBox::CopySelection( SvTreeListBox* pSource, SvTreeListEntry* pTar
             if ( bClone )
             {
                 sal_uInt32 nCloneCount = 0;
-                pSourceEntry = m_pModel->Clone(pSourceEntry, nCloneCount);
+                pSourceEntry = m_pModel->Clone(*pSourceEntry, nCloneCount);
                 m_pModel->InsertTree(pSourceEntry, pNewParent, nInsertionPos);
             }
             else
             {
-                sal_uInt32 nListPos = m_pModel->Copy(pSourceEntry, pNewParent, nInsertionPos);
+                sal_uInt32 nListPos = m_pModel->Copy(*pSourceEntry, pNewParent, nInsertionPos);
                 pSourceEntry = GetEntry( pNewParent, nListPos );
             }
         }
@@ -906,7 +904,6 @@ bool SvTreeListBox::CopySelection( SvTreeListBox* pSource, SvTreeListEntry* pTar
         if (nOk == TRISTATE_INDET)  // HACK: make visible moved entry
             MakeVisible( pSourceEntry );
     }
-    m_pModel->SetCloneLink(aCloneLink);
     return bSuccess;
 }
 
@@ -917,9 +914,6 @@ bool SvTreeListBox::MoveSelectionCopyFallbackPossible( SvTreeListBox* pSource, S
     bool bSuccess = true;
     std::vector<SvTreeListEntry*> aList;
     bool bClone = ( pSource->GetModel() != GetModel() );
-    Link<SvTreeListEntry*, SvTreeListEntry*> aCloneLink(m_pModel->GetCloneLink());
-    if ( bClone )
-        m_pModel->SetCloneLink(LINK(this, SvTreeListBox, CloneHdl_Impl));
 
     SvTreeListEntry* pSourceEntry = pSource->FirstSelected();
     while ( pSourceEntry )
@@ -948,7 +942,7 @@ bool SvTreeListBox::MoveSelectionCopyFallbackPossible( SvTreeListBox* pSource, S
             if ( bClone )
             {
                 sal_uInt32 nCloneCount = 0;
-                pSourceEntry = m_pModel->Clone(pSourceEntry, nCloneCount);
+                pSourceEntry = m_pModel->Clone(*pSourceEntry, nCloneCount);
                 m_pModel->InsertTree(pSourceEntry, pNewParent, nInsertionPos);
             }
             else
@@ -956,7 +950,7 @@ bool SvTreeListBox::MoveSelectionCopyFallbackPossible( SvTreeListBox* pSource, S
                 if ( nOk )
                     m_pModel->Move(pSourceEntry, pNewParent, nInsertionPos);
                 else
-                    m_pModel->Copy(pSourceEntry, pNewParent, nInsertionPos);
+                    m_pModel->Copy(*pSourceEntry, pNewParent, nInsertionPos);
             }
         }
         else
@@ -965,7 +959,6 @@ bool SvTreeListBox::MoveSelectionCopyFallbackPossible( SvTreeListBox* pSource, S
         if (nOk == TRISTATE_INDET)  // HACK: make moved entry visible
             MakeVisible( pSourceEntry );
     }
-    m_pModel->SetCloneLink(aCloneLink);
     return bSuccess;
 }
 
@@ -1802,17 +1795,18 @@ void SvTreeListBox::SetTabs()
     m_pImpl->NotifyTabsChanged();
 }
 
-void SvTreeListBox::InitEntry(SvTreeListEntry* pEntry,
-    const OUString& aStr, const Image& aCollEntryBmp, const Image& aExpEntryBmp)
+void SvTreeListBox::InitEntry(SvTreeListEntry& rEntry, const OUString& aStr,
+                              const Image& aCollEntryBmp, const Image& aExpEntryBmp)
 {
     if (m_nTreeFlags & SvTreeFlags::CHKBTN)
     {
-        pEntry->AddItem(std::make_unique<SvLBoxButton>(m_pCheckButtonData));
+        rEntry.AddItem(std::make_unique<SvLBoxButton>(m_pCheckButtonData));
     }
 
-    pEntry->AddItem(std::make_unique<SvLBoxContextBmp>( aCollEntryBmp,aExpEntryBmp, mbContextBmpExpanded));
+    rEntry.AddItem(
+        std::make_unique<SvLBoxContextBmp>(aCollEntryBmp, aExpEntryBmp, mbContextBmpExpanded));
 
-    pEntry->AddItem(std::make_unique<SvLBoxString>(aStr));
+    rEntry.AddItem(std::make_unique<SvLBoxString>(aStr));
 }
 
 OUString SvTreeListBox::GetEntryText(SvTreeListEntry* pEntry) const
@@ -1863,7 +1857,7 @@ SvTreeListEntry* SvTreeListBox::InsertEntry(
 
     SvTreeListEntry* pEntry = new SvTreeListEntry;
     pEntry->SetUserData( pUser );
-    InitEntry( pEntry, rText, rDefColBmp, rDefExpBmp );
+    InitEntry(*pEntry, rText, rDefColBmp, rDefExpBmp);
     pEntry->EnableChildrenOnDemand( bChildrenOnDemand );
 
     if( !pParent )
@@ -2036,27 +2030,28 @@ void SvTreeListBox::CheckButtonHdl()
 // leads to us _not_ calling SvTreeListEntry::Clone, but only its base class
 // SvTreeListEntry.
 
-
-SvTreeListEntry* SvTreeListBox::CloneEntry( SvTreeListEntry* pSource )
+SvTreeListEntry* SvTreeListBox::CloneEntry(const SvTreeListEntry& rSource)
 {
     OUString aStr;
     Image aCollEntryBmp;
     Image aExpEntryBmp;
 
-    SvLBoxString* pStringItem = static_cast<SvLBoxString*>(pSource->GetFirstItem(SvLBoxItemType::String));
+    const SvLBoxString* pStringItem
+        = static_cast<const SvLBoxString*>(rSource.GetFirstItem(SvLBoxItemType::String));
     if( pStringItem )
         aStr = pStringItem->GetText();
-    SvLBoxContextBmp* pBmpItem = static_cast<SvLBoxContextBmp*>(pSource->GetFirstItem(SvLBoxItemType::ContextBmp));
+    const SvLBoxContextBmp* pBmpItem
+        = static_cast<const SvLBoxContextBmp*>(rSource.GetFirstItem(SvLBoxItemType::ContextBmp));
     if( pBmpItem )
     {
         aCollEntryBmp = pBmpItem->GetBitmap1( );
         aExpEntryBmp  = pBmpItem->GetBitmap2( );
     }
     SvTreeListEntry* pClone = new SvTreeListEntry;
-    InitEntry( pClone, aStr, aCollEntryBmp, aExpEntryBmp );
-    pClone->SvTreeListEntry::Clone( pSource );
-    pClone->EnableChildrenOnDemand( pSource->HasChildrenOnDemand() );
-    pClone->SetUserData( pSource->GetUserData() );
+    InitEntry(*pClone, aStr, aCollEntryBmp, aExpEntryBmp);
+    pClone->Clone(rSource);
+    pClone->EnableChildrenOnDemand(rSource.HasChildrenOnDemand());
+    pClone->SetUserData(rSource.GetUserData());
 
     return pClone;
 }

@@ -70,7 +70,7 @@ class UNLESS_MERGELIBS_MORE(VCL_DLLPUBLIC) SvTreeList final
     SvTreeListBox& mrOwnerListView;
     sal_uInt32 m_nEntryCount;
 
-    Link<SvTreeListEntry*, SvTreeListEntry*> m_aCloneLink;
+    Link<SvTreeListEntry&, SvTreeListEntry*> m_aCloneLink;
     Link<const SvSortData&, sal_Int32> m_aCompareLink;
     SvSortMode m_eSortMode;
 
@@ -158,7 +158,7 @@ public:
 
     // Creates ChildList if needed
     sal_uInt32          Move( SvTreeListEntry* pSource, SvTreeListEntry* pTargetParent, sal_uInt32 nListPos);
-    sal_uInt32          Copy( SvTreeListEntry* pSource, SvTreeListEntry* pTargetParent, sal_uInt32 nListPos);
+    sal_uInt32 Copy(SvTreeListEntry& rSource, SvTreeListEntry* pTargetParent, sal_uInt32 nListPos);
 
     bool Remove( const SvTreeListEntry* pEntry );
     void                Clear();
@@ -184,15 +184,13 @@ public:
     // The Model calls the Clone Link to clone Entries.
     // Thus we do not need to derive from the Model if we derive from SvTreeListEntry.
     // The Handler needs to return a SvTreeListEntry*
-    SvTreeListEntry*    Clone( SvTreeListEntry* pEntry, sal_uInt32& nCloneCount ) const;
-    void                SetCloneLink( const Link<SvTreeListEntry*,SvTreeListEntry*>& rLink )
+    SvTreeListEntry* Clone(SvTreeListEntry& rEntry, sal_uInt32& nCloneCount) const;
+    void SetCloneLink(const Link<SvTreeListEntry&, SvTreeListEntry*>& rLink)
     {
         m_aCloneLink = rLink;
     }
 
-    const Link<SvTreeListEntry*, SvTreeListEntry*>& GetCloneLink() const { return m_aCloneLink; }
-
-    SvTreeListEntry*    CloneEntry( SvTreeListEntry* pSource ) const; // Calls the Clone Link
+    SvTreeListEntry* CloneEntry(SvTreeListEntry& rSource) const; // Calls the Clone Link
 
     void SetSortMode(SvSortMode eMode) { m_eSortMode = eMode; }
     SvSortMode GetSortMode() const { return m_eSortMode; }

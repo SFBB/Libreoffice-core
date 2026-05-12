@@ -86,7 +86,7 @@ public:
     virtual void SAL_CALL addTreeEditListener( const css::uno::Reference< css::awt::tree::XTreeEditListener >& Listener ) override;
     virtual void SAL_CALL removeTreeEditListener( const css::uno::Reference< css::awt::tree::XTreeEditListener >& Listener ) override;
 
-    // css::awt::tree::TreeDataModelListener
+    // css::awt::tree::XTreeDataModelListener
     virtual void SAL_CALL treeNodesChanged( const css::awt::tree::TreeDataModelEvent& aEvent ) override;
     virtual void SAL_CALL treeNodesInserted( const css::awt::tree::TreeDataModelEvent& aEvent ) override;
     virtual void SAL_CALL treeNodesRemoved( const css::awt::tree::TreeDataModelEvent& aEvent ) override;
@@ -120,7 +120,6 @@ private:
     void updateEntry( UnoTreeListEntry* pEntry );
 
     void updateTree( const css::awt::tree::TreeDataModelEvent& rEvent );
-    void updateNode( UnoTreeListBoxImpl const & rTree, const css::uno::Reference< css::awt::tree::XTreeNode >& xNode );
     void updateChildNodes( UnoTreeListBoxImpl const & rTree, const css::uno::Reference< css::awt::tree::XTreeNode >& xParentNode, UnoTreeListEntry* pParentEntry );
 
     static OUString getEntryString( const css::uno::Any& rValue );
