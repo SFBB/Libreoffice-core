@@ -163,6 +163,7 @@ $(eval $(call gb_Library_add_exception_objects,sd,\
 	sd/source/core/anminfo \
 	sd/source/core/annotations/Annotation \
 	sd/source/core/cusshow \
+	sd/source/core/SlideSectionManager \
 	sd/source/core/drawdoc \
 	sd/source/core/drawdoc2 \
 	sd/source/core/drawdoc3 \
@@ -416,6 +417,7 @@ $(eval $(call gb_Library_add_exception_objects,sd,\
 	sd/source/ui/slidesorter/view/SlsFramePainter \
 	sd/source/ui/slidesorter/view/SlsInsertAnimator \
 	sd/source/ui/slidesorter/view/SlsInsertionIndicatorOverlay \
+	sd/source/ui/slidesorter/view/SlsSectionHeaderPainter \
 	sd/source/ui/slidesorter/view/SlsLayeredDevice \
 	sd/source/ui/slidesorter/view/SlsLayouter \
 	sd/source/ui/slidesorter/view/SlsPageObjectLayouter \

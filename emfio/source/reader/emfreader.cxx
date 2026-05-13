@@ -1554,17 +1554,23 @@ namespace emfio
                             mpInputStream->ReadUInt32(nClippingMode);
                             nRemainingRecSize -= 8;
 
-                            // This record's region data should be ignored if mode
-                            // is RGN_COPY - see EMF spec section 2.3.2.2
-                            if (static_cast<RegionMode>(nClippingMode) == RegionMode::RGN_COPY)
+                            // [MS-EMF] 2.3.2.2 says RegionData "MUST be ignored"
+                            // when iMode is RGN_COPY, but real EMFs (and MS Word)
+                            // treat it like the Win32 ExtSelectClipRgn API: a
+                            // non-NULL region with RGN_COPY replaces the clip,
+                            // and a NULL region (cbRgnData == 0) with RGN_COPY
+                            // resets the clip to the default null region.
+                            basegfx::B2DPolyPolygon aPolyPoly;
+                            if (cbRgnDataSize)
+                                ImplReadRegion(aPolyPoly, *mpInputStream, nRemainingRecSize, GetWinOrg());
+
+                            if (!cbRgnDataSize)
                             {
-                                SetDefaultClipPath();
+                                if (static_cast<RegionMode>(nClippingMode) == RegionMode::RGN_COPY)
+                                    SetDefaultClipPath();
                             }
                             else
                             {
-                                basegfx::B2DPolyPolygon aPolyPoly;
-                                if (cbRgnDataSize)
-                                    ImplReadRegion(aPolyPoly, *mpInputStream, nRemainingRecSize, GetWinOrg());
                                 const tools::PolyPolygon aPolyPolygon(aPolyPoly);
                                 SetClipPath(aPolyPolygon, static_cast<RegionMode>(nClippingMode), false);
                             }
@@ -2477,7 +2483,7 @@ namespace emfio
                         {
                             for (sal_uInt32 i = 0; i < nTri && mpInputStream->good(); ++i)
                             {
-                                sal_uInt32 nUpperLeft, nLowerRight;
+                                sal_uInt32 nUpperLeft(0), nLowerRight(0);
                                 mpInputStream->ReadUInt32( nUpperLeft ).ReadUInt32( nLowerRight );
 
                                 if (nUpperLeft >= nVer || nLowerRight >= nVer)

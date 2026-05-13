@@ -1597,18 +1597,18 @@ protected:
                    const VirtualDevice* pImageSurface, bool bChildrenOnDemand, weld::TreeIter* pRet,
                    bool bIsSeparator);
 
-    void update_checkbutton_column_width(SvTreeListEntry* pEntry);
+    void update_checkbutton_column_width(SvTreeListEntry& rEntry);
 
     void InvalidateModelEntry(SvTreeListEntry* pEntry);
 
-    void do_set_toggle(SvTreeListEntry* pEntry, TriState eState, int col);
+    void do_set_toggle(SvTreeListEntry& rEntry, TriState eState, int col);
 
     static TriState do_get_toggle(SvTreeListEntry* pEntry, int col);
     static bool do_get_sensitive(SvTreeListEntry* pEntry, int col);
 
     TriState get_toggle(SvTreeListEntry* pEntry, int col) const;
 
-    void set_toggle(SvTreeListEntry* pEntry, TriState eState, int col);
+    void set_toggle(SvTreeListEntry& rEntry, TriState eState, int col);
 
     bool get_text_emphasis(SvTreeListEntry* pEntry, int col) const;
 
@@ -1677,7 +1677,7 @@ public:
 
     OUString get_text(SvTreeListEntry* pEntry, int col) const;
 
-    void set_text(SvTreeListEntry* pEntry, const OUString& rText, int col);
+    void set_text(SvTreeListEntry& rEntry, const OUString& rText, int col);
 
     using SalInstanceWidget::set_sensitive;
     using SalInstanceWidget::get_sensitive;

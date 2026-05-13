@@ -83,36 +83,35 @@ CPPUNIT_TEST_FIXTURE(Test, testPolyPolygon)
 
     // Chart axis
     assertXPath(pDocument, aXPathPrefix + "mask/polypolygon", "path", u"m0 0h19746v14817h-19746z");
-    assertXPath(pDocument, aXPathPrefix + "mask/polypolygoncolor", 2);
-    assertXPath(pDocument, aXPathPrefix + "mask/polypolygoncolor[1]", "color", u"#ffffff");
-    assertXPath(pDocument, aXPathPrefix + "mask/polypolygoncolor[1]/polypolygon", "path",
+    const OString aClipped = aXPathPrefix + "mask/group[1]/mask/";
+    assertXPath(pDocument, aClipped + "polypolygoncolor", 2);
+    assertXPath(pDocument, aClipped + "polypolygoncolor[1]", "color", u"#ffffff");
+    assertXPath(pDocument, aClipped + "polypolygoncolor[1]/polypolygon", "path",
                 u"m0 0h19781v14852h-19781z");
-    assertXPath(pDocument, aXPathPrefix + "mask/polypolygoncolor[2]/polypolygon", "path",
+    assertXPath(pDocument, aClipped + "polypolygoncolor[2]/polypolygon", "path",
                 u"m2574 13194v-12065h15303v12065z");
 
-    assertXPath(pDocument, aXPathPrefix + "mask/polygonstroke", 116);
-    assertXPathContent(pDocument, aXPathPrefix + "mask/polygonstroke[1]/polygon",
+    assertXPath(pDocument, aXPathPrefix + "mask//polygonstroke", 116);
+    assertXPathContent(pDocument, aClipped + "polygonstroke[1]/polygon",
                        u"2574,13194 2574,1129 17877,1129 17877,13194");
-    assertXPath(pDocument, aXPathPrefix + "mask/polygonstroke[1]/line", "color", u"#ffffff");
-    assertXPath(pDocument, aXPathPrefix + "mask/polygonstroke[1]/line", "width", u"35");
-    assertXPathContent(pDocument, aXPathPrefix + "mask/polygonstroke[2]/polygon",
-                       u"2574,13194 2574,1129");
-    assertXPath(pDocument, aXPathPrefix + "mask/polygonstroke[2]/line", "color", u"#000000");
-    assertXPath(pDocument, aXPathPrefix + "mask/polygonstroke[2]/line", "width", u"35");
-    assertXPathContent(pDocument, aXPathPrefix + "mask/polygonstroke[10]/polygon",
-                       u"8674,13194 8674,1129");
-    assertXPath(pDocument, aXPathPrefix + "mask/polygonstroke[10]/line", "color", u"#000000");
-    assertXPath(pDocument, aXPathPrefix + "mask/polygonstroke[10]/line", "width", u"35");
+    assertXPath(pDocument, aClipped + "polygonstroke[1]/line", "color", u"#ffffff");
+    assertXPath(pDocument, aClipped + "polygonstroke[1]/line", "width", u"35");
+    assertXPathContent(pDocument, aClipped + "polygonstroke[2]/polygon", u"2574,13194 2574,1129");
+    assertXPath(pDocument, aClipped + "polygonstroke[2]/line", "color", u"#000000");
+    assertXPath(pDocument, aClipped + "polygonstroke[2]/line", "width", u"35");
+    assertXPathContent(pDocument, aClipped + "polygonstroke[10]/polygon", u"8674,13194 8674,1129");
+    assertXPath(pDocument, aClipped + "polygonstroke[10]/line", "color", u"#000000");
+    assertXPath(pDocument, aClipped + "polygonstroke[10]/line", "width", u"35");
 
-    assertXPath(pDocument, aXPathPrefix + "mask/textsimpleportion", 28);
-    assertXPath(pDocument, aXPathPrefix + "mask/textsimpleportion[6]", "width", u"459");
-    assertXPath(pDocument, aXPathPrefix + "mask/textsimpleportion[6]", "x", u"9908");
-    assertXPath(pDocument, aXPathPrefix + "mask/textsimpleportion[6]", "text", u"0.5");
-    assertXPath(pDocument, aXPathPrefix + "mask/textsimpleportion[6]", "fontcolor", u"#000000");
-    assertXPath(pDocument, aXPathPrefix + "mask/pointarray", 98);
-    assertXPath(pDocument, aXPathPrefix + "mask/pointarray[1]", "color", u"#000000");
-    assertXPath(pDocument, aXPathPrefix + "mask/pointarray[1]/point", "x", u"2574");
-    assertXPath(pDocument, aXPathPrefix + "mask/pointarray[1]/point", "y", u"1129");
+    assertXPath(pDocument, aXPathPrefix + "mask//textsimpleportion", 28);
+    assertXPath(pDocument, aClipped + "textsimpleportion[6]", "width", u"459");
+    assertXPath(pDocument, aClipped + "textsimpleportion[6]", "x", u"9908");
+    assertXPath(pDocument, aClipped + "textsimpleportion[6]", "text", u"0.5");
+    assertXPath(pDocument, aClipped + "textsimpleportion[6]", "fontcolor", u"#000000");
+    assertXPath(pDocument, aXPathPrefix + "mask//pointarray", 98);
+    assertXPath(pDocument, aClipped + "pointarray[1]", "color", u"#000000");
+    assertXPath(pDocument, aClipped + "pointarray[1]/point", "x", u"2574");
+    assertXPath(pDocument, aClipped + "pointarray[1]/point", "y", u"1129");
 }
 
 CPPUNIT_TEST_FIXTURE(Test, testDrawImagePointsTypeBitmap)
@@ -182,7 +181,7 @@ CPPUNIT_TEST_FIXTURE(Test, testDrawImagePointsWithMetafile)
 
     assertXPath(
         pDocument,
-        aXPathPrefix + "mask/mask/metafile/transform/mask/mask/metafile/transform/mask/group", 17);
+        aXPathPrefix + "mask/mask/metafile/transform/mask/mask/metafile/transform/mask/group", 22);
 
     assertXPathDoubleValue(
         pDocument, aXPathPrefix + "mask/mask/metafile/transform/mask/mask/metafile/transform",
@@ -247,6 +246,28 @@ CPPUNIT_TEST_FIXTURE(Test, testFillRectsWithTextureBrush)
                            0.001);
     assertXPath(pDocument, aXPathPrefix + "polypolygonstroke/polypolygon", "minx", u"397");
     assertXPath(pDocument, aXPathPrefix + "polypolygonstroke/polypolygon", "miny", u"397");
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testEmfPlusFillRectsOverlap)
+{
+    // Three south-east-shifted overlapping squares in a single
+    // EmfPlusFillRects record must each fill independently. Combining
+    // them into one polypolygon would cancel pairwise overlaps under
+    // drawinglayer's even-odd fill rule, producing hollow stripes
+    // where two of the three squares meet.
+    Primitive2DSequence aSequence
+        = parseEmf(u"/emfio/qa/cppunit/emf/data/TestEmfPlusFillRectsOverlap.emf");
+    CPPUNIT_ASSERT_EQUAL(1, static_cast<int>(aSequence.getLength()));
+    drawinglayer::Primitive2dXmlDump dumper;
+    xmlDocUniquePtr pDocument = dumper.dumpAndParse(Primitive2DContainer(aSequence));
+    CPPUNIT_ASSERT(pDocument);
+
+    // Three independent gray fills, one per rect (not one
+    // polypolygoncolor wrapping all three, which is the buggy form).
+    assertXPath(pDocument, "//polypolygoncolor", 3);
+    assertXPath(pDocument, "(//polypolygoncolor)[1]", "color", u"#808080");
+    assertXPath(pDocument, "(//polypolygoncolor)[2]", "color", u"#808080");
+    assertXPath(pDocument, "(//polypolygoncolor)[3]", "color", u"#808080");
 }
 
 CPPUNIT_TEST_FIXTURE(Test, testDrawString)
@@ -653,16 +674,18 @@ CPPUNIT_TEST_FIXTURE(Test, testTextMapMode)
     xmlDocUniquePtr pDocument = dumper.dumpAndParse(Primitive2DContainer(aSequence));
     CPPUNIT_ASSERT(pDocument);
 
-    assertXPath(pDocument, aXPathPrefix + "polypolygoncolor", 2);
-    assertXPath(pDocument, aXPathPrefix + "polypolygoncolor[1]", "color", u"#ffffff");
-    assertXPath(pDocument, aXPathPrefix + "polypolygoncolor[1]/polypolygon", "path",
+    assertXPath(pDocument, aXPathPrefix + "polypolygoncolor", 1);
+    assertXPath(pDocument, aXPathPrefix + "polypolygoncolor", "color", u"#ffffff");
+    assertXPath(pDocument, aXPathPrefix + "polypolygoncolor/polypolygon", "path",
                 u"m0 0h3542v4647h-3542z");
+    assertXPath(pDocument, aXPathPrefix + "group[1]/mask/polypolygoncolor", 1);
 
-    assertXPath(pDocument, aXPathPrefix + "textsimpleportion", 20);
-    assertXPath(pDocument, aXPathPrefix + "textsimpleportion[1]", "text", u"N");
-    assertXPath(pDocument, aXPathPrefix + "textsimpleportion[1]", "fontcolor", u"#4a70e3");
-    assertXPath(pDocument, aXPathPrefix + "textsimpleportion[1]", "x", u"2099");
-    assertXPath(pDocument, aXPathPrefix + "textsimpleportion[1]", "y", u"1859");
+    assertXPath(pDocument, aXPathPrefix + "group/mask/textsimpleportion", 20);
+    assertXPath(pDocument, aXPathPrefix + "group[2]/mask/textsimpleportion", "text", u"N");
+    assertXPath(pDocument, aXPathPrefix + "group[2]/mask/textsimpleportion", "fontcolor",
+                u"#4a70e3");
+    assertXPath(pDocument, aXPathPrefix + "group[2]/mask/textsimpleportion", "x", u"2099");
+    assertXPath(pDocument, aXPathPrefix + "group[2]/mask/textsimpleportion", "y", u"1859");
 
     assertXPath(pDocument, aXPathPrefix + "polygonstroke", 138);
     assertXPathContent(pDocument, aXPathPrefix + "polygonstroke[1]/polygon",
@@ -1082,12 +1105,67 @@ CPPUNIT_TEST_FIXTURE(Test, testEmfPlusBrushPathGradientWithBlendColors)
     xmlDocUniquePtr pDocument = dumper.dumpAndParse(Primitive2DContainer(aSequence));
     CPPUNIT_ASSERT(pDocument);
 
-    assertXPath(pDocument, aXPathPrefix + "svgradialgradient", "radius", u"0.7");
-    assertXPath(pDocument, aXPathPrefix + "svgradialgradient/focalx", 0);
-    assertXPath(pDocument, aXPathPrefix + "svgradialgradient/focaly", 0);
-    assertXPathDoubleValue(pDocument, aXPathPrefix + "svgradialgradient", "startx", 0.5, 0.001);
-    assertXPathDoubleValue(pDocument, aXPathPrefix + "svgradialgradient", "starty", 0.5, 0.001);
-    assertXPath(pDocument, aXPathPrefix + "svgradialgradient", "spreadmethod", u"pad");
+    // Path gradient brushes are rendered as a bitmap fill
+    // (polypolygongraphic with embedded bitmap), not an svgradialgradient.
+    // The bitmap is anchored to the brush bounds so for a brush whose path
+    // covers the fill polygon a single bitmap copy appears.
+    assertXPath(pDocument, aXPathPrefix + "transform/polypolygongraphic", 1);
+    assertXPath(pDocument, aXPathPrefix + "transform/polypolygongraphic//bitmap", 1);
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testEmfPlusBrushPathGradientMultiSurroundColor)
+{
+    // EMF+ PathGradient brushes can carry one surround colour per boundary
+    // vertex; per-triangle Gouraud shading then produces distinct colour
+    // at each vertex with smooth blends along the segments and toward the
+    // centre. The test EMF (extracted from the libUEMF v0.2.1 test file)
+    // contains four 5-point-star path-gradient fills:
+    //   - two with BrushDataPath (path-based brush, 10 boundary vertices)
+    //   - two boundary-only (no BrushDataPath, 10 raw boundary points)
+    // surround colours are blue/green/red/green/blue/green/red/green/
+    // magenta/green and the centre is black.
+    //
+    // Validates two things from the path-gradient rewrite:
+    //  - boundary-only brushes parse correctly via GetRawPointsPolygon()
+    //    instead of producing a degenerate single-vertex polygon (which
+    //    would yield no fill at all)
+    //  - all four fills emit a polypolygongraphic with a bitmap that
+    //    actually paints the shape (the bitmap is 256 px wide).
+    Primitive2DSequence aSequence
+        = parseEmf(u"emfio/qa/cppunit/emf/data/TestEmfPlusBrushPathGradientMultiSurroundColor.emf");
+    CPPUNIT_ASSERT_EQUAL(1, static_cast<int>(aSequence.getLength()));
+    drawinglayer::Primitive2dXmlDump dumper;
+    xmlDocUniquePtr pDocument = dumper.dumpAndParse(Primitive2DContainer(aSequence));
+    CPPUNIT_ASSERT(pDocument);
+
+    // Each star fill produces a polypolygongraphic with a bitmap.
+    assertXPath(pDocument, "//polypolygongraphic", 4);
+    assertXPath(pDocument, "//polypolygongraphic//bitmap", 4);
+    // Bitmap is 256 px on its longest side (path-gradient renderer's
+    // nMaxDim), so the rewrite did emit non-empty pixel content for the
+    // boundary-only brushes too (which previously collapsed to a
+    // degenerate single-vertex polygon and produced no fill at all).
+    assertXPath(pDocument, "(//polypolygongraphic//bitmap)[1]", "width", u"256");
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testEmfPlusBrushPathGradientTiled)
+{
+    // tdf#143031 EMF+ PathGradient brush with WrapMode = Tile must produce
+    // a tiled bitmap fill. The test file uses a single FillPath where the
+    // brush's gradient path is far away in coordinate space from the fill
+    // polygon; without tiling, only a flat boundary colour shows up.
+    Primitive2DSequence aSequence
+        = parseEmf(u"emfio/qa/cppunit/emf/data/tdf143031_BrushPathGrad.emf");
+    CPPUNIT_ASSERT_EQUAL(1, static_cast<int>(aSequence.getLength()));
+    drawinglayer::Primitive2dXmlDump dumper;
+    xmlDocUniquePtr pDocument = dumper.dumpAndParse(Primitive2DContainer(aSequence));
+    CPPUNIT_ASSERT(pDocument);
+
+    // The brush should produce a polypolygongraphic with a tiled bitmap.
+    // Without the fix, an empty/flat-coloured fill primitive was emitted.
+    assertXPath(pDocument, aXPathPrefix + "transform/polypolygongraphic", 1);
+    assertXPath(pDocument, "(" + aXPathPrefix + "transform/polypolygongraphic//bitmap)[1]", "width",
+                u"256");
 }
 
 CPPUNIT_TEST_FIXTURE(Test, testEmfPlusDrawCurve)
@@ -1257,28 +1335,29 @@ CPPUNIT_TEST_FIXTURE(Test, testEmfPlusSetPageTransform)
     xmlDocUniquePtr pDocument = dumper.dumpAndParse(Primitive2DContainer(aSequence));
     CPPUNIT_ASSERT(pDocument);
 
-    assertXPath(pDocument, aXPathPrefix + "textsimpleportion", 2);
-    assertXPath(pDocument, aXPathPrefix + "textsimpleportion[1]", "text",
+    assertXPath(pDocument, aXPathPrefix + "/textsimpleportion", 2);
+    assertXPath(pDocument, aXPathPrefix + "group[1]/mask/textsimpleportion", "text",
                 u"Flow Chart LM_SOP_01.04.04_02_Sonderfreigabe Lieferant_DE.igx");
-    assertXPath(pDocument, aXPathPrefix + "textsimpleportion[1]", "fontcolor", u"#000000");
+    assertXPath(pDocument, aXPathPrefix + "group[1]/mask/textsimpleportion", "fontcolor",
+                u"#000000");
 
-    assertXPath(pDocument, aXPathPrefix + "group", 2);
-
-    assertXPath(pDocument, aXPathPrefix + "group[1]/mask/polypolygon", 1);
-    assertXPath(pDocument, aXPathPrefix + "group[1]/mask/polypolygoncolor", 1);
-    assertXPath(pDocument, aXPathPrefix + "group[1]/mask/polypolygoncolor", "color", u"#4080c0");
-    assertXPath(pDocument, aXPathPrefix + "group[1]/mask/polypolygoncolor/polypolygon", "height",
-                u"1620");
-    assertXPath(pDocument, aXPathPrefix + "group[1]/mask/polypolygoncolor/polypolygon", "maxy",
-                u"1994");
+    assertXPath(pDocument, aXPathPrefix + "group", 4);
 
     assertXPath(pDocument, aXPathPrefix + "group[2]/mask/polypolygon", 1);
-    assertXPath(pDocument, aXPathPrefix + "group[2]/mask/polypolygoncolor", 2);
-    assertXPath(pDocument, aXPathPrefix + "group[2]/mask/polypolygoncolor[1]", "color", u"#00eeee");
-    assertXPath(pDocument, aXPathPrefix + "group[2]/mask/polypolygoncolor[1]/polypolygon", "height",
+    assertXPath(pDocument, aXPathPrefix + "group[2]/mask/polypolygoncolor", 1);
+    assertXPath(pDocument, aXPathPrefix + "group[2]/mask/polypolygoncolor", "color", u"#4080c0");
+    assertXPath(pDocument, aXPathPrefix + "group[2]/mask/polypolygoncolor/polypolygon", "height",
+                u"1620");
+    assertXPath(pDocument, aXPathPrefix + "group[2]/mask/polypolygoncolor/polypolygon", "maxy",
+                u"1994");
+
+    assertXPath(pDocument, aXPathPrefix + "group[4]/mask/polypolygon", 1);
+    assertXPath(pDocument, aXPathPrefix + "group[4]/mask/polypolygoncolor", 2);
+    assertXPath(pDocument, aXPathPrefix + "group[4]/mask/polypolygoncolor[1]", "color", u"#00eeee");
+    assertXPath(pDocument, aXPathPrefix + "group[4]/mask/polypolygoncolor[1]/polypolygon", "height",
                 u"2457");
-    assertXPath(pDocument, aXPathPrefix + "group[2]/mask/polypolygoncolor[2]", "color", u"#ee00ee");
-    assertXPath(pDocument, aXPathPrefix + "group[2]/mask/polypolygoncolor[2]/polypolygon", "height",
+    assertXPath(pDocument, aXPathPrefix + "group[4]/mask/polypolygoncolor[2]", "color", u"#ee00ee");
+    assertXPath(pDocument, aXPathPrefix + "group[4]/mask/polypolygoncolor[2]/polypolygon", "height",
                 u"2457");
 }
 
@@ -1875,6 +1954,27 @@ CPPUNIT_TEST_FIXTURE(Test, testRoundRect)
     assertXPath(pDocument, aXPathPrefix + "polygonstroke[2]/line", "color", u"#ff0000");
 }
 
+CPPUNIT_TEST_FIXTURE(Test, testExtSelectClipRgnCopy)
+{
+    // EMR_EXTSELECTCLIPRGN with iMode = RGN_COPY (5) and a non-empty
+    // RegionData must replace the clip with the given region. The test
+    // file draws a (0,0)-(200,200) rectangle but first sets the clip to
+    // (50,50)-(150,150); the imported metafile must therefore wrap the
+    // rectangle in a clip-region mask matching the requested rectangle.
+    Primitive2DSequence aSequence
+        = parseEmf(u"/emfio/qa/cppunit/emf/data/TestExtSelectClipRgnCopy.emf");
+    CPPUNIT_ASSERT_EQUAL(1, static_cast<int>(aSequence.getLength()));
+    drawinglayer::Primitive2dXmlDump dumper;
+    xmlDocUniquePtr pDocument = dumper.dumpAndParse(Primitive2DContainer(aSequence));
+    CPPUNIT_ASSERT(pDocument);
+
+    assertXPath(pDocument, aXPathPrefix + "group/mask/polypolygon", 1);
+    assertXPath(pDocument, aXPathPrefix + "group/mask/polypolygon", "minx", u"1600");
+    assertXPath(pDocument, aXPathPrefix + "group/mask/polypolygon", "miny", u"1600");
+    assertXPath(pDocument, aXPathPrefix + "group/mask/polypolygon", "maxx", u"4800");
+    assertXPath(pDocument, aXPathPrefix + "group/mask/polypolygon", "maxy", u"4800");
+}
+
 CPPUNIT_TEST_FIXTURE(Test, testCreatePen)
 {
     // Check import of EMF image with records: RESTOREDC, SAVEDC, MOVETOEX, LINETO, POLYLINE16, EXTTEXTOUTW with DxBuffer
@@ -1887,7 +1987,7 @@ CPPUNIT_TEST_FIXTURE(Test, testCreatePen)
 
     assertXPath(pDocument, aXPathPrefix + "mask/polypolygon", "path", u"m0 0h31250v18192h-31250z");
 
-    assertXPath(pDocument, aXPathPrefix + "mask/polygonstroke", 748);
+    assertXPath(pDocument, aXPathPrefix + "mask//polygonstroke", 748);
     assertXPathContent(pDocument, aXPathPrefix + "mask/polygonstroke[1]/polygon",
                        u"27875,16523 27875,1453");
     assertXPath(pDocument, aXPathPrefix + "mask/polygonstroke[1]/line", "color", u"#ff0000");
@@ -1903,9 +2003,9 @@ CPPUNIT_TEST_FIXTURE(Test, testCreatePen)
     assertXPath(pDocument, aXPathPrefix + "mask/polygonstroke[3]/line", "color", u"#ff0000");
     assertXPath(pDocument, aXPathPrefix + "mask/polygonstroke[3]/line", "width", u"6");
 
-    assertXPath(pDocument, aXPathPrefix + "mask/polygonhairline", 10);
+    assertXPath(pDocument, aXPathPrefix + "mask//polygonhairline", 10);
 
-    assertXPath(pDocument, aXPathPrefix + "mask/textsimpleportion", 69);
+    assertXPath(pDocument, aXPathPrefix + "mask//textsimpleportion", 69);
     assertXPath(pDocument, aXPathPrefix + "mask/textsimpleportion[1]", "height", u"374");
 #ifndef _WIN32 // FIXME
     assertXPath(pDocument, aXPathPrefix + "mask/textsimpleportion[1]", "width", u"310");
@@ -1926,10 +2026,10 @@ CPPUNIT_TEST_FIXTURE(Test, testCreatePen)
     assertXPath(pDocument, aXPathPrefix + "mask/textsimpleportion[10]", "text", u"-6");
     assertXPath(pDocument, aXPathPrefix + "mask/textsimpleportion[10]", "fontcolor", u"#000000");
 
-    assertXPath(pDocument, aXPathPrefix + "mask/pointarray", 8);
-    assertXPath(pDocument, aXPathPrefix + "mask/pointarray[1]", "color", u"#008000");
-    assertXPath(pDocument, aXPathPrefix + "mask/pointarray[1]/point", "x", u"25844");
-    assertXPath(pDocument, aXPathPrefix + "mask/pointarray[1]/point", "y", u"8918");
+    assertXPath(pDocument, aXPathPrefix + "mask//pointarray", 8);
+    assertXPath(pDocument, aXPathPrefix + "mask//pointarray[1]", "color", u"#008000");
+    assertXPath(pDocument, aXPathPrefix + "mask//pointarray[1]/point", "x", u"25844");
+    assertXPath(pDocument, aXPathPrefix + "mask//pointarray[1]/point", "y", u"8918");
 }
 
 CPPUNIT_TEST_FIXTURE(Test, testPdfInEmf)
@@ -2035,6 +2135,27 @@ CPPUNIT_TEST_FIXTURE(Test, testExcludeClipRect)
 
     // The red fill covers the whole area, but is clipped by the mask above.
     assertXPath(pDocument, aXPathPrefix + "group/mask/polypolygoncolor", "color", u"#ff0000");
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testEmfPlusFillClosedCurveWinding)
+{
+    // EMF+ EmfPlusFillClosedCurve record with the Winding flag (0x2000) set,
+    // tracing a self-intersecting pentagram (5 vertices in every-other-corner
+    // order, tension 0). With WINDING the inner pentagon is part of the fill;
+    // with ALTERNATE it would be a hole. The geometry is converted at parse
+    // time so even-odd rendering of the resulting polypolygon fills the
+    // entire star including the centre.
+    Primitive2DSequence aSequence
+        = parseEmf(u"/emfio/qa/cppunit/emf/data/TestEmfPlusFillClosedCurveWinding.emf");
+    CPPUNIT_ASSERT_EQUAL(1, static_cast<int>(aSequence.getLength()));
+    drawinglayer::Primitive2dXmlDump dumper;
+    xmlDocUniquePtr pDocument = dumper.dumpAndParse(Primitive2DContainer(aSequence));
+    CPPUNIT_ASSERT(pDocument);
+
+    // Single fill primitive in red, with the self-intersecting input
+    // collapsed to one polygon (the outer boundary of the filled star).
+    assertXPath(pDocument, aXPathPrefix + "polypolygoncolor", "color", u"#ff0000");
+    assertXPath(pDocument, aXPathPrefix + "polypolygoncolor/polypolygon/polygon", 1);
 }
 
 CPPUNIT_TEST_FIXTURE(Test, testPolyFillModeWinding)

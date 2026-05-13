@@ -3706,11 +3706,11 @@ void SalInstanceTreeView::do_insert(const weld::TreeIter* pParent, int pos, cons
     }
 }
 
-void SalInstanceTreeView::update_checkbutton_column_width(SvTreeListEntry* pEntry)
+void SalInstanceTreeView::update_checkbutton_column_width(SvTreeListEntry& rEntry)
 {
-    SvViewDataEntry* pViewData = m_xTreeView->GetViewDataEntry(pEntry);
-    m_xTreeView->InitViewData(pViewData, pEntry);
-    m_xTreeView->CheckBoxInserted(pEntry);
+    SvViewDataEntry* pViewData = m_xTreeView->GetViewDataEntry(&rEntry);
+    m_xTreeView->InitViewData(pViewData, &rEntry);
+    m_xTreeView->CheckBoxInserted(&rEntry);
 }
 
 void SalInstanceTreeView::InvalidateModelEntry(SvTreeListEntry* pEntry)
@@ -3720,17 +3720,17 @@ void SalInstanceTreeView::InvalidateModelEntry(SvTreeListEntry* pEntry)
     m_xTreeView->ModelHasEntryInvalidated(pEntry);
 }
 
-void SalInstanceTreeView::do_set_toggle(SvTreeListEntry* pEntry, TriState eState, int col)
+void SalInstanceTreeView::do_set_toggle(SvTreeListEntry& rEntry, TriState eState, int col)
 {
-    assert(col >= 0 && o3tl::make_unsigned(col) < pEntry->ItemCount());
+    assert(col >= 0 && o3tl::make_unsigned(col) < rEntry.ItemCount());
     // if it's the placeholder to allow a blank column, replace it now
-    if (pEntry->GetItem(col).GetType() != SvLBoxItemType::Button)
+    if (rEntry.GetItem(col).GetType() != SvLBoxItemType::Button)
     {
         SvLBoxButtonData* pData = m_bTogglesAsRadio ? &m_aRadioButtonData : &m_aCheckButtonData;
-        pEntry->ReplaceItem(std::make_unique<SvLBoxButton>(pData), 0);
-        update_checkbutton_column_width(pEntry);
+        rEntry.ReplaceItem(std::make_unique<SvLBoxButton>(pData), 0);
+        update_checkbutton_column_width(rEntry);
     }
-    SvLBoxItem& rItem = pEntry->GetItem(col);
+    SvLBoxItem& rItem = rEntry.GetItem(col);
     assert(dynamic_cast<SvLBoxButton*>(&rItem));
     switch (eState)
     {
@@ -3745,7 +3745,7 @@ void SalInstanceTreeView::do_set_toggle(SvTreeListEntry* pEntry, TriState eState
             break;
     }
 
-    InvalidateModelEntry(pEntry);
+    InvalidateModelEntry(&rEntry);
 }
 
 TriState SalInstanceTreeView::do_get_toggle(SvTreeListEntry* pEntry, int col)
@@ -3775,29 +3775,29 @@ TriState SalInstanceTreeView::get_toggle(SvTreeListEntry* pEntry, int col) const
     return do_get_toggle(pEntry, col);
 }
 
-void SalInstanceTreeView::set_toggle(SvTreeListEntry* pEntry, TriState eState, int col)
+void SalInstanceTreeView::set_toggle(SvTreeListEntry& rEntry, TriState eState, int col)
 {
     if (col == -1)
     {
         assert(m_xTreeView->m_nTreeFlags & SvTreeFlags::CHKBTN);
-        do_set_toggle(pEntry, eState, 0);
+        do_set_toggle(rEntry, eState, 0);
         return;
     }
 
     col = to_internal_model(col);
 
     // blank out missing entries
-    for (int i = pEntry->ItemCount(); i < col; ++i)
-        AddStringItem(pEntry, u""_ustr, i - 1);
+    for (int i = rEntry.ItemCount(); i < col; ++i)
+        AddStringItem(&rEntry, u""_ustr, i - 1);
 
-    if (static_cast<size_t>(col) == pEntry->ItemCount())
+    if (static_cast<size_t>(col) == rEntry.ItemCount())
     {
         SvLBoxButtonData* pData = m_bTogglesAsRadio ? &m_aRadioButtonData : &m_aCheckButtonData;
-        pEntry->AddItem(std::make_unique<SvLBoxButton>(pData));
-        update_checkbutton_column_width(pEntry);
+        rEntry.AddItem(std::make_unique<SvLBoxButton>(pData));
+        update_checkbutton_column_width(rEntry);
     }
 
-    do_set_toggle(pEntry, eState, col);
+    do_set_toggle(rEntry, eState, col);
 }
 
 bool SalInstanceTreeView::get_text_emphasis(SvTreeListEntry* pEntry, int col) const
@@ -4190,35 +4190,35 @@ OUString SalInstanceTreeView::get_text(SvTreeListEntry* pEntry, int col) const
     return static_cast<SvLBoxString&>(rItem).GetText();
 }
 
-void SalInstanceTreeView::set_text(SvTreeListEntry* pEntry, const OUString& rText, int col)
+void SalInstanceTreeView::set_text(SvTreeListEntry& rEntry, const OUString& rText, int col)
 {
     if (col == -1)
     {
-        m_xTreeView->SetEntryText(pEntry, rText);
+        m_xTreeView->SetEntryText(&rEntry, rText);
         return;
     }
 
     col = to_internal_model(col);
 
     // blank out missing entries
-    for (int i = pEntry->ItemCount(); i < col; ++i)
-        AddStringItem(pEntry, u""_ustr, i - 1);
+    for (int i = rEntry.ItemCount(); i < col; ++i)
+        AddStringItem(&rEntry, u""_ustr, i - 1);
 
-    if (static_cast<size_t>(col) == pEntry->ItemCount())
+    if (static_cast<size_t>(col) == rEntry.ItemCount())
     {
-        AddStringItem(pEntry, rText, col - 1);
-        SvViewDataEntry* pViewData = m_xTreeView->GetViewDataEntry(pEntry);
-        m_xTreeView->InitViewData(pViewData, pEntry);
+        AddStringItem(&rEntry, rText, col - 1);
+        SvViewDataEntry* pViewData = m_xTreeView->GetViewDataEntry(&rEntry);
+        m_xTreeView->InitViewData(pViewData, &rEntry);
     }
     else
     {
-        assert(col >= 0 && o3tl::make_unsigned(col) < pEntry->ItemCount());
-        SvLBoxItem& rItem = pEntry->GetItem(col);
+        assert(col >= 0 && o3tl::make_unsigned(col) < rEntry.ItemCount());
+        SvLBoxItem& rItem = rEntry.GetItem(col);
         assert(dynamic_cast<SvLBoxString*>(&rItem));
         static_cast<SvLBoxString&>(rItem).SetText(rText);
     }
 
-    InvalidateModelEntry(pEntry);
+    InvalidateModelEntry(&rEntry);
 }
 
 void SalInstanceTreeView::set_sensitive(SvTreeListEntry* pEntry, bool bSensitive, int col)
@@ -4301,7 +4301,8 @@ void SalInstanceTreeView::enable_toggle_buttons(weld::ColumnToggleType eType)
 void SalInstanceTreeView::set_toggle(const weld::TreeIter& rIter, TriState eState, int col)
 {
     const SalInstanceTreeIter& rVclIter = static_cast<const SalInstanceTreeIter&>(rIter);
-    set_toggle(rVclIter.iter, eState, col);
+    assert(rVclIter.iter && "Invalid iter");
+    set_toggle(*rVclIter.iter, eState, col);
 }
 
 void SalInstanceTreeView::set_clicks_to_toggle(int nToggleBehavior)
@@ -4569,7 +4570,8 @@ OUString SalInstanceTreeView::get_text(const weld::TreeIter& rIter, int col) con
 void SalInstanceTreeView::set_text(const weld::TreeIter& rIter, const OUString& rText, int col)
 {
     const SalInstanceTreeIter& rVclIter = static_cast<const SalInstanceTreeIter&>(rIter);
-    set_text(rVclIter.iter, rText, col);
+    assert(rVclIter.iter && "Invalid iter");
+    set_text(*rVclIter.iter, rText, col);
 }
 
 void SalInstanceTreeView::enable_drag_source(rtl::Reference<TransferDataContainer>& rHelper,
