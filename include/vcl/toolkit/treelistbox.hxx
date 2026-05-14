@@ -219,7 +219,7 @@ class UNLESS_MERGELIBS_MORE(VCL_DLLPUBLIC) SvTreeListBox : public Control,
     Link<SvTreeListBox*, bool> m_aExpandingHdl;
     Link<SvTreeListBox*, void> m_aSelectHdl;
     Link<SvTreeListBox*, void> m_aDeselectHdl;
-    Link<SvTreeListEntry*, OUString> m_aTooltipHdl;
+    Link<SvTreeListEntry&, OUString> m_aTooltipHdl;
     Link<svtree_render_args, void> m_aCustomRenderHdl;
     Link<svtree_measure_args, Size> m_aCustomMeasureHdl;
 
@@ -488,7 +488,7 @@ public:
     SvViewDataItem& GetViewDataItem(SvTreeListEntry const*, const SvLBoxItem&);
     const SvViewDataItem& GetViewDataItem(const SvTreeListEntry*, const SvLBoxItem&) const;
 
-    OUString GetEntryTooltip(SvTreeListEntry* pEntry) const;
+    OUString GetEntryTooltip(SvTreeListEntry& rEntry) const;
 
     VclPtr<Edit> GetEditWidget() const; // for UITest
     bool IsInplaceEditingEnabled() const
@@ -510,7 +510,7 @@ public:
     }
     void SetExpandingHdl(const Link<SvTreeListBox*, bool>& rNewHdl) { m_aExpandingHdl = rNewHdl; }
     void SetExpandedHdl(const Link<SvTreeListBox*, void>& rNewHdl) { m_aExpandedHdl = rNewHdl; }
-    void SetTooltipHdl(const Link<SvTreeListEntry*, OUString>& rLink) { m_aTooltipHdl = rLink; }
+    void SetTooltipHdl(const Link<SvTreeListEntry&, OUString>& rLink) { m_aTooltipHdl = rLink; }
     void SetCustomRenderHdl(const Link<svtree_render_args, void>& rLink)
     {
         m_aCustomRenderHdl = rLink;
@@ -616,8 +616,6 @@ protected:
     void            InitSettings();
 
     virtual void    ApplySettings(vcl::RenderContext& rRenderContext) override;
-
-    void            CallImplEventListeners(VclEventId nEvent, void* pData);
 
     void            ImplEditEntry( SvTreeListEntry* pEntry );
 

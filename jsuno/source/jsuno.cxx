@@ -26,6 +26,7 @@
 
 #include <quickjs.h>
 
+#include <com/sun/star/container/XEnumeration.hpp>
 #include <com/sun/star/container/XHierarchicalNameAccess.hpp>
 #include <com/sun/star/reflection/InvocationTargetException.hpp>
 #include <com/sun/star/reflection/XCompoundTypeDescription.hpp>
@@ -38,6 +39,7 @@
 #include <com/sun/star/script/Invocation.hpp>
 #include <com/sun/star/script/InvocationInfo.hpp>
 #include <com/sun/star/script/XInvocation2.hpp>
+#include <com/sun/star/script/provider/ScriptExceptionRaisedException.hpp>
 #include <com/sun/star/uno/Any.hxx>
 #include <com/sun/star/uno/Reference.hxx>
 #include <com/sun/star/uno/RuntimeException.hpp>
@@ -68,13 +70,26 @@ struct JsException
 class AtomRef
 {
 public:
+    AtomRef(JSRuntime* rt)
+        : rt_(rt)
+        , atom_(JS_ATOM_NULL)
+    {
+    }
+
     AtomRef(JSContext* ctx, JSAtom atom)
-        : ctx_(ctx)
+        : rt_(JS_GetRuntime(ctx))
         , atom_(atom)
     {
     }
 
-    ~AtomRef() { JS_FreeAtom(ctx_, atom_); }
+    ~AtomRef() { JS_FreeAtomRT(rt_, atom_); }
+
+    AtomRef& operator=(JSAtom atom)
+    {
+        std::swap(atom_, atom);
+        JS_FreeAtomRT(rt_, atom);
+        return *this;
+    }
 
     operator JSAtom() const { return atom_; }
 
@@ -84,7 +99,7 @@ private:
     void operator=(AtomRef const&) = delete;
     void operator=(AtomRef&&) = delete;
 
-    JSContext* ctx_;
+    JSRuntime* rt_;
     JSAtom atom_;
 };
 
@@ -221,6 +236,13 @@ private:
 
 struct RuntimeData
 {
+    RuntimeData(JSRuntime* rt)
+        : symbolIteratorAtom(rt)
+    {
+    }
+
+    void clear() { symbolIteratorAtom = JS_ATOM_NULL; }
+
     JSClassID pointerClassId = 0;
     JSClassID wrapperClassId = 0;
     JSClassID enumeratorClassId = 0;
@@ -233,6 +255,8 @@ struct RuntimeData
     JSClassID ctorClassId = 0;
     JSClassID singletonClassId = 0;
     JSClassID moduleClassId = 0;
+
+    AtomRef symbolIteratorAtom;
 
 #if defined DBG_UTIL
     Counter toFinalize;
@@ -315,7 +339,7 @@ JSValue consoleLog(JSContext* ctx, JSValueConst, int argc, JSValueConst* argv)
             buf.append(OUString::Concat(" ") + std::u16string_view(s.get(), n));
         }
         buf.append('\n');
-        std::cout << buf.makeStringAndClear();
+        std::cout << buf.makeStringAndClear() << std::flush;
         return JS_UNDEFINED;
     });
 }
@@ -335,9 +359,57 @@ void pointerFinalizer(JSRuntime* rt, JSValueConst val)
         JS_GetOpaque(val, getRuntimeData(rt)->pointerClassId));
 }
 
+JSValue enumerationIteratorNext(JSContext* ctx, JSValueConst, int, JSValueConst*, int,
+                                JSValueConst* func_data)
+{
+    return callFromJs(ctx, [ctx, func_data] {
+        css::uno::Reference<css::container::XEnumeration> en(
+            static_cast<css::uno::XInterface*>(
+                JS_GetOpaque(func_data[0], getRuntimeData(ctx)->wrapperClassId)),
+            css::uno::UNO_QUERY_THROW);
+        ValueRef val(ctx, JS_NewObject(ctx));
+        if (en->hasMoreElements())
+        {
+            JS_SetPropertyStr(ctx, val, "value", toJs(ctx, en->nextElement()).release());
+            JS_SetPropertyStr(ctx, val, "done", JS_FALSE);
+        }
+        else
+        {
+            JS_SetPropertyStr(ctx, val, "value", JS_UNDEFINED);
+            JS_SetPropertyStr(ctx, val, "done", JS_TRUE);
+        }
+        return val.release();
+    });
+}
+
+JSValue enumerationIterator(JSContext* ctx, JSValueConst this_val, int, JSValueConst*)
+{
+    return callFromJs(ctx, [ctx, this_val] {
+        ValueRef iter(ctx, JS_NewObject(ctx));
+        JS_SetPropertyStr(ctx, iter, "next",
+                          JS_NewCFunctionData(ctx, enumerationIteratorNext, 0, 0, 1,
+                                              const_cast<JSValueConst*>(&this_val)));
+        return iter.release();
+    });
+}
+
 JSValue wrapperGetProperty(JSContext* ctx, JSValueConst obj, JSAtom atom, JSValueConst receiver)
 {
     return callFromJs(ctx, [ctx, obj, atom, receiver] {
+        if (atom == getRuntimeData(ctx)->symbolIteratorAtom)
+        {
+            css::uno::Reference<css::container::XEnumeration> en(
+                static_cast<css::uno::XInterface*>(
+                    JS_GetOpaque(obj, getRuntimeData(ctx)->wrapperClassId)),
+                css::uno::UNO_QUERY);
+            if (!en.is())
+            {
+                return JS_UNDEFINED;
+            }
+            ValueRef val(ctx, JS_NewCFunction(ctx, enumerationIterator, "[Symbol.iterator]", 0));
+            JS_SetProperty(ctx, receiver, atom, val.dup());
+            return val.release();
+        }
         ValueRef const v(ctx, JS_AtomToString(ctx, atom));
         if (!JS_IsString(v))
         {
@@ -2364,12 +2436,62 @@ JSValue invokeUno(JSContext* ctx, JSValueConst this_val, int argc, JSValueConst*
         return ret.release();
     });
 }
+
+struct ExceptionData
+{
+    OUString type;
+    OUString message;
+};
+
+ExceptionData extractExceptionData(JSContext* ctx, ValueRef const& err)
+{
+    ExceptionData exc;
+    bool haveMessage = false;
+    if (JS_IsObject(err))
+    {
+        ValueRef const nameVal(ctx, JS_GetPropertyStr(ctx, err, "name"));
+        if (JS_IsString(nameVal))
+        {
+            std::size_t n;
+            UniqueCString16 const p(ctx, JS_ToCStringLenUTF16(ctx, &n, nameVal));
+            if (p.get() != nullptr)
+            {
+                exc.type = OUString(p.get(), n);
+            }
+        }
+        ValueRef const msgVal(ctx, JS_GetPropertyStr(ctx, err, "message"));
+        if (JS_IsString(msgVal))
+        {
+            std::size_t n;
+            UniqueCString16 const p(ctx, JS_ToCStringLenUTF16(ctx, &n, msgVal));
+            if (p.get() != nullptr)
+            {
+                exc.message = OUString(p.get(), n);
+                haveMessage = true;
+            }
+        }
+    }
+    if (!haveMessage)
+    {
+        ValueRef const str(ctx, JS_ToString(ctx, err));
+        if (!JS_IsException(str))
+        {
+            std::size_t n;
+            UniqueCString16 const p(ctx, JS_ToCStringLenUTF16(ctx, &n, str));
+            if (p.get() != nullptr)
+            {
+                exc.message = OUString(p.get(), n);
+            }
+        }
+    }
+    return exc;
+}
 }
 
-void jsuno::execute(OUString const& script)
+OUString jsuno::execute(OUString const& script, VariableList aGlobalVariables)
 {
     auto const rt = JS_NewRuntime();
-    JS_SetRuntimeOpaque(rt, new RuntimeData);
+    JS_SetRuntimeOpaque(rt, new RuntimeData(rt));
     JS_NewClassID(rt, &getRuntimeData(rt)->pointerClassId);
     JSClassDef pointerClass{ "InternalPointer", pointerFinalizer, nullptr, nullptr, nullptr };
     [[maybe_unused]] auto e = JS_NewClass(rt, getRuntimeData(rt)->pointerClassId, &pointerClass);
@@ -2426,9 +2548,14 @@ void jsuno::execute(OUString const& script)
     e = JS_NewClass(rt, getRuntimeData(rt)->moduleClassId, &moduleClass);
     assert(e == 0); //TODO
     auto const ctx = JS_NewContext(rt);
-    std::optional<OUString> exc;
+    std::optional<ExceptionData> exc;
+    OUString result;
     {
         ValueRef const global(ctx, JS_GetGlobalObject(ctx));
+        getRuntimeData(ctx)->symbolIteratorAtom = JS_ValueToAtom(
+            ctx, ValueRef(ctx, JS_GetPropertyStr(
+                                   ctx, ValueRef(ctx, JS_GetPropertyStr(ctx, global, "Symbol")),
+                                   "iterator")));
         ValueRef console(ctx, JS_NewObject(ctx));
         JS_SetPropertyStr(ctx, console, "assert", JS_NewCFunction(ctx, consoleAssert, "assert", 1));
         JS_SetPropertyStr(ctx, console, "log", JS_NewCFunction(ctx, consoleLog, "log", 0));
@@ -2477,6 +2604,10 @@ void jsuno::execute(OUString const& script)
         JS_SetPropertyStr(ctx, uno, "componentContext",
                           wrapUnoObject(ctx, comphelper::getProcessComponentContext()));
         JS_SetPropertyStr(ctx, global, "uno", uno.release());
+
+        for (const auto& rVariable : aGlobalVariables)
+            JS_SetPropertyStr(ctx, global, rVariable.first, wrapUnoObject(ctx, rVariable.second));
+
         auto const input = script.toUtf8();
         ValueRef const evalRes(
             ctx, JS_Eval(ctx, input.getStr(), input.getLength(), "<input>", JS_EVAL_TYPE_GLOBAL));
@@ -2485,27 +2616,41 @@ void jsuno::execute(OUString const& script)
             //TODO: reconstruct UNO exceptions
             ValueRef const err(ctx, JS_GetException(ctx));
             assert(!JS_IsException(err)); //TODO?
-            ValueRef const str(ctx, JS_ToString(ctx, err));
-            assert(!JS_IsException(str)); //TODO?
-            std::size_t n1;
-            UniqueCString16 const p1(ctx, JS_ToCStringLenUTF16(ctx, &n1, str));
-            assert(p1.get() != nullptr); //TODO?
-            ValueRef const stack(ctx, JS_GetPropertyStr(ctx, err, "stack"));
-            assert(!JS_IsException(stack)); //TODO?
-            std::size_t n2;
-            UniqueCString16 const p2(ctx, JS_ToCStringLenUTF16(ctx, &n2, stack));
-            assert(p2.get() != nullptr); //TODO?
-            exc = OUString::Concat(std::u16string_view(p1.get(), n1)) + ": "
-                  + std::u16string_view(p2.get(), n2);
+            exc = extractExceptionData(ctx, err);
+        }
+        else
+        {
+            ValueRef const json(ctx, JS_JSONStringify(ctx, evalRes, JS_UNDEFINED, JS_UNDEFINED));
+            if (JS_IsException(json))
+            {
+                // JSON.stringify itself can throw, e.g. on BigInt values or circular references:
+                ValueRef const err(ctx, JS_GetException(ctx));
+                assert(!JS_IsException(err)); //TODO?
+                exc = extractExceptionData(ctx, err);
+            }
+            else if (!JS_IsUndefined(json))
+            {
+                // Values that JSON.stringify drops (undefined, functions, symbols) come back as
+                // JS_UNDEFINED, for which we use an empty OUString:
+                std::size_t n;
+                UniqueCString16 const p(ctx, JS_ToCStringLenUTF16(ctx, &n, json));
+                if (p.get() != nullptr)
+                {
+                    result = OUString(p.get(), n);
+                }
+            }
         }
     }
     JS_FreeContext(ctx);
     std::unique_ptr<RuntimeData> data(getRuntimeData(rt));
+    data->clear();
     JS_FreeRuntime(rt);
     if (exc)
     {
-        throw css::uno::RuntimeException("JS exception: " + *exc);
+        throw css::script::provider::ScriptExceptionRaisedException(
+            exc->message, {}, u"<input>"_ustr, u"JavaScript"_ustr, -1, exc->type);
     }
+    return result;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

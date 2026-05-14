@@ -269,12 +269,6 @@ void SwLineLayout::CalcLine( SwTextFormatter &rLine, SwTextFormatInfo &rInf )
 
     bool bTmpDummy = !GetLen();
     SwFlyCntPortion* pFlyCnt = nullptr;
-    if( bTmpDummy )
-    {
-        nFlyAscent = 0;
-        nFlyHeight = 0;
-        nFlyDescent = 0;
-    }
 
     // #i3952#
     const bool bIgnoreBlanksAndTabsForLineHeightCalculation =
@@ -282,9 +276,8 @@ void SwLineLayout::CalcLine( SwTextFormatter &rLine, SwTextFormatInfo &rInf )
             DocumentSettingId::IGNORE_TABS_AND_BLANKS_FOR_LINE_CALCULATION);
 
     bool bHasBlankPortion = false;
-    bool bHasOnlyBlankPortions = true;
+    bool bHasOnlyBlankPortions = true; // paragraph line contains only tabstops and spaces
     bool bHasTabPortions = false;
-    bool bHasNonBlankPortions = false;
     SwTwips nTabPortionAscent = 0;
     SwTwips nTabPortionHeight = 0;
     SwTwips nSpacePortionAscent = 0;
@@ -372,10 +365,10 @@ void SwLineLayout::CalcLine( SwTextFormatter &rLine, SwTextFormatInfo &rInf )
                             {
                                 nSpacePortionHeight = pPos->Height();
                             }
-                            bHasBlankPortion = true;
                         }
                         bTmpDummy &= !pPos->InTabGrp();
                         pPos = pPos->GetNextPortion();
+                        bHasBlankPortion = true;
                         continue;
                     }
                 }
@@ -393,8 +386,11 @@ void SwLineLayout::CalcLine( SwTextFormatter &rLine, SwTextFormatInfo &rInf )
                     continue;
                 }
 
-                bHasOnlyBlankPortions = false;
-                bHasNonBlankPortions = true;
+                // FlyPortions are just holes for text to wrap around.
+                // Since they are not part of the paragraph itself,
+                // FlyPortions don't negate the idea that the line only contains blank portions.
+                if (!pPos->IsFlyPortion())
+                    bHasOnlyBlankPortions = false;
 
                 // We had an attribute change: Sum up/build maxima of length and mass
 
@@ -573,13 +569,12 @@ void SwLineLayout::CalcLine( SwTextFormatter &rLine, SwTextFormatInfo &rInf )
         else
         {
             bHasOnlyBlankPortions = false;
-            bHasNonBlankPortions = true;
         }
     }
 
     if (!rInf.IsNewLine()
         && TextFrameIndex(rInf.GetText().getLength()) <= rInf.GetIdx()
-        && !bHasNonBlankPortions
+        && bHasOnlyBlankPortions
         && rInf.GetTextFrame()->GetDoc().getIDocumentSettingAccess().get(
             DocumentSettingId::APPLY_PARAGRAPH_MARK_FORMAT_TO_EMPTY_LINE_AT_END_OF_PARAGRAPH))
     {
@@ -589,7 +584,7 @@ void SwLineLayout::CalcLine( SwTextFormatter &rLine, SwTextFormatInfo &rInf )
         SetAscent(rInf.GetAscent());
         Height(rInf.GetTextHeight());
     }
-    else if (bIgnoreBlanksAndTabsForLineHeightCalculation && !bHasNonBlankPortions &&
+    else if (bIgnoreBlanksAndTabsForLineHeightCalculation && bHasOnlyBlankPortions &&
         (bHasTabPortions || (bHasBlankPortion && (nSpacePortionAscent > 0 || nSpacePortionHeight > 0))))
     {
         //Word increases line height if _only_ spaces and|or tabstops are in a line
@@ -598,7 +593,7 @@ void SwLineLayout::CalcLine( SwTextFormatter &rLine, SwTextFormatInfo &rInf )
             mnAscent = nTabPortionAscent;
             Height(nTabPortionHeight, true);
         }
-        else if (bHasBlankPortion)
+        if (bHasBlankPortion)
         {
             if(  mnAscent < nSpacePortionAscent )
                 mnAscent = nSpacePortionAscent;

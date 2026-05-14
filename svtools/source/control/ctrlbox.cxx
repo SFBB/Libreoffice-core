@@ -1536,9 +1536,7 @@ SvtLineListBox::SvtLineListBox(std::unique_ptr<weld::MenuButton> pControl)
     , aVirDev(VclPtr<VirtualDevice>::Create())
     , aColor(COL_BLACK)
 {
-    const StyleSettings& rStyleSettings = Application::GetSettings().GetStyleSettings();
     m_xLineSet->SetStyle(WinBits(WB_FLATVALUESET | WB_NO_DIRECTSELECT | WB_TABSTOP));
-    m_xLineSet->SetItemHeight(rStyleSettings.GetListBoxPreviewDefaultPixelSize().Height() + 1);
     m_xLineSet->SetColCount(1);
     m_xLineSet->SetSelectHdl(LINK(this, SvtLineListBox, ValueSelectHdl));
 
@@ -1587,7 +1585,7 @@ IMPL_LINK_NOARG(SvtLineListBox, StyleUpdatedHdl, weld::Widget&, void)
 IMPL_LINK_NOARG(SvtLineListBox, NoneHdl, weld::Button&, void)
 {
     SelectEntry(SvxBorderLineStyle::NONE);
-    ValueSelectHdl(nullptr);
+    HandleEntrySelection();
 }
 
 SvtLineListBox::~SvtLineListBox()
@@ -1633,17 +1631,15 @@ void SvtLineListBox::UpdateEntries()
     m_xLineSet->Clear();
 
     // Add the new entries based on the defined width
-    sal_uInt16 n = 0;
-    sal_uInt16 nCount = m_vLineList.size( );
-    while ( n < nCount )
+    for (size_t i = 0; i < m_vLineList.size(); ++i)
     {
-        auto& pData = m_vLineList[ n ];
-        const Image aLineImage = GetLineImage(*pData);
+        ScopedVclPtr<VirtualDevice> pImage = GetLineImage(i);
+        const std::unique_ptr<ImpLineListData>& pData = m_vLineList.at(i);
         sal_Int16 nItemId = static_cast<sal_Int16>(pData->GetStyle()) + 1;
+        const Image aLineImage(pImage->GetBitmap(Point(), pImage->GetOutputSizePixel()));
         m_xLineSet->InsertItem(nItemId, aLineImage, GetLineStyleName(pData->GetStyle()));
         if (pData->GetStyle() == eSelected)
             m_xLineSet->SelectItem(nItemId);
-        n++;
     }
 
     m_xLineSet->SetOptimalSize();
@@ -1651,20 +1647,43 @@ void SvtLineListBox::UpdateEntries()
 
 IMPL_LINK_NOARG(SvtLineListBox, ValueSelectHdl, ValueSet*, void)
 {
+    HandleEntrySelection();
+}
+
+void SvtLineListBox::HandleEntrySelection()
+{
     maSelectHdl.Call(*this);
     UpdatePreview();
     if (m_xControl->get_active())
         m_xControl->set_active(false);
 }
 
+ScopedVclPtr<VirtualDevice> SvtLineListBox::GetLineImage(const size_t nIndex)
+{
+    ScopedVclPtr<VirtualDevice> pVDev = VclPtr<VirtualDevice>::Create();
+    pVDev->SetOutputSizePixel(getPreviewSize(*m_xControl));
+
+    const Image aImage = nIndex != VALUESET_ITEM_NOTFOUND
+                             ? GetLineImage(*m_vLineList.at(nIndex))
+                             : Image();
+    const auto nPos = (pVDev->GetOutputSizePixel().Height() - aImage.GetSizePixel().Height()) / 2;
+    pVDev->SetMapMode(MapMode(MapUnit::MapPixel));
+    const StyleSettings& rSettings = Application::GetSettings().GetStyleSettings();
+    pVDev->SetBackground(rSettings.GetFieldColor());
+    pVDev->Erase();
+    pVDev->DrawImage(Point(0, nPos), aImage);
+
+    return pVDev;
+}
+
 void SvtLineListBox::UpdatePreview()
 {
     SvxBorderLineStyle eStyle = GetSelectEntryStyle();
-    for (sal_uInt32 i = 0; i < SAL_N_ELEMENTS(RID_SVXSTR_BORDERLINE); ++i)
+    for (const std::pair<TranslateId, SvxBorderLineStyle>& rItem : RID_SVXSTR_BORDERLINE)
     {
-        if (eStyle == RID_SVXSTR_BORDERLINE[i].second)
+        if (eStyle == rItem.second)
         {
-            m_xControl->set_label(SvtResId(RID_SVXSTR_BORDERLINE[i].first));
+            m_xControl->set_label(SvtResId(rItem.first));
             break;
         }
     }
@@ -1677,18 +1696,9 @@ void SvtLineListBox::UpdatePreview()
     else
     {
         const size_t nSelectedIndex = m_xLineSet->GetItemPos(m_xLineSet->GetSelectedItemId());
-        const Image aImage = nSelectedIndex != VALUESET_ITEM_NOTFOUND
-                                 ? GetLineImage(*m_vLineList.at(nSelectedIndex))
-                                 : Image();
+        ScopedVclPtr<VirtualDevice> pImageDev = GetLineImage(nSelectedIndex);
         m_xControl->set_label(u""_ustr);
-        const auto nPos = (aVirDev->GetOutputSizePixel().Height() - aImage.GetSizePixel().Height()) / 2;
-        auto popIt = aVirDev->ScopedPush(vcl::PushFlags::MAPMODE);
-        aVirDev->SetMapMode(MapMode(MapUnit::MapPixel));
-        const StyleSettings& rSettings = Application::GetSettings().GetStyleSettings();
-        aVirDev->SetBackground(rSettings.GetFieldColor());
-        aVirDev->Erase();
-        aVirDev->DrawImage(Point(0, nPos), aImage);
-        m_xControl->set_image(aVirDev.get());
+        m_xControl->set_image(pImageDev.get());
     }
 }
 
