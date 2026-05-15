@@ -281,6 +281,7 @@ ACFlags SvxAutoCorrect::GetDefaultFlags()
                     | ACFlags::AddNonBrkSpace
                     | ACFlags::TransliterateRTL
                     | ACFlags::ChgAngleQuotes
+                    | ACFlags::EsperantoHats
                     | ACFlags::ChgWeightUnderl
                     | ACFlags::SetINetAttr
                     | ACFlags::SetDOIAttr
@@ -1240,6 +1241,60 @@ bool SvxAutoCorrect::FnCorrectCapsLock( SvxAutoCorrDoc& rDoc, const OUString& rT
     return true;
 }
 
+void SvxAutoCorrect::FnAddEsperantoHats( SvxAutoCorrDoc& rDoc, std::u16string_view rText,
+                                         sal_Int32 nStart, sal_Int32& nEnd )
+{
+    static const std::pair<sal_Unicode, sal_Unicode> aCharMap[] = {
+        { 'C', u'Ĉ' }, { 'G', u'Ĝ' }, { 'H', u'Ĥ' }, { 'J', u'Ĵ' }, { 'S', u'Ŝ' }, { 'U', u'Ŭ' },
+        { 'c', u'ĉ' }, { 'g', u'ĝ' }, { 'h', u'ĥ' }, { 'j', u'ĵ' }, { 's', u'ŝ' }, { 'u', u'ŭ' },
+    };
+    // Use an initial capacity of 0 so that it won’t do an allocation
+    // in the likely event that there is nothing to change.
+    OUStringBuffer sReplacement(0);
+    sal_Int32 nPendingPos = nStart;
+
+    for (int i = nStart + 1; i < nEnd; ++i)
+    {
+        if (rText[i] != 'x' && rText[i] != 'X')
+            continue;
+
+        const std::pair<sal_Unicode, sal_Unicode>* pPos
+            = std::lower_bound(std::begin(aCharMap), std::end(aCharMap), rText[i - 1],
+                               [](const auto& a, const auto& b) { return a.first < b; });
+
+        if (pPos == std::end(aCharMap) || pPos->first != rText[i - 1])
+            continue;
+
+        // Only fix ux if it follows e or a because the letter is found almost exclusively in the
+        // combinations eŭ and aŭ. That way we avoid changing the letter in common proper nouns such
+        // as Linux.
+        if (pPos->second == u'ŭ' || pPos->second == u'Ŭ')
+        {
+            if (i - 1 <= nStart)
+                continue;
+            char16_t nPrevChar = rText[i - 2];
+            if (nPrevChar != 'a' && nPrevChar != 'e' && nPrevChar != 'A' && nPrevChar != 'E')
+                continue;
+        }
+
+        if (sReplacement.isEmpty())
+        {
+            nStart = i - 1;
+            nPendingPos = i - 1;
+        }
+
+        sReplacement.append(rText.substr(nPendingPos, i - 1 - nPendingPos) +
+                            OUStringChar(pPos->second));
+        nPendingPos = i + 1;
+    }
+
+    if (sReplacement.isEmpty())
+        return;
+
+    nEnd = nStart + sReplacement.getLength() + nEnd - nPendingPos;
+    rDoc.Delete(nStart, nPendingPos);
+    rDoc.Insert(nStart, sReplacement.makeStringAndClear());
+}
 
 sal_Unicode SvxAutoCorrect::GetQuote( sal_Unicode cInsChar, bool bSttQuote,
                                         LanguageType eLang ) const
@@ -1686,11 +1741,23 @@ void SvxAutoCorrect::DoAutoCorrect( SvxAutoCorrDoc& rDoc, const OUString& rTxt,
             ;
         else
         {
+            // Each autocorrect function below (FnCorrectCapsLock,
+            // FnCapitalStartSentence, FnCapitalStartWord) can modify the
+            // document via rDoc.Replace. With track changes enabled, this can
+            // cause the text frame's text to be freed and reallocated, making
+            // rTxt a dangling reference. Use a local copy to avoid
+            // use-after-free when subsequent functions read the text.
+            OUString aTxt(rTxt);
+
             bool bLockKeyOn = pFrameWin && (pFrameWin->GetIndicatorState() & KeyIndicatorState::CAPSLOCK);
-            bool bUnsupported = lcl_IsUnsupportedUnicodeChar( rCC, rTxt, nCapLttrPos, nInsPos );
+            bool bUnsupported = lcl_IsUnsupportedUnicodeChar( rCC, aTxt, nCapLttrPos, nInsPos );
+
+            if ( IsAutoCorrFlag( ACFlags::EsperantoHats ) &&
+                 eLang == LANGUAGE_USER_ESPERANTO )
+                FnAddEsperantoHats( rDoc, rTxt, nCapLttrPos, nInsPos );
 
             if ( bLockKeyOn && IsAutoCorrFlag( ACFlags::CorrectCapsLock ) &&
-                 FnCorrectCapsLock( rDoc, rTxt, nCapLttrPos, nInsPos, eLang ) )
+                 FnCorrectCapsLock( rDoc, aTxt, nCapLttrPos, nInsPos, eLang ) )
             {
                 // Correct accidental use of cAPS LOCK key (do this only when
                 // the caps or shift lock key is pressed). Turn off the caps
@@ -1702,19 +1769,19 @@ void SvxAutoCorrect::DoAutoCorrect( SvxAutoCorrDoc& rDoc, const OUString& rTxt,
             if( !bUnsupported &&
                 IsAutoCorrFlag( ACFlags::CapitalStartSentence ) )
             {
-                FnCapitalStartSentence( rDoc, rTxt, true, nCapLttrPos, nInsPos, eLang );
+                FnCapitalStartSentence( rDoc, aTxt, true, nCapLttrPos, nInsPos, eLang );
             }
 
             // Two capital letters at beginning of word ??
             if( !bUnsupported &&
                 IsAutoCorrFlag( ACFlags::CapitalStartWord ) )
             {
-                FnCapitalStartWord( rDoc, rTxt, nCapLttrPos, nInsPos, eLang );
+                FnCapitalStartWord( rDoc, aTxt, nCapLttrPos, nInsPos, eLang );
             }
 
             if( IsAutoCorrFlag( ACFlags::ChgToEnEmDash ) )
             {
-                FnChgToEnEmDash( rDoc, rTxt, nCapLttrPos, nInsPos, eLang );
+                FnChgToEnEmDash( rDoc, aTxt, nCapLttrPos, nInsPos, eLang );
             }
         }
 

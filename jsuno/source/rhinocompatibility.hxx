@@ -9,12 +9,13 @@
 
 #pragma once
 
-#include <sal/config.h>
+#include <quickjs.h>
+#include "jsvalue.hxx"
 
-#if defined __EMSCRIPTEN__
-
-void initJsUnoScripting();
-
-#endif
+namespace jsuno::rhino_compatibility
+{
+void setUp(JSContext* pContext);
+jsuno::ValueRef createUnoRuntime(JSContext* pContext);
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

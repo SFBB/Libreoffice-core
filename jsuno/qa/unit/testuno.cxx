@@ -21,42 +21,51 @@ namespace
 {
 class TestUno : public CppUnit::TestFixture
 {
+    void appendFileContents(std::u16string_view sFilename, std::string& sOutput);
     void executeScript(std::u16string_view sScriptName);
 
 public:
     void test() { executeScript(u"test.js"); }
     void testMissingParams() { executeScript(u"testmissingparams.js"); }
+    void testRhinoCompatibility() { executeScript(u"testrhinocompatibility.js"); }
 
     CPPUNIT_TEST_SUITE(TestUno);
     CPPUNIT_TEST(test);
     CPPUNIT_TEST(testMissingParams);
+    CPPUNIT_TEST(testRhinoCompatibility);
     CPPUNIT_TEST_SUITE_END();
 };
 
-void TestUno::executeScript(std::u16string_view sScriptName)
+void TestUno::appendFileContents(std::u16string_view sFilename, std::string& sOutput)
 {
     OUString sSrcPath = o3tl::getEnvironment(u"SRC_ROOT"_ustr);
     CPPUNIT_ASSERT_MESSAGE("SRC_ROOT env variable not set", !sSrcPath.isEmpty());
 
-    if (sSrcPath.endsWith("/"))
-        sSrcPath = sSrcPath.copy(0, sSrcPath.getLength() - 1);
+    // Remove any trailing slash
+    sSrcPath.endsWith('/', &sSrcPath);
 
-    OUString sScriptPath = sSrcPath + "/jsuno/qa/extras/" + sScriptName;
-    OString sScriptPathUtf8 = OUStringToOString(sScriptPath, RTL_TEXTENCODING_UTF8);
-    std::string sSourceUtf8;
+    OUString sPath = sSrcPath + "/jsuno/qa/extras/" + sFilename;
+    OString sPathUtf8 = OUStringToOString(sPath, RTL_TEXTENCODING_UTF8);
 
     try
     {
-        std::ifstream ifs(sScriptPathUtf8.getStr());
+        std::ifstream ifs(sPathUtf8.getStr());
         ifs.exceptions(std::ifstream::failbit);
-        sSourceUtf8.append((std::istreambuf_iterator<char>(ifs)),
-                           (std::istreambuf_iterator<char>()));
+        sOutput.append((std::istreambuf_iterator<char>(ifs)), (std::istreambuf_iterator<char>()));
     }
     catch (const std::ios_base::failure& rFail)
     {
-        std::cerr << sScriptPathUtf8 << ": " << rFail.what() << std::endl;
+        std::cerr << sPathUtf8 << ": " << rFail.what() << std::endl;
         CPPUNIT_FAIL("error loading test script");
     }
+}
+
+void TestUno::executeScript(std::u16string_view sScriptName)
+{
+    std::string sSourceUtf8;
+
+    appendFileContents(u"common.js", sSourceUtf8);
+    appendFileContents(sScriptName, sSourceUtf8);
 
     OUString sSource = OStringToOUString(sSourceUtf8, RTL_TEXTENCODING_UTF8);
     jsuno::execute(sSource);
