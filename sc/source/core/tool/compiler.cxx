@@ -6140,7 +6140,7 @@ void ScCompiler::CreateStringFromIndex( OUStringBuffer& rBuffer, const FormulaTo
                                 CreateStringFromDoubleRef( aBuffer, pRef);
                                 break;
                             case svError:
-                                AppendErrorConstant( aBuffer, pRef->GetError());
+                                AppendErrorConstant( aBuffer, static_cast<const FormulaErrorToken*>(pRef)->GetError());
                                 break;
                             default:
                                 AppendErrorConstant( aBuffer, FormulaError::NoCode);
@@ -7081,7 +7081,7 @@ void ScCompiler::AnnotateTrimOnDoubleRefs()
                         if (!pTok->IsInForceArray())
                             return;
 
-                        const short nJumpCount = pTok->GetJump()[0];
+                        const short nJumpCount = static_cast<const FormulaJumpToken*>(pTok)->GetJump()[0];
                         if (nJumpCount != 2) // Should have THEN but no ELSE.
                             return;
 
@@ -7212,7 +7212,7 @@ void ScCompiler::AnnotateTrimOnDoubleRefs()
                         if (!pTok->IsInForceArray())
                             return;
 
-                        const short nJumpCount = pTok->GetJump()[0];
+                        const short nJumpCount = static_cast<FormulaJumpToken*>(pTok)->GetJump()[0];
                         if (nJumpCount != 2) // Should have THEN but no ELSE.
                             return;
 

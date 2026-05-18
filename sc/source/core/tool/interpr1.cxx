@@ -87,7 +87,7 @@ using namespace formula;
 
 void ScInterpreter::ScIfJump()
 {
-    const short* pJump = pCur->GetJump();
+    const short* pJump = static_cast<const FormulaJumpToken*>(pCur)->GetJump();
     short nJumpCount = pJump[ 0 ];
     MatrixJumpConditionToMatrix();
     if ( GetStackType() != svMatrix )
@@ -195,7 +195,7 @@ static void lcl_storeJumpMatResult(
 
 void ScInterpreter::ScIfError( bool bNAonly )
 {
-    const short* pJump = pCur->GetJump();
+    const short* pJump = static_cast<const FormulaJumpToken*>(pCur)->GetJump();
     short nJumpCount = pJump[ 0 ];
     if (!sp || nJumpCount != 2)
     {
@@ -365,7 +365,7 @@ void ScInterpreter::ScChooseJump()
     // We have to set a jump, if there was none chosen because of an error set
     // it to endpoint.
     bool bHaveJump = false;
-    const short* pJump = pCur->GetJump();
+    const short* pJump = static_cast<const FormulaJumpToken*>(pCur)->GetJump();
     short nJumpCount = pJump[ 0 ];
     MatrixJumpConditionToMatrix();
     switch ( GetStackType() )
@@ -491,7 +491,7 @@ static void lcl_AdjustJumpMatrix( ScJumpMatrix* pJumpM, SCSIZE nParmCols, SCSIZE
 
 bool ScInterpreter::JumpMatrix( short nStackLevel )
 {
-    pJumpMatrix = pStack[sp-nStackLevel]->GetJumpMatrix();
+    pJumpMatrix = static_cast<const ScJumpMatrixToken*>(pStack[sp-nStackLevel])->GetJumpMatrix();
     bool bHasResMat = pJumpMatrix->HasResultMatrix();
     SCSIZE nC, nR;
     if ( nStackLevel == 2 )
@@ -805,7 +805,7 @@ bool ScInterpreter::JumpMatrix( short nStackLevel )
                 !FormulaCompiler::IsOpCodeJumpCommand( pJumpMatrix->GetOpCode()) &&
                 aCode.PeekNextOperator())
         {
-            FormulaTokenRef xRef = new ScRefListToken(true);
+            ::boost::intrusive_ptr<ScRefListToken> xRef = new ScRefListToken(true);
             *(xRef->GetRefList()) = pJumpMatrix->GetRefList();
             pJumpMatrix = nullptr;
             Pop();
@@ -1696,7 +1696,7 @@ void ScInterpreter::ScRandomImpl( const std::function<double( double fFirst, dou
         if (GetStackType(1) == svJumpMatrix)
         {
             SCSIZE nC, nR;
-            pStack[sp-1]->GetJumpMatrix()->GetDimensions( nC, nR);
+            static_cast<const ScJumpMatrixToken*>(pStack[sp-1])->GetJumpMatrix()->GetDimensions( nC, nR);
             nCols = std::max<SCCOL>(0, static_cast<SCCOL>(nC));
             nRows = std::max<SCROW>(0, static_cast<SCROW>(nR));
         }
@@ -2607,7 +2607,7 @@ void ScInterpreter::ScCellExternal()
                 PushString(OUString::number(pToken->GetDouble()));
             break;
             case svError:
-                PushString(ScGlobal::GetErrorString(pToken->GetError()));
+                PushString(ScGlobal::GetErrorString(static_cast<FormulaErrorToken*>(pToken.get())->GetError()));
             break;
             default:
                 PushString(OUString());
@@ -2686,7 +2686,7 @@ void ScInterpreter::ScIsRef()
         break;
         case svRefList :
         {
-            FormulaConstTokenRef x = PopToken();
+            auto x = PopToken<ScRefListToken>();
             if ( nGlobalError == FormulaError::NONE )
                 bRes = !x->GetRefList()->empty();
         }
@@ -2958,7 +2958,7 @@ void ScInterpreter::ScIsNV()
             ScExternalRefCache::TokenRef pToken;
             PopExternalSingleRef(pToken);
             if (nGlobalError == FormulaError::NotAvailable ||
-                    (pToken && pToken->GetType() == svError && pToken->GetError() == FormulaError::NotAvailable))
+                    (pToken && pToken->GetType() == svError && static_cast<FormulaErrorToken*>(pToken.get())->GetError() == FormulaError::NotAvailable))
                 bRes = true;
         }
         break;
@@ -3015,7 +3015,7 @@ void ScInterpreter::ScIsErr()
             ScExternalRefCache::TokenRef pToken;
             PopExternalSingleRef(pToken);
             if ((nGlobalError != FormulaError::NONE && nGlobalError != FormulaError::NotAvailable) || !pToken ||
-                    (pToken->GetType() == svError && pToken->GetError() != FormulaError::NotAvailable))
+                    (pToken->GetType() == svError && static_cast<FormulaErrorToken*>(pToken.get())->GetError() != FormulaError::NotAvailable))
                 bRes = true;
         }
         break;
@@ -7911,7 +7911,10 @@ void ScInterpreter::ScXLookup()
     if ( nParamCount >= 4 && GetStackType() != svEmptyCell )
     {
         xNotFound = PopToken();
-        nFirstMatchError = xNotFound->GetError();
+        if (xNotFound->GetType() == svError)
+            nFirstMatchError = static_cast<const FormulaErrorToken*>(xNotFound.get())->GetError();
+        else
+            nFirstMatchError = FormulaError::NONE;
         nGlobalError = FormulaError::NONE; // propagate only for match or active result path
     }
 
@@ -9952,7 +9955,7 @@ ScTokenArray ScInterpreter::checkPushTokens(const ScTokenArray& rTokens, short n
 
 void ScInterpreter::ScLet()
 {
-    const short* pJump = pCur->GetJump();
+    const short* pJump = static_cast<const FormulaJumpToken*>(pCur)->GetJump();
     short nJumpCount = pJump[0];
     short nOrgJumpCount = nJumpCount;
 
@@ -10073,7 +10076,10 @@ void ScInterpreter::ScLet()
         const formula::FormulaConstTokenRef& xLambdaResult(aInt.GetResultToken());
         if (xLambdaResult)
         {
-            nGlobalError = xLambdaResult->GetError();
+            if (xLambdaResult->GetType() == svError)
+                nGlobalError = static_cast<const FormulaErrorToken*>(xLambdaResult.get())->GetError();
+            else
+                nGlobalError = FormulaError::NONE;
             if (nGlobalError == FormulaError::NONE)
                 PushTokenRef(xLambdaResult);
             else
@@ -11280,7 +11286,7 @@ void ScInterpreter::ScIndex()
         return;
     }
     if (GetStackType() == svRefList)
-        nAreaCount = (sp ? pStack[sp-1]->GetRefList()->size() : 0);
+        nAreaCount = (sp ? static_cast<const ScRefListToken*>(pStack[sp-1])->GetRefList()->size() : 0);
     else
         nAreaCount = 1;     // one reference or array or whatever
     if (nGlobalError != FormulaError::NONE || nAreaCount == 0 || o3tl::make_unsigned(nArea) > nAreaCount)
@@ -11429,7 +11435,7 @@ void ScInterpreter::ScIndex()
                 bool bRowArray = false;
                 if (GetStackType() == svRefList)
                 {
-                    FormulaConstTokenRef xRef = PopToken();
+                    auto xRef = PopToken<ScRefListToken>();
                     if (nGlobalError != FormulaError::NONE || !xRef)
                     {
                         PushError( FormulaError::NoRef);
@@ -11529,7 +11535,7 @@ void ScInterpreter::ScAreas()
             break;
         case svRefList:
             {
-                FormulaConstTokenRef xT = PopToken();
+                auto xT = PopToken<ScRefListToken>();
                 ValidateRef( *(xT->GetRefList()));
                 nCount += xT->GetRefList()->size();
             }
@@ -12473,7 +12479,7 @@ FormulaError ScInterpreter::GetErrorType()
     {
         case svRefList :
         {
-            FormulaConstTokenRef x = PopToken();
+            auto x = PopToken<ScRefListToken>();
             if (nGlobalError != FormulaError::NONE)
                 nErr = nGlobalError;
             else

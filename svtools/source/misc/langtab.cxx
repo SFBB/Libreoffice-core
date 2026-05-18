@@ -27,6 +27,7 @@
 #include <com/sun/star/uno/Sequence.hxx>
 #include <com/sun/star/uno/Any.h>
 
+#include <comphelper/lok.hxx>
 #include <i18nlangtag/lang.h>
 #include <i18nlangtag/mslangid.hxx>
 #include <i18nlangtag/languagetag.hxx>
@@ -53,17 +54,22 @@ class SvtLanguageTableImpl
 {
 private:
     std::vector<std::pair<OUString, LanguageType>> m_aStrings;
-    void            AddItem(const OUString& rLanguage, const LanguageType eType)
+    OUString m_aUILanguage; // UI language used to build the table
+    const OUString& AddItem(const OUString& rLanguage, const LanguageType eType)
     {
-        m_aStrings.emplace_back(rLanguage, eType);
+        return m_aStrings.emplace_back(rLanguage, eType).first;
     }
+    void            Build();
 
 public:
 
     SvtLanguageTableImpl();
 
+    // In LOKit mode, rebuild the table if the UI language has changed.
+    void            RebuildIfNeeded();
+
     bool            HasType( const LanguageType eType ) const;
-    OUString        GetString( const LanguageType eType ) const;
+    const OUString& GetString( const LanguageType eType ) const;
     LanguageType    GetType( std::u16string_view rStr ) const;
     sal_uInt32      GetEntryCount() const;
     LanguageType    GetTypeAtIndex( sal_uInt32 nIndex ) const;
@@ -81,12 +87,13 @@ public:
         }
         return RESARRAY_INDEX_NOTFOUND;
     }
-    void            AddEntry( const OUString& rString, const LanguageType eType);
+    const OUString& AddEntry( const OUString& rString, const LanguageType eType);
 };
 
 SvtLanguageTableImpl& theLanguageTable()
 {
     static SvtLanguageTableImpl aTable;
+    aTable.RebuildIfNeeded();
     return aTable;
 }
 }
@@ -190,6 +197,13 @@ static OUString lcl_getDescription( const LanguageTag& rTag )
 
 SvtLanguageTableImpl::SvtLanguageTableImpl()
 {
+    Build();
+}
+
+void SvtLanguageTableImpl::Build()
+{
+    m_aStrings.clear();
+
     for (const auto& [rResId, rType] : STR_ARR_SVT_LANGUAGE_TABLE)
     {
         m_aStrings.emplace_back(SvtResId(rResId), rType);
@@ -216,6 +230,18 @@ SvtLanguageTableImpl::SvtLanguageTableImpl()
                 AddEntry( (aName.isEmpty() ? lcl_getDescription(aLang) : aName), nLangType);
         }
     }
+
+    m_aUILanguage = SvtSysLocale().GetUILanguageTag().getBcp47();
+}
+
+void SvtLanguageTableImpl::RebuildIfNeeded()
+{
+    if (!comphelper::LibreOfficeKit::isActive())
+        return;
+
+    OUString aCurrLang = SvtSysLocale().GetUILanguageTag().getBcp47();
+    if (m_aUILanguage != aCurrLang)
+        Build();
 }
 
 bool SvtLanguageTableImpl::HasType( const LanguageType eType ) const
@@ -231,7 +257,7 @@ bool SvtLanguageTable::HasLanguageType( const LanguageType eType )
     return theLanguageTable().HasType( eType );
 }
 
-OUString SvtLanguageTableImpl::GetString( const LanguageType eType ) const
+const OUString& SvtLanguageTableImpl::GetString( const LanguageType eType ) const
 {
     const LanguageType nLang = MsLangId::getReplacementForObsoleteLanguage( eType);
     const sal_uInt32 nPos = (eType == LANGUAGE_PROCESS_OR_USER_DEFAULT ?
@@ -248,12 +274,10 @@ OUString SvtLanguageTableImpl::GetString( const LanguageType eType ) const
         << sLangTag);
 
     // And add it to the table, so it is available in all subsequent language boxes.
-    const_cast<SvtLanguageTableImpl*>(this)->AddEntry( sLangTag, nLang);
-
-    return sLangTag;
+    return const_cast<SvtLanguageTableImpl*>(this)->AddEntry( sLangTag, nLang);
 }
 
-OUString SvtLanguageTable::GetLanguageString( const LanguageType eType )
+const OUString& SvtLanguageTable::GetLanguageString( const LanguageType eType )
 {
     return theLanguageTable().GetString( eType );
 }
@@ -303,7 +327,7 @@ LanguageType SvtLanguageTable::GetLanguageTypeAtIndex( sal_uInt32 nIndex )
     return theLanguageTable().GetTypeAtIndex( nIndex);
 }
 
-void SvtLanguageTableImpl::AddEntry( const OUString& rString, const LanguageType eType )
+const OUString& SvtLanguageTableImpl::AddEntry( const OUString& rString, const LanguageType eType )
 {
     if (LanguageTag::isOnTheFlyID(eType)
             && LanguageTag::getOnTheFlyScriptType(eType) == LanguageTag::ScriptType::UNKNOWN)
@@ -336,7 +360,7 @@ void SvtLanguageTableImpl::AddEntry( const OUString& rString, const LanguageType
         }
         aLanguageTag.setScriptType( eScriptType);
     }
-    AddItem( rString, eType);
+    return AddItem( rString, eType);
 }
 
 void SvtLanguageTable::AddLanguageTag( const LanguageTag& rLanguageTag )

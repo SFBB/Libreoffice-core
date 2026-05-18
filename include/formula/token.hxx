@@ -217,19 +217,12 @@ public:
     virtual void                SetInForceArray( ParamClass c );
     virtual double              GetDouble() const;
     virtual void                SetDouble(double fValue);
-    virtual sal_Int16           GetDoubleType() const;
-    virtual void                SetDoubleType( sal_Int16 nType );
     virtual const svl::SharedString & GetString() const;
     virtual void                SetString( const svl::SharedString& rStr );
     virtual sal_uInt16          GetIndex() const;
     virtual void                SetIndex( sal_uInt16 n );
     virtual sal_Int16           GetSheet() const;
     virtual void                SetSheet( sal_Int16 n );
-    virtual short*              GetJump() const;
-    virtual const OUString&     GetExternal() const;
-    virtual FormulaToken*       GetFAPOrigToken() const;
-    virtual FormulaError        GetError() const;
-    virtual void                SetError( FormulaError );
 
     virtual const ScSingleRefData*  GetSingleRef() const;
     virtual ScSingleRefData*        GetSingleRef();
@@ -239,9 +232,6 @@ public:
     virtual ScSingleRefData*        GetSingleRef2();
     virtual const ScMatrix*     GetMatrix() const;
     virtual ScMatrix*           GetMatrix();
-    virtual ScJumpMatrix*       GetJumpMatrix() const;
-    virtual const std::vector<ScComplexRefData>* GetRefList() const;
-    virtual       std::vector<ScComplexRefData>* GetRefList();
 
     virtual FormulaToken*       Clone() const { return new FormulaToken(*this); }
 
@@ -328,7 +318,7 @@ public:
                                     FormulaByteToken( r ), pOrigToken( r.pOrigToken ) {}
 
     virtual FormulaToken*       Clone() const override { return new FormulaFAPToken(*this); }
-    virtual FormulaToken*       GetFAPOrigToken() const override;
+    FormulaToken*               GetFAPOrigToken() const;
     virtual bool                operator==( const FormulaToken& rToken ) const override;
 };
 
@@ -345,7 +335,7 @@ public:
     virtual FormulaToken*       Clone() const override { return new FormulaDoubleToken(*this); }
     virtual double              GetDouble() const override final { return fDouble; }
     virtual void                SetDouble(double fValue) override final { fDouble = fValue; }
-    virtual sal_Int16           GetDoubleType() const override;     ///< always returns 0 for "not typed"
+    virtual sal_Int16           GetDoubleType() const;     ///< always returns 0 for "not typed"
     virtual bool                operator==( const FormulaToken& rToken ) const override;
 };
 
@@ -364,7 +354,7 @@ public:
 
     virtual FormulaToken*       Clone() const override { return new FormulaTypedDoubleToken(*this); }
     virtual sal_Int16           GetDoubleType() const override;
-    virtual void                SetDoubleType( sal_Int16 nType ) override;
+    void                        SetDoubleType( sal_Int16 nType );
     virtual bool                operator==( const FormulaToken& rToken ) const override;
 };
 
@@ -448,7 +438,7 @@ public:
                                     FormulaByteToken( r ), aExternal( r.aExternal ) {}
 
     virtual FormulaToken*       Clone() const override { return new FormulaExternalToken(*this); }
-    virtual const OUString&     GetExternal() const override;
+    const OUString&             GetExternal() const;
     virtual bool                operator==( const FormulaToken& rToken ) const override;
 };
 
@@ -489,7 +479,8 @@ public:
                                     memcpy( pJump.get(), r.pJump.get(), (r.pJump[0] + 1) * sizeof(short) );
                                 }
     virtual                     ~FormulaJumpToken() override;
-    virtual short*              GetJump() const override;
+    const short*                GetJump() const { return pJump.get(); }
+    short*                      GetJump() { return pJump.get(); }
     virtual bool                operator==( const formula::FormulaToken& rToken ) const override;
     virtual FormulaToken*       Clone() const override { return new FormulaJumpToken(*this); }
     virtual ParamClass          GetInForceArray() const override;
@@ -522,8 +513,8 @@ public:
                                     FormulaToken( r ), nError( r.nError) {}
 
     virtual FormulaToken*       Clone() const override { return new FormulaErrorToken(*this); }
-    virtual FormulaError        GetError() const override;
-    virtual void                SetError( FormulaError nErr ) override;
+    FormulaError                GetError() const;
+    void                        SetError( FormulaError nErr );
     virtual bool                operator==( const FormulaToken& rToken ) const override;
 
     // we do some performance stuff in ScInterpreter::PushError that needs this

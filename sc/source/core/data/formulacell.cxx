@@ -4155,7 +4155,8 @@ ScFormulaCell::CompareState ScFormulaCell::CompareByTokenArray( const ScFormulaC
             break;
             case formula::svExternal:
             {
-                if (pThisTok->GetExternal() != pOtherTok->GetExternal())
+                if (static_cast<FormulaExternalToken*>(pThisTok)->GetExternal()
+                    != static_cast<FormulaExternalToken*>(pOtherTok)->GetExternal())
                     return NotEqual;
 
                 if (pThisTok->GetByte() != pOtherTok->GetByte())
@@ -4164,7 +4165,8 @@ ScFormulaCell::CompareState ScFormulaCell::CompareByTokenArray( const ScFormulaC
             break;
             case formula::svError:
             {
-                if (pThisTok->GetError() != pOtherTok->GetError())
+                if (static_cast<FormulaErrorToken*>(pThisTok)->GetError()
+                    != static_cast<FormulaErrorToken*>(pOtherTok)->GetError())
                     return NotEqual;
             }
             break;

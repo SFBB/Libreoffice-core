@@ -1747,7 +1747,7 @@ void FormulaCompiler::Factor()
                     // know, classify as ONLOAD_LENIENT.
                 case ocExternal:
                 case ocUDExternal:
-                    if (mpToken->GetExternal() == "com.sun.star.sheet.addin.Analysis.getRandbetween")
+                    if (static_cast<FormulaExternalToken*>(mpToken.get())->GetExternal() == "com.sun.star.sheet.addin.Analysis.getRandbetween")
                         pArr->SetExclusiveRecalcModeAlways();
                     else
                         pArr->AddRecalcMode( ScRecalcMode::ONLOAD_LENIENT );
@@ -1987,20 +1987,21 @@ void FormulaCompiler::Factor()
         {
             // the PC counters are -1
             pFacToken = mpToken;
+            auto pJumpToken = static_cast<FormulaJumpToken*>(&*pFacToken);
             switch (eOp)
             {
                 case ocIf:
-                    pFacToken->GetJump()[ 0 ] = 3;  // if, else, behind
+                    pJumpToken->GetJump()[ 0 ] = 3;  // if, else, behind
                     break;
                 case ocChoose:
-                    pFacToken->GetJump()[ 0 ] = FORMULA_MAXJUMPCOUNT + 1;
+                    pJumpToken->GetJump()[ 0 ] = FORMULA_MAXJUMPCOUNT + 1;
                     break;
                 case ocLet:
-                    pFacToken->GetJump()[ 0 ] = FORMULA_MAXPARAMS + 1;
+                    pJumpToken->GetJump()[ 0 ] = FORMULA_MAXPARAMS + 1;
                     break;
                 case ocIfError:
                 case ocIfNA:
-                    pFacToken->GetJump()[ 0 ] = 2;  // if, behind
+                    pJumpToken->GetJump()[ 0 ] = 2;  // if, behind
                     break;
                 default:
                     SAL_WARN("formula.core","Jump OpCode: " << +eOp);
@@ -2052,7 +2053,7 @@ void FormulaCompiler::Factor()
                     && (pArr->GetCodeError() == FormulaError::NONE || !mbStopOnError))
             {
                 if ( ++nJumpCount <= nJumpMax )
-                    pFacToken->GetJump()[nJumpCount] = pc-1;
+                    static_cast<FormulaJumpToken*>(&*pFacToken)->GetJump()[nJumpCount] = pc-1;
                 NextToken();
                 CheckSetForceArrayParameter( mpToken, nJumpCount - 1);
                 eOp = Expression();
@@ -2066,7 +2067,7 @@ void FormulaCompiler::Factor()
                 NextToken();
                 // always limit to nJumpMax, no arbitrary overwrites
                 if ( ++nJumpCount <= nJumpMax )
-                    pFacToken->GetJump()[ nJumpCount ] = pc-1;
+                    static_cast<FormulaJumpToken*>(&*pFacToken)->GetJump()[ nJumpCount ] = pc-1;
                 eFacOpCode = pFacToken->GetOpCode();
                 bool bLimitOk;
                 switch (eFacOpCode)
@@ -2098,7 +2099,7 @@ void FormulaCompiler::Factor()
                         assert(!"FormulaCompiler::Factor: someone forgot to add a jump limit case");
                 }
                 if (bLimitOk)
-                    pFacToken->GetJump()[ 0 ] = nJumpCount;
+                    static_cast<FormulaJumpToken*>(&*pFacToken)->GetJump()[ 0 ] = nJumpCount;
                 else
                     SetError( FormulaError::IllegalParameter);
             }
@@ -2544,7 +2545,8 @@ void FormulaCompiler::CreateStringFromTokenArray( OUStringBuffer& rBuffer )
         }
         // #NAME? followed by a ref produces invalid OOXML like "#NAME?$C7"
         if (FormulaGrammar::isOOXML(meGrammar) && t->GetOpCode() == ocPush
-            && t->GetError() == FormulaError::NoName)
+            && t->GetType() == svError
+            && static_cast<const FormulaErrorToken*>(t)->GetError() == FormulaError::NoName)
         {
             FormulaToken* pNextToken = maArrIterator.PeekNext();
             if (pNextToken && pNextToken->IsRef())
@@ -2798,7 +2800,7 @@ const FormulaToken* FormulaCompiler::CreateStringFromToken( OUStringBuffer& rBuf
             case svExternal:
             {
                 // mapped or translated name of AddIns
-                OUString aAddIn( t->GetExternal() );
+                OUString aAddIn( static_cast<const FormulaExternalToken*>(t)->GetExternal() );
                 bool bMapped = mxSymbols->isPODF();     // ODF 1.1 directly uses programmatical name
                 if (!bMapped && mxSymbols->hasExternals())
                 {
@@ -2824,7 +2826,7 @@ const FormulaToken* FormulaCompiler::CreateStringFromToken( OUStringBuffer& rBuf
             }
             break;
             case svError:
-                AppendErrorConstant( rBuffer, t->GetError());
+                AppendErrorConstant( rBuffer, static_cast<const FormulaErrorToken*>(t)->GetError());
             break;
             case svByte:
             case svJump:
