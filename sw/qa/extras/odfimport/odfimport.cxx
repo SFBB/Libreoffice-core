@@ -42,11 +42,13 @@
 #include <com/sun/star/document/XDocumentInsertable.hpp>
 #include <com/sun/star/style/ParagraphAdjust.hpp>
 #include <com/sun/star/document/MacroExecMode.hpp>
+#include <com/sun/star/document/UpdateDocMode.hpp>
 
 #include <comphelper/propertysequence.hxx>
 #include <comphelper/propertyvalue.hxx>
 #include <editeng/boxitem.hxx>
 #include <test/commontesttools.hxx>
+#include <sfx2/docfile.hxx>
 #include <vcl/scheduler.hxx>
 
 #include <IDocumentSettingAccess.hxx>
@@ -58,6 +60,9 @@
 #include <olmenu.hxx>
 #include <hintids.hxx>
 #include <docsh.hxx>
+#include <fmtcntnt.hxx>
+#include <ndgrf.hxx>
+#include <ndole.hxx>
 #include <unotxdoc.hxx>
 #include <frmatr.hxx>
 #include <expfld.hxx>
@@ -80,6 +85,135 @@ class Test : public SwModelTestBase
     public:
         Test() : SwModelTestBase(u"/sw/qa/extras/odfimport/data/"_ustr) {}
 };
+
+CPPUNIT_TEST_FIXTURE(Test, testDrawObjectLinkDeferred)
+{
+    // Given a document with draw:object xlink:href pointing to a URL, the link
+    // shouldn't be fetched until the update links is called.
+    //
+    // Load with NO_UPDATE so that UpdateLinks does not complete the deferred
+    // link, we want to verify the state immediately after import.  The test
+    // uses 192.0.2.1 (non-routeable) so without the fix type detection fetch
+    // would hang/timeout.
+    uno::Sequence<beans::PropertyValue> aParams = {
+        comphelper::makePropertyValue(u"UpdateDocMode"_ustr,
+                                      sal_Int16(document::UpdateDocMode::NO_UPDATE)),
+    };
+    loadFromFile(u"draw-object-link.fodt", aParams);
+    CPPUNIT_ASSERT(!getSwDocShell()->GetMedium()->GetWarningError());
+    calcLayout();
+
+    SwDoc* pDoc = getSwDoc();
+
+    // find the OLE node via fly frame formats
+    SwOLENode* pOLENode = nullptr;
+    for (const auto* pFlyFormat : *pDoc->GetSpzFrameFormats())
+    {
+        const SwNodeIndex* pIdx = pFlyFormat->GetContent().GetContentIdx();
+        if (!pIdx)
+            continue;
+        SwNode* pNd = pDoc->GetNodes()[pIdx->GetIndex() + 1];
+        if (pNd && pNd->IsOLENode())
+        {
+            pOLENode = pNd->GetOLENode();
+            break;
+        }
+    }
+
+    // the placeholder frame and OLE node must exist
+    CPPUNIT_ASSERT_MESSAGE("OLE placeholder node should exist after import", pOLENode);
+
+    // If this is false, the link was either not deferred or was completed despite NO_UPDATE.
+    CPPUNIT_ASSERT_MESSAGE("OLE link should be deferred, not created during import",
+                           pOLENode->HasDeferredLink());
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testLinkedOLEExport)
+{
+    // Load a document with a linked OLE object whose target exists,
+    // save and reload, and verify the linked OLE survives.
+    createSwDoc("linked_ole.fodt");
+
+    SwDoc* pDoc = getSwDoc();
+    SwOLENode* pOLENode = nullptr;
+    for (const auto* pFlyFormat : *pDoc->GetSpzFrameFormats())
+    {
+        const SwNodeIndex* pIdx = pFlyFormat->GetContent().GetContentIdx();
+        if (!pIdx)
+            continue;
+        SwNode* pNd = pDoc->GetNodes()[pIdx->GetIndex() + 1];
+        if (pNd && pNd->IsOLENode())
+        {
+            pOLENode = pNd->GetOLENode();
+            break;
+        }
+    }
+    CPPUNIT_ASSERT_MESSAGE("OLE node should exist after loading linked OLE", pOLENode);
+
+    saveAndReload(TestFilter::ODT);
+
+    pDoc = getSwDoc();
+    pOLENode = nullptr;
+    for (const auto* pFlyFormat : *pDoc->GetSpzFrameFormats())
+    {
+        const SwNodeIndex* pIdx = pFlyFormat->GetContent().GetContentIdx();
+        if (!pIdx)
+            continue;
+        SwNode* pNd = pDoc->GetNodes()[pIdx->GetIndex() + 1];
+        if (pNd && pNd->IsOLENode())
+        {
+            pOLENode = pNd->GetOLENode();
+            break;
+        }
+    }
+    CPPUNIT_ASSERT_MESSAGE("OLE node should survive ODF round-trip", pOLENode);
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testDrawImageRemoteNotFetched)
+{
+    // draw:image with a remote xlink:href must not fetch the URL during
+    // import or layout. The linked graphic is fetched via
+    // LinkManager::GetGraphicFromAny which checks getUserAllowsLinkUpdate.
+    // During import this is false, so the fetch is blocked. The test uses a
+    // non-routable address (192.0.2.1) so that an actual fetch would
+    // hang/timeout causing this test to fail by timeout.
+    uno::Sequence<beans::PropertyValue> aParams = {
+        comphelper::makePropertyValue(u"UpdateDocMode"_ustr,
+                                      sal_Int16(document::UpdateDocMode::NO_UPDATE)),
+    };
+    loadFromFile(u"draw-image-link.fodt", aParams);
+
+    // if we reach here without hanging, no fetch was attempted
+    SwDoc* pDoc = getSwDoc();
+    CPPUNIT_ASSERT(pDoc);
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testDrawImageEmbeddedNotBlocked)
+{
+    // Embedded (inline base64) images must not be blocked by the linked
+    // graphic security checks. This verifies that the getUserAllowsLinkUpdate
+    // guard in SwGrfNode does not interfere with package/embedded images.
+    uno::Sequence<beans::PropertyValue> aParams = {
+        comphelper::makePropertyValue(u"UpdateDocMode"_ustr,
+                                      sal_Int16(document::UpdateDocMode::NO_UPDATE)),
+    };
+    loadFromFile(u"draw-image-embedded.fodt", aParams);
+
+    SwDoc* pDoc = getSwDoc();
+    SwNodeOffset nNodes = pDoc->GetNodes().Count();
+    // find a graphic node with actual loaded pixel data
+    for (SwNodeOffset i(0); i < nNodes; ++i)
+    {
+        if (SwGrfNode* pGrfNode = pDoc->GetNodes()[i]->GetGrfNode())
+        {
+            // embedded image should have real graphic data, not Default type
+            CPPUNIT_ASSERT_MESSAGE("Embedded image should be loaded",
+                                   pGrfNode->GetGrfObj().GetType() != GraphicType::Default);
+            return;
+        }
+    }
+    CPPUNIT_FAIL("No graphic node found in document");
+}
 
 CPPUNIT_TEST_FIXTURE(Test, testEmptySvgFamilyName)
 {

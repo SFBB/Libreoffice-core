@@ -9,6 +9,8 @@
 
 #include "sdmodeltestbase.hxx"
 #include <tools/color.hxx>
+#include <com/sun/star/document/UpdateDocMode.hpp>
+#include <comphelper/propertyvalue.hxx>
 #include <comphelper/sequenceashashmap.hxx>
 #include <editeng/eeitem.hxx>
 #include <editeng/editobj.hxx>
@@ -66,6 +68,24 @@ CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testTdf160591)
 
     // Master slide background
     assertXPath(pXmlDoc2, "/p:sldMaster/p:cSld/p:bg/p:bgPr/a:solidFill/a:schemeClr", "val", u"dk1");
+}
+
+CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testMasterBackgroundColor)
+{
+    createSdImpressDoc("pptx/master-bg-color.pptx");
+    save(TestFilter::PPTX);
+
+    xmlDocUniquePtr pMaster = parseExport(u"ppt/slideMasters/slideMaster1.xml"_ustr);
+    assertXPath(pMaster, "/p:sldMaster/p:clrMap", "bg1", u"dk2");
+    assertXPath(pMaster, "/p:sldMaster/p:clrMap", "tx1", u"lt2");
+    assertXPath(pMaster, "/p:sldMaster/p:clrMap", "bg2", u"lt1");
+    assertXPath(pMaster, "/p:sldMaster/p:clrMap", "tx2", u"dk1");
+
+    // Full slide shape uses placeholder scheme color bg1 with the master's clrMap
+    // preserved this resolves to theme dk2
+    xmlDocUniquePtr pLayout1 = parseExport(u"ppt/slideLayouts/slideLayout1.xml"_ustr);
+    assertXPath(pLayout1, "/p:sldLayout/p:cSld/p:spTree/p:sp/p:spPr/a:solidFill/a:schemeClr", "val",
+                u"bg1");
 }
 
 CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testSmartArtPreserve)
@@ -1133,7 +1153,13 @@ CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testTdf152436)
 
 CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testLinkedOLE)
 {
-    createSdImpressDoc("odp/linked_ole.odp");
+    // The linked OLE object needs its link completed during load so it can
+    // be exported. Use FULL_UPDATE since the default test mode defers links.
+    uno::Sequence<beans::PropertyValue> aParams = {
+        comphelper::makePropertyValue(u"UpdateDocMode"_ustr,
+                                      sal_Int16(css::document::UpdateDocMode::FULL_UPDATE)),
+    };
+    loadFromFile(u"odp/linked_ole.odp", aParams);
 
     save(TestFilter::PPTX);
 

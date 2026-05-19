@@ -40,6 +40,7 @@
 
 #include <toolkit/helper/vclunohelper.hxx>
 
+#include <sfx2/objsh.hxx>
 #include <sot/exchange.hxx>
 
 #include <svx/svdmodel.hxx>
@@ -464,6 +465,15 @@ void SvxOle2Shape::createLink( const OUString& aLinkURL )
         pMediaDescr[2].Value <<= xInteraction;
     }
 
+    // Defer link creation during import so that type detection does not
+    // fetch the URL before the user has been prompted about link updates.
+    SfxObjectShell* pShell = dynamic_cast<SfxObjectShell*>(pPersist);
+    if (pShell && pShell->IsLoading())
+    {
+        pOle2Obj->SetDeferredLink(aLinkURL, aMediaDescr);
+        return;
+    }
+
     //TODO/LATER: how to cope with creation failure?!
     uno::Reference< embed::XEmbeddedObject > xObj =
             pPersist->getEmbeddedObjectContainer().InsertEmbeddedLink( aMediaDescr , aPersistName );
@@ -471,27 +481,7 @@ void SvxOle2Shape::createLink( const OUString& aLinkURL )
     if( !xObj.is() )
         return;
 
-    tools::Rectangle aRect = pOle2Obj->GetLogicRect();
-    if ( aRect.GetWidth() == 101 && aRect.GetHeight() == 101 )
-    {
-        // default size
-        try
-        {
-            awt::Size aSz = xObj->getVisualAreaSize( pOle2Obj->GetAspect() );
-            aRect.SetSize( Size( aSz.Width, aSz.Height ) );
-        }
-        catch (const uno::Exception&)
-        {}
-        pOle2Obj->SetLogicRect( aRect );
-    }
-    else
-    {
-        awt::Size aSz;
-        Size aSize = pOle2Obj->GetLogicRect().GetSize();
-        aSz.Width = aSize.Width();
-        aSz.Height = aSize.Height();
-        xObj->setVisualAreaSize(  pOle2Obj->GetAspect(), aSz );
-    }
+    pOle2Obj->SyncObjVisualArea(xObj);
 
     // connect the object after the visual area is set
     SvxShape::setPropertyValue( UNO_NAME_OLE2_PERSISTNAME, uno::Any( aPersistName ) );

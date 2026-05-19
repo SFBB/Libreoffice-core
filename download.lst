@@ -337,8 +337,8 @@ HUNSPELL_TARBALL := hunspell-1.7.3.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-HYPHEN_SHA256SUM := 304636d4eccd81a14b6914d07b84c79ebb815288c76fe027b9ebff6ff24d5705
-HYPHEN_TARBALL := 5ade6ae2a99bc1e9e57031ca88d36dad-hyphen-2.8.8.tar.gz
+HYPHEN_SHA256SUM := 783743daf477de8c4d16e3c74b4d2827377017718d8e17e2d9440210246f6abe
+HYPHEN_TARBALL := 442b985e604f8143a5a0e7bacd6b2e40-hyphen-2.8.9.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -415,8 +415,8 @@ LIBEOT_TARBALL := libeot-0.01.tar.bz2
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-LIBEXTTEXTCAT_SHA256SUM := df0a59d413a5b202573d8d4f5159e33a8538da4f8e8e60979facc64d6290cebd
-LIBEXTTEXTCAT_TARBALL := libexttextcat-3.4.7.tar.xz
+LIBEXTTEXTCAT_SHA256SUM := 93eb89fd4fc8f565806354e100e778b3ac9a24e5fc04c24e6a83fb1e9b6c9d59
+LIBEXTTEXTCAT_TARBALL := libexttextcat-3.4.8.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -513,13 +513,13 @@ MWAW_TARBALL := libmwaw-0.3.$(MWAW_VERSION_MICRO).tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-MYTHES_SHA256SUM := 19279f70707bbe5ffa619f2dc319f888cec0c4a8d339dc0a21330517bd6f521d
-MYTHES_TARBALL := mythes-1.2.5.tar.xz
+MYTHES_SHA256SUM := 97bd2ba5738aebdba1bc31f30f1be42f1404386c94105ad5990d839a1311c8a5
+MYTHES_TARBALL := mythes-1.2.6.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-NSS_SHA256SUM := 565fbe0e84b335e38c9a68bc6aa073e6cb9951141e02a74389ed16277321356f
-NSS_TARBALL := nss-3.122.2-with-nspr-4.38.2.tar.gz
+NSS_SHA256SUM := 362de77e31a16e64be500a22980448c7f08e98dd8ab85c29d0c5e41d4df68d1c
+NSS_TARBALL := nss-3.124-with-nspr-4.39.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts

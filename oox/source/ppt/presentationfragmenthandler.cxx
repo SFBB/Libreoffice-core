@@ -287,11 +287,15 @@ void PresentationFragmentHandler::importMasterSlide(const Reference<frame::XMode
             }
         }
         importSlide( xMasterFragmentHandler, pMasterPersistPtr );
+
+        /* Save the master's clrMap before importing the layouts. A layout's
+        clrMapOvr/overrideClrMapping element replaces the shared master persist's
+        clrMap with the layout-local override */
+        saveColorMapToGrabBag(pMasterPersistPtr->getClrMap());
+
         rFilter.importFragment( new LayoutFragmentHandler( rFilter, aLayoutFragmentPath, pMasterPersistPtr ) );
         pMasterPersistPtr->createBackground( rFilter );
         pMasterPersistPtr->createXShapes( rFilter );
-
-        saveColorMapToGrabBag(pMasterPersistPtr->getClrMap());
 
         uno::Reference< beans::XPropertySet > xSet(pMasterPersistPtr->getPage(), uno::UNO_QUERY_THROW);
         xSet->setPropertyValue(u"SlideLayout"_ustr, Any(pMasterPersistPtr->getLayoutFromValueToken()));
@@ -501,7 +505,7 @@ void PresentationFragmentHandler::importMasterSlides()
     }
 }
 
-void PresentationFragmentHandler::importSlide(sal_uInt32 nSlide, bool bFirstPage, bool bImportNotesPage)
+void PresentationFragmentHandler::importSlide(sal_uInt32 nSlide, sal_Int32 nPagesImported, bool bImportNotesPage)
 {
     PowerPointImport& rFilter = dynamic_cast< PowerPointImport& >( getFilter() );
 
@@ -514,13 +518,13 @@ void PresentationFragmentHandler::importSlide(sal_uInt32 nSlide, bool bFirstPage
 
     try {
 
-        if( bFirstPage )
+        if( !nPagesImported )
         {
             xDrawPages->getByIndex( 0 ) >>= xSlide;
             importMasterSlides();
         }
         else
-            xSlide = xDrawPages->insertNewByIndex( xDrawPages->getCount() );
+            xSlide = xDrawPages->insertNewByIndex( nPagesImported );
 
         OUString aSlideFragmentPath = getFragmentPathFromRelId( maSlidesVector[ nSlide ] );
         if( !aSlideFragmentPath.isEmpty() )
@@ -713,7 +717,7 @@ void PresentationFragmentHandler::finalizeImport()
                 if ( rxStatusIndicator.is() )
                     rxStatusIndicator->setValue((nPagesImported * 10000) / aRangeEnumerator.size());
 
-                importSlide(elem, !nPagesImported, bImportNotesPages);
+                importSlide(elem, nPagesImported, bImportNotesPages);
                 nPagesImported++;
             }
             importSlideNames( rFilter, rFilter.getDrawPages());
