@@ -694,27 +694,12 @@ bool ScMatrixToken::operator==( const FormulaToken& r ) const
 }
 
 ScMatrixRangeToken::ScMatrixRangeToken( const sc::RangeMatrix& rMat ) :
-    FormulaToken(formula::svMatrix), mpMatrix(rMat.mpMat)
+    ScMatrixToken(rMat.mpMat)
 {
     maRef.InitRange(rMat.mnCol1, rMat.mnRow1, rMat.mnTab1, rMat.mnCol2, rMat.mnRow2, rMat.mnTab2);
 }
 
 ScMatrixRangeToken::ScMatrixRangeToken( const ScMatrixRangeToken& ) = default;
-
-sal_uInt8 ScMatrixRangeToken::GetByte() const
-{
-    return MATRIX_TOKEN_HAS_RANGE;
-}
-
-const ScMatrix* ScMatrixRangeToken::GetMatrix() const
-{
-    return mpMatrix.get();
-}
-
-ScMatrix* ScMatrixRangeToken::GetMatrix()
-{
-    return mpMatrix.get();
-}
 
 const ScComplexRefData* ScMatrixRangeToken::GetDoubleRef() const
 {
@@ -724,11 +709,6 @@ const ScComplexRefData* ScMatrixRangeToken::GetDoubleRef() const
 ScComplexRefData* ScMatrixRangeToken::GetDoubleRef()
 {
     return &maRef;
-}
-
-bool ScMatrixRangeToken::operator==( const FormulaToken& r ) const
-{
-    return FormulaToken::operator==(r) && mpMatrix == r.GetMatrix();
 }
 
 FormulaToken* ScMatrixRangeToken::Clone() const
@@ -972,8 +952,6 @@ ScJumpMatrixToken::~ScJumpMatrixToken()
 {
 }
 
-double          ScEmptyCellToken::GetDouble() const     { return 0.0; }
-
 const svl::SharedString & ScEmptyCellToken::GetString() const
 {
     return svl::SharedString::getEmptyString();
@@ -991,7 +969,7 @@ ScMatrixCellResultToken::ScMatrixCellResultToken( ScConstMatrixRef pMat, const f
 
 ScMatrixCellResultToken::ScMatrixCellResultToken( const ScMatrixCellResultToken& ) = default;
 
-double          ScMatrixCellResultToken::GetDouble() const  { return xUpperLeft->GetDouble(); }
+double          ScMatrixCellResultToken::GetDouble() const  { return static_cast<const FormulaDoubleToken*>(xUpperLeft.get())->GetDouble(); }
 
 ScMatrixCellResultToken::~ScMatrixCellResultToken() {}
 
@@ -1093,7 +1071,7 @@ void ScMatrixFormulaCellToken::SetUpperLeftDouble( double f )
     switch (GetUpperLeftType())
     {
         case svDouble:
-            const_cast<FormulaToken*>(xUpperLeft.get())->SetDouble(f);
+            static_cast<FormulaDoubleToken*>(const_cast<FormulaToken*>(xUpperLeft.get()))->SetDouble(f);
             break;
         case svString:
             xUpperLeft = new FormulaDoubleToken( f);
@@ -1138,9 +1116,11 @@ const svl::SharedString & ScHybridCellToken::GetString() const
 
 bool ScHybridCellToken::operator==( const FormulaToken& r ) const
 {
-    return FormulaToken::operator==( r ) &&
-        mfDouble == r.GetDouble() && maString == r.GetString() &&
-        maFormula == static_cast<const ScHybridCellToken &>(r).GetFormula();
+    if (!FormulaToken::operator==( r ))
+        return false;
+    auto const & rhs = static_cast<const ScHybridCellToken&>(r);
+    return mfDouble == rhs.GetDouble() && maString == rhs.GetString() &&
+           maFormula == rhs.GetFormula();
 }
 
 bool ScTokenArray::AddFormulaToken(
@@ -1816,7 +1796,7 @@ void ScTokenArray::GenHash()
                 case svDouble:
                 {
                     // Constant value.
-                    double fVal = p->GetDouble();
+                    double fVal = static_cast<const FormulaDoubleToken*>(p)->GetDouble();
                     nHash += std::hash<double>()(fVal);
                 }
                 break;
@@ -2250,7 +2230,7 @@ FormulaToken* ScTokenArray::MergeArray( )
             case ocPush :
                 if ( t->GetType() == svDouble )
                 {
-                    pArray->PutDouble( t->GetDouble() * nSign, nCol, nRow );
+                    pArray->PutDouble( static_cast<FormulaDoubleToken*>(t)->GetDouble() * nSign, nCol, nRow );
                     nSign = 1;
                 }
                 else if ( t->GetType() == svString )
@@ -5078,7 +5058,7 @@ void appendTokenByType( ScSheetLimits& rLimits, sc::TokenStringContext& rCxt, OU
     switch (rToken.GetType())
     {
         case svDouble:
-            appendDouble(rCxt, rBuf, rToken.GetDouble());
+            appendDouble(rCxt, rBuf, static_cast<const FormulaDoubleToken&>(rToken).GetDouble());
         break;
         case svString:
         {

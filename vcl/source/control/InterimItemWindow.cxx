@@ -190,10 +190,10 @@ bool InterimItemWindow::ChildKeyInput(const KeyEvent& rKEvt)
     return true;
 }
 
-void InterimItemWindow::Draw(OutputDevice* pDevice, const Point& rPos,
+void InterimItemWindow::Draw(OutputDevice& rDevice, const Point& rPos,
                              SystemTextColorFlags /*nFlags*/)
 {
-    m_xContainer->draw(*pDevice, rPos, GetSizePixel());
+    m_xContainer->draw(rDevice, rPos, GetSizePixel());
 }
 
 void InterimItemWindow::SetPriority(TaskPriority nPriority)
@@ -209,9 +209,9 @@ void InterimItemWindow::SetPriority(TaskPriority nPriority)
         m_aLayoutIdle.Start();
 }
 
-void InterimItemWindow::ImplPaintToDevice(::OutputDevice* pTargetOutDev, const Point& rPos)
+void InterimItemWindow::ImplPaintToDevice(OutputDevice& rTargetOutDev, const Point& rPos)
 {
-    Draw(pTargetOutDev, rPos, SystemTextColorFlags::NONE);
+    Draw(rTargetOutDev, rPos, SystemTextColorFlags::NONE);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

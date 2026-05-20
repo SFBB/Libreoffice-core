@@ -23,6 +23,7 @@
 #include <unotools/configmgr.hxx>
 
 #include <sfx2/docfac.hxx>
+#include <sfx2/linkmgr.hxx>
 #include <sfx2/objface.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <svx/svxids.hrc>
@@ -358,11 +359,23 @@ void DrawDocShell::Activate( bool bMDI)
     {
         ApplySlotFilter();
         mpDoc->StartOnlineSpelling();
+        CheckPendingLinkUpdateInfobar();
     }
 }
 
 void DrawDocShell::Deactivate( bool )
 {
+}
+
+void DrawDocShell::PerformLinkUpdate()
+{
+    if (mpDoc && mpDoc->GetLinkManager())
+    {
+        SdDrawDocument::s_pDocLockedInsertingLinks = mpDoc;
+        mpDoc->GetLinkManager()->UpdateAllLinks(false, false, nullptr, u""_ustr);
+        if (SdDrawDocument::s_pDocLockedInsertingLinks == mpDoc)
+            SdDrawDocument::s_pDocLockedInsertingLinks = nullptr;
+    }
 }
 
 SfxUndoManager* DrawDocShell::GetUndoManager()

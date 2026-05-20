@@ -36,6 +36,7 @@
 #include <sal/log.hxx>
 #include <tools/mapunit.hxx>
 #include <tools/urlobj.hxx>
+#include <vcl/weld/Window.hxx>
 #include <vcl/weld/weld.hxx>
 #include <vcl/svapp.hxx>
 #include <svl/eitem.hxx>
@@ -263,6 +264,7 @@ SfxObjectShell::SfxObjectShell( const SfxModelFlags i_nCreationFlags )
     , bIsInGenerateThumbnail (false)
     , mbAvoidRecentDocs(false)
     , bRememberSignature(false)
+    , bPendingLinkUpdateInfobar(false)
 {
     if (i_nCreationFlags & SfxModelFlags::EMBEDDED_OBJECT)
         eCreateMode = SfxObjectCreateMode::EMBEDDED;
@@ -293,6 +295,7 @@ SfxObjectShell::SfxObjectShell(SfxObjectCreateMode eMode)
     , bIsInGenerateThumbnail(false)
     , mbAvoidRecentDocs(false)
     , bRememberSignature(false)
+    , bPendingLinkUpdateInfobar(false)
 {
 }
 

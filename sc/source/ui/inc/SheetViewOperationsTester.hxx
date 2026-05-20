@@ -16,13 +16,18 @@ class ScViewData;
 namespace sc
 {
 /** Operations that can be performed on a sheet. */
-enum class Operation
+enum class OperationType
 {
     Unknown,
+    ApplyAttributes,
     DeleteContent,
     DeleteCell,
     TransliterateText,
     SetNormalString,
+    SetValue,
+    SetString,
+    SetTextEdit,
+    SetFormula,
     SetNoteText,
     ReplaceNoteText,
     InsertColumnsBefore,
@@ -77,7 +82,7 @@ public:
     {
     }
 
-    bool check(Operation eOperation) const;
+    bool check(OperationType eOperationType) const;
 };
 }
 

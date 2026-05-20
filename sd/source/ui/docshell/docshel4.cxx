@@ -25,7 +25,6 @@
 
 #include <DrawDocShell.hxx>
 #include <com/sun/star/document/PrinterIndependentLayout.hpp>
-#include <com/sun/star/document/UpdateDocMode.hpp>
 #include <editeng/outlobj.hxx>
 #include <tools/urlobj.hxx>
 #include <svx/compatflags.hxx>
@@ -50,6 +49,7 @@
 #include <sfx2/viewfrm.hxx>
 #include <vcl/syswin.hxx>
 #include <vcl/svapp.hxx>
+#include <vcl/weld/Window.hxx>
 #include <com/sun/star/drawing/XDrawPage.hpp>
 #include <com/sun/star/drawing/XDrawView.hpp>
 #include <tools/debug.hxx>
@@ -82,7 +82,6 @@
 #include <o3tl/string_view.hxx>
 
 #include <Window.hxx>
-#include <svl/intitem.hxx>
 #include <DrawController.hxx>
 #include <ResourceId.hxx>
 
@@ -300,14 +299,7 @@ bool DrawDocShell::Load( SfxMedium& rMedium )
     }
 
     if (bRet)
-    {
-        const SfxUInt16Item* pUpdateDocItem = rSet.GetItem(SID_UPDATEDOCMODE, false);
-        sal_uInt16 nUpdateDocMode = pUpdateDocItem ? pUpdateDocItem->GetValue()
-                                                   : css::document::UpdateDocMode::ACCORDING_TO_CONFIG;
-        if (nUpdateDocMode != css::document::UpdateDocMode::NO_UPDATE)
-            getEmbeddedObjectContainer().setUserAllowsLinkUpdate(true);
-        mpDoc->UpdateAllLinks();
-    }
+        UpdateLinks();
 
     if( bRet )
     {
@@ -464,18 +456,15 @@ bool DrawDocShell::ImportFrom(SfxMedium &rMedium,
     else // initial loading of the document
     {
         mpDoc->EnableUndo(false);
-
-        const SfxUInt16Item* pUpdateDocItem
-            = rMedium.GetItemSet().GetItem(SID_UPDATEDOCMODE, false);
-        sal_uInt16 nUpdateDocMode = pUpdateDocItem ? pUpdateDocItem->GetValue()
-                                                   : css::document::UpdateDocMode::ACCORDING_TO_CONFIG;
-        if (nUpdateDocMode == css::document::UpdateDocMode::NO_UPDATE)
-            getEmbeddedObjectContainer().setUserAllowsLinkUpdate(false);
+        getEmbeddedObjectContainer().setUserAllowsLinkUpdate(false);
     }
 
     mpDoc->incImportExport();
     const bool bRet = SfxObjectShell::ImportFrom(rMedium, xInsertPosition);
     mpDoc->decImportExport();
+
+    if (bRet && !xInsertPosition)
+        UpdateLinks();
 
     SfxItemSet& rSet = rMedium.GetItemSet();
     if (SfxItemState::SET == rSet.GetItemState(SID_DOC_STARTPRESENTATION))
@@ -589,6 +578,9 @@ bool DrawDocShell::ConvertFrom( SfxMedium& rMedium )
     }
 
     FinishedLoading();
+
+    if (bRet)
+        UpdateLinks();
 
     // tell SFX to change viewshell when in preview mode
     if( IsPreview() )

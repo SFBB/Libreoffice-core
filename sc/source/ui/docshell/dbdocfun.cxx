@@ -59,12 +59,14 @@
 #include <chartlis.hxx>
 #include <ChartTools.hxx>
 #include <SheetViewOperationsTester.hxx>
+#include <operation/SortOperation.hxx>
+#include <operation/QueryOperation.hxx>
 
 #include <memory>
 
 using namespace ::com::sun::star;
 
-bool ScDBDocFunc::CheckSheetViewProtection(sc::Operation eOperation)
+bool ScDBDocFunc::CheckSheetViewProtection(sc::OperationType eOperation)
 {
     sc::SheetViewOperationsTester aSheetViewTester(ScDocShell::GetViewData());
     return aSheetViewTester.check(eOperation);
@@ -543,7 +545,7 @@ bool ScDBDocFunc::RepeatDB( const OUString& rDBName, bool bApi, bool bIsUnnamed,
             if (bSort)
             {
                 pDBData->GetSortParam( aSortParam );            // range may have changed
-                (void)Sort( nTab, aSortParam, false, false, bApi );
+                (void)SortTab( nTab, aSortParam, false, false, bApi );
             }
             if (bQuery)
             {
@@ -609,593 +611,17 @@ bool ScDBDocFunc::RepeatDB( const OUString& rDBName, bool bApi, bool bIsUnnamed,
     return bDone;
 }
 
-bool ScDBDocFunc::Sort( SCTAB nTab, const ScSortParam& rSortParam,
-                            bool bRecord, bool bPaint, bool bApi )
+bool ScDBDocFunc::SortTab(SCTAB nTab, const ScSortParam& rSortParam, bool bRecord, bool bPaint, bool bApi)
 {
-    ScDocShellModificator aModificator( rDocShell );
-
-    ScDocument& rDoc = rDocShell.GetDocument();
-    if (bRecord && !rDoc.IsUndoEnabled())
-        bRecord = false;
-
-    ScDBData* pDBData = rDoc.GetDBAtArea( nTab, rSortParam.nCol1, rSortParam.nRow1,
-                                                    rSortParam.nCol2, rSortParam.nRow2 );
-    if (!pDBData)
-    {
-        OSL_FAIL( "Sort: no DBData" );
-        return false;
-    }
-
-    bool bCopy = !rSortParam.bInplace;
-    if ( bCopy && rSortParam.nDestCol == rSortParam.nCol1 &&
-                  rSortParam.nDestRow == rSortParam.nRow1 && rSortParam.nDestTab == nTab )
-        bCopy = false;
-
-    ScSortParam aLocalParam( rSortParam );
-    if ( bCopy )
-    {
-        // Copy the data range to the destination then move the sort range to it.
-        ScRange aSrcRange(rSortParam.nCol1, rSortParam.nRow1, nTab, rSortParam.nCol2, rSortParam.nRow2, nTab);
-        ScAddress aDestPos(rSortParam.nDestCol,rSortParam.nDestRow,rSortParam.nDestTab);
-
-        ScDocFunc& rDocFunc = rDocShell.GetDocFunc();
-        bool bRet = rDocFunc.MoveBlock(aSrcRange, aDestPos, false, bRecord, bPaint, bApi);
-
-        if (!bRet)
-            return false;
-
-        aLocalParam.MoveToDest();
-        nTab = aLocalParam.nDestTab;
-    }
-
-    // tdf#119804: If there is a header row/column, it won't be affected by
-    // sorting; so we can exclude it from the test.
-    SCROW nStartingRowToEdit = aLocalParam.nRow1;
-    SCCOL nStartingColToEdit = aLocalParam.nCol1;
-    if ( aLocalParam.bHasHeader )
-    {
-        if ( aLocalParam.bByRow )
-            nStartingRowToEdit++;
-        else
-            nStartingColToEdit++;
-    }
-
-    if (!CheckSheetViewProtection(sc::Operation::Sort))
-        return false;
-
-    ScEditableTester aTester = ScEditableTester::CreateAndTestBlock(
-            rDoc, nTab, nStartingColToEdit, nStartingRowToEdit,
-            aLocalParam.nCol2, aLocalParam.nRow2, true /*bNoMatrixAtAll*/);
-    if (!aTester.IsEditable())
-    {
-        if (!bApi)
-            rDocShell.ErrorMessage(aTester.GetMessageId());
-        return false;
-    }
-
-    const ScInputOptions aInputOption = ScModule::get()->GetInputOptions();
-    const bool bUpdateRefs = aInputOption.GetSortRefUpdate();
-
-    // Adjust aLocalParam cols/rows to used data area. Keep sticky top row or
-    // column (depending on direction) in any case, not just if it has headers,
-    // so empty leading cells will be sorted to the end.
-    // aLocalParam.nCol/Row will encompass data content only, extras in
-    // aLocalParam.aDataAreaExtras.
-    bool bShrunk = false;
-    aLocalParam.aDataAreaExtras.resetArea();
-    rDoc.ShrinkToUsedDataArea(bShrunk, nTab, aLocalParam.nCol1, aLocalParam.nRow1,
-                              aLocalParam.nCol2, aLocalParam.nRow2, false, aLocalParam.bByRow,
-                              !aLocalParam.bByRow,
-                              (aLocalParam.aDataAreaExtras.anyExtrasWanted() ?
-                               &aLocalParam.aDataAreaExtras : nullptr));
-
-    SCROW nStartRow = aLocalParam.nRow1;
-    if (aLocalParam.bByRow && aLocalParam.bHasHeader && nStartRow < aLocalParam.nRow2)
-        ++nStartRow;
-
-    SCCOL nOverallCol1 = aLocalParam.nCol1;
-    SCROW nOverallRow1 = aLocalParam.nRow1;
-    SCCOL nOverallCol2 = aLocalParam.nCol2;
-    SCROW nOverallRow2 = aLocalParam.nRow2;
-    if (aLocalParam.aDataAreaExtras.anyExtrasWanted())
-    {
-        // Trailing empty excess columns/rows are excluded from being sorted,
-        // they stick at the end. Clip them.
-        const ScDataAreaExtras::Clip eClip = (aLocalParam.bByRow ?
-                ScDataAreaExtras::Clip::Row : ScDataAreaExtras::Clip::Col);
-        aLocalParam.aDataAreaExtras.GetOverallRange( nOverallCol1, nOverallRow1, nOverallCol2, nOverallRow2, eClip);
-        // Make it permanent.
-        aLocalParam.aDataAreaExtras.SetOverallRange( nOverallCol1, nOverallRow1, nOverallCol2, nOverallRow2);
-
-        if (bUpdateRefs)
-        {
-            // With update references the entire range needs to be handled as
-            // one entity for references pointing within to be moved along,
-            // even when there's no data content. For huge ranges we may be
-            // DOOMed then.
-            aLocalParam.nCol1 = nOverallCol1;
-            aLocalParam.nRow1 = nOverallRow1;
-            aLocalParam.nCol2 = nOverallCol2;
-            aLocalParam.nRow2 = nOverallRow2;
-        }
-    }
-
-    if (aLocalParam.aDataAreaExtras.mbCellFormats
-            && rDoc.HasAttrib( nOverallCol1, nStartRow, nTab, nOverallCol2, nOverallRow2, nTab,
-                HasAttrFlags::Merged | HasAttrFlags::Overlapped))
-    {
-        // Merge attributes would be mixed up during sorting.
-        if (!bApi)
-            rDocShell.ErrorMessage(STR_SORT_ERR_MERGED);
-        return false;
-    }
-
-    //      execute
-
-    weld::WaitObject aWait( ScDocShell::GetActiveDialogParent() );
-
-    // Calculate the script types for all cells in the sort range beforehand.
-    // This will speed up the row height adjustment that takes place after the
-    // sort.
-    rDoc.UpdateScriptTypes(
-        ScAddress(aLocalParam.nCol1,nStartRow,nTab),
-        aLocalParam.nCol2-aLocalParam.nCol1+1,
-        aLocalParam.nRow2-nStartRow+1);
-
-    // No point adjusting row heights after the sort when all rows have the same height.
-    bool bUniformRowHeight = rDoc.HasUniformRowHeight(nTab, nStartRow, nOverallRow2);
-
-    bool bRepeatQuery = false;                          // repeat existing filter?
-    ScQueryParam aQueryParam;
-    pDBData->GetQueryParam( aQueryParam );
-    if ( aQueryParam.GetEntry(0).bDoQuery )
-        bRepeatQuery = true;
-
-    sc::ReorderParam aUndoParam;
-
-    // don't call ScDocument::Sort with an empty SortParam (may be empty here if bCopy is set),
-    // but always call it for random shuffle which doesn't need sort keys
-    if (aLocalParam.meSortOrderType == SortOrderType::Random
-        || (aLocalParam.GetSortKeyCount() && aLocalParam.maKeyState[0].bDoSort))
-    {
-        ScProgress aProgress(&rDocShell, ScResId(STR_PROGRESS_SORTING), 0, true);
-        if (!bRepeatQuery)
-            bRepeatQuery = rDoc.HasHiddenRows(aLocalParam.nRow1, aLocalParam.nRow2, nTab);
-        rDoc.Sort(nTab, aLocalParam, bRepeatQuery, bUpdateRefs, &aProgress, &aUndoParam);
-    }
-
-    if (bRecord)
-    {
-        // Set up an undo object.
-        rDocShell.GetUndoManager()->AddUndoAction(
-            std::make_unique<sc::UndoSort>(rDocShell, aUndoParam));
-    }
-
-    ScSortParam aSortParamData(rSortParam);
-    aSortParamData.meSortOrderType = SortOrderType::Ordered;
-    pDBData->SetSortParam(aSortParamData);
-    // Remember additional settings on anonymous database ranges.
-    if (pDBData == rDoc.GetAnonymousDBData( nTab) || rDoc.GetDBCollection()->getAnonDBs().has( pDBData))
-        pDBData->UpdateFromSortParam(aSortParamData);
-
-    if (SfxViewShell* pKitSomeViewForThisDoc = comphelper::LibreOfficeKit::isActive() ?
-                                               rDocShell.GetBestViewShell(false) : nullptr)
-    {
-        SfxViewShell* pViewShell = SfxViewShell::GetFirst();
-        while (pViewShell)
-        {
-            ScTabViewShell* pTabViewShell = dynamic_cast<ScTabViewShell*>(pViewShell);
-            if (pTabViewShell && pTabViewShell->GetDocId() == pKitSomeViewForThisDoc->GetDocId())
-            {
-                if (ScPositionHelper* pPosHelper = pTabViewShell->GetViewData().GetLOKHeightHelper(nTab))
-                    pPosHelper->invalidateByIndex(nStartRow);
-            }
-            pViewShell = SfxViewShell::GetNext(*pViewShell);
-        }
-
-        ScTabViewShell::notifyAllViewsSheetGeomInvalidation(
-            pKitSomeViewForThisDoc, false /* bColumns */, true /* bRows */, true /* bSizes*/,
-            true /* bHidden */, true /* bFiltered */, true /* bGroups */, nTab);
-    }
-
-    if (nStartRow <= aLocalParam.nRow2)
-    {
-        ScRange aDirtyRange(
-                aLocalParam.nCol1, nStartRow, nTab,
-                aLocalParam.nCol2, aLocalParam.nRow2, nTab);
-        rDoc.SetDirty( aDirtyRange, true );
-    }
-
-    if (bPaint)
-    {
-        PaintPartFlags nPaint = PaintPartFlags::Grid;
-        SCCOL nStartX = nOverallCol1;
-        SCROW nStartY = nOverallRow1;
-        SCCOL nEndX = nOverallCol2;
-        SCROW nEndY = nOverallRow2;
-        if ( bRepeatQuery )
-        {
-            nPaint |= PaintPartFlags::Left;
-            nStartX = 0;
-            nEndX = rDoc.MaxCol();
-        }
-        rDocShell.PostPaint(ScRange(nStartX, nStartY, nTab, nEndX, nEndY, nTab), nPaint);
-    }
-
-    if (!bUniformRowHeight && nStartRow <= nOverallRow2)
-        rDocShell.AdjustRowHeight(nStartRow, nOverallRow2, nTab);
-
-    aModificator.SetDocumentModified();
-
-    return true;
+    sc::SortOperation aOperation(rDocShell, nTab, rSortParam, bRecord, bPaint, bApi);
+    return aOperation.run();
 }
 
 bool ScDBDocFunc::Query( SCTAB nTab, const ScQueryParam& rQueryParam,
                         const ScRange* pAdvSource, bool bRecord, bool bApi )
 {
-    ScDocShellModificator aModificator( rDocShell );
-
-    ScDocument& rDoc = rDocShell.GetDocument();
-
-    ScTabViewShell* pViewSh = rDocShell.GetBestViewShell();
-    if (pViewSh && ScTabViewShell::isAnyEditViewInRange(pViewSh, /*bColumns*/ false, rQueryParam.nRow1, rQueryParam.nRow2))
-    {
-        return false;
-    }
-
-    if (bRecord && !rDoc.IsUndoEnabled())
-        bRecord = false;
-    ScDBData* pDBData = rDoc.GetDBAtArea( nTab, rQueryParam.nCol1, rQueryParam.nRow1,
-                                                    rQueryParam.nCol2, rQueryParam.nRow2 );
-    if (!pDBData)
-    {
-        OSL_FAIL( "Query: no DBData" );
-        return false;
-    }
-
-    //  Change from Inplace to non-Inplace, only then cancel Inplace:
-    //  (only if "Persistent"  is selected in the dialog)
-
-    if ( !rQueryParam.bInplace && pDBData->HasQueryParam() && rQueryParam.bDestPers )
-    {
-        ScQueryParam aOldQuery;
-        pDBData->GetQueryParam(aOldQuery);
-        if (aOldQuery.bInplace)
-        {
-            //  cancel old filtering
-
-            SCSIZE nEC = aOldQuery.GetEntryCount();
-            for (SCSIZE i=0; i<nEC; i++)
-                aOldQuery.GetEntry(i).bDoQuery = false;
-            aOldQuery.bDuplicate = true;
-            Query( nTab, aOldQuery, nullptr, bRecord, bApi );
-        }
-    }
-
-    ScQueryParam aLocalParam( rQueryParam );        // for Paint / destination range
-    bool bCopy = !rQueryParam.bInplace;             // copied in Table::Query
-    ScDBData* pDestData = nullptr;                  // range to be copied to
-    bool bDoSize = false;                           // adjust destination size (insert/delete)
-    SCCOL nFormulaCols = 0;                         // only at bDoSize
-    bool bKeepFmt = false;
-    ScRange aOldDest;
-    ScRange aDestTotal;
-    if ( bCopy && rQueryParam.nDestCol == rQueryParam.nCol1 &&
-                  rQueryParam.nDestRow == rQueryParam.nRow1 && rQueryParam.nDestTab == nTab )
-        bCopy = false;
-    SCTAB nDestTab = nTab;
-    if ( bCopy )
-    {
-        aLocalParam.MoveToDest();
-        nDestTab = rQueryParam.nDestTab;
-        if ( !rDoc.ValidColRow( aLocalParam.nCol2, aLocalParam.nRow2 ) )
-        {
-            if (!bApi)
-                rDocShell.ErrorMessage(STR_PASTE_FULL);
-            return false;
-        }
-
-        if (!CheckSheetViewProtection(sc::Operation::Query))
-            return false;
-
-        ScEditableTester aTester = ScEditableTester::CreateAndTestBlock(rDoc, nDestTab,
-                                    aLocalParam.nCol1, aLocalParam.nRow1,
-                                    aLocalParam.nCol2,aLocalParam.nRow2);
-        if (!aTester.IsEditable())
-        {
-            if (!bApi)
-                rDocShell.ErrorMessage(aTester.GetMessageId());
-            return false;
-        }
-
-        pDestData = rDoc.GetDBAtCursor( rQueryParam.nDestCol, rQueryParam.nDestRow,
-                                            rQueryParam.nDestTab, ScDBDataPortion::TOP_LEFT );
-        if (pDestData)
-        {
-            pDestData->GetArea( aOldDest );
-            aDestTotal=ScRange( rQueryParam.nDestCol,
-                                rQueryParam.nDestRow,
-                                nDestTab,
-                                rQueryParam.nDestCol + rQueryParam.nCol2 - rQueryParam.nCol1,
-                                rQueryParam.nDestRow + rQueryParam.nRow2 - rQueryParam.nRow1,
-                                nDestTab );
-
-            bDoSize = pDestData->IsDoSize();
-            //  test if formulas need to be filled in (nFormulaCols):
-            if ( bDoSize && aOldDest.aEnd.Col() == aDestTotal.aEnd.Col() )
-            {
-                SCCOL nTestCol = aOldDest.aEnd.Col() + 1;       // next to the range
-                SCROW nTestRow = rQueryParam.nDestRow +
-                                    ( aLocalParam.bHasHeader ? 1 : 0 );
-                while ( nTestCol <= rDoc.MaxCol() &&
-                        rDoc.GetCellType(ScAddress( nTestCol, nTestRow, nTab )) == CELLTYPE_FORMULA )
-                {
-                    ++nTestCol;
-                    ++nFormulaCols;
-                }
-            }
-
-            bKeepFmt = pDestData->IsKeepFmt();
-            if ( bDoSize && !rDoc.CanFitBlock( aOldDest, aDestTotal ) )
-            {
-                if (!bApi)
-                    rDocShell.ErrorMessage(STR_MSSG_DOSUBTOTALS_2);     // cannot insert rows
-                return false;
-            }
-        }
-    }
-
-    //      execute
-
-    weld::WaitObject aWait( ScDocShell::GetActiveDialogParent() );
-
-    bool bKeepSub = false;                          // repeat existing partial results?
-    bool bKeepTotals = false;
-    if (rQueryParam.GetEntry(0).bDoQuery)           // not at cancellation
-    {
-        ScSubTotalParam aSubTotalParam;
-        pDBData->GetSubTotalParam( aSubTotalParam );    // partial results exist?
-
-        if (aSubTotalParam.aGroups[0].bActive && !aSubTotalParam.bRemoveOnly)
-            bKeepSub = true;
-
-        if (pDBData->HasTotals() && pDBData->GetTableStyleInfo())
-            bKeepTotals = true;
-    }
-
-    ScDocumentUniquePtr pUndoDoc;
-    std::unique_ptr<ScDBCollection> pUndoDB;
-    const ScRange* pOld = nullptr;
-
-    if ( bRecord )
-    {
-        pUndoDoc.reset(new ScDocument( SCDOCMODE_UNDO ));
-        if (bCopy)
-        {
-            pUndoDoc->InitUndo( rDoc, nDestTab, nDestTab, false, true );
-            rDoc.CopyToDocument(aLocalParam.nCol1, aLocalParam.nRow1, nDestTab,
-                                aLocalParam.nCol2, aLocalParam.nRow2, nDestTab,
-                                InsertDeleteFlags::ALL, false, *pUndoDoc);
-            //  secure attributes in case they were copied along
-
-            if (pDestData)
-            {
-                rDoc.CopyToDocument(aOldDest, InsertDeleteFlags::ALL, false, *pUndoDoc);
-                pOld = &aOldDest;
-            }
-        }
-        else
-        {
-            pUndoDoc->InitUndo( rDoc, nTab, nTab, false, true );
-            rDoc.CopyToDocument(0, rQueryParam.nRow1, nTab, rDoc.MaxCol(), rQueryParam.nRow2, nTab,
-                                InsertDeleteFlags::NONE, false, *pUndoDoc);
-        }
-
-        ScDBCollection* pDocDB = rDoc.GetDBCollection();
-        if (!pDocDB->empty())
-            pUndoDB.reset(new ScDBCollection( *pDocDB ));
-
-        rDoc.BeginDrawUndo();
-    }
-
-    std::unique_ptr<ScDocument> pAttribDoc;
-    ScRange aAttribRange;
-    if (pDestData)                                      // delete destination range
-    {
-        if ( bKeepFmt )
-        {
-            //  smaller of the end columns, header+1 row
-            aAttribRange = aOldDest;
-            if ( aAttribRange.aEnd.Col() > aDestTotal.aEnd.Col() )
-                aAttribRange.aEnd.SetCol( aDestTotal.aEnd.Col() );
-            aAttribRange.aEnd.SetRow( aAttribRange.aStart.Row() +
-                                        ( aLocalParam.bHasHeader ? 1 : 0 ) );
-
-            //  also for filled-in formulas
-            aAttribRange.aEnd.SetCol( aAttribRange.aEnd.Col() + nFormulaCols );
-
-            pAttribDoc.reset(new ScDocument( SCDOCMODE_UNDO ));
-            pAttribDoc->InitUndo( rDoc, nDestTab, nDestTab, false, true );
-            rDoc.CopyToDocument(aAttribRange, InsertDeleteFlags::ATTRIB, false, *pAttribDoc);
-        }
-
-        if ( bDoSize )
-            rDoc.FitBlock( aOldDest, aDestTotal );
-        else
-            rDoc.DeleteAreaTab(aOldDest, InsertDeleteFlags::ALL);         // simply delete
-    }
-
-    //  execute filtering on the document
-    SCSIZE nCount = rDoc.Query( nTab, rQueryParam, bKeepSub, bKeepTotals );
-    pDBData->CalcSaveFilteredCount( nCount );
-    if (bCopy)
-    {
-        aLocalParam.nRow2 = aLocalParam.nRow1 + nCount;
-        if (!aLocalParam.bHasHeader && nCount > 0)
-            --aLocalParam.nRow2;
-
-        if ( bDoSize )
-        {
-            //  adjust to the real result range
-            //  (this here is always a reduction)
-
-            ScRange aNewDest( aLocalParam.nCol1, aLocalParam.nRow1, nDestTab,
-                                aLocalParam.nCol2, aLocalParam.nRow2, nDestTab );
-            rDoc.FitBlock( aDestTotal, aNewDest, false );      // sal_False - don't delete
-
-            if ( nFormulaCols > 0 )
-            {
-                //  fill in formulas
-                //! Undo (Query and Repeat) !!!
-
-                ScRange aNewForm( aLocalParam.nCol2+1, aLocalParam.nRow1, nDestTab,
-                                  aLocalParam.nCol2+nFormulaCols, aLocalParam.nRow2, nDestTab );
-                ScRange aOldForm = aNewForm;
-                aOldForm.aEnd.SetRow( aOldDest.aEnd.Row() );
-                rDoc.FitBlock( aOldForm, aNewForm, false );
-
-                ScMarkData aMark(rDoc.GetSheetLimits());
-                aMark.SelectOneTable(nDestTab);
-                SCROW nFStartY = aLocalParam.nRow1 + ( aLocalParam.bHasHeader ? 1 : 0 );
-
-                sal_uLong nProgCount = nFormulaCols;
-                nProgCount *= aLocalParam.nRow2 - nFStartY;
-                ScProgress aProgress( rDoc.GetDocumentShell(),
-                        ScResId(STR_FILL_SERIES_PROGRESS), nProgCount, true );
-
-                rDoc.Fill( aLocalParam.nCol2+1, nFStartY,
-                            aLocalParam.nCol2+nFormulaCols, nFStartY, &aProgress, aMark,
-                            aLocalParam.nRow2 - nFStartY,
-                            FILL_TO_BOTTOM, FILL_SIMPLE );
-            }
-        }
-
-        if ( pAttribDoc )       // copy back the memorized attributes
-        {
-            //  Header
-            if (aLocalParam.bHasHeader)
-            {
-                ScRange aHdrRange = aAttribRange;
-                aHdrRange.aEnd.SetRow( aHdrRange.aStart.Row() );
-                pAttribDoc->CopyToDocument(aHdrRange, InsertDeleteFlags::ATTRIB, false, rDoc);
-            }
-
-            //  Data
-            SCCOL nAttrEndCol = aAttribRange.aEnd.Col();
-            SCROW nAttrRow = aAttribRange.aStart.Row() + ( aLocalParam.bHasHeader ? 1 : 0 );
-            for (SCCOL nCol = aAttribRange.aStart.Col(); nCol<=nAttrEndCol; nCol++)
-            {
-                const ScPatternAttr* pSrcPattern = pAttribDoc->GetPattern(
-                                                    nCol, nAttrRow, nDestTab );
-                OSL_ENSURE(pSrcPattern,"Pattern is 0");
-                if (pSrcPattern)
-                {
-                    rDoc.ApplyPatternAreaTab( nCol, nAttrRow, nCol, aLocalParam.nRow2,
-                                                    nDestTab, *pSrcPattern );
-                    const ScStyleSheet* pStyle = pSrcPattern->GetStyleSheet();
-                    if (pStyle)
-                        rDoc.ApplyStyleAreaTab( nCol, nAttrRow, nCol, aLocalParam.nRow2,
-                                                    nDestTab, *pStyle );
-                }
-            }
-        }
-    }
-
-    //  saving: Inplace always, otherwise depending on setting
-    //          old Inplace-Filter may have already been removed
-
-    bool bSave = rQueryParam.bInplace || rQueryParam.bDestPers;
-    if (bSave)                                                  // memorize
-    {
-        pDBData->SetQueryParam( rQueryParam );
-        pDBData->SetHeader( rQueryParam.bHasHeader );       //! ???
-        pDBData->SetAdvancedQuerySource( pAdvSource );      // after SetQueryParam
-    }
-
-    if (bCopy)                                              // memorize new DB range
-    {
-        //  Selection is done afterwards from outside (dbfunc).
-        //  Currently through the DB area at the destination position,
-        //  so a range must be created there in any case.
-
-        ScDBData* pNewData;
-        if (pDestData)
-            pNewData = pDestData;               // range exists -> adjust (always!)
-        else                                    // create range
-            pNewData = rDocShell.GetDBData(
-                            ScRange( aLocalParam.nCol1, aLocalParam.nRow1, nDestTab,
-                                     aLocalParam.nCol2, aLocalParam.nRow2, nDestTab ),
-                            SC_DB_MAKE, ScGetDBSelection::ForceMark );
-
-        if (pNewData)
-        {
-            pNewData->SetArea( nDestTab, aLocalParam.nCol1, aLocalParam.nRow1,
-                                            aLocalParam.nCol2, aLocalParam.nRow2 );
-
-            //  query parameter is no longer set at the destination, only leads to confusion
-            //  and mistakes with the query parameter at the source range (#37187#)
-        }
-        else
-        {
-            OSL_FAIL("Target are not available");
-        }
-    }
-
-    if (!bCopy)
-    {
-        rDoc.InvalidatePageBreaks(nTab);
-        rDoc.UpdatePageBreaks( nTab );
-    }
-
-    // #i23299# Subtotal functions depend on cell's filtered states.
-    ScRange aDirtyRange(0 , aLocalParam.nRow1, nDestTab, rDoc.MaxCol(), aLocalParam.nRow2, nDestTab);
-    rDoc.SetSubTotalCellsDirty(aDirtyRange);
-
-    if ( bRecord )
-    {
-        // create undo action after executing, because of drawing layer undo
-        rDocShell.GetUndoManager()->AddUndoAction(
-                    std::make_unique<ScUndoQuery>( rDocShell, nTab, rQueryParam, std::move(pUndoDoc), std::move(pUndoDB),
-                                        pOld, bDoSize, pAdvSource ) );
-    }
-
-    if ( pViewSh )
-    {
-        // could there be horizontal autofilter ?
-        // maybe it would be better to set bColumns to !rQueryParam.bByRow ?
-        // anyway at the beginning the value of bByRow is 'false'
-        // then after the first sort action it becomes 'true'
-        pViewSh->OnLOKShowHideColRow(/*bColumns*/ false, rQueryParam.nRow1 - 1);
-    }
-
-    if (bCopy)
-    {
-        SCCOL nEndX = aLocalParam.nCol2;
-        SCROW nEndY = aLocalParam.nRow2;
-        if (pDestData)
-        {
-            if ( aOldDest.aEnd.Col() > nEndX )
-                nEndX = aOldDest.aEnd.Col();
-            if ( aOldDest.aEnd.Row() > nEndY )
-                nEndY = aOldDest.aEnd.Row();
-        }
-        if (bDoSize)
-            nEndY = rDoc.MaxRow();
-
-        // remove AutoFilter button flags
-        rDocShell.DBAreaDeleted(nDestTab, aLocalParam.nCol1, aLocalParam.nRow1, aLocalParam.nCol2);
-
-        rDocShell.PostPaint(
-            ScRange(aLocalParam.nCol1, aLocalParam.nRow1, nDestTab, nEndX, nEndY, nDestTab),
-            PaintPartFlags::Grid);
-    }
-    else
-        rDocShell.PostPaint(
-            ScRange(0, rQueryParam.nRow1, nTab, rDoc.MaxCol(), rDoc.MaxRow(), nTab),
-            PaintPartFlags::Grid | PaintPartFlags::Left);
-    aModificator.SetDocumentModified();
-
-    return true;
+    sc::QueryOperation aOperation(rDocShell, nTab, rQueryParam, pAdvSource, bRecord, bApi);
+    return aOperation.run();
 }
 
 void ScDBDocFunc::DoSubTotals( SCTAB nTab, const ScSubTotalParam& rParam,
@@ -1219,7 +645,7 @@ void ScDBDocFunc::DoSubTotals( SCTAB nTab, const ScSubTotalParam& rParam,
         return;
     }
 
-    if (!CheckSheetViewProtection(sc::Operation::SubTotals))
+    if (!CheckSheetViewProtection(sc::OperationType::SubTotals))
         return;
 
     ScEditableTester aTester = ScEditableTester::CreateAndTestBlock(rDoc, nTab, 0, rParam.nRow1 + 1, rDoc.MaxCol(), rDoc.MaxRow());
@@ -1325,7 +751,7 @@ void ScDBDocFunc::DoSubTotals( SCTAB nTab, const ScSubTotalParam& rParam,
             ScSortParam aOldSort;
             pDBData->GetSortParam( aOldSort );
             ScSortParam aSortParam( aNewParam, aOldSort );
-            Sort( nTab, aSortParam, false, false, bApi );
+            SortTab(nTab, aSortParam, false, false, bApi);
         }
 
         bSuccess = rDoc.DoSubTotals( nTab, aNewParam );
@@ -1593,7 +1019,7 @@ bool ScDBDocFunc::DataPilotUpdate( ScDPObject* pOldObj, const ScDPObject* pNewOb
     aRanges.push_back(pOldObj->GetOutRange());
     aRanges.push_back(ScRange(pNewObj->GetOutRange().aStart)); // at least one cell in the output position must be editable.
 
-    if (!CheckSheetViewProtection(sc::Operation::PivotTableUpdate))
+    if (!CheckSheetViewProtection(sc::OperationType::PivotTableUpdate))
        return false;
 
     if (!isEditable(rDocShell, aRanges, bApi))
@@ -1678,7 +1104,7 @@ bool ScDBDocFunc::RemovePivotTable(const ScDPObject& rDPObj, bool bRecord, bool 
     ScDocShellModificator aModificator(rDocShell);
     weld::WaitObject aWait(ScDocShell::GetActiveDialogParent());
 
-    if (!CheckSheetViewProtection(sc::Operation::PivotTableRemove))
+    if (!CheckSheetViewProtection(sc::OperationType::PivotTableRemove))
         return false;
 
     if (!isEditable(rDocShell, rDPObj.GetOutRange(), bApi))
@@ -1763,7 +1189,7 @@ bool ScDBDocFunc::CreatePivotTable(const ScDPObject& rDPObj, bool bRecord, bool 
     ScDocShellModificator aModificator(rDocShell);
     weld::WaitObject aWait(ScDocShell::GetActiveDialogParent());
 
-    if (!CheckSheetViewProtection(sc::Operation::PivotTableCreate))
+    if (!CheckSheetViewProtection(sc::OperationType::PivotTableCreate))
         return false;
 
     // At least one cell in the output range should be editable. Check in advance.
@@ -1878,7 +1304,7 @@ bool ScDBDocFunc::UpdatePivotTable(ScDPObject& rDPObj, bool bRecord, bool bApi)
     ScDocShellModificator aModificator( rDocShell );
     weld::WaitObject aWait( ScDocShell::GetActiveDialogParent() );
 
-    if (!CheckSheetViewProtection(sc::Operation::PivotTableUpdate))
+    if (!CheckSheetViewProtection(sc::OperationType::PivotTableUpdate))
         return false;
 
     if (!isEditable(rDocShell, rDPObj.GetOutRange(), bApi, sc::EditAction::UpdatePivotTable))

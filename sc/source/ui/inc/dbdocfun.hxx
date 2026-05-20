@@ -41,16 +41,17 @@ namespace svx {
 }
 namespace sc
 {
-    enum class Operation;
+    enum class OperationType;
 }
 
 class ScDBDocFunc
 {
 friend class ScDBFunc;
+friend class SortOperation;
 
 private:
     ScDocShell&     rDocShell;
-    static bool CheckSheetViewProtection(sc::Operation eOperation);
+    static bool CheckSheetViewProtection(sc::OperationType eOperation);
 
 public:
                     ScDBDocFunc( ScDocShell& rDocSh ): rDocShell(rDocSh) {}
@@ -65,8 +66,7 @@ public:
 
     static void     ShowInBeamer( const ScImportParam& rParam, const SfxViewFrame* pFrame );
 
-    SC_DLLPUBLIC bool Sort(
-        SCTAB nTab, const ScSortParam& rSortParam, bool bRecord, bool bPaint, bool bApi );
+    SC_DLLPUBLIC bool SortTab(SCTAB nTab, const ScSortParam& rSortParam, bool bRecord, bool bPaint, bool bApi);
 
     SC_DLLPUBLIC bool           Query( SCTAB nTab, const ScQueryParam& rQueryParam,
                             const ScRange* pAdvSource, bool bRecord, bool bApi );

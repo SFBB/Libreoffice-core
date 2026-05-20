@@ -32,6 +32,7 @@
 
 #include <chartsheetfragment.hxx>
 #include <connectionsfragment.hxx>
+#include <personsfragment.hxx>
 #include <externallinkbuffer.hxx>
 #include <externallinkfragment.hxx>
 #include <formulabuffer.hxx>
@@ -66,6 +67,7 @@
 #include <vcl/vclenum.hxx>
 #include <vcl/weld/Builder.hxx>
 #include <vcl/weld/DialogController.hxx>
+#include <vcl/weld/Window.hxx>
 #include <vcl/weld/weld.hxx>
 
 #include <config_emscripten.h>
@@ -397,6 +399,12 @@ void WorkbookFragment::finalizeImport()
         if (!importOoxFragment( new SharedStringsFragment( *this, aSstFragmentPath ) ))
             importOoxFragment(new SharedStringsFragment(*this, aSstFragmentPath.replaceFirst("sharedStrings","SharedStrings")));
     xGlobalSegment->setPosition( 0.75 );
+
+    // read the persons substream (for threaded comments)
+    OUString aPersonsFragmentPath = getFragmentPathFromFirstType(
+        u"http://schemas.microsoft.com/office/2017/10/relationships/person");
+    if (!aPersonsFragmentPath.isEmpty())
+        importOoxFragment(new PersonsFragment(*this, aPersonsFragmentPath));
 
     // read the connections substream
     OUString aConnFragmentPath = getFragmentPathFromFirstTypeFromOfficeDoc( u"connections" );

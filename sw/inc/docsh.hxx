@@ -313,6 +313,7 @@ public:
      This new function is necessary to trigger update of links in docs
      read by the binary filter: */
     virtual void UpdateLinks() override;
+    virtual void PerformLinkUpdate() override;
 
     css::uno::Reference< css::frame::XController >
                                 GetController();

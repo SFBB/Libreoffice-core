@@ -1316,6 +1316,14 @@ void SwDocShell::UpdateLinks()
     GetDoc()->GetFootnoteIdxs().UpdateFootnote( aTmp.GetNode() );
 }
 
+void SwDocShell::PerformLinkUpdate()
+{
+    sfx2::LinkManager& rLinkMgr
+        = GetDoc()->getIDocumentLinksAdministration().GetLinkManager();
+    rLinkMgr.UpdateAllLinks(false, false, nullptr,
+                            GetMedium() ? GetMedium()->GetName() : OUString());
+}
+
 uno::Reference< frame::XController >
                                 SwDocShell::GetController()
 {

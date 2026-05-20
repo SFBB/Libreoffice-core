@@ -43,7 +43,7 @@ public:
 
     bool ControlHasFocus() const;
 
-    virtual void Draw(OutputDevice* pDevice, const Point& rPos,
+    virtual void Draw(OutputDevice& rDevice, const Point& rPos,
                       SystemTextColorFlags nFlags) override;
 
     void SetPriority(TaskPriority nPriority);
@@ -84,7 +84,7 @@ private:
 
     DECL_DLLPRIVATE_LINK(DoLayout, Timer*, void);
 
-    virtual void ImplPaintToDevice(::OutputDevice* pTargetOutDev, const Point& rPos) override;
+    virtual void ImplPaintToDevice(OutputDevice& rTargetOutDev, const Point& rPos) override;
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

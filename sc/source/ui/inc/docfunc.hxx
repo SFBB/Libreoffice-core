@@ -58,7 +58,16 @@ namespace sc
     class SparklineAttributes;
     class SparklineGroup;
     class Sparkline;
-    enum class Operation;
+    enum class OperationType;
+    class DeleteContentOperation;
+    class DeleteCellOperation;
+    class SetNormalStringOperation;
+    class SetValueOperation;
+    class SetStringOperation;
+    class SetEditTextOperation;
+    class SetFormulaOperation;
+    class ApplyAttributesOperation;
+    class InsertCellsOperation;
 }
 namespace tools
 {
@@ -67,8 +76,18 @@ namespace tools
 
 class ScDocFunc
 {
+    friend class sc::DeleteContentOperation;
+    friend class sc::DeleteCellOperation;
+    friend class sc::SetNormalStringOperation;
+    friend class sc::SetValueOperation;
+    friend class sc::SetStringOperation;
+    friend class sc::SetEditTextOperation;
+    friend class sc::SetFormulaOperation;
+    friend class sc::ApplyAttributesOperation;
+    friend class sc::InsertCellsOperation;
+
     ScDocShell&     rDocShell;
-    static bool CheckSheetViewProtection(sc::Operation eOperation);
+    static bool CheckSheetViewProtection(sc::OperationType eOperation);
 
 protected:
     bool            AdjustRowHeight( const ScRange& rRange, bool bPaint, bool bApi );
@@ -258,6 +277,8 @@ public:
     SC_DLLPUBLIC bool GroupSparklines(ScRange const& rRange, std::shared_ptr<sc::SparklineGroup> const& rpGroup);
     SC_DLLPUBLIC bool UngroupSparklines(ScRange const& rRange);
     SC_DLLPUBLIC bool ChangeSparkline(std::shared_ptr<sc::Sparkline> const& rpSparkline, SCTAB nTab, ScRangeList const& rDataRange);
+
+    static void PaintAbove(ScDocShell& rDocShell, const ScRange& rRange);
 
 private:
     void ProtectDocument(const ScDocProtection& rProtect);

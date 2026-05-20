@@ -671,7 +671,7 @@ private:
     SAL_DLLPRIVATE bool                 ImplStopDnd();
     SAL_DLLPRIVATE void                 ImplStartDnd();
 
-    virtual void                        ImplPaintToDevice( ::OutputDevice* pTargetOutDev, const Point& rPos );
+    virtual void ImplPaintToDevice(OutputDevice& rTargetOutDev, const Point& rPos);
 
 protected:
     // Single argument ctors shall be explicit.
@@ -713,7 +713,7 @@ public:
 
     SAL_DLLPRIVATE void                 Erase(vcl::RenderContext& rRenderContext);
 
-    virtual void                        Draw( ::OutputDevice* pDev, const Point& rPos, SystemTextColorFlags nFlags );
+    virtual void Draw(OutputDevice& rDev, const Point& rPos, SystemTextColorFlags nFlags);
     virtual void                        Move();
     virtual void                        Resize();
     virtual void                        Activate();
@@ -1407,7 +1407,7 @@ public:
     bool    IsNativeWidgetEnabled() const;
 
     // a helper method for a Control's Draw method
-    void PaintToDevice( ::OutputDevice* pDevice, const Point& rPos );
+    void PaintToDevice(OutputDevice& rDevice, const Point& rPos);
 
     //  Keyboard access functions
 
