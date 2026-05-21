@@ -848,6 +848,11 @@ ScFormulaCell::ScFormulaCell(const ScFormulaCell& rCell, ScDocument& rDoc, const
         }
 
         pCode->AdjustAbsoluteRefs( rCell.rDocument, rCell.aPos, aPos, bCopyBetweenDocs );
+
+        if ((nCloneFlags & ScCloneFlags::AdjustCrossSheetRefs) != ScCloneFlags::Default)
+        {
+            pCode->AdjustRelativeTabRefs(rCell.aPos.Tab(), aPos.Tab());
+        }
     }
 
     if (!rDocument.IsClipOrUndo())
@@ -1080,7 +1085,7 @@ void ScFormulaCell::GetResultDimensions( SCSIZE& rCols, SCSIZE& rRows )
 
     if (pCode->GetCodeError() == FormulaError::NONE && aResult.GetType() == svMatrixCell)
     {
-        const ScMatrix* pMat = aResult.GetToken()->GetMatrix();
+        const ScMatrix* pMat = static_cast<const ScMatrixCellResultToken*>(aResult.GetToken().get())->GetMatrix();
         if (pMat)
         {
             pMat->GetDimensions( rCols, rRows );
@@ -3719,6 +3724,18 @@ void ScFormulaCell::UpdateInsertTabAbs(SCTAB nTable)
         }
         p = aIter.GetNextReferenceRPN();
     }
+}
+
+void ScFormulaCell::AdjustRelativeTabRefs(SCTAB nOldTab, SCTAB nNewTab, sc::TargetTabState eMode)
+{
+    if (rDocument.IsClipOrUndo())
+        return;
+
+    bool bAdjustCode = !mxGroup || mxGroup->mpTopCell == this;
+    if (!bAdjustCode)
+        return;
+
+    pCode->AdjustRelativeTabRefs(nOldTab, nNewTab, eMode);
 }
 
 bool ScFormulaCell::TestTabRefAbs(SCTAB nTable)

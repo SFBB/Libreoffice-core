@@ -518,6 +518,7 @@ ScViewDataTable::ScViewDataTable(const ScDocument& rDoc) :
                 aHeightHelper(rDoc, false),
                 nMaxTiledCol( 20 ),
                 nMaxTiledRow( 50 ),
+                nLastSheetViewTab(sc::DefaultSheetViewID),
                 bShowGrid( true ),
                 mbOldCursorValid( false )
 {
@@ -2519,6 +2520,18 @@ void ScViewData::SetTabNo( SCTAB nNewTab )
         return;
     }
 
+    // Remember the current sheet view tab on the default sheet's per-tab data
+    if (ValidTab(mnTabNumber))
+    {
+        SCTAB nDefaultOfOld = mrDoc.GetDefaultViewTableNumber(mnTabNumber);
+        if (nDefaultOfOld != mnTabNumber
+            && nDefaultOfOld < SCTAB(maTabData.size())
+            && maTabData[nDefaultOfOld])
+        {
+            maTabData[nDefaultOfOld]->nLastSheetViewTab = mnTabNumber;
+        }
+    }
+
     mnTabNumber = nNewTab;
     CreateTabData(mnTabNumber);
     pThisTab = maTabData[mnTabNumber].get();
@@ -3501,11 +3514,14 @@ void ScViewData::WriteUserData(OUString& rData)
     else
         rData += "0";
 
-    rData += ";" + OUString::number(CurrentTabForData()) + ";" + TAG_TABBARWIDTH + OUString::number( pView->GetTabBarWidth() );
+    rData += ";" + OUString::number(GetTabNumber()) + ";" + TAG_TABBARWIDTH + OUString::number( pView->GetTabBarWidth() );
 
     SCTAB nTabCount = mrDoc.GetTableCount();
     for (SCTAB i=0; i<nTabCount; i++)
     {
+        if (mrDoc.IsSheetViewHolder(i))
+            continue;
+
         rData += ";";                   // Numbering must not get mixed up under any circumstances
         if (i < static_cast<SCTAB>(maTabData.size()) && maTabData[i])
         {
@@ -3646,7 +3662,7 @@ void ScViewData::WriteExtOptions( ScExtDocOptions& rDocOpt ) const
     ScExtDocSettings& rDocSett = rDocOpt.GetDocSettings();
 
     // displayed sheet
-    rDocSett.mnDisplTab = CurrentTabForData();
+    rDocSett.mnDisplTab = GetTabNumber();
 
     // width of the tabbar, relative to frame window width
     rDocSett.mfTabBarWidth = pView->GetPendingRelTabBarWidth();
@@ -3945,9 +3961,9 @@ void ScViewData::WriteUserDataSequence(uno::Sequence <beans::PropertyValue>& rSe
     pSettings[SC_TABLE_VIEWSETTINGS].Value <<= xNameContainer;
 
     OUString sName;
-    GetDocument().GetName(CurrentTabForData(), sName);
+    GetDocument().GetName(GetTabNumber(), sName);
     // tdf#150317 - sync visible tab (later used for, e.g., thumbnail generation)
-    GetDocument().SetVisibleTab(CurrentTabForData());
+    GetDocument().SetVisibleTab(GetTabNumber());
     pSettings[SC_ACTIVE_TABLE].Name = SC_ACTIVETABLE;
     pSettings[SC_ACTIVE_TABLE].Value <<= sName;
     pSettings[SC_HORIZONTAL_SCROLL_BAR_WIDTH].Name = SC_HORIZONTALSCROLLBARWIDTH;
@@ -4065,7 +4081,10 @@ void ScViewData::ReadUserDataSequence(const uno::Sequence <beans::PropertyValue>
             {
                 SCTAB nTab(0);
                 if (GetDocument().GetTable(sTabName, nTab))
-                    mnTabNumber = nTab;
+                {
+                    // When opening a new window we shouldn't see a sheet view
+                    mnTabNumber = GetDocument().GetDefaultViewTableNumber(nTab);
+                }
             }
         }
         else if (sName == SC_HORIZONTALSCROLLBARWIDTH)
@@ -4597,41 +4616,68 @@ void ScViewData::OverrideWithLOKFreeze(ScSplitMode& eExHSplitMode, ScSplitMode& 
 
 SCTAB ScViewData::CurrentTabForData() const
 {
-    if (!pThisTab)
-        return GetTabNumber();
-    auto nSheetViewID = GetSheetViewID();
-    if (nSheetViewID != sc::DefaultSheetViewID)
-    {
-        SCTAB nTab = mrDoc.GetSheetViewNumber(GetTabNumber(), nSheetViewID);
-        if (ValidTab(nTab))
-            return nTab;
-        SAL_WARN("sc.ui","ScViewData::CurrentTabForData - invalid tab: " << nTab);
-    }
     return GetTabNumber();
+}
+
+sc::SheetViewID ScViewData::GetSheetViewID() const
+{
+    return mrDoc.GetTableSheetViewID(GetTabNumber());
 }
 
 void ScViewData::SetSheetViewID(sc::SheetViewID nID)
 {
-    pThisTab->mnSheetViewID = nID;
-
-    CalcPPT();
-    RecalcPixPos();
+    if (nID != sc::DefaultSheetViewID)
+    {
+        // Get the default tab (in case we're currently on a sheet view tab)
+        SCTAB nDefaultTab = GetDefaultViewTab();
+        SCTAB nSheetViewTab = mrDoc.GetSheetViewNumber(nDefaultTab, nID);
+        if (ValidTab(nSheetViewTab))
+            SetTabNo(nSheetViewTab);
+    }
+    else
+    {
+        // Returning to default view — switch back to the default tab
+        SCTAB nDefaultTab = GetDefaultViewTab();
+        if (nDefaultTab != GetTabNumber())
+            SetTabNo(nDefaultTab);
+    }
 }
 
 sc::SheetViewID ScViewData::GetSheetViewIDForSheet(SCTAB nTab) const
 {
-    if (!IsValidTabNumber(nTab))
-        return sc::InvalidSheetViewID;
-
-    if (!maTabData[nTab])
-        return sc::InvalidSheetViewID;
-
-    return maTabData[nTab]->mnSheetViewID;
+    return mrDoc.GetTableSheetViewID(nTab);
 }
 
 std::shared_ptr<sc::SheetViewManager> ScViewData::GetCurrentSheetViewManager() const
 {
-    return GetDocument().GetSheetViewManager(GetTabNumber());
+    return GetDocument().GetSheetViewManager(GetDefaultViewTab());
+}
+
+SCTAB ScViewData::GetDefaultViewTab() const
+{
+    return mrDoc.GetDefaultViewTableNumber(GetTabNumber());
+}
+
+SCTAB ScViewData::GetLastSheetViewTab(SCTAB nDefaultTab) const
+{
+    if (nDefaultTab >= 0
+        && nDefaultTab < static_cast<SCTAB>(maTabData.size())
+        && maTabData[nDefaultTab]
+        && maTabData[nDefaultTab]->nLastSheetViewTab != sc::DefaultSheetViewID)
+    {
+        return maTabData[nDefaultTab]->nLastSheetViewTab;
+    }
+    return nDefaultTab;
+}
+
+void ScViewData::ClearLastSheetViewTab(SCTAB nDefaultTab)
+{
+    if (nDefaultTab >= 0
+        && nDefaultTab < static_cast<SCTAB>(maTabData.size())
+        && maTabData[nDefaultTab])
+    {
+        maTabData[nDefaultTab]->nLastSheetViewTab = sc::DefaultSheetViewID;
+    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

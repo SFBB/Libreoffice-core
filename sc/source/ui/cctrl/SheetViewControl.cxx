@@ -9,12 +9,15 @@
 
 #include <SheetViewControl.hxx>
 #include <SheetViewBox.hxx>
+#include <tabvwsh.hxx>
 #include <svl/intitem.hxx>
 #include <vcl/toolbox.hxx>
+#include <sfx2/viewsh.hxx>
+#include <svl/voiditem.hxx>
 
 using namespace sc;
 
-SFX_IMPL_TOOLBOX_CONTROL(SheetViewControl, SfxInt32Item);
+SFX_IMPL_TOOLBOX_CONTROL(SheetViewControl, SfxVoidItem);
 
 SheetViewControl::SheetViewControl(sal_uInt16 nSlotId, ToolBoxItemId nId, ToolBox& rTbx)
     : SfxToolBoxControl(nSlotId, nId, rTbx)
@@ -23,12 +26,20 @@ SheetViewControl::SheetViewControl(sal_uInt16 nSlotId, ToolBoxItemId nId, ToolBo
 
 SheetViewControl::~SheetViewControl() {}
 
-void SheetViewControl::StateChangedAtToolBoxControl(sal_uInt16, SfxItemState eState,
+void SheetViewControl::StateChangedAtToolBoxControl(sal_uInt16 nSID, SfxItemState eState,
                                                     const SfxPoolItem* pState)
 {
     ToolBoxItemId nId = GetId();
     ToolBox& rToolBox = GetToolBox();
     SheetViewBox* pSheetViewBox = static_cast<SheetViewBox*>(rToolBox.GetItemWindow(nId));
+
+    css::uno::Reference<css::frame::XFrame> xFrame = getFrameInterface();
+    SfxViewShell* pShell = SfxViewShell::Get(xFrame->getController());
+    ScTabViewShell* pTabViewShell = dynamic_cast<ScTabViewShell*>(pShell);
+    if (!pTabViewShell)
+        return;
+
+    ScViewData& rViewData = pTabViewShell->GetViewData();
 
     if (SfxItemState::DISABLED == eState)
         pSheetViewBox->Disable();
@@ -37,19 +48,9 @@ void SheetViewControl::StateChangedAtToolBoxControl(sal_uInt16, SfxItemState eSt
 
     rToolBox.EnableItem(nId, SfxItemState::DISABLED != eState);
 
-    switch (eState)
-    {
-        case SfxItemState::DEFAULT:
-        {
-            const auto* pItem = static_cast<const SfxInt32Item*>(pState);
-            sc::SheetViewID nValue = pItem->GetValue();
-            pSheetViewBox->Update(nValue);
-            break;
-        }
+    pSheetViewBox->Update(rViewData);
 
-        default:
-            break;
-    }
+    SfxToolBoxControl::StateChangedAtToolBoxControl(nSID, eState, pState);
 }
 
 VclPtr<InterimItemWindow> SheetViewControl::CreateItemWindow(vcl::Window* pParent)

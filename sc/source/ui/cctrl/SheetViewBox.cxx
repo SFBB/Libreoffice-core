@@ -51,33 +51,24 @@ void SheetViewBox::GetFocus()
     InterimItemWindow::GetFocus();
 }
 
-void SheetViewBox::Update(sc::SheetViewID nSelectedID)
+void SheetViewBox::Update(ScViewData& rViewData)
 {
-    ScViewData* pViewData = ScDocShell::GetViewData();
-    if (!pViewData)
-        return;
-
     m_xWidget->clear();
     m_xWidget->freeze();
 
     OUString sActiveID = OUString::number(sc::DefaultSheetViewID);
     m_xWidget->append(sActiveID, sc::SheetViewManager::defaultViewName());
 
-    auto pSheetManager = pViewData->GetCurrentSheetViewManager();
+    auto pSheetManager = rViewData.GetCurrentSheetViewManager();
 
     if (pSheetManager)
     {
-        sc::SheetViewID nSheetViewID = 0;
-        for (auto const& pSheetView : pSheetManager->getSheetViews())
+        for (auto const& rSheetView : pSheetManager->iterateValidSheetViews())
         {
-            if (pSheetView)
-            {
-                OUString sID = OUString::number(nSheetViewID);
-                if (nSheetViewID == nSelectedID)
-                    sActiveID = sID;
-                m_xWidget->append(sID, pSheetView->GetName());
-            }
-            nSheetViewID++;
+            OUString sID = OUString::number(rSheetView.getID());
+            if (rSheetView.getID() == rViewData.GetSheetViewID())
+                sActiveID = sID;
+            m_xWidget->append(sID, rSheetView.GetName());
         }
     }
     m_xWidget->thaw();
@@ -96,8 +87,8 @@ IMPL_STATIC_LINK(SheetViewBox, SelectHdl, weld::ComboBox&, rComboBox, void)
         return;
 
     const OUString sValue = rComboBox.get_active_id();
-    SfxInt32Item aItem(FID_CURRENT_SHEET_VIEW, sValue.toInt32());
-    pDispatcher->ExecuteList(FID_CURRENT_SHEET_VIEW, SfxCallMode::RECORD, { &aItem });
+    SfxInt32Item aItem(FN_PARAM_1, sValue.toInt32());
+    pDispatcher->ExecuteList(FID_SELECT_SHEET_VIEW, SfxCallMode::RECORD, { &aItem });
 
     pViewFrame->GetWindow().GrabFocus();
 }

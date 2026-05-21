@@ -367,7 +367,7 @@ public:
     void CopyToColumn(
         sc::CopyToDocContext& rCxt, SCROW nRow1, SCROW nRow2, InsertDeleteFlags nFlags, bool bMarked,
         ScColumn& rColumn, const ScMarkData* pMarkData = nullptr, bool bAsLink = false,
-        bool bGlobalNamesToLocal = false ) const;
+        ScCloneFlags nCloneFlags = ScCloneFlags::Default ) const;
 
     void UndoToColumn(
         sc::CopyToDocContext& rCxt, SCROW nRow1, SCROW nRow2, InsertDeleteFlags nFlags, bool bMarked,
@@ -597,6 +597,7 @@ public:
     bool GetDataEntries( SCROW nRow, std::set<ScTypedStrData>& rStrings) const;
 
     void UpdateInsertTabAbs(SCTAB nNewPos);
+    void AdjustRelativeTabRefs(SCTAB nOldTab, SCTAB nNewTab, sc::TargetTabState eMode);
     bool    TestTabRefAbs(SCTAB nTable) const;
     bool    GetNextSpellingCell(SCROW& nRow, bool bInSel, const ScMarkData& rData) const;
 

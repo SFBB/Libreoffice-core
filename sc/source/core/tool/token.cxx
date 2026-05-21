@@ -690,7 +690,8 @@ const ScMatrix* ScMatrixToken::GetMatrix() const        { return pMatrix.get(); 
 ScMatrix*       ScMatrixToken::GetMatrix()              { return pMatrix.get(); }
 bool ScMatrixToken::operator==( const FormulaToken& r ) const
 {
-    return FormulaToken::operator==( r ) && pMatrix == r.GetMatrix();
+    return FormulaToken::operator==( r )
+        && pMatrix == static_cast<const ScMatrixToken&>(r).GetMatrix();
 }
 
 ScMatrixRangeToken::ScMatrixRangeToken( const sc::RangeMatrix& rMat ) :
@@ -979,12 +980,6 @@ const svl::SharedString & ScMatrixCellResultToken::GetString() const
 }
 
 const ScMatrix* ScMatrixCellResultToken::GetMatrix() const  { return xMatrix.get(); }
-// Non-const GetMatrix() is private and unused but must be implemented to
-// satisfy vtable linkage.
-ScMatrix* ScMatrixCellResultToken::GetMatrix()
-{
-    return const_cast<ScMatrix*>(xMatrix.get());
-}
 
 bool ScMatrixCellResultToken::operator==( const FormulaToken& r ) const
 {
@@ -1055,7 +1050,7 @@ void ScMatrixFormulaCellToken::Assign( const formula::FormulaToken& r )
         if (r.GetType() == svMatrix)
         {
             xUpperLeft = nullptr;
-            xMatrix = r.GetMatrix();
+            xMatrix = static_cast<const ScMatrixToken&>(r).GetMatrix();
         }
         else
         {
@@ -2682,6 +2677,58 @@ void ScTokenArray::AdjustAbsoluteRefs( const ScDocument& rOldDoc, const ScAddres
                     {
                         // added to avoid warnings
                     }
+            }
+        }
+    }
+}
+
+namespace
+{
+
+void adjustRelativeTabRef(ScSingleRefData& rRef, SCTAB nOldTab, SCTAB nNewTab, bool bInsertedTab)
+{
+    if (!rRef.IsTabRel() || rRef.Tab() == 0)
+        return;
+    SCTAB nAbsTarget = nOldTab + rRef.Tab();
+    if (bInsertedTab && nAbsTarget >= nNewTab)
+        nAbsTarget++;
+    SCTAB nNewOffset = nAbsTarget - nNewTab;
+    rRef.IncTab(nNewOffset - rRef.Tab());
+}
+
+} // anonymous namespace
+
+void ScTokenArray::AdjustRelativeTabRefs(SCTAB nOldTab, SCTAB nNewTab, sc::TargetTabState eMode)
+{
+    const bool bInsertedTab = (eMode == sc::TargetTabState::Inserted);
+    TokenPointers aPtrs( pCode.get(), nLen, pRPN, nRPN, true);
+    for (size_t j=0; j<2; ++j)
+    {
+        FormulaToken** pp = aPtrs.maPointerRange[j].mpStart;
+        FormulaToken** pEnd = aPtrs.maPointerRange[j].mpStop;
+        for (; pp != pEnd; ++pp)
+        {
+            FormulaToken* p = aPtrs.getHandledToken(j,pp);
+            if (!p)
+                continue;
+
+            switch ( p->GetType() )
+            {
+                case svDoubleRef:
+                {
+                    ScComplexRefData& rRef = *p->GetDoubleRef();
+                    adjustRelativeTabRef(rRef.Ref1, nOldTab, nNewTab, bInsertedTab);
+                    adjustRelativeTabRef(rRef.Ref2, nOldTab, nNewTab, bInsertedTab);
+                    break;
+                }
+                case svSingleRef:
+                {
+                    ScSingleRefData& rRef = *p->GetSingleRef();
+                    adjustRelativeTabRef(rRef, nOldTab, nNewTab, bInsertedTab);
+                    break;
+                }
+                default:
+                    break;
             }
         }
     }
@@ -5101,7 +5148,7 @@ void appendTokenByType( ScSheetLimits& rLimits, sc::TokenStringContext& rCxt, OU
         break;
         case svMatrix:
         {
-            const ScMatrix* pMat = rToken.GetMatrix();
+            const ScMatrix* pMat = static_cast<const ScMatrixToken&>(rToken).GetMatrix();
             if (!pMat)
                 return;
 

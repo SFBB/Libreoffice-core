@@ -24,8 +24,10 @@
 #include <formula/grammar.hxx>
 #include <tabbgcolor.hxx>
 #include <unotools/resmgr.hxx>
+#include <SheetViewTypes.hxx>
 
 #include <memory>
+#include <utility>
 #include <vector>
 #include <map>
 
@@ -59,15 +61,6 @@ namespace sc
     class SparklineGroup;
     class Sparkline;
     enum class OperationType;
-    class DeleteContentOperation;
-    class DeleteCellOperation;
-    class SetNormalStringOperation;
-    class SetValueOperation;
-    class SetStringOperation;
-    class SetEditTextOperation;
-    class SetFormulaOperation;
-    class ApplyAttributesOperation;
-    class InsertCellsOperation;
 }
 namespace tools
 {
@@ -76,30 +69,21 @@ namespace tools
 
 class ScDocFunc
 {
-    friend class sc::DeleteContentOperation;
-    friend class sc::DeleteCellOperation;
-    friend class sc::SetNormalStringOperation;
-    friend class sc::SetValueOperation;
-    friend class sc::SetStringOperation;
-    friend class sc::SetEditTextOperation;
-    friend class sc::SetFormulaOperation;
-    friend class sc::ApplyAttributesOperation;
-    friend class sc::InsertCellsOperation;
-
     ScDocShell&     rDocShell;
     static bool CheckSheetViewProtection(sc::OperationType eOperation);
 
 protected:
-    bool            AdjustRowHeight( const ScRange& rRange, bool bPaint, bool bApi );
     void            CreateOneName( ScRangeName& rList,
                                     SCCOL nPosX, SCROW nPosY, SCTAB nTab,
                                     SCCOL nX1, SCROW nY1, SCCOL nX2, SCROW nY2,
                                     bool& rCancel, bool bApi );
-    void            NotifyInputHandler( const ScAddress& rPos );
 
                     ScDocFunc( ScDocShell& rDocSh ): rDocShell(rDocSh) {}
 public:
     virtual         ~ScDocFunc() {}
+
+    bool            AdjustRowHeight( const ScRange& rRange, bool bPaint, bool bApi );
+    void            NotifyInputHandler( const ScAddress& rPos );
 
     void            NotifyDrawUndo(std::unique_ptr<SdrUndoAction>);
 
@@ -169,6 +153,7 @@ public:
                                        bool bCut, bool bRecord, bool bPaint, bool bApi );
 
     SC_DLLPUBLIC bool InsertTable( SCTAB nTab, const OUString& rName, bool bRecord, bool bApi );
+    std::pair<sc::SheetViewID, SCTAB> InsertSheetView( SCTAB nTab, bool bRecord );
     SC_DLLPUBLIC bool RenameTable( SCTAB nTab, const OUString& rName, bool bRecord, bool bApi );
     bool            DeleteTable( SCTAB nTab, bool bRecord );
 
@@ -193,7 +178,7 @@ public:
     bool            Protect( SCTAB nTab, const OUString& rPassword );
     bool            Unprotect( SCTAB nTab, std::u16string_view rPassword, bool bApi );
 
-    void            ClearItems( const ScMarkData& rMark, const sal_uInt16* pWhich, bool bApi );
+    SC_DLLPUBLIC void ClearItems( const ScMarkData& rMark, const sal_uInt16* pWhich, bool bApi );
     bool            ChangeIndent( const ScMarkData& rMark, bool bIncrement, bool bApi );
     bool            AutoFormat( const ScRange& rRange, const ScMarkData* pTabMark,
                                         sal_uInt16 nFormatNo, bool bApi );

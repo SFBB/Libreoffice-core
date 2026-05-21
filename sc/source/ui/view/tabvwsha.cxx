@@ -274,7 +274,7 @@ void ScTabViewShell::GetState( SfxItemSet& rSet )
 
             case SID_CURRENTTAB:
                 // Table for Basic is 1-based
-                rSet.Put( SfxUInt16Item( nWhich, static_cast<sal_uInt16>(GetViewData().CurrentTabForData()) + 1 ) );
+                rSet.Put( SfxUInt16Item( nWhich, static_cast<sal_uInt16>(GetViewData().GetTabNumber()) + 1 ) );
                 break;
 
             case SID_CURRENTDOC:
@@ -400,8 +400,6 @@ void ScTabViewShell::GetState( SfxItemSet& rSet )
 
             case FID_NEW_SHEET_VIEW:
             case FID_REMOVE_SHEET_VIEW:
-            case FID_SWITCH_TO_NEXT_SHEET_VIEW:
-            case FID_SWITCH_TO_PREVIOUS_SHEET_VIEW:
             case FID_SELECT_SHEET_VIEW:
             case FID_EXIT_SHEET_VIEW:
                 {
@@ -413,11 +411,6 @@ void ScTabViewShell::GetState( SfxItemSet& rSet )
                     {
                         rSet.DisableItem(nWhich);
                     }
-                }
-                break;
-            case FID_CURRENT_SHEET_VIEW:
-                {
-                    rSet.Put(SfxInt32Item(FID_CURRENT_SHEET_VIEW, GetViewData().GetSheetViewID()));
                 }
                 break;
             case FID_NORMALVIEWMODE:
@@ -506,7 +499,7 @@ void ScTabViewShell::GetState( SfxItemSet& rSet )
                     Point aPos;
                     bool bIsCol = (nWhich == SID_WINDOW_FIX_COL);
                     aPos.setX(rViewData.GetLOKSheetFreezeIndex(bIsCol));
-                    aPos.setY(rViewData.CurrentTabForData());
+                    aPos.setY(rViewData.GetTabNumber());
                     rSet.Put(SfxPointItem(nWhich, aPos));
                 }
                 break;

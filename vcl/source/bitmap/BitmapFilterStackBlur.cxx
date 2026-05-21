@@ -66,6 +66,22 @@ struct BlurSharedData
         , mnColorChannels(nColorChannels)
     {
     }
+
+    template <bool Horizontal> Scanline readPixel(sal_Int32 nOuter, sal_Int32 nInner) const
+    {
+        if constexpr (Horizontal)
+            return mpReadAccess->GetScanline(nOuter) + mnComponentWidth * nInner;
+        else
+            return mpReadAccess->GetScanline(nInner) + mnComponentWidth * nOuter;
+    }
+
+    template <bool Horizontal> Scanline writePixel(sal_Int32 nOuter, sal_Int32 nInner) const
+    {
+        if constexpr (Horizontal)
+            return mpWriteAccess->GetScanline(nOuter) + mnComponentWidth * nInner;
+        else
+            return mpWriteAccess->GetScanline(nInner) + mnComponentWidth * nOuter;
+    }
 };
 
 struct BlurArrays
@@ -137,18 +153,18 @@ public:
 
 struct SumFunction24
 {
-    static inline void add(sal_Int32*& pValue1, sal_Int32 nConstant)
-    {
-        pValue1[0] += nConstant;
-        pValue1[1] += nConstant;
-        pValue1[2] += nConstant;
-    }
-
     static inline void set(sal_Int32*& pValue1, sal_Int32 nConstant)
     {
         pValue1[0] = nConstant;
         pValue1[1] = nConstant;
         pValue1[2] = nConstant;
+    }
+
+    static inline void mulAndAdd(sal_Int32*& pValue1, const sal_uInt8* pValue2, sal_Int32 nConstant)
+    {
+        pValue1[0] += pValue2[0] * nConstant;
+        pValue1[1] += pValue2[1] * nConstant;
+        pValue1[2] += pValue2[2] * nConstant;
     }
 
     static inline void add(sal_Int32*& pValue1, const sal_uInt8* pValue2)
@@ -197,9 +213,12 @@ struct SumFunction24
 
 struct SumFunction8
 {
-    static inline void add(sal_Int32*& pValue1, sal_Int32 nConstant) { pValue1[0] += nConstant; }
-
     static inline void set(sal_Int32*& pValue1, sal_Int32 nConstant) { pValue1[0] = nConstant; }
+
+    static inline void mulAndAdd(sal_Int32*& pValue1, const sal_uInt8* pValue2, sal_Int32 nConstant)
+    {
+        pValue1[0] += pValue2[0] * nConstant;
+    }
 
     static inline void add(sal_Int32*& pValue1, const sal_uInt8* pValue2)
     {
@@ -233,19 +252,17 @@ struct SumFunction8
     }
 };
 
-template <typename SumFunction>
-void stackBlurHorizontal(BlurSharedData const& rShared, sal_Int32 nStart, sal_Int32 nEnd)
+template <typename SumFunction, bool Horizontal>
+void stackBlur(BlurSharedData const& rShared, sal_Int32 nStart, sal_Int32 nEnd)
 {
-    BitmapReadAccess* pReadAccess = rShared.mpReadAccess;
-    BitmapWriteAccess* pWriteAccess = rShared.mpWriteAccess;
-
     BlurArrays aArrays(rShared);
 
     sal_uInt8* pStack = aArrays.maStackBuffer.data();
     sal_uInt8* pStackPtr;
 
-    const sal_Int32 nWidth = pReadAccess->Width();
-    const sal_Int32 nLastIndexX = nWidth - 1;
+    const sal_Int32 nLength
+        = Horizontal ? rShared.mpReadAccess->Width() : rShared.mpReadAccess->Height();
+    const sal_Int32 nLastIndex = nLength - 1;
 
     const sal_Int32 nMultiplyValue = aArrays.getMultiplyValue();
     const sal_Int32 nShiftValue = aArrays.getShiftValue();
@@ -257,7 +274,7 @@ void stackBlurHorizontal(BlurSharedData const& rShared, sal_Int32 nStart, sal_In
     Scanline pSourcePointer;
     Scanline pDestinationPointer;
 
-    aArrays.initializeWeightAndPositions(nLastIndexX);
+    aArrays.initializeWeightAndPositions(nLastIndex);
 
     sal_Int32* nSum = aArrays.mnSumVector.data();
     sal_Int32* nInSum = aArrays.mnInSumVector.data();
@@ -266,7 +283,7 @@ void stackBlurHorizontal(BlurSharedData const& rShared, sal_Int32 nStart, sal_In
     sal_Int32* pPositionPointer = aArrays.maPositionTable.data();
     sal_Int32* pWeightPointer = aArrays.maWeightTable.data();
 
-    for (sal_Int32 y = nStart; y <= nEnd; y++)
+    for (sal_Int32 nOuter = nStart; nOuter <= nEnd; nOuter++)
     {
         SumFunction::set(nSum, 0);
         SumFunction::set(nInSum, 0);
@@ -274,19 +291,19 @@ void stackBlurHorizontal(BlurSharedData const& rShared, sal_Int32 nStart, sal_In
 
         // Pre-initialize blur data for first pixel.
         // aArrays.maPositionTable contains values like (for radius of 5): [0,0,0,0,0,0,1,2,3,4,5],
-        // which are used as pixels indices in the current row that we use to prepare information
-        // for the first pixel; aArrays.maWeightTable has [1,2,3,4,5,6,5,4,3,2,1]. Before looking at
-        // the first row pixel, we pretend to have processed fake previous pixels, as if the row was
-        // extended to the left with the same color as that of the first pixel.
+        // which are used as pixel indices along the blur direction that we use to prepare
+        // information for the first pixel; aArrays.maWeightTable has [1,2,3,4,5,6,5,4,3,2,1].
+        // Before looking at the first pixel, we pretend to have processed fake previous pixels,
+        // as if the line was extended with the same color as that of the first pixel.
         for (sal_Int32 i = 0; i < nDiv; i++)
         {
-            pSourcePointer = pReadAccess->GetScanline(y) + nComponentWidth * pPositionPointer[i];
+            pSourcePointer = rShared.readPixel<Horizontal>(nOuter, pPositionPointer[i]);
 
             pStackPtr = &pStack[nComponentWidth * i];
 
             SumFunction::assignPtr(pStackPtr, pSourcePointer);
 
-            SumFunction::add(nSum, pSourcePointer[0] * pWeightPointer[i]);
+            SumFunction::mulAndAdd(nSum, pSourcePointer, pWeightPointer[i]);
 
             if (i - nRadius > 0)
             {
@@ -299,13 +316,13 @@ void stackBlurHorizontal(BlurSharedData const& rShared, sal_Int32 nStart, sal_In
         }
 
         sal_Int32 nStackIndex = nRadius;
-        sal_Int32 nXPosition = std::min(nRadius, nLastIndexX);
+        sal_Int32 nPosition = std::min(nRadius, nLastIndex);
 
-        pSourcePointer = pReadAccess->GetScanline(y) + nComponentWidth * nXPosition;
+        pSourcePointer = rShared.readPixel<Horizontal>(nOuter, nPosition);
 
-        for (sal_Int32 x = 0; x < nWidth; x++)
+        for (sal_Int32 nInner = 0; nInner < nLength; nInner++)
         {
-            pDestinationPointer = pWriteAccess->GetScanline(y) + nComponentWidth * x;
+            pDestinationPointer = rShared.writePixel<Horizontal>(nOuter, nInner);
 
             SumFunction::assignMulAndShr(pDestinationPointer, nSum, nMultiplyValue, nShiftValue);
 
@@ -320,10 +337,10 @@ void stackBlurHorizontal(BlurSharedData const& rShared, sal_Int32 nStart, sal_In
 
             SumFunction::sub(nOutSum, pStackPtr);
 
-            if (nXPosition < nLastIndexX)
+            if (nPosition < nLastIndex)
             {
-                nXPosition++;
-                pSourcePointer = pReadAccess->GetScanline(y) + nComponentWidth * nXPosition;
+                nPosition++;
+                pSourcePointer = rShared.readPixel<Horizontal>(nOuter, nPosition);
             }
 
             SumFunction::assignPtr(pStackPtr, pSourcePointer);
@@ -347,111 +364,15 @@ void stackBlurHorizontal(BlurSharedData const& rShared, sal_Int32 nStart, sal_In
 }
 
 template <typename SumFunction>
+void stackBlurHorizontal(BlurSharedData const& rShared, sal_Int32 nStart, sal_Int32 nEnd)
+{
+    stackBlur<SumFunction, true>(rShared, nStart, nEnd);
+}
+
+template <typename SumFunction>
 void stackBlurVertical(BlurSharedData const& rShared, sal_Int32 nStart, sal_Int32 nEnd)
 {
-    BitmapReadAccess* pReadAccess = rShared.mpReadAccess;
-    BitmapWriteAccess* pWriteAccess = rShared.mpWriteAccess;
-
-    BlurArrays aArrays(rShared);
-
-    sal_uInt8* pStack = aArrays.maStackBuffer.data();
-    sal_uInt8* pStackPtr;
-
-    sal_Int32 nHeight = pReadAccess->Height();
-    sal_Int32 nLastIndexY = nHeight - 1;
-
-    sal_Int32 nMultiplyValue = aArrays.getMultiplyValue();
-    sal_Int32 nShiftValue = aArrays.getShiftValue();
-
-    sal_Int32 nRadius = rShared.mnRadius;
-    sal_Int32 nComponentWidth = rShared.mnComponentWidth;
-    sal_Int32 nDiv = rShared.mnDiv;
-
-    Scanline pSourcePointer;
-    Scanline pDestinationPointer;
-
-    aArrays.initializeWeightAndPositions(nLastIndexY);
-
-    sal_Int32* nSum = aArrays.mnSumVector.data();
-    sal_Int32* nInSum = aArrays.mnInSumVector.data();
-    sal_Int32* nOutSum = aArrays.mnOutSumVector.data();
-    sal_Int32* pPositionPointer = aArrays.maPositionTable.data();
-    sal_Int32* pWeightPointer = aArrays.maWeightTable.data();
-
-    for (sal_Int32 x = nStart; x <= nEnd; x++)
-    {
-        SumFunction::set(nSum, 0);
-        SumFunction::set(nInSum, 0);
-        SumFunction::set(nOutSum, 0);
-
-        // Pre-initialize blur data for first pixel.
-        // aArrays.maPositionTable contains values like (for radius of 5): [0,0,0,0,0,0,1,2,3,4,5],
-        // which are used as pixels indices in the current column that we use to prepare information
-        // for the first pixel; aArrays.maWeightTable has [1,2,3,4,5,6,5,4,3,2,1]. Before looking at
-        // the first column pixels, we pretend to have processed fake previous pixels, as if the
-        // column was extended to the top with the same color as that of the first pixel.
-        for (sal_Int32 i = 0; i < nDiv; i++)
-        {
-            pSourcePointer = pReadAccess->GetScanline(pPositionPointer[i]) + nComponentWidth * x;
-
-            pStackPtr = &pStack[nComponentWidth * i];
-
-            SumFunction::assignPtr(pStackPtr, pSourcePointer);
-
-            SumFunction::add(nSum, pSourcePointer[0] * pWeightPointer[i]);
-
-            if (i - nRadius > 0)
-            {
-                SumFunction::add(nInSum, pSourcePointer);
-            }
-            else
-            {
-                SumFunction::add(nOutSum, pSourcePointer);
-            }
-        }
-
-        sal_Int32 nStackIndex = nRadius;
-        sal_Int32 nYPosition = std::min(nRadius, nLastIndexY);
-
-        pSourcePointer = pReadAccess->GetScanline(nYPosition) + nComponentWidth * x;
-
-        for (sal_Int32 y = 0; y < nHeight; y++)
-        {
-            pDestinationPointer = pWriteAccess->GetScanline(y) + nComponentWidth * x;
-
-            SumFunction::assignMulAndShr(pDestinationPointer, nSum, nMultiplyValue, nShiftValue);
-
-            SumFunction::sub(nSum, nOutSum);
-
-            sal_Int32 nStackIndexStart = nStackIndex + nDiv - nRadius;
-
-            if (nStackIndexStart >= nDiv)
-                nStackIndexStart -= nDiv;
-
-            pStackPtr = &pStack[nComponentWidth * nStackIndexStart];
-
-            SumFunction::sub(nOutSum, pStackPtr);
-
-            if (nYPosition < nLastIndexY)
-            {
-                nYPosition++;
-                pSourcePointer = pReadAccess->GetScanline(nYPosition) + nComponentWidth * x;
-            }
-
-            SumFunction::assignPtr(pStackPtr, pSourcePointer);
-            SumFunction::add(nInSum, pSourcePointer);
-            SumFunction::add(nSum, nInSum);
-
-            nStackIndex++;
-            if (nStackIndex >= nDiv)
-                nStackIndex = 0;
-
-            pStackPtr = &pStack[nStackIndex * nComponentWidth];
-
-            SumFunction::add(nOutSum, pStackPtr);
-            SumFunction::sub(nInSum, pStackPtr);
-        }
-    }
+    stackBlur<SumFunction, false>(rShared, nStart, nEnd);
 }
 
 constexpr sal_Int32 nThreadStrip = 16;

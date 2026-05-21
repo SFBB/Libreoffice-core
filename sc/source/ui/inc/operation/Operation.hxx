@@ -9,7 +9,12 @@
 
 #pragma once
 
-#include <SheetViewOperationsTester.hxx>
+#include <operation/OperationType.hxx>
+
+class ScMarkData;
+class ScAddress;
+class ScRange;
+class ScViewData;
 
 namespace sc
 {
@@ -34,17 +39,26 @@ protected:
     OperationType meType = OperationType::Unknown;
     bool mbApi : 1 = false;
     bool mbRecord : 1 = false;
+    ScViewData* mpViewData;
+
+    bool checkSheetViewProtection();
+
+    /** Convert address from a sheet view to the address in default view, take sorting into account. */
+    ScAddress convertAddress(ScAddress const& rAddress);
+
+    /** Convert a range from a sheet view to the range in default view, take sorting into account. */
+    ScRange convertRange(ScRange const& rRange);
+
+    /** Convert a mark from a sheet view to the mark in default view, take sorting into account. */
+    ScMarkData convertMark(ScMarkData const& rMarkData);
+
+    /** Synchronizes the sheet views and the default view */
+    void syncSheetViews();
 
 public:
-    Operation(OperationType eType, bool bRecord, bool bApi)
-        : meType(eType)
-        , mbApi(bApi)
-        , mbRecord(bRecord)
-    {
-    }
+    Operation(OperationType eType, bool bRecord, bool bApi);
 
-    bool run() { return runImplementation(); }
-    bool checkSheetViewProtection();
+    bool run();
 
     virtual bool runImplementation() = 0;
 };

@@ -202,6 +202,7 @@ $(eval $(call gb_Library_add_exception_objects,sc,\
     sc/source/core/data/stlsheet \
     sc/source/core/data/subtotalparam \
     sc/source/core/data/tabbgcolor \
+    sc/source/core/data/TableContentCopier \
     sc/source/core/data/table1 \
     sc/source/core/data/table2 \
     sc/source/core/data/table3 \
@@ -533,11 +534,19 @@ $(eval $(call gb_Library_add_exception_objects,sc,\
     sc/source/ui/navipi/navipi \
     sc/source/ui/navipi/scenwnd \
     sc/source/ui/operation/ApplyAttributesOperation \
+    sc/source/ui/operation/AutoFormatOperation \
     sc/source/ui/operation/ClearItemsOperation \
     sc/source/ui/operation/DeleteCellOperation \
     sc/source/ui/operation/DeleteContentOperation \
+    sc/source/ui/operation/EnterMatrixOperation \
+    sc/source/ui/operation/FillAutoOperation \
+    sc/source/ui/operation/FillSeriesOperation \
+    sc/source/ui/operation/FillSimpleOperation \
     sc/source/ui/operation/InsertCellsOperation \
+    sc/source/ui/operation/InsertSheetViewOperation \
+    sc/source/ui/operation/MultipleOpsOperation \
     sc/source/ui/operation/Operation \
+    sc/source/ui/operation/OperationType \
     sc/source/ui/operation/QueryOperation \
     sc/source/ui/operation/SetEditTextOperation \
     sc/source/ui/operation/SetFormulaOperation \
@@ -604,6 +613,7 @@ $(eval $(call gb_Library_add_exception_objects,sc,\
     sc/source/ui/undo/UndoUngroupSparklines \
     sc/source/ui/undo/UndoGroupSparklines \
     sc/source/ui/undo/UndoEditSparkline \
+    sc/source/ui/undo/UndoInsertSheetView \
     sc/source/ui/undo/UndoThemeChange \
     sc/source/ui/unoobj/ChartRangeSelectionListener \
     sc/source/ui/unoobj/addruno \

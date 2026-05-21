@@ -258,7 +258,7 @@ void ScTabViewShell::ExecProtectTable( SfxRequest& rReq )
     ScModule* pScMod = ScModule::get();
     const SfxItemSet*   pReqArgs    = rReq.GetArgs();
     ScDocument&         rDoc = GetViewData().GetDocument();
-    SCTAB               nTab = GetViewData().CurrentTabForData();
+    SCTAB               nTab = GetViewData().GetTabNumber();
     bool                bOldProtection = rDoc.IsTabProtected(nTab);
 
     if( pReqArgs )
@@ -1064,36 +1064,13 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
         case FID_REMOVE_SHEET_VIEW:
             RemoveCurrentSheetView();
         break;
-        case FID_SWITCH_TO_NEXT_SHEET_VIEW:
-            SwitchSheetView(sc::SwitchSheetViewDirection::Next);
-        break;
-        case FID_SWITCH_TO_PREVIOUS_SHEET_VIEW:
-            SwitchSheetView(sc::SwitchSheetViewDirection::Previous);
-        break;
         case FID_EXIT_SHEET_VIEW:
             ExitSheetView();
         break;
         case FID_SELECT_SHEET_VIEW:
         {
-            ScViewData& rViewData = GetViewData();
-            auto pDialog = std::make_shared<sc::SelectSheetViewDialog>(GetFrameWeld(), rViewData);
-            weld::DialogController::runAsync(pDialog, [this, pDialog](sal_uInt32 nResult) {
-                if (RET_OK != nResult)
-                    return;
-
-                sc::SheetViewID nID = pDialog->getSelectedSheetViewID();
-                if (nID != sc::InvalidSheetViewID)
-                {
-                    SelectSheetView(nID);
-                }
-            });
-            rReq.Done();
-        }
-        break;
-        case FID_CURRENT_SHEET_VIEW:
-        {
             const SfxPoolItem* pItem = nullptr;
-            if (pReqArgs != nullptr && pReqArgs->HasItem(FID_CURRENT_SHEET_VIEW, &pItem))
+            if (pReqArgs != nullptr && pReqArgs->HasItem(FN_PARAM_1, &pItem))
             {
                 const sal_Int32 nValue = static_cast<const SfxInt32Item*>(pItem)->GetValue();
                 sc::SheetViewID nID(nValue);
@@ -1101,6 +1078,21 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
                 {
                     SelectSheetView(nID);
                 }
+            }
+            else
+            {
+                ScViewData& rViewData = GetViewData();
+                auto pDialog = std::make_shared<sc::SelectSheetViewDialog>(GetFrameWeld(), rViewData);
+                weld::DialogController::runAsync(pDialog, [this, pDialog](sal_uInt32 nResult) {
+                    if (RET_OK != nResult)
+                        return;
+
+                    sc::SheetViewID nID = pDialog->getSelectedSheetViewID();
+                    if (nID != sc::InvalidSheetViewID)
+                    {
+                        SelectSheetView(nID);
+                    }
+                });
             }
             rReq.Done();
         }
@@ -1374,7 +1366,7 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
                 else
                 {
                     ScViewData& rViewData = GetViewData();
-                    SCTAB nThisTab = rViewData.CurrentTabForData();
+                    SCTAB nThisTab = rViewData.GetTabNumber();
                     bool bChangedX = false, bChangedY = false;
                     if (rViewData.GetLOKSheetFreezeIndex(true) > 0 ||
                         rViewData.GetLOKSheetFreezeIndex(false) > 0 )                             // remove freeze
@@ -1396,7 +1388,7 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
                         // Invalidate the slot for all views on the same tab of the document.
                         SfxLokHelper::forEachOtherView(this, [nThisTab](ScTabViewShell* pOther) {
                             ScViewData& rOtherViewData = pOther->GetViewData();
-                            if (rOtherViewData.CurrentTabForData() != nThisTab)
+                            if (rOtherViewData.GetTabNumber() != nThisTab)
                                 return;
 
                             SfxBindings& rOtherBind = rOtherViewData.GetBindings();
@@ -1426,7 +1418,7 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
                 if (comphelper::LibreOfficeKit::isActive())
                 {
                     ScViewData& rViewData = GetViewData();
-                    SCTAB nThisTab = rViewData.CurrentTabForData();
+                    SCTAB nThisTab = rViewData.GetTabNumber();
                     bool bChanged = rViewData.SetLOKSheetFreezeIndex(nFreezeIndex, bIsCol);
                     rReq.Done();
                     if (bChanged)
@@ -1436,7 +1428,7 @@ void ScTabViewShell::Execute( SfxRequest& rReq )
                         // Invalidate the slot for all views on the same tab of the document.
                         SfxLokHelper::forEachOtherView(this, [nSlot, nThisTab](ScTabViewShell* pOther) {
                             ScViewData& rOtherViewData = pOther->GetViewData();
-                            if (rOtherViewData.CurrentTabForData() != nThisTab)
+                            if (rOtherViewData.GetTabNumber() != nThisTab)
                                 return;
 
                             SfxBindings& rOtherBind = rOtherViewData.GetBindings();

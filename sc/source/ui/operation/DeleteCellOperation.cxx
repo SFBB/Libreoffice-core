@@ -35,20 +35,17 @@ bool DeleteCellOperation::runImplementation()
 {
     ScDocShellModificator aModificator(mrDocShell);
 
-    ScAddress const& rPos = mrPosition;
-    ScMarkData const& rMark = mrMark;
-
     ScDocument& rDoc = mrDocShell.GetDocument();
 
     if (mbRecord && !rDoc.IsUndoEnabled())
         mbRecord = false;
 
-    sc::SheetViewOperationsTester aSheetViewTester(ScDocShell::GetViewData());
-    if (!aSheetViewTester.check(meType))
-        return false;
+    // Convert taking sheet view sorting into account
+    ScAddress aPosition = convertAddress(mrPosition);
+    ScMarkData aMarkData = convertMark(mrMark);
 
     ScEditableTester aTester = ScEditableTester::CreateAndTestSelectedBlock(
-        rDoc, rPos.Col(), rPos.Row(), rPos.Col(), rPos.Row(), rMark);
+        rDoc, aPosition.Col(), aPosition.Row(), aPosition.Col(), aPosition.Row(), aMarkData);
     if (!aTester.IsEditable())
     {
         mrDocShell.ErrorMessage(aTester.GetMessageId());
@@ -56,12 +53,12 @@ bool DeleteCellOperation::runImplementation()
     }
 
     // no objects on protected tabs
-    bool bObjects
-        = (mnFlags & InsertDeleteFlags::OBJECTS) && !sc::DocFuncUtil::hasProtectedTab(rDoc, rMark);
+    bool bObjects = (mnFlags & InsertDeleteFlags::OBJECTS)
+                    && !sc::DocFuncUtil::hasProtectedTab(rDoc, aMarkData);
 
     sal_uInt16 nExtFlags = 0; // extra flags are needed only if attributes are deleted
     if (mnFlags & InsertDeleteFlags::ATTRIB)
-        mrDocShell.UpdatePaintExt(nExtFlags, ScRange(rPos));
+        mrDocShell.UpdatePaintExt(nExtFlags, ScRange(aPosition));
 
     //  order of operations:
     //  1) BeginDrawUndo
@@ -75,7 +72,8 @@ bool DeleteCellOperation::runImplementation()
         rDoc.BeginDrawUndo();
 
     if (bObjects)
-        rDoc.DeleteObjectsInArea(rPos.Col(), rPos.Row(), rPos.Col(), rPos.Row(), rMark);
+        rDoc.DeleteObjectsInArea(aPosition.Col(), aPosition.Row(), aPosition.Col(), aPosition.Row(),
+                                 aMarkData);
 
     // To keep track of all non-empty cells within the deleted area.
     std::shared_ptr<ScSimpleUndo::DataSpansType> pDataSpans;
@@ -83,24 +81,28 @@ bool DeleteCellOperation::runImplementation()
     ScDocumentUniquePtr pUndoDoc;
     if (mbRecord)
     {
-        pUndoDoc = sc::DocFuncUtil::createDeleteContentsUndoDoc(rDoc, rMark, ScRange(rPos), mnFlags,
-                                                                false);
-        pDataSpans = sc::DocFuncUtil::getNonEmptyCellSpans(rDoc, rMark, ScRange(rPos));
+        pUndoDoc = sc::DocFuncUtil::createDeleteContentsUndoDoc(rDoc, aMarkData, ScRange(aPosition),
+                                                                mnFlags, false);
+        pDataSpans = sc::DocFuncUtil::getNonEmptyCellSpans(rDoc, aMarkData, ScRange(aPosition));
     }
 
-    tools::Long nBefore(mrDocShell.GetTwipWidthHint(rPos));
-    rDoc.DeleteArea(rPos.Col(), rPos.Row(), rPos.Col(), rPos.Row(), rMark, mnFlags);
+    tools::Long nBefore(mrDocShell.GetTwipWidthHint(aPosition));
+    rDoc.DeleteArea(aPosition.Col(), aPosition.Row(), aPosition.Col(), aPosition.Row(), aMarkData,
+                    mnFlags);
 
     if (mbRecord)
     {
-        sc::DocFuncUtil::addDeleteContentsUndo(mrDocShell.GetUndoManager(), mrDocShell, rMark,
-                                               ScRange(rPos), std::move(pUndoDoc), mnFlags,
+        sc::DocFuncUtil::addDeleteContentsUndo(mrDocShell.GetUndoManager(), mrDocShell, aMarkData,
+                                               ScRange(aPosition), std::move(pUndoDoc), mnFlags,
                                                pDataSpans, false, bDrawUndo);
     }
 
-    if (!mrDocFunc.AdjustRowHeight(ScRange(rPos), true, mbApi))
-        mrDocShell.PostPaint(rPos.Col(), rPos.Row(), rPos.Tab(), rPos.Col(), rPos.Row(), rPos.Tab(),
-                             PaintPartFlags::Grid, nExtFlags, nBefore);
+    if (!mrDocFunc.AdjustRowHeight(ScRange(aPosition), true, mbApi))
+        mrDocShell.PostPaint(aPosition.Col(), aPosition.Row(), aPosition.Tab(), aPosition.Col(),
+                             aPosition.Row(), aPosition.Tab(), PaintPartFlags::Grid, nExtFlags,
+                             nBefore);
+
+    syncSheetViews();
 
     aModificator.SetDocumentModified();
 

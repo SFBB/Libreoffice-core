@@ -13,6 +13,7 @@
 #include "types.hxx"
 #include <rtl/ustring.hxx>
 #include "SheetViewTypes.hxx"
+#include "sortparam.hxx"
 #include <optional>
 #include <vector>
 
@@ -20,28 +21,37 @@ class ScTable;
 
 namespace sc
 {
+/** Contains the information of an performed sort action */
+struct SC_DLLPUBLIC SortOrderInfo
+{
+    SCCOL mnFirstColumn = -1;
+    SCCOL mnLastColumn = -1;
+    SCROW mnFirstRow = -1;
+    SCROW mnLastRow = -1;
+    std::vector<SCCOLROW> maOrder; // Remember the sort order
+    std::vector<ScSortKeyState> maKeyStates; // Each column sort information
+};
+
 /** Stores the sort order and can reverse the sorting of rows (unsorting). */
 struct SC_DLLPUBLIC SortOrderReverser
 {
 public:
-    SCROW mnFirstRow;
-    SCROW mnLastRow;
-    std::vector<SCCOLROW> maOrder;
+    SortOrderInfo maSortInfo;
 
     /** Reverse the sort for the input row and output the unsorted row.
      *
      * Uses the sort order. The row must be between range of [first row, last row]
      * or it will return the input row without modification.
      **/
-    SCROW unsort(SCROW nRow) const;
-    SCROW resort(SCROW nRow) const;
+    SCROW unsort(SCROW nRow, SCCOL nColumn) const;
+    SCROW resort(SCROW nRow, SCCOL nColumn) const;
 
     /** Adds or combines the order indices.
      *
      * Adds the indices if none are present, or combines the indices if the order indices
      * were already added previously.
      **/
-    void addOrderIndices(std::vector<SCCOLROW> const& rOrder, SCROW firstRow, SCROW lastRow);
+    void addOrderIndices(SortOrderInfo const& rSortInfo);
 };
 
 /** Stores information of a sheet view.
@@ -59,14 +69,18 @@ private:
     std::optional<SortOrderReverser> moSortOrder;
     SheetViewID mnID;
 
+    std::optional<ReorderParam> moOriginalReorderParams;
+    std::optional<ScSortParam> moSortParam;
+
 public:
     SheetView(ScTable* pTable, OUString const& rName, SheetViewID nID);
 
     ScTable* getTablePointer() const;
     SCTAB getTableNumber() const;
+
     SheetViewID getID() const { return mnID; }
 
-    OUString const& GetName() { return maName; }
+    OUString const& GetName() const { return maName; }
 
     /** A sheet view is valid if the pointer to the table is set */
     bool isValid() const;
@@ -78,13 +92,31 @@ public:
     bool isSynced() const { return mbSynced; }
 
     std::optional<SortOrderReverser> const& getSortOrder() const { return moSortOrder; }
+    void resetSortOrder() { moSortOrder.reset(); }
 
     /** Adds or combines the order indices.
      *
      * Adds the indices if none are present, or combines the indices if the order indices
      * were already added previously.
      **/
-    void addOrderIndices(std::vector<SCCOLROW> const& rOrder, SCROW firstRow, SCROW lastRow);
+    void addOrderIndices(SortOrderInfo const& rSortInfo);
+
+    /** Merges the reorder parameters */
+    void mergeReorderParameters(ReorderParam const& rReorderParameters);
+    std::optional<ReorderParam> const& getReorderParameters() const
+    {
+        return moOriginalReorderParams;
+    }
+
+    /** Reverses the complete (sheet view and default view) sorting order for the input row */
+    SCROW reverseSortingToDefaultView(SCROW nRow, SCCOL nColumn) const;
+
+    // Last used sort parameters
+
+    std::optional<ScSortParam> const& getSortParam() const { return moSortParam; }
+
+    /// Remember last used sort parameters when sheet view was sorted.
+    void setSortParam(ScSortParam const& rSortParam) { moSortParam = rSortParam; }
 };
 }
 

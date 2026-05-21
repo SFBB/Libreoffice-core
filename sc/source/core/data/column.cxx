@@ -1348,14 +1348,14 @@ class CopyByCloneHandler
 
 public:
     CopyByCloneHandler(const ScColumn& rSrcCol, ScColumn& rDestCol, sc::ColumnBlockPosition* pDestPos,
-            InsertDeleteFlags nCopyFlags, svl::SharedStringPool* pSharedStringPool, bool bGlobalNamesToLocal) :
+            InsertDeleteFlags nCopyFlags, svl::SharedStringPool* pSharedStringPool, ScCloneFlags nCloneFlags) :
         mrSrcCol(rSrcCol),
         mrDestCol(rDestCol),
         mpDestPos(pDestPos),
         mpSharedStringPool(pSharedStringPool),
         mnCopyFlags(nCopyFlags),
         meListenType(sc::SingleCellListening),
-        mnFormulaCellCloneFlags(bGlobalNamesToLocal ? ScCloneFlags::NamesToLocal : ScCloneFlags::Default)
+        mnFormulaCellCloneFlags(nCloneFlags)
     {
         if (mpDestPos)
             maDestPos = *mpDestPos;
@@ -1521,7 +1521,7 @@ public:
 void ScColumn::CopyToColumn(
     sc::CopyToDocContext& rCxt,
     SCROW nRow1, SCROW nRow2, InsertDeleteFlags nFlags, bool bMarked, ScColumn& rColumn,
-    const ScMarkData* pMarkData, bool bAsLink, bool bGlobalNamesToLocal) const
+    const ScMarkData* pMarkData, bool bAsLink, ScCloneFlags nCloneFlags) const
 {
     if (bMarked)
     {
@@ -1578,7 +1578,7 @@ void ScColumn::CopyToColumn(
             (GetDoc().GetPool() != rColumn.GetDoc().GetPool()) ?
             &rColumn.GetDoc().GetSharedStringPool() : nullptr;
         CopyByCloneHandler aFunc(*this, rColumn, rCxt.getBlockPosition(rColumn.nTab, rColumn.nCol), nFlags,
-                pSharedStringPool, bGlobalNamesToLocal);
+                pSharedStringPool, nCloneFlags);
         aFunc.setStartListening(rCxt.isStartListening());
         sc::ParseBlock(maCells.begin(), maCells, aFunc, nRow1, nRow2);
     }
@@ -2627,6 +2627,22 @@ public:
     }
 };
 
+/** For adjusting relative tab references. */
+class RelativeTabRefUpdater
+{
+    SCTAB mnOldTab;
+    SCTAB mnNewTab;
+    sc::TargetTabState meMode;
+public:
+    RelativeTabRefUpdater(SCTAB nOldTab, SCTAB nNewTab, sc::TargetTabState eMode) :
+        mnOldTab(nOldTab), mnNewTab(nNewTab), meMode(eMode) {}
+
+    void operator() (size_t /*nRow*/, ScFormulaCell* pCell)
+    {
+        pCell->AdjustRelativeTabRefs(mnOldTab, mnNewTab, meMode);
+    }
+};
+
 class UsedRangeNameFinder
 {
     sc::UpdatedRangeNames& mrIndexes;
@@ -3055,6 +3071,12 @@ void ScColumn::UpdateInsertTabAbs(SCTAB nNewPos)
     sc::ProcessFormulaEditText(maCells, aFunc);
     if (aFunc.isModified())
         CellStorageModified();
+}
+
+void ScColumn::AdjustRelativeTabRefs(SCTAB nOldTab, SCTAB nNewTab, sc::TargetTabState eMode)
+{
+    RelativeTabRefUpdater aFunc(nOldTab, nNewTab, eMode);
+    sc::ProcessFormula(maCells, aFunc);
 }
 
 void ScColumn::UpdateMoveTab( sc::RefUpdateMoveTabContext& rCxt, SCTAB nTabNo )

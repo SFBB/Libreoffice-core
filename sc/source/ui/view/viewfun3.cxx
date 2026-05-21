@@ -20,6 +20,7 @@
 #include <scitems.hxx>
 #include <svx/svdpage.hxx>
 #include <sfx2/docfile.hxx>
+#include <sfx2/viewfrm.hxx>
 #include <comphelper/classids.hxx>
 #include <comphelper/lok.hxx>
 #include <sot/formats.hxx>
@@ -937,7 +938,7 @@ bool ScViewFunc::PasteFromSystem( SotClipboardFormatId nFormatId, bool bApi, boo
             pTabViewShell->OnLOKSetWidthOrHeight(rViewData.GetCurY(), false);
 
             ScTabViewShell::notifyAllViewsSheetGeomInvalidation(pTabViewShell, true /* bColumns */, true /* bRows */,
-                true /* bSizes */, false /* bHidden */, false /* bFiltered */, false /* bGroups */, rViewData.CurrentTabForData());
+                true /* bSizes */, false /* bHidden */, false /* bFiltered */, false /* bGroups */, rViewData.GetTabNumber());
         }
     }
     return bRet;
@@ -2232,42 +2233,41 @@ void ScViewFunc::DataFormPutData( SCROW nCurrentRow ,
 
 void ScViewFunc::SheetViewChanged()
 {
-    ScViewData& rViewData = GetViewData();
-    ScDocShell* pDocSh = rViewData.GetDocShell();
-    ScDocument& rDocument = rViewData.GetDocument();
-    pDocSh->PostPaint(0, 0, 0, rDocument.MaxCol(), rDocument.MaxRow(), MAXTAB, PaintPartFlags::All);
-
-    if (ScTabViewShell* pViewShell = GetViewData().GetViewShell())
+    // Invalidate the sheet view selector for all views connected to this document
+    ScTabViewShell* pThisViewShell = GetViewData().GetViewShell();
+    if (pThisViewShell)
     {
-        ScModelObj* pModel = comphelper::getFromUnoTunnel<ScModelObj>(pViewShell->GetCurrentDocument());
-        SfxLokHelper::notifyViewRenderState(pViewShell, pModel);
-        pViewShell->libreOfficeKitViewCallback(LOK_CALLBACK_INVALIDATE_HEADER, "all"_ostr);
-        pViewShell->libreOfficeKitViewCallback(LOK_CALLBACK_INVALIDATE_SHEET_GEOMETRY, "all"_ostr);
+        ViewShellDocId nDocID = pThisViewShell->GetDocId();
+        SfxViewShell* pViewShell = SfxViewShell::GetFirst();
+        while (pViewShell)
+        {
+            ScTabViewShell* pTabViewShell = dynamic_cast<ScTabViewShell*>(pViewShell);
+            if (pTabViewShell && pTabViewShell->GetDocId() == nDocID)
+            {
+                SfxBindings& rBindings = pTabViewShell->GetViewFrame().GetBindings();
+                rBindings.Invalidate(FID_SELECT_SHEET_VIEW);
+            }
+            pViewShell = SfxViewShell::GetNext(*pViewShell);
+        }
     }
-    SfxBindings& rBindings = rViewData.GetBindings();
-    rBindings.Invalidate(FID_CURRENT_SHEET_VIEW);
 }
 
 void ScViewFunc::MakeNewSheetView()
 {
-    SCTAB nTab = GetViewData().GetTabNumber();
-    ScDocument& rDocument = GetViewData().GetDocument();
+    // Convert to default view, if we are in sheet view.
+    SCTAB nTab = GetViewData().GetDefaultViewTab();
 
-    auto[nSheetViewID, nSheetViewTab] = rDocument.CreateNewSheetView(nTab);
-
+    auto [nSheetViewID, nSheetViewTab] = GetViewData().GetDocShell()->GetDocFunc().InsertSheetView(nTab, true);
     if (nSheetViewID == sc::InvalidSheetViewID)
     {
         SAL_WARN("sc", "Sheet view couldn't be created");
         return;
     }
 
-    GetViewData().SetSheetViewID(nSheetViewID);
-
     GetViewData().GetDocShell()->Broadcast(ScTablesHint(SC_TAB_INSERTED, nSheetViewTab));
     SfxGetpApp()->Broadcast(SfxHint(SfxHintId::ScTablesChanged));
 
-    // Need to make sure we return to the main sheet, to make sure we are not at a different location after inserting
-    SetTabNo(nTab);
+    SetTabNo(nSheetViewTab);
 
     SheetViewChanged();
 }
@@ -2279,35 +2279,24 @@ void ScViewFunc::RemoveCurrentSheetView()
         return;
 
     ScDocument& rDocument = GetViewData().GetDocument();
-    SCTAB nTab = GetViewData().GetTabNumber();
-    if (rDocument.IsSheetViewHolder(nTab))
-        return;
+    SCTAB nDefaultTab = GetViewData().GetDefaultViewTab();
 
-    auto pSheetManager = rDocument.GetSheetViewManager(nTab);
+    auto pSheetManager = rDocument.GetSheetViewManager(nDefaultTab);
     if (!pSheetManager)
         return;
 
-    GetViewData().SetSheetViewID(sc::DefaultSheetViewID);
+    SCTAB nSheetViewTab = rDocument.GetSheetViewNumber(nDefaultTab, nSheetViewID);
 
-    SCTAB nSheetViewTab = rDocument.GetSheetViewNumber(nTab, nSheetViewID);
-    pSheetManager->remove(nSheetViewID);
+    // Switch back to the default tab before deleting
+    SetTabNo(nDefaultTab);
 
+    // Last sheet view tab is the deleted one, so reset
+    GetViewData().ClearLastSheetViewTab(nDefaultTab);
+
+    // DeleteTable also removes the sheet view from the manager
     GetViewData().GetDocFunc().DeleteTable(nSheetViewTab, true);
 
     SheetViewChanged();
-}
-
-void ScViewFunc::SwitchSheetView(sc::SwitchSheetViewDirection eDirection)
-{
-    ScDocument& rDocument = GetViewData().GetDocument();
-    SCTAB nTab = GetViewData().GetTabNumber();
-    auto pSheetManager = rDocument.GetSheetViewManager(nTab);
-    sc::SheetViewID nSheetViewID = GetViewData().GetSheetViewID();
-
-    sc::SheetViewID nSwitchSheetViewID = eDirection == sc::SwitchSheetViewDirection::Next
-                                            ? pSheetManager->getNextSheetView(nSheetViewID)
-                                            : pSheetManager->getPreviousSheetView(nSheetViewID);
-    SelectSheetView(nSwitchSheetViewID);
 }
 
 void ScViewFunc::ExitSheetView()
@@ -2317,17 +2306,22 @@ void ScViewFunc::ExitSheetView()
 
 void ScViewFunc::SelectSheetView(sc::SheetViewID nSelectSheetViewID)
 {
-    SCTAB nTab = GetViewData().GetTabNumber();
-
-    if (GetViewData().GetDocument().IsSheetViewHolder(nTab))
+    if (nSelectSheetViewID == GetViewData().GetSheetViewID())
         return;
 
-    sc::SheetViewID nSheetViewID = GetViewData().GetSheetViewID();
-    if (nSheetViewID == nSelectSheetViewID)
-        return;
+    ScDocument& rDocument = GetViewData().GetDocument();
+    SCTAB nDefaultTab = GetViewData().GetDefaultViewTab();
 
-    GetViewData().SetSheetViewID(nSelectSheetViewID);
-
+    if (nSelectSheetViewID == sc::DefaultSheetViewID)
+    {
+        SetTabNo(nDefaultTab);
+    }
+    else
+    {
+        SCTAB nSheetViewTab = rDocument.GetSheetViewNumber(nDefaultTab, nSelectSheetViewID);
+        if (ValidTab(nSheetViewTab))
+            SetTabNo(nSheetViewTab);
+    }
     SheetViewChanged();
 }
 

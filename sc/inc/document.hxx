@@ -91,8 +91,8 @@ class SharedStringPool;
 
 namespace tools { class Guid; }
 
-namespace sc {
-
+namespace sc
+{
 struct BroadcasterState;
 struct FormulaGroupContext;
 class StartListeningContext;
@@ -117,8 +117,10 @@ class Sparkline;
 class SparklineGroup;
 class SparklineList;
 class SheetViewManager;
+class AutoCalcSwitch;
 struct RefUpdateDeleteTabContext;
 struct RefUpdateMoveTabContext;
+struct RefUpdateInsertTabContext;
 }
 
 class OutputDevice;
@@ -223,6 +225,8 @@ class ScTableStyles;
 namespace sc {
 
 typedef std::map<OUString, Bitmap> IconSetBitmapMap;
+
+class TableContentCopier;
 
 }
 
@@ -356,6 +360,7 @@ friend class ScColumn;
 friend struct ScRefCellValue;
 friend class ScDocumentImport;
 friend class sc::EditTextIterator;
+friend class sc::TableContentCopier;
 friend struct ScMutationGuard;
 friend struct ScMutationDisable;
 
@@ -1074,8 +1079,10 @@ public:
     SC_DLLPUBLIC bool           RenameTab( SCTAB nTab, const OUString& rName,
                                            bool bExternalDocument = false );
     bool                        MoveTab( SCTAB nOldPos, SCTAB nNewPos, ScProgress* pProgress = nullptr );
-    SC_DLLPUBLIC bool           CopyTab( SCTAB nOldPos, SCTAB nNewPos,
-                                         const ScMarkData* pOnlyMarked = nullptr );
+    SC_DLLPUBLIC bool           CopyTab( SCTAB nOldPos, SCTAB nNewPos, const ScMarkData* pOnlyMarked = nullptr );
+
+    bool OverwriteContent(SCTAB nSourceTabNo, SCTAB nTargetTabNo);
+
     SC_DLLPUBLIC bool      TransferTab(ScDocument& rSrcDoc, SCTAB nSrcPos, SCTAB nDestPos,
                                             bool bInsertNew = true,
                                             bool bResultsOnly = false );
@@ -2446,6 +2453,10 @@ public:
 
     /** Is a holder of the sheet view data */
     SC_DLLPUBLIC bool IsSheetViewHolder(SCTAB nTab) const;
+    SC_DLLPUBLIC SCTAB GetDefaultViewTableNumber(SCTAB nTab) const;
+
+    /** Returns the sheet view ID for a given tab. */
+    SC_DLLPUBLIC sc::SheetViewID GetTableSheetViewID(SCTAB nTab) const;
 
 private:
     ScDocument(const ScDocument& r) = delete;

@@ -20,23 +20,34 @@ SheetViewID SheetViewManager::create(ScTable* pSheetViewTable)
 {
     SheetViewID nID(maViews.size());
     maViews.emplace_back(std::make_shared<SheetView>(pSheetViewTable, generateName(), nID));
+    mnSheetViewCount++;
     return nID;
 }
 
 bool SheetViewManager::remove(SheetViewID nID)
 {
-    if (isValidSheetViewID(nID))
-    {
-        // We only reset the value and not actually remove if from the vector, because the SheetViewID
-        // also represents the index in the vector. If we removed the value it would make all the
-        // following indices / SheetViewIDs returning the wrong SheetView.
-        maViews[nID].reset();
-        return true;
-    }
-    return false;
+    if (!isValidSheetViewID(nID))
+        return false;
+
+    // It's probably a bug if we want to remove a non-existent sheet view.
+    SAL_WARN_IF(!maViews[nID], "sc", "Removing a non-existing sheet view.");
+
+    if (!maViews[nID])
+        return false;
+
+    // We only reset the value and not actually remove if from the vector, because the SheetViewID
+    // also represents the index in the vector. If we removed the value it would make all the
+    // following indices / SheetViewIDs returning the wrong SheetView.
+    maViews[nID].reset();
+    mnSheetViewCount--;
+    return true;
 }
 
-void SheetViewManager::removeAll() { maViews.clear(); }
+void SheetViewManager::removeAll()
+{
+    maViews.clear();
+    mnSheetViewCount = 0;
+}
 
 std::shared_ptr<SheetView> SheetViewManager::get(SheetViewID nID) const
 {
@@ -47,82 +58,11 @@ std::shared_ptr<SheetView> SheetViewManager::get(SheetViewID nID) const
     return std::shared_ptr<SheetView>();
 }
 
-/// Calculate the next existing sheet view to use.
-SheetViewID SheetViewManager::getNextSheetView(SheetViewID nID)
-{
-    if (nID != DefaultSheetViewID && nID < 0)
-        return InvalidSheetViewID;
-
-    if (maViews.empty())
-        return DefaultSheetViewID;
-
-    // Set to max, so we prevent the for loop to run
-    sal_Int32 startIndex = std::numeric_limits<sal_Int32>::max();
-
-    // Start with first index and search for the first sheet view in for loop.
-    if (nID == DefaultSheetViewID)
-    {
-        startIndex = 0;
-    }
-    // If we assume current ID is valid, so set the start to current + 1 to search
-    // for then next valid sheet view in the for loop.
-    else if (isValidSheetViewID(nID))
-    {
-        startIndex = sal_Int32(nID) + 1;
-    }
-
-    for (sal_Int32 nIndex = startIndex; nIndex < sal_Int32(maViews.size()); ++nIndex)
-    {
-        if (maViews[nIndex])
-            return SheetViewID(nIndex);
-    }
-
-    return DefaultSheetViewID;
-}
-
-/// Calculate the previous existing sheet view to use.
-SheetViewID SheetViewManager::getPreviousSheetView(SheetViewID nID)
-{
-    if (nID != DefaultSheetViewID && nID < 0)
-        return InvalidSheetViewID;
-
-    if (maViews.empty())
-        return DefaultSheetViewID;
-
-    // Set to -1, so we prevent the for loop to run
-    sal_Int32 startIndex = -1;
-
-    // Start with first index and search for the first sheet view in for loop.
-    if (nID == DefaultSheetViewID)
-    {
-        startIndex = sal_Int32(maViews.size()) - 1;
-    }
-    // If we assume current ID is valid, so set the start to current + 1 to search
-    // for then next valid sheet view in the for loop.
-    else if (isValidSheetViewID(nID))
-    {
-        startIndex = sal_Int32(nID) - 1;
-    }
-
-    for (sal_Int32 nIndex = startIndex; nIndex >= 0; --nIndex)
-    {
-        if (maViews[nIndex])
-            return SheetViewID(nIndex);
-    }
-
-    return DefaultSheetViewID;
-}
-
 void SheetViewManager::unsyncAllSheetViews()
 {
-    for (auto const& pSheetView : maViews)
+    for (auto& rSheetView : iterateValidSheetViews())
     {
-        if (!pSheetView)
-        {
-            continue;
-        }
-
-        pSheetView->unsync();
+        rSheetView.unsync();
     }
 }
 
@@ -135,12 +75,19 @@ OUString SheetViewManager::generateName()
 
 OUString SheetViewManager::defaultViewName() { return ScResId(STR_SHEET_VIEW_DEFAULT_VIEW_NAME); }
 
-void SheetViewManager::addOrderIndices(std::vector<SCCOLROW> const& rOrder, SCROW nFirstRow,
-                                       SCROW nLastRow)
+void SheetViewManager::addOrderIndices(SortOrderInfo const& rSortInfo)
 {
     if (!moSortOrder)
         moSortOrder.emplace();
-    moSortOrder->addOrderIndices(rOrder, nFirstRow, nLastRow);
+    moSortOrder->addOrderIndices(rSortInfo);
+}
+
+void SheetViewManager::mergeReorderParameters(ReorderParam const& rReorderParameters)
+{
+    for (auto& rSheetView : iterateValidSheetViews())
+    {
+        rSheetView.mergeReorderParameters(rReorderParameters);
+    }
 }
 }
 

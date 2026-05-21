@@ -3868,6 +3868,41 @@ SfxVoidItem DeleteNote SID_DELETE_NOTE
 ]
 
 
+SfxVoidItem InsertThreadedComment SID_INSERT_THREADED_COMMENT
+(SvxPostItAuthorItem Author SID_ATTR_POSTIT_AUTHOR,
+ SvxPostItTextItem Text SID_ATTR_POSTIT_TEXT)
+[
+    AutoUpdate = FALSE,
+    FastCall = TRUE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = FALSE,
+    MenuConfig = TRUE,
+    ToolBoxConfig = FALSE,
+    GroupId = SfxGroupId::Edit;
+]
+
+SfxVoidItem ResolveComment SID_RESOLVE_THREADED_COMMENT
+(SvxPostItIdItem Id SID_ATTR_POSTIT_ID)
+[
+    AutoUpdate = FALSE,
+    FastCall = TRUE,
+    ReadOnlyDoc = FALSE,
+    Toggle = FALSE,
+    Container = FALSE,
+    RecordAbsolute = FALSE,
+    RecordPerSet;
+
+    AccelConfig = FALSE,
+    MenuConfig = FALSE,
+    ToolBoxConfig = FALSE,
+    GroupId = SfxGroupId::Edit;
+]
+
 SfxStringItem NumberFormat SID_NUMBER_FORMAT
 
 [
@@ -6103,23 +6138,6 @@ SfxBoolItem ToggleFormula   FID_TOGGLEFORMULA
     GroupId = SfxGroupId::View
 ]
 
-SfxInt32Item CurrentSheetVIew FID_CURRENT_SHEET_VIEW
-[
-    AutoUpdate = FALSE,
-    FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
-    Toggle = FALSE,
-    Container = FALSE,
-    RecordAbsolute = FALSE,
-    RecordPerSet;
-
-
-    AccelConfig = FALSE,
-    MenuConfig = FALSE,
-    ToolBoxConfig = TRUE,
-    GroupId = SfxGroupId::Format;
-]
-
 SfxBoolItem NewSheetView FID_NEW_SHEET_VIEW
 [
     /* flags */
@@ -6156,48 +6174,13 @@ SfxBoolItem RemoveSheetView FID_REMOVE_SHEET_VIEW
     GroupId = SfxGroupId::View
 ]
 
-SfxBoolItem SwitchToNextSheetView FID_SWITCH_TO_NEXT_SHEET_VIEW
+SfxVoidItem SelectSheetView FID_SELECT_SHEET_VIEW
+(SfxInt32Item SheetViewID FN_PARAM_1)
 [
     /* flags */
     AutoUpdate = FALSE,
-    FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
-    Toggle = FALSE,
-    Container = FALSE,
-    RecordAbsolute = FALSE,
-    RecordPerSet;
-
-    /* config */
-    AccelConfig = TRUE,
-    MenuConfig = FALSE,
-    ToolBoxConfig = FALSE,
-    GroupId = SfxGroupId::View
-]
-
-SfxBoolItem SwitchToPreviousSheetView FID_SWITCH_TO_PREVIOUS_SHEET_VIEW
-[
-    /* flags */
-    AutoUpdate = FALSE,
-    FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
-    Toggle = FALSE,
-    Container = FALSE,
-    RecordAbsolute = FALSE,
-    RecordPerSet;
-
-    /* config */
-    AccelConfig = TRUE,
-    MenuConfig = FALSE,
-    ToolBoxConfig = FALSE,
-    GroupId = SfxGroupId::View
-]
-
-SfxBoolItem SelectSheetView FID_SELECT_SHEET_VIEW
-[
-    /* flags */
-    AutoUpdate = FALSE,
-    FastCall = FALSE,
-    ReadOnlyDoc = TRUE,
+    FastCall = TRUE,
+    ReadOnlyDoc = FALSE,
     Toggle = FALSE,
     Container = FALSE,
     RecordAbsolute = FALSE,

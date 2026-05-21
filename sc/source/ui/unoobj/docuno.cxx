@@ -529,10 +529,6 @@ static OString getTabViewRenderState(const ScTabViewShell& rTabViewShell)
     OString aThemeName = OUStringToOString(rViewRenderingOptions.GetColorSchemeName(), RTL_TEXTENCODING_UTF8);
     aState.append(aThemeName);
 
-    sc::SheetViewID nSheetViewID = rTabViewShell.GetViewData().GetSheetViewID();
-    if (nSheetViewID >= 0)
-        aState.append(";VS:" + OString::number(nSheetViewID));
-
     return aState.makeStringAndClear();
 }
 
@@ -660,17 +656,6 @@ OUString ScModelObj::getPartInfo( int nPart )
     ScDocument& rDocument = pViewData->GetDocument();
     const bool bIsVisible = rDocument.IsVisible(nPart);
     const bool bIsProtected = rDocument.IsTabProtected(nPart);
-    const sc::SheetViewID nSheetViewID = pViewData->GetSheetViewIDForSheet(nPart);
-
-    bool nSheetViewSynced = true;
-
-    if (auto pSheetViewManager = rDocument.GetSheetViewManager(nPart))
-    {
-        if (auto pSheetView = pSheetViewManager->get(nSheetViewID))
-        {
-            nSheetViewSynced = pSheetView->isSynced();
-        }
-    }
 
     //FIXME: Implement IsSelected().
     const bool bIsSelected = false; //pViewData->GetDocument()->IsSelected(nPart);
@@ -680,9 +665,27 @@ OUString ScModelObj::getPartInfo( int nPart )
     jsonWriter.put("visible", static_cast<unsigned int>(bIsVisible));
     jsonWriter.put("rtllayout", static_cast<unsigned int>(bIsRTLLayout));
     jsonWriter.put("protected", static_cast<unsigned int>(bIsProtected));
-    jsonWriter.put("sheetviewid", int32_t(nSheetViewID));
-    jsonWriter.put("sheetviewsynced", uint32_t(nSheetViewSynced));
     jsonWriter.put("selected", static_cast<unsigned int>(bIsSelected));
+
+    const sc::SheetViewID nSheetViewID = pViewData->GetSheetViewIDForSheet(nPart);
+    if (nSheetViewID != sc::DefaultSheetViewID)
+    {
+        bool nSheetViewSynced = true;
+        if (auto pSheetViewManager = rDocument.GetSheetViewManager(nPart))
+        {
+            if (auto pSheetView = pSheetViewManager->get(nSheetViewID))
+            {
+                nSheetViewSynced = pSheetView->isSynced();
+            }
+        }
+        SCTAB nDefaultViewTableNumber = rDocument.GetDefaultViewTableNumber(nPart);
+        sal_Int64 nDefaultViewHashCode;
+        rDocument.GetHashCode(nDefaultViewTableNumber, nDefaultViewHashCode);
+
+        jsonWriter.put("sheetviewid", int32_t(nSheetViewID));
+        jsonWriter.put("defaultviewhash", int64_t(nDefaultViewHashCode));
+        jsonWriter.put("sheetviewsynced", uint32_t(nSheetViewSynced));
+    }
 
     OUString tabName;
     pViewData->GetDocument().GetName(nPart, tabName);
@@ -1285,7 +1288,14 @@ void ScModelObj::getPostIts(tools::JsonWriter& rJsonWriter)
         rJsonWriter.put("tab", aNote.maPos.Tab());
         rJsonWriter.put("author", aNote.mpNote->GetAuthor());
         rJsonWriter.put("dateTime", aNote.mpNote->GetDate());
-        rJsonWriter.put("text", aNote.mpNote->GetText());
+        if (const auto* pData = aNote.mpNote->GetThreadedCommentData())
+        {
+            rJsonWriter.put("text", pData->maRoot.maText);
+            rJsonWriter.put("threaded", "true");
+            rJsonWriter.put("resolved", aNote.mpNote->IsResolved() ? "true" : "false");
+        }
+        else
+            rJsonWriter.put("text", aNote.mpNote->GetText());
 
         // Calculating the cell cursor position
         if (ScViewData* pViewData = ScDocShell::GetViewData())

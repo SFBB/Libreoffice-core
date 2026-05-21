@@ -1937,7 +1937,9 @@ void ScTabView::SetTabNo( SCTAB nTab, bool bNew, bool bExtendSelection, bool bSa
 
     SCTAB nTabCount = rDoc.GetTableCount();
     SCTAB nOldPos = nTab;
-    while (!rDoc.IsVisible(nTab))              // search for next visible
+
+    // Search for next visible
+    while (!rDoc.IsVisible(nTab) && !rDoc.IsSheetViewHolder(nTab))
     {
         bool bUp = (nTab>=nOldPos);
         if (bUp)
@@ -1992,7 +1994,7 @@ void ScTabView::SetTabNo( SCTAB nTab, bool bNew, bool bExtendSelection, bool bSa
     bool bAllSelected = true;
     for (SCTAB nSelTab = 0; nSelTab < nTabCount; ++nSelTab)
     {
-        if (!rDoc.IsVisible(nSelTab) || rMark.GetTableSelect(nSelTab))
+        if ((!rDoc.IsVisible(nSelTab) && !rDoc.IsSheetViewHolder(nSelTab)) || rMark.GetTableSelect(nSelTab))
         {
             if (nTab == nSelTab)
                 // This tab is already in selection.  Keep the current
@@ -2128,7 +2130,7 @@ void ScTabView::SetTabNo( SCTAB nTab, bool bNew, bool bExtendSelection, bool bSa
     rBindings.Invalidate( SID_STYLE_FAMILY4 );      // Designer
     rBindings.Invalidate( SID_TABLES_COUNT );
 
-    rBindings.Invalidate(FID_CURRENT_SHEET_VIEW);
+    rBindings.Invalidate(FID_SELECT_SHEET_VIEW);
 
     if (pScMod->IsRefDialogOpen())
     {
@@ -2166,11 +2168,11 @@ void ScTabView::OnLibreOfficeKitTabChanged()
         return;
 
     ScTabViewShell* pThisViewShell = aViewData.GetViewShell();
-    SCTAB nThisTabNo = pThisViewShell->GetViewData().CurrentTabForData();
+    SCTAB nThisTabNo = pThisViewShell->GetViewData().GetTabNumber();
     auto lTabSwitch = [pThisViewShell, nThisTabNo] (ScTabViewShell* pOtherViewShell)
     {
         ScViewData& rOtherViewData = pOtherViewShell->GetViewData();
-        SCTAB nOtherTabNo = rOtherViewData.CurrentTabForData();
+        SCTAB nOtherTabNo = rOtherViewData.GetTabNumber();
         if (nThisTabNo == nOtherTabNo)
         {
             for (int i = 0; i < 4; ++i)
