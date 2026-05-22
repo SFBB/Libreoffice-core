@@ -5940,34 +5940,6 @@
         <info>
           <desc>Contains settings for the WinWord filter.</desc>
         </info>
-        <prop oor:name="WW1F" oor:type="xs:long" oor:nillable="false">
-          <info>
-            <desc>Specifies the flags for controlling the import of WinWord 1.0 documents.</desc>
-          </info>
-          <constraints>
-            <enumeration oor:value="0">
-              <info>
-                <desc>Off</desc>
-              </info>
-            </enumeration>
-            <enumeration oor:value="1">
-              <info>
-                <desc>TAG_FLD</desc>
-              </info>
-            </enumeration>
-            <enumeration oor:value="64">
-              <info>
-                <desc>ALLOW_FLD_CR </desc>
-              </info>
-            </enumeration>
-            <enumeration oor:value="256">
-              <info>
-                <desc>DONT_HARD_PROTECT </desc>
-              </info>
-            </enumeration>
-          </constraints>
-          <value>0</value>
-        </prop>
         <prop oor:name="WW" oor:type="xs:long" oor:nillable="false">
           <info>
             <desc>Specifies the flags for importing WinWord documents.</desc>
@@ -6223,40 +6195,6 @@
           <info>
             <desc>Specifies the Y offset for text frames [UNIT=1/100 mm].</desc>
           </info>
-          <value>0</value>
-        </prop>
-        <prop oor:name="WWFT" oor:type="xs:long" oor:nillable="false">
-          <info>
-            <desc>Specifies the distance between the footnote and the main text [UNIT=1/100 mm].</desc>
-          </info>
-          <value>0</value>
-        </prop>
-        <prop oor:name="WWWR" oor:type="xs:long" oor:nillable="false">
-          <info>
-            <desc>Specifies several flags for exporting (for debugging).</desc>
-          </info>
-          <constraints>
-            <enumeration oor:value="0">
-              <info>
-                <desc>Off</desc>
-              </info>
-            </enumeration>
-            <enumeration oor:value="1">
-              <info>
-                <desc>WWFL_ULSPACE_LIKE_SWG</desc>
-              </info>
-            </enumeration>
-            <enumeration oor:value="128">
-              <info>
-                <desc>WWFL_NO_GRAF</desc>
-              </info>
-            </enumeration>
-            <enumeration oor:value="131072">
-              <info>
-                <desc>WWFL_NO_OLE</desc>
-              </info>
-            </enumeration>
-          </constraints>
           <value>0</value>
         </prop>
         <prop oor:name="RegardHindiDigits" oor:type="xs:long" oor:nillable="false">

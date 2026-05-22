@@ -273,14 +273,13 @@ class SwDBManager
     SwDSParam*          FindDSConnection(const OUString& rSource, bool bCreate);
 
     /// Insert data record as text into document.
-    void ImportFromConnection( SwWrtShell* pSh);
+    void ImportFromConnection(SwWrtShell& rSh);
 
     /// Insert a single data record as text into document.
-    void ImportDBEntry(SwWrtShell* pSh);
+    void ImportDBEntry(SwWrtShell& rSh);
 
     /// Run the mail merge for defined modes, except DBManagerOptions::MailMerge
-    bool MergeMailFiles( SwWrtShell* pSh,
-                                        const SwMergeDescriptor& rMergeDescriptor );
+    bool MergeMailFiles(SwWrtShell& rSourceShell, const SwMergeDescriptor& rMergeDescriptor);
 
     bool ToNextMergeRecord();
     bool IsValidMergeRecord() const;
