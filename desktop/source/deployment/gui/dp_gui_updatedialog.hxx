@@ -28,6 +28,8 @@
 #include <rtl/ustring.hxx>
 #include <tools/link.hxx>
 #include <vcl/weld/DialogController.hxx>
+#include <vcl/weld/LinkButton.hxx>
+#include <vcl/weld/Spinner.hxx>
 #include <vcl/weld/TextView.hxx>
 #include <vcl/weld/TreeView.hxx>
 #include <vcl/weld/Window.hxx>

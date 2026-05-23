@@ -1266,6 +1266,34 @@ void SchXMLExportHelper_Impl::parseDocument( Reference< chart::XChartDocument > 
         }
 
         OUString sChartType( xDiagram->getDiagramType() );
+        if (sChartType == "com.sun.star.chart.BarDiagram")
+        {
+            Reference<chart2::XCoordinateSystemContainer> xCooSysCnt(xNewDiagram, uno::UNO_QUERY);
+            if (xCooSysCnt.is())
+            {
+                const Sequence<Reference<chart2::XCoordinateSystem>> aCooSysSeq(
+                    xCooSysCnt->getCoordinateSystems());
+                for (const auto& rCooSys : aCooSysSeq)
+                {
+                    Reference<chart2::XChartTypeContainer> xCTCnt(rCooSys, uno::UNO_QUERY);
+                    if (!xCTCnt.is())
+                        continue;
+
+                    const Sequence<Reference<chart2::XChartType>> aCTSeq(xCTCnt->getChartTypes());
+                    for (const auto& rChartType : aCTSeq)
+                    {
+                        if (rChartType.is() && rChartType->getChartType() == u"com.sun.star.chart2.HistogramChartType"_ustr)
+                        {
+                            sChartType = "com.sun.star.chart.HistogramDiagram";
+                            break;
+                        }
+                    }
+
+                    if (sChartType == "com.sun.star.chart.HistogramDiagram")
+                        break;
+                }
+            }
+        }
 
         // attributes
         // determine class
@@ -1283,6 +1311,15 @@ void SchXMLExportHelper_Impl::parseDocument( Reference< chart::XChartDocument > 
                 mrExport.AddAttribute( XML_NAMESPACE_CHART, XML_CLASS,
                                        mrExport.GetNamespaceMap().GetQNameByKey(
                                            XML_NAMESPACE_OOO, sChartType) );
+            }
+            else if (eXMLChartType == XML_HISTOGRAM)
+            {
+                mrExport.AddAttribute(XML_NAMESPACE_CHART, XML_CLASS,
+                        mrExport.GetNamespaceMap().GetQNameByKey(
+                            XML_NAMESPACE_CHART, GetXMLToken(XML_BAR)));
+                mrExport.AddAttribute(XML_NAMESPACE_LO_EXT, XML_CLASS,
+                        mrExport.GetNamespaceMap().GetQNameByKey(
+                            XML_NAMESPACE_LO_EXT, GetXMLToken(XML_HISTOGRAM)));
             }
             else if( eXMLChartType != XML_TOKEN_INVALID )
             {
@@ -2795,12 +2832,21 @@ void SchXMLExportHelper_Impl::exportSeries(
                         for( ; nSeqIdx<aSeqCnt.getLength(); ++nSeqIdx )
                         {
                             Reference< chart2::data::XDataSequence > xTempValueSeq( aSeqCnt[nSeqIdx]->getValues() );
+
+                            // 1. Get the Role for EVERY sequence
+                            OUString aRole;
+                            Reference<beans::XPropertySet> xSeqProp(xTempValueSeq, uno::UNO_QUERY);
+                            if (xSeqProp.is())
+                                xSeqProp->getPropertyValue(u"Role"_ustr) >>= aRole;
+
+                            // 2. Do not export the transient calculated-y
+                            if (aRole == "calculated-y")
+                            {
+                                continue;
+                            }
+
                             if( nMainSequenceIndex==-1 )
                             {
-                                OUString aRole;
-                                Reference< beans::XPropertySet > xSeqProp( xTempValueSeq, uno::UNO_QUERY );
-                                if( xSeqProp.is())
-                                    xSeqProp->getPropertyValue(u"Role"_ustr) >>= aRole;
                                 // "main" sequence
                                 if( aRole == aLabelRole )
                                 {

@@ -9,6 +9,8 @@
 
 #pragma once
 
+#include <vcl/weld/Box.hxx>
+#include <vcl/weld/Image.hxx>
 #include <vcl/InterimItemWindow.hxx>
 #include <vcl/weld/weld.hxx>
 #include <svx/svxdllapi.h>

@@ -19,10 +19,14 @@
 #include <docsh.hxx>
 #include <docuno.hxx>
 #include <markdata.hxx>
+#include <postit.hxx>
 #include <scitems.hxx>
 #include <SheetView.hxx>
 #include <SheetViewManager.hxx>
+#include <attrib.hxx>
 #include <editeng/brushitem.hxx>
+#include <i18nutil/transliteration.hxx>
+#include <paramisc.hxx>
 
 using namespace css;
 
@@ -155,6 +159,28 @@ protected:
         return aString;
     }
 
+    // Writes to string the indent state for a row range, Y = indented, N = not indented
+    static OUString getIndent(ScDocument* pDocument, SCCOL nCol, SCROW nStartRow, SCROW nEndRow,
+                              SCTAB nTab)
+    {
+        OUString aString;
+        bool bFirst = true;
+        for (SCROW nRow = nStartRow; nRow <= nEndRow; nRow++)
+        {
+            const ScPatternAttr* pPattern = pDocument->GetPattern(nCol, nRow, nTab);
+            const ScIndentItem& rIndent = pPattern->GetItem(ATTR_INDENT);
+            OUString aValue = rIndent.GetValue() > 0 ? u"Y"_ustr : u"N"_ustr;
+            if (bFirst)
+            {
+                bFirst = false;
+                aString = u"\""_ustr + aValue + u"\""_ustr;
+            }
+            else
+                aString += u", \""_ustr + aValue + u"\""_ustr;
+        }
+        return aString;
+    }
+
     void gotoCell(std::u16string_view aCellAddress)
     {
         dispatchCommand(
@@ -189,6 +215,10 @@ protected:
         gotoCell(aCellAddress);
         dispatchCommand(mxComponent, u".uno:Bold"_ustr, {});
     }
+
+    void undo() { dispatchCommand(mxComponent, u".uno:Undo"_ustr, {}); }
+
+    void redo() { dispatchCommand(mxComponent, u".uno:Redo"_ustr, {}); }
 };
 
 /** Test class that contains methods commonly used for testing sync of sheet views. */
@@ -504,16 +534,8 @@ CPPUNIT_TEST_FIXTURE(SheetViewTest, testSheetViewOperationRestrictions_DefaultVi
     auto pSheetViewManager = pDocument->GetSheetViewManager(SCTAB(0));
     CPPUNIT_ASSERT_EQUAL(size_t(2), pSheetViewManager->size());
 
-    auto pSheetView1 = pSheetViewManager->get(0);
-    CPPUNIT_ASSERT_EQUAL(true, pSheetView1->isSynced());
-    auto pSheetView2 = pSheetViewManager->get(1);
-    CPPUNIT_ASSERT_EQUAL(true, pSheetView2->isSynced());
-
-    // Sort, which will unsync sheet views
+    // Sort on default view
     sortDescendingForCell(u"A1");
-
-    CPPUNIT_ASSERT_EQUAL(false, pSheetView1->isSynced());
-    CPPUNIT_ASSERT_EQUAL(false, pSheetView2->isSynced());
 }
 
 CPPUNIT_TEST_FIXTURE(SheetViewTest, testSheetViewOperationRestrictions_SheetViewChanged)
@@ -570,19 +592,10 @@ CPPUNIT_TEST_FIXTURE(SheetViewTest, testSheetViewOperationRestrictions_SheetView
     auto pSheetViewManager = pDocument->GetSheetViewManager(SCTAB(0));
     CPPUNIT_ASSERT_EQUAL(size_t(2), pSheetViewManager->size());
 
-    auto pSheetView1 = pSheetViewManager->get(0);
-    CPPUNIT_ASSERT_EQUAL(true, pSheetView1->isSynced());
-
-    auto pSheetView2 = pSheetViewManager->get(1);
-    CPPUNIT_ASSERT_EQUAL(true, pSheetView2->isSynced());
-
-    // Sort, which will unsync sheet views
+    // Sort on sheet view 1
     SfxLokHelper::setView(aView1.getViewID());
     Scheduler::ProcessEventsToIdle();
     sortDescendingForCell(u"A1");
-
-    CPPUNIT_ASSERT_EQUAL(false, pSheetView1->isSynced());
-    CPPUNIT_ASSERT_EQUAL(true, pSheetView2->isSynced());
 }
 
 CPPUNIT_TEST_FIXTURE(SheetViewTest, testCheckIfSheetViewIsSavedInDocument_ODF)
@@ -1835,6 +1848,86 @@ CPPUNIT_TEST_FIXTURE(SyncTest, testSync_AutoFormat_DefaultAndSheetView)
     }
 }
 
+CPPUNIT_TEST_FIXTURE(SyncTest, testSync_MultipleOps_DefaultAndSheetView)
+{
+    ScModelObj* pModelObj = createDoc("empty.ods");
+    pModelObj->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
+    ScDocShell* pDocShell = dynamic_cast<ScDocShell*>(pModelObj->GetEmbeddedObject());
+    ScDocument* pDocument = pModelObj->GetDocument();
+
+    // Set up 2 views: for default view and for sheet view 1
+    setupViews();
+
+    // Add another view for sheet view 2
+    SfxLokHelper::createView();
+    Scheduler::ProcessEventsToIdle();
+    ScTestViewCallback aSheetView2;
+    int nSheetView2 = aSheetView2.getViewID();
+
+    // Set up data, which will be duplicated to default view and sheet views
+    // A1 = 1 - input cell
+    // B1 = =A1*10 - formula
+    // variable inputs:
+    // A3 = 2
+    // A4 = 3
+    // A5 = 4
+    pDocument->SetValue(ScAddress(0, 0, 0), 1);
+    pDocument->SetString(ScAddress(1, 0, 0), u"=A1*10"_ustr);
+    pDocument->SetValue(ScAddress(0, 2, 0), 2);
+    pDocument->SetValue(ScAddress(0, 3, 0), 3);
+    pDocument->SetValue(ScAddress(0, 4, 0), 4);
+
+    // Check value
+    CPPUNIT_ASSERT_EQUAL(10.0, pDocument->GetValue(ScAddress(1, 0, 0)));
+
+    // Create sheet view 1
+    {
+        switchToSheetView();
+        createNewSheetViewInCurrentView();
+    }
+
+    // Create sheet view 2
+    {
+        SfxLokHelper::setView(nSheetView2);
+        Scheduler::ProcessEventsToIdle();
+        createNewSheetViewInCurrentView();
+    }
+
+    // Perform Multiple Operations from sheet view 1
+    {
+        switchToSheetView();
+
+        SCTAB nSheetViewTab = mpTabViewSheetView->GetViewData().GetTabNumber();
+
+        ScTabOpParam aParam;
+        aParam.aRefFormulaCell = ScRefAddress(1, 0, nSheetViewTab);
+        aParam.aRefFormulaEnd = aParam.aRefFormulaCell;
+        aParam.aRefColCell = ScRefAddress(0, 0, nSheetViewTab);
+        aParam.meMode = ScTabOpParam::Column;
+
+        // Apply Multiple Operations on A3:B5 — fills B3:B5 with 20, 30, 40
+        pDocShell->GetDocFunc().TabOp(ScRange(0, 2, nSheetViewTab, 1, 4, nSheetViewTab), nullptr,
+                                      aParam, true, true);
+
+        // Verify results in default view (index 0)
+        SCTAB nDefaultViewTab = mpTabViewDefaultView->GetViewData().GetTabNumber();
+        CPPUNIT_ASSERT_EQUAL(u"20"_ustr, pDocument->GetString(ScAddress(1, 2, nDefaultViewTab)));
+        CPPUNIT_ASSERT_EQUAL(u"30"_ustr, pDocument->GetString(ScAddress(1, 3, nDefaultViewTab)));
+        CPPUNIT_ASSERT_EQUAL(u"40"_ustr, pDocument->GetString(ScAddress(1, 4, nDefaultViewTab)));
+
+        // Verify same results in sheet view 1
+        CPPUNIT_ASSERT_EQUAL(u"20"_ustr, pDocument->GetString(ScAddress(1, 2, nSheetViewTab)));
+        CPPUNIT_ASSERT_EQUAL(u"30"_ustr, pDocument->GetString(ScAddress(1, 3, nSheetViewTab)));
+        CPPUNIT_ASSERT_EQUAL(u"40"_ustr, pDocument->GetString(ScAddress(1, 4, nSheetViewTab)));
+
+        // Verify same results in sheet view 2
+        SCTAB nSheetView2Tab = aSheetView2.getTabViewShell()->GetViewData().GetTabNumber();
+        CPPUNIT_ASSERT_EQUAL(u"20"_ustr, pDocument->GetString(ScAddress(1, 2, nSheetView2Tab)));
+        CPPUNIT_ASSERT_EQUAL(u"30"_ustr, pDocument->GetString(ScAddress(1, 3, nSheetView2Tab)));
+        CPPUNIT_ASSERT_EQUAL(u"40"_ustr, pDocument->GetString(ScAddress(1, 4, nSheetView2Tab)));
+    }
+}
+
 CPPUNIT_TEST_FIXTURE(SyncTest, testSync_EnterMatrix_DefaultAndSheetView)
 {
     ScModelObj* pModelObj = createDoc("SheetView_AutoFilter.ods");
@@ -1894,6 +1987,704 @@ CPPUNIT_TEST_FIXTURE(SyncTest, testSync_EnterMatrix_DefaultAndSheetView)
         CPPUNIT_ASSERT_EQUAL(expectedValues({ u"3", u"5", u"14", u"17" }),
                              getValues(mpTabViewSheetView, 0, 1, 4));
     }
+}
+
+CPPUNIT_TEST_FIXTURE(SyncTest, testSync_FillSimple_DefaultAndSheetView)
+{
+    ScModelObj* pModelObj = createDoc("SheetView_AutoFilter.ods");
+    pModelObj->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
+    ScDocShell* pDocShell = dynamic_cast<ScDocShell*>(pModelObj->GetEmbeddedObject());
+
+    setupViews();
+
+    // Create new sheet view and sort autofilter ascending
+    {
+        switchToSheetView();
+        createNewSheetViewInCurrentView();
+        sortAscendingForCell(u"A1");
+    }
+
+    // Sort autofilter descending in default view
+    {
+        switchToDefaultView();
+        sortDescendingForCell(u"A1");
+    }
+
+    // Switch to sheet view and fill simple
+    {
+        switchToSheetView();
+
+        // Current state default view
+        CPPUNIT_ASSERT_EQUAL(expectedValues({ u"7", u"5", u"4", u"3" }),
+                             getValues(mpTabViewDefaultView, 0, 1, 4));
+
+        // Current state sheet view
+        CPPUNIT_ASSERT_EQUAL(expectedValues({ u"3", u"4", u"5", u"7" }),
+                             getValues(mpTabViewSheetView, 0, 1, 4));
+
+        // FillSimple A2:A3 on default view (index 0), FILL_TO_BOTTOM
+        // Copies A2 to A3 (value 7)
+        pDocShell->GetDocFunc().FillSimple(ScRange(0, 1, 0, 0, 2, 0), nullptr, FILL_TO_BOTTOM,
+                                           true);
+
+        // Default view: A3 changed from 5 -> 7
+        CPPUNIT_ASSERT_EQUAL(expectedValues({ u"7", u"7", u"4", u"3" }),
+                             getValues(mpTabViewDefaultView, 0, 1, 4));
+
+        // Sheet view: synced and re-sorted
+        CPPUNIT_ASSERT_EQUAL(expectedValues({ u"3", u"4", u"7", u"7" }),
+                             getValues(mpTabViewSheetView, 0, 1, 4));
+    }
+
+    // Try to FillSimple on the sheet view — should be blocked because it intersects autofilter
+    {
+        switchToSheetView();
+
+        SCTAB nSheetViewTab = mpTabViewSheetView->GetViewData().GetTabNumber();
+        bool bResult = pDocShell->GetDocFunc().FillSimple(
+            ScRange(0, 1, nSheetViewTab, 0, 2, nSheetViewTab), nullptr, FILL_TO_BOTTOM, true);
+        CPPUNIT_ASSERT(!bResult);
+
+        // Values should remain unchanged
+        CPPUNIT_ASSERT_EQUAL(expectedValues({ u"7", u"7", u"4", u"3" }),
+                             getValues(mpTabViewDefaultView, 0, 1, 4));
+        CPPUNIT_ASSERT_EQUAL(expectedValues({ u"3", u"4", u"7", u"7" }),
+                             getValues(mpTabViewSheetView, 0, 1, 4));
+    }
+}
+
+CPPUNIT_TEST_FIXTURE(SyncTest, testSync_FillSeries_DefaultAndSheetView)
+{
+    ScModelObj* pModelObj = createDoc("SheetView_AutoFilter.ods");
+    pModelObj->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
+    ScDocShell* pDocShell = dynamic_cast<ScDocShell*>(pModelObj->GetEmbeddedObject());
+
+    setupViews();
+
+    // Create new sheet view and sort autofilter ascending
+    {
+        switchToSheetView();
+        createNewSheetViewInCurrentView();
+        sortAscendingForCell(u"A1");
+    }
+
+    // Sort autofilter descending in default view
+    {
+        switchToDefaultView();
+        sortDescendingForCell(u"A1");
+    }
+
+    // Switch to sheet view and fill series
+    {
+        switchToSheetView();
+
+        // Current state default view
+        CPPUNIT_ASSERT_EQUAL(expectedValues({ u"7", u"5", u"4", u"3" }),
+                             getValues(mpTabViewDefaultView, 0, 1, 4));
+
+        // Current state sheet view
+        CPPUNIT_ASSERT_EQUAL(expectedValues({ u"3", u"4", u"5", u"7" }),
+                             getValues(mpTabViewSheetView, 0, 1, 4));
+
+        // FillSeries A2:A5 on default view (index 0), FILL_TO_BOTTOM, FILL_LINEAR
+        // start=40, step=-10: fills 40, 30, 20, 10
+        pDocShell->GetDocFunc().FillSeries(ScRange(0, 1, 0, 0, 4, 0), nullptr, FILL_TO_BOTTOM,
+                                           FILL_LINEAR, FILL_DAY, 40.0, -10.0, 0.0, true);
+
+        // Default view
+        CPPUNIT_ASSERT_EQUAL(expectedValues({ u"40", u"30", u"20", u"10" }),
+                             getValues(mpTabViewDefaultView, 0, 1, 4));
+
+        // Sheet view: synced and re-sorted
+        CPPUNIT_ASSERT_EQUAL(expectedValues({ u"10", u"20", u"30", u"40" }),
+                             getValues(mpTabViewSheetView, 0, 1, 4));
+    }
+
+    // Try to FillSeries on the sheet view — should be blocked because it intersects autofilter
+    {
+        switchToSheetView();
+
+        SCTAB nSheetViewTab = mpTabViewSheetView->GetViewData().GetTabNumber();
+        bool bResult = pDocShell->GetDocFunc().FillSeries(
+            ScRange(0, 1, nSheetViewTab, 0, 4, nSheetViewTab), nullptr, FILL_TO_BOTTOM, FILL_LINEAR,
+            FILL_DAY, 100.0, 100.0, 0.0, true);
+        CPPUNIT_ASSERT(!bResult);
+
+        // Values should remain unchanged
+        CPPUNIT_ASSERT_EQUAL(expectedValues({ u"40", u"30", u"20", u"10" }),
+                             getValues(mpTabViewDefaultView, 0, 1, 4));
+        CPPUNIT_ASSERT_EQUAL(expectedValues({ u"10", u"20", u"30", u"40" }),
+                             getValues(mpTabViewSheetView, 0, 1, 4));
+    }
+}
+
+CPPUNIT_TEST_FIXTURE(SyncTest, testSync_FillAuto_DefaultAndSheetView)
+{
+    ScModelObj* pModelObj = createDoc("SheetView_AutoFilter.ods");
+    pModelObj->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
+    ScDocShell* pDocShell = dynamic_cast<ScDocShell*>(pModelObj->GetEmbeddedObject());
+
+    setupViews();
+
+    // Create new sheet view and sort autofilter ascending
+    {
+        switchToSheetView();
+        createNewSheetViewInCurrentView();
+        sortAscendingForCell(u"A1");
+    }
+
+    // Sort autofilter descending in default view
+    {
+        switchToDefaultView();
+        sortDescendingForCell(u"A1");
+    }
+
+    // Switch to sheet view and fill auto
+    {
+        switchToSheetView();
+
+        // Current state default view
+        CPPUNIT_ASSERT_EQUAL(expectedValues({ u"7", u"5", u"4", u"3" }),
+                             getValues(mpTabViewDefaultView, 0, 1, 4));
+
+        // Current state sheet view
+        CPPUNIT_ASSERT_EQUAL(expectedValues({ u"3", u"4", u"5", u"7" }),
+                             getValues(mpTabViewSheetView, 0, 1, 4));
+
+        // FillAuto source A2:A3 on default view (index 0), FILL_TO_BOTTOM, nCount=2
+        // Source: 7, 5 (step -2), fills A4:A5 with 3, 1
+        ScRange aFillRange(0, 1, 0, 0, 2, 0);
+        pDocShell->GetDocFunc().FillAuto(aFillRange, nullptr, FILL_TO_BOTTOM, FILL_AUTO, FILL_DAY,
+                                         2, 1.0, 100.0, true, true);
+
+        // Default view: 7, 5, 3, 1
+        CPPUNIT_ASSERT_EQUAL(expectedValues({ u"7", u"5", u"3", u"1" }),
+                             getValues(mpTabViewDefaultView, 0, 1, 4));
+
+        // Sheet view: synced and re-sorted
+        CPPUNIT_ASSERT_EQUAL(expectedValues({ u"1", u"3", u"5", u"7" }),
+                             getValues(mpTabViewSheetView, 0, 1, 4));
+    }
+
+    // Try to FillAuto on the sheet view — should be blocked because it intersects autofilter
+    {
+        switchToSheetView();
+
+        SCTAB nSheetViewTab = mpTabViewSheetView->GetViewData().GetTabNumber();
+        ScRange aFillRange(0, 1, nSheetViewTab, 0, 2, nSheetViewTab);
+        bool bResult = pDocShell->GetDocFunc().FillAuto(
+            aFillRange, nullptr, FILL_TO_BOTTOM, FILL_AUTO, FILL_DAY, 2, 1.0, 100.0, true, true);
+        CPPUNIT_ASSERT(!bResult);
+
+        // Values should remain unchanged
+        CPPUNIT_ASSERT_EQUAL(expectedValues({ u"7", u"5", u"3", u"1" }),
+                             getValues(mpTabViewDefaultView, 0, 1, 4));
+        CPPUNIT_ASSERT_EQUAL(expectedValues({ u"1", u"3", u"5", u"7" }),
+                             getValues(mpTabViewSheetView, 0, 1, 4));
+    }
+}
+
+CPPUNIT_TEST_FIXTURE(SyncTest, testSync_TransliterateText_DefaultAndSheetView)
+{
+    ScModelObj* pModelObj = createDoc("SheetView_AutoFilter_Extended.ods");
+    pModelObj->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
+    ScDocument* pDocument = pModelObj->GetDocument();
+    ScDocShell* pDocShell = dynamic_cast<ScDocShell*>(pModelObj->GetEmbeddedObject());
+
+    setupViews();
+
+    // Create new sheet view and sort ascending
+    {
+        switchToSheetView();
+        createNewSheetViewInCurrentView();
+        sortAscendingForCell(u"A1");
+    }
+
+    // Sort descending in default view
+    {
+        switchToDefaultView();
+        sortDescendingForCell(u"A1");
+    }
+
+    // Default view at Column B: aaa, rrr, ccc, sss
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"aaa", u"rrr", u"ccc", u"sss" }),
+                         getValues(mpTabViewDefaultView, 1, 1, 4));
+    // Sheet view at Column B: sss, ccc, rrr, aaa
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"sss", u"ccc", u"rrr", u"aaa" }),
+                         getValues(mpTabViewSheetView, 1, 1, 4));
+
+    // Transliterate B2:B5 to uppercase from sheet view
+    {
+        switchToSheetView();
+
+        SCTAB nSheetViewTab = mpTabViewSheetView->GetViewData().GetTabNumber();
+        ScMarkData aMark(pDocument->GetSheetLimits());
+        aMark.SelectTable(nSheetViewTab, true);
+        aMark.SetMarkArea(ScRange(1, 1, nSheetViewTab, 1, 4, nSheetViewTab));
+        pDocShell->GetDocFunc().TransliterateText(aMark, TransliterationFlags::LOWERCASE_UPPERCASE,
+                                                  true);
+    }
+
+    // Sheet view: text is uppercased, ascending order
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"SSS", u"CCC", u"RRR", u"AAA" }),
+                         getValues(mpTabViewSheetView, 1, 1, 4));
+
+    // Default view: synced, descending order, uppercased
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"AAA", u"RRR", u"CCC", u"SSS" }),
+                         getValues(mpTabViewDefaultView, 1, 1, 4));
+}
+
+CPPUNIT_TEST_FIXTURE(SyncTest, testSync_ConvertFormulaToValue_DefaultAndSheetView)
+{
+    ScModelObj* pModelObj = createDoc("empty.ods");
+    pModelObj->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
+    ScDocument* pDocument = pModelObj->GetDocument();
+    ScDocShell* pDocShell = dynamic_cast<ScDocShell*>(pModelObj->GetEmbeddedObject());
+
+    // Set up formulas
+    pDocument->SetString(ScAddress(0, 0, 0), u"=10+20"_ustr);
+    pDocument->SetString(ScAddress(0, 1, 0), u"=30+40"_ustr);
+
+    setupViews();
+
+    // Create sheet view
+    {
+        switchToSheetView();
+        createNewSheetViewInCurrentView();
+    }
+
+    SCTAB nSheetViewTab = mpTabViewSheetView->GetViewData().GetTabNumber();
+
+    // Verify formulas exist on both tabs
+    CPPUNIT_ASSERT(pDocument->GetFormulaCell(ScAddress(0, 0, 0)));
+    CPPUNIT_ASSERT(pDocument->GetFormulaCell(ScAddress(0, 1, 0)));
+    CPPUNIT_ASSERT(pDocument->GetFormulaCell(ScAddress(0, 0, nSheetViewTab)));
+    CPPUNIT_ASSERT(pDocument->GetFormulaCell(ScAddress(0, 1, nSheetViewTab)));
+
+    // Convert formulas to values from sheet view
+    {
+        switchToSheetView();
+        pDocShell->GetDocFunc().ConvertFormulaToValue(
+            ScRange(0, 0, nSheetViewTab, 0, 1, nSheetViewTab), false);
+    }
+
+    // Sheet view: formula converted, values preserved
+    CPPUNIT_ASSERT(!pDocument->GetFormulaCell(ScAddress(0, 0, nSheetViewTab)));
+    CPPUNIT_ASSERT(!pDocument->GetFormulaCell(ScAddress(0, 1, nSheetViewTab)));
+    CPPUNIT_ASSERT_EQUAL(30.0, pDocument->GetValue(ScAddress(0, 0, nSheetViewTab)));
+    CPPUNIT_ASSERT_EQUAL(70.0, pDocument->GetValue(ScAddress(0, 1, nSheetViewTab)));
+
+    // Default view: synced — formulas also converted
+    CPPUNIT_ASSERT(!pDocument->GetFormulaCell(ScAddress(0, 0, 0)));
+    CPPUNIT_ASSERT(!pDocument->GetFormulaCell(ScAddress(0, 1, 0)));
+    CPPUNIT_ASSERT_EQUAL(30.0, pDocument->GetValue(ScAddress(0, 0, 0)));
+    CPPUNIT_ASSERT_EQUAL(70.0, pDocument->GetValue(ScAddress(0, 1, 0)));
+}
+
+CPPUNIT_TEST_FIXTURE(SyncTest, testSync_SetNoteText_DefaultAndSheetView)
+{
+    ScModelObj* pModelObj = createDoc("SheetView_AutoFilter.ods");
+    pModelObj->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
+    ScDocument* pDocument = pModelObj->GetDocument();
+    ScDocShell* pDocShell = dynamic_cast<ScDocShell*>(pModelObj->GetEmbeddedObject());
+
+    setupViews();
+
+    // Create new sheet view and sort autofilter ascending
+    {
+        switchToSheetView();
+        createNewSheetViewInCurrentView();
+        sortAscendingForCell(u"A1");
+    }
+
+    // Sort autofilter descending in default view
+    {
+        switchToDefaultView();
+        sortDescendingForCell(u"A1");
+    }
+
+    // Default view descending: 7, 5, 4, 3
+    // Sheet view ascending: 3, 4, 5, 7
+
+    // Set note on A2 in sheet view
+    {
+        switchToSheetView();
+
+        SCTAB nSheetViewTab = mpTabViewSheetView->GetViewData().GetTabNumber();
+        pDocShell->GetDocFunc().SetNoteText(ScAddress(0, 1, nSheetViewTab), u"Hello Note"_ustr,
+                                            true);
+    }
+
+    // Sheet view: note on A2
+    SCTAB nSheetViewTab = mpTabViewSheetView->GetViewData().GetTabNumber();
+    ScPostIt* pNoteSheet = pDocument->GetNote(ScAddress(0, 1, nSheetViewTab));
+    CPPUNIT_ASSERT(pNoteSheet);
+    CPPUNIT_ASSERT_EQUAL(u"Hello Note"_ustr, pNoteSheet->GetText());
+
+    // Default view: note synced to the cell A5
+    ScPostIt* pNoteDefault = pDocument->GetNote(ScAddress(0, 4, 0));
+    CPPUNIT_ASSERT(pNoteDefault);
+    CPPUNIT_ASSERT_EQUAL(u"Hello Note"_ustr, pNoteDefault->GetText());
+}
+
+CPPUNIT_TEST_FIXTURE(SyncTest, testSync_ChangeIndent_DefaultAndSheetView)
+{
+    ScModelObj* pModelObj = createDoc("SheetView_AutoFilter.ods");
+    pModelObj->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
+    ScDocument* pDocument = pModelObj->GetDocument();
+    ScDocShell* pDocShell = dynamic_cast<ScDocShell*>(pModelObj->GetEmbeddedObject());
+
+    setupViews();
+
+    // Create new sheet view and sort autofilter ascending
+    {
+        switchToSheetView();
+        createNewSheetViewInCurrentView();
+        sortAscendingForCell(u"A1");
+    }
+
+    // Sort autofilter descending in default view
+    {
+        switchToDefaultView();
+        sortDescendingForCell(u"A1");
+    }
+
+    // Switch to Sheet view and change indent on A2:A3
+    // Sheet view ascending: 3, 4, 5, 7
+    {
+        switchToSheetView();
+
+        SCTAB nSheetViewTab = mpTabViewSheetView->GetViewData().GetTabNumber();
+        ScMarkData aMark(pDocument->GetSheetLimits());
+        aMark.SelectTable(nSheetViewTab, true);
+        aMark.SetMarkArea(ScRange(0, 1, nSheetViewTab, 0, 2, nSheetViewTab));
+        aMark.MarkToMulti();
+        pDocShell->GetDocFunc().ChangeIndent(aMark, true, true);
+    }
+
+    // Sheet view: A2,A3 indented, A4,A5 not
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"3", u"4", u"5", u"7" }),
+                         getValues(pDocument, 0, 1, 4, 1));
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"Y", u"Y", u"N", u"N" }),
+                         getIndent(pDocument, 0, 1, 4, 1));
+
+    // Default view: A4,A5 indented (A4 is A3, A5 is A2)
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"7", u"5", u"4", u"3" }),
+                         getValues(pDocument, 0, 1, 4, 0));
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"N", u"N", u"Y", u"Y" }),
+                         getIndent(pDocument, 0, 1, 4, 0));
+}
+
+CPPUNIT_TEST_FIXTURE(SyncTest, testUndo_DefaultView_DeleteContent)
+{
+    // Test undo of DeleteContents from the default view with a sheet view present.
+    // After undo, both views should be consistent.
+
+    ScModelObj* pModelObj = createDoc("SheetView_AutoFilter.ods");
+    pModelObj->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
+    ScDocument* pDocument = pModelObj->GetDocument();
+
+    setupViews();
+
+    // Switch to Sheet View and Create, sort descending
+    {
+        switchToSheetView();
+        createNewSheetViewInCurrentView();
+        sortDescendingForCell(u"A1");
+    }
+
+    // Default view and and sheet view state
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"4", u"5", u"3", u"7" }),
+                         getValues(pDocument, 0, 1, 4, 0));
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"7", u"5", u"4", u"3" }),
+                         getValues(pDocument, 0, 1, 4, 1));
+
+    // Clear content in default view
+    {
+        switchToDefaultView();
+        gotoCell(u"A4");
+        dispatchCommand(mxComponent, u".uno:ClearContents"_ustr, {});
+    }
+
+    // State after delete
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"4", u"5", u"", u"7" }),
+                         getValues(pDocument, 0, 1, 4, 0));
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"7", u"5", u"4", u"" }),
+                         getValues(pDocument, 0, 1, 4, 1));
+
+    // Undo from default view
+    {
+        switchToDefaultView();
+        undo();
+    }
+
+    // After undo: default should be restored
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"4", u"5", u"3", u"7" }),
+                         getValues(pDocument, 0, 1, 4, 0));
+
+    // Sheet view should also be synced back
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"7", u"5", u"4", u"3" }),
+                         getValues(pDocument, 0, 1, 4, 1));
+
+    // Redo from default view
+    {
+        switchToDefaultView();
+        redo();
+    }
+
+    // State after delete
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"4", u"5", u"", u"7" }),
+                         getValues(pDocument, 0, 1, 4, 0));
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"7", u"5", u"4", u"" }),
+                         getValues(pDocument, 0, 1, 4, 1));
+
+    // Undo from default view
+    {
+        switchToDefaultView();
+        undo();
+    }
+
+    // Default view and and sheet view state
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"4", u"5", u"3", u"7" }),
+                         getValues(pDocument, 0, 1, 4, 0));
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"7", u"5", u"4", u"3" }),
+                         getValues(pDocument, 0, 1, 4, 1));
+
+    // Clear content in sheet view
+    {
+        switchToSheetView();
+        gotoCell(u"A4");
+        dispatchCommand(mxComponent, u".uno:ClearContents"_ustr, {});
+    }
+
+    // State after delete
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"", u"5", u"3", u"7" }),
+                         getValues(pDocument, 0, 1, 4, 0));
+    // Sheet view was resorted
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"7", u"5", u"3", u"" }),
+                         getValues(pDocument, 0, 1, 4, 1));
+
+    // Undo from sheet view
+    {
+        switchToSheetView();
+        undo();
+    }
+
+    // Default view and and sheet view state
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"4", u"5", u"3", u"7" }),
+                         getValues(pDocument, 0, 1, 4, 0));
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"7", u"5", u"4", u"3" }),
+                         getValues(pDocument, 0, 1, 4, 1));
+
+    // Redo from sheet view
+    {
+        switchToSheetView();
+        redo();
+    }
+
+    // State after delete
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"", u"5", u"3", u"7" }),
+                         getValues(pDocument, 0, 1, 4, 0));
+    // Sheet view was resorted
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"7", u"5", u"3", u"" }),
+                         getValues(pDocument, 0, 1, 4, 1));
+}
+
+CPPUNIT_TEST_FIXTURE(SyncTest, testUndo_DefaultView_ClearItems)
+{
+    // Test undo of ClearItems (bold removal) from the default view with a sheet view present.
+    ScModelObj* pModelObj = createDoc("SheetView_AutoFilter.ods");
+    pModelObj->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
+    ScDocument* pDocument = pModelObj->GetDocument();
+    ScDocShell* pDocShell = dynamic_cast<ScDocShell*>(pModelObj->GetEmbeddedObject());
+
+    setupViews();
+
+    // Switch to Sheet View and Create, sort descending
+    {
+        switchToSheetView();
+        createNewSheetViewInCurrentView();
+        sortDescendingForCell(u"A1");
+    }
+
+    // Set A2 and A3 bold in sheet view (values 7 and 5)
+    {
+        switchToSheetView();
+        setCellBold(u"A2");
+        setCellBold(u"A3");
+    }
+
+    // Default: N, B, N, B (rows with 5 and 7 are bold)
+    // Sheet: B, B, N, N
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"N", u"B", u"N", u"B" }),
+                         getTextWeight(pDocument, 0, 1, 4, 0));
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"B", u"B", u"N", u"N" }),
+                         getTextWeight(pDocument, 0, 1, 4, 1));
+
+    // Clear bold on A4:A5 in default view (values 3 and 7)
+    {
+        switchToDefaultView();
+
+        ScMarkData aMark(pDocument->GetSheetLimits());
+        aMark.SelectTable(0, true);
+        aMark.SetMarkArea(ScRange(0, 3, 0, 0, 4, 0));
+        sal_uInt16 aWhich[] = { ATTR_FONT_WEIGHT, 0 };
+        pDocShell->GetDocFunc().ClearItems(aMark, aWhich, true);
+    }
+
+    // After clear: A5(7) was bold -> now N
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"N", u"B", u"N", u"N" }),
+                         getTextWeight(pDocument, 0, 1, 4, 0));
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"N", u"B", u"N", u"N" }),
+                         getTextWeight(pDocument, 0, 1, 4, 1));
+
+    // Undo from default view
+    {
+        switchToDefaultView();
+        undo();
+    }
+
+    // After undo: default should be restored
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"N", u"B", u"N", u"B" }),
+                         getTextWeight(pDocument, 0, 1, 4, 0));
+
+    // Sheet view should also be synced back
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"B", u"B", u"N", u"N" }),
+                         getTextWeight(pDocument, 0, 1, 4, 1));
+
+    // Redo from default view
+    {
+        switchToDefaultView();
+        redo();
+    }
+
+    // After redo: same as after clear
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"N", u"B", u"N", u"N" }),
+                         getTextWeight(pDocument, 0, 1, 4, 0));
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"N", u"B", u"N", u"N" }),
+                         getTextWeight(pDocument, 0, 1, 4, 1));
+
+    // Undo from default view
+    {
+        switchToDefaultView();
+        undo();
+    }
+
+    // Default view and sheet view state restored
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"N", u"B", u"N", u"B" }),
+                         getTextWeight(pDocument, 0, 1, 4, 0));
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"B", u"B", u"N", u"N" }),
+                         getTextWeight(pDocument, 0, 1, 4, 1));
+
+    // Clear bold on A2:A3 in sheet view
+    {
+        switchToSheetView();
+
+        SCTAB nSheetViewTab = mpTabViewSheetView->GetViewData().GetTabNumber();
+        ScMarkData aMark(pDocument->GetSheetLimits());
+        aMark.SelectTable(nSheetViewTab, true);
+        aMark.SetMarkArea(ScRange(0, 1, nSheetViewTab, 0, 2, nSheetViewTab));
+        sal_uInt16 aWhich[] = { ATTR_FONT_WEIGHT, 0 };
+        pDocShell->GetDocFunc().ClearItems(aMark, aWhich, true);
+    }
+
+    // After clear from sheet view: all bold cleared
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"N", u"N", u"N", u"N" }),
+                         getTextWeight(pDocument, 0, 1, 4, 0));
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"N", u"N", u"N", u"N" }),
+                         getTextWeight(pDocument, 0, 1, 4, 1));
+
+    // Undo from sheet view
+    {
+        switchToSheetView();
+        undo();
+    }
+
+    // Default view and sheet view state restored
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"N", u"B", u"N", u"B" }),
+                         getTextWeight(pDocument, 0, 1, 4, 0));
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"B", u"B", u"N", u"N" }),
+                         getTextWeight(pDocument, 0, 1, 4, 1));
+
+    // Redo from sheet view
+    {
+        switchToSheetView();
+        redo();
+    }
+
+    // After redo: all bold cleared
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"N", u"N", u"N", u"N" }),
+                         getTextWeight(pDocument, 0, 1, 4, 0));
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"N", u"N", u"N", u"N" }),
+                         getTextWeight(pDocument, 0, 1, 4, 1));
+}
+
+CPPUNIT_TEST_FIXTURE(SyncTest, testUndo_DefaultView_FillSeries)
+{
+    // Test undo of FillSeries from default view with a sheet view present.
+
+    ScModelObj* pModelObj = createDoc("SheetView_AutoFilter.ods");
+    pModelObj->initializeForTiledRendering(uno::Sequence<beans::PropertyValue>());
+    ScDocShell* pDocShell = dynamic_cast<ScDocShell*>(pModelObj->GetEmbeddedObject());
+
+    setupViews();
+
+    // Create new sheet view and sort autofilter ascending
+    {
+        switchToSheetView();
+        createNewSheetViewInCurrentView();
+        sortAscendingForCell(u"A1");
+    }
+
+    // Sort autofilter descending in default view
+    {
+        switchToDefaultView();
+        sortDescendingForCell(u"A1");
+    }
+
+    // Current statw default view and sheet view
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"7", u"5", u"4", u"3" }),
+                         getValues(mpTabViewDefaultView, 0, 1, 4));
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"3", u"4", u"5", u"7" }),
+                         getValues(mpTabViewSheetView, 0, 1, 4));
+
+    // FillSeries: start=40, step=-10 -> 40, 30, 20, 10
+    {
+        switchToDefaultView();
+        pDocShell->GetDocFunc().FillSeries(ScRange(0, 1, 0, 0, 4, 0), nullptr, FILL_TO_BOTTOM,
+                                           FILL_LINEAR, FILL_DAY, 40.0, -10.0, 0.0, true);
+    }
+
+    // After fill: the default view should have the decreasing values
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"40", u"30", u"20", u"10" }),
+                         getValues(mpTabViewDefaultView, 0, 1, 4));
+    // Sheet view has ascending sorting
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"10", u"20", u"30", u"40" }),
+                         getValues(mpTabViewSheetView, 0, 1, 4));
+
+    // Undo from default view
+    {
+        switchToDefaultView();
+        undo();
+    }
+
+    // After undo: default and sheet view should be restored
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"7", u"5", u"4", u"3" }),
+                         getValues(mpTabViewDefaultView, 0, 1, 4));
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"3", u"4", u"5", u"7" }),
+                         getValues(mpTabViewSheetView, 0, 1, 4));
+
+    // Redo from default view
+    {
+        switchToDefaultView();
+        redo();
+    }
+
+    // Values are back
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"40", u"30", u"20", u"10" }),
+                         getValues(mpTabViewDefaultView, 0, 1, 4));
+    CPPUNIT_ASSERT_EQUAL(expectedValues({ u"10", u"20", u"30", u"40" }),
+                         getValues(mpTabViewSheetView, 0, 1, 4));
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();

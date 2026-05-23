@@ -11,6 +11,8 @@
 
 #include <sal/config.h>
 
+#include <vcl/weld/Box.hxx>
+
 #include "QtInstanceContainer.hxx"
 
 class QtInstanceBox : public QtInstanceContainer, public virtual weld::Box

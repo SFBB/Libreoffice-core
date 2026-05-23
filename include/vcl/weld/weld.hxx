@@ -13,7 +13,6 @@
 #include <rtl/ustring.hxx>
 #include <tools/gen.hxx>
 #include <tools/link.hxx>
-#include <vcl/vclptr.hxx>
 #include <vcl/dllapi.h>
 #include <vcl/weld/Widget.hxx>
 #include <utility>
@@ -31,34 +30,13 @@ namespace com::sun::star::graphic
 {
 class XGraphic;
 }
-namespace rtl
-{
-template <class reference_type> class Reference;
-}
-typedef css::uno::Reference<css::accessibility::XAccessibleRelationSet> a11yrelationset;
-enum class PointerStyle;
-enum class VclSizeGroupMode;
 class Color;
-class CommandEvent;
-class Date;
-class Formatter;
-class InputContext;
-class KeyEvent;
-class MouseEvent;
-class TransferDataContainer;
-class OutputDevice;
 class VirtualDevice;
-struct SystemEnvData;
-class Bitmap;
 
 namespace vcl
 {
-class ILibreOfficeKitNotifier;
-typedef OutputDevice RenderContext;
 class Font;
-enum class WindowDataMask;
 }
-template <class reference_type> class VclPtr;
 
 namespace tools
 {
@@ -69,7 +47,6 @@ class LOKTrigger;
 
 namespace weld
 {
-class Container;
 class DialogController;
 class EntryTreeView;
 class IconView;
@@ -98,32 +75,6 @@ public:
     }
     // causes a child of the container to have the keyboard focus
     virtual void child_grab_focus() = 0;
-};
-
-class VCL_DLLPUBLIC Box : virtual public Container
-{
-public:
-    // Moves child to a new position in the list of children
-    virtual void reorder_child(weld::Widget* pWidget, int position) = 0;
-    // Sort ok/cancel etc buttons in platform order
-    virtual void sort_native_button_order() = 0;
-};
-
-class VCL_DLLPUBLIC Grid : virtual public Container
-{
-public:
-    virtual void set_child_left_attach(weld::Widget& rWidget, int nAttach) = 0;
-    virtual int get_child_left_attach(weld::Widget& rWidget) const = 0;
-    virtual void set_child_column_span(weld::Widget& rWidget, int nCols) = 0;
-    virtual void set_child_top_attach(weld::Widget& rWidget, int nAttach) = 0;
-    virtual int get_child_top_attach(weld::Widget& rWidget) const = 0;
-};
-
-class VCL_DLLPUBLIC Frame : virtual public Container
-{
-public:
-    virtual void set_label(const OUString& rText) = 0;
-    virtual OUString get_label() const = 0;
 };
 
 class VCL_DLLPUBLIC ScreenShotEntry
@@ -310,105 +261,6 @@ public:
     virtual void set_label_wrap(bool wrap) = 0;
 };
 
-class VCL_DLLPUBLIC LinkButton : virtual public Widget
-{
-    friend class ::LOKTrigger;
-
-    Link<LinkButton&, bool> m_aActivateLinkHdl;
-
-protected:
-    bool signal_activate_link() { return m_aActivateLinkHdl.Call(*this); }
-
-public:
-    virtual void set_label(const OUString& rText) = 0;
-    virtual OUString get_label() const = 0;
-    virtual void set_label_wrap(bool wrap) = 0;
-    virtual void set_uri(const OUString& rUri) = 0;
-    virtual OUString get_uri() const = 0;
-
-    void connect_activate_link(const Link<LinkButton&, bool>& rLink) { m_aActivateLinkHdl = rLink; }
-};
-
-class VCL_DLLPUBLIC Scale : virtual public Widget
-{
-    Link<Scale&, void> m_aValueChangedHdl;
-
-protected:
-    void signal_value_changed() { m_aValueChangedHdl.Call(*this); }
-
-public:
-    virtual void set_value(int value) = 0;
-    virtual int get_value() const = 0;
-    virtual void set_range(int min, int max) = 0;
-
-    virtual void set_increments(int step, int page) = 0;
-    virtual void get_increments(int& step, int& page) const = 0;
-
-    void connect_value_changed(const Link<Scale&, void>& rLink) { m_aValueChangedHdl = rLink; }
-};
-
-class VCL_DLLPUBLIC Spinner : virtual public Widget
-{
-public:
-    virtual void start() = 0;
-    virtual void stop() = 0;
-};
-
-class VCL_DLLPUBLIC ProgressBar : virtual public Widget
-{
-public:
-    //0-100
-    virtual void set_percentage(int value) = 0;
-    virtual OUString get_text() const = 0;
-    virtual void set_text(const OUString& rText) = 0;
-};
-
-class VCL_DLLPUBLIC LevelBar : virtual public Widget
-{
-public:
-    /// Sets LevelBar fill percentage.
-    /// @param fPercentage bar's fill percentage, [0.0, 100.0]
-    virtual void set_percentage(double fPercentage) = 0;
-};
-
-class VCL_DLLPUBLIC Image : virtual public Widget
-{
-public:
-    virtual void set_from_icon_name(const OUString& rIconName) = 0;
-    virtual void set_image(VirtualDevice* pDevice) = 0;
-    virtual void set_image(const css::uno::Reference<css::graphic::XGraphic>& rImage) = 0;
-};
-
-class VCL_DLLPUBLIC Calendar : virtual public Widget
-{
-    friend class ::LOKTrigger;
-
-    Link<Calendar&, void> m_aSelectedHdl;
-    Link<Calendar&, void> m_aActivatedHdl;
-
-protected:
-    void signal_selected()
-    {
-        if (notify_events_disabled())
-            return;
-        m_aSelectedHdl.Call(*this);
-    }
-
-    void signal_activated()
-    {
-        if (notify_events_disabled())
-            return;
-        m_aActivatedHdl.Call(*this);
-    }
-
-public:
-    void connect_selected(const Link<Calendar&, void>& rLink) { m_aSelectedHdl = rLink; }
-    void connect_activated(const Link<Calendar&, void>& rLink) { m_aActivatedHdl = rLink; }
-
-    virtual void set_date(const Date& rDate) = 0;
-    virtual Date get_date() const = 0;
-};
-
 enum class LabelType
 {
     Normal,
@@ -431,22 +283,6 @@ public:
        instead.
     */
     virtual void set_font_color(const Color& rColor) = 0;
-};
-
-class VCL_DLLPUBLIC Expander : virtual public Widget
-{
-    Link<Expander&, void> m_aExpandedHdl;
-
-protected:
-    void signal_expanded() { m_aExpandedHdl.Call(*this); }
-
-public:
-    virtual void set_label(const OUString& rText) = 0;
-    virtual OUString get_label() const = 0;
-    virtual bool get_expanded() const = 0;
-    virtual void set_expanded(bool bExpand) = 0;
-
-    void connect_expanded(const Link<Expander&, void>& rLink) { m_aExpandedHdl = rLink; }
 };
 
 enum class Placement

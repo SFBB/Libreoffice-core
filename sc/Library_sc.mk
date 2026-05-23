@@ -535,25 +535,40 @@ $(eval $(call gb_Library_add_exception_objects,sc,\
     sc/source/ui/navipi/scenwnd \
     sc/source/ui/operation/ApplyAttributesOperation \
     sc/source/ui/operation/AutoFormatOperation \
+    sc/source/ui/operation/ChangeIndentOperation \
+    sc/source/ui/operation/ChangeSparklineGroupAttributesOperation \
+    sc/source/ui/operation/ChangeSparklineOperation \
     sc/source/ui/operation/ClearItemsOperation \
+    sc/source/ui/operation/ConvertFormulaToValueOperation \
+    sc/source/ui/operation/CreatePivotTableOperation \
+    sc/source/ui/operation/DataPilotUpdateOperation \
     sc/source/ui/operation/DeleteCellOperation \
     sc/source/ui/operation/DeleteContentOperation \
+    sc/source/ui/operation/DeleteSparklineGroupOperation \
+    sc/source/ui/operation/DeleteSparklineOperation \
     sc/source/ui/operation/EnterMatrixOperation \
     sc/source/ui/operation/FillAutoOperation \
     sc/source/ui/operation/FillSeriesOperation \
     sc/source/ui/operation/FillSimpleOperation \
+    sc/source/ui/operation/GroupSparklinesOperation \
     sc/source/ui/operation/InsertCellsOperation \
     sc/source/ui/operation/InsertSheetViewOperation \
+    sc/source/ui/operation/InsertSparklinesOperation \
     sc/source/ui/operation/MultipleOpsOperation \
     sc/source/ui/operation/Operation \
     sc/source/ui/operation/OperationType \
     sc/source/ui/operation/QueryOperation \
+    sc/source/ui/operation/RemovePivotTableOperation \
     sc/source/ui/operation/SetEditTextOperation \
+    sc/source/ui/operation/SetNoteTextOperation \
     sc/source/ui/operation/SetFormulaOperation \
     sc/source/ui/operation/SetNormalStringOperation \
     sc/source/ui/operation/SetStringOperation \
     sc/source/ui/operation/SetValueOperation \
     sc/source/ui/operation/SortOperation \
+    sc/source/ui/operation/TransliterateTextOperation \
+    sc/source/ui/operation/UngroupSparklinesOperation \
+    sc/source/ui/operation/UpdatePivotTableOperation \
     sc/source/ui/pagedlg/areasdlg \
     sc/source/ui/pagedlg/tphfedit \
     sc/source/ui/sidebar/AlignmentPropertyPanel \

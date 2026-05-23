@@ -150,6 +150,7 @@ void ChartType::addDataSeries( const rtl::Reference< DataSeries >& xDataSeries )
     SolarMutexGuard g;
 
     impl_addDataSeriesWithoutNotification( xDataSeries );
+    createCalculatedDataSeries();
     fireModifyEvent();
 }
 
@@ -223,9 +224,8 @@ void ChartType::setDataSeries( const std::vector< rtl::Reference< DataSeries > >
         throw;
     }
     m_bNotifyChanges = true;
-    fireModifyEvent();
-
     createCalculatedDataSeries();
+    fireModifyEvent();
 }
 
 void ChartType::createCalculatedDataSeries()
@@ -450,6 +450,9 @@ bool ChartType::isSupportingOverlapAndGapWidthProperties(sal_Int32 nDimensionCou
     if (aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_BAR))
         return true;
 
+    if (aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_HISTOGRAM))
+        return true;
+
     return false;
 }
 
@@ -504,7 +507,8 @@ bool ChartType::isSupportingBaseValue()
 
     return aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_COLUMN)
         || aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_BAR)
-        || aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_AREA);
+        || aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_AREA)
+        || aChartTypeName.match(CHART2_SERVICE_NAME_CHARTTYPE_HISTOGRAM);
 }
 
 bool ChartType::isSupportingAxisPositioning(sal_Int32 nDimensionCount, sal_Int32 nDimensionIndex )
@@ -649,9 +653,8 @@ void ChartType::deleteSeries( const rtl::Reference< ::chart::DataSeries > & xSer
 
         ModifyListenerHelper::removeListener( *it, m_xModifyEventForwarder );
         m_aDataSeries.erase(it);
-        fireModifyEvent();
-
         createCalculatedDataSeries();
+        fireModifyEvent();
     }
     catch( const uno::Exception & )
     {

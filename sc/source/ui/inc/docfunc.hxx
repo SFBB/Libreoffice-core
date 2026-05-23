@@ -108,7 +108,7 @@ public:
     bool DeleteCell(
         const ScAddress& rPos, const ScMarkData& rMark, InsertDeleteFlags nFlags, bool bRecord, bool bApi );
 
-    bool            TransliterateText( const ScMarkData& rMark, TransliterationFlags nType,
+    SC_DLLPUBLIC bool TransliterateText( const ScMarkData& rMark, TransliterationFlags nType,
                                                bool bApi );
 
     bool            SetNormalString( bool& o_rbNumFmtSet, const ScAddress& rPos, const OUString& rText, bool bApi );
@@ -132,7 +132,7 @@ public:
 
     SC_DLLPUBLIC bool ShowNote( const ScAddress& rPos, bool bShow );
 
-    void            SetNoteText( const ScAddress& rPos, const OUString& rNoteText, bool bApi );
+    SC_DLLPUBLIC void SetNoteText( const ScAddress& rPos, const OUString& rNoteText, bool bApi );
     void            ReplaceNote( const ScAddress& rPos, const OUString& rNoteText, const OUString* pAuthor, const OUString* pDate, bool bApi );
     SC_DLLPUBLIC void ImportNote( const ScAddress& rPos,
                                   std::unique_ptr<GenerateNoteCaption> xGenerator,
@@ -179,7 +179,7 @@ public:
     bool            Unprotect( SCTAB nTab, std::u16string_view rPassword, bool bApi );
 
     SC_DLLPUBLIC void ClearItems( const ScMarkData& rMark, const sal_uInt16* pWhich, bool bApi );
-    bool            ChangeIndent( const ScMarkData& rMark, bool bIncrement, bool bApi );
+    SC_DLLPUBLIC bool ChangeIndent( const ScMarkData& rMark, bool bIncrement, bool bApi );
     SC_DLLPUBLIC bool AutoFormat( const ScRange& rRange, const ScMarkData* pTabMark,
                                         sal_uInt16 nFormatNo, bool bApi );
 
@@ -191,12 +191,12 @@ public:
                                          const formula::FormulaGrammar::Grammar,
                                          bool bCheckForSpill = false);
 
-    bool            TabOp( const ScRange& rRange, const ScMarkData* pTabMark,
+    SC_DLLPUBLIC bool TabOp( const ScRange& rRange, const ScMarkData* pTabMark,
                                    const ScTabOpParam& rParam, bool bRecord, bool bApi );
 
-    bool            FillSimple( const ScRange& rRange, const ScMarkData* pTabMark,
+    SC_DLLPUBLIC bool FillSimple( const ScRange& rRange, const ScMarkData* pTabMark,
                                         FillDir eDir, bool bApi );
-    bool            FillSeries( const ScRange& rRange, const ScMarkData* pTabMark,
+    SC_DLLPUBLIC bool FillSeries( const ScRange& rRange, const ScMarkData* pTabMark,
                                         FillDir    eDir, FillCmd eCmd, FillDateCmd    eDateCmd,
                                         double fStart, double fStep, double fMax,
                                         bool bApi );
@@ -250,7 +250,7 @@ public:
      */
     void SetConditionalFormatList( ScConditionalFormatList* pList, SCTAB nTab );
 
-    void ConvertFormulaToValue( const ScRange& rRange, bool bInteraction );
+    SC_DLLPUBLIC void ConvertFormulaToValue( const ScRange& rRange, bool bInteraction );
 
     SC_DLLPUBLIC bool InsertSparklines(ScRange const& rDataRange, ScRange const& rSparklineRange,
                                        const std::shared_ptr<sc::SparklineGroup>& pSparklineGroup);

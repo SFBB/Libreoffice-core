@@ -13,6 +13,8 @@
 
 #include "QtInstanceWidget.hxx"
 
+#include <vcl/weld/Spinner.hxx>
+
 #include <QtWidgets/QProgressBar>
 
 class QtInstanceSpinner : public QtInstanceWidget, public virtual weld::Spinner

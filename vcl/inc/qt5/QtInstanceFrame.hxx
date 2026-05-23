@@ -13,6 +13,8 @@
 
 #include "QtInstanceContainer.hxx"
 
+#include <vcl/weld/Frame.hxx>
+
 #include <QtWidgets/QGroupBox>
 
 class QtInstanceFrame : public QtInstanceContainer, public virtual weld::Frame

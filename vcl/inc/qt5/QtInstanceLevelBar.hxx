@@ -13,6 +13,8 @@
 
 #include "QtInstanceWidget.hxx"
 
+#include <vcl/weld/LevelBar.hxx>
+
 #include <QtWidgets/QProgressBar>
 
 class QtInstanceLevelBar : public QtInstanceWidget, public virtual weld::LevelBar

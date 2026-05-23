@@ -121,6 +121,7 @@ class AutoCalcSwitch;
 struct RefUpdateDeleteTabContext;
 struct RefUpdateMoveTabContext;
 struct RefUpdateInsertTabContext;
+struct RefErrorContext;
 }
 
 class OutputDevice;
@@ -363,7 +364,6 @@ friend class sc::EditTextIterator;
 friend class sc::TableContentCopier;
 friend struct ScMutationGuard;
 friend struct ScMutationDisable;
-
 
 public:
     enum class HardRecalcState
@@ -2458,6 +2458,14 @@ public:
     /** Returns the sheet view ID for a given tab. */
     SC_DLLPUBLIC sc::SheetViewID GetTableSheetViewID(SCTAB nTab) const;
 
+    /** Synchronizes all sheet views for the given default view table.
+     *
+     * Specifically, it goes through all sheet views and overwrites the
+     * content of the sheet view table with the content of default view table,
+     * then reapplies the sheet views's sorting and filtering for the auto-filter.
+     */
+    void SyncSheetViews(SCTAB nDefaultViewTable);
+
 private:
     ScDocument(const ScDocument& r) = delete;
 
@@ -2508,6 +2516,11 @@ public:
                             Preferred.
                          */
     void                Broadcast( const ScHint& rHint );
+
+    /** Broadcast SfxHintId::ScRefErrorCreated for a completed reference
+        update pass, if any #REF! errors were created. No-op if the
+        context reports no errors. */
+    void                BroadcastRefError( const sc::RefErrorContext& rCtx );
 
     void BroadcastCells( const ScRange& rRange, SfxHintId nHint, bool bBroadcastSingleBroadcasters = true );
 
