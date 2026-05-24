@@ -370,7 +370,7 @@ void ScDocument::InsertMatrixFormula(SCCOL nCol1, SCROW nRow1,
 
                 // Reference in each cell must point to the origin cell relative to the current cell.
                 aRefData.SetRelRow(nRow1 - nRow);
-                *t->GetSingleRef() = aRefData;
+                static_cast<ScSingleRefToken*>(t)->GetSingleRef() = aRefData;
                 // Token array must be cloned so that each formula cell receives its own copy.
                 ScTokenArray aTokArr(aArr.CloneValue());
                 aPos = ScAddress(nCol, nRow, nTab);
@@ -487,15 +487,19 @@ bool setCacheTableReferenced(const ScDocument& rDoc, formula::FormulaToken& rTok
     switch (rToken.GetType())
     {
         case svExternalSingleRef:
+        {
+            auto rESRToken = static_cast<ScExternalSingleRefToken&>(rToken);
             return rRefMgr.setCacheTableReferenced(
-                rToken.GetIndex(), rToken.GetString().getString(), 1);
+                rESRToken.GetFileId(), rESRToken.GetTableName().getString(), 1);
+        }
         case svExternalDoubleRef:
         {
-            const ScComplexRefData& rRef = static_cast<ScExternalDoubleRefToken&>(rToken).GetDoubleRef();
+            auto rEDRToken = static_cast<ScExternalDoubleRefToken&>(rToken);
+            const ScComplexRefData& rRef = rEDRToken.GetDoubleRef();
             ScRange aAbs = rRef.toAbs(rDoc, rPos);
             size_t nSheets = aAbs.aEnd.Tab() - aAbs.aStart.Tab() + 1;
             return rRefMgr.setCacheTableReferenced(
-                    rToken.GetIndex(), rToken.GetString().getString(), nSheets);
+                    rEDRToken.GetFileId(), rEDRToken.GetTableName().getString(), nSheets);
         }
         case svExternalName:
             /* TODO: external names aren't supported yet, but would
@@ -535,7 +539,7 @@ bool ScDocument::MarkUsedExternalReferences( const ScTokenArray& rArr, const ScA
         {
             // this is a named range.  Check if the range contains an external
             // reference.
-            ScRangeData* pRangeData = GetRangeName()->findByIndex(t->GetIndex());
+            ScRangeData* pRangeData = GetRangeName()->findByIndex(static_cast<FormulaIndexToken*>(t)->GetIndex());
             if (!pRangeData)
                 continue;
 

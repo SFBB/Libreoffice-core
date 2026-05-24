@@ -182,51 +182,6 @@ void FormulaToken::SetInForceArray( ParamClass )
 
 const svl::SharedString INVALID_STRING;
 
-const svl::SharedString & FormulaToken::GetString() const
-{
-    SAL_WARN( "formula.core", "FormulaToken::GetString: virtual dummy called" );
-    return INVALID_STRING; // invalid string
-}
-
-void FormulaToken::SetString( const svl::SharedString& )
-{
-    assert( !"virtual dummy called" );
-}
-
-sal_uInt16 FormulaToken::GetIndex() const
-{
-    SAL_WARN( "formula.core", "FormulaToken::GetIndex: virtual dummy called" );
-    return 0;
-}
-
-void FormulaToken::SetIndex( sal_uInt16 )
-{
-    assert( !"virtual dummy called" );
-}
-const ScSingleRefData* FormulaToken::GetSingleRef() const
-{
-    OSL_FAIL( "FormulaToken::GetSingleRef: virtual dummy called" );
-    return nullptr;
-}
-
-ScSingleRefData* FormulaToken::GetSingleRef()
-{
-    OSL_FAIL( "FormulaToken::GetSingleRef: virtual dummy called" );
-    return nullptr;
-}
-
-const ScSingleRefData* FormulaToken::GetSingleRef2() const
-{
-    OSL_FAIL( "FormulaToken::GetSingleRef2: virtual dummy called" );
-    return nullptr;
-}
-
-ScSingleRefData* FormulaToken::GetSingleRef2()
-{
-    OSL_FAIL( "FormulaToken::GetSingleRef2: virtual dummy called" );
-    return nullptr;
-}
-
 bool FormulaToken::TextEqual( const FormulaToken& rToken ) const
 {
     return *this == rToken;
@@ -1616,8 +1571,12 @@ void FormulaTokenArray::ReinternStrings( svl::SharedStringPool& rPool )
         switch (i->GetType())
         {
             case svString:
-                i->SetString( rPool.intern( i->GetString().getString()));
+            {
+                assert(dynamic_cast<FormulaStringToken*>(i));
+                auto pStrToken = static_cast<FormulaStringToken*>(i);
+                pStrToken->SetString( rPool.intern( pStrToken->GetString().getString()));
                 break;
+            }
             default:
                 ;   // nothing
         }
@@ -1985,17 +1944,17 @@ FormulaStringToken::FormulaStringToken( svl::SharedString r ) :
 {
 }
 
+FormulaStringToken::FormulaStringToken( OpCode e, svl::SharedString r ) :
+    FormulaToken( svString, e ), maString(std::move( r ))
+{
+}
+
 FormulaStringToken::FormulaStringToken( const FormulaStringToken& r ) :
     FormulaToken( r ), maString( r.maString ) {}
 
 FormulaToken* FormulaStringToken::Clone() const
 {
     return new FormulaStringToken(*this);
-}
-
-const svl::SharedString & FormulaStringToken::GetString() const
-{
-    return maString;
 }
 
 void FormulaStringToken::SetString( const svl::SharedString& rStr )
@@ -2005,33 +1964,26 @@ void FormulaStringToken::SetString( const svl::SharedString& rStr )
 
 bool FormulaStringToken::operator==( const FormulaToken& r ) const
 {
-    return FormulaToken::operator==( r ) && maString == r.GetString();
+    return FormulaToken::operator==( r )
+        && maString == static_cast<const FormulaStringToken&>(r).GetString();
 }
 
 FormulaStringOpToken::FormulaStringOpToken( OpCode e, svl::SharedString r ) :
-    FormulaByteToken( e, 0, svString, ParamClass::Unknown ), maString(std::move( r )) {}
+    FormulaStringToken(e, r), nByte(0), eInForceArray(ParamClass::Unknown) {}
 
 FormulaStringOpToken::FormulaStringOpToken( const FormulaStringOpToken& r ) :
-    FormulaByteToken( r ), maString( r.maString ) {}
+    FormulaStringToken( r ), nByte(r.nByte), eInForceArray(r.eInForceArray) {}
 
 FormulaToken* FormulaStringOpToken::Clone() const
 {
     return new FormulaStringOpToken(*this);
 }
 
-const svl::SharedString & FormulaStringOpToken::GetString() const
-{
-    return maString;
-}
-
-void FormulaStringOpToken::SetString( const svl::SharedString& rStr )
-{
-    maString = rStr;
-}
-
 bool FormulaStringOpToken::operator==( const FormulaToken& r ) const
 {
-    return FormulaByteToken::operator==( r ) && maString == r.GetString();
+    return FormulaStringToken::operator==( r )
+        && nByte == static_cast<const FormulaStringOpToken&>(r).nByte
+        && eInForceArray == static_cast<const FormulaStringOpToken&>(r).eInForceArray;
 }
 
 FormulaStringNameToken::FormulaStringNameToken( StackVar eTypeP, svl::SharedString r ) :
@@ -2048,11 +2000,6 @@ FormulaToken* FormulaStringNameToken::Clone() const
     return new FormulaStringNameToken(*this);
 }
 
-const svl::SharedString& FormulaStringNameToken::GetString() const
-{
-    return maString;
-}
-
 void FormulaStringNameToken::SetString( const svl::SharedString& rStr )
 {
     maString = rStr;
@@ -2060,7 +2007,8 @@ void FormulaStringNameToken::SetString( const svl::SharedString& rStr )
 
 bool FormulaStringNameToken::operator==( const FormulaToken& r ) const
 {
-    return FormulaToken::operator==( r ) && maString == r.GetString();
+    return FormulaToken::operator==( r )
+        && maString == static_cast<const FormulaStringNameToken&>(r).GetString();
 }
 
 sal_uInt16  FormulaIndexToken::GetIndex() const             { return nIndex; }
@@ -2087,11 +2035,6 @@ bool FormulaErrorToken::operator==( const FormulaToken& r ) const
 {
     return FormulaToken::operator==( r ) &&
         nError == static_cast< const FormulaErrorToken & >(r).GetError();
-}
-
-const svl::SharedString & FormulaMissingToken::GetString() const
-{
-    return svl::SharedString::getEmptyString();
 }
 
 bool FormulaMissingToken::operator==( const FormulaToken& r ) const

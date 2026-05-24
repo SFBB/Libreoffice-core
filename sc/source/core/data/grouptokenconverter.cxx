@@ -119,7 +119,7 @@ bool ScGroupTokenConverter::convert( const ScTokenArray& rCode, sc::FormulaLogge
         {
             case svSingleRef:
             {
-                ScSingleRefData aRef = *p->GetSingleRef();
+                ScSingleRefData aRef = static_cast<const ScSingleRefToken*>(p)->GetSingleRef();
                 if( aRef.IsDeleted())
                     return false;
                 ScAddress aRefPos = aRef.toAbs(mrDoc, mrPos);
@@ -288,7 +288,7 @@ bool ScGroupTokenConverter::convert( const ScTokenArray& rCode, sc::FormulaLogge
                     // This should never fail.
                     return false;
 
-                ScRangeData* pRange = pNames->findByIndex(p->GetIndex());
+                ScRangeData* pRange = pNames->findByIndex(static_cast<const FormulaIndexToken*>(p)->GetIndex());
                 if (!pRange)
                     // No named range exists by that index.
                     return false;

@@ -31,6 +31,7 @@
 #include <xeformula.hxx>
 #include <xestring.hxx>
 #include <xltools.hxx>
+#include <reftokenhelper.hxx>
 
 #include <formula/grammar.hxx>
 #include <oox/export/utils.hxx>
@@ -375,28 +376,35 @@ void XclExpName::SaveXml( XclExpXmlStream& rStrm )
                 // excel doesn't allow sheet names having length > 31
                 do
                 {
-                    if (t->IsExternalRef())
+                    if (t->IsExternalRef() && t->GetType() != formula::svExternalName)
                     {
                         formula::StackVar eType = t->GetType();
-                        if (eType != formula::svExternalName  && t->GetString().getLength() > MAX_TAB_NAME_LENGTH)
+                        OUString aSheetName;
+                        if (eType == formula::svExternalSingleRef)
+                            aSheetName = static_cast<ScExternalSingleRefToken*>(t)->GetTableName().getString();
+                        else
+                            aSheetName = static_cast<ScExternalDoubleRefToken*>(t)->GetTableName().getString();
+                        if (aSheetName.getLength() > MAX_TAB_NAME_LENGTH)
                         {
-                            const OUString& rSheetName = t->GetString().getString();
+                            sal_uInt16 nFileId = static_cast<ScExternalToken*>(t)->GetFileId();
                             const auto& aTruncatedMap
-                                = GetRoot().GetGlobalLinkManager().GetTruncatedSheetMap(t->GetIndex());
-                            if (auto it = aTruncatedMap.find(rSheetName); it != aTruncatedMap.end())
+                                = GetRoot().GetGlobalLinkManager().GetTruncatedSheetMap(nFileId);
+                            if (auto it = aTruncatedMap.find(aSheetName); it != aTruncatedMap.end())
                             {
                                 formula::FormulaToken* pNewToken = nullptr;
                                 if (eType == formula::svExternalSingleRef)
                                 {
+                                    auto pESRToken = static_cast<ScExternalSingleRefToken*>(t);
                                     pNewToken = new ScExternalSingleRefToken(
-                                        t->GetIndex(), svl::SharedString(it->second),
-                                        *t->GetSingleRef());
+                                        nFileId, svl::SharedString(it->second),
+                                        pESRToken->GetSingleRef());
                                 }
                                 else if (eType == formula::svExternalDoubleRef)
                                 {
+                                    auto pEDRToken = static_cast<ScExternalDoubleRefToken*>(t);
                                     pNewToken = new ScExternalDoubleRefToken(
-                                        t->GetIndex(), svl::SharedString(it->second),
-                                        static_cast<ScExternalDoubleRefToken*>(t)->GetDoubleRef());
+                                        nFileId, svl::SharedString(it->second),
+                                        pEDRToken->GetDoubleRef());
                                 }
 
                                 if (pNewToken)
@@ -460,13 +468,13 @@ static bool lcl_EnsureAbs3DToken( const SCTAB nTab, formula::FormulaToken* pTok,
     if ( !pTok || ( pTok->GetType() != formula::svSingleRef && pTok->GetType() != formula::svDoubleRef ) )
         return bFixRequired;
 
-    ScSingleRefData* pRef1 = pTok->GetSingleRef();
+    ScSingleRefData* pRef1 = ScRefTokenHelper::getSingleRef(pTok);
     if ( !pRef1 )
         return bFixRequired;
 
     ScSingleRefData* pRef2 = nullptr;
     if ( pTok->GetType() == formula::svDoubleRef )
-        pRef2 = pTok->GetSingleRef2();
+        pRef2 = &static_cast<ScDoubleRefToken*>(pTok)->GetSingleRef2();
 
     if ( pRef1->IsTabRel() || !pRef1->IsFlag3D() )
     {
@@ -745,7 +753,7 @@ sal_uInt16 XclExpNameManagerImpl::CreateName( SCTAB nTab, const ScRangeData& rRa
                 // current-sheet references (e.g. !D3 in CELL("filename",!D3))
                 // that will be wrongly converted.
                 if (pToken && pToken->GetOpCode() == ocBad
-                    && pToken->GetString().getString() == "!")
+                    && static_cast<formula::FormulaStringOpToken*>(pToken)->GetString().getString() == "!")
                 {
                     // Skip the following reference token
                     if (i + 1 < nLen)

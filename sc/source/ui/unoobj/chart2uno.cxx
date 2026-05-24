@@ -725,10 +725,15 @@ void Chart2Positioner::createPositionMap()
     for (const ScTokenRef& pToken : mrRefTokens)
     {
         bool bExternal = ScRefTokenHelper::isExternalRef(pToken);
-        sal_uInt16 nFileId = bExternal ? pToken->GetIndex() : 0;
+        sal_uInt16 nFileId = bExternal ? static_cast<ScExternalToken*>(pToken.get())->GetFileId() : 0;
         svl::SharedString aTabName = svl::SharedString::getEmptyString();
         if (bExternal)
-            aTabName = pToken->GetString();
+        {
+            if (pToken->GetType() == svExternalSingleRef)
+                aTabName = static_cast<ScExternalSingleRefToken*>(pToken.get())->GetTableName();
+            else
+                aTabName = static_cast<ScExternalDoubleRefToken*>(pToken.get())->GetTableName();
+        }
 
         ScComplexRefData aData;
         if( !ScRefTokenHelper::getDoubleRefDataFromToken(aData, pToken) )
@@ -884,7 +889,8 @@ public:
         // Check there is a valid reference in named range
         if (!bValidToken && rToken->GetType() == svIndex && rToken->GetOpCode() == ocName)
         {
-            ScRangeData* pNameRange = mpDoc->FindRangeNameBySheetAndIndex(static_cast<FormulaIndexToken*>(rToken.get())->GetSheet(), rToken->GetIndex());
+            auto pIndexToken = static_cast<FormulaIndexToken*>(rToken.get());
+            ScRangeData* pNameRange = mpDoc->FindRangeNameBySheetAndIndex(pIndexToken->GetSheet(), pIndexToken->GetIndex());
             if (pNameRange->HasReferences())
             {
                 const ScTokenRef aTempToken = pNameRange->GetCode()->FirstToken();
@@ -924,8 +930,12 @@ private:
         if (!bIsRefToken)
             return false;
         bool bExternal = ScRefTokenHelper::isExternalRef(pToken);
-        sal_uInt16 nFileId = bExternal ? pToken->GetIndex() : 0;
-        const svl::SharedString aTabName = bExternal ? pToken->GetString() : svl::SharedString::getEmptyString();
+        sal_uInt16 nFileId = bExternal ? static_cast<ScExternalToken*>(pToken.get())->GetFileId() : 0;
+        svl::SharedString aTabName;
+        if (!bExternal)
+            aTabName = svl::SharedString::getEmptyString();
+        else
+            aTabName = static_cast<ScExternalDoubleRefToken*>(pToken.get())->GetTableName();
 
         // In saving to XML, we don't prepend address with '$'.
         setRelative(aData.Ref1);
@@ -1093,7 +1103,7 @@ bool lcl_addUpperLeftCornerIfMissing(const ScDocument* pDoc, std::vector<ScToken
     {
         case svSingleRef:
         {
-            const ScSingleRefData& rData = *pToken->GetSingleRef();
+            const ScSingleRefData& rData = static_cast<ScSingleRefToken*>(pToken.get())->GetSingleRef();
             nMinCol = rData.Col();
             nMinRow = rData.Row();
             nMaxCol = rData.Col();
@@ -1113,27 +1123,29 @@ bool lcl_addUpperLeftCornerIfMissing(const ScDocument* pDoc, std::vector<ScToken
         break;
         case svExternalSingleRef:
         {
-            const ScSingleRefData& rData = *pToken->GetSingleRef();
+            auto pESRToken = static_cast<ScExternalSingleRefToken*>(pToken.get());
+            const ScSingleRefData& rData = pESRToken->GetSingleRef();
             nMinCol = rData.Col();
             nMinRow = rData.Row();
             nMaxCol = rData.Col();
             nMaxRow = rData.Row();
             nTab = rData.Tab();
-            nFileId = pToken->GetIndex();
-            aExtTabName = pToken->GetString();
+            nFileId = pESRToken->GetFileId();
+            aExtTabName = pESRToken->GetTableName();
             bExternal = true;
         }
         break;
         case svExternalDoubleRef:
         {
-            const ScComplexRefData& rData = static_cast<ScExternalDoubleRefToken*>(pToken.get())->GetDoubleRef();
+            auto pEDRToken = static_cast<ScExternalDoubleRefToken*>(pToken.get());
+            const ScComplexRefData& rData = pEDRToken->GetDoubleRef();
             nMinCol = std::min(rData.Ref1.Col(), rData.Ref2.Col());
             nMinRow = std::min(rData.Ref1.Row(), rData.Ref2.Row());
             nMaxCol = std::max(rData.Ref1.Col(), rData.Ref2.Col());
             nMaxRow = std::max(rData.Ref1.Row(), rData.Ref2.Row());
             nTab = rData.Ref1.Tab();
-            nFileId = pToken->GetIndex();
-            aExtTabName = pToken->GetString();
+            nFileId = pEDRToken->GetFileId();
+            aExtTabName = pEDRToken->GetTableName();
             bExternal = true;
         }
         break;
@@ -1151,7 +1163,7 @@ bool lcl_addUpperLeftCornerIfMissing(const ScDocument* pDoc, std::vector<ScToken
         {
             case svSingleRef:
             {
-                const ScSingleRefData& rData = *pToken->GetSingleRef();
+                const ScSingleRefData& rData = static_cast<ScSingleRefToken*>(pToken.get())->GetSingleRef();
 
                 nMinCol = std::min(nMinCol, rData.Col());
                 nMinRow = std::min(nMinRow, rData.Row());
@@ -1181,13 +1193,15 @@ bool lcl_addUpperLeftCornerIfMissing(const ScDocument* pDoc, std::vector<ScToken
             break;
             case svExternalSingleRef:
             {
+                auto pESRToken = static_cast<const ScExternalSingleRefToken*>(pToken.get());
+
                 if (!bExternal)
                     return false;
 
-                if (nFileId != pToken->GetIndex() || aExtTabName != pToken->GetString())
+                if (nFileId != pESRToken->GetFileId() || aExtTabName != pESRToken->GetTableName())
                     return false;
 
-                const ScSingleRefData& rData = *pToken->GetSingleRef();
+                const ScSingleRefData& rData = pESRToken->GetSingleRef();
 
                 nMinCol = std::min(nMinCol, rData.Col());
                 nMinRow = std::min(nMinRow, rData.Row());
@@ -1197,13 +1211,15 @@ bool lcl_addUpperLeftCornerIfMissing(const ScDocument* pDoc, std::vector<ScToken
             break;
             case svExternalDoubleRef:
             {
+                auto pEDRToken = static_cast<ScExternalDoubleRefToken*>(pToken.get());
+
                 if (!bExternal)
                     return false;
 
-                if (nFileId != pToken->GetIndex() || aExtTabName != pToken->GetString())
+                if (nFileId != pEDRToken->GetFileId() || aExtTabName != pEDRToken->GetTableName())
                     return false;
 
-                const ScComplexRefData& rData = static_cast<ScExternalDoubleRefToken*>(pToken.get())->GetDoubleRef();
+                const ScComplexRefData& rData = pEDRToken->GetDoubleRef();
 
                 nMinCol = std::min(nMinCol, rData.Ref1.Col());
                 nMinCol = std::min(nMinCol, rData.Ref2.Col());
@@ -1243,18 +1259,22 @@ bool lcl_addUpperLeftCornerIfMissing(const ScDocument* pDoc, std::vector<ScToken
             case svSingleRef:
             case svExternalSingleRef:
             {
-                const ScSingleRefData& rData = *rxToken->GetSingleRef();
-                if (rData.Col() == nMinCol && rData.Row() == nMinRow)
+                const ScSingleRefData* pData;
+                if (rxToken->GetType() == svSingleRef)
+                    pData = &static_cast<ScSingleRefToken*>(rxToken.get())->GetSingleRef();
+                else
+                    pData = &static_cast<ScExternalSingleRefToken*>(rxToken.get())->GetSingleRef();
+                if (pData->Col() == nMinCol && pData->Row() == nMinRow)
                     // The corner cell is contained.
                     return false;
 
-                if (rData.Col() == nMinCol+nCornerColumnCount && rData.Row() == nMinRow)
+                if (pData->Col() == nMinCol+nCornerColumnCount && pData->Row() == nMinRow)
                     bRight = true;
 
-                if (rData.Col() == nMinCol && rData.Row() == nMinRow+nCornerRowCount)
+                if (pData->Col() == nMinCol && pData->Row() == nMinRow+nCornerRowCount)
                     bBottom = true;
 
-                if (rData.Col() == nMinCol+nCornerColumnCount && rData.Row() == nMinRow+nCornerRowCount)
+                if (pData->Col() == nMinCol+nCornerColumnCount && pData->Row() == nMinRow+nCornerRowCount)
                     bDiagonal = true;
             }
             break;
@@ -1592,8 +1612,12 @@ public:
         if (!ScRefTokenHelper::isRef(pToken))
             return;
 
-        const ScSingleRefData& r = *pToken->GetSingleRef();
-        mpTabNumVector->push_back(r.Tab());
+        SCTAB nTab;
+        if (pToken->GetType() == svSingleRef)
+            nTab = static_cast<ScSingleRefToken*>(pToken.get())->GetSingleRef().Tab();
+        else
+            nTab = static_cast<ScDoubleRefToken*>(pToken.get())->GetSingleRef().Tab();
+        mpTabNumVector->push_back(nTab);
     }
 
     void getVector(std::vector<SCTAB>& rVector)
@@ -1680,23 +1704,28 @@ void RangeAnalyzer::initRangeAnalyzer( const ScDocument* pDoc, const std::vector
         }
         else if (eVar == svSingleRef || eVar == svExternalSingleRef)
         {
-            const ScSingleRefData& r = *aRefToken->GetSingleRef();
+            const ScSingleRefData* p;
+            if (eVar == svSingleRef)
+                p = &static_cast<ScSingleRefToken*>(aRefToken.get())->GetSingleRef();
+            else
+                p = &static_cast<ScExternalSingleRefToken*>(aRefToken.get())->GetSingleRef();
             mnColumnCount = std::max<SCCOL>( mnColumnCount, 1);
             mnRowCount = std::max<SCROW>( mnRowCount, 1);
             if( mnStartColumn == -1 )
             {
-                mnStartColumn = r.Col();
-                mnStartRow = r.Row();
+                mnStartColumn = p->Col();
+                mnStartRow = p->Row();
             }
             else
             {
-                if (mnStartColumn != r.Col() && mnStartRow != r.Row())
+                if (mnStartColumn != p->Col() && mnStartRow != p->Row())
                     mbAmbiguous=true;
             }
         }
         else if (eVar == svIndex && aRefToken->GetOpCode() == ocName)
         {
-            ScRangeData* pNameRange = pDoc->FindRangeNameBySheetAndIndex(static_cast<FormulaIndexToken*>(aRefToken.get())->GetSheet(), aRefToken->GetIndex());
+            auto pIndexToken = static_cast<FormulaIndexToken*>(aRefToken.get());
+            ScRangeData* pNameRange = pDoc->FindRangeNameBySheetAndIndex(pIndexToken->GetSheet(), pIndexToken->GetIndex());
             ScRange aRange;
             if (pNameRange->IsReference(aRange))
             {
@@ -1823,7 +1852,8 @@ uno::Sequence< beans::PropertyValue > SAL_CALL ScChart2DataProvider::detectArgum
                     {
                         if (rxToken->GetType() == svIndex && rxToken->GetOpCode() == ocName)
                         {
-                            ScRangeData* pNameRange = m_pDocument->FindRangeNameBySheetAndIndex(static_cast<FormulaIndexToken*>(rxToken.get())->GetSheet(), rxToken->GetIndex());
+                            auto pIndexToken = static_cast<FormulaIndexToken*>(rxToken.get());
+                            ScRangeData* pNameRange = m_pDocument->FindRangeNameBySheetAndIndex(pIndexToken->GetSheet(), pIndexToken->GetIndex());
                             if (pNameRange->HasReferences())
                             {
                                 const ScTokenRef aTempToken = pNameRange->GetCode()->FirstToken();
@@ -1853,7 +1883,8 @@ uno::Sequence< beans::PropertyValue > SAL_CALL ScChart2DataProvider::detectArgum
                     {
                         if (rxToken->GetType() == svIndex && rxToken->GetOpCode() == ocName)
                         {
-                            ScRangeData* pNameRange = m_pDocument->FindRangeNameBySheetAndIndex(static_cast<FormulaIndexToken*>(rxToken.get())->GetSheet(), rxToken->GetIndex());
+                            auto pIndexToken = static_cast<FormulaIndexToken*>(rxToken.get());
+                            ScRangeData* pNameRange = m_pDocument->FindRangeNameBySheetAndIndex(pIndexToken->GetSheet(), pIndexToken->GetIndex());
                             if (pNameRange->HasReferences())
                             {
                                 const ScTokenRef aTempToken = pNameRange->GetCode()->FirstToken();
@@ -2453,6 +2484,9 @@ ScChart2DataSequence::ScChart2DataSequence(ScDocument* pDoc, const ScChart2DataS
     , m_aHiddenValues(r.m_aHiddenValues)
     , m_aRole(r.m_aRole)
     , m_bIncludeHiddenCells( r.m_bIncludeHiddenCells)
+    , m_eDimType( r.m_eDimType)
+    , m_sFormula( r.m_sFormula)
+    , m_sNFormula( r.m_sNFormula)
     , m_nObjectId( 0 )
     , m_pDocument( pDoc)
     , m_aPropSet(lcl_GetDataSequencePropertyMap())
@@ -2680,8 +2714,12 @@ sal_Int32 ScChart2DataSequence::FillCacheFromExternalRef(const ScTokenRef& pToke
     if (!ScRefTokenHelper::getRangeFromToken(m_pDocument, aRange, pToken, ScAddress(), true))
         return 0;
 
-    sal_uInt16 nFileId = pToken->GetIndex();
-    OUString aTabName = pToken->GetString().getString();
+    sal_uInt16 nFileId = static_cast<ScExternalToken*>(pToken.get())->GetFileId();
+    OUString aTabName;
+    if (pToken->GetType() == svExternalDoubleRef)
+        aTabName = static_cast<ScExternalDoubleRefToken*>(pToken.get())->GetTableName().getString();
+    else
+        aTabName = static_cast<ScExternalSingleRefToken*>(pToken.get())->GetTableName().getString();
     ScExternalRefCache::TokenArrayRef pArray = pRefMgr->getDoubleRefTokens(nFileId, aTabName, aRange, nullptr);
     if (!pArray)
         // no external data exists for this range.
@@ -3057,7 +3095,7 @@ uno::Sequence< OUString > SAL_CALL ScChart2DataSequence::getTextualData()
     {
         if( m_aTokens.front()->GetType() == svString )
         {
-            aSeq = uno::Sequence<OUString> { m_aTokens.front()->GetString().getString() };
+            aSeq = uno::Sequence<OUString> { static_cast<FormulaStringToken*>(m_aTokens.front().get())->GetString().getString() };
         }
     }
 
@@ -3363,6 +3401,21 @@ void SAL_CALL ScChart2DataSequence::setPropertyValue(
         rValue>>= bTimeBased;
         mbTimeBased = bTimeBased;
     }
+    else if( rPropertyName == "ChartExDimType" )
+    {
+        if ( !(rValue >>= m_eDimType))
+            throw lang::IllegalArgumentException();
+    }
+    else if( rPropertyName == "ChartExFormula" )
+    {
+        if ( !(rValue >>= m_sFormula))
+            throw lang::IllegalArgumentException();
+    }
+    else if( rPropertyName == "ChartExNFormula" )
+    {
+        if ( !(rValue >>= m_sNFormula))
+            throw lang::IllegalArgumentException();
+    }
     else
         throw beans::UnknownPropertyException(rPropertyName);
     // TODO: support optional properties
@@ -3398,6 +3451,12 @@ uno::Any SAL_CALL ScChart2DataSequence::getPropertyValue(const OUString& rProper
         }
         aRet <<= bHasStringLabel;
     }
+    else if ( rPropertyName == "ChartExDimType" )
+        aRet <<= m_eDimType;
+    else if ( rPropertyName == "ChartExFormula" )
+        aRet <<= m_sFormula;
+    else if ( rPropertyName == "ChartExNFormula" )
+        aRet <<= m_sNFormula;
     else
         throw beans::UnknownPropertyException(rPropertyName);
     // TODO: support optional properties

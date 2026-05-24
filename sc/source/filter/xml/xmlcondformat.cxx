@@ -153,12 +153,15 @@ static bool HasRelRefIgnoringSheet0Relative( ScDocument* pDoc, const ScTokenArra
                     ScSingleRefData& rRef2 = static_cast<ScDoubleRefToken*>(t)->GetDoubleRef().Ref2;
                     if ( rRef2.IsColRel() || rRef2.IsRowRel() || (rRef2.IsFlag3D() && rRef2.IsTabRel()) )
                         return true;
-                    [[fallthrough]];
+                    ScSingleRefData& rRef1 = static_cast<ScDoubleRefToken*>(t)->GetSingleRef();
+                    if ( rRef1.IsColRel() || rRef1.IsRowRel() || (rRef1.IsFlag3D() && rRef1.IsTabRel()) )
+                        return true;
                 }
+                break;
 
                 case formula::svSingleRef:
                 {
-                    ScSingleRefData& rRef1 = *t->GetSingleRef();
+                    ScSingleRefData& rRef1 = static_cast<ScSingleRefToken*>(t)->GetSingleRef();
                     if ( rRef1.IsColRel() || rRef1.IsRowRel() || (rRef1.IsFlag3D() && rRef1.IsTabRel()) )
                         return true;
                 }
@@ -167,9 +170,12 @@ static bool HasRelRefIgnoringSheet0Relative( ScDocument* pDoc, const ScTokenArra
                 case formula::svIndex:
                 {
                     if( t->GetOpCode() == ocName )      // DB areas always absolute
-                        if( ScRangeData* pRangeData = pDoc->FindRangeNameBySheetAndIndex( static_cast<formula::FormulaIndexToken*>(t)->GetSheet(), t->GetIndex()) )
+                    {
+                        auto pIndexToken = static_cast<formula::FormulaIndexToken*>(t);
+                        if( ScRangeData* pRangeData = pDoc->FindRangeNameBySheetAndIndex( pIndexToken->GetSheet(), pIndexToken->GetIndex()) )
                             if( (nRecursion < 42) && HasRelRefIgnoringSheet0Relative( pDoc, pRangeData->GetCode(), nRecursion + 1 ) )
                                 return true;
+                    }
                 }
                 break;
 
@@ -210,7 +216,7 @@ static bool HasOneSingleFullyRelativeReference( const ScTokenArray* pTokens, ScS
             {
                 case formula::svSingleRef:
                 {
-                    ScSingleRefData& rRef1 = *t->GetSingleRef();
+                    ScSingleRefData& rRef1 = static_cast<ScSingleRefToken*>(t)->GetSingleRef();
                     if ( rRef1.IsColRel() && rRef1.IsRowRel() && !rRef1.IsFlag3D() && rRef1.IsTabRel() )
                     {
                         nCount++;

@@ -215,15 +215,6 @@ public:
     virtual void                SetByte( sal_uInt8 n );
     virtual ParamClass          GetInForceArray() const;
     virtual void                SetInForceArray( ParamClass c );
-    virtual const svl::SharedString & GetString() const;
-    virtual void                SetString( const svl::SharedString& rStr );
-    virtual sal_uInt16          GetIndex() const;
-    virtual void                SetIndex( sal_uInt16 n );
-
-    virtual const ScSingleRefData*  GetSingleRef() const;
-    virtual ScSingleRefData*        GetSingleRef();
-    virtual const ScSingleRefData*  GetSingleRef2() const;
-    virtual ScSingleRefData*        GetSingleRef2();
 
     virtual FormulaToken*       Clone() const { return new FormulaToken(*this); }
 
@@ -351,32 +342,38 @@ public:
 };
 
 
-class FORMULA_DLLPUBLIC FormulaStringToken final : public FormulaToken
+class FORMULA_DLLPUBLIC FormulaStringToken : public FormulaToken
 {
     svl::SharedString maString;
+protected:
+    // constructor for FormulaStringOpToken to use
+    FormulaStringToken( OpCode e, svl::SharedString r );
 public:
     FormulaStringToken( svl::SharedString r );
     FormulaStringToken( const FormulaStringToken& r );
 
     virtual FormulaToken* Clone() const override;
-    virtual const svl::SharedString & GetString() const override;
-    virtual void SetString( const svl::SharedString& rStr ) override;
+    const svl::SharedString & GetString() const { return maString; }
+    void SetString( const svl::SharedString& rStr );
     virtual bool operator==( const FormulaToken& rToken ) const override;
 };
 
 
 /** Identical to FormulaStringToken, but with explicit OpCode instead of implicit
     ocPush, and an optional sal_uInt8 for ocBad tokens. */
-class FORMULA_DLLPUBLIC FormulaStringOpToken final : public FormulaByteToken
+class FORMULA_DLLPUBLIC FormulaStringOpToken final : public FormulaStringToken
 {
-    svl::SharedString maString;
+    sal_uInt8           nByte;
+    ParamClass          eInForceArray;
 public:
     FormulaStringOpToken( OpCode e, svl::SharedString r );
     FormulaStringOpToken( const FormulaStringOpToken& r );
 
     virtual FormulaToken* Clone() const override;
-    virtual const svl::SharedString & GetString() const override;
-    virtual void SetString( const svl::SharedString& rStr ) override;
+    virtual sal_uInt8           GetByte() const override final { return nByte; }
+    virtual void                SetByte( sal_uInt8 n ) override final { nByte = n; }
+    virtual ParamClass          GetInForceArray() const override final { return eInForceArray; }
+    virtual void                SetInForceArray( ParamClass c ) override final { eInForceArray = c; }
     virtual bool operator==( const FormulaToken& rToken ) const override;
 };
 
@@ -389,8 +386,8 @@ public:
     FormulaStringNameToken(const FormulaStringNameToken& r);
 
     virtual FormulaToken* Clone() const override;
-    virtual const svl::SharedString& GetString() const override;
-    virtual void SetString(const svl::SharedString& rStr) override;
+    const svl::SharedString& GetString() const { return maString; }
+    void SetString(const svl::SharedString& rStr);
     virtual bool operator==(const FormulaToken& rToken) const override;
 };
 
@@ -407,8 +404,8 @@ public:
                                     FormulaToken( r ), nIndex( r.nIndex ), mnSheet( r.mnSheet ) {}
 
     virtual FormulaToken*       Clone() const override { return new FormulaIndexToken(*this); }
-    virtual sal_uInt16          GetIndex() const override;
-    virtual void                SetIndex( sal_uInt16 n ) override;
+    sal_uInt16                  GetIndex() const;
+    void                        SetIndex( sal_uInt16 n );
     sal_Int16                   GetSheet() const;
     void                        SetSheet( sal_Int16 n );
     virtual bool                operator==( const FormulaToken& rToken ) const override;
@@ -444,7 +441,6 @@ public:
                                     FormulaToken( r ) {}
 
     virtual FormulaToken*       Clone() const override { return new FormulaMissingToken(*this); }
-    virtual const svl::SharedString & GetString() const override;
     virtual bool                operator==( const FormulaToken& rToken ) const override;
 };
 

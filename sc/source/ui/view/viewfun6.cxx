@@ -49,6 +49,7 @@
 #include <tabvwsh.hxx>
 #include <scmod.hxx>
 #include <postit.hxx>
+#include <token.hxx>
 #include <comphelper/scopeguard.hxx>
 
 #include <vector>
@@ -192,14 +193,15 @@ void ScViewFunc::DetectiveMarkPred()
         // This is external.  Open the external document if available, and
         // jump to the destination.
 
-        sal_uInt16 nFileId = p->GetIndex();
+        auto pExtToken = static_cast<ScExternalToken*>(p.get());
+        sal_uInt16 nFileId = pExtToken->GetFileId();
         ScExternalRefManager* pRefMgr = rDoc.GetExternalRefManager();
         const OUString* pPath = pRefMgr->getExternalFileName(nFileId);
 
         ScRange aRange;
         if (pPath && ScRefTokenHelper::getRangeFromToken(&rDoc, aRange, p, aCurPos, true))
         {
-            OUString aTabName = p->GetString().getString();
+            OUString aTabName = static_cast<ScExternalDoubleRefToken*>(p.get())->GetTableName().getString();
             OUString aRangeStr(aRange.Format(rDoc, ScRefFlags::VALID));
             OUString sUrl =
                 *pPath +

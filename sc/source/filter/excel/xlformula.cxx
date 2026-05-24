@@ -24,6 +24,7 @@
 #include <xestream.hxx>
 #include <xistream.hxx>
 #include <xlroot.hxx>
+#include <token.hxx>
 
 #include <comphelper/string.hxx>
 #include <o3tl/untaint.hxx>
@@ -926,7 +927,7 @@ void XclTokenArrayIterator::SkipSpaces()
 bool XclTokenArrayHelper::GetTokenString( OUString& rString, const FormulaToken& rScToken )
 {
     bool bIsStr = (rScToken.GetType() == svString) && (rScToken.GetOpCode() == ocPush);
-    if( bIsStr ) rString = rScToken.GetString().getString();
+    if( bIsStr ) rString = static_cast<const FormulaStringToken&>(rScToken).GetString().getString();
     return bIsStr;
 }
 
@@ -996,7 +997,7 @@ bool lclGetAddress( const ScDocument& rDoc, ScAddress& rAddress, const FormulaTo
     bool bIsSingleRef = (eOpCode == ocPush) && (rToken.GetType() == svSingleRef);
     if( bIsSingleRef )
     {
-        const ScSingleRefData& rRef = *rToken.GetSingleRef();
+        const ScSingleRefData& rRef = static_cast<const ScSingleRefToken&>(rToken).GetSingleRef();
         rAddress = rRef.toAbs(rDoc, rPos);
         bIsSingleRef = !rRef.IsDeleted();
     }

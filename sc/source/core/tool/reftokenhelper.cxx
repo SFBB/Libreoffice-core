@@ -74,7 +74,7 @@ void ScRefTokenHelper::compileRangeRepresentation(
         {
             case svSingleRef:
                 {
-                    const ScSingleRefData& rRef = *p->GetSingleRef();
+                    const ScSingleRefData& rRef = static_cast<const ScSingleRefToken*>(p)->GetSingleRef();
                     if (!rRef.Valid(rDoc))
                         bFailure = true;
                     else if (bOnly3DRef && !rRef.IsFlag3D())
@@ -92,7 +92,7 @@ void ScRefTokenHelper::compileRangeRepresentation(
                 break;
             case svExternalSingleRef:
                 {
-                    if (!p->GetSingleRef()->ValidExternal(rDoc))
+                    if (!static_cast<const ScExternalSingleRefToken*>(p)->GetSingleRef().ValidExternal(rDoc))
                         bFailure = true;
                 }
                 break;
@@ -103,14 +103,15 @@ void ScRefTokenHelper::compileRangeRepresentation(
                 }
                 break;
             case svString:
-                if (p->GetString().isEmpty())
+                if (static_cast<const FormulaStringToken*>(p)->GetString().isEmpty())
                     bFailure = true;
                 break;
             case svIndex:
                 {
                     if (p->GetOpCode() == ocName)
                     {
-                        ScRangeData* pNameRange = rDoc.FindRangeNameBySheetAndIndex(static_cast<const FormulaIndexToken*>(p)->GetSheet(), p->GetIndex());
+                        auto pIndexToken = static_cast<const FormulaIndexToken*>(p);
+                        ScRangeData* pNameRange = rDoc.FindRangeNameBySheetAndIndex(pIndexToken->GetSheet(), pIndexToken->GetIndex());
                         if (!pNameRange->HasReferences())
                             bFailure = true;
                     }
@@ -132,17 +133,24 @@ bool ScRefTokenHelper::getRangeFromToken(
     const ScDocument* pDoc,
     ScRange& rRange, const ScTokenRef& pToken, const ScAddress& rPos, bool bExternal)
 {
-    StackVar eType = pToken->GetType();
     switch (pToken->GetType())
     {
         case svSingleRef:
-        case svExternalSingleRef:
         {
-            if ((eType == svExternalSingleRef && !bExternal) ||
-                (eType == svSingleRef && bExternal))
+            if (bExternal)
                 return false;
 
-            const ScSingleRefData& rRefData = *pToken->GetSingleRef();
+            const ScSingleRefData& rRefData = static_cast<ScSingleRefToken*>(pToken.get())->GetSingleRef();
+            rRange.aStart = rRefData.toAbs(*pDoc, rPos);
+            rRange.aEnd = rRange.aStart;
+            return true;
+        }
+        case svExternalSingleRef:
+        {
+            if (!bExternal)
+                return false;
+
+            const ScSingleRefData& rRefData = static_cast<ScExternalSingleRefToken*>(pToken.get())->GetSingleRef();
             rRange.aStart = rRefData.toAbs(*pDoc, rPos);
             rRange.aEnd = rRange.aStart;
             return true;
@@ -169,7 +177,8 @@ bool ScRefTokenHelper::getRangeFromToken(
         {
             if (pToken->GetOpCode() == ocName)
             {
-                ScRangeData* pNameRange = pDoc->FindRangeNameBySheetAndIndex(static_cast<FormulaIndexToken*>(pToken.get())->GetSheet(), pToken->GetIndex());
+                auto pIndexToken = static_cast<FormulaIndexToken*>(pToken.get());
+                ScRangeData* pNameRange = pDoc->FindRangeNameBySheetAndIndex(pIndexToken->GetSheet(), pIndexToken->GetIndex());
                 if (pNameRange->IsReference(rRange, rPos))
                     return true;
             }
@@ -256,7 +265,9 @@ bool ScRefTokenHelper::intersects(
         return false;
 
     bool bExternal = isExternalRef(pToken);
-    sal_uInt16 nFileId = bExternal ? pToken->GetIndex() : 0;
+    sal_uInt16 nFileId = 0;
+    if (bExternal)
+        nFileId = static_cast<ScExternalToken*>(pToken.get())->GetFileId();
 
     ScRange aRange;
     getRangeFromToken(pDoc, aRange, pToken, rPos, bExternal);
@@ -272,9 +283,13 @@ bool ScRefTokenHelper::intersects(
         ScRange aRange2;
         getRangeFromToken(pDoc, aRange2, p, rPos, bExternal);
 
-        if (bExternal && nFileId != p->GetIndex())
-            // different external file
-            continue;
+        if (bExternal)
+        {
+            sal_uInt16 nOtherFileId = static_cast<ScExternalToken*>(p.get())->GetFileId();
+            if (nFileId != nOtherFileId)
+                // different external file
+                continue;
+        }
 
         if (aRange.Intersects(aRange2))
             return true;
@@ -338,8 +353,17 @@ private:
 
         // Get the information of the new token.
         bool bExternal = ScRefTokenHelper::isExternalRef(pToken);
-        sal_uInt16 nFileId = bExternal ? pToken->GetIndex() : 0;
-        svl::SharedString aTabName = bExternal ? pToken->GetString() : svl::SharedString::getEmptyString();
+        sal_uInt16 nFileId = bExternal ? static_cast<ScExternalToken*>(pToken.get())->GetFileId() : 0;
+        svl::SharedString aTabName;
+        if (bExternal)
+        {
+            if (pToken->GetType() == svExternalDoubleRef)
+                aTabName = static_cast<ScExternalDoubleRefToken*>(pToken.get())->GetTableName();
+            else
+                aTabName = static_cast<ScExternalSingleRefToken*>(pToken.get())->GetTableName();
+        }
+        else
+            aTabName = svl::SharedString::getEmptyString();
 
         bool bJoined = false;
         for (ScTokenRef& pOldToken : rTokens)
@@ -355,11 +379,14 @@ private:
 
             if (bExternal)
             {
-                if (nFileId != pOldToken->GetIndex())
+                if (nFileId != static_cast<ScExternalToken*>(pOldToken.get())->GetFileId())
                     // Different external files.
                     continue;
 
-                if (aTabName != pOldToken->GetString())
+                auto aNewTabName = pOldToken->GetType() == svExternalSingleRef
+                    ? static_cast<ScExternalSingleRefToken*>(pOldToken.get())->GetTableName()
+                    : static_cast<ScExternalDoubleRefToken*>(pOldToken.get())->GetTableName();
+                if (aTabName != aNewTabName)
                     // Different table names.
                     continue;
             }
@@ -452,9 +479,17 @@ bool ScRefTokenHelper::getDoubleRefDataFromToken(ScComplexRefData& rData, const 
     switch (pToken->GetType())
     {
         case svSingleRef:
+        {
+            const ScSingleRefData& r = static_cast<ScSingleRefToken*>(pToken.get())->GetSingleRef();
+            rData.Ref1 = r;
+            rData.Ref1.SetFlag3D(true);
+            rData.Ref2 = r;
+            rData.Ref2.SetFlag3D(false); // Don't display sheet name on second reference.
+        }
+        break;
         case svExternalSingleRef:
         {
-            const ScSingleRefData& r = *pToken->GetSingleRef();
+            const ScSingleRefData& r = static_cast<ScExternalSingleRefToken*>(pToken.get())->GetSingleRef();
             rData.Ref1 = r;
             rData.Ref1.SetFlag3D(true);
             rData.Ref2 = r;
@@ -488,6 +523,25 @@ ScTokenRef ScRefTokenHelper::createRefToken(const ScDocument& rDoc, const ScRang
     aRefData.InitRange(rRange);
     ScTokenRef pRef(new ScDoubleRefToken(rDoc.GetSheetLimits(), aRefData));
     return pRef;
+}
+
+ScSingleRefData* ScRefTokenHelper::getSingleRef(formula::FormulaToken* t)
+{
+    if ( t->GetType() == svSingleRef )
+        return &static_cast<ScSingleRefToken*>(t)->GetSingleRef();
+    else if ( t->GetType() == svExternalSingleRef )
+        return &static_cast<ScExternalSingleRefToken*>(t)->GetSingleRef();
+    else if ( t->GetType() == svDoubleRef )
+        return &static_cast<ScDoubleRefToken*>(t)->GetSingleRef();
+    else if ( t->GetType() == svExternalDoubleRef )
+        return &static_cast<ScExternalDoubleRefToken*>(t)->GetSingleRef();
+    else
+        return nullptr;
+}
+
+const ScSingleRefData* ScRefTokenHelper::getSingleRef(const formula::FormulaToken* t)
+{
+    return getSingleRef(const_cast<formula::FormulaToken*>(t));
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
