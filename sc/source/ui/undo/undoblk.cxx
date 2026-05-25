@@ -64,6 +64,22 @@
 /*C*/   // ScArea
 //?     // check later
 
+namespace
+{
+/** Refresh the header row to update ScMF::Auto flags. */
+void refreshAutoFilterForColumnChange(ScDocument& rDocument, SCTAB nTab)
+{
+    ScDBData* pDBData = rDocument.GetAnonymousDBData(nTab);
+    if (!pDBData || !pDBData->HasAutoFilter())
+        return;
+
+    ScRange aRange;
+    pDBData->GetArea(aRange);
+    // Scan the full header row as stale flags may be outside the range.
+    rDocument.RefreshAutoFilter(0, aRange.aStart.Row(),  rDocument.MaxCol(), aRange.aStart.Row(), nTab);
+}
+} // end anonymous namespace
+
 ScUndoInsertCells::ScUndoInsertCells( ScDocShell& rNewDocShell,
                                 const ScRange& rRange,
                                 SCTAB nNewCount, std::unique_ptr<SCTAB[]> pNewTabs, std::unique_ptr<SCTAB[]> pNewScenarios,
@@ -189,6 +205,8 @@ void ScUndoInsertCells::DoChange( const bool bUndo )
                     rDoc.InsertCol( aEffRange.aStart.Row(), pTabs[i], aEffRange.aEnd.Row(), pTabs[i]+pScenarios[i],
                     aEffRange.aStart.Col(), static_cast<SCSIZE>(aEffRange.aEnd.Col()-aEffRange.aStart.Col()+1));
 
+                refreshAutoFilterForColumnChange(rDoc, pTabs[i]);
+
                 if (pViewShell)
                 {
                     const tools::Long nSign = bUndo ? -1 : 1;
@@ -300,6 +318,9 @@ void ScUndoInsertCells::Undo()
     weld::WaitObject aWait( ScDocShell::GetActiveDialogParent() );     // important due to TrackFormulas in UpdateReference
     BeginUndo();
     DoChange( true );
+
+    sc::UndoSheetViewSortData::restore(rDocShell, true);
+
     EndUndo();
 
     ScDocument& rDoc = rDocShell.GetDocument();
@@ -312,6 +333,9 @@ void ScUndoInsertCells::Redo()
     weld::WaitObject aWait( ScDocShell::GetActiveDialogParent() );     // important due to TrackFormulas in UpdateReference
     BeginRedo();
     DoChange( false );
+
+    sc::UndoSheetViewSortData::restore(rDocShell, false);
+
     EndRedo();
 
     if ( pPasteUndo )
@@ -456,6 +480,13 @@ void ScUndoDeleteCells::DoChange( const bool bUndo )
             InsertDeleteFlags::ALL | InsertDeleteFlags::NOCAPTIONS, false, rDoc);
     }
 
+    // Refresh after all cell operations are done.
+    if (eCmd == DelCellCmd::Cols || eCmd == DelCellCmd::CellsLeft)
+    {
+        for (i = 0; i < nCount; i++)
+            refreshAutoFilterForColumnChange(rDoc, pTabs[i]);
+    }
+
     ScRange aWorkRange( aEffRange );
     if ( eCmd == DelCellCmd::CellsLeft )        // only "shift left" requires refresh of the moved area
         aWorkRange.aEnd.SetCol(rDoc.MaxCol());
@@ -569,6 +600,9 @@ void ScUndoDeleteCells::Undo()
     weld::WaitObject aWait( ScDocShell::GetActiveDialogParent() );     // important because of TrackFormulas in UpdateReference
     BeginUndo();
     DoChange( true );
+
+    sc::UndoSheetViewSortData::restore(rDocShell, true);
+
     EndUndo();
 
     ScDocument& rDoc = rDocShell.GetDocument();
@@ -605,6 +639,9 @@ void ScUndoDeleteCells::Redo()
     weld::WaitObject aWait( ScDocShell::GetActiveDialogParent() );     // important because of TrackFormulas in UpdateReference
     BeginRedo();
     DoChange( false);
+
+    sc::UndoSheetViewSortData::restore(rDocShell, false);
+
     EndRedo();
 
     ScDocument& rDoc = rDocShell.GetDocument();

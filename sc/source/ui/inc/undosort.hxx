@@ -11,10 +11,11 @@
 
 #include "undobase.hxx"
 #include <sortparam.hxx>
+#include "undo/UndoSheetViewSortData.hxx"
 
 namespace sc {
 
-class UndoSort : public ScSimpleUndo
+class UndoSort : public ScSimpleUndo, public UndoSheetViewSortData
 {
     ReorderParam maParam;
 

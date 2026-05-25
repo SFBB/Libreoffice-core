@@ -541,8 +541,9 @@ $(eval $(call gb_Library_add_exception_objects,sc,\
     sc/source/ui/operation/ClearItemsOperation \
     sc/source/ui/operation/ConvertFormulaToValueOperation \
     sc/source/ui/operation/CreatePivotTableOperation \
-    sc/source/ui/operation/DataPilotUpdateOperation \
+    sc/source/ui/operation/ReplacePivotTableOperation \
     sc/source/ui/operation/DeleteCellOperation \
+    sc/source/ui/operation/DeleteCellsOperation \
     sc/source/ui/operation/DeleteContentOperation \
     sc/source/ui/operation/DeleteSparklineGroupOperation \
     sc/source/ui/operation/DeleteSparklineOperation \
@@ -552,19 +553,25 @@ $(eval $(call gb_Library_add_exception_objects,sc,\
     sc/source/ui/operation/FillSimpleOperation \
     sc/source/ui/operation/GroupSparklinesOperation \
     sc/source/ui/operation/InsertCellsOperation \
+    sc/source/ui/operation/InsertNameListOperation \
     sc/source/ui/operation/InsertSheetViewOperation \
     sc/source/ui/operation/InsertSparklinesOperation \
+    sc/source/ui/operation/MergeCellsOperation \
+    sc/source/ui/operation/MoveBlockOperation \
     sc/source/ui/operation/MultipleOpsOperation \
     sc/source/ui/operation/Operation \
     sc/source/ui/operation/OperationType \
+    sc/source/ui/operation/PivotTableOperation \
     sc/source/ui/operation/QueryOperation \
     sc/source/ui/operation/RemovePivotTableOperation \
+    sc/source/ui/operation/ReplaceNoteTextOperation \
     sc/source/ui/operation/SetEditTextOperation \
     sc/source/ui/operation/SetNoteTextOperation \
     sc/source/ui/operation/SetFormulaOperation \
     sc/source/ui/operation/SetNormalStringOperation \
     sc/source/ui/operation/SetStringOperation \
     sc/source/ui/operation/SetValueOperation \
+    sc/source/ui/operation/SubTotalsOperation \
     sc/source/ui/operation/SortOperation \
     sc/source/ui/operation/TransliterateTextOperation \
     sc/source/ui/operation/UngroupSparklinesOperation \
@@ -618,6 +625,7 @@ $(eval $(call gb_Library_add_exception_objects,sc,\
     sc/source/ui/undo/undoolk \
     sc/source/ui/undo/undorangename \
     sc/source/ui/undo/undosort \
+    sc/source/ui/undo/UndoSheetViewSortData \
     sc/source/ui/undo/undostyl \
     sc/source/ui/undo/undotab \
     sc/source/ui/undo/undoutil \

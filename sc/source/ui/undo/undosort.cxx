@@ -46,6 +46,8 @@ void UndoSort::Execute( bool bUndo )
         aParam.reverse();
     rDoc.Reorder(aParam);
 
+    UndoSheetViewSortData::restore(rDocShell, bUndo);
+
     ScRange aOverallRange( maParam.maSortRange);
     if (maParam.maDataAreaExtras.anyExtrasWanted())
     {

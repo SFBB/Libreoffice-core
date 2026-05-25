@@ -25,6 +25,7 @@
 #include <scresid.hxx>
 #include <strings.hrc>
 
+#include <SheetViewManager.hxx>
 #include <comphelper/lok.hxx>
 #include <sfx2/app.hxx>
 #include <vcl/weld/Window.hxx>
@@ -167,6 +168,11 @@ OperationType InsertCellsOperation::toOperationType(InsCellCmd eCmd)
         default:
             return OperationType::Unknown;
     }
+}
+
+bool InsertCellsOperation::canRunTheOperation() const
+{
+    return !isInputOnSheetViewAutoFilter(maRange);
 }
 
 bool InsertCellsOperation::runImplementation()
@@ -366,6 +372,7 @@ bool InsertCellsOperation::runImplementation()
     weld::WaitObject aWait(
         ScDocShell::GetActiveDialogParent()); // important due to TrackFormulas at UpdateReference
 
+    ScUndoInsertCells* pUndoInsertCells = nullptr;
     ScDocumentUniquePtr pRefUndoDoc;
     std::unique_ptr<ScRefUndoData> pUndoData;
     if (mbRecord)
@@ -607,10 +614,12 @@ bool InsertCellsOperation::runImplementation()
                 mrDocShell.GetUndoManager()->LeaveListAction();
             }
 
-            mrDocShell.GetUndoManager()->AddUndoAction(std::make_unique<ScUndoInsertCells>(
+            auto pUndoAction = std::make_unique<ScUndoInsertCells>(
                 mrDocShell, ScRange(nStartCol, nStartRow, nStartTab, nEndCol, nEndRow, nEndTab),
                 nUndoPos, std::move(pTabs), std::move(pScenarios), meCmd, std::move(pRefUndoDoc),
-                std::move(pUndoData), mbPartOfPaste));
+                std::move(pUndoData), mbPartOfPaste);
+            pUndoInsertCells = pUndoAction.get();
+            mrDocShell.GetUndoManager()->AddUndoAction(std::move(pUndoAction));
         }
 
         // #i8302 : we remerge growing ranges, with the new part inserted
@@ -740,6 +749,33 @@ bool InsertCellsOperation::runImplementation()
             pViewSh->OnLOKInsertDeleteRow(
                 maRange.aStart.Row() - (meCmd == INS_INSROWS_BEFORE ? 1 : 0), 1);
         }
+
+        // Update sheet view sort ranges to account for inserted rows/columns
+        if (bInsertRows || bInsertCols)
+        {
+            SCTAB nDefaultViewTab = rDoc.GetDefaultViewTableNumber(nStartTab);
+            std::shared_ptr<sc::SheetViewManager> pManager
+                = rDoc.GetSheetViewManager(nDefaultViewTab);
+            if (pManager)
+            {
+                auto pSortDataBefore = pManager->captureSortData();
+
+                if (bInsertRows)
+                    pManager->insertedRows(nStartRow, nEndRow - nStartRow + 1);
+                if (bInsertCols)
+                    pManager->insertedColumns(nStartCol, nEndCol - nStartCol + 1);
+
+                auto pSortDataAfter = pManager->captureSortData();
+
+                if (mbRecord && pUndoInsertCells)
+                {
+                    pUndoInsertCells->setDefaultViewContext(
+                        nDefaultViewTab, std::move(pSortDataBefore), std::move(pSortDataAfter));
+                }
+            }
+        }
+
+        syncSheetViews(pUndoInsertCells);
     }
 
     aModificator.SetDocumentModified();

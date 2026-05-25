@@ -16,6 +16,7 @@
 #include "sortparam.hxx"
 #include <optional>
 #include <vector>
+#include <memory>
 
 class ScTable;
 
@@ -52,6 +53,26 @@ public:
      * were already added previously.
      **/
     void addOrderIndices(SortOrderInfo const& rSortInfo);
+
+    /** Update data when rows are inserted. */
+    void insertedRows(SCROW nStartRow, SCROW nRowCount);
+
+    /** Update data when rows are deleted. */
+    void deletedRows(SCROW nStartRow, SCROW nRowCount);
+
+    /** Update data when columns are inserted. */
+    void insertedColumns(SCCOL nStartCol, SCCOL nColCount);
+
+    /** Update data when columns are deleted. */
+    void deletedColumns(SCCOL nStartCol, SCCOL nColCount);
+};
+
+/** Sort data holder. */
+struct SC_DLLPUBLIC SheetViewSortData
+{
+    SortOrderReverser maSortOrder;
+    ReorderParam maOriginalReorderParams;
+    ScSortParam maSortParam;
 };
 
 /** Stores information of a sheet view.
@@ -64,12 +85,23 @@ class SC_DLLPUBLIC SheetView
 private:
     ScTable* mpTable = nullptr;
     OUString maName;
-
-    std::optional<SortOrderReverser> moSortOrder;
     SheetViewID mnID;
 
-    std::optional<ReorderParam> moOriginalReorderParams;
-    std::optional<ScSortParam> moSortParam;
+    /** Sort data - nullptr when no sort has been performed. */
+    std::shared_ptr<SheetViewSortData> mpSortData;
+
+    /** Ensure sort data is allocated. */
+    SheetViewSortData& ensureSortData();
+
+    void adjustReorderParamsForInsertRows(SCROW nStartRow, SCROW nRowCount);
+    void adjustReorderParamsForInsertColumns(SCCOL nStartCol, SCCOL nColCount);
+    void adjustReorderParamsForDeleteRows(SCROW nStartRow, SCROW nRowCount);
+    void adjustReorderParamsForDeleteColumns(SCCOL nStartCol, SCCOL nColCount);
+
+    void adjustSortParamForInsertRows(SCROW nStartRow, SCROW nRowCount);
+    void adjustSortParamForInsertColumns(SCCOL nStartCol, SCCOL nColCount);
+    void adjustSortParamForDeleteRows(SCROW nStartRow, SCROW nRowCount);
+    void adjustSortParamForDeleteColumns(SCCOL nStartCol, SCCOL nColCount);
 
 public:
     SheetView(ScTable* pTable, OUString const& rName, SheetViewID nID);
@@ -85,8 +117,8 @@ public:
     /** A sheet view is valid if the pointer to the table is set */
     bool isValid() const;
 
-    std::optional<SortOrderReverser> const& getSortOrder() const { return moSortOrder; }
-    void resetSortOrder() { moSortOrder.reset(); }
+    SortOrderReverser const* getSortOrder() const;
+    void resetSortOrder();
 
     /** Adds or combines the order indices.
      *
@@ -97,20 +129,38 @@ public:
 
     /** Merges the reorder parameters */
     void mergeReorderParameters(ReorderParam const& rReorderParameters);
-    std::optional<ReorderParam> const& getReorderParameters() const
-    {
-        return moOriginalReorderParams;
-    }
+    ReorderParam const* getReorderParameters() const;
+    void restoreReorderParameters(ReorderParam const& rParams);
 
     /** Reverses the complete (sheet view and default view) sorting order for the input row */
     SCROW reverseSortingToDefaultView(SCROW nRow, SCCOL nColumn) const;
 
-    // Last used sort parameters
+    /** Update stored sort ranges when rows are inserted. */
+    void insertedRows(SCROW nStartRow, SCROW nRowCount);
 
-    std::optional<ScSortParam> const& getSortParam() const { return moSortParam; }
+    /** Update stored sort ranges when rows are deleted. */
+    void deletedRows(SCROW nStartRow, SCROW nRowCount);
 
-    /// Remember last used sort parameters when sheet view was sorted.
-    void setSortParam(ScSortParam const& rSortParam) { moSortParam = rSortParam; }
+    /** Update stored sort ranges when columns are inserted. */
+    void insertedColumns(SCCOL nStartCol, SCCOL nColCount);
+
+    /** Update stored sort ranges when columns are deleted. */
+    void deletedColumns(SCCOL nStartCol, SCCOL nColCount);
+
+    /** Last used sort parameters */
+    ScSortParam const* getSortParam() const;
+
+    /** Remember last used sort parameters when sheet view was sorted. */
+    void setSortParam(ScSortParam const& rSortParam);
+
+    /** Reset all sort data. */
+    void resetSortData();
+
+    /** Capture current sort state (and deep copy). */
+    std::shared_ptr<SheetViewSortData> captureSortData() const;
+
+    /** Restore sort state from a previous capture. */
+    void restoreSortData(std::shared_ptr<SheetViewSortData> const& pData);
 };
 }
 

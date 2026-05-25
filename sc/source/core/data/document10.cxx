@@ -1205,6 +1205,23 @@ std::shared_ptr<sc::SheetViewManager> ScDocument::GetSheetViewManager(SCTAB nTab
     return {};
 }
 
+std::shared_ptr<sc::SheetView> ScDocument::GetSheetView(SCTAB nTab)
+{
+    ScTable* pTable = FetchTable(nTab);
+    if (!pTable || !pTable->IsSheetViewHolder())
+        return {};
+
+    ScTable* pDefaultViewTable = pTable->GetDefaultViewTable();
+    if (!pDefaultViewTable)
+        return {};
+
+    auto pManager = pDefaultViewTable->GetSheetViewManager();
+    if (!pManager)
+        return {};
+
+    return pManager->get(pTable->GetSheetViewID());
+}
+
 SCTAB ScDocument::GetSheetViewNumber(SCTAB nTab, sc::SheetViewID nID)
 {
     if (ScTable* pMainSheet = FetchTable(nTab))
@@ -1228,10 +1245,32 @@ void ScDocument::SyncSheetViews(SCTAB nDefaultViewTable)
     if (!pManager || pManager->isEmpty())
         return;
 
+    // Get the anonymous DB data for the default view table
+    ScDBData* pDefaultViewDBData = GetAnonymousDBData(nDefaultViewTable);
+
     // Iterate all valid sheet views
     for (auto& rSheetView : pManager->iterateValidSheetViews())
     {
         SCTAB nSheetViewTab = rSheetView.getTableNumber();
+
+        // Sync the sheet view's anonymous DB data from the default view
+        if (pDefaultViewDBData)
+        {
+            ScDBData* pSheetViewDBData = GetAnonymousDBData(nSheetViewTab);
+            if (pSheetViewDBData)
+            {
+                ScRange aDefaultRange;
+                pDefaultViewDBData->GetArea(aDefaultRange);
+                aDefaultRange.SetTab(nSheetViewTab);
+                pSheetViewDBData->SetArea(aDefaultRange);
+                pSheetViewDBData->SetAutoFilter(pDefaultViewDBData->HasAutoFilter());
+
+                // If auto-filter was removed, reset sheet view sort data
+                if (!pDefaultViewDBData->HasAutoFilter())
+                    rSheetView.resetSortData();
+            }
+        }
+
         // Get the current query (filter) state of the auto-filter
         std::optional<ScQueryParam> oQueryParam;
         ScDBData* pNoNameData = GetAnonymousDBData(nSheetViewTab);
@@ -1250,9 +1289,9 @@ void ScDocument::SyncSheetViews(SCTAB nDefaultViewTable)
         // Revert the sorting of the default view table.
         // It can happen that the default view was sorted after the sheet view
         // was created.
-        if (auto const& rReorderParameters = rSheetView.getReorderParameters())
+        if (auto const* pReorderParameters = rSheetView.getReorderParameters())
         {
-            sc::ReorderParam aReorderParameters(*rReorderParameters);
+            sc::ReorderParam aReorderParameters(*pReorderParameters);
             aReorderParameters.maSortRange.aStart.SetTab(nSheetViewTab);
             aReorderParameters.maSortRange.aEnd.SetTab(nSheetViewTab);
             aReorderParameters.reverse();
@@ -1260,11 +1299,26 @@ void ScDocument::SyncSheetViews(SCTAB nDefaultViewTable)
         }
 
         // Sort the sheet view if it was sorted before
-        auto const& oSortParam = rSheetView.getSortParam();
-        if (oSortParam)
+        if (auto const* pSortParam = rSheetView.getSortParam())
         {
+            ScSortParam aSortParam(*pSortParam);
+
+            // Adjust the sort range to the actual data extent on the default view.
+            if (pDefaultViewDBData && pDefaultViewDBData->HasAutoFilter())
+            {
+                ScRange aDBRange;
+                pDefaultViewDBData->GetArea(aDBRange);
+                SCCOL nColumn1 = aDBRange.aStart.Col();
+                SCROW nRow1 = aDBRange.aStart.Row();
+                SCCOL nColumn2 = aDBRange.aEnd.Col();
+                SCROW nRow2 = aDBRange.aEnd.Row();
+                GetDataArea(nDefaultViewTable, nColumn1, nRow1, nColumn2, nRow2, false, true);
+                aSortParam.nRow2 = nRow2;
+                aSortParam.nCol2 = nColumn2;
+            }
+
             rSheetView.resetSortOrder();
-            Sort(nSheetViewTab, *oSortParam, false, false, nullptr, nullptr);
+            Sort(nSheetViewTab, aSortParam, false, false, nullptr, nullptr);
         }
         // Apply the stored query state (if available)
         if (oQueryParam)

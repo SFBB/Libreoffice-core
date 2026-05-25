@@ -10,26 +10,23 @@
 #pragma once
 
 #include "Operation.hxx"
+#include <address.hxx>
 
 class ScDocShell;
-class ScDPObject;
 
 namespace sc
 {
-/** Data pilot update is used for various pivot table manipulation. */
-class DataPilotUpdateOperation : public Operation
+/** Inserts a list of defined named ranges into the spreadsheet at the given position. */
+class InsertNameListOperation : public Operation
 {
 private:
     ScDocShell& mrDocShell;
-    ScDPObject* mpOldObj;
-    ScDPObject const* mpNewObj;
-    bool mbAllowMove;
+    ScAddress maStartPos;
 
     bool runImplementation() override;
 
 public:
-    DataPilotUpdateOperation(ScDocShell& rDocShell, ScDPObject* pOldObj, ScDPObject const* pNewObj,
-                             bool bRecord, bool bApi, bool bAllowMove);
+    InsertNameListOperation(ScDocShell& rDocShell, const ScAddress& rStartPos, bool bApi);
 };
 } // end sc namespace
 

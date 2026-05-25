@@ -133,7 +133,7 @@ public:
     SC_DLLPUBLIC bool ShowNote( const ScAddress& rPos, bool bShow );
 
     SC_DLLPUBLIC void SetNoteText( const ScAddress& rPos, const OUString& rNoteText, bool bApi );
-    void            ReplaceNote( const ScAddress& rPos, const OUString& rNoteText, const OUString* pAuthor, const OUString* pDate, bool bApi );
+    SC_DLLPUBLIC void ReplaceNote( const ScAddress& rPos, const OUString& rNoteText, const OUString* pAuthor, const OUString* pDate, bool bApi );
     SC_DLLPUBLIC void ImportNote( const ScAddress& rPos,
                                   std::unique_ptr<GenerateNoteCaption> xGenerator,
                                   const tools::Rectangle& rCaptionRect, bool bShown );
@@ -149,7 +149,7 @@ public:
     bool            DeleteCells( const ScRange& rRange, const ScMarkData* pTabMark,
                               DelCellCmd eCmd, bool bApi );
 
-    bool            MoveBlock( const ScRange& rSource, const ScAddress& rDestPos,
+    SC_DLLPUBLIC bool MoveBlock( const ScRange& rSource, const ScAddress& rDestPos,
                                        bool bCut, bool bRecord, bool bPaint, bool bApi );
 
     SC_DLLPUBLIC bool InsertTable( SCTAB nTab, const OUString& rName, bool bRecord, bool bApi );
@@ -229,7 +229,7 @@ public:
     void            ModifyAllRangeNames(const std::map<OUString, ScRangeName>& rRangeMap);
 
     bool            CreateNames( const ScRange& rRange, CreateNameFlags nFlags, bool bApi, SCTAB nTab = -1 ); // -1 for global range names
-    bool            InsertNameList( const ScAddress& rStartPos, bool bApi );
+    SC_DLLPUBLIC bool InsertNameList(const ScAddress& rStartPos, bool bApi);
 
     void            InsertAreaLink( const OUString& rFile, const OUString& rFilter,
                                             const OUString& rOptions, const OUString& rSource,

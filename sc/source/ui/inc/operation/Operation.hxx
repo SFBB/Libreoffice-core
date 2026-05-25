@@ -9,15 +9,19 @@
 
 #pragma once
 
+#include <scdllapi.h>
 #include <operation/OperationType.hxx>
+#include <types.hxx>
 
 class ScMarkData;
 class ScAddress;
 class ScRange;
+class ScRangeList;
 class ScViewData;
 
 namespace sc
 {
+class UndoSheetViewSortData;
 /** Operation is one atomic coarse change to the document model that can be run from UI or API
  *
  * An operation is a minimal change that is undoable and redoable.
@@ -43,17 +47,23 @@ protected:
 
     bool checkSheetViewProtection();
 
+    /** Convert a tab from a sheet view to the tab in the default view. */
+    SCTAB convertTab(SCTAB nTab);
+
     /** Convert address from a sheet view to the address in default view, take sorting into account. */
     ScAddress convertAddress(ScAddress const& rAddress);
 
     /** Convert a range from a sheet view to the range in default view, take sorting into account. */
     ScRange convertRange(ScRange const& rRange);
 
+    /** Convert a range list from a sheet view to the range list in default view, take sorting into account. */
+    ScRangeList convertRangeList(ScRangeList const& rRangeList);
+
     /** Convert a mark from a sheet view to the mark in default view, take sorting into account. */
     ScMarkData convertMark(ScMarkData const& rMarkData);
 
     /** Synchronizes the sheet views and the default view */
-    void syncSheetViews();
+    void syncSheetViews(UndoSheetViewSortData* pUndoSortData = nullptr);
 
     /** Check if the input is on a sheet view tab */
     bool isInputOnSheetView() const;
@@ -71,7 +81,7 @@ public:
     Operation(OperationType eType, bool bRecord, bool bApi);
 
     /** Run the operation */
-    bool run();
+    SC_DLLPUBLIC bool run();
 };
 
 } // end sc namespace

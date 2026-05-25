@@ -14,9 +14,11 @@
 #include <dbdata.hxx>
 #include <docsh.hxx>
 #include <markdata.hxx>
+#include <rangelst.hxx>
 #include <viewdata.hxx>
 #include <SheetViewManager.hxx>
 #include <SheetView.hxx>
+#include <undo/UndoSheetViewSortData.hxx>
 #include <sal/log.hxx>
 
 namespace sc
@@ -49,24 +51,30 @@ Operation::Operation(OperationType eType, bool bRecord, bool bApi)
 {
 }
 
+SCTAB Operation::convertTab(SCTAB nTab)
+{
+    std::shared_ptr<SheetView> pSheetView = getCurrentSheetView(mpViewData);
+    if (!pSheetView)
+        return nTab;
+
+    SCTAB nSheetViewTab = mpViewData->GetTabNumber();
+    if (nTab != nSheetViewTab)
+        return nTab;
+
+    return mpViewData->GetDefaultViewTab();
+}
+
 ScAddress Operation::convertAddress(ScAddress const& rAddress)
 {
-    ScViewData* pViewData = mpViewData;
+    SCTAB nConvertedTab = convertTab(rAddress.Tab());
 
-    std::shared_ptr<SheetView> pSheetView = getCurrentSheetView(pViewData);
-
-    // We get a valid pSheetView if we currently are in a sheet view, otherwise we don't need to convert
-    if (!pSheetView)
+    // Tab was not converted, so no need to convert the address
+    if (nConvertedTab == rAddress.Tab())
         return rAddress;
 
-    SCTAB nSheetViewTab = pViewData->GetTabNumber();
-    SCTAB nDefaultTab = pViewData->GetDefaultViewTab();
+    ScAddress aAddress(rAddress.Col(), rAddress.Row(), nConvertedTab);
 
-    // Only convert addresses that are on the sheet view tab
-    if (rAddress.Tab() != nSheetViewTab)
-        return rAddress;
-
-    ScAddress aAddress(rAddress.Col(), rAddress.Row(), nDefaultTab);
+    std::shared_ptr<SheetView> pSheetView = getCurrentSheetView(mpViewData);
 
     SCCOL nColumn = aAddress.Col();
     SCROW nRow = aAddress.Row();
@@ -77,12 +85,20 @@ ScAddress Operation::convertAddress(ScAddress const& rAddress)
     if (nReversedRow == nRow)
         return aAddress;
 
-    return ScAddress(nColumn, nReversedRow, nDefaultTab);
+    return ScAddress(nColumn, nReversedRow, nConvertedTab);
 }
 
 ScRange Operation::convertRange(ScRange const& rRange)
 {
     return ScRange(convertAddress(rRange.aStart), convertAddress(rRange.aEnd));
+}
+
+ScRangeList Operation::convertRangeList(ScRangeList const& rRangeList)
+{
+    ScRangeList aConverted;
+    for (size_t i = 0; i < rRangeList.size(); ++i)
+        aConverted.push_back(convertRange(rRangeList[i]));
+    return aConverted;
 }
 
 ScMarkData Operation::convertMark(ScMarkData const& rMarkData)
@@ -121,9 +137,9 @@ ScMarkData Operation::convertMark(ScMarkData const& rMarkData)
     // Take sorting into account when we convert to default view
     if (aNewMark.GetTableSelect(nDefaultViewTab))
     {
-        std::optional<SortOrderReverser> const& oSortOrder = pSheetView->getSortOrder();
-        std::optional<ReorderParam> const& oReorderParams = pSheetView->getReorderParameters();
-        if (oSortOrder || oReorderParams)
+        SortOrderReverser const* pSortOrder = pSheetView->getSortOrder();
+        ReorderParam const* pReorderParams = pSheetView->getReorderParameters();
+        if (pSortOrder || pReorderParams)
         {
             std::vector<std::pair<SCCOL, SCROW>> aMarkedCells;
 
@@ -132,9 +148,9 @@ ScMarkData Operation::convertMark(ScMarkData const& rMarkData)
             SCCOL nColumnStart = -1;
             SCCOL nColumnEnd = -1;
 
-            if (oSortOrder)
+            if (pSortOrder)
             {
-                SortOrderInfo const& rSortInfo = oSortOrder->maSortInfo;
+                SortOrderInfo const& rSortInfo = pSortOrder->maSortInfo;
                 nRowStart = rSortInfo.mnFirstRow;
                 nRowEnd = rSortInfo.mnLastRow;
                 nColumnStart = rSortInfo.mnFirstColumn;
@@ -142,7 +158,7 @@ ScMarkData Operation::convertMark(ScMarkData const& rMarkData)
             }
             else
             {
-                ScRange const& rSortRange = oReorderParams->maSortRange;
+                ScRange const& rSortRange = pReorderParams->maSortRange;
                 nRowStart = rSortRange.aStart.Row();
                 nRowEnd = rSortRange.aEnd.Row();
                 nColumnStart = rSortRange.aStart.Col();
@@ -186,14 +202,77 @@ ScMarkData Operation::convertMark(ScMarkData const& rMarkData)
     return aNewMark;
 }
 
-void Operation::syncSheetViews()
+void Operation::syncSheetViews(UndoSheetViewSortData* pUndoSortData)
 {
     if (!mpViewData)
         return;
 
     auto& rDocument = mpViewData->GetDocument();
-    SCTAB nTab = mpViewData->GetDefaultViewTab();
-    rDocument.SyncSheetViews(nTab);
+    SCTAB nDefaultViewTab = mpViewData->GetDefaultViewTab();
+
+    std::shared_ptr<SheetViewManager> pManager = rDocument.GetSheetViewManager(nDefaultViewTab);
+
+    // Capture sort data before adjustments
+    std::shared_ptr<DefaultViewSortData> pSortDataBefore;
+    if (pManager)
+        pSortDataBefore = pManager->captureSortData();
+
+    // Adjust auto-filter DB range to match actual data extent
+    ScRange aAutoFilterRangeBefore;
+    bool bAutoFilterRangeChanged = false;
+    if (pManager && !pManager->isEmpty())
+    {
+        ScDBData* pDBData = rDocument.GetAnonymousDBData(nDefaultViewTab);
+        if (pDBData && pDBData->HasAutoFilter())
+        {
+            pDBData->GetArea(aAutoFilterRangeBefore);
+            SCCOL nColumn1 = aAutoFilterRangeBefore.aStart.Col();
+            SCROW nRow1 = aAutoFilterRangeBefore.aStart.Row();
+            SCCOL nColumn2 = aAutoFilterRangeBefore.aEnd.Col();
+            SCROW nRow2 = aAutoFilterRangeBefore.aEnd.Row();
+            rDocument.GetDataArea(nDefaultViewTab, nColumn1, nRow1, nColumn2, nRow2, false, true);
+
+            if (nRow2 > aAutoFilterRangeBefore.aEnd.Row())
+            {
+                pManager->insertedRows(aAutoFilterRangeBefore.aEnd.Row() + 1,
+                                       nRow2 - aAutoFilterRangeBefore.aEnd.Row());
+            }
+            else if (nRow2 < aAutoFilterRangeBefore.aEnd.Row())
+            {
+                pManager->deletedRows(nRow2 + 1, aAutoFilterRangeBefore.aEnd.Row() - nRow2);
+            }
+
+            if (nRow2 != aAutoFilterRangeBefore.aEnd.Row()
+                || nColumn2 != aAutoFilterRangeBefore.aEnd.Col())
+            {
+                pDBData->SetArea(nDefaultViewTab, aAutoFilterRangeBefore.aStart.Col(),
+                                 aAutoFilterRangeBefore.aStart.Row(), nColumn2, nRow2);
+                bAutoFilterRangeChanged = true;
+            }
+        }
+    }
+
+    rDocument.SyncSheetViews(nDefaultViewTab);
+
+    // Attach sort data and auto-filter range to the undo action
+    if (pManager && pUndoSortData)
+    {
+        auto pSortDataAfter = pManager->captureSortData();
+        // Only set if not already set by the operation itself
+        if (!pUndoSortData->hasData())
+        {
+            pUndoSortData->setDefaultViewContext(nDefaultViewTab, std::move(pSortDataBefore),
+                                                 std::move(pSortDataAfter));
+        }
+        if (bAutoFilterRangeChanged)
+        {
+            ScRange aAutoFilterRangeAfter;
+            ScDBData* pDBData = rDocument.GetAnonymousDBData(nDefaultViewTab);
+            if (pDBData)
+                pDBData->GetArea(aAutoFilterRangeAfter);
+            pUndoSortData->setAutoFilterRange(aAutoFilterRangeBefore, aAutoFilterRangeAfter);
+        }
+    }
 }
 
 bool Operation::isInputOnSheetView() const { return getCurrentSheetView(mpViewData) != nullptr; }

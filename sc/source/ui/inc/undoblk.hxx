@@ -26,6 +26,7 @@
 #include <tokenarray.hxx>
 #include <editeng/boxitem.hxx>
 
+#include "undo/UndoSheetViewSortData.hxx"
 #include <memory>
 
 class ScDocShell;
@@ -34,7 +35,7 @@ class SvxSearchItem;
 class SdrUndoAction;
 class ScEditDataArray;
 
-class ScUndoInsertCells: public ScMoveUndo
+class ScUndoInsertCells: public ScMoveUndo, public sc::UndoSheetViewSortData
 {
 public:
                     ScUndoInsertCells( ScDocShell& rNewDocShell,
@@ -70,7 +71,7 @@ private:
     void            SetChangeTrack();
 };
 
-class ScUndoDeleteCells: public ScMoveUndo
+class ScUndoDeleteCells: public ScMoveUndo, public sc::UndoSheetViewSortData
 {
 public:
                     ScUndoDeleteCells( ScDocShell& rNewDocShell,

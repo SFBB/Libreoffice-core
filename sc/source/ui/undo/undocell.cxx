@@ -199,7 +199,11 @@ void ScUndoEnterData::DoChange() const
                 pViewShell, false /* bColumns */, true /* bRows */, true /* bSizes*/,
                 false /* bHidden */, false /* bFiltered */, false /* bGroups */, maPos.Tab());
         }
-        pViewShell->SetTabNo(maPos.Tab());
+        // Don't switch tabs if the current view is a sheet view.
+        SCTAB nCurrentTab = pViewShell->GetViewData().GetTabNumber();
+        ScDocument& rDocument = rDocShell.GetDocument();
+        if (rDocument.GetDefaultViewTableNumber(nCurrentTab) != maPos.Tab())
+            pViewShell->SetTabNo(maPos.Tab());
         pViewShell->MoveCursorAbs(maPos.Col(), maPos.Row(), SC_FOLLOW_JUMP, false, false);
     }
 
@@ -258,6 +262,9 @@ void ScUndoEnterData::Undo()
     if ( pChangeTrack && mnEndChangeAction >= sal::static_int_cast<sal_uLong>(nCount) )
         pChangeTrack->Undo( mnEndChangeAction - nCount + 1, mnEndChangeAction );
 
+    sc::UndoSheetViewSortData::restore(rDocShell, true);
+    rDoc.SyncSheetViews(maPos.Tab());
+
     DoChange();
     EndUndo();
 
@@ -286,6 +293,9 @@ void ScUndoEnterData::Redo()
     }
 
     SetChangeTrack();
+
+    sc::UndoSheetViewSortData::restore(rDocShell, false);
+    rDoc.SyncSheetViews(maPos.Tab());
 
     DoChange();
     EndRedo();

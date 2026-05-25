@@ -67,11 +67,23 @@ OUString SheetViewManager::generateName()
 
 OUString SheetViewManager::defaultViewName() { return ScResId(STR_SHEET_VIEW_DEFAULT_VIEW_NAME); }
 
+DefaultViewSortData& SheetViewManager::ensureSortData()
+{
+    if (!mpSortData)
+        mpSortData = std::make_shared<DefaultViewSortData>();
+    return *mpSortData;
+}
+
+SortOrderReverser const* SheetViewManager::getSortOrder() const
+{
+    if (!mpSortData || mpSortData->maSortOrder.maSortInfo.maOrder.empty())
+        return nullptr;
+    return &mpSortData->maSortOrder;
+}
+
 void SheetViewManager::addOrderIndices(SortOrderInfo const& rSortInfo)
 {
-    if (!moSortOrder)
-        moSortOrder.emplace();
-    moSortOrder->addOrderIndices(rSortInfo);
+    ensureSortData().maSortOrder.addOrderIndices(rSortInfo);
 }
 
 void SheetViewManager::mergeReorderParameters(ReorderParam const& rReorderParameters)
@@ -81,6 +93,93 @@ void SheetViewManager::mergeReorderParameters(ReorderParam const& rReorderParame
         rSheetView.mergeReorderParameters(rReorderParameters);
     }
 }
+
+void SheetViewManager::insertedRows(SCROW nStartRow, SCROW nRowCount)
+{
+    if (mpSortData)
+        mpSortData->maSortOrder.insertedRows(nStartRow, nRowCount);
+
+    for (auto& rSheetView : iterateValidSheetViews())
+    {
+        rSheetView.insertedRows(nStartRow, nRowCount);
+    }
 }
+
+void SheetViewManager::deletedRows(SCROW nStartRow, SCROW nRowCount)
+{
+    if (mpSortData)
+        mpSortData->maSortOrder.deletedRows(nStartRow, nRowCount);
+
+    for (auto& rSheetView : iterateValidSheetViews())
+    {
+        rSheetView.deletedRows(nStartRow, nRowCount);
+    }
+}
+
+void SheetViewManager::insertedColumns(SCCOL nStartCol, SCCOL nColCount)
+{
+    if (mpSortData)
+        mpSortData->maSortOrder.insertedColumns(nStartCol, nColCount);
+
+    for (auto& rSheetView : iterateValidSheetViews())
+    {
+        rSheetView.insertedColumns(nStartCol, nColCount);
+    }
+}
+
+void SheetViewManager::deletedColumns(SCCOL nStartCol, SCCOL nColCount)
+{
+    if (mpSortData)
+        mpSortData->maSortOrder.deletedColumns(nStartCol, nColCount);
+
+    for (auto& rSheetView : iterateValidSheetViews())
+    {
+        rSheetView.deletedColumns(nStartCol, nColCount);
+    }
+}
+
+std::shared_ptr<DefaultViewSortData> SheetViewManager::captureSortData() const
+{
+    auto pSortDataCopy = std::make_shared<DefaultViewSortData>();
+    if (mpSortData)
+        pSortDataCopy->maSortOrder = mpSortData->maSortOrder;
+
+    // Capture each SheetView's full sort data
+    for (auto const& rSheetView : iterateValidSheetViews())
+    {
+        pSortDataCopy->maSheetViewSortData.emplace_back(rSheetView.getID(),
+                                                        rSheetView.captureSortData());
+    }
+    return pSortDataCopy;
+}
+
+void SheetViewManager::restoreSortData(std::shared_ptr<DefaultViewSortData> const& pData)
+{
+    if (!pData)
+    {
+        mpSortData.reset();
+    }
+    else
+    {
+        mpSortData = std::make_shared<DefaultViewSortData>();
+        mpSortData->maSortOrder = pData->maSortOrder;
+    }
+
+    // Restore each SheetView's full sort data
+    if (!pData)
+        return;
+
+    for (auto const & [ nID, pSortData ] : pData->maSheetViewSortData)
+    {
+        if (isValidSheetViewID(nID))
+        {
+            auto pSheetView = get(nID);
+            if (pSheetView)
+                pSheetView->restoreSortData(pSortData);
+        }
+    }
+}
+
+} // end sc
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
