@@ -30,7 +30,9 @@
 #include <svx/dialmgr.hxx>
 
 #include <comphelper/propertysequence.hxx>
+#include <comphelper/unique_unlock.hxx>
 #include <cppuhelper/queryinterface.hxx>
+#include <o3tl/temporary.hxx>
 #include <cppuhelper/supportsservice.hxx>
 #include <cppuhelper/weak.hxx>
 #include <com/sun/star/beans/PropertyValue.hpp>
@@ -646,8 +648,9 @@ public:
     virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
-    // XComponent
-    virtual void SAL_CALL dispose() override;
+    // WeakComponentImplHelperBase
+    using FindTextToolbarController_Base::disposing;
+    virtual void disposing(std::unique_lock<std::mutex>& rGuard) override;
 
     // XInitialization
     virtual void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any >& aArguments ) override;
@@ -698,13 +701,14 @@ css::uno::Sequence< OUString > SAL_CALL FindTextToolbarController::getSupportedS
 }
 
 // XComponent
-void SAL_CALL FindTextToolbarController::dispose()
+void FindTextToolbarController::disposing(std::unique_lock<std::mutex>& rGuard)
 {
+    comphelper::unique_unlock aUnlock(rGuard);
     SolarMutexGuard aSolarMutexGuard;
 
     SearchToolbarControllersManager::createControllersManager().freeController(m_xFrame, m_aCommandURL);
 
-    svt::ToolboxController::dispose();
+    svt::ToolboxController::disposing(o3tl::temporary(std::unique_lock(m_aMutex)));
     if (m_pFindTextFieldControl != nullptr) {
         SearchToolbarControllersManager::createControllersManager()
             .saveSearchHistory(m_pFindTextFieldControl);
@@ -799,8 +803,9 @@ public:
     virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
-    // XComponent
-    virtual void SAL_CALL dispose() override;
+    // WeakComponentImplHelperBase
+    using UpDownSearchToolboxController_Base::disposing;
+    virtual void disposing(std::unique_lock<std::mutex>& rGuard) override;
 
     // XInitialization
     virtual void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any >& aArguments ) override;
@@ -842,13 +847,14 @@ css::uno::Sequence< OUString > SAL_CALL UpDownSearchToolboxController::getSuppor
 }
 
 // XComponent
-void SAL_CALL UpDownSearchToolboxController::dispose()
+void UpDownSearchToolboxController::disposing(std::unique_lock<std::mutex>& rGuard)
 {
-    SolarMutexGuard aSolarMutexGuard;
-
-    SearchToolbarControllersManager::createControllersManager().freeController(m_xFrame, m_aCommandURL);
-
-    svt::ToolboxController::dispose();
+    {
+        comphelper::unique_unlock aUnlock(rGuard);
+        SolarMutexGuard aSolarMutexGuard;
+        SearchToolbarControllersManager::createControllersManager().freeController(m_xFrame, m_aCommandURL);
+    }
+    svt::ToolboxController::disposing(rGuard);
 }
 
 // XInitialization
@@ -892,8 +898,9 @@ public:
     virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
-    // XComponent
-    virtual void SAL_CALL dispose() override;
+    // WeakComponentImplHelperBase
+    using MatchCaseToolboxController_Base::disposing;
+    virtual void disposing(std::unique_lock<std::mutex>& rGuard) override;
 
     // XInitialization
     virtual void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any >& aArguments ) override;
@@ -935,13 +942,14 @@ css::uno::Sequence< OUString > SAL_CALL MatchCaseToolboxController::getSupported
 }
 
 // XComponent
-void SAL_CALL MatchCaseToolboxController::dispose()
+void MatchCaseToolboxController::disposing(std::unique_lock<std::mutex>& rGuard)
 {
+    comphelper::unique_unlock aUnlock(rGuard);
     SolarMutexGuard aSolarMutexGuard;
 
     SearchToolbarControllersManager::createControllersManager().freeController(m_xFrame, m_aCommandURL);
 
-    svt::ToolboxController::dispose();
+    svt::ToolboxController::disposing(o3tl::temporary(std::unique_lock(m_aMutex)));
 
     m_xMatchCaseControl.disposeAndClear();
 }
@@ -994,8 +1002,9 @@ public:
     virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
-    // XComponent
-    virtual void SAL_CALL dispose() override;
+    // WeakComponentImplHelperBase
+    using MatchDiacriticsToolboxController_Base::disposing;
+    virtual void disposing(std::unique_lock<std::mutex>& rGuard) override;
 
     // XInitialization
     virtual void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any >& aArguments ) override;
@@ -1037,13 +1046,14 @@ css::uno::Sequence< OUString > SAL_CALL MatchDiacriticsToolboxController::getSup
 }
 
 // XComponent
-void SAL_CALL MatchDiacriticsToolboxController::dispose()
+void MatchDiacriticsToolboxController::disposing(std::unique_lock<std::mutex>& rGuard)
 {
+    comphelper::unique_unlock aUnlock(rGuard);
     SolarMutexGuard aSolarMutexGuard;
 
     SearchToolbarControllersManager::createControllersManager().freeController(m_xFrame, m_aCommandURL);
 
-    svt::ToolboxController::dispose();
+    svt::ToolboxController::disposing(o3tl::temporary(std::unique_lock(m_aMutex)));
 
     m_xMatchDiacriticsControl.disposeAndClear();
 }
@@ -1096,8 +1106,9 @@ public:
     virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
-    // XComponent
-    virtual void SAL_CALL dispose() override;
+    // WeakComponentImplHelperBase
+    using SearchFormattedToolboxController_Base::disposing;
+    virtual void disposing(std::unique_lock<std::mutex>& rGuard) override;
 
     // XInitialization
     virtual void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any >& aArguments ) override;
@@ -1137,13 +1148,14 @@ css::uno::Sequence< OUString > SAL_CALL SearchFormattedToolboxController::getSup
 }
 
 // XComponent
-void SAL_CALL SearchFormattedToolboxController::dispose()
+void SearchFormattedToolboxController::disposing(std::unique_lock<std::mutex>& rGuard)
 {
+    comphelper::unique_unlock aUnlock(rGuard);
     SolarMutexGuard aSolarMutexGuard;
 
     SearchToolbarControllersManager::createControllersManager().freeController(m_xFrame, m_aCommandURL);
 
-    svt::ToolboxController::dispose();
+    svt::ToolboxController::disposing(o3tl::temporary(std::unique_lock(m_aMutex)));
 
     m_xSearchFormattedControl.disposeAndClear();
 }
@@ -1187,8 +1199,9 @@ public:
     virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
-    // XComponent
-    virtual void SAL_CALL dispose() override;
+    // WeakComponentImplHelperBase
+    using FindAllToolboxController_Base::disposing;
+    virtual void disposing(std::unique_lock<std::mutex>& rGuard) override;
 
     // XInitialization
     virtual void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any >& aArguments ) override;
@@ -1225,13 +1238,14 @@ css::uno::Sequence< OUString > SAL_CALL FindAllToolboxController::getSupportedSe
 }
 
 // XComponent
-void SAL_CALL FindAllToolboxController::dispose()
+void FindAllToolboxController::disposing(std::unique_lock<std::mutex>& rGuard)
 {
-    SolarMutexGuard aSolarMutexGuard;
-
-    SearchToolbarControllersManager::createControllersManager().freeController(m_xFrame, m_aCommandURL);
-
-    svt::ToolboxController::dispose();
+    {
+        comphelper::unique_unlock aUnlock(rGuard);
+        SolarMutexGuard aSolarMutexGuard;
+        SearchToolbarControllersManager::createControllersManager().freeController(m_xFrame, m_aCommandURL);
+    }
+    svt::ToolboxController::disposing(rGuard);
 }
 
 // XInitialization
@@ -1269,8 +1283,9 @@ public:
     virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
-    // XComponent
-    virtual void SAL_CALL dispose() override;
+    // WeakComponentImplHelperBase
+    using ExitSearchToolboxController_Base::disposing;
+    virtual void disposing(std::unique_lock<std::mutex>& rGuard) override;
 
     // XInitialization
     virtual void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any >& aArguments ) override;
@@ -1307,13 +1322,14 @@ css::uno::Sequence< OUString > SAL_CALL ExitSearchToolboxController::getSupporte
 }
 
 // XComponent
-void SAL_CALL ExitSearchToolboxController::dispose()
+void ExitSearchToolboxController::disposing(std::unique_lock<std::mutex>& rGuard)
 {
-    SolarMutexGuard aSolarMutexGuard;
-
-    SearchToolbarControllersManager::createControllersManager().freeController(m_xFrame, m_aCommandURL);
-
-    svt::ToolboxController::dispose();
+    {
+        comphelper::unique_unlock aUnlock(rGuard);
+        SolarMutexGuard aSolarMutexGuard;
+        SearchToolbarControllersManager::createControllersManager().freeController(m_xFrame, m_aCommandURL);
+    }
+    svt::ToolboxController::disposing(rGuard);
 }
 
 // XInitialization
@@ -1362,8 +1378,9 @@ public:
     virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 
-    // XComponent
-    virtual void SAL_CALL dispose() override;
+    // WeakComponentImplHelperBase
+    using SearchLabelToolboxController_Base::disposing;
+    virtual void disposing(std::unique_lock<std::mutex>& rGuard) override;
 
     // XInitialization
     virtual void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any >& aArguments ) override;
@@ -1403,13 +1420,14 @@ css::uno::Sequence< OUString > SAL_CALL SearchLabelToolboxController::getSupport
 }
 
 // XComponent
-void SAL_CALL SearchLabelToolboxController::dispose()
+void SearchLabelToolboxController::disposing(std::unique_lock<std::mutex>& rGuard)
 {
+    comphelper::unique_unlock aUnlock(rGuard);
     SolarMutexGuard aSolarMutexGuard;
 
     SearchToolbarControllersManager::createControllersManager().freeController(m_xFrame, m_aCommandURL);
 
-    svt::ToolboxController::dispose();
+    svt::ToolboxController::disposing(o3tl::temporary(std::unique_lock(m_aMutex)));
     m_xSL.disposeAndClear();
 }
 

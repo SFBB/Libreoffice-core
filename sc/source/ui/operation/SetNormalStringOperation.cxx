@@ -91,7 +91,7 @@ bool SetNormalStringOperation::runImplementation()
     if (bEditDeleted || rDoc.HasAttrib(ScRange(aPosition), HasAttrFlags::NeedHeight))
         mrDocFunc.AdjustRowHeight(ScRange(aPosition), true, mbApi);
 
-    syncSheetViews(pUndoEnterData);
+    syncCellToSheetViews(aPosition, pUndoEnterData);
 
     mrDocShell.PostPaintCell(aPosition, std::max(nBefore, nAfter));
     aModificator.SetDocumentModified();
@@ -109,6 +109,8 @@ bool SetNormalStringOperation::runImplementation()
             ScDetectiveFunc(rDoc, aPosition.Tab())
                 .DeleteCirclesAt(aPosition.Col(), aPosition.Row());
     }
+
+    mrDocShell.ResolveSpilledOutputs();
 
     return true;
 }

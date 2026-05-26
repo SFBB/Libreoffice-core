@@ -120,6 +120,8 @@ bool DeleteContentOperation::runImplementation()
 
     aModificator.SetDocumentModified();
 
+    mrDocShell.ResolveSpilledOutputs();
+
     return true;
 }
 }

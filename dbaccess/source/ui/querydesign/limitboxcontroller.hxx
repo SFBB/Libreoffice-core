@@ -35,8 +35,9 @@ class LimitBoxController: public LimitBoxController_Base
         /// XServiceInfo
         DECLARE_SERVICE_INFO();
 
-        /// XComponent
-        virtual void SAL_CALL dispose() override;
+        /// WeakComponentImplHelperBase
+        using LimitBoxController_Base::disposing;
+        virtual void disposing(std::unique_lock<std::mutex>& rGuard) override;
 
         /// XStatusListener
         virtual void SAL_CALL statusChanged( const css::frame::FeatureStateEvent& Event ) override;

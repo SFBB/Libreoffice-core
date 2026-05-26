@@ -71,8 +71,9 @@ public:
     // XStatusListener
     void SAL_CALL statusChanged( const css::frame::FeatureStateEvent& rEvent ) override;
 
-    // XComponent
-    void SAL_CALL dispose() override;
+    // WeakComponentImplHelperBase
+    using svt::ToolboxController::disposing;
+    void disposing(std::unique_lock<std::mutex>& rGuard) override;
 };
 
 }

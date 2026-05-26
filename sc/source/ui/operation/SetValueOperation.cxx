@@ -46,16 +46,18 @@ bool SetValueOperation::runImplementation()
 
     rDoc.SetValue(aPosition, mfValue);
 
+    ScUndoSetCell* pUndoSetCell = nullptr;
     if (bUndo)
     {
         SfxUndoManager* pUndoMgr = mrDocShell.GetUndoManager();
         ScCellValue aNewVal;
         aNewVal.assign(rDoc, aPosition);
-        pUndoMgr->AddUndoAction(
-            std::make_unique<ScUndoSetCell>(mrDocShell, aPosition, aOldVal, aNewVal));
+        auto pUndoAction = std::make_unique<ScUndoSetCell>(mrDocShell, aPosition, aOldVal, aNewVal);
+        pUndoSetCell = pUndoAction.get();
+        pUndoMgr->AddUndoAction(std::move(pUndoAction));
     }
 
-    syncSheetViews();
+    syncCellToSheetViews(aPosition, pUndoSetCell);
 
     if (bHeight)
         mrDocFunc.AdjustRowHeight(ScRange(aPosition), true, mbApi);
@@ -66,6 +68,8 @@ bool SetValueOperation::runImplementation()
     // #103934#; notify editline and cell in edit mode
     if (mbApi)
         mrDocFunc.NotifyInputHandler(aPosition);
+
+    mrDocShell.ResolveSpilledOutputs();
 
     return true;
 }

@@ -98,7 +98,7 @@ bool ApplyAttributesOperation::runImplementation()
         else if (nExtFlags & SC_PF_LINES)
             ScDocFunc::PaintAbove(mrDocShell, aMultiRange); // because of lines above the range
 
-        syncSheetViews();
+        syncMarkPatternToSheetViews(aMark, mrPattern);
         aModificator.SetDocumentModified();
     }
 
@@ -176,7 +176,7 @@ bool ApplyAttributesWithChangedRangeOperation::runImplementation()
 
     rDoc.ApplySelectionPattern(mrPattern, aMark, pEditDataArray);
 
-    syncSheetViews();
+    syncMarkPatternToSheetViews(aMark, mrPattern);
 
     mrDocShell.PostPaint(nStartCol, nStartRow, nStartTab, nEndCol, nEndRow, nEndTab,
                          PaintPartFlags::Grid, mnExtFlags | SC_PF_TESTMERGE);
@@ -247,7 +247,7 @@ bool ApplyAttributesToCellOperation::runImplementation()
     }
     pOldPat.reset(); // is copied in undo (Pool)
 
-    syncSheetViews();
+    syncCellPatternToSheetViews(aPosition, mrPattern);
 
     mrDocShell.PostPaint(nCol, nRow, nTab, nCol, nRow, nTab, PaintPartFlags::Grid,
                          mnExtFlags | SC_PF_TESTMERGE);

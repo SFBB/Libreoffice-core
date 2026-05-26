@@ -22,8 +22,6 @@
 #include "rangelst.hxx"
 #include <rtl/ref.hxx>
 #include <svl/lstner.hxx>
-#include <comphelper/proparrhlp.hxx>
-#include <comphelper/propertycontainer2.hxx>
 
 #include <com/sun/star/table/XTableChart.hpp>
 #include <com/sun/star/table/XTableCharts.hpp>
@@ -32,7 +30,8 @@
 #include <com/sun/star/container/XEnumerationAccess.hpp>
 #include <com/sun/star/container/XIndexAccess.hpp>
 #include <com/sun/star/container/XNamed.hpp>
-#include <comphelper/compbase.hxx>
+
+#include <comphelper/propcontainerimplhelper.hxx>
 #include <cppuhelper/implbase.hxx>
 
 class ScDocShell;
@@ -88,20 +87,16 @@ public:
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
 };
 
-typedef ::comphelper::WeakComponentImplHelper<
-    css::table::XTableChart,
-    css::document::XEmbeddedObjectSupplier,
-    css::container::XNamed,
-    css::lang::XServiceInfo > ScChartObj_Base;
-
-typedef ::comphelper::OPropertyContainer2 ScChartObj_PBase;
-typedef ::comphelper::OPropertyArrayUsageHelper< ScChartObj > ScChartObj_PABase;
-
-class ScChartObj final :
-                   public ScChartObj_Base
-                  ,public ScChartObj_PBase
-                  ,public ScChartObj_PABase
-                  ,public SfxListener
+using ScChartObj_Base = comphelper::OPropertyContainerImplHelper<
+          comphelper::WeakComponentImplHelper<
+              css::table::XTableChart,
+              css::document::XEmbeddedObjectSupplier,
+              css::container::XNamed,
+              css::lang::XServiceInfo>,
+          class ScChartObj>;
+class ScChartObj final
+    : public ScChartObj_Base,
+      public SfxListener
 {
 private:
     ScDocShell*             pDocShell;
@@ -111,29 +106,17 @@ private:
     void    Update_Impl( const ScRangeListRef& rRanges, bool bColHeaders, bool bRowHeaders );
     void    GetData_Impl( ScRangeListRef& rRanges, bool& rColHeaders, bool& rRowHeaders ) const;
 
-    // ::comphelper::OPropertySetHelper
-    virtual ::cppu::IPropertyArrayHelper& getInfoHelper() override;
-    virtual void setFastPropertyValue_NoBroadcast( std::unique_lock<std::mutex>& rGuard, sal_Int32 nHandle, const css::uno::Any& rValue ) override;
-    using ::comphelper::OPropertySetHelper::getFastPropertyValue;
-    virtual void getFastPropertyValue( std::unique_lock<std::mutex>& rGuard, css::uno::Any& rValue, sal_Int32 nHandle ) const override;
-
-    // ::comphelper::OPropertyArrayUsageHelper
+    // ::comphelper::OPropertyImplHelper
     virtual ::cppu::IPropertyArrayHelper* createArrayHelper() const override;
+    virtual void setFastPropertyValue_NoBroadcast( std::unique_lock<std::mutex>& rGuard, sal_Int32 nHandle, const css::uno::Any& rValue ) override;
+    using ScChartObj_Base::getFastPropertyValue;
+    virtual void getFastPropertyValue( std::unique_lock<std::mutex>& rGuard, css::uno::Any& rValue, sal_Int32 nHandle ) const override;
 
 public:
                             ScChartObj(ScDocShell* pDocSh, SCTAB nT, OUString aN);
     virtual                 ~ScChartObj() override;
 
     virtual void            Notify( SfxBroadcaster& rBC, const SfxHint& rHint ) override;
-
-    // XInterface
-    DECLARE_XINTERFACE()
-
-    // XTypeProvider
-    DECLARE_XTYPEPROVIDER()
-
-    // XComponent
-    using ScChartObj_Base::disposing;
 
                             // XTableChart
     virtual sal_Bool SAL_CALL getHasColumnHeaders() override;
@@ -156,9 +139,6 @@ public:
     virtual OUString SAL_CALL getImplementationName() override;
     virtual sal_Bool SAL_CALL supportsService( const OUString& ServiceName ) override;
     virtual css::uno::Sequence< OUString > SAL_CALL getSupportedServiceNames() override;
-
-    // XPropertySet
-    virtual css::uno::Reference< css::beans::XPropertySetInfo > SAL_CALL getPropertySetInfo() override;
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

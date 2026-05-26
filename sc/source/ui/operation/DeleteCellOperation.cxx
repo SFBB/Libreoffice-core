@@ -106,6 +106,8 @@ bool DeleteCellOperation::runImplementation()
 
     aModificator.SetDocumentModified();
 
+    mrDocShell.ResolveSpilledOutputs();
+
     return true;
 }
 } // end sc namespace

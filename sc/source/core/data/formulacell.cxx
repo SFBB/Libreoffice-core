@@ -22,6 +22,7 @@
 #include <sal/config.h>
 #include <sal/log.hxx>
 #include <osl/diagnose.h>
+#include <o3tl/safeint.hxx>
 
 #include <cassert>
 #include <cstdlib>
@@ -1920,6 +1921,15 @@ bool ScFormulaCell::Interpret(SCROW nStartOffset, SCROW nEndOffset)
         aDC.storeResult( aResult.GetString());
 #endif
 
+    // A lazy Interpret() may have queued a dynamic-array resize. The
+    // TrackFormulas and CalcFormulaTree hooks don't fire on this path,
+    // so drain the queue once the outermost interpret has unwound.
+    if (rDocument.HasPendingMatrixResizes()
+        && !rDocument.IsInInterpreter() && !rDocument.IsInDtorClear())
+    {
+        rDocument.ProcessPendingMatrixResizes();
+    }
+
     return bGroupInterpreted;
 }
 
@@ -2292,6 +2302,95 @@ void ScFormulaCell::InterpretTail( ScInterpreterContext& rContext, ScInterpretTa
             if (cMatrixFlag != ScMatrixMode::Formula && !pCode->IsHyperLink())
             {
                 aResult.SetToken( aResult.GetCellResultToken().get());
+            }
+            else
+            {
+                // If the result is larger than the declared matrix, check the
+                // expansion area for blocking cells and report #SPILL! if any.
+                SCCOL nDeclCols = 0;
+                SCROW nDeclRows = 0;
+                GetMatColsRows(nDeclCols, nDeclRows);
+                SCSIZE nResCols = 0;
+                SCSIZE nResRows = 0;
+                aResult.GetMatrix()->GetDimensions(nResCols, nResRows);
+                bool bSpillBlocked = false;
+                // Only spill/auto-resize when the formula uses a dynamic-array
+                // function (UNIQUE/FILTER/SORT/...); legacy array-returning
+                // functions like TRANSPOSE/MMULT and HYPERLINK keep their
+                // declared dimensions.
+                bool bIsDynamic = pCode->HasDynamicArrayFunction();
+                if (bIsDynamic && nDeclCols > 0 && nDeclRows > 0
+                    && (o3tl::make_unsigned(nDeclCols) < nResCols
+                        || o3tl::make_unsigned(nDeclRows) < nResRows))
+                {
+                    SCCOL nSpillEndCol = aPos.Col() + static_cast<SCCOL>(nResCols) - 1;
+                    SCROW nSpillEndRow = aPos.Row() + static_cast<SCROW>(nResRows) - 1;
+                    if (nSpillEndCol > rDocument.MaxCol() || nSpillEndRow > rDocument.MaxRow())
+                    {
+                        bSpillBlocked = true; // spill would go out of bounds
+                    }
+                    else
+                    {
+                        for (SCCOL nColumn = aPos.Col();
+                             nColumn <= nSpillEndCol && !bSpillBlocked; ++nColumn)
+                        {
+                            for (SCROW nRow = aPos.Row();
+                                 nRow <= nSpillEndRow && !bSpillBlocked; ++nRow)
+                            {
+                                if (nColumn < aPos.Col() + nDeclCols
+                                    && nRow < aPos.Row() + nDeclRows)
+                                {
+                                    continue; // inside declared area
+                                }
+                                if (rDocument.HasData(nColumn, nRow, aPos.Tab()))
+                                    bSpillBlocked = true;
+                            }
+                        }
+                    }
+                    if (bSpillBlocked)
+                    {
+                        // Set only the result error, not a code error. Code
+                        // errors are sticky and would prevent re-evaluation
+                        // when the blocking cells are later cleared.
+                        aResult.SetResultError(FormulaError::Spill);
+                        bChanged = bContentChanged = true;
+                    }
+                }
+                // Track spill state so cell-change operations can re-evaluate.
+                if (bSpillBlocked)
+                    rDocument.MarkFormulaSpilled(aPos);
+                else
+                    rDocument.UnmarkFormulaSpilled(aPos);
+
+                // Collapse to 1x1 on spill so previously materialised reference
+                // cells are cleared, leaving only the origin to show #SPILL!.
+                // Deferred - deleting cells inline would invalidate the caller's
+                // cell-store iterator.
+                if (bSpillBlocked && (nDeclCols > 1 || nDeclRows > 1)
+                    && !rDocument.IsThreadedGroupCalcInProgress())
+                {
+                    rDocument.MarkPendingMatrixResize(aPos);
+                }
+
+                if (!bSpillBlocked && nDeclCols > 0 && nDeclRows > 0
+                    && bIsDynamic
+                    && !rDocument.IsThreadedGroupCalcInProgress())
+                {
+                    if (o3tl::make_unsigned(nDeclCols) > nResCols
+                        || o3tl::make_unsigned(nDeclRows) > nResRows)
+                    {
+                        // Contract inline: removing cells can't recurse into
+                        // Interpret.
+                        rDocument.ResizeMatrixFormula(aPos, SCCOL(nResCols), SCROW(nResRows));
+                    }
+                    else if (o3tl::make_unsigned(nDeclCols) < nResCols
+                             || o3tl::make_unsigned(nDeclRows) < nResRows)
+                    {
+                        // Expand is deferred: freshly created reference cells
+                        // would otherwise recurse through Interpret.
+                        rDocument.MarkPendingMatrixResize(aPos);
+                    }
+                }
             }
         }
         if ( aResult.IsValue() && !std::isfinite( aResult.GetDouble() ) )

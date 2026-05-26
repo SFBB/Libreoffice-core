@@ -146,8 +146,10 @@ class PaletteManager;
 namespace svx { class ToolboxButtonColorUpdaterBase; }
 namespace sfx { struct CurrencyID; }
 
-class SvxStyleToolBoxControl final : public cppu::ImplInheritanceHelper<svt::ToolboxController,
-                                                                                          css::lang::XServiceInfo>
+using SvxStyleToolBoxControl_Base = cppu::ImplInheritanceHelper<svt::ToolboxController,
+                                                                css::lang::XServiceInfo>;
+
+class SvxStyleToolBoxControl final : public SvxStyleToolBoxControl_Base
 {
     struct Impl;
     std::unique_ptr<Impl> m_pImpl;
@@ -168,8 +170,9 @@ public:
     // XUpdatable
     virtual void SAL_CALL update() override;
 
-    // XComponent
-    virtual void SAL_CALL dispose() override;
+    // WeakComponentImplHelperBase
+    using SvxStyleToolBoxControl_Base::disposing;
+    virtual void disposing(std::unique_lock<std::mutex>& rGuard) override;
 
     // XServiceInfo
     virtual OUString SAL_CALL getImplementationName() override;

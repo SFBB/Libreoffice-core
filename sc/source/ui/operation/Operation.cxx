@@ -9,6 +9,7 @@
 
 #include <operation/Operation.hxx>
 #include <operation/OperationType.hxx>
+#include <cellvalue.hxx>
 #include <SheetViewOperationsTester.hxx>
 #include <address.hxx>
 #include <dbdata.hxx>
@@ -272,6 +273,200 @@ void Operation::syncSheetViews(UndoSheetViewSortData* pUndoSortData)
                 pDBData->GetArea(aAutoFilterRangeAfter);
             pUndoSortData->setAutoFilterRange(aAutoFilterRangeBefore, aAutoFilterRangeAfter);
         }
+    }
+}
+
+void Operation::syncCellToSheetViews(const ScAddress& rDefaultViewAddress,
+                                     UndoSheetViewSortData* pUndoSortData)
+{
+    if (!mpViewData)
+        return;
+
+    auto& rDocument = mpViewData->GetDocument();
+    SCTAB nDefaultViewTab = mpViewData->GetDefaultViewTab();
+
+    std::shared_ptr<SheetViewManager> pManager = rDocument.GetSheetViewManager(nDefaultViewTab);
+    if (!pManager || pManager->isEmpty())
+        return;
+
+    // Check if the cell could expand the auto-filter range. If so, fall back
+    // to the full sync, which can handle the complexities of that.
+    ScDBData* pDBData = rDocument.GetAnonymousDBData(nDefaultViewTab);
+    if (pDBData && pDBData->HasAutoFilter())
+    {
+        ScRange aDBRange;
+        pDBData->GetArea(aDBRange);
+        SCROW nCellRow = rDefaultViewAddress.Row();
+        SCCOL nCellCol = rDefaultViewAddress.Col();
+        if (nCellRow > aDBRange.aEnd.Row() && nCellCol >= aDBRange.aStart.Col()
+            && nCellCol <= aDBRange.aEnd.Col())
+        {
+            // Cell is below the auto-filter range in a relevant column
+            // so we need full sync.
+            syncSheetViews(pUndoSortData);
+            return;
+        }
+    }
+
+    // Read the cell value from the default view
+    ScCellValue aCellValue;
+    aCellValue.assign(rDocument, rDefaultViewAddress);
+
+    SCCOL nColumn = rDefaultViewAddress.Col();
+    SCROW nDefaultRow = rDefaultViewAddress.Row();
+
+    ScDBData* pDefaultViewDBData = rDocument.GetAnonymousDBData(nDefaultViewTab);
+
+    for (auto& rSheetView : pManager->iterateValidSheetViews())
+    {
+        SCTAB nSheetViewTab = rSheetView.getTableNumber();
+
+        // Set the cell value at the mapped position in the sheet view.
+        SCROW nSheetViewRow = rSheetView.reverseDefaultViewToSheetView(nDefaultRow, nColumn);
+        ScAddress aSheetViewAddress(nColumn, nSheetViewRow, nSheetViewTab);
+        aCellValue.commit(rDocument, aSheetViewAddress);
+
+        // If the sheet view has an active sort, re-sort to maintain correct order.
+        ScSortParam const* pSortParam = rSheetView.getSortParam();
+        if (pSortParam)
+        {
+            ScSortParam aSortParam(*pSortParam);
+            if (pDefaultViewDBData && pDefaultViewDBData->HasAutoFilter())
+            {
+                ScRange aDBRange;
+                pDefaultViewDBData->GetArea(aDBRange);
+                SCCOL nColumn1 = aDBRange.aStart.Col();
+                SCROW nRow1 = aDBRange.aStart.Row();
+                SCCOL nColumn2 = aDBRange.aEnd.Col();
+                SCROW nRow2 = aDBRange.aEnd.Row();
+                rDocument.GetDataArea(nDefaultViewTab, nColumn1, nRow1, nColumn2, nRow2, false,
+                                      true);
+                aSortParam.nRow2 = nRow2;
+                aSortParam.nCol2 = nColumn2;
+            }
+            // Don't call resetSortOrder() here - we can just let it merge the existing
+            // sort indices with the new ones and the result will be correct.
+            rDocument.Sort(nSheetViewTab, aSortParam, false, false, nullptr, nullptr);
+        }
+    }
+}
+
+void Operation::syncCellPatternToSheetViews(const ScAddress& rDefaultViewAddress,
+                                            const ScPatternAttr& rPattern)
+{
+    if (!mpViewData)
+        return;
+
+    auto& rDocument = mpViewData->GetDocument();
+    SCTAB nDefaultViewTab = mpViewData->GetDefaultViewTab();
+
+    std::shared_ptr<SheetViewManager> pManager = rDocument.GetSheetViewManager(nDefaultViewTab);
+    if (!pManager || pManager->isEmpty())
+        return;
+
+    SCCOL nColumn = rDefaultViewAddress.Col();
+    SCROW nDefaultRow = rDefaultViewAddress.Row();
+
+    for (auto& rSheetView : pManager->iterateValidSheetViews())
+    {
+        SCTAB nSheetViewTab = rSheetView.getTableNumber();
+        SCROW nSheetViewRow = rSheetView.reverseDefaultViewToSheetView(nDefaultRow, nColumn);
+        ScAddress aSheetViewAddress(nColumn, nSheetViewRow, nSheetViewTab);
+
+        ScRefCellValue aCell(rDocument, aSheetViewAddress);
+        if (aCell.getType() == CELLTYPE_EDIT)
+            rDocument.RemoveEditTextCharAttribs(aSheetViewAddress, rPattern);
+
+        rDocument.ApplyPattern(nColumn, nSheetViewRow, nSheetViewTab, rPattern);
+    }
+}
+
+void Operation::syncMarkPatternToSheetViews(const ScMarkData& rDefaultViewMark,
+                                            const ScPatternAttr& rPattern)
+{
+    if (!mpViewData)
+        return;
+
+    auto& rDocument = mpViewData->GetDocument();
+    SCTAB nDefaultViewTab = mpViewData->GetDefaultViewTab();
+
+    std::shared_ptr<SheetViewManager> pManager = rDocument.GetSheetViewManager(nDefaultViewTab);
+    if (!pManager || pManager->isEmpty())
+        return;
+
+    for (auto& rSheetView : pManager->iterateValidSheetViews())
+    {
+        SCTAB nSheetViewTab = rSheetView.getTableNumber();
+
+        // Rebuild the mark in this sheet view's coordinate space.
+        ScMarkData aSheetViewMark(rDefaultViewMark);
+        aSheetViewMark.MarkToMulti();
+
+        // Swap tab selection and area tab: default view to sheet view.
+        if (aSheetViewMark.GetTableSelect(nDefaultViewTab))
+        {
+            aSheetViewMark.SelectTable(nDefaultViewTab, false);
+            aSheetViewMark.SelectTable(nSheetViewTab, true);
+        }
+        ScRange aArea = aSheetViewMark.GetMultiMarkArea();
+        if (aArea.aStart.Tab() == nDefaultViewTab && aArea.aEnd.Tab() == nDefaultViewTab)
+            aSheetViewMark.SetAreaTab(nSheetViewTab);
+
+        // Re-map marked rows through the sheet view's sort permutation.
+        SortOrderReverser const* pSortOrder = rSheetView.getSortOrder();
+        ReorderParam const* pReorderParams = rSheetView.getReorderParameters();
+        if ((pSortOrder || pReorderParams) && aSheetViewMark.GetTableSelect(nSheetViewTab))
+        {
+            SCROW nRowStart = -1;
+            SCROW nRowEnd = -1;
+            SCCOL nColumnStart = -1;
+            SCCOL nColumnEnd = -1;
+
+            if (pSortOrder)
+            {
+                SortOrderInfo const& rSortInfo = pSortOrder->maSortInfo;
+                nRowStart = rSortInfo.mnFirstRow;
+                nRowEnd = rSortInfo.mnLastRow;
+                nColumnStart = rSortInfo.mnFirstColumn;
+                nColumnEnd = rSortInfo.mnLastColumn;
+            }
+            else
+            {
+                ScRange const& rSortRange = pReorderParams->maSortRange;
+                nRowStart = rSortRange.aStart.Row();
+                nRowEnd = rSortRange.aEnd.Row();
+                nColumnStart = rSortRange.aStart.Col();
+                nColumnEnd = rSortRange.aEnd.Col();
+            }
+
+            std::vector<std::pair<SCCOL, SCROW>> aMarkedCells;
+            for (SCROW nRow = nRowStart; nRow <= nRowEnd; ++nRow)
+            {
+                for (SCCOL nColumn = nColumnStart; nColumn <= nColumnEnd; ++nColumn)
+                {
+                    if (aSheetViewMark.IsCellMarked(nColumn, nRow))
+                    {
+                        ScRange aCellRange(nColumn, nRow, nSheetViewTab, nColumn, nRow,
+                                           nSheetViewTab);
+                        aSheetViewMark.SetMultiMarkArea(aCellRange, false);
+                        aMarkedCells.emplace_back(nColumn, nRow);
+                    }
+                }
+            }
+            for (auto& [nColumn, nRow] : aMarkedCells)
+            {
+                SCROW nMappedRow = rSheetView.reverseDefaultViewToSheetView(nRow, nColumn);
+                ScRange aCellRange(nColumn, nMappedRow, nSheetViewTab, nColumn, nMappedRow,
+                                   nSheetViewTab);
+                aSheetViewMark.SetMultiMarkArea(aCellRange, true);
+            }
+        }
+
+        if (!aSheetViewMark.HasAnyMultiMarks())
+            aSheetViewMark.ResetMark();
+        aSheetViewMark.MarkToSimple();
+
+        rDocument.ApplySelectionPattern(rPattern, aSheetViewMark, nullptr);
     }
 }
 

@@ -371,6 +371,8 @@ bool MoveBlockOperation::runImplementation()
 
     SfxGetpApp()->Broadcast(SfxHint(SfxHintId::ScAreaLinksChanged));
 
+    mrDocShell.ResolveSpilledOutputs();
+
     return true;
 }
 }
