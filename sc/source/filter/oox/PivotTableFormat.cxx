@@ -91,8 +91,6 @@ void PivotTableFormat::finalizeImport()
     if (pSaveData->hasFormats())
         aFormats = pSaveData->getFormats();
 
-    // Resolve references - TODO
-
     sc::PivotTableFormat aFormat;
     if (mbDataOnly)
         aFormat.eType = sc::FormatType::Data;
@@ -102,17 +100,38 @@ void PivotTableFormat::finalizeImport()
     aFormat.bDataOnly = mbDataOnly;
     aFormat.bLabelOnly = mbLabelOnly;
     aFormat.bOutline = mbOutline;
+    aFormat.bGrandRow = mbGrandRow;
+    aFormat.bGrandColumn = mbGrandCol;
     aFormat.oFieldPosition = moFieldPosition;
+    if (moOffset)
+    {
+        // Resolve offset
+        ScAddress aAddress;
+        const auto eGrammar = formula::FormulaGrammar::CONV_XL_A1;
+        ScRefFlags nFlags = aAddress.Parse(*moOffset, getScDocument(), eGrammar);
+        if (nFlags & ScRefFlags::COL_VALID)
+            aFormat.oOffset = ScRange(aAddress);
+    }
 
     aFormat.pPattern = std::move(pPattern);
     for (auto& rReference : maReferences)
     {
         if (rReference->mnField)
         {
+            sal_Int32 nDimension = sal_Int32(*rReference->mnField);
+
+            bool bHasSubtotal = rReference->mbDefaultSubtotal || rReference->mbSumSubtotal
+                                || rReference->mbCountASubtotal || rReference->mbAvgSubtotal
+                                || rReference->mbMaxSubtotal || rReference->mbMinSubtotal
+                                || rReference->mbProductSubtotal || rReference->mbCountSubtotal
+                                || rReference->mbStdDevSubtotal || rReference->mbStdDevPSubtotal
+                                || rReference->mbVarSubtotal || rReference->mbVarPSubtotal;
+
             aFormat.aSelections.push_back(
                 sc::Selection{ .bSelected = rReference->mbSelected,
-                               .nField = sal_Int32(*rReference->mnField),
-                               .nIndices = rReference->maFieldItemsIndices });
+                               .nField = nDimension,
+                               .nIndices = rReference->maFieldItemsIndices,
+                               .bHasSubtotal = bHasSubtotal });
         }
     }
     aFormats.add(aFormat);

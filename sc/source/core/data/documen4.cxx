@@ -252,6 +252,52 @@ bool ScDocument::Solver(SCCOL nFCol, SCROW nFRow, SCTAB nFTab,
     return bRet;
 }
 
+bool ScDocument::IsMatrixSpillBlocked(const ScRange& rRange,
+                                      SCCOL nDeclCols, SCROW nDeclRows) const
+{
+    const ScAddress& rOrigin = rRange.aStart;
+    for (SCCOL nCol = rRange.aStart.Col(); nCol <= rRange.aEnd.Col(); ++nCol)
+    {
+        for (SCROW nRow = rRange.aStart.Row(); nRow <= rRange.aEnd.Row(); ++nRow)
+        {
+            if (nCol < rOrigin.Col() + nDeclCols && nRow < rOrigin.Row() + nDeclRows)
+                continue; // inside the already-declared sub-range
+            if (const_cast<ScDocument*>(this)->HasData(nCol, nRow, rOrigin.Tab()))
+                return true;
+        }
+    }
+    return false;
+}
+
+bool ScDocument::HasMatrixBlocker(const ScRange& rRange) const
+{
+    const ScAddress& rOrigin = rRange.aStart;
+    for (SCCOL nColumn = rRange.aStart.Col(); nColumn <= rRange.aEnd.Col(); ++nColumn)
+    {
+        for (SCROW nRow = rRange.aStart.Row(); nRow <= rRange.aEnd.Row(); ++nRow)
+        {
+            if (nColumn == rOrigin.Col() && nRow == rOrigin.Row())
+                continue;
+            ScRefCellValue aCell(const_cast<ScDocument&>(*this),
+                                 ScAddress(nColumn, nRow, rOrigin.Tab()));
+            if (aCell.getType() == CELLTYPE_FORMULA
+                && aCell.getFormula()->GetMatrixFlag() == ScMatrixMode::Reference)
+            {
+                // Skip only this matrix's own reference cells. A reference
+                // cell belonging to a different matrix is a real blocker.
+                ScAddress aRefOrigin;
+                if (aCell.getFormula()->GetMatrixOrigin(*this, aRefOrigin)
+                    && aRefOrigin == rOrigin)
+                    continue;
+                return true;
+            }
+            if (!aCell.isEmpty())
+                return true;
+        }
+    }
+    return false;
+}
+
 void ScDocument::InsertMatrixFormula(SCCOL nCol1, SCROW nRow1,
                                      SCCOL nCol2, SCROW nRow2,
                                      const ScMarkData& rMark,
@@ -321,15 +367,10 @@ void ScDocument::InsertMatrixFormula(SCCOL nCol1, SCROW nRow1,
                 break;
             if (!FetchTable(nTab))
                 continue;
-            for (SCCOL nCol = nCol1; nCol <= nCol2 && !bSpillBlocked; ++nCol)
+            if (IsMatrixSpillBlocked(ScRange(nCol1, nRow1, nTab, nCol2, nRow2, nTab)))
             {
-                for (SCROW nRow = nRow1; nRow <= nRow2 && !bSpillBlocked; ++nRow)
-                {
-                    if (nCol == nCol1 && nRow == nRow1)
-                        continue; // skip the origin cell
-                    if (HasData(nCol, nRow, nTab))
-                        bSpillBlocked = true;
-                }
+                bSpillBlocked = true;
+                break;
             }
         }
         if (bSpillBlocked)
@@ -468,6 +509,14 @@ void ScDocument::ResizeMatrixFormula(const ScAddress& rOrigin, SCCOL nNewCols, S
     ScRange aAffected(nOriginColumn, nOriginRow, nTab,
                       nOriginColumn + nMaxColumn - 1, nOriginRow + nMaxRow - 1, nTab);
     BroadcastCells(aAffected, SfxHintId::ScDataChanged);
+
+    // Track expanded-vs-collapsed state so the spill state fix-up can find
+    // this matrix again if a blocker is later placed inside its range via
+    // a path that doesn't itself notify the master.
+    if (nNewCols > 1 || nNewRows > 1)
+        MarkExpandedDynamicArray(rOrigin);
+    else
+        UnmarkExpandedDynamicArray(rOrigin);
 
     ScDocShell* pDocShell = GetDocumentShell();
     if (pDocShell)

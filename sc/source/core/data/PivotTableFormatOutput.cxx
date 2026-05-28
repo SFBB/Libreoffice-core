@@ -8,10 +8,12 @@
  */
 
 #include <pivot/PivotTableFormatOutput.hxx>
+#include <set>
 #include <pivot/DPOutLevelData.hxx>
 
 #include <dpoutput.hxx>
 #include <dpobject.hxx>
+#include <pivot.hxx>
 #include <dptabdat.hxx>
 #include <dpcache.hxx>
 #include <document.hxx>
@@ -25,6 +27,7 @@ namespace
 class NameResolver
 {
 private:
+    ScDPObject& mrObject;
     ScDPCache const& mrCache;
 
     std::unordered_map<sal_Int32, std::vector<OUString>> maNameCache;
@@ -45,6 +48,17 @@ private:
 
     void fillNamesForDimension(std::vector<OUString>& rNames, sal_Int32 nDimension)
     {
+        // Try to get member names in pivot field order first.
+        // This matches the order used by the pivot table output.
+        std::vector<ScDPLabelData::Member> aMembers;
+        if (mrObject.GetMembers(nDimension, 0, aMembers) && !aMembers.empty())
+        {
+            for (const auto& rMember : aMembers)
+                rNames.push_back(rMember.maName);
+            return;
+        }
+
+        // Fallback to cache order
         if (mrCache.IsValidDimensionIndex(nDimension))
         {
             fillNamesForItems(rNames, mrCache.GetDimMemberValues(nDimension), nDimension);
@@ -60,8 +74,9 @@ private:
     }
 
 public:
-    NameResolver(ScDPCache const& rCache)
-        : mrCache(rCache)
+    NameResolver(ScDPObject& rObject, ScDPCache const& rCache)
+        : mrObject(rObject)
+        , mrCache(rCache)
     {
     }
 
@@ -127,6 +142,8 @@ void fillOutputFieldFromSelection(FormatOutputField& rOutputField, Selection con
             rOutputField.aName
                 = rNameResolver.getNameForIndex(rOutputField.nIndex, rOutputField.nDimension);
     }
+    rOutputField.bSelected = rSelection.bSelected;
+    rOutputField.bHasSubtotal = rSelection.bHasSubtotal;
     rOutputField.bSet = true;
 }
 
@@ -179,7 +196,7 @@ void FormatOutput::prepare(SCTAB nTab, std::vector<ScDPOutLevelData> const& rCol
     ScDPFilteredCache const& rFilteredCache = pTableData->GetCacheTable();
     ScDPCache const& rCache = rFilteredCache.getCache();
 
-    NameResolver aNameResolver(rCache);
+    NameResolver aNameResolver(mrObject, rCache);
 
     // Initialize format output entries (FormatOutputEntry) and set the data already available from output fields
     // (rColumnFields and rRowFields) and the pivot table format list (PivotTableFormat).
@@ -199,6 +216,9 @@ void FormatOutput::prepare(SCTAB nTab, std::vector<ScDPOutLevelData> const& rCol
             aEntry.pPattern = rFormat.pPattern;
             aEntry.onTab = nTab;
             aEntry.eType = rFormat.eType;
+            aEntry.bGrandRow = rFormat.bGrandRow;
+            aEntry.bGrandColumn = rFormat.bGrandColumn;
+            aEntry.oOffset = rFormat.oOffset;
 
             initFormatOutputField(nSelectionIndex, aEntry.aRowOutputFields, rRowFields, rFormat,
                                   aNameResolver);
@@ -322,7 +342,9 @@ void checkForMatchingLines(std::vector<LineData> const& rLines,
             {
                 if (rFormatEntry.bSet)
                 {
-                    if (rFormatEntry.bMatchesAll && !rFieldData.bSubtotal)
+                    if (rFormatEntry.bHasSubtotal && rFieldData.aName == rFormatEntry.aName)
+                        bFieldMatch = true;
+                    else if (rFormatEntry.bMatchesAll && !rFieldData.bSubtotal)
                         bFieldMatch = true;
                     else if (nDimension == constDataDimension
                              && rFieldData.nIndex == rFormatEntry.nIndex)
@@ -368,11 +390,11 @@ void evaluateMatches(ScDocument& rDocument,
                      std::vector<std::reference_wrapper<const LineData>> const& rMatches,
                      std::vector<std::reference_wrapper<const LineData>> const& rMaybeMatches,
                      std::vector<SCCOLROW>& aRows, std::vector<SCCOLROW>& aColumns,
-                     FormatOutputEntry const& rOutputEntry, FormatResultDirection eResultDirection)
+                     FormatOutputEntry const& rEntry, FormatResultDirection eResultDirection)
 {
     // We expect that tab and pattern to be set or this method shouldn't be called at all
-    assert(rOutputEntry.onTab);
-    assert(rOutputEntry.pPattern);
+    assert(rEntry.onTab);
+    assert(rEntry.pPattern);
 
     if (rMatches.empty() && rMaybeMatches.empty())
         return;
@@ -387,7 +409,7 @@ void evaluateMatches(ScDocument& rDocument,
         if (!rLineData.oLine || !rLineData.oPosition)
             continue;
 
-        if (rOutputEntry.eType == FormatType::Label && !bMaybeExists)
+        if (rEntry.eType == FormatType::Label && !bMaybeExists)
         {
             // Primary axis is set to column (line) then row (position)
             SCCOLROW nColumn = *rLineData.oLine;
@@ -398,9 +420,9 @@ void evaluateMatches(ScDocument& rDocument,
                 std::swap(nRow, nColumn);
 
             // Set the pattern to the sheet
-            rDocument.ApplyPattern(nColumn, nRow, *rOutputEntry.onTab, *rOutputEntry.pPattern);
+            rDocument.ApplyPattern(nColumn, nRow, *rEntry.onTab, *rEntry.pPattern);
         }
-        else if (rOutputEntry.eType == FormatType::Data)
+        else if (rEntry.eType == FormatType::Data)
         {
             if (eResultDirection == FormatResultDirection::ROW)
                 aRows.push_back(*rLineData.oLine);
@@ -410,16 +432,142 @@ void evaluateMatches(ScDocument& rDocument,
     }
 }
 
+/** Check if any output field in the vector has been set (has a reference). */
+bool hasSetFields(std::vector<FormatOutputField> const& rFields)
+{
+    if (rFields.empty())
+        return false;
+    return std::any_of(rFields.begin(), rFields.end(), [](auto const& f) { return f.bSet; });
+}
+
+/** Iterate matched lines and call the applicator for each line position, but
+  * skip the grand total position. */
+template <typename LinesT>
+void applyToMatchedLines(LinesT const& rMatchedLines, SCCOLROW nGrandTotalPositionToSkip,
+                         std::function<void(SCCOLROW nLinePosition)> const& rApplicator)
+{
+    for (LineData const& rLine : rMatchedLines)
+    {
+        if (!rLine.oLine)
+            continue;
+        if (nGrandTotalPositionToSkip >= 0 && *rLine.oLine == nGrandTotalPositionToSkip)
+            continue;
+        rApplicator(*rLine.oLine);
+    }
+}
+
+/** Apply a grand total data format along one axis.
+ *  If there are references, then find specific lines, otherwise apply to all
+ *  lines. Skips the grand total position to avoid setting the intersection
+ *  cell. */
+void applyGrandTotalDataFormat(std::vector<LineData> const& rLines,
+                               std::vector<FormatOutputField> const& rOutputFields,
+                               FormatType eType, SCCOLROW nGrandTotalPositionToSkip,
+                               std::function<void(SCCOLROW nLinePosition)> const& rApplicator)
+{
+    if (hasSetFields(rOutputFields))
+    {
+        std::vector<std::reference_wrapper<const LineData>> aMatches;
+        std::vector<std::reference_wrapper<const LineData>> aMaybeMatches;
+        checkForMatchingLines(rLines, rOutputFields, eType, aMatches, aMaybeMatches);
+        applyToMatchedLines(aMatches, nGrandTotalPositionToSkip, rApplicator);
+        applyToMatchedLines(aMaybeMatches, nGrandTotalPositionToSkip, rApplicator);
+    }
+    else
+    {
+        applyToMatchedLines(rLines, nGrandTotalPositionToSkip, rApplicator);
+    }
+}
+
 } // end anonymous namespace
+
+bool FormatOutput::tryHandleGrandTotals(ScDocument& rDocument, sc::FormatOutputEntry const& rEntry)
+{
+    if (rEntry.bGrandRow && rEntry.bGrandColumn && mnGrandTotalRow >= 0 && mnGrandTotalColumn >= 0)
+    {
+        rDocument.ApplyPattern(mnGrandTotalColumn, mnGrandTotalRow, *rEntry.onTab,
+                               *rEntry.pPattern);
+        return true;
+    }
+
+    if (rEntry.bGrandRow && mnGrandTotalRow >= 0)
+    {
+        if (rEntry.eType == FormatType::Data)
+        {
+            applyGrandTotalDataFormat(maColumnLines, rEntry.aColumnOutputFields, rEntry.eType,
+                                      mnGrandTotalColumn, [&](SCCOLROW nColumnPosition) {
+                                          rDocument.ApplyPattern(nColumnPosition, mnGrandTotalRow,
+                                                                 *rEntry.onTab, *rEntry.pPattern);
+                                      });
+        }
+        else if (rEntry.eType == FormatType::Label)
+        {
+            if (rEntry.oOffset && mnTabStartColumn >= 0 && mnDataStartColumn > mnTabStartColumn)
+            {
+                // Offset column is relative to the label area
+                SCCOL nOffsetColumn = rEntry.oOffset->aStart.Col();
+                SCCOL nLabelCount = mnDataStartColumn - mnTabStartColumn;
+                SCCOL nTargetColumn
+                    = mnTabStartColumn + std::min(nOffsetColumn, SCCOL(nLabelCount - 1));
+                rDocument.ApplyPattern(nTargetColumn, mnGrandTotalRow, *rEntry.onTab,
+                                       *rEntry.pPattern);
+            }
+            else if (mnTabStartColumn >= 0 && mnDataStartColumn > mnTabStartColumn)
+            {
+                // No offset: apply to all label columns
+                for (SCCOL nColumn = mnTabStartColumn; nColumn < mnDataStartColumn; ++nColumn)
+                {
+                    rDocument.ApplyPattern(nColumn, mnGrandTotalRow, *rEntry.onTab,
+                                           *rEntry.pPattern);
+                }
+            }
+        }
+        return true;
+    }
+
+    if (rEntry.bGrandColumn && mnGrandTotalColumn >= 0)
+    {
+        if (rEntry.eType == FormatType::Data)
+        {
+            applyGrandTotalDataFormat(maRowLines, rEntry.aRowOutputFields, rEntry.eType,
+                                      mnGrandTotalRow, [&](SCCOLROW nRowPosition) {
+                                          rDocument.ApplyPattern(mnGrandTotalColumn, nRowPosition,
+                                                                 *rEntry.onTab, *rEntry.pPattern);
+                                      });
+        }
+        else if (rEntry.eType == FormatType::Label)
+        {
+            // Apply to the column header rows at the grand total column.
+            // Use the column lines' positions to find header row positions.
+            std::set<SCROW> aHeaderRows;
+            for (LineData const& rColLine : maColumnLines)
+            {
+                if (rColLine.oPosition)
+                    aHeaderRows.insert(*rColLine.oPosition);
+            }
+            for (SCROW nRow : aHeaderRows)
+            {
+                rDocument.ApplyPattern(mnGrandTotalColumn, nRow, *rEntry.onTab, *rEntry.pPattern);
+            }
+        }
+        return true;
+    }
+
+    return false;
+}
 
 void FormatOutput::apply(ScDocument& rDocument)
 {
     if (!mpFormats)
         return;
 
-    for (auto const& rOutputEntry : maFormatOutputEntries)
+    for (auto const& rEntry : maFormatOutputEntries)
     {
-        if (!rOutputEntry.onTab || !rOutputEntry.pPattern)
+        if (!rEntry.onTab || !rEntry.pPattern)
+            continue;
+
+        // Handle grand total formats
+        if (tryHandleGrandTotals(rDocument, rEntry))
             continue;
 
         std::vector<SCCOLROW> aRows;
@@ -429,10 +577,10 @@ void FormatOutput::apply(ScDocument& rDocument)
             std::vector<std::reference_wrapper<const LineData>> rMatches;
             std::vector<std::reference_wrapper<const LineData>> rMaybeMatches;
 
-            checkForMatchingLines(maRowLines, rOutputEntry.aRowOutputFields, rOutputEntry.eType,
-                                  rMatches, rMaybeMatches);
+            checkForMatchingLines(maRowLines, rEntry.aRowOutputFields, rEntry.eType, rMatches,
+                                  rMaybeMatches);
 
-            evaluateMatches(rDocument, rMatches, rMaybeMatches, aRows, aColumns, rOutputEntry,
+            evaluateMatches(rDocument, rMatches, rMaybeMatches, aRows, aColumns, rEntry,
                             FormatResultDirection::ROW);
         }
 
@@ -440,21 +588,20 @@ void FormatOutput::apply(ScDocument& rDocument)
             std::vector<std::reference_wrapper<const LineData>> rMatches;
             std::vector<std::reference_wrapper<const LineData>> rMaybeMatches;
 
-            checkForMatchingLines(maColumnLines, rOutputEntry.aColumnOutputFields,
-                                  rOutputEntry.eType, rMatches, rMaybeMatches);
+            checkForMatchingLines(maColumnLines, rEntry.aColumnOutputFields, rEntry.eType, rMatches,
+                                  rMaybeMatches);
 
-            evaluateMatches(rDocument, rMatches, rMaybeMatches, aRows, aColumns, rOutputEntry,
+            evaluateMatches(rDocument, rMatches, rMaybeMatches, aRows, aColumns, rEntry,
                             FormatResultDirection::COLUMN);
         }
 
-        if (!aColumns.empty() && !aRows.empty() && rOutputEntry.eType == FormatType::Data)
+        if (!aColumns.empty() && !aRows.empty() && rEntry.eType == FormatType::Data)
         {
             for (SCCOLROW nRow : aRows)
             {
                 for (SCCOLROW nColumn : aColumns)
                 {
-                    rDocument.ApplyPattern(nColumn, nRow, *rOutputEntry.onTab,
-                                           *rOutputEntry.pPattern);
+                    rDocument.ApplyPattern(nColumn, nRow, *rEntry.onTab, *rEntry.pPattern);
                 }
             }
         }
