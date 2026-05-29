@@ -43,13 +43,6 @@ ScAddress parseAddress(const ScDocument& rDoc, OUString const& rAddressString)
     return aAddress;
 }
 
-Color getBackgroundColor(const ScDocument& rDoc, OUString const& rAddressString)
-{
-    const ScPatternAttr* pPattern = rDoc.GetPattern(parseAddress(rDoc, rAddressString));
-    const SvxBrushItem& rItem = pPattern->GetItem(ATTR_BACKGROUND);
-    return rItem.GetColor();
-}
-
 /** Compare pivot table output against Excel reference output below.
  *  The reference area starts 1 row after the pivot table ends.
  *  Returns empty string if all cells match, otherwise lists mismatches. */
@@ -214,8 +207,7 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFormatsImportExport,
 
     checkFormats();
     saveAndReload(TestFilter::XLSX);
-    // TODO
-    //checkFormats();
+    checkFormats();
 }
 
 CPPUNIT_TEST_FIXTURE(ScPivotTableFormatsImportExport,
@@ -232,8 +224,7 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFormatsImportExport,
 
     checkFormats();
     saveAndReload(TestFilter::XLSX);
-    // TODO
-    //checkFormats();
+    checkFormats();
 }
 
 CPPUNIT_TEST_FIXTURE(ScPivotTableFormatsImportExport,
@@ -328,8 +319,7 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFormatsImportExport,
 
     checkFormats();
     saveAndReload(TestFilter::XLSX);
-    // TODO
-    //checkFormats();
+    checkFormats();
 }
 
 CPPUNIT_TEST_FIXTURE(ScPivotTableFormatsImportExport,
@@ -363,8 +353,7 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFormatsImportExport,
 
     checkFormats();
     saveAndReload(TestFilter::XLSX);
-    // TODO
-    // checkFormats();
+    checkFormats();
 }
 
 CPPUNIT_TEST_FIXTURE(ScPivotTableFormatsImportExport, testPivotTableWithCellProtection)
@@ -391,56 +380,32 @@ CPPUNIT_TEST_FIXTURE(ScPivotTableFormatsImportExport, testPivotTableWithNoSource
 
 CPPUNIT_TEST_FIXTURE(ScPivotTableFormatsImportExport, testPivotTableFormatsGrandTotal)
 {
-    // Check that we can support pivot table cell formats on grand total output.
-
-    // In the file: pivot table is at B3:G14, reference output is at B17:G28.
     createScDoc("xlsx/pivot-table/PivotTableFormatsGrandTotal.xlsx");
-
     auto checkFormats = [this]() {
         ScDocument& rDocument = *getScDoc();
-
-        CPPUNIT_ASSERT_EQUAL(Color(0x00B050), getBackgroundColor(rDocument, u"G4"_ustr));
-        CPPUNIT_ASSERT(Color(0x00B050) != getBackgroundColor(rDocument, u"G3"_ustr));
-        CPPUNIT_ASSERT(Color(0x00B050) != getBackgroundColor(rDocument, u"G5"_ustr));
-        CPPUNIT_ASSERT(Color(0x00B050) != getBackgroundColor(rDocument, u"F4"_ustr));
-
-        // grandRow="1" labelOnly="1" offset="A256"
-        CPPUNIT_ASSERT_EQUAL(Color(0xC00000), getBackgroundColor(rDocument, u"B14"_ustr));
-
-        // grandRow="1" labelOnly="1" offset="IV256"
-        CPPUNIT_ASSERT_EQUAL(Color(0xFFFF00), getBackgroundColor(rDocument, u"C14"_ustr));
-
-        // grandRow="1" grandCol="1" - intersection
-        CPPUNIT_ASSERT_EQUAL(Color(0x00B0F0), getBackgroundColor(rDocument, u"G14"_ustr));
-
-        // grandRow="1" data with reference field="2" selected="0"
-        CPPUNIT_ASSERT_EQUAL(Color(0x92D050), getBackgroundColor(rDocument, u"E14"_ustr));
-        CPPUNIT_ASSERT(Color(0x92D050) != getBackgroundColor(rDocument, u"D14"_ustr));
-        CPPUNIT_ASSERT(Color(0x92D050) != getBackgroundColor(rDocument, u"F14"_ustr));
-
-        // grandCol="1" data with subtotal reference
-        CPPUNIT_ASSERT_EQUAL(Color(0x0070C0), getBackgroundColor(rDocument, u"G5"_ustr));
-        CPPUNIT_ASSERT_EQUAL(Color(0x0070C0), getBackgroundColor(rDocument, u"G6"_ustr));
-        CPPUNIT_ASSERT_EQUAL(Color(0x0070C0), getBackgroundColor(rDocument, u"G7"_ustr));
-        CPPUNIT_ASSERT_EQUAL(Color(0x0070C0), getBackgroundColor(rDocument, u"G8"_ustr));
-        CPPUNIT_ASSERT(Color(0x0070C0) != getBackgroundColor(rDocument, u"G9"_ustr));
+        auto[aPivotRange, aReferenceRange] = getPivotAndReferenceRanges(rDocument);
+        OUString aMismatches = comparePivotWithReference(rDocument, aPivotRange, aReferenceRange);
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("Cell format mismatches found", OUString(), aMismatches);
     };
 
     checkFormats();
-    // TODO: Round-trip
-    //saveAndReload(TestFilter::XLSX);
-    //checkFormats();
+    saveAndReload(TestFilter::XLSX);
+    checkFormats();
 }
 
 CPPUNIT_TEST_FIXTURE(ScPivotTableFormatsImportExport, testPivotTableFormatsSubTotals)
 {
-    // TODO: enable once subtotal label formatting is fully implemented
     createScDoc("xlsx/pivot-table/PivotTableFormatsSubTotals.xlsx");
-    // ScDocument& rDocument = *getScDoc();
-    // ScRange aPivotRange(1, 2, 0, 11, 13, 0); // B3:L14
-    // ScRange aReferenceRange(1, 15, 0, 11, 26, 0); // B16:L27
-    // OUString aMismatches = comparePivotWithReference(rDocument, aPivotRange, aReferenceRange);
-    // CPPUNIT_ASSERT_EQUAL_MESSAGE("Cell format mismatches found", OUString(), aMismatches);
+    auto checkFormats = [this]() {
+        ScDocument& rDocument = *getScDoc();
+        auto[aPivotRange, aReferenceRange] = getPivotAndReferenceRanges(rDocument);
+        OUString aMismatches = comparePivotWithReference(rDocument, aPivotRange, aReferenceRange);
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("Cell format mismatches found", OUString(), aMismatches);
+    };
+
+    checkFormats();
+    saveAndReload(TestFilter::XLSX);
+    checkFormats();
 }
 
 } // end anonymous namespace
