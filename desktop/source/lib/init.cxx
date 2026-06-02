@@ -296,43 +296,6 @@ struct ExtensionMap
     OUString filterName;
 };
 
-class TraceEventDumper : public AutoTimer
-{
-    static const int dumpTimeoutMS = 5000;
-
-public:
-    TraceEventDumper() : AutoTimer( "Trace Event dumper" )
-    {
-        SetTimeout(dumpTimeoutMS);
-        Start();
-    }
-
-    virtual void Invoke() override
-    {
-        flushRecordings();
-    }
-
-    static void flushRecordings()
-    {
-        const css::uno::Sequence<OUString> aEvents =
-            comphelper::TraceEvent::getRecordingAndClear();
-        OStringBuffer aOutput;
-        for (const auto &s : aEvents)
-        {
-            aOutput.append(OUStringToOString(s, RTL_TEXTENCODING_UTF8)
-                + "\n");
-        }
-        if (aOutput.getLength() > 0)
-        {
-            OString aChunk = aOutput.makeStringAndClear();
-            if (gImpl && gImpl->mpCallback)
-                gImpl->mpCallback(LOK_CALLBACK_PROFILE_FRAME, aChunk.getStr(), gImpl->mpCallbackData);
-        }
-    }
-};
-
-TraceEventDumper *traceEventDumper = nullptr;
-
 constexpr ExtensionMap aWriterExtensionMap[] =
 {
     { "doc",   u"MS Word 97"_ustr },
@@ -5340,19 +5303,7 @@ static void lo_setOption(LibreOfficeKit* /*pThis*/, const char *pOption, const c
 {
     static char* pCurrentSalLogOverride = nullptr;
 
-    if (strcmp(pOption, "traceeventrecording") == 0)
-    {
-        if (strcmp(pValue, "start") == 0)
-        {
-            comphelper::TraceEvent::setBufferSizeAndCallback(100, TraceEventDumper::flushRecordings);
-            comphelper::TraceEvent::startRecording();
-            if (traceEventDumper == nullptr)
-                traceEventDumper = new TraceEventDumper();
-        }
-        else if (strcmp(pValue, "stop") == 0)
-            comphelper::TraceEvent::stopRecording();
-    }
-    else if (strcmp(pOption, "sallogoverride") == 0)
+    if (strcmp(pOption, "sallogoverride") == 0)
     {
         if (pCurrentSalLogOverride != nullptr)
             free(pCurrentSalLogOverride);
@@ -8327,100 +8278,6 @@ static void preloadData()
     // see Bootstrap::reloadData for when it gets resynced
 }
 
-namespace {
-
-static void activateNotebookbar(std::u16string_view rApp)
-{
-    OUString aPath = OUString::Concat("org.openoffice.Office.UI.ToolbarMode/Applications/") + rApp;
-
-    const utl::OConfigurationTreeRoot aAppNode(xContext, aPath, true);
-
-    if (aAppNode.isValid())
-    {
-        static constexpr OUString sNoteBookbarName(u"notebookbar_online.ui"_ustr);
-        aAppNode.setNodeValue(u"Active"_ustr, Any(sNoteBookbarName));
-
-        const utl::OConfigurationNode aImplsNode = aAppNode.openNode(u"Modes"_ustr);
-        const Sequence<OUString> aModeNodeNames( aImplsNode.getNodeNames() );
-
-        for (const auto& rModeNodeName : aModeNodeNames)
-        {
-            const utl::OConfigurationNode aImplNode(aImplsNode.openNode(rModeNodeName));
-            if (!aImplNode.isValid())
-                continue;
-
-            OUString aCommandArg = comphelper::getString(aImplNode.getNodeValue(u"CommandArg"_ustr));
-            if (aCommandArg == "notebookbar.ui")
-                aImplNode.setNodeValue(u"CommandArg"_ustr, Any(sNoteBookbarName));
-        }
-
-        aAppNode.commit();
-    }
-}
-
-void setHelpRootURL()
-{
-    const char* pHelpRootURL = ::getenv("LOK_HELP_URL");
-    if (pHelpRootURL)
-    {
-        OUString aHelpRootURL = OStringToOUString(pHelpRootURL, RTL_TEXTENCODING_UTF8);
-        try
-        {
-            std::shared_ptr<comphelper::ConfigurationChanges> batch(comphelper::ConfigurationChanges::create());
-            officecfg::Office::Common::Help::HelpRootURL::set(aHelpRootURL, batch);
-            batch->commit();
-        }
-        catch (uno::Exception const& rException)
-        {
-            SAL_WARN("lok", "Failed to set the help root URL: " << rException.Message);
-        }
-    }
-}
-
-void setCertificateDir()
-{
-    const char* pEnvVarString = ::getenv("LO_CERTIFICATE_DATABASE_PATH");
-    if (pEnvVarString)
-    {
-        OUString aCertificateDatabasePath = OStringToOUString(pEnvVarString, RTL_TEXTENCODING_UTF8);
-        try
-        {
-            std::shared_ptr<comphelper::ConfigurationChanges> pBatch(comphelper::ConfigurationChanges::create());
-            officecfg::Office::Common::Security::Scripting::CertDir::set(aCertificateDatabasePath, pBatch);
-            officecfg::Office::Common::Security::Scripting::ManualCertDir::set(aCertificateDatabasePath, pBatch);
-            pBatch->commit();
-        }
-        catch (uno::Exception const& rException)
-        {
-            SAL_WARN("lok", "Failed to set the NSS certificate database directory: " << rException.Message);
-        }
-    }
-}
-
-void setDeeplConfig()
-{
-    const char* pAPIUrlString = ::getenv("DEEPL_API_URL");
-    const char* pAuthKeyString = ::getenv("DEEPL_AUTH_KEY");
-    if (pAPIUrlString && pAuthKeyString)
-    {
-        OUString aAPIUrl = OStringToOUString(pAPIUrlString, RTL_TEXTENCODING_UTF8);
-        OUString aAuthKey = OStringToOUString(pAuthKeyString, RTL_TEXTENCODING_UTF8);
-        try
-        {
-            std::shared_ptr<comphelper::ConfigurationChanges> batch(comphelper::ConfigurationChanges::create());
-            officecfg::Office::Linguistic::Translation::Deepl::ApiURL::set(aAPIUrl, batch);
-            officecfg::Office::Linguistic::Translation::Deepl::AuthKey::set(aAuthKey, batch);
-            batch->commit();
-        }
-        catch(uno::Exception const& rException)
-        {
-            SAL_WARN("lok", "Failed to set Deepl API settings: " << rException.Message);
-        }
-    }
-}
-
-}
-
 static int lo_initialize(LibreOfficeKit* pThis, const char* pAppPath, const char* pUserProfileUrl)
 {
     enum {
@@ -8432,8 +8289,6 @@ static int lo_initialize(LibreOfficeKit* pThis, const char* pAppPath, const char
     // Did we do a pre-initialize
     static bool bPreInited = false;
     static bool bUnipoll = false;
-    static bool bProfileZones = false;
-    static bool bNotebookbar = false;
 
     { // cf. string lifetime for preinit
         std::vector<OUString> aOpts;
@@ -8448,16 +8303,12 @@ static int lo_initialize(LibreOfficeKit* pThis, const char* pAppPath, const char
                 bUnipoll = true;
             if (it == "compact_fonts")
                 gUseCompactFonts = true;
-            else if (it == "profile_events")
-                bProfileZones = true;
             else if (it == "sc_no_grid_bg")
                 comphelper::LibreOfficeKit::setCompatFlag(
                     comphelper::LibreOfficeKit::Compat::scNoGridBackground);
             else if (it == "sc_print_twips_msgs")
                 comphelper::LibreOfficeKit::setCompatFlag(
                     comphelper::LibreOfficeKit::Compat::scPrintTwipsMsgs);
-            else if (it == "notebookbar")
-                bNotebookbar = true;
         }
     }
 
@@ -8491,13 +8342,6 @@ static int lo_initialize(LibreOfficeKit* pThis, const char* pAppPath, const char
 
     if (bInitialized)
         return 1;
-
-    // Turn profile zones on early
-    if (bProfileZones && eStage == SECOND_INIT)
-    {
-        comphelper::TraceEvent::startRecording();
-        traceEventDumper = new TraceEventDumper();
-    }
 
     comphelper::ProfileZone aZone("lok-init");
 
@@ -8787,26 +8631,7 @@ static int lo_initialize(LibreOfficeKit* pThis, const char* pAppPath, const char
     }
 #endif
 
-
-    setHelpRootURL();
-    setCertificateDir();
-    setDeeplConfig();
     setLanguageToolConfig();
-
-    if (bNotebookbar)
-    {
-        std::shared_ptr<comphelper::ConfigurationChanges> batch(comphelper::ConfigurationChanges::create());
-        officecfg::Office::UI::ToolbarMode::ActiveWriter::set(u"notebookbar_online.ui"_ustr, batch);
-        officecfg::Office::UI::ToolbarMode::ActiveCalc::set(u"notebookbar_online.ui"_ustr, batch);
-        officecfg::Office::UI::ToolbarMode::ActiveImpress::set(u"notebookbar_online.ui"_ustr, batch);
-        officecfg::Office::UI::ToolbarMode::ActiveDraw::set(u"notebookbar_online.ui"_ustr, batch);
-        batch->commit();
-
-        activateNotebookbar(u"Writer");
-        activateNotebookbar(u"Calc");
-        activateNotebookbar(u"Impress");
-        activateNotebookbar(u"Draw");
-    }
 
     // staticize all strings.
     if (eStage == PRE_INIT)
