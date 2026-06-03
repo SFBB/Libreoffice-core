@@ -433,8 +433,7 @@ void ScDocumentImport::setMatrixCells(
     // The file was saved with a #SPILL! error. Trust that and don't
     // materialise reference cells over the matrix range. Any blocker
     // cell still sitting in the range survives.
-    if (bCheckForSpill && (rRange.aEnd.Col() > rRange.aStart.Col()
-                           || rRange.aEnd.Row() > rRange.aStart.Row()))
+    if (bCheckForSpill)
     {
         pCell->MarkAsSpilled();
         return;
@@ -485,6 +484,11 @@ void ScDocumentImport::setMatrixCells(
                 rColCells.set(pBlockPos->miCellPos, aPos.Row(), pCell);
         }
     }
+
+    // Register the expanded matrix master so spill resolution finds it
+    // again if a blocker is later placed inside its declared range.
+    if (rRange.aEnd.Col() > rRange.aStart.Col() || rRange.aEnd.Row() > rRange.aStart.Row())
+        mpImpl->mrDoc.MarkExpandedDynamicArray(rBasePos);
 }
 
 void ScDocumentImport::setTableOpCells(const ScRange& rRange, const ScTabOpParam& rParam)

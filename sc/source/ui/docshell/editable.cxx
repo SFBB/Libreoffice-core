@@ -20,6 +20,7 @@
 #include <editable.hxx>
 #include <document.hxx>
 #include <viewfunc.hxx>
+#include <formulacell.hxx>
 #include <globstr.hrc>
 
 ScEditableTester::ScEditableTester() = default;
@@ -178,6 +179,20 @@ TranslateId ScEditableTester::GetMessageId() const
         return STR_MATRIXFRAGMENTERR;
     else
         return STR_PROTECTIONERR;
+}
+
+bool ScEditableTester::IsEditableOrMatrixCell(const ScDocument& rDoc,
+                                              const ScAddress& rPos) const
+{
+    if (mbIsEditable)
+        return true;
+    if (!mbOnlyMatrix)
+        return false;
+    const ScFormulaCell* pCell = rDoc.GetFormulaCell(rPos);
+    if (!pCell)
+        return false;
+    const ScMatrixMode eFlag = pCell->GetMatrixFlag();
+    return eFlag == ScMatrixMode::Reference || eFlag == ScMatrixMode::Formula;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -55,7 +55,6 @@
 #include <unotools/charclass.hxx>
 #include <utility>
 #include <vcl/help.hxx>
-#include <vcl/jsdialog/executor.hxx>
 #include <vcl/commandevent.hxx>
 #include <vcl/cursor.hxx>
 #include <vcl/settings.hxx>
@@ -1876,19 +1875,6 @@ void ScTabViewShell::LOKSendFormulabarUpdate(const EditView* pActiveView,
         sal_uInt32 nFormat = pPattern->GetNumberFormat( pFormatter );
         maSendFormulabarUpdate.m_separator = pFormatter->GetFormatDecimalSep(nFormat);
     }
-
-    maSendFormulabarUpdate.Send();
-}
-
-void ScTabViewShell::SendFormulabarUpdate::Send()
-{
-    std::unique_ptr<jsdialog::ActionDataMap> pData = std::make_unique<jsdialog::ActionDataMap>();
-    (*pData)["action_type"_ostr] = "setText";
-    (*pData)["text"_ostr] = m_aText;
-    (*pData)["selection"_ostr] = m_aSelection;
-    (*pData)["separator"_ostr] = m_separator;
-    OUString sWindowId = OUString::number(m_nShellId) + "formulabar";
-    jsdialog::SendAction(sWindowId, u"sc_input_window"_ustr, std::move(pData));
 }
 
 // Calculate selection and display as tip help
@@ -2608,9 +2594,17 @@ bool ScInputHandler::StartTable(sal_Unicode cTyped, bool bFromCommand, bool bInp
             aTester.TestSelectedBlock(
                 rDoc, aCursorPos.Col(), aCursorPos.Row(), aCursorPos.Col(), aCursorPos.Row(), rMark );
 
+        // Single cell input on a matrix reference cell is allowed. Writing
+        // turns the reference cell into a blocker, the matrix master detects
+        // it via spill resolution and collapses to #SPILL!. The matrix
+        // protection only fires for multi cell or master cell edits.
+        const bool bAllowMatrixRef
+            = !rMark.IsMarked() && !rMark.IsMultiMarked()
+              && aTester.IsEditableOrMatrixCell(rDoc, aCursorPos);
+
         bool bStartInputMode = !(pActiveViewSh->GetViewShell() && pActiveViewSh->GetViewShell()->IsLokReadOnlyView());
 
-        if (!aTester.IsEditable())
+        if (!aTester.IsEditable() && !bAllowMatrixRef)
         {
             bProtected = true;
             // We allow read-only input mode activation regardless

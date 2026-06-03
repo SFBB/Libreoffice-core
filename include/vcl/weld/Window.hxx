@@ -10,6 +10,7 @@
 #pragma once
 
 #include <vcl/dllapi.h>
+#include <vcl/weld/ScreenshotEntry.hxx>
 #include <vcl/weld/weld.hxx>
 
 struct SystemEnvData;
@@ -57,7 +58,7 @@ public:
     // render the widget to an output device
     virtual VclPtr<VirtualDevice> screenshot() = 0;
 
-    virtual const vcl::ILibreOfficeKitNotifier* GetLOKNotifier() = 0;
+    virtual const vcl::ILibreOfficeKitNotifier* GetLOKNotifier() { return nullptr; };
 };
 }
 
