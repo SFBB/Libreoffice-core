@@ -23,7 +23,9 @@
 #include <sfx2/basedlgs.hxx>
 #include <sal/types.h>
 #include <rtl/ustring.hxx>
+#include <vcl/weld/Container.hxx>
 #include <vcl/weld/Entry.hxx>
+#include <vcl/weld/RadioButton.hxx>
 #include <vcl/weld/SpinButton.hxx>
 #include <vcl/weld/TreeView.hxx>
 #include <vcl/weld/weld.hxx>

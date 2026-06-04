@@ -13,6 +13,8 @@
 
 #include "QtInstanceButton.hxx"
 
+#include <vcl/weld/ToggleButton.hxx>
+
 #include <QtWidgets/QAbstractButton>
 
 class QtInstanceToggleButton : public QtInstanceButton, public virtual weld::ToggleButton

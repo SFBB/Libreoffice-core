@@ -13,16 +13,13 @@
 #include <tools/gen.hxx>
 #include <tools/link.hxx>
 #include <vcl/dllapi.h>
+#include <vcl/weld/Toggleable.hxx>
 #include <vcl/weld/Widget.hxx>
 
 #include <com/sun/star/accessibility/XAccessibleRelationSet.hpp>
 
 #include <assert.h>
 
-namespace com::sun::star::awt
-{
-class XWindow;
-}
 namespace com::sun::star::graphic
 {
 class XGraphic;
@@ -49,49 +46,6 @@ class EntryTreeView;
 class IconView;
 class MetricSpinButton;
 class TreeView;
-
-class VCL_DLLPUBLIC Container : virtual public Widget
-{
-    Link<Container&, void> m_aContainerFocusChangedHdl;
-
-protected:
-    void signal_container_focus_changed() { m_aContainerFocusChangedHdl.Call(*this); }
-
-public:
-    // remove from old container and add to new container in one go
-    // new container can be null to just remove from old container
-    virtual void move(weld::Widget* pWidget, weld::Container* pNewParent) = 0;
-    // create an XWindow as a child of this container. The XWindow is
-    // suitable to contain css::awt::XControl items
-    virtual css::uno::Reference<css::awt::XWindow> CreateChildFrame() = 0;
-    // rLink is called when the focus transitions from a widget outside the container
-    // to a widget inside the container or vice versa
-    virtual void connect_container_focus_changed(const Link<Container&, void>& rLink)
-    {
-        m_aContainerFocusChangedHdl = rLink;
-    }
-    // causes a child of the container to have the keyboard focus
-    virtual void child_grab_focus() = 0;
-};
-
-class VCL_DLLPUBLIC WaitObject
-{
-private:
-    weld::Widget* m_pWindow;
-
-public:
-    WaitObject(weld::Widget* pWindow)
-        : m_pWindow(pWindow)
-    {
-        if (m_pWindow)
-            m_pWindow->set_busy_cursor(true);
-    }
-    ~WaitObject()
-    {
-        if (m_pWindow)
-            m_pWindow->set_busy_cursor(false);
-    }
-};
 
 inline OUString toId(const void* pValue)
 {
@@ -144,52 +98,6 @@ public:
     virtual void connect_clicked(const Link<Button&, void>& rLink) { m_aClickHdl = rLink; }
 };
 
-class VCL_DLLPUBLIC Toggleable : virtual public Widget
-{
-    friend class ::LOKTrigger;
-
-protected:
-    Link<Toggleable&, void> m_aToggleHdl;
-    TriState m_eSavedValue = TRISTATE_FALSE;
-
-    void signal_toggled()
-    {
-        if (notify_events_disabled())
-            return;
-        m_aToggleHdl.Call(*this);
-    }
-
-    virtual void do_set_active(bool active) = 0;
-
-public:
-    void set_active(bool active)
-    {
-        disable_notify_events();
-        do_set_active(active);
-        enable_notify_events();
-    }
-
-    virtual bool get_active() const = 0;
-
-    virtual TriState get_state() const
-    {
-        if (get_active())
-            return TRISTATE_TRUE;
-        return TRISTATE_FALSE;
-    }
-
-    void save_state() { m_eSavedValue = get_state(); }
-    TriState get_saved_state() const { return m_eSavedValue; }
-    bool get_state_changed_from_saved() const { return m_eSavedValue != get_state(); }
-
-    virtual void connect_toggled(const Link<Toggleable&, void>& rLink) { m_aToggleHdl = rLink; }
-};
-
-class VCL_DLLPUBLIC ToggleButton : virtual public Button, virtual public Toggleable
-{
-    friend class ::LOKTrigger;
-};
-
 class VCL_DLLPUBLIC CheckButton : virtual public Toggleable
 {
 protected:
@@ -213,26 +121,6 @@ public:
 
     virtual bool get_active() const override final { return get_state() == TRISTATE_TRUE; }
 
-    virtual void set_label(const OUString& rText) = 0;
-    virtual OUString get_label() const = 0;
-    virtual void set_label_wrap(bool wrap) = 0;
-};
-
-struct VCL_DLLPUBLIC TriStateEnabled
-{
-    TriState eState;
-    bool bTriStateEnabled;
-    TriStateEnabled()
-        : eState(TRISTATE_INDET)
-        , bTriStateEnabled(true)
-    {
-    }
-    void CheckButtonToggled(CheckButton& rToggle);
-};
-
-class VCL_DLLPUBLIC RadioButton : virtual public Toggleable
-{
-public:
     virtual void set_label(const OUString& rText) = 0;
     virtual OUString get_label() const = 0;
     virtual void set_label_wrap(bool wrap) = 0;

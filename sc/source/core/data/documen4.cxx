@@ -262,11 +262,39 @@ bool ScDocument::IsMatrixSpillBlocked(const ScRange& rRange,
         {
             if (nCol < rOrigin.Col() + nDeclCols && nRow < rOrigin.Row() + nDeclRows)
                 continue; // inside the already-declared sub-range
-            if (const_cast<ScDocument*>(this)->HasData(nCol, nRow, rOrigin.Tab()))
+            ScRefCellValue aCell(const_cast<ScDocument&>(*this),
+                                 ScAddress(nCol, nRow, rOrigin.Tab()));
+            // A reference cell already belongs to a matrix - it's never a
+            // foreign blocker. This also lets the spill check recover when
+            // Undo restores reference cells inside a now collapsed master,
+            // which should re-expand on the next reconciliation.
+            if (aCell.getType() == CELLTYPE_FORMULA
+                && aCell.getFormula()->GetMatrixFlag() == ScMatrixMode::Reference)
+                continue;
+            if (!aCell.isEmpty())
                 return true;
         }
     }
     return false;
+}
+
+std::vector<ScAddress> ScDocument::CollectExpandedDynamicArraysInRange(
+    const ScMarkData& rMark, const ScRange& rRange) const
+{
+    std::vector<ScAddress> aResult;
+    if (maExpandedDynamicArrays.empty())
+        return aResult;
+    for (const ScAddress& rPosition : maExpandedDynamicArrays)
+    {
+        if (!rMark.GetTableSelect(rPosition.Tab()))
+            continue;
+        if (rPosition.Col() < rRange.aStart.Col() || rPosition.Col() > rRange.aEnd.Col())
+            continue;
+        if (rPosition.Row() < rRange.aStart.Row() || rPosition.Row() > rRange.aEnd.Row())
+            continue;
+        aResult.push_back(rPosition);
+    }
+    return aResult;
 }
 
 bool ScDocument::HasMatrixBlocker(const ScRange& rRange) const
@@ -453,6 +481,16 @@ void ScDocument::ResizeMatrixFormula(const ScAddress& rOrigin, SCCOL nNewCols, S
     pOrigin->GetMatColsRows(nOldCols, nOldRows);
     if (nNewCols == nOldCols && nNewRows == nOldRows)
         return; // nothing to do
+
+    // A caller may be iterating the cell store (reached here from a row-height
+    // or interpret walk via InterpretTail). Inserting or removing cells now
+    // would invalidate that iterator - queue the resize and run it once the
+    // guard is popped.
+    if (IsMatrixResizeGuarded())
+    {
+        MarkPendingMatrixResize(rOrigin);
+        return;
+    }
 
     SCTAB nTab = rOrigin.Tab();
     SCCOL nOriginColumn = rOrigin.Col();

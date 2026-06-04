@@ -28,7 +28,9 @@
 #include <componentmodule.hxx>
 #include <utility>
 #include <vcl/stdtext.hxx>
+#include <vcl/weld/WaitObject.hxx>
 #include <vcl/weld/Window.hxx>
+#include <vcl/weld/weld.hxx>
 
 namespace abp
 {
