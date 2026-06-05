@@ -21,10 +21,12 @@
 #include "PlacesListBox.hxx"
 
 #include <vcl/idle.hxx>
+#include <vcl/weld/CheckButton.hxx>
 #include <vcl/weld/ComboBox.hxx>
 #include <vcl/weld/Label.hxx>
 #include <vcl/weld/Menu.hxx>
 #include <vcl/weld/Toolbar.hxx>
+#include <vcl/weld/weldutils.hxx>
 
 #include <deque>
 #include <memory>

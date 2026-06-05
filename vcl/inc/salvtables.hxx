@@ -13,6 +13,7 @@
 #include <vcl/weld/Assistant.hxx>
 #include <vcl/weld/Box.hxx>
 #include <vcl/weld/Builder.hxx>
+#include <vcl/weld/CheckButton.hxx>
 #include <vcl/weld/Calendar.hxx>
 #include <vcl/weld/ColorChooserDialog.hxx>
 #include <vcl/weld/ComboBox.hxx>
@@ -20,6 +21,7 @@
 #include <vcl/weld/DialogController.hxx>
 #include <vcl/weld/DrawingArea.hxx>
 #include <vcl/weld/Entry.hxx>
+#include <vcl/weld/EntryFormatter.hxx>
 #include <vcl/weld/EntryTreeView.hxx>
 #include <vcl/weld/Expander.hxx>
 #include <vcl/weld/FormattedSpinButton.hxx>
@@ -312,11 +314,11 @@ public:
 
     virtual void set_hexpand(bool bExpand) override;
 
-    virtual bool get_hexpand() const override;
+    virtual bool get_hexpand() const;
 
     virtual void set_vexpand(bool bExpand) override;
 
-    virtual bool get_vexpand() const override;
+    virtual bool get_vexpand() const;
 
     virtual void set_margin_top(int nMargin) override;
 
@@ -326,9 +328,9 @@ public:
 
     virtual void set_margin_end(int nMargin) override;
 
-    virtual int get_margin_top() const override;
+    virtual int get_margin_top() const;
 
-    virtual int get_margin_bottom() const override;
+    virtual int get_margin_bottom() const;
 
     virtual int get_margin_start() const override;
 
@@ -515,7 +517,7 @@ public:
 
     virtual VclPtr<VirtualDevice> screenshot() override;
 
-    virtual const vcl::ILibreOfficeKitNotifier* GetLOKNotifier() override;
+    virtual const vcl::ILibreOfficeKitNotifier* GetLOKNotifier();
 
     virtual ~SalInstanceWindow() override;
 };
@@ -1342,15 +1344,15 @@ public:
 
     virtual OutputDevice& get_ref_device() override;
 
-    virtual void click(const Point& rPos) override;
+    virtual void click(const Point& rPos);
 
-    virtual void dblclick(const Point& rPos) override;
+    virtual void dblclick(const Point& rPos);
 
-    virtual void mouse_up(const Point& rPos) override;
+    virtual void mouse_up(const Point& rPos);
 
-    virtual void mouse_down(const Point& rPos) override;
+    virtual void mouse_down(const Point& rPos);
 
-    virtual void mouse_move(const Point& rPos) override;
+    virtual void mouse_move(const Point& rPos);
 };
 
 class SalInstanceToolbar : public SalInstanceWidget, public virtual weld::Toolbar
@@ -1403,7 +1405,7 @@ public:
 
     virtual void set_item_label(int nIndex, const OUString& rLabel) override;
 
-    virtual OUString get_item_label(const OUString& rIdent) const override;
+    virtual OUString get_item_label(const OUString& rIdent) const;
 
     virtual void set_item_label(const OUString& rIdent, const OUString& rLabel) override;
 
@@ -1553,8 +1555,6 @@ public:
     virtual int n_children() const override;
 
 private:
-    const OUString* getEntryData(int index) const;
-
     DECL_LINK(DoubleClickHdl, SvTreeListBox*, bool);
 };
 
@@ -1742,8 +1742,6 @@ public:
 
     virtual void copy_iterator(const weld::TreeIter& rSource, weld::TreeIter& rDest) const override;
 
-    bool get_iter_abs_pos(weld::TreeIter& rIter, int nPos) const;
-
     virtual bool iter_previous_sibling(weld::TreeIter& rIter) const override;
 
     virtual bool do_iter_children(weld::TreeIter& rIter) const override;
@@ -1830,8 +1828,7 @@ public:
 
     virtual tools::Rectangle get_row_area(const weld::TreeIter& rIter) const override;
 
-    virtual tools::Rectangle get_cell_area(const weld::TreeIter& rIter,
-                                           const int nColumn) const override;
+    virtual tools::Rectangle get_cell_area(const weld::TreeIter& rIter, const int nColumn) const;
 
     virtual TreeView* get_drag_source() const override;
 
@@ -1929,7 +1926,7 @@ public:
     virtual void set_item_tooltip_text(int pos, const OUString& rToolTip) override;
     virtual OUString get_item_tooltip_text(const weld::TreeIter& rIter) const override;
 
-    virtual OUString get_text(const weld::TreeIter& rIter) const override;
+    virtual OUString get_text(const weld::TreeIter& rIter) const;
 
     virtual tools::Rectangle get_rect(const weld::TreeIter& rIter) const override;
 

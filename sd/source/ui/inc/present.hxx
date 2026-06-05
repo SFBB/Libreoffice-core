@@ -19,12 +19,14 @@
 
 #pragma once
 
+#include <vcl/weld/CheckButton.hxx>
 #include <vcl/weld/ComboBox.hxx>
 #include <vcl/weld/DialogController.hxx>
 #include <vcl/weld/FormattedSpinButton.hxx>
 #include <vcl/weld/Frame.hxx>
 #include <vcl/weld/Label.hxx>
 #include <vcl/weld/RadioButton.hxx>
+#include <vcl/weld/TimeFormatter.hxx>
 #include <vcl/weld/Window.hxx>
 #include <vcl/weld/weld.hxx>
 #include <vcl/weld/weldutils.hxx>

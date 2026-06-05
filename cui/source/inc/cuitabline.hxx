@@ -29,9 +29,11 @@
 #include <svx/xtable.hxx>
 #include <svx/dlgctrl.hxx>
 #include <tools/fldunit.hxx>
+#include <vcl/weld/CheckButton.hxx>
 #include <vcl/weld/Entry.hxx>
 #include <vcl/weld/Menu.hxx>
 #include <vcl/weld/MenuButton.hxx>
+#include <vcl/weld/MetricSpinButton.hxx>
 #include <vcl/weld/SpinButton.hxx>
 #include <vcl/weld/customweld.hxx>
 

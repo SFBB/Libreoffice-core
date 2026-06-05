@@ -15,6 +15,8 @@
 
 namespace weld
 {
+class DialogController;
+
 class VCL_DLLPUBLIC Dialog : virtual public Window
 {
 private:
@@ -22,8 +24,6 @@ private:
     virtual bool runAsync(std::shared_ptr<DialogController> const& rxOwner,
                           const std::function<void(sal_Int32)>& func)
         = 0;
-
-    DECL_LINK(CommandHdl, const CommandEvent&, bool);
 
 protected:
     virtual bool signal_command(const CommandEvent& rCEvt);

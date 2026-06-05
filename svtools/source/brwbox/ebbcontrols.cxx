@@ -22,6 +22,10 @@
 #include <svtools/editbrowsebox.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/weld/Builder.hxx>
+#include <vcl/weld/DateFormatter.hxx>
+#include <vcl/weld/DoubleNumericFormatter.hxx>
+#include <vcl/weld/LongCurrencyFormatter.hxx>
+#include <vcl/weld/TimeFormatter.hxx>
 
 namespace svt
 {

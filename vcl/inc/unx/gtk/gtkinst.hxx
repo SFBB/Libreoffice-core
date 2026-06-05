@@ -21,6 +21,7 @@
 
 #include <sal/config.h>
 
+#include <map>
 #include <stack>
 
 #include <DropTarget.hxx>
@@ -35,8 +36,8 @@
 #include <com/sun/star/awt/XWindow.hpp>
 #include <cppuhelper/compbase.hxx>
 #include <vcl/weld/ColorChooserDialog.hxx>
+#include <vcl/weld/TransportAsXWindow.hxx>
 #include <vcl/weld/weld.hxx>
-#include <vcl/weld/weldutils.hxx>
 #include <gtk/gtk.h>
 
 vcl::Font pango_to_vcl(const PangoFontDescription* font, const css::lang::Locale& rLocale);

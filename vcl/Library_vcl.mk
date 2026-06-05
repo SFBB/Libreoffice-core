@@ -602,17 +602,24 @@ $(eval $(call gb_Library_add_exception_objects,vcl,\
     vcl/source/weld/AssistantController \
     vcl/source/weld/Builder \
     vcl/source/weld/ComboBox \
+    vcl/source/weld/DateFormatter \
     vcl/source/weld/Dialog \
     vcl/source/weld/DialogController \
+    vcl/source/weld/DoubleNumericFormatter \
     vcl/source/weld/Entry \
+    vcl/source/weld/EntryFormatter \
     vcl/source/weld/EntryTreeView \
     vcl/source/weld/IconView \
     vcl/source/weld/ItemView \
+    vcl/source/weld/LongCurrencyFormatter \
     vcl/source/weld/MetricSpinButton \
+    vcl/source/weld/PatternFormatter \
     vcl/source/weld/ScrolledWindow \
     vcl/source/weld/SpinButton \
     vcl/source/weld/TextView \
     vcl/source/weld/TextWidget \
+    vcl/source/weld/TimeFormatter \
+    vcl/source/weld/TransportAsXWindow \
     vcl/source/weld/TreeView \
     vcl/source/weld/TriStateEnabled \
     vcl/source/weld/WaitObject \

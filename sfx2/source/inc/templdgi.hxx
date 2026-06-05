@@ -25,6 +25,7 @@
 
 #include <vcl/transfer.hxx>
 #include <vcl/weld/Builder.hxx>
+#include <vcl/weld/CheckButton.hxx>
 #include <vcl/weld/ComboBox.hxx>
 #include <vcl/weld/Toolbar.hxx>
 #include <vcl/weld/weld.hxx>
@@ -128,7 +129,6 @@ protected:
 
     DECL_LINK(ReadResource_Hdl, StyleList&, void);
     DECL_LINK(ClearResource_Hdl, void*, void);
-    DECL_LINK(SaveSelection_Hdl, StyleList&, SfxObjectShell*);
     DECL_LINK(UpdateFamily_Hdl, StyleList&, void);
     DECL_LINK(UpdateStyleDependents_Hdl, void*, void);
 

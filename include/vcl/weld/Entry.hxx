@@ -10,6 +10,7 @@
 #pragma once
 
 #include <vcl/dllapi.h>
+#include <vcl/weld/EntryMessageType.hxx>
 #include <vcl/weld/TextWidget.hxx>
 
 enum class TxtAlign;
@@ -26,8 +27,6 @@ protected:
     friend class ::LOKTrigger;
 
     void signal_changed();
-
-    void signal_activated();
 
 public:
     virtual void set_width_chars(int nChars) = 0;

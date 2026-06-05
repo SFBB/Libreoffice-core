@@ -551,10 +551,15 @@ class CairoSurfaceHelper
 
 public:
     CairoSurfaceHelper(const Bitmap& rBitmap)
-        : mpCairoSurface(nullptr)
+        // When using a cairo-backed Bitmap (i.e. SvpSalBitmap), we can avoid a lot of copying,
+        // which is beneficial for documents with lots of large images. Try to access directly.
+        : mpCairoSurface(static_cast<cairo_surface_t*>(rBitmap.tryToGetCairoSurface()))
         , maDownscaled()
     {
-        if (rBitmap.HasAlpha())
+        if (nullptr != mpCairoSurface)
+        {
+        } // all done, we got it directly
+        else if (rBitmap.HasAlpha())
             createRGBA(rBitmap);
         else
 #ifdef TEST_RGB16
@@ -562,13 +567,6 @@ public:
 #else
             createRGB(rBitmap);
 #endif
-    }
-
-    /* constructor for when we are using the cairo data directly from the underlying SvpSalBitmap */
-    CairoSurfaceHelper(cairo_surface_t* pCairoSurface)
-        : mpCairoSurface(pCairoSurface)
-        , maDownscaled()
-    {
     }
 
     ~CairoSurfaceHelper()
@@ -593,32 +591,40 @@ public:
         const sal_uInt32 nSourceWidth(cairo_image_surface_get_width(mpCairoSurface));
         const sal_uInt32 nSourceHeight(cairo_image_surface_get_height(mpCairoSurface));
 
-        // zoomed in, need to stretch at paint, no pre-scale useful
-        if (nTargetWidth >= nSourceWidth || nTargetHeight >= nSourceHeight)
+        // zoomed in on both axes, need to stretch at paint, no pre-scale useful
+        if (nTargetWidth >= nSourceWidth && nTargetHeight >= nSourceHeight)
             return mpCairoSurface;
 
-        // calculate downscale factor. Only use ONE factor to get the diagonal
-        // MipMap, NOT the full MipMap field in X/Y for uneven factors in both dimensions
-        sal_uInt32 nFactor(1);
+        // calculate independent downscale factors per axis, matching the
+        // strategy in vcl's SurfaceHelper::implCreateOrReuseDownscale
+        sal_uInt32 nWFactor(1);
         sal_uInt32 nW((nSourceWidth + 1) / 2);
-        sal_uInt32 nH((nSourceHeight + 1) / 2);
 
-        while (nW > nTargetWidth && nW > nHalfMDSize && nH > nTargetHeight && nH > nHalfMDSize)
+        while (nW > nTargetWidth && nW > nHalfMDSize)
         {
             nW = (nW + 1) / 2;
-            nH = (nH + 1) / 2;
-            nFactor *= 2;
+            nWFactor *= 2;
         }
 
-        if (1 == nFactor)
+        sal_uInt32 nHFactor(1);
+        sal_uInt32 nH((nSourceHeight + 1) / 2);
+
+        while (nH > nTargetHeight && nH > nHalfMDSize)
+        {
+            nH = (nH + 1) / 2;
+            nHFactor *= 2;
+        }
+
+        if (1 == nWFactor && 1 == nHFactor)
         {
             // original size *is* best binary size, use it
             return mpCairoSurface;
         }
 
-        // go up one scale again
-        nW *= 2;
-        nH *= 2;
+        // go up one scale again per axis, but if no downscale was needed
+        // on an axis use the target size directly
+        nW = (1 == nWFactor) ? nTargetWidth : nW * 2;
+        nH = (1 == nHFactor) ? nTargetHeight : nH * 2;
 
         // bail out if the multiplication for the key would overflow
         if (nW >= SAL_MAX_UINT32 || nH >= SAL_MAX_UINT32)
@@ -636,12 +642,6 @@ public:
         cairo_surface_t* pSurfaceTarget(cairo_surface_create_similar(
             mpCairoSurface, cairo_surface_get_content(mpCairoSurface), nW, nH));
 
-        // made a version to scale self first with direct memory access.
-        // That worked well, but would've been hard to support
-        // CAIRO_FORMAT_A1 and similar (including bit shifting), so
-        // I decided to go with cairo itself - use CAIRO_FILTER_FAST or
-        // CAIRO_FILTER_GOOD though. Please modify as needed for
-        // performance/quality
         cairo_t* cr = cairo_create(pSurfaceTarget);
         const double fScaleX(static_cast<double>(nW) / static_cast<double>(nSourceWidth));
         const double fScaleY(static_cast<double>(nH) / static_cast<double>(nSourceHeight));
@@ -652,10 +652,9 @@ public:
         cairo_paint(cr);
         cairo_destroy(cr);
 
-        // NOTE: Took out, until now not really needed
-        // need to set device_scale for downscale surfaces to get
-        // them handled correctly
-        // cairo_surface_set_device_scale(pSurfaceTarget, fScaleX, fScaleY);
+        // NOTE: do NOT set device_scale on the mipmap surface - the callers
+        // build pattern matrices using cairo_image_surface_get_width/height
+        // (raw pixels), and device_scale would double-apply the scaling
 
         // add entry to cached entries
         maDownscaled[key] = pSurfaceTarget;
@@ -707,7 +706,8 @@ sal_Int64 SystemDependentData_CairoSurface::estimateUsageInBytes() const
         const tools::Long nStride(cairo_image_surface_get_stride(pSurface));
         const tools::Long nHeight(cairo_image_surface_get_height(pSurface));
 
-        nRetval = nStride * nHeight;
+        // w * h * 4 bytesPerPixel
+        nRetval = nStride * nHeight * 4;
 
         // if we do downscale, size will grow by 1/4 + 1/16 + 1/32 + ...,
         // rough estimation just multiplies by 1.25 .. 1.33, should be good enough
@@ -723,14 +723,6 @@ sal_Int64 SystemDependentData_CairoSurface::estimateUsageInBytes() const
 
 std::shared_ptr<CairoSurfaceHelper> getOrCreateCairoSurfaceHelper(const Bitmap& rBitmap)
 {
-    // When using a cairo-backed Bitmap (i.e. SvpSalBitmap), we can avoid a lot of copying,
-    // which is beneficial for documents with lots of large images.
-    cairo_surface_t* pSurface(static_cast<cairo_surface_t*>(rBitmap.tryToGetCairoSurface()));
-    if (nullptr != pSurface)
-    {
-        return std::make_shared<CairoSurfaceHelper>(pSurface);
-    }
-
     const basegfx::SystemDependentDataHolder* pHolder(rBitmap.accessSystemDependentDataHolder());
     std::shared_ptr<SystemDependentData_CairoSurface> pSystemDependentData_CairoSurface;
 

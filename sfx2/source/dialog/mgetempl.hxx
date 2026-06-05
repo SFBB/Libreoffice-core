@@ -28,15 +28,18 @@
 #include <map>
 #include <set>
 
-namespace weld { class Button; }
-namespace weld { class CheckButton; }
-namespace weld { class ComboBox; }
-namespace weld { class Entry; }
-namespace weld { class Label; }
-namespace weld { class Widget; }
-
-namespace weld { class Container; }
-namespace weld { class Box; }
+namespace weld
+{
+class Box;
+class Button;
+class CheckButton;
+class ComboBox;
+class Container;
+class Entry;
+class Label;
+class Toggleable;
+class Widget;
+}
 
 class SfxManageStyleSheetPage;
 
@@ -59,10 +62,6 @@ public:
     PropertyChip(weld::Box* pParent, SfxManageStyleSheetPage* pPage,
                  sal_uInt16 nWhich, const OUString& rText);
     ~PropertyChip();
-
-    sal_uInt16 GetWhich() const { return m_nWhich; }
-    const OUString& GetText() const { return m_sText; }
-    SfxManageStyleSheetPage* GetPage() const { return m_pPage; }
 };
 /* expected:
     SID_TEMPLATE_NAME   :   In: StringItem, Name of Template
