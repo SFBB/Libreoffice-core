@@ -27,6 +27,7 @@
 #include <svx/svdocapt.hxx>
 #include <svx/svdograf.hxx>
 #include <svx/unoapi.hxx>
+#include <svx/diagram/DiagramHelper_svx.hxx>
 #include <editeng/writingmodeitem.hxx>
 #include <tools/urlobj.hxx>
 
@@ -1379,7 +1380,36 @@ void XclObjAny::SaveXml( XclExpXmlStream& rStrm )
     if (xPropSet.is())
     {
         WriteFromTo( rStrm, *this );
-        aDML.WriteShape( mxShape );
+        bool bWriteAsShape(true);
+
+        if (pObject && pObject->isDiagram())
+        {
+            bool bSaveAsDiagram(false);
+            const std::shared_ptr<svx::diagram::DiagramHelper_svx>& rIDiagramHelper(pObject->getDiagramHelper());
+
+            if (rIDiagramHelper)
+            {
+                // check if all needed data exists to either write unchanged/untouched
+                // Diagram or with re-creation of some DataDoms
+                bSaveAsDiagram = rIDiagramHelper->checkMinimalDataDoms();
+            }
+
+            if (bSaveAsDiagram)
+            {
+                const sal_Int32 nDiagramId(rStrm.getAndIncrementDiagramId());
+                const sal_Int32 nShapeId = aDML.GetNewShapeID(mxShape);
+                SAL_INFO("sc.eppt", "writing Diagram " + OUString::number(nDiagramId) + " with Shape Id " + OUString::number(nShapeId));
+                pDrawing->startElementNS(XML_xdr, XML_graphicFrame);
+                aDML.WriteDiagram(mxShape, nDiagramId, nShapeId);
+                pDrawing->endElementNS(XML_xdr, XML_graphicFrame);
+                bWriteAsShape = false;
+            }
+        }
+
+        if (bWriteAsShape)
+        {
+            aDML.WriteShape( mxShape );
+        }
     }
 
     pDrawing->singleElement( FSNS( XML_xdr, XML_clientData)

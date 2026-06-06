@@ -20,11 +20,8 @@ typedef std::tuple<OUString&, const TreeIter&> encoded_image_query;
 
 class VCL_DLLPUBLIC IconView : virtual public ItemView
 {
-    friend class ::LOKTrigger;
-
 protected:
     Link<const TreeIter&, OUString> m_aQueryTooltipHdl;
-    Link<const encoded_image_query&, bool> m_aGetPropertyTreeElemHdl;
 
     OUString signal_query_tooltip(const TreeIter& rIter) const
     {
@@ -73,12 +70,6 @@ public:
     virtual void connect_query_tooltip(const Link<const TreeIter&, OUString>& rLink)
     {
         m_aQueryTooltipHdl = rLink;
-    }
-
-    // 0: OUString, 1: TreeIter, returns true if supported
-    virtual void connect_get_image(const Link<const encoded_image_query&, bool>& rLink)
-    {
-        m_aGetPropertyTreeElemHdl = rLink;
     }
 
     virtual int count_selected_items() const = 0;

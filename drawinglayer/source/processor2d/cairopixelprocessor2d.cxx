@@ -431,10 +431,10 @@ nMinimalDiscreteSquareSizeToBuffer(nMinimalDiscreteSize* nMinimalDiscreteSize);
 class CairoSurfaceHelper
 {
     // the buffered CairoSurface (bitmap data)
-    cairo_surface_t* mpCairoSurface;
+    cairo::CairoSurfaceSharedPtr mpCairoSurface;
 
     // evtl. MipMapped data (pre-scale to reduce data processing load)
-    mutable std::unordered_map<sal_uInt64, cairo_surface_t*> maDownscaled;
+    mutable std::unordered_map<sal_uInt64, cairo::CairoSurfaceSharedPtr> maDownscaled;
 
     // create 32bit RGBA data for given Bitmap
     void createRGBA(const Bitmap& rBitmap)
@@ -442,15 +442,17 @@ class CairoSurfaceHelper
         BitmapScopedReadAccess pReadAccess(rBitmap);
         const tools::Long nHeight(pReadAccess->Height());
         const tools::Long nWidth(pReadAccess->Width());
-        mpCairoSurface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, nWidth, nHeight);
-        if (cairo_surface_status(mpCairoSurface) != CAIRO_STATUS_SUCCESS)
+        mpCairoSurface = cairo::CairoSurfaceSharedPtr(
+            cairo_image_surface_create(CAIRO_FORMAT_ARGB32, nWidth, nHeight),
+            &cairo_surface_destroy);
+        if (cairo_surface_status(mpCairoSurface.get()) != CAIRO_STATUS_SUCCESS)
         {
             SAL_WARN("drawinglayer",
                      "cairo_image_surface_create failed for: " << nWidth << " x " << nHeight);
             return;
         }
         const sal_uInt32 nStride(cairo_format_stride_for_width(CAIRO_FORMAT_ARGB32, nWidth));
-        unsigned char* surfaceData(cairo_image_surface_get_data(mpCairoSurface));
+        unsigned char* surfaceData(cairo_image_surface_get_data(mpCairoSurface.get()));
 
         for (tools::Long y(0); y < nHeight; ++y)
         {
@@ -469,7 +471,7 @@ class CairoSurfaceHelper
             }
         }
 
-        cairo_surface_mark_dirty(mpCairoSurface);
+        cairo_surface_mark_dirty(mpCairoSurface.get());
     }
 
     // create 32bit RGB data for given Bitmap
@@ -478,15 +480,17 @@ class CairoSurfaceHelper
         BitmapScopedReadAccess pReadAccess(rBitmap);
         const tools::Long nHeight(pReadAccess->Height());
         const tools::Long nWidth(pReadAccess->Width());
-        mpCairoSurface = cairo_image_surface_create(CAIRO_FORMAT_RGB24, nWidth, nHeight);
-        if (cairo_surface_status(mpCairoSurface) != CAIRO_STATUS_SUCCESS)
+        mpCairoSurface = cairo::CairoSurfaceSharedPtr(
+            cairo_image_surface_create(CAIRO_FORMAT_RGB24, nWidth, nHeight),
+            &cairo_surface_destroy);
+        if (cairo_surface_status(mpCairoSurface.get()) != CAIRO_STATUS_SUCCESS)
         {
             SAL_WARN("drawinglayer",
                      "cairo_image_surface_create failed for: " << nWidth << " x " << nHeight);
             return;
         }
         sal_uInt32 nStride(cairo_format_stride_for_width(CAIRO_FORMAT_RGB24, nWidth));
-        unsigned char* surfaceData(cairo_image_surface_get_data(mpCairoSurface));
+        unsigned char* surfaceData(cairo_image_surface_get_data(mpCairoSurface.get()));
 
         for (tools::Long y(0); y < nHeight; ++y)
         {
@@ -504,7 +508,7 @@ class CairoSurfaceHelper
             }
         }
 
-        cairo_surface_mark_dirty(mpCairoSurface);
+        cairo_surface_mark_dirty(mpCairoSurface.get());
     }
 
 // #define TEST_RGB16
@@ -553,7 +557,7 @@ public:
     CairoSurfaceHelper(const Bitmap& rBitmap)
         // When using a cairo-backed Bitmap (i.e. SvpSalBitmap), we can avoid a lot of copying,
         // which is beneficial for documents with lots of large images. Try to access directly.
-        : mpCairoSurface(static_cast<cairo_surface_t*>(rBitmap.tryToGetCairoSurface()))
+        : mpCairoSurface(rBitmap.tryToGetCairoSurface())
         , maDownscaled()
     {
         if (nullptr != mpCairoSurface)
@@ -569,18 +573,8 @@ public:
 #endif
     }
 
-    ~CairoSurfaceHelper()
-    {
-        // cleanup surface
-        cairo_surface_destroy(mpCairoSurface);
-
-        // cleanup MipMap surfaces
-        for (auto& candidate : maDownscaled)
-            cairo_surface_destroy(candidate.second);
-    }
-
-    cairo_surface_t* getCairoSurface(sal_uInt32 nTargetWidth = 0,
-                                     sal_uInt32 nTargetHeight = 0) const
+    cairo::CairoSurfaceSharedPtr getCairoSurface(sal_uInt32 nTargetWidth = 0,
+                                                 sal_uInt32 nTargetHeight = 0) const
     {
         // in simple cases just return the single created surface
         if (bDisableDownScale || nullptr == mpCairoSurface || 0 == nTargetWidth
@@ -588,8 +582,8 @@ public:
             return mpCairoSurface;
 
         // get width/height of original surface
-        const sal_uInt32 nSourceWidth(cairo_image_surface_get_width(mpCairoSurface));
-        const sal_uInt32 nSourceHeight(cairo_image_surface_get_height(mpCairoSurface));
+        const sal_uInt32 nSourceWidth(cairo_image_surface_get_width(mpCairoSurface.get()));
+        const sal_uInt32 nSourceHeight(cairo_image_surface_get_height(mpCairoSurface.get()));
 
         // zoomed in on both axes, need to stretch at paint, no pre-scale useful
         if (nTargetWidth >= nSourceWidth && nTargetHeight >= nSourceHeight)
@@ -639,15 +633,17 @@ public:
             return isHit->second;
 
         // create new surface in the targeted size
-        cairo_surface_t* pSurfaceTarget(cairo_surface_create_similar(
-            mpCairoSurface, cairo_surface_get_content(mpCairoSurface), nW, nH));
+        cairo::CairoSurfaceSharedPtr pSurfaceTarget(
+            cairo_surface_create_similar(mpCairoSurface.get(),
+                                         cairo_surface_get_content(mpCairoSurface.get()), nW, nH),
+            &cairo_surface_destroy);
 
-        cairo_t* cr = cairo_create(pSurfaceTarget);
+        cairo_t* cr = cairo_create(pSurfaceTarget.get());
         const double fScaleX(static_cast<double>(nW) / static_cast<double>(nSourceWidth));
         const double fScaleY(static_cast<double>(nH) / static_cast<double>(nSourceHeight));
 
         cairo_scale(cr, fScaleX, fScaleY);
-        cairo_set_source_surface(cr, mpCairoSurface, 0.0, 0.0);
+        cairo_set_source_surface(cr, mpCairoSurface.get(), 0.0, 0.0);
         cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD);
         cairo_paint(cr);
         cairo_destroy(cr);
@@ -667,8 +663,8 @@ public:
         if (nullptr == mpCairoSurface)
             return true;
 
-        const sal_uInt32 nSourceWidth(cairo_image_surface_get_width(mpCairoSurface));
-        const sal_uInt32 nSourceHeight(cairo_image_surface_get_height(mpCairoSurface));
+        const sal_uInt32 nSourceWidth(cairo_image_surface_get_width(mpCairoSurface.get()));
+        const sal_uInt32 nSourceHeight(cairo_image_surface_get_height(mpCairoSurface.get()));
 
         return nSourceWidth * nSourceHeight < nMinimalDiscreteSquareSizeToBuffer;
     }
@@ -702,9 +698,9 @@ sal_Int64 SystemDependentData_CairoSurface::estimateUsageInBytes() const
 
     if (mpCairoSurfaceHelper)
     {
-        cairo_surface_t* pSurface(mpCairoSurfaceHelper->getCairoSurface());
-        const tools::Long nStride(cairo_image_surface_get_stride(pSurface));
-        const tools::Long nHeight(cairo_image_surface_get_height(pSurface));
+        cairo::CairoSurfaceSharedPtr pSurface(mpCairoSurfaceHelper->getCairoSurface());
+        const tools::Long nStride(cairo_image_surface_get_stride(pSurface.get()));
+        const tools::Long nHeight(cairo_image_surface_get_height(pSurface.get()));
 
         // w * h * 4 bytesPerPixel
         nRetval = nStride * nHeight * 4;
@@ -723,6 +719,38 @@ sal_Int64 SystemDependentData_CairoSurface::estimateUsageInBytes() const
 
 std::shared_ptr<CairoSurfaceHelper> getOrCreateCairoSurfaceHelper(const Bitmap& rBitmap)
 {
+    cairo::CairoSurfaceSharedPtr pSurface(rBitmap.tryToGetCairoSurface());
+    if (nullptr != pSurface)
+    {
+        // in this case we get a cairo_surface_t directly from the underlying
+        // Bitmap (this is the future and the case if built using --without-system-cairo
+        // and --enable-cairo-rgba). The created CairoSurfaceHelper will just wrap it
+        // and will not have to create a cairo-compatible local clone, BUT it also
+        // supports the Mip-Mapping. Thus, for smaller Bitmaps, it is OK to just
+        // use this without the need to add data to the SystemDependentDataHolder
+        // mechanism since there is no real need to hold MipMapped data.
+        // The key here is to balance the effort for that against evtl. needed (!)
+        // Mip-Mapping, and that depends on the Bitmap's size (in square pixels).
+        // Thus, add a shortcut here - but ONLY for small enough Bitmpaps that
+        // do not cost too much to be painted in cairo with good quality. Remember
+        // that cairo *is* a software-renderer after all (!). This value may be adapted as
+        // needed. Note that below there is also 'isTrivial' used which already uses
+        // nMinimalDiscreteSquareSizeToBuffer which is 15x15 (e.g. handles), but also
+        // for !isCairoCompatible cases.
+        const tools::Long aSmallBitmapSquareSize(160 * 100);
+
+        if (cairo_image_surface_get_stride(pSurface.get())
+                * cairo_image_surface_get_height(pSurface.get())
+            <= aSmallBitmapSquareSize)
+        {
+            // take the shortcut: For this small directly accessible size
+            // we do not urgently need Mip-Mapping and spare the
+            // SystemDependentData buffering mechanism
+            SAL_INFO("drawinglayer", "BailOut SMALL Bitmap");
+            return std::make_shared<CairoSurfaceHelper>(rBitmap);
+        }
+    }
+
     const basegfx::SystemDependentDataHolder* pHolder(rBitmap.accessSystemDependentDataHolder());
     std::shared_ptr<SystemDependentData_CairoSurface> pSystemDependentData_CairoSurface;
 
@@ -1367,8 +1395,9 @@ void CairoPixelProcessor2D::paintBitmapAlpha(const Bitmap& rBitmap,
         return;
     }
 
-    cairo_surface_t* pTarget(aCairoSurfaceHelper->getCairoSurface(nDestWidth, nDestHeight));
-    if (nullptr == pTarget)
+    cairo::CairoSurfaceSharedPtr pTarget(
+        aCairoSurfaceHelper->getCairoSurface(nDestWidth, nDestHeight));
+    if (!pTarget)
     {
         SAL_WARN("drawinglayer", "SDPRCairo: No CairoSurface from Bitmap SurfaceHelper (!)");
         return;
@@ -1392,7 +1421,7 @@ void CairoPixelProcessor2D::paintBitmapAlpha(const Bitmap& rBitmap,
         cairo_stroke(mpRT);
     }
 
-    cairo_set_source_surface(mpRT, pTarget, 0, 0);
+    cairo_set_source_surface(mpRT, pTarget.get(), 0, 0);
 
     // get the pattern created by cairo_set_source_surface and
     // it's transformation
@@ -1417,8 +1446,8 @@ void CairoPixelProcessor2D::paintBitmapAlpha(const Bitmap& rBitmap,
     // simple (we are in unit coordinates)
     cairo_rectangle(mpRT, 0, 0, 1, 1);
     cairo_clip(mpRT);
-    cairo_matrix_scale(&aMatrix, cairo_image_surface_get_width(pTarget),
-                       cairo_image_surface_get_height(pTarget));
+    cairo_matrix_scale(&aMatrix, cairo_image_surface_get_width(pTarget.get()),
+                       cairo_image_surface_get_height(pTarget.get()));
 
     // The alternative wpuld be: resize/scale it SLIGHTLY to force
     // that half pixel overlap to be inside the unit range.
@@ -2156,15 +2185,15 @@ void CairoPixelProcessor2D::processMarkerArrayPrimitive2D(
     }
 
     // do not use dimensions, these are usually small instances
-    cairo_surface_t* pTarget(aCairoSurfaceHelper->getCairoSurface());
-    if (nullptr == pTarget)
+    cairo::CairoSurfaceSharedPtr pTarget(aCairoSurfaceHelper->getCairoSurface());
+    if (!pTarget)
     {
         SAL_WARN("drawinglayer", "SDPRCairo: No CairoSurface from Bitmap SurfaceHelper (!)");
         return;
     }
 
-    const sal_uInt32 nWidth(cairo_image_surface_get_width(pTarget));
-    const sal_uInt32 nHeight(cairo_image_surface_get_height(pTarget));
+    const sal_uInt32 nWidth(cairo_image_surface_get_width(pTarget.get()));
+    const sal_uInt32 nHeight(cairo_image_surface_get_height(pTarget.get()));
     const tools::Long nMiX((nWidth / 2) + 1);
     const tools::Long nMiY((nHeight / 2) + 1);
 
@@ -2180,7 +2209,7 @@ void CairoPixelProcessor2D::processMarkerArrayPrimitive2D(
         const double fX(ceil(aDiscretePos.getX()));
         const double fY(ceil(aDiscretePos.getY()));
 
-        cairo_set_source_surface(mpRT, pTarget, fX - nMiX, fY - nMiY);
+        cairo_set_source_surface(mpRT, pTarget.get(), fX - nMiX, fY - nMiY);
         cairo_paint(mpRT);
     }
 
@@ -2648,8 +2677,9 @@ void CairoPixelProcessor2D::processFillGraphicPrimitive2D(
         return;
     }
 
-    cairo_surface_t* pTarget(aCairoSurfaceHelper->getCairoSurface(nDestWidth, nDestHeight));
-    if (nullptr == pTarget)
+    cairo::CairoSurfaceSharedPtr pTarget(
+        aCairoSurfaceHelper->getCairoSurface(nDestWidth, nDestHeight));
+    if (!pTarget)
     {
         SAL_WARN("drawinglayer", "SDPRCairo: No CairoSurface from Bitmap SurfaceHelper (!)");
         return;
@@ -2663,10 +2693,10 @@ void CairoPixelProcessor2D::processFillGraphicPrimitive2D(
                       aLocalTransform.d(), aLocalTransform.e(), aLocalTransform.f());
     cairo_set_matrix(mpRT, &aMatrix);
 
-    const sal_uInt32 nWidth(cairo_image_surface_get_width(pTarget));
-    const sal_uInt32 nHeight(cairo_image_surface_get_height(pTarget));
+    const sal_uInt32 nWidth(cairo_image_surface_get_width(pTarget.get()));
+    const sal_uInt32 nHeight(cairo_image_surface_get_height(pTarget.get()));
 
-    cairo_set_source_surface(mpRT, pTarget, 0, 0);
+    cairo_set_source_surface(mpRT, pTarget.get(), 0, 0);
 
     // get the pattern created by cairo_set_source_surface and
     // it's transformation
@@ -2674,7 +2704,7 @@ void CairoPixelProcessor2D::processFillGraphicPrimitive2D(
     cairo_pattern_get_matrix(sourcepattern, &aMatrix);
 
     // clip for RGBA (see other places)
-    if (CAIRO_FORMAT_ARGB32 == cairo_image_surface_get_format(pTarget))
+    if (CAIRO_FORMAT_ARGB32 == cairo_image_surface_get_format(pTarget.get()))
     {
         cairo_rectangle(mpRT, 0, 0, 1, 1);
         cairo_clip(mpRT);

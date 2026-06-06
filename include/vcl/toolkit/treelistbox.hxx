@@ -337,7 +337,7 @@ protected:
     // Invalidate children on enable/disable
     virtual void StateChanged( StateChangedType eType ) override;
 
-    virtual void Insert(SvTreeListEntry* pEnt, SvTreeListEntry* pPar,
+    virtual void Insert(SvTreeListEntry* pEntry, SvTreeListEntry* pParent,
                         sal_uInt32 nPos = TREELIST_APPEND);
     virtual void Insert(SvTreeListEntry* pEntry, sal_uInt32 nRootPos = TREELIST_APPEND);
 
@@ -350,14 +350,6 @@ protected:
     virtual void InitViewData(SvViewDataEntry*, SvTreeListEntry* pEntry);
     // Calls InitViewData for all Items
     void            RecalcViewData();
-
-    // Handler and methods for Drag - finished handler. This link can be set
-    // to the TransferDataContainer. The AddBox/RemoveBox methods must be
-    // called before the StartDrag call.
-    // The Remove will be called from the handler, which then calls DragFinish.
-    // The Remove is also called in the DTOR of the SvTreeListBox -
-    // so it can't be called for a deleted object.
-    Link<sal_Int8,void> GetDragFinishedHdl() const;
 
     void            OnCurrentEntryChanged();
 

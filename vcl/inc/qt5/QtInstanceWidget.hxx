@@ -17,7 +17,6 @@
 
 #include <rtl/ustring.hxx>
 #include <vcl/sysdata.hxx>
-#include <vcl/weld/weld.hxx>
 
 #include <QtWidgets/QApplication>
 #include <QtWidgets/QMessageBox>
@@ -85,11 +84,7 @@ public:
 
     virtual void set_hexpand(bool bExpand) override;
 
-    virtual bool get_hexpand() const;
-
     virtual void set_vexpand(bool bExpand) override;
-
-    virtual bool get_vexpand() const;
 
     virtual void set_margin_top(int nMargin) override;
 
@@ -98,10 +93,6 @@ public:
     virtual void set_margin_start(int nMargin) override;
 
     virtual void set_margin_end(int nMargin) override;
-
-    virtual int get_margin_top() const;
-
-    virtual int get_margin_bottom() const;
 
     virtual int get_margin_start() const override;
 

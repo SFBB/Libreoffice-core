@@ -19,7 +19,6 @@
 
 #pragma once
 
-#include <tools/json_writer.hxx>
 #include <vcl/toolkit/treelistbox.hxx>
 #include <vcl/image.hxx>
 
@@ -45,13 +44,6 @@ public:
                     vcl::RenderContext& rRenderContext);
 
     virtual FactoryFunction GetUITestFactory() const override;
-    virtual void DumpAsPropertyTree(tools::JsonWriter& rJsonWriter) override;
-    typedef std::tuple<OUString&, SvTreeListEntry*> encoded_image_query;
-
-    void SetDumpImageHdl(const Link<const encoded_image_query&, bool>& rLink)
-    {
-        maDumpImageHdl = rLink;
-    }
 
     /// Update entry size based on the given entry's image size and text
     void UpdateEntrySize(const SvTreeListEntry& rEntry);
@@ -60,9 +52,6 @@ protected:
     virtual void CalcEntryHeight(SvTreeListEntry const* pEntry) override;
 
 private:
-    Link<const encoded_image_query&, bool> maDumpImageHdl;
-    void DumpEntryAndSiblings(tools::JsonWriter& rJsonWriter, SvTreeListEntry* pEntry);
-
     bool HasSeparatorEntry() const;
 };
 

@@ -13,6 +13,7 @@
 #include <vcl/weld/Assistant.hxx>
 #include <vcl/weld/Box.hxx>
 #include <vcl/weld/Builder.hxx>
+#include <vcl/weld/Button.hxx>
 #include <vcl/weld/CheckButton.hxx>
 #include <vcl/weld/Calendar.hxx>
 #include <vcl/weld/ColorChooserDialog.hxx>
@@ -48,7 +49,6 @@
 #include <vcl/weld/ToggleButton.hxx>
 #include <vcl/weld/Toolbar.hxx>
 #include <vcl/weld/TreeView.hxx>
-#include <vcl/weld/weld.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/syswin.hxx>
 #include <vcl/settings.hxx>
@@ -314,11 +314,7 @@ public:
 
     virtual void set_hexpand(bool bExpand) override;
 
-    virtual bool get_hexpand() const;
-
     virtual void set_vexpand(bool bExpand) override;
-
-    virtual bool get_vexpand() const;
 
     virtual void set_margin_top(int nMargin) override;
 
@@ -327,10 +323,6 @@ public:
     virtual void set_margin_start(int nMargin) override;
 
     virtual void set_margin_end(int nMargin) override;
-
-    virtual int get_margin_top() const;
-
-    virtual int get_margin_bottom() const;
 
     virtual int get_margin_start() const override;
 
@@ -409,10 +401,6 @@ public:
     virtual css::uno::Reference<css::datatransfer::dnd::XDropTarget> get_drop_target() override;
     virtual css::uno::Reference<css::datatransfer::clipboard::XClipboard>
     get_clipboard() const override;
-
-    virtual void connect_get_property_tree(const Link<tools::JsonWriter&, void>& rLink) override;
-
-    virtual void get_property_tree(tools::JsonWriter& rJsonWriter) override;
 
     virtual void call_attention_to() override;
 
@@ -516,8 +504,6 @@ public:
     virtual weld::ScreenShotCollection collect_screenshot_data() override;
 
     virtual VclPtr<VirtualDevice> screenshot() override;
-
-    virtual const vcl::ILibreOfficeKitNotifier* GetLOKNotifier();
 
     virtual ~SalInstanceWindow() override;
 };
@@ -1343,16 +1329,6 @@ public:
     virtual ~SalInstanceDrawingArea() override;
 
     virtual OutputDevice& get_ref_device() override;
-
-    virtual void click(const Point& rPos);
-
-    virtual void dblclick(const Point& rPos);
-
-    virtual void mouse_up(const Point& rPos);
-
-    virtual void mouse_down(const Point& rPos);
-
-    virtual void mouse_move(const Point& rPos);
 };
 
 class SalInstanceToolbar : public SalInstanceWidget, public virtual weld::Toolbar
@@ -1404,8 +1380,6 @@ public:
     virtual void set_item_ident(int nIndex, const OUString& rIdent) override;
 
     virtual void set_item_label(int nIndex, const OUString& rLabel) override;
-
-    virtual OUString get_item_label(const OUString& rIdent) const;
 
     virtual void set_item_label(const OUString& rIdent, const OUString& rLabel) override;
 
@@ -1828,8 +1802,6 @@ public:
 
     virtual tools::Rectangle get_row_area(const weld::TreeIter& rIter) const override;
 
-    virtual tools::Rectangle get_cell_area(const weld::TreeIter& rIter, const int nColumn) const;
-
     virtual TreeView* get_drag_source() const override;
 
     virtual int vadjustment_get_value() const override;
@@ -1883,7 +1855,6 @@ private:
     DECL_LINK(SelectHdl, SvTreeListBox*, void);
     DECL_LINK(DeSelectHdl, SvTreeListBox*, void);
     DECL_LINK(TooltipHdl, SvTreeListEntry&, OUString);
-    DECL_LINK(DumpImageHdl, const ::IconView::encoded_image_query&, bool);
 
     void do_insert(int pos, const OUString* pStr, const OUString* pId, const Image& rImage,
                    weld::TreeIter* pRet);
@@ -1908,9 +1879,6 @@ public:
 
     virtual void connect_query_tooltip(const Link<const weld::TreeIter&, OUString>& rLink) override;
 
-    virtual void
-    connect_get_image(const Link<const weld::encoded_image_query&, bool>& rLink) override;
-
     virtual int count_selected_items() const override;
 
     virtual void do_scroll_to_item(const weld::TreeIter& rIter) override;
@@ -1925,8 +1893,6 @@ public:
 
     virtual void set_item_tooltip_text(int pos, const OUString& rToolTip) override;
     virtual OUString get_item_tooltip_text(const weld::TreeIter& rIter) const override;
-
-    virtual OUString get_text(const weld::TreeIter& rIter) const;
 
     virtual tools::Rectangle get_rect(const weld::TreeIter& rIter) const override;
 

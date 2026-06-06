@@ -94,7 +94,6 @@ namespace svt { class PopupWindowControllerImpl; }
 namespace weld { class Window; }
 
 template<class T> class VclPtr;
-namespace tools { class JsonWriter; }
 
 // Type for GetWindow()
 enum class GetWindowType
@@ -1091,9 +1090,6 @@ public:
     /// check if LOK Window container is empty
     SAL_DLLPRIVATE static bool          IsLOKWindowsEmpty();
 
-    /// Dumps itself and potentially its children to a property tree, to be written easily to JSON.
-    virtual void DumpAsPropertyTree(tools::JsonWriter&);
-
     /// Use OS specific way to bring user attention to current window
     virtual void FlashWindow() const;
 
@@ -1443,7 +1439,6 @@ public:
     SAL_DLLPRIVATE void SetHelpHdl(const Link<vcl::Window&, bool>& rLink);
     SAL_DLLPRIVATE void SetMnemonicActivateHdl(const Link<vcl::Window&, bool>& rLink);
     void SetModalHierarchyHdl(const Link<bool, void>& rLink);
-    SAL_DLLPRIVATE void SetDumpAsPropertyTreeHdl(const Link<tools::JsonWriter&, void>& rLink);
 
     Size                        GetOutputSizePixel() const;
     SAL_DLLPRIVATE tools::Rectangle GetOutputRectPixel() const;

@@ -72,7 +72,7 @@ namespace basegfx
         // getHoldCyclesInSeconds and estimateUsageInBytes, executed
         // using getHoldCyclesInSeconds. StartValue is 0 to detect
         // not-yet-calculated state
-        sal_uInt32                      mnCalculatedCycles;
+        mutable sal_uInt32              mnCalculatedCycles;
 
     public:
         SystemDependentData(

@@ -345,7 +345,6 @@ std::shared_ptr<SfxModelessDialogController> ScTabViewShell::CreateRefDialogCont
                 SfxItemSet aArgSet(SfxItemSet::makeFixedSfxItemSet<SCITEM_QUERYDATA, SCITEM_QUERYDATA>( GetPool() ));
 
                 pDBData->ExtendDataArea(rDoc);
-                pDBData->ExtendBackColorArea(rDoc);
                 pDBData->GetQueryParam( aQueryParam );
 
                 ScRange aArea;
@@ -477,14 +476,6 @@ void ScTabViewShell::afterCallbackRegistered()
         {
             pInputWindow->NotifyLOKClient();
         }
-    }
-
-    SfxObjectShell* pDocShell = GetObjectShell();
-    if (pDocShell && !IsTabChangeInProgress())
-    {
-        std::shared_ptr<model::ColorSet> pThemeColors = pDocShell->GetThemeColors();
-        std::set<Color> aDocumentColors = pDocShell->GetDocColors();
-        svx::theme::notifyLOK(pThemeColors, aDocumentColors);
     }
 }
 

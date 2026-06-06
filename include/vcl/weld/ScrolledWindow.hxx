@@ -10,7 +10,7 @@
 #pragma once
 
 #include <vcl/dllapi.h>
-#include <vcl/weld/weld.hxx>
+#include <vcl/weld/Widget.hxx>
 
 enum class VclPolicyType;
 
@@ -18,8 +18,6 @@ namespace weld
 {
 class VCL_DLLPUBLIC ScrolledWindow : virtual public Widget
 {
-    friend class ::LOKTrigger;
-
     Link<ScrolledWindow&, void> m_aVValueChangeHdl;
     Link<ScrolledWindow&, void> m_aHValueChangeHdl;
 

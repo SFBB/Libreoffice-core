@@ -10,14 +10,13 @@
 #pragma once
 
 #include <vcl/dllapi.h>
+#include <vcl/weld/Button.hxx>
 #include <vcl/weld/Toggleable.hxx>
-#include <vcl/weld/weld.hxx>
 
 namespace weld
 {
 class VCL_DLLPUBLIC ToggleButton : virtual public Button, virtual public Toggleable
 {
-    friend class ::LOKTrigger;
 };
 }
 

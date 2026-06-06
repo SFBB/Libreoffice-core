@@ -1623,7 +1623,7 @@ OUString GraphicExport::writeNewSvgEntryToStorage(const Graphic& rGraphic, bool 
     return sPath;
 }
 
-OUString GraphicExport::writeToStorage(const Graphic& rGraphic, bool bRelPathToMedia, TypeHint eHint)
+OUString GraphicExport::writeToStorage(const Graphic& rGraphic, bool bRelPathToMedia, TypeHint eHint, bool bReturnPath)
 {
     OUString sPath;
 
@@ -1645,14 +1645,25 @@ OUString GraphicExport::writeToStorage(const Graphic& rGraphic, bool bRelPathToM
             return OUString(); // couldn't store
     }
 
-    OUString sRelId = mpFilterBase->addRelation(mpFS->getOutputStream(), oox::getRelationship(Relationship::IMAGE), sPath);
+    if (bReturnPath)
+        return sPath;
 
+    OUString sRelId = mpFilterBase->addRelation(mpFS->getOutputStream(), oox::getRelationship(Relationship::IMAGE), sPath);
     return sRelId;
 }
 
 std::shared_ptr<GraphicExport> DrawingML::createGraphicExport()
 {
     return std::make_shared<GraphicExport>(mpFS, mpFB, meDocumentType);
+}
+
+OUString DrawingML::writeImageRelToStorage(const Graphic &rGraphic)
+{
+    const auto& pVectorGraphicDataPtr = rGraphic.getVectorGraphicData();
+    const bool bIsSVG(pVectorGraphicDataPtr && pVectorGraphicDataPtr->getType() == VectorGraphicDataType::Svg);
+    GraphicExport aExporter(mpFS, mpFB, meDocumentType);
+
+    return aExporter.writeToStorage(rGraphic, isDiagaramExport(), bIsSVG ? GraphicExport::TypeHint::SVG : GraphicExport::TypeHint::Detect, true);
 }
 
 OUString DrawingML::writeGraphicToStorage(const Graphic& rGraphic , bool bRelPathToMedia, GraphicExport::TypeHint eHint)
@@ -6951,24 +6962,30 @@ void DrawingML::WriteDiagram(const css::uno::Reference<css::drawing::XShape>& rX
     }
     else
     {
-        mpFS->startElementNS(XML_p, XML_nvGraphicFramePr);
+        // use correct XmlNamespace, other DocumentType is DOCUMENT_XLSX
+        const bool isPPTX(DOCUMENT_PPTX == GetDocumentType());
+        const sal_Int32 nXmlNamespace(isPPTX ? XML_p : XML_xdr);
+        mpFS->startElementNS(nXmlNamespace, XML_nvGraphicFramePr);
 
-        mpFS->singleElementNS(XML_p, XML_cNvPr, pDocPrAttrList);
-        mpFS->singleElementNS(XML_p, XML_cNvGraphicFramePr);
+        mpFS->singleElementNS(nXmlNamespace, XML_cNvPr, pDocPrAttrList);
+        mpFS->singleElementNS(nXmlNamespace, XML_cNvGraphicFramePr);
 
-        mpFS->startElementNS(XML_p, XML_nvPr);
-        mpFS->startElementNS(XML_p, XML_extLst);
-        // change tracking extension - required in PPTX
-        mpFS->startElementNS(XML_p, XML_ext, XML_uri, "{D42A27DB-BD31-4B8C-83A1-F6EECF244321}");
-        mpFS->singleElementNS(XML_p14, XML_modId,
-            FSNS(XML_xmlns, XML_p14), mpFB->getNamespaceURL(OOX_NS(p14)),
-            XML_val,
-            OString::number(comphelper::rng::uniform_uint_distribution(1, SAL_MAX_UINT32)));
-        mpFS->endElementNS(XML_p, XML_ext);
-        mpFS->endElementNS(XML_p, XML_extLst);
-        mpFS->endElementNS(XML_p, XML_nvPr);
+        if (isPPTX)
+        {
+            mpFS->startElementNS(nXmlNamespace, XML_nvPr);
+            mpFS->startElementNS(nXmlNamespace, XML_extLst);
+            // change tracking extension - required in PPTX
+            mpFS->startElementNS(nXmlNamespace, XML_ext, XML_uri, "{D42A27DB-BD31-4B8C-83A1-F6EECF244321}");
+            mpFS->singleElementNS(XML_p14, XML_modId,
+                FSNS(XML_xmlns, XML_p14), mpFB->getNamespaceURL(OOX_NS(p14)),
+                XML_val,
+                OString::number(comphelper::rng::uniform_uint_distribution(1, SAL_MAX_UINT32)));
+            mpFS->endElementNS(nXmlNamespace, XML_ext);
+            mpFS->endElementNS(nXmlNamespace, XML_extLst);
+            mpFS->endElementNS(nXmlNamespace, XML_nvPr);
+        }
 
-        mpFS->endElementNS(XML_p, XML_nvGraphicFramePr);
+        mpFS->endElementNS(nXmlNamespace, XML_nvGraphicFramePr);
 
         // store size and position of background shape instead of group shape
         // as some shapes may be outside
@@ -6981,7 +6998,7 @@ void DrawingML::WriteDiagram(const css::uno::Reference<css::drawing::XShape>& rX
             awt::Size aSize = xShapeBg->getSize();
             WriteTransformation(
                 xShapeBg, tools::Rectangle(Point(aPos.X, aPos.Y), Size(aSize.Width, aSize.Height)),
-                XML_p, false, false, 0, false);
+                nXmlNamespace, false, false, 0, false);
         }
 
         mpFS->startElementNS(XML_a, XML_graphic);
@@ -7066,7 +7083,7 @@ void DrawingML::WriteDiagram(const css::uno::Reference<css::drawing::XShape>& rX
             >>= xDataHlinkRelSeq;
 
         // write the associated Images and rels for data file
-        writeDiagramImageRels(xDataImageRelSeq, xDataOutputStream, u"OOXDiagramDataRels", nDiagramId);
+        writeDiagramImageRels(xDataImageRelSeq, xDataOutputStream);
         writeDiagramHlinkRels(xDataHlinkRelSeq, xDataOutputStream);
     }
 
@@ -7116,14 +7133,13 @@ void DrawingML::WriteDiagram(const css::uno::Reference<css::drawing::XShape>& rX
             >>= xDrawingHlinkRelSeq;
 
         // write the associated Images and rels for data file
-        writeDiagramImageRels(xDrawingImageRelSeq, xDrawingOutputStream, u"OOXDiagramDrawingRels", nDiagramId);
+        writeDiagramImageRels(xDrawingImageRelSeq, xDrawingOutputStream);
         writeDiagramHlinkRels(xDrawingHlinkRelSeq, xDrawingOutputStream);
     }
 }
 
 void DrawingML::writeDiagramImageRels(const uno::Sequence<uno::Sequence<uno::Any>>& xRelSeq,
-                                      const uno::Reference<io::XOutputStream>& xOutStream,
-                                      std::u16string_view sGrabBagProperyName, int nDiagramId)
+                                      const uno::Reference<io::XOutputStream>& xOutStream)
 {
     // add image relationships of OOXData, SmartArtDiagram
     OUString sType(oox::getRelationship(Relationship::IMAGE));
@@ -7135,49 +7151,31 @@ void DrawingML::writeDiagramImageRels(const uno::Sequence<uno::Sequence<uno::Any
     for (sal_Int32 j = 0; j < xRelSeq.getLength(); j++)
     {
         // diagramDataRelTuple[0] => RID,
-        // diagramDataRelTuple[1] => xInputStream
-        // diagramDataRelTuple[2] => extension
+        // diagramDataRelTuple[1] => XGraphic
         const uno::Sequence<uno::Any>& diagramDataRelTuple = xRelSeq[j];
 
         OUString sRelId;
-        OUString sExtension;
         diagramDataRelTuple[0] >>= sRelId;
-        diagramDataRelTuple[2] >>= sExtension;
-        OUString sContentType;
-        if (sExtension.equalsIgnoreAsciiCase(".WMF"))
-            sContentType = "image/x-wmf";
-        else
-            sContentType = OUString::Concat("image/") + sExtension.subView(1);
         sRelId = sRelId.copy(3);
 
-        StreamDataSequence dataSeq;
-        diagramDataRelTuple[1] >>= dataSeq;
-        uno::Reference<io::XInputStream> dataImagebin(
-            new ::comphelper::SequenceInputStream(dataSeq));
+        // get XGraphic
+        uno::Reference<graphic::XGraphic> xGraphic;
+        diagramDataRelTuple[1] >>= xGraphic;
 
-        //nDiagramId is used to make the name unique irrespective of the number of smart arts.
-        OUString sFragment = OUString::Concat("media/") + sGrabBagProperyName
-                             + OUString::number(nDiagramId) + "_"
-                             + OUString::number(j) + sExtension;
-
-        PropertySet aProps(xOutStream);
-        aProps.setAnyProperty(PROP_RelId, uno::Any(sRelId.toInt32()));
-
-        mpFB->addRelation(xOutStream, sType, Concat2View("../" + sFragment));
-
-        OUString sDir = GetComponentDir();
-        uno::Reference<io::XOutputStream> xBinOutStream
-            = mpFB->openFragmentStream(sDir + "/" + sFragment, sContentType);
-
-        try
+        if (xGraphic)
         {
-            comphelper::OStorageHelper::CopyInputToOutput(dataImagebin, xBinOutStream);
+            // write to Storage and get relative path back
+            ::Graphic aGraphic(xGraphic);
+            const OUString sFragment = writeImageRelToStorage(aGraphic);
+
+            PropertySet aProps(xOutStream);
+            aProps.setAnyProperty(PROP_RelId, uno::Any(sRelId.toInt32()));
+
+            if (GetDocumentType() == DOCUMENT_DOCX)
+                mpFB->addRelation(xOutStream, sType, Concat2View("../" + sFragment));
+            else
+                mpFB->addRelation(xOutStream, sType, sFragment);
         }
-        catch (const uno::Exception&)
-        {
-            TOOLS_WARN_EXCEPTION("oox.drawingml", "DrawingML::writeDiagramRels Failed to copy grabbaged Image");
-        }
-        dataImagebin->closeInput();
     }
 }
 

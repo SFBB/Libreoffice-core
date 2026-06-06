@@ -28,7 +28,6 @@
 #include <vcl/weld/Builder.hxx>
 #include <vcl/weld/ColorChooserDialog.hxx>
 #include <vcl/weld/MessageDialog.hxx>
-#include <vcl/weld/weld.hxx>
 
 SalInstance::SalInstance(std::unique_ptr<comphelper::SolarMutex> pMutex, SalData* pSalData)
     : m_pYieldMutex(std::move(pMutex))
@@ -88,8 +87,7 @@ SalInstance::CreateBuilder(weld::Widget* pParent, const OUString& rUIRoot, const
 
 std::unique_ptr<weld::Builder> SalInstance::CreateInterimBuilder(vcl::Window* pParent,
                                                                  const OUString& rUIRoot,
-                                                                 const OUString& rUIFile, bool,
-                                                                 sal_uInt64)
+                                                                 const OUString& rUIFile, bool)
 {
     return std::make_unique<SalInstanceBuilder>(pParent, rUIRoot, rUIFile);
 }

@@ -28,7 +28,6 @@
 #include <tools/debug.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/weld/MessageDialog.hxx>
-#include <vcl/weld/weld.hxx>
 
 #include <getallcharpropids.hxx>
 #include <svx/dialmgr.hxx>
@@ -1071,13 +1070,6 @@ void SdrEditView::MergeAttrFromMarked(SfxItemSet& rAttr, bool bOnlyHardAttr) con
             nWhich = aIter.NextWhich();
         }
     }
-
-    if (rMarkList.isDiagramBackgroundShapeSelected())
-    {
-        // no LineStyle edit for DiagramBackgroundShape
-        for (sal_uInt16 nId(XATTR_LINE_FIRST); nId <= XATTR_LINE_LAST; nId++)
-            rAttr.ClearItem(nId);
-    }
 }
 
 std::vector<sal_uInt16> GetAllCharPropIds(const SfxItemSet& rSet)
@@ -1184,13 +1176,6 @@ void SdrEditView::SetAttrToMarked(const SfxItemSet& rAttr, bool bReplaceAll)
     // remove all such items to set them to default.
     SfxItemSet aAttr(*rAttr.GetPool(), rAttr.GetRanges());
     aAttr.Put(rAttr);
-
-    if (rMarkList.isDiagramBackgroundShapeSelected())
-    {
-        // no LineStyle edit for DiagramBackgroundShape
-        for (sal_uInt16 nId(XATTR_LINE_FIRST); nId <= XATTR_LINE_LAST; nId++)
-            aAttr.ClearItem(nId);
-    }
 
     // #i38135#
     bool bResetAnimationTimer(false);

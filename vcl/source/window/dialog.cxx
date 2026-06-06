@@ -59,7 +59,6 @@
 #include <vcl/settings.hxx>
 #include <vcl/virdev.hxx>
 #include <vcl/weld/Dialog.hxx>
-#include <vcl/weld/weld.hxx>
 #include <vcl/uitest/uiobject.hxx>
 #include <vcl/uitest/logger.hxx>
 #include <vcl/IDialogRenderable.hxx>
@@ -1694,36 +1693,6 @@ bool TopLevelWindowLocker::isBusy() const
 
 TopLevelWindowLocker::~TopLevelWindowLocker()
 {
-}
-
-void Dialog::DumpAsPropertyTree(tools::JsonWriter& rJsonWriter)
-{
-    SystemWindow::DumpAsPropertyTree(rJsonWriter);
-    rJsonWriter.put("title", GetText());
-    if (vcl::Window* pActionArea = get_action_area())
-    {
-        if (!pActionArea->IsVisible())
-            rJsonWriter.put("collapsed", true);
-    }
-
-    OUString sDialogId = GetHelpId();
-    sal_Int32 nStartPos = sDialogId.lastIndexOf('/');
-    nStartPos = nStartPos >= 0 ? nStartPos + 1 : 0;
-    rJsonWriter.put("dialogid", sDialogId.copy(nStartPos));
-
-    {
-        auto aResponses = rJsonWriter.startArray("responses");
-        for (const auto& rResponse : mpDialogImpl->maResponses)
-        {
-            auto aResponse = rJsonWriter.startStruct();
-            rJsonWriter.put("id", rResponse.first->get_id());
-            rJsonWriter.put("response", rResponse.second);
-        }
-    }
-
-    vcl::Window* pFocusControl = GetFirstControlForFocus();
-    if (pFocusControl)
-        rJsonWriter.put("init_focus_id", pFocusControl->get_id());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

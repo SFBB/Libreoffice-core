@@ -1243,9 +1243,6 @@ public:
     /** Determines if troubleshoot mode is enabled */
     static bool                 IsSafeModeEnabled();
 
-    /** Collect what .ui files are used*/
-    static void                 EnableUICoverage(bool bEnable);
-
     /** Get the desktop environment the process is currently running in
 
      @returns The desktop environment
@@ -1328,7 +1325,8 @@ public:
 
     static std::unique_ptr<weld::Builder> CreateBuilder(weld::Widget* pParent, const OUString &rUIFile);
     // For the duration of vcl parent windows
-    static std::unique_ptr<weld::Builder> CreateInterimBuilder(vcl::Window* pParent, const OUString &rUIFile, bool bAllowCycleFocusOut, sal_uInt64 nLOKWindowId = 0);
+    static std::unique_ptr<weld::Builder>
+    CreateInterimBuilder(vcl::Window* pParent, const OUString& rUIFile, bool bAllowCycleFocusOut);
 
     static weld::MessageDialog* CreateMessageDialog(weld::Widget* pParent, VclMessageType eMessageType,
                                                     VclButtonsType eButtonType, const OUString& rPrimaryMessage);

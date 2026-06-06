@@ -26,6 +26,7 @@
 #include <svx/papersizelistbox.hxx>
 #include <sfx2/sidebar/IContextChangeReceiver.hxx>
 #include <vcl/EnumContext.hxx>
+#include <vcl/weld/Button.hxx>
 #include <vcl/weld/CheckButton.hxx>
 #include <vcl/weld/Label.hxx>
 
@@ -70,7 +71,6 @@ public:
 
     virtual void HandleContextChange(
         const vcl::EnumContext& rContext) override;
-    virtual void DumpAsPropertyTree(::tools::JsonWriter&) override;
 
 private:
 

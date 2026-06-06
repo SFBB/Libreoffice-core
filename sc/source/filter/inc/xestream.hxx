@@ -36,6 +36,7 @@
 #include <vector>
 
 namespace com::sun::star::beans { struct NamedValue; }
+namespace oox::drawingml { class ShapeExport; }
 
 /* ============================================================================
 Output stream class for Excel export
@@ -328,6 +329,7 @@ public:
     virtual oox::drawingml::chart::ChartConverter* getChartConverter() override;
 
     static OUString GenerateUniqueTableName(const std::u16string_view& rOriginalName, const std::vector<OUString>& aNewTabNames, const std::vector<OUString>& aOriginalTabNames);
+    sal_Int32 getAndIncrementDiagramId() { maDiagramId++; return maDiagramId; };
 
     /// Set when a dynamic array master cell is emitted.
     void NoteDynamicArrayFormula() { mbHasDynamicArrayFormula = true; }
@@ -359,6 +361,9 @@ private:
     const XclExpRoot*                           mpRoot;
     std::stack< sax_fastparser::FSHelperPtr >   maStreams;
     XclExpXmlPathToStateMap                     maOpenedStreamMap;
+
+    std::unique_ptr<oox::drawingml::ShapeExport> mpShapeExport;
+    sal_Int32 maDiagramId;
 
     bool mbExportVBA;
     bool mbExportTemplate;

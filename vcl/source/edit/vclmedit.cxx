@@ -39,7 +39,6 @@
 #include <vcl/toolkit/scrbar.hxx>
 #include <vcl/toolkit/vclmedit.hxx>
 #include <vcl/weld/Window.hxx>
-#include <vcl/weld/weld.hxx>
 #include <osl/diagnose.h>
 #include <tools/json_writer.hxx>
 #include <strings.hrc>
@@ -1501,13 +1500,6 @@ bool VclMultiLineEdit::set_property(const OUString &rKey, const OUString &rValue
     else
         return Edit::set_property(rKey, rValue);
     return true;
-}
-
-void VclMultiLineEdit::DumpAsPropertyTree(tools::JsonWriter& rJsonWriter)
-{
-    Edit::DumpAsPropertyTree(rJsonWriter);
-
-    rJsonWriter.put("cursor", pImpVclMEdit->GetTextWindow()->GetTextView()->IsCursorEnabled());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

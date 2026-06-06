@@ -20,7 +20,6 @@
 #pragma once
 
 #include <sal/types.h>
-#include <o3tl/sorted_vector.hxx>
 #include <rtl/ref.hxx>
 #include <vcl/ColorDialog.hxx>
 #include <vcl/Platform.hxx>
@@ -30,7 +29,6 @@
 #include <vcl/svmain.hxx>
 #include <vcl/vclenum.hxx>
 #include <vcl/weld/ColorChooserDialog.hxx>
-#include <vcl/weld/weld.hxx>
 
 #include "ClipboardSelectionType.hxx"
 
@@ -88,7 +86,6 @@ class VCL_DLLPUBLIC SalInstance
 private:
     const std::unique_ptr<comphelper::SolarMutex> m_pYieldMutex;
     css::uno::Reference<css::datatransfer::clipboard::XClipboard> m_clipboard;
-    o3tl::sorted_vector<OUString> m_usedUI;
 
 protected:
     bool m_bSupportsOpenGL = false;
@@ -102,8 +99,6 @@ public:
     virtual ~SalInstance();
 
     bool supportsOpenGL() const { return m_bSupportsOpenGL; }
-
-    o3tl::sorted_vector<OUString>& getUsedUIList() { return m_usedUI; }
 
     //called directly after Application::Init
     virtual void            AfterAppInit() {}
@@ -190,8 +185,10 @@ public:
     virtual OpenGLContext*  CreateOpenGLContext();
 
     virtual std::unique_ptr<weld::Builder> CreateBuilder(weld::Widget* pParent, const OUString& rUIRoot, const OUString& rUIFile);
-    virtual std::unique_ptr<weld::Builder> CreateInterimBuilder(vcl::Window* pParent, const OUString& rUIRoot, const OUString& rUIFile,
-                                                bool bAllowCycleFocusOut, sal_uInt64 nLOKWindowId = 0);
+    virtual std::unique_ptr<weld::Builder> CreateInterimBuilder(vcl::Window* pParent,
+                                                                const OUString& rUIRoot,
+                                                                const OUString& rUIFile,
+                                                                bool bAllowCycleFocusOut);
     virtual weld::MessageDialog* CreateMessageDialog(weld::Widget* pParent, VclMessageType eMessageType,
                                                      VclButtonsType eButtonType, const OUString& rPrimaryMessage);
     virtual std::unique_ptr<weld::ColorChooserDialog>

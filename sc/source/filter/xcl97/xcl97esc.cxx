@@ -196,7 +196,7 @@ EscherExHostAppData* XclEscherEx::StartShape( const Reference< XShape >& rxShape
     //added for exporting OCX control
     sal_Int16 nMsCtlType = 0;
     if ( !pObj )
-        pCurrXclObj = new XclObjAny( mrObjMgr, rxShape, &GetDoc() );  // just what is it?!?
+        pCurrXclObj = new XclObjAny( mrObjMgr, rxShape, &GetDoc() );// just what is it?!?
     else
     {
         pCurrXclObj = nullptr;
@@ -245,7 +245,7 @@ EscherExHostAppData* XclEscherEx::StartShape( const Reference< XShape >& rxShape
             else  //TBX Form Control
                 pCurrXclObj = CreateTBXCtrlObj( rxShape, pChildAnchor ).release();
             if( !pCurrXclObj )
-                pCurrXclObj = new XclObjAny( mrObjMgr, rxShape, &GetDoc() );   // just a metafile
+                pCurrXclObj = new XclObjAny( mrObjMgr, rxShape, &GetDoc() ); // just a metafile
         }
         else if( !ScDrawLayer::IsNoteCaption( pObj ) )
         {

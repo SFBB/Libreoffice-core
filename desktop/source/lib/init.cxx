@@ -1920,7 +1920,6 @@ void CallbackFlushHandler::queue(const int type, CallbackData& aCallbackData)
         case LOK_CALLBACK_A11Y_CARET_CHANGED:
         case LOK_CALLBACK_A11Y_TEXT_SELECTION_CHANGED:
         case LOK_CALLBACK_A11Y_FOCUSED_CELL_CHANGED:
-        case LOK_CALLBACK_COLOR_PALETTES:
         case LOK_CALLBACK_A11Y_EDITING_IN_SELECTION_STATE:
         case LOK_CALLBACK_A11Y_SELECTION_CHANGED:
         {
@@ -1987,7 +1986,6 @@ void CallbackFlushHandler::queue(const int type, CallbackData& aCallbackData)
             case LOK_CALLBACK_A11Y_CARET_CHANGED:
             case LOK_CALLBACK_A11Y_TEXT_SELECTION_CHANGED:
             case LOK_CALLBACK_A11Y_FOCUSED_CELL_CHANGED:
-            case LOK_CALLBACK_COLOR_PALETTES:
             case LOK_CALLBACK_TOOLTIP:
             case LOK_CALLBACK_SHAPE_INNER_TEXT:
             {
@@ -5509,38 +5507,6 @@ static void doc_postUnoCommand(LibreOfficeKitDocument* pThis, const char* pComma
     else if (gImpl && aCommand == ".uno:SidebarHide")
     {
         hideSidebar();
-        return;
-    }
-    else if (gImpl && aCommand == ".uno:UICoverage")
-    {
-        bool report(true), linguisticDataAvailable(true);
-        std::optional<bool> applyTracking;
-
-        for (const beans::PropertyValue& rPropValue : aPropertyValuesVector)
-        {
-            if (rPropValue.Name == "Report")
-                rPropValue.Value >>= report;
-            else if (rPropValue.Name == "LinguisticDataAvailable")
-                rPropValue.Value >>= linguisticDataAvailable;
-            else if (rPropValue.Name == "Track")
-            {
-                bool track(false);
-                rPropValue.Value >>= track;
-                applyTracking = track;
-            }
-        }
-
-        if (report)
-        {
-            tools::JsonWriter aJson;
-            aJson.put("commandName", aCommand);
-            aJson.put("success", true);
-            pDocument->mpCallbackFlushHandlers[nView]->queue(LOK_CALLBACK_UNO_COMMAND_RESULT, aJson.finishAndGetAsOString());
-        }
-
-        if (applyTracking)
-            Application::EnableUICoverage(*applyTracking);
-
         return;
     }
     else if (gImpl && aCommand == ".uno:ReportWhenIdle")

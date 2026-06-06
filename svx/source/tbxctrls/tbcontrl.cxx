@@ -222,7 +222,6 @@ private:
     DECL_LINK(KeyInputHdl, const KeyEvent&, bool);
     DECL_LINK(ActivateHdl, weld::ComboBox&, bool);
     DECL_LINK(FocusOutHdl, weld::Widget&, void);
-    DECL_LINK(DumpAsPropertyTreeHdl, tools::JsonWriter&, void);
     DECL_LINK(CustomRenderHdl, weld::ComboBox::render_args, void);
     DECL_LINK(CustomGetSizeHdl, OutputDevice&, Size);
 
@@ -408,7 +407,6 @@ public:
     DECL_LINK(FocusOutHdl, weld::Widget&, void);
     DECL_LINK(PopupToggledHdl, weld::ComboBox&, void);
     DECL_LINK(LivePreviewHdl, const FontMetric&, void);
-    DECL_LINK(DumpAsPropertyTreeHdl, tools::JsonWriter&, void);
 };
 
 void FontOptionsListener::setProperty(const css::uno::Any &rProperty)
@@ -907,7 +905,6 @@ SvxStyleBox_Base::SvxStyleBox_Base(std::unique_ptr<weld::ComboBox> xWidget,
     m_xWidget->connect_key_press(LINK(this, SvxStyleBox_Base, KeyInputHdl));
     m_xWidget->connect_entry_activate(LINK(this, SvxStyleBox_Base, ActivateHdl));
     m_xWidget->connect_focus_out(LINK(this, SvxStyleBox_Base, FocusOutHdl));
-    m_xWidget->connect_get_property_tree(LINK(this, SvxStyleBox_Base, DumpAsPropertyTreeHdl));
     m_xWidget->set_help_id(HID_STYLE_LISTBOX);
     m_xWidget->set_entry_completion(true);
     m_xMenu->connect_activate(LINK(this, SvxStyleBox_Base, MenuSelectHdl));
@@ -1627,35 +1624,6 @@ Color SvxStyleBox_Base::TestColorsVisible(const Color &FontCol, const Color &Bac
     return retCol;
 }
 
-IMPL_LINK(SvxStyleBox_Base, DumpAsPropertyTreeHdl, tools::JsonWriter&, rJsonWriter, void)
-{
-    if (!m_xWidget)
-        return;
-
-    {
-        auto entriesNode = rJsonWriter.startNode("entries");
-        for (int i = 0, nEntryCount = m_xWidget->get_count(); i < nEntryCount; ++i)
-        {
-            auto entryNode = rJsonWriter.startNode("");
-            rJsonWriter.put("", m_xWidget->get_text(i));
-        }
-    }
-
-    int nActive = m_xWidget->get_active();
-    rJsonWriter.put("selectedCount", static_cast<sal_Int32>(nActive == -1 ? 0 : 1));
-
-    {
-        auto selectedNode = rJsonWriter.startNode("selectedEntries");
-        if (nActive != -1)
-        {
-            auto node = rJsonWriter.startNode("");
-            rJsonWriter.put("", static_cast<sal_Int32>(nActive));
-        }
-    }
-
-    rJsonWriter.put("command", ".uno:StyleApply");
-}
-
 static bool lcl_GetDocFontList(const FontList** ppFontList, SvxFontNameBox_Base& rBox)
 {
     bool bChanged = false;
@@ -1748,14 +1716,13 @@ SvxFontNameBox_Base::SvxFontNameBox_Base(std::unique_ptr<weld::ComboBox> xWidget
     m_xWidget->connect_focus_out(LINK(this, SvxFontNameBox_Base, FocusOutHdl));
     m_xWidget->connect_popup_toggled(LINK(this, SvxFontNameBox_Base, PopupToggledHdl));
     m_xWidget->connect_live_preview(LINK(this, SvxFontNameBox_Base, LivePreviewHdl));
-    m_xWidget->connect_get_property_tree(LINK(this, SvxFontNameBox_Base, DumpAsPropertyTreeHdl));
 
     m_xWidget->set_entry_width_chars(COMBO_WIDTH_IN_CHARS + 5);
 }
 
 SvxFontNameBox_Impl::SvxFontNameBox_Impl(vcl::Window* pParent, const Reference<XFrame>& rFrame,
                                          SvxFontNameToolBoxControl& rCtrl)
-    : InterimItemWindow(pParent, u"svx/ui/fontnamebox.ui"_ustr, u"FontNameBox"_ustr, true, reinterpret_cast<sal_uInt64>(SfxViewShell::Current()))
+    : InterimItemWindow(pParent, u"svx/ui/fontnamebox.ui"_ustr, u"FontNameBox"_ustr, true)
     , SvxFontNameBox_Base(m_xBuilder->weld_combo_box(u"fontnamecombobox"_ustr), rFrame, rCtrl)
 {
     set_id(u"fontnamecombobox"_ustr);
@@ -2028,32 +1995,6 @@ void SvxFontNameBox_Base::Select(bool bNonTravelSelect)
     }
 }
 
-IMPL_LINK(SvxFontNameBox_Base, DumpAsPropertyTreeHdl, tools::JsonWriter&, rJsonWriter, void)
-{
-    {
-        auto entriesNode = rJsonWriter.startNode("entries");
-        for (int i = 0, nEntryCount = m_xWidget->get_count(); i < nEntryCount; ++i)
-        {
-            auto entryNode = rJsonWriter.startNode("");
-            rJsonWriter.put("", m_xWidget->get_text(i));
-        }
-    }
-
-    int nSelectedEntry = m_xWidget->get_active();
-    rJsonWriter.put("selectedCount", static_cast<sal_Int32>(nSelectedEntry == -1 ? 0 : 1));
-
-    {
-        auto selectedNode = rJsonWriter.startNode("selectedEntries");
-        if (nSelectedEntry != -1)
-        {
-            auto entryNode = rJsonWriter.startNode("");
-            rJsonWriter.put("", m_xWidget->get_text(nSelectedEntry));
-        }
-    }
-
-    rJsonWriter.put("command", ".uno:CharFontName");
-}
-
 ColorWindow::ColorWindow(OUString  rCommand,
                          std::shared_ptr<PaletteManager> xPaletteManager,
                          ColorStatus&               rColorStatus,
@@ -2148,8 +2089,8 @@ ColorWindow::ColorWindow(OUString  rCommand,
     mxButtonNoneColor->connect_clicked(LINK(this, ColorWindow, AutoColorClickHdl));
     mxButtonPicker->connect_clicked(LINK(this, ColorWindow, OpenPickerClickHdl));
 
-    mxColorSet->SetSelectHdl(LINK( this, ColorWindow, SelectHdl));
-    mxRecentColorSet->SetSelectHdl(LINK( this, ColorWindow, SelectHdl));
+    mxColorSet->SetSelectHdl(LINK( this, ColorWindow, ColorSelectHdl));
+    mxRecentColorSet->SetSelectHdl(LINK( this, ColorWindow, RecentColorSelectHdl));
     m_xTopLevel->set_help_id(HID_POPUP_COLOR);
     mxColorSet->SetHelpId(HID_POPUP_COLOR_CTRL);
 
@@ -2254,11 +2195,21 @@ NamedColor ColorWindow::GetSelectEntryColor() const
     return GetAutoColor();
 }
 
-IMPL_LINK(ColorWindow, SelectHdl, ValueSet*, pColorSet, void)
+IMPL_LINK_NOARG(ColorWindow, ColorSelectHdl, ValueSet*, void)
 {
-    NamedColor aNamedColor = GetSelectEntryColor(*pColorSet);
+    ApplySelectedColor(*mxColorSet);
+}
 
-    if (pColorSet != mxRecentColorSet.get())
+IMPL_LINK_NOARG(ColorWindow, RecentColorSelectHdl, ValueSet*, void)
+{
+    ApplySelectedColor(*mxRecentColorSet);
+}
+
+void ColorWindow::ApplySelectedColor(ValueSet& rColorSet)
+{
+    NamedColor aNamedColor = GetSelectEntryColor(rColorSet);
+
+    if (&rColorSet != mxRecentColorSet.get())
     {
          mxPaletteManager->AddRecentColor(aNamedColor.m_aColor, aNamedColor.m_aName);
          if (!maMenuButton.get_active())
@@ -2276,7 +2227,7 @@ IMPL_LINK(ColorWindow, SelectHdl, ValueSet*, pColorSet, void)
 
     if (bThemePaletteSelected)
     {
-        const sal_uInt16 nSelectedItemPos = pColorSet->GetItemPos(pColorSet->GetSelectedItemId());
+        const sal_uInt16 nSelectedItemPos = rColorSet.GetItemPos(rColorSet.GetSelectedItemId());
         sal_uInt16 nThemeIndex;
         sal_uInt16 nEffectIndex;
         if (PaletteManager::GetThemeAndEffectIndex(nSelectedItemPos, nThemeIndex, nEffectIndex))

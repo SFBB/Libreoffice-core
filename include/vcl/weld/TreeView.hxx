@@ -16,6 +16,11 @@ class OutputDevice;
 enum class SelectionMode;
 enum class TxtAlign;
 
+namespace com::sun::star::graphic
+{
+class XGraphic;
+}
+
 namespace vcl
 {
 typedef OutputDevice RenderContext;
@@ -36,8 +41,6 @@ enum class ColumnToggleType
 */
 class VCL_DLLPUBLIC TreeView : virtual public ItemView
 {
-    friend class ::LOKTrigger;
-
 public:
     typedef std::pair<const TreeIter&, int> iter_col;
 

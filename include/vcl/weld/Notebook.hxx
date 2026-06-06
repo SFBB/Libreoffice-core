@@ -10,14 +10,12 @@
 #pragma once
 
 #include <vcl/dllapi.h>
-#include <vcl/weld/weld.hxx>
+#include <vcl/weld/Widget.hxx>
 
 namespace weld
 {
 class VCL_DLLPUBLIC Notebook : virtual public Widget
 {
-    friend class ::LOKTrigger;
-
 protected:
     Link<const OUString&, bool> m_aLeavePageHdl;
     Link<const OUString&, void> m_aEnterPageHdl;

@@ -56,7 +56,6 @@
 #include <vcl/settings.hxx>
 #include <slider.hxx>
 #include <vcl/weld/Builder.hxx>
-#include <vcl/weld/weld.hxx>
 #include <vcl/weld/weldutils.hxx>
 #include <vcl/commandinfoprovider.hxx>
 #include <iconview.hxx>
@@ -185,33 +184,19 @@ namespace
 
 }
 
-static bool bEnableUICoverage = false;
-
-void Application::EnableUICoverage(bool bEnable)
-{
-    bEnableUICoverage = bEnable;
-    if (!bEnableUICoverage)
-        GetSalInstance()->getUsedUIList().clear();
-}
-
 std::unique_ptr<weld::Builder> Application::CreateBuilder(weld::Widget* pParent, const OUString &rUIFile)
 {
     SalInstance* pSalInstance = GetSalInstance();
-
-    if (bEnableUICoverage)
-        pSalInstance->getUsedUIList().insert(rUIFile);
-
     return pSalInstance->CreateBuilder(pParent, AllSettings::GetUIRootDir(), rUIFile);
 }
 
-std::unique_ptr<weld::Builder> Application::CreateInterimBuilder(vcl::Window* pParent, const OUString &rUIFile, bool bAllowCycleFocusOut, sal_uInt64 nLOKWindowId)
+std::unique_ptr<weld::Builder> Application::CreateInterimBuilder(vcl::Window* pParent,
+                                                                 const OUString& rUIFile,
+                                                                 bool bAllowCycleFocusOut)
 {
     SalInstance* pSalInstance = GetSalInstance();
-
-    if (bEnableUICoverage)
-        pSalInstance->getUsedUIList().insert(rUIFile);
-
-    return pSalInstance->CreateInterimBuilder(pParent, AllSettings::GetUIRootDir(), rUIFile, bAllowCycleFocusOut, nLOKWindowId);
+    return pSalInstance->CreateInterimBuilder(pParent, AllSettings::GetUIRootDir(), rUIFile,
+                                              bAllowCycleFocusOut);
 }
 
 weld::MessageDialog* Application::CreateMessageDialog(weld::Widget* pParent, VclMessageType eMessageType,

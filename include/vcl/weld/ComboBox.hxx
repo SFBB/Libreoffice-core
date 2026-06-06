@@ -11,7 +11,7 @@
 
 #include <vcl/dllapi.h>
 #include <vcl/weld/EntryMessageType.hxx>
-#include <vcl/weld/weld.hxx>
+#include <vcl/weld/Widget.hxx>
 
 class OutputDevice;
 
@@ -63,8 +63,6 @@ protected:
     Link<ComboBox&, void> m_aPopupToggledHdl;
     Link<ComboBox&, bool> m_aEntryActivateHdl;
     Link<OUString&, bool> m_aEntryInsertTextHdl;
-
-    friend class ::LOKTrigger;
 
     void signal_changed()
     {

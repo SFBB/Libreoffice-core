@@ -68,6 +68,8 @@
 #include <formula/grammar.hxx>
 #include <oox/ole/vbaexport.hxx>
 #include <excelvbaproject.hxx>
+#include <oox/export/shapes.hxx>
+#include <xcl97rec.hxx>
 
 #include <com/sun/star/task/XStatusIndicator.hpp>
 #include <memory>
@@ -938,6 +940,8 @@ sax_fastparser::FSHelperPtr XclXmlUtils::WriteFontData( sax_fastparser::FSHelper
 XclExpXmlStream::XclExpXmlStream( const uno::Reference< XComponentContext >& rCC, bool bExportVBA, bool bExportTemplate )
     : XmlFilterBase( rCC ),
       mpRoot( nullptr ),
+      mpShapeExport(),
+      maDiagramId(0),
       mbExportVBA(bExportVBA),
       mbExportTemplate(bExportTemplate)
 {

@@ -1266,39 +1266,6 @@ void  ScTable::FillSparkline(bool bVertical, SCCOLROW nFixed,
     }
 }
 
-void ScTable::GetBackColorArea(SCCOL& rStartCol, SCROW& /*rStartRow*/,
-                               SCCOL& rEndCol, SCROW& rEndRow ) const
-{
-    bool bExtend;
-    const SvxBrushItem* pDefBackground = &rDocument.GetPool()->GetUserOrPoolDefaultItem(ATTR_BACKGROUND);
-
-    rStartCol = std::min<SCCOL>(rStartCol, aCol.size() - 1);
-    rEndCol = std::min<SCCOL>(rEndCol, aCol.size() - 1);
-
-    do
-    {
-        bExtend = false;
-
-        if (rEndRow < rDocument.MaxRow())
-        {
-            for (SCCOL nCol = rStartCol; nCol <= rEndCol; ++nCol)
-            {
-                const ScPatternAttr* pPattern = GetColumnData(nCol).GetPattern(rEndRow + 1);
-                const SvxBrushItem* pBackground = &pPattern->GetItem(ATTR_BACKGROUND);
-                if (!pPattern->GetItem(ATTR_CONDITIONAL).GetCondFormatData().empty() ||
-                    (pBackground->GetColor() != COL_TRANSPARENT && pBackground != pDefBackground))
-                {
-                    bExtend = true;
-                    break;
-                }
-            }
-
-            if (bExtend)
-                ++rEndRow;
-        }
-    } while (bExtend);
-}
-
 OUString ScTable::GetAutoFillPreview( const ScRange& rSource, SCCOL nEndX, SCROW nEndY )
 {
     OUString aValue;
