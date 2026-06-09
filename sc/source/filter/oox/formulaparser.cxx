@@ -34,7 +34,7 @@
 #include <defnamesbuffer.hxx>
 #include <externallinkbuffer.hxx>
 #include <tablebuffer.hxx>
-#include <formula/compiler.hxx>
+#include <formula/opcode.hxx>
 #include <o3tl/string_view.hxx>
 
 namespace oox::xls {
@@ -1458,7 +1458,7 @@ bool OoxFormulaParserImpl::importPivotToken( SequenceInputStream& rStrm )
     }
     if( aFieldName.isEmpty() )
         return pushBiffErrorOperand( BIFF_ERR_REF );
-    return pushValueOperand( aFieldName, SC_OPCODE_DP_FIELD );
+    return pushValueOperand( aFieldName, ocDPFieldName );
 }
 
 bool OoxFormulaParserImpl::importTableToken( SequenceInputStream& rStrm )
