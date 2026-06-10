@@ -1148,9 +1148,6 @@ static void doc_removeTextContext(LibreOfficeKitDocument* pThis,
                                   unsigned nLOKWindowId,
                                   int nCharBefore,
                                   int nCharAfter);
-static void doc_sendDialogEvent(LibreOfficeKitDocument* pThis,
-                               unsigned long long int nLOKWindowId,
-                               const char* pArguments);
 static void doc_postWindowKeyEvent(LibreOfficeKitDocument* pThis,
                                    unsigned nLOKWindowId,
                                    int nType,
@@ -1298,10 +1295,6 @@ static void doc_sendContentControlEvent(LibreOfficeKitDocument* pThis, const cha
 static void doc_setViewTimezone(LibreOfficeKitDocument* pThis, int nId, const char* timezone);
 
 static void doc_setViewReadOnly(LibreOfficeKitDocument* pThis, int nId, const bool readonly);
-
-static void doc_setAllowChangeComments(LibreOfficeKitDocument* pThis, int nId, const bool allow);
-
-static void doc_setAllowManageRedlines(LibreOfficeKitDocument* pThis, int nId, bool allow);
 
 static void doc_setAccessibilityState(LibreOfficeKitDocument* pThis, int nId, bool bEnabled);
 
@@ -1473,7 +1466,6 @@ LibLODocument_Impl::LibLODocument_Impl(uno::Reference <css::lang::XComponent> xC
         m_pDocumentClass->postWindowKeyEvent = doc_postWindowKeyEvent;
         m_pDocumentClass->postMouseEvent = doc_postMouseEvent;
         m_pDocumentClass->postWindowMouseEvent = doc_postWindowMouseEvent;
-        m_pDocumentClass->sendDialogEvent = doc_sendDialogEvent;
         m_pDocumentClass->postUnoCommand = doc_postUnoCommand;
         m_pDocumentClass->setTextSelection = doc_setTextSelection;
         m_pDocumentClass->setWindowTextSelection = doc_setWindowTextSelection;
@@ -1536,9 +1528,6 @@ LibLODocument_Impl::LibLODocument_Impl(uno::Reference <css::lang::XComponent> xC
         m_pDocumentClass->getA11yCaretPosition = doc_getA11yCaretPosition;
 
         m_pDocumentClass->setViewReadOnly = doc_setViewReadOnly;
-
-        m_pDocumentClass->setAllowChangeComments = doc_setAllowChangeComments;
-        m_pDocumentClass->setAllowManageRedlines = doc_setAllowManageRedlines;
 
         m_pDocumentClass->getPresentationInfo = doc_getPresentationInfo;
         m_pDocumentClass->createSlideRenderer = doc_createSlideRenderer;
@@ -2728,10 +2717,6 @@ static void lo_registerAnyInputCallback(LibreOfficeKit* pThis,
 static void lo_registerFileSaveDialogCallback(LibreOfficeKit* pThis,
                        LibreOfficeKitFileSaveDialogCallback pFileSaveDialogCallback);
 
-static void lo_sendDialogEvent(LibreOfficeKit* pThis,
-                               unsigned long long int nLOKWindowId,
-                               const char* pArguments);
-
 static void lo_setOption(LibreOfficeKit* pThis, const char* pOption, const char* pValue);
 
 static void lo_dumpState(LibreOfficeKit* pThis, const char* pOptions, char** pState);
@@ -2765,7 +2750,6 @@ LibLibreOffice_Impl::LibLibreOffice_Impl()
         m_pOfficeClass->runMacro = lo_runMacro;
         m_pOfficeClass->signDocument = lo_signDocument;
         m_pOfficeClass->runLoop = lo_runLoop;
-        m_pOfficeClass->sendDialogEvent = lo_sendDialogEvent;
         m_pOfficeClass->setOption = lo_setOption;
         m_pOfficeClass->dumpState = lo_dumpState;
         m_pOfficeClass->extractRequest = lo_extractRequest;
@@ -5127,16 +5111,6 @@ public:
 
 } // anonymous namespace
 
-static void doc_sendDialogEvent(LibreOfficeKitDocument* /*pThis*/, unsigned long long int /*nWindowId*/, const char* /*pArguments*/)
-{
-    return;
-}
-
-static void lo_sendDialogEvent(LibreOfficeKit* /*pThis*/, unsigned long long int /*nWindowId*/, const char* /*pArguments*/)
-{
-    return;
-}
-
 static void reInitDictionaryList()
 {
     uno::Reference<css::linguistic2::XSearchableDictionaryList> xDicList
@@ -5310,11 +5284,6 @@ static bool isCommandAllowed(std::u16string_view command)
     SfxViewShell* pViewShell = SfxViewShell::Current();
     if (!pViewShell || !pViewShell->IsLokReadOnlyView())
         return true;
-
-    if (command == u".uno:Save")
-    {
-        return pViewShell->IsAllowChangeComments() || pViewShell->IsAllowManageRedlines();
-    }
 
     if (command == u".uno:TransformDialog")
     {
@@ -7555,26 +7524,6 @@ static void doc_setViewReadOnly(SAL_UNUSED_PARAMETER LibreOfficeKitDocument* /*p
     SetLastExceptionMsg();
 
     SfxLokHelper::setViewReadOnly(nId, readOnly);
-}
-
-static void doc_setAllowChangeComments(SAL_UNUSED_PARAMETER LibreOfficeKitDocument* /*pThis*/, int nId, const bool allow)
-{
-    comphelper::ProfileZone aZone("doc_setAllowChangeComments");
-
-    SolarMutexGuard aGuard;
-    SetLastExceptionMsg();
-
-    SfxLokHelper::setAllowChangeComments(nId, allow);
-}
-
-static void doc_setAllowManageRedlines(SAL_UNUSED_PARAMETER LibreOfficeKitDocument* /*pThis*/, int nId, bool allow)
-{
-    comphelper::ProfileZone aZone("doc_setAllowManageRedlines");
-
-    SolarMutexGuard aGuard;
-    SetLastExceptionMsg();
-
-    SfxLokHelper::setAllowManageRedlines(nId, allow);
 }
 
 static void doc_setAccessibilityState(SAL_UNUSED_PARAMETER LibreOfficeKitDocument* pThis, int nId, bool nEnabled)

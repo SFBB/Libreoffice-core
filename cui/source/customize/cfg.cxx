@@ -258,13 +258,6 @@ void SvxConfigDialog::ActivatePage(const OUString& rPage)
 void SvxConfigDialog::SetFrame(const css::uno::Reference<css::frame::XFrame>& xFrame)
 {
     m_xFrame = xFrame;
-    OUString aModuleId = SvxConfigPage::GetFrameWithDefaultAndIdentify(m_xFrame);
-
-    if (aModuleId != "com.sun.star.text.TextDocument" &&
-        aModuleId != "com.sun.star.sheet.SpreadsheetDocument" &&
-        aModuleId != "com.sun.star.presentation.PresentationDocument" &&
-        aModuleId != "com.sun.star.drawing.DrawingDocument")
-        RemoveTabPage(u"notebookbar"_ustr);
 }
 
 void SvxConfigDialog::PageCreated(const OUString &rId, SfxTabPage& rPage)
@@ -1333,9 +1326,9 @@ OUString SvxConfigPage::GetScriptURL() const
     SfxGroupInfo_Impl *pData = weld::fromId<SfxGroupInfo_Impl*>(m_xFunctions->get_selected_id());
     if (pData)
     {
-        if  (   ( pData->nKind == SfxCfgKind::FUNCTION_SLOT ) ||
-                ( pData->nKind == SfxCfgKind::FUNCTION_SCRIPT ) ||
-                ( pData->nKind == SfxCfgKind::GROUP_STYLES )    )
+        if  (   ( pData->getKind() == SfxCfgKind::FUNCTION_SLOT ) ||
+                ( pData->getKind() == SfxCfgKind::FUNCTION_SCRIPT ) ||
+                ( pData->getKind() == SfxCfgKind::GROUP_STYLES )    )
         {
             result = pData->sCommand;
         }

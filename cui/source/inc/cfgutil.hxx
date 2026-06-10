@@ -18,6 +18,7 @@
  */
 #pragma once
 
+#include <variant>
 #include <vector>
 #include <memory>
 #include <string_view>
@@ -83,29 +84,76 @@ public:
         static OUString generateCommand(std::u16string_view sFamily, std::u16string_view sStyle);
 };
 
+struct SfxScriptContainer_Data
+{
+    SfxScriptContainer_Data(
+        const css::uno::Reference<css::script::browse::XBrowseNode>& xBrowseNode_ = nullptr,
+        const css::uno::Reference<css::frame::XModel>& xModel_ = nullptr)
+        : xBrowseNode(xBrowseNode_)
+        , xModel(xModel_)
+    {
+    }
+
+    css::uno::Reference<css::script::browse::XBrowseNode> xBrowseNode;
+    css::uno::Reference<css::frame::XModel> xModel;
+};
+
+struct SfxScriptFunction_Data
+{
+    SfxScriptFunction_Data(
+        const OUString& sUrl_ = OUString(),
+        const css::uno::Reference<css::frame::XModel> &xModel_ = nullptr)
+        : sUrl(sUrl_)
+        , xModel(xModel_)
+    {
+    }
+
+    OUString sUrl;
+    css::uno::Reference<css::frame::XModel> xModel;
+};
+
 enum class SfxCfgKind
 {
-    GROUP_FUNCTION           = 1,
-    FUNCTION_SLOT            = 2,
-    GROUP_SCRIPTCONTAINER    = 3,
-    FUNCTION_SCRIPT          = 4,
-    GROUP_STYLES             = 5,
-    GROUP_ALLFUNCTIONS       = 6,
-    GROUP_SIDEBARDECKS       = 7
+    GROUP_FUNCTION,
+    FUNCTION_SLOT,
+    GROUP_SCRIPTCONTAINER,
+    FUNCTION_SCRIPT,
+    GROUP_STYLES,
+    GROUP_ALLFUNCTIONS,
+    GROUP_SIDEBARDECKS,
 };
+
+// Used to construct SfxGroupInfo_Data by selecting the variant as an index tag
+template <SfxCfgKind K>
+constexpr std::in_place_index_t<size_t(K)> SfxCfgKindAsIndex {};
+
+// The types must match the order of the values of SfxCfgKind
+typedef std::variant<
+    std::monostate, // GROUP_FUNCTION
+    std::monostate, // FUNCTION_SLOT
+    SfxScriptContainer_Data, // GROUP_SCRIPTCONTAINER
+    SfxScriptFunction_Data, // FUNCTION_SCRIPT
+    std::unique_ptr<SfxStyleInfo_Impl>, // GROUP_STYLES
+    std::monostate, // GROUP_ALLFUNCTIONS
+    std::monostate // GROUP_SIDEBARDECKS
+    > SfxGroupInfo_Data;
 
 struct SfxGroupInfo_Impl
 {
-    SfxCfgKind  nKind;
+    SfxGroupInfo_Data aData;
     sal_uInt16  nUniqueID;
-    void*       pObject;
     OUString    sCommand;
     OUString    sLabel;
     OUString    sHelpText;
     OUString    sTooltip;
 
-                SfxGroupInfo_Impl( SfxCfgKind n, sal_uInt16 nr, void* pObj = nullptr ) :
-                    nKind( n ), nUniqueID( nr ), pObject( pObj ) {}
+    SfxGroupInfo_Impl( SfxGroupInfo_Data ad, sal_uInt16 nr )
+        : aData( std::move(ad) )
+        , nUniqueID( nr )
+    {
+    }
+
+    SfxCfgKind getKind() const { return static_cast<SfxCfgKind>(aData.index()); }
 };
 
 typedef std::vector<std::unique_ptr<SfxGroupInfo_Impl> > SfxGroupInfoArr_Impl;
@@ -206,12 +254,9 @@ class CuiConfigGroupListBox
     std::unique_ptr<weld::TreeView> m_xTreeView;
     std::unique_ptr<weld::TreeIter> m_xScratchIter;
 
-    static css::uno::Reference< css::uno::XInterface  > getDocumentModel(
-        css::uno::Reference< css::uno::XComponentContext > const & xCtx,
-        std::u16string_view docName);
-
     sal_Int32 InitModule();
     void FillScriptList(const css::uno::Reference< css::script::browse::XBrowseNode >& xRootNode,
+                        const css::uno::Reference< css::frame::XModel >& xParentDocumentModel,
                         const weld::TreeIter* pParentEntry);
     void FillFunctionsList(const css::uno::Sequence< css::frame::DispatchInformation >& xCommands);
     OUString MapCommand2UIName(const OUString& sCommand);
@@ -276,6 +321,7 @@ public:
     virtual ~SvxScriptSelectorDialog() override;
 
     OUString    GetScriptURL() const;
+    css::uno::Reference<css::frame::XModel> GetScriptModel() const;
     void        SetRunLabel();
     void        SaveLastUsedMacro();
     void        LoadLastUsedMacro();
