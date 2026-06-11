@@ -19,6 +19,7 @@
 
 #pragma once
 
+#include <rtl/ref.hxx>
 #include <tools/color.hxx>
 #include <vcl/image.hxx>
 #include <cppuhelper/implbase.hxx>
@@ -26,8 +27,6 @@
 #include <comphelper/compbase.hxx>
 #include <com/sun/star/accessibility/XAccessible.hpp>
 #include <com/sun/star/accessibility/XAccessibleSelection.hpp>
-
-#define VALUESET_ITEM_NONEITEM      0xFFFE
 
 enum class ValueSetItemType
 {
@@ -143,14 +142,6 @@ private:
         @throws css::lang::DisposedException
     */
     void ThrowIfDisposed();
-
-    /** Check whether the value set has a 'none' field, i.e. a field (button)
-        that deselects any items (selects none of them).
-        @return
-            Returns <true/> if there is a 'none' field and <false/> if it is
-            missing.
-    */
-    bool HasNoneField() const;
 };
 
 class ValueItemAcc : public comphelper::OAccessible

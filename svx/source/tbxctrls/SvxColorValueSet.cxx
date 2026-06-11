@@ -24,17 +24,10 @@
 #include <vcl/weld/ScrolledWindow.hxx>
 #include <osl/diagnose.h>
 
-#include <svx/uiobject.hxx>
-
 SvxColorValueSet::SvxColorValueSet(std::unique_ptr<weld::ScrolledWindow> pWindow)
     : ValueSet(std::move(pWindow))
 {
     SetEdgeBlending(true);
-}
-
-FactoryFunction SvxColorValueSet::GetUITestFactory() const
-{
-    return SvxColorValueSetUIObject::create;
 }
 
 sal_uInt32 SvxColorValueSet::getEntryEdgeLength()
@@ -96,7 +89,7 @@ void SvxColorValueSet::layoutToGivenHeight(sal_uInt32 nHeight, sal_uInt32 nEntry
     const WinBits aWinBits(GetStyle() & ~WB_VSCROLL);
 
     // get size with all fields disabled
-    const WinBits aWinBitsNoScrollNoFields(GetStyle() & ~(WB_VSCROLL|WB_NAMEFIELD|WB_NONEFIELD));
+    const WinBits aWinBitsNoScrollNoFields(GetStyle() & ~(WB_VSCROLL | WB_NAMEFIELD));
     SetStyle(aWinBitsNoScrollNoFields);
     const Size aSizeNoScrollNoFields(CalcWindowSizePixel(aItemSize, SvxColorValueSet::getColumnCount()));
 

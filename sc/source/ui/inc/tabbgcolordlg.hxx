@@ -22,16 +22,14 @@
 #include <vcl/weld/Button.hxx>
 #include <vcl/weld/ComboBox.hxx>
 #include <vcl/weld/DialogController.hxx>
+#include <vcl/weld/ToggleButton.hxx>
 #include <svx/SvxColorValueSet.hxx>
 #include <svx/PaletteManager.hxx>
 
 class ScTabBgColorDlg : public weld::GenericDialogController
 {
 public:
-    ScTabBgColorDlg(weld::Window* pParent,
-                    const OUString& rTitle,
-                    const OUString& rTabBgColorNoColorText,
-                    const Color& rDefaultColor);
+    ScTabBgColorDlg(weld::Window* pParent, const OUString& rTitle);
     virtual ~ScTabBgColorDlg() override;
 
     Color GetSelectedColor() const;
@@ -54,9 +52,9 @@ public:
 
 private:
     PaletteManager          m_aPaletteManager;
-    Color                   m_aTabBgColor;
 
     std::unique_ptr<weld::ComboBox> m_xSelectPalette;
+    std::unique_ptr<weld::ToggleButton> m_xDefaultButton;
     std::unique_ptr<ScTabBgColorValueSet> m_xTabBgColorSet;
     std::unique_ptr<weld::CustomWeld> m_xTabBgColorSetWin;
     std::unique_ptr<weld::Button> m_xBtnOk;
@@ -64,6 +62,8 @@ private:
     void FillPaletteLB();
 
     DECL_LINK(SelectPaletteLBHdl, weld::ComboBox&, void);
+    DECL_LINK(DefaultButtonToggled, weld::Toggleable&, void);
+    DECL_LINK(TabBgColorSelectHdl, ValueSet*, void);
     DECL_LINK(TabBgColorDblClickHdl_Impl, ValueSet*, void);
     DECL_LINK(TabBgColorOKHdl_Impl, weld::Button&, void);
 };
