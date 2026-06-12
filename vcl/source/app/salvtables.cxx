@@ -3691,8 +3691,8 @@ void SalInstanceTreeView::do_set_toggle(SvTreeListEntry& rEntry, TriState eState
     // if it's the placeholder to allow a blank column, replace it now
     if (rEntry.GetItem(col).GetType() != SvLBoxItemType::Button)
     {
-        SvLBoxButtonData* pData = m_bTogglesAsRadio ? &m_aRadioButtonData : &m_aCheckButtonData;
-        rEntry.ReplaceItem(std::make_unique<SvLBoxButton>(pData), 0);
+        SvLBoxButtonData& rData = m_bTogglesAsRadio ? m_aRadioButtonData : m_aCheckButtonData;
+        rEntry.ReplaceItem(std::make_unique<SvLBoxButton>(rData), 0);
         update_checkbutton_column_width(rEntry);
     }
     SvLBoxItem& rItem = rEntry.GetItem(col);
@@ -3738,31 +3738,6 @@ TriState SalInstanceTreeView::get_toggle(SvTreeListEntry* pEntry, int col) const
     }
     col = to_internal_model(col);
     return do_get_toggle(pEntry, col);
-}
-
-void SalInstanceTreeView::set_toggle(SvTreeListEntry& rEntry, TriState eState, int col)
-{
-    if (col == -1)
-    {
-        assert(m_xTreeView->m_nTreeFlags & SvTreeFlags::CHKBTN);
-        do_set_toggle(rEntry, eState, 0);
-        return;
-    }
-
-    col = to_internal_model(col);
-
-    // blank out missing entries
-    for (int i = rEntry.ItemCount(); i < col; ++i)
-        AddStringItem(&rEntry, u""_ustr, i - 1);
-
-    if (static_cast<size_t>(col) == rEntry.ItemCount())
-    {
-        SvLBoxButtonData* pData = m_bTogglesAsRadio ? &m_aRadioButtonData : &m_aCheckButtonData;
-        rEntry.AddItem(std::make_unique<SvLBoxButton>(pData));
-        update_checkbutton_column_width(rEntry);
-    }
-
-    do_set_toggle(rEntry, eState, col);
 }
 
 bool SalInstanceTreeView::get_text_emphasis(SvTreeListEntry* pEntry, int col) const
@@ -4267,7 +4242,29 @@ void SalInstanceTreeView::set_toggle(const weld::TreeIter& rIter, TriState eStat
 {
     const SalInstanceTreeIter& rVclIter = static_cast<const SalInstanceTreeIter&>(rIter);
     assert(rVclIter.iter && "Invalid iter");
-    set_toggle(*rVclIter.iter, eState, col);
+    SvTreeListEntry& rEntry = *rVclIter.iter;
+
+    if (col == -1)
+    {
+        assert(m_xTreeView->m_nTreeFlags & SvTreeFlags::CHKBTN);
+        do_set_toggle(rEntry, eState, 0);
+        return;
+    }
+
+    col = to_internal_model(col);
+
+    // blank out missing entries
+    for (int i = rEntry.ItemCount(); i < col; ++i)
+        AddStringItem(&rEntry, u""_ustr, i - 1);
+
+    if (static_cast<size_t>(col) == rEntry.ItemCount())
+    {
+        SvLBoxButtonData& rData = m_bTogglesAsRadio ? m_aRadioButtonData : m_aCheckButtonData;
+        rEntry.AddItem(std::make_unique<SvLBoxButton>(rData));
+        update_checkbutton_column_width(rEntry);
+    }
+
+    do_set_toggle(rEntry, eState, col);
 }
 
 void SalInstanceTreeView::set_clicks_to_toggle(int nToggleBehavior)
@@ -4348,8 +4345,11 @@ void SalInstanceTreeView::start_editing(const weld::TreeIter& rIter)
 
 void SalInstanceTreeView::end_editing() { m_xTreeView->EndEditing(); }
 
-void SalInstanceTreeView::set_image(SvTreeListEntry* pEntry, const Image& rImage, int col)
+void SalInstanceTreeView::set_image(const weld::TreeIter& rIter, const Image& rImage, int col)
 {
+    const SalInstanceTreeIter& rVclIter = static_cast<const SalInstanceTreeIter&>(rIter);
+    SvTreeListEntry* pEntry = rVclIter.iter;
+
     if (col == -1 || col == 0)
     {
         m_xTreeView->SetExpandedEntryBmp(pEntry, rImage);
@@ -4384,22 +4384,19 @@ void SalInstanceTreeView::set_image(SvTreeListEntry* pEntry, const Image& rImage
 
 void SalInstanceTreeView::set_image(const weld::TreeIter& rIter, const OUString& rImage, int col)
 {
-    const SalInstanceTreeIter& rVclIter = static_cast<const SalInstanceTreeIter&>(rIter);
-    set_image(rVclIter.iter, createImage(rImage), col);
+    set_image(rIter, createImage(rImage), col);
 }
 
 void SalInstanceTreeView::set_image(const weld::TreeIter& rIter,
                                     const css::uno::Reference<css::graphic::XGraphic>& rImage,
                                     int col)
 {
-    const SalInstanceTreeIter& rVclIter = static_cast<const SalInstanceTreeIter&>(rIter);
-    set_image(rVclIter.iter, Image(rImage), col);
+    set_image(rIter, Image(rImage), col);
 }
 
 void SalInstanceTreeView::set_image(const weld::TreeIter& rIter, VirtualDevice& rImage, int col)
 {
-    const SalInstanceTreeIter& rVclIter = static_cast<const SalInstanceTreeIter&>(rIter);
-    set_image(rVclIter.iter, createImage(rImage), col);
+    set_image(rIter, createImage(rImage), col);
 }
 
 void SalInstanceTreeView::copy_iterator(const weld::TreeIter& rSource, weld::TreeIter& rDest) const

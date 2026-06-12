@@ -44,6 +44,8 @@
 #include <vcl/toolkit/svlbitm.hxx>
 #include <vcl/toolkit/treelistentry.hxx>
 #include <vcl/toolkit/viewdataentry.hxx>
+
+#include <SvLBoxButton.hxx>
 #include <accel.hxx>
 #include <svimpbox.hxx>
 #include <window.h>
@@ -1791,7 +1793,8 @@ void SvTreeListBox::InitEntry(SvTreeListEntry& rEntry, const OUString& aStr,
 {
     if (m_nTreeFlags & SvTreeFlags::CHKBTN)
     {
-        rEntry.AddItem(std::make_unique<SvLBoxButton>(m_pCheckButtonData));
+        assert(m_pCheckButtonData);
+        rEntry.AddItem(std::make_unique<SvLBoxButton>(*m_pCheckButtonData));
     }
 
     rEntry.AddItem(

@@ -18,10 +18,11 @@
  */
 #pragma once
 
+#include "SvxColorValueSet.hxx"
+
 #include <sal/types.h>
 #include <sfx2/dockwin.hxx>
 #include <svl/lstner.hxx>
-#include <svx/SvxColorValueSet.hxx>
 #include <svx/xtable.hxx>
 #include <tools/gen.hxx>
 #include <tools/link.hxx>
@@ -71,9 +72,9 @@ class SAL_WARN_UNUSED SvxColorDockingWindow final : public SfxDockingWindow, pub
 friend class SvxColorChildWindow;
 
 private:
-    XColorListRef       pColorList;
-    std::unique_ptr<SvxColorValueSet_docking> xColorSet;
-    std::unique_ptr<weld::CustomWeld> xColorSetWin;
+    XColorListRef m_pColorList;
+    std::unique_ptr<SvxColorValueSet_docking> m_pColorSet;
+    std::unique_ptr<weld::CustomWeld> m_pColorSetWin;
 
     void                FillValueSet();
 

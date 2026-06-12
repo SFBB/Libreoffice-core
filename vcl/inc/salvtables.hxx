@@ -69,6 +69,8 @@
 #include <vcl/toolkit/svlbitm.hxx>
 #include <vcl/weld/IconView.hxx>
 #include <o3tl/sorted_vector.hxx>
+
+#include "SvLBoxButton.hxx"
 #include "calendar.hxx"
 #include "colorpicker.hxx"
 #include "iconview.hxx"
@@ -1596,8 +1598,6 @@ protected:
 
     TriState get_toggle(SvTreeListEntry* pEntry, int col) const;
 
-    void set_toggle(SvTreeListEntry& rEntry, TriState eState, int col);
-
     bool get_text_emphasis(SvTreeListEntry* pEntry, int col) const;
 
     void set_header_item_width(const std::vector<int>& rWidths);
@@ -1702,7 +1702,7 @@ public:
 
     virtual void end_editing() override;
 
-    void set_image(SvTreeListEntry* pEntry, const Image& rImage, int col);
+    void set_image(const weld::TreeIter& rIter, const Image& rImage, int col);
 
     virtual void set_image(const weld::TreeIter& rIter, const OUString& rImage,
                            int col = -1) override;

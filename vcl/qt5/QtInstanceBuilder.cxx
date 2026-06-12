@@ -191,6 +191,7 @@ constexpr auto SUPPORTED_UI_FILES = frozen::make_unordered_set<std::u16string_vi
     u"modules/scalc/ui/showsheetdialog.ui",
     u"modules/scalc/ui/sortdialog.ui",
     u"modules/scalc/ui/subtotaldialog.ui",
+    u"modules/scalc/ui/tabcolordialog.ui",
     u"modules/scalc/ui/ttestdialog.ui",
     u"modules/scalc/ui/validationdialog.ui",
     u"modules/scalc/ui/ztestdialog.ui",
@@ -384,7 +385,10 @@ constexpr auto SUPPORTED_WITH_QT_PARENT = frozen::make_unordered_set<std::u16str
     u"cui/ui/numberingformatpage.ui",
     u"cui/ui/numberingoptionspage.ui",
     u"cui/ui/numberingpositionpage.ui",
+    u"cui/ui/optgeneralpage.ui",
     u"cui/ui/optlingupage.ui",
+    u"cui/ui/optuserpage.ui",
+    u"cui/ui/optviewpage.ui",
     u"cui/ui/pageformatpage.ui",
     u"cui/ui/paragalignpage.ui",
     u"cui/ui/paraindentspacing.ui",
@@ -504,6 +508,7 @@ constexpr auto SUPPORTED_WITH_QT_PARENT = frozen::make_unordered_set<std::u16str
     u"sfx/ui/documentinfopage.ui",
     u"sfx/ui/linefragment.ui",
     u"sfx/ui/managestylepage.ui",
+    u"sfx/ui/optprintpage.ui",
     u"sfx/ui/propertycategoryrow.ui",
     u"sfx/ui/propertychip.ui",
     u"sfx/ui/propertychiprow.ui",
@@ -736,7 +741,7 @@ std::unique_ptr<weld::ToggleButton> QtInstanceBuilder::weld_toggle_button(const 
 
     std::unique_ptr<weld::ToggleButton> xRet;
     GetQtInstance().RunInMainThread([&] {
-        if (QAbstractButton* pButton = m_xBuilder->get<QAbstractButton>(rId))
+        if (QToolButton* pButton = m_xBuilder->get<QToolButton>(rId))
             xRet = std::make_unique<QtInstanceToggleButton>(pButton);
     });
     return xRet;

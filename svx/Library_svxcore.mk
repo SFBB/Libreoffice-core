@@ -439,7 +439,6 @@ $(eval $(call gb_Library_add_exception_objects,svxcore,\
     svx/source/tbxctrls/PaletteManager \
     svx/source/tbxctrls/tbcontrl \
     svx/source/tbxctrls/tbxcolorupdate \
-    svx/source/tbxctrls/SvxColorValueSet \
     svx/source/tbxctrls/StylesPreviewToolBoxControl \
     svx/source/tbxctrls/StylesPreviewWindow \
     svx/source/toolbars/extrusionbar \
@@ -470,6 +469,7 @@ $(eval $(call gb_Library_add_exception_objects,svxcore,\
     svx/source/xml/xmlexport \
     svx/source/xml/xmlxtexp \
     svx/source/xml/xmlxtimp \
+    svx/source/xoutdev/fillbitmaplink \
     svx/source/xoutdev/xattr \
     svx/source/xoutdev/xattr2 \
     svx/source/xoutdev/xattrbmp \

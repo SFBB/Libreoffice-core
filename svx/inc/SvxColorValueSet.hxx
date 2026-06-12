@@ -21,10 +21,8 @@
 
 #include <svtools/valueset.hxx>
 #include <svx/IColorSet.hxx>
-#include <svx/svxdllapi.h>
-#include <set>
 
-class SVXCORE_DLLPUBLIC SvxColorValueSet : public ValueSet, public IColorSet
+class SvxColorValueSet : public ValueSet, public IColorSet
 {
 public:
     SvxColorValueSet(std::unique_ptr<weld::ScrolledWindow> pWindow);
@@ -37,7 +35,6 @@ public:
     static sal_uInt32 getEntryEdgeLength();
     static sal_uInt32 getColumnCount();
 
-    Size layoutAllVisible(sal_uInt32 nEntryCount);
     void layoutToGivenHeight(sal_uInt32 nHeight, sal_uInt32 nEntryCount);
 
     virtual void insert(int nIndex, const Color& rColor, const OUString& rColorName) override
