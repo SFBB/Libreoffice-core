@@ -31,10 +31,10 @@ class SvLBoxButton;
 class SvLBoxButtonData
 {
 private:
-    Link<SvLBoxButtonData*, void> aLink;
+    Link<SvLBoxButtonData*, void> m_aLink;
     Size m_aSize;
-    bool bDataOk;
-    std::map<SvBmp, Image> aBmps;
+    bool m_bDataOk;
+    std::map<SvBmp, Image> m_aBmps;
 
     SvTreeListEntry* m_pEntry;
     SvLBoxButton* m_pBox;
@@ -48,18 +48,16 @@ public:
 
     static SvBmp GetIndex(SvItemStateFlags nItemState);
     const Size& GetSize();
-    void SetLink(const Link<SvLBoxButtonData*, void>& rLink) { aLink = rLink; }
+    void SetLink(const Link<SvLBoxButtonData*, void>& rLink) { m_aLink = rLink; }
+    void CallLink(SvTreeListEntry* pActEntry, SvLBoxButton* pActBox);
     bool IsRadio() const;
-    // as buttons are not derived from LinkHdl
-    void CallLink();
 
-    void StoreButtonState(SvTreeListEntry* pActEntry, SvLBoxButton* pActBox);
     static SvButtonState ConvertToButtonState(SvItemStateFlags nItemFlags);
 
     SvTreeListEntry* GetActEntry() const;
     SvLBoxButton* GetActBox() const;
 
-    const Image& GetImage(SvBmp eIndex) const { return aBmps.at(eIndex); }
+    const Image& GetImage(SvBmp eIndex) const { return m_aBmps.at(eIndex); }
 
     void SetDefaultImages(const Control& rControlForSettings);
     // set images according to the color scheme of the Control
@@ -77,7 +75,7 @@ class SvLBoxButton final : public SvLBoxItem
 public:
     SvLBoxButton(SvLBoxButtonData& rBData, bool bIsVis = true);
     virtual ~SvLBoxButton() override;
-    virtual void InitViewData(SvTreeListBox& rView, SvTreeListEntry* pEntry,
+    virtual void InitViewData(SvTreeListBox& rView, SvTreeListEntry& rEntry,
                               SvViewDataItem* pViewData = nullptr) override;
 
     virtual SvLBoxItemType GetType() const override;

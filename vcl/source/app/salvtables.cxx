@@ -3658,8 +3658,7 @@ void SalInstanceTreeView::do_insert(const weld::TreeIter* pParent, int pos, cons
 
     if (bChildrenOnDemand)
     {
-        SvTreeListEntry* pPlaceHolder
-            = m_xTreeView->InsertEntry(u"<dummy>"_ustr, pEntry, false, 0, nullptr);
+        SvTreeListEntry* pPlaceHolder = m_xTreeView->InsertEntry(u"<dummy>"_ustr, pEntry, false, 0);
         SvViewDataEntry* pViewData = m_xTreeView->GetViewDataEntry(pPlaceHolder);
         pViewData->SetSelectable(false);
     }
@@ -4134,7 +4133,7 @@ void SalInstanceTreeView::set_text(SvTreeListEntry& rEntry, const OUString& rTex
 {
     if (col == -1)
     {
-        m_xTreeView->SetEntryText(&rEntry, rText);
+        m_xTreeView->SetEntryText(rEntry, rText);
         return;
     }
 
@@ -4234,8 +4233,6 @@ void SalInstanceTreeView::enable_toggle_buttons(weld::ColumnToggleType eType)
 
     SvLBoxButtonData& rData = m_bTogglesAsRadio ? m_aRadioButtonData : m_aCheckButtonData;
     m_xTreeView->EnableCheckButton(rData);
-    // EnableCheckButton clobbered this, restore it
-    rData.SetLink(LINK(this, SalInstanceTreeView, ToggleHdl));
 }
 
 void SalInstanceTreeView::set_toggle(const weld::TreeIter& rIter, TriState eState, int col)
@@ -4349,11 +4346,12 @@ void SalInstanceTreeView::set_image(const weld::TreeIter& rIter, const Image& rI
 {
     const SalInstanceTreeIter& rVclIter = static_cast<const SalInstanceTreeIter&>(rIter);
     SvTreeListEntry* pEntry = rVclIter.iter;
+    assert(pEntry);
 
     if (col == -1 || col == 0)
     {
-        m_xTreeView->SetExpandedEntryBmp(pEntry, rImage);
-        m_xTreeView->SetCollapsedEntryBmp(pEntry, rImage);
+        m_xTreeView->SetExpandedEntryBmp(*pEntry, rImage);
+        m_xTreeView->SetCollapsedEntryBmp(*pEntry, rImage);
         return;
     }
 
@@ -4493,7 +4491,7 @@ void SalInstanceTreeView::do_set_children_on_demand(const weld::TreeIter& rIter,
 
     if (bChildrenOnDemand && !pPlaceHolder)
     {
-        pPlaceHolder = m_xTreeView->InsertEntry(u"<dummy>"_ustr, rVclIter.iter, false, 0, nullptr);
+        pPlaceHolder = m_xTreeView->InsertEntry(u"<dummy>"_ustr, rVclIter.iter, false, 0);
         SvViewDataEntry* pViewData = m_xTreeView->GetViewDataEntry(pPlaceHolder);
         pViewData->SetSelectable(false);
     }
@@ -5000,7 +4998,7 @@ bool SalInstanceTreeView::ExpandRow(const SalInstanceTreeIter& rIter)
         //expand disallowed, restore placeholder
         if (!bRet)
         {
-            pPlaceHolder = m_xTreeView->InsertEntry(u"<dummy>"_ustr, pEntry, false, 0, nullptr);
+            pPlaceHolder = m_xTreeView->InsertEntry(u"<dummy>"_ustr, pEntry, false, 0);
             SvViewDataEntry* pViewData = m_xTreeView->GetViewDataEntry(pPlaceHolder);
             pViewData->SetSelectable(false);
         }
@@ -5173,14 +5171,14 @@ void SalInstanceIconView::set_image(int pos, VirtualDevice& rIcon)
 
 void SalInstanceIconView::set_text(int pos, const OUString& rText)
 {
-    SvTreeListEntry* aEntry = m_xIconView->GetEntry(nullptr, pos);
-    if (aEntry == nullptr)
+    SvTreeListEntry* pEntry = m_xIconView->GetEntry(nullptr, pos);
+    if (!pEntry)
         return;
 
-    SvLBoxString* aItem = static_cast<SvLBoxString*>(aEntry->GetFirstItem(SvLBoxItemType::String));
+    SvLBoxString* aItem = static_cast<SvLBoxString*>(pEntry->GetFirstItem(SvLBoxItemType::String));
     if (aItem == nullptr)
     {
-        aEntry->AddItem(std::make_unique<SvLBoxString>(rText));
+        pEntry->AddItem(std::make_unique<SvLBoxString>(rText));
     }
     else
     {
@@ -5188,7 +5186,7 @@ void SalInstanceIconView::set_text(int pos, const OUString& rText)
     }
 
     if (!m_xIconView->GetModel()->IsEnableInvalidate())
-        m_xIconView->ModelHasEntryInvalidated(aEntry);
+        m_xIconView->ModelHasEntryInvalidated(pEntry);
 }
 
 void SalInstanceIconView::set_item_accessible_name(int pos, const OUString& rName)

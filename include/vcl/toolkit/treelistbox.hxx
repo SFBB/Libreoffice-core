@@ -136,10 +136,11 @@ public:
 
     virtual void Paint(const Point& rPos, SvTreeListBox& rOutDev, vcl::RenderContext& rRenderContext, const SvViewDataEntry* pView, const SvTreeListEntry& rEntry) = 0;
 
-    virtual void InitViewData(SvTreeListBox& rView, SvTreeListEntry* pEntry,
-                            // If != 0: this Pointer must be used!
-                            // If == 0: it needs to be retrieved via the View
-                            SvViewDataItem* pViewData = nullptr) = 0;
+    virtual void InitViewData(SvTreeListBox& rView, SvTreeListEntry& rEntry,
+                              // If != 0: this Pointer must be used!
+                              // If == 0: it needs to be retrieved via the View
+                              SvViewDataItem* pViewData = nullptr)
+        = 0;
     // View-dependent data is not cloned
     virtual std::unique_ptr<SvLBoxItem> Clone(SvLBoxItem const * pSource) const = 0;
 };
@@ -278,7 +279,6 @@ protected:
     std::unique_ptr<SvInplaceEdit2> m_pEdCtrl;
 
 private:
-    DECL_DLLPRIVATE_LINK( CheckButtonClick, SvLBoxButtonData *, void );
     DECL_DLLPRIVATE_LINK( TextEditEndedHdl_Impl, SvInplaceEdit2&, void );
     // Handler that is called by TreeList to clone an Entry
     DECL_DLLPRIVATE_LINK(CloneHdl_Impl, SvTreeListEntry&, SvTreeListEntry*);
@@ -636,9 +636,9 @@ public:
     */
     void    SetNodeDefaultImages();
 
-    virtual SvTreeListEntry*    InsertEntry( const OUString& rText, SvTreeListEntry* pParent = nullptr,
+    virtual SvTreeListEntry* InsertEntry(const OUString& rText, SvTreeListEntry* pParent = nullptr,
                                          bool bChildrenOnDemand = false,
-                                         sal_uInt32 nPos=TREELIST_APPEND, OUString* pUserData = nullptr);
+                                         sal_uInt32 nPos = TREELIST_APPEND);
 
     const Image&    GetDefaultExpandedEntryBmp( ) const;
     const Image&    GetDefaultCollapsedEntryBmp( ) const;
@@ -650,15 +650,13 @@ public:
     SvButtonState   GetCheckButtonState( SvTreeListEntry* ) const;
     bool GetCheckButtonEnabled(SvTreeListEntry* pEntry) const;
 
-    void            SetEntryText(SvTreeListEntry*, const OUString& );
-    void            SetExpandedEntryBmp( SvTreeListEntry* _pEntry, const Image& _rImage );
-    void            SetCollapsedEntryBmp( SvTreeListEntry* _pEntry, const Image& _rImage );
+    void SetEntryText(SvTreeListEntry& rEntry, const OUString& rStr);
+    void SetExpandedEntryBmp(SvTreeListEntry& rEntry, const Image& _rImage);
+    void SetCollapsedEntryBmp(SvTreeListEntry& rEntry, const Image& _rImage);
 
     virtual OUString GetEntryText( SvTreeListEntry* pEntry ) const;
     static const Image&    GetExpandedEntryBmp(const SvTreeListEntry* _pEntry );
     static const Image&    GetCollapsedEntryBmp(const SvTreeListEntry* _pEntry );
-
-    void            CheckButtonHdl();
 
     void            SetSublistOpenWithLeftRight();   // open/close sublist with cursor left/right
 

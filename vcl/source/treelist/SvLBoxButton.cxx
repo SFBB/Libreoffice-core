@@ -28,7 +28,7 @@ SvLBoxButtonData::SvLBoxButtonData(const Control& rControlForSettings, bool _bRa
     , m_pBox(nullptr)
     , m_bShowRadioButton(false)
 {
-    bDataOk = false;
+    m_bDataOk = false;
     m_bShowRadioButton = _bRadioBtn;
 
     SetDefaultImages(rControlForSettings);
@@ -36,7 +36,12 @@ SvLBoxButtonData::SvLBoxButtonData(const Control& rControlForSettings, bool _bRa
 
 SvLBoxButtonData::~SvLBoxButtonData() {}
 
-void SvLBoxButtonData::CallLink() { aLink.Call(this); }
+void SvLBoxButtonData::CallLink(SvTreeListEntry* pActEntry, SvLBoxButton* pActBox)
+{
+    m_pEntry = pActEntry;
+    m_pBox = pActBox;
+    m_aLink.Call(this);
+}
 
 SvBmp SvLBoxButtonData::GetIndex(SvItemStateFlags nItemState)
 {
@@ -60,19 +65,13 @@ SvBmp SvLBoxButtonData::GetIndex(SvItemStateFlags nItemState)
 
 const Size& SvLBoxButtonData::GetSize()
 {
-    if (!bDataOk)
+    if (!m_bDataOk)
     {
-        m_aSize = aBmps.at(SvBmp::UNCHECKED).GetSizePixel();
-        bDataOk = true;
+        m_aSize = m_aBmps.at(SvBmp::UNCHECKED).GetSizePixel();
+        m_bDataOk = true;
     }
 
     return m_aSize;
-}
-
-void SvLBoxButtonData::StoreButtonState(SvTreeListEntry* pActEntry, SvLBoxButton* pActBox)
-{
-    m_pEntry = pActEntry;
-    m_pBox = pActBox;
 }
 
 SvButtonState SvLBoxButtonData::ConvertToButtonState(SvItemStateFlags nItemFlags)
@@ -102,26 +101,26 @@ void SvLBoxButtonData::SetDefaultImages(const Control& rCtrl)
 
     if (m_bShowRadioButton)
     {
-        aBmps[SvBmp::UNCHECKED] = RadioButton::GetRadioImage(rSettings, DrawButtonFlags::Default);
-        aBmps[SvBmp::CHECKED] = RadioButton::GetRadioImage(rSettings, DrawButtonFlags::Checked);
-        aBmps[SvBmp::HICHECKED] = RadioButton::GetRadioImage(
+        m_aBmps[SvBmp::UNCHECKED] = RadioButton::GetRadioImage(rSettings, DrawButtonFlags::Default);
+        m_aBmps[SvBmp::CHECKED] = RadioButton::GetRadioImage(rSettings, DrawButtonFlags::Checked);
+        m_aBmps[SvBmp::HICHECKED] = RadioButton::GetRadioImage(
             rSettings, DrawButtonFlags::Checked | DrawButtonFlags::Pressed);
-        aBmps[SvBmp::HIUNCHECKED] = RadioButton::GetRadioImage(
+        m_aBmps[SvBmp::HIUNCHECKED] = RadioButton::GetRadioImage(
             rSettings, DrawButtonFlags::Default | DrawButtonFlags::Pressed);
-        aBmps[SvBmp::TRISTATE] = RadioButton::GetRadioImage(rSettings, DrawButtonFlags::DontKnow);
-        aBmps[SvBmp::HITRISTATE] = RadioButton::GetRadioImage(
+        m_aBmps[SvBmp::TRISTATE] = RadioButton::GetRadioImage(rSettings, DrawButtonFlags::DontKnow);
+        m_aBmps[SvBmp::HITRISTATE] = RadioButton::GetRadioImage(
             rSettings, DrawButtonFlags::DontKnow | DrawButtonFlags::Pressed);
     }
     else
     {
-        aBmps[SvBmp::UNCHECKED] = CheckBox::GetCheckImage(rSettings, DrawButtonFlags::Default);
-        aBmps[SvBmp::CHECKED] = CheckBox::GetCheckImage(rSettings, DrawButtonFlags::Checked);
-        aBmps[SvBmp::HICHECKED] = CheckBox::GetCheckImage(
+        m_aBmps[SvBmp::UNCHECKED] = CheckBox::GetCheckImage(rSettings, DrawButtonFlags::Default);
+        m_aBmps[SvBmp::CHECKED] = CheckBox::GetCheckImage(rSettings, DrawButtonFlags::Checked);
+        m_aBmps[SvBmp::HICHECKED] = CheckBox::GetCheckImage(
             rSettings, DrawButtonFlags::Checked | DrawButtonFlags::Pressed);
-        aBmps[SvBmp::HIUNCHECKED] = CheckBox::GetCheckImage(
+        m_aBmps[SvBmp::HIUNCHECKED] = CheckBox::GetCheckImage(
             rSettings, DrawButtonFlags::Default | DrawButtonFlags::Pressed);
-        aBmps[SvBmp::TRISTATE] = CheckBox::GetCheckImage(rSettings, DrawButtonFlags::DontKnow);
-        aBmps[SvBmp::HITRISTATE] = CheckBox::GetCheckImage(
+        m_aBmps[SvBmp::TRISTATE] = CheckBox::GetCheckImage(rSettings, DrawButtonFlags::DontKnow);
+        m_aBmps[SvBmp::HITRISTATE] = CheckBox::GetCheckImage(
             rSettings, DrawButtonFlags::DontKnow | DrawButtonFlags::Pressed);
     }
 }
@@ -146,8 +145,8 @@ void SvLBoxButton::ClickHdl(SvTreeListEntry* pEntry)
         SetStateUnchecked();
     else
         SetStateChecked();
-    m_rData.StoreButtonState(pEntry, this);
-    m_rData.CallLink();
+
+    m_rData.CallLink(pEntry, this);
 }
 
 void SvLBoxButton::Paint(const Point& rPos, SvTreeListBox& rDev, vcl::RenderContext& rRenderContext,
@@ -221,11 +220,11 @@ void SvLBoxButton::ImplAdjustBoxSize(Size& io_rSize, ControlType i_eType,
     }
 }
 
-void SvLBoxButton::InitViewData(SvTreeListBox& rView, SvTreeListEntry* pEntry,
+void SvLBoxButton::InitViewData(SvTreeListBox& rView, SvTreeListEntry& rEntry,
                                 SvViewDataItem* pViewData)
 {
     if (!pViewData)
-        pViewData = &rView.GetViewDataItem(pEntry, *this);
+        pViewData = &rView.GetViewDataItem(&rEntry, *this);
     Size aSize = m_rData.GetSize();
 
     ControlType eCtrlType = (m_rData.IsRadio()) ? ControlType::Radiobutton : ControlType::Checkbox;

@@ -118,7 +118,7 @@ class UnoTreeListItem : public SvLBoxString
 public:
                     UnoTreeListItem();
 
-    void            InitViewData(SvTreeListBox&, SvTreeListEntry*, SvViewDataItem* = nullptr) override;
+    void InitViewData(SvTreeListBox&, SvTreeListEntry&, SvViewDataItem* = nullptr) override;
     void            SetImage( const Image& rImage );
     const OUString& GetGraphicURL() const { return maGraphicURL;}
     void            SetGraphicURL( const OUString& rGraphicURL );
@@ -244,10 +244,10 @@ UnoTreeListEntry* TreeControlPeer::createEntry( const Reference< XTreeNode >& xN
     mpTreeImpl->insert(pEntry, pParent, nPos);
 
     if (!msDefaultExpandedGraphicURL.isEmpty())
-        mpTreeImpl->SetExpandedEntryBmp(pEntry, maDefaultExpandedImage);
+        mpTreeImpl->SetExpandedEntryBmp(*pEntry, maDefaultExpandedImage);
 
     if (!msDefaultCollapsedGraphicURL.isEmpty())
-        mpTreeImpl->SetCollapsedEntryBmp(pEntry, maDefaultCollapsedImage);
+        mpTreeImpl->SetCollapsedEntryBmp(*pEntry, maDefaultCollapsedImage);
 
     updateEntry(pEntry);
     return pEntry;
@@ -298,7 +298,7 @@ void TreeControlPeer::updateEntry( UnoTreeListEntry* pEntry )
             if( loadImage( pEntry->mxNode->getExpandedGraphicURL(), aImage ) )
             {
                 pContextGraphicItem->msExpandedGraphicURL = pEntry->mxNode->getExpandedGraphicURL();
-                mpTreeImpl->SetExpandedEntryBmp( pEntry, aImage );
+                mpTreeImpl->SetExpandedEntryBmp(*pEntry, aImage);
                 bChanged = true;
             }
         }
@@ -308,7 +308,7 @@ void TreeControlPeer::updateEntry( UnoTreeListEntry* pEntry )
             if( loadImage( pEntry->mxNode->getCollapsedGraphicURL(), aImage ) )
             {
                 pContextGraphicItem->msCollapsedGraphicURL = pEntry->mxNode->getCollapsedGraphicURL();
-                mpTreeImpl->SetCollapsedEntryBmp( pEntry, aImage );
+                mpTreeImpl->SetCollapsedEntryBmp(*pEntry, aImage);
                 bChanged = true;
             }
         }
@@ -684,7 +684,7 @@ void SAL_CALL TreeControlPeer::setDefaultExpandedGraphicURL( const OUString& sDe
         if( pContextGraphicItem )
         {
             if( pContextGraphicItem->msExpandedGraphicURL.isEmpty() )
-                rTree.SetExpandedEntryBmp( pEntry, maDefaultExpandedImage );
+                rTree.SetExpandedEntryBmp(*pEntry, maDefaultExpandedImage);
         }
         pEntry = rTree.Next( pEntry );
     }
@@ -720,7 +720,7 @@ void SAL_CALL TreeControlPeer::setDefaultCollapsedGraphicURL( const OUString& sD
         if( pContextGraphicItem )
         {
             if( pContextGraphicItem->msCollapsedGraphicURL.isEmpty() )
-                rTree.SetCollapsedEntryBmp( pEntry, maDefaultCollapsedImage );
+                rTree.SetCollapsedEntryBmp(*pEntry, maDefaultCollapsedImage);
         }
         pEntry = rTree.Next( pEntry );
     }
@@ -1511,11 +1511,11 @@ void UnoTreeListItem::SetGraphicURL( const OUString& rGraphicURL )
     maGraphicURL = rGraphicURL;
 }
 
-
-void UnoTreeListItem::InitViewData(SvTreeListBox& rView, SvTreeListEntry* pEntry, SvViewDataItem* pViewData)
+void UnoTreeListItem::InitViewData(SvTreeListBox& rView, SvTreeListEntry& rEntry,
+                                   SvViewDataItem* pViewData)
 {
     if( !pViewData )
-        pViewData = &rView.GetViewDataItem(pEntry, *this);
+        pViewData = &rView.GetViewDataItem(&rEntry, *this);
 
     Size aSize(maImage.GetSizePixel());
     pViewData->mnWidth = aSize.Width();

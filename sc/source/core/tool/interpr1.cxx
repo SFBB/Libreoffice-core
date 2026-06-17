@@ -607,8 +607,8 @@ bool ScInterpreter::JumpMatrix( short nStackLevel )
                         // Do not modify the original range because we use it
                         // to adjust the size of the result matrix if necessary.
                         ScAddress aAdr( aRange.aStart);
-                        sal_uLong nCol = static_cast<sal_uLong>(aAdr.Col()) + nC;
-                        sal_uLong nRow = static_cast<sal_uLong>(aAdr.Row()) + nR;
+                        sal_uInt16 nCol = static_cast<sal_uInt16>(aAdr.Col()) + nC;
+                        sal_uInt32 nRow = static_cast<sal_uInt32>(aAdr.Row()) + nR;
                         if ((nCol > o3tl::make_unsigned(aRange.aEnd.Col()) &&
                                     aRange.aEnd.Col() != aRange.aStart.Col())
                                 || (nRow > o3tl::make_unsigned(aRange.aEnd.Row()) &&
@@ -1541,6 +1541,29 @@ void ScInterpreter::ScNeg()
         default:
             PushDouble( -GetDouble() );
     }
+}
+
+void ScInterpreter::ScSingleValue()
+{
+    // The @ operator collapses an array operand to a single value. It is
+    // the implicit-intersection prefix that opts a formula out of the
+    // dynamic-array spill behaviour.
+    nFuncFmtType = nCurFmtType;
+    if (GetStackType() == svMatrix)
+    {
+        ScMatrixRef pMat = GetMatrix();
+        if (!pMat)
+        {
+            PushIllegalParameter();
+            return;
+        }
+        ScMatrixValue aVal = pMat->Get(0, 0);
+        if (aVal.nType == ScMatValType::String || aVal.nType == ScMatValType::Empty)
+            PushString(aVal.aStr);
+        else
+            PushDouble(aVal.fVal);
+    }
+    // Non-matrix operand passes through unchanged.
 }
 
 void ScInterpreter::ScPercentSign()
@@ -8908,6 +8931,11 @@ void ScInterpreter::ScTakeOrDrop(bool bTake)
                     nMinCol = nArgCols.value();
             }
         }
+        else if (!bTake)
+        {
+            PushIllegalArgument();
+            return;
+        }
     }
 
     SCSIZE nMinRow = 0;
@@ -8930,6 +8958,11 @@ void ScInterpreter::ScTakeOrDrop(bool bTake)
                 else
                     nMinRow = nArgRows.value();
             }
+        }
+        else if (!bTake)
+        {
+            PushIllegalArgument();
+            return;
         }
     }
 
