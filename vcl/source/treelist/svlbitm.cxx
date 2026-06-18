@@ -103,13 +103,13 @@ void SvLBoxString::Paint(
             case TxtAlign::Center:
             {
                 nStyle |= DrawTextFlags::Center;
-                aSize.setWidth(rDev.GetBoundingRect(&rEntry).getOpenWidth());
+                aSize.setWidth(rDev.GetBoundingRect(rEntry).getOpenWidth());
                 break;
             }
             case TxtAlign::Right:
             {
                 nStyle |= DrawTextFlags::Right;
-                aSize.setWidth(rDev.GetBoundingRect(&rEntry).getOpenWidth());
+                aSize.setWidth(rDev.GetBoundingRect(rEntry).getOpenWidth());
                 break;
             }
         }
@@ -201,11 +201,6 @@ SvLBoxContextBmp::SvLBoxContextBmp(const Image& aBmp1, const Image& aBmp2, bool 
 {
 }
 
-SvLBoxContextBmp::SvLBoxContextBmp()
-    : m_bExpanded(false)
-{
-}
-
 SvLBoxContextBmp::~SvLBoxContextBmp()
 {
 }
@@ -243,11 +238,9 @@ void SvLBoxContextBmp::Paint(
 
 std::unique_ptr<SvLBoxItem> SvLBoxContextBmp::Clone(SvLBoxItem const * pSource) const
 {
-    std::unique_ptr<SvLBoxContextBmp> pNew(new SvLBoxContextBmp);
-    pNew->m_aImage1 = static_cast<SvLBoxContextBmp const*>(pSource)->m_aImage1;
-    pNew->m_aImage2 = static_cast<SvLBoxContextBmp const*>(pSource)->m_aImage2;
-    pNew->m_bExpanded = static_cast<SvLBoxContextBmp const*>(pSource)->m_bExpanded;
-    return std::unique_ptr<SvLBoxItem>(pNew.release());
+    const SvLBoxContextBmp* pContextBmp = static_cast<const SvLBoxContextBmp*>(pSource);
+    return std::make_unique<SvLBoxContextBmp>(pContextBmp->m_aImage1, pContextBmp->m_aImage2,
+                                              pContextBmp->m_bExpanded);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

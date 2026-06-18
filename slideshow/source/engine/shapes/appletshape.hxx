@@ -17,21 +17,28 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
- module com {  module sun {  module star {  module embed {
+#ifndef INCLUDED_SLIDESHOW_SOURCE_ENGINE_SHAPES_APPLETSHAPE_HXX
+#define INCLUDED_SLIDESHOW_SOURCE_ENGINE_SHAPES_APPLETSHAPE_HXX
 
-/**
-    @since LibreOffice 4.1
- */
-interface XEmbeddedObjectCreator
+#include <com/sun/star/uno/Reference.hxx>
+#include <memory>
+
+namespace com::sun::star::drawing { class XShape; }
+
+namespace slideshow::internal
 {
-    interface XEmbedObjectCreator;
-    interface XEmbedObjectFactory;
-    interface XLinkCreator;
-    [optional] interface XLinkFactory;
-};
+        struct SlideShowContext;
+        class Shape;
 
+        std::shared_ptr<Shape> createAppletShape(
+            const css::uno::Reference< css::drawing::XShape >& xShape,
+            double                                  nPrio,
+            const OUString&                         rServiceName,
+            const char* const*                      pPropCopyTable,
+            std::size_t                             nNumPropEntries,
+            const SlideShowContext&                 rContext );
+}
 
-
-}; }; }; };
+#endif // INCLUDED_SLIDESHOW_SOURCE_ENGINE_SHAPES_APPLETSHAPE_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

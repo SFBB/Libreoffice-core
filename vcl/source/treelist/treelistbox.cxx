@@ -707,7 +707,7 @@ void SvTreeListBox::ActionInserted(SvTreeListEntry* pEntry)
     std::pair<SvDataTable::iterator, bool> aSuccess
         = m_DataTable.insert(std::make_pair(pEntry, std::move(aData)));
     DBG_ASSERT(aSuccess.second, "Entry already in View");
-    if (m_nVisibleCount && m_pModel->IsEntryVisible(this, pEntry))
+    if (m_nVisibleCount && m_pModel->IsEntryVisible(*this, pEntry))
     {
         m_nVisibleCount = 0;
         m_bVisPositionsValid = false;
@@ -716,7 +716,7 @@ void SvTreeListBox::ActionInserted(SvTreeListEntry* pEntry)
 
 void SvTreeListBox::ActionInsertedTree(SvTreeListEntry* pEntry)
 {
-    if (m_pModel->IsEntryVisible(this, pEntry))
+    if (m_pModel->IsEntryVisible(*this, pEntry))
     {
         m_nVisibleCount = 0;
         m_bVisPositionsValid = false;
@@ -755,11 +755,11 @@ void SvTreeListBox::ActionRemoving(SvTreeListEntry* pEntry)
     SvViewDataEntry& rViewData = iter->second;
     sal_uInt32 nSelRemoved = 0;
     if (rViewData.IsSelected())
-        nSelRemoved = 1 + m_pModel->GetChildSelectionCount(this, pEntry);
+        nSelRemoved = 1 + m_pModel->GetChildSelectionCount(*this, pEntry);
     m_nSelectionCount -= nSelRemoved;
     sal_uInt32 nVisibleRemoved = 0;
-    if (m_pModel->IsEntryVisible(this, pEntry))
-        nVisibleRemoved = 1 + m_pModel->GetVisibleChildCount(this, pEntry);
+    if (m_pModel->IsEntryVisible(*this, pEntry))
+        nVisibleRemoved = 1 + m_pModel->GetVisibleChildCount(*this, pEntry);
     if (m_nVisibleCount)
     {
 #ifdef DBG_UTIL
@@ -1721,12 +1721,6 @@ void SvTreeListBox::SetTabs()
     {
         case TreeListButtonType::NO_BUTTONS:
             nStartPos += nContextWidthDIV2;  // because of centering
-            AddTab( nStartPos, TABFLAGS_CONTEXTBMP );
-            nStartPos += nContextWidthDIV2;  // right edge of context bitmap
-            // only set a distance if there are bitmaps
-            if (m_nContextBmpWidthMax)
-                nStartPos += 5; // distance context bitmap to text
-            AddTab( nStartPos, TABFLAGS_TEXT );
             break;
 
         case TreeListButtonType::NODE_BUTTONS:
@@ -1734,15 +1728,6 @@ void SvTreeListBox::SetTabs()
                 nStartPos += (m_nIndent + (nNodeWidthPixel / 2));
             else
                 nStartPos += nContextWidthDIV2;
-            AddTab( nStartPos, TABFLAGS_CONTEXTBMP );
-            // add an indent if the context bitmap can't be centered without touching the expander
-            if (m_nContextBmpWidthMax > m_nIndent + (nNodeWidthPixel / 2))
-                nStartPos += m_nIndent;
-            nStartPos += nContextWidthDIV2;  // right edge of context bitmap
-            // only set a distance if there are bitmaps
-            if (m_nContextBmpWidthMax)
-                nStartPos += 5; // distance context bitmap to text
-            AddTab( nStartPos, TABFLAGS_TEXT );
             break;
 
         case TreeListButtonType::NODE_AND_CHECK_BUTTONS:
@@ -1754,12 +1739,6 @@ void SvTreeListBox::SetTabs()
             nStartPos += nCheckWidthDIV2;  // right edge of CheckButton
             nStartPos += 3;  // distance CheckButton to context bitmap
             nStartPos += nContextWidthDIV2;  // center of context bitmap
-            AddTab( nStartPos, TABFLAGS_CONTEXTBMP );
-            nStartPos += nContextWidthDIV2;  // right edge of context bitmap
-            // only set a distance if there are bitmaps
-            if (m_nContextBmpWidthMax)
-                nStartPos += 5; // distance context bitmap to text
-            AddTab( nStartPos, TABFLAGS_TEXT );
             break;
 
         case TreeListButtonType::CHECK_BUTTONS:
@@ -1768,14 +1747,22 @@ void SvTreeListBox::SetTabs()
             nStartPos += nCheckWidthDIV2;  // right edge of CheckButton
             nStartPos += 3;  // distance CheckButton to context bitmap
             nStartPos += nContextWidthDIV2;  // center of context bitmap
-            AddTab( nStartPos, TABFLAGS_CONTEXTBMP );
-            nStartPos += nContextWidthDIV2;  // right edge of context bitmap
-            // only set a distance if there are bitmaps
-            if (m_nContextBmpWidthMax)
-                nStartPos += 5; // distance context bitmap to text
-            AddTab( nStartPos, TABFLAGS_TEXT );
             break;
+        default:
+            assert(false && "Unknown TreeListButtonType");
     }
+    AddTab(nStartPos, TABFLAGS_CONTEXTBMP);
+    if (eButtonType == TreeListButtonType::NODE_BUTTONS)
+    {
+        // add an indent if the context bitmap can't be centered without touching the expander
+        if (m_nContextBmpWidthMax > m_nIndent + (nNodeWidthPixel / 2))
+            nStartPos += m_nIndent;
+    }
+    nStartPos += nContextWidthDIV2; // right edge of context bitmap
+    // only set a distance if there are bitmaps
+    if (m_nContextBmpWidthMax)
+        nStartPos += 5; // distance context bitmap to text
+    AddTab(nStartPos, TABFLAGS_TEXT);
 
     for (size_t n = 0; n < std::min(m_aTabs.size(), hiddenState.size()); ++n)
     {
@@ -1828,7 +1815,7 @@ const Image& SvTreeListBox::GetCollapsedEntryBmp( const SvTreeListEntry* pEntry 
     return pItem->GetBitmap1( );
 }
 
-SvTreeListEntry* SvTreeListBox::InsertEntry(const OUString& rText, SvTreeListEntry* pParent,
+SvTreeListEntry& SvTreeListBox::InsertEntry(const OUString& rText, SvTreeListEntry* pParent,
                                             bool bChildrenOnDemand, sal_uInt32 nPos)
 {
     m_nTreeFlags |= SvTreeFlags::MANINS;
@@ -1853,7 +1840,7 @@ SvTreeListEntry* SvTreeListBox::InsertEntry(const OUString& rText, SvTreeListEnt
 
     m_nTreeFlags &= ~SvTreeFlags::MANINS;
 
-    return pEntry;
+    return *pEntry;
 }
 
 void SvTreeListBox::SetEntryText(SvTreeListEntry& rEntry, const OUString& rStr)
@@ -3779,10 +3766,10 @@ rtl::Reference<comphelper::OAccessible> SvTreeListBox::CreateAccessible()
     return {};
 }
 
-tools::Rectangle SvTreeListBox::GetBoundingRect(const SvTreeListEntry* pEntry)
+tools::Rectangle SvTreeListBox::GetBoundingRect(const SvTreeListEntry& rEntry)
 {
-    Point aPos = GetEntryPosition( pEntry );
-    tools::Rectangle aRect = GetFocusRect( pEntry, aPos.Y() );
+    Point aPos = GetEntryPosition(&rEntry);
+    tools::Rectangle aRect = GetFocusRect(&rEntry, aPos.Y());
     return aRect;
 }
 

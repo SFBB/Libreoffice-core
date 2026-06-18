@@ -47,9 +47,9 @@ void SvTreeList::Broadcast(SvListAction nActionId, SvTreeListEntry* pEntry)
 }
 
 // an entry is visible if all parents are expanded
-bool SvTreeList::IsEntryVisible(const SvTreeListBox* pView, SvTreeListEntry* pEntry) const
+bool SvTreeList::IsEntryVisible(const SvTreeListBox& rView, SvTreeListEntry* pEntry) const
 {
-    assert(pView && pEntry && "IsVisible:Invalid Params");
+    assert(pEntry && "IsVisible: Invalid Param");
     bool bRetVal = false;
     do
     {
@@ -59,7 +59,7 @@ bool SvTreeList::IsEntryVisible(const SvTreeListBox* pView, SvTreeListEntry* pEn
             break;
         }
         pEntry = pEntry->pParent;
-    }  while( pView->IsExpanded( pEntry ) );
+    } while (rView.IsExpanded(pEntry));
     return bRetVal;
 }
 
@@ -377,14 +377,13 @@ sal_uInt32 SvTreeList::GetChildCount( const SvTreeListEntry* pParent ) const
     return nCount - 1;
 }
 
-sal_uInt32 SvTreeList::GetVisibleChildCount(const SvTreeListBox* pView,
+sal_uInt32 SvTreeList::GetVisibleChildCount(const SvTreeListBox& rView,
                                             SvTreeListEntry* pParent) const
 {
-    assert(pView && "GetVisChildCount:No View");
     if ( !pParent )
         pParent = m_pRootItem.get();
 
-    if (!pParent || !pView->IsExpanded(pParent) || pParent->m_Children.empty())
+    if (!pParent || !rView.IsExpanded(pParent) || pParent->m_Children.empty())
         return 0;
 
     sal_uInt32 nCount = 0;
@@ -392,7 +391,7 @@ sal_uInt32 SvTreeList::GetVisibleChildCount(const SvTreeListBox* pView,
     sal_uInt16 nActDepth = nRefDepth;
     do
     {
-        pParent = NextVisible( pView, pParent, &nActDepth );
+        pParent = NextVisible(rView, pParent, &nActDepth);
         nCount++;
     } while( pParent && nRefDepth < nActDepth );
 
@@ -400,10 +399,9 @@ sal_uInt32 SvTreeList::GetVisibleChildCount(const SvTreeListBox* pView,
     return nCount - 1;
 }
 
-sal_uInt32 SvTreeList::GetChildSelectionCount(const SvTreeListBox* pView,
+sal_uInt32 SvTreeList::GetChildSelectionCount(const SvTreeListBox& rView,
                                               SvTreeListEntry* pParent) const
 {
-    assert(pView && "GetChildSelCount:No View");
     if ( !pParent )
         pParent = m_pRootItem.get();
 
@@ -416,7 +414,7 @@ sal_uInt32 SvTreeList::GetChildSelectionCount(const SvTreeListBox* pView,
     do
     {
         pParent = Next( pParent, &nActDepth );
-        if( pParent && pView->IsSelected( pParent ) && nRefDepth < nActDepth)
+        if (pParent && rView.IsSelected(pParent) && nRefDepth < nActDepth)
             nCount++;
     } while( pParent && nRefDepth < nActDepth );
 
@@ -499,40 +497,38 @@ SvTreeListEntry* SvTreeList::Last() const
     return pEntry;
 }
 
-sal_uInt32 SvTreeList::GetVisiblePos(const SvTreeListBox* pView,
+sal_uInt32 SvTreeList::GetVisiblePos(const SvTreeListBox& rView,
                                      SvTreeListEntry const* pEntry) const
 {
-    assert(pView && "View?");
     DBG_ASSERT(pEntry,"Entry?");
 
-    if (!pView->m_bVisPositionsValid)
+    if (!rView.m_bVisPositionsValid)
     {
         // to make GetVisibleCount refresh the positions
-        const_cast<SvTreeListBox*>(pView)->m_nVisibleCount = 0;
-        GetVisibleCount(const_cast<SvTreeListBox*>(pView));
+        const_cast<SvTreeListBox&>(rView).m_nVisibleCount = 0;
+        GetVisibleCount(const_cast<SvTreeListBox&>(rView));
     }
-    const SvViewDataEntry* pViewData = pView->GetViewData( pEntry );
+    const SvViewDataEntry* pViewData = rView.GetViewData(pEntry);
     if (!pViewData)
         return 0;
     return pViewData->nVisPos;
 }
 
-sal_uInt32 SvTreeList::GetVisibleCount(SvTreeListBox* pView) const
+sal_uInt32 SvTreeList::GetVisibleCount(SvTreeListBox& rView) const
 {
-    assert(pView && "GetVisCount:No View");
-    if( !pView->HasViewData() )
+    if (!rView.HasViewData())
         return 0;
-    if (pView->m_nVisibleCount)
-        return pView->m_nVisibleCount;
+    if (rView.m_nVisibleCount)
+        return rView.m_nVisibleCount;
 
     sal_uInt32 nPos = 0;
     SvTreeListEntry* pEntry = First();  // first entry is always visible
     while ( pEntry )
     {
-        if (SvViewDataEntry* pViewData = pView->GetViewData( pEntry ))
+        if (SvViewDataEntry* pViewData = rView.GetViewData(pEntry))
             pViewData->nVisPos = nPos;
         nPos++;
-        pEntry = NextVisible( pView, pEntry );
+        pEntry = NextVisible(rView, pEntry);
     }
 #ifdef DBG_UTIL
     if( nPos > 10000000 )
@@ -540,21 +536,19 @@ sal_uInt32 SvTreeList::GetVisibleCount(SvTreeListBox* pView) const
         OSL_FAIL("nVisibleCount bad");
     }
 #endif
-    pView->m_nVisibleCount = nPos;
-    pView->m_bVisPositionsValid = true;
+    rView.m_nVisibleCount = nPos;
+    rView.m_bVisPositionsValid = true;
     return nPos;
 }
 
 
 // For performance reasons, this function assumes that the passed entry is
 // already visible.
-SvTreeListEntry* SvTreeList::NextVisible(const SvTreeListBox* pView, SvTreeListEntry* pActEntry,
+SvTreeListEntry* SvTreeList::NextVisible(const SvTreeListBox& rView, SvTreeListEntry* pActEntry,
                                          sal_uInt16* pActDepth) const
 {
     if ( !pActEntry )
         return nullptr;
-
-    assert(pView && "NextVisible:No View");
 
     sal_uInt16 nDepth = 0;
     bool bWithDepth = false;
@@ -567,7 +561,7 @@ SvTreeListEntry* SvTreeList::NextVisible(const SvTreeListBox* pView, SvTreeListE
     SvTreeListEntries* pActualList = &pActEntry->pParent->m_Children;
     sal_uInt32 nActualPos = pActEntry->GetChildListPos();
 
-    if ( pView->IsExpanded(pActEntry) )
+    if (rView.IsExpanded(pActEntry))
     {
         OSL_ENSURE(!pActEntry->m_Children.empty(), "Pass entry is supposed to have child entries.");
 
@@ -611,10 +605,10 @@ SvTreeListEntry* SvTreeList::NextVisible(const SvTreeListBox* pView, SvTreeListE
 // For performance reasons, this function assumes that the passed entry is
 // already visible.
 
-SvTreeListEntry* SvTreeList::PrevVisible(const SvTreeListBox* pView,
+SvTreeListEntry* SvTreeList::PrevVisible(const SvTreeListBox& rView,
                                          SvTreeListEntry* pActEntry) const
 {
-    assert(pView && pActEntry && "PrevVis:View/Entry?");
+    assert(pActEntry && "PrevVis: Entry?");
 
     SvTreeListEntries* pActualList = &pActEntry->pParent->m_Children;
     sal_uInt32 nActualPos = pActEntry->GetChildListPos();
@@ -622,7 +616,7 @@ SvTreeListEntry* SvTreeList::PrevVisible(const SvTreeListBox* pView,
     if ( nActualPos > 0 )
     {
         pActEntry = (*pActualList)[nActualPos-1].get();
-        while( pView->IsExpanded(pActEntry) )
+        while (rView.IsExpanded(pActEntry))
         {
             pActualList = &pActEntry->m_Children;
             pActEntry = pActualList->back().get();
@@ -641,46 +635,44 @@ SvTreeListEntry* SvTreeList::PrevVisible(const SvTreeListBox* pView,
     return nullptr;
 }
 
-SvTreeListEntry* SvTreeList::LastVisible(const SvTreeListBox* pView) const
+SvTreeListEntry* SvTreeList::LastVisible(const SvTreeListBox& rView) const
 {
-    DBG_ASSERT(pView,"LastVis:No View");
     SvTreeListEntry* pEntry = Last();
-    while( pEntry && !IsEntryVisible( pView, pEntry ) )
-        pEntry = PrevVisible( pView, pEntry );
+    while (pEntry && !IsEntryVisible(rView, pEntry))
+        pEntry = PrevVisible(rView, pEntry);
     return pEntry;
 }
 
-SvTreeListEntry* SvTreeList::NextVisible(const SvTreeListBox* pView, SvTreeListEntry* pEntry,
+SvTreeListEntry* SvTreeList::NextVisible(const SvTreeListBox& rView, SvTreeListEntry* pEntry,
                                          sal_uInt16& nDelta) const
 {
-    assert(pView && pEntry && "NextVis:Wrong Prms!");
-    DBG_ASSERT(IsEntryVisible(pView,pEntry), "NextVis:Wrong Vis");
+    DBG_ASSERT(IsEntryVisible(rView, pEntry), "NextVis:Wrong Vis");
 
-    sal_uInt32 nVisPos = GetVisiblePos( pView, pEntry );
+    sal_uInt32 nVisPos = GetVisiblePos(rView, pEntry);
     // nDelta entries existent?
     // example: 0,1,2,3,4,5,6,7,8,9 nVisPos=5 nDelta=7
     //           nNewDelta = 10-nVisPos-1 == 4
-    if (nVisPos + nDelta >= pView->m_nVisibleCount)
+    if (nVisPos + nDelta >= rView.m_nVisibleCount)
     {
-        nDelta = static_cast<sal_uInt16>(pView->m_nVisibleCount - nVisPos);
+        nDelta = static_cast<sal_uInt16>(rView.m_nVisibleCount - nVisPos);
         nDelta--;
     }
     sal_uInt16 nDeltaTmp = nDelta;
     while( nDeltaTmp )
     {
-        pEntry = NextVisible( pView, pEntry );
+        pEntry = NextVisible(rView, pEntry);
         nDeltaTmp--;
         DBG_ASSERT(pEntry,"Entry?");
     }
     return pEntry;
 }
 
-SvTreeListEntry* SvTreeList::PrevVisible(const SvTreeListBox* pView, SvTreeListEntry* pEntry,
+SvTreeListEntry* SvTreeList::PrevVisible(const SvTreeListBox& rView, SvTreeListEntry* pEntry,
                                          sal_uInt16& nDelta) const
 {
-    DBG_ASSERT(pView&&pEntry&&IsEntryVisible(pView,pEntry),"PrevVis:Parms/!Vis");
+    DBG_ASSERT(pEntry && IsEntryVisible(rView, pEntry), "PrevVis:Parms/!Vis");
 
-    sal_uInt32 nVisPos = GetVisiblePos( pView, pEntry );
+    sal_uInt32 nVisPos = GetVisiblePos(rView, pEntry);
     // nDelta entries existent?
     // example: 0,1,2,3,4,5,6,7,8,9 nVisPos=8 nDelta=20
     //           nNewDelta = nNewVisPos
@@ -689,21 +681,18 @@ SvTreeListEntry* SvTreeList::PrevVisible(const SvTreeListBox* pView, SvTreeListE
     sal_uInt16 nDeltaTmp = nDelta;
     while( nDeltaTmp )
     {
-        pEntry = PrevVisible( pView, pEntry );
+        pEntry = PrevVisible(rView, pEntry);
         nDeltaTmp--;
         DBG_ASSERT(pEntry,"Entry?");
     }
     return pEntry;
 }
 
-SvTreeListEntry* SvTreeList::FirstSelected(const SvTreeListBox* pView) const
+SvTreeListEntry* SvTreeList::FirstSelected(const SvTreeListBox& rView) const
 {
-    DBG_ASSERT(pView,"FirstSel:No View");
-    if( !pView )
-        return nullptr;
     SvTreeListEntry* pActSelEntry = First();
-    while( pActSelEntry && !pView->IsSelected(pActSelEntry) )
-        pActSelEntry = NextVisible( pView, pActSelEntry );
+    while (pActSelEntry && !rView.IsSelected(pActSelEntry))
+        pActSelEntry = NextVisible(rView, pActSelEntry);
     return pActSelEntry;
 }
 
@@ -719,11 +708,11 @@ SvTreeListEntry* SvTreeList::FirstChild(const SvTreeListEntry* pParent) const
     return pResult;
 }
 
-SvTreeListEntry* SvTreeList::NextSelected(const SvTreeListBox* pView, SvTreeListEntry* pEntry) const
+SvTreeListEntry* SvTreeList::NextSelected(const SvTreeListBox& rView, SvTreeListEntry* pEntry) const
 {
-    assert(pView && pEntry && "NextSel:View/Entry?");
+    assert(pEntry && "NextSelected: Entry?");
     pEntry = Next( pEntry );
-    while( pEntry && !pView->IsSelected(pEntry) )
+    while (pEntry && !rView.IsSelected(pEntry))
         pEntry = Next( pEntry );
     return pEntry;
 }
@@ -852,13 +841,12 @@ SvTreeListEntry* SvTreeList::GetEntryAtAbsPos( sal_uInt32 nAbsPos ) const
     return pEntry;
 }
 
-SvTreeListEntry* SvTreeList::GetEntryAtVisPos(const SvTreeListBox* pView, sal_uInt32 nVisPos) const
+SvTreeListEntry* SvTreeList::GetEntryAtVisPos(const SvTreeListBox& rView, sal_uInt32 nVisPos) const
 {
-    DBG_ASSERT(pView,"GetEntryAtVisPos:No View");
     SvTreeListEntry* pEntry = First();
     while ( nVisPos && pEntry )
     {
-        pEntry = NextVisible( pView, pEntry );
+        pEntry = NextVisible(rView, pEntry);
         nVisPos--;
     }
     return pEntry;

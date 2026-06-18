@@ -10280,6 +10280,8 @@ slideshow/source/engine/rehearsetimingsactivity.cxx
 slideshow/source/engine/rehearsetimingsactivity.hxx
 slideshow/source/engine/screenupdater.cxx
 slideshow/source/engine/shapeattributelayer.cxx
+slideshow/source/engine/shapes/appletshape.cxx
+slideshow/source/engine/shapes/appletshape.hxx
 slideshow/source/engine/shapes/backgroundshape.cxx
 slideshow/source/engine/shapes/backgroundshape.hxx
 slideshow/source/engine/shapes/drawinglayeranimation.cxx
@@ -10297,6 +10299,8 @@ slideshow/source/engine/shapes/intrinsicanimationactivity.hxx
 slideshow/source/engine/shapes/mediashape.cxx
 slideshow/source/engine/shapes/mediashape.hxx
 slideshow/source/engine/shapes/shapeimporter.cxx
+slideshow/source/engine/shapes/viewappletshape.cxx
+slideshow/source/engine/shapes/viewappletshape.hxx
 slideshow/source/engine/shapes/viewbackgroundshape.cxx
 slideshow/source/engine/shapes/viewbackgroundshape.hxx
 slideshow/source/engine/shapes/viewmediashape.cxx
@@ -11589,6 +11593,7 @@ sw/inc/IDocumentRedlineAccess.hxx
 sw/inc/IDocumentUndoRedo.hxx
 sw/inc/IMark.hxx
 sw/inc/PostItMgr.hxx
+sw/inc/SwAppletImpl.hxx
 sw/inc/SwStyleNameMapper.hxx
 sw/inc/SwUndoField.hxx
 sw/inc/SwXMLSectionList.hxx
@@ -12406,6 +12411,7 @@ sw/source/filter/basflt/fltshell.cxx
 sw/source/filter/basflt/iodetect.cxx
 sw/source/filter/basflt/shellio.cxx
 sw/source/filter/docx/swdocxreader.cxx
+sw/source/filter/html/SwAppletImpl.cxx
 sw/source/filter/html/css1atr.cxx
 sw/source/filter/html/htmlatr.cxx
 sw/source/filter/html/htmlbas.cxx

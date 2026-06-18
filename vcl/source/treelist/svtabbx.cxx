@@ -79,14 +79,13 @@ void SvTabListBox::InitEntry(SvTreeListEntry& rEntry, const OUString& rStr, cons
     const sal_uInt16 nCount = mvTabList.size() - 1;
     for( sal_uInt16 nToken = 0; nToken < nCount; nToken++ )
     {
-        const std::u16string_view aToken = GetToken(aCurEntry, nIndex);
+        const std::u16string_view aToken = GetToken(m_aCurEntry, nIndex);
         rEntry.AddItem(std::make_unique<SvLBoxString>(OUString(aToken)));
     }
 }
 
 SvTabListBox::SvTabListBox( vcl::Window* pParent, WinBits nBits )
     : SvTreeListBox( pParent, nBits )
-    , m_eRole(SvTabListBoxRole::Unknown)
 {
     SetHighlightRange();    // select full width
 }
@@ -132,34 +131,24 @@ void SvTabListBox::SetTabs(const std::vector<tools::Long>& rTabPositions)
         Invalidate();
 }
 
-SvTreeListEntry* SvTabListBox::InsertEntry(const OUString& rText, SvTreeListEntry* pParent,
+SvTreeListEntry& SvTabListBox::InsertEntry(const OUString& rText, SvTreeListEntry* pParent,
                                            bool /*bChildrenOnDemand*/, sal_uInt32 nPos)
 {
-    return InsertEntryToColumn(rText, pParent, nPos, 0xffff);
+    return InsertEntryToColumn(rText, pParent, nPos);
 }
 
-SvTreeListEntry* SvTabListBox::InsertEntryToColumn(const OUString& rStr, SvTreeListEntry* pParent,
-                                                   sal_uInt32 nPos, sal_uInt16 nCol)
+SvTreeListEntry& SvTabListBox::InsertEntryToColumn(const OUString& rStr, SvTreeListEntry* pParent,
+                                                   sal_uInt32 nPos)
 {
-    OUString aStr;
-    if( nCol != 0xffff )
-    {
-        while( nCol )
-        {
-            aStr += "\t";
-            nCol--;
-        }
-    }
-    aStr += rStr;
-    OUString aFirstStr( aStr );
+    OUString aFirstStr(rStr);
     sal_Int32 nEnd = aFirstStr.indexOf( '\t' );
     if( nEnd != -1 )
     {
         aFirstStr = aFirstStr.copy(0, nEnd);
-        aCurEntry = aStr.copy(++nEnd);
+        m_aCurEntry = rStr.copy(++nEnd);
     }
     else
-        aCurEntry.clear();
+        m_aCurEntry.clear();
     return SvTreeListBox::InsertEntry(aFirstStr, pParent, false, nPos);
 }
 

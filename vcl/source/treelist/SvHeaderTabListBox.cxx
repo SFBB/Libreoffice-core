@@ -84,13 +84,12 @@ bool SvHeaderTabListBox::IsItemChecked(SvTreeListEntry* pEntry, sal_uInt16 nCol)
     return (eState == SvButtonState::Checked);
 }
 
-SvTreeListEntry* SvHeaderTabListBox::InsertEntryToColumn(const OUString& rStr,
-                                                         SvTreeListEntry* pParent, sal_uInt32 nPos,
-                                                         sal_uInt16 nCol)
+SvTreeListEntry& SvHeaderTabListBox::InsertEntryToColumn(const OUString& rStr,
+                                                         SvTreeListEntry* pParent, sal_uInt32 nPos)
 {
-    SvTreeListEntry* pEntry = SvTabListBox::InsertEntryToColumn(rStr, pParent, nPos, nCol);
+    SvTreeListEntry& rEntry = SvTabListBox::InsertEntryToColumn(rStr, pParent, nPos);
     RecalculateAccessibleChildren();
-    return pEntry;
+    return rEntry;
 }
 
 void SvHeaderTabListBox::Insert(SvTreeListEntry* pEnt, SvTreeListEntry* pPar, sal_uInt32 nPos)
@@ -278,7 +277,7 @@ tools::Rectangle SvHeaderTabListBox::calcFieldRectPixel(sal_Int32 _nRow, sal_uIn
     SvTreeListEntry* pEntry = GetEntryOnPos(_nRow);
     if (pEntry)
     {
-        aRect = _bIsHeader ? calcHeaderRect(true) : GetBoundingRect(pEntry);
+        aRect = _bIsHeader ? calcHeaderRect(true) : GetBoundingRect(*pEntry);
         Point aTopLeft = aRect.TopLeft();
         DBG_ASSERT(m_xHeaderBar->GetItemCount() > _nColumn, "invalid column");
         tools::Rectangle aItemRect = m_xHeaderBar->GetItemRect(m_xHeaderBar->GetItemId(_nColumn));

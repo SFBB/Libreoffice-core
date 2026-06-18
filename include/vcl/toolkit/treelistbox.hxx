@@ -366,40 +366,40 @@ public:
 
     sal_uInt32 GetVisibleCount() const
     {
-        return m_pModel->GetVisibleCount(const_cast<SvTreeListBox*>(this));
+        return m_pModel->GetVisibleCount(const_cast<SvTreeListBox&>(*this));
     }
 
     SvTreeListEntry* FirstVisible() const { return m_pModel->FirstVisible(); }
 
     SvTreeListEntry* NextVisible(SvTreeListEntry* pEntry) const
     {
-        return m_pModel->NextVisible(this, pEntry);
+        return m_pModel->NextVisible(*this, pEntry);
     }
 
     SvTreeListEntry* PrevVisible(SvTreeListEntry* pEntry) const
     {
-        return m_pModel->PrevVisible(this, pEntry);
+        return m_pModel->PrevVisible(*this, pEntry);
     }
 
-    SvTreeListEntry* LastVisible() const { return m_pModel->LastVisible(this); }
+    SvTreeListEntry* LastVisible() const { return m_pModel->LastVisible(*this); }
 
     SvTreeListEntry* NextVisible(SvTreeListEntry* pEntry, sal_uInt16& rDelta) const
     {
-        return m_pModel->NextVisible(this, pEntry, rDelta);
+        return m_pModel->NextVisible(*this, pEntry, rDelta);
     }
 
     SvTreeListEntry* PrevVisible(SvTreeListEntry* pEntry, sal_uInt16& rDelta) const
     {
-        return m_pModel->PrevVisible(this, pEntry, rDelta);
+        return m_pModel->PrevVisible(*this, pEntry, rDelta);
     }
 
     sal_uInt32 GetSelectionCount() const;
 
-    SvTreeListEntry* FirstSelected() const { return m_pModel->FirstSelected(this); }
+    SvTreeListEntry* FirstSelected() const { return m_pModel->FirstSelected(*this); }
 
     SvTreeListEntry* NextSelected(SvTreeListEntry* pEntry) const
     {
-        return m_pModel->NextSelected(this, pEntry);
+        return m_pModel->NextSelected(*this, pEntry);
     }
 
     SvTreeListEntry* GetEntryAtAbsPos(sal_uInt32 nAbsPos) const
@@ -409,7 +409,7 @@ public:
 
     SvTreeListEntry* GetEntryAtVisPos(sal_uInt32 nVisPos) const
     {
-        return m_pModel->GetEntryAtVisPos(this, nVisPos);
+        return m_pModel->GetEntryAtVisPos(*this, nVisPos);
     }
 
     sal_uInt32 GetAbsPos(SvTreeListEntry const* pEntry) const
@@ -419,17 +419,17 @@ public:
 
     sal_uInt32 GetVisiblePos(SvTreeListEntry const* pEntry) const
     {
-        return m_pModel->GetVisiblePos(this, pEntry);
+        return m_pModel->GetVisiblePos(*this, pEntry);
     }
 
     sal_uInt32 GetVisibleChildCount(SvTreeListEntry* pParent) const
     {
-        return m_pModel->GetVisibleChildCount(this, pParent);
+        return m_pModel->GetVisibleChildCount(*this, pParent);
     }
 
     bool IsEntryVisible(SvTreeListEntry* pEntry) const
     {
-        return m_pModel->IsEntryVisible(this, pEntry);
+        return m_pModel->IsEntryVisible(*this, pEntry);
     }
 
     bool IsExpanded(SvTreeListEntry* pEntry) const;
@@ -551,10 +551,10 @@ public:
     virtual rtl::Reference<comphelper::OAccessible> CreateAccessible() override;
 
     /** Calculate and return the bounding rectangle of an entry.
-        @param pEntry
+        @param rEntry
             The entry.
         @return  The bounding rectangle of an entry. */
-    tools::Rectangle    GetBoundingRect(const SvTreeListEntry* pEntry);
+    tools::Rectangle GetBoundingRect(const SvTreeListEntry& rEntry);
 
     SvTreeFlags GetTreeFlags() const { return m_nTreeFlags; }
 
@@ -636,7 +636,7 @@ public:
     */
     void    SetNodeDefaultImages();
 
-    virtual SvTreeListEntry* InsertEntry(const OUString& rText, SvTreeListEntry* pParent = nullptr,
+    virtual SvTreeListEntry& InsertEntry(const OUString& rText, SvTreeListEntry* pParent = nullptr,
                                          bool bChildrenOnDemand = false,
                                          sal_uInt32 nPos = TREELIST_APPEND);
 

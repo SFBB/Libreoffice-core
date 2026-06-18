@@ -1066,6 +1066,15 @@ CPPUNIT_TEST_FIXTURE(Chart2ImportTest2, testHistogramXLSXRoundtrip)
     CPPUNIT_ASSERT_EQUAL(u"com.sun.star.chart2.HistogramChartType"_ustr,
                          xChartType->getChartType());
 
+    // Raw values-y must remain the source data; calculated-y is regenerated.
+    Reference<chart2::data::XDataSequence> xValuesY
+        = getDataSequenceFromDocByRole(xChartDoc, u"values-y");
+    CPPUNIT_ASSERT(xValuesY.is());
+
+    Reference<chart2::data::XDataSequence> xCalculatedY
+        = getDataSequenceFromDocByRole(xChartDoc, u"calculated-y");
+    CPPUNIT_ASSERT(!xCalculatedY.is());
+
     // The X axis must carry the bin range labels from the histogram template,
     // not the generic "1", "2", ... labels that the OOXML axis converter
     // produces by default.
@@ -1108,6 +1117,91 @@ CPPUNIT_TEST_FIXTURE(Chart2ImportTest2, testHistogramXLSXRoundtrip)
     CPPUNIT_ASSERT_EQUAL(2.5, fBinWidth);
 }
 
+CPPUNIT_TEST_FIXTURE(Chart2ImportTest2, testHistogramBinCountRoundtrip_ODS)
+{
+    // ODF: fixed number of bins survives export/reload at the model level.
+    loadFromFile(u"fods/tdf163727_histogram_roundtrip.fods");
+
+    uno::Reference<chart2::XChartDocument> xChartDoc = getChartDocFromSheet(0);
+    CPPUNIT_ASSERT(xChartDoc.is());
+
+    Reference<chart2::XChartType> xChartType = getChartTypeFromDoc(xChartDoc, 0, 0);
+    CPPUNIT_ASSERT(xChartType.is());
+
+    Reference<beans::XPropertySet> xProps(xChartType, uno::UNO_QUERY_THROW);
+    xProps->setPropertyValue(u"FrequencyType"_ustr, uno::Any(sal_Int32(2)));
+    xProps->setPropertyValue(u"BinCount"_ustr, uno::Any(sal_Int32(3)));
+
+    saveAndReload(TestFilter::ODS);
+
+    xmlDocUniquePtr pXmlDoc = parseExport(u"Object 1/content.xml"_ustr);
+    CPPUNIT_ASSERT(pXmlDoc);
+
+    static constexpr char sHistogramProps[]
+        = "/office:document-content/office:automatic-styles/style:style[@style:family='chart']/"
+          "style:chart-properties[@loext:frequency-type]";
+    assertXPath(pXmlDoc, sHistogramProps, "frequency-type", u"2");
+    assertXPath(pXmlDoc, sHistogramProps, "bin-count", u"3");
+
+    xChartDoc = getChartDocFromSheet(0);
+    CPPUNIT_ASSERT(xChartDoc.is());
+
+    xChartType = getChartTypeFromDoc(xChartDoc, 0, 0);
+    CPPUNIT_ASSERT(xChartType.is());
+
+    Reference<beans::XPropertySet> xReloadedProps(xChartType, uno::UNO_QUERY_THROW);
+
+    sal_Int32 nFrequencyType = -1;
+    CPPUNIT_ASSERT(xReloadedProps->getPropertyValue(u"FrequencyType"_ustr) >>= nFrequencyType);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(2), nFrequencyType);
+
+    sal_Int32 nBinCount = -1;
+    CPPUNIT_ASSERT(xReloadedProps->getPropertyValue(u"BinCount"_ustr) >>= nBinCount);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(3), nBinCount);
+}
+
+CPPUNIT_TEST_FIXTURE(Chart2ImportTest2, testHistogramBinCountRoundtrip_XLSX)
+{
+    // XLSX: fixed number of bins is written as cx:binCount and survives reload.
+    loadFromFile(u"xlsx/SimpleHistogram.xlsx");
+
+    uno::Reference<chart2::XChartDocument> xChartDoc = getChartDocFromSheet(0);
+    CPPUNIT_ASSERT(xChartDoc.is());
+
+    Reference<chart2::XChartType> xChartType = getChartTypeFromDoc(xChartDoc, 0, 0);
+    CPPUNIT_ASSERT(xChartType.is());
+
+    Reference<beans::XPropertySet> xXlsxProps(xChartType, uno::UNO_QUERY_THROW);
+    xXlsxProps->setPropertyValue(u"FrequencyType"_ustr, uno::Any(sal_Int32(2)));
+    xXlsxProps->setPropertyValue(u"BinCount"_ustr, uno::Any(sal_Int32(3)));
+
+    saveAndReload(TestFilter::XLSX);
+
+    xmlDocUniquePtr pXmlDoc = parseExport(u"xl/charts/chartEx1.xml"_ustr);
+    CPPUNIT_ASSERT(pXmlDoc);
+
+    assertXPath(pXmlDoc,
+                "/cx:chartSpace/cx:chart/cx:plotArea/cx:plotAreaRegion/cx:series/cx:layoutPr/"
+                "cx:binning/cx:binCount",
+                "val", u"3");
+
+    xChartDoc = getChartDocFromSheet(0);
+    CPPUNIT_ASSERT(xChartDoc.is());
+
+    xChartType = getChartTypeFromDoc(xChartDoc, 0, 0);
+    CPPUNIT_ASSERT(xChartType.is());
+
+    Reference<beans::XPropertySet> xReloadedXlsxProps(xChartType, uno::UNO_QUERY_THROW);
+
+    sal_Int32 nFrequencyType = -1;
+    CPPUNIT_ASSERT(xReloadedXlsxProps->getPropertyValue(u"FrequencyType"_ustr) >>= nFrequencyType);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(2), nFrequencyType);
+
+    sal_Int32 nBinCount = -1;
+    CPPUNIT_ASSERT(xReloadedXlsxProps->getPropertyValue(u"BinCount"_ustr) >>= nBinCount);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(3), nBinCount);
+}
+
 CPPUNIT_TEST_FIXTURE(Chart2ImportTest2, testHistogramODSToXLSXExport)
 {
     // Exporting an ODF-origin histogram to XLSX must write the raw
@@ -1129,6 +1223,56 @@ CPPUNIT_TEST_FIXTURE(Chart2ImportTest2, testHistogramODSToXLSXExport)
     CPPUNIT_ASSERT_MESSAGE(aMessage.getStr(), aFormula.indexOf(u"Sheet1") >= 0);
     CPPUNIT_ASSERT_MESSAGE(aMessage.getStr(), aFormula.indexOf(u"$A$1") >= 0);
     CPPUNIT_ASSERT_MESSAGE(aMessage.getStr(), aFormula.indexOf(u"$A$5") >= 0);
+}
+
+CPPUNIT_TEST_FIXTURE(Chart2ImportTest2, testHistogramMultiChartODSToXLSXExport)
+{
+    // Multi-chart export must not reuse the same ChartEx formula for all histograms.
+    loadFromFile(u"fods/tdf163727_histogram_roundtrip_multi_chart.fods");
+    saveAndReload(TestFilter::XLSX);
+
+    xmlDocUniquePtr pXmlDoc = parseExport(u"xl/charts/chartEx1.xml"_ustr);
+    CPPUNIT_ASSERT(pXmlDoc);
+    CPPUNIT_ASSERT_EQUAL(
+        u"Sheet1!$A$1:$A$6"_ustr,
+        getXPathContent(pXmlDoc, "/cx:chartSpace/cx:chartData/cx:data/cx:numDim/cx:f"));
+
+    pXmlDoc = parseExport(u"xl/charts/chartEx2.xml"_ustr);
+    CPPUNIT_ASSERT(pXmlDoc);
+    CPPUNIT_ASSERT_EQUAL(
+        u"Sheet1!$B$1:$B$5"_ustr,
+        getXPathContent(pXmlDoc, "/cx:chartSpace/cx:chartData/cx:data/cx:numDim/cx:f"));
+
+    pXmlDoc = parseExport(u"xl/charts/chartEx3.xml"_ustr);
+    CPPUNIT_ASSERT(pXmlDoc);
+    CPPUNIT_ASSERT_EQUAL(
+        u"Sheet1!$C$1:$C$6"_ustr,
+        getXPathContent(pXmlDoc, "/cx:chartSpace/cx:chartData/cx:data/cx:numDim/cx:f"));
+}
+
+CPPUNIT_TEST_FIXTURE(Chart2ImportTest2, testHistogramMultiChartXLSXRoundtrip)
+{
+    // Native ChartEx roundtrip must keep each histogram bound to its own source range.
+    loadFromFile(u"xlsx/tdf163727_histogram_roundtrip_multi_chart.xlsx");
+    saveAndReload(TestFilter::XLSX);
+
+    xmlDocUniquePtr pXmlDoc = parseExport(u"xl/charts/chartEx1.xml"_ustr);
+    CPPUNIT_ASSERT(pXmlDoc);
+    CPPUNIT_ASSERT_EQUAL(
+        u"Sheet1!$A$1:$A$6"_ustr,
+        getXPathContent(pXmlDoc, "/cx:chartSpace/cx:chartData/cx:data/cx:numDim/cx:f"));
+
+    pXmlDoc = parseExport(u"xl/charts/chartEx2.xml"_ustr);
+    CPPUNIT_ASSERT(pXmlDoc);
+    CPPUNIT_ASSERT_EQUAL(
+        u"Sheet1!$B$1:$B$5"_ustr,
+        getXPathContent(pXmlDoc, "/cx:chartSpace/cx:chartData/cx:data/cx:numDim/cx:f"));
+
+    pXmlDoc = parseExport(u"xl/charts/chartEx3.xml"_ustr);
+    CPPUNIT_ASSERT(pXmlDoc);
+    CPPUNIT_ASSERT_EQUAL(
+        u"Sheet1!$C$1:$C$6"_ustr,
+        getXPathContent(pXmlDoc, "/cx:chartSpace/cx:chartData/cx:data/cx:numDim/cx:f"));
 }
 
 CPPUNIT_TEST_FIXTURE(Chart2ImportTest2, testTdf60316)

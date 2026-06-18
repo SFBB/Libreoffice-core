@@ -81,25 +81,25 @@ class UNLESS_MERGELIBS_MORE(VCL_DLLPUBLIC) SvTreeList final
     std::unique_ptr<SvTreeListEntry> m_pRootItem;
 
     SvTreeListEntry*        FirstVisible() const { return First(); }
-    SvTreeListEntry* NextVisible(const SvTreeListBox*, SvTreeListEntry* pEntry,
+    SvTreeListEntry* NextVisible(const SvTreeListBox& rView, SvTreeListEntry* pEntry,
                                  sal_uInt16* pDepth = nullptr) const;
-    SvTreeListEntry* PrevVisible(const SvTreeListBox*, SvTreeListEntry* pEntry) const;
-    SvTreeListEntry* LastVisible(const SvTreeListBox*) const;
-    SvTreeListEntry* NextVisible(const SvTreeListBox*, SvTreeListEntry* pEntry,
+    SvTreeListEntry* PrevVisible(const SvTreeListBox& rView, SvTreeListEntry* pEntry) const;
+    SvTreeListEntry* LastVisible(const SvTreeListBox& rView) const;
+    SvTreeListEntry* NextVisible(const SvTreeListBox& rView, SvTreeListEntry* pEntry,
                                  sal_uInt16& rDelta) const;
-    SvTreeListEntry* PrevVisible(const SvTreeListBox*, SvTreeListEntry* pEntry,
+    SvTreeListEntry* PrevVisible(const SvTreeListBox& rView, SvTreeListEntry* pEntry,
                                  sal_uInt16& rDelta) const;
 
-    bool IsEntryVisible(const SvTreeListBox*, SvTreeListEntry* pEntry) const;
-    SvTreeListEntry* GetEntryAtVisPos(const SvTreeListBox*, sal_uInt32 nVisPos) const;
-    sal_uInt32 GetVisiblePos(const SvTreeListBox*, SvTreeListEntry const* pEntry) const;
-    sal_uInt32 GetVisibleCount(SvTreeListBox*) const;
-    sal_uInt32 GetVisibleChildCount(const SvTreeListBox*, SvTreeListEntry* pParent) const;
+    bool IsEntryVisible(const SvTreeListBox& rView, SvTreeListEntry* pEntry) const;
+    SvTreeListEntry* GetEntryAtVisPos(const SvTreeListBox& rView, sal_uInt32 nVisPos) const;
+    sal_uInt32 GetVisiblePos(const SvTreeListBox& rView, SvTreeListEntry const* pEntry) const;
+    sal_uInt32 GetVisibleCount(SvTreeListBox& rView) const;
+    sal_uInt32 GetVisibleChildCount(const SvTreeListBox& rView, SvTreeListEntry* pParent) const;
 
-    SvTreeListEntry* FirstSelected(const SvTreeListBox*) const;
-    SvTreeListEntry* NextSelected(const SvTreeListBox*, SvTreeListEntry* pEntry) const;
+    SvTreeListEntry* FirstSelected(const SvTreeListBox& rView) const;
+    SvTreeListEntry* NextSelected(const SvTreeListBox& rView, SvTreeListEntry* pEntry) const;
 
-    sal_uInt32 GetChildSelectionCount(const SvTreeListBox*, SvTreeListEntry* pParent) const;
+    sal_uInt32 GetChildSelectionCount(const SvTreeListBox& rView, SvTreeListEntry* pParent) const;
 
     SAL_DLLPRIVATE void SetAbsolutePositions();
 
