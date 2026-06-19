@@ -43,6 +43,9 @@ using namespace ::xmloff::token;
 
 constexpr OUString gsIsPhysical( u"IsPhysical"_ustr );
 constexpr OUString gsFollowStyle( u"FollowStyle"_ustr );
+constexpr OUString gsFirstShareContent( u"FirstIsShared"_ustr );
+constexpr OUString gsHeaderNoFirst( u"HeaderNoFirst"_ustr );
+constexpr OUString gsFooterNoFirst( u"FooterNoFirst"_ustr );
 
 namespace {
 
@@ -172,6 +175,34 @@ bool XMLPageExport::exportStyle(
                 GetExport().AddAttribute( XML_NAMESPACE_STYLE, XML_NEXT_STYLE_NAME,
                     GetExport().EncodeStyleName( sNextName ) );
             }
+        }
+
+        //attributes to define shared/hidden headers/footers in Writer
+        if( xPropSetInfo->hasPropertyByName(gsHeaderNoFirst) )
+        {
+            Any aAny;
+            //same flag footer/header
+            bool bFirstShared = false;
+            aAny = xPropSet->getPropertyValue( gsFirstShareContent );
+            aAny >>= bFirstShared;
+
+            bool bWithoutFirstHeader = false;
+            aAny = xPropSet->getPropertyValue( gsHeaderNoFirst );
+            aAny >>= bWithoutFirstHeader;
+            //TODO: version and odf extension ticket id
+            if( GetExport().getSaneDefaultVersion() & SvtSaveOptions::ODFSVER_EXTENDED)
+                GetExport().AddAttribute(XML_NAMESPACE_LO_EXT, XML_IS_FIRST_PAGE_HEADER_ENABLED,
+                                         !bFirstShared && bWithoutFirstHeader ? XML_FALSE
+                                                                               : XML_TRUE);
+
+            bool bWithoutFirstFooter = false;
+            aAny = xPropSet->getPropertyValue( gsFooterNoFirst );
+            aAny >>= bWithoutFirstFooter;
+            //TODO: version and odf extension ticket id
+            if( GetExport().getSaneDefaultVersion() & SvtSaveOptions::ODFSVER_EXTENDED)
+                GetExport().AddAttribute(XML_NAMESPACE_LO_EXT, XML_IS_FIRST_PAGE_FOOTER_ENABLED,
+                                         !bFirstShared && bWithoutFirstFooter ? XML_FALSE
+                                                                               : XML_TRUE);
         }
 
         SvXMLElementExport aElem( GetExport(), XML_NAMESPACE_STYLE,

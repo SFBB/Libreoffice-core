@@ -147,6 +147,7 @@ static void lcl_DescSetAttr( const SwFrameFormat &rSource, SwFrameFormat &rDest,
         RES_HEADER_FOOTER_EAT_SPACING,  RES_HEADER_FOOTER_EAT_SPACING,  // [115
         RES_BACKGROUND_FULL_SIZE,       RES_BACKGROUND_FULL_SIZE,       // [131
         RES_RTL_GUTTER,                 RES_RTL_GUTTER,                 // [132
+        RES_FRMATR_PAGE_MIN_TOP,        RES_FRMATR_PAGE_MIN_BOTTOM,
         RES_UNKNOWNATR_CONTAINER,       RES_UNKNOWNATR_CONTAINER,       // [143
 
         // take over DrawingLayer FillStyles
@@ -260,13 +261,20 @@ void SwDoc::CopyMasterHeader(const SwPageDesc &rChged, const SwFormatHeader &rHe
         // If it already has one and it points to the same Section as the
         // Right one, it needs to get an own Header.
         // The content is evidently copied.
+
         const SwFormatHeader &rFormatHead = rDescFrameFormat.GetHeader();
-        if ( !rFormatHead.IsActive() )
+        if (bFirst && rChged.IsWithoutFirstHeader())
+        {
+            if (rFormatHead.IsActive())
+            {
+                SwFormatHeader* pHead = new SwFormatHeader(false);
+                rDescFrameFormat.SetFormatAttr( *pHead );
+            }
+        }
+        else if ( !rFormatHead.IsActive() )
         {
             SwFormatHeader aHead( getIDocumentLayoutAccess().MakeLayoutFormat( RndStdIds::HEADERL, nullptr ) );
             rDescFrameFormat.SetFormatAttr( aHead );
-            // take over additional attributes (margins, borders ...)
-            ::lcl_DescSetAttr( *rHead.GetHeaderFormat(), *aHead.GetHeaderFormat(), false);
         }
         else
         {
@@ -339,7 +347,15 @@ void SwDoc::CopyMasterFooter(const SwPageDesc &rChged, const SwFormatFooter &rFo
         // it needs to get an own one.
         // The content is evidently copied.
         const SwFormatFooter &rFormatFoot = rDescFrameFormat.GetFooter();
-        if ( !rFormatFoot.IsActive() )
+        if (bFirst && rChged.IsWithoutFirstFooter())
+        {
+            if (rFormatFoot.IsActive())
+            {
+                SwFormatFooter* pFoot = new SwFormatFooter(false);
+                rDescFrameFormat.SetFormatAttr( *pFoot );
+            }
+        }
+        else if ( !rFormatFoot.IsActive() )
         {
             SwFormatFooter aFoot( getIDocumentLayoutAccess().MakeLayoutFormat( RndStdIds::FOOTER, nullptr ) );
             rDescFrameFormat.SetFormatAttr( aFoot );
@@ -407,8 +423,10 @@ void SwDoc::ChgPageDesc( size_t i, const SwPageDesc &rChged )
         const SwFormatHeader& rFirstMasterHead = rChged.GetFirstMaster().GetHeader();
         const SwFormatHeader& rFirstLeftHead = rChged.GetFirstLeft().GetHeader();
         const bool bStashLeftHead = !rDesc.IsHeaderShared() && rChged.IsHeaderShared();
-        const bool bStashFirstMasterHead = !rDesc.IsFirstShared() && rChged.IsFirstShared();
-        const bool bStashFirstLeftHead = (!rDesc.IsHeaderShared() && rChged.IsHeaderShared()) || (!rDesc.IsFirstShared() && rChged.IsFirstShared());
+        const bool bStashFirstMasterHead = (!rDesc.IsFirstShared() && rChged.IsFirstShared())
+            || (!rDesc.IsWithoutFirstHeader() && rChged.IsWithoutFirstHeader());
+        const bool bStashFirstLeftHead = bStashFirstMasterHead
+            || (!rDesc.IsHeaderShared() && rChged.IsHeaderShared());
         if (bStashLeftHead && rLeftHead.GetRegisteredIn() && !rDesc.HasStashedFormat(true, true, false))
             rDesc.StashFrameFormat(rChged.GetLeft(), true, true, false);
         if (bStashFirstMasterHead && rFirstMasterHead.GetRegisteredIn() && !rDesc.HasStashedFormat(true, false, true))
@@ -421,8 +439,10 @@ void SwDoc::ChgPageDesc( size_t i, const SwPageDesc &rChged )
         const SwFormatFooter& rFirstMasterFoot = rChged.GetFirstMaster().GetFooter();
         const SwFormatFooter& rFirstLeftFoot = rChged.GetFirstLeft().GetFooter();
         const bool bStashLeftFoot = !rDesc.IsFooterShared() && rChged.IsFooterShared();
-        const bool bStashFirstMasterFoot = !rDesc.IsFirstShared() && rChged.IsFirstShared();
-        const bool bStashFirstLeftFoot = (!rDesc.IsFooterShared() && rChged.IsFooterShared()) || (!rDesc.IsFirstShared() && rChged.IsFirstShared());
+        const bool bStashFirstMasterFoot = (!rDesc.IsFirstShared() && rChged.IsFirstShared())
+            || (!rDesc.IsWithoutFirstFooter() && rChged.IsWithoutFirstFooter());
+        const bool bStashFirstLeftFoot = bStashFirstMasterFoot
+            || (!rDesc.IsFooterShared() && rChged.IsFooterShared());
         if (bStashLeftFoot && rLeftFoot.GetRegisteredIn() && !rDesc.HasStashedFormat(false, true, false))
             rDesc.StashFrameFormat(rChged.GetLeft(), false, true, false);
         if (bStashFirstMasterFoot && rFirstMasterFoot.GetRegisteredIn()  && !rDesc.HasStashedFormat(false, false, true))
@@ -605,6 +625,8 @@ void SwDoc::ChgPageDesc( size_t i, const SwPageDesc &rChged )
     rDesc.ChgFooterShare( rChged.IsFooterShared() );
     // there is just one first shared flag for both header and footer?
     rDesc.ChgFirstShare( rChged.IsFirstShared() );
+    rDesc.ChgWithoutFirstHeader( rChged.IsWithoutFirstHeader() );
+    rDesc.ChgWithoutFirstFooter( rChged.IsWithoutFirstFooter() );
 
     if ( rDesc.GetName() != rChged.GetName() )
         rDesc.SetName( rChged.GetName() );

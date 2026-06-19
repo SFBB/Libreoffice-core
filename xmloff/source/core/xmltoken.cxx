@@ -934,6 +934,7 @@ namespace xmloff::token {
         TOKEN( "fontwork-style",                  XML_FONTWORK_STYLE ),
         TOKEN( "footer",                          XML_FOOTER ),
         TOKEN( "footer-first",                    XML_FOOTER_FIRST ),
+        TOKEN( "is-first-page-footer-enabled",    XML_IS_FIRST_PAGE_FOOTER_ENABLED),
         TOKEN( "footer-left",                     XML_FOOTER_LEFT ),
         TOKEN( "footer-style",                    XML_FOOTER_STYLE ),
         TOKEN( "footer-visible",                  XML_FOOTER_VISIBLE ),
@@ -1036,6 +1037,7 @@ namespace xmloff::token {
         TOKEN( "triple",                          XML_HATCHSTYLE_TRIPLE ),
         TOKEN( "header",                          XML_HEADER ),
         TOKEN( "header-first",                    XML_HEADER_FIRST ),
+        TOKEN( "is-first-page-header-enabled",    XML_IS_FIRST_PAGE_HEADER_ENABLED ),
         TOKEN( "header-left",                     XML_HEADER_LEFT ),
         TOKEN( "header-style",                    XML_HEADER_STYLE ),
         TOKEN( "headers",                         XML_HEADERS ),
@@ -3552,6 +3554,8 @@ namespace xmloff::token {
 
         TOKEN( "page-content-bottom",             XML_PAGE_CONTENT_BOTTOM ),
         TOKEN("margin-gutter", XML_MARGIN_GUTTER),
+        TOKEN("min-page-margin-top", XML_MIN_PAGE_MARGIN_TOP),
+        TOKEN("min-page-margin-bottom", XML_MIN_PAGE_MARGIN_BOTTOM),
 
         TOKEN("local-url", XML_LOCAL_URL),
         TOKEN("target-type", XML_TARGET_TYPE),

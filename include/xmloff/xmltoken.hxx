@@ -922,6 +922,7 @@ namespace xmloff::token {
         XML_FONTWORK_STYLE,
         XML_FOOTER,
         XML_FOOTER_FIRST,
+        XML_IS_FIRST_PAGE_FOOTER_ENABLED,
         XML_FOOTER_LEFT,
         XML_FOOTER_STYLE,
         XML_FOOTER_VISIBLE,
@@ -1024,6 +1025,7 @@ namespace xmloff::token {
         XML_HATCHSTYLE_TRIPLE,
         XML_HEADER,
         XML_HEADER_FIRST,
+        XML_IS_FIRST_PAGE_HEADER_ENABLED,
         XML_HEADER_LEFT,
         XML_HEADER_STYLE,
         XML_HEADERS,
@@ -3548,6 +3550,8 @@ namespace xmloff::token {
 
         XML_PAGE_CONTENT_BOTTOM,
         XML_MARGIN_GUTTER,
+        XML_MIN_PAGE_MARGIN_TOP,
+        XML_MIN_PAGE_MARGIN_BOTTOM,
 
         XML_LOCAL_URL,
         XML_TARGET_TYPE,

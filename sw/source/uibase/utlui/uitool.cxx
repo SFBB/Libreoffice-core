@@ -294,7 +294,7 @@ static UseOnPage lcl_convertUseFromSvx(SvxPageUsage nUse)
 void ItemSetToPageDesc(const SfxItemSet& rSet, SwPageDesc& rPageDesc, bool bApplyToAllFormatFrames)
 {
     SwFrameFormat& rMaster = rPageDesc.GetMaster();
-    bool bFirstShare = false;
+    bool bFirstShareWasSetOnHeader = false;
 
     // before SetFormatAttr() in case it contains RES_BACKGROUND_FULL_SIZE
     // itself, as it does when called from SwXPageStyle
@@ -387,7 +387,9 @@ void ItemSetToPageDesc(const SfxItemSet& rSet, SwPageDesc& rPageDesc, bool bAppl
             rPageDesc.ChgHeaderShare(rHeaderSet.Get(SID_ATTR_PAGE_SHARED).GetValue());
             rPageDesc.ChgFirstShare(static_cast<const SfxBoolItem&>(
                             rHeaderSet.Get(SID_ATTR_PAGE_SHARED_FIRST)).GetValue());
-            bFirstShare = true;
+            rPageDesc.ChgWithoutFirstHeader(static_cast<const SfxBoolItem&>(
+                            rHeaderSet.Get(SID_ATTR_PAGE_NO_FIRST)).GetValue());
+            bFirstShareWasSetOnHeader = true;
         }
         else
         {
@@ -418,11 +420,14 @@ void ItemSetToPageDesc(const SfxItemSet& rSet, SwPageDesc& rPageDesc, bool bAppl
             ::FillHdFt(aFooterFormat, rFooterSet, rPageDesc, bApplyToAllFormatFrames);
 
             rPageDesc.ChgFooterShare(rFooterSet.Get(SID_ATTR_PAGE_SHARED).GetValue());
-            if (!bFirstShare)
+            if (!bFirstShareWasSetOnHeader)
             {
                 rPageDesc.ChgFirstShare(static_cast<const SfxBoolItem&>(
                             rFooterSet.Get(SID_ATTR_PAGE_SHARED_FIRST)).GetValue());
             }
+
+            rPageDesc.ChgWithoutFirstFooter(static_cast<const SfxBoolItem&>(
+                        rFooterSet.Get(SID_ATTR_PAGE_NO_FIRST)).GetValue());
         }
         else
         {
@@ -562,7 +567,8 @@ void PageDescToItemSet( const SwPageDesc& rPageDesc, SfxItemSet& rSet)
             SID_ATTR_BORDER_INNER,SID_ATTR_BORDER_INNER,    // [10023
             SID_ATTR_PAGE_SIZE,SID_ATTR_PAGE_SIZE,          // [10051
             SID_ATTR_PAGE_ON,SID_ATTR_PAGE_SHARED,          // [10060
-            SID_ATTR_PAGE_SHARED_FIRST,SID_ATTR_PAGE_SHARED_FIRST>(*rSet.GetPool()));
+            SID_ATTR_PAGE_SHARED_FIRST,SID_ATTR_PAGE_SHARED_FIRST,
+            SID_ATTR_PAGE_NO_FIRST,SID_ATTR_PAGE_NO_FIRST>(*rSet.GetPool()));
 
         // set correct parent to get the XFILL_NONE FillStyle as needed
         aHeaderSet.SetParent(&rMaster.GetDoc().GetDfltFrameFormat()->GetAttrSet());
@@ -581,6 +587,8 @@ void PageDescToItemSet( const SwPageDesc& rPageDesc, SfxItemSet& rSet)
         aHeaderSet.Put(aShared);
         SfxBoolItem aFirstShared(SID_ATTR_PAGE_SHARED_FIRST, rPageDesc.IsFirstShared());
         aHeaderSet.Put(aFirstShared);
+        SfxBoolItem aWithoutFirst(SID_ATTR_PAGE_NO_FIRST, rPageDesc.IsWithoutFirstHeader());
+        aHeaderSet.Put(aWithoutFirst);
 
         // Size
         SvxSizeItem aSize(SID_ATTR_PAGE_SIZE, rFrameSize.GetSize());
@@ -611,7 +619,8 @@ void PageDescToItemSet( const SwPageDesc& rPageDesc, SfxItemSet& rSet)
             SID_ATTR_BORDER_INNER,SID_ATTR_BORDER_INNER,    // [10023
             SID_ATTR_PAGE_SIZE,SID_ATTR_PAGE_SIZE,          // [10051
             SID_ATTR_PAGE_ON,SID_ATTR_PAGE_SHARED,          // [10060
-            SID_ATTR_PAGE_SHARED_FIRST,SID_ATTR_PAGE_SHARED_FIRST>(*rSet.GetPool()));
+            SID_ATTR_PAGE_SHARED_FIRST,SID_ATTR_PAGE_SHARED_FIRST,
+            SID_ATTR_PAGE_NO_FIRST,SID_ATTR_PAGE_NO_FIRST>(*rSet.GetPool()));
 
         // set correct parent to get the XFILL_NONE FillStyle as needed
         aFooterSet.SetParent(&rMaster.GetDoc().GetDfltFrameFormat()->GetAttrSet());
@@ -630,6 +639,8 @@ void PageDescToItemSet( const SwPageDesc& rPageDesc, SfxItemSet& rSet)
         aFooterSet.Put(aShared);
         SfxBoolItem aFirstShared(SID_ATTR_PAGE_SHARED_FIRST, rPageDesc.IsFirstShared());
         aFooterSet.Put(aFirstShared);
+        SfxBoolItem aWithoutFirst(SID_ATTR_PAGE_NO_FIRST, rPageDesc.IsWithoutFirstFooter());
+        aFooterSet.Put(aWithoutFirst);
 
         // Size
         SvxSizeItem aSize(SID_ATTR_PAGE_SIZE, rFrameSize.GetSize());

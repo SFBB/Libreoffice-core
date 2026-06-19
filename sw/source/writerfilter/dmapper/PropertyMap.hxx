@@ -447,8 +447,11 @@ public:
     bool m_bRightHeader = false;
     bool m_bRightFooter = false;
     bool m_bHadFirstHeader = false;
+    bool m_bHadFirstFooter = false;
     bool m_bHadLeftHeader = false;
+    bool m_bHadLeftFooter = false;
     bool m_bHadRightHeader = false;
+    bool m_bHadRightFooter = false;
 
     static void removeXTextContent(css::uno::Reference<css::text::XText> const& rxText);
 };

@@ -65,6 +65,9 @@ Reference < XStyle > XMLTextMasterPageContext::Create()
 }
 
 constexpr OUString gsFollowStyle( u"FollowStyle"_ustr );
+constexpr OUString gsHeaderNoFirst( u"HeaderNoFirst"_ustr );
+constexpr OUString gsFooterNoFirst( u"FooterNoFirst"_ustr );
+constexpr OUString gsFirstShareContent(u"FirstIsShared"_ustr);
 
 XMLTextMasterPageContext::XMLTextMasterPageContext( SvXMLImport& rImport,
         sal_Int32 /*nElement*/,
@@ -97,6 +100,14 @@ XMLTextMasterPageContext::XMLTextMasterPageContext( SvXMLImport& rImport,
                 break;
             case XML_ELEMENT(STYLE, XML_PAGE_LAYOUT_NAME):
                 m_sPageMasterName = aValue;
+                break;
+            case XML_ELEMENT(STYLE, XML_IS_FIRST_PAGE_FOOTER_ENABLED):
+            case XML_ELEMENT(LO_EXT, XML_IS_FIRST_PAGE_FOOTER_ENABLED):
+                m_sIsFirstPageFooterEnabled = aValue;
+                break;
+            case XML_ELEMENT(STYLE, XML_IS_FIRST_PAGE_HEADER_ENABLED):
+            case XML_ELEMENT(LO_EXT, XML_IS_FIRST_PAGE_HEADER_ENABLED):
+                m_sIsFirstPageHeaderEnabled = aValue;
                 break;
             case XML_ELEMENT(DRAW, XML_STYLE_NAME):
                 m_sDrawingPageStyle = aValue;
@@ -294,6 +305,19 @@ void XMLTextMasterPageContext::Finish( bool bOverwrite )
     if ( xPropSetInfo->hasPropertyByName( u"Hidden"_ustr ) )
     {
         xPropSet->setPropertyValue( u"Hidden"_ustr, uno::Any( IsHidden( ) ) );
+    }
+    if (xPropSetInfo->hasPropertyByName(gsHeaderNoFirst))
+    {
+        if (IsXMLToken(m_sIsFirstPageHeaderEnabled, XML_FALSE))
+        {
+            xPropSet->setPropertyValue( gsFirstShareContent, Any(false) );
+            xPropSet->setPropertyValue( gsHeaderNoFirst, Any(true) );
+        }
+        if (IsXMLToken(m_sIsFirstPageFooterEnabled, XML_FALSE))
+        {
+            xPropSet->setPropertyValue( gsFirstShareContent, Any(false) );
+            xPropSet->setPropertyValue( gsFooterNoFirst, Any(true) );
+        }
     }
 }
 

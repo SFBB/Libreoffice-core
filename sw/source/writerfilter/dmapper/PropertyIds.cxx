@@ -20,6 +20,7 @@
 #include <svl/sharedstring.hxx>
 #include "PropertyIds.hxx"
 #include <unordered_map>
+#include <unoprnms.hxx>
 
 namespace writerfilter::dmapper{
 
@@ -171,6 +172,8 @@ const OUString & getPropertyName( PropertyIds eId )
         { PROP_FULL_NAME, u"FullName"_ustr},
         { PROP_DESCRIPTION, u"Description"_ustr},
         { PROP_MACRO_NAME, u"MacroName"_ustr},
+        { PROP_MIN_BOTTOM_BODY_DISTANCE, u"MinBottomBodyDistance"_ustr},
+        { PROP_MIN_TOP_BODY_DISTANCE, u"MinTopBodyDistance"_ustr},
         { PROP_TITLE, u"Title"_ustr},
         { PROP_CONTENT, u"Content"_ustr},
         { PROP_INPUT_STREAM, u"InputStream"_ustr},
@@ -198,12 +201,14 @@ const OUString & getPropertyName( PropertyIds eId )
         { PROP_BACK_COLOR_TRANSPARENCY, u"BackColorTransparency"_ustr},
         { PROP_ALLOW_OVERLAP, u"AllowOverlap"_ustr},
         { PROP_ALTERNATIVE_TEXT, u"AlternativeText"_ustr},
+        { PROP_HEADER_NO_FIRST, UNO_NAME_HEADER_NO_FIRST },
         { PROP_HEADER_TEXT_LEFT, u"HeaderTextLeft"_ustr},
         { PROP_HEADER_TEXT_FIRST, u"HeaderTextFirst"_ustr},
         { PROP_HEADER_TEXT, u"HeaderText"_ustr},
         { PROP_HEADER_IS_SHARED, u"HeaderIsShared"_ustr},
         { PROP_HEADER_IS_ON, u"HeaderIsOn"_ustr},
         { PROP_FIRST_IS_SHARED, u"FirstIsShared"_ustr},
+        { PROP_FOOTER_NO_FIRST, UNO_NAME_FOOTER_NO_FIRST },
         { PROP_FOOTER_TEXT_LEFT, u"FooterTextLeft"_ustr},
         { PROP_FOOTER_TEXT_FIRST, u"FooterTextFirst"_ustr},
         { PROP_FOOTER_TEXT, u"FooterText"_ustr},

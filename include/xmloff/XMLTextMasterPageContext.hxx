@@ -36,6 +36,8 @@ class XMLOFF_DLLPUBLIC XMLTextMasterPageContext : public SvXMLStyleContext
     OUString       m_sFollow;
     OUString       m_sPageMasterName;
     OUString m_sDrawingPageStyle;
+    OUString m_sIsFirstPageFooterEnabled;
+    OUString m_sIsFirstPageHeaderEnabled;
 
     css::uno::Reference < css::style::XStyle > m_xStyle;
 

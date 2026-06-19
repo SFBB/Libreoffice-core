@@ -502,6 +502,8 @@ bool SvTreeListBox::DoubleClickHdl()
     return !m_aDoubleClickHdl.IsSet() || m_aDoubleClickHdl.Call(this);
 }
 
+void SvTreeListBox::ModelChangedHdl() { m_aModelChangedHdl.Call(this); }
+
 bool SvTreeListBox::CheckDragAndDropMode( SvTreeListBox const * pSource, sal_Int8 nAction )
 {
     if ( pSource != this )
@@ -1670,13 +1672,8 @@ enum class TreeListButtonType
 
 #define TAB_STARTPOS    2
 
-// take care of GetTextOffset when doing changes
 void SvTreeListBox::SetTabs()
 {
-    // Moved to SvTreeListBox::Paint to make inplace editing work for X11 in the enhancement patch
-    // tdf#139663 Rename objects from tree view in navigator.
-    // if( IsEditingActive() )
-    //   EndEditing( true );
     m_nTreeFlags &= ~SvTreeFlags::RECALCTABS;
     m_nFocusWidth = -1;
     const WinBits nStyle( GetStyle() );
@@ -2166,6 +2163,8 @@ void SvTreeListBox::ModelHasCleared()
     AdjustEntryHeight();
     AdjustEntryHeight( GetDefaultExpandedEntryBmp() );
     AdjustEntryHeight( GetDefaultCollapsedEntryBmp() );
+
+    ModelChangedHdl();
 }
 
 bool SvTreeListBox::PosOverBody(const Point& rPos) const
@@ -2416,12 +2415,16 @@ void SvTreeListBox::ModelHasInsertedTree( SvTreeListEntry* pEntry )
         pTmp = Next( pTmp );
     } while (pTmp && nRefDepth < m_pModel->GetDepth(pTmp));
     m_pImpl->TreeInserted(pEntry);
+
+    ModelChangedHdl();
 }
 
 void SvTreeListBox::ModelHasInserted( SvTreeListEntry* pEntry )
 {
     ImpEntryInserted( pEntry );
     m_pImpl->EntryInserted(pEntry);
+
+    ModelChangedHdl();
 }
 
 void SvTreeListBox::ModelIsMoving(SvTreeListEntry* pSource )
@@ -2432,6 +2435,8 @@ void SvTreeListBox::ModelIsMoving(SvTreeListEntry* pSource )
 void SvTreeListBox::ModelHasMoved( SvTreeListEntry* pSource )
 {
     m_pImpl->EntryMoved(pSource);
+
+    ModelChangedHdl();
 }
 
 void SvTreeListBox::ModelIsRemoving( SvTreeListEntry* pEntry )
@@ -2454,6 +2459,8 @@ void SvTreeListBox::ModelHasRemoved( SvTreeListEntry* pEntry  )
         m_pTargetEntry = nullptr;
 
     m_pImpl->EntryRemoved();
+
+    ModelChangedHdl();
 }
 
 void SvTreeListBox::SetCollapsedNodeBmp( const Image& rBmp)
@@ -3595,15 +3602,30 @@ void SvTreeListBox::ModelNotification(SvListAction nActionId, SvTreeListEntry* p
 {
     SolarMutexGuard aSolarGuard;
 
-    if( nActionId == SvListAction::CLEARING )
-        CancelTextEditing();
-
     switch (nActionId)
     {
         case SvListAction::INSERTED:
+        {
             ActionInserted(pEntry);
             ModelHasInserted(pEntry);
+            SvLBoxContextBmp* pBmpItem
+                = static_cast<SvLBoxContextBmp*>(pEntry->GetFirstItem(SvLBoxItemType::ContextBmp));
+            if (!pBmpItem)
+                break;
+            const Image& rBitmap1(pBmpItem->GetBitmap1());
+            const Image& rBitmap2(pBmpItem->GetBitmap2());
+            short nMaxWidth
+                = short(std::max(rBitmap1.GetSizePixel().Width(), rBitmap2.GetSizePixel().Width()));
+            nMaxWidth = m_pImpl->UpdateContextBmpWidthVector(pEntry, nMaxWidth);
+            if (nMaxWidth > m_nContextBmpWidthMax)
+            {
+                m_nContextBmpWidthMax = nMaxWidth;
+                SetTabs();
+            }
+            if (get_width_request() == -1)
+                queue_resize();
             break;
+        }
         case SvListAction::INSERTED_TREE:
             ActionInsertedTree(pEntry);
             ModelHasInsertedTree(pEntry);
@@ -3624,10 +3646,13 @@ void SvTreeListBox::ModelNotification(SvListAction nActionId, SvTreeListEntry* p
             ModelHasMoved(pEntry);
             break;
         case SvListAction::CLEARING:
+            CancelTextEditing();
             Reset();
             ModelHasCleared(); // sic! for compatibility reasons!
             break;
         case SvListAction::CLEARED:
+            if (IsUpdateMode())
+                PaintImmediately();
             break;
         case SvListAction::INVALIDATE_ENTRY:
             // no action for the base class
@@ -3635,51 +3660,15 @@ void SvTreeListBox::ModelNotification(SvListAction nActionId, SvTreeListEntry* p
             break;
         case SvListAction::RESORTED:
             m_bVisPositionsValid = false;
-            break;
-        case SvListAction::RESORTING:
-            break;
-        default:
-            OSL_FAIL("unknown ActionId");
-    }
-
-    switch( nActionId )
-    {
-        case SvListAction::INSERTED:
-        {
-            SvLBoxContextBmp* pBmpItem
-                = static_cast<SvLBoxContextBmp*>(pEntry->GetFirstItem(SvLBoxItemType::ContextBmp));
-            if ( !pBmpItem )
-                break;
-            const Image& rBitmap1( pBmpItem->GetBitmap1() );
-            const Image& rBitmap2( pBmpItem->GetBitmap2() );
-            short nMaxWidth = short( std::max( rBitmap1.GetSizePixel().Width(), rBitmap2.GetSizePixel().Width() ) );
-            nMaxWidth = m_pImpl->UpdateContextBmpWidthVector(pEntry, nMaxWidth);
-            if (nMaxWidth > m_nContextBmpWidthMax)
-            {
-                m_nContextBmpWidthMax = nMaxWidth;
-                SetTabs();
-            }
-            if (get_width_request() == -1)
-                queue_resize();
-        }
-        break;
-
-        case SvListAction::RESORTING:
-            SetUpdateMode( false );
-            break;
-
-        case SvListAction::RESORTED:
             // after a selection: show first entry and also keep the selection
             MakeVisible(m_pModel->First(), true);
             SetUpdateMode( true );
             break;
-
-        case SvListAction::CLEARED:
-            if( IsUpdateMode() )
-                PaintImmediately();
+        case SvListAction::RESORTING:
+            SetUpdateMode(false);
             break;
-
-        default: break;
+        default:
+            OSL_FAIL("unknown ActionId");
     }
 }
 

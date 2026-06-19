@@ -126,9 +126,11 @@ enum class UseOnPage : sal_uInt16
     HeaderShare    = 0x0040,
     FooterShare    = 0x0080,
     FirstShare     = 0x0100,
+    DisableFirstHeader = 0x0200,
+    DisableFirstFooter = 0x0400,
     NoHeaderShare  = 0xFFBF, ///< For internal use only.
     NoFooterShare  = 0xFF7F, ///< For internal use only.
-    NoFirstShare   = 0xFEFF
+    NoFirstShare   = 0xFEFF,
 };
 namespace o3tl {
     template<> struct typed_flags<UseOnPage> : is_typed_flags<UseOnPage, 0xffff> {};
@@ -212,6 +214,10 @@ public:
     inline void ChgFooterShare( bool bNew );
     bool IsFirstShared() const;
     void ChgFirstShare( bool bNew );
+    bool IsWithoutFirstHeader() const;
+    void ChgWithoutFirstHeader( bool bNew );
+    bool IsWithoutFirstFooter() const;
+    void ChgWithoutFirstFooter( bool bNew );
 
     bool IsHidden() const { return m_IsHidden; }
     void SetHidden(bool const bValue) { m_IsHidden = bValue; }

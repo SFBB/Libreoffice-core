@@ -203,7 +203,6 @@ class UNLESS_MERGELIBS_MORE(VCL_DLLPUBLIC) SvTreeListBox : public Control,
     friend class SalInstanceTreeView;
     friend class SalInstanceEntryTreeView;
     friend class SvTreeList;
-    friend class JSTreeView;
 
     using SvDataTable = std::unordered_map<SvTreeListEntry*, SvViewDataEntry>;
     SvDataTable m_DataTable; // Mapping SvTreeListEntry -> ViewData
@@ -220,6 +219,7 @@ class UNLESS_MERGELIBS_MORE(VCL_DLLPUBLIC) SvTreeListBox : public Control,
     Link<SvTreeListBox*, bool> m_aExpandingHdl;
     Link<SvTreeListBox*, void> m_aSelectHdl;
     Link<SvTreeListBox*, void> m_aDeselectHdl;
+    Link<SvTreeListBox*, void> m_aModelChangedHdl;
     Link<SvTreeListEntry&, OUString> m_aTooltipHdl;
     Link<svtree_render_args, void> m_aCustomRenderHdl;
     Link<svtree_measure_args, Size> m_aCustomMeasureHdl;
@@ -337,9 +337,8 @@ protected:
     // Invalidate children on enable/disable
     virtual void StateChanged( StateChangedType eType ) override;
 
-    virtual void Insert(SvTreeListEntry* pEntry, SvTreeListEntry* pParent,
-                        sal_uInt32 nPos = TREELIST_APPEND);
-    virtual void Insert(SvTreeListEntry* pEntry, sal_uInt32 nRootPos = TREELIST_APPEND);
+    virtual void Insert(SvTreeListEntry* pEntry, SvTreeListEntry* pParent, sal_uInt32 nPos);
+    virtual void Insert(SvTreeListEntry* pEntry, sal_uInt32 nRootPos);
 
     // In-place editing
     void            EditText( const OUString&, const tools::Rectangle&,const Selection&);
@@ -502,6 +501,7 @@ public:
     }
     void SetExpandingHdl(const Link<SvTreeListBox*, bool>& rNewHdl) { m_aExpandingHdl = rNewHdl; }
     void SetExpandedHdl(const Link<SvTreeListBox*, void>& rNewHdl) { m_aExpandedHdl = rNewHdl; }
+    void SetModelChangedHdl(const Link<SvTreeListBox*, void>& rLink) { m_aModelChangedHdl = rLink; }
     void SetTooltipHdl(const Link<SvTreeListEntry&, OUString>& rLink) { m_aTooltipHdl = rLink; }
     void SetCustomRenderHdl(const Link<svtree_render_args, void>& rLink)
     {
@@ -517,6 +517,7 @@ public:
     void            SelectHdl();
     void            DeselectHdl();
     bool            DoubleClickHdl();
+    void ModelChangedHdl();
     SvTreeListEntry* GetHdlEntry() const { return m_pHdlEntry; }
 
     // Is called for an Entry that gets expanded with the Flag
@@ -677,13 +678,13 @@ public:
     virtual void    LoseFocus() override;
     void            SetUpdateMode( bool );
 
-    virtual void ModelHasCleared();
-    virtual void ModelHasInserted(SvTreeListEntry* pEntry);
-    virtual void ModelHasInsertedTree(SvTreeListEntry* pEntry);
-    virtual void ModelIsMoving(SvTreeListEntry* pSource);
-    virtual void ModelHasMoved(SvTreeListEntry* pSource);
-    virtual void ModelIsRemoving(SvTreeListEntry* pEntry);
-    virtual void ModelHasRemoved(SvTreeListEntry* pEntry);
+    void ModelHasCleared();
+    void ModelHasInserted(SvTreeListEntry* pEntry);
+    void ModelHasInsertedTree(SvTreeListEntry* pEntry);
+    void ModelIsMoving(SvTreeListEntry* pSource);
+    void ModelHasMoved(SvTreeListEntry* pSource);
+    void ModelIsRemoving(SvTreeListEntry* pEntry);
+    void ModelHasRemoved(SvTreeListEntry* pEntry);
     void ModelHasEntryInvalidated(SvTreeListEntry* pEntry);
 
     void            ScrollOutputArea( short nDeltaEntries );
