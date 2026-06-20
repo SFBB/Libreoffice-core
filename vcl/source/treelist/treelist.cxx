@@ -41,9 +41,9 @@ SvTreeList::~SvTreeList()
 {
 }
 
-void SvTreeList::Broadcast(SvListAction nActionId, SvTreeListEntry* pEntry)
+void SvTreeList::Broadcast(SvListAction eAction, SvTreeListEntry* pEntry)
 {
-    mrOwnerListView.ModelNotification(nActionId, pEntry);
+    mrOwnerListView.ModelNotification(eAction, pEntry);
 }
 
 // an entry is visible if all parents are expanded
@@ -82,10 +82,8 @@ bool SvTreeList::IsAtRootDepth( const SvTreeListEntry* pEntry ) const
 
 void SvTreeList::Clear()
 {
-    Broadcast( SvListAction::CLEARING );
     m_pRootItem->ClearChildren();
     m_nEntryCount = 0;
-    Broadcast( SvListAction::CLEARED );
 }
 
 bool SvTreeList::IsChild(const SvTreeListEntry* pParent, const SvTreeListEntry* pChild) const
@@ -717,7 +715,7 @@ SvTreeListEntry* SvTreeList::NextSelected(const SvTreeListBox& rView, SvTreeList
     return pEntry;
 }
 
-void SvTreeList::Insert(SvTreeListEntry* pEntry, SvTreeListEntry* pParent, sal_uInt32 nPos)
+void SvTreeList::Insert(SvTreeListEntry* pEntry, sal_uInt32 nPos, SvTreeListEntry* pParent)
 {
     assert(pEntry && "Entry?");
 
@@ -867,12 +865,12 @@ void SvTreeList::EnableInvalidate( bool bEnable )
     mbEnableInvalidate = bEnable;
 }
 
-void SvTreeList::InvalidateEntry( SvTreeListEntry* pEntry )
+void SvTreeList::InvalidateEntry(SvTreeListEntry& rEntry)
 {
     if (!mbEnableInvalidate)
         return;
 
-    Broadcast( SvListAction::INVALIDATE_ENTRY, pEntry );
+    Broadcast(SvListAction::INVALIDATE_ENTRY, &rEntry);
 }
 
 sal_Int32 SvTreeList::Compare(const SvTreeListEntry* pLeft, const SvTreeListEntry* pRight) const

@@ -61,13 +61,10 @@ void disposeAndClearHeaderCell(BrowseBox::THeaderCellMap& _rHeaderCell)
         _rHeaderCell.begin(), _rHeaderCell.end(),
         [](const BrowseBox::THeaderCellMap::value_type& rType)
         {
-            css::uno::Reference<css::lang::XComponent> xComp(rType.second, css::uno::UNO_QUERY);
-            OSL_ENSURE(xComp.is() || !rType.second.is(),
-                       "THeaderCellMapFunctorDispose: invalid accessible cell (no XComponent)!");
-            if (xComp.is())
+            if (rType.second.is())
                 try
                 {
-                    xComp->dispose();
+                    rType.second->dispose();
                 }
                 catch (const css::uno::Exception&)
                 {
@@ -779,12 +776,9 @@ void BrowseBox::RemoveColumn( sal_uInt16 nItemId )
         Any()
     );
 
-    commitHeaderBarEvent(
-        AccessibleEventId::CHILD,
-        Any(),
-        Any( CreateAccessibleColumnHeader( nPos ) ),
-        true
-    );
+    commitHeaderBarEvent(AccessibleEventId::CHILD, Any(),
+                         Any(css::uno::Reference<XAccessible>(CreateAccessibleColumnHeader(nPos))),
+                         true);
 }
 
 
@@ -827,18 +821,15 @@ void BrowseBox::RemoveColumns()
 
     // all columns should be removed, so we remove the column header bar and append it again
     // to avoid to notify every column remove
-    commitBrowseBoxEvent(
-        AccessibleEventId::CHILD,
-        Any(),
-        Any(getAccessibleHeaderBar(AccessibleBrowseBoxObjType::ColumnHeaderBar))
-    );
+    commitBrowseBoxEvent(AccessibleEventId::CHILD, Any(),
+                         Any(css::uno::Reference<XAccessible>(
+                             getAccessibleHeaderBar(AccessibleBrowseBoxObjType::ColumnHeaderBar))));
 
     // and now append it again
-    commitBrowseBoxEvent(
-        AccessibleEventId::CHILD,
-        Any(getAccessibleHeaderBar(AccessibleBrowseBoxObjType::ColumnHeaderBar)),
-        Any()
-    );
+    commitBrowseBoxEvent(AccessibleEventId::CHILD,
+                         Any(css::uno::Reference<XAccessible>(
+                             getAccessibleHeaderBar(AccessibleBrowseBoxObjType::ColumnHeaderBar))),
+                         Any());
 
     // notify a table model change
     commitTableEvent(
@@ -1147,18 +1138,15 @@ void BrowseBox::Clear()
     if ( nOldRowCount == nRowCount )
         return;
 
-    commitBrowseBoxEvent(
-        AccessibleEventId::CHILD,
-        Any(),
-        Any(getAccessibleHeaderBar( AccessibleBrowseBoxObjType::RowHeaderBar))
-    );
+    commitBrowseBoxEvent(AccessibleEventId::CHILD, Any(),
+                         Any(css::uno::Reference<XAccessible>(
+                             getAccessibleHeaderBar(AccessibleBrowseBoxObjType::RowHeaderBar))));
 
     // and now append it again
-    commitBrowseBoxEvent(
-        AccessibleEventId::CHILD,
-        Any(getAccessibleHeaderBar(AccessibleBrowseBoxObjType::RowHeaderBar)),
-        Any()
-    );
+    commitBrowseBoxEvent(AccessibleEventId::CHILD,
+                         Any(css::uno::Reference<XAccessible>(
+                             getAccessibleHeaderBar(AccessibleBrowseBoxObjType::RowHeaderBar))),
+                         Any());
 
     // notify a table model change
     commitTableEvent(
@@ -1264,10 +1252,7 @@ void BrowseBox::RowInserted( sal_Int32 nRow, sal_Int32 nNumRows, bool bDoPaint, 
         {
             commitHeaderBarEvent(
                 AccessibleEventId::CHILD,
-                Any( CreateAccessibleRowHeader( i ) ),
-                Any(),
-                false
-            );
+                Any(css::uno::Reference<XAccessible>(CreateAccessibleRowHeader(i))), Any(), false);
         }
     }
 
@@ -1390,30 +1375,22 @@ void BrowseBox::RowRemoved( sal_Int32 nRow, sal_Int32 nNumRows, bool bDoPaint )
         {
             // all columns should be removed, so we remove the column header bar and append it again
             // to avoid to notify every column remove
-            commitBrowseBoxEvent(
-                AccessibleEventId::CHILD,
-                Any(),
-                Any(getAccessibleHeaderBar(AccessibleBrowseBoxObjType::RowHeaderBar))
-            );
+            commitBrowseBoxEvent(AccessibleEventId::CHILD, Any(),
+                                 Any(css::uno::Reference<XAccessible>(getAccessibleHeaderBar(
+                                     AccessibleBrowseBoxObjType::RowHeaderBar))));
 
             // and now append it again
-            commitBrowseBoxEvent(
-                AccessibleEventId::CHILD,
-                Any(getAccessibleHeaderBar(AccessibleBrowseBoxObjType::RowHeaderBar)),
-                Any()
-            );
-            commitBrowseBoxEvent(
-                AccessibleEventId::CHILD,
-                Any(),
-                Any(getAccessibleTable())
-            );
+            commitBrowseBoxEvent(AccessibleEventId::CHILD,
+                                 Any(css::uno::Reference<XAccessible>(getAccessibleHeaderBar(
+                                     AccessibleBrowseBoxObjType::RowHeaderBar))),
+                                 Any());
+            commitBrowseBoxEvent(AccessibleEventId::CHILD, Any(),
+                                 Any(css::uno::Reference<XAccessible>(getAccessibleTable())));
 
             // and now append it again
-            commitBrowseBoxEvent(
-                AccessibleEventId::CHILD,
-                Any(getAccessibleTable()),
-                Any()
-            );
+            commitBrowseBoxEvent(AccessibleEventId::CHILD,
+                                 Any(css::uno::Reference<XAccessible>(getAccessibleTable())),
+                                 Any());
         }
         else
         {
@@ -1433,11 +1410,8 @@ void BrowseBox::RowRemoved( sal_Int32 nRow, sal_Int32 nNumRows, bool bDoPaint )
             for (tools::Long i = nRow+1 ; i <= (nRow+nNumRows) ; ++i)
             {
                 commitHeaderBarEvent(
-                    AccessibleEventId::CHILD,
-                    Any(),
-                    Any( CreateAccessibleRowHeader( i ) ),
-                    false
-                );
+                    AccessibleEventId::CHILD, Any(),
+                    Any(css::uno::Reference<XAccessible>(CreateAccessibleRowHeader(i))), false);
             }
         }
     }

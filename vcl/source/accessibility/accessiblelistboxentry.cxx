@@ -650,7 +650,7 @@ sal_Bool SAL_CALL AccessibleListBoxEntry::doAccessibleAction( sal_Int32 nIndex )
             if ( m_pTreeListBox->IsExpanded( pEntry ) )
                 m_pTreeListBox->Collapse( pEntry );
             else
-                m_pTreeListBox->Expand( pEntry );
+                m_pTreeListBox->Expand(*pEntry);
             bRet = true;
         }
     }
@@ -1075,7 +1075,7 @@ SvTreeListEntry* AccessibleListBoxEntry::GetRealChild(sal_Int32 nIndex)
         pEntry = m_pTreeListBox->GetEntry( pParent, nIndex );
         if ( !pEntry && getAccessibleChildCount() > 0 )
         {
-            m_pTreeListBox->RequestingChildren(pParent);
+            m_pTreeListBox->RequestingChildren(*pParent);
             pEntry = m_pTreeListBox->GetEntry( pParent, nIndex );
         }
     }

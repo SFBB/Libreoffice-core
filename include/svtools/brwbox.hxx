@@ -42,6 +42,11 @@ class ScrollAdaptor;
 class MeasureStatusBar;
 enum class AccessibleBrowseBoxObjType;
 
+namespace com::sun::star::accessibility
+{
+class XAccessible;
+}
+
 namespace weld {
     class Scrollbar;
 }
@@ -259,7 +264,7 @@ class SVT_DLLPUBLIC BrowseBox
     friend class BrowserDataWin;
 
 public:
-    typedef ::std::map<sal_Int32, css::uno::Reference<css::accessibility::XAccessible>> THeaderCellMap;
+    typedef std::map<sal_Int32, rtl::Reference<comphelper::OAccessible>> THeaderCellMap;
 
     static const sal_uInt16 HandleColumnId = 0;
 
@@ -381,17 +386,16 @@ private:
     SAL_DLLPRIVATE void SetToggledSelectedColumn(sal_uInt16 _nSelectedColumnId);
 
     /// @see AccessibleBrowseBox::getHeaderBar
-    css::uno::Reference<css::accessibility::XAccessible>
+    rtl::Reference<comphelper::OAccessible>
     getAccessibleHeaderBar(AccessibleBrowseBoxObjType _eObjType);
 
-    css::uno::Reference<css::accessibility::XAccessible>
+    rtl::Reference<comphelper::OAccessible>
     getAccessibleHeaderCell(BrowseBox::THeaderCellMap& _raHeaderCells, sal_Int32 _nPos,
                             AccessibleBrowseBoxObjType _eType,
-                            const css::uno::Reference<css::accessibility::XAccessible>& _rParent);
+                            const rtl::Reference<comphelper::OAccessible>& rpParent);
 
     /// @see AccessibleBrowseBox::getTable
-    css::uno::Reference<css::accessibility::XAccessible>
-    getAccessibleTable();
+    rtl::Reference<comphelper::OAccessible> getAccessibleTable();
 
 protected:
     bool                m_bNavigationBar;
@@ -716,17 +720,15 @@ public:
 
     /** Creates the accessible object of a row header.
         @param nRow  The row index of the header.
-        @return  The XAccessible interface of the specified row header. */
-    virtual css::uno::Reference<
-        css::accessibility::XAccessible >
-    CreateAccessibleRowHeader( sal_Int32 nRow ) override;
+        @return  The accessible of the specified row header. */
+    virtual rtl::Reference<comphelper::OAccessible>
+    CreateAccessibleRowHeader(sal_Int32 nRow) override;
 
     /** Creates the accessible object of a column header.
         @param nColumnId  The column ID of the header.
-        @return  The XAccessible interface of the specified column header. */
-    virtual css::uno::Reference<
-        css::accessibility::XAccessible >
-    CreateAccessibleColumnHeader( sal_uInt16 nColumnPos ) override;
+        @return  The accessible of the specified column header. */
+    virtual rtl::Reference<comphelper::OAccessible>
+    CreateAccessibleColumnHeader(sal_uInt16 nColumnPos) override;
 
     /** Converts a point relative to the data window origin to a cell address.
         @param rnRow  Out-parameter that takes the row index.

@@ -46,8 +46,6 @@ private:
     DECL_DLLPRIVATE_LINK(ScrollHdl_Impl, SvTreeListBox*, void);
     DECL_DLLPRIVATE_LINK(CreateAccessibleHdl_Impl, HeaderBar*, void);
 
-    void RecalculateAccessibleChildren();
-
 public:
     SvHeaderTabListBox(vcl::Window* pParent, WinBits nBits, HeaderBar* pHeaderBar);
     virtual ~SvHeaderTabListBox() override;
@@ -55,11 +53,6 @@ public:
 
     HeaderBar* GetHeaderBar();
     static bool IsItemChecked(SvTreeListEntry* pEntry, sal_uInt16 nCol);
-
-    virtual SvTreeListEntry& InsertEntryToColumn(const OUString&, SvTreeListEntry* pParent,
-                                                 sal_uInt32 nPos) override;
-    virtual void Insert(SvTreeListEntry* pEnt, SvTreeListEntry* pPar, sal_uInt32 nPos) override;
-    virtual void Insert(SvTreeListEntry* pEntry, sal_uInt32 nRootPos) override;
 
     // Accessible -------------------------------------------------------------
 
@@ -100,9 +93,8 @@ public:
 
     rtl::Reference<comphelper::OAccessible> CreateAccessibleCell(sal_Int32 _nRow,
                                                                  sal_uInt16 _nColumn) override;
-    virtual css::uno::Reference<css::accessibility::XAccessible>
-    CreateAccessibleRowHeader(sal_Int32 _nRow) override;
-    virtual css::uno::Reference<css::accessibility::XAccessible>
+    rtl::Reference<comphelper::OAccessible> CreateAccessibleRowHeader(sal_Int32 _nRow) override;
+    virtual rtl::Reference<comphelper::OAccessible>
     CreateAccessibleColumnHeader(sal_uInt16 _nColumnPos) override;
 
     virtual sal_Int32 GetAccessibleControlCount() const override;

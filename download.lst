@@ -390,8 +390,8 @@ LIBJPEG_TURBO_TARBALL := libjpeg-turbo-3.1.4.1.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-LANGTAGREG_SHA256SUM := 5c728b7ca4d3c7ba6810c46df28fd906f617e7c7f43d04721fe200037dce308e
-LANGTAGREG_TARBALL := language-subtag-registry-2026-05-05.tar.bz2
+LANGTAGREG_SHA256SUM := e74af13fd11fbcb24a5910d0f50e45d8505d86267bde2bb2d1d45aed966bc3bb
+LANGTAGREG_TARBALL := language-subtag-registry-2026-06-14.tar.bz2
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -569,8 +569,8 @@ PAGEMAKER_TARBALL := libpagemaker-0.0.4.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-PDFIUM_SHA256SUM := 8de122fff74461770c9ca93ca3e6ca946b077f9110d562f40815e187e1255774
-PDFIUM_TARBALL := pdfium-7681.tar.bz2
+PDFIUM_SHA256SUM := fbb7b551699a4bbf2f47986d485df0a82e9391841239cdbcd64554d88209014c
+PDFIUM_TARBALL := pdfium-7795.tar.bz2
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -662,8 +662,8 @@ RHINO_TARBALL := rhino-1.7.15.1.zip
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-SKIA_SHA256SUM := 92f613b60126f9068af02c5eb29abef6931e343888f027d87da100ddf2a003a1
-SKIA_TARBALL := skia-m147-ad8ecedbfdef9f4ae4b1e73347b6dd56e6637d38.tar.xz
+SKIA_SHA256SUM := e35469b375140ff4e43c03a0effac36f14203a9b3162e09f93f25e71060973b9
+SKIA_TARBALL := skia-m148-3a90f6662a2c30a7d270c7738cc70e5980974b02.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts

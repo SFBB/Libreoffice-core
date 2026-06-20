@@ -18,15 +18,12 @@
  */
 
 #include <SvHeaderTabListBox.hxx>
-#include <accessibility/accessibletablistbox.hxx>
 
 #include <comphelper/types.hxx>
 #include <vcl/headbar.hxx>
 #include <vcl/toolkit/svlbitm.hxx>
 #include <vcl/toolkit/treelistbox.hxx>
 #include <vcl/toolkit/treelistentry.hxx>
-#include <com/sun/star/accessibility/AccessibleStateType.hpp>
-#include <com/sun/star/accessibility/XAccessible.hpp>
 #include <rtl/ustrbuf.hxx>
 #include <sal/log.hxx>
 #include <o3tl/safeint.hxx>
@@ -35,9 +32,6 @@
 #include <strings.hrc>
 #include <svdata.hxx>
 #include <memory>
-
-using namespace ::com::sun::star::uno;
-using namespace ::com::sun::star::accessibility;
 
 // SvTreeListBox callback
 
@@ -74,14 +68,10 @@ void SvTabListBox::InitEntry(SvTreeListEntry& rEntry, const OUString& rStr, cons
 {
     SvTreeListBox::InitEntry(rEntry, rStr, rColl, rExp);
 
-    sal_Int32 nIndex = 0;
     // TODO: verify if nTabCount is always >0 here!
     const sal_uInt16 nCount = mvTabList.size() - 1;
-    for( sal_uInt16 nToken = 0; nToken < nCount; nToken++ )
-    {
-        const std::u16string_view aToken = GetToken(m_aCurEntry, nIndex);
-        rEntry.AddItem(std::make_unique<SvLBoxString>(OUString(aToken)));
-    }
+    for (sal_uInt16 nTab = 0; nTab < nCount; nTab++)
+        rEntry.AddItem(std::make_unique<SvLBoxString>());
 }
 
 SvTabListBox::SvTabListBox( vcl::Window* pParent, WinBits nBits )
@@ -131,27 +121,6 @@ void SvTabListBox::SetTabs(const std::vector<tools::Long>& rTabPositions)
         Invalidate();
 }
 
-SvTreeListEntry& SvTabListBox::InsertEntry(const OUString& rText, SvTreeListEntry* pParent,
-                                           bool /*bChildrenOnDemand*/, sal_uInt32 nPos)
-{
-    return InsertEntryToColumn(rText, pParent, nPos);
-}
-
-SvTreeListEntry& SvTabListBox::InsertEntryToColumn(const OUString& rStr, SvTreeListEntry* pParent,
-                                                   sal_uInt32 nPos)
-{
-    OUString aFirstStr(rStr);
-    sal_Int32 nEnd = aFirstStr.indexOf( '\t' );
-    if( nEnd != -1 )
-    {
-        aFirstStr = aFirstStr.copy(0, nEnd);
-        m_aCurEntry = rStr.copy(++nEnd);
-    }
-    else
-        m_aCurEntry.clear();
-    return SvTreeListBox::InsertEntry(aFirstStr, pParent, false, nPos);
-}
-
 OUString SvTabListBox::GetEntryText( SvTreeListEntry* pEntry ) const
 {
     return GetEntryText( pEntry, 0xffff );
@@ -189,12 +158,6 @@ OUString SvTabListBox::GetEntryText( const SvTreeListEntry* pEntry, sal_uInt16 n
     return aResult.makeStringAndClear();
 }
 
-OUString SvTabListBox::GetEntryText( sal_uInt32 nPos, sal_uInt16 nCol ) const
-{
-    SvTreeListEntry* pEntry = GetEntryOnPos( nPos );
-    return GetEntryText( pEntry, nCol );
-}
-
 OUString SvTabListBox::GetCellText( sal_uInt32 nPos, sal_uInt16 nCol ) const
 {
     SvTreeListEntry* pEntry = GetEntryOnPos( nPos );
@@ -207,12 +170,6 @@ OUString SvTabListBox::GetCellText( sal_uInt32 nPos, sal_uInt16 nCol ) const
             aResult = static_cast<const SvLBoxString&>(rStr).GetText();
     }
     return aResult;
-}
-
-// static
-std::u16string_view SvTabListBox::GetToken( std::u16string_view sStr, sal_Int32& nIndex )
-{
-    return o3tl::getToken(sStr, 0, '\t', nIndex);
 }
 
 OUString SvTabListBox::GetTabEntryText( sal_uInt32 nPos, sal_uInt16 nCol ) const

@@ -117,10 +117,12 @@ private:
     void addNode( UnoTreeListBoxImpl& rTree, const css::uno::Reference< css::awt::tree::XTreeNode >& xNode, UnoTreeListEntry* pParentEntry );
 
     UnoTreeListEntry* createEntry( const css::uno::Reference< css::awt::tree::XTreeNode >& xNode, UnoTreeListEntry* pParent, sal_uInt32 nPos );
-    void updateEntry( UnoTreeListEntry* pEntry );
+    void updateEntry(UnoTreeListEntry& rEntry);
 
     void updateTree( const css::awt::tree::TreeDataModelEvent& rEvent );
-    void updateChildNodes( UnoTreeListBoxImpl const & rTree, const css::uno::Reference< css::awt::tree::XTreeNode >& xParentNode, UnoTreeListEntry* pParentEntry );
+    void updateChildNodes(UnoTreeListBoxImpl& rTree,
+                          const css::uno::Reference<css::awt::tree::XTreeNode>& xParentNode,
+                          UnoTreeListEntry* pParentEntry);
 
     static OUString getEntryString( const css::uno::Any& rValue );
 

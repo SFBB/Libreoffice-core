@@ -224,11 +224,6 @@ class UNLESS_MERGELIBS_MORE(VCL_DLLPUBLIC) SvTreeListBox : public Control,
     Link<svtree_render_args, void> m_aCustomRenderHdl;
     Link<svtree_measure_args, Size> m_aCustomMeasureHdl;
 
-    Image m_aPrevInsertedExpBmp;
-    Image m_aPrevInsertedColBmp;
-    Image m_aCurInsertedExpBmp;
-    Image m_aCurInsertedColBmp;
-
     short m_nContextBmpWidthMax;
     short m_nEntryHeightOffs;
     short m_nIndent;
@@ -283,7 +278,7 @@ private:
     // Handler that is called by TreeList to clone an Entry
     DECL_DLLPRIVATE_LINK(CloneHdl_Impl, SvTreeListEntry&, SvTreeListEntry*);
 
-    void ExpandListEntry(SvTreeListEntry* pParent);
+    void ExpandListEntry(SvTreeListEntry& rParent);
     void CollapseListEntry(SvTreeListEntry* pParent);
     bool SelectListEntry(SvTreeListEntry* pEntry, bool bSelect);
 
@@ -337,8 +332,8 @@ protected:
     // Invalidate children on enable/disable
     virtual void StateChanged( StateChangedType eType ) override;
 
-    virtual void Insert(SvTreeListEntry* pEntry, SvTreeListEntry* pParent, sal_uInt32 nPos);
-    virtual void Insert(SvTreeListEntry* pEntry, sal_uInt32 nRootPos);
+    void Insert(SvTreeListEntry* pEntry, sal_uInt32 nPos, SvTreeListEntry* pParent);
+    void Insert(SvTreeListEntry* pEntry, sal_uInt32 nRootPos);
 
     // In-place editing
     void            EditText( const OUString&, const tools::Rectangle&,const Selection&);
@@ -522,7 +517,7 @@ public:
 
     // Is called for an Entry that gets expanded with the Flag
     // ENTRYFLAG_CHILDREN_ON_DEMAND set.
-    virtual void             RequestingChildren( SvTreeListEntry* pParent );
+    virtual void RequestingChildren(SvTreeListEntry& rParent);
 
     // Drag & Drop
     // New D'n'D API
@@ -623,29 +618,12 @@ public:
 
     void            EnableCheckButton(SvLBoxButtonData&);
 
-    /** Returns the default image which clients should use for expanded nodes, to have a consistent user
-        interface experience in the whole product.
-    */
-    static const Image& GetDefaultExpandedNodeImage( );
-
-    /** Returns the default image which clients should use for expanded nodes, to have a consistent user
-        interface experience in the whole product.
-    */
-    static const Image& GetDefaultCollapsedNodeImage( );
-
     /** Sets default bitmaps for collapsed and expanded nodes.
     */
     void    SetNodeDefaultImages();
 
-    virtual SvTreeListEntry& InsertEntry(const OUString& rText, SvTreeListEntry* pParent = nullptr,
-                                         bool bChildrenOnDemand = false,
-                                         sal_uInt32 nPos = TREELIST_APPEND);
-
-    const Image&    GetDefaultExpandedEntryBmp( ) const;
-    const Image&    GetDefaultCollapsedEntryBmp( ) const;
-
-    void            SetDefaultExpandedEntryBmp( const Image& rBmp );
-    void            SetDefaultCollapsedEntryBmp( const Image& rBmp );
+    SvTreeListEntry& InsertEntry(const OUString& rText, SvTreeListEntry* pParent = nullptr,
+                                 sal_uInt32 nPos = TREELIST_APPEND);
 
     void            SetCheckButtonState( SvTreeListEntry*, SvButtonState );
     SvButtonState   GetCheckButtonState( SvTreeListEntry* ) const;
@@ -707,7 +685,7 @@ public:
     virtual tools::Rectangle GetFocusRect(const SvTreeListEntry*, tools::Long nLine );
     // Respects indentation
     tools::Long     GetTabPos(const SvTreeListEntry*, const SvLBoxTab*) const;
-    void            InvalidateEntry( SvTreeListEntry* );
+    void InvalidateEntry(SvTreeListEntry& rEntry);
     SvLBoxItem*     GetItem( SvTreeListEntry*, tools::Long nX, SvLBoxTab** ppTab);
     SvLBoxItem*     GetItem( SvTreeListEntry*, tools::Long nX );
     std::pair<tools::Long, tools::Long> GetItemPos(SvTreeListEntry* pEntry, sal_uInt16 nTabIdx);
@@ -715,7 +693,7 @@ public:
     void            SetDragDropMode( DragDropMode );
     void            SetSelectionMode( SelectionMode );
 
-    bool            Expand( SvTreeListEntry* pParent );
+    bool Expand(SvTreeListEntry& rParent);
     bool            Collapse( SvTreeListEntry* pParent );
     bool            Select( SvTreeListEntry* pEntry, bool bSelect=true );
     sal_uInt32      SelectChildren( const SvTreeListEntry* pParent, bool bSelect );
@@ -731,7 +709,7 @@ public:
     sal_Int32       DefaultCompare(const SvLBoxString* pLeftText, const SvLBoxString* pRightText);
 
     DECL_DLLPRIVATE_LINK( DefaultCompare, const SvSortData&, sal_Int32 );
-    void ModelNotification(SvListAction nActionId, SvTreeListEntry* pEntry);
+    void ModelNotification(SvListAction eAction, SvTreeListEntry* pEntry);
 
     SvTreeListEntry*    GetFirstEntryInView() const;
     SvTreeListEntry*    GetNextEntryInView(SvTreeListEntry*) const;

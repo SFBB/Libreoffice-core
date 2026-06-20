@@ -31,14 +31,11 @@ class UNLESS_MERGELIBS_MORE(VCL_DLLPUBLIC) SvTabListBox : public SvTreeListBox
 {
 private:
     std::vector<SvLBoxTab>      mvTabList;
-    OUString m_aCurEntry;
 
     Link<SvTreeListEntry*, bool> m_aEditingEntryHdl;
     Link<const EntryItemText&, bool> m_aEditedEntryHdl;
 
 protected:
-    static std::u16string_view  GetToken( std::u16string_view sStr, sal_Int32 &nIndex );
-
     virtual void                SetTabs() override;
     virtual void InitEntry(SvTreeListEntry& rEntry, const OUString&, const Image&,
                            const Image&) override;
@@ -83,16 +80,8 @@ public:
     // going to change the baseclass
     virtual DragDropMode NotifyStartDrag() override { return GetDragDropMode(); }
 
-    virtual SvTreeListEntry& InsertEntry(const OUString& rText, SvTreeListEntry* pParent = nullptr,
-                                         bool bChildrenOnDemand = false,
-                                         sal_uInt32 nPos = TREELIST_APPEND) override;
-
-    virtual SvTreeListEntry& InsertEntryToColumn(const OUString&, SvTreeListEntry* pParent,
-                                                 sal_uInt32 nPos);
-
     virtual OUString GetEntryText( SvTreeListEntry* pEntry ) const override;
     static OUString  GetEntryText( const SvTreeListEntry*, sal_uInt16 nCol );
-    OUString         GetEntryText( sal_uInt32 nPos, sal_uInt16 nCol = 0xffff ) const;
     using SvTreeListBox::SetEntryText;
     OUString         GetCellText( sal_uInt32 nPos, sal_uInt16 nCol ) const;
 

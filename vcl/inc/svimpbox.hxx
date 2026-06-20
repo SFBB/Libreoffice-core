@@ -112,9 +112,7 @@ private:
     {
         NodeExpanded = 0,     // node is expanded ( usually a bitmap showing a minus )
         NodeCollapsed,        // node is collapsed ( usually a bitmap showing a plus )
-        EntryDefExpanded,     // default for expanded entries
-        EntryDefCollapsed,    // default for collapsed entries
-        LAST = EntryDefCollapsed
+        LAST = NodeCollapsed
     };
 
     // all our images
@@ -277,18 +275,11 @@ public:
     void                PaintDDCursor(SvTreeListEntry* pEntry, bool bShow);
 
     // Images
-    inline Image&       implGetImageLocation( const ImageType _eType );
-
     inline void         SetExpandedNodeBmp(  const Image& _rImg );
     inline void         SetCollapsedNodeBmp( const Image& _rImg );
 
     inline const Image& GetExpandedNodeBmp( );
     inline const Image& GetCollapsedNodeBmp( );
-
-    inline void         SetDefaultEntryExpBmp( const Image& _rImg );
-    inline void         SetDefaultEntryColBmp( const Image& _rImg );
-    inline const Image& GetDefaultEntryExpBmp( );
-    inline const Image& GetDefaultEntryColBmp( );
 
     static const Image& GetDefaultExpandedNodeImage( );
     static const Image& GetDefaultCollapsedNodeImage( );
@@ -304,7 +295,7 @@ public:
     void                ShowCursor( bool bShow );
 
     bool                RequestHelp( const HelpEvent& rHEvt );
-    bool                IsNodeButton( const Point& rPosPixel, const SvTreeListEntry* pEntry ) const;
+    bool IsNodeButton(const Point& rPosPixel, const SvTreeListEntry& rEntry) const;
     void                SetUpdateMode( bool bMode );
     bool                GetUpdateMode() const { return m_bUpdateMode; }
     tools::Rectangle    GetClipRegionRect() const;
@@ -324,51 +315,26 @@ inline bool SvImpLBox::IsCaptureOnButtonActive() const
     return nullptr != m_pActiveButton && nullptr != m_pActiveEntry;
 }
 
-inline Image& SvImpLBox::implGetImageLocation( const ImageType _eType )
-{
-    return m_aNodeAndEntryImages[_eType];
-}
-
 inline void SvImpLBox::SetExpandedNodeBmp( const Image& rImg )
 {
-    implGetImageLocation( ImageType::NodeExpanded ) = rImg;
+    m_aNodeAndEntryImages[ImageType::NodeExpanded] = rImg;
     SetNodeBmpWidth( rImg );
 }
 
 inline void SvImpLBox::SetCollapsedNodeBmp( const Image& rImg )
 {
-    implGetImageLocation( ImageType::NodeCollapsed ) = rImg;
+    m_aNodeAndEntryImages[ImageType::NodeCollapsed] = rImg;
     SetNodeBmpWidth( rImg );
 }
 
 inline const Image& SvImpLBox::GetExpandedNodeBmp( )
 {
-    return implGetImageLocation( ImageType::NodeExpanded );
+    return m_aNodeAndEntryImages[ImageType::NodeExpanded];
 }
 
 inline const Image& SvImpLBox::GetCollapsedNodeBmp( )
 {
-    return implGetImageLocation( ImageType::NodeCollapsed );
-}
-
-inline void SvImpLBox::SetDefaultEntryExpBmp( const Image& _rImg )
-{
-    implGetImageLocation( ImageType::EntryDefExpanded ) = _rImg;
-}
-
-inline void SvImpLBox::SetDefaultEntryColBmp( const Image& _rImg )
-{
-    implGetImageLocation( ImageType::EntryDefCollapsed ) = _rImg;
-}
-
-inline const Image& SvImpLBox::GetDefaultEntryExpBmp( )
-{
-    return implGetImageLocation( ImageType::EntryDefExpanded );
-}
-
-inline const Image& SvImpLBox::GetDefaultEntryColBmp( )
-{
-    return implGetImageLocation( ImageType::EntryDefCollapsed );
+    return m_aNodeAndEntryImages[ImageType::NodeCollapsed];
 }
 
 inline Point SvImpLBox::GetEntryPosition(const SvTreeListEntry* pEntry) const

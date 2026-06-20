@@ -458,8 +458,16 @@ SvTreeListBox::SvTreeListBox(vcl::Window* pParent, WinBits nWinStyle) :
 
 void SvTreeListBox::Clear()
 {
-    if (m_pModel)
-        m_pModel->Clear(); // Model calls SvTreeListBox::ModelHasCleared()
+    if (!m_pModel)
+        return;
+
+    CancelTextEditing();
+    Reset();
+    ModelHasCleared(); // sic! for compatibility reasons!
+    m_pModel->Clear();
+
+    if (IsUpdateMode())
+        PaintImmediately();
 }
 
 IMPL_LINK(SvTreeListBox, CloneHdl_Impl, SvTreeListEntry&, rEntry, SvTreeListEntry*)
@@ -467,14 +475,14 @@ IMPL_LINK(SvTreeListBox, CloneHdl_Impl, SvTreeListEntry&, rEntry, SvTreeListEntr
     return CloneEntry(rEntry);
 }
 
-void SvTreeListBox::Insert(SvTreeListEntry* pEntry, SvTreeListEntry* pParent, sal_uInt32 nPos)
+void SvTreeListBox::Insert(SvTreeListEntry* pEntry, sal_uInt32 nPos, SvTreeListEntry* pParent)
 {
-    m_pModel->Insert(pEntry, pParent, nPos);
+    m_pModel->Insert(pEntry, nPos, pParent);
 }
 
 void SvTreeListBox::Insert(SvTreeListEntry* pEntry, sal_uInt32 nRootPos)
 {
-    m_pModel->Insert(pEntry, nRootPos);
+    m_pModel->Insert(pEntry, nRootPos, nullptr);
 }
 
 bool SvTreeListBox::ExpandingHdl()
@@ -586,21 +594,20 @@ sal_uInt32 SvTreeListBox::GetSelectionCount() const { return m_nSelectionCount; 
 
 bool SvTreeListBox::HasViewData() const { return m_DataTable.size() > 1; } // There's always a ROOT
 
-void SvTreeListBox::ExpandListEntry(SvTreeListEntry* pEntry)
+void SvTreeListBox::ExpandListEntry(SvTreeListEntry& rEntry)
 {
-    assert(pEntry && "Expand:View/Entry?");
-    SvViewDataEntry* pViewData = GetViewData(pEntry);
+    SvViewDataEntry* pViewData = GetViewData(&rEntry);
     if (!pViewData)
         return;
 
     if (pViewData->IsExpanded())
         return;
 
-    DBG_ASSERT(!pEntry->m_Children.empty(),
+    DBG_ASSERT(!rEntry.m_Children.empty(),
                "SvTreeList::Expand: We expected to have child entries.");
 
     pViewData->SetExpanded(true);
-    SvTreeListEntry* pParent = pEntry->pParent;
+    SvTreeListEntry* pParent = rEntry.pParent;
     // if parent is visible, invalidate status data
     if (IsExpanded(pParent))
     {
@@ -982,7 +989,7 @@ void SvTreeListBox::RemoveSelection()
     }
 
     for (auto const& elem : aList)
-        m_pModel->Remove(elem);
+        RemoveEntry(elem);
 }
 
 void SvTreeListBox::RemoveEntry(SvTreeListEntry const* pEntry) { m_pModel->Remove(pEntry); }
@@ -1813,27 +1820,18 @@ const Image& SvTreeListBox::GetCollapsedEntryBmp( const SvTreeListEntry* pEntry 
 }
 
 SvTreeListEntry& SvTreeListBox::InsertEntry(const OUString& rText, SvTreeListEntry* pParent,
-                                            bool bChildrenOnDemand, sal_uInt32 nPos)
+                                            sal_uInt32 nPos)
 {
     m_nTreeFlags |= SvTreeFlags::MANINS;
 
-    const Image& rDefExpBmp = m_pImpl->GetDefaultEntryExpBmp();
-    const Image& rDefColBmp = m_pImpl->GetDefaultEntryColBmp();
-
-    m_aCurInsertedExpBmp = rDefExpBmp;
-    m_aCurInsertedColBmp = rDefColBmp;
-
     SvTreeListEntry* pEntry = new SvTreeListEntry;
-    InitEntry(*pEntry, rText, rDefColBmp, rDefExpBmp);
-    pEntry->EnableChildrenOnDemand( bChildrenOnDemand );
+    InitEntry(*pEntry, rText, Image(), Image());
+    pEntry->EnableChildrenOnDemand(false);
 
     if( !pParent )
         Insert( pEntry, nPos );
     else
-        Insert( pEntry, pParent, nPos );
-
-    m_aPrevInsertedExpBmp = rDefExpBmp;
-    m_aPrevInsertedColBmp = rDefColBmp;
+        Insert(pEntry, nPos, pParent);
 
     m_nTreeFlags &= ~SvTreeFlags::MANINS;
 
@@ -1846,7 +1844,7 @@ void SvTreeListBox::SetEntryText(SvTreeListEntry& rEntry, const OUString& rStr)
     assert(pItem);
     pItem->SetText(rStr);
     pItem->InitViewData(*this, rEntry);
-    GetModel()->InvalidateEntry(&rEntry);
+    InvalidateEntry(rEntry);
 }
 
 void SvTreeListBox::SetExpandedEntryBmp(SvTreeListEntry& rEntry, const Image& aBmp)
@@ -1911,8 +1909,7 @@ void SvTreeListBox::ImpEntryInserted( SvTreeListEntry* pEntry )
         pParent->SetFlags( nFlags );
     }
 
-    if (!((m_nTreeFlags & SvTreeFlags::MANINS) && (m_aPrevInsertedExpBmp == m_aCurInsertedExpBmp)
-          && (m_aPrevInsertedColBmp == m_aCurInsertedColBmp)))
+    if (!(m_nTreeFlags & SvTreeFlags::MANINS))
     {
         Size aSize = GetCollapsedEntryBmp( pEntry ).GetSizePixel();
         if (aSize.Width() > m_nContextBmpWidthMax)
@@ -1957,7 +1954,7 @@ void SvTreeListBox::SetCheckButtonState( SvTreeListEntry* pEntry, SvButtonState 
             pItem->SetStateTristate();
             break;
     }
-    InvalidateEntry( pEntry );
+    InvalidateEntry(*pEntry);
 }
 
 SvButtonState SvTreeListBox::GetCheckButtonState( SvTreeListEntry* pEntry ) const
@@ -2017,36 +2014,6 @@ SvTreeListEntry* SvTreeListBox::CloneEntry(const SvTreeListEntry& rSource)
     return pClone;
 }
 
-const Image& SvTreeListBox::GetDefaultExpandedEntryBmp( ) const
-{
-    return m_pImpl->GetDefaultEntryExpBmp();
-}
-
-const Image& SvTreeListBox::GetDefaultCollapsedEntryBmp( ) const
-{
-    return m_pImpl->GetDefaultEntryColBmp();
-}
-
-void SvTreeListBox::SetDefaultExpandedEntryBmp( const Image& aBmp )
-{
-    Size aSize = aBmp.GetSizePixel();
-    if (aSize.Width() > m_nContextBmpWidthMax)
-        m_nContextBmpWidthMax = static_cast<short>(aSize.Width());
-    SetTabs();
-
-    m_pImpl->SetDefaultEntryExpBmp(aBmp);
-}
-
-void SvTreeListBox::SetDefaultCollapsedEntryBmp( const Image& aBmp )
-{
-    Size aSize = aBmp.GetSizePixel();
-    if (aSize.Width() > m_nContextBmpWidthMax)
-        m_nContextBmpWidthMax = static_cast<short>(aSize.Width());
-    SetTabs();
-
-    m_pImpl->SetDefaultEntryColBmp(aBmp);
-}
-
 void SvTreeListBox::EnableCheckButton(SvLBoxButtonData& rData)
 {
     m_pCheckButtonData = &rData;
@@ -2057,20 +2024,10 @@ void SvTreeListBox::EnableCheckButton(SvLBoxButtonData& rData)
         Invalidate();
 }
 
-const Image& SvTreeListBox::GetDefaultExpandedNodeImage( )
-{
-    return SvImpLBox::GetDefaultExpandedNodeImage( );
-}
-
-const Image& SvTreeListBox::GetDefaultCollapsedNodeImage( )
-{
-    return SvImpLBox::GetDefaultCollapsedNodeImage( );
-}
-
 void SvTreeListBox::SetNodeDefaultImages()
 {
-    SetExpandedNodeBmp(GetDefaultExpandedNodeImage());
-    SetCollapsedNodeBmp(GetDefaultCollapsedNodeImage());
+    SetExpandedNodeBmp(SvImpLBox::GetDefaultExpandedNodeImage());
+    SetCollapsedNodeBmp(SvImpLBox::GetDefaultCollapsedNodeImage());
     SetTabs();
 }
 
@@ -2106,11 +2063,7 @@ void SvTreeListBox::KeyInput( const KeyEvent& rKEvt )
     }
 }
 
-void SvTreeListBox::RequestingChildren( SvTreeListEntry* pParent )
-{
-    if( !pParent->HasChildren() )
-        InsertEntry( u"<dummy>"_ustr, pParent );
-}
+void SvTreeListBox::RequestingChildren(SvTreeListEntry&) {}
 
 void SvTreeListBox::GetFocus()
 {
@@ -2155,14 +2108,10 @@ void SvTreeListBox::ModelHasCleared()
     m_nFocusWidth = -1;
 
     m_nContextBmpWidthMax = 0;
-    SetDefaultExpandedEntryBmp( GetDefaultExpandedEntryBmp() );
-    SetDefaultCollapsedEntryBmp( GetDefaultCollapsedEntryBmp() );
 
     if (!(m_nTreeFlags & SvTreeFlags::FIXEDHEIGHT))
         m_nEntryHeight = 0;
     AdjustEntryHeight();
-    AdjustEntryHeight( GetDefaultExpandedEntryBmp() );
-    AdjustEntryHeight( GetDefaultCollapsedEntryBmp() );
 
     ModelChangedHdl();
 }
@@ -2296,43 +2245,43 @@ void SvTreeListBox::AdjustEntryHeight()
     }
 }
 
-bool SvTreeListBox::Expand( SvTreeListEntry* pParent )
+bool SvTreeListBox::Expand(SvTreeListEntry& rParent)
 {
-    m_pHdlEntry = pParent;
+    m_pHdlEntry = &rParent;
     bool bExpanded = false;
     SvTLEntryFlags nFlags;
 
-    if( pParent->HasChildrenOnDemand() )
-        RequestingChildren( pParent );
-    bool bExpandAllowed = pParent->HasChildren() && ExpandingHdl();
+    if (rParent.HasChildrenOnDemand())
+        RequestingChildren(rParent);
+    bool bExpandAllowed = rParent.HasChildren() && ExpandingHdl();
     // double check if the expander callback ended up removing all children
-    if (pParent->HasChildren())
+    if (rParent.HasChildren())
     {
         if (bExpandAllowed)
         {
             bExpanded = true;
-            ExpandListEntry( pParent );
-            m_pImpl->EntryExpanded(pParent);
-            m_pHdlEntry = pParent;
+            ExpandListEntry(rParent);
+            m_pImpl->EntryExpanded(&rParent);
+            m_pHdlEntry = &rParent;
             ExpandedHdl();
         }
-        nFlags = pParent->GetFlags();
+        nFlags = rParent.GetFlags();
         nFlags &= ~SvTLEntryFlags::NO_NODEBMP;
         nFlags |= SvTLEntryFlags::HAD_CHILDREN;
-        pParent->SetFlags( nFlags );
+        rParent.SetFlags(nFlags);
     }
     else
     {
-        nFlags = pParent->GetFlags();
+        nFlags = rParent.GetFlags();
         nFlags |= SvTLEntryFlags::NO_NODEBMP;
-        pParent->SetFlags( nFlags );
-        GetModel()->InvalidateEntry( pParent ); // repaint
+        rParent.SetFlags(nFlags);
+        InvalidateEntry(rParent); // repaint
     }
 
     // #i92103#
     if ( bExpanded )
     {
-        CallEventListeners(VclEventId::ItemExpanded, pParent);
+        CallEventListeners(VclEventId::ItemExpanded, &rParent);
     }
 
     return bExpanded;
@@ -2564,7 +2513,7 @@ void SvTreeListBox::MouseButtonUp( const MouseEvent& rMEvt )
                 if (pItemCheckBox && pItemCheckBox->isEnable() && GetItemPos(pEntry, 0).first < aPnt.X() - GetMapMode().GetOrigin().X())
                 {
                     pItemCheckBox->ClickHdl(pEntry);
-                    InvalidateEntry(pEntry);
+                    InvalidateEntry(*pEntry);
                 }
             }
         }
@@ -2739,7 +2688,7 @@ void SvTreeListBox::EditedText( const OUString& rStr )
         if (EditedEntry(*m_pEdEntry, *m_pEdItem, rStr))
         {
             m_pEdItem->SetText(rStr);
-            m_pModel->InvalidateEntry(m_pEdEntry);
+            InvalidateEntry(*m_pEdEntry);
         }
         if( GetSelectionCount() == 0 )
             Select(m_pEdEntry);
@@ -2815,13 +2764,9 @@ void SvTreeListBox::ImplInitStyle()
     Invalidate();
 }
 
-void SvTreeListBox::InvalidateEntry(SvTreeListEntry* pEntry)
+void SvTreeListBox::InvalidateEntry(SvTreeListEntry& rEntry)
 {
-    DBG_ASSERT(pEntry,"InvalidateEntry:No Entry");
-    if (pEntry)
-    {
-        GetModel()->InvalidateEntry(pEntry);
-    }
+    GetModel()->InvalidateEntry(rEntry);
 }
 
 void SvTreeListBox::PaintEntry1(SvTreeListEntry& rEntry, tools::Long nLine, vcl::RenderContext& rRenderContext)
@@ -2916,8 +2861,8 @@ void SvTreeListBox::PaintEntry1(SvTreeListEntry& rEntry, tools::Long nLine, vcl:
             pImg = &m_pImpl->GetExpandedNodeBmp();
         else
             pImg = &m_pImpl->GetCollapsedNodeBmp();
-        bDefaultImage = bExpanded ? *pImg == GetDefaultExpandedNodeImage()
-                                  : *pImg == GetDefaultCollapsedNodeImage();
+        bDefaultImage = bExpanded ? *pImg == SvImpLBox::GetDefaultExpandedNodeImage()
+                                  : *pImg == SvImpLBox::GetDefaultCollapsedNodeImage();
         aImageSize = pImg->GetSizePixel();
         aImagePos.AdjustY((nTempEntryHeight - aImageSize.Height()) / 2);
     }
@@ -3598,11 +3543,11 @@ IMPL_LINK( SvTreeListBox, DefaultCompare, const SvSortData&, rData, sal_Int32 )
     return DefaultCompare(pLeftText, pRightText);
 }
 
-void SvTreeListBox::ModelNotification(SvListAction nActionId, SvTreeListEntry* pEntry)
+void SvTreeListBox::ModelNotification(SvListAction eAction, SvTreeListEntry* pEntry)
 {
     SolarMutexGuard aSolarGuard;
 
-    switch (nActionId)
+    switch (eAction)
     {
         case SvListAction::INSERTED:
         {
@@ -3644,15 +3589,6 @@ void SvTreeListBox::ModelNotification(SvListAction nActionId, SvTreeListEntry* p
         case SvListAction::MOVED:
             ActionMoved();
             ModelHasMoved(pEntry);
-            break;
-        case SvListAction::CLEARING:
-            CancelTextEditing();
-            Reset();
-            ModelHasCleared(); // sic! for compatibility reasons!
-            break;
-        case SvListAction::CLEARED:
-            if (IsUpdateMode())
-                PaintImmediately();
             break;
         case SvListAction::INVALIDATE_ENTRY:
             // no action for the base class
