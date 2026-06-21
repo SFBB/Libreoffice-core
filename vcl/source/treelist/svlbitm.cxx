@@ -97,7 +97,7 @@ void SvLBoxString::Paint(
             case TxtAlign::Left:
             {
                 nStyle |= DrawTextFlags::Left;
-                aSize.setWidth(GetWidth(rDev, &rEntry));
+                aSize.setWidth(GetWidth(rDev, rEntry));
                 break;
             }
             case TxtAlign::Center:
@@ -114,7 +114,7 @@ void SvLBoxString::Paint(
             }
         }
     }
-    aSize.setHeight(GetHeight(rDev, &rEntry));
+    aSize.setHeight(GetHeight(rDev, rEntry));
 
     if (mbEmphasized)
     {
@@ -152,7 +152,7 @@ void SvLBoxString::InitViewData(SvTreeListBox& rView, SvTreeListEntry& rEntry,
                                 SvViewDataItem* pViewData)
 {
     if( !pViewData )
-        pViewData = &rView.GetViewDataItem(&rEntry, *this);
+        pViewData = &rView.GetViewDataItem(rEntry, *this);
 
     if (rEntry.IsSeparator())
     {
@@ -194,10 +194,9 @@ int SvLBoxString::CalcWidth(const SvTreeListBox& rView) const
 // class SvLBoxContextBmp
 // ***************************************************************
 
-SvLBoxContextBmp::SvLBoxContextBmp(const Image& aBmp1, const Image& aBmp2, bool bExpanded)
+SvLBoxContextBmp::SvLBoxContextBmp(const Image& aBmp1, const Image& aBmp2)
     : m_aImage1(aBmp1)
     , m_aImage2(aBmp2)
-    , m_bExpanded(bExpanded)
 {
 }
 
@@ -214,7 +213,7 @@ void SvLBoxContextBmp::InitViewData(SvTreeListBox& rView, SvTreeListEntry& rEntr
                                     SvViewDataItem* pViewData)
 {
     if( !pViewData )
-        pViewData = &rView.GetViewDataItem(&rEntry, *this);
+        pViewData = &rView.GetViewDataItem(rEntry, *this);
     Size aSize = m_aImage1.GetSizePixel();
     pViewData->mnWidth = aSize.Width();
     pViewData->mnHeight = aSize.Height();
@@ -226,7 +225,7 @@ void SvLBoxContextBmp::Paint(
 {
 
     // get the image.
-    const Image& rImage = pView->IsExpanded() != m_bExpanded ? m_aImage1 : m_aImage2;
+    const Image& rImage = !pView->IsExpanded() ? m_aImage1 : m_aImage2;
 
     bool _bSemiTransparent = bool( SvTLEntryFlags::SEMITRANSPARENT & rEntry.GetFlags( ) );
     // draw
@@ -239,8 +238,7 @@ void SvLBoxContextBmp::Paint(
 std::unique_ptr<SvLBoxItem> SvLBoxContextBmp::Clone(SvLBoxItem const * pSource) const
 {
     const SvLBoxContextBmp* pContextBmp = static_cast<const SvLBoxContextBmp*>(pSource);
-    return std::make_unique<SvLBoxContextBmp>(pContextBmp->m_aImage1, pContextBmp->m_aImage2,
-                                              pContextBmp->m_bExpanded);
+    return std::make_unique<SvLBoxContextBmp>(pContextBmp->m_aImage1, pContextBmp->m_aImage2);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -37,8 +37,6 @@ private:
 
 protected:
     virtual void                SetTabs() override;
-    virtual void InitEntry(SvTreeListEntry& rEntry, const OUString&, const Image&,
-                           const Image&) override;
 
     OUString                    GetTabEntryText( sal_uInt32 nPos, sal_uInt16 nCol ) const;
     SvTreeListEntry*            GetEntryOnPos( sal_uInt32 _nEntryPos ) const;
@@ -79,6 +77,9 @@ public:
     // the configured drag drop mode would make more sense to me, but I'm not
     // going to change the baseclass
     virtual DragDropMode NotifyStartDrag() override { return GetDragDropMode(); }
+
+    SvTreeListEntry& InsertEntry(const OUString& rText, SvTreeListEntry* pParent = nullptr,
+                                 sal_uInt32 nPos = TREELIST_APPEND);
 
     virtual OUString GetEntryText( SvTreeListEntry* pEntry ) const override;
     static OUString  GetEntryText( const SvTreeListEntry*, sal_uInt16 nCol );

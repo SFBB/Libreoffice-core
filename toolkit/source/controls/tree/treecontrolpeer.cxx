@@ -78,7 +78,7 @@ class ImplContextGraphicItem : public SvLBoxContextBmp
 {
 public:
     ImplContextGraphicItem(Image const& rI1, Image const& rI2)
-        : SvLBoxContextBmp(rI1, rI2, true)
+        : SvLBoxContextBmp(rI1, rI2)
     {
     }
 
@@ -95,8 +95,6 @@ public:
     UnoTreeListBoxImpl( TreeControlPeer* pPeer, vcl::Window* pParent, WinBits nWinStyle );
     virtual ~UnoTreeListBoxImpl() override;
     virtual void dispose() override;
-
-    void            insert( SvTreeListEntry* pEntry, SvTreeListEntry* pParent, sal_uInt32 nPos );
 
     virtual void RequestingChildren(SvTreeListEntry& rParent) override;
 
@@ -243,7 +241,7 @@ UnoTreeListEntry* TreeControlPeer::createEntry( const Reference< XTreeNode >& xN
 
     pEntry->AddItem(std::move(pUnoItem));
 
-    mpTreeImpl->insert(pEntry, pParent, nPos);
+    mpTreeImpl->Insert(pEntry, nPos, pParent);
 
     if (!msDefaultExpandedGraphicURL.isEmpty())
         mpTreeImpl->SetExpandedEntryBmp(*pEntry, maDefaultExpandedImage);
@@ -1442,15 +1440,6 @@ IMPL_LINK_NOARG(UnoTreeListBoxImpl, OnExpandedHdl, SvTreeListBox*, void)
     }
 }
 
-
-void UnoTreeListBoxImpl::insert( SvTreeListEntry* pEntry,SvTreeListEntry* pParent,sal_uInt32 nPos )
-{
-    if( pParent )
-        SvTreeListBox::Insert(pEntry, nPos, pParent);
-    else
-        SvTreeListBox::Insert( pEntry, nPos );
-}
-
 void UnoTreeListBoxImpl::RequestingChildren(SvTreeListEntry& rParent)
 {
     UnoTreeListEntry* pEntry = dynamic_cast<UnoTreeListEntry*>(&rParent);
@@ -1482,7 +1471,7 @@ void UnoTreeListItem::Paint(
     const Point& rPos, SvTreeListBox& rDev, vcl::RenderContext& rRenderContext, const SvViewDataEntry* /*pView*/, const SvTreeListEntry& rEntry)
 {
     Point aPos(rPos);
-    Size aSize(GetWidth(rDev, &rEntry), GetHeight(rDev, &rEntry));
+    Size aSize(GetWidth(rDev, rEntry), GetHeight(rDev, rEntry));
     if (!!maImage)
     {
         rRenderContext.DrawImage(aPos, maImage, rDev.IsEnabled() ? DrawImageFlags::NONE : DrawImageFlags::Disable);
@@ -1519,7 +1508,7 @@ void UnoTreeListItem::InitViewData(SvTreeListBox& rView, SvTreeListEntry& rEntry
                                    SvViewDataItem* pViewData)
 {
     if( !pViewData )
-        pViewData = &rView.GetViewDataItem(&rEntry, *this);
+        pViewData = &rView.GetViewDataItem(rEntry, *this);
 
     Size aSize(maImage.GetSizePixel());
     pViewData->mnWidth = aSize.Width();

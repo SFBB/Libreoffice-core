@@ -18,6 +18,7 @@
  */
 
 #include <SvHeaderTabListBox.hxx>
+#include <SvLBoxButton.hxx>
 
 #include <comphelper/types.hxx>
 #include <vcl/headbar.hxx>
@@ -61,17 +62,6 @@ void SvTabListBox::SetTabs()
         SvLBoxTab& rTab = mvTabList[nCurTab];
         AddTab( rTab.GetPos(), rTab.nFlags );
     }
-}
-
-void SvTabListBox::InitEntry(SvTreeListEntry& rEntry, const OUString& rStr, const Image& rColl,
-                             const Image& rExp)
-{
-    SvTreeListBox::InitEntry(rEntry, rStr, rColl, rExp);
-
-    // TODO: verify if nTabCount is always >0 here!
-    const sal_uInt16 nCount = mvTabList.size() - 1;
-    for (sal_uInt16 nTab = 0; nTab < nCount; nTab++)
-        rEntry.AddItem(std::make_unique<SvLBoxString>());
 }
 
 SvTabListBox::SvTabListBox( vcl::Window* pParent, WinBits nBits )
@@ -119,6 +109,35 @@ void SvTabListBox::SetTabs(const std::vector<tools::Long>& rTabPositions)
     SvTreeListBox::m_nTreeFlags |= SvTreeFlags::RECALCTABS;
     if( IsUpdateMode() )
         Invalidate();
+}
+
+SvTreeListEntry& SvTabListBox::InsertEntry(const OUString& rText, SvTreeListEntry* pParent,
+                                            sal_uInt32 nPos)
+{
+    m_nTreeFlags |= SvTreeFlags::MANINS;
+
+    SvTreeListEntry* pEntry = new SvTreeListEntry;
+
+    if (m_nTreeFlags & SvTreeFlags::CHKBTN)
+    {
+        assert(m_pCheckButtonData);
+        pEntry->AddItem(std::make_unique<SvLBoxButton>(*m_pCheckButtonData));
+    }
+
+    pEntry->AddItem(std::make_unique<SvLBoxContextBmp>(Image(), Image()));
+
+    pEntry->AddItem(std::make_unique<SvLBoxString>(rText));
+
+    // TODO: verify if nTabCount is always >0 here!
+    const sal_uInt16 nCount = mvTabList.size() - 1;
+    for (sal_uInt16 nTab = 0; nTab < nCount; nTab++)
+        pEntry->AddItem(std::make_unique<SvLBoxString>());
+
+    Insert(pEntry, nPos, pParent);
+
+    m_nTreeFlags &= ~SvTreeFlags::MANINS;
+
+    return *pEntry;
 }
 
 OUString SvTabListBox::GetEntryText( SvTreeListEntry* pEntry ) const

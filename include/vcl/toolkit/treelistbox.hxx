@@ -126,11 +126,11 @@ public:
     virtual             ~SvLBoxItem();
     virtual SvLBoxItemType GetType() const = 0;
     virtual int CalcWidth(const SvTreeListBox& rView) const;
-    int GetWidth(const SvTreeListBox& rView, const SvTreeListEntry* pEntry) const;
-    int GetWidth(const SvTreeListBox& rView, const SvViewDataEntry* pData,
+    int GetWidth(const SvTreeListBox& rView, const SvTreeListEntry& rEntry) const;
+    int GetWidth(const SvTreeListBox& rView, const SvViewDataEntry& rData,
                  sal_uInt16 nItemPos) const;
-    int GetHeight(const SvTreeListBox& rView, const SvTreeListEntry* pEntry) const;
-    static int GetHeight(const SvViewDataEntry* pData, sal_uInt16 nItemPos);
+    int GetHeight(const SvTreeListBox& rView, const SvTreeListEntry& rEntry) const;
+    static int GetHeight(const SvViewDataEntry& rData, sal_uInt16 nItemPos);
     void Enable(bool bEnabled) { mbDisabled = !bEnabled; }
     bool isEnable() const { return !mbDisabled; }
 
@@ -231,7 +231,6 @@ class UNLESS_MERGELIBS_MORE(VCL_DLLPUBLIC) SvTreeListBox : public Control,
     sal_uInt16 m_nFirstSelTab;
     sal_uInt16 m_nLastSelTab;
     tools::Long mnCheckboxItemWidth;
-    bool mbContextBmpExpanded;
     bool mbQuickSearch; // Enables type-ahead search in the check list box.
     bool mbActivateOnSingleClick; // Make single click "activate" a row like a double-click normally does
     bool mbCustomEntryRenderer; // Used to define if the list entries are updated on demand
@@ -276,7 +275,7 @@ protected:
 private:
     DECL_DLLPRIVATE_LINK( TextEditEndedHdl_Impl, SvInplaceEdit2&, void );
     // Handler that is called by TreeList to clone an Entry
-    DECL_DLLPRIVATE_LINK(CloneHdl_Impl, SvTreeListEntry&, SvTreeListEntry*);
+    DECL_DLLPRIVATE_STATIC_LINK(SvTreeListBox, CloneHdl_Impl, SvTreeListEntry&, SvTreeListEntry*);
 
     void ExpandListEntry(SvTreeListEntry& rParent);
     void CollapseListEntry(SvTreeListEntry* pParent);
@@ -288,9 +287,9 @@ private:
 
     void ActionMoving(SvTreeListEntry* pEntry);
     void ActionMoved();
-    void ActionInserted(SvTreeListEntry* pEntry);
-    void ActionInsertedTree(SvTreeListEntry* pEntry);
-    void ActionRemoving(SvTreeListEntry* pEntry);
+    void ActionInserted(SvTreeListEntry& rEntry);
+    void ActionInsertedTree(SvTreeListEntry& rEntry);
+    void ActionRemoving(SvTreeListEntry& pEntry);
 
     // Handler and methods for Drag - finished handler.
     // The Handle retrieved by GetDragFinishedHdl can be set on the
@@ -304,7 +303,7 @@ private:
 
     // after a checkbox entry is inserted, use this to get its width to support
     // autowidth for the 1st checkbox column
-    SAL_DLLPRIVATE void CheckBoxInserted(SvTreeListEntry* pEntry);
+    SAL_DLLPRIVATE void CheckBoxInserted(SvTreeListEntry& rEntry);
 
     SAL_DLLPRIVATE void DrawCustomEntry(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect, const SvTreeListEntry& rEntry);
     SAL_DLLPRIVATE Size MeasureCustomEntry(vcl::RenderContext& rRenderContext, const SvTreeListEntry& rEntry) const;
@@ -332,8 +331,7 @@ protected:
     // Invalidate children on enable/disable
     virtual void StateChanged( StateChangedType eType ) override;
 
-    void Insert(SvTreeListEntry* pEntry, sal_uInt32 nPos, SvTreeListEntry* pParent);
-    void Insert(SvTreeListEntry* pEntry, sal_uInt32 nRootPos);
+    void Insert(SvTreeListEntry* pEntry, sal_uInt32 nPos, SvTreeListEntry* pParent = nullptr);
 
     // In-place editing
     void            EditText( const OUString&, const tools::Rectangle&,const Selection&);
@@ -341,7 +339,7 @@ protected:
 
     // InitViewData is called right after CreateViewData
     // The Entry is has not yet been added to the View in InitViewData!
-    virtual void InitViewData(SvViewDataEntry*, SvTreeListEntry* pEntry);
+    void InitViewData(SvViewDataEntry& rViewData, SvTreeListEntry& rEntry);
     // Calls InitViewData for all Items
     void            RecalcViewData();
 
@@ -430,8 +428,8 @@ public:
     bool IsAllExpanded(SvTreeListEntry* pEntry) const;
     bool IsSelected(const SvTreeListEntry* pEntry) const;
     void SetEntryFocus(SvTreeListEntry* pEntry, bool bFocus);
-    const SvViewDataEntry* GetViewData(const SvTreeListEntry* pEntry) const;
-    SvViewDataEntry* GetViewData(SvTreeListEntry* pEntry);
+    const SvViewDataEntry& GetViewData(const SvTreeListEntry* pEntry) const;
+    SvViewDataEntry& GetViewData(SvTreeListEntry* pEntry);
     bool HasViewData() const;
 
     SvTreeList* GetModel() const { return m_pModel.get(); }
@@ -470,9 +468,10 @@ public:
     sal_uInt32          GetChildCount( SvTreeListEntry const * pParent ) const;
     sal_uInt32          GetLevelChildCount( const SvTreeListEntry* pParent ) const;
 
-    SvViewDataEntry* GetViewDataEntry( SvTreeListEntry const * pEntry ) const;
-    SvViewDataItem& GetViewDataItem(SvTreeListEntry const*, const SvLBoxItem&);
-    const SvViewDataItem& GetViewDataItem(const SvTreeListEntry*, const SvLBoxItem&) const;
+    SvViewDataEntry& GetViewDataEntry(const SvTreeListEntry& rEntry) const;
+    SvViewDataItem& GetViewDataItem(const SvTreeListEntry& rEntry, const SvLBoxItem& rItem);
+    const SvViewDataItem& GetViewDataItem(const SvTreeListEntry& rEntry,
+                                          const SvLBoxItem& rItem) const;
 
     OUString GetEntryTooltip(SvTreeListEntry& rEntry) const;
 
@@ -527,7 +526,7 @@ public:
     virtual DragDropMode     NotifyStartDrag();
     virtual void             DragFinished( sal_Int8 nDropAction );
 
-    SvTreeListEntry* CloneEntry(const SvTreeListEntry& rSource);
+    static SvTreeListEntry* CloneEntry(const SvTreeListEntry& rSource);
 
     // Return value: TRISTATE_TRUE == Ok, TRISTATE_FALSE == Cancel, TRISTATE_INDET == Ok and Make visible moved entry
     TriState NotifyMoving(
@@ -565,12 +564,11 @@ public:
     SAL_DLLPRIVATE Image const & GetExpandedNodeBmp( ) const;
 
 protected:
-
-    virtual void                CalcEntryHeight(SvTreeListEntry const* pEntry);
+    virtual void CalcEntryHeight(const SvTreeListEntry& rEntry);
                    void         AdjustEntryHeight( const Image& rBmp );
     SAL_DLLPRIVATE void         AdjustEntryHeight();
 
-    SAL_DLLPRIVATE void         ImpEntryInserted( SvTreeListEntry* pEntry );
+    SAL_DLLPRIVATE void ImpEntryInserted(SvTreeListEntry& rEntry);
     SAL_DLLPRIVATE void         PaintEntry1( SvTreeListEntry&, tools::Long nLine, vcl::RenderContext& rRenderContext );
 
     SAL_DLLPRIVATE void         ImplInitStyle();
@@ -589,8 +587,6 @@ protected:
     SvLBoxTab*      GetFirstTab( SvLBoxTabFlags nFlagMask, sal_uInt16& rTabPos );
     void            GetLastTab( SvLBoxTabFlags nFlagMask, sal_uInt16& rTabPos );
     SvLBoxTab* GetTab(const SvTreeListEntry&, const SvLBoxItem&) const;
-
-    virtual void InitEntry(SvTreeListEntry& rEntry, const OUString&, const Image&, const Image&);
 
     void            NotifyScrolled();
     void SetScrolledHdl(const Link<SvTreeListBox*, void>& rLink) { m_aScrolledHdl = rLink; }
@@ -622,9 +618,6 @@ public:
     */
     void    SetNodeDefaultImages();
 
-    SvTreeListEntry& InsertEntry(const OUString& rText, SvTreeListEntry* pParent = nullptr,
-                                 sal_uInt32 nPos = TREELIST_APPEND);
-
     void            SetCheckButtonState( SvTreeListEntry*, SvButtonState );
     SvButtonState   GetCheckButtonState( SvTreeListEntry* ) const;
     bool GetCheckButtonEnabled(SvTreeListEntry* pEntry) const;
@@ -634,8 +627,8 @@ public:
     void SetCollapsedEntryBmp(SvTreeListEntry& rEntry, const Image& _rImage);
 
     virtual OUString GetEntryText( SvTreeListEntry* pEntry ) const;
-    static const Image&    GetExpandedEntryBmp(const SvTreeListEntry* _pEntry );
-    static const Image&    GetCollapsedEntryBmp(const SvTreeListEntry* _pEntry );
+    static const Image& GetExpandedEntryBmp(const SvTreeListEntry& rEntry);
+    static const Image& GetCollapsedEntryBmp(const SvTreeListEntry& rEntry);
 
     void            SetSublistOpenWithLeftRight();   // open/close sublist with cursor left/right
 
@@ -657,12 +650,12 @@ public:
     void            SetUpdateMode( bool );
 
     void ModelHasCleared();
-    void ModelHasInserted(SvTreeListEntry* pEntry);
-    void ModelHasInsertedTree(SvTreeListEntry* pEntry);
+    void ModelHasInserted(SvTreeListEntry& rEntry);
+    void ModelHasInsertedTree(SvTreeListEntry& rEntry);
     void ModelIsMoving(SvTreeListEntry* pSource);
     void ModelHasMoved(SvTreeListEntry* pSource);
-    void ModelIsRemoving(SvTreeListEntry* pEntry);
-    void ModelHasRemoved(SvTreeListEntry* pEntry);
+    void ModelIsRemoving(SvTreeListEntry& rEntry);
+    void ModelHasRemoved(SvTreeListEntry& rEntry);
     void ModelHasEntryInvalidated(SvTreeListEntry* pEntry);
 
     void            ScrollOutputArea( short nDeltaEntries );

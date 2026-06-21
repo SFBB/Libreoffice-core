@@ -582,7 +582,7 @@ void SvImpLBox::SetCursor( SvTreeListEntry* pEntry, bool bForceNoSelect )
 {
     SvViewDataEntry* pViewDataNewCur = nullptr;
     if( pEntry )
-        pViewDataNewCur = m_rView.GetViewDataEntry(pEntry);
+        pViewDataNewCur = &m_rView.GetViewDataEntry(*pEntry);
     if( pEntry &&
         pEntry == m_pCursor &&
         pViewDataNewCur &&
@@ -596,7 +596,7 @@ void SvImpLBox::SetCursor( SvTreeListEntry* pEntry, bool bForceNoSelect )
     while( pEntry && pViewDataNewCur && !pViewDataNewCur->IsSelectable() )
     {
         pEntry = m_rView.NextVisible(pEntry);
-        pViewDataNewCur = pEntry ? m_rView.GetViewDataEntry(pEntry) : nullptr;
+        pViewDataNewCur = pEntry ? &m_rView.GetViewDataEntry(*pEntry) : nullptr;
     }
 
     SvTreeListEntry* pOldCursor = m_pCursor;
@@ -761,7 +761,7 @@ bool SvImpLBox::EntryReallyHit(SvTreeListEntry& rEntry, const Point& rPosPixel, 
 
     SvLBoxContextBmp* pBmp
         = static_cast<SvLBoxContextBmp*>(rEntry.GetFirstItem(SvLBoxItemType::ContextBmp));
-    aRect.AdjustLeft(-pBmp->GetWidth(m_rView, &rEntry));
+    aRect.AdjustLeft(-pBmp->GetWidth(m_rView, rEntry));
     aRect.AdjustLeft( -4 ); // a little tolerance
 
     Point aPos( rPosPixel );
@@ -1932,7 +1932,7 @@ void SvImpLBox::MouseButtonDown( const MouseEvent& rMEvt )
     //fdo#82270 Grabbing focus can invalidate the entries, re-fetch
     SvTreeListEntry* pEntry = GetEntry(aPos);
     // the entry can still be invalid!
-    if (!pEntry || !m_rView.GetViewData(pEntry))
+    if (!pEntry)
     {
         if (!rMEvt.GetModifier() && rMEvt.IsLeft())
             SelAllDestrAnch(false); // deselect all
@@ -2817,16 +2817,14 @@ void SvImpLBox::PaintDDCursor(SvTreeListEntry* pEntry, bool bShow)
 {
     if (pEntry)
     {
-        if (SvViewDataEntry* pViewData = m_rView.GetViewData(pEntry))
-        {
-            pViewData->SetDragTarget(bShow);
+        SvViewDataEntry& rViewData = m_rView.GetViewData(pEntry);
+        rViewData.SetDragTarget(bShow);
 #ifdef MACOSX
-            // in MacOS we need to draw directly (as we are synchronous) or no invalidation happens
-            m_rView.PaintEntry1(*pEntry, GetEntryLine(pEntry), *m_rView.GetOutDev());
+        // in MacOS we need to draw directly (as we are synchronous) or no invalidation happens
+        m_rView.PaintEntry1(*pEntry, GetEntryLine(pEntry), *m_rView.GetOutDev());
 #else
-            InvalidateEntry(pEntry);
+        InvalidateEntry(pEntry);
 #endif
-        }
     }
 }
 
@@ -2920,7 +2918,7 @@ bool SvImpLBox::RequestHelp( const HelpEvent& rHEvt )
 
             aPos = GetEntryPosition( pEntry );
             aPos.setX(m_rView.GetTabPos(pEntry, pTab)); //pTab->GetPos();
-            Size aSize(pItem->GetWidth(m_rView, pEntry), pItem->GetHeight(m_rView, pEntry));
+            Size aSize(pItem->GetWidth(m_rView, *pEntry), pItem->GetHeight(m_rView, *pEntry));
             SvLBoxTab* pNextTab = NextTab( pTab );
             bool bItemClipped = false;
             // is the item cut off by its right neighbor?
@@ -3008,7 +3006,7 @@ void SvImpLBox::SetMostRight( SvTreeListEntry* pEntry )
 
     tools::Long nNextTab = nTabPos < nMaxRight ? nMaxRight : nMaxRight + 50;
     tools::Long nTabWidth = nNextTab - nTabPos + 1;
-    auto nItemSize = rItem.GetWidth(m_rView, pEntry);
+    auto nItemSize = rItem.GetWidth(m_rView, *pEntry);
     tools::Long nOffset = pTab->CalcOffset( nItemSize, nTabWidth );
 
     tools::Long nRight = nTabPos + nOffset + nItemSize;
@@ -3044,7 +3042,7 @@ void SvImpLBox::FindMostRight( SvTreeListEntry* pParent )
 
 void SvImpLBox::FindMostRight_Impl( SvTreeListEntry* pParent )
 {
-    SvTreeListEntries& rList = m_rTree.GetChildList(pParent);
+    const SvTreeListEntries& rList = m_rTree.GetChildList(pParent);
 
     size_t nCount = rList.size();
     for( size_t nCur = 0; nCur < nCount; nCur++ )
@@ -3128,8 +3126,8 @@ void SvImpLBox::CallEventListeners( VclEventId nEvent, void* pData )
 
 bool SvImpLBox::IsSelectable(const SvTreeListEntry& rEntry) const
 {
-    SvViewDataEntry* pViewDataNewCur = m_rView.GetViewDataEntry(&rEntry);
-    return (pViewDataNewCur == nullptr) || pViewDataNewCur->IsSelectable();
+    SvViewDataEntry& rViewDataNewCur = m_rView.GetViewDataEntry(rEntry);
+    return rViewDataNewCur.IsSelectable();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
