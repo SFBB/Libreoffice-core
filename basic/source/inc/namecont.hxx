@@ -20,6 +20,7 @@
 #pragma once
 
 #include <unordered_map>
+#include <vector>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/lang/XInitialization.hpp>
 #include <com/sun/star/script/XStorageBasedLibraryContainer.hpp>
@@ -58,9 +59,11 @@ class NameContainer final
     cppu::OWeakObject& rOwner;
 
     std::unordered_map<OUString, css::uno::Any> maMap;
+    // Enumeration must keep insertion order: it drives the on-disk order of the
+    // library index file and module streams, which macro signatures sign over.
+    std::vector<OUString> maNamesOrder;
 
     css::uno::Type mType;
-    css::uno::XInterface* mpxEventSource;
 
     ::comphelper::OInterfaceContainerHelper4<css::container::XContainerListener> maContainerListeners;
     ::comphelper::OInterfaceContainerHelper4<css::util::XChangesListener> maChangesListeners;
@@ -69,11 +72,7 @@ public:
     NameContainer(const css::uno::Type& rType, cppu::OWeakObject& owner)
         : rOwner(owner)
         , mType( rType )
-        , mpxEventSource( nullptr )
     {}
-
-    void setEventSource( css::uno::XInterface* pxEventSource )
-        { mpxEventSource = pxEventSource; }
 
     /// @throws css::lang::IllegalArgumentException
     /// @throws css::lang::WrappedTargetException

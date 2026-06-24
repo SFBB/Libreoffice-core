@@ -166,10 +166,7 @@ SwTemplateDlgController::SwTemplateDlgController(weld::Window* pParent,
                 RemoveTabPage(u"outline"_ustr);
                 RemoveTabPage(u"asianlayout"_ustr);
                 if(!(m_nHtmlMode & HTMLMODE_FULL_STYLES))
-                {
-                    RemoveTabPage(u"background"_ustr);
                     RemoveTabPage(u"dropcaps"_ustr);
-                }
             }
             else
             {
@@ -207,13 +204,6 @@ SwTemplateDlgController::SwTemplateDlgController(weld::Window* pParent,
                     AddTabPage(u"textgrid"_ustr, TabResId(RID_TAB_TEXTGRID.aLabel),
                                SwTextGridPage::Create, SwTextGridPage::GetRanges,
                                RID_M + RID_TAB_TEXTGRID.sIconName);
-            }
-            else
-            {
-                RemoveTabPage(u"borders"_ustr);
-                RemoveTabPage(u"columns"_ustr);
-                RemoveTabPage(u"footnotes"_ustr);
-                RemoveTabPage(u"textgrid"_ustr);
             }
         }
         break;

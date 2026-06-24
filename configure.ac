@@ -620,16 +620,19 @@ AC_PATH_PROG(GREP, grep)
 
 BUILDDIR=`pwd`
 cd $srcdir
+SRC_ROOT=`pwd`
+cd $BUILDDIR
 
-git_date=`git log -1 --pretty=format:"%cd" --date=format:'%Y' 2>/dev/null`
+# AC_DEFINE_UNQUOTED immediately appends to the intermediate confdefs.h, but
+# we need that in the builddir so that the later AC_CONFIG_HEADERS calls have
+# access to the value
+git_date=`git -C $SRC_ROOT log -1 --pretty=format:"%cd" --date=format:'%Y' 2>/dev/null`
 LIBO_THIS_YEAR=${git_date:-2026}
 AC_DEFINE_UNQUOTED(LIBO_THIS_YEAR,$LIBO_THIS_YEAR)
 # commit-time in unix epoch timestamp format in prep for reproducible builds
-SOURCE_DATE_EPOCH=`git log -1 --pretty=%ct 2>/dev/null`
+SOURCE_DATE_EPOCH=`git -C $SRC_ROOT log -1 --pretty=%ct 2>/dev/null`
 AC_SUBST(SOURCE_DATE_EPOCH)
 
-SRC_ROOT=`pwd`
-cd $BUILDDIR
 x_Cygwin=[\#]
 
 dnl ======================================
@@ -8296,7 +8299,7 @@ if test -z "${CXXFLAGS_CXX11+x}"; then
     elif test "$GCC" = "yes" -o "$COM_IS_CLANG" = TRUE; then
         my_flags='-std=c++20 -std=c++2a'
         if test "$with_latest_c__" = yes; then
-            my_flags="-std=c++26 -std=c++2c -std=c++23 -std=c++2b $my_flags"
+            my_flags="-std=c++29 -std=c++2d -std=c++26 -std=c++2c -std=c++23 -std=c++2b $my_flags"
         fi
         for flag in $my_flags; do
             if test "$COM" = MSC; then
