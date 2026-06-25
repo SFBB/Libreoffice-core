@@ -41,12 +41,15 @@ namespace weld
 class Widget;
 }
 
+class SbMethod;
+
 namespace basctl
 {
 BASCTL_DLLPUBLIC bool IsValidSbxName(std::u16string_view rName);
 BASCTL_DLLPUBLIC SAL_RET_MAYBENULL SfxDispatcher* GetDispatcher();
 BASCTL_DLLPUBLIC void MarkDocumentModified(const ScriptDocument& rDocument);
 
+BASCTL_DLLPUBLIC bool QueryDelMacro(std::u16string_view rName, weld::Widget* pParent);
 BASCTL_DLLPUBLIC bool QueryDelDialog(std::u16string_view rName, weld::Widget* pParent);
 BASCTL_DLLPUBLIC bool QueryDelModule(std::u16string_view rName, weld::Widget* pParent);
 BASCTL_DLLPUBLIC bool QueryDelLib(std::u16string_view rName, bool bRef, weld::Widget* pParent);
@@ -63,6 +66,8 @@ BASCTL_DLLPUBLIC void ImportLib(const ScriptDocument& rDocument, weld::Dialog* p
 
 BASCTL_DLLPUBLIC void Export(const ScriptDocument& rDocument, const OUString& aLibName,
                              weld::Dialog* pDialog);
+
+BASCTL_DLLPUBLIC void DeleteMacro(SbMethod& rMethod);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

@@ -395,6 +395,7 @@
 #define STR_QUICKHELP_REF                       NC_("STR_QUICKHELP_REF", "%1 R  × %2 C")
 #define STR_FUNCTIONLIST_MORE                   NC_("STR_FUNCTIONLIST_MORE", "More...")
 #define STR_ERR_INVALID_AREA                    NC_("STR_ERR_INVALID_AREA", "Invalid range")
+#define STR_ERR_HIDDEN_SHEET                    NC_("STR_ERR_HIDDEN_SHEET", "Target sheet is hidden")
 #define STR_CHARTTITLE                          NC_("STR_CHARTTITLE", "Chart Title")
 #define STR_AXISTITLE                           NC_("STR_AXISTITLE", "Axis Title")
 // Templates for data pilot tables.
@@ -606,6 +607,11 @@
 #define STR_DATAPROVIDER_NODATABASERANGE        NC_("STR_DATAPROVIDER_NODATABASERANGE", "A Database Range is missing.")
 #define STR_SHEET_VIEW_DEFAULT_VIEW_NAME        NC_("STR_SHEET_VIEW_DEFAULT_VIEW_NAME", "Default View")
 #define STR_SHEET_VIEW_TEMPORARY_NAME_TEMPLATE  NC_("STR_SHEET_VIEW_TEMPORARY_NAME_TEMPLATE", "Temporary View %1")
+
+#define STR_WARN_ONLYACTIVESHEET_TITLE          NC_("STR_WARN_ONLYACTIVESHEET_TITLE", "Warning")
+#define STR_WARN_ONLYACTIVESHEET_TEXT           NC_("STR_WARN_ONLYACTIVESHEET_TEXT", "Only the active sheet was saved.")
+#define STR_WARN_ONLYACTIVESHEET_QUEST          NC_("STR_WARN_ONLYACTIVESHEET_QUEST", "Your are saving in the CSV text format, which means multiple sheets cannot be handled.")
+#define STR_WARN_ONLYACTIVESHEET_BUTTON         NC_("STR_WARN_ONLYACTIVESHEET_BUTTON", "Okay")
 
 #endif
 

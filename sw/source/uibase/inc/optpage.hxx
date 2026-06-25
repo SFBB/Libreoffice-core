@@ -61,6 +61,7 @@ class SwContentOptPage final : public SfxTabPage
     std::unique_ptr<weld::CheckButton> m_xDrwCB;
     std::unique_ptr<weld::Widget> m_xDrwImg;
     std::unique_ptr<weld::CheckButton> m_xPostItCB;
+    std::unique_ptr<weld::Widget> m_xPostItImg;
 
     std::unique_ptr<weld::Frame> m_xSettingsFrame;
     std::unique_ptr<weld::Label> m_xSettingsLabel;
@@ -200,7 +201,7 @@ class SwStdFontTabPage final : public SfxTabPage
     OUString m_sScriptAsian;
     OUString m_sScriptComplex;
 
-    std::unique_ptr<weld::Label> m_xLabelFT;
+    std::unique_ptr<weld::Frame> m_xFrame;
     std::unique_ptr<weld::ComboBox> m_xStandardBox;
     std::unique_ptr<weld::Widget> m_xStandardBoxImg;
     std::unique_ptr<FontSizeBox> m_xStandardHeightLB;

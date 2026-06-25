@@ -26,6 +26,9 @@
 #include <com/sun/star/script/browse/XBrowseNode.hpp>
 #include <com/sun/star/uno/XComponentContext.hpp>
 
+class SbModule;
+class SbMethod;
+
 struct ScriptContainerInfo
 {
     css::script::browse::XBrowseNode* pBrowseNode;
@@ -216,6 +219,7 @@ class MacroManagerDialog : public weld::GenericDialogController, public SfxListe
     void BasicScriptsLibraryModuleDialogDelete(const basctl::ScriptDocument& rDocument);
     void BasicScriptsLibraryPassword(const basctl::ScriptDocument& rDocument);
     void BasicScriptsMacroEdit(const basctl::ScriptDocument& rDocument);
+    void BasicScriptsMacroDelete();
     bool IsLibraryReadOnlyOrFailedPasswordQuery(const basctl::ScriptDocument& rDocument,
                                                 const weld::TreeIter* pIter);
 
@@ -234,6 +238,9 @@ class MacroManagerDialog : public weld::GenericDialogController, public SfxListe
 
     void UpdateUI();
     void CheckButtons();
+
+    SbModule* GetSelectedBasicModule() const;
+    SbMethod* GetSelectedBasicMethod() const;
 
     virtual void Notify(SfxBroadcaster&, const SfxHint& rHint) override;
 

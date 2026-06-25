@@ -112,6 +112,7 @@ SwContentOptPage::SwContentOptPage(weld::Container* pPage, weld::DialogControlle
     , m_xDrwCB(m_xBuilder->weld_check_button(u"drawings"_ustr))
     , m_xDrwImg(m_xBuilder->weld_widget(u"lockdrawings"_ustr))
     , m_xPostItCB(m_xBuilder->weld_check_button(u"comments"_ustr))
+    , m_xPostItImg(m_xBuilder->weld_widget(u"lockcomments"_ustr))
     , m_xSettingsFrame(m_xBuilder->weld_frame(u"settingsframe"_ustr))
     , m_xSettingsLabel(m_xBuilder->weld_label(u"settingslabel"_ustr))
     , m_xMetricLabel(m_xBuilder->weld_label(u"measureunitlabel"_ustr))
@@ -265,7 +266,7 @@ void SwContentOptPage::Reset(const SfxItemSet* rSet)
             officecfg::Office::WriterWeb::Content::Display::Note::isReadOnly();
         m_xPostItCB->set_active(pElemAttr->m_bNotes);
         m_xPostItCB->set_sensitive(!bReadOnly);
-        m_xPostItCB->set_visible(pElemAttr->m_bNotes);
+        m_xPostItImg->set_visible(bReadOnly);
 
         bReadOnly = !bWebOptionsPage ? officecfg::Office::Writer::Layout::Line::Guide::isReadOnly() :
             officecfg::Office::WriterWeb::Layout::Line::Guide::isReadOnly();
@@ -380,7 +381,6 @@ OUString SwContentOptPage::GetAllStrings()
                                u"tables"_ustr,
                                u"drawings"_ustr,
                                u"comments"_ustr,
-                               u"resolvedcomments"_ustr,
                                u"hiddentextfield"_ustr,
                                u"hiddenparafield"_ustr,
                                u"changesinmargin"_ustr,
@@ -853,7 +853,7 @@ SwStdFontTabPage::SwStdFontTabPage(weld::Container* pPage, weld::DialogControlle
     , m_sScriptWestern(SwResId(ST_SCRIPT_WESTERN))
     , m_sScriptAsian(SwResId(ST_SCRIPT_ASIAN))
     , m_sScriptComplex(SwResId(ST_SCRIPT_CTL))
-    , m_xLabelFT(m_xBuilder->weld_label(u"label1"_ustr))
+    , m_xFrame(m_xBuilder->weld_frame(u"frame1"_ustr))
     , m_xStandardBox(m_xBuilder->weld_combo_box(u"standardbox"_ustr))
     , m_xStandardBoxImg(m_xBuilder->weld_widget(u"lockstandardbox"_ustr))
     , m_xStandardHeightLB(new FontSizeBox(m_xBuilder->weld_combo_box(u"standardheight"_ustr)))
@@ -1095,7 +1095,7 @@ void SwStdFontTabPage::Reset( const SfxItemSet* rSet)
         sToReplace = m_sScriptAsian;
     else if(FONT_GROUP_CTL == m_nFontGroup )
         sToReplace = m_sScriptComplex;
-    m_xLabelFT->set_label(m_xLabelFT->get_label().replaceFirst("%1", sToReplace));
+    m_xFrame->set_label(m_xFrame->get_label().replaceFirst("%1", sToReplace));
 
     if (m_bDisposePrinter)
     {

@@ -40,7 +40,9 @@
 #include <sfx2/frame.hxx>
 #include <sfx2/minfitem.hxx>
 #include <sfx2/request.hxx>
+#include <sfx2/sfxresid.hxx>
 #include <sfx2/sfxsids.hrc>
+#include <sfx2/strings.hrc>
 #include <tools/debug.hxx>
 #include <vcl/commandevent.hxx>
 #include <vcl/svapp.hxx>
@@ -263,35 +265,7 @@ void MacroChooser::DeleteMacro()
     if (!(pMethod && QueryDelMacro(pMethod->GetName(), m_xDialog.get())))
         return;
 
-    if (SfxDispatcher* pDispatcher = GetDispatcher())
-        pDispatcher->Execute( SID_BASICIDE_STOREALLMODULESOURCES );
-
-    // mark current doc as modified:
-    StarBASIC* pBasic = FindBasic(pMethod);
-    assert(pBasic && "Basic?!");
-    BasicManager* pBasMgr = FindBasicManager( pBasic );
-    DBG_ASSERT( pBasMgr, "BasMgr?" );
-    ScriptDocument aDocument( ScriptDocument::getDocumentForBasicManager( pBasMgr ) );
-    if ( aDocument.isDocument() )
-    {
-        aDocument.setDocumentModified();
-        if (SfxBindings* pBindings = GetBindingsPtr())
-            pBindings->Invalidate( SID_SAVEDOC );
-    }
-
-    SbModule* pModule = pMethod->GetModule();
-    assert(pModule && "DeleteMacro: No Module?!");
-    OUString aSource( pModule->GetSource() );
-    sal_uInt16 nStart, nEnd;
-    pMethod->GetLineRange( nStart, nEnd );
-    pModule->GetMethods()->Remove( pMethod );
-    CutLines( aSource, nStart-1, nEnd-nStart+1 );
-    pModule->SetSource( aSource );
-
-    // update module in library
-    OUString aLibName = pBasic->GetName();
-    OUString aModName = pModule->GetName();
-    OSL_VERIFY( aDocument.updateModule( aLibName, aModName, aSource ) );
+    basctl::DeleteMacro(*pMethod);
 
     std::unique_ptr<weld::TreeIter> pSelected = m_xMacroBox->get_selected();
     assert(pSelected && "DeleteMacro: Entry ?!");
@@ -466,7 +440,7 @@ IMPL_LINK_NOARG(MacroChooser, MacroDoubleClickHdl, const weld::TreeIter&, bool)
     {
         std::unique_ptr<weld::MessageDialog> xError(
             Application::CreateMessageDialog(m_xDialog.get(), VclMessageType::Warning,
-                                             VclButtonsType::Ok, IDEResId(RID_STR_CANNOTRUNMACRO)));
+                                             VclButtonsType::Ok, SfxResId(STR_CANNOTRUNMACRO)));
         xError->run();
         return true;
     }
@@ -599,7 +573,7 @@ IMPL_LINK(MacroChooser, ButtonHdl, weld::Button&, rButton, void)
                 if ( aDocument.isDocument() && !aDocument.allowMacros() )
                 {
                     std::unique_ptr<weld::MessageDialog> xError(Application::CreateMessageDialog(m_xDialog.get(),
-                                                                VclMessageType::Warning, VclButtonsType::Ok, IDEResId(RID_STR_CANNOTRUNMACRO)));
+                                                                VclMessageType::Warning, VclButtonsType::Ok, SfxResId(STR_CANNOTRUNMACRO)));
                     xError->run();
                     return;
                 }
@@ -680,11 +654,6 @@ IMPL_LINK(MacroChooser, ButtonHdl, weld::Button&, rButton, void)
             if (&rButton == m_xDelButton.get())
             {
                 DeleteMacro();
-                if (SfxDispatcher* pDispatcher = GetDispatcher())
-                {
-                    pDispatcher->ExecuteList( SID_BASICIDE_UPDATEMODULESOURCE,
-                                  SfxCallMode::SYNCHRON, { &aInfoItem });
-                }
                 CheckButtons();
                 UpdateFields();
                 //if ( m_xMacroBox->GetCurEntry() )    // OV-Bug ?
