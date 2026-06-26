@@ -634,8 +634,8 @@ ScCheckListMenuControl::ScCheckListMenuControl(weld::Widget* pParent, ScViewData
     // popup isn't a true dialog
     mxButtonBox->sort_native_button_order();
 
-    mxTreeChecks->enable_toggle_buttons(weld::ColumnToggleType::Check);
-    mxListChecks->enable_toggle_buttons(weld::ColumnToggleType::Check);
+    mxTreeChecks->enable_toggle_buttons();
+    mxListChecks->enable_toggle_buttons();
 
     mxBox->show();
     if (mbIsMultiField)
@@ -1854,11 +1854,13 @@ ScListSubMenuControl::ScListSubMenuControl(weld::Widget* pParent, ScCheckListMen
     else
     {
         mxBackColorMenu->set_clicks_to_toggle(1);
-        mxBackColorMenu->enable_toggle_buttons(weld::ColumnToggleType::Radio);
+        mxBackColorMenu->enable_toggle_buttons();
+        mxBackColorMenu->set_toggle_button_type(weld::ColumnToggleType::Radio);
         mxBackColorMenu->connect_selection_changed(
             LINK(this, ScListSubMenuControl, ColorSelChangedHdl));
         mxTextColorMenu->set_clicks_to_toggle(1);
-        mxTextColorMenu->enable_toggle_buttons(weld::ColumnToggleType::Radio);
+        mxTextColorMenu->enable_toggle_buttons();
+        mxTextColorMenu->set_toggle_button_type(weld::ColumnToggleType::Radio);
         mxTextColorMenu->connect_selection_changed(
             LINK(this, ScListSubMenuControl, ColorSelChangedHdl));
         SetupMenu(*mxBackColorMenu);

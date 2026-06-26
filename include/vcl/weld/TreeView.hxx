@@ -220,10 +220,24 @@ public:
     void connect_column_clicked(const Link<int, void>& rLink) { m_aColumnClickedHdl = rLink; }
     void connect_model_changed(const Link<TreeView&, void>& rLink) { m_aModelChangedHdl = rLink; }
 
-    // call before inserting any content and connecting to toggle signals,
-    // an pre-inserted checkbutton column will exist at the start of every row
-    // inserted after this call which can be accessed with col index -1
-    virtual void enable_toggle_buttons(ColumnToggleType eType) = 0;
+    /**
+     * Call before inserting any content and connecting to toggle signals,
+     * a pre-inserted checkbutton column will exist at the start of every row
+     * inserted after this call which can be accessed with col index -1
+     *
+     * (For the corresponding GtkTreeView definition in the .ui file, the first GtkTreeViewColumn
+     * must contain a leading GtkCellRendererToggle to be used for this, in addition
+     * to a renderer for the content referred to by the regular column index of 0.)
+     */
+    virtual void enable_toggle_buttons() = 0;
+
+    /**
+     * Set the type of all toggle buttons used in the TreeView.
+     * (By default, check buttons are used.)
+     *
+     * Call before inserting any entries.
+     */
+    virtual void set_toggle_button_type(ColumnToggleType eType) = 0;
 
     virtual void set_clicks_to_toggle(int nToggleBehavior) = 0;
 

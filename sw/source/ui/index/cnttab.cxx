@@ -527,7 +527,7 @@ SwAddStylesDlg_Impl::SwAddStylesDlg_Impl(weld::Window* pParent,
     m_xRightPB->connect_clicked(LINK(this, SwAddStylesDlg_Impl, LeftRightHdl));
 
     m_xHeaderTree->connect_size_allocate(LINK(this, SwAddStylesDlg_Impl, TreeSizeAllocHdl));
-    m_xHeaderTree->enable_toggle_buttons(weld::ColumnToggleType::Radio);
+    m_xHeaderTree->set_toggle_button_type(weld::ColumnToggleType::Radio);
     m_xHeaderTree->connect_toggled(LINK(this, SwAddStylesDlg_Impl, RadioToggleOnHdl));
     m_xHeaderTree->connect_column_clicked(LINK(this, SwAddStylesDlg_Impl, HeaderBarClick));
 
@@ -828,7 +828,7 @@ SwTOXSelectTabPage::SwTOXSelectTabPage(weld::Container* pPage, weld::DialogContr
 
     m_sAddStyleContent = m_xAddStylesCB->get_label();
 
-    m_xFromObjCLB->enable_toggle_buttons(weld::ColumnToggleType::Check);
+    m_xFromObjCLB->enable_toggle_buttons();
 
     for (size_t i = 0; i < std::size(RES_SRCTYPES); ++i)
     {

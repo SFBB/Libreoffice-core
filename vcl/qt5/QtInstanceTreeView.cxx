@@ -96,7 +96,7 @@ void QtInstanceTreeView::do_insert_separator(int, const OUString&)
     assert(false && "Not implemented yet");
 }
 
-void QtInstanceTreeView::enable_toggle_buttons(weld::ColumnToggleType)
+void QtInstanceTreeView::enable_toggle_buttons()
 {
     assert(m_pModel->rowCount() == 0 && "Must be called before inserting any data");
 
@@ -104,6 +104,8 @@ void QtInstanceTreeView::enable_toggle_buttons(weld::ColumnToggleType)
 
     m_pTreeView->header()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
 }
+
+void QtInstanceTreeView::set_toggle_button_type(weld::ColumnToggleType) {}
 
 void QtInstanceTreeView::set_clicks_to_toggle(int) { assert(false && "Not implemented yet"); }
 
@@ -712,7 +714,7 @@ int QtInstanceTreeView::get_column_width(int nCol) const
     return nWidth;
 }
 
-void QtInstanceTreeView::set_centered_column(int) { assert(false && "Not implemented yet"); }
+void QtInstanceTreeView::set_centered_column(int nCol) { m_pModel->setCenteredColumn(nCol); }
 
 OUString QtInstanceTreeView::get_column_title(int nColumn) const
 {

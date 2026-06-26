@@ -14638,7 +14638,7 @@ public:
                 }
                 else if (GTK_IS_CELL_RENDERER_TOGGLE(pCellRenderer))
                 {
-                    const bool bExpander = nIndex == 0;
+                    const bool bExpander = nIndex == 0 && g_list_next(pRenderer) != nullptr;
                     if (bExpander)
                         m_nExpanderToggleCol = nIndex;
                     g_signal_connect(G_OBJECT(pCellRenderer), "toggled", G_CALLBACK(signalCellToggled), this);
@@ -14806,21 +14806,15 @@ public:
                 pEditCellData = pData;
                 break;
             }
-            else if (GTK_IS_CELL_RENDERER_TOGGLE(pCellRenderer))
+            else if (GTK_IS_CELL_RENDERER_TOGGLE(pCellRenderer) && nCellIndex == m_nExpanderToggleCol)
             {
-                if (nCellIndex == m_nExpanderToggleCol)
-                {
-                    pToggle = pCellRenderer;
-                    g_object_ref(pToggle);
-                }
+                pToggle = pCellRenderer;
+                g_object_ref(pToggle);
             }
-            else if (GTK_IS_CELL_RENDERER_PIXBUF(pCellRenderer))
+            else if (GTK_IS_CELL_RENDERER_PIXBUF(pCellRenderer) && nCellIndex == m_nExpanderImageCol)
             {
-                if (nCellIndex == m_nExpanderImageCol)
-                {
-                    pExpander = pCellRenderer;
-                    g_object_ref(pExpander);
-                }
+                pExpander = pCellRenderer;
+                g_object_ref(pExpander);
             }
 
         }
@@ -14838,7 +14832,6 @@ public:
         if (pToggle)
         {
             gtk_tree_view_column_pack_start(pColumn, pToggle, false);
-            gtk_tree_view_column_add_attribute(pColumn, pToggle, "active", m_nExpanderToggleCol);
             gtk_tree_view_column_add_attribute(pColumn, pToggle, "active", m_nExpanderToggleCol);
             gtk_tree_view_column_add_attribute(pColumn, pToggle, "visible", m_aToggleTriStateMap[m_nExpanderToggleCol]);
             g_object_unref(pToggle);
@@ -15270,7 +15263,13 @@ public:
         set_toggle(rGtkIter.iter, eState, col);
     }
 
-    virtual void enable_toggle_buttons(weld::ColumnToggleType eType) override
+    virtual void enable_toggle_buttons() override
+    {
+        // ctor already enables expander toggle column based on columns/renderers defined in the .ui file
+    }
+
+    virtual void set_toggle_button_type(weld::ColumnToggleType eType
+                                        = weld::ColumnToggleType::Check) override
     {
         for (GList* pEntry = g_list_first(m_pColumns); pEntry; pEntry = g_list_next(pEntry))
         {
