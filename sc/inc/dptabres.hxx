@@ -43,6 +43,7 @@ class ScDPDimension;
 class ScDPLevel;
 class ScDPMember;
 class ScDPResultMember;
+class ScDPResultMemberFull;
 class ScDPResultVisibilityData;
 class ScTokenArray;
 
@@ -334,6 +335,310 @@ public:
 
 class ScDPResultMember
 {
+public:
+    virtual ~ScDPResultMember() = default;
+
+    void InitFrom(const ::std::vector<ScDPDimension*>& ppDim,
+                  const ::std::vector<ScDPLevel*>& ppLev, size_t nPos, ScDPInitState& rInitState,
+                  bool bInitChild = true);
+
+    virtual void LateInitFrom(LateInitParams& rParams, const ::std::vector<SCROW>& pItemData,
+                              size_t nPos, ScDPInitState& rInitState) = 0;
+
+    virtual void ResetChildDimension() = 0;
+
+    void CheckShowEmpty(bool bShow = false);
+
+    OUString GetName() const;
+
+    OUString GetDisplayName(bool bLocaleIndependent) const;
+
+    virtual const ScDPResultData* GetResultData() const = 0;
+
+    ScDPItemData FillItemData() const;
+
+    virtual bool IsAutoHidden() const = 0;
+
+    virtual bool GetForceSubTotal() const = 0;
+
+    virtual bool IsInitialized() const = 0;
+
+    bool IsValid() const;
+
+    bool IsVisible() const;
+
+    tools::Long GetSize(tools::Long nMeasure) const;
+
+    virtual bool HasHiddenDetails() const = 0;
+
+    virtual void SetHasHiddenDetails() = 0;
+
+    bool IsSubTotalInTitle(tools::Long nMeasure) const;
+
+    tools::Long GetSubTotalCount(tools::Long* pUserSubStart = nullptr) const;
+
+    bool IsNamedItem(SCROW nIndex) const;
+
+    bool IsValidEntry(const ::std::vector<SCROW>& aMembers) const;
+
+    virtual bool GetHasElements() const = 0;
+
+    virtual void SetHasElements() = 0;
+
+    virtual void SetInitialized() = 0;
+
+    virtual void SetAutoHidden() = 0;
+
+    virtual sal_uInt16 GetMemberStep(void) = 0;
+
+    virtual void SetMemberStep(sal_uInt16 nStep) = 0;
+
+    virtual void
+    ProcessData(const ::std::vector<SCROW>& aChildMembers, const ScDPResultDimension* pDataDim,
+                const ::std::vector<SCROW>& aDataMembers, const ::std::vector<ScDPValue>& aValues) = 0;
+
+    void FillMemberResults(css::uno::Sequence<css::sheet::MemberResult>* pSequences,
+                           tools::Long& rPos, tools::Long nMeasure, bool bRoot,
+                           const OUString* pMemberName, const OUString* pMemberCaption);
+
+    void FillDataResults(const ScDPResultMember* pRefMember, ScDPResultFilterContext& rFilterCxt,
+                         css::uno::Sequence<css::uno::Sequence<css::sheet::DataResult>>& rSequence,
+                         tools::Long nMeasure) const;
+
+    void UpdateDataResults(const ScDPResultMember* pRefMember, tools::Long nMeasure) const;
+
+    void UpdateRunningTotals(ScDPResultMember* pRefMember, tools::Long nMeasure,
+                             ScDPRunningTotalState& rRunning, ScDPRowTotals& rTotals) const;
+
+    void SortMembers(ScDPResultMember* pRefMember);
+
+    virtual void DoAutoShow(ScDPResultMember* pRefMember) = 0;
+
+    virtual void ResetResults() = 0;
+
+#if DUMP_PIVOT_TABLE
+    virtual void DumpState(const ScDPResultMember* pRefMember, ScDocument* pDoc,
+                           ScAddress& rPos) const = 0;
+    virtual void Dump(int nIndent) const = 0;
+#endif
+
+    virtual const ScDPResultDimension* GetChildDimension() const = 0;
+    virtual ScDPResultDimension* GetChildDimension() = 0;
+
+    virtual ScDPDataMember* GetDataRoot() const = 0;
+
+    virtual const ScDPDimension* GetParentDim() const = 0;
+    virtual const ScDPLevel* GetParentLevel() const = 0;
+    virtual const ScDPMember* GetDPMember() const = 0;
+
+    virtual SCROW GetOrder() const = 0;
+
+    bool IsRoot() const { return GetParentLevel() == nullptr; }
+
+    SCROW GetDataId() const;
+
+    virtual ScDPAggData* GetColTotal(tools::Long nMeasure) = 0;
+
+    void FillVisibilityData(ScDPResultVisibilityData& rData) const;
+};
+
+class ScDPResultMemberSlim : public ScDPResultMember
+{
+    friend ScDPResultDimension; // For promotion
+private:
+    // When adding fields here, update ScDPResultDimension::Promote
+    ScDPResultDimension* mpOurDimension;
+    const ScDPMember* mpMemberDesc;
+    const ScDPResultData* pResultData;
+    const SCROW mnOrder;
+    bool bmHasElements : 1;
+    bool bmHasHiddenDetails : 1;
+    bool bmInitialized : 1;
+    bool bmPromoted : 1;
+
+    // Called when 'mpPromoted' meaning someone with this object pointer is
+    // calling a member even though a previous call has promoted it.
+    // Note this is const since we know we're not changing the current (old) object
+    ScDPResultMember* GetPromote() const;
+
+    // Called when something decides it needs to be promoted, typically when something
+    // is getting set.  Note this is NOT const since the bmPromoted flag needs
+    // to be set.
+    // The 'sReason' is purely to let debugging be used to track the reason
+    // for promotions
+    ScDPResultMember* Promote(const char* sReason);
+
+public:
+    ScDPResultMemberSlim(ScDPResultDimension* pRDimension, const ScDPResultData* pData,
+                         const ScDPParentDimData& rParentDimData);
+
+    bool GetHasElements() const override
+    {
+        if (bmPromoted)
+            return GetPromote()->GetHasElements();
+        return bmHasElements;
+    };
+
+    bool HasHiddenDetails() const override
+    {
+        if (bmPromoted)
+            return GetPromote()->HasHiddenDetails();
+        return bmHasHiddenDetails;
+    }
+
+    void LateInitFrom(LateInitParams& rParams, const ::std::vector<SCROW>& pItemData, size_t nPos,
+                      ScDPInitState& rInitState) override
+    {
+        Promote("LateInitFrom")->LateInitFrom(rParams, pItemData, nPos, rInitState);
+    }
+
+    void ResetChildDimension() override
+    {
+        // We don't store the child dimension, so promote
+        Promote("ResetChildDimension")->ResetChildDimension();
+    }
+
+    void SetAutoHidden() override { Promote("SetAutoHidden")->SetAutoHidden(); }
+
+    void SetHasElements() override
+    {
+        if (bmPromoted)
+            return GetPromote()->SetHasElements();
+        bmHasElements = true;
+    }
+
+    void SetHasHiddenDetails() override
+    {
+        if (bmPromoted)
+            return GetPromote()->SetHasHiddenDetails();
+        bmHasHiddenDetails = true;
+    }
+
+    void SetInitialized() override
+    {
+        if (bmPromoted)
+            return GetPromote()->SetInitialized();
+        bmInitialized = true;
+    }
+
+    bool GetForceSubTotal() const override
+    {
+        if (bmPromoted)
+            return GetPromote()->GetForceSubTotal();
+        // Never set in Slim
+        return false;
+    }
+
+    ScDPDataMember* GetDataRoot() const override
+    {
+        if (bmPromoted)
+            return GetPromote()->GetDataRoot();
+        // Slim doesn't store the data root, if one was set we would have been promoted
+        return nullptr;
+    }
+
+    bool IsAutoHidden() const override
+    {
+        if (bmPromoted)
+            return GetPromote()->IsAutoHidden();
+        // Slim doesn't store Auto hidden
+        return false;
+    }
+
+    sal_uInt16 GetMemberStep() override
+    {
+        if (bmPromoted)
+            return GetPromote()->GetMemberStep();
+        // We don't store this in the slim version, it's always
+        // 1 unless promoted
+        return 1;
+    }
+
+    void SetMemberStep(sal_uInt16 nStep) override
+    {
+        if (bmPromoted)
+            return GetPromote()->SetMemberStep(nStep);
+        // We don't actually store this in the slim version, we just
+        // promote if it's ever non-1
+        if (nStep != 1)
+            return Promote("SetMemberStep")->SetMemberStep(nStep);
+        // OK, it is 1 - do nothing
+    }
+
+    void ProcessData(const ::std::vector<SCROW>& aChildMembers, const ScDPResultDimension* pDataDim,
+                     const ::std::vector<SCROW>& aDataMembers,
+                     const ::std::vector<ScDPValue>& aValues) override
+    {
+        // Looks pretty complicated and needs pDataRoot, lets try
+        // Promoting for now
+        Promote("ProcessData")->ProcessData(aChildMembers, pDataDim, aDataMembers, aValues);
+    }
+
+    void DoAutoShow(ScDPResultMember* pRefMember) override
+    {
+        Promote("DoAutoShow")->DoAutoShow(pRefMember);
+    }
+
+    void ResetResults() override { Promote("ResetResults")->ResetResults(); }
+
+    const ScDPResultDimension* GetChildDimension() const override
+    {
+        if (bmPromoted)
+            return GetPromote()->GetChildDimension();
+        // Slim doesn't store a child pointer, if one was set we would have been promoted
+        return nullptr;
+    }
+
+    ScDPResultDimension* GetChildDimension() override
+    {
+        if (bmPromoted)
+            return GetPromote()->GetChildDimension();
+        // Slim doesn't store a child pointer, if one was set we would have been promoted
+        return nullptr;
+    }
+
+    const ScDPDimension* GetParentDim() const override;
+    const ScDPLevel* GetParentLevel() const override;
+
+    const ScDPMember* GetDPMember() const override
+    {
+        if (bmPromoted)
+            return GetPromote()->GetDPMember();
+        return mpMemberDesc;
+    }
+
+    bool IsInitialized() const override
+    {
+        if (bmPromoted)
+            return GetPromote()->IsInitialized();
+        return bmInitialized;
+    };
+
+    const ScDPResultData* GetResultData() const override
+    {
+        // pResultData is never changed, and on promotion is passed to new version
+        return pResultData;
+    }
+
+    SCROW GetOrder() const override
+    {
+        // mnOrder is never changed, and on promotion is passed to new version
+        return mnOrder;
+    }
+
+    ScDPAggData* GetColTotal(tools::Long nMeasure) override
+    {
+        return Promote("GetColTotal")->GetColTotal(nMeasure);
+    }
+
+#if DUMP_PIVOT_TABLE
+    void DumpState(const ScDPResultMember* pRefMember, ScDocument* pDoc, ScAddress& rPos) const override;
+    void Dump(int nIndent) const override;
+#endif
+};
+
+class ScDPResultMemberFull : public ScDPResultMember
+{
 private:
     const ScDPResultData*   pResultData;
     ScDPParentDimData        aParentDimData;
@@ -348,61 +653,40 @@ private:
     bool                    bAutoHidden:1;
 
 public:
-    ScDPResultMember(
-        const ScDPResultData* pData,  const ScDPParentDimData& rParentDimData );  //! Ref
-    ScDPResultMember(  const ScDPResultData* pData, bool bForceSub );
-    ~ScDPResultMember();
+    ScDPResultMemberFull(const ScDPResultData* pData,
+                         const ScDPParentDimData& rParentDimData); //! Ref
+    ScDPResultMemberFull(const ScDPResultData* pData, bool bForceSub);
+    ~ScDPResultMemberFull();
 
-    void                InitFrom( const ::std::vector<ScDPDimension*>& ppDim,
-                                        const ::std::vector<ScDPLevel*>& ppLev,
-                                        size_t nPos,
-                                        ScDPInitState& rInitState,
-                                  bool bInitChild = true );
     void               LateInitFrom(
                                         LateInitParams& rParams,
                                         const ::std::vector< SCROW >& pItemData,
                                         size_t nPos,
                                         ScDPInitState& rInitState);
     void CheckShowEmpty( bool bShow = false );
-    OUString GetName() const;
-    OUString GetDisplayName( bool bLocaleIndependent ) const;
+    const ScDPResultData* GetResultData() const { return pResultData; }
 
-    ScDPItemData FillItemData() const;
-    bool IsValid() const;
-    bool IsVisible() const;
-    tools::Long                GetSize(tools::Long nMeasure) const;
+    bool IsAutoHidden() const { return bAutoHidden; };
+    bool GetForceSubTotal() const { return bForceSubTotal; };
+    bool IsInitialized() const { return bInitialized; };
     // bHasHiddenDetails is set only if the "show details" flag is off,
     // and there was a child dimension to skip
     bool HasHiddenDetails() const { return bHasHiddenDetails; }
-    bool IsSubTotalInTitle(tools::Long nMeasure) const;
+    void SetHasHiddenDetails() { bHasHiddenDetails = true; }
 
-    tools::Long                GetSubTotalCount( tools::Long* pUserSubStart = nullptr ) const;
-
-    bool IsNamedItem( SCROW nIndex ) const;
-    bool IsValidEntry( const ::std::vector< SCROW >& aMembers ) const;
-
+    bool GetHasElements() const { return bHasElements; };
     void SetHasElements() { bHasElements = true; }
+    void SetInitialized() { bInitialized = true; }
     void SetAutoHidden() { bAutoHidden = true; }
+
+    sal_uInt16 GetMemberStep(void) { return nMemberStep; }
+    void SetMemberStep(sal_uInt16 nStep) { nMemberStep = nStep; }
 
     void                ProcessData( const ::std::vector<SCROW>& aChildMembers,
                                         const ScDPResultDimension* pDataDim,
                                         const ::std::vector<SCROW>& aDataMembers,
                                         const ::std::vector<ScDPValue>& aValues );
-    void FillMemberResults(
-        css::uno::Sequence< css::sheet::MemberResult>* pSequences,
-        tools::Long& rPos, tools::Long nMeasure, bool bRoot, const OUString* pMemberName, const OUString* pMemberCaption );
 
-    void FillDataResults(
-        const ScDPResultMember* pRefMember,
-        ScDPResultFilterContext& rFilterCxt,
-        css::uno::Sequence< css::uno::Sequence<  css::sheet::DataResult> >& rSequence,
-        tools::Long nMeasure) const;
-
-    void                UpdateDataResults( const ScDPResultMember* pRefMember, tools::Long nMeasure ) const;
-    void                UpdateRunningTotals( ScDPResultMember* pRefMember, tools::Long nMeasure,
-                                                ScDPRunningTotalState& rRunning, ScDPRowTotals& rTotals ) const;
-
-    void                SortMembers( ScDPResultMember* pRefMember );
     void                DoAutoShow( ScDPResultMember* pRefMember );
 
     void ResetResults();
@@ -417,17 +701,15 @@ public:
     const ScDPResultDimension*  GetChildDimension() const   { return pChildDimension.get(); }
     ScDPResultDimension*        GetChildDimension()         { return pChildDimension.get(); }
 
+    void ResetChildDimension();
+
     ScDPDataMember*         GetDataRoot() const             { return pDataRoot.get(); }
 
     const ScDPDimension*  GetParentDim() const               { return aParentDimData.mpParentDim; }     //! Ref
     const ScDPLevel*         GetParentLevel() const         { return aParentDimData.mpParentLevel; }   //! Ref
     const ScDPMember*     GetDPMember()const              { return aParentDimData.mpMemberDesc; }    //! Ref
     SCROW GetOrder() const { return aParentDimData.mnOrder; }         //! Ref
-    bool IsRoot() const { return GetParentLevel() == nullptr; }
-    SCROW                       GetDataId( ) const ;
     ScDPAggData*        GetColTotal( tools::Long nMeasure );
-
-    void                FillVisibilityData(ScDPResultVisibilityData& rData) const;
 };
 
 class ScDPDataMember
@@ -468,14 +750,15 @@ public:
         tools::Long nMeasure, bool bIsSubTotalRow,
         const ScDPSubTotalState& rSubState) const;
 
-    void UpdateDataRow( const ScDPResultMember* pRefMember, tools::Long nMeasure, bool bIsSubTotalRow,
-                        const ScDPSubTotalState& rSubState );
-    void UpdateRunningTotals( ScDPResultMember* pRefMember, tools::Long nMeasure, bool bIsSubTotalRow,
-                              const ScDPSubTotalState& rSubState, ScDPRunningTotalState& rRunning,
-                              ScDPRowTotals& rTotals, const ScDPResultMember& rRowParent );
+    void UpdateDataRow(const ScDPResultMember* pRefMember, tools::Long nMeasure,
+                       bool bIsSubTotalRow, const ScDPSubTotalState& rSubState);
+    void UpdateRunningTotals(ScDPResultMember* pRefMember, tools::Long nMeasure,
+                             bool bIsSubTotalRow, const ScDPSubTotalState& rSubState,
+                             ScDPRunningTotalState& rRunning, ScDPRowTotals& rTotals,
+                             const ScDPResultMember& rRowParent);
 
-    void                SortMembers( ScDPResultMember* pRefMember );
-    void                DoAutoShow( ScDPResultMember* pRefMember );
+    void SortMembers(ScDPResultMember* pRefMember);
+    void DoAutoShow(ScDPResultMember* pRefMember);
 
     void                ResetResults();
 
@@ -503,6 +786,10 @@ public:
 private:
     const ScDPResultData*   pResultData;
     MemberArray             maMemberArray;
+    // Used during 'Promote' of ScDPResultMember
+    ScDPDimension* mpDimension;
+    ScDPLevel* mpLevel;
+    MemberArray maPromotedMembers;
 
     OUString                aDimensionName;     //! or ptr to IntDimension?
     tools::Long                    nSortMeasure;
@@ -558,14 +845,14 @@ public:
                 css::sheet::DataResult> >& rSequence,
         tools::Long nMeasure) const;
 
-    void                UpdateDataResults( const ScDPResultMember* pRefMember, tools::Long nMeasure ) const;
-    void                UpdateRunningTotals( ScDPResultMember* pRefMember, tools::Long nMeasure,
-                                            ScDPRunningTotalState& rRunning, ScDPRowTotals& rTotals ) const;
+    void UpdateDataResults(const ScDPResultMember* pRefMember, tools::Long nMeasure) const;
+    void UpdateRunningTotals(ScDPResultMember* pRefMember, tools::Long nMeasure,
+                             ScDPRunningTotalState& rRunning, ScDPRowTotals& rTotals) const;
 
-    void                SortMembers( ScDPResultMember* pRefMember );
+    void SortMembers(ScDPResultMember* pRefMember);
     tools::Long                GetSortedIndex( tools::Long nUnsorted ) const;
 
-    void                DoAutoShow( ScDPResultMember* pRefMember );
+    void DoAutoShow(ScDPResultMember* pRefMember);
 
     void                ResetResults();
 
@@ -607,6 +894,18 @@ public:
     ScDPResultDimension* GetFirstChildDimension() const;
 
     void                FillVisibilityData(ScDPResultVisibilityData& rData) const;
+
+    // Called by an ScDPResultMemberSlim which has already been promoted
+    // but something with an older pointer calls one of its member functions
+    ScDPResultMember* GetPromote(SCROW nOrder) const;
+
+    // Called by an ScDPResultMemberSlim when a member function needs
+    // to do something which Slim can't represent
+    ScDPResultMember* Promote(ScDPResultMemberSlim* pSlim, SCROW nOrder);
+
+    // Called by an ScDPResultMemberSlim to get it's parent information
+    ScDPDimension* GetParentDimForResult() { return mpDimension; };
+    ScDPLevel* GetParentLevelForResult() { return mpLevel; };
 };
 
 class ScDPDataDimension

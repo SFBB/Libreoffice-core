@@ -99,13 +99,22 @@ static int FamilyNameMatchValue(FontSelectPattern const& rFSP, std::u16string_vi
     return 0;
 }
 
-static int StyleNameMatchValue(FontMatchStatus const& rStatus, std::u16string_view rStyle)
+static int StyleNameMatchValue(FontSelectPattern const& rFSP, const PhysicalFontFace& rFontFace)
 {
-    if (rStatus.mpTargetStyleName
-        && o3tl::equalsIgnoreAsciiCase(rStyle, *rStatus.mpTargetStyleName))
-        return 120000;
+    if (rFSP.GetStyleName().isEmpty()
+        || !o3tl::equalsIgnoreAsciiCase(rFontFace.GetStyleName(), rFSP.GetStyleName()))
+        return 0;
 
-    return 0;
+    // The style name selects an extended subfamily (a width, an optical size,
+    // a named instance, ...); it must not override an explicitly requested
+    // weight or posture, which a document may contradict by carrying a stale
+    // RIBBI subfamily such as "Regular" on bold text (tdf#152396).
+    if (rFSP.GetWeight() != WEIGHT_DONTKNOW && rFSP.GetWeight() != rFontFace.GetWeight())
+        return 0;
+    if (rFSP.GetItalic() != ITALIC_DONTKNOW && rFSP.GetItalic() != rFontFace.GetItalic())
+        return 0;
+
+    return 120000;
 }
 
 static int PitchMatchValue(FontSelectPattern const& rFSP, FontPitch ePitch)
@@ -116,9 +125,26 @@ static int PitchMatchValue(FontSelectPattern const& rFSP, FontPitch ePitch)
     return 0;
 }
 
-static int PreferNormalFontWidthMatchValue(FontWidth eWidthType)
+static int WidthMatchValue(FontSelectPattern const& rFSP, FontWidth eWidthType)
 {
-    // TODO: change when the upper layers can tell their width preference
+    if (rFSP.GetWidthType() != WIDTH_DONTKNOW)
+    {
+        // A width was requested: prefer the closest width.
+        int nWidthDiff = static_cast<int>(rFSP.GetWidthType()) - static_cast<int>(eWidthType);
+        if (nWidthDiff < 0)
+            nWidthDiff = -nWidthDiff;
+
+        if (nWidthDiff == 0)
+            return 1000;
+        else if (nWidthDiff == 1)
+            return 700;
+        else if (nWidthDiff == 2)
+            return 200;
+
+        return 0;
+    }
+
+    // prefer NORMAL font width
     if (eWidthType == WIDTH_NORMAL)
         return 400;
     else if ((eWidthType == WIDTH_SEMI_EXPANDED) || (eWidthType == WIDTH_SEMI_CONDENSED))
@@ -192,12 +218,12 @@ static int ItalicMatchValue(FontSelectPattern const& rFSP, FontItalic eItalic)
     return 0;
 }
 
-bool PhysicalFontFace::IsBetterMatch(const FontSelectPattern& rFSP, FontMatchStatus& rStatus) const
+bool PhysicalFontFace::IsBetterMatch(const FontSelectPattern& rFSP, int& rnBestMatch) const
 {
     int nMatch = FamilyNameMatchValue(rFSP, GetFamilyName());
-    nMatch += StyleNameMatchValue(rStatus, GetStyleName());
+    nMatch += StyleNameMatchValue(rFSP, *this);
     nMatch += PitchMatchValue(rFSP, GetPitch());
-    nMatch += PreferNormalFontWidthMatchValue(GetWidthType());
+    nMatch += WidthMatchValue(rFSP, GetWidthType());
     nMatch += WeightMatchValue(rFSP, GetWeight());
     nMatch += ItalicMatchValue(rFSP, GetItalic());
 
@@ -208,13 +234,13 @@ bool PhysicalFontFace::IsBetterMatch(const FontSelectPattern& rFSP, FontMatchSta
     else
         nMatch += 5;
 
-    if (rStatus.mnFaceMatch > nMatch)
+    if (rnBestMatch > nMatch)
     {
         return false;
     }
-    else if (rStatus.mnFaceMatch < nMatch)
+    else if (rnBestMatch < nMatch)
     {
-        rStatus.mnFaceMatch = nMatch;
+        rnBestMatch = nMatch;
         return true;
     }
 

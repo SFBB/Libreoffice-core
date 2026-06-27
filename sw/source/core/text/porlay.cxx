@@ -111,7 +111,7 @@ void SwLineLayout::Height(const SwTwips nNew, const bool bText)
 {
     SwPositiveSize::Height(nNew);
     if (bText)
-        m_nTextHeight = nNew;
+        m_nLineSpacingBaseHeight = nNew;
 }
 
 // class SwLineLayout: This is the layout of a single line, which is made
@@ -229,7 +229,7 @@ void SwLineLayout::CreateSpaceAdd( const tools::Long nInit )
 // #i3952# Returns true if there are only blanks in [nStt, nEnd[
 // Used to implement IgnoreTabsAndBlanksForLineCalculation compat flag
 static bool lcl_HasOnlyBlanks(std::u16string_view rText, TextFrameIndex nStt, TextFrameIndex nEnd,
-    bool isFieldMarkPortion)
+    bool isFieldMarkText)
 {
     while ( nStt < nEnd )
     {
@@ -241,7 +241,7 @@ static bool lcl_HasOnlyBlanks(std::u16string_view rText, TextFrameIndex nStt, Te
         case 0x3000: // IDEOGRAPHIC SPACE
             continue;
         case 0x2002: // EN SPACE :
-            if (isFieldMarkPortion)
+            if (isFieldMarkText)
                 return false;
             else
                 continue;
@@ -255,6 +255,8 @@ static bool lcl_HasOnlyBlanks(std::u16string_view rText, TextFrameIndex nStt, Te
 // Swapped out from FormatLine()
 void SwLineLayout::CalcLine( SwTextFormatter &rLine, SwTextFormatInfo &rInf )
 {
+    const IDocumentSettingAccess& rIDSA = rInf.GetTextFrame()->GetDoc().getIDocumentSettingAccess();
+
     const SwTwips nLineWidth = rInf.RealWidth();
 
     sal_uInt16 nFlyAscent = 0;
@@ -271,9 +273,8 @@ void SwLineLayout::CalcLine( SwTextFormatter &rLine, SwTextFormatInfo &rInf )
     SwFlyCntPortion* pFlyCnt = nullptr;
 
     // #i3952#
-    const bool bIgnoreBlanksAndTabsForLineHeightCalculation =
-        rInf.GetTextFrame()->GetDoc().getIDocumentSettingAccess().get(
-            DocumentSettingId::IGNORE_TABS_AND_BLANKS_FOR_LINE_CALCULATION);
+    const bool bIgnoreBlanksAndTabsForLineHeightCalculation
+        = rIDSA.get(DocumentSettingId::IGNORE_TABS_AND_BLANKS_FOR_LINE_CALCULATION);
 
     bool bHasBlankPortion = false;
     bool bHasOnlyBlankPortions = true; // paragraph line contains only tabstops and spaces
@@ -297,6 +298,8 @@ void SwLineLayout::CalcLine( SwTextFormatter &rLine, SwTextFormatInfo &rInf )
         {
             const SwTwips nLineHeight = Height();
             Init( GetNextPortion() );
+            if (rIDSA.get(DocumentSettingId::LINE_SPACING_AS_GAP_BELOW))
+                SetLineSpacingBaseHeight(0);
             SwLinePortion *pPos = mpNextPortion;
             SwLinePortion *pLast = this;
             sal_uInt16 nMaxDescent = 0;
@@ -378,8 +381,7 @@ void SwLineLayout::CalcLine( SwTextFormatter &rLine, SwTextFormatInfo &rInf )
                 if ((pPos->IsDropPortion() && static_cast<SwDropPortion*>(pPos)->GetLines() > 1)
                     || pPos->GetWhichPor() == PortionType::Bookmark
                     || (pPos->GetWhichPor() == PortionType::HiddenText
-                        && rInf.GetTextFrame()->GetDoc().getIDocumentSettingAccess().get(
-                            DocumentSettingId::IGNORE_HIDDEN_CHARS_FOR_LINE_CALCULATION)))
+                        && rIDSA.get(DocumentSettingId::IGNORE_HIDDEN_CHARS_FOR_LINE_CALCULATION)))
                 {
                     pLast = pPos;
                     pPos = pPos->GetNextPortion();
@@ -449,6 +451,11 @@ void SwLineLayout::CalcLine( SwTextFormatter &rLine, SwTextFormatInfo &rInf )
                                     nPosHeight = nTmp;
                             }
                             Height( nPosHeight, false );
+                            if (GetLineSpacingBaseHeight() < nPosHeight
+                                 && pPos->IsUsedToCalcLineSpacingHeight(rIDSA))
+                            {
+                                SetLineSpacingBaseHeight(nPosHeight);
+                            }
                             mnAscent = nPosAscent;
                             nMaxDescent = nPosHeight - nPosAscent;
                         }
@@ -463,8 +470,14 @@ void SwLineLayout::CalcLine( SwTextFormatter &rLine, SwTextFormatInfo &rInf )
                                 Height(std::max(nPosHeight, nLineHeight), false);
                             else
                                 // Just care about the portion height.
-                                Height(nPosHeight, pPos->IsTextPortion());
+                                Height(nPosHeight, pPos->IsUsedToCalcLineSpacingHeight(rIDSA));
                         }
+                        else if (GetLineSpacingBaseHeight() < nPosHeight
+                                 && pPos->IsUsedToCalcLineSpacingHeight(rIDSA))
+                        {
+                            SetLineSpacingBaseHeight(nPosHeight);
+                        }
+
                         SwFlyCntPortion* pAsFly(nullptr);
                         if(pPos->IsFlyCntPortion())
                             pAsFly = static_cast<SwFlyCntPortion*>(pPos);
@@ -575,7 +588,7 @@ void SwLineLayout::CalcLine( SwTextFormatter &rLine, SwTextFormatInfo &rInf )
     if (!rInf.IsNewLine()
         && TextFrameIndex(rInf.GetText().getLength()) <= rInf.GetIdx()
         && bHasOnlyBlankPortions
-        && rInf.GetTextFrame()->GetDoc().getIDocumentSettingAccess().get(
+        && rIDSA.get(
             DocumentSettingId::APPLY_PARAGRAPH_MARK_FORMAT_TO_EMPTY_LINE_AT_END_OF_PARAGRAPH))
     {
         // Word: for empty last line, line height is based on paragraph marker
@@ -628,6 +641,13 @@ void SwLineLayout::CalcLine( SwTextFormatter &rLine, SwTextFormatInfo &rInf )
     // Robust:
     if( nLineWidth < Width() )
         Width( nLineWidth );
+
+    if (!GetLineSpacingBaseHeight())
+    {
+        rLine.SeekAndChg(rInf);
+        SetLineSpacingBaseHeight(rInf.GetTextHeight());
+    }
+
     SAL_WARN_IF( nLineWidth < Width(), "sw.core", "SwLineLayout::CalcLine: line is bursting" );
     SetDummy( bTmpDummy );
     std::pair<SwTextNode const*, sal_Int32> const start(
@@ -764,6 +784,8 @@ void SwLineLayout::MaxAscentDescent( SwTwips& _orAscent,
         if ( !pTmpPortion->IsBreakPortion() && !pTmpPortion->IsFlyPortion() &&
             // tdf#130804 ignore bookmark portions
              pTmpPortion->GetWhichPor() != PortionType::Bookmark &&
+             // tdf#172113 ignore comment portions
+             !pTmpPortion->IsPostItsPortion() &&
              ( !_bNoFlyCntPorAndLinePor ||
                ( !pTmpPortion->IsFlyCntPortion() &&
                  !(pTmpPortion == this && pTmpPortion->GetNextPortion() ) ) ) )
@@ -810,9 +832,8 @@ void SwLineLayout::ResetFlags()
 }
 
 SwLineLayout::SwLineLayout()
-    : m_pNext( nullptr ),
-      m_nRealHeight( 0 ),
-      m_nTextHeight( 0 )
+    : m_pNext(nullptr)
+    , m_nRealHeight(0)
 {
     ResetFlags();
     SetWhichPor( PortionType::Lay );

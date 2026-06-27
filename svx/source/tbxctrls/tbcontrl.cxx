@@ -4282,22 +4282,18 @@ ColorListBox::ColorListBox(std::unique_ptr<weld::MenuButton> pControl,
 IMPL_LINK(ColorListBox, ToggleHdl, weld::Toggleable&, rButton, void)
 {
     if (rButton.get_active())
-    {
-        ColorWindow* pColorWindow = getColorWindow();
-        if (pColorWindow && !comphelper::LibreOfficeKit::isActive())
-            pColorWindow->GrabFocus();
-    }
+        getColorWindow().GrabFocus();
 }
 
 ColorListBox::~ColorListBox()
 {
 }
 
-ColorWindow* ColorListBox::getColorWindow() const
+ColorWindow& ColorListBox::getColorWindow() const
 {
     if (!m_xColorWindow)
         const_cast<ColorListBox*>(this)->createColorWindow();
-    return m_xColorWindow.get();
+    return *m_xColorWindow;
 }
 
 void ColorListBox::createColorWindow()
@@ -4332,17 +4328,17 @@ void ColorListBox::SelectEntry(const NamedColor& rColor)
         SelectEntry(rColor.m_aColor);
         return;
     }
-    ColorWindow* pColorWindow = getColorWindow();
-    pColorWindow->SelectEntry(rColor);
-    m_aSelectedColor = pColorWindow->GetSelectEntryColor();
+    ColorWindow& rColorWindow = getColorWindow();
+    rColorWindow.SelectEntry(rColor);
+    m_aSelectedColor = rColorWindow.GetSelectEntryColor();
     ShowPreview(m_aSelectedColor);
 }
 
 void ColorListBox::SelectEntry(const Color& rColor)
 {
-    ColorWindow* pColorWindow = getColorWindow();
-    pColorWindow->SelectEntry(rColor);
-    m_aSelectedColor = pColorWindow->GetSelectEntryColor();
+    ColorWindow& rColorWindow = getColorWindow();
+    rColorWindow.SelectEntry(rColor);
+    m_aSelectedColor = rColorWindow.GetSelectEntryColor();
     ShowPreview(m_aSelectedColor);
 }
 

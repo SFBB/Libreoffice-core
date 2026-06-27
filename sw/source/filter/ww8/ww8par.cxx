@@ -2025,6 +2025,7 @@ void SwWW8ImplReader::ImportDop()
     m_rDoc.getIDocumentSettingAccess().set(DocumentSettingId::APPLY_PARAGRAPH_MARK_FORMAT_TO_EMPTY_LINE_AT_END_OF_PARAGRAPH, true);
     m_rDoc.getIDocumentSettingAccess().set(DocumentSettingId::HIDDEN_PARAGRAPH_MARK_PER_LINE_PROPERTIES, true);
     // rely on default for IGNORE_HIDDEN_CHARS_FOR_LINE_CALCULATION=true
+    // rely on default for LINE_SPACING_AS_GAP_BELOW=true
 
     IDocumentSettingAccess& rIDSA = m_rDoc.getIDocumentSettingAccess();
     if (m_xWDop->fDontBreakWrappedTables)
@@ -2564,12 +2565,12 @@ void SwWW8ImplReader::FinalizeTextNode(SwPosition& rPos, bool bAddNew)
 
     const SwNumRule* pRule = nullptr;
 
-    if (pText != nullptr)
+    if (pText)
+    {
         pRule = sw::util::GetNumRuleFromTextNode(*pText);
 
-    // tdf#64222 / tdf#150613 filter out the "paragraph marker" formatting and
-    // set it as a separate paragraph property, just like we do for DOCX.
-    {
+        // tdf#64222 / tdf#150613 filter out the "paragraph marker" formatting and
+        // set it as a separate paragraph property, just like we do for DOCX.
         SfxItemSet items(SfxItemSet::makeFixedSfxItemSet<RES_CHRATR_BEGIN, RES_CHRATR_END - 1, RES_TXTATR_CHARFMT,
                         RES_TXTATR_CHARFMT, RES_UNKNOWNATR_BEGIN, RES_UNKNOWNATR_END - 1>(m_pPaM->GetDoc().GetAttrPool()));
 
