@@ -16,11 +16,6 @@ namespace weld
 class TreeIter;
 }
 
-enum class TemplateViewMode
-{
-    ListView,
-    ThumbnailView
-};
 struct ListViewItem;
 
 class ListView
@@ -31,20 +26,6 @@ public:
 
     void AppendItem(const OUString& rId, const OUString& rTitle, const OUString& rSubtitle,
                     const OUString& rPath, bool bDefault);
-
-    void AppendRow(const OUString& rImage, const OUString& rTitle, const OUString& rSubtitle,
-                   const OUString& rApplication, const OUString& rModify, const OUString& rSize,
-                   const OUString& rId);
-
-    void UpdateRow(int nIndex, const OUString& rImage, const OUString& rTitle,
-                   const OUString& rSubtitle, const OUString& rApplication, const OUString& rModify,
-                   const OUString& rSize, const OUString& rId);
-
-    void ReloadRows();
-
-    bool UpdateRows();
-
-    void sortColumn(const int col);
 
     void sort();
 
@@ -84,6 +65,21 @@ protected:
     void select(int pos) { mxTreeView->select(pos); }
 
     int get_index(sal_uInt16 nId) const { return mxTreeView->find_id(OUString::number(nId)); }
+
+private:
+    void AppendRow(const OUString& rImage, const OUString& rTitle, const OUString& rSubtitle,
+                   const OUString& rApplication, const OUString& rModify, const OUString& rSize,
+                   const OUString& rId);
+
+    void UpdateRow(int nIndex, const OUString& rImage, const OUString& rTitle,
+                   const OUString& rSubtitle, const OUString& rApplication, const OUString& rModify,
+                   const OUString& rSize, const OUString& rId);
+
+    void ReloadRows();
+
+    bool UpdateRows();
+
+    void sortColumn(const int col);
 
     DECL_LINK(ColumnClickedHdl, const int, void);
 

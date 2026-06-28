@@ -33,7 +33,6 @@ TemplateDlgLocalView::TemplateDlgLocalView(std::unique_ptr<weld::ScrolledWindow>
     , mViewMode(TemplateViewMode::ThumbnailView)
 {
     mxTreeView->connect_item_activated(LINK(this, TemplateDlgLocalView, RowActivatedHdl));
-    mxTreeView->connect_column_clicked(LINK(this, ListView, ColumnClickedHdl));
     mxTreeView->connect_selection_changed(LINK(this, TemplateDlgLocalView, ListViewChangedHdl));
     mxTreeView->connect_command(LINK(this, TemplateDlgLocalView, PopupMenuHdl));
     mxTreeView->connect_key_press(LINK(this, TemplateDlgLocalView, KeyPressHdl));
@@ -271,6 +270,14 @@ bool TemplateDlgLocalView::IsVisible() const
     return ThumbnailView::IsVisible() || ListView::IsListViewVisible();
 }
 
+void TemplateDlgLocalView::GrabFocus()
+{
+    if (mViewMode == TemplateViewMode::ListView)
+        ListView::grab_focus();
+    else
+        ThumbnailView::GrabFocus();
+}
+
 void TemplateDlgLocalView::syncCursor()
 {
     if (mViewMode == TemplateViewMode::ListView)
@@ -278,11 +285,11 @@ void TemplateDlgLocalView::syncCursor()
         ListView::unselect_all();
         int nIndex = -1;
 
-        for (auto it = mFilteredItemList.cbegin(); it != mFilteredItemList.cend(); ++it)
+        for (const ThumbnailViewItem* pItem : mFilteredItemList)
         {
-            if ((*it)->mbSelected)
+            if (pItem->mbSelected)
             {
-                nIndex = ListView::get_index((*it)->mnId);
+                nIndex = ListView::get_index(pItem->mnId);
                 if (nIndex >= 0)
                 {
                     ListView::set_cursor(nIndex);
@@ -349,27 +356,18 @@ IMPL_LINK(TemplateDlgLocalView, PopupMenuHdl, const CommandEvent&, rCEvt, bool)
     if (rCEvt.GetCommand() != CommandEventId::ContextMenu)
         return false;
 
+    if (ListView::get_selected_rows().empty())
+        return true;
+
     if (rCEvt.IsMouseEvent())
-    {
-        if (ListView::get_selected_rows().empty())
-            return true;
-        Point aPosition(rCEvt.GetMousePosPixel());
-        maPosition = aPosition;
-        updateSelection();
-        if (mpSelectedItem)
-            maCreateContextMenuHdl.Call(mpSelectedItem);
-        return true;
-    }
+        maPosition = rCEvt.GetMousePosPixel();
     else
-    {
-        if (ListView::get_selected_rows().empty())
-            return true;
         maPosition = Point(0, 0);
-        updateSelection();
-        if (mpSelectedItem)
-            maCreateContextMenuHdl.Call(mpSelectedItem);
-        return true;
-    }
+
+    updateSelection();
+    if (mpSelectedItem)
+        maCreateContextMenuHdl.Call(mpSelectedItem);
+    return true;
 }
 
 IMPL_LINK_NOARG(TemplateDlgLocalView, ListViewChangedHdl, weld::ItemView&, void)

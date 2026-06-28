@@ -11,6 +11,12 @@
 #include <sfx2/templatelocalview.hxx>
 #include <sfx2/listview.hxx>
 
+enum class TemplateViewMode
+{
+    ListView,
+    ThumbnailView
+};
+
 class TemplateDlgLocalView final : public TemplateLocalView, public ListView
 {
     friend class TemplateDlgLocalViewUIObject;
@@ -41,6 +47,8 @@ public:
     virtual void Hide() override;
 
     bool IsVisible() const;
+
+    void GrabFocus();
 
     void connect_focus_rect(const Link<weld::Widget&, tools::Rectangle>& rLink)
     {

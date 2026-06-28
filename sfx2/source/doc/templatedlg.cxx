@@ -298,17 +298,16 @@ void SfxTemplateManagerDlg::setTemplateViewMode(TemplateViewMode eViewMode)
     {
         mxThumbnailViewButton->set_active(true);
         mxListViewButton->set_active(false);
-        maLocalView.ThumbnailView::GrabFocus();
     }
     else
     {
         assert(eViewMode == TemplateViewMode::ListView);
         mxListViewButton->set_active(true);
         mxThumbnailViewButton->set_active(false);
-        maLocalView.ListView::grab_focus();
     }
 
     maLocalView.setTemplateViewMode(eViewMode);
+    maLocalView.GrabFocus();
     maLocalView.Show();
 }
 
@@ -438,17 +437,11 @@ void SfxTemplateManagerDlg::readSettings ()
         mxActionBar->set_item_sensitive(MNI_ACTION_DELETE_FOLDER, !bIsBuiltInRegion);
     }
 
-    if (nViewMode == static_cast<sal_Int16>(TemplateViewMode::ListView)
-        || nViewMode == static_cast<sal_Int16>(TemplateViewMode::ThumbnailView))
-    {
-        TemplateViewMode eViewMode = static_cast<TemplateViewMode>(nViewMode);
-        setTemplateViewMode(eViewMode);
-    }
-    else
-    {
-        //Default ViewMode
-        setTemplateViewMode(TemplateViewMode::ThumbnailView);
-    }
+    const TemplateViewMode eViewMode
+        = (nViewMode == static_cast<sal_Int16>(TemplateViewMode::ListView))
+              ? TemplateViewMode::ListView
+              : TemplateViewMode::ThumbnailView;
+    setTemplateViewMode(eViewMode);
 }
 
 void SfxTemplateManagerDlg::writeSettings ()
@@ -555,8 +548,10 @@ void SfxTemplateManagerDlg::DefaultTemplateMenuSelectHdl(std::u16string_view rId
 
 IMPL_LINK_NOARG(SfxTemplateManagerDlg, OkClickHdl, weld::Button&, void)
 {
-   OnTemplateOpen();
-   m_xDialog->response(RET_OK);
+    const TemplateViewItem* pItem = *maSelTemplates.begin();
+    OpenTemplateHdl(pItem->getPath());
+
+    m_xDialog->response(RET_OK);
 }
 
 IMPL_LINK_NOARG(SfxTemplateManagerDlg, MoveTemplateHdl, void*, void)
@@ -1033,12 +1028,6 @@ void SfxTemplateManagerDlg::OnTemplateExport()
                                                   sText.replaceFirst("$1", OUString::number(nCount))));
         xBox->run();
     }
-}
-
-void SfxTemplateManagerDlg::OnTemplateOpen ()
-{
-    const TemplateViewItem* pItem = *maSelTemplates.begin();
-    OpenTemplateHdl(pItem->getPath());
 }
 
 void SfxTemplateManagerDlg::OnCategoryNew()
