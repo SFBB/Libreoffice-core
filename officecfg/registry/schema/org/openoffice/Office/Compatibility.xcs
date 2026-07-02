@@ -62,12 +62,6 @@
         </info>
         <value>false</value>
       </prop>
-      <prop oor:name="UseLineSpacing" oor:type="xs:boolean" oor:nillable="false">
-        <info>
-          <desc>Use OpenOffice.org 1.1 line spacing</desc>
-        </info>
-        <value>false</value>
-      </prop>
       <prop oor:name="AddTableSpacing" oor:type="xs:boolean" oor:nillable="false">
         <info>
           <desc>Add paragraph and table spacing at bottom of table cells</desc>
@@ -181,6 +175,12 @@
           <desc>Make whitespace character height not affect line height</desc>
         </info>
         <value>false</value>
+      </prop>
+      <prop oor:name="LineSpacingAsGapBelow" oor:type="xs:boolean" oor:nillable="false">
+        <info>
+          <desc>Place the line spacing gap below the line: aesthetically balanced, consistent, and interoperable</desc>
+        </info>
+        <value>true</value>
       </prop>
       <prop oor:name="BalanceSpacesAndIdeographicSpaces" oor:type="xs:boolean" oor:nillable="false">
         <info>

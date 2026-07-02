@@ -50,7 +50,6 @@ constexpr std::pair<OUString, TranslateId> options_list[]{
     { u"AddSpacingAtPages"_ustr, STR_COMPAT_OPT_ADDSPACINGATPAGES },
     { u"UseOurTabStopFormat"_ustr, STR_COMPAT_OPT_USEOURTABSTOPFORMAT },
     { u"NoExternalLeading"_ustr, STR_COMPAT_OPT_NOEXTERNALLEADING },
-    { u"UseLineSpacing"_ustr, STR_COMPAT_OPT_USELINESPACING },
     { u"AddTableSpacing"_ustr, STR_COMPAT_OPT_ADDTABLESPACING },
     { u"UseObjectPositioning"_ustr, STR_COMPAT_OPT_USEOBJECTPOSITIONING },
     { u"UseOurTextWrapping"_ustr, STR_COMPAT_OPT_USEOURTEXTWRAPPING },
@@ -68,6 +67,7 @@ constexpr std::pair<OUString, TranslateId> options_list[]{
     { u"ContinuousEndnotes"_ustr, STR_COMPAT_OPT_CONTINUOUS_ENDNOTES },
     { u"MsWordCompGridMetrics"_ustr, STR_COMPAT_OPT_MSWORDCOMPGRIDMETRICS },
     { u"IgnoreTabsAndBlanksForLineCalculation"_ustr, STR_COMPAT_OPT_IGNORETABSANDBLANKSFORLINECALCULATION },
+    { u"LineSpacingAsGapBelow"_ustr, STR_COMPAT_OPT_LINESPACINGASGAPBELOW },
     { u"MsWordUlTrailSpace"_ustr, STR_COMPAT_OPT_UNDERLINETRAILINGSPACE },
     { u"BalanceSpacesAndIdeographicSpaces"_ustr, STR_COMPAT_OPT_BALANCESPACESANDIDEOGRAPHICSPACES },
     { u"AdjustTableLineHeightsToGridHeight"_ustr, STR_COMPAT_OPT_ADJUSTTABLELINEHEIGHTSTOGRIDHEIGHT },
@@ -82,7 +82,6 @@ std::pair<DocumentSettingId, bool> DocumentSettingForOption(const OUString& opti
         { u"AddSpacingAtPages"_ustr, { DocumentSettingId::PARA_SPACE_MAX_AT_PAGES, false } },
         { u"UseOurTabStopFormat"_ustr, { DocumentSettingId::TAB_COMPAT, true } },
         { u"NoExternalLeading"_ustr, { DocumentSettingId::ADD_EXT_LEADING, true } },
-        { u"UseLineSpacing"_ustr, { DocumentSettingId::OLD_LINE_SPACING, false } },
         { u"AddTableSpacing"_ustr, { DocumentSettingId::ADD_PARA_SPACING_TO_TABLE_CELLS, false } },
         { u"UseObjectPositioning"_ustr, { DocumentSettingId::USE_FORMER_OBJECT_POS, false } },
         { u"UseOurTextWrapping"_ustr, { DocumentSettingId::USE_FORMER_TEXT_WRAPPING, false } },
@@ -101,6 +100,7 @@ std::pair<DocumentSettingId, bool> DocumentSettingForOption(const OUString& opti
 //        { u"AddTableLineSpacing"_ustr, { DocumentSettingId::ADD_PARA_LINE_SPACING_TO_TABLE_CELLS, false } },
         { u"MsWordCompGridMetrics"_ustr, { DocumentSettingId::MS_WORD_COMP_GRID_METRICS, false } },
         { u"IgnoreTabsAndBlanksForLineCalculation"_ustr, { DocumentSettingId::IGNORE_TABS_AND_BLANKS_FOR_LINE_CALCULATION, false } },
+        { u"LineSpacingAsGapBelow"_ustr, { DocumentSettingId::LINE_SPACING_AS_GAP_BELOW, false } },
         { u"MsWordUlTrailSpace"_ustr, { DocumentSettingId::MS_WORD_UL_TRAIL_SPACE, false } },
         { u"BalanceSpacesAndIdeographicSpaces"_ustr, { DocumentSettingId::BALANCE_SPACES_AND_IDEOGRAPHIC_SPACES, false } },
         { u"AdjustTableLineHeightsToGridHeight"_ustr, { DocumentSettingId::ADJUST_TABLE_LINE_HEIGHTS_TO_GRID_HEIGHT, false } },
@@ -279,10 +279,6 @@ bool SwCompatibilityOptPage::FillItemSet( SfxItemSet*  )
                         m_pWrtShell->SetAddExtLeading( !bChecked );
                         break;
 
-                    case DocumentSettingId::OLD_LINE_SPACING:
-                        m_pWrtShell->SetUseFormerLineSpacing( bChecked );
-                        break;
-
                     case DocumentSettingId::ADD_PARA_SPACING_TO_TABLE_CELLS:
                         m_pWrtShell->SetAddParaSpacingToTableCells( bChecked );
                         break;
@@ -350,6 +346,10 @@ bool SwCompatibilityOptPage::FillItemSet( SfxItemSet*  )
 
                     case DocumentSettingId::IGNORE_TABS_AND_BLANKS_FOR_LINE_CALCULATION:
                         m_pWrtShell->SetIgnoreTabsAndBlanksForLineCalculation(bChecked);
+                        break;
+
+                    case DocumentSettingId::LINE_SPACING_AS_GAP_BELOW:
+                        m_pWrtShell->SetLineSpacingAsGapBelow(bChecked);
                         break;
 
                     case DocumentSettingId::MS_WORD_UL_TRAIL_SPACE:
