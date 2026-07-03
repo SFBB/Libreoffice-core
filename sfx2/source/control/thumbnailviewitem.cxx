@@ -146,21 +146,21 @@ void ThumbnailViewItem::calculateItemsPosition (const tools::Long nThumbnailHeig
     maTextPos = aPos + Point(-aTextDev.getTextWidth(maTitle, 0, nMaxTextLength) / 2, nThumbnailHeight + nPadding * 2);
 }
 
-void ThumbnailViewItem::Paint (drawinglayer::processor2d::BaseProcessor2D *pProcessor,
-                               const ThumbnailItemAttributes *pAttrs)
+void ThumbnailViewItem::Paint(drawinglayer::processor2d::BaseProcessor2D* pProcessor,
+                              const ThumbnailItemAttributes& rAttrs)
 {
-    BColor aFillColor = pAttrs->aFillColor;
+    BColor aFillColor = rAttrs.aFillColor;
     drawinglayer::primitive2d::Primitive2DContainer aSeq(4);
     double fTransparence = 0.0;
 
     // Draw background
     if( mbSelected && mbHover)
-        aFillColor = pAttrs->aHighlightColor;
+        aFillColor = rAttrs.aHighlightColor;
     else if (mbSelected || mbHover)
     {
-        aFillColor = pAttrs->aHighlightColor;
+        aFillColor = rAttrs.aHighlightColor;
         if (mbHover)
-            fTransparence = pAttrs->fHighlightTransparence;
+            fTransparence = rAttrs.fHighlightTransparence;
     }
 
     sal_uInt32 nPrimitive = 0;
@@ -203,20 +203,19 @@ void ThumbnailViewItem::Paint (drawinglayer::processor2d::BaseProcessor2D *pProc
     }
 
     // Draw text below thumbnail
-    addTextPrimitives(maTitle, pAttrs, maTextPos, aSeq);
+    addTextPrimitives(maTitle, rAttrs, maTextPos, aSeq);
 
     pProcessor->process(aSeq);
 }
 
-void ThumbnailViewItem::addTextPrimitives (const OUString& rText, const ThumbnailItemAttributes *pAttrs, Point aPos, drawinglayer::primitive2d::Primitive2DContainer& rSeq)
+void ThumbnailViewItem::addTextPrimitives(const OUString& rText,
+                                          const ThumbnailItemAttributes& rAttrs, Point aPos,
+                                          drawinglayer::primitive2d::Primitive2DContainer& rSeq)
 {
     // adjust text drawing position according to text font
     drawinglayer::primitive2d::TextLayouterDevice aTextDev;
-    aTextDev.setFontAttribute(
-        pAttrs->aFontAttr,
-        pAttrs->aFontSize.getX(),
-        pAttrs->aFontSize.getY(),
-        css::lang::Locale());
+    aTextDev.setFontAttribute(rAttrs.aFontAttr, rAttrs.aFontSize.getX(), rAttrs.aFontSize.getY(),
+                              css::lang::Locale());
 
     aPos.setY(aPos.getY() + aTextDev.getTextHeight());
 
@@ -224,9 +223,9 @@ void ThumbnailViewItem::addTextPrimitives (const OUString& rText, const Thumbnai
     OUString aOrigText(mrParent.isDrawMnemonic() ? removeMnemonicFromString(rText, nMnemonicPos) : rText);
 
     TextEngine aTextEngine;
-    aTextEngine.SetFont(getVclFontFromFontAttribute(pAttrs->aFontAttr,
-                              pAttrs->aFontSize.getX(), pAttrs->aFontSize.getY(), 0,
-                              css::lang::Locale()));
+    aTextEngine.SetFont(getVclFontFromFontAttribute(rAttrs.aFontAttr, rAttrs.aFontSize.getX(),
+                                                    rAttrs.aFontSize.getY(), 0,
+                                                    css::lang::Locale()));
     aTextEngine.SetMaxTextWidth(maDrawArea.getOpenWidth());
     aTextEngine.SetText(aOrigText);
 
@@ -260,25 +259,19 @@ void ThumbnailViewItem::addTextPrimitives (const OUString& rText, const Thumbnai
 
         double nLineX = maDrawArea.Left() + (maDrawArea.getOpenWidth() - nLineWidth) / 2.0;
 
-        basegfx::B2DHomMatrix aTextMatrix( createScaleTranslateB2DHomMatrix(
-                    pAttrs->aFontSize.getX(), pAttrs->aFontSize.getY(),
-                    nLineX, double( aPos.Y() ) ) );
+        basegfx::B2DHomMatrix aTextMatrix(createScaleTranslateB2DHomMatrix(
+            rAttrs.aFontSize.getX(), rAttrs.aFontSize.getY(), nLineX, double(aPos.Y())));
 
         // setup color
-        BColor aTextColor = pAttrs->aTextColor;
+        BColor aTextColor = rAttrs.aTextColor;
         if(mbSelected)
         {
-            aTextColor = pAttrs->aHighlightTextColor;
+            aTextColor = rAttrs.aHighlightTextColor;
         }
 
-        rSeq[nPrimitives++] =
-                    new TextSimplePortionPrimitive2D(aTextMatrix,
-                                                     aText, nLineStart, nLineLength,
-                                                     std::vector<double>(),
-                                                     {},
-                                                     pAttrs->aFontAttr,
-                                                     css::lang::Locale(),
-                                                     aTextColor);
+        rSeq[nPrimitives++] = new TextSimplePortionPrimitive2D(
+            aTextMatrix, aText, nLineStart, nLineLength, std::vector<double>(), {},
+            rAttrs.aFontAttr, css::lang::Locale(), aTextColor);
 
         if (nMnemonicPos != -1 && nMnemonicPos >= nLineStart && nMnemonicPos < nLineStart + nLineLength)
         {

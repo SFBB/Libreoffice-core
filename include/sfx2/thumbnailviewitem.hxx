@@ -121,9 +121,10 @@ public:
                                  const tools::Long nPadding, sal_uInt32 nMaxTextLength,
                                  const ThumbnailItemAttributes *pAttrs);
 
-    virtual void Paint (drawinglayer::processor2d::BaseProcessor2D *pProcessor,
-                        const ThumbnailItemAttributes *pAttrs);
-    void addTextPrimitives (const OUString& rText, const ThumbnailItemAttributes *pAttrs, Point aPos, drawinglayer::primitive2d::Primitive2DContainer& rSeq);
+    virtual void Paint(drawinglayer::processor2d::BaseProcessor2D* pProcessor,
+                       const ThumbnailItemAttributes& rAttrs);
+    void addTextPrimitives(const OUString& rText, const ThumbnailItemAttributes& rAttrs, Point aPos,
+                           drawinglayer::primitive2d::Primitive2DContainer& rSeq);
 
     static rtl::Reference<drawinglayer::primitive2d::PolygonHairlinePrimitive2D>
         createBorderLine (const basegfx::B2DPolygon &rPolygon);
