@@ -44,6 +44,9 @@ QtInstanceTreeView::QtInstanceTreeView(QTreeView* pTreeView)
     assert(m_pTreeView->viewport());
     m_pTreeView->viewport()->installEventFilter(this);
 
+    assert(m_pTreeView->header() && m_pTreeView->header()->viewport());
+    m_pTreeView->header()->viewport()->installEventFilter(this);
+
     QtTreeViewItemDelegate* pDelegate = new QtTreeViewItemDelegate(
         m_pTreeView, [this](const QModelIndex& rIndex) { return signalEditingStarted(rIndex); },
         [this](const QModelIndex& rIndex, const QString& rNewText) {
@@ -637,15 +640,49 @@ void QtInstanceTreeView::set_sort_order(bool bAscending)
     });
 }
 
-void QtInstanceTreeView::set_sort_indicator(TriState, int)
+void QtInstanceTreeView::set_sort_indicator(TriState eState, int nColumn)
 {
-    assert(false && "Not implemented yet");
+    SolarMutexGuard g;
+
+    GetQtInstance().RunInMainThread([&] {
+        switch (eState)
+        {
+            case TRISTATE_FALSE:
+                m_pTreeView->header()->setSortIndicator(nColumn, Qt::DescendingOrder);
+                break;
+            case TRISTATE_TRUE:
+                m_pTreeView->header()->setSortIndicator(nColumn, Qt::AscendingOrder);
+                break;
+            case TRISTATE_INDET:
+                if (m_pTreeView->header()->sortIndicatorSection() == nColumn)
+                {
+                    // unset sort indicator for all columns/sections
+                    m_pTreeView->header()->setSortIndicator(-1, Qt::AscendingOrder);
+                }
+                break;
+        }
+    });
 }
 
-TriState QtInstanceTreeView::get_sort_indicator(int) const
+TriState QtInstanceTreeView::get_sort_indicator(int nColumn) const
 {
-    assert(false && "Not implemented yet");
-    return TRISTATE_INDET;
+    SolarMutexGuard g;
+
+    TriState eRet = TRISTATE_INDET;
+    GetQtInstance().RunInMainThread([&] {
+        QHeaderView* pHeaderView = m_pTreeView->header();
+        assert(pHeaderView);
+        if (pHeaderView->sortIndicatorSection() != nColumn)
+        {
+            eRet = TRISTATE_INDET;
+            return;
+        }
+
+        eRet = pHeaderView->sortIndicatorOrder() == Qt::SortOrder::AscendingOrder ? TRISTATE_TRUE
+                                                                                  : TRISTATE_FALSE;
+    });
+
+    return eRet;
 }
 
 int QtInstanceTreeView::get_sort_column() const
@@ -898,6 +935,9 @@ bool QtInstanceTreeView::eventFilter(QObject* pObject, QEvent* pEvent)
     if (pEvent->type() == QEvent::ToolTip && pObject == m_pTreeView->viewport())
         return handleViewPortToolTipEvent(static_cast<QHelpEvent&>(*pEvent));
 
+    if (pObject == m_pTreeView->header()->viewport())
+        return handleHeaderViewportEvent(*pEvent);
+
     return QtInstanceWidget::eventFilter(pObject, pEvent);
 }
 
@@ -943,6 +983,24 @@ void QtInstanceTreeView::setImage(const weld::TreeIter& rIter, const QPixmap& rP
         QModelIndex aIndex = modelIndex(rIter, nCol);
         m_pModel->setData(aIndex, rPixmap, Qt::DecorationRole);
     });
+}
+
+bool QtInstanceTreeView::handleHeaderViewportEvent(const QEvent& rEvent)
+{
+    if (rEvent.type() != QEvent::MouseButtonRelease)
+        return false;
+
+    const QMouseEvent& rMouseEvent = static_cast<const QMouseEvent&>(rEvent);
+    if (rMouseEvent.button() != Qt::MouseButton::LeftButton)
+        return false;
+
+    const int nColumnIndex = m_pTreeView->header()->logicalIndexAt(rMouseEvent.pos());
+    if (nColumnIndex < 0)
+        return false;
+
+    SolarMutexGuard g;
+    signal_column_header_clicked(nColumnIndex);
+    return true;
 }
 
 bool QtInstanceTreeView::handleViewPortToolTipEvent(const QHelpEvent& rHelpEvent)
