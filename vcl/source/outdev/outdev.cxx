@@ -142,7 +142,7 @@ void OutputDevice::dispose()
     mpOutDevData->mpRotateDev.disposeAndClear();
 
     // #i75163#
-    ImplInvalidateViewTransform();
+    mpMapper->InvalidateViewTransform();
 
     mpOutDevData.reset();
 
@@ -448,9 +448,9 @@ void OutputDevice::DrawOutDev( const Point& rDestPt, const Size& rDestSize,
 
     if (nSrcWidth && nSrcHeight && nDestWidth && nDestHeight)
     {
-        SalTwoRect aPosAry(ImplLogicXToDevicePixel(rSrcPt.X()), ImplLogicYToDevicePixel(rSrcPt.Y()),
+        SalTwoRect aPosAry(mpMapper->LogicToDevicePixelX(rSrcPt.X()), mpMapper->LogicToDevicePixelY(rSrcPt.Y()),
                            nSrcWidth, nSrcHeight,
-                           ImplLogicXToDevicePixel(rDestPt.X()), ImplLogicYToDevicePixel(rDestPt.Y()),
+                           mpMapper->LogicToDevicePixelX(rDestPt.X()), mpMapper->LogicToDevicePixelY(rDestPt.Y()),
                            nDestWidth, nDestHeight);
 
         AdjustTwoRect( aPosAry, GetOutputRectPixel() );
@@ -492,12 +492,12 @@ void OutputDevice::DrawOutDev( const Point& rDestPt, const Size& rDestSize,
     if ( mbOutputClipped )
         return;
 
-    SalTwoRect aPosAry(rOutDev.ImplLogicXToDevicePixel(rSrcPt.X()),
-                             rOutDev.ImplLogicYToDevicePixel(rSrcPt.Y()),
+    SalTwoRect aPosAry(rOutDev.mpMapper->LogicToDevicePixelX(rSrcPt.X()),
+                             rOutDev.mpMapper->LogicToDevicePixelY(rSrcPt.Y()),
                              rOutDev.LogicWidthToDevicePixel(rSrcSize.Width()),
                              rOutDev.LogicHeightToDevicePixel(rSrcSize.Height()),
-                             ImplLogicXToDevicePixel(rDestPt.X()),
-                             ImplLogicYToDevicePixel(rDestPt.Y()),
+                             mpMapper->LogicToDevicePixelX(rDestPt.X()),
+                             mpMapper->LogicToDevicePixelY(rDestPt.Y()),
                              LogicWidthToDevicePixel(rDestSize.Width()),
                              LogicHeightToDevicePixel(rDestSize.Height()));
 
@@ -531,9 +531,9 @@ void OutputDevice::CopyArea( const Point& rDestPt,
     tools::Long nSrcHeight = LogicHeightToDevicePixel(rSrcSize.Height());
     if (nSrcWidth && nSrcHeight)
     {
-        SalTwoRect aPosAry(ImplLogicXToDevicePixel(rSrcPt.X()), ImplLogicYToDevicePixel(rSrcPt.Y()),
+        SalTwoRect aPosAry(mpMapper->LogicToDevicePixelX(rSrcPt.X()), mpMapper->LogicToDevicePixelY(rSrcPt.Y()),
                            nSrcWidth, nSrcHeight,
-                           ImplLogicXToDevicePixel(rDestPt.X()), ImplLogicYToDevicePixel(rDestPt.Y()),
+                           mpMapper->LogicToDevicePixelX(rDestPt.X()), mpMapper->LogicToDevicePixelY(rDestPt.Y()),
                            nSrcWidth, nSrcHeight);
 
         AdjustTwoRect( aPosAry, GetOutputRectPixel() );
@@ -637,17 +637,17 @@ bool OutputDevice::ImplIsAntiparallel() const
 
 void    OutputDevice::ReMirror( Point &rPoint ) const
 {
-    rPoint.setX( GetOutOffXPixel() + GetOutputWidthPixel() - 1 - rPoint.X() + GetOutOffXPixel() );
+    rPoint.setX( GetDeviceOriginX() + GetOutputWidthPixel() - 1 - rPoint.X() + GetDeviceOriginX() );
 }
 void    OutputDevice::ReMirror( tools::Rectangle &rRect ) const
 {
     tools::Long nWidth = rRect.Right() - rRect.Left();
 
-    //long lc_x = rRect.nLeft - GetOutOffXPixel();    // normalize
+    //long lc_x = rRect.nLeft - GetDeviceOriginX();    // normalize
     //lc_x = GetOutputWidthPixel() - nWidth - 1 - lc_x;  // mirror
-    //rRect.nLeft = lc_x + GetOutOffXPixel();         // re-normalize
+    //rRect.nLeft = lc_x + GetDeviceOriginX();         // re-normalize
 
-    rRect.SetLeft( GetOutOffXPixel() + GetOutputWidthPixel() - nWidth - 1 - rRect.Left() + GetOutOffXPixel() );
+    rRect.SetLeft( GetDeviceOriginX() + GetOutputWidthPixel() - nWidth - 1 - rRect.Left() + GetDeviceOriginX() );
     rRect.SetRight( rRect.Left() + nWidth );
 }
 
@@ -745,7 +745,7 @@ css::uno::Reference< css::rendering::XCanvas > OutputDevice::ImplGetCanvas( bool
      */
     Sequence< Any > aArg{
         Any(reinterpret_cast<sal_Int64>(this)),
-        Any(css::awt::Rectangle( GetOutOffXPixel(), GetOutOffYPixel(), GetOutputWidthPixel(), GetOutputHeightPixel() )),
+        Any(css::awt::Rectangle( GetDeviceOriginX(), GetDeviceOriginY(), GetOutputWidthPixel(), GetOutputHeightPixel() )),
         Any(false),
         Any(Reference< css::awt::XWindow >()),
         GetSystemGfxDataAny()

@@ -300,10 +300,10 @@ public:
     tools::Long                 GetOutputHeightPixel() const;
     void                        SetOutputWidthPixel(tools::Long nWidth);
     void                        SetOutputHeightPixel(tools::Long nHeight);
-    tools::Long                 GetOutOffXPixel() const;
-    tools::Long                 GetOutOffYPixel() const;
-    void                        SetOutOffXPixel(tools::Long nOutOffX);
-    void                        SetOutOffYPixel(tools::Long nOutOffY);
+    tools::Long                 GetDeviceOriginX() const;
+    tools::Long                 GetDeviceOriginY() const;
+    void                        SetDeviceOriginX(tools::Long nOutOffX);
+    void                        SetDeviceOriginY(tools::Long nOutOffY);
     Point                       GetOutputOffPixel() const;
     tools::Rectangle            GetOutputRectPixel() const
                                     { return tools::Rectangle(GetOutputOffPixel(), GetOutputSizePixel() ); }
@@ -1577,18 +1577,15 @@ public:
     virtual void                SetMetafileMapMode(const MapMode& rNewMapMode, bool bIsRecord);
     const MapMode&              GetMapMode() const;
 
+    basegfx::B2DHomMatrix GetViewTransformation() const;
+    basegfx::B2DHomMatrix GetViewTransformation(const MapMode& rMapMode) const;
+    basegfx::B2DHomMatrix GetInverseViewTransformation() const;
+    basegfx::B2DHomMatrix GetInverseViewTransformation(const MapMode& rMapMode) const;
+
 protected:
     virtual void ImplInitMapModeObjects();
 
 public:
-     // #i75163#
-    basegfx::B2DHomMatrix       GetViewTransformation() const;
-    basegfx::B2DHomMatrix       GetInverseViewTransformation() const;
-
-    SAL_DLLPRIVATE basegfx::B2DHomMatrix GetViewTransformation( const MapMode& rMapMode ) const;
-    basegfx::B2DHomMatrix       GetInverseViewTransformation( const MapMode& rMapMode ) const;
-
-
     /** Set an offset in pixel
 
         This method offsets every drawing operation that converts its
@@ -1811,44 +1808,6 @@ private:
      @returns vcl::Region based on device pixel coordinates and units.
      */
     SAL_DLLPRIVATE vcl::Region       ImplPixelToDevicePixel( const vcl::Region& rRegion ) const;
-
-    /** Invalidate the view transformation.
-
-     @since AOO bug 75163 (OpenOffice.org 2.4.3 - OOH 680 milestone 212)
-     */
-    SAL_DLLPRIVATE void         ImplInvalidateViewTransform();
-
-    /** Get device transformation.
-
-     @since AOO bug 75163 (OpenOffice.org 2.4.3 - OOH 680 milestone 212)
-     */
-    SAL_DLLPRIVATE basegfx::B2DHomMatrix ImplGetDeviceTransformation() const;
-
-    /** Convert a logical X coordinate to a device pixel's X coordinate.
-
-     To get the device's X coordinate, it must calculate the mapping offset
-     coordinate X position (if there is one - if not then it just adds
-     the pseudo-window offset to the logical X coordinate), the X-DPI of
-     the device and the mapping's X scaling factor.
-
-     @param         nX          Logical X coordinate
-
-     @returns Device's X pixel coordinate
-     */
-    SAL_DLLPRIVATE tools::Long         ImplLogicXToDevicePixel( tools::Long nX ) const;
-
-    /** Convert a logical Y coordinate to a device pixel's Y coordinate.
-
-     To get the device's Y coordinate, it must calculate the mapping offset
-     coordinate Y position (if there is one - if not then it just adds
-     the pseudo-window offset to the logical Y coordinate), the Y-DPI of
-     the device and the mapping's Y scaling factor.
-
-     @param         nY          Logical Y coordinate
-
-     @returns Device's Y pixel coordinate
-     */
-    SAL_DLLPRIVATE tools::Long         ImplLogicYToDevicePixel( tools::Long nY ) const;
 
     SAL_DLLPRIVATE double ImplDevicePixelToLogicWidthDouble(double nWidth) const;
     SAL_DLLPRIVATE double ImplDevicePixelToLogicHeightDouble(double nHeight) const;

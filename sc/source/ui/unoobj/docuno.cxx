@@ -862,8 +862,8 @@ void ScModelObj::postMouseEvent(int nType, int nX, int nY, int nCount, int nButt
         pGridWindow->GrabFocus();
 
     // Calc operates in pixels...
-    const Point aPosition(nX * pViewData->GetPPTX() + pGridWindow->GetOutOffXPixel(),
-                          nY * pViewData->GetPPTY() + pGridWindow->GetOutOffYPixel());
+    const Point aPosition(nX * pViewData->GetPPTX() + pGridWindow->GetDeviceOriginX(),
+                          nY * pViewData->GetPPTY() + pGridWindow->GetDeviceOriginY());
 
     VclEventId aEvent = VclEventId::NONE;
     MouseEvent aData(aPosition, nCount, MouseEventModifiers::SIMPLECLICK, nButtons, nModifier);

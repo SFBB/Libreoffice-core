@@ -274,8 +274,8 @@ namespace
 tools::Rectangle calcualteCursorRect(Point const& rPosition, Size const rSize, vcl::Window* pWindow, vcl::Window* pParent)
 {
     Point aPositionPixel = pWindow->LogicToPixel(rPosition);
-    const tools::Long nX = pWindow->GetOutOffXPixel() + aPositionPixel.X() - pParent->GetOutOffXPixel();
-    const tools::Long nY = pWindow->GetOutOffYPixel() + aPositionPixel.Y() - pParent->GetOutOffYPixel();
+    const tools::Long nX = pWindow->GetDeviceOriginX() + aPositionPixel.X() - pParent->GetDeviceOriginX();
+    const tools::Long nY = pWindow->GetDeviceOriginY() + aPositionPixel.Y() - pParent->GetDeviceOriginY();
 
     Size aSizePixel = pWindow->LogicToPixel(rSize);
     if (!aSizePixel.Width())

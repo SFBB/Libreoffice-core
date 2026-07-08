@@ -59,8 +59,8 @@ namespace cairocanvas
         implInit(rSurfaceProvider, rRefDevice);
 
         OutputDevice* pOutDev = getOutputDevice();
-        mpSurface = pOutDev->CreateSurface(pOutDev->GetOutOffXPixel(),
-                                           pOutDev->GetOutOffYPixel(),
+        mpSurface = pOutDev->CreateSurface(pOutDev->GetDeviceOriginX(),
+                                           pOutDev->GetDeviceOriginY(),
                                            pOutDev->GetOutputWidthPixel(),
                                            pOutDev->GetOutputHeightPixel());
     }
@@ -86,14 +86,14 @@ namespace cairocanvas
 
         // X11 only
         bool bReuseSurface = mpSurface &&
-                             mpSurface->Resize(rSize.getWidth() + pOutDev->GetOutOffXPixel(),
-                                               rSize.getHeight() + pOutDev->GetOutOffYPixel());
+                             mpSurface->Resize(rSize.getWidth() + pOutDev->GetDeviceOriginX(),
+                                               rSize.getHeight() + pOutDev->GetDeviceOriginY());
 
         if (!bReuseSurface)
         {
             mpSurface = pOutDev->CreateSurface(
-                pOutDev->GetOutOffXPixel(),
-                pOutDev->GetOutOffYPixel(),
+                pOutDev->GetDeviceOriginX(),
+                pOutDev->GetDeviceOriginY(),
                 rSize.getWidth(), rSize.getHeight() );
         }
     }

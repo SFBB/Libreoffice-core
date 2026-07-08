@@ -103,10 +103,10 @@ PaintBufferGuard::PaintBufferGuard(ImplFrameData* pFrameData, vcl::Window* pWind
     pFrameData->mpBuffer->SetLayoutMode(rDev.GetLayoutMode());
     pFrameData->mpBuffer->SetDigitLanguage(rDev.GetDigitLanguage());
 
-    mnOutOffX = pFrameData->mpBuffer->GetOutOffXPixel();
-    mnOutOffY = pFrameData->mpBuffer->GetOutOffYPixel();
-    pFrameData->mpBuffer->SetOutOffXPixel(pWindow->GetOutOffXPixel());
-    pFrameData->mpBuffer->SetOutOffYPixel(pWindow->GetOutOffYPixel());
+    mnOutOffX = pFrameData->mpBuffer->GetDeviceOriginX();
+    mnOutOffY = pFrameData->mpBuffer->GetDeviceOriginY();
+    pFrameData->mpBuffer->SetDeviceOriginX(pWindow->GetDeviceOriginX());
+    pFrameData->mpBuffer->SetDeviceOriginY(pWindow->GetDeviceOriginY());
     pFrameData->mpBuffer->EnableRTL(pWindow->IsRTLEnabled());
 }
 
@@ -141,8 +141,8 @@ PaintBufferGuard::~PaintBufferGuard()
     }
 
     // Restore buffer state.
-    mpFrameData->mpBuffer->SetOutOffXPixel(mnOutOffX);
-    mpFrameData->mpBuffer->SetOutOffYPixel(mnOutOffY);
+    mpFrameData->mpBuffer->SetDeviceOriginX(mnOutOffX);
+    mpFrameData->mpBuffer->SetDeviceOriginY(mnOutOffY);
 
     mpFrameData->mpBuffer->Pop();
     mpFrameData->mpBuffer->SetSettings(maSettings);
@@ -985,7 +985,7 @@ vcl::Region Window::GetPaintRegion() const
     if ( mpWindowImpl->mpPaintRegion )
     {
         vcl::Region aRegion = *mpWindowImpl->mpPaintRegion;
-        aRegion.Move( -GetOutDev()->GetOutOffXPixel(), -GetOutDev()->GetOutOffYPixel() );
+        aRegion.Move( -GetOutDev()->GetDeviceOriginX(), -GetOutDev()->GetDeviceOriginY() );
         return PixelToLogic( aRegion );
     }
     else
@@ -1097,7 +1097,7 @@ void Window::PixelInvalidate(const tools::Rectangle* pRectangle)
     // Added for dialog items. Pass invalidation to the parent window.
     else if (VclPtr<vcl::Window> pParent = GetParentWithLOKNotifier())
     {
-        const tools::Rectangle aRect(Point(GetOutOffXPixel(), GetOutOffYPixel()), GetSizePixel());
+        const tools::Rectangle aRect(Point(GetDeviceOriginX(), GetDeviceOriginY()), GetSizePixel());
         pParent->PixelInvalidate(&aRect);
     }
 }
@@ -1291,11 +1291,11 @@ void Window::ImplPaintToDevice(OutputDevice& rTargetOutDev, const Point& i_rPos)
         {
             if( pChild->mpWindowImpl->mpFrame == mpWindowImpl->mpFrame && pChild->IsVisible() )
             {
-                tools::Long nDeltaX = pChild->GetOutDev()->GetOutOffXPixel() - GetOutDev()->GetOutOffXPixel();
+                tools::Long nDeltaX = pChild->GetOutDev()->GetDeviceOriginX() - GetOutDev()->GetDeviceOriginX();
                 if( bHasMirroredGraphics )
                     nDeltaX = GetOutDev()->GetOutputWidthPixel() - nDeltaX - pChild->GetOutDev()->GetOutputWidthPixel();
 
-                tools::Long nDeltaY = pChild->GetOutOffYPixel() - GetOutOffYPixel();
+                tools::Long nDeltaY = pChild->GetDeviceOriginY() - GetDeviceOriginY();
 
                 Point aPos( i_rPos );
                 aPos += Point(nDeltaX, nDeltaY);
@@ -1411,11 +1411,11 @@ void Window::ImplPaintToDevice(OutputDevice& rTargetOutDev, const Point& i_rPos)
     {
         if( pChild->mpWindowImpl->mpFrame == mpWindowImpl->mpFrame && pChild->IsVisible() )
         {
-            tools::Long nDeltaX = pChild->GetOutDev()->GetOutOffXPixel() - GetOutDev()->GetOutOffXPixel();
+            tools::Long nDeltaX = pChild->GetOutDev()->GetDeviceOriginX() - GetOutDev()->GetDeviceOriginX();
 
             if( pOutDev->HasMirroredGraphics() )
                 nDeltaX = GetOutDev()->GetOutputWidthPixel() - nDeltaX - pChild->GetOutDev()->GetOutputWidthPixel();
-            tools::Long nDeltaY = pChild->GetOutOffYPixel() - GetOutOffYPixel();
+            tools::Long nDeltaY = pChild->GetDeviceOriginY() - GetDeviceOriginY();
             Point aPos( i_rPos );
             // tdf#165706 those delta values are in pixels, but aPos copied from
             // i_rPos *may* be in logical coordinates if a MapMode is set at
