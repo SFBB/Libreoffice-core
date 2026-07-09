@@ -1960,6 +1960,31 @@ CPPUNIT_TEST_FIXTURE(Test, testInlineFormulaTextMode)
     testFitsOnOnePage();
 }
 
+CPPUNIT_TEST_FIXTURE(Test, testTdf170236CommentInFormula)
+{
+    // tdf#170236: a w:commentReference inside an m:oMath formula was dropped on import
+    createSwDoc("tdf170236.docx");
+    uno::Reference<text::XTextFieldsSupplier> xTextFieldsSupplier(mxComponent, uno::UNO_QUERY);
+    uno::Reference<container::XEnumerationAccess> xFieldsAccess(xTextFieldsSupplier->getTextFields());
+    uno::Reference<container::XEnumeration> xFields(xFieldsAccess->createEnumeration());
+
+    bool bFoundAnnotation = false;
+    while (xFields->hasMoreElements())
+    {
+        uno::Reference<lang::XServiceInfo> xServiceInfo(xFields->nextElement(), uno::UNO_QUERY);
+        if (xServiceInfo->supportsService(u"com.sun.star.text.textfield.Annotation"_ustr))
+        {
+            bFoundAnnotation = true;
+            uno::Reference<beans::XPropertySet> xPropertySet(xServiceInfo, uno::UNO_QUERY);
+            OUString aContent;
+            xPropertySet->getPropertyValue(u"Content"_ustr) >>= aContent;
+            CPPUNIT_ASSERT_EQUAL(u"Hello World!"_ustr, aContent);
+            break;
+        }
+    }
+    CPPUNIT_ASSERT_MESSAGE("No annotation found in document", bFoundAnnotation);
+}
+
 // tests should only be added to ooxmlIMPORT *if* they fail round-tripping in ooxmlEXPORT
 
 } // end of anonymous namespace

@@ -2492,9 +2492,18 @@ void OOXMLFastContextHandlerLinear::lcl_endFastElement(Token_t Element)
 }
 
 uno::Reference< xml::sax::XFastContextHandler >
-OOXMLFastContextHandlerLinear::lcl_createFastChildContext(Token_t,
-    const uno::Reference< xml::sax::XFastAttributeList >&)
+OOXMLFastContextHandlerLinear::lcl_createFastChildContext(Token_t Element,
+    const uno::Reference< xml::sax::XFastAttributeList >& Attribs)
 {
+    // tdf#170236: buffering a w:commentReference would feed it to Starmath, which
+    // drops it; capture the id instead and resolve it after the formula (process()).
+    if (Element == W_TOKEN(commentReference))
+    {
+        if (Attribs && Attribs->hasAttribute(W_TOKEN(id)))
+            m_aCommentIds.push_back(Attribs->getValue(W_TOKEN(id)).toInt32());
+        return nullptr;
+    }
+
     uno::Reference< xml::sax::XFastContextHandler > xContextHandler;
     xContextHandler.set( this );
     return xContextHandler;
@@ -2556,6 +2565,10 @@ void OOXMLFastContextHandlerMath::process()
     else
         pProps->add(NS_ooxml::LN_starmath, pVal, OOXMLProperty::ATTRIBUTE);
     mpStream->props( pProps.get() );
+
+    // tdf#170236: resolve now, so the anchor lands right after the emitted formula
+    for (sal_Int32 nCommentId : m_aCommentIds)
+        resolveComment(nCommentId);
 }
 
 OOXMLFastContextHandlerCommentEx::OOXMLFastContextHandlerCommentEx(
