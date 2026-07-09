@@ -140,6 +140,10 @@ private:
     // Matrix master that recomputes its range at interpret time. False on a
     // static array master, which keeps its declared range frozen.
     bool mbDynamicArrayMaster : 1 = false;
+    // True if the cell is allowed to auto-promote to a dynamic-array
+    // master. False keeps the cell as a plain single-cell formula that
+    // returns the upper-left of any array result.
+    bool mbAutoDynamicArrayEligible : 1 = false;
     ScMatrixMode    cMatrixFlag      : 8;
     sal_uInt16      nSeenInIteration : 16;   // Iteration cycle in which the cell was last encountered
     SvNumFormatType nFormatType      : 16;
@@ -361,6 +365,14 @@ public:
     bool IsDynamicArrayMaster() const { return mbDynamicArrayMaster; }
     SC_DLLPUBLIC void SetDynamicArrayMaster( bool bDynamic );
     SC_DLLPUBLIC void ResolveImplicitIntersection();
+    // Run this on the bare token array before it is wrapped in a cell.
+    // The cell constructor finalizes the parse array. Once finalized,
+    // appending a new token silently no-ops. The document and position
+    // arguments compile a missing RPN so the array-intent walk has the
+    // post-fix order it needs.
+    SC_DLLPUBLIC static void ResolveImplicitIntersection(ScTokenArray& rCode, ScDocument& rDoc,
+                                                        const ScAddress& rPos);
+    void SetAutoDynamicArrayEligible( bool bEligible ) { mbAutoDynamicArrayEligible = bEligible; }
     ScTokenArray*   GetCode() { return pCode;}
     const ScTokenArray* GetCode() const { return pCode;}
 

@@ -244,7 +244,7 @@ int QtInstanceTreeView::get_iter_depth(const weld::TreeIter& rIter) const
     return nDepth;
 }
 
-int QtInstanceTreeView::iter_n_children(const weld::TreeIter& rIter) const
+int QtInstanceTreeView::do_iter_n_children(const weld::TreeIter& rIter) const
 {
     const QtInstanceTreeIter& rQtIter = static_cast<const QtInstanceTreeIter&>(rIter);
     return m_pModel->rowCount(rQtIter.modelIndex());
@@ -1038,7 +1038,7 @@ void QtInstanceTreeView::handleDataChanged(const QModelIndex& rTopLeft,
         // use special index of -1 for the "expander toggle"
         nColIndex = -1;
 
-    signal_toggled(iter_col(QtInstanceTreeIter(*this, rTopLeft), nColIndex));
+    signal_toggled(iter_col(treeIter(rTopLeft), nColIndex));
 }
 
 void QtInstanceTreeView::signalCollapsing(const QModelIndex& rIndex)

@@ -950,9 +950,7 @@ void XclExpFormulaCell::SaveXml( XclExpXmlStream& rStrm )
     // Mark dynamic array masters with cm="1" so it is recognised as a
     // dynamic array and reads the matching dynamicArrayProperties out of
     // xl/metadata.xml.
-    const bool bDynamicArrayMaster
-        = mrScFmlaCell.GetMatrixFlag() == ScMatrixMode::Formula
-          && mrScFmlaCell.GetCode() && mrScFmlaCell.GetCode()->HasDynamicArrayFunction();
+    const bool bDynamicArrayMaster = mrScFmlaCell.IsDynamicArrayMaster();
     if (bDynamicArrayMaster)
         rStrm.NoteDynamicArrayFormula();
 

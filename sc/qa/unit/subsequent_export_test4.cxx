@@ -12,6 +12,7 @@
 #include <docsh.hxx>
 #include <scitems.hxx>
 #include <attrib.hxx>
+#include <formulacell.hxx>
 #include <stlpool.hxx>
 #include <validat.hxx>
 #include <scresid.hxx>
@@ -19,6 +20,7 @@
 #include <subtotalparam.hxx>
 #include <globstr.hrc>
 #include <dpobject.hxx>
+#include <formula/errorcodes.hxx>
 
 #include <comphelper/processfactory.hxx>
 #include <editeng/wghtitem.hxx>
@@ -153,6 +155,61 @@ CPPUNIT_TEST_FIXTURE(ScExportTest4, testTdf120177)
                                           "table:table/office:forms/form:form/form:radio[2]",
                                           "group-name");
     CPPUNIT_ASSERT_EQUAL(sGroupName1, sGroupName2);
+}
+
+CPPUNIT_TEST_FIXTURE(ScExportTest4, testSingleValueDroppedOnXlsExport)
+{
+    // The @ implicit-intersection marker survives an XLS round trip
+    // even though the BIFF stream has no token for it.
+
+    createScDoc();
+    ScDocument* pDoc = getScDoc();
+
+    pDoc->SetValue(ScAddress(1, 0, 0), 10.0);
+    pDoc->SetValue(ScAddress(1, 1, 0), 20.0);
+    pDoc->SetValue(ScAddress(1, 2, 0), 30.0);
+    pDoc->SetValue(ScAddress(1, 3, 0), 40.0);
+
+    pDoc->SetFormula(ScAddress(0, 0, 0), u"=@TRANSPOSE(B1:B4)"_ustr,
+                     formula::FormulaGrammar::GRAM_NATIVE);
+    CPPUNIT_ASSERT_EQUAL(10.0, pDoc->GetValue(ScAddress(0, 0, 0)));
+
+    saveAndReload(TestFilter::XLS);
+
+    pDoc = getScDoc();
+    ScFormulaCell* pCell = pDoc->GetFormulaCell(ScAddress(0, 0, 0));
+    CPPUNIT_ASSERT(pCell);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(FormulaError::NONE), sal_Int32(pCell->GetErrCode()));
+    CPPUNIT_ASSERT_EQUAL(u"=@TRANSPOSE(B1:B4)"_ustr, pDoc->GetFormula(0, 0, 0));
+    CPPUNIT_ASSERT_EQUAL(10.0, pDoc->GetValue(ScAddress(0, 0, 0)));
+}
+
+CPPUNIT_TEST_FIXTURE(ScExportTest4, testSingleValueOnArithmeticSurvivesXlsRoundTrip)
+{
+    // The @ marker survives an XLS round trip even when the array
+    // intent comes from a plain arithmetic operator on a range, not
+    // from a matrix function.
+
+    createScDoc();
+    ScDocument* pDoc = getScDoc();
+
+    pDoc->SetValue(ScAddress(0, 0, 0), 1.0);
+    pDoc->SetValue(ScAddress(0, 1, 0), 2.0);
+    pDoc->SetValue(ScAddress(0, 2, 0), 3.0);
+    pDoc->SetValue(ScAddress(0, 3, 0), 4.0);
+
+    pDoc->SetFormula(ScAddress(1, 0, 0), u"=@A1:A4 + 10"_ustr,
+                     formula::FormulaGrammar::GRAM_NATIVE);
+    CPPUNIT_ASSERT_EQUAL(11.0, pDoc->GetValue(ScAddress(1, 0, 0)));
+
+    saveAndReload(TestFilter::XLS);
+
+    pDoc = getScDoc();
+    ScFormulaCell* pCell = pDoc->GetFormulaCell(ScAddress(1, 0, 0));
+    CPPUNIT_ASSERT(pCell);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(FormulaError::NONE), sal_Int32(pCell->GetErrCode()));
+    CPPUNIT_ASSERT_EQUAL(u"=@A1:A4+10"_ustr, pDoc->GetFormula(1, 0, 0));
+    CPPUNIT_ASSERT_EQUAL(11.0, pDoc->GetValue(ScAddress(1, 0, 0)));
 }
 
 CPPUNIT_TEST_FIXTURE(ScExportTest4, testTdf85553)
@@ -1223,6 +1280,42 @@ CPPUNIT_TEST_FIXTURE(ScExportTest4, testCool15769MinimalDBRanges)
     // these tables should exist regardless of the change
     CPPUNIT_ASSERT(xNameAccess->hasByName(u"xl/tables/table2.xml"_ustr));
     CPPUNIT_ASSERT(xNameAccess->hasByName(u"xl/tables/table3.xml"_ustr));
+}
+
+CPPUNIT_TEST_FIXTURE(ScExportTest4, testSingleOperatorXlsxRoundTrip)
+{
+    // The @ operator round-trips through XLSX as _xlfn.SINGLE.
+
+    createScDoc();
+    ScDocument* pDoc = getScDoc();
+
+    // Fill A1:A3 so the @ has a real range to collapse.
+    pDoc->SetValue(ScAddress(0, 0, 0), 1.0);
+    pDoc->SetValue(ScAddress(0, 1, 0), 2.0);
+    pDoc->SetValue(ScAddress(0, 2, 0), 3.0);
+
+    // Author =@(A1:A3+0) at B1. The @ collapses the array result of
+    // (A1:A3+0) to its first element, so B1 reads 1.
+    pDoc->SetFormula(ScAddress(1, 0, 0), u"=@(A1:A3+0)"_ustr, formula::FormulaGrammar::GRAM_NATIVE);
+    CPPUNIT_ASSERT_EQUAL(1.0, pDoc->GetValue(ScAddress(1, 0, 0)));
+
+    save(TestFilter::XLSX);
+
+    // The saved file carries the _xlfn.SINGLE wrapper, not the bare @.
+    // The operand brings its own parentheses, so the result has no
+    // redundant outer pair.
+    xmlDocUniquePtr pSheet = parseExport(u"xl/worksheets/sheet1.xml"_ustr);
+    CPPUNIT_ASSERT(pSheet);
+    assertXPathContent(pSheet, "/x:worksheet/x:sheetData/x:row[1]/x:c[2]/x:f",
+                       u"_xlfn.SINGLE(A1:A3+0)");
+
+    // Reload the saved file. The importer maps _xlfn.SINGLE to the @
+    // operator through the OOXML symbol table, so the formula reads
+    // back exactly as authored.
+    saveAndReload(TestFilter::XLSX);
+    pDoc = getScDoc();
+    CPPUNIT_ASSERT_EQUAL(u"=@(A1:A3+0)"_ustr, pDoc->GetFormula(1, 0, 0));
+    CPPUNIT_ASSERT_EQUAL(1.0, pDoc->GetValue(ScAddress(1, 0, 0)));
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();
