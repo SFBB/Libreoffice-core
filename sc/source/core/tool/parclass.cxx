@@ -60,6 +60,7 @@ const ScParameterClassification::RawData ScParameterClassification::pRawData[] =
     { ocChooseCols,      {{ ReferenceOrRefArray, ReferenceOrRefArray             }, 1, ForceArrayReturn }},
     { ocChooseRows,      {{ ReferenceOrRefArray, ReferenceOrRefArray             }, 1, ForceArrayReturn }},
     { ocLet,             {{ Value, ReferenceOrRefArray, ReferenceOrRefArray      }, 2, Value }},
+    { ocLambda,          {{ Value                                                }, 1, Value }},
     // Other specials.
     { ocArrayClose,      {{ Bounds                                               }, 0, Bounds }},
     { ocArrayColSep,     {{ Bounds                                               }, 0, Bounds }},
@@ -111,6 +112,9 @@ const ScParameterClassification::RawData ScParameterClassification::pRawData[] =
     { ocAverageA,        {{ ReferenceOrRefArray                                  }, 1, Value }},
     { ocAverageIf,       {{ ReferenceOrRefArray, Value, Reference                }, 0, Value }},
     { ocAverageIfs,      {{ ReferenceOrRefArray, ReferenceOrRefArray, Value      }, 2, Value }},
+    { ocByCol,           {{ ForceArray, Value                                    }, 0, ForceArrayReturn }},
+    { ocByRow,           {{ ForceArray, Value                                    }, 0, ForceArrayReturn }},
+    { ocCall,            {{ Value, ForceArray                                    }, 1, Value }},
     { ocCell,            {{ Value, Reference                                     }, 0, Value }},
     { ocColumn,          {{ Reference                                            }, 0, Value }},
     { ocColumns,         {{ Reference                                            }, 1, Value }},
@@ -172,6 +176,7 @@ const ScParameterClassification::RawData ScParameterClassification::pRawData[] =
     { ocIntercept,       {{ ForceArray, ForceArray                               }, 0, Value }},
     { ocIntersect,       {{ Reference, Reference                                 }, 0, Reference }},
     { ocIsFormula,       {{ Reference                                            }, 0, Value }},
+    { ocIsOmitted,       {{ Value                                                }, 1, Value }},
     { ocIsRef,           {{ Reference                                            }, 0, Value }},
     { ocKurt,            {{ Reference                                            }, 1, Value }},
     { ocLCM,             {{ Reference                                            }, 1, Value }},
@@ -182,6 +187,8 @@ const ScParameterClassification::RawData ScParameterClassification::pRawData[] =
     { ocLogest,          {{ ForceArray, ForceArray, Value, Value                 }, 0, Value }},
     { ocLookup,          {{ Value, ReferenceOrForceArray, ReferenceOrForceArray  }, 0, Value }},
     { ocMIRR,            {{ Reference, Value, Value                              }, 0, Value }},
+    { ocMakeArray,       {{ Value, Value, Value                                  }, 0, ForceArrayReturn }},
+    { ocMap,             {{ ForceArray, ReferenceOrRefArray                      }, 1, ForceArrayReturn }},
     { ocMatDet,          {{ ForceArray                                           }, 0, Value }},
     { ocMatInv,          {{ ForceArray                                           }, 0, Value }},
     { ocMatMult,         {{ ForceArray, ForceArray                               }, 0, Value }},
@@ -235,11 +242,14 @@ const ScParameterClassification::RawData ScParameterClassification::pRawData[] =
     { ocRank,            {{ Value, Reference, Value                              }, 0, Value }},
     { ocRank_Avg,        {{ Value, Reference, Value                              }, 0, Value }},
     { ocRank_Eq,         {{ Value, Reference, Value                              }, 0, Value }},
+    { ocReduce,          {{ Value, ForceArray, Value                             }, 0, Value }},
     { ocRow,             {{ Reference                                            }, 0, Value }},
     { ocRows,            {{ Reference                                            }, 1, Value }},
     { ocSTEYX,           {{ ForceArray, ForceArray                               }, 0, Value }},
+    { ocScan,            {{ Value, ForceArray, Value                             }, 0, ForceArrayReturn }},
     { ocSheet,           {{ Reference                                            }, 0, Value }},
     { ocSheets,          {{ Reference                                            }, 1, Value }},
+    { ocSingleValue,     {{ ForceArray                                           }, 0, Value }},
     { ocSkew,            {{ Reference                                            }, 1, Value }},
     { ocSkewp,           {{ Reference                                            }, 1, Value }},
     { ocSlope,           {{ ForceArray, ForceArray                               }, 0, Value }},
@@ -593,6 +603,7 @@ void ScParameterClassification::GenerateDocumentation()
                     case ocIfError:
                     case ocIfNA:
                     case ocChoose:
+                    case ocLambda:
                         aToken.SetByte(2);
                     break;
                     case ocPercentSign:

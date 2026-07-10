@@ -62,9 +62,9 @@ void QtInstanceTreeView::do_insert(const weld::TreeIter* pParent, int nPos, cons
 {
     SolarMutexGuard g;
     GetQtInstance().RunInMainThread([&] {
-        const QModelIndex aParentIndex
+        const QPersistentModelIndex aParentIndex
             = pParent ? static_cast<const QtInstanceTreeIter*>(pParent)->modelIndex()
-                      : QModelIndex();
+                      : QPersistentModelIndex();
 
         if (nPos == -1)
             nPos = m_pModel->rowCount(aParentIndex);
@@ -74,7 +74,7 @@ void QtInstanceTreeView::do_insert(const weld::TreeIter* pParent, int nPos, cons
         if (aParentIndex.isValid() && m_pModel->columnCount(aParentIndex) == 0)
             m_pModel->insertColumns(0, m_pModel->columnCount(), aParentIndex);
 
-        const QModelIndex aIndex = modelIndex(nPos, 0, aParentIndex);
+        const QPersistentModelIndex aIndex = modelIndex(nPos, 0, aParentIndex);
         QStandardItem* pItem = itemFromIndex(aIndex);
         if (pStr)
             set_text(treeIter(nPos, aParentIndex), *pStr);
@@ -192,15 +192,16 @@ int QtInstanceTreeView::find_id(const OUString& rId) const
 
 void QtInstanceTreeView::copy_iterator(const weld::TreeIter& rSource, weld::TreeIter& rDest) const
 {
-    const QModelIndex aModelIndex = static_cast<const QtInstanceTreeIter&>(rSource).modelIndex();
-    static_cast<QtInstanceTreeIter&>(rDest).setModelIndex(aModelIndex);
+    const QPersistentModelIndex& rModelIndex
+        = static_cast<const QtInstanceTreeIter&>(rSource).modelIndex();
+    static_cast<QtInstanceTreeIter&>(rDest).setModelIndex(rModelIndex);
 }
 
 bool QtInstanceTreeView::iter_previous_sibling(weld::TreeIter& rIter) const
 {
     QtInstanceTreeIter& rQtIter = static_cast<QtInstanceTreeIter&>(rIter);
-    const QModelIndex aIndex = rQtIter.modelIndex();
-    const QModelIndex aSiblingIndex = m_pModel->sibling(aIndex.row() - 1, 0, aIndex);
+    const QPersistentModelIndex& rIndex = rQtIter.modelIndex();
+    const QModelIndex aSiblingIndex = m_pModel->sibling(rIndex.row() - 1, 0, rIndex);
     if (!aSiblingIndex.isValid())
         return false;
 

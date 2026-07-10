@@ -221,6 +221,7 @@ void ScRawToken::SetOpCode( OpCode e )
             nJump[ 0 ] = FORMULA_MAXJUMPCOUNT + 1;
             break;
         case ocLet:
+        case ocLambda:
             eType = svJump;
             nJump[ 0 ] = FORMULA_MAXPARAMS + 1;
             break;
@@ -1200,6 +1201,7 @@ void ScTokenArray::CheckForThreading( const FormulaToken& r )
     constinit
 #endif
     static const o3tl::sorted_vector<OpCode> aThreadedCalcDenyList({
+        ocCall,
         ocIndirect,
         ocMacro,
         ocOffset,
@@ -1512,6 +1514,7 @@ void ScTokenArray::CheckToken( const FormulaToken& r )
                 // Depends on the reference state.
                 meVectorState = FormulaVectorCheckReference;
             break;
+            case svCallable:
             case svError:
             case svEmptyCell:
             case svExternal:
@@ -1615,6 +1618,7 @@ void ScTokenArray::CheckToken( const FormulaToken& r )
             case ocIfNA:
             case ocChoose:
             case ocLet:
+            case ocLambda:
                 // Jump commands are now supported.
             break;
         }

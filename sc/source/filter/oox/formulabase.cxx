@@ -885,6 +885,14 @@ const FunctionData saFuncTable2021[] =
     { "COM.MICROSOFT.RANDARRAY",           "RANDARRAY",           NOID,   NOID,   0,  5,  A, { VO }, FuncFlags::MACROCALL_NEW },
     { "COM.MICROSOFT.UNIQUE",              "UNIQUE",              NOID,   NOID,   1,  3,  A, { VO }, FuncFlags::MACROCALL_NEW },
     { "COM.MICROSOFT.LET",                 "LET",                 NOID,   NOID,   3,  MX, R, { VR, VR, VA }, FuncFlags::MACROCALL_NEW | FuncFlags::PARAMPAIRS },
+    { "COM.MICROSOFT.LAMBDA",              "LAMBDA",              NOID,   NOID,   1,  MX, V, { VA }, FuncFlags::MACROCALL_NEW },
+    { "COM.MICROSOFT.ISOMITTED",           "ISOMITTED",           NOID,   NOID,   1,  1,  V, { VV }, FuncFlags::MACROCALL_NEW },
+    { "COM.MICROSOFT.BYCOL",               "BYCOL",               NOID,   NOID,   2,  2,  A, { VA, VV }, FuncFlags::MACROCALL_NEW | FuncFlags::VOLATILE },
+    { "COM.MICROSOFT.BYROW",               "BYROW",               NOID,   NOID,   2,  2,  A, { VA, VV }, FuncFlags::MACROCALL_NEW | FuncFlags::VOLATILE },
+    { "COM.MICROSOFT.MAKEARRAY",           "MAKEARRAY",           NOID,   NOID,   3,  3,  A, { VV, VV, VV }, FuncFlags::MACROCALL_NEW | FuncFlags::VOLATILE },
+    { "COM.MICROSOFT.MAP",                 "MAP",                 NOID,   NOID,   2,  MX, A, { VA, VO }, FuncFlags::MACROCALL_NEW | FuncFlags::VOLATILE },
+    { "COM.MICROSOFT.REDUCE",              "REDUCE",              NOID,   NOID,   2,  3,  V, { VV, VA, VV }, FuncFlags::MACROCALL_NEW | FuncFlags::VOLATILE },
+    { "COM.MICROSOFT.SCAN",                "SCAN",                NOID,   NOID,   2,  3,  A, { VV, VA, VV }, FuncFlags::MACROCALL_NEW | FuncFlags::VOLATILE },
 };
 
 /** Functions new in Excel 2024.

@@ -17,6 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <config_features.h>
+
 #include <interpre.hxx>
 
 #include <optional>
@@ -67,10 +69,22 @@
 #include <queryiter.hxx>
 #include <tokenarray.hxx>
 #include <compare.hxx>
+#include <callable.hxx>
+#include <cellsuno.hxx>
 #include <comphelper/lok.hxx>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/string.hxx>
 #include <svl/sharedstringpool.hxx>
+#include <basic/basmgr.hxx>
+#include <basic/sbmeth.hxx>
+#include <basic/sbmod.hxx>
+#include <basic/sbuno.hxx>
+#include <basic/sbx.hxx>
+#include <com/sun/star/script/XInvocation.hpp>
+#include <com/sun/star/sheet/XSheetCellRange.hpp>
+#include <com/sun/star/uno/Reference.hxx>
+#include <vbahelper/vbaaccesshelper.hxx>
+#include <macromgr.hxx>
 
 #include <stdlib.h>
 #include <memory>
@@ -78,6 +92,10 @@
 #include <limits>
 #include <string_view>
 #include <cmath>
+#include <algorithm>
+
+using namespace com::sun::star;
+using namespace formula;
 
 const sal_uInt64 n2power48 = SAL_CONST_UINT64( 281474976710656); // 2^48
 
@@ -1545,11 +1563,50 @@ void ScInterpreter::ScNeg()
 
 void ScInterpreter::ScSingleValue()
 {
-    // The @ operator collapses an array operand to a single value. It is
-    // the implicit-intersection prefix that opts a formula out of the
-    // dynamic-array spill behaviour.
+    // The @ implicit-intersection operator collapses an operand to
+    // a single value. For a bare range, pick the slot row-aligned
+    // (or column-aligned) with the formula cell, and push #VALUE!
+    // when no slot matches. For a computed matrix, pick the
+    // upper-left value.
     nFuncFmtType = nCurFmtType;
-    if (GetStackType() == svMatrix)
+    StackVar eType = GetStackType();
+    if (eType == svDoubleRef
+        || (eType == svMatrix && sp > 0
+            && static_cast<const ScMatrixToken*>(pStack[sp - 1])->IsMatrixRangeToken()))
+    {
+        ScRange aRange;
+        if (eType == svDoubleRef)
+        {
+            PopDoubleRef(aRange);
+        }
+        else
+        {
+            const auto* pRangeToken = static_cast<const ScMatrixRangeToken*>(pStack[sp - 1]);
+            const ScComplexRefData& rRef = pRangeToken->GetDoubleRef();
+            aRange.aStart = rRef.Ref1.toAbs(mrDoc, aPos);
+            aRange.aEnd = rRef.Ref2.toAbs(mrDoc, aPos);
+            Pop();
+        }
+        if (nGlobalError != FormulaError::NONE)
+        {
+            PushError(nGlobalError);
+            return;
+        }
+        ScAddress aAdr;
+        if (!DoubleRefToPosSingleRef(aRange, aAdr))
+        {
+            // DoubleRefToPosSingleRef set FormulaError::NoValue.
+            PushError(nGlobalError);
+            return;
+        }
+        ScRefCellValue aCell(mrDoc, aAdr);
+        if (aCell.hasString())
+            PushString(aCell.getString(mrDoc));
+        else
+            PushDouble(GetCellValue(aAdr, aCell));
+        return;
+    }
+    if (eType == svMatrix)
     {
         ScMatrixRef pMat = GetMatrix();
         if (!pMat)
@@ -1563,7 +1620,7 @@ void ScInterpreter::ScSingleValue()
         else
             PushDouble(aVal.fVal);
     }
-    // Non-matrix operand passes through unchanged.
+    // Non-matrix, non-range operand passes through unchanged.
 }
 
 void ScInterpreter::ScPercentSign()
@@ -1578,6 +1635,77 @@ void ScInterpreter::ScPercentSign()
     ScDiv();
     pCur = pSaveCur;
     cPar = nSavePar;
+}
+
+void ScInterpreter::ScSpilledRange()
+{
+    // The # postfix operator expands a master cell's spill range
+    // into a matrix. A plain formula cell falls back to its scalar
+    // value. An empty cell, a number, a string, or a non-master
+    // spill slot yields #REF!, since none of them is a dynamic-array
+    // master.
+    ScAddress aAddress;
+    PopSingleRef(aAddress);
+    if (nGlobalError != FormulaError::NONE)
+    {
+        PushError(nGlobalError);
+        return;
+    }
+
+    ScFormulaCell* pFormulaCell = mrDoc.GetFormulaCell(aAddress);
+    if (!pFormulaCell)
+    {
+        PushError(FormulaError::NoRef);
+        return;
+    }
+    if (pFormulaCell->GetMatrixFlag() == ScMatrixMode::Reference)
+    {
+        PushError(FormulaError::NoRef);
+        return;
+    }
+    if (pFormulaCell->GetMatrixFlag() != ScMatrixMode::Formula)
+    {
+        PushCellResultToken(false, aAddress, nullptr, nullptr);
+        return;
+    }
+
+    // Force the master to interpret if it has not yet, so that its
+    // matrix result is materialized before we read it.
+    pFormulaCell->MaybeInterpret();
+
+    SCCOL nCols = 0;
+    SCROW nRows = 0;
+    pFormulaCell->GetMatColsRows(nCols, nRows);
+    if (nCols <= 1 && nRows <= 1)
+    {
+        PushCellResultToken(false, aAddress, nullptr, nullptr);
+        return;
+    }
+
+    // Push the spill range as a matrix so binary operators and
+    // aggregating functions see all values. Pushing a double reference
+    // would let arithmetic operators fold it to a single value through
+    // implicit intersection. The source range travels with the matrix
+    // through ScMatrixRangeToken so a plain cell receiving the spill
+    // range as its final result can reduce it via implicit
+    // intersection at result-storage time.
+    ScMatrixRef pMatrix = CreateMatrixFromDoubleRef(nullptr,
+        aAddress.Col(), aAddress.Row(), aAddress.Tab(),
+        aAddress.Col() + nCols - 1, aAddress.Row() + nRows - 1, aAddress.Tab());
+    if (pMatrix)
+    {
+        sc::RangeMatrix aRangeMat;
+        aRangeMat.mpMat = std::move(pMatrix);
+        aRangeMat.mnCol1 = aAddress.Col();
+        aRangeMat.mnRow1 = aAddress.Row();
+        aRangeMat.mnTab1 = aAddress.Tab();
+        aRangeMat.mnCol2 = aAddress.Col() + nCols - 1;
+        aRangeMat.mnRow2 = aAddress.Row() + nRows - 1;
+        aRangeMat.mnTab2 = aAddress.Tab();
+        PushMatrix(aRangeMat);
+    }
+    else
+        PushIllegalArgument();
 }
 
 void ScInterpreter::ScNot()
@@ -2730,6 +2858,16 @@ void ScInterpreter::ScIsRef()
                 bRes = true;
         }
         break;
+        case svMatrix:
+        {
+            // A spilled-range reference travels as a matrix that
+            // carries its source range. It answers as a reference,
+            // while a plain computed matrix does not.
+            bRes = sp > 0
+                && static_cast<const ScMatrixToken*>(pStack[sp - 1])->IsMatrixRangeToken();
+            Pop();
+        }
+        break;
         default:
             Pop();
     }
@@ -2808,12 +2946,97 @@ void ScInterpreter::ScIsValue()
     PushInt( int(bRes) );
 }
 
+namespace {
+
+// Whether ISFORMULA counts a cell as a formula. A dynamic-array
+// spill cell is not a formula, only its master is. A classic array
+// formula cell stays a formula.
+bool lclReportsAsFormula(const ScDocument& rDocument, const ScAddress& rPosition)
+{
+    if (rDocument.GetCellType(rPosition) != CELLTYPE_FORMULA)
+        return false;
+    const ScFormulaCell* pCell = rDocument.GetFormulaCell(rPosition);
+    if (pCell && pCell->GetMatrixFlag() == ScMatrixMode::Reference)
+    {
+        ScAddress aOrigin;
+        if (pCell->GetMatrixOrigin(rDocument, aOrigin))
+        {
+            const ScFormulaCell* pMaster = rDocument.GetFormulaCell(aOrigin);
+            if (pMaster && pMaster->IsDynamicArrayMaster())
+                return false;
+        }
+    }
+    return true;
+}
+
+}
+
+void ScInterpreter::PushIsFormulaMatrix(const ScRange& rRange)
+{
+    ScMatrixRef pResultMatrix = GetNewMat(
+            SCSIZE(rRange.aEnd.Col() - rRange.aStart.Col() + 1),
+            SCSIZE(rRange.aEnd.Row() - rRange.aStart.Row() + 1), true);
+    if (!pResultMatrix)
+    {
+        PushError( FormulaError::MatrixSize);
+        return;
+    }
+
+    /* TODO: we really should have a gap-aware cell iterator. */
+    SCSIZE i = 0, j = 0;
+    ScAddress aAddress( 0, 0, rRange.aStart.Tab());
+    for (SCCOL nCol = rRange.aStart.Col(); nCol <= rRange.aEnd.Col(); ++nCol)
+    {
+        aAddress.SetCol(nCol);
+        for (SCROW nRow = rRange.aStart.Row(); nRow <= rRange.aEnd.Row(); ++nRow)
+        {
+            aAddress.SetRow(nRow);
+            pResultMatrix->PutBoolean(lclReportsAsFormula(mrDoc, aAddress), i, j);
+            ++j;
+        }
+        ++i;
+        j = 0;
+    }
+
+    PushMatrix( pResultMatrix);
+}
+
 void ScInterpreter::ScIsFormula()
 {
     nFuncFmtType = SvNumFormatType::LOGICAL;
     bool bRes = false;
     switch ( GetStackType() )
     {
+        case svMatrix:
+        {
+            // A spilled-range reference carries its source range and
+            // reports ISFORMULA per cell of that range, the same as a
+            // plain range. A plain computed matrix is not a reference
+            // and reports false.
+            if (sp == 0
+                || !static_cast<const ScMatrixToken*>(pStack[sp - 1])->IsMatrixRangeToken())
+            {
+                Pop();
+                break;
+            }
+            const ScComplexRefData& rReference
+                = static_cast<const ScMatrixRangeToken*>(pStack[sp - 1])->GetDoubleRef();
+            ScRange aRange(rReference.Ref1.toAbs(mrDoc, aPos), rReference.Ref2.toAbs(mrDoc, aPos));
+            Pop();
+            if (IsInArrayContext())
+            {
+                PushIsFormulaMatrix(aRange);
+                return;
+            }
+            ScAddress aAddress;
+            if (!DoubleRefToPosSingleRef(aRange, aAddress))
+            {
+                PushError(nGlobalError);
+                return;
+            }
+            bRes = lclReportsAsFormula(mrDoc, aAddress);
+        }
+        break;
         case svDoubleRef :
             if (IsInArrayContext())
             {
@@ -2831,33 +3054,7 @@ void ScInterpreter::ScIsFormula()
                     PushIllegalArgument();
                     return;
                 }
-
-                ScMatrixRef pResMat = GetNewMat( static_cast<SCSIZE>(nCol2 - nCol1 + 1),
-                        static_cast<SCSIZE>(nRow2 - nRow1 + 1), true);
-                if (!pResMat)
-                {
-                    PushError( FormulaError::MatrixSize);
-                    return;
-                }
-
-                /* TODO: we really should have a gap-aware cell iterator. */
-                SCSIZE i=0, j=0;
-                ScAddress aAdr( 0, 0, nTab1);
-                for (SCCOL nCol = nCol1; nCol <= nCol2; ++nCol)
-                {
-                    aAdr.SetCol(nCol);
-                    for (SCROW nRow = nRow1; nRow <= nRow2; ++nRow)
-                    {
-                        aAdr.SetRow(nRow);
-                        ScRefCellValue aCell(mrDoc, aAdr);
-                        pResMat->PutBoolean( (aCell.getType() == CELLTYPE_FORMULA), i,j);
-                        ++j;
-                    }
-                    ++i;
-                    j = 0;
-                }
-
-                PushMatrix( pResMat);
+                PushIsFormulaMatrix(ScRange(nCol1, nRow1, nTab1, nCol2, nRow2, nTab2));
                 return;
             }
         [[fallthrough]];
@@ -2867,7 +3064,7 @@ void ScInterpreter::ScIsFormula()
             if ( !PopDoubleRefOrSingleRef( aAdr ) )
                 break;
 
-            bRes = (mrDoc.GetCellType(aAdr) == CELLTYPE_FORMULA);
+            bRes = lclReportsAsFormula(mrDoc, aAdr);
         }
         break;
         default:
@@ -8453,6 +8650,11 @@ void ScInterpreter::ScSort()
     {
         bool bMissing = IsMissing();
         ScMatrixRef pSortOrder = GetMatrix();
+        if (nGlobalError != FormulaError::NONE)
+        {
+            PushError(nGlobalError);
+            return;
+        }
         if (!bMissing)
         {
             aSortOrderValues.clear();
@@ -8474,6 +8676,11 @@ void ScInterpreter::ScSort()
     {
         bool bMissing = IsMissing();
         ScMatrixRef pSortIndex = GetMatrix();
+        if (nGlobalError != FormulaError::NONE)
+        {
+            PushError(nGlobalError);
+            return;
+        }
         if (!bMissing)
         {
             aSortIndexValues.clear();
@@ -9977,175 +10184,879 @@ void ScInterpreter::ScUnique()
     PushMatrix(pResMat);
 }
 
-void ScInterpreter::replaceNamesToResult( const std::unordered_map<OUString, formula::FormulaTokenRef>& rResultIndexes,
-    ScTokenArray& rTokens, short nStartPos, short nEndPos )
+void ScInterpreter::ScLambda()
 {
-    formula::FormulaTokenArrayPlainIterator aIterResult(rTokens);
-    aIterResult.Jump(nStartPos + 1);
-    for (FormulaToken* t = aIterResult.GetNextStringNameRPN(); t; t = aIterResult.GetNextStringNameRPN())
+    const short* pJump = static_cast<const FormulaJumpToken*>(pCur)->GetJump();
+    short nJumpCount = pJump[0];
+    short nJump;
+
+    if (nJumpCount < 1)
     {
-        if (aIterResult.GetIndex() > nEndPos)
-            break;
-        auto iRes = rResultIndexes.find(static_cast<FormulaStringNameToken*>(t)->GetString().getString());
-        if (iRes != rResultIndexes.end())
-            rTokens.ReplaceRPNToken(aIterResult.GetIndex() - 1, iRes->second->Clone());
+        PushError(FormulaError::ParameterExpected);
+        aCode.Jump(pJump[nJumpCount], pJump[nJumpCount]);
+        return;
+    }
+
+    FormulaToken** pCode = pArr->GetCode();
+    std::vector<OUString> aParams(nJumpCount - 1);
+
+    if (nJumpCount > 1)
+    {
+        // first param name is on the top of the stack
+        aParams[0] = GetString().getString();
+        // param names after the first are found at pJump[1] to pJump[nJumpCount - 2]
+        for (nJump = 1; nJump <= nJumpCount - 2; ++nJump)
+        {
+            auto pToken = static_cast<FormulaStringNameToken*>(pCode[pJump[nJump] + 1]);
+            aParams[nJump] = pToken->GetString().getString();
+        }
+
+        // body is between pJump[nJumpCount - 1] and pJump[nJumpCount]
+        FormulaCallableRef pFunc = new ScFormulaFunction(*this, aParams, *pArr, pJump[nJumpCount - 1], pJump[nJumpCount]);
+        PushCallable(pFunc);
+    }
+    else
+    {
+        // FIXME: jump opcodes need to work differently; this shouldn't be forbidden
+        SAL_WARN("sc", "Cannot construct a LAMBDA with no parameters");
+        PushError(FormulaError::ParameterExpected);
+    }
+
+    aCode.Jump(pJump[nJumpCount], pJump[nJumpCount]);
+}
+
+void ScInterpreter::ScIsOmitted()
+{
+    if ( ! MustHaveParamCount(GetByte(), 1) )
+        return;
+
+    auto pArg = PopToken();
+    if (pArg->GetType() == svMissing)
+        PushInt(1);
+    else
+        PushInt(0);
+}
+
+/// Calls a Callable with arguments on the stack
+void ScInterpreter::ScCall( FormulaCallableRef rCallable, sal_uInt8 nArgCount )
+{
+    OpCode eOpCode = rCallable->GetOpCode();
+    if (eOpCode == ocLambda || eOpCode == ocMacro)
+    {
+        std::vector<FormulaConstTokenRef> aArguments(nArgCount);
+        for( sal_uInt32 i = nArgCount; i > 0 ; i-- )
+            aArguments[i - 1] = PopToken();
+
+        ScCall(rCallable, aArguments);
+        return;
+    }
+    else if (ocStartNoParameters <= eOpCode && eOpCode < ocStopNoParameters)
+    {
+        if (nArgCount != 0)
+        {
+            SetError( FormulaError::PairExpected );
+            PushError( nGlobalError );
+            return;
+        }
+    }
+    else if (ocStartOneParameter <= eOpCode && eOpCode < ocStopOneParameter)
+    {
+        if (nArgCount != 1)
+        {
+            SetError( FormulaError::PairExpected );
+            PushError( nGlobalError );
+            return;
+        }
+    }
+    else if ( eOpCode != ocExternal
+        && !(ocStartTwoParameters <= eOpCode && eOpCode < ocStopTwoParameters) )
+    {
+        SAL_WARN("sc", "Unexpected OpCode in FormulaCallable: " << +eOpCode);
+        SetError( FormulaError::NotAFunction );
+        PushError( nGlobalError );
+        return;
+    }
+    // at this point we're dealing with a built-in function
+    // and the stack is set up with the relevant args
+    // we just need to dispatch the OpCode
+    FormulaTokenRef pTempToken = new FormulaByteToken(eOpCode, nArgCount);
+    pCur = pTempToken.get();
+    cPar = nArgCount;
+    DispatchOpCode( eOpCode );
+}
+
+/// If pToken contains one or more relative references, they are converted to absolute references
+/// Either way, a fresh token is returned, or nullptr if an error occurred
+FormulaTokenRef ScInterpreter::RefToAbs(FormulaConstTokenRef pToken)
+{
+    switch (pToken->GetType())
+    {
+        case svSingleRef:
+        {
+            auto pRefToken = static_cast<const ScSingleRefToken*>(pToken.get());
+            const ScSingleRefData& rRefData = pRefToken->GetSingleRef();
+            if (rRefData.IsDeleted())
+            {
+                SetError(FormulaError::NoRef);
+                return nullptr;
+            }
+
+            ScAddress aAbsAdr = rRefData.toAbs(mrDoc, aPos);
+            ScSingleRefData aAbsRefData;
+            aAbsRefData.InitAddress(aAbsAdr);
+            return new ScSingleRefToken(mrDoc.GetSheetLimits(), aAbsRefData);
+        }
+        case svExternalSingleRef:
+        {
+            auto pRefToken = static_cast<const ScExternalSingleRefToken*>(pToken.get());
+            const ScSingleRefData& rRefData = pRefToken->GetSingleRef();
+            if (rRefData.IsDeleted())
+            {
+                SetError(FormulaError::NoRef);
+                return nullptr;
+            }
+
+            ScAddress aAbsAdr = rRefData.toAbs(mrDoc, aPos);
+            ScSingleRefData aAbsRefData;
+            aAbsRefData.InitAddress(aAbsAdr);
+            return new ScExternalSingleRefToken(pRefToken->GetFileId(), pRefToken->GetTableName(), aAbsRefData);
+        }
+        case svDoubleRef:
+        {
+            auto pRefToken = static_cast<const ScDoubleRefToken*>(pToken.get());
+            const ScComplexRefData& rRefData = pRefToken->GetDoubleRef();
+            if (rRefData.IsDeleted())
+            {
+                SetError(FormulaError::NoRef);
+                return nullptr;
+            }
+
+            ScRange aAbsRange = rRefData.toAbs(mrDoc, aPos);
+            ScComplexRefData aAbsRefData;
+            aAbsRefData.InitRange(aAbsRange);
+            return new ScDoubleRefToken(mrDoc.GetSheetLimits(), aAbsRefData);
+        }
+        case svExternalDoubleRef:
+        {
+            auto pRefToken = static_cast<const ScExternalDoubleRefToken*>(pToken.get());
+            const ScComplexRefData& rRefData = pRefToken->GetDoubleRef();
+            if (rRefData.IsDeleted())
+            {
+                SetError(FormulaError::NoRef);
+                return nullptr;
+            }
+
+            ScRange aAbsRange = rRefData.toAbs(mrDoc, aPos);
+            ScComplexRefData aAbsRefData;
+            aAbsRefData.InitRange(aAbsRange);
+            return new ScExternalDoubleRefToken(pRefToken->GetFileId(), pRefToken->GetTableName(), aAbsRefData);
+        }
+        case svRefList:
+        {
+            auto pRefListToken = static_cast<ScRefListToken*>(pToken->Clone());
+            for (auto &rRefData : *pRefListToken->GetRefList())
+            {
+                ScRange aAbsRange = rRefData.toAbs(mrDoc, aPos);
+                rRefData.SetRange(mrDoc.GetSheetLimits(), aAbsRange, aPos);
+            }
+            return pRefListToken;
+        }
+        default:
+            return pToken->Clone();
     }
 }
 
-ScTokenArray ScInterpreter::checkPushTokens(const ScTokenArray& rTokens, short nStartPos, short nEndPos)
-{
-    formula::FormulaTokenArrayPlainIterator aIterResult(rTokens);
-    aIterResult.Jump(nStartPos + 1);
-    ScTokenArray aTempTokens(mrDoc);
-    for (FormulaToken* t = aIterResult.NextRPN(); t; t = aIterResult.NextRPN())
-    {
-        if (aIterResult.GetIndex() > nEndPos)
-            break;
+#if HAVE_FEATURE_SCRIPTING
 
-        aTempTokens.AddToken(*t);
+static uno::Any lcl_getSheetModule( const uno::Reference<table::XCellRange>& xCellRange, const ScDocument* pDok )
+{
+    uno::Reference< sheet::XSheetCellRange > xSheetRange( xCellRange, uno::UNO_QUERY_THROW );
+    uno::Reference< beans::XPropertySet > xProps( xSheetRange->getSpreadsheet(), uno::UNO_QUERY_THROW );
+    OUString sCodeName;
+    xProps->getPropertyValue(u"CodeName"_ustr) >>= sCodeName;
+    // #TODO #FIXME ideally we should 'throw' here if we don't get a valid parent, but... it is possible
+    // to create a module ( and use 'Option VBASupport 1' ) for a calc document, in this scenario there
+    // are *NO* special document module objects ( of course being able to switch between vba/non vba mode at
+    // the document in the future could fix this, especially IF the switching of the vba mode takes care to
+    // create the special document module objects if they don't exist.
+    BasicManager* pBasMgr = pDok->GetDocumentShell()->GetBasicManager();
+
+    uno::Reference< uno::XInterface > xIf;
+    if ( pBasMgr && !pBasMgr->GetName().isEmpty() )
+    {
+        OUString sProj( u"Standard"_ustr );
+        if ( !pDok->GetDocumentShell()->GetBasicManager()->GetName().isEmpty() )
+        {
+            sProj = pDok->GetDocumentShell()->GetBasicManager()->GetName();
+        }
+        StarBASIC* pBasic = pDok->GetDocumentShell()->GetBasicManager()->GetLib( sProj );
+        if ( pBasic )
+        {
+            SbModule* pMod = pBasic->FindModule( sCodeName );
+            if ( pMod )
+            {
+                xIf = pMod->GetUnoModule();
+            }
+        }
     }
-    return aTempTokens;
+    return uno::Any( xIf );
 }
+
+static bool lcl_setVBARange( const ScRange& aRange, const ScDocument& rDok, SbxVariable* pPar )
+{
+    bool bOk = false;
+    try
+    {
+        uno::Reference< uno::XInterface > xVBARange;
+        uno::Reference<table::XCellRange> xCellRange = ScCellRangeObj::CreateRangeFromDoc( rDok, aRange );
+        uno::Sequence< uno::Any > aArgs{ lcl_getSheetModule( xCellRange, &rDok ),
+            uno::Any(xCellRange) };
+        xVBARange = ooo::vba::createVBAUnoAPIServiceWithArgs( rDok.GetDocumentShell(), "ooo.vba.excel.Range", aArgs );
+        if ( xVBARange.is() )
+        {
+            SbxObjectRef aObj = GetSbUnoObject( u"A-Range"_ustr, uno::Any( xVBARange ) );
+            SetSbUnoObjectDfltPropName( aObj.get() );
+            bOk = pPar->PutObject( aObj.get() );
+        }
+    }
+    catch( uno::Exception& )
+    {
+    }
+    return bOk;
+}
+
+static bool lcl_isNumericResult( double& fVal, const SbxVariable* pVar )
+{
+    switch (pVar->GetType())
+    {
+        case SbxINTEGER:
+        case SbxLONG:
+        case SbxSINGLE:
+        case SbxDOUBLE:
+        case SbxCURRENCY:
+        case SbxDATE:
+        case SbxUSHORT:
+        case SbxULONG:
+        case SbxINT:
+        case SbxUINT:
+        case SbxSALINT64:
+        case SbxSALUINT64:
+        case SbxDECIMAL:
+            fVal = pVar->GetDouble();
+            return true;
+        case SbxBOOL:
+            fVal = (pVar->GetBool() ? 1.0 : 0.0);
+            return true;
+        default:
+            ;   // nothing
+    }
+    return false;
+}
+
+bool ScInterpreter::SetSbxVariable( SbxVariable* pVar, const ScAddress& rPos )
+{
+    bool bOk = true;
+    ScRefCellValue aCell(mrDoc, rPos);
+    if (!aCell.isEmpty())
+    {
+        FormulaError nErr;
+        double nVal;
+        switch (aCell.getType())
+        {
+            case CELLTYPE_VALUE :
+                nVal = GetValueCellValue(rPos, aCell.getDouble());
+                pVar->PutDouble( nVal );
+                break;
+            case CELLTYPE_STRING :
+            case CELLTYPE_EDIT :
+                pVar->PutString(aCell.getString(mrDoc));
+                break;
+            case CELLTYPE_FORMULA :
+                nErr = aCell.getFormula()->GetErrCode();
+                if( nErr == FormulaError::NONE )
+                {
+                    if (aCell.getFormula()->IsValue())
+                    {
+                        nVal = aCell.getFormula()->GetValue();
+                        pVar->PutDouble( nVal );
+                    }
+                    else if (aCell.getFormula()->IsCallable()) // TODO
+                    {
+                        SetError( FormulaError::IllegalParameter );
+                        bOk = false;
+                    }
+                    else
+                        pVar->PutString(aCell.getFormula()->GetString().getString());
+                }
+                else
+                {
+                    SetError( nErr );
+                    bOk = false;
+                }
+                break;
+            default :
+                pVar->PutEmpty();
+        }
+    }
+    else
+        pVar->PutEmpty();
+
+    return bOk;
+}
+
+bool ScInterpreter::BuildMacroArgs( const std::vector<formula::FormulaConstTokenRef>& rArgsIn, SbxArrayRef refArgsOut, bool bUseVBAObjects )
+{
+    sal_uInt32 nArgCount = rArgsIn.size();
+    for( sal_uInt32 i = 0; i < nArgCount; i++ )
+    {
+        formula::FormulaConstTokenRef pToken = rArgsIn[i];
+        SbxVariable* pArg = refArgsOut->Get(i + 1); // refArgsOut is one-based
+        if (!GetMacroArg(pToken, pArg, bUseVBAObjects))
+            return false;
+    }
+    return true;
+}
+
+bool ScInterpreter::GetMacroArg( formula::FormulaConstTokenRef pArgIn, SbxVariable* pArgOut, bool bUseVBAObjects )
+{
+    switch( pArgIn->GetType() )
+    {
+        case svDouble:
+        {
+            auto pToken = static_cast<const FormulaDoubleToken*>(pArgIn.get());
+            pArgOut->PutDouble( pToken->GetDouble() );
+        }
+        break;
+        case svString:
+        {
+            auto pToken = static_cast<const FormulaStringToken*>(pArgIn.get());
+            pArgOut->PutString( pToken->GetString().getString() );
+        }
+        break;
+        case svCallable: // TODO
+        {
+            //auto pToken = static_cast<const FormulaCallableToken*>(pArgIn.get());
+            SetError( FormulaError::IllegalParameter );
+            return false;
+        }
+        case svExternalSingleRef:
+        {
+            auto pToken = static_cast<const ScExternalSingleRefToken*>(pArgIn.get());
+            sal_uInt16 nFileId = pToken->GetFileId();
+            OUString aTabName = pToken->GetTableName().getString();
+            ScSingleRefData aRef = pToken->GetSingleRef();
+
+            ScExternalRefManager* pRefMgr = mrDoc.GetExternalRefManager();
+            const OUString* pFile = pRefMgr->getExternalFileName(nFileId);
+            if (!pFile)
+            {
+                SetError(FormulaError::NoName);
+                return false;
+            }
+
+            if (aRef.IsTabRel())
+            {
+                OSL_FAIL("ScInterpreter:GetMacroArg: external single reference must have an absolute table reference!");
+                SetError(FormulaError::NoRef);
+                return false;
+            }
+
+            ScAddress aAddr = aRef.toAbs(mrDoc, aPos);
+            ScExternalRefCache::CellFormat aFmt;
+            ScExternalRefCache::TokenRef pRefToken = pRefMgr->getSingleRefToken(
+                nFileId, aTabName, aAddr, &aPos, nullptr, &aFmt);
+
+            if (!pRefToken)
+            {
+                SetError(FormulaError::NoRef);
+                return false;
+            }
+            else
+                return GetMacroArg(pRefToken, pArgOut, bUseVBAObjects);
+        }
+        break;
+        case svSingleRef:
+        {
+            auto pToken = static_cast<const ScSingleRefToken*>(pArgIn.get());
+            ScAddress aAdr;
+            const ScSingleRefData& pRefData = pToken->GetSingleRef();
+            if (pRefData.IsDeleted())
+            {
+                SetError( FormulaError::NoRef);
+                return false;
+            }
+
+            SCCOL nCol;
+            SCROW nRow;
+            SCTAB nTab;
+            SingleRefToVars( pRefData, nCol, nRow, nTab);
+            aAdr.Set( nCol, nRow, nTab );
+            if (!mrDoc.m_TableOpList.empty())
+                ReplaceCell( aAdr );
+
+            if ( bUseVBAObjects )
+            {
+                ScRange aRange( aAdr );
+                if ( ! lcl_setVBARange( aRange, mrDoc, pArgOut ) )
+                    return false;
+            }
+            else
+            {
+                if ( ! SetSbxVariable( pArgOut, aAdr ) )
+                    return false;
+            }
+        }
+        break;
+        case svDoubleRef:
+        {
+            auto pToken = static_cast<const ScDoubleRefToken*>(pArgIn.get());
+            SCCOL nCol1;
+            SCROW nRow1;
+            SCTAB nTab1;
+            SCCOL nCol2;
+            SCROW nRow2;
+            SCTAB nTab2;
+            DoubleRefToVars( pToken, nCol1, nRow1, nTab1, nCol2, nRow2, nTab2 );
+            if( nTab1 != nTab2 )
+            {
+                SetError( FormulaError::IllegalParameter );
+                return false;
+            }
+            else
+            {
+                if ( bUseVBAObjects )
+                {
+                    ScRange aRange( nCol1, nRow1, nTab1, nCol2, nRow2, nTab2 );
+                    if ( ! lcl_setVBARange( aRange, mrDoc, pArgOut ) )
+                        return false;
+                }
+                else
+                {
+                    SbxDimArrayRef refArray = new SbxDimArray;
+                    refArray->AddDim(1, nRow2 - nRow1 + 1);
+                    refArray->AddDim(1, nCol2 - nCol1 + 1);
+                    ScAddress aAdr( nCol1, nRow1, nTab1 );
+                    for( SCROW nRow = nRow1; nRow <= nRow2; nRow++ )
+                    {
+                        aAdr.SetRow( nRow );
+                        sal_Int32 nIdx[ 2 ];
+                        nIdx[ 0 ] = nRow-nRow1+1;
+                        for( SCCOL nCol = nCol1; nCol <= nCol2; nCol++ )
+                        {
+                            aAdr.SetCol( nCol );
+                            nIdx[ 1 ] = nCol-nCol1+1;
+                            SbxVariable* p = refArray->Get(nIdx);
+                            if ( ! SetSbxVariable( p, aAdr ) )
+                                return false;
+                        }
+                    }
+                    pArgOut->PutObject( refArray.get() );
+                }
+            }
+        }
+        break;
+        case svMatrix:
+        {
+            auto pToken = static_cast<const ScMatrixToken*>(pArgIn.get());
+            // ScMatrix itself maintains an im/mutable flag that should
+            // be obeyed where necessary... so we can return ScMatrixRef
+            // here instead of ScConstMatrixRef.
+            ScMatrixRef pMat = const_cast<ScMatrixToken*>(pToken)->GetMatrix();
+            if ( !pMat )
+            {
+                SetError( FormulaError::UnknownVariable);
+                return false;
+            }
+            pMat->SetErrorInterpreter( this);
+            if (nGlobalError != FormulaError::NONE)
+            {
+                SetError( FormulaError::IllegalParameter );
+                return false;
+            }
+            SCSIZE nC, nR;
+            pMat->GetDimensions(nC, nR);
+            SbxDimArrayRef refArray = new SbxDimArray;
+            refArray->AddDim(1, static_cast<sal_Int32>(nR));
+            refArray->AddDim(1, static_cast<sal_Int32>(nC));
+            for( SCSIZE nMatRow = 0; nMatRow < nR; nMatRow++ )
+            {
+                sal_Int32 nIdx[ 2 ];
+                nIdx[ 0 ] = static_cast<sal_Int32>(nMatRow+1);
+                for( SCSIZE nMatCol = 0; nMatCol < nC; nMatCol++ )
+                {
+                    nIdx[ 1 ] = static_cast<sal_Int32>(nMatCol+1);
+                    SbxVariable* p = refArray->Get(nIdx);
+                    // TODO: account for callables
+                    if (pMat->IsStringOrEmpty(nMatCol, nMatRow))
+                        p->PutString( pMat->GetString(nMatCol, nMatRow).getString() );
+                    else
+                        p->PutDouble( pMat->GetDouble(nMatCol, nMatRow));
+                }
+            }
+            pArgOut->PutObject( refArray.get() );
+        }
+        break;
+        case svExternalDoubleRef:
+        {
+            auto pToken = static_cast<const ScExternalDoubleRefToken*>(pArgIn.get());
+            sal_uInt16 nFileId = pToken->GetFileId();
+            OUString aTabName = pToken->GetTableName().getString();
+            ScComplexRefData aData = pToken->GetDoubleRef();
+            ScExternalRefCache::TokenArrayRef pArray;
+
+            GetExternalDoubleRef(nFileId, aTabName, aData, pArray);
+            if (nGlobalError != FormulaError::NONE)
+                return false;
+
+            // For now, we only support single range data for external
+            // references, which means the array should only contain a
+            // single matrix token.
+            FormulaToken* pFirst = pArray->FirstToken();
+            if (!pFirst || pFirst->GetType() != svMatrix)
+            {
+                SetError( FormulaError::IllegalParameter);
+                return false;
+            }
+            ScMatrixRef pMat = static_cast<ScMatrixToken*>(pFirst)->GetMatrix();
+            if (!pMat)
+            {
+                SetError( FormulaError::UnknownVariable);
+                return false;
+            }
+            SCSIZE nC, nR;
+            pMat->GetDimensions(nC, nR);
+            SbxDimArrayRef refArray = new SbxDimArray;
+            refArray->AddDim(1, static_cast<sal_Int32>(nR));
+            refArray->AddDim(1, static_cast<sal_Int32>(nC));
+            for( SCSIZE nMatRow = 0; nMatRow < nR; nMatRow++ )
+            {
+                sal_Int32 nIdx[ 2 ];
+                nIdx[ 0 ] = static_cast<sal_Int32>(nMatRow+1);
+                for( SCSIZE nMatCol = 0; nMatCol < nC; nMatCol++ )
+                {
+                    nIdx[ 1 ] = static_cast<sal_Int32>(nMatCol+1);
+                    SbxVariable* pVar = refArray->Get(nIdx);
+                    // TODO: account for callables
+                    if (pMat->IsStringOrEmpty(nMatCol, nMatRow))
+                        pVar->PutString( pMat->GetString(nMatCol, nMatRow).getString() );
+                    else
+                        pVar->PutDouble( pMat->GetDouble(nMatCol, nMatRow));
+                }
+            }
+            pArgOut->PutObject( refArray.get() );
+        }
+        break;
+        default:
+            SetError( FormulaError::IllegalParameter );
+            return false;
+    }
+    return true;
+}
+#endif
+
+/// Replaces the tokens at the specified positions with references to pToken
+static void lcl_ReplaceParam( ScTokenArray& rTokens, const std::forward_list<short>& rPositions, FormulaTokenRef pToken )
+{
+    std::for_each( rPositions.begin(), rPositions.end(), [&rTokens, pToken](short nPos)
+    {
+        rTokens.ReplaceRPNToken(nPos, pToken.get());
+    } );
+}
+
+/// Calls a Callable with passed args
+void ScInterpreter::ScCall( FormulaCallableRef pCallable, const std::vector<FormulaConstTokenRef>& aArguments )
+{
+    OpCode eOpCode = pCallable->GetOpCode();
+    if (eOpCode == ocLambda)
+    {
+        auto pLambda = dynamic_cast<const ScFormulaFunction*>(pCallable.get());
+        if ( !pLambda )
+        {
+            SAL_WARN("sc", "Callable is ocLambda, but is not a ScFormulaFunction");
+            SetError(FormulaError::IllegalArgument);
+            PushError(nGlobalError);
+            return;
+        }
+
+        short nParamCount = pLambda->GetNumParams();
+        short nArgCount = aArguments.size();
+        if (nParamCount != nArgCount)
+        {
+            // A call with the wrong number of arguments is a value error,
+            // matching the OOXML interpretation.
+            SetError(FormulaError::NoValue);
+            PushError(nGlobalError);
+            return;
+        }
+
+        // clone tokens of lambda-body for replacing string name tokens with arguments
+        ScTokenArray aNewTokens = pLambda->GetLambdaBody().CloneValue();
+
+        for (short nParam = 0; nParam < nArgCount; ++nParam)
+        {
+            const std::forward_list<short>& rPositions = pLambda->GetReplacementPositions(nParam);
+            FormulaConstTokenRef pArgument = aArguments[nParam];
+            FormulaTokenRef pNewArg = RefToAbs(pArgument);
+            if (!pNewArg)
+            {
+                PushError(nGlobalError);
+                return;
+            }
+
+            lcl_ReplaceParam(aNewTokens, rPositions, pNewArg);
+        }
+
+        // calculate the final result, in the stored context
+        ScInterpreter aInt(pLambda->GetFormulaCell(), pLambda->GetDocument(), pLambda->GetContext(),
+                           pLambda->GetAddress(), aNewTokens);
+        aInt.aCode.Lambda(true);
+
+        sfx2::LinkManager aNewLinkMgr(pLambda->GetDocument().GetDocumentShell());
+        aInt.SetLinkManager(&aNewLinkMgr);
+
+        formula::StackVar aResultType = aInt.Interpret();
+        formula::FormulaConstTokenRef xLambdaResult( aInt.GetResultToken() );
+
+        if (aResultType == formula::svMatrixCell)
+        {
+            ScConstMatrixRef xMat(static_cast<const ScMatrixCellResultToken*>(xLambdaResult.get())->GetMatrix());
+            PushTokenRef(new ScMatrixToken(xMat->Clone()));
+        }
+        else if (xLambdaResult)
+            PushTokenRef(xLambdaResult);
+    }
+    else if (eOpCode == ocMacro)
+    {
+#if !HAVE_FEATURE_SCRIPTING
+        PushNoValue();      // without DocShell no CallBasic
+#else
+        auto pMacro = dynamic_cast<const ScMacroFunction*>(pCallable.get());
+        if ( !pMacro )
+        {
+            SAL_WARN("sc", "Callable is ocMacro, but is not a ScMacroFunction");
+            SetError(FormulaError::IllegalArgument);
+            PushError(nGlobalError);
+            return;
+        }
+
+        if (!pMacro->IsValid())
+        {
+            FormulaError nError = pMacro->GetError();
+            if (nError != FormulaError::NONE)
+            {
+                SetError(nError);
+                PushError(nGlobalError);
+            }
+            else
+                PushNoValue();
+            return;
+        }
+
+        bool bVolatileMacro = false;
+        bool bUseVBAObjects = pMacro->GetModule()->IsVBASupport();
+
+        SbxArrayRef refArgs = new SbxArray;
+        if( BuildMacroArgs(aArguments, refArgs, bUseVBAObjects) )
+        {
+            ScDocShell* pDocSh = pMacro->GetDocumentShell();
+            mrDoc.LockTable( aPos.Tab() );
+            SbxVariableRef refRes = new SbxVariable;
+            mrDoc.IncMacroInterpretLevel();
+            ErrCode eRet = pDocSh->CallBasic( pMacro->GetMacroStr(), pMacro->GetBasicStr(), refArgs.get(), refRes.get() );
+            mrDoc.DecMacroInterpretLevel();
+            mrDoc.UnlockTable( aPos.Tab() );
+
+            ScMacroManager* pMacroMgr = mrDoc.GetMacroManager();
+            if (pMacroMgr)
+            {
+                bVolatileMacro = pMacroMgr->GetUserFuncVolatile( pMacro->GetMethod()->GetName() );
+                pMacroMgr->AddDependentCell(pMacro->GetModule()->GetName(), pMyFormulaCell);
+            }
+
+            double fVal;
+            SbxDataType eResType = refRes->GetType();
+            if( SbxBase::GetError() )
+            {
+                SetError( FormulaError::NoValue);
+            }
+            if ( eRet != ERRCODE_NONE )
+            {
+                PushNoValue();
+            }
+            else if (lcl_isNumericResult( fVal, refRes.get()))
+            {
+                switch (eResType)
+                {
+                    case SbxDATE:
+                        nFuncFmtType = SvNumFormatType::DATE;
+                        break;
+                    case SbxBOOL:
+                        nFuncFmtType = SvNumFormatType::LOGICAL;
+                        break;
+                        // Do not add SbxCURRENCY, we don't know which currency.
+                    default:
+                        ;   // nothing
+                }
+                PushDouble( fVal );
+            }
+            else if ( eResType & SbxARRAY )
+            {
+                SbxBase* pElemObj = refRes->GetObject();
+                SbxDimArray* pDimArray = dynamic_cast<SbxDimArray*>(pElemObj);
+                sal_Int32 nDim = pDimArray ? pDimArray->GetDims() : 0;
+                if ( 1 <= nDim && nDim <= 2 )
+                {
+                    sal_Int32 nCs, nCe, nRs;
+                    SCSIZE nC, nR;
+                    SCCOL nColIdx;
+                    SCROW nRowIdx;
+                    if ( nDim == 1 )
+                    {   // array( cols )  one line, several columns
+                        pDimArray->GetDim(1, nCs, nCe);
+                        nC = static_cast<SCSIZE>(nCe - nCs + 1);
+                        nRs = 0;
+                        nR = 1;
+                        nColIdx = 0;
+                        nRowIdx = 1;
+                    }
+                    else
+                    {   // array( rows, cols )
+                        sal_Int32 nRe;
+                        pDimArray->GetDim(1, nRs, nRe);
+                        nR = static_cast<SCSIZE>(nRe - nRs + 1);
+                        pDimArray->GetDim(2, nCs, nCe);
+                        nC = static_cast<SCSIZE>(nCe - nCs + 1);
+                        nColIdx = 1;
+                        nRowIdx = 0;
+                    }
+                    ScMatrixRef pMat = GetNewMat( nC, nR, /*bEmpty*/true);
+                    if ( pMat )
+                    {
+                        SbxVariable* pV;
+                        for ( SCSIZE j=0; j < nR; j++ )
+                        {
+                            sal_Int32 nIdx[ 2 ];
+                            //  in one-dimensional array( cols )  nIdx[1]
+                            // from SbxDimArray::Get is ignored
+                            nIdx[ nRowIdx ] = nRs + static_cast<sal_Int32>(j);
+                            for ( SCSIZE i=0; i < nC; i++ )
+                            {
+                                nIdx[ nColIdx ] = nCs + static_cast<sal_Int32>(i);
+                                pV = pDimArray->Get(nIdx);
+                                // TODO: account for callables
+                                if ( lcl_isNumericResult( fVal, pV) )
+                                    pMat->PutDouble( fVal, i, j );
+                                else
+                                    pMat->PutString(mrStrPool.intern(pV->GetOUString()), i, j);
+                            }
+                        }
+                        PushMatrix( pMat );
+                    }
+                    else
+                        PushIllegalArgument();
+                }
+                else
+                    PushNoValue();
+            }
+            else
+                PushString( refRes->GetOUString() );
+        }
+
+        // prevent cycles from leaking memory
+        refArgs->Clear();
+
+        if (bVolatileMacro && meVolatileType == NOT_VOLATILE)
+            meVolatileType = VOLATILE_MACRO;
+#endif
+    }
+    else
+    {
+        std::for_each( aArguments.begin(), aArguments.end(), [this](formula::FormulaConstTokenRef rToken)
+        {
+            PushTokenRef(rToken);
+        } );
+        ScCall( pCallable, aArguments.size() );
+    }
+}
+
+void ScInterpreter::ScCall()
+{
+    sal_uInt8 nArgCount = GetByte() - 1;
+    {
+        // the first argument to ocCall is the callable itself
+        // we want to move that to the top of the stack, which requires shifting the arguments above it
+        const FormulaToken** pSrc = &pStack[sp - nArgCount - 1];
+        const FormulaToken* pTempToken = *pSrc;
+        const FormulaToken** pDst = pSrc++;
+        for (; pSrc < &pStack[sp]; pDst = pSrc++) *pDst = *pSrc;
+        *pDst = pTempToken;
+    }
+    FormulaCallableRef pCallable = GetCallable();
+
+    if (!pCallable || nGlobalError != FormulaError::NONE)
+    {
+        PushError( nGlobalError );
+        return;
+    }
+
+    ScCall(pCallable, nArgCount);
+}
+
 
 void ScInterpreter::ScLet()
 {
     const short* pJump = static_cast<const FormulaJumpToken*>(pCur)->GetJump();
     short nJumpCount = pJump[0];
-    short nOrgJumpCount = nJumpCount;
+    short nJump;
 
-    if (nJumpCount < 3 || (nJumpCount % 2 != 1))
+    // LET without bindings is not an error; the result is already on the stack,
+    // so we have nothing to do
+    if (nJumpCount == 1)
+    {
+        aCode.Jump(pJump[nJumpCount], pJump[nJumpCount]);
+        return;
+    }
+    else if (nJumpCount < 3 || (nJumpCount % 2) != 1)
     {
         PushError(FormulaError::ParameterExpected);
-        aCode.Jump(pJump[nOrgJumpCount], pJump[nOrgJumpCount]);
+        aCode.Jump(pJump[nJumpCount], pJump[nJumpCount]);
         return;
     }
 
-    OUString aStrName;
-    std::unordered_map<OUString, formula::FormulaTokenRef> nResultIndexes;
-    formula::FormulaTokenArrayPlainIterator aIter(*pArr);
-    // clone tokens for replacing string name tokens
-    ScTokenArray aValueTokens = pArr->CloneValue();
+    std::vector<OUString> aParams;
+    std::vector<FormulaConstTokenRef> aArgs;
 
-    // name and function pairs parameter
-    while (nJumpCount > 1)
+    // calculate the first subformula with no bindings
     {
-        if (nJumpCount == nOrgJumpCount)
-        {
-            aStrName = GetString().getString();
-        }
-        else if ((nOrgJumpCount - nJumpCount + 1) % 2 == 1)
-        {
-            aIter.Jump(pJump[static_cast<short>(nOrgJumpCount - nJumpCount + 1)] - 1);
-            FormulaToken* t = aIter.NextRPN();
-            const StackVar eType = t->GetType();
-            aStrName = (eType == svStringName || eType == svDPFieldName)
-                ? static_cast<FormulaStringNameToken*>(t)->GetString().getString()
-                : OUString();
-        }
-        else
-        {
-            PushError(FormulaError::ParameterExpected);
-            aCode.Jump(pJump[nOrgJumpCount], pJump[nOrgJumpCount]);
-            return;
-        }
-        nJumpCount--;
+        FormulaCallableRef pFunc = new ScFormulaFunction(*this, aParams, *pArr, pJump[1], pJump[2]);
+        ScCall(pFunc, aArgs);
 
-        // replace names with result tokens
-        replaceNamesToResult(nResultIndexes, aValueTokens, pJump[nOrgJumpCount - nJumpCount], pJump[nOrgJumpCount - nJumpCount + 1]);
-
-        ScTokenArray aTempTokens = checkPushTokens(aValueTokens, pJump[nOrgJumpCount - nJumpCount], pJump[nOrgJumpCount - nJumpCount + 1]);
-
-        // calculate the inner results unless we already have a push result token
-        if (aTempTokens.GetLen() == 0)
-        {
-            PushIllegalParameter();
-            aCode.Jump(pJump[nOrgJumpCount], pJump[nOrgJumpCount]);
-            return;
-        }
-        else if (aTempTokens.GetLen() == 1 && aTempTokens.GetArray()[0]->GetOpCode() == ocPush)
-        {
-            if (!nResultIndexes.insert(std::make_pair(aStrName, aTempTokens.GetArray()[0])).second)
-            {
-                PushIllegalParameter();
-                aCode.Jump(pJump[nOrgJumpCount], pJump[nOrgJumpCount]);
-                return;
-            }
-        }
-        else
-        {
-            ScInterpreter aInt(mrDoc.GetFormulaCell(aPos), mrDoc, mrContext, aPos, aValueTokens);
-            aInt.aCode.Jump(pJump[nOrgJumpCount - nJumpCount], pJump[nOrgJumpCount - nJumpCount + 1], pJump[nOrgJumpCount - nJumpCount + 1]);
-            while (aInt.aCode.HasStacked())
-                aInt.aCode.FrontPop();
-            aInt.aCode.Lambda(true);
-
-            sfx2::LinkManager aNewLinkMgr(mrDoc.GetDocumentShell());
-            aInt.SetLinkManager(&aNewLinkMgr);
-
-            formula::StackVar aIntType = aInt.Interpret();
-
-            if (aIntType == formula::svMatrixCell)
-            {
-                ScConstMatrixRef xMat(static_cast<const ScMatrixCellResultToken*>(aInt.GetResultToken().get())->GetMatrix());
-                if (!nResultIndexes.insert(std::make_pair(aStrName, new ScMatrixToken(xMat->Clone()))).second)
-                {
-                    PushIllegalParameter();
-                    aCode.Jump(pJump[nOrgJumpCount], pJump[nOrgJumpCount]);
-                    return;
-                }
-            }
-            else
-            {
-                FormulaToken* pResultTok = const_cast<FormulaToken*>(aInt.GetResultToken().get());
-                if (!nResultIndexes.insert(std::make_pair(aStrName, FormulaTokenRef(pResultTok))).second)
-                {
-                    PushIllegalParameter();
-                    aCode.Jump(pJump[nOrgJumpCount], pJump[nOrgJumpCount]);
-                    return;
-                }
-            }
-        }
-        nJumpCount--;
+        aArgs.push_back(PopToken());
+        // the param name is on the stack
+        aParams.push_back(GetString().getString());
     }
 
-    // last parameter: calculation
-    // replace names with result tokens
-    replaceNamesToResult(nResultIndexes, aValueTokens, pJump[nOrgJumpCount - nJumpCount], pJump[nOrgJumpCount - nJumpCount + 1]);
-
-    // calculate the final result
-    ScInterpreter aInt(mrDoc.GetFormulaCell(aPos), mrDoc, mrContext, aPos, aValueTokens);
-    aInt.aCode.Jump(pJump[nOrgJumpCount - nJumpCount], pJump[nOrgJumpCount - nJumpCount + 1], pJump[nOrgJumpCount - nJumpCount + 1]);
-    while (aInt.aCode.HasStacked())
-        aInt.aCode.FrontPop();
-    aInt.aCode.Lambda(true);
-
-    sfx2::LinkManager aNewLinkMgr(mrDoc.GetDocumentShell());
-    aInt.SetLinkManager(&aNewLinkMgr);
-    formula::StackVar aIntType = aInt.Interpret();
-
-    if (aIntType == formula::svMatrixCell)
+    FormulaToken** pCode = pArr->GetCode();
+    for (nJump = 3; nJump < nJumpCount; nJump += 2)
     {
-        ScConstMatrixRef xMat(static_cast<const ScMatrixCellResultToken*>(aInt.GetResultToken().get())->GetMatrix());
-        PushTokenRef(new ScMatrixToken(xMat->Clone()));
-    }
-    else
-    {
-        const formula::FormulaConstTokenRef& xLambdaResult(aInt.GetResultToken());
-        if (xLambdaResult)
-        {
-            if (xLambdaResult->GetType() == svError)
-                nGlobalError = static_cast<const FormulaErrorToken*>(xLambdaResult.get())->GetError();
-            else
-                nGlobalError = FormulaError::NONE;
-            if (nGlobalError == FormulaError::NONE)
-                PushTokenRef(xLambdaResult);
-            else
-                PushError(nGlobalError);
-        }
+        // calculate each subformula with the bindings created before it
+        FormulaCallableRef pFunc = new ScFormulaFunction(*this, aParams, *pArr, pJump[nJump], pJump[nJump + 1]);
+        ScCall(pFunc, aArgs);
+
+        aArgs.push_back(PopToken());
+        // the param name is one jump before the current one
+        auto pToken = static_cast<const FormulaStringNameToken*>(pCode[pJump[nJump - 1] + 1]);
+        aParams.push_back(pToken->GetString().getString());
     }
 
-    nJumpCount--;
-    aCode.Jump(pJump[nOrgJumpCount], pJump[nOrgJumpCount]);
+    // the last subformula isn't named
+    nJump--;
+
+    // calculate the last subformula with all of the bindings in place
+    FormulaCallableRef pFunc = new ScFormulaFunction(*this, aParams, *pArr, pJump[nJump], pJump[nJump + 1]);
+    ScCall(pFunc, aArgs);
+
+    aCode.Jump(pJump[nJumpCount], pJump[nJumpCount]);
 }
 
 void ScInterpreter::ScSubTotal()

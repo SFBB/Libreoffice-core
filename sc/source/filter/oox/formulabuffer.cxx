@@ -35,14 +35,8 @@ using namespace ::com::sun::star::sheet;
 
 namespace oox::xls {
 
-namespace {
-
-// When one of the trigger opcodes is followed by ((...)) that
-// spans the whole argument, drop the inner parenthesis pair. The @
-// operator passes ocSingleValue so _xlfn.SINGLE((expr)) reads back
-// as =@(expr).
-void lcl_stripRedundantParentheses(ScTokenArray& rArray,
-                                   std::initializer_list<OpCode> aTriggerOpCodes)
+void stripRedundantParentheses(ScTokenArray& rArray,
+                               std::initializer_list<OpCode> aTriggerOpCodes)
 {
     sal_uInt16 nPosition = 0;
     while (nPosition + 4 < rArray.GetLen())
@@ -59,48 +53,76 @@ void lcl_stripRedundantParentheses(ScTokenArray& rArray,
             ++nPosition;
             continue;
         }
-        sal_uInt16 nOuterClose = 0;
-        sal_uInt16 nDepth = 1;
-        for (sal_uInt16 nScan = nPosition + 2; nScan < rArray.GetLen(); ++nScan)
+        // Strip only when the inner pair fully spans the wrapper's
+        // argument.
+        sal_uInt16 nDepth = 2;
+        for (sal_uInt16 nScan = nPosition + 3; nScan < rArray.GetLen(); ++nScan)
         {
             OpCode eOp = rArray.TokenAt(nScan)->GetOpCode();
-            if (eOp == ocOpen)
-                ++nDepth;
-            else if (eOp == ocClose && --nDepth == 0)
+            if (nDepth == 1)
             {
-                nOuterClose = nScan;
+                if (eOp == ocClose)
+                {
+                    rArray.RemoveToken(nScan - 1, 1);
+                    rArray.RemoveToken(nPosition + 2, 1);
+                }
                 break;
             }
-        }
-        if (!nOuterClose
-            || rArray.TokenAt(nOuterClose - 1)->GetOpCode() != ocClose)
-        {
-            ++nPosition;
-            continue;
-        }
-        nDepth = 1;
-        bool bWrapsWhole = false;
-        for (sal_uInt16 nScan = nPosition + 3; nScan < nOuterClose; ++nScan)
-        {
-            OpCode eOp = rArray.TokenAt(nScan)->GetOpCode();
             if (eOp == ocOpen)
                 ++nDepth;
-            else if (eOp == ocClose && --nDepth == 0)
-            {
-                bWrapsWhole = (nScan == nOuterClose - 1);
-                break;
-            }
+            else if (eOp == ocClose)
+                --nDepth;
         }
-        if (!bWrapsWhole)
-        {
-            ++nPosition;
-            continue;
-        }
-        rArray.RemoveToken(nOuterClose - 1, 1);
-        rArray.RemoveToken(nPosition + 2, 1);
         ++nPosition;
     }
 }
+
+// Rewrite each four-token span
+//   ocSpill ocOpen <push> ocClose
+// to
+//   <push> ocSpill
+// so the parse array matches the native postfix form.
+void liftAnchorArrayToPostfix(ScTokenArray& rArray)
+{
+    sal_uInt16 nPosition = 0;
+    while (nPosition + 1 < rArray.GetLen())
+    {
+        if (rArray.TokenAt(nPosition)->GetOpCode() == ocSpill
+            && rArray.TokenAt(nPosition + 1)->GetOpCode() == ocOpen)
+        {
+            // Find the parenthesis that closes the one right after the
+            // spill opcode, tracking nesting so a parenthesised operand
+            // such as ((A1)) is taken whole.
+            sal_uInt16 nClose = nPosition + 2;
+            sal_uInt16 nDepth = 1;
+            while (nClose < rArray.GetLen())
+            {
+                const OpCode eInner = rArray.TokenAt(nClose)->GetOpCode();
+                if (eInner == ocOpen)
+                    ++nDepth;
+                else if (eInner == ocClose && --nDepth == 0)
+                    break;
+                ++nClose;
+            }
+            if (nClose < rArray.GetLen())
+            {
+                // Turn #(operand) into operand#: move the spill opcode
+                // past the operand and drop the wrapper parentheses,
+                // keeping any inner ones. The reference keeps the spill
+                // token alive when it leaves its old slot.
+                formula::FormulaTokenRef pSpill(rArray.TokenAt(nPosition));
+                rArray.ReplaceToken(nClose, pSpill.get(),
+                                    formula::FormulaTokenArray::CODE_ONLY);
+                rArray.RemoveToken(nPosition + 1, 1);
+                rArray.RemoveToken(nPosition, 1);
+                continue;
+            }
+        }
+        ++nPosition;
+    }
+}
+
+namespace {
 
 /**
  * Cache the token array for the last cell position in each column. We use
@@ -187,7 +209,8 @@ void applySharedFormulas(
             std::unique_ptr<ScTokenArray> pArray = aComp.CompileString(rTokenStr);
             if (pArray)
             {
-                lcl_stripRedundantParentheses(*pArray, {ocSingleValue});
+                stripRedundantParentheses(*pArray, {ocSingleValue});
+                liftAnchorArrayToPostfix(*pArray);
                 aComp.CompileTokenArray(); // Generate RPN tokens.
                 aGroups.set(nId, std::move(pArray), aPos);
             }
@@ -353,7 +376,8 @@ void applyCellFormulas(
         if (!pCode)
             continue;
 
-        lcl_stripRedundantParentheses(*pCode, {ocSingleValue});
+        stripRedundantParentheses(*pCode, {ocSingleValue});
+        liftAnchorArrayToPostfix(*pCode);
         aCompiler.CompileTokenArray(); // Generate RPN tokens.
 
         ScFormulaCell* pCell = new ScFormulaCell(rDoc.getDoc(), aPos, std::move(pCode));
@@ -380,7 +404,27 @@ void applyArrayFormulas(
         std::unique_ptr<ScTokenArray> pArray(aComp.CompileString(rAddressItem.maTokenAndAddress.maTokenStr));
         if (pArray)
         {
-            lcl_stripRedundantParentheses(*pArray, {ocSingleValue});
+            stripRedundantParentheses(*pArray, {ocSingleValue});
+            liftAnchorArrayToPostfix(*pArray);
+
+            // A single-cell t="array" that starts with @ imports as
+            // a plain ScFormulaCell, not a CSE array. The @ collapses
+            // the operand to a scalar, so the cell reads back as
+            // =@(expr) instead of {=@(expr)}.
+            const sal_uInt16 nParseLength = pArray->GetLen();
+            const formula::FormulaToken* pFirst = nParseLength ? pArray->GetArray()[0] : nullptr;
+            const bool bSingleCellRange
+                = rAddressItem.maRange.aStart == rAddressItem.maRange.aEnd;
+            if (bSingleCellRange && pFirst
+                && pFirst->GetOpCode() == ocSingleValue)
+            {
+                aComp.CompileTokenArray();
+                ScFormulaCell* pCell = new ScFormulaCell(rDoc.getDoc(), aPos,
+                                                        std::move(pArray));
+                rDoc.setFormulaCell(aPos, pCell);
+                continue;
+            }
+
             rDoc.setMatrixCells(rAddressItem.maRange, *pArray,
                                 formula::FormulaGrammar::GRAM_OOXML,
                                 rAddressItem.mbCachedSpill);

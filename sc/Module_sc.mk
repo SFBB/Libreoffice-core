@@ -51,6 +51,7 @@ $(eval $(call gb_Module_add_check_targets,sc,\
 	CppunitTest_sc_ucalc_tablestyles \
 	CppunitTest_sc_ucalc_formula \
 	CppunitTest_sc_ucalc_formula2 \
+	CppunitTest_sc_ucalc_spilled_range \
 	CppunitTest_sc_ucalc_parallelism \
 	CppunitTest_sc_ucalc_pivottable \
 	CppunitTest_sc_ucalc_rangelst \
@@ -60,6 +61,7 @@ $(eval $(call gb_Module_add_check_targets,sc,\
 	CppunitTest_sc_ucalc_solver \
 	CppunitTest_sc_ucalc_sort \
 	CppunitTest_sc_filters_test \
+	CppunitTest_sc_oox_helpers_test \
 	CppunitTest_sc_mark_test \
 	CppunitTest_sc_core \
 	CppunitTest_sc_basic_types_test \
@@ -138,6 +140,7 @@ $(eval $(call gb_Module_add_slowcheck_targets,sc, \
 	CppunitTest_sc_spreadsheet_functions_test \
 	CppunitTest_sc_statistical_functions_test \
 	CppunitTest_sc_text_functions_test \
+	CppunitTest_sc_dynamic_array_functions_test \
 	CppunitTest_sc_annotationobj \
 	CppunitTest_sc_annotationshapeobj \
 	CppunitTest_sc_annotationsobj \

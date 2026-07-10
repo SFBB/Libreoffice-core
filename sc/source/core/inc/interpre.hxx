@@ -19,11 +19,16 @@
 
 #pragma once
 
+#include <config_features.h>
+
 #include <rtl/math.hxx>
 #include <rtl/ustring.hxx>
 #include <unotools/textsearch.hxx>
+#include <formula/callable.hxx>
 #include <formula/errorcodes.hxx>
 #include <formula/tokenarray.hxx>
+#include <basic/sbx.hxx>
+#include <basic/sbxvar.hxx>
 #include <types.hxx>
 #include <externalrefmgr.hxx>
 #include <calcconfig.hxx>
@@ -204,6 +209,10 @@ class ScInterpreter
     friend class ScChiDistFunction;
     friend class ScChiSqDistFunction;
 
+    // some Callable objects need to save context data when constructed
+    friend class ScMacroFunction;
+    friend class ScFormulaFunction;
+
 public:
     static void SetGlobalConfig(const ScCalcConfig& rConfig);
     static const ScCalcConfig& GetGlobalConfig();
@@ -305,6 +314,7 @@ private:
     double GetCellValueOrZero( const ScAddress&, const ScRefCellValue& rCell );
     double GetValueCellValue( const ScAddress&, double fOrig );
     void GetCellString( svl::SharedString& rStr, const ScRefCellValue& rCell );
+    formula::FormulaCallableRef GetCellCallable( const ScRefCellValue& rCell );
     static FormulaError GetCellErrCode( const ScRefCellValue& rCell );
 
     bool CreateDoubleArr(SCCOL nCol1, SCROW nRow1, SCTAB nTab1,
@@ -462,6 +472,7 @@ private:
     void PushStringBuffer( const sal_Unicode* pString );
     void PushString( const OUString& rStr );
     void PushString( const svl::SharedString& rString );
+    void PushCallable( formula::FormulaCallableRef pCallable );
     void PushSingleRef(SCCOL nCol, SCROW nRow, SCTAB nTab);
     void PushDoubleRef(SCCOL nCol1, SCROW nRow1, SCTAB nTab1,
                        SCCOL nCol2, SCROW nRow2, SCTAB nTab2);
@@ -508,6 +519,11 @@ private:
     /// returns TRUE if double (or error, check nGlobalError), else FALSE
     bool GetDoubleOrString( double& rValue, svl::SharedString& rString );
     svl::SharedString GetString();
+    // Pop a non-matrix operand as a string for the & concatenation
+    // operator. A boolean operand (a LOGICAL-typed double) formats
+    // as "TRUE" or "FALSE", everything else routes through
+    // GetString.
+    OUString PopOperandStringForConcat();
     svl::SharedString GetStringFromMatrix(const ScMatrixRef& pMat);
     svl::SharedString GetStringFromDouble( const double fVal);
     // pop matrix and obtain one element, upper left or according to jump matrix
@@ -519,14 +535,12 @@ private:
     ScMatrixRef GetMatrix();
     ScMatrixRef GetMatrix( short & rParam, size_t & rInRefList );
     sc::RangeMatrix GetRangeMatrix();
-
-    // Get tokens at specific parameters for LET (lambda) function
-    static void replaceNamesToResult( const std::unordered_map<OUString, formula::FormulaTokenRef>& rResultIndexes,
-        ScTokenArray& rTokens, short nStartPos, short nEndPos );
-    ScTokenArray checkPushTokens( const ScTokenArray& rTokens,
-        short nStartPos, short nEndPos );
+    formula::FormulaCallableRef GetCallable();
+    //formula::FormulaCallableRef GetCallableFromMatrix(const ScMatrixRef& pMat);
 
     void ScTableOp();                                       // repeated operations
+
+    void DispatchOpCode(OpCode eOp);
 
     // common helper functions
 
@@ -612,6 +626,7 @@ private:
     void ScNeg();
     void ScSingleValue();
     void ScPercentSign();
+    void ScSpilledRange();
     void ScIntersect();
     void ScRangeFunc();
     void ScUnionFunc();
@@ -660,6 +675,9 @@ private:
     void ScIsRef();
     void ScIsValue();
     void ScIsFormula();
+    // Push a boolean matrix that reports, per cell of the range, whether
+    // ISFORMULA counts that cell as a formula.
+    void PushIsFormulaMatrix(const ScRange& rRange);
     void ScFormula();
     void ScRoman();
     void ScArabic();
@@ -748,6 +766,9 @@ private:
     void ScSubTotal();
     void ScWrapCols();
     void ScWrapRows();
+    void ScLambda();
+    void ScIsOmitted();
+    void ScCall();
 
 private:
     void ScTextBeforeOrAfter(bool bBefore);
@@ -756,6 +777,13 @@ private:
     void ScWrapColsOrRows(bool bCols);
     void ScTakeOrDrop(bool bTake);
     void ScHorizontalOrVerticalStack(bool bHorizontal);
+    void ScCall(formula::FormulaCallableRef pCallable, sal_uInt8 nArgCount);
+    void ScCall(formula::FormulaCallableRef pCallable, const std::vector<formula::FormulaConstTokenRef>& aArguments);
+    formula::FormulaTokenRef RefToAbs(formula::FormulaConstTokenRef pToken);
+#if HAVE_FEATURE_SCRIPTING
+    bool BuildMacroArgs(const std::vector<formula::FormulaConstTokenRef>& rArgsIn, SbxArrayRef refArgsOut, bool bUseVBAObjects);
+    bool GetMacroArg(formula::FormulaConstTokenRef pArgIn, SbxVariable* pArgOut, bool bUseVBAObjects);
+#endif
 
 public:
     // If upon call rMissingField==true then the database field parameter may be
@@ -953,6 +981,13 @@ public:
     void ScEMat();
     void ScMatRef();
     ScMatrixRef MatConcat(const ScMatrixRef& pMat1, const ScMatrixRef& pMat2);
+    void PutMatrixValue(formula::FormulaConstTokenRef pToken, ScMatrixRef xMatrix, SCSIZE nCol, SCSIZE nRow);
+    void ScByCol();
+    void ScByRow();
+    void ScMakeArray();
+    void ScMap();
+    void ScReduce();
+    void ScScan();
     void ScSumProduct();
     void ScSumX2MY2();
     void ScSumX2DY2();

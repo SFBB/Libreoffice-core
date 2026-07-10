@@ -1680,6 +1680,37 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest, testCmRoundTripXLSX)
     CPPUNIT_ASSERT(pMaster);
     CPPUNIT_ASSERT(pMaster->IsDynamicArrayMaster());
 }
+CPPUNIT_TEST_FIXTURE(ScFiltersTest, testIntersectionOperatorXlsxRoundTrip)
+{
+    // The fixture has A1:A4 = {42, 69, 13, 666} and three cells
+    // that read back the upper-left value 42 through implicit
+    // intersection. All three import as plain formulas, so
+    // GetFormula returns them without {} wrapping. The same shape
+    // survives an XLSX round trip.
+
+    auto assertFormulas = [](ScDocument* pDoc) {
+        // C1: plain =A1:A4 range reference. No t="array" tag, so
+        // the cell collapses through implicit intersection at row 1.
+        CPPUNIT_ASSERT_EQUAL(u"=A1:A4"_ustr, pDoc->GetFormula(2, 0, 0));
+        CPPUNIT_ASSERT_EQUAL(42.0, pDoc->GetValue(ScAddress(2, 0, 0)));
+
+        // D1: t="array" wrapper around (A1:A4+0). The outer paren
+        // pair the writer adds is stripped on import.
+        CPPUNIT_ASSERT_EQUAL(u"=@(A1:A4+0)"_ustr, pDoc->GetFormula(3, 0, 0));
+        CPPUNIT_ASSERT_EQUAL(42.0, pDoc->GetValue(ScAddress(3, 0, 0)));
+
+        // E1: t="array" wrapper around TRANSPOSE(A1:A4). The
+        // argument is a function call, so no outer paren strip.
+        CPPUNIT_ASSERT_EQUAL(u"=@(TRANSPOSE(A1:A4))"_ustr, pDoc->GetFormula(4, 0, 0));
+        CPPUNIT_ASSERT_EQUAL(42.0, pDoc->GetValue(ScAddress(4, 0, 0)));
+    };
+
+    createScDoc("xlsx/IntersectionOperatorFixture.xlsx");
+    assertFormulas(getScDoc());
+
+    saveAndReload(TestFilter::XLSX);
+    assertFormulas(getScDoc());
+}
 
 CPPUNIT_TEST_FIXTURE(ScFiltersTest, testArrayFormulaSpillXLSX)
 {
@@ -1766,6 +1797,39 @@ CPPUNIT_TEST_FIXTURE(ScFiltersTest, testExpandedArrayCollapsesOnNewBlockerXLSX)
     pFormulaCell->GetMatColsRows(nCols, nRows);
     CPPUNIT_ASSERT_EQUAL(SCCOL(1), nCols);
     CPPUNIT_ASSERT_EQUAL(SCROW(1), nRows);
+}
+
+CPPUNIT_TEST_FIXTURE(ScFiltersTest, testLambdaAndRelatedFunctions)
+{
+    // The document combines a per-formula check of every LAMBDA and
+    // callable-function result into cell B3 of the first sheet, true only when
+    // every check passed. Confirm B3 holds as loaded and after a
+    // recalculation, both before and after a round-trip through the XLSX export.
+    createScDoc("xlsx/LambdaAndRelatedFunctions.xlsx");
+
+    ScDocument* pDoc = getScDoc();
+    // The result as stored in the file, before the engine recomputes anything.
+    CPPUNIT_ASSERT_DOUBLES_EQUAL_MESSAGE("as loaded, a formula did not match its expected result",
+                                         1.0, pDoc->GetValue(ScAddress(1, 2, 0)), 0.0);
+
+    pDoc->CalcAll();
+    CPPUNIT_ASSERT_DOUBLES_EQUAL_MESSAGE(
+        "after recalculation, a formula did not match its expected result", 1.0,
+        pDoc->GetValue(ScAddress(1, 2, 0)), 0.0);
+
+    // Write the document back out as XLSX and read it in again.
+    saveAndReload(TestFilter::XLSX);
+
+    pDoc = getScDoc();
+    CPPUNIT_ASSERT_DOUBLES_EQUAL_MESSAGE(
+        "after save and reload, a formula did not match its expected result", 1.0,
+        pDoc->GetValue(ScAddress(1, 2, 0)), 0.0);
+
+    pDoc->CalcAll();
+    CPPUNIT_ASSERT_DOUBLES_EQUAL_MESSAGE(
+        "after save, reload and recalculation, a formula did not match its "
+        "expected result",
+        1.0, pDoc->GetValue(ScAddress(1, 2, 0)), 0.0);
 }
 
 ScFiltersTest::ScFiltersTest()

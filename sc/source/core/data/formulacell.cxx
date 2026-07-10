@@ -1607,11 +1607,13 @@ bool intendsArrayResultInRange(formula::FormulaToken* const* pRpn,
                                     || eType == formula::svMatrix);
             continue;
         }
-        // Jump commands like IF, IFERROR, IFNA expose their branches
-        // through a FormulaJumpToken. Pop the condition and run the
-        // walk on each branch slice. The token returns an array if any
-        // of its branches does.
-        if (eOp == ocIf || eOp == ocIfError || eOp == ocIfNA)
+        // Jump commands expose their branches through a
+        // FormulaJumpToken. Branches k=1..nJumpCount-1 hold the
+        // result expressions: IF carries THEN and ELSE, CHOOSE
+        // carries the alternatives, LET carries the bindings and
+        // the body. The token is array-intent if any branch is.
+        if (eOp == ocIf || eOp == ocIfError || eOp == ocIfNA
+            || eOp == ocChoose || eOp == ocLet)
         {
             if (aStackIsArray.empty())
                 return false;
@@ -1619,11 +1621,6 @@ bool intendsArrayResultInRange(formula::FormulaToken* const* pRpn,
             const auto* pJumpTok = static_cast<const formula::FormulaJumpToken*>(p);
             const short* pJump = pJumpTok->GetJump();
             const short nJumpCount = pJump[0];
-            // jump[nBranch] points at the token that precedes branch
-            // nBranch. The branch body sits in (jump[nBranch],
-            // jump[nBranch+1]). The closing jump[nJumpCount] points at
-            // the end-of-block token, which the outer loop's increment
-            // then steps past.
             bool bAnyBranchArray = false;
             for (short nBranch = 1; nBranch < nJumpCount && !bAnyBranchArray; ++nBranch)
             {
@@ -1638,10 +1635,7 @@ bool intendsArrayResultInRange(formula::FormulaToken* const* pRpn,
             i = pJump[nJumpCount];
             continue;
         }
-        // CHOOSE, LET and other jump commands fall through to the
-        // bail branch below. CHOOSE's first arg is the selector and
-        // the rest are alternatives, but its jump-offset layout
-        // differs from the IF family. LET binds names along the way.
+        // Any other jump command stays an unknown shape.
         if (formula::FormulaCompiler::IsOpCodeJumpCommand(eOp))
             return false;
         const sal_uInt8 nParameters = p->GetParamCount();
@@ -1660,6 +1654,11 @@ bool intendsArrayResultInRange(formula::FormulaToken* const* pRpn,
             // left scalar from its operand. The result is scalar even
             // when the operand was an array.
             bResultArray = false;
+        else if (eOp == ocSpill)
+            // The # spilled-range operator expands its operand to the
+            // whole spill range. The result is an array whatever the
+            // operand shape was.
+            bResultArray = true;
         else if (formula::FormulaCompiler::IsMatrixFunction(eOp) || p->IsInForceArray())
             bResultArray = true;
         else if (eOp == ocRange || eOp == ocUnion || eOp == ocIntersect)
@@ -2731,6 +2730,13 @@ void ScFormulaCell::SetCompile( bool bVal )
 
 void ScFormulaCell::SetDynamicArrayMaster(bool bDynamic)
 {
+    // A formula with @ on top of its RPN opts out of dynamic-array
+    // spilling: the operator collapses any array operand to a single
+    // value, so there is nothing to spill. XLSX still emits the cm="1"
+    // marker on such cells, so reject the request rather than letting
+    // the spill check fire against a 1x1 declared matrix.
+    if (bDynamic && pCode && rpnTopIsImplicitIntersection(*pCode))
+        return;
     mbDynamicArrayMaster = bDynamic;
     // A plain single-cell formula that opts into the dynamic-array flag
     // becomes a 1x1 matrix master so the first interpret can expand it
@@ -3172,6 +3178,18 @@ bool ScFormulaCell::IsValueNoError() const
     return aResult.IsValueNoError();
 }
 
+bool ScFormulaCell::IsString()
+{
+    MaybeInterpret();
+    return aResult.IsString();
+}
+
+bool ScFormulaCell::IsCallable()
+{
+    MaybeInterpret();
+    return aResult.IsCallable();
+}
+
 double ScFormulaCell::GetValue()
 {
     MaybeInterpret();
@@ -3182,6 +3200,24 @@ const svl::SharedString & ScFormulaCell::GetString()
 {
     MaybeInterpret();
     return GetRawString();
+}
+
+formula::FormulaCallableRef ScFormulaCell::GetCallable()
+{
+    MaybeInterpret();
+    return GetRawCallable();
+}
+
+formula::FormulaConstTokenRef ScFormulaCell::GetResultToken()
+{
+    MaybeInterpret();
+    return GetRawResultToken();
+}
+
+formula::FormulaTokenRef ScFormulaCell::CloneResultToken()
+{
+    MaybeInterpret();
+    return CloneRawResultToken();
 }
 
 double ScFormulaCell::GetRawValue() const
@@ -3195,10 +3231,36 @@ double ScFormulaCell::GetRawValue() const
 const svl::SharedString & ScFormulaCell::GetRawString() const
 {
     if ((pCode->GetCodeError() == FormulaError::NONE) &&
-            aResult.GetResultError() == FormulaError::NONE)
+        aResult.GetResultError() == FormulaError::NONE)
         return aResult.GetString();
 
     return svl::SharedString::getEmptyString();
+}
+
+formula::FormulaCallableRef ScFormulaCell::GetRawCallable() const
+{
+    if ((pCode->GetCodeError() == FormulaError::NONE) &&
+        aResult.GetResultError() == FormulaError::NONE)
+        return aResult.GetCallable();
+
+    return nullptr;
+}
+
+formula::FormulaConstTokenRef ScFormulaCell::GetRawResultToken() const
+{
+    if ((pCode->GetCodeError() == FormulaError::NONE) &&
+        aResult.GetResultError() == FormulaError::NONE)
+        return aResult.GetToken();
+
+    return nullptr;
+}
+
+formula::FormulaTokenRef ScFormulaCell::CloneRawResultToken() const
+{
+    if (pCode->GetCodeError() != FormulaError::NONE)
+        return new formula::FormulaErrorToken(pCode->GetCodeError());
+    else
+        return aResult.CloneToken();
 }
 
 const ScMatrix* ScFormulaCell::GetMatrix()
@@ -4949,6 +5011,17 @@ struct ScDependantsCalculator
                 // a range from its arguments, and only examining the individual args doesn't capture the
                 // true range of dependencies
                 SAL_WARN("sc.core.formulacell", "dynamic range, dropping as candidate for parallelizing");
+                return false;
+            }
+
+            if ((p->GetOpCode() == ocSumIf || p->GetOpCode() == ocAverageIf) && p->GetParamCount() >= 3)
+            {
+                // With a separate sum range these functions grow it to the criteria range's shape
+                // when it is smaller, and read cells beyond the sum range's own reference. Those
+                // extra cells are not named by any reference token, so examining the arguments alone
+                // does not capture the true range of dependencies. The two argument form sums the
+                // criteria range itself and stays a candidate for parallelizing.
+                SAL_WARN("sc.core.formulacell", "conditional sum range extension, dropping as candidate for parallelizing");
                 return false;
             }
 

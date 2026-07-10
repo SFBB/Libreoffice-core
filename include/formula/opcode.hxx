@@ -30,7 +30,7 @@ enum OpCode : sal_uInt16
 {
     // Special commands
         ocPush              = 0,
-        // 1 used to be SC_OPCODE_CALL
+        // 1 used to be ocCall, which is now a binary operator
         ocStop              = 2,
         ocExternal          = 3,
         ocName              = 4,
@@ -40,73 +40,75 @@ enum OpCode : sal_uInt16
         ocIfError           = 7,
         ocIfNA              = 8,
         ocChoose            = 9,
+        ocLet               = 10,
+        ocLambda            = 11,
     // Parentheses and separators
-        ocOpen              = 10,
-        ocClose             = 11,
-        ocSep               = 12,
+        ocOpen              = 12,
+        ocClose             = 13,
+        ocSep               = 14,
     // Special OpCodes
-        ocMissing           = 13,
-        ocBad               = 14,
-        ocStringXML         = 15,
-        ocSpaces            = 16,
-        ocWhitespace        = 17,
-        ocMatRef            = 18,
+        ocMissing           = 15,
+        ocBad               = 16,
+        ocStringXML         = 17,
+        ocSpaces            = 18,
+        ocWhitespace        = 19,
+        ocMatRef            = 20,
     // Access commands
     /* additional access operators */
-        ocDBArea            = 19,
-        ocTableRef          = 20,
-        ocMacro             = 21,
-        ocColRowName        = 22,
-        ocColRowNameAuto    = 23,
+        ocDBArea            = 21,
+        ocTableRef          = 22,
+        ocMacro             = 23,
+        ocColRowName        = 24,
+        ocColRowNameAuto    = 25,
     // Percent operator _follows_ value
-        ocPercentSign       = 24,
-        ocArrayOpen         = 25,
-        ocArrayClose        = 26,
-        ocArrayRowSep       = 27,
-        ocArrayColSep       = 28, /* some convs use sep != col_sep */
-        ocTableRefOpen      = 29,
-        ocTableRefClose     = 30,
-        ocTableRefItemAll     = 31,
-        ocTableRefItemHeaders = 32,
-        ocTableRefItemData    = 33,
-        ocTableRefItemTotals  = 34,
-        ocTableRefItemThisRow = 35,
-        ocStopDiv           = 36,
-        ocSkip              = 37, /* used to skip raw tokens during string compilation */
-        ocStringName        = 38, /* special OpCode for lambda function names */
-        ocLet               = 39,
-        ocDPFieldName       = 40,
+        ocPercentSign       = 26,
+        ocArrayOpen         = 27,
+        ocArrayClose        = 28,
+        ocArrayRowSep       = 29,
+        ocArrayColSep       = 30, /* some convs use sep != col_sep */
+        ocTableRefOpen      = 31,
+        ocTableRefClose     = 32,
+        ocTableRefItemAll     = 33,
+        ocTableRefItemHeaders = 34,
+        ocTableRefItemData    = 35,
+        ocTableRefItemTotals  = 36,
+        ocTableRefItemThisRow = 37,
+        ocStopDiv           = 38,
+        ocSkip              = 39, /* used to skip raw tokens during string compilation */
+        ocStringName        = 40, /* special OpCode for locally bound names (LET) */
+        ocDPFieldName       = 41,
     // Error constants
-        ocStartErrors       = 41,
-        ocErrNull           = 41,
-        ocErrDivZero        = 42,
-        ocErrValue          = 43,
-        ocErrRef            = 44,
-        ocErrName           = 45,
-        ocErrNum            = 46,
-        ocErrNA             = 47,
-        ocErrSpill          = 48,
-        ocStopErrors        = 49,
+        ocStartErrors       = 42,
+        ocErrNull           = 42,
+        ocErrDivZero        = 43,
+        ocErrValue          = 44,
+        ocErrRef            = 45,
+        ocErrName           = 46,
+        ocErrNum            = 47,
+        ocErrNA             = 48,
+        ocErrSpill          = 49,
+        ocStopErrors        = 50,
     // Binary operators
-        ocStartBinaryOperators = 50,
-        ocAdd               = 50,
-        ocSub               = 51,
-        ocMul               = 52,
-        ocDiv               = 53,
-        ocAmpersand         = 54,
-        ocPow               = 55,
-        ocEqual             = 56,
-        ocNotEqual          = 57,
-        ocLess              = 58,
-        ocGreater           = 59,
-        ocLessEqual         = 60,
-        ocGreaterEqual      = 61,
-        ocAnd               = 62,
-        ocOr                = 63,
-        ocIntersect         = 64,
-        ocUnion             = 65,
-        ocRange             = 66,
-        ocStopBinaryOperators = 67,
+        ocStartBinaryOperators = 51,
+        ocAdd               = 51,
+        ocSub               = 52,
+        ocMul               = 53,
+        ocDiv               = 54,
+        ocAmpersand         = 55,
+        ocPow               = 56,
+        ocEqual             = 57,
+        ocNotEqual          = 58,
+        ocLess              = 59,
+        ocGreater           = 60,
+        ocLessEqual         = 61,
+        ocGreaterEqual      = 62,
+        ocAnd               = 63,
+        ocOr                = 64,
+        ocIntersect         = 65,
+        ocUnion             = 66,
+        ocRange             = 67,
+        ocCall              = 68,
+        ocStopBinaryOperators = 69,
 
     /* NOTE: binary and unary operators must be in sequence for compiler! */
 
@@ -115,7 +117,10 @@ enum OpCode : sal_uInt16
         ocNegSub            = 70,
         // The @ single-value prefix operator (implicit intersection).
         ocSingleValue       = 71,
-        ocStopUnaryOperators = 72,
+        // The # postfix spilled-range operator: A1# expands to the
+        // spill range of the dynamic-array formula at A1.
+        ocSpill             = 72,
+        ocStopUnaryOperators = 73,
 
         ocStartFunction     = 75,
 
@@ -184,47 +189,48 @@ enum OpCode : sal_uInt16
         ocIsEven            = 138,
         ocIsOdd             = 139,
         ocN                 = 140,
+        ocIsOmitted         = 141,
     // String functions
-        ocGetDateValue      = 141,
-        ocGetTimeValue      = 142,
-        ocCode              = 143,
-        ocTrim              = 144,
-        ocUpper             = 145,
-        ocProper            = 146,
-        ocLower             = 147,
-        ocLen               = 148,
-        ocT                 = 149, /* miscellaneous, part 21 */
-        ocValue             = 150,
-        ocClean             = 151,
-        ocChar              = 152,
-        ocLog10             = 153,
-        ocEven              = 154,
-        ocOdd               = 155,
-        ocStdNormDist       = 156,
-        ocFisher            = 157,
-        ocFisherInv         = 158,
-        ocSNormInv          = 159,
-        ocGammaLn           = 160,
-        ocErrorType         = 161,
-        // 162 was ???
-        ocFormula           = 163,
-        ocArabic            = 164,
-        ocInfo              = 165,
-        ocBahtText          = 166,
-        ocJis               = 167,
-        ocAsc               = 168,
-        ocUnicode           = 169,
-        ocUnichar           = 170,
-        ocGamma             = 171,
-        ocGammaLn_MS        = 172,
-        ocErf_MS            = 173,
-        ocErfc_MS           = 174,
-        ocErrorType_ODF     = 175,
-        ocEncodeURL         = 176,
-        ocIsoWeeknum        = 177,
-        ocNot               = 178,
-        ocNeg               = 179,
-        ocStopOneParameter  = 180,
+        ocGetDateValue      = 142,
+        ocGetTimeValue      = 143,
+        ocCode              = 144,
+        ocTrim              = 145,
+        ocUpper             = 146,
+        ocProper            = 147,
+        ocLower             = 148,
+        ocLen               = 149,
+        ocT                 = 150, /* miscellaneous, part 21 */
+        ocValue             = 151,
+        ocClean             = 152,
+        ocChar              = 153,
+        ocLog10             = 154,
+        ocEven              = 155,
+        ocOdd               = 156,
+        ocStdNormDist       = 157,
+        ocFisher            = 158,
+        ocFisherInv         = 159,
+        ocSNormInv          = 160,
+        ocGammaLn           = 161,
+        ocErrorType         = 162,
+        // 163 was ???
+        ocFormula           = 164,
+        ocArabic            = 165,
+        ocInfo              = 166,
+        ocBahtText          = 167,
+        ocJis               = 168,
+        ocAsc               = 169,
+        ocUnicode           = 170,
+        ocUnichar           = 171,
+        ocGamma             = 172,
+        ocGammaLn_MS        = 173,
+        ocErf_MS            = 174,
+        ocErfc_MS           = 175,
+        ocErrorType_ODF     = 176,
+        ocEncodeURL         = 177,
+        ocIsoWeeknum        = 178,
+        ocNot               = 179,
+        ocNeg               = 180,
+        ocStopOneParameter  = 181,
 
     // Functions with more than one parameter
         ocStartTwoParameters = 201,
@@ -556,7 +562,13 @@ enum OpCode : sal_uInt16
         ocWrapCols          = 518,
         ocWrapRows          = 519,
         ocUDExternal        = 520, /* User-defined external function */
-        ocStopTwoParameters = 521, /* last function with two or more parameters' OpCode + 1 */
+        ocByCol             = 521,
+        ocByRow             = 522,
+        ocMakeArray         = 523,
+        ocMap               = 524,
+        ocReduce            = 525,
+        ocScan              = 526,
+        ocStopTwoParameters = 527, /* last function with two or more parameters' OpCode + 1 */
 
         ocStopFunction      = ocStopTwoParameters,  /* last function's OpCode + 1 */
         ocLastOpcodeId      = ocStopFunction - 1, /* last OpCode */
@@ -590,6 +602,7 @@ inline std::string OpCodeEnumToString(OpCode eCode)
     case ocIfError: return "IfError";
     case ocIfNA: return "IfNA";
     case ocChoose: return "Choose";
+    case ocLet: return "Let";
     case ocOpen: return "Open";
     case ocClose: return "Close";
     case ocTableRefOpen: return "TableRefOpen";
@@ -645,6 +658,8 @@ inline std::string OpCodeEnumToString(OpCode eCode)
     case ocIntersect: return "Intersect";
     case ocUnion: return "Union";
     case ocRange: return "Range";
+    case ocCall: return "Call";
+    case ocSpill: return "SpilledRange";
     case ocNot: return "Not";
     case ocNeg: return "Neg";
     case ocNegSub: return "NegSub";
@@ -1061,9 +1076,16 @@ inline std::string OpCodeEnumToString(OpCode eCode)
     case ocToCol: return "ToCol";
     case ocToRow: return "ToRow";
     case ocUnique: return "Unique";
-    case ocLet: return "Let";
     case ocWrapCols: return "WrapCols";
     case ocWrapRows: return "WrapRows";
+    case ocLambda: return "Lambda";
+    case ocIsOmitted: return "IsOmitted";
+    case ocByCol: return "ByCol";
+    case ocByRow: return "ByRow";
+    case ocMakeArray: return "MakeArray";
+    case ocMap: return "Map";
+    case ocReduce: return "Reduce";
+    case ocScan: return "Scan";
     case ocTTT: return "TTT";
     case ocDebugVar: return "DebugVar";
     case ocDataToken1: return "DataToken1";

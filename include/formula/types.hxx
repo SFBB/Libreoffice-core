@@ -24,8 +24,10 @@
 namespace formula
 {
 class FormulaToken;
+class FormulaCallable;
 typedef ::boost::intrusive_ptr<FormulaToken> FormulaTokenRef;
 typedef ::boost::intrusive_ptr<const FormulaToken> FormulaConstTokenRef;
+typedef ::boost::intrusive_ptr<const FormulaCallable> FormulaCallableRef;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

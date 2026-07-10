@@ -99,8 +99,10 @@ sal_uInt8 FormulaToken::GetParamCount() const
         && !FormulaCompiler::IsOpCodeJumpCommand(eOp) && eOp != ocPercentSign)
         return 0;       // parameters and specials
                         // ocIf... jump commands not for FAP, have cByte then
-    else if (ocStartBinaryOperators <= eOp && eOp < ocStopBinaryOperators && eOp != ocAnd && eOp != ocOr)
-        return 2;           // binary operators, compiler checked; OR and AND legacy but are functions
+    else if (ocStartBinaryOperators <= eOp && eOp < ocStopBinaryOperators
+        && eOp != ocAnd && eOp != ocOr && eOp != ocCall)
+        return 2;           // binary operators, compiler checked; OR and AND legacy but are
+                            // functions; ocCall may have more than two params
     else if ((ocStartUnaryOperators <= eOp && eOp < ocStopUnaryOperators) || eOp == ocPercentSign)
         return 1;           // unary operators, compiler checked
     else if (ocStartNoParameters <= eOp && eOp < ocStopNoParameters)
@@ -246,6 +248,14 @@ bool FormulaJumpToken::operator==( const FormulaToken& r ) const
 }
 FormulaJumpToken::~FormulaJumpToken()
 {
+}
+
+
+FormulaCallableRef FormulaCallableToken::GetCallable() const { return mpCallable; }
+bool FormulaCallableToken::operator==( const FormulaToken& r ) const
+{
+    return FormulaToken::operator==( r ) &&
+        mpCallable == static_cast<const FormulaCallableToken&>(r).GetCallable();
 }
 
 
@@ -1563,13 +1573,14 @@ FormulaToken* FormulaTokenArray::AddOpCode( OpCode eOp )
         case ocIfNA:
         case ocChoose:
         case ocLet:
+        case ocLambda:
             {
                 short nJump[FORMULA_MAXPARAMS + 1];
                 if ( eOp == ocIf )
                     nJump[ 0 ] = 3;
                 else if ( eOp == ocChoose )
                     nJump[ 0 ] = FORMULA_MAXJUMPCOUNT + 1;
-                else if ( eOp == ocLet )
+                else if ( eOp == ocLet || eOp == ocLambda )
                     nJump[ 0 ] = FORMULA_MAXPARAMS + 1;
                 else
                     nJump[ 0 ] = 2;
@@ -1639,6 +1650,11 @@ void FormulaTokenIterator::FrontPop()
 void FormulaTokenIterator::Lambda(bool bOpt)
 {
     maStack.back().bLambda = bOpt;
+}
+
+bool FormulaTokenIterator::IsLambda() const
+{
+    return maStack.back().bLambda;
 }
 
 void FormulaTokenIterator::Reset()

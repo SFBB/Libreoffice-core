@@ -26,6 +26,7 @@
 #include <sfx2/docfile.hxx>
 #include <unotools/saveopt.hxx>
 
+#include <cmath>
 #include <memory>
 #include <functional>
 #include <set>
@@ -196,6 +197,174 @@ CPPUNIT_TEST_FIXTURE(TestFormula2, testFuncIF)
     // Results must be 34 and 56.
     CPPUNIT_ASSERT_EQUAL(34.0, m_pDoc->GetValue(ScAddress(0, 10, 0)));
     CPPUNIT_ASSERT_EQUAL(56.0, m_pDoc->GetValue(ScAddress(1, 10, 0)));
+
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(TestFormula2, testFuncLAMBDA)
+{
+    sc::AutoCalcSwitch aACSwitch(*m_pDoc, true);
+
+    m_pDoc->InsertTab(0, u"Formula"_ustr);
+
+    // No parameters, constant body.
+    // TODO : The formula system does not yet support this.
+    //m_pDoc->SetString(ScAddress(0, 0, 0), u"=LAMBDA(1)()"_ustr);
+    //CPPUNIT_ASSERT_EQUAL(1.0, m_pDoc->GetValue(ScAddress(0, 0, 0)));
+
+    // One unused parameter, constant body.
+    m_pDoc->SetString(ScAddress(0, 1, 0), u"=LAMBDA(a; 2)(1)"_ustr);
+    CPPUNIT_ASSERT_EQUAL(2.0, m_pDoc->GetValue(ScAddress(0, 1, 0)));
+
+    // Identity.
+    m_pDoc->SetString(ScAddress(0, 2, 0), u"=LAMBDA(a; a)(3)"_ustr);
+    CPPUNIT_ASSERT_EQUAL(3.0, m_pDoc->GetValue(ScAddress(0, 2, 0)));
+
+    // One parameter, simple expression on it.
+    m_pDoc->SetString(ScAddress(0, 3, 0), u"=LAMBDA(a; a * 2)(2)"_ustr);
+    CPPUNIT_ASSERT_EQUAL(4.0, m_pDoc->GetValue(ScAddress(0, 3, 0)));
+
+    // Two parameters, arithmetic.
+    m_pDoc->SetString(ScAddress(0, 4, 0), u"=LAMBDA(x; y; x + y)(3; 4)"_ustr);
+    CPPUNIT_ASSERT_EQUAL(7.0, m_pDoc->GetValue(ScAddress(0, 4, 0)));
+
+    // Parameter used more than once.
+    m_pDoc->SetString(ScAddress(0, 5, 0), u"=LAMBDA(a;a+a)(5)"_ustr);
+    CPPUNIT_ASSERT_EQUAL(10.0, m_pDoc->GetValue(ScAddress(0, 5, 0)));
+
+    // Operator precedence inside the body.
+    m_pDoc->SetString(ScAddress(0, 6, 0), u"=LAMBDA(x; y; x * y + x)(3; 4)"_ustr);
+    CPPUNIT_ASSERT_EQUAL(15.0, m_pDoc->GetValue(ScAddress(0, 6, 0)));
+
+    // Identifiers are case insensitive.
+    // TODO : should be automatically changed from a to A in
+    // LAMBDA expression when submitting.
+    m_pDoc->SetString(ScAddress(0, 7, 0), u"=LAMBDA(A; a * 2)(3)"_ustr);
+    CPPUNIT_ASSERT_EQUAL(6.0, m_pDoc->GetValue(ScAddress(0, 7, 0)));
+
+    // Function inside the body.
+    m_pDoc->SetString(ScAddress(0, 8, 0), u"=LAMBDA(a; IF(a > 0; a; -a))(-5)"_ustr);
+    CPPUNIT_ASSERT_EQUAL(5.0, m_pDoc->GetValue(ScAddress(0, 8, 0)));
+
+    // Nested LAMBDA
+    m_pDoc->SetString(ScAddress(0, 9, 0), u"=LAMBDA(x;LAMBDA(y; x + y)(10))(5)"_ustr);
+    CPPUNIT_ASSERT_EQUAL(15.0, m_pDoc->GetValue(ScAddress(0, 9, 0)));
+
+    // String argument flowing through identity body.
+    m_pDoc->SetString(ScAddress(0, 10, 0), u"=LAMBDA(a;a & \"!\")(\"hi\")"_ustr);
+    CPPUNIT_ASSERT_EQUAL(u"hi!"_ustr, m_pDoc->GetString(ScAddress(0, 10, 0)));
+
+    // Name precedence matches MSO.
+    m_pDoc->SetString(ScAddress(0, 11, 0), u"=LAMBDA(SQRT; SQRT(SQRT))(4)"_ustr);
+    CPPUNIT_ASSERT_EQUAL(2.0, m_pDoc->GetValue(ScAddress(0, 11, 0)));
+
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(TestFormula2, testLambdaReducingArgumentDoesNotSpill)
+{
+    // A lambda whose body aggregates a range argument reduces to a single value
+    // even when entered as a spill-capable dynamic-array formula, the way an
+    // imported one is.
+    sc::AutoCalcSwitch aACSwitch(*m_pDoc, true);
+    m_pDoc->InsertTab(0, u"Sheet1"_ustr);
+
+    m_pDoc->SetValue(ScAddress(0, 0, 0), 1.0);
+    m_pDoc->SetValue(ScAddress(0, 1, 0), 2.0);
+    m_pDoc->SetValue(ScAddress(0, 2, 0), 3.0);
+
+    // A value just below the formula blocks a three-row spill, so a result that
+    // is wrongly sized to the three-row argument surfaces as a spill error.
+    m_pDoc->SetValue(ScAddress(2, 1, 0), 99.0);
+
+    ScMarkData aMark(m_pDoc->GetSheetLimits());
+    aMark.SelectOneTable(0);
+
+    // The trailing flag makes this a spill-capable dynamic-array master, the
+    // same kind an imported dynamic-array formula becomes.
+    m_pDoc->InsertMatrixFormula(2, 0, 2, 0, aMark, u"=LAMBDA(r; SUM(r))(A1:A3)"_ustr, nullptr,
+                                formula::FormulaGrammar::GRAM_DEFAULT, true);
+
+    ScFormulaCell* pRangeCell = m_pDoc->GetFormulaCell(ScAddress(2, 0, 0));
+    CPPUNIT_ASSERT(pRangeCell);
+
+    // The whole range reaches the body, which sums it to one value.
+    CPPUNIT_ASSERT_EQUAL_MESSAGE("the reduced lambda must not report a spill error",
+                                 sal_Int32(FormulaError::NONE),
+                                 sal_Int32(pRangeCell->GetErrCode()));
+    CPPUNIT_ASSERT_EQUAL(6.0, m_pDoc->GetValue(ScAddress(2, 0, 0)));
+
+    // The value below the formula is untouched, confirming nothing spilled over it.
+    CPPUNIT_ASSERT_EQUAL(99.0, m_pDoc->GetValue(ScAddress(2, 1, 0)));
+
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(TestFormula2, testMapPerElementErrorIsolation)
+{
+    // MAP gives one result per element, so an element whose lambda errors holds
+    // an error in that cell alone. The error must not carry over into the
+    // elements computed after it.
+    sc::AutoCalcSwitch aACSwitch(*m_pDoc, true);
+    m_pDoc->InsertTab(0, u"Sheet1"_ustr);
+
+    ScMarkData aMark(m_pDoc->GetSheetLimits());
+    aMark.SelectOneTable(0);
+
+    // The middle element divides by zero. Entered as an array formula across
+    // three cells, the elements before and after it still hold their own value.
+    m_pDoc->InsertMatrixFormula(0, 0, 2, 0, aMark, u"=MAP({1;0;2}; LAMBDA(x; 1 / x))"_ustr);
+    CPPUNIT_ASSERT_EQUAL(1.0, m_pDoc->GetValue(ScAddress(0, 0, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"#DIV/0!"_ustr, m_pDoc->GetString(ScAddress(1, 0, 0)));
+    CPPUNIT_ASSERT_EQUAL(0.5, m_pDoc->GetValue(ScAddress(2, 0, 0)));
+
+    // IFERROR replaces only the erroring element, so the sum drops just that one.
+    m_pDoc->InsertMatrixFormula(0, 2, 0, 2, aMark,
+                                u"=SUM(IFERROR(MAP({1;0;2}; LAMBDA(x; 1 / x)); 0))"_ustr);
+    CPPUNIT_ASSERT_EQUAL(1.5, m_pDoc->GetValue(ScAddress(0, 2, 0)));
+
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(TestFormula2, testMapMismatchedArrayLengths)
+{
+    // MAP over two arrays of different lengths produces a result as long as the
+    // longer one, with the position the shorter array cannot reach left not
+    // available, rather than clipping the result to the shorter array.
+    sc::AutoCalcSwitch aACSwitch(*m_pDoc, true);
+    m_pDoc->InsertTab(0, u"Sheet1"_ustr);
+
+    ScMarkData aMark(m_pDoc->GetSheetLimits());
+    aMark.SelectOneTable(0);
+
+    // Read MAP's result matrix directly. Entered over a single cell it is
+    // neither spilled nor padded, so the matrix is exactly what MAP produced.
+    // Linear element access keeps the check independent of the result shape.
+    m_pDoc->InsertMatrixFormula(0, 0, 0, 0, aMark,
+                                u"=MAP({1;2;3}; {1;2}; LAMBDA(a; b; a + b))"_ustr);
+    ScFormulaCell* pCell = m_pDoc->GetFormulaCell(ScAddress(0, 0, 0));
+    CPPUNIT_ASSERT(pCell);
+    const ScMatrix* pMat = pCell->GetMatrix();
+    CPPUNIT_ASSERT(pMat);
+
+    // Three elements, the length of the longer array, not two.
+    SCSIZE nCols = 0;
+    SCSIZE nRows = 0;
+    pMat->GetDimensions(nCols, nRows);
+    CPPUNIT_ASSERT_EQUAL(SCSIZE(3), nCols * nRows);
+
+    // The two matched elements add. The third has no second operand.
+    CPPUNIT_ASSERT_EQUAL(2.0, pMat->GetDouble(0));
+    CPPUNIT_ASSERT_EQUAL(4.0, pMat->GetDouble(1));
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(FormulaError::NotAvailable),
+                         sal_Int32(GetDoubleErrorValue(pMat->GetDouble(2))));
+
+    // The same result reduced to a scalar, as a second check: IFERROR turns the
+    // not-available element into a sentinel, so a three-element result sums
+    // higher than one clipped to two elements.
+    m_pDoc->InsertMatrixFormula(
+        2, 0, 2, 0, aMark, u"=SUM(IFERROR(MAP({1;2;3}; {1;2}; LAMBDA(a; b; a + b)); 100))"_ustr);
+    CPPUNIT_ASSERT_EQUAL(106.0, m_pDoc->GetValue(ScAddress(2, 0, 0)));
 
     m_pDoc->DeleteTab(0);
 }
@@ -2011,6 +2180,31 @@ CPPUNIT_TEST_FIXTURE(TestFormula2, testExternalRefUnresolved)
 
     m_pDoc->DeleteTab(0);
 #endif
+}
+
+CPPUNIT_TEST_FIXTURE(TestFormula2, testMatrixArithmeticMismatchedExtent)
+{
+    // Range arithmetic between operands of unequal non-broadcast
+    // lengths extends the result to the longer length and fills the
+    // slots past the shorter operand with #N/A.
+    sc::AutoCalcSwitch aACSwitch(*m_pDoc, true);
+    m_pDoc->InsertTab(0, u"Test"_ustr);
+
+    m_pDoc->SetValue(ScAddress(0, 0, 0), 2.0);
+    m_pDoc->SetValue(ScAddress(0, 1, 0), 4.0);
+    m_pDoc->SetValue(ScAddress(0, 2, 0), 7.0);
+    m_pDoc->SetValue(ScAddress(0, 3, 0), 7.0);
+
+    ScMarkData aMark(m_pDoc->GetSheetLimits());
+    aMark.SelectOneTable(0);
+    m_pDoc->InsertMatrixFormula(1, 0, 1, 3, aMark, u"=A1:A4 * {1|2|3}"_ustr);
+
+    CPPUNIT_ASSERT_EQUAL(2.0, m_pDoc->GetValue(ScAddress(1, 0, 0)));
+    CPPUNIT_ASSERT_EQUAL(8.0, m_pDoc->GetValue(ScAddress(1, 1, 0)));
+    CPPUNIT_ASSERT_EQUAL(21.0, m_pDoc->GetValue(ScAddress(1, 2, 0)));
+    CPPUNIT_ASSERT_EQUAL(FormulaError::NotAvailable, m_pDoc->GetErrCode(ScAddress(1, 3, 0)));
+
+    m_pDoc->DeleteTab(0);
 }
 
 CPPUNIT_TEST_FIXTURE(TestFormula2, testMatrixOp)
@@ -5774,17 +5968,46 @@ CPPUNIT_TEST_FIXTURE(TestFormula2, testDynamicArrayFlagCopy)
 
 CPPUNIT_TEST_FIXTURE(TestFormula2, testSingleValueOperator)
 {
-    // The @ prefix collapses an array-returning function to its upper-left
-    // value, opting the formula out of auto-spill.
+    // @ collapses an array operand or a bare range to a single slot.
 
     sc::AutoCalcSwitch aACSwitch(*m_pDoc, true);
     m_pDoc->InsertTab(0, u"Sheet1"_ustr);
 
+    // @SEQUENCE collapses the spilled array. The row below stays empty.
     m_pDoc->SetFormula(ScAddress(0, 0, 0), u"=@SEQUENCE(4)"_ustr,
                        formula::FormulaGrammar::GRAM_NATIVE);
     CPPUNIT_ASSERT_EQUAL(1.0, m_pDoc->GetValue(ScAddress(0, 0, 0)));
-    // No spill into the row below.
     CPPUNIT_ASSERT_EQUAL(CELLTYPE_NONE, m_pDoc->GetCellType(ScAddress(0, 1, 0)));
+
+    // Bare-range @ picks the slot whose row matches the formula row,
+    // and pushes #VALUE! when no slot matches.
+    m_pDoc->SetValue(ScAddress(1, 1, 0), 7.0);
+    m_pDoc->SetValue(ScAddress(1, 2, 0), 9.0);
+    m_pDoc->SetValue(ScAddress(1, 3, 0), 11.0);
+    m_pDoc->SetFormula(ScAddress(3, 1, 0), u"=@B2:B4"_ustr, formula::FormulaGrammar::GRAM_NATIVE);
+    m_pDoc->SetFormula(ScAddress(3, 2, 0), u"=@B2:B4"_ustr, formula::FormulaGrammar::GRAM_NATIVE);
+    m_pDoc->SetFormula(ScAddress(3, 3, 0), u"=@B2:B4"_ustr, formula::FormulaGrammar::GRAM_NATIVE);
+    m_pDoc->SetFormula(ScAddress(3, 4, 0), u"=@B2:B4"_ustr, formula::FormulaGrammar::GRAM_NATIVE);
+    CPPUNIT_ASSERT_EQUAL(7.0, m_pDoc->GetValue(ScAddress(3, 1, 0)));
+    CPPUNIT_ASSERT_EQUAL(9.0, m_pDoc->GetValue(ScAddress(3, 2, 0)));
+    CPPUNIT_ASSERT_EQUAL(11.0, m_pDoc->GetValue(ScAddress(3, 3, 0)));
+    CPPUNIT_ASSERT_EQUAL(FormulaError::NoValue, m_pDoc->GetErrCode(ScAddress(3, 4, 0)));
+
+    // @ on a computed expression returns the upper-left of the
+    // produced array, even when the formula sits in a row that does
+    // not overlap the source.
+    m_pDoc->SetFormula(ScAddress(0, 5, 0), u"=@(B2:B3+0)"_ustr,
+                       formula::FormulaGrammar::GRAM_NATIVE);
+    CPPUNIT_ASSERT_EQUAL(7.0, m_pDoc->GetValue(ScAddress(0, 5, 0)));
+    CPPUNIT_ASSERT_EQUAL(CELLTYPE_NONE, m_pDoc->GetCellType(ScAddress(0, 6, 0)));
+
+    // Two @-collapsed sub-expressions joined by a binary operator stay
+    // scalar. Without the collapse on each side the addition would see
+    // two arrays and produce one too, leaving the row below populated.
+    m_pDoc->SetFormula(ScAddress(0, 8, 0), u"=@((B2:B3+0)) + @((B2:B3+0))"_ustr,
+                       formula::FormulaGrammar::GRAM_NATIVE);
+    CPPUNIT_ASSERT_EQUAL(14.0, m_pDoc->GetValue(ScAddress(0, 8, 0)));
+    CPPUNIT_ASSERT_EQUAL(CELLTYPE_NONE, m_pDoc->GetCellType(ScAddress(0, 9, 0)));
 
     m_pDoc->DeleteTab(0);
 }
@@ -6123,6 +6346,28 @@ CPPUNIT_TEST_FIXTURE(TestFormula2, testEnterMatrixUndoRedoKeepsDynamicFlag)
     m_pDoc->DeleteTab(0);
 }
 
+CPPUNIT_TEST_FIXTURE(TestFormula2, testUnknownNameRoundTrip)
+{
+    // An unknown name evaluates to a name error and its text survives in the
+    // stored formula expression.
+    sc::AutoCalcSwitch aACSwitch(*m_pDoc, true);
+    m_pDoc->InsertTab(0, u"Sheet1"_ustr);
+
+    ScAddress aPosition(0, 0, 0);
+    m_pDoc->SetString(aPosition, u"=ZZUNKNOWNZZ"_ustr);
+
+    CPPUNIT_ASSERT_EQUAL(u"#NAME?"_ustr, m_pDoc->GetString(aPosition));
+
+    // Casing of the round-tripped name is not guaranteed, so match without
+    // regard to case.
+    OUString aFormula = m_pDoc->GetFormula(0, 0, 0);
+    CPPUNIT_ASSERT(!aFormula.isEmpty());
+    CPPUNIT_ASSERT_MESSAGE(aFormula.toUtf8().getStr(),
+                           aFormula.equalsIgnoreAsciiCase(u"=ZZUNKNOWNZZ"));
+
+    m_pDoc->DeleteTab(0);
+}
+
 CPPUNIT_TEST_FIXTURE(TestFormula2, testCopyCellDropsAutoDynamicEligibility)
 {
     // A clone (paste, fill, transpose) drops the auto-promotion
@@ -6154,6 +6399,298 @@ CPPUNIT_TEST_FIXTURE(TestFormula2, testCopyCellDropsAutoDynamicEligibility)
     CPPUNIT_ASSERT(pSource->IsDynamicArrayMaster());
     CPPUNIT_ASSERT(!pCopy->IsDynamicArrayMaster());
     CPPUNIT_ASSERT_EQUAL(ScMatrixMode::NONE, pCopy->GetMatrixFlag());
+
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(TestFormula2, testFuncLetWithOdffParameters)
+{
+    // A LET whose bound parameters use the ODFF _xlpm. prefix evaluates to the
+    // right value. The prefix starts with an underscore, which keeps the name
+    // from looking like an ordinary name to the compiler, so the bound
+    // parameters have to be resolved even in that case.
+    sc::AutoCalcSwitch aACSwitch(*m_pDoc, true);
+    m_pDoc->InsertTab(0, u"Sheet1"_ustr);
+
+    ScAddress aPosition(0, 0, 0);
+    m_pDoc->SetFormula(aPosition,
+                       u"=COM.MICROSOFT.LET("
+                       "_xlpm.first;5;"
+                       "_xlpm.second;SUM(_xlpm.first;5);"
+                       "_xlpm.third;SUM(_xlpm.second;5);"
+                       "SUM(_xlpm.second;_xlpm.third))"_ustr,
+                       formula::FormulaGrammar::GRAM_ODFF);
+
+    CPPUNIT_ASSERT_EQUAL(25.0, m_pDoc->GetValue(aPosition));
+    CPPUNIT_ASSERT_EQUAL(u"25"_ustr, m_pDoc->GetString(aPosition));
+
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(TestFormula2, testCallBuiltInThroughCallable)
+{
+    // A built-in function used as a value and then called gets routed through
+    // the call operator. It returns the same result as calling the built-in
+    // directly.
+    sc::AutoCalcSwitch aACSwitch(*m_pDoc, true);
+    m_pDoc->InsertTab(0, u"Sheet1"_ustr);
+
+    // Parenthesizing SUM turns it into a callable, and the following argument
+    // list calls it.
+    ScAddress aPos(0, 0, 0);
+    m_pDoc->SetString(aPos, u"=(SUM)(1;2;3)"_ustr);
+    CPPUNIT_ASSERT_EQUAL(6.0, m_pDoc->GetValue(aPos));
+
+    // Binding a built-in to a LET parameter and calling that parameter takes
+    // the same call path.
+    aPos.IncRow();
+    m_pDoc->SetString(aPos, u"=LET(f;SUM;f(1;2;3))"_ustr);
+    CPPUNIT_ASSERT_EQUAL(6.0, m_pDoc->GetValue(aPos));
+
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(TestFormula2, testCallBuiltInZeroAndOneArg)
+{
+    // A built-in called through the call operator returns the same value with
+    // no arguments and with one argument as the built-in does on its own.
+    sc::AutoCalcSwitch aACSwitch(*m_pDoc, true);
+    m_pDoc->InsertTab(0, u"Sheet1"_ustr);
+
+    // PI takes no arguments, so the empty list calls it with nothing.
+    ScAddress aPos(0, 0, 0);
+    m_pDoc->SetString(aPos, u"=(PI)()"_ustr);
+    CPPUNIT_ASSERT_EQUAL(M_PI, m_pDoc->GetValue(aPos));
+
+    // ABS takes one argument.
+    aPos.IncRow();
+    m_pDoc->SetString(aPos, u"=(ABS)(-5)"_ustr);
+    CPPUNIT_ASSERT_EQUAL(5.0, m_pDoc->GetValue(aPos));
+
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(TestFormula2, testCallBuiltInChosenByFunction)
+{
+    // A built-in picked by IF and then called through an open paren that
+    // follows the closing paren of IF returns the chosen built-in's value.
+    sc::AutoCalcSwitch aACSwitch(*m_pDoc, true);
+    m_pDoc->InsertTab(0, u"Sheet1"_ustr);
+
+    // A true condition makes IF yield SUM.
+    ScAddress aPos(0, 0, 0);
+    m_pDoc->SetString(aPos, u"=IF(TRUE();SUM;MAX)(1;2;3)"_ustr);
+    CPPUNIT_ASSERT_EQUAL(6.0, m_pDoc->GetValue(aPos));
+
+    // A false condition makes IF yield MAX.
+    aPos.IncRow();
+    m_pDoc->SetString(aPos, u"=IF(FALSE();SUM;MAX)(1;2;3)"_ustr);
+    CPPUNIT_ASSERT_EQUAL(3.0, m_pDoc->GetValue(aPos));
+
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(TestFormula2, testCallableCallAsCallableArgument)
+{
+    // A call through the call operator used as an argument to another such call
+    // evaluates inner first and feeds its value to the outer call.
+    sc::AutoCalcSwitch aACSwitch(*m_pDoc, true);
+    m_pDoc->InsertTab(0, u"Sheet1"_ustr);
+
+    ScAddress aPos(0, 0, 0);
+    m_pDoc->SetString(aPos, u"=(SUM)((MAX)(1;2);3)"_ustr);
+    CPPUNIT_ASSERT_EQUAL(5.0, m_pDoc->GetValue(aPos));
+
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(TestFormula2, testCallableWhereNumberExpected)
+{
+    // A callable handed to an operator that expects a number resolves to an
+    // illegal parameter error.
+    sc::AutoCalcSwitch aACSwitch(*m_pDoc, true);
+    m_pDoc->InsertTab(0, u"Sheet1"_ustr);
+
+    ScAddress aPos(0, 0, 0);
+    m_pDoc->SetString(aPos, u"=(SUM)+1"_ustr);
+    CPPUNIT_ASSERT_EQUAL(u"Err:504"_ustr, m_pDoc->GetString(aPos));
+
+    aPos.IncRow();
+    m_pDoc->SetString(aPos, u"=SUM+1"_ustr);
+    CPPUNIT_ASSERT_EQUAL(u"Err:504"_ustr, m_pDoc->GetString(aPos));
+
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(TestFormula2, testAtFormulaIgnoresDynamicArrayMasterFlag)
+{
+    // An @-prefixed formula opts out of dynamic-array spilling.
+    // SetDynamicArrayMaster ignores a request to enable the flag on
+    // such a cell, so an OOXML cm="1" arriving on an @-cell does not
+    // turn into a #SPILL! at interpret time.
+
+    sc::AutoCalcSwitch aACSwitch(*m_pDoc, true);
+    m_pDoc->InsertTab(0, u"Sheet1"_ustr);
+
+    m_pDoc->SetValue(ScAddress(0, 0, 0), 1.0);
+    m_pDoc->SetValue(ScAddress(0, 1, 0), 2.0);
+    m_pDoc->SetValue(ScAddress(0, 2, 0), 3.0);
+
+    m_pDoc->SetFormula(ScAddress(1, 0, 0), u"=@(A1:A3+0)"_ustr,
+                       formula::FormulaGrammar::GRAM_NATIVE);
+    ScFormulaCell* pCell = m_pDoc->GetFormulaCell(ScAddress(1, 0, 0));
+    CPPUNIT_ASSERT(pCell);
+
+    pCell->SetDynamicArrayMaster(true);
+    CPPUNIT_ASSERT(!pCell->IsDynamicArrayMaster());
+    CPPUNIT_ASSERT_EQUAL(1.0, m_pDoc->GetValue(ScAddress(1, 0, 0)));
+
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(TestFormula2, testMatrixConcatRendersBooleansAsTrueFalse)
+{
+    // A boolean value pulled into a string context renders as the
+    // string "TRUE" or "FALSE", not "1" or "0". The plain non-matrix
+    // concatenation already does this; the matrix paths through
+    // ScMatrixImpl::GetString and ScMatrixImpl::MatConcat are the
+    // ones the fix in this commit covers.
+
+    sc::AutoCalcSwitch aACSwitch(*m_pDoc, true);
+    m_pDoc->InsertTab(0, u"Sheet1"_ustr);
+
+    // Plain scalar concatenation. Already works, kept here so a
+    // regression in this baseline path shows up too.
+    m_pDoc->SetString(ScAddress(0, 0, 0), u"=TRUE&\"!\""_ustr);
+    m_pDoc->SetString(ScAddress(0, 1, 0), u"=FALSE&\"!\""_ustr);
+    CPPUNIT_ASSERT_EQUAL(u"TRUE!"_ustr, m_pDoc->GetString(ScAddress(0, 0, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"FALSE!"_ustr, m_pDoc->GetString(ScAddress(0, 1, 0)));
+
+    ScMarkData aMark(m_pDoc->GetSheetLimits());
+    aMark.SelectOneTable(0);
+
+    // Matrix concatenated with a scalar string -> ScMatrixImpl::GetString.
+    m_pDoc->InsertMatrixFormula(1, 0, 1, 1, aMark, u"={TRUE|FALSE}&\"!\""_ustr);
+    CPPUNIT_ASSERT_EQUAL(u"TRUE!"_ustr, m_pDoc->GetString(ScAddress(1, 0, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"FALSE!"_ustr, m_pDoc->GetString(ScAddress(1, 1, 0)));
+
+    // Matrix concatenated with another matrix -> ScMatrixImpl::MatConcat.
+    m_pDoc->InsertMatrixFormula(2, 0, 2, 1, aMark, u"={TRUE|FALSE}&{\"a\"|\"b\"}"_ustr);
+    CPPUNIT_ASSERT_EQUAL(u"TRUEa"_ustr, m_pDoc->GetString(ScAddress(2, 0, 0)));
+    CPPUNIT_ASSERT_EQUAL(u"FALSEb"_ustr, m_pDoc->GetString(ScAddress(2, 1, 0)));
+
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(TestFormula2, testAutoSpillFromChooseAndLet)
+{
+    // A UI-typed CHOOSE or LET whose result is a multi-cell array
+    // auto-promotes the cell to a dynamic-array master and spills
+    // the result. CHOOSE inspects each alternative slice and reports
+    // array if any one of them produces an array. LET recurses into
+    // the body slice.
+
+    m_pDoc->SetAutoCalc(false);
+    m_pDoc->InsertTab(0, u"Sheet1"_ustr);
+
+    m_pDoc->SetValue(ScAddress(0, 0, 0), 1.0);
+    m_pDoc->SetValue(ScAddress(0, 1, 0), 2.0);
+    m_pDoc->SetValue(ScAddress(0, 2, 0), 3.0);
+    m_pDoc->SetValue(ScAddress(1, 0, 0), 10.0);
+    m_pDoc->SetValue(ScAddress(1, 1, 0), 20.0);
+    m_pDoc->SetValue(ScAddress(1, 2, 0), 30.0);
+
+    // CHOOSE(2; A1:A3; B1:B3) picks B1:B3, a 3x1 column array. The
+    // cell at D1 spills into D1:D3 with 10, 20 and 30.
+    ScAddress aChoosePos(3, 0, 0);
+    ScCompiler aChooseComp(*m_pDoc, aChoosePos, m_pDoc->GetGrammar(), false, false);
+    std::unique_ptr<ScTokenArray> pChooseCode
+        = aChooseComp.CompileString(u"=CHOOSE(2; A1:A3; B1:B3)"_ustr);
+    auto pChooseCell = new ScFormulaCell(*m_pDoc, aChoosePos, std::move(pChooseCode));
+    pChooseCell->SetAutoDynamicArrayEligible(true);
+    m_pDoc->SetFormulaCell(aChoosePos, pChooseCell);
+
+    // LET(x; A1:A3; x*2) binds x to A1:A3 and doubles it. The cell
+    // at E1 spills into E1:E3 with 2, 4 and 6.
+    ScAddress aLetPos(4, 0, 0);
+    ScCompiler aLetComp(*m_pDoc, aLetPos, m_pDoc->GetGrammar(), false, false);
+    std::unique_ptr<ScTokenArray> pLetCode = aLetComp.CompileString(u"=LET(x; A1:A3; x*2)"_ustr);
+    auto pLetCell = new ScFormulaCell(*m_pDoc, aLetPos, std::move(pLetCode));
+    pLetCell->SetAutoDynamicArrayEligible(true);
+    m_pDoc->SetFormulaCell(aLetPos, pLetCell);
+
+    m_pDoc->SetAutoCalc(true);
+    m_pDoc->CalcAll();
+
+    CPPUNIT_ASSERT_MESSAGE("CHOOSE with a range branch should auto-spill",
+                           pChooseCell->IsDynamicArrayMaster());
+    CPPUNIT_ASSERT_EQUAL(10.0, m_pDoc->GetValue(ScAddress(3, 0, 0)));
+    CPPUNIT_ASSERT_EQUAL(20.0, m_pDoc->GetValue(ScAddress(3, 1, 0)));
+    CPPUNIT_ASSERT_EQUAL(30.0, m_pDoc->GetValue(ScAddress(3, 2, 0)));
+
+    CPPUNIT_ASSERT_MESSAGE("LET binding a range should auto-spill",
+                           pLetCell->IsDynamicArrayMaster());
+    CPPUNIT_ASSERT_EQUAL(2.0, m_pDoc->GetValue(ScAddress(4, 0, 0)));
+    CPPUNIT_ASSERT_EQUAL(4.0, m_pDoc->GetValue(ScAddress(4, 1, 0)));
+    CPPUNIT_ASSERT_EQUAL(6.0, m_pDoc->GetValue(ScAddress(4, 2, 0)));
+
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(TestFormula2, testDynamicArrayIsFormula)
+{
+    // ISFORMULA is true for the master of a dynamic-array spill and
+    // false for the cells it spilled into, even though the spilled
+    // data came from formulas. The same input entered as a classic
+    // array formula keeps every cell a formula.
+    m_pDoc->SetAutoCalc(false);
+    m_pDoc->InsertTab(0, u"Sheet1"_ustr);
+
+    m_pDoc->SetString(ScAddress(1, 0, 0), u"=1+10"_ustr);
+    m_pDoc->SetString(ScAddress(1, 1, 0), u"=1+20"_ustr);
+    m_pDoc->SetString(ScAddress(1, 2, 0), u"=1+30"_ustr);
+
+    // A1 spills =B1:B3 into A1:A3 as a dynamic-array master.
+    ScAddress aPos(0, 0, 0);
+    ScCompiler aComp(*m_pDoc, aPos, m_pDoc->GetGrammar(), false, false);
+    std::unique_ptr<ScTokenArray> pCode = aComp.CompileString(u"=B1:B3"_ustr);
+    auto pCell = new ScFormulaCell(*m_pDoc, aPos, std::move(pCode));
+    pCell->SetAutoDynamicArrayEligible(true);
+    m_pDoc->SetFormulaCell(aPos, pCell);
+    m_pDoc->SetAutoCalc(true);
+    m_pDoc->CalcAll();
+    CPPUNIT_ASSERT(pCell->IsDynamicArrayMaster());
+
+    // A source cell is a real formula, but the cells the master
+    // spilled into are not.
+    m_pDoc->SetString(ScAddress(6, 0, 0), u"=ISFORMULA(B1)"_ustr);
+    CPPUNIT_ASSERT_EQUAL(1.0, m_pDoc->GetValue(ScAddress(6, 0, 0)));
+
+    m_pDoc->SetString(ScAddress(4, 0, 0), u"=ISFORMULA(A1)"_ustr);
+    m_pDoc->SetString(ScAddress(4, 1, 0), u"=ISFORMULA(A2)"_ustr);
+    m_pDoc->SetString(ScAddress(4, 2, 0), u"=ISFORMULA(A3)"_ustr);
+    CPPUNIT_ASSERT_EQUAL(1.0, m_pDoc->GetValue(ScAddress(4, 0, 0)));
+    CPPUNIT_ASSERT_EQUAL(0.0, m_pDoc->GetValue(ScAddress(4, 1, 0)));
+    CPPUNIT_ASSERT_EQUAL(0.0, m_pDoc->GetValue(ScAddress(4, 2, 0)));
+
+    // The range form agrees cell by cell: ISFORMULA over A1:A3 gives
+    // true, false, false across H1:H3.
+    ScMarkData aMark(m_pDoc->GetSheetLimits());
+    aMark.SelectOneTable(0);
+    m_pDoc->InsertMatrixFormula(7, 0, 7, 2, aMark, u"=ISFORMULA(A1:A3)"_ustr);
+    CPPUNIT_ASSERT_EQUAL(1.0, m_pDoc->GetValue(ScAddress(7, 0, 0)));
+    CPPUNIT_ASSERT_EQUAL(0.0, m_pDoc->GetValue(ScAddress(7, 1, 0)));
+    CPPUNIT_ASSERT_EQUAL(0.0, m_pDoc->GetValue(ScAddress(7, 2, 0)));
+
+    // The same =B1:B3 entered as a classic array formula at D1:D3
+    // keeps every cell a formula.
+    m_pDoc->InsertMatrixFormula(3, 0, 3, 2, aMark, u"=B1:B3"_ustr);
+    m_pDoc->SetString(ScAddress(5, 0, 0), u"=ISFORMULA(D1)"_ustr);
+    m_pDoc->SetString(ScAddress(5, 1, 0), u"=ISFORMULA(D2)"_ustr);
+    m_pDoc->SetString(ScAddress(5, 2, 0), u"=ISFORMULA(D3)"_ustr);
+    CPPUNIT_ASSERT_EQUAL(1.0, m_pDoc->GetValue(ScAddress(5, 0, 0)));
+    CPPUNIT_ASSERT_EQUAL(1.0, m_pDoc->GetValue(ScAddress(5, 1, 0)));
+    CPPUNIT_ASSERT_EQUAL(1.0, m_pDoc->GetValue(ScAddress(5, 2, 0)));
 
     m_pDoc->DeleteTab(0);
 }

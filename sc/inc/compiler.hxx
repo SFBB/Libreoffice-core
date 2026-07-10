@@ -138,7 +138,7 @@ public:
         } sharedstring;
         ScMatrix*    pMat;
         FormulaError nError;
-        short        nJump[ FORMULA_MAXPARAMS + 1 ];     // If/Choose/Let token
+        short        nJump[ FORMULA_MAXPARAMS + 1 ];     // If/Choose/Let/Lambda token
     };
     OUString   maExternalName; // depending on the opcode, this is either the external, or the external name, or the external table name
 
@@ -351,10 +351,10 @@ private:
 
     std::vector<Whitespace> NextSymbol(bool bInArray);
 
-    bool ParseValue( const OUString& );
+    bool ParseValue( const OUString&, bool bInArray = false );
     bool ParseOpCode( const OUString&, bool bInArray );
     bool ParseOpCode2( std::u16string_view );
-    bool ParseString();
+    bool ParseLiteralString();
     bool ParseReference( const OUString& rSymbol, const OUString* pErrRef = nullptr );
     bool ParseSingleReference( const OUString& rSymbol, const OUString* pErrRef = nullptr );
     bool ParseDoubleReference( const OUString& rSymbol, const OUString* pErrRef = nullptr );
@@ -362,12 +362,11 @@ private:
     bool ParsePredetectedErrRefReference( const OUString& rName, const OUString* pErrRef );
     bool ParseMacro( const OUString& );
     bool ParseNamedRange( const OUString&, bool onlyCheck = false );
-    bool ParseLambdaFuncName( const OUString& );
+    bool ParseLocalName( const OUString& );
     bool ParseExternalNamedRange( const OUString& rSymbol, bool& rbInvalidExternalNameRange );
     bool ParseDBRange( const OUString& );
     bool ParseDPFieldName( const OUString& );
     bool ParseColRowName( const OUString& );
-    bool ParseBoolean( const OUString& );
     void AutoCorrectParsedSymbol();
     const ScRangeData* GetRangeData( SCTAB& rSheet, const OUString& rUpperName ) const;
 

@@ -64,17 +64,11 @@
                 <child>
                   <object class="GtkTreeViewColumn" id="treeviewcolumn1">
                     <child>
-                      <object class="GtkCellRendererPixbuf" id="cellrenderertext1"/>
+                      <object class="GtkCellRendererPixbuf" id="cellrendererpixbuf1"/>
                       <attributes>
                         <attribute name="surface">0</attribute>
                       </attributes>
                     </child>
-                  </object>
-                </child>
-                <child>
-                  <object class="GtkTreeViewColumn" id="treeviewcolumn5">
-                    <property name="resizable">True</property>
-                    <property name="spacing">6</property>
                     <child>
                       <object class="GtkCellRendererText" id="cellrenderer4"/>
                       <attributes>
