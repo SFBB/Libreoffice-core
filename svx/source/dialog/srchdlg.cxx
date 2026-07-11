@@ -967,7 +967,11 @@ void SvxSearchDialog::Init_Impl( bool bSearchPattern )
         if (!comphelper::LibreOfficeKit::isActive())
         {
             if (!(m_pSearchItem->GetSearchString().isEmpty()) && bSetSearch)
+            {
                 m_xSearchLB->set_entry_text(m_pSearchItem->GetSearchString());
+                if (bSetReplace)
+                    m_xReplaceLB->set_entry_text(m_pSearchItem->GetReplaceString());
+            }
             else if (!m_aSearchStrings.empty())
             {
                 bool bAttributes = ((m_pSearchList && m_pSearchList->Count())
@@ -1477,6 +1481,7 @@ IMPL_LINK_NOARG(SvxSearchDialog, TemplateHdl_Impl, weld::Toggleable&, void)
     if (m_bFormat)
         return;
     OUString sDesc;
+    bool bSetOptimalLayoutSize = false;
 
     if ( m_xLayoutBtn->get_active() )
     {
@@ -1517,18 +1522,8 @@ IMPL_LINK_NOARG(SvxSearchDialog, TemplateHdl_Impl, weld::Toggleable&, void)
             m_xSearchLB->hide();
             m_xReplaceLB->hide();
 
-            m_xSearchAttrText->set_label( sDesc );
-            m_xReplaceAttrText->set_label( sDesc );
-
-            if(!sDesc.isEmpty())
-            {
-                if (!m_xSearchAttrText->get_visible() || !m_xReplaceAttrText->get_visible())
-                {
-                    m_xSearchAttrText->show();
-                    m_xReplaceAttrText->show();
-                    m_xDialog->resize_to_request();
-                }
-            }
+            m_xSearchAttrText->set_label(u""_ustr);
+            m_xReplaceAttrText->set_label(u""_ustr);
         }
         m_xFormatBtn->set_sensitive(false);
         m_xNoFormatBtn->set_sensitive(false);
@@ -1549,16 +1544,17 @@ IMPL_LINK_NOARG(SvxSearchDialog, TemplateHdl_Impl, weld::Toggleable&, void)
         m_xReplaceTmplLB->hide();
 
         m_xSearchAttrText->set_label( BuildAttrText_Impl( sDesc, true ) );
-        m_xReplaceAttrText->set_label( BuildAttrText_Impl( sDesc, false ) );
-
-        if(!sDesc.isEmpty())
+        if (!sDesc.isEmpty() && !m_xSearchAttrText->get_visible())
         {
-            if (!m_xSearchAttrText->get_visible() || !m_xReplaceAttrText->get_visible())
-            {
-                m_xSearchAttrText->show();
-                m_xReplaceAttrText->show();
-                m_xDialog->resize_to_request();
-            }
+            m_xSearchAttrText->show();
+            bSetOptimalLayoutSize = true;
+        }
+
+        m_xReplaceAttrText->set_label( BuildAttrText_Impl( sDesc, false ) );
+        if (!sDesc.isEmpty() && !m_xReplaceAttrText->get_visible())
+        {
+            m_xReplaceAttrText->show();
+            bSetOptimalLayoutSize = true;
         }
 
         EnableControl_Impl(*m_xFormatBtn);
@@ -1571,6 +1567,9 @@ IMPL_LINK_NOARG(SvxSearchDialog, TemplateHdl_Impl, weld::Toggleable&, void)
     m_pImpl->bSaveToModule = false;
     FlagHdl_Impl(*m_xLayoutBtn);
     m_pImpl->bSaveToModule = true;
+
+    if (bSetOptimalLayoutSize)
+        m_xDialog->resize_to_request();
 }
 
 void SvxSearchDialog::Remember_Impl(bool _bSearch)
@@ -2170,6 +2169,8 @@ void SvxSearchDialog::PaintAttrText_Impl()
 
     if (!m_bFormat && !aDesc.isEmpty())
         m_bFormat = true;
+    else if (m_bFormat && aDesc.isEmpty())
+        NoFormatHdl_Impl(*m_xNoFormatBtn);
 
     bool bSetOptimalLayoutSize = false;
 

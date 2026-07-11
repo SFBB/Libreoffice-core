@@ -24,6 +24,7 @@
 #include <vcl/weld/Entry.hxx>
 #include <vcl/weld/Label.hxx>
 #include <vcl/weld/TextView.hxx>
+#include <vcl/weld/TreeView.hxx>
 
 class ScUserList;
 class ScDocument;
@@ -40,8 +41,8 @@ public:
 
     virtual OUString GetAllStrings() override;
 
-    virtual bool        FillItemSet     ( SfxItemSet* rCoreAttrs ) override;
-    virtual void        Reset           ( const SfxItemSet* rCoreAttrs ) override;
+    virtual bool FillItemSet(SfxItemSet* pCoreAttrs) override;
+    virtual void Reset(const SfxItemSet* pCoreAttrs) override;
     virtual DeactivateRC   DeactivatePage  ( SfxItemSet* pSet ) override;
 
 private:
@@ -58,38 +59,35 @@ private:
     std::unique_ptr<weld::Button> mxBtnRemove;
     std::unique_ptr<weld::Button> mxBtnCopy;
 
-    const OUString      aStrQueryRemove;
-    const OUString      aStrCopyList;
-    const OUString      aStrCopyFrom;
-    const OUString      aStrCopyErr;
+    const OUString m_aStrQueryRemove;
+    const OUString m_aStrCopyFrom;
+    const OUString m_aStrCopyErr;
 
-    const sal_uInt16    nWhichUserLists;
-    std::unique_ptr<ScUserList> pUserLists;
+    const sal_uInt16 m_nWhichUserLists;
+    std::unique_ptr<ScUserList> m_pUserLists;
 
-    ScDocument*     pDoc;
-    ScViewData*     pViewData;
-    OUString        aStrSelectedArea;
+    ScDocument* m_pDoc;
+    ScViewData* m_pViewData;
+    OUString m_aStrSelectedArea;
 
-    bool            bModifyMode;
-    bool            bCancelMode;
-    bool            bCopyDone;
-    sal_Int32       nCancelPos;
+    bool m_bModifyMode;
+    bool m_bCancelMode;
+    bool m_bCopyDone;
+    sal_Int32 m_nCancelPos;
 
-    void    Init                ();
     size_t  UpdateUserListBox   ();
     void    UpdateEntries       ( size_t nList );
-    static void MakeListStr     ( OUString& rListStr );
-    void    AddNewList          ( const OUString& rEntriesStr );
+    static OUString MakeListStr(std::u16string_view sListStr);
+    void AddNewList(std::u16string_view sEntriesStr);
     void    RemoveList          ( size_t nList );
-    void    ModifyList          ( size_t          nSelList,
-                                  const OUString& rEntriesStr );
+    void ModifyList(size_t nSelList, std::u16string_view sEntriesStr);
     void    CopyListFromArea    ( const ScRefAddress& rStartPos,
                                   const ScRefAddress& rEndPos );
 
     // Handler:
     DECL_LINK(LbSelectHdl, weld::ItemView&, void);
     DECL_LINK( BtnClickHdl, weld::Button&, void );
-    DECL_LINK( EdEntriesModHdl, weld::TextView&, void);
+    DECL_LINK(EdEntriesModHdl, weld::TextWidget&, void);
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

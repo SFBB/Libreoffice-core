@@ -45,7 +45,7 @@
 
 const sal_Unicode cDelimiter = ',';
 
-// Benutzerdefinierte Listen:
+// User-defined lists
 
 ScTpUserLists::ScTpUserLists( weld::Container* pPage, weld::DialogController* pController,
                               const SfxItemSet&     rCoreAttrs )
@@ -63,29 +63,19 @@ ScTpUserLists::ScTpUserLists( weld::Container* pPage, weld::DialogController* pC
     , mxBtnModify(m_xBuilder->weld_button(u"modify"_ustr))
     , mxBtnRemove(m_xBuilder->weld_button(u"delete"_ustr))
     , mxBtnCopy(m_xBuilder->weld_button(u"copy"_ustr))
-    , aStrQueryRemove ( ScResId( STR_QUERYREMOVE ) )
-    , aStrCopyList    ( ScResId( STR_COPYLIST ) )
-    , aStrCopyFrom    ( ScResId( STR_COPYFROM ) )
-    , aStrCopyErr     ( ScResId( STR_COPYERR ) )
-    , nWhichUserLists ( GetWhich( SID_SCUSERLISTS ) )
-    , pDoc            ( nullptr )
-    , pViewData       ( nullptr )
-    , bModifyMode     ( false )
-    , bCancelMode     ( false )
-    , bCopyDone       ( false )
-    , nCancelPos      ( 0 )
+    , m_aStrQueryRemove(ScResId(STR_QUERYREMOVE))
+    , m_aStrCopyFrom(ScResId(STR_COPYFROM))
+    , m_aStrCopyErr(ScResId(STR_COPYERR))
+    , m_nWhichUserLists(GetWhich(SID_SCUSERLISTS))
+    , m_pDoc(nullptr)
+    , m_pViewData(nullptr)
+    , m_bModifyMode(false)
+    , m_bCancelMode(false)
+    , m_bCopyDone(false)
+    , m_nCancelPos(0)
 {
     SetExchangeSupport();
-    Init();
-    Reset(&rCoreAttrs);
-}
 
-ScTpUserLists::~ScTpUserLists()
-{
-}
-
-void ScTpUserLists::Init()
-{
     SfxViewShell*   pSh = SfxViewShell::Current();
     ScTabViewShell* pViewSh = dynamic_cast<ScTabViewShell*>( pSh );
 
@@ -106,18 +96,17 @@ void ScTpUserLists::Init()
         SCCOL   nEndCol     = 0;
         SCROW   nEndRow     = 0;
 
-        pViewData = &pViewSh->GetViewData();
-        pDoc = &pViewData->GetDocument();
+        m_pViewData = &pViewSh->GetViewData();
+        m_pDoc = &m_pViewData->GetDocument();
 
-        pViewData->GetSimpleArea( nStartCol, nStartRow, nStartTab,
-                                  nEndCol,   nEndRow,  nEndTab );
+        m_pViewData->GetSimpleArea(nStartCol, nStartRow, nStartTab, nEndCol, nEndRow, nEndTab);
 
         PutInOrder( nStartCol, nEndCol );
         PutInOrder( nStartRow, nEndRow );
         PutInOrder( nStartTab, nEndTab );
 
-        aStrSelectedArea = ScRange( nStartCol, nStartRow, nStartTab, nEndCol, nEndRow, nEndTab
-                ).Format(*pDoc, ScRefFlags::RANGE_ABS_3D);
+        m_aStrSelectedArea = ScRange(nStartCol, nStartRow, nStartTab, nEndCol, nEndRow, nEndTab)
+                                 .Format(*m_pDoc, ScRefFlags::RANGE_ABS_3D);
 
         mxBtnCopy->connect_clicked ( LINK( this, ScTpUserLists, BtnClickHdl ) );
         mxBtnCopy->set_sensitive(true);
@@ -129,6 +118,11 @@ void ScTpUserLists::Init()
         mxEdCopyFrom->set_sensitive(false);
     }
 
+    Reset(&rCoreAttrs);
+}
+
+ScTpUserLists::~ScTpUserLists()
+{
 }
 
 std::unique_ptr<SfxTabPage> ScTpUserLists::Create( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rAttrSet )
@@ -136,20 +130,20 @@ std::unique_ptr<SfxTabPage> ScTpUserLists::Create( weld::Container* pPage, weld:
     return std::make_unique<ScTpUserLists>(pPage, pController, *rAttrSet);
 }
 
-void ScTpUserLists::Reset( const SfxItemSet* rCoreAttrs )
+void ScTpUserLists::Reset(const SfxItemSet* pCoreAttrs)
 {
-    const ScUserListItem& rUserListItem = static_cast<const ScUserListItem&>(
-                                           rCoreAttrs->Get( nWhichUserLists ));
+    const ScUserListItem& rUserListItem
+        = static_cast<const ScUserListItem&>(pCoreAttrs->Get(m_nWhichUserLists));
     const ScUserList*     pCoreList     = rUserListItem.GetUserList();
 
     OSL_ENSURE( pCoreList, "UserList not found :-/" );
 
     if ( pCoreList )
     {
-        if ( !pUserLists )
-            pUserLists.reset( new ScUserList( *pCoreList ) );
+        if (!m_pUserLists)
+            m_pUserLists.reset(new ScUserList(*pCoreList));
         else
-            *pUserLists = *pCoreList;
+            *m_pUserLists = *pCoreList;
 
         if ( UpdateUserListBox() > 0 )
         {
@@ -157,10 +151,10 @@ void ScTpUserLists::Reset( const SfxItemSet* rCoreAttrs )
             UpdateEntries( 0 );
         }
     }
-    else if ( !pUserLists )
-        pUserLists.reset( new ScUserList );
+    else if (!m_pUserLists)
+        m_pUserLists.reset(new ScUserList);
 
-    mxEdCopyFrom->set_text( aStrSelectedArea );
+    mxEdCopyFrom->set_text(m_aStrSelectedArea);
 
     if ( mxLbLists->n_children() == 0 || officecfg::Office::Calc::SortList::List::isReadOnly() )
     {
@@ -179,7 +173,7 @@ void ScTpUserLists::Reset( const SfxItemSet* rCoreAttrs )
     mxBtnAdd->set_sensitive(false);
     mxBtnModify->set_sensitive(false);
 
-    if ( !bCopyDone && pViewData )
+    if (!m_bCopyDone && m_pViewData)
     {
         mxFtCopyFrom->set_sensitive(true);
         mxEdCopyFrom->set_sensitive(true);
@@ -209,40 +203,40 @@ OUString ScTpUserLists::GetAllStrings()
     return sAllStrings.toString().replaceAll("_", "");
 }
 
-bool ScTpUserLists::FillItemSet( SfxItemSet* rCoreAttrs )
+bool ScTpUserLists::FillItemSet(SfxItemSet* pCoreAttrs)
 {
     // Changes aren't saved?
     // -> simulate click of Add-Button
 
-    if ( bModifyMode || bCancelMode )
+    if (m_bModifyMode || m_bCancelMode)
         BtnClickHdl(*mxBtnAdd);
 
-    const ScUserListItem& rUserListItem = static_cast<const ScUserListItem&>(
-                                           GetItemSet().Get( nWhichUserLists ));
+    const ScUserListItem& rUserListItem
+        = static_cast<const ScUserListItem&>(GetItemSet().Get(m_nWhichUserLists));
 
     ScUserList* pCoreList       = rUserListItem.GetUserList();
     bool        bDataModified   = false;
 
-    if ( (pUserLists == nullptr) && (pCoreList == nullptr) )
+    if ((m_pUserLists == nullptr) && (pCoreList == nullptr))
     {
         bDataModified = false;
     }
-    else if ( pUserLists != nullptr )
+    else if (m_pUserLists != nullptr)
     {
         if ( pCoreList != nullptr )
-            bDataModified = (*pUserLists != *pCoreList);
+            bDataModified = (*m_pUserLists != *pCoreList);
         else
             bDataModified = true;
     }
 
     if ( bDataModified )
     {
-        ScUserListItem aULItem( nWhichUserLists );
+        ScUserListItem aULItem(m_nWhichUserLists);
 
-        if ( pUserLists )
-            aULItem.SetUserList( *pUserLists );
+        if (m_pUserLists)
+            aULItem.SetUserList(*m_pUserLists);
 
-        rCoreAttrs->Put( aULItem );
+        pCoreAttrs->Put(aULItem);
     }
 
     return bDataModified;
@@ -260,16 +254,15 @@ size_t ScTpUserLists::UpdateUserListBox()
 {
     mxLbLists->clear();
 
-    if ( !pUserLists ) return 0;
+    if (!m_pUserLists)
+        return 0;
 
-    size_t nCount = pUserLists->size();
-    OUString  aEntry;
-
+    size_t nCount = m_pUserLists->size();
     for ( size_t i=0; i<nCount; ++i )
     {
-        aEntry = (*pUserLists)[i].GetString();
-        OSL_ENSURE( !aEntry.isEmpty(), "Empty UserList-entry :-/" );
-        mxLbLists->append_text( aEntry );
+        const OUString sEntry = (*m_pUserLists)[i].GetString();
+        OSL_ENSURE(!sEntry.isEmpty(), "Empty UserList-entry :-/");
+        mxLbLists->append_text(sEntry);
     }
 
     return nCount;
@@ -277,11 +270,12 @@ size_t ScTpUserLists::UpdateUserListBox()
 
 void ScTpUserLists::UpdateEntries( size_t nList )
 {
-    if ( !pUserLists ) return;
+    if (!m_pUserLists)
+        return;
 
-    if ( nList < pUserLists->size() )
+    if (nList < m_pUserLists->size())
     {
-        const ScUserListData& rList = (*pUserLists)[nList];
+        const ScUserListData& rList = (*m_pUserLists)[nList];
         std::size_t nSubCount = rList.GetSubCount();
         OUStringBuffer aEntryListStr;
 
@@ -300,58 +294,56 @@ void ScTpUserLists::UpdateEntries( size_t nList )
     }
 }
 
-void ScTpUserLists::MakeListStr( OUString& rListStr )
+OUString ScTpUserLists::MakeListStr(std::u16string_view sListStr)
 {
-    if (rListStr.isEmpty())
-        return;
+    if (sListStr.empty())
+        return OUString();
 
     OUStringBuffer aStr;
 
     for(sal_Int32 nIdx=0; nIdx>=0;)
     {
-        aStr.append(comphelper::string::strip(o3tl::getToken(rListStr, 0, LF, nIdx), ' '));
+        aStr.append(comphelper::string::strip(o3tl::getToken(sListStr, 0, LF, nIdx), ' '));
         aStr.append(cDelimiter);
     }
 
     aStr.strip(cDelimiter);
     sal_Int32 nLen = aStr.getLength();
 
-    rListStr.clear();
+    OUString sResult;
 
     // delete all duplicates of cDelimiter
     sal_Int32 c = 0;
     while ( c < nLen )
     {
-        rListStr += OUStringChar(aStr[c]);
+        sResult += OUStringChar(aStr[c]);
         ++c;
 
         if ((c < nLen) && (aStr[c] == cDelimiter))
         {
-            rListStr += OUStringChar(aStr[c]);
+            sResult += OUStringChar(aStr[c]);
 
             while ((c < nLen) && (aStr[c] == cDelimiter))
                 ++c;
         }
     }
 
+    return sResult;
 }
 
-void ScTpUserLists::AddNewList( const OUString& rEntriesStr )
+void ScTpUserLists::AddNewList(std::u16string_view sEntriesStr)
 {
-    OUString theEntriesStr( rEntriesStr );
+    if (!m_pUserLists)
+        m_pUserLists.reset(new ScUserList);
 
-    if ( !pUserLists )
-        pUserLists.reset( new ScUserList );
-
-    MakeListStr( theEntriesStr );
-
-    pUserLists->emplace_back(theEntriesStr);
+    m_pUserLists->emplace_back(MakeListStr(sEntriesStr));
 }
 
 void ScTpUserLists::CopyListFromArea( const ScRefAddress& rStartPos,
                                       const ScRefAddress& rEndPos )
 {
-    if ( bCopyDone ) return;
+    if (m_bCopyDone)
+        return;
 
     SCTAB   nTab            = rStartPos.Tab();
     SCCOL   nStartCol       = rStartPos.Col();
@@ -362,7 +354,7 @@ void ScTpUserLists::CopyListFromArea( const ScRefAddress& rStartPos,
 
     if ( (nStartCol != nEndCol) && (nStartRow != nEndRow) )
     {
-        ScColOrRowDlg aDialog(GetFrameWeld(), aStrCopyList, aStrCopyFrom);
+        ScColOrRowDlg aDialog(GetFrameWeld(), ScResId(STR_COPYLIST), m_aStrCopyFrom);
         nCellDir = aDialog.run();
     }
     else if ( nStartCol != nEndCol )
@@ -381,9 +373,9 @@ void ScTpUserLists::CopyListFromArea( const ScRefAddress& rStartPos,
                 OUStringBuffer aStrList;
                 for ( SCROW row=nStartRow; row<=nEndRow; row++ )
                 {
-                    if ( pDoc->HasStringData( col, row, nTab ) )
+                    if (m_pDoc->HasStringData(col, row, nTab))
                     {
-                        OUString aStrField = pDoc->GetString(col, row, nTab);
+                        OUString aStrField = m_pDoc->GetString(col, row, nTab);
 
                         if ( !aStrField.isEmpty() )
                         {
@@ -404,9 +396,9 @@ void ScTpUserLists::CopyListFromArea( const ScRefAddress& rStartPos,
                 OUStringBuffer aStrList;
                 for ( SCCOL col=nStartCol; col<=nEndCol; col++ )
                 {
-                    if ( pDoc->HasStringData( col, row, nTab ) )
+                    if (m_pDoc->HasStringData(col, row, nTab))
                     {
-                        OUString aStrField = pDoc->GetString(col, row, nTab);
+                        OUString aStrField = m_pDoc->GetString(col, row, nTab);
 
                         if ( !aStrField.isEmpty() )
                         {
@@ -423,33 +415,27 @@ void ScTpUserLists::CopyListFromArea( const ScRefAddress& rStartPos,
 
         if ( bValueIgnored )
         {
-            std::unique_ptr<weld::MessageDialog> xInfoBox(Application::CreateMessageDialog(GetFrameWeld(),
-                                                          VclMessageType::Info, VclButtonsType::Ok,
-                                                          aStrCopyErr));
+            std::unique_ptr<weld::MessageDialog> xInfoBox(Application::CreateMessageDialog(
+                GetFrameWeld(), VclMessageType::Info, VclButtonsType::Ok, m_aStrCopyErr));
             xInfoBox->run();
         }
     }
 
-    bCopyDone = true;
-
+    m_bCopyDone = true;
 }
 
-void ScTpUserLists::ModifyList( size_t            nSelList,
-                                const OUString&   rEntriesStr )
+void ScTpUserLists::ModifyList(size_t nSelList, std::u16string_view sEntriesStr)
 {
-    if ( !pUserLists ) return;
+    if (!m_pUserLists)
+        return;
 
-    OUString theEntriesStr( rEntriesStr );
-
-    MakeListStr( theEntriesStr );
-
-    (*pUserLists)[nSelList].SetString( theEntriesStr );
+    (*m_pUserLists)[nSelList].SetString(MakeListStr(sEntriesStr));
 }
 
 void ScTpUserLists::RemoveList( size_t nList )
 {
-    if (pUserLists && nList < pUserLists->size())
-        pUserLists->EraseData(nList);
+    if (m_pUserLists && nList < m_pUserLists->size())
+        m_pUserLists->EraseData(nList);
 }
 
 // Handler:
@@ -479,11 +465,9 @@ IMPL_LINK( ScTpUserLists, BtnClickHdl, weld::Button&, rBtn, void )
 {
     if (&rBtn == mxBtnNew.get() || &rBtn == mxBtnDiscard.get())
     {
-        if ( !bCancelMode )
+        if (!m_bCancelMode)
         {
-            nCancelPos = ( mxLbLists->n_children() > 0 )
-                            ? mxLbLists->get_selected_index()
-                            : 0;
+            m_nCancelPos = (mxLbLists->n_children() > 0) ? mxLbLists->get_selected_index() : 0;
             mxLbLists->unselect_all();
             mxFtLists->set_sensitive(false);
             mxLbLists->set_sensitive(false);
@@ -503,13 +487,13 @@ IMPL_LINK( ScTpUserLists, BtnClickHdl, weld::Button&, rBtn, void )
             }
             mxBtnNew->hide();
             mxBtnDiscard->show();
-            bCancelMode = true;
+            m_bCancelMode = true;
         }
         else // if ( bCancelMode )
         {
             if ( mxLbLists->n_children() > 0 )
             {
-                mxLbLists->select( nCancelPos );
+                mxLbLists->select(m_nCancelPos);
                 LbSelectHdl( *mxLbLists );
                 mxFtLists->set_sensitive(true);
                 mxLbLists->set_sensitive(true);
@@ -524,7 +508,7 @@ IMPL_LINK( ScTpUserLists, BtnClickHdl, weld::Button&, rBtn, void )
             mxBtnAdd->set_sensitive(false);
             mxBtnModify->set_sensitive(false);
 
-            if ( pViewData && !bCopyDone )
+            if (m_pViewData && !m_bCopyDone)
             {
                 mxBtnCopy->set_sensitive(true);
                 mxFtCopyFrom->set_sensitive(true);
@@ -532,15 +516,15 @@ IMPL_LINK( ScTpUserLists, BtnClickHdl, weld::Button&, rBtn, void )
             }
             mxBtnNew->show();
             mxBtnDiscard->hide();
-            bCancelMode = false;
-            bModifyMode = false;
+            m_bCancelMode = false;
+            m_bModifyMode = false;
         }
     }
     else if (&rBtn == mxBtnAdd.get() || &rBtn == mxBtnModify.get())
     {
         OUString theEntriesStr( mxEdEntries->get_text() );
 
-        if ( !bModifyMode )
+        if (!m_bModifyMode)
         {
             if ( !theEntriesStr.isEmpty() )
             {
@@ -555,7 +539,7 @@ IMPL_LINK( ScTpUserLists, BtnClickHdl, weld::Button&, rBtn, void )
             {
                 if ( mxLbLists->n_children() > 0 )
                 {
-                    mxLbLists->select( nCancelPos );
+                    mxLbLists->select(m_nCancelPos);
                     LbSelectHdl( *mxLbLists );
                     mxLbLists->set_sensitive(true);
                     mxLbLists->set_sensitive(true);
@@ -567,7 +551,7 @@ IMPL_LINK( ScTpUserLists, BtnClickHdl, weld::Button&, rBtn, void )
             mxBtnRemove->set_sensitive(true);
             mxBtnNew->show();
             mxBtnDiscard->hide();
-            bCancelMode = false;
+            m_bCancelMode = false;
         }
         else // if ( bModifyMode )
         {
@@ -589,18 +573,18 @@ IMPL_LINK( ScTpUserLists, BtnClickHdl, weld::Button&, rBtn, void )
 
             mxBtnNew->show();
             mxBtnDiscard->hide();
-            bCancelMode = false;
+            m_bCancelMode = false;
             mxBtnAdd->show();
             mxBtnModify->show();
             mxBtnAdd->set_sensitive(false);
             mxBtnModify->set_sensitive(false);
-            bModifyMode = false;
+            m_bModifyMode = false;
             mxBtnRemove->set_sensitive(true);
             mxFtLists->set_sensitive(true);
             mxLbLists->set_sensitive(true);
         }
 
-        if ( pViewData && !bCopyDone )
+        if (m_pViewData && !m_bCopyDone)
         {
             mxBtnCopy->set_sensitive(true);
             mxFtCopyFrom->set_sensitive(true);
@@ -612,9 +596,9 @@ IMPL_LINK( ScTpUserLists, BtnClickHdl, weld::Button&, rBtn, void )
         if ( mxLbLists->n_children() > 0 )
         {
             sal_Int32 nRemovePos   = mxLbLists->get_selected_index();
-            OUString aMsg = o3tl::getToken(aStrQueryRemove, 0, '#' )
-                          + mxLbLists->get_text( nRemovePos )
-                          + o3tl::getToken(aStrQueryRemove, 1, '#' );
+            OUString aMsg = o3tl::getToken(m_aStrQueryRemove, 0, '#')
+                            + mxLbLists->get_text(nRemovePos)
+                            + o3tl::getToken(m_aStrQueryRemove, 1, '#');
 
             std::unique_ptr<weld::MessageDialog> xQueryBox(Application::CreateMessageDialog(GetFrameWeld(),
                                                            VclMessageType::Question, VclButtonsType::YesNo,
@@ -645,7 +629,7 @@ IMPL_LINK( ScTpUserLists, BtnClickHdl, weld::Button&, rBtn, void )
                 }
             }
 
-            if ( pViewData && !bCopyDone && !mxBtnCopy->get_sensitive() )
+            if (m_pViewData && !m_bCopyDone && !mxBtnCopy->get_sensitive())
             {
                 mxBtnCopy->set_sensitive(true);
                 mxFtCopyFrom->set_sensitive(true);
@@ -653,9 +637,9 @@ IMPL_LINK( ScTpUserLists, BtnClickHdl, weld::Button&, rBtn, void )
             }
         }
     }
-    else if ( pViewData && (&rBtn == mxBtnCopy.get()) )
+    else if (m_pViewData && (&rBtn == mxBtnCopy.get()))
     {
-        if ( bCopyDone )
+        if (m_bCopyDone)
             return;
 
         ScRefAddress theStartPos;
@@ -665,21 +649,14 @@ IMPL_LINK( ScTpUserLists, BtnClickHdl, weld::Button&, rBtn, void )
 
         if ( !theAreaStr.isEmpty() )
         {
-            bAreaOk = ScRangeUtil::IsAbsArea( theAreaStr,
-                                             *pDoc,
-                                             pViewData->CurrentTabForData(),
-                                             &theAreaStr,
-                                             &theStartPos,
-                                             &theEndPos,
-                                             pDoc->GetAddressConvention() );
+            bAreaOk = ScRangeUtil::IsAbsArea(theAreaStr, *m_pDoc, m_pViewData->CurrentTabForData(),
+                                             &theAreaStr, &theStartPos, &theEndPos,
+                                             m_pDoc->GetAddressConvention());
             if ( !bAreaOk )
             {
-                bAreaOk = ScRangeUtil::IsAbsPos(  theAreaStr,
-                                                 *pDoc,
-                                                 pViewData->CurrentTabForData(),
-                                                 &theAreaStr,
-                                                 &theStartPos,
-                                                 pDoc->GetAddressConvention() );
+                bAreaOk = ScRangeUtil::IsAbsPos(theAreaStr, *m_pDoc,
+                                                m_pViewData->CurrentTabForData(), &theAreaStr,
+                                                &theStartPos, m_pDoc->GetAddressConvention());
                 theEndPos = theStartPos;
             }
         }
@@ -708,11 +685,8 @@ IMPL_LINK( ScTpUserLists, BtnClickHdl, weld::Button&, rBtn, void )
     }
 }
 
-IMPL_LINK( ScTpUserLists, EdEntriesModHdl, weld::TextView&, rEd, void )
+IMPL_LINK_NOARG(ScTpUserLists, EdEntriesModHdl, weld::TextWidget&, void)
 {
-    if ( &rEd != mxEdEntries.get() )
-        return;
-
     if ( mxBtnCopy->get_sensitive() )
     {
         mxBtnCopy->set_sensitive(false);
@@ -722,16 +696,16 @@ IMPL_LINK( ScTpUserLists, EdEntriesModHdl, weld::TextView&, rEd, void )
 
     if ( !mxEdEntries->get_text().isEmpty() )
     {
-        if ( !bCancelMode && !bModifyMode )
+        if (!m_bCancelMode && !m_bModifyMode)
         {
             mxBtnNew->hide();
             mxBtnDiscard->show();
-            bCancelMode = true;
+            m_bCancelMode = true;
             mxBtnAdd->hide();
             mxBtnAdd->set_sensitive(true);
             mxBtnModify->show();
             mxBtnModify->set_sensitive(true);
-            bModifyMode = true;
+            m_bModifyMode = true;
             mxBtnRemove->set_sensitive(false);
             mxFtLists->set_sensitive(false);
             mxLbLists->set_sensitive(false);

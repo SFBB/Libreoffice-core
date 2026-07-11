@@ -2320,7 +2320,7 @@ void ScDocument::CopyToClip(const ScClipParam& rClipParam,
 
     sc::CopyToClipContext aCxt(*pClipDoc, bKeepScenarioFlags);
     CopyRangeNamesToClip(pClipDoc, aClipRange, pMarks);
-    CopyDBsToClip(pClipDoc, aClipRange, pMarks);
+    CopyDBsToClip(pClipDoc, rClipParam.maRanges, pMarks);
 
     // 1. Copy selected cells
     for (SCTAB i = 0; i < nEndTab; ++i)
@@ -2588,7 +2588,7 @@ void ScDocument::CopyRangeNamesToClip(ScDocument* pClipDoc, const ScRange& rClip
 // copied formulas have no ScDBData to resolve against on the clip side,
 // so any later stringification of those formulas writes #REF! in place
 // of the column name.
-void ScDocument::CopyDBsToClip(ScDocument* pClipDoc, const ScRange& rClipRange, const ScMarkData* pMarks)
+void ScDocument::CopyDBsToClip(ScDocument* pClipDoc, const ScRangeList& rClipRanges, const ScMarkData* pMarks)
 {
     if (!pDBCollection || pDBCollection->getNamedDBs().empty())
         return;
@@ -2604,7 +2604,10 @@ void ScDocument::CopyDBsToClip(ScDocument* pClipDoc, const ScRange& rClipRange, 
         rxSrc->GetArea(aArea);
         if (pMarks && !pMarks->GetTableSelect(aArea.aStart.Tab()))
             continue;
-        if (!aArea.Intersects(rClipRange))
+        // Carry only a table that overlaps a copied range. A table sitting in
+        // the gap of a non-contiguous selection falls inside the bounding box
+        // but in none of the copied ranges, and its cells are not copied.
+        if (!rClipRanges.Intersects(aArea))
             continue;
         auto pClone = std::make_unique<ScDBData>(*rxSrc);
         rDest.insert(std::move(pClone));
@@ -2660,7 +2663,16 @@ void ScDocument::CopyDBsFromClip(const ScRange& rDestRange, const ScRange& rClip
 
         auto pClone = std::make_unique<ScDBData>(*rxClip);
         pClone->SetIndex(0); // let the destination assign a fresh, collision-free index
+
+        // Changing the area resets the table column names, because the header
+        // range moves. Keep the names the clip carried so a structured
+        // reference still resolves a column by name. The block is a pure
+        // translation, so the names map to the same columns as before.
+        std::vector<OUString> aColumnNames = pClone->GetTableColumnNames();
         pClone->MoveTo(nDestTab, nNewCol1, nNewRow1, nNewCol2, nNewRow2);
+        if (!aColumnNames.empty())
+            pClone->SetTableColumnNames(std::move(aColumnNames));
+
         rDest.insert(std::move(pClone));
     }
 }
@@ -3119,9 +3131,10 @@ void ScDocument::CopyFromClip(
 
     // Recreate named tables the copy fully covered at the paste location, so the
     // structured-reference tokens resolved further down bind to a table placed
-    // at the paste position. Must run before the cells, and their formulas, are
-    // copied in.
-    if (nInsFlag & InsertDeleteFlags::CONTENTS)
+    // at the paste position. Only a formula paste carries such tokens, so a
+    // values-only paste needs no table. Must run before the cells, and their
+    // formulas, are copied in.
+    if (nInsFlag & InsertDeleteFlags::FORMULA)
         CopyDBsFromClip(rDestRange, aClipRange, pClipDoc);
 
     bInsertingFromOtherDoc = true;  // No Broadcast/Listener created at Insert
