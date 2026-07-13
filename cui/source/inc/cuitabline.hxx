@@ -25,7 +25,7 @@
 #include <sfx2/tabdlg.hxx>
 #include <svx/svdpage.hxx>
 #include <svx/tabarea.hxx>
-#include <svx/xlnasit.hxx>
+// #include <svx/xlnasit.hxx>
 #include <svx/xtable.hxx>
 #include <svx/dlgctrl.hxx>
 #include <tools/fldunit.hxx>
@@ -122,8 +122,7 @@ private:
     const SfxItemSet&   m_rOutAttrs;
     bool                m_bObjSelected;
 
-    XLineAttrSetItem    m_aXLineAttr;
-    SfxItemSet&         m_rXLSet;
+    SfxItemSet          m_aLineAttributeSet;
 
     XDashListRef          m_pDashList;
     XLineEndListRef       m_pLineEndList;
@@ -250,8 +249,7 @@ private:
     const SfxItemSet&   rOutAttrs;
     XDash               aDash;
 
-    XLineAttrSetItem    aXLineAttr;
-    SfxItemSet&         rXLSet;
+    SfxItemSet          m_aLineAttributeSet;
 
     XDashListRef          pDashList;
 
@@ -330,8 +328,7 @@ private:
     const SfxItemSet&   rOutAttrs;
     const SdrObject*    pPolyObj;
 
-    XLineAttrSetItem    aXLineAttr;
-    SfxItemSet&         rXLSet;
+    SfxItemSet          m_aLineAttributeSet;
 
     XLineEndListRef       pLineEndList;
 

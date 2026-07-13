@@ -79,8 +79,7 @@ SvxAreaTabPage::SvxAreaTabPage(weld::Container* pPage, weld::DialogController* p
     , maFixed_ChangeType(ChangeType::NONE)
     // init with pointers to fixed ChangeType
     , m_pnColorListState(&maFixed_ChangeType)
-    , m_aXFillAttr(rInAttrs.GetPool())
-    , m_rXFSet(m_aXFillAttr.GetItemSet())
+    , m_aFillAttributeSet(rInAttrs.getPool(), WhichRangesContainer(XATTR_FILL_FIRST, XATTR_FILL_LAST))
     , m_xFillTab(m_xBuilder->weld_container(u"fillstylebox"_ustr))
     , m_xBtnNone(m_xBuilder->weld_toggle_button(u"btnnone"_ustr))
     , m_xBtnColor(m_xBuilder->weld_toggle_button(u"btncolor"_ustr))
@@ -120,30 +119,30 @@ void SvxAreaTabPage::SetOptimalSize(weld::DialogController* pController)
     m_xFillTab->set_size_request(-1, -1);
 
     // Calculate optimal size of all pages...
-    m_xFillTabPage = SvxColorTabPage::Create(m_xFillTab.get(), pController, m_rXFSet);
+    m_xFillTabPage = SvxColorTabPage::Create(m_xFillTab.get(), pController, m_aFillAttributeSet);
     Size aSize(m_xFillTab->get_preferred_size());
 
     if (m_xBtnGradient->get_visible())
     {
-        m_xFillTabPage = SvxGradientTabPage::Create(m_xFillTab.get(), pController, m_rXFSet);
+        m_xFillTabPage = SvxGradientTabPage::Create(m_xFillTab.get(), pController, m_aFillAttributeSet);
         Size aGradientSize = m_xFillTab->get_preferred_size();
         lclExtendSize(aSize, aGradientSize);
     }
     if (m_xBtnBitmap->get_visible())
     {
-        m_xFillTabPage = SvxBitmapTabPage::Create(m_xFillTab.get(), pController, m_rXFSet);
+        m_xFillTabPage = SvxBitmapTabPage::Create(m_xFillTab.get(), pController, m_aFillAttributeSet);
         Size aBitmapSize = m_xFillTab->get_preferred_size();
         lclExtendSize(aSize, aBitmapSize);
     }
     if (m_xBtnHatch->get_visible())
     {
-        m_xFillTabPage = SvxHatchTabPage::Create(m_xFillTab.get(), pController, m_rXFSet);
+        m_xFillTabPage = SvxHatchTabPage::Create(m_xFillTab.get(), pController, m_aFillAttributeSet);
         Size aHatchSize = m_xFillTab->get_preferred_size();
         lclExtendSize(aSize, aHatchSize);
     }
     if (m_xBtnPattern->get_visible())
     {
-        m_xFillTabPage = SvxPatternTabPage::Create(m_xFillTab.get(), pController, m_rXFSet);
+        m_xFillTabPage = SvxPatternTabPage::Create(m_xFillTab.get(), pController, m_aFillAttributeSet);
         Size aPatternSize = m_xFillTab->get_preferred_size();
         lclExtendSize(aSize, aPatternSize);
     }
@@ -166,7 +165,7 @@ void SvxAreaTabPage::ActivatePage( const SfxItemSet& rSet )
     {
         const XFillStyleItem& aFillStyleItem( rSet.Get( GetWhich( XATTR_FILLSTYLE ) ) );
         eXFS = aFillStyleItem.GetValue();
-        m_rXFSet.Put( aFillStyleItem );
+        m_aFillAttributeSet.Put( aFillStyleItem );
     }
 
     switch(eXFS)
@@ -183,22 +182,22 @@ void SvxAreaTabPage::ActivatePage( const SfxItemSet& rSet )
         }
         case drawing::FillStyle_SOLID:
         {
-            m_rXFSet.Put( rSet.Get( GetWhich( XATTR_FILLCOLOR ) ) );
+            m_aFillAttributeSet.Put( rSet.Get( GetWhich( XATTR_FILLCOLOR ) ) );
             SelectFillType(*m_xBtnColor);
             break;
         }
         case drawing::FillStyle_GRADIENT:
         {
-            m_rXFSet.Put( rSet.Get( GetWhich( XATTR_FILLGRADIENT ) ) );
-            m_rXFSet.Put(rSet.Get(GetWhich(XATTR_GRADIENTSTEPCOUNT)));
+            m_aFillAttributeSet.Put( rSet.Get( GetWhich( XATTR_FILLGRADIENT ) ) );
+            m_aFillAttributeSet.Put(rSet.Get(GetWhich(XATTR_GRADIENTSTEPCOUNT)));
             SelectFillType(*m_xBtnGradient);
             break;
         }
         case drawing::FillStyle_HATCH:
         {
-            m_rXFSet.Put( rSet.Get(XATTR_FILLHATCH) );
-            m_rXFSet.Put( rSet.Get(XATTR_FILLUSESLIDEBACKGROUND) );
-            m_rXFSet.Put( rSet.Get(XATTR_FILLCOLOR) );
+            m_aFillAttributeSet.Put( rSet.Get(XATTR_FILLHATCH) );
+            m_aFillAttributeSet.Put( rSet.Get(XATTR_FILLUSESLIDEBACKGROUND) );
+            m_aFillAttributeSet.Put( rSet.Get(XATTR_FILLCOLOR) );
             SelectFillType(*m_xBtnHatch);
             break;
         }
@@ -206,7 +205,7 @@ void SvxAreaTabPage::ActivatePage( const SfxItemSet& rSet )
         {
             const bool bPattern = rSet.Get(GetWhich(XATTR_FILLBITMAP)).isPattern();
             // pass full item set here, bitmap fill has many attributes (tiling, size, offset etc.)
-            m_rXFSet.Put( rSet );
+            m_aFillAttributeSet.Put( rSet );
             if (!bPattern)
                 SelectFillType(*m_xBtnBitmap);
             else
@@ -404,7 +403,7 @@ IMPL_LINK(SvxAreaTabPage, SelectFillTypeHdl_Impl, weld::Toggleable&, rButton, vo
 void SvxAreaTabPage::SelectFillType(weld::Toggleable& rButton, const SfxItemSet* _pSet)
 {
     if (_pSet)
-        m_rXFSet.Set(*_pSet);
+        m_aFillAttributeSet.Set(*_pSet);
 
     if (_pSet || maBox.GetFillType(rButton) != maBox.GetCurrentFillType())
     {
@@ -442,62 +441,62 @@ std::unique_ptr<SfxTabPage> SvxAreaTabPage::CreatePage(FillType eFillType)
         case FillType::SOLID:
         {
             std::unique_ptr<SvxColorTabPage> pColorTabPage
-                = SvxColorTabPage::Create(m_xFillTab.get(), pController, m_rXFSet);
+                = SvxColorTabPage::Create(m_xFillTab.get(), pController, m_aFillAttributeSet);
             pColorTabPage->SetColorList(m_pColorList);
             pColorTabPage->SetColorChgd(m_pnColorListState);
             pColorTabPage->Construct();
-            pColorTabPage->ActivatePage(m_rXFSet);
-            pColorTabPage->Reset(&m_rXFSet);
+            pColorTabPage->ActivatePage(m_aFillAttributeSet);
+            pColorTabPage->Reset(&m_aFillAttributeSet);
             pColorTabPage->set_visible(true);
             return pColorTabPage;
         }
         case FillType::GRADIENT:
         {
             std::unique_ptr<SvxGradientTabPage> pGradientTabPage
-                = SvxGradientTabPage::Create(m_xFillTab.get(), pController, m_rXFSet);
+                = SvxGradientTabPage::Create(m_xFillTab.get(), pController, m_aFillAttributeSet);
             pGradientTabPage->SetColorList(m_pColorList);
             pGradientTabPage->SetGradientList(m_pGradientList);
             pGradientTabPage->SetColorChgd(m_pnColorListState);
             pGradientTabPage->Construct();
-            pGradientTabPage->ActivatePage(m_rXFSet);
-            pGradientTabPage->Reset(&m_rXFSet);
+            pGradientTabPage->ActivatePage(m_aFillAttributeSet);
+            pGradientTabPage->Reset(&m_aFillAttributeSet);
             pGradientTabPage->set_visible(true);
             return pGradientTabPage;
         }
         case FillType::HATCH:
         {
             std::unique_ptr<SvxHatchTabPage> pHatchTabPage
-                = SvxHatchTabPage::Create(m_xFillTab.get(), pController, m_rXFSet);
+                = SvxHatchTabPage::Create(m_xFillTab.get(), pController, m_aFillAttributeSet);
             pHatchTabPage->SetColorList(m_pColorList);
             pHatchTabPage->SetHatchingList(m_pHatchingList);
             pHatchTabPage->SetColorChgd(m_pnColorListState);
             pHatchTabPage->Construct();
-            pHatchTabPage->ActivatePage(m_rXFSet);
-            pHatchTabPage->Reset(&m_rXFSet);
+            pHatchTabPage->ActivatePage(m_aFillAttributeSet);
+            pHatchTabPage->Reset(&m_aFillAttributeSet);
             pHatchTabPage->set_visible(true);
             return pHatchTabPage;
         }
         case FillType::BITMAP:
         {
             std::unique_ptr<SvxBitmapTabPage> pBitmapTabPage
-                = SvxBitmapTabPage::Create(m_xFillTab.get(), pController, m_rXFSet);
+                = SvxBitmapTabPage::Create(m_xFillTab.get(), pController, m_aFillAttributeSet);
             pBitmapTabPage->SetBitmapList(m_pBitmapList);
             pBitmapTabPage->Construct();
-            pBitmapTabPage->ActivatePage(m_rXFSet);
-            pBitmapTabPage->Reset(&m_rXFSet);
+            pBitmapTabPage->ActivatePage(m_aFillAttributeSet);
+            pBitmapTabPage->Reset(&m_aFillAttributeSet);
             pBitmapTabPage->set_visible(true);
             return pBitmapTabPage;
         }
         case FillType::PATTERN:
         {
             std::unique_ptr<SvxPatternTabPage> pPatternTabPage
-                = SvxPatternTabPage::Create(m_xFillTab.get(), pController, m_rXFSet);
+                = SvxPatternTabPage::Create(m_xFillTab.get(), pController, m_aFillAttributeSet);
             pPatternTabPage->SetColorList(m_pColorList);
             pPatternTabPage->SetPatternList(m_pPatternList);
             pPatternTabPage->SetColorChgd(m_pnColorListState);
             pPatternTabPage->Construct();
-            pPatternTabPage->ActivatePage(m_rXFSet);
-            pPatternTabPage->Reset(&m_rXFSet);
+            pPatternTabPage->ActivatePage(m_aFillAttributeSet);
+            pPatternTabPage->Reset(&m_aFillAttributeSet);
             pPatternTabPage->set_visible(true);
             return pPatternTabPage;
         }

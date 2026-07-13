@@ -50,8 +50,7 @@ SvxGradientTabPage::SvxGradientTabPage(weld::Container* pPage, weld::DialogContr
     , m_rOutAttrs(rInAttrs)
     , m_nGradientListState(ChangeType::NONE)
     , m_pnColorListState(nullptr)
-    , m_aXFillAttr(rInAttrs.GetPool())
-    , m_rXFSet(m_aXFillAttr.GetItemSet())
+    , m_aFillAttributeSet(rInAttrs.getPool(), WhichRangesContainer(XATTR_FILL_FIRST, XATTR_FILL_LAST))
     , m_xLbGradientType(m_xBuilder->weld_combo_box(u"gradienttypelb"_ustr))
     , m_xFtCenter(m_xBuilder->weld_label(u"centerft"_ustr))
     , m_xMtrCenterX(m_xBuilder->weld_metric_spin_button(u"centerxmtr"_ustr, FieldUnit::PERCENT))
@@ -86,9 +85,9 @@ SvxGradientTabPage::SvxGradientTabPage(weld::Container* pPage, weld::DialogContr
     m_xMtrColorFrom->set_value(100, FieldUnit::PERCENT);
 
     // setting the output device
-    m_rXFSet.Put( XFillStyleItem(drawing::FillStyle_GRADIENT) );
-    m_rXFSet.Put( XFillGradientItem(OUString(), basegfx::BGradient()));
-    m_aCtlPreview.SetAttributes(m_aXFillAttr.GetItemSet());
+    m_aFillAttributeSet.Put( XFillStyleItem(drawing::FillStyle_GRADIENT) );
+    m_aFillAttributeSet.Put( XFillGradientItem(OUString(), basegfx::BGradient()));
+    m_aCtlPreview.SetAttributes(m_aFillAttributeSet);
 
     // set handler
     m_xGradientPresets->connect_item_activated(LINK(this, SvxGradientTabPage, ChangeGradientHdl));
@@ -324,11 +323,11 @@ void SvxGradientTabPage::ModifiedHdl_Impl( void const * pControl )
     if (pControl == m_xLbGradientType.get() || pControl == this)
         SetControlState_Impl( eXGS );
 
-    m_rXFSet.Put( XGradientStepCountItem( nValue ) );
+    m_aFillAttributeSet.Put( XGradientStepCountItem( nValue ) );
 
     // displaying in XOutDev
-    m_rXFSet.Put( XFillGradientItem( OUString(), aBGradient ) );
-    m_aCtlPreview.SetAttributes(m_aXFillAttr.GetItemSet());
+    m_aFillAttributeSet.Put( XFillGradientItem( OUString(), aBGradient ) );
+    m_aCtlPreview.SetAttributes(m_aFillAttributeSet);
     m_aCtlPreview.Invalidate();
 }
 
@@ -584,9 +583,9 @@ void SvxGradientTabPage::ChangeGradientHdl_Impl()
     SetControlState_Impl( eXGS );
 
     // fill ItemSet and pass it on to aCtlPreview
-    m_rXFSet.Put( XFillGradientItem( OUString(), *pGradient ) );
-    m_rXFSet.Put( XGradientStepCountItem( nValue ) );
-    m_aCtlPreview.SetAttributes(m_aXFillAttr.GetItemSet());
+    m_aFillAttributeSet.Put( XFillGradientItem( OUString(), *pGradient ) );
+    m_aFillAttributeSet.Put( XGradientStepCountItem( nValue ) );
+    m_aCtlPreview.SetAttributes(m_aFillAttributeSet);
 
     m_aCtlPreview.Invalidate();
 }
