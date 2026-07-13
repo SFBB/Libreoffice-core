@@ -3082,7 +3082,13 @@ Label_MaskStateMachine:
 
 bool ScCompiler::ParseOpCode( const OUString& rName, bool bInArray )
 {
-    OpCodeHashMap::const_iterator iLook( mxSymbols->getHashMap().find( rName));
+    OUString aName( rName );
+    // A built-in function passed as a value, rather than called in place, is
+    // written with the _xleta. prefix in OOXML. Strip it so the plain function
+    // name resolves.
+    if (mxSymbols->isOOXML() && rName.startsWithIgnoreAsciiCase(u"_xleta."))
+        aName = rName.copy(7);
+    OpCodeHashMap::const_iterator iLook( mxSymbols->getHashMap().find( aName));
     bool bFound = (iLook != mxSymbols->getHashMap().end());
     if (bFound)
     {
@@ -3893,8 +3899,18 @@ bool ScCompiler::ParseLocalName( const OUString& aOrg )
     if (!maBindings.empty() && !aOrg.isEmpty())
     {
         OUString aName = aOrg;
+        // A required parameter carries the _xlpm. prefix and an optional one
+        // the _xlop. prefix. The body always uses the _xlpm. prefix. Strip
+        // either so the declaration and body share the bare name, and note if
+        // the parameter is optional.
+        bool bOptional = false;
         if (aOrg.startsWithIgnoreAsciiCase(u"_xlpm."))
             aName = aName.copy(6);
+        else if (aOrg.startsWithIgnoreAsciiCase(u"_xlop."))
+        {
+            aName = aName.copy(6);
+            bOptional = true;
+        }
 
         bool bSearch = true;
         if (mIsInBinding)
@@ -3939,6 +3955,7 @@ bool ScCompiler::ParseLocalName( const OUString& aOrg )
 
         svl::SharedString aSS = rDoc.GetSharedStringPool().intern(aName);
         maRawToken.SetStringName(aSS.getData(), aSS.getDataIgnoreCase());
+        mbOptionalLocalName = bOptional;
         return true;
     }
     return false;
@@ -5283,6 +5300,7 @@ std::unique_ptr<ScTokenArray> ScCompiler::CompileString( const OUString& rFormul
                     {
                         maBindings.pop_front();
                     }
+                    mIsInBinding = (!maBindings.empty() && maBindings.front().nBracketPos + 1 == nBrackets);
                 }
                 if (bUseFunctionStack && nFunction)
                     --nFunction;
@@ -5334,20 +5352,32 @@ std::unique_ptr<ScTokenArray> ScCompiler::CompileString( const OUString& rFormul
             break;
             case ocTableRefOpen:
             {
-                // Don't count following item separator as parameter separator.
-                if (bUseFunctionStack)
+                // If we're expecting a lambda parameter name, enclosing it in [] makes it optional.
+                if (!(mIsInBinding
+                      && maBindings.front().eOpCode == ocLambda
+                      && maBindings.front().nParaPos < maBindings.front().nParaCount))
                 {
-                    ++nFunction;
-                    pFunctionStack[ nFunction ].eOp = eOp;
-                    pFunctionStack[ nFunction ].nSep = 0;
-                    nHighWatermark = nFunction;
+                    // Don't count following item separator as parameter separator.
+                    if (bUseFunctionStack)
+                    {
+                        ++nFunction;
+                        pFunctionStack[ nFunction ].eOp = eOp;
+                        pFunctionStack[ nFunction ].nSep = 0;
+                        nHighWatermark = nFunction;
+                    }
                 }
             }
             break;
             case ocTableRefClose:
             {
-                if (bUseFunctionStack && nFunction)
-                    --nFunction;
+                // If we're expecting a lambda parameter name, enclosing it in [] makes it optional.
+                if (!(mIsInBinding
+                      && maBindings.front().eOpCode == ocLambda
+                      && maBindings.front().nParaPos < maBindings.front().nParaCount))
+                {
+                    if (bUseFunctionStack && nFunction)
+                        --nFunction;
+                }
             }
             break;
             case ocColRowName:
@@ -5412,6 +5442,12 @@ std::unique_ptr<ScTokenArray> ScCompiler::CompileString( const OUString& rFormul
             }
         }
         FormulaToken* pNewToken = static_cast<ScTokenArray*>(mpArr)->Add( maRawToken.CreateToken(rDoc.GetSheetLimits()));
+        // A lambda parameter written with the _xlop. prefix is optional. Its
+        // byte records that, keeping an optional parameter distinct from a
+        // required _xlpm. one.
+        if (pNewToken && mbOptionalLocalName && pNewToken->GetOpCode() == ocStringName)
+            static_cast<FormulaStringOpToken*>(pNewToken)->SetByte(1);
+        mbOptionalLocalName = false;
         if (!pNewToken && eOp == ocArrayClose && mpArr->OpCodeBefore( mpArr->GetLen()) == ocArrayClose)
         {
             // Nested inline array or non-value/non-string in array. The
@@ -5441,27 +5477,32 @@ std::unique_ptr<ScTokenArray> ScCompiler::CompileString( const OUString& rFormul
                         FormulaTokenArray::ReplaceMode::CODE_ONLY);
             }
         }
-        switch (eOp)
+        if (!(mIsInBinding
+            && maBindings.front().eOpCode == ocLambda
+            && maBindings.front().nParaPos < maBindings.front().nParaCount))
         {
-            case ocTableRefOpen:
-                SAL_WARN_IF( maTableRefs.empty(), "sc.core", "ocTableRefOpen without TableRefEntry");
-                if (maTableRefs.empty())
-                    SetError(FormulaError::Pair);
-                else
-                    ++maTableRefs.back().mnLevel;
-                break;
-            case ocTableRefClose:
-                SAL_WARN_IF( maTableRefs.empty(), "sc.core", "ocTableRefClose without TableRefEntry");
-                if (maTableRefs.empty())
-                    SetError(FormulaError::Pair);
-                else
-                {
-                    if (--maTableRefs.back().mnLevel == 0)
-                        maTableRefs.pop_back();
-                }
-                break;
-            default:
-                break;
+            switch (eOp)
+            {
+                case ocTableRefOpen:
+                    SAL_WARN_IF( maTableRefs.empty(), "sc.core", "ocTableRefOpen without TableRefEntry");
+                    if (maTableRefs.empty())
+                        SetError(FormulaError::Pair);
+                    else
+                        ++maTableRefs.back().mnLevel;
+                    break;
+                case ocTableRefClose:
+                    SAL_WARN_IF( maTableRefs.empty(), "sc.core", "ocTableRefClose without TableRefEntry");
+                    if (maTableRefs.empty())
+                        SetError(FormulaError::Pair);
+                    else
+                    {
+                        if (--maTableRefs.back().mnLevel == 0)
+                            maTableRefs.pop_back();
+                    }
+                    break;
+                default:
+                    break;
+            }
         }
         meLastOp = maRawToken.GetOpCode();
         if ( mbAutoCorrect )
@@ -5559,7 +5600,10 @@ ScRangeData* ScCompiler::GetRangeData( const FormulaIndexToken& rToken ) const
 bool ScCompiler::HandleStringName()
 {
     ScTokenArray* pNew = new ScTokenArray(rDoc);
-    pNew->AddStringName(static_cast<FormulaStringToken*>(mpToken.get())->GetString());
+    // The byte carries the optional marker set when an _xlop. lambda parameter
+    // was parsed, so the parameter name keeps that property in the code.
+    const bool bOptional = static_cast<FormulaStringOpToken*>(mpToken.get())->GetByte() != 0;
+    pNew->AddStringName(static_cast<FormulaStringToken*>(mpToken.get())->GetString(), bOptional);
     PushTokenArray(pNew, true);
     return GetToken();
 }

@@ -805,9 +805,9 @@ FormulaToken* FormulaTokenArray::AddString( const svl::SharedString& rStr )
     return Add( new FormulaStringToken( rStr ) );
 }
 
-FormulaToken* FormulaTokenArray::AddStringName( const svl::SharedString& rStr )
+FormulaToken* FormulaTokenArray::AddStringName(const svl::SharedString& rString, bool bOptional)
 {
-    return Add( new FormulaStringNameToken( svStringName, rStr ) );
+    return Add(new FormulaStringNameToken(svStringName, rString, bOptional));
 }
 
 FormulaToken* FormulaTokenArray::AddDPFieldName( const svl::SharedString& rStr )
@@ -2021,13 +2021,14 @@ bool FormulaStringOpToken::operator==( const FormulaToken& r ) const
         && eInForceArray == static_cast<const FormulaStringOpToken&>(r).eInForceArray;
 }
 
-FormulaStringNameToken::FormulaStringNameToken( StackVar eTypeP, svl::SharedString r ) :
-    FormulaToken( eTypeP ), maString(std::move( r ))
+FormulaStringNameToken::FormulaStringNameToken( StackVar eTypeP, svl::SharedString r,
+                                                bool isOptional ) :
+    FormulaToken( eTypeP ), maString(std::move( r )), mIsOptional(isOptional)
 {
 }
 
 FormulaStringNameToken::FormulaStringNameToken( const FormulaStringNameToken& r ) :
-    FormulaToken( r ), maString( r.maString ) {
+    FormulaToken( r ), maString( r.maString ), mIsOptional(r.mIsOptional) {
 }
 
 FormulaToken* FormulaStringNameToken::Clone() const
@@ -2038,7 +2039,8 @@ FormulaToken* FormulaStringNameToken::Clone() const
 bool FormulaStringNameToken::operator==( const FormulaToken& r ) const
 {
     return FormulaToken::operator==( r )
-        && maString == static_cast<const FormulaStringNameToken&>(r).GetString();
+        && maString == static_cast<const FormulaStringNameToken&>(r).GetString()
+        && mIsOptional == static_cast<const FormulaStringNameToken&>(r).GetIsOptional();
 }
 
 sal_uInt16  FormulaIndexToken::GetIndex() const             { return nIndex; }

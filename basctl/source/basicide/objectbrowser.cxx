@@ -29,6 +29,7 @@
 #include <svl/itemset.hxx>
 #include <sfx2/sfxsids.hrc>
 #include <sfx2/viewfrm.hxx>
+#include <unotools/localedatawrapper.hxx>
 #include <vcl/taskpanelist.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/weld/Builder.hxx>
@@ -415,9 +416,9 @@ OUString FormatContainerSignature(const IdeSymbolInfo& rSymbol,
     {
         auto aChildren = pDataProvider->GetChildNodes(rSymbol);
         sal_Int64 nChildren = static_cast<sal_Int64>(aChildren.size());
-        sInfo.append(
-            IDEResId(RID_STR_OB_CONTENTS_HEADER)
-            + IDEResId(RID_STR_OB_CONTAINS_ITEMS).replaceFirst(u"%1", OUString::number(nChildren)));
+        sInfo.append(IDEResId(RID_STR_OB_CONTENTS_HEADER)
+                     + IDEResId(RID_STR_OB_CONTAINS_ITEMS, nChildren)
+                           .replaceFirst(u"%1", OUString::number(nChildren)));
     }
 
     if (!rSymbol.sQualifiedName.isEmpty() && rSymbol.sQualifiedName != rSymbol.sName)
@@ -787,10 +788,13 @@ void ObjectBrowser::Show(bool bVisible)
 
             if (!m_bFirstLoadComplete)
             {
+                const LocaleDataWrapper& rLocaleData
+                    = Application::GetSettings().GetUILocaleDataWrapper();
+                OUString sElapsedSeconds
+                    = rLocaleData.getNum(aTotalInitTimer.getElapsedTimeMs(), 3, false);
                 m_bFirstLoadComplete = true;
-                double fElapsedSeconds = aTotalInitTimer.getElapsedTimeMs() / 1000.0;
-                OUString sStatus = IDEResId(RID_STR_OB_READY_LOADED)
-                                       .replaceFirst(u"%1", OUString::number(fElapsedSeconds));
+                OUString sStatus
+                    = IDEResId(RID_STR_OB_READY_LOADED).replaceFirst(u"%1", sElapsedSeconds);
                 m_xStatusLabel->set_label(sStatus);
             }
         }
@@ -1004,16 +1008,15 @@ void ObjectBrowser::UpdateStatusBar(const IdeSymbolInfo* pLeftSymbol,
             for (const auto& pair : aMembers)
                 nTotalMembers += pair.second.size();
             sStatusText
-                = IDEResId(RID_STR_OB_MEMBERS_COUNT)
+                = IDEResId(RID_STR_OB_MEMBERS_COUNT, nTotalMembers)
                       .replaceFirst(u"%1", OUString::number(static_cast<sal_Int64>(nTotalMembers)));
         }
         else if (IsExpandable(*pLeftSymbol))
         {
-            auto aChildren = m_pDataProvider->GetChildNodes(*pLeftSymbol);
+            size_t nChildren = m_pDataProvider->GetChildNodes(*pLeftSymbol).size();
             sStatusText
-                = IDEResId(RID_STR_OB_ITEMS_COUNT)
-                      .replaceFirst(u"%1",
-                                    OUString::number(static_cast<sal_Int64>(aChildren.size())));
+                = IDEResId(RID_STR_OB_ITEMS_COUNT, nChildren)
+                      .replaceFirst(u"%1", OUString::number(static_cast<sal_Int64>(nChildren)));
         }
         else
         {

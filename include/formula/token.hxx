@@ -379,14 +379,30 @@ public:
 class FORMULA_DLLPUBLIC FormulaStringNameToken final : public FormulaToken
 {
     svl::SharedString maString;
+    bool mIsOptional;
 public:
-    FormulaStringNameToken(StackVar eTypeP, svl::SharedString r);
+    FormulaStringNameToken(StackVar eTypeP, svl::SharedString r, bool isOptional = false);
     FormulaStringNameToken(const FormulaStringNameToken& r);
 
     virtual FormulaToken* Clone() const override;
     const svl::SharedString& GetString() const { return maString; }
+    bool GetIsOptional() const { return mIsOptional; }
+    void SetIsOptional(bool isOptional) { mIsOptional = isOptional; }
     virtual bool operator==(const FormulaToken& rToken) const override;
 };
+
+// A data-pilot field name is stored in a FormulaStringNameToken too, so both
+// svStringName and svDPFieldName identify one.
+inline const FormulaStringNameToken* GetStringNameToken(const FormulaToken* p)
+{
+    const StackVar eType = p->GetType();
+    if (eType == svStringName || eType == svDPFieldName)
+    {
+        assert(dynamic_cast<const FormulaStringNameToken*>(p));
+        return static_cast<const FormulaStringNameToken*>(p);
+    }
+    return nullptr;
+}
 
 
 class FORMULA_DLLPUBLIC FormulaIndexToken final : public FormulaToken

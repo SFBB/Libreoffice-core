@@ -261,6 +261,24 @@ CPPUNIT_TEST_FIXTURE(TestFormula2, testFuncLAMBDA)
     m_pDoc->DeleteTab(0);
 }
 
+CPPUNIT_TEST_FIXTURE(TestFormula2, testConcatWithOmittedOptionalParameter)
+{
+    // Concatenating an omitted optional lambda parameter yields just the
+    // provided operand. The missing value stands in for an empty string
+    // rather than being read as a double.
+    sc::AutoCalcSwitch aACSwitch(*m_pDoc, true);
+    m_pDoc->InsertTab(0, u"Sheet1"_ustr);
+
+    m_pDoc->SetString(ScAddress(0, 0, 0), u"=LAMBDA(x; [y]; x & y)(\"a\")"_ustr);
+    CPPUNIT_ASSERT_EQUAL(u"a"_ustr, m_pDoc->GetString(ScAddress(0, 0, 0)));
+
+    // A genuine boolean operand is still rendered as TRUE or FALSE.
+    m_pDoc->SetString(ScAddress(0, 1, 0), u"=TRUE() & \"x\""_ustr);
+    CPPUNIT_ASSERT_EQUAL(u"TRUEx"_ustr, m_pDoc->GetString(ScAddress(0, 1, 0)));
+
+    m_pDoc->DeleteTab(0);
+}
+
 CPPUNIT_TEST_FIXTURE(TestFormula2, testLambdaReducingArgumentDoesNotSpill)
 {
     // A lambda whose body aggregates a range argument reduces to a single value
@@ -296,6 +314,54 @@ CPPUNIT_TEST_FIXTURE(TestFormula2, testLambdaReducingArgumentDoesNotSpill)
 
     // The value below the formula is untouched, confirming nothing spilled over it.
     CPPUNIT_ASSERT_EQUAL(99.0, m_pDoc->GetValue(ScAddress(2, 1, 0)));
+
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(TestFormula2, testLambdaOptionalParameterFromOOXML)
+{
+    // The OOXML format declares an optional lambda parameter with the _xlop.
+    // prefix while the body still refers to it through _xlpm.. Both spellings
+    // name the same parameter, so the body sees it and ISOMITTED reports
+    // whether the caller left it out.
+    sc::AutoCalcSwitch aACSwitch(*m_pDoc, true);
+    m_pDoc->InsertTab(0, u"Sheet1"_ustr);
+
+    // Called with no argument, so the optional parameter is left out.
+    m_pDoc->SetFormula(ScAddress(0, 0, 0),
+                       u"=_xlfn.LAMBDA(_xlop.x, IF(_xlfn.ISOMITTED(_xlpm.x), 12, 5))()"_ustr,
+                       formula::FormulaGrammar::GRAM_OOXML);
+    CPPUNIT_ASSERT_EQUAL(12.0, m_pDoc->GetValue(ScAddress(0, 0, 0)));
+
+    // Called with an argument, so the parameter is present.
+    m_pDoc->SetFormula(ScAddress(0, 1, 0),
+                       u"=_xlfn.LAMBDA(_xlop.x, IF(_xlfn.ISOMITTED(_xlpm.x), 12, 5))(99)"_ustr,
+                       formula::FormulaGrammar::GRAM_OOXML);
+    CPPUNIT_ASSERT_EQUAL(5.0, m_pDoc->GetValue(ScAddress(0, 1, 0)));
+
+    // Concatenating an omitted optional parameter yields just the other
+    // operand. The missing operand stands in for an empty string.
+    m_pDoc->SetFormula(ScAddress(0, 2, 0),
+                       u"=_xlfn.LAMBDA(_xlpm.x, _xlop.y, _xlpm.x & _xlpm.y)(\"a\")"_ustr,
+                       formula::FormulaGrammar::GRAM_OOXML);
+    CPPUNIT_ASSERT_EQUAL(u"a"_ustr, m_pDoc->GetString(ScAddress(0, 2, 0)));
+
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(TestFormula2, testLambdaBuiltInValueFromOOXML)
+{
+    // OOXML passes a built-in function as a value with the _xleta. prefix. The
+    // lambda receives COUNT as a parameter and calls it on the array, so the
+    // result is the count of the elements.
+    sc::AutoCalcSwitch aACSwitch(*m_pDoc, true);
+    m_pDoc->InsertTab(0, u"Sheet1"_ustr);
+
+    m_pDoc->SetFormula(
+        ScAddress(0, 0, 0),
+        u"=_xlfn.LAMBDA(_xlpm.f, _xlpm.n, _xlpm.f(_xlpm.n))(_xleta.COUNT, {1,2,3,4})"_ustr,
+        formula::FormulaGrammar::GRAM_OOXML);
+    CPPUNIT_ASSERT_EQUAL(4.0, m_pDoc->GetValue(ScAddress(0, 0, 0)));
 
     m_pDoc->DeleteTab(0);
 }

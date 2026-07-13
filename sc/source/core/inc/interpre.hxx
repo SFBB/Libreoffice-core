@@ -401,6 +401,7 @@ private:
     void PopError();
     double PopDouble();
     const svl::SharedString & PopString();
+    const svl::SharedString & PopStringName( bool& rIsOptional );
     void ValidateRef( const ScSingleRefData & rRef );
     void ValidateRef( const ScComplexRefData & rRef );
     void ValidateRef( const ScRefList & rRefList );
@@ -982,6 +983,7 @@ public:
     void ScMatRef();
     ScMatrixRef MatConcat(const ScMatrixRef& pMat1, const ScMatrixRef& pMat2);
     void PutMatrixValue(formula::FormulaConstTokenRef pToken, ScMatrixRef xMatrix, SCSIZE nCol, SCSIZE nRow);
+    void PutCellIntoMatrix(const ScAddress& rAdr, const ScMatrixRef& xMatrix, SCSIZE nCol, SCSIZE nRow);
     void ScByCol();
     void ScByRow();
     void ScMakeArray();

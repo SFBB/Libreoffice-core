@@ -686,6 +686,11 @@ void FormulaCompiler::OpCodeMap::putOpCode( const OUString & rStr, const OpCode 
         {
             switch (eOp)
             {
+                // The _xlpm. and _xlop. prefixes both introduce a lambda
+                // parameter name. Keep the first spelling for output and
+                // register the rest as recognized aliases for input.
+                case ocStringName:
+                break;
                 // These OpCodes are meant to overwrite and also remove an
                 // existing mapping.
                 case ocCurrency:
@@ -2085,12 +2090,38 @@ void FormulaCompiler::Factor()
                     SAL_WARN("formula.core","Jump OpCode: " << +eOp);
                     assert(!"FormulaCompiler::Factor: someone forgot to add a jump count case");
             }
+            OpCode eFacOpCode = pFacToken->GetOpCode();
             eOp = NextToken();
             if (eOp == ocOpen)
             {
                 NextToken();
-                CheckSetForceArrayParameter( mpToken, 0);
-                eOp = Expression();
+                // Optional LAMBDA parameters are surrounded by []
+                if (eFacOpCode == ocLambda && mpToken->GetOpCode() == ocTableRefOpen)
+                {
+                    meLastOp = ocSep; // So that NextToken() doesn't produce an error
+                    eOp = NextToken();
+                    if (eOp == ocPush && mpToken->GetType() == svStringName)
+                    {
+                        CheckSetForceArrayParameter(mpToken, 0);
+                        static_cast<FormulaStringNameToken*>(mpToken.get())->SetIsOptional(true);
+                        PutCode(mpToken);
+                        eOp = NextToken();
+                        if (eOp == ocTableRefClose)
+                        {
+                            meLastOp = ocPush; // So that NextToken() doesn't produce an error
+                            eOp = NextToken();
+                        }
+                        else
+                            SetError(FormulaError::PairExpected);
+                    }
+                    else
+                        SetError(FormulaError::ParameterExpected);
+                }
+                else
+                {
+                    CheckSetForceArrayParameter(mpToken, 0);
+                    eOp = Expression();
+                }
             }
             else
                 SetError( FormulaError::PairExpected);
@@ -2099,8 +2130,8 @@ void FormulaCompiler::Factor()
             // ignored) an unlimited ocIf would crash because
             // ScRawToken::Clone() allocates the JumpBuffer according to
             // nJump[0]*2+2, which is 3*2+2 on ocIf and 2*2+2 ocIfError and ocIfNA.
+            // Also, ocChoose, ocLet, and ocLambda have variable parameter list lengths.
             short nJumpMax;
-            OpCode eFacOpCode = pFacToken->GetOpCode();
             switch (eFacOpCode)
             {
                 case ocIf:
@@ -2134,10 +2165,35 @@ void FormulaCompiler::Factor()
                 if ( ++nJumpCount <= nJumpMax )
                     static_cast<FormulaJumpToken*>(&*pFacToken)->GetJump()[nJumpCount] = mnPC-1;
                 NextToken();
-                CheckSetForceArrayParameter( mpToken, nJumpCount - 1);
-                eOp = Expression();
+                // Optional LAMBDA parameters are surrounded by []
+                if (eFacOpCode == ocLambda && mpToken->GetOpCode() == ocTableRefOpen)
+                {
+                    meLastOp = ocSep; // So that NextToken() doesn't produce an error
+                    eOp = NextToken();
+                    if (eOp == ocPush && mpToken->GetType() == svStringName)
+                    {
+                        CheckSetForceArrayParameter(mpToken, nJumpCount - 1);
+                        static_cast<FormulaStringNameToken*>(mpToken.get())->SetIsOptional(true);
+                        PutCode(mpToken);
+                        eOp = NextToken();
+                        if (eOp == ocTableRefClose)
+                        {
+                            meLastOp = ocPush; // So that NextToken() doesn't produce an error
+                            eOp = NextToken();
+                        }
+                        else
+                            SetError(FormulaError::PairExpected);
+                    }
+                    else
+                        SetError(FormulaError::ParameterExpected);
+                }
+                else
+                {
+                    CheckSetForceArrayParameter(mpToken, nJumpCount - 1);
+                    eOp = Expression();
+                }
                 // ocSep or ocClose terminate the subexpression
-                PutCode( mpToken );
+                PutCode(mpToken);
             }
             if (eOp != ocClose)
                 SetError( FormulaError::PairExpected);
@@ -2956,6 +3012,7 @@ const FormulaToken* FormulaCompiler::CreateStringFromToken( OUStringBuffer& rBuf
 {
     bool bNext = true;
     bool bSpaces = false;
+    bool bCloseOptionalParam = false;
     const FormulaToken* t = pTokenP;
     OpCode eOp = t->GetOpCode();
     if( eOp >= ocAnd && eOp <= ocOr )
@@ -3070,6 +3127,24 @@ const FormulaToken* FormulaCompiler::CreateStringFromToken( OUStringBuffer& rBuf
             rBuffer.append(mxSymbols->getSymbol(ocErrRef));
         else if (maArrIterator.PeekNext() && maArrIterator.PeekNext()->GetOpCode() == ocOpen)
             rBuffer.append(mxSymbols->getSymbol(eOp));
+    }
+    else if (eOp == ocStringName)
+    {
+        // A lambda parameter. An optional parameter, whose byte is set, takes
+        // the _xlop. prefix in OOXML and is wrapped in square brackets in the
+        // other grammars. A required parameter or a body reference takes the
+        // grammar's plain prefix, which is _xlpm. for the formats that use one
+        // and empty otherwise.
+        const bool bOptional = static_cast<const FormulaStringOpToken*>(t)->GetByte() != 0;
+        if (bOptional && FormulaGrammar::isOOXML(meGrammar))
+            rBuffer.append(u"_xlop.");
+        else if (bOptional)
+        {
+            rBuffer.append(mxSymbols->getSymbol(ocTableRefOpen));
+            bCloseOptionalParam = true;
+        }
+        else
+            rBuffer.append(mxSymbols->getSymbol(ocStringName));
     }
     else if( static_cast<sal_uInt16>(eOp) < mxSymbols->getSymbolCount())        // Keyword:
         rBuffer.append(mxSymbols->getSymbol(eOp));
@@ -3204,6 +3279,8 @@ const FormulaToken* FormulaCompiler::CreateStringFromToken( OUStringBuffer& rBuf
             } // of switch
         }
     }
+    if (bCloseOptionalParam)
+        rBuffer.append(mxSymbols->getSymbol(ocTableRefClose));
     if( bSpaces )
         rBuffer.append( ' ');
     if ( bAllowArrAdvance )
