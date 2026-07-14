@@ -42,7 +42,7 @@
 #endif
 
 #include <hb-ot.h>
-#include <dwrite.h>
+#include <dwrite_3.h>
 
 namespace vcl::font
 {
@@ -62,15 +62,17 @@ class FontMetricData;
 class WinFontFace final : public vcl::font::PhysicalFontFace
 {
 public:
-    explicit                WinFontFace(const ENUMLOGFONTEXW&, const NEWTEXTMETRICW&);
+    explicit                WinFontFace(const FontAttributes&, const LOGFONTW&, IDWriteFont*);
                             ~WinFontFace() override;
 
     rtl::Reference<LogicalFontInstance> CreateFontInstance( const vcl::font::FontSelectPattern& ) const override;
     sal_IntPtr              GetFontId() const override;
 
-    BYTE                    GetCharSet() const          { return meWinCharSet; }
-    BYTE                    GetPitchAndFamily() const   { return mnPitchAndFamily; }
+    const LOGFONTW&         GetLogFont() const          { return maLogFont; }
+    IDWriteFont*            GetDWFont() const           { return mxDWFont.get(); }
+    IDWriteFontFace*        GetDWFontFace() const;
 
+    hb_face_t*              GetHbFace() const override;
     hb_blob_t*              GetHbTable(hb_tag_t nTag) const override;
 
     const std::vector<vcl::font::Variation>& GetVariations(const LogicalFontInstance&) const override;
@@ -78,9 +80,9 @@ public:
 private:
     sal_IntPtr              mnId;
 
-    BYTE                    meWinCharSet;
-    BYTE                    mnPitchAndFamily;
     LOGFONTW                maLogFont;
+    sal::systools::COMReference<IDWriteFont> mxDWFont;
+    mutable sal::systools::COMReference<IDWriteFontFace> mxDWFontFace;
 };
 
 /**
@@ -186,11 +188,10 @@ public:
     /// Update settings based on the platform values
     static void updateSettingsNative( AllSettings& rSettings );
 
-    // Returns base HFONT, an optional HFONT for non-rotated CJK glyphs,
-    // and tmDescent value for adjusting offset in vertical writing mode.
-    std::tuple<HFONT, HFONT, sal_Int32>
+    // Returns base HFONT, and an optional HFONT for non-rotated CJK glyphs.
+    std::tuple<HFONT, HFONT>
     ImplDoSetFont(HDC hDC, vcl::font::FontSelectPattern const& i_rFont,
-                  const vcl::font::PhysicalFontFace* i_pFontFace, HFONT& o_rOldFont);
+                  const vcl::font::PhysicalFontFace& i_rFontFace, HFONT& o_rOldFont);
 
     HDC getHDC() const { return mhLocalDC; }
     // NOTE: this doesn't transfer ownership! See class comment.
@@ -200,7 +201,7 @@ public:
 
     HRGN getRegion() const;
 
-    static const sal::systools::COMReference<IDWriteFactory>& getDWriteFactory();
+    static const sal::systools::COMReference<IDWriteFactory6>& getDWriteFactory();
     static IDWriteGdiInterop* getDWriteGdiInterop();
 
     HWND gethWnd();
@@ -276,8 +277,6 @@ private:
     // local helpers
     void DrawTextLayout(const GenericSalLayout&, HDC, bool bUseDWrite, bool bRenderingModeNatural);
 
-    static OUString getFontFamilyNameFromTTF(const OUString& url);
-
 protected:
     std::unique_ptr<SalGraphicsImpl> mpImpl;
     WinSalGraphicsImplBase * mWinSalGraphicsImplBase;
@@ -309,6 +308,6 @@ void ImplReleaseTempFonts();
 void    ImplUpdateSysColorEntries();
 int     ImplIsSysColorEntry( Color nColor );
 void    ImplGetLogFontFromFontSelect( const vcl::font::FontSelectPattern&,
-            const vcl::font::PhysicalFontFace*, LOGFONTW&, bool bAntiAliased);
+            const vcl::font::PhysicalFontFace&, LOGFONTW&, bool bAntiAliased);
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

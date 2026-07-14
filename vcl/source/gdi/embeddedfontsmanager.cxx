@@ -18,6 +18,7 @@
 #include <config_folders.h>
 #include <config_eot.h>
 
+#include <o3tl/string_view.hxx>
 #include <o3tl/temporary.hxx>
 #include <osl/file.hxx>
 #include <rtl/bootstrap.hxx>
@@ -210,11 +211,12 @@ OUString writeFontBytesToFile(const std::vector<char>& bytes, std::u16string_vie
 }
 
 OUString getFilenameForExport(std::u16string_view familyName, FontFamily family, FontItalic italic,
-                              FontWeight weight, FontPitch pitch)
+                              FontWeight weight, FontPitch pitch,
+                              std::u16string_view subFamilyName)
 {
-    OUString filename = OUString::Concat(familyName) + "_" + OUString::number(family) + "_"
-                        + OUString::number(italic) + "_" + OUString::number(weight) + "_"
-                        + OUString::number(pitch) + ".ttf";
+    OUString filename = OUString::Concat(familyName) + "_" + subFamilyName + "_"
+                        + OUString::number(family) + "_" + OUString::number(italic) + "_"
+                        + OUString::number(weight) + "_" + OUString::number(pitch) + ".ttf";
     return rtl::Uri::encode(filename, rtl_UriCharClassPchar, rtl_UriEncodeIgnoreEscapes,
                             RTL_TEXTENCODING_UTF8);
 }
@@ -352,12 +354,20 @@ bool EmbeddedFontsManager::addEmbeddedFont( const uno::Reference< io::XInputStre
     if (fileUrl.isEmpty())
         return false;
 
-    return addEmbeddedFont(fileUrl, fontName, sufficientFontRights);
+    // tdf#172647: register the font under the typographic family name that the document
+    // model uses once legacy names are converted; the document-declared name can be a
+    // legacy full name (e.g. "Manbow Solid" for the "Manbow" family's "Solid" style).
+    OUString registerName = font.getTypographicFamilyName();
+    if (registerName.isEmpty())
+        registerName = fontName;
+
+    return addEmbeddedFont(fileUrl, registerName, sufficientFontRights);
 }
 
 bool EmbeddedFontsManager::addEmbeddedFont( const OUString& fileUrl, const OUString& fontName, bool sufficientFontRights )
 {
 
+    bool bRestricted = false;
     // Register  it / increase its refcount in s_EmbeddedFonts
     {
         DBG_TESTSOLARMUTEX();
@@ -375,9 +385,20 @@ bool EmbeddedFontsManager::addEmbeddedFont( const OUString& fileUrl, const OUStr
         }
         assert(rData.familyName == fontName);
         ++rData.refcount;
+        bRestricted = rData.isRestricted;
     }
 
     m_aAccumulatedFonts.emplace_back(fontName, fileUrl);
+
+    // tdf#172647: activate an unrestricted font as soon as it is embedded, so it is
+    // enumerable while the document body is still importing. Legacy font names are
+    // converted to their typographic form at attribute-set time, which needs the
+    // font present. Restricted fonts stay deferred until approved at end of load.
+    if (!bRestricted)
+    {
+        std::vector<std::pair<OUString, OUString>> aOne{ { fontName, fileUrl } };
+        activateFonts(aOne, false, {}, o3tl::temporary(bool()));
+    }
 
     return true;
 }
@@ -559,7 +580,7 @@ bool EmbeddedFontsManager::analyzeTTF(const void* data, tools::Long size, FontWe
 }
 
 OUString EmbeddedFontsManager::fontFileUrl( std::u16string_view familyName, FontFamily family, FontItalic italic,
-    FontWeight weight, FontPitch pitch, FontRights rights )
+    FontWeight weight, FontPitch pitch, FontRights rights, std::u16string_view subFamilyName )
 {
     // Do not embed restricted fonts not installed locally.
     if (isEmbeddedAndRestricted(familyName))
@@ -567,7 +588,7 @@ OUString EmbeddedFontsManager::fontFileUrl( std::u16string_view familyName, Font
 
     OUString path = GetEmbeddedFontsRoot() + "fromsystem/";
     osl::Directory::createPath( path );
-    OUString url = path + getFilenameForExport(familyName, family, italic, weight, pitch);
+    OUString url = path + getFilenameForExport(familyName, family, italic, weight, pitch, subFamilyName);
     if( osl::File( url ).open( osl_File_OpenFlag_Read ) == osl::File::E_None ) // = exists()
     {
         // File with contents of the font file already exists, assume it's been created by a previous call.
@@ -593,8 +614,13 @@ OUString EmbeddedFontsManager::fontFileUrl( std::u16string_view familyName, Font
          ++i )
     {
         vcl::font::PhysicalFontFace* f = fontInfo->Get( i );
-        if( f->GetFamilyName() == familyName )
+        // match the typographic family name or fallback to legacy one.
+        if( f->MatchFamilyName( familyName )
+            || o3tl::equalsIgnoreAsciiCase( familyName, f->GetName( vcl::font::NAME_ID_FONT_FAMILY ) ) )
         {
+            // tdf#172647: when a specific style is requested, restrict to faces of that subfamily
+            if (!subFamilyName.empty() && !f->GetStyleName().startsWithIgnoreAsciiCase(subFamilyName))
+                continue;
             // Ignore comparing text encodings, at least for now. They cannot be trivially compared
             // (e.g. UCS2 and UTF8 are technically the same characters, just have different encoding,
             // and just having a unicode font doesn't say what glyphs it actually contains).
@@ -628,7 +654,7 @@ OUString EmbeddedFontsManager::fontFileUrl( std::u16string_view familyName, Font
     {
         if (!selected) { // recalculate file name for "not perfect match"
             url = path + getFilenameForExport(familyName, f->GetFamilyType(), f->GetItalic(),
-                                              f->GetWeight(), f->GetPitch());
+                                              f->GetWeight(), f->GetPitch(), subFamilyName);
             if (osl::File(url).open(osl_File_OpenFlag_Read) == osl::File::E_None) // = exists()
             {
                 // File with contents of the font file already exists, assume it's been created by a previous call.

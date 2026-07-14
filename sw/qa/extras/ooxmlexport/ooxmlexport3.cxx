@@ -860,6 +860,10 @@ CPPUNIT_TEST_FIXTURE(Test, testThemePreservation)
     assertXPath(pXmlDocument, "/w:document/w:body/w:p[5]/w:r[1]/w:rPr/w:rFonts", "hAnsiTheme", u"majorHAnsi");
     assertXPath(pXmlDocument, "/w:document/w:body/w:p[5]/w:r[1]/w:rPr/w:rFonts", "asciiTheme", u"majorHAnsi");
 
+    // check the direct format legacy font name has been preserved (the model
+    // may hold the typographic family + subfamily instead, see below)
+    assertXPath(pXmlDocument, "/w:document/w:body/w:p[4]/w:r[1]/w:rPr/w:rFonts", "ascii", u"Arial Black");
+
     // check theme font color value has been preserved
     assertXPath(pXmlDocument, "/w:document/w:body/w:p[4]/w:r[1]/w:rPr/w:color", "themeColor", u"accent3");
     OUString sThemeShade = getXPath(pXmlDocument, "/w:document/w:body/w:p[4]/w:r[1]/w:rPr/w:color", "themeShade");
@@ -877,8 +881,18 @@ CPPUNIT_TEST_FIXTURE(Test, testThemePreservation)
                          getProperty<OUString>(getParagraph(2), u"CharFontNameComplex"_ustr));
     CPPUNIT_ASSERT_EQUAL(u"Trebuchet MS"_ustr,
                          getProperty<OUString>(getParagraph(3, u"Default style theme font"_ustr), u"CharFontName"_ustr));
-    CPPUNIT_ASSERT_EQUAL(u"Arial Black"_ustr,
-                         getProperty<OUString>(getRun(getParagraph(4, u"Direct format font"_ustr), 1), u"CharFontName"_ustr));
+    // The direct format font name converts to the typographic family +
+    // subfamily when the installed font provides them (e.g. Windows Arial
+    // Black), and is kept as-is otherwise (e.g. macOS Arial Black has no
+    // typographic names).
+    uno::Reference<text::XTextRange> xDirectRun
+        = getRun(getParagraph(4, u"Direct format font"_ustr), 1);
+    OUString aDirectFont = getProperty<OUString>(xDirectRun, u"CharFontName"_ustr);
+    if (aDirectFont == "Arial")
+        CPPUNIT_ASSERT_EQUAL(u"Black"_ustr,
+                             getProperty<OUString>(xDirectRun, u"CharFontStyleName"_ustr));
+    else
+        CPPUNIT_ASSERT_EQUAL(u"Arial Black"_ustr, aDirectFont);
     CPPUNIT_ASSERT_EQUAL(u"Trebuchet MS"_ustr,
                          getProperty<OUString>(getParagraph(5, u"Major theme font"_ustr), u"CharFontName"_ustr));
 

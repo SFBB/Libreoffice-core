@@ -343,7 +343,6 @@ CPPUNIT_TEST_FIXTURE(Test, testOpenDOCXWithRestrictedEmbeddedFont3)
     assertXPath(pXml, "/w:fonts/w:font[@w:name='Naftalene']/w:embedBoldItalic", 0);
 }
 
-#if !defined(MACOSX)
 CPPUNIT_TEST_FIXTURE(Test, testTdf167849)
 {
     // Given two documents with embedded fonts, that will not require substitution, if present:
@@ -352,12 +351,13 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf167849)
 
     // Load the first document
     createSwDoc("embed-unrestricted1.odt");
-    // At this point, 'Manbow Solid' embedded font is loaded
+    // At this point, the embedded 'Manbow Solid' font is loaded; its legacy name
+    // converts to the typographic identity 'Manbow'/'Solid'.
     std::swap(mxComponent, mxComponent2); // keep it from unloading upon the next load
 
     fontMappingData.checkpoint();
-    CPPUNIT_ASSERT(fontMappingData.wasUsed(u"Manbow Solid"));
-    CPPUNIT_ASSERT(!fontMappingData.wasSubstituted(u"Manbow Solid"));
+    CPPUNIT_ASSERT(fontMappingData.wasUsed(u"Manbow/Solid"));
+    CPPUNIT_ASSERT(!fontMappingData.wasSubstituted(u"Manbow/Solid"));
 
     // Load the second document
     createSwDoc("embed-unrestricted2.odt");
@@ -373,14 +373,13 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf167849)
     calcLayout(true);
 
     fontMappingData.checkpoint();
-    CPPUNIT_ASSERT(fontMappingData.wasUsed(u"Manbow Solid"));
+    CPPUNIT_ASSERT(fontMappingData.wasUsed(u"Manbow/Solid"));
     // Without the fix, it would fail, because loading the second document unregistered
     // the embedded font from the first one.
-    CPPUNIT_ASSERT(!fontMappingData.wasSubstituted(u"Manbow Solid"));
+    CPPUNIT_ASSERT(!fontMappingData.wasSubstituted(u"Manbow/Solid"));
     CPPUNIT_ASSERT(fontMappingData.wasUsed(u"Unsteady Oversteer"));
     CPPUNIT_ASSERT(!fontMappingData.wasSubstituted(u"Unsteady Oversteer"));
 }
-#endif
 
 CPPUNIT_TEST_FIXTURE(Test, tdf166627)
 {
@@ -427,8 +426,11 @@ CPPUNIT_TEST_FIXTURE(Test, tdf166627)
 
 CPPUNIT_TEST_FIXTURE(Test, testFontEmbedding)
 {
-#if HAVE_MORE_FONTS && !defined(MACOSX)
+#if HAVE_MORE_FONTS
     createSwDoc("testFontEmbedding.odt");
+
+    // tdf#172647: "DejaVu Serif Condensed" is a legacy name for the "DejaVu Serif" family, so on
+    // load it converts and merges into that font-face declaration - four (was five) are exported.
 
     OString aContentBaseXpath("/office:document-content/office:font-face-decls"_ostr);
     OString aStylesBaseXpath("/office:document-styles/office:font-face-decls"_ostr);
@@ -467,9 +469,8 @@ CPPUNIT_TEST_FIXTURE(Test, testFontEmbedding)
     pXmlDoc = parseExport(u"styles.xml"_ustr);
     CPPUNIT_ASSERT(pXmlDoc);
 
-    assertXPath(pXmlDoc, aStylesBaseXpath + "/style:font-face['CASE 1']", 5);
-    for (auto fontName : { "DejaVu Sans", "DejaVu Sans Mono", "DejaVu Serif",
-                           "DejaVu Serif Condensed", "DejaVu Serif Condensed1" })
+    assertXPath(pXmlDoc, aStylesBaseXpath + "/style:font-face['CASE 1']", 4);
+    for (auto fontName : { "DejaVu Sans", "DejaVu Sans Mono", "DejaVu Serif", "DejaVu Serif1" })
     {
         OString prefix = aStylesBaseXpath + "/style:font-face[@style:name='" + fontName + "']";
         assertXPath(pXmlDoc, prefix + "['CASE 1']");
@@ -480,9 +481,8 @@ CPPUNIT_TEST_FIXTURE(Test, testFontEmbedding)
     pXmlDoc = parseExport(u"content.xml"_ustr);
     CPPUNIT_ASSERT(pXmlDoc);
 
-    assertXPath(pXmlDoc, aContentBaseXpath + "/style:font-face['CASE 1']", 5);
-    for (auto fontName : { "DejaVu Sans", "DejaVu Sans Mono", "DejaVu Serif",
-                           "DejaVu Serif Condensed", "DejaVu Serif Condensed1" })
+    assertXPath(pXmlDoc, aContentBaseXpath + "/style:font-face['CASE 1']", 4);
+    for (auto fontName : { "DejaVu Sans", "DejaVu Sans Mono", "DejaVu Serif", "DejaVu Serif1" })
     {
         OString prefix = aContentBaseXpath + "/style:font-face[@style:name='" + fontName + "']";
         assertXPath(pXmlDoc, prefix + "['CASE 1']");
@@ -521,9 +521,8 @@ CPPUNIT_TEST_FIXTURE(Test, testFontEmbedding)
     pXmlDoc = parseExport(u"styles.xml"_ustr);
     CPPUNIT_ASSERT(pXmlDoc);
 
-    assertXPath(pXmlDoc, aStylesBaseXpath + "/style:font-face['CASE 2']", 5);
-    for (auto fontName : { "DejaVu Sans", "DejaVu Sans Mono", "DejaVu Serif",
-                           "DejaVu Serif Condensed", "DejaVu Serif Condensed1" })
+    assertXPath(pXmlDoc, aStylesBaseXpath + "/style:font-face['CASE 2']", 4);
+    for (auto fontName : { "DejaVu Sans", "DejaVu Sans Mono", "DejaVu Serif", "DejaVu Serif1" })
     {
         OString prefix = aStylesBaseXpath + "/style:font-face[@style:name='" + fontName + "']";
         assertXPath(pXmlDoc, prefix + "['CASE 2']");
@@ -534,9 +533,8 @@ CPPUNIT_TEST_FIXTURE(Test, testFontEmbedding)
     pXmlDoc = parseExport(u"content.xml"_ustr);
     CPPUNIT_ASSERT(pXmlDoc);
 
-    assertXPath(pXmlDoc, aContentBaseXpath + "/style:font-face['CASE 2']", 5);
-    for (auto fontName : { "DejaVu Sans", "DejaVu Sans Mono", "DejaVu Serif",
-                           "DejaVu Serif Condensed", "DejaVu Serif Condensed1" })
+    assertXPath(pXmlDoc, aContentBaseXpath + "/style:font-face['CASE 2']", 4);
+    for (auto fontName : { "DejaVu Sans", "DejaVu Sans Mono", "DejaVu Serif", "DejaVu Serif1" })
     {
         OString prefix = aContentBaseXpath + "/style:font-face[@style:name='" + fontName + "']";
         assertXPath(pXmlDoc, prefix + "['CASE 2']");
@@ -578,35 +576,30 @@ CPPUNIT_TEST_FIXTURE(Test, testFontEmbedding)
     pXmlDoc = parseExport(u"styles.xml"_ustr);
     CPPUNIT_ASSERT(pXmlDoc);
 
-    assertXPath(pXmlDoc, aStylesBaseXpath + "/style:font-face['CASE 3']", 5);
-    // 'DejaVu Sans' is by default exported because of table styles
-    for (auto fontName :
-         { "DejaVu Sans Mono", "DejaVu Serif Condensed", "DejaVu Serif Condensed1" })
+    assertXPath(pXmlDoc, aStylesBaseXpath + "/style:font-face['CASE 3']", 4);
+    // 'DejaVu Sans' is exported by default (table styles), so its embedding is not asserted. Both
+    // "DejaVu Serif" faces used in the styles are embedded ("DejaVu Serif1" is the family the legacy
+    // "DejaVu Serif Condensed1" converts to).
+    for (auto fontName : { "DejaVu Sans Mono" })
     {
         OString prefix = aStylesBaseXpath + "/style:font-face[@style:name='" + fontName + "']";
         assertXPath(pXmlDoc, prefix + "['CASE 3']");
         assertXPath(pXmlDoc, prefix + "/svg:font-face-src['CASE 3']", 0);
     }
-    for (auto fontName : { "DejaVu Serif" })
+    for (auto fontName : { "DejaVu Serif", "DejaVu Serif1" })
     {
         OString prefix = aStylesBaseXpath + "/style:font-face[@style:name='" + fontName + "']";
         assertXPath(pXmlDoc, prefix + "['CASE 3']");
         assertXPath(pXmlDoc, prefix + "/svg:font-face-src['CASE 3']", 1);
     }
 
-    // Check content - font-face-src should be present only for DejaVu Sans Mono and DejaVu Serif
+    // Check content - font-face-src should be present for the fonts used in the body text
     // Note that the used sets of fonts are different for styles.xml and content.xml
     pXmlDoc = parseExport(u"content.xml"_ustr);
     CPPUNIT_ASSERT(pXmlDoc);
 
-    assertXPath(pXmlDoc, aContentBaseXpath + "/style:font-face['CASE 3']", 5);
-    for (auto fontName : { "DejaVu Serif Condensed", "DejaVu Serif Condensed1" })
-    {
-        OString prefix = aContentBaseXpath + "/style:font-face[@style:name='" + fontName + "']";
-        assertXPath(pXmlDoc, prefix + "['CASE 3']");
-        assertXPath(pXmlDoc, prefix + "/svg:font-face-src['CASE 3']", 0);
-    }
-    for (auto fontName : { "DejaVu Sans Mono", "DejaVu Serif" })
+    assertXPath(pXmlDoc, aContentBaseXpath + "/style:font-face['CASE 3']", 4);
+    for (auto fontName : { "DejaVu Sans Mono", "DejaVu Serif", "DejaVu Serif1" })
     {
         OString prefix = aContentBaseXpath + "/style:font-face[@style:name='" + fontName + "']";
         assertXPath(pXmlDoc, prefix + "['CASE 3']");
@@ -625,7 +618,6 @@ CPPUNIT_TEST_FIXTURE(Test, testEmbeddedFontProps)
 
     saveAndReload(TestFilter::ODT);
     CPPUNIT_ASSERT_EQUAL(1, getPages());
-#if !defined(MACOSX)
     // Test that font style/weight of embedded fonts is exposed.
     xmlDocUniquePtr pXmlDoc = parseExport(u"styles.xml"_ustr);
     // These failed, the attributes were missing.
@@ -653,17 +645,6 @@ CPPUNIT_TEST_FIXTURE(Test, testEmbeddedFontProps)
         pXmlDoc,
         "//style:font-face[@style:name='DejaVu Serif']/svg:font-face-src/svg:font-face-uri[3]",
         "font-weight", u"normal");
-#if defined _WIN32
-    assertXPath(
-        pXmlDoc,
-        "//style:font-face[@style:name='DejaVu Serif']/svg:font-face-src/svg:font-face-uri[4]",
-        "font-style", u"italic");
-    assertXPath(
-        pXmlDoc,
-        "//style:font-face[@style:name='DejaVu Serif']/svg:font-face-src/svg:font-face-uri[4]",
-        "font-weight", u"bold");
-#endif
-#endif
 }
 
 CPPUNIT_TEST_FIXTURE(Test, testFontEmbeddingDOCX)
