@@ -82,6 +82,7 @@ Connection::Connection()
     : Connection_BASE(m_aMutex)
     , m_bIsEmbedded(false)
     , m_bIsFile(false)
+    , m_bBackupDataOnDispose(false)
     , m_bIsAutoCommit(true)
     , m_bIsReadOnly(false)
     , m_aTransactionIsolation(TransactionIsolation::READ_COMMITTED)
@@ -119,9 +120,43 @@ struct ConnectionGuard
     }
 };
 
+// A set nbackup state makes firebird open a difference file
+// (BackupManager::actualizeState and openDelta, firebird/src/jrd/nbak.cpp).
+// A database we made is never in that state, so refuse it.
+bool databaseHeaderHasBackupState(const OUString& rDatabasePath)
+{
+    OUString sFileURL;
+    if (::osl::FileBase::getFileURLFromSystemPath(rDatabasePath, sFileURL) != ::osl::FileBase::E_None)
+        return false;
+
+    ::osl::File aFile(sFileURL);
+    if (aFile.open(osl_File_OpenFlag_Read) != ::osl::FileBase::E_None)
+        return false;
+
+    // Ods::header_page, firebird/src/jrd/ods.h
+    sal_uInt8 aHeader[44];
+    sal_uInt64 nRead = 0;
+    ::osl::FileBase::RC eRead = aFile.read(aHeader, sizeof(aHeader), nRead);
+    aFile.close();
+
+    if (eRead != ::osl::FileBase::E_None || nRead < sizeof(aHeader))
+        return false;
+
+    // pag_type, Ods::pag_header
+    const sal_uInt8 nPageTypeHeader = 1;
+    if (aHeader[0] != nPageTypeHeader)
+        return false;
+
+    // hdr_flags & hdr_backup_mask, normal state is 0
+    const sal_uInt16 nFlags = aHeader[42] | (aHeader[43] << 8);
+    const sal_uInt16 nBackupStateMask = 0x0C00;
+    return (nFlags & nBackupStateMask) != 0;
 }
 
-void Connection::construct(const OUString& url, const Sequence< PropertyValue >& info)
+}
+
+void Connection::construct(const OUString& url, const Sequence< PropertyValue >& info,
+                           const OUString& rDatabaseDataDirectoryURL)
 {
     ConnectionGuard aGuard(m_refCount);
 
@@ -158,7 +193,7 @@ void Connection::construct(const OUString& url, const Sequence< PropertyValue >&
 
             bIsNewDatabase = !m_xEmbeddedStorage->hasElements();
 
-            m_pDatabaseFileDir.reset(new ::utl::TempFileNamed(nullptr, true));
+            m_pDatabaseFileDir.reset(new ::utl::TempFileNamed(&rDatabaseDataDirectoryURL, true));
             m_pDatabaseFileDir->EnableKillingFile();
             m_sFirebirdURL = m_pDatabaseFileDir->GetFileName() + "/firebird.fdb";
             m_sFBKPath = m_pDatabaseFileDir->GetFileName() + "/firebird.fbk";
@@ -179,6 +214,15 @@ void Connection::construct(const OUString& url, const Sequence< PropertyValue >&
                     SAL_INFO("connectivity.firebird", "Found .fdb instead of .fbk");
                     bIsFdbStored = true;
                     loadDatabaseFile(our_sFDBLocation, m_sFirebirdURL);
+                    // Decline a database whose header asks firebird to use a
+                    // difference file
+                    if (databaseHeaderHasBackupState(m_sFirebirdURL))
+                    {
+                        ::connectivity::SharedResources aResources;
+                        const OUString sMessage = aResources.getResourceString(STR_COULD_NOT_LOAD_FILE).replaceFirst(
+                            "$filename$", m_sConnectionURL);
+                        ::dbtools::throwGenericSQLException(sMessage, *this);
+                    }
                 }
                 else
                 {
@@ -316,6 +360,10 @@ void Connection::construct(const OUString& url, const Sequence< PropertyValue >&
 
         if (m_bIsEmbedded) // Add DocumentEventListener to save the .fdb as needed
         {
+            // The database opened without error, so its temporary .fdb is
+            // worth writing back into the .odb on dispose.
+            m_bBackupDataOnDispose = true;
+
             // We need to attach as a document listener in order to be able to store
             // the temporary db back into the .odb when saving
             uno::Reference<XDocumentEventBroadcaster> xBroadcaster(m_xParentDocument, UNO_QUERY);
@@ -908,7 +956,7 @@ void Connection::disposing()
 void Connection::storeDatabase()
 {
     MutexGuard aGuard(m_aMutex);
-    if (m_bIsEmbedded && m_xEmbeddedStorage.is())
+    if (m_bIsEmbedded && m_bBackupDataOnDispose && m_xEmbeddedStorage.is())
     {
         SAL_INFO("connectivity.firebird", "Writing .fbk from running db");
         try

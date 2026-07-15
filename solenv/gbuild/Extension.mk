@@ -109,7 +109,8 @@ $(call gb_Extension_get_target,%) : \
 		$(if $(and $(gb_Extension_TRANS_LANGS),$(DESCRIPTION)),cp $(foreach lang,$(gb_Extension_TRANS_LANGS),$(gb_Extension_workdir)/$*/description-$(lang).txt) $(call gb_Extension_get_rootdir,$*) &&) \
 		cd $(call gb_Extension_get_rootdir,$*) && \
 		cat $$RESPONSEFILE | $(call gb_Helper_wsl_path,$(WSL) $(gb_Extension_ZIPCOMMAND) -rX --filesync --must-match \
-			$(call gb_Extension_get_target,$*) --names-stdin)) && rm -f $$RESPONSEFILE
+			$(call gb_Extension_get_target,$*) --names-stdin)) && rm -f $$RESPONSEFILE \
+		$(call gb_Helper_make_zip_deterministic,$@)
 	$(call gb_Trace_EndRange,$*,OXT)
 
 # set file list and location of manifest and description files
@@ -463,8 +464,9 @@ $(call gb_Extension_get_rootdir,$(1))/help/$(2).done : \
             -idxcontent $(SRCDIR)/xmlhelp/util/idxcontent.xsl \
             $$(HELPFILES) && \
         (cd $(gb_Extension_workdir)/$(1)/help/$(2) && \
-            $$(call gb_Helper_wsl_path,$(WSL) $$(gb_Extension_ZIPCOMMAND) -r $$(basename $$@)/help.jar \
-            $$(HELPFILES))) && \
+            $$(call gb_Helper_wsl_path,$(WSL) $$(gb_Extension_ZIPCOMMAND) -rX $$(basename $$@)/help.jar \
+            $$(HELPFILES))) \
+            $$(call gb_Helper_make_zip_deterministic,$$(basename $$@)/help.jar) && \
         $$(gb_Extension_HELPINDEXERCOMMAND) -lang $(2) -mod help \
             -dir $$(basename $$@) && \
             rm -fr $$(basename $$@)/caption $$(basename $$@)/content && \
