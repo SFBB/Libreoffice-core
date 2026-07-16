@@ -26,6 +26,7 @@
 #include <comphelper/diagnose_ex.hxx>
 #include <comphelper/documentinfo.hxx>
 #include <comphelper/processfactory.hxx>
+#include <comphelper/scriptbrowse.hxx>
 #include <osl/file.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <sfx2/app.hxx>
@@ -37,9 +38,9 @@
 #include <svl/itemset.hxx>
 #include <svl/stritem.hxx>
 #include <svtools/dlgname.hxx>
+#include <svtools/viewoptions.hxx>
 #include <svx/passwd.hxx>
 #include <tools/debug.hxx>
-#include <unotools/viewoptions.hxx>
 #include <vcl/commandevent.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/vclenum.hxx>
@@ -57,10 +58,10 @@
 #include <com/sun/star/script/browse/BrowseNodeTypes.hpp>
 #include <com/sun/star/script/browse/theBrowseNodeFactory.hpp>
 #include <com/sun/star/script/browse/BrowseNodeFactoryViewTypes.hpp>
+#include <com/sun/star/script/browse/XCopyableBrowseNode.hpp>
 #include <com/sun/star/script/XLibraryContainer2.hpp>
 #include <com/sun/star/script/XLibraryContainerPassword.hpp>
 #include <com/sun/star/script/XPersistentLibraryContainer.hpp>
-#include <com/sun/star/script/XInvocation.hpp>
 #include <com/sun/star/script/XStorageBasedLibraryContainer.hpp>
 #include <com/sun/star/uno/RuntimeException.hpp>
 
@@ -675,6 +676,8 @@ MacroManagerDialog::MacroManagerDialog(weld::Window* pParent,
     , m_xMacroDeleteButton(m_xBuilder->weld_button(u"macrodelete"_ustr))
     , m_xMacroCreateButton(m_xBuilder->weld_button(u"macrocreate"_ustr))
     , m_xMacroRenameButton(m_xBuilder->weld_button(u"macrorename"_ustr))
+    , m_xModuleCopyButton(m_xBuilder->weld_button(u"modulecopy"_ustr))
+    , m_xModulePasteButton(m_xBuilder->weld_button(u"modulepaste"_ustr))
     , m_xAssignButton(m_xBuilder->weld_button(u"assign"_ustr))
 {
     m_aScriptsListBoxLabelBaseStr = m_xScriptsListBoxLabel->get_label();
@@ -705,6 +708,8 @@ MacroManagerDialog::MacroManagerDialog(weld::Window* pParent,
     m_xMacroEditButton->connect_clicked(LINK(this, MacroManagerDialog, ClickHdl));
     m_xMacroRenameButton->connect_clicked(LINK(this, MacroManagerDialog, ClickHdl));
     m_xMacroDeleteButton->connect_clicked(LINK(this, MacroManagerDialog, ClickHdl));
+    m_xModuleCopyButton->connect_clicked(LINK(this, MacroManagerDialog, ClickHdl));
+    m_xModulePasteButton->connect_clicked(LINK(this, MacroManagerDialog, ClickHdl));
 
     StartListening(*SfxGetpApp());
 }
@@ -922,23 +927,6 @@ IMPL_LINK(MacroManagerDialog, ContextMenuHdl, const CommandEvent&, rCEvt, bool)
     return true;
 }
 
-// same as OUString SvxScriptOrgDialog::getBoolProperty((Reference<beans::XPropertySet> const& xProps, OUString const& propName)
-// cui/source/dialogs/scriptdlg.cxx
-bool MacroManagerDialog::getBoolProperty(
-    css::uno::Reference<css::beans::XPropertySet> const& xProps, OUString const& propName)
-{
-    bool result = false;
-    try
-    {
-        xProps->getPropertyValue(propName) >>= result;
-    }
-    catch (css::uno::Exception&)
-    {
-        return result;
-    }
-    return result;
-}
-
 css::uno::Reference<css::script::browse::XBrowseNode>
 MacroManagerDialog::getBrowseNode(const weld::TreeView& rTreeView, const weld::TreeIter& rTreeIter)
 {
@@ -1008,6 +996,8 @@ void MacroManagerDialog::CheckButtons()
     bool bSensitiveLibraryPasswordButton = false;
     bool bSensitiveLibraryImportButton = false;
     bool bSensitiveLibraryExportButton = false;
+    bool bSensitiveModuleCopyButton = false;
+    bool bSensitiveModulePasteButton = false;
 
     bool bSensitiveMacroRunButton = false;
     bool bSensitiveMacroCreateButton = false;
@@ -1051,14 +1041,9 @@ void MacroManagerDialog::CheckButtons()
                             rScriptContainersTreeView, *xScriptContainersSelectedIter);
                         if (node.is())
                         {
-                            css::uno::Reference<css::beans::XPropertySet> xProps(
-                                node, css::uno::UNO_QUERY);
-                            if (xProps.is())
+                            if (comphelper::scriptbrowse::isCreatable(node))
                             {
-                                if (getBoolProperty(xProps, "Creatable"))
-                                {
-                                    bSensitiveNewLibraryButton = true;
-                                }
+                                bSensitiveNewLibraryButton = true;
                             }
                         }
                     }
@@ -1141,34 +1126,43 @@ void MacroManagerDialog::CheckButtons()
                 }
             }
 
-            if (!bSharedLocationContainer && nSelectedIterDepth > 1)
+            if (!bSharedLocationContainer)
             {
                 css::uno::Reference<css::script::browse::XBrowseNode> node
                     = getBrowseNode(rScriptContainersTreeView, *xScriptContainersSelectedIter);
                 if (node.is())
                 {
-                    css::uno::Reference<css::beans::XPropertySet> xProps(node, css::uno::UNO_QUERY);
-                    if (xProps.is())
+                    if (nSelectedIterDepth > 1)
                     {
-                        if (getBoolProperty(xProps, "Creatable")
+                        if (comphelper::scriptbrowse::isCreatable(node)
                             && rScriptContainersTreeView.get_iter_depth(
                                    *xScriptContainersSelectedIter)
                                    == 2) // library entry
                         {
                             bSensitiveMacroCreateButton = true;
                         }
-                        if (getBoolProperty(xProps, "Editable"))
+                        if (comphelper::scriptbrowse::isEditable(node))
                         {
                             bSensitiveLibraryModuleDialogEditButton = true;
                         }
-                        if (getBoolProperty(xProps, "Deletable"))
+                        if (comphelper::scriptbrowse::isDeletable(node))
                         {
                             bSensitiveLibraryModuleDialogDeleteButton = true;
                         }
-                        if (getBoolProperty(xProps, "Renamable"))
+                        if (comphelper::scriptbrowse::isRenamable(node))
                         {
                             bSensitiveLibraryModuleDialogRenameButton = true;
                         }
+
+                        css::uno::Reference<css::script::browse::XCopyableBrowseNode> xCopyableNode(
+                            node, css::uno::UNO_QUERY);
+                        if (xCopyableNode.is() && xCopyableNode->isCopyableNode())
+                            bSensitiveModuleCopyButton = true;
+                    }
+
+                    if (m_xCopiedNode.is() && m_xCopiedNode->nodeCanBeCopiedTo(node))
+                    {
+                        bSensitiveModulePasteButton = true;
                     }
                 }
             }
@@ -1189,23 +1183,19 @@ void MacroManagerDialog::CheckButtons()
                 {
                     bSensitiveMacroRunButton = true;
 
-                    css::uno::Reference<css::beans::XPropertySet> xProps(node, css::uno::UNO_QUERY);
-                    if (xProps.is())
+                    if (comphelper::scriptbrowse::isEditable(node))
                     {
-                        if (getBoolProperty(xProps, "Editable"))
+                        bSensitiveMacroEditButton = true;
+                    }
+                    if (!bSharedLocationContainer)
+                    {
+                        if (comphelper::scriptbrowse::isDeletable(node))
                         {
-                            bSensitiveMacroEditButton = true;
+                            bSensitiveMacroDeleteButton = true;
                         }
-                        if (!bSharedLocationContainer)
+                        if (comphelper::scriptbrowse::isRenamable(node))
                         {
-                            if (getBoolProperty(xProps, "Deletable"))
-                            {
-                                bSensitiveMacroDeleteButton = true;
-                            }
-                            if (getBoolProperty(xProps, "Renamable"))
-                            {
-                                bSensitiveMacroRenameButton = true;
-                            }
+                            bSensitiveMacroRenameButton = true;
                         }
                     }
                 }
@@ -1227,6 +1217,8 @@ void MacroManagerDialog::CheckButtons()
     m_xMacroEditButton->set_sensitive(bSensitiveMacroEditButton);
     m_xMacroRenameButton->set_sensitive(bSensitiveMacroRenameButton);
     m_xMacroDeleteButton->set_sensitive(bSensitiveMacroDeleteButton);
+    m_xModuleCopyButton->set_sensitive(bSensitiveModuleCopyButton);
+    m_xModulePasteButton->set_sensitive(bSensitiveModulePasteButton);
     m_xAssignButton->set_sensitive(bSensitiveAssignButton);
 }
 
@@ -1624,21 +1616,17 @@ IMPL_LINK(MacroManagerDialog, ClickHdl, weld::Button&, rButton, void)
             return; // should never happen
         css::uno::Reference<css::script::browse::XBrowseNode> node
             = getBrowseNode(rTreeView, *xSelectedIter);
-        css::uno::Reference<css::script::XInvocation> xInv(node, css::uno::UNO_QUERY);
-        if (xInv.is())
+        if (node.is())
         {
             m_xDialog->response(RET_CANCEL);
-            css::uno::Sequence<css::uno::Any> args(0);
-            css::uno::Sequence<css::uno::Any> outArgs(0);
-            css::uno::Sequence<sal_Int16> outIndex;
             try
             {
                 // ISSUE need code to run script here
-                xInv->invoke(u"Editable"_ustr, args, outIndex, outArgs);
+                comphelper::scriptbrowse::editNode(node);
             }
             catch (css::uno::Exception const&)
             {
-                TOOLS_WARN_EXCEPTION("cui.dialogs", "Caught exception trying to invoke");
+                TOOLS_WARN_EXCEPTION("cui.dialogs", "Caught exception trying to edit");
             }
         }
     }
@@ -1690,6 +1678,26 @@ IMPL_LINK(MacroManagerDialog, ClickHdl, weld::Button&, rButton, void)
                 ScriptContainerType::LOCATION));
         aRequest.AppendItem(aMacroInfoItem);
         SfxGetpApp()->ExecuteSlot(aRequest);
+    }
+    else if (&rButton == m_xModuleCopyButton.get())
+    {
+        weld::TreeView& rTreeView = m_xScriptContainersListBox->get_widget();
+        std::unique_ptr<weld::TreeIter> xSelectedIter = rTreeView.get_selected();
+        if (!xSelectedIter)
+            return; // should never happen
+        m_xCopiedNode.set(getBrowseNode(rTreeView, *xSelectedIter), css::uno::UNO_QUERY);
+        CheckButtons();
+    }
+    else if (&rButton == m_xModulePasteButton.get())
+    {
+        if (!m_xCopiedNode.is())
+            return;
+
+        weld::TreeView& rTreeView = m_xScriptContainersListBox->get_widget();
+        std::unique_ptr<weld::TreeIter> xSelectedIter = rTreeView.get_selected();
+        if (!xSelectedIter)
+            return; // should never happen
+        ScriptingFrameworkScriptsPasteEntry(rTreeView, *xSelectedIter);
     }
 }
 
@@ -2079,9 +2087,8 @@ void MacroManagerDialog::ScriptingFrameworkScriptsRenameEntry(weld::TreeView& rT
 {
     css::uno::Reference<css::script::browse::XBrowseNode> xBrowseNode
         = getBrowseNode(rTreeView, rEntry);
-    css::uno::Reference<css::script::XInvocation> xInv(xBrowseNode, css::uno::UNO_QUERY);
 
-    if (xInv.is())
+    if (xBrowseNode.is())
     {
         OUString aNewName = xBrowseNode->getName();
         sal_Int32 extnPos = aNewName.lastIndexOf('.');
@@ -2112,17 +2119,14 @@ void MacroManagerDialog::ScriptingFrameworkScriptsRenameEntry(weld::TreeView& rT
 
         aNewName = aNameDialog.GetName();
 
-        css::uno::Sequence<css::uno::Any> args{ css::uno::Any(aNewName) };
-        css::uno::Sequence<css::uno::Any> outArgs;
-        css::uno::Sequence<sal_Int16> outIndex;
         try
         {
-            css::uno::Any aResult = xInv->invoke(u"Renamable"_ustr, args, outIndex, outArgs);
-            xBrowseNode.set(aResult, css::uno::UNO_QUERY);
+            xBrowseNode = comphelper::scriptbrowse::renameNode(xBrowseNode, aNewName);
         }
         catch (css::uno::Exception const&)
         {
             TOOLS_WARN_EXCEPTION("cui.dialogs", "Caught exception trying to Rename");
+            xBrowseNode.clear();
         }
     }
     if (xBrowseNode.is())
@@ -2165,6 +2169,50 @@ void MacroManagerDialog::ScriptingFrameworkScriptsRenameEntry(weld::TreeView& rT
             m_xDialog.get(), VclMessageType::Warning, VclButtonsType::Ok, aError));
         xErrorBox->set_title(CuiResId(RID_CUISTR_RENAMEFAILED_TITLE));
         xErrorBox->run();
+    }
+}
+
+void MacroManagerDialog::ScriptingFrameworkScriptsPasteEntry(weld::TreeView& rTreeView,
+                                                             const weld::TreeIter& rEntry)
+{
+    css::uno::Reference<css::script::browse::XBrowseNode> node = getBrowseNode(rTreeView, rEntry);
+    if (!node.is() || !m_xCopiedNode->nodeCanBeCopiedTo(node))
+        return;
+
+    try
+    {
+        node = m_xCopiedNode->copyNode(node);
+    }
+    catch (const css::uno::Exception&)
+    {
+        return;
+    }
+
+    // If we don’t expand the row before filling it then it will end up with two copies of all the
+    // entries
+    rTreeView.expand_row(rEntry);
+    m_xScriptContainersListBox->Fill(&rEntry);
+    // Filling it causes the node to close so we need to expand it again
+    rTreeView.expand_row(rEntry);
+
+    // Try to select the new entry
+    if (rTreeView.iter_has_child(rEntry))
+    {
+        OUString sNodeName = node->getName();
+
+        std::unique_ptr<weld::TreeIter> xIter = rTreeView.make_iterator(&rEntry);
+        if (rTreeView.iter_children(*xIter))
+        {
+            do
+            {
+                if (rTreeView.get_text(*xIter) == sNodeName)
+                {
+                    rTreeView.select(*xIter);
+                    SelectHdl(rTreeView);
+                    break;
+                }
+            } while (rTreeView.iter_next_sibling(*xIter));
+        }
     }
 }
 
@@ -2218,16 +2266,12 @@ void MacroManagerDialog::ScriptingFrameworkScriptsDeleteEntry(weld::TreeView& rT
         return;
     }
 
-    css::uno::Reference<css::script::XInvocation> xInv(node, css::uno::UNO_QUERY);
-    if (xInv.is())
+    if (node.is())
     {
-        css::uno::Sequence<css::uno::Any> args(0);
-        css::uno::Sequence<css::uno::Any> outArgs(0);
-        css::uno::Sequence<sal_Int16> outIndex;
         try
         {
-            css::uno::Any aResult = xInv->invoke(u"Deletable"_ustr, args, outIndex, outArgs);
-            aResult >>= result; // or do we just assume true if no exception ?
+            result = comphelper::scriptbrowse::deleteNode(node);
+            // or do we just assume true if no exception ?
         }
         catch (css::uno::Exception const&)
         {
@@ -2270,10 +2314,8 @@ void MacroManagerDialog::ScriptingFrameworkScriptsCreateEntry(InputDialogMode eI
     css::uno::Reference<css::script::browse::XBrowseNode> aChildNode;
     css::uno::Reference<css::script::browse::XBrowseNode> xBrowseNode
         = getBrowseNode(rTreeView, *xSelectedIter);
-    css::uno::Reference<css::script::XInvocation> xInv(xBrowseNode, css::uno::UNO_QUERY);
 
-    // Currently, invocation is not implemented for python, only beanshell, javascript, and java.
-    if (xInv.is())
+    if (xBrowseNode.is())
     {
         OUString aNewName;
         OUString aNewStdName;
@@ -2394,13 +2436,9 @@ void MacroManagerDialog::ScriptingFrameworkScriptsCreateEntry(InputDialogMode eI
         // open up parent node (which ensures it's loaded)
         rTreeView.expand_row(*xSelectedIter);
 
-        css::uno::Sequence<css::uno::Any> args{ css::uno::Any(aNewName) };
-        css::uno::Sequence<css::uno::Any> outArgs;
-        css::uno::Sequence<sal_Int16> outIndex;
         try
         {
-            css::uno::Any aResult = xInv->invoke(u"Creatable"_ustr, args, outIndex, outArgs);
-            aChildNode.set(aResult, css::uno::UNO_QUERY);
+            aChildNode = comphelper::scriptbrowse::createNode(xBrowseNode, aNewName);
         }
         catch (css::uno::Exception const&)
         {

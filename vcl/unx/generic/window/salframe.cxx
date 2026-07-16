@@ -1218,27 +1218,25 @@ void X11SalFrame::GetWorkArea( AbsoluteScreenPixelRectangle& rWorkArea )
     rWorkArea = pDisplay_->getWMAdaptor()->getWorkArea( 0 );
 }
 
-void X11SalFrame::GetClientSize( tools::Long &rWidth, tools::Long &rHeight )
+Size X11SalFrame::GetClientSize()
 {
     if( ! bViewable_  )
-    {
-        rWidth = rHeight = 0;
-        return;
-    }
+        return Size(0, 0);
 
-    rWidth  = maGeometry.width();
-    rHeight = maGeometry.height();
+    Size aSize = maGeometry.size();
 
-    if( !rWidth || !rHeight )
+    if (!aSize.Width() || !aSize.Height())
     {
         XWindowAttributes aAttrib;
 
         XGetWindowAttributes( GetXDisplay(), GetWindow(), &aAttrib );
 
-        rWidth = aAttrib.width;
-        rHeight = aAttrib.height;
+        aSize.setWidth(aAttrib.width);
+        aSize.setHeight(aAttrib.height);
         maGeometry.setSize({ aAttrib.width, aAttrib.height });
     }
+
+    return aSize;
 }
 
 void X11SalFrame::Center( )
@@ -1953,11 +1951,8 @@ void X11SalFrame::ShowFullScreen( bool bFullScreen, sal_Int32 nScreen )
 
 void X11SalFrame::StartPresentation( bool bStart )
 {
-    maSessionManagerInhibitor.inhibit( bStart,
-                                    u"presentation",
-                                    APPLICATION_INHIBIT_IDLE,
-                                    mhWindow,
-                                    GetXDisplay() );
+    maSessionManagerInhibitor.inhibit(bStart, u"presentation", APPLICATION_INHIBIT_IDLE,
+                                      GetXDisplay());
 
     if( ! bStart && hPresentationWindow != None )
         doReparentPresentationDialogues( GetDisplay() );

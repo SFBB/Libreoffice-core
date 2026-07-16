@@ -3095,6 +3095,11 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/script/browse,\
 	BrowseNodeTypes \
 	XBrowseNode \
 	XBrowseNodeFactory \
+	XCopyableBrowseNode \
+	XCreatableBrowseNode \
+	XDeletableBrowseNode \
+	XEditableBrowseNode \
+	XRenamableBrowseNode \
 ))
 $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/script/provider,\
 	ScriptErrorRaisedException \
@@ -4394,8 +4399,10 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,org/libreoffice/embindtest, \
     Template \
     XArgumentStore \
     XAttributes \
+    XPassthrough \
     XStringFactory \
     XTest \
+    thePassthrough \
     theSingleton \
 ))
 $(eval $(call gb_UnoApi_add_idlfiles_nohdl,offapi,org/libreoffice/embindtest, \

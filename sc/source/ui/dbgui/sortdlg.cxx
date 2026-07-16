@@ -22,8 +22,8 @@
 #include <scui_def.hxx>
 #include <tpsort.hxx>
 #include <sortdlg.hxx>
-#include <unotools/viewoptions.hxx>
 
+#include <svtools/viewoptions.hxx>
 #include <vcl/tabs.hrc>
 #include <vcl/weld/Dialog.hxx>
 #include <vcl/windowstate.hxx>
@@ -46,8 +46,7 @@ ScSortDlg::~ScSortDlg()
 {
     // tdf#153852 - Make of sort dialog resizable (and remember size)
     SvtViewOptions aDlgOpt(EViewType::Dialog, u"SortDialog"_ustr);
-    OUString sWindowState = m_xDialog->get_window_state(vcl::WindowDataMask::PosSize);
-    aDlgOpt.SetWindowState(sWindowState);
+    aDlgOpt.SetWindowState(m_xDialog->get_window_state(vcl::WindowDataMask::PosSize));
 }
 
 ScSortWarningDlg::ScSortWarningDlg(weld::Window* pParent,

@@ -220,6 +220,7 @@ QWindow* QtFrame::windowHandle() const
         case Platform::Wayland:
         case Platform::Windows:
         case Platform::Xcb:
+        case Platform::Mac:
             pChild->setAttribute(Qt::WA_NativeWindow);
             break;
         case Platform::Other:
@@ -496,10 +497,10 @@ void QtFrame::SetPosSize(tools::Long nX, tools::Long nY, tools::Long nWidth, too
     asChild()->move(round(nX / devicePixelRatioF()), round(nY / devicePixelRatioF()));
 }
 
-void QtFrame::GetClientSize(tools::Long& rWidth, tools::Long& rHeight)
+Size QtFrame::GetClientSize()
 {
-    rWidth = round(m_pQWidget->width() * devicePixelRatioF());
-    rHeight = round(m_pQWidget->height() * devicePixelRatioF());
+    return Size(round(m_pQWidget->width() * devicePixelRatioF()),
+                round(m_pQWidget->height() * devicePixelRatioF()));
 }
 
 SalFrameGeometry QtFrame::GetUnmirroredGeometry() const
@@ -667,17 +668,12 @@ void QtFrame::ShowFullScreen(bool bFullScreen, sal_Int32 nScreen)
 
 void QtFrame::StartPresentation(bool bStart)
 {
-#if defined LINUX || defined __sun || defined FREEBSD || defined OPENBSD
+#if defined LINUX || defined __sun || defined FREEBSD || defined OPENBSD || defined MACOSX
 #if CHECK_QT5_USING_X11
-    unsigned int nRootWindow(0);
     std::optional<Display*> aDisplay;
     if (QX11Info::isPlatformX11())
-    {
-        nRootWindow = QX11Info::appRootWindow();
         aDisplay = QX11Info::display();
-    }
-    m_SessionManagerInhibitor.inhibit(bStart, u"presentation", APPLICATION_INHIBIT_IDLE,
-                                      nRootWindow, aDisplay);
+    m_SessionManagerInhibitor.inhibit(bStart, u"presentation", APPLICATION_INHIBIT_IDLE, aDisplay);
 #else
     m_SessionManagerInhibitor.inhibit(bStart, u"presentation", APPLICATION_INHIBIT_IDLE);
 #endif

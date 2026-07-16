@@ -16,13 +16,13 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#ifndef INCLUDED_UNOTOOLS_VIEWOPTIONS_HXX
-#define INCLUDED_UNOTOOLS_VIEWOPTIONS_HXX
+#pragma once
 
-#include <unotools/unotoolsdllapi.h>
 #include <com/sun/star/uno/Reference.hxx>
 #include <sal/types.h>
 #include <rtl/ustring.hxx>
+#include <svtools/svtdllapi.h>
+#include <vcl/windowstate.hxx>
 
 namespace com::sun::star::beans { struct NamedValue; }
 namespace com::sun::star::container { class XNameAccess; }
@@ -92,7 +92,7 @@ enum class EViewType
     @devstatus      ready to use
 *//*-*************************************************************************************************************/
 
-class SAL_WARN_UNUSED UNOTOOLS_DLLPUBLIC SvtViewOptions final
+class SAL_WARN_UNUSED SVT_DLLPUBLIC SvtViewOptions final
 {
 
     //  public methods
@@ -144,14 +144,12 @@ class SAL_WARN_UNUSED UNOTOOLS_DLLPUBLIC SvtViewOptions final
         /*-****************************************************************************************************
             @short      use it to set/get the window state of your view
             @descr      These value describe position/size and some other states of a window.
-                        Use it with right vcl methods directly. Normally it's not necessary to
-                        parse given string!
 
             @seealso    vcl methods
         *//*-*****************************************************************************************************/
 
-        OUString GetWindowState(                               ) const;
-        void            SetWindowState( const OUString& sState );
+        vcl::WindowData GetWindowState() const;
+        void SetWindowState(const vcl::WindowData& rState);
 
         /*-****************************************************************************************************
             @short      use it to set/get the page number which was the last active one
@@ -218,7 +216,5 @@ class SAL_WARN_UNUSED UNOTOOLS_DLLPUBLIC SvtViewOptions final
         css::uno::Reference< css::container::XNameAccess > m_xRoot;
         css::uno::Reference< css::container::XNameAccess > m_xSet;
 };      // class SvtViewOptions
-
-#endif // INCLUDED_UNOTOOLS_VIEWOPTIONS_HXX
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

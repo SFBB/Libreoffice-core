@@ -26,7 +26,9 @@
 #include "QtWidget.hxx"
 
 #include <salframe.hxx>
-#if defined LINUX || defined __sun || defined FREEBSD || defined OPENBSD
+#if defined MACOSX
+#include <osx/sessioninhibitor.hxx>
+#elif defined LINUX || defined __sun || defined FREEBSD || defined OPENBSD
 #include <unx/sessioninhibitor.hxx>
 #endif
 #include <vclpluginapi.h>
@@ -100,7 +102,7 @@ class VCLPLUG_QT_PUBLIC QtFrame : public QObject, public SalFrame
     sal_uInt32 m_nRestoreScreen;
     QRect m_aRestoreGeometry;
 
-#if defined LINUX || defined __sun || defined FREEBSD || defined OPENBSD
+#if defined LINUX || defined __sun || defined FREEBSD || defined OPENBSD || defined MACOSX
     SessionManagerInhibitor m_SessionManagerInhibitor;
 #endif
 #if CHECK_ANY_QT_USING_X11
@@ -184,7 +186,7 @@ public:
     virtual void SetMaxClientSize(tools::Long nWidth, tools::Long nHeight) override;
     virtual void SetPosSize(tools::Long nX, tools::Long nY, tools::Long nWidth, tools::Long nHeight,
                             sal_uInt16 nFlags) override;
-    virtual void GetClientSize(tools::Long& rWidth, tools::Long& rHeight) override;
+    virtual Size GetClientSize() override;
     SalFrameGeometry GetUnmirroredGeometry() const override;
     virtual void GetWorkArea(AbsoluteScreenPixelRectangle& rRect) override;
     virtual SalFrame* GetParent() const override;

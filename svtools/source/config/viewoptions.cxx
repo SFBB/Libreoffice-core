@@ -17,13 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <unotools/viewoptions.hxx>
 #include <com/sun/star/uno/Any.hxx>
 
 #include <com/sun/star/beans/NamedValue.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/container/XNameAccess.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
+#include <svtools/viewoptions.hxx>
 #include <unotools/configmgr.hxx>
 #include <comphelper/configuration.hxx>
 #include <comphelper/configurationhelper.hxx>
@@ -137,7 +137,7 @@ void SvtViewOptions::Delete()
 
     @seealso        member m_sList
 *//*-*************************************************************************************************************/
-OUString SvtViewOptions::GetWindowState() const
+vcl::WindowData SvtViewOptions::GetWindowState() const
 {
     OUString sWindowState;
     try
@@ -154,7 +154,7 @@ OUString SvtViewOptions::GetWindowState() const
             sWindowState.clear();
         }
 
-    return sWindowState;
+    return vcl::WindowData(sWindowState);
 }
 
 
@@ -170,8 +170,11 @@ OUString SvtViewOptions::GetWindowState() const
     @seealso        baseclass ::utl::ConfigItem
     @seealso        method Notify()
 *//*-*************************************************************************************************************/
-void SvtViewOptions::SetWindowState( const OUString& sState )
+
+void SvtViewOptions::SetWindowState(const vcl::WindowData& rState)
 {
+    const OUString sState = rState.toStr();
+
     try
     {
         css::uno::Reference< css::beans::XPropertySet > xNode(

@@ -639,18 +639,12 @@ void AquaSalFrame::SetMaxClientSize( tools::Long nWidth, tools::Long nHeight )
     }
 }
 
-void AquaSalFrame::GetClientSize( tools::Long& rWidth, tools::Long& rHeight )
+Size AquaSalFrame::GetClientSize()
 {
     if (mbShown || mbInitShow || mbHeadlessMode)
-    {
-        rWidth = maGeometry.width();
-        rHeight = maGeometry.height();
-    }
-    else
-    {
-        rWidth  = 0;
-        rHeight = 0;
-    }
+        return maGeometry.size();
+
+    return Size(0, 0);
 }
 
 SalEvent AquaSalFrame::PreparePosSize(tools::Long nX, tools::Long nY, tools::Long nWidth, tools::Long nHeight, sal_uInt16 nFlags)
@@ -1058,10 +1052,7 @@ void AquaSalFrame::StartPresentation( bool bStart )
     if( bStart )
     {
         GetSalData()->maPresentationFrames.push_back( this );
-        IOPMAssertionCreateWithName(kIOPMAssertionTypeNoDisplaySleep,
-                                    kIOPMAssertionLevelOn,
-                                    CFSTR("LibreOffice presentation running"),
-                                    &mnAssertionID);
+        mSessionManagerInhibitor.inhibit(true);
         [mpNSWindow setLevel: NSPopUpMenuWindowLevel];
         if( mbShown )
             [mpNSWindow makeMainWindow];
@@ -1069,7 +1060,7 @@ void AquaSalFrame::StartPresentation( bool bStart )
     else
     {
         GetSalData()->maPresentationFrames.remove( this );
-        IOPMAssertionRelease(mnAssertionID);
+        mSessionManagerInhibitor.inhibit(false);
         [mpNSWindow setLevel: NSNormalWindowLevel];
     }
 }

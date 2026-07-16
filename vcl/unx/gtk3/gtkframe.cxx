@@ -2213,15 +2213,12 @@ void GtkSalFrame::SetPosSize( tools::Long nX, tools::Long nY, tools::Long nWidth
     m_bDefaultPos = false;
 }
 
-void GtkSalFrame::GetClientSize( tools::Long& rWidth, tools::Long& rHeight )
+Size GtkSalFrame::GetClientSize()
 {
     if( m_pWindow && !(m_nState & GDK_TOPLEVEL_STATE_MINIMIZED) )
-    {
-        rWidth = maGeometry.width();
-        rHeight = maGeometry.height();
-    }
-    else
-        rWidth = rHeight = 0;
+        return maGeometry.size();
+
+    return Size(0, 0);
 }
 
 void GtkSalFrame::GetWorkArea( AbsoluteScreenPixelRectangle& rRect )
@@ -2660,17 +2657,12 @@ void GtkSalFrame::ShowFullScreen( bool bFullScreen, sal_Int32 nScreen )
 
 void GtkSalFrame::SessionManagerInhibit(bool bStart, ApplicationInhibitFlags eType, std::u16string_view sReason, const char* application_id)
 {
-    guint nWindow(0);
     std::optional<Display*> aDisplay;
 
     if (DLSYM_GDK_IS_X11_DISPLAY(getGdkDisplay()))
-    {
-        nWindow = GtkSalFrame::GetNativeWindowHandle(m_pWindow);
         aDisplay = gdk_x11_display_get_xdisplay(getGdkDisplay());
-    }
 
-    m_SessionManagerInhibitor.inhibit(bStart, sReason, eType,
-                                      nWindow, aDisplay, application_id);
+    m_SessionManagerInhibitor.inhibit(bStart, sReason, eType, aDisplay, application_id);
 }
 
 void GtkSalFrame::StartPresentation( bool bStart )
