@@ -1249,12 +1249,6 @@ void SvxSearchDialog::ClickHdl_Impl(const weld::Widget* pCtrl)
         }
     }
 
-    if (pCtrl == m_xAllSheetsCB.get())
-    {
-        m_bSet = true;
-        ModifyHdl_Impl(*m_xSearchLB);
-    }
-
     if (pCtrl == m_xJapOptionsCB.get())
     {
         bool bEnableJapOpt = m_xJapOptionsCB->get_active();
@@ -1451,7 +1445,7 @@ IMPL_LINK( SvxSearchDialog, ModifyHdl_Impl, weld::ComboBox&, rEd, void )
         nReplTxtLen = m_xReplaceLB->get_active_text().getLength();
     sal_Int32 nAttrTxtLen = m_xSearchAttrText->get_label().getLength();
 
-    if (nSrchTxtLen || nReplTxtLen || nAttrTxtLen)
+    if (nSrchTxtLen || nReplTxtLen || nAttrTxtLen || m_xLayoutBtn->get_active())
     {
         EnableControl_Impl(*m_xSearchBtn);
         EnableControl_Impl(*m_xBackSearchBtn);
