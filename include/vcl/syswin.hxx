@@ -216,7 +216,6 @@ public:
     VclPtr<NotebookBar> const & GetNotebookBar() const;
 
     TaskPaneList*   GetTaskPaneList();
-    SAL_DLLPRIVATE void GetWindowState(vcl::WindowData& rData) const;
 
     virtual void     SetText( const OUString& rStr ) override;
     virtual OUString GetText() const override;
