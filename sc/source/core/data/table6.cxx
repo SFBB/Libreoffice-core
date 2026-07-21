@@ -630,7 +630,7 @@ bool ScTable::SearchStyle(const SvxSearchItem& rSearchItem, SCCOL& rCol, SCROW& 
                                         rDocument.GetStyleSheetPool()->Find(
                                         rSearchItem.GetSearchString(), SfxStyleFamily::Para ));
 
-    SCCOL nCol = rCol;
+    SCCOL nCol = ClampToAllocatedColumns(rCol);
     SCROW nRow = rRow;
     bool bFound = false;
 
@@ -639,7 +639,7 @@ bool ScTable::SearchStyle(const SvxSearchItem& rSearchItem, SCCOL& rCol, SCROW& 
     bool bBack = rSearchItem.GetBackward();
     short nAdd = bBack ? -1 : 1;
 
-    if (bRows)                                      // by row
+    if (!bRows) // by column
     {
         if ( !IsColValid( nCol ) )
         {
@@ -663,7 +663,7 @@ bool ScTable::SearchStyle(const SvxSearchItem& rSearchItem, SCCOL& rCol, SCROW& 
         }
         while ( !bFound && IsColValid( nCol ) );
     }
-    else                                    // by column
+    else // by row
     {
         SCCOL aColSize = aCol.size();
         std::vector< SCROW > nNextRows ( aColSize );
@@ -788,7 +788,11 @@ bool ScTable::ReplaceAllStyle(
             if (pUndoDoc)
                 rDocument.CopyToDocument(0, 0 ,nTab, rDocument.MaxCol(),rDocument.MaxRow(),nTab,
                                           InsertDeleteFlags::ATTRIB, true, *pUndoDoc, &rMark);
-            ApplySelectionStyle( *pReplaceStyle, rMark );
+
+            const ScRange aThisTab(0, 0, nTab, rDocument.MaxCol(), rDocument.MaxRow(), nTab);
+            const ScMarkData aThisMark(rDocument.GetSheetLimits(),
+                                       rMatchedRanges.GetIntersectedRange(aThisTab));
+            ApplySelectionStyle(*pReplaceStyle, aThisMark);
         }
         else
         {
