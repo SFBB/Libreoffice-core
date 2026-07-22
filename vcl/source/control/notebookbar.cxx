@@ -79,8 +79,6 @@ NotebookBar::NotebookBar(Window* pParent, const OUString& rID, const OUString& r
                          std::unique_ptr<NotebookBarAddonsItem> pNotebookBarAddonsItem)
     : Control(pParent)
     , m_pEventListener(new NotebookBarContextChangeEventListener(this, rFrame))
-    , m_pViewShell(nullptr)
-    , m_bIsWelded(false)
     , m_sUIXMLDescription(rUIXMLDescription)
     , m_sModule(vcl::CommandInfoProvider::GetModuleIdentifier(rFrame))
 {
@@ -92,38 +90,27 @@ NotebookBar::NotebookBar(Window* pParent, const OUString& rID, const OUString& r
     if ( doesCustomizedUIExist )
         sUIDir = getCustomizedUIRootDir();
 
-    bool bIsWelded = comphelper::LibreOfficeKit::isActive();
-    if (bIsWelded)
-    {
-        m_bIsWelded = true;
-        m_xVclContentArea = VclPtr<VclVBox>::Create(this);
-        m_xVclContentArea->Show();
-        // now access it using GetMainContainer and set dispose callback with SetDisposeCallback
-    }
-    else
-    {
-        m_pUIBuilder.reset(
-            new VclBuilder(this, sUIDir, rUIXMLDescription, rID, rFrame, true,
-                           std::move(pNotebookBarAddonsItem)));
+    m_pUIBuilder.reset(
+        new VclBuilder(this, sUIDir, rUIXMLDescription, rID, rFrame, true,
+                       std::move(pNotebookBarAddonsItem)));
 
-        // In the Notebookbar's .ui file must exist control handling context
-        // - implementing NotebookbarContextControl interface with id "ContextContainer"
-        // or "ContextContainerX" where X is a number >= 1
-        NotebookbarContextControl* pContextContainer = nullptr;
-        int i = 0;
-        do
-        {
-            OUString aName = u"ContextContainer"_ustr;
-            if (i)
-                aName += OUString::number(i);
+    // In the Notebookbar's .ui file must exist control handling context
+    // - implementing NotebookbarContextControl interface with id "ContextContainer"
+    // or "ContextContainerX" where X is a number >= 1
+    NotebookbarContextControl* pContextContainer = nullptr;
+    int i = 0;
+    do
+    {
+        OUString aName = u"ContextContainer"_ustr;
+        if (i)
+            aName += OUString::number(i);
 
-            pContextContainer = dynamic_cast<NotebookbarContextControl*>(m_pUIBuilder->get<Window>(aName));
-            if (pContextContainer)
-                m_pContextContainers.push_back(pContextContainer);
-            i++;
-        }
-        while( pContextContainer != nullptr );
+        pContextContainer = dynamic_cast<NotebookbarContextControl*>(m_pUIBuilder->get<Window>(aName));
+        if (pContextContainer)
+            m_pContextContainers.push_back(pContextContainer);
+        i++;
     }
+    while( pContextContainer != nullptr );
 
     UpdateBackground();
 }
@@ -139,14 +126,7 @@ void NotebookBar::dispose()
     if (m_pSystemWindow && m_pSystemWindow->ImplIsInTaskPaneList(this))
         m_pSystemWindow->GetTaskPaneList()->RemoveWindow(this);
     m_pSystemWindow.reset();
-
-    if (m_rDisposeLink.IsSet())
-        m_rDisposeLink.Call(m_pViewShell);
-
-    if (m_bIsWelded)
-        m_xVclContentArea.disposeAndClear();
-    else
-        disposeBuilder();
+    disposeBuilder();
 
     m_pEventListener->setupFrameListener(false);
     m_pEventListener->setupListener(false);
@@ -214,13 +194,6 @@ void NotebookBar::Resize()
             aSize.setWidth( GetSizePixel().Width() );
             pWindow->SetSizePixel(aSize);
         }
-    }
-    if(m_bIsWelded)
-    {
-        vcl::Window* pChild = GetWindow(GetWindowType::FirstChild);
-        assert(pChild);
-        VclContainer::setLayoutAllocation(*pChild, Point(0, 0), GetSizePixel());
-        Control::Resize();
     }
     Control::Resize();
 }

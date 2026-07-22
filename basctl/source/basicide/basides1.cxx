@@ -144,7 +144,7 @@ void Shell::ExecuteSearch( SfxRequest& rReq )
                 }
 
                 bool bAllModules = nActModWindows <= 1;
-                if (!bAllModules)
+                if (!bAllModules && !mpSearchItem->GetSelection())
                 {
                     std::unique_ptr<weld::MessageDialog> xQueryBox(Application::CreateMessageDialog(pCurWin ? pCurWin->GetFrameWeld() : nullptr,
                                                                    VclMessageType::Question, VclButtonsType::YesNo,
@@ -1142,7 +1142,7 @@ void Shell::GetState(SfxItemSet &rSet)
                     mpSearchItem->SetSearchString( GetSelectionText( true ));
                 }
 
-                if ( mbJustOpened && HasSelection() )
+                if (mbJustOpened && HasSelection(/*MustHaveText=*/true))
                 {
                     OUString aText = GetSelectionText( true );
 

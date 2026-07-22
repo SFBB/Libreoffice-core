@@ -185,10 +185,36 @@ lcl_CleanStr(const SwTextNode& rNd,
              SwRootFrame const*const pLayout,
              AmbiguousIndex const nStart, AmbiguousIndex & rEnd,
              std::vector<AmbiguousIndex> &rArr,
-             bool const bRemoveSoftHyphen, bool const bRemoveCommentAnchors)
+             const i18nutil::SearchOptions2& rSearchOpt)
 {
     OUStringBuffer buf(pLayout ? pFrame->GetText() : rNd.GetText());
     rArr.clear();
+
+    // if the search string contains a soft hyphen, we don't strip them from the text
+    bool bRemoveSoftHyphen = true;
+    // if the search string contains a comment, we don't strip them from the text
+    const bool bRemoveCommentAnchors = rSearchOpt.searchString.indexOf(CH_TXTATR_INWORD) == -1;
+
+    if (SearchAlgorithms2::REGEXP == rSearchOpt.AlgorithmType2)
+    {
+        if (-1 != rSearchOpt.searchString.indexOf("\\xAD")
+            || -1 != rSearchOpt.searchString.indexOf("\\x{00AD}")
+            || -1 != rSearchOpt.searchString.indexOf("\\u00AD")
+            || -1 != rSearchOpt.searchString.indexOf("\\u00ad")
+            || -1 != rSearchOpt.searchString.indexOf("\\U000000AD")
+            || -1 != rSearchOpt.searchString.indexOf("\\N{SOFT HYPHEN}"))
+        {
+             bRemoveSoftHyphen = false;
+        }
+    }
+    else
+    {
+        if (1 == rSearchOpt.searchString.getLength() &&
+            CHAR_SOFTHYPHEN == rSearchOpt.searchString.toChar())
+        {
+            bRemoveSoftHyphen = false;
+        }
+    }
 
     MaybeMergedIter iter(pLayout ? pFrame : nullptr, pLayout ? nullptr : &rNd);
 
@@ -360,7 +386,7 @@ lcl_CleanStr(const SwTextNode& rNd,
 static bool DoSearch(SwPaM & rSearchPam,
     const i18nutil::SearchOptions2& rSearchOpt, utl::TextSearch& rSText,
     SwMoveFnCollection const & fnMove,
-    bool bSrchForward, bool bRegSearch, bool bChkEmptyPara, bool bChkParaEnd,
+    bool bSrchForward, bool bChkEmptyPara, bool bChkParaEnd,
     AmbiguousIndex & nStart, AmbiguousIndex & nEnd, AmbiguousIndex nTextLen,
     SwTextNode const* pNode, SwTextFrame const* pTextFrame,
     SwRootFrame const* pLayout, SwPaM& rPam);
@@ -677,7 +703,7 @@ bool FindTextImpl(SwPaM & rSearchPam,
                     nTextLen = nStartInside - nEndInside;
                 }
                 // search inside the text between a note
-                bFound = DoSearch(rSearchPam, rSearchOpt, rSText, fnMove, bSrchForward, bRegSearch,
+                bFound = DoSearch(rSearchPam, rSearchOpt, rSText, fnMove, bSrchForward,
                                   bChkEmptyPara, bChkParaEnd, nStartInside, nEndInside, nTextLen,
                                   pNode->GetTextNode(), pFrame, pLayout, *oPam);
                 if (bFound)
@@ -708,7 +734,7 @@ bool FindTextImpl(SwPaM & rSearchPam,
         {
             // if there is no SwPostItField inside or searching inside notes
             // is disabled, we search the whole length just like before
-            bFound = DoSearch(rSearchPam, rSearchOpt, rSText, fnMove, bSrchForward, bRegSearch,
+            bFound = DoSearch(rSearchPam, rSearchOpt, rSText, fnMove, bSrchForward,
                               bChkEmptyPara, bChkParaEnd, nStart, nEnd, nTextLen,
                               pNode->GetTextNode(), pFrame, pLayout, *oPam);
         }
@@ -722,13 +748,14 @@ bool FindTextImpl(SwPaM & rSearchPam,
 
 bool DoSearch(SwPaM & rSearchPam,
         const i18nutil::SearchOptions2& rSearchOpt, utl::TextSearch& rSText,
-                      SwMoveFnCollection const & fnMove, bool bSrchForward, bool bRegSearch,
+                      SwMoveFnCollection const & fnMove, bool bSrchForward,
                       bool bChkEmptyPara, bool bChkParaEnd,
         AmbiguousIndex & nStart, AmbiguousIndex & nEnd, AmbiguousIndex const nTextLen,
         SwTextNode const*const pNode, SwTextFrame const*const pFrame,
         SwRootFrame const*const pLayout, SwPaM& rPam)
 {
-    if (bRegSearch && rSearchOpt.searchString.endsWith("$"))
+    if (SearchAlgorithms2::REGEXP == rSearchOpt.AlgorithmType2
+        && rSearchOpt.searchString.endsWith("$"))
     {
         bool bAlwaysSearchingForEndOfPara = true;
         sal_Int32 nIndex = 0;
@@ -751,37 +778,13 @@ bool DoSearch(SwPaM & rSearchPam,
     OUString sCleanStr;
     std::vector<AmbiguousIndex> aFltArr;
     LanguageType eLastLang = LANGUAGE_SYSTEM;
-    // if the search string contains a soft hyphen,
-    // we don't strip them from the text:
-    bool bRemoveSoftHyphens = true;
-    // if the search string contains a comment, we don't strip them from the text
-    const bool bRemoveCommentAnchors = rSearchOpt.searchString.indexOf( CH_TXTATR_INWORD ) == -1;
-
-    if ( bRegSearch )
-    {
-        if (   -1 != rSearchOpt.searchString.indexOf("\\xAD")
-            || -1 != rSearchOpt.searchString.indexOf("\\x{00AD}")
-            || -1 != rSearchOpt.searchString.indexOf("\\u00AD")
-            || -1 != rSearchOpt.searchString.indexOf("\\u00ad")
-            || -1 != rSearchOpt.searchString.indexOf("\\U000000AD")
-            || -1 != rSearchOpt.searchString.indexOf("\\N{SOFT HYPHEN}"))
-        {
-             bRemoveSoftHyphens = false;
-        }
-    }
-    else
-    {
-        if ( 1 == rSearchOpt.searchString.getLength() &&
-             CHAR_SOFTHYPHEN == rSearchOpt.searchString.toChar() )
-             bRemoveSoftHyphens = false;
-    }
 
     if( bSrchForward )
         sCleanStr = lcl_CleanStr(*pNode, pFrame, pLayout, nStart, nEnd,
-                        aFltArr, bRemoveSoftHyphens, bRemoveCommentAnchors);
+                        aFltArr, rSearchOpt);
     else
         sCleanStr = lcl_CleanStr(*pNode, pFrame, pLayout, nEnd, nStart,
-                        aFltArr, bRemoveSoftHyphens, bRemoveCommentAnchors);
+                        aFltArr, rSearchOpt);
 
     std::unique_ptr<SwScriptIterator> pScriptIter;
     sal_uInt16 nSearchScript = 0;
@@ -1267,7 +1270,7 @@ std::optional<OUString> ReplaceBackReferences(const i18nutil::SearchOptions2& rS
                 }
                 std::vector<AmbiguousIndex> aFltArr;
                 OUString const aStr = lcl_CleanStr(*pTextNode->GetTextNode(), pFrame, pLayout,
-                                                   nStart, nEnd, aFltArr, false, false);
+                                                   nStart, nEnd, aFltArr, rSearchOpt);
                 if (aSText.SearchForward(aStr, &nStart.GetAnyIndex(), &nEnd.GetAnyIndex(), &aResult))
                 {
                     utl::TextSearch::ReplaceBackReferences( aReplaceStr, aStr, aResult );

@@ -385,8 +385,8 @@ LIBEXTTEXTCAT_TARBALL := libexttextcat-3.4.8.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-LIBFFI_SHA256SUM := 2255c5a638dfb51bf67c20a12a7bb70d17feb1e9eababac05f5573146f586436
-LIBFFI_TARBALL := libffi-3.7.0.tar.gz
+LIBFFI_SHA256SUM := d5e9a6638ddbd2513ddb54518eb67e4bbe6fa707bcc01c10f6212f0a088d819d
+LIBFFI_TARBALL := libffi-3.7.1.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -467,8 +467,8 @@ MSPUB_TARBALL := libmspub-0.1.5.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-MWAW_SHA256SUM := a1a39ffcea3ff2a7a7aae0c23877ddf4918b554bf82b0de5d7ce8e7f61ea8e32
-MWAW_VERSION_MICRO := 22
+MWAW_SHA256SUM := ac3590f691a2904eb8c7dc8b757b8a29f125f592449e421459ae8fa928b399eb
+MWAW_VERSION_MICRO := 23
 MWAW_TARBALL := libmwaw-0.3.$(MWAW_VERSION_MICRO).tar.xz
 # three static lines
 # so that git cherry-pick
