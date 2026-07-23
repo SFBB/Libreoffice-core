@@ -68,8 +68,9 @@ public:
     virtual VclPtr<SfxAbstractDialog> CreateNumFormatDialog(weld::Widget* pParent, const SfxItemSet& rAttr) override;
     virtual VclPtr<SfxAbstractDialog> CreateSwDropCapsDialog(weld::Window* pParent, const SfxItemSet& rSet) override;
     virtual VclPtr<SfxAbstractDialog> CreateSwBackgroundDialog(weld::Window* pParent, const SfxItemSet& rSet) override;
-    virtual VclPtr<AbstractSwWordCountFloatDlg> CreateSwWordCountDialog(SfxBindings* pBindings,
-        SfxChildWindow* pChild, weld::Window *pParent, SfxChildWinInfo* pInfo) override;
+    virtual VclPtr<AbstractSwWordCountFloatDlg>
+    CreateSwWordCountDialog(SfxBindings* pBindings, SfxChildWindow* pChild, weld::Window* pParent,
+                            SfxChildWinInfo& rInfo) override;
     virtual VclPtr<AbstractSwInsertAbstractDlg> CreateSwInsertAbstractDlg(weld::Window* pParent) override;
     virtual VclPtr<SfxAbstractDialog> CreateSwAddressAbstractDlg(weld::Window* pParent, const SfxItemSet& rSet) override;
     virtual VclPtr<AbstractSwAsciiFilterDlg>  CreateSwAsciiFilterDlg(weld::Window* pParent, SwDocShell& rDocSh,
@@ -177,16 +178,14 @@ public:
     virtual VclPtr<AbstractEditRegionDlg>      CreateEditRegionDlg(weld::Window* pParent, SwWrtShell& rWrtSh) override;
     virtual VclPtr<AbstractInsertSectionTabDialog>     CreateInsertSectionTabDialog(
         weld::Window* pParent, const SfxItemSet& rSet, SwWrtShell& rSh) override;
-    virtual VclPtr<AbstractMarkFloatDlg>       CreateIndexMarkFloatDlg(
-                                                       SfxBindings* pBindings,
-                                                       SfxChildWindow* pChild,
-                                                       weld::Window *pParent,
-                                                       SfxChildWinInfo* pInfo) override;
-    virtual VclPtr<AbstractMarkFloatDlg>       CreateAuthMarkFloatDlg(
-                                                       SfxBindings* pBindings,
-                                                       SfxChildWindow* pChild,
-                                                       weld::Window *pParent,
-                                                       SfxChildWinInfo* pInfo) override;
+    virtual VclPtr<AbstractMarkFloatDlg> CreateIndexMarkFloatDlg(SfxBindings* pBindings,
+                                                                 SfxChildWindow* pChild,
+                                                                 weld::Window* pParent,
+                                                                 SfxChildWinInfo& rInfo) override;
+    virtual VclPtr<AbstractMarkFloatDlg> CreateAuthMarkFloatDlg(SfxBindings* pBindings,
+                                                                SfxChildWindow* pChild,
+                                                                weld::Window* pParent,
+                                                                SfxChildWinInfo& rInfo) override;
     virtual VclPtr<VclAbstractDialog>         CreateIndexMarkModalDlg(
                                                 weld::Window *pParent, SwWrtShell& rSh, SwTOXMark* pCurTOXMark ) override;
 

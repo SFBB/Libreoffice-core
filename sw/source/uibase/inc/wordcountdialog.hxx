@@ -54,10 +54,8 @@ class SwWordCountFloatDlg final : public SfxModelessDialogController
     bool m_bCursorValuesInitialized = false;
 
 public:
-    SwWordCountFloatDlg(SfxBindings* pBindings,
-                        SfxChildWindow* pChild,
-                        weld::Window *pParent,
-                        SfxChildWinInfo const * pInfo);
+    SwWordCountFloatDlg(SfxBindings* pBindings, SfxChildWindow* pChild, weld::Window* pParent,
+                        const SfxChildWinInfo& rInfo);
     virtual ~SwWordCountFloatDlg() override;
     void    UpdateCounts();
 
@@ -69,10 +67,8 @@ class SwWordCountWrapper final : public SfxChildWindow
     VclPtr<AbstractSwWordCountFloatDlg> m_xAbstDlg;
 
 public:
-    SwWordCountWrapper(    vcl::Window *pParentWindow,
-                            sal_uInt16 nId,
-                            SfxBindings* pBindings,
-                            SfxChildWinInfo* pInfo );
+    SwWordCountWrapper(vcl::Window* pParentWindow, sal_uInt16 nId, SfxBindings* pBindings,
+                       SfxChildWinInfo& rInfo);
     SFX_DECL_CHILDWINDOW_WITHID(SwWordCountWrapper);
 
     virtual ~SwWordCountWrapper() override;

@@ -27,12 +27,16 @@
 #include <cppuhelper/supportsservice.hxx>
 
 #include <comphelper/propcontainerimplhelper.hxx>
+#include <comphelper/scopeguard.hxx>
 
 #include <cmath>
 #include <vector>
 #include <limits>
 #include <chrono>
 #include <random>
+#include <unordered_map>
+
+#include <o3tl/hash_combine.hxx>
 
 #include <unotools/resmgr.hxx>
 #include <comphelper/servicehelper.hxx>
@@ -90,6 +94,31 @@ struct Bound
     }
 };
 
+// A cell position used as a cache key.
+struct CellKey
+{
+    sal_Int32 nSheet;
+    sal_Int32 nColumn;
+    sal_Int32 nRow;
+
+    bool operator==(const CellKey& rOther) const
+    {
+        return nSheet == rOther.nSheet && nColumn == rOther.nColumn && nRow == rOther.nRow;
+    }
+};
+
+struct CellKeyHash
+{
+    size_t operator()(const CellKey& rKey) const
+    {
+        size_t nSeed = 0;
+        o3tl::hash_combine(nSeed, rKey.nSheet);
+        o3tl::hash_combine(nSeed, rKey.nColumn);
+        o3tl::hash_combine(nSeed, rKey.nRow);
+        return nSeed;
+    }
+};
+
 enum
 {
     PROP_NONNEGATIVE,
@@ -131,6 +160,11 @@ private:
 
     std::vector<Bound> maBounds;
     std::vector<sheet::SolverConstraint> maNonBoundedConstraints;
+
+    // Resolved cells, keyed by sheet, column and row. The search reads and
+    // writes the same handful of cells many thousands of times, so resolving
+    // each one only once is a large saving.
+    std::unordered_map<CellKey, uno::Reference<table::XCell>, CellKeyHash> maCellCache;
 
 private:
     static OUString getResourceString(TranslateId aId);
@@ -272,6 +306,7 @@ public:
 private:
     void applyVariables(std::vector<double> const& rVariables);
     bool doesViolateConstraints();
+    bool isSolutionFeasible(std::vector<double> const& rSolution);
 
 public:
     double calculateFitness(std::vector<double> const& rVariables);
@@ -292,10 +327,17 @@ OUString SwarmSolver::getResourceString(TranslateId aId)
 
 uno::Reference<table::XCell> SwarmSolver::getCell(const table::CellAddress& rPosition)
 {
+    CellKey aKey{ rPosition.Sheet, rPosition.Column, rPosition.Row };
+    auto aFound = maCellCache.find(aKey);
+    if (aFound != maCellCache.end())
+        return aFound->second;
+
     uno::Reference<container::XIndexAccess> xSheets(mxDocument->getSheets(), uno::UNO_QUERY);
     uno::Reference<sheet::XSpreadsheet> xSheet(xSheets->getByIndex(rPosition.Sheet),
                                                uno::UNO_QUERY);
-    return xSheet->getCellByPosition(rPosition.Column, rPosition.Row);
+    uno::Reference<table::XCell> xCell = xSheet->getCellByPosition(rPosition.Column, rPosition.Row);
+    maCellCache.emplace(aKey, xCell);
+    return xCell;
 }
 
 // Build a document cell address from the API address, throwing if its sheet is
@@ -335,8 +377,12 @@ double SwarmSolver::calculateFitness(std::vector<double> const& rVariables)
 {
     applyVariables(rVariables);
 
+    // An infeasible candidate must rank below every feasible one, including a
+    // feasible point whose objective is more negative than the float range can
+    // represent. Use the lowest double so the search is never drawn towards a
+    // point that breaks the constraints.
     if (doesViolateConstraints())
-        return std::numeric_limits<float>::lowest();
+        return std::numeric_limits<double>::lowest();
 
     double x = getValue(maObjective);
 
@@ -360,10 +406,23 @@ void SwarmSolver::initializeVariables(std::vector<double>& rVariables, std::mt19
         for (size_t i = 0; i < noVariables; ++i)
         {
             Bound const& rBound = maBounds[i];
-            if (mbInteger)
+            if (rBound.lower >= rBound.upper)
             {
-                sal_Int64 intLower(rBound.lower);
-                sal_Int64 intUpper(rBound.upper);
+                // An empty or reversed range has nothing to draw from. The
+                // random distributions are undefined when the lower bound is
+                // not below the upper one, so take the lower bound directly.
+                rVariables[i] = rBound.lower;
+            }
+            else if (mbInteger)
+            {
+                // The default bounds sit around the float range, which a 64 bit
+                // integer cannot hold. Turning such a double into sal_Int64 is
+                // undefined, so clamp to a magnitude that converts safely first.
+                // 2^62 is a power of two well inside the range and exact in both
+                // types.
+                constexpr double fIntegerLimit = double(sal_Int64(1) << 62);
+                sal_Int64 intLower(std::clamp(rBound.lower, -fIntegerLimit, fIntegerLimit));
+                sal_Int64 intUpper(std::clamp(rBound.upper, -fIntegerLimit, fIntegerLimit));
                 std::uniform_int_distribution<sal_Int64> random(intLower, intUpper);
                 rVariables[i] = double(random(rGenerator));
             }
@@ -384,6 +443,12 @@ void SwarmSolver::initializeVariables(std::vector<double>& rVariables, std::mt19
 double SwarmSolver::clampVariable(size_t nVarIndex, double fValue)
 {
     Bound const& rBound = maBounds[nVarIndex];
+
+    // An empty or reversed range has no room to clamp into. std::clamp with a
+    // lower bound above the upper bound is undefined, so return the lower bound.
+    if (rBound.lower >= rBound.upper)
+        return mbInteger ? std::trunc(rBound.lower) : rBound.lower;
+
     double fResult = std::clamp(fValue, rBound.lower, rBound.upper);
 
     if (mbInteger)
@@ -395,14 +460,24 @@ double SwarmSolver::clampVariable(size_t nVarIndex, double fValue)
 double SwarmSolver::boundVariable(size_t nVarIndex, double fValue)
 {
     Bound const& rBound = maBounds[nVarIndex];
-    // double fResult = std::max(std::min(fValue, rBound.upper), rBound.lower);
+
     double fResult = fValue;
-    while (fResult < rBound.lower || fResult > rBound.upper)
+    double const fRange = rBound.upper - rBound.lower;
+    if (fRange <= 0.0)
     {
-        if (fResult < rBound.lower)
-            fResult = rBound.upper - (rBound.lower - fResult);
-        if (fResult > rBound.upper)
-            fResult = (fResult - rBound.upper) + rBound.lower;
+        // An empty range, where the lower and upper bound are equal, or a
+        // reversed range from contradictory constraints, holds a single
+        // value. Return the lower bound.
+        fResult = rBound.lower;
+    }
+    else if (fResult < rBound.lower || fResult > rBound.upper)
+    {
+        // Wrap an out of range value back into the range, keeping its offset
+        // from the lower bound.
+        double fOffset = std::fmod(fResult - rBound.lower, fRange);
+        if (fOffset < 0.0)
+            fOffset += fRange;
+        fResult = rBound.lower + fOffset;
     }
 
     if (mbInteger)
@@ -432,7 +507,10 @@ bool SwarmSolver::doesViolateConstraints()
         }
         else
         {
-            return false;
+            // The right hand side is neither a cell nor a number, so this
+            // constraint cannot be evaluated. Skip it and carry on checking the
+            // rest of the constraints.
+            continue;
         }
 
         sheet::SolverConstraintOperator eOp = rConstraint.Operator;
@@ -461,6 +539,25 @@ bool SwarmSolver::doesViolateConstraints()
         }
     }
     return false;
+}
+
+bool SwarmSolver::isSolutionFeasible(std::vector<double> const& rSolution)
+{
+    // The search must have produced a value for every variable.
+    if (sal_Int32(rSolution.size()) != maVariables.getLength())
+        return false;
+
+    // A value outside the variable's bound is not a valid solution.
+    for (size_t i = 0; i < rSolution.size(); ++i)
+    {
+        Bound const& rBound = maBounds[i];
+        if (rSolution[i] < rBound.lower || rSolution[i] > rBound.upper)
+            return false;
+    }
+
+    // Put the candidate into the document and check the remaining constraints.
+    applyVariables(rSolution);
+    return !doesViolateConstraints();
 }
 
 namespace
@@ -522,9 +619,18 @@ void SAL_CALL SwarmSolver::solve()
     if (!maVariables.getLength())
         return;
 
-    maBounds.resize(maVariables.getLength());
+    // Start each solve from fresh state. assign refills every bound with a
+    // default, and clearing drops the constraints from the previous run, which
+    // are only ever appended.
+    maBounds.assign(maVariables.getLength(), Bound());
+    maNonBoundedConstraints.clear();
+    maCellCache.clear();
 
     xModel->lockControllers();
+
+    // Unlock again on any exit from here on, including an exception thrown by
+    // one of the cell accesses below, so the document is always left usable.
+    comphelper::ScopeGuard aUnlockGuard([&xModel] { xModel->unlockControllers(); });
 
     if (mbNonNegative)
     {
@@ -588,12 +694,23 @@ void SAL_CALL SwarmSolver::solve()
         aSolution = aSwarmSolver.solve();
     }
 
-    xModel->unlockControllers();
+    // Only report success when the returned values actually satisfy the
+    // model. The search can run out of generations or time without ever
+    // reaching a feasible point.
+    bool bFeasible = isSolutionFeasible(aSolution);
 
-    mbSuccess = true;
+    mbSuccess = bFeasible;
 
-    maSolution.realloc(aSolution.size());
-    std::copy(aSolution.begin(), aSolution.end(), maSolution.getArray());
+    if (bFeasible)
+    {
+        maSolution.realloc(aSolution.size());
+        std::copy(aSolution.begin(), aSolution.end(), maSolution.getArray());
+    }
+    else
+    {
+        maSolution.realloc(0);
+        maStatus = getResourceString(RID_ERROR_INFEASIBLE);
+    }
 }
 
 extern "C" SAL_DLLPUBLIC_EXPORT uno::XInterface*

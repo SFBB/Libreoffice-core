@@ -1080,12 +1080,10 @@ public:
 }
 
 VclPtr<AbstractMarkFloatDlg> SwAbstractDialogFactory_Impl::CreateIndexMarkFloatDlg(
-                                                       SfxBindings* pBindings,
-                                                       SfxChildWindow* pChild,
-                                                       weld::Window *pParent,
-                                                       SfxChildWinInfo* pInfo )
+    SfxBindings* pBindings, SfxChildWindow* pChild, weld::Window* pParent, SfxChildWinInfo& rInfo)
 {
-    return VclPtr<AbstractIndexMarkFloatDlg_Impl>::Create(pBindings, pChild, pParent, pInfo, true/*bNew*/);
+    return VclPtr<AbstractIndexMarkFloatDlg_Impl>::Create(pBindings, pChild, pParent, rInfo,
+                                                          true /*bNew*/);
 }
 
 namespace
@@ -1100,13 +1098,12 @@ public:
 };
 }
 
-VclPtr<AbstractMarkFloatDlg> SwAbstractDialogFactory_Impl::CreateAuthMarkFloatDlg(
-                                                       SfxBindings* pBindings,
-                                                       SfxChildWindow* pChild,
-                                                       weld::Window *pParent,
-                                                       SfxChildWinInfo* pInfo)
+VclPtr<AbstractMarkFloatDlg>
+SwAbstractDialogFactory_Impl::CreateAuthMarkFloatDlg(SfxBindings* pBindings, SfxChildWindow* pChild,
+                                                     weld::Window* pParent, SfxChildWinInfo& rInfo)
 {
-    return VclPtr<AbstractAuthMarkFloatDlg_Impl>::Create(pBindings, pChild, pParent, pInfo, true/*bNew*/);
+    return VclPtr<AbstractAuthMarkFloatDlg_Impl>::Create(pBindings, pChild, pParent, rInfo,
+                                                         true /*bNew*/);
 }
 
 namespace
@@ -1126,12 +1123,9 @@ public:
 }
 
 VclPtr<AbstractSwWordCountFloatDlg> SwAbstractDialogFactory_Impl::CreateSwWordCountDialog(
-                                                                              SfxBindings* pBindings,
-                                                                              SfxChildWindow* pChild,
-                                                                              weld::Window *pParent,
-                                                                              SfxChildWinInfo* pInfo)
+    SfxBindings* pBindings, SfxChildWindow* pChild, weld::Window* pParent, SfxChildWinInfo& rInfo)
 {
-    return VclPtr<AbstractSwWordCountFloatDlg_Impl>::Create(pBindings, pChild, pParent, pInfo);
+    return VclPtr<AbstractSwWordCountFloatDlg_Impl>::Create(pBindings, pChild, pParent, rInfo);
 }
 
 VclPtr<VclAbstractDialog> SwAbstractDialogFactory_Impl::CreateIndexMarkModalDlg(weld::Window *pParent, SwWrtShell& rSh, SwTOXMark* pCurTOXMark )

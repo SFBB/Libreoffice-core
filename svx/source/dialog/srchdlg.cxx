@@ -1965,6 +1965,7 @@ IMPL_LINK_NOARG(SvxSearchDialog, FormatHdl_Impl, weld::Button&, void)
         aTxt = SvxResId( RID_SVXSTR_REPLACE );
         m_pReplaceList->Get(aSet);
     }
+    aSet.DisableItem(rPool.GetWhichIDFromSlotID(SID_ATTR_PARA_MODEL));
     aSet.DisableItem(rPool.GetWhichIDFromSlotID(SID_ATTR_PARA_PAGEBREAK));
     aSet.DisableItem(rPool.GetWhichIDFromSlotID(SID_ATTR_PARA_KEEP));
 
@@ -2325,15 +2326,13 @@ void SvxSearchDialog::executeSubDialog(VclPtr<VclAbstractDialog> dialog, const s
 
 SFX_IMPL_CHILDWINDOW_WITHID(SvxSearchDialogWrapper, SID_SEARCH_DLG);
 
-
-SvxSearchDialogWrapper::SvxSearchDialogWrapper( vcl::Window* _pParent, sal_uInt16 nId,
-                                                SfxBindings* pBindings,
-                                                SfxChildWinInfo const * pInfo )
-    : SfxChildWindow( _pParent, nId )
+SvxSearchDialogWrapper::SvxSearchDialogWrapper(vcl::Window* _pParent, sal_uInt16 nId,
+                                               SfxBindings* pBindings, const SfxChildWinInfo& rInfo)
+    : SfxChildWindow(_pParent, nId)
     , m_dialog(std::make_shared<SvxSearchDialog>(_pParent->GetFrameWeld(), this, *pBindings))
 {
     SetController(m_dialog);
-    m_dialog->Initialize( pInfo );
+    m_dialog->Initialize(&rInfo);
 
     pBindings->Update( SID_SEARCH_ITEM );
     pBindings->Update( SID_SEARCH_OPTIONS );

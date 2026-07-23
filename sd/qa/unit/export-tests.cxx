@@ -1148,8 +1148,6 @@ CPPUNIT_TEST_FIXTURE(SdExportTest, testExplodedPdfFont)
         int nFontHeight = getXPath(pXml, "//font[2]", "height").toInt32();
         CPPUNIT_ASSERT_EQUAL(494, nFontHeight);
     }
-#if !defined _WIN32
-    //TODO, debug this
     {
         OUString sWeight = getXPath(pXml, "//font[3]", "weight");
         // was "normal" before
@@ -1158,9 +1156,8 @@ CPPUNIT_TEST_FIXTURE(SdExportTest, testExplodedPdfFont)
         OUString sFontName = getXPath(pXml, "//font[3]", "name");
         CPPUNIT_ASSERT_EQUAL(u"Liberation Sans"_ustr, sFontName);
         sal_Int32 nFontHeight = getXPath(pXml, "//font[3]", "height").toInt32();
-        CPPUNIT_ASSERT_EQUAL(564, nFontHeight);
+        CPPUNIT_ASSERT_EQUAL(sal_Int32(564), nFontHeight);
     }
-#endif
 }
 
 CPPUNIT_TEST_FIXTURE(SdExportTest, testExplodedPdfHindi)
@@ -1324,7 +1321,6 @@ CPPUNIT_TEST_FIXTURE(SdExportTest, testExplodedPdfEmbeddedFonts)
                  u"{\"DecomposePDF\":{\"type\":\"boolean\",\"value\":\"true\"}}"_ustr),
          });
 
-#ifndef _WIN32 //FIXME
     xmlDocUniquePtr pXmlDoc = parseExportedFile();
 
     // The PT Serif embedded font should have been extracted and embedded into the fodg,
@@ -1332,7 +1328,6 @@ CPPUNIT_TEST_FIXTURE(SdExportTest, testExplodedPdfEmbeddedFonts)
     assertXPath(pXmlDoc, "/office:document/office:font-face-decls/style:font-face[@style:name='PT "
                          "Serif']/svg:font-face-src/svg:font-face-uri[@loext:font-weight='bold' "
                          "and @loext:font-style='normal']/office:binary-data");
-#endif
 }
 
 CPPUNIT_TEST_FIXTURE(SdExportTest, testExplodedPdfPatternStroke)

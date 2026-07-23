@@ -19,9 +19,9 @@ struct Particle
     Particle(size_t nDimensionality)
         : mVelocity(nDimensionality)
         , mPosition(nDimensionality)
-        , mCurrentFitness(std::numeric_limits<float>::lowest())
+        , mCurrentFitness(std::numeric_limits<double>::lowest())
         , mBestPosition(nDimensionality)
-        , mBestFitness(std::numeric_limits<float>::lowest())
+        , mBestFitness(std::numeric_limits<double>::lowest())
     {
     }
 
@@ -71,7 +71,7 @@ public:
         , mnDimensionality(mrDataProvider.getDimensionality())
         , maRandom01(0.0, 1.0)
         , maBestPosition(mnDimensionality)
-        , mfBestFitness(std::numeric_limits<float>::lowest())
+        , mfBestFitness(std::numeric_limits<double>::lowest())
         , mnGeneration(0)
         , mnLastChange(0)
     {
@@ -87,7 +87,7 @@ public:
         mnLastChange = 0;
         maSwarm.clear();
 
-        mfBestFitness = std::numeric_limits<float>::lowest();
+        mfBestFitness = std::numeric_limits<double>::lowest();
 
         maSwarm.reserve(mnNumOfParticles);
         for (size_t i = 0; i < mnNumOfParticles; i++)
@@ -96,7 +96,9 @@ public:
             Particle& rParticle = maSwarm.back();
 
             mrDataProvider.initializeVariables(rParticle.mPosition, maGenerator);
-            mrDataProvider.initializeVariables(rParticle.mVelocity, maGenerator);
+            // Only the position is seeded. The velocity keeps the zero the
+            // constructor gave it, so a particle starts at rest and builds up
+            // speed gradually over the first few steps.
 
             for (size_t k = 0; k < mnDimensionality; k++)
             {
@@ -105,20 +107,13 @@ public:
 
             rParticle.mCurrentFitness = mrDataProvider.calculateFitness(rParticle.mPosition);
 
-            for (size_t k = 0; k < mnDimensionality; k++)
-            {
-                rParticle.mPosition[k] = mrDataProvider.clampVariable(k, rParticle.mPosition[k]);
-            }
-
-            rParticle.mBestPosition.insert(rParticle.mBestPosition.begin(),
-                                           rParticle.mPosition.begin(), rParticle.mPosition.end());
+            rParticle.mBestPosition.assign(rParticle.mPosition.begin(), rParticle.mPosition.end());
             rParticle.mBestFitness = rParticle.mCurrentFitness;
 
             if (rParticle.mCurrentFitness > mfBestFitness)
             {
                 mfBestFitness = rParticle.mCurrentFitness;
-                maBestPosition.insert(maBestPosition.begin(), rParticle.mPosition.begin(),
-                                      rParticle.mPosition.end());
+                maBestPosition.assign(rParticle.mPosition.begin(), rParticle.mPosition.end());
             }
         }
     }
@@ -139,8 +134,9 @@ public:
                       + (c1 * fRandom1 * (rParticle.mBestPosition[k] - rParticle.mPosition[k]))
                       + (c2 * fRandom2 * (maBestPosition[k] - rParticle.mPosition[k]));
 
-                mrDataProvider.clampVariable(k, rParticle.mVelocity[k]);
-
+                // The inertia weight below one keeps the velocity bounded on
+                // its own, so only the position is clamped, which holds the
+                // particle inside its bounds.
                 rParticle.mPosition[k] += rParticle.mVelocity[k];
                 rParticle.mPosition[k] = mrDataProvider.clampVariable(k, rParticle.mPosition[k]);
             }
@@ -150,8 +146,7 @@ public:
             if (rParticle.mCurrentFitness > rParticle.mBestFitness)
             {
                 rParticle.mBestFitness = rParticle.mCurrentFitness;
-                rParticle.mBestPosition.insert(rParticle.mBestPosition.begin(),
-                                               rParticle.mPosition.begin(),
+                rParticle.mBestPosition.assign(rParticle.mPosition.begin(),
                                                rParticle.mPosition.end());
             }
 
@@ -162,8 +157,7 @@ public:
                     bBestChanged = true;
                     mnLastChange = mnGeneration;
                 }
-                maBestPosition.insert(maBestPosition.begin(), rParticle.mPosition.begin(),
-                                      rParticle.mPosition.end());
+                maBestPosition.assign(rParticle.mPosition.begin(), rParticle.mPosition.end());
                 mfBestFitness = rParticle.mCurrentFitness;
             }
         }
