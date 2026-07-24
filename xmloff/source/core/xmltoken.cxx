@@ -3633,6 +3633,11 @@ namespace xmloff::token {
         TOKEN("asian", XML_ASIAN),
         TOKEN("complex", XML_COMPLEX),
 
+        TOKEN( "diagram",                         XML_DIAGRAM ),
+        TOKEN( "layout",                          XML_DIAGRAM_LAYOUT ),
+        TOKEN( "colors",                          XML_DIAGRAM_COLORS ),
+        TOKEN( "quickstyle",                      XML_DIAGRAM_QUICKSTYLE ),
+
         TOKEN( "horizontal-rule",                 XML_HORIZONTAL_RULE ),
 
 #if OSL_DEBUG_LEVEL > 0
