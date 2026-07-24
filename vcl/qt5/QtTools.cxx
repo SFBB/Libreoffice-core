@@ -26,7 +26,7 @@
 #include <QtTools.hxx>
 #include <QtTransferable.hxx>
 #if USE_HEADLESS_CODE
-#include <unx/fontmanager.hxx>
+#include <unx/font/fontmanager.hxx>
 #endif
 
 #include <o3tl/enumarray.hxx>
@@ -347,7 +347,7 @@ std::optional<vcl::Font> toVclFont(const QFont& rQFont, const css::lang::Locale&
     FontAttributes aFA;
     QtFontFace::fillAttributesFromQFont(rQFont, aFA);
 
-    bool bFound = psp::PrintFontManager::get().matchFont(aFA, rLocale);
+    bool bFound = psp::PrintFontManager::matchFont(aFA, rLocale);
     SAL_INFO("vcl.qt",
              "font match result for '"
                  << rQFont.family() << "': "

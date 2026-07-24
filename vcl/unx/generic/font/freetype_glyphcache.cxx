@@ -23,7 +23,7 @@
 #include <utility>
 #include <vcl/fontcharmap.hxx>
 
-#include <unx/freetype_glyphcache.hxx>
+#include <unx/font/freetype_glyphcache.hxx>
 
 #include <font/LogicalFontInstance.hxx>
 #include <fontattributes.hxx>
@@ -37,7 +37,10 @@
 #include <sal/log.hxx>
 #include <osl/module.h>
 
-#include <langboost.hxx>
+#include <i18nlangtag/mslangid.hxx>
+#include <vcl/settings.hxx>
+#include <vcl/svapp.hxx>
+
 #include <font/PhysicalFontCollection.hxx>
 
 #include <ft2build.h>
@@ -54,7 +57,8 @@
 #include <tools/UnixWrappers.h>
 #include <fcntl.h>
 #include <sys/stat.h>
-#include <unx/fontmanager.hxx>
+#include <tools/urlobj.hxx>
+#include <unx/font/fontmanager.hxx>
 #include <impfontcharmap.hxx>
 
 static FT_Library aLibFT = nullptr;
@@ -71,6 +75,23 @@ static FT_Library aLibFT = nullptr;
 // if (AH<AA) => do not autohint when antialiasing
 // if (EB<AH) => do not autohint for monochrome
 static int nDefaultPrioAntiAlias   = 1;
+
+namespace
+{
+const char* getLangBoost()
+{
+    const LanguageType eLang = Application::GetSettings().GetUILanguageTag().getLanguageType();
+    if (eLang == LANGUAGE_JAPANESE)
+        return "jan";
+    if (MsLangId::isKorean(eLang))
+        return "kor";
+    if (MsLangId::isSimplifiedChinese(eLang))
+        return "zhs";
+    if (MsLangId::isTraditionalChinese(eLang))
+        return "zht";
+    return nullptr;
+}
+}
 
 FreetypeFontFile::FreetypeFontFile( OString aNativeFileName )
 :   maNativeFileName(std::move( aNativeFileName )),
@@ -91,7 +112,7 @@ FreetypeFontFile::FreetypeFontFile( OString aNativeFileName )
         if( bOnce )
         {
             bOnce = false;
-            pLangBoost = vcl::getLangBoost();
+            pLangBoost = getLangBoost();
         }
 
         if( pLangBoost && !strncasecmp( pLangBoost, &maNativeFileName.getStr()[nPos+1], 3 ) )
@@ -156,25 +177,20 @@ void FreetypeFontFile::Unmap()
     }
 }
 
-FreetypeFontInfo::FreetypeFontInfo( FontAttributes aDevFontAttributes,
+FreetypeFontFace::FreetypeFontFace( const FontAttributes& rDevFontAttributes,
     FreetypeFontFile* const pFontFile, int nFaceNum, int nFaceVariation, sal_IntPtr nFontId)
-:
+:   vcl::font::PhysicalFontFace( rDevFontAttributes ),
     maFaceFT( nullptr ),
     mpFontFile(pFontFile),
     mnFaceNum( nFaceNum ),
     mnFaceVariation( nFaceVariation ),
     mnRefCount( 0 ),
-    mnFontId( nFontId ),
-    maDevFontAttributes(std::move( aDevFontAttributes ))
+    mnFontId( nFontId )
 {
     // prefer font with low ID
-    maDevFontAttributes.IncreaseQualityBy( 10000 - nFontId );
+    IncreaseQualityBy( 10000 - nFontId );
     // prefer font with matching file names
-    maDevFontAttributes.IncreaseQualityBy( mpFontFile->GetLangBoost() );
-}
-
-FreetypeFontInfo::~FreetypeFontInfo()
-{
+    IncreaseQualityBy( mpFontFile->GetLangBoost() );
 }
 
 namespace
@@ -211,7 +227,7 @@ namespace
     }
 }
 
-FT_FaceRec_* FreetypeFontInfo::GetFaceFT()
+FT_FaceRec_* FreetypeFontFace::GetFaceFT() const
 {
     if (!maFaceFT && mpFontFile->Map())
     {
@@ -240,7 +256,7 @@ FT_FaceRec_* FreetypeFontInfo::GetFaceFT()
     return maFaceFT;
 }
 
-void FreetypeFontInfo::ReleaseFaceFT()
+void FreetypeFontFace::ReleaseFaceFT() const
 {
     if (--mnRefCount == 0)
     {
@@ -254,13 +270,7 @@ void FreetypeFontInfo::ReleaseFaceFT()
     assert(mnRefCount >= 0 && "how did this go negative\n");
 }
 
-void FreetypeFontInfo::AnnounceFont( vcl::font::PhysicalFontCollection* pFontCollection )
-{
-    rtl::Reference<FreetypeFontFace> pFD(new FreetypeFontFace( this, maDevFontAttributes ));
-    pFontCollection->Add( pFD.get() );
-}
-
-void FreetypeManager::InitFreetype()
+void FreetypeFontList::InitFreetype()
 {
     /*FT_Error rcFT =*/ FT_Init_FreeType( &aLibFT );
 
@@ -278,62 +288,89 @@ FT_Face FreetypeFont::GetFtFace() const
     return maFaceFT;
 }
 
-void FreetypeManager::AddFontFile(const OString& rNormalizedName,
-    int nFaceNum, int nVariantNum, sal_IntPtr nFontId, const FontAttributes& rDevFontAttr)
+void FreetypeFontList::AddFontFace(const FontAttributes& rDevFontAttr, const OString& rFileName,
+                                   int nFaceNum, int nVariationNum)
 {
-    if( rNormalizedName.isEmpty() )
+    if( rFileName.isEmpty() )
         return;
 
-    if( m_aFontInfoList.find( nFontId ) != m_aFontInfoList.end() )
-        return;
-
-    FreetypeFontInfo* pFontInfo = new FreetypeFontInfo( rDevFontAttr,
-        FindFontFile(rNormalizedName), nFaceNum, nVariantNum, nFontId);
-    m_aFontInfoList[ nFontId ].reset(pFontInfo);
+    const sal_IntPtr nFontId = m_nNextFontId++;
+    m_aFontFaceList[ nFontId ] = new FreetypeFontFace( rDevFontAttr,
+        FindFontFile(rFileName), nFaceNum, nVariationNum, nFontId);
+    m_aFontFileToFontId[ rFileName ].insert( nFontId );
 }
 
-void FreetypeManager::RemoveFontFile(sal_IntPtr nFontId)
+bool FreetypeFontList::AddFontFile(std::u16string_view rFileUrl, const OUString& rFontName)
 {
-    auto it = m_aFontInfoList.find(nFontId);
-    if (it != m_aFontInfoList.end())
-        m_aFontInfoList.erase(it);
-}
+    INetURLObject aPath( rFileUrl );
+    const OString aFullPath = OUStringToOString(aPath.GetFull(), osl_getThreadTextEncoding());
 
-void FreetypeManager::AnnounceFonts( vcl::font::PhysicalFontCollection* pToAdd ) const
-{
-    for (auto const& font : m_aFontInfoList)
+    // already added? then the faces are there already
+    if (m_aFontFileToFontId.contains(aFullPath))
+        return true;
+
+    std::vector<psp::FontconfigFont> aFonts = psp::PrintFontManager::get().addFontFile(aFullPath);
+    if (aFonts.empty())
+        return false;
+
+    for (const auto& rFont : aFonts)
     {
-        FreetypeFontInfo* pFreetypeFontInfo = font.second.get();
-        pFreetypeFontInfo->AnnounceFont( pToAdd );
+        FontAttributes aDFA = rFont.m_aFontAttributes;
+        aDFA.IncreaseQualityBy(5800);
+        if (!rFontName.isEmpty())
+            aDFA.SetFamilyName(rFontName);
+        AddFontFace(aDFA, rFont.m_aFontFile, rFont.m_nCollectionEntry, rFont.m_nVariationEntry);
     }
+
+    return true;
 }
 
-FreetypeFont* FreetypeManager::CreateFont(FreetypeFontInstance& rFontInstance)
+void FreetypeFontList::RemoveFontFile(std::u16string_view rFileUrl)
 {
-    // find a FontInfo matching to the font id
-    const vcl::font::PhysicalFontFace* pFontFace = rFontInstance.GetFontFace();
-    if (!pFontFace)
-        return nullptr;
+    INetURLObject aPath( rFileUrl );
+    const OString aFullPath = OUStringToOString(aPath.GetFull(), osl_getThreadTextEncoding());
 
-    sal_IntPtr nFontId = pFontFace->GetFontId();
-    FontInfoList::iterator it = m_aFontInfoList.find(nFontId);
+    auto it = m_aFontFileToFontId.find(aFullPath);
+    if (it == m_aFontFileToFontId.end())
+        return; // not a font of ours; leave fontconfig alone
 
-    if (it == m_aFontInfoList.end())
-        return nullptr;
+    for (sal_IntPtr nFontId : it->second)
+        m_aFontFaceList.erase(nFontId);
+    m_aFontFileToFontId.erase(it);
 
-    return new FreetypeFont(rFontInstance, it->second);
+    psp::PrintFontManager::removeFontFile(aFullPath);
 }
 
-FreetypeFontFace::FreetypeFontFace( FreetypeFontInfo* pFI, const FontAttributes& rDFA )
-:   vcl::font::PhysicalFontFace( rDFA ),
-    mpFreetypeFontInfo( pFI )
+const FreetypeFontFace* FreetypeFontList::FindFontFace(const OString& rFileName, int nFaceNum,
+                                                       int nVariationNum) const
 {
-    assert(mpFreetypeFontInfo);
+    auto it = m_aFontFileToFontId.find(rFileName);
+    if (it == m_aFontFileToFontId.end())
+        return nullptr;
+
+    for (sal_IntPtr nFontId : it->second)
+    {
+        auto face_it = m_aFontFaceList.find(nFontId);
+        if (face_it == m_aFontFaceList.end())
+            continue;
+        const FreetypeFontFace* pFace = face_it->second.get();
+        if (pFace->GetFontFaceIndex() == nFaceNum
+            && pFace->GetFontFaceVariation() == nVariationNum)
+            return pFace;
+    }
+
+    return nullptr;
+}
+
+void FreetypeFontList::AnnounceFonts( vcl::font::PhysicalFontCollection* pToAdd ) const
+{
+    for (auto const& font : m_aFontFaceList)
+        pToAdd->Add( font.second.get() );
 }
 
 rtl::Reference<LogicalFontInstance> FreetypeFontFace::CreateFontInstance(const vcl::font::FontSelectPattern& rFSD) const
 {
-    return new FreetypeFontInstance(*this, rFSD);
+    return new FreetypeFont(*this, rFSD);
 }
 
 namespace
@@ -361,8 +398,8 @@ hb_face_t* FreetypeFontFace::GetHbFace() const
 {
     if (!mpHbFace)
     {
-        auto pFontFile = mpFreetypeFontInfo->GetFontFile();
-        auto nIndex = mpFreetypeFontInfo->GetFontFaceIndex();
+        auto pFontFile = GetFontFile();
+        auto nIndex = GetFontFaceIndex();
         auto pHbBlob = CreateHbBlob(pFontFile);
         mpHbFace = hb_face_create(pHbBlob, nIndex);
         hb_blob_destroy(pHbBlob);
@@ -380,8 +417,8 @@ const std::vector<vcl::font::Variation>& FreetypeFontFace::GetVariations(const L
     if (!mxVariations)
     {
         mxVariations.emplace();
-        FT_Face aFaceFT = mpFreetypeFontInfo->GetFaceFT();
-        sal_uInt32 nFaceVariation = mpFreetypeFontInfo->GetFontFaceVariation();
+        FT_Face aFaceFT = GetFaceFT();
+        sal_uInt32 nFaceVariation = GetFontFaceVariation();
         if (!(aFaceFT && nFaceVariation))
             return *mxVariations;
 
@@ -407,19 +444,16 @@ const std::vector<vcl::font::Variation>& FreetypeFontFace::GetVariations(const L
 
 // FreetypeFont
 
-FreetypeFont::FreetypeFont(FreetypeFontInstance& rFontInstance, std::shared_ptr<FreetypeFontInfo> xFI)
-:   mrFontInstance(rFontInstance),
+FreetypeFont::FreetypeFont(const FreetypeFontFace& rFontFace, const vcl::font::FontSelectPattern& rFSD)
+:   LogicalFontInstance(rFontFace, rFSD),
     mnCos( 0x10000),
     mnSin( 0 ),
     mnPrioAntiAlias(nDefaultPrioAntiAlias),
-    mxFontInfo(std::move(xFI)),
     maFaceFT( nullptr ),
     maSizeFT( nullptr ),
     mbFaceOk( false )
 {
-    maFaceFT = mxFontInfo->GetFaceFT();
-
-    const vcl::font::FontSelectPattern& rFSD = rFontInstance.GetFontSelectPattern();
+    maFaceFT = rFontFace.GetFaceFT();
 
     if( rFSD.mnOrientation )
     {
@@ -472,25 +506,13 @@ const FontConfigFontOptions* FreetypeFont::GetFontOptions() const
 {
     if (!mxFontOptions)
     {
-        mxFontOptions = GetFCFontOptions(mxFontInfo->GetFontAttributes(), mrFontInstance.GetFontSelectPattern().mnHeight);
-        mxFontOptions->SyncPattern(GetFontFileName(), GetFontFaceIndex(), GetFontFaceVariation(), mrFontInstance.NeedsArtificialBold(), mrFontInstance.GetVariations());
+        const FreetypeFontFace* pFontFace = GetFontFace();
+        mxFontOptions = GetFCFontOptions(*pFontFace, GetFontSelectPattern().mnHeight);
+        mxFontOptions->SyncPattern(pFontFace->GetFontFileName(), pFontFace->GetFontFaceIndex(),
+                                   pFontFace->GetFontFaceVariation(), NeedsArtificialBold(),
+                                   GetVariations());
     }
     return mxFontOptions.get();
-}
-
-const OString& FreetypeFont::GetFontFileName() const
-{
-    return mxFontInfo->GetFontFileName();
-}
-
-int FreetypeFont::GetFontFaceIndex() const
-{
-    return mxFontInfo->GetFontFaceIndex();
-}
-
-int FreetypeFont::GetFontFaceVariation() const
-{
-    return mxFontInfo->GetFontFaceVariation();
 }
 
 FreetypeFont::~FreetypeFont()
@@ -498,19 +520,19 @@ FreetypeFont::~FreetypeFont()
     if( maSizeFT )
         FT_Done_Size( maSizeFT );
 
-    mxFontInfo->ReleaseFaceFT();
+    GetFontFace()->ReleaseFaceFT();
 }
 
-void FreetypeFont::GetFontMetric(FontMetricDataRef const & rxTo) const
+void FreetypeFont::GetFontMetric(FontMetricDataRef const & rxTo)
 {
-    rxTo->FontAttributes::operator =(mxFontInfo->GetFontAttributes());
+    rxTo->FontAttributes::operator =(*GetFontFace());
 
-    rxTo->SetOrientation(mrFontInstance.GetFontSelectPattern().mnOrientation);
+    rxTo->SetOrientation(GetFontSelectPattern().mnOrientation);
 
     FT_Activate_Size( maSizeFT );
 
-    rxTo->ImplCalcLineSpacing(&mrFontInstance);
-    rxTo->ImplInitBaselines(&mrFontInstance);
+    rxTo->ImplCalcLineSpacing(this);
+    rxTo->ImplInitBaselines(this);
 
     rxTo->SetSlant( 0 );
     rxTo->SetWidth( mnWidth );
@@ -549,13 +571,13 @@ void FreetypeFont::GetFontMetric(FontMetricDataRef const & rxTo) const
     }
 
     // initialize kashida width
-    rxTo->SetMinKashida(mrFontInstance.GetKashidaWidth());
+    rxTo->SetMinKashida(GetKashidaWidth());
 }
 
 void FreetypeFont::ApplyGlyphTransform(bool bVertical, FT_Glyph pGlyphFT ) const
 {
     // shortcut most common case
-    if (!mrFontInstance.GetFontSelectPattern().mnOrientation && !bVertical)
+    if (!GetFontSelectPattern().mnOrientation && !bVertical)
         return;
 
     const FT_Size_Metrics& rMetrics = maFaceFT->size->metrics;
@@ -609,7 +631,7 @@ void FreetypeFont::ApplyGlyphTransform(bool bVertical, FT_Glyph pGlyphFT ) const
 bool FreetypeFont::GetAntialiasAdvice() const
 {
     // TODO: also use GASP info
-    return !mrFontInstance.GetFontSelectPattern().mbNonAntialiased && (mnPrioAntiAlias > 0);
+    return !GetFontSelectPattern().mbNonAntialiased && (mnPrioAntiAlias > 0);
 }
 
 // outline stuff
@@ -785,7 +807,7 @@ bool FreetypeFont::GetGlyphOutline(sal_GlyphId nId, basegfx::B2DPolyPolygon& rB2
     if( rc != FT_Err_Ok )
         return false;
 
-    if (mrFontInstance.NeedsArtificialBold())
+    if (NeedsArtificialBold())
         FT_GlyphSlot_Embolden(maFaceFT->glyph);
 
     FT_Glyph pGlyphFT;
@@ -799,7 +821,7 @@ bool FreetypeFont::GetGlyphOutline(sal_GlyphId nId, basegfx::B2DPolyPolygon& rB2
         return false;
     }
 
-    if (mrFontInstance.NeedsArtificialItalic())
+    if (NeedsArtificialItalic())
     {
         FT_Matrix aMatrix;
         aMatrix.xx = aMatrix.yy = ARTIFICIAL_ITALIC_MATRIX_XX;

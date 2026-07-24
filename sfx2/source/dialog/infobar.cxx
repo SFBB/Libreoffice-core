@@ -539,9 +539,9 @@ void SfxInfoBarContainerWindow::Resize()
 SFX_IMPL_POS_CHILDWINDOW_WITHID(SfxInfoBarContainerChild, SID_INFOBAR, SFX_OBJECTBAR_OBJECT);
 
 SfxInfoBarContainerChild::SfxInfoBarContainerChild(vcl::Window* _pParent, sal_uInt16 nId,
-                                                   SfxBindings* pBindings, SfxChildWinInfo&)
+                                                   SfxBindings& rBindings, SfxChildWinInfo&)
     : SfxChildWindow(_pParent, nId)
-    , m_pBindings(pBindings)
+    , m_rBindings(rBindings)
 {
     SetWindow(VclPtr<SfxInfoBarContainerWindow>::Create(this));
     GetWindow()->SetPosSizePixel(Point(0, 0), Size(_pParent->GetSizePixel().getWidth(), 0));
@@ -571,7 +571,7 @@ void SfxInfoBarContainerChild::Update()
 
     // Refresh the frame to take the infobars container height change into account
     const sal_uInt16 nId = GetChildWindowId();
-    SfxViewFrame* pVFrame = m_pBindings->GetDispatcher()->GetFrame();
+    SfxViewFrame* pVFrame = m_rBindings.GetDispatcher()->GetFrame();
     pVFrame->ShowChildWindow(nId);
 
     // Give the focus to the document view

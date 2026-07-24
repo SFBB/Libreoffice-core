@@ -40,18 +40,19 @@
 SFX_IMPL_MODELESSDIALOGCONTOLLER(SfxRecordingFloatWrapper_Impl, SID_RECORDING_FLOATWINDOW);
 
 SfxRecordingFloatWrapper_Impl::SfxRecordingFloatWrapper_Impl(vcl::Window* pParentWnd,
-                                                             sal_uInt16 nId, SfxBindings* pBind,
+                                                             sal_uInt16 nId, SfxBindings& rBindings,
                                                              const SfxChildWinInfo& rInfo)
     : SfxChildWindow(pParentWnd, nId)
-    , pBindings(pBind)
+    , m_rBindings(rBindings)
 {
-    SetController(std::make_shared<SfxRecordingFloat_Impl>(pBindings, this, pParentWnd->GetFrameWeld()));
+    SetController(
+        std::make_shared<SfxRecordingFloat_Impl>(m_rBindings, this, pParentWnd->GetFrameWeld()));
     SetWantsFocus(false);
     SfxRecordingFloat_Impl* pFloatDlg = static_cast<SfxRecordingFloat_Impl*>(GetController().get());
 
     weld::Dialog* pDlg = pFloatDlg->getDialog();
 
-    SfxViewFrame *pFrame = pBind->GetDispatcher_Impl()->GetFrame();
+    SfxViewFrame* pFrame = rBindings.GetDispatcher_Impl()->GetFrame();
     vcl::Window* pEditWin = pFrame->GetViewShell()->GetWindow();
 
     Point aPos = pEditWin->OutputToScreenPixel( pEditWin->GetPosPixel() );
@@ -63,23 +64,23 @@ SfxRecordingFloatWrapper_Impl::SfxRecordingFloatWrapper_Impl(vcl::Window* pParen
     aState.setPos(aPos);
     pDlg->set_window_state(aState);
 
-    pFloatDlg->Initialize(&rInfo);
+    pFloatDlg->Initialize(rInfo);
 }
 
 SfxRecordingFloatWrapper_Impl::~SfxRecordingFloatWrapper_Impl()
 {
     SfxBoolItem aItem( FN_PARAM_1, true );
-    css::uno::Reference< css::frame::XDispatchRecorder > xRecorder = pBindings->GetRecorder();
+    css::uno::Reference<css::frame::XDispatchRecorder> xRecorder = m_rBindings.GetRecorder();
     if ( xRecorder.is() )
-        pBindings->GetDispatcher()->ExecuteList(SID_STOP_RECORDING,
-                SfxCallMode::SYNCHRON, { &aItem });
+        m_rBindings.GetDispatcher()->ExecuteList(SID_STOP_RECORDING, SfxCallMode::SYNCHRON,
+                                                 { &aItem });
 }
 
 bool SfxRecordingFloatWrapper_Impl::QueryClose()
 {
     // asking for recorded macro should be replaced if index access is available!
     bool bRet = true;
-    css::uno::Reference< css::frame::XDispatchRecorder > xRecorder = pBindings->GetRecorder();
+    css::uno::Reference<css::frame::XDispatchRecorder> xRecorder = m_rBindings.GetRecorder();
     if ( xRecorder.is() && !xRecorder->getRecordedMacro().isEmpty() )
     {
         SfxRecordingFloat_Impl* pFloatDlg = static_cast<SfxRecordingFloat_Impl*>(GetController().get());
@@ -97,12 +98,12 @@ bool SfxRecordingFloatWrapper_Impl::QueryClose()
     return bRet;
 }
 
-SfxRecordingFloat_Impl::SfxRecordingFloat_Impl(SfxBindings* pBind, SfxChildWindow* pChildWin,
+SfxRecordingFloat_Impl::SfxRecordingFloat_Impl(SfxBindings& rBindings, SfxChildWindow* pChildWin,
                                                weld::Window* pParent)
-    : SfxModelessDialogController(pBind, pChildWin, pParent, u"sfx/ui/floatingrecord.ui"_ustr,
+    : SfxModelessDialogController(&rBindings, pChildWin, pParent, u"sfx/ui/floatingrecord.ui"_ustr,
                                   u"FloatingRecord"_ustr)
     , m_xToolbar(m_xBuilder->weld_toolbar(u"toolbar"_ustr))
-    , m_xDispatcher(new ToolbarUnoDispatcher(*m_xToolbar, *m_xBuilder, pBind->GetActiveFrame()))
+    , m_xDispatcher(new ToolbarUnoDispatcher(*m_xToolbar, *m_xBuilder, rBindings.GetActiveFrame()))
     , mnPostUserEventId(nullptr)
     , m_bFirstActivate(true)
 {

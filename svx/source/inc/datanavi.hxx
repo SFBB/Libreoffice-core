@@ -336,7 +336,7 @@ namespace svxform
         virtual SfxChildAlignment   CheckAlignment( SfxChildAlignment, SfxChildAlignment ) override;
 
     public:
-        DataNavigator( SfxBindings* pBindings, SfxChildWindow* pMgr, vcl::Window* pParent );
+        DataNavigator(SfxBindings& rBindings, SfxChildWindow* pMgr, vcl::Window* pParent);
         virtual ~DataNavigator() override;
         virtual void dispose() override;
 
@@ -350,7 +350,7 @@ namespace svxform
     {
     public:
         SVX_DLLPRIVATE DataNavigatorManager(vcl::Window* pParent, sal_uInt16 nId,
-                                            SfxBindings* pBindings, SfxChildWinInfo& rInfo);
+                                            SfxBindings& rBindings, SfxChildWinInfo& rInfo);
         SFX_DECL_CHILDWINDOW( DataNavigatorManager );
     };
 

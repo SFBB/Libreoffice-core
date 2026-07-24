@@ -28,8 +28,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include "headless/svpgdi.hxx"
-#include "unx/fontmanager.hxx"
-#include "unx/glyphcache.hxx"
+#include "unx/font/glyphcache.hxx"
 
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::lang;
@@ -129,7 +128,7 @@ void CommonInitialize(int *argc, char ***argv)
 
     //we don't have a de-init, so inside this leak disabled region...
     //get the font info
-    psp::PrintFontManager::get();
+    FreetypeFontList::get();
     //get the printer info
     Printer::GetPrinterQueues();
 

@@ -96,7 +96,7 @@ private:
 class QuickFindPanelWrapper : public SfxQuickFindWrapper
 {
 public:
-    QuickFindPanelWrapper(vcl::Window* pParent, sal_uInt16 nId, SfxBindings* pBindings,
+    QuickFindPanelWrapper(vcl::Window* pParent, sal_uInt16 nId, SfxBindings& rBindings,
                           SfxChildWinInfo& rInfo);
     SFX_DECL_CHILDWINDOW(QuickFindPanelWrapper);
 };
@@ -107,8 +107,8 @@ private:
     std::unique_ptr<QuickFindPanel> m_xQuickFindPanel;
 
 public:
-    QuickFindPanelWindow(SfxBindings* _pBindings, SfxChildWindow* pChildWin, vcl::Window* pParent,
-                         SfxChildWinInfo* pInfo);
+    QuickFindPanelWindow(SfxBindings& rBindings, SfxChildWindow* pChildWin, vcl::Window* pParent,
+                         SfxChildWinInfo& rInfo);
 };
 }
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

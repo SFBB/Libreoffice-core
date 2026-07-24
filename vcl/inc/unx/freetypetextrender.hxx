@@ -23,14 +23,14 @@
 
 #include <textrender.hxx>
 
-#include <unx/freetype_glyphcache.hxx>
+#include <unx/font/freetype_glyphcache.hxx>
 
 // Generic implementation that uses freetype, but DrawTextLayout()
 // still needs implementing (e.g. by Cairo or Skia).
 class VCL_DLLPUBLIC FreeTypeTextRenderImpl : public TextRenderImpl
 {
 protected:
-    rtl::Reference<FreetypeFontInstance>
+    rtl::Reference<FreetypeFont>
                             mpFreetypeFont[ MAX_FALLBACK ];
 
     Color           mnTextColor;

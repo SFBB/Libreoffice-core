@@ -176,8 +176,8 @@ class SwNavigatorWin : public SfxNavigator
 private:
     std::unique_ptr<SwNavigationPI> m_xNavi;
 public:
-    SwNavigatorWin(SfxBindings* _pBindings, SfxChildWindow* _pMgr,
-                   vcl::Window* pParent, SfxChildWinInfo* pInfo);
+    SwNavigatorWin(SfxBindings& rBindings, SfxChildWindow* _pMgr, vcl::Window* pParent,
+                   SfxChildWinInfo& rInfo);
     virtual void StateChanged(StateChangedType nStateChange) override;
     virtual void dispose() override
     {
@@ -193,7 +193,7 @@ public:
 class SwNavigatorWrapper final : public SfxNavigatorWrapper
 {
 public:
-    SwNavigatorWrapper(vcl::Window* pParent, sal_uInt16 nId, SfxBindings* pBindings,
+    SwNavigatorWrapper(vcl::Window* pParent, sal_uInt16 nId, SfxBindings& rBindings,
                        SfxChildWinInfo& rInfo);
     SFX_DECL_CHILDWINDOW_WITHID(SwNavigatorWrapper);
 };

@@ -45,7 +45,7 @@ protected:
 private:
     tools::Rectangle m_aInnerRect;
     tools::Rectangle m_aOuterRect;
-    SfxBindings* m_pBindings;
+    SfxBindings& m_rBindings;
     Size m_aFloatSize;
     SfxChildWindow* m_pMgr;
     std::unique_ptr<SfxDockingWindow_Impl> m_pImpl;
@@ -73,18 +73,15 @@ protected:
     SAL_DLLPRIVATE SfxChildWindow* GetChildWindow_Impl() { return m_pMgr; }
 
 public:
-                        SfxDockingWindow( SfxBindings *pBindings,
-                                          SfxChildWindow *pCW,
-                                          vcl::Window* pParent,
-                                          WinBits nWinBits);
-                        SfxDockingWindow( SfxBindings *pBindings,
-                                          SfxChildWindow *pCW,
-                                          vcl::Window* pParent,
-                                          const OUString& rID, const OUString& rUIXMLDescription );
-                        virtual ~SfxDockingWindow() override;
+    SfxDockingWindow(SfxBindings& rBindings, SfxChildWindow* pCW, vcl::Window* pParent,
+                     WinBits nWinBits);
+    SfxDockingWindow(SfxBindings& rBindings, SfxChildWindow* pCW, vcl::Window* pParent,
+                     const OUString& rID, const OUString& rUIXMLDescription);
+    virtual ~SfxDockingWindow() override;
+
     virtual void        dispose() override;
 
-    void                Initialize (SfxChildWinInfo* pInfo);
+    void Initialize(SfxChildWinInfo& rInfo);
     virtual void        FillInfo(SfxChildWinInfo&) const;
     virtual void        StateChanged( StateChangedType nStateChange ) override;
 
@@ -95,7 +92,7 @@ public:
     }
     const tools::Rectangle& GetInnerRect() const { return m_aInnerRect; }
     const tools::Rectangle& GetOuterRect() const { return m_aOuterRect; }
-    SfxBindings& GetBindings() const { return *m_pBindings; }
+    SfxBindings& GetBindings() const { return m_rBindings; }
     sal_uInt16 GetType() const { return m_pMgr->GetType(); }
     SfxChildAlignment GetAlignment() const { return m_pMgr->GetAlignment(); }
     void SetAlignment(SfxChildAlignment eAlign) { m_pMgr->SetAlignment(eAlign); }
@@ -119,10 +116,8 @@ public:
 class SfxDockingWrapper final : public SfxChildWindow
 {
     public:
-        SfxDockingWrapper( vcl::Window* pParent ,
-                           sal_uInt16 nId ,
-                           SfxBindings* pBindings ,
-                           SfxChildWinInfo* pInfo );
+        SfxDockingWrapper(vcl::Window* pParent, sal_uInt16 nId, SfxBindings& rBindings,
+                          SfxChildWinInfo& rInfo);
 
         SFX_DECL_CHILDWINDOW(SfxDockingWrapper);
 };

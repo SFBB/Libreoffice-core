@@ -521,8 +521,7 @@ namespace svxform
         using SfxDockingWindow::StateChanged;
 
     public:
-        NavigatorFrame( SfxBindings *pBindings, SfxChildWindow *pMgr,
-                       vcl::Window* pParent );
+        NavigatorFrame(SfxBindings& rBindings, SfxChildWindow* pMgr, vcl::Window* pParent);
         virtual ~NavigatorFrame() override;
         virtual void dispose() override;
 
@@ -535,7 +534,7 @@ namespace svxform
     {
     public:
         SVX_DLLPRIVATE NavigatorFrameManager(vcl::Window* pParent, sal_uInt16 nId,
-                                             SfxBindings* pBindings, SfxChildWinInfo& rInfo);
+                                             SfxBindings& rBindings, SfxChildWinInfo& rInfo);
         SFX_DECL_CHILDWINDOW( NavigatorFrameManager );
     };
 }

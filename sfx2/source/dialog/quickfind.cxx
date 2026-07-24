@@ -23,14 +23,15 @@ SfxQuickFindWrapper::SfxQuickFindWrapper(vcl::Window* pParentWnd, sal_uInt16 nId
 
 void SfxQuickFindWrapper::Initialize() { SetHideNotDelete(true); }
 
-SfxQuickFind::SfxQuickFind(SfxBindings* pBind, SfxChildWindow* pChildWin, vcl::Window* pParent,
-                           SfxChildWinInfo* pInfo)
-    : SfxDockingWindow(pBind, pChildWin, pParent, u"QuickFind"_ustr, u"sfx/ui/quickfind.ui"_ustr)
+SfxQuickFind::SfxQuickFind(SfxBindings& rBindings, SfxChildWindow* pChildWin, vcl::Window* pParent,
+                           SfxChildWinInfo& rInfo)
+    : SfxDockingWindow(rBindings, pChildWin, pParent, u"QuickFind"_ustr,
+                       u"sfx/ui/quickfind.ui"_ustr)
 {
     SetText(SfxResId(STR_SID_QUICKFIND));
     SetHelpId(HID_QUICKFIND_WINDOW);
     SetOutputSizePixel(Size(270, 240));
-    Initialize(pInfo);
+    Initialize(rInfo);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

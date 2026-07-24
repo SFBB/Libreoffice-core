@@ -64,7 +64,7 @@ public:
 class SAL_WARN_UNUSED SVX_DLLPUBLIC SvxFontWorkChildWindow final : public SfxChildWindow
 {
 public:
-    SvxFontWorkChildWindow(vcl::Window*, sal_uInt16, SfxBindings*, SfxChildWinInfo&);
+    SvxFontWorkChildWindow(vcl::Window*, sal_uInt16, SfxBindings&, SfxChildWinInfo&);
     SFX_DECL_CHILDWINDOW_WITHID(SvxFontWorkChildWindow);
 };
 
@@ -133,8 +133,7 @@ class SAL_WARN_UNUSED SvxFontWorkDialog final : public SfxDockingWindow
     virtual SfxChildAlignment CheckAlignment( SfxChildAlignment eActAlign,
                                               SfxChildAlignment eAlign ) override;
 public:
-    SvxFontWorkDialog(SfxBindings *pBinding, SfxChildWindow *pCW,
-                      vcl::Window* pParent);
+    SvxFontWorkDialog(SfxBindings& rBindings, SfxChildWindow* pCW, vcl::Window* pParent);
     virtual ~SvxFontWorkDialog() override;
     virtual void dispose() override;
 };

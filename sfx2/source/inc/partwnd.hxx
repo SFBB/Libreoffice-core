@@ -30,7 +30,7 @@
 class SfxPartChildWnd_Impl final : public SfxChildWindow
 {
 public:
-    SfxPartChildWnd_Impl(vcl::Window* pParent, sal_uInt16 nId, SfxBindings* pBindings,
+    SfxPartChildWnd_Impl(vcl::Window* pParent, sal_uInt16 nId, SfxBindings& rBindings,
                          SfxChildWinInfo& rInfo);
 
     SFX_DECL_CHILDWINDOW(SfxPartChildWnd_Impl);
@@ -46,10 +46,8 @@ class SfxPartDockWnd_Impl final : public SfxDockingWindow
     virtual bool            EventNotify( NotifyEvent& rNEvt ) override;
 
 public:
-                            SfxPartDockWnd_Impl( SfxBindings* pBindings,
-                                  SfxChildWindow* pChildWin,
-                                  vcl::Window* pParent,
-                                  WinBits nBits );
+    SfxPartDockWnd_Impl(SfxBindings& rBindings, SfxChildWindow* pChildWin, vcl::Window* pParent,
+                        WinBits nBits);
 
     bool                    QueryClose();
     virtual void            FillInfo(SfxChildWinInfo&) const override;

@@ -26,7 +26,7 @@
 #include <vcl/dllapi.h>
 #include <vcl/timer.hxx>
 #include <com/sun/star/lang/Locale.hpp>
-#include <unx/fc_fontoptions.hxx>
+#include <unx/font/fc_fontoptions.hxx>
 
 #include <font/PhysicalFontFace.hxx>
 
@@ -37,11 +37,6 @@
 #include <vector>
 #include <unordered_map>
 
-/*
- *  some words on metrics: every length returned by PrintFontManager and
- *  friends are PostScript afm style, that is they are 1/1000 font height
- */
-
 class FontConfigFontOptions;
 namespace vcl::font
 {
@@ -50,46 +45,30 @@ class FontSelectPattern;
 class GenericUnixSalData;
 
 namespace psp {
-typedef int fontID;
 
-// a class to manage printable fonts
+struct FontconfigFont
+{
+    FontAttributes    m_aFontAttributes;
+
+    OString           m_aFontFile;        // system dependent path
+    int               m_nCollectionEntry = 0; // 0 for regular fonts, 0 to ... for fonts stemming from collections
+    int               m_nVariationEntry = 0;  // 0 for regular fonts, 0 to ... for fonts stemming from font variations
+};
 
 class VCL_PLUGIN_PUBLIC PrintFontManager
 {
-    friend struct PrintFont;
+    std::vector<FontconfigFont> m_aSystemFonts;
 
-    struct SAL_DLLPRIVATE PrintFont
-    {
-        FontAttributes    m_aFontAttributes;
+    std::optional<FontconfigFont> fontFromFcPattern(FcPattern* pPattern);
+    std::vector<FontconfigFont> fontsFromFontconfigFile(std::string_view rFilePath);
 
-        OString           m_aFontFile;        // system dependent path
-        int               m_nCollectionEntry = 0; // 0 for regular fonts, 0 to ... for fonts stemming from collections
-        int               m_nVariationEntry = 0;  // 0 for regular fonts, 0 to ... for fonts stemming from font variations
-    };
-
-    fontID                                      m_nNextFontID;
-    std::unordered_map< fontID, PrintFont >     m_aFonts;
-    // for speeding up findFontFileID
-    std::unordered_map< OString, o3tl::sorted_vector< fontID > >
-                                                m_aFontFileToFontID;
-
-    // finds the font id for the nFaceIndex face in this font file
-    // There may be multiple font ids for font collections
-    fontID findFontFileID(const OString& rFile, int nFaceIndex, int nVariationIndex) const;
-
-    // There may be multiple font ids for font collections
-    std::vector<fontID> findFontFileIDs(const OString& rFile) const;
-
-    std::optional<PrintFont> fontFromFcPattern(FcPattern* pPattern);
-    std::vector<PrintFont> fontsFromFontconfigFile(std::string_view rFilePath);
-
+    void collectSystemFonts();
 
     /* try to initialize fonts from libfontconfig
 
     called from <code>initialize()</code>
     */
     static void initFontconfig();
-    void countFontconfigFonts();
     /* deinitialize fontconfig
      */
     static void deinitFontconfig();
@@ -119,37 +98,11 @@ public:
     friend class ::GenericUnixSalData;
     static PrintFontManager& get(); // one instance only
 
-    // There may be multiple font ids for font collections
-    std::vector<fontID> findFontFileIDs( std::u16string_view rFileUrl ) const;
+    std::vector<FontconfigFont> takeSystemFonts() { return std::move(m_aSystemFonts); }
 
-    // There may be multiple font ids for font collections
-    std::vector<fontID> addFontFile( std::u16string_view rFileUrl );
+    std::vector<FontconfigFont> addFontFile(const OString& rFile);
 
-    void removeFontFile( std::u16string_view rFileUrl );
-
-    const PrintFont* getFont( fontID nID ) const
-    {
-        auto it = m_aFonts.find( nID );
-        return it == m_aFonts.end() ? nullptr : &it->second;
-    }
-
-    // returns the ids of all managed fonts.
-    std::vector<fontID> getFontList();
-
-    // routines to get font info in small pieces
-
-    // get a specific fonts system dependent filename
-    OString getFontFileSysPath( fontID nFontID ) const
-    {
-        const PrintFont* pFont(getFont(nFontID));
-        return pFont ? pFont->m_aFontFile : OString();
-    }
-
-    // get the ttc face number
-    int getFontFaceNumber( fontID nFontID ) const;
-
-    // get the ttc face variation
-    int getFontFaceVariation( fontID nFontID ) const;
+    static void removeFontFile(std::string_view rFile);
 
     // font administration functions
 
@@ -181,7 +134,7 @@ public:
     locale will be used for font matching also; e.g. "Sans" can result
     in different fonts in e.g. english and japanese
      */
-    bool matchFont(FontAttributes& rDFA, const css::lang::Locale& rLocale);
+    static bool matchFont(FontAttributes& rDFA, const css::lang::Locale& rLocale);
 
     static std::unique_ptr<FontConfigFontOptions> getFontOptions(const FontAttributes& rFontAttributes, int nSize);
 

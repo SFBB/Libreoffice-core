@@ -21,8 +21,8 @@
 
 #include <comphelper/scopeguard.hxx>
 #include <unx/cairotextrender.hxx>
-#include <unx/fc_fontoptions.hxx>
-#include <unx/freetype_glyphcache.hxx>
+#include <unx/font/fc_fontoptions.hxx>
+#include <unx/font/freetype_glyphcache.hxx>
 #include <unx/gendata.hxx>
 #include <headless/CairoCommon.hxx>
 #include <vcl/svapp.hxx>
@@ -259,14 +259,13 @@ static void ApplyFont(cairo_t* cr, const CairoFontsCache::CacheId& rId, double n
 
 static CairoFontsCache::CacheId makeCacheId(const GenericSalLayout& rLayout)
 {
-    const FreetypeFontInstance& rInstance = static_cast<FreetypeFontInstance&>(rLayout.GetFont());
-    const FreetypeFont& rFont = rInstance.GetFreetypeFont();
+    const FreetypeFont& rFont = static_cast<const FreetypeFont&>(rLayout.GetFont());
 
     FT_Face aFace = rFont.GetFtFace();
     CairoFontsCache::CacheId aId;
     aId.maFace = aFace;
     aId.mpOptions = rFont.GetFontOptions();
-    aId.mbEmbolden = rInstance.NeedsArtificialBold();
+    aId.mbEmbolden = rFont.NeedsArtificialBold();
     aId.mbVerticalMetrics = false;
 
     return aId;

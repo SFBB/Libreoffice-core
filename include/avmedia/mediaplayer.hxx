@@ -30,7 +30,7 @@ namespace avmedia
 class AVMEDIA_DLLPUBLIC MediaPlayer final : public SfxChildWindow
 {
 public:
-                        MediaPlayer(vcl::Window*, sal_uInt16, SfxBindings*, SfxChildWinInfo&);
+                        MediaPlayer(vcl::Window*, sal_uInt16, SfxBindings&, SfxChildWinInfo&);
                         virtual ~MediaPlayer() override;
 
                         SFX_DECL_CHILDWINDOW_WITHID( MediaPlayer );
@@ -41,9 +41,8 @@ class MediaWindow;
 class AVMEDIA_DLLPUBLIC MediaFloater final : public SfxDockingWindow
 {
 public:
-
-                            MediaFloater( SfxBindings* pBindings, SfxChildWindow* pCW, vcl::Window* pParent );
-                            virtual ~MediaFloater() override;
+    MediaFloater(SfxBindings& rBindings, SfxChildWindow* pCW, vcl::Window* pParent);
+    virtual ~MediaFloater() override;
     virtual void            dispose() override;
 
     void                    setURL( const OUString& rURL, const OUString& rReferer, bool bPlayImmediately );

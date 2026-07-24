@@ -75,12 +75,12 @@ constexpr OUString cRubySequence = u"RubySequenceNumber"_ustr;
 } // end anonymous namespace
 
 SvxRubyChildWindow::SvxRubyChildWindow(vcl::Window* _pParent, sal_uInt16 nId,
-                                       SfxBindings* pBindings, const SfxChildWinInfo& rInfo)
+                                       SfxBindings& rBindings, const SfxChildWinInfo& rInfo)
     : SfxChildWindow(_pParent, nId)
 {
-    auto xDlg = std::make_shared<SvxRubyDialog>(pBindings, this, _pParent->GetFrameWeld());
+    auto xDlg = std::make_shared<SvxRubyDialog>(&rBindings, this, _pParent->GetFrameWeld());
     SetController(xDlg);
-    xDlg->Initialize(&rInfo);
+    xDlg->Initialize(rInfo);
 }
 
 SfxChildWinInfo SvxRubyChildWindow::GetInfo() const { return SfxChildWindow::GetInfo(); }

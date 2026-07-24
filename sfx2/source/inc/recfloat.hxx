@@ -27,15 +27,14 @@
 
 class SfxRecordingFloatWrapper_Impl final : public SfxChildWindow
 {
-    SfxBindings*        pBindings;
-public:
-                        SfxRecordingFloatWrapper_Impl( vcl::Window* pParent ,
-                                                sal_uInt16 nId ,
-                                                SfxBindings* pBindings ,
-                                                const SfxChildWinInfo& rInfo);
-                        virtual ~SfxRecordingFloatWrapper_Impl() override;
+    SfxBindings& m_rBindings;
 
-                        SFX_DECL_CHILDWINDOW(SfxRecordingFloatWrapper_Impl);
+public:
+    SfxRecordingFloatWrapper_Impl(vcl::Window* pParent, sal_uInt16 nId, SfxBindings& rBindings,
+                                  const SfxChildWinInfo& rInfo);
+    virtual ~SfxRecordingFloatWrapper_Impl() override;
+
+    SFX_DECL_CHILDWINDOW(SfxRecordingFloatWrapper_Impl);
     virtual bool        QueryClose() override;
 };
 
@@ -49,8 +48,7 @@ class SfxRecordingFloat_Impl final : public SfxModelessDialogController
     DECL_LINK(PresentParentFrame, void*, void);
 
 public:
-    SfxRecordingFloat_Impl(SfxBindings* pBindings,
-                           SfxChildWindow* pChildWin,
+    SfxRecordingFloat_Impl(SfxBindings& rBindings, SfxChildWindow* pChildWin,
                            weld::Window* pParent);
     virtual ~SfxRecordingFloat_Impl() override;
     virtual void FillInfo(SfxChildWinInfo& rInfo) const override;

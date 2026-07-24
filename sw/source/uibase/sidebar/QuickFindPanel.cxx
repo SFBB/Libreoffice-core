@@ -91,20 +91,20 @@ IMPL_LINK_NOARG(QuickFindPanel, SimilaritySettingsDialogButtonClickedHandler, we
     }
 }
 
-QuickFindPanelWindow::QuickFindPanelWindow(SfxBindings* _pBindings, SfxChildWindow* pChildWin,
-                                           vcl::Window* pParent, SfxChildWinInfo* pInfo)
-    : SfxQuickFind(_pBindings, pChildWin, pParent, pInfo)
+QuickFindPanelWindow::QuickFindPanelWindow(SfxBindings& rBindings, SfxChildWindow* pChildWin,
+                                           vcl::Window* pParent, SfxChildWinInfo& rInfo)
+    : SfxQuickFind(rBindings, pChildWin, pParent, rInfo)
     , m_xQuickFindPanel(std::make_unique<QuickFindPanel>(m_xContainer.get(),
-                                                         _pBindings->GetActiveFrame(), _pBindings))
+                                                         rBindings.GetActiveFrame(), &rBindings))
 {
-    _pBindings->Invalidate(SID_QUICKFIND);
+    rBindings.Invalidate(SID_QUICKFIND);
 }
 
 QuickFindPanelWrapper::QuickFindPanelWrapper(vcl::Window* pParent, sal_uInt16 nId,
-                                             SfxBindings* pBindings, SfxChildWinInfo& rInfo)
+                                             SfxBindings& rBindings, SfxChildWinInfo& rInfo)
     : SfxQuickFindWrapper(pParent, nId)
 {
-    SetWindow(VclPtr<QuickFindPanelWindow>::Create(pBindings, this, pParent, &rInfo));
+    SetWindow(VclPtr<QuickFindPanelWindow>::Create(rBindings, this, pParent, rInfo));
     Initialize();
 }
 

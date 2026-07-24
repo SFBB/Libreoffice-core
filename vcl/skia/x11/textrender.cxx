@@ -30,8 +30,8 @@
 
 #include <skia/x11/textrender.hxx>
 
-#include <unx/fc_fontoptions.hxx>
-#include <unx/freetype_glyphcache.hxx>
+#include <unx/font/fc_fontoptions.hxx>
+#include <unx/font/freetype_glyphcache.hxx>
 #include <vcl/svapp.hxx>
 #include <sallayout.hxx>
 #include <skia/gdiimpl.hxx>
@@ -50,9 +50,8 @@
 
 void SkiaTextRender::DrawTextLayout(const GenericSalLayout& rLayout, const SalGraphics& rGraphics)
 {
-    const FreetypeFontInstance& rInstance = static_cast<FreetypeFontInstance&>(rLayout.GetFont());
-    const FreetypeFont& rFont = rInstance.GetFreetypeFont();
-    const vcl::font::FontSelectPattern& rFSD = rInstance.GetFontSelectPattern();
+    const FreetypeFont& rFont = static_cast<const FreetypeFont&>(rLayout.GetFont());
+    const vcl::font::FontSelectPattern& rFSD = rFont.GetFontSelectPattern();
     if (rFSD.mnHeight == 0)
         return;
     double nHeight = rFSD.mnHeight;
@@ -66,13 +65,13 @@ void SkiaTextRender::DrawTextLayout(const GenericSalLayout& rLayout, const SalGr
     }
     sk_sp<SkTypeface> typeface = SkiaHelper::applyVariations(
         SkFontMgr_createTypefaceFromFcPattern(fontManager, rFont.GetFontOptions()->GetPattern()),
-        rInstance);
+        rFont);
     SkFont font(typeface);
     font.setSize(nHeight);
     font.setScaleX(nWidth / nHeight);
-    if (rInstance.NeedsArtificialItalic())
+    if (rFont.NeedsArtificialItalic())
         font.setSkewX(-1.0 * ARTIFICIAL_ITALIC_SKEW);
-    if (rInstance.NeedsArtificialBold())
+    if (rFont.NeedsArtificialBold())
         font.setEmbolden(true);
 
     bool bSubpixelPositioning = rLayout.GetSubpixelPositioning();
