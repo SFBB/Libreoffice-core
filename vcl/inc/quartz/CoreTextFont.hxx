@@ -55,9 +55,6 @@ class CoreTextFont final : public LogicalFontInstance
 public:
     ~CoreTextFont() override;
 
-    void GetFontMetric(FontMetricDataRef const&);
-    bool GetGlyphOutline(sal_GlyphId, basegfx::B2DPolyPolygon&, bool) const override;
-
     CTFontRef GetCTFont() const { return mpCTFont; }
 
     /// <1.0: font is squeezed, >1.0 font is stretched, else 1.0

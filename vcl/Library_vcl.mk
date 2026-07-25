@@ -662,14 +662,15 @@ vcl_headless_code= \
     vcl/unx/generic/app/gendisp \
     vcl/unx/generic/app/geninst \
 
-vcl_headless_freetype_code=\
+vcl_headless_generic_code=\
     vcl/headless/svpprn \
     vcl/headless/svptext \
     vcl/unx/generic/app/gendata \
     vcl/unx/generic/gdi/cairotextrender \
-    vcl/unx/generic/gdi/freetypetextrender \
-    vcl/unx/generic/font/freetype_glyphcache \
-    vcl/unx/generic/font/glyphcache \
+    vcl/unx/generic/gdi/generictextrender \
+    vcl/unx/generic/font/GenericFont \
+    vcl/unx/generic/font/GenericFontFace \
+    vcl/unx/generic/font/GenericFontList \
     vcl/unx/generic/font/fontsubst \
     vcl/unx/generic/font/fontconfig \
     vcl/unx/generic/font/fontmanager \
@@ -753,7 +754,7 @@ $(eval $(call gb_Library_add_exception_objects,vcl,\
             vcl/null/printerinfomanager \
         ) \
         $(vcl_headless_code) \
-        $(vcl_headless_freetype_code) \
+        $(vcl_headless_generic_code) \
     ) \
     vcl/source/pdf/$(if $(filter PDFIUM,$(BUILD_TYPE)),,Dummy)PDFiumLibrary \
 ))
@@ -765,7 +766,6 @@ $(eval $(call gb_Library_use_externals,vcl,\
         $(if $(ENABLE_CPDB),cpdb) \
         $(if $(ENABLE_CUPS),cups) \
         fontconfig \
-        freetype \
     ) \
     $(if $(filter PDFIUM,$(BUILD_TYPE)),pdfium) \
     $(if $(filter AFDKO,$(BUILD_TYPE)),afdko libxml2) \

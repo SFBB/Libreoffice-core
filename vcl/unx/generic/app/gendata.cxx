@@ -27,7 +27,7 @@
 
 #ifndef IOS
 
-#include <unx/font/glyphcache.hxx>
+#include <unx/font/GenericFontList.hxx>
 #include <printerinfomanager.hxx>
 
 SalData::SalData() {}
@@ -42,31 +42,31 @@ GenericUnixSalData::~GenericUnixSalData()
 {
 #ifndef IOS
     // the font list was enumerated from fontconfig, so it goes first
-    m_pFreetypeFontList.reset();
-    m_pPrintFontManager.reset();
+    m_pGenericFontList.reset();
+    m_pFontConfigManager.reset();
     m_pPrinterInfoManager.reset();
 #endif
 }
 
 #ifndef IOS
-FreetypeFontList* GenericUnixSalData::GetFreetypeFontList()
+GenericFontList* GenericUnixSalData::GetGenericFontList()
 {
-    if (!m_pFreetypeFontList)
+    if (!m_pGenericFontList)
     {
         // fontconfig has to be up, and know about our own font directories,
         // before it can hand the system fonts over to the font list
-        GetPrintFontManager();
-        m_pFreetypeFontList.reset(new FreetypeFontList);
-        m_pFreetypeFontList->Init();
+        GetFontConfigManager();
+        m_pGenericFontList.reset(new GenericFontList);
+        m_pGenericFontList->Init();
     }
-    return m_pFreetypeFontList.get();
+    return m_pGenericFontList.get();
 }
 
-psp::PrintFontManager* GenericUnixSalData::GetPrintFontManager()
+FontConfigManager* GenericUnixSalData::GetFontConfigManager()
 {
-    if (!m_pPrintFontManager)
-        m_pPrintFontManager.reset(new psp::PrintFontManager);
-    return m_pPrintFontManager.get();
+    if (!m_pFontConfigManager)
+        m_pFontConfigManager.reset(new FontConfigManager);
+    return m_pFontConfigManager.get();
 }
 #endif
 

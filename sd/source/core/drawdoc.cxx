@@ -280,6 +280,9 @@ SdDrawDocument::SdDrawDocument(DocumentType eType, SfxObjectShell* pDrDocSh)
 
     if (mpDocSh)
     {
+        // Setting the LinkManager also installs the fill bitmap link tracker,
+        // so deferred remote fills on shapes, page backgrounds and the
+        // Background style are registered per host as they are set.
         SetLinkManager( new sfx2::LinkManager(mpDocSh) );
     }
 
@@ -1239,9 +1242,8 @@ void SdDrawDocument::UpdateAllLinks()
     if (s_pDocLockedInsertingLinks || !m_pLinkManager)
         return;
 
-    // Register links for fill bitmap items (e.g. slide background images)
-    // with unresolved remote URLs, before checking whether the link list is empty.
-    registerFillBitmapLinks(*this, *m_pLinkManager);
+    // Draw-layer fill bitmaps (shapes and slide/page backgrounds) are tracked
+    // per host by the model's sdr::FillBitmapLinkTracker as they are set.
 
     // Register links for form controls with deferred remote ImageURL
     ::sd::DrawDocShell* pDocShell = GetDocSh();

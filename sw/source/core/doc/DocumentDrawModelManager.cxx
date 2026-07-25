@@ -127,6 +127,9 @@ void DocumentDrawModelManager::InitDrawModel()
 
     // Set the LinkManager in the model so that linked graphics can be inserted.
     // The WinWord import needs it too.
+    // Setting it also installs the draw model's fill bitmap link tracker, so
+    // deferred remote fills on draw-layer shapes are registered per SdrObject
+    // as they are set.
     mpDrawModel->SetLinkManager( & m_rDoc.getIDocumentLinksAdministration().GetLinkManager() );
     mpDrawModel->SetAddExtLeading( m_rDoc.getIDocumentSettingAccess().get(DocumentSettingId::ADD_EXT_LEADING) );
 

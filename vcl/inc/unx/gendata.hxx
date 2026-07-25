@@ -14,11 +14,11 @@
 #include <memory>
 
 #ifndef IOS
-class FreetypeFontList;
+class GenericFontList;
+class FontConfigManager;
 
 namespace psp
 {
-class PrintFontManager;
 class PrinterInfoManager;
 }
 
@@ -39,15 +39,15 @@ public:
 #endif
 
 // This class is kind of a misnomer. What this class is mainly about is the
-// usage of Freetype and Fontconfig, which happens to match all *nix backends;
+// usage of Fontconfig, which happens to match all *nix backends;
 // except that the osx and ios backends are *nix but don't use this.
 class VCL_PLUGIN_PUBLIC GenericUnixSalData : public SalData
 {
 #ifndef IOS
     friend class ::psp::PrinterInfoManager;
 
-    std::unique_ptr<FreetypeFontList> m_pFreetypeFontList;
-    std::unique_ptr<psp::PrintFontManager> m_pPrintFontManager;
+    std::unique_ptr<GenericFontList> m_pGenericFontList;
+    std::unique_ptr<FontConfigManager> m_pFontConfigManager;
     std::unique_ptr<psp::PrinterInfoManager> m_pPrinterInfoManager;
 #endif
 
@@ -56,8 +56,8 @@ public:
     virtual ~GenericUnixSalData() override;
 
 #ifndef IOS
-    FreetypeFontList* GetFreetypeFontList();
-    psp::PrintFontManager* GetPrintFontManager();
+    GenericFontList* GetGenericFontList();
+    FontConfigManager* GetFontConfigManager();
 #endif
 };
 

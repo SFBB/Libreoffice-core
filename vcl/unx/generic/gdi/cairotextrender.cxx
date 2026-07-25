@@ -22,7 +22,7 @@
 #include <comphelper/scopeguard.hxx>
 #include <unx/cairotextrender.hxx>
 #include <unx/font/fc_fontoptions.hxx>
-#include <unx/font/freetype_glyphcache.hxx>
+#include <unx/font/GenericFont.hxx>
 #include <unx/gendata.hxx>
 #include <headless/CairoCommon.hxx>
 #include <vcl/svapp.hxx>
@@ -41,20 +41,18 @@
 
 namespace {
 
-typedef struct FT_FaceRec_* FT_Face;
-
 class CairoFontsCache : public CacheOwner
 {
 public:
     struct CacheId
     {
-        FT_Face maFace;
+        const void* mpFace;
         const FontConfigFontOptions *mpOptions;
         bool mbEmbolden;
         bool mbVerticalMetrics;
         bool operator ==(const CacheId& rOther) const
         {
-            return maFace == rOther.maFace &&
+            return mpFace == rOther.mpFace &&
                 mpOptions == rOther.mpOptions &&
                 mbEmbolden == rOther.mbEmbolden &&
                 mbVerticalMetrics == rOther.mbVerticalMetrics;
@@ -259,11 +257,10 @@ static void ApplyFont(cairo_t* cr, const CairoFontsCache::CacheId& rId, double n
 
 static CairoFontsCache::CacheId makeCacheId(const GenericSalLayout& rLayout)
 {
-    const FreetypeFont& rFont = static_cast<const FreetypeFont&>(rLayout.GetFont());
+    const GenericFont& rFont = static_cast<const GenericFont&>(rLayout.GetFont());
 
-    FT_Face aFace = rFont.GetFtFace();
     CairoFontsCache::CacheId aId;
-    aId.maFace = aFace;
+    aId.mpFace = rFont.GetFontFace();
     aId.mpOptions = rFont.GetFontOptions();
     aId.mbEmbolden = rFont.NeedsArtificialBold();
     aId.mbVerticalMetrics = false;

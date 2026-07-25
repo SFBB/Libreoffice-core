@@ -21,5 +21,8 @@
     <office:text>
       <text:p text:style-name="P1">Paragraph with remote background image.</text:p>
     </office:text>
+    <office:text>
+      <text:p text:style-name="P1">Another paragraph with remote background image.</text:p>
+    </office:text>
   </office:body>
 </office:document>

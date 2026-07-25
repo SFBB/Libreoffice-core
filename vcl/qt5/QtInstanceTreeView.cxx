@@ -16,6 +16,7 @@
 #include <vcl/qt/QtUtils.hxx>
 
 #include <QtWidgets/QHeaderView>
+#include <QtWidgets/QScrollBar>
 #include <QtWidgets/QToolTip>
 
 // Property used to store the supported roles for each of the columns
@@ -40,6 +41,12 @@ QtInstanceTreeView::QtInstanceTreeView(QTreeView* pTreeView)
             &QtInstanceTreeView::handleDataChanged);
     connect(m_pTreeView, &QTreeView::collapsed, this, &QtInstanceTreeView::signalCollapsing);
     connect(m_pTreeView, &QTreeView::expanded, this, &QtInstanceTreeView::signalExpanding);
+
+    if (QScrollBar* pVerticalScrollBar = m_pTreeView->verticalScrollBar())
+    {
+        connect(pVerticalScrollBar, &QScrollBar::valueChanged, this,
+                &QtInstanceTreeView::signalVisibleRangeChanged);
+    }
 
     assert(m_pTreeView->viewport());
     m_pTreeView->viewport()->installEventFilter(this);
@@ -473,9 +480,29 @@ void QtInstanceTreeView::all_foreach(const std::function<bool(weld::TreeIter&)>&
     }
 }
 
-void QtInstanceTreeView::visible_foreach(const std::function<bool(weld::TreeIter&)>&)
+void QtInstanceTreeView::visible_foreach(const std::function<bool(weld::TreeIter&)>& func)
 {
-    assert(false && "Not implemented yet");
+    SolarMutexGuard g;
+
+    GetQtInstance().RunInMainThread([&] {
+        const QModelIndex aFirstVisibleIndex = m_pTreeView->indexAt(QPoint(0, 0));
+        if (!aFirstVisibleIndex.isValid())
+            return;
+
+        const int nViewportHeight = m_pTreeView->viewport()->height();
+        QtInstanceTreeIter aIter = treeIter(aFirstVisibleIndex);
+        QRect aEntryRect = m_pTreeView->visualRect(aIter.modelIndex());
+        while (aEntryRect.isValid() && aEntryRect.y() < nViewportHeight)
+        {
+            if (func(aIter))
+                return;
+
+            if (!iter_next(aIter))
+                return;
+
+            aEntryRect = m_pTreeView->visualRect(aIter.modelIndex());
+        }
+    });
 }
 
 void QtInstanceTreeView::bulk_insert_for_each(
@@ -933,6 +960,12 @@ void QtInstanceTreeView::setColumnRoles(QTreeView& rTreeView,
 
 bool QtInstanceTreeView::eventFilter(QObject* pObject, QEvent* pEvent)
 {
+    if (pEvent->type() == QEvent::Resize && pObject == m_pTreeView->viewport())
+    {
+        handleResizeEvent();
+        return false;
+    }
+
     if (pEvent->type() == QEvent::ToolTip && pObject == m_pTreeView->viewport())
         return handleViewPortToolTipEvent(static_cast<QHelpEvent&>(*pEvent));
 
@@ -1054,6 +1087,13 @@ void QtInstanceTreeView::signalExpanding(const QModelIndex& rIndex)
     SolarMutexGuard g;
 
     signal_expanding(treeIter(rIndex));
+}
+
+void QtInstanceTreeView::signalVisibleRangeChanged()
+{
+    SolarMutexGuard g;
+
+    signal_visible_range_changed();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

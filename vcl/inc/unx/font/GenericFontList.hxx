@@ -21,57 +21,46 @@
 
 #include <sal/config.h>
 
-#include <memory>
-#include <freetype/config/ftheader.h>
-#include FT_FREETYPE_H
-#include FT_GLYPH_H
+#include <unx/font/GenericFontFace.hxx>
 
 #include <o3tl/sorted_vector.hxx>
 #include <rtl/ref.hxx>
 #include <vcl/dllapi.h>
-#include <vcl/outdev.hxx>
 
 #include <fontattributes.hxx>
-#include <font/FontMetricData.hxx>
-#include <glyphid.hxx>
 
+#include <memory>
 #include <string_view>
 #include <unordered_map>
 
-class FreetypeFontFace;
-class FreetypeFontFile;
 namespace vcl::font
 {
 class PhysicalFontCollection;
 }
 
+int GetDefaultAntiAliasPrio();
+
  /**
-  * The FreetypeFontList is the list of the fonts we know about.
+  * The GenericFontList is the list of the fonts we know about.
   *
-  * It enumerates them from fontconfig, maps a font id to the FreetypeFontFace
-  * for it, and keeps the mmapped font files those faces read from. The faces it
-  * hands to a PhysicalFontCollection are the very same objects, shared by every
-  * collection.
-  *
-  * The resources are:
-  *   FreetypeFontFile = holds the mmapped font file, as long as it's used by any face.
-  *   FreetypeFontFace = holds the FT_FaceRec_ object, as long as it's used by any FreetypeFont.
-  *   FreetypeFont     = holds the FT_SizeRec_; it is the Freetype LogicalFontInstance.
+  * It enumerates them from fontconfig and maps a font id to the GenericFontFace
+  * for it. The faces it hands to a PhysicalFontCollection are the very same
+  * objects, shared by every collection.
   **/
-class VCL_DLLPUBLIC FreetypeFontList final
+class VCL_DLLPUBLIC GenericFontList final
 {
 public:
-    FreetypeFontList(const FreetypeFontList&) = delete;
-    FreetypeFontList& operator=(const FreetypeFontList&) = delete;
+    GenericFontList(const GenericFontList&) = delete;
+    GenericFontList& operator=(const GenericFontList&) = delete;
 
-    SAL_DLLPRIVATE ~FreetypeFontList();
+    SAL_DLLPRIVATE ~GenericFontList();
 
-    static FreetypeFontList& get();
+    static GenericFontList& get();
 
     bool                    AddFontFile(std::u16string_view rFileUrl, const OUString& rFontName);
     void                    RemoveFontFile(std::u16string_view rFileUrl);
 
-    const FreetypeFontFace* FindFontFace(const OString& rFileName, int nFaceNum,
+    const GenericFontFace* FindFontFace(const OString& rFileName, int nFaceNum,
                                          int nVariationNum) const;
 
     SAL_DLLPRIVATE void     AnnounceFonts( vcl::font::PhysicalFontCollection* ) const;
@@ -79,21 +68,17 @@ public:
 private:
     // to access the constructor
     friend class GenericUnixSalData;
-    SAL_DLLPRIVATE explicit FreetypeFontList();
+    SAL_DLLPRIVATE explicit GenericFontList();
 
     SAL_DLLPRIVATE void Init();
 
-    SAL_DLLPRIVATE static void InitFreetype();
-    SAL_DLLPRIVATE FreetypeFontFile* FindFontFile(const OString& rNativeFileName);
     SAL_DLLPRIVATE void AddFontFace(const FontAttributes& rDFA, const OString& rFileName,
                                     int nFaceNum, int nVariationNum);
 
-    typedef std::unordered_map<sal_IntPtr, rtl::Reference<FreetypeFontFace>> FontFaceList;
-    typedef std::unordered_map<const char*, std::unique_ptr<FreetypeFontFile>, rtl::CStringHash, rtl::CStringEqual> FontFileList;
+    typedef std::unordered_map<sal_IntPtr, rtl::Reference<GenericFontFace>> FontFaceList;
 
     sal_IntPtr              m_nNextFontId = 1;
     FontFaceList            m_aFontFaceList;
-    FontFileList            m_aFontFileList;
     std::unordered_map<OString, o3tl::sorted_vector<sal_IntPtr>> m_aFontFileToFontId;
 };
 

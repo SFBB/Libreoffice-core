@@ -131,8 +131,10 @@ void ScDocument::InitDrawLayer( ScDocShell* pDocShell )
         aName = mpShell->GetTitle();
     mpDrawLayer.reset(new ScDrawLayer( this, aName ));
 
-    sfx2::LinkManager* pMgr = GetDocLinkManager().getLinkManager(bAutoCalc);
-    if (pMgr)
+    // Create the LinkManager up front (not gated on bAutoCalc) so the draw
+    // layer can register fill bitmap links as shapes are imported. Setting it
+    // also installs SdrModel's fill bitmap link tracker.
+    if (sfx2::LinkManager* pMgr = GetDocLinkManager().getLinkManager(true))
         mpDrawLayer->SetLinkManager(pMgr);
 
     // set DrawingLayer's SfxItemPool at Calc's SfxItemPool as

@@ -41,21 +41,21 @@ using namespace psp;
 /*
  *  one instance only
  */
-PrintFontManager& PrintFontManager::get()
+FontConfigManager& FontConfigManager::get()
 {
     GenericUnixSalData* const pSalData(GetGenericUnixSalData());
     assert(pSalData);
-    return *pSalData->GetPrintFontManager();
+    return *pSalData->GetFontConfigManager();
 }
 
 /*
- *  the PrintFontManager
+ *  the FontConfigManager
  */
 
-PrintFontManager::PrintFontManager()
-    : m_aFontInstallerTimer("PrintFontManager m_aFontInstallerTimer")
+FontConfigManager::FontConfigManager()
+    : m_aFontInstallerTimer("FontConfigManager m_aFontInstallerTimer")
 {
-    m_aFontInstallerTimer.SetInvokeHandler(LINK(this, PrintFontManager, autoInstallFontLangSupport));
+    m_aFontInstallerTimer.SetInvokeHandler(LINK(this, FontConfigManager, autoInstallFontLangSupport));
     m_aFontInstallerTimer.SetTimeout(5000);
 
     initFontconfig();
@@ -79,23 +79,23 @@ PrintFontManager::PrintFontManager()
     }
 
     // this also filters the fontconfig font set, so it has to run before anything
-    // can match against it; FreetypeFontList takes the fonts off our hands
+    // can match against it; GenericFontList takes the fonts off our hands
     collectSystemFonts();
 }
 
-PrintFontManager::~PrintFontManager()
+FontConfigManager::~FontConfigManager()
 {
     m_aFontInstallerTimer.Stop();
     deinitFontconfig();
 }
 
-std::vector<FontconfigFont> PrintFontManager::addFontFile(const OString& rFile)
+std::vector<FontconfigFont> FontConfigManager::addFontFile(const OString& rFile)
 {
     addFontconfigFile(rFile);
     return fontsFromFontconfigFile(rFile);
 }
 
-void PrintFontManager::removeFontFile(std::string_view rFile)
+void FontConfigManager::removeFontFile(std::string_view rFile)
 {
     removeFontconfigFile(rFile);
 }
