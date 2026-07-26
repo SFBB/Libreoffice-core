@@ -44,8 +44,6 @@ private:
     std::unique_ptr<weld::Button> m_xBtnOk;
     std::unique_ptr<weld::Button> m_xBtnCancel;
 
-    void            Init();
-
     DECL_LINK( CancelBtnHdl, weld::Button&, void );
     DECL_LINK( OkBtnHdl, weld::Button&, void );
 
@@ -54,7 +52,7 @@ protected:
     virtual void    RefInputDone( bool bForced = false ) override;
 
 public:
-                    ScSimpleRefDlg( SfxBindings* pB, SfxChildWindow* pCW, weld::Window* pParent);
+    ScSimpleRefDlg(SfxBindings& rBindings, SfxChildWindow* pCW, weld::Window* pParent);
     virtual        ~ScSimpleRefDlg() override;
 
     virtual void    SetReference( const ScRange& rRef, ScDocument& rDoc ) override;

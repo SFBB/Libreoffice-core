@@ -32,11 +32,18 @@
 #include <vcl/virdev.hxx>
 #include <unotxdoc.hxx>
 
+#include <com/sun/star/container/XNameContainer.hpp>
 #include <com/sun/star/document/UpdateDocMode.hpp>
+#include <com/sun/star/style/XStyleFamiliesSupplier.hpp>
 #include <sfx2/linkmgr.hxx>
+#include <svx/fillbitmaplink.hxx>
+#include <svx/xbtmpit.hxx>
+#include <svx/xdef.hxx>
+#include <ndtxt.hxx>
 #include <view.hxx>
 #include <IDocumentLayoutAccess.hxx>
 #include <IDocumentLinksAdministration.hxx>
+#include <IDocumentUndoRedo.hxx>
 #include <rootfrm.hxx>
 #include <pagefrm.hxx>
 #include <docsh.hxx>
@@ -932,6 +939,102 @@ CPPUNIT_TEST_FIXTURE(SwTiledRenderingTest, testParagraphStyleBackgroundImageRemo
     pDevice->SetOutputSizePixel(Size(1024, 1024));
     static_cast<SwViewShell*>(pWrtShell)->Paint(
         *pDevice, tools::Rectangle(Point(0, 0), pWrtShell->GetLayout()->getFrameArea().SSize()));
+}
+
+CPPUNIT_TEST_FIXTURE(SwTiledRenderingTest, testParagraphStyleDeleteReleasesBackgroundImageLink)
+{
+    // Deleting the paragraph style that carries the remote background must
+    // drop the style's entry from the link manager, so Edit > Links no
+    // longer offers a link whose target style is gone.
+    comphelper::LibreOfficeKit::setActive(false);
+
+    uno::Sequence<beans::PropertyValue> aParams = {
+        comphelper::makePropertyValue(u"UpdateDocMode"_ustr,
+                                      sal_Int16(css::document::UpdateDocMode::NO_UPDATE)),
+    };
+    loadFromFile(u"paragraph-style-background-link.fodt", aParams);
+
+    SwDocShell* pDocShell = getSwDocShell();
+    sfx2::LinkManager& rLinkMgr
+        = pDocShell->GetDoc()->getIDocumentLinksAdministration().GetLinkManager();
+    CPPUNIT_ASSERT_MESSAGE("paragraph-style background image link should be registered",
+                           !rLinkMgr.GetLinks().empty());
+
+    uno::Reference<style::XStyleFamiliesSupplier> xSupplier(mxComponent, uno::UNO_QUERY);
+    uno::Reference<container::XNameContainer> xParaStyles(
+        xSupplier->getStyleFamilies()->getByName(u"ParagraphStyles"_ustr), uno::UNO_QUERY);
+    xParaStyles->removeByName(u"LinkBackground"_ustr);
+
+    CPPUNIT_ASSERT_MESSAGE("deleting the style should release its link",
+                           rLinkMgr.GetLinks().empty());
+}
+
+CPPUNIT_TEST_FIXTURE(SwTiledRenderingTest, testParagraphDeleteReleasesBackgroundImageLink)
+{
+    // Joining away a paragraph with its own remote background must drop that
+    // paragraph's entry from the link manager once the undo history no
+    // longer keeps the deleted paragraph alive.
+    comphelper::LibreOfficeKit::setActive(false);
+
+    uno::Sequence<beans::PropertyValue> aParams = {
+        comphelper::makePropertyValue(u"UpdateDocMode"_ustr,
+                                      sal_Int16(css::document::UpdateDocMode::NO_UPDATE)),
+    };
+    loadFromFile(u"two-paragraph-background-links.fodt", aParams);
+
+    SwDocShell* pDocShell = getSwDocShell();
+    sfx2::LinkManager& rLinkMgr
+        = pDocShell->GetDoc()->getIDocumentLinksAdministration().GetLinkManager();
+    CPPUNIT_ASSERT_EQUAL(size_t(2), rLinkMgr.GetLinks().size());
+
+    // forward-delete at the end of the first paragraph joins the second
+    // paragraph into it
+    SwWrtShell* pWrtShell = pDocShell->GetWrtShell();
+    pWrtShell->SttEndDoc(/*bStt=*/true);
+    pWrtShell->EndPara();
+    pWrtShell->DelRight();
+
+    // the deleted paragraph may survive in the undo history and keep its
+    // link until the history lets go of it
+    pDocShell->GetDoc()->GetIDocumentUndoRedo().DelAllUndoObj();
+
+    CPPUNIT_ASSERT_EQUAL(size_t(1), rLinkMgr.GetLinks().size());
+}
+
+CPPUNIT_TEST_FIXTURE(SwTiledRenderingTest, testBackgroundImageLinkSurvivesUpdate)
+{
+    // Resolving a paragraph's remote background must write the graphic back
+    // to that paragraph and keep the link registered, like the resolved
+    // drawing-layer links, so Edit > Links can still update or break it.
+    comphelper::LibreOfficeKit::setActive(false);
+
+    uno::Sequence<beans::PropertyValue> aParams = {
+        comphelper::makePropertyValue(u"UpdateDocMode"_ustr,
+                                      sal_Int16(css::document::UpdateDocMode::NO_UPDATE)),
+    };
+    loadFromFile(u"two-paragraph-background-links.fodt", aParams);
+
+    SwDocShell* pDocShell = getSwDocShell();
+    sfx2::LinkManager& rLinkMgr
+        = pDocShell->GetDoc()->getIDocumentLinksAdministration().GetLinkManager();
+    CPPUNIT_ASSERT_EQUAL(size_t(2), rLinkMgr.GetLinks().size());
+
+    // deliver a locally loadable graphic to both links, standing in for the
+    // arrival of the remote data
+    uno::Any aFetched(createFileURL(u"fill.png"));
+    rLinkMgr.GetLinks()[0]->DataChanged(u"image/png"_ustr, aFetched);
+    rLinkMgr.GetLinks()[1]->DataChanged(u"image/png"_ustr, aFetched);
+
+    CPPUNIT_ASSERT_EQUAL(size_t(2), rLinkMgr.GetLinks().size());
+
+    // the write-back resolved both paragraphs' items
+    SwWrtShell* pWrtShell = pDocShell->GetWrtShell();
+    pWrtShell->SttEndDoc(/*bStt=*/true);
+    SwTextNode* pFirst = pWrtShell->GetCursor()->GetPointNode().GetTextNode();
+    CPPUNIT_ASSERT(pFirst);
+    const XFillBitmapItem* pItem = pFirst->GetSwAttrSet().GetItemIfSet(XATTR_FILLBITMAP, false);
+    CPPUNIT_ASSERT(pItem);
+    CPPUNIT_ASSERT(getDeferredOriginURL(*pItem).isEmpty());
 }
 
 CPPUNIT_TEST_FIXTURE(SwTiledRenderingTest, testPageBackgroundImageRemoteNotFetched)

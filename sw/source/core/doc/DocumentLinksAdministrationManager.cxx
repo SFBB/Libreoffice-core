@@ -221,6 +221,8 @@ void DocumentLinksAdministrationManager::UpdateLinks()
     registerDeferredFormImageLinks(pShell->GetDeferredFormControlImages(), GetLinkManager());
     pShell->ClearDeferredFormControlImages();
 
+    if (GetLinkManager().GetLinks().empty())
+        return;
     sal_uInt16 nLinkMode = m_rDoc.GetDocumentSettingManager().getLinkUpdateMode(true);
     sal_uInt16 nUpdateDocMode = pShell->GetUpdateDocMode();
     if (nLinkMode == NEVER && nUpdateDocMode != document::UpdateDocMode::FULL_UPDATE)
@@ -424,12 +426,14 @@ void DocumentLinksAdministrationManager::onFillBitmapURLChanged(SwFormat& rForma
                                                                 std::u16string_view rNewURL)
 {
     m_pFillBitmapLinkTracker->onFillBitmapURLChanged(rFormat, rNewURL);
+    m_rDoc.SetHasFillBitmapLinks(m_pFillBitmapLinkTracker->hasLinks());
 }
 
 void DocumentLinksAdministrationManager::onFillBitmapURLChanged(SwContentNode& rNode,
                                                                 std::u16string_view rNewURL)
 {
     m_pFillBitmapLinkTracker->onFillBitmapURLChanged(rNode, rNewURL);
+    m_rDoc.SetHasFillBitmapLinks(m_pFillBitmapLinkTracker->hasLinks());
 }
 
 DocumentLinksAdministrationManager::~DocumentLinksAdministrationManager()
