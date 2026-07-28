@@ -5215,6 +5215,37 @@ fi
 AC_SUBST(USE_LD)
 AC_SUBST(LD)
 
+dnl ===================================================================
+dnl Check whether the linker supports -debug:fastlink, which links debug
+dnl builds faster. link.exe offered it from VS 2017 to VS 2022 and dropped it
+dnl in the VS 2026 toolset; lld-link never had it. Both then warn on every
+dnl link and fall back to -debug:full, so probe the linker that will be used,
+dnl and only pass the flag when it takes it silently.
+dnl ===================================================================
+HAVE_LINK_DEBUG_FASTLINK=
+if test "$_os" = "WINNT"; then
+    AC_MSG_CHECKING([whether the linker supports -debug:fastlink])
+    if test -n "$LLD_LINK"; then
+        fastlink_linker=$LLD_LINK
+    else
+        dnl PATH doesn't cover the MSVC tools yet; link.exe sits next to cl.exe
+        fastlink_linker=`win_short_path_for_make "$MSVC_HOST_PATH/link.exe"`
+    fi
+    dnl the link fails on the missing input file, and any mention of the flag in
+    dnl the output is a complaint about the flag itself: not being able to use it
+    if "$fastlink_linker" -debug:fastlink conftest-nonexistent.obj 2>&1 | grep -iq "debug:fastlink"; then
+        HAVE_LINK_DEBUG_FASTLINK=
+    else
+        HAVE_LINK_DEBUG_FASTLINK=TRUE
+    fi
+    if test -n "$HAVE_LINK_DEBUG_FASTLINK"; then
+        AC_MSG_RESULT([yes])
+    else
+        AC_MSG_RESULT([no])
+    fi
+fi
+AC_SUBST(HAVE_LINK_DEBUG_FASTLINK)
+
 HAVE_LD_BSYMBOLIC_FUNCTIONS=
 if test "$GCC" = "yes" -a "$_os" != Emscripten ; then
     AC_MSG_CHECKING([for -Bsymbolic-functions linker support])

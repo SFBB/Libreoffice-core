@@ -27,6 +27,9 @@
 
 #include <vcl/weld/Button.hxx>
 #include <vcl/weld/CheckButton.hxx>
+#include <vcl/weld/ComboBox.hxx>
+#include <vcl/weld/Expander.hxx>
+#include <vcl/weld/ScrolledWindow.hxx>
 
 #include <memory>
 #include <deque>
@@ -180,7 +183,7 @@ private:
 class ScSpecialFilterDlg : public ScAnyRefDlgController
 {
 public:
-    ScSpecialFilterDlg(SfxBindings* pB, SfxChildWindow* pCW, weld::Window* pParent,
+    ScSpecialFilterDlg(SfxBindings& rBindings, SfxChildWindow* pCW, weld::Window* pParent,
                        ScViewData& rData, const SfxItemSet& rArgSet);
     virtual ~ScSpecialFilterDlg() override;
 
@@ -192,17 +195,17 @@ public:
     virtual void    Close() override;
 
 private:
-    const OUString aStrUndefined;
+    const OUString m_aStrUndefined;
 
-    std::unique_ptr<ScFilterOptionsMgr> pOptionsMgr;
+    std::unique_ptr<ScFilterOptionsMgr> m_pOptionsMgr;
 
-    const sal_uInt16    nWhichQuery;
-    const ScQueryParam  theQueryData;
-    std::unique_ptr<ScQueryItem> pOutItem;
-    ScViewData&         rViewData;
-    ScDocument&         rDoc;
+    const sal_uInt16 m_nWhichQuery;
+    const ScQueryParam m_theQueryData;
+    std::unique_ptr<ScQueryItem> m_pOutItem;
+    ScViewData& m_rViewData;
+    ScDocument& m_rDoc;
 
-    bool                bRefInputMode;
+    bool m_bRefInputMode;
 
     formula::RefEdit* m_pRefInputEdit;
 
