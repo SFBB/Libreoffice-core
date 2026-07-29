@@ -56,10 +56,8 @@
 
 #include <acccfg.hxx>
 #include <cfg.hxx>
-#include <CustomNotebookbarGenerator.hxx>
 #include <SvxMenuConfigPage.hxx>
 #include <SvxToolbarConfigPage.hxx>
-#include <SvxNotebookbarConfigPage.hxx>
 #include <SvxConfigPageHelper.hxx>
 #include "eventdlg.hxx"
 #include <dialmgr.hxx>
@@ -187,13 +185,7 @@ static std::unique_ptr<SfxTabPage> CreateKeyboardConfigPage( weld::Container* pP
 {
        return std::make_unique<SfxAcceleratorConfigPage>(pPage, pController, *rSet);
 }
-/*
-static std::unique_ptr<SfxTabPage> CreateSvxNotebookbarConfigPage(weld::Container* pPage, weld::DialogController* pController,
-                                                         const SfxItemSet* rSet)
-{
-    return std::make_unique<SvxNotebookbarConfigPage>(pPage, pController, *rSet);
-}
-*/
+
 static std::unique_ptr<SfxTabPage> CreateSvxToolbarConfigPage( weld::Container* pPage, weld::DialogController* pController, const SfxItemSet* rSet )
 {
     return std::make_unique<SvxToolbarConfigPage>(pPage, pController, *rSet);
@@ -220,9 +212,6 @@ SvxConfigDialog::SvxConfigDialog(weld::Window * pParent, const SfxItemSet* pInSe
                RID_L + RID_TAB_MENUS.sIconName);
     AddTabPage(u"toolbars"_ustr, TabResId(RID_TAB_TOOLBARS.aLabel), CreateSvxToolbarConfigPage,
                RID_L + RID_TAB_TOOLBARS.sIconName);
-    // adding labels to the NB categories for tdf#166641 breaks the customization
-//    AddTabPage(u"notebookbar"_ustr, TabResId(RID_TAB_NOTEBOOKBARS.aLabel),
-//               CreateSvxNotebookbarConfigPage, RID_L + RID_TAB_NOTEBOOKBARS.sIconName);
     AddTabPage(u"contextmenus"_ustr, TabResId(RID_TAB_CONTEXTMENUS.aLabel),
                CreateSvxContextMenuConfigPage, RID_L + RID_TAB_CONTEXTMENUS.sIconName);
     AddTabPage(u"keyboard"_ustr, TabResId(RID_TAB_KEYBOARD.aLabel), CreateKeyboardConfigPage,
@@ -1028,8 +1017,6 @@ SvxConfigPage::SvxConfigPage(weld::Container* pPage, weld::DialogController* pCo
     , m_xAddCommandButton(m_xBuilder->weld_button(u"add"_ustr))
     , m_xRemoveCommandButton(m_xBuilder->weld_button(u"remove"_ustr))
 {
-    CustomNotebookbarGenerator::getFileNameAndAppName(m_sAppName, m_sFileName);
-
     m_xTopLevelListBox->connect_changed(LINK(this, SvxConfigPage, SelectElementHdl));
 
     weld::TreeView& rTreeView = m_xFunctions->get_widget();

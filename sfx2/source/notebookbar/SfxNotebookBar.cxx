@@ -18,7 +18,6 @@
 #include <sfx2/sfxsids.hrc>
 #include <sfx2/weldutils.hxx>
 #include <comphelper/processfactory.hxx>
-#include <comphelper/lok.hxx>
 #include <com/sun/star/frame/UnknownModuleException.hpp>
 #include <com/sun/star/frame/XLayoutManager.hpp>
 #include <officecfg/Office/UI/ToolbarMode.hxx>
@@ -49,9 +48,6 @@ static void NotebookbarAddonValues(
     std::vector<css::uno::Sequence<css::uno::Sequence<css::beans::PropertyValue>>>&
         aExtensionValues)
 {
-    if (comphelper::LibreOfficeKit::isActive())
-        return;
-
     framework::AddonsOptions aAddonsItems;
 
     for (int nIdx = 0; nIdx < aAddonsItems.GetAddonsNotebookBarCount(); nIdx++)
@@ -339,11 +335,10 @@ bool SfxNotebookBar::StateMethod(SystemWindow* pSysWindow,
         const Reference<frame::XModuleManager> xModuleManager  = frame::ModuleManager::create( xContext );
         OUString aModuleName = xModuleManager->identify( xFrame );
         vcl::EnumContext::Application eApp = vcl::EnumContext::GetApplicationEnum( aModuleName );
-        bool bIsLOK = comphelper::LibreOfficeKit::isActive();
 
-        OUString sFile = lcl_getNotebookbarFileName( eApp );
+        const OUString sFile = lcl_getNotebookbarFileName(eApp);
 
-        OUString sNewFile = rUIFile + sFile;
+        const OUString sNewFile = rUIFile + sFile;
         OUString sCurrentFile;
         VclPtr<NotebookBar> pNotebookBar = pSysWindow->GetNotebookBar();
         if ( pNotebookBar )
@@ -351,24 +346,17 @@ bool SfxNotebookBar::StateMethod(SystemWindow* pSysWindow,
 
         bool bChangedFile = sNewFile != sCurrentFile;
 
-        if (!bIsLOK && (
-                (!sFile.isEmpty() && bChangedFile) ||
-                (!pNotebookBar || !pNotebookBar->IsVisible()) ||
-                bReloadNotebookbar))
+        if ((!sFile.isEmpty() && bChangedFile) || (!pNotebookBar || !pNotebookBar->IsVisible())
+            || bReloadNotebookbar)
         {
-            OUString aBuf = rUIFile + sFile;
-
             //Addons For Notebookbar
             std::vector<Image> aImageValues;
             std::vector<css::uno::Sequence< css::uno::Sequence< css::beans::PropertyValue > > > aExtensionValues;
-            std::unique_ptr<NotebookBarAddonsItem> pNotebookBarAddonsItem;
-            if (!bIsLOK)
-            {
-                pNotebookBarAddonsItem = std::make_unique<NotebookBarAddonsItem>();
-                NotebookbarAddonValues(aImageValues , aExtensionValues);
-                pNotebookBarAddonsItem->aAddonValues = std::move(aExtensionValues);
-                pNotebookBarAddonsItem->aImageValues = std::move(aImageValues);
-            }
+            std::unique_ptr<NotebookBarAddonsItem> pNotebookBarAddonsItem
+                = std::make_unique<NotebookBarAddonsItem>();
+            NotebookbarAddonValues(aImageValues, aExtensionValues);
+            pNotebookBarAddonsItem->aAddonValues = std::move(aExtensionValues);
+            pNotebookBarAddonsItem->aImageValues = std::move(aImageValues);
 
             // tdf#164899 don't call SystemWindow::SetNotebookBar recursively
             // if NoteBookBar is in process of getting set
@@ -377,7 +365,8 @@ bool SfxNotebookBar::StateMethod(SystemWindow* pSysWindow,
 
             RemoveListeners(pSysWindow);
 
-            pSysWindow->SetNotebookBar(aBuf, xFrame, std::move(pNotebookBarAddonsItem), bReloadNotebookbar);
+            pSysWindow->SetNotebookBar(sNewFile, xFrame, std::move(pNotebookBarAddonsItem),
+                                       bReloadNotebookbar);
             pNotebookBar = pSysWindow->GetNotebookBar();
             pNotebookBar->Show();
 

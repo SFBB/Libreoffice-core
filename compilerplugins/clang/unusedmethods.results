@@ -120,8 +120,6 @@ cppuhelper/inc/interfacecontainer4.hxx:277
     void cppuhelper::OInterfaceContainerHelper4::NotifySingleListener::operator()(const Reference<type-parameter-?-?> &) const
 cui/source/dialogs/SpellAttrib.hxx:73
     _Bool svx::SpellErrorDescription::operator==(const struct svx::SpellErrorDescription &) const
-cui/source/inc/CustomNotebookbarGenerator.hxx:30
-     CustomNotebookbarGenerator::CustomNotebookbarGenerator()
 cui/source/inc/fileextcheckdlg.hxx:32
     void FileExtCheckDialog::LinkStubOnOkClick(void *,weld::Button &)
 cui/source/inc/fileextcheckdlg.hxx:32
@@ -132,8 +130,6 @@ cui/source/inc/GraphicsTestsDialog.hxx:48
     void GraphicsTestsDialog::HandleResultViewRequest(weld::Button &)
 cui/source/inc/GraphicsTestsDialog.hxx:48
     void GraphicsTestsDialog::LinkStubHandleResultViewRequest(void *,weld::Button &)
-cui/source/inc/SvxNotebookbarConfigPage.hxx:40
-    void SvxNotebookbarConfigPage::SetElement()
 dbaccess/source/filter/hsqldb/fbalterparser.hxx:19
     void dbahsql::FbAlterStmtParser::ensureProperTableLengths() const
 dbaccess/source/filter/hsqldb/parseschema.hxx:80
