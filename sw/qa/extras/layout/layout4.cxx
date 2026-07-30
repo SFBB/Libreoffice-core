@@ -1016,6 +1016,60 @@ CPPUNIT_TEST_FIXTURE(SwLayoutWriter4, testTdf57187_Tdf158900)
                 u"PortionType::Break");
 }
 
+CPPUNIT_TEST_FIXTURE(SwLayoutWriter4, testTdf168777_BlankBeforeFly)
+{
+    // Two underlined paragraphs wrapping around an anchored rectangle, saved by Word with its
+    // "underline trailing space" compatibility option on.
+    createSwDoc("tdf168777-blank-before-fly.docx");
+
+    // Whether a trailing blank shows its decorations is settled while painting.
+    getSwDocShell()->GetPreviewMetaFile();
+    xmlDocUniquePtr pXmlDoc = parseLayoutDump();
+
+    // The first line reads "Foo bar" with the rectangle in between, so the blank after "Foo" is a
+    // hole portion sitting in the middle of the line, before the fly, and there is room for it
+    // before the rectangle. Word decorates that blank, and so should we: only the hole made when
+    // the blanks do not fit the line was taught to show decorations, while the one that
+    // SwTextPortion::FormatEOL makes for a blank before a fly kept them off.
+    static constexpr OString sLine1 = "/root/page/body/txt[1]/SwParaPortion/SwLineLayout[1]"_ostr;
+    assertXPath(pXmlDoc, sLine1 + "/SwHolePortion[1]", "show-underline", u"true");
+
+    // The blanks at the end of the same line keep theirs, as before.
+    assertXPath(pXmlDoc, sLine1 + "/SwHolePortion[2]", "show-underline", u"true");
+}
+
+CPPUNIT_TEST_FIXTURE(SwLayoutWriter4, testTdf171688)
+{
+    // The line ends with an underlined word, and the blank after it is not underlined: it is the
+    // next word that gets wrapped, so the blank ends up in a hole portion of its own.
+    createSwDoc("tdf171688.fodt");
+    std::shared_ptr<GDIMetaFile> xMetaFile = getSwDocShell()->GetPreviewMetaFile();
+    MetafileXmlDump dumper;
+    xmlDocUniquePtr pXmlDoc = dumpAndParse(dumper, *xMetaFile);
+
+    // Without the fix the blank was drawn with the font of the word in front of it, so that word's
+    // underline looked like it ran past its end. A hole portion is not in the text group, so the
+    // painter used to leave the font of the previous portion in place for it.
+    assertXPath(pXmlDoc, "//textarray[@length='1']", 1);
+    assertXPath(pXmlDoc, "//textarray[@length='1']/preceding-sibling::font[1]", "underline", u"0");
+}
+
+CPPUNIT_TEST_FIXTURE(SwLayoutWriter4, testTdf171959_WrapArea)
+{
+    // Justified underlined text wrapping around a rectangle on the right. The blank that ends each
+    // wrapped line hangs outside the line, and the justification stretches the text right up to the
+    // rectangle, so the blank lands in the space reserved for the wrap.
+    createSwDoc("underline-in-wrap-area.fodt");
+    std::shared_ptr<GDIMetaFile> xMetaFile = getSwDocShell()->GetPreviewMetaFile();
+    MetafileXmlDump dumper;
+    xmlDocUniquePtr pXmlDoc = dumpAndParse(dumper, *xMetaFile);
+
+    // Three lines wrap against the rectangle, and each ends in such a blank. Without the fix they
+    // kept their underline, which was then drawn inside the reserved space.
+    assertXPath(pXmlDoc, "//textarray[@length='1']", 3);
+    assertXPath(pXmlDoc, "//textarray[@length='1'][preceding-sibling::font[1]/@underline!='0']", 0);
+}
+
 CPPUNIT_TEST_FIXTURE(SwLayoutWriter4, testTdf147666)
 {
     createSwDoc("tdf147666.odt");
