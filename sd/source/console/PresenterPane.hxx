@@ -39,12 +39,6 @@ public:
                   const ::rtl::Reference<PresenterController>& rpPresenterController);
     virtual ~PresenterPane() override;
 
-    // AbstractPane
-
-    css::uno::Reference<css::awt::XWindow> getWindow() override;
-
-    css::uno::Reference<css::rendering::XCanvas> getCanvas() override;
-
     // XWindowListener
 
     virtual void SAL_CALL windowResized(const css::awt::WindowEvent& rEvent) override;

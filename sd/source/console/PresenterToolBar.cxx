@@ -480,9 +480,6 @@ void SAL_CALL PresenterToolBar::windowPaint (const css::awt::PaintEvent& rEvent)
     if ( ! mxCanvas.is())
         return;
 
-    if ( ! mbIsPresenterViewActive)
-        return;
-
     const rendering::ViewState aViewState (
         geometry::AffineMatrix2D(1,0,0, 0,1,0),
         PresenterGeometryHelper::CreatePolygon(rEvent.UpdateRect, mxCanvas->getDevice()));
@@ -703,8 +700,8 @@ void PresenterToolBar::Layout()
     double nX (0);
     switch (meAnchor)
     {
-        case Left : nX = 0; break;
-        case Center: nX = (aWindowBox.Width - aTotalSize.Width - nTotalHorizontalGap) / 2; break;
+        case Anchor::Left : nX = 0; break;
+        case Anchor::Center: nX = (aWindowBox.Width - aTotalSize.Width - nTotalHorizontalGap) / 2; break;
     }
 
     // Place the parts.
@@ -942,7 +939,7 @@ PresenterToolBarView::PresenterToolBarView (
             mxWindow,
             mxCanvas,
             rpPresenterController,
-            PresenterToolBar::Center);
+            PresenterToolBar::Anchor::Center);
         mpToolBar->Initialize(u"PresenterScreenSettings/ToolBars/ToolBar"_ustr);
 
         if (mxWindow.is())

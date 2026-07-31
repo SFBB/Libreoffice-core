@@ -59,13 +59,10 @@ typedef cppu::ImplInheritanceHelper<
 */
 class PresenterToolBar
     : private ::cppu::BaseMutex,
-      public PresenterToolBarInterfaceBase,
-      public CachablePresenterView
+      public PresenterToolBarInterfaceBase
 {
 public:
-    typedef ::std::function<void ()> Action;
-
-    enum Anchor { Left, Center };
+    enum class Anchor { Left, Center };
 
     PresenterToolBar (
         const css::uno::Reference<css::uno::XComponentContext>& rxContext,
@@ -227,7 +224,6 @@ public:
     virtual css::uno::Reference<css::drawing::XDrawPage> SAL_CALL getCurrentPage() override;
 
 private:
-    //    css::uno::Reference<css::uno::XComponentContext> mxComponentContext;
     rtl::Reference<sd::framework::AbstractPane> mxPane;
     rtl::Reference<sd::framework::ResourceId> mxViewId;
     css::uno::Reference<css::awt::XWindow> mxWindow;

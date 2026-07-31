@@ -151,23 +151,6 @@ void PresenterViewFactory::disposing(std::unique_lock<std::mutex>&)
     if (mxConfigurationController.is())
         mxConfigurationController->removeResourceFactoryForReference(this);
     mxConfigurationController = nullptr;
-
-    if (mpResourceCache == nullptr)
-        return;
-
-    // Dispose all views in the cache.
-    for (const auto& rView : *mpResourceCache)
-    {
-        try
-        {
-            if (rView.second.first.is())
-                rView.second.first->dispose();
-        }
-        catch (lang::DisposedException&)
-        {
-        }
-    }
-    mpResourceCache.reset();
 }
 
 //----- XViewFactory ----------------------------------------------------------
@@ -180,15 +163,13 @@ rtl::Reference<sd::framework::AbstractResource> PresenterViewFactory::createReso
         throwIfDisposed(l);
     }
 
-    rtl::Reference<sd::framework::AbstractResource> xView;
+    rtl::Reference<sd::framework::AbstractView> xView;
 
     if (rxViewId.is())
     {
         rtl::Reference<sd::framework::AbstractPane> xAnchorPane = dynamic_cast<sd::framework::AbstractPane*>(
             mxConfigurationController->getResource(rxViewId->getAnchor()).get());
-        xView = GetViewFromCache(rxViewId, xAnchorPane);
-        if (xView == nullptr)
-            xView = CreateView(rxViewId, xAnchorPane);
+        xView = CreateView(rxViewId, xAnchorPane);
 
         // Activate the view.
         PresenterPaneContainer::SharedPaneDescriptor pDescriptor (
@@ -217,77 +198,23 @@ void PresenterViewFactory::releaseResource (const rtl::Reference<sd::framework::
     if (pDescriptor)
         pDescriptor->SetActivationState(false);
 
-    // Dispose only views that we can not put into the cache.
-    CachablePresenterView* pView = dynamic_cast<CachablePresenterView*>(rxView.get());
-    if (pView == nullptr || mpResourceCache == nullptr)
-    {
-        try
-        {
-            if (pView != nullptr)
-                pView->ReleaseView();
-            if (rxView.is())
-                rxView->dispose();
-        }
-        catch (lang::DisposedException&)
-        {
-            // Do not let disposed exceptions get out.  It might be interpreted
-            // as coming from the factory, which would then be removed from the
-            // drawing framework.
-        }
-    }
-    else
-    {
-        // Put cacheable views in the cache.
-        rtl::Reference<sd::framework::ResourceId> xViewId (rxView->getResourceId());
-        if (xViewId.is())
-        {
-            rtl::Reference<sd::framework::AbstractPane> xAnchorPane = dynamic_cast<sd::framework::AbstractPane*>(
-                mxConfigurationController->getResource(xViewId->getAnchor()).get());
-            (*mpResourceCache)[xViewId->getResourceURL()]
-                = ViewResourceDescriptor(dynamic_cast<sd::framework::AbstractView*>(rxView.get()), xAnchorPane);
-            pView->DeactivatePresenterView();
-        }
-    }
-}
-
-
-rtl::Reference<sd::framework::AbstractResource> PresenterViewFactory::GetViewFromCache(
-    const rtl::Reference<sd::framework::ResourceId>& rxViewId,
-    const rtl::Reference<sd::framework::AbstractPane>& rxAnchorPane) const
-{
-    if (mpResourceCache == nullptr)
-        return nullptr;
-
+    PresenterSlideShowView* pView = dynamic_cast<PresenterSlideShowView*>(rxView.get());
     try
     {
-        const OUString sResourceURL (rxViewId->getResourceURL());
-
-        // Can we use a view from the cache?
-        ResourceContainer::const_iterator iView (mpResourceCache->find(sResourceURL));
-        if (iView != mpResourceCache->end())
-        {
-            // The view is in the container but it can only be used if
-            // the anchor pane is the same now as it was at creation of
-            // the view.
-            if (iView->second.second == rxAnchorPane)
-            {
-                CachablePresenterView* pView
-                    = dynamic_cast<CachablePresenterView*>(iView->second.first.get());
-                if (pView != nullptr)
-                    pView->ActivatePresenterView();
-                return iView->second.first;
-            }
-
-            // Right view, wrong pane.  Create a new view.
-        }
+        if (pView != nullptr)
+            pView->ReleaseView();
+        if (rxView.is())
+            rxView->dispose();
     }
-    catch (RuntimeException&)
+    catch (lang::DisposedException&)
     {
+        // Do not let disposed exceptions get out.  It might be interpreted
+        // as coming from the factory, which would then be removed from the
+        // drawing framework.
     }
-    return nullptr;
 }
 
-rtl::Reference<sd::framework::AbstractResource> PresenterViewFactory::CreateView(
+rtl::Reference<sd::framework::AbstractView> PresenterViewFactory::CreateView(
     const rtl::Reference<sd::framework::ResourceId>& rxViewId,
     const rtl::Reference<sd::framework::AbstractPane>& rxAnchorPane)
 {
@@ -299,7 +226,10 @@ rtl::Reference<sd::framework::AbstractResource> PresenterViewFactory::CreateView
 
         if (sResourceURL == msCurrentSlidePreviewViewURL)
         {
-            xView = CreateSlideShowView(rxViewId);
+            rtl::Reference<PresenterSlideShowView> pView = CreateSlideShowView(rxViewId);
+            if (pView)
+                pView->ActivatePresenterView();
+            xView = pView;
         }
         else if (sResourceURL == msNotesViewURL)
         {
@@ -321,11 +251,6 @@ rtl::Reference<sd::framework::AbstractResource> PresenterViewFactory::CreateView
         {
             xView = CreateHelpView(rxViewId);
         }
-
-        // Activate it.
-        CachablePresenterView* pView = dynamic_cast<CachablePresenterView*>(xView.get());
-        if (pView != nullptr)
-            pView->ActivatePresenterView();
     }
     catch (RuntimeException&)
     {
@@ -335,7 +260,7 @@ rtl::Reference<sd::framework::AbstractResource> PresenterViewFactory::CreateView
     return xView;
 }
 
-rtl::Reference<sd::framework::AbstractView> PresenterViewFactory::CreateSlideShowView(
+rtl::Reference<PresenterSlideShowView> PresenterViewFactory::CreateSlideShowView(
     const rtl::Reference<sd::framework::ResourceId>& rxViewId) const
 {
     if ( ! mxConfigurationController.is())
@@ -462,27 +387,6 @@ rtl::Reference<sd::framework::AbstractView> PresenterViewFactory::CreateHelpView
         rxViewId,
         mxControllerWeak.get(),
         mpPresenterController);
-}
-
-//===== CachablePresenterView =================================================
-
-CachablePresenterView::CachablePresenterView()
-    : mbIsPresenterViewActive(true)
-{
-}
-
-void CachablePresenterView::ActivatePresenterView()
-{
-    mbIsPresenterViewActive = true;
-}
-
-void CachablePresenterView::DeactivatePresenterView()
-{
-    mbIsPresenterViewActive = false;
-}
-
-void CachablePresenterView::ReleaseView()
-{
 }
 
 }

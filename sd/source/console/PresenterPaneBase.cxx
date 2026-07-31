@@ -20,6 +20,9 @@
 #include "PresenterPaneBase.hxx"
 #include "PresenterController.hxx"
 #include "PresenterPaintManager.hxx"
+
+#include <toolkit/helper/vclunohelper.hxx>
+
 #include <com/sun/star/awt/PosSize.hpp>
 #include <com/sun/star/awt/XWindow2.hpp>
 #include <utility>
@@ -154,6 +157,26 @@ bool PresenterPaneBase::isAnchorOnly()
     return true;
 }
 
+// AbstractPane
+
+Reference<awt::XWindow> PresenterPaneBase::getWindow()
+{
+    {
+        std::unique_lock l(m_aMutex);
+        throwIfDisposed(l);
+    }
+    return mxContentWindow;
+}
+
+Reference<rendering::XCanvas> PresenterPaneBase::getCanvas()
+{
+    {
+        std::unique_lock l(m_aMutex);
+        throwIfDisposed(l);
+    }
+    return mxContentCanvas;
+}
+
 //----- XWindowListener -------------------------------------------------------
 
 void SAL_CALL PresenterPaneBase::windowResized (const awt::WindowEvent&)
@@ -197,10 +220,10 @@ void PresenterPaneBase::CreateWindows (
     if (!mxParentWindow.is())
         return;
 
-    mxBorderWindow = sd::presenter::PresenterHelper::createWindow(
-        mxParentWindow, bIsWindowVisibleOnCreation);
-    mxContentWindow = sd::presenter::PresenterHelper::createWindow(
-        mxBorderWindow, bIsWindowVisibleOnCreation);
+    mxBorderWindow = VCLUnoHelper::GetInterface(
+        sd::presenter::PresenterHelper::createWindow(mxParentWindow, bIsWindowVisibleOnCreation));
+    mxContentWindow = VCLUnoHelper::GetInterface(
+        sd::presenter::PresenterHelper::createWindow(mxBorderWindow, bIsWindowVisibleOnCreation));
 }
 
 const Reference<awt::XWindow>& PresenterPaneBase::GetBorderWindow() const

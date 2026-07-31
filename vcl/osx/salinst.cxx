@@ -110,7 +110,7 @@ public:
         if (eMode == AppearanceMode::AUTO)
             MiscSettings::SetAppColorMode(eMode);
 
-        AquaSalInstance *pInst = GetSalData()->mpInstance;
+        AquaSalInstance* pInst = GetAquaSalInstance();
         SalFrame *pAnyFrame = pInst->anyFrame();
         if( pAnyFrame )
             pAnyFrame->CallCallback( SalEvent::SettingsChanged, nullptr );
@@ -219,11 +219,7 @@ VCLPLUG_OSX_PUBLIC SalInstance* create_SalInstance()
     [NSApp setDelegate: NSApp];
 
     AquaSalInstance* pInst = new AquaSalInstance;
-    SalData* pSalData = GetSalData();
-    SAL_WARN_IF( pSalData->mpInstance != nullptr, "vcl", "more than one instance created" );
 
-    // init instance (only one instance in this version !!!)
-    pSalData->mpInstance = pInst;
     // this one is for outside AquaSalInstance::Yield
     SalData::ensureThreadAutoreleasePool();
     // no focus rects on NWF
@@ -299,7 +295,7 @@ void AquaSalInstance::ProcessEvent( SalUserEvent aEvent )
 
 bool AquaSalInstance::IsMainThread() const
 {
-    AquaSalInstance *pInst = GetSalData()->mpInstance;
+    AquaSalInstance* pInst = GetAquaSalInstance();
     AquaSalYieldMutex *aMutex = static_cast<AquaSalYieldMutex*>(pInst->GetYieldMutex());
 
     return aMutex->IsMainThread();
@@ -307,7 +303,7 @@ bool AquaSalInstance::IsMainThread() const
 
 void AquaSalInstance::handleAppDefinedEvent( NSEvent* pEvent )
 {
-    AquaSalInstance *pInst = GetSalData()->mpInstance;
+    AquaSalInstance* pInst = GetAquaSalInstance();
     AquaSalTimer *pTimer = static_cast<AquaSalTimer*>( ImplGetSVData()->maSchedCtx.mpSalTimer );
 
     switch( [pEvent subtype] )
@@ -405,7 +401,7 @@ void AquaSalInstance::handleAppDefinedEvent( NSEvent* pEvent )
 
 bool AquaSalInstance::RunInMainYield( bool bHandleAllCurrentEvents )
 {
-    OSX_SALDATA_RUNINMAIN_UNION( DoYield( false, bHandleAllCurrentEvents), boolean )
+    OSX_RUNINMAIN_UNION(DoYield(false, bHandleAllCurrentEvents), boolean)
 
     // PrinterController::removeTransparencies() calls this frequently on the
     // main thread so reduce the severity from an assert so that printing still
@@ -564,7 +560,7 @@ bool AquaSalInstance::DoYield(bool bWait, bool bHandleAllCurrentEvents)
         ImplGetSVData()->mpWinData->mbIsWaitingForNativeEvent = bOldIsWaitingForNativeEvent;
 
         // collect update rectangles
-        for( auto pSalFrame : GetSalData()->mpInstance->getFrames() )
+        for (auto pSalFrame : GetAquaSalInstance()->getFrames())
         {
             AquaSalFrame* pFrame = static_cast<AquaSalFrame*>( pSalFrame );
             if( pFrame->mbShown && ! pFrame->maInvalidRect.IsEmpty() )
@@ -626,7 +622,7 @@ bool AquaSalInstance::AnyInput( VclInputFlags nType )
             return false;
     }
 
-    OSX_INST_RUNINMAIN_UNION( AnyInput( nType ), boolean )
+    OSX_RUNINMAIN_UNION(AnyInput(nType), boolean)
 
     if( nType & VclInputFlags::TIMER )
     {
@@ -692,13 +688,13 @@ SalFrame* AquaSalInstance::CreateChildFrame( SystemParentData*, SalFrameStyleFla
 
 SalFrame* AquaSalInstance::CreateFrame( SalFrame* pParent, SalFrameStyleFlags nSalFrameStyle )
 {
-    OSX_INST_RUNINMAIN_POINTER( CreateFrame( pParent, nSalFrameStyle ), SalFrame* )
+    OSX_RUNINMAIN_POINTER(CreateFrame(pParent, nSalFrameStyle), SalFrame*)
     return new AquaSalFrame( pParent, nSalFrameStyle );
 }
 
 void AquaSalInstance::DestroyFrame( SalFrame* pFrame )
 {
-    OSX_INST_RUNINMAIN( DestroyFrame( pFrame ) )
+    OSX_RUNINMAIN(DestroyFrame(pFrame))
     delete pFrame;
 }
 
@@ -707,13 +703,13 @@ SalObject* AquaSalInstance::CreateObject( SalFrame* pParent, SystemWindowData* p
     if ( !pParent )
         return nullptr;
 
-    OSX_INST_RUNINMAIN_POINTER( CreateObject( pParent, pWindowData, false ), SalObject* )
+    OSX_RUNINMAIN_POINTER(CreateObject(pParent, pWindowData, false), SalObject*)
     return new AquaSalObject( static_cast<AquaSalFrame*>(pParent), pWindowData );
 }
 
 void AquaSalInstance::DestroyObject( SalObject* pObject )
 {
-    OSX_INST_RUNINMAIN( DestroyObject( pObject ) )
+    OSX_RUNINMAIN(DestroyObject(pObject))
     delete pObject;
 }
 

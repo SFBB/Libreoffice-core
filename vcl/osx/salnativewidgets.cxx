@@ -28,6 +28,7 @@
 #include <vcl/themecolors.hxx>
 
 #include <quartz/salgdi.h>
+#include <osx/runinmain.hxx>
 #include <osx/salnativewidgets.h>
 #include <osx/saldata.hxx>
 #include <osx/salframe.h>
@@ -262,7 +263,7 @@ bool AquaSalGraphics::drawNativeControl(ControlType nType,
                                         const OUString &sUnused,
                                         const Color &rUnused)
 {
-    OSX_SALDATA_RUNINMAIN_UNION( drawNativeControl( nType, nPart, rControlRegion, nState, aValue, sUnused, rUnused), boolean )
+    OSX_RUNINMAIN_UNION(drawNativeControl(nType, nPart, rControlRegion, nState, aValue, sUnused, rUnused), boolean)
 
     // tdf#165266 Force native controls to use current effective appearance
     // +[NSAppearance setCurrentAppearance:] is deprecated and calling
@@ -506,7 +507,7 @@ bool AquaGraphicsBackendBase::performDrawNativeControl(ControlType nType,
 {
     bool bOK = false;
     bool bCanUseThemeColors(ThemeColors::VclPluginCanUseThemeColors());
-    AquaSalInstance* pInst = GetSalData()->mpInstance;
+    AquaSalInstance* pInst = GetAquaSalInstance();
     HIRect rc = ImplGetHIRectFromRectangle(rControlRegion);
     switch (nType)
     {

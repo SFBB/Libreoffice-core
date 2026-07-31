@@ -20,6 +20,8 @@
 #pragma once
 
 #include "PresenterController.hxx"
+#include "PresenterSlideShowView.hxx"
+
 #include <framework/ResourceFactory.hxx>
 #include <framework/AbstractView.hxx>
 #include <com/sun/star/uno/XComponentContext.hpp>
@@ -30,33 +32,6 @@
 namespace sd { class DrawController; }
 
 namespace sdext::presenter {
-
-/** Base class for presenter views that allows the view factory to store
-    them in a cache and reuse deactivated views.
-*/
-class SAL_LOPLUGIN_ANNOTATE("crosscast") CachablePresenterView
-{
-public:
-    virtual void ActivatePresenterView();
-
-    /** Called when the view is put into a cache.  The view must not paint
-        itself while being deactivated.
-    */
-    virtual void DeactivatePresenterView();
-
-    /** Called before the view is disposed.  This gives the view the
-        opportunity to trigger actions that may lead to (synchronous)
-        callbacks that do not result in DisposedExceptions.
-    */
-    virtual void ReleaseView();
-
-protected:
-    bool mbIsPresenterViewActive;
-
-    CachablePresenterView();
-
-    ~CachablePresenterView() {}
-};
 
 /** Factory of the presenter screen specific views.  The supported set of
     views includes:
@@ -110,7 +85,6 @@ private:
     typedef ::std::pair<rtl::Reference<sd::framework::AbstractView>,
         rtl::Reference<sd::framework::AbstractPane> > ViewResourceDescriptor;
     typedef ::std::map<OUString, ViewResourceDescriptor> ResourceContainer;
-    std::unique_ptr<ResourceContainer> mpResourceCache;
 
     PresenterViewFactory (
         const css::uno::Reference<css::uno::XComponentContext>& rxContext,
@@ -119,7 +93,7 @@ private:
 
     void Register (const ::rtl::Reference<::sd::DrawController>& rxController);
 
-    rtl::Reference<sd::framework::AbstractView> CreateSlideShowView(
+    rtl::Reference<PresenterSlideShowView> CreateSlideShowView(
         const rtl::Reference<sd::framework::ResourceId>& rxViewId) const;
 
     rtl::Reference<sd::framework::AbstractView> CreateSlidePreviewView(
@@ -138,10 +112,7 @@ private:
     rtl::Reference<sd::framework::AbstractView> CreateHelpView(
         const rtl::Reference<sd::framework::ResourceId>& rxViewId) const;
 
-    rtl::Reference<sd::framework::AbstractResource> GetViewFromCache (
-        const rtl::Reference<sd::framework::ResourceId>& rxViewId,
-        const rtl::Reference<sd::framework::AbstractPane>& rxAnchorPane) const;
-    rtl::Reference<sd::framework::AbstractResource> CreateView(
+    rtl::Reference<sd::framework::AbstractView> CreateView(
         const rtl::Reference<sd::framework::ResourceId>& rxViewId,
         const rtl::Reference<sd::framework::AbstractPane>& rxAnchorPane);
 };

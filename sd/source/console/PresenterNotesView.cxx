@@ -27,6 +27,8 @@
 #include "PresenterTextView.hxx"
 #include <DrawController.hxx>
 #include <framework/ConfigurationController.hxx>
+#include <toolkit/helper/vclunohelper.hxx>
+
 #include <com/sun/star/accessibility/AccessibleTextType.hpp>
 #include <com/sun/star/awt/Key.hpp>
 #include <com/sun/star/awt/KeyModifier.hpp>
@@ -175,8 +177,8 @@ void PresenterNotesView::CreateToolBar (
         return;
 
     // Create a new window as container of the tool bar.
-    mxToolBarWindow = sd::presenter::PresenterHelper::createWindow(
-        mxParentWindow, true);
+    mxToolBarWindow = VCLUnoHelper::GetInterface(
+        sd::presenter::PresenterHelper::createWindow(mxParentWindow, true));
     mxToolBarCanvas = sd::presenter::PresenterHelper::createSharedCanvas (
         Reference<rendering::XSpriteCanvas>(mxCanvas, UNO_QUERY),
         mxParentWindow,
@@ -190,7 +192,7 @@ void PresenterNotesView::CreateToolBar (
         mxToolBarWindow,
         mxToolBarCanvas,
         rpPresenterController,
-        PresenterToolBar::Left);
+        PresenterToolBar::Anchor::Left);
     mpToolBar->Initialize(
         u"PresenterScreenSettings/ToolBars/NotesToolBar"_ustr);
 }
@@ -276,9 +278,6 @@ void SAL_CALL PresenterNotesView::windowPaint (const awt::PaintEvent& rEvent)
         std::unique_lock l(m_aMutex);
         throwIfDisposed(l);
     }
-
-    if ( ! mbIsPresenterViewActive)
-        return;
 
     ::osl::MutexGuard aSolarGuard (::osl::Mutex::getGlobalMutex());
     Paint(rEvent.UpdateRect);
@@ -375,18 +374,18 @@ void PresenterNotesView::Layout()
     // Size the tool bar and the horizontal separator above it.
     if (mxToolBarWindow.is())
     {
-            const geometry::RealSize2D aToolBarSize (mpToolBar->GetMinimalSize());
-            const sal_Int32 nToolBarHeight = sal_Int32(aToolBarSize.Height + 0.5);
-            mxToolBarWindow->setPosSize(0, aWindowBox.Height - nToolBarHeight,
-                                        sal_Int32(aToolBarSize.Width + 0.5), nToolBarHeight,
-                                        awt::PosSize::POSSIZE);
-            mnSeparatorYLocation = aWindowBox.Height - nToolBarHeight - gnSpaceBelowSeparator;
-            aNewTextBoundingBox.Y2 = mnSeparatorYLocation - gnSpaceAboveSeparator;
-            // Place the close button.
-            if (mpCloseButton)
-                mpCloseButton->SetCenter(geometry::RealPoint2D(
-                                                               (aWindowBox.Width +  aToolBarSize.Width) / 2,
-                                                               aWindowBox.Height - aToolBarSize.Height/2));
+        const geometry::RealSize2D aToolBarSize(mpToolBar->GetMinimalSize());
+        const sal_Int32 nToolBarHeight = sal_Int32(aToolBarSize.Height + 0.5);
+        mxToolBarWindow->setPosSize(0, aWindowBox.Height - nToolBarHeight,
+                                    sal_Int32(aToolBarSize.Width + 0.5), nToolBarHeight,
+                                    awt::PosSize::POSSIZE);
+        mnSeparatorYLocation = aWindowBox.Height - nToolBarHeight - gnSpaceBelowSeparator;
+        aNewTextBoundingBox.Y2 = mnSeparatorYLocation - gnSpaceAboveSeparator;
+        // Place the close button.
+        if (mpCloseButton)
+            mpCloseButton->SetCenter(
+                geometry::RealPoint2D((aWindowBox.Width + aToolBarSize.Width) / 2,
+                                      aWindowBox.Height - aToolBarSize.Height / 2));
     }
     // Check whether the vertical scroll bar is necessary.
     if (mpScrollBar)

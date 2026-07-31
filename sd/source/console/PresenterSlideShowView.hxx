@@ -20,7 +20,8 @@
 #ifndef INCLUDED_SDEXT_SOURCE_PRESENTER_PRESENTERSLIDESHOWVIEW_HXX
 #define INCLUDED_SDEXT_SOURCE_PRESENTER_PRESENTERSLIDESHOWVIEW_HXX
 
-#include "PresenterViewFactory.hxx"
+#include "PresenterController.hxx"
+
 #include <com/sun/star/presentation/XSlideShowView.hpp>
 #include <com/sun/star/awt/XPaintListener.hpp>
 #include <com/sun/star/awt/XMouseListener.hpp>
@@ -29,6 +30,7 @@
 #include <com/sun/star/awt/XWindowListener.hpp>
 #include <com/sun/star/drawing/XDrawView.hpp>
 #include <framework/AbstractPane.hxx>
+#include <DrawController.hxx>
 #include <ResourceId.hxx>
 #include <framework/AbstractView.hxx>
 #include <com/sun/star/frame/XController.hpp>
@@ -53,8 +55,7 @@ typedef cppu::ImplInheritanceHelper<
 /** Life view in a secondary window of a full screen slide show.
 */
 class PresenterSlideShowView
-    : public PresenterSlideShowViewInterfaceBase,
-      public CachablePresenterView
+    : public PresenterSlideShowViewInterfaceBase
 {
 public:
     PresenterSlideShowView (
@@ -69,9 +70,13 @@ public:
     void LateInit();
     virtual void disposing(std::unique_lock<std::mutex>&) override;
 
-    // CachablePresenterView
+    void ActivatePresenterView();
 
-    virtual void ReleaseView() override;
+    /** Called before the view is disposed.  This gives the view the
+        opportunity to trigger actions that may lead to (synchronous)
+        callbacks that do not result in DisposedExceptions.
+    */
+    void ReleaseView();
 
     // XSlideShowView
 
@@ -164,12 +169,6 @@ public:
         const css::uno::Reference<css::drawing::XDrawPage>& rxSlide) override;
 
     virtual css::uno::Reference<css::drawing::XDrawPage> SAL_CALL getCurrentPage() override;
-
-    // CachablePresenterView
-
-    virtual void ActivatePresenterView() override;
-
-    virtual void DeactivatePresenterView() override;
 
 private:
     css::uno::Reference<css::uno::XComponentContext> mxComponentContext;
