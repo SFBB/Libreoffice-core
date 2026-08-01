@@ -28,6 +28,7 @@
 
 #include <fontattributes.hxx>
 #include <impfontcharmap.hxx>
+#include <font/CFFCharset.hxx>
 #include <font/TrueTypeFont.hxx>
 #include <salgdi.hxx>
 
@@ -530,6 +531,12 @@ bool PhysicalFontFace::CreateFontSubset(std::vector<sal_uInt8>& rOutBuffer,
     flags |= HB_SUBSET_FLAGS_DESUBROUTINIZE;
 #endif
 
+#if HB_VERSION_ATLEAST(14, 3, 0)
+    // Make the charset of CID-keyed CFF fonts identity, so that the CIDs of the
+    // subset are its glyph IDs and we don’t have to read them from the charset.
+    flags |= HB_SUBSET_FLAGS_CFF_IDENTITY_CHARSET;
+#endif
+
     hb_subset_input_set_flags(pInput, flags);
 
     // Add the requested glyph IDs to the subset input, and set up
@@ -632,56 +639,8 @@ bool PhysicalFontFace::CreateFontSubset(std::vector<sal_uInt8>& rOutBuffer,
         // This is not a font with CFF table, so we will create a TTF font subset.
         rInfo.m_nFontType = FontType::SFNT_TTF;
 
-        // HarfBuzz creates a Unicode cmap, but we need a fake cmap based on pEncoding,
-        // so we use face builder construct a new face based in the subset table,
-        // and create a new cmap table and add it to the new face.
-        hb_face_t* pBuilderFace = hb_face_builder_create();
-        comphelper::ScopeGuard aBuilderFaceGuard([&]() { hb_face_destroy(pBuilderFace); });
-        unsigned int nSubsetTableCount = hb_face_get_table_tags(pSubsetFace, 0, nullptr, nullptr);
-        std::vector<hb_tag_t> aSubsetTableTags(nSubsetTableCount);
-        hb_face_get_table_tags(pSubsetFace, 0, &nSubsetTableCount, aSubsetTableTags.data());
-        for (unsigned int i = 0; i < nSubsetTableCount; ++i)
-        {
-            hb_blob_t* pTableBlob = hb_face_reference_table(pSubsetFace, aSubsetTableTags[i]);
-            hb_face_builder_add_table(pBuilderFace, aSubsetTableTags[i], pTableBlob);
-            hb_blob_destroy(pTableBlob);
-        }
-
-        // Build a cmap table with a format 0 subtable
-        SvMemoryStream aCmapStream;
-        aCmapStream.SetEndian(SvStreamEndian::BIG);
-
-        // cmap header
-        aCmapStream.WriteUInt16(0); // version
-        aCmapStream.WriteUInt16(1); // numTables
-
-        // Encoding record
-        aCmapStream.WriteUInt16(1); // platformID (Mac: 1)
-        aCmapStream.WriteUInt16(0); // encodingID (Roman: 0)
-        aCmapStream.WriteUInt32(12); // subtable offset
-
-        // Format 0 subtable
-        aCmapStream.WriteUInt16(0); // format
-        aCmapStream.WriteUInt16(262); // length
-        aCmapStream.WriteUInt16(0); // language
-
-        // glyphIdArray
-        for (int i = 0; i < 256; ++i)
-        {
-            if (i < nGlyphCount)
-                aCmapStream.WriteUInt8(pEncoding[i]);
-            else
-                aCmapStream.WriteUInt8(0);
-        }
-
-        hb_blob_t* pCmapBlob
-            = hb_blob_create(static_cast<const char*>(aCmapStream.GetData()), aCmapStream.Tell(),
-                             HB_MEMORY_MODE_DUPLICATE, nullptr, nullptr);
-        hb_face_builder_add_table(pBuilderFace, HB_TAG('c', 'm', 'a', 'p'), pCmapBlob);
-        hb_blob_destroy(pCmapBlob);
-
-        hb_blob_t* pSubsetBlob = hb_face_reference_blob(pBuilderFace);
-        comphelper::ScopeGuard aBuilderBlobGuard([&]() { hb_blob_destroy(pSubsetBlob); });
+        hb_blob_t* pSubsetBlob = hb_face_reference_blob(pSubsetFace);
+        comphelper::ScopeGuard aSubsetBlobGuard([&]() { hb_blob_destroy(pSubsetBlob); });
 
         unsigned int nSubsetLength;
         const char* pSubsetData = hb_blob_get_data(pSubsetBlob, &nSubsetLength);
@@ -693,23 +652,26 @@ bool PhysicalFontFace::CreateFontSubset(std::vector<sal_uInt8>& rOutBuffer,
     }
     else
     {
-        // Ideally we should be outputting a CFF (Type1C) font here, but I couldn’t get it to work.
-        // So we oconvert it to Type1 font instead.
-        // TODO: simplify CreateCFFfontSubset() to only do the conversion, since we already
-        // have the subsetted font.
-        rInfo.m_nFontType = FontType::TYPE1_PFB;
+        // This is a font with CFF table, so we will create a base CFF font subset.
+        rInfo.m_nFontType = FontType::CFF_FONT;
 
         unsigned int nCffLen;
         const char* pCffData = hb_blob_get_data(pCFFBlob, &nCffLen);
         if (!pCffData || !nCffLen)
             return false;
 
-        if (!ConvertCFFfontToType1(reinterpret_cast<const unsigned char*>(pCffData), nCffLen,
-                                   rOutBuffer, rInfo))
+#if !HB_VERSION_ATLEAST(14, 3, 0)
+        // Old HarfBuzz keeps the original CIDs of CID-keyed fonts, so we have
+        // to read them out of the charset ourselves.
+        if (!ReadCFFGlyphCIDs(reinterpret_cast<const sal_uInt8*>(pCffData), nCffLen, rInfo.m_aCIDs))
         {
-            SAL_WARN("vcl.fonts.cff", "Failed to convert CFF data to Type 1 font");
+            SAL_WARN("vcl.fonts.cff", "Failed to read CIDs of subsetted CFF font");
             return false;
         }
+#endif
+
+        rOutBuffer.assign(reinterpret_cast<const sal_uInt8*>(pCffData),
+                          reinterpret_cast<const sal_uInt8*>(pCffData) + nCffLen);
     }
 
     return true;

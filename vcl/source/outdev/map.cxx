@@ -239,30 +239,17 @@ LineInfo OutputDevice::ImplLogicToDevicePixel( const LineInfo& rLineInfo ) const
 
 tools::Rectangle OutputDevice::ImplDevicePixelToLogic( const tools::Rectangle& rPixelRect ) const
 {
-    // tdf#141761 see comments above, IsEmpty() removed
-    tools::Rectangle aRetval;
+    tools::Rectangle aRetval(
+        mpMapper->DevicePixelToLogicX(rPixelRect.Left()),
+        mpMapper->DevicePixelToLogicY(rPixelRect.Top()),
+        rPixelRect.IsWidthEmpty() ? 0 : mpMapper->DevicePixelToLogicX(rPixelRect.Right()),
+        rPixelRect.IsHeightEmpty() ? 0 : mpMapper->DevicePixelToLogicY(rPixelRect.Bottom())
+    );
 
-    if ( !mpMapper->IsMapModeEnabled() )
-    {
-        aRetval = tools::Rectangle(
-            rPixelRect.Left()-mpMapper->GetDeviceOriginX(),
-            rPixelRect.Top()-mpMapper->GetDeviceOriginY(),
-            rPixelRect.IsWidthEmpty() ? 0 : rPixelRect.Right()-mpMapper->GetDeviceOriginX(),
-            rPixelRect.IsHeightEmpty() ? 0 : rPixelRect.Bottom()-mpMapper->GetDeviceOriginY() );
-    }
-    else
-    {
-        aRetval = tools::Rectangle(
-            mpMapper->ViewToLogicDistanceX(rPixelRect.Left() - mpMapper->GetDeviceOriginX() - mpMapper->GetPixelXOffset()) - mpMapper->GetMappingXOffset(),
-            mpMapper->ViewToLogicDistanceY(rPixelRect.Top() - mpMapper->GetDeviceOriginY() - mpMapper->GetPixelYOffset()) - mpMapper->GetMappingYOffset(),
-            rPixelRect.IsWidthEmpty() ? 0 : mpMapper->ViewToLogicDistanceX(rPixelRect.Right() - mpMapper->GetDeviceOriginX() - mpMapper->GetPixelXOffset()) - mpMapper->GetMappingXOffset(),
-            rPixelRect.IsHeightEmpty() ? 0 : mpMapper->ViewToLogicDistanceY(rPixelRect.Bottom() - mpMapper->GetDeviceOriginY() - mpMapper->GetPixelYOffset()) - mpMapper->GetMappingYOffset());
-    }
-
-    if(rPixelRect.IsWidthEmpty())
+    if (rPixelRect.IsWidthEmpty())
         aRetval.SetWidthEmpty();
 
-    if(rPixelRect.IsHeightEmpty())
+    if (rPixelRect.IsHeightEmpty())
         aRetval.SetHeightEmpty();
 
     return aRetval;
@@ -475,8 +462,10 @@ Point OutputDevice::LogicToPixel( const Point& rLogicPt ) const
     if ( !mpMapper->IsMapModeEnabled() )
         return rLogicPt;
 
-    return Point(mpMapper->LogicToViewDistanceX(mpMapper->LogicToOffsetLogicX(rLogicPt.X())) + mpMapper->GetPixelXOffset(),
-                 mpMapper->LogicToViewDistanceY(mpMapper->LogicToOffsetLogicY(rLogicPt.Y())) + mpMapper->GetPixelYOffset());
+    return Point(
+        mpMapper->ViewToWindowUnitsX(mpMapper->LogicUnitsToViewUnitsX(rLogicPt.X())),
+        mpMapper->ViewToWindowUnitsY(mpMapper->LogicUnitsToViewUnitsY(rLogicPt.Y()))
+    );
 }
 
 Size OutputDevice::LogicToPixel( const Size& rLogicSize ) const

@@ -31,10 +31,10 @@ inline int XUnits(int nUPEM, int n) { return (n * 1000) / nUPEM; }
 enum class FontType {
     NO_FONT     = 0,
     SFNT_TTF    = 1<<1,                     ///< SFNT container with TrueType glyphs
-    TYPE1_PFB   = 1<<3,                     ///< PSType1 Postscript Font Binary
+    CFF_FONT    = 1<<2,                     ///< Bare CFF font
 };
 namespace o3tl {
-    template<> struct typed_flags<FontType> : is_typed_flags<FontType, 0x0a> {};
+    template<> struct typed_flags<FontType> : is_typed_flags<FontType, 0x06> {};
 }
 
 class VCL_DLLPUBLIC FontSubsetInfo final
@@ -47,6 +47,7 @@ public: // TODO: make subsetter results private and provide accessor methods ins
     int                     m_nCapHeight = 0;
     tools::Rectangle        m_aFontBBox;
     FontType                m_nFontType = FontType::NO_FONT; ///< font-type of subset result
+    std::vector<sal_uInt16> m_aCIDs; ///< glyph ID → CID mapping for CID-keyed CFF (empty: CID = glyph ID)
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

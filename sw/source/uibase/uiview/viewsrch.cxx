@@ -44,6 +44,7 @@
 #include <wrtsh.hxx>
 #include <swundo.hxx>
 #include <uitool.hxx>
+#include <wview.hxx>
 #include <cmdid.h>
 #include <docsh.hxx>
 #include <LibreOfficeKit/LibreOfficeKitEnums.h>
@@ -174,9 +175,16 @@ void SwView::ExecSearch(SfxRequest& rReq)
     break;
 
     case FID_SEARCH_ON:
+    {
         s_bJustOpened = true;
         GetViewFrame().GetBindings().Invalidate(SID_SEARCH_ITEM);
-        break;
+
+        // ensure SvxSearchDialog's Format dialog uses the preferred measurement unit
+        const bool bIsHtmlMode = dynamic_cast<SwWebView*>(this);
+        auto nMetric = static_cast<sal_uInt16>(GetDfltMetric(bIsHtmlMode));
+        SwModule::get()->PutItem(SfxUInt16Item(SID_ATTR_METRIC, nMetric));
+    }
+    break;
 
     case FID_SEARCH_OFF:
         if(pArgs)
@@ -425,17 +433,16 @@ void SwView::ExecSearch(SfxRequest& rReq)
         case FID_SEARCH_REPLACESET:
         {
             static const WhichRangesContainer aNormalAttr(svl::Items<
-/* 0 */         RES_CHRATR_CASEMAP,     RES_CHRATR_CASEMAP,
-/* 2 */         RES_CHRATR_COLOR,       RES_CHRATR_POSTURE,
-/* 4 */         RES_CHRATR_SHADOWED,    RES_CHRATR_WORDLINEMODE,
-/* 6 */         RES_CHRATR_BLINK,       RES_CHRATR_BLINK,
-/* 8 */         RES_CHRATR_BACKGROUND,  RES_CHRATR_BACKGROUND,
-/*10 */         RES_CHRATR_ROTATE,      RES_CHRATR_ROTATE,
-/*12 */         RES_CHRATR_SCALEW,      RES_CHRATR_RELIEF,
-/*14 */         RES_CHRATR_OVERLINE,    RES_CHRATR_OVERLINE,
-/*16 */         RES_PARATR_LINESPACING, RES_PARATR_HYPHENZONE,
-/*18 */         RES_PARATR_REGISTER,    RES_PARATR_REGISTER,
-/*20 */         RES_PARATR_VERTALIGN,   RES_PARATR_VERTALIGN,
+                RES_CHRATR_CASEMAP,     RES_CHRATR_CASEMAP,
+                RES_CHRATR_COLOR,       RES_CHRATR_POSTURE,
+                RES_CHRATR_SHADOWED,    RES_CHRATR_WORDLINEMODE,
+                RES_CHRATR_BLINK,       RES_CHRATR_BLINK,
+                RES_CHRATR_BACKGROUND,  RES_CHRATR_BACKGROUND,
+                RES_CHRATR_ROTATE,      RES_CHRATR_ROTATE,
+                RES_CHRATR_SCALEW,      RES_CHRATR_OVERLINE,
+                RES_PARATR_LINESPACING, RES_PARATR_HYPHENZONE,
+                RES_PARATR_REGISTER,    RES_PARATR_REGISTER,
+                RES_PARATR_VERTALIGN,   RES_PARATR_VERTALIGN,
                 RES_MARGIN_FIRSTLINE,   RES_MARGIN_RIGHT,
                 RES_UL_SPACE,           RES_UL_SPACE,
                 SID_ATTR_PARA_PAGEBREAK, SID_ATTR_PARA_PAGEBREAK,
