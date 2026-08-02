@@ -56,9 +56,6 @@ LogicalFontInstance::~LogicalFontInstance()
     if (m_pHbFont)
         hb_font_destroy(m_pHbFont);
 
-    if (m_pHbFontUntransformed)
-        hb_font_destroy(m_pHbFontUntransformed);
-
     if (m_pHbDrawFuncs)
         hb_draw_funcs_destroy(m_pHbDrawFuncs);
 }
@@ -118,25 +115,6 @@ hb_font_t* LogicalFontInstance::InitHbFont()
         hb_font_set_synthetic_slant(pHbFont, ARTIFICIAL_ITALIC_SKEW);
 
     ImplInitHbFont(pHbFont);
-
-    return pHbFont;
-}
-
-hb_font_t* LogicalFontInstance::GetHbFontUntransformed() const
-{
-    auto* pHbFont = const_cast<LogicalFontInstance*>(this)->GetHbFont();
-
-    if (NeedsArtificialItalic()) // || NeedsArtificialBold()
-    {
-        if (!m_pHbFontUntransformed)
-        {
-            m_pHbFontUntransformed = hb_font_create_sub_font(pHbFont);
-            // Unset slant set on parent font.
-            // Does not actually work: https://github.com/harfbuzz/harfbuzz/issues/3890
-            hb_font_set_synthetic_slant(m_pHbFontUntransformed, 0);
-        }
-        return m_pHbFontUntransformed;
-    }
 
     return pHbFont;
 }
@@ -275,13 +253,8 @@ void LogicalFontInstance::GetFontMetric(FontMetricDataRef const& rxTo)
         }
     }
 
-    auto aPost(GetFontFace()->GetRawFontData(HB_TAG('p', 'o', 's', 't')));
-    if (aPost.size() >= size_t(vcl::POST_isFixedPitch_offset) + 4)
-    {
-        const uint8_t* pFixed = aPost.data() + vcl::POST_isFixedPitch_offset;
-        if (pFixed[0] || pFixed[1] || pFixed[2] || pFixed[3])
-            rxTo->SetPitch(PITCH_FIXED);
-    }
+    if (hb_ot_fetch_bits(GetFontFace()->GetHbFace(), HB_OT_BITS_TAG_IS_FIXED_PITCH))
+        rxTo->SetPitch(PITCH_FIXED);
 }
 
 bool LogicalFontInstance::GetGlyphBoundRect(sal_GlyphId nID, basegfx::B2DRectangle& rRect,
@@ -420,19 +393,7 @@ bool LogicalFontInstance::DrawGlyph(hb_font_t* pHbFont, sal_GlyphId nGlyph,
         hb_draw_funcs_set_close_path_func(m_pHbDrawFuncs, close_path_func, pUserData, nullptr);
     }
 
-#if HB_VERSION_ATLEAST(11, 2, 0)
     return hb_font_draw_glyph_or_fail(pHbFont, nGlyph, m_pHbDrawFuncs, &rPoly);
-#else
-    hb_font_draw_glyph(pHbFont, nGlyph, m_pHbDrawFuncs, &rPoly);
-    return true;
-#endif
-}
-
-basegfx::B2DPolyPolygon LogicalFontInstance::GetGlyphOutlineUntransformed(sal_GlyphId nGlyph) const
-{
-    basegfx::B2DPolyPolygon aPolyPoly;
-    DrawGlyph(GetHbFontUntransformed(), nGlyph, aPolyPoly);
-    return aPolyPoly;
 }
 
 bool LogicalFontInstance::GetGlyphOutline(sal_GlyphId nID, basegfx::B2DPolyPolygon& rPoly,

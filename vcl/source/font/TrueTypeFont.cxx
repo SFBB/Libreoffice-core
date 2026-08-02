@@ -24,53 +24,13 @@
  *
  */
 
-#include <assert.h>
-
-#include <stdlib.h>
-#include <string.h>
 #include <hb-ot.h>
-#include <font/CFFCharset.hxx>
 #include <font/TrueTypeFont.hxx>
-#include <font/TTFStructure.hxx>
-#ifdef SYSTEM_LIBFIXMATH
-#include <libfixmath/fix16.hpp>
-#else
-#include <tools/fix16.hxx>
-#endif
 #include <i18nlangtag/languagetag.hxx>
-#include <rtl/crc.h>
 #include <rtl/ustring.hxx>
-#include <rtl/ustrbuf.hxx>
-#include <tools/stream.hxx>
-#include <o3tl/safeint.hxx>
-#include <osl/endian.h>
-#include <unotools/tempfile.hxx>
-#include <fontsubset.hxx>
 
 namespace vcl
 {
-/*- Data access methods for data stored in big-endian format */
-static sal_uInt16 GetUInt16(const sal_uInt8* ptr, size_t offset)
-{
-    sal_uInt16 t;
-    assert(ptr != nullptr);
-
-    t = (ptr + offset)[0] << 8 | (ptr + offset)[1];
-
-    return t;
-}
-
-static sal_uInt32 GetUInt32(const sal_uInt8* ptr, size_t offset)
-{
-    sal_uInt32 t;
-    assert(ptr != nullptr);
-
-    t = (ptr + offset)[0] << 24 | (ptr + offset)[1] << 16 | (ptr + offset)[2] << 8
-        | (ptr + offset)[3];
-
-    return t;
-}
-
 /*- Public functions */
 
 TrueTypeFont::TrueTypeFont(const void* pBuffer, sal_uInt32 nLen, sal_uInt32 facenum)
@@ -92,11 +52,6 @@ hb_font_t* TrueTypeFont::getFont() const
     if (!m_pFont)
         m_pFont = hb_font_create(m_pFace);
     return m_pFont;
-}
-
-font::RawFontData TrueTypeFont::getTable(hb_tag_t tag) const
-{
-    return font::RawFontData(hb_face_reference_table(m_pFace, tag));
 }
 
 sal_uInt32 TrueTypeFont::countNonEmptyGlyphs() const
@@ -150,18 +105,12 @@ OUString TrueTypeFont::getSubfamilyName() const { return getName(HB_OT_NAME_ID_F
 
 sal_uInt32 TrueTypeFont::getTypeFlags() const
 {
-    auto aOS2 = getTable(T_OS2);
-    if (aOS2.size() >= 42)
-        return GetUInt16(aOS2.data(), OS2_fsType_offset);
-    return 0;
+    return hb_ot_fetch_bits(m_pFace, HB_OT_BITS_TAG_FS_TYPE);
 }
 
 FontPitch TrueTypeFont::getFontPitch() const
 {
-    auto aPost = getTable(T_post);
-    if (aPost.size() >= 12 + sizeof(sal_uInt32))
-        return GetUInt32(aPost.data(), POST_isFixedPitch_offset) ? PITCH_FIXED : PITCH_VARIABLE;
-    return PITCH_VARIABLE;
+    return hb_ot_fetch_bits(m_pFace, HB_OT_BITS_TAG_IS_FIXED_PITCH) ? PITCH_FIXED : PITCH_VARIABLE;
 }
 
 FontItalic TrueTypeFont::getFontItalic() const
@@ -215,16 +164,5 @@ FontWeight TrueTypeFont::getFontWeight() const
 }
 
 } // namespace vcl
-
-int TestFontParsing(const void* data, sal_uInt32 size)
-{
-    // Exercise CFF parsing
-    if (data && size > 0)
-    {
-        std::vector<sal_uInt16> aCIDs;
-        vcl::font::ReadCFFGlyphCIDs(static_cast<const sal_uInt8*>(data), size, aCIDs);
-    }
-    return 0;
-}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

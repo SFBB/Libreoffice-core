@@ -105,55 +105,7 @@ namespace vcl
   => length for OS/2 table version 5 = 100 bytes
 
 */
-constexpr int OS2_fsType_offset = 8;
 constexpr int OS2_panose_offset = 32;
-constexpr int OS2_ulUnicodeRange1_offset = 42;
-constexpr int OS2_fsSelection_offset = 62;
-constexpr int OS2_ulCodePageRange1_offset = 78;
-
-/*
-  Some table post consts
-  cf https://docs.microsoft.com/fr-fr/typography/opentype/spec/post
-  TYPE       NAME                       FROM BYTE
-  Fixed      version                    0
-  Fixed      italicAngle                4
-  FWord      underlinePosition          8
-  FWord      underlineThickness        10
-  uint32     isFixedPitch              12
-  ...
-
-*/
-constexpr int POST_isFixedPitch_offset = 12;
-
-/*
-  Some table head consts
-  cf https://docs.microsoft.com/fr-fr/typography/opentype/spec/head
-  TYPE       NAME                       FROM BYTE
-  uit16      majorVersion               0
-  uit16      minorVersion               2
-  Fixed      fontRevision               4
-  uint32     checkSumAdjustment         8
-  uint32     magicNumber               12 (= 0x5F0F3CF5)
-  uint16     flags                     16
-  uint16     unitsPerEm                18
-  LONGDATETIME created                 20
-  LONGDATETIME modified                28
-  int16      xMin                      36
-  int16      yMin                      38
-  int16      xMax                      40
-  int16      yMax                      42
-  uint16     macStyle                  44
-  uint16     lowestRecPPEM             46
-  int16      fontDirectionHint         48
-  int16      indexToLocFormat          50
-  int16      glyphDataFormat           52
-
-  END                                  54
-
-  => length head table = 54 bytes
-*/
-constexpr int HEAD_xMin_offset = 36;
-constexpr int HEAD_yMax_offset = 42;
 
 class UNLESS_MERGELIBS(VCL_DLLPUBLIC) TrueTypeFont
 {
@@ -161,7 +113,6 @@ class UNLESS_MERGELIBS(VCL_DLLPUBLIC) TrueTypeFont
     mutable hb_font_t* m_pFont = nullptr;
 
     hb_font_t* getFont() const;
-    font::RawFontData getTable(hb_tag_t tag) const;
     OUString getName(hb_ot_name_id_t nNameID,
                      const LanguageTag& rLang = LanguageTag(LANGUAGE_DONTKNOW)) const;
 
@@ -183,7 +134,5 @@ public:
 };
 
 } // namespace vcl
-
-int VCL_DLLPUBLIC TestFontParsing(const void* data, sal_uInt32 size);
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

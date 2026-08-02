@@ -21,14 +21,12 @@
 
 #include <sal/types.h>
 #include <tools/fontenum.hxx>
-#include <tools/stream.hxx>
 #include <unotools/fontdefs.hxx>
 #include <osl/file.hxx>
 #include <osl/thread.h>
 
 #include <fontattributes.hxx>
 #include <impfontcharmap.hxx>
-#include <font/CFFCharset.hxx>
 #include <font/TrueTypeFont.hxx>
 #include <salgdi.hxx>
 
@@ -336,34 +334,31 @@ bool PhysicalFontFace::GetFontCapabilities(vcl::FontCapabilities& rFontCapabilit
     if (!mxFontCapabilities)
     {
         mxFontCapabilities.emplace();
-        RawFontData aData(GetRawFontData(HB_TAG('O', 'S', '/', '2')));
+        hb_face_t* pHbFace = GetHbFace();
 
-        SvMemoryStream aStream(const_cast<uint8_t*>(aData.data()), aData.size(), StreamMode::READ);
-        aStream.SetEndian(SvStreamEndian::BIG);
-
-        sal_uInt32 nValue = 0;
-
-        std::bitset<vcl::UnicodeCoverage::MAX_UC_ENUM> aUnicodeRange;
-        aStream.Seek(vcl::OS2_ulUnicodeRange1_offset);
-        aStream.ReadUInt32(nValue);
-        appendBitset(aUnicodeRange, 0, nValue);
-        aStream.ReadUInt32(nValue);
-        appendBitset(aUnicodeRange, 32, nValue);
-        aStream.ReadUInt32(nValue);
-        appendBitset(aUnicodeRange, 64, nValue);
-        aStream.ReadUInt32(nValue);
-        appendBitset(aUnicodeRange, 96, nValue);
-        if (aStream.good())
+        const sal_uInt32 nUR1 = hb_ot_fetch_bits(pHbFace, HB_OT_BITS_TAG_UNICODE_RANGE_1);
+        const sal_uInt32 nUR2 = hb_ot_fetch_bits(pHbFace, HB_OT_BITS_TAG_UNICODE_RANGE_2);
+        const sal_uInt32 nUR3 = hb_ot_fetch_bits(pHbFace, HB_OT_BITS_TAG_UNICODE_RANGE_3);
+        const sal_uInt32 nUR4 = hb_ot_fetch_bits(pHbFace, HB_OT_BITS_TAG_UNICODE_RANGE_4);
+        if (nUR1 || nUR2 || nUR3 || nUR4)
+        {
+            std::bitset<vcl::UnicodeCoverage::MAX_UC_ENUM> aUnicodeRange;
+            appendBitset(aUnicodeRange, 0, nUR1);
+            appendBitset(aUnicodeRange, 32, nUR2);
+            appendBitset(aUnicodeRange, 64, nUR3);
+            appendBitset(aUnicodeRange, 96, nUR4);
             mxFontCapabilities->oUnicodeRange = aUnicodeRange;
+        }
 
-        std::bitset<vcl::CodePageCoverage::MAX_CP_ENUM> aCodePageRange;
-        aStream.Seek(vcl::OS2_ulCodePageRange1_offset);
-        aStream.ReadUInt32(nValue);
-        appendBitset(aCodePageRange, 0, nValue);
-        aStream.ReadUInt32(nValue);
-        appendBitset(aCodePageRange, 32, nValue);
-        if (aStream.good())
+        const sal_uInt32 nCPR1 = hb_ot_fetch_bits(pHbFace, HB_OT_BITS_TAG_CODE_PAGE_RANGE_1);
+        const sal_uInt32 nCPR2 = hb_ot_fetch_bits(pHbFace, HB_OT_BITS_TAG_CODE_PAGE_RANGE_2);
+        if (nCPR1 || nCPR2)
+        {
+            std::bitset<vcl::CodePageCoverage::MAX_CP_ENUM> aCodePageRange;
+            appendBitset(aCodePageRange, 0, nCPR1);
+            appendBitset(aCodePageRange, 32, nCPR2);
             mxFontCapabilities->oCodePageRange = aCodePageRange;
+        }
     }
 
     rFontCapabilities = *mxFontCapabilities;
@@ -520,22 +515,12 @@ bool PhysicalFontFace::CreateFontSubset(std::vector<sal_uInt8>& rOutBuffer,
 
     unsigned int flags = HB_SUBSET_FLAGS_DEFAULT;
 
-#if HB_VERSION_ATLEAST(13, 0, 0)
     // If the font has CFF2 table, we need to downgrade it to CFF, as we can’t embed CFF2 in PDF.
     flags |= HB_SUBSET_FLAGS_DOWNGRADE_CFF2;
-#endif
 
-#if !HB_VERSION_ATLEAST(13, 0, 2)
-    // tdf#171202: Work around HarfBuzz bug where setting old_to_new_glyph_mapping would result in
-    // invalid local subr indices. De-subroutinize the font if we are building against old HarfBuzz.
-    flags |= HB_SUBSET_FLAGS_DESUBROUTINIZE;
-#endif
-
-#if HB_VERSION_ATLEAST(14, 3, 0)
     // Make the charset of CID-keyed CFF fonts identity, so that the CIDs of the
-    // subset are its glyph IDs and we don’t have to read them from the charset.
+    // subset are its glyph IDs.
     flags |= HB_SUBSET_FLAGS_CFF_IDENTITY_CHARSET;
-#endif
 
     hb_subset_input_set_flags(pInput, flags);
 
@@ -612,25 +597,12 @@ bool PhysicalFontFace::CreateFontSubset(std::vector<sal_uInt8>& rOutBuffer,
     if (hb_ot_metrics_get_position(pSubsetFont, HB_OT_METRICS_TAG_CAP_HEIGHT, &nCapHeight))
         rInfo.m_nCapHeight = XUnits(nUPEM, nCapHeight);
 
-    hb_blob_t* pHeadBlob = hb_face_reference_table(pSubsetFace, HB_TAG('h', 'e', 'a', 'd'));
-    comphelper::ScopeGuard aHeadBlobGuard([&]() { hb_blob_destroy(pHeadBlob); });
-
-    unsigned int nHeadLen;
-    const char* pHead = hb_blob_get_data(pHeadBlob, &nHeadLen);
-    SvMemoryStream aStream(const_cast<char*>(pHead), nHeadLen, StreamMode::READ);
-    // Font data are big endian.
-    aStream.SetEndian(SvStreamEndian::BIG);
-    if (aStream.Seek(vcl::HEAD_yMax_offset) == vcl::HEAD_yMax_offset)
-    {
-        sal_Int16 xMin, yMin, xMax, yMax;
-        aStream.Seek(vcl::HEAD_xMin_offset);
-        aStream.ReadInt16(xMin);
-        aStream.ReadInt16(yMin);
-        aStream.ReadInt16(xMax);
-        aStream.ReadInt16(yMax);
-        rInfo.m_aFontBBox = tools::Rectangle(Point(XUnits(nUPEM, xMin), XUnits(nUPEM, yMin)),
-                                             Point(XUnits(nUPEM, xMax), XUnits(nUPEM, yMax)));
-    }
+    auto nXMin = hb_ot_fetch_number(pSubsetFace, HB_OT_NUMBER_TAG_FONT_X_MIN);
+    auto nYMin = hb_ot_fetch_number(pSubsetFace, HB_OT_NUMBER_TAG_FONT_Y_MIN);
+    auto nXMax = hb_ot_fetch_number(pSubsetFace, HB_OT_NUMBER_TAG_FONT_X_MAX);
+    auto nYMax = hb_ot_fetch_number(pSubsetFace, HB_OT_NUMBER_TAG_FONT_Y_MAX);
+    rInfo.m_aFontBBox = tools::Rectangle(Point(XUnits(nUPEM, nXMin), XUnits(nUPEM, nYMin)),
+                                         Point(XUnits(nUPEM, nXMax), XUnits(nUPEM, nYMax)));
 
     hb_blob_t* pCFFBlob = hb_face_reference_table(pSubsetFace, HB_TAG('C', 'F', 'F', ' '));
     comphelper::ScopeGuard aCFFBlobGuard([&]() { hb_blob_destroy(pCFFBlob); });
@@ -659,16 +631,6 @@ bool PhysicalFontFace::CreateFontSubset(std::vector<sal_uInt8>& rOutBuffer,
         const char* pCffData = hb_blob_get_data(pCFFBlob, &nCffLen);
         if (!pCffData || !nCffLen)
             return false;
-
-#if !HB_VERSION_ATLEAST(14, 3, 0)
-        // Old HarfBuzz keeps the original CIDs of CID-keyed fonts, so we have
-        // to read them out of the charset ourselves.
-        if (!ReadCFFGlyphCIDs(reinterpret_cast<const sal_uInt8*>(pCffData), nCffLen, rInfo.m_aCIDs))
-        {
-            SAL_WARN("vcl.fonts.cff", "Failed to read CIDs of subsetted CFF font");
-            return false;
-        }
-#endif
 
         rOutBuffer.assign(reinterpret_cast<const sal_uInt8*>(pCffData),
                           reinterpret_cast<const sal_uInt8*>(pCffData) + nCffLen);
