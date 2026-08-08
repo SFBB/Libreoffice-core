@@ -2095,6 +2095,25 @@ CPPUNIT_TEST_FIXTURE(SwLayoutWriter5, testTdf129808CompatFlagUnset)
     CPPUNIT_ASSERT_LESS(sal_Int32(1150), nHeight2);
 }
 
+CPPUNIT_TEST_FIXTURE(SwLayoutWriter5, testTdf171275GridNoExtraLeading)
+{
+    // tdf#171275: This document contains an embedded font that advertises CP950 coverage. When
+    // Word-compatible CJK metrics are enabled, the line height should be scaled higher. However,
+    // this document also uses the document grid, which should disable the extra height.
+    createSwDoc("tdf171275-grid-no-extra-leading.fodt");
+    auto pXmlDoc = parseLayoutDump();
+
+    auto nHeight1 = getXPath(pXmlDoc, "//txt[1]/SwParaPortion/SwLineLayout", "height").toInt32();
+    // Without the fix, this would be ~2362
+    CPPUNIT_ASSERT_GREATER(sal_Int32(1180), nHeight1);
+    CPPUNIT_ASSERT_LESS(sal_Int32(1182), nHeight1);
+
+    auto nHeight2 = getXPath(pXmlDoc, "//txt[2]/SwParaPortion/SwLineLayout", "height").toInt32();
+    // Without the fix, this would be ~2362
+    CPPUNIT_ASSERT_GREATER(sal_Int32(1180), nHeight2);
+    CPPUNIT_ASSERT_LESS(sal_Int32(1182), nHeight2);
+}
+
 CPPUNIT_TEST_FIXTURE(SwLayoutWriter5, testTdf168116)
 {
     // Given a paragraph with a line break immediately followed by a hidden paragraph mark:
@@ -2329,7 +2348,7 @@ CPPUNIT_TEST_FIXTURE(SwLayoutWriter5, testTdf104020)
 {
     // A nearly frame-wide rectangle set to centre on its anchor paragraph, which has no text
     // of its own, in a fixed-height text frame anchored at the page. The rectangle is centred
-    // on the frame's content area, as centring it on the paragraph would be circular: the
+    // on the frame's content area, as centering it on the paragraph would be circular: the
     // paragraph's height comes from the rectangle's own wrap.
     createSwDoc("object-centred-in-fixed-height-fly.fodt");
     auto pXmlDoc = parseLayoutDump();
