@@ -243,15 +243,11 @@ void SbRtl_CDec(StarBASIC *, SbxArray & rPar, bool)
 {
 #ifdef _WIN32
     SbxDecimal* pDec = nullptr;
-    if (rPar.Count() == 2)
-    {
-        SbxVariable* pSbxVariable = rPar.Get(1);
-        pDec = pSbxVariable->GetDecimal();
-    }
-    else
-    {
-        StarBASIC::Error( ERRCODE_BASIC_BAD_ARGUMENT );
-    }
+    if (rPar.Count() != 2)
+        return StarBASIC::Error(ERRCODE_BASIC_BAD_ARGUMENT);
+
+    SbxVariable* pSbxVariable = rPar.Get(1);
+    pDec = pSbxVariable->GetDecimal();
     rPar.Get(0)->PutDecimal(pDec);
 #else
     rPar.Get(0)->PutEmpty();
@@ -320,30 +316,27 @@ void SbRtl_CLng(StarBASIC *, SbxArray & rPar, bool)  // JSM
 void SbRtl_CSng(StarBASIC *, SbxArray & rPar, bool)  // JSM
 {
     float nVal = float(0.0);
-    if (rPar.Count() == 2)
+    if (rPar.Count() != 2)
+        return StarBASIC::Error( ERRCODE_BASIC_BAD_ARGUMENT );
+
+    SbxVariable* pSbxVariable = rPar.Get(1);
+    if( pSbxVariable->GetType() == SbxSTRING )
     {
-        SbxVariable* pSbxVariable = rPar.Get(1);
-        if( pSbxVariable->GetType() == SbxSTRING )
+        // #41690
+        double dVal = 0.0;
+        OUString aScanStr = pSbxVariable->GetOUString();
+        ErrCode Error = SbxValue::ScanNumIntnl( aScanStr, dVal, /*bSingle=*/true );
+        if( SbxBase::GetError() == ERRCODE_NONE && Error != ERRCODE_NONE )
         {
-            // #41690
-            double dVal = 0.0;
-            OUString aScanStr = pSbxVariable->GetOUString();
-            ErrCode Error = SbxValue::ScanNumIntnl( aScanStr, dVal, /*bSingle=*/true );
-            if( SbxBase::GetError() == ERRCODE_NONE && Error != ERRCODE_NONE )
-            {
-                StarBASIC::Error( Error );
-            }
-            nVal = static_cast<float>(dVal);
+            StarBASIC::Error( Error );
         }
-        else
-        {
-            nVal = pSbxVariable->GetSingle();
-        }
+        nVal = static_cast<float>(dVal);
     }
     else
     {
-        StarBASIC::Error( ERRCODE_BASIC_BAD_ARGUMENT );
+        nVal = pSbxVariable->GetSingle();
     }
+
     rPar.Get(0)->PutSingle(nVal);
 }
 
@@ -546,8 +539,9 @@ void SbRtl_Choose(StarBASIC *, SbxArray & rPar, bool)
 {
     if (rPar.Count() < 2)
     {
-        StarBASIC::Error( ERRCODE_BASIC_BAD_ARGUMENT );
+        return StarBASIC::Error( ERRCODE_BASIC_BAD_ARGUMENT );
     }
+
     sal_Int16 nIndex = rPar.Get(1)->GetInteger();
     sal_uInt32 nCount = rPar.Count();
     nCount--;
@@ -609,8 +603,9 @@ void SbRtl_FreeLibrary(StarBASIC *, SbxArray & rPar, bool)
 {
     if (rPar.Count() != 2)
     {
-        StarBASIC::Error( ERRCODE_BASIC_BAD_ARGUMENT );
+        return StarBASIC::Error( ERRCODE_BASIC_BAD_ARGUMENT );
     }
+
     GetSbData()->pInst->GetDllMgr()->FreeDll(rPar.Get(1)->GetOUString());
 }
 bool IsBaseIndexOne()
