@@ -12,7 +12,7 @@
 #include <pdf/pdfwriter_impl.hxx>
 #include <comphelper/crypto/Crypto.hxx>
 #include <comphelper/hash.hxx>
-#include <comphelper/random.hxx>
+#include <rtl/random.h>
 
 using namespace css;
 
@@ -38,8 +38,10 @@ void generateBytes(std::vector<sal_uInt8>& rBytes, size_t nSize)
 {
     rBytes.resize(nSize);
 
-    for (size_t i = 0; i < rBytes.size(); ++i)
-        rBytes[i] = sal_uInt8(comphelper::rng::uniform_uint_distribution(0, 0xFF));
+    if (rBytes.empty())
+        return;
+
+    rtl_random_getBytes(nullptr, rBytes.data(), rBytes.size());
 }
 
 } // end anonymous
@@ -190,7 +192,9 @@ std::vector<sal_uInt8> computeHashR6(const sal_uInt8* pPassword, size_t nPasswor
 
     std::vector<sal_uInt8> E;
 
-    sal_Int32 nRound = 1; // round 0 is done already
+    // Counts the repetitions of steps a) to d) done so far.
+    // K is the input to the first repetition and is not counted.
+    sal_Int32 nRound = 0;
     do
     {
         // Step a)
@@ -235,7 +239,7 @@ std::vector<sal_uInt8> computeHashR6(const sal_uInt8* pPassword, size_t nPasswor
     }
     // Step e) and f)
     // We stop iteration if we do at least 64 rounds and (the last element of E <= round number - 32)
-    while (nRound <= 64 || E.back() > (nRound - 32));
+    while (nRound < 64 || E.back() > (nRound - 32));
 
     // Output - first 32 bytes
     return std::vector<sal_uInt8>(K.begin(), K.begin() + 32);

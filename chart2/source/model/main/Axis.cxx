@@ -79,7 +79,14 @@ enum
     PROP_AXIS_TRY_STAGGERING_FIRST,
     PROP_AXIS_MAJOR_ORIGIN,
     PROP_AXIS_HAS_EXPLICIT_SPPR,
-    PROP_AXIS_HAS_EXPLICIT_TXPR
+    PROP_AXIS_HAS_EXPLICIT_TXPR,
+    PROP_AXIS_ID,
+    PROP_AXIS_CAT_NOT_VAL,
+    PROP_AXIS_CHARTEX_VAL_MIN,
+    PROP_AXIS_CHARTEX_VAL_MAX,
+    PROP_AXIS_CHARTEX_MAJOR_UNIT,
+    PROP_AXIS_CHARTEX_MINOR_UNIT,
+    PROP_AXIS_CHARTEX_UNIT
 };
 
 void lcl_AddPropertiesToVector(
@@ -217,6 +224,54 @@ void lcl_AddPropertiesToVector(
                   beans::PropertyAttribute::BOUND
                   | beans::PropertyAttribute::MAYBEVOID );
 
+    // Chartex only: the cx:axis id attribute value from import, preserved
+    // so export can reuse the same id and so series-to-axis links survive
+    // round-trip.
+    rOutProperties.emplace_back( "AxisId",
+                  PROP_AXIS_ID,
+                  cppu::UnoType<sal_Int32>::get(),
+                  beans::PropertyAttribute::BOUND
+                  | beans::PropertyAttribute::MAYBEVOID );
+    rOutProperties.emplace_back( "CatNotVal",
+                  PROP_AXIS_CAT_NOT_VAL,
+                  cppu::UnoType<bool>::get(),
+                  beans::PropertyAttribute::BOUND
+                  | beans::PropertyAttribute::MAYBEVOID );
+
+    // Chartex round-trip: cx:valScaling attributes preserved verbatim, so
+    // export does not have to rebuild them from the chart2 ScaleData (where
+    // Auto* flags and explicit calc-style defaults can mask the original
+    // intent).
+    rOutProperties.emplace_back( "ChartexValMin",
+                  PROP_AXIS_CHARTEX_VAL_MIN,
+                  cppu::UnoType<double>::get(),
+                  beans::PropertyAttribute::BOUND
+                  | beans::PropertyAttribute::MAYBEVOID );
+    rOutProperties.emplace_back( "ChartexValMax",
+                  PROP_AXIS_CHARTEX_VAL_MAX,
+                  cppu::UnoType<double>::get(),
+                  beans::PropertyAttribute::BOUND
+                  | beans::PropertyAttribute::MAYBEVOID );
+    rOutProperties.emplace_back( "ChartexMajorUnit",
+                  PROP_AXIS_CHARTEX_MAJOR_UNIT,
+                  cppu::UnoType<double>::get(),
+                  beans::PropertyAttribute::BOUND
+                  | beans::PropertyAttribute::MAYBEVOID );
+    rOutProperties.emplace_back( "ChartexMinorUnit",
+                  PROP_AXIS_CHARTEX_MINOR_UNIT,
+                  cppu::UnoType<double>::get(),
+                  beans::PropertyAttribute::BOUND
+                  | beans::PropertyAttribute::MAYBEVOID );
+
+    // Chartex round-trip: cx:units/@unit value. Stored alongside the
+    // existing BuiltInUnit/DisplayUnits properties because the chartex
+    // flat form only uses this single string and we want the same string
+    // to come back on export.
+    rOutProperties.emplace_back( "ChartexUnit",
+                  PROP_AXIS_CHARTEX_UNIT,
+                  cppu::UnoType<OUString>::get(),
+                  beans::PropertyAttribute::BOUND
+                  | beans::PropertyAttribute::MAYBEVOID );
 }
 } // namespace
 

@@ -15,6 +15,7 @@
 #include <com/sun/star/text/WrapTextMode.hpp>
 #include <com/sun/star/text/XTextSectionsSupplier.hpp>
 #include <vcl/event.hxx>
+#include <vcl/pdf/PDFPageObjectType.hxx>
 #include <vcl/scheduler.hxx>
 #include <editeng/fontitem.hxx>
 #include <editeng/fhgtitem.hxx>
@@ -31,6 +32,7 @@
 #include <txtfrm.hxx>
 #include <pagefrm.hxx>
 #include <bodyfrm.hxx>
+#include <tabfrm.hxx>
 #include <sortedobjs.hxx>
 #include <ndtxt.hxx>
 #include <frmatr.hxx>
@@ -1533,6 +1535,114 @@ CPPUNIT_TEST_FIXTURE(SwLayoutWriter6, testTdf156724)
     assertXPath(pXmlDoc, "/root/page", 2);
 }
 
+CPPUNIT_TEST_FIXTURE(SwLayoutWriter6, testCool16066_addRowsUnderOmittedHeading)
+{
+    // Rows added to a table whose heading is left off the page its first row needs.
+    createSwDoc("Cool16066_addRowsUnderOmittedHeading.docx");
+    SwWrtShell* pWrtShell = getSwDocShell()->GetWrtShell();
+    pWrtShell->GotoTable(UIName(u"Table1"_ustr));
+
+    // Without the fix this crashed on the first insertion, dereferencing the null
+    // GetFirstNonHeadlineRow() of a follow that holds nothing but its repeated heading.
+    for (int i = 0; i < 25; ++i)
+    {
+        pWrtShell->EndOfSection(false);
+        dispatchCommand(mxComponent, u".uno:InsertRowsAfter"_ustr, {});
+        Scheduler::ProcessEventsToIdle();
+    }
+
+    // The rows are there, spread over the pages they need.
+    xmlDocUniquePtr pXmlDoc = parseLayoutDump();
+    CPPUNIT_ASSERT_GREATEREQUAL(3, countXPathNodes(pXmlDoc, "//page"));
+    CPPUNIT_ASSERT_GREATEREQUAL(25, countXPathNodes(pXmlDoc, "//body/tab/row"));
+
+    // Without the fix the row insertion pasted a fresh heading into every follow, and one was
+    // left holding nothing but that repeat, taking a page of its own.
+    int nLoneHeadings = 0;
+    for (const SwFrame* pPage = getSwDoc()->getIDocumentLayoutAccess().GetCurrentLayout()->Lower();
+         pPage; pPage = pPage->GetNext())
+        for (const SwFrame* pBody = static_cast<const SwLayoutFrame*>(pPage)->Lower(); pBody;
+             pBody = pBody->GetNext())
+            if (pBody->IsBodyFrame())
+                for (const SwFrame* pFr = static_cast<const SwLayoutFrame*>(pBody)->Lower(); pFr;
+                     pFr = pFr->GetNext())
+                    if (pFr->IsTabFrame() && static_cast<const SwTabFrame*>(pFr)->IsFollow()
+                        && !static_cast<const SwTabFrame*>(pFr)->GetFirstNonHeadlineRow())
+                        ++nLoneHeadings;
+    CPPUNIT_ASSERT_EQUAL(0, nLoneHeadings);
+}
+
+CPPUNIT_TEST_FIXTURE(SwLayoutWriter6, testCool16066_headlineAndUnsplittableRow)
+{
+    // A table with a repeated headline, whose second row may not break across pages, and is
+    // taller than what a page has left once the headline is repeated on it.
+    createSwDoc("Cool16066_headlineAndUnsplittableRow.fodt");
+    xmlDocUniquePtr pXmlDoc = parseLayoutDump();
+
+    // Without the fix the row was kept under the headline, reaching past the bottom of the page
+    // and hiding everything below it: the table ended at 18974, the body at 15987.
+    const sal_Int32 nBodyBottom
+        = getXPath(pXmlDoc, "//page[1]/body/infos/bounds", "bottom").toInt32();
+    const sal_Int32 nTableBottom
+        = getXPath(pXmlDoc, "//page[1]/body/tab/infos/bounds", "bottom").toInt32();
+    CPPUNIT_ASSERT_LESSEQUAL(nBodyBottom, nTableBottom);
+
+    // The row gets the next page to itself, whole, with the headline left off it.
+    assertXPath(pXmlDoc, "//page", 2);
+    assertXPath(pXmlDoc, "//page[1]/body/tab/row", 1);
+    assertXPath(pXmlDoc, "//page[2]/body/tab/row", 1);
+    assertXPath(pXmlDoc, "//page[1]//SwLineLayout[@portion='Repeated headline']", 1);
+    assertXPath(pXmlDoc, "//page[2]//SwLineLayout[@portion='Repeated headline']", 0);
+}
+
+CPPUNIT_TEST_FIXTURE(SwLayoutWriter6, testCool16067_footnoteSpaceFreedBySplit)
+{
+    // The last of the four rows carries a footnote. The space kept for that footnote on the third
+    // page is what the third row gets measured against, and the footnote then leaves the page with
+    // the row that anchors it.
+    createSwDoc("Cool16067_footnoteSpaceFreedBySplit.fodt");
+    xmlDocUniquePtr pXmlDoc = parseLayoutDump();
+
+    assertXPath(pXmlDoc, "//page", 4);
+    assertXPath(pXmlDoc, "//page[2]/body/tab/row", 1);
+    // Without the fix the third row stayed pushed off the third page, which kept a single 3 cm row
+    // and 5 cm of empty space, and the last two rows shared the fourth page.
+    assertXPath(pXmlDoc, "//page[3]/body/tab/row", 2);
+    assertXPath(pXmlDoc, "//page[4]/body/tab/row", 1);
+}
+
+CPPUNIT_TEST_FIXTURE(SwLayoutWriter6, testCool16071_footnoteTailKeptWhenTruncated)
+{
+    // The first row's footnote fills the footnote area of the page it ends up on, and the last
+    // row travels between pages carrying a footnote of three lines. That leaves the lines after
+    // the first formatted against a footnote area with no room for them.
+    createSwDoc("Cool16071_footnoteTailKeptWhenTruncated.fodt");
+    // A layout dump would format what it reads, and that alone repairs the frame: measure the
+    // export instead.
+    save(TestFilter::PDF_WRITER);
+    std::unique_ptr<vcl::pdf::PDFiumDocument> pPdf = parsePDFExport();
+    if (!pPdf)
+        return;
+
+    // the last word of the last footnote, on its third line
+    bool bTailExported = false;
+    for (int nPage = 0; nPage < pPdf->getPageCount() && !bTailExported; ++nPage)
+    {
+        std::unique_ptr<vcl::pdf::PDFiumPage> pPage = pPdf->openPage(nPage);
+        std::unique_ptr<vcl::pdf::PDFiumTextPage> pTextPage = pPage->getTextPage();
+        for (int i = 0; i < pPage->getObjectCount() && !bTailExported; ++i)
+        {
+            std::unique_ptr<vcl::pdf::PDFiumPageObject> pObject = pPage->getObject(i);
+            if (pObject->getType() == vcl::pdf::PDFPageObjectType::Text)
+                bTailExported = pObject->getText(pTextPage).indexOf("TAILMARK") >= 0;
+        }
+    }
+
+    // Without the fix the footnote kept its first line only: the two lines cut away from it had
+    // nowhere to go, so their text was missing from the document altogether.
+    CPPUNIT_ASSERT(bTailExported);
+}
+
 CPPUNIT_TEST_FIXTURE(SwLayoutWriter6, testHiddenParagraphFollowFrame)
 {
     createSwDoc("hidden-para-follow-frame.fodt");
@@ -2370,6 +2480,114 @@ CPPUNIT_TEST_FIXTURE(SwLayoutWriter6, testTdf168873ParagraphReflow)
     // Assert that the expected text is located specifically on page 2.
     assertXPath(pXmlDoc, "//page[2]/body/txt[2]/SwParaPortion/SwLineLayout", "portion",
                 u"Wiederaufnahme der Kameraproduktion nach dem Zweiten Weltkrieg");
+}
+
+CPPUNIT_TEST_FIXTURE(SwLayoutWriter6, testTdf171708)
+{
+    // A floating table filling three pages, followed by a paragraph that has no room left on the
+    // table's last page.
+    createSwDoc("tdf171708.docx");
+
+    xmlDocUniquePtr pXmlDoc = parseLayoutDump();
+    CPPUNIT_ASSERT(pXmlDoc);
+    // Without the fix, the paragraph was dropped: the document ended on the third page.
+    CPPUNIT_ASSERT_EQUAL(4, countXPathNodes(pXmlDoc, "//page"));
+    assertXPath(pXmlDoc, "//page[4]/body/txt/SwParaPortion/SwLineLayout", "portion",
+                u"Content after the table.");
+}
+
+CPPUNIT_TEST_FIXTURE(SwLayoutWriter6, testFloatTableOverFooterObject)
+{
+    // A floating table split over three pages, and a footer picture reaching up into the body of
+    // every page.
+    createSwDoc("floattable-footer-object.docx");
+
+    xmlDocUniquePtr pXmlDoc = parseLayoutDump();
+    CPPUNIT_ASSERT(pXmlDoc);
+    CPPUNIT_ASSERT_EQUAL(4, countXPathNodes(pXmlDoc, "//page"));
+
+    // All three parts of the fly are dumped below the master anchor, on page 1.
+    const sal_Int32 nFlyBottom
+        = getXPath(pXmlDoc, "//page[1]/body/txt/anchored/fly[1]/infos/bounds", "bottom").toInt32();
+    const sal_Int32 nFlyTop
+        = getXPath(pXmlDoc, "//page[1]/body/txt/anchored/fly[1]/infos/bounds", "top").toInt32();
+    const sal_Int32 nPictureTop
+        = getXPath(pXmlDoc, "//page[1]/footer/txt/anchored/fly/infos/bounds", "top").toInt32();
+    const sal_Int32 nBodyTop = getXPath(pXmlDoc, "//page[1]/body/infos/bounds", "top").toInt32();
+
+    // Without the fix, the fly stayed at the top of the body and ran over the picture: it was
+    // 1725..7235 against a picture at 6059.
+    CPPUNIT_ASSERT_LESS(nPictureTop, nFlyBottom);
+    // It clears the picture by reaching into the top margin area, as Word does, rather than by
+    // giving up a row.
+    CPPUNIT_ASSERT_LESS(nBodyTop, nFlyTop);
+    CPPUNIT_ASSERT_EQUAL(5, countXPathNodes(pXmlDoc, "//page[1]/body/txt/anchored/fly[1]/tab/row"));
+}
+
+CPPUNIT_TEST_FIXTURE(SwLayoutWriter6, testFloatTableOverFooterObjectNoFit)
+{
+    // Same as testFloatTableOverFooterObject, but the picture reaches so far up that clearing it
+    // would take the fly off the page.
+    createSwDoc("floattable-footer-object-nofit.docx");
+
+    xmlDocUniquePtr pXmlDoc = parseLayoutDump();
+    CPPUNIT_ASSERT(pXmlDoc);
+    CPPUNIT_ASSERT_EQUAL(4, countXPathNodes(pXmlDoc, "//page"));
+
+    const sal_Int32 nFlyTop
+        = getXPath(pXmlDoc, "//page[1]/body/txt/anchored/fly[1]/infos/bounds", "top").toInt32();
+    const sal_Int32 nFlyBottom
+        = getXPath(pXmlDoc, "//page[1]/body/txt/anchored/fly[1]/infos/bounds", "bottom").toInt32();
+    const sal_Int32 nPictureTop
+        = getXPath(pXmlDoc, "//page[1]/footer/txt/anchored/fly/infos/bounds", "top").toInt32();
+    const sal_Int32 nBodyTop = getXPath(pXmlDoc, "//page[1]/body/infos/bounds", "top").toInt32();
+
+    // There is nowhere to shift to, so the fly keeps its place and the overlap, rather than
+    // dropping a row or climbing off the page. Word does the same.
+    CPPUNIT_ASSERT_GREATEREQUAL(nBodyTop, nFlyTop);
+    CPPUNIT_ASSERT_GREATER(nPictureTop, nFlyBottom);
+    CPPUNIT_ASSERT_EQUAL(5, countXPathNodes(pXmlDoc, "//page[1]/body/txt/anchored/fly[1]/tab/row"));
+}
+
+CPPUNIT_TEST_FIXTURE(SwLayoutWriter6, testFooterNoWrapObject)
+{
+    // A footer whose fly is anchored to the footer paragraph, wraps top and bottom, and is
+    // offset up by less than its own height.
+    createSwDoc("footer-nowrap-object.docx");
+
+    // Whether the fly ends above the footer text instead of covering it.
+    auto isFlyAboveText = [this]() {
+        xmlDocUniquePtr pXmlDoc = parseLayoutDump();
+        CPPUNIT_ASSERT(pXmlDoc);
+        const sal_Int32 nTextTop
+            = getXPath(pXmlDoc, "//page[1]/footer/txt/infos/bounds", "top").toInt32();
+        const sal_Int32 nFlyBottom
+            = getXPath(pXmlDoc, "//page[1]/footer/txt/anchored/fly/infos/bounds", "bottom")
+                  .toInt32();
+        return nFlyBottom <= nTextTop;
+    };
+    auto isMSOLayout = [this]() {
+        const IDocumentSettingAccess& rIDSA = getSwDoc()->getIDocumentSettingAccess();
+        return rIDSA.get(DocumentSettingId::TAB_OVER_SPACING)
+               || rIDSA.get(DocumentSettingId::TAB_OVER_MARGIN);
+    };
+
+    // Without the fix the fly kept its offset and covered the paragraph: it ended at 7828, the text
+    // at 7679.
+    CPPUNIT_ASSERT(isMSOLayout());
+    CPPUNIT_ASSERT(isFlyAboveText());
+
+    // Both survive a round trip through ODF.
+    saveAndReload(TestFilter::ODT);
+    CPPUNIT_ASSERT(isMSOLayout());
+    CPPUNIT_ASSERT(isFlyAboveText());
+
+    // Without the flags the position given for the fly is honoured, even where it covers the text.
+    getSwDoc()->getIDocumentSettingAccess().set(DocumentSettingId::TAB_OVER_SPACING, false);
+    getSwDoc()->getIDocumentSettingAccess().set(DocumentSettingId::TAB_OVER_MARGIN, false);
+    saveAndReload(TestFilter::ODT);
+    CPPUNIT_ASSERT(!isMSOLayout());
+    CPPUNIT_ASSERT(!isFlyAboveText());
 }
 
 } // end of anonymous namespace

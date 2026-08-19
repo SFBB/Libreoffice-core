@@ -222,6 +222,18 @@ static SwTwips lcl_CalcTopAndBottomMargin( const SwLayoutFrame&, const SwBorderA
 
 static SwTwips lcl_calcHeightOfRowBeforeThisFrame(const SwRowFrame& rRow);
 
+/// The height a single row of rTab can ever get: a page body with nothing else on it
+static SwTwips lcl_GetMaxRowHeight(const SwTabFrame& rTab)
+{
+    SwTwips nRet = rTab.FindPageFrame()->getFramePrintArea().Height();
+    for (auto pBody = rTab.FindBodyFrame(); pBody; pBody = pBody->GetUpper()->FindBodyFrame())
+    {
+        if (pBody->IsPageBodyFrame())
+            nRet = pBody->getFramePrintArea().Height();
+    }
+    return nRet;
+}
+
 static SwTwips lcl_GetHeightOfRows( const SwFrame* pStart, tools::Long nCount )
 {
     if ( !nCount || !pStart)
@@ -1158,17 +1170,13 @@ bool SwTabFrame::Split(const SwTwips nCutPos, bool bTryToSplit,
     //                   table, or it will be set to false under certain
     //                   conditions that are not suitable for splitting
     //                   the row.
+    const tools::Long nMaxHeight = lcl_GetMaxRowHeight(*this);
+
     bool bSplitRowAllowed = bTryToSplit && nRemainingSpaceForLastRow > 0;
     if (bSplitRowAllowed && !pRow->IsRowSplitAllowed())
     {
         // A row larger than the entire page ought to be allowed to split regardless of setting,
         // otherwise it has hidden content and that makes no sense
-        tools::Long nMaxHeight = FindPageFrame()->getFramePrintArea().Height();
-        for (auto pBody = FindBodyFrame(); pBody; pBody = pBody->GetUpper()->FindBodyFrame())
-        {
-            if (pBody->IsPageBodyFrame())
-                nMaxHeight = pBody->getFramePrintArea().Height();
-        }
         if (pRow->getFrameArea().Height() > nMaxHeight)
             pRow->SetForceRowSplitAllowed( true );
         else
@@ -1212,6 +1220,9 @@ bool SwTabFrame::Split(const SwTwips nCutPos, bool bTryToSplit,
     // the row. Maybe we should keep the next row in this table.
     // Note: This is only done if we are at the beginning of our upper
     bool bKeepNextRow = false;
+    // A row that the repeated headline leaves no room for gets a page without that headline;
+    // the headline resumes on the pages after it
+    bool bOmitHeadline = false;
     if ( nRowCount < nRepeat )
     {
         // First case: One of the repeated headline does not fit to the page anymore.
@@ -1259,6 +1270,8 @@ bool SwTabFrame::Split(const SwTwips nCutPos, bool bTryToSplit,
                 pLowerCell = static_cast<SwCellFrame*>(pLowerCell->GetNext());
             }
         }
+        else if (nRepeat && pRow->getFrameArea().Height() <= nMaxHeight)
+            bOmitHeadline = true;
         else
             bKeepNextRow = true;
     }
@@ -1329,7 +1342,7 @@ bool SwTabFrame::Split(const SwTwips nCutPos, bool bTryToSplit,
     // If we do not intend to split pRow, we check if we are
     // allowed to move pRow to a follow. Otherwise we return
     // false, indicating an error
-    if ( !bSplitRowAllowed )
+    if (!bSplitRowAllowed && !bOmitHeadline)
     {
         SwRowFrame* pFirstNonHeadlineRow = GetFirstNonHeadlineRow();
         if ( pRow == pFirstNonHeadlineRow )
@@ -1348,6 +1361,11 @@ bool SwTabFrame::Split(const SwTwips nCutPos, bool bTryToSplit,
         }
     }
 
+    // The row heading the follow must not be given a heading it cannot fit under: it would only
+    // be pushed on again, leaving the repeat stranded on a page of its own
+    const bool bFollowOmitsHeadline
+        = bOmitHeadline || (!bSplitRowAllowed && !RowFitsUnderHeadline(*pRow));
+
     // Build follow table if not already done:
     bool bNewFollow;
     SwTabFrame *pFoll;
@@ -1355,6 +1373,16 @@ bool SwTabFrame::Split(const SwTwips nCutPos, bool bTryToSplit,
     {
         pFoll = GetFollow();
         bNewFollow = false;
+        if (bFollowOmitsHeadline)
+        {
+            SwRowFrame* pHeadline;
+            while (nullptr != (pHeadline = static_cast<SwRowFrame*>(pFoll->Lower()))
+                   && pHeadline->IsRepeatedHeadline())
+            {
+                pHeadline->Cut();
+                SwFrame::DestroyFrame(pHeadline);
+            }
+        }
     }
     else
     {
@@ -1378,10 +1406,11 @@ bool SwTabFrame::Split(const SwTwips nCutPos, bool bTryToSplit,
 
         // Repeat the headlines.
         auto& rLines = GetTable()->GetTabLines();
-        for ( nRowCount = 0; nRowCount < nRepeat; ++nRowCount )
+        const sal_uInt16 nFollowRepeat = bFollowOmitsHeadline ? 0 : nRepeat;
+        for (sal_uInt16 i = 0; i < nFollowRepeat; ++i)
         {
             // Insert new headlines:
-            SwRowFrame* pHeadline = new SwRowFrame(*rLines[nRowCount], this);
+            SwRowFrame* pHeadline = new SwRowFrame(*rLines[i], this);
             {
                 sw::FlyCreationSuppressor aSuppressor;
                 pHeadline->SetRepeatedHeadline(true);
@@ -2309,6 +2338,11 @@ void SwTabFrame::MakeAll(vcl::RenderContext* pRenderContext)
     bool bMovedFwd  = false;
     // gets set to true when the Frame is split
     bool bSplit = false;
+    // the bottom that the split measured the rows against
+    SwTwips nSplitDeadLine = 0;
+    // as long as bRetryRegainedSpace is true, the rows the split rejected may be measured once
+    // more, against the space that has appeared under that bottom since
+    bool bRetryRegainedSpace = true;
     const bool bFootnotesInDoc = !GetFormat()->GetDoc().GetFootnoteIdxs().empty();
     const bool bFly     = IsInFly();
 
@@ -2379,9 +2413,15 @@ void SwTabFrame::MakeAll(vcl::RenderContext* pRenderContext)
         if( GetFollow() && !GetFollow()->IsJoinLocked() &&
             nullptr == GetFirstNonHeadlineRow() )
         {
-            if ( HasFollowFlowLine() )
-                RemoveFollowFlowLine();
-            Join();
+            // Unless the row over there is the one the headline leaves no room for: taking it
+            // back would only push it out again
+            const SwRowFrame* pFollowRow = GetFollow()->GetFirstNonHeadlineRow();
+            if (!pFollowRow || RowFitsUnderHeadline(*pFollowRow))
+            {
+                if (HasFollowFlowLine())
+                    RemoveFollowFlowLine();
+                Join();
+            }
         }
     }
 
@@ -2670,6 +2710,17 @@ void SwTabFrame::MakeAll(vcl::RenderContext* pRenderContext)
         // the table to be split! Only skip this if condition once.
         if( nDistanceToUpperPrtBottom >= 0 && !bLastRowHasToMoveToFollow )
         {
+            // The rows that went to the follow took their footnotes along, so the page has grown
+            // back since the split measured them: measure them against it as it is now
+            if (bSplit && bRetryRegainedSpace
+                && aRectFnSet.YDiff(aRectFnSet.GetPrtBottom(*GetUpper()), nSplitDeadLine) > 0)
+            {
+                // only once: a row taken back can bring its own footnote with it, shrinking the
+                // page again, and this would keep splitting and joining the same row
+                bRetryRegainedSpace = false;
+                bSplit = false;
+            }
+
             // If there is space left in the upper printing area, join as for trial
             // at least one further row of an existing follow.
             if ( !bSplit && GetFollow() )
@@ -3094,6 +3145,7 @@ void SwTabFrame::MakeAll(vcl::RenderContext* pRenderContext)
                 {
                     aNotify.SetLowersComplete( false );
                     bSplit = true;
+                    nSplitDeadLine = nDeadLine;
 
                     // An existing follow flow line has to be removed.
                     if ( HasFollowFlowLine() )
@@ -6709,6 +6761,19 @@ SwRowFrame* SwTabFrame::GetFirstNonHeadlineRow() const
     }
 
     return pRet;
+}
+
+bool SwTabFrame::RowFitsUnderHeadline(const SwRowFrame& rRow) const
+{
+    const sal_uInt16 nRepeat = GetTable()->GetRowsToRepeat();
+    if (!nRepeat || rRow.IsRowSplitAllowed())
+        return true;
+    // the headlines are the table's first rows, and the master always carries them
+    const SwTabFrame* pMaster = IsFollow() ? FindMaster(true) : this;
+    if (!pMaster)
+        return true;
+    return rRow.getFrameArea().Height()
+           <= lcl_GetMaxRowHeight(*this) - lcl_GetHeightOfRows(pMaster->Lower(), nRepeat);
 }
 
 bool SwTable::IsHeadline( const SwTableLine& rLine ) const

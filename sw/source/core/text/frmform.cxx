@@ -1166,6 +1166,10 @@ static bool hasAtPageFly(const SwFrame* pFrame)
 
 static bool isReallyEmptyMaster(const SwTextFrame* pFrame)
 {
+    // A non-last anchor of a split fly is empty by design, and its flys are registered in the
+    // master of the anchor chain, so the check below cannot see them.
+    if (pFrame->HasNonLastSplitFlyDrawObj())
+        return false;
     return pFrame->IsEmptyMaster() && (!pFrame->GetDrawObjs() || !pFrame->GetDrawObjs()->size());
 }
 
@@ -1845,7 +1849,7 @@ void SwTextFrame::Format_( SwTextFormatter &rLine, SwTextFormatInfo &rInf,
     rRepaint.Top( rLine.Y() );
     if( 0 >= rRepaint.Width() )
         rRepaint.Width(1);
-    WidowsAndOrphans aFrameBreak( this, rInf.IsTest() ? 1 : 0 );
+    WidowsAndOrphans aFrameBreak(this, rInf.IsTest() ? std::optional<SwTwips>(0) : std::nullopt);
 
     // rLine is now set to the first line which needs formatting.
     // The bFirst flag makes sure that Next() is not called.

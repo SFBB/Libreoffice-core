@@ -243,6 +243,7 @@ struct SeriesModel
     sal_Int32           mnMarkerSize;       /// Size of the series line marker (2...72).
     sal_Int32           mnMarkerSymbol;     /// Series line marker symbol.
     sal_Int32           mnOrder;            /// Series order.
+    sal_Int32           mnTypeId;           /// Chart type
     sal_Int32           mnDataId;           /// Reference to correct data chunk (chartex)
     bool                mbBubble3d;         /// True = show bubbles with 3D shade.
     bool                mbInvertNeg;        /// True = invert negative data points.
@@ -250,8 +251,14 @@ struct SeriesModel
     std::vector<sal_Int32>
                         maAxisIds;          /// List of axis identifiers used
                                             // (Only used by chartex)
+    std::optional<sal_Int32>
+                        monOwnerIdx;        /// cx:series/@ownerIdx (chartex):
+                                            /// zero-based index of the series
+                                            /// in the same plotAreaRegion whose
+                                            /// data this series shares. When
+                                            /// set, no cx:dataId is emitted.
 
-    explicit            SeriesModel(bool bMSO2007Doc);
+    explicit            SeriesModel(bool bMSO2007Doc, sal_Int32 nTypeId = -1);
                         ~SeriesModel();
 };
 
