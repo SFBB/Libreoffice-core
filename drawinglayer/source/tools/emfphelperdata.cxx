@@ -978,9 +978,7 @@ namespace emfplushelper
                         return;
 
                     basegfx::B2DRange aBrushBounds(
-                        (brush->additionalFlags & 0x01)
-                            ? brush->path->GetPolygon(*this, false).getB2DRange()
-                            : brush->path->GetRawPointsPolygon().getB2DRange());
+                        brush->path->GetPolygon(*this, false).getB2DRange());
                     if (aBrushBounds.getWidth() <= 0 || aBrushBounds.getHeight() <= 0)
                         return;
 
@@ -1011,15 +1009,8 @@ namespace emfplushelper
                     // segment rendering that GDI+ produces (red/green/blue
                     // points on a star with multiple surround colours, and
                     // smooth radial gradient on a uniform-surround brush).
-                    // For boundary-only brushes (no BrushDataPath flag) the
-                    // brush data stores raw EmfPlusPointF arrays without
-                    // point types - GetPolygon() misinterprets the trailing
-                    // bytes as Bezier point types and returns a degenerate
-                    // polygon. Use the raw-points accessor instead.
                     basegfx::B2DPolygon aSweepPolygon
-                        = (brush->additionalFlags & 0x01)
-                              ? brush->path->GetPolygon(*this, false).getB2DPolygon(0)
-                              : brush->path->GetRawPointsPolygon();
+                        = brush->path->GetPolygon(*this, false).getB2DPolygon(0);
                     // Flatten Bezier control points into straight-line
                     // segments so the triangulation has a fine-enough
                     // boundary. Without this, a 4-cardinal-vertex Bezier
@@ -1894,7 +1885,7 @@ namespace emfplushelper
                         SAL_INFO("drawinglayer.emf", "EMF+\t Points: " << points);
                         SAL_INFO("drawinglayer.emf", "EMF+\t " << ((flags & 0x8000) ? "Color" : "Brush index") << " : 0x" << std::hex << brushIndexOrColor << std::dec);
 
-                        EMFPPath path(points, true);
+                        EMFPPath path(points, false/*bHasPointTypes*/);
                         path.Read(rMS, flags);
 
                         EMFPPlusFillPolygon(path.GetPolygon(*this), flags & 0x8000, brushIndexOrColor);
@@ -1905,7 +1896,7 @@ namespace emfplushelper
                         sal_uInt32 points(0);
                         rMS.ReadUInt32(points);
                         SAL_INFO("drawinglayer.emf", "EMF+\t Points: " << points);
-                        EMFPPath path(points, true);
+                        EMFPPath path(points, false/*bHasPointTypes*/);
                         path.Read(rMS, flags);
 
                         // 0x2000 bit indicates whether to draw an extra line between the last point
@@ -1980,7 +1971,7 @@ namespace emfplushelper
                                                    << " NumSegments: " << aNumSegments
                                                    << " Points: " << points);
 
-                        EMFPPath path(points, true);
+                        EMFPPath path(points, false/*bHasPointTypes*/);
                         path.Read(rMS, flags);
 
                         if (points >= 2)
@@ -2016,7 +2007,7 @@ namespace emfplushelper
                             SAL_WARN("drawinglayer.emf", "Not enough number of points");
                             break;
                         }
-                        EMFPPath path(points, true);
+                        EMFPPath path(points, false/*bHasPointTypes*/);
                         path.Read(rMS, flags);
                         if (type == EmfPlusRecordTypeFillClosedCurve)
                         {

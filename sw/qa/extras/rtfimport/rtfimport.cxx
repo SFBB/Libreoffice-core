@@ -488,6 +488,11 @@ CPPUNIT_TEST_FIXTURE(Test, testFdo79319)
     createSwDoc("fdo79319.rtf");
     // the thin horizontal rule was imported as a big fat rectangle
     uno::Reference<drawing::XShape> xShape = getShape(1);
+    // tdf#167714 the rule has to stay recognisable as one, so that layout can size it from the
+    // text column and crop it to the cell the way Word does
+    CPPUNIT_ASSERT(getProperty<bool>(xShape, u"HorizontalRule"_ustr));
+    // and it has to be the same model object the VML import makes for o:hr, a plain rectangle
+    CPPUNIT_ASSERT_EQUAL(u"com.sun.star.drawing.RectangleShape"_ustr, xShape->getShapeType());
     CPPUNIT_ASSERT_EQUAL(sal_Int16(100), getProperty<sal_Int16>(xShape, u"RelativeWidth"_ustr));
     CPPUNIT_ASSERT_DOUBLES_EQUAL(sal_Int32(16508), xShape->getSize().Width, 10);
     CPPUNIT_ASSERT_DOUBLES_EQUAL(sal_Int32(53), xShape->getSize().Height, 10);
@@ -1018,6 +1023,23 @@ CPPUNIT_TEST_FIXTURE(Test, testInlineFormulaTextMode)
     CPPUNIT_ASSERT(xDisplay.is());
     CPPUNIT_ASSERT_EQUAL(false,
                          getProperty<bool>(xDisplay->getEmbeddedObject(), u"IsTextMode"_ustr));
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testTdf167713)
+{
+    // A picture is inserted while its row is still being buffered, and the cells do not exist until
+    // the row is replayed, so every picture in a row used to end up in the row's first cell.
+    createSwDoc("tdf167713.rtf");
+
+    // The row holds text in A1, then a picture in B1 and another in C1.
+    CPPUNIT_ASSERT_EQUAL(2, getShapes());
+    auto xImage1 = getShape(1).queryThrow<text::XTextContent>();
+    CPPUNIT_ASSERT_EQUAL(u"B1"_ustr,
+                         getProperty<OUString>(xImage1->getAnchor()->getText(), u"CellName"_ustr));
+
+    auto xImage2 = getShape(2).queryThrow<text::XTextContent>();
+    CPPUNIT_ASSERT_EQUAL(u"C1"_ustr,
+                         getProperty<OUString>(xImage2->getAnchor()->getText(), u"CellName"_ustr));
 }
 
 // tests should only be added to rtfIMPORT *if* they fail round-tripping in rtfEXPORT
