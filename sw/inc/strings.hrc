@@ -342,7 +342,6 @@
 #define STR_CAPTION_FRAME                       NC_("STR_CAPTION_FRAME", "%PRODUCTNAME Writer Frame")
 #define STR_CAPTION_GRAPHIC                     NC_("STR_CAPTION_GRAPHIC", "%PRODUCTNAME Writer Image")
 #define STR_CAPTION_OLE                         NC_("STR_CAPTION_OLE", "Other OLE Objects")
-#define STR_WRONG_TABLENAME                     NC_("STR_WRONG_TABLENAME", "The name of the table must not contain spaces.")
 #define STR_ERR_TABLE_MERGE                     NC_("STR_ERR_TABLE_MERGE", "Selected table cells are too complex to merge.")
 #define STR_SRTERR                              NC_("STR_SRTERR", "Cannot sort selection")
 
@@ -427,8 +426,11 @@
 #define STR_DELETEINDEX                         NC_("STR_DELETEINDEX", "Delete %1")
 #define STR_COMMENT_VIEW_MODE                   NC_("STR_COMMENT_VIEW_MODE", "View Mode")
 #define STR_COMMENT_EDIT_MODE                   NC_("STR_COMMENT_EDIT_MODE", "Edit Mode")
-// to translators: %s will be replaced with the Table of Content type selected
-#define STR_TOC_CREATEFROM                      NC_("STR_TOC_CREATEFROM", "Create %s From")
+#define STR_TOC_CREATEFROM_CONTENT              NC_("STR_TOC_CREATEFROM", "Create Table of Contents From")
+#define STR_TOC_CREATEFROM_ILLUSTRATIONS        NC_("STR_TOC_CREATEFROM", "Create Table of Figures From")
+#define STR_TOC_CREATEFROM_USER                 NC_("STR_TOC_CREATEFROM", "Create User-Defined Index From")
+#define STR_TOC_CREATEFROM_TABLES               NC_("STR_TOC_CREATEFROM", "Create Index of Tables From")
+#define STR_TOC_CREATEFROM_OBJECTS              NC_("STR_TOC_CREATEFROM", "Create Table of Objects From")
 
 // Undo
 #define STR_CANT_UNDO                           NC_("STR_CANT_UNDO", "not possible")

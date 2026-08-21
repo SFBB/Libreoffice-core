@@ -83,10 +83,7 @@ public:
 class ReadContext
 {
 public:
-    Reference<rendering::XCanvas> mxCanvas;
-
-    ReadContext (
-        const Reference<rendering::XCanvas>& rxCanvas);
+    ReadContext() = delete;
 
     /** Read data describing a font from the node that can be reached from
         the given root via the given path.
@@ -100,9 +97,9 @@ public:
         const Reference<beans::XPropertySet>& rxFontProperties,
         const PresenterTheme::SharedFontDescriptor& rpDefault);
 
-    std::shared_ptr<PresenterTheme::Theme> ReadTheme (
-        PresenterConfigurationAccess& rConfiguration,
-        const OUString& rsThemeName);
+    static std::shared_ptr<PresenterTheme::Theme>
+    ReadTheme(PresenterConfigurationAccess& rConfiguration,
+              const Reference<rendering::XCanvas>& rxCanvas);
 
     static BorderSize ReadBorderSize (const Reference<container::XNameAccess>& rxNode);
 
@@ -139,16 +136,14 @@ private:
     ::std::vector<SharedPaneStyle> mStyles;
 
 public:
-    void Read (
-        const ReadContext& rReadContext,
-        const Reference<container::XHierarchicalNameAccess>& rThemeRoot);
+    void Read(const Reference<rendering::XCanvas>& rxCanvas,
+              const Reference<container::XHierarchicalNameAccess>& rThemeRoot);
 
     SharedPaneStyle GetPaneStyle (const OUString& rsStyleName) const;
 
 private:
-    void ProcessPaneStyle (
-        ReadContext const & rReadContext,
-        const ::std::vector<css::uno::Any>& rValues);
+    void ProcessPaneStyle(const Reference<rendering::XCanvas>& rxCanvas,
+                          const ::std::vector<css::uno::Any>& rValues);
 };
 
 /** A ViewStyle describes how a view is displayed.
@@ -176,16 +171,14 @@ private:
     ::std::vector<SharedViewStyle> mStyles;
 
 public:
-    void Read (
-        const ReadContext& rReadContext,
-        const Reference<container::XHierarchicalNameAccess>& rThemeRoot);
+    void Read(const Reference<rendering::XCanvas>& rxCanvas,
+              const Reference<container::XHierarchicalNameAccess>& rThemeRoot);
 
     SharedViewStyle GetViewStyle (const OUString& rsStyleName) const;
 
 private:
-    void ProcessViewStyle(
-        ReadContext const & rReadContext,
-        const Reference<beans::XPropertySet>& rxProperties);
+    void ProcessViewStyle(const Reference<rendering::XCanvas>& rxCanvas,
+                          const Reference<beans::XPropertySet>& rxProperties);
 };
 
 class StyleAssociationContainer
@@ -209,16 +202,10 @@ private:
 class PresenterTheme::Theme
 {
 public:
-    Theme (
-        const Reference<container::XHierarchicalNameAccess>& rThemeRoot,
-        OUString sNodeName);
-
-    void Read (
-        PresenterConfigurationAccess& rConfiguration,
-        ReadContext& rReadContext);
+    Theme(const Reference<container::XHierarchicalNameAccess>& rThemeRoot, OUString sNodeName,
+          const Reference<rendering::XCanvas>& rxCanvas);
 
     OUString msConfigurationNodeName;
-    std::shared_ptr<Theme> mpParentTheme;
     SharedBitmapDescriptor mpBackground;
     PaneStyleContainer maPaneStyles;
     ViewStyleContainer maViewStyles;
@@ -254,14 +241,12 @@ PresenterTheme::~PresenterTheme()
 
 std::shared_ptr<PresenterTheme::Theme> PresenterTheme::ReadTheme()
 {
-    ReadContext aReadContext(mxCanvas);
-
     PresenterConfigurationAccess aConfiguration (
         mxContext,
         u"/org.openoffice.Office.PresenterScreen/"_ustr,
         PresenterConfigurationAccess::READ_ONLY);
 
-    return aReadContext.ReadTheme(aConfiguration, OUString());
+    return ReadContext::ReadTheme(aConfiguration, mxCanvas);
 }
 
 bool PresenterTheme::HasCanvas() const
@@ -281,12 +266,8 @@ void PresenterTheme::ProvideCanvas (const Reference<rendering::XCanvas>& rxCanva
 OUString PresenterTheme::GetStyleName (const OUString& rsResourceURL) const
 {
     OUString sStyleName;
-    std::shared_ptr<Theme> pTheme (mpTheme);
-    while (sStyleName.isEmpty() && pTheme != nullptr)
-    {
-        sStyleName = pTheme->maStyleAssociations.GetStyleName(rsResourceURL);
-        pTheme = pTheme->mpParentTheme;
-    }
+    if (mpTheme)
+        sStyleName = mpTheme->maStyleAssociations.GetStyleName(rsResourceURL);
     return sStyleName;
 }
 
@@ -366,15 +347,7 @@ SharedBitmapDescriptor PresenterTheme::GetBitmap (
         if (rsStyleName.isEmpty())
         {
             if (rsBitmapName == "Background")
-            {
-                std::shared_ptr<Theme> pTheme (mpTheme);
-                while (pTheme != nullptr && !pTheme->mpBackground)
-                    pTheme = pTheme->mpParentTheme;
-                if (pTheme != nullptr)
-                    return pTheme->mpBackground;
-                else
-                    return SharedBitmapDescriptor();
-            }
+                return mpTheme->mpBackground;
         }
         else
         {
@@ -406,13 +379,7 @@ SharedBitmapDescriptor PresenterTheme::GetBitmap (
     {
         if (rsBitmapName == "Background")
         {
-            std::shared_ptr<Theme> pTheme (mpTheme);
-            while (pTheme != nullptr && !pTheme->mpBackground)
-                pTheme = pTheme->mpParentTheme;
-            if (pTheme != nullptr)
-                return pTheme->mpBackground;
-            else
-                return SharedBitmapDescriptor();
+            return mpTheme->mpBackground;
         }
         else
         {
@@ -445,15 +412,9 @@ PresenterTheme::SharedFontDescriptor PresenterTheme::GetFont (
         if (pViewStyle)
             return pViewStyle->GetFont();
 
-        std::shared_ptr<Theme> pTheme (mpTheme);
-        while (pTheme != nullptr)
-        {
-            Theme::FontContainer::const_iterator iFont (pTheme->maFontContainer.find(rsStyleName));
-            if (iFont != pTheme->maFontContainer.end())
-                return iFont->second;
-
-            pTheme = pTheme->mpParentTheme;
-        }
+        Theme::FontContainer::const_iterator iFont(mpTheme->maFontContainer.find(rsStyleName));
+        if (iFont != mpTheme->maFontContainer.end())
+            return iFont->second;
     }
 
     return SharedFontDescriptor();
@@ -550,53 +511,35 @@ double PresenterTheme::FontDescriptor::GetCellSizeForDesignSize (
 
 //===== Theme =================================================================
 
-PresenterTheme::Theme::Theme (
-    const Reference<container::XHierarchicalNameAccess>& rxThemeRoot,
-    OUString sNodeName)
-    : msConfigurationNodeName(std::move(sNodeName)),
-      maPaneStyles(),
-      maViewStyles(),
-      maStyleAssociations(),
-      mxThemeRoot(rxThemeRoot)
+PresenterTheme::Theme::Theme(const Reference<container::XHierarchicalNameAccess>& rxThemeRoot,
+                             OUString sNodeName, const Reference<rendering::XCanvas>& rxCanvas)
+    : msConfigurationNodeName(std::move(sNodeName))
+    , maPaneStyles()
+    , maViewStyles()
+    , maStyleAssociations()
+    , mxThemeRoot(rxThemeRoot)
 {
-}
-
-void PresenterTheme::Theme::Read (
-    PresenterConfigurationAccess& rConfiguration,
-    ReadContext& rReadContext)
-{
-    // Parent theme name.
-    OUString sParentThemeName;
-    if ((PresenterConfigurationAccess::GetConfigurationNode(mxThemeRoot, u"ParentTheme"_ustr)
-            >>= sParentThemeName)
-        && !sParentThemeName.isEmpty())
-    {
-        mpParentTheme = rReadContext.ReadTheme(rConfiguration, sParentThemeName);
-    }
-
     // Background.
     mpBackground = PresenterBitmapContainer::LoadBitmap(
         mxThemeRoot,
         u"Background"_ustr,
-        rReadContext.mxCanvas,
+        rxCanvas,
         SharedBitmapDescriptor());
 
     // Style associations.
     maStyleAssociations.Read(mxThemeRoot);
 
     // Pane styles.
-    maPaneStyles.Read(rReadContext, mxThemeRoot);
+    maPaneStyles.Read(rxCanvas, mxThemeRoot);
 
     // View styles.
-    maViewStyles.Read(rReadContext, mxThemeRoot);
+    maViewStyles.Read(rxCanvas, mxThemeRoot);
 
     // Read bitmaps.
     mpIconContainer = std::make_shared<PresenterBitmapContainer>(
         Reference<container::XNameAccess>(
             PresenterConfigurationAccess::GetConfigurationNode(mxThemeRoot, u"Bitmaps"_ustr), UNO_QUERY),
-        mpParentTheme != nullptr ? mpParentTheme->mpIconContainer
-                                 : std::shared_ptr<PresenterBitmapContainer>(),
-        rReadContext.mxCanvas);
+        std::shared_ptr<PresenterBitmapContainer>(), rxCanvas);
 
     // Read fonts.
     Reference<container::XNameAccess> xFontNode(
@@ -615,8 +558,6 @@ SharedPaneStyle PresenterTheme::Theme::GetPaneStyle (const OUString& rsStyleName
     SharedPaneStyle pPaneStyle (maPaneStyles.GetPaneStyle(rsStyleName));
     if (pPaneStyle)
         return pPaneStyle;
-    else if (mpParentTheme != nullptr)
-        return mpParentTheme->GetPaneStyle(rsStyleName);
     else
         return SharedPaneStyle();
 }
@@ -626,8 +567,6 @@ SharedViewStyle PresenterTheme::Theme::GetViewStyle (const OUString& rsStyleName
     SharedViewStyle pViewStyle (maViewStyles.GetViewStyle(rsStyleName));
     if (pViewStyle)
         return pViewStyle;
-    else if (mpParentTheme != nullptr)
-        return mpParentTheme->GetViewStyle(rsStyleName);
     else
         return SharedViewStyle();
 }
@@ -642,11 +581,6 @@ void PresenterTheme::Theme::ProcessFont(
 namespace {
 
 //===== ReadContext ===========================================================
-
-ReadContext::ReadContext(const Reference<rendering::XCanvas>& rxCanvas)
-    : mxCanvas(rxCanvas)
-{
-}
 
 PresenterTheme::SharedFontDescriptor ReadContext::ReadFont (
     const Reference<container::XHierarchicalNameAccess>& rxNode,
@@ -704,22 +638,17 @@ Any ReadContext::GetByName (
         return Any();
 }
 
-std::shared_ptr<PresenterTheme::Theme> ReadContext::ReadTheme (
-    PresenterConfigurationAccess& rConfiguration,
-    const OUString& rsThemeName)
+std::shared_ptr<PresenterTheme::Theme>
+ReadContext::ReadTheme(PresenterConfigurationAccess& rConfiguration,
+                       const Reference<rendering::XCanvas>& rxCanvas)
 {
-    std::shared_ptr<PresenterTheme::Theme> pTheme;
-
-    OUString sCurrentThemeName (rsThemeName);
+    OUString sCurrentThemeName;
+    // Look up the CurrentTheme property.
+    rConfiguration.GetConfigurationNode(u"Presenter/CurrentTheme"_ustr) >>= sCurrentThemeName;
     if (sCurrentThemeName.isEmpty())
     {
-         // No theme name given.  Look up the CurrentTheme property.
-         rConfiguration.GetConfigurationNode(u"Presenter/CurrentTheme"_ustr) >>= sCurrentThemeName;
-         if (sCurrentThemeName.isEmpty())
-         {
-             // Still no name.  Use "DefaultTheme".
-             sCurrentThemeName = "DefaultTheme";
-         }
+        // No name. Use "DefaultTheme".
+        sCurrentThemeName = u"DefaultTheme"_ustr;
     }
 
     Reference<container::XNameAccess> xThemes (
@@ -739,20 +668,12 @@ std::shared_ptr<PresenterTheme::Theme> ReadContext::ReadTheme (
                 PresenterConfigurationAccess::GetConfigurationNode(xTheme, u"ThemeName"_ustr)
                     >>= sThemeName;
                 if (sThemeName == sCurrentThemeName)
-                {
-                    pTheme = std::make_shared<PresenterTheme::Theme>(xTheme,rsKey);
-                    break;
-                }
+                    return std::make_shared<PresenterTheme::Theme>(xTheme, rsKey, rxCanvas);
             }
         }
     }
 
-    if (pTheme != nullptr)
-    {
-        pTheme->Read(rConfiguration, *this);
-    }
-
-    return pTheme;
+    return {};
 }
 
 BorderSize ReadContext::ReadBorderSize (const Reference<container::XNameAccess>& rxNode)
@@ -772,9 +693,8 @@ BorderSize ReadContext::ReadBorderSize (const Reference<container::XNameAccess>&
 
 //===== PaneStyleContainer ====================================================
 
-void PaneStyleContainer::Read (
-    const ReadContext& rReadContext,
-    const Reference<container::XHierarchicalNameAccess>& rxThemeRoot)
+void PaneStyleContainer::Read(const Reference<rendering::XCanvas>& rxCanvas,
+                              const Reference<container::XHierarchicalNameAccess>& rxThemeRoot)
 {
     Reference<container::XNameAccess> xPaneStyleList (
         PresenterConfigurationAccess::GetConfigurationNode(
@@ -795,15 +715,14 @@ void PaneStyleContainer::Read (
     PresenterConfigurationAccess::ForAll(
         xPaneStyleList,
         aProperties,
-        [this, &rReadContext] (std::vector<uno::Any> const& rValues)
+        [this, &rxCanvas] (std::vector<uno::Any> const& rValues)
         {
-            return this->ProcessPaneStyle(rReadContext, rValues);
+            return this->ProcessPaneStyle(rxCanvas, rValues);
         });
 }
 
-void PaneStyleContainer::ProcessPaneStyle(
-    ReadContext const & rReadContext,
-    const ::std::vector<Any>& rValues)
+void PaneStyleContainer::ProcessPaneStyle(const Reference<rendering::XCanvas>& rxCanvas,
+                                          const ::std::vector<Any>& rValues)
 {
     if (rValues.size() != 6)
         return;
@@ -837,14 +756,14 @@ void PaneStyleContainer::ProcessPaneStyle(
         pStyle->maOuterBorderSize.Merge(pStyle->mpParentStyle->maOuterBorderSize);
     }
 
-    if (rReadContext.mxCanvas.is())
+    if (rxCanvas.is())
     {
         Reference<container::XNameAccess> xBitmapsNode (rValues[5], UNO_QUERY);
         pStyle->mpBitmaps = std::make_shared<PresenterBitmapContainer>(
             xBitmapsNode,
             pStyle->mpParentStyle != nullptr ? pStyle->mpParentStyle->mpBitmaps
                                              : std::shared_ptr<PresenterBitmapContainer>(),
-            rReadContext.mxCanvas);
+            rxCanvas);
     }
 
     mStyles.push_back(std::move(pStyle));
@@ -892,9 +811,8 @@ PresenterTheme::SharedFontDescriptor PaneStyle::GetFont() const
 
 //===== ViewStyleContainer ====================================================
 
-void ViewStyleContainer::Read (
-    const ReadContext& rReadContext,
-    const Reference<container::XHierarchicalNameAccess>& rxThemeRoot)
+void ViewStyleContainer::Read(const Reference<rendering::XCanvas>& rxCanvas,
+                              const Reference<container::XHierarchicalNameAccess>& rxThemeRoot)
 {
     Reference<container::XNameAccess> xViewStyleList (
         PresenterConfigurationAccess::GetConfigurationNode(
@@ -905,16 +823,15 @@ void ViewStyleContainer::Read (
     {
         PresenterConfigurationAccess::ForAll(
             xViewStyleList,
-            [this, &rReadContext] (OUString const&, uno::Reference<beans::XPropertySet> const& xProps)
+            [this, &rxCanvas] (OUString const&, uno::Reference<beans::XPropertySet> const& xProps)
             {
-                return this->ProcessViewStyle(rReadContext, xProps);
+                return this->ProcessViewStyle(rxCanvas, xProps);
             });
     }
 }
 
-void ViewStyleContainer::ProcessViewStyle(
-    ReadContext const & rReadContext,
-    const Reference<beans::XPropertySet>& rxProperties)
+void ViewStyleContainer::ProcessViewStyle(const Reference<rendering::XCanvas>& rxCanvas,
+                                          const Reference<beans::XPropertySet>& rxProperties)
 {
     auto pStyle = std::make_shared<ViewStyle>();
 
@@ -949,7 +866,7 @@ void ViewStyleContainer::ProcessViewStyle(
     SharedBitmapDescriptor pBackground (PresenterBitmapContainer::LoadBitmap(
         xBackgroundNode,
         OUString(),
-        rReadContext.mxCanvas,
+        rxCanvas,
         SharedBitmapDescriptor()));
     if (pBackground && pBackground->GetNormalBitmap().is())
         pStyle->mpBackground = std::move(pBackground);

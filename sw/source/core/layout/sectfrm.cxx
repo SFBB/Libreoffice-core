@@ -1168,7 +1168,7 @@ static void lcl_ColumnRefresh( SwSectionFrame* pSect, bool bFollow )
 void SwSectionFrame::CollectEndnotes( SwLayouter* pLayouter )
 {
     OSL_ENSURE( IsColLocked(), "CollectEndnotes: You love the risk?" );
-    // i73332: Section in footnode does not have columns!
+    // i73332: Section in footnote does not have columns!
     SwFrame* pLower = Lower();
     OSL_ENSURE( (pLower && pLower->IsColumnFrame()) || GetUpper()->IsFootnoteFrame(), "Where's my column?" );
 
@@ -1177,7 +1177,7 @@ void SwSectionFrame::CollectEndnotes( SwLayouter* pLayouter )
     bool bEmpty = false;
     // pSect is the last sectionfrm without endnotes or the this-pointer
     // the first sectionfrm with endnotes may be destroyed, when the endnotes
-    // is cutted
+    // is cut
     while( nullptr != (pFootnote = lcl_FindEndnote( pSect, bEmpty, pLayouter )) )
         pLayouter->CollectEndnote( pFootnote );
     if( pLayouter->HasEndnotes() )
@@ -2112,7 +2112,7 @@ SwLayoutFrame *SwFrame::GetPrevSctLeaf()
                 {
                     if( bJump )     // Did we skip a blank page?
                         SwFlowFrame::SetMoveBwdJump( true );
-                    return static_cast<SwLayoutFrame*>(pCol->Lower());  // The columnm body
+                    return static_cast<SwLayoutFrame*>(pCol->Lower());  // The column body
                 }
                 bJump = true;
             } while( pCol->GetPrev() );

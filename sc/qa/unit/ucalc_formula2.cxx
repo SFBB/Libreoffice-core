@@ -6774,6 +6774,530 @@ CPPUNIT_TEST_FIXTURE(TestFormula2, testFuncARRAYTOTEXTBooleanLocale)
     m_pDoc->DeleteTab(0);
 }
 
+CPPUNIT_TEST_FIXTURE(TestFormula2, testExternalNameAsArgumentHasNoParameters)
+{
+    // An add-in name that stands in an argument position rather than being
+    // called must compile with a parameter count of zero. When the count kept
+    // whatever value the previously built token had left behind, interpreting
+    // the formula tried to pop that many arguments off the stack and underflowed
+    // it.
+    m_pDoc->InsertTab(0, u"Sheet1"_ustr);
+
+    // MONTHS is a date add-in function. Here it fills the lookup-array position
+    // of VLOOKUP, so it is a plain operand and not a call with its own
+    // arguments.
+    m_pDoc->SetFormula(ScAddress(0, 0, 0), u"=VLOOKUP(MONTH(D8)&\"/\"&YEAR(D8),MONTHS,2)"_ustr,
+                       formula::FormulaGrammar::GRAM_OOXML);
+
+    const ScFormulaCell* pCell = m_pDoc->GetFormulaCell(ScAddress(0, 0, 0));
+    CPPUNIT_ASSERT(pCell);
+    const ScTokenArray* pCode = pCell->GetCode();
+    CPPUNIT_ASSERT(pCode);
+
+    const FormulaExternalToken* pExternal = nullptr;
+    FormulaToken** ppTokens = pCode->GetCode();
+    for (sal_uInt16 nIdx = 0; nIdx < pCode->GetCodeLen(); ++nIdx)
+    {
+        FormulaToken* pToken = ppTokens[nIdx];
+        if (pToken->GetOpCode() == ocExternal && pToken->GetType() == svExternal)
+        {
+            pExternal = static_cast<const FormulaExternalToken*>(pToken);
+            break;
+        }
+    }
+    CPPUNIT_ASSERT_MESSAGE("the add-in name resolves to an external token", pExternal);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(0), static_cast<sal_Int32>(pExternal->GetByte()));
+
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(TestFormula2, testUndoDeleteTabRestoresCrossSheetFormula)
+{
+    // cool#15924: deleting a sheet turns a formula on another sheet that
+    // refers to it into a #REF! error. Undoing the delete brought the
+    // deleted sheet back, but the #REF! error was left in place on the
+    // other sheet instead of the original formula.
+    sc::AutoCalcSwitch aACSwitch(*m_pDoc, true); // turn auto calc on.
+
+    m_pDoc->InsertTab(0, u"Sheet1"_ustr);
+    m_pDoc->InsertTab(1, u"Sheet2"_ustr);
+
+    m_pDoc->SetValue(ScAddress(0, 0, 0), 42.0);
+    m_pDoc->SetString(ScAddress(0, 0, 1), u"=Sheet1.A1"_ustr);
+    CPPUNIT_ASSERT_EQUAL(42.0, m_pDoc->GetValue(ScAddress(0, 0, 1)));
+
+    ScDocFunc& rFunc = m_xDocShell->GetDocFunc();
+    CPPUNIT_ASSERT(rFunc.DeleteTable(0, true));
+
+    // The formula is now on the remaining sheet's tab 0 and broken.
+    FormulaError nError = m_pDoc->GetErrCode(ScAddress(0, 0, 0));
+    CPPUNIT_ASSERT_MESSAGE("Formula should be a #REF! error after the referenced sheet is deleted.",
+                           nError != FormulaError::NONE);
+
+    SfxUndoManager* pUndoMgr = m_pDoc->GetUndoManager();
+    CPPUNIT_ASSERT(pUndoMgr);
+    pUndoMgr->Undo();
+
+    // Without the fix, the formula stayed "=#REF!" and its value stayed an error.
+    CPPUNIT_ASSERT_EQUAL(u"=Sheet1.A1"_ustr, m_pDoc->GetFormula(0, 0, 1));
+    CPPUNIT_ASSERT_EQUAL(42.0, m_pDoc->GetValue(ScAddress(0, 0, 1)));
+
+    m_pDoc->DeleteTab(1);
+    m_pDoc->DeleteTab(0);
+}
+
+namespace
+{
+// Read a token array back as an OOXML formula string, the way an XLSX save does.
+OUString printAsOoxml(ScDocument& rDocument, ScTokenArray& rCode, const ScAddress& rPosition)
+{
+    sc::CompileFormulaContext aContext(rDocument, formula::FormulaGrammar::GRAM_OOXML);
+    ScCompiler aCompiler(aContext, rPosition, rCode);
+    OUStringBuffer aBuffer;
+    aCompiler.CreateStringFromTokenArray(aBuffer);
+    return aBuffer.makeStringAndClear();
+}
+
+// Add a call whose function name is gone, the shape an xls with an unknown function
+// leaves behind.
+void addCallWithoutName(ScTokenArray& rCode)
+{
+    rCode.AddOpCode(ocNoName);
+    rCode.AddOpCode(ocOpen);
+    ScSingleRefData aReference;
+    aReference.InitAddress(ScAddress(0, 0, 0));
+    rCode.AddSingleReference(aReference);
+    rCode.AddOpCode(ocClose);
+}
+
+std::unique_ptr<ScTokenArray>
+compileInNativeGrammar(ScDocument& rDocument, const OUString& rFormula, const ScAddress& rPosition)
+{
+    ScCompiler aCompiler(rDocument, rPosition, formula::FormulaGrammar::GRAM_NATIVE, true, false);
+    std::unique_ptr<ScTokenArray> pCode = aCompiler.CompileString(rFormula);
+    CPPUNIT_ASSERT(pCode);
+    return pCode;
+}
+
+// Compile a formula in native grammar and print it as OOXML.
+OUString compileAndPrintAsOoxml(ScDocument& rDocument, const OUString& rFormula)
+{
+    const ScAddress aPosition(1, 0, 0);
+    std::unique_ptr<ScTokenArray> pCode = compileInNativeGrammar(rDocument, rFormula, aPosition);
+    return printAsOoxml(rDocument, *pCode, aPosition);
+}
+
+// The same, with the @ marker an xls import adds put in first.
+OUString resolveAndPrintAsOoxml(ScDocument& rDocument, const OUString& rFormula)
+{
+    const ScAddress aPosition(1, 0, 0);
+    std::unique_ptr<ScTokenArray> pCode = compileInNativeGrammar(rDocument, rFormula, aPosition);
+    ScFormulaCell::ResolveImplicitIntersection(*pCode, rDocument, aPosition);
+    return printAsOoxml(rDocument, *pCode, aPosition);
+}
+
+} // end anonymous namespace
+
+CPPUNIT_TEST_FIXTURE(TestFormula2, testCallWithoutNameSavesAsErrorInOoxml)
+{
+    // A call with no function name has no spelling in OOXML, so the whole formula
+    // saves as a plain error string.
+    m_pDoc->InsertTab(0, u"Sheet1"_ustr);
+
+    ScTokenArray aCode(*m_pDoc);
+    addCallWithoutName(aCode);
+
+    CPPUNIT_ASSERT_EQUAL(u"#REF!"_ustr, printAsOoxml(*m_pDoc, aCode, ScAddress(1, 0, 0)));
+
+    // The error stands for the whole formula, so an @ in front of the call goes
+    // with it.
+    ScTokenArray aMarkedCode(*m_pDoc);
+    aMarkedCode.AddOpCode(ocSingleValue);
+    addCallWithoutName(aMarkedCode);
+
+    CPPUNIT_ASSERT_EQUAL(u"#REF!"_ustr, printAsOoxml(*m_pDoc, aMarkedCode, ScAddress(1, 0, 0)));
+
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(TestFormula2, testImplicitIntersectionWrapsPrefixOperatorWithItsOperand)
+{
+    // The sign belongs inside the wrapper, however many signs there are and
+    // whatever they apply to.
+    m_pDoc->InsertTab(0, u"Sheet1"_ustr);
+
+    CPPUNIT_ASSERT_EQUAL(u"_xlfn.SINGLE(-A1:A3)"_ustr,
+                         resolveAndPrintAsOoxml(*m_pDoc, u"-A1:A3"_ustr));
+    CPPUNIT_ASSERT_EQUAL(u"_xlfn.SINGLE(+A1:A3)"_ustr,
+                         resolveAndPrintAsOoxml(*m_pDoc, u"+A1:A3"_ustr));
+    CPPUNIT_ASSERT_EQUAL(u"_xlfn.SINGLE(--A1:A3)"_ustr,
+                         resolveAndPrintAsOoxml(*m_pDoc, u"--A1:A3"_ustr));
+    CPPUNIT_ASSERT_EQUAL(u"_xlfn.SINGLE(-TRANSPOSE(A1:A3))"_ustr,
+                         resolveAndPrintAsOoxml(*m_pDoc, u"-TRANSPOSE(A1:A3)"_ustr));
+    CPPUNIT_ASSERT_EQUAL(u"_xlfn.SINGLE(-(A1:A3))"_ustr,
+                         resolveAndPrintAsOoxml(*m_pDoc, u"-(A1:A3)"_ustr));
+
+    // A sign parsed with the @ already in front of it gets the binary opcode rather
+    // than the negation one, and still belongs inside the wrapper.
+    CPPUNIT_ASSERT_EQUAL(u"_xlfn.SINGLE(-A1:A3)"_ustr,
+                         compileAndPrintAsOoxml(*m_pDoc, u"@-A1:A3"_ustr));
+    CPPUNIT_ASSERT_EQUAL(u"_xlfn.SINGLE(--A1:A3)"_ustr,
+                         compileAndPrintAsOoxml(*m_pDoc, u"@--A1:A3"_ustr));
+    CPPUNIT_ASSERT_EQUAL(u"_xlfn.SINGLE(-SUM(A1:A3))"_ustr,
+                         compileAndPrintAsOoxml(*m_pDoc, u"@-SUM(A1:A3)"_ustr));
+
+    // A sign between two @ markers applies to what the inner one produces, so it
+    // sits between the two wrappers.
+    CPPUNIT_ASSERT_EQUAL(u"_xlfn.SINGLE(-_xlfn.SINGLE(A1:A3))"_ustr,
+                         compileAndPrintAsOoxml(*m_pDoc, u"@-@A1:A3"_ustr));
+
+    // A sign in front of an @ the formula already carries applies to the value the
+    // @ produces, so it stays outside the wrapper.
+    CPPUNIT_ASSERT_EQUAL(u"-_xlfn.SINGLE(A1:A3)"_ustr,
+                         compileAndPrintAsOoxml(*m_pDoc, u"-@A1:A3"_ustr));
+
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(TestFormula2, testImplicitIntersectionTakesOperandWhole)
+{
+    // The wrapper encloses the whole operand, whatever form the operand takes.
+    m_pDoc->InsertTab(0, u"Sheet1"_ustr);
+    m_pDoc->GetRangeName()->insert(
+        new ScRangeData(*m_pDoc, u"myrange"_ustr, u"$Sheet1.$A$1:$A$3"_ustr, ScAddress(1, 0, 0)));
+
+    // A name reaches the writer as its own token rather than as a push.
+    CPPUNIT_ASSERT_EQUAL(u"_xlfn.SINGLE(myrange)"_ustr,
+                         resolveAndPrintAsOoxml(*m_pDoc, u"myrange"_ustr));
+    CPPUNIT_ASSERT_EQUAL(u"_xlfn.SINGLE(-myrange)"_ustr,
+                         resolveAndPrintAsOoxml(*m_pDoc, u"-myrange"_ustr));
+
+    // An inline matrix reaches the writer as one push, brackets and all. Its column
+    // separator is a comma, which does not turn a parenthesized matrix into a union
+    // list, so the group's own pair still serves as the wrapper's.
+    CPPUNIT_ASSERT_EQUAL(u"_xlfn.SINGLE({1,2})"_ustr,
+                         resolveAndPrintAsOoxml(*m_pDoc, u"{1;2}"_ustr));
+    CPPUNIT_ASSERT_EQUAL(u"_xlfn.SINGLE({1,2})"_ustr,
+                         compileAndPrintAsOoxml(*m_pDoc, u"@({1;2})"_ustr));
+
+    // Whitespace between the @ and its operand goes inside the wrapper.
+    CPPUNIT_ASSERT_EQUAL(u"_xlfn.SINGLE( A1:A3)"_ustr,
+                         compileAndPrintAsOoxml(*m_pDoc, u"@ A1:A3"_ustr));
+
+    // An operand built with the range operator keeps all of itself inside.
+    CPPUNIT_ASSERT_EQUAL(u"A1:INDEX(B1:B10,5)"_ustr,
+                         compileAndPrintAsOoxml(*m_pDoc, u"A1:INDEX(B1:B10;5)"_ustr));
+    CPPUNIT_ASSERT_EQUAL(u"_xlfn.SINGLE(A1:INDEX(B1:B10,5))"_ustr,
+                         compileAndPrintAsOoxml(*m_pDoc, u"@A1:INDEX(B1:B10;5)"_ustr));
+    // The @ the resolve step adds to such a formula wraps the same way.
+    CPPUNIT_ASSERT_EQUAL(u"_xlfn.SINGLE(A1:INDEX(B1:B10,5))"_ustr,
+                         resolveAndPrintAsOoxml(*m_pDoc, u"A1:INDEX(B1:B10;5)"_ustr));
+
+    // Whitespace between a function name and its parenthesis is dropped on save,
+    // and the call stays inside the wrapper as if it had never been there.
+    CPPUNIT_ASSERT_EQUAL(u"_xlfn.SINGLE(SUM(A1:A3))"_ustr,
+                         compileAndPrintAsOoxml(*m_pDoc, u"@SUM (A1:A3)"_ustr));
+
+    // AND and OR carry operator opcodes although they are written as calls, so
+    // neither name ends the operand in front of it.
+    CPPUNIT_ASSERT_EQUAL(u"_xlfn.SINGLE(AND(A1:A3))"_ustr,
+                         compileAndPrintAsOoxml(*m_pDoc, u"@AND(A1:A3)"_ustr));
+    CPPUNIT_ASSERT_EQUAL(u"_xlfn.SINGLE(OR(A1:A3))"_ustr,
+                         compileAndPrintAsOoxml(*m_pDoc, u"@OR(A1:A3)"_ustr));
+
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(TestFormula2, testImplicitIntersectionMarkersWrapOneAnother)
+{
+    // Each @ takes a wrapper of its own around the one behind it.
+    m_pDoc->InsertTab(0, u"Sheet1"_ustr);
+
+    ScTokenArray aCode(*m_pDoc);
+    aCode.AddOpCode(ocSingleValue);
+    aCode.AddOpCode(ocSingleValue);
+    ScSingleRefData aReference;
+    aReference.InitAddress(ScAddress(0, 0, 0));
+    aCode.AddSingleReference(aReference);
+
+    CPPUNIT_ASSERT_EQUAL(u"_xlfn.SINGLE(_xlfn.SINGLE($A$1))"_ustr,
+                         printAsOoxml(*m_pDoc, aCode, ScAddress(1, 0, 0)));
+
+    // An @ on an argument inside a wrapped call takes a wrapper of its own too.
+    CPPUNIT_ASSERT_EQUAL(u"_xlfn.SINGLE(SUM(_xlfn.SINGLE(A1:A3)))"_ustr,
+                         compileAndPrintAsOoxml(*m_pDoc, u"@SUM(@A1:A3)"_ustr));
+
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(TestFormula2, testSpilledRangeBindsTighterThanSignAndMarker)
+{
+    // The # postfix reads as _xlfn.ANCHORARRAY around the operand it follows, and
+    // binds tighter than the sign or the @ in front of that operand.
+    m_pDoc->InsertTab(0, u"Sheet1"_ustr);
+
+    // The sign stays outside the wrapper.
+    CPPUNIT_ASSERT_EQUAL(u"-_xlfn.ANCHORARRAY(A1)"_ustr,
+                         compileAndPrintAsOoxml(*m_pDoc, u"-A1#"_ustr));
+
+    // The @ wrapper goes around the # one, whatever form the operand takes.
+    CPPUNIT_ASSERT_EQUAL(u"_xlfn.SINGLE(_xlfn.ANCHORARRAY(A1))"_ustr,
+                         compileAndPrintAsOoxml(*m_pDoc, u"@A1#"_ustr));
+    CPPUNIT_ASSERT_EQUAL(u"_xlfn.SINGLE(_xlfn.ANCHORARRAY((A1:A3)))"_ustr,
+                         compileAndPrintAsOoxml(*m_pDoc, u"@(A1:A3)#"_ustr));
+
+    // Whitespace between the operand and the # stays with the operand.
+    CPPUNIT_ASSERT_EQUAL(u"_xlfn.SINGLE(_xlfn.ANCHORARRAY(A1 ))"_ustr,
+                         compileAndPrintAsOoxml(*m_pDoc, u"@A1 #"_ustr));
+
+    // A # on an argument inside a wrapped call wraps just that argument.
+    CPPUNIT_ASSERT_EQUAL(u"_xlfn.SINGLE(SUM(_xlfn.ANCHORARRAY(A1)))"_ustr,
+                         compileAndPrintAsOoxml(*m_pDoc, u"@SUM(A1#)"_ustr));
+
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(TestFormula2, testUnionSavesAsParenthesizedListInOoxml)
+{
+    // OOXML spells the union operator with the same comma that separates arguments,
+    // so a union expression takes parentheses of its own to stay one argument.
+    m_pDoc->InsertTab(0, u"Sheet1"_ustr);
+
+    CPPUNIT_ASSERT_EQUAL(u"(A1,B2)"_ustr, compileAndPrintAsOoxml(*m_pDoc, u"A1~B2"_ustr));
+    // One pair encloses the whole list, however many parts it has.
+    CPPUNIT_ASSERT_EQUAL(u"(A1,B2,C3)"_ustr, compileAndPrintAsOoxml(*m_pDoc, u"A1~B2~C3"_ustr));
+
+    CPPUNIT_ASSERT_EQUAL(u"SUM((A1,B2))"_ustr, compileAndPrintAsOoxml(*m_pDoc, u"SUM(A1~B2)"_ustr));
+    CPPUNIT_ASSERT_EQUAL(u"INDEX((A1:B3,D1:E3),1,1,2)"_ustr,
+                         compileAndPrintAsOoxml(*m_pDoc, u"INDEX(A1:B3~D1:E3;1;1;2)"_ustr));
+    // AND and OR open an argument list too, although their opcodes are operators.
+    CPPUNIT_ASSERT_EQUAL(u"AND((A1,B2))"_ustr, compileAndPrintAsOoxml(*m_pDoc, u"AND(A1~B2)"_ustr));
+    CPPUNIT_ASSERT_EQUAL(u"OR((A1,B2))"_ustr, compileAndPrintAsOoxml(*m_pDoc, u"OR(A1~B2)"_ustr));
+
+    // A sign applies to the whole union, so the list's parentheses sit inside it.
+    CPPUNIT_ASSERT_EQUAL(u"-(A1,B2)"_ustr, compileAndPrintAsOoxml(*m_pDoc, u"-A1~B2"_ustr));
+    // The list ends where an operator of looser binding follows.
+    CPPUNIT_ASSERT_EQUAL(u"(1+(A1,B2))"_ustr, compileAndPrintAsOoxml(*m_pDoc, u"(1+A1~B2)"_ustr));
+
+    // Not doubling the pair is what holds a formula's shape over round trips.
+    CPPUNIT_ASSERT_EQUAL(u"(A1,B2)"_ustr, compileAndPrintAsOoxml(*m_pDoc, u"(A1~B2)"_ustr));
+    CPPUNIT_ASSERT_EQUAL(u"SUM((A1,B2))"_ustr,
+                         compileAndPrintAsOoxml(*m_pDoc, u"SUM((A1~B2))"_ustr));
+
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(TestFormula2, testUnionStaysInsideImplicitIntersectionWrapper)
+{
+    // The union binds tighter than the @, so the parenthesized list sits inside the
+    // _xlfn.SINGLE wrapper and keeps the wrapper to one argument.
+    m_pDoc->InsertTab(0, u"Sheet1"_ustr);
+
+    CPPUNIT_ASSERT_EQUAL(u"_xlfn.SINGLE((A1,B2))"_ustr,
+                         compileAndPrintAsOoxml(*m_pDoc, u"@A1~B2"_ustr));
+    CPPUNIT_ASSERT_EQUAL(u"_xlfn.SINGLE((A1,B2))"_ustr,
+                         compileAndPrintAsOoxml(*m_pDoc, u"@(A1~B2)"_ustr));
+    CPPUNIT_ASSERT_EQUAL(u"SUM(_xlfn.SINGLE((A1,B2)))"_ustr,
+                         compileAndPrintAsOoxml(*m_pDoc, u"SUM(@A1~B2)"_ustr));
+
+    // With the @ inside the group, one pair of parentheses cannot serve both, so
+    // the list takes a pair of its own.
+    CPPUNIT_ASSERT_EQUAL(u"(_xlfn.SINGLE((A1,B2)))"_ustr,
+                         compileAndPrintAsOoxml(*m_pDoc, u"(@A1~B2)"_ustr));
+    CPPUNIT_ASSERT_EQUAL(u"SUM((_xlfn.SINGLE((A1,B2))))"_ustr,
+                         compileAndPrintAsOoxml(*m_pDoc, u"SUM((@A1~B2))"_ustr));
+
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(TestFormula2, testPostfixOperatorsApplyToTheWholeExpression)
+{
+    // The # and the % follow every operator that binds tighter than they do, so
+    // each takes the whole expression in front of it as its operand rather than
+    // the last part of it.
+    m_pDoc->InsertTab(0, u"Sheet1"_ustr);
+
+    CPPUNIT_ASSERT_EQUAL(u"_xlfn.ANCHORARRAY((A1,B2))"_ustr,
+                         compileAndPrintAsOoxml(*m_pDoc, u"A1~B2#"_ustr));
+    CPPUNIT_ASSERT_EQUAL(u"(A1,B2)%"_ustr, compileAndPrintAsOoxml(*m_pDoc, u"A1~B2%"_ustr));
+
+    // The range operator binds tighter still, and a range built with it goes
+    // inside the wrapper whole.
+    CPPUNIT_ASSERT_EQUAL(u"_xlfn.ANCHORARRAY(A1:INDEX(B1:B10,5))"_ustr,
+                         compileAndPrintAsOoxml(*m_pDoc, u"A1:INDEX(B1:B10;5)#"_ustr));
+
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(TestFormula2, testUnionParenthesesEncloseExactlyTheirList)
+{
+    // The list's opening parenthesis moves the text behind it along, and a wrapper
+    // spliced afterwards still lands where its own operand begins.
+    m_pDoc->InsertTab(0, u"Sheet1"_ustr);
+
+    ScSingleRefData aFirst;
+    aFirst.InitAddress(ScAddress(0, 0, 0));
+    ScSingleRefData aSecond;
+    aSecond.InitAddress(ScAddress(1, 1, 0));
+
+    // An @ behind the union operator, a shape no parse of a formula produces.
+    ScTokenArray aMarkerInList(*m_pDoc);
+    aMarkerInList.AddSingleReference(aFirst);
+    aMarkerInList.AddOpCode(ocUnion);
+    aMarkerInList.AddOpCode(ocSingleValue);
+    aMarkerInList.AddSingleReference(aSecond);
+
+    CPPUNIT_ASSERT_EQUAL(u"($A$1,_xlfn.SINGLE($B$2))"_ustr,
+                         printAsOoxml(*m_pDoc, aMarkerInList, ScAddress(1, 0, 0)));
+
+    // A percent sign in front of the union operator, likewise. The sign follows the
+    // first part of the list, so the list still begins in front of that part.
+    ScTokenArray aPercentInList(*m_pDoc);
+    aPercentInList.AddSingleReference(aFirst);
+    aPercentInList.AddOpCode(ocPercentSign);
+    aPercentInList.AddOpCode(ocUnion);
+    aPercentInList.AddSingleReference(aSecond);
+
+    CPPUNIT_ASSERT_EQUAL(u"($A$1%,$B$2)"_ustr,
+                         printAsOoxml(*m_pDoc, aPercentInList, ScAddress(1, 0, 0)));
+
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(TestFormula2, testWrappersDroppedFromTextThatDidNotParse)
+{
+    // Text that no parse could read cannot take parentheses, so every wrapper around
+    // it is left out, however many markers stand in front of it or follow it.
+    m_pDoc->InsertTab(0, u"Sheet1"_ustr);
+
+    // A prefix sign is kept while the @ is left out.
+    ScTokenArray aSigned(*m_pDoc);
+    aSigned.AddOpCode(ocSingleValue);
+    aSigned.AddOpCode(ocAdd);
+    aSigned.AddBad(u"PW value"_ustr);
+
+    CPPUNIT_ASSERT_EQUAL(u"+PW value"_ustr, printAsOoxml(*m_pDoc, aSigned, ScAddress(1, 0, 0)));
+
+    ScTokenArray aNestedMarkers(*m_pDoc);
+    aNestedMarkers.AddOpCode(ocSingleValue);
+    aNestedMarkers.AddOpCode(ocSingleValue);
+    aNestedMarkers.AddBad(u"PW value"_ustr);
+
+    CPPUNIT_ASSERT_EQUAL(u"PW value"_ustr,
+                         printAsOoxml(*m_pDoc, aNestedMarkers, ScAddress(1, 0, 0)));
+
+    ScTokenArray aSpilled(*m_pDoc);
+    aSpilled.AddOpCode(ocSingleValue);
+    aSpilled.AddBad(u"PW value"_ustr);
+    aSpilled.AddOpCode(ocSpill);
+
+    CPPUNIT_ASSERT_EQUAL(u"PW value"_ustr, printAsOoxml(*m_pDoc, aSpilled, ScAddress(1, 0, 0)));
+
+    // A union list that reaches such text goes without its parentheses too.
+    ScTokenArray aUnion(*m_pDoc);
+    ScSingleRefData aReference;
+    aReference.InitAddress(ScAddress(0, 0, 0));
+    aUnion.AddSingleReference(aReference);
+    aUnion.AddOpCode(ocUnion);
+    aUnion.AddBad(u"PW value"_ustr);
+
+    CPPUNIT_ASSERT_EQUAL(u"$A$1,PW value"_ustr, printAsOoxml(*m_pDoc, aUnion, ScAddress(1, 0, 0)));
+
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(TestFormula2, testImplicitIntersectionDroppedWhenItHasNoOperand)
+{
+    // An @ with nothing behind it to enclose is left out of the saved formula.
+    m_pDoc->InsertTab(0, u"Sheet1"_ustr);
+
+    ScTokenArray aMarkerOnly(*m_pDoc);
+    aMarkerOnly.AddOpCode(ocSingleValue);
+
+    CPPUNIT_ASSERT_EQUAL(OUString(), printAsOoxml(*m_pDoc, aMarkerOnly, ScAddress(1, 0, 0)));
+
+    // The same holds when the operand behind the @ is another @ with nothing of its
+    // own behind it.
+    ScTokenArray aMarkersOnly(*m_pDoc);
+    aMarkersOnly.AddOpCode(ocSingleValue);
+    aMarkersOnly.AddOpCode(ocSingleValue);
+
+    CPPUNIT_ASSERT_EQUAL(OUString(), printAsOoxml(*m_pDoc, aMarkersOnly, ScAddress(1, 0, 0)));
+
+    // A missing argument writes nothing, so it gives the wrapper nothing to enclose
+    // either.
+    ScTokenArray aMissingOperand(*m_pDoc);
+    aMissingOperand.AddOpCode(ocSingleValue);
+    aMissingOperand.AddOpCode(ocMissing);
+
+    CPPUNIT_ASSERT_EQUAL(OUString(), printAsOoxml(*m_pDoc, aMissingOperand, ScAddress(1, 0, 0)));
+
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(TestFormula2, testImplicitIntersectionWrapsWholeTableReference)
+{
+    // A structured table reference is more than one token, and the wrapper goes around
+    // all of them.
+    m_pDoc->InsertTab(0, u"Sheet1"_ustr);
+
+    // A two-column table over A1:B4 whose header row names the columns.
+    std::unique_ptr<ScDBData> pData(new ScDBData(u"table"_ustr, 0, 0, 0, 1, 3));
+    CPPUNIT_ASSERT(m_pDoc->GetDBCollection()->getNamedDBs().insert(std::move(pData)));
+    m_pDoc->SetString(ScAddress(0, 0, 0), u"Header1"_ustr);
+    m_pDoc->SetString(ScAddress(1, 0, 0), u"Header2"_ustr);
+
+    CPPUNIT_ASSERT_EQUAL(u"table[[Header1]]"_ustr,
+                         compileAndPrintAsOoxml(*m_pDoc, u"table[[Header1]]"_ustr));
+    CPPUNIT_ASSERT_EQUAL(u"_xlfn.SINGLE(table[[Header1]])"_ustr,
+                         compileAndPrintAsOoxml(*m_pDoc, u"@table[[Header1]]"_ustr));
+
+    // A reference of several bracketed items has a separator of its own inside, and
+    // still goes into the wrapper whole.
+    CPPUNIT_ASSERT_EQUAL(u"_xlfn.SINGLE(table[[#Data],[Header1]])"_ustr,
+                         compileAndPrintAsOoxml(*m_pDoc, u"@table[[#Data];[Header1]]"_ustr));
+
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(TestFormula2, testImplicitIntersectionKeepsOffsetParameterErrorRewrite)
+{
+    // An OFFSET call whose first argument is not a reference saves that argument as a
+    // reference error, with or without an @ in front of the call.
+    m_pDoc->InsertTab(0, u"Sheet1"_ustr);
+
+    CPPUNIT_ASSERT_EQUAL(u"OFFSET(#REF!,0,2)"_ustr,
+                         compileAndPrintAsOoxml(*m_pDoc, u"OFFSET(\"x\";0;2)"_ustr));
+    CPPUNIT_ASSERT_EQUAL(u"_xlfn.SINGLE(OFFSET(#REF!,0,2))"_ustr,
+                         compileAndPrintAsOoxml(*m_pDoc, u"@OFFSET(\"x\";0;2)"_ustr));
+
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(TestFormula2, testLongImplicitIntersectionChainSavesCompletely)
+{
+    // A formula may carry as many @ markers as the token array holds, and the writer
+    // gets through all of them.
+    m_pDoc->InsertTab(0, u"Sheet1"_ustr);
+
+    ScTokenArray aCode(*m_pDoc);
+    // 30000 pairs stay under the 65535 token limit while going deeper than any stack
+    // of nested calls can follow.
+    for (sal_Int32 nPair = 0; nPair < 30000; ++nPair)
+    {
+        aCode.AddOpCode(ocSingleValue);
+        aCode.AddOpCode(ocAdd);
+    }
+    ScSingleRefData aReference;
+    aReference.InitAddress(ScAddress(0, 0, 0));
+    aCode.AddSingleReference(aReference);
+
+    const OUString aFormula = printAsOoxml(*m_pDoc, aCode, ScAddress(1, 0, 0));
+    CPPUNIT_ASSERT(!aFormula.isEmpty());
+
+    m_pDoc->DeleteTab(0);
+}
+
 CPPUNIT_PLUGIN_IMPLEMENT();
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

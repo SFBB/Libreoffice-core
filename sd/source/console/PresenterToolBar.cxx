@@ -121,7 +121,6 @@ public:
         const SharedElementMode& rpSelectedMode,
         const SharedElementMode& rpDisabledMode,
         const SharedElementMode& rpMouseOverSelectedMode);
-    void CurrentSlideHasChanged();
     void SetLocation (const awt::Point& rLocation);
     void SetSize (const geometry::RealSize2D& rSize);
     virtual void Paint (
@@ -869,7 +868,7 @@ void PresenterToolBar::UpdateSlideNumber()
             for (auto& rxElement : *rxPart)
             {
                 if (rxElement)
-                    rxElement->CurrentSlideHasChanged();
+                    rxElement->UpdateState();
             }
         }
     }
@@ -1080,11 +1079,6 @@ awt::Rectangle PresenterToolBar::Element::GetBoundingBox() const
     return awt::Rectangle(maLocation.X,maLocation.Y, maSize.Width, maSize.Height);
 }
 
-void PresenterToolBar::Element::CurrentSlideHasChanged()
-{
-    UpdateState();
-}
-
 void PresenterToolBar::Element::SetLocation (const awt::Point& rLocation)
 {
     maLocation = rLocation;
@@ -1276,11 +1270,7 @@ void ElementMode::ReadElementMode (
     }
 }
 
-} // end of anonymous namespace
-
 //===== Button ================================================================
-
-namespace {
 
 ::rtl::Reference<PresenterToolBar::Element> Button::Create (
     const ::rtl::Reference<PresenterToolBar>& rpToolBar)
@@ -1441,11 +1431,7 @@ void SAL_CALL Button::disposing (const css::lang::EventObject& rEvent)
     PresenterToolBar::Element::disposing(rEvent);
 }
 
-} // end of anonymous namespace
-
 //===== PresenterToolBar::Label ===============================================
-
-namespace {
 
 Label::Label (const ::rtl::Reference<PresenterToolBar>& rpToolBar)
     : PresenterToolBar::Element(rpToolBar)
@@ -1499,11 +1485,7 @@ bool Label::SetState (const bool, const bool)
     return PresenterToolBar::Element::SetState(false, false);
 }
 
-} // end of anonymous namespace
-
 //===== Text ==================================================================
-
-namespace {
 
 Text::Text()
 {
