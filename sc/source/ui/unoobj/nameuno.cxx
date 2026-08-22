@@ -120,7 +120,7 @@ ScRangeData* ScNamedRangeObj::GetRangeData_Impl()
         if (nTab >= 0)
             pNames = pDocShell->GetDocument().GetRangeName(nTab);
         else
-            pNames = pDocShell->GetDocument().GetRangeName();
+            pNames = &pDocShell->GetDocument().GetRangeName();
         if (pNames)
         {
             pRet = pNames->findByUpperName(ScGlobal::getCharClass().uppercase(aName));
@@ -163,7 +163,7 @@ void ScNamedRangeObj::Modify_Impl( const OUString* pNewName, const ScTokenArray*
     if (nTab >= 0)
         pNames = rDoc.GetRangeName(nTab);
     else
-        pNames = rDoc.GetRangeName();
+        pNames = &rDoc.GetRangeName();
     if (!pNames)
         return;
 
@@ -190,24 +190,20 @@ void ScNamedRangeObj::Modify_Impl( const OUString* pNewName, const ScTokenArray*
     if (pNewType)
         nType = *pNewType;
 
-    ScRangeData* pNew = nullptr;
+    std::unique_ptr<ScRangeData> pNew;
     if (pNewTokens)
-        pNew = new ScRangeData( rDoc, aInsName, *pNewTokens, aPos, nType );
+        pNew.reset(new ScRangeData( rDoc, aInsName, *pNewTokens, aPos, nType ));
     else
-        pNew = new ScRangeData( rDoc, aInsName, aContent, aPos, nType, eGrammar );
+        pNew.reset(new ScRangeData( rDoc, aInsName, aContent, aPos, nType, eGrammar ));
 
     pNew->SetIndex( pOld->GetIndex() );
 
     pNewRanges->erase(*pOld);
-    if (pNewRanges->insert(pNew))
+    if (pNewRanges->insert(std::move(pNew)))
     {
         pDocShell->GetDocFunc().SetNewRangeNames(std::move(pNewRanges), mxParent->IsModifyAndBroadcast(), nTab);
 
         aName = aInsName;   //! broadcast?
-    }
-    else
-    {
-        pNew = nullptr;        //! uno::Exception/Error or something
     }
 }
 
@@ -487,16 +483,12 @@ void SAL_CALL ScNamedRangesObj::addNewByName( const OUString& aName,
                 {
                     std::unique_ptr<ScRangeName> pNewRanges(new ScRangeName( *pNames ));
                     // GRAM_API for API compatibility.
-                    ScRangeData* pNew = new ScRangeData( rDoc, aName, aContent,
-                                                        aPos, nNewType,formula::FormulaGrammar::GRAM_API );
-                    if ( pNewRanges->insert(pNew) )
+                    std::unique_ptr<ScRangeData> pNew(new ScRangeData( rDoc, aName, aContent,
+                                                        aPos, nNewType,formula::FormulaGrammar::GRAM_API ));
+                    if ( pNewRanges->insert(std::move(pNew)) )
                     {
                         pDocShell->GetDocFunc().SetNewRangeNames(std::move(pNewRanges), mbModifyAndBroadcast, GetTab_Impl());
                         bDone = true;
-                    }
-                    else
-                    {
-                        pNew = nullptr;
                     }
                 }
         }
@@ -785,12 +777,10 @@ rtl::Reference<ScNamedRangeObj> ScGlobalNamedRangesObj::GetObjectByIndex_Impl(sa
     if (!pDocShell)
         return nullptr;
 
-    ScRangeName* pNames = pDocShell->GetDocument().GetRangeName();
-    if (!pNames)
-        return nullptr;
+    ScRangeName& rNames = pDocShell->GetDocument().GetRangeName();
 
     sal_uInt16 nPos = 0;
-    for (const auto& rName : *pNames)
+    for (const auto& rName : rNames)
     {
         if (lcl_UserVisibleName(*rName.second))
         {
@@ -811,7 +801,7 @@ rtl::Reference<ScNamedRangeObj> ScGlobalNamedRangesObj::GetObjectByName_Impl(con
 
 ScRangeName* ScGlobalNamedRangesObj::GetRangeName_Impl()
 {
-    return pDocShell->GetDocument().GetRangeName();
+    return &pDocShell->GetDocument().GetRangeName();
 }
 
 SCTAB ScGlobalNamedRangesObj::GetTab_Impl()

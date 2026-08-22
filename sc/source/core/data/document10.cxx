@@ -719,7 +719,7 @@ ScRangeData* copyRangeName( const ScRangeData* pOldRangeData, ScDocument& rNewDo
     ScAddress aRangePos( pOldRangeData->GetPos());
     if (nNewSheet >= 0)
         aRangePos.SetTab( nNewSheet);
-    ScRangeData* pRangeData = new ScRangeData(*pOldRangeData, &rNewDoc, &aRangePos);
+    std::unique_ptr<ScRangeData> pRangeData(new ScRangeData(*pOldRangeData, &rNewDoc, &aRangePos));
     pRangeData->SetIndex(0);    // needed for insert to assign a new index
     ScTokenArray* pRangeNameToken = pRangeData->GetCode();
     if (bSameDoc && nNewSheet >= 0)
@@ -739,13 +739,10 @@ ScRangeData* copyRangeName( const ScRangeData* pOldRangeData, ScDocument& rNewDo
         pRangeNameToken->AdjustAbsoluteRefs(rOldDoc, rOldPos, rNewPos, true);
     }
 
-    bool bInserted;
     if (nNewSheet < 0)
-        bInserted = rNewDoc.GetRangeName()->insert(pRangeData);
+        return rNewDoc.GetRangeName().insert(std::move(pRangeData));
     else
-        bInserted = rNewDoc.GetRangeName(nNewSheet)->insert(pRangeData);
-
-    return bInserted ? pRangeData : nullptr;
+        return rNewDoc.GetRangeName(nNewSheet)->insert(std::move(pRangeData));
 }
 
 struct SheetIndex
@@ -773,10 +770,10 @@ ScRangeData* copyRangeNames( SheetIndexMap& rSheetIndexMap, std::vector<ScRangeD
         const SCTAB nOldSheet, const SCTAB nNewSheet, bool bSameDoc)
 {
     ScRangeData* pRangeData = nullptr;
-    const ScRangeName* pOldRangeName = (nTab < 0 ? rOldDoc.GetRangeName() : rOldDoc.GetRangeName(nTab));
+    const ScRangeName* pOldRangeName = (nTab < 0 ? &rOldDoc.GetRangeName() : rOldDoc.GetRangeName(nTab));
     if (pOldRangeName)
     {
-        const ScRangeName* pNewRangeName = (nNewSheet < 0 ? rNewDoc.GetRangeName() : rNewDoc.GetRangeName(nNewSheet));
+        const ScRangeName* pNewRangeName = (nNewSheet < 0 ? &rNewDoc.GetRangeName() : rNewDoc.GetRangeName(nNewSheet));
         sc::UpdatedRangeNames::NameIndicesType aSet( rReferencingNames.getUpdatedNames(nTab));
         for (auto const & rIndex : aSet)
         {
@@ -876,7 +873,7 @@ bool ScDocument::CopyAdjustRangeName( SCTAB& rSheet, sal_uInt16& rIndex, ScRange
     }
     else
     {
-        pOldRangeData = GetRangeName()->findByIndex(nOldIndex);
+        pOldRangeData = GetRangeName().findByIndex(nOldIndex);
         if (!pOldRangeData)
             return false;     // might be an error in the formula array
         aRangeName = pOldRangeData->GetUpperName();
@@ -895,9 +892,8 @@ bool ScDocument::CopyAdjustRangeName( SCTAB& rSheet, sal_uInt16& rIndex, ScRange
     if (!rpRangeData && !bGlobalNamesToLocal)
     {
         nNewSheet = -1;
-        pNewNames = rNewDoc.GetRangeName();
-        if (pNewNames)
-            rpRangeData = pNewNames->findByUpperName(aRangeName);
+        pNewNames = &rNewDoc.GetRangeName();
+        rpRangeData = pNewNames->findByUpperName(aRangeName);
     }
     // If no range name was found copy it.
     if (!rpRangeData)

@@ -90,7 +90,7 @@ void ScUndoAddRangeData::Undo()
     ScRangeName* pRangeName = nullptr;
     if (mnTab == -1)
     {
-        pRangeName = rDoc.GetRangeName();
+        pRangeName = &rDoc.GetRangeName();
     }
     else
     {
@@ -107,13 +107,13 @@ void ScUndoAddRangeData::Redo()
     ScRangeName* pRangeName = nullptr;
     if (mnTab == -1)
     {
-        pRangeName = rDoc.GetRangeName();
+        pRangeName = &rDoc.GetRangeName();
     }
     else
     {
         pRangeName = rDoc.GetRangeName( mnTab );
     }
-    pRangeName->insert(new ScRangeData(*mpRangeData));
+    pRangeName->insert(std::make_unique<ScRangeData>(*mpRangeData));
     SfxGetpApp()->Broadcast( SfxHint( SfxHintId::ScAreasChanged ) );
 }
 

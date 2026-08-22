@@ -32,6 +32,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <memory>
+#include <span>
 #include <vector>
 
 namespace com::sun::star::sheet { struct DataResult; }
@@ -439,7 +440,7 @@ public:
 
     virtual ScDPAggData* GetColTotal(tools::Long nMeasure) = 0;
 
-    void FillVisibilityData(ScDPResultVisibilityData& rData) const;
+    void FillVisibilityData(ScDPResultVisibilityData& rData);
 };
 
 class ScDPResultMemberSlim : public ScDPResultMember
@@ -449,7 +450,7 @@ private:
     // When adding fields here, update ScDPResultDimension::Promote
     ScDPResultDimension* mpOurDimension;
     const ScDPMember* mpMemberDesc;
-    const SCROW mnOrder;
+    SCROW mnOrder;
     bool bmHasElements : 1;
     bool bmHasHiddenDetails : 1;
     bool bmInitialized : 1;
@@ -469,6 +470,8 @@ private:
 
 public:
     ScDPResultMemberSlim(ScDPResultDimension* pRDimension, const ScDPParentDimData& rParentDimData);
+    // Just for array new
+    ScDPResultMemberSlim();
 
     bool GetHasElements() const override
     {
@@ -776,13 +779,18 @@ class ScDPResultDimension
 {
 public:
     typedef std::vector<std::unique_ptr<ScDPResultMember>> MemberArray;
+    typedef std::unique_ptr<std::span<ScDPResultMemberSlim>> MemberSlimArray;
+
 private:
     const ScDPResultData*   pResultData;
+    // Used when we allocate a full set of Slim
+    MemberSlimArray mpaMemberSlimArray;
+    // Used both in non-Slim cases and after Slim get promoted
     MemberArray             maMemberArray;
+
     // Used during 'Promote' of ScDPResultMember
     ScDPDimension* mpDimension;
     ScDPLevel* mpLevel;
-    MemberArray maPromotedMembers;
 
     OUString                aDimensionName;     //! or ptr to IntDimension?
     tools::Long                    nSortMeasure;
@@ -885,9 +893,9 @@ public:
     tools::Long                GetAutoMeasure() const  { return nAutoMeasure; }
     tools::Long                GetAutoCount() const    { return nAutoCount; }
 
-    ScDPResultDimension* GetFirstChildDimension() const;
+    ScDPResultDimension* GetFirstChildDimension();
 
-    void                FillVisibilityData(ScDPResultVisibilityData& rData) const;
+    void FillVisibilityData(ScDPResultVisibilityData& rData);
 
     // Called by an ScDPResultMemberSlim which has already been promoted
     // but something with an older pointer calls one of its member functions

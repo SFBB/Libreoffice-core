@@ -1296,9 +1296,9 @@ public:
             if (!p.bIsExpression)
                 ScXMLConverter::ConvertCellRangeAddress(aContent);
 
-            ScRangeData* pData = new ScRangeData(
-                mrDoc, p.sName, aContent, aPos, nNewType, p.eGrammar);
-            mrRangeName.insert(pData);
+            std::unique_ptr<ScRangeData> pData(new ScRangeData(
+                mrDoc, p.sName, aContent, aPos, nNewType, p.eGrammar));
+            mrRangeName.insert(std::move(pData));
         }
     }
 };
@@ -1314,9 +1314,9 @@ void ScXMLImport::SetNamedRanges()
         return;
 
     // Insert the namedRanges
-    ScRangeName* pRangeNames = mpDoc->GetRangeName();
+    ScRangeName& rRangeNames = mpDoc->GetRangeName();
     ::std::for_each(m_aMyNamedExpressions.begin(), m_aMyNamedExpressions.end(),
-            RangeNameInserter(*mpDoc, *pRangeNames, -1));
+            RangeNameInserter(*mpDoc, rRangeNames, -1));
 }
 
 void ScXMLImport::SetSheetNamedRanges()

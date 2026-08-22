@@ -107,8 +107,7 @@ void ScHTMLImport::InsertRangeName( ScDocument& rDoc, const OUString& rName, con
     aRefData.Ref2.SetFlag3D( aRefData.Ref2.Tab() != aRefData.Ref1.Tab() );
     ScTokenArray aTokArray(rDoc);
     aTokArray.AddDoubleReference( aRefData );
-    ScRangeData* pRangeData = new ScRangeData( rDoc, rName, aTokArray );
-    rDoc.GetRangeName()->insert( pRangeData );
+    rDoc.GetRangeName().insert( std::make_unique<ScRangeData>( rDoc, rName, aTokArray ) );
 }
 
 void ScHTMLImport::WriteToDocument(
@@ -191,7 +190,7 @@ void ScHTMLImport::WriteToDocument(
         if (!pTable->GetTableCaption().isEmpty())
             aName.append(" - " + pTable->GetTableCaption());
         const OUString sName(aName.makeStringAndClear());
-        if (!mrDoc.GetRangeName()->findByUpperName(ScGlobal::getCharClass().uppercase(sName)))
+        if (!mrDoc.GetRangeName().findByUpperName(ScGlobal::getCharClass().uppercase(sName)))
             InsertRangeName(mrDoc, sName, aNewRange);
     }
 }
@@ -207,19 +206,19 @@ OUString ScHTMLImport::GetHTMLRangeNameList( const ScDocument& rDoc, std::u16str
         return OUString();
 
     OUString aNewName;
-    ScRangeName* pRangeNames = rDoc.GetRangeName();
+    ScRangeName& rRangeNames = rDoc.GetRangeName();
     ScRangeList aRangeList;
     sal_Int32 nStringIx = 0;
     do
     {
         OUString aToken( o3tl::getToken(rOrigName, 0, ';', nStringIx ) );
-        if( pRangeNames && ScfTools::IsHTMLTablesName( aToken ) )
+        if( ScfTools::IsHTMLTablesName( aToken ) )
         {   // build list with all HTML tables
             sal_uLong nIndex = 1;
             for(;;)
             {
                 aToken = ScfTools::GetNameFromHTMLIndex( nIndex++ );
-                const ScRangeData* pRangeData = pRangeNames->findByUpperName(ScGlobal::getCharClass().uppercase(aToken));
+                const ScRangeData* pRangeData = rRangeNames.findByUpperName(ScGlobal::getCharClass().uppercase(aToken));
                 if (!pRangeData)
                     break;
                 ScRange aRange;

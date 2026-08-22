@@ -922,7 +922,7 @@ bool ScUcalcTestBase::insertRangeNames(
             aA1, ScRangeData::Type::Name,
             formula::FormulaGrammar::GRAM_ENGLISH);
         pNew->SetIndex(p->mnIndex);
-        bool bSuccess = pNames->insert(pNew);
+        bool bSuccess = pNames->insert(std::unique_ptr<ScRangeData>(pNew));
         if (!bSuccess)
         {
             std::cerr << "Insertion failed." << std::endl;
@@ -935,7 +935,7 @@ bool ScUcalcTestBase::insertRangeNames(
 
 OUString ScUcalcTestBase::getRangeByName(const ScDocument* pDoc, const OUString& aRangeName)
 {
-    ScRangeData* pName = pDoc->GetRangeName()->findByUpperName(aRangeName.toAsciiUpperCase());
+    ScRangeData* pName = pDoc->GetRangeName().findByUpperName(aRangeName.toAsciiUpperCase());
     CPPUNIT_ASSERT(pName);
     return pName->GetSymbol(pDoc->GetGrammar());
 }

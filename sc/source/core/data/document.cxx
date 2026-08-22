@@ -2447,12 +2447,12 @@ void ScDocument::TransposeClip(ScDocument* pTransClip, InsertDeleteFlags nFlags,
 
     if (pRangeName)
     {
-        pTransClip->GetRangeName()->clear();
+        pTransClip->GetRangeName().clear();
         for (const auto& rEntry : *pRangeName)
         {
             sal_uInt16 nIndex = rEntry.second->GetIndex();
-            ScRangeData* pData = new ScRangeData(*rEntry.second);
-            if (pTransClip->pRangeName->insert(pData))
+            ScRangeData* pData = pTransClip->pRangeName->insert(std::make_unique<ScRangeData>(*rEntry.second));
+            if (pData)
                 pData->SetIndex(nIndex);
         }
     }
@@ -2545,10 +2545,10 @@ void ScDocument::TransposeClip(ScDocument* pTransClip, InsertDeleteFlags nFlags,
 
 namespace {
 
-void copyUsedNamesToClip(ScRangeName* pClipRangeName, ScRangeName* pRangeName,
+void copyUsedNamesToClip(ScRangeName& rClipRangeName, ScRangeName* pRangeName,
         const sc::UpdatedRangeNames::NameIndicesType& rUsedNames)
 {
-    pClipRangeName->clear();
+    rClipRangeName.clear();
     for (const auto& rEntry : *pRangeName)        //TODO: also DB and Pivot regions!!!
     {
         sal_uInt16 nIndex = rEntry.second->GetIndex();
@@ -2556,8 +2556,8 @@ void copyUsedNamesToClip(ScRangeName* pClipRangeName, ScRangeName* pRangeName,
         if (!bInUse)
             continue;
 
-        ScRangeData* pData = new ScRangeData(*rEntry.second);
-        if (pClipRangeName->insert(pData))
+        ScRangeData* pData = rClipRangeName.insert(std::make_unique<ScRangeData>(*rEntry.second));
+        if (pData)
             pData->SetIndex(nIndex);
     }
 }

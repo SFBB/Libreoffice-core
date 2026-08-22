@@ -236,26 +236,20 @@ void XclImpName::ConvertTokens()
 void XclImpName::InsertName(const ScTokenArray* pArray)
 {
     // create the Calc name data
-    ScRangeData* pData = new ScRangeData(GetDoc(), maScName, *pArray, ScAddress(), meNameType);
-    pData->GuessPosition();             // calculate base position for relative refs
-    pData->SetIndex( mnNameIndex );     // used as unique identifier in formulas
+    std::unique_ptr<ScRangeData> pNewData(new ScRangeData(GetDoc(), maScName, *pArray, ScAddress(), meNameType));
+    pNewData->GuessPosition();             // calculate base position for relative refs
+    pNewData->SetIndex( mnNameIndex );     // used as unique identifier in formulas
+    ScRangeData* pData = nullptr;
     if (mnXclTab == EXC_NAME_GLOBAL)
     {
-        if (!GetDoc().GetRangeName()->insert(pData))
-            pData = nullptr;
+        pData = GetDoc().GetRangeName().insert(std::move(pNewData));
     }
     else
     {
         ScRangeName* pLocalNames = GetDoc().GetRangeName(mnScTab);
         if (pLocalNames)
         {
-            if (!pLocalNames->insert(pData))
-                pData = nullptr;
-        }
-        else
-        {
-            delete pData;
-            pData = nullptr;
+            pData = pLocalNames->insert(std::move(pNewData));
         }
 
         if (GetBiff() == EXC_BIFF8 && pData)
@@ -291,15 +285,8 @@ const XclImpName* XclImpNameManager::FindName( std::u16string_view rXclName, SCT
 {
     const XclImpName* pGlobalName = nullptr;   // a found global name
     const XclImpName* pLocalName = nullptr;    // a found local name
-    // If a duplicate name is seen by ScRangeName::insert then the existing
-    // name is erased and the new one inserted, so in the case of duplicates
-    // the last one seen is valid and the others invalid. So do this lookup in
-    // reverse in order to return the XclImpName* that references the valid
-    // entry (see tdf#44831 for the insert behavior and 'forum-mso-en4-30276.xls'
-    // for an example of this problem)
-    for (auto itName = maNameList.rbegin(); itName != maNameList.rend(); ++itName)
+    for( const auto& rxName : maNameList )
     {
-        const auto& rxName = *itName;
         if( rxName->GetXclName() == rXclName )
         {
             if( rxName->GetScTab() == nScTab )
