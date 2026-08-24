@@ -539,16 +539,16 @@ public:
                                     // subdividing the bezier segment.
                                     // Ideal here is a subdivision at the extreme values, so use
                                     // getAllExtremumPositions to get all extrema in one run
-                                    std::vector< double > aExtremas;
+                                    std::vector< double > aExtrema;
 
-                                    aExtremas.reserve(4);
-                                    aEdge.getAllExtremumPositions(aExtremas);
+                                    aExtrema.reserve(4);
+                                    aEdge.getAllExtremumPositions(aExtrema);
 
-                                    const sal_uInt32 nExtremaCount(aExtremas.size());
+                                    const sal_uInt32 nExtremaCount(aExtrema.size());
 
                                     for(sal_uInt32 c(0); c < nExtremaCount; c++)
                                     {
-                                        aNewRange.expand(aEdge.interpolatePoint(aExtremas[c]));
+                                        aNewRange.expand(aEdge.interpolatePoint(aExtrema[c]));
                                     }
                                 }
                             }
@@ -1544,7 +1544,7 @@ namespace basegfx
         mpPolygon->addOrReplaceSystemDependentData(rData);
     }
 
-    SystemDependentData_SharedPtr B2DPolygon::getSystemDependantDataInternal(SDD_Type aType) const
+    SystemDependentData_SharedPtr B2DPolygon::getSystemDependentDataInternal(SDD_Type aType) const
     {
         return mpPolygon->getSystemDependentData(aType);
     }
