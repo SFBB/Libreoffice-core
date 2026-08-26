@@ -1629,8 +1629,8 @@ void ScDPResultMember::FillMemberResults(uno::Sequence<sheet::MemberResult>* pSe
                 {
                     // single data field layout.
                     const std::optional<OUString> & pSubtotalName = pParentDim->GetSubtotalName();
-                    if (pSubtotalName.has_value())
-                        aSubStr = lcl_parseSubtotalName(pSubtotalName.value(), aCaption);
+                    if (pSubtotalName)
+                        aSubStr = lcl_parseSubtotalName(*pSubtotalName, aCaption);
                     pArray[rPos].Flags &= ~sheet::MemberResultFlags::GRANDTOTAL;
                 }
                 else
@@ -3905,7 +3905,7 @@ void ScDPResultDimension::FillVisibilityData(ScDPResultVisibilityData& rData)
 }
 
 // Called by an ScDPResultMemberSlim which has already been promoted
-// but something calls one of it's member functions
+// but something calls one of its member functions
 ScDPResultMember* ScDPResultDimension::GetPromote(SCROW nOrder) const
 {
     // Find the existing slim entry

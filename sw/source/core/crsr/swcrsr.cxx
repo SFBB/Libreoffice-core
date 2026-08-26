@@ -895,6 +895,8 @@ static sal_Int32 lcl_FindSelection( SwFindParas& rParas, SwCursor* pCurrentCurso
                         break;
                     }
                 }
+                else
+                    rParas.SetMustStartWithCurrentNode(true); // currently only for FindTextImpl
             }
 
             if( *pSttPos == *pEndPos )
@@ -2498,7 +2500,7 @@ SwCursor* SwTableCursor::MakeBoxSels( SwCursor* pCurrentCursor )
         m_bChanged = false;
 
         // create temporary copies so that all boxes that
-        // have already cursors can be removed
+        // already have cursors can be removed
         SwSelBoxes aTmp(m_SelectedBoxes);
 
         // compare old and new ones

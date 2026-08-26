@@ -486,6 +486,11 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest7, testTdf147583_backwardSearch)
     xIndex.set(xSearch->findAll(xSearchDes), uno::UNO_SET_THROW);
     // should be one for every non-empty paragraph
     CPPUNIT_ASSERT_EQUAL(sal_Int32(14), xIndex->getCount());
+
+    // tdf#135538
+    // Search for the beginning of the paragraph
+    xSearchDes->setSearchString(u"^"_ustr); // the start of the paragraph
+    CPPUNIT_ASSERT_EQUAL(nParas, xSearch->findAll(xSearchDes)->getCount());
 }
 
 CPPUNIT_TEST_FIXTURE(SwUiWriterTest7, testTdf69282)
@@ -3044,7 +3049,7 @@ CPPUNIT_TEST_FIXTURE(SwUiWriterTest7, testTdf106137_UnicodeEscapeInReplacement_B
     SwPaM* pCursor = pShell->GetCursor();
     IDocumentContentOperations& rIDCO(pDoc->getIDocumentContentOperations());
 
-    // Insert text that contains a actual escaped unicode string
+    // Insert text that contains an actual escaped unicode string
     rIDCO.InsertString(*pCursor, u"find \\u0042"_ustr);
 
     uno::Reference<util::XReplaceable> xReplace(mxComponent, uno::UNO_QUERY);

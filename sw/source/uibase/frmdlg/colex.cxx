@@ -121,7 +121,8 @@ void SwPageExample::UpdateExample( const SfxItemSet& rSet )
                 const SvxBrushItem& rItem = rHeaderSet.Get(RES_BACKGROUND);
                 SfxItemSet aTempSet(SfxItemSet::makeFixedSfxItemSet<XATTR_FILL_FIRST, XATTR_FILL_LAST>(*rHeaderSet.GetPool()));
 
-                setSvxBrushItemAsFillAttributesToTargetSet(rItem, aTempSet);
+                setSvxBrushItemAsFillAttributesToTargetSet(rItem, aTempSet,
+                                                           getActiveDocumentLinkReferer());
                 setHeaderFillAttributes(
                     std::make_shared<drawinglayer::attribute::SdrAllFillAttributesHelper>(
                             aTempSet));
@@ -157,7 +158,8 @@ void SwPageExample::UpdateExample( const SfxItemSet& rSet )
                 const SvxBrushItem& rItem = rFooterSet.Get(RES_BACKGROUND);
                 SfxItemSet aTempSet(SfxItemSet::makeFixedSfxItemSet<XATTR_FILL_FIRST, XATTR_FILL_LAST>(*rFooterSet.GetPool()));
 
-                setSvxBrushItemAsFillAttributesToTargetSet(rItem, aTempSet);
+                setSvxBrushItemAsFillAttributesToTargetSet(rItem, aTempSet,
+                                                           getActiveDocumentLinkReferer());
                 setFooterFillAttributes(
                     std::make_shared<drawinglayer::attribute::SdrAllFillAttributesHelper>(
                             aTempSet));
@@ -172,7 +174,8 @@ void SwPageExample::UpdateExample( const SfxItemSet& rSet )
         // create FillAttributes from SvxBrushItem
         SfxItemSet aTempSet(SfxItemSet::makeFixedSfxItemSet<XATTR_FILL_FIRST, XATTR_FILL_LAST>(*rSet.GetPool()));
 
-        setSvxBrushItemAsFillAttributesToTargetSet(*pBrushItem, aTempSet);
+        setSvxBrushItemAsFillAttributesToTargetSet(*pBrushItem, aTempSet,
+                                                   getActiveDocumentLinkReferer());
         setPageFillAttributes(
             std::make_shared<drawinglayer::attribute::SdrAllFillAttributesHelper>(
                     aTempSet));
@@ -211,7 +214,7 @@ void SwColExample::DrawPage(vcl::RenderContext& rRenderContext, const Point& rOr
 
     const tools::Rectangle aDefineRect(aRect);
 
-    // #97495# make sure that the automatic column width's are always equal
+    // #97495# make sure that the automatic column widths are always equal
     bool bAutoWidth = m_pColMgr->IsAutoWidth();
     sal_Int32 nAutoColWidth = 0;
     if (bAutoWidth)
@@ -427,7 +430,7 @@ void  SwColumnOnlyExample::SetColumns(const SwFormatCol& rCol)
         nRight /= nWishSum;
         pCol->SetRight(o3tl::narrowing<sal_uInt16>(nRight));
     }
-    // #97495# make sure that the automatic column width's are always equal
+    // #97495# make sure that the automatic column widths are always equal
     if(!(nColCount && m_aCols.IsOrtho()))
         return;
 
