@@ -303,33 +303,18 @@ SdrObject* SdPage::CreatePresObj(PresObjKind eObjKind, bool bVertical, const ::t
         case PresObjKind::Title:
         {
             pSdrObj = new SdrRectObj(getSdrModelFromSdrPage(), ::tools::Rectangle(), SdrObjKind::TitleText);
-
-            if (mbMaster)
-            {
-                pSdrObj->SetNotVisibleAsMaster(true);
-            }
         }
         break;
 
         case PresObjKind::Outline:
         {
             pSdrObj = new SdrRectObj(getSdrModelFromSdrPage(), ::tools::Rectangle(), SdrObjKind::OutlineText);
-
-            if (mbMaster)
-            {
-                pSdrObj->SetNotVisibleAsMaster(true);
-            }
         }
         break;
 
         case PresObjKind::Notes:
         {
             pSdrObj = new SdrRectObj(getSdrModelFromSdrPage(), ::tools::Rectangle(), SdrObjKind::Text);
-
-            if (mbMaster)
-            {
-                pSdrObj->SetNotVisibleAsMaster(true);
-            }
         }
         break;
 
@@ -464,6 +449,24 @@ SdrObject* SdPage::CreatePresObj(PresObjKind eObjKind, bool bVertical, const ::t
 
     if (pSdrObj)
     {
+        // On a master page these are templates for the instances the slides carry themselves, so
+        // painting them on a slide too would show two placeholders where the user expects one.
+        // Everything else stays visible from the master, the footer and slide number above all.
+        if (mbMaster)
+        {
+            switch (eObjKind)
+            {
+                case PresObjKind::Title:
+                case PresObjKind::Outline:
+                case PresObjKind::Notes:
+                case PresObjKind::Graphic:
+                    pSdrObj->SetNotVisibleAsMaster(true);
+                    break;
+                default:
+                    break;
+            }
+        }
+
         pSdrObj->SetEmptyPresObj(bEmptyPresObj);
         pSdrObj->SetLogicRect(rRect);
 
@@ -2724,6 +2727,18 @@ Orientation SdPage::GetOrientation() const
 
 OUString SdPage::GetPresObjText(PresObjKind eObjKind) const
 {
+    // A layout can author its own prompt, and it belongs to the slides using that layout, so ask
+    // the master for one before falling back to our own resource string.
+    if (!mbMaster && TRG_HasMasterPage())
+    {
+        SdPage& rMasterPage = static_cast<SdPage&>(TRG_GetMasterPage());
+        if (SdrObject* pMasterObj = rMasterPage.GetPresObj(eObjKind))
+        {
+            if (!pMasterObj->GetCustomPromptText().isEmpty())
+                return pMasterObj->GetCustomPromptText();
+        }
+    }
+
     OUString aString;
 
 #if defined(IOS) || defined(ANDROID)
@@ -3015,7 +3030,8 @@ bool SdPage::RestoreDefaultText( SdrObject* pObj, const OUString& rStr )
         if (ePresObjKind == PresObjKind::Title   ||
             ePresObjKind == PresObjKind::Outline ||
             ePresObjKind == PresObjKind::Notes   ||
-            ePresObjKind == PresObjKind::Text)
+            ePresObjKind == PresObjKind::Text    ||
+            ePresObjKind == PresObjKind::Graphic)
         {
             sd::ModifyGuard aGuard(static_cast<SdDrawDocument*>(&getSdrModelFromSdrPage()));
 

@@ -52,7 +52,8 @@ enum PlaceholderType
     Outliner,
     Title,
     Subtitle,
-    Picture
+    Picture,
+    Media
 };
 
 class PowerPointShapeExport;
@@ -111,7 +112,8 @@ private:
     sal_Int32 GetLayoutFileId( sal_Int32 nOffset, sal_uInt32 nMasterNum );
 
     // shapes
-    void WriteShapeTree( const ::sax_fastparser::FSHelperPtr& pFS, PageType ePageType, bool bMaster );
+    void WriteShapeTree( const ::sax_fastparser::FSHelperPtr& pFS, PageType ePageType, bool bMaster,
+                         bool bSlideMasterPart = false );
 
     sal_uInt32 GetNewSlideId() { return mnSlideIdMax ++; }
     sal_uInt32 GetNewSlideMasterId() { return mnSlideMasterIdMax ++; }
@@ -135,6 +137,8 @@ private:
     sal_Int32 CreateNewPlaceholderIndex(const css::uno::Reference<css::drawing::XShape>& rXShape);
     css::uno::Reference<css::drawing::XShape> GetReferencedPlaceholderXShape(const PlaceholderType eType, PageType ePageType) const;
     void WritePlaceholderReferenceShapes(PowerPointShapeExport& rDML, PageType ePageType);
+    /** Writes the master page's content placeholders into the layout they belong on */
+    void WriteLayoutContentPlaceholders(PowerPointShapeExport& rDML);
 
     void FindEquivalentMasterPages();
     sal_uInt32 GetEquivalentMasterPage(sal_uInt32 nMasterPage);

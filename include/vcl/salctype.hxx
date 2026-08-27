@@ -31,6 +31,7 @@ enum class ConvertDataFormat
     BMP,
     GIF,
     JPG,
+    JXL,
     MET,
     PCT,
     PNG,

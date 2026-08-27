@@ -168,10 +168,13 @@ class PowerPointShapeExport : public ShapeExport
     PowerPointExport&   mrExport;
     PageType            mePageType;
     bool                mbMaster;
+    /// True while writing a slideMaster part; a slideLayout part also uses PageType::MASTER.
+    bool                mbSlideMasterPart = false;
 public:
     PowerPointShapeExport(FSHelperPtr pFS, ShapeHashMap* pShapeMap, PowerPointExport* pFB);
     void                SetMaster(bool bMaster);
     void                SetPageType(PageType ePageType);
+    void                SetSlideMasterPart(bool bSlideMasterPart) { mbSlideMasterPart = bSlideMasterPart; }
     ShapeExport&        WriteNonVisualProperties(const Reference< XShape >& xShape) override;
     ShapeExport&        WriteTextShape(const Reference< XShape >& xShape) override;
     ShapeExport&        WriteUnknownShape(const Reference< XShape >& xShape) override;
@@ -201,6 +204,60 @@ void WriteSndAc(const FSHelperPtr& pFS, const OUString& sSoundRelId, const OUStr
         pFS->endElement(FSNS(XML_p, XML_sndAc));
 }
 
+// Holds a graphic or media object rather than text, and so reaches the export through
+// ShapeExport::WriteGraphicObjectShape.
+bool isGraphicPlaceholder(PlaceholderType ePlaceholder)
+{
+    return ePlaceholder == Picture || ePlaceholder == Media;
+}
+
+// The placeholder kind a graphic-object shape stands for, or None when it is not a placeholder.
+PlaceholderType getGraphicPlaceholderType(std::u16string_view aShapeType)
+{
+    if (aShapeType == u"com.sun.star.presentation.GraphicObjectShape")
+        return Picture;
+    if (aShapeType == u"com.sun.star.presentation.MediaShape")
+        return Media;
+    return None;
+}
+
+// Whether the placeholder is still waiting for its content. A media one is never marked empty:
+// SdGenericDrawPage::CreateSdrObject_ builds it without SdPage::CreatePresObj, which is what sets
+// that flag, so ask the media itself.
+bool isPlaceholderStillEmpty(const Reference<XPropertySet>& xProps, PlaceholderType ePlaceholder)
+{
+    if (!xProps)
+        return false;
+
+    if (xProps->getPropertyValue(u"IsEmptyPresentationObject"_ustr) == true)
+        return true;
+
+    if (ePlaceholder != Media)
+        return false;
+
+    OUString aMediaURL;
+    return xProps->getPropertySetInfo()->hasPropertyByName(u"MediaURL"_ustr)
+           && (xProps->getPropertyValue(u"MediaURL"_ustr) >>= aMediaURL) && aMediaURL.isEmpty();
+}
+
+// A slide master takes only these; PowerPoint refuses to open a file whose master carries any
+// other placeholder type, content ones like pic included.
+bool isPlaceholderAllowedOnSlideMaster(PlaceholderType ePlaceholder)
+{
+    switch (ePlaceholder)
+    {
+        case Title:
+        case Outliner:
+        case Notes:
+        case DateAndTime:
+        case Footer:
+        case SlideNumber:
+            return true;
+        default:
+            return false;
+    }
+}
+
 const char* getPlaceholderTypeName(PlaceholderType ePlaceholder)
 {
     switch (ePlaceholder)
@@ -225,6 +282,8 @@ const char* getPlaceholderTypeName(PlaceholderType ePlaceholder)
             return "subTitle";
         case Picture:
             return "pic";
+        case Media:
+            return "media";
         default:
             SAL_INFO("sd.eppt", "warning: unhandled placeholder type: " << ePlaceholder);
             return "";
@@ -397,17 +456,18 @@ ShapeExport& PowerPointShapeExport::WriteUnknownShape(const Reference< XShape >&
 
 ShapeExport& PowerPointShapeExport::WriteGraphicObjectShape(const Reference<XShape>& xShape)
 {
-    // Picture placeholders serialise as <p:sp> with <p:ph type="pic"/>: on
-    // a layout/master always, on a slide only while still empty (a
-    // user-inserted picture remains a <p:pic>).
-    if (xShape && xShape->getShapeType() == "com.sun.star.presentation.GraphicObjectShape")
+    // A picture or media placeholder serialises as <p:sp> with its own <p:ph>: on a layout or
+    // master always, on a slide only while still empty (once filled it stays a <p:pic>).
+    const PlaceholderType ePlaceholder
+        = xShape ? getGraphicPlaceholderType(xShape->getShapeType()) : None;
+    if (ePlaceholder != None)
     {
         if (auto xProps = xShape.query<XPropertySet>())
         {
             try
             {
-                bool bIsEmpty = xProps->getPropertyValue(u"IsEmptyPresentationObject"_ustr) == true;
-                if ((mbMaster || bIsEmpty) && WritePlaceholder(xShape, Picture, mbMaster))
+                if ((mbMaster || isPlaceholderStillEmpty(xProps, ePlaceholder))
+                    && WritePlaceholder(xShape, ePlaceholder, mbMaster))
                     return *this;
             }
             catch (const UnknownPropertyException&)
@@ -2147,7 +2207,7 @@ void PowerPointExport::ImplWriteSlideMaster(sal_uInt32 nPageNum, Reference< XPro
     {
         if (aXBackgroundPropSet)
             ImplWriteBackground(pFS, aXBackgroundPropSet);
-        WriteShapeTree(pFS, MASTER, true);
+        WriteShapeTree(pFS, MASTER, true, /*bSlideMasterPart=*/true);
     }
     else
     {
@@ -2488,10 +2548,15 @@ void PowerPointExport::ImplWritePPTXLayoutWithContent(
         "ppt/slideLayouts/slideLayout" + OUString::number(nLayoutFileId) + ".xml",
         "application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml");
 
-    // add implicit relation of slide layout to slide master
+    // add implicit relation of slide layout to slide master. A master with no equivalent is its
+    // own, and GetEquivalentMasterPage reports SAL_MAX_UINT32 for it - taking that as an index
+    // would point the relation at a slideMaster0 that does not exist.
+    const sal_uInt32 nEquivalentMaster = GetEquivalentMasterPage(nMasterNum);
+    const sal_uInt32 nMasterFileNum
+        = nEquivalentMaster == SAL_MAX_UINT32 ? nMasterNum : nEquivalentMaster;
     addRelation(pFS->getOutputStream(), oox::getRelationship(Relationship::SLIDEMASTER),
                 Concat2View("../slideMasters/slideMaster"
-                            + OUString::number(GetEquivalentMasterPage(nMasterNum) + 1) + ".xml"));
+                            + OUString::number(nMasterFileNum + 1) + ".xml"));
 
     auto pAttributes = presentationNamespaces(*this);
     pAttributes->add(XML_type, aLayoutInfo[nOffset].sType);
@@ -2522,11 +2587,13 @@ void PowerPointExport::ImplWritePPTXLayoutWithContent(
     pFS->endDocument();
 }
 
-void PowerPointExport::WriteShapeTree(const FSHelperPtr& pFS, PageType ePageType, bool bMaster)
+void PowerPointExport::WriteShapeTree(const FSHelperPtr& pFS, PageType ePageType, bool bMaster,
+                                     bool bSlideMasterPart)
 {
     PowerPointShapeExport aDML(pFS, &maShapeMap, this);
     aDML.SetMaster(bMaster);
     aDML.SetPageType(ePageType);
+    aDML.SetSlideMasterPart(bSlideMasterPart);
     aDML.SetBackgroundDark(mbIsBackgroundDark);
 
     pFS->startElementNS(XML_p, XML_spTree);
@@ -2581,6 +2648,8 @@ void PowerPointExport::WriteShapeTree(const FSHelperPtr& pFS, PageType ePageType
 
     if ( ePageType == NORMAL || ePageType == LAYOUT )
         WritePlaceholderReferenceShapes(aDML, ePageType);
+    if ( ePageType == LAYOUT )
+        WriteLayoutContentPlaceholders(aDML);
     pFS->endElementNS(XML_p, XML_spTree);
 }
 
@@ -2602,6 +2671,12 @@ bool PowerPointShapeExport::WritePlaceholder(const Reference< XShape >& xShape, 
         Reference<XPropertySet> xShapeProps(xShape, UNO_QUERY);
         if (xShapeProps->getPropertyValue(u"IsPresentationObject"_ustr).get<bool>())
         {
+            // The layouts of this master write the same shapes, and a type the master may not
+            // carry belongs only there. Report it as handled, so that no plain shape is written
+            // here in its place.
+            if (mbSlideMasterPart && !isPlaceholderAllowedOnSlideMaster(ePlaceholder))
+                return true;
+
             WritePlaceholderShape(xShape, ePlaceholder);
 
             return true;
@@ -2651,6 +2726,8 @@ ShapeExport& PowerPointShapeExport::WritePlaceholderShape(const Reference< XShap
             bUseCustomPrompt = true;
     }
 
+    // Leave the shape without a placeholder reference where the master would not take one, rather
+    // than writing a type that makes the whole file unopenable.
     if (bUsePlaceholderIndex)
     {
         mpFS->singleElementNS(
@@ -2670,51 +2747,57 @@ ShapeExport& PowerPointShapeExport::WritePlaceholderShape(const Reference< XShap
     mpFS->endElementNS(XML_p, XML_nvPr);
     mpFS->endElementNS(XML_p, XML_nvSpPr);
 
-    if (ePlaceholder == Picture && !mbMaster)
+    // Write the geometry even where a layout placeholder could supply it: that is what PowerPoint
+    // itself authors, and it keeps the slide readable by a consumer that does not resolve the
+    // inheritance.
+    mpFS->startElementNS(XML_p, XML_spPr);
+    WriteShapeTransformation(xShape, XML_a);
+    WritePresetShape("rect"_ostr);
+    if (xProps.is())
     {
-        // An empty <p:spPr/> on the slide lets PowerPoint inherit geometry,
-        // fill and the custGeom polygon from the layout.
-        mpFS->singleElementNS(XML_p, XML_spPr);
+        // A picture placeholder's "Graphic" property is the internal
+        // placeholder icon; don't serialise it as a blipFill.
+        if (!isGraphicPlaceholder(ePlaceholder))
+            WriteBlipFill(xProps, u"Graphic"_ustr);
+        // Do not forget to export the visible properties.
+        WriteFill( xProps, xShape->getSize());
+        WriteOutline( xProps );
+        WriteShapeEffects( xProps );
+
+        bool bHas3DEffectinShape = false;
+        uno::Sequence<beans::PropertyValue> grabBag;
+        if (xProps->getPropertySetInfo()->hasPropertyByName(u"InteropGrabBag"_ustr))
+            xProps->getPropertyValue(u"InteropGrabBag"_ustr) >>= grabBag;
+
+        for (auto const& it : grabBag)
+            if (it.Name == "3DEffectProperties")
+                bHas3DEffectinShape = true;
+
+        if( bHas3DEffectinShape)
+            Write3DEffects( xProps, /*bIsText=*/false );
     }
-    else
-    {
-        // visual shape properties
-        mpFS->startElementNS(XML_p, XML_spPr);
-        WriteShapeTransformation(xShape, XML_a);
-        WritePresetShape("rect"_ostr);
-        if (xProps.is())
-        {
-            // A picture placeholder's "Graphic" property is the internal
-            // placeholder icon; don't serialise it as a blipFill.
-            if (ePlaceholder != Picture)
-                WriteBlipFill(xProps, u"Graphic"_ustr);
-            // Do not forget to export the visible properties.
-            WriteFill( xProps, xShape->getSize());
-            WriteOutline( xProps );
-            WriteShapeEffects( xProps );
-
-            bool bHas3DEffectinShape = false;
-            uno::Sequence<beans::PropertyValue> grabBag;
-            if (xProps->getPropertySetInfo()->hasPropertyByName(u"InteropGrabBag"_ustr))
-                xProps->getPropertyValue(u"InteropGrabBag"_ustr) >>= grabBag;
-
-            for (auto const& it : grabBag)
-                if (it.Name == "3DEffectProperties")
-                    bHas3DEffectinShape = true;
-
-            if( bHas3DEffectinShape)
-                Write3DEffects( xProps, /*bIsText=*/false );
-        }
-        mpFS->endElementNS(XML_p, XML_spPr);
-    }
+    mpFS->endElementNS(XML_p, XML_spPr);
 
     bool bWritePropertiesAsLstStyles
         = (mePageType == PageType::MASTER)
           && (ePlaceholder == Title || ePlaceholder == Subtitle || ePlaceholder == Outliner);
 
-    // A slide-side empty picture placeholder inherits the prompt from the layout.
-    if (ePlaceholder != Picture || mbMaster)
-        WriteTextBox(xShape, XML_p, bUsePlaceholderIndex || bWritePropertiesAsLstStyles);
+    // An untouched placeholder shows Impress's own localized prompt resource unless the document
+    // authored one, and that must not reach the file - a reader supplies its own prompt.
+    bool bIsEmptyPresObj(false);
+    if (xProps
+        && xProps->getPropertySetInfo()->hasPropertyByName(u"IsEmptyPresentationObject"_ustr))
+        xProps->getPropertyValue(u"IsEmptyPresentationObject"_ustr) >>= bIsEmptyPresObj;
+    // Field placeholders carry their field content, and a master's text box carries list styles.
+    const bool bTextIsDefaultPrompt = bIsEmptyPresObj && !bUseCustomPrompt && !bUsePlaceholderIndex
+                                      && !bWritePropertiesAsLstStyles;
+
+    // A slide-side empty picture placeholder inherits the prompt from the layout. The body
+    // properties belong in the file even where the text does not - they carry the insets, the
+    // anchor, the writing direction and the autofit.
+    if (!isGraphicPlaceholder(ePlaceholder) || mbMaster)
+        WriteTextBox(xShape, XML_p, bUsePlaceholderIndex || bWritePropertiesAsLstStyles,
+                     /*bText=*/!bTextIsDefaultPrompt);
 
     mpFS->endElementNS(XML_p, XML_sp);
 
@@ -3172,6 +3255,30 @@ void PowerPointExport::WritePlaceholderReferenceShapes(PowerPointShapeExport& rD
     }
 }
 
+void PowerPointExport::WriteLayoutContentPlaceholders(PowerPointShapeExport& rDML)
+{
+    // A slide master may not carry these, so the master page's own copy is written here, where a
+    // slide looks for the geometry and the prompt it inherits.
+    //
+    // A media placeholder needs no entry: it reaches the file through the page's own shape tree,
+    // where WriteGraphicObjectShape writes it as a placeholder while it is still empty.
+    for (const PlaceholderType ePlaceholder : { Picture })
+    {
+        assert(!isPlaceholderAllowedOnSlideMaster(ePlaceholder));
+        Reference<XShape> xShape = GetReferencedPlaceholderXShape(ePlaceholder, LAYOUT);
+        if (!xShape)
+            continue;
+
+        // Only one still waiting for its content belongs on the layout. One that holds a picture
+        // is written on the page holding it, as an ordinary picture.
+        auto xProps = xShape.query<XPropertySet>();
+        if (!xProps || xProps->getPropertyValue(u"IsEmptyPresentationObject"_ustr) != true)
+            continue;
+
+        rDML.WritePlaceholderShape(xShape, ePlaceholder);
+    }
+}
+
 sal_Int32 PowerPointExport::CreateNewPlaceholderIndex(const css::uno::Reference<XShape> &rXShape)
 {
     maPlaceholderShapeToIndexMap.insert({rXShape, mnPlaceholderIndexMax});
@@ -3210,6 +3317,10 @@ Reference<XShape> PowerPointExport::GetReferencedPlaceholderXShape(const Placeho
         case oox::core::Subtitle:
             break;
         case oox::core::Picture:
+            ePresObjKind = PresObjKind::Graphic;
+            break;
+        case oox::core::Media:
+            ePresObjKind = PresObjKind::Media;
             break;
     }
     if (ePresObjKind != PresObjKind::NONE)
