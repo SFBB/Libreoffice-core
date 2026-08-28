@@ -6410,6 +6410,7 @@ if test "$cross_compiling" = "yes"; then
         ARGON2
         AVMEDIA
         BOOST
+        BROTLI
         BZIP2
         CAIRO
         CLUCENE
@@ -6426,9 +6427,11 @@ if test "$cross_compiling" = "yes"; then
         GRAPHITE
         HARFBUZZ
         HELPTOOLS
+        HIGHWAY
         ICU
         LCMS2
         LIBJPEG_TURBO
+        LIBJXL
         LIBLANGTAG
         LibO
         LIBFFI
@@ -15050,7 +15053,7 @@ if test "$with_system_libjxl" != "yes"; then
     BUILD_TYPE="$BUILD_TYPE HIGHWAY BROTLI"
 fi
 
-libo_CHECK_SYSTEM_MODULE([libjxl],[LIBJXL],[libjxl])
+libo_CHECK_SYSTEM_MODULE([libjxl],[LIBJXL],[libjxl libjxl_threads])
 
 dnl Test whether to use liblangtag
 dnl ===================================================================

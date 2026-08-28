@@ -487,15 +487,8 @@ $(eval $(call gb_UnoApi_add_idlfiles_noheader,offapi,com/sun/star/awt,\
 	AccessibleButton \
 	AccessibleCheckBox \
 	AccessibleComboBox \
-	AccessibleEdit \
-	AccessibleFixedText \
 	AccessibleList \
 	AccessibleListBox \
-	AccessibleMenu \
-	AccessibleMenuBar \
-	AccessibleMenuItem \
-	AccessibleMenuSeparator \
-	AccessiblePopupMenu \
 	AccessibleRadioButton \
 	AccessibleScrollBar \
 	AccessibleStatusBar \
@@ -505,7 +498,6 @@ $(eval $(call gb_UnoApi_add_idlfiles_noheader,offapi,com/sun/star/awt,\
 	AccessibleTabBarPageList \
 	AccessibleTabControl \
 	AccessibleTabPage \
-	AccessibleTextField \
 	AccessibleWindow \
 	AnimatedImagesControl \
 	AnimatedImagesControlModel \

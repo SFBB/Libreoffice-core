@@ -8,6 +8,8 @@
  */
 
 #include <sdpage.hxx>
+#include <View.hxx>
+#include <ViewShell.hxx>
 
 #include "sdmodeltestbase.hxx"
 #include <tools/color.hxx>
@@ -24,12 +26,16 @@
 #include <svx/xlineit0.hxx>
 #include <svx/xlnclit.hxx>
 #include <svx/sdooitm.hxx>
+#include <svx/svdobj.hxx>
+#include <svx/svdpagv.hxx>
+#include <svx/sdrhittesthelper.hxx>
 
 #include <com/sun/star/awt/XBitmap.hpp>
 #include <com/sun/star/awt/Gradient.hpp>
 #include <com/sun/star/document/XEventsSupplier.hpp>
 #include <com/sun/star/presentation/ClickAction.hpp>
 #include <com/sun/star/presentation/XPresentationPage.hpp>
+#include <com/sun/star/drawing/PolyPolygonBezierCoords.hpp>
 #include <com/sun/star/drawing/ColorMode.hpp>
 #include <com/sun/star/drawing/XMasterPagesSupplier.hpp>
 #include <com/sun/star/drawing/XGluePointsSupplier.hpp>
@@ -37,6 +43,7 @@
 #include <com/sun/star/drawing/TextHorizontalAdjust.hpp>
 #include <com/sun/star/drawing/TextVerticalAdjust.hpp>
 #include <com/sun/star/container/XIdentifierAccess.hpp>
+#include <com/sun/star/container/XNamed.hpp>
 #include <com/sun/star/chart/DataLabelPlacement.hpp>
 #include <com/sun/star/chart/XChartDocument.hpp>
 #include <com/sun/star/chart2/XChartDocument.hpp>
@@ -1413,6 +1420,218 @@ CPPUNIT_TEST_FIXTURE(SdImportTest2, testTdf163343_brokenAnimation)
     createSdImpressDoc("odp/tdf163343.odp");
     CPPUNIT_ASSERT_EQUAL(sal_uInt16(1),
                          getSdDocShell()->GetDoc()->GetSdPageCount(PageKind::Standard));
+}
+
+CPPUNIT_TEST_FIXTURE(SdImportTest2, testCool16078_clipPolygonBeforeTheImage)
+{
+    // Given an empty graphic placeholder whose only child is its clip polygon, which is what saving
+    // an Impress deck writes - an empty presentation object has no image for the polygon to follow:
+    createSdImpressDoc("odp/graphic-clip-poly-placeholder.fodp");
+
+    // The polygon still reaches the shape. It used to be read only after a draw:image had made one,
+    // so a placeholder saved to ODF came back unclipped, and the shape of that file is the shape
+    // our own save writes.
+    drawing::PolyPolygonBezierCoords aClip;
+    CPPUNIT_ASSERT(getShapeFromPage(0, 0)->getPropertyValue(u"GraphicClipPolyPolygon"_ustr)
+                   >>= aClip);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(2), aClip.Coordinates.getLength());
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(4), aClip.Coordinates[0].getLength());
+}
+
+CPPUNIT_TEST_FIXTURE(SdImportTest2, testCool16078_aPathThatPaintsNothingClipsNothing)
+{
+    // Given a picture placeholder clipped to two paths that do not touch, the right one stating
+    // fill="none":
+    createSdImpressDoc("pptx/custgeom-nofill-path.pptx");
+
+    // Only the left one bounds anything. PowerPoint leaves a path that paints nothing out of the
+    // clip, which three renders of one picture agree on - the path plain, fill="none", and
+    // stroke="0" - so the polygon holds that one contour.
+    drawing::PolyPolygonBezierCoords aClip;
+    CPPUNIT_ASSERT(getShapeFromPage(0, 0)->getPropertyValue(u"GraphicClipPolyPolygon"_ustr)
+                   >>= aClip);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(1), aClip.Coordinates.getLength());
+
+    // And the area the nofill path covers is not picked, while the other one's is. The paths span
+    // 0..3000000 and 6000000..9000000 of a 9000000 x 5000000 space, which is 0..8333 and
+    // 16667..25000 in 1/100 mm.
+    auto xPlaceholder = getShapeFromPage(0, 0).queryThrow<drawing::XShape>();
+    SdrObject* pPlaceholder = SdrObject::getSdrObjectFromXShape(xPlaceholder);
+    CPPUNIT_ASSERT(pPlaceholder);
+    SdrPageView* pPageView = getSdDocShell()->GetViewShell()->GetView()->GetSdrPageView();
+    CPPUNIT_ASSERT(pPageView);
+    const Point aTopLeft(pPlaceholder->GetSnapRect().TopLeft());
+    CPPUNIT_ASSERT_MESSAGE("the path that paints nothing clipped the picture in",
+                           SdrObjectPrimitiveHit(*pPlaceholder, aTopLeft + Point(21000, 6000), {},
+                                                 *pPageView, nullptr, false)
+                               == nullptr);
+    CPPUNIT_ASSERT_MESSAGE("the path that paints stopped being picked",
+                           SdrObjectPrimitiveHit(*pPlaceholder, aTopLeft + Point(4000, 6000), {},
+                                                 *pPageView, nullptr, false)
+                               != nullptr);
+}
+
+CPPUNIT_TEST_FIXTURE(SdImportTest2, testCool16078_overlappingContoursLeaveAHole)
+{
+    // Given a placeholder clipped to two contours of one <a:path>, overlapping and wound the same
+    // way, over a marker that sits in the overlap:
+    createSdImpressDoc("pptx/custgeom-overlapping-contours.pptx");
+
+    // The contours of one path are filled by the even-odd rule, so two turns cancel: their overlap
+    // is a hole, and a click there passes through the placeholder as it does in PowerPoint. Asking
+    // where a click lands walks the primitives the shape paints, so the mask clipping them answers
+    // here just as it does on screen.
+    auto checkHole = [this](const OString& rWhen) {
+        auto xPlaceholder = getShapeFromPage(0, 0).queryThrow<drawing::XShape>();
+        SdrObject* pPlaceholder = SdrObject::getSdrObjectFromXShape(xPlaceholder);
+        CPPUNIT_ASSERT(pPlaceholder);
+        SdrPageView* pPageView = getSdDocShell()->GetViewShell()->GetView()->GetSdrPageView();
+        CPPUNIT_ASSERT(pPageView);
+        const Point aTopLeft(pPlaceholder->GetSnapRect().TopLeft());
+        auto picksAt = [pPlaceholder, pPageView, &aTopLeft](tools::Long nX, tools::Long nY) {
+            // No tolerance, so the areas answer and the outline drawn around them does not.
+            return SdrObjectPrimitiveHit(*pPlaceholder, aTopLeft + Point(nX, nY), {}, *pPageView,
+                                         nullptr, false)
+                   != nullptr;
+        };
+        const OString aFirst = rWhen + ", the first contour alone";
+        const OString aSecond = rWhen + ", the second contour alone";
+        const OString aOverlap = rWhen + ", the overlap of the two";
+        CPPUNIT_ASSERT_MESSAGE(aFirst.getStr(), picksAt(5000, 4000));
+        CPPUNIT_ASSERT_MESSAGE(aSecond.getStr(), picksAt(18000, 11000));
+        CPPUNIT_ASSERT_MESSAGE(aOverlap.getStr(), !picksAt(11000, 8000));
+    };
+
+    checkHole("as imported"_ostr);
+
+    // Saving states the area the two contours leave, which no longer needs a rule to be read: a
+    // hole is a contour of its own by then, and both formats carry it as one.
+    saveAndReload(TestFilter::PPTX);
+    checkHole("after a PPTX round-trip"_ostr);
+
+    saveAndReload(TestFilter::ODP);
+    checkHole("after an ODP round-trip"_ostr);
+}
+
+CPPUNIT_TEST_FIXTURE(SdImportTest2, testCool16078_placeholderKeepsItsOutline)
+{
+    // Given a slide whose picture placeholder inherits, from its layout, an outline of two
+    // <a:path> elements: a frame with two holes, one of them round, and a second path holding a
+    // triangle that crosses the round one:
+    createSdImpressDoc("pptx/custgeom-placeholder.pptx");
+
+    // The outline arrives as the shape's clip polygon, in the shape's own coordinates and 1/100 mm,
+    // and covers the same area whichever format it has just been through. Dropping it left a plain
+    // rectangle, whose fill then covered the slide behind it.
+    auto checkOutline = [this](const OString& rWhen) {
+        drawing::PolyPolygonBezierCoords aClip;
+        CPPUNIT_ASSERT(getShapeFromPage(0, 0)->getPropertyValue(u"GraphicClipPolyPolygon"_ustr)
+                       >>= aClip);
+
+        // The frame is 9000000 x 5000000 EMU and the path spans the same, so a point maps to
+        // 1/100 mm by EMU alone: 9000000 becomes 25000, 5000000 becomes 13889. Each contour is
+        // closed, so it states its first point again at the end.
+        CPPUNIT_ASSERT_EQUAL_MESSAGE(rWhen.getStr(), sal_Int32(3), aClip.Coordinates.getLength());
+        const awt::Point aExpected[2][5] = {
+            { { 0, 0 }, { 25000, 0 }, { 25000, 13889 }, { 0, 13889 }, { 0, 0 } },
+            { { 1111, 8889 }, { 1111, 13056 }, { 9722, 13056 }, { 9722, 8889 }, { 1111, 8889 } }
+        };
+        for (sal_Int32 nContour = 0; nContour < 2; ++nContour)
+        {
+            const OString aWhich = rWhen + ", contour " + OString::number(nContour);
+            CPPUNIT_ASSERT_EQUAL_MESSAGE(aWhich.getStr(), sal_Int32(5),
+                                         aClip.Coordinates[nContour].getLength());
+            for (sal_Int32 nPoint = 0; nPoint < 5; ++nPoint)
+            {
+                const OString aWhere = aWhich + ", point " + OString::number(nPoint);
+                CPPUNIT_ASSERT_EQUAL_MESSAGE(aWhere.getStr(), aExpected[nContour][nPoint].X,
+                                             aClip.Coordinates[nContour][nPoint].X);
+                CPPUNIT_ASSERT_EQUAL_MESSAGE(aWhere.getStr(), aExpected[nContour][nPoint].Y,
+                                             aClip.Coordinates[nContour][nPoint].Y);
+            }
+        }
+
+        // What the third contour is worth saying about is the area it leaves, so the shape is asked
+        // where a click reaches it: the hit test walks the primitives it paints, so the mask
+        // clipping them answers here just as it does on screen.
+        auto xPlaceholder = getShapeFromPage(0, 0).queryThrow<drawing::XShape>();
+        SdrObject* pPlaceholder = SdrObject::getSdrObjectFromXShape(xPlaceholder);
+        CPPUNIT_ASSERT(pPlaceholder);
+        SdrPageView* pPageView = getSdDocShell()->GetViewShell()->GetView()->GetSdrPageView();
+        CPPUNIT_ASSERT(pPageView);
+        const Point aTopLeft(pPlaceholder->GetSnapRect().TopLeft());
+        struct Probe
+        {
+            std::string_view aWhat;
+            Point aAt;
+            bool bPicked;
+        };
+        const Probe aProbes[] = {
+            { "the frame itself", { 2000, 2000 }, true },
+            { "the rectangular hole", { 5400, 11000 }, false },
+            // The round hole is a hole above the triangle and covered below it: a path of its own
+            // is filled rather than cut out, so it takes a piece of that hole back. Reading the two
+            // paths as one polygon subtracted the triangle instead, and the hole grew.
+            { "the round hole, above the triangle", { 17500, 7500 }, false },
+            { "the round hole, inside the triangle", { 17500, 11500 }, true },
+        };
+        for (const Probe& rProbe : aProbes)
+        {
+            const OString aWhere = rWhen + ", " + OString(rProbe.aWhat.data(), rProbe.aWhat.size());
+            // No tolerance, so the areas answer and the outline drawn around them does not.
+            CPPUNIT_ASSERT_EQUAL_MESSAGE(aWhere.getStr(), rProbe.bPicked,
+                                         SdrObjectPrimitiveHit(*pPlaceholder, aTopLeft + rProbe.aAt,
+                                                               {}, *pPageView, nullptr, false)
+                                             != nullptr);
+        }
+    };
+
+    checkOutline("as imported"_ostr);
+
+    // Saving states the outline on the slide as well as on its layout, so reading the file back
+    // gives the shape a geometry of its own where it used to have only the one it inherits. The
+    // shape's own has to replace that, not join it: two geometries at once are not one this reads,
+    // and the placeholder came back unclipped - PowerPoint meanwhile showed the very file
+    // correctly.
+    saveAndReload(TestFilter::PPTX);
+    checkOutline("after a PPTX round-trip"_ostr);
+
+    // ODF carries it as a loext:graphic-clip-poly child of the frame, and has the same to answer
+    // for: the same outline, from the same document, through the other format.
+    saveAndReload(TestFilter::ODP);
+    checkOutline("after an ODP round-trip"_ostr);
+}
+
+CPPUNIT_TEST_FIXTURE(SdImportTest2, testCool16080_masterPageOrder)
+{
+    // Given a deck whose slide master lists eleven layouts, related as rId1 to rId11:
+    createSdImpressDoc("pptx/master-and-eleven-layouts.pptx");
+
+    // The master pages follow the order the slide master lists its layouts in. Without the fix
+    // they followed the relations, which are keyed by the relationship id as a string, so the
+    // tenth and eleventh layouts arrived right behind the first.
+    static constexpr std::u16string_view aExpected[] = {
+        u"Title Slide",
+        u"Title and Content",
+        u"Section Header",
+        u"Two Content",
+        u"Comparison",
+        u"Title Only",
+        u"Blank",
+        u"Content with Caption",
+        u"Picture with Caption",
+        u"Title and Vertical Text",
+        u"Vertical Title and Text",
+    };
+
+    auto xMasterPages = mxComponent.queryThrow<drawing::XMasterPagesSupplier>()->getMasterPages();
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(std::size(aExpected)), xMasterPages->getCount());
+    for (sal_Int32 i = 0; i < xMasterPages->getCount(); ++i)
+    {
+        CPPUNIT_ASSERT_EQUAL(
+            OUString(aExpected[i]),
+            xMasterPages->getByIndex(i).queryThrow<container::XNamed>()->getName());
+    }
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();

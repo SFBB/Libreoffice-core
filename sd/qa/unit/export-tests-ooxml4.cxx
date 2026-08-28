@@ -1758,7 +1758,7 @@ CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testConvertWithMasterDeduplication)
         = packages::zip::ZipFileAccess::createWithURL(comphelper::getComponentContext(m_xSFactory),
                                                       maTempFile.GetURL());
 
-    // For each slide check that it's layout exists
+    // For each slide check that its layout exists
     for (int i = 1; i <= 4; ++i)
     {
         xmlDocUniquePtr pXmlDocRels
@@ -2416,6 +2416,71 @@ CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testSlideSectionsODPToPPTX)
         OUString sId = getXPath(pXmlDoc, sPath + "/p14:section[" + OString::number(i) + "]", "id");
         CPPUNIT_ASSERT(!sId.isEmpty());
     }
+}
+
+CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testCool16078_placeholderKeepsItsOutline)
+{
+    // Given a layout whose picture placeholder is clipped to an outline of two <a:path> elements:
+    // a frame with two holes, one of them round, and a second path holding a triangle that crosses
+    // the round one:
+    createSdImpressDoc("pptx/custgeom-placeholder.pptx");
+    save(TestFilter::PPTX);
+
+    // The outline is written back as the placeholder's own geometry. Without it the placeholder
+    // saved as a plain rectangle, and its fill then hid both holes and what showed through.
+    xmlDocUniquePtr pLayout = parseExportedLayoutNamed(u"Picture placeholder, clipped outline");
+    OString aPath
+        = "//p:sp[p:nvSpPr/p:nvPr/p:ph/@type='pic']/p:spPr/a:custGeom/a:pathLst/a:path"_ostr;
+    assertXPath(pLayout, aPath, 1);
+    // Three contours in one path, which is what subtracts the holes from the frame - the same three
+    // the ODF side writes. The second path is not one of them: it is filled rather than cut out, so
+    // the triangle it holds took a piece of the round hole back instead of adding a contour.
+    assertXPath(pLayout, aPath + "/a:moveTo", 3);
+    assertXPath(pLayout, aPath + "/a:close", 3);
+    // Four sides each for the two rectangles, the closing one included.
+    assertXPath(pLayout, aPath + "/a:lnTo", 8);
+    // What is left of the round hole is still curves, not a polygon flattened out of them.
+    assertXPath(pLayout, aPath + "/a:cubicBezTo", 6);
+    assertXPath(pLayout, aPath + "/a:cubicBezTo[1]/a:pt", 3);
+    // The frame's own corner, in the path's coordinates.
+    assertXPath(pLayout, aPath + "/a:moveTo[1]/a:pt", "x", u"0");
+    assertXPath(pLayout, aPath + "/a:moveTo[1]/a:pt", "y", u"0");
+
+    // The preset rectangle it used to write would have claimed the whole frame.
+    assertXPath(pLayout, "//p:sp[p:nvSpPr/p:nvPr/p:ph/@type='pic']/p:spPr/a:prstGeom", 0);
+}
+
+CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testCool16080_masterKeepsItsPlaceholders)
+{
+    // Given a deck of one master and eleven layouts, so one Impress master page stands for the
+    // whole group:
+    createSdImpressDoc("pptx/master-and-eleven-layouts.pptx");
+    save(TestFilter::PPTX);
+
+    // The master part carries its own placeholders. Without the fix it held a shape tree with
+    // nothing in it, so PowerPoint offered an empty slide master: nothing to inherit from, and
+    // an edit meant for every layout had to be repeated on each of them.
+    xmlDocUniquePtr pMaster = parseExport(u"ppt/slideMasters/slideMaster1.xml"_ustr);
+    static constexpr OString aTree("/p:sldMaster/p:cSld/p:spTree"_ostr);
+    assertXPath(pMaster, aTree + "/p:sp/p:nvSpPr/p:nvPr/p:ph[@type='title']", 1);
+    assertXPath(pMaster, aTree + "/p:sp/p:nvSpPr/p:nvPr/p:ph[@type='dt']", 1);
+    assertXPath(pMaster, aTree + "/p:sp/p:nvSpPr/p:nvPr/p:ph[@type='ftr']", 1);
+    assertXPath(pMaster, aTree + "/p:sp/p:nvSpPr/p:nvPr/p:ph[@type='sldNum']", 1);
+}
+
+CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testCool16079_dateTimeField)
+{
+    // Given a deck whose date placeholders hold an automatically updated date:
+    createSdImpressDoc("pptx/master-and-eleven-layouts.pptx");
+    save(TestFilter::PPTX);
+
+    // The placeholder keeps a field. Without the fix it held our own display string as literal
+    // text, so PowerPoint showed "<date/time>" where the original showed a date. The type is the
+    // one that leaves the format to the reader, which is what a field holding none asks for - the
+    // alias PowerPoint writes here stands for a fixed MM/DD/YYYY.
+    xmlDocUniquePtr pLayout = parseExportedLayoutNamed(u"Title Slide");
+    assertXPath(pLayout, "//p:sp[p:nvSpPr/p:nvPr/p:ph/@type='dt']/p:txBody/a:p/a:fld", "type",
+                u"datetime");
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();
