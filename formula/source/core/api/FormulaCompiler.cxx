@@ -27,6 +27,9 @@
 #include <o3tl/string_view.hxx>
 #include <core_resource.hxx>
 #include <core_resource.hrc>
+#include <OOXMLRewriter.hxx>
+
+#include <memory>
 
 #include <svl/zforlist.hxx>
 #include <unotools/charclass.hxx>
@@ -40,7 +43,6 @@
 #include <com/sun/star/sheet/FormulaMapGroupSpecialOffset.hpp>
 #include <algorithm>
 #include <mutex>
-#include <ranges>
 
 namespace formula
 {
@@ -337,6 +339,9 @@ bool isPotentialRangeLeftOp( OpCode eOp )
     switch (eOp)
     {
         case ocClose:
+        // The # comes after its operand, so it is the last opcode of a sub-expression that
+        // yields a reference.
+        case ocSpill:
             return true;
         default:
             return false;
@@ -349,6 +354,9 @@ bool isRangeResultFunction( OpCode eOp )
     {
         case ocIndirect:
         case ocOffset:
+        // In OOXML the # is written before its operand, so there it is the first opcode of a
+        // sub-expression that yields a reference.
+        case ocSpill:
             return true;
         default:
             return false;
@@ -364,6 +372,10 @@ bool isRangeResultOpCode( OpCode eOp )
         case ocIntersect:
         case ocIndirect:
         case ocOffset:
+        case ocIndex:
+        // The # postfix operator gives the spill range of the master cell before it, which
+        // is a reference just like the operators above.
+        case ocSpill:
             return true;
         default:
             return false;
@@ -400,12 +412,53 @@ bool isPotentialRangeType( FormulaToken const * pToken, bool bRPN, bool bRight )
             return true;
         case svSep:
             // A special case if a previous ocSep was converted to ocUnion it
-            // stays svSep instead of svByte.
-            return bRPN && !bRight && pToken->GetOpCode() == ocUnion;
+            // stays svSep instead of svByte. A union yields a reference, so it
+            // is fine on either side of an operator.
+            return bRPN && pToken->GetOpCode() == ocUnion;
         default:
             // Separators are not part of RPN and right opcodes need to be
             // other StackVar types or functions and thus svByte.
             return !bRPN && !bRight && isPotentialRangeLeftOp( pToken->GetOpCode());
+    }
+}
+
+/** Whether a token can start a part of a parenthesised range list: a reference, or a
+    function that returns one. Only the start matters, what the rest of the part makes of
+    it is the calculation's business. Anything else leaves the separator a separator.
+ */
+bool isRangeListPartStart( const FormulaToken& rToken )
+{
+    switch (rToken.GetType())
+    {
+        case svSingleRef:
+        case svDoubleRef:
+        case svExternalSingleRef:
+        case svExternalDoubleRef:
+        case svExternalName:
+        case svIndex:
+        // An error constant is a part too, and its error becomes the union's result.
+        case svError:
+            return true;
+        default:
+            break;
+    }
+    switch (rToken.GetOpCode())
+    {
+        // A parenthesised part, for example a nested list.
+        case ocOpen:
+        // IF and CHOOSE return the reference of the branch they take, IFS and SWITCH the
+        // reference of the result they pick, and a lookup a piece of the range it searched.
+        case ocIf:
+        case ocChoose:
+        case ocIfs_MS:
+        case ocSwitch_MS:
+        case ocIndex:
+        case ocXLookup:
+        // The @ operator comes before a reference it reads one value from.
+        case ocSingleValue:
+            return true;
+        default:
+            return isRangeResultFunction( rToken.GetOpCode());
     }
 }
 
@@ -1599,7 +1652,8 @@ bool FormulaCompiler::GetToken()
             }
             else if (pSpacesToken && FormulaGrammar::isExcelSyntax( meGrammar) &&
                     mpLastToken && mpToken &&
-                    isPotentialRangeType( mpToken.get(), false, true) &&
+                    (mpToken->GetOpCode() == ocOpen
+                     || isPotentialRangeType(mpToken.get(), false, true)) &&
                     (mpLastToken->GetOpCode() == ocClose || isPotentialRangeType( mpLastToken.get(), false, false)))
             {
                 // Let IntersectionLine() <- Factor() decide how to treat this,
@@ -1714,23 +1768,24 @@ void FormulaCompiler::Factor()
             pFacToken = mpToken;
             NextToken();
             CheckSetForceArrayParameter( mpToken, 0);
+            // What the part starts with decides whether it can join the list.
+            const FormulaTokenRef pPartFirst = mpToken;
+            const sal_uInt16 nPartStart = mnPC;
             eOp = Expression();
             // Do not ignore error here, regardless of mbStopOnError, to not
             // change the formula expression in case of an unexpected state.
-            if (mpArr->GetCodeError() == FormulaError::NONE && mnPC >= 2)
+            if (mpArr->GetCodeError() == FormulaError::NONE && nPartStart >= 1 && mnPC > nPartStart)
             {
-                // Left and right operands must be reference or function
-                // returning reference to form a range list.
-                const FormulaToken* p = mpCode[-2];
-                if (p && isPotentialRangeType( p, true, false))
+                // The left operand has to be a reference or a function that returns one.
+                // The right part joins if it starts with one. What the part does with it
+                // from there is up to the calculation.
+                const FormulaToken* pLeft = mpCode[-static_cast<sal_Int32>(mnPC - nPartStart) - 1];
+                if (pLeft && isPotentialRangeType(pLeft, true, false)
+                    && pPartFirst && isRangeListPartStart(*pPartFirst))
                 {
-                    p = mpCode[-1];
-                    if (p && isPotentialRangeType( p, true, true))
-                    {
-                        pFacToken->NewOpCode( ocUnion, FormulaToken::PrivateAccess());
-                        // XXX NOTE: the token's eType is still svSep here!
-                        PutCode( pFacToken);
-                    }
+                    pFacToken->NewOpCode(ocUnion, FormulaToken::PrivateAccess());
+                    // XXX NOTE: the token's eType is still svSep here!
+                    PutCode(pFacToken);
                 }
             }
         }
@@ -2319,15 +2374,32 @@ void FormulaCompiler::Factor()
     }
 }
 
+void FormulaCompiler::SpillOperator()
+{
+    while (mpToken->GetOpCode() == ocSpill)
+    {   // this operator _follows_ the reference it takes the spill range of, and binds
+        // to that reference alone
+        if (mbComputeII)
+        {
+            FormulaToken** pArg = mpCode - 1;
+            HandleIIOpCode(mpToken.get(), &pArg, 1);
+        }
+        PutCode(mpToken);
+        NextToken();
+    }
+}
+
 void FormulaCompiler::RangeLine()
 {
     Factor();
+    SpillOperator();
     while (mpToken->GetOpCode() == ocRange)
     {
         FormulaToken** pCode1 = mpCode - 1;
         FormulaTokenRef p = mpToken;
         NextToken();
         Factor();
+        SpillOperator();
         FormulaToken** pCode2 = mpCode - 1;
         if (!MergeRangeReference( pCode1, pCode2))
             PutCode(p);
@@ -2542,8 +2614,8 @@ void FormulaCompiler::UnaryLine()
 void FormulaCompiler::PostOpLine()
 {
     UnaryLine();
-    while (mpToken->GetOpCode() == ocPercentSign || mpToken->GetOpCode() == ocSpill)
-    {   // these operators _follow_ their operand
+    while (mpToken->GetOpCode() == ocPercentSign)
+    {   // this operator _follows_ its operand
         if (mbComputeII)
         {
             FormulaToken** pArg = mpCode - 1;
@@ -2809,211 +2881,6 @@ void FormulaCompiler::CreateStringFromTokenArray( OUString& rFormula )
     rFormula = aBuffer.makeStringAndClear();
 }
 
-namespace
-{
-// Operators that can stand in front of an operand. A sign in that position is
-// unary, whichever of the two opcodes the parser gave it. The @ and the # get
-// wrappers of their own, so they stay out.
-bool lclIsPrefixOperator(OpCode eOp)
-{
-    if (eOp == ocSingleValue || eOp == ocSpill)
-        return false;
-    return eOp == ocAdd || eOp == ocSub || isUnaryOperatorOpCode(eOp);
-}
-
-bool lclIsOoxmlFactorSeparator(OpCode eOp)
-{
-    // Tokens that stand between two factors at the same parenthesis depth, so an
-    // operand starts behind them.
-    if (isBinaryOperatorOpCode(eOp))
-        return true;
-    return eOp == ocSep || eOp == ocArrayColSep || eOp == ocArrayRowSep;
-}
-
-// AND, OR and the call operator have operator opcodes but are written as a
-// call, so the parenthesis behind the name opens an argument list, not a group.
-bool lclIsCallBeforeArguments(OpCode eOp, const FormulaTokenArrayPlainIterator& rIterator)
-{
-    if (eOp != ocAnd && eOp != ocOr && eOp != ocCall)
-        return false;
-    const FormulaToken* pNext = rIterator.PeekNextNoSpaces();
-    return pNext && pNext->GetOpCode() == ocOpen;
-}
-
-// Tokens that end the operand of an @ in front of them. Range, intersection,
-// union and call bind tighter than the @ and stay inside. Everything above it
-// in the grammar ends it.
-bool lclEndsSingleValueOperand(OpCode eOp)
-{
-    if (eOp == ocRange || eOp == ocIntersect || eOp == ocUnion || eOp == ocCall)
-        return false;
-    if (isBinaryOperatorOpCode(eOp))
-        return true;
-    return eOp == ocSep || eOp == ocArrayColSep || eOp == ocArrayRowSep
-           || eOp == ocPercentSign;
-}
-
-// An @ whose wrapper is still to go in.
-struct PendingSingleValue
-{
-    // The parenthesis scope its operand lives in, 1 for the outermost level.
-    sal_Int32 mnScope;
-    // Where the wrapper begins, as an offset into the formula text written so far.
-    sal_Int32 mnWrapStart;
-    // Whether text for the operand stands in the buffer.
-    bool mbHasOperand;
-};
-
-// Mark the pending wrappers' operands as written. Marks never come off, so
-// the walk from the back can stop at the first marked one.
-void lclMarkPendingOperand(std::vector<PendingSingleValue>& rPending)
-{
-    for (PendingSingleValue& rSingle : std::views::reverse(rPending))
-    {
-        if (rSingle.mbHasOperand)
-            break;
-        rSingle.mbHasOperand = true;
-    }
-}
-
-// Buffer positions for one open parenthesis scope, as offsets into the formula
-// text written so far.
-struct UnionScope
-{
-    // Where the scope's own text begins.
-    sal_Int32 mnContentStart;
-    // Where the union-level expression being written began.
-    sal_Int32 mnExpressionStart;
-    // Where an open union list began. -1 while the scope has none.
-    sal_Int32 mnListStart;
-    // The scope is a grouping parenthesis rather than a call's argument list.
-    bool mbGroupParenthesis;
-};
-
-// Whether the text from nStart to the end is one parenthesised group, so its
-// parentheses can double as the wrapper's. Quoted literals are skipped. A
-// doubled quote toggles the quote state twice, which cancels out.
-bool lclIsOneParenthesizedGroup(const OUStringBuffer& rBuffer, sal_Int32 nStart)
-{
-    const sal_Int32 nEnd = rBuffer.getLength();
-    if (nEnd - nStart < 2 || rBuffer[nStart] != '(' || rBuffer[nEnd - 1] != ')')
-        return false;
-    sal_Int32 nGroupDepth = 0;
-    // The braces of an inline matrix and the brackets of a table or external
-    // reference, which carry separators of their own.
-    sal_Int32 nBracketDepth = 0;
-    sal_Unicode cQuote = 0;
-    for (sal_Int32 nIndex = nStart; nIndex < nEnd; ++nIndex)
-    {
-        const sal_Unicode cChar = rBuffer[nIndex];
-        if (cQuote != 0)
-        {
-            if (cChar == cQuote)
-                cQuote = 0;
-        }
-        else if (cChar == '"' || cChar == '\'')
-            cQuote = cChar;
-        else if (cChar == '{' || cChar == '[')
-            ++nBracketDepth;
-        else if (cChar == '}' || cChar == ']')
-            --nBracketDepth;
-        else if (cChar == '(')
-            ++nGroupDepth;
-        else if (cChar == ')')
-        {
-            --nGroupDepth;
-            if (nGroupDepth == 0)
-                return nIndex == nEnd - 1;
-        }
-        else if (cChar == ',' && nGroupDepth == 1 && nBracketDepth == 0)
-        {
-            // A comma directly inside the group makes it a union list, whose
-            // parentheses keep it one argument, so they cannot double as the
-            // wrapper's own.
-            return false;
-        }
-    }
-    return false;
-}
-
-// Splice in the wrappers pending from nScope and deeper, innermost first.
-// Each operand runs from its recorded start to the buffer's end.
-void lclCloseSingleValues(OUStringBuffer& rBuffer, UnionScope& rScope,
-                          std::vector<PendingSingleValue>& rPending, sal_Int32 nScope)
-{
-    // The wrappers stand in the order their operands begin, so splicing the one at
-    // the back in leaves the starts still waiting where they are.
-    assert(std::ranges::is_sorted(rPending, {}, &PendingSingleValue::mnWrapStart));
-    while (!rPending.empty() && rPending.back().mnScope >= nScope)
-    {
-        const PendingSingleValue& rSingle = rPending.back();
-        // An operand that stayed empty takes no wrapper.
-        if (rSingle.mbHasOperand)
-        {
-            if (lclIsOneParenthesizedGroup(rBuffer, rSingle.mnWrapStart))
-                rBuffer.insert(rSingle.mnWrapStart, u"_xlfn.SINGLE");
-            else
-            {
-                rBuffer.insert(rSingle.mnWrapStart, u"_xlfn.SINGLE(");
-                rBuffer.append(u")");
-            }
-            // The wrapper encloses the expression, which now begins at it.
-            if (rScope.mnExpressionStart > rSingle.mnWrapStart)
-                rScope.mnExpressionStart = rSingle.mnWrapStart;
-        }
-        rPending.pop_back();
-    }
-}
-
-// Drop the wrappers pending from nScope and deeper without splicing them in.
-void lclCancelSingleValues(std::vector<PendingSingleValue>& rPending, sal_Int32 nScope)
-{
-    while (!rPending.empty() && rPending.back().mnScope >= nScope)
-        rPending.pop_back();
-}
-
-// Whether a wrapper still to be spliced in begins where the scope's text does or
-// ahead of it, so the scope's own parentheses are already spoken for.
-bool lclHasWrapperAtStart(const std::vector<PendingSingleValue>& rPending, sal_Int32 nScope,
-                          sal_Int32 nContentStart)
-{
-    for (const PendingSingleValue& rSingle : std::views::reverse(rPending))
-    {
-        if (rSingle.mnScope < nScope)
-            break;
-        if (rSingle.mnWrapStart <= nContentStart)
-            return true;
-    }
-    return false;
-}
-
-// Wrap the scope's open union list in parentheses. A list that exactly fills a
-// grouping parenthesis keeps that pair when bMayTakeScopeParenthesis allows it.
-void lclCloseUnionList(OUStringBuffer& rBuffer, UnionScope& rScope,
-                       std::vector<PendingSingleValue>& rPending, bool bMayTakeScopeParenthesis)
-{
-    if (rScope.mnListStart < 0)
-        return;
-    if (!(bMayTakeScopeParenthesis && rScope.mbGroupParenthesis
-          && rScope.mnListStart == rScope.mnContentStart))
-    {
-        rBuffer.insert(rScope.mnListStart, u"(");
-        rBuffer.append(u")");
-        // The opening parenthesis moves the text behind it along, so a wrapper
-        // waiting inside the list follows its own operand.
-        for (PendingSingleValue& rSingle : rPending)
-        {
-            if (rSingle.mnWrapStart > rScope.mnListStart)
-                ++rSingle.mnWrapStart;
-        }
-        // An expression that began inside the list moves along with it.
-        if (rScope.mnExpressionStart > rScope.mnListStart)
-            ++rScope.mnExpressionStart;
-    }
-    rScope.mnListStart = -1;
-}
-} // namespace
-
 bool FormulaCompiler::AppendTokenOrError(OUStringBuffer& rBuffer, const FormulaToken*& rpToken)
 {
     const OpCode eOp = rpToken->GetOpCode();
@@ -3080,8 +2947,16 @@ void FormulaCompiler::CreateStringFromTokenArray( OUStringBuffer& rBuffer )
         {
             MissingConventionOOXML aConv;
             mpArr = mpArr->RewriteMissing( aConv );
-            maArrIterator = FormulaTokenArrayPlainIterator( *mpArr );
         }
+        // Put in what OOXML spells out, so writing is a plain walk over the tokens.
+        OOXMLRewriter aRewriter(*mpArr);
+        if (std::unique_ptr<FormulaTokenArray> pOoxml = aRewriter.releaseTokens())
+        {
+            if (mpArr != pSaveArr)
+                delete mpArr;
+            mpArr = pOoxml.release();
+        }
+        maArrIterator = FormulaTokenArrayPlainIterator( *mpArr );
     }
 
     // At least one character per token, plus some are references, some are
@@ -3091,223 +2966,11 @@ void FormulaCompiler::CreateStringFromTokenArray( OUStringBuffer& rBuffer )
     if ( mpArr->IsRecalcModeForced() )
         rBuffer.append( '=');
 
-    // The @ markers whose _xlfn.SINGLE wrapper is still to be spliced in.
-    std::vector<PendingSingleValue> aPendingSingles;
-    // One entry per parenthesis scope, tracking where the scope's expressions
-    // begin and where its union list does. Start past the optional leading '='.
-    std::vector<UnionScope> aUnionScopes;
-    aUnionScopes.push_back({ rBuffer.getLength(), rBuffer.getLength(), -1, false });
-    // Whether the next token stands where an operand starts, so a plus or a
-    // minus there is the unary form.
-    bool bOperandPosition = true;
-    // Whether the current factor is raw text that never parsed, which no
-    // wrapper's parentheses can go around.
-    bool bBadFactor = false;
-    bool bUnwritable = false;
     const FormulaToken* t = maArrIterator.First();
     while( t )
     {
-        if (FormulaGrammar::isOOXML(meGrammar) && t->GetOpCode() == ocOffset
-            && t->GetType() == svByte)
-        {
-            FormulaTokenArrayPlainIterator aTempIter(*mpArr);
-            aTempIter.Jump(maArrIterator.GetIndex());
-            FormulaToken* pNext = aTempIter.Next();
-            if (pNext && pNext->GetOpCode() == ocOpen
-                && pNext->GetType() == svSep)
-            {
-                FormulaToken* pNext2 = aTempIter.Next();
-                if (pNext2 && pNext2->GetOpCode() == ocPush)
-                {
-                    StackVar eType = pNext2->GetType();
-                    if (eType == svString || eType == svDouble)
-                    {
-                        rBuffer.append(GetNativeSymbol(t->GetOpCode()));
-                        rBuffer.append(GetNativeSymbol(pNext->GetOpCode()));
-                        // The consumed parenthesis opens a scope like a written one.
-                        lclMarkPendingOperand(aPendingSingles);
-                        aUnionScopes.push_back(
-                            { rBuffer.getLength(), rBuffer.getLength(), -1, false });
-                        rBuffer.append(GetNativeSymbol(ocErrRef));
-                        bOperandPosition = false;
-                        bBadFactor = false;
-                        maArrIterator.Jump(aTempIter.GetIndex());
-                        t = maArrIterator.Next();
-                        continue;
-                    }
-                }
-            }
-        }
-
-        // The @ writes no text of its own. Remember where its wrapper goes and
-        // the scope its operand lives in. The wrapper is spliced in once the
-        // operand stands in the buffer.
-        if (FormulaGrammar::isOOXML(meGrammar) && t->GetOpCode() == ocSingleValue)
-        {
-            aPendingSingles.push_back({ sal_Int32(aUnionScopes.size()),
-                                        rBuffer.getLength(), false });
-            t = maArrIterator.Next();
-            continue;
-        }
-
-        // XLSX writes the # operator as _xlfn.ANCHORARRAY around the whole
-        // expression under it, so the union list closes first. Text that
-        // never parsed takes no parentheses, so a # behind it is dropped.
-        if (FormulaGrammar::isOOXML(meGrammar) && t->GetOpCode() == ocSpill)
-        {
-            if (!bBadFactor)
-            {
-                lclCloseUnionList(rBuffer, aUnionScopes.back(), aPendingSingles, false);
-                const sal_Int32 nWrapStart = aUnionScopes.back().mnExpressionStart;
-                rBuffer.insert(nWrapStart, u"_xlfn.ANCHORARRAY(");
-                rBuffer.append(u")");
-                // The # binds tighter than an @ in front of it, so an @ that
-                // begins inside the wrapper takes the whole of it as its operand.
-                // An @ on one part of a union list is such an @.
-                for (PendingSingleValue& rSingle : aPendingSingles)
-                {
-                    if (rSingle.mnWrapStart > nWrapStart)
-                        rSingle.mnWrapStart = nWrapStart;
-                }
-                lclMarkPendingOperand(aPendingSingles);
-            }
-            t = maArrIterator.Next();
-            bOperandPosition = false;
-            continue;
-        }
-
-        if (FormulaGrammar::isOOXML(meGrammar))
-        {
-            // ocOpen pushes a nested scope and ocClose pops it. Inside a scope the
-            // walk tracks where the expression under the union operator begins.
-            const OpCode eOpHere = t->GetOpCode();
-            const bool bWhitespace = isWhitespaceOpCode(eOpHere);
-            // A sign where an operand starts can only be the unary form,
-            // whichever opcode the parser gave it, and belongs to the operand
-            // behind it.
-            const bool bPrefix = bOperandPosition && lclIsPrefixOperator(eOpHere);
-            const bool bCallName = !bPrefix && lclIsCallBeforeArguments(eOpHere, maArrIterator);
-            const bool bSeparator
-                = !bPrefix && !bCallName && lclIsOoxmlFactorSeparator(eOpHere);
-            // The union list and the @ operand cover the same stretch of the
-            // grammar, so the same tokens end both of them.
-            const bool bEndsOperand
-                = !bPrefix && !bCallName && lclEndsSingleValueOperand(eOpHere);
-
-            // A structured table reference walks through here token by token,
-            // so its brackets scope like parentheses and the separators inside
-            // them stay inside the reference.
-            if (eOpHere == ocOpen || eOpHere == ocTableRefOpen)
-            {
-                // Leave the outer expression start alone: a separator already
-                // marked a grouping '(', and a call is wrapped from its name.
-                if (!AppendTokenOrError(rBuffer, t))
-                {
-                    bUnwritable = true;
-                    break;
-                }
-                lclMarkPendingOperand(aPendingSingles);
-                // A grouping parenthesis stands where an operand starts; a call's
-                // follows its function name.
-                aUnionScopes.push_back({ rBuffer.getLength(), rBuffer.getLength(), -1,
-                                         eOpHere == ocOpen && bOperandPosition });
-                bOperandPosition = true;
-                bBadFactor = false;
-                continue;
-            }
-            if (eOpHere == ocClose || eOpHere == ocTableRefClose)
-            {
-                if (aUnionScopes.size() > 1)
-                {
-                    // The union list closes before the @ wrappers, so its
-                    // parentheses sit inside theirs.
-                    const sal_Int32 nScope = sal_Int32(aUnionScopes.size());
-                    const bool bMayTakeScopeParenthesis = !lclHasWrapperAtStart(
-                        aPendingSingles, nScope, aUnionScopes.back().mnContentStart);
-                    lclCloseUnionList(rBuffer, aUnionScopes.back(), aPendingSingles,
-                                      bMayTakeScopeParenthesis);
-                    lclCloseSingleValues(rBuffer, aUnionScopes.back(), aPendingSingles, nScope);
-                }
-                if (!AppendTokenOrError(rBuffer, t))
-                {
-                    bUnwritable = true;
-                    break;
-                }
-                if (aUnionScopes.size() > 1)
-                    aUnionScopes.pop_back();
-                lclMarkPendingOperand(aPendingSingles);
-                bOperandPosition = false;
-                bBadFactor = false;
-                continue;
-            }
-
-            // An operator the grammar puts above them ends the union list and the
-            // @ operand, so their wrappers close in front of it.
-            if (bEndsOperand)
-            {
-                lclCloseUnionList(rBuffer, aUnionScopes.back(), aPendingSingles, false);
-                lclCloseSingleValues(rBuffer, aUnionScopes.back(), aPendingSingles,
-                                     sal_Int32(aUnionScopes.size()));
-            }
-
-            if (eOpHere == ocBad)
-            {
-                // Raw text that no parse could read cannot take parentheses, so
-                // the wrappers waiting on it are left out.
-                aUnionScopes.back().mnListStart = -1;
-                lclCancelSingleValues(aPendingSingles, sal_Int32(aUnionScopes.size()));
-                bBadFactor = true;
-            }
-
-            const sal_Int32 nLengthBefore = rBuffer.getLength();
-            // Whitespace ahead of a scope or of an expression is not part of it,
-            // so the start it is measured from moves past the whitespace.
-            const bool bAtContentStart
-                = bWhitespace && nLengthBefore == aUnionScopes.back().mnContentStart;
-            const bool bAtExpressionStart
-                = bWhitespace && nLengthBefore == aUnionScopes.back().mnExpressionStart;
-            if (!AppendTokenOrError(rBuffer, t))
-            {
-                bUnwritable = true;
-                break;
-            }
-            if (!bPrefix && !bWhitespace && rBuffer.getLength() > nLengthBefore)
-                lclMarkPendingOperand(aPendingSingles);
-            if (bAtContentStart)
-                aUnionScopes.back().mnContentStart = rBuffer.getLength();
-            if (bAtExpressionStart)
-                aUnionScopes.back().mnExpressionStart = rBuffer.getLength();
-            if (eOpHere == ocUnion && aUnionScopes.back().mnListStart < 0)
-            {
-                // The first union operator of the expression opens the list; the
-                // ones after it keep extending the same list.
-                aUnionScopes.back().mnListStart = aUnionScopes.back().mnExpressionStart;
-            }
-            if (bPrefix || (bEndsOperand && bSeparator))
-            {
-                // The next expression begins behind a prefix sign or an infix
-                // operator. A postfix one follows its operand instead.
-                aUnionScopes.back().mnExpressionStart = rBuffer.getLength();
-            }
-            if (bSeparator)
-                bBadFactor = false;
-            if (!bWhitespace)
-                bOperandPosition = bPrefix || bSeparator;
-            continue;
-        }
-
         if (!AppendTokenOrError(rBuffer, t))
             break;
-    }
-
-    // Whatever is still pending wraps up to the end of the formula, unless the
-    // formula came out as a single error string. The union lists close first, so
-    // their parentheses sit inside the @ wrappers.
-    if (FormulaGrammar::isOOXML(meGrammar) && !bUnwritable)
-    {
-        for (UnionScope& rScope : std::views::reverse(aUnionScopes))
-            lclCloseUnionList(rBuffer, rScope, aPendingSingles, false);
-        lclCloseSingleValues(rBuffer, aUnionScopes.front(), aPendingSingles, 1);
     }
 
     if (pSaveArr != mpArr)
@@ -3781,12 +3444,16 @@ OpCode FormulaCompiler::NextToken()
         if (eOp == ocSpaces && FormulaGrammar::isExcelSyntax( meGrammar))
         {
             // Fake an intersection op as last op for the next round, but at
-            // least roughly check if it could make sense at all.
+            // least roughly check if it could make sense at all. The parenthesis
+            // tokens have the separator type, so accept them by opcode instead -
+            // a parenthesised expression is valid on either side of the space.
             FormulaToken* pPrev = maArrIterator.PeekPrevNoSpaces();
-            if (pPrev && isPotentialRangeType( pPrev, false, false))
+            if (pPrev
+                && (pPrev->GetOpCode() == ocClose || isPotentialRangeType(pPrev, false, false)))
             {
                 FormulaToken* pNext = maArrIterator.PeekNextNoSpaces();
-                if (pNext && isPotentialRangeType( pNext, false, true))
+                if (pNext
+                    && (pNext->GetOpCode() == ocOpen || isPotentialRangeType(pNext, false, true)))
                     meLastOp = ocIntersect;
                 else
                     meLastOp = eOp;

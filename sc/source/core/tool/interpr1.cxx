@@ -1568,12 +1568,10 @@ void ScInterpreter::ScSingleValue()
     // a single value. For a bare range, pick the slot row-aligned
     // (or column-aligned) with the formula cell, and push #VALUE!
     // when no slot matches. For a computed matrix, pick the
-    // upper-left value.
+    // upper-left value, whether or not it knows where its values sit.
     nFuncFmtType = nCurFmtType;
     StackVar eType = GetStackType();
-    if (eType == svDoubleRef
-        || (eType == svMatrix && sp > 0
-            && static_cast<const ScMatrixToken*>(pStack[sp - 1])->IsMatrixRangeToken()))
+    if (eType == svDoubleRef || IsTopMatrixReference())
     {
         ScRange aRange;
         if (eType == svDoubleRef)
@@ -1645,6 +1643,18 @@ void ScInterpreter::ScSpilledRange()
     // value. An empty cell, a number, a string, or a non-master
     // spill slot yields #REF!, since none of them is a dynamic-array
     // master.
+    //
+    // The operator refers to a single cell, so an operand wider than
+    // that has no master. A range, a reference list and a computed
+    // matrix all give #REF!.
+    const StackVar eOperandType = GetStackType();
+    if (eOperandType != svSingleRef && eOperandType != svError)
+    {
+        Pop();
+        PushError(FormulaError::NoRef);
+        return;
+    }
+
     ScAddress aAddress;
     PopSingleRef(aAddress);
     if (nGlobalError != FormulaError::NONE)
@@ -2864,8 +2874,7 @@ void ScInterpreter::ScIsRef()
             // A spilled-range reference travels as a matrix that
             // carries its source range. It answers as a reference,
             // while a plain computed matrix does not.
-            bRes = sp > 0
-                && static_cast<const ScMatrixToken*>(pStack[sp - 1])->IsMatrixRangeToken();
+            bRes = IsTopMatrixReference();
             Pop();
         }
         break;
@@ -3014,8 +3023,7 @@ void ScInterpreter::ScIsFormula()
             // reports ISFORMULA per cell of that range, the same as a
             // plain range. A plain computed matrix is not a reference
             // and reports false.
-            if (sp == 0
-                || !static_cast<const ScMatrixToken*>(pStack[sp - 1])->IsMatrixRangeToken())
+            if (!IsTopMatrixReference())
             {
                 Pop();
                 break;

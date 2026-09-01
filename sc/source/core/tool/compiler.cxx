@@ -5008,6 +5008,21 @@ Label_Rewind:
                 // ocBad to preserve input instead of #REF!.A1
                 if (!maRawToken.IsValidReference(rDoc))
                 {
+                    // A parenthesis after such a symbol makes it a range operator plus
+                    // a call, as in F25:IF(TRUE,F26) where IF also reads as a column.
+                    // Cut at the operator, so the reference stands alone and the call
+                    // follows.
+                    if (bParenFollows && mnRangeOpPosInSymbol > 0)
+                    {
+                        sal_Int32 nLen = mnRangeOpPosInSymbol;
+                        while (cSymbol[++nLen])
+                            ;
+                        cSymbol[mnRangeOpPosInSymbol] = 0;
+                        nSrcPos -= (nLen - mnRangeOpPosInSymbol);
+                        mnRangeOpPosInSymbol = -1;
+                        mbRewind = true;
+                        continue;   // do; up to range operator.
+                    }
                     aUpper = aOrg;          // ensure for ocBad
                     break;                  // do; create ocBad token or set error.
                 }
@@ -5257,16 +5272,27 @@ std::unique_ptr<ScTokenArray> ScCompiler::CompileString( const OUString& rFormul
                     || meLastOp == ocArrayClose
                     || meLastOp == ocTableRef )
                 {
-                    // We're trying to call a function, it seems; inject ocCall so that
-                    // the compiler can see what's going on.
-                    ScRawToken aToken;
-                    aToken.SetOpCode( ocCall );
-                    FormulaToken* pNewToken = static_cast<ScTokenArray*>(mpArr)->Add(
-                        aToken.CreateToken(rDoc.GetSheetLimits()));
-                    if (!pNewToken)
+                    // Where the intersection operator is a blank, a blank before the
+                    // parenthesis is that operator and opens a group, not an argument list.
+                    const sal_uInt16 nArrayLength = mpArr->GetLen();
+                    const bool bIntersectingBlank
+                        = (meLastOp == ocPush || meLastOp == ocClose)
+                          && FormulaGrammar::isExcelSyntax( meGrammar)
+                          && nArrayLength > 0
+                          && mpArr->TokenAt(nArrayLength - 1)->GetOpCode() == ocSpaces;
+                    if (!bIntersectingBlank)
                     {
-                        SetError(FormulaError::CodeOverflow);
-                        goto OutsideLoop;
+                        // We're trying to call a function, it seems. Inject ocCall so the
+                        // compiler can see what's going on.
+                        ScRawToken aToken;
+                        aToken.SetOpCode( ocCall );
+                        FormulaToken* pNewToken = static_cast<ScTokenArray*>(mpArr)->Add(
+                            aToken.CreateToken(rDoc.GetSheetLimits()));
+                        if (!pNewToken)
+                        {
+                            SetError(FormulaError::CodeOverflow);
+                            goto OutsideLoop;
+                        }
                     }
                 }
 

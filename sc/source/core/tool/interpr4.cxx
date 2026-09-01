@@ -846,6 +846,39 @@ FormulaConstTokenRef ScInterpreter::PopTokenImpl()
     return nullptr;
 }
 
+void ScInterpreter::NoteMatrixOperandRange(const FormulaToken* pToken)
+{
+    if (!static_cast<const ScMatrixToken*>(pToken)->IsMatrixRangeToken())
+        return;
+    const ScComplexRefData& rReference
+        = static_cast<const ScMatrixRangeToken*>(pToken)->GetDoubleRef();
+    // A relative part would have to be resolved against the position the range was read
+    // from, and we do not keep that, so only a fully absolute range says where the values
+    // sit.
+    if (rReference.Ref1.IsColRel() || rReference.Ref1.IsRowRel()
+        || rReference.Ref2.IsColRel() || rReference.Ref2.IsRowRel())
+    {
+        return;
+    }
+    if (moMatrixOperandRange && *moMatrixOperandRange != rReference)
+        mbMatrixOperandRangeConflict = true;
+    moMatrixOperandRange = rReference;
+}
+
+FormulaConstTokenRef ScInterpreter::PopReferenceOperand()
+{
+    FormulaConstTokenRef xToken = PopToken();
+    if (!xToken || xToken->GetType() != svMatrix
+        || !static_cast<const ScMatrixToken*>(xToken.get())->IsMatrixReference())
+    {
+        return xToken;
+    }
+
+    const ScComplexRefData& rReference
+        = static_cast<const ScMatrixRangeToken*>(xToken.get())->GetDoubleRef();
+    return FormulaConstTokenRef(new ScDoubleRefToken(mrDoc.GetSheetLimits(), rReference));
+}
+
 double ScInterpreter::PopDouble()
 {
     nCurFmtType = SvNumFormatType::NUMBER;
@@ -1635,7 +1668,7 @@ bool ScInterpreter::ConvertMatrixParameters()
                                 aRangeMatrix.mnCol2 = nCol2;
                                 aRangeMatrix.mnRow2 = nRow2;
                                 aRangeMatrix.mnTab2 = nTab2;
-                                pNew = new ScMatrixRangeToken( aRangeMatrix );
+                                pNew = new ScMatrixRangeToken(aRangeMatrix, true);
                             }
                             else
                                 pNew = new ScMatrixToken( std::move(pMat) );
@@ -1766,7 +1799,10 @@ ScMatrixRef ScInterpreter::PopMatrix()
                     // here instead of ScConstMatrixRef.
                     ScMatrix* pMat = static_cast<ScMatrixToken*>(const_cast<FormulaToken*>(p))->GetMatrix();
                     if ( pMat )
+                    {
                         pMat->SetErrorInterpreter( this);
+                        NoteMatrixOperandRange(p);
+                    }
                     else
                         SetError( FormulaError::UnknownVariable);
                     return pMat;
@@ -2026,7 +2062,16 @@ void ScInterpreter::PushMatrix( const sc::RangeMatrix& rMat )
 
     rMat.mpMat->SetErrorInterpreter(nullptr);
     nGlobalError = FormulaError::NONE;
-    PushTempTokenWithoutError(new ScMatrixRangeToken(rMat));
+    PushTempTokenWithoutError(new ScMatrixRangeToken(rMat, true));
+}
+
+// Works on its operands one value at a time, so a same-shaped result holds one value per
+// cell of the operand. Functions are out, they may move the values around.
+static bool lclIsElementwiseOperator(OpCode eOp)
+{
+    if (eOp == ocAnd || eOp == ocOr)
+        return false;
+    return isBinaryOperatorOpCode(eOp) || isUnaryOperatorOpCode(eOp) || eOp == ocPercentSign;
 }
 
 void ScInterpreter::PushMatrix(const ScMatrixRef& pMat)
@@ -2037,6 +2082,32 @@ void ScInterpreter::PushMatrix(const ScMatrixRef& pMat)
     // mean to inherit the error on all array elements in all following
     // operations.
     nGlobalError = FormulaError::NONE;
+    // A result shaped like the range an operand sat at sits there as well, one value per
+    // cell, so it keeps the range. The values are the operator's own now, so the range only
+    // says where they sit, not that they belong to those cells.
+    if (moMatrixOperandRange && !mbMatrixOperandRangeConflict && pCur
+        && lclIsElementwiseOperator(pCur->GetOpCode()))
+    {
+        const ScComplexRefData& rReference = *moMatrixOperandRange;
+        SCSIZE nCols = 0;
+        SCSIZE nRows = 0;
+        pMat->GetDimensions(nCols, nRows);
+        if (rReference.Ref1.Tab() == rReference.Ref2.Tab()
+            && static_cast<SCSIZE>(rReference.Ref2.Col() - rReference.Ref1.Col() + 1) == nCols
+            && static_cast<SCSIZE>(rReference.Ref2.Row() - rReference.Ref1.Row() + 1) == nRows)
+        {
+            sc::RangeMatrix aRangeMatrix;
+            aRangeMatrix.mpMat = pMat;
+            aRangeMatrix.mnCol1 = rReference.Ref1.Col();
+            aRangeMatrix.mnRow1 = rReference.Ref1.Row();
+            aRangeMatrix.mnTab1 = rReference.Ref1.Tab();
+            aRangeMatrix.mnCol2 = rReference.Ref2.Col();
+            aRangeMatrix.mnRow2 = rReference.Ref2.Row();
+            aRangeMatrix.mnTab2 = rReference.Ref2.Tab();
+            PushTempTokenWithoutError(new ScMatrixRangeToken(aRangeMatrix, false));
+            return;
+        }
+    }
     PushTempTokenWithoutError( new ScMatrixToken( pMat ) );
 }
 
@@ -2257,6 +2328,12 @@ double ScInterpreter::GetDouble()
             else
                 nVal = 0.0;
         }
+        break;
+        case svRefList:
+            // A list of ranges has no single value, which is what #VALUE! says.
+            PopError();
+            SetError( FormulaError::NoValue);
+            nVal = 0.0;
         break;
         case svExternalSingleRef:
         {
@@ -2530,6 +2607,11 @@ svl::SharedString ScInterpreter::GetString()
             else
                 return svl::SharedString::getEmptyString();
         }
+        case svRefList:
+            // A list of ranges has no single value, same as when a number is asked for.
+            PopError();
+            SetError( FormulaError::NoValue);
+            return svl::SharedString::getEmptyString();
         case svExternalSingleRef:
         {
             ScExternalRefCache::TokenRef pToken;
@@ -4236,6 +4318,8 @@ StackVar ScInterpreter::Interpret()
             break;
         eOp = pCur->GetOpCode();
         cPar = pCur->GetParamCount();
+        moMatrixOperandRange.reset();
+        mbMatrixOperandRangeConflict = false;
         if ( eOp == ocPush )
         {
             // RPN code push without error
