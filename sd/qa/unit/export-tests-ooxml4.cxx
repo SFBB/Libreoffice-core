@@ -9,6 +9,7 @@
 
 #include "sdmodeltestbase.hxx"
 #include <tools/color.hxx>
+#include <tools/stream.hxx>
 #include <com/sun/star/document/UpdateDocMode.hpp>
 #include <comphelper/propertyvalue.hxx>
 #include <comphelper/sequenceashashmap.hxx>
@@ -25,14 +26,18 @@
 #include <svx/svdoole2.hxx>
 #include <svx/svdotable.hxx>
 #include <svx/unoapi.hxx>
+#include <unotools/tempfile.hxx>
+#include <vcl/filter/PngImageReader.hxx>
 #include <xmloff/autolayout.hxx>
 
 #include <com/sun/star/awt/FontUnderline.hpp>
 #include <com/sun/star/drawing/EnhancedCustomShapeParameterPair.hpp>
 #include <com/sun/star/drawing/FillStyle.hpp>
+#include <com/sun/star/drawing/GraphicExportFilter.hpp>
 #include <com/sun/star/drawing/TextHorizontalAdjust.hpp>
 #include <com/sun/star/lang/IndexOutOfBoundsException.hpp>
 #include <com/sun/star/lang/Locale.hpp>
+#include <com/sun/star/lang/XComponent.hpp>
 #include <com/sun/star/style/ParagraphAdjust.hpp>
 #include <com/sun/star/text/GraphicCrop.hpp>
 #include <com/sun/star/text/WritingMode2.hpp>
@@ -2467,6 +2472,96 @@ CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testCool16080_masterKeepsItsPlaceholder
                 "y", u"1825560");
 }
 
+CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testCool16080_layoutShapesStayOnTheirLayout)
+{
+    // Given a deck whose first layout paints the whole slide blue, and a slide on another layout,
+    // which is therefore white:
+    createSdImpressDoc("pptx/layout-own-background.pptx");
+    saveAndReload(TestFilter::PPTX);
+
+    utl::TempFileNamed aPng;
+    aPng.EnableKillingFile();
+    uno::Sequence<beans::PropertyValue> aFilterData{
+        comphelper::makePropertyValue(u"PixelWidth"_ustr, sal_Int32(64)),
+        comphelper::makePropertyValue(u"PixelHeight"_ustr, sal_Int32(36))
+    };
+    uno::Sequence<beans::PropertyValue> aDescriptor{
+        comphelper::makePropertyValue(u"URL"_ustr, aPng.GetURL()),
+        comphelper::makePropertyValue(u"FilterName"_ustr, u"PNG"_ustr),
+        comphelper::makePropertyValue(u"FilterData"_ustr, aFilterData)
+    };
+    auto xExporter = drawing::GraphicExportFilter::create(getComponentContext());
+    xExporter->setSourceDocument(getPage(0).queryThrow<lang::XComponent>());
+    xExporter->filter(aDescriptor);
+
+    SvFileStream aStream(aPng.GetURL(), StreamMode::READ);
+    Bitmap aSlide = vcl::PngImageReader(aStream).read();
+    CPPUNIT_ASSERT_EQUAL(Size(64, 36), aSlide.GetSizePixel());
+
+    // The slide is still white. An imported master and layout collapse onto one Impress master
+    // page, so the page standing for the group holds the first layout's rectangle - and writing
+    // that page's shapes into the master part painted it under every slide of the deck. Sample
+    // the side margins, which no placeholder of this layout reaches.
+    // Without the fix in place, this test would have failed with
+    // - Expected: rgba[ffffffff]
+    // - Actual  : rgba[0000ffff]
+    CPPUNIT_ASSERT_EQUAL(COL_WHITE, aSlide.GetPixelColor(2, 18));
+    CPPUNIT_ASSERT_EQUAL(COL_WHITE, aSlide.GetPixelColor(61, 18));
+
+    // The layout it belongs to still paints it, which is what a slide of that layout inherits.
+    xmlDocUniquePtr pLayout = parseExportedLayoutNamed(u"Title Slide");
+    assertXPath(pLayout,
+                "/p:sldLayout/p:cSld/p:spTree/p:sp[p:nvSpPr/p:cNvPr/@name='Blue background']"
+                "/p:spPr/a:solidFill/a:srgbClr",
+                "val", u"0000FF");
+}
+
+CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testCool16080_masterKeepsWhatItsLayoutsShare)
+{
+    // Given a deck of one master that draws a rule of its own across the top of the slide, in
+    // segments of colour, and seven layouts that draw nothing:
+    createSdImpressDoc("pptx/tdf157740.pptx");
+    saveAndReload(TestFilter::PPTX);
+
+    // The rule is on the slide master, so PowerPoint edits it once for every layout. The import
+    // gives each of the seven Impress master pages a copy, and the master used to get none.
+    // Without the fix in place, this test would have failed with
+    // - Expected: 1
+    // - Actual  : 0
+    xmlDocUniquePtr pMaster = parseExport(u"ppt/slideMasters/slideMaster1.xml"_ustr);
+    assertXPath(pMaster,
+                "/p:sldMaster/p:cSld/p:spTree/p:grpSp[p:nvGrpSpPr/p:cNvPr/@name='Group 1']", 1);
+
+    // It moved there rather than being written seven more times: a layout holds the three
+    // placeholders it inherits and nothing else.
+    xmlDocUniquePtr pLayout = parseExportedLayoutNamed(u"Title, Content over Content");
+    static constexpr OString aLayoutTree("/p:sldLayout/p:cSld/p:spTree"_ostr);
+    assertXPath(pLayout, aLayoutTree + "/*[not(self::p:nvGrpSpPr) and not(self::p:grpSpPr)]", 3);
+    assertXPath(pLayout, aLayoutTree + "/p:sp/p:nvSpPr/p:nvPr/p:ph", 3);
+
+    // And the slide still shows the rule, wherever it is written
+    utl::TempFileNamed aPng;
+    aPng.EnableKillingFile();
+    uno::Sequence<beans::PropertyValue> aFilterData{
+        comphelper::makePropertyValue(u"PixelWidth"_ustr, sal_Int32(1920)),
+        comphelper::makePropertyValue(u"PixelHeight"_ustr, sal_Int32(1080))
+    };
+    uno::Sequence<beans::PropertyValue> aDescriptor{
+        comphelper::makePropertyValue(u"URL"_ustr, aPng.GetURL()),
+        comphelper::makePropertyValue(u"FilterName"_ustr, u"PNG"_ustr),
+        comphelper::makePropertyValue(u"FilterData"_ustr, aFilterData)
+    };
+    auto xExporter = drawing::GraphicExportFilter::create(getComponentContext());
+    xExporter->setSourceDocument(getPage(0).queryThrow<lang::XComponent>());
+    xExporter->filter(aDescriptor);
+
+    SvFileStream aStream(aPng.GetURL(), StreamMode::READ);
+    Bitmap aSlide = vcl::PngImageReader(aStream).read();
+    CPPUNIT_ASSERT_EQUAL(Size(1920, 1080), aSlide.GetSizePixel());
+    // 90EBCD is accent5 of the deck's theme, the fill of the rule's second segment
+    CPPUNIT_ASSERT_EQUAL(Color(0x90EBCD), aSlide.GetPixelColor(200, 5));
+}
+
 CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testCool16082_layoutKeepsSubtitle)
 {
     // Given a deck whose Title Slide layout carries a subtitle placeholder:
@@ -2498,6 +2593,25 @@ CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testCool16079_dateTimeField)
     xmlDocUniquePtr pLayout = parseExportedLayoutNamed(u"Title Slide");
     assertXPath(pLayout, "//p:sp[p:nvSpPr/p:nvPr/p:ph/@type='dt']/p:txBody/a:p/a:fld", "type",
                 u"datetime");
+}
+
+CPPUNIT_TEST_FIXTURE(SdOOXMLExportTest4, testTdf166401_textGivenToAPicturePlaceholder)
+{
+    // Given a slide whose picture placeholder is given text without any editing, which is what a
+    // script does and what leaves the placeholder standing for itself rather than for the text:
+    createSdImpressDoc("pptx/picture-placeholder-custom-prompt.pptx");
+    getShapeFromPage(0, 0).queryThrow<text::XTextRange>()->setString(
+        u"Given to a picture placeholder"_ustr);
+    save(TestFilter::PPTX);
+
+    // The placeholder is written with its text. It holds no image, so writing it as a picture wrote
+    // nothing at all and the text went with the shape.
+    xmlDocUniquePtr pSlide = parseExport(u"ppt/slides/slide1.xml"_ustr);
+    static constexpr OString aPlaceholder(
+        "/p:sld/p:cSld/p:spTree/p:sp[p:nvSpPr/p:nvPr/p:ph/@type='pic']"_ostr);
+    assertXPath(pSlide, aPlaceholder, 1);
+    assertXPathContent(pSlide, aPlaceholder + "/p:txBody/a:p/a:r/a:t",
+                       u"Given to a picture placeholder");
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();

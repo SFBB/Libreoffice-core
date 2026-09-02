@@ -1215,9 +1215,9 @@ CPPUNIT_TEST_FIXTURE(Chart2ImportTest2, testHistogramXLSXRoundtrip)
         = getDataSequenceFromDocByRole(xChartDoc, u"calculated-y");
     CPPUNIT_ASSERT(!xCalculatedY.is());
 
-    // The X axis must carry the bin range labels from the histogram template,
-    // not the generic "1", "2", ... labels that the OOXML axis converter
-    // produces by default.
+    // The X axis carries the bin range labels from the histogram template, not the generic
+    // "1", "2", ... labels that the OOXML axis converter produces by default. The axis and the
+    // series read the same sequence, so the labels match the ones asserted for the series.
     Reference<chart2::XAxis> xXAxis = getAxisFromDoc(xChartDoc, 0, 0, 0);
     CPPUNIT_ASSERT(xXAxis.is());
     chart2::ScaleData aScaleData = xXAxis->getScaleData();
@@ -1228,7 +1228,7 @@ CPPUNIT_TEST_FIXTURE(Chart2ImportTest2, testHistogramXLSXRoundtrip)
     const Sequence<OUString> aAxisBinLabels = xAxisCatText->getTextualData();
     CPPUNIT_ASSERT_EQUAL(sal_Int32(2), aAxisBinLabels.getLength());
     CPPUNIT_ASSERT_EQUAL(u"[10-13.94]"_ustr, aAxisBinLabels[0]);
-    CPPUNIT_ASSERT_EQUAL(u"(13.94-17.88]"_ustr, aAxisBinLabels[1]);
+    CPPUNIT_ASSERT_EQUAL(u"(13.94-17.87]"_ustr, aAxisBinLabels[1]);
 
     // Round trip 2: non-default binning parameters survive save + reload.
     Reference<beans::XPropertySet> xProperties(xChartType, uno::UNO_QUERY_THROW);
@@ -1255,6 +1255,77 @@ CPPUNIT_TEST_FIXTURE(Chart2ImportTest2, testHistogramXLSXRoundtrip)
     double fBinWidth = 0.0;
     CPPUNIT_ASSERT(xReloadedProperties->getPropertyValue(u"BinWidth"_ustr) >>= fBinWidth);
     CPPUNIT_ASSERT_EQUAL(2.5, fBinWidth);
+}
+
+CPPUNIT_TEST_FIXTURE(Chart2ImportTest2, testHistogramBinCountLiveUpdate)
+{
+    loadFromFile(u"fods/tdf163727_histogram_roundtrip.fods");
+
+    uno::Reference<chart2::XChartDocument> xChartDoc = getChartDocFromSheet(0);
+    CPPUNIT_ASSERT(xChartDoc.is());
+
+    Reference<chart2::XChartType> xChartType = getChartTypeFromDoc(xChartDoc, 0, 0);
+    CPPUNIT_ASSERT(xChartType.is());
+
+    // Keep the category sequence currently held by the X axis. Changing the
+    // bin count must update this same sequence instead of leaving it stale
+    Reference<chart2::XAxis> xXAxis = getAxisFromDoc(xChartDoc, 0, 0, 0);
+    CPPUNIT_ASSERT(xXAxis.is());
+
+    chart2::ScaleData aScaleData = xXAxis->getScaleData();
+    CPPUNIT_ASSERT(aScaleData.Categories.is());
+
+    Reference<chart2::data::XTextualDataSequence> xAxisCategories(
+        aScaleData.Categories->getValues(), uno::UNO_QUERY);
+    CPPUNIT_ASSERT(xAxisCategories.is());
+
+    const Sequence<OUString> aOriginalLabels = xAxisCategories->getTextualData();
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(2), aOriginalLabels.getLength());
+
+    Reference<beans::XPropertySet> xProperties(xChartType, uno::UNO_QUERY_THROW);
+
+    // Switching to fixed-count mode initially uses the stored default of ten bins.
+    xProperties->setPropertyValue(u"FrequencyType"_ustr, uno::Any(sal_Int32(2)));
+
+    const Sequence<OUString> aFixedCountLabels = xAxisCategories->getTextualData();
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(10), aFixedCountLabels.getLength());
+
+    // Changing the count must update the same sequence without save/reload.
+    xProperties->setPropertyValue(u"BinCount"_ustr, uno::Any(sal_Int32(3)));
+
+    const Sequence<OUString> aUpdatedLabels = xAxisCategories->getTextualData();
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(3), aUpdatedLabels.getLength());
+}
+
+CPPUNIT_TEST_FIXTURE(Chart2ImportTest2, testHistogramBinWidthFarBelowRangeIsBounded)
+{
+    loadFromFile(u"fods/tdf163727_histogram_roundtrip.fods");
+
+    uno::Reference<chart2::XChartDocument> xChartDoc = getChartDocFromSheet(0);
+    CPPUNIT_ASSERT(xChartDoc.is());
+
+    Reference<chart2::XChartType> xChartType = getChartTypeFromDoc(xChartDoc, 0, 0);
+    CPPUNIT_ASSERT(xChartType.is());
+
+    Reference<chart2::XAxis> xXAxis = getAxisFromDoc(xChartDoc, 0, 0, 0);
+    CPPUNIT_ASSERT(xXAxis.is());
+
+    chart2::ScaleData aScaleData = xXAxis->getScaleData();
+    CPPUNIT_ASSERT(aScaleData.Categories.is());
+
+    Reference<chart2::data::XTextualDataSequence> xAxisCategories(
+        aScaleData.Categories->getValues(), uno::UNO_QUERY);
+    CPPUNIT_ASSERT(xAxisCategories.is());
+
+    Reference<beans::XPropertySet> xProperties(xChartType, uno::UNO_QUERY_THROW);
+    xProperties->setPropertyValue(u"FrequencyType"_ustr, uno::Any(sal_Int32(1)));
+
+    // The values span roughly eight units, so bins a millionth wide would number in the
+    // millions. The count stays within the limit the calculator caps it at.
+    xProperties->setPropertyValue(u"BinWidth"_ustr, uno::Any(0.000001));
+
+    const Sequence<OUString> aLabels = xAxisCategories->getTextualData();
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(10000), aLabels.getLength());
 }
 
 CPPUNIT_TEST_FIXTURE(Chart2ImportTest2, testHistogramBinCountRoundtrip_ODS)
@@ -1422,6 +1493,40 @@ CPPUNIT_TEST_FIXTURE(Chart2ImportTest2, testHistogramUnderflowOverflowBins)
     CPPUNIT_ASSERT_EQUAL(u"(11-13]"_ustr, aBinLabels[1]);
     CPPUNIT_ASSERT_EQUAL(u"(13-14]"_ustr, aBinLabels[2]);
     CPPUNIT_ASSERT_EQUAL(u"> 14"_ustr, aBinLabels[3]);
+}
+
+CPPUNIT_TEST_FIXTURE(Chart2ImportTest2, testHistogramAutomaticODSToXLSXRoundtrip)
+{
+    loadFromFile(u"fods/tdf163727_histogram_roundtrip.fods");
+
+    uno::Reference<chart2::XChartDocument> xChartDoc = getChartDocFromSheet(0);
+    Reference<chart2::XChartType> xChartType = getChartTypeFromDoc(xChartDoc, 0, 0);
+    Reference<beans::XPropertySet> xProperties(xChartType, uno::UNO_QUERY_THROW);
+
+    sal_Int32 nFrequencyType = -1;
+    CPPUNIT_ASSERT(xProperties->getPropertyValue(u"FrequencyType"_ustr) >>= nFrequencyType);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(0), nFrequencyType);
+
+    saveAndReload(TestFilter::XLSX);
+
+    xmlDocUniquePtr pXmlDoc = parseExport(u"xl/charts/chartEx1.xml"_ustr);
+    CPPUNIT_ASSERT(pXmlDoc);
+
+    static constexpr OString sBinning
+        = "/cx:chartSpace/cx:chart/cx:plotArea/cx:plotAreaRegion/cx:series/"
+          "cx:layoutPr/cx:binning"_ostr;
+
+    assertXPath(pXmlDoc, sBinning, 1);
+    assertXPath(pXmlDoc, sBinning + "/cx:binSize", 0);
+    assertXPath(pXmlDoc, sBinning + "/cx:binCount", 0);
+
+    xChartDoc = getChartDocFromSheet(0);
+    xChartType = getChartTypeFromDoc(xChartDoc, 0, 0);
+    xProperties.set(xChartType, uno::UNO_QUERY_THROW);
+
+    nFrequencyType = -1;
+    CPPUNIT_ASSERT(xProperties->getPropertyValue(u"FrequencyType"_ustr) >>= nFrequencyType);
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(0), nFrequencyType);
 }
 
 CPPUNIT_TEST_FIXTURE(Chart2ImportTest2, testHistogramODSToXLSXExport)

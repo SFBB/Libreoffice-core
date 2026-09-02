@@ -105,6 +105,7 @@ using ::com::sun::star::drawing::XShape;
 #define WID_LEGACYFRAGMENT  25
 
 #define WID_CUSTOMPROMPT    26
+#define WID_PLACEHOLDERTYPE 27
 
 #define IMPRESS_MAP_ENTRIES \
         { u"" UNO_NAME_OBJ_LEGACYFRAGMENT ""_ustr,WID_LEGACYFRAGMENT, cppu::UnoType<drawing::XShape>::get(),                 0, 0},\
@@ -131,6 +132,7 @@ using ::com::sun::star::drawing::XShape;
         { u"NavigationOrder"_ustr,     WID_NAVORDER,        cppu::UnoType<sal_Int32>::get(),                       0, 0},\
         { u"PlaceholderText"_ustr,     WID_PLACEHOLDERTEXT, cppu::UnoType<OUString>::get(),                        0, 0},\
         { u"" UNO_NAME_OBJ_CUSTOMPROMPT ""_ustr, WID_CUSTOMPROMPT, cppu::UnoType<OUString>::get(),                        0, 0},\
+        { u"PlaceholderShapeType"_ustr, WID_PLACEHOLDERTYPE, cppu::UnoType<OUString>::get(),   css::beans::PropertyAttribute::READONLY, 0},\
 
     static std::span<const SfxItemPropertyMapEntry> lcl_GetImpress_SdXShapePropertyGraphicMap_Impl()
     {
@@ -686,6 +688,9 @@ css::uno::Any SAL_CALL SdXShape::getPropertyValue( const OUString& PropertyName 
         case WID_CUSTOMPROMPT:
             aRet <<= GetCustomPromptText();
             break;
+        case WID_PLACEHOLDERTYPE:
+            aRet <<= GetPlaceholderShapeType();
+            break;
         case WID_MASTERDEPEND:
             aRet <<= IsMasterDepend();
             break;
@@ -944,9 +949,16 @@ void SdXShape::SetEmptyPresObj(bool bEmpty)
             if( pPage == nullptr )
                 break;
 
-            OutlinerParaObject* pOutlinerParaObject = pObj->GetOutlinerParaObject();
-            pOutliner->SetText( *pOutlinerParaObject );
-            const bool bVertical = pOutliner->IsVertical();
+            // There may be no text to take the style from: a graphic or OLE presentation object
+            // never holds any, and emptying an object removes what it had. Which way the prompt
+            // runs is then the object's own answer.
+            auto pTextObj = DynCastSdrTextObj( pObj );
+            bool bVertical = pTextObj && pTextObj->IsVerticalWriting();
+            if (OutlinerParaObject* pOutlinerParaObject = pObj->GetOutlinerParaObject())
+            {
+                pOutliner->SetText( *pOutlinerParaObject );
+                bVertical = pOutliner->IsVertical();
+            }
 
             pOutliner->Clear();
             pOutliner->SetVertical( bVertical );
@@ -988,6 +1000,16 @@ void SdXShape::SetCustomPromptText(const OUString& aVal)
     const bool bTextSet = pObj->getSdrPageFromSdrObject()->RestoreDefaultText(pObj, aVal);
     if (bTextSet || pObj->getSdrPageFromSdrObject()->IsMasterPage())
         pObj->SetCustomPromptText(aVal);
+}
+
+OUString SdXShape::GetPlaceholderShapeType() const
+{
+    SdrObject* pObj = mpShape->GetSdrObject();
+    if (pObj == nullptr)
+        return OUString();
+
+    SdPage* pPage = dynamic_cast<SdPage*>(pObj->getSdrPageFromSdrObject());
+    return pPage ? GetPresObjShapeType(pPage->GetPresObjKind(pObj)) : OUString();
 }
 
 bool SdXShape::IsMasterDepend() const noexcept
