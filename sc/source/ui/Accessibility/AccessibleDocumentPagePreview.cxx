@@ -653,13 +653,15 @@ public:
     void Init();
 
     sal_Int32 GetBackShapeCount() const;
-    uno::Reference<XAccessible> GetBackShape(sal_Int32 nIndex) const;
+    rtl::Reference<::accessibility::AccessibleShape> GetBackShape(sal_Int32 nIndex) const;
     sal_Int32 GetForeShapeCount() const;
-    uno::Reference<XAccessible> GetForeShape(sal_Int32 nIndex) const;
+    rtl::Reference<::accessibility::AccessibleShape> GetForeShape(sal_Int32 nIndex) const;
     sal_Int32 GetControlCount() const;
-    uno::Reference<XAccessible> GetControl(sal_Int32 nIndex) const;
-    uno::Reference<XAccessible> GetForegroundShapeAt(const awt::Point& rPoint) const; // inclusive controls
-    uno::Reference<XAccessible> GetBackgroundShapeAt(const awt::Point& rPoint) const;
+    rtl::Reference<::accessibility::AccessibleShape> GetControl(sal_Int32 nIndex) const;
+    rtl::Reference<::accessibility::AccessibleShape>
+    GetForegroundShapeAt(const awt::Point& rPoint) const; // inclusive controls
+    rtl::Reference<::accessibility::AccessibleShape>
+    GetBackgroundShapeAt(const awt::Point& rPoint) const;
 
     void DataChanged();
     void VisAreaChanged() const;
@@ -810,23 +812,24 @@ sal_Int32 ScShapeChildren::GetBackShapeCount() const
     return nCount;
 }
 
-uno::Reference<XAccessible> ScShapeChildren::GetBackShape(sal_Int32 nIndex) const
+rtl::Reference<::accessibility::AccessibleShape>
+ScShapeChildren::GetBackShape(sal_Int32 nIndex) const
 {
-    uno::Reference<XAccessible> xAccessible;
+    rtl::Reference<::accessibility::AccessibleShape> pAccessible;
     for (const auto& rShapeRange : maShapeRanges)
     {
         sal_Int32 nCount(rShapeRange.maBackShapes.size());
         if(nIndex < nCount)
-            xAccessible = GetAccShape(rShapeRange.maBackShapes, nIndex);
+            pAccessible = GetAccShape(rShapeRange.maBackShapes, nIndex);
         nIndex -= nCount;
-        if (xAccessible.is())
+        if (pAccessible.is())
             break;
     }
 
     if (nIndex >= 0)
         throw lang::IndexOutOfBoundsException();
 
-    return xAccessible;
+    return pAccessible;
 }
 
 sal_Int32 ScShapeChildren::GetForeShapeCount() const
@@ -837,23 +840,24 @@ sal_Int32 ScShapeChildren::GetForeShapeCount() const
     return nCount;
 }
 
-uno::Reference<XAccessible> ScShapeChildren::GetForeShape(sal_Int32 nIndex) const
+rtl::Reference<::accessibility::AccessibleShape>
+ScShapeChildren::GetForeShape(sal_Int32 nIndex) const
 {
-    uno::Reference<XAccessible> xAccessible;
+    rtl::Reference<::accessibility::AccessibleShape> pAccessible;
     for (const auto& rShapeRange : maShapeRanges)
     {
         sal_Int32 nCount(rShapeRange.maForeShapes.size());
         if(nIndex < nCount)
-            xAccessible = GetAccShape(rShapeRange.maForeShapes, nIndex);
+            pAccessible = GetAccShape(rShapeRange.maForeShapes, nIndex);
         nIndex -= nCount;
-        if (xAccessible.is())
+        if (pAccessible.is())
             break;
     }
 
     if (nIndex >= 0)
         throw lang::IndexOutOfBoundsException();
 
-    return xAccessible;
+    return pAccessible;
 }
 
 sal_Int32 ScShapeChildren::GetControlCount() const
@@ -864,23 +868,23 @@ sal_Int32 ScShapeChildren::GetControlCount() const
     return nCount;
 }
 
-uno::Reference<XAccessible> ScShapeChildren::GetControl(sal_Int32 nIndex) const
+rtl::Reference<::accessibility::AccessibleShape> ScShapeChildren::GetControl(sal_Int32 nIndex) const
 {
-    uno::Reference<XAccessible> xAccessible;
+    rtl::Reference<::accessibility::AccessibleShape> pAccessible;
     for (const auto& rShapeRange : maShapeRanges)
     {
         sal_Int32 nCount(rShapeRange.maControls.size());
         if(nIndex < nCount)
-            xAccessible = GetAccShape(rShapeRange.maControls, nIndex);
+            pAccessible = GetAccShape(rShapeRange.maControls, nIndex);
         nIndex -= nCount;
-        if (xAccessible.is())
+        if (pAccessible.is())
             break;
     }
 
     if (nIndex >= 0)
         throw lang::IndexOutOfBoundsException();
 
-    return xAccessible;
+    return pAccessible;
 }
 
 namespace {
@@ -903,43 +907,45 @@ struct ScShapePointFound
 
 }
 
-uno::Reference<XAccessible> ScShapeChildren::GetForegroundShapeAt(const awt::Point& rPoint) const //inclusive Controls
+rtl::Reference<::accessibility::AccessibleShape>
+ScShapeChildren::GetForegroundShapeAt(const awt::Point& rPoint) const //inclusive Controls
 {
-    uno::Reference<XAccessible> xAcc;
+    rtl::Reference<::accessibility::AccessibleShape> pAcc;
 
     for(const auto& rShapeRange : maShapeRanges)
     {
         ScShapeChildVec::const_iterator aFindItr = std::find_if(rShapeRange.maForeShapes.begin(), rShapeRange.maForeShapes.end(), ScShapePointFound(rPoint));
         if (aFindItr != rShapeRange.maForeShapes.end())
-            xAcc = GetAccShape(*aFindItr);
+            pAcc = GetAccShape(*aFindItr);
         else
         {
             ScShapeChildVec::const_iterator aCtrlItr = std::find_if(rShapeRange.maControls.begin(), rShapeRange.maControls.end(), ScShapePointFound(rPoint));
             if (aCtrlItr != rShapeRange.maControls.end())
-                xAcc = GetAccShape(*aCtrlItr);
+                pAcc = GetAccShape(*aCtrlItr);
         }
 
-        if (xAcc.is())
+        if (pAcc.is())
             break;
     }
 
-    return xAcc;
+    return pAcc;
 }
 
-uno::Reference<XAccessible> ScShapeChildren::GetBackgroundShapeAt(const awt::Point& rPoint) const
+rtl::Reference<::accessibility::AccessibleShape>
+ScShapeChildren::GetBackgroundShapeAt(const awt::Point& rPoint) const
 {
-    uno::Reference<XAccessible> xAcc;
+    rtl::Reference<::accessibility::AccessibleShape> pAcc;
 
     for(const auto& rShapeRange : maShapeRanges)
     {
         ScShapeChildVec::const_iterator aFindItr = std::find_if(rShapeRange.maBackShapes.begin(), rShapeRange.maBackShapes.end(), ScShapePointFound(rPoint));
         if (aFindItr != rShapeRange.maBackShapes.end())
-            xAcc = GetAccShape(*aFindItr);
-        if (xAcc.is())
+            pAcc = GetAccShape(*aFindItr);
+        if (pAcc.is())
             break;
     }
 
-    return xAcc;
+    return pAcc;
 }
 
 ::accessibility::AccessibleShape* ScShapeChildren::GetAccShape(const ScShapeChild& rShape) const

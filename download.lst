@@ -85,8 +85,8 @@ CPPUNIT_TARBALL := cppunit-1.15.1.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-CURL_SHA256SUM := aa1b66a70eace83dc624508745646c08ae561de512ab403adffb93ac87fc72e6
-CURL_TARBALL := curl-8.21.0.tar.xz
+CURL_SHA256SUM := f7ef3ae8a22e521f289803fe93543eb64c329b58aa73a9e224dfd915a2a5f4f7
+CURL_TARBALL := curl-8.22.0.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -544,8 +544,8 @@ PAGEMAKER_TARBALL := libpagemaker-0.0.4.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-PDFIUM_SHA256SUM := fbb7b551699a4bbf2f47986d485df0a82e9391841239cdbcd64554d88209014c
-PDFIUM_TARBALL := pdfium-7795.tar.bz2
+PDFIUM_SHA256SUM := 7d11b3f6e456fbdde392ec9ae1ae5588c85149116edcd1d6a986af0a977bda1f
+PDFIUM_TARBALL := pdfium-7897.tar.bz2
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts

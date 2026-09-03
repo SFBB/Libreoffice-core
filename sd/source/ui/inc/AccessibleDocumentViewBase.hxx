@@ -92,15 +92,13 @@ public:
         The view shell associated with the given window.
     @param rxController
         The controller from which to get the model.
-    @param rxParent
+    @param rpParent
         The accessible parent of the new object.  Note that this parent does
         not necessarily correspond with the parent of the given window.
      */
-    AccessibleDocumentViewBase (
-        ::sd::Window* pSdWindow,
-        ::sd::ViewShell* pViewShell,
-        css::uno::Reference<css::frame::XController> xController,
-        const css::uno::Reference<css::accessibility::XAccessible>& rxParent);
+    AccessibleDocumentViewBase(::sd::Window* pSdWindow, ::sd::ViewShell* pViewShell,
+                               css::uno::Reference<css::frame::XController> xController,
+                               const rtl::Reference<comphelper::OAccessible>& rpParent);
 
     virtual ~AccessibleDocumentViewBase() override;
 
@@ -125,9 +123,6 @@ public:
     virtual void ViewForwarderChanged() override;
 
     //=====  XAccessibleContext  ==============================================
-
-    virtual css::uno::Reference<css::accessibility::XAccessible> SAL_CALL
-        getAccessibleParent() override;
 
     /** This implementation returns either 1 or 0 depending on whether there
         is an active accessible OLE object or not.

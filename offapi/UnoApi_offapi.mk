@@ -484,15 +484,6 @@ $(eval $(call gb_UnoApi_add_idlfiles_noheader,offapi,com/sun/star/accessibility,
 	AccessibleContext \
 ))
 $(eval $(call gb_UnoApi_add_idlfiles_noheader,offapi,com/sun/star/awt,\
-	AccessibleButton \
-	AccessibleCheckBox \
-	AccessibleComboBox \
-	AccessibleList \
-	AccessibleListBox \
-	AccessibleRadioButton \
-	AccessibleScrollBar \
-	AccessibleStatusBar \
-	AccessibleStatusBarItem \
 	AccessibleWindow \
 	AnimatedImagesControl \
 	AnimatedImagesControlModel \
