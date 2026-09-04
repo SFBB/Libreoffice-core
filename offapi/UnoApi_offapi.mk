@@ -479,12 +479,7 @@ $(eval $(call gb_UnoApi_add_idlfiles_nohdl,offapi,com/sun/star/xml/xslt,\
 	XSLTTransformer \
 ))
 
-
-$(eval $(call gb_UnoApi_add_idlfiles_noheader,offapi,com/sun/star/accessibility,\
-	AccessibleContext \
-))
 $(eval $(call gb_UnoApi_add_idlfiles_noheader,offapi,com/sun/star/awt,\
-	AccessibleWindow \
 	AnimatedImagesControl \
 	AnimatedImagesControlModel \
 	RoadmapItem \

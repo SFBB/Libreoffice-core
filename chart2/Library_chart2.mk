@@ -253,6 +253,7 @@ $(eval $(call gb_Library_add_exception_objects,chart2,\
     chart2/source/view/charttypes/BarPositionHelper \
     chart2/source/view/charttypes/BubbleChart \
     chart2/source/view/charttypes/CandleStickChart \
+    chart2/source/view/charttypes/CorrelationCircleChart \
     chart2/source/view/charttypes/CategoryPositionHelper \
     chart2/source/view/charttypes/FunnelChart \
     chart2/source/view/charttypes/NetChart \
@@ -330,6 +331,9 @@ $(eval $(call gb_Library_add_exception_objects,chart2,\
     chart2/source/model/template/ColumnChartType \
     chart2/source/model/template/ColumnLineChartTypeTemplate \
     chart2/source/model/template/ColumnLineDataInterpreter \
+    chart2/source/model/template/CorrelationCircleChartType \
+    chart2/source/model/template/CorrelationCircleChartTypeTemplate \
+    chart2/source/model/template/CorrelationCircleDataInterpreter \
     chart2/source/model/template/DataInterpreter \
     chart2/source/model/template/FilledNetChartType \
     chart2/source/model/template/FunnelChartType \
