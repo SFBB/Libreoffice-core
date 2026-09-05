@@ -98,7 +98,10 @@ ContentInfo::ContentInfo( const ContentInfo& rCopyFrom, SfxItemPool& rPoolToUse 
     maText(rCopyFrom.maText),
     aStyle(rCopyFrom.aStyle),
     eFamily(rCopyFrom.eFamily),
-    aParaAttribs(SfxItemSet::makeFixedSfxItemSet<EE_PARA_START, EE_CHAR_END>(rPoolToUse))
+    aParaAttribs(SfxItemSet::makeFixedSfxItemSet<EE_PARA_START, EE_CHAR_END>(rPoolToUse)),
+    mnNumberingDepth(rCopyFrom.mnNumberingDepth),
+    mnNumberingStartValue(rCopyFrom.mnNumberingStartValue),
+    mbNumberingRestart(rCopyFrom.mbNumberingRestart)
 {
     // this should ensure that the Items end up in the correct Pool!
     aParaAttribs.Set( rCopyFrom.GetParaAttribs() );
@@ -144,6 +147,9 @@ void ContentInfo::dumpAsXml(xmlTextWriterPtr pWriter) const
 {
     (void)xmlTextWriterStartElement(pWriter, BAD_CAST("ContentInfo"));
     (void)xmlTextWriterWriteAttribute(pWriter, BAD_CAST("style"), BAD_CAST(aStyle.toUtf8().getStr()));
+    (void)xmlTextWriterWriteFormatAttribute(pWriter, BAD_CAST("nNumberingDepth"), "%" SAL_PRIdINT32, static_cast<sal_Int32>(mnNumberingDepth));
+    (void)xmlTextWriterWriteFormatAttribute(pWriter, BAD_CAST("mnNumberingStartValue"), "%" SAL_PRIdINT32, static_cast<sal_Int32>(mnNumberingStartValue));
+    (void)xmlTextWriterWriteFormatAttribute(pWriter, BAD_CAST("mbNumberingRestart"), "%" SAL_PRIdINT32, static_cast<sal_Int32>(mbNumberingRestart));
     (void)xmlTextWriterStartElement(pWriter, BAD_CAST("text"));
     OUString aText = GetText();
     // TODO share code with sax_fastparser::FastSaxSerializer::write().
@@ -203,7 +209,10 @@ bool ContentInfo::Equals(const ContentInfo& rCompare, bool bComparePool) const
 {
     return maText == rCompare.maText && aStyle == rCompare.aStyle && eFamily == rCompare.eFamily
            && aParaAttribs.Equals(rCompare.aParaAttribs, bComparePool)
-           && maCharAttribs == rCompare.maCharAttribs;
+           && maCharAttribs == rCompare.maCharAttribs
+           && mnNumberingDepth == rCompare.mnNumberingDepth
+           && mnNumberingStartValue == rCompare.mnNumberingStartValue
+           && mbNumberingRestart == rCompare.mbNumberingRestart;
 }
 
 bool EditTextObject::Equals( const EditTextObject& rCompare ) const
@@ -383,9 +392,6 @@ sal_Int32 EditTextObject::GetParagraphCount() const
 
 OUString EditTextObject::GetText(sal_Int32 nPara) const
 {
-    if (nPara < 0 || o3tl::make_unsigned(nPara) >= maContents.size())
-        return OUString();
-
     return maContents[nPara]->GetText();
 }
 
@@ -411,10 +417,37 @@ OUString EditTextObject::GetText(LineEnd eEnd) const
 
 sal_Int32 EditTextObject::GetTextLen(sal_Int32 nPara ) const
 {
-    if (nPara < 0 || o3tl::make_unsigned(nPara) >= maContents.size())
-        return 0;
-
     return maContents[nPara]->GetTextLen();
+}
+
+sal_Int16 EditTextObject::GetNumberingDepth(sal_Int32 nPara) const
+{
+    return maContents[nPara]->GetNumberingDepth();
+}
+
+void EditTextObject::SetNumberingDepth(sal_Int32 nPara, sal_Int16 nDepth)
+{
+    maContents[nPara]->SetNumberingDepth(nDepth);
+}
+
+sal_Int16 EditTextObject::GetNumberingStartValue(sal_Int32 nPara) const
+{
+    return maContents[nPara]->GetNumberingStartValue();
+}
+
+void EditTextObject::SetNumberingStartValue(sal_Int32 nPara, sal_Int16 nStartValue)
+{
+    maContents[nPara]->SetNumberingStartValue(nStartValue);
+}
+
+bool EditTextObject::IsNumberingRestart(sal_Int32 nPara) const
+{
+    return maContents[nPara]->IsNumberingRestart();
+}
+
+void EditTextObject::SetNumberingRestart(sal_Int32 nPara, bool bRestart)
+{
+    maContents[nPara]->SetNumberingRestart(bRestart);
 }
 
 void EditTextObject::ClearPortionInfo()
@@ -434,9 +467,6 @@ bool EditTextObject::HasOnlineSpellErrors() const
 
 void EditTextObject::GetCharAttribs( sal_Int32 nPara, std::vector<EECharAttrib>& rLst ) const
 {
-    if (nPara < 0 || o3tl::make_unsigned(nPara) >= maContents.size())
-        return;
-
     rLst.clear();
     const ContentInfo& rC = *maContents[nPara];
     for (const XEditAttribute & rAttr : rC.maCharAttribs)
@@ -472,9 +502,6 @@ const SvxFieldItem* EditTextObject::GetField() const
 
 const SvxFieldData* EditTextObject::GetFieldData(sal_Int32 nPara, size_t nPos, sal_Int32 nType) const
 {
-    if (nPara < 0 || o3tl::make_unsigned(nPara) >= maContents.size())
-        return nullptr;
-
     const ContentInfo& rC = *maContents[nPara];
     if (nPos >= rC.maCharAttribs.size())
         // URL position is out-of-bound.
@@ -691,9 +718,6 @@ void EditTextObject::GetAllSections( std::vector<editeng::Section>& rAttrs ) con
 
 void EditTextObject::GetStyleSheet(sal_Int32 nPara, OUString& rName, SfxStyleFamily& rFamily) const
 {
-    if (nPara < 0 || o3tl::make_unsigned(nPara) >= maContents.size())
-        return;
-
     const ContentInfo& rC = *maContents[nPara];
     rName = rC.GetStyle();
     rFamily = rC.GetFamily();
@@ -701,9 +725,6 @@ void EditTextObject::GetStyleSheet(sal_Int32 nPara, OUString& rName, SfxStyleFam
 
 void EditTextObject::SetStyleSheet(sal_Int32 nPara, const OUString& rName, const SfxStyleFamily& rFamily)
 {
-    if (nPara < 0 || o3tl::make_unsigned(nPara) >= maContents.size())
-        return;
-
     ContentInfo& rC = *maContents[nPara];
     rC.SetStyle(rName);
     rC.SetFamily(rFamily);

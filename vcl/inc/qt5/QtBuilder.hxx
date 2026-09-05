@@ -96,7 +96,7 @@ private:
     static void setDialogProperties(QDialog& rDialog, stringmap& rProps);
     static void setEntryProperties(QLineEdit& rLineEdit, stringmap& rProps);
     static void setItemViewProperties(const QAbstractItemView& rIconView, stringmap& rProps);
-    static void setLabelProperties(QLabel& rLabel, stringmap& rProps);
+    static void setLabelProperties(QLabel& rLabel, stringmap& rProps, stringmap& rPango);
     static void setMessageDialogProperties(QMessageBox& rMessageBox, stringmap& rProps);
     static void setMenuActionGroup(QMenu* pMenu, QAction* pAction, const OUString& rRadioGroupId);
     void setMenuButtonProperties(QToolButton& rButton, stringmap& rProps, QWidget* pParentWidget);
@@ -106,6 +106,9 @@ private:
     void setToggleButtonProperties(QToolButton& rButton, stringmap& rProps, QWidget* pParentWidget);
     static void setWidgetProperties(QWidget& rWidget, stringmap& rProps);
     static QWidget* windowForObject(QObject* pObject);
+    static Qt::Alignment getAlignment(stringmap& rProps);
+    static void setWidgetAlignment(QWidget& rWidget, stringmap& rProps);
+    static void setLayoutAlignment(QLayout& rLayout, stringmap& rProps);
 
     static void applyGridPackingProperties(QWidget* pCurrentChild, QGridLayout& rGrid,
                                            const stringmap& rPackingProperties);

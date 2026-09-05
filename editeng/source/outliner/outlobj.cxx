@@ -27,19 +27,13 @@
 #include <o3tl/safeint.hxx>
 #include <libxml/xmlwriter.h>
 
-OutlinerParaObjData::OutlinerParaObjData( std::unique_ptr<EditTextObject> pEditTextObject, ParagraphDataVector&& rParagraphDataVector, bool bIsEditDoc ) :
-    mpEditTextObject(std::move(pEditTextObject)),
-    maParagraphDataVector(std::move(rParagraphDataVector)),
-    mbIsEditDoc(bIsEditDoc)
+OutlinerParaObjData::OutlinerParaObjData( std::unique_ptr<EditTextObject> pEditTextObject ) :
+    mpEditTextObject(std::move(pEditTextObject))
 {
-    if( maParagraphDataVector.empty() && (mpEditTextObject->GetParagraphCount() != 0) )
-        maParagraphDataVector.resize(mpEditTextObject->GetParagraphCount());
 }
 
 OutlinerParaObjData::OutlinerParaObjData( const OutlinerParaObjData& r ):
-    mpEditTextObject(new EditTextObject(*r.mpEditTextObject)),
-    maParagraphDataVector(r.maParagraphDataVector),
-    mbIsEditDoc(r.mbIsEditDoc)
+    mpEditTextObject(new EditTextObject(*r.mpEditTextObject))
 {
 }
 
@@ -49,9 +43,7 @@ OutlinerParaObjData::~OutlinerParaObjData()
 
 bool OutlinerParaObjData::operator==(const OutlinerParaObjData& rCandidate) const
 {
-    return (*mpEditTextObject == *rCandidate.mpEditTextObject
-        && maParagraphDataVector == rCandidate.maParagraphDataVector
-        && mbIsEditDoc == rCandidate.mbIsEditDoc);
+    return *mpEditTextObject == *rCandidate.mpEditTextObject;
 }
 
 bool OutlinerParaObjData::isWrongListEqual(const OutlinerParaObjData& rCompare) const
@@ -59,14 +51,8 @@ bool OutlinerParaObjData::isWrongListEqual(const OutlinerParaObjData& rCompare) 
     return mpEditTextObject->isWrongListEqual(*rCompare.mpEditTextObject);
 }
 
-OutlinerParaObject::OutlinerParaObject(
-    std::unique_ptr<EditTextObject> xTextObj, ParagraphDataVector&& rParagraphDataVector, bool bIsEditDoc ) :
-    mpImpl(OutlinerParaObjData(std::move(xTextObj), std::move(rParagraphDataVector), bIsEditDoc))
-{
-}
-
-OutlinerParaObject::OutlinerParaObject( std::unique_ptr<EditTextObject> pTextObj ) :
-    mpImpl(OutlinerParaObjData(std::move(pTextObj), ParagraphDataVector(), true))
+OutlinerParaObject::OutlinerParaObject( std::unique_ptr<EditTextObject> xTextObj ) :
+    mpImpl(OutlinerParaObjData(std::move(xTextObj)))
 {
 }
 
@@ -163,7 +149,7 @@ TextRotation OutlinerParaObject::GetRotation() const
 
 sal_Int32 OutlinerParaObject::Count() const
 {
-    size_t nSize = mpImpl->maParagraphDataVector.size();
+    size_t nSize = mpImpl->mpEditTextObject->GetParagraphCount();
     if (nSize > o3tl::make_unsigned(EE_PARA_MAX))
     {
         SAL_WARN( "editeng", "OutlinerParaObject::Count - overflow " << nSize);
@@ -172,35 +158,24 @@ sal_Int32 OutlinerParaObject::Count() const
     return static_cast<sal_Int32>(nSize);
 }
 
-sal_Int16 OutlinerParaObject::GetDepth(sal_Int32 nPara) const
+sal_Int16 OutlinerParaObject::GetNumberingDepth(sal_Int32 nPara) const
 {
-    if(0 <= nPara && o3tl::make_unsigned(nPara) < mpImpl->maParagraphDataVector.size())
-    {
-        return mpImpl->maParagraphDataVector[nPara].getDepth();
-    }
-    else
-    {
-        return -1;
-    }
+    return mpImpl->mpEditTextObject->GetNumberingDepth(nPara);
+}
+
+sal_Int16 OutlinerParaObject::GetNumberingStartValue(sal_Int32 nPara) const
+{
+    return mpImpl->mpEditTextObject->GetNumberingStartValue(nPara);
+}
+
+bool OutlinerParaObject::IsNumberingRestart(sal_Int32 nPara) const
+{
+    return mpImpl->mpEditTextObject->IsNumberingRestart(nPara);
 }
 
 const EditTextObject& OutlinerParaObject::GetTextObject() const
 {
     return *mpImpl->mpEditTextObject;
-}
-
-const ParagraphData& OutlinerParaObject::GetParagraphData(sal_Int32 nIndex) const
-{
-    if(0 <= nIndex && o3tl::make_unsigned(nIndex) < mpImpl->maParagraphDataVector.size())
-    {
-        return mpImpl->maParagraphDataVector[nIndex];
-    }
-    else
-    {
-        OSL_FAIL("OutlinerParaObject::GetParagraphData: Access out of range (!)");
-        static ParagraphData aEmptyParagraphData;
-        return aEmptyParagraphData;
-    }
 }
 
 void OutlinerParaObject::ClearPortionInfo()
@@ -231,7 +206,7 @@ void OutlinerParaObject::SetStyleSheets(sal_uInt16 nLevel, const OUString& rNewN
 
         while(nDecrementer > 0)
         {
-            if(GetDepth(--nDecrementer) == nLevel)
+            if(GetNumberingDepth(--nDecrementer) == nLevel)
             {
                 mpImpl->mpEditTextObject->SetStyleSheet(nDecrementer, rNewName, rNewFamily);
             }
@@ -244,8 +219,6 @@ void OutlinerParaObject::dumpAsXml(xmlTextWriterPtr pWriter) const
     (void)xmlTextWriterStartElement(pWriter, BAD_CAST("OutlinerParaObject"));
     (void)xmlTextWriterWriteFormatAttribute(pWriter, BAD_CAST("ptr"), "%p", this);
     mpImpl->mpEditTextObject->dumpAsXml(pWriter);
-    for (ParagraphData const & p : mpImpl->maParagraphDataVector)
-        Paragraph(p).dumpAsXml(pWriter);
     (void)xmlTextWriterEndElement(pWriter);
 }
 

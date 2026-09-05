@@ -29,44 +29,6 @@
 
 using namespace css;
 
-namespace
-{
-class EnvVarGuard
-{
-public:
-    EnvVarGuard(const char* var, const char* val)
-    {
-        if (getenv(var) == nullptr)
-        {
-            sVar = var;
-            SetEnv(sVar, val);
-        }
-    }
-    ~EnvVarGuard()
-    {
-        if (sVar)
-            SetEnv(sVar, nullptr);
-    }
-
-private:
-    static void SetEnv(const char* var, const char* val)
-    {
-#ifdef _WIN32
-        if (!val)
-            val = ""; // remove
-        _putenv_s(var, val);
-#else
-        if (val)
-            setenv(var, val, false);
-        else
-            unsetenv(var);
-#endif
-    }
-
-    const char* sVar = nullptr;
-};
-}
-
 class SdrPdfImportTest : public UnoApiTest
 {
 public:
@@ -234,7 +196,7 @@ CPPUNIT_TEST_FIXTURE(SdrPdfImportTest, testAnnotationsImportExport)
         saveAndReload(TestFilter::PDF_WRITER, aMediaDescriptor.getAsConstPropertyValueList());
 
         // Check PDF for annotations
-        auto pPDFDocument = parsePDFExport();
+        auto pPDFDocument = parsePDFExport(pPdfium);
         CPPUNIT_ASSERT(pPDFDocument);
         CPPUNIT_ASSERT_EQUAL(1, pPDFDocument->getPageCount());
 
@@ -310,7 +272,8 @@ CPPUNIT_TEST_FIXTURE(SdrPdfImportTest, testImportThreadedComments)
     if (!pPdfium)
         return;
 
-    EnvVarGuard UsePDFiumGuard("LO_IMPORT_USE_PDFIUM", "1");
+    // We need to enable PDFium import (and make sure to disable after the test)
+    UsePdfium aGuard;
 
     loadFromFile(u"pdf/threaded_comments.pdf");
     auto pImpressDocument = dynamic_cast<SdXImpressDocument*>(mxComponent.get());

@@ -27,6 +27,7 @@
 #define STR_DLG_REMOVE_DATA_TABLE                   NC_("STR_DLG_REMOVE_DATA_TABLE", "This chart currently contains an internal data table. Do you want to proceed, deleting the internal data table, and set a new data range?")
 #define STR_PAGE_CHARTTYPE                          NC_("STR_PAGE_CHARTTYPE", "Chart Type")
 #define STR_PAGE_DATA_RANGE                         NC_("STR_PAGE_DATA_RANGE", "Data Range")
+#define STR_RANGE_NOTE_DIMENSIONS                   NC_("STR_RANGE_NOTE_DIMENSIONS", "The last two columns hold the dimensions; the columns before them are the features.")
 #define STR_PAGE_CHART_ELEMENTS                     NC_("STR_PAGE_CHART_ELEMENTS", "Chart Elements")
 #define STR_OBJECT_AVERAGE_LINE_WITH_PARAMETERS     NC_("STR_OBJECT_AVERAGE_LINE_WITH_PARAMETERS", "Mean value line with value %AVERAGE_VALUE and standard deviation %STD_DEVIATION")
 #define STR_OBJECT_AXIS                             NC_("STR_OBJECT_AXIS", "Axis")
@@ -173,6 +174,8 @@
 #define STR_FILLED                                  NC_("STR_FILLED", "Filled")
 #define STR_TYPE_BUBBLE                             NC_("STR_TYPE_BUBBLE", "Bubble")
 #define STR_BUBBLE_1                                NC_("STR_BUBBLE_1", "Bubble Chart")
+#define STR_TYPE_CORRELATION_CIRCLE                 NC_("STR_TYPE_CORRELATION_CIRCLE", "Correlation Circle")
+#define STR_CORRELATION_CIRCLE                      NC_("STR_CORRELATION_CIRCLE", "Correlation Circle Plot")
 
 #define STR_INVALID_NUMBER                          NC_("STR_INVALID_NUMBER", "Numbers are required. Check your input.")
 #define STR_STEP_GT_ZERO                            NC_("STR_STEP_GT_ZERO", "The major interval requires a positive number. Check your input.")
