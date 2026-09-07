@@ -370,6 +370,11 @@ bool XColorItem::PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId)
             if(!(rVal >>= nValue ))
                 return false;
 
+            // Assigning the color the item already holds keeps the theme reference. ODF writes
+            // a shape's fill on its graphic style and again on its paragraph style, and only
+            // the graphic one carries the reference.
+            if (nValue.GetRGBColor() != GetColorValue().GetRGBColor())
+                setComplexColor(model::ComplexColor());
             SetColorValue( nValue );
 
         }
@@ -1074,7 +1079,13 @@ bool XLineColorItem::PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId)
             if(!(rVal >>= nValue ))
                 return false;
 
-            SetColorValue( Color(ColorTransparency, nValue) );
+            Color aColor(ColorTransparency, nValue);
+            // Assigning the color the item already holds keeps the theme reference. ODF writes
+            // a shape's fill on its graphic style and again on its paragraph style, and only
+            // the graphic one carries the reference.
+            if (aColor.GetRGBColor() != GetColorValue().GetRGBColor())
+                setComplexColor(model::ComplexColor());
+            SetColorValue( aColor );
             break;
         }
     }
@@ -1906,6 +1917,11 @@ bool XFillColorItem::PutValue( const css::uno::Any& rVal, sal_uInt8 nMemberId )
             if(!(rVal >>= nValue ))
                 return false;
 
+            // Assigning the color the item already holds keeps the theme reference. ODF writes
+            // a shape's fill on its graphic style and again on its paragraph style, and only
+            // the graphic one carries the reference.
+            if (nValue.GetRGBColor() != GetColorValue().GetRGBColor())
+                setComplexColor(model::ComplexColor());
             SetColorValue( nValue );
 
         }
