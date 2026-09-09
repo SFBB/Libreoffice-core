@@ -104,12 +104,17 @@ private:
     void setSpinButtonProperties(QDoubleSpinBox& rSpinBox, stringmap& rProps);
     void setTextViewProperties(QPlainTextEdit& rTextEdit, stringmap& rProps);
     void setToggleButtonProperties(QToolButton& rButton, stringmap& rProps, QWidget* pParentWidget);
+    static void addButtonToButtonBox(QAbstractButton& rButton, QWidget* pParentWidget,
+                                     QMessageBox::ButtonRole nRole);
+    static void setGridLayoutProperties(QGridLayout& rGridLayout, stringmap& rProps);
     static void setWidgetProperties(QWidget& rWidget, stringmap& rProps);
     static QWidget* windowForObject(QObject* pObject);
     static Qt::Alignment getAlignment(stringmap& rProps);
     static void setWidgetAlignment(QWidget& rWidget, stringmap& rProps);
     static void setLayoutAlignment(QLayout& rLayout, stringmap& rProps);
-
+    static void setLayoutMargins(QLayout& rLayout, stringmap& rProps);
+    static void getMargins(stringmap& rProps, sal_Int32& nLeft, sal_Int32& nTop, sal_Int32& nRight,
+                           sal_Int32& nBottom);
     static void applyGridPackingProperties(QWidget* pCurrentChild, QGridLayout& rGrid,
                                            const stringmap& rPackingProperties);
 };

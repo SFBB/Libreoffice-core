@@ -261,7 +261,9 @@ QObject* QtBuilder::insertObject(QObject* pParent, const OUString& rClass, std::
     else if (rClass == u"GtkGrid")
     {
         pLayoutParentWidget = new QWidget(pParentWidget);
-        pObject = new QGridLayout(pLayoutParentWidget);
+        QGridLayout* pGridLayout = new QGridLayout(pLayoutParentWidget);
+        setGridLayoutProperties(*pGridLayout, rProps);
+        pObject = pGridLayout;
     }
     else if (rClass == u"GtkIconView")
     {
@@ -523,6 +525,8 @@ QObject* QtBuilder::insertObject(QObject* pParent, const OUString& rClass, std::
     }
     else if (QLayout* pLayout = qobject_cast<QLayout*>(pObject))
     {
+        setLayoutMargins(*pLayout, rProps);
+
         // add layout to parent layout
         if (QBoxLayout* pParentBoxLayout = qobject_cast<QBoxLayout*>(pParentLayout))
             pParentBoxLayout->addLayout(pLayout);
@@ -846,11 +850,57 @@ void QtBuilder::applyTabChildProperties(QObject* pParent, const std::vector<OUSt
                                          rProperties.at(u"label"_ustr));
 }
 
+static QMessageBox::ButtonRole getButtonRole(int nResponse)
+{
+    switch (nResponse)
+    {
+        case RET_OK:
+            return QMessageBox::AcceptRole;
+        case RET_YES:
+            return QMessageBox::YesRole;
+        case RET_NO:
+            return QMessageBox::NoRole;
+        case RET_HELP:
+            return QMessageBox::HelpRole;
+        case RET_CANCEL:
+        case RET_CLOSE:
+            return QMessageBox::RejectRole;
+        case RET_RESET:
+            return QMessageBox::ResetRole;
+        default:
+            return QMessageBox::NoRole;
+    }
+}
+
 void QtBuilder::set_response(const OUString& rId, int nResponse)
 {
     QPushButton* pPushButton = get<QPushButton>(rId);
     assert(pPushButton);
     pPushButton->setProperty(QtInstanceMessageDialog::PROPERTY_VCL_RESPONSE_CODE, nResponse);
+    addButtonToButtonBox(*pPushButton, pPushButton->parentWidget(), getButtonRole(nResponse));
+}
+
+void QtBuilder::addButtonToButtonBox(QAbstractButton& rButton, QWidget* pParentWidget,
+                                     QMessageBox::ButtonRole nRole)
+{
+    QDialogButtonBox* pButtonBox = qobject_cast<QDialogButtonBox*>(pParentWidget);
+
+    if (!pButtonBox)
+        return;
+
+    // MessageBox buttons must be added via QMessageBox::addButton() to prevent missing
+    // buttons in platform-specific message boxes
+    if (QMessageBox* pMessageBox = qobject_cast<QMessageBox*>(pParentWidget->window()))
+    {
+        /* Avoid any implicit buttons; use only our own */
+        pMessageBox->setStandardButtons(QMessageBox::NoButton);
+        pMessageBox->addButton(&rButton, nRole);
+    }
+    else
+    {
+        /* Non-QMessageBox buttons can just be added directly to the parent QDialogButtonBox */
+        pButtonBox->addButton(&rButton, static_cast<QDialogButtonBox::ButtonRole>(nRole));
+    }
 }
 
 void QtBuilder::deleteObject(QObject* pObject)
@@ -926,20 +976,8 @@ void QtBuilder::setButtonProperties(QAbstractButton& rButton, stringmap& rProps,
         }
     }
 
-    if (QDialogButtonBox* pButtonBox = qobject_cast<QDialogButtonBox*>(pParentWidget))
-    {
-        // for message boxes, avoid implicit standard buttons in addition to those explicitly added
-        // and add button via QMessageBox API instead of via the button box
-        if (QMessageBox* pMessageBox = qobject_cast<QMessageBox*>(pParentWidget->window()))
-        {
-            pMessageBox->setStandardButtons(QMessageBox::NoButton);
-            pMessageBox->addButton(&rButton, QMessageBox::ButtonRole::NoRole);
-        }
-        else
-        {
-            pButtonBox->addButton(&rButton, QDialogButtonBox::NoRole);
-        }
-    }
+    // The button's role (if any) will be read later and set by ::set_response()
+    addButtonToButtonBox(rButton, pParentWidget, QMessageBox::ButtonRole::NoRole);
 }
 
 void QtBuilder::setCheckButtonProperties(QAbstractButton& rButton, stringmap& rProps,
@@ -1246,6 +1284,13 @@ void QtBuilder::setWidgetProperties(QWidget& rWidget, stringmap& rProps)
     auto aWidthRequestIt = rProps.find(u"width-request"_ustr);
     if (aWidthRequestIt != rProps.end())
         rWidget.setMinimumWidth(aWidthRequestIt->second.toInt32());
+
+    // For QWidget and children, 0 means "unset" and allows Qt to
+    // use the system theme for that dimension. (in contrast to
+    // QLayout which uses -1...)
+    sal_Int32 nLeft = 0, nTop = 0, nRight = 0, nBottom = 0;
+    getMargins(rProps, nLeft, nTop, nRight, nBottom);
+    rWidget.setContentsMargins(nLeft, nTop, nRight, nBottom);
 }
 
 QWidget* QtBuilder::windowForObject(QObject* pObject)
@@ -1260,6 +1305,44 @@ QWidget* QtBuilder::windowForObject(QObject* pObject)
     }
 
     return nullptr;
+}
+
+void QtBuilder::setGridLayoutProperties(QGridLayout& rGridLayout, stringmap& rProps)
+{
+    auto aIt = rProps.find(u"row-spacing"_ustr);
+    if (aIt != rProps.end())
+        rGridLayout.setVerticalSpacing(aIt->second.toUInt32());
+
+    aIt = rProps.find(u"column-spacing"_ustr);
+    if (aIt != rProps.end())
+        rGridLayout.setHorizontalSpacing(aIt->second.toUInt32());
+}
+
+void QtBuilder::getMargins(stringmap& rProps, sal_Int32& nLeft, sal_Int32& nTop, sal_Int32& nRight,
+                           sal_Int32& nBottom)
+{
+    for (auto const & [ rKey, rValue ] : rProps)
+    {
+        if (rKey == u"margin-start")
+            nLeft = rValue.toUInt32();
+        else if (rKey == u"margin-top")
+            nTop = rValue.toUInt32();
+        else if (rKey == u"margin-end")
+            nRight = rValue.toUInt32();
+        else if (rKey == u"margin-bottom")
+            nBottom = rValue.toUInt32();
+    }
+}
+
+void QtBuilder::setLayoutMargins(QLayout& rLayout, stringmap& rProps)
+{
+    // For QLayout and children, -1 means "unset" and allows Qt to
+    // use the system theme for that dimension. (in contrast to
+    // QWidget which uses 0...)
+    sal_Int32 nLeft = -1, nTop = -1, nRight = -1, nBottom = -1;
+
+    getMargins(rProps, nLeft, nTop, nRight, nBottom);
+    rLayout.setContentsMargins(nLeft, nTop, nRight, nBottom);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */
