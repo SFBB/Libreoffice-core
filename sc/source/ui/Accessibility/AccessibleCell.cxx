@@ -50,29 +50,23 @@
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
 
-rtl::Reference<ScAccessibleCell> ScAccessibleCell::create(
-        const uno::Reference<XAccessible>& rxParent,
-        ScTabViewShell* pViewShell,
-        const ScAddress& rCellAddress,
-        sal_Int64 nIndex,
-        ScSplitPos eSplitPos,
-        ScAccessibleDocument* pAccDoc)
+rtl::Reference<ScAccessibleCell>
+ScAccessibleCell::create(const rtl::Reference<comphelper::OAccessible>& rpParent,
+                         ScTabViewShell* pViewShell, const ScAddress& rCellAddress,
+                         sal_Int64 nIndex, ScSplitPos eSplitPos, ScAccessibleDocument* pAccDoc)
 {
-    rtl::Reference<ScAccessibleCell> x(new ScAccessibleCell(
-        rxParent, pViewShell, rCellAddress, nIndex, eSplitPos, pAccDoc));
+    rtl::Reference<ScAccessibleCell> x(
+        new ScAccessibleCell(rpParent, pViewShell, rCellAddress, nIndex, eSplitPos, pAccDoc));
     x->Init();
     return x;
 }
 
-ScAccessibleCell::ScAccessibleCell(
-        const uno::Reference<XAccessible>& rxParent,
-        ScTabViewShell* pViewShell,
-        const ScAddress& rCellAddress,
-        sal_Int64 nIndex,
-        ScSplitPos eSplitPos,
-        ScAccessibleDocument* pAccDoc)
+ScAccessibleCell::ScAccessibleCell(const rtl::Reference<comphelper::OAccessible>& rpParent,
+                                   ScTabViewShell* pViewShell, const ScAddress& rCellAddress,
+                                   sal_Int64 nIndex, ScSplitPos eSplitPos,
+                                   ScAccessibleDocument* pAccDoc)
     :
-    ScAccessibleCellBase(rxParent, GetDocument(pViewShell), rCellAddress, nIndex),
+    ScAccessibleCellBase(rpParent, GetDocument(pViewShell), rCellAddress, nIndex),
         ::accessibility::AccessibleStaticTextBase(CreateEditSource(pViewShell, rCellAddress, eSplitPos)),
     mpViewShell(pViewShell),
     mpAccDoc(pAccDoc),
