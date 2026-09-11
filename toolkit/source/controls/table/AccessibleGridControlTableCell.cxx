@@ -17,6 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <controls/table/AccessibleGridControlTable.hxx>
 #include <controls/table/AccessibleGridControlTableCell.hxx>
 #include <vcl/svapp.hxx>
 #include <vcl/unohelp.hxx>
@@ -48,10 +49,9 @@ using namespace ::vcl;
 // = AccessibleGridControlCell
 
 AccessibleGridControlCell::AccessibleGridControlCell(
-    const css::uno::Reference<css::accessibility::XAccessible>& _rxParent,
-    svt::table::TableControl& _rTable, sal_Int32 _nRowPos, sal_uInt16 _nColPos,
-    AccessibleTableControlObjType _eType)
-    : AccessibleGridControlBase(_rxParent, _rTable, _eType)
+    const rtl::Reference<comphelper::OAccessible>& rpParent, svt::table::TableControl& _rTable,
+    sal_Int32 _nRowPos, sal_uInt16 _nColPos, AccessibleTableControlObjType _eType)
+    : AccessibleGridControlBase(rpParent, _rTable, _eType)
     , m_nRowPos(_nRowPos)
     , m_nColPos(_nColPos)
 {
@@ -96,9 +96,9 @@ void AccessibleGridControlTableCell::implGetSelection(sal_Int32& nStartIndex, sa
 }
 
 AccessibleGridControlTableCell::AccessibleGridControlTableCell(
-    const css::uno::Reference<XAccessible>& _rxParent, svt::table::TableControl& _rTable,
+    const rtl::Reference<AccessibleGridControlTable>& rpParent, svt::table::TableControl& _rTable,
     sal_Int32 _nRowPos, sal_uInt16 _nColPos)
-    : ImplInheritanceHelper(_rxParent, _rTable, _nRowPos, _nColPos,
+    : ImplInheritanceHelper(rpParent, _rTable, _nRowPos, _nColPos,
                             AccessibleTableControlObjType::TABLECELL)
 {
 }

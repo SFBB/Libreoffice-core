@@ -919,17 +919,14 @@ sal_Bool SAL_CALL SwAccessibleTable::isAccessibleColumnSelected(
 uno::Reference< XAccessible > SAL_CALL SwAccessibleTable::getAccessibleCellAt(
         sal_Int32 nRow, sal_Int32 nColumn )
 {
-    uno::Reference< XAccessible > xRet;
-
     SolarMutexGuard aGuard;
 
     ThrowIfDisposed();
 
-    const SwFrame* pCellFrame = GetTableData().GetCell(nRow, nColumn);
-    if( pCellFrame )
-        xRet = GetMap()->GetContext( pCellFrame );
+    if (const SwFrame* pCellFrame = GetTableData().GetCell(nRow, nColumn))
+        return GetMap()->GetContextImpl(pCellFrame);
 
-    return xRet;
+    return {};
 }
 
 uno::Reference< XAccessible > SAL_CALL SwAccessibleTable::getAccessibleCaption()
@@ -1101,8 +1098,8 @@ void SwAccessibleTable::DisposeChild( const SwAccessibleChild& rChildFrameOrObj,
     // the map, and we have to call our superclass.
     // The other situation is that we have been call by a call to get notified
     // about its change. We then must not call the superclass
-    uno::Reference< XAccessible > xAcc( GetMap()->GetContext( pFrame, false ) );
-    if( !xAcc.is() )
+    rtl::Reference<SwAccessibleContext> pAcc(GetMap()->GetContextImpl(pFrame, false));
+    if (!pAcc.is())
         SwAccessibleContext::DisposeChild( rChildFrameOrObj, bRecursive, bCanSkipInvisible );
 }
 

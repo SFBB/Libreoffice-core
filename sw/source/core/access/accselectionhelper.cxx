@@ -101,22 +101,19 @@ static bool lcl_getSelectedState(const SwAccessibleChild& aChild,
                                      SwAccessibleContext* pContext,
                                      SwAccessibleMap* pMap)
 {
-    Reference< XAccessible > xAcc;
+    rtl::Reference<comphelper::OAccessible> pAcc;
     if ( aChild.GetSwFrame() )
     {
-        xAcc = pMap->GetContext( aChild.GetSwFrame(), false );
+        pAcc = pMap->GetContextImpl(aChild.GetSwFrame(), false);
     }
     else if ( aChild.GetDrawObject() )
     {
-        xAcc = pMap->GetContext( aChild.GetDrawObject(), pContext, false );
+        pAcc = pMap->GetContextImpl(aChild.GetDrawObject(), pContext, false);
     }
 
-    if( xAcc.is() )
+    if (pAcc.is())
     {
-        Reference< XAccessibleContext > pRContext = xAcc->getAccessibleContext();
-        if(!pRContext.is())
-            return false;
-        sal_Int64 nRStateSet = pRContext->getAccessibleStateSet();
+        sal_Int64 nRStateSet = pAcc->getAccessibleStateSet();
         if(nRStateSet & AccessibleStateType::SELECTED)
             return true;
     }
@@ -229,8 +226,8 @@ sal_Int64 SwAccessibleSelectionHelper::getSelectedAccessibleChildCount(  )
     return nCount;
 }
 
-Reference<XAccessible> SwAccessibleSelectionHelper::getSelectedAccessibleChild(
-    sal_Int64 nSelectedChildIndex )
+rtl::Reference<comphelper::OAccessible>
+SwAccessibleSelectionHelper::getSelectedAccessibleChild(sal_Int64 nSelectedChildIndex)
 {
     SolarMutexGuard aGuard;
 
@@ -317,7 +314,7 @@ Reference<XAccessible> SwAccessibleSelectionHelper::getSelectedAccessibleChild(
         throwIndexOutOfBoundsException();
 
     OSL_ENSURE( m_rContext.GetMap() != nullptr, "We need the map." );
-    Reference< XAccessible > xChild;
+    rtl::Reference<comphelper::OAccessible> pChild;
     if( aChild.GetSwFrame() )
     {
         ::rtl::Reference < SwAccessibleContext > xChildImpl(
@@ -325,7 +322,7 @@ Reference<XAccessible> SwAccessibleSelectionHelper::getSelectedAccessibleChild(
         if( xChildImpl.is() )
         {
             xChildImpl->SetParent( &m_rContext );
-            xChild = xChildImpl.get();
+            pChild = xChildImpl.get();
         }
     }
     else if ( aChild.GetDrawObject() )
@@ -334,9 +331,9 @@ Reference<XAccessible> SwAccessibleSelectionHelper::getSelectedAccessibleChild(
                 m_rContext.GetMap()->GetContextImpl( aChild.GetDrawObject(),
                                           &m_rContext )  );
         if( xChildImpl.is() )
-            xChild = xChildImpl.get();
+            pChild = xChildImpl.get();
     }
-    return xChild;
+    return pChild;
 }
 
 // index has to be treated as global child index.

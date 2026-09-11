@@ -65,7 +65,7 @@ SwAccessibleDocumentBase::SwAccessibleDocumentBase(
         std::shared_ptr<SwAccessibleMap> const& pMap)
     : SwAccessibleContext(pMap, AccessibleRole::DOCUMENT_TEXT,
                           pMap->GetShell().GetLayout())
-    , mxParent(pMap->GetShell().GetWin()->GetAccessibleParent())
+    , mpParent(pMap->GetShell().GetWin()->GetAccessibleParent())
     , mpChildWin(nullptr)
 {
 }
@@ -155,22 +155,21 @@ uno::Reference< XAccessible> SAL_CALL
 
 uno::Reference< XAccessible> SAL_CALL SwAccessibleDocumentBase::getAccessibleParent()
 {
-    return mxParent;
+    return mpParent;
 }
 
 sal_Int64 SAL_CALL SwAccessibleDocumentBase::getAccessibleIndexInParent()
 {
     SolarMutexGuard aGuard;
 
-    uno::Reference < XAccessibleContext > xAcc( mxParent->getAccessibleContext() );
     uno::Reference < XAccessible > xThis( this );
-    sal_Int64 nCount = xAcc->getAccessibleChildCount();
+    sal_Int64 nCount = mpParent->getAccessibleChildCount();
 
     for( sal_Int64 i=0; i < nCount; i++ )
     {
         try
         {
-            if( xAcc->getAccessibleChild( i ) == xThis )
+            if (mpParent->getAccessibleChild(i) == xThis)
                 return i;
         }
         catch(const css::lang::IndexOutOfBoundsException &)

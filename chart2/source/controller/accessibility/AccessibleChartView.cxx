@@ -103,7 +103,7 @@ OUString SAL_CALL AccessibleChartView::getAccessibleDescription()
 
 Reference< XAccessible > SAL_CALL AccessibleChartView::getAccessibleParent()
 {
-    return Reference< XAccessible >( m_xParent );
+    return m_pParent.get();
 }
 
 sal_Int64 SAL_CALL AccessibleChartView::getAccessibleIndexInParent()
@@ -120,16 +120,12 @@ sal_Int16 SAL_CALL AccessibleChartView::getAccessibleRole()
 awt::Rectangle AccessibleChartView::implGetBounds()
 {
     awt::Rectangle aResult( GetWindowPosSize());
-    Reference< XAccessible > xParent( m_xParent );
-    if( xParent.is())
+    rtl::Reference<comphelper::OAccessible> pParent(m_pParent);
+    if (pParent.is())
     {
-        Reference< XAccessibleComponent > xContext( xParent->getAccessibleContext(), uno::UNO_QUERY );
-        if( xContext.is())
-        {
-            awt::Point aParentPosition = xContext->getLocationOnScreen();
-            aResult.X -= aParentPosition.X;
-            aResult.Y -= aParentPosition.Y;
-        }
+        awt::Point aParentPosition = pParent->getLocationOnScreen();
+        aResult.X -= aParentPosition.X;
+        aResult.Y -= aParentPosition.Y;
     }
     return aResult;
 }
@@ -142,11 +138,11 @@ void SAL_CALL AccessibleChartView::disposing()
     AccessibleBase::disposing();
 }
 
-void AccessibleChartView::initialize( ChartController& rNewChartController,
-                     const rtl::Reference<::chart::ChartModel>& xNewChartModel,
-                     const rtl::Reference<::chart::ChartView>& xNewChartView,
-                     const uno::Reference< XAccessible >& xNewParent,
-                     ChartWindow* pNewChartWindow)
+void AccessibleChartView::initialize(ChartController& rNewChartController,
+                                     const rtl::Reference<::chart::ChartModel>& xNewChartModel,
+                                     const rtl::Reference<::chart::ChartView>& xNewChartView,
+                                     const rtl::Reference<comphelper::OAccessible>& rpNewParent,
+                                     ChartWindow* pNewChartWindow)
 {
     //0: view::XSelectionSupplier offers notifications for selection changes and access to the selection itself
     //1: frame::XModel representing the chart model - offers access to object data
@@ -160,14 +156,14 @@ void AccessibleChartView::initialize( ChartController& rNewChartController,
     rtl::Reference< ::chart::ChartController > xChartController;
     rtl::Reference<::chart::ChartModel> xChartModel;
     rtl::Reference<::chart::ChartView> xChartView;
-    Reference< XAccessible > xParent;
+    rtl::Reference<comphelper::OAccessible> pParent;
     VclPtr<ChartWindow> pChartWindow;
     {
         MutexGuard aGuard( m_aMutex);
         xChartController = m_xChartController;
         xChartModel = m_xChartModel;
         xChartView = m_xChartView;
-        xParent.set( m_xParent );
+        pParent = m_pParent.get();
         pChartWindow = m_pChartWindow;
     }
 
@@ -188,9 +184,9 @@ void AccessibleChartView::initialize( ChartController& rNewChartController,
         bChanged = true;
     }
 
-    if( xNewParent != xParent )
+    if (rpNewParent != pParent)
     {
-        xParent = xNewParent;
+        pParent = rpNewParent;
         bChanged = true;
     }
 
@@ -218,7 +214,7 @@ void AccessibleChartView::initialize( ChartController& rNewChartController,
         }
         xChartModel.clear();
         xChartView.clear();
-        xParent.clear();
+        pParent.clear();
         pChartWindow.reset();
 
         bNewInvalid = true;
@@ -229,7 +225,7 @@ void AccessibleChartView::initialize( ChartController& rNewChartController,
         m_xChartController = xChartController.get();
         m_xChartModel = xChartModel.get();
         m_xChartView = xChartView.get();
-        m_xParent = xParent;
+        m_pParent = pParent.get();
         m_pChartWindow = std::move(pChartWindow);
     }
 
@@ -316,7 +312,7 @@ void AccessibleChartView::initialize()
         m_xChartController = xChartController.get();
         m_xChartModel = xChartModel.get();
         m_xChartView = xChartView.get();
-        m_xParent.clear();
+        m_pParent.clear();
         m_pChartWindow.reset();
     }
 
