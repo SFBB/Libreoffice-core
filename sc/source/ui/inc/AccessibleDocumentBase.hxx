@@ -24,7 +24,7 @@
 class ScAccessibleDocumentBase : public ScAccessibleContextBase
 {
 public:
-    ScAccessibleDocumentBase(const css::uno::Reference<css::accessibility::XAccessible>& rxParent);
+    ScAccessibleDocumentBase(const rtl::Reference<comphelper::OAccessible>& rpParent);
 
 protected:
     virtual ~ScAccessibleDocumentBase() override;
