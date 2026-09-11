@@ -44,10 +44,10 @@ using namespace ::com::sun::star::accessibility;
 
 #define DEFAULT_LINE_WIDTH 2
 
-ScAccessibleCellBase::ScAccessibleCellBase(const uno::Reference<XAccessible>& rxParent,
+ScAccessibleCellBase::ScAccessibleCellBase(const rtl::Reference<comphelper::OAccessible>& rpParent,
                                            ScDocument* pDoc, const ScAddress& rCellAddress,
                                            sal_Int64 nIndex)
-    : ImplInheritanceHelper(rxParent, AccessibleRole::TABLE_CELL)
+    : ImplInheritanceHelper(rpParent, AccessibleRole::TABLE_CELL)
     , maCellAddress(rCellAddress)
     , mpDoc(pDoc)
     , mnIndex(nIndex)
