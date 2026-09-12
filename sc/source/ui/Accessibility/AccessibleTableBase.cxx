@@ -34,9 +34,10 @@
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
 
-ScAccessibleTableBase::ScAccessibleTableBase(const uno::Reference<XAccessible>& rxParent,
-                                             ScDocument* pDoc, const ScRange& rRange)
-    : ImplInheritanceHelper(rxParent, AccessibleRole::TABLE)
+ScAccessibleTableBase::ScAccessibleTableBase(
+    const rtl::Reference<comphelper::OAccessible>& rpParent, ScDocument* pDoc,
+    const ScRange& rRange)
+    : ImplInheritanceHelper(rpParent, AccessibleRole::TABLE)
     , maRange(rRange)
     , mpDoc(pDoc)
 {
