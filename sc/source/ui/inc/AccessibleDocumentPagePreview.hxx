@@ -35,9 +35,9 @@ class ScAccessibleDocumentPagePreview final
     :   public ScAccessibleDocumentBase
 {
 public:
-    ScAccessibleDocumentPagePreview(
-        const css::uno::Reference<css::accessibility::XAccessible>& rxParent,
-        ScPreviewShell* pViewShell );
+    ScAccessibleDocumentPagePreview(const rtl::Reference<comphelper::OAccessible>& rpParent,
+                                    ScPreviewShell* pViewShell);
+
 protected:
     virtual ~ScAccessibleDocumentPagePreview() override;
 
