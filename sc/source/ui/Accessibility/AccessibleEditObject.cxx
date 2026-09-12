@@ -22,6 +22,7 @@
 #include <memory>
 #include <utility>
 
+#include <AccessibleDocument.hxx>
 #include <AccessibleEditObject.hxx>
 #include <AccessibleText.hxx>
 #include <editsrc.hxx>
@@ -54,7 +55,7 @@ using ::com::sun::star::lang::IndexOutOfBoundsException;
 using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
 
-ScAccessibleEditObject::ScAccessibleEditObject(const rtl::Reference<comphelper::OAccessible>& rpParent,
+ScAccessibleEditObject::ScAccessibleEditObject(const rtl::Reference<ScAccessibleDocument>& rpParent,
                                                EditView* pEditView, vcl::Window* pWin,
                                                const OUString& rName, const OUString& rDescription,
                                                EditObjectType eObjectType)

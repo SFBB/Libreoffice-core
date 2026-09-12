@@ -33,6 +33,7 @@ namespace accessibility
     class AccessibleTextHelper;
 }
 class EditView;
+class ScAccessibleDocument;
 class ScTextWnd;
 namespace vcl { class Window; }
 
@@ -53,7 +54,7 @@ public:
     };
 
     ScAccessibleEditObject(
-        const rtl::Reference<comphelper::OAccessible>& rpParent,
+        const rtl::Reference<ScAccessibleDocument>& rpParent,
         EditView* pEditView, vcl::Window* pWin, const OUString& rName,
         const OUString& rDescription, EditObjectType eObjectType);
 
