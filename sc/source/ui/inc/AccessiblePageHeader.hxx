@@ -30,8 +30,8 @@ class ScAccessiblePageHeaderArea;
 class ScAccessiblePageHeader final : public ScAccessibleContextBase
 {
 public:
-    ScAccessiblePageHeader( const css::uno::Reference<css::accessibility::XAccessible>& rxParent,
-                            ScPreviewShell* pViewShell, bool bHeader, sal_Int32 nIndex );
+    ScAccessiblePageHeader(const rtl::Reference<comphelper::OAccessible>& rpParent,
+                           ScPreviewShell* pViewShell, bool bHeader, sal_Int32 nIndex);
 
 protected:
     virtual ~ScAccessiblePageHeader() override;
