@@ -37,11 +37,9 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
 
 ScAccessibleContextBase::ScAccessibleContextBase(
-                                                 uno::Reference<XAccessible> xParent,
-                                                 const sal_Int16 aRole)
-                                                 :
-    mxParent(std::move(xParent)),
-    maRole(aRole)
+    const rtl::Reference<comphelper::OAccessible>& rpParent, const sal_Int16 aRole)
+    : mxParent(rpParent)
+    , maRole(aRole)
 {
 }
 
