@@ -44,10 +44,8 @@ class ScAccessibleDocument final
       public accessibility::IAccessibleViewForwarder
 {
 public:
-    ScAccessibleDocument(
-        const css::uno::Reference<css::accessibility::XAccessible>& rxParent,
-        ScTabViewShell* pViewShell,
-        ScSplitPos eSplitPos);
+    ScAccessibleDocument(const rtl::Reference<comphelper::OAccessible>& rpParent,
+                         ScTabViewShell* pViewShell, ScSplitPos eSplitPos);
 
     void PreInit();
 

@@ -1284,14 +1284,12 @@ void ScChildrenShapes::VisAreaChanged() const
             pAccShapeData->pAccShape->ViewForwarderChanged();
 }
 
-ScAccessibleDocument::ScAccessibleDocument(
-        const uno::Reference<XAccessible>& rxParent,
-        ScTabViewShell* pViewShell,
-        ScSplitPos eSplitPos)
-    : ImplInheritanceHelper(rxParent),
-    mpViewShell(pViewShell),
-    meSplitPos(eSplitPos),
-    mbCompleteSheetSelected(false)
+ScAccessibleDocument::ScAccessibleDocument(const rtl::Reference<comphelper::OAccessible>& rpParent,
+                                           ScTabViewShell* pViewShell, ScSplitPos eSplitPos)
+    : ImplInheritanceHelper(rpParent)
+    , mpViewShell(pViewShell)
+    , meSplitPos(eSplitPos)
+    , mbCompleteSheetSelected(false)
 {
     maVisArea = GetVisibleArea_Impl();
 }
