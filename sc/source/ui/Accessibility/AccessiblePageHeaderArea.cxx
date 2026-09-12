@@ -41,14 +41,12 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
 
 ScAccessiblePageHeaderArea::ScAccessiblePageHeaderArea(
-        const uno::Reference<XAccessible>& rxParent,
-        ScPreviewShell* pViewShell,
-        const EditTextObject* pEditObj,
-        SvxAdjust eAdjust)
-        : ScAccessibleContextBase(rxParent, AccessibleRole::TEXT),
-        mpEditObj(std::make_unique<EditTextObject>(*pEditObj)),
-        mpViewShell(pViewShell),
-        meAdjust(eAdjust)
+    const rtl::Reference<comphelper::OAccessible>& rpParent, ScPreviewShell* pViewShell,
+    const EditTextObject* pEditObj, SvxAdjust eAdjust)
+    : ScAccessibleContextBase(rpParent, AccessibleRole::TEXT)
+    , mpEditObj(std::make_unique<EditTextObject>(*pEditObj))
+    , mpViewShell(pViewShell)
+    , meAdjust(eAdjust)
 {
     if (mpViewShell)
         mpViewShell->AddAccessibilityObject(*this);
