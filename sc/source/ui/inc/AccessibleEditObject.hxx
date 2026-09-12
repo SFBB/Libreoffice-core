@@ -20,6 +20,7 @@
 #pragma once
 
 #include "AccessibleContextBase.hxx"
+#include "AccessibleDocument.hxx"
 
 #include <com/sun/star/accessibility/XAccessibleSelection.hpp>
 #include <address.hxx>
@@ -33,7 +34,6 @@ namespace accessibility
     class AccessibleTextHelper;
 }
 class EditView;
-class ScAccessibleDocument;
 class ScTextWnd;
 namespace vcl { class Window; }
 
@@ -58,9 +58,8 @@ public:
         EditView* pEditView, vcl::Window* pWin, const OUString& rName,
         const OUString& rDescription, EditObjectType eObjectType);
 
-    void InitAcc(
-        const rtl::Reference<comphelper::OAccessible>& rpParent,
-        EditView* pEditView, const OUString& rName, const OUString& rDescription);
+    void InitAcc(const rtl::Reference<ScAccessibleDocument>& rpParent, EditView* pEditView,
+                 const OUString& rName, const OUString& rDescription);
 
 protected:
     virtual ~ScAccessibleEditObject() override;

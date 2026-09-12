@@ -22,7 +22,6 @@
 #include <memory>
 #include <utility>
 
-#include <AccessibleDocument.hxx>
 #include <AccessibleEditObject.hxx>
 #include <AccessibleText.hxx>
 #include <editsrc.hxx>
@@ -81,11 +80,9 @@ ScAccessibleEditObject::ScAccessibleEditObject(EditObjectType eObjectType)
 {
 }
 
-void ScAccessibleEditObject::InitAcc(
-        const rtl::Reference<comphelper::OAccessible>& rpParent,
-        EditView* pEditView,
-        const OUString& rName,
-        const OUString& rDescription)
+void ScAccessibleEditObject::InitAcc(const rtl::Reference<ScAccessibleDocument>& rpParent,
+                                     EditView* pEditView, const OUString& rName,
+                                     const OUString& rDescription)
 {
     SetParent(rpParent);
     mpEditView = pEditView;
@@ -93,14 +90,10 @@ void ScAccessibleEditObject::InitAcc(
     CreateTextHelper();
     SetName(rName);
     SetDescription(rDescription);
-    if( meObjectType == CellInEditMode)
+    if (meObjectType == CellInEditMode && rpParent.is())
     {
-        const ScAccessibleDocument* pAccDoc = static_cast<ScAccessibleDocument*>(rpParent.get());
-        if (pAccDoc)
-        {
-            m_pScDoc = pAccDoc->GetDocument();
-            m_curCellAddress =pAccDoc->GetCurCellAddress();
-        }
+        m_pScDoc = rpParent->GetDocument();
+        m_curCellAddress = rpParent->GetCurCellAddress();
     }
 }
 
