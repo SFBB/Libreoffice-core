@@ -35,10 +35,9 @@ class ScAccessiblePreviewHeaderCell final
                                          css::accessibility::XAccessibleValue>
 {
 public:
-    ScAccessiblePreviewHeaderCell( const css::uno::Reference<css::accessibility::XAccessible>& rxParent,
-                            ScPreviewShell* pViewShell,
-                            const ScAddress& rCellPos, bool bIsColHdr, bool bIsRowHdr,
-                            sal_Int32 nIndex );
+    ScAccessiblePreviewHeaderCell(const rtl::Reference<comphelper::OAccessible>& rpParent,
+                                  ScPreviewShell* pViewShell, const ScAddress& rCellPos,
+                                  bool bIsColHdr, bool bIsRowHdr, sal_Int32 nIndex);
 
 protected:
     virtual ~ScAccessiblePreviewHeaderCell() override;

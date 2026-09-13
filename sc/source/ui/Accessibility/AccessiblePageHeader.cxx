@@ -47,14 +47,15 @@ using namespace ::com::sun::star::accessibility;
 
 const sal_uInt8     MAX_AREAS = 3;
 
-ScAccessiblePageHeader::ScAccessiblePageHeader( const css::uno::Reference<css::accessibility::XAccessible>& rxParent,
-                            ScPreviewShell* pViewShell, bool bHeader, sal_Int32 nIndex ) :
-ScAccessibleContextBase( rxParent, bHeader ? AccessibleRole::HEADER : AccessibleRole::FOOTER ),
-    mpViewShell( pViewShell ),
-    mnIndex( nIndex ),
-    mbHeader( bHeader ),
-    maAreas(MAX_AREAS, rtl::Reference<ScAccessiblePageHeaderArea>()),
-    mnChildCount(-1)
+ScAccessiblePageHeader::ScAccessiblePageHeader(
+    const rtl::Reference<comphelper::OAccessible>& rpParent, ScPreviewShell* pViewShell,
+    bool bHeader, sal_Int32 nIndex)
+    : ScAccessibleContextBase(rpParent, bHeader ? AccessibleRole::HEADER : AccessibleRole::FOOTER)
+    , mpViewShell(pViewShell)
+    , mnIndex(nIndex)
+    , mbHeader(bHeader)
+    , maAreas(MAX_AREAS, rtl::Reference<ScAccessiblePageHeaderArea>())
+    , mnChildCount(-1)
 {
     if (mpViewShell)
         mpViewShell->AddAccessibilityObject(*this);

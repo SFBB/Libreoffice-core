@@ -33,9 +33,8 @@ class AccessiblePageShape final
     :   public AccessibleShape
 {
 public:
-
     /** Create a new accessible object that makes the given shape accessible.
-        @param rxParent
+        @param rpParent
             The accessible parent object.  It will be used, for example when
             the <member>getIndexInParent</member> method is called.
         @param rShapeTreeInfo
@@ -47,10 +46,9 @@ public:
             broadcasters.  That would delete the new object if a broadcaster
             would not keep a strong reference to the new object.
     */
-    AccessiblePageShape (
-        css::uno::Reference<css::drawing::XDrawPage> xPage,
-        const css::uno::Reference<css::accessibility::XAccessible>& rxParent,
-        const AccessibleShapeTreeInfo& rShapeTreeInfo);
+    AccessiblePageShape(css::uno::Reference<css::drawing::XDrawPage> xPage,
+                        const rtl::Reference<comphelper::OAccessible>& rpParent,
+                        const AccessibleShapeTreeInfo& rShapeTreeInfo);
 
     virtual ~AccessiblePageShape() override;
 

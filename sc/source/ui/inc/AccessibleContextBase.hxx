@@ -38,9 +38,8 @@ class ScAccessibleContextBase : public comphelper::OAccessible, public SfxListen
 {
 
 public:
-    ScAccessibleContextBase(
-        css::uno::Reference<css::accessibility::XAccessible> xParent,
-        const sal_Int16 aRole);
+    ScAccessibleContextBase(const rtl::Reference<comphelper::OAccessible>& rpParent,
+                            const sal_Int16 aRole);
 
     virtual void Init();
     virtual void SAL_CALL disposing() override;

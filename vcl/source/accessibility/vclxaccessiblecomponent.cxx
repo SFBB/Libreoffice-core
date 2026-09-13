@@ -641,16 +641,11 @@ awt::Rectangle VCLXAccessibleComponent::implGetBounds()
     AbsoluteScreenPixelRectangle aRect = pWindow->GetWindowExtentsAbsolute();
     awt::Rectangle aBounds = vcl::unohelper::ConvertToAWTRect(aRect);
 
-    css::uno::Reference<css::accessibility::XAccessible> xParent = pWindow->GetAccessibleParent();
-    if (!xParent.is())
+    rtl::Reference<comphelper::OAccessible> pParent = pWindow->GetAccessibleParent();
+    if (!pParent.is())
         return aBounds;
 
-    css::uno::Reference<css::accessibility::XAccessibleComponent> xParentComponent(
-        xParent->getAccessibleContext(), css::uno::UNO_QUERY);
-    if (!xParentComponent)
-        return aBounds;
-
-    awt::Point aParentScreenLoc = xParentComponent->getLocationOnScreen();
+    awt::Point aParentScreenLoc = pParent->getLocationOnScreen();
     aBounds.X -= aParentScreenLoc.X;
     aBounds.Y -= aParentScreenLoc.Y;
 

@@ -36,12 +36,11 @@ using ::com::sun::star::uno::Reference;
 
 namespace accessibility {
 
-AccessiblePageShape::AccessiblePageShape (
-    uno::Reference<drawing::XDrawPage> xPage,
-    const uno::Reference<XAccessible>& rxParent,
-    const AccessibleShapeTreeInfo& rShapeTreeInfo)
-    : AccessibleShape (AccessibleShapeInfo (nullptr, rxParent), rShapeTreeInfo),
-      mxPage (std::move(xPage))
+AccessiblePageShape::AccessiblePageShape(uno::Reference<drawing::XDrawPage> xPage,
+                                         const rtl::Reference<comphelper::OAccessible>& rpParent,
+                                         const AccessibleShapeTreeInfo& rShapeTreeInfo)
+    : AccessibleShape(AccessibleShapeInfo(nullptr, rpParent), rShapeTreeInfo)
+    , mxPage(std::move(xPage))
 {
     // The main part of the initialization is done in the init method which
     // has to be called from this constructor's caller.

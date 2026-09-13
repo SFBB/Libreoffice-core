@@ -42,22 +42,15 @@ class ScAccessibleCell final : public ScAccessibleCellBase,
                                public accessibility::AccessibleStaticTextBase
 {
 public:
-    static rtl::Reference<ScAccessibleCell> create(
-        const css::uno::Reference<css::accessibility::XAccessible>& rxParent,
-        ScTabViewShell* pViewShell,
-        const ScAddress& rCellAddress,
-        sal_Int64 nIndex,
-        ScSplitPos eSplitPos,
-        ScAccessibleDocument* pAccDoc);
+    static rtl::Reference<ScAccessibleCell>
+    create(const rtl::Reference<comphelper::OAccessible>& rpParent, ScTabViewShell* pViewShell,
+           const ScAddress& rCellAddress, sal_Int64 nIndex, ScSplitPos eSplitPos,
+           ScAccessibleDocument* pAccDoc);
 
 private:
-    ScAccessibleCell(
-        const css::uno::Reference<css::accessibility::XAccessible>& rxParent,
-        ScTabViewShell* pViewShell,
-        const ScAddress& rCellAddress,
-        sal_Int64 nIndex,
-        ScSplitPos eSplitPos,
-        ScAccessibleDocument* pAccDoc);
+    ScAccessibleCell(const rtl::Reference<comphelper::OAccessible>& rpParent,
+                     ScTabViewShell* pViewShell, const ScAddress& rCellAddress, sal_Int64 nIndex,
+                     ScSplitPos eSplitPos, ScAccessibleDocument* pAccDoc);
 
     using ScAccessibleCellBase::disposing;
     virtual void SAL_CALL disposing() override;

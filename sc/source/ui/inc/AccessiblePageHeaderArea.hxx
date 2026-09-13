@@ -33,11 +33,10 @@ class ScAccessiblePageHeaderArea final
     :   public ScAccessibleContextBase
 {
 public:
-    ScAccessiblePageHeaderArea(
-        const css::uno::Reference<css::accessibility::XAccessible>& rxParent,
-        ScPreviewShell* pViewShell,
-        const EditTextObject* pEditObj,
-        SvxAdjust eAdjust);
+    ScAccessiblePageHeaderArea(const rtl::Reference<comphelper::OAccessible>& rpParent,
+                               ScPreviewShell* pViewShell, const EditTextObject* pEditObj,
+                               SvxAdjust eAdjust);
+
 protected:
     virtual ~ScAccessiblePageHeaderArea() override;
 public:

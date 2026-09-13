@@ -28,11 +28,9 @@ class ScAccessibleCellBase
                                          css::accessibility::XAccessibleValue>
 {
 public:
-    ScAccessibleCellBase(
-        const css::uno::Reference<css::accessibility::XAccessible>& rxParent,
-        ScDocument* pDoc,
-        const ScAddress& rCellAddress,
-        sal_Int64 nIndex);
+    ScAccessibleCellBase(const rtl::Reference<comphelper::OAccessible>& rpParent, ScDocument* pDoc,
+                         const ScAddress& rCellAddress, sal_Int64 nIndex);
+
 protected:
     virtual ~ScAccessibleCellBase() override;
 public:

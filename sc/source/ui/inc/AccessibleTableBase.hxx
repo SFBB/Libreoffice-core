@@ -32,10 +32,9 @@ class ScAccessibleTableBase
           css::accessibility::XAccessibleTable, css::accessibility::XAccessibleSelection>
 {
 public:
-    ScAccessibleTableBase(
-        const css::uno::Reference<css::accessibility::XAccessible>& rxParent,
-        ScDocument* pDoc,
-        const ScRange& rRange);
+    ScAccessibleTableBase(const rtl::Reference<comphelper::OAccessible>& rpParent, ScDocument* pDoc,
+                          const ScRange& rRange);
+
 protected:
     virtual ~ScAccessibleTableBase() override;
 public:

@@ -30,8 +30,8 @@ class ScAccessiblePreviewTable
                                          css::accessibility::XAccessibleTable>
 {
 public:
-    ScAccessiblePreviewTable( const css::uno::Reference<css::accessibility::XAccessible>& rxParent,
-                            ScPreviewShell* pViewShell, sal_Int32 nIndex );
+    ScAccessiblePreviewTable(const rtl::Reference<comphelper::OAccessible>& rpParent,
+                             ScPreviewShell* pViewShell, sal_Int32 nIndex);
 
 protected:
     virtual ~ScAccessiblePreviewTable() override;

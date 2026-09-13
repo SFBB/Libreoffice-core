@@ -50,10 +50,9 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::accessibility;
 
 ScAccessiblePreviewHeaderCell::ScAccessiblePreviewHeaderCell(
-    const css::uno::Reference<css::accessibility::XAccessible>& rxParent,
-    ScPreviewShell* pViewShell, const ScAddress& rCellPos, bool bIsColHdr, bool bIsRowHdr,
-    sal_Int32 nIndex)
-    : ImplInheritanceHelper(rxParent, AccessibleRole::TABLE_CELL)
+    const rtl::Reference<comphelper::OAccessible>& rpParent, ScPreviewShell* pViewShell,
+    const ScAddress& rCellPos, bool bIsColHdr, bool bIsRowHdr, sal_Int32 nIndex)
+    : ImplInheritanceHelper(rpParent, AccessibleRole::TABLE_CELL)
     , mpViewShell(pViewShell)
     , mnIndex(nIndex)
     , maCellPos(rCellPos)
