@@ -20,6 +20,7 @@
 #include <sal/config.h>
 
 #include <algorithm>
+#include <cmath>
 
 #include <tools/debug.hxx>
 #include <tools/poly.hxx>
@@ -773,52 +774,136 @@ void XPolygon::Scale(double fSx, double fSy)
  *     2: bottom right 3----2
  *     3: bottom left
  */
+// Subdivide before distorting for more accuracy.
 void XPolygon::Distort(const tools::Rectangle& rRefRect,
                        const XPolygon& rDistortedRect)
 {
     std::as_const(m_pImpXPolygon)->CheckPointDelete();
+    if (GetPointCount() < 2)
+        return;
+    DBG_ASSERT(rDistortedRect.m_pImpXPolygon->nPoints >= 4,
+        "Distort: rectangle too small");
 
-    tools::Long    Xr, Wr;
-    tools::Long    Yr, Hr;
-
-    Xr = rRefRect.Left();
-    Yr = rRefRect.Top();
-    Wr = rRefRect.GetWidth();
-    Hr = rRefRect.GetHeight();
-
-    if ( !Wr || !Hr )
+    tools::Long Xr = rRefRect.Left();
+    tools::Long Yr = rRefRect.Top();
+    tools::Long Wr = rRefRect.GetWidth();
+    tools::Long Hr = rRefRect.GetHeight();
+    if (!Wr || !Hr)
         return;
 
-    tools::Long    X1, X2, X3, X4;
-    tools::Long    Y1, Y2, Y3, Y4;
-    DBG_ASSERT(rDistortedRect.m_pImpXPolygon->nPoints >= 4,
-               "Distort: rectangle too small");
+    XPolygon aOriginal(*this);
+    sal_uInt16 nOldCnt = aOriginal.GetPointCount();
+    bool canSubdivide = !(nOldCnt < 4 || (nOldCnt - 1) % 3 != 0);
 
-    X1 = rDistortedRect[0].X();
-    Y1 = rDistortedRect[0].Y();
-    X2 = rDistortedRect[1].X();
-    Y2 = rDistortedRect[1].Y();
-    X3 = rDistortedRect[3].X();
-    Y3 = rDistortedRect[3].Y();
-    X4 = rDistortedRect[2].X();
-    Y4 = rDistortedRect[2].Y();
+    constexpr sal_uInt16 nMaxSegments = 512;
+    sal_uInt16 nSegments = canSubdivide ? (nOldCnt - 1) / 3 : 0;
+    sal_uInt16 nNewCnt = nOldCnt;
 
-    sal_uInt16 nPntCnt = m_pImpXPolygon->nPoints;
-
-    for (sal_uInt16 i = 0; i < nPntCnt; i++)
+    if (nSegments > 0 && nSegments <= nMaxSegments)
     {
-        double  fTx, fTy, fUx, fUy;
+        constexpr double fSubdivideThreshold = 0.02;
+        double aSegLen[nMaxSegments];
+        bool aSubdivideSeg[nMaxSegments];
+        double fTotalLen = 0.0;
+
+        auto dist = [](const Point& a, const Point& b)
+        {
+            double dx = a.X() - b.X(), dy = a.Y() - b.Y();
+            return std::sqrt(dx*dx + dy*dy);
+        };
+
+        for (sal_uInt16 nSeg = 0; nSeg < nSegments; ++nSeg)
+        {
+            sal_uInt16 nPos = 3 * nSeg;
+            const Point& p0 = aOriginal.m_pImpXPolygon->pPointAry[nPos];
+            const Point& p1 = aOriginal.m_pImpXPolygon->pPointAry[nPos + 1];
+            const Point& p2 = aOriginal.m_pImpXPolygon->pPointAry[nPos + 2];
+            const Point& p3 = aOriginal.m_pImpXPolygon->pPointAry[nPos + 3];
+
+            aSegLen[nSeg] = dist(p0, p1) + dist(p1, p2) + dist(p2, p3);
+            fTotalLen += aSegLen[nSeg];
+        }
+
+        sal_uInt32 nNewCnt32 = 0;
+
+        for (sal_uInt16 nSeg = 0; nSeg < nSegments; ++nSeg)
+        {
+            bool bSub = aSegLen[nSeg] > fTotalLen * fSubdivideThreshold;
+            aSubdivideSeg[nSeg] = bSub;
+            nNewCnt32 += (bSub ? 24 : 3) + (nSeg == 0 ? 1 : 0);
+        }
+
+        // If subdivision would overflow the point count,
+        // fall back on old behavior.
+        if (nNewCnt32 <= std::numeric_limits<sal_uInt16>::max())
+        {
+            nNewCnt = static_cast<sal_uInt16>(nNewCnt32);
+            SetPointCount(nNewCnt);
+            sal_uInt16 nOut = 0;
+
+            for (sal_uInt16 nSeg = 0; nSeg < nSegments; ++nSeg)
+            {
+                sal_uInt16 nPos = 3 * nSeg;
+                if (aSubdivideSeg[nSeg])
+                {
+                    for (sal_uInt16 nPiece = 0; nPiece < 8; ++nPiece)
+                    {
+                        XPolygon aPiece(aOriginal);
+                        double fA = static_cast<double>(nPiece) / 8.0;
+                        double fB = static_cast<double>(nPiece + 1) / 8.0;
+                        if (fA != 0.0)
+                            aPiece.SubdivideBezier(nPos, false, fA);
+                        aPiece.SubdivideBezier(
+                            nPos, true,
+                            (fB - fA) / (1.0 - fA));
+                        sal_uInt16 nFirstPoint =
+                            (nSeg == 0 && nPiece == 0) ? 0 : 1;
+                        for (sal_uInt16 j = nFirstPoint; j < 4; ++j)
+                        {
+                            m_pImpXPolygon->pPointAry[nOut] =
+                                aPiece.m_pImpXPolygon->pPointAry[nPos + j];
+                            m_pImpXPolygon->pFlagAry[nOut] =
+                                aPiece.m_pImpXPolygon->pFlagAry[nPos + j];
+                            ++nOut;
+                        }
+                    }
+                }
+                else
+                {
+                    sal_uInt16 nFirstPoint = (nSeg == 0) ? 0 : 1;
+                    for (sal_uInt16 j = nFirstPoint; j < 4; ++j)
+                    {
+                        m_pImpXPolygon->pPointAry[nOut] =
+                            aOriginal.m_pImpXPolygon->pPointAry[nPos + j];
+                        m_pImpXPolygon->pFlagAry[nOut] =
+                            aOriginal.m_pImpXPolygon->pFlagAry[nPos + j];
+                        ++nOut;
+                    }
+                }
+            }
+        }
+    }
+
+    tools::Long X1 = rDistortedRect[0].X();
+    tools::Long Y1 = rDistortedRect[0].Y();
+    tools::Long X2 = rDistortedRect[1].X();
+    tools::Long Y2 = rDistortedRect[1].Y();
+    tools::Long X3 = rDistortedRect[3].X();
+    tools::Long Y3 = rDistortedRect[3].Y();
+    tools::Long X4 = rDistortedRect[2].X();
+    tools::Long Y4 = rDistortedRect[2].Y();
+
+    for (sal_uInt16 i = 0; i < nNewCnt; i++)
+    {
         Point& rPnt = m_pImpXPolygon->pPointAry[i];
 
-        fTx = static_cast<double>(rPnt.X() - Xr) / Wr;
-        fTy = static_cast<double>(rPnt.Y() - Yr) / Hr;
-        fUx = 1.0 - fTx;
-        fUy = 1.0 - fTy;
+        double fTx = static_cast<double>(rPnt.X() - Xr) / Wr;
+        double fTy = static_cast<double>(rPnt.Y() - Yr) / Hr;
+        double fUx = 1.0 - fTx;
+        double fUy = 1.0 - fTy;
 
-        rPnt.setX( static_cast<tools::Long>( fUy * (fUx * X1 + fTx * X2) +
-                            fTy * (fUx * X3 + fTx * X4) ) );
-        rPnt.setY( static_cast<tools::Long>( fUx * (fUy * Y1 + fTy * Y3) +
-                            fTx * (fUy * Y2 + fTy * Y4) ) );
+        rPnt.setX(static_cast<tools::Long>(fUy * (fUx * X1 + fTx * X2) + fTy * (fUx * X3 + fTx * X4)));
+        rPnt.setY(static_cast<tools::Long>(fUx * (fUy * Y1 + fTy * Y3) + fTx * (fUy * Y2 + fTy * Y4)));
     }
 }
 
