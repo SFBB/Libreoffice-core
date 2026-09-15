@@ -22,6 +22,7 @@
 #include <undotab.hxx>
 #include <attrib.hxx>
 #include <dbdata.hxx>
+#include <filterentries.hxx>
 #include <reftokenhelper.hxx>
 #include <userdat.hxx>
 #include <refdata.hxx>
@@ -874,6 +875,28 @@ CPPUNIT_TEST_FIXTURE(Test, testDataEntries)
     CPPUNIT_ASSERT_EQUAL(u"Charlie"_ustr, it->GetString());
     ++it;
     CPPUNIT_ASSERT_MESSAGE("The entries should have ended here.", bool(it == aEntries.end()));
+
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testTdf158326_GermanEszett)
+{
+    m_pDoc->InsertTab(0, u"Test"_ustr);
+
+    m_pDoc->SetString(ScAddress(0, 0, 0), u"Strasse"_ustr);
+    m_pDoc->SetString(ScAddress(0, 1, 0), u"Straße"_ustr);
+    m_pDoc->SetString(ScAddress(0, 2, 0), u"STRASSE"_ustr);
+
+    ScFilterEntries aFilterEntries;
+    m_pDoc->GetFilterEntriesArea(0, 0, 2, 0, /*bCaseSens*/ false, aFilterEntries);
+
+    // Without the fix in place, this test would have failed with
+    // - Expected: 2
+    // - Actual  : 1
+    // i.e. the German "ß" would have been folded to "ss" leaving just a single entry
+    CPPUNIT_ASSERT_EQUAL(size_t(2), aFilterEntries.size());
+    CPPUNIT_ASSERT_EQUAL(u"Strasse"_ustr, aFilterEntries.maStrData[0].GetString());
+    CPPUNIT_ASSERT_EQUAL(u"Straße"_ustr, aFilterEntries.maStrData[1].GetString());
 
     m_pDoc->DeleteTab(0);
 }
@@ -4554,6 +4577,40 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf106137_UnicodeEscapeInReplacement)
 
     // shouldn't be 'A find B'
     CPPUNIT_ASSERT_EQUAL(u"A find \\u0042"_ustr, m_pDoc->GetString(ScAddress(0, 1, 0)));
+
+    m_pDoc->DeleteTab(0);
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testSearchCellsIgnoreDiacritics)
+{
+    m_pDoc->InsertTab(0, u"Test"_ustr);
+
+    // The same two letters, written with a precomposed accented character and
+    // with a base letter followed by a combining mark.
+    m_pDoc->SetString(ScAddress(0,0,0), u"a\u00e1"_ustr);
+    m_pDoc->SetString(ScAddress(0,1,0), u"a\u0061\u0308"_ustr);
+
+    SvxSearchItem aItem(SID_SEARCH_ITEM);
+    aItem.SetSearchString(u"aa"_ustr);
+    aItem.SetCommand(SvxSearchCmd::FIND_ALL);
+    aItem.SetTransliterationFlags(TransliterationFlags::IGNORE_DIACRITICS_CTL);
+    ScMarkData aMarkData(m_pDoc->GetSheetLimits());
+    aMarkData.SelectOneTable(0);
+    SCCOL nCol = 0;
+    SCROW nRow = 0;
+    SCTAB nTab = 0;
+    ScRangeList aMatchedRanges;
+    OUString aUndoStr;
+    bool bMatchedRangesWereClamped = false;
+    bool bSuccess = m_pDoc->SearchAndReplace(aItem, nCol, nRow, nTab, aMarkData, aMatchedRanges,
+                                             aUndoStr, nullptr, bMatchedRangesWereClamped);
+
+    // A search that ignores diacritics finds both spellings. Without the
+    // accompanying fix only the second cell was found, because the accent of
+    // the first one was still compared.
+    CPPUNIT_ASSERT(bSuccess);
+    CPPUNIT_ASSERT(aMatchedRanges.Contains(ScRange(ScAddress(0,0,0))));
+    CPPUNIT_ASSERT(aMatchedRanges.Contains(ScRange(ScAddress(0,1,0))));
 
     m_pDoc->DeleteTab(0);
 }

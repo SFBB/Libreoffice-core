@@ -263,7 +263,7 @@ bool ScTable::SearchCell(const SvxSearchItem& rSearchItem, SCCOL nCol, sc::Colum
     {
         ScFieldEditEngine& rEngine = rDocument.GetEditEngine();
         rEngine.SetTextCurrentDefaults(aString);
-        SetEditText(nCol, nRow, rEngine.CreateTextObject());
+        SetEditText(nCol, nRow, std::make_unique<EditTextObject>(rEngine.CreateTextObject()));
     }
     else
         aCol[nCol].SetString(nRow, nTab, aString, rDocument.GetAddressConvention());
@@ -842,12 +842,15 @@ bool ScTable::SearchAndReplace(
             aSearchOptions.Locale = ScGlobal::GetLocale();
 
             //  reflect UseAsianOptions flag in SearchOptions
-            //  (use only ignore case and width if asian options are disabled).
+            //  (use only ignore case and width if asian options are disabled,
+            //  plus the two options that stand on their own in the dialog).
             //  This is also done in SvxSearchDialog CommandHdl, but not in API object.
             if ( !rSearchItem.IsUseAsianOptions() )
                 aSearchOptions.transliterateFlags &=
                     TransliterationFlags::IGNORE_CASE |
-                      TransliterationFlags::IGNORE_WIDTH;
+                      TransliterationFlags::IGNORE_WIDTH |
+                      TransliterationFlags::IGNORE_DIACRITICS_CTL |
+                      TransliterationFlags::IGNORE_KASHIDA_CTL;
 
             pSearchText.reset( new utl::TextSearch( aSearchOptions ) );
 
