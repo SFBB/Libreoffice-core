@@ -39,6 +39,7 @@
 #include <unotools/syslocaleoptions.hxx>
 #include <unotools/useroptions.hxx>
 
+#include <drawview.hxx>
 #include <sc.hrc>
 #include <postit.hxx>
 #include <attrib.hxx>

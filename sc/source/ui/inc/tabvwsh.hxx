@@ -22,6 +22,8 @@
 #include <formula/errorcodes.hxx>
 #include <formula/opcode.hxx>
 #include <svx/fmshell.hxx>
+#include <svx/svdobjkind.hxx>
+#include <svl/style.hxx>
 #include <sfx2/viewsh.hxx>
 #include <editeng/svxenum.hxx>
 #include <o3tl/deleter.hxx>
@@ -38,6 +40,9 @@
 #include <map>
 
 class SdrOle2Obj;
+namespace com::sun::star::drawing { class XShapes; }
+namespace com::sun::star::table { struct CellRangeAddress; }
+class ScTableSheetObj;
 class SfxAbstractTabDialog;
 class SfxBindings;
 class SfxChildWindow;

@@ -33,6 +33,7 @@
 #include <vcl/svapp.hxx>
 #include <vcl/weld/MessageDialog.hxx>
 #include <sfx2/objface.hxx>
+#include <svtools/colorcfg.hxx>
 #include <svx/svxdlg.hxx>
 #include <editeng/colritem.hxx>
 

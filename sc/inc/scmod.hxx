@@ -25,6 +25,7 @@
 #include <svl/lstner.hxx>
 #include <sfx2/app.hxx>
 #include <sfx2/module.hxx>
+#include <svtools/colorcfg.hxx>
 #include "global.hxx"
 #include "shellids.hxx"
 #include <unotools/options.hxx>

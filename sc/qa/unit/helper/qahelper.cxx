@@ -11,6 +11,7 @@
 
 #include "qahelper.hxx"
 #include <LibreOfficeKit/LibreOfficeKitEnums.h>
+#include <drawview.hxx>
 #include <comphelper/propertysequence.hxx>
 #include "csv_handler.hxx"
 #include "debughelper.hxx"

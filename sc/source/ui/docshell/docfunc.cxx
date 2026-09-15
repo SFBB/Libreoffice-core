@@ -17,6 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <drawview.hxx>
 #include <svx/TableAutoFmt.hxx>
 #include <scitems.hxx>
 
