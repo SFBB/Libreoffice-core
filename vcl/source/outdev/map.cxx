@@ -679,13 +679,12 @@ basegfx::B2DPolyPolygon OutputDevice::LogicToPixel( const basegfx::B2DPolyPolygo
 
 Point OutputDevice::PixelToLogic( const Point& rDevicePt ) const
 {
-
     if ( !mpMapper->IsMapModeEnabled() )
         return rDevicePt;
 
     return Point(
-        mpMapper->ViewToLogicUnitsX(rDevicePt.X()) - mpMapper->GetLogicalXOffset(),
-        mpMapper->ViewToLogicUnitsY(rDevicePt.Y()) - mpMapper->GetLogicalYOffset()
+        mpMapper->ViewToLogicX(rDevicePt.X()),
+        mpMapper->ViewToLogicY(rDevicePt.Y())
     );
 }
 
@@ -697,8 +696,8 @@ Point OutputDevice::SubPixelToLogic(const basegfx::B2DPoint& rDevicePt) const
         return Point(rDevicePt.getX(), rDevicePt.getY());
     }
 
-    return Point(mpMapper->ViewSubPixelToLogicDistanceX(rDevicePt.getX()) - mpMapper->GetMappingXOffset() - mpMapper->GetLogicalXOffset(),
-                 mpMapper->ViewSubPixelToLogicDistanceY(rDevicePt.getY()) - mpMapper->GetMappingYOffset() - mpMapper->GetLogicalYOffset());
+    return Point(mpMapper->ViewSubPixelToLogicIntX(rDevicePt.getX()),
+                 mpMapper->ViewSubPixelToLogicIntY(rDevicePt.getY()));
 }
 
 Size OutputDevice::PixelToLogic( const Size& rDeviceSize ) const

@@ -29,6 +29,7 @@
 
 // forward
 
+class AccessibleIconChoiceCtrl;
 class SvtIconChoiceCtrl;
 
 typedef ::cppu::ImplInheritanceHelper<comphelper::OAccessible, css::accessibility::XAccessibleText,
@@ -44,7 +45,7 @@ class AccessibleIconChoiceCtrlEntry final : public AccessibleIconChoiceCtrlEntry
     VclPtr<SvtIconChoiceCtrl>           m_pIconCtrl;
     sal_Int32                           m_nIndex;
 
-    css::uno::Reference< css::accessibility::XAccessible > m_xParent;
+    rtl::Reference<AccessibleIconChoiceCtrl> m_pParent;
 
     tools::Rectangle               GetBoundingBox_Impl() const;
     bool                IsAlive_Impl() const;
@@ -78,9 +79,8 @@ public:
         @param  _xParent
             is our parent accessible object
     */
-    AccessibleIconChoiceCtrlEntry( SvtIconChoiceCtrl& _rIconCtrl,
-                                   sal_Int32 _nPos,
-                                   const css::uno::Reference< css::accessibility::XAccessible >& _xParent );
+    AccessibleIconChoiceCtrlEntry(SvtIconChoiceCtrl& _rIconCtrl, sal_Int32 _nPos,
+                                  const rtl::Reference<AccessibleIconChoiceCtrl>& rpParent);
 
     // XEventListener
     virtual void SAL_CALL disposing( const css::lang::EventObject& Source ) override;

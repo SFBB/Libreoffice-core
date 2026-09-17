@@ -153,15 +153,6 @@ public:
 
 }
 
-sal_uInt16 const aTitleMap_Impl[3][2] =
-{
-                                //  local               remote
-    /*  SFX_TITLE_CAPTION   */  {   SFX_TITLE_FILENAME, SFX_TITLE_TITLE },
-    /*  SFX_TITLE_PICKLIST  */  {   32,                 SFX_TITLE_FULLNAME },
-    /*  SFX_TITLE_HISTORY   */  {   32,                 SFX_TITLE_FULLNAME }
-};
-
-
 bool SfxObjectShell::IsAbortingImport() const
 {
     return pImpl->bIsAbortingImport;
@@ -808,16 +799,6 @@ OUString SfxObjectShell::GetTitle( sal_uInt16  nMaxLength ) const
     assert(pMed);
 
     const INetURLObject aURL( IsDocShared() ? GetSharedFileURL() : GetMedium()->GetName() );
-    if ( nMaxLength > SFX_TITLE_CAPTION && nMaxLength <= SFX_TITLE_HISTORY )
-    {
-        sal_uInt16 nRemote;
-        if (aURL.GetProtocol() == INetProtocol::File)
-            nRemote = 0;
-        else
-            nRemote = 1;
-        nMaxLength = aTitleMap_Impl[nMaxLength-SFX_TITLE_CAPTION][nRemote];
-    }
-
     // Local file?
     if ( aURL.GetProtocol() == INetProtocol::File )
     {
@@ -843,7 +824,7 @@ OUString SfxObjectShell::GetTitle( sal_uInt16  nMaxLength ) const
             const OUString aName = INetURLObject::decode( aURL.GetBase(), INetURLObject::DecodeMechanism::WithCharset );
             return aName.isEmpty() ? aURL.GetURLNoPass() : aName;
         }
-        if ( nMaxLength == SFX_TITLE_FULLNAME )
+        if (nMaxLength == SFX_TITLE_FULLNAME || nMaxLength == SFX_TITLE_PICKLIST || nMaxLength == SFX_TITLE_HISTORY)
             return aURL.GetMainURL( INetURLObject::DecodeMechanism::ToIUri );
 
         // Generate Title from file name if possible

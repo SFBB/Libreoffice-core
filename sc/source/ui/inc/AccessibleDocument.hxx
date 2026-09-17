@@ -183,7 +183,7 @@ private:
     rtl::Reference<ScAccessibleSpreadsheet> mpAccessibleSpreadsheet;
     std::unique_ptr<ScChildrenShapes> mpChildrenShapes;
     rtl::Reference<ScAccessibleEditObject> mpTempAccEdit;
-    css::uno::Reference<css::accessibility::XAccessible> mxTempAcc;
+    rtl::Reference<comphelper::OAccessible> mpTempAcc;
     tools::Rectangle maVisArea;
     bool mbCompleteSheetSelected;
 
@@ -197,7 +197,7 @@ private:
 
     bool IsDefunc(sal_Int64 nParentStates);
 
-    void AddChild(const css::uno::Reference<css::accessibility::XAccessible>& xAcc, bool bFireEvent);
+    void AddChild(const rtl::Reference<comphelper::OAccessible>& pAcc, bool bFireEvent);
     void RemoveChild(const css::uno::Reference<css::accessibility::XAccessible>& xAcc, bool bFireEvent);
 
     OUString GetCurrentCellName() const;

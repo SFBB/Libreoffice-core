@@ -194,19 +194,14 @@ OUString ScAccessiblePageHeaderArea::createAccessibleName()
 AbsoluteScreenPixelRectangle ScAccessiblePageHeaderArea::GetBoundingBoxOnScreen()
 {
     AbsoluteScreenPixelRectangle aRect;
-    if (mxParent.is())
+    if (mpParent.is())
     {
-        uno::Reference<XAccessibleContext> xContext = mxParent->getAccessibleContext();
-        uno::Reference<XAccessibleComponent> xComp(xContext, uno::UNO_QUERY);
-        if (xComp.is())
-        {
-            // has the same size and position on screen like the parent
-            aRect = AbsoluteScreenPixelRectangle(
-                AbsoluteScreenPixelPoint(
-                    vcl::unohelper::ConvertToVCLPoint(xComp->getLocationOnScreen())),
-                AbsoluteScreenPixelSize(
-                    vcl::unohelper::ConvertToVCLRect(xComp->getBounds()).GetSize()));
-        }
+        // has the same size and position on screen like the parent
+        aRect = AbsoluteScreenPixelRectangle(
+            AbsoluteScreenPixelPoint(
+                vcl::unohelper::ConvertToVCLPoint(mpParent->getLocationOnScreen())),
+            AbsoluteScreenPixelSize(
+                vcl::unohelper::ConvertToVCLRect(mpParent->getBounds()).GetSize()));
     }
     return aRect;
 }
@@ -214,17 +209,12 @@ AbsoluteScreenPixelRectangle ScAccessiblePageHeaderArea::GetBoundingBoxOnScreen(
 tools::Rectangle ScAccessiblePageHeaderArea::GetBoundingBox()
 {
     tools::Rectangle aRect;
-    if (mxParent.is())
+    if (mpParent.is())
     {
-        uno::Reference<XAccessibleContext> xContext = mxParent->getAccessibleContext();
-        uno::Reference<XAccessibleComponent> xComp(xContext, uno::UNO_QUERY);
-        if (xComp.is())
-        {
             // has the same size and position on screen like the parent and so the pos is (0, 0)
             tools::Rectangle aNewRect(Point(0, 0),
-                                      vcl::unohelper::ConvertToVCLRect(xComp->getBounds()).GetSize());
+                                      vcl::unohelper::ConvertToVCLRect(mpParent->getBounds()).GetSize());
             aRect = aNewRect;
-        }
     }
 
     return aRect;
