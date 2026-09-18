@@ -36,6 +36,8 @@
 #include <vcl/filter/pdfdocument.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/svapp.hxx>
+#include <rtl/character.hxx>
+#include <tools/stream.hxx>
 #include <tools/zcodec.hxx>
 #include <vcl/graphicfilter.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
@@ -333,7 +335,7 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest2, testTdf121615)
     CPPUNIT_ASSERT_EQUAL(tools::Long(300), aBitmap.GetSizePixel().Height());
     CPPUNIT_ASSERT_EQUAL(vcl::PixelFormat::N8_BPP, aBitmap.getPixelFormat());
     // tdf#121615 was caused by broken handling of data width with 8bit color,
-    // so the test image has some black in the bottomright corner, check it's there
+    // so the test image has some black in the bottom-right corner, check it's there
     CPPUNIT_ASSERT_EQUAL(COL_WHITE, aBitmap.GetPixelColor(0, 0));
     CPPUNIT_ASSERT_EQUAL(COL_WHITE, aBitmap.GetPixelColor(0, 299));
     CPPUNIT_ASSERT_EQUAL(COL_WHITE, aBitmap.GetPixelColor(199, 0));
@@ -632,7 +634,7 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest2, testReduceSmallImage)
     // Without the accompanying fix in place, this test would have failed with:
     // - Expected: 16
     // - Actual  : 6
-    // i.e. the image was scaled down to 300 DPI, even if it had tiny size.
+    // i.e. the image was scaled down to 300 DPI, even though it had a tiny size.
     CPPUNIT_ASSERT_EQUAL(16, nWidth);
     CPPUNIT_ASSERT_EQUAL(16, nHeight);
 }
@@ -831,7 +833,7 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest2, testLinkWrongPage)
 CPPUNIT_TEST_FIXTURE(PdfExportTest2, testLinkWrongPagePartial)
 {
     // Given a Draw document with 3 pages, a link on the 2nd page:
-    // When exporting that the 2nd and 3rd page to pdf:
+    // When exporting the 2nd and 3rd page to pdf:
     uno::Sequence<beans::PropertyValue> aFilterData = {
         comphelper::makePropertyValue(u"PageRange"_ustr, u"2-3"_ustr),
     };
@@ -840,7 +842,7 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest2, testLinkWrongPagePartial)
     loadFromFile(u"link-wrong-page-partial.odg");
     save(TestFilter::PDF_WRITER, aMediaDescriptor.getAsConstPropertyValueList());
 
-    // Then make sure the we have a link on the 1st page, but not on the 2nd one:
+    // Then make sure that we have a link on the 1st page, but not on the 2nd one:
     std::unique_ptr<vcl::pdf::PDFiumDocument> pPdfDocument
         = parsePDFExport(vcl::pdf::PDFiumLibrary::get());
     CPPUNIT_ASSERT_EQUAL(2, pPdfDocument->getPageCount());
@@ -996,8 +998,8 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest2, testTdf160196)
     // Create an empty document.
     mxComponent = loadFromDesktop("private:factory/swriter");
 
-    // Add a title to avoid
-    // The Metadata stream as specified in ISO 32000-2:2020,
+    // Add a title, because
+    // the Metadata stream as specified in ISO 32000-2:2020,
     // 14.3 in the document catalog dictionary shall contain a dc:title entry
     uno::Reference<document::XDocumentPropertiesSupplier> xDocumentPropertiesSupplier(
         mxComponent, uno::UNO_QUERY);
@@ -1090,7 +1092,7 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest2, testVersion20)
 
 // Check round-trip of importing and exporting the PDF with PDFium filter,
 // which imports the PDF document as multiple PDFs as graphic object.
-// Each page in the document has one PDF graphic object which content is
+// Each page in the document has one PDF graphic object whose content is
 // the corresponding page in the PDF. When such a document is exported,
 // the PDF graphic gets embedded into the exported PDF document (as a
 // Form XObject).
@@ -1932,7 +1934,7 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest2, testTdf136805)
 
 CPPUNIT_TEST_FIXTURE(PdfExportTest2, testTdf157517)
 {
-    // Only reproduced with PPDF-A/2 / bDF-A/3b and PDF/UA.
+    // Only reproduced with PDF/A-2 / PDF/A-3b and PDF/UA.
     uno::Sequence<beans::PropertyValue> aFilterData(comphelper::InitPropertySequence({
         { "PDFUACompliance", uno::Any(true) },
         { "SelectPdfVersion", uno::Any(static_cast<sal_Int32>(3)) },
@@ -2181,6 +2183,288 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest2, testTdf149140)
     CPPUNIT_ASSERT_EQUAL(6, nTH);
 }
 
+// the structure element type of a table cell that a row's kid refers to
+OString GetCellType(vcl::filter::PDFElement* pElement)
+{
+    auto pRef = dynamic_cast<vcl::filter::PDFReferenceElement*>(pElement);
+    CPPUNIT_ASSERT(pRef);
+    auto pCell = pRef->LookupObject();
+    CPPUNIT_ASSERT(pCell);
+    auto pS = dynamic_cast<vcl::filter::PDFNameElement*>(pCell->Lookup("S"_ostr));
+    CPPUNIT_ASSERT(pS);
+    return pS->GetValue();
+}
+
+CPPUNIT_TEST_FIXTURE(PdfExportTest2, testTdf173162)
+{
+    loadFromFile(u"StructureNamespaces.fodt");
+
+    // Tagged rather than PDF/UA, because the harness validates a PDF/UA export and this document
+    // still fails ISO 14289-2 8.8 (a link destination is not a structure destination, tdf#171022),
+    // 8.2.5.8 (a TOCI needs Ref) and 8.2.5.14 (PDF/UA-2 wants FENote, not Note). TODO: ask for
+    // PDF/UA here once those are fixed. The namespaces below depend on the version alone.
+    uno::Sequence aFilterData{ comphelper::makePropertyValue(u"UseTaggedPDF"_ustr, true),
+                               comphelper::makePropertyValue(u"SelectPdfVersion"_ustr,
+                                                             sal_Int32(20)) };
+    save(TestFilter::PDF_WRITER,
+         { comphelper::makePropertyValue(u"FilterData"_ustr, aFilterData) });
+
+    vcl::filter::PDFDocument aDocument;
+    CPPUNIT_ASSERT(aDocument.Read(*maTempFile.GetStream(StreamMode::READ)));
+
+    static constexpr OString aPDF17("http://iso.org/pdf/ssn"_ostr);
+    static constexpr OString aPDF20("http://iso.org/pdf2/ssn"_ostr);
+
+    // the namespace each element points at, by object
+    std::unordered_map<vcl::filter::PDFObjectElement*, OString> aNamespaceOf;
+    for (const auto& rDocElement : aDocument.GetElements())
+    {
+        auto pObject = dynamic_cast<vcl::filter::PDFObjectElement*>(rDocElement.get());
+        if (!pObject)
+            continue;
+        auto pType = dynamic_cast<vcl::filter::PDFNameElement*>(pObject->Lookup("Type"_ostr));
+        if (!pType || pType->GetValue() != "Namespace")
+            continue;
+        auto pURI = dynamic_cast<vcl::filter::PDFLiteralStringElement*>(pObject->Lookup("NS"_ostr));
+        CPPUNIT_ASSERT(pURI);
+        aNamespaceOf[pObject] = pURI->GetValue();
+
+        // the 1.7 namespace needs none: for it the structure tree root's RoleMap is the fallback
+        auto pMap
+            = dynamic_cast<vcl::filter::PDFDictionaryElement*>(pObject->Lookup("RoleMapNS"_ostr));
+        if (pURI->GetValue() == aPDF17)
+            CPPUNIT_ASSERT_MESSAGE("the 1.7 namespace maps nothing", !pMap);
+        else
+            CPPUNIT_ASSERT(pMap);
+    }
+    // one for PDF 2.0 and one for the types it dropped
+    CPPUNIT_ASSERT_EQUAL(size_t(2), aNamespaceOf.size());
+
+    CPPUNIT_ASSERT(aDocument.GetCatalog());
+    auto pRootRef = dynamic_cast<vcl::filter::PDFReferenceElement*>(
+        aDocument.GetCatalog()->Lookup("StructTreeRoot"_ostr));
+    CPPUNIT_ASSERT(pRootRef);
+    CPPUNIT_ASSERT(pRootRef->LookupObject());
+    auto pNamespaces = dynamic_cast<vcl::filter::PDFArrayElement*>(
+        pRootRef->LookupObject()->Lookup("Namespaces"_ostr));
+    CPPUNIT_ASSERT(pNamespaces);
+    CPPUNIT_ASSERT_EQUAL(size_t(2), pNamespaces->GetElements().size());
+    for (const auto pElement : pNamespaces->GetElements())
+    {
+        auto pRef = dynamic_cast<vcl::filter::PDFReferenceElement*>(pElement);
+        CPPUNIT_ASSERT(pRef);
+        CPPUNIT_ASSERT_MESSAGE("the root names a namespace object",
+                               aNamespaceOf.contains(pRef->LookupObject()));
+    }
+
+    // The references have to be separated in the file itself: "1 0 R2 0 R" is not two
+    // references, and this parser reads it as though it were, so check the bytes. veraPDF is
+    // stricter - it fails to parse such a file and reports nothing, which reads as a pass.
+    SvStream* pStream = maTempFile.GetStream(StreamMode::READ);
+    pStream->Seek(0);
+    const OString aFile(read_uInt8s_ToOString(*pStream, pStream->remainingSize()));
+    const sal_Int32 nStart(aFile.indexOf("/Namespaces ["));
+    CPPUNIT_ASSERT_GREATER(sal_Int32(-1), nStart);
+    const sal_Int32 nEnd(aFile.indexOf("]", nStart));
+    CPPUNIT_ASSERT_GREATER(nStart, nEnd);
+    const std::string_view aArray(aFile.subView(nStart, nEnd - nStart));
+    for (size_t nR = aArray.find('R'); nR != std::string_view::npos; nR = aArray.find('R', nR + 1))
+    {
+        const bool bSeparated(nR + 1 == aArray.size()
+                              || !rtl::isAsciiDigit(static_cast<unsigned char>(aArray[nR + 1])));
+        CPPUNIT_ASSERT_MESSAGE(
+            OString(OString::Concat("unseparated references in ") + aArray).getStr(), bSeparated);
+    }
+
+    // the namespace each structure type landed in
+    std::unordered_map<OString, OString> aNamespaceOfType;
+    for (const auto& rDocElement : aDocument.GetElements())
+    {
+        auto pObject = dynamic_cast<vcl::filter::PDFObjectElement*>(rDocElement.get());
+        if (!pObject)
+            continue;
+        auto pType = dynamic_cast<vcl::filter::PDFNameElement*>(pObject->Lookup("Type"_ostr));
+        if (!pType || pType->GetValue() != "StructElem")
+            continue;
+        auto pS = dynamic_cast<vcl::filter::PDFNameElement*>(pObject->Lookup("S"_ostr));
+        if (!pS)
+            continue;
+        auto pNS = dynamic_cast<vcl::filter::PDFReferenceElement*>(pObject->Lookup("NS"_ostr));
+        CPPUNIT_ASSERT_MESSAGE("every element in a PDF 2.0 file names its namespace", pNS);
+        const OString aURI(aNamespaceOf[pNS->LookupObject()]);
+        const auto aEntry(aNamespaceOfType.emplace(pS->GetValue(), aURI));
+        if (!aEntry.second)
+            CPPUNIT_ASSERT_EQUAL_MESSAGE("one type, two namespaces", aEntry.first->second, aURI);
+    }
+
+    // the types PDF 2.0 dropped, which ISO 14289-2 8.2.4 accepts only in the 1.7 namespace
+    CPPUNIT_ASSERT_EQUAL(aPDF17, aNamespaceOfType["TOC"_ostr]);
+    CPPUNIT_ASSERT_EQUAL(aPDF17, aNamespaceOfType["TOCI"_ostr]);
+    CPPUNIT_ASSERT_EQUAL(aPDF17, aNamespaceOfType["Index"_ostr]);
+    CPPUNIT_ASSERT_EQUAL(aPDF17, aNamespaceOfType["BlockQuote"_ostr]);
+    CPPUNIT_ASSERT_EQUAL(aPDF17, aNamespaceOfType["Quote"_ostr]);
+    CPPUNIT_ASSERT_EQUAL(aPDF17, aNamespaceOfType["Code"_ostr]);
+    CPPUNIT_ASSERT_EQUAL(aPDF17, aNamespaceOfType["Note"_ostr]);
+    CPPUNIT_ASSERT_EQUAL(aPDF17, aNamespaceOfType["BibEntry"_ostr]);
+    // and the ones it kept
+    CPPUNIT_ASSERT_EQUAL(aPDF20, aNamespaceOfType["Document"_ostr]);
+    CPPUNIT_ASSERT_EQUAL(aPDF20, aNamespaceOfType["H1"_ostr]);
+    CPPUNIT_ASSERT_EQUAL(aPDF20, aNamespaceOfType["Link"_ostr]);
+}
+
+CPPUNIT_TEST_FIXTURE(PdfExportTest2, testTdf166963)
+{
+    // Takes about two minutes locally, most of it in the PDFDocument below, which rescans its
+    // element list once per object. Disable the test if that costs CI too much.
+    //
+    // A table with more rows than ncMaxPDFArraySize, so its kid list has to be split into Div
+    // containers, and with a repeated heading row, which is emitted as a NonStructElement: that
+    // gives the Table element more children than kids, which is what the split used to mishandle.
+    utl::TempFileNamed aSource(u"tdf166963", true, u".fodt");
+    aSource.EnableKillingFile();
+    SvStream* pSource = aSource.GetStream(StreamMode::WRITE | StreamMode::TRUNC);
+    pSource->WriteOString(
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+        "<office:document"
+        " xmlns:office=\"urn:oasis:names:tc:opendocument:xmlns:office:1.0\""
+        " xmlns:style=\"urn:oasis:names:tc:opendocument:xmlns:style:1.0\""
+        " xmlns:text=\"urn:oasis:names:tc:opendocument:xmlns:text:1.0\""
+        " xmlns:table=\"urn:oasis:names:tc:opendocument:xmlns:table:1.0\""
+        " xmlns:fo=\"urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0\""
+        " xmlns:svg=\"urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0\""
+        " office:version=\"1.3\""
+        " office:mimetype=\"application/vnd.oasis.opendocument.text\">"
+        "<office:font-face-decls><style:font-face"
+        " style:name=\"Liberation Serif\""
+        " svg:font-family=\"&apos;Liberation Serif&apos;\"/>"
+        "</office:font-face-decls>"
+        "<office:styles><style:default-style style:family=\"paragraph\">"
+        "<style:text-properties style:font-name=\"Liberation Serif\""
+        " fo:font-size=\"6pt\" fo:language=\"en\" fo:country=\"US\"/>"
+        "</style:default-style></office:styles>"
+        "<office:body><office:text><table:table table:name=\"T\">"
+        "<table:table-column/>"
+        "<table:table-header-rows><table:table-row><table:table-cell"
+        " office:value-type=\"string\"><text:p>h</text:p></table:table-cell>"
+        "</table:table-row></table:table-header-rows>");
+    for (int i = 0; i < 8300; ++i)
+        pSource->WriteOString("<table:table-row><table:table-cell office:value-type=\"string\">"
+                              "<text:p>r</text:p></table:table-cell></table:table-row>");
+    pSource->WriteOString("</table:table></office:text></office:body></office:document>");
+    aSource.CloseStream();
+
+    loadFromURL(aSource.GetURL());
+
+    uno::Sequence aFilterData{ comphelper::makePropertyValue(u"UseTaggedPDF"_ustr, true) };
+    save(TestFilter::PDF_WRITER,
+         { comphelper::makePropertyValue(u"FilterData"_ustr, aFilterData) });
+
+    vcl::filter::PDFDocument aDocument;
+    CPPUNIT_ASSERT(aDocument.Read(*maTempFile.GetStream(StreamMode::READ)));
+
+    // which element actually lists each structure element as its kid
+    std::unordered_map<vcl::filter::PDFObjectElement*, vcl::filter::PDFObjectElement*> aLister;
+    std::vector<vcl::filter::PDFObjectElement*> aElements;
+    for (const auto& rDocElement : aDocument.GetElements())
+    {
+        auto pObject = dynamic_cast<vcl::filter::PDFObjectElement*>(rDocElement.get());
+        if (!pObject)
+            continue;
+        auto pType = dynamic_cast<vcl::filter::PDFNameElement*>(pObject->Lookup("Type"_ostr));
+        if (!pType)
+            continue;
+        const bool bRoot(pType->GetValue() == "StructTreeRoot");
+        if (!bRoot && pType->GetValue() != "StructElem")
+            continue;
+        if (!bRoot)
+            aElements.push_back(pObject);
+        auto pKids = dynamic_cast<vcl::filter::PDFArrayElement*>(pObject->Lookup("K"_ostr));
+        if (!pKids)
+            continue;
+        for (const auto pKid : pKids->GetElements())
+        {
+            auto pRef = dynamic_cast<vcl::filter::PDFReferenceElement*>(pKid);
+            if (!pRef)
+                continue;
+            CPPUNIT_ASSERT_MESSAGE("a structure element is the kid of two elements",
+                                   aLister.emplace(pRef->LookupObject(), pObject).second);
+        }
+    }
+    // a generated container holds exactly ncMaxPDFArraySize kids; without one the kid list
+    // never overflowed and the document proves nothing
+    size_t nFullContainers(0);
+    for (const auto pElement : aElements)
+    {
+        auto pS = dynamic_cast<vcl::filter::PDFNameElement*>(pElement->Lookup("S"_ostr));
+        auto pKids = dynamic_cast<vcl::filter::PDFArrayElement*>(pElement->Lookup("K"_ostr));
+        if (pS && pS->GetValue() == "Div" && pKids && pKids->GetElements().size() == 8191)
+            ++nFullContainers;
+    }
+    CPPUNIT_ASSERT_EQUAL(size_t(1), nFullContainers);
+
+    for (const auto pElement : aElements)
+    {
+        auto pParent = dynamic_cast<vcl::filter::PDFReferenceElement*>(pElement->Lookup("P"_ostr));
+        CPPUNIT_ASSERT(pParent);
+        CPPUNIT_ASSERT_MESSAGE("a structure element that nothing lists as its kid",
+                               aLister.contains(pElement));
+        CPPUNIT_ASSERT_EQUAL_MESSAGE("a structure element claims a parent that does not list it",
+                                     aLister.at(pElement), pParent->LookupObject());
+    }
+}
+
+CPPUNIT_TEST_FIXTURE(PdfExportTest2, testTdf173194)
+{
+    loadFromFile(u"TableHeadingDerived.fodt");
+
+    uno::Sequence aFilterData{ comphelper::makePropertyValue(u"PDFUACompliance"_ustr, true) };
+    save(TestFilter::PDF_WRITER,
+         { comphelper::makePropertyValue(u"FilterData"_ustr, aFilterData) });
+
+    SvFileStream aStream(maTempFile.GetURL(), StreamMode::READ);
+    vcl::filter::PDFDocument aDocument;
+    CPPUNIT_ASSERT(aDocument.Read(aStream));
+
+    vcl::filter::PDFObjectElement* pTableSE(nullptr);
+    for (const auto& rDocElement : aDocument.GetElements())
+    {
+        auto pObject = dynamic_cast<vcl::filter::PDFObjectElement*>(rDocElement.get());
+        if (!pObject)
+            continue;
+        auto pType = dynamic_cast<vcl::filter::PDFNameElement*>(pObject->Lookup("Type"_ostr));
+        auto pS = dynamic_cast<vcl::filter::PDFNameElement*>(pObject->Lookup("S"_ostr));
+        if (pType && pType->GetValue() == "StructElem" && pS && pS->GetValue() == "Table")
+        {
+            CPPUNIT_ASSERT(!pTableSE);
+            pTableSE = pObject;
+        }
+    }
+    CPPUNIT_ASSERT(pTableSE);
+
+    auto pRows = dynamic_cast<vcl::filter::PDFArrayElement*>(pTableSE->Lookup("K"_ostr));
+    CPPUNIT_ASSERT(pRows);
+    CPPUNIT_ASSERT_EQUAL(size_t(2), pRows->GetElements().size());
+
+    // the first column is Table Heading in row one and a style derived from it in row two,
+    // so both rows read TH then TD
+    for (const auto pRowElement : pRows->GetElements())
+    {
+        auto pRowRef = dynamic_cast<vcl::filter::PDFReferenceElement*>(pRowElement);
+        CPPUNIT_ASSERT(pRowRef);
+        auto pRow = pRowRef->LookupObject();
+        CPPUNIT_ASSERT(pRow);
+        auto pRowS = dynamic_cast<vcl::filter::PDFNameElement*>(pRow->Lookup("S"_ostr));
+        CPPUNIT_ASSERT(pRowS);
+        CPPUNIT_ASSERT_EQUAL("TR"_ostr, pRowS->GetValue());
+
+        auto pCells = dynamic_cast<vcl::filter::PDFArrayElement*>(pRow->Lookup("K"_ostr));
+        CPPUNIT_ASSERT(pCells);
+        CPPUNIT_ASSERT_EQUAL(size_t(2), pCells->GetElements().size());
+        CPPUNIT_ASSERT_EQUAL("TH"_ostr, GetCellType(pCells->GetElement(0)));
+        CPPUNIT_ASSERT_EQUAL("TD"_ostr, GetCellType(pCells->GetElement(1)));
+    }
+}
+
 CPPUNIT_TEST_FIXTURE(PdfExportTest2, testTdf153935)
 {
     // tdf#153935: PDF/A-1 + PDF/UA must still emit /Scope on TH and /Tabs on
@@ -2424,7 +2708,7 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest2, testTdf157817)
     SvFileStream aStream(maTempFile.GetURL(), StreamMode::READ);
     CPPUNIT_ASSERT(aDocument.Read(aStream));
 
-    // The document has one page.
+    // The document has two pages.
     std::vector<vcl::filter::PDFObjectElement*> aPages = aDocument.GetPages();
     CPPUNIT_ASSERT_EQUAL(size_t(2), aPages.size());
 

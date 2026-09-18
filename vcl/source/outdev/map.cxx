@@ -716,15 +716,16 @@ tools::Rectangle OutputDevice::PixelToLogic( const tools::Rectangle& rDeviceRect
         return rDeviceRect;
 
     tools::Rectangle aRetval(
-        mpMapper->ViewToLogicDistanceX(rDeviceRect.Left()) - mpMapper->GetMappingXOffset() - mpMapper->GetLogicalXOffset(),
-        mpMapper->ViewToLogicDistanceY(rDeviceRect.Top()) - mpMapper->GetMappingYOffset() - mpMapper->GetLogicalYOffset(),
-        rDeviceRect.IsWidthEmpty() ? 0 : mpMapper->ViewToLogicDistanceX(rDeviceRect.Right()) - mpMapper->GetMappingXOffset() - mpMapper->GetLogicalXOffset(),
-        rDeviceRect.IsHeightEmpty() ? 0 : mpMapper->ViewToLogicDistanceY(rDeviceRect.Bottom()) - mpMapper->GetMappingYOffset() - mpMapper->GetLogicalYOffset());
+        mpMapper->ViewSubPixelToLogicIntX(rDeviceRect.Left()),
+        mpMapper->ViewSubPixelToLogicIntY(rDeviceRect.Top()),
+        rDeviceRect.IsWidthEmpty()  ? 0 : mpMapper->ViewSubPixelToLogicIntX(rDeviceRect.Right()),
+        rDeviceRect.IsHeightEmpty() ? 0 : mpMapper->ViewSubPixelToLogicIntY(rDeviceRect.Bottom())
+    );
 
-    if(rDeviceRect.IsWidthEmpty())
+    if (rDeviceRect.IsWidthEmpty())
         aRetval.SetWidthEmpty();
 
-    if(rDeviceRect.IsHeightEmpty())
+    if (rDeviceRect.IsHeightEmpty())
         aRetval.SetHeightEmpty();
 
     return aRetval;
@@ -732,23 +733,18 @@ tools::Rectangle OutputDevice::PixelToLogic( const tools::Rectangle& rDeviceRect
 
 tools::Polygon OutputDevice::PixelToLogic( const tools::Polygon& rDevicePoly ) const
 {
-
     if ( !mpMapper->IsMapModeEnabled() )
         return rDevicePoly;
 
     const sal_uInt16 nPoints = rDevicePoly.GetSize();
     tools::Polygon aPoly( rDevicePoly );
 
-    // get pointer to Point-array (copy data)
-    const Point* pPointAry = aPoly.GetConstPointAry();
-
-    for (sal_uInt16 i = 0; i < nPoints; i++)
+    for (sal_uInt16 i = 0; i < nPoints; ++i)
     {
-        const Point* pPt = &(pPointAry[i]);
-        Point aPt;
-        aPt.setX(mpMapper->ViewToLogicDistanceX(pPt->X()) - mpMapper->GetMappingXOffset() - mpMapper->GetLogicalXOffset());
-        aPt.setY(mpMapper->ViewToLogicDistanceY(pPt->Y()) - mpMapper->GetMappingYOffset() - mpMapper->GetLogicalYOffset());
-        aPoly[i] = aPt;
+        aPoly[i] = Point(
+            mpMapper->ViewSubPixelToLogicIntX(aPoly[i].X()),
+            mpMapper->ViewSubPixelToLogicIntY(aPoly[i].Y())
+        );
     }
 
     return aPoly;
@@ -824,17 +820,18 @@ vcl::Region OutputDevice::PixelToLogic( const vcl::Region& rDeviceRegion ) const
 Point OutputDevice::PixelToLogic( const Point& rDevicePt,
                                   const MapMode& rMapMode ) const
 {
-
     // calculate nothing if default-MapMode
     if ( rMapMode.IsDefault() )
         return rDevicePt;
 
-    // calculate MapMode-resolution and convert
-    ImplMapRes          aMapRes;
+    // calculate MapMode-resolution
+    ImplMapRes aMapRes;
     aMapRes.CalcMapResolution(rMapMode, mpMapper->GetDPIX(), mpMapper->GetDPIY());
 
-    return Point(mpMapper->ViewToLogicDistanceX(rDevicePt.X(), aMapRes.mfMapScX) - aMapRes.mnMapOfsX - mpMapper->GetLogicalXOffset(),
-                 mpMapper->ViewToLogicDistanceY(rDevicePt.Y(), aMapRes.mfMapScY) - aMapRes.mnMapOfsY - mpMapper->GetLogicalYOffset());
+    return Point(
+        mpMapper->ViewSubPixelToLogicIntX(rDevicePt.X(), aMapRes),
+        mpMapper->ViewSubPixelToLogicIntY(rDevicePt.Y(), aMapRes)
+    );
 }
 
 Size OutputDevice::PixelToLogic( const Size& rDeviceSize,
@@ -854,27 +851,28 @@ Size OutputDevice::PixelToLogic( const Size& rDeviceSize,
 }
 
 tools::Rectangle OutputDevice::PixelToLogic( const tools::Rectangle& rDeviceRect,
-                                      const MapMode& rMapMode ) const
+                                             const MapMode& rMapMode ) const
 {
     // calculate nothing if default-MapMode
     // tdf#141761 see comments above, IsEmpty() removed
     if ( rMapMode.IsDefault() )
         return rDeviceRect;
 
-    // calculate MapMode-resolution and convert
-    ImplMapRes          aMapRes;
+    // calculate MapMode-resolution
+    ImplMapRes aMapRes;
     aMapRes.CalcMapResolution(rMapMode, mpMapper->GetDPIX(), mpMapper->GetDPIY());
 
     tools::Rectangle aRetval(
-        mpMapper->ViewToLogicDistanceX(rDeviceRect.Left(), aMapRes.mfMapScX) - aMapRes.mnMapOfsX - mpMapper->GetLogicalXOffset(),
-        mpMapper->ViewToLogicDistanceY(rDeviceRect.Top(), aMapRes.mfMapScY) - aMapRes.mnMapOfsY - mpMapper->GetLogicalYOffset(),
-        rDeviceRect.IsWidthEmpty() ? 0 : mpMapper->ViewToLogicDistanceX(rDeviceRect.Right(), aMapRes.mfMapScX) - aMapRes.mnMapOfsX - mpMapper->GetLogicalXOffset(),
-        rDeviceRect.IsHeightEmpty() ? 0 : mpMapper->ViewToLogicDistanceY(rDeviceRect.Bottom(), aMapRes.mfMapScY) - aMapRes.mnMapOfsY - mpMapper->GetLogicalYOffset());
+        mpMapper->ViewSubPixelToLogicIntX(rDeviceRect.Left(), aMapRes),
+        mpMapper->ViewSubPixelToLogicIntY(rDeviceRect.Top(), aMapRes),
+        rDeviceRect.IsWidthEmpty()  ? 0 : mpMapper->ViewSubPixelToLogicIntX(rDeviceRect.Right(), aMapRes),
+        rDeviceRect.IsHeightEmpty() ? 0 : mpMapper->ViewSubPixelToLogicIntY(rDeviceRect.Bottom(), aMapRes)
+    );
 
-    if(rDeviceRect.IsWidthEmpty())
+    if (rDeviceRect.IsWidthEmpty())
         aRetval.SetWidthEmpty();
 
-    if(rDeviceRect.IsHeightEmpty())
+    if (rDeviceRect.IsHeightEmpty())
         aRetval.SetHeightEmpty();
 
     return aRetval;
@@ -883,28 +881,23 @@ tools::Rectangle OutputDevice::PixelToLogic( const tools::Rectangle& rDeviceRect
 tools::Polygon OutputDevice::PixelToLogic( const tools::Polygon& rDevicePoly,
                                            const MapMode& rMapMode ) const
 {
-
     // calculate nothing if default-MapMode
     if ( rMapMode.IsDefault() )
         return rDevicePoly;
 
-    // calculate MapMode-resolution and convert
-    ImplMapRes          aMapRes;
+    // calculate MapMode-resolution
+    ImplMapRes aMapRes;
     aMapRes.CalcMapResolution(rMapMode, mpMapper->GetDPIX(), mpMapper->GetDPIY());
 
     const sal_uInt16 nPoints = rDevicePoly.GetSize();
     tools::Polygon aPoly( rDevicePoly );
 
-    // get pointer to Point-array (copy data)
-    const Point* pPointAry = aPoly.GetConstPointAry();
-
-    for (sal_uInt16 i = 0; i < nPoints; i++)
+    for (sal_uInt16 i = 0; i < nPoints; ++i)
     {
-        const Point* pPt = &(pPointAry[i]);
-        Point aPt;
-        aPt.setX(mpMapper->ViewToLogicDistanceX(pPt->X(), aMapRes.mfMapScX) - aMapRes.mnMapOfsX - mpMapper->GetLogicalXOffset());
-        aPt.setY(mpMapper->ViewToLogicDistanceY(pPt->Y(), aMapRes.mfMapScY) - aMapRes.mnMapOfsY - mpMapper->GetLogicalYOffset());
-        aPoly[i] = aPt;
+        aPoly[i] = Point(
+            mpMapper->ViewSubPixelToLogicIntX(aPoly[i].X(), aMapRes),
+            mpMapper->ViewSubPixelToLogicIntY(aPoly[i].Y(), aMapRes)
+        );
     }
 
     return aPoly;
