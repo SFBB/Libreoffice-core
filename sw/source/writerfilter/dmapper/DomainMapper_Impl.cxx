@@ -6053,7 +6053,7 @@ void DomainMapper_Impl::SetNumberFormat( const OUString& rCommand,
     lang::Locale aCurrentLocale;
     // tdf#146973 the date is formatted in the language of the field's own run, kept here
     // by AppendFieldCommand(); an RTL or CJK run only sets the language of its script
-    const PropertyMapPtr& rFieldProps = GetTopFieldContext()->getProperties();
+    const PropertyMapPtr& rFieldProps = GetTopFieldContext()->getRunProperties();
     for (const PropertyIds eId :
          { PROP_CHAR_LOCALE, PROP_CHAR_LOCALE_COMPLEX, PROP_CHAR_LOCALE_ASIAN })
     {
@@ -6540,7 +6540,8 @@ FieldContext::FieldContext(uno::Reference<text::XTextRange> xStart, sal_Int32 nT
     , m_bCommandType(false)
     , m_nNestedTableLevel(nTableDepth)
 {
-    m_pProperties = new PropertyMap();
+    m_pFieldProperties = new PropertyMap();
+    m_pCommandFirstRunProperties = new PropertyMap();
 }
 
 
@@ -6569,6 +6570,17 @@ void FieldContext::CacheVariableValue(const uno::Any& rAny)
 void FieldContext::AppendCommand(std::u16string_view rPart)
 {
     m_sCommand[m_bCommandType] += rPart;
+}
+
+void FieldContext::captureResultFirstRunProperties(const PropertyMapPtr& pProperties)
+{
+    if (m_pResultFirstRunProperties)
+        return;
+
+    // Null means no result run was captured. An empty, non-null result map must still
+    // override command formatting when the first result run has no character properties.
+    m_pResultFirstRunProperties = new PropertyMap();
+    m_pResultFirstRunProperties->InsertProps(pProperties);
 }
 
 ::std::vector<OUString> FieldContext::GetCommandParts() const
@@ -6676,7 +6688,8 @@ void DomainMapper_Impl::AppendFieldCommand(OUString const & rPartOfCommand)
         pContext->SetCommandType(m_bTextDeleted);
         if (pContext->GetCommand().isEmpty())
         {
-            pContext->getProperties()->InsertProps(GetTopContextOfType(CONTEXT_CHARACTER));
+            pContext->getCommandFirstRunProperties()->InsertProps(
+                GetTopContextOfType(CONTEXT_CHARACTER));
         }
         pContext->AppendCommand( rPartOfCommand );
     }
@@ -7139,7 +7152,8 @@ void  DomainMapper_Impl::handleRubyEQField( const FieldContextPtr& pContext)
     PropertyMapPtr pCharContext(new PropertyMap());
     if (m_pLastCharacterContext)
         pCharContext->InsertProps(m_pLastCharacterContext);
-    pCharContext->InsertProps(pContext->getProperties());
+    pCharContext->InsertProps(pContext->getFieldProperties());
+    pCharContext->InsertProps(pContext->getRunProperties());
     pCharContext->Insert(PROP_RUBY_TEXT, uno::Any( aInfo.sRubyText ) );
     pCharContext->Insert(PROP_RUBY_ADJUST, uno::Any(static_cast<sal_Int16>(ConversionHelper::convertRubyAlign(aInfo.nRubyAlign))));
     if ( aInfo.nRubyAlign == NS_ooxml::LN_Value_ST_RubyAlign_rightVertical )
@@ -8881,9 +8895,12 @@ void DomainMapper_Impl::CloseFieldCommand()
                         xFieldInterface->setPropertyValue(u"Fields"_ustr, uno::Any(aValues));
                     }
 
-                    const std::vector<beans::PropertyValue>& rValues
-                        = GetTopFieldContext()->getProperties()->GetPropertyValues();
-                    appendTextContent(xFieldInterface, comphelper::containerToSequence(rValues));
+                    PropertyMap aMap;
+                    aMap.InsertProps(pContext->getFieldProperties());
+                    aMap.InsertProps(pContext->getRunProperties());
+                    appendTextContent(
+                        xFieldInterface,
+                        comphelper::containerToSequence(aMap.GetPropertyValues()));
                     pContext->m_bSetCitation = true;
                 }
                 break;
@@ -9020,6 +9037,8 @@ void DomainMapper_Impl::AppendFieldResult(std::u16string_view rString)
     if (!pContext)
         return;
 
+    const PropertyMapPtr pCharProps = GetTopContextOfType(CONTEXT_CHARACTER);
+
     FieldContextPtr pOuter = GetParentFieldContext(m_StreamStateStack.top().m_aFieldStack);
     if (pOuter)
     {
@@ -9028,12 +9047,16 @@ void DomainMapper_Impl::AppendFieldResult(std::u16string_view rString)
             if (pOuter->IsCommandCompleted())
             {
                 // Child can't host the field result, forward to parent's result.
+                if (!IsRTFImport() && !rString.empty())
+                    pOuter->captureResultFirstRunProperties(pCharProps);
                 pOuter->AppendResult(rString);
             }
             return;
         }
     }
 
+    if (!IsRTFImport() && !rString.empty())
+        pContext->captureResultFirstRunProperties(pCharProps);
     pContext->AppendResult(rString);
 }
 
@@ -9310,14 +9333,13 @@ void DomainMapper_Impl::PopFieldContext()
                     if (xToInsert.is() && !IsInTOC() && !m_bStartIndex && !m_bStartBibliography)
                     {
                         PropertyMap aMap;
-                        // Character properties of the field show up here the
-                        // last (always empty) run. Inherit character
-                        // properties from there.
-                        // Also merge in the properties from the field context,
-                        // e.g. SdtEndBefore.
+                        // RTF field properties are on the last (always empty) run. For OOXML,
+                        // prefer the first non-empty result w:r over the first command w:r.
+                        // Also merge field metadata such as SdtEndBefore.
                         if (m_pLastCharacterContext && IsRTFImport())
                             aMap.InsertProps(m_pLastCharacterContext);
-                        aMap.InsertProps(GetTopFieldContext()->getProperties());
+                        aMap.InsertProps(pContext->getFieldProperties());
+                        aMap.InsertProps(GetTopFieldContext()->getRunProperties());
                         appendTextContent(xToInsert, comphelper::containerToSequence(aMap.GetPropertyValues()));
                         CheckRedline( xToInsert->getAnchor( ) );
                     }
