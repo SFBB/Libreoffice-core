@@ -257,11 +257,6 @@ FONT_REEM_TARBALL := ReemKufi-2.0.zip
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-FONT_SCHEHERAZADE_SHA256SUM := 251c8817ceb87d9b661ce1d5b49e732a0116add10abc046be4b8ba5196e149b5
-FONT_SCHEHERAZADE_TARBALL := Scheherazade-2.100.zip
-# three static lines
-# so that git cherry-pick
-# will not run into conflicts
 FREEHAND_SHA256SUM := 350b10d24a76d7e8c8ae98b74c2d432a2c8ddec08935d09856d20b695a35e600
 FREEHAND_TARBALL := libfreehand-0.1.4.tar.xz
 # three static lines
@@ -365,8 +360,8 @@ LIBJPEG_TURBO_TARBALL := libjpeg-turbo-3.1.4.1.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-LANGTAGREG_SHA256SUM := 48293d95a13372f3e5bae04890d7d54ef4168b2469060e8e49cf60461cfc616f
-LANGTAGREG_TARBALL := language-subtag-registry-2026-08-08.tar.bz2
+LANGTAGREG_SHA256SUM := 10223cc8c219427c86a4c66ce98282a00c7f4d9b0609355146282344783007f2
+LANGTAGREG_TARBALL := language-subtag-registry-2026-9-17.tar.bz2
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts

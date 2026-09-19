@@ -1605,6 +1605,9 @@ void ScInterpreter::ScSingleValue()
             PushDouble(GetCellValue(aAdr, aCell));
         return;
     }
+    // Same intersection as for a sheet local range above.
+    if (eType == svExternalDoubleRef && PopExternalDoubleRefPushSingleRef())
+        return;
     if (eType == svMatrix)
     {
         ScMatrixRef pMat = GetMatrix();
@@ -5037,8 +5040,8 @@ sal_Int32 lcl_CompareMatrix2Query( SCSIZE i, const VectorMatrixAccessor& rMat, c
 {
     if (rMat.IsEmpty(i))
     {
-        /* TODO: in case we introduced query for real empty this would have to
-         * be changed! */
+        if (rEntry.IsQueryByEmpty())
+            return 0;   // empty is what we look for
         if (bEmptyIsLess)
             return -1;  // empty always less than anything else
         else
@@ -5455,7 +5458,13 @@ void ScInterpreter::ScXMatch()
                     return;
                 }
                 ScRefCellValue aCell(mrDoc, aAdr);
-                if (aCell.hasNumeric())
+                if (aCell.isEmpty())
+                {
+                    // An empty cell looks for an empty cell, not for "".
+                    vsa.isEmptySearch = true;
+                    vsa.isStringSearch = false;
+                }
+                else if (aCell.hasNumeric())
                 {
                     vsa.isStringSearch = false;
                     vsa.fSearchVal = GetCellValue(aAdr, aCell);
@@ -5486,6 +5495,11 @@ void ScInterpreter::ScXMatch()
                     vsa.isStringSearch = true;
                     vsa.sSearchStr = static_cast<FormulaStringToken*>(pToken.get())->GetString();
                 }
+                else if (pToken->GetType() == svEmptyCell)
+                {
+                    vsa.isEmptySearch = true;
+                    vsa.isStringSearch = false;
+                }
                 else
                 {
                     vsa.isStringSearch = true;
@@ -5497,7 +5511,13 @@ void ScInterpreter::ScXMatch()
             {
                 ScMatValType nType = GetDoubleOrStringFromMatrix(
                     vsa.fSearchVal, vsa.sSearchStr);
-                vsa.isStringSearch = ScMatrix::IsNonValueType(nType);
+                if (ScMatrix::IsEmptyType(nType))
+                {
+                    vsa.isEmptySearch = true;
+                    vsa.isStringSearch = false;
+                }
+                else
+                    vsa.isStringSearch = ScMatrix::IsNonValueType(nType);
             }
             break;
             default:
@@ -8300,7 +8320,13 @@ void ScInterpreter::ScXLookup()
                     return ;
                 }
                 ScRefCellValue aCell(mrDoc, aAdr);
-                if (aCell.hasNumeric())
+                if (aCell.isEmpty())
+                {
+                    // An empty cell looks for an empty cell, not for "".
+                    vsa.isEmptySearch = true;
+                    vsa.isStringSearch = false;
+                }
+                else if (aCell.hasNumeric())
                 {
                     vsa.isStringSearch = false;
                     vsa.fSearchVal = GetCellValue(aAdr, aCell);
@@ -8332,6 +8358,11 @@ void ScInterpreter::ScXLookup()
                     vsa.isStringSearch = true;
                     vsa.sSearchStr = static_cast<FormulaStringToken*>(pToken.get())->GetString();
                 }
+                else if (pToken->GetType() == svEmptyCell)
+                {
+                    vsa.isEmptySearch = true;
+                    vsa.isStringSearch = false;
+                }
                 else
                 {
                     vsa.isStringSearch = true;
@@ -8344,7 +8375,13 @@ void ScInterpreter::ScXLookup()
             {
                 ScMatValType nType = GetDoubleOrStringFromMatrix(
                         vsa.fSearchVal, vsa.sSearchStr);
-                vsa.isStringSearch = ScMatrix::IsNonValueType(nType);
+                if (ScMatrix::IsEmptyType(nType))
+                {
+                    vsa.isEmptySearch = true;
+                    vsa.isStringSearch = false;
+                }
+                else
+                    vsa.isStringSearch = ScMatrix::IsNonValueType(nType);
             }
             break;
 

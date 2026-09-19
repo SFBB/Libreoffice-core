@@ -41,6 +41,7 @@ class SwEditShell;
 class StringRangeEnumerator;
 class SwTextAttr;
 class SwTextNode;
+struct SwPosition;
 class SwTextPaintInfo;
 class SwTextFrame;
 
@@ -137,9 +138,8 @@ class SwTaggedPDFHelper
 {
     private:
 
-    // This will be incremented for each BeginTag() call.
-    // It denotes the number of tags to close during EndStructureElements();
-    sal_uInt8 m_nEndStructureElement;
+    // opened by this helper, innermost last
+    std::vector<sal_Int32> m_aOpenedTags;
 
     //  If an already existing tag is reopened for follows of flow frames,
     // this value stores the tag id which has to be restored.
@@ -155,6 +155,10 @@ class SwTaggedPDFHelper
     sal_Int32 BeginTagImpl(void const* pKey,vcl::pdf::StructElement aTagRole, const OUString& rTagName);
     void BeginTag(vcl::pdf::StructElement aTagRole, const OUString& rTagName);
     void EndTag();
+    void DeferTag();
+    bool IsDeferredTagCurrent() const;
+    void EndDeferredTag();
+    void EndDeferredTags();
 
     void SetAttributes(vcl::pdf::StructElement eType);
 
@@ -164,10 +168,19 @@ class SwTaggedPDFHelper
     void BeginInlineStructureElements();
     void EndStructureElements();
 
+    // what an open link or span leaves for this portion to do
+    enum class Continuation
+    {
+        None, // nothing is open that covers it
+        Whole, // the open tag covers it, so no new tag
+        SpanInLink // the link goes on, but its properties do not
+    };
+
     void EndCurrentAll();
     void EndCurrentSpan();
     void CreateCurrentSpan(SwTextPaintInfo const& rInf, OUString const& rStyleName);
-    bool CheckContinueSpan(SwTextPaintInfo const& rInf, std::u16string_view rStyleName, SwTextAttr const* pInetFormatAttr);
+    Continuation CheckContinuation(SwTextPaintInfo const& rInf, OUString const& rStyleName,
+                                   SwTextAttr const* pInetFormatAttr);
 
     bool CheckReopenTag();
     void CheckRestoreTag() const;
@@ -180,8 +193,6 @@ class SwTaggedPDFHelper
     SwTaggedPDFHelper( const Num_Info* pNumInfo, const Frame_Info* pFrameInfo, const Por_Info* pPorInfo,
                        OutputDevice const & rOut );
     ~SwTaggedPDFHelper();
-
-    static void EndCurrentLink(OutputDevice const&);
 };
 
 /*
@@ -221,6 +232,13 @@ class SwEnhancedPDFExportHelper
 
     /// Exports bibliography entry links.
     void ExportAuthorityEntryLinks();
+
+    /// Creates a destination, and remembers the node it points at, to name it once tagging is done.
+    /// The target is either the node the cursor jumped to since rBeforeJump, or one known outright.
+    sal_Int32 CreateDestination(const SwPageFrame* pCurrPage, const SwRect& rRect,
+                                sal_Int32 nPageNum, const SwPosition& rBeforeJump);
+    sal_Int32 CreateDestination(const SwPageFrame* pCurrPage, const SwRect& rRect,
+                                sal_Int32 nPageNum, const SwTextNode* pTarget);
 
     sal_Int32 CalcOutputPageNum( const SwRect& rRect ) const;
     std::vector< sal_Int32 > CalcOutputPageNums( const SwRect& rRect ) const;

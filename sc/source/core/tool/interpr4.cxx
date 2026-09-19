@@ -1467,6 +1467,25 @@ bool ScInterpreter::PopDoubleRefOrSingleRef( ScAddress& rAdr )
     return false;
 }
 
+bool ScInterpreter::PopExternalDoubleRefPushSingleRef()
+{
+    const ScExternalDoubleRefToken* pToken
+        = static_cast<const ScExternalDoubleRefToken*>(pStack[sp - 1]);
+    ScComplexRefData aData( pToken->GetDoubleRef());
+    const ScRange aRange = aData.toAbs(mrDoc, aPos);
+    ScAddress aAdr;
+    if (!ScCompiler::ExternalDoubleRefToPosSingleRef( aRange, aAdr, aPos))
+        return false;
+
+    ScSingleRefData aRefData;
+    aRefData.InitAddress( aAdr);
+    FormulaTokenRef xNew = new ScExternalSingleRefToken(
+            pToken->GetFileId(), pToken->GetTableName(), aRefData);
+    Pop();
+    PushTempTokenWithoutError( xNew.get());
+    return true;
+}
+
 void ScInterpreter::PopDoubleRefPushMatrix()
 {
     if ( GetStackType() == svDoubleRef )
@@ -1682,14 +1701,52 @@ bool ScInterpreter::ConvertMatrixParameters()
                 case svExternalDoubleRef:
                 {
                     formula::ParamClass eType = ScParameterClassification::GetParameterType( pCur, nParams - i);
-                    if (eType == formula::ParamClass::Value || eType == formula::ParamClass::Array)
+                    // Resolve the implicit intersection here. A svDoubleRef is
+                    // instead left on the stack, and whichever function pops
+                    // it intersects with DoubleRefToPosSingleRef(). No
+                    // function does so for an external reference, and an
+                    // entire column would become a JumpMatrix of MAXROW+1
+                    // rows.
+                    if (eType == formula::ParamClass::Value && !IsInArrayContext())
+                    {
+                        auto pEDRToken = static_cast<const ScExternalDoubleRefToken*>(p);
+                        ScComplexRefData aData( pEDRToken->GetDoubleRef());
+                        const ScRange aRange = aData.toAbs(mrDoc, aPos);
+                        ScAddress aAdr;
+                        if (!ScCompiler::ExternalDoubleRefToPosSingleRef( aRange, aAdr, aPos))
+                            SetError( FormulaError::NoValue);
+                        else
+                        {
+                            ScSingleRefData aRefData;
+                            // Absolute, an external table reference must be.
+                            aRefData.InitAddress( aAdr);
+                            formula::FormulaToken* pNew = new ScExternalSingleRefToken(
+                                    pEDRToken->GetFileId(), pEDRToken->GetTableName(), aRefData);
+                            pNew->IncRef();
+                            pStack[ sp - i ] = pNew;
+                            p->DecRef();    // p may be dead now!
+                        }
+                    }
+                    else if (eType == formula::ParamClass::Value || eType == formula::ParamClass::Array)
                     {
                         auto pEDRToken = static_cast<const ScExternalDoubleRefToken*>(p);
                         sal_uInt16 nFileId = pEDRToken->GetFileId();
                         OUString aTabName = pEDRToken->GetTableName().getString();
-                        const ScComplexRefData& rRef = pEDRToken->GetDoubleRef();
+                        ScComplexRefData aRef( pEDRToken->GetDoubleRef());
+                        // Array context, the JumpMatrix is unavoidable here,
+                        // so trim it as the svDoubleRef case does.
+                        if (eType == formula::ParamClass::Value)
+                        {
+                            ScRange aRange = aRef.toAbs(mrDoc, aPos);
+                            if (aRange.aStart.Tab() == aRange.aEnd.Tab() &&
+                                (aRange.aEnd.Row() == mrDoc.MaxRow() || aRange.aEnd.Col() == mrDoc.MaxCol()))
+                            {
+                                mrDoc.GetExternalRefManager()->shrinkToDataArea( nFileId, aTabName, aRange);
+                                aRef.Ref2.SetAddress( mrDoc.GetSheetLimits(), aRange.aEnd, aPos);
+                            }
+                        }
                         ScExternalRefCache::TokenArrayRef pArray;
-                        GetExternalDoubleRef(nFileId, aTabName, rRef, pArray);
+                        GetExternalDoubleRef(nFileId, aTabName, aRef, pArray);
                         if (nGlobalError != FormulaError::NONE || !pArray)
                             break;
                         formula::FormulaToken* pTemp = pArray->FirstToken();
@@ -4528,6 +4585,11 @@ StackVar ScInterpreter::Interpret()
                     PopRefListPushMatrixOrRef();
                     pCur = pStack[ sp-1 ];
                 }
+                // An external range takes the same implicit intersection as
+                // the svDoubleRef case below, which nothing else does for it.
+                if (!bMatrixFormula && pCur->GetType() == svExternalDoubleRef
+                        && PopExternalDoubleRefPushSingleRef())
+                    pCur = pStack[ sp-1 ];
                 switch( pCur->GetType() )
                 {
                     case svEmptyCell:
@@ -4613,6 +4675,12 @@ StackVar ScInterpreter::Interpret()
                         ScMatrixRef xMat;
                         PopExternalDoubleRef(xMat);
                         QueryMatrixType(xMat, nRetTypeExpr, nRetIndexExpr);
+                        // Outside a matrix formula the intersection above
+                        // found nothing, which is #VALUE! as for a sheet
+                        // local range. An unreachable document reports its
+                        // own error and keeps it.
+                        if (!bMatrixFormula && nGlobalError == FormulaError::NONE)
+                            SetError( FormulaError::NoValue);
                     }
                     break;
                     case svMatrix :
