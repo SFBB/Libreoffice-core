@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4; fill-column: 100 -*- */
 /*
  * This file is part of the LibreOffice project.
  *
@@ -19,28 +19,17 @@
 
 #pragma once
 
-#include <sal/types.h>
+#include <sal/config.h>
 
-
-namespace svt::table
+enum class AccessibleTableControlObjType
 {
+    GRIDCONTROL, /// The GridControl itself.
+    TABLE, /// The data table.
+    ROWHEADERBAR, /// The row header bar.
+    COLUMNHEADERBAR, /// The horizontal column header bar.
+    TABLECELL, /// A cell of the data table.
+    ROWHEADERCELL, /// A cell of the row header bar.
+    COLUMNHEADERCELL, /// A cell of the column header bar.
+};
 
-    /// a value denoting the size of a table
-    typedef sal_Int32   TableSize;
-
-    typedef sal_Int32   TableMetrics;
-
-/// denotes the column containing the row headers
-#define COL_ROW_HEADERS (sal_Int32(-1))
-/// denotes the row containing the column headers
-#define ROW_COL_HEADERS (sal_Int32(-1))
-
-/// denotes an invalid column index
-#define COL_INVALID (sal_Int32(-2))
-/// denotes an invalid row index
-#define ROW_INVALID (sal_Int32(-2))
-
-} // namespace svt::table
-
-
-/* vim:set shiftwidth=4 softtabstop=4 expandtab: */
+/* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

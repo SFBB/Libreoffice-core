@@ -20,7 +20,7 @@
 
 #include <controls/table/AccessibleGridControlHeader.hxx>
 #include <controls/table/AccessibleGridControlTableCell.hxx>
-#include <controls/table/tablecontrol.hxx>
+#include <controls/table/TableControl.hxx>
 
 namespace accessibility
 {

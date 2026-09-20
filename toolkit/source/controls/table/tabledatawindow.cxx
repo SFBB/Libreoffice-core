@@ -17,10 +17,9 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include <controls/table/tablecontrol.hxx>
+#include <controls/table/TableControl.hxx>
 
 #include "tabledatawindow.hxx"
-#include "tablecontrol_impl.hxx"
 #include "tablegeometry.hxx"
 
 #include <vcl/help.hxx>
@@ -32,9 +31,9 @@ namespace svt::table
 {
     using css::uno::Any;
 
-    TableDataWindow::TableDataWindow( TableControl_Impl& _rTableControl )
-        :Window( &_rTableControl.getAntiImpl() )
-        ,m_rTableControl( _rTableControl )
+    TableDataWindow::TableDataWindow(TableControl& _rTableControl)
+        : Window(&_rTableControl)
+        , m_rTableControl(_rTableControl)
     {
         // by default, use the background as determined by the style settings
         const Color aWindowColor( GetSettings().GetStyleSettings().GetFieldColor() );
@@ -73,10 +72,10 @@ namespace svt::table
         QuickHelpFlags nHelpStyle = QuickHelpFlags::NONE;
 
         Point const aMousePos( ScreenToOutputPixel( rHEvt.GetMousePosPixel() ) );
-        RowPos const hitRow = m_rTableControl.getRowAtPoint( aMousePos );
-        ColPos const hitCol = m_rTableControl.getColAtPoint( aMousePos );
+        sal_Int32 const hitRow = m_rTableControl.getRowAtPoint(aMousePos);
+        sal_Int32 const hitCol = m_rTableControl.getColAtPoint(aMousePos);
 
-        PTableModel const pTableModel( m_rTableControl.getModel() );
+        PTableModel const pTableModel(m_rTableControl.GetModel());
         if ( ( hitCol >= 0 ) && ( hitCol < pTableModel->getColumnCount() ) )
         {
             if ( hitRow == ROW_COL_HEADERS )
@@ -149,9 +148,9 @@ namespace svt::table
         impl_hideTipWindow();
 
         Point const aPoint = rMEvt.GetPosPixel();
-        RowPos const hitRow = m_rTableControl.getRowAtPoint( aPoint );
-        bool const wasRowSelected = m_rTableControl.isRowSelected( hitRow );
-        size_t const nPrevSelRowCount = m_rTableControl.getSelectedRowCount();
+        sal_Int32 const hitRow = m_rTableControl.getRowAtPoint(aPoint);
+        bool const wasRowSelected = m_rTableControl.IsRowSelected(hitRow);
+        size_t const nPrevSelRowCount = m_rTableControl.GetSelectedRowCount();
 
         if ( !m_rTableControl.getInputHandler()->MouseButtonDown( m_rTableControl, rMEvt ) )
         {
@@ -159,8 +158,8 @@ namespace svt::table
             return;
         }
 
-        bool const isRowSelected = m_rTableControl.isRowSelected( hitRow );
-        size_t const nCurSelRowCount = m_rTableControl.getSelectedRowCount();
+        bool const isRowSelected = m_rTableControl.IsRowSelected(hitRow);
+        size_t const nCurSelRowCount = m_rTableControl.GetSelectedRowCount();
         if ( isRowSelected != wasRowSelected || nCurSelRowCount != nPrevSelRowCount )
         {
             m_aSelectHdl.Call( nullptr );
@@ -173,7 +172,7 @@ namespace svt::table
         if ( !m_rTableControl.getInputHandler()->MouseButtonUp( m_rTableControl, rMEvt ) )
             Window::MouseButtonUp( rMEvt );
 
-        m_rTableControl.getAntiImpl().GrabFocus();
+        m_rTableControl.GrabFocus();
     }
 
 

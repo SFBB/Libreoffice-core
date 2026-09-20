@@ -32,14 +32,16 @@ namespace accessibility
     AccessibleGridControlHeaderCell::AccessibleGridControlHeaderCell(
         sal_Int32 _nColumnRowId, const rtl::Reference<AccessibleGridControlHeader>& rpParent,
         svt::table::TableControl& rTable, AccessibleTableControlObjType eObjType)
-    : AccessibleGridControlCell(rpParent, rTable,
-                            (eObjType == AccessibleTableControlObjType::ROWHEADERCELL) ? _nColumnRowId : 0,
-                            (eObjType == AccessibleTableControlObjType::ROWHEADERCELL) ? 0 : _nColumnRowId,
-                            eObjType)
-    , m_nColumnRowId(_nColumnRowId)
-{
-    assert(eObjType == AccessibleTableControlObjType::ROWHEADERCELL || eObjType == AccessibleTableControlObjType::COLUMNHEADERCELL);
-}
+        : AccessibleGridControlCell(
+              rpParent, rTable,
+              (eObjType == AccessibleTableControlObjType::ROWHEADERCELL) ? _nColumnRowId : 0,
+              (eObjType == AccessibleTableControlObjType::ROWHEADERCELL) ? 0 : _nColumnRowId,
+              eObjType)
+        , m_nColumnRowId(_nColumnRowId)
+    {
+        assert(eObjType == AccessibleTableControlObjType::ROWHEADERCELL
+               || eObjType == AccessibleTableControlObjType::COLUMNHEADERCELL);
+    }
 
 /** Return a bitset of states of the current object.
 */
@@ -58,7 +60,7 @@ sal_Int64 AccessibleGridControlHeaderCell::implCreateStateSet()
         nStateSet |= AccessibleStateType::TRANSIENT;
         nStateSet |= AccessibleStateType::SELECTABLE;
 
-        if ( m_aTable.IsRowSelected(m_nColumnRowId) )
+        if (m_rTable.IsRowSelected(m_nColumnRowId))
             nStateSet |= AccessibleStateType::SELECTED;
     }
     else
@@ -91,13 +93,13 @@ void SAL_CALL AccessibleGridControlHeaderCell::grabFocus()
 
 AbsoluteScreenPixelRectangle AccessibleGridControlHeaderCell::implGetBoundingBoxOnScreen()
 {
-    AbsoluteScreenPixelRectangle aGridRect( m_aTable.GetWindowExtentsAbsolute() );
+    AbsoluteScreenPixelRectangle aGridRect(m_rTable.GetWindowExtentsAbsolute());
     sal_Int32 nIndex = getAccessibleIndexInParent();
     tools::Rectangle aCellRect;
     if (m_eObjType == AccessibleTableControlObjType::COLUMNHEADERCELL)
-        aCellRect = m_aTable.calcHeaderCellRect(true, nIndex);
+        aCellRect = m_rTable.calcHeaderCellRect(true, nIndex);
     else
-        aCellRect = m_aTable.calcHeaderCellRect(false, nIndex);
+        aCellRect = m_rTable.calcHeaderCellRect(false, nIndex);
     return AbsoluteScreenPixelRectangle(AbsoluteScreenPixelPoint(aGridRect.Left()+aCellRect.Left(),aGridRect.Top()+aCellRect.Top()), aCellRect.GetSize());
 }
 

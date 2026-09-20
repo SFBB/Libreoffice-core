@@ -21,7 +21,7 @@
 #pragma once
 
 #include <controls/table/AccessibleGridControlTableBase.hxx>
-#include <controls/table/tablecontrol.hxx>
+#include <controls/table/TableControl.hxx>
 
 namespace accessibility {
 

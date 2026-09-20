@@ -25,96 +25,88 @@
 
 namespace svt::table
 {
+//= DefaultInputHandler
 
+DefaultInputHandler::DefaultInputHandler()
+{
+    aMouseFunctions.push_back(new ColumnResize);
+    aMouseFunctions.push_back(new RowSelection);
+    aMouseFunctions.push_back(new ColumnSortHandler);
+}
 
-    //= DefaultInputHandler
+DefaultInputHandler::~DefaultInputHandler() {}
 
-
-    DefaultInputHandler::DefaultInputHandler()
+bool DefaultInputHandler::delegateMouseEvent(
+    TableControl& i_control, const MouseEvent& i_event,
+    FunctionResult (MouseFunction::*i_handlerMethod)(TableControl&, const MouseEvent&))
+{
+    if (pActiveFunction.is())
     {
-        aMouseFunctions.push_back( new ColumnResize );
-        aMouseFunctions.push_back( new RowSelection );
-        aMouseFunctions.push_back( new ColumnSortHandler );
-    }
-
-
-    DefaultInputHandler::~DefaultInputHandler()
-    {
-    }
-
-
-    bool DefaultInputHandler::delegateMouseEvent( ITableControl& i_control, const MouseEvent& i_event,
-        FunctionResult ( MouseFunction::*i_handlerMethod )( ITableControl&, const MouseEvent& ) )
-    {
-        if ( pActiveFunction.is() )
+        bool furtherHandler = false;
+        switch ((pActiveFunction.get()->*i_handlerMethod)(i_control, i_event))
         {
-            bool furtherHandler = false;
-            switch ( (pActiveFunction.get()->*i_handlerMethod)( i_control, i_event ) )
-            {
-            case ActivateFunction:
-                OSL_ENSURE( false, "lcl_delegateMouseEvent: unexpected - function already *is* active!" );
+            case FunctionResult::ActivateFunction:
+                OSL_ENSURE(false,
+                           "lcl_delegateMouseEvent: unexpected - function already *is* active!");
                 break;
-            case ContinueFunction:
+            case FunctionResult::ContinueFunction:
                 break;
-            case DeactivateFunction:
+            case FunctionResult::DeactivateFunction:
                 pActiveFunction.clear();
                 break;
-            case SkipFunction:
+            case FunctionResult::SkipFunction:
                 furtherHandler = true;
                 break;
-            }
-            if ( !furtherHandler )
-                // handled the event
-                return true;
         }
+        if (!furtherHandler)
+            // handled the event
+            return true;
+    }
 
-        // ask all other handlers
-        bool handled = false;
-        for (auto const& mouseFunction : aMouseFunctions)
+    // ask all other handlers
+    bool handled = false;
+    for (auto const& mouseFunction : aMouseFunctions)
+    {
+        if (handled)
+            break;
+        if (mouseFunction == pActiveFunction)
+            // we already invoked this function
+            continue;
+
+        switch ((mouseFunction.get()->*i_handlerMethod)(i_control, i_event))
         {
-            if (handled)
-                break;
-            if (mouseFunction == pActiveFunction)
-                // we already invoked this function
-                continue;
-
-            switch ( (mouseFunction.get()->*i_handlerMethod)( i_control, i_event ) )
-            {
-            case ActivateFunction:
+            case FunctionResult::ActivateFunction:
                 pActiveFunction = mouseFunction;
                 handled = true;
                 break;
-            case ContinueFunction:
-            case DeactivateFunction:
-                OSL_ENSURE( false, "lcl_delegateMouseEvent: unexpected: inactive handler cannot be continued or deactivated!" );
+            case FunctionResult::ContinueFunction:
+            case FunctionResult::DeactivateFunction:
+                OSL_ENSURE(false, "lcl_delegateMouseEvent: unexpected: inactive handler cannot be "
+                                  "continued or deactivated!");
                 break;
-            case SkipFunction:
+            case FunctionResult::SkipFunction:
                 handled = false;
                 break;
-            }
         }
-        return handled;
     }
+    return handled;
+}
 
+bool DefaultInputHandler::MouseMove(TableControl& i_tableControl, const MouseEvent& i_event)
+{
+    return delegateMouseEvent(i_tableControl, i_event, &MouseFunction::handleMouseMove);
+}
 
-    bool DefaultInputHandler::MouseMove( ITableControl& i_tableControl, const MouseEvent& i_event )
-    {
-        return delegateMouseEvent( i_tableControl, i_event, &MouseFunction::handleMouseMove );
-    }
+bool DefaultInputHandler::MouseButtonDown(TableControl& i_tableControl, const MouseEvent& i_event)
+{
+    return delegateMouseEvent(i_tableControl, i_event, &MouseFunction::handleMouseDown);
+}
 
-
-    bool DefaultInputHandler::MouseButtonDown( ITableControl& i_tableControl, const MouseEvent& i_event )
-    {
-        return delegateMouseEvent( i_tableControl, i_event, &MouseFunction::handleMouseDown );
-    }
-
-
-    bool DefaultInputHandler::MouseButtonUp( ITableControl& i_tableControl, const MouseEvent& i_event )
-    {
-        return delegateMouseEvent( i_tableControl, i_event, &MouseFunction::handleMouseUp );
-    }
+bool DefaultInputHandler::MouseButtonUp(TableControl& i_tableControl, const MouseEvent& i_event)
+{
+    return delegateMouseEvent(i_tableControl, i_event, &MouseFunction::handleMouseUp);
+}
 
 } // namespace svt::table
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

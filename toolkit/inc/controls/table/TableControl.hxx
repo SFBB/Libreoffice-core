@@ -19,17 +19,24 @@
 
 #pragma once
 
-#include <controls/table/AccessibleGridControl.hxx>
+#include <controls/table/AccessibleTableControlObjType.hxx>
+#include <controls/table/tabledatawindow.hxx>
 #include <controls/table/tablemodel.hxx>
 #include <controls/table/tablecontrolinterface.hxx>
 
 #include <com/sun/star/accessibility/XAccessible.hpp>
+#include <vcl/ctrl.hxx>
 #include <vcl/seleng.hxx>
 
 #include <vector>
 
 class ScrollBar;
 class ScrollBarBox;
+
+namespace accessibility
+{
+class AccessibleGridControl;
+}
 
 namespace svt::table
 {
@@ -67,13 +74,24 @@ struct ColumnInfoPositionLess
 
 typedef ::std::vector<MutableColumnMetrics> ColumnPositions;
 
-class TableControl;
-class TableDataWindow;
 class TableFunctionSet;
 
-//= TableControl_Impl
+/** a basic control which manages table-like data, i.e. a number of cells
+    organized in <code>m</code> rows and <code>n</code> columns.
 
-class TableControl_Impl : public ITableControl, public ITableModelListener
+    The control itself does not do any assumptions about the concrete data
+    it displays, this is encapsulated in an instance supporting the
+    ->ITableModel interface.
+
+    Also, the control does not do any assumptions about how the model's
+    content is rendered. This is the responsibility of a component
+    supporting the ->ITableRenderer interface (the renderer is obtained from
+    the model).
+
+    The control supports the concept of a <em>current</em> (or <em>active</em>
+    cell).
+*/
+class TableControl final : public Control, public ITableModelListener
 {
     friend class TableGeometry;
     friend class TableRowGeometry;
@@ -81,8 +99,6 @@ class TableControl_Impl : public ITableControl, public ITableModelListener
     friend class SuspendInvariants;
 
 private:
-    /// the control whose impl-instance we implement
-    TableControl& m_rAntiImpl;
     /// the model of the table control
     PTableModel m_pModel;
     /// the input handler to use, usually the input handler as provided by ->m_pModel
@@ -103,10 +119,10 @@ private:
     /// the number of rows in the table control. Cached model value.
     TableSize m_nRowCount;
 
-    ColPos m_nCurColumn;
-    RowPos m_nCurRow;
-    ColPos m_nLeftColumn;
-    RowPos m_nTopRow;
+    sal_Int32 m_nCurColumn;
+    sal_Int32 m_nCurRow;
+    sal_Int32 m_nLeftColumn;
+    sal_Int32 m_nTopRow;
 
     sal_Int32 m_nCursorHidden;
 
@@ -124,38 +140,49 @@ private:
     //selection engine - for determining selection range, e.g. single, multiple
     std::unique_ptr<SelectionEngine> m_pSelEngine;
     //vector which contains the selected rows
-    std::vector<RowPos> m_aSelectedRows;
+    std::vector<sal_Int32> m_aSelectedRows;
     //part of selection engine
     std::unique_ptr<TableFunctionSet> m_pTableFunctionSet;
     //part of selection engine
-    RowPos m_nAnchor;
+    sal_Int32 m_nAnchor;
     bool m_bUpdatingColWidths;
 
     rtl::Reference<accessibility::AccessibleGridControl> m_xAccessibleTable;
 
 public:
-    void setModel(const PTableModel& _pModel);
+    /// sets a new table model
+    void SetModel(const PTableModel& _pModel);
 
     const PTableInputHandler& getInputHandler() const { return m_pInputHandler; }
 
-    RowPos getCurRow() const { return m_nCurRow; }
+    sal_Int32 getCurRow() const { return m_nCurRow; }
 
-    RowPos getAnchor() const { return m_nAnchor; }
-    void setAnchor(RowPos const i_anchor) { m_nAnchor = i_anchor; }
+    sal_Int32 getAnchor() const { return m_nAnchor; }
+    void setAnchor(sal_Int32 const i_anchor) { m_nAnchor = i_anchor; }
 
-    RowPos getTopRow() const { return m_nTopRow; }
-    ColPos getLeftColumn() const { return m_nLeftColumn; }
-
-    const TableControl& getAntiImpl() const { return m_rAntiImpl; }
-    TableControl& getAntiImpl() { return m_rAntiImpl; }
+    sal_Int32 getTopRow() const { return m_nTopRow; }
+    sal_Int32 getLeftColumn() const { return m_nLeftColumn; }
 
 public:
-    explicit TableControl_Impl(TableControl& _rAntiImpl);
-    virtual ~TableControl_Impl() override;
+    explicit TableControl(vcl::Window* pParent, WinBits nStyle);
+    virtual ~TableControl() override;
+    virtual void dispose() override;
+
+    // Window overridables
+    virtual void GetFocus() override;
+    virtual void LoseFocus() override;
+    virtual void KeyInput(const KeyEvent& rKEvt) override;
+    virtual void StateChanged(StateChangedType i_nStateChange) override;
+    virtual void Resize() override;
+
+    /** Creates and returns the accessible object of the whole GridControl. */
+    virtual rtl::Reference<comphelper::OAccessible> CreateAccessible() override;
 
     /** to be called when the anti-impl instance has been resized
         */
     void onResize();
+
+    void Select();
 
     /** paints the table control content which intersects with the given rectangle */
     void doPaintContent(vcl::RenderContext& rRenderContext, const tools::Rectangle& _rUpdateRect);
@@ -165,7 +192,7 @@ public:
         To ease the caller's code, the coordinates must not necessarily denote a
         valid position. If they don't, <FALSE/> will be returned.
     */
-    bool goTo(ColPos _nColumn, RowPos _nRow);
+    bool GoToCell(sal_Int32 _nColumn, sal_Int32 _nRow);
 
     /** ensures that the given coordinate is visible
         @param _nColumn
@@ -175,19 +202,20 @@ public:
             the row position which should be visibleMust be non-negative, and smaller
             than the row count.
     */
-    void ensureVisible(ColPos _nColumn, RowPos _nRow);
+    void ensureVisible(sal_Int32 _nColumn, sal_Int32 _nRow);
 
     /** retrieves the content of the given cell, converted to a string
         */
-    OUString getCellContentAsString(RowPos const i_row, ColPos const i_col);
+    OUString GetAccessibleCellText(sal_Int32 const i_row, sal_Int32 const i_col);
 
     /** returns the position of the current row in the selection vector */
-    static int getRowSelectedNumber(const ::std::vector<RowPos>& selectedRows, RowPos current);
+    static int getRowSelectedNumber(const ::std::vector<sal_Int32>& selectedRows,
+                                    sal_Int32 current);
 
     void invalidateRect(const tools::Rectangle& rInvalidateRect);
 
     /** ??? */
-    void invalidateSelectedRegion(RowPos _nPrevRow, RowPos _nCurRow);
+    void invalidateSelectedRegion(sal_Int32 _nPrevRow, sal_Int32 _nCurRow);
 
     /** invalidates the part of the data window which is covered by the given rows
         @param i_firstRow
@@ -196,32 +224,40 @@ public:
             the index of the last row to include in the invalidation, or ROW_INVALID if the invalidation
             should happen down to the bottom of the data window.
     */
-    void invalidateRowRange(RowPos const i_firstRow, RowPos const i_lastRow);
+    void invalidateRowRange(sal_Int32 const i_firstRow, sal_Int32 const i_lastRow);
 
     /** invalidates the part of the data window which is covered by the given row */
-    void invalidateRow(RowPos const i_row) { invalidateRowRange(i_row, i_row); }
+    void invalidateRow(sal_Int32 const i_row) { invalidateRowRange(i_row, i_row); }
 
     /** invalidates all selected rows */
     void invalidateSelectedRows();
 
     void checkCursorPosition();
 
+    sal_Int32 GetRowCount() const;
+    sal_Int32 GetColumnCount() const;
+
+    OUString GetRowName(sal_Int32 nIndex) const;
+    OUString GetColumnName(sal_Int32 nIndex) const;
+    bool HasRowHeader();
+    bool HasColumnHeader();
+
     bool hasRowSelection() const { return !m_aSelectedRows.empty(); }
-    size_t getSelectedRowCount() const { return m_aSelectedRows.size(); }
-    RowPos getSelectedRowIndex(size_t const i_selectionIndex) const;
+    size_t GetSelectedRowCount() const { return m_aSelectedRows.size(); }
+    sal_Int32 GetSelectedRowIndex(size_t const i_selectionIndex) const;
 
     /** removes the given row index from m_aSelectedRows
 
         @return
             <TRUE/> if and only if the row was previously marked as selected
     */
-    bool markRowAsDeselected(RowPos const i_rowIndex);
+    bool markRowAsDeselected(sal_Int32 const i_rowIndex);
 
     /** marks the given row as selected, by putting it into m_aSelectedRows
         @return
             <TRUE/> if and only if the row was previously <em>not</em> marked as selected
     */
-    bool markRowAsSelected(RowPos const i_rowIndex);
+    bool markRowAsSelected(sal_Int32 const i_rowIndex);
 
     /** marks all rows as deselected
         @return
@@ -236,14 +272,30 @@ public:
     bool markAllRowsAsSelected();
 
     void commitAccessibleEvent(sal_Int16 const i_eventID);
+    // temporary methods
+    // Those do not really belong into the public API - they're intended for firing A11Y-related events. However,
+    // firing those events should be an implementation internal to the TableControl,
+    // instead of something triggered externally.
     void commitCellEvent(sal_Int16 const i_eventID, const css::uno::Any& i_newValue,
                          const css::uno::Any& i_oldValue);
     void commitTableEvent(sal_Int16 const i_eventID, const css::uno::Any& i_newValue,
                           const css::uno::Any& i_oldValue);
 
-    // ITableControl
-    virtual void hideCursor() override;
-    virtual void showCursor() override;
+    /** hides the cell cursor
+
+        The method cares for successive calls, that is, for every call to
+        ->hideCursor(), you need one call to ->showCursor. Only if the number
+        of both calls matches, the cursor is really shown.
+
+        @see showCursor
+    */
+    void hideCursor();
+
+    /** shows the cell cursor
+
+        @see hideCursor
+    */
+    void showCursor();
 
     /** dispatches an action to the table control
 
@@ -257,25 +309,78 @@ public:
     */
     bool dispatchAction(TableControlAction _eAction);
 
-    virtual SelectionEngine* getSelEngine() override;
-    virtual PTableModel getModel() const override;
-    virtual ColPos getCurrentColumn() const override;
-    virtual RowPos getCurrentRow() const override;
-    virtual void activateCell(ColPos const i_col, RowPos const i_row) override;
-    virtual ::Size getTableSizePixel() const override;
-    virtual void setPointer(PointerStyle i_pointer) override;
-    virtual void captureMouse() override;
-    virtual void releaseMouse() override;
-    virtual void invalidate(TableArea const i_what) override;
-    virtual tools::Long pixelWidthToAppFont(tools::Long const i_pixels) const override;
-    virtual void hideTracking() override;
-    virtual void showTracking(tools::Rectangle const& i_location,
-                              ShowTrackFlags const i_flags) override;
-    RowPos getRowAtPoint(const Point& rPoint) const;
-    ColPos getColAtPoint(const Point& rPoint) const;
-    virtual TableCell hitTest(const Point& rPoint) const override;
-    virtual ColumnMetrics getColumnMetrics(ColPos const i_column) const override;
-    virtual bool isRowSelected(RowPos i_row) const override;
+    /** returns selection engine*/
+    SelectionEngine* getSelEngine();
+
+    /** returns the table model
+
+        The returned model is guaranteed to not be <NULL/>.
+    */
+    PTableModel GetModel() const;
+
+    /** retrieves the current column
+
+        The current col is the one which contains the active cell.
+
+        @return
+            the column index of the active cell, or ->COL_INVALID
+            if there is no active cell, e.g. because the table does
+            not contain any rows or columns.
+    */
+    sal_Int32 GetCurrentColumn() const;
+
+    /** retrieves the current row
+
+        The current row is the one which contains the active cell.
+
+        @return
+            the row index of the active cell, or ->ROW_INVALID
+            if there is no active cell, e.g. because the table does
+            not contain any rows or columns.
+    */
+    sal_Int32 GetCurrentRow() const;
+
+    /// activates the given cell
+    void activateCell(sal_Int32 const i_col, sal_Int32 const i_row);
+
+    /// retrieves the size of the table window, in pixels
+    Size getTableSizePixel() const;
+
+    /// sets a new mouse pointer for the table window
+    void setPointer(PointerStyle i_pointer);
+
+    /// captures the mouse to the table window
+    void captureMouse();
+
+    /// releases the mouse, after it had previously been captured
+    void releaseMouse();
+
+    /// invalidates the table window
+    void invalidate(TableArea const i_what);
+
+    /// calculates a width, given in pixels, into an AppFont-based width
+    tools::Long pixelWidthToAppFont(tools::Long const i_pixels) const;
+
+    /// hides a previously shown tracking rectangle
+    void hideTracking();
+
+    /// shows a tracking rectangle
+    void showTracking(tools::Rectangle const& i_location, ShowTrackFlags const i_flags);
+
+    sal_Int32 getRowAtPoint(const Point& rPoint) const;
+    sal_Int32 getColAtPoint(const Point& rPoint) const;
+
+    /// does a hit test for the given pixel coordinates
+    TableCell hitTest(const Point& rPoint) const;
+
+    /// retrieves the metrics for a given column
+    ColumnMetrics getColumnMetrics(sal_Int32 const i_column) const;
+
+    /// determines whether a given row is selected
+    bool IsRowSelected(sal_Int32 i_row) const;
+
+    void SelectRow(sal_Int32 nRowIndex, bool bSelect);
+    void SelectAllRows(bool bSelect);
 
     tools::Long appFontWidthToPixel(tools::Long const i_appFontUnits) const;
 
@@ -284,6 +389,7 @@ public:
     ScrollBar* getHorzScrollbar() { return m_pHScroll; }
     ScrollBar* getVertScrollbar() { return m_pVScroll; }
 
+    bool ConvertPointToCellAddress(sal_Int32& rRow, sal_Int32& rColPos, const Point& rPoint);
     tools::Rectangle calcHeaderRect(bool bColHeader);
     tools::Rectangle calcHeaderCellRect(bool bColHeader, sal_Int32 nPos);
     tools::Rectangle calcTableRect() const;
@@ -293,15 +399,22 @@ public:
     const rtl::Reference<accessibility::AccessibleGridControl>&
     getAccessible(const rtl::Reference<comphelper::OAccessible>& rpParent);
     void disposeAccessible();
+    sal_Int32 GetAccessibleControlCount() const;
+    OUString GetAccessibleObjectName(AccessibleTableControlObjType eObjType, sal_Int32 nRow,
+                                     sal_Int32 nCol) const;
+    OUString GetAccessibleObjectDescription(AccessibleTableControlObjType eObjType) const;
+    void FillAccessibleStateSet(sal_Int64& rStateSet, AccessibleTableControlObjType eObjType) const;
+    void FillAccessibleStateSetForCell(sal_Int64& rStateSet, sal_Int32 nRow,
+                                       sal_uInt16 nColumnPos) const;
 
     // ITableModelListener
-    virtual void rowsInserted(RowPos first, RowPos last) override;
-    virtual void rowsRemoved(RowPos first, RowPos last) override;
+    virtual void rowsInserted(sal_Int32 first, sal_Int32 last) override;
+    virtual void rowsRemoved(sal_Int32 first, sal_Int32 last) override;
     virtual void columnInserted() override;
     virtual void columnRemoved() override;
     virtual void allColumnsRemoved() override;
-    virtual void cellsUpdated(RowPos const i_firstRow, RowPos const i_lastRow) override;
-    virtual void columnChanged(ColPos const i_column,
+    virtual void cellsUpdated(sal_Int32 const i_firstRow, sal_Int32 const i_lastRow) override;
+    virtual void columnChanged(sal_Int32 const i_column,
                                ColumnAttributeGroup const i_attributeGroup) override;
     virtual void tableMetricsChanged() override;
 
@@ -356,7 +469,7 @@ private:
             the index of a column up to which all columns should be considered as inflexible, or
             <code>COL_INVALID</code>.
     */
-    void impl_ni_relayout(ColPos const i_assumeInflexibleColumnsUpToIncluding = COL_INVALID);
+    void impl_ni_relayout(sal_Int32 const i_assumeInflexibleColumnsUpToIncluding = COL_INVALID);
 
     /** calculates the new width of our columns, taking into account their min and max widths, and their relative
         flexibility.
@@ -374,7 +487,7 @@ private:
             the overall width of the grid, which is available for columns
     */
     tools::Long
-    impl_ni_calculateColumnWidths(ColPos const i_assumeInflexibleColumnsUpToIncluding,
+    impl_ni_calculateColumnWidths(sal_Int32 const i_assumeInflexibleColumnsUpToIncluding,
                                   bool const i_assumeVerticalScrollbar,
                                   ::std::vector<tools::Long>& o_newColWidthsPixel) const;
 
@@ -432,37 +545,19 @@ private:
     tools::Rectangle impl_getAllVisibleDataCellArea() const;
 
     /** retrieves the column which covers the given ordinate */
-    ColPos impl_getColumnForOrdinate(tools::Long const i_ordinate) const;
+    sal_Int32 impl_getColumnForOrdinate(tools::Long const i_ordinate) const;
 
     /** retrieves the row which covers the given abscissa
         */
-    RowPos impl_getRowForAbscissa(tools::Long const i_abscissa) const;
+    sal_Int32 impl_getRowForAbscissa(tools::Long const i_abscissa) const;
 
     /// invalidates the window area occupied by the given column
-    void impl_invalidateColumn(ColPos const i_column);
+    void impl_invalidateColumn(sal_Int32 const i_column);
 
     DECL_LINK(OnScroll, ScrollBar*, void);
     DECL_LINK(OnUpdateScrollbars, void*, void);
-};
 
-//see seleng.hxx, seleng.cxx, FunctionSet overridables, part of selection engine
-class TableFunctionSet : public FunctionSet
-{
-private:
-    TableControl_Impl* m_pTableControl;
-    RowPos m_nCurrentRow;
-
-public:
-    explicit TableFunctionSet(TableControl_Impl* _pTableControl);
-    virtual ~TableFunctionSet() override;
-
-    virtual void BeginDrag() override;
-    virtual void CreateAnchor() override;
-    virtual void DestroyAnchor() override;
-    virtual void SetCursorAtPoint(const Point& rPoint, bool bDontSelectAtCursor = false) override;
-    virtual bool IsSelectionAtPoint(const Point& rPoint) override;
-    virtual void DeselectAtPoint(const Point& rPoint) override;
-    virtual void DeselectAll() override;
+    DECL_LINK(ImplSelectHdl, LinkParamNone*, void);
 };
 
 } // namespace svt::table

@@ -20,7 +20,8 @@
 
 #pragma once
 
-#include <controls/table/tablecontrol.hxx>
+#include <controls/table/AccessibleTableControlObjType.hxx>
+#include <controls/table/TableControl.hxx>
 
 #include <rtl/ustring.hxx>
 #include <rtl/ref.hxx>
@@ -157,7 +158,7 @@ protected:
     /** The parent accessible object. */
     rtl::Reference<comphelper::OAccessible> m_pParent;
     /** The SVT Table control. */
-    svt::table::TableControl& m_aTable;
+    svt::table::TableControl& m_rTable;
     /** The type of this object (for names, descriptions, state sets, ...). */
     AccessibleTableControlObjType m_eObjType;
 };

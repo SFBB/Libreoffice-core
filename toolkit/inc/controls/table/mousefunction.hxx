@@ -27,11 +27,11 @@ class MouseEvent;
 
 namespace svt::table
 {
-class ITableControl;
+class TableControl;
 
 //= FunctionResult
 
-enum FunctionResult
+enum class FunctionResult
 {
     ActivateFunction,
     ContinueFunction,
@@ -48,11 +48,11 @@ public:
     MouseFunction() {}
     MouseFunction(const MouseFunction&) = delete;
     MouseFunction& operator=(const MouseFunction&) = delete;
-    virtual FunctionResult handleMouseMove(ITableControl& i_tableControl, MouseEvent const& i_event)
+    virtual FunctionResult handleMouseMove(TableControl& i_tableControl, MouseEvent const& i_event)
         = 0;
-    virtual FunctionResult handleMouseDown(ITableControl& i_tableControl, MouseEvent const& i_event)
+    virtual FunctionResult handleMouseDown(TableControl& i_tableControl, MouseEvent const& i_event)
         = 0;
-    virtual FunctionResult handleMouseUp(ITableControl& i_tableControl, MouseEvent const& i_event)
+    virtual FunctionResult handleMouseUp(TableControl& i_tableControl, MouseEvent const& i_event)
         = 0;
 
 protected:
@@ -71,15 +71,15 @@ public:
 
 public:
     // MouseFunction
-    virtual FunctionResult handleMouseMove(ITableControl& i_tableControl,
+    virtual FunctionResult handleMouseMove(TableControl& i_tableControl,
                                            MouseEvent const& i_event) override;
-    virtual FunctionResult handleMouseDown(ITableControl& i_tableControl,
+    virtual FunctionResult handleMouseDown(TableControl& i_tableControl,
                                            MouseEvent const& i_event) override;
-    virtual FunctionResult handleMouseUp(ITableControl& i_tableControl,
+    virtual FunctionResult handleMouseUp(TableControl& i_tableControl,
                                          MouseEvent const& i_event) override;
 
 private:
-    ColPos m_nResizingColumn;
+    sal_Int32 m_nResizingColumn;
 };
 
 //= RowSelection
@@ -94,11 +94,11 @@ public:
 
 public:
     // MouseFunction
-    virtual FunctionResult handleMouseMove(ITableControl& i_tableControl,
+    virtual FunctionResult handleMouseMove(TableControl& i_tableControl,
                                            MouseEvent const& i_event) override;
-    virtual FunctionResult handleMouseDown(ITableControl& i_tableControl,
+    virtual FunctionResult handleMouseDown(TableControl& i_tableControl,
                                            MouseEvent const& i_event) override;
-    virtual FunctionResult handleMouseUp(ITableControl& i_tableControl,
+    virtual FunctionResult handleMouseUp(TableControl& i_tableControl,
                                          MouseEvent const& i_event) override;
 
 private:
@@ -117,15 +117,15 @@ public:
 
 public:
     // MouseFunction
-    virtual FunctionResult handleMouseMove(ITableControl& i_tableControl,
+    virtual FunctionResult handleMouseMove(TableControl& i_tableControl,
                                            MouseEvent const& i_event) override;
-    virtual FunctionResult handleMouseDown(ITableControl& i_tableControl,
+    virtual FunctionResult handleMouseDown(TableControl& i_tableControl,
                                            MouseEvent const& i_event) override;
-    virtual FunctionResult handleMouseUp(ITableControl& i_tableControl,
+    virtual FunctionResult handleMouseUp(TableControl& i_tableControl,
                                          MouseEvent const& i_event) override;
 
 private:
-    ColPos m_nActiveColumn;
+    sal_Int32 m_nActiveColumn;
 };
 
 } // namespace svt::table
