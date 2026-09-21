@@ -36,8 +36,8 @@ class Ruler;
 class SvtRulerAccessible final : public comphelper::OAccessible
 {
 public:
-    SvtRulerAccessible(
-        css::uno::Reference< css::accessibility::XAccessible> xParent, Ruler& rRepresentation, OUString aName );
+    SvtRulerAccessible(const rtl::Reference<comphelper::OAccessible>& rpParent,
+                       Ruler& rRepresentation, OUString aName);
 
     //=====  XAccessibleComponent  ============================================
 
@@ -88,8 +88,7 @@ private:
     OUString                            msName;
 
     /// Reference to the parent object.
-    css::uno::Reference< css::accessibility::XAccessible >
-                                        mxParent;
+    rtl::Reference<comphelper::OAccessible> mpParent;
 
     /// pointer to internal representation
     VclPtr<Ruler>                       mpRepr;

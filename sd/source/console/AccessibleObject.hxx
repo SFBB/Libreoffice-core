@@ -46,7 +46,7 @@ public:
     virtual void SetWindow (
         const css::uno::Reference<css::awt::XWindow>& rxContentWindow,
         const css::uno::Reference<css::awt::XWindow>& rxBorderWindow);
-    void SetAccessibleParent (const css::uno::Reference<css::accessibility::XAccessible>& rxAccessibleParent);
+    void SetAccessibleParent(const rtl::Reference<comphelper::OAccessible>& rpAccessibleParent);
 
     virtual void SAL_CALL disposing() override;
 
@@ -120,7 +120,7 @@ protected:
     const sal_Int16 mnRole;
     sal_Int64 mnStateSet;
     bool mbIsFocused;
-    css::uno::Reference<css::accessibility::XAccessible> mxParentAccessible;
+    rtl::Reference<comphelper::OAccessible> mpParentAccessible;
     ::std::vector<rtl::Reference<AccessibleObject> > maChildren;
 
     // OAccessible

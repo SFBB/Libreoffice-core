@@ -116,14 +116,12 @@ Reference< XAccessible > SAL_CALL SvxRectCtlAccessibleContext::getAccessibleAtPo
 {
     ::osl::MutexGuard           aGuard( m_aMutex );
 
-    Reference< XAccessible >    xRet;
-
     tools::Long nChild = mpRepr ? PointToIndex(mpRepr->GetApproxRPFromPixPt(rPoint)) : NOCHILDSELECTED;
 
     if (nChild != NOCHILDSELECTED)
-        xRet = getAccessibleChild( nChild );
+        return getAccessibleChild(nChild);
 
-    return xRet;
+    return {};
 }
 
 // XAccessibleContext
@@ -390,14 +388,11 @@ awt::Rectangle SvxRectCtlAccessibleContext::implGetBounds()
 }
 
 SvxRectCtlChildAccessibleContext::SvxRectCtlChildAccessibleContext(
-    const Reference<XAccessible>&   rxParent,
-    OUString               aName,
-    OUString               aDescription,
-    const tools::Rectangle& rBoundingBox,
-    tools::Long nIndexInParent )
+    const rtl::Reference<comphelper::OAccessible>& rpParent, OUString aName, OUString aDescription,
+    const tools::Rectangle& rBoundingBox, tools::Long nIndexInParent)
     : msDescription(std::move( aDescription ))
     , msName(std::move( aName ))
-    , mxParent(rxParent)
+    , mxParent(rpParent)
     , maBoundingBox( rBoundingBox )
     , mnIndexInParent( nIndexInParent )
     , mbIsChecked( false )

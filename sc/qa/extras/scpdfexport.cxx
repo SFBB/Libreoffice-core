@@ -36,6 +36,9 @@
 #include <vcl/filter/pdfdocument.hxx>
 #include <tools/zcodec.hxx>
 #include <o3tl/string_view.hxx>
+#include <rtl/strbuf.hxx>
+
+#include <set>
 
 using namespace css::lang;
 using namespace ::com::sun::star;
@@ -938,6 +941,229 @@ CPPUNIT_TEST_FIXTURE(ScPDFExportTest, testTdf78897)
     // - Expected:  11.00 11.00
     // - Actual  :  11.00 ###
     CPPUNIT_ASSERT_EQUAL(u" 11.00 11.00 "_ustr, aActualText);
+}
+
+CPPUNIT_TEST_FIXTURE(ScPDFExportTest, testSheetDestinations)
+{
+    loadFromFile(u"sheet-destinations.fods");
+    exportWholeDocumentToPDF({ comphelper::makePropertyValue(u"UseTaggedPDF"_ustr, true),
+                               comphelper::makePropertyValue(u"ExportBookmarks"_ustr, true) });
+
+    vcl::filter::PDFDocument aDocument;
+    CPPUNIT_ASSERT(aDocument.Read(*maTempFile.GetStream(StreamMode::READ)));
+
+    // Without the fix, an outline item carried a bare /Dest array and no /A at all, so this
+    // stops at the assertion below.
+    //
+    // ISO 14289-2 8.8: a sheet's outline item names the sheet, not only the page it starts on
+    OStringBuffer aTypes;
+    std::set<int> aTargets;
+    for (const auto& rDocElement : aDocument.GetElements())
+    {
+        auto pObject = dynamic_cast<vcl::filter::PDFObjectElement*>(rDocElement.get());
+        // an outline item, not the document information dictionary, which also has a title
+        if (!pObject || !pObject->Lookup("Title"_ostr) || !pObject->Lookup("Parent"_ostr))
+            continue;
+        auto pAction = dynamic_cast<vcl::filter::PDFDictionaryElement*>(pObject->Lookup("A"_ostr));
+        CPPUNIT_ASSERT(pAction);
+        auto pStructure
+            = dynamic_cast<vcl::filter::PDFArrayElement*>(pAction->LookupElement("SD"_ostr));
+        CPPUNIT_ASSERT(pStructure);
+        CPPUNIT_ASSERT(!pStructure->GetElements().empty());
+        auto pRef = dynamic_cast<vcl::filter::PDFReferenceElement*>(pStructure->GetElements()[0]);
+        CPPUNIT_ASSERT(pRef);
+        CPPUNIT_ASSERT(pRef->LookupObject());
+        // the sheet's own element, not one the sheet before it left behind
+        CPPUNIT_ASSERT(aTargets.insert(pRef->GetObjectValue()).second);
+        auto pS
+            = dynamic_cast<vcl::filter::PDFNameElement*>(pRef->LookupObject()->Lookup("S"_ostr));
+        CPPUNIT_ASSERT(pS);
+        aTypes.append(pS->GetValue() + " ");
+    }
+
+    // one outline item per sheet, each naming that sheet's own element
+    CPPUNIT_ASSERT_EQUAL("Worksheet Worksheet "_ostr, aTypes.makeStringAndClear());
+}
+
+CPPUNIT_TEST_FIXTURE(ScPDFExportTest, testCellLinkDestinations)
+{
+    loadFromFile(u"cell-link-destinations.fods");
+    exportWholeDocumentToPDF({ comphelper::makePropertyValue(u"UseTaggedPDF"_ustr, true) });
+
+    vcl::filter::PDFDocument aDocument;
+    CPPUNIT_ASSERT(aDocument.Read(*maTempFile.GetStream(StreamMode::READ)));
+
+    int nCellDests = 0;
+    int nSheetDests = 0;
+    std::set<int> aTargets;
+    for (auto pPage : aDocument.GetPages())
+    {
+        auto pAnnots = dynamic_cast<vcl::filter::PDFArrayElement*>(pPage->Lookup("Annots"_ostr));
+        if (!pAnnots)
+            continue;
+        for (auto pElement : pAnnots->GetElements())
+        {
+            auto pAnnotRef = dynamic_cast<vcl::filter::PDFReferenceElement*>(pElement);
+            CPPUNIT_ASSERT(pAnnotRef);
+            vcl::filter::PDFObjectElement* pAnnot = pAnnotRef->LookupObject();
+            CPPUNIT_ASSERT(pAnnot);
+            auto pSubtype
+                = dynamic_cast<vcl::filter::PDFNameElement*>(pAnnot->Lookup("Subtype"_ostr));
+            if (!pSubtype || pSubtype->GetValue() != "Link")
+                continue;
+
+            // Without the fix, a link annotation carried a bare /Dest array and no /A, so this
+            // stops at the assertion below.
+            //
+            // ISO 14289-2 8.8: the link names the element it reaches
+            auto pAction
+                = dynamic_cast<vcl::filter::PDFDictionaryElement*>(pAnnot->Lookup("A"_ostr));
+            CPPUNIT_ASSERT(pAction);
+            auto pPlain
+                = dynamic_cast<vcl::filter::PDFArrayElement*>(pAction->LookupElement("D"_ostr));
+            CPPUNIT_ASSERT(pPlain);
+            auto pPlainPage
+                = dynamic_cast<vcl::filter::PDFReferenceElement*>(pPlain->GetElements()[0]);
+            CPPUNIT_ASSERT(pPlainPage);
+            auto pStructure
+                = dynamic_cast<vcl::filter::PDFArrayElement*>(pAction->LookupElement("SD"_ostr));
+            CPPUNIT_ASSERT(pStructure);
+            auto pRef
+                = dynamic_cast<vcl::filter::PDFReferenceElement*>(pStructure->GetElements()[0]);
+            CPPUNIT_ASSERT(pRef);
+            vcl::filter::PDFObjectElement* pElem = pRef->LookupObject();
+            CPPUNIT_ASSERT(pElem);
+            // the cell reached, or its sheet where nothing was drawn to reach
+            auto pType = dynamic_cast<vcl::filter::PDFNameElement*>(pElem->Lookup("S"_ostr));
+            CPPUNIT_ASSERT(pType);
+            if (pType->GetValue() == "TD")
+                ++nCellDests;
+            else
+            {
+                CPPUNIT_ASSERT_EQUAL("Worksheet"_ostr, pType->GetValue());
+                ++nSheetDests;
+            }
+            // /SD names an element in place of the page, so it must be /D's page
+            auto pElemPage
+                = dynamic_cast<vcl::filter::PDFReferenceElement*>(pElem->Lookup("Pg"_ostr));
+            CPPUNIT_ASSERT(pElemPage);
+            CPPUNIT_ASSERT_EQUAL(pPlainPage->GetObjectValue(), pElemPage->GetObjectValue());
+            // each link reaches an element of its own
+            CPPUNIT_ASSERT(aTargets.insert(pRef->GetObjectValue()).second);
+        }
+    }
+
+    // the three links onto a cell with something in it, and the one onto an empty cell
+    CPPUNIT_ASSERT_EQUAL(3, nCellDests);
+    CPPUNIT_ASSERT_EQUAL(1, nSheetDests);
+}
+
+CPPUNIT_TEST_FIXTURE(ScPDFExportTest, testPageRangeSkipsSheetStart)
+{
+    // Without the fix, this failed with
+    // - Expected: 2
+    // - Actual  : 1
+    // one Worksheet element holding both sheets' tables, and one bookmark rather than two.
+    //
+    // the second sheet spans pages 2 and 3, so this reaches it without its own first page
+    loadFromFile(u"page-range-sheets.fods");
+    exportWholeDocumentToPDF({ comphelper::makePropertyValue(u"UseTaggedPDF"_ustr, true),
+                               comphelper::makePropertyValue(u"PageRange"_ustr, u"1;3"_ustr) });
+
+    vcl::filter::PDFDocument aDocument;
+    CPPUNIT_ASSERT(aDocument.Read(*maTempFile.GetStream(StreamMode::READ)));
+    CPPUNIT_ASSERT_EQUAL(size_t(2), aDocument.GetPages().size());
+
+    int nOutlineItems = 0;
+    std::set<int> aWorksheetPages;
+    for (const auto& rDocElement : aDocument.GetElements())
+    {
+        auto pObject = dynamic_cast<vcl::filter::PDFObjectElement*>(rDocElement.get());
+        if (!pObject)
+            continue;
+        if (pObject->Lookup("Title"_ostr) && pObject->Lookup("Parent"_ostr))
+            ++nOutlineItems;
+        auto pType = dynamic_cast<vcl::filter::PDFNameElement*>(pObject->Lookup("S"_ostr));
+        if (!pType || pType->GetValue() != "Worksheet")
+            continue;
+        auto pPage = dynamic_cast<vcl::filter::PDFReferenceElement*>(pObject->Lookup("Pg"_ostr));
+        CPPUNIT_ASSERT(pPage);
+        // an element of its own per sheet, not the second sheet landing inside the first one's
+        CPPUNIT_ASSERT(aWorksheetPages.insert(pPage->GetObjectValue()).second);
+    }
+
+    CPPUNIT_ASSERT_EQUAL(size_t(2), aWorksheetPages.size());
+    // the bookmark each sheet gets, which needs no tagging at all
+    CPPUNIT_ASSERT_EQUAL(2, nOutlineItems);
+}
+
+CPPUNIT_TEST_FIXTURE(ScPDFExportTest, testDatabaseRangeHeader)
+{
+    loadFromFile(u"db-range-header.fods");
+    exportWholeDocumentToPDF({ comphelper::makePropertyValue(u"UseTaggedPDF"_ustr, true) });
+
+    vcl::filter::PDFDocument aDocument;
+    CPPUNIT_ASSERT(aDocument.Read(*maTempFile.GetStream(StreamMode::READ)));
+
+    std::vector<vcl::filter::PDFObjectElement*> aTables;
+    for (const auto& rDocElement : aDocument.GetElements())
+    {
+        auto pObject = dynamic_cast<vcl::filter::PDFObjectElement*>(rDocElement.get());
+        if (!pObject)
+            continue;
+        auto pType = dynamic_cast<vcl::filter::PDFNameElement*>(pObject->Lookup("S"_ostr));
+        if (pType && pType->GetValue() == "Table")
+            aTables.push_back(pObject);
+    }
+    // the sheet fits one page, so every row it has is in this one table
+    CPPUNIT_ASSERT_EQUAL(size_t(1), aTables.size());
+
+    vcl::filter::PDFObjectElement* pTable = aTables.front();
+
+    OStringBuffer aCells;
+    auto pRows = dynamic_cast<vcl::filter::PDFArrayElement*>(pTable->Lookup("K"_ostr));
+    CPPUNIT_ASSERT(pRows);
+    for (auto* pRowElement : pRows->GetElements())
+    {
+        auto pRow = dynamic_cast<vcl::filter::PDFReferenceElement*>(pRowElement);
+        CPPUNIT_ASSERT(pRow);
+        CPPUNIT_ASSERT(pRow->LookupObject());
+        auto pCells
+            = dynamic_cast<vcl::filter::PDFArrayElement*>(pRow->LookupObject()->Lookup("K"_ostr));
+        CPPUNIT_ASSERT(pCells);
+        for (auto* pCellElement : pCells->GetElements())
+        {
+            auto pCell = dynamic_cast<vcl::filter::PDFReferenceElement*>(pCellElement);
+            CPPUNIT_ASSERT(pCell);
+            CPPUNIT_ASSERT(pCell->LookupObject());
+            auto pType = dynamic_cast<vcl::filter::PDFNameElement*>(
+                pCell->LookupObject()->Lookup("S"_ostr));
+            CPPUNIT_ASSERT(pType);
+            // the scope a header cell announces, and nothing for a data cell
+            OString aScope;
+            if (vcl::filter::PDFElement* pElement = pCell->LookupObject()->Lookup("A"_ostr))
+            {
+                // one owner dictionary, which several attribute groups would turn into an array
+                auto pAttributes = dynamic_cast<vcl::filter::PDFDictionaryElement*>(pElement);
+                CPPUNIT_ASSERT(pAttributes);
+                auto pValue = dynamic_cast<vcl::filter::PDFNameElement*>(
+                    pAttributes->LookupElement("Scope"_ostr));
+                CPPUNIT_ASSERT(pValue);
+                aScope = "/" + pValue->GetValue();
+            }
+            aCells.append(pType->GetValue() + aScope + " ");
+        }
+        aCells.append("| ");
+    }
+
+    // Without the fix every cell was a TD, so this read
+    // "TD TD | TD TD | TD TD | TD | TD TD | TD TD | TD TD | TD TD | ".
+    //
+    // the labels of the first range and of the one kept by column, and nothing in the range
+    // defined without labels or outside every range
+    CPPUNIT_ASSERT_EQUAL("TH/Column TH/Column | TD TD | TD TD | TD | TD TD | TD TD | "
+                         "TH/Row TD | TH/Row TD | "_ostr,
+                         aCells.makeStringAndClear());
 }
 
 // just needs to not crash on export to pdf

@@ -128,9 +128,10 @@ public:
     /// Return this object's role.
     virtual sal_Int16 SAL_CALL getAccessibleRole() override;
     //=====  XAccessibleGroupPosition  =========================================
-    virtual css::uno::Sequence< sal_Int32 > SAL_CALL
-        getGroupPosition( const css::uno::Any& rAny ) override;
-    virtual OUString SAL_CALL getObjectLink( const css::uno::Any& accoject ) override;
+    virtual css::uno::Sequence<sal_Int32> SAL_CALL getGroupPosition(
+        const css::uno::Reference<css::accessibility::XAccessible>& rxAccessible) override;
+    virtual OUString SAL_CALL getObjectLink(
+        const css::uno::Reference<css::accessibility::XAccessible>& rxAccessible) override;
     /** The destructor releases its children manager and text engine if
         still existent.  These are responsible to send appropriate events.
     */

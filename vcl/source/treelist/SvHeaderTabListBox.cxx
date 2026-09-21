@@ -258,20 +258,15 @@ tools::Rectangle SvHeaderTabListBox::calcFieldRectPixel(sal_Int32 _nRow, sal_uIn
 rtl::Reference<comphelper::OAccessible>
 SvHeaderTabListBox::CreateAccessibleCell(sal_Int32 _nRow, sal_uInt16 _nColumnPos)
 {
-    OSL_ENSURE(m_xAccessible.is(), "Invalid call: Accessible is null");
-
-    rtl::Reference<AccessibleBrowseBoxCell> xChild;
+    assert(m_xAccessible.is() && "Invalid call: Accessible is null");
 
     TriState eState = TRISTATE_INDET;
     bool bIsCheckBox = IsCellCheckBox(_nRow, _nColumnPos, eState);
     if (bIsCheckBox)
-        xChild = new AccessibleCheckBoxCell(m_xAccessible->getTable(), *this, _nRow, _nColumnPos,
-                                            eState, false);
-    else
-        xChild = new AccessibleBrowseBoxTableCell(m_xAccessible->getTable(), *this, _nRow,
-                                                  _nColumnPos);
+        return new AccessibleCheckBoxCell(m_xAccessible->getTable(), *this, _nRow, _nColumnPos,
+                                          eState, false);
 
-    return xChild;
+    return new AccessibleBrowseBoxTableCell(m_xAccessible->getTable(), *this, _nRow, _nColumnPos);
 }
 
 rtl::Reference<comphelper::OAccessible> SvHeaderTabListBox::CreateAccessibleRowHeader(sal_Int32)

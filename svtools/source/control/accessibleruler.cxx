@@ -37,11 +37,10 @@ using namespace ::com::sun::star;
 using namespace ::com::sun::star::uno;
 using namespace ::com::sun::star::accessibility;
 
-
-SvtRulerAccessible::SvtRulerAccessible(uno::Reference<XAccessible> xParent, Ruler& rRepr,
-                                       OUString aName)
+SvtRulerAccessible::SvtRulerAccessible(const rtl::Reference<comphelper::OAccessible>& rpParent,
+                                       Ruler& rRepr, OUString aName)
     : msName(std::move(aName))
-    , mxParent(std::move(xParent))
+    , mpParent(rpParent)
     , mpRepr(&rRepr)
 {
 }
@@ -73,7 +72,7 @@ uno::Reference< XAccessible > SAL_CALL SvtRulerAccessible::getAccessibleChild( s
 uno::Reference< XAccessible > SAL_CALL SvtRulerAccessible::getAccessibleParent()
 {
     SolarMutexGuard aSolarGuard;
-    return mxParent;
+    return mpParent;
 }
 
 sal_Int16 SAL_CALL SvtRulerAccessible::getAccessibleRole()
@@ -160,7 +159,7 @@ void SAL_CALL SvtRulerAccessible::disposing()
 
     comphelper::OAccessible::disposing();
 
-    mxParent.clear();
+    mpParent.clear();
 }
 
 awt::Rectangle SvtRulerAccessible::implGetBounds()
