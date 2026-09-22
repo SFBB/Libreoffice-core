@@ -47,6 +47,18 @@ DECLARE_OOXMLEXPORT_TEST(testTdf38575_fullWidthLine, "tdf38575_fullWidthLine.doc
     CPPUNIT_ASSERT_EQUAL(4, getPages());
 }
 
+DECLARE_OOXMLEXPORT_TEST(testTdf79738_footerLineNumbering, "tdf79738_footerLineNumbering.docx")
+{
+    uno::Reference<style::XStyleFamiliesSupplier> xStylesSupplier(mxComponent, uno::UNO_QUERY);
+    uno::Reference<container::XNameAccess> xStyleFamilies = xStylesSupplier->getStyleFamilies();
+    uno::Reference<container::XNameContainer> xStyles;
+    xStyleFamilies->getByName(u"ParagraphStyles"_ustr) >>= xStyles;
+    uno::Reference<beans::XPropertySet> xHeader(xStyles->getByName(u"Header"_ustr), uno::UNO_QUERY);
+    CPPUNIT_ASSERT_EQUAL(false, xHeader->getPropertyValue(u"ParaLineNumberCount"_ustr).get<bool>());
+    uno::Reference<beans::XPropertySet> xFooter(xStyles->getByName(u"Footer"_ustr), uno::UNO_QUERY);
+    CPPUNIT_ASSERT_EQUAL(false, xFooter->getPropertyValue(u"ParaLineNumberCount"_ustr).get<bool>());
+}
+
 CPPUNIT_TEST_FIXTURE(Test, testTdf124398_groupshapeChart)
 {
     // given a document with grouped chart and textbox
@@ -68,6 +80,11 @@ DECLARE_OOXMLEXPORT_TEST(testTdf138027_pageBreakAfterShape, "tdf138027_pageBreak
     xmlDocUniquePtr pDump = parseLayoutDump();
     // The image and the textbox are on page 1, not after the page break on page 2
     assertXPath(pDump, "/root/page[1]/sorted_objs/fly", 2);
+}
+
+DECLARE_OOXMLEXPORT_TEST(testTdf158349_SDTstreamStateStack, "tdf158349_SDTstreamStateStack.docx")
+{
+    // should load and reload without reporting a corrupt document
 }
 
 CPPUNIT_TEST_FIXTURE(Test, testTdf168607_tabstopZero)
