@@ -604,6 +604,8 @@ struct PDFStructureElement
     std::map<PDFWriter::StructAttribute, PDFStructureAttribute >
                                                         m_aAttributes;
     ::std::vector<sal_Int32>                            m_AnnotIds;
+    // what the content in this element refers to, as indexes into the structure vector
+    std::vector<sal_Int32> m_RefElements;
     // a Link has one annotation per line, and per fly gap
     std::vector<sal_Int32> m_LinkAnnotIds;
     tools::Rectangle                                    m_aBBox;
@@ -792,8 +794,12 @@ private:
      */
     bool                                m_bEmitStructure;
     /* role map of struct tree root */
-    std::unordered_map< OString, OString >
-                                        m_aRoleMap;
+    struct RoleMapEntry
+    {
+        OString m_aTag;
+        OString m_aAsked; ///< the alias it was claimed for, which may differ
+    };
+    std::unordered_map<OString, RoleMapEntry> m_aRoleMap;
     /* structure elements (object ids) that should have ID */
     std::unordered_set<sal_Int32> m_StructElemObjsWithID;
 
@@ -888,7 +894,11 @@ private:
     /* the buffer where the data are encrypted, dynamically allocated */
     std::vector<sal_uInt8>                  m_vEncryptionBuffer;
 
-    void addRoleMap(const OString& aAlias, vcl::pdf::StructElement eType);
+    /// Whether the name is a standard structure type's at this PDF version.
+    [[nodiscard]] bool isStandardStructureName(std::string_view aName);
+    /// The name the element carries: the alias, or the first indexed name beside it that
+    /// no standard type and no other alias has taken.
+    [[nodiscard]] OString claimRoleName(const OString& rAlias, vcl::pdf::StructElement eType);
 
     void checkAndEnableStreamEncryption( sal_Int32 nObject ) override;
 
@@ -1321,6 +1331,7 @@ public:
     sal_Int32 registerDestReference( sal_Int32 nDestId, const tools::Rectangle& rRect, sal_Int32 nPageNr, PDFWriter::DestAreaType eType );
     void      setLinkDest( sal_Int32 nLinkId, sal_Int32 nDestId );
     void setDestStructureElement(sal_Int32 nDestId, sal_Int32 nStructElementId);
+    void addStructureRef(sal_Int32 nElementId, sal_Int32 nRefElementId);
     void      setLinkURL( sal_Int32 nLinkId, const OUString& rURL );
     void      setLinkPropertyId( sal_Int32 nLinkId, sal_Int32 nPropertyId );
 

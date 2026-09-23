@@ -181,6 +181,9 @@ struct SwEnhancedPDFState
         Span aSpan;
     };
 
+    /// the paragraph of every TOC item, whose link says what the item refers to, and the item
+    std::vector<std::pair<const SwTextNode*, sal_Int32>> m_TOCItems;
+
     ::std::optional<Span> m_oCurrentSpan;
     std::optional<Link> m_oCurrentLink;
     // left open for a following portion, innermost last
@@ -228,7 +231,6 @@ constexpr OUStringLiteral aBlockQuoteString = u"BlockQuote";
 constexpr OUString aCaptionString = u"Caption"_ustr;
 constexpr OUStringLiteral aIndexString = u"Index";
 constexpr OUStringLiteral aTOCString = u"TOC";
-constexpr OUStringLiteral aTOCIString = u"TOCI";
 constexpr OUStringLiteral aTableString = u"Table";
 constexpr OUStringLiteral aTRString = u"TR";
 constexpr OUStringLiteral aTDString = u"TD";
@@ -240,7 +242,6 @@ constexpr OUStringLiteral aCodeString = u"Code";
 constexpr OUStringLiteral aFigureString = u"Figure";
 constexpr OUStringLiteral aFormulaString = u"Formula";
 constexpr OUString aLinkString = u"Link"_ustr;
-constexpr OUStringLiteral aNoteString = u"Note";
 constexpr OUStringLiteral aAnnotString = u"Annot";
 
 // returns true if first paragraph in cell frame has 'table heading' style, or one derived from it
@@ -450,6 +451,34 @@ const SwTextNode* lcl_JumpedToNode(const SwEditShell& rSh, const SwPosition& rBe
 {
     const SwPosition& rPoint = *rSh.GetCursor_()->GetPoint();
     return rPoint == rBeforeJump ? nullptr : rPoint.GetNode().GetTextNode();
+}
+
+// the node a table of contents entry links to, which the mark in its URL names
+const SwTextNode* lcl_GetLinkedNode(const SwDoc& rDoc, const SwTextNode& rEntry)
+{
+    if (!rEntry.HasHints())
+        return nullptr;
+
+    const IDocumentMarkAccess& rMarks = *rDoc.getIDocumentMarkAccess();
+    const SwpHints& rHints = rEntry.GetSwpHints();
+    for (size_t i = 0; i < rHints.Count(); ++i)
+    {
+        const SwTextAttr& rHint = *rHints.Get(i);
+        if (rHint.Which() != RES_TXTATR_INETFMT)
+            continue;
+
+        const OUString aURL(INetURLObject::decode(rHint.GetINetFormat().GetValue(),
+                                                  INetURLObject::DecodeMechanism::WithCharset));
+        if (!aURL.startsWith("#"))
+            continue;
+
+        // an entry for a heading names the mark and nothing else; one for a table or a frame
+        // names its kind after a separator, and reaches no node this can tag
+        const auto ppMark = rMarks.findMark(SwMarkName(aURL.copy(1)));
+        if (ppMark != rMarks.getAllMarksEnd())
+            return (*ppMark)->GetMarkStart().GetNode().GetTextNode();
+    }
+    return nullptr;
 }
 
 // a destination is made before its target is tagged, so remember the node
@@ -893,7 +922,7 @@ void SwTaggedPDFHelper::SetAttributes(vcl::pdf::StructElement eType)
                 bWritingMode = true;
                 break;
 
-            case vcl::pdf::StructElement::Note:
+            case vcl::pdf::StructElement::FENote:
                 bPlacement = true;
                 break;
 
@@ -1570,12 +1599,9 @@ void SwTaggedPDFHelper::BeginBlockStructureElements()
 
         case SwFrameType::Footnote:
 
-            // Footnote frame: Note
+            // Footnote frame: FENote, which the writer names Note below PDF 2.0
 
-            // Note: vcl::pdf::PDFWriter::Note is actually a ILSE. Nevertheless
-            // we treat it like a grouping element!
-            nPDFType = sal_uInt16(vcl::pdf::StructElement::Note);
-            aPDFType = aNoteString;
+            nPDFType = sal_uInt16(vcl::pdf::StructElement::FENote);
             break;
 
         case SwFrameType::Section :
@@ -1821,9 +1847,8 @@ void SwTaggedPDFHelper::BeginBlockStructureElements()
                             break;
                     }
 
-                    // PDF/UA allows unlimited headings, but PDF only up to H6
-                    // ... and apparently the extra H7.. must be declared in
-                    // RoleMap, or veraPDF complains.
+                    // PDF/UA allows unlimited headings, but PDF 1.7 only up to H6, so the
+                    // extra H7.. are declared in RoleMap there; PDF 2.0 has them itself.
                     nRealLevel = std::min(nRealLevel, 5);
                     nPDFType =  o3tl::narrowing<sal_uInt16>(sal_uInt16(vcl::pdf::StructElement::H1) + nRealLevel);
                 }
@@ -1841,7 +1866,13 @@ void SwTaggedPDFHelper::BeginBlockStructureElements()
                         if ( pTOXBase && TOX_INDEX != pTOXBase->GetType() )
                         {
                             // Special case: Open additional TOCI tag:
-                            BeginTagImpl(nullptr, vcl::pdf::StructElement::TOCI, aTOCIString);
+                            const sal_Int32 nTOCI(BeginTagImpl(
+                                nullptr, vcl::pdf::StructElement::TOCI, u"TOCI"_ustr));
+                            if (const SwTextNode* pEntryNode = rTextFrame.GetTextNodeFirst())
+                            {
+                                mpPDFExtOutDevData->GetSwPDFState()->m_TOCItems.emplace_back(
+                                    pEntryNode, nTOCI);
+                            }
                         }
                     }
                 }
@@ -3297,6 +3328,20 @@ void SwEnhancedPDFExportHelper::EnhancedPDFExport(LanguageType const eLanguageDe
             if (it != rState.m_NodeTagIdMap.end())
             {
                 pPDFExtOutDevData->SetDestStructureElement(rDest.first, it->second);
+            }
+        }
+
+        // ISO 14289-2 8.2.5.8: a TOC item names the heading its entry links to
+        for (const auto& [pEntry, nItem] : rState.m_TOCItems)
+        {
+            const SwTextNode* pLinked = lcl_GetLinkedNode(*pDoc, *pEntry);
+            if (!pLinked)
+                continue;
+
+            const auto it(rState.m_NodeTagIdMap.find(pLinked));
+            if (it != rState.m_NodeTagIdMap.end())
+            {
+                pPDFExtOutDevData->AddStructureRef(nItem, it->second);
             }
         }
 

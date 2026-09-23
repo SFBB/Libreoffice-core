@@ -2199,11 +2199,7 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest2, testTdf173162)
 {
     loadFromFile(u"StructureNamespaces.fodt");
 
-    // Tagged rather than PDF/UA, because the harness validates a PDF/UA export and this document
-    // still fails ISO 14289-2 8.2.5.8 (a TOCI needs Ref) and 8.2.5.14 (PDF/UA-2 wants FENote,
-    // not Note). TODO: ask for PDF/UA here once those are fixed. The namespaces below depend on
-    // the version alone.
-    uno::Sequence aFilterData{ comphelper::makePropertyValue(u"UseTaggedPDF"_ustr, true),
+    uno::Sequence aFilterData{ comphelper::makePropertyValue(u"PDFUACompliance"_ustr, true),
                                comphelper::makePropertyValue(u"SelectPdfVersion"_ustr,
                                                              sal_Int32(20)) };
     save(TestFilter::PDF_WRITER,
@@ -2304,12 +2300,13 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest2, testTdf173162)
     CPPUNIT_ASSERT_EQUAL(aPDF17, aNamespaceOfType["BlockQuote"_ostr]);
     CPPUNIT_ASSERT_EQUAL(aPDF17, aNamespaceOfType["Quote"_ostr]);
     CPPUNIT_ASSERT_EQUAL(aPDF17, aNamespaceOfType["Code"_ostr]);
-    CPPUNIT_ASSERT_EQUAL(aPDF17, aNamespaceOfType["Note"_ostr]);
     CPPUNIT_ASSERT_EQUAL(aPDF17, aNamespaceOfType["BibEntry"_ostr]);
     // and the ones it kept
     CPPUNIT_ASSERT_EQUAL(aPDF20, aNamespaceOfType["Document"_ostr]);
     CPPUNIT_ASSERT_EQUAL(aPDF20, aNamespaceOfType["H1"_ostr]);
     CPPUNIT_ASSERT_EQUAL(aPDF20, aNamespaceOfType["Link"_ostr]);
+    // the footnote takes the type PDF 2.0 put in place of Note
+    CPPUNIT_ASSERT_EQUAL(aPDF20, aNamespaceOfType["FENote"_ostr]);
 }
 
 CPPUNIT_TEST_FIXTURE(PdfExportTest2, testTdf166963)
@@ -3884,6 +3881,89 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest2, testTdf168462)
     // the page decoration, and the background the slide takes from its master page
     CPPUNIT_ASSERT_EQUAL(2, nArtifacts);
     CPPUNIT_ASSERT_EQUAL(0, nOpenMarks);
+}
+
+CPPUNIT_TEST_FIXTURE(PdfExportTest2, testStyleNamedStructureTypes)
+{
+    loadFromFile(u"style-named-tags.fodt");
+
+    // the structure types the file carries, and what its role map makes of the names
+    auto aExport = [this](sal_Int32 nVersion) {
+        uno::Sequence aFilterData{ comphelper::makePropertyValue(u"UseTaggedPDF"_ustr, true),
+                                   comphelper::makePropertyValue(u"SelectPdfVersion"_ustr,
+                                                                 nVersion) };
+        save(TestFilter::PDF_WRITER,
+             { comphelper::makePropertyValue(u"FilterData"_ustr, aFilterData) });
+
+        vcl::filter::PDFDocument aDocument;
+        // the temp file hands out one stream and keeps it, so the second export needs a new one
+        maTempFile.CloseStream();
+        CPPUNIT_ASSERT(aDocument.Read(*maTempFile.GetStream(StreamMode::READ)));
+        OStringBuffer aTypes;
+        for (const auto& rDocElement : aDocument.GetElements())
+        {
+            auto pObject = dynamic_cast<vcl::filter::PDFObjectElement*>(rDocElement.get());
+            if (!pObject)
+                continue;
+            auto pType = dynamic_cast<vcl::filter::PDFNameElement*>(pObject->Lookup("Type"_ostr));
+            if (!pType || pType->GetValue() != "StructElem")
+                continue;
+            auto pS = dynamic_cast<vcl::filter::PDFNameElement*>(pObject->Lookup("S"_ostr));
+            CPPUNIT_ASSERT(pS);
+            aTypes.append(pS->GetValue() + " ");
+        }
+
+        auto pCatalog = aDocument.GetCatalog();
+        CPPUNIT_ASSERT(pCatalog);
+        auto pStructTreeRoot = dynamic_cast<vcl::filter::PDFReferenceElement*>(
+            pCatalog->Lookup("StructTreeRoot"_ostr));
+        CPPUNIT_ASSERT(pStructTreeRoot);
+        CPPUNIT_ASSERT(pStructTreeRoot->LookupObject());
+        auto pRoleMap = dynamic_cast<vcl::filter::PDFDictionaryElement*>(
+            pStructTreeRoot->LookupObject()->Lookup("RoleMap"_ostr));
+        CPPUNIT_ASSERT(pRoleMap);
+        OStringBuffer aRoles;
+        // GetItems is sorted, unlike the map the writer keeps
+        for (const auto& rRole : pRoleMap->GetItems())
+        {
+            auto pValue = dynamic_cast<vcl::filter::PDFNameElement*>(rRole.second);
+            CPPUNIT_ASSERT(pValue);
+            aRoles.append(rRole.first + "=" + pValue->GetValue() + " ");
+        }
+        return std::pair(aTypes.makeStringAndClear(), aRoles.makeStringAndClear());
+    };
+
+    // Without the fix, a style named after a standard type kept that name, and the role map
+    // remapped the type - /Index/P among them - so the first sequence read Index, not Index-1.
+    //
+    // a style named after a type, or after another style, takes the first free name beside
+    // its own; the run in Source Text is the one element really of the Code type, and the
+    // style really called Code1 keeps a name of its own, being a different style
+    const auto[aTypes17, aRoles17] = aExport(17);
+    CPPUNIT_ASSERT_EQUAL(u8"Étude TD Étude TD TR Table"
+                         " Code-1 Title Index-1 Code1 H-1 THead-1 H7 Sub Artifact-1 Code-1-1 H7-1 "
+                         "Code-2 Code Étude-1"
+                         " Standard Document "_ostr,
+                         aTypes17);
+    CPPUNIT_ASSERT_EQUAL(
+        u8"Artifact-1=P Code-1=P Code-1-1=P Code-2=Span Code1=P H-1=P"
+        " H7=P H7-1=H6 Index-1=P Standard=P Sub=P THead-1=P Title=P Étude=P Étude-1=Span "_ostr,
+        aRoles17);
+
+    // PDF 2.0 has a Title type, and heading levels without limit, so Title names its own
+    // elements while H7 and Sub have to give way
+    const auto[aTypes20, aRoles20] = aExport(20);
+    CPPUNIT_ASSERT_EQUAL(u8"Étude TD Étude TD TR Table"
+                         " Code-1 Title Index-1 Code1 H-1 THead-1 H7-1 Sub-1 Artifact-1 Code-1-1 "
+                         "H7 Code-2 Code Étude-1"
+                         " Standard Document "_ostr,
+                         aTypes20);
+    CPPUNIT_ASSERT_EQUAL(
+        u8"Artifact-1=P Code-1=P Code-1-1=P Code-2=Span Code1=P H-1=P"
+        " H7-1=P Index-1=P Standard=P Sub-1=P THead-1=P Étude=P Étude-1=Span "_ostr,
+        aRoles20);
+    // the heading keeps the standard name, which is why nothing maps it
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(-1), aRoles20.indexOf("H7="));
 }
 
 } // end anonymous namespace
