@@ -1826,30 +1826,36 @@ void OfaQuoteTabPage::Reset( const SfxItemSet* )
     m_xDblEndExFT->set_label(ChangeStringExt_Impl(cEndQuote));
 }
 
-#define SGL_START       0
-#define DBL_START       1
-#define SGL_END         2
-#define DBL_END         3
+namespace {
 
+enum QuoteMode
+{
+    SGL_START,
+    DBL_START,
+    SGL_END,
+    DBL_END
+};
+
+}
 
 IMPL_LINK(OfaQuoteTabPage, QuoteHdl, weld::Button&, rBtn, void)
 {
-    sal_uInt16 nMode = SGL_START;
+    QuoteMode eMode = SGL_START;
     if (&rBtn == m_xSglEndQuotePB.get())
-        nMode = SGL_END;
+        eMode = SGL_END;
     else if (&rBtn == m_xDblStartQuotePB.get())
-        nMode = DBL_START;
+        eMode = DBL_START;
     else if (&rBtn == m_xDblEndQuotePB.get())
-        nMode = DBL_END;
+        eMode = DBL_END;
     // start character selection dialog
     SvxCharacterMap aMap(GetFrameWeld(), nullptr, nullptr);
     aMap.SetCharFont( OutputDevice::GetDefaultFont(DefaultFontType::LATIN_TEXT,
                         LANGUAGE_ENGLISH_US, GetDefaultFontFlags::OnlyOne ));
-    aMap.set_title(nMode < SGL_END ? CuiResId(RID_CUISTR_STARTQUOTE)  : CuiResId(RID_CUISTR_ENDQUOTE));
+    aMap.set_title(eMode < SGL_END ? CuiResId(RID_CUISTR_STARTQUOTE)  : CuiResId(RID_CUISTR_ENDQUOTE));
     sal_UCS4 cDlg;
     SvxAutoCorrect* pAutoCorrect = SvxAutoCorrCfg::Get().GetAutoCorrect();
     LanguageType eLang = Application::GetSettings().GetLanguageTag().getLanguageType();
-    switch( nMode )
+    switch( eMode )
     {
         case SGL_START:
             cDlg = cSglStartQuote;
@@ -1883,7 +1889,7 @@ IMPL_LINK(OfaQuoteTabPage, QuoteHdl, weld::Button&, rBtn, void)
         return;
 
     sal_UCS4 cNewChar = aMap.GetChar();
-    switch( nMode )
+    switch( eMode )
     {
         case SGL_START:
             cSglStartQuote = cNewChar;
