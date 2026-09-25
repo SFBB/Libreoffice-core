@@ -29,6 +29,16 @@
 
 #include <svdata.hxx>
 
+ImplMapRes::ImplMapRes(const MapMode& rMapMode, tools::Long nDPIX, tools::Long nDPIY)
+{
+    // Delegate the complex scaling math to the mutator
+    CalcMapResolution(rMapMode, nDPIX, nDPIY);
+
+    // Because this is a fresh object, the origin is always absolute
+    mnMapOfsX = rMapMode.GetOrigin().X();
+    mnMapOfsY = rMapMode.GetOrigin().Y();
+}
+
 void ImplMapRes::SetMapRes(const o3tl::Length eUnit)
 {
     const auto[nNum, nDen] = o3tl::getConversionMulDiv(eUnit, o3tl::Length::in);
@@ -144,6 +154,76 @@ ImplMapRes ImplMapRes::ResolveMapRes(const MapMode* pMode, const MapMode& rDefau
     aRes.CalcMapResolution(*pEffectiveMode, nDPIX, nDPIY);
 
     return aRes;
+}
+
+static tools::Long lcl_scaleLogicValue(const tools::Long nSourceValue, const double fSourceScale,
+                                       const double fDestScale)
+{
+    if (fDestScale == 0.0)
+        return 0;
+
+    return std::llround(nSourceValue * fSourceScale / fDestScale);
+}
+
+tools::Long ImplMapRes::ScaleDistanceX(const tools::Long nDistance,
+                                       const ImplMapRes& rDestRes) const
+{
+    // Distances only care about the scaling multiplier, not the origin offset
+    return lcl_scaleLogicValue(nDistance, mfMapScX, rDestRes.mfMapScX);
+}
+
+tools::Long ImplMapRes::ScaleDistanceY(const tools::Long nDistance,
+                                       const ImplMapRes& rDestRes) const
+{
+    return lcl_scaleLogicValue(nDistance, mfMapScY, rDestRes.mfMapScY);
+}
+
+// Adds the offset
+tools::Long ImplMapRes::LocalToAbsoluteX(const tools::Long nLocalX) const
+{
+    return nLocalX + mnMapOfsX;
+}
+
+// Subtracts the offset
+tools::Long ImplMapRes::AbsoluteToLocalX(const tools::Long nAbsoluteX) const
+{
+    return nAbsoluteX - mnMapOfsX;
+}
+
+// Adds the offset
+tools::Long ImplMapRes::LocalToAbsoluteY(const tools::Long nLocalY) const
+{
+    return nLocalY + mnMapOfsY;
+}
+
+// Subtracts the offset
+tools::Long ImplMapRes::AbsoluteToLocalY(const tools::Long nAbsoluteY) const
+{
+    return nAbsoluteY - mnMapOfsY;
+}
+
+tools::Long ImplMapRes::TransformPointX(const tools::Long nLocalX, const ImplMapRes& rDestRes) const
+{
+    // Add (Source to Absolute)
+    const tools::Long nAbsoluteX = LocalToAbsoluteX(nLocalX);
+
+    // Scale
+    const tools::Long nScaledX = ScaleDistanceX(nAbsoluteX, rDestRes);
+
+    // Subtract (Absolute to Dest)
+    return rDestRes.AbsoluteToLocalX(nScaledX);
+}
+
+tools::Long ImplMapRes::TransformPointY(const tools::Long nLocalY, const ImplMapRes& rDestRes) const
+{
+    // Add (Source to Absolute)
+    const tools::Long nAbsoluteY = LocalToAbsoluteY(nLocalY);
+
+    // Scale
+    const tools::Long nScaledY = ScaleDistanceY(nAbsoluteY, rDestRes);
+
+    // Subtract (Absolute to Dest)
+    return rDestRes.AbsoluteToLocalY(nScaledY);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

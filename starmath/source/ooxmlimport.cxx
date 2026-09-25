@@ -16,12 +16,15 @@
 
 #include <oox/mathml/importutils.hxx>
 #include <oox/token/namespaces.hxx>
+#include <rtl/character.hxx>
 #include <rtl/ustring.hxx>
 #include <rtl/ustrbuf.hxx>
 #include <sal/log.hxx>
 #include <o3tl/string_view.hxx>
 #include <parse5.hxx>
+#include <starmathdatabase.hxx>
 #include <unordered_set>
+#include <utility>
 
 using namespace oox::formulaimport;
 
@@ -35,9 +38,121 @@ The primary internal data structure for the formula is the text representation
 
 // TODO create IS_OPENING(), IS_CLOSING() instead of doing 'next == OPENING( next )' ?
 
+// True for text that is nothing but math operators. Such text is not an expression on
+// its own, so the braces of a color command would make the parser fail on it.
+static bool lcl_IsAllMathOperators( std::u16string_view sText )
+{
+    if( sText.empty())
+        return false;
+    for( char16_t cChar : sText )
+        if( !isSingleCharMathOperator( cChar ))
+            return false;
+    return true;
+}
+
+// True when the text stands as an expression of its own, which is what the braces of a
+// color command need to hold. Parsing leaves no state behind, so one parser serves every
+// run of a formula.
+static bool lcl_ParsesAsExpression( SmParser5& rParser, const OUString& rText )
+{
+    rParser.ParseExpression( rText );
+    return rParser.GetError() == nullptr;
+}
+
+// Wraps the text in a color command. Nothing is added when there is no color, when the
+// color is already in effect, or when the text is empty.
+static OUString lcl_ApplyColorCommand( const OUString& rText, std::u16string_view sColorCommand,
+    std::u16string_view sInEffect )
+{
+    if( sColorCommand.empty() || sColorCommand == sInEffect || rText.isEmpty())
+        return rText;
+    return OUString::Concat( sColorCommand ) + " {" + rText + "}";
+}
+
+// A run holds whatever text the document put in it, which need not be an expression. A
+// run of operators is written as a literal, because that is an expression and it keeps
+// the color. Anything else that does not parse keeps the color off, so that the formula
+// reads as it did before the color was carried over at all.
+static OUString lcl_ApplyRunColorCommand( SmParser5& rParser, const OUString& rText,
+    std::u16string_view sColorCommand, std::u16string_view sInEffect )
+{
+    if( sColorCommand.empty() || sColorCommand == sInEffect || rText.isEmpty())
+        return rText;
+    if( lcl_IsAllMathOperators( rText ))
+        return OUString::Concat( sColorCommand ) + " {\"" + rText + "\"}";
+    if( !lcl_ParsesAsExpression( rParser, rText ))
+        return rText;
+    return OUString::Concat( sColorCommand ) + " {" + rText + "}";
+}
+
+namespace
+{
+// Keeps the color command that applies while the parts of one construct are read,
+// and puts the previous one back when the construct is done with.
+class ColorInEffect
+{
+public:
+    ColorInEffect( OUString& rInEffect, OUString sColorCommand )
+        : m_rInEffect( rInEffect )
+        , m_sPrevious( rInEffect )
+        , m_sColorCommand( std::move( sColorCommand ))
+    {
+        if( !m_sColorCommand.isEmpty())
+            m_rInEffect = m_sColorCommand;
+    }
+    ~ColorInEffect() { m_rInEffect = m_sPrevious; }
+    // Wraps the construct in its color command. The command is left off when the color
+    // is already in effect, so the formula names the color only once.
+    OUString apply( const OUString& rText ) const
+    {
+        return lcl_ApplyColorCommand( rText, m_sColorCommand, m_sPrevious );
+    }
+
+private:
+    OUString& m_rInEffect;
+    OUString m_sPrevious;
+    OUString m_sColorCommand;
+};
+}
+
+// A w:color value is either six hexadecimal digits or the word "auto". Anything else
+// gives an empty string back, which leaves the default color in place. Black does the
+// same, because the default color follows a dark document theme and an explicit black
+// would not.
+static OUString lcl_ColorCommandFromOoxmlValue( std::u16string_view sValue )
+{
+    if( sValue.size() != 6 )
+        return OUString();
+    for( char16_t cDigit : sValue )
+        if( !rtl::isAsciiHexDigit( cDigit ))
+            return OUString();
+    const sal_uInt32 nColor = o3tl::toUInt32( sValue, 16 );
+    if( nColor == 0 )
+        return OUString();
+    // A color that StarMath names is written with that name, so "color red" comes back
+    // as it was written. The parser takes these two types bare. Other named colors need
+    // a keyword in front of the name, so they are written as digits instead. The parser
+    // reads only uppercase digits, so the value goes out in uppercase.
+    const SmColorTokenTableEntry aEntry = starmathdatabase::Identify_Color_Parser( nColor );
+    if( aEntry.eType == THTMLCOL || aEntry.eType == TMATHMLCOL )
+        return "color " + aEntry.aIdent;
+    return "color hex " + OUString( sValue ).toAsciiUpperCase();
+}
+
 SmOoxmlImport::SmOoxmlImport( oox::formulaimport::XmlStream& s )
     : m_rStream( s )
 {
+}
+
+SmOoxmlImport::~SmOoxmlImport()
+{
+}
+
+SmParser5& SmOoxmlImport::getParser()
+{
+    if( !m_pParser )
+        m_pParser.reset( new SmParser5 );
+    return *m_pParser;
 }
 
 OUString SmOoxmlImport::ConvertToStarMath()
@@ -164,6 +279,7 @@ OUString SmOoxmlImport::handleAcc()
 {
     m_rStream.ensureOpeningTag( M_TOKEN( acc ));
     sal_Unicode accChr = 0x302;
+    OUString sColorCommand;
     if( XmlStream::Tag accPr = m_rStream.checkOpeningTag( M_TOKEN( accPr )))
     {
         if( XmlStream::Tag chr = m_rStream.checkOpeningTag( M_TOKEN( chr )))
@@ -171,8 +287,10 @@ OUString SmOoxmlImport::handleAcc()
             accChr = chr.attribute( M_TOKEN( val ), accChr );
             m_rStream.ensureClosingTag( M_TOKEN( chr ));
         }
+        sColorCommand = readCtrlPrColorCommand();
         m_rStream.ensureClosingTag( M_TOKEN( accPr ));
     }
+    ColorInEffect aColorInEffect( m_sColorCommandInEffect, sColorCommand );
     // see aTokenTable in parse.cxx
     OUString acc;
     switch( accChr )
@@ -246,13 +364,14 @@ OUString SmOoxmlImport::handleAcc()
     }
     OUString e = readOMathArgInElement( M_TOKEN( e ));
     m_rStream.ensureClosingTag( M_TOKEN( acc ));
-    return acc + " {" + e + "}";
+    return aColorInEffect.apply( acc + " {" + e + "}" );
 }
 
 OUString SmOoxmlImport::handleBar()
 {
     m_rStream.ensureOpeningTag( M_TOKEN( bar ));
     enum pos_t { top, bot } topbot = bot;
+    OUString sColorCommand;
     if( m_rStream.checkOpeningTag( M_TOKEN( barPr )))
     {
         if( XmlStream::Tag pos = m_rStream.checkOpeningTag( M_TOKEN( pos )))
@@ -263,14 +382,16 @@ OUString SmOoxmlImport::handleBar()
                 topbot = bot;
             m_rStream.ensureClosingTag( M_TOKEN( pos ));
         }
+        sColorCommand = readCtrlPrColorCommand();
         m_rStream.ensureClosingTag( M_TOKEN( barPr ));
     }
+    ColorInEffect aColorInEffect( m_sColorCommandInEffect, sColorCommand );
     OUString e = readOMathArgInElement( M_TOKEN( e ));
     m_rStream.ensureClosingTag( M_TOKEN( bar ));
     if( topbot == top )
-        return "overline {" + e + "}";
+        return aColorInEffect.apply( "overline {" + e + "}" );
     else
-        return "underline {" + e + "}";
+        return aColorInEffect.apply( "underline {" + e + "}" );
 }
 
 OUString SmOoxmlImport::handleBox()
@@ -288,6 +409,7 @@ OUString SmOoxmlImport::handleBorderBox()
 {
     m_rStream.ensureOpeningTag( M_TOKEN( borderBox ));
     bool isStrikeH = false;
+    OUString sColorCommand;
     if( m_rStream.checkOpeningTag( M_TOKEN( borderBoxPr )))
     {
         if( XmlStream::Tag strikeH = m_rStream.checkOpeningTag( M_TOKEN( strikeH )))
@@ -296,14 +418,17 @@ OUString SmOoxmlImport::handleBorderBox()
                 isStrikeH = true;
             m_rStream.ensureClosingTag( M_TOKEN( strikeH ));
         }
+        sColorCommand = readCtrlPrColorCommand();
         m_rStream.ensureClosingTag( M_TOKEN( borderBoxPr ));
     }
+    ColorInEffect aColorInEffect( m_sColorCommandInEffect, sColorCommand );
     OUString e = readOMathArgInElement( M_TOKEN( e ));
     m_rStream.ensureClosingTag( M_TOKEN( borderBox ));
     if( isStrikeH )
-        return "overstrike {" + e + "}";
-    // LO does not seem to implement anything for handling the other cases
-    return e;
+        return aColorInEffect.apply( "overstrike {" + e + "}" );
+    // LO does not seem to implement anything for handling the other cases. The color
+    // still belongs on the content, which is all that is left of the border box.
+    return aColorInEffect.apply( e );
 }
 
 OUString SmOoxmlImport::handleD()
@@ -312,6 +437,7 @@ OUString SmOoxmlImport::handleD()
     OUString opening = u"("_ustr;
     OUString closing = u")"_ustr;
     OUString separator = u"|"_ustr;
+    OUString sColorCommand;
     if( XmlStream::Tag dPr = m_rStream.checkOpeningTag( M_TOKEN( dPr )))
     {
         if( XmlStream::Tag begChr = m_rStream.checkOpeningTag( M_TOKEN( begChr )))
@@ -329,8 +455,10 @@ OUString SmOoxmlImport::handleD()
             closing = endChr.attribute( M_TOKEN( val ), closing );
             m_rStream.ensureClosingTag( M_TOKEN( endChr ));
         }
+        sColorCommand = readCtrlPrColorCommand();
         m_rStream.ensureClosingTag( M_TOKEN( dPr ));
     }
+    ColorInEffect aColorInEffect( m_sColorCommandInEffect, sColorCommand );
     if( opening == "{" )
         opening = "left lbrace ";
     if( closing == "}" )
@@ -377,7 +505,7 @@ OUString SmOoxmlImport::handleD()
     }
     ret.append( closing );
     m_rStream.ensureClosingTag( M_TOKEN( d ));
-    return ret.makeStringAndClear();
+    return aColorInEffect.apply( ret.makeStringAndClear() );
 }
 
 OUString SmOoxmlImport::handleEqArr()
@@ -400,6 +528,7 @@ OUString SmOoxmlImport::handleF()
 {
     m_rStream.ensureOpeningTag( M_TOKEN( f ));
     enum operation_t { bar, lin, noBar } operation = bar;
+    OUString sColorCommand;
     if( m_rStream.checkOpeningTag( M_TOKEN( fPr )))
     {
         if( XmlStream::Tag type = m_rStream.checkOpeningTag( M_TOKEN( type )))
@@ -412,18 +541,20 @@ OUString SmOoxmlImport::handleF()
                 operation = noBar;
             m_rStream.ensureClosingTag( M_TOKEN( type ));
         }
+        sColorCommand = readCtrlPrColorCommand();
         m_rStream.ensureClosingTag( M_TOKEN( fPr ));
     }
+    ColorInEffect aColorInEffect( m_sColorCommandInEffect, sColorCommand );
     OUString num = readOMathArgInElement( M_TOKEN( num ));
     OUString den = readOMathArgInElement( M_TOKEN( den ));
     m_rStream.ensureClosingTag( M_TOKEN( f ));
     if( operation == bar )
-        return "{" + num + "} over {" + den + "}";
+        return aColorInEffect.apply( "{" + num + "} over {" + den + "}" );
     else if( operation == lin )
-        return "{" + num + "} / {" + den + "}";
+        return aColorInEffect.apply( "{" + num + "} / {" + den + "}" );
     else // noBar
     {
-        return "binom {" + num + "} {" + den + "}";
+        return aColorInEffect.apply( "binom {" + num + "} {" + den + "}" );
     }
 }
 
@@ -463,6 +594,7 @@ OUString SmOoxmlImport::handleGroupChr()
     m_rStream.ensureOpeningTag( M_TOKEN( groupChr ));
     sal_Unicode chr = 0x23df;
     enum pos_t { top, bot } pos = bot;
+    OUString sColorCommand;
     if( m_rStream.checkOpeningTag( M_TOKEN( groupChrPr )))
     {
         if( XmlStream::Tag chrTag = m_rStream.checkOpeningTag( M_TOKEN( chr )))
@@ -476,18 +608,20 @@ OUString SmOoxmlImport::handleGroupChr()
                 pos = top;
             m_rStream.ensureClosingTag( M_TOKEN( pos ));
         }
+        sColorCommand = readCtrlPrColorCommand();
         m_rStream.ensureClosingTag( M_TOKEN( groupChrPr ));
     }
+    ColorInEffect aColorInEffect( m_sColorCommandInEffect, sColorCommand );
     OUString e = readOMathArgInElement( M_TOKEN( e ));
     m_rStream.ensureClosingTag( M_TOKEN( groupChr ));
     if( pos == top && chr == u'\x23de')
-        return "{" + e + "} overbrace { }";
+        return aColorInEffect.apply( "{" + e + "} overbrace { }" );
     if( pos == bot && chr == u'\x23df')
-        return "{" + e + "} underbrace { }";
+        return aColorInEffect.apply( "{" + e + "} underbrace { }" );
     if( pos == top )
-        return "{" + e + "} csup {" + OUStringChar( chr ) + "}";
+        return aColorInEffect.apply( "{" + e + "} csup {" + OUStringChar( chr ) + "}" );
     else
-        return "{" + e + "} csub {" + OUStringChar( chr ) + "}";
+        return aColorInEffect.apply( "{" + e + "} csub {" + OUStringChar( chr ) + "}" );
 }
 
 OUString SmOoxmlImport::handleM()
@@ -519,6 +653,7 @@ OUString SmOoxmlImport::handleNary()
     sal_Unicode chr = 0x222b;
     bool subHide = false;
     bool supHide = false;
+    OUString sColorCommand;
     if( m_rStream.checkOpeningTag( M_TOKEN( naryPr )))
     {
         if( XmlStream::Tag chrTag = m_rStream.checkOpeningTag( M_TOKEN( chr )))
@@ -536,8 +671,10 @@ OUString SmOoxmlImport::handleNary()
             supHide = supHideTag.attribute( M_TOKEN( val ), supHide );
             m_rStream.ensureClosingTag( M_TOKEN( supHide ));
         }
+        sColorCommand = readCtrlPrColorCommand();
         m_rStream.ensureClosingTag( M_TOKEN( naryPr ));
     }
+    ColorInEffect aColorInEffect( m_sColorCommandInEffect, sColorCommand );
     OUString sub = readOMathArgInElement( M_TOKEN( sub ));
     OUString sup = readOMathArgInElement( M_TOKEN( sup ));
     OUString e = readOMathArgInElement( M_TOKEN( e ));
@@ -581,7 +718,29 @@ OUString SmOoxmlImport::handleNary()
         ret += " to {" + sup + "}";
     ret += " {" + e + "}";
     m_rStream.ensureClosingTag( M_TOKEN( nary ));
-    return ret;
+    return aColorInEffect.apply( ret );
+}
+
+// An m:ctrlPr is the last child of a construct's property element. It carries the
+// formatting of the parts the construct draws itself, such as a fraction bar or a
+// pair of brackets, and this reads the color out of it.
+OUString SmOoxmlImport::readCtrlPrColorCommand()
+{
+    OUString sRet;
+    if( m_rStream.checkOpeningTag( M_TOKEN( ctrlPr )))
+    {
+        if( m_rStream.checkOpeningTag( W_TOKEN( rPr )))
+        {
+            if( XmlStream::Tag aColorTag = m_rStream.checkOpeningTag( W_TOKEN( color )))
+            {
+                sRet = lcl_ColorCommandFromOoxmlValue( aColorTag.attribute( W_TOKEN( val )));
+                m_rStream.ensureClosingTag( W_TOKEN( color ));
+            }
+            m_rStream.ensureClosingTag( W_TOKEN( rPr ));
+        }
+        m_rStream.ensureClosingTag( M_TOKEN( ctrlPr ));
+    }
+    return sRet;
 }
 
 // NOT complete
@@ -591,6 +750,7 @@ OUString SmOoxmlImport::handleR()
     bool normal = false;
     bool literal = false;
     OUString scrString;
+    OUString sColorCommand;
     if( XmlStream::Tag rPr = m_rStream.checkOpeningTag( M_TOKEN( rPr )))
     {
         if( XmlStream::Tag litTag = m_rStream.checkOpeningTag( M_TOKEN( lit )))
@@ -616,6 +776,20 @@ OUString SmOoxmlImport::handleR()
     {
         switch( m_rStream.currentToken())
         {
+            // A run has two property elements. The math one m:rPr is read above.
+            // This is the text one w:rPr and it holds the font color.
+            case OPENING( W_TOKEN( rPr )):
+            {
+                m_rStream.ensureOpeningTag( W_TOKEN( rPr ));
+                if( XmlStream::Tag aColorTag = m_rStream.checkOpeningTag( W_TOKEN( color )))
+                {
+                    sColorCommand
+                        = lcl_ColorCommandFromOoxmlValue( aColorTag.attribute( W_TOKEN( val )));
+                    m_rStream.ensureClosingTag( W_TOKEN( color ));
+                }
+                m_rStream.ensureClosingTag( W_TOKEN( rPr ));
+                break;
+            }
             case OPENING( M_TOKEN( t )):
             {
                 isTagT = true;
@@ -637,11 +811,12 @@ OUString SmOoxmlImport::handleR()
         }
     }
     m_rStream.ensureClosingTag( M_TOKEN( r ));
+    OUString sRet;
     if (scrString.isEmpty() && (normal || literal || isTagT))
-    {
-        return encloseOrEscapeLiteral(text.makeStringAndClear(), normal || literal);
-    }
-    return text.makeStringAndClear();
+        sRet = encloseOrEscapeLiteral(text.makeStringAndClear(), normal || literal);
+    else
+        sRet = text.makeStringAndClear();
+    return lcl_ApplyRunColorCommand( getParser(), sRet, sColorCommand, m_sColorCommandInEffect );
 }
 
 OUString SmOoxmlImport::handleSetString(const OUString& setOUstring)
@@ -664,6 +839,7 @@ OUString SmOoxmlImport::handleRad()
 {
     m_rStream.ensureOpeningTag( M_TOKEN( rad ));
     bool degHide = false;
+    OUString sColorCommand;
     if( m_rStream.checkOpeningTag( M_TOKEN( radPr )))
     {
         if( XmlStream::Tag degHideTag = m_rStream.checkOpeningTag( M_TOKEN( degHide )))
@@ -671,15 +847,17 @@ OUString SmOoxmlImport::handleRad()
             degHide = degHideTag.attribute( M_TOKEN( val ), degHide );
             m_rStream.ensureClosingTag( M_TOKEN( degHide ));
         }
+        sColorCommand = readCtrlPrColorCommand();
         m_rStream.ensureClosingTag( M_TOKEN( radPr ));
     }
+    ColorInEffect aColorInEffect( m_sColorCommandInEffect, sColorCommand );
     OUString deg = readOMathArgInElement( M_TOKEN( deg ));
     OUString e = readOMathArgInElement( M_TOKEN( e ));
     m_rStream.ensureClosingTag( M_TOKEN( rad ));
     if( degHide )
-        return "sqrt {" + e + "}";
+        return aColorInEffect.apply( "sqrt {" + e + "}" );
     else
-        return "nroot {" + deg + "} {" + e + "}";
+        return aColorInEffect.apply( "nroot {" + deg + "} {" + e + "}" );
 }
 
 OUString SmOoxmlImport::handleSpre()

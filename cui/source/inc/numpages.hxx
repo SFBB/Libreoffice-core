@@ -210,23 +210,23 @@ class SvxNumOptionsTabPage : public SfxTabPage
     OUString        m_sNumCharFmtName;
     OUString        m_sBulletCharFormatName;
 
-    Timer           aInvalidateTimer;
+    Timer m_aInvalidateTimer;
 
-    std::unique_ptr<SvxNumRule> pActNum;
-    std::unique_ptr<SvxNumRule> pSaveNum;
+    std::unique_ptr<SvxNumRule> m_pActNum;
+    std::unique_ptr<SvxNumRule> m_pSaveNum;
 
-    Size                aInitSize[SVX_MAX_NUM];
+    Size m_aInitSize[SVX_MAX_NUM];
 
     ImplSVEvent*        m_pLevelHdlEvent;
 
-    bool                bLastWidthModified  : 1;
-    bool                bModified           : 1;
-    bool                bPreset             : 1;
-    bool                bAutomaticCharStyles: 1;
-    bool                bHTMLMode           : 1;
+    bool m_bLastWidthModified : 1;
+    bool m_bModified : 1;
+    bool m_bPreset : 1;
+    bool m_bAutomaticCharStyles : 1;
+    bool m_bHTMLMode : 1;
 
-    std::vector<OUString> aGrfNames;
-    vcl::Font             aActBulletFont;
+    std::vector<OUString> m_aGrfNames;
+    vcl::Font m_aActBulletFont;
 
     enum class NumberType {
         SHOW_NUMBERING =             0,
@@ -234,11 +234,11 @@ class SvxNumOptionsTabPage : public SfxTabPage
         SHOW_BITMAP    =             2,
         NONE = 0xff
     };
-    NumberType           nBullet;
+    NumberType m_nBullet;
 
-    sal_uInt16          nActNumLvl;
-    TypedWhichId<SvxNumBulletItem> nNumItemId;
-    MapUnit             eCoreUnit;
+    sal_uInt16 m_nActNumLvl;
+    TypedWhichId<SvxNumBulletItem> m_nNumItemId;
+    MapUnit m_eCoreUnit;
 
     SvxRatioConnector m_aRatioTop;
     SvxRatioConnector m_aRatioBottom;
@@ -289,7 +289,6 @@ class SvxNumOptionsTabPage : public SfxTabPage
     DECL_LINK(NumberTypeSelectHdl_Impl, weld::ComboBox&, void);
     DECL_LINK(LevelHdl_Impl, weld::ItemView&, void);
     DECL_LINK(LevelHdl, void *, void);
-    DECL_LINK(PopupActivateHdl_Impl, weld::Toggleable&, void);
     DECL_LINK(GraphicHdl_Impl, const OUString&, void);
     DECL_LINK(BulletHdl_Impl, weld::Button&, void);
     DECL_LINK(SizeHdl_Impl, weld::MetricSpinButton&, void);
@@ -305,6 +304,8 @@ class SvxNumOptionsTabPage : public SfxTabPage
     DECL_LINK(BulRelSizeHdl_Impl, weld::MetricSpinButton&, void);
     DECL_LINK(PreviewInvalidateHdl_Impl, Timer*, void);
     void EditModifyHdl_Impl(const weld::TextWidget*);
+
+    void CreateGalleryMenu();
 
 public:
     SvxNumOptionsTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rSet);
