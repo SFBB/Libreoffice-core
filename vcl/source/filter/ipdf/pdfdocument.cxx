@@ -637,7 +637,14 @@ void PDFDocument::WriteXRef(sal_uInt64 nXRefOffset, PDFReferenceElement const* p
 
         // Write stream data.
         SvMemoryStream aXRefStream;
-        const size_t nOffsetLen = 3;
+        sal_uInt64 nMaxOffset = 0;
+        for (const auto& rXRef : m_aXRef)
+            if (rXRef.second.GetDirty())
+                nMaxOffset = std::max(nMaxOffset, rXRef.second.GetOffset());
+        // the second field has to hold the largest offset the update writes
+        size_t nOffsetLen = 1;
+        for (sal_uInt64 nRest = nMaxOffset; nRest > 0xff; nRest >>= 8)
+            ++nOffsetLen;
         // 3 additional bytes: predictor, the first and the third field.
         const size_t nLineLength = nOffsetLen + 3;
         // This is the line as it appears before tweaking according to the predictor.
@@ -680,8 +687,7 @@ void PDFDocument::WriteXRef(sal_uInt64 nXRefOffset, PDFReferenceElement const* p
                 size_t nByte = nOffsetLen - i - 1;
                 // Fields requiring more than one byte are stored with the
                 // high-order byte first.
-                unsigned char nCh = (rEntry.GetOffset() & (0xff << (nByte * 8))) >> (nByte * 8);
-                aOrigLine[nPos++] = nCh;
+                aOrigLine[nPos++] = static_cast<unsigned char>(rEntry.GetOffset() >> (nByte * 8));
             }
 
             // Third field.
@@ -701,8 +707,10 @@ void PDFDocument::WriteXRef(sal_uInt64 nXRefOffset, PDFReferenceElement const* p
         }
 
         m_aEditBuffer.WriteNumberAsString(nXRefStreamId);
-        m_aEditBuffer.WriteOString(
-            " 0 obj\n<</DecodeParms<</Columns 5/Predictor 12>>/Filter/FlateDecode");
+        m_aEditBuffer.WriteOString(" 0 obj\n<</DecodeParms<</Columns ");
+        // the bytes of a row apart from the predictor byte, so it follows /W
+        m_aEditBuffer.WriteNumberAsString(nLineLength - 1);
+        m_aEditBuffer.WriteOString("/Predictor 12>>/Filter/FlateDecode");
 
         // ID.
         auto pID = dynamic_cast<PDFArrayElement*>(m_pXRefStream->Lookup("ID"_ostr));
@@ -780,7 +788,8 @@ void PDFDocument::WriteXRef(sal_uInt64 nXRefOffset, PDFReferenceElement const* p
         m_aEditBuffer.WriteOString("/Size ");
         m_aEditBuffer.WriteNumberAsString(m_aXRef.size());
 
-        m_aEditBuffer.WriteOString("/Type/XRef/W[1 3 1]>>\nstream\n");
+        m_aEditBuffer.WriteOString(rtl::Concat2View(
+            "/Type/XRef/W[1 " + OString::number(sal_Int32(nOffsetLen)) + " 1]>>\nstream\n"));
         aXRefStream.Seek(0);
         m_aEditBuffer.WriteStream(aXRefStream);
         m_aEditBuffer.WriteOString("\nendstream\nendobj\n\n");
@@ -1603,14 +1612,16 @@ void PDFDocument::ReadXRefStream(SvStream& rStream)
     std::vector<char> aBuf(nLength);
     rStream.ReadBytes(aBuf.data(), aBuf.size());
 
-    auto pFilter = dynamic_cast<PDFNameElement*>(pObject->Lookup("Filter"_ostr));
-    if (!pFilter)
+    PDFElement* pFilterElement = pObject->Lookup("Filter"_ostr);
+    auto pFilter = dynamic_cast<PDFNameElement*>(pFilterElement);
+    if (pFilterElement && !pFilter)
     {
-        SAL_WARN("vcl.filter", "PDFDocument::ReadXRefStream: no Filter found");
+        // ISO 32000-2 Table 5 allows an array of filters, which this reader does not apply
+        SAL_WARN("vcl.filter", "PDFDocument::ReadXRefStream: filter is not a name");
         return;
     }
 
-    if (pFilter->GetValue() != "FlateDecode")
+    if (pFilter && pFilter->GetValue() != "FlateDecode")
     {
         SAL_WARN("vcl.filter",
                  "PDFDocument::ReadXRefStream: unexpected filter: " << pFilter->GetValue());
@@ -1633,16 +1644,21 @@ void PDFDocument::ReadXRefStream(SvStream& rStream)
                 nPredictor = pPredictor->GetValue();
     }
 
-    SvMemoryStream aSource(aBuf.data(), aBuf.size(), StreamMode::READ);
     SvMemoryStream aStream;
-    ZCodec aZCodec;
-    aZCodec.BeginCompression();
-    aZCodec.Decompress(aSource, aStream);
-    if (!aZCodec.EndCompression())
+    if (pFilter)
     {
-        SAL_WARN("vcl.filter", "PDFDocument::ReadXRefStream: decompression failed");
-        return;
+        SvMemoryStream aSource(aBuf.data(), aBuf.size(), StreamMode::READ);
+        ZCodec aZCodec;
+        aZCodec.BeginCompression();
+        aZCodec.Decompress(aSource, aStream);
+        if (!aZCodec.EndCompression())
+        {
+            SAL_WARN("vcl.filter", "PDFDocument::ReadXRefStream: decompression failed");
+            return;
+        }
     }
+    else
+        aStream.WriteBytes(aBuf.data(), aBuf.size());
 
     // Look up the first and the last entry we need to read.
     auto pIndex = dynamic_cast<PDFArrayElement*>(pObject->Lookup("Index"_ostr));
@@ -1702,8 +1718,9 @@ void PDFDocument::ReadXRefStream(SvStream& rStream)
         return;
     }
     int aW[nWSize];
-    // First character is the (kind of) repeated predictor.
-    int nLineLength = 1;
+    // only a PNG predictor tags each row with the one it used
+    const int nPredictorBytes = nPredictor > 1 ? 1 : 0;
+    int nLineLength = nPredictorBytes;
     for (size_t i = 0; i < nWSize; ++i)
     {
         auto pI = dynamic_cast<PDFNumberElement*>(pW->GetElements()[i]);
@@ -1716,7 +1733,7 @@ void PDFDocument::ReadXRefStream(SvStream& rStream)
         nLineLength += aW[i];
     }
 
-    if (nPredictor > 1 && nLineLength - 1 != nColumns)
+    if (nPredictor > 1 && nLineLength - nPredictorBytes != nColumns)
     {
         SAL_WARN("vcl.filter",
                  "PDFDocument::ReadXRefStream: /DecodeParms/Columns is inconsistent with /W");
@@ -1751,7 +1768,8 @@ void PDFDocument::ReadXRefStream(SvStream& rStream)
                 switch (nPredictor)
                 {
                     case 1:
-                        // No prediction.
+                        // no prediction, so the line is what the stream holds
+                        aFilteredLine[i] = aOrigLine[i];
                         break;
                     case 12:
                         // PNG prediction: up (on all rows).
@@ -1764,8 +1782,8 @@ void PDFDocument::ReadXRefStream(SvStream& rStream)
                 }
             }
 
-            // First character is already handled above.
-            int nPos = 1;
+            // the predictor byte, where there is one, is already handled above
+            int nPos = nPredictorBytes;
             size_t nType = 0;
             // Start of the current field in the stream data.
             int nOffset = nPos;
