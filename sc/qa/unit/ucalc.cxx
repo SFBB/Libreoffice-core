@@ -7923,19 +7923,22 @@ CPPUNIT_TEST_FIXTURE(Test, testAutoFilterFlagsAfterColumnDeleteUndoRedo)
 
 CPPUNIT_TEST_FIXTURE(Test, testCopyTabContent)
 {
-    m_pDoc->InsertTab(0, u"Tab1"_ustr);
-    m_pDoc->InsertTab(1, u"Tab2"_ustr);
-    m_pDoc->InsertTab(2, u"Tab3"_ustr);
+    m_pDoc->InsertTab(0, u"Tab0"_ustr);
+    m_pDoc->InsertTab(1, u"Tab1"_ustr);
+    m_pDoc->InsertTab(2, u"Tab2"_ustr);
+    m_pDoc->InsertTab(3, u"Tab3"_ustr);
 
-    // For cross-sheet formula checking
-    m_pDoc->SetValue(ScAddress(0, 0, 2), 66.0);
+    // For cross-sheet formula checking (forward and backward)
+    m_pDoc->SetValue(ScAddress(0, 0, 0), 99.0); // Tab0.A1
+    m_pDoc->SetValue(ScAddress(0, 0, 3), 66.0); // Tab3.A1
 
     std::vector<std::vector<OUString>> aData = {
         { u"Column 1"_ustr, u"Column 2"_ustr, u"Column 3"_ustr },
         {  u"7"_ustr,       u"A"_ustr,        u"=A2+5"_ustr },
-        {  u"=2+2"_ustr,    u"C"_ustr,        u"=Tab3.A1"_ustr },
-        {  u"=A3-2"_ustr,   u"D"_ustr,        u"=SUM(A2:A5)"_ustr },
-        {  u"3"_ustr,       u"B"_ustr,        u"=C3-60"_ustr }
+        {  u"=2+2"_ustr,    u"C"_ustr,        u"=Tab3.A1"_ustr }, // forward cross-tab reference
+        {  u"=A3-2"_ustr,   u"D"_ustr,        u"=SUM(A2:A6)"_ustr },
+        {  u"3"_ustr,       u"B"_ustr,        u"=C3-60"_ustr },
+        {  u"5"_ustr,       u"E"_ustr,        u"=Tab0.A1"_ustr }, // backward cross-tab reference
     };
 
     for (size_t i = 0; i < aData.size(); ++i)
@@ -7944,7 +7947,7 @@ CPPUNIT_TEST_FIXTURE(Test, testCopyTabContent)
         {
             if (!aData[i][j].isEmpty())
             {
-                m_pDoc->SetString(j, i, 0, aData[i][j]);
+                m_pDoc->SetString(j, i, 1, aData[i][j]);
             }
         }
     }
@@ -7952,119 +7955,221 @@ CPPUNIT_TEST_FIXTURE(Test, testCopyTabContent)
 
     // Verify Tab1 values and formulas before copy
     {
-        CPPUNIT_ASSERT_EQUAL(7.0, m_pDoc->GetValue(ScAddress(0, 1, 0)));
-        CPPUNIT_ASSERT_EQUAL(4.0, m_pDoc->GetValue(ScAddress(0, 2, 0)));
-        CPPUNIT_ASSERT_EQUAL(2.0, m_pDoc->GetValue(ScAddress(0, 3, 0)));
-        CPPUNIT_ASSERT_EQUAL(3.0, m_pDoc->GetValue(ScAddress(0, 4, 0)));
-
-        CPPUNIT_ASSERT_EQUAL(u"A"_ustr, m_pDoc->GetString(ScAddress(1, 1, 0)));
-        CPPUNIT_ASSERT_EQUAL(u"C"_ustr, m_pDoc->GetString(ScAddress(1, 2, 0)));
-        CPPUNIT_ASSERT_EQUAL(u"D"_ustr, m_pDoc->GetString(ScAddress(1, 3, 0)));
-        CPPUNIT_ASSERT_EQUAL(u"B"_ustr, m_pDoc->GetString(ScAddress(1, 4, 0)));
-
-        CPPUNIT_ASSERT_EQUAL(12.0, m_pDoc->GetValue(ScAddress(2, 1, 0)));
-        CPPUNIT_ASSERT_EQUAL(66.0, m_pDoc->GetValue(ScAddress(2, 2, 0)));
-        CPPUNIT_ASSERT_EQUAL(16.0, m_pDoc->GetValue(ScAddress(2, 3, 0)));
-        CPPUNIT_ASSERT_EQUAL(6.0, m_pDoc->GetValue(ScAddress(2, 4, 0)));
-    }
-
-    // Copy Tab1 to index 1 - Tab1_2
-    m_pDoc->CopyTab(0, 1);
-    CPPUNIT_ASSERT_EQUAL(static_cast<SCTAB>(4), m_pDoc->GetTableCount());
-
-    // Tab3 value shifted from index 2 to index 3
-    CPPUNIT_ASSERT_EQUAL(66.0, m_pDoc->GetValue(ScAddress(0, 0, 3)));
-
-    // Tab1 (tab index 0) should be unchanged
-    {
-        CPPUNIT_ASSERT_EQUAL(7.0, m_pDoc->GetValue(ScAddress(0, 1, 0)));
-        CPPUNIT_ASSERT_EQUAL(4.0, m_pDoc->GetValue(ScAddress(0, 2, 0)));
-        CPPUNIT_ASSERT_EQUAL(2.0, m_pDoc->GetValue(ScAddress(0, 3, 0)));
-        CPPUNIT_ASSERT_EQUAL(3.0, m_pDoc->GetValue(ScAddress(0, 4, 0)));
-
-        CPPUNIT_ASSERT_EQUAL(u"A"_ustr, m_pDoc->GetString(ScAddress(1, 1, 0)));
-        CPPUNIT_ASSERT_EQUAL(u"C"_ustr, m_pDoc->GetString(ScAddress(1, 2, 0)));
-        CPPUNIT_ASSERT_EQUAL(u"D"_ustr, m_pDoc->GetString(ScAddress(1, 3, 0)));
-        CPPUNIT_ASSERT_EQUAL(u"B"_ustr, m_pDoc->GetString(ScAddress(1, 4, 0)));
-
-        CPPUNIT_ASSERT_EQUAL(12.0, m_pDoc->GetValue(ScAddress(2, 1, 0)));
-        CPPUNIT_ASSERT_EQUAL(66.0, m_pDoc->GetValue(ScAddress(2, 2, 0)));
-        CPPUNIT_ASSERT_EQUAL(16.0, m_pDoc->GetValue(ScAddress(2, 3, 0)));
-        CPPUNIT_ASSERT_EQUAL(6.0, m_pDoc->GetValue(ScAddress(2, 4, 0)));
-    }
-
-    // The copy Tab1_2 (tab index 1) should have the same data as Tab1
-    {
         CPPUNIT_ASSERT_EQUAL(7.0, m_pDoc->GetValue(ScAddress(0, 1, 1)));
         CPPUNIT_ASSERT_EQUAL(4.0, m_pDoc->GetValue(ScAddress(0, 2, 1)));
         CPPUNIT_ASSERT_EQUAL(2.0, m_pDoc->GetValue(ScAddress(0, 3, 1)));
         CPPUNIT_ASSERT_EQUAL(3.0, m_pDoc->GetValue(ScAddress(0, 4, 1)));
+        CPPUNIT_ASSERT_EQUAL(5.0, m_pDoc->GetValue(ScAddress(0, 5, 1)));
 
         CPPUNIT_ASSERT_EQUAL(u"A"_ustr, m_pDoc->GetString(ScAddress(1, 1, 1)));
         CPPUNIT_ASSERT_EQUAL(u"C"_ustr, m_pDoc->GetString(ScAddress(1, 2, 1)));
         CPPUNIT_ASSERT_EQUAL(u"D"_ustr, m_pDoc->GetString(ScAddress(1, 3, 1)));
         CPPUNIT_ASSERT_EQUAL(u"B"_ustr, m_pDoc->GetString(ScAddress(1, 4, 1)));
+        CPPUNIT_ASSERT_EQUAL(u"E"_ustr, m_pDoc->GetString(ScAddress(1, 5, 1)));
+
+        CPPUNIT_ASSERT_EQUAL(12.0, m_pDoc->GetValue(ScAddress(2, 1, 1))); // =A2+5=12
+        CPPUNIT_ASSERT_EQUAL(66.0, m_pDoc->GetValue(ScAddress(2, 2, 1))); // =Tab3.A1
+        CPPUNIT_ASSERT_EQUAL(21.0, m_pDoc->GetValue(ScAddress(2, 3, 1))); // =SUM(A2:A6)
+        CPPUNIT_ASSERT_EQUAL(6.0, m_pDoc->GetValue(ScAddress(2, 4, 1)));  // =C3-60
+        CPPUNIT_ASSERT_EQUAL(99.0, m_pDoc->GetValue(ScAddress(2, 5, 1))); // =Tab0.A1
+    }
+
+    // Copy Tab1 to index 2 - Tab1_2
+    m_pDoc->CopyTab(1, 2);
+    CPPUNIT_ASSERT_EQUAL(static_cast<SCTAB>(5), m_pDoc->GetTableCount());
+
+    // Tab3 value shifted from index 3 to index 4
+    CPPUNIT_ASSERT_EQUAL(66.0, m_pDoc->GetValue(ScAddress(0, 0, 4)));
+    // Tab0 value stays at index 0
+    CPPUNIT_ASSERT_EQUAL(99.0, m_pDoc->GetValue(ScAddress(0, 0, 0)));
+
+    // Tab1 (tab index 1) should be unchanged
+    {
+        CPPUNIT_ASSERT_EQUAL(7.0, m_pDoc->GetValue(ScAddress(0, 1, 1)));
+        CPPUNIT_ASSERT_EQUAL(4.0, m_pDoc->GetValue(ScAddress(0, 2, 1)));
+        CPPUNIT_ASSERT_EQUAL(2.0, m_pDoc->GetValue(ScAddress(0, 3, 1)));
+        CPPUNIT_ASSERT_EQUAL(3.0, m_pDoc->GetValue(ScAddress(0, 4, 1)));
+        CPPUNIT_ASSERT_EQUAL(5.0, m_pDoc->GetValue(ScAddress(0, 5, 1)));
+
+        CPPUNIT_ASSERT_EQUAL(u"A"_ustr, m_pDoc->GetString(ScAddress(1, 1, 1)));
+        CPPUNIT_ASSERT_EQUAL(u"C"_ustr, m_pDoc->GetString(ScAddress(1, 2, 1)));
+        CPPUNIT_ASSERT_EQUAL(u"D"_ustr, m_pDoc->GetString(ScAddress(1, 3, 1)));
+        CPPUNIT_ASSERT_EQUAL(u"B"_ustr, m_pDoc->GetString(ScAddress(1, 4, 1)));
+        CPPUNIT_ASSERT_EQUAL(u"E"_ustr, m_pDoc->GetString(ScAddress(1, 5, 1)));
 
         CPPUNIT_ASSERT_EQUAL(12.0, m_pDoc->GetValue(ScAddress(2, 1, 1)));
         CPPUNIT_ASSERT_EQUAL(66.0, m_pDoc->GetValue(ScAddress(2, 2, 1)));
-        CPPUNIT_ASSERT_EQUAL(16.0, m_pDoc->GetValue(ScAddress(2, 3, 1)));
+        CPPUNIT_ASSERT_EQUAL(21.0, m_pDoc->GetValue(ScAddress(2, 3, 1)));
         CPPUNIT_ASSERT_EQUAL(6.0, m_pDoc->GetValue(ScAddress(2, 4, 1)));
+        CPPUNIT_ASSERT_EQUAL(99.0, m_pDoc->GetValue(ScAddress(2, 5, 1)));
+    }
+
+    // The copy Tab1_2 (tab index 2) should have the same data as Tab1
+    {
+        CPPUNIT_ASSERT_EQUAL(7.0, m_pDoc->GetValue(ScAddress(0, 1, 2)));
+        CPPUNIT_ASSERT_EQUAL(4.0, m_pDoc->GetValue(ScAddress(0, 2, 2)));
+        CPPUNIT_ASSERT_EQUAL(2.0, m_pDoc->GetValue(ScAddress(0, 3, 2)));
+        CPPUNIT_ASSERT_EQUAL(3.0, m_pDoc->GetValue(ScAddress(0, 4, 2)));
+        CPPUNIT_ASSERT_EQUAL(5.0, m_pDoc->GetValue(ScAddress(0, 5, 2)));
+
+        CPPUNIT_ASSERT_EQUAL(u"A"_ustr, m_pDoc->GetString(ScAddress(1, 1, 2)));
+        CPPUNIT_ASSERT_EQUAL(u"C"_ustr, m_pDoc->GetString(ScAddress(1, 2, 2)));
+        CPPUNIT_ASSERT_EQUAL(u"D"_ustr, m_pDoc->GetString(ScAddress(1, 3, 2)));
+        CPPUNIT_ASSERT_EQUAL(u"B"_ustr, m_pDoc->GetString(ScAddress(1, 4, 2)));
+        CPPUNIT_ASSERT_EQUAL(u"E"_ustr, m_pDoc->GetString(ScAddress(1, 5, 2)));
+
+        CPPUNIT_ASSERT_EQUAL(12.0, m_pDoc->GetValue(ScAddress(2, 1, 2)));
+        CPPUNIT_ASSERT_EQUAL(66.0, m_pDoc->GetValue(ScAddress(2, 2, 2)));
+        CPPUNIT_ASSERT_EQUAL(21.0, m_pDoc->GetValue(ScAddress(2, 3, 2)));
+        CPPUNIT_ASSERT_EQUAL(6.0, m_pDoc->GetValue(ScAddress(2, 4, 2)));
+        CPPUNIT_ASSERT_EQUAL(99.0, m_pDoc->GetValue(ScAddress(2, 5, 2)));
     }
 
     // Check the formulas in Tab1_2
     {
-        CPPUNIT_ASSERT_EQUAL(u"=2+2"_ustr, m_pDoc->GetFormula(0, 2, 1));
-        CPPUNIT_ASSERT_EQUAL(u"=A3-2"_ustr, m_pDoc->GetFormula(0, 3, 1));
-        CPPUNIT_ASSERT_EQUAL(u"=A2+5"_ustr, m_pDoc->GetFormula(2, 1, 1));
-        CPPUNIT_ASSERT_EQUAL(u"='Tab3'.A1"_ustr, m_pDoc->GetFormula(2, 2, 1));
-        CPPUNIT_ASSERT_EQUAL(u"=SUM(A2:A5)"_ustr, m_pDoc->GetFormula(2, 3, 1));
-        CPPUNIT_ASSERT_EQUAL(u"=C3-60"_ustr, m_pDoc->GetFormula(2, 4, 1));
+        CPPUNIT_ASSERT_EQUAL(u"=2+2"_ustr, m_pDoc->GetFormula(0, 2, 2));
+        CPPUNIT_ASSERT_EQUAL(u"=A3-2"_ustr, m_pDoc->GetFormula(0, 3, 2));
+        CPPUNIT_ASSERT_EQUAL(u"=A2+5"_ustr, m_pDoc->GetFormula(2, 1, 2));
+        CPPUNIT_ASSERT_EQUAL(u"='Tab3'.A1"_ustr, m_pDoc->GetFormula(2, 2, 2));
+        CPPUNIT_ASSERT_EQUAL(u"=SUM(A2:A6)"_ustr, m_pDoc->GetFormula(2, 3, 2));
+        CPPUNIT_ASSERT_EQUAL(u"=C3-60"_ustr, m_pDoc->GetFormula(2, 4, 2));
+        CPPUNIT_ASSERT_EQUAL(u"=Tab0.A1"_ustr, m_pDoc->GetFormula(2, 5, 2));
     }
 
     // Change Tab1 and verify the copy is independent
-    m_pDoc->SetValue(ScAddress(0, 1, 0), 10.0); // 7 -> 10
+    m_pDoc->SetValue(ScAddress(0, 1, 1), 10.0); // 7 -> 10
     m_pDoc->CalcAll();
 
     // Tab1 should be changed
     {
-        CPPUNIT_ASSERT_EQUAL(10.0, m_pDoc->GetValue(ScAddress(0, 1, 0)));
-        CPPUNIT_ASSERT_EQUAL(4.0, m_pDoc->GetValue(ScAddress(0, 2, 0)));
-        CPPUNIT_ASSERT_EQUAL(2.0, m_pDoc->GetValue(ScAddress(0, 3, 0)));
-        CPPUNIT_ASSERT_EQUAL(3.0, m_pDoc->GetValue(ScAddress(0, 4, 0)));
-
-        CPPUNIT_ASSERT_EQUAL(u"A"_ustr, m_pDoc->GetString(ScAddress(1, 1, 0)));
-        CPPUNIT_ASSERT_EQUAL(u"C"_ustr, m_pDoc->GetString(ScAddress(1, 2, 0)));
-        CPPUNIT_ASSERT_EQUAL(u"D"_ustr, m_pDoc->GetString(ScAddress(1, 3, 0)));
-        CPPUNIT_ASSERT_EQUAL(u"B"_ustr, m_pDoc->GetString(ScAddress(1, 4, 0)));
-
-        CPPUNIT_ASSERT_EQUAL(15.0, m_pDoc->GetValue(ScAddress(2, 1, 0)));
-        CPPUNIT_ASSERT_EQUAL(66.0, m_pDoc->GetValue(ScAddress(2, 2, 0)));
-        CPPUNIT_ASSERT_EQUAL(19.0, m_pDoc->GetValue(ScAddress(2, 3, 0)));
-        CPPUNIT_ASSERT_EQUAL(6.0, m_pDoc->GetValue(ScAddress(2, 4, 0)));
-    }
-
-    // No change in Tab1_2
-    {
-        CPPUNIT_ASSERT_EQUAL(7.0, m_pDoc->GetValue(ScAddress(0, 1, 1)));
+        CPPUNIT_ASSERT_EQUAL(10.0, m_pDoc->GetValue(ScAddress(0, 1, 1)));
         CPPUNIT_ASSERT_EQUAL(4.0, m_pDoc->GetValue(ScAddress(0, 2, 1)));
         CPPUNIT_ASSERT_EQUAL(2.0, m_pDoc->GetValue(ScAddress(0, 3, 1)));
         CPPUNIT_ASSERT_EQUAL(3.0, m_pDoc->GetValue(ScAddress(0, 4, 1)));
+        CPPUNIT_ASSERT_EQUAL(5.0, m_pDoc->GetValue(ScAddress(0, 5, 1)));
 
         CPPUNIT_ASSERT_EQUAL(u"A"_ustr, m_pDoc->GetString(ScAddress(1, 1, 1)));
         CPPUNIT_ASSERT_EQUAL(u"C"_ustr, m_pDoc->GetString(ScAddress(1, 2, 1)));
         CPPUNIT_ASSERT_EQUAL(u"D"_ustr, m_pDoc->GetString(ScAddress(1, 3, 1)));
         CPPUNIT_ASSERT_EQUAL(u"B"_ustr, m_pDoc->GetString(ScAddress(1, 4, 1)));
+        CPPUNIT_ASSERT_EQUAL(u"E"_ustr, m_pDoc->GetString(ScAddress(1, 5, 1)));
 
-        CPPUNIT_ASSERT_EQUAL(12.0, m_pDoc->GetValue(ScAddress(2, 1, 1)));
+        CPPUNIT_ASSERT_EQUAL(15.0, m_pDoc->GetValue(ScAddress(2, 1, 1)));
         CPPUNIT_ASSERT_EQUAL(66.0, m_pDoc->GetValue(ScAddress(2, 2, 1)));
-        CPPUNIT_ASSERT_EQUAL(16.0, m_pDoc->GetValue(ScAddress(2, 3, 1)));
+        CPPUNIT_ASSERT_EQUAL(24.0, m_pDoc->GetValue(ScAddress(2, 3, 1))); // =SUM(A2:A6)=10+4+2+3+5
         CPPUNIT_ASSERT_EQUAL(6.0, m_pDoc->GetValue(ScAddress(2, 4, 1)));
+        CPPUNIT_ASSERT_EQUAL(99.0, m_pDoc->GetValue(ScAddress(2, 5, 1)));
     }
 
+    // No change in Tab1_2
+    {
+        CPPUNIT_ASSERT_EQUAL(7.0, m_pDoc->GetValue(ScAddress(0, 1, 2)));
+        CPPUNIT_ASSERT_EQUAL(4.0, m_pDoc->GetValue(ScAddress(0, 2, 2)));
+        CPPUNIT_ASSERT_EQUAL(2.0, m_pDoc->GetValue(ScAddress(0, 3, 2)));
+        CPPUNIT_ASSERT_EQUAL(3.0, m_pDoc->GetValue(ScAddress(0, 4, 2)));
+        CPPUNIT_ASSERT_EQUAL(5.0, m_pDoc->GetValue(ScAddress(0, 5, 2)));
+
+        CPPUNIT_ASSERT_EQUAL(u"A"_ustr, m_pDoc->GetString(ScAddress(1, 1, 2)));
+        CPPUNIT_ASSERT_EQUAL(u"C"_ustr, m_pDoc->GetString(ScAddress(1, 2, 2)));
+        CPPUNIT_ASSERT_EQUAL(u"D"_ustr, m_pDoc->GetString(ScAddress(1, 3, 2)));
+        CPPUNIT_ASSERT_EQUAL(u"B"_ustr, m_pDoc->GetString(ScAddress(1, 4, 2)));
+        CPPUNIT_ASSERT_EQUAL(u"E"_ustr, m_pDoc->GetString(ScAddress(1, 5, 2)));
+
+        CPPUNIT_ASSERT_EQUAL(12.0, m_pDoc->GetValue(ScAddress(2, 1, 2)));
+        CPPUNIT_ASSERT_EQUAL(66.0, m_pDoc->GetValue(ScAddress(2, 2, 2)));
+        CPPUNIT_ASSERT_EQUAL(21.0, m_pDoc->GetValue(ScAddress(2, 3, 2)));
+        CPPUNIT_ASSERT_EQUAL(6.0, m_pDoc->GetValue(ScAddress(2, 4, 2)));
+        CPPUNIT_ASSERT_EQUAL(99.0, m_pDoc->GetValue(ScAddress(2, 5, 2)));
+    }
+
+    m_pDoc->DeleteTab(4);
     m_pDoc->DeleteTab(3);
     m_pDoc->DeleteTab(2);
     m_pDoc->DeleteTab(1);
     m_pDoc->DeleteTab(0);
+}
+
+// The relative sheet references of a copied sheet point at the same sheets as the ones of its
+// source, wherever the copy is inserted.
+CPPUNIT_TEST_FIXTURE(Test, testCopyTabRelativeTabRefs)
+{
+    // The source has two sheets on each side, so every insert position leaves referenced sheets
+    // both before and after the copy.
+    const SCTAB nTabCount = 5;
+    const SCTAB nSourceTab = 2;
+
+    // Each sheet holds its own value in A1, so a reference that lands on the wrong sheet gives a
+    // different result.
+    struct RefCheck
+    {
+        OUString sFormula;
+        double fExpected;
+    };
+    const std::vector<RefCheck> aChecks = {
+        { u"=Tab0.A1"_ustr, 10.0 },
+        { u"=Tab1.A1"_ustr, 11.0 },
+        { u"=Tab3.A1"_ustr, 13.0 },
+        { u"=Tab4.A1"_ustr, 14.0 },
+        { u"=SUM(Tab0.A1:Tab0.A2)"_ustr, 110.0 },
+        { u"=SUM(Tab4.A1:Tab4.A2)"_ustr, 114.0 },
+    };
+
+    // Positions 0 and 1 put the copy in front of sheets it references on the left, 2 puts it
+    // directly before the source and 3 directly after it, 4 puts it between the two sheets it
+    // references on the right, and the last one appends it.
+    const SCTAB aInsertPositions[] = { 0, 1, 2, 3, 4, SC_TAB_APPEND };
+    for (SCTAB nInsertPos : aInsertPositions)
+    {
+        // A document always keeps its last sheet, so each position gets a new document.
+        ScDocShellRef xDocShell;
+        getNewDocShell(xDocShell);
+        ScDocument& rDoc = xDocShell->GetDocument();
+
+        for (SCTAB nTab = 0; nTab < nTabCount; ++nTab)
+        {
+            rDoc.InsertTab(nTab, u"Tab"_ustr + OUString::number(nTab));
+            rDoc.SetValue(ScAddress(0, 0, nTab), 10.0 + nTab);
+            rDoc.SetValue(ScAddress(0, 1, nTab), 100.0);
+        }
+        SCROW nRow = 0;
+        for (const RefCheck& rCheck : aChecks)
+            rDoc.SetString(ScAddress(1, nRow++, nSourceTab), rCheck.sFormula);
+        rDoc.SetString(ScAddress(2, 0, nSourceTab), u"=A1"_ustr);
+
+        rDoc.CopyTab(nSourceTab, nInsertPos);
+        CPPUNIT_ASSERT_EQUAL(static_cast<SCTAB>(nTabCount + 1), rDoc.GetTableCount());
+
+        const SCTAB nCopyTab = (nInsertPos == SC_TAB_APPEND) ? nTabCount : nInsertPos;
+        // The source moves one place to the right when the copy goes in at or before it.
+        const SCTAB nSourceTabAfterCopy
+            = (nInsertPos <= nSourceTab) ? nSourceTab + 1 : nSourceTab;
+
+        // A new value in A1 of the copy tells a reference to the copy itself apart from one to
+        // the source.
+        rDoc.SetValue(ScAddress(0, 0, nCopyTab), 20.0);
+        rDoc.CalcAll();
+
+        auto checkSheet = [&](SCTAB nTab, double fOwnValue, std::string_view sSheet)
+        {
+            const OString sPrefix = OString::Concat(sSheet) + " sheet, copy at position "
+                                    + OString::number(nCopyTab) + ", ";
+            SCROW nCheckRow = 0;
+            for (const RefCheck& rCheck : aChecks)
+            {
+                const OString sMessage
+                    = sPrefix + OUStringToOString(rCheck.sFormula, RTL_TEXTENCODING_UTF8);
+                CPPUNIT_ASSERT_EQUAL_MESSAGE(sMessage.getStr(), rCheck.fExpected,
+                                             rDoc.GetValue(ScAddress(1, nCheckRow++, nTab)));
+            }
+            const OString sMessage = sPrefix + "=A1";
+            CPPUNIT_ASSERT_EQUAL_MESSAGE(sMessage.getStr(), fOwnValue,
+                                         rDoc.GetValue(ScAddress(2, 0, nTab)));
+        };
+        checkSheet(nSourceTabAfterCopy, 12.0, "source");
+        checkSheet(nCopyTab, 20.0, "copied");
+
+        xDocShell->DoClose();
+    }
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();
