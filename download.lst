@@ -452,8 +452,8 @@ LZMA_TARBALL := xz-5.8.4.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-MARIADB_CONNECTOR_C_SHA256SUM := a84bba97e59b6a322637a189964d4fd72bd8d92f2d22a9f8d6a5f0657c821e97
-MARIADB_CONNECTOR_C_TARBALL := mariadb-connector-c-3.4.9-src.tar.gz
+MARIADB_CONNECTOR_C_SHA256SUM := 521c0712e9291fa96558df9e2ff431376a3a79329f13751896b694cae12765b4
+MARIADB_CONNECTOR_C_TARBALL := mariadb-connector-c-3.4.11-src.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -524,8 +524,8 @@ OPENLDAP_TARBALL := openldap-2.7.1.tgz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-OPENSSL_SHA256SUM := a8f84a39918ec6415ce765d9b429d313ba97b8143169c172e734b9514464f5b2
-OPENSSL_TARBALL := openssl-3.5.8.tar.gz
+OPENSSL_SHA256SUM := 603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a
+OPENSSL_TARBALL := openssl-3.5.9.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -539,8 +539,8 @@ PAGEMAKER_TARBALL := libpagemaker-0.0.4.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-PDFIUM_SHA256SUM := 0340b2fca57cecdf6e2e0366129a3340f6764c132cb090f57db96d9f0f349855
-PDFIUM_TARBALL := pdfium-7988.tar.bz2
+PDFIUM_SHA256SUM := a3624f6f0ac46a7e190969d405aa7a07dbc342baf69f81192487575bf64055a5
+PDFIUM_TARBALL := pdfium-8073.tar.bz2
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
