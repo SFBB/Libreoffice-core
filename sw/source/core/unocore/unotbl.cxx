@@ -3777,7 +3777,7 @@ sal_Int32 SwXCellRange::Impl::GetRowCount() const
 const SwUnoCursor* SwXCellRange::GetTableCursor() const
 {
     SwFrameFormat *const pFormat = m_pImpl->GetFrameFormat();
-    return pFormat ? &(*m_pImpl->m_pTableCursor) : nullptr;
+    return pFormat ? m_pImpl->m_pTableCursor.get() : nullptr;
 }
 
 void SwXCellRange::Impl::Notify( const SfxHint& rHint )
