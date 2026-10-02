@@ -692,12 +692,12 @@ SwTableAutoFormat& SwTableAutoFormatTable::operator[](size_t const i)
 
 const SwTableAutoFormat* SwTableAutoFormatTable::GetData(size_t nIndex) const
 {
-    return &*m_pImpl->m_AutoFormats[nIndex];
+    return m_pImpl->m_AutoFormats[nIndex].get();
 }
 
 SwTableAutoFormat* SwTableAutoFormatTable::GetData(size_t nIndex)
 {
-    return &*m_pImpl->m_AutoFormats[nIndex];
+    return m_pImpl->m_AutoFormats[nIndex].get();
 }
 
 void SwTableAutoFormatTable::AddAutoFormat(const SwTableAutoFormat& rTableStyle)
