@@ -460,15 +460,24 @@ const SwTextNode* lcl_JumpedToNode(const SwEditShell& rSh, const SwPosition& rBe
     return rPoint == rBeforeJump ? nullptr : rPoint.GetNode().GetTextNode();
 }
 
-// the language a paragraph declares for itself, as against the one a run of text sets
+// the language of a paragraph, as against the one a run of text sets
 LanguageType lcl_GetParagraphLanguage(const SwTextFrame& rFrame,
                                       const TypedWhichId<SvxLanguageItem> nWhich)
 {
-    // what is anchored here is tagged inside the paragraph's element and would inherit a
-    // language put there; the node, not the frame, because a split paragraph is one element
-    if (!rFrame.GetTextNodeFirst()->GetAnchoredFlys().empty())
-        return LANGUAGE_DONTKNOW;
     return rFrame.GetTextNodeForParaProps()->GetSwAttrSet().Get(nWhich).GetLanguage();
+}
+
+// the language an element inherits from the element around it
+LanguageType lcl_GetInheritedLanguage(const SwFrame& rFrame, const SwEnhancedPDFState& rState)
+{
+    // a frame's element sits in its anchor's, and what the frame holds sits in the frame's
+    if (rFrame.IsFlyFrame())
+    {
+        const SwFrame* pAnchor = static_cast<const SwFlyFrame&>(rFrame).GetAnchorFrame();
+        if (auto pAnchorText = pAnchor ? pAnchor->DynCastTextFrame() : nullptr)
+            return lcl_GetParagraphLanguage(*pAnchorText, rState.m_nLanguageWhich);
+    }
+    return rState.m_eLanguageDefault;
 }
 
 // the language a run of text is measured against
@@ -762,12 +771,33 @@ void SwTaggedPDFHelper::OpenTagImpl(void const*const pKey)
 #endif
 }
 
-sal_Int32 SwTaggedPDFHelper::BeginTagImpl(void const*const pKey,
-    vcl::pdf::StructElement const eType, const OUString& rString)
+std::pair<sal_Int32, sal_Int32> SwTaggedPDFHelper::CreateRubyKids(const OutputDevice& rOut,
+                                                                  const SwFrame& rFrame)
+{
+    auto* pPDFExtOutDevData = dynamic_cast<vcl::PDFExtOutDevData*>(rOut.GetExtOutDevData());
+    // the check BeginInlineStructureElements makes, so no kid is created that nothing enters
+    if (!pPDFExtOutDevData || !pPDFExtOutDevData->GetIsExportTaggedPDF()
+        || lcl_IsInNonStructEnv(rFrame))
+        return { -1, -1 };
+
+    // ISO 32000-2 Table 369 requires RB before RT, and an element is ordered among its
+    // siblings where its type is set, which is here rather than where the sub-line paints
+    const sal_Int32 nRB(pPDFExtOutDevData->EnsureStructureElement(nullptr));
+    pPDFExtOutDevData->InitStructureElement(nRB, vcl::pdf::StructElement::RB, u"RB"_ustr);
+    const sal_Int32 nRT(pPDFExtOutDevData->EnsureStructureElement(nullptr));
+    pPDFExtOutDevData->InitStructureElement(nRT, vcl::pdf::StructElement::RT, u"RT"_ustr);
+    return { nRB, nRT };
+}
+
+sal_Int32 SwTaggedPDFHelper::BeginTagImpl(const void* const pKey,
+                                          const vcl::pdf::StructElement eType,
+                                          const OUString& rString, const sal_Int32 nExistingId)
 {
     // write new tag
-    const sal_Int32 nId = mpPDFExtOutDevData->EnsureStructureElement(pKey);
-    mpPDFExtOutDevData->InitStructureElement(nId, eType, rString);
+    const sal_Int32 nId
+        = nExistingId != -1 ? nExistingId : mpPDFExtOutDevData->EnsureStructureElement(pKey);
+    if (nExistingId == -1)
+        mpPDFExtOutDevData->InitStructureElement(nId, eType, rString);
     mpPDFExtOutDevData->BeginStructureElement(nId);
     m_aOpenedTags.push_back(nId);
 
@@ -806,7 +836,8 @@ void SwTaggedPDFHelper::BeginTag(vcl::pdf::StructElement eType, const OUString& 
         }
     }
 
-    sal_Int32 const nId = BeginTagImpl(pKey, eType, rString);
+    const sal_Int32 nId
+        = BeginTagImpl(pKey, eType, rString, mpPorInfo ? mpPorInfo->m_nExistingId : -1);
 
     // which tag a destination pointing at this node names
     if (mpFrameInfo && mpFrameInfo->mrFrame.IsTextFrame())
@@ -1050,17 +1081,14 @@ void SwTaggedPDFHelper::SetAttributes(vcl::pdf::StructElement eType)
 
             case vcl::pdf::StructElement::Formula:
             case vcl::pdf::StructElement::Figure:
-                bAltText =
-                bPlacement =
-                bWidth =
-                bHeight =
-                bBox = true;
+                bAltText = bLanguage = bPlacement = bWidth = bHeight = bBox = true;
                 break;
 
             case vcl::pdf::StructElement::Division:
                 if (pFrame->IsFlyFrame()) // this can be something else too
                 {
                     bAltText = true;
+                    bLanguage = true;
                     bBox = true;
                 }
                 break;
@@ -1160,12 +1188,20 @@ void SwTaggedPDFHelper::SetAttributes(vcl::pdf::StructElement eType)
                 mpPDFExtOutDevData->SetStructureAttributeNumerical( vcl::pdf::PDFWriter::TextIndent, nVal );
         }
 
-        if (bLanguage && pFrame->IsTextFrame())
+        if (bLanguage)
         {
             const SwEnhancedPDFState& rState(*mpPDFExtOutDevData->GetSwPDFState());
-            const LanguageType nLanguage(lcl_GetParagraphLanguage(
-                static_cast<const SwTextFrame&>(*pFrame), rState.m_nLanguageWhich));
-            if (LANGUAGE_DONTKNOW != nLanguage && rState.m_eLanguageDefault != nLanguage)
+            LanguageType nLanguage(LANGUAGE_DONTKNOW);
+            if (auto pText = pFrame->DynCastTextFrame())
+                nLanguage = lcl_GetParagraphLanguage(*pText, rState.m_nLanguageWhich);
+            else if (pFrame->IsFlyFrame())
+            {
+                // a frame's contents measure against this
+                nLanguage = rState.m_eLanguageDefault;
+            }
+
+            if (nLanguage != LANGUAGE_DONTKNOW
+                && nLanguage != lcl_GetInheritedLanguage(*pFrame, rState))
             {
                 mpPDFExtOutDevData->SetStructureAttributeNumerical(
                     vcl::pdf::PDFWriter::Language, static_cast<sal_uInt16>(nLanguage));
