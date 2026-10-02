@@ -30,8 +30,6 @@ class QtFrame;
 
 class VCLPLUG_QT_PUBLIC QtSvpGraphics final : public SvpSalGraphics, public QtGraphicsBase
 {
-    QtFrame* const m_pFrame;
-
     void handleDamage(const tools::Rectangle&) override;
 
 public:

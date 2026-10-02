@@ -39,32 +39,32 @@ public:
               sal_uInt8 nTransparency = 255);
     ~QtPainter()
     {
-        if (m_rGraphics.m_pFrame && !m_aRegion.isEmpty())
-            m_rGraphics.m_pFrame->GetQWidget().update(m_aRegion);
+        if (m_rGraphics.GetFrame() && !m_aRegion.isEmpty())
+            m_rGraphics.GetFrame()->GetQWidget().update(m_aRegion);
     }
 
     void update(int nx, int ny, int nw, int nh)
     {
-        if (m_rGraphics.m_pFrame)
+        if (m_rGraphics.GetFrame())
             m_aRegion += scaledQRect({ nx, ny, nw, nh }, 1 / m_rGraphics.devicePixelRatioF());
     }
 
     void update(const QRect& rRect)
     {
-        if (m_rGraphics.m_pFrame)
+        if (m_rGraphics.GetFrame())
             m_aRegion += scaledQRect(rRect, 1 / m_rGraphics.devicePixelRatioF());
     }
 
     void update(const QRectF& rRectF)
     {
-        if (m_rGraphics.m_pFrame)
+        if (m_rGraphics.GetFrame())
             update(scaledQRect(rRectF.toAlignedRect(), 1 / m_rGraphics.devicePixelRatioF()));
     }
 
     void update()
     {
-        if (m_rGraphics.m_pFrame)
-            m_aRegion += m_rGraphics.m_pFrame->GetQWidget().rect();
+        if (m_rGraphics.GetFrame())
+            m_aRegion += m_rGraphics.GetFrame()->GetQWidget().rect();
     }
 };
 

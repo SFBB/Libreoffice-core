@@ -20,21 +20,22 @@
 #include <QtWidgets/QWidget>
 
 QtSvpGraphics::QtSvpGraphics(QtFrame* pFrame)
-    : m_pFrame(pFrame)
+    : QtGraphicsBase(pFrame)
 {
     if (!QtInstance::noNativeControls())
         m_pWidgetDraw.reset(new QtGraphics_Controls(*this));
-    if (m_pFrame)
-        setDevicePixelRatioF(m_pFrame->devicePixelRatioF());
+    if (pFrame)
+        setDevicePixelRatioF(pFrame->devicePixelRatioF());
 }
 
 QtSvpGraphics::~QtSvpGraphics() {}
 
 void QtSvpGraphics::updateQWidget() const
 {
-    if (!m_pFrame)
+    QtFrame* pFrame = GetFrame();
+    if (!pFrame)
         return;
-    QWidget& rQWidget = m_pFrame->GetQWidget();
+    QWidget& rQWidget = pFrame->GetQWidget();
     rQWidget.update(rQWidget.rect());
 }
 
@@ -89,7 +90,7 @@ void QtSvpGraphics::handleDamage(const tools::Rectangle& rDamagedRegion)
 
 void QtSvpGraphics::GetResolution(sal_Int32& rDPIX, sal_Int32& rDPIY)
 {
-    QtGraphicsBase::ImplGetResolution(m_pFrame, rDPIX, rDPIY);
+    QtGraphicsBase::ImplGetResolution(GetFrame(), rDPIX, rDPIY);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

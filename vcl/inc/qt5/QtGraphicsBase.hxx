@@ -20,11 +20,13 @@
 
 class QtGraphicsBase
 {
+    QtFrame* const m_pFrame;
     qreal m_fDPR;
 
 public:
-    QtGraphicsBase()
-        : m_fDPR(qApp ? GetQtInstance().EmscriptenLightweightRunInMainThread(
+    QtGraphicsBase(QtFrame* pFrame)
+        : m_pFrame(pFrame)
+        , m_fDPR(qApp ? GetQtInstance().EmscriptenLightweightRunInMainThread(
                             [] { return qApp->devicePixelRatio(); })
                       : 1.0)
     {
@@ -35,6 +37,7 @@ public:
     qreal devicePixelRatioF() const { return m_fDPR; }
 
 protected:
+    QtFrame* GetFrame() const { return m_pFrame; }
     static void ImplGetResolution(const QtFrame* pFrame, sal_Int32& rDPIX, sal_Int32& rDPIY);
 };
 

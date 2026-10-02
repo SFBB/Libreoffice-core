@@ -31,7 +31,7 @@
 #include <numeric>
 
 QtGraphicsBackend::QtGraphicsBackend(QtFrame* pFrame, QImage* pQImage)
-    : m_pFrame(pFrame)
+    : QtGraphicsBase(pFrame)
     , m_pQImage(pQImage)
     , m_oLineColor(std::in_place, 0x00, 0x00, 0x00)
     , m_oFillColor(std::in_place, 0xFF, 0xFF, 0XFF)
