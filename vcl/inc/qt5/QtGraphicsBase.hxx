@@ -38,7 +38,7 @@ public:
 
 protected:
     QtFrame* GetFrame() const { return m_pFrame; }
-    static void ImplGetResolution(const QtFrame* pFrame, sal_Int32& rDPIX, sal_Int32& rDPIY);
+    void ImplGetResolution(sal_Int32& rDPIX, sal_Int32& rDPIY);
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

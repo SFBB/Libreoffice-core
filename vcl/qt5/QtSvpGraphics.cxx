@@ -90,7 +90,7 @@ void QtSvpGraphics::handleDamage(const tools::Rectangle& rDamagedRegion)
 
 void QtSvpGraphics::GetResolution(sal_Int32& rDPIX, sal_Int32& rDPIY)
 {
-    QtGraphicsBase::ImplGetResolution(GetFrame(), rDPIX, rDPIY);
+    ImplGetResolution(rDPIX, rDPIY);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

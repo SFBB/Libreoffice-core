@@ -88,7 +88,7 @@ void QtGraphics::handleDamage(const tools::Rectangle& rDamagedRegion)
 
 void QtGraphics::GetResolution(sal_Int32& rDPIX, sal_Int32& rDPIY)
 {
-    QtGraphicsBase::ImplGetResolution(GetFrame(), rDPIX, rDPIY);
+    ImplGetResolution(rDPIX, rDPIY);
 }
 
 void QtGraphics::SetTextColor(Color nColor) { m_aTextColor = nColor; }
