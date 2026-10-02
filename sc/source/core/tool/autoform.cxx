@@ -367,10 +367,13 @@ ScAutoFormat::~ScAutoFormat() = default;
 
 const ScAutoFormatData* ScAutoFormat::GetData(size_t nIndex) const
 {
-    return &*mpImpl->maAutoFormats[nIndex];
+    return mpImpl->maAutoFormats[nIndex].get();
 }
 
-ScAutoFormatData* ScAutoFormat::GetData(size_t nIndex) { return &*mpImpl->maAutoFormats[nIndex]; }
+ScAutoFormatData* ScAutoFormat::GetData(size_t nIndex)
+{
+    return mpImpl->maAutoFormats[nIndex].get();
+}
 
 bool ScAutoFormat::InsertAutoFormat(SvxAutoFormatData* pFormat)
 {
