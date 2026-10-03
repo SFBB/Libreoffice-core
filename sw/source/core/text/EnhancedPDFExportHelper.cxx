@@ -580,40 +580,98 @@ bool lcl_TryMoveToNonHiddenField(SwEditShell& rShell, const SwTextNode& rNd, con
     return true;
 };
 
+// absorb into rRects[rInto] one rectangle that touches it, nSlack twips apart counting as
+// touching, unless their union would reach over one of rHoles
+bool lcl_AbsorbOne(SwRects& rRects, size_t& rInto, tools::Long nSlack, const SwRects& rHoles)
+{
+    const SwRect aGrown(rRects[rInto].Pos() - Point(nSlack, nSlack),
+                        rRects[rInto].SSize() + Size(2 * nSlack, 2 * nSlack));
+    for (size_t i = 0; i < rRects.size(); ++i)
+    {
+        if (i == rInto || !aGrown.Overlaps(rRects[i]))
+            continue;
+        const SwRect aJoined(rRects[rInto].GetUnion(rRects[i]));
+        if (std::ranges::any_of(
+                rHoles, [&aJoined](const SwRect& rHole) { return aJoined.Overlaps(rHole); }))
+        {
+            continue;
+        }
+        rRects[rInto] = aJoined;
+        rRects.erase(rRects.begin() + i);
+        if (i < rInto)
+            --rInto;
+        return true;
+    }
+    return false;
+}
+
+void lcl_JoinTouching(SwRects& rRects, tools::Long nSlack, const SwRects& rHoles)
+{
+    // the union of two rectangles reaches further than either, so one that has just grown is
+    // offered the whole vector again, those already passed included
+    for (size_t i = 0; i < rRects.size(); ++i)
+    {
+        while (lcl_AbsorbOne(rRects, i, nSlack, rHoles))
+        {
+        }
+    }
+}
+
 // tdf#157816: try to check if the rectangle contains actual text
 ::std::vector<SwRect> GetCursorRectsContainingText(SwCursorShell const& rShell)
 {
-    ::std::vector<SwRect> ret;
-    SwRects rects;
-    rShell.GetLayout()->CalcFrameRects(*rShell.GetCursor_(), rects, SwRootFrame::RectsMode::NoAnchoredFlys);
+    SwRects region;
+    SwRects pieces;
+    SwRects holes;
+    // the pieces specify which lines each part of the region belongs to
+    rShell.GetLayout()->CalcFrameRects(*rShell.GetCursor_(), region,
+                                       SwRootFrame::RectsMode::NoAnchoredFlys, &pieces, &holes);
     auto const [pStart, pEnd] = rShell.GetCursor_()->StartEnd();
 
-    for (SwRect const& rRect : rects)
+    // a ruby's band overlaps its line's text band while lines only abut, so this leaves
+    // the pieces not overlapping each other; a piece spans its lines whole, so vetoing on
+    // a hole here would refuse every join
+    lcl_JoinTouching(pieces, 0, {});
+
+    ::std::vector<SwRect> ret;
+    for (const SwRect& rPiece : pieces)
     {
-        Point center(rRect.Center());
-        SwSpecialPos special;
-        SwCursorMoveState cms(CursorMoveState::NONE);
-        cms.m_pSpecialPos = &special;
-        cms.m_bFieldInfo = true;
-        // the centre of a one-glyph rectangle falls in that glyph's second half, so the hit
-        // test below returns the character that contains the point
-        cms.m_bPosMatchesBounds = true;
-        SwPosition pos(rShell.GetDoc()->GetNodes());
-        if (rShell.GetLayout()->GetModelPositionForViewPoint(&pos, center, &cms)
-            && *pStart <= pos && pos <= *pEnd)
+        SwRects parts;
+        for (const SwRect& rRect : region)
         {
-            SwRect charRect;
-            std::pair<Point, bool> const tmp(center, false);
-            SwContentFrame const*const pFrame(
-                pos.nNode.GetNode().GetTextNode()->getLayoutFrame(rShell.GetLayout(), &pos, &tmp));
-            if (pFrame->GetCharRect(charRect, pos, &cms, false)
-                && rRect.Overlaps(charRect))
+            SwRect aPart(rRect);
+            aPart.Intersection(rPiece);
+            if (!aPart.HasArea())
+                continue;
+
+            Point center(aPart.Center());
+            SwSpecialPos special;
+            SwCursorMoveState cms(CursorMoveState::NONE);
+            cms.m_pSpecialPos = &special;
+            cms.m_bFieldInfo = true;
+            // the centre of a one-glyph rectangle falls in that glyph's second half, so the
+            // hit test below returns the character that contains the point
+            cms.m_bPosMatchesBounds = true;
+            SwPosition pos(rShell.GetDoc()->GetNodes());
+            if (rShell.GetLayout()->GetModelPositionForViewPoint(&pos, center, &cms)
+                && *pStart <= pos && pos <= *pEnd)
             {
-                ret.push_back(rRect);
+                SwRect charRect;
+                std::pair<Point, bool> const tmp(center, false);
+                SwContentFrame const* const pFrame(
+                    pos.GetNode().GetTextNode()->getLayoutFrame(rShell.GetLayout(), &pos, &tmp));
+                if (pFrame->GetCharRect(charRect, pos, &cms, false) && aPart.Overlaps(charRect))
+                {
+                    parts.push_back(aPart);
+                }
             }
+            // reset stupid static var that may have gotten set now
+            SwTextCursor::SetRightMargin(false); // WTF is this crap
         }
-        // reset stupid static var that may have gotten set now
-        SwTextCursor::SetRightMargin(false); // WTF is this crap
+        // what holds no text is gone, so joining the rest keeps a line whole, and a hole
+        // stops a join that would cover what the selection excludes on purpose
+        lcl_JoinTouching(parts, 2, holes);
+        ret.insert(ret.end(), parts.begin(), parts.end());
     }
     return ret;
 }
