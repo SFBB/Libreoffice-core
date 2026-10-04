@@ -14,6 +14,7 @@
 
 #include "plugin.hxx"
 #include "check.hxx"
+#include "compat.hxx"
 #include "config_clang.h"
 #include "clang/AST/CXXInheritance.h"
 #include "clang/AST/StmtVisitor.h"
@@ -441,8 +442,10 @@ bool BuriedAssign::VisitIfStmt(IfStmt const* ifStmt)
             if (auto binaryOp2
                 = dyn_cast<BinaryOperator>(binaryOp->getLHS()->IgnoreParenImpCasts()))
             {
+                APValue res;
                 if (!binaryOp->getRHS()->isValueDependent()
-                    && binaryOp->getRHS()->isCXX11ConstantExpr(compiler.getASTContext())
+                    && compat::isCXX11ConstantExpr(binaryOp->getRHS(), compiler.getASTContext(),
+                                                   res)
                     && isAssignmentOp(binaryOp2->getOpcode()))
                     report(DiagnosticsEngine::Warning, "buried assignment, rather put on own line",
                            expr->getBeginLoc())
@@ -451,8 +454,10 @@ bool BuriedAssign::VisitIfStmt(IfStmt const* ifStmt)
             if (auto binaryOp2
                 = dyn_cast<BinaryOperator>(binaryOp->getRHS()->IgnoreParenImpCasts()))
             {
+                APValue res;
                 if (!binaryOp->getLHS()->isValueDependent()
-                    && binaryOp->getLHS()->isCXX11ConstantExpr(compiler.getASTContext())
+                    && compat::isCXX11ConstantExpr(binaryOp->getLHS(), compiler.getASTContext(),
+                                                   res)
                     && isAssignmentOp(binaryOp2->getOpcode()))
                     report(DiagnosticsEngine::Warning, "buried assignment, rather put on own line",
                            expr->getBeginLoc())
