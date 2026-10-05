@@ -481,7 +481,7 @@ IMPL_LINK( SvBaseLinksDlg, EndEditHdl, sfx2::SvBaseLink&, _rLink, void )
     // edited link needs to be refreshed.
     bool bLinkFnd = false;
     for( size_t n = pLinkMgr->GetLinks().size(); n;  )
-        if( &_rLink == &(*pLinkMgr->GetLinks()[ --n ]) )
+        if( &_rLink == pLinkMgr->GetLinks()[ --n ].get() )
         {
             bLinkFnd = true;
             break;
