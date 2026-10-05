@@ -38,9 +38,10 @@
 #include <bitmaps.hlst>
 #include <svl/itemset.hxx>
 
-GalleryPreview::GalleryPreview(GalleryBrowser* pParent, std::unique_ptr<weld::ScrolledWindow> xScrolledWindow)
+GalleryPreview::GalleryPreview(GalleryBrowser& rParent,
+                               std::unique_ptr<weld::ScrolledWindow> xScrolledWindow)
     : mxScrolledWindow(std::move(xScrolledWindow))
-    , mpParent(pParent)
+    , mrParent(rParent)
     , mpTheme(nullptr)
 {
 }
@@ -68,7 +69,7 @@ void GalleryPreview::SetDrawingArea(weld::DrawingArea* pDrawingArea)
     pDrawingArea->set_size_request(aSize.Width(), aSize.Height());
     SetOutputSizePixel(aSize);
 
-    mxDragDropTargetHelper.reset(new GalleryDragDrop(mpParent, pDrawingArea->get_drop_target()));
+    mxDragDropTargetHelper.reset(new GalleryDragDrop(&mrParent, pDrawingArea->get_drop_target()));
 }
 
 namespace
@@ -132,7 +133,7 @@ void GalleryPreview::Paint(vcl::RenderContext& rRenderContext, const tools::Rect
 bool GalleryPreview::MouseButtonDown(const MouseEvent& rMEvt)
 {
     if (mpTheme && (rMEvt.GetClicks() == 2))
-        mpParent->TogglePreview();
+        mrParent.TogglePreview();
     return true;
 }
 
@@ -140,7 +141,7 @@ bool GalleryPreview::Command(const CommandEvent& rCEvt)
 {
     if (mpTheme && (rCEvt.GetCommand() == CommandEventId::ContextMenu))
     {
-        mpParent->ShowContextMenu(rCEvt);
+        mrParent.ShowContextMenu(rCEvt);
         return true;
     }
     return false;
@@ -150,35 +151,33 @@ bool GalleryPreview::KeyInput(const KeyEvent& rKEvt)
 {
     if(mpTheme)
     {
-        GalleryBrowser* pBrowser = mpParent;
-
         switch( rKEvt.GetKeyCode().GetCode() )
         {
             case KEY_BACKSPACE:
-                pBrowser->TogglePreview();
+                mrParent.TogglePreview();
             break;
 
             case KEY_HOME:
-                pBrowser->Travel( GalleryBrowserTravel::First );
+                mrParent.Travel(GalleryBrowserTravel::First);
             break;
 
             case KEY_END:
-                pBrowser->Travel( GalleryBrowserTravel::Last );
+                mrParent.Travel(GalleryBrowserTravel::Last);
             break;
 
             case KEY_LEFT:
             case KEY_UP:
-                pBrowser->Travel( GalleryBrowserTravel::Previous );
+                mrParent.Travel(GalleryBrowserTravel::Previous);
             break;
 
             case KEY_RIGHT:
             case KEY_DOWN:
-                pBrowser->Travel( GalleryBrowserTravel::Next );
+                mrParent.Travel(GalleryBrowserTravel::Next);
             break;
 
             default:
             {
-                if (!pBrowser->KeyInput(rKEvt))
+                if (!mrParent.KeyInput(rKEvt))
                     return false;
             }
             break;
@@ -192,7 +191,7 @@ bool GalleryPreview::KeyInput(const KeyEvent& rKEvt)
 bool GalleryPreview::StartDrag()
 {
     if (mpTheme)
-        return mpParent->StartDrag();
+        return mrParent.StartDrag();
     return true;
 }
 
@@ -300,9 +299,10 @@ void GalleryIconView::drawTransparenceBackground(vcl::RenderContext& rOut, const
     rOut.DrawCheckered(rPos, rSize, nLen, aW, aG);
 }
 
-GalleryIconView::GalleryIconView(GalleryBrowser* pParent, std::unique_ptr<weld::ScrolledWindow> xScrolledWindow)
+GalleryIconView::GalleryIconView(GalleryBrowser& rParent,
+                                 std::unique_ptr<weld::ScrolledWindow> xScrolledWindow)
     : ValueSet(std::move(xScrolledWindow))
-    , mpParent(pParent)
+    , mrParent(rParent)
     , mpTheme(nullptr)
 {
 }
@@ -322,7 +322,7 @@ void GalleryIconView::SetDrawingArea(weld::DrawingArea* pDrawingArea)
     SetItemWidth( S_THUMB + 6 );
     SetItemHeight( S_THUMB + 6 );
 
-    mxDragDropTargetHelper.reset(new GalleryDragDrop(mpParent, pDrawingArea->get_drop_target()));
+    mxDragDropTargetHelper.reset(new GalleryDragDrop(&mrParent, pDrawingArea->get_drop_target()));
 }
 
 void GalleryIconView::UserDraw(const UserDrawEvent& rUDEvt)
@@ -391,7 +391,7 @@ bool GalleryIconView::MouseButtonDown(const MouseEvent& rMEvt)
     bool bRet = ValueSet::MouseButtonDown(rMEvt);
 
     if (rMEvt.GetClicks() == 2)
-        mpParent->TogglePreview();
+        mrParent.TogglePreview();
 
     return bRet;
 }
@@ -402,7 +402,7 @@ bool GalleryIconView::Command(const CommandEvent& rCEvt)
 
     if (!bRet && rCEvt.GetCommand() == CommandEventId::ContextMenu)
     {
-        bRet = mpParent->ShowContextMenu(rCEvt);
+        bRet = mrParent.ShowContextMenu(rCEvt);
     }
 
     return bRet;
@@ -410,7 +410,7 @@ bool GalleryIconView::Command(const CommandEvent& rCEvt)
 
 bool GalleryIconView::KeyInput(const KeyEvent& rKEvt)
 {
-    if (!mpTheme || !mpParent->KeyInput(rKEvt))
+    if (!mpTheme || !mrParent.KeyInput(rKEvt))
         return ValueSet::KeyInput(rKEvt);
     return true;
 }
@@ -418,7 +418,7 @@ bool GalleryIconView::KeyInput(const KeyEvent& rKEvt)
 bool GalleryIconView::StartDrag()
 {
     Select();
-    return mpParent->StartDrag();
+    return mrParent.StartDrag();
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
