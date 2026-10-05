@@ -2535,7 +2535,7 @@ void FormulaCompiler::CallLine()
                         pArgArray[nArgCount - 1] = mpCode - 1; // Add rest of the arguments
                 }
                 if (bDoIICompute)
-                    HandleIIOpCode(&*pOpToken, pArgArray,
+                    HandleIIOpCode(pOpToken.get(), pArgArray,
                                     std::min(nArgCount, static_cast<sal_uInt32>(FORMULA_MAXPARAMSII)));
             }
             bool bDone = false;
@@ -2554,7 +2554,7 @@ void FormulaCompiler::CallLine()
                 nArgCount++;
             // Jumps are just normal functions for the FunctionAutoPilot tree view
             if (!mbJumpCommandReorder && pOpToken->GetType() == svJump)
-                pOpToken = new FormulaFAPToken( pOpToken->GetOpCode(), nArgCount, &*pOpToken );
+                pOpToken = new FormulaFAPToken( pOpToken->GetOpCode(), nArgCount, pOpToken.get() );
             else
             {
                 // instead of using ocCall, built-in functions use their own OpCodes, if they are called directly
