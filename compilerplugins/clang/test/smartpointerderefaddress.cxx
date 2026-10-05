@@ -18,6 +18,7 @@ class UnoCursorPointer
 {
 public:
     int& operator*() { return *m_pInteger; };
+    int* get() { return m_pInteger; };
 
 private:
     int* m_pInteger;

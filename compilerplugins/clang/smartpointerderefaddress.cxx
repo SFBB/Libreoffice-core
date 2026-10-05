@@ -31,6 +31,9 @@
  * See tdf#173585 for an example.
  *
  * Either way x.get() is easier to understand.
+ *
+ * Whether the object is a smart pointer or not is determined by whether it has a get() method which
+ * returns the same type as the original expression.
  */
 
 namespace
@@ -52,6 +55,37 @@ public:
     bool VisitUnaryOperator(UnaryOperator const*);
 };
 
+bool cxxRecordHasGetMethod(const CXXRecordDecl* recordDecl, const QualType& expressionType)
+{
+    for (auto method : recordDecl->methods())
+    {
+        if (!method->isInstance() || method->param_size() != 0
+            || !loplugin::DeclCheck(method).Function("get"))
+        {
+            continue;
+        }
+
+        QualType returnType = method->getReturnType().getUnqualifiedType().getCanonicalType();
+
+        if (returnType == expressionType)
+            return true;
+    }
+
+    return false;
+}
+
+bool cxxRecordOrBaseHasGetMethod(const CXXRecordDecl* recordDecl, const QualType& expressionType)
+{
+    if (cxxRecordHasGetMethod(recordDecl, expressionType))
+        return true;
+
+    auto baseCallback = [&](const CXXRecordDecl* baseRecordDecl) {
+        return !cxxRecordHasGetMethod(baseRecordDecl, expressionType);
+    };
+
+    return !recordDecl->forallBases(baseCallback);
+}
+
 bool SmartPointerDerefAddress::VisitUnaryOperator(UnaryOperator const* unaryOperator)
 {
     if (ignoreLocation(unaryOperator))
@@ -65,12 +99,23 @@ bool SmartPointerDerefAddress::VisitUnaryOperator(UnaryOperator const* unaryOper
     if (!innerOp || innerOp->getOperator() != OO_Star)
         return true;
 
-    auto const tc = loplugin::TypeCheck(innerOp->getArg(0)->getType());
+    const Expr* derefedExpr = innerOp->getArg(0);
 
-    if (tc.ClassOrStruct("shared_ptr").StdNamespace()
-        || tc.ClassOrStruct("__shared_ptr_access").StdNamespace()
-        || tc.ClassOrStruct("unique_ptr").StdNamespace()
-        || tc.ClassOrStruct("UnoCursorPointer").Namespace("sw").GlobalNamespace())
+    // Remove any implicit casts so we can get the type of the original expression, not the one
+    // where operator* is defined
+    while (const ImplicitCastExpr* castExpr = dyn_cast<ImplicitCastExpr>(derefedExpr))
+        derefedExpr = castExpr->getSubExpr();
+
+    // Check if the dereferenced type is a struct or a class that also has a get method that returns
+    // the same type as the whole expression
+    const CXXRecordDecl* recordDecl = derefedExpr->getType()->getAsCXXRecordDecl();
+
+    if (!recordDecl)
+        return true;
+
+    QualType expressionType = unaryOperator->getType().getUnqualifiedType().getCanonicalType();
+
+    if (cxxRecordOrBaseHasGetMethod(recordDecl, expressionType))
     {
         report(DiagnosticsEngine::Warning,
                "'*' followed by '&' operating on %0, rather use '.get()'",
