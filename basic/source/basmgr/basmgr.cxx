@@ -1047,7 +1047,7 @@ StarBASIC* BasicManager::AddLib( SotStorage& rStorage, const OUString& rLibName,
         pLibInfo = nullptr;
     }
 
-    return pLibInfo ? &*pLibInfo->GetLib() : nullptr;
+    return pLibInfo ? pLibInfo->GetLib().get() : nullptr;
 
 }
 
