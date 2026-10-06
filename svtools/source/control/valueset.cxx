@@ -85,7 +85,6 @@ ValueSet::ValueSet(std::unique_ptr<weld::ScrolledWindow> pScrolledWindow)
 {
     mnItemWidth         = 0;
     mnItemHeight        = 0;
-    mnTextOffset        = 0;
     mnVisLines          = 0;
     mnLines             = 0;
     mnUserItemWidth     = 0;
@@ -789,10 +788,6 @@ void ValueSet::Format(vcl::RenderContext const & rRenderContext)
         aWinSize.AdjustWidth(-mnMargin * 2);
         aWinSize.AdjustHeight(-mnMargin * 2);
     }
-
-    mnTextOffset = 0;
-
-    mnTextOffset += mnMargin;
 
     // calculate number of columns
     if (!mnUserCols)

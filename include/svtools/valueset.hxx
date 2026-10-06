@@ -179,7 +179,6 @@ private:
     tools::Rectangle  maItemListRect;
     tools::Long            mnItemWidth;
     tools::Long            mnItemHeight;
-    tools::Long            mnTextOffset;
     tools::Long            mnVisLines;
     tools::Long            mnLines;
     tools::Long            mnUserItemWidth;
