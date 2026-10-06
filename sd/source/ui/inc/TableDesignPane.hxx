@@ -54,7 +54,6 @@ enum TableCheckBox : sal_uInt16
 class TableValueSet final : public ValueSet
 {
 private:
-    bool m_bModal;
     Link<const Point*, void> maContextMenuHandler;
 public:
     TableValueSet(std::unique_ptr<weld::ScrolledWindow> pScrolledWindow);
