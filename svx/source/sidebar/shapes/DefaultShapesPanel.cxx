@@ -21,38 +21,28 @@
 #include <com/sun/star/lang/IllegalArgumentException.hpp>
 #include <comphelper/dispatchcommand.hxx>
 #include <utility>
+#include <vcl/bitmap.hxx>
 #include <vcl/commandinfoprovider.hxx>
 #include <vcl/image.hxx>
 #include <vcl/settings.hxx>
 #include <vcl/svapp.hxx>
-#include <vcl/weld/ScrolledWindow.hxx>
+#include <vcl/weld/Builder.hxx>
 
 namespace svx::sidebar {
 
-DefaultShapesPanel::DefaultShapesPanel (
-    weld::Widget* pParent,
-    css::uno::Reference<css::frame::XFrame> xFrame)
+DefaultShapesPanel::DefaultShapesPanel(weld::Widget* pParent,
+                                       css::uno::Reference<css::frame::XFrame> xFrame)
     : PanelLayout(pParent, u"DefaultShapesPanel"_ustr, u"svx/ui/defaultshapespanel.ui"_ustr)
-    , mxLineArrowSet(new ValueSet(nullptr))
-    , mxLineArrowSetWin(new weld::CustomWeld(*m_xBuilder, u"LinesArrows"_ustr, *mxLineArrowSet))
-    , mxCurveSet(new ValueSet(nullptr))
-    , mxCurveSetWin(new weld::CustomWeld(*m_xBuilder, u"Curves"_ustr, *mxCurveSet))
-    , mxConnectorSet(new ValueSet(nullptr))
-    , mxConnectorSetWin(new weld::CustomWeld(*m_xBuilder, u"Connectors"_ustr, *mxConnectorSet))
-    , mxBasicShapeSet(new ValueSet(nullptr))
-    , mxBasicShapeSetWin(new weld::CustomWeld(*m_xBuilder, u"BasicShapes"_ustr, *mxBasicShapeSet))
-    , mxSymbolShapeSet(new ValueSet(nullptr))
-    , mxSymbolShapeSetWin(new weld::CustomWeld(*m_xBuilder, u"SymbolShapes"_ustr, *mxSymbolShapeSet))
-    , mxBlockArrowSet(new ValueSet(nullptr))
-    , mxBlockArrowSetWin(new weld::CustomWeld(*m_xBuilder, u"BlockArrows"_ustr, *mxBlockArrowSet))
-    , mxFlowchartSet(new ValueSet(nullptr))
-    , mxFlowchartSetWin(new weld::CustomWeld(*m_xBuilder, u"Flowcharts"_ustr, *mxFlowchartSet))
-    , mxCalloutSet(new ValueSet(nullptr))
-    , mxCalloutSetWin(new weld::CustomWeld(*m_xBuilder, u"Callouts"_ustr, *mxCalloutSet))
-    , mxStarSet(new ValueSet(nullptr))
-    , mxStarSetWin(new weld::CustomWeld(*m_xBuilder, u"Stars"_ustr, *mxStarSet))
-    , mx3DObjectSet(new ValueSet(nullptr))
-    , mx3DObjectSetWin(new weld::CustomWeld(*m_xBuilder, u"3DObjects"_ustr, *mx3DObjectSet))
+    , m_pLineArrowIconView(m_xBuilder->weld_icon_view(u"LinesArrows"_ustr))
+    , m_pCurveIconView(m_xBuilder->weld_icon_view(u"Curves"_ustr))
+    , m_pConnectorIconView(m_xBuilder->weld_icon_view(u"Connectors"_ustr))
+    , m_pBasicShapeIconView(m_xBuilder->weld_icon_view(u"BasicShapes"_ustr))
+    , m_pSymbolShapeIconView(m_xBuilder->weld_icon_view(u"SymbolShapes"_ustr))
+    , m_pBlockArrowIconView(m_xBuilder->weld_icon_view(u"BlockArrows"_ustr))
+    , m_pFlowchartIconView(m_xBuilder->weld_icon_view(u"Flowcharts"_ustr))
+    , m_pCalloutIconView(m_xBuilder->weld_icon_view(u"Callouts"_ustr))
+    , m_pStarIconView(m_xBuilder->weld_icon_view(u"Stars"_ustr))
+    , m_p3DObjectIconView(m_xBuilder->weld_icon_view(u"3DObjects"_ustr))
     , mxFrame(std::move(xFrame))
 {
     Initialize();
@@ -74,78 +64,62 @@ std::unique_ptr<PanelLayout> DefaultShapesPanel::Create(
 
 void DefaultShapesPanel::Initialize()
 {
-    m_aShapesSetMap = decltype(m_aShapesSetMap){
-        { mxLineArrowSet.get(),   m_aLineShapes },
-        { mxCurveSet.get(),       m_aCurveShapes },
-        { mxConnectorSet.get(),   m_aConnectorShapes },
-        { mxBasicShapeSet.get(),  m_aBasicShapes },
-        { mxSymbolShapeSet.get(), m_aSymbolShapes },
-        { mxBlockArrowSet.get(),  m_aBlockArrowShapes },
-        { mxFlowchartSet.get(),   m_aFlowchartShapes },
-        { mxCalloutSet.get(),     m_aCalloutShapes },
-        { mxStarSet.get(),        m_aStarShapes },
-        { mx3DObjectSet.get(),    m_a3DShapes }
-    };
+    m_aShapesViewsMap = { { m_pLineArrowIconView.get(), m_aLineShapes },
+                          { m_pCurveIconView.get(), m_aCurveShapes },
+                          { m_pConnectorIconView.get(), m_aConnectorShapes },
+                          { m_pBasicShapeIconView.get(), m_aBasicShapes },
+                          { m_pSymbolShapeIconView.get(), m_aSymbolShapes },
+                          { m_pBlockArrowIconView.get(), m_aBlockArrowShapes },
+                          { m_pFlowchartIconView.get(), m_aFlowchartShapes },
+                          { m_pCalloutIconView.get(), m_aCalloutShapes },
+                          { m_pStarIconView.get(), m_aStarShapes },
+                          { m_p3DObjectIconView.get(), m_a3DShapes } };
 
-    for (auto& aSet : m_aShapesSetMap)
+    for (auto& rEntry : m_aShapesViewsMap)
     {
-        aSet.first->SetColCount(6);
-        for (size_t i = 0; i < aSet.second.size(); i++)
+        for (size_t i = 0; i < rEntry.second.size(); i++)
         {
-            const OUString sSlotStr = aSet.second.at(i);
-            const Image aSlotImage
-                = vcl::CommandInfoProvider::GetImageForCommand(sSlotStr, mxFrame);
+            const OUString sSlotStr = rEntry.second.at(i);
+            const Bitmap aSlotImage
+                = vcl::CommandInfoProvider::GetImageForCommand(sSlotStr, mxFrame).GetBitmap();
             auto aProperties = vcl::CommandInfoProvider::GetCommandProperties(
                 sSlotStr, vcl::CommandInfoProvider::GetModuleIdentifier(mxFrame));
             const OUString sLabel
                 = vcl::CommandInfoProvider::GetTooltipForCommand(sSlotStr, aProperties, mxFrame);
-            sal_uInt16 nSelectionId = i + 1; // tdf#142767 id 0 is reserved for nothing-selected
-            aSet.first->InsertItem(nSelectionId, aSlotImage, sLabel);
+            rEntry.first->insert(i, nullptr, nullptr, &aSlotImage, nullptr);
+            rEntry.first->set_item_accessible_name(i, sLabel);
+            rEntry.first->set_item_tooltip_text(i, sLabel);
         }
 
-        aSet.first->SetColor(Application::GetSettings().GetStyleSettings().GetDialogColor());
-        aSet.first->SetSelectHdl(LINK(this, DefaultShapesPanel, ShapeSelectHdl));
+        rEntry.first->connect_item_activated(LINK(this, DefaultShapesPanel, ShapeActivatedHdl));
     }
 }
 
 DefaultShapesPanel::~DefaultShapesPanel()
 {
-    m_aShapesSetMap.clear();
-    mxLineArrowSetWin.reset();
-    mxLineArrowSet.reset();
-    mxCurveSetWin.reset();
-    mxCurveSet.reset();
-    mxConnectorSetWin.reset();
-    mxConnectorSet.reset();
-    mxBasicShapeSetWin.reset();
-    mxBasicShapeSet.reset();
-    mxSymbolShapeSetWin.reset();
-    mxSymbolShapeSet.reset();
-    mxBlockArrowSetWin.reset();
-    mxBlockArrowSet.reset();
-    mxFlowchartSetWin.reset();
-    mxFlowchartSet.reset();
-    mxCalloutSetWin.reset();
-    mxCalloutSet.reset();
-    mxStarSetWin.reset();
-    mxStarSet.reset();
-    mx3DObjectSetWin.reset();
-    mx3DObjectSet.reset();
+    m_aShapesViewsMap.clear();
 }
 
-IMPL_LINK(DefaultShapesPanel, ShapeSelectHdl, ValueSet*, rValueSet, void)
+IMPL_LINK(DefaultShapesPanel, ShapeActivatedHdl, const weld::TreeIter&, rIter, bool)
 {
-    for (auto& aSetMap : m_aShapesSetMap)
+    const weld::ItemView& rActiveItemView = rIter.getItemView();
+    for (const auto& rEntry : m_aShapesViewsMap)
     {
-        if(rValueSet == aSetMap.first)
+        if (&rActiveItemView == rEntry.first)
         {
-            sal_uInt16 nSelectionId = aSetMap.first->GetSelectedItemId();
-            if (nSelectionId > 0 && nSelectionId <= aSetMap.second.size())
-                comphelper::dispatchCommand(aSetMap.second.at(nSelectionId - 1), {});
+            const int nActivatedIndex = rActiveItemView.get_iter_index_in_parent(rIter);
+            assert(nActivatedIndex >= 0
+                   && o3tl::make_unsigned(nActivatedIndex) < rEntry.second.size()
+                   && "Invalid index");
+            comphelper::dispatchCommand(rEntry.second.at(nActivatedIndex), {});
         }
         else
-            aSetMap.first->SetNoSelection();
+        {
+            rEntry.first->unselect_all();
+        }
     }
+
+    return true;
 }
 
 } // end of namespace svx::sidebar
