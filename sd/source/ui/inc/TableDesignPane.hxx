@@ -62,7 +62,6 @@ public:
     virtual void Resize() override;
     virtual void StyleUpdated() override;
     void updateSettings();
-    void setModal(bool bModal) { m_bModal = bModal; }
     void SetContextMenuHandler(const Link<const Point*, void>& rLink) { maContextMenuHandler = rLink; }
     static constexpr int getMaxRowCount() { return 3; }
 };

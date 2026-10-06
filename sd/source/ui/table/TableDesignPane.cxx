@@ -110,7 +110,6 @@ TableDesignWidget::TableDesignWidget(weld::Builder& rBuilder, ViewShellBase& rBa
 {
     m_xValueSet->SetStyle(m_xValueSet->GetStyle() | WB_NO_DIRECTSELECT | WB_FLATVALUESET | WB_ITEMBORDER);
     m_xValueSet->SetExtraSpacing(8);
-    m_xValueSet->setModal(false);
     m_xValueSet->SetColor();
     m_xValueSet->SetSelectHdl(LINK(this, TableDesignWidget, implValueSetHdl));
     m_xValueSet->SetContextMenuHandler(LINK(this, TableDesignWidget, implContextMenuHandler));
