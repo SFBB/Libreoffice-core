@@ -582,7 +582,6 @@
                 <property name="margin-top">6</property>
                 <property name="row_spacing">6</property>
                 <property name="column_spacing">12</property>
-
                 <child>
                   <object class="GtkRadioButton" id="RB_HISTOGRAM_AUTOMATIC">
                     <property name="label" translatable="yes" context="tp_Scale|RB_HISTOGRAM_AUTOMATIC">Auto_matic</property>
@@ -590,13 +589,13 @@
                     <property name="can_focus">True</property>
                     <property name="use_underline">True</property>
                     <property name="draw_indicator">True</property>
+                    <property name="active">True</property>
                   </object>
                   <packing>
                     <property name="left_attach">0</property>
                     <property name="top_attach">0</property>
                   </packing>
                 </child>
-
                 <child>
                   <object class="GtkRadioButton" id="RB_HISTOGRAM_BIN_WIDTH">
                     <property name="label" translatable="yes" context="tp_Scale|RB_HISTOGRAM_BIN_WIDTH">Bin _width</property>
@@ -611,7 +610,6 @@
                     <property name="top_attach">1</property>
                   </packing>
                 </child>
-
                 <child>
                   <object class="GtkSpinButton" id="EDT_HISTOGRAM_BIN_WIDTH">
                     <property name="visible">True</property>
@@ -619,6 +617,7 @@
                     <property name="width_chars">10</property>
                     <property name="adjustment">adjustmentHISTOGRAM_BIN_WIDTH</property>
                     <property name="digits">2</property>
+                    <property name="truncate-multiline">True</property>
                     <child internal-child="accessible">
                       <object class="AtkObject" id="EDT_HISTOGRAM_BIN_WIDTH-atkobject">
                         <property name="AtkObject::accessible-name" translatable="yes" context="tp_Scale|EDT_HISTOGRAM_BIN_WIDTH-atkobject">Bin width</property>
@@ -631,7 +630,6 @@
                     <property name="top_attach">1</property>
                   </packing>
                 </child>
-
                 <child>
                   <object class="GtkRadioButton" id="RB_HISTOGRAM_BIN_COUNT">
                     <property name="label" translatable="yes" context="tp_Scale|RB_HISTOGRAM_BIN_COUNT">_Number of bins</property>
@@ -646,7 +644,6 @@
                     <property name="top_attach">2</property>
                   </packing>
                 </child>
-
                 <child>
                   <object class="GtkSpinButton" id="MT_HISTOGRAM_BIN_COUNT">
                     <property name="visible">True</property>
@@ -654,6 +651,7 @@
                     <property name="width_chars">10</property>
                     <property name="adjustment">adjustmentHISTOGRAM_BIN_COUNT</property>
                     <property name="numeric">True</property>
+                    <property name="truncate-multiline">True</property>
                     <child internal-child="accessible">
                       <object class="AtkObject" id="MT_HISTOGRAM_BIN_COUNT-atkobject">
                         <property name="AtkObject::accessible-name" translatable="yes" context="tp_Scale|MT_HISTOGRAM_BIN_COUNT-atkobject">Number of bins</property>
@@ -666,7 +664,6 @@
                     <property name="top_attach">2</property>
                   </packing>
                 </child>
-
                 <child>
                   <object class="GtkCheckButton" id="CBX_HISTOGRAM_OVERFLOW">
                     <property name="label" translatable="yes" context="tp_Scale|CBX_HISTOGRAM_OVERFLOW">_Overflow bin</property>
@@ -680,7 +677,6 @@
                     <property name="top_attach">3</property>
                   </packing>
                 </child>
-
                 <child>
                   <object class="GtkSpinButton" id="EDT_HISTOGRAM_OVERFLOW">
                     <property name="visible">True</property>
@@ -688,6 +684,7 @@
                     <property name="width_chars">10</property>
                     <property name="adjustment">adjustmentHISTOGRAM_OVERFLOW</property>
                     <property name="digits">2</property>
+                    <property name="truncate-multiline">True</property>
                     <child internal-child="accessible">
                       <object class="AtkObject" id="EDT_HISTOGRAM_OVERFLOW-atkobject">
                         <property name="AtkObject::accessible-name" translatable="yes" context="tp_Scale|EDT_HISTOGRAM_OVERFLOW-atkobject">Overflow bin value</property>
@@ -700,7 +697,6 @@
                     <property name="top_attach">3</property>
                   </packing>
                 </child>
-
                 <child>
                   <object class="GtkCheckButton" id="CBX_HISTOGRAM_UNDERFLOW">
                     <property name="label" translatable="yes" context="tp_Scale|CBX_HISTOGRAM_UNDERFLOW">_Underflow bin</property>
@@ -714,7 +710,6 @@
                     <property name="top_attach">4</property>
                   </packing>
                 </child>
-
                 <child>
                   <object class="GtkSpinButton" id="EDT_HISTOGRAM_UNDERFLOW">
                     <property name="visible">True</property>
@@ -722,6 +717,7 @@
                     <property name="width_chars">10</property>
                     <property name="adjustment">adjustmentHISTOGRAM_UNDERFLOW</property>
                     <property name="digits">2</property>
+                    <property name="truncate-multiline">True</property>
                     <child internal-child="accessible">
                       <object class="AtkObject" id="EDT_HISTOGRAM_UNDERFLOW-atkobject">
                         <property name="AtkObject::accessible-name" translatable="yes" context="tp_Scale|EDT_HISTOGRAM_UNDERFLOW-atkobject">Underflow bin value</property>
@@ -736,7 +732,6 @@
                 </child>
               </object>
             </child>
-
             <child type="label">
               <object class="GtkLabel" id="TXT_HISTOGRAM_BINS">
                 <property name="visible">True</property>
