@@ -1259,7 +1259,8 @@ void SwTextNode::DestroyAttr( SwTextAttr* pAttr )
     case RES_TXTATR_FLYCNT:
         {
             SwFrameFormat* pFormat = pAttr->GetFlyCnt().GetFrameFormat();
-            if( pFormat )      // set to 0 by Undo?
+            // tdf#125846 - avoid deleting fly formats one by one while the document is destroyed
+            if (pFormat && !rDoc.IsInDtor()) // set to 0 by Undo?
                 rDoc.getIDocumentLayoutAccess().DelLayoutFormat( pFormat );
         }
         break;
