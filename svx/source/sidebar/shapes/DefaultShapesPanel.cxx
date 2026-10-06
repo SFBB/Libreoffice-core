@@ -102,12 +102,9 @@ void DefaultShapesPanel::Initialize()
             sal_uInt16 nSelectionId = i + 1; // tdf#142767 id 0 is reserved for nothing-selected
             aSet.first->InsertItem(nSelectionId, aSlotImage, sLabel);
         }
-    }
 
-    for (auto& aSetMap : m_aShapesSetMap)
-    {
-        aSetMap.first->SetColor(Application::GetSettings().GetStyleSettings().GetDialogColor());
-        aSetMap.first->SetSelectHdl(LINK(this, DefaultShapesPanel, ShapeSelectHdl));
+        aSet.first->SetColor(Application::GetSettings().GetStyleSettings().GetDialogColor());
+        aSet.first->SetSelectHdl(LINK(this, DefaultShapesPanel, ShapeSelectHdl));
     }
 }
 
