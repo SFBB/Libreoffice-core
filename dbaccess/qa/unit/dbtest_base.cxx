@@ -9,8 +9,6 @@
 
 #include <sal/config.h>
 
-#include <string_view>
-
 #include <test/unoapi_test.hxx>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/container/XNameContainer.hpp>
@@ -46,6 +44,8 @@ public:
     void createQueries(const Reference< XDataSource >& xDataSource);
     void createQuery(const OUString& sQuery, bool bEscapeProcessing,
             const OUString& sQueryName, const Reference<XDataSource> & xDataSource);
+
+    uno::Reference<XConnection> setUpDBConnection();
 
     virtual void tearDown() override;
 };
@@ -180,6 +180,23 @@ void DBTestBase::createQuery(const OUString& sQuery, bool bEscapeProcessing, con
 
     Reference<container::XNameContainer> xNameContainer(xQueryAccess, UNO_QUERY_THROW);
     xNameContainer->insertByName(sQueryName, Any(xQueryProp));
+}
+
+uno::Reference<XConnection> DBTestBase::setUpDBConnection()
+{
+    createDBDocument(u"sdbc:embedded:hsqldb"_ustr);
+    uno::Reference<sdb::XOfficeDatabaseDocument> xDocument(mxComponent, UNO_QUERY_THROW);
+    uno::Reference<XDataSource> xDataSource = xDocument->getDataSource();
+    CPPUNIT_ASSERT(xDataSource.is());
+
+    // create queries before establishing connection to database
+    createQueries(xDataSource);
+
+    uno::Reference<XConnection> xConnection = getConnectionForDocument(xDocument);
+
+    createTables(xConnection);
+
+    return xConnection;
 }
 
 void DBTestBase::tearDown()
