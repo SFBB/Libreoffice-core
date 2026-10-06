@@ -33,14 +33,10 @@ class SdrView;
 
 // class SvxCaptionTabPage -----------------------------------------------
 
-const sal_uInt16 CAPTYPE_BITMAPS_COUNT = 3;
-
 class SvxCaptionTabPage : public SfxTabPage
 {
 private:
     static const WhichRangesContainer pCaptionRanges;
-
-    Image           m_aBmpCapTypes[CAPTYPE_BITMAPS_COUNT];
 
     std::vector<OUString> m_aStrHorzList;
     std::vector<OUString> m_aStrVertList;
