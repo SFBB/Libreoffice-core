@@ -120,26 +120,21 @@ ExtrusionDirectionWindow::ExtrusionDirectionWindow(
     weld::Widget* pParent)
     : WeldToolbarPopup(pControl->getFrameInterface(), pParent, u"svx/ui/directionwindow.ui"_ustr, u"DirectionWindow"_ustr)
     , mxControl(pControl)
-    , mxDirectionSet(new ValueSet(nullptr))
-    , mxDirectionSetWin(new weld::CustomWeld(*m_xBuilder, u"valueset"_ustr, *mxDirectionSet))
+    , mxDirectionIconView(m_xBuilder->weld_icon_view(u"iconview"_ustr))
     , mxPerspective(m_xBuilder->weld_radio_button(u"perspective"_ustr))
     , mxParallel(m_xBuilder->weld_radio_button(u"parallel"_ustr))
 {
-    mxDirectionSet->SetStyle(WB_TABSTOP | WB_MENUSTYLEVALUESET | WB_FLATVALUESET | WB_NOBORDER | WB_NO_DIRECTSELECT);
-
-    mxDirectionSet->SetSelectHdl( LINK( this, ExtrusionDirectionWindow, SelectValueSetHdl ) );
-    mxDirectionSet->SetColCount( 3 );
-    mxDirectionSet->EnableFullItemMode( false );
+    mxDirectionIconView->connect_item_activated(
+        LINK(this, ExtrusionDirectionWindow, IconViewItemActivatedHdl));
 
     for (sal_uInt16 i = DIRECTION_NW; i <= DIRECTION_SE; ++i)
     {
-        const Image aImgDirection(StockImage::Yes, aDirectionBmps[i]);
-        mxDirectionSet->InsertItem(i + 1, aImgDirection, SvxResId(aDirectionStrs[i]));
+        const Bitmap aImgDirection = Image(StockImage::Yes, aDirectionBmps[i]).GetBitmap();
+        mxDirectionIconView->insert(i, nullptr, nullptr, &aImgDirection, nullptr);
+        const OUString sName = SvxResId(aDirectionStrs[i]);
+        mxDirectionIconView->set_item_accessible_name(i, sName);
+        mxDirectionIconView->set_item_tooltip_text(i, sName);
     }
-
-    Size aSize(72, 72);
-    mxDirectionSet->GetDrawingArea()->set_size_request(aSize.Width(), aSize.Height());
-    mxDirectionSet->SetOutputSizePixel(aSize);
 
     mxPerspective->connect_toggled(LINK(this, ExtrusionDirectionWindow, SelectToolbarMenuHdl));
 
@@ -147,10 +142,7 @@ ExtrusionDirectionWindow::ExtrusionDirectionWindow(
     AddStatusListener( g_sExtrusionProjection );
 }
 
-void ExtrusionDirectionWindow::GrabFocus()
-{
-    mxDirectionSet->GrabFocus();
-}
+void ExtrusionDirectionWindow::GrabFocus() { mxDirectionIconView->grab_focus(); }
 
 ExtrusionDirectionWindow::~ExtrusionDirectionWindow()
 {
@@ -167,17 +159,14 @@ void ExtrusionDirectionWindow::implSetDirection( sal_Int32 nSkew, bool bEnabled 
 
     if( nItemId <= DIRECTION_SE )
     {
-        mxDirectionSet->SelectItem( nItemId+1 );
+        mxDirectionIconView->select(nItemId);
     }
     else
     {
-        mxDirectionSet->SetNoSelection();
+        mxDirectionIconView->unselect_all();
     }
 
-    if (bEnabled)
-        mxDirectionSet->Enable();
-    else
-        mxDirectionSet->Disable();
+    mxDirectionIconView->set_sensitive(bEnabled);
 }
 
 void ExtrusionDirectionWindow::implSetProjection( sal_Int32 nProjection, bool bEnabled )
@@ -220,15 +209,17 @@ void ExtrusionDirectionWindow::statusChanged(
     }
 }
 
-IMPL_LINK_NOARG(ExtrusionDirectionWindow, SelectValueSetHdl, ValueSet*, void)
+IMPL_LINK(ExtrusionDirectionWindow, IconViewItemActivatedHdl, const weld::TreeIter&, rIter, bool)
 {
     Sequence< PropertyValue > aArgs{ comphelper::makePropertyValue(
         g_sExtrusionDirection.copy(5),
-        gSkewList[mxDirectionSet->GetSelectedItemId()-1]) };
+        gSkewList[mxDirectionIconView->get_iter_index_in_parent(rIter)]) };
 
     mxControl->dispatchCommand( g_sExtrusionDirection, aArgs );
 
     mxControl->EndPopupMode();
+
+    return true;
 }
 
 IMPL_LINK_NOARG(ExtrusionDirectionWindow, SelectToolbarMenuHdl, weld::Toggleable&, void)

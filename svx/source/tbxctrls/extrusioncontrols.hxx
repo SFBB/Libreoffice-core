@@ -21,11 +21,10 @@
 
 #include <svtools/toolbarmenu.hxx>
 #include <svtools/popupwindowcontroller.hxx>
-#include <svtools/valueset.hxx>
+#include <tools/fldunit.hxx>
 #include <vcl/image.hxx>
 #include <vcl/weld/IconView.hxx>
 #include <vcl/weld/RadioButton.hxx>
-#include <vcl/weld/customweld.hxx>
 
 // enum to index light images
 #define FROM_TOP_LEFT       0
@@ -61,13 +60,12 @@ public:
 
 private:
     rtl::Reference<svt::PopupWindowController> mxControl;
-    std::unique_ptr<ValueSet> mxDirectionSet;
-    std::unique_ptr<weld::CustomWeld> mxDirectionSetWin;
+    std::unique_ptr<weld::IconView> mxDirectionIconView;
     std::unique_ptr<weld::RadioButton> mxPerspective;
     std::unique_ptr<weld::RadioButton> mxParallel;
 
     DECL_LINK( SelectToolbarMenuHdl, weld::Toggleable&, void );
-    DECL_LINK( SelectValueSetHdl, ValueSet*, void );
+    DECL_LINK(IconViewItemActivatedHdl, const weld::TreeIter&, bool);
 
     void implSetDirection( sal_Int32 nSkew, bool bEnabled );
     void implSetProjection( sal_Int32 nProjection, bool bEnabled );
