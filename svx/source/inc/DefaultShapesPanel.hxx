@@ -70,7 +70,6 @@ private:
     Reference< XFrame >       mxFrame;
     std::map<ValueSet*, std::vector<OUString>> m_aShapesSetMap;
 
-    void populateShapes();
     void Initialize();
     DECL_LINK( ShapeSelectHdl, ValueSet*, void );
 };

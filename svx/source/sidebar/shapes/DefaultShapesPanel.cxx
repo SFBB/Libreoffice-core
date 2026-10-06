@@ -86,7 +86,24 @@ void DefaultShapesPanel::Initialize()
         { mxStarSet.get(),        m_aStarShapes },
         { mx3DObjectSet.get(),    m_a3DShapes }
     };
-    populateShapes();
+
+    OUString sSlotStr, sLabel;
+    Image aSlotImage;
+    for (auto& aSet : m_aShapesSetMap)
+    {
+        aSet.first->SetColCount(6);
+        for (size_t i = 0; i < aSet.second.size(); i++)
+        {
+            sSlotStr = aSet.second.at(i);
+            aSlotImage = vcl::CommandInfoProvider::GetImageForCommand(sSlotStr, mxFrame);
+            auto aProperties = vcl::CommandInfoProvider::GetCommandProperties(
+                sSlotStr, vcl::CommandInfoProvider::GetModuleIdentifier(mxFrame));
+            sLabel = vcl::CommandInfoProvider::GetTooltipForCommand(sSlotStr, aProperties, mxFrame);
+            sal_uInt16 nSelectionId = i + 1; // tdf#142767 id 0 is reserved for nothing-selected
+            aSet.first->InsertItem(nSelectionId, aSlotImage, sLabel);
+        }
+    }
+
     for (auto& aSetMap : m_aShapesSetMap)
     {
         aSetMap.first->SetColor(Application::GetSettings().GetStyleSettings().GetDialogColor());
@@ -131,26 +148,6 @@ IMPL_LINK(DefaultShapesPanel, ShapeSelectHdl, ValueSet*, rValueSet, void)
         }
         else
             aSetMap.first->SetNoSelection();
-    }
-}
-
-void DefaultShapesPanel::populateShapes()
-{
-    OUString sSlotStr, sLabel;
-    Image aSlotImage;
-    for (auto& aSet : m_aShapesSetMap)
-    {
-        aSet.first->SetColCount(6);
-        for (size_t i = 0; i < aSet.second.size(); i++)
-        {
-            sSlotStr = aSet.second.at(i);
-            aSlotImage = vcl::CommandInfoProvider::GetImageForCommand(sSlotStr, mxFrame);
-            auto aProperties = vcl::CommandInfoProvider::GetCommandProperties(sSlotStr,
-                vcl::CommandInfoProvider::GetModuleIdentifier(mxFrame));
-            sLabel = vcl::CommandInfoProvider::GetTooltipForCommand(sSlotStr, aProperties, mxFrame);
-            sal_uInt16 nSelectionId = i + 1; // tdf#142767 id 0 is reserved for nothing-selected
-            aSet.first->InsertItem(nSelectionId, aSlotImage, sLabel);
-        }
     }
 }
 
