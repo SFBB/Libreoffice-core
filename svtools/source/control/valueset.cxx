@@ -1353,26 +1353,6 @@ void ValueSet::SetColCount( sal_uInt16 nNewCols )
     }
 }
 
-void ValueSet::SetItemImage( sal_uInt16 nItemId, const Image& rImage )
-{
-    size_t nPos = GetItemPos( nItemId );
-
-    if ( nPos == VALUESET_ITEM_NOTFOUND )
-        return;
-
-    ValueSetItem* pItem = mItemList[nPos].get();
-    pItem->meType  = ValueSetItemType::Image;
-    pItem->maImage = rImage;
-
-    if (!mbFormat && IsReallyVisible())
-    {
-        const tools::Rectangle aRect = ImplGetItemRect(nPos);
-        Invalidate(aRect);
-    }
-    else
-        mbFormat = true;
-}
-
 void ValueSet::SetItemColor( sal_uInt16 nItemId, const Color& rColor )
 {
     size_t nPos = GetItemPos( nItemId );

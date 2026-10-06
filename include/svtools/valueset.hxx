@@ -331,7 +331,6 @@ public:
         return mbNoSelection;
     }
 
-    void            SetItemImage( sal_uInt16 nItemId, const Image& rImage );
     Image           GetItemImage( sal_uInt16 nItemId ) const;
     void            SetItemColor( sal_uInt16 nItemId, const Color& rColor );
     Color           GetItemColor( sal_uInt16 nItemId ) const;
