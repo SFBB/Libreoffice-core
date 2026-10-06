@@ -635,29 +635,6 @@ void ValueSet::ImplDraw(vcl::RenderContext& rRenderContext)
 
     rRenderContext.DrawOutDev(aDefPos, aSize, aDefPos, aSize, *maVirDev);
 
-    // draw parting line to the Namefield
-    if (GetStyle() & WB_NAMEFIELD)
-    {
-        if (!(GetStyle() & WB_FLATVALUESET))
-        {
-            const StyleSettings& rStyleSettings = Application::GetSettings().GetStyleSettings();
-            Size aWinSize(GetOutputSizePixel());
-            Point aPos1(NAME_LINE_OFF_X, mnTextOffset + NAME_LINE_OFF_Y);
-            Point aPos2(aWinSize.Width() - (NAME_LINE_OFF_X * 2), mnTextOffset + NAME_LINE_OFF_Y);
-            if (!(rStyleSettings.GetOptions() & StyleSettingsOptions::Mono))
-            {
-                rRenderContext.SetLineColor(rStyleSettings.GetShadowColor());
-                rRenderContext.DrawLine(aPos1, aPos2);
-                aPos1.AdjustY( 1 );
-                aPos2.AdjustY( 1 );
-                rRenderContext.SetLineColor(rStyleSettings.GetLightColor());
-            }
-            else
-                rRenderContext.SetLineColor(rStyleSettings.GetWindowTextColor());
-            rRenderContext.DrawLine(aPos1, aPos2);
-        }
-    }
-
     ImplDrawSelect(rRenderContext);
 }
 
@@ -803,7 +780,6 @@ void ValueSet::Format(vcl::RenderContext const & rRenderContext)
     Size aWinSize(GetOutputSizePixel());
     size_t nItemCount = mItemList.size();
     WinBits nStyle = GetStyle();
-    tools::Long nTxtHeight = rRenderContext.GetTextHeight();
 
     if (mxScrolledWindow && !(nStyle & WB_VSCROLL) && mxScrolledWindow->get_vpolicy() != VclPolicyType::NEVER)
         TurnOffScrollBar();
@@ -814,20 +790,7 @@ void ValueSet::Format(vcl::RenderContext const & rRenderContext)
         aWinSize.AdjustHeight(-mnMargin * 2);
     }
 
-    // consider size, if NameField does exist
-    if (nStyle & WB_NAMEFIELD)
-    {
-        mnTextOffset = aWinSize.Height() - nTxtHeight - NAME_OFFSET;
-        aWinSize.AdjustHeight( -(nTxtHeight + NAME_OFFSET) );
-
-        if (!(nStyle & WB_FLATVALUESET))
-        {
-            mnTextOffset -= NAME_LINE_HEIGHT + NAME_LINE_OFF_Y;
-            aWinSize.AdjustHeight( -(NAME_LINE_HEIGHT + NAME_LINE_OFF_Y) );
-        }
-    }
-    else
-        mnTextOffset = 0;
+    mnTextOffset = 0;
 
     mnTextOffset += mnMargin;
 
@@ -1079,7 +1042,7 @@ void ValueSet::ImplDrawSelect(vcl::RenderContext& rRenderContext)
     if (pSelectedItem)
     {
         const bool bHover = pSelectedItem == pHighlightItem;
-        ImplDrawSelect(rRenderContext, aSelectedRect, pSelectedItem, bFocus, !mbNoSelection, true, bHover);
+        ImplDrawSelect(rRenderContext, aSelectedRect, bFocus, !mbNoSelection, true, bHover);
     }
     if (pHighlightItem && (pSelectedItem != pHighlightItem || mbNoSelection))
     {
@@ -1097,7 +1060,7 @@ void ValueSet::ImplDrawSelect(vcl::RenderContext& rRenderContext)
         else
             bDrawFocus = pSelectedItem == pHighlightItem && mbNoSelection;
 
-        ImplDrawSelect(rRenderContext, aHoverRect, pHighlightItem, bDrawFocus, mbHighlight, false, true);
+        ImplDrawSelect(rRenderContext, aHoverRect, bDrawFocus, mbHighlight, false, true);
     }
 }
 
@@ -1117,10 +1080,9 @@ ValueSetItem* ValueSet::ImplGetDrawSelectItem(sal_uInt16 nItemId, const bool bFo
     return pItem;
 }
 
-void ValueSet::ImplDrawSelect(vcl::RenderContext& rRenderContext,
-                              const tools::Rectangle& rRect, const ValueSetItem* pItem,
-                              const bool bFocus, const bool bDrawSel,
-                              const bool bSelected, const bool bHover)
+void ValueSet::ImplDrawSelect(vcl::RenderContext& rRenderContext, const tools::Rectangle& rRect,
+                              const bool bFocus, const bool bDrawSel, const bool bSelected,
+                              const bool bHover)
 {
     tools::Rectangle aRect(rRect);
 
@@ -1259,8 +1221,6 @@ void ValueSet::ImplDrawSelect(vcl::RenderContext& rRenderContext,
         if (bFocus)
             InvertFocusRect(rRenderContext, aFocusRect);
     }
-
-    ImplDrawItemText(rRenderContext, pItem->maText);
 }
 
 void ValueSet::ImplFormatItem(vcl::RenderContext const& rRenderContext, ValueSetItem& rItem,
@@ -1378,29 +1338,6 @@ void ValueSet::ImplFormatItem(vcl::RenderContext const& rRenderContext, ValueSet
     }
 }
 
-void ValueSet::ImplDrawItemText(vcl::RenderContext& rRenderContext, const OUString& rText)
-{
-    if (!(GetStyle() & WB_NAMEFIELD))
-        return;
-
-    Size aWinSize(GetOutputSizePixel());
-    tools::Long nTxtWidth = rRenderContext.GetTextWidth(rText);
-    tools::Long nTxtOffset = mnTextOffset;
-
-    auto popIt = rRenderContext.ScopedPush(vcl::PushFlags::TEXTCOLOR);
-
-    // delete rectangle and show text
-    const bool bFlat(GetStyle() & WB_FLATVALUESET);
-    if (!bFlat)
-        nTxtOffset += NAME_LINE_HEIGHT+NAME_LINE_OFF_Y;
-
-    rRenderContext.SetTextColor(Application::GetSettings().GetStyleSettings().GetButtonTextColor());
-    // tdf#153787 highlighted entry text is drawn in the same Paint as the selected text, so can
-    // overwrite already rendered text
-    rRenderContext.Erase(tools::Rectangle(Point(0, nTxtOffset), Point(aWinSize.Width(), aWinSize.Height())));
-    rRenderContext.DrawText(Point((aWinSize.Width() - nTxtWidth) / 2, nTxtOffset + (NAME_OFFSET / 2)), rText);
-}
-
 void ValueSet::StyleUpdated()
 {
     mbFormat = true;
@@ -1505,7 +1442,6 @@ Size ValueSet::CalcWindowSizePixel( const Size& rItemSize, sal_uInt16 nDesireCol
 
     Size        aSize( rItemSize.Width() * nCalcCols, rItemSize.Height() * nCalcLines );
     WinBits     nStyle = GetStyle();
-    tools::Long        nTxtHeight = GetTextHeight();
 
     if ( nStyle & WB_ITEMBORDER )
     {
@@ -1523,13 +1459,6 @@ Size ValueSet::CalcWindowSizePixel( const Size& rItemSize, sal_uInt16 nDesireCol
     {
         aSize.AdjustWidth(mnSpacing * (nCalcCols - 1) );
         aSize.AdjustHeight(mnSpacing * (nCalcLines - 1) );
-    }
-
-    if ( nStyle & WB_NAMEFIELD )
-    {
-        aSize.AdjustHeight(nTxtHeight + NAME_OFFSET );
-        if ( !(nStyle & WB_FLATVALUESET) )
-            aSize.AdjustHeight(NAME_LINE_HEIGHT + NAME_LINE_OFF_Y );
     }
 
     if ( mnMargin )
