@@ -29,6 +29,7 @@
 #include <vcl/weld/Builder.hxx>
 #include <vcl/weld/Button.hxx>
 #include <vcl/weld/Frame.hxx>
+#include <vcl/weld/IconView.hxx>
 #include <vcl/weld/Toolbar.hxx>
 #include <vcl/weld/ScrolledWindow.hxx>
 #include <vcl/weld/Window.hxx>
@@ -36,7 +37,6 @@
 #include <svl/cjkoptions.hxx>
 
 #include <svtools/toolbarmenu.hxx>
-#include <svtools/valueset.hxx>
 
 #include <xmloff/autolayout.hxx>
 
@@ -61,24 +61,19 @@ class LayoutToolbarMenu : public WeldToolbarPopup
 {
 public:
     LayoutToolbarMenu(SlideLayoutController* pController, weld::Widget* pParent, const bool bInsertPage, const OUString& rCommand);
-    virtual void GrabFocus() override
-    {
-        mxLayoutSet1->GrabFocus();
-    }
+    virtual void GrabFocus() override { mxLayoutIconView1->grab_focus(); }
 
 protected:
     DECL_LINK(SelectToolbarMenuHdl, weld::Button&, void);
-    DECL_LINK(SelectValueSetHdl, ValueSet*, void);
+    DECL_LINK(IconViewItemActivatedHdl, const weld::TreeIter&, bool);
     void SelectHdl(AutoLayout eLayout);
 private:
     rtl::Reference<SlideLayoutController> mxControl;
     bool const mbInsertPage;
     std::unique_ptr<weld::Frame> mxFrame1;
-    std::unique_ptr<ValueSet> mxLayoutSet1;
-    std::unique_ptr<weld::CustomWeld> mxLayoutSetWin1;
+    std::unique_ptr<weld::IconView> mxLayoutIconView1;
     std::unique_ptr<weld::Frame> mxFrame2;
-    std::unique_ptr<ValueSet> mxLayoutSet2;
-    std::unique_ptr<weld::CustomWeld> mxLayoutSetWin2;
+    std::unique_ptr<weld::IconView> mxLayoutIconView2;
     std::unique_ptr<weld::Button> mxMoreButton;
 };
 
@@ -137,28 +132,21 @@ constexpr snew_slide_value_info_layout v_standard[] =
     {EMPTY, {}, AUTOLAYOUT_NONE}
 };
 
-static void fillLayoutValueSet( ValueSet* pValue, const snew_slide_value_info_layout* pInfo )
+static void fillLayoutIconView(weld::IconView& rView, const snew_slide_value_info_layout* pInfo)
 {
     Size aLayoutItemSize;
     for( ; pInfo->mpStrResId; pInfo++ )
     {
         OUString aText(SdResId(pInfo->mpStrResId));
-        Image aImg(StockImage::Yes, pInfo->msBmpResId);
-        pValue->InsertItem(static_cast<sal_uInt16>(pInfo->maAutoLayout)+1, aImg, aText);
+        Bitmap aImg = Image(StockImage::Yes, pInfo->msBmpResId).GetBitmap();
+        const int nIndex = rView.n_children();
+        const OUString sId = OUString::number(pInfo->maAutoLayout);
+        rView.insert(nIndex, nullptr, &sId, &aImg, nullptr);
+        rView.set_item_accessible_name(nIndex, aText);
+        rView.set_item_tooltip_text(nIndex, aText);
         aLayoutItemSize.setWidth( std::max( aLayoutItemSize.Width(),   aImg.GetSizePixel().Width()  ) );
         aLayoutItemSize.setHeight( std::max( aLayoutItemSize.Height(), aImg.GetSizePixel().Height() ) );
     }
-
-    aLayoutItemSize = pValue->CalcItemSizePixel( aLayoutItemSize );
-    Size aSize(pValue->CalcWindowSizePixel(aLayoutItemSize));
-
-    const sal_Int32 LAYOUT_BORDER_PIX = 7;
-
-    aSize.AdjustWidth((pValue->GetColCount() + 1) * LAYOUT_BORDER_PIX);
-    aSize.AdjustHeight((pValue->GetLineCount() +1) * LAYOUT_BORDER_PIX);
-
-    pValue->GetDrawingArea()->set_size_request(aSize.Width(), aSize.Height());
-    pValue->SetOutputSizePixel(aSize);
 }
 
 LayoutToolbarMenu::LayoutToolbarMenu(SlideLayoutController* pControl, weld::Widget* pParent, const bool bInsertPage, const OUString& rCommand)
@@ -166,16 +154,11 @@ LayoutToolbarMenu::LayoutToolbarMenu(SlideLayoutController* pControl, weld::Widg
     , mxControl(pControl)
     , mbInsertPage(bInsertPage)
     , mxFrame1(m_xBuilder->weld_frame(u"horiframe"_ustr))
-    , mxLayoutSet1(new ValueSet(nullptr))
-    , mxLayoutSetWin1(new weld::CustomWeld(*m_xBuilder, u"valueset1"_ustr, *mxLayoutSet1))
+    , mxLayoutIconView1(m_xBuilder->weld_icon_view(u"iconview1"_ustr))
     , mxFrame2(m_xBuilder->weld_frame(u"vertframe"_ustr))
-    , mxLayoutSet2(new ValueSet(nullptr))
-    , mxLayoutSetWin2(new weld::CustomWeld(*m_xBuilder, u"valueset2"_ustr, *mxLayoutSet2))
+    , mxLayoutIconView2(m_xBuilder->weld_icon_view(u"iconview2"_ustr))
     , mxMoreButton(m_xBuilder->weld_button(u"more"_ustr))
 {
-    mxLayoutSet1->SetStyle(WB_TABSTOP | WB_MENUSTYLEVALUESET | WB_FLATVALUESET | WB_NOBORDER | WB_NO_DIRECTSELECT);
-    mxLayoutSet2->SetStyle(WB_TABSTOP | WB_MENUSTYLEVALUESET | WB_FLATVALUESET | WB_NOBORDER | WB_NO_DIRECTSELECT);
-
     DrawViewMode eMode = DrawViewMode_DRAW;
 
     // find out which view is running
@@ -191,21 +174,19 @@ LayoutToolbarMenu::LayoutToolbarMenu(SlideLayoutController* pControl, weld::Widg
 
     const bool bVerticalEnabled = SvtCJKOptions::IsVerticalTextEnabled();
 
-    mxLayoutSet1->SetSelectHdl( LINK( this, LayoutToolbarMenu, SelectValueSetHdl ) );
+    mxLayoutIconView1->connect_item_activated(
+        LINK(this, LayoutToolbarMenu, IconViewItemActivatedHdl));
 
     const snew_slide_value_info_layout* pInfo = nullptr;
-    sal_Int16 nColCount = 4;
     switch( eMode )
     {
     case DrawViewMode_DRAW: pInfo = &standard[0]; break;
-    case DrawViewMode_HANDOUT: pInfo = &handout[0]; nColCount = 2; break;
-    case DrawViewMode_NOTES: pInfo = &notes[0]; nColCount = 1; break;
+    case DrawViewMode_HANDOUT: pInfo = &handout[0]; break;
+    case DrawViewMode_NOTES: pInfo = &notes[0]; break;
     default: assert(false); // can't happen, will crash later otherwise
     }
 
-    mxLayoutSet1->SetColCount( nColCount );
-
-    fillLayoutValueSet( mxLayoutSet1.get(), pInfo );
+    fillLayoutIconView(*mxLayoutIconView1, pInfo);
 
     bool bUseUILabel = (bVerticalEnabled && eMode == DrawViewMode_DRAW);
     if (!bUseUILabel)
@@ -216,11 +197,10 @@ LayoutToolbarMenu::LayoutToolbarMenu(SlideLayoutController* pControl, weld::Widg
 
     if (bVerticalEnabled && eMode == DrawViewMode_DRAW)
     {
-        mxLayoutSet2->SetSelectHdl( LINK( this, LayoutToolbarMenu, SelectValueSetHdl ) );
-        mxLayoutSet2->SetColCount( 4 );
-        mxLayoutSet2->EnableFullItemMode( false );
+        mxLayoutIconView2->connect_item_activated(
+            LINK(this, LayoutToolbarMenu, IconViewItemActivatedHdl));
 
-        fillLayoutValueSet( mxLayoutSet2.get(), &v_standard[0] );
+        fillLayoutIconView(*mxLayoutIconView2, &v_standard[0]);
 
         mxFrame2->show();
     }
@@ -255,9 +235,11 @@ LayoutToolbarMenu::LayoutToolbarMenu(SlideLayoutController* pControl, weld::Widg
     mxMoreButton->show();
 }
 
-IMPL_LINK(LayoutToolbarMenu, SelectValueSetHdl, ValueSet*, pLayoutSet, void)
+IMPL_LINK(LayoutToolbarMenu, IconViewItemActivatedHdl, const weld::TreeIter&, rIter, bool)
 {
-    SelectHdl(static_cast<AutoLayout>(pLayoutSet->GetSelectedItemId()-1));
+    SelectHdl(static_cast<AutoLayout>(rIter.getItemView().get_id(rIter).toInt32()));
+
+    return true;
 }
 
 IMPL_LINK_NOARG(LayoutToolbarMenu, SelectToolbarMenuHdl, weld::Button&, void)
