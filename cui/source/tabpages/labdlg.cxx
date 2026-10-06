@@ -123,7 +123,9 @@ SvxCaptionTabPage::SvxCaptionTabPage(weld::Container* pPage, weld::DialogControl
     m_xCT_CAPTTYPE->InsertItem(BMP_CAPTTYPE_2, aImage, aLineTypes[1]);
     m_xCT_CAPTTYPE->InsertItem(BMP_CAPTTYPE_3, aImage, aLineTypes[2]);
 
-    FillValueSet();
+    m_xCT_CAPTTYPE->SetItemImage(BMP_CAPTTYPE_1, m_aBmpCapTypes[0]);
+    m_xCT_CAPTTYPE->SetItemImage(BMP_CAPTTYPE_2, m_aBmpCapTypes[1]);
+    m_xCT_CAPTTYPE->SetItemImage(BMP_CAPTTYPE_3, m_aBmpCapTypes[2]);
 
     m_xLB_EXTENSION->connect_changed(LINK(this, SvxCaptionTabPage, ExtensionSelectHdl_Impl));
     m_xLB_POSITION->connect_changed(LINK(this, SvxCaptionTabPage, PositionSelectHdl_Impl));
@@ -447,13 +449,6 @@ void SvxCaptionTabPage::SetupType_Impl( SdrCaptionType nType )
             LineOptHdl_Impl(*m_xCB_OPTIMAL);
             break;
     }
-}
-
-void SvxCaptionTabPage::FillValueSet()
-{
-    m_xCT_CAPTTYPE->SetItemImage(BMP_CAPTTYPE_1, m_aBmpCapTypes[0] );
-    m_xCT_CAPTTYPE->SetItemImage(BMP_CAPTTYPE_2, m_aBmpCapTypes[1] );
-    m_xCT_CAPTTYPE->SetItemImage(BMP_CAPTTYPE_3, m_aBmpCapTypes[2] );
 }
 
 SvxCaptionTabDialog::SvxCaptionTabDialog(weld::Window* pParent, const SdrView* pSdrView,

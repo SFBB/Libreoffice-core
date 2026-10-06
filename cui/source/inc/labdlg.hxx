@@ -92,8 +92,6 @@ public:
     void                Construct();
     void                SetView( const SdrView* pSdrView )
                             { pView = pSdrView; }
-
-    void FillValueSet();
 };
 
 // class SvxCaptionTabDialog ---------------------------------------------
