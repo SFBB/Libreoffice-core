@@ -113,14 +113,9 @@ SvxCaptionTabPage::SvxCaptionTabPage(weld::Container* pPage, weld::DialogControl
     m_xCT_CAPTTYPE->SetLineCount(1);
     m_xCT_CAPTTYPE->SetSelectHdl(LINK( this, SvxCaptionTabPage, SelectCaptTypeHdl_Impl));
 
-    Image aImage;
-    m_xCT_CAPTTYPE->InsertItem(BMP_CAPTTYPE_1, aImage, aLineTypes[0]);
-    m_xCT_CAPTTYPE->InsertItem(BMP_CAPTTYPE_2, aImage, aLineTypes[1]);
-    m_xCT_CAPTTYPE->InsertItem(BMP_CAPTTYPE_3, aImage, aLineTypes[2]);
-
-    m_xCT_CAPTTYPE->SetItemImage(BMP_CAPTTYPE_1, Image(StockImage::Yes, RID_SVXBMP_LEGTYP1));
-    m_xCT_CAPTTYPE->SetItemImage(BMP_CAPTTYPE_2, Image(StockImage::Yes, RID_SVXBMP_LEGTYP2));
-    m_xCT_CAPTTYPE->SetItemImage(BMP_CAPTTYPE_3, Image(StockImage::Yes, RID_SVXBMP_LEGTYP3));
+    m_xCT_CAPTTYPE->InsertItem(BMP_CAPTTYPE_1, Image(StockImage::Yes, RID_SVXBMP_LEGTYP1), aLineTypes[0]);
+    m_xCT_CAPTTYPE->InsertItem(BMP_CAPTTYPE_2, Image(StockImage::Yes, RID_SVXBMP_LEGTYP2), aLineTypes[1]);
+    m_xCT_CAPTTYPE->InsertItem(BMP_CAPTTYPE_3, Image(StockImage::Yes, RID_SVXBMP_LEGTYP3), aLineTypes[2]);
 
     m_xLB_EXTENSION->connect_changed(LINK(this, SvxCaptionTabPage, ExtensionSelectHdl_Impl));
     m_xLB_POSITION->connect_changed(LINK(this, SvxCaptionTabPage, PositionSelectHdl_Impl));
