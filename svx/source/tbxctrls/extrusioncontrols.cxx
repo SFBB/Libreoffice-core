@@ -127,18 +127,14 @@ ExtrusionDirectionWindow::ExtrusionDirectionWindow(
 {
     mxDirectionSet->SetStyle(WB_TABSTOP | WB_MENUSTYLEVALUESET | WB_FLATVALUESET | WB_NOBORDER | WB_NO_DIRECTSELECT);
 
-    for (sal_uInt16 i = DIRECTION_NW; i <= DIRECTION_SE; ++i)
-    {
-        maImgDirection[i] = Image(StockImage::Yes, aDirectionBmps[i]);
-    }
-
     mxDirectionSet->SetSelectHdl( LINK( this, ExtrusionDirectionWindow, SelectValueSetHdl ) );
     mxDirectionSet->SetColCount( 3 );
     mxDirectionSet->EnableFullItemMode( false );
 
     for (sal_uInt16 i = DIRECTION_NW; i <= DIRECTION_SE; ++i)
     {
-        mxDirectionSet->InsertItem(i + 1, maImgDirection[i], SvxResId(aDirectionStrs[i]));
+        const Image aImgDirection(StockImage::Yes, aDirectionBmps[i]);
+        mxDirectionSet->InsertItem(i + 1, aImgDirection, SvxResId(aDirectionStrs[i]));
     }
 
     Size aSize(72, 72);

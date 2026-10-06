@@ -66,8 +66,6 @@ private:
     std::unique_ptr<weld::RadioButton> mxPerspective;
     std::unique_ptr<weld::RadioButton> mxParallel;
 
-    Image       maImgDirection[9];
-
     DECL_LINK( SelectToolbarMenuHdl, weld::Toggleable&, void );
     DECL_LINK( SelectValueSetHdl, ValueSet*, void );
 
