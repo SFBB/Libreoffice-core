@@ -87,18 +87,18 @@ void DefaultShapesPanel::Initialize()
         { mx3DObjectSet.get(),    m_a3DShapes }
     };
 
-    OUString sSlotStr, sLabel;
-    Image aSlotImage;
     for (auto& aSet : m_aShapesSetMap)
     {
         aSet.first->SetColCount(6);
         for (size_t i = 0; i < aSet.second.size(); i++)
         {
-            sSlotStr = aSet.second.at(i);
-            aSlotImage = vcl::CommandInfoProvider::GetImageForCommand(sSlotStr, mxFrame);
+            const OUString sSlotStr = aSet.second.at(i);
+            const Image aSlotImage
+                = vcl::CommandInfoProvider::GetImageForCommand(sSlotStr, mxFrame);
             auto aProperties = vcl::CommandInfoProvider::GetCommandProperties(
                 sSlotStr, vcl::CommandInfoProvider::GetModuleIdentifier(mxFrame));
-            sLabel = vcl::CommandInfoProvider::GetTooltipForCommand(sSlotStr, aProperties, mxFrame);
+            const OUString sLabel
+                = vcl::CommandInfoProvider::GetTooltipForCommand(sSlotStr, aProperties, mxFrame);
             sal_uInt16 nSelectionId = i + 1; // tdf#142767 id 0 is reserved for nothing-selected
             aSet.first->InsertItem(nSelectionId, aSlotImage, sLabel);
         }
