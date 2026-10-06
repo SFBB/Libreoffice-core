@@ -58,7 +58,7 @@ private:
     std::unique_ptr<weld::IconView> m_p3DObjectIconView;
 
     Reference< XFrame >       mxFrame;
-    std::map<weld::IconView*, std::vector<OUString>> m_aShapesViewsMap;
+    std::vector<weld::IconView*> m_aShapesViews;
 
     void Initialize();
     DECL_LINK(ShapeActivatedHdl, const weld::TreeIter&, bool);

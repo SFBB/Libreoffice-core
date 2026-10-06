@@ -64,18 +64,19 @@ std::unique_ptr<PanelLayout> DefaultShapesPanel::Create(
 
 void DefaultShapesPanel::Initialize()
 {
-    m_aShapesViewsMap = { { m_pLineArrowIconView.get(), m_aLineShapes },
-                          { m_pCurveIconView.get(), m_aCurveShapes },
-                          { m_pConnectorIconView.get(), m_aConnectorShapes },
-                          { m_pBasicShapeIconView.get(), m_aBasicShapes },
-                          { m_pSymbolShapeIconView.get(), m_aSymbolShapes },
-                          { m_pBlockArrowIconView.get(), m_aBlockArrowShapes },
-                          { m_pFlowchartIconView.get(), m_aFlowchartShapes },
-                          { m_pCalloutIconView.get(), m_aCalloutShapes },
-                          { m_pStarIconView.get(), m_aStarShapes },
-                          { m_p3DObjectIconView.get(), m_a3DShapes } };
+    const std::map<weld::IconView*, std::vector<OUString>> aShapesViewsMap
+        = { { m_pLineArrowIconView.get(), m_aLineShapes },
+            { m_pCurveIconView.get(), m_aCurveShapes },
+            { m_pConnectorIconView.get(), m_aConnectorShapes },
+            { m_pBasicShapeIconView.get(), m_aBasicShapes },
+            { m_pSymbolShapeIconView.get(), m_aSymbolShapes },
+            { m_pBlockArrowIconView.get(), m_aBlockArrowShapes },
+            { m_pFlowchartIconView.get(), m_aFlowchartShapes },
+            { m_pCalloutIconView.get(), m_aCalloutShapes },
+            { m_pStarIconView.get(), m_aStarShapes },
+            { m_p3DObjectIconView.get(), m_a3DShapes } };
 
-    for (auto& rEntry : m_aShapesViewsMap)
+    for (auto& rEntry : aShapesViewsMap)
     {
         for (size_t i = 0; i < rEntry.second.size(); i++)
         {
@@ -86,37 +87,27 @@ void DefaultShapesPanel::Initialize()
                 sSlotStr, vcl::CommandInfoProvider::GetModuleIdentifier(mxFrame));
             const OUString sLabel
                 = vcl::CommandInfoProvider::GetTooltipForCommand(sSlotStr, aProperties, mxFrame);
-            rEntry.first->insert(i, nullptr, nullptr, &aSlotImage, nullptr);
+            rEntry.first->insert(i, nullptr, &sSlotStr, &aSlotImage, nullptr);
             rEntry.first->set_item_accessible_name(i, sLabel);
             rEntry.first->set_item_tooltip_text(i, sLabel);
         }
 
         rEntry.first->connect_item_activated(LINK(this, DefaultShapesPanel, ShapeActivatedHdl));
+        m_aShapesViews.push_back(rEntry.first);
     }
 }
 
-DefaultShapesPanel::~DefaultShapesPanel()
-{
-    m_aShapesViewsMap.clear();
-}
+DefaultShapesPanel::~DefaultShapesPanel() { m_aShapesViews.clear(); }
 
 IMPL_LINK(DefaultShapesPanel, ShapeActivatedHdl, const weld::TreeIter&, rIter, bool)
 {
     const weld::ItemView& rActiveItemView = rIter.getItemView();
-    for (const auto& rEntry : m_aShapesViewsMap)
+    for (weld::IconView* pView : m_aShapesViews)
     {
-        if (&rActiveItemView == rEntry.first)
-        {
-            const int nActivatedIndex = rActiveItemView.get_iter_index_in_parent(rIter);
-            assert(nActivatedIndex >= 0
-                   && o3tl::make_unsigned(nActivatedIndex) < rEntry.second.size()
-                   && "Invalid index");
-            comphelper::dispatchCommand(rEntry.second.at(nActivatedIndex), {});
-        }
+        if (&rActiveItemView == pView)
+            comphelper::dispatchCommand(rActiveItemView.get_id(rIter), {});
         else
-        {
-            rEntry.first->unselect_all();
-        }
+            pView->unselect_all();
     }
 
     return true;
