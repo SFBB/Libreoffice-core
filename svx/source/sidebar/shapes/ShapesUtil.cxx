@@ -18,194 +18,193 @@
  */
 
 #include <ShapesUtil.hxx>
-#include <map>
 #include <rtl/ustring.hxx>
 
 namespace svx::sidebar{
 SvxShapeCommandsMap::SvxShapeCommandsMap()
 {
-    mpLineShapes = decltype(mpLineShapes){
-        {0, ".uno:Line"},
-        {1, ".uno:LineArrowEnd"},
-        {2, ".uno:LineCircleArrow"},
-        {3, ".uno:LineSquareArrow"},
-        {4, ".uno:LineArrows"},
-        {5, ".uno:LineArrowStart"},
-        {6, ".uno:LineArrowCircle"},
-        {7, ".uno:LineArrowSquare"},
-        {8, ".uno:MeasureLine"},
-        {9, ".uno:Line_Diagonal"}
+    m_aLineShapes = {
+        u".uno:Line"_ustr,
+        u".uno:LineArrowEnd"_ustr,
+        u".uno:LineCircleArrow"_ustr,
+        u".uno:LineSquareArrow"_ustr,
+        u".uno:LineArrows"_ustr,
+        u".uno:LineArrowStart"_ustr,
+        u".uno:LineArrowCircle"_ustr,
+        u".uno:LineArrowSquare"_ustr,
+        u".uno:MeasureLine"_ustr,
+        u".uno:Line_Diagonal"_ustr
     };
 
-    mpCurveShapes = decltype(mpCurveShapes){
-        {0, ".uno:Freeline_Unfilled"},
-        {1, ".uno:Bezier_Unfilled"},
-        {2, ".uno:Polygon_Unfilled"},
-        {3, ".uno:Polygon_Diagonal_Unfilled"},
-        {4, ".uno:Freeline"},
-        {5, ".uno:BezierFill"},
-        {6, ".uno:Polygon"},
-        {7, ".uno:Polygon_Diagonal"}
+    m_aCurveShapes = {
+        u".uno:Freeline_Unfilled"_ustr,
+        u".uno:Bezier_Unfilled"_ustr,
+        u".uno:Polygon_Unfilled"_ustr,
+        u".uno:Polygon_Diagonal_Unfilled"_ustr,
+        u".uno:Freeline"_ustr,
+        u".uno:BezierFill"_ustr,
+        u".uno:Polygon"_ustr,
+        u".uno:Polygon_Diagonal"_ustr
     };
 
-    mpConnectorShapes = decltype(mpConnectorShapes){
-        {0, ".uno:ConnectorArrowEnd"},
-        {1, ".uno:ConnectorLineArrowEnd"},
-        {2, ".uno:ConnectorCurveArrowEnd"},
-        {3, ".uno:ConnectorLinesArrowEnd"},
-        {4, ".uno:Connector"},
-        {5, ".uno:ConnectorLine"},
-        {6, ".uno:ConnectorCurve"},
-        {7, ".uno:ConnectorLines"},
-        {8, ".uno:ConnectorArrows"},
-        {9, ".uno:ConnectorLineArrows"},
-        {10, ".uno:ConnectorCurveArrows"},
-        {11, ".uno:ConnectorLinesArrows"}
+    m_aConnectorShapes = {
+        u".uno:ConnectorArrowEnd"_ustr,
+        u".uno:ConnectorLineArrowEnd"_ustr,
+        u".uno:ConnectorCurveArrowEnd"_ustr,
+        u".uno:ConnectorLinesArrowEnd"_ustr,
+        u".uno:Connector"_ustr,
+        u".uno:ConnectorLine"_ustr,
+        u".uno:ConnectorCurve"_ustr,
+        u".uno:ConnectorLines"_ustr,
+        u".uno:ConnectorArrows"_ustr,
+        u".uno:ConnectorLineArrows"_ustr,
+        u".uno:ConnectorCurveArrows"_ustr,
+        u".uno:ConnectorLinesArrows"_ustr
     };
 
-    mpBasicShapes = decltype(mpBasicShapes){
-        {0, ".uno:BasicShapes.rectangle"},
-        {1, ".uno:BasicShapes.round-rectangle"},
-        {2, ".uno:BasicShapes.quadrat"},
-        {3, ".uno:BasicShapes.round-quadrat"},
-        {4, ".uno:BasicShapes.parallelogram"},
-        {5, ".uno:BasicShapes.trapezoid"},
-        {6, ".uno:BasicShapes.ellipse"},
-        {7, ".uno:BasicShapes.circle"},
-        {8, ".uno:BasicShapes.circle-pie"},
-        {9, ".uno:CircleCut"},
-        {10, ".uno:Arc"},
-        {11, ".uno:BasicShapes.block-arc"},
-        {12, ".uno:BasicShapes.isosceles-triangle"},
-        {13, ".uno:BasicShapes.right-triangle"},
-        {14, ".uno:BasicShapes.diamond"},
-        {15, ".uno:BasicShapes.pentagon"},
-        {16, ".uno:BasicShapes.hexagon"},
-        {17, ".uno:BasicShapes.octagon"},
-        {18, ".uno:BasicShapes.cross"},
-        {19, ".uno:BasicShapes.can"},
-        {20, ".uno:BasicShapes.cube"},
-        {21, ".uno:BasicShapes.paper"},
-        {22, ".uno:BasicShapes.frame"},
-        {23, ".uno:BasicShapes.ring"},
-        {24, ".uno:BasicShapes.sinusoid"}
+    m_aBasicShapes = {
+        u".uno:BasicShapes.rectangle"_ustr,
+        u".uno:BasicShapes.round-rectangle"_ustr,
+        u".uno:BasicShapes.quadrat"_ustr,
+        u".uno:BasicShapes.round-quadrat"_ustr,
+        u".uno:BasicShapes.parallelogram"_ustr,
+        u".uno:BasicShapes.trapezoid"_ustr,
+        u".uno:BasicShapes.ellipse"_ustr,
+        u".uno:BasicShapes.circle"_ustr,
+        u".uno:BasicShapes.circle-pie"_ustr,
+        u".uno:CircleCut"_ustr,
+        u".uno:Arc"_ustr,
+        u".uno:BasicShapes.block-arc"_ustr,
+        u".uno:BasicShapes.isosceles-triangle"_ustr,
+        u".uno:BasicShapes.right-triangle"_ustr,
+        u".uno:BasicShapes.diamond"_ustr,
+        u".uno:BasicShapes.pentagon"_ustr,
+        u".uno:BasicShapes.hexagon"_ustr,
+        u".uno:BasicShapes.octagon"_ustr,
+        u".uno:BasicShapes.cross"_ustr,
+        u".uno:BasicShapes.can"_ustr,
+        u".uno:BasicShapes.cube"_ustr,
+        u".uno:BasicShapes.paper"_ustr,
+        u".uno:BasicShapes.frame"_ustr,
+        u".uno:BasicShapes.ring"_ustr,
+        u".uno:BasicShapes.sinusoid"_ustr
     };
 
-    mpSymbolShapes = decltype(mpSymbolShapes){
-        {0, ".uno:SymbolShapes.smiley"},
-        {1, ".uno:SymbolShapes.sun"},
-        {2, ".uno:SymbolShapes.moon"},
-        {3, ".uno:SymbolShapes.lightning"},
-        {4, ".uno:SymbolShapes.heart"},
-        {5, ".uno:SymbolShapes.flower"},
-        {6, ".uno:SymbolShapes.cloud"},
-        {7, ".uno:SymbolShapes.forbidden"},
-        {8, ".uno:SymbolShapes.puzzle"},
-        {9, ".uno:SymbolShapes.bracket-pair"},
-        {10, ".uno:SymbolShapes.left-bracket"},
-        {11, ".uno:SymbolShapes.right-bracket"},
-        {12, ".uno:SymbolShapes.brace-pair"},
-        {13, ".uno:SymbolShapes.left-brace"},
-        {14, ".uno:SymbolShapes.right-brace"},
-        {15, ".uno:SymbolShapes.quad-bevel"},
-        {16, ".uno:SymbolShapes.octagon-bevel"},
-        {17, ".uno:SymbolShapes.diamond-bevel"}
+    m_aSymbolShapes = {
+        u".uno:SymbolShapes.smiley"_ustr,
+        u".uno:SymbolShapes.sun"_ustr,
+        u".uno:SymbolShapes.moon"_ustr,
+        u".uno:SymbolShapes.lightning"_ustr,
+        u".uno:SymbolShapes.heart"_ustr,
+        u".uno:SymbolShapes.flower"_ustr,
+        u".uno:SymbolShapes.cloud"_ustr,
+        u".uno:SymbolShapes.forbidden"_ustr,
+        u".uno:SymbolShapes.puzzle"_ustr,
+        u".uno:SymbolShapes.bracket-pair"_ustr,
+        u".uno:SymbolShapes.left-bracket"_ustr,
+        u".uno:SymbolShapes.right-bracket"_ustr,
+        u".uno:SymbolShapes.brace-pair"_ustr,
+        u".uno:SymbolShapes.left-brace"_ustr,
+        u".uno:SymbolShapes.right-brace"_ustr,
+        u".uno:SymbolShapes.quad-bevel"_ustr,
+        u".uno:SymbolShapes.octagon-bevel"_ustr,
+        u".uno:SymbolShapes.diamond-bevel"_ustr
     };
 
-    mpBlockArrowShapes = decltype(mpBlockArrowShapes){
-        {0, ".uno:ArrowShapes.left-arrow"},
-        {1, ".uno:ArrowShapes.right-arrow"},
-        {2, ".uno:ArrowShapes.up-arrow"},
-        {3, ".uno:ArrowShapes.down-arrow"},
-        {4, ".uno:ArrowShapes.left-right-arrow"},
-        {5, ".uno:ArrowShapes.up-down-arrow"},
-        {6, ".uno:ArrowShapes.up-right-arrow"},
-        {7, ".uno:ArrowShapes.up-right-down-arrow"},
-        {8, ".uno:ArrowShapes.quad-arrow"},
-        {9, ".uno:ArrowShapes.corner-right-arrow"},
-        {10, ".uno:ArrowShapes.split-arrow"},
-        {11, ".uno:ArrowShapes.striped-right-arrow"},
-        {12, ".uno:ArrowShapes.notched-right-arrow"},
-        {13, ".uno:ArrowShapes.pentagon-right"},
-        {14, ".uno:ArrowShapes.chevron"},
-        {15, ".uno:ArrowShapes.right-arrow-callout"},
-        {16, ".uno:ArrowShapes.left-arrow-callout"},
-        {17, ".uno:ArrowShapes.up-arrow-callout"},
-        {18, ".uno:ArrowShapes.left-right-arrow-callout"},
-        {19, ".uno:ArrowShapes.up-down-arrow-callout"},
-        {20, ".uno:ArrowShapes.up-right-arrow-callout"},
-        {21, ".uno:ArrowShapes.quad-arrow-callout"},
-        {22, ".uno:ArrowShapes.circular-arrow"},
-        {23, ".uno:ArrowShapes.down-arrow-callout"},
-        {24, ".uno:ArrowShapes.split-round-arrow"},
-        {25, ".uno:ArrowShapes.s-sharped-arrow"}
+    m_aBlockArrowShapes = {
+        u".uno:ArrowShapes.left-arrow"_ustr,
+        u".uno:ArrowShapes.right-arrow"_ustr,
+        u".uno:ArrowShapes.up-arrow"_ustr,
+        u".uno:ArrowShapes.down-arrow"_ustr,
+        u".uno:ArrowShapes.left-right-arrow"_ustr,
+        u".uno:ArrowShapes.up-down-arrow"_ustr,
+        u".uno:ArrowShapes.up-right-arrow"_ustr,
+        u".uno:ArrowShapes.up-right-down-arrow"_ustr,
+        u".uno:ArrowShapes.quad-arrow"_ustr,
+        u".uno:ArrowShapes.corner-right-arrow"_ustr,
+        u".uno:ArrowShapes.split-arrow"_ustr,
+        u".uno:ArrowShapes.striped-right-arrow"_ustr,
+        u".uno:ArrowShapes.notched-right-arrow"_ustr,
+        u".uno:ArrowShapes.pentagon-right"_ustr,
+        u".uno:ArrowShapes.chevron"_ustr,
+        u".uno:ArrowShapes.right-arrow-callout"_ustr,
+        u".uno:ArrowShapes.left-arrow-callout"_ustr,
+        u".uno:ArrowShapes.up-arrow-callout"_ustr,
+        u".uno:ArrowShapes.left-right-arrow-callout"_ustr,
+        u".uno:ArrowShapes.up-down-arrow-callout"_ustr,
+        u".uno:ArrowShapes.up-right-arrow-callout"_ustr,
+        u".uno:ArrowShapes.quad-arrow-callout"_ustr,
+        u".uno:ArrowShapes.circular-arrow"_ustr,
+        u".uno:ArrowShapes.down-arrow-callout"_ustr,
+        u".uno:ArrowShapes.split-round-arrow"_ustr,
+        u".uno:ArrowShapes.s-sharped-arrow"_ustr
     };
 
-    mpFlowchartShapes = decltype(mpFlowchartShapes){
-        {0, ".uno:FlowChartShapes.flowchart-process"},
-        {1, ".uno:FlowChartShapes.flowchart-alternate-process"},
-        {2, ".uno:FlowChartShapes.flowchart-decision"},
-        {3, ".uno:FlowChartShapes.flowchart-data"},
-        {4, ".uno:FlowChartShapes.flowchart-predefined-process"},
-        {5, ".uno:FlowChartShapes.flowchart-internal-storage"},
-        {6, ".uno:FlowChartShapes.flowchart-document"},
-        {7, ".uno:FlowChartShapes.flowchart-multidocument"},
-        {8, ".uno:FlowChartShapes.flowchart-terminator"},
-        {9, ".uno:FlowChartShapes.flowchart-preparation"},
-        {10, ".uno:FlowChartShapes.flowchart-manual-input"},
-        {11, ".uno:FlowChartShapes.flowchart-manual-operation"},
-        {12, ".uno:FlowChartShapes.flowchart-connector"},
-        {13, ".uno:FlowChartShapes.flowchart-off-page-connector"},
-        {14, ".uno:FlowChartShapes.flowchart-card"},
-        {15, ".uno:FlowChartShapes.flowchart-punched-tape"},
-        {16, ".uno:FlowChartShapes.flowchart-summing-junction"},
-        {17, ".uno:FlowChartShapes.flowchart-or"},
-        {18, ".uno:FlowChartShapes.flowchart-collate"},
-        {19, ".uno:FlowChartShapes.flowchart-sort"},
-        {20, ".uno:FlowChartShapes.flowchart-extract"},
-        {21, ".uno:FlowChartShapes.flowchart-merge"},
-        {22, ".uno:FlowChartShapes.flowchart-stored-data"},
-        {23, ".uno:FlowChartShapes.flowchart-delay"},
-        {24, ".uno:FlowChartShapes.flowchart-sequential-access"},
-        {25, ".uno:FlowChartShapes.flowchart-magnetic-disk"},
-        {26, ".uno:FlowChartShapes.flowchart-direct-access-storage"},
-        {27, ".uno:FlowChartShapes.flowchart-display"}
+    m_aFlowchartShapes = {
+        u".uno:FlowChartShapes.flowchart-process"_ustr,
+        u".uno:FlowChartShapes.flowchart-alternate-process"_ustr,
+        u".uno:FlowChartShapes.flowchart-decision"_ustr,
+        u".uno:FlowChartShapes.flowchart-data"_ustr,
+        u".uno:FlowChartShapes.flowchart-predefined-process"_ustr,
+        u".uno:FlowChartShapes.flowchart-internal-storage"_ustr,
+        u".uno:FlowChartShapes.flowchart-document"_ustr,
+        u".uno:FlowChartShapes.flowchart-multidocument"_ustr,
+        u".uno:FlowChartShapes.flowchart-terminator"_ustr,
+        u".uno:FlowChartShapes.flowchart-preparation"_ustr,
+        u".uno:FlowChartShapes.flowchart-manual-input"_ustr,
+        u".uno:FlowChartShapes.flowchart-manual-operation"_ustr,
+        u".uno:FlowChartShapes.flowchart-connector"_ustr,
+        u".uno:FlowChartShapes.flowchart-off-page-connector"_ustr,
+        u".uno:FlowChartShapes.flowchart-card"_ustr,
+        u".uno:FlowChartShapes.flowchart-punched-tape"_ustr,
+        u".uno:FlowChartShapes.flowchart-summing-junction"_ustr,
+        u".uno:FlowChartShapes.flowchart-or"_ustr,
+        u".uno:FlowChartShapes.flowchart-collate"_ustr,
+        u".uno:FlowChartShapes.flowchart-sort"_ustr,
+        u".uno:FlowChartShapes.flowchart-extract"_ustr,
+        u".uno:FlowChartShapes.flowchart-merge"_ustr,
+        u".uno:FlowChartShapes.flowchart-stored-data"_ustr,
+        u".uno:FlowChartShapes.flowchart-delay"_ustr,
+        u".uno:FlowChartShapes.flowchart-sequential-access"_ustr,
+        u".uno:FlowChartShapes.flowchart-magnetic-disk"_ustr,
+        u".uno:FlowChartShapes.flowchart-direct-access-storage"_ustr,
+        u".uno:FlowChartShapes.flowchart-display"_ustr
     };
 
-    mpCalloutShapes = decltype(mpCalloutShapes){
-        {0, ".uno:CalloutShapes.rectangular-callout"},
-        {1, ".uno:CalloutShapes.round-rectangular-callout"},
-        {2, ".uno:CalloutShapes.round-callout"},
-        {3, ".uno:CalloutShapes.cloud-callout"},
-        {4, ".uno:CalloutShapes.line-callout-1"},
-        {5, ".uno:CalloutShapes.line-callout-2"},
-        {6, ".uno:CalloutShapes.line-callout-3"}
+    m_aCalloutShapes = {
+        u".uno:CalloutShapes.rectangular-callout"_ustr,
+        u".uno:CalloutShapes.round-rectangular-callout"_ustr,
+        u".uno:CalloutShapes.round-callout"_ustr,
+        u".uno:CalloutShapes.cloud-callout"_ustr,
+        u".uno:CalloutShapes.line-callout-1"_ustr,
+        u".uno:CalloutShapes.line-callout-2"_ustr,
+        u".uno:CalloutShapes.line-callout-3"_ustr
     };
 
-    mpStarShapes = decltype(mpStarShapes){
-        {0, ".uno:StarShapes.star4"},
-        {1, ".uno:StarShapes.star5"},
-        {2, ".uno:StarShapes.star6"},
-        {3, ".uno:StarShapes.star8"},
-        {4, ".uno:StarShapes.star12"},
-        {5, ".uno:StarShapes.star24"},
-        {6, ".uno:StarShapes.bang"},
-        {7, ".uno:StarShapes.vertical-scroll"},
-        {8, ".uno:StarShapes.horizontal-scroll"},
-        {9, ".uno:StarShapes.signet"},
-        {10, ".uno:StarShapes.doorplate"},
-        {11, ".uno:StarShapes.concave-star6"}
+    m_aStarShapes = {
+        u".uno:StarShapes.star4"_ustr,
+        u".uno:StarShapes.star5"_ustr,
+        u".uno:StarShapes.star6"_ustr,
+        u".uno:StarShapes.star8"_ustr,
+        u".uno:StarShapes.star12"_ustr,
+        u".uno:StarShapes.star24"_ustr,
+        u".uno:StarShapes.bang"_ustr,
+        u".uno:StarShapes.vertical-scroll"_ustr,
+        u".uno:StarShapes.horizontal-scroll"_ustr,
+        u".uno:StarShapes.signet"_ustr,
+        u".uno:StarShapes.doorplate"_ustr,
+        u".uno:StarShapes.concave-star6"_ustr
     };
 
-    mp3DShapes = decltype(mp3DShapes){
-        {0, ".uno:Cube"},
-        {1, ".uno:Sphere"},
-        {2, ".uno:Cylinder"},
-        {3, ".uno:Cone"},
-        {4, ".uno:Cyramid"},
-        {5, ".uno:Torus"},
-        {6, ".uno:Shell3D"},
-        {7, ".uno:HalfSphere"}
+    m_a3DShapes = {
+        u".uno:Cube"_ustr,
+        u".uno:Sphere"_ustr,
+        u".uno:Cylinder"_ustr,
+        u".uno:Cone"_ustr,
+        u".uno:Cyramid"_ustr,
+        u".uno:Torus"_ustr,
+        u".uno:Shell3D"_ustr,
+        u".uno:HalfSphere"_ustr
     };
 }
 }
