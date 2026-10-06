@@ -3942,7 +3942,11 @@ bool ScInputHandler::KeyInput( const KeyEvent& rKEvt, bool bStartEdit /* = false
     sal_uInt16 nCode  = aCode.GetCode();
     sal_Unicode nChar = rKEvt.GetCharCode();
 
+#ifdef MACOSX
+    if (bAlt && !bControl && nCode != KEY_RETURN && nCode != KEY_LEFT && nCode != KEY_RIGHT)
+#else
     if (bAlt && !bControl && nCode != KEY_RETURN)
+#endif
         // Alt-Return and Alt-Ctrl-* are accepted. Everything else with ALT are not.
         return false;
 
