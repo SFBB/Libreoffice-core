@@ -36,7 +36,6 @@
 
 #include <vcl/tabs.hrc>
 #include <vcl/weld/Builder.hxx>
-#include <vcl/weld/ScrolledWindow.hxx>
 
 // define ----------------------------------------------------------------
 
@@ -50,9 +49,9 @@
 #define POS_MIDDLE      1
 #define POS_BOTTOM      2
 
-#define BMP_CAPTTYPE_1  1
-#define BMP_CAPTTYPE_2  2
-#define BMP_CAPTTYPE_3  3
+#define BMP_CAPTTYPE_1 0
+#define BMP_CAPTTYPE_2 1
+#define BMP_CAPTTYPE_3 2
 
 // static ----------------------------------------------------------------
 
@@ -88,12 +87,8 @@ SvxCaptionTabPage::SvxCaptionTabPage(weld::Container* pPage, weld::DialogControl
     , m_xFT_LENGTHFT(m_xBuilder->weld_label(u"lengthft"_ustr))
     , m_xMF_LENGTH(m_xBuilder->weld_metric_spin_button(u"length"_ustr, FieldUnit::MM))
     , m_xCB_OPTIMAL(m_xBuilder->weld_check_button(u"optimal"_ustr))
-    , m_xCT_CAPTTYPE(new ValueSet(m_xBuilder->weld_scrolled_window(u"valuesetwin"_ustr, true)))
-    , m_xCT_CAPTTYPEWin(new weld::CustomWeld(*m_xBuilder, u"valueset"_ustr, *m_xCT_CAPTTYPE))
+    , m_xCT_CAPTTYPE(m_xBuilder->weld_icon_view("iconview"))
 {
-    Size aSize(m_xCT_CAPTTYPE->GetDrawingArea()->get_ref_device().LogicToPixel(Size(187, 38), MapMode(MapUnit::MapAppFont)));
-    m_xCT_CAPTTYPEWin->set_size_request(aSize.Width(), aSize.Height());
-
     assert(m_xLB_POSITION->get_count() == 6);
     for (int i = 0;  i < 3; ++i)
         m_aStrHorzList.push_back(m_xLB_POSITION->get_text(i));
@@ -107,26 +102,27 @@ SvxCaptionTabPage::SvxCaptionTabPage(weld::Container* pPage, weld::DialogControl
     for (int i = 0; i < 3; ++i)
         aLineTypes.push_back(m_xLineTypes->get_text(i));
 
-    //------------install ValueSet--------------------------
-    m_xCT_CAPTTYPE->SetStyle( m_xCT_CAPTTYPE->GetStyle() | WB_ITEMBORDER | WB_DOUBLEBORDER | WB_NAMEFIELD );
-    m_xCT_CAPTTYPE->SetColCount(5);//XXX
-    m_xCT_CAPTTYPE->SetLineCount(1);
-    m_xCT_CAPTTYPE->SetSelectHdl(LINK( this, SvxCaptionTabPage, SelectCaptTypeHdl_Impl));
+    m_xCT_CAPTTYPE->connect_item_activated(LINK(this, SvxCaptionTabPage, CaptionTypeActivatedHdl));
 
-    m_xCT_CAPTTYPE->InsertItem(BMP_CAPTTYPE_1, Image(StockImage::Yes, RID_SVXBMP_LEGTYP1), aLineTypes[0]);
-    m_xCT_CAPTTYPE->InsertItem(BMP_CAPTTYPE_2, Image(StockImage::Yes, RID_SVXBMP_LEGTYP2), aLineTypes[1]);
-    m_xCT_CAPTTYPE->InsertItem(BMP_CAPTTYPE_3, Image(StockImage::Yes, RID_SVXBMP_LEGTYP3), aLineTypes[2]);
+    const Bitmap aBitmapCaptionType1 = Image(StockImage::Yes, RID_SVXBMP_LEGTYP1).GetBitmap();
+    m_xCT_CAPTTYPE->insert(BMP_CAPTTYPE_1, nullptr, nullptr, &aBitmapCaptionType1, nullptr);
+    m_xCT_CAPTTYPE->set_item_accessible_name(BMP_CAPTTYPE_1, aLineTypes[0]);
+    m_xCT_CAPTTYPE->set_item_tooltip_text(BMP_CAPTTYPE_1, aLineTypes[0]);
+    const Bitmap aBitmapCaptionType2 = Image(StockImage::Yes, RID_SVXBMP_LEGTYP2).GetBitmap();
+    m_xCT_CAPTTYPE->insert(BMP_CAPTTYPE_2, nullptr, nullptr, &aBitmapCaptionType2, nullptr);
+    m_xCT_CAPTTYPE->set_item_accessible_name(BMP_CAPTTYPE_2, aLineTypes[1]);
+    m_xCT_CAPTTYPE->set_item_tooltip_text(BMP_CAPTTYPE_2, aLineTypes[1]);
+    const Bitmap aBitmapCaptionType3 = Image(StockImage::Yes, RID_SVXBMP_LEGTYP3).GetBitmap();
+    m_xCT_CAPTTYPE->insert(BMP_CAPTTYPE_3, nullptr, nullptr, &aBitmapCaptionType3, nullptr);
+    m_xCT_CAPTTYPE->set_item_accessible_name(BMP_CAPTTYPE_3, aLineTypes[2]);
+    m_xCT_CAPTTYPE->set_item_tooltip_text(BMP_CAPTTYPE_3, aLineTypes[2]);
 
     m_xLB_EXTENSION->connect_changed(LINK(this, SvxCaptionTabPage, ExtensionSelectHdl_Impl));
     m_xLB_POSITION->connect_changed(LINK(this, SvxCaptionTabPage, PositionSelectHdl_Impl));
     m_xCB_OPTIMAL->connect_toggled(LINK(this, SvxCaptionTabPage, LineOptHdl_Impl));
 }
 
-SvxCaptionTabPage::~SvxCaptionTabPage()
-{
-    m_xCT_CAPTTYPEWin.reset();
-    m_xCT_CAPTTYPE.reset();
-}
+SvxCaptionTabPage::~SvxCaptionTabPage() { m_xCT_CAPTTYPE.reset(); }
 
 void SvxCaptionTabPage::Construct()
 {
@@ -141,7 +137,7 @@ bool SvxCaptionTabPage::FillItemSet( SfxItemSet*  _rOutAttrs)
 
     MapUnit      eUnit;
 
-    nCaptionType = static_cast<SdrCaptionType>(m_xCT_CAPTTYPE->GetSelectedItemId()-1);
+    nCaptionType = static_cast<SdrCaptionType>(m_xCT_CAPTTYPE->get_selected_index());
 
     _rOutAttrs->Put( SdrCaptionTypeItem( nCaptionType ) );
 
@@ -318,7 +314,7 @@ void SvxCaptionTabPage::Reset( const SfxItemSet*  )
     m_xLB_EXTENSION->set_active(nExtension);
 
     SetupExtension_Impl( nExtension );
-    m_xCT_CAPTTYPE->SelectItem( static_cast<int>(nCaptionType)+1 ); // Enum starts at 0!
+    m_xCT_CAPTTYPE->select(static_cast<int>(nCaptionType));
     SetupType_Impl( nCaptionType );
 }
 
@@ -417,9 +413,11 @@ IMPL_LINK( SvxCaptionTabPage, LineOptHdl_Impl, weld::Toggleable&, rButton, void 
     }
 }
 
-IMPL_LINK_NOARG(SvxCaptionTabPage, SelectCaptTypeHdl_Impl, ValueSet*, void)
+IMPL_LINK(SvxCaptionTabPage, CaptionTypeActivatedHdl, const weld::TreeIter&, rIter, bool)
 {
-    SetupType_Impl( static_cast<SdrCaptionType>(m_xCT_CAPTTYPE->GetSelectedItemId()) );
+    SetupType_Impl(
+        static_cast<SdrCaptionType>(m_xCT_CAPTTYPE->get_iter_index_in_parent(rIter) + 1));
+    return true;
 }
 
 void SvxCaptionTabPage::SetupType_Impl( SdrCaptionType nType )

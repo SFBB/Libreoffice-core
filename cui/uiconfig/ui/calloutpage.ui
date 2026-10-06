@@ -17,6 +17,16 @@
     <property name="step-increment">0.5</property>
     <property name="page-increment">10</property>
   </object>
+  <object class="GtkTreeStore" id="iconview_model">
+    <columns>
+      <!-- column-name pixbuf -->
+      <column type="GdkPixbuf"/>
+      <!-- column-name id -->
+      <column type="gchararray"/>
+      <!-- column-name tooltip -->
+      <column type="gchararray"/>
+    </columns>
+  </object>
   <object class="GtkBox" id="CalloutPage">
     <property name="visible">True</property>
     <property name="can-focus">False</property>
@@ -24,31 +34,17 @@
     <property name="orientation">vertical</property>
     <property name="spacing">12</property>
     <child>
-      <object class="GtkScrolledWindow" id="valuesetwin">
+      <object class="GtkIconView" id="iconview">
         <property name="visible">True</property>
         <property name="can-focus">True</property>
-        <property name="halign">start</property>
-        <property name="hscrollbar-policy">never</property>
-        <property name="vscrollbar-policy">never</property>
-        <property name="shadow-type">in</property>
-        <child>
-          <object class="GtkViewport">
-            <property name="visible">True</property>
-            <property name="can-focus">False</property>
-            <child>
-              <object class="GtkDrawingArea" id="valueset">
-                <property name="visible">True</property>
-                <property name="can-focus">True</property>
-                <property name="events">GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK | GDK_KEY_PRESS_MASK | GDK_KEY_RELEASE_MASK | GDK_STRUCTURE_MASK</property>
-                <child internal-child="accessible">
-                  <object class="AtkObject" id="valueset-atkobject">
-                    <property name="AtkObject::accessible-description" translatable="yes" context="calloutpage|extended_tip|valueset">Click the Callout style that you want to apply to the selected callout.</property>
-                  </object>
-                </child>
-              </object>
-            </child>
-          </object>
-        </child>
+        <property name="margin">6</property>
+        <property name="model">iconview_model</property>
+        <property name="columns">3</property>
+        <property name="row-spacing">0</property>
+        <property name="column-spacing">0</property>
+        <property name="pixbuf-column">0</property>
+        <property name="tooltip-column">2</property>
+        <property name="item-padding">18</property>
       </object>
       <packing>
         <property name="expand">False</property>

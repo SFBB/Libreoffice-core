@@ -18,7 +18,6 @@
  */
 #pragma once
 
-#include <svtools/valueset.hxx>
 #include <sfx2/tabdlg.hxx>
 #include <svx/sxctitm.hxx>
 #include <svx/sxcecitm.hxx>
@@ -26,6 +25,7 @@
 #include <vcl/image.hxx>
 #include <vcl/weld/CheckButton.hxx>
 #include <vcl/weld/ComboBox.hxx>
+#include <vcl/weld/IconView.hxx>
 #include <vcl/weld/Label.hxx>
 #include <vcl/weld/MetricSpinButton.hxx>
 #include <vcl/weld/Window.hxx>
@@ -67,15 +67,14 @@ private:
     std::unique_ptr<weld::Label> m_xFT_LENGTHFT;
     std::unique_ptr<weld::MetricSpinButton> m_xMF_LENGTH;
     std::unique_ptr<weld::CheckButton> m_xCB_OPTIMAL;
-    std::unique_ptr<ValueSet> m_xCT_CAPTTYPE;
-    std::unique_ptr<weld::CustomWeld> m_xCT_CAPTTYPEWin;
+    std::unique_ptr<weld::IconView> m_xCT_CAPTTYPE;
 
     void            SetupExtension_Impl( sal_uInt16 nType );
     void            SetupType_Impl( SdrCaptionType nType );
     DECL_LINK(ExtensionSelectHdl_Impl, weld::ComboBox&, void);
     DECL_LINK(PositionSelectHdl_Impl, weld::ComboBox&, void);
     DECL_LINK(LineOptHdl_Impl, weld::Toggleable&, void);
-    DECL_LINK(SelectCaptTypeHdl_Impl, ValueSet*, void);
+    DECL_LINK(CaptionTypeActivatedHdl, const weld::TreeIter&, bool);
 
 public:
     SvxCaptionTabPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet& rInAttrs);
