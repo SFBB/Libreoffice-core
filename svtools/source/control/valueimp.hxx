@@ -32,7 +32,6 @@ enum class ValueSetItemType
 {
     None,
     Image,
-    ImageAndText,
     Color,
     UserDraw
 };

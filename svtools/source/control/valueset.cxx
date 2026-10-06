@@ -1218,7 +1218,7 @@ void ValueSet::ImplDrawSelect(vcl::RenderContext& rRenderContext, const tools::R
     }
 }
 
-void ValueSet::ImplFormatItem(vcl::RenderContext const& rRenderContext, ValueSetItem& rItem,
+void ValueSet::ImplFormatItem(vcl::RenderContext const&, ValueSetItem& rItem,
                               tools::Rectangle aRect)
 {
     WinBits nStyle = GetStyle();
@@ -1278,9 +1278,7 @@ void ValueSet::ImplFormatItem(vcl::RenderContext const& rRenderContext, ValueSet
             Size  aRectSize = aRect.GetSize();
             Point aPos(aRect.Left(), aRect.Top());
             aPos.AdjustX((aRectSize.Width() - aImageSize.Width()) / 2 );
-
-            if (rItem.meType != ValueSetItemType::ImageAndText)
-                aPos.AdjustY((aRectSize.Height() - aImageSize.Height()) / 2 );
+            aPos.AdjustY((aRectSize.Height() - aImageSize.Height()) / 2);
 
             DrawImageFlags  nImageStyle  = DrawImageFlags::NONE;
             if (!IsEnabled())
@@ -1295,25 +1293,6 @@ void ValueSet::ImplFormatItem(vcl::RenderContext const& rRenderContext, ValueSet
             }
             else
                 maVirDev->DrawImage(aPos, rItem.maImage, nImageStyle);
-
-            if (rItem.meType == ValueSetItemType::ImageAndText)
-            {
-                maVirDev->SetFont(rRenderContext.GetFont());
-                maVirDev->SetTextColor((nStyle & WB_MENUSTYLEVALUESET) ? rStyleSettings.GetMenuTextColor() : rStyleSettings.GetWindowTextColor());
-                maVirDev->SetTextFillColor();
-
-                tools::Long nTxtWidth = maVirDev->GetTextWidth(rItem.maText);
-
-                if (nTxtWidth > aRect.GetWidth())
-                    maVirDev->SetClipRegion(vcl::Region(aRect));
-
-                maVirDev->DrawText(Point(aRect.Left() + (aRect.GetWidth() - nTxtWidth) / 2,
-                                         aRect.Bottom() - maVirDev->GetTextHeight()),
-                                   rItem.maText);
-
-                if (nTxtWidth > aRect.GetWidth())
-                    maVirDev->SetClipRegion();
-            }
         }
     }
 
@@ -1670,22 +1649,13 @@ Size ValueSet::GetLargestItemSize()
         if (!pItem->mbVisible)
             continue;
 
-        if (pItem->meType != ValueSetItemType::Image &&
-            pItem->meType != ValueSetItemType::ImageAndText)
+        if (pItem->meType != ValueSetItemType::Image)
         {
             // handle determining an optimal size for this case
             continue;
         }
 
         Size aSize = pItem->maImage.GetSizePixel();
-        if (pItem->meType == ValueSetItemType::ImageAndText)
-        {
-            aSize.AdjustHeight(3 * NAME_LINE_HEIGHT +
-                maVirDev->GetTextHeight() );
-            aSize.setWidth( std::max(aSize.Width(),
-                                     maVirDev->GetTextWidth(pItem->maText) + NAME_OFFSET) );
-        }
-
         aLargestItem.setWidth( std::max(aLargestItem.Width(), aSize.Width()) );
         aLargestItem.setHeight( std::max(aLargestItem.Height(), aSize.Height()) );
     }
