@@ -648,6 +648,9 @@ ColorPickerDialog::ColorPickerDialog(weld::Window* pParent, const Color& rColor,
     m_xRBSaturation->connect_toggled( aLink2 );
     m_xRBBrightness->connect_toggled( aLink2 );
 
+    // tdf#108295 - set the initial focus explicitly to the first input field
+    m_xMFRed->grab_focus();
+
     if (eDialogMode == vcl::ColorPickerMode::Modify)
         m_xColorPrevious->show();
 
@@ -677,6 +680,9 @@ void ColorPickerDialog::SetColor(const Color& rColor)
     RGBtoCMYK(mdRed, mdGreen, mdBlue, mdCyan, mdMagenta, mdYellow, mdKey);
 
     update_color();
+
+    // tdf#108295 - select the first field content so a new value can be typed directly
+    m_xMFRed->select_region(0, -1);
 }
 
 void ColorPickerDialog::update_color( UpdateFlags n )
