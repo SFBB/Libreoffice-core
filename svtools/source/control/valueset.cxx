@@ -627,7 +627,7 @@ void ValueSet::ImplHighlightItem(sal_uInt16 nItemId)
 void ValueSet::ImplDraw(vcl::RenderContext& rRenderContext)
 {
     if (mbFormat)
-        Format(rRenderContext);
+        Format();
 
     Point aDefPos;
     Size aSize = maVirDev->GetOutputSizePixel();
@@ -668,9 +668,9 @@ void ValueSet::SelectItem( sal_uInt16 nItemId )
     bool bNewOut = !mbFormat && IsReallyVisible();
     bool bNewLine = false;
 
-    if (weld::DrawingArea* pNeedsFormatToScroll = !mnCols ? GetDrawingArea() : nullptr)
+    if (!mnCols && GetDrawingArea())
     {
-        Format(pNeedsFormatToScroll->get_ref_device());
+        Format();
         // reset scrollbar so it's set to the later calculated mnFirstLine on
         // the next Format
         RecalcScrollBar();
@@ -774,7 +774,7 @@ void ValueSet::SetStyle(WinBits nStyle)
     }
 }
 
-void ValueSet::Format(vcl::RenderContext const & rRenderContext)
+void ValueSet::Format()
 {
     Size aWinSize(GetOutputSizePixel());
     size_t nItemCount = mItemList.size();
@@ -972,7 +972,7 @@ void ValueSet::Format(vcl::RenderContext const & rRenderContext)
                 }
 
                 pItem->mbVisible = true;
-                ImplFormatItem(rRenderContext, *pItem,
+                ImplFormatItem(*pItem,
                                tools::Rectangle(Point(x, y), Size(mnItemWidth, mnItemHeight)));
 
                 if (!((i + 1) % mnCols))
@@ -1218,8 +1218,7 @@ void ValueSet::ImplDrawSelect(vcl::RenderContext& rRenderContext, const tools::R
     }
 }
 
-void ValueSet::ImplFormatItem(vcl::RenderContext const&, ValueSetItem& rItem,
-                              tools::Rectangle aRect)
+void ValueSet::ImplFormatItem(ValueSetItem& rItem, tools::Rectangle aRect)
 {
     WinBits nStyle = GetStyle();
     if (nStyle & WB_ITEMBORDER)
