@@ -1506,10 +1506,10 @@ Size ValueSet::CalcWindowSizePixel( const Size& rItemSize, sal_uInt16 nDesireCol
     Size        aSize( rItemSize.Width() * nCalcCols, rItemSize.Height() * nCalcLines );
     WinBits     nStyle = GetStyle();
     tools::Long        nTxtHeight = GetTextHeight();
-    tools::Long        n;
 
     if ( nStyle & WB_ITEMBORDER )
     {
+        tools::Long n;
         if ( nStyle & WB_DOUBLEBORDER )
             n = ITEM_OFFSET_DOUBLE;
         else
@@ -1518,8 +1518,6 @@ Size ValueSet::CalcWindowSizePixel( const Size& rItemSize, sal_uInt16 nDesireCol
         aSize.AdjustWidth(n * nCalcCols );
         aSize.AdjustHeight(n * nCalcLines );
     }
-    else
-        n = 0;
 
     if ( mnSpacing )
     {
