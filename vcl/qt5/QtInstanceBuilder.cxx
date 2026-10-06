@@ -392,6 +392,7 @@ constexpr auto SUPPORTED_UI_FILES = frozen::make_unordered_set<std::u16string_vi
     u"svx/ui/fontworkgallerydialog.ui",
     u"svx/ui/deletefooterdialog.ui",
     u"svx/ui/deleteheaderdialog.ui",
+    u"svx/ui/extrustiondepthdialog.ui",
     u"svx/ui/fileexporteddialog.ui",
     u"svx/ui/formpropertydialog.ui",
     u"svx/ui/gotopagedialog.ui",
