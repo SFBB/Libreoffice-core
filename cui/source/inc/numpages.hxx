@@ -46,6 +46,7 @@ class ColorListBox;
 class SvxNumValueSet;
 class SvxNumRule;
 class SvxBmpNumValueSet;
+class ValueSet;
 struct ImplSVEvent;
 
 struct SvxNumSettings_Impl

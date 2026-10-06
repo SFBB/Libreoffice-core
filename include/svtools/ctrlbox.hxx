@@ -209,8 +209,6 @@ inline Color sameDistColor( Color /*rMain*/, Color rDefault )
     return rDefault;
 }
 
-class ValueSet;
-
 class SVT_DLLPUBLIC SvtLineListBox final : public WeldToolbarPopup
 {
 public:

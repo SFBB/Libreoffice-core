@@ -26,8 +26,6 @@
 #include <svtools/toolbarmenu.hxx>
 #include <array>
 
-class ValueSet;
-
 namespace svx::sidebar
 {
 class LinePropertyPanelBase;
