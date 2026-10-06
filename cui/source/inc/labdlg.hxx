@@ -25,6 +25,7 @@
 #include <svx/anchorid.hxx>
 #include <vcl/image.hxx>
 #include <vcl/weld/CheckButton.hxx>
+#include <vcl/weld/ComboBox.hxx>
 #include <vcl/weld/Label.hxx>
 #include <vcl/weld/MetricSpinButton.hxx>
 #include <vcl/weld/Window.hxx>
