@@ -16,6 +16,7 @@
 #include "clang/Basic/Builtins.h"
 
 #include "check.hxx"
+#include "compat.hxx"
 #include "plugin.hxx"
 
 // Find implicit conversions from non-'bool' constants (e.g., 'sal_False') to 'bool'.
@@ -156,7 +157,7 @@ public:
             return true;
         }
         APValue res;
-        if (!sub->isCXX11ConstantExpr(compiler.getASTContext(), &res))
+        if (!compat::isCXX11ConstantExpr(sub, compiler.getASTContext(), res))
         {
             return true;
         }

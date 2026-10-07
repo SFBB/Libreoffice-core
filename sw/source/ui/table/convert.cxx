@@ -204,7 +204,7 @@ void SwConvertTableDlg::Init()
     m_xLbFormat->connect_selection_changed(LINK(this, SwConvertTableDlg, SelFormatHdl));
 
     size_t nCount = m_xTableTable->size();
-    m_nIndex = nCount ? 0 : -1;
+    m_nIndex = -1; // Do NOT select a table style by default. They just don't work well.
 
     for (size_t i = 0; i < nCount; ++i)
     {
@@ -284,7 +284,11 @@ IMPL_LINK_NOARG(SwConvertTableDlg, SelFormatHdl, weld::ItemView&, void)
     m_nIndex = m_xLbFormat->get_selected_index();
     if (m_nIndex == -1)
     {
-        SAL_WARN("sw.ui", "No entry selected");
+        SwTableAutoFormat aNone(TableStyleName(SwViewShell::GetShellRes()->aStrNone));
+        aNone.DisableAll();
+        m_aWndPreview.NotifyChange(&aNone);
+        mxTAutoFormat.reset();
+
         return;
     }
     m_aWndPreview.NotifyChange(m_xTableTable->GetResolvedStyle(m_xTableTable->GetData(m_nIndex)));

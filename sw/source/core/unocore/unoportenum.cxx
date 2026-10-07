@@ -326,7 +326,7 @@ SwXTextPortionEnumeration::SwXTextPortionEnumeration(
     // find all frames, graphics and OLEs that are bound AT character in para
     FrameClientSortList_t frames;
     ::CollectFrameAtNode(m_pUnoCursor->GetPoint()->GetNode(), frames, true);
-    lcl_CreatePortions(m_Portions, xParentText, &*m_pUnoCursor, frames, nStart, nEnd, bOnlyTextFields);
+    lcl_CreatePortions(m_Portions, xParentText, m_pUnoCursor.get(), frames, nStart, nEnd, bOnlyTextFields);
 }
 
 SwXTextPortionEnumeration::SwXTextPortionEnumeration(

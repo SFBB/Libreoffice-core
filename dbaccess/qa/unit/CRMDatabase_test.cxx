@@ -30,7 +30,6 @@ class CRMDBTest : public DBTestBase
 public:
     void testCRMDatabase();
     void testRegistrationName();
-    uno::Reference<XConnection> setUpDBConnection();
     void testQueryColumns();
     void testODBCEscapeQuery();
 
@@ -42,24 +41,9 @@ public:
     CPPUNIT_TEST_SUITE_END();
 };
 
-uno::Reference<XConnection> CRMDBTest::setUpDBConnection()
-{
-    createDBDocument(u"sdbc:embedded:hsqldb"_ustr);
-    uno::Reference<sdb::XOfficeDatabaseDocument> xDocument(mxComponent, UNO_QUERY_THROW);
-    uno::Reference<XDataSource> xDataSource = xDocument->getDataSource();
-    CPPUNIT_ASSERT(xDataSource.is());
-
-    // create queries before establishing connection to database
-    createQueries(xDataSource);
-
-    uno::Reference<XConnection> xConnection = getConnectionForDocument(xDocument);
-    return xConnection;
-}
-
 void CRMDBTest::testCRMDatabase()
 {
     uno::Reference<XConnection> xConnection = setUpDBConnection();
-    createTables(xConnection);
 
     // test selection
     Reference<XStatement> xStatement = xConnection->createStatement();
@@ -110,7 +94,6 @@ void CRMDBTest::testRegistrationName()
     // 2. register a newly created data source, and verify it has the proper name
     // Setup the CRMDatabase
     uno::Reference<XConnection> xConnection = setUpDBConnection();
-    createTables(xConnection);
 
     uno::Reference<sdb::XOfficeDatabaseDocument> xDocument(mxComponent, UNO_QUERY_THROW);
     uno::Reference<XDataSource> xDataSource = xDocument->getDataSource();
@@ -142,7 +125,6 @@ void CRMDBTest::testQueryColumns()
     // Test prepared queries return the expected column names
 
     uno::Reference<XConnection> xConnection = setUpDBConnection();
-    createTables(xConnection);
 
     uno::Reference<XQueriesSupplier> xQuerySupplier(xConnection, UNO_QUERY_THROW);
     uno::Reference<container::XNameAccess> xQueryAccess = xQuerySupplier->getQueries();
@@ -175,7 +157,6 @@ void CRMDBTest::testQueryColumns()
 void CRMDBTest::testODBCEscapeQuery()
 {
     uno::Reference<XConnection> xConnection = setUpDBConnection();
-    createTables(xConnection);
 
     uno::Reference<lang::XMultiServiceFactory> xFactory(xConnection, UNO_QUERY);
     CPPUNIT_ASSERT(xFactory.is());

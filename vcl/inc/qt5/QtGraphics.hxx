@@ -47,7 +47,6 @@ class QtGraphicsBackend final : public SalGraphicsImpl, public QtGraphicsBase
 {
     friend class QtPainter;
 
-    QtFrame* m_pFrame;
     QImage* m_pQImage;
     QRegion m_aClipRegion;
     QPainterPath m_aClipPath;
@@ -152,8 +151,6 @@ class QtGraphics final : public SalGraphicsAutoDelegateToImpl, public QtGraphics
     friend class QtBitmap;
 
     std::unique_ptr<QtGraphicsBackend> m_pBackend;
-
-    QtFrame* m_pFrame;
 
     rtl::Reference<QtFont> m_pTextStyle[MAX_FALLBACK];
     Color m_aTextColor;

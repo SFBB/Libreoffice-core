@@ -55,6 +55,14 @@ public:
 
     OUString GetInputString() const { return mxEdInput->get_text(); }
 };
+
+SvxAutoFormatData* lcl_GetTableAutoFormat(size_t nIndex, SvxAutoFormat& rFormat)
+{
+    if (nIndex > rFormat.size() - 1)
+        return nullptr;
+
+    return rFormat.GetData(nIndex);
+}
 }
 
 // AutoFormat-Dialog:
@@ -150,14 +158,15 @@ void SvxTableAutoFmtDlg::PopulateFormatList()
 
 void SvxTableAutoFmtDlg::UpdateUIState()
 {
-    const bool bCanModify = mnIndex != DEFAULT_STYLE;
+    const bool bCanModify = mnIndex != DEFAULT_STYLE && mnIndex < mpFormat.size();
     mxBtnRename->set_sensitive(bCanModify);
     mxBtnRemove->set_sensitive(bCanModify);
+    mxBtnEdit->set_sensitive(bCanModify);
 }
 
 void SvxTableAutoFmtDlg::UpdateChecks()
 {
-    if (const SvxAutoFormatData* pData = mpFormat.GetData(mnIndex))
+    if (const SvxAutoFormatData* pData = lcl_GetTableAutoFormat(mnIndex, mpFormat))
     {
         mxBtnNumFormat->set_active(pData->IsValueFormat());
         mxBtnBorder->set_active(pData->IsFrame());
@@ -185,7 +194,7 @@ OUString SvxTableAutoFmtDlg::GenerateUniqueStyleName()
 // Event Handlers
 IMPL_LINK(SvxTableAutoFmtDlg, CheckHdl, weld::Toggleable&, rBtn, void)
 {
-    SvxAutoFormatData* rData = mpFormat.GetData(mnIndex);
+    SvxAutoFormatData* rData = lcl_GetTableAutoFormat(mnIndex, mpFormat);
     if (!rData)
         return;
 
@@ -269,8 +278,10 @@ IMPL_LINK_NOARG(SvxTableAutoFmtDlg, SelFormatHdl, weld::ItemView&, void)
     UpdateChecks();
     UpdateUIState();
 
-    if (const SvxAutoFormatData* pData = mpFormat.GetData(mnIndex))
+    if (const SvxAutoFormatData* pData = lcl_GetTableAutoFormat(mnIndex, mpFormat))
         maWndPreview.NotifyChange(mpFormat.GetResolvedStyle(pData));
+    else
+        maWndPreview.NotifyChange(mpFormat.GetDefaultData());
 }
 
 OUString SvxTableAutoFmtDlg::GetCurrFormatName()

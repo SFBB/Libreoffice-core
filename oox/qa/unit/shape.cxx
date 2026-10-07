@@ -1145,6 +1145,26 @@ CPPUNIT_TEST_FIXTURE(OoxShapeTest, testTdf170095SoftEdge3D)
     // - Actual  : 882
     CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(0), nSoftEdgeRad);
 }
+
+CPPUNIT_TEST_FIXTURE(OoxShapeTest, testPieTextArea)
+{
+    // OOXMl presetShapeDefinitions.xml has an error in text area of shape "Pie" (as of Sept 2026).
+    // To be compatible with PowerPoint, we immediately use a corrected version of that file without
+    // waiting for a fix by ISO.
+    loadFromFile(u"tdf149918_pie_textarea.pptx");
+    uno::Reference<drawing::XDrawPagesSupplier> xDrawPagesSupplier(mxComponent, uno::UNO_QUERY);
+    uno::Reference<drawing::XDrawPage> xDrawPage(xDrawPagesSupplier->getDrawPages()->getByIndex(0),
+                                                 uno::UNO_QUERY);
+    auto xShape = xDrawPage->getByIndex(0).query<drawing::XShape>();
+    auto& rSdrCustomShape(
+        static_cast<SdrObjCustomShape&>(*SdrObject::getSdrObjectFromXShape(xShape)));
+    tools::Rectangle aTextBound;
+    CPPUNIT_ASSERT(rSdrCustomShape.GetTextBounds(aTextBound));
+    // The text frame is inscribed in the ellipse at 45deg. Without the fix in place, it was the
+    // whole shape, 12000x8000@(1999,1998).
+    CPPUNIT_ASSERT_EQUAL(tools::Rectangle(3756, 3169, 12241, 8826), aTextBound);
+}
+
 CPPUNIT_PLUGIN_IMPLEMENT();
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -16,7 +16,7 @@
 
 #include <QtGui/QScreen>
 
-void QtGraphicsBase::ImplGetResolution(const QtFrame* pFrame, sal_Int32& rDPIX, sal_Int32& rDPIY)
+void QtGraphicsBase::ImplGetResolution(sal_Int32& rDPIX, sal_Int32& rDPIY)
 {
     char* pForceDpi;
     if ((pForceDpi = getenv("SAL_FORCEDPI")))
@@ -25,10 +25,10 @@ void QtGraphicsBase::ImplGetResolution(const QtFrame* pFrame, sal_Int32& rDPIX, 
         return;
     }
 
-    if (!pFrame)
+    if (!m_pFrame)
         return;
 
-    QScreen* pScreen = pFrame->GetQWidget().screen();
+    QScreen* pScreen = m_pFrame->GetQWidget().screen();
     qreal devicePixelRatio = GetQtInstance().EmscriptenLightweightRunInMainThread(
         [pScreen] { return pScreen->devicePixelRatio(); });
     rDPIX = pScreen->logicalDotsPerInchX() * devicePixelRatio + 0.5;

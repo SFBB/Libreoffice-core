@@ -44,20 +44,20 @@
 #include <QtWidgets/QPushButton>
 #include <QtWidgets/QWidget>
 
-QtGraphics::QtGraphics( QtFrame *pFrame, QImage *pQImage )
-    : m_pFrame( pFrame )
+QtGraphics::QtGraphics(QtFrame* pFrame, QImage* pQImage)
+    : QtGraphicsBase(pFrame)
     , m_pTextStyle{ nullptr, }
     , m_aTextColor( 0x00, 0x00, 0x00 )
 {
-    m_pBackend = std::make_unique<QtGraphicsBackend>(m_pFrame, pQImage);
+    m_pBackend = std::make_unique<QtGraphicsBackend>(pFrame, pQImage);
 
     if (!initWidgetDrawBackends(false))
     {
         if (!QtInstance::noNativeControls())
             m_pWidgetDraw.reset(new QtGraphics_Controls(*this));
     }
-    if (m_pFrame)
-        setDevicePixelRatioF(m_pFrame->devicePixelRatioF());
+    if (pFrame)
+        setDevicePixelRatioF(pFrame->devicePixelRatioF());
 }
 
 QtGraphics::~QtGraphics() { ReleaseFonts(); }
@@ -88,7 +88,7 @@ void QtGraphics::handleDamage(const tools::Rectangle& rDamagedRegion)
 
 void QtGraphics::GetResolution(sal_Int32& rDPIX, sal_Int32& rDPIY)
 {
-    QtGraphicsBase::ImplGetResolution(m_pFrame, rDPIX, rDPIY);
+    ImplGetResolution(rDPIX, rDPIY);
 }
 
 void QtGraphics::SetTextColor(Color nColor) { m_aTextColor = nColor; }
