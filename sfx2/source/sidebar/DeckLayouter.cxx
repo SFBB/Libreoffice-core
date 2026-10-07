@@ -274,7 +274,7 @@ sal_Int32 PlacePanels (
                         nPanelHeight = iItem->maLayoutSize.Preferred;
                         break;
                     default:
-                        OSL_ASSERT(false);
+                        assert(false);
                         break;
                 }
             }
