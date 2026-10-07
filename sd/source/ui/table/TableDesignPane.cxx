@@ -444,11 +444,6 @@ static SfxDispatcher* getDispatcher( ViewShellBase const & rBase )
 
 IMPL_LINK_NOARG(TableDesignWidget, implValueSetHdl, ValueSet*, void)
 {
-    ApplyStyle();
-}
-
-void TableDesignWidget::ApplyStyle()
-{
     try
     {
         OUString sStyleName;

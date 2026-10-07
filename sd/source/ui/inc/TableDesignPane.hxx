@@ -75,7 +75,6 @@ public:
     void onSelectionChanged();
 
     void ApplyOptions();
-    void ApplyStyle();
     void InsertStyle();
     void CloneStyle();
     void ResetStyle();
