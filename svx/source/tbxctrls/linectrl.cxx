@@ -59,9 +59,6 @@ using namespace ::com::sun::star::util;
 using namespace ::com::sun::star::frame;
 using namespace ::com::sun::star;
 
-// For End Line Controller
-#define MAX_LINES 12
-
 SvxLineStyleToolBoxControl::SvxLineStyleToolBoxControl( const css::uno::Reference<css::uno::XComponentContext>& rContext )
     : svt::PopupWindowController( rContext, nullptr, OUString() )
 {
@@ -251,19 +248,13 @@ class SvxLineEndWindow final : public WeldToolbarPopup
 private:
     XLineEndListRef mpLineEndList;
     rtl::Reference<SvxLineEndToolBoxControl> mxControl;
-    std::unique_ptr<ValueSet> mxLineEndSet;
-    std::unique_ptr<weld::CustomWeld> mxLineEndSetWin;
-    sal_uInt16 mnLines;
+    std::unique_ptr<weld::IconView> mxLineEndIconView;
     Size maBmpSize;
 
-    DECL_LINK( SelectHdl, ValueSet*, void );
-    void FillValueSet();
-    void SetSize();
+    DECL_LINK(ItemActivatedHdl, const weld::TreeIter&, bool);
+    void FillIconView();
 
-    virtual void GrabFocus() override
-    {
-        mxLineEndSet->GrabFocus();
-    }
+    virtual void GrabFocus() override { mxLineEndIconView->grab_focus(); }
 
 public:
     SvxLineEndWindow(SvxLineEndToolBoxControl* pControl, weld::Widget* pParent);
@@ -272,17 +263,12 @@ public:
 
 }
 
-constexpr sal_uInt16 gnCols = 2;
-
 SvxLineEndWindow::SvxLineEndWindow(SvxLineEndToolBoxControl* pControl, weld::Widget* pParent)
     : WeldToolbarPopup(pControl->getFrameInterface(), pParent, u"svx/ui/floatinglineend.ui"_ustr, u"FloatingLineEnd"_ustr)
     , mxControl(pControl)
-    , mxLineEndSet(new ValueSet(m_xBuilder->weld_scrolled_window(u"valuesetwin"_ustr, true)))
-    , mxLineEndSetWin(new weld::CustomWeld(*m_xBuilder, u"valueset"_ustr, *mxLineEndSet))
-    , mnLines(12)
+    , mxLineEndIconView(m_xBuilder->weld_icon_view(u"iconview"_ustr))
 {
-    mxLineEndSet->SetStyle(mxLineEndSet->GetStyle() | WB_ITEMBORDER | WB_3DLOOK | WB_NO_DIRECTSELECT);
-    mxLineEndSet->SetHelpId(HID_POPUP_LINEEND_CTRL);
+    mxLineEndIconView->set_help_id(HID_POPUP_LINEEND_CTRL);
     m_xTopLevel->set_help_id(HID_POPUP_LINEEND);
 
     SfxObjectShell* pDocSh = SfxObjectShell::Current();
@@ -293,37 +279,36 @@ SvxLineEndWindow::SvxLineEndWindow(SvxLineEndToolBoxControl* pControl, weld::Wid
     }
     DBG_ASSERT( mpLineEndList.is(), "LineEndList not found" );
 
-    mxLineEndSet->SetSelectHdl( LINK( this, SvxLineEndWindow, SelectHdl ) );
-    mxLineEndSet->SetColCount( gnCols );
+    mxLineEndIconView->connect_item_activated(LINK(this, SvxLineEndWindow, ItemActivatedHdl));
 
-    // ValueSet fill with entries of LineEndList
-    FillValueSet();
+    // fill IconView with entries of LineEndList
+    FillIconView();
 
     AddStatusListener( u".uno:LineEndListState"_ustr);
 }
 
-IMPL_LINK_NOARG(SvxLineEndWindow, SelectHdl, ValueSet*, void)
+IMPL_LINK(SvxLineEndWindow, ItemActivatedHdl, const weld::TreeIter&, rIter, bool)
 {
     std::unique_ptr<XLineEndItem> pLineEndItem;
     std::unique_ptr<XLineStartItem> pLineStartItem;
-    sal_uInt16 nId = mxLineEndSet->GetSelectedItemId();
+    const int nIndex = mxLineEndIconView->get_iter_index_in_parent(rIter);
 
-    if( nId == 1 )
+    if (nIndex == 0)
     {
         pLineStartItem.reset(new XLineStartItem());
     }
-    else if( nId == 2 )
+    else if (nIndex == 1)
     {
         pLineEndItem.reset(new XLineEndItem());
     }
-    else if( nId % 2 ) // beginning of line
+    else if (nIndex % 2 == 0) // beginning of line
     {
-        const XLineEndEntry* pEntry = mpLineEndList->GetLineEnd( (nId - 1) / 2 - 1 );
+        const XLineEndEntry* pEntry = mpLineEndList->GetLineEnd(nIndex / 2 - 1);
         pLineStartItem.reset(new XLineStartItem(pEntry->GetName(), pEntry->GetLineEnd()));
     }
     else // end of line
     {
-        const XLineEndEntry* pEntry = mpLineEndList->GetLineEnd( nId / 2 - 2 );
+        const XLineEndEntry* pEntry = mpLineEndList->GetLineEnd((nIndex + 1) / 2 - 2);
         pLineEndItem.reset(new XLineEndItem(pEntry->GetName(), pEntry->GetLineEnd()));
     }
 
@@ -345,14 +330,16 @@ IMPL_LINK_NOARG(SvxLineEndWindow, SelectHdl, ValueSet*, void)
     /*  #i33380# DR 2004-09-03 Moved the following line above the Dispatch() call.
         This instance may be deleted in the meantime (i.e. when a dialog is opened
         while in Dispatch()), accessing members will crash in this case. */
-    mxLineEndSet->SetNoSelection();
+    mxLineEndIconView->unselect_all();
 
     mxControl->dispatchCommand(mxControl->getCommandURL(), aArgs);
 
     mxControl->EndPopupMode();
+
+    return true;
 }
 
-void SvxLineEndWindow::FillValueSet()
+void SvxLineEndWindow::FillIconView()
 {
     if( !mpLineEndList.is() )
         return;
@@ -378,8 +365,16 @@ void SvxLineEndWindow::FillValueSet()
     Point aPt1( maBmpSize.Width(), 0 );
 
     pVD->DrawBitmap( Point(), aBmp );
-    mxLineEndSet->InsertItem(1, Image(pVD->GetBitmap(aPt0, maBmpSize)), pEntry->GetName());
-    mxLineEndSet->InsertItem(2, Image(pVD->GetBitmap(aPt1, maBmpSize)), pEntry->GetName());
+    const Bitmap aBitmap = pVD->GetBitmap(aPt0, maBmpSize);
+    mxLineEndIconView->insert(0, nullptr, nullptr, &aBitmap, nullptr);
+    const OUString sName = pEntry->GetName();
+    mxLineEndIconView->set_item_accessible_name(0, sName);
+    mxLineEndIconView->set_item_tooltip_text(0, sName);
+
+    const Bitmap aBitmap1 = pVD->GetBitmap(aPt1, maBmpSize);
+    mxLineEndIconView->insert(1, nullptr, nullptr, &aBitmap1, nullptr);
+    mxLineEndIconView->set_item_accessible_name(1, sName);
+    mxLineEndIconView->set_item_tooltip_text(1, sName);
 
     mpLineEndList->Remove(nCount);
 
@@ -390,16 +385,18 @@ void SvxLineEndWindow::FillValueSet()
         aBmp = mpLineEndList->GetUiBitmap( i );
         OSL_ENSURE( !aBmp.IsEmpty(), "UI bitmap was not created" );
 
+        const OUString sEntryName = pEntry->GetName();
         pVD->DrawBitmap( aPt0, aBmp );
-        mxLineEndSet->InsertItem(static_cast<sal_uInt16>((i+1)*2L+1),
-                Image(pVD->GetBitmap(aPt0, maBmpSize)), pEntry->GetName());
-        mxLineEndSet->InsertItem(static_cast<sal_uInt16>((i+2)*2L),
-                Image(pVD->GetBitmap(aPt1, maBmpSize)), pEntry->GetName());
-    }
-    mnLines = std::min( static_cast<sal_uInt16>(nCount + 1), sal_uInt16(MAX_LINES) );
-    mxLineEndSet->SetLineCount( mnLines );
+        const Bitmap aBitmapLeft = pVD->GetBitmap(aPt0, maBmpSize);
+        mxLineEndIconView->insert(i * 2 + 2, nullptr, nullptr, &aBitmapLeft, nullptr);
+        mxLineEndIconView->set_item_accessible_name(i * 2 + 2, sEntryName);
+        mxLineEndIconView->set_item_tooltip_text(i * 2 + 2, sEntryName);
 
-    SetSize();
+        const Bitmap aBitmapRight = pVD->GetBitmap(aPt1, maBmpSize);
+        mxLineEndIconView->insert(i * 2 + 3, nullptr, nullptr, &aBitmapRight, nullptr);
+        mxLineEndIconView->set_item_accessible_name(i * 2 + 3, sEntryName);
+        mxLineEndIconView->set_item_tooltip_text(i * 2 + 3, sEntryName);
+    }
 }
 
 void SvxLineEndWindow::statusChanged( const css::frame::FeatureStateEvent& rEvent )
@@ -414,31 +411,9 @@ void SvxLineEndWindow::statusChanged( const css::frame::FeatureStateEvent& rEven
         mpLineEndList.set( static_cast< XLineEndList* >( xWeak.get() ) );
         DBG_ASSERT( mpLineEndList.is(), "LineEndList not found" );
 
-        mxLineEndSet->Clear();
-        FillValueSet();
+        mxLineEndIconView->clear();
+        FillIconView();
     }
-}
-
-void SvxLineEndWindow::SetSize()
-{
-    sal_uInt16 nItemCount = mxLineEndSet->GetItemCount();
-    sal_uInt16 nMaxLines  = nItemCount / gnCols;
-
-    WinBits nBits = mxLineEndSet->GetStyle();
-    if ( mnLines == nMaxLines )
-        nBits &= ~WB_VSCROLL;
-    else
-        nBits |= WB_VSCROLL;
-    mxLineEndSet->SetStyle( nBits );
-
-    Size aSize( maBmpSize );
-    aSize.AdjustWidth(6 );
-    aSize.AdjustHeight(6 );
-    aSize = mxLineEndSet->CalcWindowSizePixel( aSize );
-    if (nBits & WB_VSCROLL)
-        aSize.AdjustWidth(mxLineEndSet->GetScrollWidth());
-    mxLineEndSet->GetDrawingArea()->set_size_request(aSize.Width(), aSize.Height());
-    mxLineEndSet->SetOutputSizePixel(aSize);
 }
 
 SvxLineEndToolBoxControl::SvxLineEndToolBoxControl( const css::uno::Reference<css::uno::XComponentContext>& rContext )
