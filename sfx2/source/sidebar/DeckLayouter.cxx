@@ -46,7 +46,7 @@ namespace sfx2::sidebar {
 namespace {
     const sal_Int32 MinimalPanelHeight (25);
 
-    enum LayoutMode
+    enum class LayoutMode
     {
         MinimumOrLarger,
         PreferredOrLarger,
@@ -192,10 +192,10 @@ void LayoutPanels (
     //   size:
     //   Use the unmodified preferred height for all panels.
 
-    LayoutMode eMode(MinimumOrLarger);
+    LayoutMode eMode = LayoutMode::MinimumOrLarger;
     if (bShowVerticalScrollBar)
     {
-        eMode = Preferred;
+        eMode = LayoutMode::Preferred;
 
         const sal_Int32 nContentHeight(nTotalPreferredHeight + nTotalDecorationHeight);
         SetupVerticalScrollBar(rVerticalScrollBar, nContentHeight, aBox.GetHeight());
@@ -203,17 +203,15 @@ void LayoutPanels (
     else
     {
         if (nTotalPreferredHeight <= nAvailableHeight)
-            eMode = PreferredOrLarger;
+            eMode = LayoutMode::PreferredOrLarger;
         else
-            eMode = MinimumOrLarger;
+            eMode = LayoutMode::MinimumOrLarger;
 
-        const sal_Int32 nTotalHeight (eMode==MinimumOrLarger ? nTotalMinimumHeight : nTotalPreferredHeight);
+        const sal_Int32 nTotalHeight(eMode == LayoutMode::MinimumOrLarger ? nTotalMinimumHeight
+                                                                          : nTotalPreferredHeight);
 
-        DistributeHeights(
-            rLayoutItems,
-            nAvailableHeight-nTotalHeight,
-            aBox.GetHeight(),
-            eMode==MinimumOrLarger);
+        DistributeHeights(rLayoutItems, nAvailableHeight - nTotalHeight, aBox.GetHeight(),
+                          eMode == LayoutMode::MinimumOrLarger);
     }
 
     const sal_Int32 nUsedHeight(PlacePanels(rLayoutItems, eMode));
@@ -266,13 +264,13 @@ sal_Int32 PlacePanels (
                 // mode and distributed heights.
                 switch(eMode)
                 {
-                    case MinimumOrLarger:
+                    case LayoutMode::MinimumOrLarger:
                         nPanelHeight = iItem->maLayoutSize.Minimum + iItem->mnDistributedHeight;
                         break;
-                    case PreferredOrLarger:
+                    case LayoutMode::PreferredOrLarger:
                         nPanelHeight = iItem->maLayoutSize.Preferred + iItem->mnDistributedHeight;
                         break;
-                    case Preferred:
+                    case LayoutMode::Preferred:
                         nPanelHeight = iItem->maLayoutSize.Preferred;
                         break;
                     default:
