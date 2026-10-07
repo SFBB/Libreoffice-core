@@ -6,6 +6,7 @@
 
 from libreoffice.uno.propertyvalue import mkPropertyValues
 from uitest.framework import UITestCase
+from uitest.uihelper.common import get_state_as_dict
 from uitest.uihelper.common import select_pos
 from uitest.uihelper.common import select_by_text
 
@@ -65,6 +66,31 @@ class Test(UITestCase):
             # AssertionError: -1 != 3
             # i.e. the theme metadata of the selected fill color was lost.
             self.assertEqual(shape.FillColorTheme, 3)
+
+    def test_tdf163161_paste_hex_color_with_hash(self):
+        with self.ui_test.create_doc_in_start_center("writer"):
+            # Copy a hex color including the leading hash to the clipboard
+            xWriterDoc = self.xUITest.getTopFocusWindow()
+            xWriterEdit = xWriterDoc.getChild("writer_edit")
+            xWriterEdit.executeAction("TYPE", mkPropertyValues({"TEXT": "#49423A"}))
+            self.xUITest.executeCommand(".uno:SelectAll")
+            self.xUITest.executeCommand(".uno:Copy")
+
+            with self.ui_test.execute_dialog_through_command(".uno:ParagraphDialog", close_button="cancel") as xDialog:
+                # Select area tab and click color button
+                xTabs = xDialog.getChild("tabcontrol")
+                select_pos(xTabs, "8")
+                xDialog.getChild("btncolor").executeAction("CLICK", tuple())
+
+                # Replace the content of the hex field with the clipboard content
+                xHex = xDialog.getChild("hex_custom")
+                xHex.executeAction("SELECT", mkPropertyValues({"FROM": "0", "TO": "6"}))
+                xHex.executeAction("TYPE", mkPropertyValues({"KEYCODE": "CTRL+v"}))
+
+                # Without the fix in place, this test would have failed with
+                # AssertionError: '49423a' != '49423'
+                # i.e. the last digit was truncated since the hash was counted towards the maximum length
+                self.assertEqual("49423a", get_state_as_dict(xHex)["Text"])
 
 
 # vim: set shiftwidth=4 softtabstop=4 expandtab:

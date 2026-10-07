@@ -1260,6 +1260,11 @@ void Edit::ImplPaste(css::uno::Reference<css::datatransfer::clipboard::XClipboar
         OUString aText;
         aData >>= aText;
 
+        // tdf#163161 - filter pasted text before checking it against maximum length,
+        // otherwise characters removed by the filter count towards the limit
+        if (mpFilterText)
+            aText = mpFilterText->filter(aText);
+
         // tdf#127588 - extend selection to the entire field or paste the text
         // from the clipboard to the current position if there is no selection
         if (mnMaxTextLen < EDIT_NOLIMIT && maSelection.Len() == 0)
@@ -2808,6 +2813,10 @@ void Edit::drop( const css::datatransfer::dnd::DropTargetDropEvent& rDTDE )
                 css::uno::Any aData = xDataObj->getTransferData(aFlavor);
                 OUString aText;
                 aData >>= aText;
+                // tdf#163161 - filter dropped text before checking it against maximum length,
+                // otherwise characters removed by the filter count towards the limit
+                if (mpFilterText)
+                    aText = mpFilterText->filter(aText);
                 ImplInsertText( aText );
                 bChanges = true;
                 Modify();
