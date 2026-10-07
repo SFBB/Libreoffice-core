@@ -25,7 +25,6 @@
 #include <sfx2/sidebar/SidebarDockingWindow.hxx>
 #include <sfx2/sidebar/SidebarController.hxx>
 #include <sfx2/viewsh.hxx>
-#include <comphelper/lok.hxx>
 #include <osl/diagnose.h>
 #include <vcl/weld/ScrolledWindow.hxx>
 
@@ -167,8 +166,7 @@ void LayoutPanels (
         nTotalPreferredHeight += rItem.maLayoutSize.Preferred;
     }
 
-    if (nTotalMinimumHeight > nAvailableHeight && !bShowVerticalScrollBar
-        && !comphelper::LibreOfficeKit::isActive())
+    if (nTotalMinimumHeight > nAvailableHeight && !bShowVerticalScrollBar)
     {
         // Not enough space, even when all panels are shrunk to their
         // minimum height.
