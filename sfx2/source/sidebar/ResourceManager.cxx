@@ -145,7 +145,7 @@ std::shared_ptr<DeckDescriptor> ResourceManager::GetDeckDescriptor(std::u16strin
     return ImplGetDeckDescriptor( rsDeckId );
 }
 
-std::shared_ptr<PanelDescriptor> ResourceManager::ImplGetPanelDescriptor(std::u16string_view rsPanelId) const
+std::shared_ptr<PanelDescriptor> ResourceManager::GetPanelDescriptor(std::u16string_view rsPanelId) const
 {
     for (auto const& panel : maPanels)
     {
@@ -153,11 +153,6 @@ std::shared_ptr<PanelDescriptor> ResourceManager::ImplGetPanelDescriptor(std::u1
             return panel;
     }
     return nullptr;
-}
-
-std::shared_ptr<PanelDescriptor> ResourceManager::GetPanelDescriptor(std::u16string_view rsPanelId) const
-{
-    return ImplGetPanelDescriptor( rsPanelId );
 }
 
 const ResourceManager::DeckContextDescriptorContainer& ResourceManager::GetMatchingDecks (

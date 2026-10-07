@@ -136,7 +136,6 @@ private:
                        const css::uno::Reference<css::frame::XController>& rxController);
 
     std::shared_ptr<DeckDescriptor> ImplGetDeckDescriptor(std::u16string_view rsDeckId) const;
-    std::shared_ptr<PanelDescriptor> ImplGetPanelDescriptor(std::u16string_view rsPanelId) const;
 };
 
 } // end of namespace sfx2::sidebar
