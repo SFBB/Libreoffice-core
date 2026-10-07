@@ -90,14 +90,14 @@ const sal_Int32 nCellHeight = 7; // one pixel is shared with the next cell!
 const sal_Int32 nBitmapWidth = (nCellWidth * nPreviewColumns) - (nPreviewColumns - 1);
 const sal_Int32 nBitmapHeight = (nCellHeight * nPreviewRows) - (nPreviewRows - 1);
 
-const std::u16string_view gPropNames[CB_COUNT] =
+constexpr OUString gPropNames[CB_COUNT] =
 {
-    u"UseFirstRowStyle",
-    u"UseLastRowStyle",
-    u"UseBandingRowStyle",
-    u"UseFirstColumnStyle",
-    u"UseLastColumnStyle",
-    u"UseBandingColumnStyle"
+    u"UseFirstRowStyle"_ustr,
+    u"UseLastRowStyle"_ustr,
+    u"UseBandingRowStyle"_ustr,
+    u"UseFirstColumnStyle"_ustr,
+    u"UseLastColumnStyle"_ustr,
+    u"UseBandingColumnStyle"_ustr
 };
 
 constexpr std::u16string_view aTableStyleBaseName = u"table";
@@ -116,7 +116,7 @@ TableDesignWidget::TableDesignWidget(weld::Builder& rBuilder, ViewShellBase& rBa
 
     for (sal_uInt16 i = CB_HEADER_ROW; i <= CB_BANDED_COLUMNS; ++i)
     {
-        m_aCheckBoxes[i] = rBuilder.weld_check_button(OUString(gPropNames[i]));
+        m_aCheckBoxes[i] = rBuilder.weld_check_button(gPropNames[i]);
         m_aCheckBoxes[i]->connect_toggled(LINK(this, TableDesignWidget, implCheckBoxHdl));
     }
 
@@ -652,7 +652,7 @@ void TableDesignWidget::updateControls()
         bool bUse = gDefaults[i];
         if( bHasTable ) try
         {
-            mxSelectedTable->getPropertyValue( OUString(gPropNames[i]) ) >>= bUse;
+            mxSelectedTable->getPropertyValue(gPropNames[i]) >>= bUse;
         }
         catch( Exception& )
         {
