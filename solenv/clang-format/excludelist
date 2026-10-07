@@ -10089,7 +10089,6 @@ sfx2/source/sidebar/DeckLayouter.cxx
 sfx2/source/sidebar/DeckTitleBar.cxx
 sfx2/source/sidebar/FocusManager.cxx
 sfx2/source/sidebar/IContextChangeReceiver.cxx
-sfx2/source/sidebar/ILayoutableWindow.cxx
 sfx2/source/sidebar/Panel.cxx
 sfx2/source/sidebar/PanelDescriptor.cxx
 sfx2/source/sidebar/PanelLayout.cxx

@@ -22,7 +22,6 @@
 
 #include "EventMultiplexer.hxx"
 #include <svtools/valueset.hxx>
-#include <sfx2/sidebar/ILayoutableWindow.hxx>
 #include <sfx2/sidebar/PanelLayout.hxx>
 #include <vcl/weld/Button.hxx>
 #include <vcl/weld/CheckButton.hxx>
@@ -60,7 +59,6 @@ struct TransitionEntry
 };
 
 class SlideTransitionPane final : public PanelLayout
-                          , public sfx2::sidebar::ILayoutableWindow
 {
 public:
     explicit SlideTransitionPane(
@@ -68,7 +66,6 @@ public:
         ViewShellBase & rBase);
     virtual ~SlideTransitionPane() override;
 
-    // ILayoutableWindow
     virtual css::ui::LayoutSize GetHeightForWidth (const sal_Int32 nWidth) override;
 
     void onSelectionChanged();

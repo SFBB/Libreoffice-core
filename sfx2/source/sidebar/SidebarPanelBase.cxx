@@ -17,7 +17,6 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 #include <sfx2/sidebar/SidebarPanelBase.hxx>
-#include <sfx2/sidebar/ILayoutableWindow.hxx>
 #include <sfx2/sidebar/IContextChangeReceiver.hxx>
 #include <sfx2/sidebar/PanelLayout.hxx>
 #include <sfx2/sidebar/SidebarModelUpdate.hxx>
@@ -162,16 +161,7 @@ ui::LayoutSize SAL_CALL SidebarPanelBase::getHeightForWidth (const sal_Int32 nWi
     if (maLayoutSize.Minimum >= 0)
         return maLayoutSize;
 
-    ILayoutableWindow* pLayoutableWindow = dynamic_cast<ILayoutableWindow*>(mxControl.get());
-    if (pLayoutableWindow)
-        return pLayoutableWindow->GetHeightForWidth(nWidth);
-    else
-    {
-        // widget layout-based sidebar
-        mxControl->queue_resize();
-        Size aSize(mxControl->get_preferred_size());
-        return ui::LayoutSize(aSize.Height(), aSize.Height(), aSize.Height());
-    }
+    return mxControl->GetHeightForWidth(nWidth);
 }
 
 sal_Int32 SAL_CALL SidebarPanelBase::getMinimalWidth ()

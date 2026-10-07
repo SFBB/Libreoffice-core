@@ -19,7 +19,6 @@
 
 #pragma once
 
-#include <sfx2/sidebar/ILayoutableWindow.hxx>
 #include <sfx2/sidebar/PanelLayout.hxx>
 #include <vcl/idle.hxx>
 #include <vcl/weld/Button.hxx>
@@ -50,16 +49,13 @@ class DrawController;
 
 typedef std::vector< rtl::Reference< MotionPathTag > > MotionPathTagVector;
 
-class CustomAnimationPane final : public PanelLayout
-                          , public sfx2::sidebar::ILayoutableWindow
-                          , public ICustomAnimationListController
+class CustomAnimationPane final : public PanelLayout, public ICustomAnimationListController
 {
     friend class MotionPathTag;
 public:
     CustomAnimationPane(weld::Widget* pParent, ViewShellBase& rBase);
     virtual ~CustomAnimationPane() override;
 
-    // ILayoutableWindow
     virtual css::ui::LayoutSize GetHeightForWidth (const sal_Int32 nWidth) override;
 
     // callbacks

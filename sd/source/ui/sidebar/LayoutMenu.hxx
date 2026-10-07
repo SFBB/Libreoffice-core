@@ -19,7 +19,6 @@
 
 #pragma once
 
-#include <sfx2/sidebar/ILayoutableWindow.hxx>
 #include <sfx2/sidebar/PanelLayout.hxx>
 
 #include <rtl/ref.hxx>
@@ -51,7 +50,7 @@ class SlotStateListener;
 
 namespace sd::sidebar
 {
-class LayoutMenu : public PanelLayout, public sfx2::sidebar::ILayoutableWindow
+class LayoutMenu : public PanelLayout
 {
 public:
     /** Create a new layout menu.  Depending on the given flag it
@@ -71,7 +70,6 @@ public:
     */
     AutoLayout GetSelectedAutoLayout() const;
 
-    // From ILayoutableWindow
     virtual css::ui::LayoutSize GetHeightForWidth(const sal_Int32 nWidth) override;
 
     /** Call this method when the set of displayed layouts is not up-to-date

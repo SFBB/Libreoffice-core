@@ -20,7 +20,6 @@
 #pragma once
 
 #include <svtools/valueset.hxx>
-#include <sfx2/sidebar/ILayoutableWindow.hxx>
 #include <sfx2/sidebar/PanelLayout.hxx>
 #include <vcl/weld/Builder.hxx>
 #include <vcl/weld/CheckButton.hxx>
@@ -110,7 +109,6 @@ private:
 };
 
 class TableDesignPane final : public PanelLayout
-                      , public sfx2::sidebar::ILayoutableWindow
 {
 private:
     std::unique_ptr<TableDesignWidget> m_xImpl;
