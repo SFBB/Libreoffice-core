@@ -23,21 +23,19 @@
 #include <svx/svxdllapi.h>
 #include <svx/xtable.hxx>
 #include <vcl/weld/ComboBox.hxx>
-#include <vcl/weld/customweld.hxx>
+#include <vcl/weld/IconView.hxx>
 
-class ValueSet;
 class SvxLineStyleToolBoxControl;
 
 class SvxLineBox final : public WeldToolbarPopup
 {
     rtl::Reference<SvxLineStyleToolBoxControl> mxControl;
-    std::unique_ptr<ValueSet> mxLineStyleSet;
-    std::unique_ptr<weld::CustomWeld> mxLineStyleSetWin;
+    std::unique_ptr<weld::IconView> mxLineStyleIconView;
 
     void FillControl();
     void Fill(const XDashListRef& pList);
 
-    DECL_LINK(SelectHdl, ValueSet*, void);
+    DECL_LINK(ItemActivatedHdl, const weld::TreeIter&, bool);
 
     virtual void GrabFocus() override;
 

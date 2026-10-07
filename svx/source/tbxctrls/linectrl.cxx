@@ -514,21 +514,18 @@ com_sun_star_comp_svx_LineEndToolBoxControl_get_implementation(
 SvxLineBox::SvxLineBox(SvxLineStyleToolBoxControl* pControl, weld::Widget* pParent, int nInitialIndex)
     : WeldToolbarPopup(pControl->getFrameInterface(), pParent, u"svx/ui/floatinglinestyle.ui"_ustr, u"FloatingLineStyle"_ustr)
     , mxControl(pControl)
-    , mxLineStyleSet(new ValueSet(m_xBuilder->weld_scrolled_window(u"valuesetwin"_ustr, true)))
-    , mxLineStyleSetWin(new weld::CustomWeld(*m_xBuilder, u"valueset"_ustr, *mxLineStyleSet))
+    , mxLineStyleIconView(m_xBuilder->weld_icon_view(u"iconview"_ustr))
 {
-    mxLineStyleSet->SetStyle(WB_FLATVALUESET | WB_ITEMBORDER | WB_3DLOOK | WB_NO_DIRECTSELECT);
-
     FillControl();
 
-    mxLineStyleSet->SelectItem(nInitialIndex + 1);
+    mxLineStyleIconView->select(nInitialIndex);
 
-    mxLineStyleSet->SetSelectHdl( LINK( this, SvxLineBox, SelectHdl ) );
+    mxLineStyleIconView->connect_item_activated(LINK(this, SvxLineBox, ItemActivatedHdl));
 }
 
 void SvxLineBox::GrabFocus()
 {
-    mxLineStyleSet->GrabFocus();
+    mxLineStyleIconView->grab_focus();
 }
 
 SvxLineBox::~SvxLineBox()
@@ -539,18 +536,31 @@ SvxLineBox::~SvxLineBox()
 
 void SvxLineBox::Fill( const XDashListRef &pList )
 {
-    mxLineStyleSet->Clear();
+    mxLineStyleIconView->clear();
 
     if( !pList.is() )
         return;
 
+    const Bitmap& rSolidLineBmp = pList->GetBitmapForUISolidLine();
+
     // entry for 'none'
-    mxLineStyleSet->InsertItem(1, Image(), pList->GetStringForUiNoLine());
+    // use a bitmap filled with field background color for it
+    ScopedVclPtr<VirtualDevice> pDev = VclPtr<VirtualDevice>::Create();
+    pDev->SetOutputSizePixel(rSolidLineBmp.GetSizePixel());
+    pDev->SetLineColor(Application::GetSettings().GetStyleSettings().GetFieldColor());
+    pDev->SetFillColor(pDev->GetLineColor());
+    pDev->DrawRect(pDev->GetOutputRectPixel());
+    Bitmap aEmptyBitmap = pDev->GetBitmap(Point(0, 0), pDev->GetOutputSizePixel());
+    mxLineStyleIconView->insert(0, nullptr, nullptr, &aEmptyBitmap, nullptr);
+    const OUString sUIStringNoLine = pList->GetStringForUiNoLine();
+    mxLineStyleIconView->set_item_accessible_name(0, sUIStringNoLine);
+    mxLineStyleIconView->set_item_tooltip_text(0, sUIStringNoLine);
 
     // entry for solid line
-    const auto& rBmp = pList->GetBitmapForUISolidLine();
-    Size aBmpSize = rBmp.GetSizePixel();
-    mxLineStyleSet->InsertItem(2, Image(rBmp), pList->GetStringForUiSolidLine());
+    mxLineStyleIconView->insert(1, nullptr, nullptr, &rSolidLineBmp, nullptr);
+    const OUString sUIStringSolidLine = pList->GetStringForUiSolidLine();
+    mxLineStyleIconView->set_item_accessible_name(1, sUIStringSolidLine);
+    mxLineStyleIconView->set_item_tooltip_text(1, sUIStringSolidLine);
 
     // entries for dashed lines
     tools::Long nCount = pList->Count();
@@ -559,34 +569,17 @@ void SvxLineBox::Fill( const XDashListRef &pList )
         const XDashEntry* pEntry = pList->GetDash(i);
         const Bitmap aBitmap = pList->GetUiBitmap(i);
 
-        mxLineStyleSet->InsertItem(i + 3, Image(aBitmap), pEntry->GetName());
+        mxLineStyleIconView->insert(i + 2, nullptr, nullptr, &aBitmap, nullptr);
+        const OUString sName = pEntry->GetName();
+        mxLineStyleIconView->set_item_accessible_name(i + 2, sName);
+        mxLineStyleIconView->set_item_tooltip_text(i + 2, sName);
     }
-
-    sal_uInt16 nLines = std::min( static_cast<sal_uInt16>(nCount + 2), sal_uInt16(MAX_LINES) );
-    mxLineStyleSet->SetLineCount(nLines);
-
-    WinBits nBits = mxLineStyleSet->GetStyle();
-    if ( nLines == mxLineStyleSet->GetItemCount() )
-        nBits &= ~WB_VSCROLL;
-    else
-        nBits |= WB_VSCROLL;
-    mxLineStyleSet->SetStyle( nBits );
-
-    Size aSize(aBmpSize);
-    aSize.AdjustWidth(6);
-    aSize.AdjustHeight(6);
-    aSize = mxLineStyleSet->CalcWindowSizePixel(aSize);
-    if (nBits & WB_VSCROLL)
-        aSize.AdjustWidth(mxLineStyleSet->GetScrollWidth());
-    mxLineStyleSet->GetDrawingArea()->set_size_request(aSize.Width(), aSize.Height());
-    mxLineStyleSet->SetOutputSizePixel(aSize);
 }
 
-IMPL_LINK_NOARG(SvxLineBox, SelectHdl, ValueSet*, void)
+IMPL_LINK(SvxLineBox, ItemActivatedHdl, const weld::TreeIter&, rIter, bool)
 {
     drawing::LineStyle eXLS;
-    sal_Int32 nPos = mxLineStyleSet->GetSelectedItemId();
-    --nPos; // ids start at 1, get the pos of the id
+    const sal_Int32 nPos = mxLineStyleIconView->get_iter_index_in_parent(rIter);
 
     switch ( nPos )
     {
@@ -636,6 +629,8 @@ IMPL_LINK_NOARG(SvxLineBox, SelectHdl, ValueSet*, void)
     mxControl->dispatchLineStyleCommand(u".uno:XLineStyle"_ustr, aArgs);
 
     mxControl->EndPopupMode();
+
+    return true;
 }
 
 void SvxLineBox::FillControl()
