@@ -1039,15 +1039,20 @@ void TableDesignWidget::FillDesignPreviewControl()
         }
 
         sal_Int32 nCount = mxTableFamily->getCount();
-        for( sal_Int32 nIndex = 0; nIndex < nCount; ++nIndex ) try
+        for (sal_Int32 nIndex = 0; nIndex < nCount; ++nIndex)
         {
-            Reference< XIndexAccess > xTableStyle( mxTableFamily->getByIndex( nIndex ), UNO_QUERY );
-            if( xTableStyle.is() )
-                m_xValueSet->InsertItem( sal::static_int_cast<sal_uInt16>( nIndex + 1 ), Image( CreateDesignPreview( xTableStyle, aSettings, bIsPageDark ) ) );
-        }
-        catch( Exception& )
-        {
-            TOOLS_WARN_EXCEPTION( "sd", "sd::TableDesignWidget::FillDesignPreviewControl()");
+            try
+            {
+                Reference<XIndexAccess> xTableStyle(mxTableFamily->getByIndex(nIndex), UNO_QUERY);
+                if (xTableStyle.is())
+                    m_xValueSet->InsertItem(
+                        sal::static_int_cast<sal_uInt16>(nIndex + 1),
+                        Image(CreateDesignPreview(xTableStyle, aSettings, bIsPageDark)));
+            }
+            catch (Exception&)
+            {
+                TOOLS_WARN_EXCEPTION("sd", "sd::TableDesignWidget::FillDesignPreviewControl()");
+            }
         }
         m_xValueSet->InsertItem(++nCount, Image(StockImage::Yes, BMP_INSERT_TABLESTYLE), SdResId(STR_INSERT_TABLESTYLE));
 
