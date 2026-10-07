@@ -369,7 +369,6 @@ def _SF_String__HashStr(string: str, algorithm: str) -> str:  # used by SF_Strin
 g_exportedScripts = ()
 
 if __name__ == "__main__":
-    """
     print(_SF_Platform('Architecture'))
     print(_SF_Platform('ComputerName'))
     print(_SF_Platform('CPUCount'))
@@ -392,13 +391,13 @@ if __name__ == "__main__":
     # _SF_Session__OpenURLInBrowser('https://docs.python.org/3/library/webbrowser.html')
     #
     js = """
-    """{"firstName": "John","lastName": "Smith","isAlive": true,"age": 27,
+    {"firstName": "John","lastName": "Smith","isAlive": true,"age": 27,
     "address": {"streetAddress": "21 2nd Street","city": "New York","state": "NY","postalCode": "10021-3100"},
     "phoneNumbers": [{"type": "home","number": "212 555-1234"},{"type": "office","number": "646 555-4567"}],
     "children": ["Q", "M", "G", "T"],"spouse": null}
     """
-    """arr = _SF_Dictionary__ImportFromJson(js)
-    print(arr)"""
+    arr = _SF_Dictionary__ImportFromJson(js)
+    print(arr)
     a = "/tmp/SF_YYY/zipped.odt"
     b = _SF_FileSystem__CompressToZip(a, "a", "/tmp/SF_XXX", "New")
     print(b)
