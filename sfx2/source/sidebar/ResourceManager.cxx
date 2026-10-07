@@ -126,7 +126,7 @@ void ResourceManager::InitDeckContext(const Context& rContext)
     }
 }
 
-std::shared_ptr<DeckDescriptor> ResourceManager::ImplGetDeckDescriptor(std::u16string_view rsDeckId) const
+std::shared_ptr<DeckDescriptor> ResourceManager::GetDeckDescriptor(std::u16string_view rsDeckId) const
 {
     for (auto const& deck : maDecks)
     {
@@ -138,11 +138,6 @@ std::shared_ptr<DeckDescriptor> ResourceManager::ImplGetDeckDescriptor(std::u16s
             return deck;
     }
     return nullptr;
-}
-
-std::shared_ptr<DeckDescriptor> ResourceManager::GetDeckDescriptor(std::u16string_view rsDeckId) const
-{
-    return ImplGetDeckDescriptor( rsDeckId );
 }
 
 std::shared_ptr<PanelDescriptor> ResourceManager::GetPanelDescriptor(std::u16string_view rsPanelId) const
