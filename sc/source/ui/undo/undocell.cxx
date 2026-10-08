@@ -18,6 +18,7 @@
  */
 
 #include <undocell.hxx>
+#include <svx/svdundo.hxx>
 
 #include <scitems.hxx>
 #include <editeng/editobj.hxx>

@@ -54,7 +54,6 @@ enum TableCheckBox : sal_uInt16
 class TableValueSet final : public ValueSet
 {
 private:
-    bool m_bModal;
     Link<const Point*, void> maContextMenuHandler;
 public:
     TableValueSet(std::unique_ptr<weld::ScrolledWindow> pScrolledWindow);
@@ -62,7 +61,6 @@ public:
     virtual void Resize() override;
     virtual void StyleUpdated() override;
     void updateSettings();
-    void setModal(bool bModal) { m_bModal = bModal; }
     void SetContextMenuHandler(const Link<const Point*, void>& rLink) { maContextMenuHandler = rLink; }
     static constexpr int getMaxRowCount() { return 3; }
 };

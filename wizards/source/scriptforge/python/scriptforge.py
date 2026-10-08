@@ -1220,6 +1220,9 @@ class SFScriptForge:
             else:
                 return False
 
+        def CompressToZip(self, filename, foldername, rootfolder = ''):
+            return self.ExecMethod(self.vbMethod, 'CompressToZip', filename, foldername, rootfolder)
+
         def CopyFile(self, source, destination, overwrite = True):
             return self.ExecMethod(self.vbMethod, 'CopyFile', source, destination, overwrite)
 
@@ -1241,11 +1244,17 @@ class SFScriptForge:
         def ExtensionFolder(self, extension):
             return self.ExecMethod(self.vbMethod, 'ExtensionFolder', extension)
 
+        def ExtractFromZip(self, filename, destination, source = ''):
+            return self.ExecMethod(self.vbMethod, 'ExtractFromZip', filename, destination, source)
+
         def FileExists(self, filename):
             return self.ExecMethod(self.vbMethod, 'FileExists', filename)
 
         def Files(self, foldername, filter = '', includesubfolders = False):
             return self.ExecMethod(self.vbMethod, 'Files', foldername, filter, includesubfolders)
+
+        def FilesInZip(self, filename, pattern = ''):
+            return self.ExecMethod(self.vbMethod, 'FilesInZip', filename, pattern)
 
         def FolderExists(self, foldername):
             return self.ExecMethod(self.vbMethod, 'FolderExists', foldername)
@@ -1283,6 +1292,14 @@ class SFScriptForge:
                 return self.SIMPLEEXEC(py, file, algorithm.lower())
             else:
                 return ''
+
+        def IsZipFile(self, filename):
+            py = ScriptForge.pythonhelpermodule + '$' + '_SF_FileSystem__IsZipFile'
+            if self.FileExists(filename):
+                file = self._ConvertFromUrl(filename)
+                return self.SIMPLEEXEC(py, file)
+            else:
+                return False
 
         def MoveFile(self, source, destination):
             return self.ExecMethod(self.vbMethod, 'MoveFile', source, destination)

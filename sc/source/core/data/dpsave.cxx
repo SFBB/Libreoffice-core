@@ -905,7 +905,7 @@ ScDPSaveDimension* ScDPSaveData::GetDimensionByName(const OUString& rName)
     for (auto const& iter : m_DimList)
     {
         if (iter->GetName() == rName && !iter->IsDataLayout() )
-            return &(*iter);
+            return iter.get();
     }
 
     return AppendNewDimension(rName, false);
@@ -916,7 +916,7 @@ ScDPSaveDimension* ScDPSaveData::GetExistingDimensionByName(std::u16string_view 
     for (auto const& iter : m_DimList)
     {
         if (iter->GetName() == rName && !iter->IsDataLayout() )
-            return &(*iter);
+            return iter.get();
     }
     return nullptr; // don't create new
 }
@@ -946,7 +946,7 @@ ScDPSaveDimension* ScDPSaveData::GetExistingDataLayoutDimension() const
     for (auto const& iter : m_DimList)
     {
         if ( iter->IsDataLayout() )
-            return &(*iter);
+            return iter.get();
     }
     return nullptr;
 }
@@ -1003,7 +1003,7 @@ ScDPSaveDimension* ScDPSaveData::GetFirstDimension(sheet::DataPilotFieldOrientat
     for (auto const& iter : m_DimList)
     {
         if (iter->GetOrientation() == eOrientation && !iter->IsDataLayout())
-            return &(*iter);
+            return iter.get();
     }
     return nullptr;
 }

@@ -35,8 +35,6 @@ class ItemView;
 class TreeIter;
 }
 
-class ValueSet;
-
 namespace chart
 {
 

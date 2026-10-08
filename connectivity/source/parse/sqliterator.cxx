@@ -769,7 +769,7 @@ void OSQLParseTreeIterator::getColumnRange( const OSQLParseNode* _pColumnRef,
                         OUString& _rTableRange,
                         OUString& _out_rColumnAliasIfPresent ) const
 {
-    lcl_getColumnRange( _pColumnRef, m_pImpl->m_xConnection, _rColumnName, _rTableRange, &*m_aSelectColumns, _out_rColumnAliasIfPresent );
+    lcl_getColumnRange( _pColumnRef, m_pImpl->m_xConnection, _rColumnName, _rTableRange, m_aSelectColumns.get(), _out_rColumnAliasIfPresent );
 }
 
 

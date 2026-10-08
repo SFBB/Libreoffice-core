@@ -19,6 +19,7 @@
 
 #include <memory>
 #include <scitems.hxx>
+#include <drawview.hxx>
 #include <editeng/eeitem.hxx>
 
 #include <svtools/colorcfg.hxx>

@@ -21,10 +21,10 @@
 
 #include <svtools/toolbarmenu.hxx>
 #include <svtools/popupwindowcontroller.hxx>
-#include <svtools/valueset.hxx>
+#include <tools/fldunit.hxx>
 #include <vcl/image.hxx>
+#include <vcl/weld/IconView.hxx>
 #include <vcl/weld/RadioButton.hxx>
-#include <vcl/weld/customweld.hxx>
 
 // enum to index light images
 #define FROM_TOP_LEFT       0
@@ -60,15 +60,12 @@ public:
 
 private:
     rtl::Reference<svt::PopupWindowController> mxControl;
-    std::unique_ptr<ValueSet> mxDirectionSet;
-    std::unique_ptr<weld::CustomWeld> mxDirectionSetWin;
+    std::unique_ptr<weld::IconView> mxDirectionIconView;
     std::unique_ptr<weld::RadioButton> mxPerspective;
     std::unique_ptr<weld::RadioButton> mxParallel;
 
-    Image       maImgDirection[9];
-
     DECL_LINK( SelectToolbarMenuHdl, weld::Toggleable&, void );
-    DECL_LINK( SelectValueSetHdl, ValueSet*, void );
+    DECL_LINK(IconViewItemActivatedHdl, const weld::TreeIter&, bool);
 
     void implSetDirection( sal_Int32 nSkew, bool bEnabled );
     void implSetProjection( sal_Int32 nProjection, bool bEnabled );
@@ -143,21 +140,21 @@ class ExtrusionLightingWindow final : public WeldToolbarPopup
 {
 private:
     rtl::Reference<svt::PopupWindowController> mxControl;
-    std::unique_ptr<ValueSet> mxLightingSet;
-    std::unique_ptr<weld::CustomWeld> mxLightingSetWin;
+    std::unique_ptr<weld::IconView> mxLightingIconView;
     std::unique_ptr<weld::RadioButton> mxBright;
     std::unique_ptr<weld::RadioButton> mxNormal;
     std::unique_ptr<weld::RadioButton> mxDim;
 
-    Image maImgLightingOff[9];
-    Image maImgLightingOn[9];
-    Image maImgLightingPreview[9];
+    Bitmap maImgLightingOff[9];
+    Bitmap maImgLightingOn[9];
+    Bitmap maImgLightingPreview[9];
 
     void    implSetIntensity( int nLevel, bool bEnabled );
     void    implSetDirection( int nDirection, bool bEnabled );
 
     DECL_LINK( SelectToolbarMenuHdl, weld::Toggleable&, void );
-    DECL_LINK( SelectValueSetHdl, ValueSet*, void );
+    DECL_LINK(IconViewItemActivatedHdl, const weld::TreeIter&, bool);
+
 public:
     ExtrusionLightingWindow(svt::PopupWindowController* pControl, weld::Widget* pParentWindow);
     virtual void GrabFocus() override;

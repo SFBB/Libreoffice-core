@@ -815,7 +815,7 @@ void SwOLENode::SetChanged()
     {
         CurrShell aCurr(&rShell);
 
-        if(rShell.VisArea().Overlaps(aFrameArea) && OUTDEV_WINDOW == rShell.GetOut()->GetOutDevType())
+        if(rShell.VisArea().Overlaps(aFrameArea) && rShell.GetWin())
         {
             // invalidate instead of painting
             rShell.GetWin()->Invalidate(aFrameArea.SVRect());

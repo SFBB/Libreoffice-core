@@ -33,7 +33,7 @@ namespace DOM
         // perhaps it would be helpful to know what the implementation should
         // do to answer this question...
         static rtl::Reference<CDOMImplementation> xDOMImplementation = new CDOMImplementation;
-        return &*xDOMImplementation;
+        return xDOMImplementation.get();
     }
 
     // there is just 1 static instance, so these must not delete it!

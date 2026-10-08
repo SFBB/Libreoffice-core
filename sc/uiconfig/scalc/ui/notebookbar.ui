@@ -8226,7 +8226,6 @@
                             <child>
                               <object class="GtkToolButton" id="btnViewViewRowColumnHeaders">
                                 <property name="visible">True</property>
-                                <property name="can-focus">False</property>
                                 <property name="action-name">.uno:ViewRowColumnHeaders</property>
                               </object>
                               <packing>
@@ -8251,7 +8250,6 @@
                             <child>
                               <object class="GtkToolButton" id="btnViewToggleSheetGrid">
                                 <property name="visible">True</property>
-                                <property name="can-focus">False</property>
                                 <property name="action-name">.uno:ToggleSheetGrid</property>
                               </object>
                               <packing>
@@ -8276,7 +8274,6 @@
                             <child>
                               <object class="GtkToolButton" id="btnViewMenubar">
                                 <property name="visible">True</property>
-                                <property name="can-focus">False</property>
                                 <property name="action-name">.uno:Menubar</property>
                               </object>
                               <packing>
@@ -8301,7 +8298,6 @@
                             <child>
                               <object class="GtkToolButton" id="btnViewInputLineVisible">
                                 <property name="visible">True</property>
-                                <property name="can-focus">False</property>
                                 <property name="action-name">.uno:InputLineVisible</property>
                               </object>
                               <packing>
@@ -8324,7 +8320,6 @@
                             <child>
                               <object class="GtkToolButton" id="btnViewViewValueHighlighting">
                                 <property name="visible">True</property>
-                                <property name="can-focus">False</property>
                                 <property name="action-name">.uno:ViewValueHighlighting</property>
                               </object>
                               <packing>
@@ -8347,7 +8342,6 @@
                             <child>
                               <object class="GtkToolButton" id="btnViewToggleFormula">
                                 <property name="visible">True</property>
-                                <property name="can-focus">False</property>
                                 <property name="action-name">.uno:ToggleFormula</property>
                               </object>
                               <packing>
@@ -8373,7 +8367,6 @@
                             <child>
                               <object class="GtkToolButton" id="btnViewChangeTheme">
                                 <property name="visible">True</property>
-                                <property name="can-focus">False</property>
                                 <property name="action-name">.uno:ChangeTheme</property>
                               </object>
                               <packing>
@@ -8449,7 +8442,6 @@
                             <child>
                               <object class="GtkToolButton" id="btnViewViewColumnRowHighlighting">
                                 <property name="visible">True</property>
-                                <property name="can-focus">False</property>
                                 <property name="action-name">.uno:ViewColumnRowHighlighting</property>
                               </object>
                               <packing>
@@ -8472,7 +8464,6 @@
                             <child>
                               <object class="GtkToolButton" id="btnViewViewHiddenColRow">
                                 <property name="visible">True</property>
-                                <property name="can-focus">False</property>
                                 <property name="action-name">.uno:ViewHiddenColRow</property>
                               </object>
                               <packing>
@@ -8495,7 +8486,6 @@
                             <child>
                               <object class="GtkToolButton" id="btnInsertDesignerDialog">
                                 <property name="visible">True</property>
-                                <property name="can-focus">False</property>
                                 <property name="action-name">.uno:DesignerDialog</property>
                               </object>
                               <packing>
@@ -8520,7 +8510,6 @@
                             <child>
                               <object class="GtkToolButton" id="btnViewSidebar">
                                 <property name="visible">True</property>
-                                <property name="can-focus">False</property>
                                 <property name="action-name">.uno:Sidebar</property>
                               </object>
                               <packing>

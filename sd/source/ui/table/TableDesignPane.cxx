@@ -110,7 +110,6 @@ TableDesignWidget::TableDesignWidget(weld::Builder& rBuilder, ViewShellBase& rBa
 {
     m_xValueSet->SetStyle(m_xValueSet->GetStyle() | WB_NO_DIRECTSELECT | WB_FLATVALUESET | WB_ITEMBORDER);
     m_xValueSet->SetExtraSpacing(8);
-    m_xValueSet->setModal(false);
     m_xValueSet->SetColor();
     m_xValueSet->SetSelectHdl(LINK(this, TableDesignWidget, implValueSetHdl));
     m_xValueSet->SetContextMenuHandler(LINK(this, TableDesignWidget, implContextMenuHandler));
@@ -622,20 +621,16 @@ void TableValueSet::Resize()
     SetColCount (static_cast<sal_uInt16>(nColumnCount));
     SetLineCount (static_cast<sal_uInt16>(nVisibleRowCount));
 
-    if( !m_bModal )
+    WinBits nStyle = GetStyle() & ~WB_VSCROLL;
+    if (nRowCount > nVisibleRowCount)
     {
-        WinBits nStyle = GetStyle() & ~WB_VSCROLL;
-        if( nRowCount > nVisibleRowCount )
-        {
-            nStyle |= WB_VSCROLL;
-        }
-        SetStyle( nStyle );
+        nStyle |= WB_VSCROLL;
     }
+    SetStyle(nStyle);
 }
 
 TableValueSet::TableValueSet(std::unique_ptr<weld::ScrolledWindow> pScrolledWindow)
     : ValueSet(std::move(pScrolledWindow))
-    , m_bModal(false)
 {
 }
 
@@ -646,12 +641,9 @@ void TableValueSet::StyleUpdated()
 
 void TableValueSet::updateSettings()
 {
-    if( !m_bModal )
-    {
-        Color aColor = Application::GetSettings().GetStyleSettings().GetWindowColor();
-        SetColor(aColor);
-        SetExtraSpacing(8);
-    }
+    Color aColor = Application::GetSettings().GetStyleSettings().GetWindowColor();
+    SetColor(aColor);
+    SetExtraSpacing(8);
 }
 
 void TableDesignWidget::updateControls()

@@ -22,6 +22,7 @@
 #include <comphelper/propertyvalue.hxx>
 #include <svtools/toolbarmenu.hxx>
 #include <vcl/toolbox.hxx>
+#include <vcl/virdev.hxx>
 #include <vcl/weld/Builder.hxx>
 #include <vcl/weld/ScrolledWindow.hxx>
 #include <vcl/weld/Toolbar.hxx>
@@ -119,30 +120,21 @@ ExtrusionDirectionWindow::ExtrusionDirectionWindow(
     weld::Widget* pParent)
     : WeldToolbarPopup(pControl->getFrameInterface(), pParent, u"svx/ui/directionwindow.ui"_ustr, u"DirectionWindow"_ustr)
     , mxControl(pControl)
-    , mxDirectionSet(new ValueSet(nullptr))
-    , mxDirectionSetWin(new weld::CustomWeld(*m_xBuilder, u"valueset"_ustr, *mxDirectionSet))
+    , mxDirectionIconView(m_xBuilder->weld_icon_view(u"iconview"_ustr))
     , mxPerspective(m_xBuilder->weld_radio_button(u"perspective"_ustr))
     , mxParallel(m_xBuilder->weld_radio_button(u"parallel"_ustr))
 {
-    mxDirectionSet->SetStyle(WB_TABSTOP | WB_MENUSTYLEVALUESET | WB_FLATVALUESET | WB_NOBORDER | WB_NO_DIRECTSELECT);
+    mxDirectionIconView->connect_item_activated(
+        LINK(this, ExtrusionDirectionWindow, IconViewItemActivatedHdl));
 
     for (sal_uInt16 i = DIRECTION_NW; i <= DIRECTION_SE; ++i)
     {
-        maImgDirection[i] = Image(StockImage::Yes, aDirectionBmps[i]);
+        const Bitmap aImgDirection = Image(StockImage::Yes, aDirectionBmps[i]).GetBitmap();
+        mxDirectionIconView->insert(i, nullptr, nullptr, &aImgDirection, nullptr);
+        const OUString sName = SvxResId(aDirectionStrs[i]);
+        mxDirectionIconView->set_item_accessible_name(i, sName);
+        mxDirectionIconView->set_item_tooltip_text(i, sName);
     }
-
-    mxDirectionSet->SetSelectHdl( LINK( this, ExtrusionDirectionWindow, SelectValueSetHdl ) );
-    mxDirectionSet->SetColCount( 3 );
-    mxDirectionSet->EnableFullItemMode( false );
-
-    for (sal_uInt16 i = DIRECTION_NW; i <= DIRECTION_SE; ++i)
-    {
-        mxDirectionSet->InsertItem(i + 1, maImgDirection[i], SvxResId(aDirectionStrs[i]));
-    }
-
-    Size aSize(72, 72);
-    mxDirectionSet->GetDrawingArea()->set_size_request(aSize.Width(), aSize.Height());
-    mxDirectionSet->SetOutputSizePixel(aSize);
 
     mxPerspective->connect_toggled(LINK(this, ExtrusionDirectionWindow, SelectToolbarMenuHdl));
 
@@ -150,10 +142,7 @@ ExtrusionDirectionWindow::ExtrusionDirectionWindow(
     AddStatusListener( g_sExtrusionProjection );
 }
 
-void ExtrusionDirectionWindow::GrabFocus()
-{
-    mxDirectionSet->GrabFocus();
-}
+void ExtrusionDirectionWindow::GrabFocus() { mxDirectionIconView->grab_focus(); }
 
 ExtrusionDirectionWindow::~ExtrusionDirectionWindow()
 {
@@ -170,17 +159,14 @@ void ExtrusionDirectionWindow::implSetDirection( sal_Int32 nSkew, bool bEnabled 
 
     if( nItemId <= DIRECTION_SE )
     {
-        mxDirectionSet->SelectItem( nItemId+1 );
+        mxDirectionIconView->select(nItemId);
     }
     else
     {
-        mxDirectionSet->SetNoSelection();
+        mxDirectionIconView->unselect_all();
     }
 
-    if (bEnabled)
-        mxDirectionSet->Enable();
-    else
-        mxDirectionSet->Disable();
+    mxDirectionIconView->set_sensitive(bEnabled);
 }
 
 void ExtrusionDirectionWindow::implSetProjection( sal_Int32 nProjection, bool bEnabled )
@@ -223,15 +209,17 @@ void ExtrusionDirectionWindow::statusChanged(
     }
 }
 
-IMPL_LINK_NOARG(ExtrusionDirectionWindow, SelectValueSetHdl, ValueSet*, void)
+IMPL_LINK(ExtrusionDirectionWindow, IconViewItemActivatedHdl, const weld::TreeIter&, rIter, bool)
 {
     Sequence< PropertyValue > aArgs{ comphelper::makePropertyValue(
         g_sExtrusionDirection.copy(5),
-        gSkewList[mxDirectionSet->GetSelectedItemId()-1]) };
+        gSkewList[mxDirectionIconView->get_iter_index_in_parent(rIter)]) };
 
     mxControl->dispatchCommand( g_sExtrusionDirection, aArgs );
 
     mxControl->EndPopupMode();
+
+    return true;
 }
 
 IMPL_LINK_NOARG(ExtrusionDirectionWindow, SelectToolbarMenuHdl, weld::Toggleable&, void)
@@ -594,44 +582,38 @@ ExtrusionLightingWindow::ExtrusionLightingWindow(svt::PopupWindowController* pCo
                                                  weld::Widget* pParent)
     : WeldToolbarPopup(pControl->getFrameInterface(), pParent, u"svx/ui/lightingwindow.ui"_ustr, u"LightingWindow"_ustr)
     , mxControl(pControl)
-    , mxLightingSet(new ValueSet(nullptr))
-    , mxLightingSetWin(new weld::CustomWeld(*m_xBuilder, u"valueset"_ustr, *mxLightingSet))
+    , mxLightingIconView(m_xBuilder->weld_icon_view(u"iconview"_ustr))
     , mxBright(m_xBuilder->weld_radio_button(u"bright"_ustr))
     , mxNormal(m_xBuilder->weld_radio_button(u"normal"_ustr))
     , mxDim(m_xBuilder->weld_radio_button(u"dim"_ustr))
 {
-    mxLightingSet->SetStyle(WB_TABSTOP | WB_MENUSTYLEVALUESET | WB_FLATVALUESET | WB_NOBORDER | WB_NO_DIRECTSELECT);
-
     for (sal_uInt16 i = FROM_TOP_LEFT; i <= FROM_BOTTOM_RIGHT; ++i)
     {
         if( i != FROM_FRONT )
         {
-            maImgLightingOff[i] = Image(StockImage::Yes, aLightOffBmps[i]);
-            maImgLightingOn[i] = Image(StockImage::Yes, aLightOnBmps[i]);
+            maImgLightingOff[i] = Image(StockImage::Yes, aLightOffBmps[i]).GetBitmap();
+            maImgLightingOn[i] = Image(StockImage::Yes, aLightOnBmps[i]).GetBitmap();
         }
-        maImgLightingPreview[i] = Image(StockImage::Yes, aLightPreviewBmps[i]);
+        maImgLightingPreview[i] = Image(StockImage::Yes, aLightPreviewBmps[i]).GetBitmap();
     }
 
-    mxLightingSet->SetHelpId( HID_VALUESET_EXTRUSION_LIGHTING );
+    mxLightingIconView->set_help_id(HID_VALUESET_EXTRUSION_LIGHTING);
 
-    mxLightingSet->SetSelectHdl( LINK( this, ExtrusionLightingWindow, SelectValueSetHdl ) );
-    mxLightingSet->SetColCount( 3 );
-    mxLightingSet->EnableFullItemMode( false );
+    mxLightingIconView->connect_item_activated(
+        LINK(this, ExtrusionLightingWindow, IconViewItemActivatedHdl));
 
-    for (sal_uInt16 i = FROM_TOP_LEFT; i <= FROM_BOTTOM_RIGHT; ++i)
+    for (int i = FROM_TOP_LEFT; i <= FROM_BOTTOM_RIGHT; ++i)
     {
         if( i != FROM_FRONT )
         {
-            mxLightingSet->InsertItem( i+1, maImgLightingOff[i] );
+            mxLightingIconView->insert(i, nullptr, nullptr, &maImgLightingOff[i], nullptr);
         }
         else
         {
-            mxLightingSet->InsertItem( 5, maImgLightingPreview[FROM_FRONT] );
+            mxLightingIconView->insert(4, nullptr, nullptr, &maImgLightingPreview[FROM_FRONT],
+                                       nullptr);
         }
     }
-    Size aSize(72, 72);
-    mxLightingSet->GetDrawingArea()->set_size_request(aSize.Width(), aSize.Height());
-    mxLightingSet->SetOutputSizePixel(aSize);
 
     mxBright->connect_toggled(LINK(this, ExtrusionLightingWindow, SelectToolbarMenuHdl));
     mxNormal->connect_toggled(LINK(this, ExtrusionLightingWindow, SelectToolbarMenuHdl));
@@ -641,10 +623,7 @@ ExtrusionLightingWindow::ExtrusionLightingWindow(svt::PopupWindowController* pCo
     AddStatusListener( g_sExtrusionLightingIntensity );
 }
 
-void ExtrusionLightingWindow::GrabFocus()
-{
-    mxLightingSet->GrabFocus();
-}
+void ExtrusionLightingWindow::GrabFocus() { mxLightingIconView->grab_focus(); }
 
 ExtrusionLightingWindow::~ExtrusionLightingWindow()
 {
@@ -665,26 +644,28 @@ void ExtrusionLightingWindow::implSetDirection( int nDirection, bool bEnabled )
     if( !bEnabled )
         nDirection = FROM_FRONT;
 
-    sal_uInt16 nItemId;
-    for( nItemId = FROM_TOP_LEFT; nItemId <= FROM_BOTTOM_RIGHT; nItemId++ )
+    for (int nItemIndex = FROM_TOP_LEFT; nItemIndex <= FROM_BOTTOM_RIGHT; nItemIndex++)
     {
-        if( nItemId == FROM_FRONT )
+        ScopedVclPtr<VirtualDevice> pDev = VclPtr<VirtualDevice>::Create();
+        if (nItemIndex == FROM_FRONT)
         {
-            mxLightingSet->SetItemImage( nItemId + 1, maImgLightingPreview[ nDirection ] );
+            pDev->SetOutputSizePixel(maImgLightingPreview[nDirection].GetSizePixel());
+            pDev->DrawBitmap(Point(), maImgLightingPreview[nDirection]);
         }
         else
         {
-            mxLightingSet->SetItemImage(
-                nItemId + 1,
-                static_cast<sal_uInt16>(nDirection) == nItemId ? maImgLightingOn[nItemId] : maImgLightingOff[nItemId]
-            );
+            const Bitmap& rBitmap = nDirection == nItemIndex ? maImgLightingOn[nItemIndex]
+                                                             : maImgLightingOff[nItemIndex];
+            pDev->SetOutputSizePixel(rBitmap.GetSizePixel());
+            pDev->DrawBitmap(Point(), rBitmap);
         }
+        mxLightingIconView->set_image(nItemIndex, *pDev);
     }
 
     if (bEnabled)
-        mxLightingSet->Enable();
+        mxLightingIconView->set_sensitive(true);
     else
-        mxLightingSet->Disable();
+        mxLightingIconView->set_sensitive(false);
 }
 
 void ExtrusionLightingWindow::statusChanged(
@@ -719,23 +700,21 @@ void ExtrusionLightingWindow::statusChanged(
     }
 }
 
-IMPL_LINK_NOARG(ExtrusionLightingWindow, SelectValueSetHdl, ValueSet*, void)
+IMPL_LINK(ExtrusionLightingWindow, IconViewItemActivatedHdl, const weld::TreeIter&, rIter, bool)
 {
-    sal_Int32 nDirection = mxLightingSet->GetSelectedItemId();
+    sal_Int32 nDirection = mxLightingIconView->get_iter_index_in_parent(rIter);
+    assert(nDirection >= 0 && nDirection < 9 && "Invalid index");
 
-    if( (nDirection > 0) && (nDirection < 10) )
-    {
-        nDirection--;
+    Sequence<PropertyValue> aArgs{ comphelper::makePropertyValue(
+        g_sExtrusionLightingDirection.copy(5), nDirection) };
 
-        Sequence< PropertyValue > aArgs{ comphelper::makePropertyValue(
-            g_sExtrusionLightingDirection.copy(5), nDirection) };
+    mxControl->dispatchCommand(g_sExtrusionLightingDirection, aArgs);
 
-        mxControl->dispatchCommand( g_sExtrusionLightingDirection, aArgs );
-
-        implSetDirection( nDirection, true );
-    }
+    implSetDirection(nDirection, true);
 
     mxControl->EndPopupMode();
+
+    return true;
 }
 
 IMPL_LINK(ExtrusionLightingWindow, SelectToolbarMenuHdl, weld::Toggleable&, rButton, void)

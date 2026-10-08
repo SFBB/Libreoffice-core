@@ -9,6 +9,7 @@
 
 #include "../helper/qahelper.hxx"
 #include <LibreOfficeKit/LibreOfficeKitEnums.h>
+#include <drawview.hxx>
 #include <drwlayer.hxx>
 #include <unotools/syslocaleoptions.hxx>
 #include <vcl/keycodes.hxx>

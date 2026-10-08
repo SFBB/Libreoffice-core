@@ -24,6 +24,7 @@
 #include <scmod.hxx>
 #include <sfx2/linkmgr.hxx>
 #include <tabvwsh.hxx>
+#include <tools/fldunit.hxx>
 #include <postit.hxx>
 
 using namespace com::sun::star;

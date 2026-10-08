@@ -1147,7 +1147,7 @@ void SwRedlineAcceptDlg::CallAcceptReject( bool bSelect, bool bAccept )
     // on the same text range, stored only in OOXML)
     if ( bMoreRedlines && aRedlines.size() == 1 )
     {
-        std::unique_ptr<weld::TreeIter> xChild(rTreeView.make_iterator( &*aRedlines[0] ));
+        std::unique_ptr<weld::TreeIter> xChild(rTreeView.make_iterator( aRedlines[0].get() ));
         RedlineData* pData = weld::fromId<RedlineData*>(rTreeView.get_id(*xChild));
         if ( pData->bDisabled )
             bMoreRedlines = false;
@@ -1188,7 +1188,7 @@ void SwRedlineAcceptDlg::CallAcceptReject( bool bSelect, bool bAccept )
 
         // handle redlines of table rows, stored as children of the item associated
         // to the deleted/inserted table row(s)
-        std::unique_ptr<weld::TreeIter> xChild(rTreeView.make_iterator( &*rRedLine ));
+        std::unique_ptr<weld::TreeIter> xChild(rTreeView.make_iterator( rRedLine.get() ));
         if ( rTreeView.iter_children(*xChild) )
         {
             RedlineData* pData = weld::fromId<RedlineData*>(rTreeView.get_id(*xChild));
@@ -1353,7 +1353,7 @@ IMPL_LINK_NOARG(SwRedlineAcceptDlg, GotoHdl, Timer *, void)
                 }
 
                 // select all redlines of tracked table rows
-                std::unique_ptr<weld::TreeIter> xChild(rTreeView.make_iterator( &*xActEntry ));
+                std::unique_ptr<weld::TreeIter> xChild(rTreeView.make_iterator( xActEntry.get() ));
                 if ( rTreeView.iter_children(*xChild) )
                 {
                     RedlineData *pData = reinterpret_cast<RedlineData*>(rTreeView.get_id(*xChild).toInt64());

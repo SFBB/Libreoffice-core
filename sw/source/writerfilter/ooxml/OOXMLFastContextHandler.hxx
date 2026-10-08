@@ -20,6 +20,7 @@
 #pragma once
 
 #include <set>
+#include <vector>
 #include <cppuhelper/implbase.hxx>
 #include <com/sun/star/uno/XComponentContext.hpp>
 #include <com/sun/star/xml/sax/XFastContextHandler.hpp>
@@ -595,6 +596,9 @@ protected:
 
     // should be private, but not much point in making deep copies of it
     oox::formulaimport::XmlStreamBuilder m_buffer;
+
+    // tdf#170236: comment ids referenced inside the formula, resolved in Math::process()
+    std::vector<sal_Int32> m_aCommentIds;
 
 private:
     int m_depthCount;

@@ -92,7 +92,7 @@ const TableStyle& TableProperties::getUsedTableStyle( const ::oox::core::XmlFilt
 
     TableStyle* pTableStyle = nullptr;
     if ( mpTableStyle )
-        pTableStyle = &*mpTableStyle;
+        pTableStyle = mpTableStyle.get();
     else if ( !getStyleId().isEmpty() && rBase.getTableStyles() )
     {
         const std::vector< TableStyle >& rTableStyles( rBase.getTableStyles()->getTableStyles() );

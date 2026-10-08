@@ -54,6 +54,14 @@ Option Explicit
 &apos;&apos;&apos;				The file manifest.xml is managed automatically.
 &apos;&apos;&apos;				The FileNaming setting is ignored.
 &apos;&apos;&apos;
+&apos;&apos;&apos;		The FileSystem service provides also simple methods to extract files from or load files
+&apos;&apos;&apos;		into archive (zip) files.
+&apos;&apos;&apos;		.odf and .oxt files being compressed files, direct vreation or update of such files (with care !) is made easy.
+&apos;&apos;&apos;		Note that multipart and encrypted zip files are not supported.
+&apos;&apos;&apos;
+&apos;&apos;&apos;		The service provides symbolic names for a number of system folders (home, LibreOffice install, ...)
+&apos;&apos;&apos;		that contribute to improving the portability of user scripts.
+&apos;&apos;&apos;
 &apos;&apos;&apos;		Service invocation example:
 &apos;&apos;&apos;			Dim FSO As Variant
 &apos;&apos;&apos;			Set FSO = CreateScriptService(&quot;FileSystem&quot;)
@@ -376,6 +384,96 @@ CatchNotSupported:
 	SF_Exception.RaiseFatal(FILESYSTEMERROR,  &quot;FileName&quot; &amp; iFile, Split(cstThisSub, &quot;.&quot;)(1), sFile)
 	GoTo Finally
 End Function    &apos;   ScriptForge.SF_FileSystem.CompareFiles
+
+REM -----------------------------------------------------------------------------
+Public Function CompressToZip(Optional ByVal FileName As Variant _
+							, Optional ByVal FolderName As Variant _
+							, Optional ByVal RootFolder As Variant _
+							) As Variant
+&apos;&apos;&apos;	Stores the content of Folder, including its subfolders, into a zip archive.
+&apos;&apos;&apos;	Encrypted archives are not supported.
+&apos;&apos;&apos;	The compressed files are stored optionally under a RootFolder.
+&apos;&apos;&apos;	Files existing already in the archive are not overwritten.
+&apos;&apos;&apos;	The method is not supported for document&apos;s internal file systems.
+&apos;&apos;&apos;	Args:
+&apos;&apos;&apos;		FileName: A string representing the zip file.
+&apos;&apos;&apos;			If it does not exist, the archive is created, oncluding its parent folders.
+&apos;&apos;&apos;			All files present in the archive are kept untouched.
+&apos;&apos;&apos;		FolderName: The folder to compress, as a string.
+&apos;&apos;&apos;			All files and subfolders are included. The Folder itself is not.
+&apos;&apos;&apos;		RootFolder: When absent, files and folders are loaded in the archive from the root (&quot;/&quot;).
+&apos;&apos;&apos;			When a RootFolder is given, as a string without path separator, they are stored below that folder.
+&apos;&apos;&apos;	Returns:
+&apos;&apos;&apos;		True when successful.
+&apos;&apos;&apos;		When False, an error message might be found in the console.
+&apos;&apos;&apos;	Exceptions:
+&apos;&apos;&apos;		UNKNOWNFOLDERERROR			Source folder does not exist
+&apos;&apos;&apos;		NOTAFOLDERERROR				The folder is a file, not a folder
+&apos;&apos;&apos;		FILESYSTEMERROR				The method is not applicable on document&apos;s file systems
+&apos;&apos;&apos;	Example:
+&apos;&apos;&apos;		a = SF_FileSystem.CompressToZip(&quot;C:\archive.zip&quot;, Folder := &quot;C:\Downloads&quot;)
+
+Dim bCompress As Boolean			&apos;	Return value
+Dim vCompress As Variant			&apos;	Returned from Python (True/False, error message)
+Dim sFile As String					&apos;	Alias of FileName
+Dim sMode As String					&apos;	a = append, file exists - x = exclusive read/write
+Dim sParentFolder As String			&apos;	Parent folder of FileName
+Dim vRootFolder As Variant			&apos;	Alias of RootFolder
+Const cstPyHelper = &quot;$&quot; &amp; &quot;_SF_FileSystem__CompressToZip&quot;
+Const cstThisSub = &quot;FileSystem.CompressToZip&quot;
+Const cstSubArgs = &quot;FileName, FolderName, [RootFolder=&quot;&quot;&quot;&quot;]&quot;
+
+	If SF_Utils._ErrorHandling() Then On Local Error GoTo Catch
+	bCompress = False
+
+Check:
+	If IsMissing(RootFolder) Or IsEmpty(RootFolder) Then RootFolder = &quot;&quot;
+	If SF_Utils._EnterFunction(cstThisSub, cstSubArgs) Then
+		If Not SF_Utils._ValidateFile(FileName, &quot;FileName&quot;) Then GoTo Finally
+		If Not SF_Utils._ValidateFile(FolderName, &quot;FolderName&quot;) Then GoTo Finally
+		If Not SF_Utils._Validate(RootFolder, &quot;RootFolder&quot;, V_STRING) Then GoTo Finally
+	End If
+	If SF_FileSystem._IsDocFileSystem(FileName) Then GoTo CatchNotSupported
+
+	If SF_FileSystem.FileExists(FolderName) Then GoTo CatchFileNotFolder
+	If Not SF_FileSystem.FolderExists(FolderName) Then GoTo CatchFolderNotExists
+
+Try:
+	With ScriptForge.SF_FileSystem
+		&apos;	Append (a) or exclusive create (x) mode ? Eventually, create parent folder
+		If .FileExists(FileName) Then
+			sMode = &quot;a&quot;
+		Else
+			sParentFolder = .GetParentFolderName(FileName)
+			If Not .FolderExists(sParentFolder) Then .CreateFolder(sParentFolder)
+			sMode = &quot;x&quot;
+		End If
+		If Len(RootFolder) &gt; 0 Then vRootFolder = RootFolder Else vRootFolder = Null
+		With ScriptForge.SF_Session
+			&apos;	Python requires OS notation for files and folders
+			vCompress = .ExecutePythonScript(.SCRIPTISSHARED, _SF_.PythonHelper &amp; cstPyHelper _
+							, _ConvertFromUrl(FileName), sMode, ConvertFromUrl(FolderName), vRootFolder)
+		End With
+		bCompress = vCompress(0)
+		If Not bCompress Then SF_Exception.DebugPrint(&quot;CompressToZip&quot;, vCompress(1))
+	End With
+
+Finally:
+	CompressToZip = bCompress
+	SF_Utils._ExitFunction(cstThisSub)
+	Exit Function
+Catch:
+	GoTo Finally
+CatchFolderNotExists:
+	SF_Exception.RaiseFatal(UNKNOWNFOLDERERROR, &quot;FolderName&quot;, FolderName)
+	GoTo Finally
+CatchFileNotFolder:
+	SF_Exception.RaiseFatal(NOTAFOLDERERROR, &quot;FolderName&quot;, FolderName)
+	GoTo Finally
+CatchNotSupported:
+	SF_Exception.RaiseFatal(FILESYSTEMERROR, &quot;FileName&quot;, Split(cstThisSub, &quot;.&quot;)(1), FileName)
+	GoTo Finally
+End Function    &apos;   ScriptForge.SF_FileSystem.CompressToZip
 
 REM -----------------------------------------------------------------------------
 Public Function CopyFile(Optional ByVal Source As Variant _
@@ -726,6 +824,85 @@ Catch:
 End Function	&apos;	ScriptForge.SF_FileSystem.ExtensionFolder
 
 REM -----------------------------------------------------------------------------
+Public Function ExtractFromZip(Optional ByVal FileName As Variant _
+							, Optional ByVal Destination As Variant _
+							, Optional ByVal Source As Variant _
+							) As Variant
+&apos;&apos;&apos;	Extracts a list of files contained in a zip container and stores them in a folder.
+&apos;&apos;&apos;	The process ends at the first error. Existing files are overwritten without warning.
+&apos;&apos;&apos;	The method is not supported for document&apos;s internal file systems.
+&apos;&apos;&apos;	Args:
+&apos;&apos;&apos;		FileName: A string representing a zip file
+&apos;&apos;&apos;		Destination: The folder where to extract the compressed files to.
+&apos;&apos;&apos;			Existing files with the same names are overwritten. Other files stay untouched.
+&apos;&apos;&apos;			When the folder does not exist, it is created, as are subfolders.
+&apos;&apos;&apos;		Source: A single string or an array of strings with valid names of files contained in the zip file
+&apos;&apos;&apos;			When Source is omitted, is an empty array or an empty string, all the files and folders are extracted.
+&apos;&apos;&apos;	Returns:
+&apos;&apos;&apos;		True when successful.
+&apos;&apos;&apos;		When False, an error message might be found in the console.
+&apos;&apos;&apos;	Exceptions:
+&apos;&apos;&apos;		UNKNOWNFILEERROR	The file does not exist or is a folder
+&apos;&apos;&apos;		FILESYSTEMERROR		The method is not applicable on document&apos;s file systems
+&apos;&apos;&apos;	Example:
+&apos;&apos;&apos;		a = SF_FileSystem.ExtractFromZip(&quot;C:\writerdoc.odt&quot;, Source := Array(&quot;content.xml&quot;, &quot;meta.xml&quot;), Desctination := &quot;C:\TEMP&quot;)
+
+Dim bExtract As Boolean				&apos;	Return value
+Dim vExtract As Variant				&apos;	Returned from Python (True/False, error message)
+Dim vSource As Variant				&apos;	Alias of Source
+Const cstPyHelper = &quot;$&quot; &amp; &quot;_SF_FileSystem__ExtractFromZip&quot;
+Const cstThisSub = &quot;FileSystem.ExtractFromZip&quot;
+Const cstSubArgs = &quot;FileName, Destination, [Source=&quot;&quot;&quot;&quot;]&quot;
+
+	If SF_Utils._ErrorHandling() Then On Local Error GoTo Catch
+	bExtract = False
+
+Check:
+	If IsMissing(Source) Or IsEmpty(Source) Then Source = &quot;&quot;
+	If SF_Utils._EnterFunction(cstThisSub, cstSubArgs) Then
+		If Not SF_Utils._ValidateFile(FileName, &quot;FileName&quot;) Then GoTo Finally
+		If Not SF_Utils._ValidateFile(Destination, &quot;Destination&quot;) Then GoTo Finally
+		If IsArray(Source) Then
+			If Not SF_Utils._ValidateArray(Source, &quot;Source&quot;, 1, V_STRING) Then GoTo Finally
+		Else
+			If Not SF_Utils._Validate(Source, &quot;Source&quot;, V_STRING) Then GoTo Finally
+		End If
+	End If
+	If SF_FileSystem._IsDocFileSystem(FileName) Then GoTo CatchNotSupported
+
+Try:
+	If SF_FileSystem.FileExists(FileName) Then
+		With ScriptForge.SF_Session
+			&apos;	Be sure to pass an array to the Python script
+			If Not IsArray(Source) Then
+				If Len(Source) = 0 Then vSource = Array() Else vSource = Array(Source)
+			Else
+				vSource = Source
+			End If
+			vExtract = .ExecutePythonScript(.SCRIPTISSHARED, _SF_.PythonHelper &amp; cstPyHelper _
+							, _ConvertFromUrl(FileName), Destination, vSource)
+			bExtract = vExtract(0)
+			If Not bExtract Then SF_Exception.DebugPrint(&quot;ExtractFromZip&quot;, vExtract(1))
+		End With
+	Else
+		GoTo CatchNotExists
+	End If
+
+Finally:
+	ExtractFromZip = bExtract
+	SF_Utils._ExitFunction(cstThisSub)
+	Exit Function
+Catch:
+	GoTo Finally
+CatchNotExists:
+	SF_Exception.RaiseFatal(UNKNOWNFILEERROR, &quot;FileName&quot;, FileName)
+	GoTo Finally
+CatchNotSupported:
+	SF_Exception.RaiseFatal(FILESYSTEMERROR, &quot;FileName&quot;, Split(cstThisSub, &quot;.&quot;)(1), FileName)
+	GoTo Finally
+End Function    &apos;   ScriptForge.SF_FileSystem.ExtractFromZip
+
+REM -----------------------------------------------------------------------------
 Public Function FileExists(Optional ByVal FileName As Variant) As Boolean
 &apos;&apos;&apos;	Return True if the given file exists
 &apos;&apos;&apos;	Args:
@@ -828,6 +1005,74 @@ CatchFolder:
 	SF_Exception.RaiseFatal(UNKNOWNFOLDERERROR, &quot;FolderName&quot;, FolderName)
 	GoTo Finally
 End Function    &apos;   ScriptForge.SF_FileSystem.Files
+
+REM -----------------------------------------------------------------------------
+Public Function FilesInZip(Optional ByVal FileName As Variant _
+							, Optional ByVal Pattern As Variant _
+							) As Variant
+&apos;&apos;&apos;	Returns The list of the files contained in a zip container.
+&apos;&apos;&apos;	The list of names may optionally be filtered.
+&apos;&apos;&apos;	The method is not supported for document&apos;s internal file systems.
+&apos;&apos;&apos;	Args:
+&apos;&apos;&apos;		FileName: A string representing a zip file
+&apos;&apos;&apos;		Pattern: A pattern as a not case-sensitive string containing 0 or more wildcards
+&apos;&apos;&apos;			Admitted wildcard are:	the &quot;?&quot; represents any single character
+&apos;&apos;&apos;									the &quot;*&quot; represents zero, one, or multiple characters
+&apos;&apos;&apos;	Returns:
+&apos;&apos;&apos;		An unordered array of file names without a heading slash.
+&apos;&apos;&apos;		The path separator is always the slash (&quot;/&quot;), also on Windows.
+&apos;&apos;&apos;		The list may be filtered with a name pattern. Without pattern, all files are returned.
+&apos;&apos;&apos;		The resulting array may be empty.
+&apos;&apos;&apos;		An empty array is returned when the file is not a valid zip file.
+&apos;&apos;&apos;	Exceptions:
+&apos;&apos;&apos;		UNKNOWNFILEERROR	The file does not exist or is a folder
+&apos;&apos;&apos;		FILESYSTEMERROR		The method is not applicable on document&apos;s file systems
+&apos;&apos;&apos;	Example:
+&apos;&apos;&apos;		a = SF_FileSystem.FilesInZip(&quot;C:\writerdoc.odt&quot;, Pattern := &quot;*.xml&quot;)
+
+Dim vFiles As Variant				&apos;	Return value
+Const cstPyHelper = &quot;$&quot; &amp; &quot;_SF_FileSystem__FilesInZip&quot;
+Const cstThisSub = &quot;FileSystem.FilesInZip&quot;
+Const cstSubArgs = &quot;FileName, [Pattern=&quot;&quot;&quot;&quot;]&quot;
+
+	If SF_Utils._ErrorHandling() Then On Local Error GoTo Catch
+	vFiles = Array()
+
+Check:
+	If IsMissing(Pattern) Or IsEmpty(Pattern) Then Pattern = &quot;&quot;
+	If SF_Utils._EnterFunction(cstThisSub, cstSubArgs) Then
+		If Not SF_Utils._ValidateFile(FileName, &quot;FileName&quot;) Then GoTo Finally
+		If Not SF_Utils._Validate(Pattern, &quot;Pattern&quot;, V_STRING) Then GoTo Finally
+	End If
+	If SF_FileSystem._IsDocFileSystem(FileName) Then GoTo CatchNotSupported
+
+Try:
+	If SF_FileSystem.FileExists(FileName) Then
+		With ScriptForge.SF_Session
+			vFiles = .ExecutePythonScript(.SCRIPTISSHARED, _SF_.PythonHelper &amp; cstPyHelper _
+							, _ConvertFromUrl(FileName))
+		End With
+		&apos;	Filter files based on pattern
+		If Len(Pattern) &gt; 0 And UBound(vFiles) &gt; -1 Then
+			vFiles = ScriptForge.SF_Array.Filter(ScriptForge.SF_String, &quot;IsLike&quot;, vFiles, Pattern, False)
+		End If
+	Else
+		GoTo CatchNotExists
+	End If
+
+Finally:
+	FilesInZip = vFiles
+	SF_Utils._ExitFunction(cstThisSub)
+	Exit Function
+Catch:
+	GoTo Finally
+CatchNotExists:
+	SF_Exception.RaiseFatal(UNKNOWNFILEERROR, &quot;FileName&quot;, FileName)
+	GoTo Finally
+CatchNotSupported:
+	SF_Exception.RaiseFatal(FILESYSTEMERROR, &quot;FileName&quot;, Split(cstThisSub, &quot;.&quot;)(1), FileName)
+	GoTo Finally
+End Function    &apos;   ScriptForge.SF_FileSystem.FilesInZip
 
 REM -----------------------------------------------------------------------------
 Public Function FolderExists(Optional ByVal FolderName As Variant) As Boolean
@@ -1294,11 +1539,64 @@ CatchNotSupported:
 End Function    &apos;   ScriptForge.SF_FileSystem.HashFile
 
 REM -----------------------------------------------------------------------------
+Public Function IsZipFile(Optional ByVal FileName As Variant) As Boolean
+&apos;&apos;&apos;	Returns True if filename is a valid ZIP file based on its magic number.
+&apos;&apos;&apos;	The method is not supported for document&apos;s internal file systems.
+&apos;&apos;&apos;	Args:
+&apos;&apos;&apos;		FileName: a string representing a file
+&apos;&apos;&apos;	Returns:
+&apos;&apos;&apos;		True when FileName is a valid zip file. Otherwise False.
+&apos;&apos;&apos;	Exceptions:
+&apos;&apos;&apos;		UNKNOWNFILEERROR	The file does not exist or is a folder
+&apos;&apos;&apos;		FILESYSTEMERROR		The method is not applicable on document&apos;s file systems
+&apos;&apos;&apos;	Example:
+&apos;&apos;&apos;		MsgBox SF_FileSystem.IsZipFile(&quot;C:\writerdoc.odt&quot;)
+
+Dim bIsZip As Boolean				&apos;	Return value
+Const cstPyHelper = &quot;$&quot; &amp; &quot;_SF_FileSystem__IsZipFile&quot;
+Const cstThisSub = &quot;FileSystem.IsZipFile&quot;
+Const cstSubArgs = &quot;FileName&quot;
+
+	If SF_Utils._ErrorHandling() Then On Local Error GoTo Catch
+	bIsZip = False
+
+Check:
+	If SF_Utils._EnterFunction(cstThisSub, cstSubArgs) Then
+		If Not SF_Utils._ValidateFile(FileName, &quot;FileName&quot;) Then GoTo Finally
+	End If
+	If SF_FileSystem._IsDocFileSystem(FileName) Then GoTo CatchNotSupported
+
+Try:
+	If SF_FileSystem.FileExists(FileName) Then
+		With ScriptForge.SF_Session
+			bIsZip = .ExecutePythonScript(.SCRIPTISSHARED, _SF_.PythonHelper &amp; cstPyHelper _
+							, _ConvertFromUrl(FileName))
+		End With
+	Else
+		GoTo CatchNotExists
+	End If
+
+Finally:
+	IsZipFile = bIsZip
+	SF_Utils._ExitFunction(cstThisSub)
+	Exit Function
+Catch:
+	GoTo Finally
+CatchNotExists:
+	SF_Exception.RaiseFatal(UNKNOWNFILEERROR, &quot;FileName&quot;, FileName)
+	GoTo Finally
+CatchNotSupported:
+	SF_Exception.RaiseFatal(FILESYSTEMERROR, &quot;FileName&quot;, Split(cstThisSub, &quot;.&quot;)(1), FileName)
+	GoTo Finally
+End Function    &apos;   ScriptForge.SF_FileSystem.IsZipFile
+
+REM -----------------------------------------------------------------------------
 Public Function Methods() As Variant
 &apos;&apos;&apos;	Return the list or methods of the FileSystem service as an array
 
 	Methods = Array(&quot;BuildPath&quot; _
 					, &quot;CompareFiles&quot; _
+					, &quot;CompressToZip&quot; _
 					, &quot;CopyFile&quot; _
 					, &quot;CopyFolder&quot; _
 					, &quot;CreateFolder&quot; _
@@ -1306,8 +1604,10 @@ Public Function Methods() As Variant
 					, &quot;DeleteFile&quot; _
 					, &quot;DeleteFolder&quot; _
 					, &quot;ExtensionFolder&quot; _
+					, &quot;ExtractFromZip&quot; _
 					, &quot;FileExists&quot; _
 					, &quot;Files&quot; _
+					, &quot;FilesInZip&quot; _
 					, &quot;FolderExists&quot; _
 					, &quot;GetBaseName&quot; _
 					, &quot;GetExtension&quot; _
@@ -1317,6 +1617,7 @@ Public Function Methods() As Variant
 					, &quot;GetParentFolderName&quot; _
 					, &quot;GetTempName&quot; _
 					, &quot;HashFile&quot; _
+					, &quot;IsZipFile&quot; _
 					, &quot;MoveFile&quot; _
 					, &quot;MoveFolder&quot; _
 					, &quot;Normalize&quot; _

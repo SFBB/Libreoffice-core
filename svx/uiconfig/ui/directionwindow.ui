@@ -1,52 +1,51 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Generated with glade 3.22.1 -->
+<!-- Generated with glade 3.40.0 -->
 <interface domain="svx">
   <requires lib="gtk+" version="3.24"/>
+  <object class="GtkTreeStore" id="iconview_model">
+    <columns>
+      <!-- column-name pixbuf -->
+      <column type="GdkPixbuf"/>
+      <!-- column-name id -->
+      <column type="gchararray"/>
+      <!-- column-name tooltip -->
+      <column type="gchararray"/>
+    </columns>
+  </object>
   <object class="GtkImage" id="image1">
     <property name="visible">True</property>
-    <property name="can_focus">False</property>
-    <property name="icon_name">svx/res/perspective_16.png</property>
+    <property name="can-focus">False</property>
+    <property name="icon-name">svx/res/perspective_16.png</property>
   </object>
   <object class="GtkImage" id="image2">
     <property name="visible">True</property>
-    <property name="can_focus">False</property>
-    <property name="icon_name">svx/res/parallel_16.png</property>
+    <property name="can-focus">False</property>
+    <property name="icon-name">svx/res/parallel_16.png</property>
   </object>
   <object class="GtkPopover" id="DirectionWindow">
-    <property name="can_focus">False</property>
-    <property name="no_show_all">True</property>
-    <property name="border_width">4</property>
+    <property name="can-focus">False</property>
+    <property name="no-show-all">True</property>
+    <property name="border-width">4</property>
     <property name="constrain-to">none</property>
     <child>
       <object class="GtkBox" id="container">
         <property name="visible">True</property>
-        <property name="can_focus">False</property>
+        <property name="can-focus">False</property>
         <property name="orientation">vertical</property>
         <property name="spacing">6</property>
         <child>
-          <object class="GtkScrolledWindow" id="valuesetwin">
+          <object class="GtkIconView" id="iconview">
             <property name="visible">True</property>
-            <property name="can_focus">True</property>
-            <property name="hexpand">True</property>
-            <property name="vexpand">True</property>
-            <property name="hscrollbar_policy">never</property>
-            <property name="vscrollbar_policy">never</property>
-            <property name="shadow_type">in</property>
-            <child>
-              <object class="GtkViewport">
-                <property name="visible">True</property>
-                <property name="can_focus">False</property>
-                <child>
-                  <object class="GtkDrawingArea" id="valueset">
-                    <property name="visible">True</property>
-                    <property name="can_focus">True</property>
-                    <property name="events">GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK | GDK_KEY_PRESS_MASK | GDK_KEY_RELEASE_MASK | GDK_STRUCTURE_MASK</property>
-                    <property name="hexpand">True</property>
-                    <property name="vexpand">True</property>
-                  </object>
-                </child>
-              </object>
-            </child>
+            <property name="can-focus">True</property>
+            <property name="margin">6</property>
+            <property name="model">iconview_model</property>
+            <property name="columns">3</property>
+            <property name="row-spacing">0</property>
+            <property name="column-spacing">0</property>
+            <property name="pixbuf-column">0</property>
+            <property name="tooltip-column">2</property>
+            <property name="item-padding">3</property>
+            <property name="activate-on-single-click">True</property>
           </object>
           <packing>
             <property name="expand">False</property>
@@ -58,13 +57,13 @@
           <object class="GtkRadioButton" id="perspective">
             <property name="label" translatable="yes" context="directionwindow|RID_SVXSTR_PERSPECTIVE">_Perspective</property>
             <property name="visible">True</property>
-            <property name="can_focus">True</property>
-            <property name="receives_default">False</property>
+            <property name="can-focus">True</property>
+            <property name="receives-default">False</property>
             <property name="image">image1</property>
-            <property name="use_underline">True</property>
-            <property name="always_show_image">True</property>
+            <property name="use-underline">True</property>
+            <property name="always-show-image">True</property>
             <property name="active">True</property>
-            <property name="draw_indicator">True</property>
+            <property name="draw-indicator">True</property>
           </object>
           <packing>
             <property name="expand">False</property>
@@ -76,12 +75,12 @@
           <object class="GtkRadioButton" id="parallel">
             <property name="label" translatable="yes" context="dockingwindow|RID_SVXSTR_PARALLEL">P_arallel</property>
             <property name="visible">True</property>
-            <property name="can_focus">True</property>
-            <property name="receives_default">False</property>
+            <property name="can-focus">True</property>
+            <property name="receives-default">False</property>
             <property name="image">image2</property>
-            <property name="use_underline">True</property>
-            <property name="always_show_image">True</property>
-            <property name="draw_indicator">True</property>
+            <property name="use-underline">True</property>
+            <property name="always-show-image">True</property>
+            <property name="draw-indicator">True</property>
             <property name="group">perspective</property>
           </object>
           <packing>

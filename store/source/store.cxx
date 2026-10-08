@@ -105,7 +105,7 @@ storeError store_createMemoryFile (
     Reference<OStorePageManager> xManager (new OStorePageManager());
 
     eErrCode = xManager->initialize (
-        &*xLockBytes, storeAccessMode::Create, nPageSize);
+        xLockBytes.get(), storeAccessMode::Create, nPageSize);
     if (eErrCode != store_E_None)
         return eErrCode;
 
@@ -137,7 +137,7 @@ storeError store_openFile (
 
     Reference<OStorePageManager> xManager (new OStorePageManager());
     eErrCode = xManager->initialize (
-        &*xLockBytes, eAccessMode, nPageSize);
+        xLockBytes.get(), eAccessMode, nPageSize);
     if (eErrCode != store_E_None)
         return eErrCode;
 
@@ -201,7 +201,7 @@ storeError store_openDirectory (
     OString aPath (pPath->buffer, pPath->length, RTL_TEXTENCODING_UTF8);
     OString aName (pName->buffer, pName->length, RTL_TEXTENCODING_UTF8);
 
-    eErrCode = xDirectory->create (&*xManager, aPath.pData, aName.pData, eAccessMode);
+    eErrCode = xDirectory->create (xManager.get(), aPath.pData, aName.pData, eAccessMode);
     if (eErrCode != store_E_None)
         return eErrCode;
 
@@ -279,7 +279,7 @@ storeError store_openStream (
     OString aPath (pPath->buffer, pPath->length, RTL_TEXTENCODING_UTF8);
     OString aName (pName->buffer, pName->length, RTL_TEXTENCODING_UTF8);
 
-    eErrCode = xLockBytes->create (&*xManager, aPath.pData, aName.pData, eAccessMode);
+    eErrCode = xLockBytes->create (xManager.get(), aPath.pData, aName.pData, eAccessMode);
     if (eErrCode != store_E_None)
         return eErrCode;
 

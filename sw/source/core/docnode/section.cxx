@@ -1037,7 +1037,7 @@ static void lcl_BreakSectionLinksInSect( const SwSectionNode& rSectNd )
     const ::sfx2::SvBaseLinks& rLnks = rSectNd.GetDoc().getIDocumentLinksAdministration().GetLinkManager().GetLinks();
     for ( auto n = rLnks.size(); n > 0; )
     {
-        SwIntrnlSectRefLink* pSectLnk = dynamic_cast<SwIntrnlSectRefLink*>(&(*rLnks[ --n ]));
+        SwIntrnlSectRefLink* pSectLnk = dynamic_cast<SwIntrnlSectRefLink*>(rLnks[ --n ].get());
         if ( pSectLnk && pSectLnk != pOwnLink &&
              pSectLnk->IsInRange( rSectNd.GetIndex(), rSectNd.EndOfSectionIndex() ) )
         {
@@ -1071,7 +1071,7 @@ static void lcl_UpdateLinksInSect( const SwBaseLink& rUpdLnk, SwSectionNode& rSe
     const ::sfx2::SvBaseLinks& rLnks = rDoc.getIDocumentLinksAdministration().GetLinkManager().GetLinks();
     for( auto n = rLnks.size(); n; )
     {
-        ::sfx2::SvBaseLink* pLnk = &(*rLnks[ --n ]);
+        ::sfx2::SvBaseLink* pLnk = rLnks[ --n ].get();
         if( pLnk == &rUpdLnk )
             continue;
         if( sfx2::SvBaseLinkObjectType::ClientFile != pLnk->GetObjType() )
@@ -1091,11 +1091,11 @@ static void lcl_UpdateLinksInSect( const SwBaseLink& rUpdLnk, SwSectionNode& rSe
                 if( n >= rLnks.size() && 0 != ( n = rLnks.size() ))
                     --n;
 
-                if( n && pLnk != &(*rLnks[ n ]) )
+                if( n && pLnk != rLnks[ n ].get() )
                 {
                     // Find - it can only precede it!
                     while( n )
-                        if( pLnk == &(*rLnks[ --n ] ) )
+                        if( pLnk == rLnks[ --n ].get() )
                             break;
                 }
             }
