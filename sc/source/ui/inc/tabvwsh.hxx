@@ -382,7 +382,7 @@ public:
 
     ScNavigatorSettings*    GetNavigatorSettings();
 
-    // Drucken:
+    // Printing:
     virtual SfxPrinter*     GetPrinter( bool bCreate = false ) override;
     virtual sal_uInt16      SetPrinter( SfxPrinter* pNewPrinter,
                                           SfxPrinterChangeFlags nDiffFlags = SFX_PRINTER_ALL ) override;
