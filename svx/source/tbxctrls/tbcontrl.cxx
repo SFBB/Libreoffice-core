@@ -569,8 +569,6 @@ public:
 
     const Color& GetColor() const { return m_aColor; }
 
-    virtual void SetDrawingArea(weld::DrawingArea* pDrawingArea) override;
-
     void SetItemActivatedHdl(const Link<std::optional<SvxBorderLineStyle>, void>& rLink)
     {
         m_aItemActivatedHdl = rLink;
@@ -685,16 +683,6 @@ LineListBox::LineListBox()
     SetSelectHdl(LINK(this, LineListBox, SelectHdl));
 }
 
-void LineListBox::SetDrawingArea(weld::DrawingArea* pDrawingArea)
-{
-    ValueSet::SetDrawingArea(pDrawingArea);
-
-    OutputDevice& rDevice = pDrawingArea->get_ref_device();
-
-    m_aTxtSize.setWidth(rDevice.approximate_digit_width());
-    m_aTxtSize.setHeight(rDevice.GetTextHeight());
-}
-
 sal_Int32 LineListBox::GetStylePos(sal_Int32 nListPos, tools::Long nWidth)
 {
     sal_Int32 nPos = -1;
@@ -750,6 +738,10 @@ Size LineListBox::UpdateEntries(tools::Long nOldWidth)
     Size aSize;
 
     UpdatePaintLineColor();
+
+    OutputDevice& rDevice = GetDrawingArea()->get_ref_device();
+    m_aTxtSize.setWidth(rDevice.approximate_digit_width());
+    m_aTxtSize.setHeight(rDevice.GetTextHeight());
 
     sal_Int32 nSelEntry = GetSelectItemPos();
     sal_Int32 nTypePos = GetStylePos(nSelEntry, nOldWidth);
