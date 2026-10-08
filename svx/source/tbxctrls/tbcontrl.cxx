@@ -565,8 +565,6 @@ public:
 
     SvxBorderLineStyle GetEntryStyle(sal_Int32 nPos) const;
 
-    std::optional<SvxBorderLineStyle> GetSelectEntryStyle() const;
-
     void SetSourceUnit(FieldUnit eNewUnit) { m_eSourceUnit = eNewUnit; }
 
     const Color& GetColor() const { return m_aColor; }
@@ -609,19 +607,6 @@ private:
 
     DECL_LINK(SelectHdl, ValueSet*, void);
 };
-
-std::optional<SvxBorderLineStyle> LineListBox::GetSelectEntryStyle() const
-{
-    std::optional<SvxBorderLineStyle> oStyle;
-    size_t nPos = GetSelectItemPos();
-    if (nPos != VALUESET_ITEM_NOTFOUND && nPos > 0)
-    {
-        --nPos;
-        oStyle = GetEntryStyle(nPos);
-    }
-
-    return oStyle;
-}
 
 Bitmap LineListBox::ImpGetLine(tools::Long nLine1, tools::Long nLine2, tools::Long nDistance,
                                Color aColor1, Color aColor2, Color aColorDist,
@@ -841,7 +826,15 @@ Color LineListBox::GetColorDist(sal_Int32 nPos)
 
 IMPL_LINK_NOARG(LineListBox, SelectHdl, ValueSet*, void)
 {
-    m_aItemActivatedHdl.Call(GetSelectEntryStyle());
+    std::optional<SvxBorderLineStyle> oStyle;
+    size_t nPos = GetSelectItemPos();
+    if (nPos != VALUESET_ITEM_NOTFOUND && nPos > 0)
+    {
+        --nPos;
+        oStyle = GetEntryStyle(nPos);
+    }
+
+    m_aItemActivatedHdl.Call(oStyle);
 }
 
 class SvxLineWindow_Impl final : public WeldToolbarPopup
