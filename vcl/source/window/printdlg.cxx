@@ -2411,6 +2411,7 @@ IMPL_LINK( PrintDialog, UIOption_RadioHdl, weld::Toggleable&, i_rBtn, void )
     sal_Int32 nVal = it->second;
     pVal->Value <<= nVal;
 
+    // Writer-specific handling
     if (pVal->Name == "PrintContent" && nVal == 3)
     {
         PropertyValue* pPageRange = maPController->getValue(u"PageRange"_ustr);

@@ -1169,6 +1169,11 @@ std::unique_ptr<SfxTabPage> ScTabViewShell::CreatePrintOptionsPage(weld::Contain
     return nullptr;
 }
 
+tools::Long ScTabViewShell::GetCurrentPage() const
+{
+    return GetViewData().GetView()->GetCurrentPage();
+}
+
 void ScTabViewShell::StopEditShell()
 {
     if ( pEditShell != nullptr && !bDontSwitch )

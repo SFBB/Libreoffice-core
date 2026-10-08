@@ -316,10 +316,12 @@ ScPrintUIOptions::ScPrintUIOptions()
 
     // create a choice for the range to print
     OUString aPrintRangeName( u"PrintRange"_ustr );
-    aChoices = { ScResId( SCSTR_PRINTOPT_PRINTALLPAGES ), ScResId( SCSTR_PRINTOPT_PRINTPAGES ) };
+    aChoices = { ScResId( SCSTR_PRINTOPT_PRINTALLPAGES ), ScResId( SCSTR_PRINTOPT_PRINTPAGES ), ScResId( SCSTR_PRINTOPT_PRINTCURRENTPAGE ) };
     aHelpIds = { u".HelpID:vcl:PrintDialog:PrintRange:RadioButton:0"_ustr,
-                 u".HelpID:vcl:PrintDialog:PrintRange:RadioButton:1"_ustr };
-    uno::Sequence< OUString > aWidgetIds{ u"rbAllPages"_ustr, u"rbRangePages"_ustr };
+                 u".HelpID:vcl:PrintDialog:PrintRange:RadioButton:1"_ustr,
+                 u".HelpID:vcl:PrintDialog:PrintRange:RadioButton:2"_ustr
+               };
+    uno::Sequence< OUString > aWidgetIds{ u"rbAllPages"_ustr, u"rbRangePages"_ustr, u"rbCurrentPage"_ustr };
     m_aUIProperties[nIdx++].Value = setChoiceRadiosControlOpt(aWidgetIds, OUString(),
                                                     aHelpIds,
                                                     aPrintRangeName,
@@ -1903,6 +1905,15 @@ bool ScModelObj::FillRenderMarkData( const uno::Any& aSelection,
     // "PrintRange" enables (1) or disables (0) the "PageRange" edit
     if ( nPrintRange == 1 )
         rPagesStr = aPageRange;
+    else if (nPrintRange == 2)
+    {
+        SfxViewShell* pViewShell = SfxViewShell::Get(xView);
+        ScTabViewShell* pScViewShell = dynamic_cast<ScTabViewShell*>(pViewShell);
+        if (pScViewShell)
+            rPagesStr = OUString::number(pScViewShell->GetCurrentPage());
+        else
+            rPagesStr.clear();
+    }
     else
         rPagesStr.clear();
 

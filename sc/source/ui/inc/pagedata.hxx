@@ -51,6 +51,8 @@ public:
     size_t          GetPagesY() const       { return mvPageEndY.size();   }
     const SCROW*    GetPageEndY() const     { return mvPageEndY.data(); }
 
+    tools::Long     GetPageNumber(SCCOL nCol, SCROW nRow) const;
+
     void            SetFirstPage( tools::Long nNew )   { nFirstPage = nNew; }
     tools::Long            GetFirstPage() const        { return nFirstPage; }
     void            SetTopDown( bool bSet )     { bTopDown = bSet; }
@@ -72,6 +74,7 @@ public:
 
     size_t              GetCount() const            { return nUsed; }
     ScPrintRangeData&   GetData(size_t i);
+    const ScPrintRangeData&   GetData(size_t i) const;
 
     bool                operator==( const ScPageBreakData& rOther ) const;
 
