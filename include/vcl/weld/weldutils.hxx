@@ -151,8 +151,7 @@ VCL_DLLPUBLIC void RemoveParentKeepChildren(weld::TreeView& rTreeView,
 VCL_DLLPUBLIC weld::Window* GetPopupParent(vcl::Window& rOutWin, tools::Rectangle& rRect);
 
 // Use Application::GetDefaultDevice to set the PointFont rFont to the OutputDevice
-VCL_DLLPUBLIC void SetPointFont(OutputDevice& rDevice, const vcl::Font& rFont,
-                                bool bUseDeviceDPI = false);
+VCL_DLLPUBLIC void SetPointFont(OutputDevice& rDevice, const vcl::Font& rFont);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

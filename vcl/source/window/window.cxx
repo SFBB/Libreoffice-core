@@ -2162,11 +2162,10 @@ void Window::CollectChildren(::std::vector<vcl::Window *>& rAllChildren )
     }
 }
 
-void Window::SetPointFont(vcl::RenderContext& rRenderContext, const vcl::Font& rFont,
-                          bool bUseRenderContextDPI)
+void Window::SetPointFont(vcl::RenderContext& rRenderContext, const vcl::Font& rFont)
 {
     vcl::Font aFont = rFont;
-    ImplPointToLogic(rRenderContext, aFont, bUseRenderContextDPI);
+    ImplPointToLogic(rRenderContext, aFont);
     rRenderContext.SetFont(aFont);
 }
 

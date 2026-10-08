@@ -347,8 +347,7 @@ private:
     static std::vector<OUString> LoadMRUEntries(const OUString& aFontMRUEntriesFile);
     void            SaveMRUEntries( const OUString& aFontMRUEntriesFile ) const;
 
-    OutputDevice&   CachePreview(size_t nIndex, Point* pTopLeft,
-                                 sal_Int32 nDPIX = 96, sal_Int32 nDPIY = 96);
+    OutputDevice& CachePreview(size_t nIndex, Point* pTopLeft);
 
 public:
     FontNameBox(std::unique_ptr<weld::ComboBox> p);
