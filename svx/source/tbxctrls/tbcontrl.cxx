@@ -490,10 +490,6 @@ public:
     sal_uInt16 GetModifier() const {return nModifier;}
 };
 
-}
-
-namespace {
-
 class SvxFrameToolBoxControl;
 
 class SvxFrameWindow_Impl final : public WeldToolbarPopup
@@ -836,9 +832,6 @@ Color LineListBox::GetColorDist(sal_Int32 nPos)
     auto& pData = m_vLineList[nStyle];
     return pData->GetColorDist(GetColor(), rResult);
 }
-}
-
-namespace {
 
 class SvxLineWindow_Impl final : public WeldToolbarPopup
 {
