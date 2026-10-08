@@ -569,9 +569,9 @@ public:
 
     SvxBorderLineStyle GetSelectEntryStyle() const;
 
-    void SetSourceUnit(FieldUnit eNewUnit) { eSourceUnit = eNewUnit; }
+    void SetSourceUnit(FieldUnit eNewUnit) { m_eSourceUnit = eNewUnit; }
 
-    const Color& GetColor() const { return aColor; }
+    const Color& GetColor() const { return m_aColor; }
 
     virtual void SetDrawingArea(weld::DrawingArea* pDrawingArea) override;
 
@@ -584,7 +584,7 @@ private:
     Size UpdateEntries(tools::Long nOldWidth);
     sal_Int32 GetStylePos(sal_Int32 nListPos, tools::Long nWidth);
 
-    const Color& GetPaintColor() const { return maPaintCol; }
+    const Color& GetPaintColor() const { return m_aPaintCol; }
 
     Color GetColorLine1(sal_Int32 nPos);
     Color GetColorLine2(sal_Int32 nPos);
@@ -596,11 +596,11 @@ private:
     std::vector<std::unique_ptr<ImpLineListData>> m_vLineList;
     tools::Long m_nWidth;
     OUString m_sNone;
-    ScopedVclPtr<VirtualDevice> aVirDev;
-    Size aTxtSize;
-    Color const aColor;
-    Color maPaintCol;
-    FieldUnit eSourceUnit;
+    ScopedVclPtr<VirtualDevice> m_aVirDev;
+    Size m_aTxtSize;
+    Color const m_aColor;
+    Color m_aPaintCol;
+    FieldUnit m_eSourceUnit;
 };
 
 SvxBorderLineStyle LineListBox::GetSelectEntryStyle() const
@@ -623,12 +623,12 @@ void LineListBox::ImpGetLine(tools::Long nLine1, tools::Long nLine2, tools::Long
 {
     auto nMinWidth
         = GetDrawingArea()->get_ref_device().approximate_digit_width() * COMBO_WIDTH_IN_CHARS;
-    Size aSize(nMinWidth, aTxtSize.Height());
-    aSize.AdjustWidth(-(aTxtSize.Width()));
+    Size aSize(nMinWidth, m_aTxtSize.Height());
+    aSize.AdjustWidth(-(m_aTxtSize.Width()));
     aSize.AdjustWidth(-6);
 
     // SourceUnit to Twips
-    if (eSourceUnit == FieldUnit::POINT)
+    if (m_eSourceUnit == FieldUnit::POINT)
     {
         nLine1 /= 5;
         nLine2 /= 5;
@@ -636,8 +636,8 @@ void LineListBox::ImpGetLine(tools::Long nLine1, tools::Long nLine2, tools::Long
     }
 
     // Paint the lines
-    aSize = aVirDev->PixelToLogic(aSize);
-    tools::Long nPix = aVirDev->PixelToLogic(Size(0, 1)).Height();
+    aSize = m_aVirDev->PixelToLogic(aSize);
+    tools::Long nPix = m_aVirDev->PixelToLogic(Size(0, 1)).Height();
     sal_uInt32 n1 = nLine1;
     sal_uInt32 n2 = nLine2;
     tools::Long nDist = nDistance;
@@ -657,38 +657,38 @@ void LineListBox::ImpGetLine(tools::Long nLine1, tools::Long nLine2, tools::Long
     if (aSize.Width() <= 0)
         return;
 
-    Size aVirSize = aVirDev->LogicToPixel(aSize);
-    if (aVirDev->GetOutputSizePixel() != aVirSize)
-        aVirDev->SetOutputSizePixel(aVirSize);
-    aVirDev->SetFillColor(aColorDist);
-    aVirDev->DrawRect(tools::Rectangle(Point(), aSize));
+    Size aVirSize = m_aVirDev->LogicToPixel(aSize);
+    if (m_aVirDev->GetOutputSizePixel() != aVirSize)
+        m_aVirDev->SetOutputSizePixel(aVirSize);
+    m_aVirDev->SetFillColor(aColorDist);
+    m_aVirDev->DrawRect(tools::Rectangle(Point(), aSize));
 
-    aVirDev->SetFillColor(aColor1);
+    m_aVirDev->SetFillColor(aColor1);
 
     double y1 = double(n1) / 2;
-    svtools::DrawLine(*aVirDev, basegfx::B2DPoint(0, y1), basegfx::B2DPoint(aSize.Width(), y1), n1,
-                      nStyle);
+    svtools::DrawLine(*m_aVirDev, basegfx::B2DPoint(0, y1), basegfx::B2DPoint(aSize.Width(), y1),
+                      n1, nStyle);
 
     if (n2)
     {
         double y2 = n1 + nDist + double(n2) / 2;
-        aVirDev->SetFillColor(aColor2);
-        svtools::DrawLine(*aVirDev, basegfx::B2DPoint(0, y2), basegfx::B2DPoint(aSize.Width(), y2),
-                          n2, SvxBorderLineStyle::SOLID);
+        m_aVirDev->SetFillColor(aColor2);
+        svtools::DrawLine(*m_aVirDev, basegfx::B2DPoint(0, y2),
+                          basegfx::B2DPoint(aSize.Width(), y2), n2, SvxBorderLineStyle::SOLID);
     }
-    rBmp = aVirDev->GetBitmap(Point(), Size(aSize.Width(), n1 + nDist + n2));
+    rBmp = m_aVirDev->GetBitmap(Point(), Size(aSize.Width(), n1 + nDist + n2));
 }
 
 LineListBox::LineListBox()
     : ValueSet(nullptr)
     , m_nWidth(5)
-    , aVirDev(VclPtr<VirtualDevice>::Create())
-    , aColor(Application::GetSettings().GetStyleSettings().GetWindowTextColor())
-    , maPaintCol(COL_BLACK)
-    , eSourceUnit(FieldUnit::POINT)
+    , m_aVirDev(VclPtr<VirtualDevice>::Create())
+    , m_aColor(Application::GetSettings().GetStyleSettings().GetWindowTextColor())
+    , m_aPaintCol(COL_BLACK)
+    , m_eSourceUnit(FieldUnit::POINT)
 {
-    aVirDev->SetLineColor();
-    aVirDev->SetMapMode(MapMode(MapUnit::MapTwip));
+    m_aVirDev->SetLineColor();
+    m_aVirDev->SetMapMode(MapMode(MapUnit::MapTwip));
 }
 
 void LineListBox::SetDrawingArea(weld::DrawingArea* pDrawingArea)
@@ -697,8 +697,8 @@ void LineListBox::SetDrawingArea(weld::DrawingArea* pDrawingArea)
 
     OutputDevice& rDevice = pDrawingArea->get_ref_device();
 
-    aTxtSize.setWidth(rDevice.approximate_digit_width());
-    aTxtSize.setHeight(rDevice.GetTextHeight());
+    m_aTxtSize.setWidth(rDevice.approximate_digit_width());
+    m_aTxtSize.setHeight(rDevice.GetTextHeight());
 
     UpdatePaintLineColor();
 }
@@ -746,12 +746,12 @@ SvxBorderLineStyle LineListBox::GetEntryStyle(sal_Int32 nPos) const
 void LineListBox::UpdatePaintLineColor()
 {
     const StyleSettings& rSettings = Application::GetSettings().GetStyleSettings();
-    Color aNewCol(rSettings.GetWindowColor().IsDark() ? rSettings.GetLabelTextColor() : aColor);
+    Color aNewCol(rSettings.GetWindowColor().IsDark() ? rSettings.GetLabelTextColor() : m_aColor);
 
-    bool bRet = aNewCol != maPaintCol;
+    bool bRet = aNewCol != m_aPaintCol;
 
     if (bRet)
-        maPaintCol = aNewCol;
+        m_aPaintCol = aNewCol;
 }
 
 Size LineListBox::UpdateEntries(tools::Long nOldWidth)
