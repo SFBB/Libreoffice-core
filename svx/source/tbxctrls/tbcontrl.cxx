@@ -3237,7 +3237,7 @@ void SvxStyleToolBoxControl::FillStyleBox()
     }
 
     // Insert More button
-    if ((m_pImpl->bSpecModeWriter || m_pImpl->bSpecModeCalc) && !comphelper::LibreOfficeKit::isActive())
+    if (m_pImpl->bSpecModeWriter || m_pImpl->bSpecModeCalc)
         pBox->append_text(m_pImpl->aMore);
 
     pBox->thaw();
