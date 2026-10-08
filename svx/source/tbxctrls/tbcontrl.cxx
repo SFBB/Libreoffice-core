@@ -1805,7 +1805,7 @@ void SvxFontNameBox_Base::Update( const css::awt::FontDescriptor* pFontDesc )
     }
     OUString aCurName = aCurFont.GetFamilyName();
     OUString aText = m_xWidget->get_active_text();
-    if (aText != aCurName || comphelper::LibreOfficeKit::isActive())
+    if (aText != aCurName)
         set_active_or_entry_text(aCurName);
 }
 
