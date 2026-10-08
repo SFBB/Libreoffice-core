@@ -693,8 +693,6 @@ void LineListBox::SetDrawingArea(weld::DrawingArea* pDrawingArea)
 
     m_aTxtSize.setWidth(rDevice.approximate_digit_width());
     m_aTxtSize.setHeight(rDevice.GetTextHeight());
-
-    UpdatePaintLineColor();
 }
 
 sal_Int32 LineListBox::GetStylePos(sal_Int32 nListPos, tools::Long nWidth)
