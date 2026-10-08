@@ -558,8 +558,6 @@ public:
         return UpdateEntries(nOldWidth);
     }
 
-    void SetNone(const OUString& sNone) { m_sNone = sNone; }
-
     /** Insert a listbox entry with all widths in Twips. */
     void InsertEntry(const BorderWidthImpl& rWidthImpl, SvxBorderLineStyle nStyle,
                      tools::Long nMinWidth = 0, ColorFunc pColor1Fn = &sameColor,
@@ -595,7 +593,7 @@ private:
 
     std::vector<std::unique_ptr<ImpLineListData>> m_vLineList;
     tools::Long m_nWidth;
-    OUString m_sNone;
+    const OUString m_sNone;
     ScopedVclPtr<VirtualDevice> m_aVirDev;
     Size m_aTxtSize;
     Color const m_aColor;
@@ -609,8 +607,7 @@ SvxBorderLineStyle LineListBox::GetSelectEntryStyle() const
     size_t nPos = GetSelectItemPos();
     if (nPos != VALUESET_ITEM_NOTFOUND)
     {
-        if (!m_sNone.isEmpty())
-            --nPos;
+        --nPos;
         nStyle = GetEntryStyle(nPos);
     }
 
@@ -682,6 +679,7 @@ Bitmap LineListBox::ImpGetLine(tools::Long nLine1, tools::Long nLine2, tools::Lo
 LineListBox::LineListBox()
     : ValueSet(nullptr)
     , m_nWidth(5)
+    , m_sNone(SvxResId(RID_SVXSTR_NONE))
     , m_aVirDev(VclPtr<VirtualDevice>::Create())
     , m_aColor(Application::GetSettings().GetStyleSettings().GetWindowTextColor())
     , m_aPaintCol(COL_BLACK)
@@ -706,8 +704,7 @@ void LineListBox::SetDrawingArea(weld::DrawingArea* pDrawingArea)
 sal_Int32 LineListBox::GetStylePos(sal_Int32 nListPos, tools::Long nWidth)
 {
     sal_Int32 nPos = -1;
-    if (!m_sNone.isEmpty())
-        nListPos--;
+    nListPos--;
 
     sal_Int32 n = 0;
     size_t i = 0;
@@ -769,8 +766,7 @@ Size LineListBox::UpdateEntries(tools::Long nOldWidth)
     sal_uInt16 nId(1);
 
     // Add the new entries based on the defined width
-    if (!m_sNone.isEmpty())
-        InsertItem(nId++, Image(), m_sNone);
+    InsertItem(nId++, Image(), m_sNone);
 
     sal_uInt16 n = 0;
     sal_uInt16 nCount = m_vLineList.size();
@@ -2825,7 +2821,6 @@ SvxLineWindow_Impl::SvxLineWindow_Impl(SvxFrameToolBoxControl* pControl, weld::W
     m_xLineStyleLb->SetStyle( WinBits(WB_FLATVALUESET | WB_ITEMBORDER | WB_3DLOOK | WB_NO_DIRECTSELECT | WB_TABSTOP) );
 
     m_xLineStyleLb->SetSourceUnit( FieldUnit::TWIP );
-    m_xLineStyleLb->SetNone(SvxResId(RID_SVXSTR_NONE));
 
     m_xLineStyleLb->InsertEntry( SvxBorderLine::getWidthImpl( SvxBorderLineStyle::SOLID ), SvxBorderLineStyle::SOLID );
     m_xLineStyleLb->InsertEntry( SvxBorderLine::getWidthImpl( SvxBorderLineStyle::DOTTED ), SvxBorderLineStyle::DOTTED );
