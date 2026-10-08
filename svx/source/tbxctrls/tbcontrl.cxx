@@ -573,6 +573,11 @@ public:
 
     virtual void SetDrawingArea(weld::DrawingArea* pDrawingArea) override;
 
+    void SetItemActivatedHdl(const Link<std::optional<SvxBorderLineStyle>, void>& rLink)
+    {
+        m_aItemActivatedHdl = rLink;
+    }
+
 private:
     Bitmap ImpGetLine(tools::Long nLine1, tools::Long nLine2, tools::Long nDistance, Color nColor1,
                       Color nColor2, Color nColorDist, SvxBorderLineStyle nStyle);
@@ -599,6 +604,10 @@ private:
     Color const m_aColor;
     Color m_aPaintCol;
     FieldUnit m_eSourceUnit;
+
+    Link<std::optional<SvxBorderLineStyle>, void> m_aItemActivatedHdl;
+
+    DECL_LINK(SelectHdl, ValueSet*, void);
 };
 
 std::optional<SvxBorderLineStyle> LineListBox::GetSelectEntryStyle() const
@@ -687,6 +696,8 @@ LineListBox::LineListBox()
 {
     m_aVirDev->SetLineColor();
     m_aVirDev->SetMapMode(MapMode(MapUnit::MapTwip));
+
+    SetSelectHdl(LINK(this, LineListBox, SelectHdl));
 }
 
 void LineListBox::SetDrawingArea(weld::DrawingArea* pDrawingArea)
@@ -828,6 +839,11 @@ Color LineListBox::GetColorDist(sal_Int32 nPos)
     return pData->GetColorDist(GetColor(), rResult);
 }
 
+IMPL_LINK_NOARG(LineListBox, SelectHdl, ValueSet*, void)
+{
+    m_aItemActivatedHdl.Call(GetSelectEntryStyle());
+}
+
 class SvxLineWindow_Impl final : public WeldToolbarPopup
 {
 private:
@@ -836,7 +852,7 @@ private:
     std::unique_ptr<weld::CustomWeld> m_xLineStyleLbWin;
     bool                m_bIsWriter;
 
-    DECL_LINK( SelectHdl, ValueSet*, void );
+    DECL_LINK(LineStyleActivatedHdl, std::optional<SvxBorderLineStyle>, void);
 
 public:
     SvxLineWindow_Impl(SvxFrameToolBoxControl* pControl, weld::Widget* pParent);
@@ -2850,7 +2866,7 @@ SvxLineWindow_Impl::SvxLineWindow_Impl(SvxFrameToolBoxControl* pControl, weld::W
            &SvxBorderLine::darkColor, &SvxBorderLine::lightColor );
     Size aSize = m_xLineStyleLb->SetWidth( 20 ); // 1pt by default
 
-    m_xLineStyleLb->SetSelectHdl( LINK( this, SvxLineWindow_Impl, SelectHdl ) );
+    m_xLineStyleLb->SetItemActivatedHdl(LINK(this, SvxLineWindow_Impl, LineStyleActivatedHdl));
 
     m_xContainer->set_help_id(HID_POPUP_LINE);
 
@@ -2861,11 +2877,11 @@ SvxLineWindow_Impl::SvxLineWindow_Impl(SvxFrameToolBoxControl* pControl, weld::W
     m_xLineStyleLb->SetOutputSizePixel(aSize);
 }
 
-IMPL_LINK_NOARG(SvxLineWindow_Impl, SelectHdl, ValueSet*, void)
+IMPL_LINK(SvxLineWindow_Impl, LineStyleActivatedHdl, std::optional<SvxBorderLineStyle>, oStyle,
+          void)
 {
     SvxLineItem     aLineItem( SID_FRAME_LINESTYLE );
 
-    const std::optional<SvxBorderLineStyle> oStyle = m_xLineStyleLb->GetSelectEntryStyle();
     if (oStyle.has_value())
     {
         SvxBorderLine aTmp;
