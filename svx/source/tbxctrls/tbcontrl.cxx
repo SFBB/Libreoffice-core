@@ -565,7 +565,7 @@ public:
 
     SvxBorderLineStyle GetEntryStyle(sal_Int32 nPos) const;
 
-    SvxBorderLineStyle GetSelectEntryStyle() const;
+    std::optional<SvxBorderLineStyle> GetSelectEntryStyle() const;
 
     void SetSourceUnit(FieldUnit eNewUnit) { m_eSourceUnit = eNewUnit; }
 
@@ -601,17 +601,17 @@ private:
     FieldUnit m_eSourceUnit;
 };
 
-SvxBorderLineStyle LineListBox::GetSelectEntryStyle() const
+std::optional<SvxBorderLineStyle> LineListBox::GetSelectEntryStyle() const
 {
-    SvxBorderLineStyle nStyle = SvxBorderLineStyle::SOLID;
+    std::optional<SvxBorderLineStyle> oStyle;
     size_t nPos = GetSelectItemPos();
-    if (nPos != VALUESET_ITEM_NOTFOUND)
+    if (nPos != VALUESET_ITEM_NOTFOUND && nPos > 0)
     {
         --nPos;
-        nStyle = GetEntryStyle(nPos);
+        oStyle = GetEntryStyle(nPos);
     }
 
-    return nStyle;
+    return oStyle;
 }
 
 Bitmap LineListBox::ImpGetLine(tools::Long nLine1, tools::Long nLine2, tools::Long nDistance,
@@ -2864,12 +2864,12 @@ SvxLineWindow_Impl::SvxLineWindow_Impl(SvxFrameToolBoxControl* pControl, weld::W
 IMPL_LINK_NOARG(SvxLineWindow_Impl, SelectHdl, ValueSet*, void)
 {
     SvxLineItem     aLineItem( SID_FRAME_LINESTYLE );
-    SvxBorderLineStyle  nStyle = m_xLineStyleLb->GetSelectEntryStyle();
 
-    if ( m_xLineStyleLb->GetSelectItemPos( ) > 0 )
+    const std::optional<SvxBorderLineStyle> oStyle = m_xLineStyleLb->GetSelectEntryStyle();
+    if (oStyle.has_value())
     {
         SvxBorderLine aTmp;
-        aTmp.SetBorderLineStyle( nStyle );
+        aTmp.SetBorderLineStyle(*oStyle);
         aTmp.SetWidth( SvxBorderLineWidth::Thin ); // TODO Make it depend on a width field
         aLineItem.SetLine( &aTmp );
     }
