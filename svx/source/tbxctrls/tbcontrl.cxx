@@ -576,8 +576,8 @@ public:
     virtual void SetDrawingArea(weld::DrawingArea* pDrawingArea) override;
 
 private:
-    void ImpGetLine(tools::Long nLine1, tools::Long nLine2, tools::Long nDistance, Color nColor1,
-                    Color nColor2, Color nColorDist, SvxBorderLineStyle nStyle, Bitmap& rBmp);
+    Bitmap ImpGetLine(tools::Long nLine1, tools::Long nLine2, tools::Long nDistance, Color nColor1,
+                      Color nColor2, Color nColorDist, SvxBorderLineStyle nStyle);
 
     void UpdatePaintLineColor(); // returns sal_True if maPaintCol has changed
 
@@ -617,9 +617,9 @@ SvxBorderLineStyle LineListBox::GetSelectEntryStyle() const
     return nStyle;
 }
 
-void LineListBox::ImpGetLine(tools::Long nLine1, tools::Long nLine2, tools::Long nDistance,
-                             Color aColor1, Color aColor2, Color aColorDist,
-                             SvxBorderLineStyle nStyle, Bitmap& rBmp)
+Bitmap LineListBox::ImpGetLine(tools::Long nLine1, tools::Long nLine2, tools::Long nDistance,
+                               Color aColor1, Color aColor2, Color aColorDist,
+                               SvxBorderLineStyle nStyle)
 {
     auto nMinWidth
         = GetDrawingArea()->get_ref_device().approximate_digit_width() * COMBO_WIDTH_IN_CHARS;
@@ -655,7 +655,7 @@ void LineListBox::ImpGetLine(tools::Long nLine1, tools::Long nLine2, tools::Long
         aSize.setHeight(nVirHeight);
     // negative width should not be drawn
     if (aSize.Width() <= 0)
-        return;
+        return Bitmap();
 
     Size aVirSize = m_aVirDev->LogicToPixel(aSize);
     if (m_aVirDev->GetOutputSizePixel() != aVirSize)
@@ -676,7 +676,7 @@ void LineListBox::ImpGetLine(tools::Long nLine1, tools::Long nLine2, tools::Long
         svtools::DrawLine(*m_aVirDev, basegfx::B2DPoint(0, y2),
                           basegfx::B2DPoint(aSize.Width(), y2), n2, SvxBorderLineStyle::SOLID);
     }
-    rBmp = m_aVirDev->GetBitmap(Point(), Size(aSize.Width(), n1 + nDist + n2));
+    return m_aVirDev->GetBitmap(Point(), Size(aSize.Width(), n1 + nDist + n2));
 }
 
 LineListBox::LineListBox()
@@ -779,11 +779,10 @@ Size LineListBox::UpdateEntries(tools::Long nOldWidth)
         auto& pData = m_vLineList[n];
         if (pData->GetMinWidth() <= m_nWidth)
         {
-            Bitmap aBmp;
-            ImpGetLine(pData->GetLine1ForWidth(m_nWidth), pData->GetLine2ForWidth(m_nWidth),
-                       pData->GetDistForWidth(m_nWidth), GetColorLine1(GetItemCount()),
-                       GetColorLine2(GetItemCount()), GetColorDist(GetItemCount()),
-                       pData->GetStyle(), aBmp);
+            Bitmap aBmp = ImpGetLine(
+                pData->GetLine1ForWidth(m_nWidth), pData->GetLine2ForWidth(m_nWidth),
+                pData->GetDistForWidth(m_nWidth), GetColorLine1(GetItemCount()),
+                GetColorLine2(GetItemCount()), GetColorDist(GetItemCount()), pData->GetStyle());
             InsertItem(nId, Image(aBmp), SvtLineListBox::GetLineStyleName(pData->GetStyle()));
             Size aBmpSize = aBmp.GetSizePixel();
             if (aBmpSize.Width() > aSize.Width())
