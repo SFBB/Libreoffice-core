@@ -1365,20 +1365,17 @@ void Window::ImplInitResolutionSettings()
     }
 }
 
-void Window::ImplPointToLogic(vcl::RenderContext const & rRenderContext, vcl::Font& rFont,
-                            bool bUseRenderContextDPI) const
+void Window::ImplPointToLogic(vcl::RenderContext const& rRenderContext, vcl::Font& rFont) const
 {
     Size aSize = rFont.GetFontSize();
 
     if (aSize.Width())
     {
-        aSize.setWidth( aSize.Width() *
-            ( bUseRenderContextDPI ? rRenderContext.GetDPIX() : mpWindowImpl->mpFrameData->mnDPIX) );
+        aSize.setWidth(aSize.Width() * mpWindowImpl->mpFrameData->mnDPIX);
         aSize.AdjustWidth(72 / 2 );
         aSize.setWidth( aSize.Width() / 72 );
     }
-    aSize.setHeight( aSize.Height()
-        * ( bUseRenderContextDPI ? rRenderContext.GetDPIY() : mpWindowImpl->mpFrameData->mnDPIY) );
+    aSize.setHeight(aSize.Height() * mpWindowImpl->mpFrameData->mnDPIY);
     aSize.AdjustHeight(72/2 );
     aSize.setHeight( aSize.Height() / 72 );
 
