@@ -14,12 +14,12 @@
 #include <tools/gen.hxx>
 #include <tools/link.hxx>
 #include <vcl/vclptr.hxx>
+#include <vcl/weld/IconView.hxx>
 
 class VirtualDevice;
 
 namespace weld
 {
-class IconView;
 class ItemView;
 class TreeIter;
 }
