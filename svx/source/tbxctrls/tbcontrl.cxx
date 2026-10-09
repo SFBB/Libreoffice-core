@@ -41,8 +41,6 @@
 #include <vcl/weld/TransportAsXWindow.hxx>
 #include <vcl/weld/TreeView.hxx>
 #include <vcl/weld/Window.hxx>
-#include <vcl/weld/customweld.hxx>
-#include <svtools/valueset.hxx>
 #include <svtools/ctrlbox.hxx>
 #include <svl/style.hxx>
 #include <svtools/ctrltool.hxx>
@@ -468,51 +466,27 @@ public:
     }
 };
 
-
-// SelectHdl needs the Modifiers, get them in MouseButtonUp
-class SvxFrmValueSet_Impl final : public ValueSet
-{
-private:
-    sal_uInt16 nModifier;
-
-    virtual bool MouseButtonUp(const MouseEvent& rMEvt) override
-    {
-        nModifier = rMEvt.GetModifier();
-        return ValueSet::MouseButtonUp(rMEvt);
-    }
-
-public:
-    SvxFrmValueSet_Impl()
-        : ValueSet(nullptr)
-        , nModifier(0)
-    {
-    }
-    sal_uInt16 GetModifier() const {return nModifier;}
-};
-
 class SvxFrameToolBoxControl;
 
 class SvxFrameWindow_Impl final : public WeldToolbarPopup
 {
 private:
     rtl::Reference<SvxFrameToolBoxControl> mxControl;
-    std::unique_ptr<SvxFrmValueSet_Impl> mxFrameSet;
-    std::unique_ptr<weld::CustomWeld> mxFrameSetWin;
+    std::unique_ptr<weld::IconView> m_pFrameIconView;
     std::vector<std::pair<Bitmap, OUString>> m_aImgVec;
     bool m_bParagraphMode;
     bool                        m_bIsWriter;
     bool                        m_bIsCalc;
 
     void InitImageList();
-    void CalcSizeValueSet();
-    DECL_LINK( SelectHdl, ValueSet*, void );
+    void HandleActivatedItem(const weld::TreeIter& rActivatedItem, bool bShiftModifier);
+
+    DECL_LINK(ItemActivatedHdl, const weld::TreeIter&, bool);
+    DECL_LINK(MouseReleaseHdl, const MouseEvent&, bool);
 
 public:
     SvxFrameWindow_Impl(SvxFrameToolBoxControl* pControl, weld::Widget* pParent);
-    virtual void GrabFocus() override
-    {
-        mxFrameSet->GrabFocus();
-    }
+    virtual void GrabFocus() override { m_pFrameIconView->grab_focus(); }
 
     virtual void    statusChanged( const css::frame::FeatureStateEvent& rEvent ) override;
 };
@@ -2384,8 +2358,7 @@ Color ColorStatus::GetColor()
 SvxFrameWindow_Impl::SvxFrameWindow_Impl(SvxFrameToolBoxControl* pControl, weld::Widget* pParent)
     : WeldToolbarPopup(pControl->getFrameInterface(), pParent, u"svx/ui/floatingframeborder.ui"_ustr, u"FloatingFrameBorder"_ustr)
     , mxControl(pControl)
-    , mxFrameSet(new SvxFrmValueSet_Impl)
-    , mxFrameSetWin(new weld::CustomWeld(*m_xBuilder, u"valueset"_ustr, *mxFrameSet))
+    , m_pFrameIconView(m_xBuilder->weld_icon_view(u"iconview"_ustr))
     , m_bParagraphMode(false)
     , m_bIsWriter(false)
     , m_bIsCalc(false)
@@ -2399,28 +2372,27 @@ SvxFrameWindow_Impl::SvxFrameWindow_Impl(SvxFrameToolBoxControl* pControl, weld:
         m_bIsCalc = xSI->supportsService(u"com.sun.star.sheet.SpreadsheetDocument"_ustr);
     }
 
-    mxFrameSet->SetStyle(WB_ITEMBORDER | WB_DOUBLEBORDER | WB_3DLOOK | WB_NO_DIRECTSELECT);
     AddStatusListener(u".uno:BorderReducedMode"_ustr);
     InitImageList();
-
-    sal_uInt16 i = 0;
 
     // Writer and Calc uses 8 border types - for a single cell.
     // when multiple cells selected:
     // Writer and Calc have 12 border types.
     // m_bParagraphMode should have been set in StateChanged
     sal_uInt16 nBorderTypeCount = m_bParagraphMode ? 8 : 12;
-    for (i = 1; i <= nBorderTypeCount; i++)
-        mxFrameSet->InsertItem(i, Image(m_aImgVec[i - 1].first), m_aImgVec[i - 1].second);
+    for (int i = 0; i < nBorderTypeCount; i++)
+    {
+        m_pFrameIconView->insert(i, nullptr, nullptr, &m_aImgVec[i].first, nullptr);
+        const OUString& rName = m_aImgVec[i].second;
+        m_pFrameIconView->set_item_accessible_name(i, rName);
+        m_pFrameIconView->set_item_tooltip_text(i, rName);
+    }
 
-    // adjust frame column for Writer and Calc
-    sal_uInt16 colCount = 4;
-    mxFrameSet->SetColCount( colCount );
-    mxFrameSet->SetSelectHdl( LINK( this, SvxFrameWindow_Impl, SelectHdl ) );
-    CalcSizeValueSet();
+    m_pFrameIconView->connect_item_activated(LINK(this, SvxFrameWindow_Impl, ItemActivatedHdl));
+    m_pFrameIconView->connect_mouse_release(LINK(this, SvxFrameWindow_Impl, MouseReleaseHdl));
 
-    mxFrameSet->SetHelpId( HID_POPUP_FRAME );
-    mxFrameSet->SetAccessibleName( SvxResId(RID_SVXSTR_FRAME) );
+    m_pFrameIconView->set_help_id(HID_POPUP_FRAME);
+    m_pFrameIconView->set_accessible_name(SvxResId(RID_SVXSTR_FRAME));
 }
 
 namespace {
@@ -2648,24 +2620,47 @@ static void DispatchBorderItem(svt::PopupWindowController& rControl, sal_uInt16 
 // By default unset lines remain unchanged.
 // Via Shift unset lines are reset
 
-IMPL_LINK_NOARG(SvxFrameWindow_Impl, SelectHdl, ValueSet*, void)
+void SvxFrameWindow_Impl::HandleActivatedItem(const weld::TreeIter& rActivatedItem,
+                                              bool bShiftModifier)
 {
-    const sal_uInt16 nSel = mxFrameSet->GetSelectedItemId();
-    const sal_uInt16 nModifier = mxFrameSet->GetModifier();
-    DispatchBorderItem(*mxControl, nSel, m_bIsCalc, nModifier == KEY_SHIFT);
+    const sal_uInt16 nSel = m_pFrameIconView->get_iter_index_in_parent(rActivatedItem) + 1;
+    DispatchBorderItem(*mxControl, nSel, m_bIsCalc, bShiftModifier);
+
     mxControl->SetLastUsedBorderItem(nSel, m_bIsCalc, Image(m_aImgVec[nSel - 1].first));
     // coverity[ check_after_deref : FALSE]
-    if (mxFrameSet)
+    if (m_pFrameIconView)
     {
         /* #i33380# Moved the following line above the Dispatch() call.
            This instance may be deleted in the meantime (i.e. when a dialog is opened
            while in Dispatch()), accessing members will crash in this case. */
-        mxFrameSet->SetNoSelection();
+        m_pFrameIconView->unselect_all();
     }
 
     mxControl->EndPopupMode();
 }
 
+IMPL_LINK(SvxFrameWindow_Impl, ItemActivatedHdl, const weld::TreeIter&, rIter, bool)
+{
+    HandleActivatedItem(rIter, false);
+
+    return true;
+}
+
+IMPL_LINK(SvxFrameWindow_Impl, MouseReleaseHdl, const MouseEvent&, rEvent, bool)
+{
+    // trigger activation logic when item is clicked with Shift modifier pressed
+    if (rEvent.IsLeft() && rEvent.IsShift())
+    {
+        if (std::unique_ptr<weld::TreeIter> pPressedItem
+            = m_pFrameIconView->get_item_at_pos(rEvent.GetPosPixel()))
+        {
+            HandleActivatedItem(*pPressedItem, true);
+            return true;
+        }
+    }
+
+    return false;
+}
 
 void SvxFrameWindow_Impl::statusChanged( const css::frame::FeatureStateEvent& rEvent )
 {
@@ -2678,40 +2673,27 @@ void SvxFrameWindow_Impl::statusChanged( const css::frame::FeatureStateEvent& rE
 
     m_bParagraphMode = bValue;
     //initial calls mustn't insert or remove elements
-    if(!mxFrameSet->GetItemCount())
+    if (!m_pFrameIconView->n_children())
         return;
 
     // set 12 border types for Writer and Calc.
-    bool bTableMode = ( mxFrameSet->GetItemCount() == static_cast<size_t>(12) );
-    bool bResize    = false;
+    bool bTableMode = (m_pFrameIconView->n_children() == static_cast<size_t>(12));
 
     if (bTableMode && m_bParagraphMode)
     {
-        for ( sal_uInt16 i = 9; i < 13; i++ )
-            mxFrameSet->RemoveItem(i);
-        bResize = true;
+        for (int i = 11; i >= 8; --i)
+            m_pFrameIconView->remove(i);
     }
     else if (!bTableMode && !m_bParagraphMode)
     {
-        for ( sal_uInt16 i = 9; i < 13; i++ )
-            mxFrameSet->InsertItem(i, Image(m_aImgVec[i - 1].first), m_aImgVec[i - 1].second);
-        bResize = true;
+        for (int i = 8; i < 12; i++)
+        {
+            m_pFrameIconView->insert(i, nullptr, nullptr, &m_aImgVec[i].first, nullptr);
+            const OUString& rName = m_aImgVec[i].second;
+            m_pFrameIconView->set_item_accessible_name(i, rName);
+            m_pFrameIconView->set_item_tooltip_text(i, rName);
+        }
     }
-
-    if ( bResize )
-    {
-        CalcSizeValueSet();
-    }
-}
-
-void SvxFrameWindow_Impl::CalcSizeValueSet()
-{
-    weld::DrawingArea* pDrawingArea = mxFrameSet->GetDrawingArea();
-    const OutputDevice& rDevice = pDrawingArea->get_ref_device();
-    Size aItemSize( 20 * rDevice.GetDPIScaleFactor(), 20 * rDevice.GetDPIScaleFactor() );
-    Size aSize = mxFrameSet->CalcWindowSizePixel( aItemSize );
-    pDrawingArea->set_size_request(aSize.Width(), aSize.Height());
-    mxFrameSet->SetOutputSizePixel(aSize);
 }
 
 void SvxFrameWindow_Impl::InitImageList()
