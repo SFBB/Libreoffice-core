@@ -2442,7 +2442,7 @@ namespace o3tl {
     template<> struct typed_flags<FrmValidFlags> : is_typed_flags<FrmValidFlags, 0x3f> {};
 }
 
-static void DispatchBorderItem(svt::PopupWindowController& rControl, sal_uInt16 nSel, bool bIsCalc, sal_uInt16 nModifier)
+static void DispatchBorderItem(svt::PopupWindowController& rControl, sal_uInt16 nSel, bool bIsCalc, bool bShiftModifier)
 {
     auto dispatchDiagonalDownBorder = [&](const SvxLineItem& dDownLineItem)
     {
@@ -2624,7 +2624,7 @@ static void DispatchBorderItem(svt::PopupWindowController& rControl, sal_uInt16 
         aBorderOuter.SetLine( pTop, SvxBoxItemLine::TOP );
         aBorderOuter.SetLine( pBottom, SvxBoxItemLine::BOTTOM );
 
-        if(nModifier == KEY_SHIFT)
+        if (bShiftModifier)
             nValidFlags |= FrmValidFlags::AllMask;
         aBorderInner.SetValid( SvxBoxInfoItemValidFlags::TOP,       bool(nValidFlags&FrmValidFlags::Top ));
         aBorderInner.SetValid( SvxBoxInfoItemValidFlags::BOTTOM,    bool(nValidFlags&FrmValidFlags::Bottom ));
@@ -2652,7 +2652,7 @@ IMPL_LINK_NOARG(SvxFrameWindow_Impl, SelectHdl, ValueSet*, void)
 {
     const sal_uInt16 nSel = mxFrameSet->GetSelectedItemId();
     const sal_uInt16 nModifier = mxFrameSet->GetModifier();
-    DispatchBorderItem(*mxControl, nSel, m_bIsCalc, nModifier);
+    DispatchBorderItem(*mxControl, nSel, m_bIsCalc, nModifier == KEY_SHIFT);
     mxControl->SetLastUsedBorderItem(nSel, m_bIsCalc, Image(m_aImgVec[nSel - 1].first));
     // coverity[ check_after_deref : FALSE]
     if (mxFrameSet)
@@ -3753,7 +3753,7 @@ void SAL_CALL SvxFrameToolBoxControl::execute(sal_Int16 /*KeyModifier*/)
         }
         return;
     }
-    DispatchBorderItem(*this, m_nLastItemId, m_bLastIsCalc, 0);
+    DispatchBorderItem(*this, m_nLastItemId, m_bLastIsCalc, false);
 }
 
 void SvxFrameToolBoxControl::SetLastUsedBorderItem(sal_uInt16 nItemId, bool bIsCalc,
