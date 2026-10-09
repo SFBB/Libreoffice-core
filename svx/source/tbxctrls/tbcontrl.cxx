@@ -2406,15 +2406,12 @@ SvxFrameWindow_Impl::SvxFrameWindow_Impl(SvxFrameToolBoxControl* pControl, weld:
     sal_uInt16 i = 0;
 
     // Writer and Calc uses 8 border types - for a single cell.
-    for ( i=1; i < 9; i++ )
-        mxFrameSet->InsertItem(i, Image(m_aImgVec[i - 1].first), m_aImgVec[i - 1].second);
-
+    // when multiple cells selected:
+    // Writer and Calc have 12 border types.
     // m_bParagraphMode should have been set in StateChanged
-    if (!m_bParagraphMode)
-        // when multiple cell selected:
-        // Writer and Calc have 12 border types.
-        for ( i = 9; i < 13; i++ )
-            mxFrameSet->InsertItem(i, Image(m_aImgVec[i - 1].first), m_aImgVec[i - 1].second);
+    sal_uInt16 nBorderTypeCount = m_bParagraphMode ? 8 : 12;
+    for (i = 1; i <= nBorderTypeCount; i++)
+        mxFrameSet->InsertItem(i, Image(m_aImgVec[i - 1].first), m_aImgVec[i - 1].second);
 
     // adjust frame column for Writer and Calc
     sal_uInt16 colCount = 4;
