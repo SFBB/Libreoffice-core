@@ -5790,32 +5790,32 @@ IMPL_LINK(SalInstanceDrawingArea, ResizeHdl, const Size&, rSize, void)
 
 IMPL_LINK(SalInstanceDrawingArea, MousePressHdl, const MouseEvent&, rEvent, bool)
 {
-    return m_aMousePressHdl.Call(rEvent);
+    return signal_mouse_press(rEvent);
 }
 
 IMPL_LINK(SalInstanceDrawingArea, MouseMoveHdl, const MouseEvent&, rEvent, bool)
 {
-    return m_aMouseMotionHdl.Call(rEvent);
+    return signal_mouse_motion(rEvent);
 }
 
 IMPL_LINK(SalInstanceDrawingArea, MouseReleaseHdl, const MouseEvent&, rEvent, bool)
 {
-    return m_aMouseReleaseHdl.Call(rEvent);
+    return signal_mouse_release(rEvent);
 }
 
 IMPL_LINK(SalInstanceDrawingArea, KeyPressHdl, const KeyEvent&, rEvent, bool)
 {
-    return m_aKeyPressHdl.Call(rEvent);
+    return signal_key_press(rEvent);
 }
 
 IMPL_LINK(SalInstanceDrawingArea, KeyReleaseHdl, const KeyEvent&, rEvent, bool)
 {
-    return m_aKeyReleaseHdl.Call(rEvent);
+    return signal_key_release(rEvent);
 }
 
 IMPL_LINK_NOARG(SalInstanceDrawingArea, StyleUpdatedHdl, VclDrawingArea&, void)
 {
-    m_aStyleUpdatedHdl.Call(*this);
+    signal_style_updated();
 }
 
 IMPL_LINK(SalInstanceDrawingArea, GetSurroundingHdl, OUString&, rSurrounding, int)
@@ -5830,7 +5830,7 @@ IMPL_LINK(SalInstanceDrawingArea, DeleteSurroundingHdl, const Selection&, rSelec
 
 IMPL_LINK(SalInstanceDrawingArea, QueryTooltipHdl, tools::Rectangle&, rHelpArea, OUString)
 {
-    return m_aQueryTooltipHdl.Call(rHelpArea);
+    return signal_query_tooltip(rHelpArea);
 }
 
 IMPL_LINK_NOARG(SalInstanceDrawingArea, StartDragHdl, VclDrawingArea*, bool)
