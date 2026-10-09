@@ -632,9 +632,8 @@ Bitmap LineListBox::ImpGetLine(tools::Long nLine1, tools::Long nLine2, tools::Lo
     if (aSize.Width() <= 0)
         return Bitmap();
 
-    Size aVirSize = m_aVirDev->LogicToPixel(aSize);
-    if (m_aVirDev->GetOutputSizePixel() != aVirSize)
-        m_aVirDev->SetOutputSizePixel(aVirSize);
+    if (m_aVirDev->GetOutputSize() != aSize)
+        m_aVirDev->SetOutputSize(aSize);
     m_aVirDev->SetFillColor(aColorDist);
     m_aVirDev->DrawRect(tools::Rectangle(Point(), aSize));
 
