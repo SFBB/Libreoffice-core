@@ -1671,16 +1671,6 @@ void ValueSet::SetOptimalSize()
     GetDrawingArea()->set_size_request(aPrefSize.Width(), aPrefSize.Height());
 }
 
-Image ValueSet::GetItemImage(sal_uInt16 nItemId) const
-{
-    size_t nPos = GetItemPos( nItemId );
-
-    if ( nPos != VALUESET_ITEM_NOTFOUND )
-        return mItemList[nPos]->maImage;
-    else
-        return Image();
-}
-
 void ValueSet::SetColor(const Color& rColor)
 {
     maColor  = rColor;

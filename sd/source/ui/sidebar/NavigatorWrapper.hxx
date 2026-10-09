@@ -18,7 +18,6 @@
  */
 #pragma once
 
-#include <sfx2/sidebar/ILayoutableWindow.hxx>
 #include <navigatr.hxx>
 
 class SfxBindings;
@@ -33,9 +32,7 @@ namespace sd::sidebar {
     happens.
     - Forward size changes from sidebar to navigator.
 */
-class NavigatorWrapper
-    : public SdNavigatorWin,
-      public sfx2::sidebar::ILayoutableWindow
+class NavigatorWrapper : public SdNavigatorWin
 {
 public:
     NavigatorWrapper (
@@ -43,7 +40,6 @@ public:
         sd::ViewShellBase& rViewShellBase,
         SfxBindings* pBindings);
 
-    // From ILayoutableWindow
     virtual css::ui::LayoutSize GetHeightForWidth (const sal_Int32 nWidth) override;
 
 private:

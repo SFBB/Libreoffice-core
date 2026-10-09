@@ -28,7 +28,6 @@
 #include <vcl/weld/IconView.hxx>
 #include <vcl/weld/Menu.hxx>
 #include <vcl/idle.hxx>
-#include <sfx2/sidebar/ILayoutableWindow.hxx>
 #include <sfx2/sidebar/PanelLayout.hxx>
 
 #include <osl/mutex.hxx>
@@ -48,7 +47,6 @@ namespace sd::sidebar {
     templates or designs that are loaded from files.
 */
 class MasterPagesSelector : public PanelLayout
-                          , public sfx2::sidebar::ILayoutableWindow
 {
     class UpdateTask final : public Idle
     {
@@ -103,7 +101,6 @@ public:
 
     void ShowContextMenu(const Point& pPos);
 
-    // ILayoutableWindow
     virtual css::ui::LayoutSize GetHeightForWidth (const sal_Int32 nWidth) override;
 
 protected:

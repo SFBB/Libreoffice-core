@@ -279,7 +279,6 @@ $(eval $(call gb_Library_add_exception_objects,sfx,\
     sfx2/source/sidebar/DeckTitleBar \
     sfx2/source/sidebar/FocusManager \
     sfx2/source/sidebar/IContextChangeReceiver \
-    sfx2/source/sidebar/ILayoutableWindow \
     sfx2/source/sidebar/Panel \
     sfx2/source/sidebar/PanelDescriptor \
     sfx2/source/sidebar/PanelLayout \

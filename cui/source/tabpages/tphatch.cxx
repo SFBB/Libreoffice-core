@@ -53,8 +53,7 @@ SvxHatchTabPage::SvxHatchTabPage(weld::Container* pPage, weld::DialogController*
     , m_rOutAttrs(rInAttrs)
     , m_nHatchingListState(ChangeType::NONE)
     , m_pnColorListState(nullptr)
-    , m_aXFillAttr(rInAttrs.GetPool())
-    , m_rXFSet(m_aXFillAttr.GetItemSet())
+    , m_aFillAttributeSet(rInAttrs.getPool(), WhichRangesContainer(XATTR_FILL_FIRST, XATTR_FILL_LAST)) //m_aXFillAttr.GetItemSet())
     , m_xMtrDistance(m_xBuilder->weld_metric_spin_button(u"distancemtr"_ustr, FieldUnit::MM))
     , m_xMtrAngle(m_xBuilder->weld_metric_spin_button(u"anglemtr"_ustr, FieldUnit::DEGREE))
     , m_xSliderAngle(m_xBuilder->weld_scale(u"angleslider"_ustr))
@@ -95,9 +94,9 @@ SvxHatchTabPage::SvxHatchTabPage(weld::Container* pPage, weld::DialogController*
     m_ePoolUnit = pPool->GetMetric( SID_ATTR_FILL_HATCH );
 
     // setting the output device
-    m_rXFSet.Put( XFillStyleItem(drawing::FillStyle_HATCH) );
-    m_rXFSet.Put( XFillHatchItem(OUString(), XHatch()) );
-    m_aCtlPreview.SetAttributes( m_aXFillAttr.GetItemSet() );
+    m_aFillAttributeSet.Put( XFillStyleItem(drawing::FillStyle_HATCH) );
+    m_aFillAttributeSet.Put( XFillHatchItem(OUString(), XHatch()) );
+    m_aCtlPreview.SetAttributes(m_aFillAttributeSet);
     m_xHatchPresets->connect_item_activated(LINK(this, SvxHatchTabPage, ChangeHatchHdl));
     m_xHatchLB->SetRenameHdl( LINK( this, SvxHatchTabPage, ClickRenameHdl_Impl ) );
     m_xHatchLB->SetDeleteHdl( LINK( this, SvxHatchTabPage, ClickDeleteHdl_Impl ) );
@@ -183,7 +182,7 @@ void SvxHatchTabPage::ActivatePage( const SfxItemSet& rSet )
     }
 
     const XFillBackgroundItem& aBckItem( rSet.Get(XATTR_FILLBACKGROUND));
-    m_rXFSet.Put( aBckItem );
+    m_aFillAttributeSet.Put( aBckItem );
 
     if (aBckItem.GetValue())
     {
@@ -192,7 +191,7 @@ void SvxHatchTabPage::ActivatePage( const SfxItemSet& rSet )
         Color aColor(aColorItem.GetColorValue());
         m_xLbBackgroundColor->SelectEntry(aColor);
         m_xLbBackgroundColor->set_sensitive(true);
-        m_rXFSet.Put( aColorItem );
+        m_aFillAttributeSet.Put( aColorItem );
     }
     else
     {
@@ -201,7 +200,7 @@ void SvxHatchTabPage::ActivatePage( const SfxItemSet& rSet )
         m_xLbBackgroundColor->set_sensitive(false);
     }
 
-    m_aCtlPreview.SetAttributes( m_aXFillAttr.GetItemSet() );
+    m_aCtlPreview.SetAttributes(m_aFillAttributeSet);
     m_aCtlPreview.Invalidate();
 }
 
@@ -266,16 +265,16 @@ void SvxHatchTabPage::Reset( const SfxItemSet* rSet )
 
     const XFillColorItem& aColItem( rSet->Get(XATTR_FILLCOLOR) );
     m_xLbBackgroundColor->SelectEntry(aColItem.GetColorValue());
-    m_rXFSet.Put( aColItem );
+    m_aFillAttributeSet.Put( aColItem );
 
     const XFillBackgroundItem& aBckItem( rSet->Get(XATTR_FILLBACKGROUND) );
     if(aBckItem.GetValue())
         m_xCbBackgroundColor->set_state(TRISTATE_TRUE);
     else
         m_xCbBackgroundColor->set_state(TRISTATE_FALSE);
-    m_rXFSet.Put( aBckItem );
+    m_aFillAttributeSet.Put( aBckItem );
 
-    m_aCtlPreview.SetAttributes( m_aXFillAttr.GetItemSet() );
+    m_aCtlPreview.SetAttributes(m_aFillAttributeSet);
     m_aCtlPreview.Invalidate();
 }
 
@@ -305,7 +304,7 @@ IMPL_LINK_NOARG( SvxHatchTabPage, ToggleHatchBackgroundColor_Impl, weld::Togglea
         m_xLbBackgroundColor->set_sensitive(true);
     else
         m_xLbBackgroundColor->set_sensitive(false);
-    m_rXFSet.Put( XFillBackgroundItem( m_xCbBackgroundColor->get_active() ) );
+    m_aFillAttributeSet.Put( XFillBackgroundItem( m_xCbBackgroundColor->get_active() ) );
     ModifiedBackgroundHdl_Impl(*m_xLbBackgroundColor);
 }
 
@@ -315,12 +314,12 @@ IMPL_LINK_NOARG( SvxHatchTabPage, ModifiedBackgroundHdl_Impl, ColorListBox&, voi
     if (m_xCbBackgroundColor->get_active())
     {
         aColor = m_xLbBackgroundColor->GetSelectEntryColor();
-        m_aCtlPreview.SetAttributes( m_aXFillAttr.GetItemSet() );
+        m_aCtlPreview.SetAttributes(m_aFillAttributeSet);
         m_aCtlPreview.Invalidate();
     }
-    m_rXFSet.Put(XFillColorItem( OUString(), aColor ));
+    m_aFillAttributeSet.Put(XFillColorItem( OUString(), aColor ));
 
-    m_aCtlPreview.SetAttributes( m_aXFillAttr.GetItemSet() );
+    m_aCtlPreview.SetAttributes(m_aFillAttributeSet);
     m_aCtlPreview.Invalidate();
 }
 
@@ -349,9 +348,9 @@ void SvxHatchTabPage::ModifiedHdl_Impl( void const * p )
                     GetCoreValue( *m_xMtrDistance, m_ePoolUnit ),
                     Degree10(static_cast<sal_Int16>((m_xMtrAngle->get_value(FieldUnit::NONE) % 360) * 10)) );
 
-    m_rXFSet.Put( XFillHatchItem( OUString(), aXHatch ) );
+    m_aFillAttributeSet.Put( XFillHatchItem( OUString(), aXHatch ) );
 
-    m_aCtlPreview.SetAttributes( m_aXFillAttr.GetItemSet() );
+    m_aCtlPreview.SetAttributes(m_aFillAttributeSet);
     m_aCtlPreview.Invalidate();
 }
 
@@ -397,8 +396,8 @@ void SvxHatchTabPage::ChangeHatchHdl_Impl()
         m_xSliderAngle->set_value(nHatchAngle);
 
         // fill ItemSet and pass it on to m_aCtlPreview
-        m_rXFSet.Put( XFillHatchItem( OUString(), *pHatch ) );
-        m_aCtlPreview.SetAttributes( m_aXFillAttr.GetItemSet() );
+        m_aFillAttributeSet.Put( XFillHatchItem( OUString(), *pHatch ) );
+        m_aCtlPreview.SetAttributes(m_aFillAttributeSet);
 
         m_aCtlPreview.Invalidate();
         pHatch.reset();

@@ -16,14 +16,32 @@
  *   except in compliance with the License. You may obtain a copy of
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
-#include <sfx2/sidebar/ILayoutableWindow.hxx>
 
-namespace sfx2::sidebar {
+#pragma once
 
-ILayoutableWindow::~ILayoutableWindow()
+#include <xmloff/xmlictxt.hxx>
+// #include <xmloff/shapeimport.hxx>
+#include <com/sun/star/drawing/XShapes.hpp>
+
+// context for import of <loext::diagram> // XML_DIAGRAM
+class SdXMLDiagramContext : public SvXMLShapeContext
 {
-}
+public:
+    SdXMLDiagramContext(SvXMLImport& rImport,
+                        const css::uno::Reference<css::xml::sax::XFastAttributeList>& xAttrList,
+                        css::uno::Reference<css::drawing::XShapes> const& rShapes);
 
-} // end of namespace ::sfx2::sidebar
+    virtual css::uno::Reference<css::xml::sax::XFastContextHandler> SAL_CALL createFastChildContext(
+        sal_Int32 nElement,
+        const css::uno::Reference<css::xml::sax::XFastAttributeList>& AttrList) override;
+    virtual void SAL_CALL endFastElement(sal_Int32 nElement) override;
+
+private:
+    const css::uno::Reference<css::drawing::XShapes>& rxTarget;
+    OUString maLayout;
+    OUString maData;
+    OUString maColors;
+    OUString maQuickstyle;
+};
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -4650,7 +4650,7 @@ void DomainMapper::lcl_utext(const sal_Unicode *const data_, size_t len)
         // SDT's ending right before a field start are handled as well.
         PropertyMapPtr pContext = m_pImpl->GetTopContext();
         if (m_pImpl->IsOpenField())
-            pContext = m_pImpl->GetTopFieldContext()->getProperties();
+            pContext = m_pImpl->GetTopFieldContext()->getFieldProperties();
         pContext->Insert(PROP_SDT_END_BEFORE, uno::Any(true), true, CHAR_GRAB_BAG);
         m_pImpl->setSdtEndDeferred(false);
     }
@@ -4722,7 +4722,7 @@ void DomainMapper::lcl_utext(const sal_Unicode *const data_, size_t len)
 
             if (m_pImpl->IsOpenField())
                 // We have a field, insert the SDT properties to the field's grab-bag, so they won't be lost.
-                pContext = m_pImpl->GetTopFieldContext()->getProperties();
+                pContext = m_pImpl->GetTopFieldContext()->getFieldProperties();
 
             uno::Sequence<beans::PropertyValue> aGrabBag = m_pImpl->GetSdtHelper().getInteropGrabBagAndClear();
             pContext->Insert(PROP_SDTPR, uno::Any(aGrabBag), true, CHAR_GRAB_BAG);

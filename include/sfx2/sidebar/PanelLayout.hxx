@@ -13,6 +13,8 @@
 #include <vcl/weld/Container.hxx>
 #include <vcl/weld/Widget.hxx>
 
+#include <com/sun/star/ui/LayoutSize.hpp>
+
 class DataChangedEvent;
 class VclSimpleEvent;
 namespace sfx2 { namespace sidebar { class Panel; } }
@@ -43,6 +45,11 @@ public:
     void SetPanel(sfx2::sidebar::Panel* pPanel);
 
     virtual ~PanelLayout();
+
+    /** Return the preferred height with the constraint that the
+        window will be set to the given width.
+    */
+    virtual css::ui::LayoutSize GetHeightForWidth(const sal_Int32 nWidth);
 
     Size get_preferred_size() const
     {

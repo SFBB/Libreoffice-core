@@ -26,6 +26,7 @@
 #include <sfx2/sidebar/FocusManager.hxx>
 #include <sfx2/sidebar/ResourceManager.hxx>
 #include <sfx2/sidebar/TabBar.hxx>
+#include <o3tl/typed_flags_set.hxx>
 
 #include <com/sun/star/beans/XPropertyChangeListener.hpp>
 #include <com/sun/star/frame/XStatusListener.hpp>
@@ -108,10 +109,13 @@ public:
         constructed.  In this case we have to a context change and
         also force that all panels are destroyed and created new.
     */
-    const static sal_Int32 SwitchFlag_NoForce = 0x00;
-    const static sal_Int32 SwitchFlag_ForceSwitch = 0x01;
-    const static sal_Int32 SwitchFlag_ForceNewDeck = 0x02;
-    const static sal_Int32 SwitchFlag_ForceNewPanels = 0x02;
+    enum class SwitchFlag
+    {
+        NoForce = 0x00,
+        ForceSwitch = 0x01,
+        ForceNewDeck = 0x02,
+        ForceNewPanels = 0x02,
+    };
 
     bool IsDocked() const;
 
@@ -188,8 +192,7 @@ private:
     Context maCurrentContext;
     Context maRequestedContext;
     css::uno::Reference<css::frame::XController> mxCurrentController;
-    /// Use a combination of SwitchFlag_* as value.
-    sal_Int32 mnRequestedForceFlags;
+    SwitchFlag meRequestedForceFlags;
     sal_Int32 mnMaximumSidebarWidth;
     bool mbMinimumSidebarWidth;
     OUString msCurrentDeckId;
@@ -295,5 +298,14 @@ private:
 };
 
 } // end of namespace sfx2::sidebar
+
+namespace o3tl
+{
+template <>
+struct typed_flags<sfx2::sidebar::SidebarController::SwitchFlag>
+    : is_typed_flags<sfx2::sidebar::SidebarController::SwitchFlag, 0x2FF>
+{
+};
+}
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

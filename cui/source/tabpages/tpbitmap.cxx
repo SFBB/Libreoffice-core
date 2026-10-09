@@ -82,8 +82,7 @@ SvxBitmapTabPage::SvxBitmapTabPage(weld::Container* pPage, weld::DialogControlle
     , m_fObjectWidth(0.0)
     , m_fObjectHeight(0.0)
     , m_bLogicalSize(false)
-    , m_aXFillAttr(rInAttrs.GetPool())
-    , m_rXFSet(m_aXFillAttr.GetItemSet())
+    , m_aFillAttributeSet(rInAttrs.getPool(), WhichRangesContainer(XATTR_FILL_FIRST, XATTR_FILL_LAST))
     , mpView(nullptr)
     , m_xBitmapsPresets(m_xBuilder->weld_icon_view(u"images"_ustr))
     , m_xBitmapLB(new SvxPresetListBox(*m_xBitmapsPresets))
@@ -104,9 +103,9 @@ SvxBitmapTabPage::SvxBitmapTabPage(weld::Container* pPage, weld::DialogControlle
     , m_xCtlBitmapPreview(new weld::CustomWeld(*m_xBuilder, u"CTL_IMAGE_PREVIEW"_ustr, m_aCtlBitmapPreview))
 {
     // setting the output device
-    m_rXFSet.Put( XFillStyleItem(drawing::FillStyle_BITMAP) );
-    m_rXFSet.Put( XFillBitmapItem(OUString(), Graphic()) );
-    m_aCtlBitmapPreview.SetAttributes( m_aXFillAttr.GetItemSet() );
+    m_aFillAttributeSet.Put( XFillStyleItem(drawing::FillStyle_BITMAP) );
+    m_aFillAttributeSet.Put( XFillBitmapItem(OUString(), Graphic()) );
+    m_aCtlBitmapPreview.SetAttributes(m_aFillAttributeSet);
 
     m_xBitmapsPresets->connect_item_activated(LINK(this, SvxBitmapTabPage, ModifyBitmapHdl));
     m_xBitmapLB->SetRenameHdl( LINK(this, SvxBitmapTabPage, ClickRenameHdl) );
@@ -129,7 +128,7 @@ SvxBitmapTabPage::SvxBitmapTabPage(weld::Container* pPage, weld::DialogControlle
     Size aSize = getDrawPreviewOptimalSize(m_aCtlBitmapPreview.GetDrawingArea()->get_ref_device());
     m_xCtlBitmapPreview->set_size_request(aSize.Width(), aSize.Height());
 
-    SfxItemPool* pPool = m_rXFSet.GetPool();
+    SfxItemPool* pPool = m_aFillAttributeSet.GetPool();
     mePoolUnit = pPool->GetMetric( XATTR_FILLBMP_SIZEX );
     meFieldUnit = GetModuleFieldUnit( rInAttrs );
     SetFieldUnit( *m_xBitmapWidth, meFieldUnit, true );
@@ -304,8 +303,8 @@ void SvxBitmapTabPage::Reset( const SfxItemSet* rAttrs )
 
     if(!aItem.isPattern())
     {
-        m_rXFSet.Put( aItem );
-        m_aCtlBitmapPreview.SetAttributes( m_aXFillAttr.GetItemSet() );
+        m_aFillAttributeSet.Put( aItem );
+        m_aCtlBitmapPreview.SetAttributes(m_aFillAttributeSet);
         m_aCtlBitmapPreview.Invalidate();
     }
     else
@@ -517,11 +516,11 @@ void SvxBitmapTabPage::UpdateBitmap()
         ModifyBitmapStyleHdl( *m_xBitmapStyleLB );
         ModifyBitmapPositionHdl( *m_xPositionLB );
 
-        m_rXFSet.ClearItem(XATTR_FILLBITMAP);
-        m_rXFSet.Put(XFillStyleItem(drawing::FillStyle_BITMAP));
-        m_rXFSet.Put(XFillBitmapItem(OUString(), *pGraphicObject));
+        m_aFillAttributeSet.ClearItem(XATTR_FILLBITMAP);
+        m_aFillAttributeSet.Put(XFillStyleItem(drawing::FillStyle_BITMAP));
+        m_aFillAttributeSet.Put(XFillBitmapItem(OUString(), *pGraphicObject));
 
-        m_aCtlBitmapPreview.SetAttributes( m_aXFillAttr.GetItemSet() );
+        m_aCtlBitmapPreview.SetAttributes(m_aFillAttributeSet);
         m_aCtlBitmapPreview.Invalidate();
     }
     else
@@ -612,7 +611,7 @@ IMPL_LINK_NOARG( SvxBitmapTabPage, ModifyBitmapSizeHdl, weld::MetricSpinButton&,
     }
     ModifyBitmapStyleHdl(*m_xBitmapStyleLB);
 
-    m_aCtlBitmapPreview.SetAttributes( m_aXFillAttr.GetItemSet() );
+    m_aCtlBitmapPreview.SetAttributes(m_aFillAttributeSet);
     m_aCtlBitmapPreview.Invalidate();
 }
 
@@ -657,8 +656,8 @@ IMPL_LINK_NOARG( SvxBitmapTabPage, ModifyBitmapStyleHdl, weld::ComboBox&, void )
     m_xPositionOffBox->set_sensitive( bIsTiled );
     m_xTileOffBox->set_sensitive( bIsTiled );
 
-    m_rXFSet.Put( XFillBmpTileItem( bIsTiled ) );
-    m_rXFSet.Put( XFillBmpStretchItem( bIsStretched ) );
+    m_aFillAttributeSet.Put( XFillBmpTileItem( bIsTiled ) );
+    m_aFillAttributeSet.Put( XFillBmpStretchItem( bIsStretched ) );
 
     if(!bIsStretched)
     {
@@ -684,32 +683,32 @@ IMPL_LINK_NOARG( SvxBitmapTabPage, ModifyBitmapStyleHdl, weld::ComboBox&, void )
                 break;
         }
 
-        m_rXFSet.Put( XFillBmpSizeXItem( aSetBitmapSize.Width() ) );
-        m_rXFSet.Put( XFillBmpSizeYItem( aSetBitmapSize.Height() ) );
+        m_aFillAttributeSet.Put( XFillBmpSizeXItem( aSetBitmapSize.Width() ) );
+        m_aFillAttributeSet.Put( XFillBmpSizeYItem( aSetBitmapSize.Height() ) );
     }
 
-    m_aCtlBitmapPreview.SetAttributes( m_aXFillAttr.GetItemSet() );
+    m_aCtlBitmapPreview.SetAttributes(m_aFillAttributeSet);
     m_aCtlBitmapPreview.Invalidate();
 }
 
 IMPL_LINK_NOARG(SvxBitmapTabPage, ModifyBitmapPositionHdl, weld::ComboBox&, void)
 {
     if (m_xPositionLB->get_sensitive())
-        m_rXFSet.Put( XFillBmpPosItem( static_cast< RectPoint >( m_xPositionLB->get_active() ) ) );
+        m_aFillAttributeSet.Put( XFillBmpPosItem( static_cast< RectPoint >( m_xPositionLB->get_active() ) ) );
 
-    m_aCtlBitmapPreview.SetAttributes( m_aXFillAttr.GetItemSet() );
+    m_aCtlBitmapPreview.SetAttributes(m_aFillAttributeSet);
     m_aCtlBitmapPreview.Invalidate();
 }
 
 IMPL_LINK_NOARG(SvxBitmapTabPage, ModifyPositionOffsetHdl, weld::MetricSpinButton&, void)
 {
     if (m_xPositionOffX->get_sensitive())
-        m_rXFSet.Put( XFillBmpPosOffsetXItem( m_xPositionOffX->get_value(FieldUnit::PERCENT) ) );
+        m_aFillAttributeSet.Put( XFillBmpPosOffsetXItem( m_xPositionOffX->get_value(FieldUnit::PERCENT) ) );
 
     if (m_xPositionOffY->get_sensitive())
-        m_rXFSet.Put( XFillBmpPosOffsetYItem( m_xPositionOffY->get_value(FieldUnit::PERCENT) ) );
+        m_aFillAttributeSet.Put( XFillBmpPosOffsetYItem( m_xPositionOffY->get_value(FieldUnit::PERCENT) ) );
 
-    m_aCtlBitmapPreview.SetAttributes( m_aXFillAttr.GetItemSet() );
+    m_aCtlBitmapPreview.SetAttributes(m_aFillAttributeSet);
     m_aCtlBitmapPreview.Invalidate();
 }
 
@@ -724,10 +723,10 @@ IMPL_LINK_NOARG(SvxBitmapTabPage, ModifyTileOffsetHdl, weld::MetricSpinButton&, 
     if(m_xTileOffLB->get_active() == static_cast<sal_Int32>(COLUMN))
         nTileYOff = o3tl::sanitizing_cast<sal_uInt16>(m_xTileOffset->get_value(FieldUnit::PERCENT));
 
-    m_rXFSet.Put( XFillBmpTileOffsetXItem(nTileXOff) );
-    m_rXFSet.Put( XFillBmpTileOffsetYItem(nTileYOff) );
+    m_aFillAttributeSet.Put( XFillBmpTileOffsetXItem(nTileXOff) );
+    m_aFillAttributeSet.Put( XFillBmpTileOffsetYItem(nTileYOff) );
 
-    m_aCtlBitmapPreview.SetAttributes( m_aXFillAttr.GetItemSet() );
+    m_aCtlBitmapPreview.SetAttributes(m_aFillAttributeSet);
     m_aCtlBitmapPreview.Invalidate();
 }
 

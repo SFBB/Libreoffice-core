@@ -69,6 +69,14 @@ PanelLayout::~PanelLayout()
     m_xBuilder.reset();
 }
 
+css::ui::LayoutSize PanelLayout::GetHeightForWidth(const sal_Int32)
+{
+    // widget layout-based sidebar
+    queue_resize();
+    Size aSize(get_preferred_size());
+    return css::ui::LayoutSize(aSize.Height(), aSize.Height(), aSize.Height());
+}
+
 void PanelLayout::queue_resize()
 {
     if (!m_xContainer)

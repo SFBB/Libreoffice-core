@@ -435,6 +435,7 @@ $(eval $(call gb_Library_add_exception_objects,svxcore,\
     svx/source/tbxctrls/fontworkgallery \
     svx/source/tbxctrls/IColorSet \
     svx/source/tbxctrls/linectrl \
+    svx/source/tbxctrls/MenuOrToolMenuButton \
     svx/source/tbxctrls/Palette \
     svx/source/tbxctrls/PaletteManager \
     svx/source/tbxctrls/tbcontrl \

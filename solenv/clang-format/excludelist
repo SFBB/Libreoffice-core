@@ -5765,7 +5765,6 @@ include/svx/xdash.hxx
 include/svx/xdef.hxx
 include/svx/xenum.hxx
 include/svx/xfillit0.hxx
-include/svx/xflasit.hxx
 include/svx/xflbckit.hxx
 include/svx/xflbmpit.hxx
 include/svx/xflbmsli.hxx
@@ -5791,7 +5790,6 @@ include/svx/xhatch.hxx
 include/svx/xit.hxx
 include/svx/xlineit0.hxx
 include/svx/xlinjoit.hxx
-include/svx/xlnasit.hxx
 include/svx/xlncapit.hxx
 include/svx/xlnclit.hxx
 include/svx/xlndsit.hxx
@@ -10091,7 +10089,6 @@ sfx2/source/sidebar/DeckLayouter.cxx
 sfx2/source/sidebar/DeckTitleBar.cxx
 sfx2/source/sidebar/FocusManager.cxx
 sfx2/source/sidebar/IContextChangeReceiver.cxx
-sfx2/source/sidebar/ILayoutableWindow.cxx
 sfx2/source/sidebar/Panel.cxx
 sfx2/source/sidebar/PanelDescriptor.cxx
 sfx2/source/sidebar/PanelLayout.cxx

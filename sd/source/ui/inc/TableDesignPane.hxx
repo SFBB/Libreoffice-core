@@ -19,11 +19,10 @@
 
 #pragma once
 
-#include <svtools/valueset.hxx>
-#include <sfx2/sidebar/ILayoutableWindow.hxx>
 #include <sfx2/sidebar/PanelLayout.hxx>
 #include <vcl/weld/Builder.hxx>
 #include <vcl/weld/CheckButton.hxx>
+#include <vcl/weld/IconView.hxx>
 
 #include <com/sun/star/ui/LayoutSize.hpp>
 
@@ -51,20 +50,6 @@ enum TableCheckBox : sal_uInt16
     CB_COUNT            = CB_BANDED_COLUMNS + 1
 };
 
-class TableValueSet final : public ValueSet
-{
-private:
-    Link<const Point*, void> maContextMenuHandler;
-public:
-    TableValueSet(std::unique_ptr<weld::ScrolledWindow> pScrolledWindow);
-    virtual bool Command(const CommandEvent& rEvent) override;
-    virtual void Resize() override;
-    virtual void StyleUpdated() override;
-    void updateSettings();
-    void SetContextMenuHandler(const Link<const Point*, void>& rLink) { maContextMenuHandler = rLink; }
-    static constexpr int getMaxRowCount() { return 3; }
-};
-
 class TableDesignWidget final
 {
 public:
@@ -75,7 +60,6 @@ public:
     void onSelectionChanged();
 
     void ApplyOptions();
-    void ApplyStyle();
     void InsertStyle();
     void CloneStyle();
     void ResetStyle();
@@ -93,15 +77,14 @@ private:
     void FillDesignPreviewControl();
 
     DECL_LINK(EventMultiplexerListener, sdtools::EventMultiplexerEvent&, void);
-    DECL_LINK(implContextMenuHandler, const Point*, void);
-    DECL_LINK(implValueSetHdl, ValueSet*, void);
+    DECL_LINK(ContextMenuHdl, const CommandEvent&, bool);
+    DECL_LINK(IconViewItemActivatedHdl, const weld::TreeIter&, bool);
     DECL_LINK(implCheckBoxHdl, weld::Toggleable&, void);
 
     ViewShellBase& mrBase;
 
     std::unique_ptr<weld::Menu> m_xMenu;
-    std::unique_ptr<TableValueSet> m_xValueSet;
-    std::unique_ptr<weld::CustomWeld> m_xValueSetWin;
+    std::unique_ptr<weld::IconView> m_xIconView;
     std::unique_ptr<weld::CheckButton> m_aCheckBoxes[CB_COUNT];
 
     css::uno::Reference< css::beans::XPropertySet > mxSelectedTable;
@@ -111,7 +94,6 @@ private:
 };
 
 class TableDesignPane final : public PanelLayout
-                      , public sfx2::sidebar::ILayoutableWindow
 {
 private:
     std::unique_ptr<TableDesignWidget> m_xImpl;
@@ -124,8 +106,7 @@ public:
     }
     virtual css::ui::LayoutSize GetHeightForWidth(const sal_Int32 /*nWidth*/) override
     {
-        sal_Int32 nMinimumHeight = get_preferred_size().Height();
-        return css::ui::LayoutSize(nMinimumHeight, -1, nMinimumHeight);
+        return css::ui::LayoutSize(-1, -1, -1);
     }
 };
 
