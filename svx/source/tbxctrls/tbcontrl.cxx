@@ -2810,7 +2810,7 @@ static Color lcl_mediumColor( Color aMain, Color /*aDefault*/ )
 }
 
 SvxLineWindow_Impl::SvxLineWindow_Impl(SvxFrameToolBoxControl* pControl, weld::Widget* pParent)
-    : WeldToolbarPopup(pControl->getFrameInterface(), pParent, u"svx/ui/floatingframeborder.ui"_ustr, u"FloatingFrameBorder"_ustr)
+    : WeldToolbarPopup(pControl->getFrameInterface(), pParent, u"svx/ui/floatingborderstyle.ui"_ustr, u"FloatingBorderStyle"_ustr)
     , m_xControl(pControl)
     , m_xLineStyleLb(new LineListBox(*m_xBuilder))
     , m_bIsWriter(false)
