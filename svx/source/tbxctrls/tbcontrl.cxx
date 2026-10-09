@@ -562,7 +562,7 @@ public:
 
     const Color& GetColor() const { return m_aColor; }
 
-    void GrabFocus() { m_pValueSet->GrabFocus(); }
+    void GrabFocus() { m_pIconView->grab_focus(); }
 
     void SetItemActivatedHdl(const Link<std::optional<SvxBorderLineStyle>, void>& rLink)
     {
@@ -586,8 +586,7 @@ private:
     LineListBox(const LineListBox&) = delete;
     LineListBox& operator=(const LineListBox&) = delete;
 
-    std::unique_ptr<ValueSet> m_pValueSet;
-    std::unique_ptr<weld::CustomWeld> m_pValueSetWin;
+    std::unique_ptr<weld::IconView> m_pIconView;
     std::vector<std::unique_ptr<ImpLineListData>> m_vLineList;
     const OUString m_sNone;
     ScopedVclPtr<VirtualDevice> m_aVirDev;
@@ -597,15 +596,14 @@ private:
 
     Link<std::optional<SvxBorderLineStyle>, void> m_aItemActivatedHdl;
 
-    DECL_LINK(SelectHdl, ValueSet*, void);
+    DECL_LINK(ItemActivatedHdl, const weld::TreeIter&, bool);
 };
 
 Bitmap LineListBox::ImpGetLine(tools::Long nLine1, tools::Long nLine2, tools::Long nDistance,
                                Color aColor1, Color aColor2, Color aColorDist,
                                SvxBorderLineStyle nStyle)
 {
-    auto nMinWidth
-        = m_pValueSet->GetDrawingArea()->get_ref_device().approximate_digit_width() * COMBO_WIDTH_IN_CHARS;
+    auto nMinWidth = m_pIconView->get_approximate_digit_width() * COMBO_WIDTH_IN_CHARS;
     Size aSize(nMinWidth, m_aTxtSize.Height());
     aSize.AdjustWidth(-(m_aTxtSize.Width()));
     aSize.AdjustWidth(-6);
@@ -634,28 +632,34 @@ Bitmap LineListBox::ImpGetLine(tools::Long nLine1, tools::Long nLine2, tools::Lo
 
     if (m_aVirDev->GetOutputSize() != aSize)
         m_aVirDev->SetOutputSize(aSize);
+
+    m_aVirDev->SetBackground(Application::GetSettings().GetStyleSettings().GetFieldColor());
+    m_aVirDev->Erase();
+
+    const int nHeightLinesAndGap = n1 + nDist + n2;
+    const int nStartPosY = (aSize.Height() - nHeightLinesAndGap) / 2;
+
     m_aVirDev->SetFillColor(aColorDist);
-    m_aVirDev->DrawRect(tools::Rectangle(Point(), aSize));
+    m_aVirDev->DrawRect(tools::Rectangle(Point(0, nStartPosY), Size(aSize.Width(), nHeightLinesAndGap)));
 
     m_aVirDev->SetFillColor(aColor1);
 
-    double y1 = double(n1) / 2;
+    double y1 = nStartPosY + double(n1) / 2;
     svtools::DrawLine(*m_aVirDev, basegfx::B2DPoint(0, y1), basegfx::B2DPoint(aSize.Width(), y1),
                       n1, nStyle);
 
     if (n2)
     {
-        double y2 = n1 + nDist + double(n2) / 2;
+        double y2 = nStartPosY + n1 + nDist + double(n2) / 2;
         m_aVirDev->SetFillColor(aColor2);
         svtools::DrawLine(*m_aVirDev, basegfx::B2DPoint(0, y2),
                           basegfx::B2DPoint(aSize.Width(), y2), n2, SvxBorderLineStyle::SOLID);
     }
-    return m_aVirDev->GetBitmap(Point(), Size(aSize.Width(), n1 + nDist + n2));
+    return m_aVirDev->GetBitmap(Point(), aSize);
 }
 
 LineListBox::LineListBox(weld::Builder& rBuilder)
-    : m_pValueSet(new ValueSet(nullptr))
-    , m_pValueSetWin(new weld::CustomWeld(rBuilder, u"valueset"_ustr, *m_pValueSet))
+    : m_pIconView(rBuilder.weld_icon_view(u"iconview"_ustr))
     , m_sNone(SvxResId(RID_SVXSTR_NONE))
     , m_aVirDev(VclPtr<VirtualDevice>::Create())
     , m_aColor(Application::GetSettings().GetStyleSettings().GetWindowTextColor())
@@ -664,8 +668,7 @@ LineListBox::LineListBox(weld::Builder& rBuilder)
     m_aVirDev->SetLineColor();
     m_aVirDev->SetMapMode(MapMode(MapUnit::MapTwip));
 
-    m_pValueSet->SetStyle(WinBits(WB_FLATVALUESET | WB_ITEMBORDER | WB_3DLOOK | WB_NO_DIRECTSELECT | WB_TABSTOP));
-    m_pValueSet->SetSelectHdl(LINK(this, LineListBox, SelectHdl));
+    m_pIconView->connect_item_activated(LINK(this, LineListBox, ItemActivatedHdl));
 }
 
 sal_Int32 LineListBox::GetStylePos(sal_Int32 nListPos)
@@ -716,50 +719,39 @@ void LineListBox::UpdatePaintLineColor()
 
 void LineListBox::UpdateEntries(tools::Long nWidth)
 {
-    Size aSize;
-
     UpdatePaintLineColor();
 
-    OutputDevice& rDevice = m_pValueSet->GetDrawingArea()->get_ref_device();
-    m_aTxtSize.setWidth(rDevice.approximate_digit_width());
-    m_aTxtSize.setHeight(rDevice.GetTextHeight());
+    m_aTxtSize.setWidth(m_pIconView->get_approximate_digit_width());
+    m_aTxtSize.setHeight(m_pIconView->get_text_height());
 
-    sal_Int32 nSelEntry = m_pValueSet->GetSelectItemPos();
+    sal_Int32 nSelEntry = m_pIconView->get_selected_index();
     sal_Int32 nTypePos = GetStylePos(nSelEntry);
 
     // Remove the old entries
-    m_pValueSet->Clear();
+    m_pIconView->clear();
 
     // Add the new entries based on the defined width
-    m_pValueSet->InsertItem(1, Image(), m_sNone);
+    Bitmap aNoLinesImage = ImpGetLine(0, 0, 0, COL_AUTO, COL_AUTO, COL_AUTO, SvxBorderLineStyle::NONE);
+    m_pIconView->insert(0, nullptr, nullptr, &aNoLinesImage, nullptr);
+    m_pIconView->set_item_accessible_name(0, m_sNone);
+    m_pIconView->set_item_tooltip_text(0, m_sNone);
 
     sal_uInt16 nCount = m_vLineList.size();
     for (sal_uInt16 n = 0; n < nCount; ++n)
     {
         auto& pData = m_vLineList[n];
-        const sal_uInt16 nId = n + 2;
+        const int nIndex = m_pIconView->n_children();
         Bitmap aBmp = ImpGetLine(
             pData->GetLine1ForWidth(nWidth), pData->GetLine2ForWidth(nWidth),
-            pData->GetDistForWidth(nWidth), GetColorLine1(m_pValueSet->GetItemCount()),
-            GetColorLine2(m_pValueSet->GetItemCount()), GetColorDist(m_pValueSet->GetItemCount()), pData->GetStyle());
-        m_pValueSet->InsertItem(nId, Image(aBmp), SvtLineListBox::GetLineStyleName(pData->GetStyle()));
-        Size aBmpSize = aBmp.GetSizePixel();
-        if (aBmpSize.Width() > aSize.Width())
-            aSize.setWidth(aBmpSize.getWidth());
-        if (aBmpSize.Height() > aSize.Height())
-            aSize.setHeight(aBmpSize.getHeight());
+            pData->GetDistForWidth(nWidth), GetColorLine1(nIndex),
+            GetColorLine2(nIndex), GetColorDist(nIndex), pData->GetStyle());
+        m_pIconView->insert(nIndex, nullptr, nullptr, &aBmp, nullptr);
+        const OUString sStyleName = SvtLineListBox::GetLineStyleName(pData->GetStyle());
+        m_pIconView->set_item_accessible_name(nIndex, sStyleName);
+        m_pIconView->set_item_tooltip_text(nIndex, sStyleName);
         if (n == nTypePos)
-            m_pValueSet->SelectItem(nId);
+            m_pIconView->select(nIndex);
     }
-
-    m_pValueSet->Invalidate();
-
-    aSize.AdjustWidth(6);
-    aSize.AdjustHeight(6);
-
-    aSize = m_pValueSet->CalcWindowSizePixel(aSize);
-    m_pValueSet->GetDrawingArea()->set_size_request(aSize.Width(), aSize.Height());
-    m_pValueSet->SetOutputSizePixel(aSize);
 }
 
 Color LineListBox::GetColorLine1(sal_Int32 nPos)
@@ -791,17 +783,19 @@ Color LineListBox::GetColorDist(sal_Int32 nPos)
     return pData->GetColorDist(GetColor(), rResult);
 }
 
-IMPL_LINK_NOARG(LineListBox, SelectHdl, ValueSet*, void)
+IMPL_LINK(LineListBox, ItemActivatedHdl, const weld::TreeIter&, rIter, bool)
 {
     std::optional<SvxBorderLineStyle> oStyle;
-    size_t nPos = m_pValueSet->GetSelectItemPos();
-    if (nPos != VALUESET_ITEM_NOTFOUND && nPos > 0)
+    int nPos = m_pIconView->get_iter_index_in_parent(rIter);
+    if (nPos > 0)
     {
         --nPos;
         oStyle = GetEntryStyle(nPos);
     }
 
     m_aItemActivatedHdl.Call(oStyle);
+
+    return true;
 }
 
 class SvxLineWindow_Impl final : public WeldToolbarPopup
