@@ -575,7 +575,7 @@ private:
     Bitmap ImpGetLine(tools::Long nLine1, tools::Long nLine2, tools::Long nDistance, Color nColor1,
                       Color nColor2, Color nColorDist, SvxBorderLineStyle nStyle);
 
-    void UpdatePaintLineColor(); // returns sal_True if maPaintCol has changed
+    void UpdatePaintLineColor();
 
     Size UpdateEntries(tools::Long nOldWidth);
     sal_Int32 GetStylePos(sal_Int32 nListPos, tools::Long nWidth);
