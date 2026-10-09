@@ -758,18 +758,16 @@ void LineListBox::UpdateEntries(tools::Long nOldWidth)
     // Remove the old entries
     m_pValueSet->Clear();
 
-    sal_uInt16 nId(1);
-
     // Add the new entries based on the defined width
-    m_pValueSet->InsertItem(nId++, Image(), m_sNone);
+    m_pValueSet->InsertItem(1, Image(), m_sNone);
 
-    sal_uInt16 n = 0;
     sal_uInt16 nCount = m_vLineList.size();
-    while (n < nCount)
+    for (sal_uInt16 n = 0; n < nCount; ++n)
     {
         auto& pData = m_vLineList[n];
         if (pData->GetMinWidth() <= m_nWidth)
         {
+            const sal_uInt16 nId = n + 2;
             Bitmap aBmp = ImpGetLine(
                 pData->GetLine1ForWidth(m_nWidth), pData->GetLine2ForWidth(m_nWidth),
                 pData->GetDistForWidth(m_nWidth), GetColorLine1(m_pValueSet->GetItemCount()),
@@ -785,8 +783,6 @@ void LineListBox::UpdateEntries(tools::Long nOldWidth)
         }
         else if (n == nTypePos)
             m_pValueSet->SetNoSelection();
-        n++;
-        ++nId;
     }
 
     m_pValueSet->Invalidate();
