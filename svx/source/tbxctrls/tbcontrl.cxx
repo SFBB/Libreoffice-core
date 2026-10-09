@@ -577,7 +577,7 @@ private:
 
     void UpdatePaintLineColor();
 
-    sal_Int32 GetStylePos(sal_Int32 nListPos, tools::Long nWidth);
+    sal_Int32 GetStylePos(sal_Int32 nListPos);
 
     const Color& GetPaintColor() const { return m_aPaintCol; }
 
@@ -683,7 +683,7 @@ LineListBox::LineListBox(weld::Builder& rBuilder)
     m_pValueSet->SetSelectHdl(LINK(this, LineListBox, SelectHdl));
 }
 
-sal_Int32 LineListBox::GetStylePos(sal_Int32 nListPos, tools::Long nWidth)
+sal_Int32 LineListBox::GetStylePos(sal_Int32 nListPos)
 {
     sal_Int32 nPos = -1;
     nListPos--;
@@ -693,13 +693,9 @@ sal_Int32 LineListBox::GetStylePos(sal_Int32 nListPos, tools::Long nWidth)
     size_t nCount = m_vLineList.size();
     while (nPos == -1 && i < nCount)
     {
-        auto& pData = m_vLineList[i];
-        if (pData->GetMinWidth() <= nWidth)
-        {
-            if (nListPos == n)
-                nPos = static_cast<sal_Int32>(i);
-            n++;
-        }
+        if (nListPos == n)
+            nPos = static_cast<sal_Int32>(i);
+        n++;
         i++;
     }
 
@@ -735,7 +731,6 @@ void LineListBox::UpdatePaintLineColor()
 
 void LineListBox::UpdateEntries(tools::Long nWidth)
 {
-    const tools::Long nOldWidth = m_nWidth;
     m_nWidth = nWidth;
 
     Size aSize;
@@ -747,7 +742,7 @@ void LineListBox::UpdateEntries(tools::Long nWidth)
     m_aTxtSize.setHeight(rDevice.GetTextHeight());
 
     sal_Int32 nSelEntry = m_pValueSet->GetSelectItemPos();
-    sal_Int32 nTypePos = GetStylePos(nSelEntry, nOldWidth);
+    sal_Int32 nTypePos = GetStylePos(nSelEntry);
 
     // Remove the old entries
     m_pValueSet->Clear();
@@ -759,24 +754,19 @@ void LineListBox::UpdateEntries(tools::Long nWidth)
     for (sal_uInt16 n = 0; n < nCount; ++n)
     {
         auto& pData = m_vLineList[n];
-        if (pData->GetMinWidth() <= m_nWidth)
-        {
-            const sal_uInt16 nId = n + 2;
-            Bitmap aBmp = ImpGetLine(
-                pData->GetLine1ForWidth(m_nWidth), pData->GetLine2ForWidth(m_nWidth),
-                pData->GetDistForWidth(m_nWidth), GetColorLine1(m_pValueSet->GetItemCount()),
-                GetColorLine2(m_pValueSet->GetItemCount()), GetColorDist(m_pValueSet->GetItemCount()), pData->GetStyle());
-            m_pValueSet->InsertItem(nId, Image(aBmp), SvtLineListBox::GetLineStyleName(pData->GetStyle()));
-            Size aBmpSize = aBmp.GetSizePixel();
-            if (aBmpSize.Width() > aSize.Width())
-                aSize.setWidth(aBmpSize.getWidth());
-            if (aBmpSize.Height() > aSize.Height())
-                aSize.setHeight(aBmpSize.getHeight());
-            if (n == nTypePos)
-                m_pValueSet->SelectItem(nId);
-        }
-        else if (n == nTypePos)
-            m_pValueSet->SetNoSelection();
+        const sal_uInt16 nId = n + 2;
+        Bitmap aBmp = ImpGetLine(
+            pData->GetLine1ForWidth(m_nWidth), pData->GetLine2ForWidth(m_nWidth),
+            pData->GetDistForWidth(m_nWidth), GetColorLine1(m_pValueSet->GetItemCount()),
+            GetColorLine2(m_pValueSet->GetItemCount()), GetColorDist(m_pValueSet->GetItemCount()), pData->GetStyle());
+        m_pValueSet->InsertItem(nId, Image(aBmp), SvtLineListBox::GetLineStyleName(pData->GetStyle()));
+        Size aBmpSize = aBmp.GetSizePixel();
+        if (aBmpSize.Width() > aSize.Width())
+            aSize.setWidth(aBmpSize.getWidth());
+        if (aBmpSize.Height() > aSize.Height())
+            aSize.setHeight(aBmpSize.getHeight());
+        if (n == nTypePos)
+            m_pValueSet->SelectItem(nId);
     }
 
     m_pValueSet->Invalidate();
@@ -791,7 +781,7 @@ void LineListBox::UpdateEntries(tools::Long nWidth)
 
 Color LineListBox::GetColorLine1(sal_Int32 nPos)
 {
-    sal_Int32 nStyle = GetStylePos(nPos, m_nWidth);
+    sal_Int32 nStyle = GetStylePos(nPos);
     if (nStyle == -1)
         return GetPaintColor();
     auto& pData = m_vLineList[nStyle];
@@ -800,7 +790,7 @@ Color LineListBox::GetColorLine1(sal_Int32 nPos)
 
 Color LineListBox::GetColorLine2(sal_Int32 nPos)
 {
-    sal_Int32 nStyle = GetStylePos(nPos, m_nWidth);
+    sal_Int32 nStyle = GetStylePos(nPos);
     if (nStyle == -1)
         return GetPaintColor();
     auto& pData = m_vLineList[nStyle];
@@ -811,7 +801,7 @@ Color LineListBox::GetColorDist(sal_Int32 nPos)
 {
     Color rResult = Application::GetSettings().GetStyleSettings().GetFieldColor();
 
-    sal_Int32 nStyle = GetStylePos(nPos, m_nWidth);
+    sal_Int32 nStyle = GetStylePos(nPos);
     if (nStyle == -1)
         return rResult;
     auto& pData = m_vLineList[nStyle];
