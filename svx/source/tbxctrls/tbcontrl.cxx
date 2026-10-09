@@ -551,12 +551,7 @@ public:
     LineListBox(weld::Builder& rBuilder);
 
     /** Set the width in Twips */
-    Size SetWidth(tools::Long nWidth)
-    {
-        tools::Long nOldWidth = m_nWidth;
-        m_nWidth = nWidth;
-        return UpdateEntries(nOldWidth);
-    }
+    void SetWidth(tools::Long nWidth);
 
     /** Insert a listbox entry with all widths in Twips. */
     void InsertEntry(const BorderWidthImpl& rWidthImpl, SvxBorderLineStyle nStyle,
@@ -570,13 +565,6 @@ public:
     const Color& GetColor() const { return m_aColor; }
 
     void GrabFocus() { m_pValueSet->GrabFocus(); }
-
-    void SetSize(const Size& rSize)
-    {
-        Size aSize = m_pValueSet->CalcWindowSizePixel(rSize);
-        m_pValueSet->GetDrawingArea()->set_size_request(aSize.Width(), aSize.Height());
-        m_pValueSet->SetOutputSizePixel(aSize);
-    }
 
     void SetItemActivatedHdl(const Link<std::optional<SvxBorderLineStyle>, void>& rLink)
     {
@@ -694,6 +682,20 @@ LineListBox::LineListBox(weld::Builder& rBuilder)
 
     m_pValueSet->SetStyle(WinBits(WB_FLATVALUESET | WB_ITEMBORDER | WB_3DLOOK | WB_NO_DIRECTSELECT | WB_TABSTOP));
     m_pValueSet->SetSelectHdl(LINK(this, LineListBox, SelectHdl));
+}
+
+void LineListBox::SetWidth(tools::Long nWidth)
+{
+    tools::Long nOldWidth = m_nWidth;
+    m_nWidth = nWidth;
+
+    Size aSize = UpdateEntries(nOldWidth);
+    aSize.AdjustWidth(6);
+    aSize.AdjustHeight(6);
+
+    aSize = m_pValueSet->CalcWindowSizePixel(aSize);
+    m_pValueSet->GetDrawingArea()->set_size_request(aSize.Width(), aSize.Height());
+    m_pValueSet->SetOutputSizePixel(aSize);
 }
 
 sal_Int32 LineListBox::GetStylePos(sal_Int32 nListPos, tools::Long nWidth)
@@ -2856,16 +2858,11 @@ SvxLineWindow_Impl::SvxLineWindow_Impl(SvxFrameToolBoxControl* pControl, weld::W
            &SvxBorderLine::lightColor, &SvxBorderLine::darkColor );
     m_xLineStyleLb->InsertEntry( SvxBorderLine::getWidthImpl( SvxBorderLineStyle::INSET ), SvxBorderLineStyle::INSET, 10,
            &SvxBorderLine::darkColor, &SvxBorderLine::lightColor );
-    Size aSize = m_xLineStyleLb->SetWidth( 20 ); // 1pt by default
+    m_xLineStyleLb->SetWidth(20); // 1pt by default
 
     m_xLineStyleLb->SetItemActivatedHdl(LINK(this, SvxLineWindow_Impl, LineStyleActivatedHdl));
 
     m_xContainer->set_help_id(HID_POPUP_LINE);
-
-    aSize.AdjustWidth(6);
-    aSize.AdjustHeight(6);
-
-    m_xLineStyleLb->SetSize(aSize);
 }
 
 IMPL_LINK(SvxLineWindow_Impl, LineStyleActivatedHdl, std::optional<SvxBorderLineStyle>, oStyle,
