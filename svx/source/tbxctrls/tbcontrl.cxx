@@ -550,8 +550,8 @@ public:
 
     LineListBox(weld::Builder& rBuilder);
 
-    /** Set the width in Twips */
-    void SetWidth(tools::Long nWidth);
+    /** Set the width in Twips and update entries. */
+    void UpdateEntries(tools::Long nWidth);
 
     /** Insert a listbox entry with all widths in Twips. */
     void InsertEntry(const BorderWidthImpl& rWidthImpl, SvxBorderLineStyle nStyle,
@@ -577,7 +577,6 @@ private:
 
     void UpdatePaintLineColor();
 
-    void UpdateEntries(tools::Long nOldWidth);
     sal_Int32 GetStylePos(sal_Int32 nListPos, tools::Long nWidth);
 
     const Color& GetPaintColor() const { return m_aPaintCol; }
@@ -684,14 +683,6 @@ LineListBox::LineListBox(weld::Builder& rBuilder)
     m_pValueSet->SetSelectHdl(LINK(this, LineListBox, SelectHdl));
 }
 
-void LineListBox::SetWidth(tools::Long nWidth)
-{
-    tools::Long nOldWidth = m_nWidth;
-    m_nWidth = nWidth;
-
-    UpdateEntries(nOldWidth);
-}
-
 sal_Int32 LineListBox::GetStylePos(sal_Int32 nListPos, tools::Long nWidth)
 {
     sal_Int32 nPos = -1;
@@ -742,8 +733,11 @@ void LineListBox::UpdatePaintLineColor()
         m_aPaintCol = aNewCol;
 }
 
-void LineListBox::UpdateEntries(tools::Long nOldWidth)
+void LineListBox::UpdateEntries(tools::Long nWidth)
 {
+    const tools::Long nOldWidth = m_nWidth;
+    m_nWidth = nWidth;
+
     Size aSize;
 
     UpdatePaintLineColor();
@@ -2853,7 +2847,7 @@ SvxLineWindow_Impl::SvxLineWindow_Impl(SvxFrameToolBoxControl* pControl, weld::W
            &SvxBorderLine::lightColor, &SvxBorderLine::darkColor );
     m_xLineStyleLb->InsertEntry( SvxBorderLine::getWidthImpl( SvxBorderLineStyle::INSET ), SvxBorderLineStyle::INSET, 10,
            &SvxBorderLine::darkColor, &SvxBorderLine::lightColor );
-    m_xLineStyleLb->SetWidth(20); // 1pt by default
+    m_xLineStyleLb->UpdateEntries(20); // 1pt by default
 
     m_xLineStyleLb->SetItemActivatedHdl(LINK(this, SvxLineWindow_Impl, LineStyleActivatedHdl));
 
