@@ -1520,7 +1520,6 @@ void SvxBorderTabPage::FillLineListBox_Impl()
         m_xLbLineStyle->InsertEntry(
             SvxBorderLine::getWidthImpl(aLines[i].mnStyle),
             aLines[i].mnStyle,
-            lcl_GetMinLineWidth(aLines[i].mnStyle),
             aLines[i].mpColor1Fn,
             aLines[i].mpColor2Fn,
             aLines[i].mpColorDistFn);

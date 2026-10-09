@@ -274,8 +274,8 @@ void SvxTableStylesDlg::InitLineStyles()
     for (size_t i = 0; i < std::size(aLines); ++i)
     {
         m_xBorderStyle->InsertEntry(editeng::SvxBorderLine::getWidthImpl(aLines[i].mnStyle),
-                                    aLines[i].mnStyle, THIN, aLines[i].mpColor1Fn,
-                                    aLines[i].mpColor2Fn, aLines[i].mpColorDistFn);
+                                    aLines[i].mnStyle, aLines[i].mpColor1Fn, aLines[i].mpColor2Fn,
+                                    aLines[i].mpColorDistFn);
     }
 
     m_xBorderStyle->SetWidth(THIN);

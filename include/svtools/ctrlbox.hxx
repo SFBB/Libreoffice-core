@@ -60,18 +60,16 @@ private:
     Color  ( * m_pColor2Fn )( Color );
     Color  ( * m_pColorDistFn )( Color, Color );
 
-    tools::Long    m_nMinWidth;
     SvxBorderLineStyle m_nStyle;
 
 public:
     ImpLineListData( BorderWidthImpl aWidthImpl,
-           SvxBorderLineStyle nStyle, tools::Long nMinWidth, Color ( *pColor1Fn )( Color ),
+           SvxBorderLineStyle nStyle, Color ( *pColor1Fn )( Color ),
            Color ( *pColor2Fn )( Color ), Color ( *pColorDistFn )( Color, Color ) ) :
         m_aWidthImpl( aWidthImpl ),
         m_pColor1Fn( pColor1Fn ),
         m_pColor2Fn( pColor2Fn ),
         m_pColorDistFn( pColorDistFn ),
-        m_nMinWidth( nMinWidth ),
         m_nStyle( nStyle )
     {
     }
@@ -100,8 +98,6 @@ public:
         return ( *m_pColorDistFn )( rMain, rDefault );
     }
 
-    /** Returns the minimum width in twips */
-    tools::Long   GetMinWidth( ) const { return m_nMinWidth;}
     SvxBorderLineStyle GetStyle( ) const { return m_nStyle;}
 };
 
@@ -232,7 +228,7 @@ public:
 
     /** Insert a listbox entry with all widths in Twips. */
     void            InsertEntry(const BorderWidthImpl& rWidthImpl,
-                        SvxBorderLineStyle nStyle, tools::Long nMinWidth = 0,
+                        SvxBorderLineStyle nStyle,
                         ColorFunc pColor1Fn = &sameColor,
                         ColorFunc pColor2Fn = &sameColor,
                         ColorDistFunc pColorDistFn = &sameDistColor);

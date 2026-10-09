@@ -1605,11 +1605,11 @@ void SvtLineListBox::SelectEntry(SvxBorderLineStyle nStyle)
 }
 
 void SvtLineListBox::InsertEntry(
-    const BorderWidthImpl& rWidthImpl, SvxBorderLineStyle nStyle, tools::Long nMinWidth,
+    const BorderWidthImpl& rWidthImpl, SvxBorderLineStyle nStyle,
     ColorFunc pColor1Fn, ColorFunc pColor2Fn, ColorDistFunc pColorDistFn )
 {
     m_vLineList.emplace_back(new ImpLineListData(
-        rWidthImpl, nStyle, nMinWidth, pColor1Fn, pColor2Fn, pColorDistFn));
+        rWidthImpl, nStyle, pColor1Fn, pColor2Fn, pColorDistFn));
 }
 
 void SvtLineListBox::UpdateEntries()
