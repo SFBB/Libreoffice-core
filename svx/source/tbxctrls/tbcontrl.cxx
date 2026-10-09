@@ -577,7 +577,7 @@ private:
 
     void UpdatePaintLineColor();
 
-    Size UpdateEntries(tools::Long nOldWidth);
+    void UpdateEntries(tools::Long nOldWidth);
     sal_Int32 GetStylePos(sal_Int32 nListPos, tools::Long nWidth);
 
     const Color& GetPaintColor() const { return m_aPaintCol; }
@@ -689,13 +689,7 @@ void LineListBox::SetWidth(tools::Long nWidth)
     tools::Long nOldWidth = m_nWidth;
     m_nWidth = nWidth;
 
-    Size aSize = UpdateEntries(nOldWidth);
-    aSize.AdjustWidth(6);
-    aSize.AdjustHeight(6);
-
-    aSize = m_pValueSet->CalcWindowSizePixel(aSize);
-    m_pValueSet->GetDrawingArea()->set_size_request(aSize.Width(), aSize.Height());
-    m_pValueSet->SetOutputSizePixel(aSize);
+    UpdateEntries(nOldWidth);
 }
 
 sal_Int32 LineListBox::GetStylePos(sal_Int32 nListPos, tools::Long nWidth)
@@ -748,7 +742,7 @@ void LineListBox::UpdatePaintLineColor()
         m_aPaintCol = aNewCol;
 }
 
-Size LineListBox::UpdateEntries(tools::Long nOldWidth)
+void LineListBox::UpdateEntries(tools::Long nOldWidth)
 {
     Size aSize;
 
@@ -797,7 +791,12 @@ Size LineListBox::UpdateEntries(tools::Long nOldWidth)
 
     m_pValueSet->Invalidate();
 
-    return aSize;
+    aSize.AdjustWidth(6);
+    aSize.AdjustHeight(6);
+
+    aSize = m_pValueSet->CalcWindowSizePixel(aSize);
+    m_pValueSet->GetDrawingArea()->set_size_request(aSize.Width(), aSize.Height());
+    m_pValueSet->SetOutputSizePixel(aSize);
 }
 
 Color LineListBox::GetColorLine1(sal_Int32 nPos)
