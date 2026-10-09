@@ -560,8 +560,6 @@ public:
 
     SvxBorderLineStyle GetEntryStyle(sal_Int32 nPos) const;
 
-    void SetSourceUnit(FieldUnit eNewUnit) { m_eSourceUnit = eNewUnit; }
-
     const Color& GetColor() const { return m_aColor; }
 
     void GrabFocus() { m_pValueSet->GrabFocus(); }
@@ -596,7 +594,6 @@ private:
     Size m_aTxtSize;
     Color const m_aColor;
     Color m_aPaintCol;
-    FieldUnit m_eSourceUnit;
 
     Link<std::optional<SvxBorderLineStyle>, void> m_aItemActivatedHdl;
 
@@ -612,14 +609,6 @@ Bitmap LineListBox::ImpGetLine(tools::Long nLine1, tools::Long nLine2, tools::Lo
     Size aSize(nMinWidth, m_aTxtSize.Height());
     aSize.AdjustWidth(-(m_aTxtSize.Width()));
     aSize.AdjustWidth(-6);
-
-    // SourceUnit to Twips
-    if (m_eSourceUnit == FieldUnit::POINT)
-    {
-        nLine1 /= 5;
-        nLine2 /= 5;
-        nDistance /= 5;
-    }
 
     // Paint the lines
     aSize = m_aVirDev->PixelToLogic(aSize);
@@ -672,7 +661,6 @@ LineListBox::LineListBox(weld::Builder& rBuilder)
     , m_aVirDev(VclPtr<VirtualDevice>::Create())
     , m_aColor(Application::GetSettings().GetStyleSettings().GetWindowTextColor())
     , m_aPaintCol(COL_BLACK)
-    , m_eSourceUnit(FieldUnit::POINT)
 {
     m_aVirDev->SetLineColor();
     m_aVirDev->SetMapMode(MapMode(MapUnit::MapTwip));
@@ -2804,8 +2792,6 @@ SvxLineWindow_Impl::SvxLineWindow_Impl(SvxFrameToolBoxControl* pControl, weld::W
     catch(const uno::Exception& )
     {
     }
-
-    m_xLineStyleLb->SetSourceUnit( FieldUnit::TWIP );
 
     m_xLineStyleLb->InsertEntry( SvxBorderLine::getWidthImpl( SvxBorderLineStyle::SOLID ), SvxBorderLineStyle::SOLID );
     m_xLineStyleLb->InsertEntry( SvxBorderLine::getWidthImpl( SvxBorderLineStyle::DOTTED ), SvxBorderLineStyle::DOTTED );
