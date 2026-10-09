@@ -498,8 +498,8 @@ private:
     rtl::Reference<SvxFrameToolBoxControl> mxControl;
     std::unique_ptr<SvxFrmValueSet_Impl> mxFrameSet;
     std::unique_ptr<weld::CustomWeld> mxFrameSetWin;
-    std::vector<std::pair<Bitmap, OUString>> aImgVec;
-    bool                        bParagraphMode;
+    std::vector<std::pair<Bitmap, OUString>> m_aImgVec;
+    bool m_bParagraphMode;
     bool                        m_bIsWriter;
     bool                        m_bIsCalc;
 
@@ -2386,7 +2386,7 @@ SvxFrameWindow_Impl::SvxFrameWindow_Impl(SvxFrameToolBoxControl* pControl, weld:
     , mxControl(pControl)
     , mxFrameSet(new SvxFrmValueSet_Impl)
     , mxFrameSetWin(new weld::CustomWeld(*m_xBuilder, u"valueset"_ustr, *mxFrameSet))
-    , bParagraphMode(false)
+    , m_bParagraphMode(false)
     , m_bIsWriter(false)
     , m_bIsCalc(false)
 {
@@ -2407,14 +2407,14 @@ SvxFrameWindow_Impl::SvxFrameWindow_Impl(SvxFrameToolBoxControl* pControl, weld:
 
     // Writer and Calc uses 8 border types - for a single cell.
     for ( i=1; i < 9; i++ )
-        mxFrameSet->InsertItem(i, Image(aImgVec[i-1].first), aImgVec[i-1].second);
+        mxFrameSet->InsertItem(i, Image(m_aImgVec[i - 1].first), m_aImgVec[i - 1].second);
 
-    //bParagraphMode should have been set in StateChanged
-    if ( !bParagraphMode )
+    // m_bParagraphMode should have been set in StateChanged
+    if (!m_bParagraphMode)
         // when multiple cell selected:
         // Writer and Calc have 12 border types.
         for ( i = 9; i < 13; i++ )
-            mxFrameSet->InsertItem(i, Image(aImgVec[i-1].first), aImgVec[i-1].second);
+            mxFrameSet->InsertItem(i, Image(m_aImgVec[i - 1].first), m_aImgVec[i - 1].second);
 
     // adjust frame column for Writer and Calc
     sal_uInt16 colCount = 4;
@@ -2656,7 +2656,7 @@ IMPL_LINK_NOARG(SvxFrameWindow_Impl, SelectHdl, ValueSet*, void)
     const sal_uInt16 nSel = mxFrameSet->GetSelectedItemId();
     const sal_uInt16 nModifier = mxFrameSet->GetModifier();
     DispatchBorderItem(*mxControl, nSel, m_bIsCalc, nModifier);
-    mxControl->SetLastUsedBorderItem(nSel, m_bIsCalc, Image(aImgVec[nSel - 1].first));
+    mxControl->SetLastUsedBorderItem(nSel, m_bIsCalc, Image(m_aImgVec[nSel - 1].first));
     // coverity[ check_after_deref : FALSE]
     if (mxFrameSet)
     {
@@ -2679,7 +2679,7 @@ void SvxFrameWindow_Impl::statusChanged( const css::frame::FeatureStateEvent& rE
     if ( !(rEvent.State >>= bValue) )
         return;
 
-    bParagraphMode = bValue;
+    m_bParagraphMode = bValue;
     //initial calls mustn't insert or remove elements
     if(!mxFrameSet->GetItemCount())
         return;
@@ -2688,16 +2688,16 @@ void SvxFrameWindow_Impl::statusChanged( const css::frame::FeatureStateEvent& rE
     bool bTableMode = ( mxFrameSet->GetItemCount() == static_cast<size_t>(12) );
     bool bResize    = false;
 
-    if ( bTableMode && bParagraphMode )
+    if (bTableMode && m_bParagraphMode)
     {
         for ( sal_uInt16 i = 9; i < 13; i++ )
             mxFrameSet->RemoveItem(i);
         bResize = true;
     }
-    else if ( !bTableMode && !bParagraphMode )
+    else if (!bTableMode && !m_bParagraphMode)
     {
         for ( sal_uInt16 i = 9; i < 13; i++ )
-            mxFrameSet->InsertItem(i, Image(aImgVec[i-1].first), aImgVec[i-1].second);
+            mxFrameSet->InsertItem(i, Image(m_aImgVec[i - 1].first), m_aImgVec[i - 1].second);
         bResize = true;
     }
 
@@ -2724,7 +2724,7 @@ void SvxFrameWindow_Impl::InitImageList()
         // not Writer/Impress/Draw-specific aImgVec.
         // Since they don't have diagonal borders,
         // we have to use 12 border types here.
-        aImgVec = {
+        m_aImgVec = {
             {Bitmap(RID_SVXBMP_FRAME1), SvxResId(RID_SVXSTR_TABLE_PRESET_NONE)},
             {Bitmap(RID_SVXBMP_FRAME2), SvxResId(RID_SVXSTR_PARA_PRESET_ONLYLEFT)},
             {Bitmap(RID_SVXBMP_FRAME3), SvxResId(RID_SVXSTR_PARA_PRESET_ONLYRIGHT)},
@@ -2746,7 +2746,7 @@ void SvxFrameWindow_Impl::InitImageList()
         // Calc has diagonal borders feature.
         // Therefore use additional 3 diagonal border types,
         // which make border types for Calc 12 in total.
-        aImgVec = {
+        m_aImgVec = {
             {Bitmap(RID_SVXBMP_FRAME1), SvxResId(RID_SVXSTR_TABLE_PRESET_NONE)},
             {Bitmap(RID_SVXBMP_FRAME8), SvxResId(RID_SVXSTR_TABLE_PRESET_OUTER)},
             {Bitmap(RID_SVXBMP_FRAME12), SvxResId(RID_SVXSTR_TABLE_PRESET_OUTERALL)},
