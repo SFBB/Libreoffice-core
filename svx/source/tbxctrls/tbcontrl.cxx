@@ -591,7 +591,6 @@ private:
     std::unique_ptr<ValueSet> m_pValueSet;
     std::unique_ptr<weld::CustomWeld> m_pValueSetWin;
     std::vector<std::unique_ptr<ImpLineListData>> m_vLineList;
-    tools::Long m_nWidth;
     const OUString m_sNone;
     ScopedVclPtr<VirtualDevice> m_aVirDev;
     Size m_aTxtSize;
@@ -669,7 +668,6 @@ Bitmap LineListBox::ImpGetLine(tools::Long nLine1, tools::Long nLine2, tools::Lo
 LineListBox::LineListBox(weld::Builder& rBuilder)
     : m_pValueSet(new ValueSet(nullptr))
     , m_pValueSetWin(new weld::CustomWeld(rBuilder, u"valueset"_ustr, *m_pValueSet))
-    , m_nWidth(5)
     , m_sNone(SvxResId(RID_SVXSTR_NONE))
     , m_aVirDev(VclPtr<VirtualDevice>::Create())
     , m_aColor(Application::GetSettings().GetStyleSettings().GetWindowTextColor())
@@ -731,8 +729,6 @@ void LineListBox::UpdatePaintLineColor()
 
 void LineListBox::UpdateEntries(tools::Long nWidth)
 {
-    m_nWidth = nWidth;
-
     Size aSize;
 
     UpdatePaintLineColor();
@@ -756,8 +752,8 @@ void LineListBox::UpdateEntries(tools::Long nWidth)
         auto& pData = m_vLineList[n];
         const sal_uInt16 nId = n + 2;
         Bitmap aBmp = ImpGetLine(
-            pData->GetLine1ForWidth(m_nWidth), pData->GetLine2ForWidth(m_nWidth),
-            pData->GetDistForWidth(m_nWidth), GetColorLine1(m_pValueSet->GetItemCount()),
+            pData->GetLine1ForWidth(nWidth), pData->GetLine2ForWidth(nWidth),
+            pData->GetDistForWidth(nWidth), GetColorLine1(m_pValueSet->GetItemCount()),
             GetColorLine2(m_pValueSet->GetItemCount()), GetColorDist(m_pValueSet->GetItemCount()), pData->GetStyle());
         m_pValueSet->InsertItem(nId, Image(aBmp), SvtLineListBox::GetLineStyleName(pData->GetStyle()));
         Size aBmpSize = aBmp.GetSizePixel();
@@ -2837,7 +2833,7 @@ SvxLineWindow_Impl::SvxLineWindow_Impl(SvxFrameToolBoxControl* pControl, weld::W
            &SvxBorderLine::lightColor, &SvxBorderLine::darkColor );
     m_xLineStyleLb->InsertEntry( SvxBorderLine::getWidthImpl( SvxBorderLineStyle::INSET ), SvxBorderLineStyle::INSET,
            &SvxBorderLine::darkColor, &SvxBorderLine::lightColor );
-    m_xLineStyleLb->UpdateEntries(20); // 1pt by default
+    m_xLineStyleLb->UpdateEntries(20);
 
     m_xLineStyleLb->SetItemActivatedHdl(LINK(this, SvxLineWindow_Impl, LineStyleActivatedHdl));
 
