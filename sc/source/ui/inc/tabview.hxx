@@ -341,6 +341,9 @@ public:
     void            UpdateAnchorHandles();
 
     ScPageBreakData* GetPageBreakData()     { return pPageBreakData.get(); }
+
+    tools::Long GetCurrentPage() const;
+
     const std::vector<ScHighlightEntry>& GetHighlightRanges() const { return maHighlightRanges; }
 
     void            UpdatePageBreakData( bool bForcePaint = false );

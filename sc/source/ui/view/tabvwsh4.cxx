@@ -1169,6 +1169,11 @@ std::unique_ptr<SfxTabPage> ScTabViewShell::CreatePrintOptionsPage(weld::Contain
     return nullptr;
 }
 
+tools::Long ScTabViewShell::GetCurrentPage() const
+{
+    return GetViewData().GetView()->GetCurrentPage();
+}
+
 void ScTabViewShell::StopEditShell()
 {
     if ( pEditShell != nullptr && !bDontSwitch )
@@ -1448,20 +1453,32 @@ bool ScTabViewShell::TabKeyInput(const KeyEvent& rKEvt)
         switch (nCode)
         {
             case KEY_UP:
-                ModifyCellSize( DIR_TOP, bShift );
-                bUsed = true;
+                if (!bAnyEdit)
+                {
+                    ModifyCellSize( DIR_TOP, bShift );
+                    bUsed = true;
+                }
                 break;
             case KEY_DOWN:
-                ModifyCellSize( DIR_BOTTOM, bShift );
-                bUsed = true;
+                if (!bAnyEdit)
+                {
+                    ModifyCellSize( DIR_BOTTOM, bShift );
+                    bUsed = true;
+                }
                 break;
             case KEY_LEFT:
-                ModifyCellSize( DIR_LEFT, bShift );
-                bUsed = true;
+                if (!bAnyEdit)
+                {
+                    ModifyCellSize( DIR_LEFT, bShift );
+                    bUsed = true;
+                }
                 break;
             case KEY_RIGHT:
-                ModifyCellSize( DIR_RIGHT, bShift );
-                bUsed = true;
+                if (!bAnyEdit)
+                {
+                    ModifyCellSize( DIR_RIGHT, bShift );
+                    bUsed = true;
+                }
                 break;
             case KEY_PAGEUP:
                 nSlotId = bShift ? SID_CURSORPAGELEFT_SEL : SID_CURSORPAGELEFT_;

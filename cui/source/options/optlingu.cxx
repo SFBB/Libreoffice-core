@@ -103,18 +103,21 @@ static bool KillFile_Impl( const OUString& rURL )
     return bRet;
 }
 
+namespace {
+
 // 0x 0p 0t 0c nn
 // p: 1 -> parent
 // t: 1 -> spell, 2 -> hyph, 3 -> thes, 4 -> grammar
 // c: 1 -> checked 0 -> unchecked
 // n: index
 
-#define TYPE_SPELL      sal_uInt8(1)
-#define TYPE_GRAMMAR    sal_uInt8(2)
-#define TYPE_HYPH       sal_uInt8(3)
-#define TYPE_THES       sal_uInt8(4)
-
-namespace {
+enum LinguType : sal_uInt8
+{
+    TYPE_SPELL = 1,
+    TYPE_GRAMMAR = 2,
+    TYPE_HYPH = 3,
+    TYPE_THES = 4
+};
 
 class ModuleUserData_Impl
 {

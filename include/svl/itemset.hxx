@@ -96,6 +96,8 @@ class SAL_WARN_UNUSED SVL_DLLPUBLIC SfxItemSet
 
 #ifdef DBG_UTIL
     sal_uInt16          m_nRegisteredSfxItemIter;
+#endif
+#ifndef NDEBUG
     bool                m_bDeleted;
 #endif
 

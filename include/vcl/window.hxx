@@ -587,7 +587,8 @@ private:
 
     SAL_DLLPRIVATE void                 ImplInitResolutionSettings();
 
-    SAL_DLLPRIVATE void                 ImplPointToLogic(vcl::RenderContext const & rRenderContext, vcl::Font& rFont, bool bUseRenderContextDPI = false) const;
+    SAL_DLLPRIVATE void ImplPointToLogic(vcl::RenderContext const& rRenderContext,
+                                         vcl::Font& rFont) const;
     SAL_DLLPRIVATE void                 ImplLogicToPoint(vcl::RenderContext const & rRenderContext, vcl::Font& rFont) const;
 
     SAL_DLLPRIVATE bool                 ImplSysObjClip( const vcl::Region* pOldRegion );
@@ -807,7 +808,7 @@ public:
     SAL_DLLPRIVATE void                 UpdateSettings( const AllSettings& rSettings, bool bChild = false );
     SAL_DLLPRIVATE void                 NotifyAllChildren( DataChangedEvent& rDCEvt );
 
-    void                                SetPointFont(vcl::RenderContext& rRenderContext, const vcl::Font& rFont, bool bUseRenderContextDPI = false);
+    void SetPointFont(vcl::RenderContext& rRenderContext, const vcl::Font& rFont);
     vcl::Font                           GetPointFont(vcl::RenderContext const & rRenderContext) const;
     void                                SetZoomedPointFont(vcl::RenderContext& rRenderContext, const vcl::Font& rFont);
     SAL_DLLPRIVATE tools::Long          GetDrawPixel( ::OutputDevice const * pDev, tools::Long nPixels ) const;

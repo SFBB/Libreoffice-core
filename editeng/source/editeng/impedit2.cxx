@@ -867,7 +867,10 @@ EditSelection const& ImpEditEngine::MoveCursor(const KeyEvent& rKeyEvent, EditVi
 
     KeyEvent aTranslatedKeyEvent = rKeyEvent.LogicalTextDirectionality( eTextDirection );
 
-    bool bCtrl = aTranslatedKeyEvent.GetKeyCode().IsMod1();
+    const bool bCtrl = aTranslatedKeyEvent.GetKeyCode().IsMod1();
+#ifdef MACOSX
+    const bool bAlt = aTranslatedKeyEvent.GetKeyCode().IsMod2();
+#endif
     sal_uInt16 nCode = aTranslatedKeyEvent.GetKeyCode().GetCode();
 
     if ( DoVisualCursorTraveling() )
@@ -887,6 +890,36 @@ EditSelection const& ImpEditEngine::MoveCursor(const KeyEvent& rKeyEvent, EditVi
                             break;
         case KEY_DOWN:      aPaM = CursorDown( aPaM, pEditView );
                             break;
+#ifdef MACOSX
+        case KEY_LEFT:      if (bCtrl)
+                            {
+                                aPaM = CursorStartOfLine(aPaM);
+                                fnSetStartOfLineFlag();
+                            }
+                            else
+                            {
+                                if (bAlt)
+                                    aPaM = WordLeft( aPaM );
+                                else
+                                   aPaM = CursorLeft( aPaM, aTranslatedKeyEvent.GetKeyCode().IsMod2() ? i18n::CharacterIteratorMode::SKIPCHARACTER : i18n::CharacterIteratorMode::SKIPCELL );
+                                fnSetParaChangeEndOfLineFlag();
+                            }
+                            break;
+        case KEY_RIGHT:     if (bCtrl)
+                            {
+                                aPaM = CursorEndOfLine(aPaM);
+                                fnSetEndOfLineFlag();
+                            }
+                            else
+                            {
+                                if (bAlt)
+                                    aPaM = WordRight( aPaM );
+                                else
+                                   aPaM = CursorRight( aPaM, aTranslatedKeyEvent.GetKeyCode().IsMod2() ? i18n::CharacterIteratorMode::SKIPCHARACTER : i18n::CharacterIteratorMode::SKIPCELL );
+                                fnSetParaChangeStartOfLineFlag();
+                            }
+                            break;
+#else
         case KEY_LEFT:      aPaM = bCtrl ? WordLeft( aPaM ) : CursorLeft( aPaM, aTranslatedKeyEvent.GetKeyCode().IsMod2() ? i18n::CharacterIteratorMode::SKIPCHARACTER : i18n::CharacterIteratorMode::SKIPCELL );
                             fnSetParaChangeEndOfLineFlag();
                             break;
@@ -899,6 +932,7 @@ EditSelection const& ImpEditEngine::MoveCursor(const KeyEvent& rKeyEvent, EditVi
         case KEY_END:       aPaM = bCtrl ? CursorEndOfDoc() : CursorEndOfLine( aPaM );
                             fnSetEndOfLineFlag();
                             break;
+#endif
         case KEY_PAGEUP:    aPaM = bCtrl ? CursorStartOfDoc() : PageUp( aPaM, pEditView );
                             break;
         case KEY_PAGEDOWN:  aPaM = bCtrl ? CursorEndOfDoc() : PageDown( aPaM, pEditView );

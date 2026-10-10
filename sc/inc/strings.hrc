@@ -135,6 +135,7 @@
 #define SCSTR_PRINTOPT_FROMWHICH                    NC_("SCSTR_PRINTOPT_FROMWHICH", "From which:")
 #define SCSTR_PRINTOPT_PRINTALLPAGES                NC_("SCSTR_PRINTOPT_PRINTALLPAGES", "All ~Pages")
 #define SCSTR_PRINTOPT_PRINTPAGES                   NC_("SCSTR_PRINTOPT_PRINTPAGES", "Pa~ges:")
+#define SCSTR_PRINTOPT_PRINTCURRENTPAGE             NC_("SCSTR_PRINTOPT_PRINTCURRENTPAGE", "Current ~Page")
 #define SCSTR_PRINTOPT_PRODNAME                     NC_("SCSTR_PRINTOPT_PRODNAME", "%PRODUCTNAME %s")
 #define SCSTR_DDEDOC_NOT_LOADED                     NC_("SCSTR_DDEDOC_NOT_LOADED", "The following DDE source could not be updated possibly because the source document was not open. Please launch the source document and try again." )
 #define SCSTR_EXTDOC_NOT_LOADED                     NC_("SCSTR_EXTDOC_NOT_LOADED", "The following external file could not be loaded. Data linked from this file did not get updated." )

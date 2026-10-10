@@ -30,6 +30,7 @@
 #include <o3tl/unit_conversion.hxx>
 
 #include <pagedata.hxx>
+#include <printfun.hxx>
 #include <tabview.hxx>
 #include <tabvwsh.hxx>
 #include <document.hxx>
@@ -3274,5 +3275,64 @@ void ScTabView::extendTiledAreaIfNeeded()
         << "] MaxTiledCol = " << aViewData.GetMaxTiledCol()
         << " MaxTiledRow = " << aViewData.GetMaxTiledRow());
 }
+
+tools::Long ScTabView::GetCurrentPage() const
+{
+    std::unique_ptr<ScPageBreakData> pTempPageData;
+    const ScPageBreakData* pPageData = pPageBreakData.get();
+
+    if (!pPageData)
+    {
+        ScDocShell* pDocSh = aViewData.GetDocShell();
+        if (!pDocSh)
+            return 1;
+
+        ScDocument& rDoc = pDocSh->GetDocument();
+        SCTAB nTab = aViewData.CurrentTabForData();
+
+        sal_uInt16 nCount = rDoc.GetPrintRangeCount(nTab);
+        if (!nCount)
+            nCount = 1;
+
+        pTempPageData = std::make_unique<ScPageBreakData>(nCount);
+
+        ScPrintFunc aPrintFunc(
+            *pDocSh,
+            pDocSh->GetPrinter(),
+            nTab,
+            0, 0,
+            nullptr,
+            nullptr,
+            pTempPageData.get());
+
+        // ScPrintFunc fills the PageBreakData in ctor.
+        if (nCount > 1)
+        {
+            aPrintFunc.ResetBreaks(nTab);
+            pTempPageData->AddPages();
+        }
+
+        pPageData = pTempPageData.get();
+    }
+
+    const SCCOL nCurCol = aViewData.GetCurX();
+    const SCROW nCurRow = aViewData.GetCurY();
+
+    for (size_t nPos = 0; nPos < pPageData->GetCount(); ++nPos)
+    {
+        const ScPrintRangeData& rData = pPageData->GetData(nPos);
+        const ScRange& rRange = rData.GetPrintRange();
+
+        if (nCurCol < rRange.aStart.Col() || nCurCol > rRange.aEnd.Col()
+            || nCurRow < rRange.aStart.Row() || nCurRow > rRange.aEnd.Row())
+            continue;
+
+        return rData.GetPageNumber(nCurCol, nCurRow);
+    }
+
+    return 1;
+}
+
+
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

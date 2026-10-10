@@ -217,12 +217,12 @@ weld::Window* GetPopupParent(vcl::Window& rOutWin, tools::Rectangle& rRect)
     return rOutWin.GetFrameWeld();
 }
 
-void SetPointFont(OutputDevice& rDevice, const vcl::Font& rFont, bool bUseDeviceDPI)
+void SetPointFont(OutputDevice& rDevice, const vcl::Font& rFont)
 {
     auto pDefaultDevice = Application::GetDefaultDevice();
     if (pDefaultDevice)
         if (vcl::Window* pDefaultWindow = pDefaultDevice->GetOwnerWindow())
-            pDefaultWindow->SetPointFont(rDevice, rFont, bUseDeviceDPI);
+            pDefaultWindow->SetPointFont(rDevice, rFont);
 }
 
 ReorderingDropTarget::ReorderingDropTarget(weld::TreeView& rTreeView)

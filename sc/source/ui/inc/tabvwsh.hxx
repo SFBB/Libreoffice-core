@@ -390,6 +390,8 @@ public:
     virtual bool            HasPrintOptionsPage() const override;
     virtual std::unique_ptr<SfxTabPage> CreatePrintOptionsPage(weld::Container* pPage, weld::DialogController* pController, const SfxItemSet &rOptions) override;
 
+    tools::Long GetCurrentPage() const;
+
     void            ConnectObject( const SdrOle2Obj* pObj );
     void            ActivateObject(SdrOle2Obj* pObj, sal_Int32 nVerb);
 

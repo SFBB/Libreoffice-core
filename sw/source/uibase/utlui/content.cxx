@@ -3008,6 +3008,10 @@ bool SwContentTree::RequestingChildren(const weld::TreeIter& rParent)
                     }
                 }
 
+                // tdf#173801 Prevent Navigator loop with groupshape in footer
+                if (vMemberIndexes == vNoParentYetFoundForMemberIndexes)
+                    break;
+
                 vMemberIndexes = std::move(vNoParentYetFoundForMemberIndexes);
             }
         }

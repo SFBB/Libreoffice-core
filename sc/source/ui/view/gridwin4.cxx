@@ -1980,11 +1980,7 @@ void ScGridWindow::DrawPagePreview( SCCOL nX1, SCROW nY1, SCCOL nX2, SCROW nY2, 
                             Point aPageEnd = mrViewData.GetScrPos(
                                                     nPrEndX+1,nPrEndY+1, eWhich, true );
 
-                            tools::Long nPageNo = rData.GetFirstPage();
-                            if ( rData.IsTopDown() )
-                                nPageNo += static_cast<tools::Long>(nColPos)*nRowBreaks+nRowPos;
-                            else
-                                nPageNo += static_cast<tools::Long>(nRowPos)*nColBreaks+nColPos;
+                            tools::Long nPageNo = rData.GetPageNumber(nPrStartX, nPrStartY);
 
                             OUString aThisPageStr = aPageStr.replaceFirst("%1", OUString::number(nPageNo));
 

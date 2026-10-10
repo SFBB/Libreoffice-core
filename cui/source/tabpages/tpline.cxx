@@ -65,7 +65,6 @@
 #include <cuitabarea.hxx>
 #include <svtools/unitconv.hxx>
 #include <vcl/weld/Dialog.hxx>
-#include <comphelper/lok.hxx>
 #include <o3tl/string_view.hxx>
 #include <vcl/weld/Builder.hxx>
 #include <vcl/weld/WaitObject.hxx>
@@ -231,8 +230,7 @@ void SvxLineTabPage::FillListboxes()
     m_xLbLineStyle->set_active( nOldSelect );
 
     // Line end style
-    OUString sNone( comphelper::LibreOfficeKit::isActive() ? SvxResId( RID_SVXSTR_INVISIBLE )
-        : SvxResId( RID_SVXSTR_NONE ) );
+    const OUString sNone = SvxResId(RID_SVXSTR_NONE);
     nOldSelect = m_xLbStartStyle->get_active();
     m_xLbStartStyle->clear();
     m_xLbStartStyle->append_text(sNone);
@@ -293,8 +291,7 @@ void SvxLineTabPage::ActivatePage( const SfxItemSet& rSet )
 
             *m_pnLineEndListState = ChangeType::NONE;
 
-            OUString sNone( comphelper::LibreOfficeKit::isActive() ? SvxResId( RID_SVXSTR_INVISIBLE )
-                : SvxResId( RID_SVXSTR_NONE ) );
+            const OUString sNone = SvxResId(RID_SVXSTR_NONE);
 
             auto sActiveStyle = m_xLbStartStyle->get_active_text();
             m_xLbStartStyle->clear();

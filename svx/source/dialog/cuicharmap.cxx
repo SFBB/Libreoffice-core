@@ -847,6 +847,15 @@ void SvxShowText::Paint(vcl::RenderContext& rRenderContext, const tools::Rectang
 
     rRenderContext.SetLineColor(aShadowColor);
     rRenderContext.DrawRect(tools::Rectangle(Point(0, 0), aSize));
+
+    // tdf#90848 - show font baseline in symbol preview
+    if (!aText.isEmpty())
+    {
+        const tools::Long nBaseline = aPoint.Y() + rRenderContext.GetFontMetric().GetAscent();
+        if (nBaseline > 0 && nBaseline < aSize.Height() - 1)
+            rRenderContext.DrawLine(Point(0, nBaseline), Point(aSize.Width() - 1, nBaseline));
+    }
+
     rRenderContext.DrawText(aPoint, aText);
     rRenderContext.SetTextColor(aTextCol);
     rRenderContext.SetFillColor(aFillCol);

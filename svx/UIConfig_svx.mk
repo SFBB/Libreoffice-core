@@ -56,6 +56,7 @@ $(eval $(call gb_UIConfig_add_uifiles,svx,\
 	svx/uiconfig/ui/findbox \
 	svx/uiconfig/ui/findreplacedialog \
 	svx/uiconfig/ui/floatingareastyle \
+	svx/uiconfig/ui/floatingborderstyle \
 	svx/uiconfig/ui/floatingcontour \
 	svx/uiconfig/ui/floatingframeborder \
 	svx/uiconfig/ui/floatinglineend \

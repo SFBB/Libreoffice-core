@@ -46,6 +46,26 @@ void ScPrintRangeData::SetPagesY( size_t nCount, const SCROW* pData )
     std::copy_n( pData, nCount, mvPageEndY.data() );
 }
 
+tools::Long ScPrintRangeData::GetPageNumber(SCCOL nCol, SCROW nRow) const
+{
+    size_t nColPos = 0;
+    while (nColPos + 1 < mvPageEndX.size() && nCol > mvPageEndX[nColPos])
+        ++nColPos;
+
+    size_t nRowPos = 0;
+    while (nRowPos + 1 < mvPageEndY.size() && nRow > mvPageEndY[nRowPos])
+        ++nRowPos;
+
+    if (bTopDown)
+        return nFirstPage
+               + static_cast<tools::Long>(nColPos) * mvPageEndY.size()
+               + nRowPos;
+
+    return nFirstPage
+           + static_cast<tools::Long>(nRowPos) * mvPageEndX.size()
+           + nColPos;
+}
+
 ScPageBreakData::ScPageBreakData(size_t nMax)
 {
     nUsed = 0;
@@ -68,6 +88,12 @@ ScPrintRangeData& ScPageBreakData::GetData(size_t nPos)
         nUsed = nPos+1;
     }
 
+    return pData[nPos];
+}
+
+const ScPrintRangeData& ScPageBreakData::GetData(size_t nPos) const
+{
+    OSL_ENSURE(nPos < nUsed, "ScPageBreakData::GetData out of bounds");
     return pData[nPos];
 }
 

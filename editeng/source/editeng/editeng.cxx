@@ -1857,7 +1857,9 @@ bool EditEngine::DoesKeyMoveCursor( const KeyEvent& rKeyEvent )
         case KEY_PAGEUP:
         case KEY_PAGEDOWN:
         {
+#ifndef MACOSX
             if ( !rKeyEvent.GetKeyCode().IsMod2() )
+#endif
                 bDoesMove = true;
         }
         break;

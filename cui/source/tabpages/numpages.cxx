@@ -56,7 +56,6 @@
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <comphelper/processfactory.hxx>
 #include <comphelper/propertyvalue.hxx>
-#include <comphelper/lok.hxx>
 #include <svx/svxids.hrc>
 #include <o3tl/string_view.hxx>
 #include <officecfg/Office/Common.hxx>
@@ -851,9 +850,6 @@ SvxBitmapPickTabPage::SvxBitmapPickTabPage(weld::Container* pPage, weld::DialogC
     m_xExamplesVS->SetDoubleClickHdl(LINK(this, SvxBitmapPickTabPage, DoubleClickHdl_Impl));
     m_xBtBrowseFile->connect_clicked(LINK(this, SvxBitmapPickTabPage, ClickAddBrowseHdl_Impl));
 
-    if(comphelper::LibreOfficeKit::isActive())
-        m_xBtBrowseFile->hide();
-
     eCoreUnit = rSet.GetPool()->GetMetric(rSet.GetPool()->GetWhichIDFromSlotID(SID_ATTR_NUMBERING_RULE));
 
     // determine graphic name
@@ -1224,7 +1220,6 @@ SvxNumOptionsTabPage::SvxNumOptionsTabPage(weld::Container* pPage, weld::DialogC
     for (sal_uInt32 i = 0; i < nCount; ++i)
     {
         int nValue = SvxNumberingTypeTable::GetValue(i);
-        if (comphelper::LibreOfficeKit::isActive() && (nValue & SVX_NUM_BITMAP)) continue;
         m_xFmtLB->append(OUString::number(nValue), SvxNumberingTypeTable::GetString(i));
     }
 
