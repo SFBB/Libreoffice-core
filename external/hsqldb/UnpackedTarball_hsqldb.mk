@@ -35,6 +35,8 @@ $(eval $(call gb_UnpackedTarball_add_patches,hsqldb,\
 	external/hsqldb/patches/hsqldb-jar-timestamps.patch.1 \
 	external/hsqldb/patches/lockfile.patch.1 \
 	external/hsqldb/patches/allow-full-path-system-property.patch.1 \
+	external/hsqldb/patches/stored-text-table.patch.1 \
+	external/hsqldb/patches/method-class-names-default.patch \
 ))
 
 # vim: set noet sw=4 ts=4:
