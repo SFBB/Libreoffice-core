@@ -94,20 +94,6 @@ void addTypeConstantToFastAttributeList(TypeConstant aTypeConstant, const rtl::R
         rAttributeList->add(::XML_type, aName);
 }
 
-void addTypeConstantToDiagramModelData(TypeConstant aTypeConstant, boost::property_tree::ptree& rTarget, bool bPoint)
-{
-    if (TypeConstant::XML_none == aTypeConstant)
-        return;
-    if (TypeConstant::XML_node == aTypeConstant && bPoint)
-        return;
-    if (TypeConstant::XML_parOf == aTypeConstant && !bPoint)
-        return;
-
-    const std::u16string_view aName(getNameForTypeConstant(aTypeConstant));
-    if (!aName.empty())
-        rTarget.put("XMLType", OUString(aName));
-}
-
 Connection::Connection()
 : mnXMLType( XML_parOf )
 , msModelId()
@@ -119,22 +105,6 @@ Connection::Connection()
 , mnSourceOrder( 0 )
 , mnDestOrder( 0 )
 {
-}
-
-Connection::Connection(const boost::property_tree::ptree& rConnectionData)
-: mnXMLType( XML_parOf )
-, msModelId(OUString::fromUtf8(rConnectionData.get("modelId", "")))
-, msSourceId(OUString::fromUtf8(rConnectionData.get("srcId", "")))
-, msDestId(OUString::fromUtf8(rConnectionData.get("destId", "")))
-, msPresId(OUString::fromUtf8(rConnectionData.get("presId", "")))
-, msSibTransId(OUString::fromUtf8(rConnectionData.get("sibTransId", "")))
-, msParTransId(OUString::fromUtf8(rConnectionData.get("parTransId", "")))
-, mnSourceOrder(rConnectionData.get("srcOrd", 0))
-, mnDestOrder(rConnectionData.get("destOrd", 0))
-{
-    const OUString aXMLType(OUString::fromUtf8(rConnectionData.get("XMLType", "")));
-    if (!aXMLType.isEmpty())
-        mnXMLType = getTypeConstantForName(aXMLType);
 }
 
 void Connection::writeDiagramData_connection(const sax_fastparser::FSHelperPtr& rTarget)
@@ -163,19 +133,6 @@ void Connection::writeDiagramData_connection(const sax_fastparser::FSHelperPtr& 
     rTarget->singleElementNS(XML_dgm, XML_cxn, pAttributeList);
 }
 
-void Connection::addDiagramModelData(boost::property_tree::ptree& rTarget) const
-{
-    addTypeConstantToDiagramModelData(mnXMLType, rTarget, false); // XML_type
-    if (!msModelId.isEmpty()) rTarget.put("modelId", msModelId); // XML_modelId
-    if (!msSourceId.isEmpty()) rTarget.put("srcId", msSourceId); // XML_srcId
-    if (!msDestId.isEmpty()) rTarget.put("destId", msDestId); // XML_destId
-    if (!msPresId.isEmpty()) rTarget.put("presId", msPresId); // XML_presId
-    if (!msSibTransId.isEmpty()) rTarget.put("sibTransId", msSibTransId); // XML_sibTransId
-    if (!msParTransId.isEmpty()) rTarget.put("parTransId", msParTransId); // XML_parTransId
-    if (0 != mnSourceOrder) rTarget.put("srcOrd", mnSourceOrder); // XML_srcOrd
-    if (0 != mnDestOrder) rTarget.put("destOrd", mnDestOrder); // XML_destOrd
-}
-
 Point::Point()
 : mnXMLType(XML_node)
 , mnMaxChildren(-1)
@@ -202,55 +159,6 @@ Point::Point()
 , mbCustomText(false)
 , mbIsPlaceholder(false)
 {
-}
-
-Point::Point(const boost::property_tree::ptree& rPointData)
-: msCnxId(OUString::fromUtf8(rPointData.get("cxnId", "")))
-, msModelId(OUString::fromUtf8(rPointData.get("modelId", "")))
-, msColorTransformCategoryId(OUString::fromUtf8(rPointData.get("csCatId", "")))
-, msColorTransformTypeId(OUString::fromUtf8(rPointData.get("csTypeId", "")))
-, msLayoutCategoryId(OUString::fromUtf8(rPointData.get("loCatId", "")))
-, msLayoutTypeId(OUString::fromUtf8(rPointData.get("loTypeId", "")))
-, msPlaceholderText(OUString::fromUtf8(rPointData.get("phldrT", "")))
-, msPresentationAssociationId(OUString::fromUtf8(rPointData.get("presAssocID", "")))
-, msPresentationLayoutName(OUString::fromUtf8(rPointData.get("presName", "")))
-, msPresentationLayoutStyleLabel(OUString::fromUtf8(rPointData.get("presStyleLbl", "")))
-, msQuickStyleCategoryId(OUString::fromUtf8(rPointData.get("qsCatId", "")))
-, msQuickStyleTypeId(OUString::fromUtf8(rPointData.get("qsTypeId", "")))
-, msResizeHandles(OUString::fromUtf8(rPointData.get("resizeHandles", "")))
-, mnXMLType(XML_node)
-, mnMaxChildren(rPointData.get("chMax", -1))
-, mnPreferredChildren(rPointData.get("chPref", -1))
-, mnDirection(rPointData.get<int>("dir", XML_norm))
-, moHierarchyBranch()
-, mnCustomAngle(rPointData.get("custAng", -1))
-, mnPercentageNeighbourWidth(rPointData.get("custLinFactNeighborX", -1))
-, mnPercentageNeighbourHeight(rPointData.get("custLinFactNeighborY", -1))
-, mnPercentageOwnWidth(rPointData.get("custLinFactX", -1))
-, mnPercentageOwnHeight(rPointData.get("custLinFactY", -1))
-, mnIncludeAngleScale(rPointData.get("custRadScaleInc", -1))
-, mnRadiusScale(rPointData.get("custRadScaleRad", -1))
-, mnWidthScale(rPointData.get("custScaleX", -1))
-, mnHeightScale(rPointData.get("custScaleY", -1))
-, mnWidthOverride(rPointData.get("custSzX", -1))
-, mnHeightOverride(rPointData.get("custSzY", -1))
-, mnLayoutStyleCount(rPointData.get("presStyleCnt", -1))
-, mnLayoutStyleIndex(rPointData.get("presStyleIdx", -1))
-, mbOrgChartEnabled(rPointData.get("orgChart", false))
-, mbBulletEnabled(rPointData.get("bulletEnabled", false))
-, mbCoherent3DOffset(rPointData.get("coherent3DOff", false))
-, mbCustomHorizontalFlip(rPointData.get("custFlipHor", false))
-, mbCustomVerticalFlip(rPointData.get("custFlipVert", false))
-, mbCustomText(rPointData.get("custT", false))
-, mbIsPlaceholder(rPointData.get("phldr", false))
-{
-    const OUString aXMLType(OUString::fromUtf8(rPointData.get("XMLType", "")));
-    if (!aXMLType.isEmpty())
-        mnXMLType = getTypeConstantForName(aXMLType);
-
-    const boost::optional<sal_Int32> aBranch(rPointData.get_optional<int>("hierBranch"));
-    if (aBranch.has_value())
-        moHierarchyBranch = aBranch.value();
 }
 
 void Point::writeDiagramData_data(const sax_fastparser::FSHelperPtr& rTarget)
@@ -330,51 +238,6 @@ void Point::writeDiagramData_data(const sax_fastparser::FSHelperPtr& rTarget)
         rTarget->singleElementNS(XML_dgm, XML_prSet, pAttributeList);
 }
 
-void Point::addDiagramModelData(boost::property_tree::ptree& rTarget) const
-{
-    if (!msCnxId.isEmpty()) rTarget.put("cxnId", msCnxId); // XML_cxnId
-    if (!msModelId.isEmpty()) rTarget.put("modelId", msModelId); // XML_modelId
-    if (!msColorTransformCategoryId.isEmpty()) rTarget.put("csCatId", msColorTransformCategoryId); // XML_csCatId
-    if (!msColorTransformTypeId.isEmpty()) rTarget.put("csTypeId", msColorTransformTypeId); // XML_csTypeId
-    if (!msLayoutCategoryId.isEmpty()) rTarget.put("loCatId", msLayoutCategoryId); // XML_loCatId
-    if (!msLayoutTypeId.isEmpty()) rTarget.put("loTypeId", msLayoutTypeId); // XML_loTypeId
-    if (!msPlaceholderText.isEmpty()) rTarget.put("phldrT", msPlaceholderText); // XML_phldrT
-    if (!msPresentationAssociationId.isEmpty()) rTarget.put("presAssocID", msPresentationAssociationId); // XML_presAssocID
-    if (!msPresentationLayoutName.isEmpty()) rTarget.put("presName", msPresentationLayoutName); // XML_presName
-    if (!msPresentationLayoutStyleLabel.isEmpty()) rTarget.put("presStyleLbl", msPresentationLayoutStyleLabel); // XML_presStyleLbl
-    if (!msQuickStyleCategoryId.isEmpty()) rTarget.put("qsCatId", msQuickStyleCategoryId); // XML_qsCatId
-    if (!msQuickStyleTypeId.isEmpty()) rTarget.put("qsTypeId", msQuickStyleTypeId); // XML_qsTypeId
-    if (!msResizeHandles.isEmpty()) rTarget.put("resizeHandles", msResizeHandles); // XML_resizeHandles
-
-    addTypeConstantToDiagramModelData(mnXMLType, rTarget, true); // XML_type
-    if (-1 != mnMaxChildren) rTarget.put("chMax", mnMaxChildren); // XML_chMax
-    if (-1 != mnPreferredChildren) rTarget.put("chPref", mnPreferredChildren); // XML_chPref
-    if (XML_norm != mnDirection) rTarget.put("dir", mnDirection); // XML_dir
-    if (moHierarchyBranch.has_value()) rTarget.put("hierBranch", moHierarchyBranch.value()); // XML_hierBranch
-
-    if (-1 != mnCustomAngle) rTarget.put("custAng", mnCustomAngle); // XML_custAng
-    if (-1 != mnPercentageNeighbourWidth) rTarget.put("custLinFactNeighborX", mnPercentageNeighbourWidth); // XML_custLinFactNeighborX
-    if (-1 != mnPercentageNeighbourHeight) rTarget.put("custLinFactNeighborY", mnPercentageNeighbourHeight); // XML_custLinFactNeighborY
-    if (-1 != mnPercentageOwnWidth) rTarget.put("custLinFactX", mnPercentageOwnWidth); // XML_custLinFactX
-    if (-1 != mnPercentageOwnHeight) rTarget.put("custLinFactY", mnPercentageOwnHeight); // XML_custLinFactY
-    if (-1 != mnIncludeAngleScale) rTarget.put("custRadScaleInc", mnIncludeAngleScale); // XML_custRadScaleInc
-    if (-1 != mnRadiusScale) rTarget.put("custRadScaleRad", mnRadiusScale); // XML_custRadScaleRad
-    if (-1 != mnWidthScale) rTarget.put("custScaleX", mnWidthScale); // XML_custScaleX
-    if (-1 != mnHeightScale) rTarget.put("custScaleY", mnHeightScale); // XML_custScaleY
-    if (-1 != mnWidthOverride) rTarget.put("custSzX", mnWidthOverride); // XML_custSzX
-    if (-1 != mnHeightOverride) rTarget.put("custSzY", mnHeightOverride); // XML_custSzY
-    if (-1 != mnLayoutStyleCount) rTarget.put("presStyleCnt", mnLayoutStyleCount); // XML_presStyleCnt
-    if (-1 != mnLayoutStyleIndex) rTarget.put("presStyleIdx", mnLayoutStyleIndex); // XML_presStyleIdx
-
-    if (mbOrgChartEnabled) rTarget.put("orgChart", mbOrgChartEnabled); // XML_orgChart
-    if (mbBulletEnabled) rTarget.put("bulletEnabled", mbBulletEnabled); // XML_bulletEnabled
-    if (mbCoherent3DOffset) rTarget.put("coherent3DOff", mbCoherent3DOffset); // XML_coherent3DOff
-    if (mbCustomHorizontalFlip) rTarget.put("custFlipHor", mbCustomHorizontalFlip); // XML_custFlipHor
-    if (mbCustomVerticalFlip) rTarget.put("custFlipVert", mbCustomVerticalFlip); // XML_custFlipVert
-    if (mbCustomText) rTarget.put("custT", mbCustomText); // XML_custT
-    if (mbIsPlaceholder) rTarget.put("phldr", mbIsPlaceholder); // XML_phldr
-}
-
 DiagramData_svx::DiagramData_svx()
 : mxRootShape()
 , maExtDrawings()
@@ -384,7 +247,6 @@ DiagramData_svx::DiagramData_svx()
 , maPointsPresNameMap()
 , maConnectionNameMap()
 , maPresOfNameMap()
-, msBackgroundShapeModelID()
 {
 }
 
@@ -399,48 +261,7 @@ DiagramData_svx::DiagramData_svx(DiagramData_svx const& rSource)
 , maPointsPresNameMap()
 , maConnectionNameMap()
 , maPresOfNameMap()
-// copy BackgroundShapeModelID, the BGSgape will need to be identified on reLayout
-, msBackgroundShapeModelID(rSource.msBackgroundShapeModelID)
 {
-}
-
-DiagramData_svx::DiagramData_svx(const boost::property_tree::ptree& rDiagramModel)
-: mxRootShape()
-, maExtDrawings()
-, maConnections()
-, maPoints()
-, mxThemeDocument()
-, maPointsPresNameMap()
-, maConnectionNameMap()
-, maPresOfNameMap()
-, msBackgroundShapeModelID(OUString::fromUtf8(rDiagramModel.get("BGShapeModelID", "")))
-{
-    // read all Point entries
-    auto aRangePt(rDiagramModel.equal_range("Pt"));
-    for (auto itPt = aRangePt.first; itPt != aRangePt.second; itPt++)
-        maPoints.emplace_back(itPt->second);
-
-    // read all Connection entries
-    auto aRangeCn(rDiagramModel.equal_range("Cn"));
-    for (auto itCn = aRangeCn.first; itCn != aRangeCn.second; itCn++)
-        maConnections.emplace_back(itCn->second);
-}
-
-const OUString& DiagramData_svx::getBackgroundShapeModelID() const
-{
-    if (msBackgroundShapeModelID.isEmpty() && mxRootShape.is())
-    {
-        // TODO: WORKAROUND: Need to access BackgroundShape differently
-        // copy the BackgroundShapeModelID transferred from 1st XShape to
-        // msBackgroundShapeModelID if empty. Future change will not
-        // use any msBackgroundShapeModelID at all, but I cannot change
-        // all stuff at once. Correct it here after ODF import.
-        const SdrObject* pBGObj(SdrObject::getSdrObjectFromXShape(accessRootShape())->GetSubList()->GetObj(0));
-        if (nullptr != pBGObj && !pBGObj->getDiagramDataModelID().isEmpty())
-            const_cast<DiagramData_svx*>(this)->msBackgroundShapeModelID = pBGObj->getDiagramDataModelID();
-    }
-
-    return msBackgroundShapeModelID;
 }
 
 const uno::Reference< frame::XModel >& DiagramData_svx::accessRootModel() const
@@ -531,12 +352,11 @@ DomMapFlags DiagramData_svx::removeDiagramNode(const OUString& rNodeId)
     return aRetval;
 }
 
-DiagramDataState::DiagramDataState(const Connections& aConnections, const Points& aPoints, const uno::Reference< drawing::XShape >& rRootShape, const OUString& rBackgroundShapeModelID)
+DiagramDataState::DiagramDataState(const Connections& aConnections, const Points& aPoints, const uno::Reference< drawing::XShape >& rRootShape)
 : maConnections(aConnections)
 , maPoints(aPoints)
 , mxShapes()
 , maTransformation()
-, msBackgroundShapeModelID(rBackgroundShapeModelID)
 {
     SdrObjGroup* pSource(dynamic_cast<SdrObjGroup*>(SdrObject::getSdrObjectFromXShape(rRootShape)));
     if (nullptr != pSource)
@@ -561,7 +381,7 @@ DiagramDataStatePtr DiagramData_svx::extractDiagramDataState() const
 {
     // Just copy all Connections && Points. The shared_ptr data in
     // Point-entries is no problem, it just continues exiting shared
-    return std::make_shared< DiagramDataState >(maConnections, maPoints, accessRootShape(), getBackgroundShapeModelID());
+    return std::make_shared< DiagramDataState >(maConnections, maPoints, accessRootShape());
 }
 
 void DiagramData_svx::applyDiagramDataState(const DiagramDataStatePtr& rState)
@@ -589,10 +409,6 @@ void DiagramData_svx::applyDiagramDataState(const DiagramDataStatePtr& rState)
             basegfx::B2DPolyPolygon aPolyPolygon;
             pTarget->TRSetBaseGeometry(rState->getTransformation(), aPolyPolygon);
         }
-
-        // BackgroundShapeModelID is needed to identify the correct data
-        // carrier in the following ::reLayout
-        setBackgroundShapeModelID(rState->getBackgroundShapeModelID());
 
         // Reset temporary buffered ModelData association lists & rebuild them
         // and the Diagram DataModel. Do that here *immediately* to prevent
@@ -638,8 +454,6 @@ void DiagramData_svx::getDiagramChildrenString(
 uno::Reference<drawing::XShape> DiagramData_svx::getXShapeByModelID(std::u16string_view rModelID) const
 {
     uno::Reference<drawing::XShape> xRetval;
-    if (rModelID.empty())
-        return xRetval;
 
     SdrObject* pCandidate(SdrObject::getSdrObjectFromXShape(accessRootShape()));
     if (nullptr == pCandidate)
@@ -663,32 +477,6 @@ const Point* DiagramData_svx::getPointByModelID(std::u16string_view rModelID) co
             return &rCandidate;
 
     return nullptr;
-}
-
-void DiagramData_svx::addDiagramModelData(boost::property_tree::ptree& rTarget) const
-{
-    // write BGShapeModelID to boost::property_tree
-    rTarget.put("BGShapeModelID", getBackgroundShapeModelID());
-
-    // write all points to boost::property_tree
-    const svx::diagram::Points& rPoints = getPoints();
-    for (auto & point : rPoints)
-    {
-        boost::property_tree::ptree aPoints;
-        point.addDiagramModelData(aPoints);
-        // const OUString aName(OUString::Concat("Pt") + OUString::number(count++));
-        rTarget.push_back(std::make_pair("Pt", aPoints));
-    }
-
-    // write all connections to boost::property_tree
-    const svx::diagram::Connections& rConnections = getConnections();
-    for (auto & connection : rConnections)
-    {
-        boost::property_tree::ptree aConnections;
-        connection.addDiagramModelData(aConnections);
-        // const OUString aName(OUString::Concat("Cn") + OUString::number(count++));
-        rTarget.push_back(std::make_pair("Cn", aConnections));
-    }
 }
 
 uno::Reference<drawing::XShape> DiagramData_svx::getMasterXShapeForPoint(const Point& rPoint) const
