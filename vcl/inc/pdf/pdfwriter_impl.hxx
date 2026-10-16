@@ -347,16 +347,16 @@ struct FontSubset
 struct FontSubsetKey
 {
     const vcl::font::PhysicalFontFace* m_pFace;
-    const std::vector<vcl::font::Variation>& m_rVariations;
+    std::vector<vcl::font::Variation> m_aVariations;
     size_t m_nHash;
 
     FontSubsetKey(const vcl::font::PhysicalFontFace* pFace, const LogicalFontInstance* pFont)
         : m_pFace(pFace)
-        , m_rVariations(pFont->GetVariations())
+        , m_aVariations(pFont->GetVariations())
         , m_nHash(0)
     {
-        o3tl::hash_combine(m_nHash, m_rVariations.size());
-        for (const auto& rVar : m_rVariations)
+        o3tl::hash_combine(m_nHash, m_aVariations.size());
+        for (const auto& rVar : m_aVariations)
         {
             o3tl::hash_combine(m_nHash, rVar.nTag);
             o3tl::hash_combine(m_nHash, rVar.fValue);
@@ -924,6 +924,9 @@ private:
     /// The name the element carries: the alias, or the first indexed name beside it that
     /// no standard type and no other alias has taken.
     [[nodiscard]] OString claimRoleName(const OString& rAlias, vcl::pdf::StructElement eType);
+
+    void appendStringObject(OStringBuffer& rLine, std::string_view aBytes,
+                            sal_Int32 nObject) override;
 
     void checkAndEnableStreamEncryption( sal_Int32 nObject ) override;
 

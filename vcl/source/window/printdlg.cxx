@@ -1130,17 +1130,28 @@ void PrintDialog::preparePreview( bool i_bMayUseCache )
         if (!bUseCustomPreviewSize
             && mxOrientationBox->get_active() == ORIENTATION_AUTOMATIC)
         {
-            aCurPageSize = !maSelectedPaperSize.IsEmpty()
-                ? maSelectedPaperSize
-                : aPrt->PixelToLogic(aPrt->GetPaperSizePixel(), MapMode(MapUnit::Map100thMM));
-            // Swap to landscape if document requires it.
-            if (!maSelectedPaperSize.IsEmpty())
+            // tdf#173544: with N-up, getFilteredPageFile() has just composed
+            // the sheet and returns its size. Same condition getRealPaperSize()
+            // uses to pick the sheet.
+            const PrinterController::MultiPageSetup& rMPS = maPController->getMultipage();
+            if (rMPS.nRows * rMPS.nColumns > 1 && !aPageSize.aSize.IsEmpty())
             {
-                Size aDocPageSize = getJobPageSize();
-                bool bDocLandscape = !aDocPageSize.IsEmpty()
-                                   && aDocPageSize.getWidth() > aDocPageSize.getHeight();
-                if (bDocLandscape && aCurPageSize.Width() < aCurPageSize.Height())
-                    aCurPageSize = Size(aCurPageSize.Height(), aCurPageSize.Width());
+                aCurPageSize = aPageSize.aSize;
+            }
+            else
+            {
+                aCurPageSize = !maSelectedPaperSize.IsEmpty()
+                    ? maSelectedPaperSize
+                    : aPrt->PixelToLogic(aPrt->GetPaperSizePixel(), MapMode(MapUnit::Map100thMM));
+                // Swap to landscape if document requires it.
+                if (!maSelectedPaperSize.IsEmpty())
+                {
+                    Size aDocPageSize = getJobPageSize();
+                    bool bDocLandscape = !aDocPageSize.IsEmpty()
+                                       && aDocPageSize.getWidth() > aDocPageSize.getHeight();
+                    if (bDocLandscape && aCurPageSize.Width() < aCurPageSize.Height())
+                        aCurPageSize = Size(aCurPageSize.Height(), aCurPageSize.Width());
+                }
             }
         }
 
@@ -1256,6 +1267,45 @@ void PrintDialog::updateOrientationBox( const bool bAutomatic )
     {
         mxOrientationBox->set_active( ORIENTATION_AUTOMATIC );
     }
+}
+
+void PrintDialog::updatePaperSizeBox()
+{
+    VclPtr<Printer> aPrt( maPController->getPrinter() );
+
+    // The custom entry lives beyond GetPaperInfoCount() and has no
+    // PaperInfo to match against, so leave it alone.
+    if (mbHasCustomPaperEntry && mxPaperSizeBox->get_active() == aPrt->GetPaperInfoCount())
+        return;
+
+    mePaper = aPrt->GetPaper();
+    const Size aCurPaperSize(aPrt->GetSizeOfPaper());
+    PaperInfo aCurInfo(aCurPaperSize.getWidth(), aCurPaperSize.getHeight());
+    aCurInfo.doSloppyFit(true);
+
+    // Dimensions first: a paper picked by document size may carry a Paper
+    // enum that matches some other entry, and matching on the enum would
+    // then select that wrong entry.
+    int nMatch = -1;
+    int nEnumMatch = -1;
+    for (int nPaper = 0; nPaper < aPrt->GetPaperInfoCount(); nPaper++)
+    {
+        PaperInfo aInfo = aPrt->GetPaperInfo(nPaper);
+        aInfo.doSloppyFit(true);
+
+        if (!aCurPaperSize.IsEmpty() && aInfo.sloppyEqual(aCurInfo))
+        {
+            nMatch = nPaper;
+            break;
+        }
+        if (nEnumMatch == -1 && mePaper != PAPER_USER && aInfo.getPaper() == mePaper)
+            nEnumMatch = nPaper;
+    }
+
+    if (nMatch == -1)
+        nMatch = nEnumMatch;
+    if (nMatch != -1)
+        mxPaperSizeBox->set_active(nMatch);
 }
 
 bool PrintDialog::hasOrientationChanged() const
@@ -2144,7 +2194,6 @@ IMPL_LINK_NOARG(PrintDialog, ClickSetupHdl, weld::Button&, void)
 
     maPController->setupPrinter(m_xDialog.get());
 
-    VclPtr<Printer> aPrt(maPController->getPrinter());
     if (!isPrintToFile())
     {
         // Rebuild paper size list to restore custom entry if needed.
@@ -2157,6 +2206,10 @@ IMPL_LINK_NOARG(PrintDialog, ClickSetupHdl, weld::Button&, void)
             maFirstPageSize = aSavedCustomSize;
             setPaperSizes();
         }
+
+        // tdf#173642: setPaperSizes() selects the paper matching the document,
+        // which would discard a paper picked in the dropdown.
+        updatePaperSizeBox();
     }
 
     // Sync maSelectedPaperSize with current combobox selection.
