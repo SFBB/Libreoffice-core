@@ -54,6 +54,7 @@
 #include <comphelper/sequence.hxx>
 #include <comphelper/servicehelper.hxx>
 #include <rtl/uri.hxx>
+#include <tools/urlobj.hxx>
 #include <utility>
 #include <vcl/svapp.hxx>
 #include <sal/log.hxx>
@@ -1515,14 +1516,22 @@ bool isMacroCallCommand( std::u16string_view rCommand )
     OUString sCommand = rtl::Uri::decode( OUString( rCommand ), rtl_UriDecodeWithCharset,
                                           RTL_TEXTENCODING_UTF8 ).toAsciiLowerCase();
     if ( !sCommand.startsWith( ".uno:" ) && !sCommand.startsWith( "slot:" ) )
-        return !sCommand.startsWith( "vnd.sun.star.findbar:" );
+    {
+        // The shipped key bindings use the findbar command.
+        if ( sCommand.startsWith( "vnd.sun.star.findbar:" ) )
+            return false;
+        INetURLObject aURL( rCommand );
+        return aURL.GetProtocol() == INetProtocol::NotValid || aURL.IsExoticProtocol();
+    }
     sal_Int32 nArguments = sCommand.indexOf( '?' );
     if ( nArguments < 0 )
         return false;
     std::u16string_view aArguments = std::u16string_view( sCommand ).substr( nArguments + 1 );
     return aArguments.find( u"macro:" ) != std::u16string_view::npos
            || aArguments.find( u"vnd.sun.star.script:" ) != std::u16string_view::npos
-           || aArguments.find( u"referer" ) != std::u16string_view::npos;
+           || aArguments.find( u"referer" ) != std::u16string_view::npos
+           || aArguments.find( u"macroexecutionmode" ) != std::u16string_view::npos
+           || aArguments.find( u"updatedocmode" ) != std::u16string_view::npos;
 }
 
 void setDocumentMacroCallsAllowed( const Reference< XUIConfigurationManager2 >& rxManager,

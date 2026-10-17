@@ -192,7 +192,7 @@ SwMarginPortion *SwLineLayout::CalcLeftMargin()
         pLeft->SetLen(TextFrameIndex(0));
         pLeft->SetAscent( 0 );
         pLeft->SetNextPortion( nullptr );
-        pLeft->SetFixWidth(0);
+        pLeft->SetFixWidth(0_emu);
     }
 
     SwLinePortion *pPos = pLeft->GetNextPortion();
@@ -2281,7 +2281,7 @@ SwTwips SwLineLayout::GetHangingMargin_() const
     {
         if( pPor->IsHangingPortion() )
         {
-            nDiff = static_cast<SwHangingPortion*>(pPor)->GetInnerWidth() - pPor->Width();
+            nDiff = static_cast<SwHangingPortion*>(pPor)->GetInnerWidth().as_twip<SwTwips>() - pPor->Width();
             if( nDiff )
                 bFound = true;
         }

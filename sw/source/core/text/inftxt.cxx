@@ -466,8 +466,8 @@ void SwTextSizeInfo::GetTextSize(const SwScriptInfo* pSI, const TextFrameIndex n
     aDrawInf.SetKanaComp( nComp );
     SwPositiveSize aSize( m_pFnt->GetTextSize_( aDrawInf ) );
     nMaxSizeDiff = aDrawInf.GetKanaDiff();
-    nExtraAscent = aDrawInf.GetExtraAscent();
-    nExtraDescent = aDrawInf.GetExtraDescent();
+    nExtraAscent = aDrawInf.GetExtraAscent().as_twip<SwTwips>();
+    nExtraDescent = aDrawInf.GetExtraDescent().as_twip<SwTwips>();
     nMinSize = aSize.Width();
 }
 
@@ -854,7 +854,7 @@ void SwTextPaintInfo::CalcRect( const SwLinePortion& rPor,
     Size aSize( rPor.Width(), nHeight);
 
     if( rPor.IsHangingPortion() )
-        aSize.setWidth( static_cast<const SwHangingPortion&>(rPor).GetInnerWidth() );
+        aSize.setWidth(static_cast<const SwHangingPortion&>(rPor).GetInnerWidth().as_twip<SwTwips>());
     if( rPor.InSpaceGrp() && GetSpaceAdd() )
     {
         SwTwips nAdd = rPor.CalcSpacing( GetSpaceAdd(), *this );
@@ -1183,7 +1183,7 @@ void SwTextPaintInfo::DrawPostIts( bool bScript ) const
     Size aSize;
     Point aTmp;
 
-    const SwTwips nPostItsWidth = SwViewOption::GetPostItsWidth(GetOut());
+    const SwTwips nPostItsWidth = SwViewOption::GetPostItsWidth(GetOut()).as_twip<SwTwips>();
     const sal_uInt16 nFontHeight = m_pFnt->GetHeight( m_pVsh, *GetOut() );
     const sal_uInt16 nFontAscent = m_pFnt->GetAscent( m_pVsh, *GetOut() );
 
@@ -1767,8 +1767,8 @@ void SwTextFormatInfo::CtorInitTextFormatInfo( OutputDevice* pRenderContext, SwT
     m_nFirst = 0;
     m_nRealWidth = 0;
     m_nForcedLeftMargin = 0;
-    m_nExtraAscent = 0;
-    m_nExtraDescent = 0;
+    m_nExtraAscent = 0_emu;
+    m_nExtraDescent = 0_emu;
     m_pRest = nullptr;
     m_nLineHeight = 0;
     m_nLineNetHeight = 0;
@@ -1866,8 +1866,8 @@ void SwTextFormatInfo::Init()
     m_cTabDecimal = 0;
     m_nWidth = m_nRealWidth;
     m_nForcedLeftMargin = 0;
-    m_nExtraAscent = 0;
-    m_nExtraDescent = 0;
+    m_nExtraAscent = 0_emu;
+    m_nExtraDescent = 0_emu;
     m_nSoftHyphPos = TextFrameIndex(0);
     m_nLastBookmarkPos = TextFrameIndex(-1);
     ClearHookChar();
@@ -1909,8 +1909,8 @@ SwTextFormatInfo::SwTextFormatInfo( const SwTextFormatInfo& rInf,
     m_nLineHeight(0),
     m_nLineNetHeight(0),
     m_nForcedLeftMargin(0),
-    m_nExtraAscent(0),
-    m_nExtraDescent(0),
+    m_nExtraAscent(0_emu),
+    m_nExtraDescent(0_emu),
     m_bFull(false),
     m_bFootnoteDone(true),
     m_bErgoDone(true),

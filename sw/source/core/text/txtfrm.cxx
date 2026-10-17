@@ -1735,7 +1735,7 @@ bool sw_HideObj( const SwTextFrame& _rFrame,
                             SwRect aLastCharRect( _rFrame.getFrameArea() );
                             aRectFnSet.SetWidth( aLastCharRect, 1 );
                             _pAnchoredObj->maLastCharRect = aLastCharRect;
-                            _pAnchoredObj->mnLastTopOfLine = aRectFnSet.GetTop(aLastCharRect);
+                            _pAnchoredObj->mnLastTopOfLine = gfx::Length::twip(aRectFnSet.GetTop(aLastCharRect));
                         }
                     }
                 }
@@ -2244,7 +2244,7 @@ void SwTextFrame::SwClientNotify(SwModify const& rModify, SfxHint const& rHint)
         Broadcast(SfxHint()); // notify SwAccessibleParagraph
         if(IsLocked())
             return;
-        if(pDocPosAt->m_nDocPos > getFrameArea().Top())
+        if (pDocPosAt->m_nDocPos.as_twip<SwTwips>() > getFrameArea().Top())
             return;
         TextFrameIndex const nIndex(MapModelToView(
             &pDocPosAt->m_rNode,

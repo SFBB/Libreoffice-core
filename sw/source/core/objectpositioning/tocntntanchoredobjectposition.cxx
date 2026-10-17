@@ -55,9 +55,7 @@ SwToContentAnchoredObjectPosition::SwToContentAnchoredObjectPosition( SdrObject&
       mpVertPosOrientFrame( nullptr ),
       mbAnchorToChar ( false ),
       mpToCharOrientFrame( nullptr ),
-      mpToCharRect( nullptr ),
-      // #i22341#
-      mnToCharTopOfLine( 0 )
+      mpToCharRect( nullptr )
 {}
 
 SwToContentAnchoredObjectPosition::~SwToContentAnchoredObjectPosition()
@@ -79,7 +77,7 @@ const SwRect* SwToContentAnchoredObjectPosition::ToCharRect() const
 }
 
 // #i22341#
-SwTwips SwToContentAnchoredObjectPosition::ToCharTopOfLine() const
+gfx::Length SwToContentAnchoredObjectPosition::ToCharTopOfLine() const
 {
     return mnToCharTopOfLine;
 }
@@ -211,14 +209,14 @@ void SwToContentAnchoredObjectPosition::CalcPosition()
             // rectangle can have no height. Thus, check also the width
             if ( ( !GetAnchoredObj().GetLastCharRect().Height() &&
                    !GetAnchoredObj().GetLastCharRect().Width() ) ||
-                 !GetAnchoredObj().GetLastTopOfLine() )
+                 GetAnchoredObj().GetLastTopOfLine() == 0_emu)
             {
                 GetAnchoredObj().CheckCharRectAndTopOfLine( false );
                 // Due to table break algorithm the character
                 // rectangle can have no height. Thus, check also the width
                 if ( ( !GetAnchoredObj().GetLastCharRect().Height() &&
                        !GetAnchoredObj().GetLastCharRect().Width() ) ||
-                     !GetAnchoredObj().GetLastTopOfLine() )
+                     GetAnchoredObj().GetLastTopOfLine() == 0_emu)
                 {
                     // Get default for <mpVertPosOrientFrame>, if it's not set.
                     if ( !mpVertPosOrientFrame )
@@ -557,7 +555,7 @@ void SwToContentAnchoredObjectPosition::CalcPosition()
                 }
                 else
                 {
-                    nVertOffsetToFrameAnchorPos = aRectFnSet.YDiff( ToCharTopOfLine(),
+                    nVertOffsetToFrameAnchorPos = aRectFnSet.YDiff(ToCharTopOfLine().as_twip<SwTwips>(),
                                                                     nTopOfOrient );
                 }
                 nRelPosY = nVertOffsetToFrameAnchorPos - aVert.GetPos();
@@ -1227,7 +1225,8 @@ void SwToContentAnchoredObjectPosition::CalcOverlap(const SwTextFrame* pAnchorFr
             = SwTextBoxHelper::getOtherTextBoxFormat(&rFrameFormat, RES_FLYFRMFMT);
         if (pShapeOfTextBox)
         {
-            SwTwips nYDiff = pShapeOfTextBox->GetWrapInfluenceOnObjPos().GetOverlapVertOffset();
+            SwTwips nYDiff
+                = pShapeOfTextBox->GetWrapInfluenceOnObjPos().GetOverlapVertOffset().as_twip<SwTwips>();
             if (nYDiff > 0)
             {
                 rRelPos.setY(rRelPos.getY() + nYDiff + 1);
@@ -1376,7 +1375,7 @@ void SwToContentAnchoredObjectPosition::CalcOverlap(const SwTextFrame* pAnchorFr
         // Store our offset that avoids the overlap. If this is a shape of a textbox, then the frame
         // of the textbox will use it.
         SwFormatWrapInfluenceOnObjPos aInfluence(rFrameFormat.GetWrapInfluenceOnObjPos());
-        aInfluence.SetOverlapVertOffset(nYDiff);
+        aInfluence.SetOverlapVertOffset(gfx::Length::twip(nYDiff));
         const_cast<SwFrameFormat&>(rFrameFormat).LockModify();
         const_cast<SwFrameFormat&>(rFrameFormat).SetFormatAttr(aInfluence);
         const_cast<SwFrameFormat&>(rFrameFormat).UnlockModify();

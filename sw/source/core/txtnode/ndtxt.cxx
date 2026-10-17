@@ -3511,7 +3511,7 @@ bool SwTextNode::GetFirstLineOfsWithNum(short& rFLOffset,
     return false;
 }
 
-SwTwips SwTextNode::GetAdditionalIndentForStartingNewList() const
+gfx::Length SwTextNode::GetAdditionalIndentForStartingNewList() const
 {
     SwTwips nAdditionalIndent = 0;
 
@@ -3567,7 +3567,7 @@ SwTwips SwTextNode::GetAdditionalIndentForStartingNewList() const
         nAdditionalIndent = GetSwAttrSet().GetTextLeftMargin().ResolveLeft(rFirst, /*metrics*/ {});
     }
 
-    return nAdditionalIndent;
+    return gfx::Length::twip(nAdditionalIndent);
 }
 
 // #i91133#
@@ -5661,7 +5661,7 @@ void SwTextNode::HandleNonLegacyHint(const SfxHint& rHint)
     }
 }
 
-void SwTextNode::UpdateDocPos(const SwTwips nDocPos, const sal_uInt32 nIndex)
+void SwTextNode::UpdateDocPos(const gfx::Length nDocPos, const sal_uInt32 nIndex)
 {
     const sw::DocPosUpdateAtIndex aHint(nDocPos, *this, nIndex);
     CallSwClientNotify(aHint);

@@ -418,7 +418,7 @@ void SwFormatField::ForceUpdateTextNode()
     }
     mpTextField->ExpandTextField(bNeedForced);
 }
-void SwFormatField::UpdateDocPos(const SwTwips nDocPos)
+void SwFormatField::UpdateDocPos(const gfx::Length nDocPos)
 {
     if (!IsFieldInDoc())
         return;

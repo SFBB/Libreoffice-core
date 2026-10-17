@@ -22,6 +22,7 @@
 #include <com/sun/star/text/XTextContent.hpp>
 
 #include "swdllapi.h"
+#include <basegfx/units/Length.hxx>
 #include "IDocumentContentOperations.hxx"
 #include "SwNumberTreeTypes.hxx"
 #include "hintids.hxx"
@@ -246,7 +247,7 @@ public:
 
 public:
     using SwContentNode::GetAttr;
-    void UpdateDocPos(const SwTwips nDocPos, const sal_uInt32 nIndex);
+    void UpdateDocPos(const gfx::Length nDocPos, const sal_uInt32 nIndex);
     /// for hanging TextFormatCollections somewhere else (Outline-Numbering!)
     void TriggerNodeUpdate(const sw::LegacyModifyHint&);
     void TriggerNodeUpdate(const sw::AttrSetChangeHint&);
@@ -566,7 +567,7 @@ public:
      */
     bool GetFirstLineOfsWithNum( short& rFirstOffset, const SvxFontUnitMetrics& rMetrics ) const;
 
-    SwTwips GetAdditionalIndentForStartingNewList() const;
+    gfx::Length GetAdditionalIndentForStartingNewList() const;
 
     /** return left margin for tab stop position calculation
 
@@ -698,7 +699,7 @@ public:
 
        @return     the width of the leading whitespace
      */
-    SwTwips GetWidthOfLeadingTabs() const;
+    gfx::Length GetWidthOfLeadingTabs() const;
 
     /**
        Returns if the paragraph has a visible numbering or bullet.
