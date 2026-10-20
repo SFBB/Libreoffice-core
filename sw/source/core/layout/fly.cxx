@@ -349,6 +349,13 @@ void SwFlyFrame::InsertColumns()
 
 void SwFlyFrame::DestroyImpl()
 {
+    // A queued empty fly may be destroyed through another path before
+    // DeleteEmptyFlys_() processes it. Do not leave a dangling queue entry.
+    if (SwRootFrame* pRootFrame = getRootFrame())
+    {
+        pRootFrame->RemoveEmptyFly(this);
+    }
+
     // Accessible objects for fly frames will be destroyed in this destructor.
     // For frames bound as char or frames that don't have an anchor we have
     // to do that ourselves. For any other frame the call RemoveFly at the
@@ -1443,7 +1450,7 @@ void SwFlyFrame::ChgRelPos( const Point &rNewPos )
             aVert.SetRelationOrient( text::RelOrientation::FRAME );
         }
     }
-    aVert.SetPos( nTmpY );
+    aVert.setPosition(gfx::Length::twip(nTmpY));
     aSet.Put( aVert );
 
     // For Flys in the Cnt, the horizontal orientation is of no interest,
@@ -1491,7 +1498,7 @@ void SwFlyFrame::ChgRelPos( const Point &rNewPos )
                 aHori.SetRelationOrient( text::RelOrientation::FRAME );
             aHori.SetPosToggle( false );
         }
-        aHori.SetPos( nTmpX );
+        aHori.setPosition(gfx::Length::twip(nTmpX));
         aSet.Put( aHori );
     }
     SetCurrRelPos( rNewPos );
@@ -1973,27 +1980,31 @@ void CalcContent( SwLayoutFrame *pLay, bool bNoColl )
 
                 if ( bAgain )
                 {
-                    pFrame = pLay->ContainsContent();
-                    if ( pFrame && pFrame->IsInTab() )
-                        pFrame = pFrame->FindTabFrame();
-                    if( pFrame && pFrame->IsInSct() )
+                    SwFrame* pRestartFrame = pLay->ContainsContent();
+                    if ( pRestartFrame && pRestartFrame->IsInTab() )
+                        pRestartFrame = pRestartFrame->FindTabFrame();
+                    if( pRestartFrame && pRestartFrame->IsInSct() )
                     {
-                        SwSectionFrame* pTmp = pFrame->FindSctFrame();
+                        SwSectionFrame* pTmp = pRestartFrame->FindSctFrame();
                         if( pTmp != pLay && pLay->IsAnLower( pTmp ) )
-                            pFrame = pTmp;
+                            pRestartFrame = pTmp;
                     }
 
-                    if ( pFrame == pLoopControlCond )
+                    if ( pRestartFrame == pLoopControlCond )
                         ++nLoopControlRuns;
                     else
                     {
                         nLoopControlRuns = 0;
-                        pLoopControlCond = pFrame;
+                        pLoopControlCond = pRestartFrame;
                     }
 
                     if ( nLoopControlRuns < nLoopControlMax )
+                    {
+                        pFrame = pRestartFrame;
                         continue;
+                    }
 
+                    // ofz#574847387 past the limit, go on with the frame after this one
                     OSL_FAIL( "LoopControl in CalcContent" );
                 }
             }

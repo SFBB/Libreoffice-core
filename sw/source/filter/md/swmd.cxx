@@ -17,6 +17,7 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
+#include <algorithm>
 #include <boost/property_tree/json_parser/error.hpp>
 
 #include <com/sun/star/uno/XComponentContext.hpp>
@@ -42,6 +43,7 @@
 #include <fmtinfmt.hxx>
 #include <frmatr.hxx>
 #include <fmtanchr.hxx>
+#include <fmtcntnt.hxx>
 #include <fmtfsize.hxx>
 #include <vcl/graph.hxx>
 #include <vcl/graphicfilter.hxx>
@@ -305,7 +307,7 @@ void SwMarkdownParser::EndHeading()
     m_xDoc->SetTextFormatColl(*m_pPam, pColl);
 }
 
-void SwMarkdownParser::StartNumberedBulletList(MD_BLOCKTYPE aListType)
+void SwMarkdownParser::StartNumberedBulletList(MD_BLOCKTYPE aListType, unsigned nStart)
 {
     SwMdNumRuleInfo& rInfo = GetNumInfo();
 
@@ -370,6 +372,13 @@ void SwMarkdownParser::StartNumberedBulletList(MD_BLOCKTYPE aListType)
     {
         // If the layer has already been used, the start value may need to be set hard to the paragraph.
         rInfo.SetNodeStartValue(nLevel, 1);
+    }
+
+    if (aListType == MD_BLOCK_OL)
+    {
+        // Restart only the first item of this list, without changing the shared numbering format.
+        // Writer stores paragraph restart values in a signed 16-bit attribute.
+        rInfo.SetNodeStartValue(nLevel, std::min(nStart, static_cast<unsigned>(SAL_MAX_INT16)));
     }
 
     {
@@ -673,14 +682,7 @@ void SwMarkdownParser::InsertImage(const MDImage& rImg)
     }
 
     Size aGrfSz(0, 0);
-    if (m_xDoc->AllowAccessLink() && !aGraphicURL.IsExoticProtocol() && !sGrfNm.isEmpty())
-    {
-        GraphicDescriptor aDescriptor(aGraphicURL);
-        if (aDescriptor.Detect(true))
-            aGrfSz
-                = o3tl::convert(aDescriptor.GetSizePixel(), o3tl::Length::px, o3tl::Length::twip);
-    }
-    else if (aGraphic.GetType() == GraphicType::Bitmap)
+    if (aGraphic.GetType() == GraphicType::Bitmap)
     {
         // We have an unloaded graphic in aGraphic, read its size.
         aGrfSz = o3tl::convert(aGraphic.GetSizePixel(), o3tl::Length::px, o3tl::Length::twip);
@@ -738,6 +740,15 @@ void SwMarkdownParser::InsertImage(const MDImage& rImg)
     {
         pFlyFormat->SetObjTitle(rImg.title);
         pFlyFormat->SetObjDescription(rImg.desc);
+
+        // A linked image's own size reaches the frame when the links are updated.
+        if (!sGrfNm.isEmpty())
+        {
+            if (SwGrfNode* pGrfNd
+                = m_xDoc->GetNodes()[pFlyFormat->GetContent().GetContentIdx()->GetIndex() + 1]
+                      ->GetGrfNode())
+                pGrfNd->SetChgTwipSize(true);
+        }
     }
 
     m_bNoParSpace = true;
