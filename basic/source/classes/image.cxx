@@ -172,6 +172,13 @@ bool SbiImage::Load( SvStream& r, sal_uInt32& nVersion )
             }
             case FileOffset::PCode:
                 if( bBadVer ) break;
+                if (nLen > r.remainingSize())
+                {
+                    SAL_WARN("basic", "Parsing error: code of " << nLen
+                             << " does not fit the record");
+                    bError = true;
+                    break;
+                }
                 aCode.resize(nLen);
                 r.ReadBytes(aCode.data(), aCode.size());
                 if ( bLegacy )
@@ -237,7 +244,7 @@ bool SbiImage::Load( SvStream& r, sal_uInt32& nVersion )
                 {
                     // The element past the pool ends the last string.
                     pStrings.reset(new sal_Unicode[ nLen + 1 ]());
-                    nStringSize = static_cast<sal_uInt16>(nLen);
+                    nStringSize = nLen;
 
                     if (GetToUnicodePoolData(r, nLen, nNext))
                     {
@@ -345,6 +352,8 @@ bool SbiImage::Load( SvStream& r, sal_uInt32& nVersion )
                                     sal_Int32 lBound;
                                     sal_Int32 uBound;
                                     r.ReadInt32(lBound).ReadInt32(uBound);
+                                    if (!r.good())
+                                        break;
                                     pArray->unoAddDim(lBound, uBound);
                                 }
 
@@ -552,7 +561,7 @@ bool SbiImage::Save( SvStream& r, sal_uInt32 nVer )
     return !bError;
 }
 
-void SbiImage::MakeStrings( short nSize )
+void SbiImage::MakeStrings( sal_uInt16 nSize )
 {
     nStringIdx = 0;
     nStringOff = 0;
@@ -589,7 +598,7 @@ void SbiImage::AddString( const OUString& r )
         std::unique_ptr<sal_Unicode[]> p(new sal_Unicode[nNewLen]);
         std::copy_n(pStrings.get(), nStringSize, p.get());
         pStrings = std::move(p);
-        nStringSize = sal::static_int_cast< sal_uInt16 >(nNewLen);
+        nStringSize = nNewLen;
     }
     if( !bError )
     {
@@ -646,8 +655,10 @@ OUString SbiImage::GetString(sal_uInt32 nId, SbxDataType* peType) const
     sal_uInt32 nOff = mvStringOffsets[ nId - 1 ];
     sal_Unicode* pStr = pStrings.get() + nOff;
 
+    // The string can run up to the start of the next one, and no further than the pool.
     sal_uInt32 nNextOff = (nId < mvStringOffsets.size()) ? mvStringOffsets[ nId ] : nStringSize;
-    sal_uInt32 nLen = nNextOff - nOff - 1;
+    nNextOff = std::min(nNextOff, nStringSize);
+    sal_uInt32 nLen = nNextOff > nOff ? nNextOff - nOff - 1 : 0;
     OUString aOUStr(pStr);
     // #i42467: Special treatment for vbNullChar
     if (aOUStr.isEmpty() && nLen == 1)
@@ -690,12 +701,12 @@ const SbxObject* SbiImage::FindType (const OUString& aTypeName) const
 
 sal_uInt16 SbiImage::CalcLegacyOffset( sal_Int32 nOffset )
 {
-    return SbiCodeGen::calcLegacyOffSet(aCode.data(), nOffset);
+    return SbiCodeGen::calcLegacyOffSet(aCode.data(), aCode.size(), nOffset);
 }
 
 sal_uInt32 SbiImage::CalcNewOffset( sal_Int16 nOffset )
 {
-    return SbiCodeGen::calcNewOffSet(aLegacyPCode.data(), nOffset);
+    return SbiCodeGen::calcNewOffSet(aLegacyPCode.data(), aLegacyPCode.size(), nOffset);
 }
 
 void  SbiImage::ReleaseLegacyBuffer()

@@ -46,6 +46,7 @@
 #include <com/sun/star/script/provider/XScript.hpp>
 #include <com/sun/star/script/provider/XScriptProvider.hpp>
 #include <com/sun/star/script/provider/XScriptProviderSupplier.hpp>
+#include <com/sun/star/script/vba/XVBACompatibility.hpp>
 #include <com/sun/star/uri/UriReferenceFactory.hpp>
 #include <com/sun/star/uri/XVndSunStarScriptUrl.hpp>
 #include <com/sun/star/util/XModifiable.hpp>
@@ -1021,6 +1022,17 @@ void SfxObjectShell::CheckSecurityOnLoading_Impl()
     pImpl->m_bMacroCallsAllowed = bMacrosAllowed;
     if (pImpl->pBaseModel.is())
         pImpl->pBaseModel->SetUIConfigurationMacroCallsAllowed_Impl(bMacrosAllowed);
+
+    // A document in VBA compatibility mode gets its Basic project loaded once macros are allowed.
+    // Import records that mode on the document's own Basic container, so only one that already
+    // exists can hold it.
+    if (bMacrosAllowed)
+    {
+        uno::Reference<script::vba::XVBACompatibility> xVBACompat(pImpl->xBasicLibraries,
+                                                                  uno::UNO_QUERY);
+        if (xVBACompat.is() && xVBACompat->getVBACompatibilityMode())
+            xVBACompat->setVBACompatibilityMode(true);
+    }
 }
 
 bool SfxObjectShell::GetHadCheckedMacrosOnLoad() const
@@ -1536,7 +1548,7 @@ bool SfxObjectShell::isScriptAccessAllowed( const Reference< XInterface >& _rxSc
 // don't allow LibreLogo to be used with our mouseover/etc dom-alike events
 bool SfxObjectShell::UnTrustedScript(const OUString& rScriptURL)
 {
-    if (!rScriptURL.startsWith("vnd.sun.star.script:"))
+    if (!rScriptURL.startsWithIgnoreAsciiCase("vnd.sun.star.script:"))
         return false;
 
     // ensure URL Escape Codes are decoded
@@ -1935,11 +1947,6 @@ OUString SfxObjectShell_Impl::getDocumentLocation() const
     if ( pMedium )
     {
         sLocation = pMedium->GetName();
-        if ( sLocation.isEmpty() )
-        {
-            // for documents made from a template: get the name of the template
-            sLocation = rDocShell.getDocProperties()->getTemplateURL();
-        }
 
         // tdf#128006 take document base url as location
         if (sLocation.isEmpty())

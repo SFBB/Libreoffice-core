@@ -223,7 +223,7 @@ public:
      */
     bool                IsDataDescriptionCell(const ScAddress& rPos);
 
-    bool                IsDimNameInUse(std::u16string_view rName) const;
+    bool                IsDimNameInUse(std::u16string_view rName);
     SC_DLLPUBLIC OUString GetDimName( tools::Long nDim, bool& rIsDataLayout, sal_Int32* pFlags = nullptr );
     SC_DLLPUBLIC bool   IsDuplicated( tools::Long nDim );
     SC_DLLPUBLIC tools::Long GetDimCount();
@@ -439,6 +439,10 @@ public:
     /** True when rDBName is the name of a data source registered in the user's configuration.
         Any other name is the URL of a database document. */
     static bool IsRegisteredDatabase(const OUString& rDBName);
+
+    /** True when rDBName is an unregistered source whose URL a document controls and the
+        allowed-path, host, or protocol checks reject it. */
+    static bool IsForbiddenUrlDataSource(const OUString& rDBName);
 
     TranslateId ReloadCache(const ScDPObject* pDPObj, o3tl::sorted_vector<ScDPObject*>& rRefs);
     bool ReloadGroupsInCache(const ScDPObject* pDPObj, o3tl::sorted_vector<ScDPObject*>& rRefs);
