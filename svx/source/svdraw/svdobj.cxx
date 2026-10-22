@@ -1694,7 +1694,9 @@ void SdrObject::Move(const Size& rSize)
             GetLogicRect().Left() / 100.0,
             GetLogicRect().Top() / 100.0);
 
-        getAnnotationData()->mxAnnotation->SetPosition(aNewPosition);
+        auto& xAnnotation = getAnnotationData()->mxAnnotation;
+        if (xAnnotation)
+            xAnnotation->SetPosition(aNewPosition);
     }
     SetChanged();
     BroadcastObjectChange();
@@ -3642,7 +3644,6 @@ rtl::Reference<SdrObject> SdrObjFactory::MakeNewObject(
                     pObj = new SdrRectObj(
                         rSdrModel, tools::Rectangle(), nIdentifier);
                 }
-                pObj->SetApplyEffects(true);
             }
             break;
             case SdrObjKind::CircleOrEllipse:

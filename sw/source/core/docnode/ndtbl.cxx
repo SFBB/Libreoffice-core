@@ -27,6 +27,8 @@
 #include <editeng/boxitem.hxx>
 #include <string_view>
 #include <svl/stritem.hxx>
+#include <svx/dialmgr.hxx>
+#include <svx/strings.hrc>
 #include <editeng/shaditem.hxx>
 #include <fmtfsize.hxx>
 #include <formatflysplit.hxx>
@@ -39,6 +41,7 @@
 #include <frmatr.hxx>
 #include <cellfrm.hxx>
 #include <pagefrm.hxx>
+#include <shellres.hxx>
 #include <tabcol.hxx>
 #include <doc.hxx>
 #include <IDocumentUndoRedo.hxx>
@@ -4065,7 +4068,12 @@ bool SwDoc::SetTableAutoFormat(const SwSelBoxes& rBoxes,
     TableStyleName aPrevFormat = pTableNd->GetTable().GetTableStyleName();
     if (pStyleNameToSet)
     {   // tdf#98226 do this here where undo can record it
-        pTableNd->GetTable().SetTableStyleName(*pStyleNameToSet);
+
+        // The 'None' style is special in table styles. Clear the template-name in that case.
+        if (*pStyleNameToSet == SvxResId(RID_SVXSTR_TBLAFMT_NONE))
+            pTableNd->GetTable().SetTableStyleName(TableStyleName());
+        else
+            pTableNd->GetTable().SetTableStyleName(*pStyleNameToSet);
     }
 
     const SwTableAutoFormat rStyle = *GetTableStyles().GetResolvedStyle(&rNew);

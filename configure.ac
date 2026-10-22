@@ -4231,7 +4231,7 @@ reg_get_value()
         regvalue=$($WSL_LO_HELPER --read-registry $1 "$2/$3" 2>/dev/null)
         return
     elif test -n "$WSL_ONLY_AS_HELPER"; then
-        regvalue=$(reg.exe query "$(echo $2 | tr '/' '\\')" /v "$3" /reg:$1 |sed -ne "s|\s*$3.*REG_SZ\s*\(.*\)[\s\r]*$|\1|p")
+        regvalue=$(reg.exe query "$(echo $2 | tr '/' '\\')" /v "$3" /reg:$1 2>/dev/null |sed -ne "s|\s*$3.*REG_SZ\s*\(.*\)[\s\r]*$|\1|p")
         return
     fi
 
@@ -11863,7 +11863,7 @@ harfbuzz_required_version=14.3.0
 GRAPHITE_CFLAGS_internal="-I${WORKDIR}/UnpackedTarball/graphite/include -DGRAPHITE2_STATIC"
 HARFBUZZ_CFLAGS_internal="-I${WORKDIR}/UnpackedTarball/harfbuzz/src"
 case "$_os" in
-    Linux)
+    FreeBSD|Linux)
         GRAPHITE_LIBS_internal='$(gb_StaticLibrary_WORKDIR)/libgraphite.a'
         HARFBUZZ_LIBS_internal='$(gb_UnpackedTarball_workdir)/harfbuzz/builddir/src/libharfbuzz.a $(gb_UnpackedTarball_workdir)/harfbuzz/builddir/src/libharfbuzz-subset.a $(GRAPHITE_LIBS)'
         ;;
@@ -12283,7 +12283,7 @@ dnl Check for system box2d
 dnl ===================================================================
 AC_MSG_CHECKING([which box2d to use])
 BOX2D_MAJOR=3
-BOX2D_MINOR=1
+BOX2D_MINOR=2
 if test "$with_system_box2d" = "yes"; then
     AC_MSG_RESULT([external])
     SYSTEM_BOX2D=TRUE
