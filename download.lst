@@ -29,8 +29,8 @@ BREAKPAD_TARBALL := breakpad-b324760c7f53667af128a6b77b790323da04fcb9.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-BROTLI_SHA256SUM := 816c96e8e8f193b40151dad7e8ff37b1221d019dbcb9c35cd3fadbfe6477dfec
-BROTLI_TARBALL := brotli-1.2.0.tar.gz
+BROTLI_SHA256SUM := 98d35d11a78dc453aebb7d10c3748f3f73ff78c8267c0dc697b8631f67bf7e8f
+BROTLI_TARBALL := brotli-1.2.1.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -488,8 +488,8 @@ MYTHES_TARBALL := mythes-1.2.6.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-NSS_SHA256SUM := 52408a28cc9edc1ca04a420c74a820b48b63a3390a59fe38c5ec77afc6e2fb1d
-NSS_TARBALL := nss-3.131.1-with-nspr-4.39.tar.gz
+NSS_SHA256SUM := c220ea83378e55f2e4d7f7d83477756d622f79b5b91d1ff4157d5e3f494d2b49
+NSS_TARBALL := nss-3.132-with-nspr-4.39.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -581,8 +581,8 @@ POSTGRESQL_TARBALL := postgresql-15.19.tar.bz2
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-PYTHON_SHA256SUM := f4b1bfb3c79b5bb11b8d228a12504163b4c0dab4d679828d8f5f26b6cb6ab35d
-PYTHON_TARBALL := Python-3.13.16.tar.xz
+PYTHON_SHA256SUM := 6020bd10aff3bf4821be16f088ebb1591beb7b811dcd8fab1da8f7c22a7b27e7
+PYTHON_TARBALL := Python-3.13.17.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts

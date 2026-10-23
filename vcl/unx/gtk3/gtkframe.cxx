@@ -506,8 +506,7 @@ bool GtkSalFrame::doKeyCallback( guint state,
 }
 
 GtkSalFrame::GtkSalFrame( SalFrame* pParent, SalFrameStyleFlags nStyle )
-    : m_nXScreen( getDisplay()->GetDefaultXScreen() )
-    , m_pHeaderBar(nullptr)
+    : m_pHeaderBar(nullptr)
     , m_bGraphics(false)
     , m_nSetFocusSignalId(0)
 #if !GTK_CHECK_VERSION(4, 0, 0)
@@ -521,8 +520,7 @@ GtkSalFrame::GtkSalFrame( SalFrame* pParent, SalFrameStyleFlags nStyle )
 }
 
 GtkSalFrame::GtkSalFrame( SystemParentData* pSysData )
-    : m_nXScreen( getDisplay()->GetDefaultXScreen() )
-    , m_pHeaderBar(nullptr)
+    : m_pHeaderBar(nullptr)
     , m_bGraphics(false)
     , m_nSetFocusSignalId(0)
 #if !GTK_CHECK_VERSION(4, 0, 0)
@@ -1249,19 +1247,11 @@ void GtkSalFrame::InitCommon()
     m_aSystemData.SetWindowHandle(GetNativeWindowHandle(m_pWindow));
     m_aSystemData.pSalFrame     = this;
     m_aSystemData.pWidget       = m_pWindow;
-    m_aSystemData.nScreen       = m_nXScreen.getXScreen();
 
 #if defined(GDK_WINDOWING_X11)
     GdkDisplay *pDisplay = getGdkDisplay();
     if (DLSYM_GDK_IS_X11_DISPLAY(pDisplay))
-    {
         m_aSystemData.pDisplay = gdk_x11_display_get_xdisplay(pDisplay);
-#if !GTK_CHECK_VERSION(4,0,0)
-        GdkScreen* pScreen = gtk_widget_get_screen(m_pWindow);
-        GdkVisual* pVisual = gdk_screen_get_system_visual(pScreen);
-        m_aSystemData.pVisual = gdk_x11_visual_get_xvisual(pVisual);
-#endif
-    }
 #endif
 #if defined(GDK_WINDOWING_WAYLAND)
     if (DLSYM_GDK_IS_WAYLAND_DISPLAY(pDisplay))

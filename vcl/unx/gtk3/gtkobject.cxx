@@ -62,18 +62,11 @@ void GtkSalObjectBase::Init()
     // unless its explicitly needed
     m_aSystemData.pSalFrame     = nullptr;
     m_aSystemData.pWidget       = m_pSocket;
-    m_aSystemData.nScreen       = m_pParent->getXScreenNumber().getXScreen();
 #if !GTK_CHECK_VERSION(4, 0, 0)
-    GdkScreen* pScreen = gtk_widget_get_screen(m_pParent->getWindow());
-    GdkVisual* pVisual = gdk_screen_get_system_visual(pScreen);
-
 #if defined(GDK_WINDOWING_X11)
     GdkDisplay *pDisplay = GtkSalFrame::getGdkDisplay();
     if (DLSYM_GDK_IS_X11_DISPLAY(pDisplay))
-    {
         m_aSystemData.pDisplay = gdk_x11_display_get_xdisplay(pDisplay);
-        m_aSystemData.pVisual = gdk_x11_visual_get_xvisual(pVisual);
-    }
 #endif
 #if defined(GDK_WINDOWING_WAYLAND)
     if (DLSYM_GDK_IS_WAYLAND_DISPLAY(pDisplay))
