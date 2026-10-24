@@ -17,7 +17,8 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#include "unxsplash.hxx"
+#include <splash/unxsplash.hxx>
+
 #include <stdio.h>
 #include <osl/process.h>
 #include <cppuhelper/supportsservice.hxx>
@@ -104,11 +105,6 @@ UnxSplashScreen::initialize( const css::uno::Sequence< css::uno::Any>& )
 OUString UnxSplashScreen::getImplementationName()
 {
     return u"com.sun.star.office.comp.PipeSplashScreen"_ustr;
-}
-
-sal_Bool UnxSplashScreen::supportsService(OUString const & ServiceName)
-{
-    return cppu::supportsService(this, ServiceName);
 }
 
 css::uno::Sequence<OUString> UnxSplashScreen::getSupportedServiceNames()

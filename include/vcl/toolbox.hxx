@@ -474,8 +474,8 @@ public:
     ToolBoxMenuType     GetMenuType() const;
     SAL_DLLPRIVATE bool IsMenuEnabled() const;
     PopupMenu*          GetMenu() const;
-    SAL_DLLPRIVATE void UpdateCustomMenu(PopupMenu* pMenu);
-    void                SetMenuExecuteHdl( const Link<ToolBox *, void>& rLink );
+    SAL_DLLPRIVATE void UpdateCustomMenu(PopupMenu& rMenu);
+    void SetMenuExecuteHdl(const Link<PopupMenu&, void>& rLink);
 
     // open custommenu
     SAL_DLLPRIVATE void ExecuteCustomMenu( const tools::Rectangle& rRect = tools::Rectangle() );

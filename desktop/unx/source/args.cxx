@@ -6,98 +6,85 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
-#include <stdlib.h>
+
+#include "args.hxx"
+
 #include <string.h>
 #include <osl/process.h>
 
-#include "args.h"
-
 /* do we start -env: */
-static int
-is_env_arg (rtl_uString const *str)
+static bool is_env_arg(rtl_uString const* str)
 {
     return !rtl_ustr_ascii_compare_WithLength (str->buffer, 5, "-env:");
 }
 
-static const struct {
+const struct {
     const char   *name;
-    unsigned int  bInhibitSplash : 1;
-    unsigned int  bInhibitPagein : 1;
-    unsigned int  bInhibitJavaLdx : 1;
-    unsigned int  bInhibitPipe : 1;
+    bool bInhibitSplash : 1;
+    bool bInhibitPagein : 1;
+    bool bInhibitJavaLdx : 1;
+    bool bInhibitPipe : 1;
     const char   *pPageinType;
 } pArgDescr[] = {
     /* have a trailing argument */
-    { "pt",         1, 0, 0, 0, NULL },
-    { "p",          1, 0, 0, 0, NULL },
-    { "display",    0, 0, 0, 0, NULL },
+    { "pt", true, false, false, false, nullptr },
+    { "p", true, false, false, false, nullptr },
+    { "display", false, false, false, false, nullptr },
 
     /* no splash */
-    { "nologo",     1, 0, 0, 0, NULL },
-    { "headless",   1, 0, 0, 0, NULL },
-    { "invisible",  1, 0, 0, 0, NULL },
-    { "quickstart", 1, 0, 0, 0, NULL },
-    { "minimized",  1, 0, 0, 0, NULL },
-    { "convert-to", 1, 0, 0, 0, NULL },
-    { "cat",        1, 0, 0, 0, NULL },
+    { "nologo", true, false, false, false, nullptr },
+    { "headless", true, false, false, false, nullptr },
+    { "invisible", true, false, false, false, nullptr },
+    { "quickstart", true, false, false, false, nullptr },
+    { "minimized", true, false, false, false, nullptr },
+    { "convert-to", true, false, false, false, nullptr },
+    { "cat", true, false, false, false, nullptr },
 
     /* pagein bits */
-    { "writer",     0, 0, 0, 0, "pagein-writer"  },
-    { "calc",       0, 0, 0, 0, "pagein-calc"    },
-    { "draw",       0, 0, 0, 0, "pagein-draw"    },
-    { "impress",    0, 0, 0, 0, "pagein-impress" },
+    { "writer", false, false, false, false, "pagein-writer" },
+    { "calc", false, false, false, false, "pagein-calc" },
+    { "draw", false, false, false, false, "pagein-draw" },
+    { "impress", false, false, false, false, "pagein-impress" },
 
     /* Do not send --help/--version over the pipe, as their output shall go to
        the calling process's stdout (ideally, this would also happen in the
        presence of unknown options); also prevent splash/pagein/javaldx overhead
        (as these options will be processed early in soffice_main): */
-    { "version",    1, 1, 1, 1, NULL },
-    { "help",       1, 1, 1, 1, NULL },
-    { "h",          1, 1, 1, 1, NULL },
-    { "?",          1, 1, 1, 1, NULL },
+    { "version", true, true, true, true, nullptr },
+    { "help", true, true, true, true, nullptr },
+    { "h", true, true, true, true, nullptr },
+    { "?", true, true, true, true, nullptr },
 };
 
 Args *args_parse (void)
 {
-    Args *args;
-    sal_uInt32 nArgs, i, j;
+    const sal_uInt32 nArgs = osl_getCommandArgCount();
+    Args* args = new Args;
 
-    nArgs = osl_getCommandArgCount();
-    i = sizeof (Args) + sizeof (rtl_uString *) * nArgs;
-    args = malloc (i);
-    memset (args, 0, i);
-    args->nArgsTotal = nArgs;
+    sal_uInt32 j = 0;
 
-    j = 0;
-
-    /* sort the -env: args to the front */
-    for ( i = 0; i < nArgs; ++i )
+    for (sal_uInt32 i = 0; i < nArgs; ++i)
     {
-        rtl_uString *pTmp = NULL;
+        rtl_uString *pTmp = nullptr;
         osl_getCommandArg( i, &pTmp );
         if (is_env_arg (pTmp))
-            args->ppArgs[j++] = pTmp;
+        {
+            /* sort the -env: args to the front */
+            args->aArgs.insert(args->aArgs.begin() + j, pTmp);
+            ++j;
+        }
         else
-            rtl_uString_release (pTmp);
+        {
+            /* Then the other args */
+            args->aArgs.push_back(pTmp);
+        }
     }
     args->nArgsEnv = j;
 
-    /* Then the other args */
-    for ( i = 0; i < nArgs; ++i )
+    for (size_t i = args->nArgsEnv; i < args->aArgs.size(); i++)
     {
-        rtl_uString *pTmp = NULL;
-
-        osl_getCommandArg( i, &pTmp );
-        if (!is_env_arg (pTmp))
-            args->ppArgs[j++] = pTmp;
-        else
-            rtl_uString_release (pTmp);
-    }
-
-    for ( i = args->nArgsEnv; i < args->nArgsTotal; i++ )
-    {
-        const sal_Unicode *arg = args->ppArgs[i]->buffer;
-        sal_Int32 length = args->ppArgs[i]->length;
+        const sal_Unicode* arg = args->aArgs.at(i)->buffer;
+        sal_Int32 length = args->aArgs.at(i)->length;
 
         /* grok only parameters */
         if (arg[0] != '-')
@@ -131,8 +118,7 @@ void
 args_free (Args *args)
 {
     /* FIXME: free ppArgs */
-    rtl_uString_release( args->pAppPath );
-    free (args);
+    delete args;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

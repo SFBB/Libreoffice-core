@@ -1816,7 +1816,7 @@ bool ToolBarManager::IsPluginMode() const
     return bPluginMode;
 }
 
-void ToolBarManager::AddCustomizeMenuItems(ToolBox const * pToolBar)
+void ToolBarManager::AddCustomizeMenuItems(PopupMenu& rMenu)
 {
     if (!m_pToolBar)
         return;
@@ -1839,45 +1839,48 @@ void ToolBarManager::AddCustomizeMenuItems(ToolBox const * pToolBar)
     // popup menu for quick customization
     bool bHideDisabledEntries = !officecfg::Office::Common::View::Menu::DontHideDisabledEntry::get();
 
-    ::PopupMenu *pMenu = pToolBar->GetMenu();
-
     // copy all menu items 'Visible buttons, Customize toolbar, Dock toolbar,
     // Dock all Toolbars) from the loaded resource into the toolbar menu
-    sal_uInt16 nGroupLen = pMenu->GetItemCount();
+    sal_uInt16 nGroupLen = rMenu.GetItemCount();
     if (nGroupLen)
-        pMenu->InsertSeparator();
+        rMenu.InsertSeparator();
 
     VclPtr<PopupMenu> xVisibleItemsPopupMenu;
 
     if (!m_aResourceName.startsWith("private:resource/toolbar/addon_"))
     {
-        pMenu->InsertItem(MENUITEM_TOOLBAR_VISIBLEBUTTON, FwkResId(STR_TOOLBAR_VISIBLE_BUTTONS));
+        rMenu.InsertItem(MENUITEM_TOOLBAR_VISIBLEBUTTON, FwkResId(STR_TOOLBAR_VISIBLE_BUTTONS));
         xVisibleItemsPopupMenu = VclPtr<PopupMenu>::Create();
-        pMenu->SetPopupMenu(MENUITEM_TOOLBAR_VISIBLEBUTTON, xVisibleItemsPopupMenu);
+        rMenu.SetPopupMenu(MENUITEM_TOOLBAR_VISIBLEBUTTON, xVisibleItemsPopupMenu);
 
         if (m_pToolBar->IsCustomize())
         {
-            pMenu->InsertItem(MENUITEM_TOOLBAR_CUSTOMIZETOOLBAR, FwkResId(STR_TOOLBAR_CUSTOMIZE_TOOLBAR));
-            pMenu->SetItemCommand(MENUITEM_TOOLBAR_CUSTOMIZETOOLBAR, u".uno:ConfigureToolboxVisible"_ustr);
+            rMenu.InsertItem(MENUITEM_TOOLBAR_CUSTOMIZETOOLBAR,
+                             FwkResId(STR_TOOLBAR_CUSTOMIZE_TOOLBAR));
+            rMenu.SetItemCommand(MENUITEM_TOOLBAR_CUSTOMIZETOOLBAR,
+                                 u".uno:ConfigureToolboxVisible"_ustr);
         }
-        pMenu->InsertSeparator();
+        rMenu.InsertSeparator();
     }
 
-    if (pToolBar->IsFloatingMode())
+    if (m_pToolBar->IsFloatingMode())
     {
-        pMenu->InsertItem(MENUITEM_TOOLBAR_DOCKTOOLBAR, FwkResId(STR_TOOLBAR_DOCK_TOOLBAR));
-        pMenu->SetAccelKey(MENUITEM_TOOLBAR_DOCKTOOLBAR, vcl::KeyCode(KEY_F10, true, true, false, false));
+        rMenu.InsertItem(MENUITEM_TOOLBAR_DOCKTOOLBAR, FwkResId(STR_TOOLBAR_DOCK_TOOLBAR));
+        rMenu.SetAccelKey(MENUITEM_TOOLBAR_DOCKTOOLBAR,
+                          vcl::KeyCode(KEY_F10, true, true, false, false));
     }
     else
     {
-        pMenu->InsertItem(MENUITEM_TOOLBAR_UNDOCKTOOLBAR, FwkResId(STR_TOOLBAR_UNDOCK_TOOLBAR));
-        pMenu->SetAccelKey(MENUITEM_TOOLBAR_UNDOCKTOOLBAR, vcl::KeyCode(KEY_F10, true, true, false, false));
+        rMenu.InsertItem(MENUITEM_TOOLBAR_UNDOCKTOOLBAR, FwkResId(STR_TOOLBAR_UNDOCK_TOOLBAR));
+        rMenu.SetAccelKey(MENUITEM_TOOLBAR_UNDOCKTOOLBAR,
+                          vcl::KeyCode(KEY_F10, true, true, false, false));
     }
 
-    pMenu->InsertItem(MENUITEM_TOOLBAR_DOCKALLTOOLBAR, FwkResId(STR_TOOLBAR_DOCK_ALL_TOOLBARS));
-    pMenu->InsertSeparator();
-    pMenu->InsertItem(MENUITEM_TOOLBAR_LOCKTOOLBARPOSITION, FwkResId(STR_TOOLBAR_LOCK_TOOLBAR), MenuItemBits::CHECKABLE);
-    pMenu->InsertItem(MENUITEM_TOOLBAR_CLOSE, FwkResId(STR_TOOLBAR_CLOSE_TOOLBAR));
+    rMenu.InsertItem(MENUITEM_TOOLBAR_DOCKALLTOOLBAR, FwkResId(STR_TOOLBAR_DOCK_ALL_TOOLBARS));
+    rMenu.InsertSeparator();
+    rMenu.InsertItem(MENUITEM_TOOLBAR_LOCKTOOLBARPOSITION, FwkResId(STR_TOOLBAR_LOCK_TOOLBAR),
+                     MenuItemBits::CHECKABLE);
+    rMenu.InsertItem(MENUITEM_TOOLBAR_CLOSE, FwkResId(STR_TOOLBAR_CLOSE_TOOLBAR));
 
     if (m_pToolBar->IsCustomize())
     {
@@ -1889,27 +1892,27 @@ void ToolBarManager::AddCustomizeMenuItems(ToolBox const * pToolBar)
 
         if ( !bIsFloating )
         {
-            pMenu->EnableItem(MENUITEM_TOOLBAR_DOCKALLTOOLBAR, false);
+            rMenu.EnableItem(MENUITEM_TOOLBAR_DOCKALLTOOLBAR, false);
             Reference< XDockableWindow > xDockable( VCLUnoHelper::GetInterface( m_pToolBar ), UNO_QUERY );
             if( xDockable.is() )
             {
-                pMenu->CheckItem(MENUITEM_TOOLBAR_LOCKTOOLBARPOSITION, xDockable->isLocked());
-                pMenu->EnableItem(MENUITEM_TOOLBAR_UNDOCKTOOLBAR, !xDockable->isLocked());
+                rMenu.CheckItem(MENUITEM_TOOLBAR_LOCKTOOLBARPOSITION, xDockable->isLocked());
+                rMenu.EnableItem(MENUITEM_TOOLBAR_UNDOCKTOOLBAR, !xDockable->isLocked());
             }
         }
         else
-            pMenu->EnableItem(MENUITEM_TOOLBAR_LOCKTOOLBARPOSITION, false);
+            rMenu.EnableItem(MENUITEM_TOOLBAR_LOCKTOOLBARPOSITION, false);
 
         if (officecfg::Office::Common::Misc::DisableUICustomization::get())
         {
-            pMenu->EnableItem(MENUITEM_TOOLBAR_VISIBLEBUTTON, false);
-            pMenu->EnableItem(MENUITEM_TOOLBAR_CUSTOMIZETOOLBAR, false);
-            pMenu->EnableItem(MENUITEM_TOOLBAR_LOCKTOOLBARPOSITION, false);
+            rMenu.EnableItem(MENUITEM_TOOLBAR_VISIBLEBUTTON, false);
+            rMenu.EnableItem(MENUITEM_TOOLBAR_CUSTOMIZETOOLBAR, false);
+            rMenu.EnableItem(MENUITEM_TOOLBAR_LOCKTOOLBARPOSITION, false);
         }
 
         // Disable menu item CLOSE if the toolbar has no closer
-        if( !(pToolBar->GetFloatStyle() & WB_CLOSEABLE) )
-            pMenu->EnableItem(MENUITEM_TOOLBAR_CLOSE, false);
+        if (!(m_pToolBar->GetFloatStyle() & WB_CLOSEABLE))
+            rMenu.EnableItem(MENUITEM_TOOLBAR_CLOSE, false);
 
         // Temporary stores a Command --> Url map to update contextual menu with the
         // correct icons. The popup icons are by default the same as those in the
@@ -1944,25 +1947,25 @@ void ToolBarManager::AddCustomizeMenuItems(ToolBox const * pToolBar)
         // Now we go through all the contextual menu to update the icons
         // and accelerator key shortcuts
         std::map< OUString, Image >::iterator it;
-        for ( sal_uInt16 nPos = 0; nPos < pMenu->GetItemCount(); ++nPos )
+        for (sal_uInt16 nPos = 0; nPos < rMenu.GetItemCount(); ++nPos)
         {
-            sal_uInt16 nId = pMenu->GetItemId( nPos );
-            OUString cmdUrl = pMenu->GetItemCommand( nId );
+            sal_uInt16 nId = rMenu.GetItemId(nPos);
+            OUString cmdUrl = rMenu.GetItemCommand(nId);
             it = commandToImage.find( cmdUrl );
             if (it != commandToImage.end()) {
-                pMenu->SetItemImage( nId, it->second );
+                rMenu.SetItemImage(nId, it->second);
             }
             vcl::KeyCode aKeyCodeShortCut = vcl::CommandInfoProvider::GetCommandKeyCodeShortcut( cmdUrl, m_xFrame );
             if ( aKeyCodeShortCut.GetFullCode() != 0 )
-                pMenu->SetAccelKey( nId, aKeyCodeShortCut );
+                rMenu.SetAccelKey(nId, aKeyCodeShortCut);
         }
     }
 
     // Set the title of the menu
-    pMenu->SetText( pToolBar->GetText() );
+    rMenu.SetText(m_pToolBar->GetText());
 
     if ( bHideDisabledEntries )
-        pMenu->RemoveDisabledEntries();
+        rMenu.RemoveDisabledEntries();
 }
 
 void ToolBarManager::ToggleButton( const OUString& rResourceName, std::u16string_view rCommand )
@@ -2071,21 +2074,21 @@ IMPL_LINK( ToolBarManager, OverflowEventListener, VclWindowEvent&, rWindowEvent,
     }
 }
 
-IMPL_LINK( ToolBarManager, MenuPreExecute, ToolBox*, pToolBar, void )
+IMPL_LINK(ToolBarManager, MenuPreExecute, PopupMenu&, rMenu, void)
 {
     SolarMutexGuard g;
 
     if ( m_bDisposed )
         return;
 
-    AddCustomizeMenuItems( pToolBar );
+    AddCustomizeMenuItems(rMenu);
 }
 
 IMPL_LINK( ToolBarManager, MenuSelect, Menu*, pMenu, bool )
 {
     // We have to hold a reference to ourself as it is possible that we will be disposed and
     // our refcount could be zero (destruction) otherwise.
-    Reference< XInterface > xKeepAlive( static_cast< OWeakObject* >( this ), UNO_QUERY );
+    rtl::Reference<ToolBarManager> pKeepAlive(this);
 
     {
         // The guard must be in its own context as the we can get destroyed when our

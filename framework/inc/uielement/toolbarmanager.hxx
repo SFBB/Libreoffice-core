@@ -183,7 +183,7 @@ class ToolBarManager final : public ToolbarManager_Base
         DECL_LINK( MiscOptionsChanged, LinkParamNone*, void );
 
         DECL_LINK( MenuButton, ToolBox *, void );
-        DECL_LINK( MenuPreExecute, ToolBox *, void );
+        DECL_LINK(MenuPreExecute, PopupMenu&, void);
         DECL_LINK( MenuSelect, Menu *, bool );
         DECL_LINK(AsyncUpdateControllersHdl, Timer *, void);
         DECL_LINK( OverflowEventListener, VclWindowEvent&, void );
@@ -194,7 +194,7 @@ class ToolBarManager final : public ToolbarManager_Base
         void FillToolbarFromContainer(const css::uno::Reference< css::container::XIndexAccess >& rItemContainer,
                                       const OUString& rResourceName, ToolBoxItemId& nId, ToolBoxItemId& nAddonId);
         void ToggleButton(const OUString& rResourceName, std::u16string_view rCommand);
-        void AddCustomizeMenuItems(ToolBox const * pToolBar);
+        void AddCustomizeMenuItems(PopupMenu& rMenu);
         void InitImageManager();
         void RemoveControllers();
         void CreateControllers();
