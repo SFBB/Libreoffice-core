@@ -27,14 +27,8 @@
 #include <rtl/math.hxx>
 #include <o3tl/string_view.hxx>
 
-#include <mutex>
-
 #define NOT_LOADED  (tools::Long(-1))
 #define NOT_LOADED_COLOR  (Color(ColorTransparency, 0xffffffff))
-
-using namespace ::com::sun::star::lang;
-using namespace ::com::sun::star::task;
-using namespace ::com::sun::star::uno;
 
 SplashScreenWindow::SplashScreenWindow(SplashScreen* pSplash)
     : m_pSplash(pSplash)
@@ -58,12 +52,13 @@ void SplashScreenWindow::Redraw()
     GetOutDev()->Flush();
 }
 
-SplashScreen::SplashScreen()
+SplashScreen::SplashScreen(const OUString& rAppName)
     : m_pWindow(VclPtr<SplashScreenWindow>::Create(this))
     , m_aProgressFrameColor(NOT_LOADED_COLOR)
     , m_aProgressBarColor(NOT_LOADED_COLOR)
     , m_aProgressTextColor(NOT_LOADED_COLOR)
     , m_bNativeProgress(true)
+    , m_sAppName(rAppName)
     , m_nMax(100)
     , m_nProgress(0)
     , m_bPaintProgress(false)
@@ -84,83 +79,6 @@ SplashScreen::SplashScreen()
     , m_fHeight(-1.0)
 {
     loadConfig();
-}
-
-SplashScreen::~SplashScreen()
-{
-    Application::RemoveEventListener(
-        LINK( this, SplashScreen, AppEventListenerHdl ) );
-    m_pWindow->Hide();
-    m_pWindow.disposeAndClear();
-}
-
-void SAL_CALL SplashScreen::start(const OUString&, sal_Int32 nRange)
-{
-    m_nMax = nRange;
-    m_bProgressEnd = false;
-    SolarMutexGuard aSolarGuard;
-    m_pWindow->Show();
-    m_pWindow->Redraw();
-}
-
-void SAL_CALL SplashScreen::end()
-{
-    m_nProgress = m_nMax;
-    m_pWindow->Hide();
-    m_bProgressEnd = true;
-}
-
-void SAL_CALL SplashScreen::reset()
-{
-    m_nProgress = 0;
-    if (!m_bProgressEnd)
-    {
-        m_pWindow->Show();
-        updateStatus();
-    }
-}
-
-void SAL_CALL SplashScreen::setText(const OUString& rText)
-{
-    SolarMutexGuard aSolarGuard;
-    if (m_sProgressText != rText)
-    {
-        m_sProgressText = rText;
-
-        if (!m_bProgressEnd)
-        {
-            m_pWindow->Show();
-            updateStatus();
-        }
-    }
-}
-
-void SAL_CALL SplashScreen::setValue(sal_Int32 nValue)
-{
-    SAL_INFO( "desktop.splash", "setValue: " << nValue );
-
-    SolarMutexGuard aSolarGuard;
-    if (!m_bProgressEnd)
-    {
-        m_pWindow->Show();
-        if (nValue >= m_nMax)
-            m_nProgress = m_nMax;
-        else
-            m_nProgress = nValue;
-        updateStatus();
-    }
-}
-
-// XInitialize
-void SAL_CALL
-SplashScreen::initialize( const css::uno::Sequence< css::uno::Any>& aArguments )
-{
-    static std::mutex aMutex;
-    std::lock_guard  aGuard( aMutex );
-    if (!aArguments.hasElements())
-        return;
-
-    aArguments[0] >>= m_sAppName;
 
     // start to determine bitmap and all other required value
     if (m_bShowLogo)
@@ -172,7 +90,7 @@ SplashScreen::initialize( const css::uno::Sequence< css::uno::Any>& aArguments )
     m_nWidth = aSize.Width();
     if (m_nWidth > 500)
     {
-        Point xtopleft(212,216);
+        Point xtopleft(212, 216);
         if (NOT_LOADED == m_nTlx || NOT_LOADED == m_nTly)
         {
             m_nTlx = xtopleft.X(); // top-left x
@@ -214,8 +132,72 @@ SplashScreen::initialize( const css::uno::Sequence< css::uno::Any>& aArguments )
     if (NOT_LOADED_COLOR == m_aProgressTextColor)
         m_aProgressTextColor = COL_BLACK;
 
-    Application::AddEventListener(
+    Application::AddEventListener(LINK(this, SplashScreen, AppEventListenerHdl));
+}
+
+SplashScreen::~SplashScreen()
+{
+    Application::RemoveEventListener(
         LINK( this, SplashScreen, AppEventListenerHdl ) );
+    m_pWindow->Hide();
+    m_pWindow.disposeAndClear();
+}
+
+void SplashScreen::start(const OUString&, sal_Int32 nRange)
+{
+    m_nMax = nRange;
+    m_bProgressEnd = false;
+    SolarMutexGuard aSolarGuard;
+    m_pWindow->Show();
+    m_pWindow->Redraw();
+}
+
+void SplashScreen::end()
+{
+    m_nProgress = m_nMax;
+    m_pWindow->Hide();
+    m_bProgressEnd = true;
+}
+
+void SplashScreen::reset()
+{
+    m_nProgress = 0;
+    if (!m_bProgressEnd)
+    {
+        m_pWindow->Show();
+        updateStatus();
+    }
+}
+
+void SplashScreen::setText(const OUString& rText)
+{
+    SolarMutexGuard aSolarGuard;
+    if (m_sProgressText != rText)
+    {
+        m_sProgressText = rText;
+
+        if (!m_bProgressEnd)
+        {
+            m_pWindow->Show();
+            updateStatus();
+        }
+    }
+}
+
+void SplashScreen::setValue(sal_Int32 nValue)
+{
+    SAL_INFO( "desktop.splash", "setValue: " << nValue );
+
+    SolarMutexGuard aSolarGuard;
+    if (!m_bProgressEnd)
+    {
+        m_pWindow->Show();
+        if (nValue >= m_nMax)
+            m_nProgress = m_nMax;
+        else
+            m_nProgress = nValue;
+        updateStatus();
+    }
 }
 
 void SplashScreen::updateStatus()
@@ -528,13 +510,5 @@ void SplashScreenWindow::Paint(vcl::RenderContext& rRenderContext, const tools::
     rRenderContext.DrawOutDev(Point(), GetOutputSizePixel(), Point(), m_pVDev->GetOutputSizePixel(),
                               *m_pVDev);
 }
-
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
-desktop_SplashScreen_get_implementation(
-    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
-{
-    return cppu::acquire(new SplashScreen());
-}
-
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

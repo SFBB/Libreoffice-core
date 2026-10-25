@@ -23,15 +23,26 @@
 #include <osl/process.h>
 #include <cppuhelper/supportsservice.hxx>
 #include <sal/log.hxx>
-#include <com/sun/star/uno/XComponentContext.hpp>
-
-using namespace com::sun::star;
 
 namespace desktop
 {
-    UnxSplashScreen::UnxSplashScreen()
-    : m_pOutFd( nullptr )
+UnxSplashScreen::UnxSplashScreen()
+    : m_pOutFd(nullptr)
 {
+    for (sal_uInt32 i = 0; i < osl_getCommandArgCount(); i++)
+    {
+        OUString aArg;
+        osl_getCommandArg(i, &aArg.pData);
+        OUString aNum;
+        if (aArg.startsWithIgnoreAsciiCase("--splash-pipe=", &aNum))
+        {
+            auto fd = aNum.toUInt32();
+            m_pOutFd = fdopen(fd, "w");
+            SAL_INFO("desktop.splash",
+                     "Got argument '--splash-pipe=" << fd << " ('" << aNum << "') ("
+                                                    << static_cast<void*>(m_pOutFd) << ")");
+        }
+    }
 }
 
 UnxSplashScreen::~UnxSplashScreen()
@@ -44,11 +55,9 @@ UnxSplashScreen::~UnxSplashScreen()
     }
 }
 
-void SAL_CALL UnxSplashScreen::start( const OUString& /*aText*/, sal_Int32 /*nRange*/ )
-{
-}
+void UnxSplashScreen::start(const OUString& /*aText*/, sal_Int32 /*nRange*/) {}
 
-void SAL_CALL UnxSplashScreen::end()
+void UnxSplashScreen::end()
 {
     SAL_INFO("desktop.splash", "UnxSplashScreen::end()");
     if( !m_pOutFd )
@@ -58,7 +67,7 @@ void SAL_CALL UnxSplashScreen::end()
     fflush( m_pOutFd );
 }
 
-void SAL_CALL UnxSplashScreen::reset()
+void UnxSplashScreen::reset()
 {
     SAL_INFO("desktop.splash", "UNXSplashScreen::reset()");
     if( !m_pOutFd )
@@ -68,12 +77,12 @@ void SAL_CALL UnxSplashScreen::reset()
     fflush( m_pOutFd );
 }
 
-void SAL_CALL UnxSplashScreen::setText( const OUString& /*aText*/ )
+void UnxSplashScreen::setText(const OUString& /*aText*/)
 {
     // TODO?
 }
 
-void SAL_CALL UnxSplashScreen::setValue( sal_Int32 nValue )
+void UnxSplashScreen::setValue(sal_Int32 nValue)
 {
     if ( m_pOutFd )
     {
@@ -81,44 +90,6 @@ void SAL_CALL UnxSplashScreen::setValue( sal_Int32 nValue )
         fflush( m_pOutFd );
     }
 }
-
-// XInitialize
-void SAL_CALL
-UnxSplashScreen::initialize( const css::uno::Sequence< css::uno::Any>& )
-{
-    for ( sal_uInt32 i = 0; i < osl_getCommandArgCount(); i++ )
-    {
-        OUString aArg;
-        osl_getCommandArg( i, &aArg.pData );
-        OUString aNum;
-        if ( aArg.startsWithIgnoreAsciiCase("--splash-pipe=", &aNum) )
-        {
-            auto fd = aNum.toUInt32();
-            m_pOutFd = fdopen( fd, "w" );
-            SAL_INFO("desktop.splash", "Got argument '--splash-pipe=" << fd << " ('"
-                << aNum << "') ("
-                << static_cast<void *>(m_pOutFd) << ")");
-        }
-    }
-}
-
-OUString UnxSplashScreen::getImplementationName()
-{
-    return u"com.sun.star.office.comp.PipeSplashScreen"_ustr;
-}
-
-css::uno::Sequence<OUString> UnxSplashScreen::getSupportedServiceNames()
-{
-    return { u"com.sun.star.office.PipeSplashScreen"_ustr };
-}
-
-}
-
-extern "C" SAL_DLLPUBLIC_EXPORT css::uno::XInterface*
-desktop_UnxSplash_get_implementation(
-    css::uno::XComponentContext* , css::uno::Sequence<css::uno::Any> const&)
-{
-    return cppu::acquire(new desktop::UnxSplashScreen());
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

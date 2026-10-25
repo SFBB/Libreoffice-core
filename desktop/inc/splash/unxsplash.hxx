@@ -10,6 +10,7 @@
 #pragma once
 
 #include "SplashScreenBase.hxx"
+#include "splash_dllapi.h"
 
 #include <stdio.h>
 
@@ -17,32 +18,24 @@
 
 namespace desktop {
 
-class UnxSplashScreen : public SplashScreenBase
+class SPLASH_DLLPUBLIC UnxSplashScreen : public SplashScreenBase
 {
 private:
     UnxSplashScreen( const UnxSplashScreen& ) = delete;
     UnxSplashScreen operator =( const UnxSplashScreen& ) = delete;
 
-    virtual ~UnxSplashScreen() override;
 
     FILE *m_pOutFd;
 
 public:
     explicit UnxSplashScreen();
+    virtual ~UnxSplashScreen() override;
 
-    // XStatusIndicator
-    virtual void SAL_CALL start( const OUString& aText, sal_Int32 nRange ) override;
-    virtual void SAL_CALL end() override;
-    virtual void SAL_CALL reset() override;
-    virtual void SAL_CALL setText( const OUString& aText ) override;
-    virtual void SAL_CALL setValue( sal_Int32 nValue ) override;
-
-    // XInitialize
-    virtual void SAL_CALL initialize( const css::uno::Sequence< css::uno::Any>& aArguments ) override;
-
-    virtual OUString SAL_CALL getImplementationName() override;
-
-    virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override;
+    virtual void start(const OUString& aText, sal_Int32 nRange) override;
+    virtual void end() override;
+    virtual void reset() override;
+    virtual void setText(const OUString& aText) override;
+    virtual void setValue(sal_Int32 nValue) override;
 };
 
 }

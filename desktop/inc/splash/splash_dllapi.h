@@ -7,15 +7,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+#pragma once
+
 #include <sal/config.h>
+#include <sal/types.h>
 
-#include <splash/SplashScreenBase.hxx>
-
-#include <cppuhelper/supportsservice.hxx>
-
-sal_Bool SplashScreenBase::supportsService(OUString const& ServiceName)
-{
-    return cppu::supportsService(this, ServiceName);
-}
+#if defined SPLASH_DLLIMPLEMENTATION
+#define SPLASH_DLLPUBLIC SAL_DLLPUBLIC_EXPORT
+#else
+#define SPLASH_DLLPUBLIC SAL_DLLPUBLIC_IMPORT
+#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

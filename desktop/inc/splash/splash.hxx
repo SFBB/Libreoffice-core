@@ -21,6 +21,7 @@
 #include <sal/config.h>
 
 #include "SplashScreenBase.hxx"
+#include "splash_dllapi.h"
 
 #include <cppuhelper/supportsservice.hxx>
 #include <vcl/bitmap.hxx>
@@ -43,7 +44,7 @@ public:
     void Redraw();
 };
 
-class SplashScreen : public SplashScreenBase
+class SPLASH_DLLPUBLIC SplashScreen : public SplashScreenBase
 {
     friend class SplashScreenWindow;
 
@@ -51,7 +52,6 @@ private:
     VclPtr<SplashScreenWindow> m_pWindow;
 
     DECL_LINK(AppEventListenerHdl, VclSimpleEvent&, void);
-    virtual ~SplashScreen() override;
     void loadConfig();
     void updateStatus();
     void SetScreenBitmap(Bitmap& rBitmap);
@@ -76,30 +76,18 @@ private:
     tools::Long m_nBarheight, m_nBarspace, m_nTextBaseline;
     double m_fXPos, m_fYPos;
     double m_fWidth, m_fHeight;
-    static constexpr tools::Long _xoffset = 12, _yoffset = 18;
+    static constexpr tools::Long _xoffset = 12;
+    static constexpr tools::Long _yoffset = 18;
 
 public:
-    SplashScreen();
+    SplashScreen(const OUString& rAppName);
+    virtual ~SplashScreen() override;
 
-    // XStatusIndicator
-    virtual void SAL_CALL end() override;
-    virtual void SAL_CALL reset() override;
-    virtual void SAL_CALL setText(const OUString& aText) override;
-    virtual void SAL_CALL setValue(sal_Int32 nValue) override;
-    virtual void SAL_CALL start(const OUString& aText, sal_Int32 nRange) override;
-
-    // XInitialize
-    virtual void SAL_CALL initialize(const css::uno::Sequence<css::uno::Any>& aArguments) override;
-
-    virtual OUString SAL_CALL getImplementationName() override
-    {
-        return u"com.sun.star.office.comp.SplashScreen"_ustr;
-    }
-
-    virtual css::uno::Sequence<OUString> SAL_CALL getSupportedServiceNames() override
-    {
-        return { u"com.sun.star.office.SplashScreen"_ustr };
-    }
+    virtual void end() override;
+    virtual void reset() override;
+    virtual void setText(const OUString& aText) override;
+    virtual void setValue(sal_Int32 nValue) override;
+    virtual void start(const OUString& aText, sal_Int32 nRange) override;
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

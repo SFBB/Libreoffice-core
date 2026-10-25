@@ -98,8 +98,8 @@ public:
 
     const ScAutoFormatData* GetData(size_t nIndex) const override;
     ScAutoFormatData* GetData(size_t nIndex) override;
-    bool InsertAutoFormat(SvxAutoFormatData* pFormat) override;
-    ScAutoFormatData* ReleaseAutoFormat(const OUString& rName) override;
+    bool InsertAutoFormat(const SvxAutoFormatData* pFormat) override;
+    std::unique_ptr<SvxAutoFormatData> ReleaseAutoFormat(const OUString& rName) override;
     ScAutoFormatData* FindAutoFormat(const OUString& rName) const override;
     const ScAutoFormatData* GetResolvedStyle(const SvxAutoFormatData* pData) const override;
     SvxAutoFormatData* GetDefaultData() override { return new ScAutoFormatData();};

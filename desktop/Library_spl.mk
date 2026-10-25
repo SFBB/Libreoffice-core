@@ -18,6 +18,10 @@ $(eval $(call gb_Library_use_external,spl,boost_headers))
 
 $(eval $(call gb_Library_use_sdk_api,spl))
 
+$(eval $(call gb_Library_add_defs,spl,\
+    -DSPLASH_DLLIMPLEMENTATION \
+))
+
 $(eval $(call gb_Library_use_libraries,spl,\
     comphelper \
     cppu \
@@ -29,10 +33,7 @@ $(eval $(call gb_Library_use_libraries,spl,\
     vcl \
 ))
 
-$(eval $(call gb_Library_set_componentfile,spl,desktop/source/splash/spl,services))
-
 $(eval $(call gb_Library_add_exception_objects,spl,\
-    desktop/source/splash/SplashScreenBase \
     desktop/source/splash/splash \
     desktop/source/splash/unxsplash \
 ))
