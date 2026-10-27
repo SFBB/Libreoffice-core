@@ -368,11 +368,11 @@ dnl checks build and host OSes
 dnl do this before argument processing to allow for platform dependent defaults
 dnl ===================================================================
 
-# are we running in wsl but are called from git-bash/env with mingw64 or clangarm64 in path?
+# are we running in wsl but are called from git-bash/env with mingw64, ucrt64 or clangarm64 in path?
 # if so, we aim to run nearly everything in the Windows realm, and only run autogen/configure
 # in wsl and run a few tools via wsl
 WSL_ONLY_AS_HELPER=
-if test -n "$WSL_DISTRO_NAME" && $(echo $PATH |grep -q -e mingw64 -e clangarm64); then
+if test -n "$WSL_DISTRO_NAME" && $(echo $PATH |grep -q -e mingw64 -e ucrt64 -e clangarm64); then
     WSL_ONLY_AS_HELPER=TRUE
     shortpath_cmd=$(wslpath -m $srcdir/solenv/bin/shortpath.cmd)
     if test -n "$PKG_CONFIG"; then
@@ -10840,7 +10840,7 @@ if test \( "$cross_compiling" = yes -a -z "$PYTHON_FOR_BUILD" \) -o "$enable_pyt
     SYSTEM_PYTHON=
     PYTHON_VERSION_MAJOR=3
     PYTHON_VERSION_MINOR=13
-    PYTHON_VERSION=${PYTHON_VERSION_MAJOR}.${PYTHON_VERSION_MINOR}.17
+    PYTHON_VERSION=${PYTHON_VERSION_MAJOR}.${PYTHON_VERSION_MINOR}.18
     if ! grep -q -i python.*${PYTHON_VERSION} ${SRC_ROOT}/download.lst; then
         AC_MSG_ERROR([PYTHON_VERSION ${PYTHON_VERSION} but no matching file in download.lst])
     fi
