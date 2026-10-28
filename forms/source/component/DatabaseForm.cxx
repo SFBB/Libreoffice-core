@@ -31,6 +31,8 @@
 #include <services.hxx>
 #include <comphelper/propertyvalue.hxx>
 #include <comphelper/guarding.hxx>
+#include <comphelper/embeddedobjectcontainer.hxx>
+#include <sfx2/objsh.hxx>
 
 #include <com/sun/star/awt/XControlContainer.hpp>
 #include <com/sun/star/awt/XTextComponent.hpp>
@@ -2814,6 +2816,13 @@ namespace
     }
 }
 
+static void lcl_loadDeferred(const Reference<XInterface>& rxForm)
+{
+    Reference<XLoadable> xForm(rxForm, UNO_QUERY);
+    if (xForm.is() && !xForm->isLoaded())
+        xForm->load();
+}
+
 bool ODatabaseForm::implEnsureConnection()
 {
     try
@@ -2849,6 +2858,19 @@ bool ODatabaseForm::implEnsureConnection()
                 if ( m_bSharingConnection )
                     // yes -> outta here
                     return true;
+            }
+        }
+
+        // A form that names a database connects once its document allows link updates.
+        if (SfxObjectShell* pShell
+            = SfxObjectShell::GetShellFromComponent(getXModel(static_cast<XWeak*>(this))))
+        {
+            Reference<XPropertySet> xThis(this);
+            if (!pShell->getEmbeddedObjectContainer().getUserAllowsLinkUpdate()
+                && SfxObjectShell::IsExternalDatabaseForm(xThis))
+            {
+                pShell->AddDeferredLinkLoad(xThis, lcl_loadDeferred);
+                return false;
             }
         }
 

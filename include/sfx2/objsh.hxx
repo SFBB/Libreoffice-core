@@ -215,6 +215,10 @@ private:
     bool                        bPendingLinkUpdateInfobar;
     std::vector<std::pair<css::uno::WeakReference<css::beans::XPropertySet>, OUString>>
                                 maDeferredFormControlImages;
+    bool                        mbHasExternalDatabaseForms;
+    std::vector<std::pair<css::uno::WeakReference<css::uno::XInterface>,
+                          std::function<void(const css::uno::Reference<css::uno::XInterface>&)>>>
+                                maDeferredLinkLoads;
 
     enum TriState               {undefined, yes, no};
     TriState                    mbContinueImportOnFilterExceptions = undefined; // try to import as much as possible
@@ -360,6 +364,7 @@ public:
     void                        SetPendingLinkUpdateInfobar() { bPendingLinkUpdateInfobar = true; }
     void                        CheckPendingLinkUpdateInfobar();
     void                        ShowLinkUpdateInfobar();
+    void                        AllowLinkUpdate();
     void                        AddDeferredFormControlImage(
                                     const css::uno::Reference<css::beans::XPropertySet>& rxControl,
                                     const OUString& rURL);
@@ -368,6 +373,17 @@ public:
                                     { return maDeferredFormControlImages; }
     void                        ClearDeferredFormControlImages()
                                     { maDeferredFormControlImages.clear(); }
+    /// Whether rxForm is a database form that names a database, by URL or by data source name.
+    static bool                 IsExternalDatabaseForm(
+                                    const css::uno::Reference<css::beans::XPropertySet>& rxForm);
+    void                        SetHasExternalDatabaseForms() { mbHasExternalDatabaseForms = true; }
+    bool                        HasExternalDatabaseForms() const
+                                    { return mbHasExternalDatabaseForms; }
+    /// Run aLoad on rxOwner when the user allows link updates for this document, if rxOwner
+    /// still exists then. An owner that is already waiting is not added again.
+    void                        AddDeferredLinkLoad(
+                                    const css::uno::Reference<css::uno::XInterface>& rxOwner,
+                                    std::function<void(const css::uno::Reference<css::uno::XInterface>&)> aLoad);
     virtual bool                LoadExternal( SfxMedium& rMedium );
     bool                        IsConfigOptionsChecked() const;
     void                        SetConfigOptionsChecked( bool bChecked );

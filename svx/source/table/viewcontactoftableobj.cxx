@@ -355,12 +355,16 @@ namespace sdr::contact
                                     aRetvalForShadow.append(xCellReference);
                                 }
                             }
-                            if (isTaggedPDF && pPage)
+                            // a cell covered by a merged cell is part of that one, and gets no element
+                            if (isTaggedPDF && pPage && !(xCurrentCell.is() && xCurrentCell->isMerged()))
                             {
                                 // heuristic: if there's a special formatting on
-                                // first row, assume that it's a header row
-                                auto const eType(
-                                   aCellPos.mnRow == 0 && rTableObj.getTableStyleSettings().mbUseFirstRow
+                                // first row, assume that it's a header row,
+                                // and the same for the first column
+                                const sdr::table::TableStyleSettings& rStyle(rTableObj.getTableStyleSettings());
+                                bool const bColumnHeader(aCellPos.mnRow == 0 && rStyle.mbUseFirstRow);
+                                bool const bRowHeader(!bColumnHeader && aCellPos.mnCol == 0 && rStyle.mbUseFirstColumn);
+                                auto const eType(bColumnHeader || bRowHeader
                                        ? vcl::pdf::StructElement::TableHeader
                                        : vcl::pdf::StructElement::TableData);
                                 cell = drawinglayer::primitive2d::Primitive2DContainer {
@@ -369,7 +373,12 @@ namespace sdr::contact
                                         pPage->IsMasterPage(),
                                         false,
                                         false,
-                                        std::move(cell)) };
+                                        std::move(cell),
+                                        nullptr,
+                                        nullptr,
+                                        xCurrentCell.is() ? xCurrentCell->getColumnSpan() : 1,
+                                        xCurrentCell.is() ? xCurrentCell->getRowSpan() : 1,
+                                        bRowHeader) };
                             }
                             row.append(cell);
                         }

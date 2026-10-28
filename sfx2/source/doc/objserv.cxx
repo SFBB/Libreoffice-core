@@ -1770,13 +1770,36 @@ void SfxObjectShell::ShowLinkUpdateInfobar()
     }
 }
 
-IMPL_LINK_NOARG(SfxObjectShell, AllowLinksUpdateHdl, weld::Button&, void)
+void SfxObjectShell::AllowLinkUpdate()
 {
     getEmbeddedObjectContainer().setUserAllowsLinkUpdate(true);
     PerformLinkUpdate();
+
+    decltype(maDeferredLinkLoads) aDeferredLoads;
+    aDeferredLoads.swap(maDeferredLinkLoads);
+    for (const auto& [rxWeakOwner, rLoad] : aDeferredLoads)
+    {
+        uno::Reference<uno::XInterface> xOwner(rxWeakOwner);
+        if (!xOwner.is())
+            continue;
+        try
+        {
+            rLoad(xOwner);
+        }
+        catch (const uno::Exception&)
+        {
+            TOOLS_WARN_EXCEPTION("sfx.doc", "SfxObjectShell::AllowLinkUpdate: deferred load");
+        }
+    }
+
     SfxViewFrame* pViewFrame = SfxViewFrame::GetFirst(this);
     if (pViewFrame)
         pViewFrame->RemoveInfoBar(u"enablecontent");
+}
+
+IMPL_LINK_NOARG(SfxObjectShell, AllowLinksUpdateHdl, weld::Button&, void)
+{
+    AllowLinkUpdate();
 }
 
 void SfxObjectShell::ExecProps_Impl(SfxRequest &rReq)

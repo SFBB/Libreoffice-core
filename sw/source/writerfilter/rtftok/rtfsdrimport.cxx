@@ -65,7 +65,6 @@ RTFSdrImport::RTFSdrImport(RTFDocumentImpl& rDocument,
     , m_bTextFrame(false)
     , m_bTextGraphicObject(false)
     , m_bFakePict(false)
-    , m_bOpenInMapper(false)
 {
     if (xDstDoc)
         m_aParents.push(xDstDoc->getDrawPage());
@@ -1165,14 +1164,8 @@ void RTFSdrImport::resolve(RTFShape& rShape, bool bClose, ShapeOrPict const shap
 
     // Send it to dmapper. Inside a table this has to wait for the row to be replayed, when the
     // cells exist - resolvePict() defers its own output the same way.
-    if (xShape.is() && !m_rImport.bufferShapeInsertion(xShape, bClose))
-    {
-        open(xShape);
-        if (bClose)
-        {
-            close();
-        }
-    }
+    if (xShape.is())
+        m_rImport.insertShape(xShape, bClose);
 
     if (m_rImport.isInBackground())
     {
@@ -1186,18 +1179,6 @@ void RTFSdrImport::resolve(RTFShape& rShape, bool bClose, ShapeOrPict const shap
     rShape.getProperties().clear();
 
     m_xShape = std::move(xShape);
-}
-
-void RTFSdrImport::open(uno::Reference<drawing::XShape> const& xShape)
-{
-    m_rImport.Mapper().startShape(xShape);
-    m_bOpenInMapper = true;
-}
-
-void RTFSdrImport::close()
-{
-    m_rImport.Mapper().endShape();
-    m_bOpenInMapper = false;
 }
 
 void RTFSdrImport::append(std::u16string_view aKey, std::u16string_view aValue)

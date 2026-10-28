@@ -29,8 +29,10 @@
 
 #include <sal/config.h>
 
+#if HAVE_FEATURE_UI && !ENABLE_WASM_STRIP_SPLASH
 #include <splash/splash.hxx>
 #include <splash/unxsplash.hxx>
+#endif
 
 #include <cstdlib>
 #include <iostream>
@@ -1234,10 +1236,8 @@ void Desktop::Exception(ExceptionCategory nCategory)
             osl_removeSignalHandler( pSignalHandler );
 
         restartOnMac(false);
-#if !ENABLE_WASM_STRIP_SPLASH
         if (m_pSplashScreen)
             m_pSplashScreen->reset();
-#endif
 
         _exit( EXITHELPER_CRASH_WITH_RESTART );
     }
@@ -1358,9 +1358,7 @@ int Desktop::Main()
     Translate::SetReadStringHook(ReplaceStringHookProc);
 
     // Startup screen
-#if !ENABLE_WASM_STRIP_SPLASH
     OpenSplashScreen();
-#endif
 
     SetSplashScreenProgress(10);
     recordTime(startT, "SetSplashScreenProgress(10): time = ");
@@ -1783,10 +1781,8 @@ int Desktop::doShutdown()
     if ( bRR )
     {
         restartOnMac(true);
-#if !ENABLE_WASM_STRIP_SPLASH
         if (m_pSplashScreen)
             m_pSplashScreen->reset();
-#endif
 
         return EXITHELPER_NORMAL_RESTART;
     }
@@ -2514,9 +2510,9 @@ void Desktop::HandleAppEvent( const ApplicationEvent& rAppEvent )
     }
 }
 
-#if !ENABLE_WASM_STRIP_SPLASH
 void Desktop::OpenSplashScreen()
 {
+#if HAVE_FEATURE_UI && !ENABLE_WASM_STRIP_SPLASH
     const CommandLineArgs &rCmdLine = GetCommandLineArgs();
     // Show intro only if this is normal start (e.g. no server, no quickstart, no printing )
     if ( !(!rCmdLine.IsInvisible() &&
@@ -2555,43 +2551,33 @@ void Desktop::OpenSplashScreen()
         m_pSplashScreen = std::make_unique<SplashScreen>(aAppName);
 
     m_pSplashScreen->start(u"SplashScreen"_ustr, 100);
-}
 #endif
+}
 
 void Desktop::SetSplashScreenProgress(sal_Int32 iProgress)
 {
-#if ENABLE_WASM_STRIP_SPLASH
-    (void) iProgress;
-#else
     if (m_pSplashScreen)
     {
         m_pSplashScreen->setValue(iProgress);
     }
-#endif
 }
 
 void Desktop::SetSplashScreenText( const OUString& rText )
 {
-#if ENABLE_WASM_STRIP_SPLASH
-    (void) rText;
-#else
     if (m_pSplashScreen)
     {
         m_pSplashScreen->setText(rText);
     }
-#endif
 }
 
 void Desktop::CloseSplashScreen()
 {
-#if !ENABLE_WASM_STRIP_SPLASH
     if (m_pSplashScreen)
     {
         SolarMutexGuard ensureSolarMutex;
         m_pSplashScreen->end();
         m_pSplashScreen.reset();
     }
-#endif
 }
 
 

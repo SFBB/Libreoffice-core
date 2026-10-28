@@ -1326,17 +1326,21 @@ void RTFDocumentImpl::resolvePict(bool const bInline, uno::Reference<drawing::XS
     }
 }
 
-bool RTFDocumentImpl::bufferShapeInsertion(uno::Reference<drawing::XShape> const& rShape,
-                                           bool const bClose)
+void RTFDocumentImpl::insertShape(uno::Reference<drawing::XShape> const& rShape, bool const bClose)
 {
-    RTFBuffer_t* pBuffer = m_aStates.empty() ? nullptr : m_aStates.top().getCurrentBuffer();
-    if (!pBuffer)
-        return false;
-
-    pBuffer->emplace_back(RTFBufferTypes::InsertShape, new RTFValue(rShape), nullptr);
+    bufferOrSend(RTFBufferTypes::InsertShape, new RTFValue(rShape));
     if (bClose)
-        pBuffer->emplace_back(RTFBufferTypes::EndShape, nullptr, nullptr);
-    return true;
+        bufferOrSend(RTFBufferTypes::EndShape);
+}
+
+void RTFDocumentImpl::bufferOrResolveSubstream(std::size_t nPos, Id nId,
+                                               OUString const& rCustomMark)
+{
+    RTFSprms aAttributes;
+    aAttributes.set(Id(0), new RTFValue(nPos));
+    aAttributes.set(Id(1), new RTFValue(nId));
+    aAttributes.set(Id(2), new RTFValue(rCustomMark));
+    bufferOrSend(RTFBufferTypes::ResolveSubstream, new RTFValue(aAttributes));
 }
 
 RTFError RTFDocumentImpl::resolveChars(char ch)
@@ -1931,9 +1935,35 @@ void RTFDocumentImpl::replayBuffer(RTFBuffer_t& rBuffer, RTFSprms* const pSprms,
     }
 }
 
+static bool lcl_holdsShapeStart(RTFBuffer_t const& rBuffer)
+{
+    int nOpen = 0;
+    for (Buf_t const& rEntry : rBuffer)
+    {
+        switch (std::get<0>(rEntry))
+        {
+            case RTFBufferTypes::StartShape:
+            case RTFBufferTypes::InsertShape:
+                ++nOpen;
+                break;
+            case RTFBufferTypes::EndShape:
+                --nOpen;
+                break;
+            default:
+                break;
+        }
+    }
+    return nOpen > 0;
+}
+
 void RTFDocumentImpl::bufferOrSend(RTFBufferTypes eType, RTFValue::Pointer_t const& pValue)
 {
     RTFBuffer_t* pCurrentBuffer = m_aStates.empty() ? nullptr : m_aStates.top().getCurrentBuffer();
+    // A shape's end follows its start. While the start still waits in the buffer the end waits
+    // behind it, and once a replay has sent the start the end goes to the dmapper directly.
+    if (pCurrentBuffer && eType == RTFBufferTypes::EndShape
+        && !lcl_holdsShapeStart(*pCurrentBuffer))
+        pCurrentBuffer = nullptr;
     if (pCurrentBuffer)
         pCurrentBuffer->emplace_back(eType, pValue, nullptr);
     else
@@ -2005,13 +2035,13 @@ void RTFDocumentImpl::sendBufferEntry(Buf_t aTuple)
         m_aStates.top().setCurrentBuffer(pCurrentBuffer);
     }
     else if (std::get<0>(aTuple) == RTFBufferTypes::EndShape)
-        m_pSdrImport->close();
+        Mapper().endShape();
     else if (std::get<0>(aTuple) == RTFBufferTypes::InsertShape)
     {
         uno::Reference<drawing::XShape> xShape;
         std::get<1>(aTuple)->getAny() >>= xShape;
         if (xShape.is())
-            m_pSdrImport->open(xShape);
+            Mapper().startShape(xShape);
     }
     else if (std::get<0>(aTuple) == RTFBufferTypes::ResolveSubstream)
     {
@@ -3792,13 +3822,7 @@ void RTFDocumentImpl::afterPopState(RTFParserState& rState)
                     && !m_aStates.top().getDrawingObject().getHadShapeText())
                 {
                     m_aStates.top().setHadShapeText(true);
-                    // A replay can send a buffered start before the group ends, and the end
-                    // has to follow it.
-                    if (m_pSdrImport->isOpenInMapper() || !m_aStates.top().getCurrentBuffer())
-                        m_pSdrImport->close();
-                    else
-                        m_aStates.top().getCurrentBuffer()->emplace_back(RTFBufferTypes::EndShape,
-                                                                         nullptr, nullptr);
+                    bufferOrSend(RTFBufferTypes::EndShape);
                 }
 
                 // It's allowed to declare these inside the shape text, and they

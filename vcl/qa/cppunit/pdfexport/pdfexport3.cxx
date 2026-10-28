@@ -3691,6 +3691,97 @@ CPPUNIT_TEST_FIXTURE(PdfExportTest3, testDropCapPaint)
     CPPUNIT_ASSERT_DOUBLES_EQUAL(114.53, aRect.at(4).getMinX(), /*delta*/ 2.0);
 }
 
+/// The cells of each row of the only table, with their spans and scopes.
+OString getImpressTableCells(vcl::filter::PDFDocument& rDocument)
+{
+    vcl::filter::PDFObjectElement* pTable = nullptr;
+    for (auto* pObject : rDocument.GetObjects())
+    {
+        auto pType = dynamic_cast<vcl::filter::PDFNameElement*>(pObject->Lookup("S"_ostr));
+        if (pType && pType->GetValue() == "Table")
+            pTable = pObject;
+    }
+    CPPUNIT_ASSERT(pTable);
+
+    OStringBuffer aCells;
+    auto pRows = dynamic_cast<vcl::filter::PDFArrayElement*>(pTable->Lookup("K"_ostr));
+    CPPUNIT_ASSERT(pRows);
+    for (auto* pRowElement : pRows->GetElements())
+    {
+        auto pRow = dynamic_cast<vcl::filter::PDFReferenceElement*>(pRowElement);
+        CPPUNIT_ASSERT(pRow);
+        CPPUNIT_ASSERT(pRow->LookupObject());
+        auto pCells
+            = dynamic_cast<vcl::filter::PDFArrayElement*>(pRow->LookupObject()->Lookup("K"_ostr));
+        CPPUNIT_ASSERT(pCells);
+        for (auto* pCellElement : pCells->GetElements())
+        {
+            auto pCell = dynamic_cast<vcl::filter::PDFReferenceElement*>(pCellElement);
+            CPPUNIT_ASSERT(pCell);
+            CPPUNIT_ASSERT(pCell->LookupObject());
+            auto pType = dynamic_cast<vcl::filter::PDFNameElement*>(
+                pCell->LookupObject()->Lookup("S"_ostr));
+            CPPUNIT_ASSERT(pType);
+            aCells.append(pType->GetValue());
+            // the Layout attributes and the Table ones are each a dictionary of their own
+            std::vector<vcl::filter::PDFDictionaryElement*> aAttributes;
+            vcl::filter::PDFElement* pA = pCell->LookupObject()->Lookup("A"_ostr);
+            if (auto pDictionary = dynamic_cast<vcl::filter::PDFDictionaryElement*>(pA))
+                aAttributes.push_back(pDictionary);
+            else if (auto pArray = dynamic_cast<vcl::filter::PDFArrayElement*>(pA))
+                for (auto* pElement : pArray->GetElements())
+                    if (auto pOwner = dynamic_cast<vcl::filter::PDFDictionaryElement*>(pElement))
+                        aAttributes.push_back(pOwner);
+            for (auto* pAttributes : aAttributes)
+            {
+                for (const OString& rSpan : { "ColSpan"_ostr, "RowSpan"_ostr })
+                    if (auto pValue = dynamic_cast<vcl::filter::PDFNumberElement*>(
+                            pAttributes->LookupElement(rSpan)))
+                        aCells.append("/" + rSpan + OString::number(pValue->GetValue()));
+                if (auto pScope = dynamic_cast<vcl::filter::PDFNameElement*>(
+                        pAttributes->LookupElement("Scope"_ostr)))
+                    aCells.append("/" + pScope->GetValue());
+            }
+            aCells.append(" ");
+        }
+        aCells.append("| ");
+    }
+    return aCells.makeStringAndClear();
+}
+
+CPPUNIT_TEST_FIXTURE(PdfExportTest3, testImpressTableSpans)
+{
+    // a table with a header row, a cell that spans two columns and one that spans two rows
+    loadFromFile(u"table-span.fodp");
+    uno::Sequence aFilterData{ comphelper::makePropertyValue(u"UseTaggedPDF"_ustr, true) };
+    save(TestFilter::PDF, { comphelper::makePropertyValue(u"FilterData"_ustr, aFilterData) });
+
+    vcl::filter::PDFDocument aDocument;
+    CPPUNIT_ASSERT(aDocument.Read(*maTempFile.GetStream(StreamMode::READ)));
+
+    // Without the fix the merged cells had no span and each covered cell was an empty TD:
+    // "TH TH TH | TD TD TD | TD TD TD | TD TD TD | ".
+    CPPUNIT_ASSERT_EQUAL(
+        "TH/Column TH/Column TH/Column | TD TD/ColSpan2 | TD/RowSpan2 TD TD | TD TD | "_ostr,
+        getImpressTableCells(aDocument));
+}
+
+CPPUNIT_TEST_FIXTURE(PdfExportTest3, testImpressTableFirstColumn)
+{
+    // a table with "Header row" and "First column" set
+    loadFromFile(u"table-first-column.fodp");
+    uno::Sequence aFilterData{ comphelper::makePropertyValue(u"UseTaggedPDF"_ustr, true) };
+    save(TestFilter::PDF, { comphelper::makePropertyValue(u"FilterData"_ustr, aFilterData) });
+
+    vcl::filter::PDFDocument aDocument;
+    CPPUNIT_ASSERT(aDocument.Read(*maTempFile.GetStream(StreamMode::READ)));
+
+    // Without the fix the first column was not tagged as row headers:
+    // "TH/Column TH/Column TH/Column | TD TD TD | TD TD TD | ".
+    CPPUNIT_ASSERT_EQUAL("TH/Column TH/Column TH/Column | TH/Row TD TD | TH/Row TD TD | "_ostr,
+                         getImpressTableCells(aDocument));
+}
+
 } // end anonymous namespace
 
 CPPUNIT_PLUGIN_IMPLEMENT();
