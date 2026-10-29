@@ -41,6 +41,7 @@
 #include <com/sun/star/i18n/NumberFormatMapper.hpp>
 #include <com/sun/star/i18n/NumberFormatIndex.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
+#include <com/sun/star/style/BreakType.hpp>
 #include <com/sun/star/style/CaseMap.hpp>
 #include <com/sun/star/style/XStyleFamiliesSupplier.hpp>
 #include <com/sun/star/style/LineNumberPosition.hpp>
@@ -5618,6 +5619,17 @@ void DomainMapper_Impl::HandleAltChunk(const OUString& rStreamName)
         uno::Reference<io::XStream> xInputStream = new utl::OStreamWrapper(aMemory);
         // Not handling AltChunk during paste for now.
         uno::Reference<text::XTextRange> xInsertTextRange = GetCurrentXText()->getEnd();
+        // A page break right before the chunk: put it after the previous paragraph, as the
+        // chunk content may set its own break on the paragraph it is inserted into.
+        // Without a previous paragraph, keep the break deferred.
+        const uno::Reference<beans::XPropertySet>& xPrevious
+            = m_StreamStateStack.top().xPreviousParagraph;
+        if (isBreakDeferred(PAGE_BREAK) && xPrevious.is())
+        {
+            xPrevious->setPropertyValue(getPropertyName(PROP_BREAK_TYPE),
+                                        uno::Any(style::BreakType_PAGE_AFTER));
+            clearDeferredBreak(PAGE_BREAK);
+        }
         uno::Reference<text::XTextRange> xSectionStartingRange;
         SectionPropertyMap* pSectionContext = GetSectionContext();
         if (pSectionContext)
@@ -9699,12 +9711,10 @@ void DomainMapper_Impl::StartOrEndBookmark( const OUString& rId )
 
 void DomainMapper_Impl::SetMoveBookmark( bool bIsFrom )
 {
-    static constexpr OUStringLiteral MoveFrom_Bookmark_NamePrefix = u"__RefMoveFrom__";
-    static constexpr OUStringLiteral MoveTo_Bookmark_NamePrefix = u"__RefMoveTo__";
     if ( bIsFrom )
-        m_sCurrentBkmkPrefix = MoveFrom_Bookmark_NamePrefix;
+        m_sCurrentBkmkPrefix = u"__RefMoveFrom__"_ustr;
     else
-        m_sCurrentBkmkPrefix = MoveTo_Bookmark_NamePrefix;
+        m_sCurrentBkmkPrefix = u"__RefMoveTo__"_ustr;
 }
 
 void DomainMapper_Impl::setPermissionRangeEd(const OUString& user)

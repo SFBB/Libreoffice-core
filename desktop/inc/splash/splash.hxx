@@ -21,28 +21,11 @@
 #include <sal/config.h>
 
 #include "SplashScreenBase.hxx"
+#include "SplashScreenWindow.hxx"
 #include "splash_dllapi.h"
 
-#include <cppuhelper/supportsservice.hxx>
 #include <vcl/bitmap.hxx>
-#include <vcl/introwin.hxx>
 #include <vcl/vclevent.hxx>
-#include <vcl/virdev.hxx>
-
-class SplashScreen;
-
-class SplashScreenWindow : public IntroWindow
-{
-public:
-    SplashScreen* m_pSplash;
-    ScopedVclPtr<VirtualDevice> m_pVDev;
-    explicit SplashScreenWindow(SplashScreen*);
-    virtual ~SplashScreenWindow() override { disposeOnce(); }
-    virtual void dispose() override;
-    // workwindow
-    virtual void Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle&) override;
-    void Redraw();
-};
 
 class SPLASH_DLLPUBLIC SplashScreen : public SplashScreenBase
 {

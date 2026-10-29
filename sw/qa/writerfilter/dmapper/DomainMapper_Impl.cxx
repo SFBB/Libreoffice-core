@@ -172,6 +172,30 @@ CPPUNIT_TEST_FIXTURE(Test, testAltChunkHtml)
     CPPUNIT_ASSERT_EQUAL(u"outer para 2"_ustr, xPara->getString());
 }
 
+CPPUNIT_TEST_FIXTURE(Test, testTdf174049AltChunkPageBreak)
+{
+    // A paragraph with only a page break, then a w:altChunk, whose first paragraph has a direct
+    // w:pageBreakBefore="0". The break paragraph stays as an empty paragraph, like in Word.
+    loadFromFile(u"alt-chunk-page-break.docx");
+    CPPUNIT_ASSERT_EQUAL(OUString(), getParagraph(2)->getString());
+
+    // Without the fix in place, this test would have failed with:
+    // - Expected: 5
+    // - Actual  : 0
+    // i.e. the page break was not before the chunk, but after it, or the chunk removed it.
+    CPPUNIT_ASSERT_EQUAL(style::BreakType_PAGE_AFTER,
+                         getProperty<style::BreakType>(getParagraph(2), u"BreakType"_ustr));
+    CPPUNIT_ASSERT_EQUAL(u"inner, first para"_ustr, getParagraph(3)->getString());
+    CPPUNIT_ASSERT_EQUAL(style::BreakType_NONE,
+                         getProperty<style::BreakType>(getParagraph(3), u"BreakType"_ustr));
+    CPPUNIT_ASSERT_EQUAL(u"inner, second para"_ustr, getParagraph(4)->getString());
+    CPPUNIT_ASSERT_EQUAL(style::BreakType_NONE,
+                         getProperty<style::BreakType>(getParagraph(4), u"BreakType"_ustr));
+    CPPUNIT_ASSERT_EQUAL(u"outer, after chunk"_ustr, getParagraph(5)->getString());
+    CPPUNIT_ASSERT_EQUAL(style::BreakType_NONE,
+                         getProperty<style::BreakType>(getParagraph(5), u"BreakType"_ustr));
+}
+
 CPPUNIT_TEST_FIXTURE(Test, testFieldIfInsideIf)
 {
     // Load a document with a field in a table cell: it contains an IF field with various nested

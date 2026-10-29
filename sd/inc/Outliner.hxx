@@ -174,7 +174,7 @@ public:
     void EndSpelling();
 
     /** callback for textconversion */
-    bool ConvertNextDocument() override;
+    DECL_LINK(ConvertNextDocumentHdl, Outliner*, bool);
 
     /** Starts the text conversion (hangul/hanja or Chinese simplified/traditional)
     for the current viewshell */
@@ -523,7 +523,7 @@ private:
             required.  When all text objects have been processed then
             <FALSE/> is returned.
     */
-    virtual bool SpellNextDocument() override;
+    DECL_LINK(SpellNextDocumentHdl, Outliner*, bool);
 
     /** Find the right parent to use for a message. This function makes sure
         that the otherwise non-modal search or spell dialogs, if visible, are

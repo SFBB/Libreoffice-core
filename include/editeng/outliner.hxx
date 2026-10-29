@@ -48,7 +48,6 @@ class Outliner;
 class EditView;
 class EditUndo;
 class EditUndoManager;
-class ParagraphList;
 class OutlinerParaObject;
 class SvStream;
 class SvxSearchItem;
@@ -390,12 +389,15 @@ public:
     const SvxFieldItem& GetField() const { return rFldItem; }
 
     std::optional<Color> const & GetTextColor() const { return mxTxtColor; }
+    std::optional<Color>& GetTextColor() { return mxTxtColor; }
     void            SetTextColor( std::optional<Color> xCol ) { mxTxtColor = xCol; }
 
     std::optional<Color> const & GetFieldColor() const { return mxFldColor; }
+    std::optional<Color>& GetFieldColor() { return mxFldColor; }
     void            SetFieldColor( std::optional<Color> xCol ) { mxFldColor = xCol; }
 
     std::optional<FontLineStyle> const& GetFontLineStyle() const { return mxFldLineStyle; }
+    std::optional<FontLineStyle>& GetFontLineStyle() { return mxFldLineStyle; }
     void            SetFontLineStyle( std::optional<FontLineStyle> xLineStyle ) { mxFldLineStyle = xLineStyle; }
 
     sal_Int32       GetPara() const { return nPara; }
@@ -439,6 +441,7 @@ public:
     struct ParagraphHdlParam { Outliner* pOutliner; sal_Int32 nParaPos; bool bIsPage; };
     struct DepthChangeHdlParam { Outliner* pOutliner; ParaFlag nPrevFlags; sal_Int32 nParaPos; };
     struct MoveParagraphsHdlParam { Outliner* pOutliner; sal_Int32 nStartPara; sal_Int32 nEndPara; sal_Int32 nDestPara; };
+
 private:
     friend class OutlinerView;
     friend class EditEngine;
@@ -452,7 +455,6 @@ private:
 
     std::unique_ptr<EditEngine> pEditEngine;
 
-    std::unique_ptr<ParagraphList>   pParaList;
     ViewList            aViewList;
 
     sal_Int32           mnFirstSelPage;
@@ -463,10 +465,13 @@ private:
     Link<MoveParagraphsHdlParam,void> aEndMovingHdl;
     Link<OutlinerView*,bool>       aIndentingPagesHdl;
     Link<OutlinerView*,bool>       aRemovingPagesHdl;
-    Link<EditFieldInfo*,void>      aCalcFieldValueHdl;
+    Link<EditFieldInfo*,void>      maCalcFieldValueHdl;
+    Link<EditFieldInfo*,void>      maSdrCalcFieldValueHdl;
     Link<PaintFirstLineInfo*,void> maPaintFirstLineHdl;
     Link<PasteOrDropInfos*,void>   maBeginPasteOrDropHdl;
     Link<PasteOrDropInfos*,void>   maEndPasteOrDropHdl;
+    Link<Outliner*,bool>           maSpellNextDocumentHdl;
+    Link<Outliner*,bool>           maConvertNextDocumentHdl;
 
     sal_Int32           nDepthChangedHdlPrevDepth;
     sal_Int16           nMaxDepth;
@@ -481,7 +486,6 @@ private:
     Link<EENotify&,void> aOutlinerNotifyHdl;
     NotifyList          aNotifyCache;
 
-    DECL_DLLPRIVATE_LINK(    ParaVisibleStateChangedHdl, sal_Int32, void );
     DECL_DLLPRIVATE_LINK(    BeginMovingParagraphsHdl, MoveParagraphsInfo&, void );
     DECL_DLLPRIVATE_LINK(    EndMovingParagraphsHdl, MoveParagraphsInfo&, void );
     DECL_DLLPRIVATE_LINK(    BeginPasteOrDropHdl, PasteOrDropInfos&, void );
@@ -593,6 +597,8 @@ public:
     bool            HasChildren( sal_Int32 nParagraphPos ) const;
     sal_Int32       GetChildCount( sal_Int32 nParentParaPos ) const;
     bool            IsExpanded( sal_Int32 nParagraphPos ) const;
+    bool            HasHiddenChildren( sal_Int32 nPara ) const;
+    bool            HasVisibleChildren( sal_Int32 nPara ) const;
     sal_Int32       GetParent( sal_Int32 nParagraphPos ) const;
 
     sal_Int16       GetDepth( sal_Int32 nPara ) const;
@@ -635,8 +641,8 @@ public:
     // valid only in the two upper handlers
     SAL_DLLPRIVATE sal_Int32       GetSelPageCount() const { return nDepthChangedHdlPrevDepth; }
 
-    SAL_DLLPRIVATE void            SetCalcFieldValueHdl(const Link<EditFieldInfo*,void>& rLink ) { aCalcFieldValueHdl= rLink; }
-    SAL_DLLPRIVATE const Link<EditFieldInfo*,void>& GetCalcFieldValueHdl() const { return aCalcFieldValueHdl; }
+    SAL_DLLPRIVATE void            SetCalcFieldValueHdl(const Link<EditFieldInfo*,void>& rLink ) { maCalcFieldValueHdl= rLink; }
+    SAL_DLLPRIVATE const Link<EditFieldInfo*,void>& GetCalcFieldValueHdl() const { return maCalcFieldValueHdl; }
 
     SAL_DLLPRIVATE void            SetPaintFirstLineHdl(const Link<PaintFirstLineInfo*,void>& rLink) { maPaintFirstLineHdl = rLink; }
 
@@ -735,7 +741,7 @@ public:
     bool            UpdateFields();
     void            RemoveFields( const std::function<bool ( const SvxFieldData* )>& isFieldData = [] (const SvxFieldData* ){return true;} );
 
-    virtual OUString CalcFieldValue( const SvxFieldItem& rField, sal_Int32 nPara, sal_Int32 nPos, std::optional<Color>& rTxtColor, std::optional<Color>& rFldColor, std::optional<FontLineStyle>& rFldLineStyle );
+    OUString CalcFieldValue( const SvxFieldItem& rField, sal_Int32 nPara, sal_Int32 nPos, std::optional<Color>& rTxtColor, std::optional<Color>& rFldColor, std::optional<FontLineStyle>& rFldLineStyle );
 
     void            SetSpeller( css::uno::Reference< css::linguistic2::XSpellChecker1 > const &xSpeller );
     css::uno::Reference< css::linguistic2::XSpellChecker1 > const &
@@ -751,11 +757,13 @@ public:
 
     EESpellState    HasSpellErrors();
     bool            HasText( const SvxSearchItem& rSearchItem );
-    virtual bool    SpellNextDocument();
+    bool            SpellNextDocument(); // called from EditEngine, will forward to the Hdl
+    void            SetSpellNextDocumentHdl(const Link<Outliner*,bool>& rLnk) { maSpellNextDocumentHdl = rLnk; }
 
     // for text conversion
     bool            HasConvertibleTextPortion( LanguageType nLang );
-    virtual bool    ConvertNextDocument();
+    bool            ConvertNextDocument(); // called from EditEngine, will forward to the Hdl
+    void            SetConvertNextDocumentHdl(const Link<Outliner*,bool>& rLnk) { maConvertNextDocumentHdl = rLnk; }
 
     void            SetEditEnginePool( SfxItemPool* pPool );
     SfxItemPool*    GetEditEnginePool() const;
@@ -840,6 +848,10 @@ public:
 
     // return FirstParaIsEmpty state
     bool getFirstParaIsEmpty() const { return bFirstParaIsEmpty; }
+
+protected:
+    // called from SdrOutliner
+    void SetSdrCalcFieldValueHdl(const Link<EditFieldInfo*,void>& rLink ) { maSdrCalcFieldValueHdl = rLink; }
 };
 
 #endif
