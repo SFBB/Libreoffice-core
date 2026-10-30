@@ -23,21 +23,48 @@
 #include <vcl/introwin.hxx>
 #include <vcl/virdev.hxx>
 
-class SplashScreen;
-
 class SplashScreenWindow : public IntroWindow
 {
-    SplashScreen* m_pSplash;
+    OUString m_sProgressText;
+    sal_Int32 m_nProgress;
+
+    Bitmap m_aIntroBmp;
+    Color m_aProgressFrameColor;
+    Color m_aProgressBarColor;
+    Color m_aProgressTextColor;
+    bool m_bNativeProgress;
+    OUString m_sAppName;
+    bool m_bShowLogo;
+    tools::Long m_nHeight;
+    tools::Long m_nWidth;
+    tools::Long m_nTlx;
+    tools::Long m_nTly;
+    tools::Long m_nBarwidth;
+    tools::Long m_nBarheight;
+    tools::Long m_nBarspace;
+    tools::Long m_nTextBaseline;
+
+    static constexpr tools::Long _xoffset = 12;
+    static constexpr tools::Long _yoffset = 18;
+
     ScopedVclPtr<VirtualDevice> m_pVDev;
 
 public:
-    explicit SplashScreenWindow(SplashScreen*);
+    static constexpr sal_Int32 PROGRESS_MAX = 100;
+
+    explicit SplashScreenWindow(const OUString& rAppName);
     virtual ~SplashScreenWindow() override { disposeOnce(); }
-    virtual void dispose() override;
     virtual void SetOutputSizePixel(const Size& rNewSize) override;
     // workwindow
     virtual void Paint(vcl::RenderContext& rRenderContext, const tools::Rectangle&) override;
+
+    void SetProgress(sal_Int32 nProgress) { m_nProgress = nProgress; }
+    void SetProgressText(const OUString& rText) { m_sProgressText = rText; }
     void Redraw();
+
+private:
+    void loadConfig();
+    void SetScreenBitmap(Bitmap& rBitmap);
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

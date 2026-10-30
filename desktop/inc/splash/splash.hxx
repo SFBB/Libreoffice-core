@@ -22,45 +22,19 @@
 
 #include "SplashScreenBase.hxx"
 #include "SplashScreenWindow.hxx"
-#include "splash_dllapi.h"
 
 #include <vcl/bitmap.hxx>
 #include <vcl/vclevent.hxx>
 
-class SPLASH_DLLPUBLIC SplashScreen : public SplashScreenBase
+class SplashScreen : public SplashScreenBase
 {
-    friend class SplashScreenWindow;
-
 private:
     VclPtr<SplashScreenWindow> m_pWindow;
 
     DECL_LINK(AppEventListenerHdl, VclSimpleEvent&, void);
-    void loadConfig();
     void updateStatus();
-    void SetScreenBitmap(Bitmap& rBitmap);
-    static void determineProgressRatioValues(double& rXRelPos, double& rYRelPos, double& rRelWidth,
-                                             double& rRelHeight);
 
-    Bitmap m_aIntroBmp;
-    Color m_aProgressFrameColor;
-    Color m_aProgressBarColor;
-    Color m_aProgressTextColor;
-    bool m_bNativeProgress;
-    OUString m_sAppName;
-    OUString m_sProgressText;
-
-    sal_Int32 m_nMax;
-    sal_Int32 m_nProgress;
-    bool m_bPaintProgress;
-    bool m_bShowLogo;
-    bool m_bFullScreenSplash;
     bool m_bProgressEnd;
-    tools::Long m_nHeight, m_nWidth, m_nTlx, m_nTly, m_nBarwidth;
-    tools::Long m_nBarheight, m_nBarspace, m_nTextBaseline;
-    double m_fXPos, m_fYPos;
-    double m_fWidth, m_fHeight;
-    static constexpr tools::Long _xoffset = 12;
-    static constexpr tools::Long _yoffset = 18;
 
 public:
     SplashScreen(const OUString& rAppName);
@@ -70,7 +44,7 @@ public:
     virtual void reset() override;
     virtual void setText(const OUString& aText) override;
     virtual void setValue(sal_Int32 nValue) override;
-    virtual void start(const OUString& aText, sal_Int32 nRange) override;
+    virtual void start() override;
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

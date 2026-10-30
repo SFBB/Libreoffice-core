@@ -2101,7 +2101,7 @@ class GtkInstanceBuilder;
 #if !GTK_CHECK_VERSION(4, 0, 0)
         if (nKeyCode == 0)
         {
-            GdkKeymap* keymap = gdk_keymap_get_default();
+            GdkKeymap* keymap = gdk_keymap_get_for_display(gdk_display_get_default());
             guint8 best_group = GtkSalFrame::GetBestAccelKeyGroup(keymap, group);
             guint updated_keyval = GtkSalFrame::GetKeyValFor(keymap, hardware_keycode, best_group);
             nKeyCode = GtkSalFrame::GetKeyCode(updated_keyval);
@@ -11569,11 +11569,10 @@ private:
             // so that, e.g. with focus initially in writer main document then
             // after clicking the heading menu in the writer navigator focus is
             // left in the main document and not in the toolbar
+            gtk_widget_set_focus_on_click(GTK_WIDGET(pMenuButton), false);
 #if !GTK_CHECK_VERSION(4, 0, 0)
-            gtk_button_set_focus_on_click(GTK_BUTTON(pMenuButton), false);
             g_signal_connect(pMenuButton, "toggled", G_CALLBACK(signalItemToggled), this);
 #else
-            gtk_widget_set_focus_on_click(GTK_WIDGET(pMenuButton), false);
 
             GtkWidget* pToggleButton = gtk_widget_get_first_child(GTK_WIDGET(pMenuButton));
             assert(GTK_IS_TOGGLE_BUTTON(pToggleButton));
@@ -12150,7 +12149,7 @@ public:
         GdkDevice* pDevice = gdk_seat_get_keyboard(pSeat);
         guint nState = gdk_device_get_modifier_state(pDevice);
 #else
-        GdkKeymap* pKeymap = gdk_keymap_get_default();
+        GdkKeymap* pKeymap = gdk_keymap_get_for_display(gdk_display_get_default());
         guint nState = gdk_keymap_get_modifier_state(pKeymap);
 #endif
         return GtkSalFrame::GetKeyModCode(nState);
