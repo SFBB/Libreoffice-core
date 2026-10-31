@@ -941,7 +941,13 @@ void GtkSalFrame::updateScreenNumber()
     int nScreen = 0;
     GdkScreen *pScreen = gtk_widget_get_screen( m_pWindow );
     if( pScreen )
-        nScreen = getDisplay()->getSystem()->getScreenMonitorIdx( pScreen, maGeometry.x(), maGeometry.y() );
+    {
+        // TODO: this will fail horribly for exotic combinations like two
+        // monitors in mirror mode and one extra. Hopefully such
+        // abominations are not used (or, even better, not possible) in
+        // practice .-)
+        nScreen = gdk_screen_get_monitor_at_point(pScreen, maGeometry.x(), maGeometry.y());
+    }
     maGeometry.setScreen(nScreen);
 #endif
 }
@@ -2222,19 +2228,18 @@ Size GtkSalFrame::GetClientSize()
 void GtkSalFrame::GetWorkArea( AbsoluteScreenPixelRectangle& rRect )
 {
     GdkRectangle aRect;
+    GdkDisplay* pDisplay = gtk_widget_get_display(m_pWindow);
 #if !GTK_CHECK_VERSION(4, 0, 0)
-    GdkScreen  *pScreen = gtk_widget_get_screen(m_pWindow);
     AbsoluteScreenPixelRectangle aRetRect;
-    int max = gdk_screen_get_n_monitors (pScreen);
+    int max = gdk_display_get_n_monitors(pDisplay);
     for (int i = 0; i < max; ++i)
     {
-        gdk_screen_get_monitor_workarea(pScreen, i, &aRect);
+        gdk_monitor_get_workarea(gdk_display_get_monitor(pDisplay, i), &aRect);
         AbsoluteScreenPixelRectangle aMonitorRect(aRect.x, aRect.y, aRect.x+aRect.width, aRect.y+aRect.height);
         aRetRect.Union(aMonitorRect);
     }
     rRect = aRetRect;
 #else
-    GdkDisplay* pDisplay = gtk_widget_get_display(m_pWindow);
     GdkSurface* gdkWindow = widget_get_surface(m_pWindow);
     GdkMonitor* pMonitor = gdk_display_get_monitor_at_surface(pDisplay, gdkWindow);
     gdk_monitor_get_geometry(pMonitor, &aRect);

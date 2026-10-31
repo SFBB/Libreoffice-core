@@ -13,14 +13,12 @@
 
 #include <gtk/gtk.h>
 
-#include <deque>
-
 class GtkSalSystem final : public SalSystem
 {
     GdkDisplay *mpDisplay;
 #if !GTK_CHECK_VERSION(4,0,0)
-    // Number of monitors for every active screen.
-    std::deque<std::pair<GdkScreen*, int> > maScreenMonitors;
+    // Number of monitors for the default screen.
+    int m_nScreenMonitors;
 #endif
 public:
              GtkSalSystem();
@@ -34,8 +32,6 @@ public:
 #if !GTK_CHECK_VERSION(4,0,0)
     void              countScreenMonitors();
     // We have a 'screen' number that is combined from screen-idx + monitor-idx
-    int        getScreenIdxFromPtr     (GdkScreen *pScreen);
-    int        getScreenMonitorIdx     (GdkScreen *pScreen, int nX, int nY);
     GdkScreen *getScreenMonitorFromIdx (int nIdx, gint &nMonitor);
 #endif
 };
