@@ -163,9 +163,17 @@ void DiagramData_oox::writeDiagramData(DrawingML& rOriginalDrawingML, const sax_
             uno::Reference<drawing::XShape> xAssociatedShape(getXShapeByModelID(rPoint.msModelId));
             uno::Reference<beans::XPropertySet> xProps;
             bool bWriteFill(false);
+            bool bWriteLine(false);
             bool bWriteText(false);
 
-            if (xAssociatedShape)
+            if (rPoint.mnXMLType == TypeConstant::XML_doc)
+            {
+                // this is the root point (see DiagramData_svx::getRootPoint())
+                // for this MSO does not write fill or text at all, so suppress it.
+                // Only an empty <dgm:spPr/> will be written (see else in
+                // bWriteFill below)
+            }
+            else if (xAssociatedShape)
             {
                 // only for those mentioned BgShapes because for TextNodes
                 // (presName="textNode") the fill is written to the associated
@@ -196,14 +204,22 @@ void DiagramData_oox::writeDiagramData(DrawingML& rOriginalDrawingML, const sax_
                     // and the fill is added here, *not* at the XShape/Model node
                     xProps = uno::Reference<beans::XPropertySet>(xAssociatedShape, uno::UNO_QUERY);
                     bWriteFill = xProps->getPropertyValue(u"FillStyle"_ustr) != drawing::FillStyle_NONE;
+
+                    // check for line.
+                    bWriteLine = xProps->getPropertyValue(u"LineStyle"_ustr) != drawing::LineStyle_NONE;
                 }
             }
 
-            // <spPr> element is before <t> element
-            if (bWriteFill)
+            // write <spPr> element if bWriteFill or bWriteLine, it's before <t> element
+            if (bWriteFill || bWriteLine)
             {
                 rTarget->startElementNS(XML_dgm, XML_spPr);
-                aShapeExport->WriteFill( xProps, xAssociatedShape->getSize());
+
+                if (bWriteFill)
+                    aShapeExport->WriteFill( xProps, xAssociatedShape->getSize());
+
+                if (bWriteLine)
+                    aShapeExport->WriteOutline( xProps );
 
                 rTarget->endElementNS(XML_dgm, XML_spPr);
             }

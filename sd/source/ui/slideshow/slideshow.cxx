@@ -40,7 +40,6 @@
 #include <comphelper/extract.hxx>
 
 #include <FrameView.hxx>
-#include <createpresentation.hxx>
 #include <unomodel.hxx>
 #include <slideshow.hxx>
 #include "slideshowimpl.hxx"
@@ -165,8 +164,7 @@ rtl::Reference< SlideShow > SlideShow::GetSlideShow( SdDrawDocument const * pDoc
 
 rtl::Reference< SlideShow > SlideShow::GetSlideShow( SdDrawDocument const & rDocument )
 {
-    return rtl::Reference< SlideShow >(
-        dynamic_cast< SlideShow* >( rDocument.getPresentation().get() ) );
+    return rDocument.getSlideShow();
 }
 
 rtl::Reference< SlideShow > SlideShow::GetSlideShow( ViewShellBase const & rBase )
@@ -1234,11 +1232,6 @@ sal_Int32 SlideShow::GetDisplay()
 bool SlideShow::dependsOn( ViewShellBase const * pViewShellBase )
 {
     return mxController.is() && (pViewShellBase == mpCurrentViewShellBase) && mpFullScreenViewShellBase;
-}
-
-Reference< presentation::XPresentation2 > CreatePresentation( const SdDrawDocument& rDocument )
-{
-    return Reference< presentation::XPresentation2 >( SlideShow::Create( const_cast< SdDrawDocument* >( &rDocument ) ) );
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */
