@@ -33,6 +33,7 @@
 #include <optsitem.hxx>
 #include <sdabstdlg.hxx>
 #include <slideshow.hxx>
+#include <SlideShowController.hxx>
 #include <ViewShell.hxx>
 
 using namespace ::com::sun::star::uno;
@@ -227,11 +228,11 @@ void FuSlideShowDlg::DoExecute( SfxRequest& )
         rPresentationSettings.mbMouseAsPen = bValue;
 
         // live slideshow? pass pen state on immediately
-        Reference< XSlideShowController > xSlideShowController(
-            SlideShow::GetSlideShowController(mrViewShell.GetViewShellBase() ) );
-        if( xSlideShowController.is() )
+        rtl::Reference<SlideShowController> pSlideShowController(
+            SlideShow::GetSlideShowController(mrViewShell.GetViewShellBase()));
+        if (pSlideShowController.is())
             if(rPresentationSettings.mbInteractive)
-                xSlideShowController->setUsePen( bValue );
+                pSlideShowController->setUsePen(bValue);
     }
 
     pOptions->SetDisplay( aDlgSet.Get(ATTR_PRESENT_DISPLAY).GetValue() );

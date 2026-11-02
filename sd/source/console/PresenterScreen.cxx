@@ -25,8 +25,13 @@
 #include "PresenterPaneFactory.hxx"
 #include "PresenterViewFactory.hxx"
 #include "PresenterWindowManager.hxx"
+
 #include <DrawController.hxx>
 #include <ResourceId.hxx>
+#include <SlideShowController.hxx>
+#include <slideshow.hxx>
+#include <unomodel.hxx>
+
 #include <framework/ConfigurationController.hxx>
 #include <com/sun/star/frame/XController.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
@@ -65,9 +70,8 @@ namespace {
           public PresenterScreenListenerInterfaceBase
     {
     public:
-        PresenterScreenListener (
-            css::uno::Reference<css::uno::XComponentContext> xContext,
-            css::uno::Reference<css::frame::XModel2> xModel);
+        PresenterScreenListener(css::uno::Reference<css::uno::XComponentContext> xContext,
+                                const rtl::Reference<SdXImpressDocument>& rpImpressDoc);
         PresenterScreenListener(const PresenterScreenListener&) = delete;
         PresenterScreenListener& operator=(const PresenterScreenListener&) = delete;
 
@@ -83,7 +87,7 @@ namespace {
         virtual void SAL_CALL disposing ( const css::lang::EventObject& rEvent) override;
 
     private:
-        css::uno::Reference<css::frame::XModel2 > mxModel;
+        rtl::Reference<SdXImpressDocument> mpImpressDoc;
         css::uno::Reference<css::uno::XComponentContext> mxComponentContext;
         rtl::Reference<PresenterScreen> mpPresenterScreen;
     };
@@ -152,10 +156,13 @@ Any SAL_CALL PresenterScreenJob::execute(
     Reference< XServiceInfo > xInfo( xModel, UNO_QUERY );
     if( xInfo.is() && xInfo->supportsService(u"com.sun.star.presentation.PresentationDocument"_ustr) )
     {
+        rtl::Reference<SdXImpressDocument> pImpressDoc(dynamic_cast<SdXImpressDocument*>(xModel.get()));
+        assert(pImpressDoc);
+
         // Create a new listener that waits for the full screen presentation
         // to start and to end.  It takes care of its own lifetime.
         ::rtl::Reference<PresenterScreenListener> pListener (
-            new PresenterScreenListener(mxComponentContext, xModel));
+            new PresenterScreenListener(mxComponentContext, pImpressDoc));
         pListener->Initialize();
     }
 
@@ -168,27 +175,23 @@ namespace {
 
 PresenterScreenListener::PresenterScreenListener (
     css::uno::Reference<css::uno::XComponentContext> xContext,
-    css::uno::Reference<css::frame::XModel2> xModel)
+    const rtl::Reference<SdXImpressDocument>& rpImpressDoc)
     : PresenterScreenListenerInterfaceBase(m_aMutex),
-      mxModel(std::move(xModel)),
+      mpImpressDoc(rpImpressDoc),
       mxComponentContext(std::move(xContext))
 {
+    assert(mpImpressDoc.is());
 }
 
 void PresenterScreenListener::Initialize()
 {
     Reference< document::XEventListener > xDocListener(this);
-    Reference< document::XEventBroadcaster > xDocBroadcaster( mxModel, UNO_QUERY );
-    if( xDocBroadcaster.is() )
-        xDocBroadcaster->addEventListener(xDocListener);
+    mpImpressDoc->addEventListener(xDocListener);
 }
 
 void SAL_CALL PresenterScreenListener::disposing()
 {
-    Reference< document::XEventBroadcaster > xDocBroadcaster( mxModel, UNO_QUERY );
-    if( xDocBroadcaster.is() )
-        xDocBroadcaster->removeEventListener(
-            Reference<document::XEventListener>(this) );
+    mpImpressDoc->removeEventListener(Reference<document::XEventListener>(this));
 
     if (mpPresenterScreen.is())
     {
@@ -210,7 +213,7 @@ void SAL_CALL PresenterScreenListener::notifyEvent( const css::document::EventOb
 
     if ( Event.EventName == "OnStartPresentation" )
     {
-        mpPresenterScreen = new PresenterScreen(mxComponentContext, mxModel);
+        mpPresenterScreen = new PresenterScreen(mxComponentContext, mpImpressDoc);
         if ( officecfg::Office::Impress::Misc::Start::EnablePresenterScreen::get() )
             mpPresenterScreen->InitializePresenterScreen();
     }
@@ -253,11 +256,10 @@ void SAL_CALL PresenterScreenListener::disposing (const css::lang::EventObject&)
 
 //===== PresenterScreen =======================================================
 
-PresenterScreen::PresenterScreen (
-    const Reference<XComponentContext>& rxContext,
-    css::uno::Reference<css::frame::XModel2> xModel)
+PresenterScreen::PresenterScreen(const Reference<XComponentContext>& rxContext,
+                                 const rtl::Reference<SdXImpressDocument>& rpImpressDoc)
 : PresenterScreenInterfaceBase(m_aMutex)
-, mxModel(std::move(xModel))
+, mpImpressDoc(rpImpressDoc)
 , mxController()
 , mxContextWeak(rxContext)
 , mpPresenterController()
@@ -287,7 +289,7 @@ void SAL_CALL PresenterScreen::disposing()
     if (mxPaneFactory.is())
         mxPaneFactory->dispose();
 
-    mxModel = nullptr;
+    mpImpressDoc = nullptr;
 }
 
 //----- XEventListener --------------------------------------------------------
@@ -308,16 +310,16 @@ void PresenterScreen::InitializePresenterScreen()
     {
         mpPaneContainer = new PresenterPaneContainer();
 
-        Reference<XPresentationSupplier> xPS ( mxModel, UNO_QUERY_THROW);
-        Reference<XPresentation2> xPresentation(xPS->getPresentation(), UNO_QUERY_THROW);
-        Reference<presentation::XSlideShowController> xSlideShowController( xPresentation->getController() );
+        rtl::Reference<sd::SlideShow> pSlideShow = mpImpressDoc->getSlideShow();
+        rtl::Reference<sd::SlideShowController> pSlideShowController
+            = pSlideShow->GetSlideShowController();
 
-        if( !xSlideShowController.is() || !xSlideShowController->isFullScreen() )
+        if (!pSlideShowController.is() || !pSlideShowController->isFullScreen())
             return;
 
         // find first controller that is not the current controller (the one with the slideshow
-        auto tmpController = mxModel->getCurrentController();
-        Reference< container::XEnumeration > xEnum( mxModel->getControllers() );
+        auto tmpController = mpImpressDoc->getCurrentController();
+        Reference<container::XEnumeration> xEnum(mpImpressDoc->getControllers());
         if( xEnum.is() )
         {
             while( xEnum->hasMoreElements() )
@@ -337,8 +339,7 @@ void PresenterScreen::InitializePresenterScreen()
         mxConfigurationControllerWeak = xCC.get();
 
         Reference<XComponentContext> xContext(mxContextWeak);
-        rtl::Reference<sd::framework::ResourceId> xMainPaneId(
-            GetMainPaneId(xPresentation));
+        rtl::Reference<sd::framework::ResourceId> xMainPaneId(GetMainPaneId(pSlideShow));
         // An empty reference means that the presenter screen can
         // not or must not be displayed.
         if ( ! xMainPaneId.is())
@@ -368,7 +369,7 @@ void PresenterScreen::InitializePresenterScreen()
                     this,
                     xContext,
                     mxController,
-                    xSlideShowController,
+                    pSlideShowController,
                     mpPaneContainer,
                     xMainPaneId);
 
@@ -397,12 +398,11 @@ void PresenterScreen::InitializePresenterScreen()
 void PresenterScreen::SwitchMonitors()
 {
     try {
-        Reference<XPresentationSupplier> xPS ( mxModel, UNO_QUERY_THROW);
-        Reference<XPresentation2> xPresentation(xPS->getPresentation(), UNO_QUERY_THROW);
+        rtl::Reference<sd::SlideShow> pSlideShow = mpImpressDoc->getSlideShow();
 
         // Get the existing presenter console screen, we want to switch the
         // presentation to use that instead.
-        sal_Int32 nNewScreen = GetPresenterScreenNumber (xPresentation);
+        sal_Int32 nNewScreen = GetPresenterScreenNumber(pSlideShow);
         if (nNewScreen < 0)
             return;
 
@@ -415,8 +415,7 @@ void PresenterScreen::SwitchMonitors()
             nNewScreen++; // otherwise we store screens offset by one.
 
         // Set the new presentation display
-        Reference<beans::XPropertySet> xProperties (xPresentation, UNO_QUERY_THROW);
-        xProperties->setPropertyValue(u"Display"_ustr, Any(nNewScreen));
+        pSlideShow->setPropertyValue(u"Display"_ustr, Any(nNewScreen));
     } catch (const uno::Exception &) {
     }
 }
@@ -434,19 +433,19 @@ void PresenterScreen::CheckNextSlideUpdate(const Reference<drawing::XShape>& rxS
  * Return the real VCL screen number to show the presenter console
  * on or -1 to not show anything.
  */
-sal_Int32 PresenterScreen::GetPresenterScreenNumber (
-    const Reference<presentation::XPresentation2>& rxPresentation)
+sal_Int32
+PresenterScreen::GetPresenterScreenNumber(const rtl::Reference<sd::SlideShow>& rpSlideShow)
 {
     sal_Int32 nScreenNumber (0);
     try
     {
-        if ( ! rxPresentation.is())
+        if (!rpSlideShow.is())
             return -1;
 
         // Determine the screen on which the full screen presentation is being
         // displayed.
         sal_Int32 nDisplayNumber (-1);
-        if ( ! (rxPresentation->getPropertyValue(u"Display"_ustr) >>= nDisplayNumber))
+        if (!(rpSlideShow->getPropertyValue(u"Display"_ustr) >>= nDisplayNumber))
             return -1;
         if (nDisplayNumber == -1)
         {
@@ -525,12 +524,12 @@ sal_Int32 PresenterScreen::GetPresenterScreenFromScreen( sal_Int32 nPresentation
     return nPresenterScreenNumber;
 }
 
-rtl::Reference<sd::framework::ResourceId> PresenterScreen::GetMainPaneId (
-    const Reference<presentation::XPresentation2>& rxPresentation)
+rtl::Reference<sd::framework::ResourceId>
+PresenterScreen::GetMainPaneId(const rtl::Reference<sd::SlideShow>& rpSlideShow)
 {
     // A negative value means that the presentation spans all available
     // displays.  That leaves no room for the presenter.
-    const sal_Int32 nScreen(GetPresenterScreenNumber(rxPresentation));
+    const sal_Int32 nScreen(GetPresenterScreenNumber(rpSlideShow));
     if (nScreen < 0)
         return nullptr;
 

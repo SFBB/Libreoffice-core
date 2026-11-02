@@ -23,22 +23,24 @@
 #include <sal/config.h>
 #include <comphelper/compbase.hxx>
 #include <cppuhelper/implbase.hxx>
+#include <vcl/commandevent.hxx>
+#include <vcl/timer.hxx>
+
 #include <comphelper/interfacecontainer4.hxx>
 #include <com/sun/star/presentation/ClickAction.hpp>
+#include <com/sun/star/presentation/XPresentation2.hpp>
 #include <com/sun/star/presentation/XSlideShowNavigationListener.hpp>
 #include <com/sun/star/presentation/XSlideShowController.hpp>
 #include <com/sun/star/presentation/XShapeEventListener.hpp>
 
 #include <drawdoc.hxx>
-
-#include "showwindow.hxx"
-
-#include <slideshow.hxx>
+#include <sddllapi.h>
 
 namespace com::sun::star::media { class XPlayer; }
 namespace sd { class DrawDocShell; }
 namespace sd { class ViewShell; }
 
+struct ImplSVEvent;
 class SfxBindings;
 class SfxDispatcher;
 class SfxViewFrame;
@@ -47,9 +49,14 @@ class VclSimpleEvent;
 
 namespace sd
 {
+class SlideShowController;
 class SlideShowView;
+enum class AnimationMode;
 class AnimationSlideController;
 class PaneHider;
+class ShowWindow;
+class View;
+class Window;
 
 struct PresentationSettingsEx : public PresentationSettings
 {
@@ -81,7 +88,8 @@ class SlideShowListenerProxy :
         public ::cppu::WeakImplHelper< css::presentation::XSlideShowNavigationListener, css::presentation::XShapeEventListener >
 {
 public:
-    SlideShowListenerProxy( rtl::Reference< SlideshowImpl > xController, css::uno::Reference< css::presentation::XSlideShow > xSlideShow );
+    SlideShowListenerProxy(rtl::Reference<SlideShowController> xController,
+                           css::uno::Reference<css::presentation::XSlideShow> xSlideShow);
     virtual ~SlideShowListenerProxy() override;
 
     void addAsSlideShowListener();
@@ -119,19 +127,22 @@ public:
 private:
     std::mutex m_aMutex;
     ::comphelper::OInterfaceContainerHelper4<css::presentation::XSlideShowListener> maListeners;
-    rtl::Reference< SlideshowImpl > mxController;
+    rtl::Reference<SlideShowController> mxController;
     css::uno::Reference< css::presentation::XSlideShow > mxSlideShow;
 };
 
-typedef comphelper::WeakComponentImplHelper< css::presentation::XSlideShowController, css::container::XIndexAccess > SlideshowImplBase;
-
-class SlideshowImpl final : public SlideshowImplBase, public SfxListener
+class SD_DLLPUBLIC SlideShowController final
+    : public comphelper::WeakComponentImplHelper<css::presentation::XSlideShowController,
+                                                 css::container::XIndexAccess>,
+      public SfxListener
 {
 friend class SlideShow;
 friend class SlideShowView;
 
 public:
-    explicit SlideshowImpl( const css::uno::Reference< css::presentation::XPresentation2 >& xPresentation, ViewShell* pViewSh, ::sd::View* pView, SdDrawDocument* pDoc, vcl::Window* pParentWindow);
+    explicit SlideShowController(const rtl::Reference<sd::SlideShow>& rpSlideShow,
+                                 ViewShell* pViewSh, ::sd::View* pView, SdDrawDocument* pDoc,
+                                 vcl::Window* pParentWindow);
 
     // css::presentation::XSlideShowController:
     virtual sal_Bool SAL_CALL getAlwaysOnTop() override;
@@ -207,10 +218,10 @@ public:
     void mouseButtonUp(const MouseEvent& rMEvt);
 
 private:
-    SlideshowImpl(SlideshowImpl const &) = delete;
-    void operator =(SlideshowImpl const &) = delete;
+    SlideShowController(SlideShowController const&) = delete;
+    void operator=(SlideShowController const&) = delete;
 
-    virtual ~SlideshowImpl() override;
+    virtual ~SlideShowController() override;
 
     // helper to check if given hint is associated with CurrentSlide
     bool isCurrentSlideInvolved(const SdrHint& rHint);
@@ -362,7 +373,7 @@ private:
     ImplSVEvent * mnEventObjectRemoved;
     ImplSVEvent * mnEventPageOrderChange;
 
-    css::uno::Reference< css::presentation::XPresentation2 > mxPresentation;
+    rtl::Reference<sd::SlideShow> mpSlideShow;
     ::rtl::Reference< SlideShowListenerProxy > mxListenerProxy;
 
     // local variables to support preview for a running SlideShow IASS

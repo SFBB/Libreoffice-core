@@ -59,6 +59,7 @@
 #include <TextObjectBar.hxx>
 #include <GraphicObjectBar.hxx>
 #include <MediaObjectBar.hxx>
+#include <SlideShowController.hxx>
 #include <SlideSorter.hxx>
 #include <SlideSorterViewShell.hxx>
 #include <ViewShellManager.hxx>
@@ -163,7 +164,7 @@ ViewShell::ViewShell( vcl::Window* pParentWindow, ViewShellBase& rViewShellBase)
     ,   mbStartShowWithDialog(false)
     ,   mnPrintedHandoutPageNum(1)
     ,   mnPrintedHandoutPageCount(0)
-    ,   meShellType(ST_NONE)
+    ,   meShellType(ShellType::None)
     ,   mpImpl(new Implementation(*this))
     ,   mpParentWindow(pParentWindow)
     ,   mpWindowUpdater(new ::sd::WindowUpdater())
@@ -814,8 +815,9 @@ bool ViewShell::HandleScrollCommand(const CommandEvent& rCEvt, ::sd::Window* pWi
 
         case CommandEventId::Wheel:
             {
-                Reference< XSlideShowController > xSlideShowController( SlideShow::GetSlideShowController(GetViewShellBase() ) );
-                if( xSlideShowController.is() )
+                rtl::Reference<SlideShowController> pSlideShowController
+                    = SlideShow::GetSlideShowController(GetViewShellBase());
+                if (pSlideShowController.is())
                 {
                     if(useInputForSlideShow()) //IASS
                     {
@@ -826,9 +828,9 @@ bool ViewShell::HandleScrollCommand(const CommandEvent& rCEvt, ::sd::Window* pWi
                         {
                             ::tools::Long nDelta = pData->GetDelta();
                             if( nDelta > 0 )
-                                xSlideShowController->gotoPreviousSlide();
+                                pSlideShowController->gotoPreviousSlide();
                             else if( nDelta < 0 )
-                                xSlideShowController->gotoNextEffect();
+                                pSlideShowController->gotoNextEffect();
                         }
                         break;
                     }
@@ -1178,7 +1180,8 @@ void ViewShell::ArrangeGUIElements()
     // The size of the window of the center pane is set differently from
     // that of the windows in the docking windows.
     bool bSlideShowActive = (xSlideShow.is() && xSlideShow->isRunning()) //IASS
-        && !xSlideShow->isFullScreen() && xSlideShow->getAnimationMode() == ANIMATIONMODE_SHOW;
+                            && !xSlideShow->isFullScreen()
+                            && xSlideShow->getAnimationMode() == AnimationMode::Show;
     if ( !bSlideShowActive)
     {
         OSL_ASSERT (GetViewShell()!=nullptr);
@@ -1255,7 +1258,7 @@ SfxUndoManager* ViewShell::ImpGetUndoManager() const
     // check for text edit our outline view
     if( pView )
     {
-        if( pMainViewShell->GetShellType() == ViewShell::ST_OUTLINE )
+        if (pMainViewShell->GetShellType() == ViewShell::ShellType::Outline)
         {
             OutlineView* pOlView = dynamic_cast< OutlineView* >( pView );
             if( pOlView )

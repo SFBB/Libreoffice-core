@@ -923,11 +923,9 @@ void DrawViewShell::GetMenuState( SfxItemSet &rSet )
     if( SfxItemState::DEFAULT == rSet.GetItemState( SID_DELETE_PAGE )
         || SfxItemState::DEFAULT == rSet.GetItemState( SID_DELETE_MASTER_PAGE ) )
     {
-        if (maTabControl->GetPageCount() == 1 ||
-            meEditMode == EditMode::MasterPage     ||
-            mePageKind == PageKind::Notes          ||
-            mePageKind == PageKind::Handout        ||
-            (GetShellType()!=ST_DRAW&&IsLayerModeActive()))
+        if (maTabControl->GetPageCount() == 1 || meEditMode == EditMode::MasterPage
+            || mePageKind == PageKind::Notes || mePageKind == PageKind::Handout
+            || (GetShellType() != ShellType::Draw && IsLayerModeActive()))
         {
             if (rSet.GetItemState(SID_DELETE_PAGE) == SfxItemState::DEFAULT)
                 rSet.DisableItem(SID_DELETE_PAGE);
@@ -1339,7 +1337,7 @@ void DrawViewShell::GetMenuState( SfxItemSet &rSet )
 
     rtl::Reference< sd::SlideShow > xSlideshow( SlideShow::GetSlideShow( GetViewShellBase() ) );
     if( (xSlideshow.is() && xSlideshow->isRunning() && !xSlideshow->IsInteractiveSlideshow() // IASS
-        && (xSlideshow->getAnimationMode() != ANIMATIONMODE_PREVIEW) ) || GetDocSh()->IsPreview() )
+        && (xSlideshow->getAnimationMode() != AnimationMode::Preview) ) || GetDocSh()->IsPreview() )
     {
         // Own Slots
         rSet.DisableItem( SID_PRESENTATION );

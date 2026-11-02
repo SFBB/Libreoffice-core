@@ -21,6 +21,8 @@
 
 #include "sddllapi.h"
 
+#include <SlideShowController.hxx>
+
 #include <com/sun/star/presentation/XPresentation2.hpp>
 #include <com/sun/star/lang/XServiceInfo.hpp>
 
@@ -60,23 +62,21 @@ struct ImplSVEvent;
 
 namespace sd
 {
-
-class SlideshowImpl;
 class View;
 class ViewShell;
 class ViewShellBase;
 struct PresentationSettingsEx;
 class FrameView;
 
-enum AnimationMode
+enum class AnimationMode
 {
-    ANIMATIONMODE_SHOW,
-    ANIMATIONMODE_PREVIEW
+    Show,
+    Preview
 };
 
 typedef comphelper::WeakComponentImplHelper< css::presentation::XPresentation2, css::lang::XServiceInfo > SlideshowBase;
 
-class SlideShow final : public SlideshowBase
+class SD_DLLPUBLIC SlideShow final : public SlideshowBase
 {
 public:
     /// used by the model to create a slideshow for it
@@ -84,10 +84,9 @@ public:
 
     // static helper api
     static rtl::Reference< SlideShow > GetSlideShow( SdDrawDocument const * pDocument );
-    static rtl::Reference< SlideShow > GetSlideShow( SdDrawDocument const & rDocument );
     static rtl::Reference< SlideShow > GetSlideShow( ViewShellBase const & rBase );
 
-    static css::uno::Reference< css::presentation::XSlideShowController > GetSlideShowController(ViewShellBase const & rBase );
+    static rtl::Reference<SlideShowController> GetSlideShowController(ViewShellBase const& rBase);
 
     static bool StartPreview( ViewShellBase const & rBase,
         const css::uno::Reference< css::drawing::XDrawPage >& xDrawPage,
@@ -146,6 +145,8 @@ public:
     virtual sal_Bool SAL_CALL isRunning(  ) override;
     virtual css::uno::Reference< css::presentation::XSlideShowController > SAL_CALL getController(  ) override;
 
+    rtl::Reference<SlideShowController> GetSlideShowController() const;
+
     // legacy api
 
     // actions
@@ -162,7 +163,7 @@ public:
     // settings
     bool isFullScreen() const;                          // a.k.a. FuSlideShow::IsFullScreen()
     OutputDevice* getShowWindow();                      // a.k.a. FuSlideShow::GetShowWindow()
-    int getAnimationMode() const;                       // a.k.a. FuSlideShow::GetAnimationMode()
+    AnimationMode getAnimationMode() const; // a.k.a. FuSlideShow::GetAnimationMode()
     sal_Int32 getCurrentPageNumber() const;             // a.k.a. FuSlideShow::GetCurrentPage()
 
     // events
@@ -201,7 +202,7 @@ private:
 
     SvxItemPropertySet  maPropSet;
 
-    rtl::Reference< SlideshowImpl > mxController;
+    rtl::Reference<SlideShowController> mxController;
     /** This flag is used together with mxController.is() to prevent
         multiple instances of the slide show for one document.  The flag
         covers the time before mxController is set.

@@ -37,6 +37,7 @@
 #include <framework/ConfigurationChangeEvent.hxx>
 #include <framework/Pane.hxx>
 #include <ResourceId.hxx>
+#include <SlideShowController.hxx>
 
 #include <com/sun/star/awt/Key.hpp>
 #include <com/sun/star/awt/KeyModifier.hpp>
@@ -82,13 +83,13 @@ PresenterController::PresenterController (
     unotools::WeakReference<PresenterScreen> xScreen,
     const Reference<XComponentContext>& rxContext,
     const rtl::Reference<::sd::DrawController>& rxController,
-    const Reference<presentation::XSlideShowController>& rxSlideShowController,
+    const rtl::Reference<sd::SlideShowController>& rpSlideShowController,
     rtl::Reference<PresenterPaneContainer> xPaneContainer,
     const rtl::Reference<sd::framework::ResourceId>& rxMainPaneId)
     : mxScreen(std::move(xScreen)),
       mxComponentContext(rxContext),
       mxController(rxController),
-      mxSlideShowController(rxSlideShowController),
+      mxSlideShowController(rpSlideShowController),
       mxMainPaneId(rxMainPaneId),
       mpPaneContainer(std::move(xPaneContainer)),
       mnCurrentSlideIndex(-1),
@@ -104,7 +105,7 @@ PresenterController::PresenterController (
             static_cast<XWeak*>(this),
             2);
 
-    new PresenterCurrentSlideObserver(this,rxSlideShowController);
+    new PresenterCurrentSlideObserver(this, rpSlideShowController);
 
     // Listen for configuration changes.
     mxConfigurationController = mxController->getConfigurationController();
@@ -131,14 +132,6 @@ PresenterController::PresenterController (
     mpWindowManager->SetPaneBorderPainter(mpPaneBorderPainter);
 
     mxSlideShowController->activate();
-    Reference<beans::XPropertySet> xProperties (mxSlideShowController, UNO_QUERY);
-    if (xProperties.is())
-    {
-        Reference<awt::XWindow> xWindow (
-            xProperties->getPropertyValue(u"ParentWindow"_ustr), UNO_QUERY);
-        if (xWindow.is())
-            xWindow->addKeyListener(this);
-    }
 
     UpdateCurrentSlide(0);
 

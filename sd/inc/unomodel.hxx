@@ -65,6 +65,7 @@ class SdGenericDrawPage;
 namespace sd {
 class DrawDocShell;
 class DrawViewShell;
+class SlideShow;
 class SlideshowLayerRenderer;
 }
 
@@ -196,7 +197,8 @@ public:
     virtual css::uno::Reference< css::drawing::XDrawPage > SAL_CALL getHandoutMasterPage(  ) override;
 
     // XPresentationSupplier
-    virtual css::uno::Reference< css::presentation::XPresentation > SAL_CALL getPresentation(  ) override;
+    SD_DLLPUBLIC virtual css::uno::Reference<css::presentation::XPresentation>
+        SAL_CALL getPresentation() override;
 
     // XMultiServiceFactory ( SvxFmMSFactory )
     SD_DLLPUBLIC virtual css::uno::Reference< css::uno::XInterface > SAL_CALL createInstance( const OUString& aServiceSpecifier ) override;
@@ -327,6 +329,8 @@ public:
         See also comments of issue 27847.
     */
     virtual void SAL_CALL dispose() override;
+
+    SD_DLLPUBLIC rtl::Reference<sd::SlideShow> getSlideShow();
 };
 
 /***********************************************************************

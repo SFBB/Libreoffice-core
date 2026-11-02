@@ -23,7 +23,7 @@
 #include <ViewShellBase.hxx>
 #include <DrawController.hxx>
 #include <ResourceId.hxx>
-#include "slideshowimpl.hxx"
+#include <SlideShowController.hxx>
 #include <framework/ConfigurationController.hxx>
 #include <framework/FrameworkHelper.hxx>
 
@@ -39,7 +39,7 @@ using ::com::sun::star::lang::DisposedException;
 
 namespace sd
 {
-PaneHider::PaneHider(const ViewShell& rViewShell, SlideshowImpl* pSlideShow)
+PaneHider::PaneHider(const ViewShell& rViewShell, SlideShowController* pSlideShow)
 {
     // Hide the left and right pane windows when a slideshow exists and is
     // not full screen.

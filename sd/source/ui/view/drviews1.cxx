@@ -352,11 +352,11 @@ void DrawViewShell::ChangeEditMode(EditMode eEMode, bool bIsLayerModeActive)
     // Determine whether to show the master view toolbar.  The master
     // page mode has to be active and the shell must not be a handout
     // view.
-    bool bShowMasterViewToolbar (meEditMode == EditMode::MasterPage
-         && GetShellType() != ViewShell::ST_HANDOUT);
-    bool bShowPresentationToolbar (meEditMode != EditMode::MasterPage
-         && GetShellType() != ViewShell::ST_HANDOUT
-         && GetShellType() != ViewShell::ST_DRAW);
+    bool bShowMasterViewToolbar(meEditMode == EditMode::MasterPage
+                                && GetShellType() != ViewShell::ShellType::Handout);
+    bool bShowPresentationToolbar(meEditMode != EditMode::MasterPage
+                                  && GetShellType() != ViewShell::ShellType::Handout
+                                  && GetShellType() != ViewShell::ShellType::Draw);
 
     // If the master view toolbar is not shown we hide it before
     // switching the edit mode.
@@ -1015,7 +1015,8 @@ bool DrawViewShell::SwitchPage(sal_uInt16 nSelectedPage, bool bAllowChangeFocus,
         }
 
         rtl::Reference< sd::SlideShow > xSlideshow( SlideShow::GetSlideShow( GetDoc() ) );
-        if( !xSlideshow.is() || !xSlideshow->isRunning() || ( xSlideshow->getAnimationMode() != ANIMATIONMODE_SHOW ) )
+        if (!xSlideshow.is() || !xSlideshow->isRunning()
+            || (xSlideshow->getAnimationMode() != AnimationMode::Show))
         {
             // tighten VisArea, to possibly deactivate objects
             // !!! only if we are not in presentation mode (#96279) !!!

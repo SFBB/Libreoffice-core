@@ -17,11 +17,13 @@
  *   the License at http://www.apache.org/licenses/LICENSE-2.0 .
  */
 
-#ifndef INCLUDED_SDEXT_SOURCE_PRESENTER_PRESENTERSCREEN_HXX
-#define INCLUDED_SDEXT_SOURCE_PRESENTER_PRESENTERSCREEN_HXX
+#pragma once
 
 #include "PresenterConfigurationAccess.hxx"
 #include "PresenterPaneContainer.hxx"
+
+#include <unomodel.hxx>
+
 #include <cppuhelper/compbase.hxx>
 #include <cppuhelper/basemutex.hxx>
 #include <com/sun/star/frame/XController.hpp>
@@ -98,9 +100,8 @@ class PresenterScreen
       public PresenterScreenInterfaceBase
 {
 public:
-    PresenterScreen (
-        const css::uno::Reference<css::uno::XComponentContext>& rxContext,
-        css::uno::Reference<css::frame::XModel2> xModel);
+    PresenterScreen(const css::uno::Reference<css::uno::XComponentContext>& rxContext,
+                    const rtl::Reference<SdXImpressDocument>& rpImpressDoc);
     virtual ~PresenterScreen() override;
     PresenterScreen(const PresenterScreen&) = delete;
     PresenterScreen& operator=(const PresenterScreen&) = delete;
@@ -128,7 +129,7 @@ public:
     void CheckNextSlideUpdate(const css::uno::Reference<css::drawing::XShape>& rxShape);
 
 private:
-    css::uno::Reference<css::frame::XModel2 > mxModel;
+    rtl::Reference<SdXImpressDocument> mpImpressDoc;
     rtl::Reference<::sd::DrawController> mxController;
     unotools::WeakReference<::sd::framework::ConfigurationController>
         mxConfigurationControllerWeak;
@@ -214,20 +215,17 @@ private:
             Returns -1 when the presenter screen can or shall not be
             displayed.
     */
-    static sal_Int32 GetPresenterScreenNumber (
-                const css::uno::Reference<css::presentation::XPresentation2>& rxPresentation);
+    static sal_Int32 GetPresenterScreenNumber(const rtl::Reference<sd::SlideShow>& rpSlideShow);
 
     static sal_Int32 GetPresenterScreenFromScreen( sal_Int32 nPresentationScreen );
 
     /** Create a resource id for the full screen background pane so that it
         is displayed on another screen than the full screen presentation.
     */
-    static rtl::Reference<sd::framework::ResourceId> GetMainPaneId (
-        const css::uno::Reference<css::presentation::XPresentation2>& rxPresentation);
+    static rtl::Reference<sd::framework::ResourceId>
+    GetMainPaneId(const rtl::Reference<sd::SlideShow>& rpSlideShow);
 };
 
 }
-
-#endif
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

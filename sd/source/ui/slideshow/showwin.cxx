@@ -20,14 +20,13 @@
 #include <com/sun/star/awt/Key.hpp>
 
 #include "showwindow.hxx"
-#include "slideshowimpl.hxx"
 
 #include <unotools/localedatawrapper.hxx>
 #include <unotools/syslocale.hxx>
 #include <sfx2/viewfrm.hxx>
 #include <sfx2/sfxsids.hrc>
 
-
+#include <SlideShowController.hxx>
 #include <slideshow.hxx>
 #include <ViewShell.hxx>
 #include <sdresid.hxx>
@@ -48,7 +47,7 @@ namespace sd {
 const sal_uInt64 HIDE_MOUSE_TIMEOUT = 10000;
 const sal_uInt64 SHOW_MOUSE_TIMEOUT = 1000;
 
-ShowWindow::ShowWindow( ::rtl::Reference< SlideshowImpl > xController, vcl::Window* pParent )
+ShowWindow::ShowWindow(::rtl::Reference<SlideShowController> xController, vcl::Window* pParent)
 : ::sd::Window( pParent )
 , maPauseTimer("sd ShowWindow maPauseTimer")
 , maMouseTimer("sd ShowWindow maMouseTimer")
