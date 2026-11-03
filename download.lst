@@ -65,8 +65,8 @@ DRAGONBOX_TARBALL := dragonbox-1.1.3.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-FAST_FLOAT_SHA256SUM := 71bb9e865b888df01351558db5a39586d13ea97ada162156b3a07784d8c1b26b
-FAST_FLOAT_TARBALL := fast_float-8.3.2.tar.gz
+FAST_FLOAT_SHA256SUM := 4dd695f051893c8218faf2ed9871fa4a4990aa6aee2d3190ed7bfa2e83092245
+FAST_FLOAT_TARBALL := fast_float-8.3.3.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -365,8 +365,8 @@ LANGTAGREG_TARBALL := language-subtag-registry-2026-9-17.tar.bz2
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-LCMS2_SHA256SUM := bfc54f7bab59fbc921012014a8032e4cba4abd46db47d46b76416a8c0b2815c8
-LCMS2_TARBALL := lcms2-2.19.1.tar.gz
+LCMS2_SHA256SUM := 18ff5504fa9cc8a2b1f3591180d90ead16c8a2ea78e530523b46eab70e1ca6b9
+LCMS2_TARBALL := lcms2-2.20.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -586,8 +586,8 @@ PYTHON_TARBALL := Python-3.13.18.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-QUICKJS_SHA256SUM := 866bad1e2f148b6f8144a4a3d4c3f8a0754495a6920fe56a7dd698cf0ad27f65
-QUICKJS_TARBALL := quickjs-0.17.0-amalgam.zip
+QUICKJS_SHA256SUM := 6c05066a6b62b483e2ba0f83d7a16688c6958182b214bfd693529434cef84a9e
+QUICKJS_TARBALL := quickjs-0.18.0-amalgam.zip
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts

@@ -2985,6 +2985,11 @@ void ScTable::ApplyPatternArea( SCCOL nStartCol, SCROW nStartRow, SCCOL nEndCol,
         return;
     PutInOrder(nStartCol, nEndCol);
     PutInOrder(nStartRow, nEndRow);
+    nEndCol = LastChangedCol(nEndCol, nStartRow, nEndRow,
+                             [&rAttr](ScColumnData& applyTo, SCROW nTop, SCROW nBottom)
+                             { applyTo.ApplyPatternArea(nTop, nBottom, rAttr, nullptr, nullptr); });
+    if (nEndCol < nStartCol)
+        return;
     SCCOL maxCol = nEndCol;
     if( nEndCol == GetDoc().MaxCol())
     {
@@ -3060,6 +3065,14 @@ void ScTable::AddCondFormatData( const ScRangeList& rRangeList, sal_uInt32 nInde
         SCCOL nColEnd = rRange.aEnd.Col();
         SCROW nRowStart = rRange.aStart.Row();
         SCROW nRowEnd = rRange.aEnd.Row();
+        if (nColEnd == rDocument.MaxCol())
+        {
+            // The columns not created yet share the default column data. Create the ones left of
+            // the range before the default takes the format.
+            nColEnd = std::max(nColStart, aCol.size()) - 1;
+            CreateColumnIfNotExists(nColEnd);
+            aDefaultColData.AddCondFormat(nRowStart, nRowEnd, nIndex);
+        }
         for(SCCOL nCol = nColStart; nCol <= nColEnd; ++nCol)
         {
             CreateColumnIfNotExists(nCol).AddCondFormat(nRowStart, nRowEnd, nIndex);
@@ -3074,9 +3087,22 @@ void ScTable::RemoveCondFormatData( const ScRangeList& rRangeList, sal_uInt32 nI
     {
         const ScRange & rRange = rRangeList[i];
         SCCOL nColStart = rRange.aStart.Col();
-        SCCOL nColEnd = ClampToAllocatedColumns(rRange.aEnd.Col());
+        SCCOL nColEnd = rRange.aEnd.Col();
         SCROW nRowStart = rRange.aStart.Row();
         SCROW nRowEnd = rRange.aEnd.Row();
+        if (nColEnd >= aCol.size()
+            && aDefaultColData.HasAttrib(nRowStart, nRowEnd, HasAttrFlags::Conditional))
+        {
+            if (nColEnd == rDocument.MaxCol())
+            {
+                nColEnd = std::max(nColStart, aCol.size()) - 1;
+                CreateColumnIfNotExists(nColEnd);
+                aDefaultColData.RemoveCondFormat(nRowStart, nRowEnd, nIndex);
+            }
+            else
+                CreateColumnIfNotExists(nColEnd);
+        }
+        nColEnd = ClampToAllocatedColumns(nColEnd);
         for(SCCOL nCol = nColStart; nCol <= nColEnd; ++nCol)
         {
             aCol[nCol].RemoveCondFormat(nRowStart, nRowEnd, nIndex);
@@ -3115,6 +3141,11 @@ void ScTable::ApplyStyleArea( SCCOL nStartCol, SCROW nStartRow, SCCOL nEndCol, S
 
     PutInOrder(nStartCol, nEndCol);
     PutInOrder(nStartRow, nEndRow);
+    nEndCol = LastChangedCol(nEndCol, nStartRow, nEndRow,
+                             [&rStyle](ScColumnData& applyTo, SCROW nTop, SCROW nBottom)
+                             { applyTo.ApplyStyleArea(nTop, nBottom, rStyle); });
+    if (nEndCol < nStartCol)
+        return;
     if ( nEndCol == rDocument.MaxCol() )
     {
         if ( nStartCol < aCol.size() )

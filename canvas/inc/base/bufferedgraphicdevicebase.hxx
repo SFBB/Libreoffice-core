@@ -95,17 +95,6 @@ namespace canvas
         }
 
         // XBufferController
-        virtual ::sal_Int32 SAL_CALL createBuffers( ::sal_Int32 nBuffers ) override
-        {
-            canvastools::verifyRange( nBuffers, sal_Int32(1) );
-
-            return 1;
-        }
-
-        virtual void SAL_CALL destroyBuffers(  ) override
-        {
-        }
-
         virtual sal_Bool SAL_CALL showBuffer( sal_Bool bUpdateAll ) override
         {
             MutexType aGuard( BaseType::m_aMutex );
