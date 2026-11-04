@@ -22,6 +22,8 @@
 #include <com/sun/star/style/XStyleFamiliesSupplier.hpp>
 #include <com/sun/star/ui/dialogs/ExtendedFilePickerElementIds.hpp>
 #include <com/sun/star/util/CloseVetoException.hpp>
+#include <com/sun/star/embed/EmbedStates.hpp>
+#include <com/sun/star/embed/XEmbeddedObject.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/beans/PropertyValue.hpp>
 #include <com/sun/star/beans/PropertyAttribute.hpp>
@@ -1770,6 +1772,24 @@ IMPL_LINK_NOARG(SfxObjectShell, SignDocumentHandler, weld::Button&, void)
 
 void SfxObjectShell::PerformLinkUpdate() {}
 
+void SfxObjectShell::SetPendingLinkUpdateInfobar()
+{
+    SfxObjectShell& rTop = GetTopShell();
+    if (&rTop == this)
+    {
+        bPendingLinkUpdateInfobar = true;
+        return;
+    }
+
+    // An embedded document offers its links in the infobar of the document the user sees. That
+    // document is usually shown already, because embedded documents load when they are needed.
+    SfxViewFrame* pViewFrame = SfxViewFrame::GetFirst(&rTop);
+    if (!pViewFrame)
+        rTop.bPendingLinkUpdateInfobar = true;
+    else if (!pViewFrame->HasInfoBarWithID(u"enablecontent"))
+        rTop.ShowLinkUpdateInfobar();
+}
+
 void SfxObjectShell::CheckPendingLinkUpdateInfobar()
 {
     if (!bPendingLinkUpdateInfobar)
@@ -1823,10 +1843,38 @@ void SfxObjectShell::ShowLinkUpdateInfobar()
     }
 }
 
+namespace
+{
+// Each loaded embedded document updates its links, and in turn those of its own embedded documents.
+void allowLinkUpdateInLoadedEmbeddedDocuments(comphelper::EmbeddedObjectContainer& rContainer)
+{
+    const uno::Sequence<OUString> aNames = rContainer.GetObjectNames();
+    for (const OUString& rName : aNames)
+    {
+        if (!rContainer.HasInstantiatedEmbeddedObject(rName))
+            continue;
+        try
+        {
+            uno::Reference<embed::XEmbeddedObject> xObj = rContainer.GetEmbeddedObject(rName);
+            if (!xObj.is() || xObj->getCurrentState() == embed::EmbedStates::LOADED)
+                continue;
+            if (SfxObjectShell* pChild
+                = SfxObjectShell::GetShellFromComponent(xObj->getComponent()))
+                pChild->AllowLinkUpdate();
+        }
+        catch (const uno::Exception&)
+        {
+            TOOLS_WARN_EXCEPTION("sfx.doc", "allowLinkUpdateInLoadedEmbeddedDocuments");
+        }
+    }
+}
+}
+
 void SfxObjectShell::AllowLinkUpdate()
 {
     getEmbeddedObjectContainer().setUserAllowsLinkUpdate(true);
     PerformLinkUpdate();
+    allowLinkUpdateInLoadedEmbeddedDocuments(getEmbeddedObjectContainer());
 
     decltype(maDeferredLinkLoads) aDeferredLoads;
     aDeferredLoads.swap(maDeferredLinkLoads);

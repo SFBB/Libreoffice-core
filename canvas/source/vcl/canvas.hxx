@@ -51,16 +51,12 @@ namespace vclcanvas
                                              css::beans::XPropertySet,
                                              css::lang::XServiceName,
                                              css::lang::XServiceInfo >    GraphicDeviceBase_Base;
-    typedef ::canvas::GraphicDeviceBase< ::canvas::BaseMutexHelper< GraphicDeviceBase_Base >,
-                                           DeviceHelper,
-                                           vclcanvastools::LocalGuard,
-                                           ::cppu::OWeakObject >    CanvasBase_Base;
+    typedef ::canvas::GraphicDeviceBase<::canvas::BaseMutexHelper<GraphicDeviceBase_Base>,
+                                        DeviceHelper, vclcanvastools::LocalGuard>
+        CanvasBase_Base;
     typedef ::canvas::IntegerBitmapBase<
-        canvas::BitmapCanvasBase2<
-            CanvasBase_Base,
-            CanvasHelper,
-            vclcanvastools::LocalGuard,
-            ::cppu::OWeakObject> > CanvasBaseT;
+        canvas::BitmapCanvasBase2<CanvasBase_Base, CanvasHelper, vclcanvastools::LocalGuard>>
+        CanvasBaseT;
 
     /** Product of this component's factory.
 

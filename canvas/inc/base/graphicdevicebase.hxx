@@ -19,7 +19,6 @@
 
 #pragma once
 
-#include <com/sun/star/rendering/XBufferController.hpp>
 #include <com/sun/star/rendering/XLinePolyPolygon2D.hpp>
 #include <com/sun/star/rendering/XBezierPolyPolygon2D.hpp>
 #include <com/sun/star/rendering/XBitmap.hpp>
@@ -94,25 +93,15 @@ namespace canvas
         entered, an object of type Mutex is created with m_aMutex as
         the sole parameter, and destroyed again when the method scope
         is left.
-
-        @tpl UnambiguousBase
-        Optional unambiguous base class for XInterface of Base. It's
-        sometimes necessary to specify this parameter, e.g. if Base
-        derives from multiple UNO interface (were each provides its
-        own version of XInterface, making the conversion ambiguous)
      */
-    template< class Base,
+    template< std::derived_from<cppu::OWeakObject> Base,
               class DeviceHelper,
-              class Mutex=::osl::MutexGuard,
-              class UnambiguousBase=css::uno::XInterface > class GraphicDeviceBase :
+              class Mutex=::osl::MutexGuard> class GraphicDeviceBase :
         public Base
     {
     public:
         typedef Base              BaseType;
         typedef Mutex             MutexType;
-        typedef UnambiguousBase   UnambiguousBaseType;
-
-        typedef ::rtl::Reference< GraphicDeviceBase > Reference;
 
         GraphicDeviceBase() :
             maDeviceHelper(),
@@ -142,11 +131,6 @@ namespace canvas
         }
 
         // XGraphicDevice
-        virtual css::uno::Reference< css::rendering::XBufferController > SAL_CALL getBufferController(  ) override
-        {
-            return css::uno::Reference< css::rendering::XBufferController >();
-        }
-
         virtual css::uno::Reference< css::rendering::XColorSpace > SAL_CALL getDeviceColorSpace(  ) override
         {
             MutexType aGuard( BaseType::m_aMutex );
@@ -186,7 +170,7 @@ namespace canvas
         {
             canvastools::verifyBitmapSize(size,
                                     __func__,
-                                    static_cast< UnambiguousBaseType* >(this));
+                                    static_cast< cppu::OWeakObject* >(this));
 
             MutexType aGuard( BaseType::m_aMutex );
 
@@ -197,7 +181,7 @@ namespace canvas
         {
             canvastools::verifyBitmapSize(size,
                                     __func__,
-                                    static_cast< UnambiguousBaseType* >(this));
+                                    static_cast< cppu::OWeakObject* >(this));
 
             MutexType aGuard( BaseType::m_aMutex );
 
@@ -208,7 +192,7 @@ namespace canvas
         {
             canvastools::verifyBitmapSize(size,
                                     __func__,
-                                    static_cast< UnambiguousBaseType* >(this));
+                                    static_cast< cppu::OWeakObject* >(this));
 
             MutexType aGuard( BaseType::m_aMutex );
 
@@ -219,7 +203,7 @@ namespace canvas
         {
             canvastools::verifyBitmapSize(size,
                                     __func__,
-                                    static_cast< UnambiguousBaseType* >(this));
+                                    static_cast< cppu::OWeakObject* >(this));
 
             MutexType aGuard( BaseType::m_aMutex );
 
@@ -229,16 +213,6 @@ namespace canvas
         virtual css::uno::Reference< css::lang::XMultiServiceFactory > SAL_CALL getParametricPolyPolygonFactory(  ) override
         {
             return this;
-        }
-
-        virtual sal_Bool SAL_CALL hasFullScreenMode(  ) override
-        {
-            return false;
-        }
-
-        virtual sal_Bool SAL_CALL enterFullScreenMode( sal_Bool ) override
-        {
-            return false;
         }
 
         // XMultiServiceFactory

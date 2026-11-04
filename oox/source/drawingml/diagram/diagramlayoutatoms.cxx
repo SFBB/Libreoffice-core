@@ -837,20 +837,21 @@ namespace
 OUString navigate(const SmartArtDiagram& rDgm, svx::diagram::TypeConstant nType, std::u16string_view rFrom,
                   bool bSourceToDestination)
 {
-    for (const auto& rConnection : rDgm.getData()->getConnections())
+    for (const rtl::Reference<svx::diagram::Connection>& rConnection :
+             rDgm.getData()->getConnections())
     {
-        if (rConnection.mnXMLType != nType)
+        if (rConnection->mnXMLType != nType)
             continue;
 
         if (bSourceToDestination)
         {
-            if (rConnection.msSourceId == rFrom)
-                return rConnection.msDestId;
+            if (rConnection->msSourceId == rFrom)
+                return rConnection->msDestId;
         }
         else
         {
-            if (rConnection.msDestId == rFrom)
-                return rConnection.msSourceId;
+            if (rConnection->msDestId == rFrom)
+                return rConnection->msSourceId;
         }
     }
 
@@ -860,18 +861,20 @@ OUString navigate(const SmartArtDiagram& rDgm, svx::diagram::TypeConstant nType,
 sal_Int32 calcMaxDepth(std::u16string_view rNodeName, const svx::diagram::Connections& rConnections)
 {
     sal_Int32 nMaxLength = 0;
-    for (auto const& aCxn : rConnections)
-        if (aCxn.mnXMLType == svx::diagram::TypeConstant::XML_parOf && aCxn.msSourceId == rNodeName)
-            nMaxLength = std::max(nMaxLength, calcMaxDepth(aCxn.msDestId, rConnections) + 1);
+    for (const rtl::Reference<svx::diagram::Connection>& aCxn : rConnections)
+        if (aCxn->mnXMLType == svx::diagram::TypeConstant::XML_parOf
+            && aCxn->msSourceId == rNodeName)
+            nMaxLength = std::max(nMaxLength, calcMaxDepth(aCxn->msDestId, rConnections) + 1);
 
     return nMaxLength;
 }
 }
 
-sal_Int32 ConditionAtom::getNodeCount(const SmartArtDiagram& rDgm, const svx::diagram::Point* pPresPoint) const
+sal_Int32 ConditionAtom::getNodeCount(const SmartArtDiagram& rDgm,
+                                      const rtl::Reference<svx::diagram::Point>& rPresPoint) const
 {
     sal_Int32 nCount = 0;
-    OUString sNodeId = pPresPoint->msPresentationAssociationId;
+    OUString sNodeId = rPresPoint->msPresentationAssociationId;
 
     // HACK: special case - count children of first child
     if (maIter.maAxis.size() == 2 && maIter.maAxis[0] == XML_ch && maIter.maAxis[1] == XML_ch)
@@ -879,19 +882,22 @@ sal_Int32 ConditionAtom::getNodeCount(const SmartArtDiagram& rDgm, const svx::di
 
     if (!sNodeId.isEmpty())
     {
-        for (const auto& aCxn : rDgm.getData()->getConnections())
-            if (aCxn.mnXMLType == svx::diagram::TypeConstant::XML_parOf && aCxn.msSourceId == sNodeId)
+        for (const rtl::Reference<svx::diagram::Connection>& aCxn :
+                 rDgm.getData()->getConnections())
+            if (aCxn->mnXMLType == svx::diagram::TypeConstant::XML_parOf
+                && aCxn->msSourceId == sNodeId)
                 nCount++;
     }
 
     return nCount;
 }
 
-bool ConditionAtom::getDecision(const SmartArtDiagram& rDgm, const svx::diagram::Point* pPresPoint) const
+bool ConditionAtom::getDecision(const SmartArtDiagram& rDgm,
+                                const rtl::Reference<svx::diagram::Point>& rPresPoint) const
 {
     if (mIsElse)
         return true;
-    if (!pPresPoint)
+    if (!rPresPoint.is())
         return false;
 
     switch (maCond.mnFunc)
@@ -899,22 +905,23 @@ bool ConditionAtom::getDecision(const SmartArtDiagram& rDgm, const svx::diagram:
     case XML_var:
     {
         if (maCond.mnArg == XML_dir)
-            return compareResult(maCond.mnOp, pPresPoint->mnDirection, maCond.mnVal);
+            return compareResult(maCond.mnOp, rPresPoint->mnDirection, maCond.mnVal);
         else if (maCond.mnArg == XML_hierBranch)
         {
-            sal_Int32 nHierarchyBranch = pPresPoint->moHierarchyBranch.value_or(XML_std);
-            if (!pPresPoint->moHierarchyBranch.has_value())
+            sal_Int32 nHierarchyBranch = rPresPoint->moHierarchyBranch.value_or(XML_std);
+            if (!rPresPoint->moHierarchyBranch.has_value())
             {
                 // If <dgm:hierBranch> is missing in the current presentation
                 // point, ask the parent.
-                OUString aParent = navigate(rDgm, svx::diagram::TypeConstant::XML_presParOf, pPresPoint->msModelId,
+                OUString aParent = navigate(rDgm, svx::diagram::TypeConstant::XML_presParOf,
+                                            rPresPoint->msModelId,
                                             /*bSourceToDestination*/ false);
-                const svx::diagram::Point* it(rDgm.getData()->getPointByModelID(aParent));
-                if (nullptr != it)
+                const rtl::Reference<svx::diagram::Point> it(
+                    rDgm.getData()->getPointByModelID(aParent));
+                if (it.is())
                 {
-                    const svx::diagram::Point* pParent = it;
-                    if (pParent->moHierarchyBranch.has_value())
-                        nHierarchyBranch = pParent->moHierarchyBranch.value();
+                    if (it->moHierarchyBranch.has_value())
+                        nHierarchyBranch = it->moHierarchyBranch.value();
                 }
             }
             return compareResult(maCond.mnOp, nHierarchyBranch, maCond.mnVal);
@@ -923,11 +930,12 @@ bool ConditionAtom::getDecision(const SmartArtDiagram& rDgm, const svx::diagram:
     }
 
     case XML_cnt:
-        return compareResult(maCond.mnOp, getNodeCount(rDgm, pPresPoint), maCond.msVal.toInt32());
+        return compareResult(maCond.mnOp, getNodeCount(rDgm, rPresPoint), maCond.msVal.toInt32());
 
     case XML_maxDepth:
     {
-        sal_Int32 nMaxDepth = calcMaxDepth(pPresPoint->msPresentationAssociationId, rDgm.getData()->getConnections());
+        sal_Int32 nMaxDepth = calcMaxDepth(rPresPoint->msPresentationAssociationId,
+                                           rDgm.getData()->getConnections());
         return compareResult(maCond.mnOp, nMaxDepth, maCond.msVal.toInt32());
     }
 
@@ -969,6 +977,7 @@ void ConstraintAtom::parseConstraint(std::vector<Constraint>& rConstraints,
         switch (maConstraint.mnType)
         {
             case XML_sp:
+            case XML_sibSp:
             case XML_lMarg:
             case XML_rMarg:
             case XML_tMarg:
@@ -1074,29 +1083,30 @@ bool HasCustomText(const SmartArtDiagram& rDgm, const ShapePtr& rShape)
     const PresPointShapeMap& rPresPointShapeMap = rDgm.getLayout()->getPresPointShapeMap();
     const DiagramData_oox::StringMap& rPresOfNameMap = rDgm.getData()->getPresOfNameMap();
     // Get the first presentation node of the shape.
-    const svx::diagram::Point* pPresNode = nullptr;
+    rtl::Reference<svx::diagram::Point> xPresNode;
     for (const auto& rPair : rPresPointShapeMap)
     {
         if (rPair.second == rShape)
         {
-            pPresNode = rPair.first;
+            xPresNode = rPair.first;
             break;
         }
     }
     // Get the first data node of the presentation node.
-    const svx::diagram::Point* pDataNode = nullptr;
-    if (pPresNode)
+    rtl::Reference<svx::diagram::Point> xDataNode;
+    if (xPresNode.is())
     {
-        auto itPresToData = rPresOfNameMap.find(pPresNode->msModelId);
+        auto itPresToData = rPresOfNameMap.find(xPresNode->msModelId);
         if (itPresToData != rPresOfNameMap.end())
         {
             for (const auto& rPair : itPresToData->second)
             {
                 const DiagramData_oox::SourceIdAndDepth& rItem = rPair.second;
-                const svx::diagram::Point* it(rDgm.getData()->getPointByModelID(rItem.msSourceId));
-                if (nullptr != it)
+                const rtl::Reference<svx::diagram::Point> it(
+                    rDgm.getData()->getPointByModelID(rItem.msSourceId));
+                if (it.is())
                 {
-                    pDataNode = it;
+                    xDataNode = it;
                     break;
                 }
             }
@@ -1104,12 +1114,124 @@ bool HasCustomText(const SmartArtDiagram& rDgm, const ShapePtr& rShape)
     }
 
     // If we have a data node, see if its text is customized or not.
-    if (pDataNode)
+    if (xDataNode.is())
     {
-        return pDataNode->mbCustomText;
+        return xDataNode->mbCustomText;
     }
 
     return false;
+}
+
+// The part of a shape's own size along nRefType that separates it from the next sibling, or
+// fDefault when the constraints settle no such part.
+double readSpacingFactor(const std::vector<Constraint>& rConstraints, sal_Int32 nRefType,
+                         double fDefault)
+{
+    for (const Constraint& rConstraint : rConstraints)
+    {
+        if (rConstraint.mnType != XML_sp && rConstraint.mnType != XML_sibSp)
+            continue;
+        if (rConstraint.mnRefType == nRefType && rConstraint.mfFactor > 0.0)
+            return rConstraint.mfFactor;
+    }
+    return fDefault;
+}
+
+// The part of its own width that a shape takes as its height, or 0 when the constraints tie the
+// two together nowhere. A shape that has such a part holds those proportions, and the room it is
+// given only sets an upper bound on it.
+double readHeightOfOwnWidthFactor(const std::vector<Constraint>& rConstraints)
+{
+    for (const Constraint& rConstraint : rConstraints)
+        if (rConstraint.mnType == XML_h && rConstraint.mnRefType == XML_w
+            && rConstraint.msRefForName.isEmpty() && rConstraint.mfFactor > 0.0)
+            return rConstraint.mfFactor;
+    return 0.0;
+}
+
+// The part of the width of a hierarchy branch that the child shapes take, or 0 when the
+// constraints settle no such part. The width left over is the lane that carries the connectors.
+double readChildOfBranchWidthFactor(const std::vector<Constraint>& rConstraints)
+{
+    for (const Constraint& rConstraint : rConstraints)
+        if (rConstraint.mnType == XML_w && rConstraint.mnRefType == XML_w
+            && !rConstraint.msRefForName.isEmpty() && rConstraint.mfFactor > 0.0
+            && rConstraint.mfFactor < 1.0)
+            return rConstraint.mfFactor;
+    return 0.0;
+}
+
+// The constraints that rLayoutNode states for itself, the ones that name no shape included.
+std::vector<Constraint> collectDirectConstraints(const LayoutNode& rLayoutNode)
+{
+    std::vector<Constraint> aConstraints;
+    for (const LayoutAtomPtr& pChild : rLayoutNode.getChildren())
+    {
+        auto pConstraintAtom = dynamic_cast<ConstraintAtom*>(pChild.get());
+        if (pConstraintAtom)
+            pConstraintAtom->parseConstraint(aConstraints, /*bRequireForName=*/false);
+    }
+    return aConstraints;
+}
+
+// The constraints that each layout node one step below rAtom states for itself, under the name of
+// that layout node. A for-each or a choose on the way down counts as no step, and a layout node
+// below the first one is left out.
+void collectChildConstraints(const LayoutAtom& rAtom,
+                             std::map<OUString, std::vector<Constraint>>& rResult)
+{
+    for (const LayoutAtomPtr& pChild : rAtom.getChildren())
+    {
+        if (auto pLayoutNode = dynamic_cast<LayoutNode*>(pChild.get()))
+        {
+            rResult[pLayoutNode->getName()] = collectDirectConstraints(*pLayoutNode);
+            continue;
+        }
+
+        if (dynamic_cast<ForEachAtom*>(pChild.get()) || dynamic_cast<ChooseAtom*>(pChild.get())
+            || dynamic_cast<ConditionAtom*>(pChild.get()))
+            collectChildConstraints(*pChild, rResult);
+    }
+}
+
+// The size along nType, either XML_w or XML_h, that rChildConstraints ask for inside a shape of
+// size rParentSize, or nothing when they ask for no such size. A reference that the shape around
+// them hands out, userA for one, takes the value that rParentConstraints give it.
+std::optional<sal_Int32> readRequestedSize(const std::vector<Constraint>& rChildConstraints,
+                                           const std::vector<Constraint>& rParentConstraints,
+                                           sal_Int32 nType, const awt::Size& rParentSize)
+{
+    for (const Constraint& rConstraint : rChildConstraints)
+    {
+        if (rConstraint.mnType != nType || rConstraint.mnRefType == XML_none)
+            continue;
+
+        double fBase = 0.0;
+        if (rConstraint.mnRefType == XML_w)
+            fBase = rParentSize.Width;
+        else if (rConstraint.mnRefType == XML_h)
+            fBase = rParentSize.Height;
+        else
+        {
+            for (const Constraint& rParentConstraint : rParentConstraints)
+            {
+                if (rParentConstraint.mnType != rConstraint.mnRefType)
+                    continue;
+                if (rParentConstraint.mnRefType == XML_w)
+                    fBase = rParentSize.Width * rParentConstraint.mfFactor;
+                else if (rParentConstraint.mnRefType == XML_h)
+                    fBase = rParentSize.Height * rParentConstraint.mfFactor;
+                break;
+            }
+        }
+
+        if (fBase <= 0.0)
+            continue;
+
+        return static_cast<sal_Int32>(fBase * rConstraint.mfFactor);
+    }
+
+    return std::nullopt;
 }
 }
 
@@ -1148,14 +1270,8 @@ void AlgAtom::layoutShape(const SmartArtDiagram& rDgm, const ShapePtr& rShape, c
             }
 
             // Parse constraints to adjust the size.
-            std::vector<Constraint> aDirectConstraints;
-            const LayoutNode& rLayoutNode = getLayoutNode();
-            for (const auto& pChild : rLayoutNode.getChildren())
-            {
-                auto pConstraintAtom = dynamic_cast<ConstraintAtom*>(pChild.get());
-                if (pConstraintAtom)
-                    pConstraintAtom->parseConstraint(aDirectConstraints, /*bRequireForName=*/false);
-            }
+            const std::vector<Constraint> aDirectConstraints(
+                collectDirectConstraints(getLayoutNode()));
 
             LayoutPropertyMap aProperties;
             LayoutProperty& rParent = aProperties[u""_ustr];
@@ -1286,8 +1402,10 @@ void AlgAtom::layoutShape(const SmartArtDiagram& rDgm, const ShapePtr& rShape, c
                     [](const ShapePtr& pShape) { return pShape->getSubType() != XML_conn; });
             }
 
-            const double fSpaceWidth = 0.1;
-            const double fSpaceHeight = 0.3;
+            // The layout states each gap as a part of the shape it sits next to. Where it states
+            // none, the gaps keep the shares that the hierarchy layouts have used
+            const double fSpaceWidth = readSpacingFactor(rConstraints, XML_w, 0.1);
+            const double fSpaceHeight = readSpacingFactor(rConstraints, XML_h, 0.3);
 
             if (mnType == XML_hierRoot && nCount == 3)
             {
@@ -1308,17 +1426,54 @@ void AlgAtom::layoutShape(const SmartArtDiagram& rDgm, const ShapePtr& rShape, c
             aChildSize.Height /= (rShape->getVerticalShapesCount() + (rShape->getVerticalShapesCount() - 1) * fSpaceHeight);
             aChildSize.Width /= (nHorizontalShapesCount + (nHorizontalShapesCount - 1) * fSpaceWidth);
 
+            // A row that holds a proportion of its own width takes its width from the height of
+            // one row
+            const double fHeightOfWidth = readHeightOfOwnWidthFactor(rConstraints);
+            bool bHoldsProportions = false;
+            if (fHeightOfWidth > 0.0)
+            {
+                const sal_Int32 nWidth(static_cast<sal_Int32>(aChildSize.Height / fHeightOfWidth));
+                if (nWidth > 0 && nWidth <= aChildSize.Width)
+                {
+                    aChildSize.Width = nWidth;
+                    bHoldsProportions = true;
+                }
+            }
+
             awt::Size aConnectorSize = aChildSize;
             aConnectorSize.Width = 1;
 
             awt::Point aChildPos(0, 0);
 
+            // A run of shapes that holds its proportions is narrower than the room it has along
+            // the line, so center there
+            if (bHoldsProportions && (nDir == XML_fromL || nDir == XML_fromR))
+            {
+                const sal_Int32 nGap(static_cast<sal_Int32>(aChildSize.Width * fSpaceWidth));
+                const sal_Int32 nRunWidth(aChildSize.Width * nHorizontalShapesCount
+                                          + nGap * (nHorizontalShapesCount - 1));
+                if (nRunWidth < rShape->getSize().Width)
+                    aChildPos.X = (rShape->getSize().Width - nRunWidth) / 2;
+            }
+
+            sal_Int32 nLane = 0;
+            const sal_Int32 nChildAlign(maMap.count(XML_chAlign) ? maMap.find(XML_chAlign)->second
+                                                                 : 0);
+
             // indent children to show they are descendants, not siblings
             if (mnType == XML_hierChild && nHorizontalShapesCount == 1)
             {
-                const double fChildIndent = 0.1;
-                aChildPos.X = aChildSize.Width * fChildIndent;
-                aChildSize.Width *= (1 - 2 * fChildIndent);
+                // The children take the width the layout states for them, and the width left over
+                // is the gap that carries the connectors. The child alignment names the side of
+                // the branch that it allocates
+                const double fChildWidth = readChildOfBranchWidthFactor(rConstraints);
+                nLane = static_cast<sal_Int32>(aChildSize.Width
+                                               * (fChildWidth > 0.0 ? 1.0 - fChildWidth : 0.2));
+                if (nChildAlign == XML_l)
+                    aChildPos.X += nLane;
+                else if (nChildAlign != XML_r)
+                    aChildPos.X += nLane / 2;
+                aChildSize.Width -= nLane;
             }
 
             sal_Int32 nIdx = 0;
@@ -1329,6 +1484,35 @@ void AlgAtom::layoutShape(const SmartArtDiagram& rDgm, const ShapePtr& rShape, c
 
                 if (mnType == XML_hierChild && pChild->getSubType() == XML_conn)
                 {
+                    if (nLane > 0 && nChildAlign == XML_l
+                        && (nDir == XML_fromT || nDir == XML_fromB))
+                    {
+                        // The elbow starts where the shape above ends, drops down the middle of
+                        // the lane, and turns into the side of the shape it points at
+                        const sal_Int32 nGapAbove(
+                            static_cast<sal_Int32>(aChildSize.Height * fSpaceHeight));
+                        const sal_Int32 nTrunk(nLane / 2);
+                        const awt::Point aElbowPos(aChildPos.X - nLane + nTrunk, -nGapAbove);
+                        const awt::Size aElbowSize(nLane - nTrunk,
+                                                   nGapAbove + aChildPos.Y
+                                                       + aChildSize.Height / 2);
+                        pChild->setPosition(aElbowPos);
+                        pChild->setSize(aElbowSize);
+                        pChild->setChildSize(aElbowSize);
+
+                        // A bent connector deines that elbow once its corner sits on its own left
+                        // edge, which is where an adjustment of zero puts it
+                        pChild->setSubType(XML_bentConnector3);
+                        auto& rProperties(*pChild->getCustomShapeProperties());
+                        rProperties.setShapePresetType(XML_bentConnector3);
+                        if (rProperties.getAdjustmentGuideList().GetCustomShapeGuideValue(
+                                u"adj1"_ustr)
+                            < 0)
+                            rProperties.getAdjustmentGuideList().push_back(
+                                { u"adj1"_ustr, u"0"_ustr });
+                        continue;
+                    }
+
                     // Connectors should not influence the position of
                     // non-connect shapes.
                     pChild->setSize(aConnectorSize);
@@ -1542,6 +1726,35 @@ void AlgAtom::layoutShape(const SmartArtDiagram& rDgm, const ShapePtr& rShape, c
                                    });
                 fCount = rShape->getChildren().size();
             }
+
+            // A child states the size it wants in constraints of its own, which the shape around
+            // it does not carry. Those fill in for a child that the constraints so far leave with
+            // no size, so that the scale below starts from the size that was asked for
+            {
+                const std::vector<Constraint> aOwnConstraints(
+                    collectDirectConstraints(getLayoutNode()));
+                std::map<OUString, std::vector<Constraint>> aChildConstraints;
+                collectChildConstraints(getLayoutNode(), aChildConstraints);
+
+                for (const auto& rChild : aChildConstraints)
+                {
+                    if (!findProperty(aProperties, rChild.first, XML_w).has_value())
+                    {
+                        const std::optional<sal_Int32> oWidth(readRequestedSize(
+                            rChild.second, aOwnConstraints, XML_w, rShape->getSize()));
+                        if (oWidth.has_value() && oWidth.value() > 0)
+                            aProperties[rChild.first][XML_w] = oWidth.value();
+                    }
+                    if (!findProperty(aProperties, rChild.first, XML_h).has_value())
+                    {
+                        const std::optional<sal_Int32> oHeight(readRequestedSize(
+                            rChild.second, aOwnConstraints, XML_h, rShape->getSize()));
+                        if (oHeight.has_value() && oHeight.value() > 0)
+                            aProperties[rChild.first][XML_h] = oHeight.value();
+                    }
+                }
+            }
+
             awt::Size aChildSize = rShape->getSize();
             if (nDir == XML_fromL || nDir == XML_fromR)
                 aChildSize.Width /= fCount;
@@ -1863,16 +2076,18 @@ void LayoutNode::accept( LayoutAtomVisitor& rVisitor )
     rVisitor.visit(*this);
 }
 
-bool LayoutNode::setupShape( const SmartArtDiagram& rDgm, const ShapePtr& rShape, const svx::diagram::Point* pPresNode, sal_Int32 nCurrIdx ) const
+bool LayoutNode::setupShape( const SmartArtDiagram& rDgm, const ShapePtr& rShape,
+                             const rtl::Reference<svx::diagram::Point>& rPresNode,
+                             sal_Int32 nCurrIdx ) const
 {
     SAL_INFO(
         "oox.drawingml",
         "Filling content from layout node named \"" << msName
-            << "\", modelId \"" << pPresNode->msModelId << "\"");
+            << "\", modelId \"" << rPresNode->msModelId << "\"");
 
     // have the presentation node - now, need the actual data node:
     const DiagramData_oox::StringMap::const_iterator aNodeName = rDgm.getData()->getPresOfNameMap().find(
-        pPresNode->msModelId);
+        rPresNode->msModelId);
     if( aNodeName != rDgm.getData()->getPresOfNameMap().end() )
     {
         // Calculate the depth of what is effectively the topmost element.
@@ -1886,22 +2101,23 @@ bool LayoutNode::setupShape( const SmartArtDiagram& rDgm, const ShapePtr& rShape
         for (const auto& rPair : aNodeName->second)
         {
             const DiagramData_oox::SourceIdAndDepth& rItem = rPair.second;
-            // pPresNode is the presentation node of the aDataNode2 data node.
-            const svx::diagram::Point* pDataNode2(rDgm.getData()->getPointByModelID(rItem.msSourceId));
-            if (nullptr == pDataNode2)
+            // rPresNode is the presentation node of the aDataNode2 data node.
+            const rtl::Reference<svx::diagram::Point> xDataNode2(
+                rDgm.getData()->getPointByModelID(rItem.msSourceId));
+            if (!xDataNode2.is())
             {
                 //busted, skip it
                 continue;
             }
 
-            Shape* pDataNode2Shape(rDgm.getData()->getOrCreateAssociatedShape(*pDataNode2));
+            Shape* pDataNode2Shape(rDgm.getData()->getOrCreateAssociatedShape(*xDataNode2));
             if (nullptr == pDataNode2Shape)
             {
                 //busted, skip it
                 continue;
             }
 
-            rShape->setDataNodeType(pDataNode2->mnXMLType);
+            rShape->setDataNodeType(xDataNode2->mnXMLType);
 
             if (rItem.mnDepth == 0)
             {
@@ -1971,7 +2187,7 @@ bool LayoutNode::setupShape( const SmartArtDiagram& rDgm, const ShapePtr& rShape
                 " processing shape type "
                 << rShape->getCustomShapeProperties()->getShapePresetType()
                 << " for layout node named \"" << msName << "\"");
-        Shape* pPresNodeShape(rDgm.getData()->getOrCreateAssociatedShape(*pPresNode));
+        Shape* pPresNodeShape(rDgm.getData()->getOrCreateAssociatedShape(*rPresNode));
         if (nullptr != pPresNodeShape)
             rShape->getFillProperties().assignUsed(pPresNodeShape->getFillProperties());
     }
@@ -1980,7 +2196,7 @@ bool LayoutNode::setupShape( const SmartArtDiagram& rDgm, const ShapePtr& rShape
     // point's presStyleLbl for both style & color
     // if not found use layout node's styleLbl
     // however, docs are a bit unclear on this
-    OUString aStyleLabel = pPresNode->msPresentationLayoutStyleLabel;
+    OUString aStyleLabel = rPresNode->msPresentationLayoutStyleLabel;
     if (aStyleLabel.isEmpty())
         aStyleLabel = msStyleLabel;
     if( !aStyleLabel.isEmpty() )
@@ -2008,7 +2224,22 @@ bool LayoutNode::setupShape( const SmartArtDiagram& rDgm, const ShapePtr& rShape
             if( !rColor.maFillColors.empty() )
                 rShape->getShapeStyleRefs()[XML_fillRef].maPhClr = DiagramColor::getColorByIndex(rColor.maFillColors, nCurrIdx);
             if( !rColor.maLineColors.empty() )
-                rShape->getShapeStyleRefs()[XML_lnRef].maPhClr = DiagramColor::getColorByIndex(rColor.maLineColors, nCurrIdx);
+            {
+                const Color aLineColor(
+                    DiagramColor::getColorByIndex(rColor.maLineColors, nCurrIdx));
+                rShape->getShapeStyleRefs()[XML_lnRef].maPhClr = aLineColor;
+
+                // A line style of a theme carries the width and the dash of a line and leaves the
+                // colour to whoever points at it. A shape that defines no line takes the colour
+                // that the Diagram gives it as a line, while the width and the dash are from the style.
+                LineProperties& rLineProperties(rShape->getLineProperties());
+
+                if (!rLineProperties.maLineFill.moFillType.has_value())
+                {
+                    rLineProperties.maLineFill.moFillType = XML_solidFill;
+                    rLineProperties.maLineFill.maFillColor = aLineColor;
+                }
+            }
             if( !rColor.maEffectColors.empty() )
                 rShape->getShapeStyleRefs()[XML_effectRef].maPhClr = DiagramColor::getColorByIndex(rColor.maEffectColors, nCurrIdx);
             if( !rColor.maTextFillColors.empty() )

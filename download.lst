@@ -116,8 +116,8 @@ ETONYEK_TARBALL := libetonyek-0.1.$(ETONYEK_VERSION_MICRO).tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-EXPAT_SHA256SUM := 1e6371862cc31999b368c3b89b49994f0677e1bab5f1b2b85ae3741f5d803051
-EXPAT_TARBALL := expat-2.9.0.tar.xz
+EXPAT_SHA256SUM := c624ba2998fc65df1163a49641ff3f9ab73138b11641d92c86bee0fb01b1bc7f
+EXPAT_TARBALL := expat-2.10.0.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -539,8 +539,8 @@ PAGEMAKER_TARBALL := libpagemaker-0.0.4.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-PDFIUM_SHA256SUM := a3624f6f0ac46a7e190969d405aa7a07dbc342baf69f81192487575bf64055a5
-PDFIUM_TARBALL := pdfium-8073.tar.bz2
+PDFIUM_SHA256SUM := 6119ad004b199dc0abdc95757b5fb592cffa7b02aac590b561f892fa239bf430
+PDFIUM_TARBALL := pdfium-8138.tar.bz2
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts

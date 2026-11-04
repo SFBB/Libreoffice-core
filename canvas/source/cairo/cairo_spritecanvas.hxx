@@ -28,7 +28,6 @@
 #include <com/sun/star/rendering/XSpriteCanvas.hpp>
 #include <com/sun/star/rendering/XIntegerBitmap.hpp>
 #include <com/sun/star/rendering/XGraphicDevice.hpp>
-#include <com/sun/star/rendering/XBufferController.hpp>
 
 #include <cppuhelper/compbase.hxx>
 #include <comphelper/uno3.hxx>
@@ -49,16 +48,15 @@ namespace cairocanvas
                                              css::rendering::XIntegerBitmap,
                                              css::rendering::XGraphicDevice,
                                              css::lang::XMultiServiceFactory,
-                                             css::rendering::XBufferController,
                                              css::awt::XWindowListener,
                                              css::util::XUpdatable,
                                              css::beans::XPropertySet,
                                              css::lang::XServiceName,
                                              css::lang::XServiceInfo >  WindowGraphicDeviceBase_Base;
-    typedef ::canvas::BufferedGraphicDeviceBase< ::canvas::DisambiguationHelper< WindowGraphicDeviceBase_Base >,
-                                                 SpriteDeviceHelper,
-                                                 ::osl::MutexGuard,
-                                                 ::cppu::OWeakObject > SpriteCanvasBase_Base;
+    typedef ::canvas::BufferedGraphicDeviceBase<
+        ::canvas::DisambiguationHelper<WindowGraphicDeviceBase_Base>, SpriteDeviceHelper,
+        ::osl::MutexGuard>
+        SpriteCanvasBase_Base;
     /** Mixin SpriteSurface
 
         Have to mixin the SpriteSurface before deriving from
@@ -82,10 +80,9 @@ namespace cairocanvas
     {
     };
 
-    typedef ::canvas::SpriteCanvasBase< SpriteCanvasBaseSpriteSurface_Base,
-                                        SpriteCanvasHelper,
-                                        ::osl::MutexGuard,
-                                        ::cppu::OWeakObject >           SpriteCanvasBaseT;
+    typedef ::canvas::SpriteCanvasBase<SpriteCanvasBaseSpriteSurface_Base, SpriteCanvasHelper,
+                                       ::osl::MutexGuard>
+        SpriteCanvasBaseT;
 
     /** Product of this component's factory.
 
@@ -114,10 +111,6 @@ namespace cairocanvas
         //                                       |                 |                            |
         //                                       V                 V                            V
         DECLARE_UNO3_XCOMPONENT_AGG_DEFAULTS( SpriteCanvas, WindowGraphicDeviceBase_Base, ::cppu::WeakComponentImplHelperBase )
-
-        // XBufferController (partial)
-        virtual sal_Bool SAL_CALL showBuffer( sal_Bool bUpdateAll ) override;
-        virtual sal_Bool SAL_CALL switchBuffer( sal_Bool bUpdateAll ) override;
 
         // XSpriteCanvas (partial)
         virtual sal_Bool SAL_CALL updateScreen( sal_Bool bUpdateAll ) override;

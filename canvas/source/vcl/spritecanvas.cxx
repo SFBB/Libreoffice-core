@@ -121,16 +121,6 @@ namespace vclcanvas
         SpriteCanvasBaseT::disposeThis();
     }
 
-    sal_Bool SAL_CALL SpriteCanvas::showBuffer( sal_Bool bUpdateAll )
-    {
-        return updateScreen( bUpdateAll );
-    }
-
-    sal_Bool SAL_CALL SpriteCanvas::switchBuffer( sal_Bool bUpdateAll )
-    {
-        return updateScreen( bUpdateAll );
-    }
-
     sal_Bool SAL_CALL SpriteCanvas::updateScreen( sal_Bool bUpdateAll )
     {
         SolarMutexGuard aGuard;

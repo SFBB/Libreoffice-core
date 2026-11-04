@@ -18,7 +18,6 @@
 #include <com/sun/star/util/XUpdatable.hpp>
 #include <com/sun/star/rendering/XSpriteCanvas.hpp>
 #include <com/sun/star/rendering/XGraphicDevice.hpp>
-#include <com/sun/star/rendering/XBufferController.hpp>
 
 #include <cppuhelper/compbase.hxx>
 #include <comphelper/uno3.hxx>
@@ -38,21 +37,17 @@ namespace oglcanvas
     typedef ::cppu::WeakComponentImplHelper< css::rendering::XSpriteCanvas,
                                              css::rendering::XGraphicDevice,
                                              css::lang::XMultiServiceFactory,
-                                             css::rendering::XBufferController,
                                              css::awt::XWindowListener,
                                              css::util::XUpdatable,
                                              css::beans::XPropertySet,
                                              css::lang::XServiceName >    WindowGraphicDeviceBase_Base;
     typedef ::canvas::BufferedGraphicDeviceBase<
-        ::canvas::DisambiguationHelper< WindowGraphicDeviceBase_Base >,
-        SpriteDeviceHelper,
-        ::osl::MutexGuard,
-        ::cppu::OWeakObject >  SpriteCanvasDeviceBaseT;
+        ::canvas::DisambiguationHelper<WindowGraphicDeviceBase_Base>, SpriteDeviceHelper,
+        ::osl::MutexGuard>
+        SpriteCanvasDeviceBaseT;
 
-    typedef ::canvas::CanvasBase< SpriteCanvasDeviceBaseT,
-                                  CanvasHelper,
-                                  ::osl::MutexGuard,
-                                  ::cppu::OWeakObject >         SpriteCanvasBaseT;
+    typedef ::canvas::CanvasBase<SpriteCanvasDeviceBaseT, CanvasHelper, ::osl::MutexGuard>
+        SpriteCanvasBaseT;
 
     /** Product of this component's factory.
 
@@ -79,10 +74,6 @@ namespace oglcanvas
         //                                       |                 |                            |
         //                                       V                 V                            V
         DECLARE_UNO3_XCOMPONENT_AGG_DEFAULTS( SpriteCanvas, WindowGraphicDeviceBase_Base, ::cppu::WeakComponentImplHelperBase )
-
-        // XBufferController (partial)
-        virtual sal_Bool SAL_CALL showBuffer( sal_Bool bUpdateAll ) override;
-        virtual sal_Bool SAL_CALL switchBuffer( sal_Bool bUpdateAll ) override;
 
         // XSpriteCanvas
         virtual css::uno::Reference< css::rendering::XAnimatedSprite > SAL_CALL createSpriteFromAnimation( const css::uno::Reference< css::rendering::XAnimation >& animation ) override;

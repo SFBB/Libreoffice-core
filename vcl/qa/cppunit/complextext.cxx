@@ -625,12 +625,87 @@ CPPUNIT_TEST_FIXTURE(VclComplexTextTest, testTdf107612)
 #endif
 }
 
+#if HAVE_MORE_FONTS
+namespace
+{
+std::vector<sal_Int32> getFallbackPositions(SalLayout& rLayout)
+{
+    auto pMultiLayout = dynamic_cast<MultiSalLayout*>(&rLayout);
+    CPPUNIT_ASSERT(pMultiLayout);
+
+    ImplLayoutRuns aFallbackRuns = *pMultiLayout->GetFallbackRuns();
+    std::vector<sal_Int32> aPositions;
+    bool bRTL;
+    int nCharPos = -1;
+    while (aFallbackRuns.GetNextPos(&nCharPos, &bRTL))
+        aPositions.push_back(nCharPos);
+    std::sort(aPositions.begin(), aPositions.end());
+    return aPositions;
+}
+}
+#endif
+
+CPPUNIT_TEST_FIXTURE(VclComplexTextTest, testTdf174298)
+{
+#if HAVE_MORE_FONTS
+    OUString aStr = u"مَ​ٰن"_ustr;
+    ScopedVclPtrInstance<VirtualDevice> pOutDev;
+    pOutDev->SetFont(vcl::Font(u"Liberation Sans"_ustr, u"Regular"_ustr, Size(0, 72)));
+    pOutDev->ForceFallbackFont(vcl::Font(u"DejaVu Sans"_ustr, u"Book"_ustr, Size(0, 72)));
+
+    // Liberation Sans has no Arabic, so the whole text must use the fallback font, including the
+    // zero width space and the mark that follows it.
+    auto pLayout = pOutDev->ImplLayout(aStr, 0, aStr.getLength());
+
+    // Without the fix this fails with:
+    // - Expected: { 0, 1, 2, 3, 4 }
+    // - Actual  : { 0, 1, 2, 4 }
+    std::vector<sal_Int32> aExpectedFallbacks{ 0, 1, 2, 3, 4 };
+    CPPUNIT_ASSERT_EQUAL(aExpectedFallbacks, getFallbackPositions(*pLayout));
+#endif
+}
+
+CPPUNIT_TEST_FIXTURE(VclComplexTextTest, testTdf174298Partial)
+{
+#if HAVE_MORE_FONTS
+    OUString aStr = u"مَ​ٰن"_ustr;
+    ScopedVclPtrInstance<VirtualDevice> pOutDev;
+    pOutDev->SetFont(vcl::Font(u"Liberation Sans"_ustr, u"Regular"_ustr, Size(0, 72)));
+    pOutDev->ForceFallbackFont(vcl::Font(u"DejaVu Sans"_ustr, u"Book"_ustr, Size(0, 72)));
+
+    // Writer draws the zero width space and the mark that follows it separately. Drawing only
+    // from the mark on must still use the fallback font, without any missing glyphs.
+    auto pLayout = pOutDev->ImplLayout(aStr, 0, aStr.getLength(), Point(0, 0), 0, {}, {},
+                                       SalLayoutFlags::UnclusteredGlyphs, nullptr, nullptr,
+                                       /*nDrawOriginCluster*/ 3, /*nDrawMinCharPos*/ 3,
+                                       /*nDrawEndCharPos*/ 5);
+
+    int nMissingGlyphs = 0;
+    const GlyphItem* pGlyph = nullptr;
+    basegfx::B2DPoint aPos;
+    int nStart = 0;
+    while (pLayout->GetNextGlyph(&pGlyph, aPos, nStart))
+    {
+        if (!pGlyph->glyphId())
+            ++nMissingGlyphs;
+    }
+
+    // Without the fix this fails with:
+    // - Expected: 0
+    // - Actual  : 1
+    CPPUNIT_ASSERT_EQUAL(0, nMissingGlyphs);
+#endif
+}
+
 CPPUNIT_TEST_FIXTURE(VclComplexTextTest, testPartialKoreanJamoComposition)
 {
-    OUString aStr = u"은"_ustr;
-    vcl::Font aFont(u"DejaVu Sans"_ustr, u"Book"_ustr, Size(0, 2048));
-
     ScopedVclPtrInstance<VirtualDevice> pOutDev;
+    // Adding it again fails on macOS, and testMixedCJKLatinScript_glyph_advancements adds it too
+    if (!pOutDev->IsFontAvailable(u"Source Han Sans"))
+        CPPUNIT_ASSERT(addFont(pOutDev, u"tdf107718.otf", u"Source Han Sans"));
+
+    OUString aStr = u"솅"_ustr;
+    vcl::Font aFont(u"Source Han Sans"_ustr, u"Regular"_ustr, Size(0, 2048));
     pOutDev->SetFont(aFont);
 
     // Absolute character widths for the complete array.
@@ -693,6 +768,54 @@ CPPUNIT_TEST_FIXTURE(VclComplexTextTest, testPartialArabicComposition)
     }
 
     CPPUNIT_ASSERT_DOUBLES_EQUAL(nCompleteWidth, nPartialWidth, /*delta*/ 0.01);
+}
+
+CPPUNIT_TEST_FIXTURE(VclComplexTextTest, testPartialSpacingMark)
+{
+#if HAVE_MORE_FONTS
+    OUString aStr = u"का"_ustr;
+    ScopedVclPtrInstance<VirtualDevice> pOutDev;
+    pOutDev->SetFont(vcl::Font(u"Noto Sans"_ustr, u"Regular"_ustr, Size(0, 2048)));
+
+    // The consonant and the vowel sign are one grapheme cluster, but each must get only the width
+    // of its own glyph when they are measured as separate parts, e.g. because of different colors
+    std::vector<double> aExpectedWidths{ 1573, 530 };
+    for (sal_Int32 i = 0; i < 2; ++i)
+    {
+        KernArray aWidths;
+        auto nWidth = pOutDev->GetPartialTextArray(aStr, &aWidths, /*nIndex*/ 0, /*nLen*/ 2,
+                                                   /*nPartIndex*/ i, /*nPartLen*/ 1);
+
+        // Without the fix this fails with:
+        // - Expected: 1573
+        // - Actual  : 2103
+        CPPUNIT_ASSERT_EQUAL(size_t{ 1 }, aWidths.size());
+        CPPUNIT_ASSERT_DOUBLES_EQUAL(aExpectedWidths[i], aWidths[0], /*delta*/ 0.01);
+        CPPUNIT_ASSERT_DOUBLES_EQUAL(aExpectedWidths[i], nWidth, /*delta*/ 0.01);
+    }
+#endif
+}
+
+CPPUNIT_TEST_FIXTURE(VclComplexTextTest, testTdf157562)
+{
+#if HAVE_MORE_FONTS
+    OUString aStr = u"क​ा"_ustr;
+    ScopedVclPtrInstance<VirtualDevice> pOutDev;
+    pOutDev->SetFont(vcl::Font(u"Noto Sans"_ustr, u"Regular"_ustr, Size(0, 2048)));
+
+    // HarfBuzz puts the vowel sign, and a dotted circle, in the cluster of the zero width space.
+    // The vowel sign must still get the width of both glyphs when measured as a separate part.
+    KernArray aWidths;
+    auto nWidth = pOutDev->GetPartialTextArray(aStr, &aWidths, /*nIndex*/ 0, /*nLen*/ 3,
+                                               /*nPartIndex*/ 2, /*nPartLen*/ 1);
+
+    // Without the fix this fails with:
+    // - Expected: 1747
+    // - Actual  : 0
+    CPPUNIT_ASSERT_EQUAL(size_t{ 1 }, aWidths.size());
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(1747.0, aWidths[0], /*delta*/ 0.01);
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(1747.0, nWidth, /*delta*/ 0.01);
+#endif
 }
 
 CPPUNIT_TEST_FIXTURE(VclComplexTextTest, testTdf163215)
@@ -857,8 +980,8 @@ CPPUNIT_TEST_FIXTURE(VclComplexTextTest, testTdf163761)
 
     // tdf#163761 caused failure to remove dropped glyphs from the base layout.
     // Without the fix, the base layout will contain an errant copy of char 0.
-    //                              { 1, 0, 9, 7, 6, 5, 4, 3, 2, 0 }
-    std::vector<int> aRefCharIndices{ 1, 9, 7, 6, 5, 4, 3, 2, 0 };
+    //                              { 8, 1, 0, 9, 7, 6, 5, 4, 3, 2, 0 }
+    std::vector<int> aRefCharIndices{ 8, 1, 9, 7, 6, 5, 4, 3, 2, 0 };
 
     CPPUNIT_ASSERT_EQUAL(aRefCharIndices.size(), aCharIndices.size());
     for (size_t i = 0; i < aRefCharIndices.size(); ++i)
