@@ -141,7 +141,7 @@ friend class SlideShowView;
 
 public:
     explicit SlideShowController(const rtl::Reference<sd::SlideShow>& rpSlideShow,
-                                 ViewShell* pViewSh, ::sd::View* pView, SdDrawDocument* pDoc,
+                                 ViewShell* pViewSh, ::sd::View* pView, SdDrawDocument& rDoc,
                                  vcl::Window* pParentWindow);
 
     // css::presentation::XSlideShowController:
@@ -317,7 +317,6 @@ private:
 
     css::uno::Reference< css::presentation::XSlideShow > mxShow;
     rtl::Reference<sd::SlideShowView> mxView;
-    rtl::Reference< SdXImpressDocument > mxModel;
 
     Timer maUpdateTimer;
     Timer maInputFreezeTimer;
@@ -326,7 +325,7 @@ private:
     ::sd::View* mpView;
     ViewShell* mpViewShell;
     DrawDocShell* mpDocSh;
-    SdDrawDocument* mpDoc;
+    SdDrawDocument& mrDoc;
 
     VclPtr<vcl::Window>    mpParentWindow;
     VclPtr<sd::ShowWindow>     mpShowWindow;

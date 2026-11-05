@@ -54,7 +54,6 @@ namespace {
 class ChildInfo
 {
 public:
-    int status_fd;
     oslProcess child;
 
     ChildInfo() = default;
@@ -66,24 +65,13 @@ public:
 
 ChildInfo::~ChildInfo()
 {
-    close(status_fd);
     osl_freeProcessHandle(child);
 }
 } // namespace
 
 static ChildInfo child_spawn(Args* args, bool bAllArgs)
 {
-    rtl_uString* pTmp = nullptr;
-    int status_pipe[2];
-
-    /* create pipe */
-    if (pipe(status_pipe) < 0)
-    {
-        fprintf(stderr, "ERROR: no file handles\n");
-        exit(1);
-    }
     ChildInfo info;
-    info.status_fd = status_pipe[0];
 
     /* application name */
     const OUString sApp = u"file://" + args->sAppPath + u"soffice.bin";
@@ -99,16 +87,11 @@ static ChildInfo child_spawn(Args* args, bool bAllArgs)
         = osl_executeProcess(sApp.pData, aArguments.data(), aArguments.size(), osl_Process_NORMAL,
                              nullptr, nullptr, nullptr, 0, &info.child);
 
-    if (pTmp)
-        rtl_uString_release(pTmp);
-
     if (nError != osl_Process_E_None)
     {
         fprintf(stderr, "ERROR %d forking process\n", nError);
         _exit (1);
     }
-
-    close( status_pipe[1] );
 
     return info;
 }
