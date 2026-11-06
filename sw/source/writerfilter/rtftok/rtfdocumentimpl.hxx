@@ -833,6 +833,14 @@ private:
     /// Resolves a footnote, endnote or annotation substream, or buffers that until the buffer is
     /// replayed.
     void bufferOrResolveSubstream(std::size_t nPos, Id nId, OUString const& rCustomMark);
+    /// Adds the row in the innermost table buffer to rOuterBuffer, to be replayed with it.
+    void bufferTableRow(RTFBuffer_t& rOuterBuffer, std::deque<RTFSprms> const& rCellsSprms,
+                        std::deque<RTFSprms> const& rCellsAttributes, int nCells, int nCurrentCellX,
+                        int nTRLeft);
+    /// Gives shape text that starts inside a table buffer a table state of its own.
+    void startShapeTextTableState();
+    /// Brings back the table state around the shape when its shape text group ends.
+    void endShapeTextTableState();
     /// If we have some unicode or hex characters to send.
     void checkUnicode(bool bUnicode, bool bHex);
     /// If we need a final section break at the end of the document.
@@ -983,6 +991,31 @@ private:
     /// Buffered table cells, till cell definitions are not reached.
     /// for nested table, one buffer per table level
     std::deque<RTFBuffer_t> m_aTableBufferStack;
+
+    /// The table state around a shape whose text is read into a table buffer. The shape text has
+    /// a table state of its own while it lasts.
+    struct ShapeTextTableState
+    {
+        std::deque<RTFBuffer_t> aTableBufferStack{ 1 };
+        TableRowDef aTopLevelTableRow;
+        TableRowDef aPreviousTopLevelTableRow;
+        TableRowDef aBackupTopLevelTableRow;
+        RTFSprms aBackupTableRowSprms;
+        RTFSprms aBackupTableRowAttributes;
+        RTFSprms aDefaultTableCellSprms;
+        int nNestedCells{ 0 };
+        std::deque<RTFSprms> aNestedTableCellsSprms;
+        std::deque<RTFSprms> aNestedTableCellsAttributes;
+        int nNestedTRLeft{ 0 };
+        int nNestedCurrentCellX{ 0 };
+        /// The buffer the shape text started in. The rows of the shape text's tables go there.
+        RTFBuffer_t* pOuterBuffer{ nullptr };
+        /// The number of parser states while the group that started the shape text is open.
+        std::size_t nStateDepth{ 0 };
+    };
+    std::deque<ShapeTextTableState> m_aShapeTextTableStates;
+    void swapShapeTextTableState(ShapeTextTableState& rState);
+
     /// Buffered superscript, till footnote is reached (or not).
     RTFBuffer_t m_aSuperBuffer;
 

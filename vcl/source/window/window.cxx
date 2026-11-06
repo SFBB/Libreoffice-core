@@ -51,6 +51,7 @@
 
 #include <vcl/uitest/uiobject.hxx>
 
+#include <CanvasFactory.hxx>
 #include <ImplOutDevData.hxx>
 #include <impfontcache.hxx>
 #include <salframe.hxx>
@@ -73,7 +74,6 @@
 #include <com/sun/star/datatransfer/clipboard/XClipboard.hpp>
 #include <com/sun/star/datatransfer/dnd/XDragGestureRecognizer.hpp>
 #include <com/sun/star/datatransfer/dnd/XDropTarget.hpp>
-#include <com/sun/star/rendering/CanvasFactory.hpp>
 #include <com/sun/star/rendering/XSpriteCanvas.hpp>
 #include <comphelper/configuration.hxx>
 #include <comphelper/lok.hxx>
@@ -3479,16 +3479,13 @@ Reference< css::rendering::XCanvas > WindowOutputDevice::ImplGetCanvas( bool bSp
         GetSystemGfxDataAny()
     };
 
-    const Reference< XComponentContext >& xContext = comphelper::getProcessComponentContext();
-
     // Create canvas instance with window handle
 
-    static tools::DeleteUnoReferenceOnDeinit<XMultiComponentFactory> xStaticCanvasFactory(
-        css::rendering::CanvasFactory::create( xContext ) );
-    Reference<XMultiComponentFactory> xCanvasFactory(xStaticCanvasFactory.get());
+    static tools::DeleteRtlReferenceOnDeinit<CanvasFactory> pStaticCanvasFactory(new CanvasFactory);
+    rtl::Reference<CanvasFactory> pCanvasFactory(pStaticCanvasFactory.get());
     Reference< css::rendering::XCanvas > xCanvas;
 
-    if(xCanvasFactory.is())
+    if (pCanvasFactory.is())
     {
 #ifdef _WIN32
         // see #140456# - if we're running on a multiscreen setup,
@@ -3499,26 +3496,21 @@ Reference< css::rendering::XCanvas > WindowOutputDevice::ImplGetCanvas( bool bSp
         const sal_uInt32 nDisplay = static_cast< WinSalFrame* >( mxOwnerWindow->mpWindowImpl->mpFrame )->mnDisplay;
         if( nDisplay >= Application::GetScreenCount() )
         {
-            xCanvas.set( xCanvasFactory->createInstanceWithArgumentsAndContext(
-                                 bSpriteCanvas ?
-                                 OUString( "com.sun.star.rendering.SpriteCanvas.MultiScreen" ) :
-                                 OUString( "com.sun.star.rendering.Canvas.MultiScreen" ),
-                                 aArg,
-                                 xContext ),
-                             UNO_QUERY );
-
+            xCanvas.set(pCanvasFactory->createCanvas(
+                            bSpriteCanvas
+                                ? OUString("com.sun.star.rendering.SpriteCanvas.MultiScreen")
+                                : OUString("com.sun.star.rendering.Canvas.MultiScreen"),
+                            aArg),
+                        UNO_QUERY);
         }
         else
 #endif
         {
-            xCanvas.set( xCanvasFactory->createInstanceWithArgumentsAndContext(
-                             bSpriteCanvas ?
-                             u"com.sun.star.rendering.SpriteCanvas"_ustr :
-                             u"com.sun.star.rendering.Canvas"_ustr,
-                             aArg,
-                             xContext ),
-                         UNO_QUERY );
-
+            xCanvas.set(pCanvasFactory->createCanvas(
+                            bSpriteCanvas ? u"com.sun.star.rendering.SpriteCanvas"_ustr
+                                          : u"com.sun.star.rendering.Canvas"_ustr,
+                            aArg),
+                        UNO_QUERY);
         }
     }
 

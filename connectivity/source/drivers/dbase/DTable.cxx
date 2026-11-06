@@ -287,6 +287,7 @@ void ODbaseTable::fillColumns()
     m_aTypes.clear();
     m_aPrecisions.clear();
     m_aScales.clear();
+    m_aRealFieldLengths.clear();
 
     // Number of fields:
     sal_Int32 nFieldCount = (m_aHeader.headerLength - 1) / 32 - 1;
@@ -545,8 +546,8 @@ void ODbaseTable::construct()
         {
             m_pMemoStream = createStream_simpleError( aURL.GetMainURL(INetURLObject::DecodeMechanism::NONE), StreamMode::READ | StreamMode::NOCREATE | StreamMode::SHARE_DENYNONE);
         }
-        if (m_pMemoStream)
-            ReadMemoHeader();
+        if (m_pMemoStream && !ReadMemoHeader())
+            m_pMemoStream.reset();
     }
 
     fillColumns();
@@ -574,7 +575,7 @@ void ODbaseTable::construct()
     AllocBuffer();
 }
 
-void ODbaseTable::ReadMemoHeader()
+bool ODbaseTable::ReadMemoHeader()
 {
     m_pMemoStream->SetEndian(SvStreamEndian::LITTLE);
     m_pMemoStream->RefreshBuffer();         // make sure that the header information is actually read again
@@ -620,6 +621,7 @@ void ODbaseTable::ReadMemoHeader()
             SAL_WARN( "connectivity.drivers", "ODbaseTable::ReadMemoHeader: unsupported memo type!" );
             break;
     }
+    return m_aMemoHeader.db_size != 0;
 }
 
 OUString ODbaseTable::getEntry(file::OConnection const * _pConnection, std::u16string_view _sName )
@@ -1787,6 +1789,11 @@ bool ODbaseTable::UpdateBuffer(OValueRefVector& rRow, const OValueRefRow& pOrgRo
             nByteOffset += nLen;
             continue;
         }
+        if (nLen < 0 || nByteOffset + nLen > m_nBufferSize)
+            return false;
+        // dates and timestamps are written as 8 bytes
+        if ((nType == DataType::DATE || nType == DataType::TIMESTAMP) && !thisColIsNull && nLen < 8)
+            return false;
         if (aIndexedCols[i].is())
         {
             ODbaseIndex* pIndex = dynamic_cast<ODbaseIndex*>(aIndexedCols[i].get());
@@ -2685,6 +2692,14 @@ bool ODbaseTable::ReadMemo(std::size_t nBlockNo, ORowSetValue& aVariable)
                     return false;
                 }
                 nLength -= 8;
+            }
+
+            const sal_uInt64 nRemaining = m_pMemoStream->remainingSize();
+            if (nLength > nRemaining)
+            {
+                SAL_WARN("connectivity.drivers", "memo length " << nLength
+                         << " is more than the " << nRemaining << " bytes left in the memo file");
+                nLength = nRemaining;
             }
 
             if ( nLength )

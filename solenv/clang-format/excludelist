@@ -510,7 +510,6 @@ canvas/source/directx/dx_textlayout_drawhelper.hxx
 canvas/source/directx/dx_vcltools.cxx
 canvas/source/directx/dx_vcltools.hxx
 canvas/source/directx/dx_winstuff.hxx
-canvas/source/factory/cf_service.cxx
 canvas/source/opengl/ogl_bitmapcanvashelper.cxx
 canvas/source/opengl/ogl_bitmapcanvashelper.hxx
 canvas/source/opengl/ogl_buffercontext.hxx
@@ -577,8 +576,6 @@ canvas/source/vcl/impltools.hxx
 canvas/source/vcl/outdevprovider.hxx
 canvas/source/vcl/repainttarget.hxx
 canvas/source/vcl/sprite.hxx
-canvas/source/vcl/spritecanvas.cxx
-canvas/source/vcl/spritecanvas.hxx
 canvas/source/vcl/spritecanvashelper.cxx
 canvas/source/vcl/spritecanvashelper.hxx
 canvas/source/vcl/spritedevicehelper.cxx
@@ -13939,6 +13936,7 @@ vcl/source/accessibility/vclxaccessibletextcomponent.cxx
 vcl/source/accessibility/vclxaccessibletextfield.cxx
 vcl/source/accessibility/vclxaccessibletoolbox.cxx
 vcl/source/accessibility/vclxaccessibletoolboxitem.cxx
+vcl/source/canvas/CanvasFactory.cxx
 vcl/inc/accmgr.hxx
 vcl/inc/animate/AnimationRenderer.hxx
 vcl/inc/brdwin.hxx

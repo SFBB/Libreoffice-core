@@ -34,8 +34,6 @@ core_constructor_list = [
     "stardiv_UnoControls_ProgressBar_get_implementation",
     "stardiv_UnoControls_ProgressMonitor_get_implementation",
     "stardiv_UnoControls_StatusIndicator_get_implementation",
-# canvas/source/factory/canvasfactory.component
-    "com_sun_star_comp_rendering_CanvasFactory_get_implementation",
 # canvas/source/vcl/vclcanvas.component
     "com_sun_star_comp_rendering_Canvas_VCL_get_implementation",
     "com_sun_star_comp_rendering_SpriteCanvas_VCL_get_implementation",

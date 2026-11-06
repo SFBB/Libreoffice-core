@@ -603,21 +603,16 @@ void GtkSalData::Init()
 
 void GtkSalData::ErrorTrapPush()
 {
-#if GTK_CHECK_VERSION(4, 0, 0)
 # if defined(GDK_WINDOWING_X11)
     GdkDisplay* pGdkDisp = gdk_display_get_default();
     if (DLSYM_GDK_IS_X11_DISPLAY(pGdkDisp))
         gdk_x11_display_error_trap_push(pGdkDisp);
 # endif
-#else
-    gdk_error_trap_push();
-#endif
 }
 
 bool GtkSalData::ErrorTrapPop( bool bIgnoreError )
 {
-#if GTK_CHECK_VERSION(4, 0, 0)
-# if defined(GDK_WINDOWING_X11)
+#if defined(GDK_WINDOWING_X11)
     GdkDisplay* pGdkDisp = gdk_display_get_default();
     if (DLSYM_GDK_IS_X11_DISPLAY(pGdkDisp))
     {
@@ -628,21 +623,11 @@ bool GtkSalData::ErrorTrapPop( bool bIgnoreError )
         }
         return gdk_x11_display_error_trap_pop(pGdkDisp) != 0;
     }
-# endif
-    return false;
 #else
-    if (bIgnoreError)
-    {
-        gdk_error_trap_pop_ignored (); // faster
-        return false;
-    }
-    return gdk_error_trap_pop () != 0;
+    (void)bIgnoreError;
 #endif
+    return false;
 }
-
-#if !GLIB_CHECK_VERSION(2,32,0)
-#define G_SOURCE_REMOVE FALSE
-#endif
 
 extern "C" {
 

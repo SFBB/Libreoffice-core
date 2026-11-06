@@ -34,6 +34,7 @@
 #include <vcl/sysdata.hxx>
 #include <vcl/virdev.hxx>
 
+#include <CanvasFactory.hxx>
 #include <CoordinateMapper.hxx>
 #include <ImplOutDevData.hxx>
 #include <font/PhysicalFontFaceCollection.hxx>
@@ -43,7 +44,6 @@
 #include <com/sun/star/awt/DeviceCapability.hpp>
 #include <com/sun/star/awt/DeviceInfo.hpp>
 #include <com/sun/star/awt/XWindow.hpp>
-#include <com/sun/star/rendering/CanvasFactory.hpp>
 #include <com/sun/star/rendering/XSpriteCanvas.hpp>
 
 #ifdef DISABLE_DYNLOADING
@@ -751,22 +751,17 @@ css::uno::Reference< css::rendering::XCanvas > OutputDevice::ImplGetCanvas( bool
         GetSystemGfxDataAny()
     };
 
-    const Reference< XComponentContext >& xContext = comphelper::getProcessComponentContext();
-
-    static tools::DeleteUnoReferenceOnDeinit<css::lang::XMultiComponentFactory> xStaticCanvasFactory(
-        css::rendering::CanvasFactory::create( xContext ) );
-    Reference<css::lang::XMultiComponentFactory> xCanvasFactory(xStaticCanvasFactory.get());
+    static tools::DeleteRtlReferenceOnDeinit<CanvasFactory> pStaticCanvasFactory(new CanvasFactory);
+    rtl::Reference<CanvasFactory> pCanvasFactory(pStaticCanvasFactory.get());
     Reference< css::rendering::XCanvas > xCanvas;
 
-    if(xCanvasFactory.is())
+    if (pCanvasFactory.is())
     {
-        xCanvas.set( xCanvasFactory->createInstanceWithArgumentsAndContext(
-                         bSpriteCanvas ?
-                         u"com.sun.star.rendering.SpriteCanvas"_ustr :
-                         u"com.sun.star.rendering.Canvas"_ustr,
-                         aArg,
-                         xContext ),
-                     UNO_QUERY );
+        xCanvas.set(pCanvasFactory->createCanvas(bSpriteCanvas
+                                                     ? u"com.sun.star.rendering.SpriteCanvas"_ustr
+                                                     : u"com.sun.star.rendering.Canvas"_ustr,
+                                                 aArg),
+                    UNO_QUERY);
     }
 
     // no factory??? Empty reference, then.
