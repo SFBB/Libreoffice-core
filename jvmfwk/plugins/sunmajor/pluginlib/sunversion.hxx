@@ -23,6 +23,8 @@
 #include <sal/config.h>
 
 #include <string_view>
+#include <rtl/string.hxx>
+#include <vector>
 
 namespace jfw_plugin
 {
@@ -52,6 +54,7 @@ namespace jfw_plugin
  */
 class SunVersion final
 {
+public:
     enum PreRelease
     {
         Rel_NONE,
@@ -67,23 +70,13 @@ class SunVersion final
         Rel_RC,
         Rel_RC1,
         Rel_RC2,
-        Rel_RC3
-#if defined(FREEBSD)
-        ,
+        Rel_RC3,
         Rel_FreeBSD
-#endif
     };
 
-    //contains major,minor,micro,update
-    int m_arVersionParts[4] = {};
-    // The update can be followed by a char, e.g. 1.4.1_01a
-    char m_nUpdateSpecial;
-
-    PreRelease m_preRelease;
-
-public:
     explicit SunVersion(const char* szVer);
     explicit SunVersion(std::u16string_view usVer);
+    explicit SunVersion(std::vector<int> aParts, PreRelease ePreRelease, char nUpdateSpecial);
 
     /**
        Pre-release versions are taken into account.
@@ -98,6 +91,13 @@ public:
     operator bool() { return m_bValid; }
 
 private:
+    // contains major,minor,micro,update,minor-update,etc
+    std::vector<int> m_arVersionParts;
+    // The update can be followed by a char, e.g. 1.4.1_01a
+    char m_nUpdateSpecial;
+
+    PreRelease m_preRelease;
+
     bool init(const char* szVer);
 
     bool m_bValid;
@@ -106,7 +106,7 @@ private:
        "ea" is passed then Rel_EA is returned. If the string is no pre release
        then Rel_NONE is returned.
     */
-    static PreRelease getPreRelease(const char* szRel);
+    static PreRelease getPreRelease(std::u16string_view sRelease);
 };
 }
 

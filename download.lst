@@ -252,8 +252,8 @@ FONT_AMIRI_TARBALL := Amiri-1.001.zip
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-FONT_REEM_SHA256SUM := 94ae468fd88f37011607f03466bfc3a03fb617682b7bac6419b70de94cac22f0
-FONT_REEM_TARBALL := ReemKufi-2.0.zip
+FONT_REEM_SHA256SUM := 93498c38aa9e7401434b512079a5de771c6321145e5df4209896bdd2b9c0d15d
+FONT_REEM_TARBALL := ReemKufi-3.0.zip
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -287,8 +287,8 @@ GRAPHITE_TARBALL := graphite2-minimal-1.3.15.tgz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-HARFBUZZ_SHA256SUM := 968536e9abd782f07f7954044c0c4020199fcdd39b41d221ec42d2a3be4a44df
-HARFBUZZ_TARBALL := harfbuzz-15.0.0.tar.xz
+HARFBUZZ_SHA256SUM := 0fc7c565443a5f4be7da65ac5ee5bd737d9b158dc908708b7689a0a5796b0c8d
+HARFBUZZ_TARBALL := harfbuzz-15.1.0.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -425,8 +425,8 @@ LIBWEBP_TARBALL := libwebp-1.6.0.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-XMLSEC_SHA256SUM := 24045199af12d93fe5fdbbbf7e386e823e4842071e9432e2b90ac108b889a923
-XMLSEC_TARBALL := xmlsec1-1.3.12.tar.gz
+XMLSEC_SHA256SUM := 7e500061eed734c55d74c786998e7562e55b1aaa72a2dff8ce3130b4c5b832d5
+XMLSEC_TARBALL := xmlsec1-1.3.13.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -488,8 +488,8 @@ MYTHES_TARBALL := mythes-1.2.6.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-NSS_SHA256SUM := c220ea83378e55f2e4d7f7d83477756d622f79b5b91d1ff4157d5e3f494d2b49
-NSS_TARBALL := nss-3.132-with-nspr-4.39.tar.gz
+NSS_SHA256SUM := 21a9fa95043631db5331ad9202d8c7e7475f7d8d94fdf92c01624563c88502b4
+NSS_TARBALL := nss-3.133-with-nspr-4.39.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -569,8 +569,8 @@ LIBTIFF_TARBALL := tiff-4.7.2.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-POPPLER_SHA256SUM := 6792cb7c69205007ad87d2e936cecc5b3a31fac29ab54ffc3175fdb6b2a6ce35
-POPPLER_TARBALL := poppler-26.10.0.tar.xz
+POPPLER_SHA256SUM := 41c32680160addf5a8dd7a830e4869c01e9f6bee1abb91e44fabd1ba9d7828fb
+POPPLER_TARBALL := poppler-26.11.0.tar.xz
 POPPLER_DATA_SHA256SUM := c835b640a40ce357e1b83666aabd95edffa24ddddd49b8daff63adb851cdab74
 POPPLER_DATA_TARBALL := poppler-data-0.4.12.tar.gz
 # three static lines
@@ -632,8 +632,8 @@ RHINO_TARBALL := rhino-1.7.15.1.zip
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-SKIA_SHA256SUM := 08458913d3076a7c1c0a1550f472b3aa5df811b2f08c7d24e65fb4d2ca3f14f4
-SKIA_TARBALL := skia-m149-9bb16a741cdbcbde46a0d4caf8ac73f4d07a89e2.tar.xz
+SKIA_SHA256SUM := d8ae87d86ac1cd665777ac83fdcd5d162712806511bad475182261f92fbe1ce9
+SKIA_TARBALL := skia-m150-31238c6efe24011a423df82c2816876f700cf58b.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts

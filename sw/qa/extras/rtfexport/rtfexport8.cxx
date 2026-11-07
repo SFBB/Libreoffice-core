@@ -40,6 +40,7 @@
 #include <IDocumentContentOperations.hxx>
 #include <IDocumentSettingAccess.hxx>
 #include <itabenum.hxx>
+#include <frameformats.hxx>
 #include <frmmgr.hxx>
 #include <formatflysplit.hxx>
 #include <fmtwrapinfluenceonobjpos.hxx>
@@ -1372,6 +1373,63 @@ CPPUNIT_TEST_FIXTURE(Test, testTdf134614_TOC_indent)
     CPPUNIT_ASSERT_GREATER(nFldrslt, nInnerFldrslt); // must be a different, inner \fldrslt
     CPPUNIT_ASSERT_MESSAGE("inner HYPERLINK field must close before \\par",
                            !isInsideScope(nInnerFldrslt, nParAfterLastEntry));
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testShapeTableInNestedCellRTFExport)
+{
+    // Given a text box in a nested table cell, the text box holding a table and a paragraph:
+    createSwDoc("shape-table-in-nested-cell.rtf");
+
+    // When saving to RTF and loading it back:
+    saveAndReload(TestFilter::RTF);
+
+    // Then the outer table, the nested table and the text box's table are all still there:
+    uno::Reference<text::XTextTablesSupplier> xSupplier(mxComponent, uno::UNO_QUERY_THROW);
+    uno::Reference<container::XIndexAccess> xTables(xSupplier->getTextTables(),
+                                                    uno::UNO_QUERY_THROW);
+    // Without the accompanying fix in place, this test would have failed with:
+    // - Expected: 3
+    // - Actual  : 1
+    // i.e. the text box's table took over the row of the nested table around it.
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(3), xTables->getCount());
+    uno::Reference<text::XText> xShapeText(getShape(1), uno::UNO_QUERY_THROW);
+    uno::Reference<text::XTextTable> xShapeTable(getParagraphOrTable(1, xShapeText),
+                                                 uno::UNO_QUERY_THROW);
+    uno::Reference<text::XTextRange> xCell(xShapeTable->getCellByName(u"A1"_ustr),
+                                           uno::UNO_QUERY_THROW);
+    CPPUNIT_ASSERT_EQUAL(u"inner"_ustr, xCell->getString());
+    CPPUNIT_ASSERT_EQUAL(u"after"_ustr, getParagraphOfText(2, xShapeText)->getString());
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testFloattableInCellRTFExport)
+{
+    // Given a table cell holding a floating table and a paragraph:
+    createSwDoc("floattable-in-cell.docx");
+
+    // When saving to RTF and loading it back:
+    saveAndReload(TestFilter::RTF);
+
+    // Then the cell still holds a frame with the inner table in it, and its own paragraph:
+    uno::Reference<text::XTextTablesSupplier> xSupplier(mxComponent, uno::UNO_QUERY_THROW);
+    uno::Reference<container::XIndexAccess> xTables(xSupplier->getTextTables(),
+                                                    uno::UNO_QUERY_THROW);
+    // Without the accompanying fix in place, this test would have failed with:
+    // - Expected: 2
+    // - Actual  : 1
+    // i.e. the floating table was written at the cell's table depth and merged into the outer
+    // table.
+    CPPUNIT_ASSERT_EQUAL(sal_Int32(2), xTables->getCount());
+    CPPUNIT_ASSERT_EQUAL(static_cast<size_t>(1), getSwDoc()->GetSpzFrameFormats()->size());
+    uno::Reference<text::XTextTable> xOuterTable(getParagraphOrTable(1), uno::UNO_QUERY_THROW);
+    uno::Reference<text::XText> xOuterCell(xOuterTable->getCellByName(u"A1"_ustr),
+                                           uno::UNO_QUERY_THROW);
+    CPPUNIT_ASSERT(xOuterCell->getString().endsWith("cell"));
+    uno::Reference<text::XText> xFrameText(getShape(1), uno::UNO_QUERY_THROW);
+    uno::Reference<text::XTextTable> xInnerTable(getParagraphOrTable(1, xFrameText),
+                                                 uno::UNO_QUERY_THROW);
+    uno::Reference<text::XTextRange> xInnerCell(xInnerTable->getCellByName(u"A1"_ustr),
+                                                uno::UNO_QUERY_THROW);
+    CPPUNIT_ASSERT_EQUAL(u"inner"_ustr, xInnerCell->getString());
 }
 
 } // end of anonymous namespace

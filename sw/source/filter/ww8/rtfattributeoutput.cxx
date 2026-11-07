@@ -2448,6 +2448,9 @@ void RtfAttributeOutput::writeTextFrame(const ww8::Frame& rFrame, bool bTextBox)
         m_rExport.m_pTableInfo = std::make_shared<ww8::WW8TableInfo>();
         std::unique_ptr<SwWriteTable> pTableWrt(std::move(m_pTableWrt));
         sal_uInt32 nTableDepth = m_nTableDepth;
+        OStringBuffer aRowDefs = std::exchange(m_aRowDefs, {});
+        std::vector<OString> aTables = std::exchange(m_aTables, {});
+        OStringBuffer aAfterRuns = std::exchange(m_aAfterRuns, {});
 
         m_nTableDepth = 0;
         /*
@@ -2484,6 +2487,9 @@ void RtfAttributeOutput::writeTextFrame(const ww8::Frame& rFrame, bool bTextBox)
         m_rExport.m_pTableInfo = std::move(pTableInfoOrig);
         m_pTableWrt = std::move(pTableWrt);
         m_nTableDepth = nTableDepth;
+        m_aRowDefs = std::move(aRowDefs);
+        m_aTables = std::move(aTables);
+        m_aAfterRuns = std::move(aAfterRuns);
     }
 
     m_rExport.m_pParentFrame = nullptr;
@@ -2536,7 +2542,9 @@ public:
 void RtfAttributeOutput::OutputFlyFrame_Impl(const ww8::Frame& rFrame, const Point& /*rNdTopLeft*/)
 {
     const SwFrameFormat& rFrameFormat = rFrame.GetFrameFormat();
-    if (rFrameFormat.GetFlySplit().GetValue())
+    // Inside a table cell, the frame's table is written as a text frame, which keeps its own table
+    // depth.
+    if (rFrameFormat.GetFlySplit().GetValue() && m_nTableDepth == 0)
     {
         // The frame can split: this was originally from a floating table, write it back as
         // such.
