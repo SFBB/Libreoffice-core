@@ -2964,9 +2964,6 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/rendering,\
 	Texture \
 	TexturingMode \
 	ViewState \
-	VolatileContentDestroyedException \
-	XAnimatedSprite \
-	XAnimation \
 	XBezierPolyPolygon2D \
 	XBitmap \
 	XBitmapCanvas \
@@ -2977,12 +2974,6 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/rendering,\
 	XColorSpace \
 	XCustomSprite \
 	XGraphicDevice \
-	XHalfFloatBitmap \
-	XHalfFloatReadOnlyBitmap \
-	XIeeeDoubleBitmap \
-	XIeeeDoubleReadOnlyBitmap \
-	XIeeeFloatBitmap \
-	XIeeeFloatReadOnlyBitmap \
 	XIntegerBitmap \
 	XIntegerBitmapColorSpace \
 	XIntegerReadOnlyBitmap \
@@ -2993,7 +2984,6 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/rendering,\
 	XSprite \
 	XSpriteCanvas \
 	XTextLayout \
-	XVolatileBitmap \
 ))
 $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/report,\
 	Calculation \

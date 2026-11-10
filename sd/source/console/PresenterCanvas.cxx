@@ -190,50 +190,6 @@ css::uno::Reference<css::rendering::XCachedPrimitive> SAL_CALL PresenterCanvas::
 }
 
 css::uno::Reference<css::rendering::XCachedPrimitive> SAL_CALL
-        PresenterCanvas::strokeTexturedPolyPolygon (
-            const css::uno::Reference< css::rendering::XPolyPolygon2D >& xPolyPolygon,
-            const css::rendering::ViewState& aViewState,
-            const css::rendering::RenderState& aRenderState,
-            const css::uno::Sequence< css::rendering::Texture >& aTextures,
-            const css::rendering::StrokeAttributes& aStrokeAttributes)
-{
-    ThrowIfDisposed();
-    return mxSharedCanvas->strokeTexturedPolyPolygon(
-        xPolyPolygon, MergeViewState(aViewState), aRenderState, aTextures, aStrokeAttributes);
-}
-
-css::uno::Reference<css::rendering::XCachedPrimitive> SAL_CALL
-        PresenterCanvas::strokeTextureMappedPolyPolygon(
-            const css::uno::Reference<css::rendering::XPolyPolygon2D >& xPolyPolygon,
-            const css::rendering::ViewState& aViewState,
-            const css::rendering::RenderState& aRenderState,
-            const css::uno::Sequence<css::rendering::Texture>& aTextures,
-            const css::uno::Reference<css::geometry::XMapping2D>& xMapping,
-            const css::rendering::StrokeAttributes& aStrokeAttributes)
-{
-    ThrowIfDisposed();
-    return mxSharedCanvas->strokeTextureMappedPolyPolygon(
-        xPolyPolygon,
-        MergeViewState(aViewState),
-        aRenderState,
-        aTextures,
-        xMapping,
-        aStrokeAttributes);
-}
-
-css::uno::Reference<css::rendering::XPolyPolygon2D> SAL_CALL
-        PresenterCanvas::queryStrokeShapes(
-            const css::uno::Reference<css::rendering::XPolyPolygon2D>& xPolyPolygon,
-            const css::rendering::ViewState& aViewState,
-            const css::rendering::RenderState& aRenderState,
-            const css::rendering::StrokeAttributes& aStrokeAttributes)
-{
-    ThrowIfDisposed();
-    return mxSharedCanvas->queryStrokeShapes(
-        xPolyPolygon, MergeViewState(aViewState), aRenderState, aStrokeAttributes);
-}
-
-css::uno::Reference<css::rendering::XCachedPrimitive> SAL_CALL
         PresenterCanvas::fillPolyPolygon(
             const css::uno::Reference<css::rendering::XPolyPolygon2D>& xPolyPolygon,
             const css::rendering::ViewState& aViewState,
@@ -256,19 +212,6 @@ css::uno::Reference<css::rendering::XCachedPrimitive> SAL_CALL
         xPolyPolygon, MergeViewState(aViewState), aRenderState, xTextures);
 }
 
-css::uno::Reference<css::rendering::XCachedPrimitive> SAL_CALL
-        PresenterCanvas::fillTextureMappedPolyPolygon(
-            const css::uno::Reference< css::rendering::XPolyPolygon2D >& xPolyPolygon,
-            const css::rendering::ViewState& aViewState,
-            const css::rendering::RenderState& aRenderState,
-            const css::uno::Sequence< css::rendering::Texture >& xTextures,
-            const css::uno::Reference< css::geometry::XMapping2D >& xMapping)
-{
-    ThrowIfDisposed();
-    return mxSharedCanvas->fillTextureMappedPolyPolygon(
-        xPolyPolygon, MergeViewState(aViewState), aRenderState, xTextures, xMapping);
-}
-
 css::uno::Reference<css::rendering::XCanvasFont> SAL_CALL
         PresenterCanvas::createFont(
             const css::rendering::FontRequest& aFontRequest,
@@ -278,15 +221,6 @@ css::uno::Reference<css::rendering::XCanvasFont> SAL_CALL
     ThrowIfDisposed();
     return mxSharedCanvas->createFont(
         aFontRequest, aExtraFontProperties, aFontMatrix);
-}
-
-css::uno::Sequence<css::rendering::FontInfo> SAL_CALL
-        PresenterCanvas::queryAvailableFonts(
-            const css::rendering::FontInfo& aFilter,
-            const css::uno::Sequence< css::beans::PropertyValue >& aFontProperties)
-{
-    ThrowIfDisposed();
-    return mxSharedCanvas->queryAvailableFonts(aFilter, aFontProperties);
 }
 
 css::uno::Reference<css::rendering::XCachedPrimitive> SAL_CALL
@@ -343,34 +277,6 @@ css::uno::Reference<css::rendering::XGraphicDevice> SAL_CALL
 }
 
 //----- XSpriteCanvas ---------------------------------------------------------
-
-Reference<rendering::XAnimatedSprite> SAL_CALL
-    PresenterCanvas::createSpriteFromAnimation (
-        const css::uno::Reference<css::rendering::XAnimation>& rAnimation)
-{
-    ThrowIfDisposed();
-
-    Reference<rendering::XSpriteCanvas> xSpriteCanvas (mxSharedCanvas, UNO_QUERY);
-    if (xSpriteCanvas.is())
-        return xSpriteCanvas->createSpriteFromAnimation(rAnimation);
-    else
-        return nullptr;
-}
-
-Reference<rendering::XAnimatedSprite> SAL_CALL
-    PresenterCanvas::createSpriteFromBitmaps (
-        const css::uno::Sequence<
-            css::uno::Reference< css::rendering::XBitmap > >& rAnimationBitmaps,
-    ::sal_Int8 nInterpolationMode)
-{
-    ThrowIfDisposed();
-
-    Reference<rendering::XSpriteCanvas> xSpriteCanvas (mxSharedCanvas, UNO_QUERY);
-    if (xSpriteCanvas.is())
-        return xSpriteCanvas->createSpriteFromBitmaps(rAnimationBitmaps, nInterpolationMode);
-    else
-        return nullptr;
-}
 
 Reference<rendering::XCustomSprite> SAL_CALL
     PresenterCanvas::createCustomSprite (

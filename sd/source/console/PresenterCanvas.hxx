@@ -146,30 +146,6 @@ public:
         const css::rendering::StrokeAttributes& aStrokeAttributes) override;
 
     virtual css::uno::Reference<css::rendering::XCachedPrimitive> SAL_CALL
-        strokeTexturedPolyPolygon (
-            const css::uno::Reference< css::rendering::XPolyPolygon2D >& xPolyPolygon,
-            const css::rendering::ViewState& aViewState,
-            const css::rendering::RenderState& aRenderState,
-            const css::uno::Sequence< css::rendering::Texture >& aTextures,
-            const css::rendering::StrokeAttributes& aStrokeAttributes) override;
-
-    virtual css::uno::Reference<css::rendering::XCachedPrimitive> SAL_CALL
-        strokeTextureMappedPolyPolygon(
-            const css::uno::Reference<css::rendering::XPolyPolygon2D >& xPolyPolygon,
-            const css::rendering::ViewState& aViewState,
-            const css::rendering::RenderState& aRenderState,
-            const css::uno::Sequence<css::rendering::Texture>& aTextures,
-            const css::uno::Reference<css::geometry::XMapping2D>& xMapping,
-            const css::rendering::StrokeAttributes& aStrokeAttributes) override;
-
-    virtual css::uno::Reference<css::rendering::XPolyPolygon2D> SAL_CALL
-        queryStrokeShapes(
-            const css::uno::Reference<css::rendering::XPolyPolygon2D>& xPolyPolygon,
-            const css::rendering::ViewState& aViewState,
-            const css::rendering::RenderState& aRenderState,
-            const css::rendering::StrokeAttributes& aStrokeAttributes) override;
-
-    virtual css::uno::Reference<css::rendering::XCachedPrimitive> SAL_CALL
         fillPolyPolygon(
             const css::uno::Reference<css::rendering::XPolyPolygon2D>& xPolyPolygon,
             const css::rendering::ViewState& aViewState,
@@ -182,24 +158,11 @@ public:
             const css::rendering::RenderState& aRenderState,
             const css::uno::Sequence<css::rendering::Texture>& xTextures) override;
 
-    virtual css::uno::Reference<css::rendering::XCachedPrimitive> SAL_CALL
-        fillTextureMappedPolyPolygon(
-            const css::uno::Reference< css::rendering::XPolyPolygon2D >& xPolyPolygon,
-            const css::rendering::ViewState& aViewState,
-            const css::rendering::RenderState& aRenderState,
-            const css::uno::Sequence< css::rendering::Texture >& xTextures,
-            const css::uno::Reference< css::geometry::XMapping2D >& xMapping) override;
-
     virtual css::uno::Reference<css::rendering::XCanvasFont> SAL_CALL
         createFont(
             const css::rendering::FontRequest& aFontRequest,
             const css::uno::Sequence< css::beans::PropertyValue >& aExtraFontProperties,
             const css::geometry::Matrix2D& aFontMatrix) override;
-
-    virtual css::uno::Sequence<css::rendering::FontInfo> SAL_CALL
-        queryAvailableFonts(
-            const css::rendering::FontInfo& aFilter,
-            const css::uno::Sequence< css::beans::PropertyValue >& aFontProperties) override;
 
     virtual css::uno::Reference<css::rendering::XCachedPrimitive> SAL_CALL
         drawText(
@@ -231,16 +194,6 @@ public:
         getDevice() override;
 
     // XSpriteCanvas
-
-    css::uno::Reference< css::rendering::XAnimatedSprite > SAL_CALL
-        createSpriteFromAnimation (
-            const css::uno::Reference< css::rendering::XAnimation >& animation) override;
-
-    css::uno::Reference< css::rendering::XAnimatedSprite > SAL_CALL
-        createSpriteFromBitmaps (
-            const css::uno::Sequence<
-                css::uno::Reference< css::rendering::XBitmap > >& animationBitmaps,
-            ::sal_Int8 interpolationMode) override;
 
     css::uno::Reference< css::rendering::XCustomSprite > SAL_CALL
         createCustomSprite (

@@ -22,12 +22,15 @@
 
 #include <map>
 #include <memory>
+#include <set>
 #include <vector>
 
 #include <rtl/ustring.hxx>
+#include <tools/color.hxx>
 
 #include "datamodel_oox.hxx"
 #include <oox/drawingml/shape.hxx>
+#include <oox/token/tokens.hxx>
 
 namespace com::sun::star {
     namespace xml::dom { class XDocument; }
@@ -109,17 +112,48 @@ struct DiagramStyle
 
 typedef std::map<OUString,DiagramStyle> DiagramQStyleMap;
 
+/** One color list of a style label in the colors part of a Diagram.
+
+    A list holds the colors that the shapes carrying the style label are given,
+    together with the way the colors are spread over those shapes.
+ */
+struct DiagramColorList
+{
+    /// The colors of the list, in the order the file gives them.
+    std::vector<oox::drawingml::Color> maColors;
+
+    /** The colors of maColors resolved against the theme, in the same order.
+
+        Empty when the list holds fewer than two colors, or when mnMethod is neither
+        XML_span nor XML_cycle, because a single color or a plain pick of one needs no
+        resolved value.
+     */
+    std::vector<::Color> maResolvedColors;
+
+    /** The meth attribute: XML_span, XML_cycle or XML_repeat.
+
+        XML_span spreads the colors evenly over the shapes, XML_cycle walks them to the
+        end and back again, and XML_repeat takes one color of the list per shape and starts
+        the list over when it runs out. XML_span is the default.
+     */
+    sal_Int32 mnMethod = XML_span;
+};
+
 struct DiagramColor
 {
-    std::vector<oox::drawingml::Color> maFillColors;
-    std::vector<oox::drawingml::Color> maLineColors;
-    std::vector<oox::drawingml::Color> maEffectColors;
-    std::vector<oox::drawingml::Color> maTextFillColors;
-    std::vector<oox::drawingml::Color> maTextLineColors;
-    std::vector<oox::drawingml::Color> maTextEffectColors;
+    DiagramColorList maFillColors;
+    DiagramColorList maLineColors;
+    DiagramColorList maEffectColors;
+    DiagramColorList maTextFillColors;
+    DiagramColorList maTextLineColors;
+    DiagramColorList maTextEffectColors;
 
-    static const oox::drawingml::Color&
-    getColorByIndex(const std::vector<oox::drawingml::Color>& rColors, sal_Int32 nIndex);
+    /** The color that the nIndex-th of nCount shapes carrying this list gets.
+
+        Pass -1 as nIndex for the last color of the list.
+     */
+    static oox::drawingml::Color getColorByIndex(const DiagramColorList& rList, sal_Int32 nIndex,
+                                                 sal_Int32 nCount);
 };
 
 typedef std::map<OUString,DiagramColor> DiagramColorMap;
@@ -142,7 +176,50 @@ public:
     void createShapeHierarchyFromModel( const ShapePtr & pShape, bool bCreate );
 
     oox::core::NamedShapePairs& getDiagramFontHeights() { return maDiagramFontHeights; }
+
+    /// The values a layout has worked out under names of its own, userA to userZ, by the token
+    /// of the name. A layout states such a value at one node for the whole of what hangs below
+    /// it, and the layout is walked from the top down, so the value stands from where it is
+    /// stated until another node states it again.
+    std::map<sal_Int32, sal_Int32>& getUserVariables() { return maUserVariables; }
     void syncDiagramFontHeights();
+
+    /// A value under a name of its own, userA and the rest, that a layout states as a part of the
+    /// size of a shape levels below the node that states it. The node cannot see that shape when
+    /// it runs, so the statement is kept by the token of the name, and the value is read off the
+    /// shape when a node below takes the name.
+    struct DeferredUserVariable
+    {
+        OUString msShapeName;
+        sal_Int32 mnRefType = 0;
+        double mfFactor = 1.0;
+    };
+    std::map<sal_Int32, DeferredUserVariable>& getDeferredUserVariables()
+    {
+        return maDeferredUserVariables;
+    }
+
+    /// The shapes of a hierarchy that lies sideways which its branch has placed as a whole,
+    /// roots, branches and the shapes in them. Each holds its final place and size already.
+    std::set<const Shape*>& getLaidOutSideways() { return maLaidOutSideways; }
+
+    /// A spacer in a row whose extent along the row is a part of a shape that a hierarchy
+    /// beside it lays out, and so is not known while the row is placed: the row, the spacer
+    /// and its place among the row's children when the row was read, the name of that shape
+    /// and which of its sides, the part, whether the row runs along x, and the way the row
+    /// runs, 1 forward and -1 back.
+    struct DeferredSpacer
+    {
+        ShapePtr mpRow;
+        ShapePtr mpSpacer;
+        sal_Int32 mnIndex;
+        OUString maRefName;
+        sal_Int32 mnRefType;
+        double mfFactor;
+        bool mbAlongX;
+        sal_Int32 mnDirection;
+    };
+    std::vector<DeferredSpacer>& getDeferredSpacers() { return maDeferredSpacers; }
 
     void setOOXDomValue(svx::diagram::DomMapFlag aDomMapFlag, const css::uno::Any& rValue);
     css::uno::Any getOOXDomValue(svx::diagram::DomMapFlag aDomMapFlag) const;
@@ -163,6 +240,10 @@ private:
 
     // This contains groups of shapes: automatic font size is the same in each group.
     oox::core::NamedShapePairs maDiagramFontHeights;
+    std::map<sal_Int32, sal_Int32> maUserVariables;
+    std::set<const Shape*> maLaidOutSideways;
+    std::map<sal_Int32, DeferredUserVariable> maDeferredUserVariables;
+    std::vector<DeferredSpacer> maDeferredSpacers;
 
     OoxDiagramDataPtr              mpData;
     DiagramLayoutPtr               mpLayout;

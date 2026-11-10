@@ -19,8 +19,6 @@
 
 #pragma once
 
-#include <com/sun/star/rendering/XAnimatedSprite.hpp>
-#include <com/sun/star/rendering/XAnimation.hpp>
 #include <com/sun/star/rendering/XCustomSprite.hpp>
 
 #include <spriteredrawmanager.hxx>
@@ -50,15 +48,6 @@ namespace cairocanvas
         void disposing();
 
         // XSpriteCanvas
-        css::uno::Reference< css::rendering::XAnimatedSprite >        createSpriteFromAnimation(
-                const css::uno::Reference< css::rendering::XAnimation >& animation );
-
-        css::uno::Reference< css::rendering::XAnimatedSprite >        createSpriteFromBitmaps(
-                const css::uno::Sequence<
-                      css::uno::Reference<
-                            css::rendering::XBitmap > >& animationBitmaps,
-                sal_Int8                                              interpolationMode );
-
         css::uno::Reference< css::rendering::XCustomSprite >      createCustomSprite(
                 const css::geometry::RealSize2D& spriteSize );
 

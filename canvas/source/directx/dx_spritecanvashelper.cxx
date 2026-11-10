@@ -108,19 +108,6 @@ namespace dxcanvas
         CanvasHelper::disposing();
     }
 
-    uno::Reference< rendering::XAnimatedSprite > SpriteCanvasHelper::createSpriteFromAnimation(
-        const uno::Reference< rendering::XAnimation >& /*animation*/ )
-    {
-        return uno::Reference< rendering::XAnimatedSprite >();
-    }
-
-    uno::Reference< rendering::XAnimatedSprite > SpriteCanvasHelper::createSpriteFromBitmaps(
-        const uno::Sequence< uno::Reference< rendering::XBitmap > >& /*animationBitmaps*/,
-        sal_Int8                                                     /*interpolationMode*/ )
-    {
-        return uno::Reference< rendering::XAnimatedSprite >();
-    }
-
     uno::Reference< rendering::XCustomSprite > SpriteCanvasHelper::createCustomSprite( const geometry::RealSize2D& spriteSize )
     {
         if( !mpRedrawManager )

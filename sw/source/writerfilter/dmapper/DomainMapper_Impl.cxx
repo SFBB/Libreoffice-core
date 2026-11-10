@@ -2545,9 +2545,11 @@ void DomainMapper_Impl::finishParagraph( const ParagraphPropertyMapPtr& pParaCon
                 pParaContext->Insert(PROP_PARA_LEFT_MARGIN, oProperty->second, /*bOverwrite=*/false);
 
             // We're inheriting properties from a numbering style. Make sure a possible right margin is inherited from the base style.
-            if (auto oProperty = getOptProperty(PROP_PARA_RIGHT_MARGIN, true);
-                oProperty && oProperty->second.get<sal_Int32>() != 0)
+            uno::Any aRightMargin = GetPropertyFromParaStyleSheet(PROP_PARA_RIGHT_MARGIN);
+            if (aRightMargin != uno::Any())
             {
+                pParaContext->Insert(PROP_PARA_RIGHT_MARGIN, aRightMargin, /*bOverwrite=*/false);
+
                 // If we're setting the right margin, we should set the first / left margin as well from the numbering style.
                 const sal_Int32 nFirstLineIndent = getNumberingProperty(nListId, nListLevel, u"FirstLineIndent"_ustr);
                 const sal_Int32 nParaLeftMargin  = getNumberingProperty(nListId, nListLevel, u"IndentAt"_ustr);
@@ -2555,8 +2557,6 @@ void DomainMapper_Impl::finishParagraph( const ParagraphPropertyMapPtr& pParaCon
                     pParaContext->Insert(PROP_PARA_FIRST_LINE_INDENT, uno::Any(nFirstLineIndent), /*bOverwrite=*/false);
                 if (nParaLeftMargin != 0)
                     pParaContext->Insert(PROP_PARA_LEFT_MARGIN, uno::Any(nParaLeftMargin), /*bOverwrite=*/false);
-
-                pParaContext->Insert(PROP_PARA_RIGHT_MARGIN, oProperty->second, /*bOverwrite=*/false);
             }
         }
         // Paragraph style based right paragraph indentation affects not paragraph style based lists in DOCX.
@@ -4566,6 +4566,7 @@ void DomainMapper_Impl::PushFootOrEndnote( bool bIsFootnote )
         appendTextContent( xFootnote, aFontProperties );
         m_aTextAppendStack.push(TextAppendContext(xFootnote,
                     xFootnote->createTextCursorByRange(xFootnote->getStart())));
+        m_StreamStateStack.top().bNoteTextAppendPushed = true;
 
         // Redlines for the footnote anchor in the main text content
         std::vector< RedlineParamsPtr > aFootnoteRedline = std::move(m_aRedlines.top());
@@ -5032,8 +5033,11 @@ void DomainMapper_Impl::PopFootOrEndnote()
     if (!IsRTFImport() && !bCopied)
         RemoveLastParagraph();
 
-    if (!m_aTextAppendStack.empty())
+    if (m_StreamStateStack.top().bNoteTextAppendPushed)
+    {
         m_aTextAppendStack.pop();
+        m_StreamStateStack.top().bNoteTextAppendPushed = false;
+    }
 
     if (m_aRedlines.size() == 1)
     {
@@ -10470,7 +10474,8 @@ void DomainMapper_Impl::processDeferredCharacterProperties(bool bCharContext)
 sal_Int32 DomainMapper_Impl::getNumberingProperty(const sal_Int32 nListId, sal_Int32 nNumberingLevel, const OUString& aProp)
 {
     sal_Int32 nRet = 0;
-    if ( nListId < 0 )
+    // either of these indicates numbering is not used, so do not return any numbering properties
+    if (nListId < 0 || nNumberingLevel == 9)
         return nRet;
     if ( !m_xTextDocument )
         return nRet;
@@ -10513,7 +10518,8 @@ sal_Int32 DomainMapper_Impl::getCurrentNumberingProperty(const OUString& aProp)
     sal_Int32 nNumberingLevel = 0;
     if (pProp)
         pProp->second >>= nNumberingLevel;
-    if (xNumberingRules.is())
+    // Level 9 indicates no numbering is used, so do not return any numbering properties
+    if (xNumberingRules.is() && nNumberingLevel != 9)
     {
         uno::Sequence<beans::PropertyValue> aProps;
         xNumberingRules->getByIndex(nNumberingLevel) >>= aProps;

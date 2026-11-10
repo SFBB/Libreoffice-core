@@ -26,6 +26,7 @@
 #include <svx/sdtfsitm.hxx>
 #include <svx/sdooitm.hxx>
 #include <svx/sdtagitm.hxx>
+#include <comphelper/scopeguard.hxx>
 #include <comphelper/sequenceashashmap.hxx>
 #include <oox/drawingml/drawingmltypes.hxx>
 #include <svx/diagram/DiagramHelper_svx.hxx>
@@ -1297,8 +1298,8 @@ CPPUNIT_TEST_FIXTURE(SdImportTestSmartArt, testRecursion)
     CPPUNIT_ASSERT_EQUAL(u"A"_ustr, xTextA->getString());
 
     uno::Reference<drawing::XShapes> xGroupB(xGroup1->getByIndex(1), uno::UNO_QUERY);
-    // 5 connectors, B1 with children, B2 with children
-    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(7), xGroupB->getCount());
+    // a connector before each of them, B1 with children, B2 with children
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(4), xGroupB->getCount());
 
     uno::Reference<drawing::XShapes> xGroupB1(xGroupB->getByIndex(1), uno::UNO_QUERY);
 
@@ -1308,13 +1309,13 @@ CPPUNIT_TEST_FIXTURE(SdImportTestSmartArt, testRecursion)
 
     uno::Reference<drawing::XShape> xGroupC12(xGroupB1->getByIndex(1), uno::UNO_QUERY);
     uno::Reference<text::XText> xTextC1(
-        getChildShape(getChildShape(getChildShape(xGroupC12, 0), 0), 0), uno::UNO_QUERY);
+        getChildShape(getChildShape(getChildShape(xGroupC12, 1), 0), 0), uno::UNO_QUERY);
     CPPUNIT_ASSERT_EQUAL(u"C1"_ustr, xTextC1->getString());
     uno::Reference<text::XText> xTextC2(
-        getChildShape(getChildShape(getChildShape(xGroupC12, 1), 0), 0), uno::UNO_QUERY);
+        getChildShape(getChildShape(getChildShape(xGroupC12, 3), 0), 0), uno::UNO_QUERY);
     CPPUNIT_ASSERT_EQUAL(u"C2"_ustr, xTextC2->getString());
 
-    uno::Reference<drawing::XShapes> xGroupB2(xGroupB->getByIndex(5), uno::UNO_QUERY);
+    uno::Reference<drawing::XShapes> xGroupB2(xGroupB->getByIndex(3), uno::UNO_QUERY);
 
     uno::Reference<drawing::XShapes> xGroupB2a(xGroupB2->getByIndex(0), uno::UNO_QUERY);
     uno::Reference<text::XText> xTextB2(xGroupB2a->getByIndex(0), uno::UNO_QUERY);
@@ -1322,7 +1323,7 @@ CPPUNIT_TEST_FIXTURE(SdImportTestSmartArt, testRecursion)
 
     uno::Reference<drawing::XShape> xGroupC3(xGroupB2->getByIndex(1), uno::UNO_QUERY);
     uno::Reference<text::XText> xTextC3(
-        getChildShape(getChildShape(getChildShape(xGroupC3, 0), 0), 0), uno::UNO_QUERY);
+        getChildShape(getChildShape(getChildShape(xGroupC3, 1), 0), 0), uno::UNO_QUERY);
     CPPUNIT_ASSERT_EQUAL(u"C3"_ustr, xTextC3->getString());
 }
 
@@ -1354,11 +1355,11 @@ CPPUNIT_TEST_FIXTURE(SdImportTestSmartArt, testDataFollow)
     uno::Reference<drawing::XShapes> xGroupRight(xGroup->getByIndex(2), uno::UNO_QUERY);
     uno::Reference<drawing::XShape> xGroupC(xGroupRight->getByIndex(1), uno::UNO_QUERY);
     uno::Reference<drawing::XShape> xShapeC1
-        = getChildShape(getChildShape(getChildShape(xGroupC, 3), 0), 0);
+        = getChildShape(getChildShape(getChildShape(xGroupC, 1), 0), 0);
     uno::Reference<text::XText> xTextC1(xShapeC1, uno::UNO_QUERY);
     CPPUNIT_ASSERT_EQUAL(u"C1"_ustr, xTextC1->getString());
     uno::Reference<drawing::XShape> xShapeC2
-        = getChildShape(getChildShape(getChildShape(xGroupC, 5), 0), 0);
+        = getChildShape(getChildShape(getChildShape(xGroupC, 3), 0), 0);
     uno::Reference<text::XText> xTextC2(xShapeC2, uno::UNO_QUERY);
     CPPUNIT_ASSERT_EQUAL(u"C2"_ustr, xTextC2->getString());
 
@@ -2383,6 +2384,29 @@ CPPUNIT_TEST_FIXTURE(SdImportTestSmartArt, testNodeTakesTheShapeThatHoldsTextWhe
 
     for (size_t a(0); a < aExpected.size(); a++)
         CPPUNIT_ASSERT_EQUAL(aExpected[a], aTexts[a]);
+}
+
+CPPUNIT_TEST_FIXTURE(SdImportTestSmartArt, testNodeTextsAfterOdpRoundTrip)
+{
+    // The node texts the Diagram dialog lists come back from ODP too, where the Diagram is built
+    // from the data it saved.
+    osl_setEnvironment(u"ACTIVATE_ADVANCED_DIAGRAM_FEATURES"_ustr.pData, u"1"_ustr.pData);
+    comphelper::ScopeGuard aGuard(
+        [] { osl_clearEnvironment(u"ACTIVATE_ADVANCED_DIAGRAM_FEATURES"_ustr.pData); });
+    createSdImpressDoc("pptx/smartart-snake-rows.pptx");
+    saveAndReload(TestFilter::ODP);
+
+    uno::Reference<drawing::XShape> xDiagram(getShapeFromPage(0, 0), uno::UNO_QUERY);
+    SdrObject* pDiagram(SdrObject::getSdrObjectFromXShape(xDiagram));
+    CPPUNIT_ASSERT(nullptr != pDiagram);
+    const std::shared_ptr<svx::diagram::DiagramHelper_svx>& rHelper(pDiagram->getDiagramHelper());
+    CPPUNIT_ASSERT(rHelper);
+
+    std::vector<OUString> aTexts;
+    collectDiagramTexts(*rHelper, OUString(), aTexts);
+    CPPUNIT_ASSERT_EQUAL(size_t(12), aTexts.size());
+    CPPUNIT_ASSERT_EQUAL(u"Parent 1"_ustr, aTexts[0]);
+    CPPUNIT_ASSERT_EQUAL(u"Child 6"_ustr, aTexts[11]);
 }
 
 CPPUNIT_PLUGIN_IMPLEMENT();

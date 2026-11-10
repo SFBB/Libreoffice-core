@@ -23,9 +23,7 @@ module com { module sun { module star { module rendering {
 
     This interface contains the generic functionality to be used on
     every XCanvas bitmap object. More format-specific
-    methods can be found at the XIntegerBitmap,
-    XIeeeDoubleBitmap, XIeeeFloatBitmap and
-    XHalfFloatBitmap interfaces.<p>
+    methods can be found in the XIntegerBitmap interface.<p>
 
     @since OOo 2.0
  */
@@ -70,14 +68,9 @@ interface XBitmap : ::com::sun::star::uno::XInterface
 
         @throws com::sun::star::lang::IllegalArgumentException
         if the size components are outside the specified range.
-
-        @throws VolatileContentDestroyedException
-        if the contents of a volatile bitmap have been destroyed, and
-        thus cannot be read to generate the scaled bitmap.
      */
     XBitmap                         getScaledBitmap( [in] ::com::sun::star::geometry::RealSize2D newSize, [in] boolean beFast )
-        raises (com::sun::star::lang::IllegalArgumentException,
-                VolatileContentDestroyedException);
+        raises (com::sun::star::lang::IllegalArgumentException);
 };
 
 }; }; }; };

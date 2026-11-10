@@ -419,36 +419,6 @@ namespace vclcanvas
         return uno::Reference< rendering::XCachedPrimitive >(nullptr);
     }
 
-    uno::Reference< rendering::XCachedPrimitive > CanvasHelper::strokeTexturedPolyPolygon( const rendering::XCanvas*                            ,
-                                                                                           const uno::Reference< rendering::XPolyPolygon2D >&   ,
-                                                                                           const rendering::ViewState&                          ,
-                                                                                           const rendering::RenderState&                        ,
-                                                                                           const uno::Sequence< rendering::Texture >&           ,
-                                                                                           const rendering::StrokeAttributes&                    )
-    {
-        return uno::Reference< rendering::XCachedPrimitive >(nullptr);
-    }
-
-    uno::Reference< rendering::XCachedPrimitive > CanvasHelper::strokeTextureMappedPolyPolygon( const rendering::XCanvas*                           ,
-                                                                                                const uno::Reference< rendering::XPolyPolygon2D >&  ,
-                                                                                                const rendering::ViewState&                         ,
-                                                                                                const rendering::RenderState&                       ,
-                                                                                                const uno::Sequence< rendering::Texture >&          ,
-                                                                                                const uno::Reference< geometry::XMapping2D >&       ,
-                                                                                                const rendering::StrokeAttributes&                   )
-    {
-        return uno::Reference< rendering::XCachedPrimitive >(nullptr);
-    }
-
-    uno::Reference< rendering::XPolyPolygon2D >   CanvasHelper::queryStrokeShapes( const rendering::XCanvas*                            ,
-                                                                                   const uno::Reference< rendering::XPolyPolygon2D >&   ,
-                                                                                   const rendering::ViewState&                          ,
-                                                                                   const rendering::RenderState&                        ,
-                                                                                   const rendering::StrokeAttributes&                    )
-    {
-        return uno::Reference< rendering::XPolyPolygon2D >(nullptr);
-    }
-
     uno::Reference< rendering::XCachedPrimitive > CanvasHelper::fillPolyPolygon( const rendering::XCanvas*                          ,
                                                                                  const uno::Reference< rendering::XPolyPolygon2D >& xPolyPolygon,
                                                                                  const rendering::ViewState&                        viewState,
@@ -497,16 +467,6 @@ namespace vclcanvas
         return uno::Reference< rendering::XCachedPrimitive >(nullptr);
     }
 
-    uno::Reference< rendering::XCachedPrimitive > CanvasHelper::fillTextureMappedPolyPolygon( const rendering::XCanvas*                             ,
-                                                                                              const uno::Reference< rendering::XPolyPolygon2D >&    ,
-                                                                                              const rendering::ViewState&                           ,
-                                                                                              const rendering::RenderState&                         ,
-                                                                                              const uno::Sequence< rendering::Texture >&            ,
-                                                                                              const uno::Reference< geometry::XMapping2D >&              )
-    {
-        return uno::Reference< rendering::XCachedPrimitive >(nullptr);
-    }
-
     uno::Reference< rendering::XCanvasFont > CanvasHelper::createFont( const rendering::XCanvas*                        ,
                                                                        const rendering::FontRequest&                    fontRequest,
                                                                        const uno::Sequence< beans::PropertyValue >&     extraFontProperties,
@@ -521,14 +481,6 @@ namespace vclcanvas
         }
 
         return uno::Reference< rendering::XCanvasFont >();
-    }
-
-    uno::Sequence< rendering::FontInfo > CanvasHelper::queryAvailableFonts( const rendering::XCanvas*                       ,
-                                                                            const rendering::FontInfo&                      ,
-                                                                            const uno::Sequence< beans::PropertyValue >&     )
-    {
-        // TODO(F2)
-        return uno::Sequence< rendering::FontInfo >();
     }
 
     uno::Reference< rendering::XCachedPrimitive > CanvasHelper::drawText( const rendering::XCanvas*                         ,

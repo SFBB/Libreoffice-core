@@ -483,39 +483,6 @@ namespace oglcanvas
         return uno::Reference< rendering::XCachedPrimitive >(nullptr);
     }
 
-    uno::Reference< rendering::XCachedPrimitive > CanvasHelper::strokeTexturedPolyPolygon( const rendering::XCanvas*                            /*pCanvas*/,
-                                                                                           const uno::Reference< rendering::XPolyPolygon2D >&   /*xPolyPolygon*/,
-                                                                                           const rendering::ViewState&                          /*viewState*/,
-                                                                                           const rendering::RenderState&                        /*renderState*/,
-                                                                                           const uno::Sequence< rendering::Texture >&           /*textures*/,
-                                                                                           const rendering::StrokeAttributes&                   /*strokeAttributes*/ )
-    {
-        // TODO
-        return uno::Reference< rendering::XCachedPrimitive >(nullptr);
-    }
-
-    uno::Reference< rendering::XCachedPrimitive > CanvasHelper::strokeTextureMappedPolyPolygon( const rendering::XCanvas*                           /*pCanvas*/,
-                                                                                                const uno::Reference< rendering::XPolyPolygon2D >&  /*xPolyPolygon*/,
-                                                                                                const rendering::ViewState&                         /*viewState*/,
-                                                                                                const rendering::RenderState&                       /*renderState*/,
-                                                                                                const uno::Sequence< rendering::Texture >&          /*textures*/,
-                                                                                                const uno::Reference< geometry::XMapping2D >&       /*xMapping*/,
-                                                                                                const rendering::StrokeAttributes&                  /*strokeAttributes*/ )
-    {
-        // TODO
-        return uno::Reference< rendering::XCachedPrimitive >(nullptr);
-    }
-
-    uno::Reference< rendering::XPolyPolygon2D >   CanvasHelper::queryStrokeShapes( const rendering::XCanvas*                            /*pCanvas*/,
-                                                                                   const uno::Reference< rendering::XPolyPolygon2D >&   /*xPolyPolygon*/,
-                                                                                   const rendering::ViewState&                          /*viewState*/,
-                                                                                   const rendering::RenderState&                        /*renderState*/,
-                                                                                   const rendering::StrokeAttributes&                   /*strokeAttributes*/ )
-    {
-        // TODO
-        return uno::Reference< rendering::XPolyPolygon2D >(nullptr);
-    }
-
     uno::Reference< rendering::XCachedPrimitive > CanvasHelper::fillPolyPolygon( const rendering::XCanvas*                          /*pCanvas*/,
                                                                                  const uno::Reference< rendering::XPolyPolygon2D >& xPolyPolygon,
                                                                                  const rendering::ViewState&                        viewState,
@@ -659,17 +626,6 @@ namespace oglcanvas
         return uno::Reference< rendering::XCachedPrimitive >(nullptr);
     }
 
-    uno::Reference< rendering::XCachedPrimitive > CanvasHelper::fillTextureMappedPolyPolygon( const rendering::XCanvas*                             /*pCanvas*/,
-                                                                                              const uno::Reference< rendering::XPolyPolygon2D >&    /*xPolyPolygon*/,
-                                                                                              const rendering::ViewState&                           /*viewState*/,
-                                                                                              const rendering::RenderState&                         /*renderState*/,
-                                                                                              const uno::Sequence< rendering::Texture >&            /*textures*/,
-                                                                                              const uno::Reference< geometry::XMapping2D >&         /*xMapping*/ )
-    {
-        // TODO
-        return uno::Reference< rendering::XCachedPrimitive >(nullptr);
-    }
-
     uno::Reference< rendering::XCanvasFont > CanvasHelper::createFont( const rendering::XCanvas*                    /*pCanvas*/,
                                                                        const rendering::FontRequest&                fontRequest,
                                                                        const uno::Sequence< beans::PropertyValue >& extraFontProperties,
@@ -680,14 +636,6 @@ namespace oglcanvas
                     new CanvasFont(fontRequest, extraFontProperties, fontMatrix ) );
 
         return uno::Reference< rendering::XCanvasFont >();
-    }
-
-    uno::Sequence< rendering::FontInfo > CanvasHelper::queryAvailableFonts( const rendering::XCanvas*                       /*pCanvas*/,
-                                                                            const rendering::FontInfo&                      /*aFilter*/,
-                                                                            const uno::Sequence< beans::PropertyValue >&    /*aFontProperties*/ )
-    {
-        // TODO
-        return uno::Sequence< rendering::FontInfo >();
     }
 
     uno::Reference< rendering::XCachedPrimitive > CanvasHelper::drawText( const rendering::XCanvas*                         /*pCanvas*/,

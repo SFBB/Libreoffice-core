@@ -118,33 +118,6 @@ namespace dxcanvas
                                const css::rendering::RenderState&      renderState,
                                const css::rendering::StrokeAttributes& strokeAttributes );
         css::uno::Reference< css::rendering::XCachedPrimitive >
-            strokeTexturedPolyPolygon( const css::rendering::XCanvas*          pCanvas,
-                                       const css::uno::Reference<
-                                               css::rendering::XPolyPolygon2D >&   xPolyPolygon,
-                                       const css::rendering::ViewState&        viewState,
-                                       const css::rendering::RenderState&      renderState,
-                                       const css::uno::Sequence<
-                                               css::rendering::Texture >&      textures,
-                                       const css::rendering::StrokeAttributes& strokeAttributes );
-        css::uno::Reference< css::rendering::XCachedPrimitive >
-            strokeTextureMappedPolyPolygon( const css::rendering::XCanvas*             pCanvas,
-                                            const css::uno::Reference<
-                                                    css::rendering::XPolyPolygon2D >&  xPolyPolygon,
-                                            const css::rendering::ViewState&           viewState,
-                                            const css::rendering::RenderState&         renderState,
-                                            const css::uno::Sequence<
-                                                    css::rendering::Texture >&         textures,
-                                            const css::uno::Reference<
-                                                    css::geometry::XMapping2D >&       xMapping,
-                                            const css::rendering::StrokeAttributes&    strokeAttributes );
-        css::uno::Reference< css::rendering::XPolyPolygon2D >
-            queryStrokeShapes( const css::rendering::XCanvas*          pCanvas,
-                               const css::uno::Reference<
-                                       css::rendering::XPolyPolygon2D >&   xPolyPolygon,
-                               const css::rendering::ViewState&        viewState,
-                               const css::rendering::RenderState&      renderState,
-                               const css::rendering::StrokeAttributes& strokeAttributes );
-        css::uno::Reference< css::rendering::XCachedPrimitive >
             fillPolyPolygon( const css::rendering::XCanvas*            pCanvas,
                              const css::uno::Reference<
                                      css::rendering::XPolyPolygon2D >&     xPolyPolygon,
@@ -158,16 +131,6 @@ namespace dxcanvas
                                      const css::rendering::RenderState&        renderState,
                                      const css::uno::Sequence<
                                              css::rendering::Texture >&        textures );
-        css::uno::Reference< css::rendering::XCachedPrimitive >
-            fillTextureMappedPolyPolygon( const css::rendering::XCanvas*           pCanvas,
-                                          const css::uno::Reference<
-                                                  css::rendering::XPolyPolygon2D >&    xPolyPolygon,
-                                          const css::rendering::ViewState&         viewState,
-                                          const css::rendering::RenderState&       renderState,
-                                          const css::uno::Sequence<
-                                                  css::rendering::Texture >&       textures,
-                                          const css::uno::Reference<
-                                                  css::geometry::XMapping2D >&         xMapping );
 
         css::uno::Reference< css::rendering::XCanvasFont >
             createFont( const css::rendering::XCanvas*             pCanvas,
@@ -175,12 +138,6 @@ namespace dxcanvas
                         const css::uno::Sequence<
                                 css::beans::PropertyValue >&       extraFontProperties,
                         const css::geometry::Matrix2D&             fontMatrix );
-
-        css::uno::Sequence< css::rendering::FontInfo >
-            queryAvailableFonts( const css::rendering::XCanvas*        pCanvas,
-                                 const css::rendering::FontInfo&       aFilter,
-                                 const css::uno::Sequence<
-                                         css::beans::PropertyValue >&  aFontProperties );
 
         css::uno::Reference< css::rendering::XCachedPrimitive >
             drawText( const css::rendering::XCanvas*           pCanvas,

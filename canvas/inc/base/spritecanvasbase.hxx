@@ -27,8 +27,6 @@
 #include <sal/log.hxx>
 #include <spriteredrawmanager.hxx>
 
-namespace com::sun::star::rendering { class XAnimation; }
-namespace com::sun::star::rendering { class XAnimatedSprite; }
 namespace com::sun::star::rendering { class XCustomSprite; }
 namespace com::sun::star::rendering { class XSprite; }
 
@@ -87,29 +85,6 @@ namespace canvas
         }
 
         // XSpriteCanvas
-        virtual css::uno::Reference< css::rendering::XAnimatedSprite > SAL_CALL createSpriteFromAnimation( const css::uno::Reference< css::rendering::XAnimation >& animation ) override
-        {
-            canvastools::verifyArgs(animation, __func__, static_cast<cppu::OWeakObject*>(this));
-
-            typename BaseType::MutexType aGuard( BaseType::m_aMutex );
-
-            return BaseType::maCanvasHelper.createSpriteFromAnimation(animation);
-        }
-
-        virtual css::uno::Reference< css::rendering::XAnimatedSprite > SAL_CALL createSpriteFromBitmaps( const css::uno::Sequence< css::uno::Reference< css::rendering::XBitmap > >& animationBitmaps,
-                                                                                                                                   sal_Int8                                                                                                           interpolationMode ) override
-        {
-            canvastools::verifyArgs(animationBitmaps, __func__,
-                                    static_cast<cppu::OWeakObject*>(this));
-            canvastools::verifyRange( interpolationMode,
-                                css::rendering::InterpolationMode::NEAREST_NEIGHBOR,
-                                css::rendering::InterpolationMode::BEZIERSPLINE4 );
-
-            typename BaseType::MutexType aGuard( BaseType::m_aMutex );
-
-            return BaseType::maCanvasHelper.createSpriteFromBitmaps(animationBitmaps, interpolationMode);
-        }
-
         virtual css::uno::Reference< css::rendering::XCustomSprite > SAL_CALL createCustomSprite( const css::geometry::RealSize2D& spriteSize ) override
         {
             canvastools::verifySpriteSize(spriteSize, __func__,

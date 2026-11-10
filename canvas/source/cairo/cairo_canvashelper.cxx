@@ -952,36 +952,6 @@ uno::Reference<rendering::XCachedPrimitive> CanvasHelper::strokePolyPolygon(
     return uno::Reference<rendering::XCachedPrimitive>(nullptr);
 }
 
-uno::Reference<rendering::XCachedPrimitive> CanvasHelper::strokeTexturedPolyPolygon(
-    const rendering::XCanvas*, const uno::Reference<rendering::XPolyPolygon2D>& /*xPolyPolygon*/,
-    const rendering::ViewState& /*viewState*/, const rendering::RenderState& /*renderState*/,
-    const uno::Sequence<rendering::Texture>& /*textures*/,
-    const rendering::StrokeAttributes& /*strokeAttributes*/)
-{
-    // TODO
-    return uno::Reference<rendering::XCachedPrimitive>(nullptr);
-}
-
-uno::Reference<rendering::XCachedPrimitive> CanvasHelper::strokeTextureMappedPolyPolygon(
-    const rendering::XCanvas*, const uno::Reference<rendering::XPolyPolygon2D>& /*xPolyPolygon*/,
-    const rendering::ViewState& /*viewState*/, const rendering::RenderState& /*renderState*/,
-    const uno::Sequence<rendering::Texture>& /*textures*/,
-    const uno::Reference<geometry::XMapping2D>& /*xMapping*/,
-    const rendering::StrokeAttributes& /*strokeAttributes*/)
-{
-    // TODO
-    return uno::Reference<rendering::XCachedPrimitive>(nullptr);
-}
-
-uno::Reference<rendering::XPolyPolygon2D> CanvasHelper::queryStrokeShapes(
-    const rendering::XCanvas*, const uno::Reference<rendering::XPolyPolygon2D>& /*xPolyPolygon*/,
-    const rendering::ViewState& /*viewState*/, const rendering::RenderState& /*renderState*/,
-    const rendering::StrokeAttributes& /*strokeAttributes*/)
-{
-    // TODO
-    return uno::Reference<rendering::XPolyPolygon2D>(nullptr);
-}
-
 uno::Reference<rendering::XCachedPrimitive> CanvasHelper::fillPolyPolygon(
     const rendering::XCanvas*, const uno::Reference<rendering::XPolyPolygon2D>& xPolyPolygon,
     const rendering::ViewState& viewState, const rendering::RenderState& renderState)
@@ -1025,16 +995,6 @@ uno::Reference<rendering::XCachedPrimitive> CanvasHelper::fillTexturedPolyPolygo
         cairo_restore(mpCairo.get());
     }
 
-    return uno::Reference<rendering::XCachedPrimitive>(nullptr);
-}
-
-uno::Reference<rendering::XCachedPrimitive> CanvasHelper::fillTextureMappedPolyPolygon(
-    const rendering::XCanvas*, const uno::Reference<rendering::XPolyPolygon2D>& /*xPolyPolygon*/,
-    const rendering::ViewState& /*viewState*/, const rendering::RenderState& /*renderState*/,
-    const uno::Sequence<rendering::Texture>& /*textures*/,
-    const uno::Reference<geometry::XMapping2D>& /*xMapping*/)
-{
-    // TODO
     return uno::Reference<rendering::XCachedPrimitive>(nullptr);
 }
 

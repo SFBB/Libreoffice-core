@@ -125,13 +125,6 @@ namespace dxcanvas
         return uno::Reference< rendering::XBitmap >(new CanvasBitmap(pBitmap,getDevice()));
     }
 
-    uno::Reference< rendering::XVolatileBitmap > SpriteDeviceHelper::createVolatileBitmap(
-        const uno::Reference< rendering::XGraphicDevice >&  /*rDevice*/,
-        const geometry::IntegerSize2D&                      /*size*/ )
-    {
-        return uno::Reference< rendering::XVolatileBitmap >();
-    }
-
     uno::Reference< rendering::XBitmap > SpriteDeviceHelper::createCompatibleAlphaBitmap(
         const uno::Reference< rendering::XGraphicDevice >&  /*rDevice*/,
         const geometry::IntegerSize2D&                      size )
@@ -147,13 +140,6 @@ namespace dxcanvas
 
         // create a 32bit ARGB system memory surface
         return uno::Reference< rendering::XBitmap >(new CanvasBitmap(pBitmap,getDevice()));
-    }
-
-    uno::Reference< rendering::XVolatileBitmap > SpriteDeviceHelper::createVolatileAlphaBitmap(
-        const uno::Reference< rendering::XGraphicDevice >&  /*rDevice*/,
-        const geometry::IntegerSize2D&                      /*size*/ )
-    {
-        return uno::Reference< rendering::XVolatileBitmap >();
     }
 
     uno::Any SpriteDeviceHelper::isAccelerated() const

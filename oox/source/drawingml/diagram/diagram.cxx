@@ -34,9 +34,14 @@
 #include <drawingml/lineproperties.hxx>
 #include <drawingml/customshapeproperties.hxx>
 #include <o3tl/unit_conversion.hxx>
+#include <algorithm>
+#include <cmath>
 #include <oox/drawingml/theme.hxx>
 #include <oox/token/namespaces.hxx>
+#include <basegfx/color/bcolortools.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
+#include <cmath>
+#include <basegfx/numeric/ftools.hxx>
 #include <svx/svdpage.hxx>
 #include <oox/ppt/pptimport.hxx>
 #include <comphelper/xmltools.hxx>
@@ -105,6 +110,53 @@ static void sortChildrenByZOrder(const ShapePtr& pShape)
         sortChildrenByZOrder(rChild);
 }
 
+// A layout turns a shape by the rot of its dgm:shape, 73 degrees for the arrow of a descending
+// process, and the box the layout gave it is the box the turned shape is to fill. The shape
+// itself is smaller than that box: turned by the angle, its own width and height reach the box
+// along both axes, W = w cos + h sin and H = w sin + h cos. The shape gets that own size, the
+// middle stays where it was, and the angle becomes a plain rotation of the shape. A right angle
+// changes nothing but which side is which, so the turn before the sizing does the same there and
+// stays; near 45 degrees the two equations say the same thing, and the shape is taken square.
+static void unturnRotatedShapes(const ShapePtr& pShape)
+{
+    for (const ShapePtr& pChild : pShape->getChildren())
+    {
+        unturnRotatedShapes(pChild);
+
+        // the angle is in 60000ths of a degree, as everywhere in the format
+        const sal_Int32 nTurn(pChild->getDiagramRotation());
+        if (nTurn == 0 || nTurn % (90 * 60000) == 0)
+            continue;
+
+        const double fAngle(basegfx::deg2rad<60000>(nTurn));
+        const double fCos(std::abs(cos(fAngle)));
+        const double fSin(std::abs(sin(fAngle)));
+        const awt::Size aBox(pChild->getSize());
+        double fWidth(0.0);
+        double fHeight(0.0);
+        const double fApart(fCos * fCos - fSin * fSin);
+        if (std::abs(fApart) < 0.05)
+            fWidth = fHeight = aBox.Width / (fCos + fSin);
+        else
+        {
+            fWidth = (aBox.Width * fCos - aBox.Height * fSin) / fApart;
+            fHeight = (aBox.Height * fCos - aBox.Width * fSin) / fApart;
+        }
+        if (fWidth <= 1.0 || fHeight <= 1.0)
+            continue;
+
+        const awt::Size aOwn(static_cast<sal_Int32>(fWidth), static_cast<sal_Int32>(fHeight));
+        awt::Point aAt(pChild->getPosition());
+        aAt.X += (aBox.Width - aOwn.Width) / 2;
+        aAt.Y += (aBox.Height - aOwn.Height) / 2;
+        pChild->setPosition(aAt);
+        pChild->setSize(aOwn);
+        pChild->setChildSize(aOwn);
+        pChild->setRotation(pChild->getRotation() + nTurn);
+        pChild->setDiagramRotation(0);
+    }
+}
+
 /// Removes empty group shapes, now that their spacing influenced the layout.
 static void removeUnneededGroupShapes(const ShapePtr& pShape)
 {
@@ -131,6 +183,14 @@ void SmartArtDiagram::createShapeHierarchyFromModel( const ShapePtr & pParentSha
 
     pParentShape->setChildSize(pParentShape->getSize());
 
+    // The names the layout settles, the statements it keeps for a shape levels down and the
+    // shapes a sideways branch places as a whole all describe the tree this run builds. A run
+    // starts with none of them, so a Diagram laid out a second time is measured afresh.
+    maUserVariables.clear();
+    maDeferredUserVariables.clear();
+    maLaidOutSideways.clear();
+    maDeferredSpacers.clear();
+
     const rtl::Reference<svx::diagram::Point> xRootPoint(mpData->getRootPoint());
     if (bCreate && mpLayout->getNode() && xRootPoint.is())
     {
@@ -142,9 +202,13 @@ void SmartArtDiagram::createShapeHierarchyFromModel( const ShapePtr & pParentSha
         // layout shapes - now all shapes are created
         ShapeLayoutingVisitor aLayoutingVisitor(*this, xRootPoint);
         mpLayout->getNode()->accept(aLayoutingVisitor);
-
+        settleNamedConnectors(*this);
+        settleDeferredSpacers(*this);
         sortChildrenByZOrder(pParentShape);
+        unturnRotatedShapes(pParentShape);
         removeUnneededGroupShapes(pParentShape);
+        centreDrawnShapes(*this, pParentShape);
+        settleUprightText(*this);
     }
 
     ShapePtr pBackground = std::make_shared<Shape>("com.sun.star.drawing.CustomShape");
@@ -274,6 +338,9 @@ SmartArtDiagram::SmartArtDiagram(std::u16string_view rLayout, std::u16string_vie
         rtl::Reference< core::FragmentHandler > xRefLayout(new ColorFragmentHandler(*xPPTImport, u"internal"_ustr, maColors));
         xPPTImport->importFragment(xRefLayout, xSerializer);
     }
+
+    // link the Connections to their Points
+    mpData->buildDiagramDataModel(false);
 }
 
 SmartArtDiagram::~SmartArtDiagram()
@@ -682,11 +749,13 @@ void loadDiagram( ShapePtr const & pShape,
         if( !pDiagram->getData()->getExtDrawings().empty() )
         {
             const DiagramColorMap::const_iterator aColor = pDiagram->getColors().find(u"node0"_ustr);
-            if( aColor != pDiagram->getColors().end() && !aColor->second.maTextFillColors.empty())
+            if( aColor != pDiagram->getColors().end()
+                && !aColor->second.maTextFillColors.maColors.empty())
             {
                 // TODO(F1): well, actually, there might be *several* color
                 // definitions in it, after all it's called list.
-                pShape->setFontRefColorForNodes(DiagramColor::getColorByIndex(aColor->second.maTextFillColors, -1));
+                pShape->setFontRefColorForNodes(
+                    DiagramColor::getColorByIndex(aColor->second.maTextFillColors, -1, 0));
             }
         }
 
@@ -729,16 +798,88 @@ void loadDiagram( ShapePtr const & pShape,
     }
 }
 
-const oox::drawingml::Color&
-DiagramColor::getColorByIndex(const std::vector<oox::drawingml::Color>& rColors, sal_Int32 nIndex)
+oox::drawingml::Color DiagramColor::getColorByIndex(const DiagramColorList& rList,
+                                                    sal_Int32 nIndex, sal_Int32 nCount)
 {
+    const std::vector<oox::drawingml::Color>& rColors(rList.maColors);
     assert(!rColors.empty());
+
     if (nIndex == -1)
+        return rColors.back();
+
+    const sal_Int32 nColors(static_cast<sal_Int32>(rColors.size()));
+
+    // A span and a cycle list both spread their colors over the shapes, and only if there is
+    // something to spread between. A repeat list, and any list of one colour, hands out one
+    // of its colors as it stands.
+    const bool bSpan(XML_span == rList.mnMethod);
+    const bool bCycle(XML_cycle == rList.mnMethod);
+
+    // A span puts a color on the first shape and another on the last, so it needs two shapes
+    // to spread between; a cycle starts its walk on one shape and needs only that. Both ways
+    // of spreading divide by the number of shapes below, and this is what keeps that divisor
+    // away from zero.
+    const sal_Int32 nShapesNeeded(bSpan ? 2 : 1);
+
+    if ((!bSpan && !bCycle) || nColors < 2 || nCount < nShapesNeeded
+        || rList.maResolvedColors.size() != rColors.size())
+        return rColors[nIndex % nColors];
+
+    const sal_Int32 nPlace(std::clamp<sal_Int32>(nIndex, 0, nCount - 1));
+
+    // Where this shape sits in the run of colors, which says which pair of them it falls
+    // between and how far along that pair it is.
+    double fPosition(0.0);
+
+    if (bSpan)
     {
-        return rColors[rColors.size() - 1];
+        // The colors and the shapes are spread over the same run, the first color on the
+        // first shape and the last color on the last one. There are two shapes at least,
+        // so the divisor is one at least.
+        fPosition = nPlace * (nColors - 1.0) / (nCount - 1.0);
+    }
+    else
+    {
+        // A cycle walks the colors to the end and back again, and it leaves room for one
+        // shape more than the run holds, so that shapes laid out in a ring meet the color
+        // they started from rather than repeat it.
+        // There is one shape at least, so the divisor is one at least.
+        const double fWholeWalk(2.0 * (nColors - 1));
+        const double fWalked(nPlace * fWholeWalk / nCount);
+        fPosition = fWalked <= nColors - 1 ? fWalked : fWholeWalk - fWalked;
     }
 
-    return rColors[nIndex % rColors.size()];
+    const sal_Int32 nFirst(std::min<sal_Int32>(fPosition, nColors - 2));
+    const double fFactor(fPosition - nFirst);
+
+    const basegfx::BColor aStartRGB(rList.maResolvedColors[nFirst].getBColor());
+    const basegfx::BColor aEndRGB(rList.maResolvedColors[nFirst + 1].getBColor());
+    const basegfx::BColor aStartHSL(basegfx::utils::rgb2hsl(aStartRGB));
+    const basegfx::BColor aEndHSL(basegfx::utils::rgb2hsl(aEndRGB));
+
+    // The hue rises when the end color has the larger hue and falls otherwise, so the walk
+    // stays between 0 and 360 degrees and never passes red at 0 degrees, even when the way
+    // round the other side would be shorter. A list may state a direction to walk in, but the
+    // producer of the format ignores that attribute, as [MS-OI29500] 2.1.1630 b. states, so it
+    // is not read here. See also
+    // https://learn.microsoft.com/en-us/answers/questions/5905698/the-huedir-attribute-of-a-dgm-fillclrlst-element-d
+    const basegfx::BColor aWantedHSL(basegfx::utils::rgb2hsl(basegfx::utils::interpolateInHSL(
+        aStartRGB, aEndRGB, fFactor, aStartHSL.getRed() <= aEndHSL.getRed())));
+
+    // Keep the color of the list itself and add the distance to the wanted one as
+    // hue, saturation and luminance offsets, which is how the format expresses a
+    // spread color. A shape then still follows its theme color.
+    oox::drawingml::Color aRetval(rColors[nFirst]);
+    const auto aAddOffset = [&aRetval](sal_Int32 nToken, double fOffset, sal_Int32 nUnit) {
+        const sal_Int32 nValue(static_cast<sal_Int32>(std::round(fOffset * nUnit)));
+        if (0 != nValue)
+            aRetval.addTransformation(nToken, nValue);
+    };
+    aAddOffset(XML_hueOff, aWantedHSL.getRed() - aStartHSL.getRed(), PER_DEGREE);
+    aAddOffset(XML_satOff, aWantedHSL.getGreen() - aStartHSL.getGreen(), MAX_PERCENT);
+    aAddOffset(XML_lumOff, aWantedHSL.getBlue() - aStartHSL.getBlue(), MAX_PERCENT);
+
+    return aRetval;
 }
 }
 
