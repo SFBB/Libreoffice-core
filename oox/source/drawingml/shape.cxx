@@ -2460,10 +2460,9 @@ Reference< XShape > const & Shape::createAndInsert(
 
                 // TextPreRotateAngle. Text rotates inside the text area. Might be used for diagram layout 'upr' and 'grav'.
                 // A Diagram laid out again has the turn on the shape, its text comes back from the shape it replaces.
+                // The turn of a Diagram's text already counts the turn of its layout node.
                 sal_Int32 nTextPreRotateAngle = static_cast< sal_Int32 >( getTextBody()->getTextProperties().moTextPreRotation.value_or(
                     moDiagramTextPreRotation.value_or( 0 ) ) );
-
-                nTextPreRotateAngle -= getDiagramRotation(); // Use of mnDiagramRotation is unclear. It seems to be always 0 here.
 
                 // TextRotateAngle. The text area rotates.
                 sal_Int32 nTextAreaRotateAngle = getTextBody()->getTextProperties().moTextAreaRotation.value_or(0);
@@ -2497,7 +2496,11 @@ Reference< XShape > const & Shape::createAndInsert(
                     putPropertyToGrabBag(u"vertOverflow"_ustr, uno::Any(u"ellipsis"_ustr));
             }
             else if (moDiagramTextPreRotation)
-                mpCustomShapePropertiesPtr->setTextPreRotateAngle(-*moDiagramTextPreRotation / 60000);
+            {
+                // A shape laid out again has no text body yet, use the turn the layout decided.
+                mpCustomShapePropertiesPtr->setTextPreRotateAngle(-*moDiagramTextPreRotation
+                                                                  / 60000);
+            }
 
             // Note that the script oox/source/drawingml/customshapes/generatePresetsData.pl looks
             // for these ==cscode== and ==csdata== markers, so don't "clean up" these SAL_INFOs

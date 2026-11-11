@@ -419,7 +419,6 @@ bridges/source/jni_uno/jni_java2uno.cxx
 bridges/source/jni_uno/jni_uno2java.cxx
 bridges/source/jni_uno/jniunoenvironmentdata.hxx
 bridges/source/jni_uno/nativethreadpool.cxx
-canvas/inc/base/basemutexhelper.hxx
 canvas/inc/base/cachedprimitivebase.hxx
 canvas/inc/base/canvascustomspritebase.hxx
 canvas/inc/base/canvascustomspritehelper.hxx
@@ -534,7 +533,6 @@ canvas/source/opengl/ogl_texturecache.hxx
 canvas/source/opengl/ogl_tools.hxx
 canvas/source/tools/cachedprimitivebase.cxx
 canvas/source/tools/canvascustomspritehelper.cxx
-canvas/source/tools/canvastools.cxx
 canvas/source/tools/elapsedtime.cxx
 canvas/source/tools/page.cxx
 canvas/source/tools/page.hxx
@@ -4579,7 +4577,6 @@ include/basic/sbxmeth.hxx
 include/basic/sbxobj.hxx
 include/basic/sbxvar.hxx
 include/basic/vbahelper.hxx
-include/canvas/canvastools.hxx
 include/canvas/elapsedtime.hxx
 include/codemaker/commoncpp.hxx
 include/codemaker/commonjava.hxx
@@ -6002,7 +5999,6 @@ include/vcl/bitmap.hxx
 include/vcl/builder.hxx
 include/vcl/builderfactory.hxx
 include/vcl/cairo.hxx
-include/vcl/canvastools.hxx
 include/vcl/checksum.hxx
 include/vcl/commandevent.hxx
 include/vcl/commandinfoprovider.hxx
@@ -12539,7 +12535,6 @@ sw/source/ui/dbui/mmdocselectpage.cxx
 sw/source/ui/dbui/mmgreetingspage.cxx
 sw/source/ui/dbui/mmlayoutpage.cxx
 sw/source/ui/dbui/mmlayoutpage.hxx
-sw/source/ui/dbui/mmoutputtypepage.cxx
 sw/source/ui/dbui/mmresultdialogs.cxx
 sw/source/ui/dbui/selectdbtabledialog.hxx
 sw/source/ui/dialog/ascfldlg.cxx
@@ -14487,7 +14482,6 @@ vcl/source/graphic/UnoGraphicDescriptor.cxx
 vcl/source/graphic/UnoGraphicObject.cxx
 vcl/source/graphic/UnoGraphicProvider.cxx
 vcl/source/helper/canvasbitmap.cxx
-vcl/source/helper/canvastools.cxx
 vcl/source/helper/commandinfoprovider.cxx
 vcl/source/helper/displayconnectiondispatch.cxx
 vcl/source/helper/evntpost.cxx

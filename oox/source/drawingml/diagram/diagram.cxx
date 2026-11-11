@@ -40,7 +40,6 @@
 #include <oox/token/namespaces.hxx>
 #include <basegfx/color/bcolortools.hxx>
 #include <basegfx/matrix/b2dhommatrix.hxx>
-#include <cmath>
 #include <basegfx/numeric/ftools.hxx>
 #include <svx/svdpage.hxx>
 #include <oox/ppt/pptimport.hxx>
@@ -142,6 +141,22 @@ static void unturnRotatedShapes(const ShapePtr& pShape)
             fWidth = (aBox.Width * fCos - aBox.Height * fSin) / fApart;
             fHeight = (aBox.Height * fCos - aBox.Width * fSin) / fApart;
         }
+        // turned by less than 45 degrees a very flat box would tilt its diagonal against the
+        // turn, so the shape stops where its diagonal lies flat (w sin = h cos) and is as high
+        // as the box; a very high box does the same the other way round
+        if (std::abs(fApart) >= 0.05 && fSin > 0.0 && fSin < fCos)
+        {
+            if (fHeight * fCos < fWidth * fSin)
+            {
+                fWidth = aBox.Height / 2.0 / fSin;
+                fHeight = aBox.Height / 2.0 / fCos;
+            }
+            else if (fWidth * fCos < fHeight * fSin)
+            {
+                fWidth = aBox.Width / 2.0 / fCos;
+                fHeight = aBox.Width / 2.0 / fSin;
+            }
+        }
         if (fWidth <= 1.0 || fHeight <= 1.0)
             continue;
 
@@ -187,21 +202,85 @@ void SmartArtDiagram::createShapeHierarchyFromModel( const ShapePtr & pParentSha
     // shapes a sideways branch places as a whole all describe the tree this run builds. A run
     // starts with none of them, so a Diagram laid out a second time is measured afresh.
     maUserVariables.clear();
+    maFittedFontSizes.clear();
+    maRunsSizedByLayout.clear();
+    maParagraphsIndentedByLayout.clear();
     maDeferredUserVariables.clear();
     maLaidOutSideways.clear();
+    maWidthOfDescendantSizes.clear();
     maDeferredSpacers.clear();
 
     const rtl::Reference<svx::diagram::Point> xRootPoint(mpData->getRootPoint());
     if (bCreate && mpLayout->getNode() && xRootPoint.is())
     {
-        // create Shape hierarchy
-        ShapeCreationVisitor aCreationVisitor(*this, xRootPoint, pParentShape);
-        mpLayout->getNode()->setExistingShape(pParentShape);
-        mpLayout->getNode()->accept(aCreationVisitor);
+        // A text node asks for a font, and the nodes that share a stated size are laid out as
+        // a group at one font: the first pass at the size the layout states, and where a text
+        // of the group did not fit on a pass the shapes are made and laid out again with that
+        // group a point smaller, down to the least the layout's rule allows. A Diagram whose
+        // texts all fit is laid out once.
+        maFontCandidates.clear();
+        maGroupsThatShrank.clear();
+        maColumnFits.clear();
+        maContentHeights.clear();
+        // a column of composites takes their heights from the pass before, so one more pass
+        // runs where a column met a composite no pass had measured yet
+        bool bExtraPassTaken(false);
+        for (int nPass = 0; nPass < 80; ++nPass)
+        {
+            maGroupsThatDidNotFit.clear();
+            maColumnFitsOfThisPass.clear();
+            maNextContentHeights.clear();
+            mbContentHeightMissing = false;
+            maUserVariables.clear();
+            maFittedFontSizes.clear();
+            maDeferredUserVariables.clear();
+            maLaidOutSideways.clear();
+            maWidthOfDescendantSizes.clear();
+            maDeferredSpacers.clear();
+            mpLayout->getPresPointShapeMap().clear();
+            pParentShape->getChildren().clear();
 
-        // layout shapes - now all shapes are created
-        ShapeLayoutingVisitor aLayoutingVisitor(*this, xRootPoint);
-        mpLayout->getNode()->accept(aLayoutingVisitor);
+            // create Shape hierarchy
+            ShapeCreationVisitor aCreationVisitor(*this, xRootPoint, pParentShape);
+            mpLayout->getNode()->setExistingShape(pParentShape);
+            mpLayout->getNode()->accept(aCreationVisitor);
+
+            // layout shapes - now all shapes are created
+            ShapeLayoutingVisitor aLayoutingVisitor(*this, xRootPoint);
+            mpLayout->getNode()->accept(aLayoutingVisitor);
+
+            // every group whose text did not fit shrinks by a point, and the pass is run
+            // again while any of them can
+            bool bAnyShrank(false);
+            for (const OUString& rGroup : maGroupsThatDidNotFit)
+            {
+                const auto aCandidate = maFontCandidates.find(rGroup);
+                if (aCandidate == maFontCandidates.end()
+                    || aCandidate->second <= mfLeastFont + 1e-6)
+                    continue;
+                aCandidate->second = std::max(mfLeastFont, aCandidate->second - 1.0);
+                maGroupsThatShrank.insert(rGroup);
+                bAnyShrank = true;
+            }
+            // a row whose column did not fit shrinks on the next pass
+            for (const auto& [rName, fPart] : maColumnFitsOfThisPass)
+            {
+                const auto aKept = maColumnFits.find(rName);
+                maColumnFits[rName] = (aKept != maColumnFits.end() ? aKept->second : 1.0) * fPart;
+                bAnyShrank = true;
+            }
+            const bool bMissing(mbContentHeightMissing && !maNextContentHeights.empty()
+                                && maNextContentHeights != maContentHeights);
+            maContentHeights = maNextContentHeights;
+            if (!bAnyShrank)
+            {
+                if (!bMissing || bExtraPassTaken)
+                    break;
+                bExtraPassTaken = true;
+            }
+        }
+        settleEqualNodeSizes(*this, pParentShape);
+        settleSidesBoundToNamedShapes(*this, pParentShape);
         settleNamedConnectors(*this);
         settleDeferredSpacers(*this);
         sortChildrenByZOrder(pParentShape);
@@ -272,6 +351,7 @@ SmartArtDiagram::SmartArtDiagram()
 
 SmartArtDiagram::SmartArtDiagram(SmartArtDiagram const& rSource)
 : maDiagramFontHeights()
+, msTextFont(rSource.msTextFont)
 , mpData(rSource.mpData ? new DiagramData_oox(*rSource.mpData) : nullptr)
 , mpLayout(rSource.mpLayout)
 , maStyles(rSource.maStyles)
@@ -776,6 +856,10 @@ void loadDiagram( ShapePtr const & pShape,
         // up
         static bool bIgnoreExtDrawings(nullptr != std::getenv("DIAGRAM_IGNORE_EXTDRAWINGS"));
         const bool bCreate(bIgnoreExtDrawings || pShape->getExtDrawings().empty());
+        // the text font of the theme, the layout measures the text with it
+        if (const std::shared_ptr<::oox::drawingml::Theme> pTheme = rFilter.getCurrentThemePtr();
+            pTheme && pTheme->getTheme())
+            pDiagram->setTextFont(pTheme->getTheme()->getFontScheme().getMinorLatin().maTypeface);
         pDiagram->createShapeHierarchyFromModel(pShape, bCreate);
 
         // Get the oox::Theme definition and - if available - move/secure the

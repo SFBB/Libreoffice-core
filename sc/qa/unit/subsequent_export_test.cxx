@@ -2461,6 +2461,17 @@ CPPUNIT_TEST_FIXTURE(ScExportTest, testThreadedCommentRoundtrip)
     // Author should be the display name after round-trip, not tc={guid}.
     CPPUNIT_ASSERT_EQUAL(u"Mike Kaganski"_ustr, pNote->GetAuthor());
 
+    // The moment the entry was written is a UTC instant, kept as the file had it. The file this
+    // comes from was written elsewhere, so the value is a good check that we neither shift it nor
+    // reformat it.
+    const ScThreadedCommentData* pThreaded = pNote->GetThreadedCommentData();
+    CPPUNIT_ASSERT(pThreaded);
+    CPPUNIT_ASSERT_EQUAL(u"2026-03-24T09:25:49.80"_ustr, pThreaded->maRoot.maDateTime);
+    xmlDocUniquePtr pXmlThreaded = parseExport(u"xl/threadedComments/threadedComment1.xml"_ustr);
+    CPPUNIT_ASSERT(pXmlThreaded);
+    assertXPath(pXmlThreaded, "/xthreaded:ThreadedComments/xthreaded:threadedComment[1]", "dT",
+                u"2026-03-24T09:25:49.80");
+
     const ScThreadedCommentData* pData = pNote->GetThreadedCommentData();
     CPPUNIT_ASSERT(pData);
     CPPUNIT_ASSERT_EQUAL(u"{FB8EA27E-C1B6-4481-B034-193455CC7425}"_ustr, pData->maRoot.maGuid);
@@ -2475,6 +2486,37 @@ CPPUNIT_TEST_FIXTURE(ScExportTest, testThreadedCommentRoundtrip)
     const ScPersonData* pPerson = pDoc->GetPersonById(pData->maRoot.maPersonId);
     CPPUNIT_ASSERT(pPerson);
     CPPUNIT_ASSERT_EQUAL(u"Mike Kaganski"_ustr, pPerson->maDisplayName);
+}
+
+CPPUNIT_TEST_FIXTURE(ScExportTest, testNoteDateUtcOdsRoundtrip)
+{
+    // A note records the moment it was written beside the author's wall clock, and that moment
+    // survives a save and reload as ODS.
+    createScDoc();
+    ScDocument* pDoc = getScDoc();
+    ScAddress aPos(0, 0, 0);
+    ScNoteUtil::CreateNoteFromString(*pDoc, aPos, u"a note"_ustr, false, false);
+    ScPostIt* pNote = pDoc->GetNote(aPos);
+    CPPUNIT_ASSERT(pNote);
+
+    // Creating a note records a moment, marked so it reads as an instant.
+    CPPUNIT_ASSERT(!pNote->GetDateUTC().isEmpty());
+    CPPUNIT_ASSERT(pNote->GetDateUTC().endsWith("Z"));
+
+    // A known moment, so the exported attribute can be compared against it.
+    pNote->SetDateUTC(u"2026-06-15T01:02:03Z"_ustr);
+
+    save(TestFilter::ODS);
+    xmlDocUniquePtr pXmlDoc = parseExport(u"content.xml"_ustr);
+    CPPUNIT_ASSERT(pXmlDoc);
+    // Without the accompanying fix in place, this test would have failed: ODF kept the wall
+    // clock alone, so the zone it was read in was lost.
+    assertXPath(pXmlDoc, "//office:annotation", "date-utc", u"2026-06-15T01:02:03Z");
+
+    saveAndReload(TestFilter::ODS);
+    ScPostIt* pReloaded = getScDoc()->GetNote(aPos);
+    CPPUNIT_ASSERT(pReloaded);
+    CPPUNIT_ASSERT_EQUAL(u"2026-06-15T01:02:03Z"_ustr, pReloaded->GetDateUTC());
 }
 
 CPPUNIT_TEST_FIXTURE(ScExportTest, testThreadedCommentOdsRoundtrip)

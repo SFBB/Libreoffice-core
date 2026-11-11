@@ -32,7 +32,6 @@
 #include <svx/svdundo.hxx>
 #include <svx/sdasitm.hxx>
 #include <editeng/outlobj.hxx>
-#include <unordered_map>
 #include <svx/svddef.hxx>
 #include <com/sun/star/drawing/TextFitToSizeType.hpp>
 #include <svx/sdooitm.hxx>
@@ -42,6 +41,7 @@
 #include <com/sun/star/xml/sax/XFastSAXSerializable.hpp>
 #include <com/sun/star/beans/XPropertySet.hpp>
 #include <com/sun/star/text/XText.hpp>
+#include <com/sun/star/container/XEnumerationAccess.hpp>
 #include <unotools/streamwrap.hxx>
 #include <tools/stream.hxx>
 #include <com/sun/star/xml/sax/XSAXSerializable.hpp>
@@ -126,9 +126,52 @@ DiagramHelper_oox::DiagramHelper_oox(std::u16string_view rLayout, std::u16string
 
 DiagramHelper_oox::~DiagramHelper_oox() {}
 
+namespace
+{
+// Hands the name, the title, the description and the decorative mark of rOldShape to rNewShape,
+// the new version of the same shape. They are laid on with the undo recording off: the
+// re-creation as a whole is the step that is undone, and undoing it runs the re-creation again.
+void moveNamingFromOldToNewShape(SdrObject& rOldShape, SdrObject& rNewShape)
+{
+    SdrModel& rModel(rNewShape.getSdrModelFromSdrObject());
+    const bool bUndoWasEnabled(rModel.IsUndoEnabled());
+    rModel.EnableUndo(false);
+
+    rNewShape.SetName(rOldShape.GetName());
+    rNewShape.SetTitle(rOldShape.GetTitle());
+    rNewShape.SetDescription(rOldShape.GetDescription());
+    rNewShape.SetDecorative(rOldShape.IsDecorative());
+
+    rModel.EnableUndo(bUndoWasEnabled);
+}
+}
+
+// The size of the first run of the text of xShape, in points, 0 where it has no text.
+static float firstRunHeightOf(const uno::Reference<drawing::XShape>& xShape)
+{
+    float fHeight(0.0);
+    uno::Reference<container::XEnumerationAccess> xParagraphs(xShape, uno::UNO_QUERY);
+    uno::Reference<container::XEnumeration> xEnumeration(
+        xParagraphs.is() ? xParagraphs->createEnumeration() : nullptr);
+    if (xEnumeration.is() && xEnumeration->hasMoreElements())
+    {
+        uno::Reference<container::XEnumerationAccess> xParagraph(xEnumeration->nextElement(),
+                                                                 uno::UNO_QUERY);
+        uno::Reference<container::XEnumeration> xPortions(
+            xParagraph.is() ? xParagraph->createEnumeration() : nullptr);
+        if (xPortions.is() && xPortions->hasMoreElements())
+        {
+            uno::Reference<beans::XPropertySet> xPortion(xPortions->nextElement(), uno::UNO_QUERY);
+            if (xPortion.is())
+                xPortion->getPropertyValue(u"CharHeight"_ustr) >>= fHeight;
+        }
+    }
+    return fHeight;
+}
+
 void DiagramHelper_oox::moveDiagramModelDataFromOldToNewXShape(
     const uno::Reference<drawing::XShape>& xOldShape,
-    const uno::Reference<drawing::XShape>& xNewShape, tools::Long nOldHeight)
+    const uno::Reference<drawing::XShape>& xNewShape)
 {
     SdrObject* pOldShape(SdrObject::getSdrObjectFromXShape(xOldShape));
     SdrObject* pNewShape(SdrObject::getSdrObjectFromXShape(xNewShape));
@@ -143,20 +186,36 @@ void DiagramHelper_oox::moveDiagramModelDataFromOldToNewXShape(
     aAttributes.ClearItem(SDRATTR_CUSTOMSHAPE_GEOMETRY);
     pNewShape->SetMergedItemSet(aAttributes, false, true);
 
-    // copy Text/OutlinerParaObject, with the sizes of the letters following the height that the
-    // shape around them ends up with
+    // copy Text/OutlinerParaObject. The old text keeps what the user did to it, and its sizes:
+    // the fit to the new box is the shape's own autofit, and the font sync over the nodes of
+    // one name. Where the layout fitted a font for the node's group, the text is scaled so
+    // that its first run has that font. A node with text of its own keeps its sizes.
     OutlinerParaObject* pParaObject(pOldShape->GetOutlinerParaObject());
 
     if (nullptr != pParaObject)
     {
+        std::optional<double> oFitted;
+        if (mpDiagramPtr && mpDiagramPtr->getData())
+        {
+            const rtl::Reference<svx::diagram::Point> xPoint(
+                mpDiagramPtr->getData()->getPointByModelID(pNewShape->getDiagramDataModelID()));
+            const rtl::Reference<svx::diagram::Point> xDataNode(
+                mpDiagramPtr->getData()->getDataNodeForModelID(pNewShape->getDiagramDataModelID()));
+            if (xPoint.is() && !(xDataNode.is() && xDataNode->mbCustomText))
+            {
+                const auto aFitted = mpDiagramPtr->getFittedFontSizes().find(
+                    xPoint->getPresentation().msPresentationLayoutName);
+                if (aFitted != mpDiagramPtr->getFittedFontSizes().end())
+                    oFitted = aFitted->second;
+            }
+        }
+        const float fOldHeight(firstRunHeightOf(xOldShape));
         pNewShape->SetOutlinerParaObject(*pParaObject);
-
-        const tools::Long nNewHeight(xNewShape->getSize().Height);
-
-        // Now scale the text sizes
-        if (nOldHeight > 0 && nNewHeight > 0)
-            pNewShape->scaleText(static_cast<double>(nNewHeight) / static_cast<double>(nOldHeight),
-                                 /*bUndo=*/false);
+        if (oFitted && fOldHeight > 0.0)
+        {
+            const double fScale(*oFitted / fOldHeight);
+            pNewShape->scaleText(fScale, /*bUndo=*/false);
+        }
     }
 
     // maybe copy more stuff...
@@ -212,9 +271,6 @@ void DiagramHelper_oox::reLayout()
     // SdrObjects in the process of re-creation, but the XShapes will survive
     std::vector<uno::Reference<drawing::XShape>> xOldXShapes;
 
-    // Secure the height that each object covers to be able to later scale the text.
-    // Text is currently linear scaled to the size changes of the hosting frame.
-    std::unordered_map<OUString, tools::Long> aOldHeightForModelID;
     const bool bNewNodeMode(!msNewNodeId.isEmpty());
     uno::Reference<drawing::XShape> xNewShapeTemplate;
 
@@ -235,8 +291,6 @@ void DiagramHelper_oox::reLayout()
             {
                 uno::Reference<drawing::XShape> xCandidate(pCandidate->getUnoShape());
                 xOldXShapes.push_back(xCandidate);
-                aOldHeightForModelID[pCandidate->getDiagramDataModelID()]
-                    = xCandidate->getSize().Height;
 
                 if (bNewNodeMode)
                 {
@@ -275,6 +329,11 @@ void DiagramHelper_oox::reLayout()
     // also reset temporary buffered layout data - that might
     // still refer to changed oox::Shape data
     mpDiagramPtr->getLayout()->getPresPointShapeMap().clear();
+
+    // the text font of the theme, the layout measures the text with it
+    if (mpDiagramThemePtr && mpDiagramThemePtr->getTheme())
+        mpDiagramPtr->setTextFont(
+            mpDiagramThemePtr->getTheme()->getFontScheme().getMinorLatin().maTypeface);
 
     // Re-create the oox::Shapes for the diagram content
     mpDiagramPtr->createShapeHierarchyFromModel(pShapePtr, true);
@@ -381,7 +440,7 @@ void DiagramHelper_oox::reLayout()
     if (xOldBGShape && xNewBGShape)
     {
         // we have old and new BGShapes, copy necessary data
-        moveDiagramModelDataFromOldToNewXShape(xOldBGShape, xNewBGShape, 0);
+        moveDiagramModelDataFromOldToNewXShape(xOldBGShape, xNewBGShape);
     }
 
     for (const auto& rNewShape : xNewXShapes)
@@ -407,10 +466,11 @@ void DiagramHelper_oox::reLayout()
                     if (rNewModelID == pOldShape->getDiagramDataModelID())
                     {
                         // we have old and new version of this shape, copy necessary data
-                        const auto aOldHeight(aOldHeightForModelID.find(rNewModelID));
-                        moveDiagramModelDataFromOldToNewXShape(
-                            rOldShape, rNewShape,
-                            aOldHeightForModelID.end() == aOldHeight ? 0 : aOldHeight->second);
+                        moveDiagramModelDataFromOldToNewXShape(rOldShape, rNewShape);
+
+                        // A name belongs to one shape alone, so it goes from the old version
+                        // to the new one, and a new node made after a template takes none.
+                        moveNamingFromOldToNewShape(*pOldShape, *pNewShape);
                         break;
                     }
                 }
@@ -429,10 +489,7 @@ void DiagramHelper_oox::reLayout()
             if (nullptr != pOldShape)
             {
                 // take the look of the template, text included
-                const auto aTemplateHeight(aOldHeightForModelID.find(msNewNodeTemplateId));
-                moveDiagramModelDataFromOldToNewXShape(
-                    xNewShapeTemplate, xNewShape,
-                    aOldHeightForModelID.end() == aTemplateHeight ? 0 : aTemplateHeight->second);
+                moveDiagramModelDataFromOldToNewXShape(xNewShapeTemplate, xNewShape);
 
                 // the text that came with the template gives way to the text of the new node
                 if (nullptr != pOldShape->GetOutlinerParaObject())

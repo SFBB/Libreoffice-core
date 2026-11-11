@@ -97,6 +97,7 @@
 #include <com/sun/star/document/XImporter.hpp>
 #include <com/sun/star/document/XFilter.hpp>
 #include <comphelper/indexedpropertyvalues.hxx>
+#include <sax/tools/converter.hxx>
 #include <editeng/flditem.hxx>
 #include <editeng/unotext.hxx>
 #include <o3tl/deleter.hxx>
@@ -2316,7 +2317,7 @@ void DomainMapper_Impl::CheckUnregisteredFrameConversion(bool bPreventOverlap)
 }
 
 /// Check if the style or its parent has a list id, recursively.
-static sal_Int32 lcl_getListId(const StyleSheetEntryPtr& rEntry, const StyleSheetTablePtr& rStyleTable, bool & rNumberingFromBaseStyle)
+static sal_Int32 lcl_getListId(const StyleSheetEntryPtr& rEntry, const StyleSheetTablePtr& rStyleTable)
 {
     const StyleSheetPropertyMap* pEntryProperties = rEntry->m_pProperties.get();
     if (!pEntryProperties)
@@ -2332,9 +2333,7 @@ static sal_Int32 lcl_getListId(const StyleSheetEntryPtr& rEntry, const StyleShee
     if (!pParent || pParent == rEntry)
         return -1;
 
-    rNumberingFromBaseStyle = true;
-
-    return lcl_getListId(pParent, rStyleTable, rNumberingFromBaseStyle);
+    return lcl_getListId(pParent, rStyleTable);
 }
 
 /// Return the paragraph's list level (from styles, unless pParacontext is provided).
@@ -2386,8 +2385,7 @@ void DomainMapper_Impl::ValidateListLevel(const OUString& sStyleIdentifierD)
     if (nListLevel < 0 || nListLevel >= WW_OUTLINE_MAX)
         return;
 
-    bool bDummy = false;
-    sal_Int16 nListId = lcl_getListId(pMyStyle, GetStyleSheetTable(), bDummy);
+    sal_Int16 nListId = lcl_getListId(pMyStyle, GetStyleSheetTable());
     if (nListId < 1)
         return;
 
@@ -2483,9 +2481,8 @@ void DomainMapper_Impl::finishParagraph( const ParagraphPropertyMapPtr& pParaCon
             pParaContext->Erase(PROP_PARA_STYLE_NAME);
         }
 
-        bool bNumberingFromBaseStyle = false;
         if (!isNumberingViaRule)
-            nListId = lcl_getListId(pEntry, GetStyleSheetTable(), bNumberingFromBaseStyle);
+            nListId = lcl_getListId(pEntry, GetStyleSheetTable());
 
         //apply numbering level/style to paragraph if it was set at the style, but only if the paragraph itself
         //does not specify the numbering
@@ -2519,8 +2516,7 @@ void DomainMapper_Impl::finishParagraph( const ParagraphPropertyMapPtr& pParaCon
                 // Apply the style if it uses the same list as the direct numbering,
                 // otherwise the directly-applied-to-paragraph status will be lost,
                 // and the priority of the numbering-style-indents will be lowered. tdf#133000
-                bool bDummy;
-                if (nListId == lcl_getListId(pEntry, GetStyleSheetTable(), bDummy))
+                if (nListId == lcl_getListId(pEntry, GetStyleSheetTable()))
                     pParaContext->Insert( PROP_NUMBERING_STYLE_NAME, uno::Any(pList->GetStyleName()), true );
             }
         }
@@ -2532,16 +2528,28 @@ void DomainMapper_Impl::finishParagraph( const ParagraphPropertyMapPtr& pParaCon
             // the numbering indents now have the priority.
             // So now import must also copy the para-style indents directly onto the paragraph to compensate.
             auto getOptProperty
-                = [&pEntry, parent = lcl_getParent(pEntry, GetStyleSheetTable())](PropertyIds id, bool useParent)
+                = [&pEntry, pStyleSheetTable = GetStyleSheetTable()](PropertyIds id)
             {
                 auto p = pEntry->m_pProperties->getProperty(id);
-                if (!p && useParent && parent && parent->m_pProperties)
+                auto parent = lcl_getParent(pEntry, pStyleSheetTable);
+                // Stop on the para style that defines the listId. It is the last one with priority.
+                bool bCheckParent = pEntry->m_pProperties->props().GetListId() == -1;
+                while (!p && bCheckParent && parent && parent->m_pProperties)
+                {
                     p = parent->m_pProperties->getProperty(id);
+                    if (!p)
+                    {
+                        // guaranteed not to loop infinitely since isNumberingViaStyle
+                        bCheckParent = parent->m_pProperties->props().GetListId() == -1;
+                        if (bCheckParent)
+                            parent = lcl_getParent(parent, pStyleSheetTable);
+                    }
+                }
                 return p;
             };
-            if (auto oProperty = getOptProperty(PROP_PARA_FIRST_LINE_INDENT, bNumberingFromBaseStyle))
+            if (auto oProperty = getOptProperty(PROP_PARA_FIRST_LINE_INDENT))
                 pParaContext->Insert(PROP_PARA_FIRST_LINE_INDENT, oProperty->second, /*bOverwrite=*/false);
-            if (auto oProperty = getOptProperty(PROP_PARA_LEFT_MARGIN, bNumberingFromBaseStyle))
+            if (auto oProperty = getOptProperty(PROP_PARA_LEFT_MARGIN))
                 pParaContext->Insert(PROP_PARA_LEFT_MARGIN, oProperty->second, /*bOverwrite=*/false);
 
             // We're inheriting properties from a numbering style. Make sure a possible right margin is inherited from the base style.
@@ -3491,6 +3499,19 @@ void DomainMapper_Impl::finishParagraph( const ParagraphPropertyMapPtr& pParaCon
             {
                 m_bAnnotationResolved = item->second.bDone;
                 m_sAnnotationParent = item->second.sParaIdParent;
+            }
+            // The moment is held against the comment's durable id, which a third part ties to
+            // this paragraph id.
+            if (const auto durableId = m_aCommentDurableIds.find(sParaId);
+                durableId != m_aCommentDurableIds.end())
+            {
+                if (const auto dateUtc = m_aCommentDatesUtc.find(durableId->second);
+                    dateUtc != m_aCommentDatesUtc.end())
+                {
+                    css::util::DateTime aDateUtc;
+                    if (::sax::Converter::parseDateTime(aDateUtc, dateUtc->second))
+                        m_oAnnotationDateUtc = aDateUtc;
+                }
             }
             m_sAnnotationImportedParaId = sParaId;
         }
@@ -5063,6 +5084,12 @@ void DomainMapper_Impl::PopAnnotation()
         m_xAnnotationField->setPropertyValue(u"ParaIdParent"_ustr, uno::Any(m_sAnnotationParent));
         m_xAnnotationField->setPropertyValue(u"ParaId"_ustr, uno::Any(m_sAnnotationImportedParaId));
 
+        if (m_oAnnotationDateUtc)
+        {
+            m_xAnnotationField->setPropertyValue(u"DateTimeUTC"_ustr,
+                                                 uno::Any(*m_oAnnotationDateUtc));
+        }
+
         // See if the annotation will be a single position or a range.
         if (m_nAnnotationId == -1 || !m_aAnnotationPositions[m_nAnnotationId].m_xStart.is() || !m_aAnnotationPositions[m_nAnnotationId].m_xEnd.is())
         {
@@ -5140,6 +5167,7 @@ void DomainMapper_Impl::PopAnnotation()
     m_xAnnotationField.clear();
     m_sAnnotationParent.clear();
     m_sAnnotationImportedParaId.clear();
+    m_oAnnotationDateUtc.reset();
     m_nAnnotationId = -1;
     m_bAnnotationResolved = false;
 }
@@ -10477,8 +10505,6 @@ sal_Int32 DomainMapper_Impl::getNumberingProperty(const sal_Int32 nListId, sal_I
     // either of these indicates numbering is not used, so do not return any numbering properties
     if (nListId < 0 || nNumberingLevel == 9)
         return nRet;
-    if ( !m_xTextDocument )
-        return nRet;
 
     try
     {
@@ -10487,14 +10513,11 @@ sal_Int32 DomainMapper_Impl::getNumberingProperty(const sal_Int32 nListId, sal_I
 
         auto const pList(GetListTable()->GetList(nListId));
         assert(pList);
-        const OUString aListName = pList->GetStyleName();
-        const rtl::Reference< SwXStyleFamilies > xStyleFamilies = m_xTextDocument->getSwStyleFamilies();
-        rtl::Reference<SwXStyleFamily> xNumberingStyles = xStyleFamilies->GetNumberingStyles();
-        const rtl::Reference<SwXStyle> xStyle = dynamic_cast<SwXStyle*>(xNumberingStyles->getStyleByName(aListName).get());
-        const rtl::Reference<SwXNumberingRules> xNumberingRules = xStyle->getNumberingRules();
-        if (xNumberingRules.is())
+        const uno::Reference<container::XIndexAccess> xNumRules = pList->GetNumberingRules();
+        if (xNumRules.is() && nNumberingLevel < xNumRules->getCount())
         {
-            xNumberingRules->getPropertyByIndex(nNumberingLevel, aProp) >>= nRet;
+            const comphelper::SequenceAsHashMap aLevel(xNumRules->getByIndex(nNumberingLevel));
+            aLevel.getValue(aProp) >>= nRet;
         }
     }
     catch( const uno::Exception& )
@@ -10699,6 +10722,16 @@ void DomainMapper_Impl::substream(Id rName,
 void DomainMapper_Impl::commentProps(const OUString& sId, const CommentProperties& rProps)
 {
     m_aCommentProps[sId] = rProps;
+}
+
+void DomainMapper_Impl::commentDurableId(const OUString& sParaId, const OUString& sDurableId)
+{
+    m_aCommentDurableIds[sParaId] = sDurableId;
+}
+
+void DomainMapper_Impl::commentDateUtc(const OUString& sDurableId, const OUString& sDateUtc)
+{
+    m_aCommentDatesUtc[sDurableId] = sDateUtc;
 }
 
 

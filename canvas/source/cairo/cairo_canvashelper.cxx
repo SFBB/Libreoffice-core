@@ -35,7 +35,6 @@
 #include <com/sun/star/rendering/IntegerBitmapLayout.hpp>
 #include <com/sun/star/rendering/PathCapType.hpp>
 #include <com/sun/star/rendering/PathJoinType.hpp>
-#include <com/sun/star/rendering/RenderingIntent.hpp>
 #include <com/sun/star/rendering/TexturingMode.hpp>
 #include <com/sun/star/rendering/XIntegerBitmapColorSpace.hpp>
 #include <com/sun/star/util/Endianness.hpp>
@@ -1261,14 +1260,6 @@ private:
     {
         return maComponentTags;
     }
-    virtual ::sal_Int8 SAL_CALL getRenderingIntent() override
-    {
-        return rendering::RenderingIntent::PERCEPTUAL;
-    }
-    virtual uno::Sequence<beans::PropertyValue> SAL_CALL getProperties() override
-    {
-        return uno::Sequence<beans::PropertyValue>();
-    }
     virtual uno::Sequence<double> SAL_CALL
     convertColorSpace(const uno::Sequence<double>& deviceColor,
                       const uno::Reference<rendering::XColorSpace>& targetColorSpace) override
@@ -1594,14 +1585,6 @@ private:
     virtual uno::Sequence<::sal_Int8> SAL_CALL getComponentTags() override
     {
         return maComponentTags;
-    }
-    virtual ::sal_Int8 SAL_CALL getRenderingIntent() override
-    {
-        return rendering::RenderingIntent::PERCEPTUAL;
-    }
-    virtual uno::Sequence<beans::PropertyValue> SAL_CALL getProperties() override
-    {
-        return uno::Sequence<beans::PropertyValue>();
     }
     virtual uno::Sequence<double> SAL_CALL
     convertColorSpace(const uno::Sequence<double>& deviceColor,

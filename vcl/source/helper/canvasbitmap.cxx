@@ -23,7 +23,6 @@
 #include <com/sun/star/util/Endianness.hpp>
 #include <com/sun/star/rendering/ColorComponentTag.hpp>
 #include <com/sun/star/rendering/ColorSpaceType.hpp>
-#include <com/sun/star/rendering/RenderingIntent.hpp>
 
 #include <comphelper/diagnose_ex.hxx>
 #include <canvasbitmap.hxx>
@@ -567,16 +566,6 @@ uno::Sequence< ::sal_Int8 > SAL_CALL VclCanvasBitmap::getComponentTags(  )
 {
     SolarMutexGuard aGuard;
     return m_aComponentTags;
-}
-
-sal_Int8 SAL_CALL VclCanvasBitmap::getRenderingIntent(  )
-{
-    return rendering::RenderingIntent::PERCEPTUAL;
-}
-
-uno::Sequence< ::beans::PropertyValue > SAL_CALL VclCanvasBitmap::getProperties(  )
-{
-    return uno::Sequence< ::beans::PropertyValue >();
 }
 
 uno::Sequence< double > SAL_CALL VclCanvasBitmap::convertColorSpace( const uno::Sequence< double >& deviceColor,

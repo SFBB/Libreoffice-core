@@ -23,7 +23,6 @@
 #include <com/sun/star/util/Endianness.hpp>
 #include <com/sun/star/rendering/ColorComponentTag.hpp>
 #include <com/sun/star/rendering/ColorSpaceType.hpp>
-#include <com/sun/star/rendering/RenderingIntent.hpp>
 #include <com/sun/star/rendering/XIntegerReadOnlyBitmap.hpp>
 #include <com/sun/star/rendering/XIntegerBitmapColorSpace.hpp>
 #include <com/sun/star/rendering/XBitmapPalette.hpp>
@@ -400,17 +399,6 @@ private:
     virtual uno::Sequence< sal_Int8 > SAL_CALL getComponentTags(  ) override
     {
         return maComponentTags;
-    }
-
-    virtual ::sal_Int8 SAL_CALL getRenderingIntent(  ) override
-    {
-        return rendering::RenderingIntent::PERCEPTUAL;
-    }
-
-    virtual uno::Sequence< beans::PropertyValue > SAL_CALL getProperties() override
-    {
-        CPPUNIT_ASSERT_MESSAGE("getProperties: method not implemented", false );
-        return uno::Sequence< ::beans::PropertyValue >();
     }
 
     virtual uno::Sequence< double > SAL_CALL convertColorSpace( const uno::Sequence< double >&,

@@ -1043,8 +1043,9 @@ CPPUNIT_TEST_FIXTURE(SdImportTestSmartArt, testPictureStrip)
     // Make sure that aspect ratio is not ignored, i.e. width is not larger than height 3 times.
     awt::Size aFirstPairSize = xFirstPair->getSize();
     // Without the accompanying fix in place, this test would have failed: bad width was 16932, good
-    // width is 12540, but let's accept 12541 as well.
-    CPPUNIT_ASSERT_LESSEQUAL(aFirstPairSize.Height * 3 + 1, aFirstPairSize.Width);
+    // width is 12540. The width and the height round to hundredths of a millimetre each on its
+    // own, so the width may be a hundredth over and three times the height three under.
+    CPPUNIT_ASSERT_LESSEQUAL(aFirstPairSize.Height * 3 + 4, aFirstPairSize.Width);
 }
 
 CPPUNIT_TEST_FIXTURE(SdImportTestSmartArt, testInteropGrabBag)
@@ -1513,8 +1514,69 @@ CPPUNIT_TEST_FIXTURE(SdImportTestSmartArt, testLinearRuleVert)
     // - Expected: 2020
     // - Actual  : 10308
     // i.e. the first item on the vertical linear layout used ~all space, the other items were not
-    // visible.
-    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(2020), xShape->getSize().Height);
+    // visible. The parent text is 0.82 of the font high, as millimetres; the child texts are
+    // empty and 0.7 of the font high.
+    CPPUNIT_ASSERT_EQUAL(static_cast<sal_Int32>(3033), xShape->getSize().Height);
+}
+
+CPPUNIT_TEST_FIXTURE(SdImportTestSmartArt, testHierarchyConnectorsStartAtTheMiddleOfTheTurnedRoot)
+{
+    // the roots are turned by their layout node and keep their text turned (grav); each
+    // elbow connector starts at the middle of its root, upwards or downwards
+    createSdImpressDoc("pptx/smartart-hierarchy-turned-root.pptx");
+    uno::Reference<drawing::XShape> xDiagram(reLayoutDiagram());
+
+    std::vector<sal_Int32> aRootMiddles;
+    std::vector<std::pair<awt::Rectangle, bool>> aConnectors;
+    std::function<void(const uno::Reference<drawing::XShape>&)> aCollect
+        = [&](const uno::Reference<drawing::XShape>& xShape) {
+              uno::Reference<container::XIndexAccess> xChildren(xShape, uno::UNO_QUERY);
+              if (xChildren.is())
+              {
+                  for (sal_Int32 n = 0; n < xChildren->getCount(); ++n)
+                      aCollect(uno::Reference<drawing::XShape>(xChildren->getByIndex(n),
+                                                               uno::UNO_QUERY));
+                  return;
+              }
+              uno::Reference<beans::XPropertySet> xProperties(xShape, uno::UNO_QUERY);
+              comphelper::SequenceAsHashMap aGeometry(
+                  xProperties->getPropertyValue(u"CustomShapeGeometry"_ustr));
+              const OUString aType(aGeometry[u"Type"_ustr].get<OUString>());
+              const awt::Point aAt(xShape->getPosition());
+              const awt::Size aSize(xShape->getSize());
+              if (aType == "ooxml-bentConnector3")
+              {
+                  bool bMirroredY(false);
+                  aGeometry[u"MirroredY"_ustr] >>= bMirroredY;
+                  aConnectors.emplace_back(awt::Rectangle(aAt.X, aAt.Y, aSize.Width, aSize.Height),
+                                           bMirroredY);
+                  return;
+              }
+              sal_Int32 nRotation(0);
+              xProperties->getPropertyValue(u"RotateAngle"_ustr) >>= nRotation;
+              if (nRotation == 0)
+                  return;
+              // the root's text runs along the turned shape
+              double fTextTurn(-1.0);
+              aGeometry[u"TextPreRotateAngle"_ustr] >>= fTextTurn;
+              CPPUNIT_ASSERT_EQUAL(0.0, fTextTurn);
+              // the middle of the root as it is drawn, turned
+              awt::Rectangle aDrawn;
+              xProperties->getPropertyValue(u"BoundRect"_ustr) >>= aDrawn;
+              aRootMiddles.push_back(aDrawn.Y + aDrawn.Height / 2);
+          };
+    aCollect(xDiagram);
+    CPPUNIT_ASSERT_EQUAL(size_t(4), aRootMiddles.size());
+    CPPUNIT_ASSERT_GREATER(size_t(4), aConnectors.size());
+
+    // upwards a connector starts at the bottom of its box, downwards at the top
+    for (const auto & [ rBox, bMirroredY ] : aConnectors)
+    {
+        const sal_Int32 nStart(bMirroredY ? rBox.Y + rBox.Height : rBox.Y);
+        CPPUNIT_ASSERT(
+            std::any_of(aRootMiddles.begin(), aRootMiddles.end(),
+                        [nStart](sal_Int32 nMiddle) { return std::abs(nStart - nMiddle) <= 5; }));
+    }
 }
 
 CPPUNIT_TEST_FIXTURE(SdImportTestSmartArt, testAutofitSync)
@@ -1523,24 +1585,27 @@ CPPUNIT_TEST_FIXTURE(SdImportTestSmartArt, testAutofitSync)
 
     uno::Reference<drawing::XShape> xDiagram(getShapeFromPage(0, 0), uno::UNO_QUERY);
     uno::Reference<drawing::XShape> xMiddle = getChildShape(xDiagram, 2);
-    uno::Reference<beans::XPropertySet> xFirstInner(getChildShape(getChildShape(xMiddle, 0), 0),
-                                                    uno::UNO_QUERY);
-    double fFirstScale = 0;
-    CPPUNIT_ASSERT(xFirstInner->getPropertyValue(u"TextFitToSizeFontScale"_ustr) >>= fFirstScale);
-    CPPUNIT_ASSERT_GREATER(0.0, fFirstScale);
-    CPPUNIT_ASSERT_LESS(100.0, fFirstScale);
+    // the size a text is seen at: the size of its first run, scaled by the shape's autofit
+    const auto aShownSize = [](const uno::Reference<drawing::XShape>& xShape) {
+        uno::Reference<beans::XPropertySet> xShapeProperties(xShape, uno::UNO_QUERY);
+        double fScale = 0;
+        CPPUNIT_ASSERT(xShapeProperties->getPropertyValue(u"TextFitToSizeFontScale"_ustr)
+                       >>= fScale);
+        uno::Reference<text::XText> xText(xShape, uno::UNO_QUERY);
+        uno::Reference<container::XEnumerationAccess> xParagraphs(xText, uno::UNO_QUERY);
+        uno::Reference<container::XEnumerationAccess> xParagraph(
+            xParagraphs->createEnumeration()->nextElement(), uno::UNO_QUERY);
+        uno::Reference<beans::XPropertySet> xRun(xParagraph->createEnumeration()->nextElement(),
+                                                 uno::UNO_QUERY);
+        const double fHeight(xRun->getPropertyValue(u"CharHeight"_ustr).get<double>());
+        return fScale > 0 ? fHeight * fScale / 100.0 : fHeight;
+    };
+    const double fFirstSize(aShownSize(getChildShape(getChildShape(xMiddle, 0), 0)));
+    const double fSecondSize(aShownSize(getChildShape(getChildShape(xMiddle, 2), 0)));
 
-    uno::Reference<beans::XPropertySet> xSecondInner(getChildShape(getChildShape(xMiddle, 2), 0),
-                                                     uno::UNO_QUERY);
-    double fSecondScale = 0;
-    CPPUNIT_ASSERT(xSecondInner->getPropertyValue(u"TextFitToSizeFontScale"_ustr) >>= fSecondScale);
-
-    // Without the accompanying fix in place, this test would have failed with:
-    // - Expected: 56
-    // - Actual  : 100
-    // i.e. the left shape had no scale-down and the right shape was scaled down, even if it was
-    // requested that their scaling matches.
-    CPPUNIT_ASSERT_EQUAL(fSecondScale, fFirstScale);
+    // both texts share one font: one shown size, below the stated 65pt
+    CPPUNIT_ASSERT_LESS(65.0, fFirstSize);
+    CPPUNIT_ASSERT_DOUBLES_EQUAL(fSecondSize, fFirstSize, 0.01);
 
     // Without the accompanying fix in place, this test would have failed with:
     // - Expected: 0 (drawing::TextFitToSizeType_NONE)
@@ -1561,11 +1626,11 @@ CPPUNIT_TEST_FIXTURE(SdImportTestSmartArt, testSnakeRows)
     createSdImpressDoc("pptx/smartart-snake-rows.pptx");
 
     uno::Reference<drawing::XShapes> xDiagram(getShapeFromPage(0, 0), uno::UNO_QUERY);
-    // Collect position of the background and the real child shapes. First row and background has
-    // the same top position, unless some unexpected spacing happens, since this is a
-    // "left-to-right, then top-to-bottom" snake direction.
+    // Collect the top positions of the real child shapes, the first child being the background
+    // that covers the whole diagram. The rows stand in the middle of the background's height,
+    // so its top is not one of theirs.
     std::set<sal_Int32> aYPositions;
-    for (sal_Int32 nChild = 0; nChild < xDiagram->getCount(); ++nChild)
+    for (sal_Int32 nChild = 1; nChild < xDiagram->getCount(); ++nChild)
     {
         uno::Reference<drawing::XShape> xChild(xDiagram->getByIndex(nChild), uno::UNO_QUERY);
         aYPositions.insert(xChild->getPosition().Y);
@@ -2179,6 +2244,12 @@ BoxAndText readBoxAndText(const uno::Reference<drawing::XShape>& xDiagram, const
     BoxAndText aRetval;
     aRetval.mnHeight = xShape->getSize().Height;
     xProperties->getPropertyValue(u"CharHeight"_ustr) >>= aRetval.mfCharHeight;
+
+    // The text is shown at its size scaled by the shape's own fit to its box.
+    double fFontScale(0.0);
+    xProperties->getPropertyValue(u"TextFitToSizeFontScale"_ustr) >>= fFontScale;
+    if (fFontScale > 0.0)
+        aRetval.mfCharHeight = static_cast<float>(aRetval.mfCharHeight * fFontScale / 100.0);
 
     return aRetval;
 }
