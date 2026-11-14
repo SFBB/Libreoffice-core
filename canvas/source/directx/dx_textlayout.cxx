@@ -35,7 +35,6 @@ namespace dxcanvas
 {
     TextLayout::TextLayout( const rendering::StringContext&     aText,
                             sal_Int8                            nDirection,
-                            sal_Int64                           /*nRandomSeed*/,
                             const rtl::Reference<CanvasFont>& rFont) :
         TextLayout_Base( m_aMutex ),
         maText( aText ),
@@ -55,11 +54,6 @@ namespace dxcanvas
     }
 
     // XTextLayout
-    uno::Sequence< uno::Reference< rendering::XPolyPolygon2D > > SAL_CALL TextLayout::queryTextShapes(  )
-    {
-        // TODO
-        return uno::Sequence< uno::Reference< rendering::XPolyPolygon2D > >();
-    }
 
     uno::Sequence< geometry::RealRectangle2D > SAL_CALL TextLayout::queryInkMeasures(  )
     {
@@ -155,34 +149,6 @@ namespace dxcanvas
     {
         // TODO
         return rendering::Caret();
-    }
-
-    sal_Int32 SAL_CALL TextLayout::getNextInsertionIndex( sal_Int32 /*nStartIndex*/,
-                                                          sal_Int32 /*nCaretAdvancement*/,
-                                                          sal_Bool /*bExcludeLigatures*/ )
-    {
-        // TODO
-        return 0;
-    }
-
-    uno::Reference< rendering::XPolyPolygon2D > SAL_CALL TextLayout::queryVisualHighlighting( sal_Int32 /*nStartIndex*/,
-                                                                                              sal_Int32 /*nEndIndex*/ )
-    {
-        // TODO
-        return uno::Reference< rendering::XPolyPolygon2D >();
-    }
-
-    uno::Reference< rendering::XPolyPolygon2D > SAL_CALL TextLayout::queryLogicalHighlighting( sal_Int32 /*nStartIndex*/,
-                                                                                               sal_Int32 /*nEndIndex*/ )
-    {
-        // TODO
-        return uno::Reference< rendering::XPolyPolygon2D >();
-    }
-
-    double SAL_CALL TextLayout::getBaselineOffset(  )
-    {
-        // TODO
-        return 0.0;
     }
 
     sal_Int8 SAL_CALL TextLayout::getMainTextDirection(  )

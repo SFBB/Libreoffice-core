@@ -651,11 +651,8 @@ void PresenterSlideShowView::PaintOuterWindow (const awt::Rectangle& rRepaintBox
             {
                 geometry::AffineMatrix2D( aBitmapSize.Width,0,0, 0,aBitmapSize.Height,0),
                 1,
-                0,
                 xBackgroundBitmap,
                 nullptr,
-                nullptr,
-                rendering::StrokeAttributes(),
                 rendering::TexturingMode::REPEAT,
                 rendering::TexturingMode::REPEAT
             }
@@ -725,8 +722,8 @@ void PresenterSlideShowView::PaintEndSlide (const awt::Rectangle& rRepaintBox)
         const rendering::StringContext aContext (
             msClickToExitPresentationText, 0, msClickToExitPresentationText.getLength());
         pFont->PrepareFont(mxCanvas);
-        const Reference<rendering::XTextLayout> xLayout (
-            pFont->mxFont->createTextLayout(aContext,rendering::TextDirection::WEAK_LEFT_TO_RIGHT,0));
+        const Reference<rendering::XTextLayout> xLayout(pFont->mxFont->createTextLayout(
+            aContext, rendering::TextDirection::WEAK_LEFT_TO_RIGHT));
         mxCanvas->drawTextLayout(
             xLayout,
             aViewState,

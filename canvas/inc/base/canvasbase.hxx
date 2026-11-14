@@ -184,7 +184,7 @@ public:
         maCanvasHelper.drawBezier(this, aBezierSegment, aEndPoint, viewState, renderState);
     }
 
-    virtual css::uno::Reference<css::rendering::XCachedPrimitive> SAL_CALL
+    virtual void SAL_CALL
     drawPolyPolygon(const css::uno::Reference<css::rendering::XPolyPolygon2D>& xPolyPolygon,
                     const css::rendering::ViewState& viewState,
                     const css::rendering::RenderState& renderState) override
@@ -196,10 +196,10 @@ public:
 
         mbSurfaceDirty = true;
 
-        return maCanvasHelper.drawPolyPolygon(this, xPolyPolygon, viewState, renderState);
+        maCanvasHelper.drawPolyPolygon(this, xPolyPolygon, viewState, renderState);
     }
 
-    virtual css::uno::Reference<css::rendering::XCachedPrimitive> SAL_CALL strokePolyPolygon(
+    virtual void SAL_CALL strokePolyPolygon(
         const css::uno::Reference<css::rendering::XPolyPolygon2D>& xPolyPolygon,
         const css::rendering::ViewState& viewState, const css::rendering::RenderState& renderState,
         const css::rendering::StrokeAttributes& strokeAttributes) override
@@ -211,11 +211,11 @@ public:
 
         mbSurfaceDirty = true;
 
-        return maCanvasHelper.strokePolyPolygon(this, xPolyPolygon, viewState, renderState,
-                                                strokeAttributes);
+        maCanvasHelper.strokePolyPolygon(this, xPolyPolygon, viewState, renderState,
+                                         strokeAttributes);
     }
 
-    virtual css::uno::Reference<css::rendering::XCachedPrimitive> SAL_CALL
+    virtual void SAL_CALL
     fillPolyPolygon(const css::uno::Reference<css::rendering::XPolyPolygon2D>& xPolyPolygon,
                     const css::rendering::ViewState& viewState,
                     const css::rendering::RenderState& renderState) override
@@ -227,7 +227,7 @@ public:
 
         mbSurfaceDirty = true;
 
-        return maCanvasHelper.fillPolyPolygon(this, xPolyPolygon, viewState, renderState);
+        maCanvasHelper.fillPolyPolygon(this, xPolyPolygon, viewState, renderState);
     }
 
     virtual css::uno::Reference<css::rendering::XCachedPrimitive> SAL_CALL fillTexturedPolyPolygon(
@@ -261,12 +261,11 @@ public:
         return maCanvasHelper.createFont(this, fontRequest, extraFontProperties, fontMatrix);
     }
 
-    virtual css::uno::Reference<css::rendering::XCachedPrimitive>
-        SAL_CALL drawText(const css::rendering::StringContext& text,
-                          const css::uno::Reference<css::rendering::XCanvasFont>& xFont,
-                          const css::rendering::ViewState& viewState,
-                          const css::rendering::RenderState& renderState,
-                          sal_Int8 textDirection) override
+    void SAL_CALL drawText(const css::rendering::StringContext& text,
+                           const css::uno::Reference<css::rendering::XCanvasFont>& xFont,
+                           const css::rendering::ViewState& viewState,
+                           const css::rendering::RenderState& renderState,
+                           sal_Int8 textDirection) override
     {
         canvastools::verifyArgs(xFont, viewState, renderState, __func__,
                                 static_cast<cppu::OWeakObject*>(this));
@@ -277,13 +276,13 @@ public:
 
         mbSurfaceDirty = true;
 
-        return maCanvasHelper.drawText(this, text, xFont, viewState, renderState, textDirection);
+        maCanvasHelper.drawText(this, text, xFont, viewState, renderState, textDirection);
     }
 
-    virtual css::uno::Reference<css::rendering::XCachedPrimitive>
-        SAL_CALL drawTextLayout(const css::uno::Reference<css::rendering::XTextLayout>& laidOutText,
-                                const css::rendering::ViewState& viewState,
-                                const css::rendering::RenderState& renderState) override
+    virtual void SAL_CALL
+    drawTextLayout(const css::uno::Reference<css::rendering::XTextLayout>& laidOutText,
+                   const css::rendering::ViewState& viewState,
+                   const css::rendering::RenderState& renderState) override
     {
         canvastools::verifyArgs(laidOutText, viewState, renderState, __func__,
                                 static_cast<cppu::OWeakObject*>(this));
@@ -292,7 +291,7 @@ public:
 
         mbSurfaceDirty = true;
 
-        return maCanvasHelper.drawTextLayout(this, laidOutText, viewState, renderState);
+        maCanvasHelper.drawTextLayout(this, laidOutText, viewState, renderState);
     }
 
     virtual css::uno::Reference<css::rendering::XCachedPrimitive>

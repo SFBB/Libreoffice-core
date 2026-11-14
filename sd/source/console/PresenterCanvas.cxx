@@ -168,36 +168,30 @@ void SAL_CALL PresenterCanvas::drawBezier (
     mxSharedCanvas->drawBezier(aBezierSegment,aEndPoint,MergeViewState(aViewState),aRenderState);
 }
 
-css::uno::Reference<css::rendering::XCachedPrimitive> SAL_CALL PresenterCanvas::drawPolyPolygon (
-        const css::uno::Reference< css::rendering::XPolyPolygon2D >& xPolyPolygon,
-        const css::rendering::ViewState& aViewState,
-        const css::rendering::RenderState& aRenderState)
+void SAL_CALL PresenterCanvas::drawPolyPolygon(
+    const css::uno::Reference<css::rendering::XPolyPolygon2D>& xPolyPolygon,
+    const css::rendering::ViewState& aViewState, const css::rendering::RenderState& aRenderState)
 {
     ThrowIfDisposed();
-    return mxSharedCanvas->drawPolyPolygon(
-        xPolyPolygon, MergeViewState(aViewState), aRenderState);
+    mxSharedCanvas->drawPolyPolygon(xPolyPolygon, MergeViewState(aViewState), aRenderState);
 }
 
-css::uno::Reference<css::rendering::XCachedPrimitive> SAL_CALL PresenterCanvas::strokePolyPolygon (
-        const css::uno::Reference< css::rendering::XPolyPolygon2D >& xPolyPolygon,
-        const css::rendering::ViewState& aViewState,
-        const css::rendering::RenderState& aRenderState,
-        const css::rendering::StrokeAttributes& aStrokeAttributes)
+void SAL_CALL PresenterCanvas::strokePolyPolygon(
+    const css::uno::Reference<css::rendering::XPolyPolygon2D>& xPolyPolygon,
+    const css::rendering::ViewState& aViewState, const css::rendering::RenderState& aRenderState,
+    const css::rendering::StrokeAttributes& aStrokeAttributes)
 {
     ThrowIfDisposed();
-    return mxSharedCanvas->strokePolyPolygon(
-        xPolyPolygon, MergeViewState(aViewState), aRenderState, aStrokeAttributes);
+    mxSharedCanvas->strokePolyPolygon(xPolyPolygon, MergeViewState(aViewState), aRenderState,
+                                      aStrokeAttributes);
 }
 
-css::uno::Reference<css::rendering::XCachedPrimitive> SAL_CALL
-        PresenterCanvas::fillPolyPolygon(
-            const css::uno::Reference<css::rendering::XPolyPolygon2D>& xPolyPolygon,
-            const css::rendering::ViewState& aViewState,
-            const css::rendering::RenderState& aRenderState)
+void SAL_CALL PresenterCanvas::fillPolyPolygon(
+    const css::uno::Reference<css::rendering::XPolyPolygon2D>& xPolyPolygon,
+    const css::rendering::ViewState& aViewState, const css::rendering::RenderState& aRenderState)
 {
     ThrowIfDisposed();
-    return mxSharedCanvas->fillPolyPolygon(
-        xPolyPolygon, MergeViewState(aViewState), aRenderState);
+    mxSharedCanvas->fillPolyPolygon(xPolyPolygon, MergeViewState(aViewState), aRenderState);
 }
 
 css::uno::Reference<css::rendering::XCachedPrimitive> SAL_CALL
@@ -223,28 +217,23 @@ css::uno::Reference<css::rendering::XCanvasFont> SAL_CALL
         aFontRequest, aExtraFontProperties, aFontMatrix);
 }
 
-css::uno::Reference<css::rendering::XCachedPrimitive> SAL_CALL
-        PresenterCanvas::drawText(
-            const css::rendering::StringContext& aText,
-            const css::uno::Reference< css::rendering::XCanvasFont >& xFont,
-            const css::rendering::ViewState& aViewState,
-            const css::rendering::RenderState& aRenderState,
-            ::sal_Int8 nTextDirection)
+void SAL_CALL PresenterCanvas::drawText(
+    const css::rendering::StringContext& aText,
+    const css::uno::Reference<css::rendering::XCanvasFont>& xFont,
+    const css::rendering::ViewState& aViewState, const css::rendering::RenderState& aRenderState,
+    ::sal_Int8 nTextDirection)
 {
     ThrowIfDisposed();
-    return mxSharedCanvas->drawText(
-        aText, xFont, MergeViewState(aViewState), aRenderState, nTextDirection);
+    mxSharedCanvas->drawText(aText, xFont, MergeViewState(aViewState), aRenderState,
+                             nTextDirection);
 }
 
-css::uno::Reference<css::rendering::XCachedPrimitive> SAL_CALL
-        PresenterCanvas::drawTextLayout(
-            const css::uno::Reference< css::rendering::XTextLayout >& xLayoutetText,
-            const css::rendering::ViewState& aViewState,
-            const css::rendering::RenderState& aRenderState)
+void SAL_CALL PresenterCanvas::drawTextLayout(
+    const css::uno::Reference<css::rendering::XTextLayout>& xLayoutetText,
+    const css::rendering::ViewState& aViewState, const css::rendering::RenderState& aRenderState)
 {
     ThrowIfDisposed();
-    return mxSharedCanvas->drawTextLayout(
-        xLayoutetText, MergeViewState(aViewState), aRenderState);
+    mxSharedCanvas->drawTextLayout(xLayoutetText, MergeViewState(aViewState), aRenderState);
 }
 
 css::uno::Reference<css::rendering::XCachedPrimitive> SAL_CALL
@@ -510,10 +499,8 @@ awt::Point PresenterCanvas::GetOffset (const Reference<awt::XWindow>& rxBaseWind
     // Calculate the inverted view state transformation to cancel out a
     // later transformation of the local clip polygon with the view state
     // transformation.
-    ::basegfx::B2DHomMatrix aInvertedViewStateTransformation;
-    ::basegfx::unotools::homMatrixFromAffineMatrix(
-        aInvertedViewStateTransformation,
-        rViewTransform);
+    ::basegfx::B2DHomMatrix aInvertedViewStateTransformation
+        = ::basegfx::unotools::homMatrixFromAffineMatrix(rViewTransform);
     if (aInvertedViewStateTransformation.invert())
     {
         // Cancel out the later multiplication with the view state

@@ -401,8 +401,8 @@ LIBGPGERROR_TARBALL := libgpg-error-1.61.tar.bz2
 # so that git cherry-pick
 # will not run into conflicts
 # Also update external/libjxl/version.h
-LIBJXL_SHA256SUM := 03e9be69a30be4011f559da75328b6d7cea8ad921fabfbd551ce10bf45cdc992
-LIBJXL_TARBALL := libjxl-0.12.0.tar.gz
+LIBJXL_SHA256SUM := 24d18c9af2d1f5a17730b3f8d3f70a5c16e5ac303f5d9d5fe9dc00cf7ca82af2
+LIBJXL_TARBALL := libjxl-0.13.0.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -577,8 +577,8 @@ POPPLER_DATA_TARBALL := poppler-data-0.4.12.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-POSTGRESQL_SHA256SUM := e1a64a87a46b825b88c082e4518161a47aab53c45694964f8ba1df28f7859f89
-POSTGRESQL_TARBALL := postgresql-15.19.tar.bz2
+POSTGRESQL_SHA256SUM := 30e65cbbb771a39b553ed2df7e65622e65647aed55dbc19bd0fe853ff0a08442
+POSTGRESQL_TARBALL := postgresql-15.20.tar.bz2
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts

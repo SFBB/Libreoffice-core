@@ -97,10 +97,11 @@ namespace dxcanvas
         }
     }
 
-    uno::Reference< rendering::XCachedPrimitive > BitmapCanvasHelper::drawTextLayout( const rendering::XCanvas*                       /*pCanvas*/,
-                                                                                      const uno::Reference< rendering::XTextLayout >& xLayoutetText,
-                                                                                      const rendering::ViewState&                     viewState,
-                                                                                      const rendering::RenderState&                   renderState )
+    void
+    BitmapCanvasHelper::drawTextLayout(const rendering::XCanvas* /*pCanvas*/,
+                                       const uno::Reference<rendering::XTextLayout>& xLayoutetText,
+                                       const rendering::ViewState& viewState,
+                                       const rendering::RenderState& renderState)
     {
         ENSURE_OR_THROW( xLayoutetText.is(),
                           "BitmapCanvasHelper::drawTextLayout: layout is NULL");
@@ -120,8 +121,6 @@ namespace dxcanvas
                                mpDevice,
                                mpTarget->hasAlpha() );
         }
-
-        return uno::Reference< rendering::XCachedPrimitive >(nullptr);
     }
 
     void BitmapCanvasHelper::copyRect( const rendering::XCanvas*                            /*pCanvas*/,
@@ -160,30 +159,6 @@ namespace dxcanvas
 
         bitmapLayout = getMemoryLayout();
         return mpTarget->getData(bitmapLayout,rect);
-    }
-
-    void BitmapCanvasHelper::setData( const uno::Sequence< sal_Int8 >&      data,
-                                      const rendering::IntegerBitmapLayout& bitmapLayout,
-                                      const geometry::IntegerRectangle2D&   rect )
-    {
-        SAL_INFO( "canvas.directx", "::dxcanvas::BitmapCanvasHelper::setData()" );
-
-        ENSURE_OR_THROW( mpTarget,
-                          "::dxcanvas::BitmapCanvasHelper::setData(): disposed" );
-
-        mpTarget->setData(data,bitmapLayout,rect);
-    }
-
-    void BitmapCanvasHelper::setPixel( const uno::Sequence< sal_Int8 >&       color,
-                                       const rendering::IntegerBitmapLayout&  bitmapLayout,
-                                       const geometry::IntegerPoint2D&        pos )
-    {
-        SAL_INFO( "canvas.directx", "::dxcanvas::BitmapCanvasHelper::setPixel()" );
-
-        ENSURE_OR_THROW( mpTarget,
-                          "::dxcanvas::BitmapCanvasHelper::setPixel(): disposed" );
-
-        mpTarget->setPixel(color,bitmapLayout,pos);
     }
 
     uno::Sequence< sal_Int8 > BitmapCanvasHelper::getPixel( rendering::IntegerBitmapLayout&   bitmapLayout,

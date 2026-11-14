@@ -22,35 +22,10 @@
 #include <string_view>
 
 #include "dxfreprd.hxx"
+#include "dxfmtext.hxx"
 #include <osl/nlsupport.h>
-#include <rtl/character.hxx>
 #include <unotools/defaultencoding.hxx>
 #include <unotools/wincodepage.hxx>
-
-//------------------DXFBoundingBox--------------------------------------------
-
-
-void DXFBoundingBox::Union(const DXFVector & rVector)
-{
-    if (bEmpty) {
-        fMinX=rVector.fx;
-        fMinY=rVector.fy;
-        fMinZ=rVector.fz;
-        fMaxX=rVector.fx;
-        fMaxY=rVector.fy;
-        fMaxZ=rVector.fz;
-        bEmpty=false;
-    }
-    else {
-        if (fMinX>rVector.fx) fMinX=rVector.fx;
-        if (fMinY>rVector.fy) fMinY=rVector.fy;
-        if (fMinZ>rVector.fz) fMinZ=rVector.fz;
-        if (fMaxX<rVector.fx) fMaxX=rVector.fx;
-        if (fMaxY<rVector.fy) fMaxY=rVector.fy;
-        if (fMaxZ<rVector.fz) fMaxZ=rVector.fz;
-    }
-}
-
 
 //------------------DXFPalette------------------------------------------------
 
@@ -122,9 +97,9 @@ void DXFPalette::SetColor(sal_uInt8 nIndex, sal_uInt8 nRed, sal_uInt8 nGreen, sa
 
 DXFRepresentation::DXFRepresentation()
     : mEnc(RTL_TEXTENCODING_DONTKNOW)
-    , mbInCalc(false)
+    , mfGlobalLineTypeScale(1.0)
+    , mbLineWeightDisplay(false)
 {
-    setGlobalLineTypeScale(1.0);
 }
 
 DXFRepresentation::~DXFRepresentation()
@@ -166,9 +141,6 @@ bool DXFRepresentation::Read( SvStream & rIStream )
 
     bRes=DGR.GetStatus();
 
-    if (bRes && aBoundingBox.bEmpty)
-        CalcBoundingBox(aEntities,aBoundingBox);
-
     return bRes;
 }
 
@@ -177,20 +149,7 @@ void DXFRepresentation::ReadHeader(DXFGroupReader & rDGR)
     while (rDGR.GetG()!=0 || (rDGR.GetS() != "EOF" && rDGR.GetS() != "ENDSEC") )
     {
         if (rDGR.GetG()==9) {
-            if (rDGR.GetS() == "$EXTMIN" ||
-                rDGR.GetS() == "$EXTMAX")
-            {
-                DXFVector aVector;
-                while (rDGR.Read()!=9 && rDGR.GetG()!=0) {
-                    switch (rDGR.GetG()) {
-                    case 10: aVector.fx = rDGR.GetF(); break;
-                    case 20: aVector.fy = rDGR.GetF(); break;
-                    case 30: aVector.fz = rDGR.GetF(); break;
-                    }
-                }
-                aBoundingBox.Union(aVector);
-            }
-            else if (rDGR.GetS() == "$ACADVER")
+            if (rDGR.GetS() == "$ACADVER")
             {
                 if (!rDGR.Read(1))
                     continue;
@@ -264,207 +223,25 @@ void DXFRepresentation::ReadHeader(DXFGroupReader & rDGR)
                     continue;
                 setGlobalLineTypeScale(getGlobalLineTypeScale() * rDGR.GetF());
             }
+            else if (rDGR.GetS() == "$LWDISPLAY")
+            {
+                if (!rDGR.Read(290))
+                    continue;
+                mbLineWeightDisplay = rDGR.GetI() != 0;
+            }
             else rDGR.Read();
         }
         else rDGR.Read();
     }
 }
 
-void DXFRepresentation::CalcBoundingBox(const DXFEntities & rEntities,
-                                        DXFBoundingBox & rBox)
+OUString DXFRepresentation::ToOUString(std::string_view s, bool bEscapes) const
 {
-    if (mbInCalc)
-        return;
-    mbInCalc = true;
-
-    DXFBasicEntity * pBE=rEntities.pFirst;
-    while (pBE!=nullptr) {
-        switch (pBE->eType) {
-            case DXF_LINE: {
-                const DXFLineEntity * pE = static_cast<const DXFLineEntity*>(pBE);
-                rBox.Union(pE->aP0);
-                rBox.Union(pE->aP1);
-                break;
-            }
-            case DXF_POINT: {
-                const DXFPointEntity * pE = static_cast<const DXFPointEntity*>(pBE);
-                rBox.Union(pE->aP0);
-                break;
-            }
-            case DXF_CIRCLE: {
-                const DXFCircleEntity * pE = static_cast<const DXFCircleEntity*>(pBE);
-                DXFVector aP;
-                aP=pE->aP0;
-                aP.fx-=pE->fRadius;
-                aP.fy-=pE->fRadius;
-                rBox.Union(aP);
-                aP=pE->aP0;
-                aP.fx+=pE->fRadius;
-                aP.fy+=pE->fRadius;
-                rBox.Union(aP);
-                break;
-            }
-            case DXF_ARC: {
-                const DXFArcEntity * pE = static_cast<const DXFArcEntity*>(pBE);
-                DXFVector aP;
-                aP=pE->aP0;
-                aP.fx-=pE->fRadius;
-                aP.fy-=pE->fRadius;
-                rBox.Union(aP);
-                aP=pE->aP0;
-                aP.fx+=pE->fRadius;
-                aP.fy+=pE->fRadius;
-                rBox.Union(aP);
-                break;
-            }
-            case DXF_TRACE: {
-                const DXFTraceEntity * pE = static_cast<const DXFTraceEntity*>(pBE);
-                rBox.Union(pE->aP0);
-                rBox.Union(pE->aP1);
-                rBox.Union(pE->aP2);
-                rBox.Union(pE->aP3);
-                break;
-            }
-            case DXF_SOLID: {
-                const DXFSolidEntity * pE = static_cast<const DXFSolidEntity*>(pBE);
-                rBox.Union(pE->aP0);
-                rBox.Union(pE->aP1);
-                rBox.Union(pE->aP2);
-                rBox.Union(pE->aP3);
-                break;
-            }
-            case DXF_TEXT: {
-                //const DXFTextEntity * pE = (DXFTextEntity*)pBE;
-                //???
-                break;
-            }
-            case DXF_SHAPE: {
-                //const DXFShapeEntity * pE = (DXFShapeEntity*)pBE;
-                //???
-                break;
-            }
-            case DXF_INSERT: {
-                const DXFInsertEntity * pE = static_cast<const DXFInsertEntity*>(pBE);
-                DXFBlock * pB;
-                DXFBoundingBox aBox;
-                DXFVector aP;
-                pB=aBlocks.Search(pE->m_sName);
-                if (pB==nullptr) break;
-                CalcBoundingBox(*pB,aBox);
-                if (aBox.bEmpty) break;
-                aP.fx=(aBox.fMinX-pB->aBasePoint.fx)*pE->fXScale+pE->aP0.fx;
-                aP.fy=(aBox.fMinY-pB->aBasePoint.fy)*pE->fYScale+pE->aP0.fy;
-                aP.fz=(aBox.fMinZ-pB->aBasePoint.fz)*pE->fZScale+pE->aP0.fz;
-                rBox.Union(aP);
-                aP.fx=(aBox.fMaxX-pB->aBasePoint.fx)*pE->fXScale+pE->aP0.fx;
-                aP.fy=(aBox.fMaxY-pB->aBasePoint.fy)*pE->fYScale+pE->aP0.fy;
-                aP.fz=(aBox.fMaxZ-pB->aBasePoint.fz)*pE->fZScale+pE->aP0.fz;
-                rBox.Union(aP);
-                break;
-            }
-            case DXF_ATTDEF: {
-                //const DXFAttDefEntity * pE = (DXFAttDefEntity*)pBE;
-                //???
-                break;
-            }
-            case DXF_ATTRIB: {
-                //const DXFAttribEntity * pE = (DXFAttribEntity*)pBE;
-                //???
-                break;
-            }
-            case DXF_VERTEX: {
-                const DXFVertexEntity * pE = static_cast<const DXFVertexEntity*>(pBE);
-                rBox.Union(pE->aP0);
-                break;
-            }
-            case DXF_3DFACE: {
-                const DXF3DFaceEntity * pE = static_cast<const DXF3DFaceEntity*>(pBE);
-                rBox.Union(pE->aP0);
-                rBox.Union(pE->aP1);
-                rBox.Union(pE->aP2);
-                rBox.Union(pE->aP3);
-                break;
-            }
-            case DXF_DIMENSION: {
-                const DXFDimensionEntity * pE = static_cast<const DXFDimensionEntity*>(pBE);
-                DXFBlock * pB;
-                DXFBoundingBox aBox;
-                DXFVector aP;
-                pB = aBlocks.Search(pE->m_sPseudoBlock);
-                if (pB==nullptr) break;
-                CalcBoundingBox(*pB,aBox);
-                if (aBox.bEmpty) break;
-                aP.fx=aBox.fMinX-pB->aBasePoint.fx;
-                aP.fy=aBox.fMinY-pB->aBasePoint.fy;
-                aP.fz=aBox.fMinZ-pB->aBasePoint.fz;
-                rBox.Union(aP);
-                aP.fx=aBox.fMaxX-pB->aBasePoint.fx;
-                aP.fy=aBox.fMaxY-pB->aBasePoint.fy;
-                aP.fz=aBox.fMaxZ-pB->aBasePoint.fz;
-                rBox.Union(aP);
-                break;
-            }
-            case DXF_POLYLINE: {
-                //const DXFAttribEntity * pE = (DXFAttribEntity*)pBE;
-                //???
-                break;
-            }
-            case DXF_SEQEND: {
-                //const DXFAttribEntity * pE = (DXFAttribEntity*)pBE;
-                //???
-                break;
-            }
-            case DXF_HATCH :
-                break;
-            case DXF_LWPOLYLINE :
-                break;
-        }
-        pBE=pBE->pSucc;
-    }
-    mbInCalc = false;
-}
-
-OUString DXFRepresentation::ToOUString(std::string_view s) const
-{
-    OUString result = OStringToOUString(s, getTextEncoding(),
-                                           RTL_TEXTTOUNICODE_FLAGS_UNDEFINED_ERROR
-                                         | RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_ERROR
-                                         | RTL_TEXTTOUNICODE_FLAGS_INVALID_ERROR);
-    result = result.replaceAll("%%o", "")                     // Overscore - simply remove
-                   .replaceAll("%%u", "")                     // Underscore - simply remove
-                   .replaceAll("%%d", u"\u00B0") // Degrees symbol (°)
-                   .replaceAll("%%p", u"\u00B1") // Tolerance symbol (±)
-                   .replaceAll("%%c", u"\u2205") // Diameter symbol
-                   .replaceAll("%%%", "%");                   // Percent symbol
-
-    sal_Int32 pos = result.indexOf("%%"); // %%nnn, where nnn - 3-digit decimal ASCII code
-    while (pos != -1 && pos <= result.getLength() - 5) {
-        OUString asciiNum = result.copy(pos + 2, 3);
-        if (rtl::isAsciiDigit(asciiNum[0]) &&
-            rtl::isAsciiDigit(asciiNum[1]) &&
-            rtl::isAsciiDigit(asciiNum[2]))
-        {
-            char ch = static_cast<char>(asciiNum.toUInt32());
-            OUString codePt(&ch, 1, mEnc);
-            result = result.replaceAll(result.subView(pos, 5), codePt, pos);
-        }
-        pos = result.indexOf("%%", pos + 1);
-    }
-
-    pos = result.indexOf("\\U+"); // \U+XXXX, where XXXX - 4-digit hex unicode
-    while (pos != -1 && pos <= result.getLength() - 7) {
-        OUString codePtNum = result.copy(pos + 3, 4);
-        if (rtl::isAsciiHexDigit(codePtNum[0]) &&
-            rtl::isAsciiHexDigit(codePtNum[1]) &&
-            rtl::isAsciiHexDigit(codePtNum[2]) &&
-            rtl::isAsciiHexDigit(codePtNum[3]))
-        {
-            OUString codePt(static_cast<sal_Unicode>(codePtNum.toUInt32(16)));
-            result = result.replaceAll(result.subView(pos, 7), codePt, pos);
-        }
-        pos = result.indexOf("\\U+", pos + 1);
-    }
-    return result;
+    const OUString aText = OStringToOUString(s, getTextEncoding(),
+                                             RTL_TEXTTOUNICODE_FLAGS_UNDEFINED_ERROR
+                                           | RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_ERROR
+                                           | RTL_TEXTTOUNICODE_FLAGS_INVALID_ERROR);
+    return dxf::decodeSpecialCharacters(aText, getTextEncoding(), bEscapes);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

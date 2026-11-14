@@ -97,22 +97,19 @@ public:
                     const css::geometry::RealPoint2D& aEndPoint,
                     const css::rendering::ViewState& viewState,
                     const css::rendering::RenderState& renderState);
-    css::uno::Reference<css::rendering::XCachedPrimitive>
-    drawPolyPolygon(const css::rendering::XCanvas* pCanvas,
-                    const css::uno::Reference<css::rendering::XPolyPolygon2D>& xPolyPolygon,
-                    const css::rendering::ViewState& viewState,
-                    const css::rendering::RenderState& renderState);
-    css::uno::Reference<css::rendering::XCachedPrimitive>
-    strokePolyPolygon(const css::rendering::XCanvas* pCanvas,
-                      const css::uno::Reference<css::rendering::XPolyPolygon2D>& xPolyPolygon,
-                      const css::rendering::ViewState& viewState,
-                      const css::rendering::RenderState& renderState,
-                      const css::rendering::StrokeAttributes& strokeAttributes);
-    css::uno::Reference<css::rendering::XCachedPrimitive>
-    fillPolyPolygon(const css::rendering::XCanvas* pCanvas,
-                    const css::uno::Reference<css::rendering::XPolyPolygon2D>& xPolyPolygon,
-                    const css::rendering::ViewState& viewState,
-                    const css::rendering::RenderState& renderState);
+    void drawPolyPolygon(const css::rendering::XCanvas* pCanvas,
+                         const css::uno::Reference<css::rendering::XPolyPolygon2D>& xPolyPolygon,
+                         const css::rendering::ViewState& viewState,
+                         const css::rendering::RenderState& renderState);
+    void strokePolyPolygon(const css::rendering::XCanvas* pCanvas,
+                           const css::uno::Reference<css::rendering::XPolyPolygon2D>& xPolyPolygon,
+                           const css::rendering::ViewState& viewState,
+                           const css::rendering::RenderState& renderState,
+                           const css::rendering::StrokeAttributes& strokeAttributes);
+    void fillPolyPolygon(const css::rendering::XCanvas* pCanvas,
+                         const css::uno::Reference<css::rendering::XPolyPolygon2D>& xPolyPolygon,
+                         const css::rendering::ViewState& viewState,
+                         const css::rendering::RenderState& renderState);
     css::uno::Reference<css::rendering::XCachedPrimitive>
     fillTexturedPolyPolygon(const css::rendering::XCanvas* pCanvas,
                             const css::uno::Reference<css::rendering::XPolyPolygon2D>& xPolyPolygon,
@@ -126,17 +123,15 @@ public:
                const css::uno::Sequence<css::beans::PropertyValue>& extraFontProperties,
                const css::geometry::Matrix2D& fontMatrix);
 
-    css::uno::Reference<css::rendering::XCachedPrimitive>
-    drawText(const css::rendering::XCanvas* pCanvas, const css::rendering::StringContext& text,
-             const css::uno::Reference<css::rendering::XCanvasFont>& xFont,
-             const css::rendering::ViewState& viewState,
-             const css::rendering::RenderState& renderState, sal_Int8 textDirection);
+    void drawText(const css::rendering::XCanvas* pCanvas, const css::rendering::StringContext& text,
+                  const css::uno::Reference<css::rendering::XCanvasFont>& xFont,
+                  const css::rendering::ViewState& viewState,
+                  const css::rendering::RenderState& renderState, sal_Int8 textDirection);
 
-    css::uno::Reference<css::rendering::XCachedPrimitive>
-    drawTextLayout(const css::rendering::XCanvas* pCanvas,
-                   const css::uno::Reference<css::rendering::XTextLayout>& laidOutText,
-                   const css::rendering::ViewState& viewState,
-                   const css::rendering::RenderState& renderState);
+    void drawTextLayout(const css::rendering::XCanvas* pCanvas,
+                        const css::uno::Reference<css::rendering::XTextLayout>& laidOutText,
+                        const css::rendering::ViewState& viewState,
+                        const css::rendering::RenderState& renderState);
 
     css::uno::Reference<css::rendering::XCachedPrimitive>
     drawBitmap(const css::rendering::XCanvas* pCanvas,

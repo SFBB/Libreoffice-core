@@ -44,7 +44,7 @@
 #include <vcl/gradient.hxx>
 
 #include <canvas/canvastools.hxx>
-#include <parametricpolypolygon.hxx>
+#include <canvas/parametricpolypolygon.hxx>
 
 #include "canvashelper.hxx"
 #include "impltools.hxx"
@@ -693,9 +693,8 @@ namespace vclcanvas
                 ::canvastools::mergeViewAndRenderTransform(aTotalTransform,
                                                              viewState,
                                                              renderState);
-                ::basegfx::B2DHomMatrix aTextureTransform;
-                ::basegfx::unotools::homMatrixFromAffineMatrix( aTextureTransform,
-                                                                textures[0].AffineTransform );
+                ::basegfx::B2DHomMatrix aTextureTransform
+                    = ::basegfx::unotools::homMatrixFromAffineMatrix(textures[0].AffineTransform);
 
                 aTotalTransform *= aTextureTransform;
 

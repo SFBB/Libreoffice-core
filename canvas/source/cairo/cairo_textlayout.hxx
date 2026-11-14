@@ -47,7 +47,6 @@ namespace cairocanvas
 
         TextLayout( css::rendering::StringContext               aText,
                     sal_Int8                                    nDirection,
-                    sal_Int64                                   nRandomSeed,
                     CanvasFont::Reference                       rFont,
                     SurfaceProviderRef                          rRefDevice );
 
@@ -55,7 +54,6 @@ namespace cairocanvas
         virtual void disposing(std::unique_lock<std::mutex>& rGuard) override;
 
         // XTextLayout
-        virtual css::uno::Sequence< css::uno::Reference< css::rendering::XPolyPolygon2D > > SAL_CALL queryTextShapes(  ) override;
         virtual css::uno::Sequence< css::geometry::RealRectangle2D > SAL_CALL queryInkMeasures(  ) override;
         virtual css::uno::Sequence< css::geometry::RealRectangle2D > SAL_CALL queryMeasures(  ) override;
         virtual css::uno::Sequence< double > SAL_CALL queryLogicalAdvancements(  ) override;
@@ -67,10 +65,6 @@ namespace cairocanvas
         virtual double SAL_CALL combinedJustify( const css::uno::Sequence< css::uno::Reference< css::rendering::XTextLayout > >& aNextLayouts, double nSize ) override;
         virtual css::rendering::TextHit SAL_CALL getTextHit( const css::geometry::RealPoint2D& aHitPoint ) override;
         virtual css::rendering::Caret SAL_CALL getCaret( sal_Int32 nInsertionIndex, sal_Bool bExcludeLigatures ) override;
-        virtual sal_Int32 SAL_CALL getNextInsertionIndex( sal_Int32 nStartIndex, sal_Int32 nCaretAdvancement, sal_Bool bExcludeLigatures ) override;
-        virtual css::uno::Reference< css::rendering::XPolyPolygon2D > SAL_CALL queryVisualHighlighting( sal_Int32 nStartIndex, sal_Int32 nEndIndex ) override;
-        virtual css::uno::Reference< css::rendering::XPolyPolygon2D > SAL_CALL queryLogicalHighlighting( sal_Int32 nStartIndex, sal_Int32 nEndIndex ) override;
-        virtual double SAL_CALL getBaselineOffset(  ) override;
         virtual sal_Int8 SAL_CALL getMainTextDirection(  ) override;
         virtual css::uno::Reference< css::rendering::XCanvasFont > SAL_CALL getFont(  ) override;
         virtual css::rendering::StringContext SAL_CALL getText(  ) override;

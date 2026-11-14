@@ -134,22 +134,21 @@ public:
         const css::rendering::ViewState& aViewState,
         const css::rendering::RenderState& aRenderState) override;
 
-    virtual css::uno::Reference<css::rendering::XCachedPrimitive> SAL_CALL drawPolyPolygon (
-        const css::uno::Reference< css::rendering::XPolyPolygon2D >& xPolyPolygon,
-        const css::rendering::ViewState& aViewState,
-        const css::rendering::RenderState& aRenderState) override;
+    void SAL_CALL
+    drawPolyPolygon(const css::uno::Reference<css::rendering::XPolyPolygon2D>& xPolyPolygon,
+                    const css::rendering::ViewState& aViewState,
+                    const css::rendering::RenderState& aRenderState) override;
 
-    virtual css::uno::Reference<css::rendering::XCachedPrimitive> SAL_CALL strokePolyPolygon (
-        const css::uno::Reference< css::rendering::XPolyPolygon2D >& xPolyPolygon,
-        const css::rendering::ViewState& aViewState,
-        const css::rendering::RenderState& aRenderState,
-        const css::rendering::StrokeAttributes& aStrokeAttributes) override;
+    void SAL_CALL
+    strokePolyPolygon(const css::uno::Reference<css::rendering::XPolyPolygon2D>& xPolyPolygon,
+                      const css::rendering::ViewState& aViewState,
+                      const css::rendering::RenderState& aRenderState,
+                      const css::rendering::StrokeAttributes& aStrokeAttributes) override;
 
-    virtual css::uno::Reference<css::rendering::XCachedPrimitive> SAL_CALL
-        fillPolyPolygon(
-            const css::uno::Reference<css::rendering::XPolyPolygon2D>& xPolyPolygon,
-            const css::rendering::ViewState& aViewState,
-            const css::rendering::RenderState& aRenderState) override;
+    void SAL_CALL
+    fillPolyPolygon(const css::uno::Reference<css::rendering::XPolyPolygon2D>& xPolyPolygon,
+                    const css::rendering::ViewState& aViewState,
+                    const css::rendering::RenderState& aRenderState) override;
 
     virtual css::uno::Reference<css::rendering::XCachedPrimitive> SAL_CALL
         fillTexturedPolyPolygon(
@@ -164,19 +163,16 @@ public:
             const css::uno::Sequence< css::beans::PropertyValue >& aExtraFontProperties,
             const css::geometry::Matrix2D& aFontMatrix) override;
 
-    virtual css::uno::Reference<css::rendering::XCachedPrimitive> SAL_CALL
-        drawText(
-            const css::rendering::StringContext& aText,
-            const css::uno::Reference< css::rendering::XCanvasFont >& xFont,
-            const css::rendering::ViewState& aViewState,
-            const css::rendering::RenderState& aRenderState,
-            ::sal_Int8 nTextDirection) override;
+    virtual void SAL_CALL drawText(const css::rendering::StringContext& aText,
+                                   const css::uno::Reference<css::rendering::XCanvasFont>& xFont,
+                                   const css::rendering::ViewState& aViewState,
+                                   const css::rendering::RenderState& aRenderState,
+                                   ::sal_Int8 nTextDirection) override;
 
-    virtual css::uno::Reference<css::rendering::XCachedPrimitive> SAL_CALL
-        drawTextLayout(
-            const css::uno::Reference< css::rendering::XTextLayout >& xLayoutetText,
-            const css::rendering::ViewState& aViewState,
-            const css::rendering::RenderState& aRenderState) override;
+    void SAL_CALL
+    drawTextLayout(const css::uno::Reference<css::rendering::XTextLayout>& xLayoutetText,
+                   const css::rendering::ViewState& aViewState,
+                   const css::rendering::RenderState& aRenderState) override;
 
     virtual css::uno::Reference<css::rendering::XCachedPrimitive> SAL_CALL
         drawBitmap(

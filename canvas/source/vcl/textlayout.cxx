@@ -100,54 +100,6 @@ namespace vclcanvas
     }
 
     // XTextLayout
-    uno::Sequence< uno::Reference< rendering::XPolyPolygon2D > > SAL_CALL TextLayout::queryTextShapes(  )
-    {
-        SolarMutexGuard aGuard;
-
-        OutputDevice& rOutDev = mpOutDevProvider->getOutDev();
-        ScopedVclPtrInstance< VirtualDevice > pVDev( rOutDev );
-        pVDev->SetFont( mpFont->getVCLFont() );
-
-        setupLayoutMode( *pVDev, mnTextDirection );
-
-        const rendering::ViewState aViewState(
-            geometry::AffineMatrix2D(1,0,0, 0,1,0),
-            nullptr);
-
-        rendering::RenderState aRenderState (
-            geometry::AffineMatrix2D(1,0,0,0,1,0),
-            nullptr,
-            uno::Sequence<double>(4),
-            rendering::CompositeOperation::SOURCE);
-
-        KernArray aOffsets(setupTextOffsets(maLogicalAdvancements, aViewState, aRenderState));
-        std::span<const sal_Bool> aKashidaArray(maKashidaPositions.getArray(), maKashidaPositions.getLength());
-
-        std::vector< uno::Reference< rendering::XPolyPolygon2D> > aOutlineSequence;
-        ::basegfx::B2DPolyPolygonVector aOutlines;
-        if (pVDev->GetTextOutlines(
-            aOutlines,
-            maText.Text,
-            maText.StartPosition,
-            maText.StartPosition,
-            maText.Length,
-            0,
-            aOffsets,
-            aKashidaArray))
-        {
-            aOutlineSequence.reserve(aOutlines.size());
-            sal_Int32 nIndex (0);
-            for (auto const& outline : aOutlines)
-            {
-                aOutlineSequence[nIndex++] = ::basegfx::unotools::xPolyPolygonFromB2DPolyPolygon(
-                    mxDevice,
-                    outline);
-            }
-        }
-
-        return comphelper::containerToSequence(aOutlineSequence);
-    }
-
     uno::Sequence< geometry::RealRectangle2D > SAL_CALL TextLayout::queryInkMeasures(  )
     {
         SolarMutexGuard aGuard;
@@ -294,30 +246,6 @@ namespace vclcanvas
     {
         // TODO(F1)
         return rendering::Caret();
-    }
-
-    sal_Int32 SAL_CALL TextLayout::getNextInsertionIndex( sal_Int32, sal_Int32, sal_Bool )
-    {
-        // TODO(F1)
-        return 0;
-    }
-
-    uno::Reference< rendering::XPolyPolygon2D > SAL_CALL TextLayout::queryVisualHighlighting( sal_Int32, sal_Int32 )
-    {
-        // TODO(F1)
-        return uno::Reference< rendering::XPolyPolygon2D >();
-    }
-
-    uno::Reference< rendering::XPolyPolygon2D > SAL_CALL TextLayout::queryLogicalHighlighting( sal_Int32, sal_Int32 )
-    {
-        // TODO(F1)
-        return uno::Reference< rendering::XPolyPolygon2D >();
-    }
-
-    double SAL_CALL TextLayout::getBaselineOffset(  )
-    {
-        // TODO(F1)
-        return 0.0;
     }
 
     sal_Int8 SAL_CALL TextLayout::getMainTextDirection(  )

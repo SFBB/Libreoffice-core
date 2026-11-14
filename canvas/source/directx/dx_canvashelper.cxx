@@ -299,10 +299,11 @@ namespace dxcanvas
         }
     }
 
-    uno::Reference< rendering::XCachedPrimitive > CanvasHelper::drawPolyPolygon( const rendering::XCanvas*                          /*pCanvas*/,
-                                                                                 const uno::Reference< rendering::XPolyPolygon2D >& xPolyPolygon,
-                                                                                 const rendering::ViewState&                        viewState,
-                                                                                 const rendering::RenderState&                      renderState )
+    void
+    CanvasHelper::drawPolyPolygon(const rendering::XCanvas* /*pCanvas*/,
+                                  const uno::Reference<rendering::XPolyPolygon2D>& xPolyPolygon,
+                                  const rendering::ViewState& viewState,
+                                  const rendering::RenderState& renderState)
     {
         ENSURE_OR_THROW( xPolyPolygon.is(),
                           "CanvasHelper::drawPolyPolygon: polygon is NULL");
@@ -338,16 +339,14 @@ namespace dxcanvas
                 Gdiplus::Ok == hr,
                 "CanvasHelper::drawPolyPolygon(): GDI+ call failed" );
         }
-
-        // TODO(P1): Provide caching here.
-        return uno::Reference< rendering::XCachedPrimitive >(nullptr);
     }
 
-    uno::Reference< rendering::XCachedPrimitive > CanvasHelper::strokePolyPolygon( const rendering::XCanvas*                            /*pCanvas*/,
-                                                                                   const uno::Reference< rendering::XPolyPolygon2D >&   xPolyPolygon,
-                                                                                   const rendering::ViewState&                          viewState,
-                                                                                   const rendering::RenderState&                        renderState,
-                                                                                   const rendering::StrokeAttributes&                   strokeAttributes )
+    void
+    CanvasHelper::strokePolyPolygon(const rendering::XCanvas* /*pCanvas*/,
+                                    const uno::Reference<rendering::XPolyPolygon2D>& xPolyPolygon,
+                                    const rendering::ViewState& viewState,
+                                    const rendering::RenderState& renderState,
+                                    const rendering::StrokeAttributes& strokeAttributes)
     {
         ENSURE_OR_THROW( xPolyPolygon.is(),
                           "CanvasHelper::drawPolyPolygon: polygon is NULL");
@@ -407,15 +406,13 @@ namespace dxcanvas
                 Gdiplus::Ok == hr,
                 "CanvasHelper::strokePolyPolygon(): GDI+ call failed" );
         }
-
-        // TODO(P1): Provide caching here.
-        return uno::Reference< rendering::XCachedPrimitive >(nullptr);
     }
 
-    uno::Reference< rendering::XCachedPrimitive > CanvasHelper::fillPolyPolygon( const rendering::XCanvas*                          /*pCanvas*/,
-                                                                                 const uno::Reference< rendering::XPolyPolygon2D >& xPolyPolygon,
-                                                                                 const rendering::ViewState&                        viewState,
-                                                                                 const rendering::RenderState&                      renderState )
+    void
+    CanvasHelper::fillPolyPolygon(const rendering::XCanvas* /*pCanvas*/,
+                                  const uno::Reference<rendering::XPolyPolygon2D>& xPolyPolygon,
+                                  const rendering::ViewState& viewState,
+                                  const rendering::RenderState& renderState)
     {
         ENSURE_OR_THROW( xPolyPolygon.is(),
                           "CanvasHelper::fillPolyPolygon: polygon is NULL");
@@ -435,9 +432,6 @@ namespace dxcanvas
             ENSURE_OR_THROW( Gdiplus::Ok == pGraphics->FillPath( &aBrush, pPath.get() ),
                              "CanvasHelper::fillPolyPolygon(): GDI+ call failed  " );
         }
-
-        // TODO(P1): Provide caching here.
-        return uno::Reference< rendering::XCachedPrimitive >(nullptr);
     }
 
     uno::Reference< rendering::XCanvasFont > CanvasHelper::createFont( const rendering::XCanvas*                    /*pCanvas*/,
@@ -454,12 +448,12 @@ namespace dxcanvas
         return uno::Reference< rendering::XCanvasFont >();
     }
 
-    uno::Reference< rendering::XCachedPrimitive > CanvasHelper::drawText( const rendering::XCanvas*                         /*pCanvas*/,
-                                                                          const rendering::StringContext&                   text,
-                                                                          const uno::Reference< rendering::XCanvasFont >&   xFont,
-                                                                          const rendering::ViewState&                       viewState,
-                                                                          const rendering::RenderState&                     renderState,
-                                                                          sal_Int8                                          /*textDirection*/ )
+    void CanvasHelper::drawText(const rendering::XCanvas* /*pCanvas*/,
+                                const rendering::StringContext& text,
+                                const uno::Reference<rendering::XCanvasFont>& xFont,
+                                const rendering::ViewState& viewState,
+                                const rendering::RenderState& renderState,
+                                sal_Int8 /*textDirection*/)
     {
         ENSURE_OR_THROW( xFont.is(),
                           "CanvasHelper::drawText: font is NULL");
@@ -500,14 +494,12 @@ namespace dxcanvas
                                                       &aBrush ),
                 "CanvasHelper::drawText(): GDI+ call failed" );
         }
-
-        return uno::Reference< rendering::XCachedPrimitive >(nullptr);
     }
 
-    uno::Reference< rendering::XCachedPrimitive > CanvasHelper::drawTextLayout( const rendering::XCanvas*                       /*pCanvas*/,
-                                                                                const uno::Reference< rendering::XTextLayout >& xLayoutetText,
-                                                                                const rendering::ViewState&                     viewState,
-                                                                                const rendering::RenderState&                   renderState )
+    void CanvasHelper::drawTextLayout(const rendering::XCanvas* /*pCanvas*/,
+                                      const uno::Reference<rendering::XTextLayout>& xLayoutetText,
+                                      const rendering::ViewState& viewState,
+                                      const rendering::RenderState& renderState)
     {
         ENSURE_OR_THROW( xLayoutetText.is(),
                           "CanvasHelper::drawTextLayout: layout is NULL");
@@ -527,8 +519,6 @@ namespace dxcanvas
                                mpDevice,
                                false );
         }
-
-        return uno::Reference< rendering::XCachedPrimitive >(nullptr);
     }
 
     uno::Reference< rendering::XCachedPrimitive > CanvasHelper::drawBitmap( const rendering::XCanvas*                   /*pCanvas*/,

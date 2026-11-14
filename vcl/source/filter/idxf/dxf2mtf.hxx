@@ -21,9 +21,16 @@
 
 #include <sal/config.h>
 
+#include <optional>
+#include <map>
 #include <string_view>
 
 #include "dxfreprd.hxx"
+#include "dxfmtext.hxx"
+#include <basegfx/matrix/b2dhommatrix.hxx>
+#include <basegfx/polygon/b2dpolygon.hxx>
+#include <basegfx/polygon/b2dpolypolygon.hxx>
+#include <basegfx/range/b2drange.hxx>
 #include <vcl/font.hxx>
 #include <vcl/lineinfo.hxx>
 #include <vcl/vclptr.hxx>
@@ -33,41 +40,84 @@ class DXF2GDIMetaFile {
 private:
 
     VclPtr<VirtualDevice> pVirDev;
+    // for measuring text, never recorded
+    ScopedVclPtr<VirtualDevice> mpMeasureDev;
+    // the cap height of fonts relative to their size
+    std::map<std::pair<OUString, bool>, double> maCapHeightRatios;
     const DXFRepresentation * pDXF;
-    bool bStatus;
 
-    sal_uInt16 OptPointsPerCircle;
+    // The entities are walked twice: first only to measure the extents of what
+    // is drawn, then to record the metafile.
+    bool mbMeasure;
+    basegfx::B2DRange maExtents;
+    basegfx::B2DRange maPointExtents;
+    // projected drawing coordinates -> metafile coordinates
+    basegfx::B2DHomMatrix maDeviceTransform;
+    double mfDeviceScale;
 
-    sal_uInt16 nMinPercent;
-    sal_uInt16 nMaxPercent;
-    sal_uInt16 nLastPercent;
-    sal_uInt16 nMainEntitiesCount;
-
-    tools::Long        nBlockColor;
+    // the colour and line type of the innermost insert, for BYBLOCK
+    std::optional<Color> moBlockColor;
     DXFLineInfo aBlockDXFLineInfo;
-    tools::Long        nParentLayerColor;
-    DXFLineInfo aParentLayerDXFLineInfo;
+    tools::Long mnBlockLineWeight;
+    // the layer of the innermost insert, for the entities on layer 0 of the block
+    const DXFLayer * mpParentLayer;
     Color       aActLineColor;
     Color       aActFillColor;
     vcl::Font   aActFont;
-    const LineInfo aDefaultLineInfo; // to share between lines to reduce memory
 
-    static sal_uInt64 CountEntities(const DXFEntities & rEntities);
+    void ResetState();
 
-    Color ConvertColor(sal_uInt8 nColor) const;
+    Color ConvertColor(tools::Long nColor) const;
 
-    tools::Long GetEntityColor(const DXFBasicEntity & rE) const;
+    const DXFLayer * GetEntityLayer(const DXFBasicEntity & rE) const;
+
+    // no colour if the entity is not visible
+    std::optional<Color> GetEntityColor(const DXFBasicEntity & rE) const;
+
+    // the colour of the entity if it had the colour index nColor and the true colour nTrueColor
+    std::optional<Color> ResolveColor(const DXFBasicEntity & rE, tools::Long nColor,
+                                      tools::Long nTrueColor) const;
+
+    static vcl::Font MakeFont(const DXFTextFormat & rFormat, double fSize);
+
+    double GetCapHeightRatio(const DXFTextFormat & rFormat);
+
+    // the width of a text in drawing units
+    double MeasureText(std::u16string_view aText, const DXFTextFormat & rFormat);
+
+    // Outputs text with its baseline starting at (fX, fY) of the text space, which
+    // rTextTransform maps to drawing coordinates.
+    void OutTextRun(const DXFBasicEntity & rE, const DXFTransform & rTextTransform, double fX,
+                    double fY, const OUString & rText, const DXFTextFormat & rFormat,
+                    double fWidth);
 
     DXFLineInfo LTypeToDXFLineInfo(std::string_view rLineType) const;
 
     DXFLineInfo GetEntityDXFLineInfo(const DXFBasicEntity & rE);
 
+    tools::Long GetEntityLineWeight(const DXFBasicEntity & rE) const;
+
+    // the line style of the entity in metafile units
+    LineInfo GetEntityLineInfo(const DXFBasicEntity & rE, const DXFTransform & rTransform);
+
     bool SetLineAttribute(const DXFBasicEntity & rE);
 
     bool SetAreaAttribute(const DXFBasicEntity & rE);
 
-    bool SetFontAttribute(const DXFBasicEntity & rE, short nAngle,
-                          sal_uInt16 nHeight);
+    bool SetFontAttribute(const DXFBasicEntity & rE, Degree10 nOrientation,
+                          sal_Int32 nHeight);
+
+    // Output of projected drawing coordinates, or only measuring them in the first pass
+    void OutPolyLine(const basegfx::B2DPolygon & rPolygon, const LineInfo & rLineInfo);
+    void OutPolygon(const basegfx::B2DPolyPolygon & rPolyPolygon);
+    void OutPoint(const basegfx::B2DPoint & rPoint);
+    // rTextTransform maps text space, where the baseline runs along x and the
+    // text height is 1, to drawing coordinates
+    void OutText(const DXFBasicEntity & rE, const DXFTransform & rTextTransform,
+                 std::string_view rText);
+    // the sides of an entity with a thickness
+    void OutThickness(const basegfx::B2DPolygon & rBase, const DXFTransform & rTransform,
+                      double fThickness, bool bFilled);
 
     void DrawLineEntity(const DXFLineEntity & rE, const DXFTransform & rTransform);
 
@@ -87,9 +137,21 @@ private:
 
     void DrawAttribEntity(const DXFAttribEntity & rE, const DXFTransform & rTransform);
 
+    // metafile units per drawing unit
+    double GetDeviceScale(const DXFTransform & rTransform) const;
+
+    void Draw2DPolyLine(const DXFBasicEntity & rE, const std::vector<DXFPathVertex> & rVertices,
+                        bool bClosed, double fElevation, const DXFTransform & rTransform);
+
     void DrawPolyLineEntity(const DXFPolyLineEntity & rE, const DXFTransform & rTransform);
 
     void Draw3DFaceEntity(const DXF3DFaceEntity & rE, const DXFTransform & rTransform);
+
+    void DrawEllipseEntity(const DXFEllipseEntity & rE, const DXFTransform & rTransform);
+
+    void DrawSplineEntity(const DXFSplineEntity & rE, const DXFTransform & rTransform);
+
+    void DrawMTextEntity(const DXFMTextEntity & rE, const DXFTransform & rTransform);
 
     void DrawDimensionEntity(const DXFDimensionEntity & rE, const DXFTransform & rTransform);
 
@@ -97,17 +159,18 @@ private:
 
     void DrawHatchEntity( const DXFHatchEntity & rE, const DXFTransform & rTransform );
 
+    void DrawBlock(const DXFBlock & rBlock, const DXFBasicEntity & rE,
+                   const DXFTransform & rTransform);
+
     void DrawEntities(const DXFEntities & rEntities,
                       const DXFTransform & rTransform);
-
-    void DrawLine(const Point& rA, const Point& rB);
 
 public:
 
     DXF2GDIMetaFile();
     ~DXF2GDIMetaFile();
 
-    bool Convert( const DXFRepresentation & rDXF, GDIMetaFile & rMTF, sal_uInt16 nMinPercent, sal_uInt16 nMaxPercent);
+    bool Convert( const DXFRepresentation & rDXF, GDIMetaFile & rMTF );
 
 };
 

@@ -155,18 +155,18 @@ namespace cppcanvas::internal
                     uno::Sequence<double> aTmpColor( aLocalState.DeviceColor );
                     aLocalState.DeviceColor = maFillColor;
 
-                    rCachedPrimitive = mpCanvas->getUNOCanvas()->fillPolyPolygon( mxPolyPoly,
-                                                                                  mpCanvas->getViewState(),
-                                                                                  aLocalState );
+                    mpCanvas->getUNOCanvas()->fillPolyPolygon(mxPolyPoly, mpCanvas->getViewState(),
+                                                              aLocalState);
+                    rCachedPrimitive.clear();
 
                     aLocalState.DeviceColor = std::move(aTmpColor);
                 }
 
                 if( aLocalState.DeviceColor.hasElements() )
                 {
-                    rCachedPrimitive = mpCanvas->getUNOCanvas()->drawPolyPolygon( mxPolyPoly,
-                                                                                  mpCanvas->getViewState(),
-                                                                                  aLocalState );
+                    mpCanvas->getUNOCanvas()->drawPolyPolygon(mxPolyPoly, mpCanvas->getViewState(),
+                                                              aLocalState);
+                    rCachedPrimitive.clear();
                 }
 
                 return true;
@@ -384,10 +384,9 @@ namespace cppcanvas::internal
                 rendering::RenderState aLocalState( maState );
                 ::canvastools::prependToRenderState(aLocalState, rTransformation);
 
-                rCachedPrimitive = mpCanvas->getUNOCanvas()->strokePolyPolygon( mxPolyPoly,
-                                                                                mpCanvas->getViewState(),
-                                                                                aLocalState,
-                                                                                maStrokeAttributes );
+                mpCanvas->getUNOCanvas()->strokePolyPolygon(mxPolyPoly, mpCanvas->getViewState(),
+                                                            aLocalState, maStrokeAttributes);
+                rCachedPrimitive.clear();
                 return true;
             }
 

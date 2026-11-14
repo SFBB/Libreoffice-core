@@ -18,6 +18,7 @@
 #include <basegfx/polygon/b2dpolypolygon.hxx>
 #include <basegfx/polygon/b2dpolypolygontools.hxx>
 #include <basegfx/utils/canvastools.hxx>
+#include <canvas/parametricpolypolygon.hxx>
 #include <com/sun/star/rendering/CompositeOperation.hpp>
 #include <rtl/crc.h>
 #include <rtl/math.hxx>
@@ -158,9 +159,8 @@ namespace oglcanvas
 
             // convert to weird canvas textur coordinate system (not
             // [0,1]^2, but path coordinate system)
-            ::basegfx::B2DHomMatrix aTextureTransform;
-            ::basegfx::unotools::homMatrixFromAffineMatrix( aTextureTransform,
-                                                            rTexture.AffineTransform );
+            ::basegfx::B2DHomMatrix aTextureTransform
+                = ::basegfx::unotools::homMatrixFromAffineMatrix(rTexture.AffineTransform);
             ::basegfx::B2DRange aBounds;
             for( const auto& rPoly : rPolyPolygons )
                 aBounds.expand( rPoly.getB2DRange() );
@@ -302,9 +302,8 @@ namespace oglcanvas
 
             // convert to weird canvas textur coordinate system (not
             // [0,1]^2, but path coordinate system)
-            ::basegfx::B2DHomMatrix aTextureTransform;
-            ::basegfx::unotools::homMatrixFromAffineMatrix( aTextureTransform,
-                                                            rTexture.AffineTransform );
+            ::basegfx::B2DHomMatrix aTextureTransform
+                = ::basegfx::unotools::homMatrixFromAffineMatrix(rTexture.AffineTransform);
             ::basegfx::B2DRange aBounds;
             for( const auto& rPolyPolygon : rPolyPolygons )
                 aBounds.expand( rPolyPolygon.getB2DRange() );
@@ -433,10 +432,11 @@ namespace oglcanvas
 
     }
 
-    uno::Reference< rendering::XCachedPrimitive > CanvasHelper::drawPolyPolygon( const rendering::XCanvas*                          /*pCanvas*/,
-                                                                                 const uno::Reference< rendering::XPolyPolygon2D >& xPolyPolygon,
-                                                                                 const rendering::ViewState&                        viewState,
-                                                                                 const rendering::RenderState&                      renderState )
+    void
+    CanvasHelper::drawPolyPolygon(const rendering::XCanvas* /*pCanvas*/,
+                                  const uno::Reference<rendering::XPolyPolygon2D>& xPolyPolygon,
+                                  const rendering::ViewState& viewState,
+                                  const rendering::RenderState& renderState)
     {
         ENSURE_OR_THROW( xPolyPolygon.is(),
                           "CanvasHelper::drawPolyPolygon: polygon is NULL");
@@ -452,16 +452,14 @@ namespace oglcanvas
 
             rAct.maFunction = &lcl_drawPolyPolygon;
         }
-
-        // TODO(P1): Provide caching here.
-        return uno::Reference< rendering::XCachedPrimitive >(nullptr);
     }
 
-    uno::Reference< rendering::XCachedPrimitive > CanvasHelper::strokePolyPolygon( const rendering::XCanvas*                            /*pCanvas*/,
-                                                                                   const uno::Reference< rendering::XPolyPolygon2D >&   xPolyPolygon,
-                                                                                   const rendering::ViewState&                          viewState,
-                                                                                   const rendering::RenderState&                        renderState,
-                                                                                   const rendering::StrokeAttributes&                   /*strokeAttributes*/ )
+    void
+    CanvasHelper::strokePolyPolygon(const rendering::XCanvas* /*pCanvas*/,
+                                    const uno::Reference<rendering::XPolyPolygon2D>& xPolyPolygon,
+                                    const rendering::ViewState& viewState,
+                                    const rendering::RenderState& renderState,
+                                    const rendering::StrokeAttributes& /*strokeAttributes*/)
     {
         ENSURE_OR_THROW( xPolyPolygon.is(),
                           "CanvasHelper::strokePolyPolygon: polygon is NULL");
@@ -478,15 +476,13 @@ namespace oglcanvas
             // TODO(F3): fallback to drawPolyPolygon currently
             rAct.maFunction = &lcl_drawPolyPolygon;
         }
-
-        // TODO(P1): Provide caching here.
-        return uno::Reference< rendering::XCachedPrimitive >(nullptr);
     }
 
-    uno::Reference< rendering::XCachedPrimitive > CanvasHelper::fillPolyPolygon( const rendering::XCanvas*                          /*pCanvas*/,
-                                                                                 const uno::Reference< rendering::XPolyPolygon2D >& xPolyPolygon,
-                                                                                 const rendering::ViewState&                        viewState,
-                                                                                 const rendering::RenderState&                      renderState )
+    void
+    CanvasHelper::fillPolyPolygon(const rendering::XCanvas* /*pCanvas*/,
+                                  const uno::Reference<rendering::XPolyPolygon2D>& xPolyPolygon,
+                                  const rendering::ViewState& viewState,
+                                  const rendering::RenderState& renderState)
     {
         ENSURE_OR_THROW( xPolyPolygon.is(),
                           "CanvasHelper::fillPolyPolygon: polygon is NULL");
@@ -502,9 +498,6 @@ namespace oglcanvas
 
             rAct.maFunction = &lcl_fillPolyPolygon;
         }
-
-        // TODO(P1): Provide caching here.
-        return uno::Reference< rendering::XCachedPrimitive >(nullptr);
     }
 
     uno::Reference< rendering::XCachedPrimitive > CanvasHelper::fillTexturedPolyPolygon( const rendering::XCanvas*                          /*pCanvas*/,
@@ -638,21 +631,20 @@ namespace oglcanvas
         return uno::Reference< rendering::XCanvasFont >();
     }
 
-    uno::Reference< rendering::XCachedPrimitive > CanvasHelper::drawText( const rendering::XCanvas*                         /*pCanvas*/,
-                                                                          const rendering::StringContext&                   /*text*/,
-                                                                          const uno::Reference< rendering::XCanvasFont >&   /*xFont*/,
-                                                                          const rendering::ViewState&                       /*viewState*/,
-                                                                          const rendering::RenderState&                     /*renderState*/,
-                                                                          sal_Int8                                          /*textDirection*/ )
+    void CanvasHelper::drawText(const rendering::XCanvas* /*pCanvas*/,
+                                const rendering::StringContext& /*text*/,
+                                const uno::Reference<rendering::XCanvasFont>& /*xFont*/,
+                                const rendering::ViewState& /*viewState*/,
+                                const rendering::RenderState& /*renderState*/,
+                                sal_Int8 /*textDirection*/)
     {
         // TODO - but not used from slideshow
-        return uno::Reference< rendering::XCachedPrimitive >(nullptr);
     }
 
-    uno::Reference< rendering::XCachedPrimitive > CanvasHelper::drawTextLayout( const rendering::XCanvas*                       /*pCanvas*/,
-                                                                                const uno::Reference< rendering::XTextLayout >& xLayoutetText,
-                                                                                const rendering::ViewState&                     viewState,
-                                                                                const rendering::RenderState&                   renderState )
+    void CanvasHelper::drawTextLayout(const rendering::XCanvas* /*pCanvas*/,
+                                      const uno::Reference<rendering::XTextLayout>& xLayoutetText,
+                                      const rendering::ViewState& viewState,
+                                      const rendering::RenderState& renderState)
     {
         ENSURE_OR_THROW( xLayoutetText.is(),
                           "CanvasHelper::drawTextLayout: text is NULL");
@@ -739,9 +731,6 @@ namespace oglcanvas
                 rAct.maFunction = &lcl_fillPolyPolygon;
             }
         }
-
-        // TODO
-        return uno::Reference< rendering::XCachedPrimitive >(nullptr);
     }
 
     uno::Reference< rendering::XCachedPrimitive > CanvasHelper::drawBitmap( const rendering::XCanvas*                   /*pCanvas*/,

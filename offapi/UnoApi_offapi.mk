@@ -2921,8 +2921,6 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/rdf,\
 ))
 $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/rendering,\
 	ARGBColor \
-	AnimationAttributes \
-	AnimationRepeat \
 	BlendMode \
 	Caret \
 	Color \
@@ -2933,24 +2931,14 @@ $(eval $(call gb_UnoApi_add_idlfiles,offapi,com/sun/star/rendering,\
 	CompositeOperation \
 	EmphasisMark \
 	FillRule \
-	FloatingPointBitmapFormat \
-	FloatingPointBitmapLayout \
 	FontInfo \
 	FontMetrics \
 	FontRequest \
 	IntegerBitmapLayout \
-	InterpolationMode \
 	Panose \
-	PanoseArmStyle \
-	PanoseContrast \
-	PanoseFamilyTypes \
 	PanoseLetterForm \
-	PanoseMidline \
 	PanoseProportion \
-	PanoseSerifStyle \
-	PanoseStrokeVariation \
 	PanoseWeight \
-	PanoseXHeight \
 	PathCapType \
 	PathJoinType \
 	RGBColor \

@@ -48,7 +48,7 @@
 #include <vcl/virdev.hxx>
 
 #include <canvas/canvastools.hxx>
-#include <parametricpolypolygon.hxx>
+#include <canvas/parametricpolypolygon.hxx>
 #include <cairo.h>
 
 #include "cairo_cachedbitmap.hxx"
@@ -265,9 +265,6 @@ void CanvasHelper::drawBezier(const rendering::XCanvas*,
 
     cairo_restore(mpCairo.get());
 }
-
-constexpr OUStringLiteral PARAMETRICPOLYPOLYGON_IMPLEMENTATION_NAME
-    = u"Canvas::ParametricPolyPolygon";
 
 /** surfaceFromXBitmap Create a surface from XBitmap
      * @param xBitmap bitmap image that will be used for the surface
@@ -510,22 +507,14 @@ static void doOperation(Operation aOperation, cairo_t* pCairo,
                 }
                 else if (aTexture.Gradient.is())
                 {
-                    uno::Reference<lang::XServiceInfo> xRef(aTexture.Gradient, uno::UNO_QUERY);
-
                     SAL_INFO("canvas.cairo", "gradient fill");
-                    if (xRef.is()
-                        && xRef->getImplementationName()
-                               == PARAMETRICPOLYPOLYGON_IMPLEMENTATION_NAME)
+                    if (canvas::ParametricPolyPolygon* pPolyImpl
+                        = dynamic_cast<::canvas::ParametricPolyPolygon*>(aTexture.Gradient.get()))
                     {
-                        // TODO(Q1): Maybe use dynamic_cast here
-
                         // TODO(E1): Return value
                         // TODO(F1): FillRule
                         SAL_INFO("canvas.cairo", "known implementation");
 
-                        ::canvas::ParametricPolyPolygon* pPolyImpl
-                            = static_cast<::canvas::ParametricPolyPolygon*>(
-                                aTexture.Gradient.get());
                         css::geometry::AffineMatrix2D aTransform(aTexture.AffineTransform);
                         cairo_matrix_t aTextureMatrix;
 
@@ -834,15 +823,11 @@ void CanvasHelper::doPolyPolygonPath(const uno::Reference<rendering::XPolyPolygo
     }
 }
 
-uno::Reference<rendering::XCachedPrimitive> CanvasHelper::drawPolyPolygon(
-    const rendering::XCanvas*, const uno::Reference<rendering::XPolyPolygon2D>& xPolyPolygon,
-    const rendering::ViewState& viewState, const rendering::RenderState& renderState)
+void CanvasHelper::drawPolyPolygon(const rendering::XCanvas*,
+                                   const uno::Reference<rendering::XPolyPolygon2D>& xPolyPolygon,
+                                   const rendering::ViewState& viewState,
+                                   const rendering::RenderState& renderState)
 {
-#ifdef CAIRO_CANVAS_PERF_TRACE
-    struct timespec aTimer;
-    mxDevice->startPerfTrace(&aTimer);
-#endif
-
     if (mpCairo)
     {
         cairo_save(mpCairo.get());
@@ -856,24 +841,14 @@ uno::Reference<rendering::XCachedPrimitive> CanvasHelper::drawPolyPolygon(
     }
     else
         SAL_INFO("canvas.cairo", "CanvasHelper called after it was disposed");
-
-#ifdef CAIRO_CANVAS_PERF_TRACE
-    mxDevice->stopPerfTrace(&aTimer, "drawPolyPolygon");
-#endif
-
-    return uno::Reference<rendering::XCachedPrimitive>(nullptr);
 }
 
-uno::Reference<rendering::XCachedPrimitive> CanvasHelper::strokePolyPolygon(
-    const rendering::XCanvas*, const uno::Reference<rendering::XPolyPolygon2D>& xPolyPolygon,
-    const rendering::ViewState& viewState, const rendering::RenderState& renderState,
-    const rendering::StrokeAttributes& strokeAttributes)
+void CanvasHelper::strokePolyPolygon(const rendering::XCanvas*,
+                                     const uno::Reference<rendering::XPolyPolygon2D>& xPolyPolygon,
+                                     const rendering::ViewState& viewState,
+                                     const rendering::RenderState& renderState,
+                                     const rendering::StrokeAttributes& strokeAttributes)
 {
-#ifdef CAIRO_CANVAS_PERF_TRACE
-    struct timespec aTimer;
-    mxDevice->startPerfTrace(&aTimer);
-#endif
-
     if (mpCairo)
     {
         cairo_save(mpCairo.get());
@@ -934,32 +909,19 @@ uno::Reference<rendering::XCachedPrimitive> CanvasHelper::strokePolyPolygon(
             cairo_set_dash(mpCairo.get(), aDashArray.data(), aDashArray.size(), 0);
         }
 
-        // TODO(rodo) use LineArray of strokeAttributes
-
         doPolyPolygonPath(xPolyPolygon, Operation::Stroke, bNoLineJoin);
 
         cairo_restore(mpCairo.get());
     }
     else
         SAL_INFO("canvas.cairo", "CanvasHelper called after it was disposed");
-
-#ifdef CAIRO_CANVAS_PERF_TRACE
-    mxDevice->stopPerfTrace(&aTimer, "strokePolyPolygon");
-#endif
-
-    // TODO(P1): Provide caching here.
-    return uno::Reference<rendering::XCachedPrimitive>(nullptr);
 }
 
-uno::Reference<rendering::XCachedPrimitive> CanvasHelper::fillPolyPolygon(
-    const rendering::XCanvas*, const uno::Reference<rendering::XPolyPolygon2D>& xPolyPolygon,
-    const rendering::ViewState& viewState, const rendering::RenderState& renderState)
+void CanvasHelper::fillPolyPolygon(const rendering::XCanvas*,
+                                   const uno::Reference<rendering::XPolyPolygon2D>& xPolyPolygon,
+                                   const rendering::ViewState& viewState,
+                                   const rendering::RenderState& renderState)
 {
-#ifdef CAIRO_CANVAS_PERF_TRACE
-    struct timespec aTimer;
-    mxDevice->startPerfTrace(&aTimer);
-#endif
-
     if (mpCairo)
     {
         cairo_save(mpCairo.get());
@@ -971,12 +933,6 @@ uno::Reference<rendering::XCachedPrimitive> CanvasHelper::fillPolyPolygon(
     }
     else
         SAL_INFO("canvas.cairo", "CanvasHelper called after it was disposed");
-
-#ifdef CAIRO_CANVAS_PERF_TRACE
-    mxDevice->stopPerfTrace(&aTimer, "fillPolyPolygon");
-#endif
-
-    return uno::Reference<rendering::XCachedPrimitive>(nullptr);
 }
 
 uno::Reference<rendering::XCachedPrimitive> CanvasHelper::fillTexturedPolyPolygon(
@@ -1132,11 +1088,6 @@ uno::Reference<rendering::XCachedPrimitive> CanvasHelper::drawBitmap(
     const rendering::XCanvas* pCanvas, const uno::Reference<rendering::XBitmap>& xBitmap,
     const rendering::ViewState& viewState, const rendering::RenderState& renderState)
 {
-#ifdef CAIRO_CANVAS_PERF_TRACE
-    struct timespec aTimer;
-    mxDevice->startPerfTrace(&aTimer);
-#endif
-
     uno::Reference<rendering::XCachedPrimitive> rv;
     bool bHasAlpha = false;
     SurfaceSharedPtr pSurface = surfaceFromXBitmap(xBitmap, mpSurfaceProvider, bHasAlpha);
@@ -1148,10 +1099,6 @@ uno::Reference<rendering::XCachedPrimitive> CanvasHelper::drawBitmap(
     else
         rv.clear();
 
-#ifdef CAIRO_CANVAS_PERF_TRACE
-    mxDevice->stopPerfTrace(&aTimer, "drawBitmap");
-#endif
-
     return rv;
 }
 
@@ -1159,11 +1106,6 @@ uno::Reference<rendering::XCachedPrimitive> CanvasHelper::drawBitmapModulated(
     const rendering::XCanvas* pCanvas, const uno::Reference<rendering::XBitmap>& xBitmap,
     const rendering::ViewState& viewState, const rendering::RenderState& renderState)
 {
-#ifdef CAIRO_CANVAS_PERF_TRACE
-    struct timespec aTimer;
-    mxDevice->startPerfTrace(&aTimer);
-#endif
-
     uno::Reference<rendering::XCachedPrimitive> rv;
     bool bHasAlpha = false;
     SurfaceSharedPtr pSurface = surfaceFromXBitmap(xBitmap, mpSurfaceProvider, bHasAlpha);
@@ -1174,10 +1116,6 @@ uno::Reference<rendering::XCachedPrimitive> CanvasHelper::drawBitmapModulated(
                                    bHasAlpha);
     else
         rv.clear();
-
-#ifdef CAIRO_CANVAS_PERF_TRACE
-    mxDevice->stopPerfTrace(&aTimer, "drawBitmap");
-#endif
 
     return rv;
 }
@@ -1193,11 +1131,6 @@ geometry::IntegerSize2D CanvasHelper::getSize() const
 uno::Reference<rendering::XBitmap>
 CanvasHelper::getScaledBitmap(const geometry::RealSize2D& newSize, bool /*beFast*/)
 {
-#ifdef CAIRO_CANVAS_PERF_TRACE
-    struct timespec aTimer;
-    mxDevice->startPerfTrace(&aTimer);
-#endif
-
     if (mpCairo)
     {
         return uno::Reference<rendering::XBitmap>(
@@ -1207,10 +1140,6 @@ CanvasHelper::getScaledBitmap(const geometry::RealSize2D& newSize, bool /*beFast
     }
     else
         SAL_INFO("canvas.cairo", "CanvasHelper called after it was disposed");
-
-#ifdef CAIRO_CANVAS_PERF_TRACE
-    mxDevice->stopPerfTrace(&aTimer, "getScaledBitmap");
-#endif
 
     return uno::Reference<rendering::XBitmap>();
 }

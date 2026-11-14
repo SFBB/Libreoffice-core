@@ -72,7 +72,6 @@ namespace cairocanvas
 
     TextLayout::TextLayout( rendering::StringContext      aText,
                             sal_Int8                      nDirection,
-                            sal_Int64                     /*nRandomSeed*/,
                             CanvasFont::Reference         rFont,
                             SurfaceProviderRef            rRefDevice ) :
         maText(std::move( aText )),
@@ -93,12 +92,6 @@ namespace cairocanvas
     }
 
     // XTextLayout
-    uno::Sequence< uno::Reference< rendering::XPolyPolygon2D > > SAL_CALL TextLayout::queryTextShapes(  )
-    {
-        // TODO
-        return uno::Sequence< uno::Reference< rendering::XPolyPolygon2D > >();
-    }
-
     uno::Sequence< geometry::RealRectangle2D > SAL_CALL TextLayout::queryInkMeasures(  )
     {
         // TODO
@@ -212,34 +205,6 @@ namespace cairocanvas
     {
         // TODO
         return rendering::Caret();
-    }
-
-    sal_Int32 SAL_CALL TextLayout::getNextInsertionIndex( sal_Int32 /*nStartIndex*/,
-                                                          sal_Int32 /*nCaretAdvancement*/,
-                                                          sal_Bool /*bExcludeLigatures*/ )
-    {
-        // TODO
-        return 0;
-    }
-
-    uno::Reference< rendering::XPolyPolygon2D > SAL_CALL TextLayout::queryVisualHighlighting( sal_Int32 /*nStartIndex*/,
-                                                                                              sal_Int32 /*nEndIndex*/ )
-    {
-        // TODO
-        return uno::Reference< rendering::XPolyPolygon2D >();
-    }
-
-    uno::Reference< rendering::XPolyPolygon2D > SAL_CALL TextLayout::queryLogicalHighlighting( sal_Int32 /*nStartIndex*/,
-                                                                                               sal_Int32 /*nEndIndex*/ )
-    {
-        // TODO
-        return uno::Reference< rendering::XPolyPolygon2D >();
-    }
-
-    double SAL_CALL TextLayout::getBaselineOffset(  )
-    {
-        // TODO
-        return 0.0;
     }
 
     sal_Int8 SAL_CALL TextLayout::getMainTextDirection(  )

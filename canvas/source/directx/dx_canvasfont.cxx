@@ -81,25 +81,18 @@ namespace dxcanvas
         mpGdiPlusUser.reset();
     }
 
-    uno::Reference< rendering::XTextLayout > SAL_CALL CanvasFont::createTextLayout( const rendering::StringContext& aText,
-                                                                                    sal_Int8                        nDirection,
-                                                                                    sal_Int64                       nRandomSeed )
+    uno::Reference<rendering::XTextLayout> SAL_CALL
+    CanvasFont::createTextLayout(const rendering::StringContext& aText, sal_Int8 nDirection)
     {
         ::osl::MutexGuard aGuard( m_aMutex );
 
-        return new TextLayout(aText, nDirection, nRandomSeed, rtl::Reference<CanvasFont>(this));
+        return new TextLayout(aText, nDirection, rtl::Reference<CanvasFont>(this));
     }
 
     uno::Sequence< double > SAL_CALL CanvasFont::getAvailableSizes(  )
     {
         // TODO
         return uno::Sequence< double >();
-    }
-
-    uno::Sequence< beans::PropertyValue > SAL_CALL CanvasFont::getExtraFontProperties(  )
-    {
-        // TODO
-        return uno::Sequence< beans::PropertyValue >();
     }
 
     rendering::FontRequest SAL_CALL CanvasFont::getFontRequest(  )

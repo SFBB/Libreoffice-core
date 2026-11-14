@@ -21,6 +21,7 @@
 
 #include "dxfgrprd.hxx"
 #include "dxfvec.hxx"
+#include "dxfgeom.hxx"
 #include <tools/long.hxx>
 
 #include <memory>
@@ -44,10 +45,18 @@ enum DXFEntityType {
     DXF_3DFACE,
     DXF_DIMENSION,
     DXF_LWPOLYLINE,
-    DXF_HATCH
+    DXF_HATCH,
+    DXF_ELLIPSE,
+    DXF_SPLINE,
+    DXF_MTEXT
 };
 
 // base class of an entity
+
+// special line weights
+constexpr tools::Long DXF_LINEWEIGHT_BYLAYER = -1;
+constexpr tools::Long DXF_LINEWEIGHT_BYBLOCK = -2;
+constexpr tools::Long DXF_LINEWEIGHT_DEFAULT = -3;
 
 class DXFBasicEntity {
 
@@ -65,6 +74,10 @@ public:
     OString m_sLineType;                  //  6
     double fThickness;                    // 39
     tools::Long nColor;                          // 62
+    tools::Long nTrueColor;                      // 420, 0xRRGGBB or -1
+    bool bInvisible;                             // 60
+    double fLineTypeScale;                       // 48
+    tools::Long nLineWeight;                     // 370, 1/100 mm or one of the DXF_LINEWEIGHT_* values
     tools::Long nSpace;                          // 67
     DXFVector aExtrusion;                 // 210,220,230
 
@@ -302,6 +315,7 @@ class DXFPolyLineEntity : public DXFBasicEntity {
 
 public:
 
+    double fElevation; // 30
     tools::Long nFlags;       // 70
     double fSWidth;    // 40
     double fEWidth;    // 41
@@ -320,17 +334,19 @@ protected:
 
 class DXFLWPolyLineEntity : public DXFBasicEntity
 {
-        sal_Int32   nIndex;
         sal_Int32   nCount;         // 90
+        // the groups of a vertex beyond the count are ignored
+        bool        bVertexAccepted;
 
     public:
 
         sal_Int32   nFlags;         // 70   1 = closed, 128 = plinegen
-        double      fConstantWidth; // 43   (optional - default: 0, not used if fStartWidth and/or fEndWidth is used)
-        double      fStartWidth;    // 40
-        double      fEndWidth;      // 41
+        double      fConstantWidth; // 43   used by the vertices without their own widths
+        double      fElevation;     // 38
 
-        std::vector<DXFVector>  aP;
+        // 10, 20, and the 40, 41 widths (-1 if not given) and 42 bulge of the segment
+        // starting there
+        std::vector<DXFPathVertex> aVertices;
 
         DXFLWPolyLineEntity();
 
@@ -458,6 +474,7 @@ public:
     double fBulge;     // 42
     tools::Long nFlags;       // 70
     double fCFTDir;    // 50
+    tools::Long nFaceIndex[4]; // 71-74, polyface mesh faces
 
     DXFVertexEntity();
 
@@ -488,6 +505,70 @@ public:
 protected:
 
     virtual void EvaluateGroup(DXFGroupReader & rDGR) override;
+};
+
+//--------------------------Ellipse---------------------------------------------
+
+// in world coordinates, the extrusion only orients the minor axis
+class DXFEllipseEntity : public DXFBasicEntity {
+public:
+    DXFVector aCenter;   // 10,20,30
+    DXFVector aMajor;    // 11,21,31, end of the major axis relative to the centre
+    double fRatio;       // 40, minor to major axis
+    double fStart;       // 41, parameter in radians
+    double fEnd;         // 42
+
+    DXFEllipseEntity();
+
+protected:
+
+    virtual void EvaluateGroup(DXFGroupReader & rDGR) override;
+};
+
+//--------------------------Spline----------------------------------------------
+
+// in world coordinates
+class DXFSplineEntity : public DXFBasicEntity {
+public:
+    tools::Long nFlags;                  // 70, 1 = closed
+    tools::Long nDegree;                 // 71
+    std::vector<double> aKnots;          // 40
+    std::vector<double> aWeights;        // 41
+    std::vector<DXFVector> aControlPoints; // 10,20,30
+    std::vector<DXFVector> aFitPoints;     // 11,21,31
+
+    DXFSplineEntity();
+
+protected:
+
+    virtual void EvaluateGroup(DXFGroupReader & rDGR) override;
+};
+
+//--------------------------MText-----------------------------------------------
+
+// multiline text with inline formatting, the insertion point is in world coordinates
+class DXFMTextEntity : public DXFBasicEntity {
+public:
+    DXFVector aP0;                 // 10,20,30
+    DXFVector aXDirection;         // 11,21,31, wins over the rotation
+    bool bHasXDirection;
+    double fHeight;                // 40
+    double fReferenceWidth;        // 41, for word wrapping
+    double fLineSpacing;           // 44
+    double fRotAngle;              // 50, degrees
+    tools::Long nAttachment;       // 71, 1-9: top/middle/bottom x left/center/right
+    OString m_sText;               // 3 chunks then 1
+    OString m_sStyle;              // 7
+
+    DXFMTextEntity();
+
+protected:
+
+    virtual void EvaluateGroup(DXFGroupReader & rDGR) override;
+
+private:
+    // the groups after 101 describe an embedded object, not the text
+    bool bInEmbeddedObject;
 };
 
 class DXFDimensionEntity : public DXFBasicEntity {

@@ -61,10 +61,15 @@ public:
 
     OString m_sName;                      //  2
     tools::Long nFlags;                          // 70
-    tools::Long nColor;                          // 62
+    tools::Long nColor;                          // 62, negative if the layer is off
+    tools::Long nTrueColor;                      // 420, 0xRRGGBB or -1
+    tools::Long nLineWeight;                     // 370
     OString m_sLineType;                  //  6
 
     DXFLayer();
+
+    // off or frozen
+    bool IsHidden() const { return nColor < 0 || (nFlags & 1) != 0; }
     void Read(DXFGroupReader & rDGR);
 };
 

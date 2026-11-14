@@ -23,14 +23,13 @@
 #include <com/sun/star/rendering/XBezierPolyPolygon2D.hpp>
 #include <com/sun/star/rendering/XBitmap.hpp>
 
+#include <cppuhelper/weak.hxx>
 #include <rtl/ref.hxx>
 
-#include <parametricpolypolygon.hxx>
 #include <propertysethelper.hxx>
 #include <verifyinput.hxx>
 
 namespace com::sun::star::beans { class XPropertySetInfo; }
-namespace com::sun::star::lang { class XMultiServiceFactory; }
 namespace com::sun::star::rendering { class XColorSpace; }
 
 
@@ -186,34 +185,6 @@ namespace canvas
 
             return maDeviceHelper.createCompatibleAlphaBitmap( this, size );
         }
-
-        virtual css::uno::Reference< css::lang::XMultiServiceFactory > SAL_CALL getParametricPolyPolygonFactory(  ) override
-        {
-            return this;
-        }
-
-        // XMultiServiceFactory
-        virtual css::uno::Reference< css::uno::XInterface > SAL_CALL createInstance( const OUString& aServiceSpecifier ) override
-        {
-            return css::uno::Reference< css::rendering::XParametricPolyPolygon2D >(
-                ParametricPolyPolygon::create(this,
-                                              aServiceSpecifier,
-                                              css::uno::Sequence< css::uno::Any >()));
-        }
-
-        virtual css::uno::Reference< css::uno::XInterface > SAL_CALL createInstanceWithArguments( const OUString& aServiceSpecifier, const css::uno::Sequence< css::uno::Any >& Arguments ) override
-        {
-            return css::uno::Reference< css::rendering::XParametricPolyPolygon2D >(
-                ParametricPolyPolygon::create(this,
-                                              aServiceSpecifier,
-                                              Arguments));
-        }
-
-        virtual css::uno::Sequence< OUString > SAL_CALL getAvailableServiceNames(  ) override
-        {
-            return ParametricPolyPolygon::getAvailableServiceNames();
-        }
-
 
         // XUpdatable
         virtual void SAL_CALL update() override

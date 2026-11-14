@@ -30,21 +30,6 @@
 
 //-------------------A 3D-Min/Max-Box-----------------------------------------
 
-class DXFBoundingBox {
-public:
-    bool bEmpty;
-    double fMinX;
-    double fMinY;
-    double fMinZ;
-    double fMaxX;
-    double fMaxY;
-    double fMaxZ;
-
-    DXFBoundingBox():bEmpty(true), fMinX(0.0), fMinY(0.0), fMinZ(0.0), fMaxX(0.0), fMaxY(0.0), fMaxZ(0.0) {}
-    void Union(const DXFVector & rVector);
-};
-
-
 //-------------------The (constant) palette for DXF-------------------------
 
 class DXFPalette {
@@ -75,10 +60,6 @@ public:
     DXFPalette aPalette;
         // The always equal DXF color palette
 
-    DXFBoundingBox aBoundingBox;
-        // is equal to the AutoCAD variables EXTMIN, EXTMAX if those exist
-        // within the DXF file. Otherwise the BoundingBox gets calculated (in Read())
-
     DXFTables aTables;
         // the tables of the DXF file
 
@@ -91,15 +72,16 @@ public:
     rtl_TextEncoding mEnc;  // $DWGCODEPAGE
 
     double mfGlobalLineTypeScale; // $LTSCALE
-
-    bool mbInCalc;  // guard for self-recursive bounding box calc
+    bool mbLineWeightDisplay; // $LWDISPLAY
 
     DXFRepresentation();
     ~DXFRepresentation();
 
     rtl_TextEncoding getTextEncoding() const;
     void setTextEncoding(rtl_TextEncoding aEnc) { mEnc = aEnc; }
-    OUString ToOUString(std::string_view s) const;
+    // the text in the encoding of the drawing with its special characters decoded; without
+    // bEscapes the \U+ and \M+ escapes are left for the MTEXT parser
+    OUString ToOUString(std::string_view s, bool bEscapes = true) const;
 
     double getGlobalLineTypeScale() const { return mfGlobalLineTypeScale; }
     void setGlobalLineTypeScale(double fGlobalLineTypeScale) { mfGlobalLineTypeScale = fGlobalLineTypeScale; }
@@ -109,8 +91,6 @@ public:
 
 private:
     void ReadHeader(DXFGroupReader & rDGR);
-    void CalcBoundingBox(const DXFEntities & rEntities,
-                         DXFBoundingBox & rBox);
 
     bool isTextEncodingSet() const { return mEnc != RTL_TEXTENCODING_DONTKNOW; }
 };

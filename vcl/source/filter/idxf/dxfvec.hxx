@@ -22,8 +22,6 @@
 #include <sal/types.h>
 #include <vcl/lineinfo.hxx>
 
-class Point;
-
 class DXFLineInfo {
 public:
     LineStyle       eStyle;
@@ -112,30 +110,18 @@ public:
         // destination point of a viewport
         // (See DXF-Docu from AutoDesk: VPORT)
 
+    DXFTransform(const DXFVector & rX, const DXFVector & rY, const DXFVector & rZ,
+                 const DXFVector & rOrigin);
+        // dest coordinate = rOrigin + x * rX + y * rY + z * rZ
+
     DXFTransform(const DXFTransform & rT1, const DXFTransform & rT2);
         // destination coordinate = rT2(rT1(source coordinate))
-
 
     void Transform(const DXFVector & rSrc, DXFVector & rTgt) const;
         // Transformation from DXFVector to DXFVector
 
-    void Transform(const DXFVector & rSrc, Point & rTgt) const;
-        // Transformation from DXFVector to SvPoint
-
     void TransDir(const DXFVector & rSrc, DXFVector & rTgt) const;
         // Transformation of a relative vector (so no translation)
-
-    bool TransCircleToEllipse(double fRadius, double & rEx, double & rEy) const;
-        // Attempt to transform a circle (in xy plane) so that it results
-        // in an aligned ellipse. If this does not work because an ellipse of
-        // arbitrary position would be created, sal_False is returned.
-        // (The center point will not be transformed, use Transform(..))
-
-    double CalcRotAngle() const;
-        // Calculates the rotation angle around z-axis (in degrees)
-
-    bool Mirror() const;
-        // Returns sal_True, if the matrix represents a left-handed coordinate system
 
     LineInfo Transform(const DXFLineInfo& aDXFLineInfo) const;
         // Transform to LineInfo

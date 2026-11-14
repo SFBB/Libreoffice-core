@@ -69,12 +69,10 @@ namespace dxcanvas
         // =============================================================
         void clear();
 
-        css::uno::Reference< css::rendering::XCachedPrimitive >
-            drawTextLayout( const css::rendering::XCanvas*     pCanvas,
-                            const css::uno::Reference<
-                                css::rendering::XTextLayout >& laidOutText,
-                            const css::rendering::ViewState&   viewState,
-                            const css::rendering::RenderState& renderState );
+        void drawTextLayout(const css::rendering::XCanvas* pCanvas,
+                            const css::uno::Reference<css::rendering::XTextLayout>& laidOutText,
+                            const css::rendering::ViewState& viewState,
+                            const css::rendering::RenderState& renderState);
 
         // BitmapCanvasHelper functionality
         // ================================
@@ -98,14 +96,6 @@ namespace dxcanvas
         css::uno::Sequence< sal_Int8 >
             getData( css::rendering::IntegerBitmapLayout&      bitmapLayout,
                      const css::geometry::IntegerRectangle2D&  rect );
-
-        void setData( const css::uno::Sequence< sal_Int8 >&         data,
-                      const css::rendering::IntegerBitmapLayout&    bitmapLayout,
-                      const css::geometry::IntegerRectangle2D&      rect );
-
-        void setPixel( const css::uno::Sequence< sal_Int8 >&        color,
-                       const css::rendering::IntegerBitmapLayout&   bitmapLayout,
-                       const css::geometry::IntegerPoint2D&         pos );
 
         css::uno::Sequence< sal_Int8 >
             getPixel( css::rendering::IntegerBitmapLayout& bitmapLayout,
