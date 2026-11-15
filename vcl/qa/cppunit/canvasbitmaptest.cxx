@@ -23,7 +23,7 @@
 #include <com/sun/star/util/Endianness.hpp>
 #include <com/sun/star/rendering/ColorComponentTag.hpp>
 #include <com/sun/star/rendering/ColorSpaceType.hpp>
-#include <com/sun/star/rendering/XIntegerReadOnlyBitmap.hpp>
+#include <com/sun/star/rendering/XIntegerBitmap.hpp>
 #include <com/sun/star/rendering/XIntegerBitmapColorSpace.hpp>
 #include <com/sun/star/rendering/XBitmapPalette.hpp>
 
@@ -124,17 +124,12 @@ void checkCanvasBitmap( const rtl::Reference<VclCanvasBitmap>& xBmp,
     CPPUNIT_ASSERT_EQUAL_MESSAGE( "Palette existence does not conform to bitmap",
                             (nDepth <= 8), aLayout.Palette.is());
 
-    uno::Sequence<sal_Int8> aPixelData2 = xBmp->getPixel( aLayout, geometry::IntegerPoint2D(0,0) );
-
-    CPPUNIT_ASSERT_EQUAL_MESSAGE( "getData and getPixel did not return same amount of data",
-                            aPixelData.getLength(), aPixelData2.getLength());
-
     aPixelData = xBmp->getData(aLayout, geometry::IntegerRectangle2D(0,0,/*X2*/200,/*Y2*/1));
-    CPPUNIT_ASSERT_EQUAL_MESSAGE( "# scanlines not 1 for getPixel",
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "# scanlines not 1 for getData",
                             static_cast<sal_Int32>(1), aLayout.ScanLines);
-    CPPUNIT_ASSERT_EQUAL_MESSAGE( "# scanline bytes mismatch for getPixel",
+    CPPUNIT_ASSERT_EQUAL_MESSAGE( "# scanline bytes mismatch for getData",
                             static_cast<sal_Int32>((200*nExpectedBitsPerPixel+7)/8), aLayout.ScanLineBytes);
-    CPPUNIT_ASSERT_MESSAGE( "# scanline stride mismatch for getPixel",
+    CPPUNIT_ASSERT_MESSAGE( "# scanline stride mismatch for getData",
                             aLayout.ScanLineStride == (200*nExpectedBitsPerPixel+7)/8 ||
                             aLayout.ScanLineStride == -(200*nExpectedBitsPerPixel+7)/8);
 
@@ -227,7 +222,7 @@ void checkCanvasBitmap( const rtl::Reference<VclCanvasBitmap>& xBmp,
     };
 
     aPixel3 = xBmp->convertIntegerFromARGB( aARGBColor );
-    aPixel4 = xBmp->getPixel( aLayout, geometry::IntegerPoint2D(5,0) );
+    aPixel4 = xBmp->getData(aLayout, geometry::IntegerRectangle2D(5, 0, 6, 1));
     CPPUNIT_ASSERT_MESSAGE( "Green pixel from bitmap mismatch with manually converted green pixel",
                             bool(aPixel3 == aPixel4));
 
@@ -248,9 +243,8 @@ void checkCanvasBitmap( const rtl::Reference<VclCanvasBitmap>& xBmp,
 
 }
 
-class TestBitmap : public cppu::WeakImplHelper< rendering::XIntegerReadOnlyBitmap,
-                                                 rendering::XBitmapPalette,
-                                                 rendering::XIntegerBitmapColorSpace >
+class TestBitmap : public cppu::WeakImplHelper<rendering::XIntegerBitmap, rendering::XBitmapPalette,
+                                               rendering::XIntegerBitmapColorSpace>
 {
 private:
     geometry::IntegerSize2D        maSize;
@@ -265,7 +259,7 @@ private:
     virtual uno::Reference< rendering::XBitmap > SAL_CALL getScaledBitmap( const geometry::RealSize2D&,
                                                                            sal_Bool ) override { return this; }
 
-    // XIntegerReadOnlyBitmap
+    // XIntegerBitmap
     virtual uno::Sequence< ::sal_Int8 > SAL_CALL getData( rendering::IntegerBitmapLayout&     bitmapLayout,
                                                           const geometry::IntegerRectangle2D& rect ) override
     {
@@ -309,13 +303,6 @@ private:
         }
 
         return aRes;
-    }
-
-    virtual uno::Sequence< ::sal_Int8 > SAL_CALL getPixel( rendering::IntegerBitmapLayout&,
-                                                           const geometry::IntegerPoint2D&  ) override
-    {
-        CPPUNIT_ASSERT_MESSAGE("getPixel: method not implemented", false);
-        return uno::Sequence< sal_Int8 >();
     }
 
     /// @throws uno::RuntimeException
@@ -696,8 +683,8 @@ void CanvasBitmapTest::runTest()
 
     // Testing XBitmap import
 
-    uno::Reference< rendering::XIntegerReadOnlyBitmap > xTestBmp(
-        new TestBitmap( geometry::IntegerSize2D(10,10), true ));
+    uno::Reference<rendering::XIntegerBitmap> xTestBmp(
+        new TestBitmap(geometry::IntegerSize2D(10, 10), true));
 
     Bitmap aBmp = vcl::unotools::bitmapFromXBitmap(xTestBmp);
     CPPUNIT_ASSERT_MESSAGE( "Palette bitmap is alpha",

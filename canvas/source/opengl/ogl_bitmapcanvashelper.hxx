@@ -9,7 +9,6 @@
 
 #pragma once
 
-#include <com/sun/star/geometry/IntegerPoint2D.hpp>
 #include <com/sun/star/geometry/IntegerRectangle2D.hpp>
 #include <com/sun/star/rendering/IntegerBitmapLayout.hpp>
 
@@ -56,10 +55,6 @@ namespace oglcanvas
         css::uno::Sequence< sal_Int8 >
             getData( css::rendering::IntegerBitmapLayout&      bitmapLayout,
                      const css::geometry::IntegerRectangle2D&  rect );
-
-        css::uno::Sequence< sal_Int8 >
-            getPixel( css::rendering::IntegerBitmapLayout& bitmapLayout,
-                      const css::geometry::IntegerPoint2D& pos );
 
         css::rendering::IntegerBitmapLayout getMemoryLayout() const;
 

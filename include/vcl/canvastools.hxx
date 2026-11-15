@@ -47,7 +47,6 @@ class B2DSize;
 namespace com::sun::star::geometry
 {
 struct RealSize2D;
-struct IntegerPoint2D;
 struct IntegerSize2D;
 struct IntegerRectangle2D;
 }
@@ -55,7 +54,7 @@ struct IntegerRectangle2D;
 namespace com::sun::star::rendering
 {
 class XBitmap;
-class XIntegerReadOnlyBitmap;
+class XIntegerBitmap;
 }
 
 namespace com::sun::star::rendering
@@ -83,7 +82,7 @@ css::uno::Reference<css::rendering::XBitmap>
 /** Create a Bitmap from an XBitmap
          */
 ::Bitmap VCL_DLLPUBLIC
-bitmapFromXBitmap(const css::uno::Reference<css::rendering::XIntegerReadOnlyBitmap>& xInputBitmap);
+bitmapFromXBitmap(const css::uno::Reference<css::rendering::XIntegerBitmap>& xInputBitmap);
 
 // Color conversions (vcl/tools Color <-> canvas standard color space)
 
@@ -147,7 +146,6 @@ Size VCL_DLLPUBLIC sizeFromRealSize2D(const css::geometry::RealSize2D&);
 css::geometry::IntegerSize2D VCL_DLLPUBLIC integerSize2DFromSize(const Size&);
 
 Size VCL_DLLPUBLIC sizeFromIntegerSize2D(const css::geometry::IntegerSize2D&);
-Point VCL_DLLPUBLIC pointFromIntegerPoint2D(const css::geometry::IntegerPoint2D&);
 tools::Rectangle VCL_DLLPUBLIC
 rectangleFromIntegerRectangle2D(const css::geometry::IntegerRectangle2D&);
 
