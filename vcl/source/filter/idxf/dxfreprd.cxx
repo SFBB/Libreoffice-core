@@ -23,7 +23,10 @@
 
 #include "dxfreprd.hxx"
 #include "dxfmtext.hxx"
+#include <o3tl/string_view.hxx>
 #include <osl/nlsupport.h>
+#include <rtl/character.hxx>
+#include <rtl/tencinfo.h>
 #include <unotools/defaultencoding.hxx>
 #include <unotools/wincodepage.hxx>
 
@@ -94,11 +97,60 @@ void DXFPalette::SetColor(sal_uInt8 nIndex, sal_uInt8 nRed, sal_uInt8 nGreen, sa
 
 //------------------DXFRepresentation-----------------------------------------
 
+namespace
+{
+bool startsWithIgnoreAsciiCase(std::string_view aText, std::string_view aPrefix)
+{
+    return aText.size() >= aPrefix.size()
+           && o3tl::equalsIgnoreAsciiCase(aText.substr(0, aPrefix.size()), aPrefix);
+}
+
+// The encoding of a $DWGCODEPAGE value like ANSI_1252, DOS850, ISO8859-2 or BIG5
+rtl_TextEncoding codePageToEncoding(std::string_view aCodePage)
+{
+    static constexpr std::pair<std::string_view, rtl_TextEncoding> aNamed[] = {
+        { "BIG5", RTL_TEXTENCODING_MS_950 },
+        { "GB2312", RTL_TEXTENCODING_MS_936 },
+        { "KSC5601", RTL_TEXTENCODING_MS_949 },
+        { "JOHAB", RTL_TEXTENCODING_MS_1361 },
+        { "MACINTOSH", RTL_TEXTENCODING_APPLE_ROMAN },
+        { "UTF8", RTL_TEXTENCODING_UTF8 },
+        { "UTF-8", RTL_TEXTENCODING_UTF8 },
+    };
+    for (const std::pair<std::string_view, rtl_TextEncoding>& rNamed : aNamed)
+        if (o3tl::equalsIgnoreAsciiCase(aCodePage, rNamed.first))
+            return rNamed.second;
+
+    // the Windows code page number after the prefix
+    sal_uInt32 nOffset = 0;
+    std::string_view aNumber;
+    if (startsWithIgnoreAsciiCase(aCodePage, "ANSI_"))
+        aNumber = aCodePage.substr(5);
+    else if (startsWithIgnoreAsciiCase(aCodePage, "DOS"))
+        aNumber = aCodePage.substr(3);
+    else if (startsWithIgnoreAsciiCase(aCodePage, "ISO8859-"))
+    {
+        aNumber = aCodePage.substr(8);
+        nOffset = 28590;
+    }
+    if (aNumber.empty() || !rtl::isAsciiDigit(static_cast<unsigned char>(aNumber[0])))
+        return RTL_TEXTENCODING_DONTKNOW;
+    return rtl_getTextEncodingFromWindowsCodePage(o3tl::toUInt32(aNumber) + nOffset);
+}
+}
+
+
 
 DXFRepresentation::DXFRepresentation()
     : mEnc(RTL_TEXTENCODING_DONTKNOW)
+    , meCodePage(RTL_TEXTENCODING_DONTKNOW)
+    , mbWithoutVersion(false)
     , mfGlobalLineTypeScale(1.0)
     , mbLineWeightDisplay(false)
+    , mfDimArrowSize(0.18)
+    , mfDimScale(1.0)
+    , mnPointMode(0)
+    , mfPointSize(0.0)
 {
 }
 
@@ -140,6 +192,15 @@ bool DXFRepresentation::Read( SvStream & rIStream )
     }
 
     bRes=DGR.GetStatus();
+
+    // Without $ACADVER and $DWGCODEPAGE this is a drawing of the DOS versions, or one written
+    // by a program that writes only the entities, possibly in UTF-8
+    if (!isTextEncodingSet())
+    {
+        mbWithoutVersion = true;
+        setTextEncoding(utl_getWinTextEncodingFromLangStr(
+            utl_getLocaleForGlobalDefaultEncoding(), true));
+    }
 
     return bRes;
 }
@@ -190,38 +251,44 @@ void DXFRepresentation::ReadHeader(DXFGroupReader & rDGR)
                 if (!rDGR.Read(3))
                     continue;
 
+                const rtl_TextEncoding eEncoding = codePageToEncoding(rDGR.GetS());
+                if (eEncoding != RTL_TEXTENCODING_UTF8)
+                    meCodePage = eEncoding;
                 // If we already use UTF8, then don't update encoding anymore
                 if (mEnc == RTL_TEXTENCODING_UTF8)
                     continue;
-                // FIXME: we really need a whole table of
-                // $DWGCODEPAGE to encodings mappings
-                else if ( (rDGR.GetS().equalsIgnoreAsciiCase("ANSI_932")) ||
-                          (rDGR.GetS().equalsIgnoreAsciiCase("DOS932")) )
-                {
-                    setTextEncoding(RTL_TEXTENCODING_MS_932);
-                }
-                else if (rDGR.GetS().equalsIgnoreAsciiCase("ANSI_936"))
-                {
-                    setTextEncoding(RTL_TEXTENCODING_MS_936);
-                }
-                else if (rDGR.GetS().equalsIgnoreAsciiCase("ANSI_949"))
-                {
-                    setTextEncoding(RTL_TEXTENCODING_MS_949);
-                }
-                else if (rDGR.GetS().equalsIgnoreAsciiCase("ANSI_950"))
-                {
-                    setTextEncoding(RTL_TEXTENCODING_MS_950);
-                }
-                else if (rDGR.GetS().equalsIgnoreAsciiCase("ANSI_1251"))
-                {
-                    setTextEncoding(RTL_TEXTENCODING_MS_1251);
-                }
+                if (eEncoding != RTL_TEXTENCODING_DONTKNOW)
+                    setTextEncoding(eEncoding);
             }
             else if (rDGR.GetS() == "$LTSCALE")
             {
                 if (!rDGR.Read(40))
                     continue;
                 setGlobalLineTypeScale(getGlobalLineTypeScale() * rDGR.GetF());
+            }
+            else if (rDGR.GetS() == "$DIMASZ")
+            {
+                if (!rDGR.Read(40))
+                    continue;
+                mfDimArrowSize = rDGR.GetF();
+            }
+            else if (rDGR.GetS() == "$DIMSCALE")
+            {
+                if (!rDGR.Read(40))
+                    continue;
+                mfDimScale = rDGR.GetF();
+            }
+            else if (rDGR.GetS() == "$PDMODE")
+            {
+                if (!rDGR.Read(70))
+                    continue;
+                mnPointMode = rDGR.GetI();
+            }
+            else if (rDGR.GetS() == "$PDSIZE")
+            {
+                if (!rDGR.Read(40))
+                    continue;
+                mfPointSize = rDGR.GetF();
             }
             else if (rDGR.GetS() == "$LWDISPLAY")
             {
@@ -235,13 +302,41 @@ void DXFRepresentation::ReadHeader(DXFGroupReader & rDGR)
     }
 }
 
-OUString DXFRepresentation::ToOUString(std::string_view s, bool bEscapes) const
+rtl_TextEncoding DXFRepresentation::getSingleByteEncoding() const
 {
-    const OUString aText = OStringToOUString(s, getTextEncoding(),
-                                             RTL_TEXTTOUNICODE_FLAGS_UNDEFINED_ERROR
-                                           | RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_ERROR
-                                           | RTL_TEXTTOUNICODE_FLAGS_INVALID_ERROR);
-    return dxf::decodeSpecialCharacters(aText, getTextEncoding(), bEscapes);
+    if (mEnc != RTL_TEXTENCODING_UTF8)
+        return getTextEncoding();
+    if (meCodePage != RTL_TEXTENCODING_DONTKNOW)
+        return meCodePage;
+    return RTL_TEXTENCODING_MS_1252;
+}
+
+OUString DXFRepresentation::ToOUString(std::string_view s, bool bSpecialCharacters) const
+{
+    const sal_uInt32 nStrict = RTL_TEXTTOUNICODE_FLAGS_UNDEFINED_ERROR
+                               | RTL_TEXTTOUNICODE_FLAGS_MBUNDEFINED_ERROR
+                               | RTL_TEXTTOUNICODE_FLAGS_INVALID_ERROR;
+    const rtl_TextEncoding eEncoding = getTextEncoding();
+    OUString aText;
+    // text that is valid UTF-8 in a drawing without version is hardly in a DOS code page
+    if (!(mbWithoutVersion
+          && rtl_convertStringToUString(&aText.pData, s.data(), s.size(), RTL_TEXTENCODING_UTF8,
+                                        nStrict))
+        && !rtl_convertStringToUString(&aText.pData, s.data(), s.size(), eEncoding, nStrict))
+    {
+        // Some programs write their ANSI code page even in the UTF-8 versions: the one they
+        // declare, or else the one of the locale. Otherwise keep what can be decoded.
+        rtl_TextEncoding eFallback = eEncoding;
+        if (eEncoding == RTL_TEXTENCODING_UTF8)
+            eFallback = meCodePage != RTL_TEXTENCODING_DONTKNOW
+                            ? meCodePage
+                            : utl_getWinTextEncodingFromLangStr(
+                                  utl_getLocaleForGlobalDefaultEncoding());
+        aText = OStringToOUString(s, eFallback);
+    }
+    if (!bSpecialCharacters)
+        return aText;
+    return dxf::decodeSpecialCharacters(aText, getSingleByteEncoding(), true);
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

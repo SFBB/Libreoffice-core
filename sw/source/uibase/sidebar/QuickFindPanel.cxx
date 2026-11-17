@@ -40,6 +40,7 @@
 #include <comphelper/processfactory.hxx>
 
 #include <IDocumentOutlineNodes.hxx>
+#include <FrameControlsManager.hxx>
 
 const int CharactersBeforeAndAfter = 40;
 const sal_Int32 MaxShownSearchResultLength = 120;
@@ -447,7 +448,8 @@ IMPL_LINK_NOARG(QuickFindPanel, SearchFindsListSelectionChangedHandler, weld::It
 
     std::unique_ptr<SwPaM>& rxPaM = m_vPaMs[sId.toUInt64()];
 
-    if (m_pWrtShell->GetViewOptions()->IsShowOutlineContentVisibilityButton())
+    if (m_pWrtShell->GetViewOptions()->IsShowOutlineContentVisibilityButton()
+        && !rxPaM->GetPointNode().GetTextNode()->getLayoutFrame(m_pWrtShell->GetLayout()))
     {
         auto nPos = m_pWrtShell->GetOutlinePos(UCHAR_MAX, rxPaM.get());
         if (nPos != SwOutlineNodes::npos)
@@ -475,6 +477,8 @@ IMPL_LINK_NOARG(QuickFindPanel, SearchFindsListSelectionChangedHandler, weld::It
             }
             if (bOutlineContentMadeVisible)
             {
+                m_pWrtShell->GetView().GetEditWin().GetFrameControlsManager().HideControls(
+                    FrameControlType::Outline);
                 m_pWrtShell->SetModified();
                 m_pWrtShell->GetDoc()->GetDocShell()->Broadcast(SfxHint(SfxHintId::DocChanged));
             }
@@ -575,7 +579,7 @@ void QuickFindPanel::FillSearchFindsList()
     m_pWrtShell->StartAllAction();
     /*sal_Int32 nFound =*/m_pWrtShell->SearchPattern(
         aSearchOptions, m_xCommentsCheckButton->get_active(), SwDocPositions::Start,
-        SwDocPositions::End, FindRanges::InBody | FindRanges::InSelAll, false);
+        SwDocPositions::End, FindRanges::InSelAll, false);
     m_pWrtShell->EndAllAction();
 
     if (m_pWrtShell->HasMark())

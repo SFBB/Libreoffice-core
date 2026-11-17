@@ -15,6 +15,9 @@
 #include <vcl/gdimtf.hxx>
 #include <vcl/metaactiontypes.hxx>
 #include <filter/DxfReader.hxx>
+#include <o3tl/string_view.hxx>
+
+#include <cmath>
 
 using namespace css;
 
@@ -40,6 +43,7 @@ public:
     void testExtents();
     void testColors();
     void testLineTypes();
+    void testNamesCase();
     void testPolylines();
     void testPolygonMesh();
     void testEllipse();
@@ -50,12 +54,20 @@ public:
     void testMTextLayout();
     void testMTextInDimension();
     void testStrayPoint();
+    void testText();
+    void testTextAligned();
+    void testInserts();
+    void testHatch();
+    void testPointsLeadersImages();
+    void testEncodings();
+    void testContrast();
 
     CPPUNIT_TEST_SUITE(DxfFilterTest);
     CPPUNIT_TEST(testCVEs);
     CPPUNIT_TEST(testExtents);
     CPPUNIT_TEST(testColors);
     CPPUNIT_TEST(testLineTypes);
+    CPPUNIT_TEST(testNamesCase);
     CPPUNIT_TEST(testPolylines);
     CPPUNIT_TEST(testPolygonMesh);
     CPPUNIT_TEST(testEllipse);
@@ -66,6 +78,13 @@ public:
     CPPUNIT_TEST(testMTextLayout);
     CPPUNIT_TEST(testMTextInDimension);
     CPPUNIT_TEST(testStrayPoint);
+    CPPUNIT_TEST(testText);
+    CPPUNIT_TEST(testTextAligned);
+    CPPUNIT_TEST(testInserts);
+    CPPUNIT_TEST(testHatch);
+    CPPUNIT_TEST(testPointsLeadersImages);
+    CPPUNIT_TEST(testEncodings);
+    CPPUNIT_TEST(testContrast);
     CPPUNIT_TEST_SUITE_END();
 
 private:
@@ -131,17 +150,19 @@ void DxfFilterTest::testColors()
     xmlDocUniquePtr pDoc = dumpAndParse(aDumper, aMTF);
 
     // the lines on the frozen and on the switched off layer, and the invisible one are not drawn
-    assertXPath(pDoc, "/metafile/polyline", 5);
-    assertXPath(pDoc, "/metafile/linecolor", 5);
+    assertXPath(pDoc, "/metafile/polyline", 6);
+    assertXPath(pDoc, "/metafile/linecolor", 6);
     // the colour of the layer
     assertXPath(pDoc, "/metafile/linecolor[1]", "color", u"#ff0000");
     // the true colour of the entity wins over its colour index
-    assertXPath(pDoc, "/metafile/linecolor[2]", "color", u"#00ff80");
+    assertXPath(pDoc, "/metafile/linecolor[2]", "color", u"#008040");
     // the true colour of the layer
     assertXPath(pDoc, "/metafile/linecolor[3]", "color", u"#123456");
     // in the block, layer 0 is the layer of the insert, BYBLOCK is the colour of the insert
     assertXPath(pDoc, "/metafile/linecolor[4]", "color", u"#ff0000");
-    assertXPath(pDoc, "/metafile/linecolor[5]", "color", u"#00ffff");
+    assertXPath(pDoc, "/metafile/linecolor[5]", "color", u"#0000ff");
+    // white as the true colour of colour index 7 is the dark colour 7
+    assertXPath(pDoc, "/metafile/linecolor[6]", "color", u"#0f0f0f");
 }
 
 void DxfFilterTest::testLineTypes()
@@ -166,6 +187,20 @@ void DxfFilterTest::testLineTypes()
     assertXPath(pDoc, "/metafile/polyline[3]", "width", u"50");
     // thin line weights are hairlines
     assertXPath(pDoc, "/metafile/polyline[4]", "width", u"0");
+}
+
+void DxfFilterTest::testNamesCase()
+{
+    // the names of layers, line types and blocks are not case-sensitive
+    GDIMetaFile aMTF = importFile(u"names-case.dxf");
+    MetafileXmlDump aDumper;
+    aDumper.filterAllActionTypes();
+    aDumper.filterActionType(MetaActionType::POLYLINE, false);
+    aDumper.filterActionType(MetaActionType::LINECOLOR, false);
+    xmlDocUniquePtr pDoc = dumpAndParse(aDumper, aMTF);
+    assertXPath(pDoc, "/metafile/polyline", 2);
+    assertXPath(pDoc, "/metafile/linecolor[1]", "color", u"#ff0000");
+    assertXPath(pDoc, "/metafile/polyline[1]", "style", u"dash");
 }
 
 void DxfFilterTest::testPolylines()
@@ -395,6 +430,229 @@ void DxfFilterTest::testStrayPoint()
     xmlDocUniquePtr pDoc = dumpAndParse(aDumper, aMTF);
     assertXPath(pDoc, "/metafile/point", 0);
     assertXPath(pDoc, "/metafile/pixel", 0);
+}
+
+void DxfFilterTest::testText()
+{
+    // the drawing is 100 x 100, one unit is 100 in the metafile; the texts are 5 high
+    GDIMetaFile aMTF = importFile(u"text.dxf");
+    MetafileXmlDump aDumper;
+    aDumper.filterAllActionTypes();
+    aDumper.filterActionType(MetaActionType::TEXT, false);
+    aDumper.filterActionType(MetaActionType::FONT, false);
+    xmlDocUniquePtr pDoc = dumpAndParse(aDumper, aMTF);
+
+    // the hidden attribute is not drawn
+    assertXPath(pDoc, "/metafile/text", 7);
+    // without alignment the baseline starts at the placement point (50, 50)
+    assertXPath(pDoc, "/metafile/text[1]", "x", u"5050");
+    assertXPath(pDoc, "/metafile/text[1]", "y", u"5050");
+    // centred and right aligned on the alignment point (50, 40)
+    const sal_Int32 nRight = getXPath(pDoc, "/metafile/text[3]", "x").toInt32();
+    CPPUNIT_ASSERT_LESS(sal_Int32(5050), nRight);
+    CPPUNIT_ASSERT_DOUBLES_EQUAL((5050 + nRight) / 2.0,
+                                 getXPath(pDoc, "/metafile/text[2]", "x").toDouble(), 2.0);
+    assertXPath(pDoc, "/metafile/text[2]", "y", u"6050");
+    // the top of the text at (50, 30): the baseline is one text height lower
+    assertXPath(pDoc, "/metafile/text[4]", "y", u"7550");
+    // the fonts of the text styles: from the font file and from the extended data
+    assertXPathContent(pDoc, "/metafile/text[5]/textcontent", u"Arial");
+    assertXPath(pDoc, "/metafile/font[@name='Arial']", 1);
+    assertXPath(pDoc, "/metafile/font[@name='Liberation Serif']", "weight", u"bold");
+    // fit between (10, 10) and (60, 10): starts at the first point, stretched
+    assertXPath(pDoc, "/metafile/text[7]", "x", u"1050");
+    CPPUNIT_ASSERT(getXPath(pDoc, "/metafile/font[last()]", "width").toInt32() > 0);
+}
+
+void DxfFilterTest::testTextAligned()
+{
+    // the drawing is 100 x 100, one unit is 100 in the metafile; the texts are 5 high
+    GDIMetaFile aMTF = importFile(u"text-aligned.dxf");
+    MetafileXmlDump aDumper;
+    aDumper.filterAllActionTypes();
+    aDumper.filterActionType(MetaActionType::TEXT, false);
+    aDumper.filterActionType(MetaActionType::FONT, false);
+    xmlDocUniquePtr pDoc = dumpAndParse(aDumper, aMTF);
+
+    assertXPath(pDoc, "/metafile/text", 4);
+    // aligned between (10, 10) and (60, 10): the height grows with the width
+    assertXPath(pDoc, "/metafile/text[1]", "x", u"1050");
+    const double fAlignedHeight = getXPath(pDoc, "/metafile/font[1]", "height").toDouble();
+    const double fNormalHeight = getXPath(pDoc, "/metafile/font[2]", "height").toDouble();
+    CPPUNIT_ASSERT_GREATER(1.3 * fNormalHeight, fAlignedHeight);
+    // an oblique text is italic
+    assertXPath(pDoc, "/metafile/font[3]", "italic", u"normal");
+    // the embedded text of a multiline attribute does not move it from (10, 30)
+    assertXPathContent(pDoc, "/metafile/text[4]/textcontent", u"Attribute");
+    assertXPath(pDoc, "/metafile/text[4]", "x", u"1050");
+    assertXPath(pDoc, "/metafile/text[4]", "y", u"7050");
+}
+
+void DxfFilterTest::testInserts()
+{
+    // A 3 x 2 array of a line of length 1, rotated by 90 degrees: the columns go up by 10,
+    // the rows to the left by 20. The external reference has no content here.
+    GDIMetaFile aMTF = importFile(u"inserts.dxf");
+    MetafileXmlDump aDumper;
+    aDumper.filterAllActionTypes();
+    aDumper.filterActionType(MetaActionType::POLYLINE, false);
+    xmlDocUniquePtr pDoc = dumpAndParse(aDumper, aMTF);
+    assertXPath(pDoc, "/metafile/polyline", 6);
+    // the drawing is 20 x 21: from x = -20 to 0 and from y = 0 to 21
+    CPPUNIT_ASSERT_EQUAL(Size(9624, 10100), aMTF.GetPrefSize());
+    // the last copy: row 2, column 3, at (-20, 20) going up to (-20, 21)
+    assertXPath(pDoc, "/metafile/polyline[6]/point[1]", "x", u"50");
+    assertXPath(pDoc, "/metafile/polyline[6]/point[1]", "y", u"526");
+    assertXPath(pDoc, "/metafile/polyline[6]/point[2]", "y", u"50");
+}
+
+void DxfFilterTest::testHatch()
+{
+    // the drawing is 100 x 40, one unit is 100 in the metafile
+    GDIMetaFile aMTF = importFile(u"hatch.dxf");
+    MetafileXmlDump aDumper;
+    aDumper.filterAllActionTypes();
+    aDumper.filterActionType(MetaActionType::POLYGON, false);
+    aDumper.filterActionType(MetaActionType::POLYPOLYGON, false);
+    aDumper.filterActionType(MetaActionType::HATCH, false);
+    aDumper.filterActionType(MetaActionType::FILLCOLOR, false);
+    aDumper.filterActionType(MetaActionType::GRADIENT, false);
+    aDumper.filterActionType(MetaActionType::GRADIENTEX, false);
+    xmlDocUniquePtr pDoc = dumpAndParse(aDumper, aMTF);
+
+    // a solid fill bounded by a full circle edge
+    assertXPath(pDoc, "/metafile/fillcolor[@color='#00ff00']", 1);
+    assertXPath(pDoc, "/metafile/polygon[1]/point[@flags='control']", 8);
+    // a pattern of one continuous line family is a hatch
+    assertXPath(pDoc, "/metafile/hatch", 1);
+    assertXPath(pDoc, "/metafile/hatch/hatch", "style", u"Single");
+    assertXPath(pDoc, "/metafile/hatch/hatch", "angle", u"450");
+    assertXPath(pDoc, "/metafile/hatch/hatch", "distance", u"318");
+    // dashed lines of two families are cut to the area bounded by a polyline with a bulge
+    const int nLines = countXPathNodes(pDoc, "/metafile/polypolygon/polygon");
+    CPPUNIT_ASSERT_GREATER(20, nLines);
+    // a solid fill bounded by a line and an elliptic arc
+    assertXPath(pDoc, "/metafile/fillcolor[@color='#0000ff']", 1);
+    assertXPath(pDoc, "/metafile/polygon[2]/point[@flags='control']", 4);
+    // a gradient between two colours
+    assertXPath(pDoc, "/metafile/gradient", 1);
+    assertXPath(pDoc, "/metafile/gradient", "startcolor", u"#ff0000");
+    assertXPath(pDoc, "/metafile/gradient", "endcolor", u"#0000ff");
+}
+
+void DxfFilterTest::testPointsLeadersImages()
+{
+    // the drawing is 100 x 100, one unit is 100 in the metafile
+    GDIMetaFile aMTF = importFile(u"misc.dxf");
+    MetafileXmlDump aDumper;
+    aDumper.filterAllActionTypes();
+    aDumper.filterActionType(MetaActionType::POLYLINE, false);
+    aDumper.filterActionType(MetaActionType::POLYGON, false);
+    aDumper.filterActionType(MetaActionType::FILLCOLOR, false);
+    xmlDocUniquePtr pDoc = dumpAndParse(aDumper, aMTF);
+
+    // the line, the point as a cross in a circle, the leader and the frame of the image
+    assertXPath(pDoc, "/metafile/polyline", 6);
+    // $PDSIZE is 2: the cross goes from (49, 49) to (51, 51)
+    assertXPath(pDoc, "/metafile/polyline[2]/point[1]", "x", u"4950");
+    assertXPath(pDoc, "/metafile/polyline[2]/point[1]", "y", u"5150");
+    assertXPath(pDoc, "/metafile/polyline[4]/point[@flags='control']", 24);
+    // the leader with its arrowhead: 2.5 * 2 long, pointing at (10, 10)
+    assertXPath(pDoc, "/metafile/polyline[5]/point", 3);
+    assertXPath(pDoc, "/metafile/polygon[1]/point[1]", "x", u"1050");
+    assertXPath(pDoc, "/metafile/polygon[1]/point[1]", "y", u"9050");
+    assertXPath(pDoc, "/metafile/polygon[1]/point[2]", "x", u"1550");
+    // the wipeout covers (60, 60) - (80, 70) with white
+    assertXPath(pDoc, "/metafile/fillcolor[@color='#ffffff']", 1);
+    assertXPath(pDoc, "/metafile/polygon[2]/point[1]", "x", u"6050");
+    assertXPath(pDoc, "/metafile/polygon[2]/point[1]", "y", u"3050");
+    assertXPath(pDoc, "/metafile/polygon[2]/point[3]", "x", u"8050");
+    assertXPath(pDoc, "/metafile/polygon[2]/point[3]", "y", u"4050");
+    // the image of 100 x 100 pixels of 0.1 is the frame (0, 80) - (10, 90)
+    assertXPath(pDoc, "/metafile/polyline[6]/point[1]", "x", u"50");
+    assertXPath(pDoc, "/metafile/polyline[6]/point[1]", "y", u"1050");
+    assertXPath(pDoc, "/metafile/polyline[6]/point[3]", "x", u"1050");
+    assertXPath(pDoc, "/metafile/polyline[6]/point[3]", "y", u"2050");
+}
+
+void DxfFilterTest::testEncodings()
+{
+    static constexpr std::u16string_view aHungarian
+        = u"\u00c1rv\u00edzt\u0171r\u0151 t\u00fck\u00f6rf\u00far\u00f3g\u00e9p";
+    static constexpr std::pair<std::u16string_view, std::u16string_view> aFiles[] = {
+        // the code page of the drawing before the UTF-8 versions, and UTF-8 since then
+        { u"encoding-ansi1250.dxf", aHungarian },
+        { u"encoding-dos852.dxf", aHungarian },
+        { u"encoding-iso8859-2.dxf", aHungarian },
+        { u"encoding-ansi932.dxf", u"\u3042\u3044" },
+        { u"encoding-utf8.dxf", aHungarian },
+        // without header variables the drawing is from the DOS versions, or UTF-8
+        { u"encoding-dos-noheader.dxf", u"L\u00fcftung Flachbau" },
+        { u"encoding-noheader-utf8.dxf", aHungarian },
+        // the UTF-8 versions may still have text in the declared ANSI code page, or else in
+        // the one of the locale; neither is cut at the first unknown character
+        { u"encoding-utf8-codepage.dxf", aHungarian },
+        { u"encoding-utf8-invalid.dxf", u"L\u00fcftung Flachbau" },
+        // a character code is one of the code page, not a byte of UTF-8
+        { u"encoding-utf8-charcode.dxf", u"20\u00b0" },
+    };
+    for (const std::pair<std::u16string_view, std::u16string_view>& rFile : aFiles)
+    {
+        GDIMetaFile aMTF = importFile(rFile.first);
+        MetafileXmlDump aDumper;
+        aDumper.filterAllActionTypes();
+        aDumper.filterActionType(MetaActionType::TEXT, false);
+        xmlDocUniquePtr pDoc = dumpAndParse(aDumper, aMTF);
+        assertXPathContent(pDoc, "/metafile/text[1]/textcontent", rFile.second);
+    }
+}
+
+namespace
+{
+// the contrast of a colour given as #rrggbb to white
+double contrastToWhite(std::u16string_view aColor)
+{
+    const sal_uInt32 nColor = o3tl::toUInt32(aColor.substr(1), 16);
+    double fLuminance = 0;
+    const double fWeights[3] = { 0.2126, 0.7152, 0.0722 };
+    for (int i = 0; i < 3; ++i)
+    {
+        const double fComponent = ((nColor >> (16 - 8 * i)) & 0xff) / 255.0;
+        fLuminance += fWeights[i]
+                      * (fComponent <= 0.04045 ? fComponent / 12.92
+                                               : std::pow((fComponent + 0.055) / 1.055, 2.4));
+    }
+    return 1.05 / (fLuminance + 0.05);
+}
+}
+
+void DxfFilterTest::testContrast()
+{
+    // The colours chosen for the dark background of CAD programs are darkened on paper when
+    // they would be hard to see, keeping their hue. Hatched areas keep their colour.
+    GDIMetaFile aMTF = importFile(u"contrast.dxf");
+    MetafileXmlDump aDumper;
+    aDumper.filterAllActionTypes();
+    aDumper.filterActionType(MetaActionType::LINECOLOR, false);
+    aDumper.filterActionType(MetaActionType::FILLCOLOR, false);
+    aDumper.filterActionType(MetaActionType::FONT, false);
+    xmlDocUniquePtr pDoc = dumpAndParse(aDumper, aMTF);
+
+    // yellow becomes a dark yellow
+    const OUString aYellow = getXPath(pDoc, "/metafile/linecolor[1]", "color");
+    CPPUNIT_ASSERT_GREATEREQUAL(2.99, contrastToWhite(aYellow));
+    CPPUNIT_ASSERT_EQUAL(aYellow.copy(1, 2), aYellow.copy(3, 2));
+    CPPUNIT_ASSERT_EQUAL(u"00"_ustr, aYellow.copy(5, 2));
+    // blue is dark enough
+    assertXPath(pDoc, "/metafile/linecolor[2]", "color", u"#0000ff");
+    // cyan text becomes teal
+    const OUString aCyan = getXPath(pDoc, "/metafile/font[1]", "color");
+    CPPUNIT_ASSERT_GREATEREQUAL(2.99, contrastToWhite(aCyan));
+    CPPUNIT_ASSERT_EQUAL(u"00"_ustr, aCyan.copy(1, 2));
+    CPPUNIT_ASSERT_EQUAL(aCyan.copy(3, 2), aCyan.copy(5, 2));
+    // a yellow hatched area stays yellow, its outline too
+    assertXPath(pDoc, "/metafile/fillcolor[@color='#ffff00']", 1);
+    assertXPath(pDoc, "/metafile/linecolor[last()]", "color", u"#ffff00");
 }
 
 CPPUNIT_TEST_SUITE_REGISTRATION(DxfFilterTest);

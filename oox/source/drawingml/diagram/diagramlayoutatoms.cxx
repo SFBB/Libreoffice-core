@@ -2875,7 +2875,7 @@ static bool layoutTextDrivenSnake(const SmartArtDiagram& rDgm, const AlgAtom& rA
                                            spaceAfterPartsOf(rNode), rDgm.getTextFont()));
         aCell.mnHeight = aGrown(nStatedHeight, nText + nOverUnder);
         rMutable.getFittedFontSizes()[pChild->getInternalName()] = fTextFont;
-        aCells.push_back(aCell);
+        aCells.push_back(std::move(aCell));
     }
 
     // nodes stated as equally high take the highest
@@ -7750,7 +7750,7 @@ void LinearChildExtents::read(const SmartArtDiagram& rDgm, const LayoutNode& rRo
                 // all alike to 0.32, where a share would have taken what the others leave.
                 if (bShare && bByName)
                     for (const Constraint& rOther : rConstraints)
-                        if (rOther.msRefForName == rConstraint.msForName
+                        if (rOther.msRefForName == rConstraint.msRefForName
                             && rOther.msForName != rConstraint.msForName
                             && (rOther.mnRefType == nAxisType || rOther.mnRefType == nOtherType))
                         {
@@ -8635,7 +8635,7 @@ static bool gatherSidewaysRows(const ShapePtr& pBranch, const std::vector<Constr
         }
         aRow.fWidth = aRow.aNode.Width + (aRow.aRows.empty() ? 0.0 : aRow.fGap + aRow.fBranchWidth);
         aRow.fHeight = std::max<double>(aRow.aNode.Height, aRow.fBranchHeight);
-        rRows.push_back(aRow);
+        rRows.push_back(std::move(aRow));
     }
     return true;
 }
@@ -8947,7 +8947,7 @@ bool gatherUprightNodes(const SmartArtDiagram& rDgm, const ShapePtr& pBranch,
                                     rLayoutNodes, rPoints, aNode.aChildren))
                 return false;
         }
-        rNodes.push_back(aNode);
+        rNodes.push_back(std::move(aNode));
     }
     return true;
 }

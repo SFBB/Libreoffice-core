@@ -18,6 +18,7 @@
  */
 
 
+#include <o3tl/string_view.hxx>
 #include "dxftblrd.hxx"
 
 //----------------------------------DXFLType-----------------------------------
@@ -133,14 +134,27 @@ DXFStyle::DXFStyle()
     fOblAngle=0.0;
     nTextGenFlags=0;
     fLastHeightUsed=0.0;
+    nFontFlags=0;
 }
 
 void DXFStyle::Read(DXFGroupReader & rDGR)
 {
+    bool bAcadData = false;
     while (rDGR.Read()!=0)
     {
         switch(rDGR.GetG())
         {
+        case 1001:
+            bAcadData = rDGR.GetS() == "ACAD";
+            break;
+        case 1000:
+            if (bAcadData && m_sFontFamily.isEmpty())
+                m_sFontFamily = rDGR.GetS();
+            break;
+        case 1071:
+            if (bAcadData)
+                nFontFlags = rDGR.GetI();
+            break;
         case  2:
             m_sName = rDGR.GetS();
             break;
@@ -167,6 +181,27 @@ void DXFStyle::Read(DXFGroupReader & rDGR)
             break;
         case 71:
             nTextGenFlags=rDGR.GetI();
+            break;
+        }
+    }
+}
+
+//----------------------------------DXFDimStyle--------------------------------
+
+void DXFDimStyle::Read(DXFGroupReader & rDGR)
+{
+    while (rDGR.Read()!=0)
+    {
+        switch(rDGR.GetG())
+        {
+        case  2:
+            maName = rDGR.GetS();
+            break;
+        case 41:
+            mfArrowSize = rDGR.GetF();
+            break;
+        case 40:
+            mfScale = rDGR.GetF();
             break;
         }
     }
@@ -266,6 +301,8 @@ DXFTables::DXFTables()
     pLayers=nullptr;
     pStyles=nullptr;
     pVPorts=nullptr;
+    mpLastLType=nullptr;
+    mpLastLayer=nullptr;
 }
 
 
@@ -316,6 +353,11 @@ void DXFTables::Read(DXFGroupReader & rDGR)
             *ppSt=pSt;
             ppSt=&(pSt->pSucc);
         }
+        else if (rDGR.GetS() == "DIMSTYLE") {
+            DXFDimStyle aDimStyle;
+            aDimStyle.Read(rDGR);
+            maDimStyles.push_back(aDimStyle);
+        }
         else if (rDGR.GetS() == "VPORT") {
             pVP=new DXFVPort;
             pVP->Read(rDGR);
@@ -334,6 +376,8 @@ void DXFTables::Clear()
     DXFStyle * pSt;
     DXFVPort * pVP;
 
+    mpLastLType=nullptr;
+    mpLastLayer=nullptr;
     while (pStyles!=nullptr) {
         pSt=pStyles;
         pStyles=pSt->pSucc;
@@ -354,24 +398,54 @@ void DXFTables::Clear()
         pVPorts=pVP->pSucc;
         delete pVP;
     }
+    maDimStyles.clear();
 }
 
 
 DXFLType * DXFTables::SearchLType(std::string_view rName) const
 {
+    // the entities of a drawing come in runs with the same line type
+    if (mpLastLType != nullptr && o3tl::equalsIgnoreAsciiCase(rName, mpLastLType->m_sName))
+        return mpLastLType;
     DXFLType * p;
     for (p=pLTypes; p!=nullptr; p=p->pSucc) {
-        if (rName == p->m_sName) break;
+        if (o3tl::equalsIgnoreAsciiCase(rName, p->m_sName)) break;
     }
+    if (p != nullptr)
+        mpLastLType = p;
     return p;
 }
 
 
 DXFLayer * DXFTables::SearchLayer(std::string_view rName) const
 {
+    // the entities of a drawing come in runs on the same layer
+    if (mpLastLayer != nullptr && o3tl::equalsIgnoreAsciiCase(rName, mpLastLayer->m_sName))
+        return mpLastLayer;
     DXFLayer * p;
     for (p=pLayers; p!=nullptr; p=p->pSucc) {
-        if (rName == p->m_sName) break;
+        if (o3tl::equalsIgnoreAsciiCase(rName, p->m_sName)) break;
+    }
+    if (p != nullptr)
+        mpLastLayer = p;
+    return p;
+}
+
+
+const DXFDimStyle * DXFTables::SearchDimStyle(std::string_view rName) const
+{
+    for (const DXFDimStyle& rDimStyle : maDimStyles)
+        if (o3tl::equalsIgnoreAsciiCase(rName, rDimStyle.maName))
+            return &rDimStyle;
+    return nullptr;
+}
+
+
+DXFStyle * DXFTables::SearchStyle(std::string_view rName) const
+{
+    DXFStyle * p;
+    for (p=pStyles; p!=nullptr; p=p->pSucc) {
+        if (o3tl::equalsIgnoreAsciiCase(rName, p->m_sName)) break;
     }
     return p;
 }
@@ -381,7 +455,7 @@ DXFVPort * DXFTables::SearchVPort(std::string_view rName) const
 {
     DXFVPort * p;
     for (p=pVPorts; p!=nullptr; p=p->pSucc) {
-        if (rName == p->m_sName) break;
+        if (o3tl::equalsIgnoreAsciiCase(rName, p->m_sName)) break;
     }
     return p;
 }

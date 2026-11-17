@@ -22,6 +22,7 @@
 #include <sal/config.h>
 
 #include <string_view>
+#include <vector>
 
 #include "dxfgrprd.hxx"
 #include "dxfvec.hxx"
@@ -92,6 +93,8 @@ public:
     double fLastHeightUsed;                   // 42
     OString m_sPrimFontFile;                  //  3
     OString m_sBigFontFile;                   //  4
+    OString m_sFontFamily;                    // 1000 in the ACAD extended data
+    tools::Long nFontFlags;                   // 1071 in the ACAD extended data
 
     DXFStyle();
     void Read(DXFGroupReader & rDGR);
@@ -148,12 +151,27 @@ public:
 //------------------ Tables --------------------------------------------------
 
 
+//------------------ Dimension style -----------------------------------------
+
+struct DXFDimStyle
+{
+    OString maName;          //  2
+    double mfArrowSize = 0;  // 41, DIMASZ
+    double mfScale = 0;      // 40, DIMSCALE
+
+    void Read(DXFGroupReader & rDGR);
+};
+
 class DXFTables {
 
     DXFLType * pLTypes; // list of line types
     DXFLayer * pLayers; // list of layers
+    // the last found ones, for the next search
+    mutable DXFLType * mpLastLType;
+    mutable DXFLayer * mpLastLayer;
     DXFStyle * pStyles; // list of styles
     DXFVPort * pVPorts; // list of viewports
+    std::vector<DXFDimStyle> maDimStyles;
 
 public:
 
@@ -170,6 +188,8 @@ public:
     DXFLType * SearchLType(std::string_view rName) const;
     DXFLayer * SearchLayer(std::string_view rName) const;
     DXFVPort * SearchVPort(std::string_view rName) const;
+    DXFStyle * SearchStyle(std::string_view rName) const;
+    const DXFDimStyle * SearchDimStyle(std::string_view rName) const;
 
 };
 
