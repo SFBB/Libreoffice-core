@@ -1458,6 +1458,9 @@ void PowerPointExport::WriteTransition(const FSHelperPtr& pFS)
     //p15
     const char* pPresetTransition = nullptr;
 
+    // p159
+    const char* pMorphOption = nullptr;
+
     if (!nPPTTransitionType)
     {
         switch (nTransitionType)
@@ -1528,6 +1531,27 @@ void PowerPointExport::WriteTransition(const FSHelperPtr& pFS)
                 nTransition14 = XML_honeycomb;
                 bOOXmlSpecificTransition = true;
                 break;
+            }
+            break;
+        }
+        case animations::TransitionType::FADE:
+        {
+            switch (nTransitionSubtype)
+            {
+            case animations::TransitionSubType::MORPH:
+                pMorphOption = "byObject";
+                break;
+            case animations::TransitionSubType::MORPHBYWORD:
+                pMorphOption = "byWord";
+                break;
+            case animations::TransitionSubType::MORPHBYCHARACTER:
+                pMorphOption = "byChar";
+                break;
+            }
+            if (pMorphOption)
+            {
+                nTransition = XML_fade;
+                bOOXmlSpecificTransition = true;
             }
             break;
         }
@@ -1708,13 +1732,26 @@ void PowerPointExport::WriteTransition(const FSHelperPtr& pFS)
     }
 
     bool isAdvanceTimingSet = advanceTiming != -1;
-    if (nTransition14 || pPresetTransition || isTransitionDurationSet)
+    bool bAlternateContent
+        = nTransition14 || pPresetTransition || pMorphOption || isTransitionDurationSet;
+    if (bAlternateContent)
     {
-        // p15:prstTrans needs p15, even if p14:dur is also written.
-        const char* pRequiresNS = (!nTransition14 && pPresetTransition) ? "p15" : "p14";
+        // p15:prstTrans needs p15 and p159:morph needs p159, even if p14:dur is also written.
+        const char* pRequiresNS = "p14";
+        if (pMorphOption)
+            pRequiresNS = "p159";
+        else if (!nTransition14 && pPresetTransition)
+            pRequiresNS = "p15";
 
         pFS->startElement(FSNS(XML_mc, XML_AlternateContent));
-        pFS->startElement(FSNS(XML_mc, XML_Choice), XML_Requires, pRequiresNS);
+        if (pMorphOption)
+        {
+            // The slide root does not declare p159, so the choice that needs it declares it.
+            pFS->startElement(FSNS(XML_mc, XML_Choice), FSNS(XML_xmlns, XML_p159),
+                              getNamespaceURL(OOX_NS(p159)), XML_Requires, pRequiresNS);
+        }
+        else
+            pFS->startElement(FSNS(XML_mc, XML_Choice), XML_Requires, pRequiresNS);
 
         if(isTransitionDurationSet && isAdvanceTimingSet)
         {
@@ -1752,6 +1789,10 @@ void PowerPointExport::WriteTransition(const FSHelperPtr& pFS)
             pFS->singleElementNS(XML_p15, XML_prstTrans,
                 XML_prst, pPresetTransition);
         }
+        else if (pMorphOption)
+        {
+            pFS->singleElementNS(XML_p159, XML_morph, XML_option, pMorphOption);
+        }
         else if (isTransitionDurationSet && nTransition)
         {
             pFS->singleElementNS(XML_p, nTransition,
@@ -1788,7 +1829,7 @@ void PowerPointExport::WriteTransition(const FSHelperPtr& pFS)
 
     pFS->endElementNS(XML_p, XML_transition);
 
-    if (nTransition14 || pPresetTransition || isTransitionDurationSet)
+    if (bAlternateContent)
     {
         pFS->endElement(FSNS(XML_mc, XML_Fallback));
         pFS->endElement(FSNS(XML_mc, XML_AlternateContent));
@@ -1893,8 +1934,8 @@ void PowerPointExport::WritePresentationProps()
     pFS->startElementNS(XML_p, XML_presentationPr, presentationPrNamespaces(*this));
 
     pFS->startElementNS(XML_p, XML_showPr, XML_loop, sax_fastparser::UseIf("1", bEndlessVal),
-                        XML_useTimings, sax_fastparser::UseIf("0", bChangeManually),
-                        XML_showNarration, "1");
+                        XML_showNarration, "1",
+                        XML_useTimings, sax_fastparser::UseIf("0", bChangeManually));
 
     Reference<drawing::XDrawPages> xDrawPages(mXModel->getDrawPages(), uno::UNO_SET_THROW);
     if (!sFirstPage.isEmpty())
@@ -3561,8 +3602,8 @@ void PowerPointExport::WriteNotesMaster()
     // color map - now it uses colors from hardcoded theme, once we eventually generate theme, this might need update
     pFS->singleElementNS(XML_p, XML_clrMap,
                          XML_bg1, "lt1",
-                         XML_bg2, "lt2",
                          XML_tx1, "dk1",
+                         XML_bg2, "lt2",
                          XML_tx2, "dk2",
                          XML_accent1, "accent1",
                          XML_accent2, "accent2",

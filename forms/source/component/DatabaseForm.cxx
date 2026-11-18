@@ -2237,6 +2237,11 @@ void ODatabaseForm::submit_impl(const Reference<XControl>& Control, const css::a
 
     if (!xModel.is())
         return;
+    {
+        SolarMutexGuard aGuard;
+        if (!isFormURLAllowed(aURLStr, xModel))
+            return;
+    }
     Reference< XFrame >  xFrame = xModel->getCurrentController()->getFrame();
     if (!xFrame.is())
         return;
