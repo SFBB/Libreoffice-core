@@ -14,6 +14,7 @@
 #include <com/sun/star/style/VerticalAlignment.hpp>
 #include <com/sun/star/style/XStyleFamiliesSupplier.hpp>
 #include <com/sun/star/text/ColumnSeparatorStyle.hpp>
+#include <com/sun/star/text/SectionFileLink.hpp>
 #include <com/sun/star/text/XDocumentIndex.hpp>
 #include <com/sun/star/text/XDocumentIndexesSupplier.hpp>
 #include <com/sun/star/text/XTextColumns.hpp>
@@ -1903,6 +1904,43 @@ CPPUNIT_TEST_FIXTURE(Test, testCommentDateUTC)
     CPPUNIT_ASSERT_EQUAL(sal_uInt16(1), aReloaded.Hours);
     CPPUNIT_ASSERT_EQUAL(sal_uInt16(2), aReloaded.Minutes);
     CPPUNIT_ASSERT_EQUAL(sal_uInt16(3), aReloaded.Seconds);
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testLinkedSectionSourceXlinkType)
+{
+    // a section linked to another file, as in the sections of a master document
+    createSwDoc("linked-section.fodt");
+    saveAndReload(TestFilter::ODT);
+
+    uno::Reference<text::XTextSectionsSupplier> xSupplier(mxComponent, uno::UNO_QUERY_THROW);
+    uno::Reference<beans::XPropertySet> xSection(
+        xSupplier->getTextSections()->getByName(u"Linked"_ustr), uno::UNO_QUERY_THROW);
+    text::SectionFileLink aLink = getProperty<text::SectionFileLink>(xSection, u"FileLink"_ustr);
+    CPPUNIT_ASSERT(aLink.FileURL.endsWith("/linked-section-target.odt"));
+    CPPUNIT_ASSERT_EQUAL(u"writer8"_ustr, aLink.FilterName);
+
+    // xlink:type="simple" is required next to xlink:href; without it the export was not valid
+    xmlDocUniquePtr pXmlDoc = parseExport(u"content.xml"_ustr);
+    assertXPath(pXmlDoc, "//text:section-source", "type", u"simple");
+    CPPUNIT_ASSERT(
+        getXPath(pXmlDoc, "//text:section-source", "href").endsWith("/linked-section-target.odt"));
+}
+
+CPPUNIT_TEST_FIXTURE(Test, testMasterDocHeadingPlaceholders)
+{
+    // a master document saves its linked sections without their content, but with one empty
+    // heading per outline level that keeps the heading style of that level
+    createSwGlobalDoc("tdf121119.odm");
+    save(TestFilter::ODM_GLOBAL);
+
+    xmlDocUniquePtr pXmlDoc = parseExport(u"content.xml"_ustr);
+    assertXPath(pXmlDoc, "//text:section/text:h", 10);
+    assertXPath(pXmlDoc, "//text:section/text:h[1]", "style-name", u"Heading_20_1");
+    assertXPath(pXmlDoc, "//text:section/text:h[1]", "outline-level", u"1");
+    assertXPath(pXmlDoc, "//text:section/text:h[10]", "style-name", u"Heading_20_10");
+    assertXPath(pXmlDoc, "//text:section/text:h[10]", "outline-level", u"10");
+    // Without the fix the level was written as text:level, which does not exist on text:h
+    assertXPath(pXmlDoc, "//text:section/text:h[@text:level]", 0);
 }
 
 } // end of anonymous namespace

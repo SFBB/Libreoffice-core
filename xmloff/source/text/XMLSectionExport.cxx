@@ -431,6 +431,7 @@ void XMLSectionExport::ExportRegularSectionStart(
     {
         if (!aFileLink.FileURL.isEmpty())
         {
+            GetExport().AddAttribute(XML_NAMESPACE_XLINK, XML_TYPE, XML_SIMPLE);
             GetExport().AddAttribute(XML_NAMESPACE_XLINK, XML_HREF,
                                      GetExport().GetRelativeReference( aFileLink.FileURL) );
         }
@@ -1828,7 +1829,7 @@ void XMLSectionExport::ExportMasterDocHeadingDummies()
             GetExport().AddAttribute( XML_NAMESPACE_TEXT, XML_STYLE_NAME,
                                       GetExport().EncodeStyleName( sStyle ) );
 
-            GetExport().AddAttribute( XML_NAMESPACE_TEXT, XML_LEVEL,
+            GetExport().AddAttribute( XML_NAMESPACE_TEXT, XML_OUTLINE_LEVEL,
                                         OUString::number( nLevel + 1 ) );
             SvXMLElementExport aElem( GetExport(), XML_NAMESPACE_TEXT, XML_H,
                                         true, false );
