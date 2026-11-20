@@ -946,17 +946,17 @@ void ScCellShell::GetState(SfxItemSet &rSet)
                 break;
 
             case FID_MERGE_ON:
-                if ( rDoc.GetChangeTrack() || !pTabViewShell->TestMergeCells() )
+                if ( rDoc.GetChangeTrack() || !pTabViewShell->TestMergeCells() || pDocSh->IsReadOnly() )
                     rSet.DisableItem( nWhich );
                 break;
 
             case FID_MERGE_OFF:
-                if ( rDoc.GetChangeTrack() || !pTabViewShell->TestRemoveMerge() )
+                if ( rDoc.GetChangeTrack() || !pTabViewShell->TestRemoveMerge() || pDocSh->IsReadOnly() )
                     rSet.DisableItem( nWhich );
                 break;
 
             case FID_MERGE_TOGGLE:
-                if ( rDoc.GetChangeTrack() )
+                if ( rDoc.GetChangeTrack() || pDocSh->IsReadOnly() )
                     rSet.DisableItem( nWhich );
                 else
                 {
@@ -1199,7 +1199,7 @@ void ScCellShell::GetState(SfxItemSet &rSet)
                         }
                     }
 
-                    if ( !bHasNotes )
+                    if ( !bHasNotes || pDocSh->IsReadOnly() )
                         rSet.DisableItem( nWhich );
                 }
                 break;
@@ -1255,7 +1255,7 @@ void ScCellShell::GetState(SfxItemSet &rSet)
             case SID_OPENDLG_CONSOLIDATE:
             case SCITEM_CONSOLIDATEDATA:
                 {
-                    if (rDoc.GetChangeTrack()!=nullptr)
+                    if (rDoc.GetChangeTrack() != nullptr || pDocSh->IsReadOnly())
                         rSet.DisableItem( nWhich);
                 }
                 break;
@@ -1283,7 +1283,7 @@ void ScCellShell::GetState(SfxItemSet &rSet)
             case FID_ADD_NAME:
             case SID_DEFINE_COLROWNAMERANGES:
                 {
-                    if ( pDocSh->IsDocShared() )
+                    if ( pDocSh->IsDocShared() || pDocSh->IsReadOnly())
                     {
                         rSet.DisableItem( nWhich );
                     }
@@ -1330,12 +1330,25 @@ void ScCellShell::GetState(SfxItemSet &rSet)
                 {
                     const ScCondFormatItem& rCondFormatItem = rDoc.GetAttr(nPosX, nPosY, nTab, ATTR_CONDITIONAL);
 
-                    if ( rCondFormatItem.GetCondFormatData().empty() )
+                    if ( rCondFormatItem.GetCondFormatData().empty() || pDocSh->IsReadOnly())
                         rSet.DisableItem( nWhich );
                     else if ( rCondFormatItem.GetCondFormatData().size() == 1 )
                         rSet.DisableItem( SID_OPENDLG_CURRENTCONDFRMT_MANAGER );
                     else if ( rCondFormatItem.GetCondFormatData().size() > 1 )
                         rSet.DisableItem( SID_OPENDLG_CURRENTCONDFRMT );
+                }
+                break;
+            case SID_OPENDLG_CONDFRMT:
+            case SID_OPENDLG_COLORSCALE:
+            case SID_OPENDLG_DATABAR:
+            case SID_OPENDLG_ICONSET:
+            case SID_OPENDLG_CONDDATE:
+            case SID_OPENDLG_CONDFRMT_MANAGER:
+            case SID_EASY_CONDITIONAL_FORMAT_DIALOG:
+            case SID_SETINPUTMODE:
+                {
+                    if (pDocSh->IsReadOnly())
+                        rSet.DisableItem(nWhich);
                 }
                 break;
 

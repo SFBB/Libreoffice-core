@@ -616,14 +616,14 @@ void SfxApplication::OpenDocExec_Impl( SfxRequest& rReq )
                 aPath = aPath.copy(aPath.lastIndexOf(';')+1); // lastIndexOf+copy works whether separator (';') is there or not
         }
 
-        sal_Int16 nDialog = SFX2_IMPL_DIALOG_CONFIG;
+        FileDialogType eDialog = FileDialogType::Config;
         const SfxBoolItem* pSystemDialogItem = rReq.GetArg(SID_FILE_DIALOG);
         if ( pSystemDialogItem )
-            nDialog = pSystemDialogItem->GetValue() ? SFX2_IMPL_DIALOG_SYSTEM : SFX2_IMPL_DIALOG_OOO;
+            eDialog = FileDialogType::System;
 
         const SfxBoolItem* pRemoteDialogItem = rReq.GetArg(SID_REMOTE_DIALOG);
         if ( pRemoteDialogItem && pRemoteDialogItem->GetValue())
-            nDialog = SFX2_IMPL_DIALOG_REMOTE;
+            eDialog = FileDialogType::Remote;
 
         sal_Int16 nDialogType = ui::dialogs::TemplateDescription::FILEOPEN_READONLY_VERSION_FILTEROPTIONS;
         FileDialogFlags eDialogFlags = FileDialogFlags::MultiSelection;
@@ -645,7 +645,7 @@ void SfxApplication::OpenDocExec_Impl( SfxRequest& rReq )
         ErrCode nErr = sfx2::FileOpenDialog_Impl(pTopWindow,
                 nDialogType,
                 eDialogFlags, aURLList,
-                aFilter, pSet, &aPath, nDialog, aDenyList, bShowFilterDialog);
+                aFilter, pSet, &aPath, eDialog, aDenyList, bShowFilterDialog);
 
         if ( nErr == ERRCODE_ABORT )
         {

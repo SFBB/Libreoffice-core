@@ -380,8 +380,8 @@ LIBJPEG_TURBO_TARBALL := libjpeg-turbo-3.2.1.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-LANGTAGREG_SHA256SUM := 10223cc8c219427c86a4c66ce98282a00c7f4d9b0609355146282344783007f2
-LANGTAGREG_TARBALL := language-subtag-registry-2026-9-17.tar.bz2
+LANGTAGREG_SHA256SUM := 2929c15c3cc10df3329d4e870e6715d5236d02096fe6d54d18aef79ad99a8793
+LANGTAGREG_TARBALL := language-subtag-registry-2026-11-18.tar.bz2
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -400,8 +400,8 @@ LIBATOMIC_OPS_TARBALL := libatomic_ops-7.10.0.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-LIBEOT_SHA256SUM := 2cb904cbe291019b928dbc2231620bcf273be0298f596c2494348e7be1d7051a
-LIBEOT_TARBALL := libeot-0.0.3.tar.gz
+LIBEOT_SHA256SUM := 38e99b743aa45f2ecf510154a936b77ed5f44b144e8aed3005dc444fd55d514e
+LIBEOT_TARBALL := libeot-0.0.4.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -493,8 +493,8 @@ MESON_TARBALL := meson-1.8.3.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-MSPUB_SHA256SUM := 3671095f5a10bee8a755052a30576952c5b16d8b0f2ba9f2fb998338c18cb119
-MSPUB_TARBALL := libmspub-0.1.5.tar.xz
+MSPUB_SHA256SUM := 408eb742b172a0ccbd128a0ff6402eee495839cd905198ce2b3f2607bba617f4
+MSPUB_TARBALL := libmspub-0.1.6.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -509,8 +509,8 @@ MYTHES_TARBALL := mythes-1.2.7.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-NSS_SHA256SUM := 21a9fa95043631db5331ad9202d8c7e7475f7d8d94fdf92c01624563c88502b4
-NSS_TARBALL := nss-3.133-with-nspr-4.39.tar.gz
+NSS_SHA256SUM := d37c4871ec83d72f5b98450458d09eb57e068a0b148a7f7cf5f6fa928af9664f
+NSS_TARBALL := nss-3.134-with-nspr-4.41.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts

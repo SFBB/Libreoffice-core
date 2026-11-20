@@ -174,19 +174,19 @@ static OUString DecodeSpaces_Impl( const OUString& rSource );
 void SAL_CALL FileDialogHelper_Impl::fileSelectionChanged( const FilePickerEvent& )
 {
     SolarMutexGuard aGuard;
-    mpAntiImpl->FileSelectionChanged();
+    handleFileSelectionChanged();
 }
 
 void SAL_CALL FileDialogHelper_Impl::directoryChanged( const FilePickerEvent& )
 {
     SolarMutexGuard aGuard;
-    mpAntiImpl->DirectoryChanged();
+    handleDirectoryChanged();
 }
 
 OUString SAL_CALL FileDialogHelper_Impl::helpRequested( const FilePickerEvent& aEvent )
 {
     SolarMutexGuard aGuard;
-    return sfx2::FileDialogHelper::HelpRequested( aEvent );
+    return handleHelpRequested(aEvent);
 }
 
 void SAL_CALL FileDialogHelper_Impl::controlStateChanged( const FilePickerEvent& aEvent )
@@ -198,7 +198,7 @@ void SAL_CALL FileDialogHelper_Impl::controlStateChanged( const FilePickerEvent&
 void SAL_CALL FileDialogHelper_Impl::dialogSizeChanged()
 {
     SolarMutexGuard aGuard;
-    mpAntiImpl->DialogSizeChanged();
+    handleDialogSizeChanged();
 }
 
 // XDialogClosedListener Methods
@@ -929,7 +929,7 @@ FileDialogHelper_Impl::FileDialogHelper_Impl(
     FileDialogHelper* _pAntiImpl,
     sal_Int16 nDialogType,
     FileDialogFlags nFlags,
-    sal_Int16 nDialog,
+    FileDialogType eDialog,
     weld::Window* pFrameWeld,
     const OUString& sPreselectedDir,
     const css::uno::Sequence< OUString >& rDenyList
@@ -939,22 +939,19 @@ FileDialogHelper_Impl::FileDialogHelper_Impl(
     ,m_nDialogType          ( nDialogType )
     ,meContext              ( FileDialogHelper::UnknownContext )
 {
-    const char* pServiceName=nullptr;
-    switch (nDialog)
+    OUString sServiceName;
+    switch (eDialog)
     {
-        case SFX2_IMPL_DIALOG_SYSTEM:
-        case SFX2_IMPL_DIALOG_OOO:
-            pServiceName = "com.sun.star.ui.dialogs.OfficeFilePicker";
+        case FileDialogType::System:
+            sServiceName = u"com.sun.star.ui.dialogs.OfficeFilePicker"_ustr;
             break;
-        case SFX2_IMPL_DIALOG_REMOTE:
-            pServiceName = "com.sun.star.ui.dialogs.RemoteFilePicker";
+        case FileDialogType::Remote:
+            sServiceName = u"com.sun.star.ui.dialogs.RemoteFilePicker"_ustr;
             break;
         default:
-            pServiceName = "com.sun.star.ui.dialogs.FilePicker";
+            sServiceName = u"com.sun.star.ui.dialogs.FilePicker"_ustr;
             break;
     }
-
-    OUString aService = OUString::createFromAscii( pServiceName );
 
     uno::Reference< XMultiServiceFactory > xFactory( ::comphelper::getProcessServiceFactory() );
 
@@ -997,7 +994,7 @@ FileDialogHelper_Impl::FileDialogHelper_Impl(
     mpGraphicFilter = nullptr;
 
     // create the picker component
-    mxFileDlg.set(xFactory->createInstance( aService ), css::uno::UNO_QUERY);
+    mxFileDlg.set(xFactory->createInstance(sServiceName), css::uno::UNO_QUERY);
     mbSystemPicker = lcl_isSystemFilePicker( mxFileDlg );
     mbAsyncPicker = lcl_isAsyncFilePicker(mxFileDlg);
 
@@ -2276,9 +2273,6 @@ void FileDialogHelper_Impl::loadConfig()
             }
             catch( const IllegalArgumentException& ){}
         }
-
-        if ( maPath.isEmpty() )
-            displayFolder( SvtPathOptions().GetWorkPath() );
     }
     else
     {
@@ -2320,10 +2314,10 @@ void FileDialogHelper_Impl::loadConfig()
             }
             catch( const IllegalArgumentException& ){}
         }
-
-        if ( maPath.isEmpty() )
-            displayFolder( SvtPathOptions().GetWorkPath() );
     }
+
+    if (maPath.isEmpty())
+        displayFolder(SvtPathOptions().GetWorkPath());
 }
 
 void FileDialogHelper_Impl::setDefaultValues()
@@ -2413,7 +2407,7 @@ FileDialogHelper::FileDialogHelper(
     SfxFilterFlags nDont,
     weld::Window* pPreferredParent)
     :   m_nError(0),
-        mpImpl(new FileDialogHelper_Impl(this, nDialogType, nFlags, SFX2_IMPL_DIALOG_CONFIG, pPreferredParent))
+        mpImpl(new FileDialogHelper_Impl(this, nDialogType, nFlags, FileDialogType::Config, pPreferredParent))
 {
 
     // create the list of filters
@@ -2425,14 +2419,14 @@ FileDialogHelper::FileDialogHelper(
     sal_Int16 nDialogType,
     FileDialogFlags nFlags,
     const OUString& rFact,
-    sal_Int16 nDialog,
+    FileDialogType eDialog,
     SfxFilterFlags nMust,
     SfxFilterFlags nDont,
     const OUString& rPreselectedDir,
     const css::uno::Sequence< OUString >& rDenyList,
     weld::Window* pPreferredParent)
     :   m_nError(0),
-        mpImpl( new FileDialogHelper_Impl( this, nDialogType, nFlags, nDialog, pPreferredParent, rPreselectedDir, rDenyList ) )
+        mpImpl( new FileDialogHelper_Impl( this, nDialogType, nFlags, eDialog, pPreferredParent, rPreselectedDir, rDenyList ) )
 {
     // create the list of filters
     mpImpl->addFilters(
@@ -2441,7 +2435,7 @@ FileDialogHelper::FileDialogHelper(
 
 FileDialogHelper::FileDialogHelper(sal_Int16 nDialogType, FileDialogFlags nFlags, weld::Window* pPreferredParent)
     :   m_nError(0),
-        mpImpl( new FileDialogHelper_Impl( this, nDialogType, nFlags, SFX2_IMPL_DIALOG_CONFIG, pPreferredParent ) )
+        mpImpl( new FileDialogHelper_Impl( this, nDialogType, nFlags, FileDialogType::Config, pPreferredParent ) )
 {
 }
 
@@ -2454,7 +2448,7 @@ FileDialogHelper::FileDialogHelper(
     const css::uno::Sequence< OUString >& rDenyList,
     weld::Window* pPreferredParent )
     :   m_nError(0),
-        mpImpl( new FileDialogHelper_Impl( this, nDialogType, nFlags, SFX2_IMPL_DIALOG_CONFIG, pPreferredParent, rPreselectedDir, rDenyList ) )
+        mpImpl( new FileDialogHelper_Impl( this, nDialogType, nFlags, FileDialogType::Config, pPreferredParent, rPreselectedDir, rDenyList ) )
 {
     // the wildcard here is expected in form "*.extension"
     OUString aWildcard;
@@ -2795,29 +2789,10 @@ const uno::Reference < XFilePicker3 >& FileDialogHelper::GetFilePicker() const
 }
 
 // XFilePickerListener Methods
-void FileDialogHelper::FileSelectionChanged()
-{
-    mpImpl->handleFileSelectionChanged();
-}
-
-void FileDialogHelper::DirectoryChanged()
-{
-    mpImpl->handleDirectoryChanged();
-}
-
-OUString FileDialogHelper::HelpRequested( const FilePickerEvent& aEvent )
-{
-    return sfx2::FileDialogHelper_Impl::handleHelpRequested( aEvent );
-}
 
 void FileDialogHelper::ControlStateChanged( const FilePickerEvent& aEvent )
 {
     mpImpl->handleControlStateChanged( aEvent );
-}
-
-void FileDialogHelper::DialogSizeChanged()
-{
-    mpImpl->handleDialogSizeChanged();
 }
 
 void FileDialogHelper::DialogClosed( const DialogClosedEvent& _rEvent )
@@ -2833,7 +2808,7 @@ ErrCode FileOpenDialog_Impl( weld::Window* pParent,
                              OUString& rFilter,
                              std::optional<SfxAllItemSet>& rpSet,
                              const OUString* pPath,
-                             sal_Int16 nDialog,
+                             FileDialogType eDialog,
                              const css::uno::Sequence< OUString >& rDenyList,
                              std::optional<bool>& rShowFilterDialog )
 {
@@ -2845,7 +2820,7 @@ ErrCode FileOpenDialog_Impl( weld::Window* pParent,
     if (nFlags & FileDialogFlags::SignPDF)
         pDialog.reset(new FileDialogHelper(nDialogType, nFlags, SfxResId(STR_SFX_FILTERNAME_PDF), u"pdf", u""_ustr, rDenyList, pParent));
     else
-        pDialog.reset(new FileDialogHelper(nDialogType, nFlags, OUString(), nDialog, SfxFilterFlags::NONE, SfxFilterFlags::NONE, u""_ustr, rDenyList, pParent));
+        pDialog.reset(new FileDialogHelper(nDialogType, nFlags, OUString(), eDialog, SfxFilterFlags::NONE, SfxFilterFlags::NONE, u""_ustr, rDenyList, pParent));
 
     OUString aPath;
     if ( pPath )

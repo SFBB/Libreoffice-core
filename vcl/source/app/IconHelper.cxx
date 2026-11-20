@@ -10,27 +10,42 @@
 #include <IconHelper.hxx>
 #include <svdata.hxx>
 
+#include <comphelper/flatpak.hxx>
 #include <vcl/bitmaps.hlst>
 
-OUString IconHelper::GetAppIconName(sal_uInt16 nIcon)
+OUString IconHelper::GetAppName(sal_uInt16 nIcon)
 {
     switch (nIcon)
     {
         case SV_ICON_ID_TEXT:
-            return u"libreoffice-writer"_ustr;
+            return u"writer"_ustr;
         case SV_ICON_ID_SPREADSHEET:
-            return u"libreoffice-calc"_ustr;
+            return u"calc"_ustr;
         case SV_ICON_ID_DRAWING:
-            return u"libreoffice-draw"_ustr;
+            return u"draw"_ustr;
         case SV_ICON_ID_PRESENTATION:
-            return u"libreoffice-impress"_ustr;
+            return u"impress"_ustr;
         case SV_ICON_ID_DATABASE:
-            return u"libreoffice-base"_ustr;
+            return u"base"_ustr;
         case SV_ICON_ID_FORMULA:
-            return u"libreoffice-math"_ustr;
+            return u"math"_ustr;
         default:
-            return u"libreoffice-startcenter"_ustr;
+            return u"startcenter"_ustr;
     }
+}
+
+OUString IconHelper::GetAppIconName(sal_uInt16 nIcon)
+{
+    const OUString sAppName = GetAppName(nIcon);
+    if (comphelper::flatpak::isFlatpak())
+    {
+        // Flatpak uses Flatpak ID as prefix and drops "startcenter" in icon and desktop file names
+        if (sAppName == u"startcenter"_ustr)
+            return u"org.libreoffice.LibreOffice"_ustr;
+        return u"org.libreoffice.LibreOffice."_ustr + sAppName;
+    }
+
+    return u"libreoffice-"_ustr + sAppName;
 }
 
 OUString IconHelper::GetInternalAppIconName(sal_uInt16 nIcon)

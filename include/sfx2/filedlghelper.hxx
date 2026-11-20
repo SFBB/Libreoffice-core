@@ -73,6 +73,7 @@ inline constexpr OUString FILEDIALOG_FILTER_ALL = u"*.*"_ustr;
 
 namespace sfx2 {
 
+enum class FileDialogType;
 class FileDialogHelper_Impl;
 
 class SFX2_DLLPUBLIC FileDialogHelper
@@ -161,7 +162,7 @@ public:
                             FileDialogHelper(sal_Int16 nDialogType,
                                              FileDialogFlags nFlags,
                                              const OUString& rFactory,
-                                             sal_Int16 nDialog,
+                                             FileDialogType eDialog,
                                              SfxFilterFlags nMust,
                                              SfxFilterFlags nDont,
                                              const OUString& rPreselectedDir,
@@ -242,11 +243,7 @@ public:
     const css::uno::Reference < css::ui::dialogs::XFilePicker3 >& GetFilePicker() const;
 
     // XFilePickerListener methods
-    void   FileSelectionChanged();
-    void   DirectoryChanged();
     virtual void   ControlStateChanged( const css::ui::dialogs::FilePickerEvent& aEvent );
-    void   DialogSizeChanged();
-    static OUString    HelpRequested( const css::ui::dialogs::FilePickerEvent& aEvent );
 
     // XDialogClosedListener methods
     void   DialogClosed( const css::ui::dialogs::DialogClosedEvent& _rEvent );
@@ -281,10 +278,12 @@ public:
                                      SignatureState nScriptingSignatureState);
 };
 
-#define SFX2_IMPL_DIALOG_CONFIG 0
-#define SFX2_IMPL_DIALOG_SYSTEM 1
-#define SFX2_IMPL_DIALOG_OOO 2
-#define SFX2_IMPL_DIALOG_REMOTE 3
+enum class FileDialogType
+{
+    Config,
+    System,
+    Remote,
+};
 
 ErrCode FileOpenDialog_Impl( weld::Window* pParent,
                              sal_Int16 nDialogType,
@@ -293,7 +292,7 @@ ErrCode FileOpenDialog_Impl( weld::Window* pParent,
                              OUString& rFilter,
                              std::optional<SfxAllItemSet>& rpSet,
                              const OUString* pPath,
-                             sal_Int16 nDialog,
+                             FileDialogType eDialog,
                              const css::uno::Sequence< OUString >& rDenyList,
                              std::optional<bool>& rShowFilterDialog );
 
