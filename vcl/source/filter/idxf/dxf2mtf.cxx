@@ -1270,7 +1270,7 @@ void DXF2GDIMetaFile::DrawHatchPattern(const DXFHatchEntity & rE, const basegfx:
         if (!aFamily.maDashes.empty())
             bDashed = true;
         if (!aFamily.maDirection.equalZero())
-            aFamilies.push_back(aFamily);
+            aFamilies.push_back(std::move(aFamily));
     }
     if (aFamilies.empty())
         return;
@@ -1637,7 +1637,7 @@ void DXF2GDIMetaFile::DrawMTextEntity(const DXFMTextEntity & rE, const DXFTransf
                 aLine.mfWidth += fWidth;
             }
         }
-        aLines.push_back(aLine);
+        aLines.push_back(std::move(aLine));
     }
     if (aLines.empty())
         return;

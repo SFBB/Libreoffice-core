@@ -384,12 +384,13 @@ bool lcl_DecryptPptPersistObjects(
             return false;
         }
 
-        if (nObjectSize > std::numeric_limits<size_t>::max())
+        std::vector<sal_uInt8> aEncryptedObject;
+        if (nObjectSize > aEncryptedObject.max_size())
         {
             SAL_WARN("sd.filter", "PPT persist object is too large");
             return false;
         }
-        std::vector<sal_uInt8> aEncryptedObject(static_cast<size_t>(nObjectSize));
+        aEncryptedObject.resize(static_cast<size_t>(nObjectSize));
 
         if (!lcl_ReadAt(rStream, nOffset, aEncryptedObject.data(), nObjectSize))
         {
@@ -848,10 +849,11 @@ SdPPTImport::SdPPTImport(SdDrawDocument& rDocument, SvStream& rDocStream, SotSto
 
                     const sal_uInt64 nPicturesSize = pPicturesCopy->TellEnd();
 
-                    if (nPicturesSize > std::numeric_limits<size_t>::max())
+                    std::vector<sal_uInt8> aDecryptedPictures;
+                    if (nPicturesSize > aDecryptedPictures.max_size())
                         return false;
 
-                    std::vector<sal_uInt8> aDecryptedPictures(static_cast<size_t>(nPicturesSize));
+                    aDecryptedPictures.resize(static_cast<size_t>(nPicturesSize));
 
                     if (!checkSeek(*pPicturesCopy, 0)
                         || pPicturesCopy->ReadBytes(
