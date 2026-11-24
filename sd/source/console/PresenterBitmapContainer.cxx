@@ -22,6 +22,7 @@
 #include "PresenterHelper.hxx"
 
 #include <com/sun/star/lang/XMultiComponentFactory.hpp>
+#include <unordered_map>
 #include <utility>
 #include <osl/diagnose.h>
 
@@ -163,36 +164,27 @@ std::shared_ptr<PresenterBitmapContainer::BitmapDescriptor> PresenterBitmapConta
     if ( ! rxProperties.is())
         return pBitmap;
 
-    OUString sFileName;
+    static constexpr std::pair<OUString, BitmapDescriptor::Mode> aMapping[]{
+        { u"NormalFileName"_ustr, BitmapDescriptor::Mode::Normal },
+        { u"MouseOverFileName"_ustr, BitmapDescriptor::Mode::MouseOver },
+        { u"DisabledFileName"_ustr, BitmapDescriptor::Mode::Disabled }
+    };
 
-    // Load bitmaps.
-    if (PresenterConfigurationAccess::GetProperty(rxProperties, u"NormalFileName"_ustr) >>= sFileName)
-        try
+    OUString sFileName;
+    for (const auto& [rKey, rMode] : aMapping)
+    {
+        if (PresenterConfigurationAccess::GetProperty(rxProperties, rKey) >>= sFileName)
         {
-            pBitmap->SetBitmap(
-                BitmapDescriptor::Normal,
-                sd::presenter::PresenterHelper::loadBitmap(sFileName, rxCanvas));
+            try
+            {
+                pBitmap->SetBitmap(rMode,
+                                   sd::presenter::PresenterHelper::loadBitmap(sFileName, rxCanvas));
+            }
+            catch (Exception&)
+            {
+            }
         }
-        catch (Exception&)
-        {}
-    if (PresenterConfigurationAccess::GetProperty(rxProperties, u"MouseOverFileName"_ustr) >>= sFileName)
-        try
-        {
-            pBitmap->SetBitmap(
-                BitmapDescriptor::MouseOver,
-                sd::presenter::PresenterHelper::loadBitmap(sFileName, rxCanvas));
-        }
-        catch (Exception&)
-        {}
-    if (PresenterConfigurationAccess::GetProperty(rxProperties, u"DisabledFileName"_ustr) >>= sFileName)
-        try
-        {
-            pBitmap->SetBitmap(
-                BitmapDescriptor::Disabled,
-                sd::presenter::PresenterHelper::loadBitmap(sFileName, rxCanvas));
-        }
-        catch (Exception&)
-        {}
+    }
 
     PresenterConfigurationAccess::GetProperty(rxProperties, u"XOffset"_ustr) >>= pBitmap->mnXOffset;
     PresenterConfigurationAccess::GetProperty(rxProperties, u"YOffset"_ustr) >>= pBitmap->mnYOffset;
@@ -270,17 +262,17 @@ css::uno::Reference<css::rendering::XBitmap> const &
 {
     switch (eMode)
     {
-        case Normal:
+        case Mode::Normal:
         default:
             return mxNormalBitmap;
 
-        case MouseOver:
+        case Mode::MouseOver:
             if (mxMouseOverBitmap.is())
                 return mxMouseOverBitmap;
             else
                 return mxNormalBitmap;
 
-        case Disabled:
+        case Mode::Disabled:
             if (mxDisabledBitmap.is())
                 return mxDisabledBitmap;
             else
@@ -294,7 +286,7 @@ void PresenterBitmapContainer::BitmapDescriptor::SetBitmap (
 {
     switch (eMode)
     {
-        case Normal:
+        case Mode::Normal:
         default:
             mxNormalBitmap = rxBitmap;
             if (mxNormalBitmap.is())
@@ -305,11 +297,11 @@ void PresenterBitmapContainer::BitmapDescriptor::SetBitmap (
             }
             break;
 
-        case MouseOver:
+        case Mode::MouseOver:
             mxMouseOverBitmap = rxBitmap;
             break;
 
-        case Disabled:
+        case Mode::Disabled:
             mxDisabledBitmap = rxBitmap;
             break;
     }
