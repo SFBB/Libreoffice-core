@@ -77,7 +77,7 @@ void Canvas::initialize()
 
     const SystemGraphicsData* pSysData
         = reinterpret_cast<const SystemGraphicsData*>(aSeq.getConstArray());
-    if (!pSysData || !pSysData->nSize)
+    if (!pSysData)
         throw lang::NoSupportException(u"Passed SystemGraphicsData invalid!"_ustr);
 
     bool bHasCairo = pOutDev->SupportsCairo();
@@ -128,21 +128,6 @@ SurfaceSharedPtr Canvas::getSurface() { return maDeviceHelper.getSurface(); }
 SurfaceSharedPtr Canvas::createSurface(const ::basegfx::B2ISize& rSize, int aContent)
 {
     return maDeviceHelper.createSurface(rSize, aContent);
-}
-
-SurfaceSharedPtr Canvas::createSurface(::Bitmap& rBitmap)
-{
-    SurfaceSharedPtr pSurface;
-
-    BitmapSystemData aData;
-    if (rBitmap.GetSystemData(aData))
-    {
-        const Size aSize = rBitmap.GetSizePixel();
-
-        pSurface = maDeviceHelper.createSurface(aData, aSize);
-    }
-
-    return pSurface;
 }
 
 SurfaceSharedPtr Canvas::changeSurface()

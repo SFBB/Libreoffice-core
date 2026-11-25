@@ -76,14 +76,6 @@ bool QtBitmap::Create(const SalBitmap& rSalBmp, SalGraphics& rSalGraphics)
     return true;
 }
 
-bool QtBitmap::Create(const css::uno::Reference<css::rendering::XBitmapCanvas>& /*rBitmapCanvas*/,
-                      Size& /*rSize*/)
-{
-    return false;
-}
-
-void QtBitmap::Destroy() { m_pImage.reset(); }
-
 Size QtBitmap::GetSize() const
 {
     if (m_pImage)
@@ -170,16 +162,6 @@ void QtBitmap::ReleaseBuffer(BitmapBuffer* pBuffer, BitmapAccessMode nMode)
     delete pBuffer;
     if (nMode == BitmapAccessMode::Write)
         InvalidateChecksum();
-}
-
-bool QtBitmap::GetSystemData(BitmapSystemData& /*rData*/) { return false; }
-
-bool QtBitmap::ScalingSupported() const { return false; }
-
-bool QtBitmap::Scale(const double& /*rScaleX*/, const double& /*rScaleY*/,
-                     BmpScaleFlag /*nScaleFlag*/)
-{
-    return false;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

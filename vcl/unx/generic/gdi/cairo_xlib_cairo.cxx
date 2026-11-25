@@ -60,11 +60,12 @@ namespace cairo
         nScreen(0)
     {}
 
-    X11SysData::X11SysData( const SystemGraphicsData& pSysDat ) :
-        pDisplay(static_cast<_XDisplay*>(pSysDat.pDisplay)),
-        hDrawable(pSysDat.hDrawable),
-        pVisual(static_cast<Visual*>(pSysDat.pVisual)),
-        nScreen(pSysDat.nScreen)
+    X11SysData::X11SysData(const SystemGraphicsData& pSysDat, _XDisplay* pXDisplay, Visual* pXVisual,
+                           int nXScreen)
+        : pDisplay(pXDisplay)
+        , hDrawable(pSysDat.hDrawable)
+        , pVisual(pXVisual)
+        , nScreen(nXScreen)
     {}
 
     X11SysData::X11SysData( const SystemEnvData& pSysDat, const SalFrame* pReference ) :
@@ -142,40 +143,6 @@ namespace cairo
     }
 
     /**
-     * Surface::Surface:   Create platform native Canvas surface from BitmapSystemData
-     * @param pSysData Platform native system environment data (struct SystemEnvData in vcl/inc/sysdata.hxx)
-     * @param pBmpData Platform native image data (struct BitmapSystemData in vcl/inc/bitmap.hxx)
-     * @param width width of the new surface
-     * @param height height of the new surface
-     *
-     * The pBmpData provides the imagedata that the created surface should contain.
-     *
-     * Set the mpSurface to the new surface or NULL
-     **/
-    X11Surface::X11Surface( const X11SysData&       rSysData,
-                            const BitmapSystemData& rData ) :
-        maSysData( rSysData ),
-        mpSurface(
-            cairo_xlib_surface_create( rSysData.pDisplay,
-                                       reinterpret_cast<Drawable>(rData.aPixmap),
-                                       rSysData.pVisual,
-                                       rData.mnWidth, rData.mnHeight ),
-            &cairo_surface_destroy)
-    {
-    }
-
-    /**
-     * Surface::getCairo:  Create Cairo (drawing object) for the Canvas surface
-     *
-     * @return new Cairo or NULL
-     **/
-    CairoSharedPtr X11Surface::getCairo() const
-    {
-        return CairoSharedPtr( cairo_create(mpSurface.get()),
-                               &cairo_destroy );
-    }
-
-    /**
      * Surface::getSimilar:  Create new similar Canvas surface
      * @param cairo_content_type format of the new surface (cairo_content_t from cairo/src/cairo.h)
      * @param width width of the new surface
@@ -241,7 +208,6 @@ namespace cairo
 
         cairo_surface_t* pSurface = mpSurface.get();
 
-        aSystemGraphicsData.nSize = sizeof(SystemGraphicsData);
         aSystemGraphicsData.hDrawable = mpPixmap ? mpPixmap->mhDrawable : maSysData.hDrawable;
         aSystemGraphicsData.pSurface = pSurface;
 

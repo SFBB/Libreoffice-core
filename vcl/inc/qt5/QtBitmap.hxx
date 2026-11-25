@@ -38,23 +38,16 @@ public:
 
     const QImage* GetQImage() const { return m_pImage.get(); }
 
+    using SalBitmap::Create;
     virtual bool Create(const Size& rSize, vcl::PixelFormat ePixelFormat,
                         const BitmapPalette& rPal) override;
     virtual bool Create(const SalBitmap& rSalBmp) override;
     virtual bool Create(const SalBitmap& rSalBmp, SalGraphics& rGraphics) override;
-    virtual bool Create(const css::uno::Reference<css::rendering::XBitmapCanvas>& rBitmapCanvas,
-                        Size& rSize) override;
-    virtual void Destroy() final override;
     virtual Size GetSize() const override;
     virtual ScanlineFormat GetScanlineFormat() const override;
 
     virtual BitmapBuffer* AcquireBuffer(BitmapAccessMode nMode) override;
     virtual void ReleaseBuffer(BitmapBuffer* pBuffer, BitmapAccessMode nMode) override;
-    virtual bool GetSystemData(BitmapSystemData& rData) override;
-
-    virtual bool ScalingSupported() const override;
-    virtual bool Scale(const double& rScaleX, const double& rScaleY,
-                       BmpScaleFlag nScaleFlag) override;
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab cinoptions=b1,g0,N-s cinkeys+=0=break: */

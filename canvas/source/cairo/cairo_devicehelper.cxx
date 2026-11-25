@@ -220,14 +220,6 @@ namespace cairocanvas
 
         return SurfaceSharedPtr();
     }
-
-    SurfaceSharedPtr DeviceHelper::createSurface( BitmapSystemData const & rData, const Size& rSize )
-    {
-        if (mpRefDevice)
-            return mpRefDevice->CreateBitmapSurface(rData, rSize);
-
-        return SurfaceSharedPtr();
-    }
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

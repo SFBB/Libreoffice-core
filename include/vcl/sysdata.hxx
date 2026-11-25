@@ -107,7 +107,6 @@ public:
 
 struct SystemParentData
 {
-    sal_uInt32      nSize;            // size in bytes of this structure
 #if defined(_WIN32)
     HWND            hWnd;             // the window hwnd
 #elif defined( MACOSX )
@@ -118,8 +117,8 @@ struct SystemParentData
     // Nothing
 #elif defined( UNX )
     sal_uIntPtr     aWindow;          // the window of the object
-    bool            bXEmbedSupport:1; // decides whether the object in question
-                                      // should support the XEmbed protocol
+    // decides whether the object in question should support the XEmbed protocol
+    bool bXEmbedSupport : 1 = false;
 #endif
 };
 
@@ -134,7 +133,6 @@ struct SystemMenuData
 
 struct SystemGraphicsData
 {
-    sal_uInt32      nSize;          // size in bytes of this structure
 #if defined(_WIN32)
     HDC             hDC;            // handle to a device context
     HWND            hWnd;           // optional handle to a window
@@ -145,33 +143,23 @@ struct SystemGraphicsData
 #elif defined( IOS )
     CGContextRef    rCGContext;     // CoreGraphics graphic context
 #elif defined( UNX )
-    void*           pDisplay;       // the relevant display connection
     sal_uIntPtr     hDrawable;      // a drawable
-    void*           pVisual;        // the visual in use
-    int             nScreen;        // the current screen of the drawable
 #endif
 #if USE_HEADLESS_CODE
-    void*           pSurface;       // the cairo surface when using svp-based backends, which includes gtk[3|4]
+    void* pSurface = nullptr; // the cairo surface when using svp-based backends, which includes gtk[3|4]
 #endif
     SystemGraphicsData()
-        : nSize( sizeof( SystemGraphicsData ) )
 #if defined(_WIN32)
-        , hDC( nullptr )
+        : hDC(nullptr)
         , hWnd( nullptr )
 #elif defined( MACOSX )
-        , rCGContext( nullptr )
+        : rCGContext(nullptr)
 #elif defined( ANDROID )
     // Nothing
 #elif defined( IOS )
-        , rCGContext( NULL )
+        : rCGContext(NULL)
 #elif defined( UNX )
-        , pDisplay( nullptr )
-        , hDrawable( 0 )
-        , pVisual( nullptr )
-        , nScreen( 0 )
-#endif
-#if USE_HEADLESS_CODE
-        , pSurface( nullptr )
+        : hDrawable(0)
 #endif
     { }
 };

@@ -42,11 +42,6 @@ QtSvpSurface::~QtSvpSurface()
         cairo_destroy(m_pCairoContext);
 }
 
-CairoSharedPtr QtSvpSurface::getCairo() const
-{
-    return CairoSharedPtr(cairo_create(m_pSurface.get()), &cairo_destroy);
-}
-
 SurfaceSharedPtr QtSvpSurface::getSimilar(int cairo_content_type, int width, int height) const
 {
     return std::make_shared<QtSvpSurface>(CairoSurfaceSharedPtr(
@@ -65,8 +60,6 @@ void QtSvpSurface::flush() const
 VclPtr<VirtualDevice> QtSvpSurface::createVirtualDevice() const
 {
     SystemGraphicsData aSystemGraphicsData;
-
-    aSystemGraphicsData.nSize = sizeof(SystemGraphicsData);
     aSystemGraphicsData.pSurface = m_pSurface.get();
 
     return VclPtr<VirtualDevice>::Create(aSystemGraphicsData,

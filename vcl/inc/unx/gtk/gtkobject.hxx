@@ -62,7 +62,7 @@ class GtkSalObject final : public GtkSalObjectBase
     static void         signalDestroy( GtkWidget*, gpointer );
 
 public:
-    GtkSalObject(GtkSalFrame* pParent, bool bShow);
+    GtkSalObject(GtkSalFrame* pParent);
     virtual ~GtkSalObject() override;
 
     // override all pure virtual methods
@@ -105,7 +105,7 @@ class GtkSalObjectWidgetClip final : public GtkSalObjectBase
     DECL_LINK(SettingsChangedHdl, VclWindowEvent&, void);
 
 public:
-    GtkSalObjectWidgetClip(GtkSalFrame* pParent, bool bShow);
+    GtkSalObjectWidgetClip(GtkSalFrame* pParent);
     virtual ~GtkSalObjectWidgetClip() override;
 
     // override all pure virtual methods

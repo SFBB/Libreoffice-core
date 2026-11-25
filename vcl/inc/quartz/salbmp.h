@@ -56,24 +56,16 @@ public:
 public:
 
     // SalBitmap methods
+    using SalBitmap::Create;
     bool            Create( const Size& rSize, vcl::PixelFormat ePixelFormat, const BitmapPalette& rPal ) override;
     bool            Create( const SalBitmap& rSalBmp ) override;
     bool            Create( const SalBitmap& rSalBmp, SalGraphics& rGraphics ) override;
-    virtual bool    Create( const css::uno::Reference< css::rendering::XBitmapCanvas >& rBitmapCanvas,
-                            Size& rSize ) override;
-
-    void            Destroy() override;
 
     Size            GetSize() const override;
     ScanlineFormat  GetScanlineFormat() const override;
 
     BitmapBuffer   *AcquireBuffer( BitmapAccessMode nMode ) override;
     void            ReleaseBuffer( BitmapBuffer* pBuffer, BitmapAccessMode nMode ) override;
-
-    bool            GetSystemData( BitmapSystemData& rData ) override;
-
-    bool            ScalingSupported() const override;
-    bool            Scale( const double& rScaleX, const double& rScaleY, BmpScaleFlag nScaleFlag ) override;
 
 private:
     // quartz helper

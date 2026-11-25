@@ -185,21 +185,6 @@ bool SkiaSalBitmap::Create(const SalBitmap& rSalBmp, [[maybe_unused]] SalGraphic
     return true;
 }
 
-bool SkiaSalBitmap::Create(const css::uno::Reference<css::rendering::XBitmapCanvas>&, Size&)
-{
-    return false;
-}
-
-void SkiaSalBitmap::Destroy()
-{
-    SAL_INFO("vcl.skia.trace", "destroy(" << this << ")");
-#ifdef DBG_UTIL
-    assert(mWriteAccessCount == 0);
-#endif
-    assert(mReadAccessCount == 0);
-    ResetAllData();
-}
-
 Size SkiaSalBitmap::GetSize() const { return mSize; }
 
 ScanlineFormat SkiaSalBitmap::GetScanlineFormat() const
@@ -347,14 +332,6 @@ void SkiaSalBitmap::ReleaseBuffer(BitmapBuffer* pBuffer, BitmapAccessMode nMode)
     assert(pBuffer->mpBits == mBuffer.get() || nMode == BitmapAccessMode::Info);
     verify();
     delete pBuffer;
-}
-
-bool SkiaSalBitmap::GetSystemData(BitmapSystemData&)
-{
-#ifdef DBG_UTIL
-    assert(mWriteAccessCount == 0);
-#endif
-    return false;
 }
 
 bool SkiaSalBitmap::ScalingSupported() const { return true; }

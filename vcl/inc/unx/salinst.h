@@ -48,15 +48,8 @@ public:
     virtual SalFrame*           CreateFrame( SalFrame* pParent, SalFrameStyleFlags nStyle ) override;
     virtual void                DestroyFrame( SalFrame* pFrame ) override;
 
-    virtual SalObject*          CreateObject( SalFrame* pParent, SystemWindowData* pWindowData, bool bShow ) override;
+    virtual SalObject* CreateObject(SalFrame* pParent, SystemWindowData* pWindowData) override;
     virtual void                DestroyObject( SalObject* pObject ) override;
-
-    /// Gtk vclplug needs to pass GtkSalGraphics to X11SalVirtualDevice, so create it, and pass as pNewGraphics.
-    static std::unique_ptr<SalVirtualDevice> CreateX11VirtualDevice(const SalGraphics& rGraphics, tools::Long nDX, tools::Long nDY,
-            DeviceFormat eFormat, std::unique_ptr<X11SalGraphics> pNewGraphics,
-            bool bAlphaMaskTransparent);
-    static std::unique_ptr<SalVirtualDevice> CreateX11VirtualDevice(const SalGraphics& rGraphics, tools::Long &nDX, tools::Long &nDY,
-            DeviceFormat eFormat, const SystemGraphicsData& rData, std::unique_ptr<X11SalGraphics> pNewGraphics);
 
     virtual std::unique_ptr<SalVirtualDevice>
                                 CreateVirtualDevice( SalGraphics& rGraphics,

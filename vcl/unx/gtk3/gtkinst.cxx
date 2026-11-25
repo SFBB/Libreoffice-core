@@ -301,13 +301,13 @@ SalFrame* GtkInstance::CreateChildFrame( SystemParentData* pParentData, SalFrame
     return new GtkSalFrame( pParentData );
 }
 
-SalObject* GtkInstance::CreateObject( SalFrame* pParent, SystemWindowData* pWindowData, bool bShow )
+SalObject* GtkInstance::CreateObject(SalFrame* pParent, SystemWindowData* pWindowData)
 {
     EnsureInit();
     //FIXME: Missing CreateObject functionality ...
     if (pWindowData && pWindowData->bClipUsingNativeWidget)
-        return new GtkSalObjectWidgetClip(static_cast<GtkSalFrame*>(pParent), bShow);
-    return new GtkSalObject(static_cast<GtkSalFrame*>(pParent), bShow);
+        return new GtkSalObjectWidgetClip(static_cast<GtkSalFrame*>(pParent));
+    return new GtkSalObject(static_cast<GtkSalFrame*>(pParent));
 }
 
 extern "C"
@@ -1772,7 +1772,7 @@ public:
         if( !m_pChildWindow )
         {
             SystemWindowData winData = generateWinData(mpWindow, mbRequestLegacyContext);
-            m_pChildWindow = VclPtr<SystemChildWindow>::Create(mpWindow, 0, &winData, false);
+            m_pChildWindow = VclPtr<SystemChildWindow>::Create(mpWindow, &winData);
         }
 
         if (m_pChildWindow)
@@ -24285,7 +24285,7 @@ std::unique_ptr<weld::Builder> GtkInstance::CreateInterimBuilder(vcl::Window* pP
     // support GtkWidgets within a vcl::Window
     SystemWindowData winData = {};
     winData.bClipUsingNativeWidget = true;
-    auto xEmbedWindow = VclPtr<SystemChildWindow>::Create(pParent, 0, &winData, false);
+    auto xEmbedWindow = VclPtr<SystemChildWindow>::Create(pParent, &winData);
     xEmbedWindow->Show(true, ShowFlags::NoActivate);
     xEmbedWindow->set_expand(true);
 

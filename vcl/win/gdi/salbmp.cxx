@@ -54,11 +54,6 @@ WinSalBitmap::WinSalBitmap()
 
 WinSalBitmap::~WinSalBitmap()
 {
-    Destroy();
-}
-
-void WinSalBitmap::Destroy()
-{
     if( mpDIB )
         free( mpDIB );
     else if( mhDDB )
@@ -523,21 +518,8 @@ bool WinSalBitmap::GetSystemData( BitmapSystemData& rData )
     {
         bRet = true;
         rData.pDIB = mpDIB;
-        const Size& rSize = GetSize ();
-        rData.mnWidth = rSize.Width();
-        rData.mnHeight = rSize.Height();
     }
     return bRet;
-}
-
-bool WinSalBitmap::ScalingSupported() const
-{
-    return false;
-}
-
-bool WinSalBitmap::Scale( const double& /*rScaleX*/, const double& /*rScaleY*/, BmpScaleFlag /*nScaleFlag*/ )
-{
-    return false;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

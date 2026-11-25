@@ -25,7 +25,6 @@
 #include <vcl/cairo.hxx>
 #include <vcl/salgtype.hxx>
 
-struct BitmapSystemData;
 class SalFrame;
 struct SystemEnvData;
 struct SystemGraphicsData;
@@ -36,7 +35,7 @@ namespace cairo {
     struct X11SysData
     {
         X11SysData();
-        explicit X11SysData( const SystemGraphicsData& );
+        X11SysData(const SystemGraphicsData&, _XDisplay* pXDisplay, Visual* pXVisual, int nXScreen);
         explicit X11SysData( const SystemEnvData&, const SalFrame* pReference );
 
         _XDisplay* pDisplay;       // the relevant display connection
@@ -74,11 +73,8 @@ namespace cairo {
         explicit X11Surface( CairoSurfaceSharedPtr pSurface );
         /// create surface on subarea of given drawable
         X11Surface( const X11SysData& rSysData, int x, int y, int width, int height );
-        /// create surface for given bitmap data
-        X11Surface( const X11SysData& rSysData, const BitmapSystemData& rBmpData );
 
         // Surface interface
-        virtual CairoSharedPtr getCairo() const override;
         virtual CairoSurfaceSharedPtr getCairoSurface() const override { return mpSurface; }
         virtual SurfaceSharedPtr getSimilar(int cairo_content_type, int width, int height) const override;
 

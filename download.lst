@@ -130,14 +130,14 @@ EPUBGEN_TARBALL := libepubgen-0.1.2.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-ETONYEK_SHA256SUM := 032b71cb597edd92a0b270b916188281bc35be55296b263f6817b29adbcb1709
-ETONYEK_VERSION_MICRO := 13
+ETONYEK_SHA256SUM := ba81a37e1be25dcaf73035c4a3cc4787a1e053b3272b2383ed3dec899c6a884f
+ETONYEK_VERSION_MICRO := 15
 ETONYEK_TARBALL := libetonyek-0.1.$(ETONYEK_VERSION_MICRO).tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-EXPAT_SHA256SUM := c624ba2998fc65df1163a49641ff3f9ab73138b11641d92c86bee0fb01b1bc7f
-EXPAT_TARBALL := expat-2.10.0.tar.xz
+EXPAT_SHA256SUM := 61e7614b602201c28a189dafee78f5bceaee192bbde46a930752ff09cf5542fa
+EXPAT_TARBALL := expat-2.11.0.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -478,8 +478,8 @@ MARIADB_CONNECTOR_C_TARBALL := mariadb-connector-c-3.4.11-src.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-MDDS_SHA256SUM := 673f5bb94612dbba581fc92b99b5e5dd1a53e29496a5dbc936432f6b0687c112
-MDDS_TARBALL := mdds-3.2.1.tar.xz
+MDDS_SHA256SUM := c630abfc0a2c875aa453b8200af6d46265525f897c0640acf91626a283b3d6d6
+MDDS_TARBALL := mdds-4.0.0.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -550,8 +550,8 @@ OPENSSL_TARBALL := openssl-3.5.9.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-ORCUS_SHA256SUM := 1c6e473d6b8a63d61d0e6874a1762d6f0e0e78338d763e48ac93126ecde19b37
-ORCUS_TARBALL := liborcus-0.21.0.tar.xz
+ORCUS_SHA256SUM := 0020bae999f58dda8fcbab2bad1551e9c91de2b594d9c05fec682222c93491dd
+ORCUS_TARBALL := liborcus-0.22.0.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
@@ -712,8 +712,8 @@ ZLIB_TARBALL := zlib-1.4.tar.xz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts
-ZSTD_SHA256SUM := eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3
-ZSTD_TARBALL := zstd-1.5.7.tar.gz
+ZSTD_SHA256SUM := 2ba599ae2a257976278e7e71e998433a387bfd18aa7b78678229fd5d84f5e9b8
+ZSTD_TARBALL := zstd-1.6.0.tar.gz
 # three static lines
 # so that git cherry-pick
 # will not run into conflicts

@@ -190,11 +190,6 @@ bool SvpSalBitmap::Create( const SalBitmap& /*rSalBmp*/,
     return false;
 }
 
-bool SvpSalBitmap::Create( const css::uno::Reference< css::rendering::XBitmapCanvas >& /*xBitmapCanvas*/, Size& /*rSize*/ )
-{
-    return false;
-}
-
 void SvpSalBitmap::Destroy()
 {
     if (moDIB.has_value())
@@ -233,21 +228,6 @@ void SvpSalBitmap::ReleaseBuffer(BitmapBuffer*, BitmapAccessMode nMode)
 {
     if( nMode == BitmapAccessMode::Write )
         InvalidateChecksum();
-}
-
-bool SvpSalBitmap::GetSystemData( BitmapSystemData& )
-{
-    return false;
-}
-
-bool SvpSalBitmap::ScalingSupported() const
-{
-    return false;
-}
-
-bool SvpSalBitmap::Scale( const double& /*rScaleX*/, const double& /*rScaleY*/, BmpScaleFlag /*nScaleFlag*/ )
-{
-    return false;
 }
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -84,9 +84,10 @@ static void ImplSysChildProc( SystemChildWindow* pInst, SalObjEvent nEvent )
     }
 }
 
-void SystemChildWindow::ImplInitSysChild( vcl::Window* pParent, WinBits nStyle, SystemWindowData *pData, bool bShow )
+void SystemChildWindow::ImplInitSysChild(vcl::Window* pParent, WinBits nStyle,
+                                         SystemWindowData* pData)
 {
-    mpWindowImpl->mpSysObj = GetSalInstance()->CreateObject(pParent->ImplGetFrame(), pData, bShow);
+    mpWindowImpl->mpSysObj = GetSalInstance()->CreateObject(pParent->ImplGetFrame(), pData);
 
     Window::ImplInit( pParent, nStyle, nullptr );
 
@@ -105,10 +106,10 @@ SystemChildWindow::SystemChildWindow( vcl::Window* pParent, WinBits nStyle ) :
     ImplInitSysChild( pParent, nStyle, nullptr );
 }
 
-SystemChildWindow::SystemChildWindow( vcl::Window* pParent, WinBits nStyle, SystemWindowData *pData, bool bShow ) :
-    Window( WindowType::SYSTEMCHILDWINDOW )
+SystemChildWindow::SystemChildWindow(vcl::Window* pParent, SystemWindowData* pData)
+    : Window(WindowType::SYSTEMCHILDWINDOW)
 {
-    ImplInitSysChild( pParent, nStyle, pData, bShow );
+    ImplInitSysChild(pParent, 0, pData);
 }
 
 SystemChildWindow::~SystemChildWindow()

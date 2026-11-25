@@ -194,11 +194,7 @@ SystemGraphicsData X11SalGraphics::GetGraphicsData() const
 {
     SystemGraphicsData aRes;
 
-    aRes.nSize = sizeof(aRes);
-    aRes.pDisplay  = GetXDisplay();
     aRes.hDrawable = maX11Common.m_hDrawable;
-    aRes.pVisual   = GetVisual().visual;
-    aRes.nScreen   = m_nXScreen.getXScreen();
     return aRes;
 }
 
@@ -231,11 +227,6 @@ namespace
         else
             return cairo::X11SysData(*pSysData, rWindow.ImplGetFrame());
     }
-
-    cairo::X11SysData getSysData( const VirtualDevice& rVirDev )
-    {
-        return cairo::X11SysData( rVirDev.GetSystemGfxData() );
-    }
 }
 
 cairo::SurfaceSharedPtr X11SalGraphics::CreateSurface( const OutputDevice& rRefDevice,
@@ -245,26 +236,13 @@ cairo::SurfaceSharedPtr X11SalGraphics::CreateSurface( const OutputDevice& rRefD
         return std::make_shared<cairo::X11Surface>(getSysData(*rRefDevice.GetOwnerWindow()),
                                                x,y,width,height);
     if( rRefDevice.IsVirtual() )
-        return std::make_shared<cairo::X11Surface>(getSysData(static_cast<const VirtualDevice&>(rRefDevice)),
-                                               x,y,width,height);
-    return cairo::SurfaceSharedPtr();
-}
-
-cairo::SurfaceSharedPtr X11SalGraphics::CreateBitmapSurface( const OutputDevice&     rRefDevice,
-                                      const BitmapSystemData& rData,
-                                      const Size&             rSize ) const
-{
-    SAL_INFO("vcl", "requested size: " << rSize.Width() << " x " << rSize.Height()
-              << " available size: " << rData.mnWidth << " x "
-              << rData.mnHeight);
-    if ( rData.mnWidth == rSize.Width() && rData.mnHeight == rSize.Height() )
     {
-        if( rRefDevice.GetOutDevType() == OUTDEV_WINDOW )
-            return std::make_shared<cairo::X11Surface>(getSysData(*rRefDevice.GetOwnerWindow()), rData );
-        else if( rRefDevice.IsVirtual() )
-            return std::make_shared<cairo::X11Surface>(getSysData(static_cast<const VirtualDevice&>(rRefDevice)), rData );
+        const SystemGraphicsData aSystemGraphicsData
+            = static_cast<const VirtualDevice&>(rRefDevice).GetSystemGfxData();
+        const cairo::X11SysData aSysData(aSystemGraphicsData, GetXDisplay(), GetVisual().visual,
+                                         m_nXScreen.getXScreen());
+        return std::make_shared<cairo::X11Surface>(aSysData, x, y, width, height);
     }
-
     return cairo::SurfaceSharedPtr();
 }
 

@@ -38,29 +38,26 @@ public:
                            bool bClear, bool bWithoutAlpha = false);
 
     // SalBitmap
+    using SalBitmap::Create;
     SAL_DLLPRIVATE virtual bool            Create(const Size& rSize,
                                    vcl::PixelFormat ePixelFormat,
                                    const BitmapPalette& rPalette) override;
     SAL_DLLPRIVATE virtual bool            Create( const SalBitmap& rSalBmp ) override;
     SAL_DLLPRIVATE virtual bool            Create( const SalBitmap& rSalBmp,
                                     SalGraphics& rGraphics ) override;
-    SAL_DLLPRIVATE virtual bool            Create( const css::uno::Reference< css::rendering::XBitmapCanvas >& rBitmapCanvas,
-                                    Size& rSize ) override;
     SAL_DLLPRIVATE void                    Create(const std::optional<BitmapBuffer> & pBuf);
     const BitmapBuffer*     GetBuffer() const
     {
         return moDIB ? &*moDIB : nullptr;
     }
-    SAL_DLLPRIVATE virtual void            Destroy() final override;
     SAL_DLLPRIVATE virtual Size            GetSize() const override;
     SAL_DLLPRIVATE virtual ScanlineFormat  GetScanlineFormat() const override;
 
     SAL_DLLPRIVATE virtual BitmapBuffer*   AcquireBuffer( BitmapAccessMode nMode ) override;
     SAL_DLLPRIVATE virtual void            ReleaseBuffer( BitmapBuffer* pBuffer, BitmapAccessMode nMode ) override;
-    SAL_DLLPRIVATE virtual bool            GetSystemData( BitmapSystemData& rData ) override;
 
-    SAL_DLLPRIVATE virtual bool            ScalingSupported() const override;
-    SAL_DLLPRIVATE virtual bool            Scale( const double& rScaleX, const double& rScaleY, BmpScaleFlag nScaleFlag ) override;
+private:
+    void Destroy();
 };
 
 /* vim:set shiftwidth=4 softtabstop=4 expandtab: */

@@ -39,7 +39,9 @@ struct BitmapBuffer;
 class Color;
 class SalGraphics;
 class BitmapPalette;
+#if defined(_WIN32)
 struct BitmapSystemData;
+#endif
 enum class BmpScaleFlag;
 
 extern const sal_uLong nVCLRLut[ 6 ];
@@ -66,19 +68,20 @@ public:
     virtual bool            Create( const SalBitmap& rSalBmp ) = 0;
     virtual bool            Create( const SalBitmap& rSalBmp,
                                     SalGraphics& rGraphics ) = 0;
-    virtual bool            Create( const css::uno::Reference< css::rendering::XBitmapCanvas >& rBitmapCanvas,
-                                    Size& rSize ) = 0;
-    virtual void            Destroy() = 0;
+    virtual bool Create(const css::uno::Reference<css::rendering::XBitmapCanvas>& rBitmapCanvas,
+                        Size& rSize);
     virtual Size            GetSize() const = 0;
     sal_uInt16              GetBitCount() const;
     virtual ScanlineFormat  GetScanlineFormat() const = 0;
 
     virtual BitmapBuffer*   AcquireBuffer( BitmapAccessMode nMode ) = 0;
     virtual void            ReleaseBuffer( BitmapBuffer* pBuffer, BitmapAccessMode nMode ) = 0;
-    virtual bool            GetSystemData( BitmapSystemData& rData ) = 0;
+#if defined(_WIN32)
+    virtual bool GetSystemData(BitmapSystemData& rData);
+#endif
 
-    virtual bool            ScalingSupported() const = 0;
-    virtual bool            Scale( const double& rScaleX, const double& rScaleY, BmpScaleFlag nScaleFlag ) = 0;
+    virtual bool ScalingSupported() const;
+    virtual bool Scale(const double& rScaleX, const double& rScaleY, BmpScaleFlag nScaleFlag);
     void                    DropScaledCache();
 
     virtual bool            ConvertToGreyscale()
