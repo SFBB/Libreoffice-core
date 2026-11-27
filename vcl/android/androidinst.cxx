@@ -37,7 +37,7 @@ void AndroidSalInstance::GetWorkArea(AbsoluteScreenPixelRectangle& rRect)
 AndroidSalInstance *AndroidSalInstance::getInstance()
 {
     if (!ImplGetSVData())
-        return NULL;
+        return nullptr;
     return static_cast<AndroidSalInstance *>(GetSalInstance());
 }
 
@@ -45,7 +45,7 @@ AndroidSalInstance::AndroidSalInstance( std::unique_ptr<SalYieldMutex> pMutex )
     : SvpSalInstance(std::move(pMutex), new GenericUnixSalData)
 {
     // FIXME: remove when uniPoll & runLoop is the only Android entry point.
-    int res = (lo_get_javavm())->AttachCurrentThread(&m_pJNIEnv, NULL);
+    int res = (lo_get_javavm())->AttachCurrentThread(&m_pJNIEnv, nullptr);
     LOGI("AttachCurrentThread res=%d env=%p", res, m_pJNIEnv);
 }
 
@@ -69,7 +69,7 @@ bool AndroidSalInstance::AnyInput( VclInputFlags nType )
 
 void AndroidSalInstance::updateMainThread()
 {
-    int res = (lo_get_javavm())->AttachCurrentThread(&m_pJNIEnv, NULL);
+    int res = (lo_get_javavm())->AttachCurrentThread(&m_pJNIEnv, nullptr);
     LOGI("updateMainThread AttachCurrentThread res=%d env=%p", res, m_pJNIEnv);
     SvpSalInstance::updateMainThread();
 }
@@ -90,9 +90,9 @@ public:
     virtual void ShowNativeMessageBox(const OUString& rTitle, const OUString& rMessage) override;
 };
 
-SalSystem *AndroidSalInstance::CreateSalSystem()
+std::unique_ptr<SalSystem> AndroidSalInstance::CreateSalSystem()
 {
-    return new AndroidSalSystem();
+    return std::make_unique<AndroidSalSystem>();
 }
 
 class AndroidSalFrame : public SvpSalFrame
@@ -103,16 +103,16 @@ public:
                      SalFrameStyleFlags  nSalFrameStyle )
         : SvpSalFrame(rInstance, pParent, nSalFrameStyle)
     {
-        if (pParent == NULL && viewWidth > 1 && viewHeight > 1)
+        if (!pParent && viewWidth > 1 && viewHeight > 1)
             SetPosSize(0, 0, viewWidth, viewHeight, SAL_FRAME_POSSIZE_WIDTH | SAL_FRAME_POSSIZE_HEIGHT);
     }
 
-    virtual void GetWorkArea(AbsoluteScreenPixelRectangle& rRect)
+    virtual void GetWorkArea(AbsoluteScreenPixelRectangle& rRect) override
     {
         AndroidSalInstance::getInstance()->GetWorkArea( rRect );
     }
 
-    virtual void UpdateSettings( AllSettings &rSettings )
+    virtual void UpdateSettings(AllSettings& rSettings) override
     {
         // FIXME: is 14 point enough ?
         vcl::Font aFont( OUString( "Roboto" ), Size( 0, 14 ) );
@@ -136,7 +136,7 @@ public:
 
 SalFrame *AndroidSalInstance::CreateChildFrame( SystemParentData* /*pParent*/, SalFrameStyleFlags nStyle )
 {
-    return new AndroidSalFrame(*this, NULL, nStyle);
+    return new AndroidSalFrame(*this, nullptr, nStyle);
 }
 
 SalFrame *AndroidSalInstance::CreateFrame( SalFrame* pParent, SalFrameStyleFlags nStyle )
@@ -161,7 +161,7 @@ void AndroidSalSystem::ShowNativeMessageBox(const OUString& rTitle, const OUStri
          OUStringToOString(rTitle, RTL_TEXTENCODING_ASCII_US).getStr(),
          OUStringToOString(rMessage, RTL_TEXTENCODING_ASCII_US).getStr());
 
-    if (AndroidSalInstance::getInstance() != NULL)
+    if (AndroidSalInstance::getInstance())
     {
         // Does Android have a native dialog ? if not,. we have to do this ...
 

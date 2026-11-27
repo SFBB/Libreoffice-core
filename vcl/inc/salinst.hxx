@@ -108,7 +108,6 @@ public:
     virtual int             SVMainRun() { return ImplSVMainRun(); };
 
     // Frame
-    // DisplayName for Unix ???
     virtual SalFrame*       CreateChildFrame( SystemParentData* pParent, SalFrameStyleFlags nStyle ) = 0;
     virtual SalFrame*       CreateFrame( SalFrame* pParent, SalFrameStyleFlags nStyle ) = 0;
     virtual void            DestroyFrame( SalFrame* pFrame ) = 0;
@@ -153,7 +152,7 @@ public:
     // SalTimer
     virtual SalTimer*       CreateSalTimer() = 0;
     // SalSystem
-    virtual SalSystem*      CreateSalSystem() = 0;
+    virtual std::unique_ptr<SalSystem> CreateSalSystem() = 0;
     // SalBitmap
     virtual std::shared_ptr<SalBitmap> CreateSalBitmap() = 0;
 
